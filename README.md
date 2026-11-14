@@ -82,9 +82,11 @@ The compiler is written in Yumi, so it is built by an earlier release of itself,
 `.release.json` pins. A release's tagged commit pins that release, so a source build needs
 only the release and the few prebuilt libraries the installer fetches with it, and it gives a
 compiler identical to the released one. In a clone, `bin/yumi` builds the compiler and the C
-runtime when they are out of date and then runs it, taking the same arguments as `yumi`. A Mac
-needs Apple's command line tools for this, and Linux needs the distribution's `clang`, version 16
-or later.
+runtime when they are out of date and then runs it, taking the same arguments as `yumi`, and
+`yumi` itself runs the clone's `bin/yumi` once you trust the folder. A repository that keeps a
+clone in a folder of its own can make its `.release.json` a link to the clone's, so that `yumi`
+runs the clone's `bin/yumi` anywhere in the repository. A Mac needs Apple's command line tools for
+this, and Linux needs the distribution's `clang`, version 16 or later.
 
 Releases are cut from `main` with `toolchain/release/yumi-release`. A release builds the compiler
 three times on a Mac and checks that the last two builds agree, builds it for Linux, runs the test

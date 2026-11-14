@@ -73,7 +73,7 @@ def launched_compiler(directory):
 
 
 def repo_compiler(manifest_path):
-    root = os.path.dirname(manifest_path)
+    root = os.path.dirname(os.path.realpath(manifest_path))
     builder = os.path.join(root, 'bin', 'yumi')
     if not os.access(builder, os.X_OK):
         raise LaunchError('%s pins a seed, but there is no bin/yumi beside it to build with' % manifest_path)
@@ -451,6 +451,7 @@ def write_checked(checked):
 
 
 def write_json(path, value):
+    path = os.path.realpath(path)
     temporary = '%s.%d' % (path, os.getpid())
     with open(temporary, 'w') as file:
         json.dump(value, file, indent=4)
