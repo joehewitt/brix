@@ -2320,9 +2320,12 @@ struct YuGuiDisplayLink {
     bool drainHeld = false;
     std::atomic_bool drainPending{false};
     uint64_t eventLeadNanoseconds = 0;
+    uint64_t lastFiredNanoseconds = 0;
     YuGuiFrameTiming latest = {};
     std::vector<YuGuiPendingFrame> pending;
 };
+
+static const uint64_t kGuiDisplayLinkIdleGraceNanoseconds = 250000000;
 
 static std::mutex guiFrameSchedulerMutex;
 static std::vector<YuGuiDisplayLink*> guiDisplayLinks;
@@ -2480,8 +2483,13 @@ guiDisplayLinkCallback(
         std::lock_guard<std::mutex> lock(guiFrameSchedulerMutex);
         timing.sequence = ++guiFrameSequence;
         entry->latest = timing;
-        wanted = entry->pending.empty() || !timing.targetTimeNanoseconds ||
-            guiFrameSchedulerHasDue(entry, timing.targetTimeNanoseconds);
+        if (entry->pending.empty()) {
+            wanted = yumiMonotonicTimeNanoseconds() - entry->lastFiredNanoseconds >=
+                kGuiDisplayLinkIdleGraceNanoseconds;
+        } else {
+            wanted = !timing.targetTimeNanoseconds ||
+                guiFrameSchedulerHasDue(entry, timing.targetTimeNanoseconds);
+        }
     }
 
     if (wanted) {
@@ -2765,14 +2773,21 @@ guiFrameSchedulerDrain(YuGuiDisplayLink* entry) {
     }
 
     bool shouldStop = false;
+    bool hasPending = false;
     {
         std::lock_guard<std::mutex> lock(guiFrameSchedulerMutex);
-        shouldStop = !fired && entry->pending.empty();
+        uint64_t now = yumiMonotonicTimeNanoseconds();
+        if (fired) {
+            entry->lastFiredNanoseconds = now;
+        }
+        hasPending = !entry->pending.empty();
+        shouldStop = !fired && !hasPending &&
+            now - entry->lastFiredNanoseconds >= kGuiDisplayLinkIdleGraceNanoseconds;
         entry->drainPending.store(false, std::memory_order_release);
     }
 
     bool isRunning = guiFrameSchedulerApplyRunState(entry, !shouldStop);
-    if (!shouldStop && !isRunning) {
+    if (hasPending && !isRunning) {
         guiFrameSchedulerScheduleDrain(entry);
     }
 }
