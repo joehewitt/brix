@@ -1,0 +1,56 @@
+./text-lines-atlas
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/os/file
+/os/path
+
+_ image-path = ".tmp/examples/text-lines.png"
+_ one-x-image-path = ".tmp/examples/text-lines-1x.png"
+_ manifest-path = ".tmp/examples/text-lines-manifest.txt"
+
+for path in [".tmp", ".tmp/examples"]
+    . directory = Path(path)
+    if !directory.is-dir
+        directory.make-directory()
+
+. font-catalog = FontCatalog()
+. regular-font = font-catalog.register
+    - "stdlib/gui/tests/fixtures/tight-paragraph/noto-sans/NotoSans-Regular.ttf"
+. bold-font = font-catalog.register
+    - "stdlib/gui/tests/fixtures/tight-paragraph/noto-sans/NotoSans-Bold.ttf"
+. atlas = TextLinesAtlas()
+atlas.font-family-name = regular-font.family
+markup-mount-root(atlas, atlas)
+atlas.markup-batch-queue.checkpoint()
+atlas.layout(Rect(0, 0, 960, 560))
+
+. one-x = RasterCanvas(960, 560, 1)
+do use one-x
+    one-x.erase("#f8fafc")
+    atlas.paint(one-x)
+    one-x.write(one-x-image-path)
+
+. two-x = RasterCanvas(960, 560, 2)
+do use two-x
+    two-x.erase("#f8fafc")
+    atlas.paint(two-x)
+    two-x.write(image-path)
+
+write-text-lab-manifest(manifest-path, atlas.manifest())
+
+atlas.close()
+bold-font.close()
+regular-font.close()
+-- "text-lines image=$image-path manifest=$manifest-path"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-text-lab-manifest
+    - path String
+    - manifest String
+
+. file = File(path, FileFlags.create-mode + FileFlags.write-mode + FileFlags.truncate-mode)
+file.write(manifest)
+file.close()

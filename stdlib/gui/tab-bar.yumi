@@ -1,0 +1,538 @@
+./box
+./choice-control
+./drag
+./events
+./icon-button
+./icons/lucide/x
+./keys
+./label
+./layout
+./painter
+./position
+./primitives
+./shorthands
+./styles
+./text-input
+./theme
+./window
+/core/intrinsics
+/core/list-cursor
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/math
+/ui/input
+/units
+
++ gui-tab-height Length = 26
++ gui-tab-stroke Length = 1
++ gui-tab-radius Length = gui-tab-height / 2
++ gui-tab-icon Length = 18
++ gui-tab-side Length = (gui-tab-radius - gui-tab-stroke) * 2
++ gui-tab-gap Length = 2
++ gui-tab-tray-pad Length = 1.5
++ gui-tab-modified-size Length = 8
++ gui-tab-divider-width Length = 1
++ gui-tab-divider-height Length = 14
++ gui-tab-tray-height Length = gui-tab-height + gui-tab-tray-pad * 2
++ gui-tab-bar-height Length = 34
++ gui-tab-bar-stoplight-offset = Point
+    - window-stoplight-offset.x
+    - gui-tab-bar-height / 2 + 1 - window-stoplight-center
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxCursor
+    using GUIBoxDisplay
+    using GUIBoxLayout
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxPlacement
+    using GUIBoxScroll
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUIFocusRingStyle
+    using GUITextComposition
+    using GUITextPaint
+
+• tab-tray • p:gui-tab-tray-pad gap:gui-tab-gap items-center overhang
+    align-y = Alignment.center
+    corner-radius = gui-tab-radius + gui-tab-tray-pad
+    overflow-x = ScrollOverflow.clip
+    overflow-clip-margin = gui-tab-tray-pad
+
+• tab-pill • text:gui-tab-text-color h:(gui-tab-height - gui-tab-stroke * 2) items-center
+    border-width = gui-tab-stroke
+    corner-radius = gui-tab-radius
+
+    when #is-hover-within
+        • text:gui-text-color
+
+    when #shows-hover
+        • bg:gui-hover-color
+
+    when #is-framed
+        • text:gui-strong-text-color
+        background-color = gui-bevel-fill-color
+        background = BevelPainter
+            - gui-bevel-edge-color
+            - gui-bevel-sheen-color
+            - gui-bevel-bounce-color
+            - gui-bevel-rim-color
+            - gui-bevel-gloss-color
+
+    • tab-divider • absolute bg:gui-tray-divider-color w:gui-tab-divider-width h:gui-tab-divider-height
+        align-y = Alignment.center
+        left = PositionOffset.coord(-(gui-tab-stroke + (gui-tab-gap + gui-tab-divider-width) / 2))
+        display = Display.hidden
+
+    when #is-divided
+        • tab-divider
+            display = Display.visible
+
+    • tab-side • w:gui-tab-side justify-center items-center
+
+    • tab-center • flex:1 justify-center items-center
+
+    • tab-title • shrink:1
+        text-wrap = TextWrap.no-wrap
+        text-overflow = TextOverflow.truncate-tail
+
+    • tab-close • w:gui-tab-icon h:gui-tab-icon min-w:gui-tab-icon min-h:gui-tab-icon
+        corner-radius = gui-tab-icon / 2
+
+        • icon • w:13 h:13
+
+• tab-modified • bg:gui-strong-text-color w:gui-tab-modified-size h:gui-tab-modified-size
+    corner-radius = gui-tab-modified-size / 2
+
+• TabBar • bg:gui-window-color h:gui-tab-tray-height px:8 pt:((gui-tab-bar-height - gui-tab-tray-height) / 2 + 1) pb:((gui-tab-bar-height - gui-tab-tray-height) / 2 - 1)
+    border-color = gui-divider-color
+    border-bottom-width = 1
+
+• TabTray • bg:gui-tab-tray-color
+
+• Tab
+    cursor = CursorStyle.arrow
+    motion.position = gui-motion-quick
+
+    when #is-carried
+        • bg:gui-popup-color
+        • text:gui-strong-text-color
+        border-color = gui-border-color
+        background = null
+        shadow = gui-popup-shadow
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+        motion.focus-ring = gui-motion-quick
+
+• TabRenameInput • bg:gui-well-color text:gui-strong-text-color w:120 h:20 px:6
+    corner-radius = gui-control-radius
+
+    when #is-focused
+        focus-ring = null
+
+━━━━━━━━━━━━━━━━━━━━
++ TabMove'T is Tuple
+
++ value T
++ index Index
+
+━━━━━━━━━━━━━━━━━━━━
++ TabDrag is Tuple
+    is DragPayload
+
++ strip TabStrip
++ tab TabBox
+
+╌╌╌╌╌╌╌╌╌╌ is DragPayload ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get drag-kind
+
+"tab-bar.tab"
+
+━━━━━━━━━━━━━━━━━━━━
++ TabBar'T is ChoiceControl'T
+
++ is-title-bar = false
++ is-beside-stoplights = #is-title-bar && !(owner-window?.#is-full-screen ?? false)
++ stoplight-inset = owner-window?.#stoplight-inset ?? window-stoplight-inset
++ is-reorderable = false
++ event moved TabMove'T
+
+_ owner-window Ancestor'Window
+
+• This
+    when #is-title-bar
+        window-draggable = true
+    when #is-beside-stoplights
+        padding-left = #stoplight-inset
+
+────────────────────
+
+<This • flex-row
+
+────────────────────
++ do move
+    - value T
+    - index Index
+
+moved <- TabMove'T(value, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ TabStrip is Box
+
++ tray TabTray?
++ order = List'TabBox()
+
+────────────────────
+
+<This • flex-row flex:1 items-center
+    + <TabTray • tab-tray flex-row flex:1
+    + <Box trailing
+
+────────────────────
+for event on drag-over
+
+if event.payload is TabDrag
+    . drag = event.payload as TabDrag
+    if drag.strip == this && tray
+        event.accept(tray)
+
+────────────────────
+for event on drop when arrival
+
+if event.payload is TabDrag
+    . tab = (event.payload as TabDrag).tab
+    . index = tab.carry-slot
+    if index != null
+        tab.move-tab(index)
+
+────────────────────
++ items
+
+match tray
+    | box TabTray
+        List'TabBox
+            ** box.active-children
+            ?*> each as TabBox if each is TabBox
+    ??
+        List'TabBox()
+
+────────────────────
++ do note-order
+
+. found = items()
+=? if same-tabs(found, order)
+order = found
+
+━━━━━━━━━━━━━━━━━━━━
++ TabTray is Box
+
+_ strip Ancestor'TabStrip
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+strip?.note-order()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+. owner = strip
+if owner
+    owner.tray = this
+
+━━━━━━━━━━━━━━━━━━━━
++ TabBox is Box
+
++ title = ""
+
+────────────────────
++ get is-tab-selected
+
+false
+
+────────────────────
++ do choose-tab
+
+────────────────────
++ do move-tab
+    - index Index
+
+━━━━━━━━━━━━━━━━━━━━
++ Tab'T is TabBox
+
+• This
+    focus-mode = FocusMode.press
+    window-draggable = false
+
++ value T
++ is-selected = #bar?.#selected == #value
++ is-framed = #is-selected
++ shows-hover = #is-hover-within && !#is-selected
++ is-plain = !#is-selected && !#is-hover-within && !#is-carried
++ is-divided = #is-plain && (tab-leader(#strip?.#order, #value)?.#is-plain ?? false)
++ is-closable = true
++ is-modified = false
++ is-untitled = #title == ""
++ is-renamable = false
++ rename-text = #title
++ rename-selection Size?
++ shows-close = #is-closable && !#is-untitled && !#is-renaming && #is-selected && (#is-pointed || #is-focus-visible)
++ event dismissed Tab'T
++ event renamed String
++ event rename-canceled Bool
+
+_ bar Ancestor'(ChoiceControl'T)
+_ tab-bar Ancestor'(TabBar'T)
+_ strip Ancestor'TabStrip
+_ is-pointed = false
+_ event rename-requested Bool
+_ event rename-committed String
+
+────────────────────
+
+<This • tab-pill flex-row flex:1
+    <Box • tab-divider
+    <Box • tab-side flex-row
+        if #shows-close
+            <IconButton • tab-close icon-x
+                action = => do dismiss()
+    <Box • tab-center flex-row
+        + <Box leading • flex-row
+            align-y = Alignment.center
+        if #is-renaming
+            <TabRenameInput'T rename-input
+                text = rename-text
+        else if !#is-untitled
+            <Label • tab-title
+                text = #title
+    <Box • tab-side flex-row
+        if #is-modified
+            <Box • tab-modified
+    <KeyShortcut "Next tab"
+        key = .arrow-right
+        discoverable = false
+        action = => do focus-relative(1)
+    <KeyShortcut "Previous tab"
+        key = .arrow-left
+        discoverable = false
+        action = => do focus-relative(-1)
+    <KeyShortcut "First tab"
+        key = .home
+        discoverable = false
+        action = => do focus-edge(false)
+    <KeyShortcut "Last tab"
+        key = .end
+        discoverable = false
+        action = => do focus-edge(true)
+    <KeyShortcut "Close tab"
+        key = .delete
+        discoverable = false
+        when = => is-closable && !is-renaming
+        action = => do dismiss()
+    <KeyShortcut "Close tab"
+        key = .backspace
+        discoverable = false
+        when = => is-closable && !is-renaming
+        action = => do dismiss()
+    <KeyShortcut "Rename tab"
+        key = .enter
+        discoverable = false
+        when = => is-renamable && !is-renaming
+        action = => do begin-rename()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+~> is-idle
+
+~> is-renaming on rename-requested when is-renamable
+    then is-idle for name on rename-committed
+        do renamed <- name
+
+    then is-idle on rename-canceled
+
+────────────────────
+whenever #is-hover-within
+
+settle-close()
+
+────────────────────
+whenever #is-press-within
+
+settle-close()
+
+────────────────────
+for event on pointer-down when event.button == PointerButton.primary && !event.modifiers.control && event.click-count == 1
+
+bar?.choose(value)
+
+────────────────────
+for event on click
+
+if event.click-count >= 2
+    begin-rename()
+event.cancel()
+
+────────────────────
+for event on drag-start
+
+. owner = strip
+if owner && !is-renaming && (tab-bar?.is-reorderable ?? false)
+    . ignored = event.carry(TabDrag(owner, this))
+
+╌╌╌╌╌╌╌╌╌╌ is TabBox ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-tab-selected
+
+is-selected
+
+────────────────────
++ do choose-tab
+
+bar?.choose(value)
+
+────────────────────
++ do move-tab
+    - index Index
+
+tab-bar?.move(value, index)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do dismiss
+
+dismissed <- this
+
+────────────────────
++ do begin-rename
+
+rename-requested <- true
+
+────────────────────
++ do commit-rename
+    - next String
+
+rename-committed <- next
+
+────────────────────
++ do cancel-rename
+
+rename-canceled <- true
+
+────────────────────
++ do focus-relative
+    - offset Int
+
+. tabs = strip?.items() ?? List'TabBox()
+. index = tab-index(tabs, this)
+. next = ListCursor(tabs.length, index).stepped(offset)
+if next != null
+    focus-tab(tabs[next])
+
+────────────────────
++ do focus-edge
+    - last Bool
+
+. tabs = strip?.items() ?? List'TabBox()
+=? if tabs.length == 0
+focus-tab(if last then tabs[tabs.length - 1] else tabs[0])
+
+────────────────────
+_ do focus-tab
+    - tab TabBox
+
+tab.choose-tab()
+tab.request-focus()
+
+────────────────────
+_ do settle-close
+
+=? if is-press-within
+is-pointed = is-hover-within
+
+━━━━━━━━━━━━━━━━━━━━
++ TabRenameInput'T is TextInput
+
+_ tab Ancestor'(Tab'T)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+request-focus()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+for event on focus
+
+. length = tab?.rename-selection
+if length != null
+    select-range(0, length)
+else
+    place-caret-at-end()
+
+────────────────────
+for event on key-press
+
+if event.key == Key.escape
+    tab?.cancel-rename()
+    event.cancel()
+
+────────────────────
+for event on submit
+
+tab?.commit-rename(text)
+
+────────────────────
+for event on blur
+
+tab?.commit-rename(text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tab-index Index?
+    - tabs [TabBox]
+    - tab TabBox
+
+for index in 0 .. < tabs.length
+    =? index if tabs[index] as Pointer == tab as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tab-leader'T Tab'T?
+    - order [TabBox]?
+    - value T
+
+. tabs = order ?? List'TabBox()
+for index in 0 .. < tabs.length
+    . tab = tabs[index]
+    if tab is Tab'T && (tab as Tab'T).value == value
+        =? null if index == 0
+        . leader = tabs[index - 1]
+        =? leader as Tab'T if leader is Tab'T
+        = null
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do same-tabs Bool
+    - one [TabBox]
+    - two [TabBox]
+
+=? false if one.length != two.length
+for index in 0 .. < one.length
+    =? false if one[index] as Pointer != two[index] as Pointer
+= true

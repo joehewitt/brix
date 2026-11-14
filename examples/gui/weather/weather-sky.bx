@@ -1,0 +1,153 @@
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/shader-declarations)
+
+(type + Sky (is FillShader)
+  (prop + zenith RGBA)
+  (prop + horizon RGBA)
+  (prop + glow RGBA)
+  (prop + orb RGBA)
+  (prop + orb-center Point)
+  (prop + orb-radius F64)
+  (prop + cloud RGBA)
+  (prop + shade RGBA)
+  (prop + cover F64)
+  (prop + stars F64)
+  (prop + rain F64)
+  (prop + snow F64)
+  (prop + fog F64)
+  (prop + storm F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param zenith _)
+    (param horizon _)
+    (param glow _ (= (call RGBA "#ffffff00")))
+    (param orb _ (= (call RGBA "#ffffff00")))
+    (param orb-center _ (= (call Point 0.5 0.3)))
+    (param orb-radius _ (= 0.034))
+    (param cloud _ (= (call RGBA "#ffffff")))
+    (param shade _ (= (call RGBA "#8a94a6")))
+    (param cover _ (= 0))
+    (param stars _ (= 0))
+    (param rain _ (= 0))
+    (param snow _ (= 0))
+    (param fog _ (= 0))
+    (param storm _ (= 0))
+    (= frame-rate 60)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float skyHash(float2 p) {"
+      "    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);"
+      "}"
+      (blank)
+      "float skyNoise(float2 p) {"
+      "    float2 i = floor(p);"
+      "    float2 f = fract(p);"
+      "    f = f * f * (3.0 - 2.0 * f);"
+      "    float a = skyHash(i);"
+      "    float b = skyHash(i + float2(1.0, 0.0));"
+      "    float c = skyHash(i + float2(0.0, 1.0));"
+      "    float d = skyHash(i + float2(1.0, 1.0));"
+      "    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);"
+      "}"
+      (blank)
+      "float skyFbm(float2 p) {"
+      "    float total = 0.0;"
+      "    float gain = 0.5;"
+      "    for (int octave = 0; octave < 5; octave++) {"
+      "        total += skyNoise(p) * gain;"
+      "        p = p * 2.03 + float2(17.3, 9.1);"
+      "        gain *= 0.5;"
+      "    }"
+      "    return total / 0.96875;"
+      "}"
+      (blank)
+      "float skyCloud(float2 p, float cover, float t) {"
+      "    float2 q = p + float2(t * 0.02, 0.0);"
+      "    float warp = skyFbm(q * 0.6 + float2(0.0, t * 0.008));"
+      "    float shape = skyFbm(q + (warp - 0.5) * 1.4);"
+      "    float edge = mix(0.74, 0.22, cover);"
+      "    return smoothstep(edge, edge + 0.3, shape) * smoothstep(0.0, 0.06, cover);"
+      "}"
+      (blank)
+      "float skyRain(float2 position, float t, float layer) {"
+      "    float width = 9.0 + layer * 5.0;"
+      "    float px = position.x + position.y * 0.16;"
+      "    float seed = skyHash(float2(floor(px / width), layer * 13.0 + 1.0));"
+      "    float x = fract(px / width) - 0.5 + (seed - 0.5) * 0.5;"
+      "    float y = fract(position.y / (150.0 + layer * 70.0) - t * (2.2 + seed * 1.2 - layer * 0.5) + seed * 9.0);"
+      "    float line = 1.0 - smoothstep(0.0, 0.07, abs(x));"
+      "    float body = smoothstep(0.0, 0.3, y) * (1.0 - smoothstep(0.3, 0.6, y));"
+      "    return line * body * step(0.35, seed);"
+      "}"
+      (blank)
+      "float skySnow(float2 position, float t, float scale, float layer) {"
+      "    float2 p = position / scale;"
+      "    p.y -= t * (0.9 + layer * 0.4);"
+      "    p.x += sin(p.y * 0.8 + layer * 5.0 + t * 0.4) * 0.3;"
+      "    float2 f = fract(p) - 0.5;"
+      "    float seed = skyHash(floor(p) + layer * 17.0);"
+      "    float2 offset = (float2(seed, fract(seed * 57.3)) - 0.5) * 0.6;"
+      "    float radius = 0.05 + 0.07 * fract(seed * 13.7);"
+      "    return (1.0 - smoothstep(radius * 0.3, radius, length(f - offset))) * step(0.3, seed);"
+      "}"
+      (blank)
+      "float4 fill(float2 position, float2 size, SkyArgs args) {"
+      "    float2 uv = position / size;"
+      "    float t = args.time;"
+      "    float aspect = size.x / max(size.y, 1.0);"
+      "    float3 color = mix(args.zenith.rgb, args.horizon.rgb, pow(saturate(uv.y), 0.9));"
+      (blank)
+      "    float2 starGrid = position / 4.0;"
+      "    float starSeed = skyHash(floor(starGrid));"
+      "    float2 starSpot = fract(starGrid) - 0.5 - (float2(fract(starSeed * 37.1), fract(starSeed * 71.7)) - 0.5) * 0.3;"
+      "    float starSize = 0.12 + 0.2 * fract(starSeed * 513.3);"
+      "    float twinkle = 0.6 + 0.4 * sin(t * (0.8 + starSeed * 2.5) + starSeed * 60.0);"
+      "    float starLight = (1.0 - smoothstep(starSize * 0.35, starSize, length(starSpot))) * (0.45 + 0.55 * fract(starSeed * 91.7));"
+      "    float stars = step(0.992, starSeed) * starLight * twinkle * args.stars * (1.0 - uv.y * 0.8);"
+      (blank)
+      "    float reach = length(position - args.orb_center * size);"
+      "    float radius = max(args.orb_radius * size.y, 1.0);"
+      "    float disc = (1.0 - smoothstep(radius - 1.0, radius + 1.0, reach)) * args.orb.a;"
+      "    float halo = (exp(-reach / (radius * 2.6)) * 0.6 + exp(-reach / (radius * 10.0)) * 0.3) * args.glow.a;"
+      (blank)
+      "    float thin = 0.0;"
+      "    float thick = 0.0;"
+      "    if (args.cover > 0.004) {"
+      "        float2 space = float2(uv.x * aspect, uv.y);"
+      "        thin = skyCloud(space * float2(1.3, 3.0) + float2(3.0, 11.0), args.cover, t * 0.5) * 0.55;"
+      "        thick = skyCloud(space * float2(2.1, 4.4), args.cover, t);"
+      "    }"
+      "    float veil = saturate(thin + thick);"
+      (blank)
+      "    color += stars * (1.0 - veil);"
+      "    color += args.glow.rgb * halo * (1.0 - veil * 0.6);"
+      "    color = mix(color, args.orb.rgb, disc * (1.0 - veil * 0.9));"
+      (blank)
+      "    float lit = saturate(1.0 - thick * 0.6 + halo * 0.8);"
+      "    color = mix(color, mix(args.shade.rgb, args.cloud.rgb, lit), veil * (0.72 + 0.28 * args.cover));"
+      (blank)
+      "    if (args.fog > 0.004) {"
+      "        float drift = skyFbm(float2(uv.x * aspect * 1.4 + t * 0.015, uv.y * 2.0)) - 0.5;"
+      "        color = mix(color, args.cloud.rgb, args.fog * smoothstep(0.1, 1.0, uv.y + drift * 0.6) * 0.8);"
+      "    }"
+      "    if (args.storm > 0.004) {"
+      "        float since = fract(t / 4.3) * 4.3;"
+      "        float strike = step(0.45, skyHash(float2(floor(t / 4.3), 5.0))) * exp(-since * 7.0) * (0.65 + 0.35 * sin(since * 70.0));"
+      "        color += float3(0.75, 0.82, 1.0) * strike * args.storm * (0.25 + veil * 0.6);"
+      "    }"
+      "    if (args.rain > 0.004) {"
+      "        float streaks = skyRain(position, t, 0.0) * 0.5 + skyRain(position, t, 1.0) * 0.32 + skyRain(position, t, 2.0) * 0.2;"
+      "        color += float3(0.8, 0.88, 1.0) * streaks * args.rain * (0.1 + 0.5 * dot(color, float3(0.3, 0.5, 0.2)));"
+      "    }"
+      "    if (args.snow > 0.004) {"
+      "        float flakes = skySnow(position, t, 26.0, 0.0) * 0.5 + skySnow(position, t, 44.0, 1.0) * 0.75 + skySnow(position, t, 70.0, 2.0);"
+      "        color += flakes * args.snow * 0.8;"
+      "    }"
+      "    color += (skyHash(position * 1.7) - 0.5) / 160.0;"
+      "    return float4(color, 1.0);"
+      "}"
+    )
+  )
+)

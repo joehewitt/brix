@@ -1,0 +1,307 @@
+
+./http
+./probes
+./socket
+./url
+/core/stream
+/core/tokenstream
+/data
+/data/stream
+/math
+
+_ frame-head-size = U8.size + U8.size + U64.size + U32.size
+_ mask-size = 4
+_ boundary-8bit = 126
+_ boundary-16bit = 65535
+
+━━━━━━━━━━━━━━━━━━━━
++ WebSocket
+    is Closable
+
++ url URL
+
+_ continuation Frame?
+_ incoming-waiter OneShotChannel
+_ outgoing-waiter OneShotChannel
+
+as Iterable'ReadableData for
+_ binary-incoming Frame<>
+as Iterable'String for
+_ text-incoming Frame<>
+as Writable'String, Writable'(Byte[]) for
+_ outgoing Frame<>
+
+────────────────────
++ This
+    - url URL
+
+do open()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+outgoing <- Frame(OpCode.close)
+<- incoming-waiter
+//this:network.web.socket.close -> 0, ""
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ send
+    - text String
+
+outgoing <- Frame(text)
+
+────────────────────
++ send'Payload
+    - data Payload[]
+    - size Size
+
+outgoing <- Frame(data, size)
+
+────────────────────
++ send-ping
+
+outgoing <- Frame(OpCode.ping)
+
+────────────────────
++ send-pong
+
+outgoing <- Frame(OpCode.pong)
+
+────────────────────
+_ do open
+
+. request = HTTPRequest(HTTPMethod.get, url)
+    • headers
+        * "Host", url.host
+        * "Connection", "Upgrade"
+        * "Upgrade", "websocket"
+        * "Sec-WebSocket-Key", "x3JJHMbDL1EzLkh9GBhXDw=="
+        * "Sec-WebSocket-Version", "13"
+        * "Sec-WebSocket-Protocol", "json"
+
+//this:network.web.socket.open.start -> "", "$url", url.host, url.port, request.target
+
+. socket = Socket'Byte(url.host, url.port, url.is-secure())
+write-http-message(socket, request.start-line, request.headers, null)
+
+. stream = ChunkedTokenStream'Byte(socket)
+. handshake = read-http-response(stream)
+//this:network.web.socket.handshake -> request-headers, handshake.status, response-headers
+    .. request-headers = "\n".join("$each" in request.headers)
+    .. response-headers = "\n".join("$each" in handshake.headers)
+?! IOError("WebSocket handshake failed (${handshake.status})")
+    if handshake.status != HTTPStatus.switching-protocols
+
+do new output-sender(socket)
+//this:network.web.socket.open -> ""
+
+. frames = ~ Frame in stream
+do new input-receiver(frames)
+
+────────────────────
+_ do output-sender
+    - socket
+
+for frame in outgoing
+    frame.write-frame(socket)
+    //this:network.web.socket.frame.sent -> frame.op, frame.is-fin, frame.payload.size, network-preview(frame.payload, frame.payload.size), network-is-truncated(frame.payload.size)
+
+outgoing-waiter.done()
+
+────────────────────
+_ do input-receiver
+    - frames <Frame>
+
+for frame in frames while frame.op != OpCode.close
+    //this:network.web.socket.frame.received -> frame.op, frame.is-fin, frame.payload.size, network-preview(frame.payload, frame.payload.size), network-is-truncated(frame.payload.size)
+    dispatch(frame)
+
+outgoing.close()
+<- outgoing-waiter
+`  socket.close()
+text-incoming.close()
+binary-incoming.close()
+incoming-waiter.done()
+`  -- "exiting websocket"
+
+────────────────────
+_ do dispatch ?! Error
+    - frame
+
+if frame.op == OpCode.text
+    if frame.is-fin
+        text-incoming <- frame
+    else
+        continuation = frame
+
+else if frame.op == OpCode.binary
+    if frame.is-fin
+        binary-incoming <- frame
+    else
+        continuation = frame
+
+else if frame.op == OpCode.ping
+    send-pong()
+
+else if frame.op == OpCode.pong
+    -- "pong"
+
+else if frame.op == OpCode.continuation
+    if continuation
+        . continued = continuation.extend(frame)
+        if continued.is-fin
+            dispatch(continued)
+            continuation = null
+    else
+        ?! Error("Continuation not found")
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpCode is U8
+
+| continuation = 0
+| text = 1
+| binary = 2
+| close = 8
+| ping = 9
+| pong = 10
+
+━━━━━━━━━━━━━━━━━━━━
+_ Frame is Tuple
+
++ op OpCode
++ is-fin = true
++ is-masked = true
++ payload Byte[]
+
+────────────────────
++ This
+    - op OpCode
+    - is-fin = true
+
+= This(op, is-fin, true, Byte[0])
+
+────────────────────
++ This
+    - payload Byte[]
+    - op = OpCode.binary
+    - is-fin = true
+
+= This(op, is-fin, true, payload)
+
+────────────────────
++ This
+    - text String
+    - is-fin = true
+
+= This(OpCode.text, is-fin, true, Array'Byte(text))
+
+────────────────────
++ This ~ Byte
+
+~ b1 U8 b2 U8 len \length msk \mask data Byte{len}
+    This()
+        • op
+        • is-fin
+        • payload
+
+    .. op = (b1 /and/ 15u8) as OpCode
+    .. is-fin = (b1 /zrshift/ 7u8) != 0u8
+    .. is-masked = (b2 /zrshift/ 7u8) != 0u8
+    .. length8 = b2 /and/ 127u8
+
+    .. length ~
+        |? length8 == 127
+            ~ size U64
+                size
+        |? length8 == 126
+            ~ size U16
+                size as U64
+        ??
+            ~ U8{0}
+                length8 as U64
+
+    .. mask ~
+        ~ Byte{if is-masked then 4 else 0}
+
+    .. payload
+        |? is-masked && len
+            Array'Byte(len as Size) • with :: index => mask-byte(msk, data[index], index)
+        |? len
+            Array'Byte(data)
+        ??
+            Byte[0]
+
+────────────────────
++ to ReadableData'Byte
+
+DataStream(body)
+
+────────────────────
++ to String
+
+|? op == OpCode.binary
+    "[BINARY]"
+|? op == OpCode.text
+    payload.slice-string()
+??
+    ""
+
+────────────────────
++ get body Byte[]
+
+|? payload
+?? Byte[0]
+
+────────────────────
++ do write-frame
+    - bytes WritableData
+
+. length = payload.size
+. mask-flag = if is-masked then 128u8 else 0u8
+
+bytes <- b1 //or// b2
+    .. b1 = (op as U8) /and/ 15
+    .. b2 = if is-fin then 128u8 else 0u8
+
+if length < boundary-8bit
+    bytes <- len /and/ 127 //or// mask-flag
+        .. len = length as U8
+else if length <= boundary-16bit
+    bytes <- 126 /or/ mask-flag
+    bytes <- length
+else
+    bytes <- 127 /or/ mask-flag
+    bytes <- length
+
+if is-masked
+    . mask = new-mask()
+    bytes <- mask
+    bytes <- masked-payload
+        .. masked-payload = payload.map • using mask-byte(mask, ...)
+else
+    bytes <- payload
+
+────────────────────
++ do extend
+    - frame This
+
+if true
+    ?! Error("Continuations NYI")
+= this
+
+━━━━━━━━━━━━━━━━━━━━
+_ new-mask
+
+Array'Byte(mask-size) • with :: i => random(0, 255) as Byte
+
+━━━━━━━━━━━━━━━━━━━━
+_ mask-byte
+    - mask Indexable'Byte
+    - byte Byte
+    - index Index
+
+byte /xor/ mask[index % 4]

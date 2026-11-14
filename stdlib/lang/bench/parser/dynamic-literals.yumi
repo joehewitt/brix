@@ -1,0 +1,28 @@
+`benchmark.meta description: Matches changing runtime UTF-8 literals with early misses and short input.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+/core/tokenstream
+
+. literals = ["abcdef", "xbcdef", "abcdeg", "abcdefghi", "é東京😀", "é京東😀"]
+. ascii = ArrayTokenStream'Char("abcdef".codepoints)
+. unicode = ArrayTokenStream'Char("é東京😀".codepoints)
+. checksum Size
+for i in 0 .. < 100000
+    for literal in literals
+        ascii.cursor = 0
+        unicode.cursor = 0
+        checksum += probe-literal(ascii, literal)
+        checksum += probe-literal(unicode, literal)
+
+-- "bench-result parser/dynamic-literals checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do probe-literal Size
+    - stream TokenStream'Char
+    - literal String
+
+= match stream
+    ~ $literal
+        1
+    ?? 0

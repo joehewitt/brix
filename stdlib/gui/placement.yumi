@@ -1,0 +1,339 @@
+./box
+./primitives
+./shape
+/graphics/point
+/graphics/primitives
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ Corner is Union
+
+| top-left
+| top-right
+| bottom-left
+| bottom-right
+
+━━━━━━━━━━━━━━━━━━━━
++ PlacementRequest is Tuple
+
++ popup Box
++ anchor Rect
++ boundary Rect
++ window Rect
++ pointer Point
++ focus Rect? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ PlacementResult is Tuple
+
++ bounds Rect
++ side Side? = null
++ arrow-offset Length = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Placement
+
+────────────────────
++ get tracks-pointer
+
+false
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(Rect(request.anchor.x, request.anchor.bottom, size.width, size.height))
+
+.. size = placement-natural-size(request.popup, request.boundary)
+
+━━━━━━━━━━━━━━━━━━━━
++ AnchoredPlacement is Placement
+
++ side Side
++ align AnchorPoint
++ gap Length
++ offset Length
++ flip = true
++ shift = true
++ fit = true
++ match-width = false
++ arrow-margin Length = 12
+
+────────────────────
++ This
+    - side = Side.bottom
+    - align = AnchorPoint.start
+    - gap = 4
+    - offset = 0
+    - match-width = false
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+|? chosen.is-vertical
+    PlacementResult(Rect(cross-start, main.start, cross-size, main.span), chosen, arrow)
+??
+    PlacementResult(Rect(main.start, cross-start, main.span, cross-size), chosen, arrow)
+
+.. anchor = request.anchor
+.. boundary = request.boundary
+.. natural = placement-natural-size(request.popup, boundary)
+.. reach = gap + request.popup.effective-shape.anchor-gap
+.. chosen = placement-choose-side(side, flip, anchor, boundary, reach, natural)
+.. main = placement-main-axis(chosen, anchor, boundary, reach, natural, fit)
+.. matched-width = if match-width then max(natural.width, anchor.width) else natural.width
+.. cross-natural = if chosen.is-vertical then matched-width else natural.height
+.. cross-anchor-start = if chosen.is-vertical then anchor.x else anchor.y
+.. cross-anchor-span = if chosen.is-vertical then anchor.width else anchor.height
+.. cross-bound-start = if chosen.is-vertical then boundary.x else boundary.y
+.. cross-bound-span = if chosen.is-vertical then boundary.width else boundary.height
+.. cross-size = placement-fit-span(cross-natural, cross-bound-span, fit)
+.. aligned = placement-align(align, cross-anchor-start, cross-anchor-span, cross-size, offset)
+.. cross-start = if shift then clamped else aligned
+.. clamped = placement-clamp(aligned, cross-bound-start, cross-bound-span, cross-size)
+.. anchor-center = cross-anchor-start + cross-anchor-span / 2
+.. arrow = placement-clamp-arrow(anchor-center - cross-start, cross-size, arrow-margin)
+
+━━━━━━━━━━━━━━━━━━━━
++ PointPlacement is Placement
+
++ offset Point
++ follows-pointer = false
+
+────────────────────
++ This
+    - offset = Point(0, 0)
+    - follows-pointer = false
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get tracks-pointer
+
+follows-pointer
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(Rect(x, y, width, height), Side.bottom)
+
+.. origin = if follows-pointer then request.pointer else request.anchor.top-left
+.. boundary = request.boundary
+.. natural = placement-natural-size(request.popup, boundary)
+.. width = min(natural.width, boundary.width)
+.. height = min(natural.height, boundary.height)
+.. forward-x = origin.x + offset.x
+.. forward-y = origin.y + offset.y
+.. fits-x = forward-x + width <= boundary.right
+.. fits-y = forward-y + height <= boundary.bottom
+.. x = placement-clamp(preferred-x, boundary.x, boundary.width, width)
+.. y = placement-clamp(preferred-y, boundary.y, boundary.height, height)
+.. preferred-x = if fits-x then forward-x else origin.x - offset.x - width
+.. preferred-y = if fits-y then forward-y else origin.y - offset.y - height
+
+━━━━━━━━━━━━━━━━━━━━
++ CoverPlacement is Placement
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(Rect(x, y, width, height))
+
+.. anchor = request.anchor
+.. boundary = request.boundary
+.. focus = request.focus ?? Rect(0, 0, anchor.width, anchor.height)
+.. natural = placement-natural-size(request.popup, boundary)
+.. width = min(max(natural.width, anchor.width + focus.x * 2), boundary.width)
+.. height = min(natural.height, boundary.height)
+.. x = placement-clamp(anchor.x - focus.x, boundary.x, boundary.width, width)
+.. y = placement-clamp(centered-y, boundary.y, boundary.height, height)
+.. centered-y = anchor.y - focus.y + (anchor.height - focus.height) / 2
+
+━━━━━━━━━━━━━━━━━━━━
++ CenteredPlacement is Placement
+
++ top Length?
+
+────────────────────
++ This
+    - top Length? = null
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(Rect(x, y, width, height))
+
+.. frame = request.window
+.. natural = placement-natural-size(request.popup, frame)
+.. width = min(natural.width, frame.width)
+.. height = min(natural.height, frame.height)
+.. x = frame.x + (frame.width - width) / 2
+.. y = frame.y + (top ?? (frame.height - height) / 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ FillPlacement is Placement
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(request.window)
+
+━━━━━━━━━━━━━━━━━━━━
++ CornerPlacement is Placement
+
++ corner Corner
++ inset Length
+
+────────────────────
++ This
+    - corner = Corner.bottom-right
+    - inset = 16
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place PlacementResult
+    - request PlacementRequest
+
+PlacementResult(Rect(x, y, width, height))
+
+.. frame = request.window
+.. natural = placement-natural-size(request.popup, frame)
+.. width = min(natural.width, gui-safe-span(frame.width - inset * 2))
+.. height = min(natural.height, gui-safe-span(frame.height - inset * 2))
+.. is-left = corner == Corner.top-left || corner == Corner.bottom-left
+.. is-top = corner == Corner.top-left || corner == Corner.top-right
+.. x = if is-left then frame.x + inset else frame.right - inset - width
+.. y = if is-top then frame.y + inset else frame.bottom - inset - height
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-natural-size
+    - popup Box
+    - boundary Rect
+
+popup.measure(measure-fit-query(boundary.width, boundary.height)).border-size
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-clamp
+    - start Length
+    - bound-start Length
+    - bound-span Length
+    - size Length
+
+|? size >= bound-span
+    bound-start
+??
+    min(max(start, bound-start), bound-start + bound-span - size)
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-fit-span
+    - size Length
+    - available Length
+    - fit Bool
+
+if fit then min(size, gui-safe-span(available)) else size
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-align
+    - align AnchorPoint
+    - anchor-start Length
+    - anchor-span Length
+    - size Length
+    - offset Length
+
+match align
+    | AnchorPoint.center
+        anchor-start + (anchor-span - size) / 2
+    | AnchorPoint.end
+        anchor-start + anchor-span - size - offset
+    ??
+        anchor-start + offset
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-clamp-arrow
+    - offset Length
+    - size Length
+    - margin Length
+
+|? size <= margin * 2
+    size / 2
+??
+    min(max(offset, margin), size - margin)
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-available
+    - side Side
+    - anchor Rect
+    - boundary Rect
+    - gap Length
+
+match side
+    | Side.top
+        anchor.top - gap - boundary.top
+    | Side.bottom
+        boundary.bottom - anchor.bottom - gap
+    | Side.left
+        anchor.left - gap - boundary.left
+    ??
+        boundary.right - anchor.right - gap
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-choose-side
+    - side Side
+    - flip Bool
+    - anchor Rect
+    - boundary Rect
+    - gap Length
+    - natural Dimensions
+
+|? preferred-fits || !flip
+    side
+|? opposite-fits || opposite-room > preferred-room
+    side.opposite
+??
+    side
+
+.. needed = if side.is-vertical then natural.height else natural.width
+.. preferred-room = placement-available(side, anchor, boundary, gap)
+.. opposite-room = placement-available(side.opposite, anchor, boundary, gap)
+.. preferred-fits = needed <= preferred-room
+.. opposite-fits = needed <= opposite-room
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlacementAxis is (start Length, span Length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ placement-main-axis
+    - side Side
+    - anchor Rect
+    - boundary Rect
+    - gap Length
+    - natural Dimensions
+    - fit Bool
+
+match side
+    | Side.top
+        PlacementAxis(anchor.top - gap - height, height)
+    | Side.bottom
+        PlacementAxis(anchor.bottom + gap, height)
+    | Side.left
+        PlacementAxis(anchor.left - gap - width, width)
+    ??
+        PlacementAxis(anchor.right + gap, width)
+
+.. room = gui-safe-span(placement-available(side, anchor, boundary, gap))
+.. height = placement-fit-span(natural.height, room, fit)
+.. width = placement-fit-span(natural.width, room, fit)

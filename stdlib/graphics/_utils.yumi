@@ -1,0 +1,354 @@
+
+./point
+./primitives
+/math
+/os/path
+
++ tolerance = 10e-6
++ tolerance-tight = 10e-12
++ tolerance-loose = 10e-2
+
+_ pi2 = π * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Hull is Tuple
+
++ top [Point]
++ bottom [Point]
+
+────────────────────
++ reversed
+
+Hull(bottom, top)
+
+━━━━━━━━━━━━━━━━━━━━
++ CurveRoots is Tuple
+
++ root1 Coord
++ root2 Coord
++ root3 Coord
++ count I8
+
+────────────────────
++ This
+    - r1 Coord
+
+= CurveRoots(r1, 0, 0, 1)
+
+────────────────────
++ This
+    - r1 Coord
+    - r2 Coord
+
+= CurveRoots(r1, r2, 0, 2)
+
+────────────────────
++ This
+    - r1 Coord
+    - r2 Coord
+    - r3 Coord
+
+= CurveRoots(r1, r2, r3, 3)
+
+────────────────────
++ this[index Index]
+
+|? index == 0
+    root1
+|? index == 1
+    root2
+|? index == 2
+    root3
+??
+    -1
+
+━━━━━━━━━━━━━━━━━━━━
++ normalize-angle Radians
+    - angle Radians
+
+//graphics.numeric.angle-normalizations ++
+|? abs(rotated - pi2) < tolerance
+    0
+??
+    rotated
+
+.. rotated Float =
+    |? normal >= 0
+        normal
+    ??
+        normal + pi2
+.. normal = angle % pi2
+
+━━━━━━━━━━━━━━━━━━━━
++ normalize-angle Degrees
+    - angle Degrees
+
+//graphics.numeric.angle-normalizations ++
+|? abs(rotated - 360) < tolerance
+    0
+??
+    rotated
+
+.. rotated =
+    |? normal >= 0
+        normal
+    ??
+        normal + 360
+.. normal = angle % 360
+
+━━━━━━━━━━━━━━━━━━━━
++ nearly-equals
+    - a
+    - b
+
+abs(a - b) < 0.01
+
+━━━━━━━━━━━━━━━━━━━━
++ SignedDistanceLine is Tuple
+
++ origin-x Coord
++ is-vertical Bool
++ is-ascending Bool
++ slope Coord
++ intercept Coord
++ norm Coord
+
+────────────────────
++ distance Coord
+    - a Point
+
+//graphics.numeric.signed-distances ++
+|? is-vertical && is-ascending
+    a.x - origin-x
+|? is-vertical
+    origin-x - a.x
+??
+    (a.y - (slope * a.x) - intercept) / norm
+
+━━━━━━━━━━━━━━━━━━━━
++ signed-distance-line
+    - p Point
+    - v Point
+
+SignedDistanceLine(p.x, vx == 0, vy >= 0, m, p.y - m * p.x, sqrt(m * m + 1))
+
+.. vx = v.x - p.x
+.. vy = v.y - p.y
+.. m = vy / vx
+
+━━━━━━━━━━━━━━━━━━━━
++ get-signed-distance
+    - p Point
+    - v Point
+    - a Point
+
+signed-distance-line(p, v).distance(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do get-convex-hull Hull
+    - dq0
+    - dq1
+    - dq2
+    - dq3
+
+` CREDIT: Paper.js
+//graphics.numeric.hulls ++
+. p0 = 0.0, dq0
+. p1 = 1.0 / 3.0, dq1
+. p2 = 2.0 / 3.0, dq2
+. p3 = 1.0, dq3
+` Find signed distance of p1 and p2 from line [ p0, p3 ]
+. dist1 = get-signed-distance((0.0, dq0), (1.0, dq3), (1.0 / 3.0, dq1))
+. dist2 = get-signed-distance((0.0, dq0), (1.0, dq3), (2.0 / 3.0, dq2))
+. flip = false
+. hull Hull
+
+` Check if p1 and p2 are on the same side of the line [ p0, p3 ]
+if dist1 * dist2 < 0
+    ` p1 and p2 lie on different sides of [ p0, p3 ]. The hull is a
+    ` quadrilateral and line [ p0, p3 ] is NOT part of the hull so we
+    ` are pretty much done here.
+    ` The top part includes p1,
+    ` we will reverse it later if that is not the case
+    hull = [p0, p1, p3], [p0, p2, p3]
+    flip = dist1 < 0
+else
+    ` p1 and p2 lie on the same sides of [ p0, p3 ]. The hull can be
+    ` a triangle or a quadrilateral and line [ p0, p3 ] is part of the
+    ` hull. Check if the hull is a triangle or a quadrilateral.
+    ` Also, if at least one of the distances for p1 or p2, from line
+    ` [p0, p3] is zero then hull must at most have 3 vertices.
+    . pmax Point
+    . cross = 0.0
+    . dist-zero = dist1 == 0 || dist2 == 0
+    if abs(dist1) > abs(dist2)
+        pmax = p1
+        ` apex is dq3 and the other apex point is dq0 vector dqapex ->
+        ` dqapex2 or base vector which is already part of the hull.
+        cross = (dq3 - dq2 - (dq3 - dq0) / 3.0) * (2.0 * (dq3 - dq2) - dq3 + dq1) / 3.0
+    else
+        pmax = p2
+        ` apex is dq0 in this case, and the other apex point is dq3
+        ` vector dqapex -> dqapex2 or base vector which is already part
+        ` of the hull.
+        cross = (dq1 - dq0 + (dq0 - dq3) / 3.0) * (-2.0 * (dq0 - dq1) + dq0 - dq2) / 3.0
+
+    ` Compare cross products of these vectors to determine if the point
+    ` is in the triangle [ p3, pmax, p0 ], or if it is a quadrilateral.
+    hull =
+        ` p2 is inside the triangle, hull is a triangle.
+        |? cross < 0 || dist-zero
+            Hull([p0, pmax, p3], [p0, p3])
+        ` Convex hull is a quadrilateral and we need all lines in
+        ` correct order where line [ p0, p3 ] is part of the hull.
+        ??
+            Hull([p0, p1, p2, p3], [p0, p3])
+    flip =
+        |? dist1
+            dist1 < 0
+        ??
+            dist2 < 0
+
+= if flip then hull.reversed() else hull
+
+━━━━━━━━━━━━━━━━━━━━
++ do clip-convex-hull PointOnCurve?
+    - top [Point]
+    - bottom [Point]
+    - d-min
+    - d-max
+
+` CREDIT: Paper.js
+//graphics.numeric.hull-clips ++
+. t-proxy PointOnCurve?
+. t-val PointOnCurve?
+. px Coord
+. py Coord
+. qx Coord
+. qy Coord
+for i in 0 .. < bottom.length - 1
+    py = bottom[i].y
+    qy = bottom[i + 1].y
+     if py < qy
+        t-proxy = null
+     else if qy <= d-max
+         px = bottom[i].x
+         qx = bottom[i + 1].x
+         t-proxy = px + (d-max  - py) * (qx - px) / (qy - py)
+    else
+        ` Try the next chain
+        continue
+
+    `We got a proxy-t
+    break
+
+if top[0].y <= d-max
+    t-proxy = top[0].x
+
+for i in 0 .. < top.length - 1
+    py = top[i].y
+    qy = top[i + 1].y
+    if py >= d-min
+        t-val = t-proxy
+    else if py > qy
+        t-val = null
+    else if qy >= d-min
+        px = top[i].x
+        qx = top[i + 1].x
+        t-val = px + (d-min  - py) * (qx - px) / (qy - py)
+    else
+        continue
+    break
+
+= t-val
+
+━━━━━━━━━━━━━━━━━━━━
++ do solve-quadratic
+    - a
+    - b
+    - c
+    - tolerance
+
+//graphics.numeric.quadratic-roots ++
+` Code ported over and adapted from Uintah library (MIT license).
+` If problem is actually linear, return 0 or 1 easy roots
+
+if abs(a) < tolerance
+    if abs(b) >= tolerance
+        = CurveRoots
+            - -c / b
+    else if abs(c) < tolerance
+        = CurveRoots(0, 0, 0, -1)
+    else
+        = CurveRoots()
+
+. q = b * b - 4.0 * a * c
+if q < 0
+    = CurveRoots()
+
+q = sqrt(q)
+a *= 2
+
+if q > 0
+    = CurveRoots
+        - (-b - q) / a
+        - (-b + q) / a
+else
+    = CurveRoots
+        - (-b - q) / a
+
+━━━━━━━━━━━━━━━━━━━━
++ do solve-cubic CurveRoots
+    - a
+    - b
+    - c
+    - d
+    - tolerance
+
+//graphics.numeric.cubic-roots ++
+` Code ported over and adapted from Uintah library (MIT license).
+
+if abs(a) < tolerance
+    = solve-quadratic(b, c, d, tolerance)
+
+` Normalize to form: x^3 + b x^2 + c x + d = 0:
+b /= a
+c /= a
+d /= a
+
+` Compute discriminants
+. bb = b * b
+. p = 1.0 / 3.0 * (-1.0 / 3.0 * bb + c)
+. q = 1.0 / 2.0 * (2.0 / 27.0 * b * bb - 1.0 / 3.0 * b * c + d)
+
+` Use Cardano's formula
+. ppp = p * p * p
+. dd = q * q + ppp
+
+` Substitute x = y - b/3 to eliminate quadric term: x^3 +px + q = 0
+b /= 3
+
+if abs(dd) < tolerance
+    if abs(q) < tolerance
+        ` One triple solution
+        = CurveRoots
+            - -b
+    else
+        ` One single and one double solution
+        . u = cbrt(-q)
+        = CurveRoots
+            - 2.0 * u - b
+            - -u - b
+else if dd < 0
+    ` Casus irreducibilis: three real solutions
+    . phi = 1.0 / 3.0 * acos(-q / sqrt(-ppp))
+    . t = 2.0 * sqrt(-p)
+    = CurveRoots
+        - t * cos(phi) - b
+        - -t * cos(phi + π / 3.0) - b
+        - -t * cos(phi - π / 3.0) - b
+else
+    ` One real solution
+    . sdd = sqrt(dd)
+    = CurveRoots
+        - cbrt(sdd - q) - cbrt(sdd + q) - b

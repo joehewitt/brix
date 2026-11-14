@@ -1,0 +1,496 @@
+./markdown-blocks
+./markdown-source
+./markdown-view
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/math
+
+_ markdown-newline-width Length = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownPoint is Tuple
+
++ block Size
++ cell Size
++ offset Size
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownRange is Tuple
+
++ anchor MarkdownPoint
++ caret MarkdownPoint
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownGranularity is Union
+
+| character
+| word
+| block
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-point-before Bool
+    - a MarkdownPoint
+    - b MarkdownPoint
+
+a.block < b.block || (a.block == b.block && cell-before)
+
+.. cell-before = a.cell < b.cell || (a.cell == b.cell && a.offset < b.offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-granularity MarkdownGranularity
+    - click-count U32
+
+|? click-count >= 3
+    MarkdownGranularity.block
+|? click-count == 2
+    MarkdownGranularity.word
+??
+    MarkdownGranularity.character
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-unit-at MarkdownRange
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+    - granularity MarkdownGranularity
+
+match granularity
+    | MarkdownGranularity.character
+        MarkdownRange(point, point)
+    | MarkdownGranularity.block
+        MarkdownRange
+            - start
+            - MarkdownPoint(point.block, point.cell, markdown-slot-size(blocks, point))
+    | MarkdownGranularity.word
+        MarkdownRange
+            - MarkdownPoint(point.block, point.cell, low)
+            - MarkdownPoint(point.block, point.cell, high)
+
+.. start = MarkdownPoint(point.block, point.cell, 0)
+.. text = markdown-slot-text(blocks, point)
+.. low = markdown-word-start(text, point.offset)
+.. high = markdown-word-end(text, point.offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-extend-range MarkdownRange
+    - blocks [MarkdownBlock]
+    - origin MarkdownRange
+    - point MarkdownPoint
+    - granularity MarkdownGranularity
+
+|? markdown-point-before(unit.anchor, origin.anchor)
+    MarkdownRange(origin.caret, unit.anchor)
+??
+    MarkdownRange
+        - origin.anchor
+        - if markdown-point-before(origin.caret, unit.caret) then unit.caret else origin.caret
+
+.. unit = markdown-unit-at(blocks, point, granularity)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-is-atomic Bool
+    - kind MarkdownBlockKind
+
+kind == MarkdownBlockKind.divider || kind == MarkdownBlockKind.exhibit
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slot-count Size
+    - blocks [MarkdownBlock]
+    - index Size
+
+|? markdown-is-atomic(block.kind)
+    0
+|? block.kind == MarkdownBlockKind.grid
+    block.cells.length
+??
+    1
+
+.. block = blocks[index]
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slot-runs [MarkdownRun]
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+
+if in-grid-cell then block.cells[point.cell].runs else block.runs
+
+.. block = blocks[point.block]
+.. in-grid-cell = block.kind == MarkdownBlockKind.grid && point.cell < block.cells.length
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slot-text String
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+
+|? block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
+    block.code
+??
+    markdown-runs-text(markdown-slot-runs(blocks, point))
+
+.. block = blocks[point.block]
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slot-size Size
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+
+markdown-slot-text(blocks, point).size
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slot-end MarkdownPoint
+    - blocks [MarkdownBlock]
+    - index Size
+
+MarkdownPoint(index, cell, markdown-slot-size(blocks, MarkdownPoint(index, cell, 0)))
+
+.. count = markdown-slot-count(blocks, index)
+.. cell = if count > 0 then count - 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-editable-from Size?
+    - blocks [MarkdownBlock]
+    - index Size
+    - forward Bool
+
+. at = index
+while at < blocks.length
+    =? at if !markdown-is-atomic(blocks[at].kind) && markdown-slot-count(blocks, at) > 0
+    =? null if !forward && at == 0
+    at = if forward then at + 1 else at - 1
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-clamp-point MarkdownPoint
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+
+=? MarkdownPoint(0, 0, 0) if !blocks.length
+. index = min(point.block, blocks.length - 1)
+. block = blocks[index]
+if markdown-is-atomic(block.kind)
+    . after = markdown-editable-from(blocks, index, true)
+    =? MarkdownPoint(after, 0, 0) if after != null
+    . before = markdown-editable-from(blocks, index, false)
+    =? markdown-slot-end(blocks, before) if before != null
+    = MarkdownPoint(index, 0, 0)
+. cells = if block.kind == MarkdownBlockKind.grid then block.cells.length else 1
+. cell = min(point.cell, if cells > 0 then cells - 1 else 0)
+. at = MarkdownPoint(index, cell, 0)
+= MarkdownPoint(index, cell, min(point.offset, markdown-slot-size(blocks, at)))
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-first-point MarkdownPoint
+    - blocks [MarkdownBlock]
+
+markdown-clamp-point(blocks, MarkdownPoint(0, 0, 0))
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-last-point MarkdownPoint
+    - blocks [MarkdownBlock]
+
+|? !blocks.length
+    MarkdownPoint(0, 0, 0)
+|? index == null
+    MarkdownPoint(0, 0, 0)
+??
+    markdown-slot-end(blocks, index)
+
+.. index = markdown-editable-from(blocks, blocks.length - 1, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-point-at MarkdownPoint?
+    - blocks [MarkdownBlock]
+    - views [MarkdownBlockView]
+    - point Point
+
+. found MarkdownBlockView? = null
+. distance Length = 0
+for view in views
+    . box = view.bounds
+    . gap = if point.y < box.y then box.y - point.y else if past-bottom then bottom-gap else 0
+        .. past-bottom = point.y >= box.y + box.height
+        .. bottom-gap = point.y - box.y - box.height
+    if !found || gap < distance
+        found = view
+        distance = gap
+=? null if !found
+. index Size = found.block.index
+=? null if index >= blocks.length
+if markdown-is-atomic(blocks[index].kind)
+    . after = markdown-editable-from(blocks, index, true)
+    =? MarkdownPoint(after, 0, 0) if after != null
+    . before = markdown-editable-from(blocks, index, false)
+    =? markdown-slot-end(blocks, before) if before != null
+    = null
+. cell = if blocks[index].kind == MarkdownBlockKind.grid then markdown-cell-at(found, point) else 0
+. slot = MarkdownPoint(index, cell, 0)
+. view = markdown-slot-view-in(found, slot)
+=? slot if !view
+= MarkdownPoint(index, cell, min(view.offset-at(point), markdown-slot-size(blocks, slot)))
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-cell-at Size
+    - view MarkdownBlockView
+    - point Point
+
+. best Size = 0
+. distance Length = 0
+. first = true
+for cell in markdown-grid-cells(view)
+    . box = cell.bounds
+    . dx = if point.x < box.x then box.x - point.x else if past-right then right-gap else 0
+        .. past-right = point.x > box.x + box.width
+        .. right-gap = point.x - box.x - box.width
+    . dy = if point.y < box.y then box.y - point.y else if past-bottom then bottom-gap else 0
+        .. past-bottom = point.y > box.y + box.height
+        .. bottom-gap = point.y - box.y - box.height
+    . gap = dx + dy * 4
+    if first || gap < distance
+        best = cell.cell.index
+        distance = gap
+        first = false
+= best
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-slot-view-in Text?
+    - view MarkdownBlockView
+    - point MarkdownPoint
+
+if view.block.kind == MarkdownBlockKind.grid
+    for cell in markdown-grid-cells(view)
+        =? cell if cell.cell.index == point.cell
+    = null
+= markdown-first-text(view)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-cell-in-range Bool
+    - index Size
+    - cell Size
+    - start MarkdownPoint
+    - end MarkdownPoint
+
+!(index == start.block && cell < start.cell) && !(index == end.block && cell > end.cell)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-paint-selection
+    - canvas Canvas
+    - blocks [MarkdownBlock]
+    - shown MarkdownBlockView
+    - start MarkdownPoint
+    - end MarkdownPoint
+    - color RGBA
+    - object-color RGBA
+
+. index Size = shown.block.index
+=? if index < start.block || index > end.block || index >= blocks.length
+if markdown-is-atomic(shown.block.kind)
+    canvas.fill-color = object-color
+    canvas.rect(shown.bounds)
+    =
+canvas.fill-color = color
+for cell in 0 .. < markdown-slot-count(blocks, index)
+    if markdown-cell-in-range(index, cell, start, end)
+        . slot = MarkdownPoint(index, cell, 0)
+        . view = markdown-slot-view-in(shown, slot)
+        if view
+            . low = if index == start.block && cell == start.cell then start.offset else 0
+            . is-last = index == end.block && cell == end.cell
+            . high = if is-last then end.offset else markdown-slot-size(blocks, slot)
+            markdown-paint-range(canvas, view, low, high, !is-last)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-paint-range
+    - canvas Canvas
+    - view Text
+    - low Size
+    - high Size
+    - continues Bool
+
+. layout = view.text-layout
+=? if !layout
+. first = layout.line-at(low)
+. last = layout.line-at(high)
+. bands [Rect]
+for row in first .. < last + 1
+    . line = view.row-rect(row)
+    if line
+        . left = if row == first then (view.caret-rect(low) ?? line).x else line.x
+        . right = if row == last then (view.caret-rect(high) ?? line).x else line.x + line.width
+        if row == last && continues
+            right += markdown-newline-width
+        if right > left
+            bands += Rect(left, line.y, right - left, line.height)
+=? if !bands.length
+for band in bands
+    canvas.rect(band)
+do use canvas.saved-state
+    canvas.begin()
+    for band in bands
+        canvas.rect-path(band)
+    canvas.clip-path()
+    view.paint-text(canvas)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-selection-source String
+    - blocks [MarkdownBlock]
+    - start MarkdownPoint
+    - end MarkdownPoint
+    - prefixes [String]? = null
+    - sources [String]? = null
+
+if start.block == end.block && start.cell == end.cell
+    . block = blocks[start.block]
+    =? markdown-slice(block.code, start.offset, end.offset) if block.kind == MarkdownBlockKind.code
+    = markdown-inline-source
+        - markdown-runs-slice(markdown-slot-runs(blocks, start), start.offset, end.offset)
+        - ""
+        - false
+        - false
+. parts [String]
+. previous MarkdownBlockKind? = null
+for index in start.block .. < end.block + 1
+    . draft = markdown-block-draft-at(blocks, index, prefixes, sources)
+    if index == end.block
+        markdown-truncate-draft(draft, end, true)
+    if index == start.block
+        markdown-truncate-draft(draft, start, false)
+    if parts.length
+        parts += if previous == MarkdownBlockKind.item && draft-is-item then "\n" else "\n\n"
+            .. draft-is-item = draft.kind == MarkdownBlockKind.item
+    parts += markdown-draft-source(draft)
+    previous = draft.kind
+= "".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-block-draft-at MarkdownDraft
+    - blocks [MarkdownBlock]
+    - index Size
+    - prefixes [String]? = null
+    - sources [String]? = null
+
+. block = blocks[index]
+. draft = markdown-block-draft(block, if prefixes then prefixes[index] else "")
+. kind = block.kind
+if sources
+    if markdown-is-atomic(kind)
+        draft.source = sources[index]
+    if kind == MarkdownBlockKind.grid
+        . row Size = 0
+        for line in sources[index].split("\n")
+            if row == 1
+                draft.delimiter = line
+            else
+                draft.rows += line
+            row += 1
+= draft
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-truncate-draft
+    - draft MarkdownDraft
+    - point MarkdownPoint
+    - keeps-head Bool
+
+. kind = draft.kind
+if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.exhibit
+    . size = draft.code.size
+    draft.code = if keeps-head then markdown-slice(draft.code, 0, point.offset) else tail-code
+        .. tail-code = markdown-slice(draft.code, point.offset, size)
+else if kind == MarkdownBlockKind.grid
+    for cell in 0 .. < draft.cells.length
+        . size = markdown-runs-text(draft.cells[cell]).size
+        if keeps-head && cell >= point.cell
+            draft.cells[cell] = markdown-runs-slice
+                - draft.cells[cell]
+                - 0
+                - if cell == point.cell then point.offset else 0
+            markdown-touch-row(draft, cell)
+        else if !keeps-head && cell <= point.cell
+            draft.cells[cell] = markdown-runs-slice
+                - draft.cells[cell]
+                - if cell == point.cell then point.offset else size
+                - size
+            markdown-touch-row(draft, cell)
+else
+    . size = markdown-runs-text(draft.runs).size
+    draft.runs = if keeps-head then markdown-runs-slice(draft.runs, 0, point.offset) else tail-runs
+        .. tail-runs = markdown-runs-slice(draft.runs, point.offset, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-touch-row
+    - draft MarkdownDraft
+    - cell Size
+
+. row = if draft.columns > 0 then cell / draft.columns else 0
+if row < draft.rows.length
+    draft.rows[row] = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-grid-cells [MarkdownGridCellView]
+    - box Box
+
+. found [MarkdownGridCellView]
+markdown-collect-grid-cells(box, found)
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-collect-grid-cells
+    - box Box
+    - found [MarkdownGridCellView]
+
+for child in RenderedChildCursor(box)
+    if child is MarkdownGridCellView
+        found += child as MarkdownGridCellView
+    else
+        markdown-collect-grid-cells(child, found)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-first-text Text?
+    - box Box
+
+for child in RenderedChildCursor(box)
+    =? child as Text if child is Text
+    . found = markdown-first-text(child)
+    =? found if found
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-byte-class Size
+    - byte Byte
+
+|? byte == 32 || byte == 9 || byte == 10
+    0
+|? byte >= 0x80 || byte == 95 || (byte >= 48 && byte <= 57) || is-letter
+    1
+??
+    2
+
+.. is-letter = (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-word-start Size
+    - text String
+    - offset Size
+
+. bytes = text as Byte[]
+. at = min(offset, bytes.size)
+=? at if at == bytes.size && at == 0
+. kind = markdown-byte-class(bytes[if at < bytes.size then at else at - 1])
+while at > 0 && markdown-byte-class(bytes[at - 1]) == kind
+    at -= 1
+= at
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-word-end Size
+    - text String
+    - offset Size
+
+. bytes = text as Byte[]
+. at = min(offset, bytes.size)
+=? at if at == bytes.size
+. kind = markdown-byte-class(bytes[at])
+while at < bytes.size && markdown-byte-class(bytes[at]) == kind
+    at += 1
+= at

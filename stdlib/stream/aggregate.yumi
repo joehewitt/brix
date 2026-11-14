@@ -1,0 +1,223 @@
+
+━━━━━━━━━━━━━━━━━━━━
++ Accumulator'Accum'Item'Result is () Result
+    - accum Accum
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do scan-map'Accum'Item <(Accum, Item)> @inline
+    - seed Accum
+    - stream <Item>
+    - using Accumulator'Accum'Item
+
+. accum = seed
+for item in stream
+    accum = using(accum, item)
+    <= accum, item
+
+━━━━━━━━━━━━━━━━━━━━
++ do scan'Item @inline
+    - stream <Item>
+    - using Accumulator'Item'Item
+
+. accum = Item()
+. started = false
+for item in stream
+    accum = if started then using(accum, item) else item
+    started = true
+    <= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ do scan'Item @inline
+    - seed Item
+    - stream <Item>
+    - using Accumulator'Item'Item
+
+. accum = seed
+for item in stream
+    accum = using(accum, item)
+    <= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ do reduce'Item'Result @inline
+    - seed Result
+    - stream <Item>
+    - using Accumulator'Result'Item
+
+. accum = seed
+for item in stream
+    accum = using(accum, item)
+= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ do reduce'Item @inline
+    - stream <Item>
+    - using Accumulator'Item'Item
+
+. accum = Item()
+. started = false
+for item in stream
+    accum = if started then using(accum, item) else item
+    started = true
+= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ count'Item @inline
+    - stream <Item>
+
+` for in stream: all + 1
+reduce'Item(0, stream) • using :: accum, item => accum + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ sum'Item @inline
+    - stream <Item>
+
+reduce'Item(stream) • using :: accum, item => accum + item
+
+━━━━━━━━━━━━━━━━━━━━
++ min'Item @inline
+    - stream <Item>
+
+reduce'Item(stream) • using :: accum, item => if item > accum then accum else item
+
+━━━━━━━━━━━━━━━━━━━━
++ max'Item @inline
+    - stream <Item>
+
+reduce'Item(stream) • using :: accum, item => if item < accum then accum else item
+
+━━━━━━━━━━━━━━━━━━━━
++ do average'Item @inline
+    - stream <Item>
+
+. total = Item()
+. count = Item()
+for item in stream
+    total += item
+    count += 1
+= total / count
+
+━━━━━━━━━━━━━━━━━━━━
++ headtail'Item (head Item?, tail Indexable'Item) @inline
+    - stream Indexable'Item
+
+head, tail
+
+.. head = stream[0] if l
+.. tail
+    |? stream.length > 1
+        stream[1 ...]
+    ??
+        stream[l .. < l]
+.. l = stream.length
+
+━━━━━━━━━━━━━━━━━━━━
++ headtail'Item (head Item?, tail Iterable'Item) @inline
+    - stream Iterable'Item
+
+<- stream, stream
+
+━━━━━━━━━━━━━━━━━━━━
++ first'Item Item? @inline
+    - stream Indexable'Item
+
+stream[0] if stream.length > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ first'Item @inline
+    - stream Iterable'Item
+
+<- stream
+
+━━━━━━━━━━━━━━━━━━━━
++ do last'Item Item? @inline
+    - stream <Item>
+
+. result Item?
+for item in stream
+    result = item
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do single
+    - stream <Item>
+
+<= first
+    ?! Error("More than one message found in stream.")
+        if second
+
+━━━━━━━━━━━━━━━━━━━━
++ is-empty
+    - stream <Item>
+
+!item
+
+.. item = <- stream
+
+━━━━━━━━━━━━━━━━━━━━
++ is-single
+    - stream <Item>
+
+!second
+
+.. first = <- stream
+.. second = <- stream && first
+
+━━━━━━━━━━━━━━━━━━━━
++ all'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+!(some(stream) • where !where(each))
+
+━━━━━━━━━━━━━━━━━━━━
++ do some'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+for item in stream
+    if where(item)
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ only-one'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+count == 1
+
+.. count = how-many(stream) • where where
+
+━━━━━━━━━━━━━━━━━━━━
++ more-than-one'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+count > 1
+
+.. count = how-many(stream) • where where
+
+━━━━━━━━━━━━━━━━━━━━
++ exactly'Item @inline
+    - amount Int
+    - stream <Item>
+    - where Predicate'Item
+
+amount == count
+
+.. count = how-many(stream) • where where
+
+━━━━━━━━━━━━━━━━━━━━
++ how-many'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+reduce'Item(0, stream) • using :: accum, item => if where(item) then accum + 1 else accum
+
+━━━━━━━━━━━━━━━━━━━━
++ sum-reduce
+    - total
+    - item
+
+total + item

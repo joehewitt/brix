@@ -1,0 +1,25 @@
+`benchmark.meta description: Exercises canvas state changes around small no-raster draws.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/canvas
+/graphics/color
+
+. canvas = CountingCanvas(320, 240)
+
+for pass in 0 .. < 3000
+    . f = pass as Float
+    canvas.push()
+    canvas.fill-color = if pass % 2 == 0 then red else blue
+    canvas.stroke-color = if pass % 3 == 0 then blue else red
+    canvas.stroke-width = 1 + (f % 5)
+    canvas.translate(f % 17, (f * 3) % 19)
+    canvas.begin()
+    canvas.move(f % 100, (f * 2) % 100)
+    canvas.line((f * 3) % 100, (f * 5) % 100)
+    canvas.end()
+    canvas.pop()
+
+. checksum = state-checksum + canvas.path-command-count + canvas.command-count
+    .. state-checksum = canvas.checksum + canvas.state-command-count
+-- "bench-result graphics/canvas-state-churn-counting checksum=$checksum"

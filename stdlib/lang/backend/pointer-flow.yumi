@@ -1,0 +1,381 @@
+./builder
+./bundle
+./mir
+/core/arena
+/core/table
+
+_ first-source U32 = 2
+_ choice-sources U32 = 6
+
+━━━━━━━━━━━━━━━━━━━━
+_ PointerKind is U32
+
+| skipped
+| register
+| pinned
+| direct
+| other
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRPointerFlow
+
+_ builder MIRBuilder
+_ bundle Bundle
+_ function MIRFunction
++ origins CPointer'IdList
++ references CPointer'IdList
++ escapes CPointer'Byte
++ root-count U32
+_ blocks IdList
+_ edges CPointer'IdList
+_ object-roots CPointer'U32
+_ object-count U32
+_ origin-order IdList
+_ keys IdList
+
+────────────────────
++ This
+    - builder MIRBuilder
+
+.. bundle = builder.bundle
+.. function = builder.function
+
+────────────────────
+_ get arena Arena @inline
+
+function.arena
+
+────────────────────
++ do run-objects
+    - order IdList
+    - objects IdList
+
+begin(order, objects.length)
+object-count = function.frame-objects.length as U32
+object-roots = arena.allocate'U32(object-count)
+for root in 0 .. < objects.length
+    object-roots[objects[root]] = root + 1
+scan()
+
+────────────────────
++ do run-vregs
+    - order IdList
+    - vregs IdList
+
+begin(order, vregs.length)
+object-count = 0
+for root in 0 .. < vregs.length
+    add-origin(vregs[root], root)
+scan()
+
+────────────────────
+_ do begin
+    - order IdList
+    - count U32
+
+blocks = order
+root-count = count
+origins = arena.allocate'IdList(function.vreg-count)
+edges = arena.allocate'IdList(function.vreg-count)
+references = arena.allocate'IdList(count)
+escapes = arena.allocate'Byte(count)
+origin-order = IdList()
+keys = IdList()
+
+────────────────────
+_ do scan
+
+collect-sources()
+propagate()
+if root-count == 0
+    =
+for position in 0 .. < blocks.length
+    . instructions = function.blocks[blocks[position]].instructions
+    for offset in 0 .. < instructions.length
+        scan-instruction(instructions[offset])
+
+────────────────────
+_ do collect-sources
+
+for position in 0 .. < blocks.length
+    . instructions = function.blocks[blocks[position]].instructions
+    for offset in 0 .. < instructions.length
+        . id = instructions[offset]
+        . operands = function.instructions[id].operands
+        do match? function.instructions[id]
+            | .call-instruction(call)
+                if operands.length > 2 && !is-void(call.return-type) && copies-memory
+                    . returned = vreg-of(operands[1])
+                    if returned != no-id
+                        add-source(returned, operands[2])
+                .. copies-memory = bundle.is-memory-copy-callee(callee-name(operands))
+        if operands.length == 0
+            continue
+        . destination = vreg-of(operands[0])
+        if destination == no-id
+            continue
+        . sources = pointer-copy-sources(id)
+        if (sources /and/ 2) != 0 && operands.length > 1
+            add-source(destination, operands[1])
+        if (sources /and/ 4) != 0 && operands.length > 2
+            add-source(destination, operands[2])
+
+────────────────────
+_ do propagate
+
+. pending = new-id-list(arena, origin-order.length)
+. queued = arena.allocate'Byte(function.vreg-count)
+for index in 0 .. < origin-order.length
+    pending = pending.appended(arena, origin-order[index])
+    queued[origin-order[index]] = 1
+. cursor U32
+while cursor < pending.length
+    . source = pending[cursor]
+    cursor += 1
+    queued[source] = 0
+    . destinations = edges[source]
+    for index in 0 .. < destinations.length
+        . destination = destinations[index]
+        . changed = false
+        . count = origins[source].length
+        for key in 0 .. < count
+            if add-origin(destination, origins[source][key])
+                changed = true
+        if changed && queued[destination] == 0
+            queued[destination] = 1
+            pending = pending.appended(arena, destination)
+
+────────────────────
+_ do scan-instruction
+    - id InstructionId
+
+. roles = function.operand-roles(id)
+. operands = function.instructions[id].operands
+for index in 0 .. < operands.length
+    . operand = operands[index]
+    . kind = operand-kind(operand)
+    if kind == PointerKind.skipped
+        continue
+    . vreg = no-id
+    . offset = no-operand
+    do match? function.operands[operand]
+        | .vreg-operand(row)
+            vreg = function.vregs[row.vreg].id
+        | .load-address-operand(row)
+            offset = row.offset
+    if vreg != no-id && origins[vreg].length == 0
+        continue
+    if offset != no-operand
+        take-keys(offset)
+        escape-keys()
+    take-keys(operand)
+    if keys.length == 0
+        continue
+    . role = role-at(roles, index)
+    . is-used = (role /and/ use-role) != 0
+    . is-defined = (role /and/ def-role) != 0
+    if is-used || is-defined || kind == PointerKind.direct
+        for key in 0 .. < keys.length
+            add-reference(keys[key], id)
+    if is-used && !is-safe-use(id, operands, index, kind)
+        escape-keys()
+    if kind == PointerKind.pinned && is-defined
+        escape-keys()
+
+────────────────────
+_ do operand-kind U32
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        if function.vregs[row.vreg].hint != no-register
+            = PointerKind.pinned
+        = PointerKind.register
+    | .int-operand
+        = PointerKind.skipped
+    | .label-operand
+        = PointerKind.skipped
+    | .symbol-operand
+        = PointerKind.skipped
+    | .preg-operand
+        = PointerKind.skipped
+    | .cond-operand
+        = PointerKind.skipped
+    | .shift-operand
+        = PointerKind.skipped
+    | .load-address-operand
+        = PointerKind.direct
+    | .frame-object-operand
+        = PointerKind.direct
+= PointerKind.other
+
+────────────────────
+_ do is-safe-use Bool
+    - id InstructionId
+    - operands IdList
+    - index U32
+    - kind U32
+
+. sources = pointer-copy-sources(id)
+if index < 3 && (sources /and/ (1u32 /lshift/ index)) != 0
+    do match? function.operands[operands[0]]
+        | .vreg-operand(row)
+            = function.vregs[row.vreg].hint == no-register
+    = false
+. opcode = function.instructions[id].opcode
+if kind == PointerKind.direct
+    if index == 1 && is-single-memory-opcode(opcode)
+        = true
+    if index == 2 && (opcode == .ldp || opcode == .stp)
+        = true
+do match? function.instructions[id]
+    | .call-instruction(call)
+        if index == operands.length - 1 && call.direct-struct-return
+            = true
+        . first-argument U32 = if is-void(call.return-type) then 1 else 2
+        if index >= first-argument && bundle.is-safe-struct-callee(callee-name(operands))
+            = true
+        for position in call.copied-struct-arguments.start .. < call.copied-struct-arguments.end
+            if function.words[position] == index
+                = true
+= false
+
+────────────────────
+_ do pointer-copy-sources U32
+    - id InstructionId
+
+. opcode = function.instructions[id].opcode
+if opcode == .mov || opcode == .addptr
+    = first-source
+if opcode == .csel
+    = choice-sources
+if opcode == .add || opcode == .sub
+    . operands = function.instructions[id].operands
+    if operands.length > 2
+        do match? function.operands[operands[2]]
+            | .int-operand
+                = first-source
+= 0
+
+────────────────────
+_ do callee-name StringId
+    - operands IdList
+
+do match? function.operands[operands[0]]
+    | .symbol-operand(row)
+        = row.name
+= no-string
+
+────────────────────
+_ do is-void Bool
+    - type MIRTypeId
+
+do match? function.types[type]
+    | .void-type
+        = true
+= false
+
+────────────────────
+_ do vreg-of U32
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = function.vregs[row.vreg].id
+= no-id
+
+────────────────────
+_ do take-keys
+    - operand OperandId
+
+keys = IdList(keys.data, 0, keys.capacity)
+collect-keys(operand)
+
+────────────────────
+_ do collect-keys
+    - operand OperandId
+
+if operand == no-operand
+    =
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        collect-origins(row.vreg)
+    | .frame-object-operand(row)
+        if row.object < object-count && object-roots[row.object] != 0
+            keys = keys.appended(arena, object-roots[row.object] - 1)
+    | .load-address-operand(row)
+        collect-keys(row.base)
+        collect-keys(row.offset)
+    | .vreg-group-operand(row)
+        for index in row.vregs.start .. < row.vregs.end
+            collect-origins(function.group-vregs[index])
+    | .label-address-operand(row)
+        collect-keys(row.base)
+
+────────────────────
+_ do collect-origins
+    - view VRegId
+
+. list = origins[function.vregs[view].id]
+for index in 0 .. < list.length
+    keys = keys.appended(arena, list[index])
+
+────────────────────
+_ do escape-keys
+
+for index in 0 .. < keys.length
+    escapes[keys[index]] = 1
+
+────────────────────
+_ do add-reference
+    - root U32
+    - id InstructionId
+
+. list = references[root]
+if list.length != 0 && list[list.length - 1] == id
+    =
+references[root] = list.appended(arena, id)
+
+────────────────────
+_ do add-origin Bool
+    - id U32
+    - key U32
+
+. list = origins[id]
+for index in 0 .. < list.length
+    if list[index] == key
+        = false
+if list.length == 0
+    origin-order = origin-order.appended(arena, id)
+origins[id] = list.appended(arena, key)
+= true
+
+────────────────────
+_ do add-source
+    - destination U32
+    - source OperandId
+
+. base = no-operand
+. vreg = no-id
+do match? function.operands[source]
+    | .load-address-operand(row)
+        base = row.base
+    | .vreg-operand(row)
+        vreg = function.vregs[row.vreg].id
+if base != no-operand
+    add-source(destination, base)
+    =
+if vreg != no-id
+    . list = edges[vreg]
+    if list.length == 0 || list[list.length - 1] != destination
+        edges[vreg] = list.appended(arena, destination)
+    =
+take-keys(source)
+for index in 0 .. < keys.length
+    add-origin(destination, keys[index])
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-single-memory-opcode Bool
+    - opcode Opcode
+
+opcode == .ldr || opcode == .ldrb || opcode == .ldrh || opcode == .ldrsw || opcode == .ldrsb || opcode == .ldrsh || opcode == .ldar || opcode == .ldarb || opcode == .str || opcode == .strb || opcode == .strh || opcode == .stlrb

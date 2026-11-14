@@ -1,0 +1,254 @@
+
+./array
+./core
+./error
+./list
+./number
+./range
+./stream
+./task
+
+━━━━━━━━━━━━━━━━━━━━
++ IOWaiter'Message
+
++ task Task
++ message Message?
++ previous This?
++ next This?
++ is-queued = false
+
+────────────────────
++ This
+    - task Task
+    - message Message? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ IOQueue'Message
+
++ length Size
+
+_ head IOWaiter'Message?
+_ tail IOWaiter'Message?
+
+────────────────────
++ do push
+    - waiter IOWaiter'Message
+
+waiter.previous = tail
+waiter.next = null
+waiter.is-queued = true
+if tail
+    tail.next = waiter
+else
+    head = waiter
+tail = waiter
+length += 1
+
+────────────────────
++ do pop-first IOWaiter'Message?
+
+. waiter = head
+if waiter
+    remove(waiter)
+= waiter
+
+────────────────────
++ do remove
+    - waiter IOWaiter'Message
+
+=? if !waiter.is-queued
+
+if waiter.previous
+    waiter.previous.next = waiter.next
+else
+    head = waiter.next
+if waiter.next
+    waiter.next.previous = waiter.previous
+else
+    tail = waiter.previous
+waiter.previous = null
+waiter.next = null
+waiter.is-queued = false
+length -= 1
+
+────────────────────
++ do take-all [IOWaiter'Message]
+
+. waiters [IOWaiter'Message]
+while true
+    . waiter = pop-first()
+    =? waiters if !waiter
+    waiters += waiter
+
+━━━━━━━━━━━━━━━━━━━━
++ IOBuffer'Message
+
++ length Size
+
+_ items = Message[0]
+_ head Index
+
+────────────────────
++ do push
+    - message Message
+
+if length == items.size
+    grow()
+items[(head + length) % items.size] = message
+length += 1
+
+────────────────────
++ do pop-first Message
+
+. message = items[head]
+head = (head + 1) % items.size
+length -= 1
+= message
+
+────────────────────
++ do clear
+
+items = Message[0]
+head = 0
+length = 0
+
+────────────────────
+_ do grow
+
+. capacity = if items.size then items.size * 2 else 16
+. grown = Message[capacity]
+for i in 0 .. < length
+    grown[i] = items[(head + i) % items.size]
+items = grown
+head = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ BroadcasterReader'Message
+    is Readable'Message
+    is Subscribable'Message
+
+_ readers = IOQueue'Message()
+_ writers = IOQueue'Message()
+
+╌╌╌╌╌╌╌╌╌╌ is Readable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do <- this Message?
+
+. writer = writers.pop-first()
+if writer
+    writer.task.resume-later()
+
+    `  //this:channel.read -> writer!.message, get-current-task-id()
+    = writer.message
+
+. reader = IOWaiter'Message(Task())
+readers.push(reader)
+
+. was-canceled = reader.task.suspend()
+if was-canceled
+    readers.remove(reader)
+check-task-cancelation(was-canceled)
+
+`  //this:channel.read -> reader.message, get-current-task-id()
+= reader.message
+
+╌╌╌╌╌╌╌╌╌╌ is Subscribable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - message Message
+    - broadcaster Broadcastable'Message
+
+`  // dispatch $message on ${get-current-task-id()}
+
+. reader = readers.pop-first()
+if reader
+    reader.message = message
+    check-task-cancelation(reader.task.resume-now())
+    =
+
+. writer = IOWaiter'Message(Task(), message)
+writers.push(writer)
+
+. was-canceled = writer.task.suspend()
+if was-canceled
+    writers.remove(writer)
+check-task-cancelation(was-canceled)
+
+────────────────────
++ do unsubscribe
+
+for reader in readers.take-all()
+    reader.task.resume-later()
+for writer in writers.take-all()
+    writer.task.resume-later()
+
+━━━━━━━━━━━━━━━━━━━━
++ BroadcasterIterator'Message
+    is Iterable'Message
+    is Subscribable'Message
+
+_ broadcastable Broadcastable'Message
+_ readers = IOQueue'Message()
+_ buffer = IOBuffer'Message()
+
+────────────────────
++ This
+    - broadcastable Broadcastable'Message
+
+╌╌╌╌╌╌╌╌╌╌ is Iterable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do begin-iterating
+
+broadcastable.subscribe(this)
+
+────────────────────
++ do end-iterating
+
+broadcastable.unsubscribe(this)
+buffer.clear()
+
+╌╌╌╌╌╌╌╌╌╌ is Subscribable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - message Message
+    - broadcaster Broadcastable'Message
+
+//io.dispatch// dispatch $message on ${get-current-task-id()}
+
+. reader = readers.pop-first()
+if reader
+    reader.message = message
+    reader.task.resume-later()
+else
+    buffer.push(message)
+
+────────────────────
++ do unsubscribe
+
+for reader in readers.take-all()
+    reader.task.resume-later()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do <- this Message?
+
+if buffer.length
+    . message = buffer.pop-first()
+    `  //this:channel.read -> message, get-current-task-id()
+    = message
+else if !broadcastable.is-closed
+    . reader = IOWaiter'Message(Task())
+    readers.push(reader)
+
+    . was-canceled = reader.task.suspend()
+    if was-canceled
+        readers.remove(reader)
+    check-task-cancelation(was-canceled)
+
+    `  //this:channel.read -> reader.message, get-current-task-id()
+    = reader.message

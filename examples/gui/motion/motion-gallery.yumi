@@ -1,0 +1,81 @@
+./motion-kit
+./motion-stage
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
+• MotionGalleryTheme
+    using GUIDefaultTheme
+    using MotionKitTheme
+
+• motion-toolbar • flex-row items-center h:44 px:16
+    border-color = gui-divider-color
+    border-bottom-width = 1
+
+• motion-toolbar-label • text:gui-muted-text-color
+    font-size = 12
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionGallery is Box
+    using MotionKitTheme
+    using MotionGalleryTheme
+
++ current = "springs"
++ speed = 1.0
++ reduces-motion = false
++ entries [MotionEntry] = motion-entries()
+
+────────────────────
+
+<This • flex-row
+    <Sidebar • w:220
+        state-key = "motion-gallery"
+        <SidebarSection "Motion" • pt:10
+            for entry in entries
+                <SidebarItem
+                    title = entry.title
+                    is-on = #current == entry.id
+                    action = => do show(entry.id)
+    <Box • flex-col flex:1
+        <Box • motion-toolbar
+            <Label "Speed" • motion-toolbar-label
+            <SegmentedControl'F64 • ml:8
+                selected = #speed
+                for event on selection-changed
+                    set-speed(event.value)
+                <Segment'F64 "1×"
+                    value = 1.0
+                <Segment'F64 "½×"
+                    value = 0.5
+                <Segment'F64 "¼×"
+                    value = 0.25
+                <Segment'F64 "⅒×"
+                    value = 0.1
+            <Switch "Reduce motion" • ml:24
+                is-on = #reduces-motion
+                for event on value-changed
+                    set-reduces-motion(event.value)
+        <MotionStage stage • flex:1
+            current = #current
+
+────────────────────
++ do show
+    - id String
+
+current = id
+
+────────────────────
++ do set-speed
+    - value F64
+
+speed = value
+. clock = frame-clock
+if clock
+    clock.time-scale = value
+
+────────────────────
++ do set-reduces-motion
+    - value Bool
+
+reduces-motion = value
+stage.set-theme-tag("reduce-motion", value)

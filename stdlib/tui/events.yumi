@@ -1,0 +1,656 @@
+
+./primitives
+/ui/input
+
++ KeyEvent is TerminalEvent
++ DialogEvent is BoxEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalEvents is Union
+
+| KeyPressEvent
+| KeyInputEvent
+| PasteEvent
+| CursorEvent
+| MouseDownEvent
+| MouseUpEvent
+| MouseMoveEvent
+| MouseDragEvent
+| ScrollEvent
+| SizeRequestEvent
+| UnknownEvent
+
+────────────────────
++ This ~ Char TerminalEvents
+
+~ \paste-start text \paste-text \paste-end
+    PasteEvent(text)
+~ \escape "[<" code I32 ";" x I32 ";" y I32 type \char
+    mouse-event(Point((x - 1) as Coord, (y - 1) as Coord), code, type)
+~ \escape "[8;" x I32 ";" y I32 "t"
+    SizeRequestEvent(x, y)
+~ \escape "[" row I32 ";" col I32 "R"
+    CursorEvent(row, col)
+~ \escape "[27;" modifiers I32 ";" code I32 "~"
+    csi-u-event(code, modifiers)
+~ \escape "[" code \csi-number? modifiers \csi-modifiers? final \csi-final
+    csi-event(code ?? 1, modifiers ?? 1, final)
+~ \escape "[" \csi-parameters? \csi-intermediates? \csi-final
+    UnknownEvent()
+~ \escape "O" final \csi-final
+    csi-letter-event(final, 1)
+~ \escape "b"
+    (KeyPressEvent(Key.arrow-left, PointerModifiers(false, false, true)))
+~ \escape "f"
+    (KeyPressEvent(Key.arrow-right, PointerModifiers(false, false, true)))
+~ \escape "B"
+    option-shift-key(Key.arrow-left)
+~ \escape "F"
+    option-shift-key(Key.arrow-right)
+~ \escape c \control-key
+    control-key-event(c, true)
+~ \escape c \option-char
+    option-key-input(c)
+~ \escape
+    KeyPressEvent(Key.escape)
+~ c \control-key
+    control-key-event(c, false)
+~ c \char
+    char-event(c)
+
+.. escape ~
+    ~ "\x1b"
+.. char Char ~
+    ~ c .
+        c[0]
+.. paste-start ~
+    ~ "\x1b[200~"
+.. paste-end ~
+    ~ "\x1b[201~"
+.. paste-text String ~
+    ~ chars \paste-char*
+        Array(chars).slice-string()
+.. paste-char Char ~
+    ~ !(\paste-end) c .
+        c[0]
+.. csi-number I32 ~
+    ~ number I32
+        number
+.. csi-modifiers I32 ~
+    ~ ";" modifiers I32
+        modifiers
+.. csi-parameters ~
+    ~ [0-?]+
+.. csi-intermediates ~
+    ~ [ -/]+
+.. csi-final Char ~
+    ~ [@-~]
+        it[0]
+.. control-key Char ~
+    ~ c ("\t" | "\r" | "\n" | "\x7f")
+        c[0]
+.. option-char Char ~
+    ~ !(\escape) c \char
+        c
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusedInputEvent is KeyPressEvent || KeyInputEvent || PasteEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerEvent is MouseDownEvent || MouseUpEvent || MouseMoveEvent || MouseDragEvent || ScrollEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxEventRouteNext is () Pointer?
+    - event Pointer
+    - current Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxEventRouteState is Tuple
+
++ next BoxEventRouteNext?
++ root Pointer?
++ boundary Pointer?
++ route-point Point
++ offset Point
++ point Point
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxEvent
+
++ is-canceled = false
++ route-root Pointer?
++ route-boundary Pointer?
++ route-offset Point
+
+_ event-route-next BoxEventRouteNext?
+_ event-route-point Point
+_ event-point Point
+
+────────────────────
++ get has-own-route Bool
+
+if event-route-next then true else false
+
+────────────────────
++ do cancel
+
+is-canceled = true
+
+────────────────────
++ do begin-route BoxEventRouteState
+    - next BoxEventRouteNext
+    - root Pointer
+    - root-point Point
+    - offset Point
+    - boundary Pointer?
+
+. old-next = event-route-next
+. old-root = route-root
+. old-boundary = route-boundary
+. old-route = event-route-point
+. old-offset = route-offset
+. old-point = event-point
+. saved = BoxEventRouteState(old-next, old-root, old-boundary, old-route, old-offset, old-point)
+event-route-next = next
+route-root = root
+route-boundary = boundary
+event-route-point = root-point
+event-point = Point(root-point.x - offset.x, root-point.y - offset.y)
+route-offset = offset
+= saved
+
+────────────────────
++ do end-route
+    - saved BoxEventRouteState
+
+event-route-next = saved.next
+route-root = saved.root
+route-boundary = saved.boundary
+event-route-point = saved.route-point
+route-offset = saved.offset
+event-point = saved.point
+
+────────────────────
++ do advance-route
+    - offset Point
+
+event-point = Point(event-route-point.x - offset.x, event-route-point.y - offset.y)
+route-offset = offset
+
+────────────────────
++ do next-event-owner Pointer?
+    - current Pointer
+
+=? if !event-route-next
+= event-route-next(this as Pointer, current)
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalEvent is BoxEvent
+    is RoutedEvent
+
++ modifiers = PointerModifiers()
+
+━━━━━━━━━━━━━━━━━━━━
++ UnknownEvent is TerminalEvent
+
+────────────────────
++ to String
+
+"unknown"
+
+━━━━━━━━━━━━━━━━━━━━
++ SignalEvent is TerminalEvent
+
++ signal Char
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyPressEvent is KeyEvent
+
++ key Key
+
+────────────────────
++ This
+    - key
+    - modifiers PointerModifiers = PointerModifiers()
+
+this.modifiers = modifiers
+
+────────────────────
++ to String
+
+"KeyPressEvent($key)"
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyInputEvent is KeyEvent
+
++ char Char
+
+────────────────────
++ This
+    - char
+    - modifiers PointerModifiers = PointerModifiers()
+
+this.modifiers = modifiers
+
+────────────────────
++ to String
+
+"KeyInputEvent($char)"
+
+━━━━━━━━━━━━━━━━━━━━
++ PasteEvent is TerminalEvent
+
++ text String
+
+────────────────────
++ This
+    - text
+
+────────────────────
++ to String
+
+"PasteEvent($text)"
+
+━━━━━━━━━━━━━━━━━━━━
++ SizeRequestEvent is TerminalEvent
+
++ x I32
++ y I32
+
+────────────────────
++ This
+    - x I32
+    - y I32
+
+────────────────────
++ to String
+
+"SizeRequestEvent($x, $y)"
+
+━━━━━━━━━━━━━━━━━━━━
++ MouseEvent is TerminalEvent
+
++ root-point Point
++ button = PointerButton.primary
++ point => event-point
+
+────────────────────
++ This
+    - root-point Point
+    - button PointerButton = PointerButton.primary
+
+━━━━━━━━━━━━━━━━━━━━
++ MouseDownEvent is MouseEvent
+
+────────────────────
++ to String
+
+"MouseDownEvent($root-point)"
+
+━━━━━━━━━━━━━━━━━━━━
++ MouseUpEvent is MouseEvent
+
+────────────────────
++ to String
+
+"MouseUpEvent($root-point)"
+
+━━━━━━━━━━━━━━━━━━━━
++ MouseMoveEvent is MouseEvent
+
+────────────────────
++ to String
+
+"MouseMoveEvent($root-point)"
+
+━━━━━━━━━━━━━━━━━━━━
++ MouseDragEvent is MouseEvent
+
+────────────────────
++ to String
+
+"MouseDragEvent($root-point)"
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollEvent is MouseEvent
+
++ direction Direction
+
+────────────────────
++ This
+    - root-point Point
+    - direction Direction
+
+────────────────────
++ to String
+
+"ScrollEvent($root-point, $direction)"
+
+━━━━━━━━━━━━━━━━━━━━
++ CursorEvent is TerminalEvent
+
++ point Point
+
+────────────────────
++ This
+    - row I32
+    - col I32
+
+.. point = (row as Coord, col as Coord)
+
+━━━━━━━━━━━━━━━━━━━━
++ ClickEvent is BoxEvent
+    is RoutedEvent
+
++ root-point Point
++ point => event-point
+
+────────────────────
++ This
+    - root-point Point
+
+────────────────────
++ to String
+
+"ClickEvent($root-point)"
+
+━━━━━━━━━━━━━━━━━━━━
++ SubmitEvent is BoxEvent
+
+────────────────────
++ to String
+
+"SubmitEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ SelectEvent is BoxEvent
+
+────────────────────
++ to String
+
+"SelectEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ ActivateEvent is BoxEvent
+
+────────────────────
++ to String
+
+"ActivateEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ DialogAcceptEvent is DialogEvent
+
+────────────────────
++ to String
+
+"DialogAcceptEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ DialogCancelEvent is DialogEvent
+
+────────────────────
++ to String
+
+"DialogCancelEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ DialogDismissEvent is DialogEvent
+
+────────────────────
++ to String
+
+"DialogDismissEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-event TerminalEvents
+    - code I32
+    - modifiers I32
+    - final Char
+
+match final
+    |= '~'
+        csi-tilde-event(code, modifiers)
+    |= 'u'
+        csi-u-event(code, modifiers)
+    |= 'Z'
+        (KeyPressEvent(Key.tab, PointerModifiers(true))) as TerminalEvents
+    ??
+        csi-letter-event(final, modifiers)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-letter-event TerminalEvents
+    - final Char
+    - modifiers I32
+
+|? key
+    key-press-event(key, modifiers)
+??
+    UnknownEvent() as TerminalEvents
+
+.. key = csi-letter-key(final)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-letter-key Key?
+    - final Char
+
+match? final
+    |= 'A'
+        Key.arrow-up
+    |= 'B'
+        Key.arrow-down
+    |= 'C'
+        Key.arrow-right
+    |= 'D'
+        Key.arrow-left
+    |= 'H'
+        Key.home
+    |= 'F'
+        Key.end
+    |= 'P'
+        Key.function-key(1)
+    |= 'Q'
+        Key.function-key(2)
+    |= 'R'
+        Key.function-key(3)
+    |= 'S'
+        Key.function-key(4)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-tilde-event TerminalEvents
+    - code I32
+    - modifiers I32
+
+|? key
+    key-press-event(key, modifiers)
+??
+    UnknownEvent() as TerminalEvents
+
+.. key = csi-tilde-key(code)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-tilde-key Key?
+    - code I32
+
+match? code
+    |= 1
+        Key.home
+    |= 3
+        Key.delete
+    |= 4
+        Key.end
+    |= 5
+        Key.page-up
+    |= 6
+        Key.page-down
+    |= 7
+        Key.home
+    |= 8
+        Key.end
+    |? code >= 11 && code <= 15
+        Key.function-key((code - 10) as U32)
+    |? code >= 17 && code <= 21
+        Key.function-key((code - 11) as U32)
+    |= 23
+        Key.function-key(11)
+    |= 24
+        Key.function-key(12)
+    |= 25
+        Key.function-key(13)
+    |= 26
+        Key.function-key(14)
+    |= 28
+        Key.function-key(15)
+    |= 29
+        Key.function-key(16)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-u-event TerminalEvents
+    - code I32
+    - modifiers I32
+
+|? key
+    key-press-event(key, modifiers)
+|? code > 32 && code < 0x110000
+    (KeyInputEvent(code as Char, xterm-modifiers(modifiers))) as TerminalEvents
+|? code == 32
+    (KeyInputEvent(' ', xterm-modifiers(modifiers))) as TerminalEvents
+??
+    UnknownEvent() as TerminalEvents
+
+.. key = csi-u-key(code)
+
+━━━━━━━━━━━━━━━━━━━━
+_ csi-u-key Key?
+    - code I32
+
+match? code
+    |= 9
+        Key.tab
+    |= 13
+        Key.enter
+    |= 27
+        Key.escape
+    |= 127
+        Key.backspace
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-press-event TerminalEvents
+    - key Key
+    - modifiers I32
+
+KeyPressEvent(key, xterm-modifiers(modifiers))
+
+━━━━━━━━━━━━━━━━━━━━
+_ xterm-modifiers PointerModifiers
+    - modifiers I32
+
+PointerModifiers(bits % 2 == 1, (bits / 4) % 2 == 1, (bits / 2) % 2 == 1, (bits / 8) % 2 == 1)
+
+.. bits = if modifiers > 1 then modifiers - 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ control-key-event TerminalEvents
+    - char Char
+    - option Bool
+
+match char
+    |= '\t'
+        (KeyPressEvent(Key.tab, PointerModifiers(false, false, option))) as TerminalEvents
+    |= '\r'
+        (KeyPressEvent(Key.enter, PointerModifiers(false, false, option))) as TerminalEvents
+    |= '\n'
+        (KeyInputEvent('j', PointerModifiers(false, true, option))) as TerminalEvents
+    ??
+        (KeyPressEvent(Key.backspace, PointerModifiers(false, false, option))) as TerminalEvents
+
+━━━━━━━━━━━━━━━━━━━━
+_ char-event TerminalEvents
+    - char Char
+
+|? char == 0 as Char
+    (KeyInputEvent(' ', PointerModifiers(false, true))) as TerminalEvents
+|? char < ' '
+    (KeyInputEvent((char + 0x60) as Char, PointerModifiers(false, true))) as TerminalEvents
+|? char >= 'A' && char <= 'Z'
+    (KeyInputEvent(char, PointerModifiers(true))) as TerminalEvents
+??
+    (KeyInputEvent(char)) as TerminalEvents
+
+━━━━━━━━━━━━━━━━━━━━
+_ option-shift-key TerminalEvents
+    - key Key
+
+KeyPressEvent(key, PointerModifiers(true, false, true))
+
+━━━━━━━━━━━━━━━━━━━━
+_ option-key-input TerminalEvents
+    - char Char
+
+KeyInputEvent(char, PointerModifiers(char >= 'A' && char <= 'Z', false, true))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mouse-event TerminalEvents
+    - point Point
+    - code I32
+    - type Char
+
+. base = code % 4
+. button = mouse-button(code)
+if (code / 64) % 2 == 1
+    . scroll = ScrollEvent(point, scroll-direction(base, (code / 4) % 2 == 1))
+    apply-mouse-modifiers(scroll, code)
+    = scroll
+if (code / 32) % 2 == 1
+    if base == 3
+        . move = MouseMoveEvent(point)
+        apply-mouse-modifiers(move, code)
+        = move
+    . drag = MouseDragEvent(point, button)
+    apply-mouse-modifiers(drag, code)
+    = drag
+if type == 'M'
+    . down = MouseDownEvent(point, button)
+    apply-mouse-modifiers(down, code)
+    = down
+if type == 'm'
+    . up = MouseUpEvent(point, button)
+    apply-mouse-modifiers(up, code)
+    = up
+= UnknownEvent()
+
+━━━━━━━━━━━━━━━━━━━━
+_ mouse-button PointerButton
+    - code I32
+
+match code % 4
+    |? (code / 128) % 2 == 1
+        PointerButton.other((code % 4 + 3) as U32)
+    |= 1
+        PointerButton.middle
+    |= 2
+        PointerButton.secondary
+    ??
+        PointerButton.primary
+
+━━━━━━━━━━━━━━━━━━━━
+_ scroll-direction Direction
+    - base I32
+    - shift Bool
+
+match base
+    |= 0
+        if shift then Direction.left else Direction.up
+    |= 1
+        if shift then Direction.right else Direction.down
+    |= 2
+        Direction.left
+    ??
+        Direction.right
+
+━━━━━━━━━━━━━━━━━━━━
+_ do apply-mouse-modifiers
+    - event MouseEvent
+    - code I32
+
+event.modifiers = PointerModifiers((code / 4) % 2 == 1, (code / 16) % 2 == 1, (code / 8) % 2 == 1)

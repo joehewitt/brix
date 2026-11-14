@@ -1,0 +1,119 @@
+`benchmark.meta description: Repeatedly reads mounted TUI style properties from a settled tree.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/core/style
+/tui/box
+/tui/canvas
+/tui/colors
+/tui/layout
+/tui/primitives
+
+. attachment-lane = C:yumiGCStyleAttachmentsSidePayloadLane()
+. template-lane = C:yumiGCStyleTemplatesSidePayloadLane()
+. object-lane = C:yumiGCStyleObjectsSidePayloadLane()
+. opening-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
+. opening-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
+. opening-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+
+. root = StyleReadRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 40)
+
+. boxes [Box]
+boxes += root
+
+for row-index in 0 .. < 32
+    . row = StyleReadRow()
+    markup-append(root, row)
+    boxes += row
+
+    for column-index in 0 .. < 31
+        . cell = StyleReadCell()
+        markup-append(row, cell)
+        boxes += cell
+
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+
+. checksum Size = 0
+for pass in 0 .. < 96
+    for box in boxes
+        checksum += box.$flex
+        if box.$layout
+            checksum += 1
+        if box.$background-color
+            checksum += background-checksum(box.$background-color!)
+        checksum += box.$color
+
+checksum += boxes.length
+checksum += style-side-payload-count()
+
+. final-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
+. final-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
+. final-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+. maximum-style-objects = opening-style-objects + 16
+?! Panic("style/read-hot attachment lane escaped its mounted root bound")
+    if final-style-attachments != opening-style-attachments + 1
+?! Panic("style/read-hot template lane does not match the live tree")
+    if final-style-templates != opening-style-templates + boxes.length
+?! Panic("style/read-hot object lane escaped its static-site bound")
+    if final-style-objects < opening-style-objects || final-style-objects > maximum-style-objects
+
+-- "bench-result style/read-hot checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleReadRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flex-col
+    flex = 1
+    background-color = navy
+    color = white
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleReadRow is Box
+
+• This
+    layout = flex-row
+    flex = 1
+    background-color = blue
+    color = silver
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleReadCell is Box
+
+• This
+    layout = flow-col
+    flex = 1
+    background-color = teal
+    color = white
+
+━━━━━━━━━━━━━━━━━━━━
+_ background-checksum Size
+    - background BackgroundColor
+
+match background
+    | .ansi(color)
+        color as Size
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-side-payload-count Size
+
+. count = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleAttachmentsSidePayloadLane())
+count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane())
+count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane())
+= count as Size

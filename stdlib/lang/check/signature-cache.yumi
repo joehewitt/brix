@@ -1,0 +1,87 @@
+./idmap
+./types
+/core/arena
+/core/table
+/lang/ast/decl
+/lang/ast/module
+
+━━━━━━━━━━━━━━━━━━━━
++ CachedSignature is Struct
+
++ names U32
++ types U32
++ params U32
++ args U32
++ errors U32
++ returns TypeId
+
+━━━━━━━━━━━━━━━━━━━━
++ SignatureCache
+
+` Signatures already evaluated from syntax, each under one receiver and one set of bound type
+` parameters, so that ranking a declaration at another call site reads it back. A row's names
+` are its parameters; its types are their variables, then its arguments, then its errors.
+
++ rows Table'CachedSignature
++ names List'Atom'ArenaBacking
++ types List'TypeId'ArenaBacking
+_ arena Arena
+_ keys IdMap
+_ key-scratch Array'U32'ArenaBacking
+_ key-count Size
+
+────────────────────
++ This
+    - arena Arena
+
+.. rows = Table'CachedSignature(arena, 64)
+.. names = List'Atom(arena)
+.. types = List'TypeId(arena)
+.. key-scratch = Array'U32(arena, 16)
+
+────────────────────
++ do release
+
+keys.release()
+
+────────────────────
++ do open-key
+    - module ModuleId
+    - decl DeclId
+    - receiver TypeId
+    - class-params Bool
+    - bindings Size
+
+. count = 4 + bindings * 2
+if count > key-scratch.length
+    . capacity = key-scratch.length
+    while capacity < count
+        capacity *= 2
+    key-scratch = key-scratch.resize(capacity, arena)
+key-scratch[0] = module
+key-scratch[1] = decl
+key-scratch[2] = receiver
+key-scratch[3] = if class-params then 1u32 else 0u32
+key-count = 4
+
+────────────────────
++ do add-binding
+    - name U32
+    - type TypeId
+
+key-scratch[key-count] = name
+key-scratch[key-count + 1] = type
+key-count += 2
+
+────────────────────
++ get found Index?
+
+keys.find(key-scratch.data, key-count)
+
+────────────────────
++ do keep
+    - row CachedSignature
+
+keys.store(key-scratch.data, key-count)
+if keys.last-inserted
+    rows.append(row)

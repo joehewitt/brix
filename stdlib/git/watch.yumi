@@ -1,0 +1,226 @@
+./command
+./repository
+./status
+/os/path
+/time/debounced
+/time/duration
+
++ git-watch-delay = 200ms
+
+━━━━━━━━━━━━━━━━━━━━
++ GitWorktreeChanges is Tuple
+
++ paths [String]
++ ignored-paths [String]
++ is-git-changed Bool
++ are-worktrees-changed Bool
++ must-rescan Bool
+
++ is-relevant => must-rescan || is-git-changed || are-worktrees-changed || paths.length > 0
+
+────────────────────
++ touches
+    - path String
+
+must-rescan || path is in paths || path is in ignored-paths
+
+━━━━━━━━━━━━━━━━━━━━
++ GitWorktreeWatch
+    is Closable
+
++ directory String
++ git-dir String
++ common-dir String
++ ignored [String]
++ event changed GitWorktreeChanges
+
+_ streams List'Closable
+_ paths Map'String'Bool
+_ is-git-changed = false
+_ are-worktrees-changed = false
+_ must-rescan = false
+_ schedule-flush := throttled(git-watch-delay, this.flush)
+_ is-closed = false
+
+────────────────────
++ This
+    - directory
+    - git-dir
+    - common-dir
+
+watch(directory)
+if git-watch-inner(common-dir, directory) == null
+    watch(common-dir)
+
+────────────────────
++ do refresh-ignored
+
+. listed = catch git-worktrees(directory)
+=? if listed is Error
+. nested = List'String()
+for worktree in listed as [GitWorktree]
+    . real = git-watch-real(worktree.path)
+    if real != directory && git-watch-inner(real, directory) != null
+        nested += real
+ignored = nested
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+for stream in streams
+    stream.close()
+streams = List'Closable()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do watch
+    - root String
+
+. stream = Path(root, 0).watch(true)
+for event on stream
+    note(event)
+streams += stream
+
+────────────────────
+_ do note
+    - event PathWatchEvent
+
+=? if is-closed
+if event.must-rescan
+    must-rescan = true
+    schedule-flush()
+    =
+. text = "${event.path}"
+. inner = git-watch-inner(text, common-dir)
+if inner != null
+    note-git(inner)
+    =
+. relative = git-watch-inner(text, directory)
+=? if relative == null || relative == "" || relative == ".git"
+for nested in ignored
+    =? if git-watch-inner(text, nested) != null
+paths[relative] = true
+schedule-flush()
+
+────────────────────
+_ do note-git
+    - inner String
+
+=? if git-watch-is-noise(inner)
+. own = git-watch-inner(git-dir, common-dir) ?? ""
+if inner == "worktrees"
+    note-worktrees()
+    =
+if inner.starts-with("worktrees/")
+    . rest = inner[10 ...]
+    . slash = rest.find("/")
+    if slash == null
+        note-worktrees()
+        =
+    =? if "worktrees/${rest[0 .. < slash]}" != own
+    =? if git-watch-is-under(rest[slash + 1 ...], "logs")
+else if own != "" && inner == "index"
+    =
+is-git-changed = true
+schedule-flush()
+
+────────────────────
+_ do note-worktrees
+
+are-worktrees-changed = true
+do new refresh-ignored()
+schedule-flush()
+
+────────────────────
+_ do flush
+
+=? if is-closed
+. touched = List'String(paths.keys)
+. git = is-git-changed
+. worktrees = are-worktrees-changed
+. rescan = must-rescan
+paths = Map'String'Bool()
+is-git-changed = false
+are-worktrees-changed = false
+must-rescan = false
+. listed = catch git-ignored-paths(directory, touched)
+=? if is-closed
+. skipped = Map'String'Bool()
+if !(listed is Error)
+    for path in listed as [String]
+        skipped[path] = true
+. kept = List'String
+    ** touched
+    ?> !(skipped has each)
+. dropped = List'String
+    ** touched
+    ?> skipped has each
+changed <- GitWorktreeChanges(kept, dropped, git, worktrees, rescan)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-watch-worktree ?! Error
+    - directory String
+
+. found = git-find-directories(directory)
+. watch =
+    |? found
+        GitWorktreeWatch
+            - git-watch-real(directory)
+            - git-watch-real(found.git-dir)
+            - git-watch-real(found.common-dir)
+    ??
+        git-watch-asked(directory)
+watch.refresh-ignored()
+= watch
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-watch-asked ?! Error
+    - directory String
+
+. output = git-text
+    - directory
+    - ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"]
+. lines = List'String(output.trim().split("\n"))
+?! Error("Unexpected git rev-parse output")
+    if lines.length != 2
+= GitWorktreeWatch(git-watch-real(directory), git-watch-real(lines[0]), git-watch-real(lines[1]))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-watch-real
+    - text String
+
+. path = Path(text, 0)
+. resolved = catch? path.resolved ?? path
+= "$resolved"
+
+━━━━━━━━━━━━━━━━━━━━
+_ git-watch-inner
+    - text String
+    - root String
+
+|? text == root
+    ""
+|? text.starts-with("$root/")
+    text[root.length + 1 ...]
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ git-watch-is-under
+    - text String
+    - name String
+
+text == name || text.starts-with("$name/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ git-watch-is-noise
+    - inner String
+
+inner.ends-with(".lock") || is-objects || is-logs
+
+.. is-objects = git-watch-is-under(inner, "objects")
+.. is-logs = git-watch-is-under(inner, "logs")

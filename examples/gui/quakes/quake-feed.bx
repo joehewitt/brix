@@ -1,0 +1,218 @@
+(import /data/json)
+(import /math)
+(import /net/http)
+(import /net/url)
+(import /stream/aggregate)
+(import /stream/sort)
+(import /time/duration)
+(import /time/zone)
+(import /units)
+(import /units/distance)
+(blank)
+(prop _ earth-radius _ (= 6371km))
+(prop _ feed-root _ (= "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary"))
+(prop _ land-root _ (= "https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson"))
+(blank)
+(type-line + Magnitude (alias mag) (is F64))
+
+(type + QuakeFeed (is (tuple (: title String) (: period String) (: path String)))
+  (variant hour (= (tuple "Hour" "hour" "all_hour")))
+  (variant day (= (tuple "Day" "day" "all_day")))
+  (variant week (= (tuple "Week" "week" "2.5_week")))
+  (variant month (= (tuple "Month" "month" "4.5_month")))
+)
+
+(type + Coordinate (is (tuple (: longitude Degrees) (: latitude Degrees)))
+  (fn-expr + across Ratio :get
+    (/ (+ (as longitude F64) 180) 360)
+  )
+  (fn-expr + down Ratio :get
+    (/ (- 90 (as latitude F64)) 180)
+  )
+  (fn-expr + distance-to Kilometers
+    (param other Coordinate)
+    (* earth-radius 2 (as (call asin (call sqrt (+ north (* (call cos latitude) (call cos (. other latitude)) east)))) F64))
+    (where
+      (lazy north (%% (call sin (/ (- (. other latitude) latitude) 2)) 2))
+      (lazy east (%% (call sin (/ (- (. other longitude) longitude) 2)) 2))
+    )
+  )
+)
+
+(type + Quake (is Tuple)
+  (prop + id String)
+  (prop + place String)
+  (prop + magnitude Magnitude)
+  (prop + position Coordinate)
+  (prop + depth Kilometers)
+  (prop + time Milliseconds)
+  (prop + url String)
+)
+
+(type + QuakeUpdate (is Union)
+  (variant loaded (list Quake))
+  (variant failed String)
+)
+
+(fn-do + load-quakes (of AsyncBufferedChannel QuakeUpdate)
+  (param feed QuakeFeed)
+  (let updates (call (of AsyncBufferedChannel QuakeUpdate)))
+  (do-new
+    (let update
+      (match (catch (call fetch-quakes feed))
+        (case (: found (list Quake))
+          (call (. QuakeUpdate loaded) found)
+        )
+        (case (: error Error)
+          (call (. QuakeUpdate failed) (str error))
+        )
+      )
+    )
+    (<- updates update)
+    (call (. updates close))
+  )
+  (return updates)
+)
+
+(fn-do + fetch-quakes (list Quake) (?! Error)
+  (param feed QuakeFeed)
+  (return (call quakes-in (call fetch-json (str feed-root "/" (. feed path) ".geojson"))))
+)
+
+(fn-do + fetch-land (list (list Coordinate)) (?! Error)
+  (return (call outlines-in (call fetch-json (str land-root "/ne_110m_land.geojson"))))
+)
+
+(fn-expr + epoch-now Seconds
+  (. utc now)
+)
+
+(fn-expr + strongest (list Quake)
+  (param quakes (list Quake))
+  (param floor Magnitude)
+  (call sort (?> quakes (>= (. each magnitude) floor)) (:using by-magnitude) (:is-reverse true))
+  (where
+    (lazy by-magnitude (=> (a b) (call compare-basic (. a magnitude) (. b magnitude))))
+  )
+)
+
+(fn-expr + up-to (list Quake)
+  (param quakes (list Quake))
+  (param cutoff Milliseconds)
+  quakes
+  (pipe ?> (<= (. each time) cutoff))
+  (pipe |> List)
+)
+
+(fn-expr + with-id (list Quake)
+  (param quakes (list Quake))
+  (param id String)
+  quakes
+  (pipe ?> (== (. each id) id))
+  (pipe |> List)
+)
+
+(fn-expr + replay-cutoff Milliseconds
+  (param quakes (list Quake))
+  (param clock Seconds)
+  (param progress F64)
+  (+ start (* (- clock start) progress))
+  (where
+    (lazy start (call min (*> quakes (. each time))))
+  )
+)
+
+(fn-expr + neighbors Size
+  (param quake Quake)
+  (param quakes (list Quake))
+  (param reach Kilometers)
+  quakes
+  (pipe ?> (!= (. each id) (. quake id)))
+  (pipe ?> (< (call (. each position distance-to) (. quake position)) reach))
+  (pipe |> count)
+)
+
+(fn-do _ fetch-json JSON (?! Error)
+  (param address String)
+  (let response (call http-get (call URL address)))
+  (throw (call Error (str "The server answered " (. response status))) (if (!= (. response status) (. HTTPStatus ok))))
+  (return (call parse-json (. response text)))
+)
+
+(fn-expr _ quakes-in (list Quake) (?! Error)
+  (param document JSON)
+  (match document
+    (case (map "features" (: features (list JSON)))
+      (call List (?*> features (call quake each)))
+    )
+    (throw (call Error "The earthquake feed has no features"))
+  )
+)
+
+(fn-expr _ quake (? Quake)
+  (param feature JSON)
+  (match? feature
+    (case (list (= "id" (: id String)) (= "properties" facts) (= "geometry" (map "coordinates" (list lon lat depth))))
+      (call described facts id (call coordinate lon lat) (?? (call number depth) 0))
+    )
+  )
+)
+
+(fn-expr _ described (? Quake)
+  (param facts JSON)
+  (param id String)
+  (param position Coordinate)
+  (param depth Kilometers)
+  (match? facts
+    (case (list (= "mag" mag) (= "place" (: place String)) (= "time" (: time Int)) (= "url" (: url String)))
+      (only-if (call Quake id place magnitude position depth (as time Milliseconds) url) (if magnitude))
+      (lazy magnitude (call number mag))
+    )
+  )
+)
+
+(fn-expr _ outlines-in (list (list Coordinate)) (?! Error)
+  (param document JSON)
+  (match document
+    (case (map "features" (: features (list JSON)))
+      (call List (?*> features (call outline each)))
+    )
+    (throw (call Error "The land outline has no features"))
+  )
+)
+
+(fn-expr _ outline (? (list Coordinate))
+  (param feature JSON)
+  (match? feature
+    (case (map "geometry" (list (= "type" "Polygon") (= "coordinates" (list (: ring (list JSON)) ...))))
+      (call List (?*> ring (call corner each)))
+    )
+  )
+)
+
+(fn-expr _ corner (? Coordinate)
+  (param pair JSON)
+  (match? pair
+    (case (list lon lat ...)
+      (call coordinate lon lat)
+    )
+  )
+)
+
+(fn-expr _ coordinate Coordinate
+  (param lon JSON)
+  (param lat JSON)
+  (call Coordinate (?? (call number lon) 0) (?? (call number lat) 0))
+)
+
+(fn-expr _ number (? F64)
+  (param value JSON)
+  (match? value
+    (case (: float Float)
+      float
+    )
+    (case (: int Int)
+      (as int F64)
+    )
+  )
+)

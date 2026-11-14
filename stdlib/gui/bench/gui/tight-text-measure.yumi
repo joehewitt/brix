@@ -1,0 +1,99 @@
+`benchmark.meta description: TextLayouts constructed per tight word-wrapped measure and per measure-plus-paint, via the graphics text-layout-created counter.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui/box
+/gui/label
+/gui/layout
+/gui/primitives
+
+. root = GridRoot()
+markup-mount-root(root, root)
+. label = TightLabel()
+. long-text = "The quick brown fox jumps over the lazy dog and keeps on running "
+label.text = long-text + "through the measured meadow"
+markup-append(root, label)
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+. count0 = text-layout-created-count()
+. query = MeasureQuery(fit-axis-query(220), fit-axis-query(null))
+label.measure(query)
+. count1 = text-layout-created-count()
+. constrained-layouts = count1 - count0
+
+label.measure()
+. count2 = text-layout-created-count()
+. unconstrained-layouts = count2 - count1
+
+label.arrange-bounds(Rect(0, 0, 220, 200))
+. canvas = RasterCanvas(400, 300, 2)
+do use canvas
+    label.paint(canvas)
+    . count3 = text-layout-created-count()
+    . first-paint-layouts = count3 - count2
+    label.paint(canvas)
+    . count4 = text-layout-created-count()
+    . repaint-layouts = count4 - count3
+    . measure-paint-layouts = unconstrained-layouts + first-paint-layouts
+
+    //gui.bench.text.tight-constrained-layouts += constrained-layouts
+    //gui.bench.text.tight-unconstrained-layouts += unconstrained-layouts
+    //gui.bench.text.tight-first-paint-layouts += first-paint-layouts
+    //gui.bench.text.tight-repaint-layouts += repaint-layouts
+    //gui.bench.text.tight-measure-paint-layouts += measure-paint-layouts
+    checksum += constrained-layouts + unconstrained-layouts + first-paint-layouts + repaint-layouts
+
+    . sequence = TightLabel()
+    sequence.text = long-text + "through the measured meadow"
+    markup-append(root, sequence)
+    root.markup-batch-queue.checkpoint()
+    . sequence-count0 = text-layout-created-count()
+    . sequence-size = sequence.measure(query).border-size
+    sequence.arrange-bounds(Rect(0, 0, sequence-size.width, sequence-size.height))
+    sequence.paint(canvas)
+    . sequence-count1 = text-layout-created-count()
+    . sequence-layouts = sequence-count1 - sequence-count0
+    sequence.measure(query)
+    sequence.paint(canvas)
+    . sequence-count2 = text-layout-created-count()
+    . sequence-warm-layouts = sequence-count2 - sequence-count1
+    //gui.bench.text.tight-sequence-layouts += sequence-layouts
+    //gui.bench.text.tight-sequence-warm-layouts += sequence-warm-layouts
+    checksum += sequence-layouts + sequence-warm-layouts
+
+root.close()
+markup-release(root)
+
+-- "bench-result gui/tight-text-measure checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ TightLabel is Label
+
+• This
+    text-wrap = TextWrap.word
+    text-wrap-sizing = TextWrapSizing.tight
+
+━━━━━━━━━━━━━━━━━━━━
++ GridRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ GridRow is Box
+
+• This
+    layout = flow-row

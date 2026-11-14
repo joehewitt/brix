@@ -1,0 +1,169 @@
+
+/core/markup
+/test
+/tui/box
+/tui/canvas
+/tui/events
+/tui/primitives
+/tui/texteditor
+/ui/input
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("TUI TextEditor Navigation")
+cases.run(text-editor-navigation-tests)
+cases = cases.then("TUI TextEditor Paint After Growth", text-editor-paint-after-growth-tests)
+cases = cases.then("TUI TextEditor Nested Flex Growth", text-editor-nested-flex-growth-tests)
+cases = cases.then("TUI TextEditor Parent Clip Cursor", text-editor-parent-clip-cursor-tests)
+cases = cases.then("TUI TextEditor Mouse Selection", text-editor-mouse-selection-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-editor-navigation-tests TestCase
+    - t TestCase
+
+. editor = TextEditor("abcdefghijkl")
+editor.multiline = true
+editor.arrange-bounds(Rect(0, 0, 4, 3))
+editor.update-layout()
+editor.selection = TextSelection(0, 0)
+
+editor.handle-key-press(KeyPressEvent(Key.arrow-down))
+t = t.expect("wrapped down moves to next visual line", 4, editor.selection.cursor)
+editor.handle-key-press(KeyPressEvent(Key.arrow-up))
+t = t.expect("wrapped up returns to previous visual line", 0, editor.selection.cursor)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-editor-mouse-selection-tests TestCase
+    - t TestCase
+
+. scrolled = TextEditor("abcdef")
+scrolled.arrange-bounds(Rect(0, 0, 4, 1))
+scrolled.update-layout()
+scrolled.publish-pointer(MouseDownEvent((0, 0)))
+scrolled.publish-pointer(MouseDragEvent((6, 0)))
+t = t.expect("drag past right edge selects to end", TextSelection(0, 6), scrolled.selection)
+t = t.check("drag past right edge scrolls", scrolled.scroll-x < 0)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-editor-paint-after-growth-tests TestCase
+    - t TestCase
+
+. editor = TextEditor("abc")
+editor.multiline = true
+editor.is-focused = true
+editor.arrange-bounds(Rect(0, 0, 10, 1))
+editor.update-layout()
+editor.selection = TextSelection(3, 3)
+editor.insert-text("\n")
+t = t.expect("newline insertion scrolled to caret in stale one-line bounds", -1, editor.scroll-y)
+
+editor.arrange-bounds(Rect(0, 0, 10, 2))
+editor.update-layout()
+. canvas = Canvas(PSize(10, 2))
+editor.paint(canvas)
+. frame = canvas.dump()
+
+t = t.expect("paint corrects scroll before drawing", 0, editor.scroll-y)
+t = t.check("paint after newline keeps previous line visible", frame.find("abc") != null)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-editor-nested-flex-growth-tests TestCase
+    - t TestCase
+
+<TextEditorNestedFlexGrowthHarness host • flex-col
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.arrange-bounds(Rect(0, 0, 20, 8))
+host.update-layout()
+
+t = t.expect("initial prompt height", 1, host.prompt.bounds.height)
+t = t.expect("initial composer height", 1, host.composer.bounds.height)
+
+host.composer.is-focused = true
+host.composer.selection = TextSelection(host.composer.text.length, host.composer.text.length)
+host.composer.insert-text("\n")
+host.update-layout()
+
+t = t.expect("nested flex prompt grows after newline", 2, host.prompt.bounds.height)
+t = t.expect("nested flex composer grows after newline", 2, host.composer.bounds.height)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-editor-parent-clip-cursor-tests TestCase
+    - t TestCase
+
+<TextEditorClippedParentHarness host • flex-col
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.arrange-bounds(Rect(0, 0, 30, 5))
+host.update-layout()
+host.editor.is-focused = true
+
+for line in ["one", "two", "three", "four", "last line"]
+    host.editor.insert-text(line)
+    host.editor.insert-text("\n")
+    host.update-layout()
+
+host.paint(Canvas(PSize(30, 5)))
+
+if host.editor.cursor-point.y != host.panel.content-bounds.bottom - 1
+    ?! Panic("TextEditor cursor escaped parent clip: cursor ${host.editor.cursor-point.y}, bottom ${host.panel.content-bounds.bottom}")
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditorNestedFlexGrowthHarness is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    <Box transcript • flex:1
+    <Box prompt • flex-row
+        <TextEditor composer "" • flex:1
+            multiline = true
+            max-height = 6
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditorClippedParentHarness is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    <Box panel • flex-col flex:1
+        <Box
+            min-height = SizeSpec.coord(1)
+            max-height = SizeSpec.coord(1)
+        <TextEditor editor ""
+            multiline = true
+            max-height = 5
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush

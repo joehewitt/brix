@@ -1,0 +1,230 @@
+/core/channel
+/time
+/units
+/math
+/graphics/color
+/tui
+/tui/text
+
+<Window win • flex-col
+    <CompositingLayerDemo app • flex-col flex:1
+
+app.start-animation()
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ CompositingLayerDemo is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ overlay-opacity-stream = slow-opacity-loop()
++ latest-left Coord = 0
++ latest-top Coord = 0
++ overlay-width Coord = 30
++ overlay-height Coord = 12
++ frame = 0
++ center-x Coord = 20
++ center-y Coord = 10
++ velocity-x Coord = 1
++ velocity-y Coord = 1
++ is-running = false
+
+────────────────────
+
+<MarkdownText article • flex:1 p:2 text:white
+    background = DemoGradientBackground()
+    text = compositing-layer-markdown()
+    header-color = ansi-cyan()
+    strong-color = gold
+    em-color = ansi-rgb(3, 5, 5)
+    link-color = ansi-rgb(1, 5, 5)
+    image-color = pink
+    quote-color = lightgray
+    code-color = chartreuse
+    divider-color = ice
+    bullet-color = gold
+
+<Box overlay • absolute flow-col bg:black border-double border:yellow
+    left = #latest-left
+    top = #latest-top
+    opacity = max(0.2%%, (##overlay-opacity-stream))
+    min-width = SizeSpec.coord(#overlay-width)
+    max-width = SizeSpec.coord(#overlay-width)
+    min-height = SizeSpec.coord(#overlay-height)
+    max-height = SizeSpec.coord(#overlay-height)
+
+<Shortcut "Quit"
+    key = .escape
+    action = => do close-demo()
+
+<Shortcut "Quit"
+    key = 'q'
+    action = => do close-demo()
+
+────────────────────
++ do close-demo
+
+is-running = false
+overlay-opacity-stream.close()
+root.close()
+
+────────────────────
++ do start-animation
+
+is-running = true
+request-animation-frame(this.animation-frame)
+
+────────────────────
++ do animation-frame
+
+=? if !is-running
+
+frame += 1
+advance-overlay()
+request-animation-frame(this.animation-frame)
+
+────────────────────
++ do advance-overlay
+
+. panel-width = overlay-panel-width(bounds)
+. panel-height = overlay-panel-height(bounds)
+. half-width = panel-width / 2
+. half-height = panel-height / 2
+. min-center-x = half-width
+. min-center-y = half-height
+. max-center-x = max(min-center-x, (bounds.width - (panel-width - half-width)))
+. max-center-y = max(min-center-y, (bounds.height - (panel-height - half-height)))
+
+center-x += velocity-x
+center-y += velocity-y
+
+if center-x <= min-center-x || center-x >= max-center-x
+    velocity-x = -velocity-x
+    center-x = clipped-coordinate(center-x, min-center-x, max-center-x)
+
+if center-y <= min-center-y || center-y >= max-center-y
+    velocity-y = -velocity-y
+    center-y = clipped-coordinate(center-y, min-center-y, max-center-y)
+
+if overlay-width != panel-width
+    overlay-width = panel-width
+if overlay-height != panel-height
+    overlay-height = panel-height
+
+latest-left = center-x - half-width
+latest-top = center-y - half-height
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoGradientBackground is Painter
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+do use canvas
+    for y in rect.y .. < rect.bottom
+        for x in rect.x .. < rect.right
+            canvas.paint-background-cell(gradient-color(x, y, rect), (x, y))
+
+━━━━━━━━━━━━━━━━━━━━
++ do slow-opacity-loop AsyncChannel'Ratio
+
+. channel = AsyncChannel'Ratio()
+do new
+    30ms.wait()
+
+    while !channel.is-closed
+        for opacity in slow-opacity-pass()
+            if channel.is-closed
+                break
+
+            channel <- opacity
+            30ms.wait()
+= channel
+
+━━━━━━━━━━━━━━━━━━━━
++ do slow-opacity-pass <Ratio>
+
+for step in 0 .. 360 by 0.05
+    . phase Radians = (step as Float) * 1deg
+    . wave = (sin(phase) + 1) / 2
+    <= 0.2%% + 0.7%% * wave
+
+━━━━━━━━━━━━━━━━━━━━
+_ gradient-color RGBA
+    - x Coord
+    - y Coord
+    - rect Rect
+
+RGBA(red, green, blue)
+
+.. red = 0.05 + 0.5 * x-ratio + 0.2 * y-ratio
+.. green = 0.12 + 0.25 * inverse-x + 0.45 * y-ratio
+.. blue = 0.35 + 0.5 * inverse-y + 0.1 * x-ratio
+.. inverse-x = 1 - x-ratio
+.. inverse-y = 1 - y-ratio
+.. x-ratio = ((x - rect.x) as Float) / ((width - 1) as Float)
+.. y-ratio = ((y - rect.y) as Float) / ((height - 1) as Float)
+.. width = if rect.width > 1 then rect.width else 2
+.. height = if rect.height > 1 then rect.height else 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do clipped-coordinate Coord
+    - value Coord
+    - minimum Coord
+    - maximum Coord
+
+. result = value
+if result < minimum
+    result = minimum
+if result > maximum
+    result = maximum
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ overlay-panel-width Coord
+    - rect Rect
+
+max(12, (rect.width / 2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ overlay-panel-height Coord
+    - rect Rect
+
+max(6, (rect.height / 2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ compositing-layer-markdown
+
+# Compositing Vector Probe
+
+This example is designed to become the acceptance fixture for retained TUI compositing layers. The view underneath this text is intentionally expensive-looking: a full-screen gradient plus Markdown with headers, emphasis, lists, quotes, links, and code-colored runs.
+
+The moving black box is a real `Box` subtree whose geometry is driven by `request-animation-frame` updates to observed `left` and `top` properties. The opacity pulse is driven by a `##latest` stream and stays between 20% and 80% so it remains promoted into its own retained layer while the compositor updates the visual effect.
+
+## What should become smooth
+
+* The gradient and Markdown content should be stable base-layer content.
+* The black overlay should bounce using only its old and new layer footprints.
+* Once retained layers exist, the base layer should not repaint or rediff on every animation frame.
+* In the opacity-blending slice, text and background cells under the black box should darken instead of being fully covered.
+
+> Press Escape or Q to quit. Resize the terminal while the box is moving; its bounds stay at roughly half the visible view.
+
+```yumi
+request-animation-frame(this.animation-frame)
+left = #latest-left
+top = #latest-top
+size = observed min/max constraints
+opacity = ##overlay-opacity-stream
+layer reason = opacity
+stage two compositor = opacity blend
+animation = observed geometry + latest-stream effect
+```
+
+The long body text keeps most of the screen occupied so repaint and diff behavior is easy to spot in probes. If the compositor is doing its job later, animation frames should mostly talk about layer movement rather than re-rendering this whole document.

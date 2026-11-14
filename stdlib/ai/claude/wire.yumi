@@ -1,0 +1,978 @@
+/ai/media
+/ai/model
+/ai/tool-tasks
+/data/json
+/os/file
+/os/path
+
++ claude-provider-id = "claude-code"
+_ claude-session-part = "session"
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudePoint is Tuple
+
++ session String
++ entry String? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeMark is Tuple
+
++ point ClaudePoint
++ parent ClaudePoint? = null
++ basis String? = null
++ message String? = null
++ blocks Size = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeResume is Tuple
+
++ point ClaudePoint? = null
++ forks = false
++ merges [ClaudeMark]? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeDecoder
+
++ permission-mode String?
++ parent ClaudePoint?
++ basis String?
++ session-id String?
+
+_ message-id = ""
+_ begun Size
+_ streaming Size?
+_ completed-id = ""
+_ completed Size
+_ failure AIErrorKind?
+_ model = ""
+_ entry String?
+_ compactions Size
+_ shows-updates = false
+
+────────────────────
++ do decode <AIEvent> ?! AIError
+    - line JSON
+
+. root = json-object(line)
+=? if !root || json-string(root["parent_tool_use_id"])
+
+do match? root
+    | ["type" = "stream_event", "event" = event [String = JSON]]
+        <<= decode-stream(event, json-string(root["thinking_display"]))
+    | ["type" = "assistant", "error" = error String]
+        failure = claude-error-kind(error)
+    | ["type" = "assistant", "message" = message [String = JSON]]
+        <<= decode-message(message)
+        <<= decode-entry(root)
+    | ["type" = "user", "message" = ["content" = blocks [JSON]]]
+        <<= decode-results(blocks)
+        <<= decode-entry(root)
+    | ["type" = "system", "subtype" = "init", "session_id" = id String, "model" = model String]
+        check-permission-mode(model, json-string(root["permissionMode"]))
+        <<= decode-session(id, model)
+    | ["type" = "system", "subtype" = "compact_boundary"]
+        <<= decode-compaction(root)
+    | ["type" = "result"]
+        <<= decode-structured(root)
+        <= decode-result(root)
+
+────────────────────
++ do resume-turn
+
+parent = null
+basis = null
+
+────────────────────
++ do resume-mark
+    - part AIMessagePart
+
+. mark = claude-part-mark(part)
+=? if !mark
+. fields = json-object((part as AIExtensionPart).data)
+session-id = mark.point.session
+entry = mark.point.entry
+parent = mark.parent
+basis = mark.basis
+model = json-string(fields?["model"]) ?? ""
+completed-id = mark.message ?? ""
+completed = mark.blocks
+
+────────────────────
+_ do check-permission-mode ?! AIError
+    - model String
+    - granted String?
+
+. wanted = permission-mode
+=? if wanted == null || granted == null || wanted == granted
+. reason = "Claude Code would not use permission mode \"${wanted}\" with $model"
+?! AIError(AIErrorKind.invalid-request, "$reason; it started in \"${granted}\"")
+
+────────────────────
+_ do decode-session <AIEvent>
+    - id String
+    - model String
+
+=? if session-id
+session-id = id
+this.model = model
+. part = session-part(id)
+<= AIPartBeginEvent(part)
+<= AIPartEndEvent(part)
+
+────────────────────
+_ do decode-entry <AIEvent>
+    - root [String = JSON]
+
+. uuid = json-string(root["uuid"])
+. id = session-id
+=? if !uuid || !id
+entry = uuid
+<= AIPartEndEvent(session-part(id))
+
+────────────────────
+_ do decode-compaction <AIEvent>
+    - root [String = JSON]
+
+compactions += 1
+. id = "${ai-compaction-part}:$compactions"
+. part = AIExtensionPart
+    - id
+    - claude-provider-id
+    - ai-compaction-part
+    - root["compact_metadata"] ?? null as JSON
+<= AIPartBeginEvent(part)
+<= AIPartEndEvent(part)
+
+────────────────────
+_ session-part
+    - id String
+
+AIExtensionPart(claude-session-part, claude-provider-id, claude-session-part, data)
+
+.. data = claude-mark-data
+    - ClaudeMark
+        - ClaudePoint(id, entry)
+        - parent
+        - basis
+        - completed-id if completed-id.length
+        - completed
+    - model
+
+────────────────────
+_ do decode-stream <AIEvent>
+    - event [String = JSON]
+    - display String?
+
+do match? event
+    | ["type" = "message_start", "message" = ["id" = id String]]
+        message-id = id
+        shows-updates = display == "updates"
+        begun = 0
+        streaming = null
+    | ["type" = "content_block_start", "index" = index Int, "content_block" = block [String = JSON]]
+        . position = index as Size
+        . part = claude-begun-part(claude-part-id(message-id, position), block, shows-updates)
+        streaming = position if part
+        if part
+            begun = position + 1
+            <= AIPartBeginEvent(part)
+    | ["type" = "content_block_delta", "index" = index Int, "delta" = delta [String = JSON]]
+        . position = index as Size
+        . change = claude-content-delta(delta)
+        if change && streaming == position
+            <= AIPartDeltaEvent(claude-part-id(message-id, position), change)
+
+────────────────────
+_ do decode-message <AIEvent>
+    - message [String = JSON]
+
+. id = json-string(message["id"]) ?? ""
+if id != completed-id
+    completed-id = id
+    completed = 0
+. index = completed
+completed += 1
+
+. block = match? message
+    | ["content" = [block [String = JSON], ...]]
+        block
+=? if !block
+. part = claude-completed-part(claude-part-id(id, index), block, shows-updates)
+=? if !part
+if id != message-id || index >= begun
+    <= AIPartBeginEvent(part)
+<= AIPartEndEvent(part)
+
+────────────────────
+_ do decode-results <AIEvent>
+    - blocks [JSON]
+
+for block in blocks
+    . part = claude-result-part(block)
+    if part
+        <= AIPartBeginEvent(part)
+        <= AIPartEndEvent(part)
+
+────────────────────
+_ do decode-structured <AIEvent>
+    - root [String = JSON]
+
+. output = root["structured_output"]
+=? if output == null || json-flag(root["is_error"])
+. part = AITextPart("structured-output", to-json(output))
+<= AIPartBeginEvent(part)
+<= AIPartEndEvent(part)
+
+────────────────────
+_ do decode-result AIEvent ?! AIError
+    - root [String = JSON]
+
+. kind = failure
+failure = null
+. usage = claude-usage(json-object(root["usage"]))
+if !json-flag(root["is_error"])
+    = AIDoneEvent(claude-finish-reason(json-string(root["stop_reason"]) ?? ""), usage)
+if (json-string(root["terminal_reason"]) ?? "").starts-with("aborted")
+    = AIDoneEvent(AIFinishReason.cancellation, usage)
+
+. status = json-int(root["api_error_status"])
+?! AIError(kind ?? claude-status-kind(status), claude-failure-message(root, kind), status)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-account AIAccount
+    - output JSON?
+
+|? !json-flag(fields?["loggedIn"])
+    AIAccount(AIAccountStatus.signed-out)
+??
+    AIAccount
+        • status AIAccountStatus.signed-in
+        • billing claude-billing(json-string(fields?["authMethod"]))
+        • email json-string(fields?["email"])
+        • plan json-string(fields?["subscriptionType"])
+        • organization json-string(fields?["orgName"])
+
+.. fields = json-object(output)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-billing AIAccountBilling
+    - method String?
+
+match method
+    |= null
+        AIAccountBilling.unknown
+    |= "claude.ai"
+        AIAccountBilling.subscription
+    ??
+        AIAccountBilling.api
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeMCPServer is Tuple
+
++ name String
++ url String?
++ tools [String]
+
+────────────────────
++ get json [String = JSON]
+
+|? url
+    Map'String'JSON
+        • type "http"
+        • url url
+??
+    Map'String'JSON
+        • type "sdk"
+        • name name
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-arguments [String]
+    - request AIRequest
+    - tools [String]? = null
+    - is-safe-mode = false
+    - allowed-tools [String]? = null
+    - permission-mode String? = null
+    - resume ClaudeResume? = null
+    - is-persistent = true
+    - effort String? = null
+    - mcp-servers [ClaudeMCPServer] = List'ClaudeMCPServer()
+    - thinking-display String? = null
+
+* "--print"
+* "--input-format"
+* "stream-json"
+* "--output-format"
+* "stream-json"
+* "--verbose"
+* "--include-partial-messages"
+*? "--safe-mode" if is-safe-mode
+*? "--no-session-persistence" if !is-persistent
+** claude-flag("--model", request.model if request.model.length)
+** claude-flag("--effort", effort)
+** claude-flag("--thinking-display", thinking-display)
+** claude-flag("--append-system-prompt", claude-instructions(request))
+** claude-flag("--json-schema", schema)
+** claude-flag("--tools", offered)
+** claude-flag("--allowedTools", approved)
+** claude-flag("--permission-mode", permission-mode)
+** claude-flag("--mcp-config", claude-mcp-config(mcp-servers) if mcp-servers.length)
+** claude-flag("--resume", point?.session)
+** claude-flag("--resume-session-at", point?.entry)
+*? "--fork-session" if point && plan.forks
+* "--permission-prompts"
+* "none"
+|> List
+
+.. schema = to-json(request.response-schema) if request.response-schema
+.. offered = (",".join(tools)) if tools
+.. approved = (",".join(permitted)) if permitted.length
+.. permitted [String] =
+    **? allowed-tools
+    ** claude-mcp-tools(mcp-servers)
+.. plan = resume ?? claude-resume(request)
+.. point = plan.point
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-resume ClaudeResume
+    - request AIRequest
+
+|? !marks.length
+    ClaudeResume()
+|? claude-marks-chain(marks)
+    ClaudeResume(marks[marks.length - 1].point, request.forks)
+??
+    ClaudeResume(null, false, marks)
+
+.. marks = claude-marks(request.messages)
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-marks [ClaudeMark]
+    - messages [AIMessage]
+
+. marks = List'ClaudeMark()
+for message in messages
+    for part in message.parts
+        . mark = claude-part-mark(part)
+        if mark
+            marks += mark
+= marks
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-marks-chain Bool
+    - marks [ClaudeMark]
+
+. index = marks.length - 1
+while index > 0
+    . mark = marks[index]
+    =? true if mark.basis && mark.basis == claude-marks-basis(marks[0 .. < index])
+    . parent = mark.parent ?? ClaudePoint(mark.point.session)
+    =? false if !claude-same-point(parent, marks[index - 1].point)
+    index -= 1
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-marks-basis String
+    - marks [ClaudeMark]
+
+"${hash-for(points)}"
+
+.. points = "|".join("${each.point.session}@${each.point.entry ?? ""}" in marks)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-same-point
+    - first ClaudePoint
+    - second ClaudePoint
+
+same-session && (first.entry == null || second.entry == null || first.entry == second.entry)
+
+.. same-session = first.session == second.session
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-mark-data JSON
+    - mark ClaudeMark
+    - model String
+
+Map'String'JSON
+    • "session_id" mark.point.session
+    • model model
+    •? entry mark.point.entry
+    •? "message_id" mark.message
+    •? blocks blocks
+    •? parent claude-parent-data(mark)
+
+.. blocks = (mark.blocks as Int) if mark.message
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-parent-data JSON?
+    - mark ClaudeMark
+
+|? mark.parent == null
+    null
+??
+    Map'String'JSON
+        • "session_id" mark.parent.session
+        •? entry mark.parent.entry
+        •? basis mark.basis
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-instructions String?
+    - request AIRequest
+
+text if text.length
+
+.. text = "\n\n".join(ai-parts-text(each.parts) in request.messages when claude-instructs(each))
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-session-id String?
+    - messages [AIMessage]
+
+. found String?
+for message in messages
+    for part in message.parts
+        found = claude-part-session(part) ?? found
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-prompt JSON ?! AIError
+    - request AIRequest
+
+?! AIError(AIErrorKind.invalid-request, "Claude Code runs its own tools")
+    if request.tools.length
+
+. prompts = List'String()
+. images = List'AIImage()
+for message in request.messages
+    if claude-instructs(message)
+        continue
+    if message.role == AIMessageRole.user
+        claude-prompt-images(message, images)
+        . text = ai-parts-text(message.parts)
+        if text.length
+            prompts += text
+    else if claude-session-id([message])
+        prompts = List'String()
+        images = List'AIImage()
+    else
+        ?! AIError(AIErrorKind.invalid-request, "Claude Code can only continue its own replies")
+
+?! AIError(AIErrorKind.invalid-request, "Claude Code needs a prompt")
+    if !prompts.length && !images.length
+. text = "\n\n".join(prompts)
+=? text if !images.length
+. content = List'JSON()
+for image in images
+    content += claude-image-block(image)
+if text.length
+    content += claude-text-block(text)
+= content
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-initialize-line
+    - request-id String
+    - hosted [String] = List'String()
+
+claude-control-request(request-id, request)
+
+.. request = Map'String'JSON
+    • subtype "initialize"
+    • hooks null as JSON
+    •? "sdkMcpServers" List'JSON((each as JSON) in hosted) if hosted
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-interrupt-line
+    - request-id String
+    - cancels-queued = false
+
+claude-control-request(request-id, request)
+
+.. request = Map'String'JSON
+    • subtype "interrupt"
+    •? "cancel_queued" true if cancels-queued
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-stop-task-line
+    - request-id String
+    - task-id String
+
+claude-control-request(request-id, request)
+
+.. request = Map'String'JSON
+    • subtype "stop_task"
+    • "task_id" task-id
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-task-output-line
+    - request-id String
+    - task-id String
+
+claude-control-request(request-id, request)
+
+.. request = Map'String'JSON
+    • subtype "get_task_output"
+    • "task_id" task-id
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeMCPMessage is Tuple
+
++ request-id String
++ server String
++ message JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-mcp-message ClaudeMCPMessage?
+    - line JSON
+
+match? json-object(line)
+    | ["type" = "control_request", "request_id" = id String, "request" = ["subtype" = "mcp_message", "server_name" = server String, "message" = message]]
+        ClaudeMCPMessage(id, server, message)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-mcp-reply-line
+    - request-id String
+    - reply JSON
+
+to-json(root)
+
+.. answered = Map'String'JSON
+    • "mcp_response" reply
+.. response = Map'String'JSON
+    • subtype "success"
+    • "request_id" request-id
+    • response answered
+.. root = Map'String'JSON
+    • type "control_response"
+    • response response
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeAnswer is Tuple
+
++ request-id String
++ response JSON?
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-answer ClaudeAnswer?
+    - line JSON
+
+match? json-object(line)
+    | ["type" = "control_response", "response" = ["subtype" = "success", "request_id" = id String, "response" = response]]
+        ClaudeAnswer(id, response)
+    | ["type" = "control_response", "response" = ["request_id" = id String]]
+        ClaudeAnswer(id, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-task-output-text String?
+    - response JSON?
+
+json-string(json-object(response)?["output"])
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeTaskEvent is Union
+
+| started(id String, call-id String?, kind String, title String, is-backgrounded Bool)
+| progressed(id String, summary String?)
+| updated(id String, status String?, is-backgrounded Bool?)
+| notified(id String, status String, output-path String?, summary String?)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-task-event ClaudeTaskEvent?
+    - line JSON
+
+match? root
+    |= null
+        null
+    | ["type" = "system", "subtype" = "task_started", "task_id" = id String]
+        ClaudeTaskEvent.started(id, call, kind, title, is-backgrounded)
+
+        .. call = json-string(root["tool_use_id"])
+        .. kind = json-string(root["task_type"]) ?? ""
+        .. title = json-string(root["description"]) ?? ""
+        .. is-backgrounded = json-bool(root["is_backgrounded"]) ?? true
+    | ["type" = "system", "subtype" = "task_progress", "task_id" = id String]
+        ClaudeTaskEvent.progressed(id, json-string(root["summary"]))
+    | ["type" = "system", "subtype" = "task_notification", "task_id" = id String]
+        ClaudeTaskEvent.notified(id, status, path, json-string(root["summary"]))
+
+        .. status = json-string(root["status"]) ?? "completed"
+        .. path = json-string(root["output_file"]) if json-string(root["output_file"]) != ""
+    | ["type" = "system", "subtype" = "task_updated", "task_id" = id String, "patch" = patch [String = JSON]]
+        ClaudeTaskEvent.updated
+            - id
+            - json-string(patch["status"])
+            - json-bool(patch["is_backgrounded"])
+
+.. root = json-object(line)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-task-status AIToolTaskStatus?
+    - status String?
+
+match? status
+    |= "completed"
+        AIToolTaskStatus.completed
+    |= "failed"
+        AIToolTaskStatus.failed
+    |= "stopped"
+        AIToolTaskStatus.stopped
+    |= "killed"
+        AIToolTaskStatus.stopped
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-is-result
+    - line JSON
+
+json-string(root?["type"]) == "result" && !json-string(root?["parent_tool_use_id"])
+
+.. root = json-object(line)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-is-requesting
+    - line JSON
+
+json-string(root?["type"]) == "system" && json-string(root?["subtype"]) == "status" && json-string(root?["status"]) == "requesting" && !json-string(root?["parent_tool_use_id"])
+
+.. root = json-object(line)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-queued-turns Size
+    - line JSON
+
+json-size(json-object(line)?["queued_turn_count"]) ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-user-line
+    - prompt JSON
+    - priority String? = null
+
+to-json(root)
+
+.. root = Map'String'JSON
+    • type "user"
+    • message Map'String'JSON
+        • role "user"
+        • content prompt
+    • "parent_tool_use_id" null as JSON
+    • "session_id" "default"
+    •? priority priority
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-instructs
+    - message AIMessage
+
+message.role == AIMessageRole.system || message.role == AIMessageRole.developer
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-prompt-images ?! AIError
+    - message AIMessage
+    - images [AIImage]
+
+for part in message.parts
+    if | image AIImagePart = part
+        images += image.image
+    else
+        ?! AIError(AIErrorKind.invalid-request, "Claude Code prompts hold only text and images")
+            if part is not AITextPart
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-text-block JSON
+    - text String
+
+Map'String'JSON
+    • type "text"
+    • text text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-image-block JSON ?! AIError
+    - image AIImage
+
+. file = image.file
+. source = Map'String'JSON()
+if | remote AIURLSource = file.source
+    source["type"] = "url"
+    source["url"] = remote.url
+else
+    source["type"] = "base64"
+    source["media_type"] = file.mime-type
+    source["data"] = "${claude-image-data(file)}"
+= Map'String'JSON
+    • type "image"
+    • source source
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-image-data Base64 ?! AIError
+    - file AIFile
+
+do match? file.source
+    | encoded AIBase64Source
+        = encoded.data
+    | held AIBytesSource
+        = held.data as Base64
+    | stored AIPathSource
+        . bytes = read-file-bytes(Path(stored.path, 0))
+            catch failure Error
+                ?! AIError(AIErrorKind.invalid-request, "Unable to read image ${stored.path}: $failure")
+        = bytes as Base64
+?! AIError(AIErrorKind.invalid-request, "Claude Code cannot read this image")
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-part-session String?
+    - part AIMessagePart
+
+claude-part-mark(part)?.point.session
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-part-mark ClaudeMark?
+    - part AIMessagePart
+
+=? if part is not AIExtensionPart
+. extension = part as AIExtensionPart
+=? if extension.provider-id != claude-provider-id || extension.part-type != claude-session-part
+. fields = json-object(extension.data)
+. id = json-string(fields?["session_id"])
+=? if !fields || !id
+. point = ClaudePoint(id, json-string(fields["entry"]))
+. message = json-string(fields["message_id"])
+. blocks = json-int(fields["blocks"]) ?? 0
+. parent = json-object(fields["parent"])
+. parent-id = json-string(parent?["session_id"])
+=? ClaudeMark(point, null, null, message, blocks) if !parent || !parent-id
+. origin = ClaudePoint(parent-id, json-string(parent["entry"]))
+= ClaudeMark(point, origin, json-string(parent["basis"]), message, blocks)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-control-request
+    - request-id String
+    - request [String = JSON]
+
+to-json(root)
+
+.. root = Map'String'JSON
+    • type "control_request"
+    • "request_id" request-id
+    • request request
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-mcp-config String
+    - servers [ClaudeMCPServer]
+
+to-json(config)
+
+.. config = Map'String'JSON
+    • "mcpServers" Map'String'JSON((each.name, each.json) in servers)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-mcp-tools <String>
+    - servers [ClaudeMCPServer]
+
+for server in servers
+    for tool in server.tools
+        <= "mcp__${server.name}__$tool"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-flag <String>
+    - name String
+    - value String?
+
+if value != null
+    <= name
+    <= value
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-part-id
+    - message-id String
+    - index Size
+
+"$message-id:$index"
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-begun-part AIMessagePart?
+    - id String
+    - block [String = JSON]
+    - is-update Bool
+
+match? block
+    | ["type" = "text"]
+        AITextPart(id, "")
+    | ["type" = "thinking"]
+        AIReasoningPart(id, "") • is-update is-update
+    | ["type" = "tool_use", "id" = call-id String, "name" = name String]
+        AIToolCallPart(id, call-id, name, null)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-completed-part AIMessagePart?
+    - id String
+    - block [String = JSON]
+    - is-update Bool
+
+match? block
+    | ["type" = "text", "text" = text String]
+        AITextPart(id, text)
+    | ["type" = "thinking", "thinking" = text String]
+        AIReasoningPart(id, text, null, block["signature"], is-update)
+    | ["type" = "tool_use", "id" = call-id String, "name" = name String, "input" = input]
+        AIToolCallPart(id, call-id, name, input)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-content-delta AIContentDelta?
+    - delta [String = JSON]
+
+match? delta
+    | ["type" = "text_delta", "text" = text String {it.length > 0}]
+        AITextDelta(text)
+    | ["type" = "thinking_delta", "thinking" = text String {it.length > 0}]
+        AIReasoningDelta(text)
+    | ["type" = "input_json_delta", "partial_json" = text String {it.length > 0}]
+        AIToolArgumentsDelta(text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-result-part AIMessagePart?
+    - block JSON
+
+match? block
+    | ["type" = "tool_result", "tool_use_id" = call-id String, "content" = content]
+        AIToolResultPart("$call-id:result", call-id, content, claude-result-text(content), is-error)
+
+.. is-error = json-flag((block as [String = JSON])["is_error"])
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-result-text String?
+    - content JSON
+
+match? content
+    | text String
+        text
+    | blocks [JSON]
+        "".join((claude-block-text(each) ?? "") in blocks)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-block-text String?
+    - block JSON
+
+match? block
+    | ["type" = "text", "text" = text String]
+        text
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-finish-reason AIFinishReason
+    - reason String
+
+match reason
+    |= "end_turn"
+        AIFinishReason.stop
+    |= "stop_sequence"
+        AIFinishReason.stop
+    |= "max_tokens"
+        AIFinishReason.length
+    |= "refusal"
+        AIFinishReason.content-filter
+    ??
+        AIProviderFinishReason(claude-provider-id, reason)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-error-kind
+    - error String
+
+match error
+    |= "authentication_failed"
+        AIErrorKind.authentication
+    |= "rate_limit"
+        AIErrorKind.rate-limit
+    |= "invalid_request"
+        AIErrorKind.invalid-request
+    |= "server_error"
+        AIErrorKind.server
+    ??
+        AIErrorKind.unknown
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-status-kind
+    - status Int?
+
+|? status == 401 || status == 403
+    AIErrorKind.authentication
+|? status == 429
+    AIErrorKind.rate-limit
+|? status != null && status >= 500
+    AIErrorKind.server
+??
+    AIErrorKind.unknown
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-failure-message
+    - root [String = JSON]
+    - kind AIErrorKind?
+
+|? kind == AIErrorKind.authentication
+    "Claude Code is not signed in. Run \"claude auth login\" in a terminal, then try again."
+??
+    claude-result-message(root)
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-result-message
+    - root [String = JSON]
+
+json-string(root["result"]) ?? first-error ?? "Claude Code did not finish the turn"
+
+.. first-error = match? root
+    | ["errors" = [error String, ...]]
+        error
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-usage
+    - value [String = JSON]?
+
+|? !value
+    AIUsage()
+??
+    AIUsage
+        • input-tokens (fresh ?? 0) + (created ?? 0) + (read ?? 0)
+        • output-tokens json-size(value["output_tokens"])
+        • cache-creation-tokens created
+        • cache-read-tokens read
+        • reasoning-tokens reasoning
+
+.. fresh = json-size(value["input_tokens"])
+.. created = json-size(value["cache_creation_input_tokens"])
+.. read = json-size(value["cache_read_input_tokens"])
+.. details = json-object(value["output_tokens_details"])
+.. reasoning = json-size(details["thinking_tokens"]) if details
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-string
+    - value JSON?
+
+match? value
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-object
+    - value JSON?
+
+match? value
+    | [String = JSON]
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-int Int?
+    - value JSON?
+
+match? value
+    | Int
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-size Size?
+    - value JSON?
+
+match? value
+    | Int {it >= 0}
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-flag
+    - value JSON?
+
+json-bool(value) ?? false
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-bool
+    - value JSON?
+
+match? value
+    | Bool

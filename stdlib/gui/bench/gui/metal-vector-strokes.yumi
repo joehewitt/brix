@@ -1,0 +1,674 @@
+`benchmark.meta description: Five thousand filled and stroked vector items with mixed widths, caps, joins, inherited strokes, open and closed outlines, and rotations through DisplayScene on Metal at 1600x1000 and scale 2, as simple, complex, and hairline paths, plus grids of every cap and join, of inside, outside, and stacked strokes with hairline widths, and of dashes on lines, and of dashes on curves or with overlapping caps, under identity and skewing transforms, with frame CPU, GPU, stroke work, fallback, and CoreGraphics parity evidence.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui-metal
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/matrix
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/vectorgeometry
+/gui/box
+/gui/layout
+/gui/metal
+/gui/primitives
+/gui/scene
+/math
+/stream/sort
+/time/timer
+
+. simple = run-vector-strokes(false, false)
+. complex = run-vector-strokes(true, false)
+. hairline = run-vector-strokes(false, true)
+. grid = run-stroke-grid()
+. styles = run-stroke-panels(0)
+. dash-lines = run-stroke-panels(1)
+. dash-curves = run-stroke-panels(2)
+//gui.bench.metal.stroke-cpu-p50-ns += simple.cpu-p50
+//gui.bench.metal.stroke-gpu-p50-ns += simple.gpu-p50
+//gui.bench.metal.stroke-segments += simple.segments
+//gui.bench.metal.stroke-lines += simple.lines
+//gui.bench.metal.stroke-pieces += simple.pieces
+//gui.bench.metal.stroke-draws += simple.draws
+//gui.bench.metal.stroke-overflows += simple.overflows
+//gui.bench.metal.stroke-diff-ppm += simple.diff-ppm
+//gui.bench.metal.stroke-detail-ppm += simple.detail-ppm
+//gui.bench.metal.stroke-gross-ppm += simple.gross-ppm
+//gui.bench.metal.stroke-max-delta += simple.max-delta
+//gui.bench.metal.stroke-complex-cpu-p50-ns += complex.cpu-p50
+//gui.bench.metal.stroke-complex-gpu-p50-ns += complex.gpu-p50
+//gui.bench.metal.stroke-complex-segments += complex.segments
+//gui.bench.metal.stroke-complex-lines += complex.lines
+//gui.bench.metal.stroke-complex-overflows += complex.overflows
+//gui.bench.metal.stroke-complex-gross-ppm += complex.gross-ppm
+//gui.bench.metal.stroke-complex-max-delta += complex.max-delta
+//gui.bench.metal.stroke-grid-detail-ppm += grid.detail-ppm
+//gui.bench.metal.stroke-grid-gross-ppm += grid.gross-ppm
+//gui.bench.metal.stroke-grid-max-delta += grid.max-delta
+//gui.bench.metal.stroke-hairline-cpu-p50-ns += hairline.cpu-p50
+//gui.bench.metal.stroke-hairline-gpu-p50-ns += hairline.gpu-p50
+//gui.bench.metal.stroke-hairline-lines += hairline.lines
+//gui.bench.metal.stroke-hairline-gross-ppm += hairline.gross-ppm
+//gui.bench.metal.stroke-hairline-max-delta += hairline.max-delta
+//gui.bench.metal.stroke-style-detail-ppm += styles.detail-ppm
+//gui.bench.metal.stroke-style-gross-ppm += styles.gross-ppm
+//gui.bench.metal.stroke-style-max-delta += styles.max-delta
+//gui.bench.metal.stroke-dash-line-detail-ppm += dash-lines.detail-ppm
+//gui.bench.metal.stroke-dash-line-gross-ppm += dash-lines.gross-ppm
+//gui.bench.metal.stroke-dash-line-max-delta += dash-lines.max-delta
+//gui.bench.metal.stroke-dash-curve-gross-ppm += dash-curves.gross-ppm
+//gui.bench.metal.stroke-dash-curve-max-delta += dash-curves.max-delta
+?! Panic("Vector strokes differ from CoreGraphics beyond the GR-D21 budget")
+    if simple.gross-ppm > 100 || grid.gross-ppm > 100
+?! Panic("Aligned, stacked, or dashed strokes differ from CoreGraphics beyond the GR-D21 budget")
+    if styles.gross-ppm > 100 || dash-lines.gross-ppm > 100
+. checksum = simple.segments + complex.segments + simple.pieces + grid.draws + styles.draws
+checksum += dash-lines.draws + dash-curves.draws
+-- "bench-result gui/metal-vector-strokes checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorStrokesResult is Tuple
+
++ cpu-p50 U64
++ gpu-p50 U64
++ segments I64
++ lines I64
++ pieces I64
++ draws I64
++ overflows I64
++ diff-ppm I64
++ detail-ppm I64
++ gross-ppm I64
++ max-delta I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-vector-strokes
+    - complex Bool
+    - hairline Bool
+
+. root = VectorStrokesRoot()
+for band in 0 .. < 10
+    markup-append(root, VectorStrokesBand(band * 500, complex, hairline))
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1600, 1000))
+. renderer = MetalOffscreenRenderer(1600, 1000, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(1600, 1000, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. result VectorStrokesResult
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        renderer.finish()
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for frame in 0 .. < 31
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        result = vector-strokes-result
+            - renderer
+            - reference
+            - vector-strokes-median(elapsed)
+            - vector-strokes-median(gpu)
+        vector-strokes-check(scene, renderer)
+scene.close()
+root.close()
+markup-release(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-stroke-grid
+
+. root = VectorStrokesRoot()
+markup-append(root, StrokeGridPanel(false))
+markup-append(root, StrokeGridPanel(true))
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 800))
+. renderer = MetalOffscreenRenderer(400, 800, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(400, 800, 2, white)
+. result VectorStrokesResult
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        renderer.finish()
+        root.paint(reference)
+        result = vector-strokes-result(renderer, reference, 0, 0)
+        vector-strokes-check(scene, renderer)
+scene.close()
+root.close()
+markup-release(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-strokes-result
+    - renderer MetalOffscreenRenderer
+    - reference RasterCanvas
+    - cpu-p50 U64
+    - gpu-p50 U64
+
+. diff = renderer.diff(reference, 2)
+. detail = renderer.diff(reference, 10)
+. gross = renderer.diff(reference, 48)
+= VectorStrokesResult
+    - cpu-p50
+    - gpu-p50
+    - renderer.fill-segments
+    - renderer.fill-lines
+    - renderer.fill-pieces
+    - renderer.fill-draws
+    - renderer.fill-overflows
+    - (diff.differing-pixels * 1000000) / diff.pixel-count
+    - (detail.differing-pixels * 1000000) / detail.pixel-count
+    - (gross.differing-pixels * 1000000) / gross.pixel-count
+    - diff.maximum-channel-delta
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-strokes-check
+    - scene DisplayScene
+    - renderer MetalOffscreenRenderer
+
+?! Panic("Vector strokes fell back to CoreGraphics tiles")
+    if scene.metal-tile-fallbacks != 0
+?! Panic("Vector strokes skipped Metal operations")
+    if renderer.skipped-ops != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-strokes-median
+    - samples [U64]
+
+sorted[sorted.length / 2]
+
+.. sorted = sort(samples) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorStrokesRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorStrokesBand is Box
+
++ first Size
++ complex Bool
++ hairline Bool
+_ handles [VectorGeometryHandle]
+
+• This
+    min-width = SizeSpec.coord(1600)
+    max-width = SizeSpec.coord(1600)
+    min-height = SizeSpec.coord(100)
+    max-height = SizeSpec.coord(100)
+
+────────────────────
++ This
+    - first
+    - complex
+    - hairline
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. table = vector-geometry-table-for(markup-batch-root)
+if !handles
+    for serial in first .. < first + 500
+        . key = if hairline then serial + 40000 else serial * 2 + (if complex then 1 else 0)
+        handles += table.intern-geometry
+            - key as U64
+            - => vector-strokes-geometry(serial, complex, hairline)
+. origin = bounds.top-left
+for serial in first .. < first + 500
+    . hue = ((serial % 12) as F64) / 12
+    . palette =
+        * RGBA(0.2 + hue * 0.7, 0.45, 0.9 - hue * 0.6, if serial % 7 == 0 then 0.6 else 1)
+        * RGBA(0.1, 0.15 + hue * 0.5, 0.3, if serial % 9 == 0 then 0.7 else 1)
+        * RGBA(0.95, 0.8 - hue * 0.5, 0.2, 1)
+    . x = origin.x + ((serial * 37) % 1520) as F64
+    . y = origin.y + ((serial * 53) % 40) as F64
+    . transform = matrix-from-translation(Point(x, y))
+    if serial % 10 == 3
+        . angle = ((serial % 7) as F64) * 0.23rad + 0.1rad
+        transform = matrix-from-rotation(angle, Point(x + 30, y + 30)).concatenate(transform)
+    canvas.fill-color = null
+    canvas.stroke-color = RGBA(0.35, 0.1, 0.45, 1)
+    canvas.stroke-width =
+        |? hairline
+            ((1 + serial % 3) as F64) * 0.15
+        ??
+            ((1 + serial % 4) as F64) * 0.75
+    canvas.stroke-cap = if serial % 16 == 6 then LineCap.round else LineCap.square
+    canvas.stroke-join = if serial % 3 == 0 then LineJoin.bevel else LineJoin.round
+    . painted = table.paint-vector(handles[serial - first], canvas, palette, transform)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-strokes-geometry
+    - serial Size
+    - complex Bool
+    - hairline Bool
+
+. spans [VectorGeometrySpan]
+. span = (20 + (serial * 7) % 44) as F64
+. none = VectorGeometryPaint(VectorGeometryPaintRole.none, 0)
+. outer = Path()
+if complex
+    . center = Point(6 + span * 0.5, 6 + span * 0.5)
+    . petals = 48
+    for petal in 0 .. < petals
+        . start = (petal as F64) * 2 * π / (petals as F64)
+        . step = 2 * π / (petals as F64)
+        . radius = if petal % 2 == 0 then span * 0.5 else span * 0.4
+        . next = if petal % 2 == 0 then span * 0.4 else span * 0.5
+        . head = center + Point(cos(start) * radius, sin(start) * radius)
+        . tail = center + Point(cos(start + step) * next, sin(start + step) * next)
+        . bulge = span * 0.55
+        if petal == 0
+            outer.move-to(head)
+        outer.cubic-curve-to
+            - center + Point(cos(start + step / 3) * bulge, sin(start + step / 3) * bulge)
+            - center + Point(cos(start + step * 2 / 3) * bulge, sin(start + step * 2 / 3) * bulge)
+            - tail
+else
+    . lean = ((serial % 29) as F64) * 0.5
+    . a = Point(6, 12)
+    . b = Point(6 + span + lean, 18)
+    . c = Point(6 + span * 0.4, 12 + span * 0.8 + lean * 0.5)
+    outer.move-to(a)
+    outer.cubic-curve-to(a + Point(span * 0.3, -span * 0.4), b + Point(-span * 0.3, -span * 0.4), b)
+    outer.cubic-curve-to(b + Point(span * 0.15, span * 0.3), c + Point(0, -span * 0.3), c)
+    outer.line-to(a)
+if serial % 6 != 5
+    outer.close()
+. caps = [LineCap.butt, LineCap.round, LineCap.square]
+. joins = [LineJoin.miter, LineJoin.round, LineJoin.bevel]
+. fill = VectorGeometryPaint(VectorGeometryPaintRole.color, 0)
+. stroke = VectorGeometryPaint(VectorGeometryPaintRole.color, 1)
+. width = (1 + serial % 3) as F64
+do match? serial % 20
+    |? it >= 17
+        width = 3
+    |? it >= 14
+        fill = none
+        width = 2
+    |? it >= 10
+        stroke = none
+if hairline
+    width = ((1 + serial % 3) as F64) * 0.15
+. inherited = serial % 8 == 6
+if inherited
+    spans += VectorGeometrySpan
+        - outer
+        - fill
+        - VectorGeometryPaint(VectorGeometryPaintRole.inherit, 0)
+        - null
+        - null
+        - null
+        - FillRule.nonzero
+else
+    spans += VectorGeometrySpan
+        - outer
+        - fill
+        - stroke
+        - width
+        - caps[serial % 3]
+        - joins[(serial / 3) % 3]
+        - FillRule.nonzero
+if serial % 4 == 0
+    . inner = Path()
+    inner.move-to(Point(12, 26))
+    inner.cubic-curve-to(Point(18, 18), Point(30, 18), Point(36, 26))
+    inner.cubic-curve-to(Point(30, 34), Point(18, 34), Point(12, 26))
+    inner.close()
+    spans += VectorGeometrySpan
+        - inner
+        - VectorGeometryPaint(VectorGeometryPaintRole.color, 2)
+        - stroke
+        - if hairline then 0.2 else 1.5
+        - LineCap.butt
+        - LineJoin.round
+        - FillRule.nonzero
+= VectorGeometry(Rect(0, 0, 110, 110), Rect(0, 0, 110, 110), spans, false, inherited)
+
+━━━━━━━━━━━━━━━━━━━━
+_ StrokeGridPanel is Box
+
++ skewed Bool
+_ handles [VectorGeometryHandle]
+
+• This
+    min-width = SizeSpec.coord(400)
+    max-width = SizeSpec.coord(400)
+    min-height = SizeSpec.coord(400)
+    max-height = SizeSpec.coord(400)
+
+────────────────────
++ This
+    - skewed
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. table = vector-geometry-table-for(markup-batch-root)
+if !handles
+    for serial in 0 .. < 10
+        handles += table.intern-geometry((serial + 10000) as U64, => stroke-grid-geometry(serial))
+. origin = bounds.top-left
+for serial in 0 .. < 10
+    . palette = [RGBA(0.15, 0.25, 0.6, 1), RGBA(0.95, 0.75, 0.3, 0.8)]
+    . x = origin.x + ((serial % 3) * 130 + 5) as F64
+    . y = origin.y + ((serial / 3) * 95 + 5) as F64
+    . transform = matrix-from-translation(Point(x, y))
+    if skewed
+        transform = transform.shear(Dimensions(0.3, 0.15)).scale(Dimensions(0.85, 0.8))
+    canvas.fill-color = null
+    canvas.stroke-color = null
+    . painted = table.paint-vector(handles[serial], canvas, palette, transform)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-grid-geometry
+    - serial Size
+
+. spans [VectorGeometrySpan]
+. none = VectorGeometryPaint(VectorGeometryPaintRole.none, 0)
+. stroke = VectorGeometryPaint(VectorGeometryPaintRole.color, 0)
+if serial == 9
+    . shape = Path()
+    shape.move-to(Point(20, 20))
+    shape.cubic-curve-to(Point(60, 0), Point(100, 40), Point(80, 70))
+    shape.line-to(Point(30, 75))
+    shape.close()
+    spans += VectorGeometrySpan
+        - shape
+        - VectorGeometryPaint(VectorGeometryPaintRole.color, 1)
+        - stroke
+        - 6
+        - LineCap.butt
+        - LineJoin.round
+        - FillRule.nonzero
+else
+    . caps = [LineCap.butt, LineCap.round, LineCap.square]
+    . joins = [LineJoin.miter, LineJoin.round, LineJoin.bevel]
+    . path = Path()
+    path.move-to(Point(15, 70))
+    path.line-to(Point(35, 20))
+    path.line-to(Point(55, 65))
+    path.cubic-curve-to(Point(70, 10), Point(95, 10), Point(105, 60))
+    spans += VectorGeometrySpan
+        - path
+        - none
+        - stroke
+        - 8
+        - caps[serial % 3]
+        - joins[serial / 3]
+        - FillRule.nonzero
+= VectorGeometry(Rect(0, 0, 120, 90), Rect(0, 0, 120, 90), spans, false, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-stroke-panels
+    - kind Size
+
+. root = VectorStrokesRoot()
+markup-append(root, StrokeStylePanel(kind, false))
+markup-append(root, StrokeStylePanel(kind, true))
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 800))
+. renderer = MetalOffscreenRenderer(400, 800, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(400, 800, 2, white)
+. result VectorStrokesResult
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        renderer.finish()
+        root.paint(reference)
+        result = vector-strokes-result(renderer, reference, 0, 0)
+        vector-strokes-check(scene, renderer)
+scene.close()
+root.close()
+markup-release(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ StrokeStylePanel is Box
+
++ kind Size
++ skewed Bool
+_ handles [VectorGeometryHandle]
+
+• This
+    min-width = SizeSpec.coord(400)
+    max-width = SizeSpec.coord(400)
+    min-height = SizeSpec.coord(400)
+    max-height = SizeSpec.coord(400)
+
+────────────────────
++ This
+    - kind
+    - skewed
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. table = vector-geometry-table-for(markup-batch-root)
+if !handles
+    for serial in 0 .. < 12
+        . key = 20000 + kind * 100 + serial
+        handles += table.intern-geometry(key as U64, => stroke-style-geometry(kind, serial))
+. origin = bounds.top-left
+for serial in 0 .. < 12
+    . palette = [RGBA(0.15, 0.25, 0.6, 1), RGBA(0.95, 0.75, 0.3, 1), RGBA(0.8, 0.2, 0.3, 0.7)]
+    . x = origin.x + ((serial % 4) * 100 + 5) as F64
+    . y = origin.y + ((serial / 4) * 130 + 5) as F64
+    . transform = matrix-from-translation(Point(x, y))
+    if skewed
+        transform = transform.shear(Dimensions(0.3, 0.15)).scale(Dimensions(0.85, 0.8))
+    canvas.fill-color = null
+    canvas.stroke-color = RGBA(0.35, 0.1, 0.45, 1)
+    canvas.stroke-width = 4
+    canvas.stroke-cap = LineCap.round
+    canvas.stroke-join = LineJoin.bevel
+    canvas.stroke-dash = stroke-style-dash(kind, serial)
+    . painted = table.paint-vector(handles[serial], canvas, palette, transform)
+    canvas.stroke-dash = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ stroke-style-dash
+    - kind Size
+    - serial Size
+
+match kind
+    |= 0
+        0
+    |= 1
+        (6 + (serial * 5) % 6) as F64
+    |? serial % 4 == 3
+        3
+    ??
+        (3 + (serial * 5) % 8) as F64
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-style-shape
+    - shape Size
+
+. path = Path()
+do match shape
+    |= 0
+        path.move-to(Point(15, 20))
+        path.cubic-curve-to(Point(50, 0), Point(85, 30), Point(70, 70))
+        path.line-to(Point(25, 100))
+        path.close()
+    |= 1
+        path.move-to(Point(15, 90))
+        path.line-to(Point(30, 20))
+        path.cubic-curve-to(Point(60, 0), Point(80, 40), Point(75, 100))
+    |= 2
+        path.move-to(Point(45, 5))
+        path.line-to(Point(70, 100))
+        path.line-to(Point(5, 40))
+        path.line-to(Point(85, 40))
+        path.line-to(Point(20, 100))
+        path.close()
+    |= 3
+        path.move-to(Point(10, 90))
+        path.line-to(Point(30, 20))
+        path.line-to(Point(50, 90))
+        path.line-to(Point(70, 20))
+        path.line-to(Point(90, 90))
+    |= 4
+        path.move-to(Point(10, 10))
+        path.line-to(Point(85, 10))
+        path.line-to(Point(85, 50))
+        path.line-to(Point(10, 50))
+        path.close()
+        path.move-to(Point(15, 65))
+        path.line-to(Point(85, 105))
+        path.move-to(Point(15, 105))
+        path.line-to(Point(50, 75))
+        path.line-to(Point(85, 80))
+    |= 5
+        path.move-to(Point(10, 60))
+        path.cubic-curve-to(Point(25, 0), Point(45, 0), Point(50, 60))
+        path.cubic-curve-to(Point(55, 120), Point(80, 120), Point(90, 60))
+    ??
+        path.move-to(Point(50, 10))
+        path.cubic-curve-to(Point(80, 10), Point(90, 40), Point(90, 60))
+        path.cubic-curve-to(Point(90, 90), Point(70, 110), Point(50, 110))
+        path.cubic-curve-to(Point(25, 110), Point(10, 85), Point(10, 60))
+        path.cubic-curve-to(Point(10, 30), Point(25, 10), Point(50, 10))
+        path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-style-geometry
+    - kind Size
+    - serial Size
+
+. spans [VectorGeometrySpan]
+. none = VectorGeometryPaint(VectorGeometryPaintRole.none, 0)
+. fill = VectorGeometryPaint(VectorGeometryPaintRole.color, 1)
+. stroke = VectorGeometryPaint(VectorGeometryPaintRole.color, 0)
+. accent = VectorGeometryPaint(VectorGeometryPaintRole.color, 2)
+. caps = [LineCap.butt, LineCap.round, LineCap.square]
+. joins = [LineJoin.miter, LineJoin.round, LineJoin.bevel]
+. alignments = [StrokeAlignment.inside, StrokeAlignment.outside, StrokeAlignment.center]
+. cap = caps[serial % 3]
+. join = joins[(serial / 3) % 3]
+if kind == 0 && serial < 9
+    . shape = stroke-style-shape(if serial < 3 then 0 else if serial < 6 then 1 else 2)
+    . rule = if serial >= 6 then FillRule.even-odd else FillRule.nonzero
+    spans += VectorGeometrySpan
+        - shape
+        - fill
+        - stroke
+        - 8
+        - LineCap.round
+        - LineJoin.miter
+        - rule
+        - alignments[serial % 3]
+else if kind == 0 && serial < 11
+    . shape = stroke-style-shape(0)
+    spans += VectorGeometrySpan(shape, fill, none, null, null, null, FillRule.nonzero)
+    spans += VectorGeometrySpan
+        - shape
+        - none
+        - accent
+        - 10
+        - LineCap.butt
+        - LineJoin.round
+        - FillRule.nonzero
+        - alignments[serial - 9]
+    spans += VectorGeometrySpan
+        - shape
+        - none
+        - stroke
+        - 3
+        - LineCap.butt
+        - LineJoin.miter
+        - FillRule.nonzero
+else if kind == 0
+    . widths [Length] = [0.1, 0.25, 0.4, 0.5]
+    for index in 0 .. < widths.length
+        . offset = (index * 25) as F64
+        . hair = Path()
+        hair.move-to(Point(8, 12 + offset))
+        hair.cubic-curve-to(Point(35, offset - 6), Point(60, offset + 30), Point(92, 10 + offset))
+        hair.line-to(Point(70, 22 + offset))
+        spans += VectorGeometrySpan
+            - hair
+            - none
+            - stroke
+            - widths[index]
+            - LineCap.butt
+            - LineJoin.miter
+            - FillRule.nonzero
+else if kind == 1
+    . shapes [Size] = [3, 2, 4]
+    . shape = stroke-style-shape(shapes[serial % 3])
+    . rule = if serial % 3 == 1 then FillRule.even-odd else FillRule.nonzero
+    if serial == 9
+        spans += VectorGeometrySpan
+            - shape
+            - fill
+            - stroke
+            - 6
+            - LineCap.butt
+            - LineJoin.miter
+            - FillRule.nonzero
+            - StrokeAlignment.inside
+    else if serial == 10
+        spans += VectorGeometrySpan
+            - shape
+            - fill
+            - VectorGeometryPaint(VectorGeometryPaintRole.inherit, 0)
+            - null
+            - null
+            - null
+            - rule
+    else
+        spans += VectorGeometrySpan(shape, none, stroke, 5, cap, join, rule)
+else if serial % 4 == 3
+    spans += VectorGeometrySpan
+        - stroke-style-shape(4)
+        - none
+        - stroke
+        - 5
+        - caps[1 + serial % 2]
+        - join
+        - FillRule.nonzero
+else
+    . shape = stroke-style-shape(if serial % 3 == 0 then 5 else if serial % 3 == 1 then 6 else 1)
+    spans += VectorGeometrySpan(shape, none, stroke, 5, cap, join, FillRule.nonzero)
+. inherited = kind == 1 && serial == 10
+= VectorGeometry(Rect(0, 0, 100, 120), Rect(0, 0, 100, 120), spans, false, inherited)

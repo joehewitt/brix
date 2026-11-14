@@ -1,0 +1,21 @@
+`benchmark.meta description: Builds lists through appends and literals to expose List capacity growth allocation.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: allocator
+
+/core
+
+. iterations = 12000
+. append-checksum I64
+. literal-checksum I64
+
+for round in 0 .. < 20
+    . items = List'I32()
+    for i in 0 .. < iterations
+        items += i as I32
+    append-checksum += items.length + items[iterations - 1] + round
+
+for round in 0 .. < 12000
+    . literal = [round, round + 1, round + 2, round + 3, round + 4]
+    literal-checksum += literal.length + literal[0] + literal[4]
+
+-- "bench-result allocation/list-growth checksum=${append-checksum + literal-checksum}"

@@ -1,0 +1,413 @@
+`benchmark.meta description: Applies deterministic TUI markup updates, restyles, reflows, repaints, and canvas diffs across many frames.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/core/style
+/tui/box
+/tui/canvas
+/tui/colors
+/tui/layout
+/tui/primitives
+/tui/text
+
+. frame-count Size = 1200
+. mutations-per-frame Size = 8
+
+<BenchApp root
+
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 36)
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+
+. checksum Size = 0
+. previous-canvas Canvas?
+for frame in 0 .. < frame-count
+    for mutation in 0 .. < mutations-per-frame
+        root.apply-mutation(frame, mutation)
+
+    root.markup-batch-queue.checkpoint()
+    root.update-layout()
+
+    . canvas = Canvas(root.bounds.size)
+    root.paint(canvas)
+
+    . output-size Size = 0
+    if previous-canvas
+        . diff = canvas.dump-diff(previous-canvas)
+        output-size = diff.size
+        //tui.bench.canvas.diff-dumps ++
+        //tui.bench.canvas.diff-bytes += output-size
+        if output-size > 0
+            //tui.bench.canvas.changed-diffs ++
+    else
+        . full = canvas.dump()
+        output-size = full.size
+        //tui.bench.canvas.full-dumps ++
+        //tui.bench.canvas.full-bytes += output-size
+    previous-canvas = canvas
+
+    //tui.bench.frames ++
+    checksum += root.frame-checksum(frame) + output-size
+
+-- "bench-result tui/mutation-frames checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchApp is Box
+    is MarkupBatch
+
++ app-self BenchApp?
++ rows [BenchRowData]
++ cells [BenchCellData]
++ data-serial = 0
++ paint-serial = 0
++ layout-serial = 0
++ repaint-serial = 0
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flex-col
+    background-color = black
+    color = white
+
+────────────────────
+
+<Label
+    text = header-text(#data-serial, #paint-serial, #layout-serial, #repaint-serial)
+    color = black
+    background-color = lime
+
+<Box
+    layout = flex-col
+    flex = 1
+    background-color = black
+
+    for row in #rows keyed by row.id
+        <BenchRowView
+            app = app-self!
+            row = row
+            data-serial = #data-serial
+            paint-serial = #paint-serial
+            layout-serial = #layout-serial
+            repaint-serial = #repaint-serial
+            layout = row-layout(row, #layout-serial)
+            flex = row-flex(row, #layout-serial) as Flex
+            background-color = row-background(row, #paint-serial)
+            color = row-color(row, #paint-serial)
+
+────────────────────
++ This
+
+app-self = this
+for row-index in 0 .. < 10
+    . row = BenchRowData("row-$row-index", row-index)
+    rows += row
+
+    for column-index in 0 .. < 8
+        . cell = BenchCellData("cell-${row-index}-$column-index", row, row-index, column-index)
+        row.cells += cell
+        cells += cell
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do apply-mutation
+    - frame Size
+    - mutation Size
+
+//tui.bench.mutations ++
+. kind = mutation % 4
+if kind == 0
+    apply-content-update(frame, mutation)
+else if kind == 1
+    apply-restyle(frame, mutation)
+else if kind == 2
+    apply-reflow(frame, mutation)
+else
+    apply-repaint(frame, mutation)
+
+────────────────────
++ do apply-content-update
+    - frame Size
+    - mutation Size
+
+//tui.bench.updates ++
+. row = rows[(frame * 17 + mutation * 11) % rows.length]
+. slot = (frame * 5 + mutation * 3) % row.cells.length
+. cell = row.cells[slot]
+. replacement = BenchCellData
+    - "cell-${cell.row-index}-${cell.column-index}-$data-serial"
+    - row
+    - cell.row-index
+    - cell.column-index
+replacement.title = "r${cell.row-index} c${cell.column-index} f$frame"
+replacement.value = "value ${(frame * 31 + mutation * 7 + cell.column-index) % 997}"
+replacement.is-hot = cell.is-hot
+replacement.is-muted = cell.is-muted
+replacement.is-wide = cell.is-wide
+row.cells[slot] = replacement
+cells[cell.row-index * 8 + cell.column-index] = replacement
+data-serial += 1
+
+────────────────────
++ do apply-restyle
+    - frame Size
+    - mutation Size
+
+//tui.bench.restyles ++
+. cell = cells[(frame * 13 + mutation * 7) % cells.length]
+. row = rows[(frame + mutation * 3) % rows.length]
+if mutation == 1
+    cell.is-hot = !cell.is-hot
+    if frame % 5 == 0
+        cell.is-muted = !cell.is-muted
+    touch-cell(cell)
+else
+    row.is-alert = !row.is-alert
+    touch-row(row)
+paint-serial += 1
+
+────────────────────
++ do apply-reflow
+    - frame Size
+    - mutation Size
+
+//tui.bench.reflows ++
+. cell = cells[(frame * 19 + mutation * 5) % cells.length]
+. row = rows[(frame * 5 + mutation) % rows.length]
+if mutation == 2
+    cell.is-wide = !cell.is-wide
+    touch-cell(cell)
+else
+    row.is-flow = !row.is-flow
+    if mutation == 6
+        row.is-tall = !row.is-tall
+    touch-row(row)
+
+if mutation == 6 && frame % 12 == 0
+    bounds = Rect(0, 0, 104 + Coord((frame + mutation) % 5) * 4, 30 + Coord(frame % 4) * 2)
+    invalidate-layout()
+layout-serial += 1
+
+────────────────────
++ do touch-row
+    - row BenchRowData
+
+rows[row.index] = row
+
+────────────────────
++ do touch-cell
+    - cell BenchCellData
+
+for index in 0 .. < cell.row.cells.length
+    if cell.row.cells[index].id == cell.id
+        cell.row.cells[index] = cell
+        =
+
+────────────────────
++ do apply-repaint
+    - frame Size
+    - mutation Size
+
+//tui.bench.repaints ++
+if mutation == 3
+    repaint-cell(cells[(frame * 23 + mutation * 3) % cells.length], frame, mutation)
+else
+    . row = rows[(frame * 7 + mutation) % rows.length]
+    for cell in row.cells
+        repaint-cell(cell, frame, mutation)
+repaint-serial += 1
+
+────────────────────
++ do repaint-cell
+    - cell BenchCellData
+    - frame Size
+    - mutation Size
+
+. view = cell.view
+if view
+    view.scroll((0, -Coord((frame + mutation + cell.column-index) % 3)))
+    view.invalidate-paint()
+
+────────────────────
++ frame-checksum Size
+    - frame Size
+
+frame + sample-cell.title.length + sample-cell.value.length + inner-width + inner-height + sample-row.cells.length + data-serial + paint-serial + layout-serial + repaint-serial
+
+.. sample-cell = cells[(frame * 11) % cells.length]
+.. sample-row = rows[(frame * 3) % rows.length]
+
+────────────────────
++ header-text String
+    - data Int
+    - paint Int
+    - layout-count Int
+    - repaint Int
+
+" TUI mutation frame bench d$data p$paint l$layout-count r$repaint "
+
+────────────────────
++ row-layout
+    - row BenchRowData
+    - serial Int
+
+if row.is-flow then flow-row else flex-row
+
+────────────────────
++ row-flex
+    - row BenchRowData
+    - serial Int
+
+if row.is-tall then 2 else 1
+
+────────────────────
++ row-background
+    - row BenchRowData
+    - serial Int
+
+if row.is-alert then navy else black
+
+────────────────────
++ row-color
+    - row BenchRowData
+    - serial Int
+
+if row.is-alert then yellow else white
+
+────────────────────
++ cell-flex
+    - cell BenchCellData
+    - serial Int
+
+if cell.is-wide then 3 else 1
+
+────────────────────
++ cell-background
+    - cell BenchCellData
+    - serial Int
+
+if cell.is-hot then blue else black
+
+────────────────────
++ cell-color
+    - cell BenchCellData
+    - serial Int
+
+if cell.is-muted then grey else white
+
+────────────────────
++ cell-title String
+    - cell BenchCellData
+    - serial Int
+    - repaint Int
+
+" ${cell.title} ${repaint % 7} "
+
+────────────────────
++ cell-value String
+    - cell BenchCellData
+    - serial Int
+    - repaint Int
+
+" ${cell.value} ${cell.row-index}:${cell.column-index}:${repaint % 5} "
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRowView is Box
+
++ app BenchApp
++ row BenchRowData
++ cells [BenchCellData]
++ data-serial = 0
++ paint-serial = 0
++ layout-serial = 0
++ repaint-serial = 0
+
+────────────────────
+
+for cell in #cells keyed by cell.id
+    <BenchCellView
+        app = #app
+        cell = cell
+        data-serial = #data-serial
+        repaint-serial = #repaint-serial
+        layout = flex-col
+        flex = app.cell-flex(cell, #layout-serial) as Flex
+        background-color = app.cell-background(cell, #paint-serial)
+        color = app.cell-color(cell, #paint-serial)
+
+────────────────────
++ This
+    - app
+    - row
+
+.. cells = row.cells
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchCellView is Box
+
++ app BenchApp
++ cell BenchCellData
++ data-serial = 0
++ repaint-serial = 0
+
+────────────────────
+
+<Label
+    text = app.cell-title(cell, #data-serial, #repaint-serial)
+
+<Label
+    text = app.cell-value(cell, #data-serial, #repaint-serial)
+
+────────────────────
++ This
+    - app
+    - cell
+
+cell.view = this
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRowData
+
++ id String
++ index Size
++ cells [BenchCellData]
++ is-alert = false
++ is-flow = false
++ is-tall = false
+
+────────────────────
++ This
+    - id
+    - index
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchCellData
+
++ id String
++ row BenchRowData
++ row-index Size
++ column-index Size
++ title String
++ value String
++ is-hot = false
++ is-muted = false
++ is-wide = false
++ view BenchCellView?
+
+────────────────────
++ This
+    - id
+    - row
+    - row-index
+    - column-index
+
+title = "r$row-index c$column-index"
+value = "value ${row-index * 10 + column-index}"

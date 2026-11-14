@@ -1,0 +1,255 @@
+/core/markup
+/graphics/primitives
+/graphics/text
+/gui/box
+/gui/label
+/gui/layout
+/gui/primitives
+/gui/shorthands
+/gui/styles
+/gui/text
+/math
+/test
+
+_ tight-sample = "Shrink wrapped paragraphs keep their line count while hugging the longest line."
+_ wrapping-sample = "The quick brown fox jumps over the lazy dog again and again until it wraps."
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Text Span Placement")
+cases.run(placement-tests)
+cases = cases.then("Flex Wrapped Text Measurement", flex-wrap-tests)
+cases = cases.then("Tight Wrap Sizing", tight-sizing-tests)
+cases = cases.then("Padded Text Measurement", padded-text-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do placement-tests
+    - t TestCase
+
+. root = TextTestRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 300))
+
+. shadowed = find-text-node'TextTestShadowSpan(root)!
+. shadowed-width = shadowed.bounds.width
+shadowed.text = "shadowed words grow longer"
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 300))
+t.check("spans inside markup shadows relayout their text", shadowed.bounds.width > shadowed-width)
+. grown-width = shadowed.bounds.width
+shadowed.text = "x"
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 300))
+t.check("spans relayout on every text change", shadowed.bounds.width < grown-width)
+root.show-inline = true
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 400, 300))
+. inline-child = find-text-node'TextTestInlineChild(root)
+t.check
+    - "late inline boxes in shadowed spans lay out their children"
+    - inline-child != null && inline-child.bounds.width == 8
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do flex-wrap-tests
+    - t TestCase
+
+. root = FlexWrapTestRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 600, 400))
+t.expect("wrapped label measures at its share", 2, root.label.text-layout-snapshot!.line-count)
+t.expect("card height follows the wrapped label", root.label.height, root.card.height)
+t.expect
+    - "text measures at max width"
+    - root.paragraph.text-layout-snapshot!.size.height
+    - root.paragraph.height
+t.expect("absolute cover measures at its span", 2, root.covered.text-layout-snapshot!.line-count)
+t.expect("absolute cover height follows wrapped text", root.covered.height, root.cover.height)
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tight-sizing-tests
+    - t TestCase
+
+. root = TightTestRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 600, 400))
+. tight-lines = root.tight-text.text-layout-snapshot!.line-count
+t.check("tight text wraps under its cap", tight-lines > 1)
+t.expect
+    - "tight text keeps the capped line count"
+    - root.wide-text.text-layout-snapshot!.line-count
+    - tight-lines
+
+root.cap = 520
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 600, 400))
+t.check
+    - "a wider cap rewraps tight text"
+    - root.tight-text.text-layout-snapshot!.line-count < tight-lines
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do padded-text-tests
+    - t TestCase
+
+. root = PaddedTextTestRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+. natural = ceil(root.plain.measure().outer-size.width)
+root.layout(Rect(0, 0, natural + 20, 400))
+t.expect("plain text fits the box on one line", 1, root.plain.text-layout-snapshot!.line-count)
+t.expect("padding narrows the wrap width", 2, root.padded.text-layout-snapshot!.line-count)
+t.expect
+    - "padded text measures the lines it arranges"
+    - root.padded.text-layout-snapshot!.size.height
+    - root.padded.height
+t.expect
+    - "a padded label wraps at its content width"
+    - 2
+    - root.padded-label.text-layout-snapshot!.line-count
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+• TextTestTheme
+    using GUIBoxPaint
+    using GUIFontStyle
+    using GUITextDecoration
+    using GUIBoxSize
+
+━━━━━━━━━━━━━━━━━━━━
++ TextTestRoot is Box
+    is MarkupBatch
+    using TextTestTheme
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ shadow-words [String] = ["short"]
++ show-inline = false
+
+────────────────────
+
+<This • flex-col
+    <Text
+        max-width = SizeSpec.coord(360)
+        "Read the "
+        <Span "linked words here"
+        " "
+        <Box • w:20 h:10
+        " and "
+        <Span
+            "outer "
+            <Span "inner"
+                font-weight = FontWeight.bold
+        for word in #shadow-words keyed by word
+            <TextTestShadow
+                <TextTestShadowSpan
+                    text = word
+                    if #show-inline
+                        <Box • w:20 h:10 flex-row
+                            <TextTestInlineChild • w:8 h:6
+
+━━━━━━━━━━━━━━━━━━━━
++ TextTestInlineChild is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ TextTestShadowSpan is Span
+
+━━━━━━━━━━━━━━━━━━━━
++ do find-text-node'T T?
+    - node GuiNode
+
+if node is T
+    = node as T
+for child in node.children
+    . found = find-text-node'T(child)
+    =? found if found
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ TextTestShadow is Box
+
++ is-markup-shadow => true
+
+━━━━━━━━━━━━━━━━━━━━
++ TightTestRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ cap Length = 300
++ tight-text Text
++ wide-text Text
+
+────────────────────
+
+<This • flex-col
+    <Box • flex-row
+        <Text tight-text
+            max-width = SizeSpec.coord(#cap)
+            text-wrap-sizing = TextWrapSizing.tight
+            <Span = tight-sample
+    <Box • flex-row
+        <Text wide-text • w:300
+            <Span = tight-sample
+
+━━━━━━━━━━━━━━━━━━━━
++ PaddedTextTestRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ plain Text
++ padded Text
++ padded-label Label
+
+────────────────────
+
+<This • flex-col
+    <Text plain
+        <Span = wrapping-sample
+    <Text padded • px:40
+        <Span = wrapping-sample
+    <Label padded-label • px:40
+        text-wrap = TextWrap.word
+        text = wrapping-sample
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexWrapTestRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ card Box
++ label Label
++ paragraph Text
++ cover Box
++ covered Label
+
+────────────────────
+
+<This • flex-col
+    <Box • flex-row
+        <Box • flex-col flex:1
+            <Box card • flex-col
+                <Label label
+                    text-wrap = TextWrap.word
+                    text = wrapping-sample
+        <Box • flex-col flex:1
+    <Box • h:60
+        <Box cover • flex-col absolute
+            left = PositionOffset.coord(0)
+            right = PositionOffset.coord(300)
+            <Label covered
+                text-wrap = TextWrap.word
+                text = wrapping-sample
+    <Box • flex-col p:10 w:300
+        <Text paragraph
+            "The quick brown fox jumps over the lazy dog again and again and again until it wraps."

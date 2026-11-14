@@ -1,0 +1,351 @@
+/data/markdown
+/os/file
+/os/path
+/stream/filter
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSiteDocument is Tuple
+
++ source-name String
++ path Path
++ id String
++ title String
++ source String
++ markdown Markdown
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSite is Tuple
+
++ root Path
++ entry-name String
++ documents [MarkdownSiteDocument]
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSiteDocumentId is () String
+    - source-name String
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSiteFencedCodeRenderer is () String ?! Error
+    - document MarkdownSiteDocument
+    - code MDFencedCode
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSiteLinkRenderer is () MarkdownHTMLLink ?! Error
+    - document MarkdownSiteDocument
+    - url String
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownSiteTarget is (path String, fragment String?)
+
+━━━━━━━━━━━━━━━━━━━━
++ do load-markdown-site MarkdownSite
+    - root Path
+    - entry-name = "README.md"
+    - document-id MarkdownSiteDocumentId = markdown-site-document-id
+
+. available = markdown-source-names(root)
+. entry-path = root / entry-name
+?! Error("Markdown site entry does not exist: $entry-path")
+    if !entry-path.is-file
+. entry-source = read-file-text(entry-path)
+. entry-markdown = Markdown(entry-source)
+. ordered = [entry-name]
+for target in markdown-document-links(entry-markdown, entry-name)
+    if !ordered.find(target)
+        ordered += target
+. omitted [String] = <* name in available when !ordered.find(name)
+    name
+. missing [String] = <* name in ordered when !available.find(name)
+    name
+. mismatch = "Markdown site index mismatch. Omitted: ${site-name-list(omitted)}."
+mismatch += " Missing: ${site-name-list(missing)}."
+?! Error(mismatch)
+    if omitted.length > 0 || missing.length > 0
+
+. documents [MarkdownSiteDocument]
+. ids = Map'String'Bool()
+for source-name in ordered
+    . path = root / source-name
+    . source String
+    |? source-name == entry-name
+        source = entry-source
+    ??
+        source = read-file-text(path)
+    . markdown = if source-name == entry-name then entry-markdown else Markdown(source)
+    . id = document-id(source-name)
+    ?! Error("Duplicate Markdown document id $id")
+        if ids[id]
+    ids[id] = true
+    documents += MarkdownSiteDocument
+        - source-name
+        - path
+        - id
+        - markdown-document-title(markdown, source-name)
+        - source
+        - markdown
+= MarkdownSite(root, entry-name, documents)
+
+━━━━━━━━━━━━━━━━━━━━
++ render-markdown-site-document String
+    - site MarkdownSite
+    - document MarkdownSiteDocument
+    - fenced-code-renderer MarkdownSiteFencedCodeRenderer? = null
+    - link-renderer MarkdownSiteLinkRenderer? = null
+
+|? fenced-code-renderer
+    markdown-to-html
+        - document.markdown
+        - :: code => fenced-code-renderer(document, code)
+        - :: heading, default-id => markdown-site-heading-id(document, default-id)
+        - :: link => render-markdown-site-link(site, document, link, link-renderer)
+??
+    markdown-to-html
+        - document.markdown
+        - null
+        - :: heading, default-id => markdown-site-heading-id(document, default-id)
+        - :: link => render-markdown-site-link(site, document, link, link-renderer)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-site-heading-id String
+    - document MarkdownSiteDocument
+    - default-id String
+
+"${document.id}--$default-id"
+
+━━━━━━━━━━━━━━━━━━━━
+_ render-markdown-site-link MarkdownHTMLLink
+    - site MarkdownSite
+    - document MarkdownSiteDocument
+    - link MDLink
+    - link-renderer MarkdownSiteLinkRenderer?
+
+|? link-renderer
+    link-renderer(document, link.url)
+??
+    markdown-site-link(site, document, link.url)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-site-link MarkdownHTMLLink
+    - site MarkdownSite
+    - document MarkdownSiteDocument
+    - url String
+
+=? MarkdownHTMLLink(url, "")
+    if markdown-site-external-target(url)
+
+. target = markdown-site-target(url)
+. source-name = document.source-name
+if target.path
+    source-name = markdown-site-relative-name(document.source-name, target.path)
+. target-document = markdown-site-document(site, source-name)
+if !target-document
+    ?! Error("${document.source-name}: Unknown Markdown site link $url")
+        if target.path.ends-with(".md") || target.path.starts-with("../")
+    = MarkdownHTMLLink(url, "")
+
+. anchor = target-document.id
+if target.fragment
+    anchor += "--${target.fragment}"
+= MarkdownHTMLLink("#$anchor", "")
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-site-document MarkdownSiteDocument?
+    - site MarkdownSite
+    - source-name String
+
+for document in site.documents
+    if document.source-name == source-name
+        = document
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-site-document-id String
+    - source-name String
+
+match stem.lowercased
+    ~ (![a-z0-9] .)* (...words [a-z0-9]+ (![a-z0-9] .)*)* !.
+        ("-".join(words)) ?? "document"
+    ??
+        "document"
+
+.. stem = source-name[... source-name.length - 3]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-source-names [String] ?! Error
+    - root Path
+    - prefix = ""
+
+. names [String]
+. paths [String] = sort("$each" in root.contents)
+for path-text in paths
+    . path = Path(path-text)
+    . name = "$prefix${path.name}"
+    if path.is-dir
+        names ++= markdown-source-names(path, "$name/")
+    else if path.is-file && path.ext == "md"
+        names += name
+= names
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-document-links [String]
+    - markdown Markdown
+    - entry-name String
+
+. links [String]
+collect-markdown-links(markdown, links)
+= links
+*> markdown-site-target(each)
+?> each.path.ends-with(".md")
+*> markdown-site-relative-name(entry-name, each.path)
+|> distinct
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-markdown-links
+    - node Markdown
+    - links [String]
+
+do match? node
+    | MDDocument
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDParagraph
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDHeader
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDLink
+        links += it.url
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDImage
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDStrong
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDEm
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDBlockQuote
+        for child in it.content
+            collect-markdown-links(child, links)
+    | MDList
+        for child in it.children
+            collect-markdown-links(child, links)
+    | MDListItem
+        for child in it.content
+            collect-markdown-links(child, links)
+        for child in it.child
+            collect-markdown-links(child, links)
+    | MDTable
+        collect-markdown-links(it.header, links)
+        for row in it.rows
+            collect-markdown-links(row, links)
+    | MDTableRow
+        for cell in it.cells
+            collect-markdown-links(cell, links)
+    | MDTableCell
+        for child in it.content
+            collect-markdown-links(child, links)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-document-title String
+    - markdown Markdown
+    - source-name String
+
+for block in markdown-document-blocks(markdown)
+    do match? block
+        | MDHeader
+            if it.level == 1
+                = markdown-visible-text(it.content)
+?! Error("Markdown document is missing an H1: $source-name")
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-document-blocks [Markdown]
+    - markdown Markdown
+
+match markdown
+    | MDDocument
+        it.content
+    ??
+        [markdown]
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-visible-text String
+    - nodes [Markdown]
+
+"".join(markdown-visible-node-text(each) in nodes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-visible-node-text String
+    - node Markdown
+
+match node
+    | MDText
+        it.text
+    | MDInlineCode
+        it.code
+    | MDStrong
+        markdown-visible-text(it.content)
+    | MDEm
+        markdown-visible-text(it.content)
+    | MDLink
+        markdown-visible-text(it.content)
+    | MDImage
+        markdown-visible-text(it.content)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-site-target MarkdownSiteTarget
+    - target String
+
+|? !hash
+    MarkdownSiteTarget(target, null)
+??
+    MarkdownSiteTarget(path, target[hash + 1 ...])
+
+.. hash = target.find("#")
+.. path = if hash > 0 then target[... hash] else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-site-external-target Bool
+    - target String
+
+|? target.starts-with("//")
+    true
+|? !colon
+    false
+??
+    !slash || colon < slash
+
+.. colon = target.find(":")
+.. slash = target.find("/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-site-relative-name String
+    - source-name String
+    - target String
+
+. parts [String]
+. slash = source-name.find-reverse("/")
+if slash
+    parts = source-name[... slash].split("/")
+for part in target.split("/")
+    if !part || part == "."
+        continue
+    if part == ".."
+        ?! Error("Markdown link leaves the source root: $target")
+            if parts.length == 0
+        parts.pop()
+    else
+        parts += part
+= "/".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ site-name-list String
+    - names [String]
+
+if names.length > 0 then ", ".join(names) else "none"

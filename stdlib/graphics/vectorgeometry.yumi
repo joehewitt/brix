@@ -1,0 +1,1488 @@
+./appearance
+./canvas
+./color
+./graphic
+./matrix
+./path
+./point
+./primitives
+./shapes
+./style
+./vector
+./vector-source
+/core/intrinsics
+/core/map
+/core/markup
+/math
+/stream/aggregate
+
++ vector-geometry-grace-capacity Size = 64
++ vector-raster-sighting-count Size = 1024
++ vector-raster-promotion-draws U32 = 4
++ vector-raster-phase-steps I32 = 256
++ vector-raster-hot-draws U64 = 8192
+_ vector-raster-epsilon = 1e-6
++ vector-raster-cache-budget Size = 8 * 1024 * 1024
+_ vector-geometry-keyed-seed U64 = 7640891576956012809u64
++ vector-raster-max-entry-bytes Size = 1024 * 1024
+
+_ fallback-vector-geometry-table := VectorGeometryTable()
+_ vector-geometry-renderer-tables := Map'Pointer'VectorGeometryTable()
+
+━━━━━━━━━━━━━━━━━━━━
++ default-vector-geometry-table VectorGeometryTable
+
+fallback-vector-geometry-table
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryHandle is (index U32, generation U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ ImageHandle is (index U32, generation U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryAcquisition is (handle VectorGeometryHandle, palette [RGBA])
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryBuilder is () VectorGeometry
+
+━━━━━━━━━━━━━━━━━━━━
++ ImageResource
+
+_ canvas RasterCanvas
++ pixel-width I32
++ pixel-height I32
++ intended-scale F64
++ template-alpha Bool
+
+────────────────────
++ This
+    - canvas
+    - intended-scale
+    - template-alpha Bool = false
+
+pixel-width = canvas.pixel-width
+pixel-height = canvas.pixel-height
+
+────────────────────
++ get byte-count Size
+
+(pixel-width as Size) * (pixel-height as Size) * 4
+
+────────────────────
++ get native
+
+canvas.native
+
+────────────────────
++ do draw
+    - destination Canvas
+    - rect Rect
+    - tint RGBA?
+
+if template-alpha
+    destination.fill-color = tint
+destination.draw-image(canvas, rect, template-alpha)
+
+────────────────────
+_ do close
+
+canvas.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-geometry-table-for VectorGeometryTable
+    - root MarkupBatch?
+
+|? !root
+    fallback-vector-geometry-table
+|? existing
+    existing
+??
+    fallback-vector-geometry-table
+
+.. key = root as Pointer
+.. existing = vector-geometry-renderer-tables[key]
+
+━━━━━━━━━━━━━━━━━━━━
++ do register-vector-geometry-renderer
+    - root MarkupBatch
+    - table VectorGeometryTable
+
+vector-geometry-renderer-tables[root as Pointer] = table
+
+━━━━━━━━━━━━━━━━━━━━
++ do unregister-vector-geometry-renderer
+    - root MarkupBatch
+
+-= vector-geometry-renderer-tables[root as Pointer]
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryPaintRole is Union
+
+| inherit
+| inherited-stroke
+| none
+| color
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryPaint is (role VectorGeometryPaintRole, index U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometrySpan
+
++ path Path
++ fill VectorGeometryPaint
++ stroke VectorGeometryPaint
++ stroke-width Length?
++ stroke-cap LineCap?
++ stroke-join LineJoin?
++ fill-rule FillRule
++ stroke-alignment StrokeAlignment
+
+────────────────────
++ This
+    - path
+    - fill
+    - stroke
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - fill-rule
+    - stroke-alignment = StrokeAlignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometry
+
++ view-box Rect
++ ink-bounds Rect
++ spans [VectorGeometrySpan]
+_ inherits-fill Bool
+_ inherits-stroke Bool
+
+────────────────────
++ This
+    - view-box
+    - ink-bounds
+    - spans
+    - inherits-fill
+    - inherits-stroke
+
+────────────────────
++ do paint
+    - canvas Canvas
+    - palette [RGBA]
+
+paint-offset(canvas, palette, 0)
+
+────────────────────
++ do paint-offset
+    - canvas Canvas
+    - palette [RGBA]
+    - offset U32
+
+. inherited-fill RGBA?
+if inherits-fill
+    inherited-fill = canvas.fill-color
+. inherited-stroke RGBA?
+if inherits-stroke
+    inherited-stroke = canvas.stroke-color
+. inherited-stroke-width = canvas.stroke-width
+. inherited-stroke-cap = canvas.stroke-cap
+. inherited-stroke-join = canvas.stroke-join
+
+for span in spans
+    if span.fill.role == VectorGeometryPaintRole.none
+        canvas.fill-color = null
+    else if span.fill.role == VectorGeometryPaintRole.inherit
+        canvas.fill-color = inherited-fill
+    else if span.fill.role == VectorGeometryPaintRole.inherited-stroke
+        canvas.fill-color = inherited-stroke
+    else
+        canvas.fill-color = palette[offset + span.fill.index]
+    . stroke-color = match span.stroke.role
+        |= VectorGeometryPaintRole.inherit
+            inherited-stroke
+        |= VectorGeometryPaintRole.none
+            null
+        ??
+            palette[offset + span.stroke.index]
+    . stroke-width = span.stroke-width ?? inherited-stroke-width
+    canvas.stroke-width = stroke-width
+    canvas.stroke-cap = span.stroke-cap ?? inherited-stroke-cap
+    canvas.stroke-join = span.stroke-join ?? inherited-stroke-join
+    if span.stroke-alignment == StrokeAlignment.center || !stroke-color
+        canvas.stroke-color = stroke-color
+        span.path.outline(canvas, span.fill-rule)
+    else
+        canvas.stroke-color = null
+        if canvas.fill-color
+            span.path.outline(canvas, span.fill-rule)
+        canvas.stroke-color = stroke-color
+        paint-aligned-stroke(canvas, span.path, span.fill-rule, span.stroke-alignment, stroke-width)
+
+────────────────────
++ get supports-raster-cache Bool
+
+!inherits-fill && !inherits-stroke
+
+────────────────────
++ do template-tint (compatible Bool, tint RGBA)
+    - palette [RGBA]
+    - offset U32
+    - inherited-fill RGBA?
+    - inherited-stroke RGBA?
+
+. found = false
+. has-inherited = false
+. tint = transparent
+for span in spans
+    . fill RGBA?
+    if span.fill.role == VectorGeometryPaintRole.inherit
+        fill = inherited-fill
+        has-inherited = true
+    else if span.fill.role == VectorGeometryPaintRole.inherited-stroke
+        fill = inherited-stroke
+        has-inherited = true
+    else if span.fill.role == VectorGeometryPaintRole.color
+        fill = palette[offset + span.fill.index]
+    if fill
+        if found && tint != fill
+            = (false, transparent)
+        tint = fill
+        found = true
+
+    . stroke RGBA?
+    if span.stroke.role == VectorGeometryPaintRole.inherit
+        stroke = inherited-stroke
+        has-inherited = true
+    else if span.stroke.role == VectorGeometryPaintRole.color
+        stroke = palette[offset + span.stroke.index]
+    if stroke
+        if found && tint != stroke
+            = (false, transparent)
+        tint = stroke
+        found = true
+= (found && has-inherited, tint)
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-view-transform Matrix
+    - view Rect
+    - destination Rect
+
+matrix-from-translation(destination.top-left).scale(size).translate(Point(-view.x, -view.y))
+
+.. size = Dimensions(destination.width / view.width, destination.height / view.height)
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-matrix-is-axis-aligned
+    - matrix Matrix
+
+matrix.b == 0 && matrix.c == 0 && matrix.a > 0 && matrix.d > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-raster-phase-offset
+    - phase I32
+
+(phase as F64) / (vector-raster-phase-steps as F64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-raster-pixel-extent
+    - phase I32
+    - extent F64
+
+ceil(vector-raster-phase-offset(phase) + extent - vector-raster-epsilon) as I32
+
+━━━━━━━━━━━━━━━━━━━━
++ do vector-geometry-fingerprint U64
+    - source VectorGeometrySource
+    - view-box Rect
+
+. fingerprint = fnv-offset-basis
+fingerprint = vector-geometry-mix-rect(fingerprint, view-box)
+= vector-geometry-mix-source(fingerprint, source)
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryEntry
+
++ fingerprint U64
++ generation U32 = 1
++ references U32
++ geometry VectorGeometry?
+
+────────────────────
+_ This
+    - fingerprint
+    - geometry
+    - references
+
+━━━━━━━━━━━━━━━━━━━━
+_ ImageResourceEntry
+
++ generation U32 = 1
++ references U32
++ resource ImageResource?
+
+────────────────────
+_ This
+    - resource
+    - references
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorRasterEntry
+
++ geometry-handle VectorGeometryHandle
++ pixel-width I32
++ pixel-height I32
++ scale-x F64
++ scale-y F64
++ phase-x I32
++ phase-y I32
++ stroke-width Length
++ stroke-cap LineCap
++ stroke-join LineJoin
++ stroke-dash Length
++ template-alpha Bool
++ palette-key U64
++ key U64
++ last-use U64
++ image-handle = ImageHandle(0, 0)
++ image-bytes Size
++ slot Size
+
+────────────────────
+_ This
+    - geometry-handle
+    - pixel-width
+    - pixel-height
+    - scale-x
+    - scale-y
+    - phase-x
+    - phase-y
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - stroke-dash
+    - template-alpha
+    - palette-key
+    - key
+
+────────────────────
++ matches
+    - other VectorRasterEntry
+
+|? geometry-handle != other.geometry-handle
+    false
+|? pixel-width != other.pixel-width || pixel-height != other.pixel-height
+    false
+|? scale-x != other.scale-x || scale-y != other.scale-y
+    false
+|? phase-x != other.phase-x || phase-y != other.phase-y
+    false
+|? stroke-width != other.stroke-width || stroke-cap != other.stroke-cap
+    false
+|? stroke-join != other.stroke-join || stroke-dash != other.stroke-dash
+    false
+??
+    template-alpha == other.template-alpha && palette-key == other.palette-key
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryTable
+
+_ entries [VectorGeometryEntry]
+_ lookup Map'U64'U32
+_ grace [U32]
+_ free-indices [U32]
+_ image-entries [ImageResourceEntry]
+_ image-free-indices [U32]
+_ raster-entries [VectorRasterEntry]
+_ raster-lookup Map'U64'VectorRasterEntry
+_ raster-sighting-keys = U64[vector-raster-sighting-count]
+_ raster-sighting-draws = U32[vector-raster-sighting-count]
+_ raster-clock U64
+_ raster-byte-count Size
+
+────────────────────
++ do intern VectorGeometryAcquisition
+    - source VectorGeometrySource
+    - view-box Rect
+
+source.prepare-vector-geometry-source()
+. fingerprint = vector-geometry-fingerprint(source, view-box)
+. palette = vector-geometry-palette(source)
+. existing = retain-fingerprint(fingerprint)
+=? VectorGeometryAcquisition(existing, palette) if existing
+= VectorGeometryAcquisition(store(fingerprint, build-vector-geometry(source, view-box)), palette)
+
+────────────────────
++ do intern-geometry VectorGeometryHandle
+    - key U64
+    - build VectorGeometryBuilder
+
+. fingerprint = fnv-mix(vector-geometry-keyed-seed, key)
+. existing = retain-fingerprint(fingerprint)
+=? existing if existing
+= store(fingerprint, build())
+
+────────────────────
+_ do retain-fingerprint VectorGeometryHandle?
+    - fingerprint U64
+
+. existing-index = lookup[fingerprint]
+=? if !existing-index
+. entry = entries[existing-index]
+=? if !entry.geometry
+entry.references += 1
+remove-from-grace(existing-index)
+= VectorGeometryHandle(existing-index, entry.generation)
+
+────────────────────
+_ do store VectorGeometryHandle
+    - fingerprint U64
+    - geometry VectorGeometry
+
+. index U32
+. entry VectorGeometryEntry
+if free-indices
+    index = free-indices[free-indices.length - 1]
+    free-indices.remove(free-indices.length - 1)
+    entry = entries[index]
+    entry.fingerprint = fingerprint
+    entry.geometry = geometry
+    entry.references = 1
+else
+    index = entries.length as U32
+    entry = VectorGeometryEntry(fingerprint, geometry, 1)
+    entries += entry
+
+lookup[fingerprint] = index
+= VectorGeometryHandle(index, entry.generation)
+
+────────────────────
++ do insert-image ImageHandle
+    - resource ImageResource
+
+. index U32
+. entry ImageResourceEntry
+if image-free-indices
+    index = image-free-indices[image-free-indices.length - 1]
+    image-free-indices.remove(image-free-indices.length - 1)
+    entry = image-entries[index]
+    entry.resource = resource
+    entry.references = 1
+else
+    index = image-entries.length as U32
+    entry = ImageResourceEntry(resource, 1)
+    image-entries += entry
+= ImageHandle(index, entry.generation)
+
+────────────────────
++ do resolve-image ImageResource?
+    - handle ImageHandle
+
+=? if handle.index >= image-entries.length
+. entry = image-entries[handle.index]
+=? if entry.generation != handle.generation
+= entry.resource
+
+────────────────────
++ do paint-image-resource Bool
+    - handle ImageHandle
+    - canvas Canvas
+    - destination Rect
+    - tint RGBA? = null
+
+. resource = resolve-image(handle)
+=? false if !resource
+=? true if canvas.record-image-resource(handle.index, handle.generation, destination, tint)
+resource.draw • destination canvas
+    - destination
+    - tint
+= true
+
+────────────────────
++ do retain-image Bool
+    - handle ImageHandle
+
+=? false if handle.index >= image-entries.length
+. entry = image-entries[handle.index as Index]
+=? false if entry.generation != handle.generation || !entry.resource
+entry.references += 1
+= true
+
+────────────────────
++ do release-image
+    - handle ImageHandle
+
+=? if handle.index >= image-entries.length
+. entry = image-entries[handle.index]
+=? if entry.generation != handle.generation || !entry.resource || !entry.references
+entry.references -= 1
+=? if entry.references
+. resource = entry.resource!
+resource.close()
+entry.resource = null
+entry.generation += 1
+if !entry.generation
+    entry.generation = 1
+image-free-indices += handle.index
+
+────────────────────
++ is-image-valid Bool
+    - handle ImageHandle
+
+|? handle.index >= image-entries.length
+    false
+??
+    entry.generation == handle.generation && entry.resource != null
+
+.. entry = image-entries[handle.index]
+
+────────────────────
++ image-reference-count U32
+    - handle ImageHandle
+
+|? handle.index >= image-entries.length
+    0
+|? entry.generation != handle.generation || !entry.resource
+    0
+??
+    entry.references
+
+.. entry = image-entries[handle.index as Index]
+
+────────────────────
++ do get image-live-count Size
+
+. count Size
+for entry in image-entries
+    if entry.resource
+        count += 1
+= count
+
+────────────────────
++ do paint-vector
+    - handle VectorGeometryHandle
+    - canvas Canvas
+    - palette [RGBA]
+    - transform Matrix
+    - clip Rect? = null
+
+=? true if canvas.record-vector-geometry(handle.index, handle.generation, palette, transform, clip)
+. geometry = resolve(handle)
+=? false if !geometry
+do use canvas.saved-state
+    if clip
+        canvas.clip(clip)
+    canvas.transform(transform)
+    geometry.paint(canvas, palette)
+= true
+
+────────────────────
++ do paint-vector-raster Bool
+    - handle VectorGeometryHandle
+    - canvas Canvas
+    - palette [RGBA]
+    - transform Matrix
+    - clip Rect? = null
+
+=? true if canvas.record-vector-geometry(handle.index, handle.generation, palette, transform, clip)
+= paint-vector-cached(handle, canvas, palette, 0, palette.length as U32, transform)
+
+────────────────────
++ do paint-vector-cached
+    - handle VectorGeometryHandle
+    - canvas Canvas
+    - palette [RGBA]
+    - palette-offset U32
+    - palette-count U32
+    - transform Matrix
+
+. current = canvas.current-matrix
+=? false if !vector-matrix-is-axis-aligned(current) || !vector-matrix-is-axis-aligned(transform)
+. geometry = resolve(handle)
+=? false if !geometry
+//+graphics.vector.raster-cache
+. painted = paint-cached-vector-raster
+    - handle
+    - geometry
+    - canvas
+    - palette
+    - palette-offset
+    - palette-count
+    - current
+    - current.concatenate(transform)
+//-graphics.vector.raster-cache
+= painted
+
+────────────────────
+_ do paint-cached-vector-raster
+    - handle VectorGeometryHandle
+    - geometry VectorGeometry
+    - canvas Canvas
+    - palette [RGBA]
+    - palette-offset U32
+    - palette-count U32
+    - current Matrix
+    - device Matrix
+
+. scale = canvas.scale
+. view = geometry.view-box
+. scale-x = device.a * scale
+. scale-y = device.d * scale
+. left = (view.x * device.a + device.tx) * scale
+. top = (view.y * device.d + device.ty) * scale
+. origin-x = floor(left)
+. origin-y = floor(top)
+. phase-x = round((left - origin-x) * (vector-raster-phase-steps as F64)) as I32
+. phase-y = round((top - origin-y) * (vector-raster-phase-steps as F64)) as I32
+if phase-x == vector-raster-phase-steps
+    origin-x += 1
+    phase-x = 0
+if phase-y == vector-raster-phase-steps
+    origin-y += 1
+    phase-y = 0
+. pixel-width = vector-raster-pixel-extent(phase-x, view.width * scale-x)
+. pixel-height = vector-raster-pixel-extent(phase-y, view.height * scale-y)
+=? false if pixel-width <= 0 || pixel-height <= 0
+. image-bytes = (pixel-width as Size) * (pixel-height as Size) * 4
+=? false if image-bytes > vector-raster-max-entry-bytes
+
+. template = geometry.template-tint(palette, palette-offset, canvas.fill-color, canvas.stroke-color)
+. template-alpha = template.compatible
+=? false if !template-alpha && !geometry.supports-raster-cache
+. palette-key U64
+if !template-alpha
+    palette-key = vector-geometry-palette-key(palette, palette-offset, palette-count)
+. request = VectorRasterEntry
+    - handle
+    - pixel-width
+    - pixel-height
+    - scale-x
+    - scale-y
+    - phase-x
+    - phase-y
+    - canvas.stroke-width
+    - canvas.stroke-cap
+    - canvas.stroke-join
+    - canvas.stroke-dash
+    - template-alpha
+    - palette-key
+    - 0
+request.key = vector-raster-key(request)
+. tint = template.tint if template-alpha
+raster-clock += 1
+
+. found = raster-lookup[request.key]
+if found
+    . entry = found
+    if entry.matches(request)
+        . image = resolve-image(entry.image-handle)
+        if image
+            entry.last-use = raster-clock
+            draw-vector-raster(image, canvas, current, origin-x, origin-y, entry, scale, tint)
+            = true
+        evict-raster-entry(entry)
+    = false
+
+. slot = (request.key % (vector-raster-sighting-count as U64)) as Index
+if raster-sighting-keys[slot] != request.key
+    raster-sighting-keys[slot] = request.key
+    raster-sighting-draws[slot] = 1
+    = false
+raster-sighting-draws[slot] += 1
+=? false if raster-sighting-draws[slot] < vector-raster-promotion-draws
+raster-sighting-draws[slot] = 0
+=? false if !can-reclaim-raster-bytes(image-bytes)
+raster-sighting-keys[slot] = 0
+
+request.last-use = raster-clock
+request.image-handle = create-vector-raster-image
+    - request
+    - geometry
+    - palette
+    - palette-offset
+    - palette-count
+    - scale
+request.image-bytes = image-bytes
+request.slot = raster-entries.length
+raster-entries += request
+raster-lookup[request.key] = request
+raster-byte-count += image-bytes
+enforce-raster-budget(request)
+. promoted = resolve-image(request.image-handle)
+=? false if !promoted
+draw-vector-raster(promoted, canvas, current, origin-x, origin-y, request, scale, tint)
+= true
+
+────────────────────
+_ do draw-vector-raster
+    - image ImageResource
+    - canvas Canvas
+    - current Matrix
+    - origin-x F64
+    - origin-y F64
+    - entry VectorRasterEntry
+    - scale F64
+    - tint RGBA?
+
+. rect = Rect
+    - (origin-x / scale - current.tx) / current.a
+    - (origin-y / scale - current.ty) / current.d
+    - ((entry.pixel-width as F64) / scale) / current.a
+    - ((entry.pixel-height as F64) / scale) / current.d
+image.draw • destination canvas
+    - rect
+    - tint
+
+────────────────────
++ do get atlas-entry-count Size
+
+. count Size
+for entry in raster-entries
+    if is-image-valid(entry.image-handle)
+        count += 1
+= count
+
+────────────────────
++ get atlas-bytes Size
+
+raster-byte-count
+
+────────────────────
++ do resolve VectorGeometry?
+    - handle VectorGeometryHandle
+
+=? if handle.index >= entries.length
+. entry = entries[handle.index]
+=? if entry.generation != handle.generation
+= entry.geometry
+
+────────────────────
++ require VectorGeometry
+    - handle VectorGeometryHandle
+
+?! Panic("Stale VectorGeometry handle")
+    if handle.index >= entries.length
+
+?! Panic("Stale VectorGeometry handle")
+    if entry.generation != handle.generation || !entry.geometry
+
+entry.geometry
+
+.. entry = entries[handle.index]
+
+────────────────────
++ do retain Bool
+    - handle VectorGeometryHandle
+
+=? false if handle.index >= entries.length
+. entry = entries[handle.index as Index]
+=? false if entry.generation != handle.generation || !entry.geometry
+entry.references += 1
+remove-from-grace(handle.index)
+= true
+
+────────────────────
++ do release
+    - handle VectorGeometryHandle
+
+=? if handle.index >= entries.length
+. entry = entries[handle.index]
+=? if entry.generation != handle.generation || !entry.geometry || !entry.references
+entry.references -= 1
+=? if entry.references
+
+grace += handle.index
+while grace.length > vector-geometry-grace-capacity
+    evict(grace[0])
+
+────────────────────
++ do evict-unused
+
+while grace
+    evict(grace[0])
+
+────────────────────
++ is-valid Bool
+    - handle VectorGeometryHandle
+
+|? handle.index >= entries.length
+    false
+??
+    entry.generation == handle.generation && entry.geometry != null
+
+.. entry = entries[handle.index as Index]
+
+────────────────────
++ do get live-count Size
+
+. count Size
+for entry in entries
+    if entry.geometry
+        count += 1
+= count
+
+────────────────────
++ reference-count U32
+    - handle VectorGeometryHandle
+
+|? handle.index >= entries.length
+    0
+|? entry.generation != handle.generation || !entry.geometry
+    0
+??
+    entry.references
+
+.. entry = entries[handle.index as Index]
+
+────────────────────
+_ do remove-from-grace
+    - index U32
+
+for position in 0 .. < grace.length
+    if grace[position] == index
+        grace.remove(position)
+        break
+
+────────────────────
+_ do evict
+    - index U32
+
+remove-from-grace(index)
+=? if index >= entries.length
+. entry = entries[index]
+=? if entry.references || !entry.geometry
+. handle = VectorGeometryHandle(index, entry.generation)
+evict-raster-entries(handle)
+-= lookup[entry.fingerprint]
+entry.geometry = null
+entry.fingerprint = 0
+entry.generation += 1
+if !entry.generation
+    entry.generation = 1
+free-indices += index
+
+────────────────────
+_ do create-vector-raster-image ImageHandle
+    - entry VectorRasterEntry
+    - geometry VectorGeometry
+    - palette [RGBA]
+    - palette-offset U32
+    - palette-count U32
+    - scale F64
+
+. raster = RasterCanvas(entry.pixel-width, entry.pixel-height)
+raster.fill-color = white
+raster.stroke-color = white
+raster.stroke-width = entry.stroke-width
+raster.stroke-cap = entry.stroke-cap
+raster.stroke-join = entry.stroke-join
+raster.stroke-dash = entry.stroke-dash
+raster.push()
+raster.translate
+    - vector-raster-phase-offset(entry.phase-x)
+    - vector-raster-phase-offset(entry.phase-y)
+raster.transform(matrix-from-scale(Dimensions(entry.scale-x, entry.scale-y)))
+raster.translate(-geometry.view-box.x, -geometry.view-box.y)
+if entry.template-alpha
+    . white-palette = List'RGBA
+        ** 0 .. < palette-count
+        *> white
+    geometry.paint-offset(raster, white-palette, 0)
+else
+    geometry.paint-offset(raster, palette, palette-offset)
+raster.pop()
+= insert-image(ImageResource(raster, scale, entry.template-alpha))
+
+────────────────────
+_ do vector-raster-key
+    - entry VectorRasterEntry
+
+. result = fnv-mix(fnv-offset-basis, entry.geometry-handle.index)
+result = fnv-mix(result, entry.geometry-handle.generation)
+result = fnv-mix(result, entry.pixel-width as U64)
+result = fnv-mix(result, entry.pixel-height as U64)
+result = vector-geometry-mix-number(result, entry.scale-x)
+result = vector-geometry-mix-number(result, entry.scale-y)
+result = fnv-mix(result, entry.phase-x as U64)
+result = fnv-mix(result, entry.phase-y as U64)
+result = vector-geometry-mix-number(result, entry.stroke-width)
+result = vector-geometry-mix-optional-cap(result, entry.stroke-cap)
+result = vector-geometry-mix-optional-join(result, entry.stroke-join)
+result = vector-geometry-mix-number(result, entry.stroke-dash)
+result = fnv-mix(result, if entry.template-alpha then 1u64 else 2u64)
+= fnv-mix(result, entry.palette-key)
+
+────────────────────
+_ do vector-geometry-palette-key U64
+    - palette [RGBA]
+    - offset U32
+    - count U32
+
+. result = fnv-mix(fnv-offset-basis, count)
+for index in 0 .. < count
+    . color = palette[offset + index]
+    result = vector-geometry-mix-number(result, color.red)
+    result = vector-geometry-mix-number(result, color.green)
+    result = vector-geometry-mix-number(result, color.blue)
+    result = vector-geometry-mix-number(result, color.alpha)
+= result
+
+────────────────────
+_ do can-reclaim-raster-bytes
+    - image-bytes Size
+
+. needed = raster-byte-count + image-bytes
+=? true if needed <= vector-raster-cache-budget
+. reclaimable Size
+for entry in raster-entries
+    if entry.last-use + vector-raster-hot-draws <= raster-clock
+        reclaimable += entry.image-bytes
+= needed <= vector-raster-cache-budget + reclaimable
+
+────────────────────
+_ do enforce-raster-budget
+    - protected VectorRasterEntry
+
+while raster-byte-count > vector-raster-cache-budget
+    . victim = least-recent-raster-entry(protected)
+    =? if !victim
+    evict-raster-entry(victim)
+
+────────────────────
+_ do least-recent-raster-entry
+    - protected VectorRasterEntry
+
+. oldest VectorRasterEntry?
+for entry in raster-entries
+    if entry as Pointer != protected as Pointer
+        if !oldest || entry.last-use < oldest.last-use
+            oldest = entry
+= oldest
+
+────────────────────
+_ do evict-raster-entry
+    - entry VectorRasterEntry
+
+if is-image-valid(entry.image-handle)
+    release-image(entry.image-handle)
+if entry.image-bytes <= raster-byte-count
+    raster-byte-count -= entry.image-bytes
+entry.image-bytes = 0
+-= raster-lookup[entry.key]
+. slot = entry.slot
+. last = raster-entries.length - 1
+if slot != last
+    . moved = raster-entries[last]
+    raster-entries[slot] = moved
+    moved.slot = slot
+raster-entries.pop()
+
+────────────────────
+_ do evict-raster-entries
+    - handle VectorGeometryHandle
+
+. index Size
+while index < raster-entries.length
+    . entry = raster-entries[index]
+    if entry.geometry-handle == handle
+        evict-raster-entry(entry)
+    else
+        index += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryStyle
+
++ fill VectorGeometryPaint
++ stroke VectorGeometryPaint
++ stroke-width Length?
++ stroke-cap LineCap?
++ stroke-join LineJoin?
++ fill-rule FillRule
++ transform Matrix
+
+────────────────────
+_ This
+    - fill
+    - stroke
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - fill-rule
+    - transform
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryRoleCursor
+
++ next U32
+
+━━━━━━━━━━━━━━━━━━━━
++ do build-vector-geometry VectorGeometry
+    - source VectorGeometrySource
+    - view-box Rect
+
+. spans [VectorGeometrySpan]
+. cursor = VectorGeometryRoleCursor()
+. style = VectorGeometryStyle
+    - VectorGeometryPaint(VectorGeometryPaintRole.inherit, 0)
+    - VectorGeometryPaint(VectorGeometryPaintRole.inherit, 0)
+    - null
+    - null
+    - null
+    - FillRule.nonzero
+    - Matrix()
+. has-ink = false
+. ink-bounds = Rect(0, 0, 0, 0)
+. result = append-vector-geometry(source, style, cursor, spans, has-ink, ink-bounds)
+. inherits-fill = false
+. inherits-stroke = false
+for span in spans
+    if span.fill.role == VectorGeometryPaintRole.inherit
+        inherits-fill = true
+    if span.stroke.role == VectorGeometryPaintRole.inherit
+        inherits-stroke = true
+    if span.fill.role == VectorGeometryPaintRole.inherited-stroke
+        inherits-stroke = true
+= VectorGeometry(view-box, result.ink-bounds, spans, inherits-fill, inherits-stroke)
+
+━━━━━━━━━━━━━━━━━━━━
++ do vector-geometry-supports-source Bool
+    - source VectorGeometrySource
+
+=? false if !source.vector-geometry-source-compact
+if source.vector-geometry-source-kind == vector-geometry-source-graphic
+    . node = gc-object-from-pointer'GraphicNode(source.vector-geometry-source-pointer)
+    = node is VectorPath || node is PathGraphic || node is Circle || node is Ellipse || node is Rectangle || node is Line || node is Square || node is Polygon || node is Spiral || node is SineWave || node is Leaf
+= all(0 .. < source.vector-geometry-source-child-count) • where vector-geometry-supports-source(source.vector-geometry-source-child(each))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-vector-geometry (has-ink Bool, ink-bounds Rect)
+    - source VectorGeometrySource
+    - inherited VectorGeometryStyle
+    - cursor VectorGeometryRoleCursor
+    - spans [VectorGeometrySpan]
+    - has-ink Bool
+    - ink-bounds Rect
+
+. style = vector-geometry-source-style(source, inherited, cursor)
+. path Path?
+if source.vector-geometry-source-kind == vector-geometry-source-graphic
+    path = vector-geometry-node-path(source.vector-geometry-source-pointer)
+if path
+    if !style.transform.is-identity
+        path.transform(style.transform)
+    path.trim()
+    spans += VectorGeometrySpan
+        - path
+        - style.fill
+        - style.stroke
+        - style.stroke-width
+        - style.stroke-cap
+        - style.stroke-join
+        - style.fill-rule
+
+    . bounds = path.bounding-box
+    if style.stroke.role != VectorGeometryPaintRole.none && style.stroke-width
+        bounds = bounds.inflate(style.stroke-width, style.stroke-width)
+    ink-bounds = if !has-ink then bounds else ink-bounds + bounds
+    has-ink = true
+
+for index in 0 .. < source.vector-geometry-source-child-count
+    . child = source.vector-geometry-source-child(index)
+    . result = append-vector-geometry(child, style, cursor, spans, has-ink, ink-bounds)
+    has-ink = result.has-ink
+    ink-bounds = result.ink-bounds
+= (has-ink, ink-bounds)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-source-style VectorGeometryStyle
+    - source VectorGeometrySource
+    - inherited VectorGeometryStyle
+    - cursor VectorGeometryRoleCursor
+
+. fill = vector-geometry-paint-role(source.vector-geometry-source-fill, inherited.fill, cursor)
+. stroke = vector-geometry-paint-role
+    - source.vector-geometry-source-stroke
+    - inherited.stroke
+    - cursor
+if source.vector-geometry-source-fill == Fill.stroke
+    fill = vector-geometry-stroke-fill(stroke)
+. width = source.vector-geometry-source-stroke-width ?? inherited.stroke-width
+. cap = source.vector-geometry-source-stroke-cap ?? inherited.stroke-cap
+. join = source.vector-geometry-source-stroke-join ?? inherited.stroke-join
+. rule = source.vector-geometry-source-fill-rule ?? inherited.fill-rule
+. transform = inherited.transform
+if source.vector-geometry-source-transform
+    transform = transform.concatenate(source.vector-geometry-source-transform!)
+= VectorGeometryStyle(fill, stroke, width, cap, join, rule, transform)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-paint-role VectorGeometryPaint
+    - paint Fill
+    - inherited VectorGeometryPaint
+    - cursor VectorGeometryRoleCursor
+
+=? inherited if paint == Fill.inherit || paint == Fill.stroke
+=? VectorGeometryPaint(VectorGeometryPaintRole.none, 0) if paint == Fill.none
+. role = VectorGeometryPaint(VectorGeometryPaintRole.color, cursor.next)
+cursor.next += 1
+= role
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-paint-role VectorGeometryPaint
+    - paint Stroke
+    - inherited VectorGeometryPaint
+    - cursor VectorGeometryRoleCursor
+
+=? inherited if paint == Stroke.inherit
+=? VectorGeometryPaint(VectorGeometryPaintRole.none, 0) if paint == Stroke.none
+. role = VectorGeometryPaint(VectorGeometryPaintRole.color, cursor.next)
+cursor.next += 1
+= role
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-stroke-fill
+    - stroke VectorGeometryPaint
+
+|? stroke.role == VectorGeometryPaintRole.inherit
+    VectorGeometryPaint(VectorGeometryPaintRole.inherited-stroke, 0)
+??
+    stroke
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-node-path Path?
+    - node-pointer Pointer
+
+|? node is VectorPath
+    (node as VectorPath).vector-path-geometry()
+|? node is PathGraphic
+    Path((node as PathGraphic).path)
+|? node is Circle
+    circle(circle-node.center, abs(circle-node.radius))
+
+    .. circle-node = node as Circle
+|? node is Ellipse
+    ellipse
+        - ellipse-node.center
+        - Dimensions(abs(ellipse-node.radius.width), abs(ellipse-node.radius.height))
+
+    .. ellipse-node = node as Ellipse
+|? node is Rectangle
+    rectangle((node as Rectangle).rect)
+|? node is Line
+    line(line-node.start, line-node.end)
+
+    .. line-node = node as Line
+|? node is Square
+    square
+        - Point
+            - square-node.center.x - square-node.radius
+            - square-node.center.y - square-node.radius
+        - square-node.radius * 2
+
+    .. square-node = node as Square
+|? node is Polygon
+    polygon(polygon-node.sides, polygon-node.radius * 2, polygon-node.center)
+
+    .. polygon-node = node as Polygon
+|? node is Spiral
+    spiral
+        - spiral-node.center
+        - spiral-node.radius
+        - spiral-node.coils
+        - spiral-node.chord
+        - spiral-node.rotation
+
+    .. spiral-node = node as Spiral
+|? node is SineWave
+    first-vector-geometry-node-path(node)
+|? node is Leaf
+    leaf(leaf-node.center, leaf-node.radius)
+
+    .. leaf-node = node as Leaf
+??
+    first-vector-geometry-node-path(node)
+
+.. node = gc-object-from-pointer'GraphicNode(node-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do vector-geometry-palette [RGBA]
+    - source VectorGeometrySource
+
+. palette [RGBA]
+append-vector-geometry-palette(source, palette)
+= palette
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-vector-geometry-palette
+    - source VectorGeometrySource
+    - palette [RGBA]
+
+if source.vector-geometry-source-fill is RGBA
+    palette += source.vector-geometry-source-fill as RGBA
+if source.vector-geometry-source-stroke is RGBA
+    palette += source.vector-geometry-source-stroke as RGBA
+for index in 0 .. < source.vector-geometry-source-child-count
+    . child = source.vector-geometry-source-child(index)
+    append-vector-geometry-palette(child, palette)
+
+━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-source U64
+    - fingerprint U64
+    - source VectorGeometrySource
+
+. result = fnv-mix(fingerprint, 1)
+result = vector-geometry-mix-paint(result, source.vector-geometry-source-fill)
+result = vector-geometry-mix-paint(result, source.vector-geometry-source-stroke)
+result = vector-geometry-mix-optional-number(result, source.vector-geometry-source-stroke-width)
+result = vector-geometry-mix-optional-cap(result, source.vector-geometry-source-stroke-cap)
+result = vector-geometry-mix-optional-join(result, source.vector-geometry-source-stroke-join)
+result = vector-geometry-mix-optional-rule(result, source.vector-geometry-source-fill-rule)
+result = vector-geometry-mix-optional-matrix(result, source.vector-geometry-source-transform)
+
+if source.vector-geometry-source-kind == vector-geometry-source-container
+    result = fnv-mix(result, 10)
+else
+    . node = gc-object-from-pointer'GraphicNode(source.vector-geometry-source-pointer)
+    if node is VectorPath
+        result = fnv-mix(result, 12)
+        for op in (node as VectorPath).operations
+            result = vector-geometry-mix-path-op(result, op)
+    else if node is PathGraphic
+        result = fnv-mix(result, 17)
+        result = vector-geometry-mix-path(result, (node as PathGraphic).path)
+    else if node is Circle
+        . circle-node = node as Circle
+        result = fnv-mix(result, 13)
+        result = vector-geometry-mix-point(result, circle-node.center)
+        result = vector-geometry-mix-number(result, circle-node.radius)
+    else if node is Ellipse
+        . ellipse-node = node as Ellipse
+        result = fnv-mix(result, 14)
+        result = vector-geometry-mix-point(result, ellipse-node.center)
+        result = vector-geometry-mix-number(result, ellipse-node.radius.width)
+        result = vector-geometry-mix-number(result, ellipse-node.radius.height)
+    else if node is Rectangle
+        result = fnv-mix(result, 15)
+        result = vector-geometry-mix-rect(result, (node as Rectangle).rect)
+    else if node is Line
+        . line-node = node as Line
+        result = fnv-mix(result, 16)
+        result = vector-geometry-mix-point(result, line-node.start)
+        result = vector-geometry-mix-point(result, line-node.end)
+    else if node is Square
+        . square-node = node as Square
+        result = fnv-mix(result, 18)
+        result = vector-geometry-mix-point(result, square-node.center)
+        result = vector-geometry-mix-number(result, square-node.radius)
+    else if node is Polygon
+        . polygon-node = node as Polygon
+        result = fnv-mix(result, 19)
+        result = fnv-mix(result, polygon-node.sides)
+        result = vector-geometry-mix-point(result, polygon-node.center)
+        result = vector-geometry-mix-number(result, polygon-node.radius)
+    else if node is Spiral
+        . spiral-node = node as Spiral
+        result = fnv-mix(result, 26)
+        result = vector-geometry-mix-point(result, spiral-node.center)
+        result = vector-geometry-mix-number(result, spiral-node.radius)
+        result = vector-geometry-mix-number(result, spiral-node.coils)
+        result = vector-geometry-mix-number(result, spiral-node.chord)
+        result = vector-geometry-mix-number(result, spiral-node.rotation)
+    else if node is SineWave || node is Leaf
+        result = fnv-mix(result, 27)
+        . path = vector-geometry-node-path(node as Pointer)
+        if path
+            result = vector-geometry-mix-path(result, path)
+    else
+        result = fnv-mix(result, node.revision as U64)
+
+for index in 0 .. < source.vector-geometry-source-child-count
+    . child = source.vector-geometry-source-child(index)
+    result = vector-geometry-mix-source(result, child)
+= fnv-mix(result, 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first-vector-geometry-node-path Path?
+    - node GraphicNode
+
+for path in node.draw()
+    = Path(path)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-path U64
+    - fingerprint U64
+    - path Path
+
+. result = fnv-mix(fingerprint, path.count as U64)
+. commands = path.commands
+for index in 0 .. < commands.command-count
+    result = fnv-mix(result, commands.verbs[index])
+for index in 0 .. < commands.coord-count
+    result = vector-geometry-mix-number(result, commands.coords[index])
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-path-op U64
+    - fingerprint U64
+    - op PathOp
+
+. result = fingerprint
+if op is PathMoveTo
+    . move = op as PathMoveTo
+    result = fnv-mix(result, 20)
+    result = vector-geometry-mix-number(result, move.x)
+    result = vector-geometry-mix-number(result, move.y)
+else if op is PathLineTo
+    . line-op = op as PathLineTo
+    result = fnv-mix(result, 21)
+    result = vector-geometry-mix-number(result, line-op.x)
+    result = vector-geometry-mix-number(result, line-op.y)
+else if op is PathCubicTo
+    . cubic = op as PathCubicTo
+    result = fnv-mix(result, 22)
+    result = vector-geometry-mix-number(result, cubic.c1x)
+    result = vector-geometry-mix-number(result, cubic.c1y)
+    result = vector-geometry-mix-number(result, cubic.c2x)
+    result = vector-geometry-mix-number(result, cubic.c2y)
+    result = vector-geometry-mix-number(result, cubic.x)
+    result = vector-geometry-mix-number(result, cubic.y)
+else if op is PathQuadraticTo
+    . quadratic = op as PathQuadraticTo
+    result = fnv-mix(result, 23)
+    result = vector-geometry-mix-number(result, quadratic.cx)
+    result = vector-geometry-mix-number(result, quadratic.cy)
+    result = vector-geometry-mix-number(result, quadratic.x)
+    result = vector-geometry-mix-number(result, quadratic.y)
+else if op is PathArcTo
+    . arc = op as PathArcTo
+    result = fnv-mix(result, 24)
+    result = vector-geometry-mix-number(result, arc.rx)
+    result = vector-geometry-mix-number(result, arc.ry)
+    result = vector-geometry-mix-number(result, arc.rotation as Radians)
+    result = fnv-mix(result, if arc.large then 1 else 0)
+    result = fnv-mix(result, if arc.sweep then 1 else 0)
+    result = vector-geometry-mix-number(result, arc.x)
+    result = vector-geometry-mix-number(result, arc.y)
+else
+    result = fnv-mix(result, 25)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-mix-paint U64
+    - fingerprint U64
+    - paint Fill
+
+match paint
+    |= Fill.inherit
+        fnv-mix(fingerprint, 30)
+    |= Fill.none
+        fnv-mix(fingerprint, 31)
+    |= Fill.stroke
+        fnv-mix(fingerprint, 33)
+    ??
+        fnv-mix(fingerprint, 32)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-mix-paint U64
+    - fingerprint U64
+    - paint Stroke
+
+match paint
+    |= Stroke.inherit
+        fnv-mix(fingerprint, 30)
+    |= Stroke.none
+        fnv-mix(fingerprint, 31)
+    ??
+        fnv-mix(fingerprint, 32)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-mix-optional-number U64
+    - fingerprint U64
+    - value Float?
+
+|? !value
+    fnv-mix(fingerprint, 0)
+??
+    vector-geometry-mix-number(fnv-mix(fingerprint, 1), value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-optional-cap U64
+    - fingerprint U64
+    - value LineCap?
+
+=? fnv-mix(fingerprint, 0) if !value
+. tag U64 = 1
+if value == LineCap.round
+    tag = 2
+else if value == LineCap.square
+    tag = 3
+= fnv-mix(fingerprint, tag)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-optional-join U64
+    - fingerprint U64
+    - value LineJoin?
+
+=? fnv-mix(fingerprint, 0) if !value
+. tag U64 = 1
+if value == LineJoin.round
+    tag = 2
+else if value == LineJoin.bevel
+    tag = 3
+= fnv-mix(fingerprint, tag)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-mix-optional-rule U64
+    - fingerprint U64
+    - value FillRule?
+
+|? !value
+    fnv-mix(fingerprint, 0)
+??
+    fnv-mix(fingerprint, if value == FillRule.even-odd then 2 else 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-optional-matrix U64
+    - fingerprint U64
+    - value Matrix?
+
+=? fnv-mix(fingerprint, 0) if !value
+. result = fnv-mix(fingerprint, 1)
+result = vector-geometry-mix-number(result, value.a)
+result = vector-geometry-mix-number(result, value.c)
+result = vector-geometry-mix-number(result, value.b)
+result = vector-geometry-mix-number(result, value.d)
+result = vector-geometry-mix-number(result, value.tx)
+= vector-geometry-mix-number(result, value.ty)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-geometry-mix-point U64
+    - fingerprint U64
+    - point Point
+
+vector-geometry-mix-number(vector-geometry-mix-number(fingerprint, point.x), point.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-rect U64
+    - fingerprint U64
+    - rect Rect
+
+. result = vector-geometry-mix-number(fingerprint, rect.x)
+result = vector-geometry-mix-number(result, rect.y)
+result = vector-geometry-mix-number(result, rect.width)
+= vector-geometry-mix-number(result, rect.height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-geometry-mix-number U64
+    - fingerprint U64
+    - value Float
+
+. magnitude = (abs(value) * 1000000000) as U64
+if value < 0
+    magnitude = magnitude /xor/ U64.max
+= fnv-mix(fingerprint, magnitude)
+

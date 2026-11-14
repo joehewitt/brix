@@ -1,0 +1,310 @@
+./support/fixture
+/graphics/point
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Range Reading")
+
+"(script.range-step (script.range 10 30) 5)", described("10 to 30 by 5")
+"(script.range (+ i 1) (* star points 2))", described("i + 1 to star points * 2")
+"(script.ease-in-out (script.range-step (script.range 0 90°) 10°))", described("0 to 90° by 10° eased in and out")
+"(script.angle-between (point 0 0) (point 1 1))", described("angle from (0, 0) to (1, 1)")
+"(script.angle-between [(script.range 1 2)] (point 1 1))", described("angle from (1 to 2) to (1, 1)")
+
+════════════════════
+test("Script Range Printing")
+
+"sin(0° to 90°)", printed("sin 0° to 90°")
+"10 to sin(30) by 5", printed-tree(ScriptPhraseExpression(script-range-step-kind, step-arguments(ScriptPhraseExpression(script-range-kind, range-arguments(tree("10"), tree("sin 30"))), tree("5"))))
+"(10 to 30)'s x", printed-tree(ScriptPhraseExpression("x", point-arguments(tree("10 to 30"))))
+
+════════════════════
+test("Script Range Values")
+
+"20", spread("10 to 30", 3, 5)
+"10", spread("10 to 30", 1, 1)
+"0.3", spread("0.1 to 0.3", 3, 3)
+"120", spread("0 to 360", 2, 4)
+"90", spread("0° to 360°", 2, 4, ScriptType(ScriptTypeKind.number, ScriptUnit.degrees))
+"15", spread("0°, 15°, 45°", 5, 7)
+"(120, 50)", spread("(0 to 360, 50 * sin 0° to 360°)", 2, 4)
+"10", unspread("10 to 30", script-number-type)
+"10 to 30", unspread("10 to 30", script-any-type)
+"20 to 60 by 10", unspread("(10 to 30 by 5) * 2", script-any-type)
+"(3, 0) to (5, 0)", unspread("(i to 5, 0)", script-any-type)
+
+════════════════════
+test("Script Counted Ranges")
+
+"11 120", counted("100 to 200 by 10", 3)
+"11 200", counted("100 to 205 by 10", 11)
+"11 100", counted("200 to 100 by 10", 11)
+"12 330", counted("0° to 360° by 30°", 12, ScriptType(ScriptTypeKind.number, ScriptUnit.degrees))
+"13 360", counted("0 to 360 by 30", 13)
+"6 (40, 0)", counted("(0, 0) to (100, 0) by 20", 3)
+"11 200", counted("100 to 205 by 10", 15)
+"3 69.1634", counted("0 to 100 by 40 eased in", 7)
+"out-of-range: A step must be more than 0", spread("10 to 30 by 0", 1, 1)
+"That makes 10001 copies; the most is 10000", counted("0 to 10000 by 1", 1)
+
+════════════════════
+test("Script Range Positions")
+
+"0.5", spread("(0 to 100 by 25)'s progress", 3, 1)
+"5", spread("(0 to 100 by 25)'s number", 9, 1)
+"0.5", spread("(10 to 30)'s progress", 2, 3)
+"2", held-step("script.loop-number", held-list(), 5, 7)
+"5", unspread("(0 to 100 by 25)'s count", script-number-type)
+"27.5", spread("5 to 50 over (0 to 100 by 25)", 3, 1)
+
+════════════════════
+test("Script Range Errors")
+
+"type-mismatch: A range needs two numbers, two points, or two colors", unspread("Ball to 3", script-any-type)
+"type-mismatch: Two ranges can be combined only inside a loop", unspread("(1 to 2) + (3 to 4)", script-any-type)
+"type-mismatch: Expected an angle, not a range", unspread("sin 0° to 90°", script-any-type)
+
+════════════════════
+test("Script Range Outlines")
+
+"Expected a number, not a shape; try “Ball's width”", outline-issue("Ball to 3", script-number-type)
+"1", percent-first("100 to 40")
+
+════════════════════
+test("Script Range Rewrites")
+
+"20 to 60 by 10", rewritten-product("10 to 30 by 5", 2)
+"5 to 15 over i", rewritten-quotient("10 to 30 over i", 2)
+"2, 4, 6", rewritten-product("1, 2, 3", 2)
+
+════════════════════
+test("Script Range Slots")
+
+"(points-of (list 1 3) Star)", script-part-describe("points 1, 3 of Star")
+"points 1 to 4 by 2 of Star", script-part-printed("points 1 to 4 by 2 of Star")
+"point (1 to 3) of Star", script-part-printed("point 1 to 3 of Star")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do range-vocabulary ScriptVocabulary'ScriptTestContext
+
+. vocabulary = script-test-vocabulary()
+script-add-standard(vocabulary)
+= vocabulary
+
+━━━━━━━━━━━━━━━━━━━━
+_ range-grammar ScriptGrammar
+
+range-vocabulary().grammar
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree ScriptExpression
+    - text String
+
+script-parse(script-read(text, range-grammar(), script-test-names()), range-grammar())
+
+━━━━━━━━━━━━━━━━━━━━
+_ described String
+    - text String
+
+script-describe(tree(text), range-grammar())
+
+━━━━━━━━━━━━━━━━━━━━
+_ printed String
+    - text String
+
+printed-tree(tree(text))
+
+━━━━━━━━━━━━━━━━━━━━
+_ printed-tree String
+    - expression ScriptExpression
+
+script-text(script-print(expression, range-grammar(), script-test-names()))
+
+━━━━━━━━━━━━━━━━━━━━
+_ range-arguments [String = ScriptExpression]
+    - first ScriptExpression
+    - last ScriptExpression
+
+Map'String'ScriptExpression
+    • "from" first
+    • "to" last
+
+━━━━━━━━━━━━━━━━━━━━
+_ step-arguments [String = ScriptExpression]
+    - range ScriptExpression
+    - step ScriptExpression
+
+Map'String'ScriptExpression
+    • "range" range
+    • "step" step
+
+━━━━━━━━━━━━━━━━━━━━
+_ point-arguments [String = ScriptExpression]
+    - point ScriptExpression
+
+Map'String'ScriptExpression
+    • "point" point
+
+━━━━━━━━━━━━━━━━━━━━
+_ RangeTestEnvironment
+    is ScriptEnvironment
+
++ context ScriptTestContext
++ position ScriptLoop?
++ recorded [ScriptRange]
++ held ScriptRange?
+
+────────────────────
++ This
+    - context
+    - position ScriptLoop? = null
+    - held ScriptRange? = null
+
+╌╌╌╌╌╌╌╌╌╌ is ScriptEnvironment ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do resolve ScriptValue ?! Error
+    - reference ScriptReference
+
+. range = held
+=? ScriptValue.range(range) if range && is-variable && reference.id == 20
+.. is-variable = reference.kind == ScriptReferenceKind.variable
+= context.resolve(reference)
+
+────────────────────
++ do spread ScriptLoop? ?! ScriptError
+    - range ScriptRange
+
+=? null if !position
+if range.counted
+    recorded += range
+    . count = script-range-count(range)
+    . wanted = if position then position.number else 1.0
+    = ScriptLoop(0, wanted, count as F64)
+= position
+
+━━━━━━━━━━━━━━━━━━━━
+_ do evaluated-with String
+    - expression ScriptExpression
+    - environment RangeTestEnvironment
+    - expected ScriptType
+
+. evaluator = ScriptEvaluator'ScriptTestContext
+    - range-vocabulary()
+    - environment.context
+    - environment
+. result = catch evaluator.evaluate(expression, expected)
+do match result
+    | error ScriptError
+        = "${error.kind.name}: ${error.message}"
+    | error Error
+        = "error: ${error.message}"
+    | value ScriptValue
+        = script-literal-text(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ spread String
+    - text String
+    - number F64
+    - count F64
+    - expected = script-any-type
+
+evaluated-with(tree(text), environment, expected)
+
+.. environment = RangeTestEnvironment(ScriptTestContext(), ScriptLoop(0, number, count))
+
+━━━━━━━━━━━━━━━━━━━━
+_ unspread String
+    - text String
+    - expected ScriptType
+
+evaluated-with(tree(text), RangeTestEnvironment(ScriptTestContext()), expected)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do counted String
+    - text String
+    - number F64
+    - expected = script-any-type
+
+. environment = RangeTestEnvironment(ScriptTestContext(), ScriptLoop(0, number, 1))
+. value = evaluated-with(tree(text), environment, expected)
+=? value if !environment.recorded.length
+. count = script-range-count(environment.recorded[0].with-wraps(expected.unit == ScriptUnit.degrees && script-range-turns(environment.recorded[0])))
+    catch err Error
+        = err.message
+= "$count $value"
+
+━━━━━━━━━━━━━━━━━━━━
+_ loop-arguments
+    - loop ScriptExpression
+
+Map'String'ScriptExpression
+    • "loop" loop
+
+━━━━━━━━━━━━━━━━━━━━
+_ held-step
+    - kind String
+    - held ScriptRange
+    - number F64
+    - count F64
+
+evaluated-with(phrase, environment, script-number-type)
+
+.. environment = RangeTestEnvironment(ScriptTestContext(), ScriptLoop(0, number, count), held)
+.. reference = ScriptReferenceExpression(script-variable-reference(20), "xs")
+.. phrase = ScriptPhraseExpression(kind, loop-arguments(reference))
+
+━━━━━━━━━━━━━━━━━━━━
+_ held-list
+
+ScriptRange(ScriptValue.number(0), ScriptValue.number(45), null, items)
+
+.. items = List'ScriptValue(ScriptValue.number(0), ScriptValue.number(15), ScriptValue.number(45))
+
+━━━━━━━━━━━━━━━━━━━━
+_ outline-issue String
+    - text String
+    - expected ScriptType
+
+outline.issue()?.message ?? ""
+
+.. outline = script-outline
+    - script-read(text, range-grammar(), script-test-names())
+    - range-grammar()
+    - script-test-names()
+    - expected
+
+━━━━━━━━━━━━━━━━━━━━
+_ do percent-first String
+    - text String
+
+. outline = script-outline
+    - script-read(text, range-grammar(), script-test-names())
+    - range-grammar()
+    - script-test-names()
+    - ScriptType(ScriptTypeKind.number, ScriptUnit.percent)
+outline.apply-units()
+= evaluated-with
+    - outline.expression
+    - RangeTestEnvironment(ScriptTestContext())
+    - ScriptType(ScriptTypeKind.number, ScriptUnit.percent)
+
+━━━━━━━━━━━━━━━━━━━━
+_ rewritten-product String
+    - text String
+    - factor F64
+
+printed-tree(script-product(tree(text), script-number-literal(factor)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ rewritten-quotient String
+    - text String
+    - divisor F64
+
+printed-tree(script-quotient(tree(text), divisor))

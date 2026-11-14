@@ -1,0 +1,393 @@
+./color
+./image
+./shader
+
+_ shader-layouts := Map'String'ShaderLayout()
+
+━━━━━━━━━━━━━━━━━━━━
++ FrameTime is Tuple
+
+━━━━━━━━━━━━━━━━━━━━
++ ShaderDeclaration
+
++ frame-rate F64? = 30
+
+────────────────────
++ ¶ metal
+
+────────────────────
++ get entry-input String
+
+""
+
+────────────────────
++ get entry-result String
+
+""
+
+────────────────────
++ get leading-args Size
+
+0
+
+────────────────────
++ get entry-size String
+
+"layer.size"
+
+━━━━━━━━━━━━━━━━━━━━
++ FillShader is ShaderDeclaration
+
+────────────────────
++ get entry-input
+
+"float2 size"
+
+────────────────────
++ get entry-size
+
+"size"
+
+────────────────────
++ get entry-result
+
+"return fill(position, size, values);"
+
+────────────────────
++ do to ShaderFill
+
+. layout = shader-layout(this)
+= ShaderFill
+    - layout.shader
+    - packed-args(this, layout)
+    - layout.is-live
+    - frame-rate
+    - 0
+    - layout.arg-kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ LayerShader is ShaderDeclaration
+
+────────────────────
++ get entry-input
+
+"ShaderLayer layer"
+
+────────────────────
++ get entry-result
+
+"return ::filter(position, layer, values);"
+
+────────────────────
++ do to ShaderFilter
+
+. layout = shader-layout(this)
+. args = packed-args(this, layout)
+= ShaderFilter(layout.shader, args, List'Image(), layout.is-live, frame-rate, 0, layout.arg-kinds)
+
+━━━━━━━━━━━━━━━━━━━━
++ MaskShader is ShaderDeclaration
+
+────────────────────
++ get entry-input
+
+"ShaderLayer layer"
+
+────────────────────
++ get entry-result
+
+"float4 color = layer.sample(position);\n    return float4(color.rgb, color.a * saturate(mask(position, layer.size, values)));"
+
+────────────────────
++ do to ShaderMask
+
+. layout = shader-layout(this)
+. args = packed-args(this, layout)
+= ShaderMask
+    - ShaderFilter
+        - layout.shader
+        - args
+        - List'Image()
+        - layout.is-live
+        - frame-rate
+        - 0
+        - layout.arg-kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ BackdropShader is ShaderDeclaration
+
+────────────────────
++ get entry-input
+
+"ShaderLayer layer"
+
+────────────────────
++ get entry-result
+
+"return backdrop(position, layer, values);"
+
+────────────────────
++ do to ShaderBackdrop
+
+. layout = shader-layout(this)
+. args = packed-args(this, layout)
+= ShaderBackdrop
+    - ShaderFilter
+        - layout.shader
+        - args
+        - List'Image()
+        - layout.is-live
+        - frame-rate
+        - 0
+        - layout.arg-kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ TransitionShader is ShaderDeclaration
+
+────────────────────
++ get leading-args
+
+1
+
+────────────────────
++ get entry-input
+
+"ShaderLayer layer"
+
+────────────────────
++ get entry-result
+
+"return transition(position, args.image(0u), layer, saturate(args[0u]), values);"
+
+────────────────────
++ do to ShaderTransition
+
+. layout = shader-layout(this)
+. args = packed-args(this, layout)
+= ShaderTransition
+    - ShaderFilter
+        - layout.shader
+        - args
+        - List'Image()
+        - layout.is-live
+        - frame-rate
+        - 0
+        - layout.arg-kinds
+
+━━━━━━━━━━━━━━━━━━━━
+_ ShaderLayout is Tuple
+
++ shader Shader
++ fields [ShaderField]
++ arg-kinds [ShaderArgKind]
++ is-live Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ ShaderField is Tuple
+
++ parts [ShaderPart]
+
+━━━━━━━━━━━━━━━━━━━━
+_ ShaderPart is Tuple
+
++ offset Size
++ kind ShaderScalar
++ size Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ ShaderScalar is U8
+
+| real
+| whole
+| natural
+| flag
+
+━━━━━━━━━━━━━━━━━━━━
+_ do packed-args [F64]
+    - declaration ShaderDeclaration
+    - layout ShaderLayout
+
+. base = declaration as Pointer
+. args = List'F64()
+for field in layout.fields
+    for part in field.parts
+        args += read-shader-scalar(base + part.offset, part.kind, part.size)
+= args
+
+━━━━━━━━━━━━━━━━━━━━
+_ do shader-layout ShaderLayout
+    - declaration ShaderDeclaration
+
+. type = type-of declaration
+. key = type.concrete-key
+=? shader-layouts[key]! if shader-layouts.has(key)
+. name = metal-identifier(type.concrete-name)
+. fields = List'ShaderField()
+. arg-kinds = List'ShaderArgKind()
+. members = List'String()
+. loads = List'String()
+. is-live = false
+. slot = declaration.leading-args
+. properties = type.properties
+for index in ShaderDeclaration.properties.length .. < properties.length
+    . property = properties[index]
+    . member = metal-identifier(property.name)
+    if property.type-key == FrameTime.key
+        members += "    float $member;"
+        loads += "    values.$member = args.time;"
+        is-live = true
+    else if property.type-key == FrameCycle.key
+        . span = "${member}Span"
+        members += "    float $member;"
+        loads += "    float $span = max(args[${slot}u] + args[${slot + 2}u] * ${declaration.entry-size}.x, 0.000001);"
+        loads += "    values.$member = min(fmod(max(args.time, 0.0), $span + args[${slot + 1}u]) / $span, 1.0);"
+        fields += ShaderField(shader-parts(property.properties, property.offset, property.name))
+        arg-kinds ++= List'ShaderArgKind(ShaderArgKind.cycle in 0 .. < 3)
+        slot += 3
+        is-live = true
+    else if property.type-key == RGBA.key
+        members += "    float4 $member;"
+        loads += "    values.$member = args.color(${slot}u);"
+        fields += ShaderField(shader-parts(property.properties, property.offset, property.name))
+        arg-kinds ++= List'ShaderArgKind(ShaderArgKind.color in 0 .. < 4)
+        slot += 4
+    else if property.is-aggregate
+        . parts = shader-parts(property.properties, property.offset, property.name)
+        ?! Panic("Shader parameter ${property.name} has ${parts.length} numbers; at most 4 fit a vector")
+            if parts.length < 1 || parts.length > 4
+        . width = if parts.length == 1 then "" else "${parts.length}"
+        members += "    float$width $member;"
+        . items = List'String()
+        for part-index in 0 .. < parts.length
+            items += "args[${slot + part-index}u]"
+        loads += "    values.$member = float$width(${", ".join(items)});"
+        fields += ShaderField(parts)
+        arg-kinds ++= List'ShaderArgKind(arg-kind(each) in parts)
+        slot += parts.length
+    else
+        . parts = shader-parts-of(property, 0)
+        . (metal-type, load) = scalar-load(parts[0].kind, "args[${slot}u]")
+        members += "    $metal-type $member;"
+        loads += "    values.$member = $load;"
+        fields += ShaderField(parts)
+        arg-kinds += arg-kind(parts[0])
+        slot += 1
+. source = shader-source(name, members, loads, declaration)
+. layout = ShaderLayout(Shader(source), fields, arg-kinds, is-live)
+shader-layouts[key] = layout
+= layout
+
+━━━━━━━━━━━━━━━━━━━━
+_ do shader-parts [ShaderPart]
+    - properties PropertyList
+    - offset Size
+    - name String
+
+. parts = List'ShaderPart()
+for property in properties
+    parts ++= shader-parts-of(property, offset)
+    ?! Panic("Shader parameter $name holds ${property.name}, which is not a number")
+        if property.is-aggregate
+= parts
+
+━━━━━━━━━━━━━━━━━━━━
+_ shader-parts-of [ShaderPart]
+    - property PropertyInfo
+    - offset Size
+
+?! Panic("Shader parameter ${property.name} has type ${property.type-name}, which a shader cannot take")
+    if !kind
+[ShaderPart(offset + property.offset, kind, property.size)]
+
+.. kind ShaderScalar? =
+    |? .real if property.is-float
+    |? .whole if property.is-signed
+    |? .natural if property.is-unsigned
+    |? .flag if property.is-boolean
+    ?? null
+
+━━━━━━━━━━━━━━━━━━━━
+_ arg-kind ShaderArgKind
+    - part ShaderPart
+
+if part.kind == .real then ShaderArgKind.number else ShaderArgKind.fixed
+
+━━━━━━━━━━━━━━━━━━━━
+_ scalar-load (String, String)
+    - kind ShaderScalar
+    - value String
+
+match kind
+    |= .whole
+        ("int", "int($value)")
+    |= .natural
+        ("uint", "uint($value)")
+    |= .flag
+        ("bool", "$value != 0.0")
+    ??
+        ("float", value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ read-shader-scalar F64
+    - address Pointer
+    - kind ShaderScalar
+    - size Size
+
+match kind
+    |= .real
+        if size == 4 then (address as CPointer'F32)[0] as F64 else (address as CPointer'F64)[0]
+    |= .flag
+        if (address as CPointer'U8)[0] != 0 then 1.0 else 0.0
+    |= .whole
+        match size
+            |= 1
+                (address as CPointer'I8)[0] as F64
+            |= 2
+                (address as CPointer'I16)[0] as F64
+            |= 4
+                (address as CPointer'I32)[0] as F64
+            ??
+                (address as CPointer'I64)[0] as F64
+    ??
+        match size
+            |= 1
+                (address as CPointer'U8)[0] as F64
+            |= 2
+                (address as CPointer'U16)[0] as F64
+            |= 4
+                (address as CPointer'U32)[0] as F64
+            ??
+                (address as CPointer'U64)[0] as F64
+
+━━━━━━━━━━━━━━━━━━━━
+_ do metal-identifier String
+    - name String
+
+. identifier = List'String()
+for char in name
+    . keeps = is-letter || (char >= '0' && char <= '9')
+        .. is-letter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+    identifier += if keeps then "$char" else "_"
+= "".join(identifier)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ shader-source
+    - name String
+    - members [String]
+    - loads [String]
+    - declaration ShaderDeclaration
+
+struct ${name}Args {
+$member-lines\
+};
+#line 1
+${declaration.metal()}
+float4 shade(float2 position, ${declaration.entry-input}, ShaderArgs args) {
+    ${name}Args values;
+$load-lines\
+    ${declaration.entry-result}
+}
+
+════════════════════
+.. member-lines = "".join("$each\n" in members)
+.. load-lines = "".join("$each\n" in loads)

@@ -1,0 +1,191 @@
+
+./inspect
+
+━━━━━━━━━━━━━━━━━━━━
++ do or'Item
+    - stream1 <Item>
+    - stream2 <Item>
+
+`  for item in stream1
+`      <= item
+`  or for item in stream2
+`      <= item
+
+. combined SyncChannel'Item
+. closer = AutoCloser(combined)
+do new
+    use closer
+    for item in stream1
+        combined <- item
+do new
+    use closer
+    for item in stream2
+        combined <- item
+= combined
+
+━━━━━━━━━━━━━━━━━━━━
++ do and'Item1'Item2 @inline
+    - stream1 <Item1>
+    - stream2 <Item2>
+
+for item in stream1
+    <= item
+for item in stream2
+    <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do zip'Item1'Item2 @inline
+    - stream1 <Item1>
+    - stream2 <Item2>
+
+for item1 in stream1
+and item2 in stream2
+    <= item1, item2
+
+━━━━━━━━━━━━━━━━━━━━
++ do product'Item1'Item2'Cursor @inline
+    - stream1 <Item1>
+    - stream2 CursorIterable'Item2'Cursor
+
+for item1 in stream1
+    for item2 in stream2
+        <= item1, item2
+
+━━━━━━━━━━━━━━━━━━━━
++ do product'Item1'Item2 @inline
+    - stream1 <Item1>
+    - stream2 Indexable'Item2
+
+for item1 in stream1
+    for item2 in stream2
+        <= item1, item2
+
+━━━━━━━━━━━━━━━━━━━━
++ do product'Item1'Item2'Backing @inline
+    - stream1 <Item1>
+    - stream2 ImmutableArray'Item2'Backing
+
+for item1 in stream1
+    for item2 in stream2
+        <= item1, item2
+
+━━━━━━━━━━━━━━━━━━━━
++ do product'Item1'Item2 @inline
+    - stream1 <Item1>
+    - stream2 <Item2>
+
+for item1 in stream1
+    for item2 in items2
+        <= item1, item2
+
+.. items2 = List(stream2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do indexed'Item @inline
+    - stream <Item>
+
+. i Index = 0
+for item in stream
+    <= (i, item)
+    i += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do repeat'Item'Cursor @inline
+    - count Int
+    - stream CursorIterable'Item'Cursor
+
+if count != 0
+    for repetition in 1 .. count
+        for item in stream
+            <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do repeat'Item @inline
+    - count Int
+    - stream Indexable'Item
+
+if count != 0
+    for repetition in 1 .. count
+        for item in stream
+            <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do repeat'Item'Backing @inline
+    - count Int
+    - stream ImmutableArray'Item'Backing
+
+if count != 0
+    for repetition in 1 .. count
+        for item in stream
+            <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do repeat'Item @inline
+    - count Int
+    - stream <Item>
+
+if count == 1
+    for item in stream
+        <= item
+else if count != 0
+    . contents = List(stream)
+    for repetition in 1 .. count
+        for item in contents
+            <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do toggle
+    - default Bool
+    - stream1 <''Item1>
+    - stream2 <''Item2>
+
+<= default
+while true
+    . a = <- stream1
+    if !a
+        break
+    <= !default
+    . b = <- stream2
+    if !b
+        break
+    <= default
+
+` toggle item variant sketch
+` + toggle'Item
+`     - default Item
+`     from stream1 <Item>
+`     to stream2 <Item>
+`
+` <= default
+` while true
+`     . a = <- stream1
+`     if !a
+`         break
+`     <= a
+`     . b = <- stream2
+`     if !b
+`         break
+`     <= b
+
+` + merge'Item(streams: <Item>...) do {
+`     if streams.length == 0 {
+`         = Item<>
+`     } else if streams.length == 1 {
+`         = streams[0]
+`     } else {
+`         * item1 in streams.pop() {
+`             >> item1
+`         } & item2 in merge(streams) {
+`             >> item2
+`         }
+`     }
+` }
+
+` + flatMapLatest() {
+` }
+`
+` + combineLatest() {
+` }
+`
+` + ambiguous() {
+` }

@@ -1,0 +1,186 @@
+./wire
+/ai/mcp
+/ai/model
+/data/json
+/data/jsonrpc
+
++ claude-tool-server = "yumi-tools"
+_ claude-tool-prefix = "mcp__${claude-tool-server}__"
+_ claude-tool-use-key = "claudecode/toolUseId"
+_ claude-tool-version = "0.1.0"
+_ claude-mcp-version = "2025-06-18"
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeHostedOutcome is Tuple
+
++ call-id String?
++ tool String
++ result AIToolkitResult?
++ failure String?
+
+━━━━━━━━━━━━━━━━━━━━
++ ClaudeToolHost
+
++ toolkits [AIToolkit]
+
+_ outcomes [ClaudeHostedOutcome]
+_ calls Size
+
+────────────────────
++ This
+    - toolkits
+
+────────────────────
++ do answer JSON
+    - message JSON
+    - request AIRequest
+
+. parsed = catch json-rpc-message(message, false)
+. rpc = match? parsed
+    | JSONRPCRequest
+=? claude-mcp-notified() if !rpc
+. outcome = catch result(rpc, request)
+= match outcome
+    | fields [String = JSON]
+        rpc.response(fields).json
+    | failure JSONRPCError
+        rpc.error-response(failure).json
+    | failure Error
+        rpc.error-response(JSONRPCError(.internal-error, failure.message)).json
+
+────────────────────
++ do take ClaudeHostedOutcome?
+    - call-id String
+    - tool String
+
+for index in 0 .. < outcomes.length
+    . outcome = outcomes[index]
+    if outcome.call-id == call-id || (outcome.call-id == null && outcome.tool == tool)
+        outcomes.remove(index)
+        = outcome
+= null
+
+────────────────────
+_ do result [String = JSON] ?! Error
+    - rpc JSONRPCRequest
+    - request AIRequest
+
+= match rpc.method
+    | "initialize"
+        claude-mcp-initialized(rpc.params)
+    | "ping"
+        Map'String'JSON()
+    | "tools/list"
+        listed()
+    | "tools/call"
+        call(rpc.params, request)
+    ?! JSONRPCError(.method-not-found, "Method not found: ${rpc.method}")
+
+────────────────────
+_ do listed [String = JSON]
+
+. listed = List'JSON()
+for kit in toolkits
+    for tool in kit.tools()
+        . hosted = MCPTool(tool.name)
+        hosted.description = tool.description
+        hosted.input-schema = tool.parameters
+        listed += hosted.json
+= Map'String'JSON
+    • tools listed
+
+────────────────────
+_ do call [String = JSON] ?! Error
+    - params JSON
+    - request AIRequest
+
+. fields = json-object(params) ?? Map'String'JSON()
+. name = json-string(fields["name"]) ?? ""
+. kit = ai-toolkit-for(toolkits, name)
+?! JSONRPCError(.invalid-params, "Unknown tool: $name")
+    if !kit
+. tool-use = json-string(json-object(fields["_meta"])?[claude-tool-use-key])
+calls += 1
+. id = tool-use ?? "${claude-tool-server}-$calls"
+. part = AIToolCallPart(id, id, name, fields["arguments"] ?? Map'String'JSON() as JSON)
+. ran = catch kit.run(request, part)
+if | failure Error = ran
+    outcomes += ClaudeHostedOutcome(tool-use, name, null, failure.message)
+    = MCPToolResult(failure.message, true).json
+. made = ran as AIToolkitResult
+outcomes += ClaudeHostedOutcome(tool-use, name, made, null)
+. reply = MCPToolResult(to-json(made.output))
+for image in made.images
+    reply.images += MCPImage(claude-image-data(image.file), image.file.mime-type)
+= reply.json
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-hosted-server ClaudeMCPServer
+    - toolkits [AIToolkit]
+
+. names = List'String()
+for kit in toolkits
+    for tool in kit.tools()
+        names += tool.name
+= ClaudeMCPServer(claude-tool-server, null, names)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-hosted-call AIToolCallPart?
+    - part AIMessagePart
+
+match? part
+    | call AIToolCallPart {it.tool-name.starts-with(claude-tool-prefix)}
+        AIToolCallPart
+            - call.id
+            - call.call-id
+            - call.tool-name[claude-tool-prefix.length .. < call.tool-name.length]
+            - call.arguments
+            - call.provider-signature
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-answers-hosted Bool
+    - part AIMessagePart
+    - calls [String = AIToolCallPart]
+
+match part
+    | result AIToolResultPart
+        calls[result.call-id] != null
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-mcp-initialized [String = JSON]
+    - params JSON
+
+Map'String'JSON
+    • "protocolVersion" json-string(json-object(params)?["protocolVersion"]) ?? claude-mcp-version
+    • capabilities capabilities
+    • "serverInfo" info
+
+.. capabilities = Map'String'JSON
+    • tools Map'String'JSON()
+.. info = Map'String'JSON
+    • name claude-tool-server
+    • version claude-tool-version
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-mcp-notified JSON
+
+Map'String'JSON
+    • jsonrpc "2.0"
+    • result Map'String'JSON()
+    • id 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-string
+    - value JSON?
+
+match? value
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-object
+    - value JSON?
+
+match? value
+    | [String = JSON]

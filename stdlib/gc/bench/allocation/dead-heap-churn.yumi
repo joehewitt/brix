@@ -1,0 +1,47 @@
+`benchmark.meta description: Fills the default heap goal twice with short-lived small objects over a small live set, so that each collection finds almost every span empty.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,allocator,compile-timing
+
+/YuGC/YuGC.h
+
+. live [DeadHeapNode]
+for index in 0 .. < 60000
+    . node = DeadHeapNode(index)
+    node.payload = Byte[(index % 61) + 24]
+    live += node
+
+. checksum = 0 as Size
+for round in 0 .. < 240
+    checksum += churn(live, round)
+
+-- "bench-result allocation/dead-heap-churn checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do churn Size
+    - live [DeadHeapNode]
+    - round Size
+
+. total = 0 as Size
+. chain DeadHeapNode? = null
+for index in 0 .. < 20000
+    . node = DeadHeapNode(round * 20000 + index)
+    node.payload = Byte[(index % 61) + 24]
+    node.next = chain
+    node.peer = live[(index * 7 + round) % live.length]
+    chain = node
+    total += node.payload.length + (node.peer?.value ?? 0) % 3
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ DeadHeapNode
+
++ value Size = 0
++ next DeadHeapNode?
++ peer DeadHeapNode?
++ payload Byte[]
+
+────────────────────
++ This
+    - v Size
+
+value = v

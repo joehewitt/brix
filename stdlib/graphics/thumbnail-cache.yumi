@@ -1,0 +1,317 @@
+./image
+/os/path
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ ThumbnailClient is Interface
+
+────────────────────
++ do thumbnail-loaded
+    - ticket ThumbnailTicket
+
+────────────────────
++ do thumbnail-priority F64
+    - ticket ThumbnailTicket
+
+━━━━━━━━━━━━━━━━━━━━
++ ThumbnailState is U8
+
+| idle = 0
+| queued = 1
+| loading = 2
+| ready = 3
+| failed = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ ThumbnailEntry
+
++ key String
++ path Path
++ bucket I32
++ image Image?
++ state = ThumbnailState.idle
++ used U64
++ byte-count Size
++ tickets [ThumbnailTicket]
++ is-removed = false
+
+────────────────────
++ This
+    - key
+    - path
+    - bucket
+
+━━━━━━━━━━━━━━━━━━━━
++ ThumbnailTicket
+
++ entry ThumbnailEntry
++ client ThumbnailClient
++ is-active = true
++ image => entry.image
++ is-settled => entry.state == ThumbnailState.ready || entry.state == ThumbnailState.failed
+
+────────────────────
++ This
+    - entry
+    - client
+
+━━━━━━━━━━━━━━━━━━━━
++ ThumbnailCache
+    is Closable
+
++ budget-bytes Size = 268435456
++ concurrency Size = 4
++ buckets [I32] = List'I32(128, 256, 512, 1024)
+
+_ entries Map'String'ThumbnailEntry
+_ queue [ThumbnailEntry]
+_ active Size
+_ tick U64
+_ byte-total Size
+_ is-closed = false
+_ is-pump-scheduled = false
+
+────────────────────
++ get byte-count Size
+
+byte-total
+
+────────────────────
++ get pending-count Size
+
+queue.length + active
+
+────────────────────
++ do bucket-for I32
+    - pixel-size I32
+
+for bucket in buckets
+    =? bucket if bucket * 5 >= pixel-size * 4
+= buckets[buckets.length - 1]
+
+────────────────────
++ do request ThumbnailTicket
+    - path Path
+    - pixel-size I32
+    - client ThumbnailClient
+
+. entry = entry-for(path, bucket-for(pixel-size))
+. ticket = ThumbnailTicket(entry, client)
+entry.tickets += ticket
+tick += 1
+entry.used = tick
+if entry.state == ThumbnailState.idle || entry.state == ThumbnailState.queued
+    enqueue(entry)
+    schedule-pump()
+= ticket
+
+────────────────────
++ do ready-ticket ThumbnailTicket?
+    - path Path
+    - client ThumbnailClient
+
+. index = buckets.length
+while index > 0
+    index -= 1
+    . entry = entries["${buckets[index]}:$path"]
+    if entry && entry.state == ThumbnailState.ready
+        . ticket = ThumbnailTicket(entry, client)
+        entry.tickets += ticket
+        tick += 1
+        entry.used = tick
+        = ticket
+= null
+
+────────────────────
++ do cancel
+    - ticket ThumbnailTicket
+
+=? if !ticket.is-active
+ticket.is-active = false
+. entry = ticket.entry
+. tickets = entry.tickets
+for index in 0 .. < tickets.length
+    if tickets[index] as Pointer == ticket as Pointer
+        tickets.remove(index)
+        break
+if tickets.length == 0 && entry.state == ThumbnailState.queued
+    dequeue(entry)
+    entry.state = ThumbnailState.idle
+trim()
+
+────────────────────
++ do invalidate
+    - path Path
+
+for bucket in buckets
+    . key = "$bucket:$path"
+    . entry = entries[key]
+    if entry
+        -= entries[key]
+        discard(entry)
+        if entry.tickets.length > 0
+            . replacement = entry-for(path, bucket)
+            for ticket in entry.tickets
+                ticket.entry = replacement
+                replacement.tickets += ticket
+            entry.tickets.clear()
+            replacement.used = entry.used
+            enqueue(replacement)
+schedule-pump()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if is-closed
+is-closed = true
+queue.clear()
+for entry in entries.values
+    discard(entry)
+entries.clear()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do entry-for ThumbnailEntry
+    - path Path
+    - bucket I32
+
+. key = "$bucket:$path"
+. existing = entries[key]
+=? existing if existing
+. entry = ThumbnailEntry(key, path, bucket)
+entries[key] = entry
+= entry
+
+────────────────────
+_ do enqueue
+    - entry ThumbnailEntry
+
+if entry.state == ThumbnailState.queued
+    dequeue(entry)
+entry.state = ThumbnailState.queued
+queue += entry
+
+────────────────────
+_ do dequeue
+    - entry ThumbnailEntry
+
+for index in 0 .. < queue.length
+    if queue[index] as Pointer == entry as Pointer
+        queue.remove(index)
+        break
+
+────────────────────
+_ do schedule-pump
+
+=? if is-pump-scheduled || is-closed
+is-pump-scheduled = true
+do new run-scheduled-pump()
+
+────────────────────
+_ do run-scheduled-pump
+
+is-pump-scheduled = false
+pump()
+
+────────────────────
+_ do pump
+
+while !is-closed && active < concurrency && queue.length > 0
+    . entry = take-next()
+    if entry.tickets.length == 0
+        entry.state = ThumbnailState.idle
+    else
+        entry.state = ThumbnailState.loading
+        active += 1
+        do new load(entry)
+
+────────────────────
+_ do take-next ThumbnailEntry
+
+. best Size
+. best-priority F64
+for index in 0 .. < queue.length
+    . priority = entry-priority(queue[index])
+    if index == 0 || priority <= best-priority
+        best = index
+        best-priority = priority
+. entry = queue[best]
+queue.remove(best)
+= entry
+
+────────────────────
+_ do entry-priority F64
+    - entry ThumbnailEntry
+
+. result F64
+. found = false
+for ticket in entry.tickets
+    if ticket.is-active
+        . priority = ticket.client.thumbnail-priority(ticket)
+        if !found || priority < result
+            result = priority
+            found = true
+= result
+
+────────────────────
+_ do load
+    - entry ThumbnailEntry
+
+. image = catch? load-thumbnail(entry.path, entry.bucket)
+active -= 1
+if is-closed || entry.is-removed
+    image?.release()
+    pump()
+    =
+entry.image = image
+entry.state = if image then ThumbnailState.ready else ThumbnailState.failed
+entry.byte-count = image?.byte-count ?? 0
+byte-total += entry.byte-count
+for ticket in List'ThumbnailTicket(entry.tickets)
+    if ticket.is-active
+        ticket.client.thumbnail-loaded(ticket)
+trim()
+pump()
+
+────────────────────
+_ do discard
+    - entry ThumbnailEntry
+
+entry.is-removed = true
+if entry.state == ThumbnailState.queued
+    dequeue(entry)
+byte-total -= entry.byte-count
+entry.byte-count = 0
+entry.image?.release()
+entry.image = null
+entry.state = ThumbnailState.idle
+
+────────────────────
+_ do trim
+
+=? if byte-total <= budget-bytes
+. candidates = List'ThumbnailEntry()
+for entry in entries.values
+    if entry.tickets.length == 0 && entry.state == ThumbnailState.ready
+        candidates += entry
+. ordered = sort(candidates) • using thumbnail-older
+. floor = budget-bytes - budget-bytes / 10
+for entry in ordered
+    =? if byte-total <= floor
+    -= entries[entry.key]
+    discard(entry)
+
+━━━━━━━━━━━━━━━━━━━━
+_ thumbnail-older Comparison
+    - left ThumbnailEntry
+    - right ThumbnailEntry
+
+|? left.used < right.used
+    Comparison.lesser
+|? left.used > right.used
+    Comparison.greater
+??
+    Comparison.equal

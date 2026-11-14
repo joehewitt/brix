@@ -1,0 +1,224 @@
+./builder
+./mir
+/core/arena
+/core/table
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRCriticalEdgeSplitter
+
+_ builder MIRBuilder
+_ function MIRFunction
+_ split-counter U32
+_ split-sources IdList
+_ split-targets IdList
+_ split-edges IdList
+
+────────────────────
++ This
+    - builder MIRBuilder
+
+.. function = builder.function
+
+────────────────────
++ do run
+
+. arena = function.arena
+. original = function.block-order
+. order = new-id-list(arena, original.length)
+. marks = arena.allocate'U32(function.blocks.length)
+split-counter = 0
+split-sources = IdList()
+split-targets = IdList()
+split-edges = IdList()
+for position in 0 .. < original.length
+    . pred = original[position]
+    order = order.appended(arena, pred)
+    . successors = function.blocks[pred].successors
+    if successors.length < 2
+        continue
+    . mark = position + 1
+    . unique = new-id-list(arena, successors.length)
+    for index in 0 .. < successors.length
+        . successor = successors[index]
+        if marks[successor] != mark
+            marks[successor] = mark
+            unique = unique.appended(arena, successor)
+
+    . start = order.length
+    for index in 0 .. < unique.length
+        . successor = unique[index]
+        if function.blocks[successor].predecessors.length >= 2 || begins-with-phi(successor)
+            order = order.appended(arena, split-edge(pred, successor))
+    . low = start
+    . high = order.length
+    while low + 1 < high
+        high -= 1
+        . swapped = order[low]
+        order.data[low] = order[high]
+        order.data[high] = swapped
+        low += 1
+function.block-order = order
+replace-predecessors()
+
+────────────────────
+_ do begins-with-phi Bool
+    - block BlockId
+
+` Whether a block starts with a phi. One left with a single predecessor, where the others
+` were never reached, still takes its copies on the edge it is entered by.
+. instructions = function.blocks[block].instructions
+if instructions.length == 0
+    = false
+do match? function.instructions[instructions[0]]
+    | .phi-instruction
+        = true
+= false
+
+────────────────────
+_ do replace-predecessors
+
+` Gives each block that edges were split before the edge blocks in place of the blocks the
+` edges came from. A block's splits are taken together, so its predecessors are read once
+` however many of its edges were split.
+. arena = function.arena
+. block-count = function.blocks.length
+. count = split-edges.length
+. first = arena.allocate'U32(block-count)
+. next = arena.allocate'U32(count)
+. replacement = arena.allocate'U32(block-count)
+. replaced-for = arena.allocate'U32(block-count)
+for split in 0 .. < count
+    . target = split-targets[split]
+    next[split] = first[target]
+    first[target] = split + 1
+for split in 0 .. < count
+    . target = split-targets[split]
+    . cursor = first[target]
+    if cursor == 0
+        continue
+    first[target] = 0
+    while cursor != 0
+        . source = split-sources[cursor - 1]
+        replacement[source] = split-edges[cursor - 1]
+        replaced-for[source] = target + 1
+        cursor = next[cursor - 1]
+    . predecessors = function.blocks[target].predecessors
+    for position in 0 .. < predecessors.length
+        . predecessor = predecessors[position]
+        if replaced-for[predecessor] == target + 1
+            predecessors.data[position] = replacement[predecessor]
+
+────────────────────
+_ do split-edge BlockId
+    - pred BlockId
+    - succ BlockId
+
+. arena = function.arena
+. pred-name = function.blocks[pred].name
+. succ-name = function.blocks[succ].name
+. name = function.add-local-name(.edge-block-name, pred-name, succ-name, split-counter)
+split-counter += 1
+. edge BlockId = function.blocks.length as BlockId
+function.blocks.append(MIRBlock(name, IdList(), IdList(), IdList()))
+
+replace-block(function.blocks[pred].successors, succ, edge)
+split-sources = split-sources.appended(arena, pred)
+split-targets = split-targets.appended(arena, succ)
+split-edges = split-edges.appended(arena, edge)
+function.blocks[edge].predecessors = IdList().appended(arena, pred)
+function.blocks[edge].successors = IdList().appended(arena, succ)
+
+rewrite-branch-targets(pred, succ-name, name)
+rewrite-jump-tables(pred, succ-name, name)
+rewrite-phi-blocks(succ, pred-name, name)
+
+. branch = builder.new-assembly(.b, builder.label(succ-name))
+function.blocks[edge].instructions = IdList().appended(arena, branch)
+builder.register-block(edge)
+= edge
+
+────────────────────
+_ do replace-block
+    - blocks IdList
+    - from BlockId
+    - to BlockId
+
+for index in 0 .. < blocks.length
+    if blocks[index] == from
+        blocks.data[index] = to
+
+────────────────────
+_ do label-name StringId
+    - operand OperandId
+
+if operand == no-operand
+    = no-string
+do match? function.operands[operand]
+    | .label-operand(label)
+        = label.name
+= no-string
+
+────────────────────
+_ do rewrite-branch-targets
+    - pred BlockId
+    - old-name StringId
+    - new-name StringId
+
+. instructions = function.blocks[pred].instructions
+for index in 0 .. < instructions.length
+    . id = instructions[index]
+    . operands = function.instructions[id].operands
+    for position in 0 .. < operands.length
+        if label-name(operands[position]) == old-name
+            operands.data[position] = builder.label(new-name)
+    . panic-target = no-operand
+    do match? function.instructions[id]
+        | .call-instruction(call)
+            panic-target = call.panic-target
+    if label-name(panic-target) == old-name
+        . replacement = builder.label(new-name)
+        do match? function.instructions[id]
+            | .call-instruction(call)
+                call.panic-target = replacement
+
+────────────────────
+_ do rewrite-jump-tables
+    - pred BlockId
+    - old-name StringId
+    - new-name StringId
+
+for table in 0 .. < function.jump-tables.length
+    if !references(pred, function.jump-tables[table].name)
+        continue
+    . labels = function.jump-tables[table].labels
+    for index in labels.start .. < labels.end
+        if function.names[index] == old-name
+            function.names.data[index] = new-name
+
+────────────────────
+_ do references Bool
+    - block BlockId
+    - name StringId
+
+. instructions = function.blocks[block].instructions
+for index in 0 .. < instructions.length
+    . operands = function.instructions[instructions[index]].operands
+    for position in 0 .. < operands.length
+        if label-name(operands[position]) == name
+            = true
+= false
+
+────────────────────
+_ do rewrite-phi-blocks
+    - succ BlockId
+    - old-name StringId
+    - new-name StringId
+
+. instructions = function.blocks[succ].instructions
+for index in 0 .. < instructions.length
+    do match? function.instructions[instructions[index]]
+        | .phi-instruction(phi)
+            . names = phi.blocks
+            for entry in 0 .. < names.length
+                if names[entry] == old-name
+                    names.data[entry] = new-name

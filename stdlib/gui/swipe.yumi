@@ -1,0 +1,373 @@
+./box
+./events
+./frame-clock
+./primitives
+/graphics/point
+/graphics/primitives
+/math
+/math/motion
+/time/duration
+
+_ swipe-lock-distance = 8.0
+_ swipe-commit-fraction = 0.5
+_ swipe-flick-speed = 300.0
+_ swipe-stiffness = 22.0
+_ swipe-motion = spring((2 * (π as F64) / swipe-stiffness) as Seconds)
+_ swipe-rubber = 0.3
+_ swipe-rubber-reach = 0.15
+_ swipe-velocity-window = 0.1
+_ swipe-rest-distance = 0.5
+
+━━━━━━━━━━━━━━━━━━━━
++ SwipeEvent is GUIEvent
+
++ axis Orientation
++ step Int
+
+────────────────────
++ This
+    - axis Orientation
+    - step Int
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ SwipeTracker
+    is FrameAnimation
+
++ box Box
++ page = Dimensions(0, 0)
++ has-previous-x = false
++ has-next-x = false
++ has-previous-y = false
++ has-next-y = false
++ offset = Point(0, 0)
++ axis Orientation?
++ is-tracking = false
++ is-settling = false
++ event moved Point
++ event landing SwipeEvent
++ event turned SwipeEvent
+
+_ travel = Point(0, 0)
+_ base = 0.0
+_ is-ignoring = false
+_ is-coasting = false
+_ is-caught = false
+_ times = List'F64()
+_ places = List'F64()
+_ target = 0.0
+_ settling = MotionChannel([0.0], swipe-rest-distance)
+
+────────────────────
++ This
+    - box
+
+────────────────────
++ get is-active Bool
+
+is-tracking || is-settling
+
+────────────────────
++ do handle Bool
+    - event ScrollEvent
+
+. momentum = event.momentum-phase
+if momentum != ScrollPhase.none
+    . swallowed = is-coasting
+    if momentum == ScrollPhase.ended || momentum == ScrollPhase.cancelled
+        is-coasting = false
+    = swallowed
+. phase = event.phase
+=? false if phase == ScrollPhase.none
+=? is-settling if phase == ScrollPhase.may-begin
+if phase == ScrollPhase.began
+    =? false if !start()
+=? false if !is-tracking
+if is-ignoring
+    if phase == ScrollPhase.ended || phase == ScrollPhase.cancelled
+        is-tracking = false
+        is-ignoring = false
+    = false
+if phase == ScrollPhase.ended || phase == ScrollPhase.cancelled
+    release(event.ordering-time)
+else
+    move(event.delta, event.ordering-time)
+= true
+
+────────────────────
++ do reset
+
+. kept = axis
+if is-settling && target != 0 && kept != null
+    landing <- SwipeEvent(kept, 0)
+is-settling = false
+is-tracking = false
+is-ignoring = false
+axis = null
+target = 0
+offset = Point(0, 0)
+
+────────────────────
+_ do start Bool
+
+if is-settling
+    catch()
+    = true
+=? false if !has-previous-x && !has-next-x && !has-previous-y && !has-next-y
+is-tracking = true
+is-caught = false
+is-ignoring = false
+is-coasting = false
+axis = null
+offset = Point(0, 0)
+base = 0
+travel = Point(0, 0)
+times = List'F64()
+places = List'F64()
+= true
+
+────────────────────
+_ do catch
+
+. kept = axis
+. is-turning = target != 0
+. remaining = along(offset) - target
+if is-turning
+    finish()
+    axis = kept
+    offset = placed(remaining)
+is-settling = false
+is-tracking = true
+is-caught = true
+is-ignoring = false
+is-coasting = false
+base = if is-turning then remaining else unshape(remaining)
+travel = Point(0, 0)
+times = List'F64()
+places = List'F64()
+moved <- offset
+
+────────────────────
+_ do move
+    - delta Point
+    - time F64
+
+travel = Point(travel.x - delta.x, travel.y - delta.y)
+if axis == null
+    =? if abs(travel.x) < swipe-lock-distance && abs(travel.y) < swipe-lock-distance
+    . wanted = if mostly-horizontal then Orientation.horizontal else Orientation.vertical
+        .. mostly-horizontal = abs(travel.x) >= abs(travel.y)
+    if !reaches(wanted)
+        is-ignoring = true
+        =
+    axis = wanted
+. pulled = base + along(travel)
+offset = placed(shape(pulled))
+while times && time - times[0] > swipe-velocity-window * 2
+    times.remove(0)
+    places.remove(0)
+times += time
+places += pulled
+moved <- offset
+
+────────────────────
+_ do release
+    - time F64
+
+is-tracking = false
+is-coasting = true
+. kept = axis
+if kept == null
+    offset = Point(0, 0)
+    moved <- offset
+    =
+. last = times.length - 1
+. is-stale = last < 0 || time - times[last] > swipe-velocity-window
+. velocity = if is-stale then 0.0 else pace()
+. step = choose(along(offset), velocity, span)
+target = -(step as F64) * span
+landing <- SwipeEvent(kept, step)
+settle(velocity * slope(base + along(travel)))
+
+────────────────────
+_ do choose Int
+    - current F64
+    - velocity F64
+    - extent F64
+
+if abs(velocity) >= swipe-flick-speed
+    =? 1 if velocity < 0 && (current <= 0 || is-caught) && has-next
+    =? -1 if velocity > 0 && (current >= 0 || is-caught) && has-previous
+    = 0
+=? 1 if current <= -extent * swipe-commit-fraction && has-next
+=? -1 if current >= extent * swipe-commit-fraction && has-previous
+= 0
+
+────────────────────
+_ do pace F64
+
+=? 0 if places.length < 2
+. last = times.length - 1
+. now = times[last]
+. index = last
+while index > 0 && now - times[index - 1] <= swipe-velocity-window
+    index -= 1
+. elapsed = now - times[index]
+=? 0 if elapsed <= 0
+= (places[last] - places[index]) / elapsed
+
+────────────────────
+_ do settle
+    - velocity F64
+
+. drift = along(offset) - target
+. limit = abs(drift) * swipe-stiffness
+. is-toward = (velocity < 0) == (drift > 0)
+. speed = if is-toward then clamp(velocity, -limit, limit) else velocity
+settling.jump([along(offset)], [speed])
+settling.retarget([target], swipe-motion, box.frame-clock?.now ?? 0ns)
+is-settling = true
+box.animate(this)
+
+────────────────────
+_ get span F64
+
+if axis == Orientation.vertical then page.height else page.width
+
+────────────────────
+_ get has-previous Bool
+
+if axis == Orientation.vertical then has-previous-y else has-previous-x
+
+────────────────────
+_ get has-next Bool
+
+if axis == Orientation.vertical then has-next-y else has-next-x
+
+────────────────────
+_ reaches Bool
+    - wanted Orientation
+
+if is-vertical then has-previous-y || has-next-y else has-previous-x || has-next-x
+
+.. is-vertical = wanted == Orientation.vertical
+
+────────────────────
+_ along F64
+    - point Point
+
+if axis == Orientation.vertical then point.y else point.x
+
+────────────────────
+_ placed Point
+    - value F64
+
+if axis == Orientation.vertical then Point(0, value) else Point(value, 0)
+
+────────────────────
+_ shape F64
+    - raw F64
+
+raw - over + (if over < 0 then -stretch else stretch)
+
+.. over = overshoot(raw)
+.. stretch = swipe-rubber-band(abs(over), span)
+
+────────────────────
+_ unshape F64
+    - shaped F64
+
+shaped - over + (if over < 0 then -pull else pull)
+
+.. over = overshoot(shaped)
+.. pull = swipe-rubber-unband(abs(over), span)
+
+────────────────────
+_ slope F64
+    - raw F64
+
+if over == 0 then 1.0 else swipe-rubber-slope(abs(over), span)
+
+.. over = overshoot(raw)
+
+────────────────────
+_ overshoot F64
+    - value F64
+
+|? value > span && has-previous
+    value - span
+|? value > 0 && !has-previous
+    value
+|? value < -span && has-next
+    value + span
+|? value < 0 && !has-next
+    value
+??
+    0
+
+╌╌╌╌╌╌╌╌╌╌ is FrameAnimation ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do advance Bool
+    - tick FrameTick
+
+=? false if !is-settling
+settling.update(tick.now)
+if !settling.is-moving
+    finish()
+    = false
+offset = placed(settling.value[0])
+moved <- offset
+= true
+
+────────────────────
++ do finish
+
+=? if !is-settling
+is-settling = false
+. kept = axis
+. step = if target < 0 then 1 else if target > 0 then -1 else 0
+target = 0
+axis = null
+offset = Point(0, 0)
+if kept != null && step != 0
+    turned <- SwipeEvent(kept, step)
+else
+    moved <- offset
+
+━━━━━━━━━━━━━━━━━━━━
+_ swipe-rubber-band F64
+    - distance F64
+    - extent F64
+
+|? reach <= 0
+    0
+??
+    (1 - 1 / (distance * swipe-rubber / reach + 1)) * reach
+
+.. reach = extent * swipe-rubber-reach
+
+━━━━━━━━━━━━━━━━━━━━
+_ swipe-rubber-unband F64
+    - stretch F64
+    - extent F64
+
+|? reach <= 0
+    0
+??
+    reach * (1 / (1 - min(stretch, reach * 0.99) / reach) - 1) / swipe-rubber
+
+.. reach = extent * swipe-rubber-reach
+
+━━━━━━━━━━━━━━━━━━━━
+_ swipe-rubber-slope F64
+    - distance F64
+    - extent F64
+
+|? reach <= 0
+    0
+??
+    swipe-rubber / (growth * growth)
+
+.. reach = extent * swipe-rubber-reach
+.. growth = distance * swipe-rubber / reach + 1

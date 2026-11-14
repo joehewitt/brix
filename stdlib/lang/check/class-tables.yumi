@@ -1,0 +1,658 @@
+./conversions
+./dispatch
+./facts
+./frame
+./idmap
+./instances
+./method-results
+./pair-order
+./portable
+./session
+./shared-results
+./signature
+./stable-key
+./type-relation
+./type-signature
+./type-store
+./types
+./typing-scratch
+/core/arena
+/core/map
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ Override is Struct
+
+` A method that answers for a base's in a class's table, and the place of its fact among
+` the facts' overrides.
+
++ method InstanceId
++ base InstanceId
++ fact U32
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassTables
+
++ types Types
++ program Program
++ instances Instances
+_ ranking Ranking
+_ scratch TypingScratch
+_ instances-scanned Size = 0
+_ types-scanned Size = 0
+_ methods-scanned Size = 0
+_ classes-scanned Size = 0
+_ methods-shared Size = 0
+_ classes-shared Size = 0
+_ methods-taken Size = 0
+_ classes-taken Size = 0
+_ methods [InstanceId]
+_ method-heads [U32]
+_ method-links [U32]
+_ classes [TypeId]
+_ child-heads [U32]
+_ child-links [U32]
+_ answers IdMap
+_ answered [InstanceId]
+_ answer-key Array'U32'ArenaBacking
+_ converters [InstanceId]
+_ converter-classes [Size]
+_ unsettled [TypeId]
+_ overrides [Override]
+_ adapted [U64]
+_ extension-names Map'Atom'Bool
+_ frame Frame
+_ conversions Conversions
+_ session Session
+_ host Demander? = null
+
+────────────────────
++ This
+    - typing Session
+
+.. session = typing
+.. types = session.types
+.. program = session.program
+.. instances = session.instances
+.. ranking = Ranking(session, 0)
+.. scratch = session.scratch
+.. answer-key = Array'U32(instances.arena, 16)
+.. frame = Frame(session)
+.. conversions = Conversions(frame)
+.. extension-names = name-extensions(program)
+
+────────────────────
++ do release
+
+answers.release()
+
+────────────────────
++ do expand
+    - demander Demander
+
+` Finds the methods that answer for others in the tables of classes (`find-overrides`), and
+` checks each against the one it answers for once both are typed. The demander types what the
+` conversion of an override's answer calls.
+host = demander
+find-overrides()
+. waiting [Override]
+for item in overrides
+    if settled(item.method) && settled(item.base)
+        . retyped = check-override(item)
+        if retyped != no-instance
+            waiting += Override(retyped, item.base, item.fact)
+    else
+        waiting += item
+overrides = waiting
+host = null
+
+────────────────────
++ do find-overrides
+
+` Types each method again for each class below its own, once for each such pair, in the
+` order of the methods and then of the classes. A class newly listed takes the methods of
+` every class above it, found by going up its bases. A method newly listed takes the classes
+` listed before below its class, found by going down from it. So the work is as large as the
+` pairs are many, and not as the methods times the classes. In a parallel type pass, the
+` methods and the classes of the other passes are listed too (`share-tables`).
+list-tables()
+if session.shared
+    share-tables()
+    list-tables()
+for position in methods-scanned .. < methods.length
+    . owner = instances.rows[methods[position]].self-type
+    method-links[position] = method-heads[owner]
+    method-heads[owner] = (position + 1) as U32
+. methods-before = methods-scanned
+. classes-before = classes-scanned
+methods-scanned = methods.length
+classes-scanned = classes.length
+. pairs [U64]
+for offset in classes-before .. < classes-scanned
+    . level = types.base-of(classes[offset])
+    while level
+        . method = method-heads[level]
+        while method != 0
+            . wide U64 = method - 1
+            pairs += (wide /lshift/ 32) /or/ (offset as U64)
+            method = method-links[method - 1]
+        level = types.base-of(level)
+. open [U32]
+for position in methods-before .. < methods-scanned
+    . wide = position as U64
+    open += child-heads[instances.rows[methods[position]].self-type]
+    while open.length != 0
+        . child = open[open.length - 1]
+        open.pop()
+        while child != 0
+            . offset = child - 1
+            if offset < classes-before
+                pairs += (wide /lshift/ 32) /or/ offset
+            open += child-heads[classes[offset]]
+            child = child-links[offset]
+. sorted = sorted-pairs(pairs)
+for pair in sorted
+    . method = methods[(pair /rshift/ 32) as Index]
+    . class = classes[(pair /and/ 0xffffffff) as Index]
+    if redeclares(method, class) && claims(method, class)
+        redispatch(method, class)
+for position in 0 .. < converters.length
+    . converter = converters[position]
+    if !settled(converter)
+        continue
+    . base = instances.rows[converter].self-type
+    for offset in converter-classes[position] .. < classes.length
+        . type = classes[offset]
+        if type != base && in-base-chain(types, type, base)
+            redispatch-converter(converter, type)
+    converter-classes[position] = classes.length
+
+────────────────────
+_ do list-tables
+
+` Lists the methods of classes with classes below them, and the classes completed, since last.
+. count = instances.length
+for position in instances-scanned .. < count
+    . instance = position as InstanceId
+    . row = instances.rows[position]
+    if is-table-method(row)
+        declare-effects(instance)
+        if types.has-subclasses(row.self-type)
+            methods += instance
+            method-links += 0
+    if is-table-converter(row) && types.has-subclasses(row.self-type)
+        converters += instance
+        converter-classes += 0
+instances-scanned = count
+. type-count = types.rows.length
+while method-heads.length < type-count
+    method-heads += 0
+    child-heads += 0
+. later [TypeId]
+for type in unsettled
+    if !list-class(type)
+        later += type
+for candidate in types-scanned .. < type-count
+    if !list-class(candidate as TypeId)
+        later += candidate as TypeId
+unsettled = later
+types-scanned = type-count
+
+────────────────────
+_ do share-tables
+
+` Offers the other passes of a parallel type pass the methods and the classes listed here since
+` last, and interns those they offered, so that a pass pairs a method one pass typed with a class
+` another completed. Each pass offers before it takes, so of two passes that list a method and a
+` class below its own, the one that takes last finds both.
+. shared = session.shared!
+for position in methods-shared .. < methods.length
+    . item = export-instance(session, methods[position])
+    if item
+        shared.offer-table-method(item)
+methods-shared = methods.length
+for position in classes-shared .. < classes.length
+    . item = export-class(types, classes[position])
+    if item
+        shared.offer-table-class(item)
+classes-shared = classes.length
+for item in shared.table-methods-from(methods-taken)
+    import-instance(session, item)
+    methods-taken += 1
+for item in shared.table-classes-from(classes-taken)
+    types.complete(import-class(types, item))
+    classes-taken += 1
+
+────────────────────
+_ do claims Bool
+    - method InstanceId
+    - receiver TypeId
+
+` Whether this pass is the first of a parallel type pass to type a method again for a class
+` below its own (`SharedTyping.claim`).
+if !session.shared
+    = true
+. key = mixed
+    - mixed(mixed(stable-key-seed, U32.max - 7), instances.stable-keys[method])
+    - types.key-of(receiver)
+= session.shared!.claim(key)
+
+────────────────────
+_ do redeclares Bool
+    - method InstanceId
+    - receiver TypeId
+
+` Whether a class, or a class above it and below the one a method is typed for, declares a member
+` of the method's name, or an extension declares one, or the method is not one the class it is
+` typed for declares: where none is, the class's objects run the method itself (`redispatch`).
+. row = instances.rows[method]
+. name Atom? = null
+. owner = 0u32
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        name = fn.name
+        owner = fn.owner
+. home = class-ref(types, row.self-type)
+if !name || extension-names[name] != null || home.module != row.module || home.decl != owner
+    = true
+. level TypeId? = receiver
+while level
+    if level == row.self-type
+        = false
+    . ref = class-ref(types, level)
+    . written = program.modules[ref.module]
+    do match? written.decls[ref.decl]
+        | .decl-class(class)
+            if written.first-member(class.members, name) != no-member
+                = true
+    level = types.base-of(level)
+= true
+
+────────────────────
+_ do list-class Bool
+    - type TypeId
+
+` Lists a type among the classes to redispatch for, once the type pass has completed it, and
+` says whether it has. A type seen before its completion is looked at again.
+. completion = types.completions[type]
+if completion.completion != .completion-done && completion.completion != .completion-failed
+    = false
+. base = types.base-of(type)
+if intrinsic-is-class(completion.intrinsic) && !completion.has-variables && base
+    classes += type
+    child-links += child-heads[base]
+    child-heads[base] = classes.length as U32
+= true
+
+────────────────────
+_ settled Bool
+    - instance InstanceId
+
+done && instances.signatures[instance].return-state != .return-pending
+
+.. done = instances.rows[instance].state == .instance-done
+
+────────────────────
+_ do check-override InstanceId
+    - item Override
+
+` A method that overrides a base class's gives what callers of the base method expect.
+` Where it answers another type, the class's table holds a function in the base's place that
+` converts what it answers to the base's type, as the conversion recorded at the method's
+` declaration says, once for each type a base answers. A method that yields and states no
+` errors, in the place of a base's whose generator carries others, is typed again stating
+` those (see `retype-steps`), and the instance typed again is answered, to be checked in turn.
+. retyped = retype-steps(item)
+if retyped != no-instance
+    session.facts.overrides[item.fact].override = retyped
+    = retyped
+check-answer(item.method, item.base)
+= no-instance
+
+────────────────────
++ do check-retyped
+    - demander Demander
+    - retired [Bool]
+
+` Checks again the answer of each override an edit typed again in place (`retype-edit`), which
+` retiring it dropped the conversion of. The demander types what a conversion calls.
+host = demander
+for fact in session.facts.overrides
+    if (fact.override as Size) < retired.length && retired[fact.override]
+        check-answer(fact.override, fact.base)
+host = null
+
+────────────────────
+_ do check-answer
+    - method InstanceId
+    - base InstanceId
+
+` Checks what an override answers against what its base's does, and converts it where the two
+` differ (`adapt-answer`). One typed again to state its base's errors (`retype-steps`) is not
+` checked.
+if instances.rows[method].inherits != no-instance
+    adapt-answer(method, instances.signatures[base].returns)
+    =
+. row = instances.rows[base]
+. signature = instances.signatures[base]
+. syntax = 0u32
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        syntax = fn.syntax
+. mark = scratch.types.mark
+for offset in 0 .. < signature.errors.count
+    scratch.types.push(instances.error-type(base, offset))
+. errors = scratch.types.since(mark)
+. proto = MethodProto("Base method", "method", row.module, syntax, signature.returns, errors)
+check-method-result(session, method, proto)
+scratch.types.rewind(mark)
+adapt-answer(method, signature.returns)
+
+────────────────────
+_ do retype-steps InstanceId
+    - item Override
+
+` The instance a class's table holds in the place of a base's method whose generator carries
+` errors, for a method that yields and states no errors and whose generator gives the same
+` items but carries other errors, or none, when it answers the iterable of them: the method
+` typed again stating those of the base's, as the reference's method inherits them when the
+` base's has been compiled. None for any other.
+. row = instances.rows[item.method]
+. base = instances.rows[item.base]
+if row.inherits != no-instance || !row.is-generator || !base.is-generator || no-base-errors
+    = no-instance
+.. no-base-errors = base.step-errors.count == 0
+if instances.signatures[item.method].error-state == .errors-stated
+    = no-instance
+. returned = instances.signatures[item.method].returns
+. expected = instances.signatures[item.base].returns
+if returned == expected || !same-items(returned, expected)
+    = no-instance
+. signature = instances.signatures[item.method]
+. mark = scratch.types.mark
+for offset in 0 .. < signature.param-count
+    scratch.types.push(instances.param-type(item.method, offset))
+. params = scratch.types.since(mark)
+. args-mark = scratch.types.mark
+for offset in 0 .. < signature.args.count
+    scratch.types.push(instances.argument-type(item.method, offset))
+. args = scratch.types.since(args-mark)
+. retyped = instances.intern-retyped(item.method, item.base, params, args)
+scratch.types.rewind(mark)
+= retyped
+
+────────────────────
+_ do same-items Bool
+    - one TypeId
+    - two TypeId
+
+` Whether a method answers the items of a base's generator, whatever errors each carries: as a
+` generator, or as the iterable a method that yields and raises nothing answers.
+. generator = types.generator-decl
+. iterable = types.iterable-decl
+do match? types.rows[one]
+    | .type-class(left)
+        do match? types.rows[two]
+            | .type-class(right)
+                . yields = left.module == generator.module && left.decl == generator.decl
+                . iterates = left.module == iterable.module && left.decl == iterable.decl
+                if !(yields || iterates) || not-generator
+                    = false
+                .. not-generator = right.module != generator.module || right.decl != generator.decl
+                if right.args.count != left.args.count
+                    = false
+                for position in 0 .. < left.args.count
+                    if types.child-type(left.args, position) != right-arg
+                        = false
+                    .. right-arg = types.child-type(right.args, position)
+                = true
+= false
+
+────────────────────
+_ do adapt-answer
+    - method InstanceId
+    - expected TypeId
+
+. returned = instances.signatures[method].returns
+if returned == expected || returned == no-type || returned == invalid-type
+    =
+if expected == no-type || expected == invalid-type || expected == types.void-type
+    =
+. pair U64 = ((method as U64) /lshift/ 32) /or/ (expected as U64)
+for seen in adapted
+    if seen == pair
+        =
+adapted += pair
+. row = instances.rows[method]
+. site = 0u32
+. body = 0u32
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        site = fn.syntax
+        body = fn.body
+if site == 0
+    =
+frame.begin(method)
+conversions.begin()
+conversions.host = host
+if relation-legal(conversions.compare-held(returned, expected))
+    conversions.convert(site, final-value(body), returned, expected, .reason-return)
+
+────────────────────
+_ do final-value SyntaxId
+    - body SyntaxId
+
+` The value a body ends on: its last statement where it is a block, so an answer that ends on an
+` integer written with no suffix converts as that integer does.
+=? body if body == 0
+do match? frame.tree.nodes[body]
+    | .node-block(row)
+        =? body if row.body.count == 0
+        = frame.tree.children[row.body.start + row.body.count - 1]
+= body
+
+────────────────────
+_ do is-table-method Bool
+    - row Instance
+
+if row.self-type == no-type || row.enclosing != no-instance
+    = false
+if !intrinsic-is-class(types.intrinsic-of(row.self-type))
+    = false
+. owner-module = program.modules[row.module]
+do match? owner-module.decls[row.decl]
+    | .decl-function(fn)
+        . method = fn.kind == .function-decl || fn.kind == .getter-decl || fn.kind == .setter-decl
+        if !method || fn.is-generated || fn.is-static || fn.owner == 0
+            = false
+        do match? owner-module.decls[fn.owner]
+            | .decl-class
+                = true
+= false
+
+────────────────────
+_ do is-table-converter Bool
+    - row Instance
+
+` Whether an instance is a converter of a class with no type parameters of its own, which
+` holds a place in the class's table.
+if row.self-type == no-type || row.enclosing != no-instance
+    = false
+if !intrinsic-is-class(types.intrinsic-of(row.self-type))
+    = false
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-converter(converter)
+        = converter.param-constraints.count == 0 && converter.param-assignments.count == 0
+= false
+
+────────────────────
+_ do redispatch-converter
+    - converter InstanceId
+    - receiver TypeId
+
+` A converter a subclass declares again takes the place of its base's for the subclass's
+` objects. It is typed with the subclass as receiver, and the facts say which it replaces.
+. row = instances.rows[converter]
+. target = instances.signatures[converter].returns
+if target == no-type || target == invalid-type
+    =
+. caller = class-ref(types, receiver).module
+. relation = session.relations.compare(receiver, target, false, false, null, caller)
+if relation.kind != .relation-converter || relation.converter-module == U32.max
+    =
+. module = relation.converter-module
+. decl = relation.converter-decl
+if module == row.module && decl == row.decl
+    =
+do match? program.modules[module].decls[decl]
+    | .decl-converter(found)
+        if found.param-constraints.count != 0 || found.param-assignments.count != 0
+            =
+. override = instances.intern-dispatched
+    - module
+    - decl
+    - receiver
+    - declared-effects(program, module, decl)
+    - converter
+session.facts.overrides.append(OverrideFact(converter, receiver, override))
+
+────────────────────
+_ do declare-effects
+    - instance InstanceId
+
+. row = instances.rows[instance]
+. declared = declared-effects(program, row.module, row.decl)
+if declared == row.effects
+    =
+. signature = instances.signatures[instance]
+. params-mark = scratch.types.mark
+for offset in 0 .. < signature.param-count
+    scratch.types.push(instances.param-type(instance, offset))
+. params = scratch.types.since(params-mark)
+. args-mark = scratch.types.mark
+for offset in 0 .. < signature.args.count
+    scratch.types.push(instances.argument-type(instance, offset))
+. args = scratch.types.since(args-mark)
+instances.intern(row.module, row.decl, row.self-type, declared, no-instance, params, args)
+scratch.types.rewind(params-mark)
+
+────────────────────
+_ do redispatch
+    - method InstanceId
+    - receiver TypeId
+
+` The function a class's objects run for a method of a class above it. The method's own type
+` parameters are given as written, so a class's method that constrains them answers only for
+` the ones it takes; one an argument with no type makes is not written, and the arguments
+` choose it. What a class answers for a name, a kind, the type parameters and the types of
+` the arguments is asked once, and kept for the other methods that ask the same. A method it
+` may answer with whose parameters write a type that names nothing stops the class's table
+` there, as TypeScript's does, and the base's does not answer in its place.
+. row = instances.rows[method]
+. kind = DeclKind.function-decl
+. name Atom? = null
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        kind = fn.kind
+        name = fn.name
+if !name
+    =
+. signature = instances.signatures[method]
+. given = signature.param-count - implicit-argument-count(types, row.module, row.decl)
+. words = 5 + given + signature.args.count
+if words > answer-key.length
+    answer-key = answer-key.resize(words * 2, instances.arena)
+answer-key[0] = receiver
+answer-key[1] = kind
+answer-key[2] = program.atom-key(name) as U32
+answer-key[3] = given
+answer-key[4] = row.effects
+for offset in 0 .. < given
+    answer-key[5 + offset] = instances.param-type(method, offset)
+for offset in 0 .. < signature.args.count
+    answer-key[5 + given + offset] = instances.argument-type(method, offset)
+. asked = answers.store(answer-key.data, words)
+if !answers.last-inserted
+    note-override(method, receiver, answered[asked])
+    =
+answered += no-instance
+ranking.caller = class-ref(types, receiver).module
+. names-mark = scratch.names.mark
+. shapes-start = scratch.call-arguments.mark
+. types-start = scratch.types.mark
+for offset in 0 .. < given
+    scratch.types.push(instances.param-type(method, offset))
+. params = scratch.types.since(types-start)
+. args-start = scratch.types.mark
+for offset in 0 .. < signature.args.count
+    scratch.call-arguments.push(CallArgument(null, false, false, false, false))
+    scratch.types.push(instances.argument-type(method, offset))
+ranking.begin(scratch.call-arguments.since(shapes-start), scratch.types.since(args-start))
+ranking.explicit-params(params)
+. hit Hit? = null
+if kind == .getter-decl
+    hit = ranking.dispatch-getter(receiver, name)
+else if kind == .setter-decl
+    hit = ranking.dispatch-setter(receiver, name)
+else
+    hit = ranking.dispatch-method(receiver, name)
+if ranking.missing-site != 0
+    . message = program.store-atom("Type not found")
+    session.facts.record-diagnostic
+        - method
+        - ranking.missing-module
+        - ranking.missing-site
+        - .stated
+        - message
+else if hit && !ranking.ambiguity()
+    . found = hit
+    . override = instances.intern-dispatched
+        - found.module
+        - found.decl
+        - found.receiver
+        - declared-effects(program, found.module, found.decl)
+        - method
+        - found.params
+        - found.args
+    answered[asked] = override
+    note-override(method, receiver, override)
+ranking.release()
+scratch.call-arguments.rewind(shapes-start)
+scratch.types.rewind(types-start)
+scratch.names.rewind(names-mark)
+
+────────────────────
+_ do note-override
+    - method InstanceId
+    - receiver TypeId
+    - override InstanceId
+
+` Notes, as a fact, that a method answers for a base's for objects of a class, and keeps it to
+` be checked once both are typed.
+if override != no-instance && override != method
+    overrides += Override(override, method, session.facts.overrides.length as U32)
+    session.facts.overrides.append(OverrideFact(method, receiver, override))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do name-extensions Map'Atom'Bool
+    - program Program
+
+` The name of each function and property an extension declares, anywhere in a program.
+. names = Map'Atom'Bool()
+for owner in program.modules
+    for decl in owner.decls
+        do match? decl
+            | .decl-extension(extended)
+                for member in owner.member-pool[extended.members]
+                    do match? owner.decls[member]
+                        | .decl-function(fn)
+                            if fn.name
+                                names[fn.name] = true
+                        | .decl-property(property)
+                            if property.name
+                                names[property.name] = true
+= names

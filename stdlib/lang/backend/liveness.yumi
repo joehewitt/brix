@@ -1,0 +1,628 @@
+./builder
+./mir
+./mir-text
+/core/arena
+/core/table
+
++ no-slot U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ LiveInterval is Struct
+
++ exists Bool
++ view VRegId
++ reg-class RegClass
++ ranges IdList
++ uses IdList
++ pinned RegisterId
++ preferred RegisterId
++ crosses-call Bool
++ scan-active Bool
++ next-use-cursor U32
+
+━━━━━━━━━━━━━━━━━━━━
++ has-bit Bool @inline
+    - words CPointer'U32
+    - id U32
+
+(words[id /zrshift/ 5] /and/ (1u32 /lshift/ (id /and/ 31))) != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-bit @inline
+    - words CPointer'U32
+    - id U32
+
+. word = id /zrshift/ 5
+words[word] = words[word] /or/ (1u32 /lshift/ (id /and/ 31))
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRLiveness
+
+_ builder MIRBuilder
+_ function MIRFunction
++ blocks IdList
++ block-index CPointer'U32
++ block-start CPointer'U32
++ block-end CPointer'U32
++ live-in CPointer'IdList
++ live-out CPointer'IdList
++ intervals CPointer'LiveInterval
++ order IdList
++ call-positions IdList
++ call-instructions IdList
++ copy-preferences CPointer'IdList
++ instruction-count U32
++ vreg-count U32
+_ readers CPointer'IdList
+_ writers CPointer'IdList
+_ read-at CPointer'U32
+_ written-at CPointer'U32
+_ coalesces Bool
+
+────────────────────
++ This
+    - builder MIRBuilder
+    - coalesces Bool = true
+
+.. function = builder.function
+
+────────────────────
+_ get arena Arena @inline
+
+function.arena
+
+────────────────────
++ do run
+
+. post-order = function.post-order()
+. count = post-order.length
+. block-count = function.blocks.length
+blocks = new-id-list(arena, count)
+block-index = arena.allocate'U32(block-count)
+for block in 0 .. < block-count
+    block-index[block] = no-id
+for index in 0 .. < count
+    . block = post-order[count - 1 - index]
+    block-index[block] = index
+    blocks = blocks.appended(arena, block)
+block-start = arena.allocate'U32(count)
+block-end = arena.allocate'U32(count)
+vreg-count = function.vreg-count
+number-instructions()
+compute-liveness()
+build-intervals()
+
+────────────────────
+_ do number-instructions
+
+. position U32
+call-positions = IdList()
+call-instructions = IdList()
+for index in 0 .. < blocks.length
+    block-start[index] = position
+    . instructions = function.blocks[blocks[index]].instructions
+    for offset in 0 .. < instructions.length
+        . id = instructions[offset]
+        function.instructions[id].position = position as I32
+        . opcode = function.instructions[id].opcode
+        if opcode == .call || opcode == .bl || opcode == .blr
+            call-positions = call-positions.appended(arena, position)
+        if opcode == .call
+            call-instructions = call-instructions.appended(arena, id)
+        position += 1
+    block-end[index] = position
+instruction-count = position
+
+────────────────────
+_ do compute-liveness
+
+` The registers live into each block and out of it, each list in the order of their ids. A
+` register is live into a block that reads it before writing it, and out of every block that
+` reaches such a block without passing one that writes it. Each register is followed on its
+` own, back from the blocks that read it, so the work and the memory are the size of what is
+` live.
+` 1. Each block's instructions say which registers it reads first and which it writes.
+` 2. The blocks that lead to each block are listed from the successors the answer is
+`    defined by.
+` 3. Each register is followed back from its readers. A block is marked with the register
+`    it was last visited for, so no set of registers is kept for a block.
+. block-count = blocks.length
+live-in = arena.allocate'IdList(block-count)
+live-out = arena.allocate'IdList(block-count)
+copy-preferences = arena.allocate'IdList(vreg-count)
+readers = arena.allocate'IdList(vreg-count)
+writers = arena.allocate'IdList(vreg-count)
+read-at = arena.allocate'U32(vreg-count)
+written-at = arena.allocate'U32(vreg-count)
+for index in 0 .. < block-count
+    . instructions = function.blocks[blocks[index]].instructions
+    for offset in 0 .. < instructions.length
+        . id = instructions[offset]
+        . roles = function.operand-roles(id)
+        . operands = function.instructions[id].operands
+        for position in 0 .. < operands.length
+            mark-operand(operands[position], role-at(roles, position), index)
+        . opcode = function.instructions[id].opcode
+        if opcode == .mov || (coalesces && opcode == .fmov)
+            note-copy(operands, function.instructions[id].is-phi-copy)
+
+. first-incoming = arena.allocate'U32(block-count + 1)
+for index in 0 .. < block-count
+    . successors = function.blocks[blocks[index]].successors
+    for position in 0 .. < successors.length
+        first-incoming[block-index[successors[position]] + 1] += 1
+for index in 0 .. < block-count
+    first-incoming[index + 1] += first-incoming[index]
+. incoming = arena.allocate'U32(first-incoming[block-count])
+. filled = arena.allocate'U32(block-count)
+for index in 0 .. < block-count
+    . successors = function.blocks[blocks[index]].successors
+    for position in 0 .. < successors.length
+        . successor = block-index[successors[position]]
+        incoming[first-incoming[successor] + filled[successor]] = index
+        filled[successor] += 1
+
+. live-into = arena.allocate'U32(block-count)
+. live-from = arena.allocate'U32(block-count)
+. writes = arena.allocate'U32(block-count)
+. pending = arena.allocate'U32(block-count)
+for id in 0 .. < vreg-count
+    . starts = readers[id]
+    if starts.length == 0
+        continue
+    . mark = id + 1
+    . written = writers[id]
+    for position in 0 .. < written.length
+        writes[written[position]] = mark
+    . depth U32
+    for position in 0 .. < starts.length
+        . start = starts[position]
+        live-into[start] = mark
+        live-in[start] = live-in[start].appended(arena, id)
+        pending[depth] = start
+        depth += 1
+    while depth != 0
+        depth -= 1
+        . block = pending[depth]
+        for edge in first-incoming[block] .. < first-incoming[block + 1]
+            . source = incoming[edge]
+            if live-from[source] == mark
+                continue
+            live-from[source] = mark
+            live-out[source] = live-out[source].appended(arena, id)
+            if writes[source] != mark && live-into[source] != mark
+                live-into[source] = mark
+                live-in[source] = live-in[source].appended(arena, id)
+                pending[depth] = source
+                depth += 1
+
+────────────────────
+_ checked-id U32
+    - view VRegId
+
+?! Panic("V$id is outside the $vreg-count registers of its function")
+    if id >= vreg-count
+
+id
+
+.. id = function.vregs[view].id
+
+────────────────────
+_ do mark-operand
+    - operand OperandId
+    - role U32
+    - block U32
+
+if role == 0
+    =
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        mark-vreg(checked-id(row.vreg), role, block)
+    | .vreg-group-operand(row)
+        for index in row.vregs.start .. < row.vregs.end
+            mark-vreg(checked-id(function.group-vregs[index]), role, block)
+    | .load-address-operand(row)
+        do match? function.operands[row.base]
+            | .vreg-operand(base)
+                mark-vreg(checked-id(base.vreg), role, block)
+        if row.offset != no-operand
+            do match? function.operands[row.offset]
+                | .vreg-operand(index)
+                    mark-vreg(checked-id(index.vreg), use-role, block)
+
+────────────────────
+_ do mark-vreg
+    - id U32
+    - role U32
+    - block U32
+
+` Notes a block as one that reads a register before writing it, or as one that writes it.
+` Each register remembers the last block noted, so a block is listed once.
+. mark = block + 1
+if (role /and/ use-role) != 0 && written-at[id] != mark && read-at[id] != mark
+    read-at[id] = mark
+    readers[id] = readers[id].appended(arena, block)
+if (role /and/ def-role) != 0 && written-at[id] != mark
+    written-at[id] = mark
+    writers[id] = writers[id].appended(arena, block)
+
+────────────────────
+_ do note-copy
+    - operands IdList
+    - is-phi-copy Bool
+
+if operands.length < 2
+    =
+. destination = no-id
+. source = no-id
+do match? function.operands[operands[0]]
+    | .vreg-operand(row)
+        destination = row.vreg
+do match? function.operands[operands[1]]
+    | .vreg-operand(row)
+        source = row.vreg
+if destination == no-id || source == no-id
+    =
+. reg-class = function.vregs[destination].reg-class
+if reg-class != function.vregs[source].reg-class || reg-class == .gpr32 || reg-class == .fpr32
+    =
+if reg-class == .gpr64 && is-phi-copy && !coalesces
+    =
+. destination-id = checked-id(destination)
+. source-id = checked-id(source)
+add-copy-preference(destination-id, source-id)
+add-copy-preference(source-id, destination-id)
+
+────────────────────
+_ do add-copy-preference
+    - id U32
+    - preferred U32
+
+. list = copy-preferences[id]
+for index in 0 .. < list.length
+    if list[index] == preferred
+        =
+copy-preferences[id] = list.appended(arena, preferred)
+
+────────────────────
+_ do build-intervals
+
+intervals = arena.allocate'LiveInterval(vreg-count)
+order = IdList()
+. remaining = blocks.length
+while remaining > 0
+    remaining -= 1
+    . block-from = block-start[remaining]
+    . block-to = block-end[remaining]
+    . out = live-out[remaining]
+    for position in 0 .. < out.length
+        touch-interval(out[position], no-id)
+        add-range-front(out[position], block-from * 2, block-to * 2)
+    . instructions = function.blocks[blocks[remaining]].instructions
+    . offset = instructions.length
+    while offset > 0
+        offset -= 1
+        . instruction = instructions[offset]
+        . position = function.instructions[instruction].position as U32
+        . roles = function.operand-roles(instruction)
+        . operands = function.instructions[instruction].operands
+        for operand in 0 .. < operands.length
+            add-operand-uses(operands[operand], role-at(roles, operand), position, block-from)
+
+for index in 0 .. < order.length
+    . id = order[index]
+    reverse-pairs(intervals[id].ranges)
+    . uses = intervals[id].uses
+    reverse-ids(uses)
+    . kept U32
+    for read in 0 .. < uses.length
+        if kept == 0 || uses[read] != uses[kept - 1]
+            uses.data[kept] = uses[read]
+            kept += 1
+    intervals[id].uses = IdList(uses.data, kept, uses.capacity)
+    intervals[id].crosses-call = crosses-call(intervals[id].ranges)
+    . view = intervals[id].view
+    if view != no-id
+        intervals[id].pinned = function.vregs[view].hint
+
+────────────────────
+_ do add-operand-uses
+    - operand OperandId
+    - role U32
+    - position U32
+    - block-from U32
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        add-interval-use(row.vreg, role, position, block-from)
+    | .vreg-group-operand(row)
+        for index in row.vregs.start .. < row.vregs.end
+            add-interval-use(function.group-vregs[index], role, position, block-from)
+    | .load-address-operand(row)
+        do match? function.operands[row.base]
+            | .vreg-operand(base)
+                add-interval-use(base.vreg, role, position, block-from)
+        if row.offset != no-operand
+            do match? function.operands[row.offset]
+                | .vreg-operand(index)
+                    add-interval-use(index.vreg, use-role, position, block-from)
+
+────────────────────
+_ do add-interval-use
+    - view VRegId
+    - role U32
+    - position U32
+    - block-from U32
+
+. id = checked-id(view)
+touch-interval(id, view)
+if (role /and/ use-role) != 0
+    add-range-front(id, block-from * 2, position * 2 + 1)
+    intervals[id].uses = intervals[id].uses.appended(arena, position * 2)
+if (role /and/ def-role) != 0
+    set-range-from(id, position * 2 + 1)
+    intervals[id].uses = intervals[id].uses.appended(arena, position * 2 + 1)
+
+────────────────────
+_ do touch-interval
+    - id U32
+    - view VRegId
+
+if !intervals[id].exists
+    intervals[id].exists = true
+    intervals[id].view = view
+    intervals[id].reg-class = .gpr64
+    intervals[id].pinned = no-register
+    intervals[id].preferred = no-register
+    order = order.appended(arena, id)
+    if view != no-id
+        intervals[id].reg-class = function.vregs[view].reg-class
+else if view != no-id
+    intervals[id].view = view
+    intervals[id].reg-class = function.vregs[view].reg-class
+
+────────────────────
+_ do add-range-front
+    - id U32
+    - from U32
+    - to U32
+
+. ranges = intervals[id].ranges
+. length = ranges.length
+if length != 0 && ranges[length - 2] <= to
+    if from < ranges[length - 2]
+        ranges.data[length - 2] = from
+    if to > ranges[length - 1]
+        ranges.data[length - 1] = to
+    =
+ranges = ranges.appended(arena, from)
+intervals[id].ranges = ranges.appended(arena, to)
+
+────────────────────
+_ do set-range-from
+    - id U32
+    - from U32
+
+. ranges = intervals[id].ranges
+. length = ranges.length
+if length != 0 && ranges[length - 2] <= from && from < ranges[length - 1]
+    ranges.data[length - 2] = from
+else
+    add-range-front(id, from, from + 1)
+
+────────────────────
+_ do crosses-call Bool
+    - ranges IdList
+
+if call-positions.length == 0
+    = false
+. skip U32 = if coalesces then 1 else 0
+. index U32
+while index < ranges.length
+    if first-call-through-slot(ranges[index] + skip) < ranges[index + 1]
+        = true
+    index += 2
+= false
+
+────────────────────
+_ do first-call-through-slot U32
+    - slot U32
+
+. low U32
+. high = call-positions.length
+while low < high
+    . middle = (low + high) / 2
+    if call-positions[middle] * 2 + 1 < slot
+        low = middle + 1
+    else
+        high = middle
+if low < call-positions.length
+    = call-positions[low] * 2 + 1
+= no-slot
+
+────────────────────
++ start U32 @inline
+    - id U32
+
+if ranges.length == 0 then no-slot else ranges[0]
+
+.. ranges = intervals[id].ranges
+
+────────────────────
++ end U32 @inline
+    - id U32
+
+if ranges.length == 0 then 0 else ranges[ranges.length - 1]
+
+.. ranges = intervals[id].ranges
+
+────────────────────
++ do overlaps Bool
+    - left U32
+    - right U32
+
+. a = intervals[left].ranges
+. b = intervals[right].ranges
+if a.length == 0 || b.length == 0
+    = false
+. i = first-range-ending-after(a, b[0])
+. j = first-range-ending-after(b, a[0])
+while i < a.length && j < b.length
+    if a[i + 1] <= b[j]
+        i += 2
+    else if b[j + 1] <= a[i]
+        j += 2
+    else
+        = true
+= false
+
+────────────────────
++ covers Bool
+    - id U32
+    - slot U32
+
+index < ranges.length && ranges[index] <= slot
+
+.. ranges = intervals[id].ranges
+.. index = first-range-ending-after(ranges, slot)
+
+────────────────────
++ do first-range-ending-after U32
+    - ranges IdList
+    - slot U32
+
+` The first range that ends after a slot, or the length when none does. An interval of many
+` ranges is not read from its start for each one it is compared with.
+. low U32
+. high = ranges.length / 2
+while low < high
+    . middle = (low + high) / 2
+    if ranges[middle * 2 + 1] <= slot
+        low = middle + 1
+    else
+        high = middle
+= low * 2
+
+────────────────────
++ do next-use-after U32
+    - id U32
+    - position U32
+
+. uses = intervals[id].uses
+. cursor = intervals[id].next-use-cursor
+while cursor < uses.length
+    . slot = uses[cursor]
+    if slot >= position && (slot /and/ 1) == 0
+        intervals[id].next-use-cursor = cursor
+        = slot
+    cursor += 1
+intervals[id].next-use-cursor = cursor
+= no-slot
+
+────────────────────
++ do write-text
+    - text MIRText
+
+. out = text.out
+out.text("intervals\n")
+for index in 0 .. < order.length
+    . id = order[index]
+    out.text("  V")
+    out.unsigned(id)
+    out.byte(46)
+    text.reg-class-suffix(intervals[id].reg-class)
+    out.text(" ranges=")
+    . ranges = intervals[id].ranges
+    . cursor U32
+    while cursor < ranges.length
+        if cursor != 0
+            out.byte(44)
+        out.unsigned(ranges[cursor])
+        out.byte(45)
+        out.unsigned(ranges[cursor + 1])
+        cursor += 2
+    out.text(" uses=")
+    . uses = intervals[id].uses
+    for position in 0 .. < uses.length
+        if position != 0
+            out.byte(44)
+        out.unsigned(uses[position])
+    if intervals[id].pinned != no-register
+        out.text(" pinned=")
+        text.register-text(intervals[id].pinned)
+    if intervals[id].crosses-call
+        out.text(" call")
+    out.byte(10)
+out.text("copy-preferences\n")
+for id in 0 .. < vreg-count
+    . preferences = copy-preferences[id]
+    if preferences.length == 0
+        continue
+    out.text("  V")
+    out.unsigned(id)
+    out.byte(58)
+    for index in 0 .. < preferences.length
+        out.byte(32)
+        out.unsigned(preferences[index])
+    out.byte(10)
+out.text("calls ")
+for index in 0 .. < call-positions.length
+    if index != 0
+        out.byte(32)
+    out.unsigned(call-positions[index])
+out.byte(10)
+for index in 0 .. < blocks.length
+    out.text("live ")
+    text.name-text(function.blocks[blocks[index]].name)
+    out.byte(32)
+    out.unsigned(block-start[index])
+    out.byte(45)
+    out.unsigned(block-end[index])
+    out.text(" in=")
+    listed-ids(out, live-in[index])
+    out.text(" out=")
+    listed-ids(out, live-out[index])
+    out.byte(10)
+
+────────────────────
+_ do listed-ids
+    - out TextBuffer
+    - ids IdList
+
+for position in 0 .. < ids.length
+    if position != 0
+        out.byte(44)
+    out.unsigned(ids[position])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reverse-ids
+    - ids IdList
+
+if ids.length < 2
+    =
+. low U32
+. high = ids.length - 1
+while low < high
+    . kept = ids[low]
+    ids.data[low] = ids[high]
+    ids.data[high] = kept
+    low += 1
+    high -= 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reverse-pairs
+    - pairs IdList
+
+if pairs.length < 4
+    =
+. low U32
+. high = pairs.length - 2
+while low < high
+    . first = pairs[low]
+    . second = pairs[low + 1]
+    pairs.data[low] = pairs[high]
+    pairs.data[low + 1] = pairs[high + 1]
+    pairs.data[high] = first
+    pairs.data[high + 1] = second
+    low += 2
+    high -= 2

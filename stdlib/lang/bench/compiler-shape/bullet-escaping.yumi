@@ -1,0 +1,34 @@
+`benchmark.meta description: Repeated bullet map/filter pipelines consumed by a caller through an escaping helper.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+/core
+
+. rounds = 40000
+. upper-bound = 256
+. checksum = bullet-checksum(rounds, upper-bound)
+?! Panic("bullet checksum mismatch")
+    if checksum != rounds * 3 * 128 * 129
+
+-- "bench-result compiler-shape/bullet-escaping checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bullet-checksum Int
+    - rounds Int
+    - upper-bound Int
+
+. total = 0
+for round in 0 .. < rounds
+    . values = bullet-values(upper-bound)
+    for value in values
+        total += value
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ bullet-values
+    - upper-bound Int
+
+** 1 .. upper-bound
+*> each * 3
+?> each % 2 == 0
+

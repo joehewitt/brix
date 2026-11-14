@@ -1,0 +1,137 @@
+/os/file
+/os/path
+/stream/sort
+
+_ snapshot-format = "yumi-c-headers 1"
+
+━━━━━━━━━━━━━━━━━━━━
++ CHeaderSnapshot
+
+` The records of the C headers one build read for a target, each under the name `snapshot-key`
+` gives its header, and where the target's C library headers were. A build reads a snapshot's
+` records in place of scanning the headers, so a host without the target's SDK reads them as the
+` host that took the snapshot did.
+
++ target-name String
++ c-root Path
+_ headers [String = String]
+_ lock = Mutex()
+
+────────────────────
++ This
+    - target-name
+    - c-root
+
+────────────────────
++ do has Bool
+    - key String?
+
+use lock
+= key != null && headers[key] != null
+
+────────────────────
++ do records String?
+    - key String?
+
+use lock
+=? null if !key
+= headers[key]
+
+────────────────────
++ do keep
+    - key String
+    - records String
+
+use lock
+headers[key] = records
+
+────────────────────
++ do write ?! Error
+    - path Path
+
+` Writes the snapshot at `path`: a line naming the format, the target, and the directory its C
+` library headers were in, then for each header, by name, a line of its name and the length of
+` its records, and the records.
+use lock
+. parts [String]
+parts += snapshot-format
+parts += "target $target-name"
+parts += "root $c-root"
+for key in sort(headers.keys)
+    . records = headers[key]!
+    parts += "header $key ${(records as Byte[]).length}"
+    parts += records
+write-file-atomically(path, "${"\n".join(parts)}\n")
+
+━━━━━━━━━━━━━━━━━━━━
++ do read-c-header-snapshot CHeaderSnapshot ?! Error
+    - path Path
+
+` The snapshot that `CHeaderSnapshot.write` wrote at `path`.
+. text = catch? read-file-text(path)
+?! Error("Unable to read the C header snapshot $path")
+    if !text
+. reader = SnapshotReader(text)
+. target = reader.field("target") if reader.line() == snapshot-format
+. root = reader.field("root")
+?! Error("$path is not a C header snapshot")
+    if !target || !root
+. snapshot = CHeaderSnapshot(target, Path(root))
+while reader.has-more
+    . named = reader.field("header")
+    . space = named?.find-reverse(" ")
+    ?! Error("$path has a header line that names no length")
+        if !named || !space
+    . length = Int(named[space + 1 ...])
+    . records = reader.take(length)
+    ?! Error("$path ends inside the records of ${named[0 .. < space]}")
+        if !records
+    snapshot.keep(named[0 .. < space], records)
+= snapshot
+
+━━━━━━━━━━━━━━━━━━━━
+_ SnapshotReader
+
+` Reads a snapshot's lines, and the records that follow a header's line by their length.
+
+_ bytes Byte[]
+_ cursor Index
+
+────────────────────
++ This
+    - bytes
+
+────────────────────
++ get has-more Bool
+
+cursor < bytes.length
+
+────────────────────
++ do line String?
+
+=? null if cursor >= bytes.length
+. data = bytes.data
+. end = cursor
+while end < bytes.length && data[end] != 10
+    end += 1
+. found = bytes.slice-string(cursor .. < end)
+cursor = end + 1
+= found
+
+────────────────────
++ do field String?
+    - name String
+
+. found = line()
+. prefix = "$name "
+=? null if !found || !found.starts-with(prefix)
+= found[prefix.length ...]
+
+────────────────────
++ do take String?
+    - length Index
+
+=? null if cursor + length > bytes.length
+. found = bytes.slice-string(cursor .. < cursor + length)
+cursor += length + 1
+= found

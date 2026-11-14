@@ -1,0 +1,116 @@
+(import ./pattern-art)
+(import ./pattern-model)
+(import /data/json)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/matrix)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(import /os/file)
+(import /os/path)
+(import /units)
+
+(fn-expr + encode-pattern String
+  (param design PatternDesign)
+  (call to-json fields)
+  (where
+    (lazy fields
+      (call (of Map String JSON)
+        (block
+          (entry "format" "yumi-pattern/1")
+          (entry "name" (. design name))
+          (entry "repeat" (as (. design repeat) Int))
+          (entry "spacing" (. design spacing))
+          (entry "colors" (call (of List JSON) (in (call color-json each) (. design colors))))
+          (entry "motifs" (call (of List JSON) (in (call motif-json each) (. design motifs))))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ color-json JSON
+  (param color RGBA)
+  (call (of List JSON) (. color red) (. color green) (. color blue) (. color alpha))
+)
+
+(fn-expr _ motif-json JSON
+  (param motif PatternMotif)
+  (call (of Map String JSON)
+    (block
+      (entry "kind" (as (. motif kind) Int))
+      (entry "x" (. motif position x))
+      (entry "y" (. motif position y))
+      (entry "scale" (. motif scale))
+      (entry "rotation" (as (. motif rotation) Float))
+      (entry "shape" (. motif shape))
+      (entry "ink" (. motif ink))
+    )
+  )
+)
+
+(fn-do + decode-pattern PatternDesign (?! Error)
+  (param text String)
+  (let fields (call (. (call JSONReader "Pattern" (call parse-json text)) object)))
+  (throw (call Error "This file is not a Pattern document.") (if (!= (call (. ([] fields "format") string)) "yumi-pattern/1")))
+  (let colors (call (. ([] fields "colors") items)))
+  (let motifs (call (. ([] fields "motifs") items)))
+  (throw (call Error "A pattern needs five colors and between one and 24 motifs.") (if (or (!= (. colors length) 5) (< (. motifs length) 1) (> (. motifs length) 24))))
+  (let design (call PatternDesign (call (. ([] fields "name") string)) (call List (in (call read-motif ([] motifs each) (+ each 1)) (..< 0 (. motifs length)))) (call List (in (call read-color each) colors)) (as (call bounded-integer ([] fields "repeat") 0 3) RepeatMode) (call bounded-number ([] fields "spacing") 75 160)))
+  (return (call pattern-with-motifs design (call List (in (call motif-at each (call pattern-wrapped-position design (. each position))) (. design motifs)))))
+)
+
+(fn-do _ read-color RGBA (?! Error)
+  (param source JSONReader)
+  (let values (call (. source items)))
+  (throw (call Error "A color needs four channels.") (if (!= (. values length) 4)))
+  (return (call RGBA (call bounded-number ([] values 0) 0 1) (call bounded-number ([] values 1) 0 1) (call bounded-number ([] values 2) 0 1) (call bounded-number ([] values 3) 0 1)))
+)
+
+(fn-expr _ read-motif PatternMotif (?! Error)
+  (param source JSONReader)
+  (param id Int)
+  (call PatternMotif id (as (call bounded-integer ([] fields "kind") 0 3) MotifKind) (call Point (call bounded-number ([] fields "x") -100 100) (call bounded-number ([] fields "y") -100 100)) (call bounded-number ([] fields "scale") 30 180) (as (call bounded-number ([] fields "rotation") -180 180) Degrees) (call bounded-number ([] fields "shape") 0 100) (call bounded-integer ([] fields "ink") 1 4))
+  (where
+    (lazy fields (call (. source object)))
+  )
+)
+
+(fn-expr _ bounded-number Float (?! Error)
+  (param source JSONReader)
+  (param low Float)
+  (param high Float)
+  (before
+    (throw (call Error (str (. source label) " is outside its supported range.")) (if (or (not (call is-finite value)) (< value low) (> value high))))
+  )
+  value
+  (where
+    (lazy value (call (. source number)))
+  )
+)
+
+(fn-expr _ bounded-integer Int (?! Error)
+  (param source JSONReader)
+  (param low Int)
+  (param high Int)
+  (before
+    (throw (call Error (str (. source label) " is outside its supported range.")) (if (or (< value low) (> value high))))
+  )
+  value
+  (where
+    (lazy value (call (. source int)))
+  )
+)
+
+(fn-do + export-pattern _
+  (param design PatternDesign)
+  (param destination Path)
+  (let period (call pattern-period design))
+  (let pitch (call pattern-pitch design))
+  (let scale (/ (call ceil pitch) pitch))
+  (let canvas (use (call SVGCanvas (as (call round (* (. period width) scale)) I32) (as (call round (* (. period height) scale)) I32))))
+  (call (. canvas transform) (call matrix-from-scale (call Dimensions scale scale)))
+  (call paint-pattern canvas design (call pattern-artwork design) (call Rect 0 0 (. period width) (. period height)))
+  (call (. canvas write) destination)
+)

@@ -1,0 +1,178 @@
+./chat
+./model
+/data/json
+
++ ai-task-create-tool = "TaskCreate"
++ ai-task-update-tool = "TaskUpdate"
+_ ai-task-tools = ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]
+
+━━━━━━━━━━━━━━━━━━━━
++ AITaskStatus is Union
+
+| pending
+| active
+| done
+
+━━━━━━━━━━━━━━━━━━━━
++ AITask is Tuple
+
++ id String
++ subject String
++ status AITaskStatus
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-is-task-call Bool
+    - call AIToolCallPart
+
+ai-task-tools has call.tool-name
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-is-last-task-call Bool
+    - parts [AIMessagePart]
+    - call AIToolCallPart
+
+. index = parts.length
+while index > 0
+    index -= 1
+    if | other AIToolCallPart = parts[index]
+        =? other.call-id == call.call-id if ai-is-task-call(other)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-has-task-calls Bool
+    - parts [AIMessagePart]
+
+for part in parts
+    if | call AIToolCallPart = part
+        =? true if ai-is-task-call(call)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-tasks [AITask]
+    - messages [AIChatMessage]
+    - message AIChatMessage
+    - parts [AIMessagePart]
+
+. tasks = List'AITask()
+for earlier in messages
+    if earlier.id == message.id
+        break
+    ai-follow-tasks(tasks, earlier.parts)
+ai-follow-tasks(tasks, parts)
+= ai-touched-tasks(tasks, parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-touched-tasks [AITask]
+    - tasks [AITask]
+    - parts [AIMessagePart]
+
+. ids = Map'String'Bool()
+. subjects = Map'String'Bool()
+for part in parts
+    if | call AIToolCallPart = part
+        if call.tool-name == ai-task-create-tool
+            . number = ai-task-number(ai-task-output(parts, call))
+            if number
+                ids[number] = true
+            . subject = ai-argument(call.arguments, "subject")
+            if subject
+                subjects[subject] = true
+        else if call.tool-name == ai-task-update-tool
+            . id = ai-argument(call.arguments, "taskId")
+            if id
+                ids[id] = true
+. touched = List'AITask()
+for task in tasks
+    if ids[task.id] || subjects[task.subject]
+        touched += task
+= touched
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-argument String?
+    - arguments JSON
+    - name String
+
+. fields = match? arguments
+    | [String = JSON]
+=? null if !fields
+for key, value in fields
+    if key == name
+        if | text String = value
+            = text
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ai-follow-tasks
+    - tasks List'AITask
+    - parts [AIMessagePart]
+
+for part in parts
+    if | call AIToolCallPart = part
+        if call.tool-name == ai-task-create-tool
+            . subject = ai-argument(call.arguments, "subject")
+            if subject
+                . id = ai-task-number(ai-task-output(parts, call)) ?? "${tasks.length + 1}"
+                tasks += AITask(id, subject, AITaskStatus.pending)
+        else if call.tool-name == ai-task-update-tool
+            . id = ai-argument(call.arguments, "taskId")
+            if id
+                ai-update-task
+                    - tasks
+                    - id
+                    - ai-argument(call.arguments, "status")
+                    - ai-argument(call.arguments, "subject")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ai-update-task
+    - tasks List'AITask
+    - id String
+    - status String?
+    - subject String?
+
+for index in 0 .. < tasks.length
+    if tasks[index].id == id
+        if status == "deleted"
+            tasks.remove(index)
+            =
+        . task = tasks[index]
+        tasks[index] = AITask(id, subject ?? task.subject, ai-task-status(status) ?? task.status)
+        =
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-task-status AITaskStatus?
+    - status String?
+
+|? status == "completed"
+    AITaskStatus.done
+|? status == "in_progress"
+    AITaskStatus.active
+|? status == "pending"
+    AITaskStatus.pending
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ai-task-output String
+    - parts [AIMessagePart]
+    - call AIToolCallPart
+
+for part in parts
+    if | result AIToolResultPart = part
+        =? result.text-output ?? "" if result.call-id == call.call-id
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-task-number String?
+    - text String
+
+|? start == null
+    null
+|? !number.length
+    null
+??
+    number
+
+.. start = text.find("#")
+.. rest = text[start + 1 ...]
+.. end = rest.find(" ")
+.. number = if end != null then rest[0 .. < end] else rest

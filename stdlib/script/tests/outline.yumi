@@ -1,0 +1,97 @@
+./support/fixture
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Type Issues")
+
+"Expected a point, not a shape; try “Ball's center”", outline-issue("Ball", ScriptType(ScriptTypeKind.point))
+"Expected a number, not a shape; try “Bars' width”", outline-issue("Bars + 1", script-number-type)
+
+════════════════════
+test("Script Greedy Slots")
+
+"(tangent of Star at 50%) + Ball's center", regrouped("tangent of Star at 50% + Ball's center", ScriptType(ScriptTypeKind.point))
+"(tangent of Star at 50% + 10%) + Ball's center", regrouped("tangent of Star at 50% + 10% + Ball's center", ScriptType(ScriptTypeKind.point))
+"(tangent of Star at 50%)'s x", regrouped("tangent of Star at 50%'s x", script-number-type)
+"(tangent of Star at 50%) rotated by 90° around Ball's center", regrouped("tangent of Star at 50% rotated by 90° around Ball's center", ScriptType(ScriptTypeKind.point))
+"(Ball's center's distance to point 1 of Star) > 3", regrouped("Ball's center's distance to point 1 of Star > 3", script-truth-type)
+"Ball's center's distance to (point 1 of Star) * 2", regrouped("Ball's center's distance to point 1 of Star * 2", script-number-type)
+"point 1 of Ball + 1", regrouped("point 1 of Ball + 1", ScriptType(ScriptTypeKind.point))
+
+════════════════════
+test("Script Outline Spans")
+
+true, keeps-identity("Ball's width * (1 + 2)")
+
+════════════════════
+test("Script Slot Units")
+
+"0.5", unit-value("50", ScriptType(ScriptTypeKind.number, ScriptUnit.percent))
+"0.5", unit-value("50%", ScriptType(ScriptTypeKind.number, ScriptUnit.percent))
+"(1.5, 1)", unit-value("(150, 100)", ScriptType(ScriptTypeKind.point, ScriptUnit.percent))
+"-0.25", unit-value("-25", ScriptType(ScriptTypeKind.number, ScriptUnit.percent))
+"25", unit-value("i * 50 / 6", ScriptType(ScriptTypeKind.number, ScriptUnit.percent))
+"50%", unit-text("50", ScriptType(ScriptTypeKind.number, ScriptUnit.percent))
+
+━━━━━━━━━━━━━━━━━━━━
++ outline-for ScriptOutline
+    - text String
+    - expected ScriptType
+
+script-outline(script-test-tokens(text), script-test-grammar(), script-test-names(), expected)
+
+━━━━━━━━━━━━━━━━━━━━
++ regrouped String
+    - text String
+    - expected ScriptType
+
+script-text(script-print(outline.expression, script-test-grammar(), script-test-names()))
+
+.. outline = outline-for(text, expected)
+
+━━━━━━━━━━━━━━━━━━━━
++ outline-issue String
+    - text String
+    - expected ScriptType
+
+outline-for(text, expected).issue()?.message ?? ""
+
+━━━━━━━━━━━━━━━━━━━━
++ keeps-identity Bool
+    - text String
+
+script-same(outline.expression, tree) && outline.span-of(tree) == 0
+
+.. tree = script-test-tree(text)
+.. outline = ScriptOutline(tree, script-test-grammar(), script-test-names())
+
+━━━━━━━━━━━━━━━━━━━━
++ do unit-text String
+    - text String
+    - expected ScriptType
+
+. outline = outline-for(text, expected)
+outline.apply-units()
+= script-text(script-print(outline.expression, script-test-grammar(), script-test-names()))
+
+━━━━━━━━━━━━━━━━━━━━
++ do unit-value String
+    - text String
+    - expected ScriptType
+
+. outline = outline-for(text, expected)
+outline.apply-units()
+. context = ScriptTestContext()
+. evaluator = ScriptEvaluator'ScriptTestContext(script-test-vocabulary(), context, context)
+. result = catch evaluator.evaluate(outline.expression, expected)
+do match result
+    | error Error
+        = error.message
+    | value ScriptValue
+        = script-literal-text(value)

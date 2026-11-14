@@ -1,0 +1,432 @@
+
+/ai
+/ai/openai/completions
+/net/url
+/os/env
+/stream/inspect
+/tui
+/tui/colors
+/tui/text
+
+<Window win • flex-row
+    <Box • flex:1
+    <ChatShell app • flex-col
+        min-width = SizeSpec.coord(80)
+        max-width = SizeSpec.coord(80)
+    <Box • flex:1
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatShell is Form
+
++ messages [ChatMessage]
+    * ChatMessage("message-0", "Status", "Welcome to ChatGPT")
++ next-message-id = 1
++ pending-stream-chunks [ChatStreamChunk]
++ is-transcript-flush-pending = false
++ should-auto-scroll-transcript = true
+
+• This
+    color = lightgray
+    min-width = SizeSpec.coord(80)
+    max-width = SizeSpec.coord(80)
+
+    • transcript
+        color = lightgray
+        padding-top = 1
+        padding-bottom = 1
+
+    • prompt-shell
+        border-style = BorderStyle.rounded
+        border-color = midgray
+        padding-left = 1
+        padding-right = 1
+
+    • composer
+        color = lightgray
+        background-color = null
+
+        when #is-focused
+            background-color = null
+        when !#is-effectively-enabled
+            background-color = null
+
+────────────────────
+
+<This
+    <Box transcript • flow-col flex:1
+        for chat-message in #messages keyed by chat-message.id
+            <ChatMessageRow
+                message = chat-message
+
+    <Box prompt-shell • flex-row mb:1
+        <TextEditor composer "" • flex:1
+            multiline = true
+            max-height = 6
+
+    <Shortcut "Quit"
+        key = .escape
+        action = => do root.close()
+
+────────────────────
+for event on key-press
+
+if event.key == Key.arrow-up
+    scroll-transcript(Direction.up)
+    event.cancel()
+else if event.key == Key.arrow-down
+    scroll-transcript(Direction.down)
+    event.cancel()
+
+────────────────────
+for event on scrolled
+
+scroll-transcript(event.direction)
+event.cancel()
+
+────────────────────
+for event on submitted
+
+. prompt = composer.text.trim()
+if prompt.length > 0
+    composer.text = ""
+    should-auto-scroll-transcript = true
+
+    . user-message = next-chat-message("You", prompt)
+    . reply = next-chat-message("ChatGPT", "")
+    reply.is-pending = true
+
+    messages += user-message
+    . request = chatgpt-request(messages)
+    . reply-index = messages.length
+    messages += reply
+    refresh-transcript(transcript, should-auto-scroll-transcript)
+
+    do new stream-response(request, reply-index)
+
+────────────────────
++ do next-chat-message ChatMessage
+    - author String
+    - body String
+
+. id = "message-$next-message-id"
+next-message-id += 1
+= ChatMessage(id, author, body)
+
+────────────────────
++ do stream-response
+    - request [AIMessage]
+    - output-index Index
+
+stream-chatgpt-response(request, output-index)
+    catch err Error
+        handle-stream-response-error(err, output-index)
+
+────────────────────
++ do handle-stream-response-error
+    - error Error
+    - output-index Index
+
+set-message-at(output-index, "Status", "API error: $error", false)
+refresh-transcript(transcript, should-auto-scroll-transcript)
+= false
+
+────────────────────
++ do stream-chatgpt-response
+    - request [AIMessage]
+    - output-index Index
+
+. api-key = env("OPENAI_API_KEY") ?? env("MOCK_CHATGPT_API_KEY") ?? "mock-api-key"
+. model = env("CHATGPT_MODEL") ?? env("OPENAI_MODEL") ?? env("MOCK_CHATGPT_MODEL") ?? "gpt-5.2"
+. base-url = env("CHATGPT_BASE_URL") ?? env("OPENAI_BASE_URL") ?? env("MOCK_CHATGPT_BASE_URL")
+. client = if base-url then OpenAICompletions(api-key, URL(base-url)) else default-client
+    .. default-client = OpenAICompletions(api-key)
+. ai-request = AIRequest(model, request)
+
+. did-receive-content = false
+for event in client.stream(ai-request)
+    if event is AIPartDeltaEvent && (event as AIPartDeltaEvent).delta is AITextDelta
+        . content = ((event as AIPartDeltaEvent).delta as AITextDelta).text
+        queue-message-content(output-index, content, !did-receive-content)
+        did-receive-content = true
+
+if !did-receive-content
+    set-message-at(output-index, "ChatGPT", "", false)
+    refresh-transcript(transcript, should-auto-scroll-transcript)
+= true
+
+────────────────────
++ do queue-message-content
+    - index Index
+    - content String
+    - is-first-content Bool
+
+pending-stream-chunks += ChatStreamChunk(index, content, is-first-content)
+if !is-transcript-flush-pending
+    request-animation-frame(this.flush-transcript)
+is-transcript-flush-pending = true
+
+────────────────────
++ do flush-transcript
+
+=? if !is-transcript-flush-pending
+
+. chunks = pending-stream-chunks
+pending-stream-chunks = List'ChatStreamChunk()
+is-transcript-flush-pending = false
+
+for chunk in chunks
+    append-message-content(chunk.index, chunk.content, chunk.is-first-content)
+
+if chunks
+    refresh-transcript(transcript, should-auto-scroll-transcript)
+
+────────────────────
++ do set-message-at
+    - index Index
+    - author String
+    - body String
+    - is-pending Bool
+
+=? if index >= messages.length
+
+. current = messages[index]
+messages[index] = chat-message-state(current, author, body, is-pending)
+
+────────────────────
++ do chat-message-state ChatMessage
+    - current ChatMessage
+    - author String
+    - body String
+    - is-pending Bool
+
+. next = ChatMessage(current.id, author, body)
+next.is-pending = is-pending
+= next
+
+────────────────────
++ do scroll-transcript
+    - direction Direction
+
+transcript.update-layout()
+transcript.scroll(3, direction)
+should-auto-scroll-transcript =
+    |? direction == Direction.up
+        false
+    |? is-transcript-at-bottom(transcript)
+        true
+    ??
+        should-auto-scroll-transcript
+
+────────────────────
+_ do append-message-content
+    - index Index
+    - content String
+    - is-first-content Bool
+
+=? if index >= messages.length
+
+. current = messages[index]
+. body = current.body
+if is-first-content
+    body = ""
+body += content
+messages[index] = chat-message-state(current, current.author, body, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatMessageRow is Box
+
++ message ChatMessage
+
+• This
+    layout = flow-col
+    margin-bottom = 1
+
+────────────────────
+
+<This
+    <Box • flex-row
+        <Box
+            flex = message-leading-flex(#message)
+
+        <Box • flex-col
+            background-color = message-background-color(#message)
+            color = message-foreground-color(#message)
+            padding-left = message-horizontal-padding(#message)
+            padding-right = message-horizontal-padding(#message)
+            min-width = message-box-width(#message)
+            max-width = message-box-width(#message)
+
+            if #message.is-pending
+                <Spinner
+                    frames = SpinnerFrames.braille
+
+            if !#message.is-pending && is-assistant-message(#message)
+                <MarkdownText
+                    text = #message.body
+                    color = lightgray
+                    header-color = ansi-cyan()
+                    strong-color = white
+                    em-color = gold
+                    link-color = sky
+                    image-color = pink
+                    quote-color = mutedgray
+                    code-color = chartreuse
+                    divider-color = mutedgray
+                    bullet-color = gold
+                    max-width = message-box-width(#message)
+
+            if !#message.is-pending && !is-assistant-message(#message)
+                for line in wrapped-message-lines(#message.body, message-text-width(#message))
+                    <Label
+                        text = line
+                        background-color = message-background-color(#message)
+                        color = message-foreground-color(#message)
+
+────────────────────
++ This
+    - message
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatMessage
+
++ id String
++ author String
++ body String
++ is-pending = false
+
+────────────────────
++ This
+    - id
+    - author
+    - body
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatStreamChunk is Tuple
+
++ index Index
++ content String
++ is-first-content Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ is-user-message
+    - message ChatMessage
+
+message.author == "You"
+
+━━━━━━━━━━━━━━━━━━━━
++ is-assistant-message
+    - message ChatMessage
+
+message.author == "ChatGPT"
+
+━━━━━━━━━━━━━━━━━━━━
++ message-leading-flex Flex
+    - message ChatMessage
+
+if is-user-message(message) then 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ message-foreground-color AnsiColor
+    - message ChatMessage
+
+if message.author == "Status" then mutedgray else lightgray
+
+━━━━━━━━━━━━━━━━━━━━
++ message-background-color BackgroundColor?
+    - message ChatMessage
+
+dimgray if is-user-message(message)
+
+━━━━━━━━━━━━━━━━━━━━
++ message-horizontal-padding Coord
+    - message ChatMessage
+
+if is-user-message(message) then 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ message-text-width Coord
+    - message ChatMessage
+
+if is-user-message(message) then 55 else 80
+
+━━━━━━━━━━━━━━━━━━━━
++ message-box-width SizeSpec
+    - message ChatMessage
+
+SizeSpec.coord(message-text-width(message))
+
+━━━━━━━━━━━━━━━━━━━━
++ wrapped-message-lines
+    - text String
+    - width Coord
+
+if result.length > 0 then result else [""]
+
+.. result =
+    ** text.split("\n")
+    *> wrap-message-line(each, safe-width)
+    |> flat-map
+    |> List
+.. safe-width = (if width > 0 then width else 1) as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ wrap-message-line @inline
+    - source-line String
+    - width Size
+
+*? "" if !source-line
+**
+    0 .. < source-line.length by width
+    *> source-line[each .. < end]
+        .. proposed-end = each + width
+        .. end = if proposed-end < source-line.length then proposed-end else source-line.length
+
+━━━━━━━━━━━━━━━━━━━━
++ chatgpt-request
+    - chat-messages [ChatMessage]
+
+* AIMessage(AIMessageRole.system, system-prompt)
+**
+    ** chat-messages 
+    ?> each.body.length > 0
+    ?*> match? each.author
+        |= "You"
+            AIMessage(AIMessageRole.user, each.body)
+        |= "ChatGPT"
+            AIMessage(AIMessageRole.assistant, each.body)
+|> List
+
+.. system-prompt = "".join
+    * "You are ChatGPT inside Yumi's terminal chat UI. "
+    * "Answer in clear, concise Markdown."
+
+━━━━━━━━━━━━━━━━━━━━
++ do refresh-transcript
+    - transcript Box
+    - should-scroll-to-bottom = true
+
+. batch-root = transcript.markup-batch-root
+if batch-root
+    batch-root.markup-batch-queue.checkpoint()
+
+transcript.update-layout()
+if should-scroll-to-bottom && transcript.has-overflow
+    transcript.scroll(1000, Direction.down)
+else if !transcript.has-overflow
+    transcript.scroll((0, 0))
+
+━━━━━━━━━━━━━━━━━━━━
++ is-transcript-at-bottom
+    - transcript Box
+
+transcript.scroll-y <= transcript-bottom-scroll-y(transcript)
+
+━━━━━━━━━━━━━━━━━━━━
++ transcript-bottom-scroll-y Coord
+    - transcript Box
+
+if bottom < 0 then bottom else 0
+
+.. bottom = transcript.content-bounds.height - transcript.inner-height

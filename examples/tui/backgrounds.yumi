@@ -1,0 +1,288 @@
+/units
+/graphics/color
+/os/env
+/time
+/tui
+
+<Window win • flex-col
+    <BackgroundGallery app • flex-col flex:1
+
+app.start-profile-if-needed()
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ BackgroundGallery is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ profile-frames-remaining = 0
++ is-profile-running = false
+
+────────────────────
+
+<Label " Background Gallery " • bg:white text:black
+<Box • flex-row flex:1 bg:black
+    <Box • flex-col flex:1 text:white
+        <Label " unset " • bg:grey text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 bg:blue text:white
+        <Label " ansi blue " • bg:black text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 bg:vermillion text:white
+        <Label " ansi vermillion " • bg:black text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:white
+        background-color = RGBA("#336699")
+        <Label " rgba hex " • bg:black text:white
+        <Box • flex:1
+
+<Box • flex-row flex:1 bg:navy
+    <Box • flex-col flex:1 text:black
+        background-color = RGBA(12%, 68%, 58%)
+        <Label " rgba " • bg:white text:black
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:white
+        background-color = RGBA(100%, 55%, 10%, 45%)
+        <Label " rgba alpha " • bg:black text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:black
+        background-color = HSVA(62%, 70%, 95%)
+        <Label " hsva " • bg:white text:black
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:white
+        background = GradientBackground(RGBA(5%, 35%, 95%), RGBA(100%, 35%, 65%))
+        <Label " painter gradient " • bg:black text:white
+        <Box • flex:1
+
+<Box • flex-row flex:1 bg:black
+    <Box • flex-col flex:1 text:white
+        background = CheckerBackground(deepblue, RGBA(0%, 78%, 82%))
+        <Label " painter checker " • bg:black text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:white
+        background = RibbonBackground(RGBA(8%, 12%, 28%), RGBA(100%, 85%, 20%, 42%))
+        <Label " painter ribbons " • bg:black text:white
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:black
+        background = SpectrumBackground()
+        <Label " painter spectrum " • bg:white text:black
+        <Box • flex:1
+
+    <Box • flex-col flex:1 text:black
+        background = GradientBackground(RGBA(10%, 90%, 38%), RGBA(100%, 80%, 0%))
+        <Label " painter glow " • bg:white text:black
+        <Box • flex:1
+
+<Shortcut "Quit"
+    key = .escape
+    action = => do root.close()
+
+────────────────────
++ do start-profile-if-needed
+
+profile-frames-remaining = background-profile-frame-count()
+=? if profile-frames-remaining <= 0
+
+is-profile-running = true
+do new run-profile-session()
+
+────────────────────
++ do run-profile-session
+
+//+backgrounds.profile.run
+request-animation-frame(this.profile-frame)
+while is-profile-running
+    1ms.wait()
+1ms.wait()
+//-backgrounds.profile.run
+root.close()
+
+────────────────────
++ do profile-frame
+
+=? if !is-profile-running
+
+if profile-frames-remaining <= 0
+    finish-profile()
+    =
+profile-frames-remaining -= 1
+if profile-frames-remaining <= 0
+    finish-profile()
+else
+    invalidate-paint()
+    request-animation-frame(this.profile-frame)
+
+────────────────────
++ do finish-profile
+
+=? if !is-profile-running
+
+is-profile-running = false
+
+━━━━━━━━━━━━━━━━━━━━
++ GradientBackground is Painter
+
++ start RGBA
++ end RGBA
+
+────────────────────
++ This
+    - start
+    - end
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+for y in rect.y .. < rect.bottom
+    for x in rect.x .. < rect.right
+        do use canvas
+            canvas.background = color-at(x, rect)
+            canvas.fill(Rect(x, y, 1, 1))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ color-at RGBA
+    - x Coord
+    - rect Rect
+
+RGBA(red, green, blue)
+
+.. red = start.red * inverse + end.red * ratio
+.. green = start.green * inverse + end.green * ratio
+.. blue = start.blue * inverse + end.blue * ratio
+.. inverse = 1 - ratio
+.. ratio = ((x - rect.x) as Float) / ((width - 1) as Float)
+.. width = if rect.width > 1 then rect.width else 2
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckerBackground is Painter
+
++ even BackgroundColor
++ odd BackgroundColor
+
+────────────────────
++ This
+    - even
+    - odd
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+for y in rect.y .. < rect.bottom
+    for x in rect.x .. < rect.right
+        do use canvas
+            canvas.background =
+                |? checker-is-even(x, y, rect)
+                    even
+                ??
+                    odd
+            canvas.fill(Rect(x, y, 1, 1))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ checker-is-even
+    - x Coord
+    - y Coord
+    - rect Rect
+
+((x - rect.x) / 2 + y - rect.y) % 2 == 0
+
+━━━━━━━━━━━━━━━━━━━━
++ RibbonBackground is Painter
+
++ base RGBA
++ stripe RGBA
+
+────────────────────
++ This
+    - base
+    - stripe
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+do use canvas
+    canvas.background = base
+    canvas.fill(rect)
+
+for y in rect.y .. < rect.bottom
+    for x in rect.x .. < rect.right
+        if is-ribbon(x, y, rect)
+            do use canvas
+                canvas.background = stripe
+                canvas.fill(Rect(x, y, 1, 1))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ is-ribbon
+    - x Coord
+    - y Coord
+    - rect Rect
+
+((x - rect.x) + (y - rect.y) * 2) % 9 < 3
+
+━━━━━━━━━━━━━━━━━━━━
++ SpectrumBackground is Painter
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+for y in rect.y .. < rect.bottom
+    for x in rect.x .. < rect.right
+        do use canvas
+            canvas.background = spectrum-color(x, y, rect)
+            canvas.fill(Rect(x, y, 1, 1))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ spectrum-color HSVA
+    - x Coord
+    - y Coord
+    - rect Rect
+
+HSVA(hue, saturation, value)
+
+.. hue = ((x - rect.x) as Float) / ((width - 1) as Float)
+.. saturation = 0.72 + y-ratio * 0.24
+.. value = 0.82 - y-ratio * 0.24
+.. y-ratio = ((y - rect.y) as Float) / ((height - 1) as Float)
+.. width = if rect.width > 1 then rect.width else 2
+.. height = if rect.height > 1 then rect.height else 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ background-profile-frame-count Int
+
+Int(env("YUMI_BACKGROUND_PROFILE_FRAMES") ?? "0")

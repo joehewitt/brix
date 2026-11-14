@@ -1,0 +1,578 @@
+/core/arena
+/data/sexp
+
+_ brix-head-mask Index = 1023
++ brix-head-names := brix-built-head-names()
+_ brix-head-bytes := brix-built-head-bytes()
+_ brix-head-slots := brix-built-head-slots()
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-form-heads Array'U8'ArenaBacking
+    - tape SexpTape
+    - arena Arena
+
+. heads = Array'U8(arena, tape.length + 1)
+. kinds = heads.data
+. bytes = tape.bytes
+for index in 0 .. < tape.length
+    . first = index + 1
+    if tape.is-open(index) && tape.is-atom(first)
+        kinds[index] = brix-head(bytes, tape.start(first), tape.end(first)) as U8
+    else
+        kinds[index] = 0
+kinds[tape.length] = 0
+= heads
+
+━━━━━━━━━━━━━━━━━━━━
++ brix-head BrixHead
+    - bytes Byte[]
+    - start Index
+    - end Index
+
+|? found != .none
+    found
+|? end - start < 2 || bytes[end - 1] != 63
+    .none
+??
+    brix-head-slot(bytes, start, end - 1)
+
+.. found = brix-head-slot(bytes, start, end)
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-head-slot BrixHead
+    - bytes Byte[]
+    - start Index
+    - end Index
+
+. slots = brix-head-slots
+. keys = brix-head-bytes
+. slot = brix-head-hash(bytes, start, end) /and/ brix-head-mask
+while slots[slot] != 0
+    . found = slots[slot] as Index
+    . key = keys[found]
+    if key.length == end - start && brix-span-equal(key, bytes, start)
+        = found as BrixHead
+    slot = (slot + 1) /and/ brix-head-mask
+= .none
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-head-hash Index
+    - bytes Byte[]
+    - start Index
+    - end Index
+
+. data = bytes.data
+. hash = 2166136261u32
+for index in start .. < end
+    hash = (hash /xor/ (data[index] as U32)) * 16777619
+= hash
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-span-equal Bool
+    - expected Byte[]
+    - bytes Byte[]
+    - start Index
+
+for offset in 0 .. < expected.length
+    =? false if expected[offset] != bytes[start + offset]
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-built-head-bytes [Byte[]]
+
+** each as Byte[] in brix-head-names
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-built-head-slots [U16]
+
+. slots = List(0u16 in 0 .. brix-head-mask)
+. keys = brix-head-bytes
+for found in 1 .. < keys.length
+    . key = keys[found]
+    . slot = brix-head-hash(key, 0, key.length) /and/ brix-head-mask
+    while slots[slot] != 0
+        slot = (slot + 1) /and/ brix-head-mask
+    slots[slot] = found as U16
+= slots
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-built-head-names [String]
+
+* ""
+* "import"
+* "export"
+* "main"
+* "blank"
+* "fn-do"
+* "fn-expr"
+* "prop"
+* "param"
+* "constraint"
+* "iterates"
+* "?!"
+* "let"
+* "lazy"
+* "return"
+* "return-if"
+* "yield"
+* "yield-all"
+* "break"
+* "continue"
+* "if"
+* "else-if"
+* "else"
+* "while"
+* "for"
+* "and-for"
+* "or-for"
+* "in"
+* "on"
+* "each"
+* "when"
+* "whenever"
+* "until"
+* "keyed-by"
+* "do"
+* "finally"
+* "do-use"
+* "do-with"
+* "inline"
+* "block"
+* "scope"
+* "--"
+* "use"
+* "arg"
+* "entry"
+* "and"
+* "call"
+* "of"
+* "."
+* "?."
+* "*."
+* "[]"
+* "?[]"
+* "!!"
+* "str"
+* "char"
+* "list"
+* "tuple"
+* "map"
+* "stream"
+* "channel"
+* "?"
+* ":"
+* ".."
+* "..<"
+* "..."
+* "by:"
+* "=>"
+* "catch"
+* "##"
+* "throw"
+* "fn-type"
+* "c-fn-type"
+* "c-struct"
+* "infix"
+* "prefix"
+* "index-get"
+* "index-set"
+* "index-delete"
+* "only-if"
+* "="
+* ":="
+* "+="
+* "-="
+* "*="
+* "/="
+* "%="
+* "%%="
+* "++="
+* "<-*"
+* "+"
+* "-"
+* "*"
+* "/"
+* "%"
+* "%%"
+* "++"
+* "=="
+* "!="
+* "<"
+* ">"
+* "<="
+* ">="
+* "??"
+* "as"
+* "is"
+* "is-not"
+* "is!"
+* "is!-not"
+* "is~"
+* "is~-not"
+* "is-in"
+* "not-in"
+* "has"
+* "has-not"
+* ">>"
+* "<<"
+* "<-"
+* "?<-"
+* "*>"
+* "?>"
+* "|>"
+* "|=>"
+* "*|>"
+* "?*>"
+* "*->"
+* "->"
+* "<|"
+* "!"
+* "type-of"
+* "facts-of"
+* "~"
+* "type"
+* "type-line"
+* "extend"
+* "extend-line"
+* "alias"
+* "implements"
+* "using"
+* "event"
+* "variant"
+* "delegate"
+* "style-domains"
+* "domain"
+* "depends"
+* "content"
+* "fn-from-do"
+* "fn-from-expr"
+* "fn-to-do"
+* "fn-to-expr"
+* "unit"
+* "where"
+* "match"
+* "case"
+* "case?"
+* "case="
+* "case-union"
+* "case-union?"
+* "case-union="
+* "default"
+* "case-each"
+* "all"
+* "|"
+* "exact"
+* "similar"
+* "{}"
+* "\\"
+* "*\\"
+* "*/"
+* "style"
+* "style-extend"
+* "rule"
+* "own-rule"
+* "•"
+* "when-style"
+* "style-set"
+* "if:"
+* "<>"
+* "+<>"
+* "<+"
+* "id:"
+* "slot:"
+* "param:"
+* "value:"
+* "text:"
+* "paragraph"
+* "header"
+* "bullet"
+* "bullet*"
+* "probe-count"
+* "probe-group"
+* "probe-log"
+* "probe-assign"
+* "probe"
+* "items:"
+* "preview"
+* "snapshot"
+* "on-error"
+* "caught"
+* "do-new"
+* "do-new-thread"
+* "worker:"
+* "pipe"
+* "subscribe-for"
+* "subscribe"
+* "when-rule"
+* "whenever-rule"
+* "trigger"
+* "seq"
+* "chars"
+* "\\{}"
+* "into"
+* "pattern"
+* "over:"
+* "of:"
+* "in:"
+* "on:"
+* "~>"
+* "with"
+* "&"
+* "machine"
+* "state"
+* "then"
+* "else-state"
+* "iterate"
+* "or"
+* "select"
+* "<*"
+* "if-expr"
+* "not"
+* "print"
+* "before"
+* "keyframes"
+* "range"
+* "track"
+* "at"
+* "shape"
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixHead is U8
+
+| none
+| import-head
+| export-head
+| main-head
+| blank-head
+| fn-do-head
+| fn-expr-head
+| prop-head
+| param-head
+| constraint-head
+| iterates-head
+| raises-head
+| let-head
+| lazy-head
+| return-head
+| return-if-head
+| yield-head
+| yield-all-head
+| break-head
+| continue-head
+| if-head
+| else-if-head
+| else-head
+| while-head
+| for-head
+| and-for-head
+| or-for-head
+| in-head
+| on-head
+| each-head
+| when-head
+| whenever-head
+| until-head
+| keyed-by-head
+| do-head
+| finally-head
+| do-use-head
+| do-with-head
+| inline-head
+| block-head
+| scope-head
+| print-head
+| use-head
+| arg-head
+| entry-head
+| and-head
+| call-head
+| of-head
+| member-head
+| optional-member-head
+| loop-member-head
+| index-head
+| optional-index-head
+| force-head
+| str-head
+| char-head
+| list-head
+| tuple-head
+| map-head
+| stream-head
+| channel-head
+| optional-head
+| capture-head
+| range-through-head
+| range-to-head
+| range-open-head
+| by-head
+| closure-head
+| catch-head
+| latest-head
+| throw-head
+| fn-type-head
+| c-fn-type-head
+| c-struct-head
+| infix-head
+| prefix-head
+| index-get-head
+| index-set-head
+| index-delete-head
+| only-if-head
+| assign-head
+| lazy-assign-head
+| add-assign-head
+| subtract-assign-head
+| multiply-assign-head
+| divide-assign-head
+| mod-assign-head
+| pow-assign-head
+| concat-assign-head
+| write-all-head
+| add-head
+| subtract-head
+| multiply-head
+| divide-head
+| mod-head
+| pow-head
+| concat-head
+| equals-head
+| not-equals-head
+| less-head
+| greater-head
+| less-equals-head
+| greater-equals-head
+| coalesce-head
+| as-head
+| is-head
+| is-not-head
+| is-exactly-head
+| is-not-exactly-head
+| is-similar-head
+| is-not-similar-head
+| is-in-head
+| not-in-head
+| has-head
+| has-not-head
+| compose-forward-head
+| compose-backward-head
+| write-head
+| optional-write-head
+| map-pipe-head
+| filter-pipe-head
+| forward-pipe-head
+| closure-pipe-head
+| repeat-pipe-head
+| map-filter-pipe-head
+| write-each-pipe-head
+| write-all-pipe-head
+| backward-pipe-head
+| not-head
+| type-of-head
+| facts-of-head
+| tilde-head
+| type-head
+| type-line-head
+| extend-head
+| extend-line-head
+| alias-head
+| implements-head
+| using-head
+| event-head
+| variant-head
+| delegate-head
+| style-domains-head
+| domain-head
+| depends-head
+| content-head
+| fn-from-do-head
+| fn-from-expr-head
+| fn-to-do-head
+| fn-to-expr-head
+| unit-head
+| where-head
+| match-head
+| case-head
+| case-if-head
+| case-equals-head
+| case-union-head
+| case-union-if-head
+| case-union-equals-head
+| default-head
+| case-each-head
+| all-head
+| alternative-head
+| exact-head
+| similar-head
+| predicate-head
+| pattern-parent-head
+| pattern-ancestor-head
+| pattern-descendant-head
+| style-head
+| style-extend-head
+| rule-head
+| own-rule-head
+| style-apply-head
+| when-style-head
+| style-set-head
+| if-label-head
+| markup-head
+| slot-outlet-head
+| slot-forward-head
+| id-label-head
+| slot-label-head
+| param-label-head
+| value-label-head
+| text-label-head
+| paragraph-head
+| header-head
+| bullet-head
+| bullet-many-head
+| probe-count-head
+| probe-group-head
+| probe-log-head
+| probe-assign-head
+| probe-head
+| items-label-head
+| preview-head
+| snapshot-head
+| on-error-head
+| caught-head
+| do-new-head
+| do-new-thread-head
+| worker-label-head
+| pipe-head
+| subscribe-for-head
+| subscribe-head
+| when-rule-head
+| whenever-rule-head
+| trigger-head
+| seq-head
+| chars-head
+| stream-predicate-head
+| into-head
+| pattern-head
+| over-label-head
+| of-label-head
+| in-label-head
+| on-label-head
+| stream-pipe-head
+| with-head
+| lookahead-head
+| machine-head
+| state-head
+| then-head
+| else-state-head
+| iterate-head
+| or-head
+| select-head
+| every-match-head
+| if-expr-head
+| not-word-head
+| print-word-head
+| before-head
+| keyframes-head
+| keyframe-range-head
+| keyframe-track-head
+| keyframe-stop-head
+| shape-head

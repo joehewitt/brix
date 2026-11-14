@@ -1,0 +1,169 @@
+./binary
+
+━━━━━━━━━━━━━━━━━━━━
++ ProtobufWireType is U8
+
+| varint = 0
+| fixed64 = 1
+| length-delimited = 2
+| fixed32 = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ ProtobufWriter
+
+_ writer = ByteWriter()
+
+────────────────────
++ do varint
+    - field U32
+    - value U64
+
+tag(field, .varint)
+writer.varint(value)
+
+────────────────────
++ do int
+    - field U32
+    - value I64
+
+varint(field, value as U64)
+
+────────────────────
++ do bool
+    - field U32
+    - value Bool
+
+varint(field, if value then 1 else 0)
+
+────────────────────
++ do double
+    - field U32
+    - value F64
+
+tag(field, .fixed64)
+writer.f64-le(value)
+
+────────────────────
++ do float
+    - field U32
+    - value F32
+
+tag(field, .fixed32)
+writer.f32-le(value)
+
+────────────────────
++ do bytes
+    - field U32
+    - value Byte[]
+
+tag(field, .length-delimited)
+writer.varint(value.size as U64)
+writer.bytes(value)
+
+────────────────────
++ do string
+    - field U32
+    - value String
+
+bytes(field, value)
+
+────────────────────
++ do message
+    - field U32
+    - value ProtobufWriter
+
+bytes(field, value.finish())
+
+────────────────────
++ finish Byte[]
+
+writer.finish()
+
+────────────────────
+_ do tag
+    - field U32
+    - wire-type ProtobufWireType
+
+writer.varint(((field as U64) /lshift/ 3) /or/ (wire-type as U64))
+
+━━━━━━━━━━━━━━━━━━━━
++ ProtobufField is Tuple
+
++ number U32
++ wire-type ProtobufWireType
++ value U64
++ data Byte[]
+
+────────────────────
++ get int I64
+
+value as I64
+
+────────────────────
++ get bool Bool
+
+value != 0
+
+────────────────────
++ get double F64
+
+(&cell as CPointer'F64)[0]
+
+.. cell = value
+
+────────────────────
++ get float F32
+
+(&cell as CPointer'F32)[0]
+
+.. cell = value as U32
+
+────────────────────
++ string String ?! SyntaxError
+
+utf8-string(data)
+
+────────────────────
++ get message ProtobufReader
+
+ProtobufReader(data)
+
+━━━━━━━━━━━━━━━━━━━━
++ ProtobufReader
+
+_ reader ByteReader
+
+────────────────────
++ This
+    - data Byte[]
+
+reader = ByteReader(data)
+
+────────────────────
++ do next ProtobufField? ?! SyntaxError
+
+=? null if reader.is-done
+. key = reader.varint()
+. number = (key /zrshift/ 3) as U32
+. wire-type = (key /and/ 7) as ProtobufWireType
+?! SyntaxError("A protobuf field has number 0")
+    if number == 0
+= match wire-type
+    |= .varint
+        ProtobufField(number, .varint, reader.varint(), Byte[0])
+    |= .fixed64
+        ProtobufField(number, .fixed64, reader.u64-le(), Byte[0])
+    |= .fixed32
+        ProtobufField(number, .fixed32, reader.u32-le(), Byte[0])
+    |= .length-delimited
+        delimited(number)
+    ?! SyntaxError("Protobuf field $number has wire type ${key /and/ 7}, which is not supported")
+
+────────────────────
+_ do delimited ProtobufField ?! SyntaxError
+    - number U32
+
+. size = reader.varint()
+?! SyntaxError("Protobuf field $number claims $size bytes, past the end of its message")
+    if size > reader.remaining
+= ProtobufField(number, .length-delimited, size, reader.bytes(size as Size))

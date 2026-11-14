@@ -1,0 +1,70 @@
+./command
+./repository
+./status
+/os/file
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ GitMergeResult is Union
+
+| merged
+| conflicted(paths [String])
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-merge GitMergeResult ?! Error
+    - directory String
+    - revision String
+
+. merged = catch git-output(directory, ["merge", "--no-edit", "--quiet", "--end-of-options", revision])
+=? GitMergeResult.merged if !(merged is Error)
+. paths = git-unmerged-paths(directory)
+?! merged as Error
+    if paths.length == 0
+= GitMergeResult.conflicted(paths)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-fast-forward ?! Error
+    - directory String
+    - revision String
+
+. moved = git-output(directory, ["merge", "--ff-only", "--quiet", "--end-of-options", revision])
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-unmerged-paths [String] ?! Error
+    - directory String
+
+= git-fields(git-output(directory, ["diff", "--name-only", "--diff-filter=U", "-z"]))
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-pending-operation String? ?! Error
+    - directory String
+
+. found = git-find-directories(directory)
+?! Error("$directory is not in a Git worktree")
+    if !found
+. folder = Path(found.git-dir, 0)
+=? "merge" if (folder / "MERGE_HEAD").exists
+=? "rebase" if (folder / "rebase-merge").exists || (folder / "rebase-apply").exists
+=? "cherry-pick" if (folder / "CHERRY_PICK_HEAD").exists
+=? "revert" if (folder / "REVERT_HEAD").exists
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-unresolved-paths [String]
+    - directory String
+    - status GitStatus
+
+. found = List'String()
+for entry in status.entries
+    if is-unmerged && git-has-conflict-markers(Path("$directory/${entry.path}", 0))
+        found += entry.path
+    .. is-unmerged = entry.kind == GitStatusKind.unmerged
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-has-conflict-markers Bool
+    - path Path
+
+. text = catch? read-file-text(path)
+=? false if !text
+= text.starts-with("<<<<<<< ") || text.find("\n<<<<<<< ") != null

@@ -1,0 +1,319 @@
+/ai
+/math
+/os/path
+/time/datetime
+/time/timer
+/time/timestamp
+/time/zone
+
+_ chat-search-bench-page Size = 30
+_ chat-search-bench-start = 1704067200
+_ chat-search-bench-active Size = 40
+_ chat-search-bench-done Size = 160
+_ chat-search-bench-rare = "quokka"
+_ chat-search-bench-common = "the"
+_ chat-search-bench-letter = "t"
+_ chat-search-bench-letters = "th"
+_ chat-search-bench-words = "parser failing test"
+_ chat-search-bench-typed = "parser"
+_ chat-search-bench-repeats Size = 5
+_ chat-search-bench-vocabulary Size = 30000
+_ chat-search-bench-lexicon = "the to and a of is in it that i for this you with be on not can if we so are as but at run from should file test now will by or use one there code error have what an all when change then fix just here into which line was new would also my need see more function do like has make only check out build add these up some value type still first case path call return other them no each because how where works next work same its any instead before after both looks way back read update parser failing does source text name list output set string compiler rather version module step class field current command tool data write results keep passes branch commit"
+_ chat-search-bench-consonants = "b d f g h k l m n p r s t v w z"
+_ chat-search-bench-vowels = "a e i o u"
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatSearchBenchTimes is Tuple
+
++ build-ms U64
++ text-kb U64
++ database-kb U64
++ rare-us U64
++ common-us U64
++ letter-us U64
++ letters-us U64
++ words-us U64
++ page-us U64
++ keystroke-us U64
++ keystroke-max-us U64
++ keystroke-calls-us U64
++ checksum U64
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatSearchBenchBuild is Tuple
+
++ build-ms U64
++ text-kb U64
++ database-kb U64
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-chat-search-bench ChatSearchBenchTimes ?! Error
+    - count Size
+
+. directory = temporary-directory("chat-search-bench")
+do finally clean-chat-search-bench(directory)
+. built = build-chat-search-bench(directory, count)
+. database = AIChatDatabase(directory)
+. check = ChatSearchBenchCheck()
+. rare-us = chat-search-bench-case(database, chat-search-bench-rare, null, check)
+. common-us = chat-search-bench-case(database, chat-search-bench-common, null, check)
+. letter-us = chat-search-bench-case(database, chat-search-bench-letter, null, check)
+. letters-us = chat-search-bench-case(database, chat-search-bench-letters, null, check)
+. words-us = chat-search-bench-case(database, chat-search-bench-words, null, check)
+. first = database.search
+    - chat-search-bench-common
+    - AIChatPlace.archived
+    - null
+    - null
+    - chat-search-bench-page
+. page-us = chat-search-bench-case
+    - database
+    - chat-search-bench-common
+    - first[first.length - 1].summary
+    - check
+. typing = chat-search-bench-typing(database, check, true)
+. calls = chat-search-bench-typing(database, ChatSearchBenchCheck(), false)
+= ChatSearchBenchTimes
+    - built.build-ms
+    - built.text-kb
+    - built.database-kb
+    - rare-us
+    - common-us
+    - letter-us
+    - letters-us
+    - words-us
+    - page-us
+    - typing.mean-us
+    - typing.max-us
+    - calls.mean-us
+    - check.value
+
+━━━━━━━━━━━━━━━━━━━━
++ do build-chat-search-bench ChatSearchBenchBuild ?! Error
+    - directory Path
+    - count Size
+
+. started = monotonic-time-nanoseconds()
+. database = AIChatDatabase(directory)
+. words = ChatSearchWords(20261110)
+. text-bytes Size = 0
+for index in 0 .. < count
+    . chat = chat-search-bench-chat(index, words)
+    text-bytes += chat-search-bench-text-size(chat)
+    database.save(chat, "echo") • is-listed true
+for index in 0 .. < count
+    . age = count - 1 - index
+    if age >= chat-search-bench-active
+        database.mark-done("chat-$index", true)
+    if age >= chat-search-bench-active + chat-search-bench-done
+        database.mark-archived("chat-$index", true)
+. build-ms = (monotonic-time-nanoseconds() - started) / 1000000
+. size = (directory / "chats.db").stat.size + (directory / "chats.db-wal").stat.size
+= ChatSearchBenchBuild(build-ms, (text-bytes as U64) / 1024, (size as U64) / 1024)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ChatSearchBenchTyping is Tuple
+
++ mean-us U64
++ max-us U64
+
+━━━━━━━━━━━━━━━━━━━━
+_ ChatSearchBenchCheck
+
++ value U64
+
+────────────────────
++ do add
+    - found [AIChatFound]
+
+for position in 0 .. < found.length
+    . item = found[position]
+    value = value * 31 + ((item.summary.activity.active-at ?? 0) as U64) * ((position + 1) as U64)
+    for span in item.snippet
+        value = value * 7 + (span.text.size as U64) + (if span.is-match then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-case U64 ?! Error
+    - database AIChatDatabase
+    - text String
+    - after AIChatSummary?
+    - check ChatSearchBenchCheck
+
+check.add(database.search(text, AIChatPlace.archived, null, after, chat-search-bench-page))
+. started = monotonic-time-nanoseconds()
+for repeat in 0 .. < chat-search-bench-repeats
+    database.search(text, AIChatPlace.archived, null, after, chat-search-bench-page)
+= (monotonic-time-nanoseconds() - started) / 1000 / (chat-search-bench-repeats as U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-typing ChatSearchBenchTyping ?! Error
+    - database AIChatDatabase
+    - check ChatSearchBenchCheck
+    - is-grouped Bool
+
+. typed = chat-search-bench-typed
+. totals = List'U64()
+for length in 1 .. typed.length
+    totals += 0
+for repeat in 0 .. < chat-search-bench-repeats
+    for length in 1 .. typed.length
+        . started = monotonic-time-nanoseconds()
+        chat-search-bench-keystroke(database, typed[0 .. < length], check, is-grouped)
+        totals[length - 1] += monotonic-time-nanoseconds() - started
+. total U64
+. most U64
+for spent in totals
+    total += spent
+    most = max(most, spent)
+. runs = chat-search-bench-repeats as U64
+= ChatSearchBenchTyping(total / 1000 / runs / (totals.length as U64), most / 1000 / runs)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-keystroke ?! Error
+    - database AIChatDatabase
+    - text String
+    - check ChatSearchBenchCheck
+    - is-grouped Bool
+
+if is-grouped
+    for group in database.search-places(text, null, chat-search-bench-page)
+        check.add(group.found)
+else
+    for place in [AIChatPlace.active, AIChatPlace.done, AIChatPlace.archived]
+        check.add(database.search(text, place, null, null, chat-search-bench-page))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-chat AIChat ?! AIError
+    - index Size
+    - words ChatSearchWords
+
+. chat = AIChat("chat-$index", "root", words.text(5))
+. start = chat-search-bench-start + index * 3600
+for turn in 0 .. < 4
+    . at = start + turn * 600
+    . prompt = AIChatMessage
+        - chat-message-id(chat, turn * 2 + 1)
+        - AIMessageRole.user
+        - words.text(70)
+        - chat-search-bench-stamp(at)
+    chat = append-chat-message(chat, "root", prompt)
+    . reply = AITextPart("text-${index}-$turn", chat-search-bench-reply(index, turn, words))
+    . answer = AIChatMessage
+        - chat-message-id(chat, turn * 2 + 2)
+        - AIMessageRole.assistant
+        - List'AIMessagePart(reply)
+        - chat-search-bench-stamp(at + 60)
+        - "claude-opus-5-5"
+        - null
+        - AIFinishReason.stop
+    chat = append-chat-message(chat, "root", answer)
+= chat
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-reply String
+    - index Size
+    - turn Size
+    - words ChatSearchWords
+
+. text = words.text(400)
+=? "$text $chat-search-bench-rare" if index % 1000 == 500 && turn == 2
+= text
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-search-bench-stamp Timestamp
+    - seconds Int
+
+DateTime(seconds, utc) as ISO8601
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-text-size Size
+    - chat AIChat
+
+. total = chat.title?.size ?? 0
+for branch in chat.branches
+    for message in branch.messages
+        total += ai-parts-text(message.parts).size
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do clean-chat-search-bench
+    - directory Path
+
+=? if !directory.exists
+for child in directory.contents
+    child.delete()
+directory.delete()
+
+━━━━━━━━━━━━━━━━━━━━
+_ ChatSearchWords
+
++ state U64
++ words [String]
++ weights [F64]
+
+────────────────────
++ This
+    - state
+
+.. words = chat-search-bench-vocabulary-words(state)
+.. weights = chat-search-bench-weights(words.length)
+
+────────────────────
++ do text String
+    - count Size
+
+. picked = List'String()
+for index in 0 .. < count
+    picked += word()
+= " ".join(picked)
+
+────────────────────
++ do word String
+
+. target = (next() as F64) / 2147483648.0 * weights[weights.length - 1]
+. low Size = 0
+. high = weights.length - 1
+while low < high
+    . middle = (low + high) / 2
+    if weights[middle] < target
+        low = middle + 1
+    else
+        high = middle
+= words[low]
+
+────────────────────
++ do next U64
+
+state = state * 6364136223846793005 + 1442695040888963407
+= state /zrshift/ 33
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-vocabulary-words [String]
+    - seed U64
+
+. words = List'String(chat-search-bench-lexicon.split(" "))
+. consonants = List'String(chat-search-bench-consonants.split(" "))
+. vowels = List'String(chat-search-bench-vowels.split(" "))
+. state = seed
+while words.length < chat-search-bench-vocabulary
+    state = state * 6364136223846793005 + 1442695040888963407
+    . bits = state /zrshift/ 20
+    . syllables = 2 + (bits % 2) as Size
+    . word = ""
+    for syllable in 0 .. < syllables
+        . chosen = (bits /zrshift/ (1 + (syllable as U64) * 7)) as Size
+        word = "$word$consonant${vowels[(chosen / consonants.length) % vowels.length]}"
+            .. consonant = consonants[chosen % consonants.length]
+    words += word
+= words
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-search-bench-weights [F64]
+    - count Size
+
+. weights = List'F64()
+. total F64
+for rank in 0 .. < count
+    total += 1.0 / ((rank + 1) as F64)
+    weights += total
+= weights

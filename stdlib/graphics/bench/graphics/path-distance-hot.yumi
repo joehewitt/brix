@@ -1,0 +1,36 @@
+`benchmark.meta description: Repeats distance and parameter path queries after point tables are warm.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/path
+/graphics/primitives
+/math
+
+. path = line-path()
+. path-length = path.length
+. checksum = numeric-check(path-length)
+
+for pass in 0 .. < 900
+    . f = pass as Float
+    . distance = (f % path-length)
+    . t = path.get-parameter-at-distance(distance)
+    . point = path.get-point-at-distance(distance)
+    checksum += numeric-check(t) + numeric-check(point.x) + numeric-check(point.y)
+
+-- "bench-result graphics/path-distance-hot checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do line-path
+
+. path = Path()
+path.move-to(0, 0)
+for i in 0 .. < 160
+    . f = i as Float
+    path.line-to(f * 2 + 1, 30 + (f % 17))
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

@@ -1,0 +1,45 @@
+
+./cnet
+/stdlib.h
+
++ Port is U16
+
+` =================================================================================================
+` + IPAddress is IP4Address | IP6Address
+
+━━━━━━━━━━━━━━━━━━━━
++ IP4Address is Tuple
+
++ address U32
++ port Port
+
+────────────────────
++ to String
+
+"$host:$port"
+
+────────────────────
++ get host String
+
+"$p1.$p2.$p3.$p4"
+
+.. p4 = (address /and/ 0xff000000) /zrshift/ 24
+.. p3 = (address /and/ 0x00ff0000) /zrshift/ 16
+.. p2 = (address /and/ 0x0000ff00) /zrshift/ 8
+.. p1 = (address /and/ 0x000000ff)
+
+━━━━━━━━━━━━━━━━━━━━
++ IP6Address is Tuple
+
++ address = U8[16]
++ port U16
+
+━━━━━━━━━━━━━━━━━━━━
++ do resolve IP4Address ?! DNSError
+    - host String
+    - port Port = 80
+
+. info = get-addr-info(host, port)
+do finally C:free(info.addr)
+. addr = (info.addr as CPointer'CSockAddrInet4)[0]
+= IP4Address(addr.address, network-to-host(addr.port))

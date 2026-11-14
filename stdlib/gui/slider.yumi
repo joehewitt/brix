@@ -1,0 +1,457 @@
+./box
+./events
+./keys
+./layout
+./position
+./primitives
+./shorthands
+./styles
+./theme
+/core/function
+/core/intrinsics
+/core/markup
+/graphics/color
+/graphics/point
+/graphics/primitives
+/math
+/ui/input
+/ui/value-change-phase
+
+_ slider-thumb-size Length = 15
+_ slider-thumb-radius Length = slider-thumb-size / 2
+_ slider-track-radius Length = 2
++ slider-pill-radius Length = 1000
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUIFocusRingStyle
+    using GUIBoxSize
+    using GUIBoxPlacement
+    using GUIBoxLayout
+    using GUIBoxMotion
+
+• Slider • flex-row
+    corner-radius = slider-thumb-radius
+
+    when #is-vertical
+        layout = flex-col
+
+        • SliderTrack • w:4
+            min-height = SizeSpec.auto
+            max-height = SizeSpec.auto
+            left = null
+            right = null
+            top = PositionOffset.coord(slider-thumb-radius)
+            bottom = PositionOffset.coord(slider-thumb-radius)
+            align-x = Alignment.center
+            align-y = null
+
+        • SliderFill • w:4
+            min-height = SizeSpec.auto
+            max-height = SizeSpec.auto
+            left = null
+            right = null
+            top = PositionOffset.coord(-slider-thumb-radius)
+            bottom = PositionOffset.coord(slider-thumb-radius)
+            align-x = Alignment.center
+            align-y = null
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+        motion.focus-ring = gui-motion-quick
+
+    when #is-dragging
+        • SliderThumb • bg:gui-accent-color
+
+    when !#is-operable
+        • SliderFill • bg:gui-disabled-text-color
+
+        • SliderThumb • bg:gui-well-color
+            border-color = gui-disabled-text-color
+
+• SliderTrack • bg:gui-track-color h:4
+    corner-radius = slider-track-radius
+    left = PositionOffset.coord(slider-thumb-radius)
+    right = PositionOffset.coord(slider-thumb-radius)
+    align-y = Alignment.center
+
+• SliderFill • bg:gui-accent-bright-color h:4
+    corner-radius = slider-track-radius
+    left = PositionOffset.coord(slider-thumb-radius)
+    right = PositionOffset.coord(-slider-thumb-radius)
+    align-y = Alignment.center
+
+• SliderThumb • w:11 h:11
+    background-color = gui-field-color.over(gui-window-color)
+    border-color = gui-accent-bright-color
+    border-width = 2
+    corner-radius = slider-thumb-radius
+
+• SliderThumbSwatch
+    corner-radius = slider-pill-radius
+
+━━━━━━━━━━━━━━━━━━━━
++ Slider is Box
+
+• This
+    focus-mode = FocusMode.keys
+    window-draggable = false
+
++ minimum F64
++ maximum F64 = 1
++ value F64 = 0
++ default-value F64?
++ step F64
++ orientation = Orientation.horizontal
++ is-vertical = #orientation == Orientation.vertical
++ is-operable = true
++ is-focus-enabled => is-operable
++ event value-changing ValueChange'F64
++ event value-changed ValueChange'F64
+
+_ drag-thumb-offset Length
+_ render-ratio F64
+_ render-remainder F64 = 1
+_ event inoperable Bool
+_ event unmounting Bool
+
+. slider-state-changed < minimum, maximum, value, is-effectively-enabled
+
+────────────────────
+
+<This
+    <SliderTrack track • absolute
+        anchor = Anchor.parent
+
+    <SliderFillSlot
+        flex = if #is-vertical then #render-remainder else #render-ratio
+        if !#is-vertical
+            <SliderFill • absolute
+                anchor = Anchor.parent
+
+    <SliderThumbSlot thumb-slot
+
+    <SliderRemainder
+        flex = if #is-vertical then #render-ratio else #render-remainder
+        if #is-vertical
+            <SliderFill • absolute
+                anchor = Anchor.parent
+        increase-small = => do accept-user-value(effective-value + small-increment)
+        decrease-small = => do accept-user-value(effective-value - small-increment)
+        increase-page = => do accept-user-value(effective-value + small-increment * 10)
+        decrease-page = => do accept-user-value(effective-value - small-increment * 10)
+        go-minimum = => do accept-user-value(minimum)
+        go-maximum = => do accept-user-value(maximum)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+~> is-idle
+
+~> is-dragging for press on pointer-down when press.button == PointerButton.primary && is-operable && !is-dragging && !resets(press)
+    do
+        if event-target-is-thumb(press)
+            drag-thumb-offset = thumb-center - along(press.point)
+            accept-user-value(effective-value, ValueChangePhase.began)
+        else
+            drag-thumb-offset = 0
+            accept-pointer-position(along(press.point), ValueChangePhase.began)
+
+    for drag on pointer-drag when drag.pointer-id == press.pointer-id && drag.button == PointerButton.primary
+        accept-pointer-position(along(drag.point), ValueChangePhase.changed)
+        drag.cancel()
+
+    then is-idle for up on pointer-up when up.pointer-id == press.pointer-id && up.button == PointerButton.primary
+        do
+            accept-pointer-position(along(up.point), ValueChangePhase.ended)
+            up.cancel()
+
+    then awaiting-release(press.pointer-id) on blur
+    then awaiting-release(press.pointer-id) on inoperable
+    then is-idle on unmounting
+        do publish-drag-ended()
+
+~> awaiting-release(pointer-id)
+    do publish-drag-ended()
+
+    for drag on pointer-drag when drag.pointer-id == pointer-id && drag.button == PointerButton.primary
+        drag.cancel()
+
+    then is-idle for up on pointer-up when up.pointer-id == pointer-id && up.button == PointerButton.primary
+        do up.cancel()
+
+    then is-idle on unmounting
+
+────────────────────
+for press on pointer-down when press.button != PointerButton.primary || !is-operable || is-dragging
+
+press.cancel()
+
+────────────────────
+for press on pointer-down when press.button == PointerButton.primary && is-operable && !is-dragging && resets(press)
+
+. reset = default-value
+if reset != null
+    accept-user-value(reset)
+press.cancel()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+slider-state-changed()
+
+────────────────────
++ do unmounted
+
+unmounting <- true
+super.unmounted()
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+|? is-vertical
+    Dimensions(max(21, thumb.width), 120)
+??
+    Dimensions(120, max(21, thumb.height))
+
+.. thumb = thumb-slot.measure(query).outer-size
+
+────────────────────
+_ do slider-state-changed
+
+is-operable = is-effectively-enabled && has-valid-range
+render-ratio = calculate-render-ratio()
+render-remainder = 1 - render-ratio
+if !is-operable
+    inoperable <- true
+
+────────────────────
++ do accept-user-value
+    - candidate F64
+    - phase ValueChangePhase = ValueChangePhase.discrete
+
+=? if !is-operable
+. next = normalized-user-value(candidate)
+. old = effective-value
+if next == old
+    if value != next
+        value = next
+    =? if phase == ValueChangePhase.discrete || phase == ValueChangePhase.changed
+else
+    . change = ValueChange'F64(old, next, phase)
+    value-changing <- change
+    =? if change.is-canceled
+    value = next
+value-changed <- ValueChange'F64(old, next, phase)
+
+────────────────────
+_ do accept-pointer-position
+    - pointer Length
+    - phase ValueChangePhase
+
+. travel = track-travel
+if travel <= 0
+    accept-user-value(effective-value, phase)
+    =
+. offset = (pointer + drag-thumb-offset - track-start) / travel
+. ratio = if is-vertical then 1 - offset else offset
+accept-user-value(minimum + ratio * (maximum - minimum), phase)
+
+────────────────────
+_ normalized-user-value
+    - candidate F64
+
+|? !is-finite(candidate) || candidate <= minimum
+    minimum
+|? candidate >= maximum
+    maximum
+|? !is-finite(step) || step <= 0
+    candidate
+??
+    min(maximum, max(minimum, minimum + round((candidate - minimum) / step) * step))
+
+────────────────────
+_ get has-valid-range
+
+is-finite(minimum) && is-finite(maximum) && maximum > minimum
+
+────────────────────
+_ get effective-value
+
+|? !has-valid-range || !is-finite(value) || value <= minimum
+    minimum
+|? value >= maximum
+    maximum
+??
+    value
+
+────────────────────
+_ calculate-render-ratio
+
+|? !has-valid-range
+    0
+??
+    (effective-value - minimum) / (maximum - minimum)
+
+────────────────────
+_ get small-increment
+
+|? is-finite(step) && step > 0
+    step
+??
+    (maximum - minimum) * 0.01
+
+────────────────────
+_ get track-start Length
+
+|? is-vertical
+    content-bounds.y - bounds.y + thumb-slot.height / 2
+??
+    content-bounds.x - bounds.x + thumb-slot.width / 2
+
+────────────────────
+_ get track-travel Length
+
+|? is-vertical
+    max(0, content-bounds.height - thumb-slot.height)
+??
+    max(0, content-bounds.width - thumb-slot.width)
+
+────────────────────
+_ get thumb-center Length
+
+track-start + (if is-vertical then 1 - ratio else ratio) * track-travel
+
+.. ratio = calculate-render-ratio()
+
+────────────────────
+_ along Length
+    - point Point
+
+if is-vertical then point.y else point.x
+
+────────────────────
+_ resets Bool
+    - press PointerDownEvent
+
+default-value != null && press.click-count >= 2 && event-target-is-thumb(press)
+
+────────────────────
+_ event-target-is-thumb
+    - event GUIEvent
+
+|? !thumb
+    false
+??
+    owner as Pointer? == this as Pointer?
+
+.. thumb = event.hit-box?.ancestor-or-self'SliderThumb
+.. owner = thumb.ancestor'Slider
+
+────────────────────
+_ do publish-drag-ended
+
+. current = effective-value
+value-changed <- ValueChange'F64(current, current, ValueChangePhase.ended)
+
+━━━━━━━━━━━━━━━━━━━━
++ SliderTrack is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ SliderFill is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ SliderThumb is Box
+
++ swatch RGBA?
+
+────────────────────
+
+<This • flex-row
+    if #swatch
+        <SliderThumbSwatch • flex:1
+            background-color = #swatch
+
+━━━━━━━━━━━━━━━━━━━━
++ SliderThumbSwatch is Box
+
+━━━━━━━━━━━━━━━━━━━━
+_ SliderFillSlot is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ SliderThumbSlot is Box
+
++ swatch RGBA?
+
+────────────────────
+
+<This
+    <SliderThumb thumb • absolute center:.parent
+        swatch = #swatch
+
+────────────────────
++ do measured-content-size
+    - query MeasureQuery
+
+. size = thumb.measure(query).outer-size
+. width = size.width
+if query.inline.available
+    width = min(width, query.inline.available)
+= Dimensions(width, size.height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SliderRemainder is Box
+
++ increase-small Doer
++ decrease-small Doer
++ increase-page Doer
++ decrease-page Doer
++ go-minimum Doer
++ go-maximum Doer
+
+────────────────────
+
+<This
+    <KeyShortcut "Increase"
+        key = .arrow-right
+        discoverable = false
+        action = increase-small
+
+    <KeyShortcut "Increase"
+        key = .arrow-up
+        discoverable = false
+        action = increase-small
+
+    <KeyShortcut "Decrease"
+        key = .arrow-left
+        discoverable = false
+        action = decrease-small
+
+    <KeyShortcut "Decrease"
+        key = .arrow-down
+        discoverable = false
+        action = decrease-small
+
+    <KeyShortcut "Page Up"
+        key = .page-up
+        discoverable = false
+        action = increase-page
+
+    <KeyShortcut "Page Down"
+        key = .page-down
+        discoverable = false
+        action = decrease-page
+
+    <KeyShortcut "Minimum"
+        key = .home
+        discoverable = false
+        action = go-minimum
+
+    <KeyShortcut "Maximum"
+        key = .end
+        discoverable = false
+        action = go-maximum

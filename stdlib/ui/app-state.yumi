@@ -1,0 +1,142 @@
+/data/json
+/os/app-support
+/os/file
+/os/path
+/time/debounced
+/time/duration
+
++ app-state-delay = 500ms
++ app-state-format = 1
++ app-state-file-name = "state.json"
+
+━━━━━━━━━━━━━━━━━━━━
++ AppState
+
++ path Path
++ delay = app-state-delay
++ problem String?
+
+_ sections Map'String'JSON
+_ changed [String]
+_ revision U64
+_ saved-revision U64
+_ schedule-flush := debounced(delay, this.flush)
+
+────────────────────
++ This
+    - app-id String = main-app-id
+    - location Path? = null
+
+path = location ?? app-support-path(app-id) / app-state-file-name
+load()
+
+────────────────────
++ read
+    - key String
+    - version Int
+
+sections[app-state-key(key, version)]
+
+────────────────────
++ do write
+    - key String
+    - version Int
+    - value JSON
+
+. entry = app-state-key(key, version)
+sections[entry] = value
+note(entry)
+
+────────────────────
++ do remove
+    - key String
+    - version Int
+
+. entry = app-state-key(key, version)
+=? if !(sections has entry)
+-= sections[entry]
+note(entry)
+
+────────────────────
++ do flush
+
+=? if saved-revision == revision
+. current = revision
+. merged = latest-sections()
+for entry in changed
+    . value = sections[entry]
+    if value
+        merged[entry] = value
+    else if merged has entry
+        -= merged[entry]
+. root = Map'String'JSON
+    • "format" app-state-format
+    • "sections" merged
+. failure = catch store(to-json(root))
+if failure is Error
+    problem = (failure as Error).message
+else
+    sections = merged
+    changed = List'String()
+    saved-revision = current
+    problem = null
+
+────────────────────
+_ do note
+    - entry String
+
+if !(changed has entry)
+    changed += entry
+schedule()
+
+────────────────────
+_ do schedule
+
+revision += 1
+schedule-flush()
+
+────────────────────
+_ do load
+
+=? if !path.exists
+. loaded = catch app-state-sections(read-file-text(path))
+if loaded is Error
+    problem = (loaded as Error).message
+    catch path.move(Path("${path}.bad", 0))
+    =
+sections = loaded as Map'String'JSON
+
+────────────────────
+_ do latest-sections Map'String'JSON
+
+=? sections if !path.exists
+. text = catch? read-file-text(path)
+=? sections if !text
+= catch? app-state-sections(text) ?? sections
+
+────────────────────
+_ do store ?! Error
+    - text String
+
+. directory = path.parent
+if directory
+    directory.make-directories()
+write-file-atomically(path, text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ app-state-key String
+    - key String
+    - version Int
+
+"$key@$version"
+
+━━━━━━━━━━━━━━━━━━━━
+_ app-state-sections ?! Error
+    - text String
+
+?! Error("Unsupported app state format $format")
+    if format != app-state-format
+root["sections"].object().fields
+
+.. root = JSONReader("App state", parse-json(text)).object()
+.. format = root["format"].int()

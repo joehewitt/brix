@@ -1,0 +1,190 @@
+./box
+./events
+./keys
+./label
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./text-input
+./theme
+/core/list-cursor
+/data/fuzzy
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/graphics/text
+/ui/input
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+
+• ComboSuggestions • bg:gui-glass-color text:gui-text-color p:4 max-h:220
+    window-material = gui-glass-material
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-popup-radius
+    shadow = gui-popup-shadow
+
+• ComboRow • text:gui-text-color h:24 px:8
+    corner-radius = gui-control-radius
+
+    when #is-highlighted
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ ComboBox is Box
+
+• This
+    focus-mode = FocusMode.inside
+
++ suggestions [String] = List'String()
++ placeholder = ""
++ text = ""
++ value = ""
++ highlighted-index Index?
++ matches [String] = combo-matches(#suggestions, #text)
++ highlighted-match String? = combo-highlighted-match(#matches, #highlighted-index)
++ event value-changing ValueChange'String
++ event value-changed ValueChange'String
+
+────────────────────
+
+<This • flex-col
+    <TextInput field • flex:1
+        placeholder = #placeholder
+        text = #text
+    <ComboSuggestions suggestions-popup • flex-col
+        for match in #matches
+            <ComboRow
+                value = match
+    <KeyShortcut "Next suggestion"
+        key = .arrow-down
+        discoverable = false
+        allow-while-input = true
+        action = => do move-highlight(1)
+    <KeyShortcut "Previous suggestion"
+        key = .arrow-up
+        discoverable = false
+        allow-while-input = true
+        action = => do move-highlight(-1)
+    <KeyShortcut "Accept suggestion"
+        key = .enter
+        repeat = false
+        discoverable = false
+        allow-while-input = true
+        action = => do accept-highlighted()
+
+────────────────────
+for event on field.input
+
+text = event.text
+highlighted-index = null
+if combo-matches(suggestions, text).length > 0
+    suggestions-popup.show()
+else
+    suggestions-popup.dismiss()
+
+────────────────────
++ do move-highlight
+    - offset Int
+
+. count = combo-matches(suggestions, text).length
+=? if count == 0
+if !suggestions-popup.is-open
+    suggestions-popup.show()
+highlighted-index = ListCursor(count, highlighted-index).wrapped(offset)
+
+────────────────────
++ do highlight
+    - match String
+
+. current = combo-matches(suggestions, text)
+for index in 0 .. < current.length
+    if current[index] == match
+        highlighted-index = index
+        =
+
+────────────────────
++ do accept-highlighted
+
+accept(combo-highlighted-match(combo-matches(suggestions, text), highlighted-index) ?? text)
+
+────────────────────
++ do accept
+    - candidate String
+
+. old = value
+if candidate != old
+    . change = ValueChange'String(old, candidate)
+    value-changing <- change
+    =? if change.is-canceled
+text = candidate
+value = candidate
+highlighted-index = null
+suggestions-popup.dismiss(DismissReason.chosen)
+=? if candidate == old
+value-changed <- ValueChange'String(old, candidate)
+
+━━━━━━━━━━━━━━━━━━━━
++ ComboSuggestions is Popup
+
+• This • below-matched:3
+    focus-loss-dismiss = true
+    popup-focus = PopupFocus.none
+    overflow-y = ScrollOverflow.auto
+
+━━━━━━━━━━━━━━━━━━━━
++ ComboRow is Box
+
++ value String
++ is-highlighted = #combo?.#highlighted-match == #value
+
+_ combo Ancestor'ComboBox
+
+. hover-changed < is-hover-within
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = value
+
+────────────────────
+for event on click
+
+combo?.accept(value)
+event.cancel()
+
+────────────────────
+_ do hover-changed
+
+if is-hover-within
+    combo?.highlight(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ combo-highlighted-match String?
+    - matches [String]
+    - index Index?
+
+|? index != null && index < matches.length
+    matches[index]
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
++ combo-matches [String]
+    - suggestions [String]
+    - text String
+
+** fuzzy-ranked(suggestions, text, :: suggestion => suggestion)
+?> text && each.lowercased != text.lowercased
+|> List

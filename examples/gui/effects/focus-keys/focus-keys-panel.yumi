@@ -1,0 +1,240 @@
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
+• FocusKeysTheme
+    using GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIFocusRingStyle
+
+• showcase-button • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 3
+    font-size = 16
+    font-weight = FontWeight.bold
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+    when #is-press-within
+        • bg:gui-pressed-color
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+
+• status-panel • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 2
+    font-size = 15
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusKeysPanel is Box
+    using FocusKeysTheme
+
++ focus-status = "Focus: none"
++ event-status = "Event: move focus or interact with a control"
++ value-status = "Value: slider 35"
+
+• This • w:860 h:440
+
+────────────────────
+
+<This
+    <Label • absolute w:780 h:30
+        left = PositionOffset.coord(40)
+        top = PositionOffset.coord(24)
+        text = "Tab / Shift-Tab · native text input · canvas Slider events"
+        text-alignment = TextAlignment.center
+
+    <Label • absolute w:300 h:24
+        left = PositionOffset.coord(60)
+        top = PositionOffset.coord(82)
+        text = "Canvas press controls"
+
+    <FocusKeysButton "Canvas A" • absolute w:180 h:70
+        left = PositionOffset.coord(60)
+        top = PositionOffset.coord(118)
+
+    <FocusKeysButton "Canvas B" • absolute w:180 h:70
+        left = PositionOffset.coord(260)
+        top = PositionOffset.coord(118)
+
+    <Label • absolute w:300 h:24
+        left = PositionOffset.coord(500)
+        top = PositionOffset.coord(82)
+        text = "Text input and Slider"
+
+    <FocusKeysTextInput • absolute w:300 h:30
+        left = PositionOffset.coord(500)
+        top = PositionOffset.coord(120)
+        placeholder = "Type, replace, then press Return"
+
+    <FocusKeysSlider • absolute w:300 h:30
+        left = PositionOffset.coord(500)
+        top = PositionOffset.coord(166)
+        minimum = 0
+        maximum = 100
+        value = 35
+
+    <Label • status-panel absolute w:740 h:48
+        left = PositionOffset.coord(60)
+        top = PositionOffset.coord(224)
+        text = #focus-status
+        text-alignment = TextAlignment.center
+
+    <Label • status-panel absolute w:740 h:48
+        left = PositionOffset.coord(60)
+        top = PositionOffset.coord(288)
+        text = #event-status
+        text-alignment = TextAlignment.center
+
+    <Label • status-panel absolute w:740 h:48
+        left = PositionOffset.coord(60)
+        top = PositionOffset.coord(352)
+        text = #value-status
+        text-alignment = TextAlignment.center
+
+────────────────────
++ do show-focus
+    - text String
+
+focus-status = text
+
+────────────────────
++ do show-event
+    - text String
+
+event-status = text
+
+────────────────────
++ do show-value
+    - text String
+
+value-status = text
+
+────────────────────
+for event on key-press
+
+. key-name = focus-keys-key-name(event.key)
+. native-code = event.native-key-code
+. repeat = event.is-repeat
+event-status = "KeyPress: $key-name · native $native-code · repeat $repeat"
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusKeysButton is Box
+
++ name String
+
+• This • showcase-button
+    focus-mode = FocusMode.press
+
+────────────────────
++ This
+    - name
+
+────────────────────
+
+<This • flex-col
+    <Label • flex:1
+        text = name
+        text-alignment = TextAlignment.center
+
+────────────────────
+for event on focus
+
+ancestor'FocusKeysPanel()?.show-focus("Focus: $name (canvas press control)")
+
+────────────────────
+for event on blur
+
+if !focus-keys-has-focus(this)
+    ancestor'FocusKeysPanel()?.show-focus("Focus: none")
+
+────────────────────
+for event on click
+
+ancestor'FocusKeysPanel()?.show-event("Click: $name")
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusKeysTextInput is TextInput
+
+────────────────────
+for event on focus
+
+ancestor'FocusKeysPanel()?.show-focus("Focus: native TextInput")
+
+────────────────────
+for event on blur
+
+if !focus-keys-has-focus(this)
+    ancestor'FocusKeysPanel()?.show-focus("Focus: none")
+
+────────────────────
+for event on input
+
+ancestor'FocusKeysPanel()?.show-event("Input: ‘${event.text}’")
+
+────────────────────
+for event on change
+
+ancestor'FocusKeysPanel()?.show-event("Change: ‘${event.old-text}’ → ‘${event.text}’")
+
+────────────────────
+for event on submit
+
+ancestor'FocusKeysPanel()?.show-event("Submit: ‘${event.text}’")
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusKeysSlider is Slider
+
+────────────────────
+for event on focus
+
+ancestor'FocusKeysPanel()?.show-focus("Focus: Slider (canvas keys control)")
+
+────────────────────
+for event on value-changed
+
+. old-value = event.old-value
+. value = event.value
+ancestor'FocusKeysPanel()?.show-value("ValueChanged: $old-value → $value · range $minimum…$maximum")
+
+━━━━━━━━━━━━━━━━━━━━
+_ focus-keys-has-focus Bool
+    - box Box
+
+|? !host
+    false
+??
+    (host as Window).focused-box != null
+
+.. host = box.window
+
+━━━━━━━━━━━━━━━━━━━━
+_ focus-keys-key-name String
+    - key Key
+
+match key
+    | Key.tab
+        "Tab"
+    | Key.enter
+        "Enter"
+    | Key.escape
+        "Escape"
+    | Key.space
+        "Space"
+    | Key.arrow-up
+        "Arrow Up"
+    | Key.arrow-down
+        "Arrow Down"
+    | Key.arrow-left
+        "Arrow Left"
+    | Key.arrow-right
+        "Arrow Right"
+    | Key.function-key(index)
+        "F$index"
+    | Key.unknown(native-code)
+        "Unknown ($native-code)"
+    ??
+        "Navigation"

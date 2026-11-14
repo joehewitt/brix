@@ -1,0 +1,567 @@
+{
+    "version": 1,
+    "targets": {
+        "macos": {
+            "family": "macos",
+            "triple": "arm64-apple-macos",
+            "libraries": [
+                "bsm",
+                "c++",
+                "z"
+            ]
+        },
+        "ios-simulator": {
+            "family": "ios",
+            "triple": "arm64-apple-ios17.0-simulator",
+            "sdk": "iphonesimulator",
+            "buildDirectory": "ios-simulator",
+            "components": [
+                "utf8proc",
+                "yumigc",
+                "yumicore",
+                "yumievents",
+                "yumigraphics",
+                "yumiapplegui",
+                "yumimedia",
+                "pcre2",
+                "yumiregex",
+                "sqlite",
+                "yumisqlite"
+            ],
+            "libraries": [
+                "c++",
+                "z"
+            ]
+        },
+        "ios": {
+            "family": "ios",
+            "triple": "arm64-apple-ios17.0",
+            "sdk": "iphoneos",
+            "buildDirectory": "ios",
+            "components": [
+                "utf8proc",
+                "yumigc",
+                "yumicore",
+                "yumievents",
+                "yumigraphics",
+                "yumiapplegui",
+                "yumimedia",
+                "pcre2",
+                "yumiregex",
+                "sqlite",
+                "yumisqlite"
+            ],
+            "libraries": [
+                "c++",
+                "z"
+            ]
+        },
+        "linux": {
+            "family": "linux",
+            "triple": "aarch64-linux-gnu",
+            "sysroot": "build/deps/linux-sysroot",
+            "gccInstallDirectory": "usr/lib/gcc/aarch64-amazon-linux/11",
+            "cpu": "neoverse-n1",
+            "linker": "build/deps/llvm/bin/ld.lld",
+            "libclang": "build/deps/llvm/lib/libclang.so",
+            "buildDirectory": "linux",
+            "components": [
+                "utf8proc",
+                "yumigc",
+                "yumicore",
+                "yumievents",
+                "openssl",
+                "yumitls",
+                "yumicheaderscan",
+                "sqlite",
+                "yumisqlite"
+            ]
+        }
+    },
+    "toolchain": {
+        "cCompiler": "clang",
+        "cxxCompiler": "clang++",
+        "linker": "clang"
+    },
+    "compile": {
+        "runtimeCxxStandard": "c++11",
+        "harnessCxxStandard": "c++17",
+        "commonFlags": [
+            "-fexceptions",
+            "-pipe",
+            "-Wno-trigraphs",
+            "-Wreturn-type",
+            "-Wunused-variable",
+            "-DYU_RELEASE",
+            "-DMAC",
+            "-O3"
+        ]
+    },
+    "gcModes": {
+        "normal": {
+            "defines": {
+                "YU_ENABLE_YUMI_GC": 1,
+                "YU_GC_NEVER_COLLECT": 0
+            }
+        },
+        "no-gc": {
+            "benchmarkOnly": true,
+            "buildDirectory": "no-gc",
+            "defines": {
+                "YU_ENABLE_YUMI_GC": 0,
+                "YU_GC_NEVER_COLLECT": 0
+            },
+            "omitProjects": [
+                "yumigc"
+            ]
+        },
+        "never-collect": {
+            "benchmarkOnly": true,
+            "buildDirectory": "never-collect",
+            "defines": {
+                "YU_ENABLE_YUMI_GC": 1,
+                "YU_GC_NEVER_COLLECT": 1
+            }
+        }
+    },
+    "sanitizers": {
+        "thread": {
+            "buildDirectory": "tsan",
+            "compileFlags": [
+                "-fsanitize=thread",
+                "-fno-omit-frame-pointer",
+                "-fno-sanitize-recover=all",
+                "-g",
+                "-O1"
+            ],
+            "library": "libclang_rt.tsan_osx_dynamic.dylib"
+        },
+        "address": {
+            "buildDirectory": "asan",
+            "compileFlags": [
+                "-fsanitize=address",
+                "-fno-omit-frame-pointer",
+                "-fno-sanitize-recover=all",
+                "-g",
+                "-O1"
+            ],
+            "library": "libclang_rt.asan_osx_dynamic.dylib"
+        }
+    },
+    "externalLibraries": {
+        "openssl": {
+            "path": "build/deps/openssl",
+            "exports": {
+                "include/openssl": "openssl"
+            },
+            "includePaths": [
+                "build/deps/openssl/include"
+            ],
+            "libraryPaths": [
+                "build/deps/openssl/lib/libssl.a",
+                "build/deps/openssl/lib/libcrypto.a"
+            ]
+        },
+        "utf8proc": {
+            "path": "build/deps/utf8proc",
+            "exports": {
+                "include": "utf8proc"
+            },
+            "includePaths": [
+                "build/deps/utf8proc/include"
+            ],
+            "libraryPaths": [
+                "build/deps/utf8proc/lib/libutf8proc.a"
+            ]
+        },
+        "treesitter": {
+            "path": "build/deps/tree-sitter",
+            "includePaths": [
+                "build/deps/tree-sitter/include"
+            ],
+            "libraryPaths": [
+                "build/deps/tree-sitter/lib/libtree-sitter-c.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-cpp.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-objcpp.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-javascript.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-typescript.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-tsx.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-python.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-rust.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-go.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-json.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-css.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-html.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-bash.a",
+                "build/deps/tree-sitter/lib/libtree-sitter-markdown.a",
+                "build/deps/tree-sitter/lib/libtree-sitter.a"
+            ]
+        },
+        "ghosttyvt": {
+            "path": "build/deps/ghostty-vt",
+            "includePaths": [
+                "build/deps/ghostty-vt/include"
+            ],
+            "libraryPaths": [
+                "build/deps/ghostty-vt/lib/libghostty-vt.a"
+            ]
+        },
+        "pcre2": {
+            "path": "build/deps/pcre2",
+            "includePaths": [
+                "build/deps/pcre2/include"
+            ],
+            "libraryPaths": [
+                "build/deps/pcre2/lib/libpcre2-8.a"
+            ]
+        },
+        "sqlite": {
+            "path": "build/deps/sqlite",
+            "exports": {
+                "include": "sqlite"
+            },
+            "includePaths": [
+                "build/deps/sqlite/include"
+            ],
+            "libraryPaths": [
+                "build/deps/sqlite/lib/libsqlite3.a"
+            ]
+        }
+    },
+    "runtimeProjects": {
+        "yumigc": {
+            "path": "libs/gc",
+            "exports": {
+                "include": "YuGC"
+            },
+            "includePaths": [
+                "build/yumi/libs/core",
+                "build/yumi/libs/events"
+            ],
+            "compilerFlags": [
+                "-fno-omit-frame-pointer"
+            ],
+            "requires": [
+                "yumicore",
+                "yumievents"
+            ],
+            "archive": "yumi/libs/gc/libyumigc.a"
+        },
+        "yumicore": {
+            "path": "libs/core",
+            "exports": {
+                "include": "YuCore",
+                "include/.": "JaCore"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc"
+            ],
+            "compilerFlags": [
+                "-fno-omit-frame-pointer"
+            ],
+            "requires": [
+                "yumigc",
+                "yumievents",
+                "utf8proc"
+            ],
+            "archive": "yumi/libs/core/libyumicore.a"
+        },
+        "yumitls": {
+            "path": "libs/tls",
+            "exports": {
+                "include": "YuTLS"
+            },
+            "requires": [
+                "openssl"
+            ],
+            "archive": "yumi/libs/tls/libyumitls.a"
+        },
+        "yumievents": {
+            "path": "libs/events",
+            "exports": {
+                "include": "YuEvents"
+            },
+            "includePaths": [
+                "build/yumi/libs/core",
+                "build/yumi/libs/gc"
+            ],
+            "compilerFlags": [
+                "-fno-omit-frame-pointer"
+            ],
+            "frameworks": [
+                "CoreFoundation",
+                "CoreServices"
+            ],
+            "targets": {
+                "ios": {
+                    "frameworks": [
+                        "CoreFoundation"
+                    ],
+                    "exclude": [
+                        "YuEpollLoop.cpp",
+                        "YuFSEventsPathWatcher.cpp",
+                        "YuInotifyPathWatcher.cpp",
+                        "YuPathWatcher.cpp"
+                    ]
+                },
+                "macos": {
+                    "exclude": [
+                        "YuEpollLoop.cpp",
+                        "YuInotifyPathWatcher.cpp"
+                    ]
+                },
+                "linux": {
+                    "exclude": [
+                        "YuBundle.cpp",
+                        "YuFSEventsPathWatcher.cpp",
+                        "YuKQueueLoop.cpp",
+                        "YuMachPorts.cpp",
+                        "YuSelectLoop.cpp",
+                        "YuTriggerFile.cpp"
+                    ]
+                }
+            },
+            "requires": [
+                "yumicore",
+                "yumigc"
+            ],
+            "archive": "yumi/libs/events/libyumievents.a"
+        },
+        "yumigraphics": {
+            "path": "libs/graphics",
+            "exports": {
+                "include": "YuGraphics"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc"
+            ],
+            "frameworks": [
+                "CoreFoundation",
+                "CoreGraphics",
+                "CoreText",
+                "Foundation",
+                "IOSurface",
+                "ImageIO",
+                "Metal"
+            ],
+            "archive": "yumi/libs/graphics/libyumigraphics.a"
+        },
+        "yumiapplegui": {
+            "path": "libs/applegui",
+            "exports": {
+                "include": "YuAppleGUI"
+            },
+            "compilerFlags": [
+                "-fobjc-arc"
+            ],
+            "includePaths": [
+                "build/yumi/libs/core",
+                "build/yumi/libs/events",
+                "build/yumi/libs/gc",
+                "build/yumi/libs/graphics"
+            ],
+            "frameworks": [
+                "AppKit",
+                "CoreGraphics",
+                "CoreVideo",
+                "IOSurface",
+                "Metal",
+                "QuartzCore",
+                "UniformTypeIdentifiers"
+            ],
+            "targets": {
+                "macos": {
+                    "exclude": [
+                        "YuUIKitGUI.mm"
+                    ]
+                },
+                "ios": {
+                    "frameworks": [
+                        "CoreGraphics",
+                        "IOSurface",
+                        "Metal",
+                        "QuartzCore",
+                        "UIKit"
+                    ],
+                    "exclude": [
+                        "YuAppleGUI.mm",
+                        "YuFileDialog.mm"
+                    ]
+                }
+            },
+            "requires": [
+                "yumicore",
+                "yumievents",
+                "yumigraphics"
+            ],
+            "archive": "yumi/libs/applegui/libyumiapplegui.a"
+        },
+        "yumimovie": {
+            "path": "libs/movie",
+            "exports": {
+                "include": "YuMovie"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc",
+                "build/yumi/libs/graphics"
+            ],
+            "frameworks": [
+                "AVFoundation",
+                "CoreFoundation",
+                "CoreGraphics",
+                "CoreMedia",
+                "CoreVideo",
+                "Foundation"
+            ],
+            "requires": [
+                "yumigraphics"
+            ],
+            "archive": "yumi/libs/movie/libyumimovie.a"
+        },
+        "yumimedia": {
+            "path": "libs/media",
+            "exports": {
+                "include": "YuMedia"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc"
+            ],
+            "frameworks": [
+                "AudioToolbox",
+                "CoreAudio",
+                "CoreFoundation"
+            ],
+            "targets": {
+                "macos": {
+                    "exclude": [
+                        "YuAudioSession.mm"
+                    ]
+                },
+                "ios": {
+                    "frameworks": [
+                        "AVFAudio",
+                        "AudioToolbox",
+                        "CoreFoundation",
+                        "UIKit"
+                    ]
+                }
+            },
+            "archive": "yumi/libs/media/libyumimedia.a"
+        },
+        "yumiwebkit": {
+            "path": "libs/webkit",
+            "exports": {
+                "include": "YuWebKit"
+            },
+            "includePaths": [
+                "build/yumi/libs/applegui",
+                "build/yumi/libs/core",
+                "build/yumi/libs/events",
+                "build/yumi/libs/gc"
+            ],
+            "frameworks": [
+                "AppKit",
+                "AuthenticationServices",
+                "WebKit"
+            ],
+            "requires": [
+                "yumiapplegui",
+                "yumicore",
+                "yumievents"
+            ],
+            "archive": "yumi/libs/webkit/libyumiwebkit.a"
+        },
+        "yumisyntax": {
+            "path": "libs/syntax",
+            "exports": {
+                "include": "YuSyntax"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc",
+                "build/deps/tree-sitter/include"
+            ],
+            "compilerFlags": [
+                "-std=gnu11"
+            ],
+            "requires": [
+                "treesitter"
+            ],
+            "archive": "yumi/libs/syntax/libyumisyntax.a"
+        },
+        "yumiterminal": {
+            "path": "libs/terminal",
+            "exports": {
+                "include": "YuTerminal"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc",
+                "build/deps/ghostty-vt/include"
+            ],
+            "compilerFlags": [
+                "-std=gnu11",
+                "-DGHOSTTY_STATIC"
+            ],
+            "requires": [
+                "ghosttyvt"
+            ],
+            "archive": "yumi/libs/terminal/libyumiterminal.a"
+        },
+        "yumiregex": {
+            "path": "libs/regex",
+            "exports": {
+                "include": "YuRegex"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc",
+                "build/deps/pcre2/include"
+            ],
+            "compilerFlags": [
+                "-std=gnu11"
+            ],
+            "requires": [
+                "pcre2"
+            ],
+            "archive": "yumi/libs/regex/libyumiregex.a"
+        },
+        "yumisqlite": {
+            "path": "libs/sqlite",
+            "exports": {
+                "include": "YuSQLite"
+            },
+            "includePaths": [
+                "build/yumi/libs/gc",
+                "build/deps/sqlite/include"
+            ],
+            "compilerFlags": [
+                "-std=gnu11"
+            ],
+            "requires": [
+                "sqlite"
+            ],
+            "archive": "yumi/libs/sqlite/libyumisqlite.a"
+        },
+        "yumicheaderscan": {
+            "path": "libs/cheaderscan",
+            "exports": {
+                "include": "YuCHeaderScan"
+            },
+            "includePaths": [
+                "build/deps/clang-c/include"
+            ],
+            "compilerFlags": [
+                "-std=gnu11"
+            ],
+            "archive": "yumi/libs/cheaderscan/libyumicheaderscan.a"
+        }
+    },
+    "runtimeLink": {
+        "always": [
+            "yumicore",
+            "yumigc",
+            "yumievents"
+        ],
+        "warningFlags": [
+            "-w"
+        ]
+    }
+}

@@ -1,0 +1,147 @@
+./type-signature
+./type-store
+./types
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ do declaring-class DeclRef
+    - types Types
+    - owner TypeId
+    - name Atom
+
+` The class among a type and its bases that declares a property of a name, or the type's own
+` class where none does.
+. current = owner
+while current != no-type
+    . ref = class-ref(types, current)
+    if ref.module == 0 && ref.decl == 0
+        = ref
+    if owner-property(types.program, ref.module, ref.decl, name) != 0
+        = ref
+    current = types.base-of(current) ?? no-type
+= class-ref(types, owner)
+
+━━━━━━━━━━━━━━━━━━━━
++ do written-tuple DeclRef
+    - types Types
+    - type TypeId
+    - fields TypeId
+
+. current = type
+while current != no-type
+    . base = types.base-of(current) ?? no-type
+    if base == fields
+        = class-ref(types, current)
+    current = base
+= DeclRef(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do written-field SyntaxId
+    - program Program
+    - ref DeclRef
+    - name Atom
+
+if ref.decl == 0
+    = 0
+. owner = program.modules[ref.module]
+. tree = owner.tree
+do match? owner.decls[ref.decl]
+    | .decl-class(class)
+        do match? tree.nodes[class.base]
+            | .node-type-tuple(row)
+                . position = 0
+                for field in tree.children[row.field-types]
+                    . written = match? tree.nodes[field]
+                        | .node-type-capture(capture)
+                            match? tree.nodes[capture.id]
+                                | .node-identifier(id)
+                                    id.name.text
+                    if (written ?? "$position") == name.text
+                        = field
+                    position += 1
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do names-element Bool
+    - types Types
+    - fact TypeProperty
+
+` Whether a property is one the markup written in a class declared for an element of a
+` name: it holds nothing until that markup makes the element.
+. ref = declaring-class(types, fact.owner, fact.name)
+. member = owner-property(types.program, ref.module, ref.decl, fact.name)
+if member == 0
+    = false
+do match? types.program.modules[ref.module].decls[member]
+    | .decl-property(row)
+        = row.element != 0
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do member-site SyntaxId
+    - types Types
+    - ref DeclRef
+    - name Atom
+
+` Where a class declares a property or a getter of a name.
+. owner = types.program.modules[ref.module]
+do match? owner.decls[ref.decl]
+    | .decl-class(class)
+        . place = owner.first-member(class.members, name)
+        while place != no-member
+            . member = owner.member-pool[place]
+            place = owner.member-links[place]
+            do match? owner.decls[member]
+                | .decl-property(property)
+                    if property.name && property.name == name
+                        = property.syntax
+                | .decl-function(fn)
+                    if fn.kind == .getter-decl && fn.name && fn.name == name
+                        = fn.syntax
+        = class.syntax
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-hot-field Bool
+    - types Types
+    - property TypeProperty
+
+` Whether the declaration of a field asks to be packed first among a table row's inline bytes.
+. owner = declaring-class(types, property.owner, property.name)
+. written = member-site(types, owner, property.name)
+. target = types.program.modules[owner.module].tree
+do match? target.nodes[written]
+    | .node-property-syntax(row)
+        for annotation in target.atoms[row.annotations]
+            if annotation.text == "hot"
+                = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-common-field Bool
+    - types Types
+    - union TypeId
+    - field TypeProperty
+
+` A field every case of a union row inherits from one declaration with one type is held in a
+` column of its own.
+if field.storage-kind != .storage-eager
+    = false
+. declared = declaring-class(types, field.owner, field.name)
+for fact in types.cases-of(union)
+    if fact.is-default || fact.type == no-type || fact.type == invalid-type
+        = false
+    . found = types.property-named(fact.type, field.name)
+    if !found
+        = false
+    . other = types.properties[found]
+    if other.storage-kind != .storage-eager || other.type != field.type
+        = false
+    . held = declaring-class(types, other.owner, other.name)
+    if held.module != declared.module || held.decl != declared.decl
+        = false
+= true

@@ -1,0 +1,287 @@
+
+/core/markup
+/test
+/tui/box
+/tui/events
+/tui/primitives
+/tui/text
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Pointer Routing")
+cases.run(pointer-routing-tests)
+cases = cases.then("Pointer Modal Routing", pointer-modal-routing-tests)
+cases = cases.then("Pointer Scroll Routing", pointer-scroll-routing-tests)
+cases = cases.then("Pointer Reentrant Routing", pointer-reentrant-routing-tests)
+cases = cases.then("Focus Traversal", focus-traversal-tests)
+cases = cases.then("Layout Checkpoint Outside Mutation", layout-checkpoint-outside-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do pointer-routing-tests TestCase
+    - t TestCase
+
+. trace [String]
+. root = PointerProbeBox("root", trace)
+. mid = PointerProbeBox("mid", trace)
+. leaf = PointerProbeBox("leaf", trace)
+markup-mount-root(root, root)
+markup-append(root, mid)
+markup-append(mid, leaf)
+root.bounds = Rect(0, 0, 20, 20)
+mid.bounds = Rect(0, 0, 20, 20)
+leaf.bounds = Rect(0, 0, 20, 20)
+root.scroll-x = -2
+mid.scroll-y = -3
+
+root.publish-pointer(MouseDownEvent((5, 5)))
+. expected-nested = "leaf:down:(7, 8), mid:down:(7, 5), root:down:(5, 5)"
+t.expect("nested pointer order and local points", expected-nested, ", ".join(trace))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do pointer-modal-routing-tests TestCase
+    - t TestCase
+
+. modal-trace [String]
+. modal-root = PointerProbeBox("modal-root", modal-trace)
+. modal-outer = PointerProbeBox("modal-outer", modal-trace)
+. modal = PointerProbeBox("modal", modal-trace)
+. modal-leaf = PointerProbeBox("modal-leaf", modal-trace)
+markup-mount-root(modal-root, modal-root)
+markup-append(modal-root, modal-outer)
+markup-append(modal-outer, modal)
+markup-append(modal, modal-leaf)
+modal-root.bounds = Rect(0, 0, 20, 10)
+modal-outer.bounds = Rect(0, 0, 20, 10)
+modal.bounds = Rect(2, 2, 10, 5)
+modal-leaf.bounds = Rect(2, 2, 10, 5)
+
+. modal-hit = modal-root.hit-path-within(modal, (3, 3))
+modal-hit.publish-pointer(MouseDownEvent((3, 3)))
+. expected-modal = "modal-leaf:down:(3, 3), modal:down:(3, 3), modal-root:down:(3, 3)"
+t.expect("modal route excludes outer boxes", expected-modal, ", ".join(modal-trace))
+
+modal-trace.clear()
+. backdrop-hit = modal-root.hit-path-within(modal, (0, 0))
+backdrop-hit.publish-pointer(MouseDownEvent((0, 0)))
+. expected-backdrop = "modal:down:(0, 0), modal-root:down:(0, 0)"
+t.expect("modal backdrop excludes outer boxes", expected-backdrop, ", ".join(modal-trace))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do pointer-scroll-routing-tests TestCase
+    - t TestCase
+
+. scroll-trace [String]
+. scroll-root = PointerProbeBox("scroll-root", scroll-trace)
+. scroller = PointerProbeBox("scroller", scroll-trace)
+. scroll-inner = PointerProbeBox("scroll-inner", scroll-trace)
+. scroll-leaf = PointerProbeBox("scroll-leaf", scroll-trace)
+markup-mount-root(scroll-root, scroll-root)
+markup-append(scroll-root, scroller)
+markup-append(scroller, scroll-inner)
+markup-append(scroll-inner, scroll-leaf)
+scroll-root.bounds = Rect(0, 0, 20, 10)
+scroller.bounds = Rect(0, 0, 20, 10)
+scroll-inner.bounds = Rect(0, 0, 20, 30)
+scroll-leaf.bounds = Rect(0, 0, 20, 30)
+
+. pressed = scroll-root.hit-path((1, 5))
+pressed.publish-pointer(MouseDownEvent((1, 5)))
+
+scroller.scroll((0, -3))
+. expected-scrolled-drag = "".join • stream
+    * "scroll-leaf:drag:(1, 8), scroll-inner:drag:(1, 8), "
+    * "scroller:drag:(1, 5), scroll-root:drag:(1, 5)"
+scroll-trace.clear()
+pressed.publish-pointer(MouseDragEvent((1, 5)))
+. actual-drag = ", ".join(scroll-trace)
+t.expect("captured drag uses live scrolled points", expected-scrolled-drag, actual-drag)
+. captured-leaf-y = pressed.point-for(scroll-leaf)?.y ?? -1
+t.expect("captured point-for uses live scroll", 8, captured-leaf-y)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do pointer-reentrant-routing-tests TestCase
+    - t TestCase
+
+. forward-trace [String]
+. forward-root = PointerProbeBox("forward-root", forward-trace)
+. forward-mid = ForwardingPointerProbeBox("forward-mid", forward-trace)
+. forward-leaf = PointerProbeBox("forward-leaf", forward-trace)
+markup-mount-root(forward-root, forward-root)
+markup-append(forward-root, forward-mid)
+markup-append(forward-mid, forward-leaf)
+forward-root.bounds = Rect(0, 0, 20, 20)
+forward-mid.bounds = Rect(0, 0, 20, 20)
+forward-leaf.bounds = Rect(0, 0, 20, 20)
+forward-mid.forward-next = true
+forward-root.publish-pointer(MouseDownEvent((3, 2)))
+. expected-forward = "".join • stream
+    * "forward-leaf:down:(3, 2), forward-mid:down:(3, 2), "
+    * "forward-leaf:down:(3, 2), "
+    * "forward-mid:down:(3, 2), forward-root:down:(3, 2)"
+. actual-forward = ", ".join(forward-trace)
+t.expect("same pointer event resumes outer route", expected-forward, actual-forward)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do focus-traversal-tests TestCase
+    - t TestCase
+
+<TuiPainterDemo hidden-root
+    <Box hidden-parent
+        display = Display.invisible
+
+markup-mount-root(hidden-root, hidden-root)
+hidden-root.markup-batch-queue.checkpoint()
+
+. focus-trace [String]
+. hidden-child = PointerProbeBox("hidden-child", focus-trace)
+. visible-after = PointerProbeBox("visible-after", focus-trace)
+markup-append(hidden-parent, hidden-child)
+markup-append(hidden-root, visible-after)
+hidden-root.markup-batch-queue.checkpoint()
+
+. visible-after-box Box = visible-after
+. hidden-candidates = hidden-root.focus-candidates()
+t = t.expect("hidden subtree focus candidate count", 1, hidden-candidates.length)
+t = t.check("hidden subtree candidate is visible", hidden-candidates[0] == visible-after-box)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do layout-checkpoint-outside-tests TestCase
+    - t TestCase
+
+<CheckpointHost host
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.arrange-bounds(Rect(0, 0, 80, 24))
+host.update-layout()
+
+host.region.base = 12345678
+host.region.invalidate-layout()
+host.update-layout()
+t = t.expect
+    - "outside data changes during the region checkpoint"
+    - "Outside 12345678"
+    - host.outside.text
+
+host.update-layout()
+t = t.expect
+    - "outside relayout is not lost"
+    - host.outside.intrinsic-size.width
+    - host.outside.bounds.width
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckpointShared
+
++ outside-text = "Outside"
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckpointRegion is Box
+
++ shared CheckpointShared?
++ base I64
+
+────────────────────
++ do did-layout
+
+shared?.outside-text = "Outside ${base}"
+. root = markup-batch-root
+if root
+    catch root.markup-batch-queue.checkpoint()
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckpointHost is Box
+    is MarkupBatch
+
++ shared := CheckpointShared()
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col
+    <Box • flex-row
+        <Label outside
+            text = shared.#outside-text
+
+    <CheckpointRegion region • flex:1
+        shared = #shared
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiPainterDemo is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerProbeBox is Box
+    is MarkupBatch
+
+• This
+    focus-mode = FocusMode.keys
+
++ name String
++ trace [String]
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ This
+    - name
+    - trace
+
+────────────────────
+for event on mouse-down
+
+. point = event.point
+trace += "$name:down:$point"
+
+────────────────────
+for event on mouse-drag
+
+. point = event.point
+trace += "$name:drag:$point"
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ForwardingPointerProbeBox is PointerProbeBox
+
++ forward-next = false
+
+────────────────────
+for event on mouse-down
+
+if forward-next
+    forward-next = false
+    publish-pointer(event)

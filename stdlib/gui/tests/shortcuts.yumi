@@ -1,0 +1,297 @@
+
+/gui/box
+/gui/commands
+/gui/events
+/gui/keys
+/gui/primitives
+/gui/window
+/test
+/time/duration
+/ui/input
+/ui/key-combo
+/ui/keymap
+/ui/mode
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Scope And Dispatch")
+
+"Scoped | Container | Global", active-titles(scoped-window())
+
+════════════════════
+test("Commands, Conflicts, And Modes")
+
+1, find-key-binding-conflicts(mixed-window().active-key-bindings()).length
+"true, true, false", held-mode-modifier-states()
+"true, false, false, true, false", remapped-mode-states()
+"true, false", deactivated-mode-states()
+"true, false, false", deactivated-tap-or-hold-states()
+"true, true, false", independently-owned-mode-states()
+
+════════════════════
+test("Key Mapping Profiles")
+
+"true, false", unmapped-held-profile-states()
+"Cmd+Shift+R, Cmd+R", restored-shortcut-labels()
+"false, true", restored-availability-states()
+
+━━━━━━━━━━━━━━━━━━━━
+_ active-titles
+    - window ShortcutTestWindow
+
+" | ".join(each.display-title in window.active-key-bindings())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scoped-window
+
+<ShortcutTestWindow window
+
+window.focus-adapter = GUIFocusAdapter()
+window.open()
+window.scope.request-focus()
+= window
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mixed-window
+
+<MixedBindingWindow window
+
+window.focus-adapter = GUIFocusAdapter()
+window.open()
+window.scope.request-focus()
+= window
+
+━━━━━━━━━━━━━━━━━━━━
+_ do held-mode-modifier-states
+
+. window = mixed-window()
+window.dispatch-key-press(KeyPressEvent(Key.unknown(7), PointerModifiers(), false, 7, "x"))
+. after-press = window.mode.effective-value
+window.dispatch-modifiers-changed(PointerModifiers(false, false, true))
+. after-modifier = window.mode.effective-value
+window.dispatch-key-release
+    - KeyReleaseEvent(Key.unknown(7), PointerModifiers(false, false, true), 7, "x")
+= "$after-press, $after-modifier, ${window.mode.effective-value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do remapped-mode-states
+
+. window = mixed-window()
+window.dispatch-key-press(KeyPressEvent(Key.unknown(7), PointerModifiers(), false, 7, "x"))
+. after-press = window.mode.effective-value
+window.held-mode.set-binding-key(KeyCombo("z"))
+. after-remap = window.mode.effective-value
+window.dispatch-key-press(KeyPressEvent(Key.unknown(7), PointerModifiers(), false, 7, "x"))
+. after-old-key = window.mode.effective-value
+window.dispatch-key-press(KeyPressEvent(Key.unknown(8), PointerModifiers(), false, 8, "z"))
+. after-new-key = window.mode.effective-value
+window.held-mode.set-binding-enabled(false)
+= "$after-press, $after-remap, $after-old-key, $after-new-key, ${window.mode.effective-value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do deactivated-mode-states
+
+. window = mixed-window()
+window.dispatch-key-press(KeyPressEvent(Key.unknown(7), PointerModifiers(), false, 7, "x"))
+. after-press = window.mode.effective-value
+window.accept-window-deactivated()
+= "$after-press, ${window.mode.effective-value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do deactivated-tap-or-hold-states
+
+. window = mixed-window()
+window.tap-or-hold-binding.hold-threshold = 60000ms
+window.dispatch-key-press(KeyPressEvent(Key.unknown(11), PointerModifiers(), false, 11, "t"))
+. after-press = window.tap-or-hold-mode.effective-value
+window.accept-window-deactivated()
+= "$after-press, ${window.tap-or-hold-mode.effective-value}, ${window.tap-or-hold-mode.value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do independently-owned-mode-states
+
+. window = mixed-window()
+window.dispatch-key-press(KeyPressEvent(Key.unknown(7), PointerModifiers(), false, 7, "x"))
+window.dispatch-key-press(KeyPressEvent(Key.unknown(8), PointerModifiers(), false, 8, "y"))
+window.dispatch-key-release(KeyReleaseEvent(Key.unknown(7), PointerModifiers(), 7, "x"))
+. after-first-release = window.mode.effective-value
+window.dispatch-key-release(KeyReleaseEvent(Key.unknown(8), PointerModifiers(), 8, "y"))
+= "true, $after-first-release, ${window.mode.effective-value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do refresh-shortcut
+
+. shortcut = KeyShortcut("Refresh")
+shortcut.key = KeyCombo("Cmd+R")
+shortcut.stable-key = "example.refresh"
+= shortcut
+
+━━━━━━━━━━━━━━━━━━━━
+_ do profile-bindings
+    - window MixedBindingWindow
+    - shortcut KeyShortcut
+
+window.held-mode.stable-key = "example.independent"
+. bindings [KeyBinding]
+bindings += shortcut
+bindings += window.held-mode
+bindings += window.second-held-mode
+= bindings
+
+━━━━━━━━━━━━━━━━━━━━
+_ do remapping-profile
+
+. mappings [KeyMapping]
+mappings += KeyMapping("example.refresh", KeyCombo("Cmd+Shift+R"))
+mappings += KeyMapping("example.independent", null, true)
+= KeyMappingProfile(mappings)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do unmapped-held-profile-states
+
+. window = mixed-window()
+. bindings = profile-bindings(window, refresh-shortcut())
+window.second-held-mode.press(KeyPressEvent(Key.unknown(8), PointerModifiers(), false, 8, "y"))
+. after-press = window.mode.effective-value
+apply-key-mapping-profile(bindings, remapping-profile())
+= "$after-press, ${window.mode.effective-value}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do restored-shortcut-labels
+
+. window = mixed-window()
+. shortcut = refresh-shortcut()
+. bindings = profile-bindings(window, shortcut)
+apply-key-mapping-profile(bindings, remapping-profile())
+. remapped = shortcut.key.display-label
+apply-key-mapping-profile(bindings, KeyMappingProfile())
+= "$remapped, ${shortcut.key.display-label}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do restored-availability-states
+
+. window = mixed-window()
+. bindings = profile-bindings(window, refresh-shortcut())
+apply-key-mapping-profile(bindings, remapping-profile())
+. remapped = window.held-mode.enabled
+apply-key-mapping-profile(bindings, KeyMappingProfile())
+= "$remapped, ${window.held-mode.enabled}"
+
+━━━━━━━━━━━━━━━━━━━━
++ ShortcutScope is Box
+
+• This
+    focus-mode = FocusMode.keys
+
+━━━━━━━━━━━━━━━━━━━━
++ ShortcutContainer is Box
+
+• This
+    focus-mode = FocusMode.inside
+
+━━━━━━━━━━━━━━━━━━━━
++ ShortcutTestWindow is Window
+
+────────────────────
+
+<This
+    size = (200, 200)
+
+    <KeyShortcut "Global"
+        key = .escape
+
+    <ShortcutContainer • absolute cover:.parent
+        <KeyShortcut "Container"
+            key = .arrow-right
+
+        <ShortcutScope scope • absolute cover:.parent
+            <KeyShortcut "Scoped"
+                key = .arrow-up
+
+    <ShortcutScope • absolute cover:.parent
+        <KeyShortcut "Unreachable"
+            key = .arrow-down
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ MixedBindingWindow is Window
+
++ mode = Mode'Bool(false)
++ tap-or-hold-mode = Mode'Bool(false)
++ parts-mode = Mode'Bool(false)
+
+────────────────────
+
+<This
+    size = (200, 200)
+
+    <KeyShortcut "Global fallback"
+        key = KeyCombo(Key.function-key(3))
+
+    <KeyMode'Bool held-mode
+        title = "Held mode"
+        key = KeyCombo("x")
+        mode = mode
+        value = true
+        activation = KeyModeActivation.held
+
+    <KeyMode'Bool second-held-mode
+        title = "Second held mode"
+        key = KeyCombo("y")
+        mode = mode
+        value = true
+        activation = KeyModeActivation.held
+
+    <KeyMode'Bool tap-or-hold-binding
+        title = "Tap or hold mode"
+        key = KeyCombo("t")
+        mode = tap-or-hold-mode
+        value = true
+        activation = KeyModeActivation.tap-or-hold
+
+    <ActionCommand tap-command
+        title = "Tap command"
+
+    <KeyMode'Bool
+        title = "Hold part"
+        key = KeyCombo("h")
+        mode = parts-mode
+        value = true
+        activation = KeyModeActivation.held
+
+    <KeyCommand
+        key = KeyCombo("h")
+        command = tap-command.id
+        activation = KeyCommandActivation.tap
+
+    <ShortcutScope scope • absolute cover:.parent
+        <KeyShortcut "First duplicate"
+            key = KeyCombo(Key.function-key(2))
+        <KeyShortcut "Second duplicate"
+            key = KeyCombo(Key.function-key(2))
+        <KeyShortcut "Disabled local"
+            key = KeyCombo(Key.function-key(3))
+            enabled = false
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false

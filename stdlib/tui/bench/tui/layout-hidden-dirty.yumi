@@ -1,0 +1,69 @@
+`benchmark.meta description: Mutates text inside hidden TUI subtrees every frame.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchHiddenDirtyRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 40)
+
+for group-index in 0 .. < 40
+    . visible = BenchHiddenDirtyVisibleGroup()
+    markup-append(root, visible)
+    markup-append(visible, Label("visible-$group-index"))
+
+    . hidden = BenchHiddenDirtyHiddenGroup()
+    markup-append(root, hidden)
+    for item-index in 0 .. < 24
+        . label = Label("hidden-${group-index}-$item-index")
+        markup-append(hidden, label)
+        root.hidden-labels += label
+
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+
+. checksum Size = 0
+for frame in 0 .. < 96
+    . label = root.hidden-labels[frame % root.hidden-labels.length]
+    label.text = "hidden-update-$frame"
+    root.markup-batch-queue.checkpoint()
+    root.update-layout()
+    //tui.bench.frames ++
+    //tui.bench.mutations ++
+    checksum += root.inner-width + root.inner-height + label.text.length + frame
+
+-- "bench-result tui/layout-hidden-dirty checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenDirtyRoot is Box
+    is MarkupBatch
+
++ hidden-labels [TextBox]
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenDirtyVisibleGroup is Box
+
+• This
+    layout = flow-col
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenDirtyHiddenGroup is Box
+
+• This
+    layout = flow-col
+    display = Display.hidden

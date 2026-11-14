@@ -1,0 +1,198 @@
+./box
+/core/markup
+/graphics/canvas
+/graphics/primitives
+/units
+
++ gui-box-matches = BoxMatches()
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxMatchCover
+
++ image RasterCanvas
++ ink Rect
++ frame Rect
++ alpha = 1.0
+
+────────────────────
++ This
+    - image
+    - ink
+    - frame
+
+────────────────────
++ do paint
+    - canvas Canvas
+    - shown Rect
+
+=? if alpha <= 0 || frame.width <= 0 || frame.height <= 0
+. sx = shown.width / frame.width
+. sy = shown.height / frame.height
+. rect = Rect
+    - shown.x + (ink.x - frame.x) * sx
+    - shown.y + (ink.y - frame.y) * sy
+    - ink.width * sx
+    - ink.height * sy
+canvas.push()
+canvas.begin-opacity(alpha)
+canvas.draw-image(image, rect)
+canvas.end-opacity()
+canvas.pop()
+
+────────────────────
++ do close
+
+image.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxMatchDeparture
+
++ box Box
++ key String
++ host WindowHost
++ frame Rect
++ is-leaving Bool
++ cover BoxMatchCover?
+
+────────────────────
++ This
+    - box
+    - key
+    - host
+    - frame
+    - is-leaving
+    - cover
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxMatchArrival
+
++ box Box
++ key String
++ host WindowHost?
++ cause MarkupCause
+
+────────────────────
++ This
+    - box
+    - key
+    - host
+    - cause
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxMatches
+
+_ boxes = List'Box()
+_ departures = List'BoxMatchDeparture()
+_ arrivals = List'BoxMatchArrival()
+
+────────────────────
++ do enlist
+    - box Box
+
+boxes += box
+
+────────────────────
++ do delist
+    - box Box
+
+. index Size = 0
+while index < boxes.length
+    if boxes[index] as Pointer == box as Pointer
+        boxes.remove(index)
+        =
+    index += 1
+
+────────────────────
++ do add-departure
+    - departure BoxMatchDeparture
+
+departures += departure
+
+────────────────────
++ do arrive
+    - box Box
+    - key String
+    - cause MarkupCause
+
+arrivals += BoxMatchArrival(box, key, box.window-host, cause)
+
+────────────────────
++ do depart-within
+    - root Box
+
+for box in boxes
+    . key = box.match-key
+    if key && box.is-within(root)
+        box.depart-match(key, true)
+
+────────────────────
++ do arrive-within
+    - root Box
+    - cause MarkupCause
+
+for box in boxes
+    . key = box.match-key
+    if key && box.is-within(root)
+        arrive(box, key, cause)
+
+────────────────────
++ do revive-within
+    - root Box
+
+. index Size = 0
+while index < departures.length
+    . departure = departures[index]
+    if departure.is-leaving && departure.box.is-within(root)
+        departure.cover?.close()
+        departures.remove(index)
+    else
+        index += 1
+for box in boxes
+    if box.is-within(root)
+        box.match-reveal()
+
+────────────────────
++ do resolve
+    - host WindowHost
+
+=? if arrivals.length == 0 && departures.length == 0
+. leaving = List'BoxMatchDeparture()
+. index Size = 0
+while index < departures.length
+    if departures[index].host as Pointer == host as Pointer
+        leaving += departures[index]
+        departures.remove(index)
+    else
+        index += 1
+. coming = List'BoxMatchArrival()
+index = 0
+while index < arrivals.length
+    if arrivals[index].host as Pointer? == host as Pointer
+        coming += arrivals[index]
+        arrivals.remove(index)
+    else
+        index += 1
+for arrival in coming
+    . found = latest-departure(leaving, arrival)
+    if found
+        . cover = found.cover
+        found.cover = null
+        arrival.box.fly-from(found.frame, cover, arrival.cause)
+        if found.is-leaving
+            found.box.match-hide()
+for departure in leaving
+    departure.cover?.close()
+
+────────────────────
+_ do latest-departure BoxMatchDeparture?
+    - leaving [BoxMatchDeparture]
+    - arrival BoxMatchArrival
+
+. box = arrival.box
+=? null if box.match-key != arrival.key
+. index = leaving.length
+while index > 0
+    index -= 1
+    . departure = leaving[index]
+    =? departure if departure.key == arrival.key && departure.box as Pointer != box as Pointer
+= null

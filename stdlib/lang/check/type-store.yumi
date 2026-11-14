@@ -1,0 +1,3852 @@
+./idmap
+./stable-key
+./type-env
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/stream/aggregate
+
+_ property-scan-limit = 8
+
+_ type-bindings List
+    * TypeBinding("core", "Void", .void, true)
+    * TypeBinding("core", "CPointer", .cpointer)
+    * TypeBinding("core", "CFunction", .cfunction)
+    * TypeBinding("core", "Tuple", .tuple)
+    * TypeBinding("core", "Union", .union)
+    * TypeBinding("core", "Atom", .atom, true)
+    * TypeBinding("core", "Interface", .interface, true)
+    * TypeBinding("core", "Or", .or)
+    * TypeBinding("core", "Struct", .struct)
+    * TypeBinding("core", "Optional", .optional)
+    * TypeBinding("core", "GCTypeMap", .gc-type-map)
+    * TypeBinding("core/number", "Number", .number, true)
+    * TypeBinding("core/number", "I1", .int1, true)
+    * TypeBinding("core/number", "I8", .int8, true)
+    * TypeBinding("core/number", "U8", .uint8, true)
+    * TypeBinding("core/number", "I16", .int16, true)
+    * TypeBinding("core/number", "U16", .uint16, true)
+    * TypeBinding("core/number", "I32", .int32, true)
+    * TypeBinding("core/number", "U32", .uint32, true)
+    * TypeBinding("core/number", "I64", .int64, true)
+    * TypeBinding("core/number", "U64", .uint64, true)
+    * TypeBinding("core/number", "F32", .float32, true)
+    * TypeBinding("core/number", "F64", .float64, true)
+    * TypeBinding("core/number", "Bool", .bool, true)
+    * TypeBinding("core/number", "Char", .char, true)
+    * TypeBinding("core/number", "Char8", .uint8, true)
+    * TypeBinding("core/string", "String", .string, true)
+    * TypeBinding("core/type", "TypeInfo", .type-info)
+    * TypeBinding("core/type", "TypeRelation", .type-relation)
+    * TypeBinding("core/array", "Array", .tuple)
+    * TypeBinding("core/array", "ImmutableArray", .tuple)
+    * TypeBinding("core/array", "ReadableArray", .tuple)
+    * TypeBinding("core/arena", "Arena", .tuple)
+    * TypeBinding("core/arena", "ArenaMark", .tuple)
+    * TypeBinding("core/table", "Table", .table)
+    * TypeBinding("core/table", "TableRow", .table-row)
+    * TypeBinding("core/table", "TableSpan", .table-span)
+    * TypeBinding("core/table", "TableSelection", .table-selection)
+    * TypeBinding("core/table", "TableField", .table-column)
+    * TypeBinding("core/table", "ImmutableTable", .immutable-table)
+    * TypeBinding("core/table", "ImmutableTableRow", .immutable-table-row)
+    * TypeBinding("core/table", "ImmutableTableSpan", .immutable-table-span)
+    * TypeBinding("core/table", "ImmutableTableSelection", .immutable-table-selection)
+    * TypeBinding("core/table", "ImmutableTableField", .immutable-table-column)
+    * TypeBinding("core/table", "IndexSpan", .index-span)
+    * TypeBinding("core/table", "TableMark", .table-mark)
+    * TypeBinding("core/function", "Function", .function)
+    * TypeBinding("core/function", "Closure", .closure)
+    * TypeBinding("core/function", "Capture", .capture)
+    * TypeBinding("core/function", "Binding", .binding)
+    * TypeBinding("core/array-builder", "ArrayBuilder", .array-builder)
+    * TypeBinding("core/range", "Size", .int64)
+    * TypeBinding("core/range", "Index", .int64)
+    * TypeBinding("core/range", "Increment", .int64)
+    * TypeBinding("core/stream", "Generator", .function)
+    * TypeBinding("core/style", "Style", .style)
+    * TypeBinding("core/style", "StyleSheet", .style-sheet)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TypeTag is U32
+
+| invalid
+| class
+| tuple
+| function
+| variable
+| inference
+| struct
+| union
+| named-union
+| result
+| associated
+| closure
+| binding
+| raising-class
+
+━━━━━━━━━━━━━━━━━━━━
+_ TypeBinding is Tuple
+
++ module-name String
++ class-name String
++ type IntrinsicKind
++ is-builtin Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ Types
+    is Usable'Void
+
++ program Program
+_ arena Arena
++ scratch TypingScratch
+_ sealed Bool
+_ reach-pending [TypeId]
+_ reach-visited [Bool]
+_ making [TypeId]
+_ completing U32
++ rows Table'TypeData
++ completions Table'TypeCompletion
++ stable-keys List'StableKey'ArenaBacking
++ ranked Array'TypeId'ArenaBacking
++ children Scratch'TypeId
+_ atoms List'Atom'ArenaBacking
+_ env-names List'Atom'ArenaBacking
+_ env-types List'TypeId'ArenaBacking
+_ env-constrained List'TypeId'ArenaBacking
+_ env-constraints List'TypeId'ArenaBacking
+_ index-atoms List'Atom'ArenaBacking
+_ resolving List'U32'ArenaBacking
++ circular-module ModuleId = 0
++ circular-binding SyntaxId = 0
++ circular-name Atom? = null
++ fault Atom? = null
++ fault-module ModuleId = 0
++ fault-site SyntaxId = 0
++ class-uses [DeclRef]
++ checked-classes Map'Size'U32'ArenaBacking
++ properties Table'TypeProperty
++ cases Table'TypeCase
++ associated-types Table'TypeAssociated
++ equalities Table'TypeEquality
+_ property-scratch Table'TypeProperty
+_ property-places Map'MemberKey'U32'ArenaBacking
+_ scratch-places Map'MemberKey'U32'ArenaBacking
+_ stored-count U32
+_ case-scratch Table'TypeCase
+_ associated-scratch Table'TypeAssociated
+_ keys IdMap
+_ key-scratch Array'U32'ArenaBacking
+_ types-by-decl Map'Size'U32'ArenaBacking
+_ rows-by-type Map'Size'U32'ArenaBacking
+_ builtin-decls Map'Size'U32'ArenaBacking
++ this-atom Atom?
++ list-atom Atom?
+_ map-atom Atom?
+_ stream-atom Atom?
++ range-atom Atom?
++ concat-atom Atom?
++ and-atom Atom?
++ or-atom Atom?
++ xor-atom Atom?
++ index-op-atom Atom?
++ index-assign-atom Atom?
++ absent-atom Atom?
++ null-atom Atom?
++ type-info-atom Atom?
++ address-atom Atom?
++ max-atom Atom?
++ min-atom Atom?
++ size-atom Atom?
++ true-atom Atom?
++ false-atom Atom?
++ position-type TypeId
++ index-type TypeId
++ size-type TypeId
++ cpointer-atom Atom?
++ text-atom Atom?
++ value-atom Atom?
++ has-value-atom Atom?
++ array-atom Atom?
++ has-atom Atom?
++ length-atom Atom?
++ data-atom Atom?
++ items-atom Atom?
++ call-atom Atom?
++ item-atom Atom?
++ value-type-atom Atom?
++ reserve-atom Atom?
++ append-atom Atom?
++ store-untraced-atom Atom?
++ allocate-buffer-atom Atom?
++ resize-buffer-atom Atom?
++ copy-slice-atom Atom?
++ arena-reserve-atom Atom?
++ bench-collect-atom Atom?
++ arena-module ModuleId = U32.max
++ void-type TypeId
++ bool-type TypeId
++ null-type TypeId
++ error-type TypeId
++ panic-type TypeId
++ termination-type TypeId
++ cancelation-type TypeId
++ union-error-type TypeId
++ live-action-type TypeId
++ match-location-type TypeId
++ pattern-capture-range-type TypeId
++ token-location-type TypeId
++ char8-type TypeId
++ f64-type TypeId
++ string-type TypeId
+_ subclassed-decls Map'Size'Bool'ArenaBacking
+_ subclass-heads Map'Size'U32'ArenaBacking
+_ subclass-decls [Size]
+_ subclass-links [U32]
++ placed Map'Size'U64'ArenaBacking
++ c-function-decls Map'Size'U64'ArenaBacking
+_ subclass-scan-done Bool
++ generator-decl DeclRef
++ list-decl DeclRef
++ map-decl DeclRef
++ range-decl DeclRef
++ array-decl DeclRef
++ readable-array-decl DeclRef
++ immutable-array-decl DeclRef
++ array-rows-decl DeclRef
++ array-row-range-decl DeclRef
++ array-fields-decl DeclRef
++ array-field-decl DeclRef
++ array-row-decl DeclRef
++ array-read-access TypeId
++ array-write-access TypeId
++ gc-backing-type TypeId
++ arena-backing-type TypeId
++ stream-decl DeclRef
++ iterable-decl DeclRef
++ indexable-decl DeclRef
++ cursor-iterable-decl DeclRef
++ const-array-decl DeclRef
++ async-channel-decl DeclRef
++ worker-decl DeclRef
++ token-stream-decl DeclRef
++ pattern-collector-decl DeclRef
++ pattern-rollback-decl DeclRef
++ pattern-literal-observer-decl DeclRef
++ pattern-capture-materializer-decl DeclRef
++ pattern-value-materializer-decl DeclRef
++ pattern-root-decl DeclRef
++ pattern-collector-storage-decl DeclRef
++ pattern-record-boundary-decl DeclRef
++ array-token-stream-decl DeclRef
++ indexable-token-stream-decl DeclRef
++ chunked-token-stream-decl DeclRef
++ text-token-stream-decl DeclRef
++ byte-readable-decl DeclRef
++ markup-host-decl DeclRef
++ markup-batch-decl DeclRef
++ markup-tree-host-decl DeclRef
++ broadcastable-decl DeclRef
++ closable-decl DeclRef
++ markup-row-item-decl DeclRef
++ markup-batch-flush-decl DeclRef
++ ancestor-decl DeclRef
++ descendants-decl DeclRef
++ collection-decl DeclRef
++ event-endpoint-decl DeclRef
++ decodable-decl DeclRef
++ capture-result-decl DeclRef
++ pattern-func-decl DeclRef
++ capture-span-decl DeclRef
++ readable-decl DeclRef
++ arena-decl DeclRef
++ core-module ModuleId = U32.max
++ intrinsics-module ModuleId = U32.max
++ table-module ModuleId = U32.max
++ function-atom Atom?
++ cfunction-atom Atom?
++ const-array-atom Atom?
++ count-leading-zeros-atom Atom?
++ side-payload-atom Atom?
++ publish-side-payload-atom Atom?
++ object-from-pointer-atom Atom?
++ invoke-lowered-atom Atom?
++ witness-pointer-atom Atom?
++ interface-from-pointer-atom Atom?
+
+────────────────────
++ This
+    - program Program
+    - scratch TypingScratch
+
+?! Panic("Types must intern the invalid type at id zero")
+    if intern-invalid() != invalid-type
+void-type = invalid-type
+bool-type = invalid-type
+null-type = invalid-type
+char8-type = invalid-type
+f64-type = invalid-type
+string-type = invalid-type
+generator-decl = DeclRef(0, 0)
+list-decl = DeclRef(0, 0)
+
+.. rows = Table'TypeData(arena, 16)
+.. completions = Table'TypeCompletion(arena, 16)
+.. stable-keys = List'StableKey(arena)
+.. ranked = Array'TypeId(arena, 0)
+.. children = Scratch'TypeId(arena, 1024)
+.. atoms = List'Atom(arena)
+.. env-names = List'Atom(arena)
+.. env-types = List'TypeId(arena)
+.. env-constrained = List'TypeId(arena)
+.. env-constraints = List'TypeId(arena)
+.. index-atoms = List'Atom(arena)
+.. resolving = List'U32(arena)
+.. properties = Table'TypeProperty(arena, 16)
+.. cases = Table'TypeCase(arena, 16)
+.. associated-types = Table'TypeAssociated(arena, 16)
+.. equalities = Table'TypeEquality(arena, 16)
+.. property-scratch = Table'TypeProperty(arena, 16)
+.. property-places = Map'MemberKey'U32(arena)
+.. scratch-places = Map'MemberKey'U32(arena)
+.. case-scratch = Table'TypeCase(arena, 16)
+.. associated-scratch = Table'TypeAssociated(arena, 16)
+.. key-scratch = Array'U32(arena, 16)
+.. types-by-decl = Map'Size'U32(arena)
+.. rows-by-type = Map'Size'U32(arena)
+.. builtin-decls = Map'Size'U32(arena)
+.. subclassed-decls = Map'Size'Bool(arena)
+.. subclass-heads = Map'Size'U32(arena)
+.. checked-classes = Map'Size'U32(arena)
+.. c-function-decls = Map'Size'U64(arena)
+.. placed = Map'Size'U64(arena)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release
+
+keys.release()
+arena.release()
+
+────────────────────
++ do reach
+    - id TypeId
+
+` Marks a type the typing state still names as a seal root. Duplicates and the absent type
+` are dropped here so the callers can offer every column they hold without sorting it.
+if id == no-type
+    =
+while reach-visited.length <= id
+    reach-visited += false
+if reach-visited[id]
+    =
+reach-visited[id] = true
+reach-pending += id
+
+────────────────────
++ do seal
+
+` Completes every reached type and everything a completed type refers to, including the types
+` completion itself interns on the way, and then refuses to intern or complete anything more,
+` so the store can outlive the syntax trees and the typing scratch that completion reads.
+while reach-pending.length != 0
+    . last = reach-pending.length - 1
+    . id = reach-pending[last]
+    -= reach-pending[last .. < reach-pending.length]
+    complete(id)
+    reach-children(id)
+rank()
+sealed = true
+
+────────────────────
++ do forget-module
+    - forgotten ModuleId
+
+. dropped [Size]
+for closure, _ in placed
+    do match? rows[closure as TypeId]
+        | .type-closure(row)
+            if row.module == forgotten
+                dropped += closure
+for closure in dropped
+    -= placed[closure]
+
+────────────────────
++ do unseal
+
+sealed = false
+
+────────────────────
+_ do rank
+
+` Lists the types the seal reached by stable key, an order that does not depend on the order
+` typing interned them. The others are types typing made on the way and no instance names.
+. count Size = 0
+for id in 0 .. < rows.length
+    if is-reached(id as TypeId)
+        count += 1
+ranked = Array'TypeId(arena, count)
+. spare = Array'TypeId(arena, count)
+. filled Size = 0
+for id in 0 .. < rows.length
+    if is-reached(id as TypeId)
+        ranked[filled] = id as TypeId
+        filled += 1
+. width Size = 1
+while width < count
+    . start Size = 0
+    while start < count
+        . middle = if start + width < count then start + width else count
+        . end = if middle + width < count then middle + width else count
+        merge-ranked(spare, start, middle, end)
+        start = end
+    . merged = ranked
+    ranked = spare
+    spare = merged
+    width *= 2
+
+────────────────────
+_ do merge-ranked
+    - into Array'TypeId'ArenaBacking
+    - start Size
+    - middle Size
+    - end Size
+
+. left = start
+. right = middle
+for position in start .. < end
+    if left < middle && (right >= end || !ranks-before(ranked[right], ranked[left]))
+        into[position] = ranked[left]
+        left += 1
+    else
+        into[position] = ranked[right]
+        right += 1
+
+────────────────────
+_ ranks-before Bool
+    - first TypeId
+    - second TypeId
+
+stable-keys[first] < stable-keys[second]
+
+────────────────────
+_ is-reached Bool
+    - id TypeId
+
+id < reach-visited.length && reach-visited[id]
+
+────────────────────
+_ do reach-children
+    - id TypeId
+
+do match? rows[id]
+    | .type-class(row)
+        reach-range(row.args)
+        reach-range(row.errors)
+    | .type-tuple(row)
+        reach-range(row.fields)
+    | .type-struct(row)
+        reach-range(row.fields)
+    | .type-union(row)
+        reach-range(row.cases)
+    | .type-named-union(row)
+        reach-range(row.cases)
+    | .type-function(row)
+        reach(row.return-type)
+        reach-range(row.args)
+        reach-range(row.errors)
+    | .type-result(row)
+        reach(row.value)
+        reach-range(row.errors)
+    | .type-associated(row)
+        reach(row.owner)
+        reach-range(row.args)
+. completion = completions[id]
+reach(completion.base)
+for interface in children[completion.interfaces]
+    reach(interface)
+for property in properties[completion.properties]
+    reach(property.type)
+for case in cases[completion.cases]
+    reach(case.type)
+for associated in associated-types[completion.associated]
+    reach(associated.type)
+
+────────────────────
+_ do reach-range
+    - range RowRange'TypeId
+
+for offset in 0 .. < range.count
+    reach(child-type(range, offset))
+
+────────────────────
++ get is-sealed Bool
+
+sealed
+
+────────────────────
++ env-frame TypeEnv
+
+TypeEnv(env-names.length, env-names.length, env-constrained.length, env-constrained.length)
+
+────────────────────
++ do env-bind TypeEnv
+    - env TypeEnv
+    - name Atom
+    - type TypeId
+
+?! Panic("TypeEnv binding below the top frame")
+    if env.end != env-names.length
+
+env-names += name
+env-types += type
+= TypeEnv(env.start, env-names.length, env.constraint-start, env.constraint-end, env.this-type)
+
+────────────────────
++ do env-constrain TypeEnv
+    - env TypeEnv
+    - type TypeId
+    - constraint TypeId
+
+?! Panic("TypeEnv constraint below the top frame")
+    if env.constraint-end != env-constrained.length
+
+env-constrained += type
+env-constraints += constraint
+= TypeEnv(env.start, env.end, env.constraint-start, env-constrained.length, env.this-type)
+
+────────────────────
++ env-with-this TypeEnv
+    - env TypeEnv
+    - this-type TypeId
+
+TypeEnv(env.start, env.end, env.constraint-start, env.constraint-end, this-type)
+
+────────────────────
++ do env-lookup TypeId?
+    - env TypeEnv
+    - name Atom
+
+for reverse in 0 .. < env.end - env.start
+    . position = env.end - 1 - reverse
+    if env-names[position] == name
+        = env-types[position]
+= null
+
+────────────────────
++ do env-lookup-from TypeId?
+    - env TypeEnv
+    - name Atom
+    - first Size
+
+for reverse in 0 .. < env.end - first
+    . position = env.end - 1 - reverse
+    if env-names[position] == name
+        = env-types[position]
+= null
+
+────────────────────
++ env-name Atom
+    - position Size
+
+env-names[position]
+
+────────────────────
++ do env-within TypeEnv
+    - env TypeEnv
+
+` A frame on top that holds what an environment below it binds and constrains, in its order,
+` and the type it reads `This` as, for what is read inside what that environment is read for.
+. made = env-frame()
+for position in env.start .. < env.end
+    made = env-bind(made, env-names[position], env-types[position])
+for position in env.constraint-start .. < env.constraint-end
+    made = env-constrain(made, env-constrained[position], env-constraints[position])
+= env-with-this(made, env.this-type)
+
+────────────────────
++ do env-release
+    - env TypeEnv
+
+-= env-names[env.start .. < env-names.length]
+-= env-types[env.start .. < env-types.length]
+-= env-constrained[env.constraint-start .. < env-constrained.length]
+-= env-constraints[env.constraint-start .. < env-constraints.length]
+
+────────────────────
++ do env-truncate
+    - env TypeEnv
+
+-= env-names[env.end .. < env-names.length]
+-= env-types[env.end .. < env-types.length]
+
+
+────────────────────
++ do index-atom Atom
+    - position Size
+
+while index-atoms.length <= position
+    . next = index-atoms.length
+    index-atoms += program.store-atom("$next")
+= index-atoms[position]
+
+────────────────────
++ do total-key-words Size
+
+. total Size = 0
+for index in 0 .. < keys.length
+    total += keys.key-count(index)
+= total
+
+────────────────────
++ child-type TypeId
+    - range RowRange'TypeId
+    - offset U32
+
+?! OutOfBoundsError("Types child offset out of bounds")
+    if offset >= range.count
+
+children[range.start + offset]
+
+────────────────────
++ child-name Atom
+    - range RowRange'Atom
+    - offset U32
+
+?! OutOfBoundsError("Types name offset out of bounds")
+    if offset >= range.count
+
+atoms[range.start + offset]
+
+────────────────────
++ do bind-types
+
+for binding in type-bindings
+    . module = program.module-by-name(binding.module-name)
+    if module
+        . owner U32 = module as U32
+        . decl = class-decl-named(owner, binding.class-name)
+        if decl
+            types-by-decl[pack-decl(owner, decl)] = binding.type
+            if binding.is-builtin
+                builtin-decls[pack-decl(owner, decl)] = 1
+            . mark = scratch.types.mark
+            . id = intern-class(owner, decl, mark)
+            if !rows-by-type[binding.type]
+                rows-by-type[binding.type] = id
+
+void-type = type-row(.void)
+bool-type = type-row(.bool)
+f64-type = type-row(.float64)
+string-type = type-row(.string)
+null-type = well-known-type("core", "Null")
+error-type = well-known-type("core/error", "Error")
+panic-type = well-known-type("core/error", "Panic")
+termination-type = well-known-type("core/error", "TaskTerminationError")
+cancelation-type = well-known-type("core/error", "TaskCancelationError")
+union-error-type = well-known-type("core/error", "UnionError")
+live-action-type = well-known-type("core/tracker", "LiveAction")
+match-location-type = well-known-type("core/parsing", "MatchLocation")
+pattern-capture-range-type = well-known-type("core/parsing", "PatternCaptureRange")
+token-location-type = well-known-type("core/parsing", "TokenLocation")
+char8-type = well-known-type("core/number", "Char8")
+generator-decl = well-known-decl("core/stream", "Generator")
+list-decl = well-known-decl("core/list", "List")
+map-decl = well-known-decl("core/map", "Map")
+range-decl = well-known-decl("core/range", "Range")
+array-decl = well-known-decl("core/array", "Array")
+readable-array-decl = well-known-decl("core/array", "ReadableArray")
+immutable-array-decl = well-known-decl("core/array", "ImmutableArray")
+array-rows-decl = well-known-decl("core/array", "ArrayRows")
+array-row-range-decl = well-known-decl("core/array", "ArrayRowRange")
+array-fields-decl = well-known-decl("core/array", "ArrayFields")
+array-field-decl = well-known-decl("core/array", "ArrayField")
+array-row-decl = well-known-decl("core/array", "ArrayRow")
+array-read-access = well-known-type("core/array", "ArrayReadAccess")
+array-write-access = well-known-type("core/array", "ArrayWriteAccess")
+gc-backing-type = well-known-type("core/backing", "GCBacking")
+arena-backing-type = well-known-type("core/arena", "ArenaBacking")
+stream-decl = well-known-decl("core/stream", "Stream")
+iterable-decl = well-known-decl("core/stream", "Iterable")
+indexable-decl = well-known-decl("core/stream", "Indexable")
+cursor-iterable-decl = well-known-decl("core/stream", "CursorIterable")
+const-array-decl = well-known-decl("core", "ConstArray")
+async-channel-decl = well-known-decl("core/channel", "AsyncChannel")
+worker-decl = well-known-decl("core/task", "Worker")
+token-stream-decl = well-known-decl("core/parsing", "TokenStream")
+pattern-collector-decl = well-known-decl("core/parsing", "PatternCollector")
+pattern-rollback-decl = well-known-decl("core/parsing", "PatternRollback")
+pattern-literal-observer-decl = well-known-decl("core/parsing", "PatternLiteralObserver")
+pattern-capture-materializer-decl = well-known-decl("core/parsing", "PatternCaptureMaterializer")
+pattern-value-materializer-decl = well-known-decl("core/parsing", "PatternValueMaterializer")
+pattern-root-decl = well-known-decl("core/parsing", "PatternMaterializationRoot")
+pattern-collector-storage-decl = well-known-decl("core/parsing", "PatternCollectorStorage")
+pattern-record-boundary-decl = well-known-decl("core/parsing", "PatternRecordBoundary")
+array-token-stream-decl = well-known-decl("core/tokenstream", "ArrayTokenStream")
+indexable-token-stream-decl = well-known-decl("core/tokenstream", "IndexableTokenStream")
+chunked-token-stream-decl = well-known-decl("core/tokenstream", "ChunkedTokenStream")
+text-token-stream-decl = well-known-decl("core/tokenstream", "TextTokenStream")
+byte-readable-decl = well-known-decl("core/array", "ByteReadable")
+markup-host-decl = well-known-decl("core/markup", "MarkupHost")
+markup-batch-decl = well-known-decl("core/markup", "MarkupBatch")
+markup-tree-host-decl = well-known-decl("core/markup", "MarkupTreeHost")
+broadcastable-decl = well-known-decl("core/stream", "Broadcastable")
+closable-decl = well-known-decl("core/stream", "Closable")
+markup-row-item-decl = well-known-decl("core/markup", "MarkupRowItem")
+markup-batch-flush-decl = well-known-decl("core/markup", "MarkupBatchFlush")
+ancestor-decl = well-known-decl("core/markup", "Ancestor")
+descendants-decl = well-known-decl("core/markup", "Descendants")
+collection-decl = well-known-decl("core/collection", "Collection")
+event-endpoint-decl = well-known-decl("core/event", "EventEndpoint")
+decodable-decl = well-known-decl("core/array", "Decodable")
+capture-result-decl = well-known-decl("core/parsing", "CaptureResult")
+pattern-func-decl = well-known-decl("core/parsing", "PatternFunc")
+capture-span-decl = well-known-decl("core/parsing", "CaptureSpan")
+readable-decl = well-known-decl("core/stream", "Readable")
+arena-decl = well-known-decl("core/arena", "Arena")
+function-atom = program.store-atom("Function")
+cfunction-atom = program.store-atom("CFunction")
+const-array-atom = program.store-atom("ConstArray")
+count-leading-zeros-atom = program.store-atom("count-leading-zeros")
+side-payload-atom = program.store-atom("gc-object-side-payload")
+publish-side-payload-atom = program.store-atom("gc-publish-object-side-payload")
+object-from-pointer-atom = program.store-atom("gc-object-from-pointer")
+invoke-lowered-atom = program.store-atom("event-invoke-lowered")
+witness-pointer-atom = program.store-atom("interface-witness-pointer")
+interface-from-pointer-atom = program.store-atom("gc-interface-from-pointer")
+this-atom = program.store-atom("This")
+list-atom = program.store-atom("List")
+map-atom = program.store-atom("Map")
+stream-atom = program.store-atom("Stream")
+range-atom = program.store-atom("Range")
+concat-atom = program.store-atom("++")
+and-atom = program.store-atom("and")
+or-atom = program.store-atom("or")
+xor-atom = program.store-atom("xor")
+index-op-atom = program.store-atom("[]")
+index-assign-atom = program.store-atom("[]=")
+absent-atom = program.store-atom("absent")
+null-atom = program.store-atom("null")
+type-info-atom = program.store-atom("TypeInfo")
+address-atom = program.store-atom("address")
+max-atom = program.store-atom("max")
+min-atom = program.store-atom("min")
+size-atom = program.store-atom("size")
+true-atom = program.store-atom("true")
+false-atom = program.store-atom("false")
+position-type = well-known-type("core/range", "Position")
+index-type = well-known-type("core/range", "Index")
+size-type = well-known-type("core/range", "Size")
+cpointer-atom = program.store-atom("CPointer")
+text-atom = program.store-atom("text")
+value-atom = program.store-atom("value")
+has-value-atom = program.store-atom("has-value")
+array-atom = program.store-atom("Array")
+has-atom = program.store-atom("has")
+length-atom = program.store-atom("length")
+data-atom = program.store-atom("data")
+items-atom = program.store-atom("items")
+call-atom = program.store-atom("()")
+item-atom = program.store-atom("Item")
+value-type-atom = program.store-atom("Value")
+reserve-atom = program.store-atom("reserve")
+append-atom = program.store-atom("append")
+store-untraced-atom = program.store-atom("store-untraced")
+allocate-buffer-atom = program.store-atom("yumiAllocBuffer")
+resize-buffer-atom = program.store-atom("yumiResizeBuffer")
+copy-slice-atom = program.store-atom("yumiArrayCopySlice")
+arena-reserve-atom = program.store-atom("yumiArenaReserve")
+bench-collect-atom = program.store-atom("yumiBenchCollect")
+. arena = program.module-by-name("core/arena")
+if arena
+    arena-module = arena as ModuleId
+. core = program.module-by-name("core")
+if core
+    core-module = core as ModuleId
+. intrinsics = program.module-by-name("core/intrinsics")
+if intrinsics
+    intrinsics-module = intrinsics as ModuleId
+. table = program.module-by-name("core/table")
+if table
+    table-module = table as ModuleId
+declare-class-equalities()
+
+────────────────────
+_ well-known-decl DeclRef
+    - module-name String
+    - class-name String
+
+|? module && decl
+    DeclRef(module as ModuleId, decl)
+??
+    DeclRef(0, 0)
+
+.. module = program.module-by-name(module-name)
+.. decl = class-decl-named(module as ModuleId, class-name)
+
+────────────────────
++ do well-known-type TypeId
+    - module-name String
+    - class-name String
+
+. ref = well-known-decl(module-name, class-name)
+if ref.module == 0 && ref.decl == 0
+    = invalid-type
+. mark = scratch.types.mark
+= intern-class(ref.module, ref.decl, mark)
+
+────────────────────
++ do well-known-type-of TypeId
+    - module-name String
+    - class-name String
+    - argument TypeId
+    - second TypeId = no-type
+
+. ref = well-known-decl(module-name, class-name)
+if ref.module == 0 && ref.decl == 0
+    = invalid-type
+. mark = scratch.types.mark
+scratch.types.push(argument)
+if second != no-type
+    scratch.types.push(second)
+= class-with-args(ref.module, ref.decl, mark)
+
+────────────────────
++ do well-known-alias TypeId
+    - module-name String
+    - class-name String
+
+` A type a module of the standard library names for a C function type, which is that type.
+. ref = well-known-decl(module-name, class-name)
+if ref.module == 0 && ref.decl == 0
+    = invalid-type
+= through-alias(ref.module, ref.decl, intern-class(ref.module, ref.decl, scratch.types.mark))
+
+────────────────────
++ is-builtin-decl Bool
+    - module ModuleId
+    - decl DeclId
+
+!!builtin-decls[pack-decl(module, decl)]
+
+────────────────────
++ intrinsic-for-decl IntrinsicKind
+    - module ModuleId
+    - decl DeclId
+
+|? found
+    found as IntrinsicKind
+??
+    IntrinsicKind.none
+
+.. found = types-by-decl[pack-decl(module, decl)]
+
+────────────────────
++ type-row TypeId
+    - type IntrinsicKind
+
+|? found
+    found as TypeId
+??
+    invalid-type
+
+.. found = rows-by-type[type]
+
+────────────────────
++ get builtin-classes BuiltinClasses
+
+BuiltinClasses(type-decl(.optional), type-decl(.type-info), type-decl(.number))
+
+────────────────────
++ type-decl DeclRef
+    - type IntrinsicKind
+
+match rows[type-row(type)]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+    ??
+        DeclRef(0, 0)
+
+────────────────────
++ do is-class-type Bool
+    - id TypeId
+
+` Whether a type is a class whose values are objects, a style or a sheet of styles among them.
+if id == no-type || id == invalid-type
+    = false
+if !intrinsic-is-class(completions[id].intrinsic)
+    = false
+do match? rows[id]
+    | .type-class
+        = true
+= false
+
+────────────────────
++ is-optional Bool
+    - id TypeId
+
+match rows[id]
+    | .type-class(row)
+        row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+    ??
+        false
+
+.. owner = type-decl(.optional)
+
+────────────────────
++ optional-inner TypeId
+    - id TypeId
+
+|? is-optional(id)
+    match rows[id]
+        | .type-class(row)
+            child-type(row.args, 0)
+        ??
+            id
+??
+    id
+
+
+────────────────────
+_ do query-held TypeId
+    - type TypeId
+
+` The type a property holds that is written with a type that queries the markup its object is
+` in, as the reference types it: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`.
+` Any other type is held as it is written.
+do match? rows[type]
+    | .type-class(row)
+        if row.args.count == 1 && ancestor-decl.refers-to(row.module, row.decl)
+            = optional-of(child-type(row.args, 0))
+        if row.args.count == 1 && descendants-decl.refers-to(row.module, row.decl)
+            . item = child-type(row.args, 0)
+            . mark = scratch.types.mark
+            scratch.types.push(item)
+            = class-with-args(list-decl.module, list-decl.decl, mark)
+= type
+
+────────────────────
++ do optional-of TypeId
+    - id TypeId
+
+if is-optional(id) || id == invalid-type
+    = id
+. owner = type-decl(.optional)
+. mark = scratch.types.mark
+scratch.types.push(id)
+= intern-class(owner.module, owner.decl, mark)
+
+────────────────────
++ do optional-around TypeId
+    - id TypeId
+
+` An optional that holds a value of a type or nothing, even where the type is an optional
+` itself: what a step of a generator gives of its items, where an item that holds nothing
+` is not the end.
+if id == invalid-type
+    = id
+. owner = type-decl(.optional)
+. mark = scratch.types.mark
+scratch.types.push(id)
+= intern-class(owner.module, owner.decl, mark)
+
+────────────────────
++ do column-view-of TypeId
+    - field TypeId
+    - immutable Bool
+
+. owner = type-decl(if immutable then .immutable-table-column else .table-column)
+. mark = scratch.types.mark
+scratch.types.push(field)
+= intern-class(owner.module, owner.decl, mark)
+
+
+────────────────────
++ do array-view-of TypeId
+    - owner DeclRef
+    - item TypeId
+    - access TypeId
+
+. mark = scratch.types.mark
+scratch.types.push(item)
+scratch.types.push(access)
+= intern-class(owner.module, owner.decl, mark)
+
+────────────────────
++ do shared-case-base TypeId
+    - union TypeId
+    - above TypeId = no-type
+
+` The nearest base every case of a union derives from, or the next one above a base given.
+. cases = cases-of(union)
+if cases.length == 0
+    = no-type
+for fact in cases
+    if fact.is-default || fact.type == no-type || fact.type == invalid-type
+        = no-type
+. base = base-of(if above != no-type then above else cases[0].type) ?? no-type
+while base != no-type
+    . ref = DeclRef(0, 0)
+    do match? rows[base]
+        | .type-class(row)
+            ref = DeclRef(row.module, row.decl)
+    . shared = true
+    for fact in cases
+        if ancestor-of(fact.type, ref) != base
+            shared = false
+    if shared
+        = base
+    base = base-of(base) ?? no-type
+= no-type
+
+────────────────────
++ do ancestor-of TypeId
+    - id TypeId
+    - ref DeclRef
+
+. current = id
+while true
+    complete(current)
+    do match? rows[current]
+        | .type-class(row)
+            if row.module == ref.module && row.decl == ref.decl
+                = current
+    . base = base-of(current)
+    if !base
+        = no-type
+    current = base
+
+────────────────────
++ do is-arena Bool
+    - id TypeId
+
+` Whether a type is `core/arena`'s `Arena`.
+do match? rows[id]
+    | .type-class(row)
+        . module = program.modules[row.module]
+        do match? module.decls[row.decl]
+            | .decl-class(owner)
+                = module.name == "core/arena" && owner.name.text == "Arena"
+= false
+
+────────────────────
++ do is-arena-backing Bool
+    - id TypeId
+
+` Whether a type is `core/arena`'s `ArenaBacking`.
+do match? rows[id]
+    | .type-class(row)
+        . module = program.modules[row.module]
+        do match? module.decls[row.decl]
+            | .decl-class(owner)
+                = module.name == "core/arena" && owner.name.text == "ArenaBacking"
+= false
+
+────────────────────
++ do builder-item TypeId
+    - id TypeId
+
+` The type of the items of an `ArrayBuilder` an arena backs, or none for any other type.
+complete(id)
+if completions[id].intrinsic != .array-builder
+    = no-type
+do match? rows[id]
+    | .type-class(row)
+        if row.args.count > 1 && is-arena-backing(child-type(row.args, 1))
+            = child-type(row.args, 0)
+= no-type
+
+────────────────────
+_ do class-decl-named U32?
+    - module ModuleId
+    - name String
+
+. atom = program.store-atom(name)
+. decls = program.modules[module].decls
+. index = 0u32
+for decl in decls
+    do match? decl
+        | .decl-class(row)
+            if row.name == atom
+                = index
+    index += 1
+= null
+
+────────────────────
++ do intern-class TypeId
+    - module ModuleId
+    - decl DeclId
+    - mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+ensure-scratch(3 + count)
+key-scratch[0] = TypeTag.class
+key-scratch[1] = module
+key-scratch[2] = decl
+for offset in 0 .. < count
+    key-scratch[3 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 3 + count) as U32
+if keys.last-inserted
+    . args = store-items(mark)
+    rows.append(ClassType(module, decl, args, RowRange'TypeId()))
+    add-completion()
+    note-children(id, args)
+    if is-builtin-decl(module, decl)
+        set-flag(id, .flag-builtin)
+scratch.types.rewind(mark)
+= id
+
+────────────────────
++ do intern-raising-class TypeId
+    - module ModuleId
+    - decl DeclId
+    - mark ScratchMark
+    - errors-mark ScratchMark
+
+` A class whose value is a function that raises errors its declaration does not state, as
+` the generator of a function that yields and raises is. The arguments are above `mark` and
+` the errors above `errors-mark`, in the order `order-errors` gives them. With no errors it
+` is the class itself.
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+if scratch.types.length == errors-mark
+    = intern-class(module, decl, mark)
+. count = scratch.types.length - mark
+ensure-scratch(4 + count)
+key-scratch[0] = TypeTag.raising-class
+key-scratch[1] = module
+key-scratch[2] = decl
+key-scratch[3] = (errors-mark - mark) as U32
+for offset in 0 .. < count
+    key-scratch[4 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 4 + count) as U32
+if keys.last-inserted
+    . errors = store-items(errors-mark)
+    scratch.types.rewind(errors-mark)
+    . args = store-items(mark)
+    rows.append(ClassType(module, decl, args, errors))
+    add-completion()
+    note-children(id, args)
+    note-children(id, errors)
+scratch.types.rewind(mark)
+= id
+
+
+────────────────────
++ do intern-variable TypeId
+    - module ModuleId
+    - decl DeclId
+    - index U32
+    - name Atom
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+ensure-scratch(4)
+key-scratch[0] = TypeTag.variable
+key-scratch[1] = module
+key-scratch[2] = decl
+key-scratch[3] = index
+. id U32 = keys.store(key-scratch.data, 4) as U32
+if keys.last-inserted
+    rows.append(VariableType(module, decl, index, name))
+    add-completion()
+    set-flag(id, .flag-variables)
+= id
+
+────────────────────
++ do intern-closure TypeId
+    - module ModuleId
+    - decl DeclId
+    - enclosing U32
+    - enclosing-key StableKey
+
+` `enclosing` is the instance the closure is written in, and `enclosing-key` that instance's
+` stable key.
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+ensure-scratch(4)
+key-scratch[0] = TypeTag.closure
+key-scratch[1] = module
+key-scratch[2] = decl
+key-scratch[3] = enclosing
+. id U32 = keys.store(key-scratch.data, 4) as U32
+if keys.last-inserted
+    rows.append(ClosureType(module, decl, enclosing))
+    add-completion(enclosing-key)
+    completions[id].intrinsic = .closure
+    completions[id].is-pointer = true
+    completions[id].has-closures = true
+= id
+
+────────────────────
++ do place-closure
+    - closure TypeId
+    - site SyntaxId
+    - below Bool
+
+` Notes where the reference places the function a closure runs as a value of a function
+` type, for a closure given to the function that answers an assigning operator: at `site`,
+` or on the line below it.
+. bits U64 = site
+if below
+    bits += 4294967296
+placed[closure] = bits
+
+────────────────────
++ closure-place U64
+    - closure TypeId
+
+` The place noted for a closure, and above its 32 bits whether the line below is meant. Zero
+` where none is noted.
+placed[closure] ?? 0
+
+────────────────────
++ do intern-binding TypeId
+    - form BindingForm
+    - scope ModuleId
+    - module ModuleId
+    - decl DeclId
+    - object TypeId = no-type
+    - param-count U32 = 0
+    - mark ScratchMark? = null
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. start = mark ?? scratch.types.length
+. count = scratch.types.length - start
+ensure-scratch(7 + count)
+key-scratch[0] = TypeTag.binding
+key-scratch[1] = form
+key-scratch[2] = module
+key-scratch[3] = decl
+key-scratch[4] = object
+key-scratch[5] = param-count
+key-scratch[6] = scope
+for offset in 0 .. < count
+    key-scratch[7 + offset] = scratch.types[start + offset]
+. id U32 = keys.store(key-scratch.data, 7 + count) as U32
+if keys.last-inserted
+    . held = store-items(start)
+    rows.append(BindingType(module, decl, form, scope, object, param-count, held))
+    add-completion()
+    completions[id].intrinsic = .binding
+    completions[id].is-pointer = true
+    for offset in 0 .. < held.count
+        if completions[child-type(held, offset)].has-closures
+            completions[id].has-closures = true
+    if object != no-type && completions[object].has-closures
+        completions[id].has-closures = true
+scratch.types.rewind(start)
+= id
+
+────────────────────
++ do intern-inference TypeId
+    - scope U32
+    - ordinal U32
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+ensure-scratch(3)
+key-scratch[0] = TypeTag.inference
+key-scratch[1] = scope
+key-scratch[2] = ordinal
+. id U32 = keys.store(key-scratch.data, 3) as U32
+if keys.last-inserted
+    rows.append(InferenceType(0, 0, scope, ordinal))
+    add-completion()
+    set-flag(id, .flag-variables)
+= id
+
+────────────────────
++ intern-tuple TypeId
+    - mark ScratchMark
+    - names-mark ScratchMark
+
+intern-fields(TypeTag.tuple, mark, names-mark)
+
+────────────────────
++ intern-struct TypeId
+    - mark ScratchMark
+    - names-mark ScratchMark
+
+intern-fields(TypeTag.struct, mark, names-mark)
+
+────────────────────
+_ do intern-fields TypeId
+    - tag U32
+    - mark ScratchMark
+    - names-mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+?! Panic("Types tuple field names and types are misaligned")
+    if scratch.names.length - names-mark != count
+
+ensure-scratch(1 + count * 3)
+key-scratch[0] = tag
+for offset in 0 .. < count
+    . address = scratch.names[names-mark + offset].address
+    key-scratch[1 + offset * 3] = (address /and/ U32.max) as U32
+    key-scratch[2 + offset * 3] = (address /rshift/ 32) as U32
+    key-scratch[3 + offset * 3] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 1 + count * 3) as U32
+if keys.last-inserted
+    . owner = type-decl(if tag == TypeTag.tuple then IntrinsicKind.tuple else IntrinsicKind.struct)
+    . fields = store-items(mark)
+    . names = store-names(names-mark)
+    if tag == TypeTag.tuple
+        rows.append(TupleType(owner.module, owner.decl, fields, names))
+    else
+        rows.append(StructType(owner.module, owner.decl, fields, names))
+    add-completion()
+    note-children(id, fields)
+scratch.types.rewind(mark)
+scratch.names.rewind(names-mark)
+= id
+
+────────────────────
++ do intern-union TypeId
+    - mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+ensure-scratch(1 + count)
+key-scratch[0] = TypeTag.union
+for offset in 0 .. < count
+    key-scratch[1 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 1 + count) as U32
+if keys.last-inserted
+    . owner = type-decl(.union)
+    . cases = store-items(mark)
+    rows.append(UnionType(owner.module, owner.decl, cases))
+    add-completion()
+    note-children(id, cases)
+scratch.types.rewind(mark)
+= id
+
+────────────────────
++ do intern-named-union TypeId
+    - owner-name Atom
+    - mark ScratchMark
+    - names-mark ScratchMark
+    - made-in U32 = 0
+    - made-at U32 = 0
+
+` The union of the cases pushed since the marks, named for a declaration, and private to the
+` module and the place in it that make it where they are given: another made elsewhere is another
+` type.
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+?! Panic("Types union case names and types are misaligned")
+    if scratch.names.length - names-mark != count
+
+ensure-scratch(5 + count * 3)
+. owner-address = owner-name.address
+key-scratch[0] = TypeTag.named-union
+key-scratch[1] = (owner-address /and/ U32.max) as U32
+key-scratch[2] = (owner-address /rshift/ 32) as U32
+key-scratch[3] = made-in
+key-scratch[4] = made-at
+for offset in 0 .. < count
+    . address = scratch.names[names-mark + offset].address
+    key-scratch[5 + offset * 3] = (address /and/ U32.max) as U32
+    key-scratch[6 + offset * 3] = (address /rshift/ 32) as U32
+    key-scratch[7 + offset * 3] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 5 + count * 3) as U32
+if keys.last-inserted
+    . owner = type-decl(.union)
+    . cases = store-items(mark)
+    . names = store-names(names-mark)
+    rows.append
+        - NamedUnionType(owner.module, owner.decl, owner-name, cases, names, made-in, made-at)
+    add-completion()
+    note-children(id, cases)
+scratch.types.rewind(mark)
+scratch.names.rewind(names-mark)
+= id
+
+────────────────────
++ do intern-function TypeId
+    - return-type TypeId
+    - is-c Bool
+    - mark ScratchMark
+    - errors-mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+. arg-count = errors-mark - mark
+ensure-scratch(4 + count)
+key-scratch[0] = TypeTag.function
+key-scratch[1] = return-type
+key-scratch[2] = if is-c then 1u32 else 0u32
+key-scratch[3] = arg-count as U32
+for offset in 0 .. < count
+    key-scratch[4 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 4 + count) as U32
+if keys.last-inserted
+    . owner = type-decl(if is-c then IntrinsicKind.cfunction else IntrinsicKind.function)
+    . errors = store-items(errors-mark)
+    scratch.types.rewind(errors-mark)
+    . args = store-items(mark)
+    rows.append(FunctionType(owner.module, owner.decl, return-type, args, errors, is-c))
+    add-completion()
+    note-children(id, args)
+    note-children(id, errors)
+    note-child(id, return-type)
+scratch.types.rewind(mark)
+= id
+
+────────────────────
++ do intern-ordered-result TypeId
+    - value TypeId
+    - mark ScratchMark
+
+` The errors above the mark are already in the order `order-errors` gives them.
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+if count == 0
+    = value
+
+ensure-scratch(2 + count)
+key-scratch[0] = TypeTag.result
+key-scratch[1] = value
+for offset in 0 .. < count
+    key-scratch[2 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 2 + count) as U32
+if keys.last-inserted
+    . owner = type-decl(.union)
+    . errors = store-items(mark)
+    rows.append(ResultType(owner.module, owner.decl, value, errors))
+    add-completion()
+    note-children(id, errors)
+    note-child(id, value)
+scratch.types.rewind(mark)
+= id
+
+────────────────────
++ do intern-associated TypeId
+    - owner TypeId
+    - declaring DeclRef
+    - name Atom
+    - mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+ensure-scratch(6 + count)
+. address = name.address
+key-scratch[0] = TypeTag.associated
+key-scratch[1] = owner
+key-scratch[2] = declaring.module
+key-scratch[3] = declaring.decl
+key-scratch[4] = (address /and/ U32.max) as U32
+key-scratch[5] = (address /rshift/ 32) as U32
+for offset in 0 .. < count
+    key-scratch[6 + offset] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 6 + count) as U32
+if keys.last-inserted
+    . args = store-items(mark)
+    rows.append(AssociatedType(declaring.module, declaring.decl, owner, name, args))
+    add-completion()
+    note-children(id, args)
+    set-flag(id, .flag-variables)
+scratch.types.rewind(mark)
+= id
+
+────────────────────
+_ do intern-invalid TypeId
+
+ensure-scratch(1)
+key-scratch[0] = TypeTag.invalid
+
+. id U32 = keys.store(key-scratch.data, 1) as U32
+if keys.last-inserted
+    rows.append(InvalidType(0, 0, null))
+    add-completion()
+= id
+
+────────────────────
++ do evaluate-type TypeId
+    - caller ModuleId
+    - ast AST
+    - id SyntaxId
+    - env TypeEnv
+
+if id == 0
+    = void-type
+
+do match ast.nodes[id]
+    | .node-type-identifier(row)
+        = type-named(caller, row.name, env)
+    | .node-core-type-identifier(row)
+        = well-known-type(row.module-name.text, row.name.text)
+    | .node-type-arguments(row)
+        = evaluate-type-args(caller, ast, row.base, row.args, env)
+    | .node-type-associated(row)
+        . named = evaluate-type-associated(caller, ast, row.owner, row.name, row.args, env)
+        if named == invalid-type && fault && fault-site == 0
+            fault-module = caller
+            fault-site = id
+        = named
+    | .node-type-optional(row)
+        = evaluate-type-optional(caller, ast, row.field-types, env)
+    | .node-type-tuple(row)
+        = evaluate-type-tuple(caller, ast, row.field-types, row.is-struct, env)
+    | .node-type-function(row)
+        . ret = row.return-type
+        . errs = row.errors
+        = evaluate-type-function(caller, ast, ret, row.args, errs, row.is-c, env)
+    | .node-type-capture(row)
+        = if row.type == 0 then invalid-type else evaluate-type(caller, ast, row.type, env)
+    | .node-type-list(row)
+        = evaluate-sugar(caller, ast, list-atom!, row.patterns, env)
+    | .node-type-map(row)
+        = evaluate-type-map(caller, ast, row.patterns, env)
+    | .node-type-iterable(row)
+        . item = evaluate-type(caller, ast, row.pattern, env)
+        =? invalid-type if item == invalid-type
+        . mark = scratch.types.mark
+        scratch.types.push(item)
+        = class-named-with-args(caller, stream-atom!, mark)
+    | .node-type-match(row)
+        = evaluate-type(caller, ast, row.type, env)
+    | .node-type-and(row)
+        = evaluate-type(caller, ast, row.left, env)
+    | .node-type-or(row)
+        = evaluate-type(caller, ast, row.left, env)
+    | .node-type-numeric(row)
+        = evaluate-type-numeric(caller, ast, row.value, env)
+    | .node-identifier(row)
+        = type-named(caller, row.name, env)
+    | .node-argument-decl(row)
+        = evaluate-type(caller, ast, row.pattern, env)
+    ??
+        = invalid-type
+
+────────────────────
++ do missing-type SyntaxId
+    - caller ModuleId
+    - ast AST
+    - id SyntaxId
+    - env TypeEnv
+
+` The innermost type written by name, with its arguments, that names nothing, within a type
+` written, as TypeScript reports it; 0 where every name names a type.
+do match? ast.nodes[id]
+    | .node-type-identifier
+        = if evaluate-type(caller, ast, id, env) == invalid-type then id else 0
+    | .node-type-arguments(row)
+        for argument in ast.children[row.args]
+            . inner = missing-type(caller, ast, argument, env)
+            if inner != 0
+                = inner
+        = if evaluate-type(caller, ast, id, env) == invalid-type then id else 0
+for child in ast.children-of(id)
+    . inner = missing-type(caller, ast, child, env)
+    if inner != 0
+        = inner
+= 0
+
+────────────────────
++ do type-named TypeId
+    - caller ModuleId
+    - name Atom
+    - env TypeEnv
+
+. bound = env-lookup(env, name)
+if bound
+    = bound
+if this-atom && name == this-atom && env.this-type != no-type
+    = env.this-type
+
+. mark = scratch.types.mark
+= class-named-with-args(caller, name, mark)
+
+────────────────────
++ do class-pattern-with-args TypeId
+    - module ModuleId
+    - decl DeclId
+    - mark ScratchMark
+
+if !items-valid(mark)
+    scratch.types.rewind(mark)
+    = invalid-type
+. type-args = class-type-args(module, decl)
+. count Size = type-args.count
+. given = scratch.types.length - mark
+if given > count
+    scratch.types.rewind(mark)
+    = invalid-type
+. tree = program.modules[module].tree
+for position in given .. < count
+    . name = class-param-name(tree, type-args, position)
+    if !name
+        scratch.types.rewind(mark)
+        = invalid-type
+    scratch.types.push(intern-variable(module, decl, position as U32, name))
+= class-with-args(module, decl, mark)
+
+────────────────────
++ do class-param-default TypeId?
+    - module ModuleId
+    - decl DeclId
+    - name Atom
+    - env TypeEnv
+
+. tree = program.modules[module].tree
+. assignments = class-param-assignments(module, decl)
+. assigned = param-assignment-type(module, tree, assignments, name, env)
+if !assigned || assigned == invalid-type
+    = null
+= assigned
+
+────────────────────
++ do class-named-with-args TypeId
+    - caller ModuleId
+    - name Atom
+    - mark ScratchMark
+
+` The class of a name the caller sees given the type arguments from `mark`: the nearest that
+` takes as many or more, as the reference passes over one that takes fewer, and one known by the
+` name only as another name for it where no class is declared by the name.
+. given = scratch.types.length - mark
+. found = nearest-class(caller, name, given, false) ?? nearest-class(caller, name, given, true)
+if found
+    = class-with-args(found.module, found.decl, mark)
+
+scratch.types.rewind(mark)
+= invalid-type
+
+────────────────────
++ do nearest-class DeclRef?
+    - caller ModuleId
+    - name Atom
+    - given Size
+    - aliased Bool
+
+` The class the reference reaches first looking for a type written by name that takes `given`
+` type arguments or more: modules by where they last come among those the caller lists, from the
+` last to the first, so its own module first, and of a module's classes the last declared first.
+` Another module's private classes are not seen, and with `aliased` only other names are.
+. best DeclRef? = null
+. best-place = 0u32
+. best-exact = false
+for candidate in program.lookup(caller, name)
+    do match? program.modules[candidate.module].decls[candidate.decl]
+        | .decl-class(row)
+            if (row.name != name) != aliased
+                continue
+            if candidate.module != caller && row.access != .public-access
+                continue
+            . place = program.listed-last(caller, candidate.module)
+            if place == U32.max || (best && place < best-place)
+                continue
+            . taken Size = class-type-args(candidate.module, candidate.decl).count
+            if taken >= given && !(best && place == best-place && best-exact && taken != given)
+                best = DeclRef(candidate.module, candidate.decl)
+                best-place = place
+                best-exact = taken == given
+= best
+
+────────────────────
++ do class-with-args TypeId
+    - module ModuleId
+    - decl DeclId
+    - mark ScratchMark
+
+. type-args = class-type-args(module, decl)
+. count Size = type-args.count
+. given = scratch.types.length - mark
+if given == count
+    = through-alias(module, decl, intern-class(module, decl, mark))
+if given > count
+    scratch.types.rewind(mark)
+    = invalid-type
+
+. tree = program.modules[module].tree
+. local = env-frame()
+for position in 0 .. < count
+    . bound TypeId = invalid-type
+    if position < given
+        bound = scratch.types[mark + position]
+    else
+        bound = intern-inference(0, (position - given) as U32)
+    . name = class-param-name(tree, type-args, position)
+    if name
+        local = env-bind(local, name, bound)
+
+. constraints = class-param-constraints(module, decl)
+local = apply-constraints(module, tree, constraints, local)
+. assignments = class-param-assignments(module, decl)
+for position in given .. < count
+    . name = class-param-name(tree, type-args, position)
+    if name
+        . assigned = param-assignment-type(module, tree, assignments, name, local)
+        if assigned
+            local = env-bind(local, name, assigned)
+
+scratch.types.rewind(mark)
+for position in 0 .. < count
+    . name = class-param-name(tree, type-args, position)
+    . bound = env-lookup(local, name) if name
+    scratch.types.push(bound ?? invalid-type)
+env-release(local)
+= through-alias(module, decl, intern-class(module, decl, mark))
+
+────────────────────
+_ do through-alias TypeId
+    - module ModuleId
+    - decl DeclId
+    - id TypeId
+
+do match? program.modules[module].decls[decl]
+    | .decl-class(row)
+        if row.base != 0 && !has-explicit-members(module, row.members)
+            . tree = program.modules[module].tree
+            do match? tree.nodes[row.base]
+                | .node-type-function
+                    . env = env-frame()
+                    . base = evaluate-type(module, tree, row.base, env)
+                    env-release(env)
+                    do match? rows[base]
+                        | .type-function(fn)
+                            if fn.is-c
+                                note-c-function-decl
+                                    - base
+                                    - ((module as U64) /lshift/ 32) /or/ (decl as U64)
+                                = base
+= id
+
+────────────────────
++ do note-c-function-decl
+    - type TypeId
+    - declared U64
+
+` Notes a class declared as the C function type `type`, its module above its declaration in
+` `declared`. The first by module and then by declaration is kept, whichever is found first.
+. known = c-function-decls[type]
+if !known || known > declared
+    c-function-decls[type] = declared
+
+────────────────────
++ c-function-decl DeclRef?
+    - type TypeId
+
+` The class first declared as a C function type, which the type is, by module and then by
+` declaration: what the reference names the type by and places code made for it at. None for
+` one written where it is used.
+|? c-function-decls[type]
+    DeclRef((bits! /rshift/ 32) as ModuleId, (bits! /and/ 4294967295) as DeclId)
+
+.. bits = c-function-decls[type]
+
+────────────────────
+_ do has-explicit-members Bool
+    - module ModuleId
+    - members RowRange'DeclId
+
+. owner-module = program.modules[module]
+for member in owner-module.member-pool[members]
+    . explicit = match owner-module.decls[member]
+        | .decl-function(fn)
+            . implicit = fn.kind == .default-constructor-decl || fn.kind == .cast-constructor-decl
+            !implicit && fn.kind != .tuple-constructor-decl
+        ??
+            true
+    if explicit
+        = true
+= false
+
+────────────────────
++ do class-env TypeEnv
+    - module ModuleId
+    - decl DeclId
+
+. env = env-frame()
+. tree = program.modules[module].tree
+. type-args = class-type-args(module, decl)
+. mark = scratch.types.mark
+for position in 0 .. < type-args.count
+    . name = class-param-name(tree, type-args, position)
+    if name
+        . variable = intern-variable(module, decl, position, name)
+        env = env-bind(env, name, variable)
+        scratch.types.push(variable)
+    else
+        scratch.types.push(invalid-type)
+env = env-with-this(env, intern-class(module, decl, mark))
+do match? program.modules[module].decls[decl]
+    | .decl-class(row)
+        env = declare-into(env, tree, row.base, module, decl, env.start)
+        env = apply-constraints(module, tree, row.param-constraints, env)
+= env
+
+────────────────────
++ do class-env-for TypeEnv
+    - module ModuleId
+    - decl DeclId
+    - args RowRange'TypeId
+    - self TypeId
+
+. env = env-frame()
+. tree = program.modules[module].tree
+. type-args = class-type-args(module, decl)
+for position in 0 .. < type-args.count
+    . name = class-param-name(tree, type-args, position)
+    if name && position < args.count
+        env = env-bind(env, name, child-type(args, position))
+env = env-with-this(env, self)
+do match? program.modules[module].decls[decl]
+    | .decl-class(row)
+        env = declare-into(env, tree, row.base, module, decl, env.start)
+        env = apply-constraints(module, tree, row.param-constraints, env)
+= env
+
+────────────────────
++ do apply-constraints TypeEnv
+    - module ModuleId
+    - tree AST
+    - constraints RowRange'SyntaxId
+    - env TypeEnv
+
+. current = env
+for constraint in tree.nodes[tree.children[constraints]]
+    do match? constraint
+        | .node-param-constraint(row)
+            . name = type-syntax-name(tree, row.left)
+            . bound = env-lookup(current, name) if name
+            if bound
+                . right = evaluate-type(module, tree, row.right, current)
+                current = env-constrain(current, bound, right)
+= current
+
+────────────────────
+_ do param-assignment-type TypeId?
+    - module ModuleId
+    - tree AST
+    - assignments RowRange'SyntaxId
+    - name Atom
+    - env TypeEnv
+
+for assignment in tree.nodes[tree.children[assignments]]
+    do match? assignment
+        | .node-param-assignment(row)
+            . left = type-syntax-name(tree, row.left)
+            if left && left == name
+                = evaluate-type(module, tree, row.right, env)
+= null
+
+────────────────────
++ type-syntax-name Atom?
+    - tree AST
+    - id SyntaxId
+
+match? tree.nodes[id]
+    | .node-type-identifier(row)
+        row.name
+    | .node-identifier(row)
+        row.name
+    | .node-type-arguments(row)
+        type-syntax-name(tree, row.base)
+
+────────────────────
++ class-type-args RowRange'SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+match program.modules[module].decls[decl]
+    | .decl-class(row)
+        row.type-args
+    ??
+        RowRange'SyntaxId()
+
+────────────────────
++ class-param-name Atom?
+    - tree AST
+    - type-args RowRange'SyntaxId
+    - position Size
+
+type-syntax-name(tree, tree.children[slot])
+
+.. slot = (type-args.start + position)
+
+────────────────────
+_ class-param-constraints RowRange'SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+match program.modules[module].decls[decl]
+    | .decl-class(row)
+        row.param-constraints
+    ??
+        RowRange'SyntaxId()
+
+────────────────────
+_ class-param-assignments RowRange'SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+match program.modules[module].decls[decl]
+    | .decl-class(row)
+        row.param-assignments
+    ??
+        RowRange'SyntaxId()
+
+────────────────────
+_ items-valid Bool
+    - mark ScratchMark
+
+all(mark .. < scratch.types.length) • where scratch.types[each] != invalid-type
+
+────────────────────
+_ do evaluate-type-args TypeId
+    - caller ModuleId
+    - ast AST
+    - base SyntaxId
+    - args RowRange'SyntaxId
+    - env TypeEnv
+
+. name = type-syntax-name(ast, base)
+=? invalid-type if !name
+=? invalid-type if env-lookup(env, name)
+
+. mark = scratch.types.mark
+for child in ast.children[args]
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+if !items-valid(mark)
+    scratch.types.rewind(mark)
+    = invalid-type
+if this-atom && name == this-atom && env.this-type != no-type
+    do match? rows[env.this-type]
+        | .type-class(row)
+            = class-with-args(row.module, row.decl, mark)
+= class-named-with-args(caller, name, mark)
+
+────────────────────
+_ do evaluate-sugar TypeId
+    - caller ModuleId
+    - ast AST
+    - name Atom
+    - patterns RowRange'SyntaxId
+    - env TypeEnv
+
+. mark = scratch.types.mark
+for child in ast.children[patterns]
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+if !items-valid(mark)
+    scratch.types.rewind(mark)
+    = invalid-type
+= class-named-with-args(caller, name, mark)
+
+────────────────────
+_ do evaluate-type-map TypeId
+    - caller ModuleId
+    - ast AST
+    - patterns RowRange'SyntaxId
+    - env TypeEnv
+
+for child in ast.nodes[ast.children[patterns]]
+    do match? child
+        | .node-type-map-item(row)
+            . mark = scratch.types.mark
+            scratch.types.push(evaluate-type(caller, ast, row.key, env))
+            scratch.types.push(evaluate-type(caller, ast, row.value, env))
+            if !items-valid(mark)
+                scratch.types.rewind(mark)
+                = invalid-type
+            = class-named-with-args(caller, map-atom!, mark)
+= invalid-type
+
+────────────────────
+_ do evaluate-type-optional TypeId
+    - caller ModuleId
+    - ast AST
+    - field-types RowRange'SyntaxId
+    - env TypeEnv
+
+if field-types.count == 0
+    = invalid-type
+
+. owner = type-decl(.optional)
+if owner.module == 0 && owner.decl == 0
+    = invalid-type
+
+. inner = evaluate-type-fields(caller, ast, field-types, env)
+=? invalid-type if inner == invalid-type
+. mark = scratch.types.mark
+scratch.types.push(inner)
+= intern-class(owner.module, owner.decl, mark)
+
+────────────────────
+_ do evaluate-type-fields TypeId
+    - caller ModuleId
+    - ast AST
+    - field-types RowRange'SyntaxId
+    - env TypeEnv
+
+if field-types.count == 1
+    . child = ast.children[field-types.start]
+    = evaluate-type(caller, ast, child, env)
+
+= evaluate-type-tuple(caller, ast, field-types, false, env)
+
+────────────────────
+_ do evaluate-type-tuple TypeId
+    - caller ModuleId
+    - ast AST
+    - field-types RowRange'SyntaxId
+    - is-struct Bool
+    - env TypeEnv
+
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+. position = 0
+for child in ast.children[field-types]
+    . captured = match? ast.nodes[child]
+        | .node-type-capture(capture)
+            capture-name(ast, capture.id)
+    scratch.names.push(captured ?? index-atom(position))
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+    position += 1
+
+if !items-valid(mark)
+    scratch.types.rewind(mark)
+    scratch.names.rewind(names-mark)
+    = invalid-type
+= if is-struct then intern-struct(mark, names-mark) else intern-tuple(mark, names-mark)
+
+────────────────────
+_ capture-name Atom?
+    - ast AST
+    - id SyntaxId
+
+match? ast.nodes[id]
+    | .node-identifier(row)
+        row.name
+
+────────────────────
+_ do evaluate-type-function TypeId
+    - caller ModuleId
+    - ast AST
+    - return-type SyntaxId
+    - args RowRange'SyntaxId
+    - errors RowRange'SyntaxId
+    - is-c Bool
+    - env TypeEnv
+
+. mark = scratch.types.mark
+for child in ast.children[args]
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+. errors-mark = scratch.types.length
+for child in ast.children[errors]
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+
+. result = evaluate-type(caller, ast, return-type, env)
+if result == invalid-type || !items-valid(mark)
+    scratch.types.rewind(mark)
+    = invalid-type
+= intern-function(result, is-c, mark, errors-mark)
+
+────────────────────
+_ do evaluate-type-numeric TypeId
+    - caller ModuleId
+    - ast AST
+    - value SyntaxId
+    - env TypeEnv
+
+. unit = match? ast.nodes[value]
+    | .node-integer-syntax(number)
+        number.unit
+    | .node-float-syntax(number)
+        number.unit
+=? invalid-type if !unit
+
+. unit-type = type-named(caller, unit, env)
+complete-slow(unit-type)
+= base-of(unit-type) ?? invalid-type
+
+────────────────────
+_ do evaluate-type-associated TypeId
+    - caller ModuleId
+    - ast AST
+    - owner-syntax SyntaxId
+    - name Atom
+    - args RowRange'SyntaxId
+    - env TypeEnv
+
+. owner = evaluate-type(caller, ast, owner-syntax, env)
+=? invalid-type if owner == invalid-type
+. mark = scratch.types.mark
+for child in ast.children[args]
+    scratch.types.push(evaluate-type(caller, ast, child, env))
+if !items-valid(mark)
+    scratch.types.rewind(mark)
+    = invalid-type
+= resolve-associated(owner, name, mark, env, caller)
+
+────────────────────
+_ do raise-fault
+    - message String
+
+` Notes why a type could not be named, for whoever asked to say so where it was written.
+if !fault
+    fault = program.store-atom(message)
+    fault-site = 0
+
+────────────────────
++ do clear-fault
+
+fault = null
+fault-site = 0
+
+────────────────────
++ do resolve-associated TypeId
+    - owner TypeId
+    - name Atom
+    - mark ScratchMark
+    - env TypeEnv
+    - caller ModuleId? = null
+
+. count U32 = (scratch.types.length - mark) as U32
+do match rows[owner]
+    | .type-variable
+        = associated-by-constraints(owner, name, mark, count, env)
+    | .type-inference
+        = associated-by-constraints(owner, name, mark, count, env)
+    | .type-class
+        ensure-representation(owner)
+        if completions[owner].intrinsic == .interface
+            . declaring = find-requirement(owner, name, count)
+            if declaring
+                = intern-associated(owner, declaring, name, mark)
+            scratch.types.rewind(mark)
+            = invalid-type
+        = resolve-binding(owner, name, mark, count, caller)
+    ??
+        scratch.types.rewind(mark)
+        = invalid-type
+
+────────────────────
+_ do associated-by-constraints TypeId
+    - owner TypeId
+    - name Atom
+    - mark ScratchMark
+    - count U32
+    - env TypeEnv
+
+` A type parameter names an associated type only through the interfaces that constrain it,
+` and through them only when exactly one declares it.
+. found [DeclRef]
+for position in env.constraint-start .. < env.constraint-end
+    if env-constrained[position] == owner
+        collect-requirements(env-constraints[position], name, count, found)
+if found.length == 1
+    = intern-associated(owner, found[0], name, mark)
+scratch.types.rewind(mark)
+if found.length > 1
+    raise-fault("Associated type ${name.text} is ambiguous")
+    = invalid-type
+do match? rows[owner]
+    | .type-variable(row)
+        . shown = row.name.text
+        raise-fault("Associated type ${name.text} is not declared by constraints on $shown")
+= invalid-type
+
+────────────────────
+_ do collect-requirements
+    - type TypeId
+    - name Atom
+    - count U32
+    - found [DeclRef]
+
+` Every declaration of an associated type an interface answers to, its own and those of the
+` interfaces it extends, each once.
+. ref = match? rows[type]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+if !ref
+    =
+. declaring = ref
+if find-associated-member(declaring.module, declaring.decl, name, count)
+    . known = false
+    for other in found
+        if other.module == declaring.module && other.decl == declaring.decl
+            known = true
+    if !known
+        found += declaring
+ensure-representation(type)
+. base = base-of(type)
+if base
+    ensure-representation(base)
+    if completions[base].intrinsic == .interface
+        collect-requirements(base, name, count, found)
+. owner-module = program.modules[declaring.module]
+do match? owner-module.decls[declaring.decl]
+    | .decl-class(row)
+        if row.interfaces.count != 0
+            . env = class-env(declaring.module, declaring.decl)
+            . caller Index = declaring.module
+            for interface in owner-module.syntax-pool[row.interfaces]
+                . implemented = evaluate-type(caller as ModuleId, owner-module.tree, interface, env)
+                collect-requirements(implemented, name, count, found)
+            env-release(env)
+
+────────────────────
+_ do find-requirement DeclRef?
+    - type TypeId
+    - name Atom
+    - count U32
+
+. ref = match? rows[type]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+=? null if !ref
+. declaring = ref
+
+. member = find-associated-member(declaring.module, declaring.decl, name, count)
+if member
+    = ref
+
+ensure-representation(type)
+. base = base-of(type)
+if base
+    ensure-representation(base)
+    if completions[base].intrinsic == .interface
+        . found = find-requirement(base, name, count)
+        if found
+            = found
+
+. owner-module = program.modules[declaring.module]
+. found DeclRef?
+do match? owner-module.decls[declaring.decl]
+    | .decl-class(row)
+        if row.interfaces.count != 0
+            . env = class-env(declaring.module, declaring.decl)
+            . caller Index = declaring.module
+            for interface in owner-module.syntax-pool[row.interfaces]
+                if !found
+                    . tree = owner-module.tree
+                    . implemented = evaluate-type(caller as ModuleId, tree, interface, env)
+                    found = find-requirement(implemented, name, count)
+            env-release(env)
+= found
+
+────────────────────
+_ do resolve-binding TypeId
+    - owner TypeId
+    - name Atom
+    - mark ScratchMark
+    - count U32
+    - caller ModuleId? = null
+
+. ref = match? rows[owner]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+if !ref
+    scratch.types.rewind(mark)
+    = invalid-type
+. declaring = ref
+
+. member = find-associated-member(declaring.module, declaring.decl, name, count)
+if member
+    . module = program.modules[declaring.module]
+    do match? module.decls[member]
+        | .decl-associated(row)
+            . hidden = match row.access
+                | .private-access
+                    caller != null && caller != declaring.module
+                ??
+                    false
+            if hidden
+                raise-fault("Associated type ${name.text} is private")
+                scratch.types.rewind(mark)
+                = invalid-type
+            if row.binding != 0
+                if is-resolving(owner, member)
+                    circular-module = declaring.module
+                    circular-binding = row.binding
+                    circular-name = name
+                    scratch.types.rewind(mark)
+                    = invalid-type
+                resolving += owner
+                resolving += member
+                . args = match rows[owner]
+                    | .type-class(class-row)
+                        class-row.args
+                    ??
+                        RowRange'TypeId()
+                . env = class-env-for(declaring.module, declaring.decl, args, owner)
+                . position = 0u32
+                for child in module.tree.children[row.type-args]
+                    . param = type-syntax-name(module.tree, child)
+                    if param && position < count
+                        env = env-bind(env, param, scratch.types[mark + position])
+                    position += 1
+                . caller Index = declaring.module
+                . bound = evaluate-type(caller as ModuleId, module.tree, row.binding, env)
+                env-release(env)
+                scratch.types.rewind(mark)
+                -= resolving[resolving.length - 2 .. < resolving.length]
+                = bound
+
+ensure-representation(owner)
+. base = base-of(owner)
+if base
+    = resolve-binding(base, name, mark, count, caller)
+scratch.types.rewind(mark)
+= invalid-type
+
+────────────────────
+_ do is-resolving Bool
+    - owner TypeId
+    - member DeclId
+
+` Whether an associated type's binding is being evaluated already: its own binding names it.
+for offset in 0 .. < resolving.length / 2
+    if resolving[offset * 2] == owner && resolving[offset * 2 + 1] == member
+        = true
+= false
+
+────────────────────
+_ do find-associated-member DeclId?
+    - module ModuleId
+    - decl DeclId
+    - name Atom
+    - count U32
+
+. owner-module = program.modules[module]
+. members = match owner-module.decls[decl]
+    | .decl-class(row)
+        row.members
+    ??
+        RowRange'DeclId()
+if members.count == 0
+    = null
+
+for member in owner-module.member-pool[members]
+    do match? owner-module.decls[member]
+        | .decl-associated(row)
+            if row.name == name && row.type-args.count == count
+                = member
+= null
+
+────────────────────
++ do declare-into TypeEnv
+    - env TypeEnv
+    - tree AST
+    - id SyntaxId
+    - module ModuleId
+    - owner DeclId
+    - first Size
+
+if id == 0
+    = env
+
+. current = env
+do match? tree.nodes[id]
+    | .node-type-identifier(row)
+        if row.is-declare && !env-lookup-from(current, row.name, first)
+            . variable = intern-variable(module, owner, (current.end - first) as U32, row.name)
+            current = env-bind(current, row.name, variable)
+    | .node-type-arguments(row)
+        current = declare-into(current, tree, row.base, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+    | .node-type-associated(row)
+        current = declare-into(current, tree, row.owner, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+    | .node-type-optional(row)
+        current = declare-children(current, tree, row.field-types, module, owner, first)
+    | .node-type-tuple(row)
+        current = declare-children(current, tree, row.field-types, module, owner, first)
+    | .node-type-capture(row)
+        current = declare-into(current, tree, row.type, module, owner, first)
+    | .node-type-match(row)
+        current = declare-into(current, tree, row.type, module, owner, first)
+    | .node-type-and(row)
+        current = declare-into(current, tree, row.left, module, owner, first)
+        current = declare-into(current, tree, row.right, module, owner, first)
+    | .node-type-or(row)
+        current = declare-into(current, tree, row.left, module, owner, first)
+        current = declare-into(current, tree, row.right, module, owner, first)
+    | .node-type-list(row)
+        current = declare-children(current, tree, row.patterns, module, owner, first)
+    | .node-type-map(row)
+        current = declare-children(current, tree, row.patterns, module, owner, first)
+    | .node-type-map-item(row)
+        current = declare-into(current, tree, row.key, module, owner, first)
+        current = declare-into(current, tree, row.value, module, owner, first)
+    | .node-type-iterable(row)
+        current = declare-into(current, tree, row.pattern, module, owner, first)
+    | .node-type-function(row)
+        current = declare-into(current, tree, row.return-type, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+        current = declare-children(current, tree, row.errors, module, owner, first)
+    | .node-argument-decl(row)
+        current = declare-into(current, tree, row.pattern, module, owner, first)
+= current
+
+────────────────────
+_ do declare-children TypeEnv
+    - env TypeEnv
+    - tree AST
+    - range RowRange'SyntaxId
+    - module ModuleId
+    - owner DeclId
+    - first Size
+
+. current = env
+for child in tree.children[range]
+    current = declare-into(current, tree, child, module, owner, first)
+= current
+
+────────────────────
++ base-of TypeId?
+    - id TypeId
+
+|? base == no-type
+    null
+??
+    base
+
+.. base = completions[id].base
+
+────────────────────
++ do ensure-representation
+    - id TypeId
+
+if completions[id].completion == .completion-unstarted
+    complete-slow(id)
+
+────────────────────
++ do complete @inline
+    - id TypeId
+
+. state = completions[id].completion
+if state != .completion-done && state != .completion-failed
+    complete-slow(id)
+
+────────────────────
++ do completion-of TableRow'TypeCompletion @inline
+    - id TypeId
+
+complete(id)
+= completions[id]
+
+────────────────────
++ is-literal-global Bool
+    - module ModuleId
+    - decl DeclId
+
+` Whether a global is core's `true`, `false` or `null`: every read of one is a literal, so it
+` is never stored and its value never runs.
+match owner.decls[decl]
+    | .decl-property(row)
+        |? owner.name != "core" || !row.name
+            false
+        ??
+            row.name == true-atom || row.name == false-atom || row.name == null-atom
+    ??
+        false
+
+.. owner = program.modules[module]
+
+────────────────────
++ do intrinsic-of IntrinsicKind @inline
+    - id TypeId
+
+complete(id)
+= completions[id].intrinsic
+
+────────────────────
++ do is-generic Bool @inline
+    - id TypeId
+
+complete(id)
+= completions[id].has-variables
+
+────────────────────
++ do properties-of TableSpan'TypeProperty @inline
+    - id TypeId
+
+complete(id)
+= properties[completions[id].properties]
+
+────────────────────
++ do delegates-of ImmutableArray'TypeId'ArenaBacking @inline
+    - id TypeId
+
+` The interfaces a class answers through a property, as pairs: the interface, then the type of
+` the property that implements it.
+complete(id)
+= children[completions[id].delegates]
+
+────────────────────
++ delegate-name Atom
+    - id TypeId
+    - offset Size
+
+child-name(completions[id].delegate-names, offset as U32)
+
+────────────────────
++ do interfaces-of ImmutableArray'TypeId'ArenaBacking @inline
+    - id TypeId
+
+complete(id)
+= children[completions[id].interfaces]
+
+────────────────────
++ do cases-of TableSpan'TypeCase @inline
+    - id TypeId
+
+complete(id)
+= cases[completions[id].cases]
+
+────────────────────
++ do null-case U32
+    - id TypeId
+
+` The case of a union that holds null and is not its default, or none.
+if intrinsic-of(id) != .union
+    = U32.max
+. held = cases-of(id)
+for index in 0 .. < held.length
+    if !held[index].is-default && held[index].type == null-type
+        = index as U32
+= U32.max
+
+────────────────────
++ do tracked-root TypeId
+    - owner TypeId
+    - name Atom
+
+` The class whose property of a name a tracked read of it is kept by: the topmost of the class
+` that declares it and the classes above that declare it too, whose trackers an override in a
+` class below shares, as the reference keeps them by the object and the name.
+. root = owner
+while true
+    . base = completions[root].base
+    if base == no-type || base == invalid-type
+        = root
+    . place = property-named(base, name)
+    if !place
+        = root
+    root = properties[place].owner
+
+────────────────────
++ do property-named Index? @inline
+    - id TypeId
+    - name Atom
+
+` The place of the property of a type by a name, its own or one it takes from a class above.
+complete(id)
+. range = completions[id].properties
+if range.count > property-scan-limit
+    = placed-property(id, name)
+for offset in 0 .. < range.count
+    . position = (range.start + offset) as Index
+    if properties[position].name == name
+        = position
+= null
+
+────────────────────
+_ placed-property Index?
+    - id TypeId
+    - name Atom
+
+` A property of a type with many, found by its name without reading the others.
+(found as Index) if found
+
+.. found = property-places[MemberKey(id, name)]
+
+────────────────────
+_ do complete-slow
+    - id TypeId
+
+?! Panic("Types are sealed and cannot complete a type")
+    if sealed
+. state = completions[id].completion
+if state == .completion-done || state == .completion-failed
+    =
+if state == .completion-in-progress
+    set-completion(id, .completion-failed, .none, null)
+    =
+
+set-completion(id, .completion-in-progress, .none, null)
+completing += 1
+do match rows[id]
+    | .type-class(row)
+        class-uses += DeclRef(row.module, row.decl)
+        complete-class(id, row.module, row.decl, row.args, row.errors)
+        make-properties(id)
+    | .type-tuple(row)
+        complete-fields(id, .tuple, row.fields, row.names)
+    | .type-struct(row)
+        complete-fields(id, .struct, row.fields, row.names)
+    | .type-union(row)
+        complete-cases(id, row.cases, RowRange'TypeId(), no-type)
+    | .type-named-union(row)
+        complete-cases(id, row.cases, row.names, no-type)
+    | .type-result(row)
+        complete-cases(id, row.errors, RowRange'TypeId(), row.value)
+    | .type-function(row)
+        set-completion
+            - id
+            - .completion-done
+            - if row.is-c then IntrinsicKind.cfunction else IntrinsicKind.function
+            - null
+    | .type-binding
+        set-completion(id, .completion-done, .binding, null)
+    | .type-closure
+        set-completion(id, .completion-done, .closure, null)
+    ??
+        set-completion(id, .completion-done, .none, null)
+completing -= 1
+if completing == 0
+    complete-made()
+
+────────────────────
+_ do make-properties
+    - id TypeId
+
+` Queues the types written in the properties of a class just completed, as the reference makes
+` each type a property of a class it makes is written with: the classes among them have tables,
+` and so do those their own properties are written with.
+. completion = completions[id]
+if completion.completion != .completion-done || completion.has-variables
+    =
+for property in properties[completion.properties]
+    make(property.type)
+
+────────────────────
+_ do make
+    - id TypeId
+
+` Queues a type to complete, and the types it is written with.
+if id == no-type || id == invalid-type
+    =
+do match? rows[id]
+    | .type-class(row)
+        if completions[id].completion != .completion-unstarted
+            =
+        making += id
+        make-range(row.args)
+    | .type-tuple(row)
+        make-range(row.fields)
+    | .type-struct(row)
+        make-range(row.fields)
+    | .type-union(row)
+        make-range(row.cases)
+    | .type-named-union(row)
+        make-range(row.cases)
+    | .type-function(row)
+        make(row.return-type)
+        make-range(row.args)
+        make-range(row.errors)
+    | .type-result(row)
+        make(row.value)
+        make-range(row.errors)
+
+────────────────────
+_ do make-range
+    - range RowRange'TypeId
+
+for offset in 0 .. < range.count
+    make(child-type(range, offset))
+
+────────────────────
+_ do complete-made
+
+` Completes the types queued once no completion is under way, so none is found in progress. A
+` fault met on the way is not the caller's, whose own is kept.
+. saved = fault
+. saved-module = fault-module
+. saved-site = fault-site
+completing += 1
+while making.length != 0
+    . next = making[making.length - 1]
+    making.pop()
+    complete(next)
+completing -= 1
+fault = saved
+fault-module = saved-module
+fault-site = saved-site
+
+────────────────────
+_ case-value-type TypeId
+    - tree AST
+    - value SyntaxId
+
+` The payload type of a union case declared by its value: the literal's own type.
+match tree.nodes[value]
+    | .node-integer-syntax
+        type-row(.int64)
+    | .node-float-syntax
+        f64-type
+    | .node-string-syntax
+        string-type
+    ??
+        invalid-type
+
+────────────────────
+_ do complete-cases
+    - id TypeId
+    - cases RowRange'TypeId
+    - names RowRange'Atom
+    - value TypeId
+
+. mark = case-scratch.length
+if value != no-type
+    case-scratch.append(TypeCase(null, value, false))
+for offset in 0 .. < cases.count
+    . name Atom? = null
+    if offset < names.count
+        name = child-name(names, offset)
+    . payload = child-type(cases, offset)
+    if name && payload == void-type
+        case-scratch.append(TypeCase(name, type-row(.uint8), true))
+    else
+        case-scratch.append(TypeCase(name, payload, false))
+set-completion(id, .completion-done, .union, null)
+commit-cases(id, mark)
+
+────────────────────
+_ do complete-fields
+    - id TypeId
+    - type IntrinsicKind
+    - fields RowRange'TypeId
+    - names RowRange'Atom
+
+. mark = property-scratch.length
+for offset in 0 .. < fields.count
+    . name = child-name(names, offset)
+    . fact = TypeProperty(name, .storage-eager, offset, child-type(fields, offset), id)
+    property-scratch.append(fact)
+set-completion(id, .completion-done, type, null)
+commit-properties(id, mark)
+
+────────────────────
+_ do raising TypeId
+    - base TypeId
+    - errors RowRange'TypeId
+
+` The function type a class with errors of its own is: the one its declaration names, which
+` raises those errors too.
+if errors.count == 0
+    = base
+do match? rows[base]
+    | .type-function(row)
+        . mark = scratch.types.mark
+        for offset in 0 .. < row.args.count
+            scratch.types.push(child-type(row.args, offset))
+        . errors-mark = scratch.types.mark
+        for offset in 0 .. < row.errors.count
+            scratch.types.push(child-type(row.errors, offset))
+        for offset in 0 .. < errors.count
+            scratch.types.push(child-type(errors, offset))
+        = intern-function(row.return-type, row.is-c, mark, errors-mark)
+= base
+
+────────────────────
+_ do complete-class
+    - id TypeId
+    - module ModuleId
+    - decl DeclId
+    - args RowRange'TypeId
+    - errors RowRange'TypeId
+
+. owner-module = program.modules[module]
+. tree = owner-module.tree
+. base-syntax SyntaxId = 0
+. aliased = false
+. members = RowRange'DeclId()
+. interface-list = RowRange'SyntaxId()
+. or-bases = RowRange'SyntaxId()
+do match? owner-module.decls[decl]
+    | .decl-class(row)
+        base-syntax = row.base
+        aliased = row.aliases.count != 0
+        members = row.members
+        interface-list = row.interfaces
+        or-bases = row.or-bases
+
+. env = class-env-for(module, decl, args, id)
+. base TypeId?
+if base-syntax != 0
+    base = raising(evaluate-type(module, tree, base-syntax, env), errors)
+    complete-slow(base)
+    if completions[base].completion == .completion-failed
+        env-release(env)
+        set-completion(id, .completion-failed, .none, null)
+        =
+
+. tag = intrinsic-for-decl(module, decl)
+. type =
+    |? tag != .none
+        tag
+    |? base
+        completions[base].intrinsic
+    ??
+        IntrinsicKind.class
+set-completion(id, .completion-in-progress, type, base)
+
+. property-mark = property-scratch.length
+. outer-stored = stored-count
+stored-count = 0
+. case-mark = case-scratch.length
+. associated-mark = associated-scratch.length
+. items-mark = scratch.types.mark
+
+if base
+    inherit-properties(base, id, property-mark)
+. interface-start = scratch.types.length
+if interface-list.count != 0
+    for interface in owner-module.syntax-pool[interface-list]
+        scratch.types.push(evaluate-type(module, tree, interface, env))
+. delegated [TypeId]
+. delegators [Atom]
+for member in owner-module.member-pool[members]
+    do match? owner-module.decls[member]
+        | .decl-property(row)
+            if row.delegates.count != 0 && row.name
+                . delegator = row.name
+                . held = no-type
+                if row.type-syntax != 0
+                    held = evaluate-type(module, tree, row.type-syntax, env)
+                . source = held
+                if source == no-type
+                    source = constructed-class(module, tree, row.value, env)
+                for delegate in owner-module.syntax-pool[row.delegates]
+                    . named = evaluate-type(module, tree, delegate, env)
+                    . interface = delegated-interface(named, source)
+                    scratch.types.push(interface)
+                    delegated += interface
+                    delegated += held
+                    delegators += delegator
+        | .decl-function(row)
+            if row.delegates.count != 0 && row.name
+                . delegator = row.name
+                . held = no-type
+                if row.return-type != 0
+                    held = evaluate-type(module, tree, row.return-type, env)
+                for delegate in owner-module.syntax-pool[row.delegates]
+                    . named = evaluate-type(module, tree, delegate, env)
+                    . interface = delegated-interface(named, held)
+                    scratch.types.push(interface)
+                    delegated += interface
+                    delegated += held
+                    delegators += delegator
+. alternative-start = scratch.types.length
+for child in tree.children[or-bases]
+    scratch.types.push(evaluate-type(module, tree, child, env))
+. converter-start = scratch.types.length
+. fromverter-start = scratch.types.length
+if members.count != 0
+    for member in owner-module.member-pool[members]
+        gather-member(id, module, member, env, type, property-mark)
+    converter-start = scratch.types.length
+    for member in owner-module.member-pool[members]
+        gather-converter(id, module, member, env, true)
+    fromverter-start = scratch.types.length
+    for member in owner-module.member-pool[members]
+        gather-converter(id, module, member, env, false)
+if args.count != 0
+    declare-equalities(id, module, tree, base-syntax, env, aliased)
+env-release(env)
+
+. interfaces = commit-items(interface-start, alternative-start)
+. alternatives = commit-items(alternative-start, converter-start)
+. converters = commit-items(converter-start, fromverter-start)
+. fromverters = commit-items(fromverter-start, scratch.types.length)
+scratch.types.rewind(items-mark)
+for item in delegated
+    scratch.types.push(item)
+. delegates = commit-items(items-mark, scratch.types.length)
+scratch.types.rewind(items-mark)
+set-completion(id, .completion-done, type, base)
+commit-properties(id, property-mark)
+stored-count = outer-stored
+commit-cases(id, case-mark)
+commit-associated(id, associated-mark)
+set-ranges(id, interfaces, alternatives, converters, fromverters)
+completions[id].delegates = delegates
+. names-mark = scratch.names.mark
+for name in delegators
+    scratch.names.push(name)
+completions[id].delegate-names = store-names(names-mark)
+scratch.names.rewind(names-mark)
+
+────────────────────
+_ do constructed-class TypeId
+    - module ModuleId
+    - tree AST
+    - value SyntaxId
+    - env TypeEnv
+
+` The class a property with no declared type constructs in its initializer, when the
+` initializer is a call of a type.
+if value == 0
+    = no-type
+do match? tree.nodes[value]
+    | .node-call-expression(call)
+        . named = match tree.nodes[call.callable]
+            | .node-type-identifier
+                true
+            | .node-type-arguments
+                true
+            ??
+                false
+        if named
+            . constructed = evaluate-type(module, tree, call.callable, env)
+            = if constructed == invalid-type then no-type else constructed
+= no-type
+
+────────────────────
+_ do delegated-interface TypeId
+    - interface TypeId
+    - source TypeId
+
+` A class that delegates a type of alternatives delegates the alternative its property is.
+if interface == invalid-type || source == no-type || source == invalid-type
+    = interface
+complete(interface)
+if completions[interface].intrinsic != .or
+    = interface
+. alternatives = completions[interface].alternatives
+for offset in 0 .. < alternatives.count
+    . alternative = child-type(alternatives, offset)
+    if implements-type(source, alternative)
+        = alternative
+= interface
+
+────────────────────
++ do implements-type Bool
+    - id TypeId
+    - interface TypeId
+
+. current = id
+while current != no-type
+    if current == interface
+        = true
+    for implemented in interfaces-of(current)
+        if implements-type(implemented, interface)
+            = true
+    current = base-of(current) ?? no-type
+= false
+
+────────────────────
+_ do inherit-properties
+    - base TypeId
+    - id TypeId
+    - mark ScratchMark
+
+. range = completions[base].properties
+for inherited in properties[range]
+    add-property(mark, inherited.name, inherited.storage-kind, inherited.type, inherited.owner)
+
+────────────────────
+_ do action-type TypeId
+
+` A function that takes nothing and answers nothing, `-> Void`.
+. mark = scratch.types.mark
+= intern-function(void-type, false, mark, mark)
+
+────────────────────
+_ do pointer-type TypeId
+    - module ModuleId
+
+` The address of bytes, `Pointer`, as a module sees it.
+. mark = scratch.types.mark
+scratch.types.push(type-row(.uint8))
+= class-named-with-args(module, cpointer-atom!, mark)
+
+────────────────────
+_ do held-storage StorageKind?
+    - mark ScratchMark
+    - name Atom
+
+` How a property of a name is stored among those gathered for a type so far, the ones it has
+` from the class above it among them, or nothing where there is none. The value a root
+` `<This` gives a property applies only to one the type has and stores in the object, and
+` the name of an element declares a property only where the type has none of that name.
+. found = scratch-places[MemberKey(mark as U32, name)]
+if found
+    . slot Index = found
+    if slot >= mark && slot < property-scratch.length && property-scratch[slot].name == name
+        = property-scratch[slot].storage-kind
+= null
+
+────────────────────
+_ do add-property
+    - mark ScratchMark
+    - name Atom
+    - storage StorageKind
+    - type TypeId
+    - owner TypeId
+
+. key = MemberKey(mark as U32, name)
+. found = scratch-places[key]
+if found
+    . slot Index = found
+    if slot >= mark && slot < property-scratch.length && property-scratch[slot].name == name
+        . existing = property-scratch[slot]
+        . kept = if existing.type != no-type then existing.type else type
+        property-scratch[slot] = TypeProperty
+            - name
+            - existing.storage-kind
+            - existing.slot
+            - kept
+            - owner
+        =
+. index = U32.max
+if storage != .storage-getter
+    index = stored-count
+    stored-count += 1
+scratch-places[key] = property-scratch.length as U32
+property-scratch.append(TypeProperty(name, storage, index, type, owner))
+
+────────────────────
+_ do gather-member
+    - id TypeId
+    - module ModuleId
+    - member DeclId
+    - env TypeEnv
+    - type IntrinsicKind
+    - mark ScratchMark
+
+. owner-module = program.modules[module]
+. tree = owner-module.tree
+do match? owner-module.decls[member]
+    | .decl-property(row)
+        . held = held-storage(mark, row.name) if row.name
+        . given = row.defaults-root && (!held || held != .storage-eager)
+        . named = row.element != 0 && held != null
+        . refined = (row.projection != 0 || row.flag != 0) && held != null
+        if row.name && !given && !named && !refined
+            . property-name = row.name
+            . storage = if row.is-lazy then .storage-lazy else .storage-eager
+            . declared = no-type
+            if row.type-syntax != 0
+                declared = query-held(evaluate-type(module, tree, row.type-syntax, env))
+            else if row.flag != 0
+                declared = type-row(.bool)
+            else if row.context != 0
+                declared = pointer-type(module)
+            else if row.part != 0
+                declared = action-type()
+            add-property(mark, property-name, storage, declared, id)
+    | .decl-function(row)
+        . is-accessor = row.kind == .getter-decl || row.kind == .setter-decl
+        if row.name && is-accessor && row.owner == member-owner(module, member)
+            . accessor-name = row.name
+            . declared = no-type
+            if row.kind == .getter-decl && row.return-type != 0
+                declared = evaluate-type(module, tree, row.return-type, env)
+            add-property(mark, accessor-name, .storage-getter, declared, id)
+    | .decl-case(row)
+        if type != .union
+            set-flag(id, .flag-enums)
+        else
+            . declared = no-type
+            . is-default = row.type-syntax == 0 && row.value == 0
+            if row.type-syntax != 0
+                declared = evaluate-type(module, tree, row.type-syntax, env)
+            else if row.value == 0
+                declared = type-row(.uint8)
+            else
+                declared = case-value-type(tree, row.value)
+            case-scratch.append(TypeCase(row.name, declared, is-default))
+    | .decl-associated(row)
+        if row.binding != 0
+            . bound = env
+            . first = bound.end
+            for child in tree.children[row.type-args]
+                . param = type-syntax-name(tree, child)
+                if param
+                    . variable = intern-variable(module, member, (bound.end - first) as U32, param)
+                    bound = env-bind(bound, param, variable)
+            . binding = evaluate-type(module, tree, row.binding, bound)
+            -= env-names[env.end .. < env-names.length]
+            -= env-types[env.end .. < env-types.length]
+            associated-scratch.append(TypeAssociated(row.name, binding))
+
+────────────────────
+_ member-owner DeclId
+    - module ModuleId
+    - member DeclId
+
+match program.modules[module].decls[member]
+    | .decl-function(row)
+        row.owner
+    ??
+        0
+
+────────────────────
+_ do gather-converter
+    - id TypeId
+    - module ModuleId
+    - member DeclId
+    - env TypeEnv
+    - wants-converters Bool
+
+. owner-module = program.modules[module]
+. tree = owner-module.tree
+. syntax SyntaxId = 0
+do match? owner-module.decls[member]
+    | .decl-converter(row)
+        if wants-converters
+            syntax = row.target-type
+    | .decl-fromverter(row)
+        if !wants-converters
+            syntax = row.source-type
+if syntax == 0
+    =
+. bound = declare-into(env, tree, syntax, module, member, env.end)
+. target = evaluate-type(module, tree, syntax, bound)
+-= env-names[env.end .. < env-names.length]
+-= env-types[env.end .. < env-types.length]
+scratch.types.push(target)
+scratch.types.push(module)
+scratch.types.push(member)
+scratch.types.push(id)
+
+────────────────────
++ do declare-unit-equalities
+
+. module-index = 0u32
+for module in program.modules
+    . tree = module.tree
+    for decl in module.decls
+        do match? decl
+            | .decl-unit(unit)
+                . left = constant-unit(module-index, tree, unit.number)
+                . right = constant-unit(module-index, tree, unit.value)
+                . left-unit = left.unit
+                . right-unit = right.unit
+                if left-unit && right-unit && left.ratio != 0.0 && right.ratio != 0.0
+                    . caller ModuleId = module-index
+                    . env TypeEnv = env-frame()
+                    . left-type = type-named(caller, left-unit, env)
+                    . right-type = type-named(caller, right-unit, env)
+                    if left-type != invalid-type && right-type != invalid-type
+                        . forward = unit-ratio(right.ratio, left.ratio)
+                        . backward = unit-ratio(left.ratio, right.ratio)
+                        equalities.append(TypeEquality(left-type, right-type, forward))
+                        equalities.append(TypeEquality(right-type, left-type, backward))
+                        set-flag(left-type, .flag-equalities)
+                        set-flag(right-type, .flag-equalities)
+    module-index += 1
+
+────────────────────
+_ do declare-class-equalities
+
+` Declares the equality of every class that is a number of some unit, before anything is
+` typed. Whether two numbers of different units may be cast to one another depends on whether
+` each takes part in an equality, so the answer must not wait on which class happens to be
+` completed first.
+. module-index = 0u32
+for module in program.modules
+    . tree = module.tree
+    . decl-index = 0u32
+    for decl in module.decls
+        do match? decl
+            | .decl-class(row)
+                . aliased = row.aliases.count != 0
+                if row.type-args.count == 0 && (names-unit-multiple(tree, row.base) || named-alias)
+                    . owner ModuleId = module-index
+                    . env = class-env(owner, decl-index)
+                    declare-equalities(env.this-type, owner, tree, row.base, env, aliased)
+                    env-release(env)
+                .. named-alias = aliased && names-type(tree, row.base)
+        decl-index += 1
+    module-index += 1
+
+────────────────────
+_ names-type Bool
+    - tree AST
+    - base-syntax SyntaxId
+
+` Whether a class is declared as another type by its name, as `Small (sm)` is `Base`.
+|? base-syntax == 0
+    false
+??
+    match tree.nodes[base-syntax]
+        | .node-type-identifier
+            true
+        ??
+            false
+
+────────────────────
+_ names-unit-multiple Bool
+    - tree AST
+    - base-syntax SyntaxId
+
+` Whether a class is declared as a number of some unit, as `Hours` is `60minutes`.
+|? base-syntax == 0
+    false
+??
+    match tree.nodes[base-syntax]
+        | .node-type-numeric
+            true
+        ??
+            false
+
+────────────────────
+_ do constant-unit UnitLiteral
+    - caller ModuleId
+    - tree AST
+    - syntax SyntaxId
+
+` The value and the unit of one side of a unit's declaration: a number, or numbers joined by
+` arithmetic or by bitwise operators, which work on 32 bits. The number written in a unit a
+` program declares names the unit. Anything else has no unit and no value.
+. nothing = UnitLiteral(null, 0.0)
+if syntax == 0
+    = nothing
+do match? tree.nodes[syntax]
+    | .node-binary-expression(row)
+        . left = constant-unit(caller, tree, row.lhs)
+        . right = constant-unit(caller, tree, row.rhs)
+        . unit = if names-declared-unit(caller, left.unit) then first-unit else right.unit
+            .. first-unit = left.unit ?? right.unit
+        . op = row.op
+        if op == .add-op
+            = UnitLiteral(unit, left.ratio + right.ratio)
+        if op == .subtract-op
+            = UnitLiteral(unit, left.ratio - right.ratio)
+        if op == .multiply-op
+            = UnitLiteral(unit, left.ratio * right.ratio)
+        if op == .divide-op
+            = UnitLiteral(unit, left.ratio / right.ratio)
+        if op == .mod-op
+            = UnitLiteral(unit, left.ratio % right.ratio)
+        if op == .pow-op
+            = UnitLiteral(unit, left.ratio %% right.ratio)
+        . whole = (left.ratio as I64) as I32
+        . other = (right.ratio as I64) as I32
+        . amount = other /and/ 31
+        if op == .bitwise-and-op
+            = UnitLiteral(unit, whole /and/ other)
+        if op == .bitwise-or-op
+            = UnitLiteral(unit, whole /or/ other)
+        if op == .bitwise-xor-op
+            = UnitLiteral(unit, whole /xor/ other)
+        if op == .bitwise-lshift-op
+            = UnitLiteral(unit, whole /lshift/ amount)
+        if op == .bitwise-rshift-op
+            = UnitLiteral(unit, whole /rshift/ amount)
+        if op == .bitwise-zrshift-op
+            = UnitLiteral(unit, (whole as U32) /zrshift/ amount)
+        = nothing
+= literal-unit(tree, syntax)
+
+────────────────────
+_ do names-declared-unit Bool
+    - caller ModuleId
+    - unit Atom?
+
+` Whether a unit names a class a program declares, which no builtin number is.
+if !unit
+    = false
+. named = type-named(caller, unit, env-frame())
+if named == invalid-type
+    = false
+do match? rows[named]
+    | .type-class(row)
+        = !is-builtin-decl(row.module, row.decl)
+= false
+
+────────────────────
+_ literal-unit UnitLiteral
+    - tree AST
+    - syntax SyntaxId
+
+|? syntax == 0
+    UnitLiteral(null, 0.0)
+??
+    match tree.nodes[syntax]
+        | .node-integer-syntax(number)
+            UnitLiteral(number.unit, number.value as F64)
+        | .node-float-syntax(number)
+            UnitLiteral(number.unit, number.value as F64)
+        ??
+            UnitLiteral(null, 0.0)
+
+────────────────────
+_ do declare-equalities
+    - id TypeId
+    - module ModuleId
+    - tree AST
+    - base-syntax SyntaxId
+    - env TypeEnv
+    - aliased Bool = false
+
+` A class declared as a number of some unit equals that many of it. A unit declared on a
+` number type of the program's own, as `Small (sm)` is `Base`, is one of that type, and each
+` equals the other. A class with type parameters is declared once for each set of arguments,
+` when that one is completed.
+if base-syntax == 0
+    =
+do match? tree.nodes[base-syntax]
+    | .node-type-identifier
+        if aliased
+            . base = evaluate-type(module, tree, base-syntax, env)
+            if known-base && base != id && !completions[base].is-builtin
+                complete(base)
+                if intrinsic-is-numeric(completions[base].intrinsic)
+                    equalities.append(TypeEquality(id, base, UnitRatio(1.0, 1.0)))
+                    equalities.append(TypeEquality(base, id, UnitRatio(1.0, 1.0)))
+                    set-flag(id, .flag-equalities)
+                    set-flag(base, .flag-equalities)
+            .. known-base = base != invalid-type && base != no-type
+    | .node-type-numeric(numeric)
+        . unit Atom?
+        . text = ""
+        do match? tree.nodes[numeric.value]
+            | .node-integer-syntax(number)
+                unit = number.unit
+                text = number.value
+            | .node-float-syntax(number)
+                unit = number.unit
+                text = number.value
+        if unit
+            . unit-type = type-named(module, unit, env)
+            . ratio = text as F64
+            if unit-type != invalid-type && ratio != 0.0
+                equalities.append(TypeEquality(id, unit-type, unit-ratio(ratio, 1.0)))
+                equalities.append(TypeEquality(unit-type, id, unit-ratio(1.0, ratio)))
+                set-flag(id, .flag-equalities)
+                set-flag(unit-type, .flag-equalities)
+
+────────────────────
+_ unit-ratio UnitRatio
+    - multiplier F64
+    - divisor F64
+
+if is-whole then UnitRatio(multiplier, divisor) else UnitRatio(multiplier / divisor, 1.0)
+
+.. limit = 9007199254740992.0
+.. is-whole = divisor > -limit && divisor < limit && ((divisor as I64) as F64) == divisor
+
+────────────────────
+_ do commit-items RowRange'TypeId
+    - start Size
+    - end Size
+
+?! Panic("Types child pool exceeds U32 capacity")
+    if children.length >= U32.max
+
+. first = children.length
+for index in start .. < end
+    children.push(scratch.types[index])
+= RowRange'TypeId(first as U32, (children.length - first) as U32)
+
+────────────────────
+_ do commit-properties
+    - id TypeId
+    - mark ScratchMark
+
+. first = properties.length
+for fact in property-scratch[mark .. < property-scratch.length]
+    . copied = TypeProperty(fact.name, fact.storage-kind, fact.slot, fact.type, fact.owner)
+    properties.append(copied)
+property-scratch.truncate(mark)
+. count = properties.length - first
+completions[id].properties = RowRange'TypeProperty(first as U32, count as U32)
+if count > property-scan-limit
+    for offset in 0 .. < count
+        . place = first + count - 1 - offset
+        property-places[MemberKey(id, properties[place].name)] = place as U32
+
+────────────────────
+_ do commit-cases
+    - id TypeId
+    - mark ScratchMark
+
+. first = cases.length
+for fact in case-scratch[mark .. < case-scratch.length]
+    cases.append(TypeCase(fact.name, fact.type, fact.is-default))
+case-scratch.truncate(mark)
+completions[id].cases = RowRange'TypeCase(first as U32, (cases.length - first) as U32)
+
+────────────────────
+_ do commit-associated
+    - id TypeId
+    - mark ScratchMark
+
+. first = associated-types.length
+for fact in associated-scratch[mark .. < associated-scratch.length]
+    associated-types.append(TypeAssociated(fact.name, fact.type))
+associated-scratch.truncate(mark)
+completions[id].associated = RowRange'TypeAssociated
+    - first as U32
+    - (associated-types.length - first) as U32
+
+────────────────────
+_ do set-ranges
+    - id TypeId
+    - interfaces RowRange'TypeId
+    - alternatives RowRange'TypeId
+    - converters RowRange'TypeId
+    - fromverters RowRange'TypeId
+
+completions[id].interfaces = interfaces
+completions[id].alternatives = alternatives
+completions[id].converters = converters
+completions[id].fromverters = fromverters
+
+────────────────────
+_ do set-completion
+    - id TypeId
+    - completion CompletionState
+    - type IntrinsicKind
+    - base TypeId? = null
+
+completions[id].completion = completion
+completions[id].base = base ?? no-type
+completions[id].intrinsic = type
+completions[id].bit-size = intrinsic-bit-size(type)
+completions[id].is-signed = intrinsic-is-signed(type)
+completions[id].is-pointer = intrinsic-is-pointer(type)
+completions[id].is-struct = intrinsic-is-struct(type)
+
+
+────────────────────
+_ do add-completion
+    - owner-key StableKey = 0
+
+. empty = RowRange'TypeId()
+. row = TypeCompletion
+    - .completion-unstarted
+    - no-type
+    - .none
+    - 0
+    - false
+    - false
+    - false
+    - empty
+    - empty
+    - empty
+    - empty
+    - empty
+    - empty
+    - empty
+    - empty
+    - RowRange'Atom()
+    - false
+    - false
+    - false
+    - false
+completions.append(row)
+stable-keys += stable-key((completions.length - 1) as TypeId, owner-key)
+check-alignment()
+
+────────────────────
+_ do stable-key StableKey
+    - id TypeId
+    - owner-key StableKey
+
+` Hashed from the type's kind, its declaration, and the keys of the types it is made of. A
+` closure's also takes the key of the instance it is written in.
+. key = stable-key-seed
+do match? rows[id]
+    | .type-invalid
+        key = mixed(key, TypeTag.invalid)
+    | .type-class(row)
+        key = keyed-range(keyed-decl(key, TypeTag.class, row.module, row.decl), row.args)
+        if row.errors.count != 0
+            key = keyed-range(mixed(key, TypeTag.raising-class), row.errors)
+    | .type-variable(row)
+        key = mixed(keyed-decl(key, TypeTag.variable, row.module, row.decl), row.index)
+    | .type-inference(row)
+        key = mixed(mixed(mixed(key, TypeTag.inference), row.scope), row.ordinal)
+    | .type-tuple(row)
+        key = keyed-names(keyed-range(mixed(key, TypeTag.tuple), row.fields), row.names)
+    | .type-struct(row)
+        key = keyed-names(keyed-range(mixed(key, TypeTag.struct), row.fields), row.names)
+    | .type-union(row)
+        key = keyed-range(mixed(key, TypeTag.union), row.cases)
+    | .type-named-union(row)
+        key = mixed-text(mixed(key, TypeTag.named-union), row.owner.text)
+        key = keyed-names(keyed-range(key, row.cases), row.names)
+        if row.made-at != 0
+            key = mixed(mixed(key, row.made-in), row.made-at)
+    | .type-function(row)
+        key = mixed(mixed(key, TypeTag.function), key-of(row.return-type))
+        key = mixed(key, if row.is-c then 1u64 else 0u64)
+        key = keyed-range(keyed-range(key, row.args), row.errors)
+    | .type-result(row)
+        key = mixed(mixed(key, TypeTag.result), key-of(row.value))
+        key = keyed-range(key, row.errors)
+    | .type-associated(row)
+        key = keyed-decl(key, TypeTag.associated, row.module, row.decl)
+        key = mixed-text(mixed(key, key-of(row.owner)), row.name.text)
+        key = keyed-range(key, row.args)
+    | .type-closure(row)
+        key = mixed(keyed-decl(key, TypeTag.closure, row.module, row.decl), owner-key)
+    | .type-binding(row)
+        key = mixed
+            - mixed(keyed-decl(key, TypeTag.binding, row.module, row.decl), row.form)
+            - row.scope
+        key = mixed(mixed(key, key-of(row.object)), row.param-count)
+        key = keyed-range(key, row.items)
+= key
+
+────────────────────
++ key-of StableKey
+    - type TypeId
+
+|? type == no-type
+    0
+??
+    stable-keys[type]
+
+────────────────────
+_ keyed-decl StableKey
+    - key StableKey
+    - tag U32
+    - module ModuleId
+    - decl DeclId
+
+mixed(mixed(mixed(key, tag), module), decl)
+
+────────────────────
+_ do keyed-range StableKey
+    - key StableKey
+    - range RowRange'TypeId
+
+. result = mixed(key, range.count)
+for offset in 0 .. < range.count
+    result = mixed(result, key-of(children[range.start + offset]))
+= result
+
+────────────────────
+_ do keyed-names StableKey
+    - key StableKey
+    - range RowRange'Atom
+
+. result = mixed(key, range.count)
+for offset in 0 .. < range.count
+    result = mixed-text(result, atoms[range.start + offset].text)
+= result
+
+────────────────────
+_ do set-flag
+    - id TypeId
+    - flag FactFlag
+
+match flag
+    |= .flag-builtin
+        completions[id].is-builtin = true
+    |= .flag-variables
+        completions[id].has-variables = true
+    |= .flag-equalities
+        completions[id].has-equalities = true
+    ??
+        completions[id].has-enums = true
+
+────────────────────
+_ do note-children
+    - id TypeId
+    - range RowRange'TypeId
+
+for offset in 0 .. < range.count
+    note-child(id, child-type(range, offset))
+
+────────────────────
+_ do note-child
+    - id TypeId
+    - child TypeId
+
+` A type holds a variable when anything it is made of does, and a closure the same way. A
+` function that takes a closure is typed while the function the closure is written in still
+` runs, so a call has to know which types hold one.
+if completions[child].has-variables
+    completions[id].has-variables = true
+if completions[child].has-closures
+    completions[id].has-closures = true
+
+────────────────────
+_ do store-items RowRange'TypeId
+    - mark ScratchMark
+
+?! Panic("Types child pool exceeds U32 capacity")
+    if children.length >= U32.max
+
+. start = children.length
+for index in mark .. < scratch.types.length
+    children.push(scratch.types[index])
+= RowRange'TypeId(start as U32, (children.length - start) as U32)
+
+────────────────────
+_ do store-names RowRange'Atom
+    - mark ScratchMark
+
+?! Panic("Types name pool exceeds U32 capacity")
+    if atoms.length >= U32.max
+
+. start = atoms.length
+for index in mark .. < scratch.names.length
+    atoms += scratch.names[index]
+= RowRange'Atom(start as U32, (atoms.length - start) as U32)
+
+────────────────────
+_ do ensure-scratch
+    - count Size
+
+if count > key-scratch.length
+    . capacity = key-scratch.length
+    while capacity < count
+        capacity *= 2
+    key-scratch = key-scratch.resize(capacity, arena)
+
+────────────────────
+_ do check-alignment
+
+?! Panic("Types row, fact, and key tables are misaligned")
+    if rows.length != keys.length || completions.length != keys.length
+?! Panic("Types rows and stable keys are misaligned")
+    if stable-keys.length != keys.length
+
+────────────────────
++ do has-subclasses Bool
+    - id TypeId
+
+scan-subclasses()
+= subclassed-decls[class-decl-key(id)] == true
+
+────────────────────
+_ do scan-subclasses
+
+=? if subclass-scan-done
+subclass-scan-done = true
+. module = 0u32
+for owner in program.modules
+    . decl = 0u32
+    for row in owner.decls
+        do match? row
+            | .decl-class
+                note-bases(module, decl)
+        decl += 1
+    module += 1
+
+────────────────────
++ do declares-subclass-interface Bool
+    - id TypeId
+    - interface TypeId
+
+` Whether a class declared below a class, at any depth, declares an interface, or one it
+` may be derived from, as the reference's `declaresSubclassInterface` reads the declarations:
+` a class cast to such an interface is tested for it as the program runs. An interface a
+` class declares that names no type may be any.
+scan-subclasses()
+. target = class-decl-key(interface)
+. keys [Size]
+keys += class-decl-key(id)
+. index = 0
+while index < keys.length
+    . link = subclass-heads[keys[index]] ?? 0
+    index += 1
+    while link != 0
+        . packed = subclass-decls[link - 1]
+        link = subclass-links[link - 1]
+        if keys.find(packed) != null
+            continue
+        keys += packed
+        . module = (packed /rshift/ 32) as ModuleId
+        . decl = (packed /and/ 0xffffffff) as DeclId
+        . written = RowRange'SyntaxId()
+        do match? program.modules[module].decls[decl]
+            | .decl-class(row)
+                written = row.interfaces
+        . env = class-env(module, decl)
+        . tree = program.modules[module].tree
+        for syntax in program.modules[module].syntax-pool[written]
+            . named = evaluate-type(module, tree, syntax, env)
+            if named == invalid-type || class-decl-key(named) == target || reaches
+                env-release(env)
+                = true
+            .. reaches = interface-reaches(named, target)
+        env-release(env)
+= false
+
+────────────────────
+_ do interface-reaches Bool
+    - id TypeId
+    - target Size
+
+` Whether an interface is derived from the one a declaration key names.
+for interface in interfaces-of(id)
+    if class-decl-key(interface) == target || interface-reaches(interface, target)
+        = true
+= false
+
+────────────────────
+_ class-decl-key Size
+    - id TypeId
+
+match rows[id]
+    | .type-class(row)
+        DeclRef(row.module, row.decl).key
+    ??
+        Size.max
+
+────────────────────
+_ do note-bases
+    - module ModuleId
+    - decl DeclId
+
+` Marks the class a class declares as its base as one with subclasses, from the base as written,
+` as the reference's `registerDeclaredSubclasses` does: the class declared is not made for it, so
+` a class nothing uses is never typed.
+. base-syntax SyntaxId = 0
+do match? program.modules[module].decls[decl]
+    | .decl-class(row)
+        base-syntax = row.base
+if base-syntax == 0
+    =
+. env = class-env(module, decl)
+. base = evaluate-type(module, program.modules[module].tree, base-syntax, env)
+env-release(env)
+. key = class-decl-key(base)
+if key != Size.max
+    subclassed-decls[key] = true
+    subclass-decls += pack-decl(module, decl)
+    subclass-links += subclass-heads[key] ?? 0
+    subclass-heads[key] = subclass-decls.length as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ pack-decl Size
+    - module ModuleId
+    - decl DeclId
+
+((module as Size) /lshift/ 32) /or/ (decl as Size)
+
+━━━━━━━━━━━━━━━━━━━━
++ class-ref DeclRef
+    - types Types
+    - type TypeId
+
+match types.rows[type]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+    ??
+        DeclRef(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do same-class Bool
+    - types Types
+    - type TypeId
+    - other TypeId
+
+` Whether two types are each a class, and the same class whatever the arguments of each.
+do match? types.rows[type]
+    | .type-class(row)
+        do match? types.rows[other]
+            | .type-class(of)
+                = row.module == of.module && row.decl == of.decl
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do function-row TypeId
+    - types Types
+    - id TypeId
+
+` The function type a type is, or the one a class it derives from is, completing the classes it
+` passes through; no type for any other.
+do match? types.rows[id]
+    | .type-function
+        = id
+    | .type-class
+        types.complete(id)
+        . base = types.base-of(id)
+        if base
+            = function-row(types, base)
+= no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ carries-own-errors Bool
+    - types Types
+    - id TypeId
+
+` Whether a type is a class whose value is a function that raises errors its declaration
+` does not state, as the generator of a function that yields and raises is.
+match types.rows[id]
+    | .type-class(row)
+        row.errors.count != 0
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-c-function Bool
+    - types Types
+    - id TypeId
+
+` Whether a type is a C function's: a value of it is code alone, with no data beside it.
+. fn = function-row(types, id)
+if fn != no-type
+    do match? types.rows[fn]
+        | .type-function(row)
+            = row.is-c
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ class-arg TypeId
+    - types Types
+    - id TypeId
+    - index U32
+
+match types.rows[id]
+    | .type-class(row)
+        if index < row.args.count then types.child-type(row.args, index) else no-type
+    ??
+        no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ row-union TypeId
+    - types Types
+    - receiver TypeId
+
+` The union a table row is a row of, and no type for a row of anything else.
+|? kind != .table-row && kind != .immutable-table-row
+    no-type
+|? row == no-type || types.intrinsic-of(row) != .union
+    no-type
+??
+    row
+
+.. kind = types.intrinsic-of(receiver)
+.. row = class-arg(types, receiver, 0)

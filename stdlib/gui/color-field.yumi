@@ -1,0 +1,172 @@
+./box
+./color-picker
+./color-well
+./events
+./number-field
+./position
+./primitives
+./shorthands
+./styles
+./text-input
+./theme
+/graphics/color
+/graphics/primitives
+/graphics/text
+/math
+/ui/value-change-phase
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxCursor
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUIFocusRingStyle
+    using GUIFontStyle
+    using GUITextPaint
+
+• ColorField • bg:gui-field-color text:gui-text-color h:gui-control-height pl:3 pr:6
+    font-size = gui-control-font-size
+    corner-radius = gui-control-radius
+    shadow = gui-control-shadow
+
+    when #is-focus-within
+        focus-ring = gui-focus-ring
+        motion.focus-ring = gui-motion-quick
+
+    • ColorWell
+        when #is-focus-visible
+            focus-ring = null
+
+    • color-field-hex • ml:6
+        min-height = gui-control-height - 2
+        max-height = gui-control-height - 2
+
+    • color-field-alpha • bg:null w:46 ml:4 pl:0 pr:0
+        min-height = gui-control-height - 2
+        max-height = gui-control-height - 2
+        shadow = null
+        when #is-focus-within
+            focus-ring = null
+
+        • number-field-entry
+            text-alignment = TextAlignment.right
+
+━━━━━━━━━━━━━━━━━━━━
++ ColorField is Box
+
++ color = RGBA(0, 0, 0)
++ is-mixed = false
++ live-edit-delay = gui-live-edit-delay
++ event value-changing ValueChange'RGBA
++ event value-changed ValueChange'RGBA
+
+_ is-live-applying = false
+
+────────────────────
+
+<This • flex-row
+    <ColorWell well
+        align-y = Alignment.center
+        color = #color
+        is-mixed = #is-mixed
+        for event on value-changed
+            accept-color(event.value, event.phase)
+    <TextInput hex-entry • color-field-hex flex:1
+        is-bare = true
+        align-y = Alignment.center
+        text = color-field-hex-text(#color, #is-mixed)
+        placeholder = if #is-mixed then "Mixed" else ""
+        live-edit-delay = #live-edit-delay
+        for event on text-edited
+            accept-hex-edit(event.text, event.phase)
+            event.cancel()
+        for event on change
+            accept-hex(event.text)
+            event.cancel()
+    <NumberField alpha-entry • color-field-alpha
+        align-y = Alignment.center
+        value = round(clamp-unit(#color.alpha) * 100)
+        minimum = 0
+        maximum = 100
+        precision = 0
+        unit = "%"
+        scrub-handle = NumberFieldScrubHandle.unit
+        is-mixed = #is-mixed
+        live-edit-delay = #live-edit-delay
+        for event on value-changed
+            accept-color(color.with-alpha(event.value / 100), event.phase)
+
+────────────────────
++ do accept-color
+    - next RGBA
+    - phase ValueChangePhase = ValueChangePhase.discrete
+
+=? if !is-effectively-enabled
+. old = color
+. unchanged = pack-rgba8(old) == pack-rgba8(next) && !is-mixed
+=? if unchanged && (phase == ValueChangePhase.discrete || phase == ValueChangePhase.changed)
+if !unchanged
+    . change = ValueChange'RGBA(old, next, phase)
+    value-changing <- change
+    =? if change.is-canceled
+color = next
+is-mixed = false
+value-changed <- ValueChange'RGBA(old, next, phase)
+
+────────────────────
++ do accept-hex
+    - text String
+
+. parsed = color-input-value(text, color.alpha)
+if parsed
+    accept-color(parsed)
+hex-entry.text = color-field-hex-text(color, is-mixed)
+
+────────────────────
++ do accept-hex-edit
+    - text String
+    - phase ValueChangePhase
+
+. parsed = color-input-value(text, color.alpha)
+if phase == ValueChangePhase.ended
+    finish-live-edit(parsed)
+    hex-entry.text = color-field-hex-text(color, is-mixed)
+    =
+=? if !parsed || !color-field-hex-is-complete(text)
+apply-live-edit(parsed)
+
+────────────────────
+_ do apply-live-edit
+    - next RGBA
+
+. phase = if is-live-applying then ValueChangePhase.changed else ValueChangePhase.began
+is-live-applying = true
+accept-color(next, phase)
+
+────────────────────
+_ do finish-live-edit
+    - next RGBA?
+
+if is-live-applying
+    is-live-applying = false
+    accept-color(next ?? color, ValueChangePhase.ended)
+else if next
+    accept-color(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ color-field-hex-text String
+    - color RGBA
+    - is-mixed Bool
+
+if is-mixed then "" else hex-text(color)
+
+━━━━━━━━━━━━━━━━━━━━
++ color-field-hex-is-complete Bool
+    - text String
+
+digits.length == 6 || digits.length == 8
+
+.. trimmed = text.trim()
+.. digits = if trimmed.starts-with("#") then trimmed[1 .. < trimmed.length] else trimmed

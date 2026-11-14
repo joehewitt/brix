@@ -1,0 +1,188 @@
+/graphics/curve
+/graphics/network
+/graphics/path
+/graphics/point
+/graphics/tests/support/geometry
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Network Exact Editing")
+cases.run(editing-tests)
+cases = cases.then("Network Handle Constraints", handle-tests)
+cases = cases.then("Network Vertex Duplication", duplication-tests)
+cases = cases.then("Network Adjacent Vertex Duplication", adjacent-duplication-tests)
+cases = cases.then("Network Path Conversion", path-tests)
+cases = cases.then("Network Reversal", reversal-tests)
+= cases.then("Network Update Scopes", update-scope-tests)
+
+━━━━━━━━━━━━━━━━━━━━
++ do editing-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. a = net.add-vertex((0, 0))
+. b = net.add-vertex((100, 0))
+. id = net.connect(a, b, (0, 100), (0, 100))
+. p = network-curve-point(net.curve(id), 0.5)
+net.bend(id, 0.5, (4, 8), false, false, false)
+t.check
+    - "bend moves grabbed point exactly"
+    - near-point(p + Point(4, 8), network-curve-point(net.curve(id), 0.5))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do path-tests
+    - t TestCase
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(50, 0)
+path.line-to(50, 50)
+path.close()
+path.move-to(0, 0)
+path.line-to(-50, 0)
+. net = network-from-path(path)
+t.expect("coincident subpaths are not welded", 5, net.vertex-count)
+t.expect("closing edge is explicit", 4, net.segment-count)
+t.expect("conversion retains every curve", 4, net.geometry().curve-count)
+t.expect("conversion retains separate traces", 2, net.traces().length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do reversal-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. a = net.add-vertex((0, 0))
+. b = net.add-vertex((100, 0))
+. c = net.add-vertex((100, 100))
+. first = net.connect(a, b, (20, 0), (-20, 10))
+. second = net.connect(b, c, (30, 40), (0, -20))
+net.pair-handles(NetworkEnd(first, true), NetworkEnd(second), false)
+. forward = net.geometry()
+net.reverse()
+. backward = net.geometry()
+t.expect("the outline starts at the old end", Point(100, 100), backward.first-point)
+t.expect("the outline ends at the old start", Point(0, 0), backward.last-point)
+. last = forward.get-curve(1)
+t.expect
+    - "the first curve is the old last curve backwards"
+    - Curve(last.anchor2, last.handle-in, last.handle-out, last.anchor1)
+    - backward.get-curve(0)
+net.set-handle(NetworkEnd(first), (0, 10))
+t.expect
+    - "paired handles stay paired at their vertex"
+    - Point(0, -50)
+    - net.segment(second).tangent-end
+
+. loop = VectorNetwork()
+. corners = List'Index
+    - loop.add-vertex(each) in [Point(0, 0), Point(100, 0), Point(100, 100), Point(0, 100)]
+for index in 0 .. < 4
+    loop.connect(corners[index], corners[(index + 1) % 4])
+loop.reverse()
+. turned = loop.geometry()
+t.check("a closed loop stays closed", turned.is-closed)
+t.expect("a closed loop keeps its start", Point(0, 0), turned.first-point)
+t.expect("a closed loop runs the other way", Point(0, 100), turned.get-curve(0).anchor2)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do handle-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. a = net.add-vertex((0, 0))
+. b = net.add-vertex((100, 0))
+. c = net.add-vertex((200, 0))
+. first = net.connect(a, b, (0, 0), (-20, 0))
+. second = net.connect(b, c, (40, 0), (0, 0))
+net.pair-handles(NetworkEnd(first, true), NetworkEnd(second), true)
+net.connect(b, net.add-vertex((100, 100)), (0, 20))
+net.split(first, 0.5)
+net.set-handle(NetworkEnd(second), (10, 10))
+t.check
+    - "split transfers pair to retained endpoint"
+    - net.segment(4).tangent-end.distance((-10, -10)) < 0.00001
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do duplication-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. a = net.add-vertex((0, 0))
+. b = net.add-vertex((100, 0))
+. c = net.add-vertex((200, 0))
+. first = net.connect(a, b, (20, 0), (-20, 0))
+. second = net.connect(b, c, (20, 0), (-20, 0))
+net.pair-handles(NetworkEnd(first, true), NetworkEnd(second), true)
+. selected [Index]
+selected += b
+. duplicates = net.duplicate-vertices(selected)
+t.expect("duplicated vertex retains both incident segments", 2, net.degree(duplicates[0]))
+t.expect("original vertex retains its incident segments", 2, net.degree(b))
+net.set-handle(NetworkEnd(3, true), (0, -10))
+t.expect("duplicated smooth handles remain paired", Point(0, 10), net.segment(4).tangent-start)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do adjacent-duplication-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. a = net.add-vertex((0, 0))
+. b = net.add-vertex((100, 0))
+. c = net.add-vertex((200, 0))
+net.connect(a, b)
+net.connect(b, c)
+. duplicates = net.duplicate-vertices([b, a])
+t.expect("only the duplicates are added", 5, net.vertex-count)
+t.expect("the shared segment is copied once", 4, net.segment-count)
+t.expect("the inner duplicate keeps both copied segments", 2, net.degree(duplicates[0]))
+t.expect("the outer duplicate keeps the one shared copy", 1, net.degree(duplicates[1]))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do update-scope-tests
+    - t TestCase
+
+. net = VectorNetwork()
+. observer = ScopeMutationObserver()
+net.subscribe(observer)
+do use net.updating
+    net.add-vertex((0, 0))
+    do use net.updating
+        net.add-vertex((1, 1))
+    t.expect("nested updates defer notification", 0, observer.count)
+t.expect("leaving the outer update publishes once", 1, observer.count)
+. failure = catch failed-scoped-update(net)
+t.expect("the update preserves errors", "scope failure", failure as String)
+t.expect("error unwinding publishes the mutation", 2, observer.count)
+net.add-vertex((3, 3))
+t.expect("error unwinding restores update depth", 3, observer.count)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do failed-scoped-update
+    - net VectorNetwork
+
+use net.updating
+net.add-vertex((2, 2))
+?! Error("scope failure")
+
+━━━━━━━━━━━━━━━━━━━━
+_ ScopeMutationObserver is NetworkMutationObserver
+
++ count Size
+
+────────────────────
++ do network-mutated
+    - network VectorNetwork
+    - revision Size
+
+count += 1

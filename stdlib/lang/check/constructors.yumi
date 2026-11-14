@@ -1,0 +1,431 @@
+./type-relation
+./type-store
+./types
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/viability
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorCandidate is Tuple
+
++ module ModuleId
++ decl DeclId
++ owner TypeId
++ viability ViabilityKind
+
+━━━━━━━━━━━━━━━━━━━━
++ GeneratedFamily is U32
+
+| no-generated = 0
+| plain-generated = 1
+| tuple-generated = 2
+| typed-generated = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ generated-family GeneratedFamily
+    - tag IntrinsicKind
+
+match tag
+    |= .interface
+        .no-generated
+    |= .function
+        .no-generated
+    |= .cfunction
+        .no-generated
+    |= .closure
+        .no-generated
+    |= .capture
+        .no-generated
+    |= .tuple
+        .tuple-generated
+    |= .struct
+        .tuple-generated
+    |= .array-builder
+        .tuple-generated
+    |= .table-row
+        .tuple-generated
+    |= .table-span
+        .tuple-generated
+    |= .table-selection
+        .tuple-generated
+    |= .table-column
+        .tuple-generated
+    |= .table-mark
+        .tuple-generated
+    |= .immutable-table-row
+        .tuple-generated
+    |= .immutable-table-span
+        .tuple-generated
+    |= .immutable-table-selection
+        .tuple-generated
+    |= .immutable-table-column
+        .tuple-generated
+    |= .table
+        .typed-generated
+    |= .immutable-table
+        .typed-generated
+    |= .index-span
+        .typed-generated
+    ??
+        .plain-generated
+
+━━━━━━━━━━━━━━━━━━━━
++ do constructor-candidates
+    - relations Relations
+    - type TypeId
+    - calls [CallArgument]
+    - into [ConstructorCandidate]
+    - caller ModuleId? = null
+    - first-arg TypeId = no-type
+    - sole TypeId = no-type
+
+` `sole` is the type of the one field of a tuple called with one value, as the caller worked
+` it out where the tuple does not write it.
+. types = relations.types
+. program = types.program
+. slots [U32]
+into.clear()
+gather-constructors(relations, type, type, calls, into, slots, true, caller, first-arg, sole)
+
+━━━━━━━━━━━━━━━━━━━━
++ do candidate-text String
+    - program Program
+    - candidate ConstructorCandidate
+
+. module = program.modules[candidate.module]
+. kind = "?"
+. owner-name = "?"
+. ordinal = ""
+do match? module.decls[candidate.decl]
+    | .decl-function(row)
+        kind = match row.kind
+            |= .default-constructor-decl
+                "default"
+            |= .cast-constructor-decl
+                "cast"
+            |= .tuple-constructor-decl
+                "tuple"
+            ??
+                "declared"
+        do match? module.decls[row.owner]
+            | .decl-class(owner)
+                owner-name = owner.name.text
+                if row.kind == .constructor-decl
+                    ordinal = "#${constructor-ordinal(module, owner.members, candidate.decl)}"
+            | .decl-extension(owner)
+                kind = "extension"
+                owner-name = "${module.name}#${extension-ordinal(module, row.owner)}"
+                ordinal = "#${constructor-ordinal(module, owner.members, candidate.decl)}"
+. partial = if candidate.viability == .partially-viable then "~" else ""
+= "$kind:$owner-name$ordinal$partial"
+
+━━━━━━━━━━━━━━━━━━━━
++ do viable-fields Bool
+    - types Types
+    - owner TypeId
+    - calls [CallArgument]
+
+. completion = types.completions[owner]
+. names [Atom]
+for fact in types.properties[completion.properties]
+    if fact.slot != U32.max
+        names += fact.name
+. count = names.length
+. occupied [Bool]
+for _ in 0 .. < count
+    occupied += false
+. supplied = 0
+for call in calls
+    if !call.is-skipped && !call.is-property
+        supplied += 1
+if supplied == 0 || supplied > count
+    = false
+` The index is a Size so the not-found sentinel stays above every count instead of becoming
+` a negative signed index.
+. next Size = 0
+for call in calls
+    if call.is-skipped || call.is-property
+        continue
+    while next < count && occupied[next]
+        next += 1
+    . index Size = next
+    if call.name
+        index = field-index(names, call.name)
+    if index >= count || occupied[index]
+        = false
+    occupied[index] = true
+    if index == next
+        next += 1
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gives-field Bool
+    - types Types
+    - owner TypeId
+    - calls [CallArgument]
+    - given TypeId
+    - sole TypeId
+
+` Whether the one argument of a call of a tuple is a field of it and not a value to convert
+` to it: an argument that names a field, or one of the type of the tuple's only field, which
+` is `sole` where the tuple does not write it.
+. name Atom? = null
+for call in calls
+    if !call.is-skipped && !call.is-property
+        name = call.name
+. fields = 0
+. written = no-type
+. is-named = false
+for fact in types.properties[types.completions[owner].properties]
+    if fact.slot == U32.max
+        continue
+    fields += 1
+    written = fact.type
+    if name && fact.name == name
+        is-named = true
+if name
+    = is-named
+= fields == 1 && (if written != no-type then written else sole) == given
+
+━━━━━━━━━━━━━━━━━━━━
+_ do field-index Size
+    - names [Atom]
+    - name Atom
+
+. index = 0
+for candidate in names
+    if candidate == name
+        = index
+    index += 1
+= Size.max
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gather-constructors
+    - relations Relations
+    - current TypeId
+    - outer TypeId
+    - calls [CallArgument]
+    - into [ConstructorCandidate]
+    - slots [U32]
+    - is-outer Bool
+    - caller ModuleId?
+    - first-arg TypeId = no-type
+    - sole TypeId = no-type
+
+. types = relations.types
+. program = types.program
+. ref = match? types.rows[current]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+    | .type-tuple(row)
+        DeclRef(row.module, row.decl)
+    | .type-struct(row)
+        DeclRef(row.module, row.decl)
+    | .type-union(row)
+        DeclRef(row.module, row.decl)
+    | .type-named-union(row)
+        DeclRef(row.module, row.decl)
+if !ref
+    =
+. declaring = ref
+. module = program.modules[declaring.module]
+. members = match? module.decls[declaring.decl]
+    | .decl-class(row)
+        row.members
+if !members
+    =
+. range = members
+types.ensure-representation(current)
+if is-outer
+    . family = generated-family(types.completions[current].intrinsic)
+    . supplied = supplied-count(calls)
+    if family == .typed-generated
+        . arena = first-arg != no-type && types.is-arena(first-arg)
+        . source = first-arg != no-type && is-index-source(types, first-arg)
+        . owner = declaring.module
+        . shape = TableCall(supplied, arena, source)
+        add-table-generated(module, owner, range, calls, into, slots, outer, shape)
+    else if family == .tuple-generated && supplied == 1 && first-arg != no-type
+        . hit = relations.fromverter-owner(outer, first-arg, caller)
+        . converts = hit.owner != no-type && hit.module != U32.max
+        if converts && !gives-field(types, outer, calls, first-arg, sole)
+            into += ConstructorCandidate(hit.module, hit.decl, outer, .fully-viable)
+        else
+            add-generated(types, module, declaring.module, range, calls, into, slots, outer, family)
+    else
+        add-generated(types, module, declaring.module, range, calls, into, slots, outer, family)
+        if supplied == 1 && first-arg != no-type && relations.reads-text-as-number(first-arg, outer)
+            . read = relations.fromverter-owner(outer, first-arg, caller)
+            if read.owner != no-type && read.module != U32.max
+                into += ConstructorCandidate(read.module, read.decl, outer, .fully-viable)
+. base = types.base-of(current)
+if base
+    gather-constructors(relations, base, outer, calls, into, slots, false, caller, first-arg, sole)
+if caller
+    for extension in program.extensions-for(caller, declaring.module, declaring.decl)
+        . owner = program.modules[extension.module]
+        do match? owner.decls[extension.decl]
+            | .decl-extension(row)
+                . home = extension.module
+                add-declared(owner, home, row.members, calls, into, slots, outer, caller)
+add-declared(module, declaring.module, range, calls, into, slots, outer, caller)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-generated
+    - types Types
+    - module Module
+    - module-index ModuleId
+    - range RowRange'DeclId
+    - calls [CallArgument]
+    - into [ConstructorCandidate]
+    - slots [U32]
+    - owner TypeId
+    - family GeneratedFamily
+
+if range.count == 0 || family == .no-generated || family == .typed-generated
+    =
+for member in module.member-pool[range]
+    do match? module.decls[member]
+        | .decl-function(row)
+            . accepted = match row.kind
+                |= .default-constructor-decl
+                    shapes-fit(module, row, calls, slots)
+                |= .cast-constructor-decl
+                    family == .plain-generated && shapes-fit(module, row, calls, slots)
+                |= .tuple-constructor-decl
+                    family == .tuple-generated && viable-fields(types, owner, calls)
+                ??
+                    false
+            if accepted
+                into += ConstructorCandidate(module-index, member, owner, .fully-viable)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do supplied-count Size
+    - calls [CallArgument]
+
+. supplied Size = 0
+for call in calls
+    if !call.is-skipped && !call.is-property
+        supplied += 1
+= supplied
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-index-source Bool
+    - types Types
+    - type TypeId
+
+` An index span reads its indices from an array, an immutable array, or an array builder an
+` arena backs.
+types.complete(type)
+do match? types.rows[type]
+    | .type-class(row)
+        if types.completions[type].intrinsic == .array-builder
+            = types.builder-item(type) != no-type
+        . array = types.array-decl
+        if row.module == array.module && row.decl == array.decl
+            = true
+        . immutable = types.immutable-array-decl
+        = row.module == immutable.module && row.decl == immutable.decl
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ TableCall is Tuple
+
+` What picks a table type's generated constructor: how many arguments the call supplies, and
+` whether its first is an arena or a source of indices.
+
++ supplied Size
++ arena Bool
++ source Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-table-generated
+    - module Module
+    - module-index ModuleId
+    - range RowRange'DeclId
+    - calls [CallArgument]
+    - into [ConstructorCandidate]
+    - slots [U32]
+    - owner TypeId
+    - shape TableCall
+
+. supplied = shape.supplied
+. arena = shape.arena
+if range.count == 0
+    =
+for member in module.member-pool[range]
+    do match? module.decls[member]
+        | .decl-function(row)
+            . accepted = match row.kind
+                |= .table-size-constructor-decl
+                    supplied == 1 && !arena
+                |= .table-arena-constructor-decl
+                    supplied == 1 && arena
+                |= .table-capacity-constructor-decl
+                    supplied == 2 && arena
+                |= .table-filler-constructor-decl
+                    supplied == 2 && !arena
+                |= .index-span-source-constructor-decl
+                    supplied == 1 && shape.source
+                |= .index-span-range-constructor-decl
+                    supplied == 2 && shape.source
+                ??
+                    false
+            if accepted && shapes-fit(module, row, calls, slots)
+                into += ConstructorCandidate(module-index, member, owner, .fully-viable)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shapes-fit Bool
+    - module Module
+    - row FunctionDecl
+    - calls [CallArgument]
+    - slots [U32]
+
+viable-shapes(module, row, calls, slots).kind == .fully-viable
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-declared
+    - module Module
+    - module-index ModuleId
+    - range RowRange'DeclId
+    - calls [CallArgument]
+    - into [ConstructorCandidate]
+    - slots [U32]
+    - owner TypeId
+    - caller ModuleId?
+
+` A private constructor constructs only for the module that declares it.
+if range.count == 0
+    =
+for member in module.member-pool[range]
+    do match? module.decls[member]
+        | .decl-function(row)
+            . open = match row.access
+                | .private-access
+                    caller == null || caller == module-index
+                ??
+                    true
+            if row.kind == .constructor-decl && open
+                . result = viable-shapes(module, row, calls, slots)
+                if result.kind != .not-viable
+                    into += ConstructorCandidate(module-index, member, owner, result.kind)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do constructor-ordinal U32
+    - module Module
+    - range RowRange'DeclId
+    - decl DeclId
+
+. ordinal = 0u32
+if range.count == 0
+    = ordinal
+for member in module.member-pool[range]
+    if member == decl
+        = ordinal
+    do match? module.decls[member]
+        | .decl-function(row)
+            if row.kind == .constructor-decl
+                ordinal += 1
+= ordinal

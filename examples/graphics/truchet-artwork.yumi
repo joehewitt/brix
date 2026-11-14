@@ -1,0 +1,247 @@
+./vector-scene
+/graphics/boolean
+/graphics/canvas
+/graphics/color
+/graphics/intersection
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/style
+/graphics/vector
+/graphics/vector-group
+/gui/generated-vector-image
+/math
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ TruchetParams
+
++ size = Dimensions(850, 850)
++ tile-radius Length = 20px
++ stroke-width Length = 1
++ seed U32 = 17u32
++ mix F64 = 0.5
++ fill-color RGBA? = "#000"
++ stroke-color RGBA?
++ background RGBA? = "#333333"
+
+━━━━━━━━━━━━━━━━━━━━
++ TruchetTiles
+
++ seed U32 = 0u32
++ mix F64 = 0.5
++ tile-radius Length = 20px
++ filled Bool = true
+
+────────────────────
++ do get-tiles-stroked
+    - tile1 Path
+
+. bbox = tile1.bounding-box
+. tile2 = Path(tile1)
+tile2.translate(Point(bbox.width, bbox.height))
+
+. quarter = tile1.curve-count / 4.0
+. half = tile1.curve-count / 2.0
+. tile3 = tile1.split-at-range(half, half + quarter)
+. arc2 = tile2.split-at-range(0, quarter)
+append-path-commands(tile3, arc2)
+
+bbox = tile3.bounding-box
+. tile4 = Path(tile3)
+tile4.rotate(90deg, bbox.center)
+tile3.translate(Point(-bbox.x, -bbox.y))
+tile4.translate(Point(-bbox.x, -bbox.y))
+
+= tile3, tile4
+
+────────────────────
++ do get-tiles-filled
+    - tile1 Path
+
+. bbox = tile1.bounding-box
+. tile2 = Path(tile1)
+tile2.translate(Point(bbox.width, bbox.height))
+
+. quarter = tile1.curve-count / 4.0
+. half = tile1.curve-count / 2.0
+. arc1 = tile1.split-at-range(half, half + quarter)
+. arc2 = tile2.split-at-range(0, quarter)
+
+. top-left = bbox.center
+. bottom-right = top-left + bbox.size
+. top-right = Point(bottom-right.x, top-left.y)
+. bottom-left = Point(top-left.x, bottom-right.y)
+
+. tile3 = Path()
+tile3.move-to(top-left)
+tile3.line-to(arc1.first-point)
+append-path-curves(tile3, arc1)
+tile3.line-to(top-left)
+
+tile3.move-to(bottom-right)
+tile3.line-to(arc2.first-point)
+append-path-curves(tile3, arc2)
+tile3.line-to(bottom-right)
+
+. tile4 = Path()
+tile4.move-to(arc1.first-point)
+tile4.line-to(top-right)
+tile4.line-to(arc2.last-point)
+
+. arc2r = arc2.reverse()
+append-path-curves(tile4, arc2r)
+
+tile4.line-to(bottom-left)
+tile4.line-to(arc1.last-point)
+
+. arc1r = arc1.reverse()
+append-path-curves(tile4, arc1r)
+
+tile4.line-to(arc1.first-point)
+
+bbox = Rect(top-left, bbox.size)
+
+. tile3b = Path(tile3)
+tile3b.rotate(90deg, bbox.center)
+. tile4b = Path(tile4)
+tile4b.rotate(90deg, bbox.center)
+
+tile3.translate(Point(-bbox.x, -bbox.y))
+tile4.translate(Point(-bbox.x, -bbox.y))
+tile3b.translate(Point(-bbox.x, -bbox.y))
+tile4b.translate(Point(-bbox.x, -bbox.y))
+
+= tile3, tile4, tile3b, tile4b
+
+────────────────────
++ do generate VectorGroup
+    - bounds Rect
+
+. source = circle((tile-radius, tile-radius), tile-radius)
+. paths [Path]
+if filled
+    . tile1, tile2, tile1b, tile2b = get-tiles-filled(source)
+    . bbox = tile1.bounding-box
+    . tile-size = Dimensions(max(bbox.width, bbox.height), max(bbox.width, bbox.height))
+    for row, col, offset in iterate-tiles(tile-size, bounds.size)
+        . tile =
+            |? (row + col) % 2 == 0
+                (if truchet-choice(row, col, seed, mix) then tile1 else tile2b)
+            ??
+                (if truchet-choice(row, col, seed, mix) then tile2 else tile1b)
+        . placed = Path(tile)
+        placed.translate(bounds.top-left + offset)
+        paths += placed
+else
+    . tile1, tile2 = get-tiles-stroked(source)
+    . bbox = tile1.bounding-box
+    . tile-size = Dimensions(max(bbox.width, bbox.height), max(bbox.width, bbox.height))
+    for row, col, offset in iterate-tiles(tile-size, bounds.size)
+        . tile = if truchet-choice(row, col, seed, mix) then tile1 else tile2
+        . placed = Path(tile)
+        placed.translate(bounds.top-left + offset)
+        paths += placed
+= VectorGroup(paths)
+
+━━━━━━━━━━━━━━━━━━━━
++ do truchet-artwork
+    - params TruchetParams
+
+. scene = VectorScene()
+scene.size = params.size
+scene.output = "/private/tmp/yumi-truchet1.png"
+scene.background = params.background
+
+. generator = TruchetTiles()
+generator.seed = params.seed
+generator.mix = params.mix
+generator.tile-radius = params.tile-radius
+generator.filled = !!params.fill-color
+
+. tiles = GeneratedVectorImage(generator.generate)
+tiles.fill = if params.fill-color then params.fill-color else Fill.none
+tiles.stroke = params.stroke-color ?? params.fill-color ?? Stroke.none
+tiles.stroke-width = params.stroke-width
+scene += tiles
+
+= scene
+
+━━━━━━━━━━━━━━━━━━━━
++ do iterate-tiles
+    - tile-size Dimensions
+    - container-size Dimensions
+
+. x Coord = 0
+. y Coord = 0
+. row = 0
+. col = 0
+while y < container-size.height
+    x = 0
+    col = 0
+
+    while x < container-size.width
+        if x < container-size.width
+            <= row, col, Point(x, y)
+        x += tile-size.width
+        col += 1
+
+    y += tile-size.height
+    row += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ truchet-choice
+    - row
+    - col
+    - seed U32
+    - mix F64
+
+truchet-score(row as U32, col as U32, seed) < threshold
+
+.. threshold = (clamped-mix * 1024.0) as U32
+.. clamped-mix = max(0.0, min(1.0, mix))
+
+━━━━━━━━━━━━━━━━━━━━
++ truchet-score
+    - row U32
+    - col U32
+    - seed U32
+
+(hash /xor/ (hash /rshift/ 16)) /and/ 1023
+
+.. hash =
+    ((mixed /xor/ (mixed /rshift/ 13)) * 1274126177)
+
+.. mixed = row * 374761393 + col * 668265263 + seed * 2246822519
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-path-commands
+    - target Path
+    - source Path
+
+. reader = source.command-reader
+while reader.next()
+    if reader.verb == .path-verb-move
+        target.move-to(reader.coord(0), reader.coord(1))
+    else if reader.verb == .path-verb-line
+        target.line-to(reader.coord(0), reader.coord(1))
+    else if reader.verb == .path-verb-cubic
+        target.cubic-curve-to()
+            - reader.coord(0)
+            - reader.coord(1)
+            - reader.coord(2)
+            - reader.coord(3)
+            - reader.coord(4)
+            - reader.coord(5)
+    else if reader.verb == .path-verb-close
+        target.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-path-curves
+    - target Path
+    - source Path
+
+. reader = source.curve-reader
+while reader.next()
+    target.add-curve(reader.curve)

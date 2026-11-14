@@ -1,0 +1,112 @@
+`benchmark.meta description: Incremental retained bytes per scroll-enabled Box after one scroll, at 1k/10k with collect-twice.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/primitives
+
+_ measured-bytes Size = 0
+_ measured-cells Size = 0
+
+. xs [F64]
+. ys [F64]
+. checksum Size = 0
+
+measure-variant(false, 1000)
+. enabled-1k = measured-bytes
+checksum += measured-cells
+measure-variant(true, 1000)
+. scrolled-1k = measured-bytes
+checksum += measured-cells
+. delta-1k = scrolled-1k - enabled-1k
+//gui.bench.memory.scroll-bytes-1k += delta-1k
+xs += 1000.0
+ys += delta-1k as F64
+
+measure-variant(false, 10000)
+. enabled-10k = measured-bytes
+checksum += measured-cells
+measure-variant(true, 10000)
+. scrolled-10k = measured-bytes
+checksum += measured-cells
+. delta-10k = scrolled-10k - enabled-10k
+//gui.bench.memory.scroll-bytes-10k += delta-10k
+xs += 10000.0
+ys += delta-10k as F64
+
+. scroll-slope-bytes = slope-of(xs, ys) as Size
+//gui.bench.memory.scroll-slope-bytes += scroll-slope-bytes
+
+-- "bench-result gui/memory-slope-scroll checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle-live Size
+
+C:yumiCollect()
+C:yumiCollect()
+= C:yumiGCLiveByteCount() as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ slope-of F64
+    - xs [F64]
+    - ys [F64]
+
+(ys[1] - ys[0]) / dx
+
+.. dx = xs[1] - xs[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure-variant
+    - should-scroll Bool
+    - cell-count Size
+
+. live0 = settle-live()
+. root = BenchRoot()
+markup-mount-root(root, root)
+. cells [Box]
+. rows = cell-count / 100
+for row-index in 0 .. < rows
+    . row = PlainRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 100
+        . cell = ScrollCell()
+        cells += cell
+        markup-append(row, cell)
+
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1200, 800))
+if should-scroll
+    for cell in cells
+        cell.arrange-bounds(Rect(0, 0, 10, 10))
+        cell.inner-height = 20
+        cell.scroll-by(Point(0, 1))
+
+. live = settle-live()
+measured-bytes = live - live0
+measured-cells = cells.length
+
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ PlainRow is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollCell is Box
+
+• This
+    overflow-y = ScrollOverflow.scroll

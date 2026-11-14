@@ -1,0 +1,67 @@
+./command
+
+━━━━━━━━━━━━━━━━━━━━
++ GitFileChange is Tuple
+
++ old-mode String
++ new-mode String
++ old-id String
++ new-id String
++ status String
++ path String
++ old-path String? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-changed-files ?! Error
+    - directory String
+    - base String
+    - target String
+    - index String? = null
+
+. is-root = base.length == 0
+. arguments = List'String
+    **? ["diff-tree", "--root", "--no-commit-id", "-r"] if is-root
+    *? "diff" if !is-root
+    ** ["--raw", "-z", "--no-abbrev", "-M", "--no-ext-diff", "--no-textconv"]
+    * "--diff-filter=ADMR"
+    * "--end-of-options"
+    *? base if !is-root
+    *? target if target.length > 0
+    * "--"
+= git-parse-changes(git-output(directory, arguments, null, index))
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-parse-changes ?! Error
+    - bytes Byte[]
+
+. fields = git-fields(bytes)
+. changes = List'GitFileChange()
+. index Index = 0
+while index < fields.length
+    . header = List'String(fields[index].split(" "))
+    ?! Error("Invalid Git raw output")
+        if header.length != 5 || !header[0].starts-with(":") || header[4].length == 0
+    . status = header[4][0 .. < 1]
+    . paths Index = if status == "R" || status == "C" then 2 else 1
+    ?! Error("Incomplete Git raw output")
+        if index + paths >= fields.length
+    . old-mode = header[0][1 ...]
+    . new-mode = header[1]
+    if git-is-regular-mode(old-mode) || git-is-regular-mode(new-mode)
+        . old-path = fields[index + 1] if paths == 2
+        changes += GitFileChange
+            - old-mode
+            - new-mode
+            - header[2]
+            - header[3]
+            - status
+            - fields[index + paths]
+            - old-path
+    index += paths + 1
+= changes
+
+━━━━━━━━━━━━━━━━━━━━
++ git-is-regular-mode
+    - mode String
+
+mode == "100644" || mode == "100755"

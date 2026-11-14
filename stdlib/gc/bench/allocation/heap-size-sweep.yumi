@@ -1,0 +1,49 @@
+`benchmark.meta description: Runs 100 MiB through 2 GiB heap goals over stable 1:8 scaled pointerful live sets.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,allocator,compile-timing
+
+/YuGC/YuGC.h
+
+` Each tier sets the real collector heap goal named here. One 128 KiB physical payload represents
+` one MiB of live application heap; the explicit 1:8 live-set scale keeps three-variant Stage-0
+` runs bounded while preserving the 20x graph-size and sweep progression.
+. heap-goal-tiers-mib = [100, 250, 500, 1000, 2000]
+. checksum = 0 as Size
+
+for nominal-mib in heap-goal-tiers-mib
+    C:yumiGCSetHeapGoal(nominal-mib * 1048576)
+    checksum += exercise-heap-tier(nominal-mib)
+    C:yumiGCCollect()
+
+-- "bench-result allocation/heap-size-sweep checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do exercise-heap-tier Size
+    - nominal-mib Int
+
+. pages [SyntheticHeapPage]
+. checksum = nominal-mib as Size
+
+for index in 0 .. < nominal-mib
+    . page = SyntheticHeapPage(index, Byte[131072])
+    page.payload[0] = (index % 251) as U8
+    page.payload[131071] = (nominal-mib % 251) as U8
+    if pages.length > 0
+        page.prior = pages[pages.length - 1]
+    pages += page
+    checksum += page.id + (page.payload[0] as Size) + (page.payload[131071] as Size)
+
+C:yumiGCCollect()
+= checksum + pages.length
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntheticHeapPage
+
++ id Int
++ payload Byte[]
++ prior SyntheticHeapPage?
+
+────────────────────
++ This
+    - id
+    - payload

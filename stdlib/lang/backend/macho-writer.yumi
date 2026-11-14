@@ -1,0 +1,232 @@
+./binary-writer
+./mir
+./object-builder
+./relocations
+/core/arena
+/lang/target
+
+_ mh-magic-64 U32 = 0xfeedfacf
+_ cpu-type-arm64 U32 = 0x0100000c
+_ cpu-subtype-arm64-all U32
+_ mh-object U32 = 1
+_ lc-segment-64 U32 = 0x19
+_ lc-symtab U32 = 2
+_ lc-dysymtab U32 = 0xb
+_ lc-build-version U32 = 0x32
+_ s-attr-pure-instructions U32 = 0x80000000
+_ s-attr-some-instructions U32 = 0x00000400
+_ n-ext U32 = 1
+_ section-names [String] = ["__text", "__cstring", "__const", "__yumi_trace", "__yumi_gcmap", "__yumi_gcroots", "__bss"]
+_ segment-names [String] = ["__TEXT", "__TEXT", "__DATA", "__DATA", "__DATA", "__DATA", "__DATA"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ MachOSectionType is U32
+
+| regular
+| zerofill
+| cstring-literals
+
+━━━━━━━━━━━━━━━━━━━━
+_ MachOSymbolType is U32
+
+| undf
+| sect = 0xe
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-macho ByteSpan
+    - builder ObjectBuilder
+    - platform Target
+
+` The object as Mach-O: one unnamed segment that holds every section at its own address, with
+` symbol values that are those addresses.
+layout-sections(builder)
+. sections = builder.sections
+. symbols = builder.symbols
+. order = builder.symbol-order
+. string-table = builder.string-table
+. section-count U32 = sections.length as U32
+. symbol-count U32 = symbols.length as U32
+. header-size U64 = 32
+. segment-command-size U32 = 72 + section-count * 80
+. size-of-commands U32 = segment-command-size + 24 + 24 + 80
+
+. cursor = header-size + size-of-commands
+for target in sections
+    if target.is-zero-fill
+        target.file-offset = 0
+    else
+        cursor = align-value(cursor, 1u64 /lshift/ target.alignment-power)
+        target.file-offset = cursor
+        cursor += target.size
+
+. segment-file-offset = cursor
+for target in sections
+    if !target.is-zero-fill && target.size > 0
+        segment-file-offset = target.file-offset
+        break
+. segment-file-end = segment-file-offset
+. segment-vm-size U64
+for target in sections
+    if !target.is-zero-fill && target.file-offset + target.size > segment-file-end
+        segment-file-end = target.file-offset + target.size
+    if target.address + target.size > segment-vm-size
+        segment-vm-size = target.address + target.size
+
+cursor = align-value(cursor, 8)
+for target in sections
+    if target.relocations.length == 0
+        target.reloc-offset = 0
+    else
+        target.reloc-offset = cursor
+        cursor += target.relocations.length * 8
+
+. symbol-offset = align-value(cursor, 8)
+. string-offset = symbol-offset + symbol-count * 16
+. total = string-offset + string-table.length
+check-layout(total)
+
+. writer = BinaryWriter(builder.arena, total as Size)
+writer.u32(mh-magic-64)
+writer.u32(cpu-type-arm64)
+writer.u32(cpu-subtype-arm64-all)
+writer.u32(mh-object)
+writer.u32(4)
+writer.u32(size-of-commands)
+writer.u32(0)
+writer.u32(0)
+
+writer.u32(lc-segment-64)
+writer.u32(segment-command-size)
+fixed-string(writer, "")
+writer.u64(0)
+writer.u64(segment-vm-size)
+writer.u64(segment-file-offset)
+writer.u64(segment-file-end - segment-file-offset)
+writer.u32(7)
+writer.u32(7)
+writer.u32(section-count)
+writer.u32(0)
+for index in 0 .. < section-count
+    . target = sections[index]
+    fixed-string(writer, section-names[index])
+    fixed-string(writer, segment-names[index])
+    writer.u64(target.address)
+    writer.u64(target.size)
+    writer.u32(target.file-offset as U32)
+    writer.u32(target.alignment-power)
+    writer.u32(target.reloc-offset as U32)
+    writer.u32(target.relocations.length as U32)
+    writer.u32(section-flags(index))
+    writer.u32(0)
+    writer.u32(0)
+    writer.u32(0)
+
+writer.u32(lc-build-version)
+writer.u32(24)
+writer.u32(platform.macho-platform)
+writer.u32(platform.minimum-os-version)
+writer.u32(0)
+writer.u32(0)
+
+writer.u32(lc-symtab)
+writer.u32(24)
+writer.u32(symbol-offset as U32)
+writer.u32(symbol-count)
+writer.u32(string-offset as U32)
+writer.u32(string-table.length as U32)
+
+writer.u32(lc-dysymtab)
+writer.u32(80)
+writer.u32(0)
+writer.u32(builder.local-count)
+writer.u32(builder.local-count)
+writer.u32(builder.external-count)
+writer.u32(builder.local-count + builder.external-count)
+writer.u32(builder.undefined-count)
+writer.zeros(48)
+
+for target in sections
+    if !target.is-zero-fill
+        if target.file-offset > writer.length
+            writer.zeros((target.file-offset - writer.length) as Size)
+        writer.bytes(target.data)
+
+for target in sections
+    . count = target.relocations.length
+    if count != 0
+        if target.reloc-offset > writer.length
+            writer.zeros((target.reloc-offset - writer.length) as Size)
+        for position in 0 .. < count
+            . relocation = target.relocations[count - 1 - position]
+            . kind = relocation.kind
+            . pc-relative U32 = if is-branch26-relocation(kind) || kind == .page21-relocation then 1 else 0
+            writer.u32(relocation.offset)
+            writer.u32
+                - symbols[relocation.symbol].index /or/ (pc-relative /lshift/ 24) /or/ ((if kind == .unsigned-relocation then 3u32 else 2u32) /lshift/ 25) /or/ (1u32 /lshift/ 27) /or/ (relocation-type(kind) /lshift/ 28)
+
+writer.align(8)
+for position in 0 .. < symbol-count
+    . symbol = symbols[order[position]]
+    writer.u32(symbol.string-offset)
+    if symbol.section != SectionId.none
+        writer.u8((if symbol.is-external then n-ext else 0) /or/ MachOSymbolType.sect)
+        writer.u8(symbol.section)
+        writer.u16(0)
+        writer.u64(symbol.value)
+    else
+        writer.u8(n-ext /or/ MachOSymbolType.undf)
+        writer.u8(0)
+        writer.u16(0)
+        writer.u64(0)
+writer.bytes(string-table)
+= writer.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ do layout-sections
+    - builder ObjectBuilder
+
+. address U64
+for target in builder.sections
+    address = align-value(address, 1u64 /lshift/ target.alignment-power)
+    target.address = address
+    address += target.size
+for row in 0 .. < builder.symbols.length
+    . index = builder.symbols[row].section
+    if index != SectionId.none
+        builder.symbols[row].value = builder.symbols[row].value + builder.section(index).address
+
+━━━━━━━━━━━━━━━━━━━━
+_ section-flags U32
+    - index Size
+
+|? index == 0
+    s-attr-pure-instructions /or/ s-attr-some-instructions /or/ MachOSectionType.regular
+|? index == 1
+    MachOSectionType.cstring-literals
+|? index == 6
+    MachOSectionType.zerofill
+??
+    MachOSectionType.regular
+
+━━━━━━━━━━━━━━━━━━━━
+_ relocation-type U32
+    - kind RelocationKind
+
+|? is-branch26-relocation(kind)
+    2
+|? kind == .page21-relocation
+    3
+|? kind == .unsigned-relocation
+    0
+??
+    4
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fixed-string
+    - writer BinaryWriter
+    - text String
+
+?! Panic("Mach-O fixed string is too long: $text")
+    if text.size > 16
+writer.text(text)
+writer.zeros(16 - text.size)

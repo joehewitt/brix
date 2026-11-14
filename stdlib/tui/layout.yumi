@@ -1,0 +1,622 @@
+
+./box
+./primitives
+/core/intrinsics
+/math
+
++ flex-col = FlexLayout(Orientation.vertical)
++ flex-row = FlexLayout(Orientation.horizontal)
++ flow-col = FlowLayout(Orientation.vertical)
++ flow-row = FlowLayout(Orientation.horizontal)
++ masonry-col = MasonryLayout(Orientation.vertical)
++ masonry-row = MasonryLayout(Orientation.horizontal)
+
+_ flex-scratch [Flex]
+_ masonry-scratch-stack [MasonryScratch]
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutArrangeHint is U8
+
+| full = 0
+| children-only = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+PSize(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexLayout is Layout
+
++ orient Orientation
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+//tui.layout.builtin.arrange-fast ++
+arrange-flex-content(box)
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+layout-natural-size(box, orient)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do arrange-flex-content
+    - box Box
+
+. total-flex Float
+. content = box.content-bounds
+. total-size = if orient == Orientation.horizontal then content.width else content.height
+. last-flex-child Box? = null
+
+flex-scratch.clear()
+. child = box.first-active-child
+while child
+    . live = child
+    //tui.layout.arrange.children-considered ++
+    . child-flex = live.$flex
+    flex-scratch += child-flex
+    total-flex += child-flex
+    if child-flex != 0
+        last-flex-child = live
+    if child-flex == 0
+        total-size -=
+            |? orient == Orientation.horizontal
+                live.measured-outer-size.width
+            ??
+                live.measured-outer-size.height
+    child = live.next-active-sibling
+
+total-size = max(0, total-size)
+
+. offset Coord = 0
+. child-size Coord = 0
+. cross-size Coord = 0
+. scan Index = 0
+child = box.first-active-child
+while child
+    . live = child
+    . next-child = live.next-active-sibling
+    . child-flex = flex-scratch[scan]
+    scan += 1
+    //tui.layout.arrange.children-arranged ++
+    if child-flex == 0
+        if orient == Orientation.horizontal
+            . size = live.measured-outer-size.width
+            live.arrange-outer-bounds(Rect(content.x + offset, content.y, size, content.height))
+            offset += size
+        else
+            . size = live.measured-outer-size.height
+            live.arrange-outer-bounds(Rect(content.x, content.y + offset, content.width, size))
+            offset += size
+    else
+        . ratio = child-flex / total-flex
+        . is-last-flex = last-flex-child && live == last-flex-child
+        . size = if is-last-flex then remaining else round(ratio * total-size) as Coord
+            .. remaining = total-size - child-size
+        child-size += size
+
+        if orient == Orientation.horizontal
+            live.arrange-outer-bounds(Rect(content.x + offset, content.y, size, content.height))
+        else
+            live.arrange-outer-bounds(Rect(content.x, content.y + offset, content.width, size))
+        offset += size
+    if orient == Orientation.horizontal
+        cross-size = max(cross-size, content.height)
+    else
+        cross-size = max(cross-size, content.width)
+    child = next-child
+
+if orient == Orientation.horizontal
+    box.inner-width = offset
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+    box.inner-height = offset
+
+━━━━━━━━━━━━━━━━━━━━
++ FlowLayout is Layout
+
++ orient Orientation
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+//tui.layout.builtin.arrange-fast ++
+if hint == LayoutArrangeHint.children-only
+    =? if arrange-flow-content-incremental(box)
+arrange-flow-content(box)
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+layout-natural-size(box, orient)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do arrange-flow-content
+    - box Box
+
+. offset Coord = 0
+. cross-size Coord = 0
+. content = box.content-bounds
+. child = box.first-active-child
+while child
+    . live = child
+    . next-child = live.next-active-sibling
+    //tui.layout.arrange.children-considered ++
+    //tui.layout.arrange.children-arranged ++
+    . intrinsic = live.measured-outer-size
+    if orient == Orientation.horizontal
+        . size = intrinsic.width
+        live.arrange-outer-bounds(Rect(content.x + offset, content.y, size, intrinsic.height))
+        offset += size
+        cross-size = max(cross-size, intrinsic.height)
+    else
+        . size = intrinsic.height
+        live.arrange-outer-bounds(Rect(content.x, content.y + offset, content.width, size))
+        offset += size
+        cross-size = max(cross-size, intrinsic.width)
+    child = next-child
+
+if orient == Orientation.horizontal
+    box.inner-width = offset
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+    box.inner-height = offset
+
+────────────────────
+_ do arrange-flow-content-incremental Bool
+    - box Box
+
+. query = measure-fit-query()
+. first-dirty Box?
+. last-dirty Box?
+. before-first Box?
+. previous Box?
+. has-history = true
+. child = box.first-active-child
+while child
+    . live = child
+    //tui.layout.arrange.children-considered ++
+    if !live.last-measure-result(query)
+        has-history = false
+    if live.$is-layout-invalid
+        if !first-dirty
+            first-dirty = live
+            before-first = previous
+        last-dirty = live
+    previous = live
+    child = live.next-active-sibling
+
+if !first-dirty
+    //tui.layout.arrange.fallback.no-candidate ++
+    = false
+if !has-history
+    //tui.layout.arrange.fallback.no-child-history ++
+    = false
+
+. content = box.content-bounds
+. offset Coord = 0
+if before-first
+    . previous-bounds = before-first.outer-bounds
+    offset =
+        |? orient == Orientation.horizontal
+            previous-bounds.right - content.x
+        ??
+            previous-bounds.bottom - content.y
+
+. retained-cross = if orient == Orientation.horizontal then box.inner-height else box.inner-width
+. cross-size = retained-cross
+. recompute-cross = false
+. passed-dirty-range = false
+. suffix-length Size = 0
+child = first-dirty
+
+while child
+    . live = child
+    . next-child = live.next-active-sibling
+    //tui.layout.arrange.children-considered ++
+    //tui.layout.arrange.children-arranged ++
+    . previous-bounds = live.outer-bounds
+    . previous-measure = (live.last-measure-result(query)!).outer-size
+    . intrinsic = live.measured-outer-size
+    . rect =
+        |? orient == Orientation.horizontal
+            Rect(content.x + offset, content.y, intrinsic.width, intrinsic.height)
+        ??
+            Rect(content.x, content.y + offset, content.width, intrinsic.height)
+    live.arrange-outer-bounds(rect)
+    suffix-length += 1
+
+    if orient == Orientation.horizontal
+        offset += intrinsic.width
+        cross-size = max(cross-size, intrinsic.height)
+        if previous-measure.height == retained-cross && intrinsic.height < previous-measure.height
+            recompute-cross = true
+    else
+        offset += intrinsic.height
+        cross-size = max(cross-size, intrinsic.width)
+        if previous-measure.width == retained-cross && intrinsic.width < previous-measure.width
+            recompute-cross = true
+
+    if live == last-dirty!
+        passed-dirty-range = true
+    if passed-dirty-range && rect == previous-bounds
+        if recompute-cross
+            cross-size = flow-current-cross-size(box, query)
+        if orient == Orientation.horizontal
+            box.inner-height = cross-size
+        else
+            box.inner-width = cross-size
+        //tui.layout.arrange.early-outs ++
+        //tui.layout.arrange.changed-suffix-length += suffix-length
+        = true
+
+    child = next-child
+
+if recompute-cross
+    cross-size = flow-current-cross-size(box, query)
+if orient == Orientation.horizontal
+    box.inner-width = offset
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+    box.inner-height = offset
+
+//tui.layout.arrange.early-outs ++
+//tui.layout.arrange.changed-suffix-length += suffix-length
+= true
+
+────────────────────
+_ do flow-current-cross-size Coord
+    - box Box
+    - query MeasureQuery
+
+` Horizontal Flow preserves intrinsic child heights in bounds. Vertical Flow stretches child
+` bounds to the container width, so the latest generic measure-cache result is the only derivable
+` intrinsic cross extent. This scan reads those existing results and never arranges a child.
+
+. cross-size Coord = 0
+. child = box.first-active-child
+while child
+    . live = child
+    //tui.layout.arrange.children-considered ++
+    . intrinsic = (live.last-measure-result(query)!).outer-size
+    if orient == Orientation.horizontal
+        cross-size = max(cross-size, intrinsic.height)
+    else
+        cross-size = max(cross-size, intrinsic.width)
+    child = live.next-active-sibling
+= cross-size
+
+━━━━━━━━━━━━━━━━━━━━
++ MasonryLayout is Layout
+
++ orient Orientation
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+//tui.layout.builtin.arrange-fast ++
+arrange-masonry-content(box)
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+measure-masonry-content(box, query)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do arrange-masonry-content
+    - box Box
+
+. content = box.content-bounds
+. cross-available = if orient == Orientation.vertical then content.width else content.height
+. scratch = acquire-scratch()
+prepare-tracks(box, cross-available, scratch)
+
+. child = box.first-active-child
+while child
+    . live = child
+    //tui.layout.arrange.children-considered ++
+    //tui.layout.arrange.children-arranged ++
+    . track = shortest-track(scratch)
+    . track-size = scratch.track-sizes[track]
+    . track-offset = scratch.track-offsets[track]
+    . primary-offset = scratch.track-lengths[track]
+    . measure = live.measure(child-query(track-size))
+    . primary-size = if orient == Orientation.vertical then measure.outer-size.height else width
+        .. width = measure.outer-size.width
+    if orient == Orientation.vertical
+        live.arrange-outer-bounds
+            - Rect(content.x + track-offset, content.y + primary-offset, track-size, primary-size)
+    else
+        live.arrange-outer-bounds
+            - Rect(content.x + primary-offset, content.y + track-offset, primary-size, track-size)
+    scratch.track-lengths[track] = primary-offset + primary-size + primary-gap(box)
+    child = live.next-active-sibling
+
+. primary-size = max-primary-size(scratch, primary-gap(box))
+. cross-size = track-span(scratch)
+if orient == Orientation.vertical
+    box.inner-width = cross-size
+    box.inner-height = primary-size
+else
+    box.inner-width = primary-size
+    box.inner-height = cross-size
+
+release-scratch(scratch)
+
+────────────────────
+_ do measure-masonry-content
+    - box Box
+    - query MeasureQuery
+
+. cross-available = query-cross-size(box, query)
+. scratch = acquire-scratch()
+prepare-tracks(box, cross-available, scratch)
+
+. child = box.first-active-child
+while child
+    . live = child
+    . track = shortest-track(scratch)
+    . track-size = scratch.track-sizes[track]
+    . measure = live.measure(child-query(track-size))
+    . primary-size = if orient == Orientation.vertical then measure.outer-size.height else width
+        .. width = measure.outer-size.width
+    scratch.track-lengths[track] = scratch.track-lengths[track] + primary-size + primary-gap(box)
+    child = live.next-active-sibling
+
+. primary-size = max-primary-size(scratch, primary-gap(box))
+. cross-size = track-span(scratch)
+release-scratch(scratch)
+
+. size =
+    |? orient == Orientation.vertical
+        PSize(cross-size, primary-size)
+    ??
+        PSize(primary-size, cross-size)
+= size
+
+────────────────────
+_ acquire-scratch
+
+|? masonry-scratch-stack.length > 0
+    masonry-scratch-stack.pop()
+??
+    MasonryScratch()
+
+────────────────────
+_ do release-scratch
+    - scratch MasonryScratch
+
+scratch.clear()
+masonry-scratch-stack += scratch
+
+────────────────────
+_ do prepare-tracks
+    - box Box
+    - available-cross Coord
+    - scratch MasonryScratch
+
+scratch.clear()
+
+. count = track-count(box, available-cross)
+. gap = cross-gap(box)
+. total-gap = gap * Coord(count - 1)
+. track-space = max(0, available-cross - total-gap)
+. track-count-coord = Coord(count)
+. base-size = track-space / track-count-coord
+. remainder = (track-space - base-size * track-count-coord) as Size
+. offset Coord = 0
+
+for index in 0 .. < count
+    . size = base-size
+    if index < remainder
+        size += 1
+    scratch.track-offsets += offset
+    scratch.track-sizes += size
+    scratch.track-lengths += 0
+    offset += size + gap
+
+────────────────────
+_ track-count
+    - box Box
+    - available-cross Coord
+
+|? explicit
+    explicit
+??
+    tracked
+
+.. explicit = explicit-track-count(box)
+.. min-size = max(1, min-track-size(box))
+.. gap = cross-gap(box)
+.. safe-cross = max(0, available-cross)
+.. count = ((safe-cross + gap) / (min-size + gap)) as Size
+.. tracked =
+    |? count > 0
+        count
+    ??
+        1
+
+────────────────────
+_ do explicit-track-count
+    - box Box
+
+. count = if orient == Orientation.vertical then column-count else box.$masonry-row-count
+    .. column-count = box.$masonry-column-count ?? box.$masonry-row-count
+=? count as Size
+    if count && count > 0
+
+────────────────────
+_ query-cross-size Coord
+    - box Box
+    - query MeasureQuery
+
+|? available
+    available
+|? maximum
+    maximum
+??
+    min-size * Coord(count) + gap * Coord(count - 1)
+
+.. available = if orient == Orientation.vertical then query.inline.available ?? query.block.available else query.block.available
+.. maximum = if orient == Orientation.vertical then query.inline.max ?? query.block.max else query.block.max
+.. count = explicit-track-count(box) ?? 1
+.. min-size = max(1, min-track-size(box))
+.. gap = cross-gap(box)
+
+────────────────────
+_ min-track-size
+    - box Box
+
+if orient == Orientation.vertical then box.$masonry-min-column-width else min-height
+
+.. min-height = box.$masonry-min-row-height
+
+────────────────────
+_ cross-gap Coord
+    - box Box
+
+max(0, (if orient == Orientation.vertical then box.$masonry-column-gap else box.$masonry-row-gap))
+
+────────────────────
+_ primary-gap Coord
+    - box Box
+
+max(0, (if orient == Orientation.vertical then box.$masonry-row-gap else box.$masonry-column-gap))
+
+────────────────────
+_ child-query
+    - track-size Coord
+
+|? orient == Orientation.vertical
+    measure-fit-query(track-size)
+??
+    MeasureQuery(fit-axis-query(), fit-axis-query(track-size))
+
+────────────────────
+_ do shortest-track
+    - scratch MasonryScratch
+
+. selected = 0 as Size
+. best = scratch.track-lengths[0]
+. index = 1 as Size
+while index < scratch.track-lengths.length
+    . length = scratch.track-lengths[index]
+    if length < best
+        selected = index
+        best = length
+    index += 1
+= selected
+
+────────────────────
+_ do max-primary-size
+    - scratch MasonryScratch
+    - gap Coord
+
+. primary Coord = 0
+for length in scratch.track-lengths
+    . track-primary = max(0, length - gap)
+    primary = max(primary, track-primary)
+= primary
+
+────────────────────
+_ track-span Coord
+    - scratch MasonryScratch
+
+match scratch.track-sizes.length
+    |= 0
+        0
+    ??
+        scratch.track-offsets[last] + scratch.track-sizes[last]
+
+.. last = scratch.track-sizes.length - 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ MasonryScratch
+
++ track-offsets [Coord]
++ track-sizes [Coord]
++ track-lengths [Coord]
+
+────────────────────
++ do clear
+
+track-offsets.clear()
+track-sizes.clear()
+track-lengths.clear()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do layout-natural-size
+    - box Box
+    - orient Orientation
+
+. primary Coord = 0
+. cross Coord = 0
+. child = box.first-active-child
+while child
+    . live = child
+    . size = live.measured-outer-size
+    if orient == Orientation.horizontal
+        primary += size.width
+        cross = max(cross, size.height)
+    else
+        primary += size.height
+        cross = max(cross, size.width)
+    child = live.next-active-sibling
+
+. size =
+    |? orient == Orientation.horizontal
+        PSize(primary, cross)
+    ??
+        PSize(cross, primary)
+= size

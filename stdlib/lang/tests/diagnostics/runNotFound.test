@@ -1,0 +1,477 @@
+====
+Not-found errors name what is missing, the module that declares it, or a close match
+====
+
+:====
+# type in an unimported core module
+
+. b = Bitmap()
+
+:----
+%crash
+
+Exception: Type "Bitmap" not found; it is declared in /core/bitmap, which this module does not import. Add the import /core/bitmap
+<no file:2>
+    . b = Bitmap()
+          ^^^^^^
+;====
+
+:====
+# misspelled local
+
+. value = 3
+-- valeu + 1
+
+:----
+%crash
+
+Exception: Name "valeu" not found; did you mean "value"?
+<no file:3>
+    -- valeu + 1
+       ^^^^^
+;====
+
+:====
+# misspelled property
+
+. text = "abc"
+-- text.lenght
+
+:----
+%crash
+
+Exception: String has no property "lenght"; did you mean "length"?
+<no file:3>
+    -- text.lenght
+       ^^^^^^^^^^^
+;====
+
+:====
+# misspelled method
+
+-- Counter().incremnt()
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+────────────────────
++ do increment
+
+count += 1
+
+:----
+%crash
+
+Exception: Counter has no method "incremnt"; did you mean "increment"?
+<no file:2>
+    -- Counter().incremnt()
+       ^^^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# misspelled function
+
+-- greer()
+
+━━━━━━━━━━━━━━━━━━━━
++ greet
+
+"hi"
+
+:----
+%crash
+
+Exception: Function "greer" not found; did you mean "greet"?
+<no file:2>
+    -- greer()
+       ^^^^^^^
+;====
+
+:====
+# misspelled type
+
+. s = Strng("a")
+
+:----
+%crash
+
+Exception: Type "Strng" not found; did you mean "String"?
+<no file:2>
+    . s = Strng("a")
+          ^^^^^
+;====
+
+:====
+# short names get no suggestion
+
+. a = 1
+-- b
+
+:----
+%crash
+
+Exception: Name "b" not found
+<no file:3>
+    -- b
+       ^
+;====
+
+:====
+# property of an optional
+
+. text String? = "abc"
+-- text.length
+
+:----
+%crash
+
+Exception: Property "length" is read from String?, which may be null; unwrap it first with ! or ?.
+<no file:3>
+    -- text.length
+       ^^^^^^^^^^^
+;====
+
+:====
+# method of an optional
+
+. counter Counter? = Counter()
+counter.increment()
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+────────────────────
++ do increment
+
+count += 1
+
+:----
+%crash
+
+Exception: Method "increment" is called on Counter?, which may be null; unwrap it first with ! or ?.
+<no file:3>
+    counter.increment()
+    ^^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# method of an optional called through ?. with arguments it does not accept
+
+. counter Counter? = Counter()
+counter?.increment(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+────────────────────
++ do increment
+
+count += 1
+
+:----
+%crash
+
+Exception: No method "increment" of Counter accepts (I64); it is declared as "increment"
+<no file:3>
+    counter?.increment(2)
+    ^^^^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# property of an optional a test narrowed, read after a store to a property a read typed later tracks
+
+. holder = Holder()
+holder.options = Options()
+holder.run()
+holder.watch()
+
+━━━━━━━━━━━━━━━━━━━━
++ Options
+
++ name = "x"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ options Options?
++ flag = false
+
+────────────────────
++ do run
+
+if options
+    flag = true
+    -- options.name
+
+────────────────────
++ do watch
+
+-- "${#flag}"
+
+:----
+%crash
+
+Exception: Property "name" is read from Options?, which may be null; unwrap it first with ! or ?.
+<no file:23>
+        -- options.name
+           ^^^^^^^^^^^^
+;====
+
+:====
+# interpolated property
+
+. id = 4
+-- "$id.png"
+
+:----
+%crash
+
+Exception: Property "png" not found; in a string, "$id.png" reads the property "png" of id. Write "${id}.png" to put text after the value
+<no file:3>
+    -- "$id.png"
+        ^^^^^^^
+;====
+
+:====
+# interpolated dash
+
+. prefix = "a"
+-- "$prefix-1"
+
+:----
+%crash
+
+Exception: Name "prefix-1" not found; in a string, "$prefix-1" reads the whole name "prefix-1". Write "${prefix}-1" to put "-1" after the value
+<no file:3>
+    -- "$prefix-1"
+         ^^^^^^^^
+;====
+
+:====
+# interface constructor
+
+-- Shape()
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ sides I32
+
+:----
+%crash
+
+Exception: Shape is an interface, so it has no constructor; construct a class that is Shape
+<no file:2>
+    -- Shape()
+       ^^^^^
+;====
+
+:====
+# type in a loaded module this one does not import, named by its relative path
+
+./lib/shapes
+
+. s = Square()
+
+:----
+%file: lib/shapes.yumi
+
+./square
+
+━━━━━━━━━━━━━━━━━━━━
++ shape-count I32
+
+1
+
+:----
+%file: lib/square.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+
++ side = 1
+
+:----
+%crash
+
+Exception: Type "Square" not found; it is declared in ./lib/square, which this module does not import. Add the import ./lib/square
+<no file:4>
+    . s = Square()
+          ^^^^^^
+;====
+
+:====
+# private function of another module
+
+./lib/tools
+
+-- secret()
+
+:----
+%file: lib/tools.yumi
+
+━━━━━━━━━━━━━━━━━━━━
+_ secret I32
+
+1
+
+:----
+%crash
+
+Exception: Function "secret" is private, declared with _, so only its own module can call it
+<no file:4>
+    -- secret()
+       ^^^^^^^^
+;====
+
+:====
+# slot outlet of a type this module cannot see
+
+<Panel
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupHost
+    is MarkupTreeHost'MarkNode
+
++ first-child MarkNode?
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+first-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
++ <Nowhere header
+
+:----
+%crash
+
+Exception: Type "Nowhere" not found
+<no file:28>
+    + <Nowhere header
+       ^^^^^^^
+;====
+
+:====
+# element of a class from another module whose slot outlet type is not found
+
+./lib/panel
+
+<Panel
+
+:----
+%file: lib/panel.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupHost
+    is MarkupTreeHost'MarkNode
+
++ first-child MarkNode?
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+first-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
++ <Nowhere header
+
+:----
+%crash
+
+Exception: Type "Nowhere" not found
+<lib/panel.yumi:26>
+    + <Nowhere header
+       ^^^^^^^
+;====
+
+:====
+# closure in a named element of top-level markup that reads the element's own name
+
+/core/tests/support/markup-fixtures
+
+<Box root
+    <Trigger trigger
+        action = => do -- trigger.hits
+
+━━━━━━━━━━━━━━━━━━━━
++ Trigger is Box
+
++ hits = 0
++ action Doer = => do -- "none"
+
+:----
+%crash
+
+Exception: Named markup element "trigger" can only be read from within its own markup in class content
+<no file:6>
+            action = => do -- trigger.hits
+                              ^^^^^^^
+;====
+
+:====
+# closure in a named element of top-level markup that reads an earlier named element and its own name
+
+/core/tests/support/markup-fixtures
+
+<Box root
+    <Holder holder
+        hits = 4
+    <Trigger trigger
+        action = => do -- holder.hits + trigger.hits
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ hits = 0
+
+────────────────────
+
+<This
+    + <Box actions
+
+━━━━━━━━━━━━━━━━━━━━
++ Trigger is Box
+
++ hits = 0
++ action Doer = => do -- "none"
+
+:----
+%crash
+
+Exception: Named markup element "trigger" can only be read from within its own markup in class content
+<no file:8>
+            action = => do -- holder.hits + trigger.hits
+                                            ^^^^^^^
+;====

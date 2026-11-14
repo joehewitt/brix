@@ -1,0 +1,62 @@
+`benchmark.meta description: Runs settled TUI layout and paint frames with no mutations.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/tui/box
+/tui/canvas
+/tui/colors
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchNoopRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 40)
+
+for row-index in 0 .. < 24
+    . row = BenchNoopRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 8
+        markup-append(row, Label("noop-${row-index}-$cell-index"))
+
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+. previous = Canvas(root.bounds.size)
+root.paint(previous)
+
+. checksum Size = 0
+for frame in 0 .. < 120
+    root.markup-batch-queue.checkpoint()
+    root.update-layout()
+    . canvas = Canvas(root.bounds.size)
+    root.paint(canvas)
+    . diff = canvas.dump-diff(previous)
+    previous = canvas
+    //tui.bench.frames ++
+    //tui.bench.canvas.diff-dumps ++
+    //tui.bench.canvas.diff-bytes += diff.size
+    checksum += diff.size + root.inner-width + root.inner-height + frame
+
+-- "bench-result tui/layout-noop-frame checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchNoopRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchNoopRow is Box
+
+• This
+    layout = flow-row

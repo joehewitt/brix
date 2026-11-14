@@ -1,0 +1,499 @@
+./box
+./button
+./choice-control
+./events
+./keys
+./label
+./primitives
+./shorthands
+./styles
+./theme
+/core/intrinsics
+/core/list-cursor
+/graphics/primitives
+/graphics/text
+/math
+/stream/aggregate
+/stream/combine
+/ui/input
+/ui/key-combo
+/ui/selection
+/ui/type-select
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIBoxSpacing
+    using GUIBoxSize
+
+• ListBox
+    when #is-focused
+        • ListItem
+            when #is-selected
+                • bg:gui-accent-color
+                • text:gui-accent-text-color
+
+    • list-empty • text:gui-muted-text-color absolute cover:.parent p:12
+        text-alignment = TextAlignment.center
+
+• ListItem • h:24 px:10
+    when #is-selected
+        • bg:gui-pressed-color
+        • text:gui-strong-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ ListBox is Box
+    is Choosing
+
+• This
+    focus-mode = FocusMode.keys
+    window-draggable = false
+    overflow-y = ScrollOverflow.auto
+
++ selection-mode = SelectionMode.single
++ selected-key String?
++ selected-keys [String]
++ empty-text = ""
++ is-empty = true
++ chooses-on-press = true
++ event selection-changing SelectionEvent'[String]
++ event selection-changed SelectionEvent'[String]
++ event item-activated ActivateEvent
+
+_ selection-anchor String?
+_ selected-set Map'String'Bool
+_ is-selected-set-stale = true
+_ pending-key String?
+_ type-select = TypeSelect()
+
+. selected-keys-changed < selected-keys
+
+────────────────────
+
+<This • flex-col
+    <KeyShortcut "Previous"
+        key = .arrow-up
+        discoverable = false
+        action = => do move-selection(-1)
+
+    <KeyShortcut "Next"
+        key = .arrow-down
+        discoverable = false
+        action = => do move-selection(1)
+
+    <KeyShortcut "Extend up"
+        key = KeyModifier.shift + Key.arrow-up
+        discoverable = false
+        when = => selection-mode == SelectionMode.multiple
+        action = => do move-selection(-1, true)
+
+    <KeyShortcut "Extend down"
+        key = KeyModifier.shift + Key.arrow-down
+        discoverable = false
+        when = => selection-mode == SelectionMode.multiple
+        action = => do move-selection(1, true)
+
+    <KeyShortcut "Page Up"
+        key = .page-up
+        discoverable = false
+        action = => do move-selection(-page-row-step, false, true)
+
+    <KeyShortcut "Page Down"
+        key = .page-down
+        discoverable = false
+        action = => do move-selection(page-row-step, false, true)
+
+    <KeyShortcut "First"
+        key = .home
+        discoverable = false
+        action = => do select-edge(false)
+
+    <KeyShortcut "Last"
+        key = .end
+        discoverable = false
+        action = => do select-edge(true)
+
+    <KeyShortcut "Select All"
+        key = KeyModifier.command + "a"
+        discoverable = false
+        when = => selection-mode == SelectionMode.multiple
+        action = => do select-all()
+
+    <KeyShortcut "Activate"
+        key = .enter
+        repeat = false
+        discoverable = false
+        action = => do commit-selection()
+
+    if #is-empty && #empty-text
+        <Label • list-empty
+            text = #empty-text
+
+────────────────────
+for event on pointer-down
+
+press-row(event)
+
+────────────────────
+for event on click
+
+. key = pending-key
+pending-key = null
+if key && key-of-row(row-at(event)) == key
+    press-key(key, event.modifiers)
+
+────────────────────
+for event on drag-start
+
+pending-key = null
+
+────────────────────
+for event on key-press
+
+type-select-key(event)
+
+────────────────────
+whenever children ListItem
+
+rows-changed()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ can-scroll
+    - direction ScrollDirection
+
+!is-horizontal && (super.can-scroll(direction))
+
+.. is-horizontal = direction == ScrollDirection.left || direction == ScrollDirection.right
+
+────────────────────
++ do reveal-focus
+
+if !selected-key
+    . order = selection-order()
+    if order.length
+        selected-key = order[0]
+if selected-key
+    reveal-key(selected-key)
+else
+    super.reveal-focus()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+rows-changed()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get first-row
+
+selectable-rows() |> first
+
+────────────────────
++ get page-row-step Int
+
+|? row-height <= 0 || step < 1
+    1
+??
+    step as Int
+
+.. viewport = content-bounds.height
+.. step = viewport / row-height
+.. row-height = (first-row?.bounds.height ?? 0)
+
+────────────────────
++ do is-key-selected Bool
+    - key String?
+
+=? false if key == null
+if is-selected-set-stale
+    selected-set.clear()
+    for selected in selected-keys
+        selected-set[selected] = true
+    is-selected-set-stale = false
+= selected-set has key
+
+────────────────────
++ do select-key
+    - key String?
+    - extends = false
+    - toggles = false
+
+pending-key = null
+if !key
+    selected-key = null
+    selection-anchor = null
+    change-selection(List'String())
+    =
+. anchor = if is-key-selected(selection-anchor) then kept-anchor else selected-key
+    .. kept-anchor = selection-anchor ?? selected-key
+. keys = selection-after-press
+    - selection-mode
+    - selected-keys
+    - key
+    - selection-order()
+    - anchor
+    - extends
+    - toggles
+selection-anchor = if extends && anchor then anchor else key
+selected-key = key
+change-selection(keys)
+reveal-key(key)
+
+────────────────────
++ do select-all
+
+=? if selection-mode != SelectionMode.multiple
+change-selection(selection-order())
+
+────────────────────
++ do change-selection
+    - keys [String]
+
+. old = selected-keys
+=? if old == keys
+. change = SelectionEvent'[String](old, keys)
+selection-changing <- change
+=? if change.is-canceled
+selected-keys = keys
+selection-changed <- SelectionEvent'[String](old, keys)
+
+────────────────────
++ do move-selection
+    - offset Int
+    - extends = false
+    - clamps = false
+
+. order = selection-order()
+. index = order.find(selected-key) if selected-key
+if index != null && !selected-keys.length
+    select-key(selected-key, extends)
+    =
+. cursor = ListCursor(order.length, index)
+. target = if clamps then clamped-target else cursor.stepped(offset)
+    .. clamped-target = cursor.clamped(offset) ?? cursor.stepped(offset)
+if target != null
+    select-key(order[target], extends)
+else if selected-key
+    reveal-key(selected-key)
+
+────────────────────
++ do select-edge
+    - last Bool
+
+. order = selection-order()
+=? if !order.length
+select-key(if last then order[order.length - 1] else order[0])
+
+────────────────────
++ do activate-selection
+
+ensure-selection()
+=? if !selected-key
+item-activated <- ActivateEvent()
+
+────────────────────
++ do commit-selection
+
+activate-selection()
+. key = selected-key
+if key
+    choose-key(key)
+
+────────────────────
++ do choose-key
+    - key String
+
+=? if !can-choose(key)
+chosen <- ChooseEvent(key)
+
+────────────────────
++ can-choose Bool
+    - key String
+
+true
+
+────────────────────
++ press-activates Bool
+    - row ListItem
+
+true
+
+────────────────────
++ do ensure-selection
+
+=? if selected-key && selection-order().find(selected-key!) != null
+select-edge(false)
+
+────────────────────
++ selection-order [String]
+
+List'String
+    ** selectable-rows()
+    *> key-of-row(each)!
+
+────────────────────
++ title-for-key String
+    - key String
+
+listed-row(key)?.text ?? ""
+
+────────────────────
++ key-of-row String?
+    - row ListItem?
+
+match row
+    |= null
+        null
+    ??
+        if row.key then row.key else row.text
+
+────────────────────
++ do reveal-key
+    - key String
+
+. row = listed-row(key)
+if row
+    root.ensure-visible
+        - row
+        - ScrollAlignment.nearest
+        - Insets(0, 0, 0, 0)
+        - ScrollCause.focus
+
+────────────────────
++ do rows-changed
+
+is-empty = !first-row
+show-selection()
+
+────────────────────
++ do show-selection
+
+for row in selectable-rows()
+    . selected = is-key-selected(key-of-row(row))
+    if row.is-selected != selected
+        row.is-selected = selected
+
+────────────────────
++ row-at
+    - event GUIEvent
+
+match event.hit-box
+    |= null
+        null
+    ??
+        valid-row(it.ancestor-or-self'ListItem ?? it.style-target?.ancestor-or-self'ListItem)
+
+────────────────────
++ selectable-rows @inline
+
+** active-children
+?*> selectable-row(each)
+
+────────────────────
++ do selectable-row @inline
+    - node Box
+
+if node is ListItem
+    . row = node as ListItem
+    if row.is-enabled && row.is-display-visible
+        = row
+
+────────────────────
++ valid-row
+    - row ListItem?
+
+selectable-row(row) if row
+
+────────────────────
+_ do listed-row ListItem?
+    - key String
+
+for row in selectable-rows()
+    =? row if key-of-row(row) == key
+
+────────────────────
+_ do press-row
+    - event PointerDownEvent
+
+pending-key = null
+. row = row-at(event)
+=? if !row || event.button != PointerButton.primary || event.modifiers.control || press-lands-in-control(event, row)
+. key = key-of-row(row)
+=? if !key
+if event.click-count == 2 && press-activates(row)
+    if chooses-on-press
+        activate-selection()
+    else
+        commit-selection()
+=? if event.click-count > 1
+if press-waits-for-release(key, event.modifiers)
+    pending-key = key
+else
+    press-key(key, event.modifiers)
+
+────────────────────
+_ do press-key
+    - key String
+    - modifiers PointerModifiers
+
+select-key(key, modifiers.shift, modifiers.command)
+if chooses-on-press && !modifiers.shift && !modifiers.command
+    choose-key(key)
+
+────────────────────
+_ press-waits-for-release Bool
+    - key String
+    - modifiers PointerModifiers
+
+!modifiers.shift && is-key-selected(key) && (modifiers.command || selected-keys.length > 1)
+
+────────────────────
+_ do press-lands-in-control Bool
+    - event GUIEvent
+    - row ListItem
+
+. cursor Box? = event.hit-box
+while cursor
+    . box = cursor
+    =? false if box as Pointer == row as Pointer || box as Pointer == this as Pointer
+    =? true if box is Button || focus-mode-can-focus(box.$focus-mode)
+    cursor = box.material-parent
+= false
+
+────────────────────
+_ do type-select-key
+    - event KeyPressEvent
+
+. text = event.typed-text
+=? if !text || (text == " " && !type-select.is-active)
+. order = selection-order()
+. titles = List'String
+    ** order
+    *> title-for-key(each)
+. found = type-select.find(text, titles, order.find(selected-key) if selected-key)
+=? if found == null
+select-key(order[found])
+event.cancel()
+
+────────────────────
+_ do selected-keys-changed
+
+is-selected-set-stale = true
+show-selection()
+
+━━━━━━━━━━━━━━━━━━━━
++ ListItem is Label
+
+• This
+    window-draggable = false
+
++ key = ""
++ is-selected = false
++ has-children = false

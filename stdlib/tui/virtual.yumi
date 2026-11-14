@@ -1,0 +1,503 @@
+./box
+./canvas
+./events
+./layout
+./markup
+./primitives
+./styles
+/core/list
+/core/markup
+/core/virtual
+/core/virtual-layout
+/core/virtual-recycler
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualSlotRoot'VItem is Box
+
++ slot VirtualSlot'VItem
++ is-in-viewport Bool
+
+_ vhidden Display = Display.hidden
+_ vvisible Display = Display.visible
+
+• This • flex-row
+    display = if slot.#is-bound then vvisible else vhidden
+
+────────────────────
++ get is-interactive-visible
+
+slot.is-bound && is-display-visible && (%parent?.is-interactive-visible ?? true)
+
+────────────────────
++ get is-focus-traversal-reachable
+
+slot.is-bound && is-in-viewport
+
+────────────────────
++ do paint
+    - canvas Canvas
+
+if !is-in-viewport
+    did-paint()
+    =
+super.paint(canvas)
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualRegion'VItem is Box
+    is MarkupBatch
+    is VirtualRecyclerOwner
+
++ source VirtualSource'VItem?
++ virtual-layout VirtualLayout?
++ overscan = VirtualInsets(0vcoord, 0vcoord, 0vcoord, 0vcoord)
++ virtual-scroll VirtualPoint
++ virtual-extent-x VirtualExtent
++ virtual-extent-y VirtualExtent
++ scroll-changed => scrolled
++ markup-batch-queue := MarkupBatchQueue(this)
++ has-horizontal-overflow => virtual-extent-x.known > ((content-bounds.width as I64) as VirtualCoord)
++ has-vertical-overflow => virtual-extent-y.known > ((content-bounds.height as I64) as VirtualCoord)
+
+_ recycler := VirtualRecycler'VItem()
+_ updated-during-layout-pass Bool
+_ observed-root-count Size
+_ stat-roots-created Size
+
+────────────────────
++ This
+
+recycler.owner = this
+
+────────────────────
+
+<This
+    for slot in recycler.#slots
+        <VirtualSlotRoot'VItem
+            slot = slot
+
+            + <Box row - slot VirtualSlot'VItem
+
+────────────────────
+whenever #source?.revision.#changes
+
+invalidate-layout()
+invalidate-paint()
+
+────────────────────
+whenever #virtual-layout?.revision?.#changes
+
+invalidate-layout()
+invalidate-paint()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get markup-query-boundary
+
+true
+
+────────────────────
++ get stats VirtualRecyclerStats
+
+recycler.stats
+
+────────────────────
++ get roots-created Size
+
+stat-roots-created
+
+────────────────────
++ get pool-size
+
+recycler.pool-size
+
+────────────────────
++ slot-at VirtualSlot'VItem?
+    - index Index
+
+recycler.slot-at(index)
+
+────────────────────
++ do refresh-bindings
+
+=? if !source || !virtual-layout
+. viewport = content-bounds.size
+. viewport-width = (viewport.width as I64) as VirtualCoord
+. viewport-height = (viewport.height as I64) as VirtualCoord
+refresh-bindings-at(virtual-scroll.x, virtual-scroll.y, viewport-width, viewport-height)
+publish-bindings()
+update-viewport-membership()
+. window = recycler.window
+. resolved = window.resolved-scroll
+if resolved != virtual-scroll
+    virtual-scroll = resolved
+. extent-x = window.extent-x
+if extent-x != virtual-extent-x
+    virtual-extent-x = extent-x
+. extent-y = window.extent-y
+if extent-y != virtual-extent-y
+    virtual-extent-y = extent-y
+
+────────────────────
++ do refresh-bindings-at
+    - scroll-x VirtualCoord
+    - scroll-y VirtualCoord
+    - viewport-width VirtualCoord
+    - viewport-height VirtualCoord
+
+=? if !source || !virtual-layout
+recycler.source = source
+recycler.layout = virtual-layout
+. window = recycler.window
+window.scroll-x = scroll-x
+window.scroll-y = scroll-y
+window.viewport-width = viewport-width
+window.viewport-height = viewport-height
+window.frame-width = viewport-width
+window.frame-height = viewport-height
+window.row-height = 1vcoord
+window.set-overscan(overscan)
+recycler.refresh()
+
+────────────────────
++ do publish-bindings
+
+=? if !recycler.has-pending-changes
+recycler.has-pending-changes = false
+checkpoint-window()
+count-created-roots()
+
+────────────────────
++ do release-bindings
+
+recycler.release()
+source = null
+virtual-scroll = VirtualPoint(0vcoord, 0vcoord)
+virtual-extent-x = VirtualExtent(0vcoord, null, false)
+virtual-extent-y = VirtualExtent(0vcoord, null, false)
+observed-root-count = 0
+checkpoint-window()
+invalidate-layout()
+invalidate-paint()
+
+────────────────────
++ do scroll-to-address Bool
+    - address I64
+    - alignment = ScrollAlignment.start
+
+=? false if !source || !virtual-layout
+recycler.source = source
+recycler.layout = virtual-layout
+. window = recycler.window
+window.frame-width = (content-bounds.width as I64) as VirtualCoord
+window.frame-height = (content-bounds.height as I64) as VirtualCoord
+window.row-height = 1vcoord
+. rect = recycler.rect-for-address(address)
+=? false if !rect
+. x = if rect.width > window.frame-width then virtual-scroll.x else rect.x
+. y = virtual-revealed(virtual-scroll.y, window.frame-height, rect.y, rect.height, alignment)
+= set-virtual-scroll(VirtualPoint(x, y))
+
+────────────────────
++ do scroll-to-virtual Bool
+    - point VirtualPoint
+
+= set-virtual-scroll(point)
+
+────────────────────
++ do root-at VirtualSlotRoot'VItem?
+    - index Index
+
+. pool = %first-child
+=? if !pool
+. child = pool.child-at(index)
+=? if !child
+= child as VirtualSlotRoot'VItem
+
+────────────────────
++ append-hit-path
+    - point Point
+
+|? !is-interactive-visible || !is-inside-content(point)
+    List'HitFrame()
+|? !pool-root
+    List'HitFrame()
+??
+    pool-root.append-hit-path(inner-point)
+
+.. inner-point = point.x - scroll-x, point.y - scroll-y
+.. pool-root = %first-child
+
+────────────────────
++ do pointer-hit-result HitResult?
+    - point Point
+    - offset Point
+
+=? if !is-inside-content(point)
+= super.pointer-hit-result(point, offset)
+
+────────────────────
+_ is-inside-content
+    - point Point
+
+horizontal && vertical
+
+.. horizontal = point.x >= content-bounds.x && point.x < content-bounds.right
+.. vertical = point.y >= content-bounds.y && point.y < content-bounds.bottom
+
+────────────────────
+_ do checkpoint-window
+
+. root = markup-batch-root
+if root
+    catch root.markup-batch-queue.checkpoint()
+
+────────────────────
+_ do count-created-roots
+
+while observed-root-count < recycler.pool-size && root-at(observed-root-count)
+    observed-root-count += 1
+    stat-roots-created += 1
+
+────────────────────
+_ do arrange-virtual-roots
+
+. pool = %first-child
+=? if !pool
+pool.arrange-bounds(content-bounds)
+pool.update-layout()
+
+. window = recycler.window
+. origin-x = window.resolved-scroll-x
+. origin-y = window.resolved-scroll-y
+. slot-index Index
+. cursor = pool.%first-child
+while cursor
+    . root = cursor as VirtualSlotRoot'VItem
+    . placement = recycler.placement-for-slot(slot-index)
+    if placement
+        root.arrange-outer-bounds(viewport-rect(placement, origin-x, origin-y))
+        root.is-in-viewport = placement-in-viewport(placement)
+    else
+        root.arrange-outer-bounds(Rect(content-bounds.x, content-bounds.y, 0, 0))
+        root.is-in-viewport = false
+    root.update-layout()
+    cursor = cursor.%next-sibling
+    slot-index += 1
+
+────────────────────
+_ viewport-rect
+    - placement VirtualPlacement
+    - origin-x VirtualCoord
+    - origin-y VirtualCoord
+
+Rect(x, y, width, height)
+
+.. x = checked-cell((content-bounds.x as I64) + placement.x - origin-x)
+.. y = checked-cell((content-bounds.y as I64) + placement.y - origin-y)
+.. width = checked-cell(placement.width)
+.. height = checked-cell(placement.height)
+
+────────────────────
+_ do update-viewport-membership
+
+. pool = %first-child
+=? if !pool
+. slot-index Index
+. cursor = pool.%first-child
+while cursor
+    . root = cursor as VirtualSlotRoot'VItem
+    . placement = recycler.placement-for-slot(slot-index)
+    root.is-in-viewport = placement != null && placement-in-viewport(placement)
+    cursor = cursor.%next-sibling
+    slot-index += 1
+
+────────────────────
+_ placement-in-viewport
+    - placement VirtualPlacement
+
+horizontal && vertical
+
+.. window = recycler.window
+.. left = window.resolved-scroll-x
+.. top = window.resolved-scroll-y
+.. horizontal = placement.width > 0vcoord && placement.x + placement.width > left && placement.x < left + window.viewport-width
+.. vertical = placement.height > 0vcoord && placement.y + placement.height > top && placement.y < top + window.viewport-height
+
+────────────────────
+_ do set-virtual-scroll Bool
+    - requested VirtualPoint
+
+. x = min(max-virtual-scroll-x(), (max(0vcoord, requested.x)))
+. y = min(max-virtual-scroll-y(), (max(0vcoord, requested.y)))
+. next = VirtualPoint(x, y)
+=? false if next == virtual-scroll
+
+virtual-scroll = next
+invalidate-layout()
+invalidate-paint()
+= true
+
+────────────────────
+_ max-virtual-scroll-x VirtualCoord
+
+max(0vcoord, (virtual-extent-x.known - viewport-width))
+
+.. viewport-width = max(0vcoord, (content-bounds.width as I64))
+
+────────────────────
+_ max-virtual-scroll-y VirtualCoord
+
+max(0vcoord, (virtual-extent-y.known - viewport-height))
+
+.. viewport-height = max(0vcoord, (content-bounds.height as I64))
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualRecyclerOwner ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do virtual-slot-departing
+    - slot-index Index
+
+. root = root-at(slot-index)
+=? if !root
+root.input-generation += 1
+. input-owner Box? = root
+while input-owner && input-owner.input-host == null
+    input-owner = input-owner.%parent
+input-owner?.input-host?.release-input-inside(root)
+root.is-in-viewport = false
+
+────────────────────
++ do virtual-slot-arriving
+    - slot-index Index
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+PSize(width, height)
+
+────────────────────
++ do update-layout
+
+updated-during-layout-pass = false
+super.update-layout()
+if !updated-during-layout-pass
+    update-virtual-layout()
+
+────────────────────
++ do did-layout
+
+update-virtual-layout()
+updated-during-layout-pass = true
+
+────────────────────
+_ do update-virtual-layout
+
+refresh-bindings()
+arrange-virtual-roots()
+inner-width = content-bounds.width
+inner-height = content-bounds.height
+scroll-x = 0
+scroll-y = 0
+$is-layout-invalid = false
+mark-layout-arranged()
+
+────────────────────
++ do scroll
+    - point Point
+
+. x = ((0tx - point.x) as I64) as VirtualCoord
+. y = ((0tx - point.y) as I64) as VirtualCoord
+. ignored = set-virtual-scroll(VirtualPoint(x, y))
+
+────────────────────
++ do scroll Bool
+    - amount Coord
+    - direction Direction = Direction.down
+
+. delta = (amount as I64) as VirtualCoord
+. x = virtual-scroll.x
+. y = virtual-scroll.y
+= match direction
+    | .up
+        set-virtual-scroll(VirtualPoint(x, y - delta))
+    | .down
+        set-virtual-scroll(VirtualPoint(x, y + delta))
+    | .left
+        set-virtual-scroll(VirtualPoint(x - delta, y))
+    | .right
+        set-virtual-scroll(VirtualPoint(x + delta, y))
+    ??
+        super.scroll(amount, direction)
+
+────────────────────
++ can-scroll Bool
+    - direction Direction
+
+match direction
+    | .up
+        virtual-scroll.y > 0vcoord
+    | .down
+        virtual-scroll.y < max-virtual-scroll-y()
+    | .left
+        virtual-scroll.x > 0vcoord
+    | .right
+        virtual-scroll.x < max-virtual-scroll-x()
+    ??
+        super.can-scroll(direction)
+
+────────────────────
++ clipped-scroll-x Coord
+    - requested Coord
+
+0
+
+────────────────────
++ clipped-scroll-y Coord
+    - requested Coord
+
+0
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
+_ virtual-revealed VirtualCoord
+    - position VirtualCoord
+    - viewport VirtualCoord
+    - start VirtualCoord
+    - length VirtualCoord
+    - alignment ScrollAlignment
+
+match alignment
+    | ScrollAlignment.start
+        start
+    | ScrollAlignment.center
+        start + length / 2vcoord - viewport / 2vcoord
+    | ScrollAlignment.end
+        start + length - viewport
+    ??
+        |? length > viewport || start < position
+            start
+        |? start + length > position + viewport
+            start + length - viewport
+        ??
+            position
+
+━━━━━━━━━━━━━━━━━━━━
+_ checked-cell Coord
+    - value I64
+
+?! Panic("Virtual placement exceeds terminal coordinates")
+    if value > (Coord.max as I64) || value < -(Coord.max as I64) - 1
+
+value as I16

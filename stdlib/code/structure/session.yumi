@@ -1,0 +1,1464 @@
+./document
+./flow
+./fold
+./language
+./rows
+/code/code-comments
+/core/table
+/data/source-sexp
+/data/source-tree
+/math
+/os/file
+
+_ source-far-column Size = 1000000
+_ source-undo-cells Size = 320000
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceUndo
+
++ index Index
++ old [U32]
++ count Size
++ row Size
++ column Size
++ cells Size
+
+────────────────────
++ This
+    - index
+    - old
+    - count
+    - row
+    - column
+
+────────────────────
++ do move
+    - moves SourceMoves
+
+for position in 0 .. < old.length
+    old[position] = moves.place(old[position])
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceRewrite is Tuple
+
++ changed Size
++ held Size
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSession
+
++ document SourceDocument
++ row Size
++ column Size
++ anchor-row Size
++ anchor-column Size
++ revision U64
++ is-dirty Bool
++ undo-budget Size = source-undo-cells
++ folds SourceFolds
+
+_ saved [U32]
+_ goal-column Size
+_ typed String
+_ dirty-row SourceRow
+_ undos [SourceUndo]
+_ redos [SourceUndo]
+_ pending SourceUndo?
+_ charged Size
+
+────────────────────
++ This
+    - document
+
+.. folds = SourceFolds(document)
+if document.row-count > 0
+    column = document.row-at(0).content-start
+anchor-column = column
+saved = List'U32(document.declarations)
+charged = document.cell-count
+
+────────────────────
++ get row-count Size
+
+document.row-count
+
+────────────────────
++ get is-modified Bool
+
+is-dirty || !is-saved()
+
+────────────────────
++ get has-selection Bool
+
+anchor-row != row || anchor-column != column
+
+────────────────────
++ get first-selected-row Size
+
+if row < anchor-row then row else anchor-row
+
+────────────────────
++ get last-selected-row Size
+
+if row > anchor-row then row else anchor-row
+
+────────────────────
++ get selection-start Size
+
+|? row == anchor-row
+    if column < anchor-column then column else anchor-column
+|? row < anchor-row
+    column
+??
+    anchor-column
+
+────────────────────
++ get selection-end Size
+
+|? row == anchor-row
+    if column > anchor-column then column else anchor-column
+|? row > anchor-row
+    column
+??
+    anchor-column
+
+────────────────────
++ row-at SourceRow
+    - index Size
+
+if is-dirty && index == row then dirty-row else document.row-at(index)
+
+────────────────────
++ do view-text String
+
+. lines = document.view-lines()
+if is-dirty && row < lines.length
+    lines[row] = dirty-row.text
+= "${"\n".join(lines)}\n"
+
+────────────────────
++ do collapse
+
+anchor-row = row
+anchor-column = column
+
+────────────────────
++ do place
+    - target-row Size
+    - target-column Size
+    - extends = false
+
+=? if document.row-count == 0
+. next = if target-row < document.row-count then target-row else document.row-count - 1
+if next != row
+    . home = row
+    . count = document.row-count
+    commit()
+    . now = document.row-count
+    if next > home && now < count
+        . lost = count - now
+        next = if next >= lost then next - lost else 0
+    else if next > home
+        next += now - count
+    row = if next < now then next else now - 1
+column = clamped(target-column)
+goal-column = column
+if !extends
+    collapse()
+
+────────────────────
++ do move-left
+
+=? if document.row-count == 0
+. current = row-at(row)
+if column > current.content-start
+    column -= 1
+else if folds.shown(row) > 0
+    commit()
+    row = folds.above(row)
+    column = row-at(row).columns
+goal-column = column
+
+────────────────────
++ do move-right
+
+=? if document.row-count == 0
+if column < row-at(row).columns
+    column += 1
+else if folds.shown(row) + 1 < folds.row-count()
+    commit()
+    row = folds.below(row)
+    column = row-at(row).content-start
+goal-column = column
+
+────────────────────
++ do move-token-left
+
+=? if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+if offset == 0
+    move-left()
+    =
+column = current.content-start + token-start(current, offset)
+goal-column = column
+
+────────────────────
++ do move-token-right
+
+=? if document.row-count == 0
+. current = row-at(row)
+if column >= current.columns
+    move-right()
+    =
+. offset = column - current.content-start
+. position Size = 0
+. target = current.columns - current.content-start
+for span in current.spans
+    . end = position + span.text.length
+    if span.kind != SourceSpanKind.plain && end > offset
+        target = end
+        break
+    position = end
+column = current.content-start + target
+goal-column = column
+
+────────────────────
++ do move-up
+    - count Size = 1
+
+=? if folds.shown(row) == 0
+commit()
+. display = folds.shown(row)
+row = folds.actual(if display > count then display - count else 0)
+column = clamped(goal-column)
+
+────────────────────
++ do move-down
+    - count Size = 1
+
+=? if folds.shown(row) + 1 >= folds.row-count()
+commit()
+. display = folds.shown(row)
+. last = folds.row-count() - 1
+row = folds.actual(if display + count < last then display + count else last)
+column = clamped(goal-column)
+
+────────────────────
++ do move-to-line-start
+
+=? if document.row-count == 0
+column = row-at(row).content-start
+goal-column = column
+
+────────────────────
++ do move-to-line-end
+
+=? if document.row-count == 0
+column = row-at(row).columns
+goal-column = column
+
+────────────────────
++ do move-to-start
+
+place(0, 0, true)
+
+────────────────────
++ do move-to-end
+
+=? if document.row-count == 0
+. last = document.row-count - 1
+place(last, document.row-at(last).columns, true)
+
+────────────────────
++ do select-all
+
+=? if document.row-count == 0
+move-to-end()
+anchor-row = 0
+anchor-column = document.row-at(0).content-start
+
+────────────────────
++ do select-token
+
+=? if document.row-count == 0
+. current = row-at(row)
+=? if current.is-divider
+. offset = column - current.content-start
+. position Size = 0
+for span in current.spans
+    . end = position + span.text.length
+    if span.kind != SourceSpanKind.plain && offset >= position && offset <= end
+        anchor-row = row
+        anchor-column = current.content-start + position
+        column = current.content-start + end
+        goal-column = column
+        =
+    position = end
+
+────────────────────
++ do select-range
+    - target-row Size
+    - start Size
+    - end Size
+
+place(target-row, start)
+column = clamped(end)
+goal-column = column
+
+────────────────────
++ can-edit Bool
+    - index Size
+
+index < document.row-count && is-editable(row-at(index))
+
+────────────────────
++ do fold Bool
+
+=? false if folds.fold(row) == null
+cover()
+= true
+
+────────────────────
++ do unfold Bool
+
+= folds.unfold(row)
+
+────────────────────
++ do toggle-fold Bool
+    - target Size
+
+=? true if folds.unfold(target)
+=? false if !folds.collapse(target)
+cover()
+= true
+
+────────────────────
++ do fold-all
+
+folds.fold-all()
+cover()
+
+────────────────────
++ do unfold-all
+
+folds.unfold-all()
+
+────────────────────
++ do replace-rows SourceRewrite
+    - targets [Size]
+    - texts [String]
+
+commit()
+=? SourceRewrite(0, 0) if targets.length == 0
+. low = document.declaration-at(targets[0])
+. high = document.declaration-at(targets[targets.length - 1])
+. old [U32]
+for index in low .. < high + 1
+    old += document.declarations[index]
+pending = SourceUndo(low, old, high - low + 1, row, column)
+. language = document.language
+. changed Size = 0
+. held Size = 0
+. position = targets.length
+while position > 0
+    position -= 1
+    . target = targets[position]
+    . shown = document.row-at(target)
+    if !is-editable(shown)
+        continue
+    document.discard()
+    . next = rewritten(shown, texts[position])
+    if !next
+        continue
+    if language.is-invalid(next, shown.mode)
+        held += 1
+    document.replace-row-node(target, next)
+    changed += 1
+if changed == 0
+    pending = null
+    = SourceRewrite(0, 0)
+settle()
+finish()
+= SourceRewrite(changed, held)
+
+────────────────────
++ do toggle-comment Bool
+
+. targets [Size]
+. texts [String]
+for index in first-selected-row .. < last-selected-row + 1
+    if can-edit(index)
+        targets += index
+        texts += row-at(index).text
+=? false if targets.length == 0
+. changed = code-toggled-comments(texts, document.language.comment-marker)
+=? false if changed == texts
+. first = first-selected-row
+. last = last-selected-row
+. keeps-selection = has-selection
+. old-row = row
+. old-column = column
+=? false if replace-rows(targets, changed).changed == 0
+if keeps-selection
+    place(first, 0)
+    place(last, row-at(last).text.length, true)
+else
+    . shift = (row-at(old-row).text.length as Int) - (texts[0].length as Int)
+    place(old-row, max(0, (old-column as Int) + shift))
+= true
+
+────────────────────
++ do selected-text String
+
+=? "" if !has-selection
+. parts [String]
+. first = first-selected-row
+. last = last-selected-row
+. is-whole = last > first && selection-start <= row-at(first).content-start
+. is-ended = last > first && selection-end <= row-at(last).content-start
+for index in first .. < last + 1
+    . text = row-at(index).text
+    . low = if index == first && !is-whole then selection-start else 0
+    . high = if index != last then text.length else if is-ended then 0 else selection-end
+    if high > text.length
+        high = text.length
+    if low > high
+        low = high
+    parts += text[low .. < high]
+= "\n".join(parts)
+
+────────────────────
++ do insert Bool
+    - text String
+
+=? paste(text) if text.find("\n") != null
+if has-selection
+    . first = first-selected-row
+    . last = last-selected-row
+    =? splice-text(first, selection-start, last, selection-end, text) if first != last
+    delete-selection()
+=? false if document.row-count == 0 || text.length == 0
+if !is-dirty && document.row-at(row).node == null
+    =? false if !open-here()
+. current = row-at(row)
+=? false if !is-editable(current)
+. offset = column - current.content-start
+. content = current.content
+retype(current, content[... offset] ++ text ++ content[offset ...])
+column += text.length
+goal-column = column
+collapse()
+= true
+
+────────────────────
++ do paste Bool
+    - text String
+
+. lines [String]
+for line in text.split("\n")
+    lines += if line.length > 0 && line.ends-with("\r") then line[... line.length - 1] else line
+=? false if lines.length == 0
+=? insert(lines[0]) if lines.length == 1
+=? false if document.row-count < 2
+. first = if has-selection then first-selected-row else row
+. last = if has-selection then last-selected-row else row
+. start = if has-selection then selection-start else column
+. end = if has-selection then selection-end else column
+. shown = row-at(first)
+. is-ruled = !has-selection && !is-editable(shown) && shown.content.length > 0
+. is-closing = is-ruled && row + 1 == document.row-count
+if is-closing
+    first = row - 1
+    last = first
+    start = row-at(first).text.length
+    end = start
+else if is-ruled
+    start = 0
+    end = 0
+. opening = row-at(first).text
+. reach = if start < opening.length then start else opening.length
+. left = if is-ruled then "" else opening[... reach]
+. placed = source-placed(lines, left)
+. is-lines = whole-lines && (!has-selection || is-line-start(last, end))
+    .. whole-lines = !is-ruled && lines[lines.length - 1].length == 0 && is-line-start(first, start)
+=? splice-text(first, 0, last, 0, left ++ placed) if is-lines
+. written = if is-closing then "\n" ++ placed else if is-ruled then placed ++ "\n" else placed
+= splice-text(first, start, last, end, written)
+
+────────────────────
++ do delete-backward Bool
+
+=? delete-selection() if has-selection
+=? false if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+=? join-up() if offset == 0 || current.node == null
+=? false if !is-editable(current)
+. content = current.content
+retype(current, content[... offset - 1] ++ content[offset ...])
+column -= 1
+goal-column = column
+collapse()
+= true
+
+────────────────────
++ do delete-forward Bool
+
+=? delete-selection() if has-selection
+=? false if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+. content = current.content
+=? join-down() if offset >= content.length
+=? false if !is-editable(current)
+retype(current, content[... offset] ++ content[offset + 1 ...])
+collapse()
+= true
+
+────────────────────
++ do delete-token-backward Bool
+
+=? delete-selection() if has-selection
+=? false if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+=? join-up() if offset == 0 || current.node == null
+=? false if !is-editable(current)
+. start = token-start(current, offset)
+. content = current.content
+retype(current, content[... start] ++ content[offset ...])
+column = current.content-start + start
+goal-column = column
+collapse()
+= true
+
+────────────────────
++ do delete-to-line-start Bool
+
+=? delete-selection() if has-selection
+=? false if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+=? false if !is-editable(current) || offset == 0
+retype(current, current.content[offset ...])
+column = current.content-start
+goal-column = column
+collapse()
+= true
+
+────────────────────
++ do delete-to-line-end Bool
+
+=? delete-selection() if has-selection
+=? false if document.row-count == 0
+. current = row-at(row)
+. offset = column - current.content-start
+. content = current.content
+=? false if !is-editable(current) || offset >= content.length
+retype(current, content[... offset])
+collapse()
+= true
+
+────────────────────
++ do delete-selection Bool
+
+=? false if !has-selection
+. first = first-selected-row
+. last = last-selected-row
+if first == last
+    . current = row-at(row)
+    . start = selection-start
+    . low = start - current.content-start
+    . high = selection-end - current.content-start
+    column = start
+    goal-column = column
+    collapse()
+    =? false if !is-editable(current)
+    . content = current.content
+    retype(current, content[... low] ++ content[high ...])
+    = true
+=? splice-text(first, 0, last, 0, "") if is-line-start(first, selection-start) && ends-line
+.. ends-line = is-line-start(last, selection-end)
+= splice-text(first, selection-start, last, selection-end, "")
+
+────────────────────
++ do split
+
+if has-selection
+    delete-selection()
+. language = document.language
+. shown = row-at(row)
+if language.is-unparsed(shown.mode)
+    . lead = leading-spaces(shown.text)
+    splice-text(row, column, row, column, "\n" ++ " " * (if lead < column then lead else column))
+    =
+. home = shown.node-id
+. index = document.declaration-at(row)
+if shown.node == null || !language.is-flow(shown.mode)
+    commit()
+    open(index)
+    =
+. was-typed = is-dirty
+. content = shown.content
+. offset = column - shown.content-start
+. left = content[... offset]
+. rest = content[offset ...]
+. right = rest[leading-spaces(rest) ...]
+. owner = owner-of(index, shown)
+is-dirty = false
+begin(index)
+. flow = flow-of(index, owner)
+. ids = source-flow-ids(flow)
+. position = source-flow-position(flow, home)
+. current = flow[position]
+. holds = source-flow-holds(flow, position)
+if offset == 0 && content.length > 0
+    if was-typed
+        current.node = header-as(home, content, shown.mode, holds)
+    flow.insert(SourceFlowRow(document.store.blank(), current.indent), position)
+    apply(index, owner, ids, flow)
+    seek(index, home, 0)
+    finish()
+    =
+if was-typed || right.length > 0
+    current.node = header-as(home, left, shown.mode, holds)
+. added = header-for(right, shown.mode, false)
+. opened = added.id
+. is-open = has-header && document.store.raw-text(current.node) == null
+    .. has-header = language.header-count(current.node) != null
+. indent = if holds || is-open then current.indent + 1 else current.indent
+. slot = position + 1
+flow.insert(SourceFlowRow(added, indent), slot)
+apply(index, owner, ids, flow)
+seek(index, opened, 0)
+finish()
+
+────────────────────
++ do indent Bool
+
+= shift(true)
+
+────────────────────
++ do outdent Bool
+
+= shift(false)
+
+────────────────────
++ do undo Bool
+
+if is-dirty
+    revert()
+    = true
+=? false if undos.length == 0
+exchange(undos.pop(), redos)
+= true
+
+────────────────────
++ do redo Bool
+
+=? false if is-dirty || redos.length == 0
+exchange(redos.pop(), undos)
+= true
+
+────────────────────
++ do preview ImmutableTableRow'SourceNode?
+
+=? null if !is-dirty
+document.discard()
+= rewritten(document.row-at(row), typed)
+
+────────────────────
++ do saved-written SexpWritten
+
+commit()
+if document.collapse-blanks()
+    settle()
+    revision += 1
+= document.written()
+
+────────────────────
++ do mark-saved
+    - written SexpWritten
+
+saved = List'U32(document.declarations)
+document.line-ids = written.ids
+revision += 1
+
+────────────────────
+_ is-saved Bool
+
+document.declarations == saved
+
+────────────────────
++ do revert
+
+=? if !is-dirty
+is-dirty = false
+revision += 1
+column = clamped(column)
+goal-column = column
+collapse()
+
+────────────────────
++ do commit
+
+=? if !is-dirty
+. shown = document.row-at(row)
+if document.language.is-unparsed(shown.mode) || stays-invalid(shown)
+    splice-text(row, column, row, column, "")
+    =
+is-dirty = false
+revision += 1
+if typed != shown.content
+    document.discard()
+    . next = rewritten(shown, typed)
+    if next
+        . id = next.id
+        . index = document.declaration-at(row)
+        . count = document.row-count
+        begin(index)
+        document.replace-row-node(row, next)
+        finish()
+        if document.row-count != count
+            . rows = document.rows-of(index)
+            for position in 0 .. < rows.length
+                if document.node-id(rows[position]) == id
+                    row = document.first-row(index) + position
+column = clamped(column)
+anchor-column = clamped-at(anchor-row, anchor-column)
+
+────────────────────
+_ is-line-start Bool
+    - index Size
+    - at Size
+
+at <= row-at(index).content-start
+
+────────────────────
+_ do stays-invalid Bool
+    - shown SourceRow
+
+=? false if !shown.is-invalid || typed == shown.content
+document.discard()
+. next = rewritten(shown, typed)
+. stays = next != null && document.language.is-invalid(next, shown.mode)
+document.discard()
+= stays
+
+────────────────────
+_ do cover
+
+=? if !folds.is-hidden(row)
+commit()
+row = folds.actual(folds.shown(row))
+column = clamped(goal-column)
+collapse()
+
+────────────────────
+_ is-editable Bool
+    - shown SourceRow
+
+shown.node != null && document.language.is-editable(shown.mode)
+
+────────────────────
+_ do retype
+    - shown SourceRow
+    - text String
+
+typed = text
+. language = document.language
+. spans = language.highlight(text, shown.mode)
+. was-invalid = document.row-at(row).is-invalid
+document.discard()
+. next = rewritten(shown, text)
+. is-invalid = if next then language.is-invalid(next, shown.mode) else was-invalid
+dirty-row = SourceRow
+    - shown.node
+    - shown.mode
+    - shown.indent
+    - spans
+    - is-invalid
+    - 0
+    - shown.owner
+    - shown.node-id
+    - shown.owner-id
+is-dirty = true
+revision += 1
+document.discard()
+
+────────────────────
+_ clamped Size
+    - wanted Size
+
+clamped-at(row, wanted)
+
+────────────────────
+_ clamped-at Size
+    - index Size
+    - wanted Size
+
+|? index >= document.row-count
+    0
+|? wanted < start
+    start
+|? wanted > end
+    end
+??
+    wanted
+
+.. shown = row-at(index)
+.. start = shown.content-start
+.. end = shown.columns
+
+────────────────────
+_ do settle
+
+. count = document.row-count
+if row >= count
+    row = if count > 0 then count - 1 else 0
+column = clamped(column)
+goal-column = column
+collapse()
+
+────────────────────
+_ do begin
+    - index Index
+
+pending = SourceUndo(index, List'U32(document.declarations[index]), 1, row, column)
+
+────────────────────
+_ do finish
+
+. entry = pending
+if entry
+    . count = document.cell-count
+    entry.cells = if count > charged then count - charged else 0
+    undos += entry
+    redos = List'SourceUndo()
+    pending = null
+    trim()
+charged = document.cell-count
+revision += 1
+if document.is-crowded
+    compact()
+
+────────────────────
+_ do trim
+
+. total Size = 0
+. keep = undos.length
+while keep > 0
+    . cells = undos[keep - 1].cells
+    if keep < undos.length && total + cells > undo-budget
+        break
+    total += cells
+    keep -= 1
+=? if keep == 0
+. kept [SourceUndo]
+for position in keep .. < undos.length
+    kept += undos[position]
+undos = kept
+
+────────────────────
+_ do compact
+
+. held [U32]
+for entry in undos
+    held ++= entry.old
+for entry in redos
+    held ++= entry.old
+held ++= saved
+. moves = document.compact(held)
+for entry in undos
+    entry.move(moves)
+for entry in redos
+    entry.move(moves)
+for position in 0 .. < saved.length
+    saved[position] = moves.place(saved[position])
+charged = document.cell-count
+
+────────────────────
+_ do exchange
+    - entry SourceUndo
+    - target [SourceUndo]
+
+. current [U32]
+for position in entry.index .. < entry.index + entry.count
+    current += document.declarations[position]
+. reverse = SourceUndo(entry.index, current, entry.old.length, row, column)
+reverse.cells = entry.cells
+target += reverse
+document.restore(entry.index, entry.count, entry.old)
+row = entry.row
+column = entry.column
+settle()
+revision += 1
+
+────────────────────
+_ owner-of ImmutableTableRow'SourceNode
+    - index Index
+    - shown SourceRow
+
+document.store.node-at(shown.owner) ?? document.declaration(index)
+
+────────────────────
+_ shares-flow Bool
+    - upper SourceRow
+    - lower SourceRow
+
+|? upper.node == null || lower.node == null
+    false
+|? !language.is-flow(upper.mode) || !language.is-flow(lower.mode)
+    false
+??
+    upper.owner-id == lower.owner-id
+
+.. language = document.language
+
+────────────────────
+_ flow-of [SourceFlowRow]
+    - index Index
+    - owner ImmutableTableRow'SourceNode
+
+source-flow-rows(document.language, document.rows-of(index), owner)
+
+────────────────────
+_ do flow-content String
+    - index Index
+    - owner U32
+    - id U32
+
+. language = document.language
+. rows = document.rows-of(index)
+for position in 0 .. < rows.length
+    . shown = rows[position]
+    . is-held = document.node-id(shown) == id && document.owner-id(shown) == owner
+    if shown.node != null && is-held && language.is-flow(shown.mode)
+        = document.row-at(document.first-row(index) + position).content
+= ""
+
+────────────────────
+_ do apply
+    - index Index
+    - owner ImmutableTableRow'SourceNode
+    - ids [U32]
+    - flow [SourceFlowRow]
+
+. next = source-flow-rebuild(document.language, owner, ids, flow)
+. grown = document.store.swapped(document.declaration(index), owner, next)
+?! Panic("A flow owner is not in its declaration")
+    if !grown
+document.replace(index, grown)
+
+────────────────────
+_ do seek
+    - index Index
+    - id U32
+    - offset Size
+
+. rows = document.rows-of(index)
+for position in 0 .. < rows.length
+    if rows[position].node != null && document.node-id(rows[position]) == id
+        row = document.first-row(index) + position
+        column = clamped(rows[position].content-start + offset)
+        goal-column = column
+        collapse()
+        =
+settle()
+
+────────────────────
+_ do header-for ImmutableTableRow'SourceNode
+    - text String
+    - mode SourceRowMode
+    - holds Bool
+
+. language = document.language
+. parsed = language.parse(text, mode)
+if parsed
+    =? parsed if !holds || language.can-hold(parsed)
+= document.store.raw(text, List'(ImmutableTableRow'SourceNode)())
+
+────────────────────
+_ do header-as ImmutableTableRow'SourceNode
+    - id U32
+    - text String
+    - mode SourceRowMode
+    - holds Bool
+
+= document.store.with-id(header-for(text, mode, holds), id)
+
+────────────────────
+_ do leading-spaces Size
+    - text String
+
+. count Size = 0
+for c in text.codepoints
+    if c != ' '
+        break
+    count += 1
+= count
+
+────────────────────
+_ do token-start Size
+    - shown SourceRow
+    - offset Size
+
+. position Size = 0
+. start Size = 0
+for span in shown.spans
+    if span.kind != SourceSpanKind.plain && position < offset
+        start = position
+    position += span.text.length
+= start
+
+────────────────────
+_ do join-up Bool
+
+. current = row-at(row)
+=? splice-text(row - 1, row-at(row - 1).text.length, row, 0, "") if row > 0 && unparsed
+.. unparsed = document.language.is-unparsed(current.mode)
+commit()
+. shown = document.row-at(row)
+. store = document.store
+. node = store.node-at(shown.node)
+=? back-over() if !node
+. language = document.language
+. index = document.declaration-at(row)
+=? close(index, shown) if !language.is-flow(shown.mode)
+. owner = owner-of(index, shown)
+. flow = flow-of(index, owner)
+. ids = source-flow-ids(flow)
+. home = shown.node-id
+. position = source-flow-position(flow, home)
+=? false if position >= flow.length
+if store.is-blank(node)
+    . above U32 = if position > 0 then flow[position - 1].node.id else 0
+    begin(index)
+    apply(index, owner, ids, source-flow-without(flow, position, position + 1))
+    if position > 0
+        seek(index, above, source-far-column)
+    else
+        settle()
+    finish()
+    = true
+=? false if position == 0
+. upper = flow[position - 1]
+. held = upper.node.id
+begin(index)
+if store.is-blank(upper.node)
+    apply(index, owner, ids, source-flow-without(flow, position - 1, position))
+    seek(index, home, 0)
+else
+    . above = flow-content(index, owner.id, held)
+    . holds = position + 1 < flow.length && flow[position + 1].indent > upper.indent
+    upper.node = header-as(held, above ++ shown.content, shown.mode, holds)
+    apply(index, owner, ids, source-flow-without(flow, position, position + 1))
+    seek(index, held, above.length)
+finish()
+= true
+
+────────────────────
+_ do back-over Bool
+
+=? false if row == 0
+. target = row - 1
+while target > 0 && document.row-at(target).node == null
+    target -= 1
+. shown = document.row-at(target)
+. node = document.store.node-at(shown.node)
+if node && document.store.is-blank(node) && document.language.is-flow(shown.mode)
+    . index = document.declaration-at(target)
+    . owner = owner-of(index, shown)
+    . flow = flow-of(index, owner)
+    . ids = source-flow-ids(flow)
+    . position = source-flow-position(flow, shown.node-id)
+    begin(index)
+    apply(index, owner, ids, source-flow-without(flow, position, position + 1))
+    row -= 1
+    settle()
+    finish()
+    = true
+row -= 1
+if target == row
+    column = source-far-column
+settle()
+= true
+
+────────────────────
+_ do join-down Bool
+
+. current = row-at(row)
+=? splice-text(row, current.text.length, row + 1, 0, "") if row + 2 < document.row-count && unparsed
+.. unparsed = document.language.is-unparsed(current.mode)
+commit()
+=? false if row + 1 >= document.row-count
+. shown = document.row-at(row)
+. lower = document.row-at(row + 1)
+=? false if !shares-flow(shown, lower)
+. home-row = row
+. home-column = column
+row += 1
+column = lower.content-start
+=? true if join-up()
+row = home-row
+column = home-column
+= false
+
+────────────────────
+_ do close Bool
+    - index Index
+    - shown SourceRow
+
+. base = document.first-row(index)
+. rows = document.rows-of(index)
+. first = row
+. is-divided = false
+. id = shown.node-id
+for position in 0 .. < rows.length
+    if document.owner-id(rows[position]) == id
+        first = base + position
+        is-divided = rows[position].is-divider
+        break
+begin(index)
+do match document.language.close-row(document.declaration(index), shown)
+    | .kept
+        pending = null
+        = false
+    | .declaration
+        pending = SourceUndo(index, List'U32(document.declarations[index]), 0, row, column)
+        document.splice(index, 1, List'(ImmutableTableRow'SourceNode)())
+    | .row(next)
+        document.replace(index, next)
+row = if is-divided || first == 0 then first else first - 1
+column = source-far-column
+settle()
+finish()
+= true
+
+────────────────────
+_ do open
+    - index Index
+
+if index >= document.declarations.length
+    add-declaration(index)
+    =
+. home = row
+. shown = document.row-at(row)
+. is-row = shown.node != null || shown.is-divider
+. is-thick = shown.divider == source-divider-thick
+begin(index)
+. dropped = document.language.drop-row(document.declaration(index), shown)
+if dropped
+    document.replace(index, dropped)
+    while row + 1 < document.row-count && document.row-at(row).node != null
+        row += 1
+    row += 1
+    column = 0
+    settle()
+    finish()
+    =
+. opened = document.language.open-below(document.declaration(index), shown)
+if opened
+    . added = opened.added
+    document.replace(index, opened.declaration)
+    if is-row
+        seek(index, added, source-far-column)
+    else
+        row = home + 1
+        settle()
+    finish()
+    =
+pending = null
+if is-thick
+    add-declaration(index)
+
+────────────────────
+_ do open-here Bool
+
+. index = document.declaration-at(row)
+=? false if index >= document.declarations.length
+. shown = document.row-at(row)
+=? false if shown.is-divider
+begin(index)
+. opened = document.language.open-below(document.declaration(index), shown)
+if !opened
+    pending = null
+    = false
+. added = opened.added
+document.replace(index, opened.declaration)
+seek(index, added, 0)
+finish()
+= true
+
+────────────────────
+_ do add-declaration
+    - slot Index
+
+. added = document.language.declaration()
+. id = added.id
+pending = SourceUndo(slot, List'U32(), 1, row, column)
+document.splice(slot, 0, List'(ImmutableTableRow'SourceNode)(added))
+seek(slot, id, source-far-column)
+finish()
+
+────────────────────
+_ do shift Bool
+    - deeper Bool
+
+. typed-row = row-at(row)
+=? reindent(typed-row, deeper) if document.language.is-unparsed(typed-row.mode)
+commit()
+=? false if document.row-count == 0
+. shown = document.row-at(row)
+. home = shown.node-id
+. language = document.language
+=? regroup(shown, deeper) if shown.node == null || !language.is-flow(shown.mode)
+. index = document.declaration-at(row)
+. owner = owner-of(index, shown)
+. flow = flow-of(index, owner)
+. ids = source-flow-ids(flow)
+. position = source-flow-position(flow, home)
+. current = flow[position]
+. level = current.indent
+if deeper
+    =? false if position == 0
+    . upper = flow[position - 1]
+    =? false if upper.indent < level || (upper.indent == level && !language.can-hold(upper.node))
+else
+    =? false if level == 0
+. offset = column - shown.content-start
+begin(index)
+current.indent = if deeper then level + 1 else level - 1
+for later in position + 1 .. < flow.length
+    . lower = flow[later]
+    if lower.indent <= level
+        break
+    lower.indent = if deeper then lower.indent + 1 else lower.indent - 1
+apply(index, owner, ids, flow)
+seek(index, home, offset)
+finish()
+= true
+
+────────────────────
+_ do regroup Bool
+    - shown SourceRow
+    - deeper Bool
+
+. index = document.declaration-at(row)
+=? false if index >= document.declarations.length
+. declaration = document.declaration(index)
+. offset = column - shown.content-start
+. is-bare = shown.node == null
+if deeper
+    =? false if index == 0
+    . grown = document.language.adopt(document.declaration(index - 1), declaration, shown)
+    =? false if !grown
+    . id = declaration.id
+    . pair = List'U32(document.declarations[index - 1], document.declarations[index])
+    pending = SourceUndo(index - 1, pair, 1, row, column)
+    document.splice(index - 1, 2, List'(ImmutableTableRow'SourceNode)(grown))
+    land(index - 1, id, is-bare, offset)
+    = true
+. released = document.language.release(declaration, shown)
+=? false if !released
+. id = released.released.id
+pending = SourceUndo(index, List'U32(document.declarations[index]), 2, row, column)
+document.splice
+    - index
+    - 1
+    - List'(ImmutableTableRow'SourceNode)(released.declaration, released.released)
+land(index + 1, id, is-bare, offset)
+= true
+
+────────────────────
+_ do land
+    - index Index
+    - id U32
+    - is-bare Bool
+    - offset Size
+
+seek(index, id, offset)
+if is-bare && row > 0
+    row -= 1
+    settle()
+finish()
+
+────────────────────
+_ do splice-text Bool
+    - first Size
+    - start Size
+    - last Size
+    - end Size
+    - text String
+
+. count = document.row-count
+=? false if count < 2
+. closing = count - 1
+. head-row = if first < closing then first else closing - 1
+. head-column = if first < closing then start else row-at(head-row).text.length
+. tail-row = if last < closing then last else closing - 1
+. tail-column = if last < closing then end else row-at(tail-row).text.length
+. low = document.declaration-at(head-row)
+if low > 0 && head-row == document.first-row(low)
+    low -= 1
+. high = document.declaration-at(tail-row)
+. top = document.first-row(low)
+. bottom = document.first-row(high + 1)
+. opening = row-at(head-row).text
+. ending = row-at(tail-row).text
+. reach = if head-column < opening.length then head-column else opening.length
+. resume = if tail-column < ending.length then tail-column else ending.length
+. left = opening[... reach]
+. right = ending[resume ...]
+. parts [String]
+for index in top .. < head-row
+    parts += row-at(index).text
+parts += left ++ text ++ right
+for index in tail-row + 1 .. < bottom
+    parts += row-at(index).text
+. olds [String]
+for index in top .. < bottom
+    olds += document.row-at(index).text
+. next = "\n".join(parts)
+. after = count - tail-row
+is-dirty = false
+revision += 1
+if next == "\n".join(olds)
+    row = tail-row
+    column = clamped(tail-column)
+    goal-column = column
+    collapse()
+    = true
+document.discard()
+. language = document.language
+. made = source-declarations(language, language.read(next), low == 0)
+. old [U32]
+for index in low .. < high + 1
+    old += document.declarations[index]
+pending = SourceUndo(low, old, made.length, row, column)
+document.splice(low, high - low + 1, made)
+. now = document.row-count
+row = if now > after then now - after else 0
+. landed = row-at(row).text.length
+column = clamped(if landed > right.length then landed - right.length else 0)
+goal-column = column
+collapse()
+finish()
+= true
+
+────────────────────
+_ do reindent Bool
+    - shown SourceRow
+    - deeper Bool
+
+. offset = column
+. lead = leading-spaces(shown.text)
+. removed = if deeper then 0 else outdent-columns
+    .. outdent-columns = if lead < source-indent-columns then lead else source-indent-columns
+=? false if !deeper && removed == 0
+splice-text(row, 0, row, removed, if deeper then " " * source-indent-columns else "")
+. moved = if deeper then indented else if offset > removed then offset - removed else 0
+    .. indented = offset + source-indent-columns
+column = clamped(moved)
+goal-column = column
+collapse()
+= true
+
+────────────────────
+_ do rewritten ImmutableTableRow'SourceNode?
+    - shown SourceRow
+    - text String
+
+= remade(document.store.node(shown.node!), shown.mode, text)
+
+────────────────────
+_ do remade ImmutableTableRow'SourceNode?
+    - old ImmutableTableRow'SourceNode
+    - mode SourceRowMode
+    - text String
+
+. language = document.language
+. store = document.store
+. body = language.children(old)
+. parsed = language.parse(text, mode)
+. next = parsed if parsed != null && (body.length == 0 || language.can-hold(parsed))
+if next
+    =? null if store.same(next, language.detach(old))
+    = store.with-id(language.attach(next, body).parent, old.id)
+= store.with-id(store.raw(text, body), old.id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-placed String
+    - lines [String]
+    - left String
+
+. is-open = left.trim().length == 0
+. dest = source-indent-width(left) as Int
+. leads = source-unindented(lines[0]).length < lines[0].length
+. anchor = if is-open || leads then source-indent-width(lines[0]) as Int else dest
+. unit = source-indent-columns as Int
+. step Int
+for index in 1 .. < lines.length
+    if lines[index].trim().length > 0
+        . delta = (source-indent-width(lines[index]) as Int) - anchor
+        step = source-gcd(step, if delta < 0 then -delta else delta)
+. placed [String]
+placed += source-unindented(lines[0])
+for index in 1 .. < lines.length
+    . line = lines[index]
+    if line.trim().length == 0
+        placed += ""
+        continue
+    . delta = (source-indent-width(line) as Int) - anchor
+    . moved = if step == 0 || step % unit == 0 then delta else delta / step * unit
+    . width = dest + moved
+    placed += (" " * (if width > 0 then width as Size else 0)) ++ source-unindented(line)
+= "\n".join(placed)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-gcd Int
+    - a Int
+    - b Int
+
+if b == 0 then a else source-gcd(b, a % b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-indent-width Size
+    - text String
+
+. width Size = 0
+for c in text.codepoints
+    if c == ' '
+        width += 1
+    else if c == '\t'
+        width += source-indent-columns
+    else
+        break
+= width
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-unindented String
+    - text String
+
+. count Size = 0
+for c in text.codepoints
+    if c != ' ' && c != '\t'
+        break
+    count += 1
+= text[count ...]
+
+━━━━━━━━━━━━━━━━━━━━
++ do source-write-text
+    - session SourceSession
+    - file-path String
+
+. written = session.saved-written()
+. flags = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
+. file = catch? File(file-path, flags)
+=? false if !file
+. wrote = catch? file.write(written.text)
+catch file.close()
+=? false if wrote == null
+session.mark-saved(written)
+= true

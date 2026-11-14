@@ -1,0 +1,60 @@
+`benchmark.meta description: Measures layout with large hidden subtrees mixed with visible rows.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchHiddenRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 40)
+
+for group-index in 0 .. < 48
+    . visible = BenchVisibleGroup()
+    markup-append(root, visible)
+    markup-append(visible, Label("visible-$group-index"))
+
+    . hidden = BenchHiddenGroup()
+    markup-append(root, hidden)
+    for item-index in 0 .. < 32
+        markup-append(hidden, Label("hidden-${group-index}-$item-index"))
+
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+for frame in 0 .. < 64
+    root.update-layout()
+    checksum += root.inner-height + root.inner-width + frame
+
+-- "bench-result tui/layout-hidden-subtrees checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchVisibleGroup is Box
+
+• This
+    layout = flow-col
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenGroup is Box
+
+• This
+    layout = flow-col
+    display = Display.hidden

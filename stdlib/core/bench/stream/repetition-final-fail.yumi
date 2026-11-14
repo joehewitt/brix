@@ -1,0 +1,39 @@
+`benchmark.meta description: Stresses repetition rollback when the final match fails.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. groups = match repetition-final-fail-source()
+    ~ \repetition-final-fail-document
+    ?! Panic("repetition-final-fail did not parse")
+
+. checksum = 0 as Size
+for group in groups
+    checksum += group
+
+-- "bench-result stream/repetition-final-fail checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ repetition-final-fail-document ~ Char
+
+~ groups \repetition-group+
+    groups
+
+.. repetition-group Size ~
+    ~ "items:" items \repetition-item* "END\n"
+        items.length
+
+.. repetition-item ~
+    ~ [a-zA-Z0-9_]+ ","
+
+━━━━━━━━━━━━━━━━━━━━
+_ repetition-final-fail-source
+
+"".join(repetition-final-fail-group(each) in 0 .. < 80)
+
+━━━━━━━━━━━━━━━━━━━━
+_ repetition-final-fail-group String
+    - group Int
+
+"items:${items}END\n"
+
+.. items = "".join("g${group}_item$each," in 0 .. < 24)

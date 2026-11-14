@@ -1,0 +1,82 @@
+./source-html
+/data/markdown
+/os/cli
+/os/file
+/os/path
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+. command = cmdline-args()
+?! Error("Usage: yumi-html <source.yumi|document.md>")
+    if command.length != 2
+
+. source-path String = command[1]
+. source = read-file-text(Path(source-path))
+
+if source-path.ends-with(".md")
+    stdout.write(markdown-to-html(Markdown(source), markdown-fenced-code))
+else
+    stdout.write(yumi-source-html(source, source-path))
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-fenced-code String
+    - code MDFencedCode
+
+|? code.language == "yumi"
+    yumi-source-code-html(code.body)
+|? code.language
+    markdown-language-fenced-code(html-attribute(code.language), html-text(code.body))
+??
+    markdown-plain-fenced-code(html-text(code.body))
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ markdown-language-fenced-code
+    - language String
+    - body String
+
+<pre><code class="language-$language">$body</code></pre>
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ markdown-plain-fenced-code
+    - body String
+
+<pre><code>$body</code></pre>
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-text String
+    - text String
+
+"".join(html-character(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-attribute String
+    - text String
+
+"".join(html-attribute-character(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-character String
+    - char Char
+
+|? char == '&'
+    "&amp;"
+|? char == '<'
+    "&lt;"
+|? char == '>'
+    "&gt;"
+??
+    char as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-attribute-character String
+    - char Char
+
+|? char == '"'
+    "&quot;"
+|? char == '\''
+    "&#39;"
+??
+    html-character(char)

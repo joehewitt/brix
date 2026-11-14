@@ -1,0 +1,1943 @@
+./markdown-blocks
+./markdown-model
+./markdown-selection
+./markdown-source
+./markdown-view
+/code
+/core/style
+/core/virtual
+/core/virtual-layout
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/gui/clipboard
+/gui/virtual
+/math
+/stream/aggregate
+/time/duration
+/ui/input
+/ui/key-combo
+/ui/undo-target
+/units
+
+_ markdown-caret-width Length = 2
+_ markdown-blink-interval = 530ms
+_ markdown-overscan VirtualCoord = 1000vcoord
+_ markdown-estimated-line VirtualCoord = 32vcoord
+_ markdown-edit-roles :=
+    [MenuRole.select-all]
+_ markdown-redo-key := KeyCombo("Cmd+Y")
+_ markdown-save-key := KeyCombo("Cmd+S")
+_ markdown-bold-key := KeyCombo("Cmd+B")
+_ markdown-italic-key := KeyCombo("Cmd+I")
+_ markdown-paragraph-key := KeyCombo("Cmd+0")
+_ markdown-heading-keys :=
+    [KeyCombo("Cmd+1"), KeyCombo("Cmd+2"), KeyCombo("Cmd+3"), KeyCombo("Cmd+4"), KeyCombo("Cmd+5"), KeyCombo("Cmd+6")]
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownEditor is Box
+    is UndoTarget
+
++ session CodeSession?
++ base String
++ column-width Length? = null
++ column-padding = Insets(0, 0, 0, 0)
++ text-input-context => caret-context()
++ undo-target => this
++ event save-requested CodeSession
+
+_ blocks [MarkdownBlock]
+_ model = MarkdownModel()
+_ block-source := MarkdownBlockSource(model)
+_ block-layout := markdown-block-layout(block-source)
+_ painted-first Size
+_ painted-last Size
+_ reveal-tries Size
+_ caret = MarkdownPoint(0, 0, 0)
+_ anchor = MarkdownPoint(0, 0, 0)
+_ drag-origin = MarkdownRange(MarkdownPoint(0, 0, 0), MarkdownPoint(0, 0, 0))
+_ drag-granularity = MarkdownGranularity.character
+_ shown-revision U64
+_ shown-generation U64
+_ goal-x Length?
+_ typing-marks MarkdownMarks?
+_ is-applying = false
+_ reveals = false
+_ pending-line Size?
+_ is-caret-lit = true
+_ blink-generation U64
+
+• This • markdown-editor flex-col
+    focus-mode = FocusMode.input
+
+────────────────────
+
+<This
+    <VirtualRegion'MarkdownBlock rows • flex:1
+        source = block-source
+        virtual-layout = block-layout
+        overscan = VirtualInsets(markdown-overscan, 0vcoord, markdown-overscan, 0vcoord)
+        binds-viewport-first = true
+
+        <MarkdownEditorRow (row) - slot • flex-col
+            editor = this
+            padding-left = #column-padding.left
+            padding-right = #column-padding.right
+            <MarkdownBlockView
+                block = slot.#item
+                is-editable = true
+                min-width = SizeSpec.percent(100%)
+                max-width = if #column-width != null then SizeSpec.coord(#column-width) else SizeSpec.auto
+                align-x = Alignment.center
+
+────────────────────
+whenever #column-padding
+
+block-layout.leading = column-padding.top as VirtualCoord
+block-layout.trailing = column-padding.bottom as VirtualCoord
+block-source.inset = (column-padding.left + column-padding.right) as VirtualCoord
+
+────────────────────
+whenever #column-width
+
+block-source.limit = (column-width ?? 0) as VirtualCoord
+
+────────────────────
++ do show
+    - next CodeSession
+
+shown-generation += 1
+. generation = shown-generation
+session = next
+rebuild(next)
+adopt-session-caret(next)
+invalidate-layout()
+repaint()
+for revision on next.updated until generation != shown-generation
+    session-updated()
+
+────────────────────
++ do top-line Size?
+
+. top = rows.content-bounds.y + rows.content-offset.y
+. found MarkdownBlockView? = null
+for view in block-views()
+    if view.block.index < blocks.length && view.bounds.y + view.bounds.height > top + 1
+        if !found || view.block.index < found.block.index
+            found = view
+= found?.block.line
+
+────────────────────
++ do reveal-line
+    - line Size
+
+pending-line = line
+reveal-pending-line()
+
+────────────────────
++ do store-caret
+
+. active = session
+if active
+    sync-session-caret(active)
+
+────────────────────
++ do click-at
+    - root-point Point
+    - click-count U32
+    - extends Bool
+
+request-focus()
+. found = point-at(content-point(root-point))
+=? if found == null
+drag-granularity = markdown-granularity(click-count)
+. keeps = drag-granularity == MarkdownGranularity.character && extends
+drag-origin = if keeps then MarkdownRange(anchor, anchor) else found-unit
+    .. found-unit = markdown-unit-at(blocks, found, drag-granularity)
+. range = markdown-extend-range(blocks, drag-origin, found, drag-granularity)
+anchor = range.anchor
+caret = range.caret
+goal-x = null
+typing-marks = null
+refresh-view()
+
+────────────────────
++ do perform
+    - command TextCommand
+    - extends = false
+
+. active = session
+=? if !active
+if command != TextCommand.move-up && command != TextCommand.move-down
+    goal-x = null
+do match command
+    | .move-backward
+        move-horizontally(false, false, extends)
+    | .move-forward
+        move-horizontally(true, false, extends)
+    | .move-word-backward
+        move-horizontally(false, true, extends)
+    | .move-word-forward
+        move-horizontally(true, true, extends)
+    | .move-up
+        move-vertically(false, extends)
+    | .move-down
+        move-vertically(true, extends)
+    | .move-to-line-start
+        move-to-row-edge(false, extends)
+    | .move-to-line-end
+        move-to-row-edge(true, extends)
+    | .move-to-paragraph-start
+        set-caret(MarkdownPoint(caret.block, caret.cell, 0), extends)
+    | .move-to-paragraph-end
+        set-caret(MarkdownPoint(caret.block, caret.cell, slot-size(caret)), extends)
+    | .move-to-start
+        set-caret(first-point(), extends)
+    | .move-to-end
+        set-caret(last-point(), extends)
+    | .page-up
+        move-page(false, extends)
+    | .page-down
+        move-page(true, extends)
+    | .delete-backward
+        delete-backward()
+    | .delete-forward
+        delete-forward()
+    | .delete-word-backward
+        delete-word(false)
+    | .delete-word-forward
+        delete-word(true)
+    | .delete-to-line-start
+        delete-to-row-edge(false)
+    | .delete-to-line-end
+        delete-to-row-edge(true)
+    | .delete-to-paragraph-end
+        delete-to-row-edge(true)
+    | .insert-newline
+        split()
+    | .insert-line-break
+        split()
+    | .insert-tab
+        tab(false)
+    | .insert-backtab
+        tab(true)
+    | .select-all
+        anchor = first-point()
+        caret = last-point()
+    | .cancel
+        anchor = caret
+    ??
+        =
+refresh-view()
+
+╌╌╌╌╌╌╌╌╌╌ is UndoTarget ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get can-undo
+
+session?.history.can-undo ?? false
+
+────────────────────
++ get can-redo
+
+session?.history.can-redo ?? false
+
+────────────────────
++ get undo-title
+
+session?.history.undo-title ?? "Undo"
+
+────────────────────
++ get redo-title
+
+session?.history.redo-title ?? "Redo"
+
+────────────────────
++ do undo
+
+. ignored = perform-edit(MenuRole.undo)
+
+────────────────────
++ do redo
+
+. ignored = perform-edit(MenuRole.redo)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do perform-edit Bool
+    - role MenuRole
+
+. active = session
+=? false if !active
+do match role
+    | .undo
+        sync-session-caret(active)
+        active.undo()
+        session-updated()
+    | .redo
+        sync-session-caret(active)
+        active.redo()
+        session-updated()
+    | .select-all
+        anchor = first-point()
+        caret = last-point()
+        refresh-view()
+    ??
+        = false
+= true
+
+────────────────────
++ do insert-text
+    - typed String
+
+=? if !typed.size
+. start = selection-start()
+. end = selection-end()
+. block = blocks[start.block]
+. is-code = block.kind == MarkdownBlockKind.code
+. text = if is-code then typed else " ".join(typed.split("\n"))
+if start == end && text == " " && apply-input-rule(start)
+    =
+edit-range(start, end, text, start == end)
+
+────────────────────
++ do toggle-mark
+    - mark MarkdownMark
+
+. start = selection-start()
+. end = selection-end()
+if start == end
+    . marks = typing-marks ?? markdown-runs-marks-at(slot-runs(caret), caret.offset)
+    typing-marks = markdown-marks-with(marks, mark, !markdown-marks-has(marks, mark))
+    =
+. drafts [MarkdownDraft]
+for index in start.block .. < end.block + 1
+    . draft = draft-at(index)
+    . kind = draft.kind
+    if kind == MarkdownBlockKind.grid
+        for cell in 0 .. < draft.cells.length
+            if markdown-cell-in-range(index, cell, start, end)
+                . size = markdown-runs-text(draft.cells[cell]).size
+                . from = if index == start.block && cell == start.cell then start.offset else 0
+                . to = if index == end.block && cell == end.cell then end.offset else size
+                draft.cells[cell] = markdown-runs-toggle(draft.cells[cell], from, to, mark)
+                markdown-touch-row(draft, cell)
+    else if markdown-is-prose(kind)
+        . size = markdown-runs-text(draft.runs).size
+        . from = if index == start.block then start.offset else 0
+        . to = if index == end.block then end.offset else size
+        draft.runs = markdown-runs-toggle(draft.runs, from, to, mark)
+    drafts += draft
+commit(start.block, end.block, drafts, MarkdownPoint(0, 0, 0))
+anchor = start
+caret = end
+refresh-view()
+
+────────────────────
++ do set-heading
+    - level Size
+
+. start = selection-start()
+. end = selection-end()
+. drafts [MarkdownDraft]
+for index in start.block .. < end.block + 1
+    . draft = draft-at(index)
+    if markdown-is-prose(draft.kind)
+        draft.kind = if level > 0 then MarkdownBlockKind.heading else MarkdownBlockKind.paragraph
+        draft.level = level
+        draft.prefix = ""
+    drafts += draft
+commit(start.block, end.block, drafts, MarkdownPoint(0, 0, 0))
+anchor = clamp-point(start)
+caret = clamp-point(end)
+refresh-view()
+
+────────────────────
+_ do press Bool
+    - event KeyPressEvent
+
+. active = session
+=? false if !active
+. role = markdown-edit-role(event)
+=? perform-edit(role) if role
+if markdown-save-key.matches(event)
+    sync-session-caret(active)
+    save-requested <- active
+    = true
+if markdown-bold-key.matches(event)
+    toggle-mark(MarkdownMark.strong)
+    = true
+if markdown-italic-key.matches(event)
+    toggle-mark(MarkdownMark.em)
+    = true
+if markdown-paragraph-key.matches(event)
+    set-heading(0)
+    = true
+for index in 0 .. < markdown-heading-keys.length
+    if markdown-heading-keys[index].matches(event)
+        set-heading(index + 1)
+        = true
+= false
+
+────────────────────
+for event on pointer-down
+
+if event.button == PointerButton.primary && !event.modifiers.command
+    click-at(event.root-point, event.click-count, event.modifiers.shift)
+
+────────────────────
+for event on pointer-drag
+
+. found = point-at(content-point(event.root-point))
+if found != null
+    . range = markdown-extend-range(blocks, drag-origin, found, drag-granularity)
+    anchor = range.anchor
+    caret = range.caret
+    goal-x = null
+    refresh-view()
+
+────────────────────
+for event on key-press
+
+. modifiers = event.modifiers
+if event.key == Key.tab && !modifiers.command && !modifiers.control && !modifiers.option
+    perform(if modifiers.shift then TextCommand.insert-backtab else TextCommand.insert-tab)
+    event.cancel()
+else if press(event)
+    event.cancel()
+
+────────────────────
+for event on key-input
+
+if session
+    if event.replaces-before > 0 && caret == anchor
+        . text = slot-text(caret)
+        . start Size = caret.offset
+        for index in 0 .. < event.replaces-before
+            start = markdown-previous-char(text, start)
+        anchor = MarkdownPoint(caret.block, caret.cell, start)
+    insert-text(event.text)
+    goal-x = null
+
+────────────────────
+for event on text-command
+
+perform(event.command, event.extends-selection)
+
+────────────────────
+for event on copy
+
+if copy-selection(event.clipboard)
+    event.cancel()
+
+────────────────────
+for event on cut
+
+if session && copy-selection(event.clipboard)
+    edit-range(selection-start(), selection-end(), "", false)
+    event.cancel()
+
+────────────────────
+for event on paste
+
+. pasted = event.clipboard.read-text()
+if session && pasted
+    paste-text(pasted)
+    event.cancel()
+
+────────────────────
+for event on focus
+
+start-blink()
+repaint()
+
+────────────────────
+for event on blur
+
+store-caret()
+stop-blink()
+repaint()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+stop-blink()
+shown-generation += 1
+session = null
+model.detach()
+super.close()
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+=? if !reveals
+reveals = false
+reveal-caret()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do refresh-view
+
+reveals = true
+invalidate-layout()
+if is-focused
+    start-blink()
+    text-input-changed()
+repaint()
+
+────────────────────
+_ do repaint
+
+. low = if caret.block < anchor.block then caret.block else anchor.block
+. high = if caret.block > anchor.block then caret.block else anchor.block
+. first = if low < painted-first then low else painted-first
+. last = if high > painted-last then high else painted-last
+painted-first = low
+painted-last = high
+for row in editor-rows()
+    . view = markdown-row-view(row)
+    if view && view.block.index >= first && view.block.index <= last
+        row.invalidate-paint()
+
+────────────────────
+_ do repaint-rows
+
+for row in editor-rows()
+    row.invalidate-paint()
+
+────────────────────
+_ do reveal-caret
+
+. view = slot-view(caret)
+if !view
+    =? if reveal-tries >= 3 || caret.block >= blocks.length
+    reveal-tries += 1
+    . ignored = rows.scroll-to-address(caret.block, ScrollAlignment.nearest)
+    reveals = true
+    invalidate-layout()
+    =
+reveal-tries = 0
+. rect = view.caret-rect(caret.offset)
+=? if rect == null
+. ignored = view.reveal-in-ancestors(rect, ScrollAlignment.nearest, Insets(24, 0, 24, 0))
+
+────────────────────
+_ do session-updated
+
+. active = session
+=? if !active || is-applying || active.revision == shown-revision
+rebuild(active)
+adopt-session-caret(active)
+goal-x = null
+typing-marks = null
+refresh-view()
+
+────────────────────
+_ do adopt-session-caret
+    - active CodeSession
+
+caret = point-at-source(active.text, active.caret)
+anchor = point-at-source(active.text, active.anchor)
+
+────────────────────
+_ do sync-session-caret
+    - active CodeSession
+
+. text = active.text
+. at = source-at-point(text, caret)
+. from = source-at-point(text, anchor)
+if active.caret != at || active.anchor != from
+    active.select-range(from, at)
+
+────────────────────
+_ do rebuild
+    - active CodeSession
+
+shown-revision = active.revision
+. change = model.sync(active.text, base)
+=? if change == null
+if change.is-rebuilt
+    blocks = model.blocks
+    block-layout.reset()
+    rows.restore-scroll(Point(0, 0))
+else if change.removed > 0 || change.added > 0
+    block-layout.splice(block-source, change.at, change.removed, change.added)
+    repaint-rows()
+block-source.revision.bump()
+reveal-pending-line()
+
+────────────────────
+_ do commit
+    - first Size
+    - last Size
+    - drafts [MarkdownDraft]
+    - next MarkdownPoint
+    - coalescing = false
+
+. active = session
+=? if !active || !drafts.length
+sync-session-caret(active)
+. text = active.text
+. range-start = if first > 0 then model.ends[first - 1] else 0
+. range-end = if last + 1 < blocks.length then model.starts[last + 1] else text.length
+. parts [String]
+. leading = text.text-in(range-start, model.starts[first])
+if first > 0
+    parts += markdown-gap
+        - leading
+        - blocks[first - 1].kind
+        - model.is-empty-block(first - 1)
+        - drafts[0].kind
+        - drafts[0].is-empty
+else
+    parts += leading
+for index in 0 .. < drafts.length
+    if index > 0
+        parts += markdown-separator(drafts[index - 1], drafts[index])
+    parts += markdown-draft-source(drafts[index])
+. tail = drafts[drafts.length - 1]
+. trailing = text.text-in(model.ends[last], range-end)
+if last + 1 < blocks.length
+    parts += markdown-gap
+        - trailing
+        - tail.kind
+        - tail.is-empty
+        - blocks[last + 1].kind
+        - model.is-empty-block(last + 1)
+else if !trailing.size && tail.is-empty
+    parts += "\n"
+else
+    parts += trailing
+apply-diff(active, range-start, text.text-in(range-start, range-end), "".join(parts), coalescing)
+rebuild(active)
+caret = clamp-point(MarkdownPoint(first + next.block, next.cell, next.offset))
+anchor = caret
+goal-x = null
+typing-marks = null
+sync-session-caret(active)
+refresh-view()
+
+────────────────────
+_ do apply-diff
+    - active CodeSession
+    - start Size
+    - old String
+    - replacement String
+    - coalescing Bool
+
+. a = old as Byte[]
+. b = replacement as Byte[]
+. prefix Size = 0
+while prefix < a.size && prefix < b.size && a[prefix] == b[prefix]
+    prefix += 1
+while prefix > 0 && prefix < a.size && a[prefix] >= 0x80 && a[prefix] < 0xC0
+    prefix -= 1
+. suffix Size = 0
+while suffix < a.size - prefix && suffix < b.size - prefix && a[a.size - 1 - suffix] == b[b.size - 1 - suffix]
+    suffix += 1
+while suffix > 0 && a[a.size - suffix] >= 0x80 && a[a.size - suffix] < 0xC0
+    suffix -= 1
+=? if prefix == a.size && prefix == b.size
+is-applying = true
+active.replace
+    - start + prefix
+    - start + a.size - suffix
+    - markdown-slice(replacement, prefix, b.size - suffix)
+    - coalescing
+is-applying = false
+
+────────────────────
+_ do edit-range
+    - start MarkdownPoint
+    - end MarkdownPoint
+    - typed String
+    - coalescing Bool
+
+if start.block == end.block
+    . draft = draft-at(start.block)
+    delete-in-draft(draft, start, end)
+    if typed.size
+        insert-in-draft(draft, start.cell, start.offset, typed)
+    commit
+        - start.block
+        - start.block
+        - [draft]
+        - MarkdownPoint(0, start.cell, start.offset + typed.size)
+        - coalescing
+    =
+. head = draft-at(start.block)
+. tail = draft-at(end.block)
+. drops-head = !head.is-prose && start.cell == 0 && start.offset == 0
+. drops-tail = !tail.is-prose && end == slot-end-of(end.block)
+markdown-truncate-draft(head, start, true)
+markdown-truncate-draft(tail, end, false)
+if head.is-prose && tail.is-prose
+    . merged = if model.is-empty-block(start.block) then tail else head
+    merged.runs = markdown-runs-join(head.runs, tail.runs)
+    if typed.size
+        insert-in-draft(merged, 0, start.offset, typed)
+    if !merged.runs.length
+        merged = MarkdownDraft(MarkdownBlockKind.paragraph)
+    commit(start.block, end.block, [merged], MarkdownPoint(0, 0, start.offset + typed.size))
+    =
+. drafts [MarkdownDraft]
+. next = MarkdownPoint(0, start.cell, start.offset + typed.size)
+if head.is-prose && !head.runs.length
+    head = MarkdownDraft(MarkdownBlockKind.paragraph)
+if !drops-head
+    if typed.size
+        insert-in-draft(head, start.cell, start.offset, typed)
+    drafts += head
+if !drops-tail
+    drafts += tail
+if drops-head
+    next = MarkdownPoint(0, 0, typed.size)
+    if typed.size || !drafts.length
+        . front = MarkdownDraft(MarkdownBlockKind.paragraph)
+        if typed.size
+            insert-in-draft(front, 0, 0, typed)
+        drafts.insert(front, 0)
+commit(start.block, end.block, drafts, next)
+
+────────────────────
+_ do insert-in-draft
+    - draft MarkdownDraft
+    - cell Size
+    - offset Size
+    - typed String
+
+. kind = draft.kind
+if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.exhibit
+    draft.code = "${markdown-slice(draft.code, 0, offset)}$typed$code-tail"
+        .. code-tail = markdown-slice(draft.code, offset, draft.code.size)
+else if kind == MarkdownBlockKind.grid
+    . runs = draft.cells[cell]
+    draft.cells[cell] = markdown-runs-insert
+        - runs
+        - offset
+        - typed
+        - typing-marks ?? markdown-runs-marks-at(runs, offset)
+    markdown-touch-row(draft, cell)
+else
+    draft.runs = markdown-runs-insert
+        - draft.runs
+        - offset
+        - typed
+        - typing-marks ?? markdown-runs-marks-at(draft.runs, offset)
+
+────────────────────
+_ do delete-in-draft
+    - draft MarkdownDraft
+    - start MarkdownPoint
+    - end MarkdownPoint
+
+=? if start == end
+. kind = draft.kind
+if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.exhibit
+    draft.code = "${markdown-slice(draft.code, 0, start.offset)}$code-tail"
+        .. code-tail = markdown-slice(draft.code, end.offset, draft.code.size)
+else if kind == MarkdownBlockKind.grid
+    for cell in start.cell .. < end.cell + 1
+        . size = markdown-runs-text(draft.cells[cell]).size
+        . from = if cell == start.cell then start.offset else 0
+        . to = if cell == end.cell then end.offset else size
+        draft.cells[cell] = markdown-runs-delete(draft.cells[cell], from, to)
+        markdown-touch-row(draft, cell)
+else
+    draft.runs = markdown-runs-delete(draft.runs, start.offset, end.offset)
+
+────────────────────
+_ do apply-input-rule Bool
+    - point MarkdownPoint
+
+. draft = draft-at(point.block)
+=? false if draft.kind != MarkdownBlockKind.paragraph
+. text = markdown-runs-text(draft.runs)
+. marker = markdown-slice(text, 0, point.offset)
+. size = text.size
+. rest = markdown-runs-slice(draft.runs, point.offset, size)
+. heading = markdown-heading-marker(marker)
+if heading > 0
+    draft.kind = MarkdownBlockKind.heading
+    draft.level = heading
+    draft.prefix = "$marker "
+else if marker == "-" || marker == "*" || marker == "+" || markdown-is-ordered-marker(marker)
+    draft.kind = MarkdownBlockKind.item
+    draft.prefix = "$marker "
+else if marker == ">"
+    draft.kind = MarkdownBlockKind.quote
+    draft.prefix = "> "
+else
+    = false
+draft.runs = rest
+commit(point.block, point.block, [draft], MarkdownPoint(0, 0, 0))
+= true
+
+────────────────────
+_ do split
+
+. active = session
+=? if !active
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+. point = caret
+. draft = draft-at(point.block)
+. kind = draft.kind
+. size = slot-size(point)
+if kind == MarkdownBlockKind.grid
+    . columns = draft.columns
+    if point.cell + columns < draft.cells.length
+        set-caret(MarkdownPoint(point.block, point.cell + columns, 0), false)
+        refresh-view()
+        =
+    append-row(draft)
+    commit(point.block, point.block, [draft], MarkdownPoint(0, point.cell + columns, 0))
+    =
+if kind == MarkdownBlockKind.code
+    . code = draft.code
+    if point.offset == size && code.ends-with("\n")
+        draft.code = markdown-slice(code, 0, size - 1)
+        commit
+            - point.block
+            - point.block
+            - [draft, MarkdownDraft(MarkdownBlockKind.paragraph)]
+            - MarkdownPoint(1, 0, 0)
+        =
+    . indent = markdown-line-indent(code, point.offset)
+    insert-in-draft(draft, 0, point.offset, "\n$indent")
+    commit(point.block, point.block, [draft], MarkdownPoint(0, 0, point.offset + 1 + indent.size))
+    =
+if kind == MarkdownBlockKind.paragraph && block-rule(point, draft)
+    =
+if kind == MarkdownBlockKind.item && !size
+    commit
+        - point.block
+        - point.block
+        - [MarkdownDraft(MarkdownBlockKind.paragraph)]
+        - MarkdownPoint(0, 0, 0)
+    =
+if draft.is-empty
+    commit
+        - point.block
+        - point.block
+        - [draft, MarkdownDraft(MarkdownBlockKind.paragraph)]
+        - MarkdownPoint(1, 0, 0)
+    =
+. tail = draft.copy()
+draft.runs = markdown-runs-slice(draft.runs, 0, point.offset)
+tail.runs = markdown-runs-slice(tail.runs, point.offset, size)
+if kind == MarkdownBlockKind.item
+    tail.prefix = markdown-next-item-prefix(draft.prefix)
+else if point.offset == size || kind == MarkdownBlockKind.heading
+    tail.kind = MarkdownBlockKind.paragraph
+    tail.prefix = ""
+if point.offset == 0 && size > 0 && kind != MarkdownBlockKind.item
+    commit
+        - point.block
+        - point.block
+        - [MarkdownDraft(MarkdownBlockKind.paragraph), tail]
+        - MarkdownPoint(1, 0, 0)
+    =
+commit(point.block, point.block, [draft, tail], MarkdownPoint(1, 0, 0))
+
+────────────────────
+_ do block-rule Bool
+    - point MarkdownPoint
+    - draft MarkdownDraft
+
+. text = markdown-runs-text(draft.runs)
+=? false if point.offset != text.size
+if text == "---"
+    commit
+        - point.block
+        - point.block
+        - [MarkdownDraft(MarkdownBlockKind.divider), MarkdownDraft(MarkdownBlockKind.paragraph)]
+        - MarkdownPoint(1, 0, 0)
+    = true
+if text.starts-with("```")
+    . code = MarkdownDraft(MarkdownBlockKind.code)
+    code.language = markdown-slice(text, 3, text.size).trim()
+    commit(point.block, point.block, [code], MarkdownPoint(0, 0, 0))
+    = true
+. cells = markdown-header-cells(text)
+=? false if cells.length < 1
+. grid = MarkdownDraft(MarkdownBlockKind.grid)
+grid.columns = cells.length
+for cell in cells
+    . runs [MarkdownRun]
+    runs += markdown-marked-run(cell, MarkdownMarks())
+    grid.cells += runs
+for cell in cells
+    grid.cells += List'MarkdownRun()
+commit(point.block, point.block, [grid], MarkdownPoint(0, grid.columns, 0))
+= true
+
+────────────────────
+_ do append-row
+    - draft MarkdownDraft
+
+for column in 0 .. < draft.columns
+    draft.cells += List'MarkdownRun()
+
+────────────────────
+_ do delete-backward
+
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+    =
+. point = caret
+if point.offset > 0
+    . start = markdown-previous-char(slot-text(point), point.offset)
+    edit-range(MarkdownPoint(point.block, point.cell, start), point, "", false)
+    =
+. block = blocks[point.block]
+. kind = block.kind
+if kind == MarkdownBlockKind.grid
+    move-horizontally(false, false, false)
+    =
+if kind == MarkdownBlockKind.code
+    if !block.code.size
+        commit
+            - point.block
+            - point.block
+            - [MarkdownDraft(MarkdownBlockKind.paragraph)]
+            - MarkdownPoint(0, 0, 0)
+    else
+        move-horizontally(false, false, false)
+    =
+if kind != MarkdownBlockKind.paragraph
+    . draft = draft-at(point.block)
+    draft.kind = MarkdownBlockKind.paragraph
+    draft.prefix = ""
+    draft.level = 0
+    commit(point.block, point.block, [draft], MarkdownPoint(0, 0, 0))
+    =
+=? if point.block == 0
+. previous = point.block - 1
+. before = blocks[previous]
+if markdown-is-atomic(before.kind) || model.is-empty-block(previous)
+    commit(previous, point.block, [draft-at(point.block)], MarkdownPoint(0, 0, 0))
+else if markdown-is-prose(before.kind)
+    . merged = draft-at(previous)
+    . size = markdown-runs-text(merged.runs).size
+    merged.runs = markdown-runs-join(merged.runs, draft-at(point.block).runs)
+    commit(previous, point.block, [merged], MarkdownPoint(0, 0, size))
+else if model.is-empty-block(point.block)
+    . end = slot-end-of(previous)
+    commit(previous, point.block, [draft-at(previous)], MarkdownPoint(0, end.cell, end.offset))
+else
+    set-caret(slot-end-of(previous), false)
+
+────────────────────
+_ do delete-forward
+
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+    =
+. point = caret
+. size = slot-size(point)
+if point.offset < size
+    . end = markdown-next-char(slot-text(point), point.offset)
+    edit-range(point, MarkdownPoint(point.block, point.cell, end), "", false)
+    =
+. block = blocks[point.block]
+=? if block.kind == MarkdownBlockKind.grid
+. next = point.block + 1
+=? if next >= blocks.length
+. after = blocks[next]
+. here = draft-at(point.block)
+if markdown-is-atomic(after.kind) || model.is-empty-block(next)
+    commit(point.block, next, [here], MarkdownPoint(0, point.cell, point.offset))
+else if here.is-empty
+    commit(point.block, next, [draft-at(next)], MarkdownPoint(0, 0, 0))
+else if markdown-is-prose(block.kind) && markdown-is-prose(after.kind)
+    here.runs = markdown-runs-join(here.runs, draft-at(next).runs)
+    commit(point.block, next, [here], MarkdownPoint(0, 0, point.offset))
+
+────────────────────
+_ do delete-word
+    - forward Bool
+
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+    =
+. point = caret
+. text = slot-text(point)
+if forward
+    =? delete-forward() if point.offset >= text.size
+    edit-range
+        - point
+        - MarkdownPoint(point.block, point.cell, markdown-word-right(text, point.offset))
+        - ""
+        - false
+else
+    =? delete-backward() if point.offset == 0
+    edit-range
+        - MarkdownPoint(point.block, point.cell, markdown-word-left(text, point.offset))
+        - point
+        - ""
+        - false
+
+────────────────────
+_ do delete-to-row-edge
+    - forward Bool
+
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+    =
+. edge = row-edge(caret, forward)
+if forward && edge.offset > caret.offset
+    edit-range(caret, edge, "", false)
+else if !forward && edge.offset < caret.offset
+    edit-range(edge, caret, "", false)
+else if forward
+    delete-forward()
+else
+    delete-backward()
+
+────────────────────
+_ do tab
+    - backward Bool
+
+. point = caret
+. block = blocks[point.block]
+. kind = block.kind
+if kind == MarkdownBlockKind.grid
+    if backward
+        =? if point.cell == 0
+        set-caret(MarkdownPoint(point.block, point.cell - 1, 0), false)
+        =
+    if point.cell + 1 < block.cells.length
+        set-caret(MarkdownPoint(point.block, point.cell + 1, 0), false)
+        =
+    . draft = draft-at(point.block)
+    append-row(draft)
+    commit(point.block, point.block, [draft], MarkdownPoint(0, point.cell + 1, 0))
+    =
+if kind == MarkdownBlockKind.code && !backward
+    edit-range(selection-start(), selection-end(), "    ", false)
+    =
+=? if kind != MarkdownBlockKind.item
+. draft = draft-at(point.block)
+. indent = markdown-leading-spaces(draft.prefix)
+if backward
+    =? if indent == 0
+    draft.prefix = markdown-slice(draft.prefix, min(indent, 2), draft.prefix.size)
+else
+    =? if point.block == 0 || blocks[point.block - 1].kind != MarkdownBlockKind.item
+    draft.prefix = "  ${draft.prefix}"
+commit(point.block, point.block, [draft], MarkdownPoint(0, 0, point.offset))
+
+────────────────────
++ do paste-text
+    - pasted String
+
+. text = "\n".join(pasted.split("\r\n"))
+if anchor != caret
+    edit-range(selection-start(), selection-end(), "", false)
+. point = caret
+. kind = blocks[point.block].kind
+if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.grid || text.find("\n") == null
+    if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.grid
+        insert-text(text)
+        =
+    . parsed = markdown-blocks(text, base)
+    if parsed.length == 1 && parsed[0].kind == MarkdownBlockKind.paragraph
+        . draft = draft-at(point.block)
+        . runs = markdown-runs-normalized(parsed[0].runs)
+        . size = markdown-runs-text(draft.runs).size
+        draft.runs = markdown-runs-join
+            - markdown-runs-join(markdown-runs-slice(draft.runs, 0, point.offset), runs)
+            - markdown-runs-slice(draft.runs, point.offset, size)
+        commit
+            - point.block
+            - point.block
+            - [draft]
+            - MarkdownPoint(0, 0, point.offset + markdown-runs-text(runs).size)
+        =
+    insert-text(text)
+    =
+. draft = draft-at(point.block)
+. size = markdown-runs-text(draft.runs).size
+. tail = draft.copy()
+draft.runs = markdown-runs-slice(draft.runs, 0, point.offset)
+tail.runs = markdown-runs-slice(tail.runs, point.offset, size)
+. drafts [MarkdownDraft]
+drafts += draft
+for block in markdown-blocks(text, base)
+    drafts += markdown-block-draft(block, "")
+. last = drafts[drafts.length - 1]
+. caret-block = drafts.length - 1
+. caret-offset = if last.is-prose then markdown-runs-text(last.runs).size else 0
+if tail.runs.length
+    if last.is-prose
+        last.runs = markdown-runs-join(last.runs, tail.runs)
+    else
+        drafts += tail
+if drafts.length > 1 && drafts[1].kind == MarkdownBlockKind.paragraph && drafts[0].is-prose
+    . first-size = markdown-runs-text(drafts[0].runs).size
+    drafts[0].runs = markdown-runs-join(drafts[0].runs, drafts[1].runs)
+    if caret-block == 1
+        caret-offset += first-size
+    drafts.remove(1)
+    caret-block -= 1
+if drafts.length > 1 && drafts[0].is-empty
+    drafts.remove(0)
+    caret-block -= 1
+commit(point.block, point.block, drafts, MarkdownPoint(caret-block, 0, caret-offset))
+
+────────────────────
+_ do copy-selection Bool
+    - clipboard Clipboard
+
+=? false if anchor == caret
+= clipboard.write-text(selection-source())
+
+────────────────────
+_ selection-source String
+
+markdown-selection-source(blocks, selection-start(), selection-end(), model.prefixes, model.sources)
+
+────────────────────
+_ draft-at MarkdownDraft
+    - index Size
+
+markdown-block-draft-at(blocks, index, model.prefixes, model.sources)
+
+────────────────────
+_ selection-start MarkdownPoint
+
+if markdown-point-before(caret, anchor) then caret else anchor
+
+────────────────────
+_ selection-end MarkdownPoint
+
+if markdown-point-before(caret, anchor) then anchor else caret
+
+────────────────────
+_ do set-caret
+    - point MarkdownPoint
+    - extends Bool
+
+caret = point
+if !extends
+    anchor = point
+typing-marks = null
+
+────────────────────
+_ clamp-point MarkdownPoint
+    - point MarkdownPoint
+
+markdown-clamp-point(blocks, point)
+
+────────────────────
+_ editable-from Size?
+    - index Size
+    - forward Bool
+
+markdown-editable-from(blocks, index, forward)
+
+────────────────────
+_ slot-count Size
+    - index Size
+
+markdown-slot-count(blocks, index)
+
+────────────────────
+_ slot-runs [MarkdownRun]
+    - point MarkdownPoint
+
+markdown-slot-runs(blocks, point)
+
+────────────────────
+_ slot-text String
+    - point MarkdownPoint
+
+markdown-slot-text(blocks, point)
+
+────────────────────
+_ slot-size Size
+    - point MarkdownPoint
+
+markdown-slot-size(blocks, point)
+
+────────────────────
+_ slot-end-of MarkdownPoint
+    - index Size
+
+markdown-slot-end(blocks, index)
+
+────────────────────
+_ first-point MarkdownPoint
+
+markdown-first-point(blocks)
+
+────────────────────
+_ last-point MarkdownPoint
+
+markdown-last-point(blocks)
+
+────────────────────
+_ next-slot MarkdownPoint?
+    - point MarkdownPoint
+
+|? point.cell + 1 < slot-count(point.block)
+    MarkdownPoint(point.block, point.cell + 1, 0)
+|? point.block + 1 >= blocks.length
+    null
+|? index == null
+    null
+??
+    MarkdownPoint(index, 0, 0)
+
+.. index = editable-from(point.block + 1, true)
+
+────────────────────
+_ previous-slot MarkdownPoint?
+    - point MarkdownPoint
+
+|? point.cell > 0
+    MarkdownPoint(point.block, point.cell - 1, slot-size(cell))
+
+    .. cell = MarkdownPoint(point.block, point.cell - 1, 0)
+|? point.block == 0
+    null
+|? index == null
+    null
+??
+    slot-end-of(index)
+
+.. index = editable-from(point.block - 1, false)
+
+────────────────────
+_ do move-horizontally
+    - forward Bool
+    - by-word Bool
+    - extends Bool
+
+if anchor != caret && !extends
+    set-caret(if forward then selection-end() else selection-start(), false)
+    =
+. text = slot-text(caret)
+if forward && caret.offset < text.size
+    . next = if by-word then markdown-word-right(text, caret.offset) else next-char
+        .. next-char = markdown-next-char(text, caret.offset)
+    set-caret(MarkdownPoint(caret.block, caret.cell, next), extends)
+else if !forward && caret.offset > 0
+    . next = if by-word then markdown-word-left(text, caret.offset) else previous-char
+        .. previous-char = markdown-previous-char(text, caret.offset)
+    set-caret(MarkdownPoint(caret.block, caret.cell, next), extends)
+else
+    . neighbor = if forward then next-slot(caret) else previous-slot(caret)
+    if neighbor != null
+        set-caret(neighbor, extends)
+
+────────────────────
+_ do move-vertically
+    - down Bool
+    - extends Bool
+
+. view = slot-view(caret)
+. rect = point-rect(caret)
+. layout = view?.text-layout
+if !view || rect == null || !layout
+    . fallback = vertical-neighbor(caret, down, goal-x ?? 0)
+    if fallback != null
+        set-caret(fallback, extends)
+    =
+. x = goal-x ?? rect.x
+. row = layout.line-at(caret.offset)
+. target MarkdownPoint? = null
+if down && row + 1 < layout.line-count
+    target = MarkdownPoint(caret.block, caret.cell, row-offset(view, row + 1, x))
+else if !down && row > 0
+    target = MarkdownPoint(caret.block, caret.cell, row-offset(view, row - 1, x))
+else
+    . neighbor = vertical-neighbor(caret, down, x)
+    if neighbor != null
+        . other = slot-view(neighbor)
+        . shaped = other?.text-layout
+        if other && shaped
+            . edge = if down then 0 else shaped.line-count - 1
+            target = MarkdownPoint(neighbor.block, neighbor.cell, row-offset(other, edge, x))
+        else
+            target = neighbor
+    else
+        target = MarkdownPoint(caret.block, caret.cell, if down then slot-size(caret) else 0)
+if target != null
+    set-caret(target, extends)
+goal-x = x
+
+────────────────────
+_ row-offset Size
+    - view Text
+    - row Index
+    - x Length
+
+if rect == null then 0 else view.offset-at(Point(x, rect.y + rect.height / 2))
+
+.. rect = view.row-rect(row)
+
+────────────────────
+_ do vertical-neighbor MarkdownPoint?
+    - point MarkdownPoint
+    - down Bool
+    - x Length
+
+. block = blocks[point.block]
+if block.kind == MarkdownBlockKind.grid && block.columns > 0
+    . columns = block.columns
+    if down && point.cell + columns < block.cells.length
+        = MarkdownPoint(point.block, point.cell + columns, 0)
+    if !down && point.cell >= columns
+        = MarkdownPoint(point.block, point.cell - columns, 0)
+. index Size? = null
+if down
+    index = editable-from(point.block + 1, true) if point.block + 1 < blocks.length
+else
+    index = editable-from(point.block - 1, false) if point.block > 0
+=? null if index == null
+. target = blocks[index]
+if target.kind == MarkdownBlockKind.grid && target.columns > 0
+    . columns = target.columns
+    . first = if down then 0 else target.cells.length - columns
+    = MarkdownPoint(index, first + column-at(index, first, columns, x), 0)
+= MarkdownPoint(index, 0, 0)
+
+────────────────────
+_ do column-at Size
+    - index Size
+    - first Size
+    - columns Size
+    - x Length
+
+. best Size = 0
+. distance Length = 0
+for column in 0 .. < columns
+    . view = slot-view(MarkdownPoint(index, first + column, 0))
+    if view
+        . box = view.bounds
+        . gap = if x < box.x then box.x - x else if past-right then x - box.x - box.width else 0
+            .. past-right = x > box.x + box.width
+        if column == 0 || gap < distance
+            best = column
+            distance = gap
+= best
+
+────────────────────
+_ do move-to-row-edge
+    - forward Bool
+    - extends Bool
+
+set-caret(row-edge(caret, forward), extends)
+
+────────────────────
+_ row-edge MarkdownPoint
+    - point MarkdownPoint
+    - forward Bool
+
+|? !layout
+    MarkdownPoint(point.block, point.cell, if forward then size else 0)
+|? !forward
+    MarkdownPoint(point.block, point.cell, layout.line-start-offset(row))
+??
+    MarkdownPoint(point.block, point.cell, min(trimmed, size))
+
+.. view = slot-view(point)
+.. layout = view?.text-layout
+.. size = slot-size(point)
+.. row = layout.line-at(point.offset)
+.. end = layout.line-end-offset(row)
+.. text = slot-text(point)
+.. bytes = text as Byte[]
+.. trimmed = if row + 1 < layout.line-count && end > 0 && ends-in-space then end - 1 else end
+.. ends-in-space = end <= bytes.size && bytes[end - 1] == 32
+
+────────────────────
+_ do move-page
+    - down Bool
+    - extends Bool
+
+. rect = point-rect(caret)
+=? if rect == null
+. distance = rows.content-bounds.height
+. y = if down then rect.y + distance else rect.y - distance
+. found = point-at(Point(goal-x ?? rect.x, y))
+if found != null
+    set-caret(found, extends)
+
+────────────────────
+_ point-at MarkdownPoint?
+    - point Point
+
+markdown-point-at(blocks, block-views(), point)
+
+────────────────────
+_ point-rect Rect?
+    - point MarkdownPoint
+
+slot-view(point)?.caret-rect(point.offset)
+
+────────────────────
+_ slot-view Text?
+    - point MarkdownPoint
+
+if !view then null else slot-view-in(view, point)
+
+.. view = block-view(point.block)
+
+────────────────────
+_ slot-view-in Text?
+    - view MarkdownBlockView
+    - point MarkdownPoint
+
+markdown-slot-view-in(view, point)
+
+────────────────────
+_ do block-view MarkdownBlockView?
+    - index Size
+
+=? null if index >= blocks.length
+. wanted = blocks[index]
+for view in block-views()
+    =? view if view.block as Pointer == wanted as Pointer
+= null
+
+────────────────────
+_ do block-views [MarkdownBlockView]
+
+. found [MarkdownBlockView]
+for row in editor-rows()
+    . view = markdown-row-view(row)
+    if view && view.block.index < blocks.length && same-block
+        found += view
+    .. same-block = blocks[view.block.index] as Pointer == view.block as Pointer
+= found
+
+────────────────────
+_ do editor-rows [MarkdownEditorRow]
+
+. found [MarkdownEditorRow]
+markdown-collect-rows(rows, found)
+= found
+
+────────────────────
+_ content-point Point
+    - root-point Point
+
+Point(local.x + rows.bounds.x + offset.x, local.y + rows.bounds.y + offset.y)
+
+.. local = rows.point-in-box(root-point)
+.. offset = rows.content-offset
+
+────────────────────
+_ do paint-row
+    - canvas Canvas
+    - row MarkdownEditorRow
+
+=? if !session
+. shown = markdown-row-view(row)
+=? if !shown
+. index = shown.block.index
+=? if index >= blocks.length || blocks[index] as Pointer != shown.block as Pointer
+if anchor != caret
+    . color = if is-focused then $gui-markdown-selection-color else idle-color
+        .. idle-color = $gui-markdown-idle-selection-color
+    . object-color = if is-focused then $gui-markdown-object-selection-color else idle-object-color
+        .. idle-object-color = $gui-markdown-idle-object-selection-color
+    markdown-paint-selection
+        - canvas
+        - blocks
+        - shown
+        - selection-start()
+        - selection-end()
+        - color
+        - object-color
+    =
+=? if caret.block != index || !is-focused || !is-caret-lit
+. view = slot-view-in(shown, caret)
+=? if !view
+. rect = view.caret-rect(caret.offset)
+=? if rect == null
+canvas.fill-color = $gui-markdown-caret-color
+canvas.rect(Rect(rect.x - markdown-caret-width / 2, rect.y, markdown-caret-width, rect.height))
+
+────────────────────
+_ do point-at-source MarkdownPoint
+    - text CodeText
+    - offset Size
+
+=? MarkdownPoint(0, 0, 0) if !blocks.length
+. index = model.block-at-offset(offset)
+if offset > model.ends[index] && index + 1 < blocks.length
+    index += 1
+. block = blocks[index]
+=? clamp-point(MarkdownPoint(index, 0, 0)) if markdown-is-atomic(block.kind)
+. start = model.starts[index]
+if block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
+    . body = text.line-start(min(text.line-at(start) + 1, text.line-count - 1))
+    = clamp-point(MarkdownPoint(index, 0, if offset > body then offset - body else 0))
+if block.kind == MarkdownBlockKind.grid
+    = grid-point-at-source(text, index, min(offset, model.ends[index]))
+. from = start + min(model.prefixes[index].size, model.ends[index] - start)
+. visible = slot-text(MarkdownPoint(index, 0, 0))
+. inner = if offset > from then offset - from else 0
+= clamp-point
+    - MarkdownPoint
+        - index
+        - 0
+        - markdown-visible-offset(text.text-in(from, model.ends[index]), visible, inner)
+
+────────────────────
+_ do grid-point-at-source MarkdownPoint
+    - text CodeText
+    - index Size
+    - offset Size
+
+. block = blocks[index]
+. columns = max(block.columns, 1)
+. first = text.line-at(model.starts[index])
+. line = text.line-at(offset)
+. row-line = line - first
+. row = if row-line >= 2 then row-line - 1 else 0
+. line-start = text.line-start(line)
+. cells = markdown-table-cell-starts(text.line-text(line))
+. local = offset - line-start
+. column Size = 0
+for at in 0 .. < cells.length
+    if cells[at] <= local
+        column = at
+column = min(column, columns - 1)
+. cell = min(row * columns + column, max(block.cells.length, 1) - 1)
+. point = MarkdownPoint(index, cell, 0)
+. cell-start = if column < cells.length then cells[column] else local
+. cell-end = if column + 1 < cells.length then cells[column + 1] else text.line-length(line)
+. source = markdown-slice(text.line-text(line), cell-start, cell-end)
+. inner = if local > cell-start then local - cell-start else 0
+= clamp-point(MarkdownPoint(index, cell, markdown-visible-offset(source, slot-text(point), inner)))
+
+────────────────────
+_ do source-at-point Size
+    - text CodeText
+    - point MarkdownPoint
+
+=? 0 if point.block >= blocks.length
+. index = point.block
+. block = blocks[index]
+. start = model.starts[index]
+=? start if model.is-empty-block(index) || markdown-is-atomic(block.kind)
+if block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
+    . body = text.line-start(min(text.line-at(start) + 1, text.line-count - 1))
+    = min(body + point.offset, model.ends[index])
+if block.kind == MarkdownBlockKind.grid
+    . columns = max(block.columns, 1)
+    . row = point.cell / columns
+    . line = text.line-at(start) + (if row == 0 then 0 else row + 1)
+    =? start if line >= text.line-count
+    . line-text = text.line-text(line)
+    . cells = markdown-table-cell-starts(line-text)
+    . column = point.cell % columns
+    =? text.line-start(line) if column >= cells.length
+    . cell-end = if column + 1 < cells.length then cells[column + 1] else line-text.size
+    . source = markdown-slice(line-text, cells[column], cell-end)
+    = text.line-start(line) + cells[column] + cell-offset
+        .. cell-offset = markdown-source-offset(source, slot-text(point), point.offset)
+. from = start + min(model.prefixes[index].size, model.ends[index] - start)
+. source = text.text-in(from, model.ends[index])
+= from + markdown-source-offset(source, slot-text(point), point.offset)
+
+────────────────────
+_ caret-context TextInputContext?
+
+|? !session || !blocks.length
+    null
+??
+    TextInputContext(preceding, selected, rect)
+
+.. shown = point-rect(caret)
+.. rect = if shown then window-rect(shown, rows) else window-rect(corner, material-parent)
+.. corner = Rect(bounds.x, bounds.y, 0, 0)
+.. preceding = markdown-slice(slot-text(caret), 0, caret.offset)
+.. start = selection-start()
+.. end = selection-end()
+.. selected = if same-slot then markdown-slice(slot-text(start), start.offset, end.offset) else ""
+.. same-slot = start.block == end.block && start.cell == end.cell
+
+────────────────────
+_ do window-rect Rect
+    - rect Rect
+    - start Box?
+
+. x = rect.x
+. y = rect.y
+. cursor = start
+while cursor
+    . ancestor = cursor
+    if !ancestor.is-markup-shadow
+        . offset = ancestor.content-offset
+        x -= offset.x
+        y -= offset.y
+    if ancestor.is-presentation-layer
+        break
+    cursor = ancestor.material-parent
+= Rect(x, y, rect.width, rect.height)
+
+────────────────────
+_ do start-blink
+
+is-caret-lit = true
+blink-generation += 1
+. generation = blink-generation
+do new
+    while generation == blink-generation
+        markdown-blink-interval.wait()
+        if generation == blink-generation
+            is-caret-lit = !is-caret-lit
+            repaint()
+
+────────────────────
+_ do stop-blink
+
+blink-generation += 1
+
+────────────────────
+_ do reveal-pending-line
+
+. line = pending-line
+=? if line == null || !blocks.length
+pending-line = null
+. low Size = 0
+. high = blocks.length
+while low < high
+    . middle = low + (high - low) / 2
+    if blocks[middle].line <= line
+        low = middle + 1
+    else
+        high = middle
+. index = if low > 0 then low - 1 else 0
+rows.reveal-address(index)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-gap String
+    - original String
+    - before MarkdownBlockKind
+    - before-empty Bool
+    - after MarkdownBlockKind
+    - after-empty Bool
+
+|? newlines >= 2
+    original
+|? newlines == 1 && !before-empty && !after-empty && !merges
+    original
+|? both-items && !before-empty && !after-empty
+    "\n"
+??
+    "\n\n"
+
+.. newlines = markdown-newline-count(original)
+.. merges = both-paragraphs || both-quotes
+.. both-paragraphs = before == MarkdownBlockKind.paragraph && after == MarkdownBlockKind.paragraph
+.. both-quotes = before == MarkdownBlockKind.quote && after == MarkdownBlockKind.quote
+.. both-items = before == MarkdownBlockKind.item && after == MarkdownBlockKind.item
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-newline-count Size
+    - text String
+
+. count Size = 0
+for byte in text as Byte[]
+    if byte == 10
+        count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-separator String
+    - first MarkdownDraft
+    - second MarkdownDraft
+
+if both-items then "\n" else "\n\n"
+
+.. both-items = first.kind == MarkdownBlockKind.item && second.kind == MarkdownBlockKind.item
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-is-prose Bool
+    - kind MarkdownBlockKind
+
+prose || kind == MarkdownBlockKind.item || kind == MarkdownBlockKind.quote
+
+.. prose = kind == MarkdownBlockKind.paragraph || kind == MarkdownBlockKind.heading
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownEditorRow is Box
+
++ editor MarkdownEditor?
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-overlay
+    - canvas Canvas
+
+editor?.paint-row(canvas, this)
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownBlockSource
+    is VirtualSequenceDomain
+    is VirtualSource'MarkdownBlock
+
++ model MarkdownModel
++ revision := VirtualRevision()
++ inset VirtualCoord
++ limit VirtualCoord
+
+. parameters-changed < inset, limit
+
+────────────────────
++ This
+    - model
+
+────────────────────
++ estimate VirtualCoord
+    - address I64
+    - width VirtualCoord
+
+|? address < 0 || address >= (model.blocks.length as I64)
+    markdown-estimated-line
+|? block.kind == MarkdownBlockKind.heading
+    if block.level <= 1 then 48vcoord else 40vcoord
+|? block.kind == MarkdownBlockKind.divider
+    21vcoord
+|? block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
+    ((markdown-newline-count(block.code) as VirtualCoord) + 1vcoord) * 19vcoord + 36vcoord
+|? block.kind == MarkdownBlockKind.grid
+    ((block.cells.length / columns) as VirtualCoord) * 32vcoord + 12vcoord
+
+    .. columns = if block.columns > 0 then block.columns else 1
+|? size == 0vcoord
+    markdown-estimated-line
+??
+    (size / chars + 1vcoord) * 22vcoord + 10vcoord
+
+.. index = address as Index
+.. block = model.blocks[index]
+.. available = width - inset
+.. column = if limit > 0vcoord && limit < available then limit else available
+.. chars = if column > 160vcoord then column / 8vcoord else 20vcoord
+.. size = (model.ends[index] - model.starts[index]) as VirtualCoord
+
+────────────────────
+_ do parameters-changed
+
+revision.touch()
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSequenceDomain ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get known-count VirtualCoord
+
+model.blocks.length
+
+────────────────────
++ get estimated-count VirtualCoord?
+
+model.blocks.length as VirtualCoord
+
+────────────────────
++ get is-final Bool
+
+true
+
+────────────────────
++ address-at I64
+    - index VirtualCoord
+
+index
+
+────────────────────
++ index-of VirtualCoord?
+    - address I64
+
+|? address < 0 || address >= (model.blocks.length as I64)
+    null
+??
+    address as VirtualCoord
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSource'MarkdownBlock ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get domain VirtualSequenceDomain
+
+this
+
+────────────────────
++ do bind
+    - address I64
+    - generation U64
+    - target VirtualBindingTarget'MarkdownBlock
+
+if address < 0 || address >= (model.blocks.length as I64)
+    target.fail(generation)
+else
+    target.commit(VirtualKey(revision.value, address), model.blocks[address], generation)
+
+────────────────────
++ do identity-at U64?
+    - address I64
+
+=? if address < 0 || address >= (model.blocks.length as I64)
+= (model.blocks[address] as Pointer).address as U64
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-block-layout VerticalMeasuredLayout
+    - source MarkdownBlockSource
+
+VerticalMeasuredLayout(markdown-estimated-line, estimate)
+
+.. estimate = :: address, width => source.estimate(address, width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-collect-rows
+    - box Box
+    - found [MarkdownEditorRow]
+
+for child in RenderedChildCursor(box)
+    if child is MarkdownEditorRow
+        found += child as MarkdownEditorRow
+    else if child is VirtualSlotRoot'MarkdownBlock
+        if (child as VirtualSlotRoot'MarkdownBlock).slot.is-bound
+            markdown-collect-rows(child, found)
+    else
+        markdown-collect-rows(child, found)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-row-view MarkdownBlockView?
+    - row MarkdownEditorRow
+
+for child in RenderedChildCursor(row)
+    =? child as MarkdownBlockView if child is MarkdownBlockView
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-heading-marker Size
+    - marker String
+
+=? 0 if marker.size < 1 || marker.size > 6
+for byte in marker as Byte[]
+    =? 0 if byte != 35
+= marker.size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-is-ordered-marker Bool
+    - marker String
+
+. bytes = marker as Byte[]
+=? false if bytes.size < 2 || bytes[bytes.size - 1] != 46
+= all(0 .. < bytes.size - 1) • where bytes[each] >= 48 && bytes[each] <= 57
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-header-cells [String]
+    - text String
+
+. trimmed = text.trim()
+. result [String]
+=? result if !trimmed.starts-with("|") || trimmed.size < 3 || unclosed
+.. unclosed = (trimmed as Byte[])[trimmed.size - 1] != 124
+for part in markdown-slice(trimmed, 1, trimmed.size - 1).split("|")
+    result += part.trim()
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-line-indent String
+    - code String
+    - offset Size
+
+. bytes = code as Byte[]
+. start = min(offset, bytes.size)
+while start > 0 && bytes[start - 1] != 10
+    start -= 1
+. end = start
+while end < bytes.size && end < offset && (bytes[end] == 32 || bytes[end] == 9)
+    end += 1
+= markdown-slice(code, start, end)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-leading-spaces Size
+    - text String
+
+. bytes = text as Byte[]
+. count Size = 0
+while count < bytes.size && bytes[count] == 32
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-next-char Size
+    - text String
+    - offset Size
+
+if offset >= bytes.size then bytes.size else min(offset + width, bytes.size)
+
+.. bytes = text as Byte[]
+.. lead = bytes[offset]
+.. width = if lead >= 0xF0 then 4 else if lead >= 0xE0 then 3 else if lead >= 0xC0 then 2 else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-previous-char Size
+    - text String
+    - offset Size
+
+. bytes = text as Byte[]
+. at = min(offset, bytes.size)
+=? 0 if at == 0
+at -= 1
+while at > 0 && bytes[at] >= 0x80 && bytes[at] < 0xC0
+    at -= 1
+= at
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-word-left Size
+    - text String
+    - offset Size
+
+. bytes = text as Byte[]
+. at = min(offset, bytes.size)
+while at > 0 && markdown-byte-class(bytes[at - 1]) == 0
+    at -= 1
+=? 0 if at == 0
+. kind = markdown-byte-class(bytes[at - 1])
+while at > 0 && markdown-byte-class(bytes[at - 1]) == kind
+    at -= 1
+= at
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-word-right Size
+    - text String
+    - offset Size
+
+. bytes = text as Byte[]
+. at = offset
+while at < bytes.size && markdown-byte-class(bytes[at]) == 0
+    at += 1
+=? bytes.size if at >= bytes.size
+. kind = markdown-byte-class(bytes[at])
+while at < bytes.size && markdown-byte-class(bytes[at]) == kind
+    at += 1
+= at
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-edit-role MenuRole?
+    - event KeyPressEvent
+
+=? MenuRole.redo if markdown-redo-key.matches(event)
+for role in markdown-edit-roles
+    . key = menu-role-key(role)
+    =? role if key && key.matches(event)
+= null

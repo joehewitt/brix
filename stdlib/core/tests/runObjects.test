@@ -1,0 +1,478 @@
+:====
+
+. thing = Thing()
+-- foo(thing)
+
+━━━━━━━━━━━━━━━━━━━━
++ Proto is Interface
+
+────────────────────
++ bar Int
+
+0
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Proto
+
+────────────────────
++ bar
+
+42
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - p Proto
+
+p.bar()
+
+:----
+
+42
+
+;====
+:================================================================================================
+
+
+. foo = Foo()
+. bar = Bar()
+-- if true then foo else bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Base
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Base
+
+:------------------------------------------------------------------------------------------------
+
+[Object __source__:Base]
+
+;====
+:====
+# A class constructor may return early; field initializers still apply and later statements are skipped.
+
+-- EarlyState(List'I32()).describe
+-- EarlyState([3, 4]).describe
+
+━━━━━━━━━━━━━━━━━━━━
++ EarlyState
+
++ values [I32] = List'I32()
++ total I32 = 0
++ mixed = false
+
+────────────────────
++ This
+    - source [I32]
+
+values = source
+=? if !values.length
+total = values[0]
+for index in 1 .. < values.length
+    if values[index] != total
+        mixed = true
+    total += values[index]
+
+────────────────────
++ get describe
+
+"${values.length} $total $mixed"
+
+:----
+0 0 false
+2 7 true
+;====
+:====
+# A property that holds an object and has no value is made with the defaults its constructor declares
+
+. holder = Holder()
+-- holder.counter.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 1
+
+────────────────────
++ This
+    - start = 40
+
+count = start + 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ counter Counter
+
+:----
+
+42
+;====
+:====
+/core/gc
+# A Weak reads null once its target has been collected.
+
+/YuGC/YuGC.h
+
+. weak = weak-node(71)
+C:yumiCollect()
+-- weak.get == null
+
+━━━━━━━━━━━━━━━━━━━━
++ do weak-node Weak'GCNode
+    - value Int
+
+. target = GCNode(value)
+= Weak(target)
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+:----
+
+true
+;====
+:====
+/core/gc
+# A target read through a Weak during a mark survives that cycle, and the Weak clears in the next.
+
+/YuGC/YuGCTest.h
+
+. weak = weak-node(72)
+-- loaded-during-mark(weak)
+C:yumiCollect()
+-- weak.get == null
+
+━━━━━━━━━━━━━━━━━━━━
++ do loaded-during-mark String
+    - weak Weak'GCNode
+
+C:yumiGCStartConcurrentMark()
+. loaded = weak.get
+C:yumiGCFinishConcurrentMark()
+if !loaded
+    = "empty"
+C:yumiCollect()
+if !C:yumiGCVerifyObject(loaded as Pointer)
+    = "lost"
+= "alive ${loaded.value}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do weak-node Weak'GCNode
+    - value Int
+
+. target = GCNode(value)
+= Weak(target)
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+:----
+
+alive 72
+true
+;====
+:====
+# An object made from a range of slots taken just before the collection its taking starts, held
+# only by the stack, survives that collection.
+
+/YuGC/YuGC.h
+
+C:yumiCollect()
+. prior-goal = C:yumiGCHeapGoal()
+C:yumiGCSetHeapGoal(C:yumiGCLiveByteCount() + 1)
+-- lost-below(0, 3000)
+C:yumiGCSetHeapGoal(prior-goal)
+
+━━━━━━━━━━━━━━━━━━━━
++ do lost-below Int
+    - depth Int
+    - limit Int
+
+. node = Wide(depth)
+. lost = if depth + 1 < limit then lost-below(depth + 1, limit) else collected()
+if C:yumiGCVerifyObject(node as Pointer) && node.a == depth
+    = lost
+= lost + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do collected Int
+
+C:yumiCollect()
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide
+
++ a Int
++ b Int = 0
++ c Int = 0
++ d Int = 0
++ e Int = 0
++ f Int = 0
++ g Int = 0
++ h Int = 0
+
+────────────────────
++ This
+    - value Int
+
+a = value
+
+:----
+
+0
+;====
+:====
+# A constructor that returns an object of its class on only some ways through its body makes one first, which it gives where the body ends.
+
+. high = Holder([1, 7])
+-- high.amount
+. low = Holder([1, 2])
+-- low.amount
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ amount I64 = noted()
+
+────────────────────
++ This
+    - items [I64]
+
+for item in items
+    if item > 5
+        = This(item)
+-- "fell through"
+
+────────────────────
++ This
+    - amount I64
+
+this.amount = amount
+
+━━━━━━━━━━━━━━━━━━━━
++ do noted I64
+
+-- "initializer"
+= 1
+
+:----
+initializer
+7
+initializer
+fell through
+1
+;====
+:====
+# A constructor's initializer reads a field declared after the one it gives.
+
+/core/arena
+/core/map
+
+. h = Holder(3)
+h.items += 5
+h.cache[1] = 2
+-- "items ${h.items.length} cache ${h.cache[1] ?? 0} n ${h.n}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ n Int
++ items List'Int'ArenaBacking
++ cache Map'Int'Int'ArenaBacking
+_ arena Arena
+
+────────────────────
++ This
+    - n Int
+
+.. items = List'Int(arena)
+.. cache = Map'Int'Int(arena)
+
+:----
+
+items 1 cache 2 n 3
+;====
+:====
+# Field defaults and a constructor's initializers run in the order the fields are declared, before the constructor's body, and one that reads a field not yet given gives that field its value at the read.
+
+. e = E()
+-- "--"
+. f = F()
+-- "--"
+. g = G(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ E
+
++ a = note("e.a")
++ b Int
++ c = note("e.c")
++ d Int
+
+────────────────────
++ This
+
+-- "e.ctor"
+.. d = note("e.d")
+.. b = note("e.b") + c
+
+━━━━━━━━━━━━━━━━━━━━
++ F
+
++ a = note("f.a") + b
++ b Int
++ c = note("f.c")
+
+────────────────────
++ This
+
+.. b = note("f.b")
+
+━━━━━━━━━━━━━━━━━━━━
++ G
+
++ a = note("g.a")
++ b Int
++ c Int
+
+────────────────────
++ This
+    - c Int
+
+.. b = note("g.b") + c
+
+━━━━━━━━━━━━━━━━━━━━
++ do note Int
+    - tag String
+
+-- tag
+= 1
+
+:----
+
+e.a
+e.b
+e.c
+e.d
+e.ctor
+--
+f.a
+f.b
+f.c
+--
+g.a
+g.b
+;====
+:====
+# A property of a class with no value written is made by the class's constructor with its
+# defaults, which convert null to optionals of several types.
+
+. code = Code(null, ["a"])
+. turn = Turn(code)
+-- turn.owner.tools?.length ?? 0
+-- turn.owner.name ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Code
+
++ name String?
++ tools [String]?
++ safe Bool
+
+────────────────────
++ This
+    - name String? = null
+    - tools [String]? = null
+    - safe = false
+
+-- "made ${tools?.length ?? 9}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Turn
+
++ owner Code
+
+────────────────────
++ This
+    - given Code
+
+owner = given
+
+:----
+
+made 1
+made 9
+1
+none
+;====
+:====
+# A tuple of another module with no constructor of its own, made where it is called: a field it constructs with no value written converts the default of the argument that construction leaves out.
+
+./lib/pool
+
+. box = Box()
+-- box.pool.capacity
+
+:----
+%file: lib/pool.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Pool is Tuple
+
++ capacity Size
+
+────────────────────
++ This
+    - initial Size = 0
+
+capacity = initial + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Box is Tuple
+
++ pool Pool
+
+:----
+
+1
+;====
+:====
+# A constructor stores an either-or whose first side holds
+
+-- Mark("*").is-many
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ is-many Bool
+
+────────────────────
++ This
+    - text
+
+is-many = text == "*" || text == "+"
+:----
+true
+;====

@@ -1,0 +1,750 @@
+./array
+./backing
+./collection
+./core
+./error
+./number
+./range
+./stream
+./string
+
+━━━━━━━━━━━━━━━━━━━━
++ List'Item'Backing
+    - Backing = GCBacking
+    - Backing is StorageBacking
+    is Indexable'Item
+    is MutableCollection'Item
+    is Inspectable
+
++ size Size = 0
+
+_ items Array'Item'Backing
+_ context Backing.Context
+
+` Borrows the contiguous element store for the duration of one native bulk operation. Callers must
+` not retain the pointer or mutate/grow the List until that native operation returns.
++ buffer-pointer => items.data
+
+────────────────────
++ This
+    - Backing = GCBacking
+
+.. context = Void()
+.. items = Array'Item'Backing(context, 0)
+
+────────────────────
++ This
+    ... list List'Item'Backing
+    - Backing = GCBacking
+
+= list
+
+────────────────────
++ This'SourceBacking
+    - list List'Item'SourceBacking
+    - SourceBacking is StorageBacking
+    - Backing = SourceBacking
+
+.. context = list.context
+.. items = Array'Item'Backing(context, 0)
+reserve(list.length)
+for item in list
+    append-raw(item)
+
+────────────────────
++ This @inline
+    - stream <Item>
+    - Backing = GCBacking
+
+.. context = Void()
+.. items = Array'Item'Backing(context, 0)
+for item in stream
+    append-raw(item)
+
+────────────────────
++ This'Storage
+    - storage Storage
+    - Storage is ArrayStorageProvider
+    - Backing = Storage.Backing'Item
+
+.. context = storage as Backing.Context
+.. items = Array'Item'Backing(context, 0)
+
+────────────────────
++ This'Storage
+    - storage Storage
+    - stream <Item>
+    - Storage is ArrayStorageProvider
+    - Backing = Storage.Backing'Item
+
+context = storage as Backing.Context
+items = Array'Item'Backing(context, 0)
+for item in stream
+    append-raw(item)
+
+────────────────────
++ do to [''T]
+    - T =~ Item as T
+
+. copy = List'T()
+for item in this
+    copy += item as T
+= copy
+
+────────────────────
++ do to Indexable''T
+    - T =~ Item as T
+
+. copy = List'T()
+for item in this
+    copy += item as T
+= copy
+
+────────────────────
++ to String
+
+", ".join(this as <Item>)
+
+╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get length @inline
+
+size
+
+────────────────────
++ this[index Index] @inline
+
+|? index < size
+    items.data[index]
+??
+    absent(index)
+
+────────────────────
++ do this[range Range'Position]
+
+. list = This(context, 0)
+list.items = items[normal]
+list.size = normal.length
+= list
+
+.. normal = range.normalize(this).forward()
+
+────────────────────
++ do this[range Range'Index]
+
+. list = This(context, 0)
+list.items = items[normal]
+list.size = normal.length
+= list
+
+.. normal = range.forward()
+
+────────────────────
++ do reversed
+
+for offset in 0 .. < size
+    <= this[size - 1 - offset]
+
+╌╌╌╌╌╌╌╌╌╌ is MutableCollection'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this[index Index] = item Item @inline
+
+. old-size = size
+if index >= size
+    grow(index + 1)
+    size = index + 1
+
+items[index] = item
+
+do @feature-collection-observers
+    if size > old-size
+        notify-collection-insert(this, old-size, size - old-size)
+    else
+        notify-collection-set(this, index)
+
+────────────────────
++ do replace
+    - index Index
+    - item Item
+
+check-range(index, 1)
+items[index] = item
+
+do @feature-collection-observers
+    notify-collection-replace(this, index)
+
+────────────────────
++ do append
+    - item Item
+
+this += item
+
+────────────────────
++ do append-all
+    - items <Item>
+
+this ++= items
+
+────────────────────
++ do insert
+    - item Item
+    - index Index
+
+check-insert-index(index)
+if size == items.size
+    grow(size + 1)
+
+shift-right-raw(1, index)
+items[index] = item
+size += 1
+
+do @feature-collection-observers
+    notify-collection-insert(this, index)
+
+────────────────────
++ do remove
+    - index Index
+    - count Size = 1
+
+check-range(index, count)
+if count
+    remove-range-raw(index, count)
+
+    do @feature-collection-observers
+        notify-collection-remove(this, index, count)
+
+────────────────────
++ do remove
+    - range Range'Index
+
+-= this[range]
+
+────────────────────
++ do move
+    - from-index Index
+    - to-index Index
+    - count Size = 1
+
+check-range(from-index, count)
+check-insert-index(to-index)
+
+=? if !count
+
+=? if from-index == to-index
+=? if to-index > from-index && to-index < from-index + count
+
+. moved = This(this[from-index .. < from-index + count])
+remove-range-raw(from-index, count)
+
+. insert-index = to-index
+if insert-index > from-index
+    insert-index -= count
+
+if size + count > items.size
+    grow(size + count)
+shift-right-raw(count, insert-index)
+
+. offset Index = 0
+for item in moved
+    items[insert-index + offset] = item
+    offset += 1
+size += count
+
+do @feature-collection-observers
+    notify-collection-move(this, from-index, to-index, count)
+
+────────────────────
++ do clear
+
+. old-size = size
+size = 0
+
+do @feature-collection-observers
+    if old-size
+        notify-collection-remove(this, 0, old-size)
+
+╌╌╌╌╌╌╌╌╌╌ is Inspectable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do inspectable-snapshot
+
+//this:list.length = size
+for item in this
+    //this:list.item -> item
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get capacity Size
+
+items.size
+
+────────────────────
++ get head Item
+
+items[0]
+
+────────────────────
++ get tail Item
+
+items[size - 1]
+
+╌╌╌╌╌╌╌╌╌╌ Concatenation ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this <- item Item
+
+this += item
+= this
+
+────────────────────
++ do this + item Item
+
+. clone = This(this)
+clone.add(item)
+= clone
+
+────────────────────
++ do this ++ other <Item>
+
+. clone = This(this)
+for item in other
+    clone.add(item)
+= clone
+
+╌╌╌╌╌╌╌╌╌╌ Insertion ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other [Item]
+
+items[0 .. < size] == other
+
+────────────────────
++ do this += item Item @inline
+
+append-raw(item)
+
+do @feature-collection-observers
+    notify-collection-append(this, size - 1)
+
+────────────────────
++ do this ++= items <Item>
+
+. old-size = size
+for item in items
+    append-raw(item)
+
+do @feature-collection-observers
+    if size > old-size
+        notify-collection-append(this, old-size, size - old-size)
+
+────────────────────
++ do this -= item Item
+
+. found = find(item)
+if found
+    . index = found + 1
+    while index < size
+        items[index - 1] = items[index]
+        index += 1
+    size -= 1
+
+    do @feature-collection-observers
+        notify-collection-remove(this, found)
+= found
+
+────────────────────
++ do this has item Item
+
+. data = items.data
+for index in 0 .. < size
+    =? true if data[index] == item
+= false
+
+╌╌╌╌╌╌╌╌╌╌ Lookup ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this[pos Position]
+
+this[pos.normalize(this)]
+
+╌╌╌╌╌╌╌╌╌╌ Insertion ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this[pos Position] = item Item
+
+this[pos.normalize(this)] = item
+
+────────────────────
++ do this[index NTuple2'Index] = item Item
+
+this[index[0]] = item
+this[index[1]] = item
+
+────────────────────
++ do this[index NTuple3'Index] = item Item
+
+this[index[0]] = item
+this[index[1]] = item
+this[index[2]] = item
+
+────────────────────
++ do this[index NTuple4'Index] = item Item
+
+this[index[0]] = item
+this[index[1]] = item
+this[index[2]] = item
+this[index[3]] = item
+
+────────────────────
++ do this[index NTuple5'Index] = item Item
+
+this[index[0]] = item
+this[index[1]] = item
+this[index[2]] = item
+this[index[3]] = item
+this[index[4]] = item
+
+────────────────────
++ do this[index NTuple6'Index] = item Item
+
+this[index[0]] = item
+this[index[1]] = item
+this[index[2]] = item
+this[index[3]] = item
+this[index[4]] = item
+this[index[5]] = item
+
+────────────────────
++ do this[index Tuple] = item Item
+
+this[index[0]] = item
+
+────────────────────
++ do -= this[index Index]
+
+check-range(index, 1)
+remove-at-raw(index)
+
+do @feature-collection-observers
+    notify-collection-remove(this, index)
+
+────────────────────
++ -= this[range Range'Position]
+
+-= this[range.normalize(this)]
+
+────────────────────
++ do -= this[range Range'Index]
+
+. count = range.length
+check-range(range.start, count)
+if count
+    remove-range-raw(range.start, count)
+
+    do @feature-collection-observers
+        notify-collection-remove(this, range.start, count)
+
+────────────────────
++ !this
+
+size == 0
+
+╌╌╌╌╌╌╌╌╌╌ Comparison ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do reserve
+    - capacity Size
+
+if capacity > items.size
+    items = items.resize(capacity, context)
+
+────────────────────
++ do trim
+
+if size < items.size
+    items = items.resize(size, context)
+
+────────────────────
++ do release
+
+clear()
+items = items.resize(0, context)
+
+────────────────────
++ do add
+    - item Item
+
+append-raw(item)
+
+do @feature-collection-observers
+    notify-collection-append(this, size - 1)
+
+────────────────────
++ do insert
+    - insert-items <Item>
+    - index Index
+
+check-insert-index(index)
+. to-insert = This(context, 0)
+for item in insert-items
+    to-insert.append-raw(item)
+. count = to-insert.length
+=? if !count
+if size + count > items.size
+    grow(size + count)
+shift-right-raw(count, index)
+. offset Index = 0
+for item in to-insert
+    items[index + offset] = item
+    offset += 1
+size += count
+
+do @feature-collection-observers
+    notify-collection-insert(this, index, count)
+
+╌╌╌╌╌╌╌╌╌╌ Removal ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill
+    - count Size
+
+for index in 0 .. < count
+    this[index] = Item()
+
+────────────────────
++ do pop
+
+. item = this[size - 1]
+size -= 1
+
+do @feature-collection-observers
+    notify-collection-remove(this, size)
+= item
+
+────────────────────
++ do pop-first
+
+. item = this[0]
+remove-at-raw(0)
+
+do @feature-collection-observers
+    notify-collection-remove(this, 0)
+= item
+    ` ?! OutOfBoundsError("Can't pop the first item of an empty list")
+    `     if size == 0
+
+────────────────────
++ find
+    - item Item
+
+items[0 .. < size].find(item)
+
+╌╌╌╌╌╌╌╌╌╌ Folding ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - item Item
+
+this += item
+= this
+
+────────────────────
++ do this
+    - item Optional'Item
+
+this +=? item
+= this
+
+────────────────────
++ do this
+    - items <Item>
+
+this ++= items
+= this
+
+────────────────────
++ do slide
+    - increment Increment = 1
+    - start-index Index = 0
+
+=? if increment == 0
+if increment < 0
+    . index = start-index - increment
+    while index < size
+        items[index + increment] = items[index]
+        index += 1
+    size += increment
+else
+    . index = size - start-index
+    if index >= increment
+        . shifted-size = size
+        if index >= size
+            shifted-size = index + 1
+            if shifted-size > items.size
+                grow(shifted-size)
+        while index >= increment
+            items[index] = items[index - increment]
+            index -= 1
+        size = shifted-size
+
+do @feature-collection-observers
+    if increment < 0
+        notify-collection-reset(this)
+    else if size - start-index >= increment
+        notify-collection-reset(this)
+
+────────────────────
++ do with'Item
+    - item Item
+
+this += item
+= this
+
+────────────────────
+_ do absent Item
+    - index Index
+
+?! OutOfBoundsError("List index $index out of range")
+
+────────────────────
+_ do check-insert-index
+    - index Index
+
+?! OutOfBoundsError("List index $index out of range")
+    if index > size
+
+────────────────────
+_ do check-range
+    - index Index
+    - count Size
+
+?! OutOfBoundsError("List range at index $index with count $count out of range")
+    if index > size
+?! OutOfBoundsError("List range at index $index with count $count out of range")
+    if count > size - index
+
+────────────────────
+_ do append-raw @inline
+    - item Item
+
+?! Panic("List size overflow")
+    if size == Size.max
+if size == items.size
+    grow(size + 1)
+
+items[size] = item
+size += 1
+
+────────────────────
+_ do remove-at-raw
+    - index Index
+
+. cursor = index + 1
+while cursor < size
+    items[cursor - 1] = items[cursor]
+    cursor += 1
+size -= 1
+
+────────────────────
+_ do remove-range-raw
+    - index Index
+    - count Size
+
+. cursor = index + count
+while cursor < size
+    items[cursor - count] = items[cursor]
+    cursor += 1
+size -= count
+
+────────────────────
+_ do shift-right-raw
+    - count Size
+    - index Index
+
+. cursor = size
+while cursor > index
+    cursor -= 1
+    items[cursor + count] = items[cursor]
+
+────────────────────
+_ do grow
+    - min-size Size
+
+if min-size > items.size
+    items = items.resize(next-list-capacity(items.size, min-size), context)
+
+────────────────────
+_ This
+    - context Backing.Context
+    - capacity Size
+
+this.context = context
+items = Array'Item'Backing(context, capacity)
+
+────────────────────
+_ initial-list-capacity Size
+
+|? Item.size == 1
+    8
+|? Item.size <= 1024
+    4
+??
+    1
+
+────────────────────
+_ do next-list-capacity Size
+    - current Size
+    - needed Size
+
+. new-size = grown-list-capacity(current)
+if current == 0
+    new-size = initial-list-capacity()
+else if current < 1024
+    new-size = doubled-list-capacity(current)
+if new-size < needed
+    new-size = needed
+= new-size
+
+────────────────────
+_ doubled-list-capacity Size
+    - current Size
+
+?! Panic("List size overflow")
+    if current > Size.max / 2
+
+current * 2
+
+────────────────────
+_ grown-list-capacity Size
+    - current Size
+
+?! Panic("List size overflow")
+    if current > Size.max - half
+
+current + half
+
+.. half = current / 2
+
+────────────────────
+_ normalize-index
+    - index Index
+
+|? index < 0
+    size + index
+??
+    index
+
+━━━━━━━━━━━━━━━━━━━━
+_ first'Item Item?
+    - stream Indexable'Item
+
+stream[0]
+
+━━━━━━━━━━━━━━━━━━━━
+_ first'Item
+    - stream Iterable'Item
+
+<- stream

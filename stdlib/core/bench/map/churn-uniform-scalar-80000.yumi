@@ -1,0 +1,21 @@
+`benchmark.meta description: Mixed scalar Map lookup, delete, and reinsert churn at 80,000 entries.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core
+
+. count = 80000 as Size
+. map = Map'U64'U64()
+for index in 0 .. < count
+    map[index as U64] = index as U64
+
+. checksum = 0u64
+for repetition in 0 .. < 10
+    for index in 0 .. < count by 2
+        checksum += map[index as U64]!
+        -= map[index as U64]
+    for index in 0 .. < count by 2
+        map[index as U64] = (index + repetition) as U64
+
+checksum += map.length as U64
+-- "bench-result map/churn-uniform-scalar-80000 checksum=$checksum"

@@ -1,0 +1,38 @@
+./command
+./stats
+./untracked
+/os/file
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-snapshot String ?! Error
+    - directory String
+
+. made = temporary-directory("git-snapshot")
+. target = "${made as String}/index"
+. tree = catch git-snapshot-tree(directory, target)
+catch Path(target, 0).delete()
+catch made.delete()
+?! tree as Error
+    if tree is Error
+= tree as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-snapshot-tree String ?! Error
+    - directory String
+    - target String
+
+git-copy-index(directory, target)
+. added = git-output(directory, ["add", "-A", "--", "."], null, target)
+= git-output(directory, ["write-tree"], null, target).slice-string().trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-tree-line-counts GitLineCounts ?! Error
+    - directory String
+    - before String
+    - after String
+
+. output = git-output
+    - directory
+    - ["diff", "--raw", "--numstat", "-z", "-M", "--end-of-options", before, after, "--"]
+= git-parse-line-counts(output)

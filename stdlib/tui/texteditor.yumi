@@ -1,0 +1,851 @@
+
+./border
+./box
+./canvas
+./colors
+./events
+./form
+./painter
+./primitives
+./styles
+./theme
+/math
+/ui/input
+
+_ TextEditorLine is (start Index, text-end Index, end Index, width Coord)
+
+━━━━━━━━━━━━━━━━━━━━
+• extend TUIDefaultTheme
+    using BoxPaint
+    using TextPaint
+
+• TextEditor
+    background-color = AnsiColor(0)
+
+    when #is-focused
+        background-color = AnsiColor(4)
+    when !#is-effectively-enabled
+        color = AnsiColor(8)
+        background-color = AnsiColor(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditor is Box
+
+• This
+    focus-mode = FocusMode.input
+
++ text String = ""
++ placeholder String
++ multiline = false
++ wrap = TextEditorWrap.auto
++ selection = TextSelection(0, 0)
++ mask Char?
++ preferred-wrap-width Coord = 80
++ placeholder-color AnsiColor = midgray
++ selection-background BackgroundColor = blue
++ event submitted SubmitEvent
++ cursor-point => editor-cursor-point()
++ shows-terminal-cursor => $focus-mode == FocusMode.input && (!multiline || !has-vertical-overflow || is-editor-cursor-visible())
+
+_ is-caret-upstream = false
+
+. invalidate-content-size < text, placeholder, multiline, wrap, mask, preferred-wrap-width
+. invalidate-paint < text, placeholder, selection, mask, placeholder-color, selection-background
+
+────────────────────
++ This
+    - text String = ""
+
+────────────────────
+for event on key-input
+
+if event.modifiers.control && event.char == 'a'
+    select-all()
+    event.cancel()
+else if event.char >= ' ' && !event.modifiers.control && !event.modifiers.option && !event.modifiers.command
+    insert-text(event.char as String)
+    event.cancel()
+
+────────────────────
+for event on paste
+
+insert-text(event.text)
+event.cancel()
+
+────────────────────
+for event on key-press
+
+if handle-key-press(event)
+    event.cancel()
+
+────────────────────
+for event on mouse-down when is-effectively-enabled
+
+place-caret-at-point(event.point, false)
+
+────────────────────
+for event on mouse-drag when is-effectively-enabled
+
+place-caret-at-point(event.point, true)
+event.cancel()
+
+────────────────────
+when #text
+
+is-caret-upstream = false
+. clipped = clipped-selection(selection)
+if selection != clipped
+    selection = clipped
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(layout.width, layout.height)
+
+.. layout = editor-layout(measure-width(query), paint-text())
+
+────────────────────
++ do clamp-scroll-after-layout
+
+. layout = editor-layout(content-bounds.width, visible-text())
+inner-width = layout.width
+inner-height = layout.height
+. caret = editor-caret-rect(layout)
+. content-width = max(layout.width, (caret.right - content-bounds.x))
+. next-x = clipped-editor-scroll-axis(scroll-x, content-bounds.width, content-width)
+. next-y = clipped-editor-scroll-axis(scroll-y, content-bounds.height, layout.height)
+. next = Point(next-x, next-y)
+if next != Point(scroll-x, scroll-y)
+    scroll(next)
+
+────────────────────
++ do emit-tui-box-node
+
+super.emit-tui-box-node()
+
+//this:tui.box.texteditor -> text, cursor-point.x, cursor-point.y
+
+────────────────────
++ do paint
+    - canvas Canvas
+
+if !is-paint-visible
+    did-paint()
+    =
+. source = paint-text()
+. layout = editor-layout(content-bounds.width, source)
+inner-width = layout.width
+inner-height = layout.height
+
+if is-focused
+    ensure-caret-visible()
+
+do use canvas
+    paint-box-background(this, bounds, canvas)
+    paint-box-border(this, bounds, canvas)
+
+    canvas.clip(content-bounds)
+    canvas.offset((scroll-x, scroll-y))
+    paint-selection(layout, canvas)
+    paint-lines(layout, canvas)
+
+    for box in children
+        if paint-skip-compositing-layers && box.requires-compositing-layer
+            continue
+        box.paint(canvas)
+
+did-paint()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ visible-text String
+
+|? mask
+    (mask as String) * text.length
+??
+    text
+
+────────────────────
++ paint-text String
+
+|? should-paint-placeholder()
+    placeholder
+??
+    visible-text()
+
+────────────────────
++ should-paint-placeholder Bool
+
+!text && placeholder
+
+────────────────────
++ uses-soft-wrap Bool
+
+multiline && (wrap == TextEditorWrap.auto || wrap == TextEditorWrap.soft)
+
+────────────────────
++ editor-layout TextEditorLayout
+    - width Coord
+    - source String
+
+TextEditorLayout(source, editor-wrap-width(width), uses-soft-wrap())
+
+────────────────────
++ editor-wrap-width Coord
+    - width Coord
+
+max(1, candidate)
+
+.. candidate = if width > 0 then width else preferred-wrap-width
+
+────────────────────
++ intrinsic-size
+
+padded-size(measured-content-size(measure-fit-query(preferred-wrap-width)))
+
+────────────────────
++ measure-width Coord
+    - query MeasureQuery
+
+max(1, candidate)
+
+.. candidate = query.inline.available ?? query.inline.max ?? preferred-wrap-width
+
+────────────────────
++ do paint-lines
+    - layout TextEditorLayout
+    - canvas Canvas
+
+. line-index Index = 0
+for line in layout.lines
+    . normal-color = if should-paint-placeholder() then placeholder-color else paint-text-color
+    . start = max(selection.start, line.start)
+    . end = min(selection.end, line.text-end)
+    . y = content-bounds.y + (line-index as Coord)
+    if selection.is-collapsed || should-paint-placeholder() || start >= end
+        paint-line-segment(layout, line, line.start, line.text-end, normal-color, y, canvas)
+    else
+        paint-line-segment(layout, line, line.start, start, normal-color, y, canvas)
+        paint-selected-line-segment(layout, line, start, end, normal-color, y, canvas)
+        paint-line-segment(layout, line, end, line.text-end, normal-color, y, canvas)
+    line-index += 1
+
+────────────────────
++ do paint-line-segment
+    - layout TextEditorLayout
+    - line TextEditorLine
+    - start Index
+    - end Index
+    - color AnsiColor
+    - y Coord
+    - canvas Canvas
+
+=? if start >= end
+
+canvas.text-color = color
+canvas.move((content-bounds.x + left, y))
+canvas.print-display-text(DisplayText(layout.source[start .. < end]))
+
+.. left = DisplayText(layout.source[line.start .. < start]).display-width as Coord
+
+────────────────────
++ do paint-selected-line-segment
+    - layout TextEditorLayout
+    - line TextEditorLine
+    - start Index
+    - end Index
+    - color AnsiColor
+    - y Coord
+    - canvas Canvas
+
+=? if start >= end
+
+canvas.text-color = color
+. previous-background = canvas.background
+canvas.background = selection-background
+canvas.move((content-bounds.x + left, y))
+canvas.print-display-text(DisplayText(layout.source[start .. < end]))
+canvas.background = previous-background
+
+.. left = DisplayText(layout.source[line.start .. < start]).display-width as Coord
+
+────────────────────
++ do paint-selection
+    - layout TextEditorLayout
+    - canvas Canvas
+
+=? if selection.is-collapsed
+=? if should-paint-placeholder()
+
+. line-index Index = 0
+for line in layout.lines
+    . start = max(selection.start, line.start)
+    . end = min(selection.end, line.text-end)
+    if start < end
+        . left = DisplayText(layout.source[line.start .. < start]).display-width as Coord
+        . right = DisplayText(layout.source[line.start .. < end]).display-width as Coord
+        canvas.paint-background
+            - selection-background
+            - Rect
+                - content-bounds.x + left
+                - content-bounds.y + (line-index as Coord)
+                - right - left
+                - 1
+    line-index += 1
+
+────────────────────
++ handle-key-press Bool
+    - event KeyPressEvent
+
+match event.key
+    |= Key.backspace
+        delete-backward()
+        true
+    |= Key.delete
+        delete-forward()
+        true
+    |= Key.arrow-left
+        move-left(event-extend-selection(event), event-option(event))
+        true
+    |= Key.arrow-right
+        move-right(event-extend-selection(event), event-option(event))
+        true
+    |= Key.home
+        move-to-line-edge(false, event-extend-selection(event))
+        true
+    |= Key.end
+        move-to-line-edge(true, event-extend-selection(event))
+        true
+    |= Key.arrow-up
+        move-vertical(-1, event-extend-selection(event))
+    |= Key.arrow-down
+        move-vertical(1, event-extend-selection(event))
+    |= Key.page-up
+        move-page(-1, event-extend-selection(event))
+    |= Key.page-down
+        move-page(1, event-extend-selection(event))
+    |= Key.enter
+        handle-submit-key(event)
+    ??
+        false
+
+────────────────────
++ do handle-submit-key Bool
+    - event KeyPressEvent
+
+if multiline && event-extend-selection(event)
+    insert-text("\n")
+else
+    submit()
+= true
+
+────────────────────
++ do submit
+
+submitted <- SubmitEvent()
+ancestor'Form?.submit()
+
+────────────────────
++ do insert-text
+    - value String
+
+. insert = normalized-insert-text(value)
+=? if !insert
+
+. start = selection.start
+. end = selection.end
+text = text[... start] ++ insert ++ text[end ...]
+move-caret(start + insert.length)
+
+────────────────────
++ normalized-insert-text
+    - value String
+
+** value
+?> each != '\r'
+*> match each
+    |= '\n'
+        if multiline then "\n" else " "
+    ??
+        each as String
+|> "".join
+
+────────────────────
++ do delete-backward
+
+if !selection.is-collapsed
+    delete-selection()
+    =
+. cursor = selection.cursor
+if cursor > 0
+    delete-range(cursor - 1, cursor)
+
+────────────────────
++ do delete-forward
+
+if !selection.is-collapsed
+    delete-selection()
+    =
+. cursor = selection.cursor
+if cursor < text.length
+    delete-range(cursor, cursor + 1)
+
+────────────────────
++ do delete-selection
+
+delete-range(selection.start, selection.end)
+
+────────────────────
++ do delete-range
+    - start Index
+    - end Index
+
+=? if start >= end
+
+text = text[... start] ++ text[end ...]
+move-caret(start)
+
+────────────────────
++ do select-all
+
+selection = TextSelection(0, text.length)
+is-caret-upstream = false
+invalidate-paint()
+
+────────────────────
++ do move-left
+    - extend-selection Bool
+    - by-word Bool
+
+. target = if by-word then word-left(selection.cursor) else selection.cursor
+if !by-word && target > 0
+    target -= 1
+if !extend-selection && !selection.is-collapsed && !by-word
+    target = selection.start
+move-caret(target, extend-selection)
+
+────────────────────
++ do move-right
+    - extend-selection Bool
+    - by-word Bool
+
+. target = if by-word then word-right(selection.cursor) else selection.cursor + 1
+if !extend-selection && !selection.is-collapsed && !by-word
+    target = selection.end
+move-caret(target, extend-selection)
+
+────────────────────
++ do move-to-line-edge
+    - is-end Bool
+    - extend-selection Bool
+
+. layout = editor-layout(content-bounds.width, visible-text())
+. line-index = caret-line-index(layout)
+. line = layout.lines[line-index]
+. target = if is-end then line.text-end else line.start
+place-caret-on-line(target, line-index, layout, extend-selection)
+
+────────────────────
++ do move-vertical Bool
+    - delta Int
+    - extend-selection Bool
+
+. layout = editor-layout(content-bounds.width, visible-text())
+. line-index = caret-line-index(layout) as Int
+. target-line = line-index + delta
+=? if target-line < 0
+=? if target-line >= layout.lines.length
+
+. target = layout.index-at(target-line, caret-x(layout))
+place-caret-on-line(target, target-line, layout, extend-selection)
+= true
+
+────────────────────
++ do move-page Bool
+    - delta Int
+    - extend-selection Bool
+
+. visible-height = max(1, content-bounds.height)
+. layout = editor-layout(content-bounds.width, visible-text())
+. line-index = caret-line-index(layout) as Int
+. target-line = line-index + delta * (visible-height as Int)
+. last-line = (layout.lines.length - 1) as Int
+. upper-line = min(target-line, last-line)
+target-line = max(0, upper-line)
+=? if target-line == line-index
+
+. target = layout.index-at(target-line, caret-x(layout))
+place-caret-on-line(target, target-line, layout, extend-selection)
+= true
+
+────────────────────
++ do move-caret
+    - target Index
+    - is-extending Bool = false
+
+place-caret(target, is-extending, false)
+
+────────────────────
+_ do place-caret
+    - target Index
+    - is-extending Bool
+    - is-upstream Bool
+
+. next = clipped-index(target, text.length)
+if is-extending
+    selection = TextSelection(selection.anchor, next)
+else
+    selection = TextSelection(next, next)
+is-caret-upstream = is-upstream
+ensure-caret-visible()
+invalidate-paint()
+
+────────────────────
+_ do place-caret-on-line
+    - target Index
+    - line-index Index
+    - layout TextEditorLayout
+    - is-extending Bool
+
+place-caret(target, is-extending, layout.line-index-at(target) != line-index)
+
+────────────────────
+_ do place-caret-at-point
+    - point Point
+    - is-extending Bool
+
+. layout = editor-layout(content-bounds.width, visible-text())
+. line-index = point-line-index(point, layout)
+. target = layout.index-at(line-index, point-text-x(point))
+place-caret-on-line(target, line-index, layout, is-extending)
+
+────────────────────
++ do point-line-index Index
+    - point Point
+    - layout TextEditorLayout
+
+. y = (point.y - content-bounds.y - scroll-y) as Int
+. last = (layout.lines.length - 1) as Int
+= clipped
+
+.. clipped = min(last, (max(0, y)))
+
+────────────────────
++ point-text-x Coord
+    - point Point
+
+point.x - content-bounds.x - scroll-x
+
+────────────────────
++ do word-left Index
+    - cursor Index
+
+=? 0 if mask
+. index = clipped-index(cursor, text.length)
+while index > 0 && text-editor-word-separator(text[index - 1])
+    index -= 1
+while index > 0 && !text-editor-word-separator(text[index - 1])
+    index -= 1
+= index
+
+────────────────────
++ do word-right Index
+    - cursor Index
+
+=? text.length if mask
+. index = clipped-index(cursor, text.length)
+while index < text.length && text-editor-word-separator(text[index])
+    index += 1
+while index < text.length && !text-editor-word-separator(text[index])
+    index += 1
+= index
+
+────────────────────
++ clipped-selection TextSelection
+    - value TextSelection
+
+TextSelection(clipped-index(value.anchor, text.length), clipped-index(value.cursor, text.length))
+
+────────────────────
++ do ensure-caret-visible
+
+. layout = editor-layout(content-bounds.width, visible-text())
+inner-width = layout.width
+inner-height = layout.height
+= scroll-editor-caret-visible(editor-caret-rect(layout), layout)
+
+────────────────────
++ do scroll-editor-caret-visible Bool
+    - rect Rect
+    - layout TextEditorLayout
+
+. visible = editor-visible-content-bounds()
+. next-x = scroll-x
+. next-y = scroll-y
+
+if visible.width > 0
+    if rect.x + next-x < visible.x
+        next-x = visible.x - rect.x
+    else if rect.right + next-x > visible.right
+        next-x = visible.right - rect.right
+    . content-width = max(layout.width, (rect.right - content-bounds.x))
+    next-x = clipped-editor-scroll-axis(next-x, visible.width, content-width)
+
+if visible.height > 0
+    if rect.y + next-y < visible.y
+        next-y = visible.y - rect.y
+    else if rect.bottom + next-y > visible.bottom
+        next-y = visible.bottom - rect.bottom
+    next-y = clipped-editor-scroll-axis(next-y, visible.height, layout.height)
+
+. next = Point(next-x, next-y)
+=? if next == Point(scroll-x, scroll-y)
+
+scroll(next)
+= true
+
+────────────────────
++ do editor-visible-content-bounds Rect
+
+. visible = content-bounds
+for ancestor in ancestors
+    if ancestor.is-markup-shadow
+        continue
+    visible = text-editor-rect-intersection(visible, ancestor.content-bounds)
+
+= visible
+
+────────────────────
++ clipped-editor-scroll-axis Coord
+    - requested Coord
+    - visible-size Coord
+    - content-size Coord
+
+min(0, lower-clipped)
+
+.. lower-clipped = max(scroll-min, requested)
+    .. scroll-min = min(0, visible-size - content-size)
+
+────────────────────
++ do is-editor-cursor-visible Bool
+
+. visible = editor-visible-content-bounds()
+=? if visible.width <= 0 || visible.height <= 0
+
+. point = editor-cursor-point()
+= within-x && point.y >= visible.y && point.y < visible.bottom
+    .. within-x = point.x >= visible.x && point.x < visible.right
+
+────────────────────
++ editor-cursor-point Point
+
+Point(content-bounds.x + caret.x + scroll-x, content-bounds.y + caret.y + scroll-y)
+
+.. caret = caret-display-point(editor-layout(content-bounds.width, visible-text()))
+
+────────────────────
++ editor-caret-rect Rect
+    - layout TextEditorLayout
+
+Rect(content-bounds.x + caret.x, content-bounds.y + caret.y, 1, 1)
+
+.. caret = caret-display-point(layout)
+
+────────────────────
++ caret-line-index Index
+    - layout TextEditorLayout
+
+layout.caret-line-index(selection.cursor, is-caret-upstream)
+
+────────────────────
++ caret-x Coord
+    - layout TextEditorLayout
+
+layout.x-in-line(caret-line-index(layout), selection.cursor)
+
+────────────────────
++ caret-display-point Point
+    - layout TextEditorLayout
+
+|? line-index != row-start-line && x >= layout.wrap-width
+    Point(0, row-start-line as Coord)
+??
+    Point(x, line-index as Coord)
+
+.. line-index = caret-line-index(layout)
+.. row-start-line = layout.line-index-at(selection.cursor)
+.. x = caret-x(layout)
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditorWrap is Union
+
+| auto
+| none
+| soft
+
+━━━━━━━━━━━━━━━━━━━━
++ TextSelection is (anchor Index, cursor Index)
+
+────────────────────
++ get start
+
+min(anchor, cursor)
+
+────────────────────
++ get end
+
+max(anchor, cursor)
+
+────────────────────
++ get is-collapsed
+
+anchor == cursor
+
+━━━━━━━━━━━━━━━━━━━━
+_ TextEditorLayout
+
++ source String
++ lines [TextEditorLine]
++ width Coord
++ wrap-width Coord
++ height => lines.length as Coord
+
+────────────────────
++ This
+    - source String
+    - wrap-width Coord
+    - should-wrap Bool
+
+. display = DisplayText(source)
+. line-start Index = 0
+. line-width Coord = 0
+. index Index = 0
+. safe-wrap = max(1, wrap-width)
+
+for char in source
+    . char-width = display.width-at(index) as Coord
+    if char == '\n'
+        append-line(line-start, index, index + 1, line-width)
+        index += 1
+        line-start = index
+        line-width = 0
+    else
+        if should-wrap && line-width > 0 && line-width + char-width > safe-wrap
+            append-line(line-start, index, index, line-width)
+            line-start = index
+            line-width = 0
+        line-width += char-width
+        index += 1
+
+append-line(line-start, index, index, line-width)
+
+────────────────────
++ do append-line
+    - start Index
+    - text-end Index
+    - end Index
+    - line-width Coord
+
+lines += TextEditorLine(start, text-end, end, line-width)
+width = max(width, line-width)
+
+────────────────────
++ do line-index-at Index
+    - text-index Index
+
+. safe-index = clipped-index(text-index, source.length)
+. index Index = 0
+while index < lines.length
+    . line = lines[index]
+    if safe-index >= line.start && (safe-index < line.end || index == lines.length - 1)
+        = index
+    index += 1
+
+= lines.length - 1
+
+────────────────────
++ caret-line-index Index
+    - text-index Index
+    - is-upstream Bool
+
+|? !is-upstream || line-index == 0
+    line-index
+|? previous.text-end == text-index && previous.end == text-index
+    line-index - 1
+??
+    line-index
+
+.. line-index = line-index-at(text-index)
+.. previous = lines[line-index - 1]
+
+────────────────────
++ x-in-line Coord
+    - line-index Index
+    - text-index Index
+
+DisplayText(source[line.start .. < end]).display-width as Coord
+
+.. line = lines[line-index]
+.. clipped = clipped-index(text-index, source.length)
+.. line-clipped = max(line.start, clipped)
+.. end = min(line.text-end, line-clipped)
+
+────────────────────
++ do index-at Index
+    - line-index Index
+    - x Coord
+
+. line = lines[clipped-index(line-index, lines.length - 1)]
+. index = line.start
+. current Coord = 0
+while index < line.text-end
+    . char-width = DisplayText(source[index] as String).display-width as Coord
+    if current + char-width > x
+        = index
+    current += char-width
+    index += 1
+
+= line.text-end
+
+━━━━━━━━━━━━━━━━━━━━
+_ clipped-index Index
+    - value Index
+    - limit Index
+
+max(0, upper)
+
+.. upper = min(value, limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-editor-rect-intersection Rect
+    - a Rect
+    - b Rect
+
+Rect(left, top, right - left, bottom - top)
+
+.. left = max(a.x, b.x)
+.. top = max(a.y, b.y)
+.. right = max(left, (min(a.right, b.right)))
+.. bottom = max(top, (min(a.bottom, b.bottom)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-extend-selection Bool
+    - event KeyPressEvent
+
+event.modifiers.shift
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-option Bool
+    - event KeyPressEvent
+
+event.modifiers.option
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-editor-word-separator Bool
+    - char Char
+
+char == ' ' || char == '\t' || char == '\n' || char == '\r'

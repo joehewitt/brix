@@ -1,0 +1,412 @@
+./chat-access
+./chat-branching
+./chat-caches
+./chat-composer
+./chat-memory
+./chat-queue
+./chat-theme
+./chat-transcript
+/ai
+/core/virtual
+/graphics/primitives
+/gui
+/gui/icons/lucide/arrow-down
+/gui/icons/lucide/merge
+/gui/icons/lucide/trash-2
+/gui/icons/lucide/x
+/gui/markdown
+/math
+/ui/input
+
+_ chat-composer-rest VirtualCoord = 76vcoord
+_ chat-dock-scroll-room Length = 10
+_ chat-dock-backdrop-top Length = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatWording is Tuple
+
++ greeting = ""
++ placeholder = "Send a message"
++ branch-placeholder = "Send a message"
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatWorkspace is Box
+
++ branching ChatBranching
++ references MarkdownReferences?
++ reference-origin String?
++ services [AIChatService]
++ caches = ChatBlockCaches()
++ images AIImageStore?
++ wording = ChatWording()
++ branch-modifiers PointerModifiers? = null
++ has-folds = false
++ insertion = ChatInsertion.pins-prompt
++ top-inset Length = 0
+
+_ pane-inset = if branching.#error != null then 0 else #top-inset
+
+────────────────────
+
+<This • flex-col
+    if branching.#error != null
+        <Box • chat-branch-error flex-row px:16 py:8
+            margin-top = #top-inset
+            <Text • chat-error flex:1
+                align-y = Alignment.center
+                <Span
+                    text = branching.#error ?? ""
+            <IconButton dismiss-button • icon-x w:22 h:22
+    <MarkdownReferenceScope • flex-row flex:1
+        references = #references
+        origin = #reference-origin
+        for main in [branching.#main] keyed by main.branch-id
+            <ChatPane • flex:1
+                session = main
+                branching = branching
+                services = #services
+                caches = caches
+                images = images
+                wording = #wording
+                branch-modifiers = #branch-modifiers
+                has-folds = #has-folds
+                insertion = #insertion
+                top-inset = #pane-inset
+        if branching.#focus != null
+            for side in [branching.#focus!] keyed by side.branch-id
+                <ChatPane • chat-side-pane w:480
+                    session = side
+                    branching = branching
+                    services = #services
+                    caches = caches
+                    images = images
+                    wording = #wording
+                    branch-modifiers = #branch-modifiers
+                    has-folds = #has-folds
+                    insertion = #insertion
+                    is-side = true
+                    top-inset = #pane-inset
+
+────────────────────
+for event on dismiss-button.click
+
+branching.dismiss()
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPane is Box
+
++ session AIChatSession
++ branching ChatBranching
++ services [AIChatService] = List'AIChatService()
++ caches = ChatBlockCaches()
++ images AIImageStore?
++ wording = ChatWording()
++ branch-modifiers PointerModifiers? = null
++ has-folds = false
++ insertion = ChatInsertion.pins-prompt
++ is-side = false
++ is-branch = #session.branch-id != branching.root.branch-id
++ queue = branching.queue-for(#session)
++ has-queue = #queue.#items.length > 0
++ behind = #session.working-behind(#session.tool-tasks.#revision)
++ is-working-behind = #behind.length > 0
++ dock-height Length = 0
++ gutter = chat-dock-gutter(#dock-height)
++ top-inset Length = 0
++ is-connected = #session.document.#service.access?.#is-granted ?? true
++ is-asking = #session.#is-busy && (#session.document.#service.tool-access?.#is-asking ?? false)
+
+_ flights Size
+_ flight-key = "chat-flight-${#session.branch-id}-${#flights}"
+
+────────────────────
+
+<This • flex-col
+    if #is-branch
+        <ChatPaneHeader
+            margin-top = #top-inset
+            session = #session
+            branching = branching
+            is-side = #is-side
+    <ChatTranscript transcript • flex:1
+        session = #session
+        branching = branching
+        services = #services
+        caches = caches
+        images = images
+        gutter = #gutter
+        top-inset = if #is-branch then 0 else #top-inset
+        greeting = #wording.greeting
+        has-folds = #has-folds
+        insertion = #insertion
+    <ChatDock dock • absolute flex-col
+        anchor = Anchor.parent
+        left = PositionOffset.coord(0)
+        right = PositionOffset.coord(chat-dock-scroll-room)
+        bottom = PositionOffset.coord(0)
+        <Box • chat-dock-backdrop
+            background-color = if #is-side then $gui-panel-color else $gui-window-color
+            anchor = Anchor.parent
+            left = PositionOffset.coord(0)
+            right = PositionOffset.coord(0)
+            top = PositionOffset.coord(chat-dock-backdrop-top)
+            bottom = PositionOffset.coord(0)
+        if transcript.#is-end-hidden
+            <Box • h:0
+                <IconButton jump-button • chat-jump-button icon-arrow-down absolute w:32 h:32
+                    anchor = Anchor.parent
+                    bottom = PositionOffset.coord(10)
+                    align-x = Alignment.center
+        if #has-queue
+            <ChatQueueView
+                queue = #queue
+        if #is-asking
+            <ChatAccessRequest • mt:8 mb:20
+                access = #session.document.#service.tool-access!
+        <ChatComposer composer
+            focus-default = !#is-side
+            can-queue = true
+            is-busy = session.#is-busy || #is-working-behind
+            placeholder = if transcript.#is-launching then "" else chat-pane-placeholder(#wording, #is-branch)
+            branch-modifiers = #branch-modifiers
+            images = images
+            caches = caches
+            flight-key = #flight-key
+            display = if #is-connected && !#is-asking then Display.visible else Display.hidden
+    if #is-side
+        <Resizer
+            edge = Side.left
+            min-size = 320
+            max-size = 960
+            state-key = "chat-side-pane"
+    <ConfirmDialog stop-dialog
+        title = "Stop background tasks?"
+        message = chat-stop-message(#behind)
+        accept-title = "Stop All"
+
+────────────────────
+for height on dock.measured
+
+dock-height = height
+
+────────────────────
+for prompt on composer.send
+
+send-prompt(prompt) • flies true
+
+────────────────────
+for prompt on composer.queue
+
+queue-prompt(prompt)
+
+────────────────────
+for text on transcript.answering
+
+send-prompt(ChatDraft(text))
+
+────────────────────
+for draft on composer.drafted
+
+branching.memory.keep-draft(session.branch-id, draft)
+
+────────────────────
+for prompt on composer.branch
+
+branching.side-chat(session, prompt.text, prompt.images)
+
+────────────────────
+for _ on composer.stop
+
+request-stop()
+
+────────────────────
+for stopped on branching.stopping
+
+if stopped.branch-id == session.branch-id
+    request-stop()
+
+────────────────────
+for _ on stop-dialog.accepted when arrival
+
+branching.stop-all(session)
+
+────────────────────
+for event on jump-button.click
+
+transcript.jump-to-end()
+event.cancel()
+
+────────────────────
+for event on key-press
+
+. modifiers = event.modifiers
+. is-plain = !modifiers.shift && !modifiers.command && !modifiers.option && !modifiers.control
+. is-command = modifiers.command && !modifiers.shift && !modifiers.option && !modifiers.control
+. is-jump = is-command && !(composer.is-focus-within && composer.is-multiline)
+if is-plain && event.key == Key.home
+    transcript.jump-to-start()
+    event.cancel()
+else if is-plain && event.key == Key.end
+    transcript.jump-to-end()
+    event.cancel()
+else if is-plain && event.key == Key.page-up
+    transcript.page(false)
+    event.cancel()
+else if is-plain && event.key == Key.page-down
+    transcript.page(true)
+    event.cancel()
+else if is-jump && event.key == Key.arrow-up
+    transcript.jump-to-prompt(false)
+    event.cancel()
+else if is-jump && event.key == Key.arrow-down
+    transcript.jump-to-prompt(true)
+    event.cancel()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+composer.restore(branching.memory.draft-for(session.branch-id))
+
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do send-prompt
+    - prompt ChatDraft
+    - flies = false
+
+=? if !is-connected
+=? if session.is-busy && !prompt.images.length && branching.steer(session, prompt.text)
+if session.is-busy || has-queue
+    queue.add(prompt.text, prompt.images)
+    =
+. count = session.messages.length
+branching.send(session, prompt.text, prompt.images)
+if flies && session.messages.length > count
+    transcript.launch(flight-key)
+    flights += 1
+
+────────────────────
+_ do queue-prompt
+    - prompt ChatDraft
+
+=? if !is-connected
+queue.add(prompt.text, prompt.images)
+
+────────────────────
+_ do request-stop
+
+if is-working-behind
+    stop-dialog.show()
+else
+    branching.stop(session)
+
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPaneHeader is Box
+
++ session AIChatSession
++ branching ChatBranching
++ is-side = false
++ trail = chat-branch-trail(#session.document.#chat, #session.branch-id)
++ can-unfold = !session.#is-busy && chat-can-unfold(#session.document.#chat, #session.branch-id)
+
+────────────────────
+
+<This • chat-pane-header flex-row h:44 pl:16 pr:10
+    for crumb in #trail keyed by crumb.id
+        <Box • flex-row items-center
+            align-y = Alignment.center
+            if crumb.parent-branch-id != null
+                <Label • chat-crumb-divider px:4
+                    text = "›"
+            <Button • chat-crumb h:26 px:6
+                title = chat-crumb-title(session, crumb)
+                is-on = crumb.id == session.branch-id
+                for event on click
+                    branching.open(crumb.id)
+                    event.cancel()
+    <Box • flex:1
+    if #is-side
+        <IconButton unfold-button • icon-merge w:26 h:26
+            align-y = Alignment.center
+            is-enabled = #can-unfold
+        <IconButton remove-button • icon-trash-2 w:26 h:26 ml:2
+            align-y = Alignment.center
+        <IconButton close-button • icon-x w:26 h:26 ml:2
+            align-y = Alignment.center
+
+────────────────────
+for event on unfold-button.click
+
+branching.unfold(session.branch-id)
+event.cancel()
+
+────────────────────
+for event on remove-button.click
+
+branching.remove(session.branch-id)
+event.cancel()
+
+────────────────────
+for event on close-button.click
+
+branching.close()
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatDock is Box
+
++ event measured Length
+
+_ last-height Length
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+. found = bounds.height
+=? if found == last-height
+last-height = found
+measured <- found
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-dock-gutter VirtualCoord
+    - height Length
+
+if height > 0 then ceil(height) as VirtualCoord else chat-composer-rest
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-stop-message String
+    - tasks [AIToolTask]
+
+|? tasks.length == 1
+    "“${tasks[0].title}” is still running in the background. Stopping ends it, and nothing resumes until you send another message."
+??
+    "${tasks.length} tasks are still running in the background. Stopping ends them, and nothing resumes until you send another message."
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-is-working Bool
+    - session AIChatSession
+    - is-busy Bool
+    - revision U64
+
+is-busy || session.working-behind(revision).length > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-pane-placeholder String
+    - wording ChatWording
+    - is-branch Bool
+
+|? is-branch
+    wording.branch-placeholder
+??
+    wording.placeholder

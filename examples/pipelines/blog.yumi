@@ -1,0 +1,102 @@
+
+/data/markdown
+/net/url
+/os/env
+/os/file
+/os/path
+/os/process
+/stream/combine
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
++ blog-folder = Path(env("BLOG_FOLDER") ?? "blog")
++ generated-folder = blog-folder / ".generated"
++ s3-key = env("BLOG_S3_URL") ?? "s3://example-blog"
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+`  generate-posts()
+sync-posts()
+
+`  . source-paths List = in blog-folder.contents when each.is-file
+`  . generated-paths List = generate-path(each) in source-paths
+`  -- "\n".join of source-paths /zip/ generated-paths
+
+`  . source-timestamps List = (each.modified if each.exists) in source-paths
+`  . generated-timestamps List = (each.modified if each.exists) in generated-paths
+`  -- "\n".join of generated-timestamps /zip/ source-timestamps
+
+`  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`  + generate-posts
+
+`  +- job: "Check for new posts..."
+
+`  ** blog-folder.contents
+`  ?> each.is-file && each.ext == "md"
+`  ?> is-source-newer
+`      .. is-source-newer = true || !generated-timestamp || source-timestamp > generated-timestamp!
+`          .. generated-path = generate-path(each)
+`          .. generated-timestamp = generated-path.modified if generated-path.exists
+`          .. source-timestamp = each.modified
+`  |> List
+`  |=> job: "Found ${it.length} updated posts..."
+`  *|> render-path
+
+━━━━━━━━━━━━━━━━━━━━
++ render-path
+    - source-path Path
+
+`  +- job-await: "Updating $source-path.name..."
+
+generated-file <- generated-text
+
+.. source-text = source-path.readable() as String
+.. markdown Markdown = source-text
+.. html = markdown-to-html(markdown)
+.. generated-text = template(html)
+
+.. generated-path = generate-path(source-path)
+.. generated-file = generated-path.rewritable()
+
+━━━━━━━━━━━━━━━━━━━━
++ generate-path
+    - blog-path Path
+
+ generated-folder / "${blog-path.base-name}.html"
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ template
+    - article String
+
+<html>
+    <head>
+        <title>Joe Hewitt</title>
+    </head>
+    <body>
+        $article
+    </body>
+</html>
+
+━━━━━━━━━━━━━━━━━━━━
++ sync-posts
+
+`  +- job-await: "Syncing to S3..."
+
+** use Process("aws")
+    - "s3"
+    - "sync"
+    - "$generated-folder"
+    - s3-key
+    - "--delete"
+    - "--exclude"
+    - ".DS_Store"
+`  *-> Path("aws.txt").writable()
+~> \upline | \crapline
+    .. upline ~
+        ~ "upload:" / path Path / "to" / url URL \nl?
+            "-- $path -> $url..."
+
+    .. crapline ~
+        ~ (!(\cr | "upload") .)+ \cr
+            ""
+|> print-all

@@ -1,0 +1,441 @@
+./expression
+./names
+./phrase
+./token
+./value
+
+━━━━━━━━━━━━━━━━━━━━
++ script-print [ScriptToken]
+    - expression ScriptExpression
+    - grammar ScriptGrammar
+    - names ScriptNames? = null
+
+ScriptPrinter(grammar, names).print(expression)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-parenthesized ScriptExpression
+    - expression ScriptExpression
+    - grammar ScriptGrammar
+
+ScriptPrinter(grammar).parenthesized(expression, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptSpan is Tuple
+
++ expression ScriptExpression
++ start Index
++ end Index
++ parent Index?
++ slot = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ script-same
+    - a ScriptExpression
+    - b ScriptExpression
+
+a as Pointer == b as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPrinter
+
++ grammar ScriptGrammar
++ names ScriptNames?
++ spans [ScriptSpan]
+
+_ tokens [ScriptToken]
+
+────────────────────
++ This
+    - grammar
+    - names ScriptNames? = null
+
+────────────────────
++ do print [ScriptToken]
+    - expression ScriptExpression
+
+tokens = List'ScriptToken()
+spans = List'ScriptSpan()
+emit(parenthesized(expression, false))
+= tokens
+
+────────────────────
++ do parenthesized ScriptExpression
+    - expression ScriptExpression
+    - followed Bool
+
+do match expression
+    | binary ScriptBinary
+        . level = binary.precedence.level
+        . left = wrapped(parenthesized(binary.left, true), level)
+        . right = wrapped(parenthesized(binary.right, followed), level + 1)
+        =? binary if script-same(left, binary.left) && script-same(right, binary.right)
+        = ScriptBinary(binary.operator, left, right)
+    | negation ScriptNegation
+        . operand = wrapped
+            - parenthesized(negation.operand, followed)
+            - ScriptPrecedence.prefix.level
+        =? negation if script-same(operand, negation.operand)
+        = ScriptNegation(operand)
+    | point ScriptPointExpression
+        . x = parenthesized(point.x, false)
+        . y = parenthesized(point.y, false)
+        =? point if script-same(x, point.x) && script-same(y, point.y)
+        = ScriptPointExpression(x, y, point.closed)
+    | group ScriptGroup
+        . inner = parenthesized(group.inner, false)
+        |? calls(inner)
+            = inner
+        |? script-same(inner, group.inner)
+            = group
+        ??
+            = ScriptGroup(inner, group.closed)
+    | phrase ScriptPhraseExpression
+        = phrase-parenthesized(phrase, followed)
+    | list ScriptListExpression
+        . items = List'ScriptExpression()
+        . changed = false
+        for index in 0 .. < list.items.length
+            . item = list.items[index]
+            . next = parenthesized(item, index < list.items.length - 1)
+            changed = changed || !script-same(next, item)
+            items += next
+        =? list if !changed
+        = ScriptListExpression(items)
+    | sequence ScriptSequence
+        . items = List'ScriptExpression()
+        . changed = false
+        for index in 0 .. < sequence.items.length
+            . last = index == sequence.items.length - 1
+            . item = wrapped
+                - parenthesized(sequence.items[index], if last then followed else true)
+                - ScriptPrecedence.range.level
+            . next = if index > 0 && leads-with-operator(item) && operand(sequence.items[index - 1]) then ScriptGroup(item) else item
+            changed = changed || !script-same(next, sequence.items[index])
+            items += next
+        =? sequence if !changed
+        = ScriptSequence(items)
+    ??
+        = expression
+
+────────────────────
+_ do phrase-parenthesized ScriptExpression
+    - phrase ScriptPhraseExpression
+    - followed Bool
+
+. form = grammar.form(phrase.kind)
+=? phrase if !form
+=? call-parenthesized(form, phrase) if form.is-function
+. arguments = Map'String'ScriptExpression()
+. last = form.parts.length - 1
+. ranged = form.result.kind == ScriptTypeKind.range
+. range = ScriptPrecedence.range.level
+. changed = false
+for index in 0 .. < form.parts.length
+    . part = form.parts[index]
+    if part.is-slot
+        . original = phrase.arguments[part.slot]
+        . argument = original ?? ScriptHole()
+        . next =
+            |? ranged && index == 0
+                wrapped
+                    - parenthesized(argument, true)
+                    - if part.type.kind == ScriptTypeKind.range then range else range + 1
+            |? ranged
+                wrapped(parenthesized(argument, followed && index == last), range + 1)
+            |? index == 0
+                wrapped(parenthesized(argument, true), ScriptPrecedence.postfix.level)
+            |? index < last && part.type.kind == ScriptTypeKind.range
+                parenthesized(argument, false)
+            |? index < last
+                range-wrapped(parenthesized(argument, false))
+            ??
+                parenthesized(argument, followed && index == last)
+        changed = changed || !original || !script-same(next, argument)
+        arguments[part.slot] = next
+. result = if changed then ScriptPhraseExpression(phrase.kind, arguments) else phrase
+=? ScriptGroup(result) if followed && form.ends-with-slot && !ranged
+= result
+
+────────────────────
+_ do call-parenthesized ScriptExpression
+    - form ScriptPhraseForm
+    - phrase ScriptPhraseExpression
+
+. arguments = Map'String'ScriptExpression()
+. changed = false
+for part in form.slots
+    . original = phrase.arguments[part.slot]
+    . argument = original ?? ScriptHole()
+    . next = parenthesized(unbracketed(argument), false)
+    changed = changed || !original || !script-same(next, argument)
+    arguments[part.slot] = next
+= if changed then ScriptPhraseExpression(phrase.kind, arguments) else phrase
+
+────────────────────
+_ calls Bool
+    - expression ScriptExpression
+
+expression is ScriptPhraseExpression && form != null && form.is-function
+
+.. form = grammar.form((expression as ScriptPhraseExpression).kind)
+
+────────────────────
+_ do unbracketed ScriptExpression
+    - expression ScriptExpression
+
+. result = expression
+while result is ScriptGroup
+    result = (result as ScriptGroup).inner
+= result
+
+────────────────────
+_ operand Bool
+    - expression ScriptExpression
+
+expression is not ScriptUnresolved || (expression as ScriptUnresolved).token.starts-operand
+
+────────────────────
+_ do leads-with-operator Bool
+    - expression ScriptExpression
+
+do match expression
+    | negation ScriptNegation
+        = true
+    | binary ScriptBinary
+        = leads-with-operator(binary.left)
+    | phrase ScriptPhraseExpression
+        . form = grammar.form(phrase.kind)
+        =? false if !form || !form.starts-with-slot
+        . first = phrase.arguments[form.parts[0].slot]
+        = first != null && leads-with-operator(first)
+    ??
+        = false
+
+────────────────────
+_ wrapped ScriptExpression
+    - expression ScriptExpression
+    - minimum Size
+
+if level-of(expression) < minimum then ScriptGroup(expression) else expression
+
+────────────────────
+_ range-wrapped ScriptExpression
+    - expression ScriptExpression
+
+if level-of(expression) == ScriptPrecedence.range.level then ScriptGroup(expression) else expression
+
+────────────────────
+_ level-of Size
+    - expression ScriptExpression
+
+|? expression is ScriptPhraseExpression && form && form.result.kind == ScriptTypeKind.range
+    ScriptPrecedence.range.level
+??
+    expression.precedence.level
+
+.. form = grammar.form((expression as ScriptPhraseExpression).kind)
+
+────────────────────
+_ do emit
+    - expression ScriptExpression
+    - label = ""
+    - parent Index? = null
+
+. span = spans.length
+. start = tokens.length
+spans += ScriptSpan(expression, start, start, parent, label)
+emit-tokens(expression, label, span)
+spans[span] = ScriptSpan(expression, start, tokens.length, parent, label)
+
+────────────────────
+_ do chip-text String
+    - reference ScriptReferenceExpression
+    - found ScriptName?
+
+=? reference.name if !found
+. copy = reference.reference.copy
+=? found.name if !copy
+. source = ""
+do match? copy
+    | .previous(id)
+        source = names?.lookup(script-node-reference(id))?.name ?? ""
+    | .variable(id)
+        source = names?.lookup(script-variable-reference(id))?.name ?? ""
+= script-copy-text(found.name, copy, source)
+
+────────────────────
+_ do emit-tokens
+    - expression ScriptExpression
+    - label String
+    - span Index
+
+do match expression
+    | literal ScriptLiteral
+        . number = literal.value.as-number
+        if number
+            tokens += script-number-token(literal.text)
+        else
+            tokens += script-literal-token(literal.value, script-literal-text(literal.value))
+    | reference ScriptReferenceExpression
+        . found = names?.lookup(reference.reference)
+        . missing = names != null && found == null
+        tokens += script-chip-token(reference.reference, chip-text(reference, found), missing)
+    | negation ScriptNegation
+        tokens += script-operator-token("-", true)
+        emit(negation.operand, "", span)
+    | binary ScriptBinary
+        emit(binary.left, "", span)
+        tokens += script-operator-token(binary.operator.symbol)
+        emit(binary.right, "", span)
+    | point ScriptPointExpression
+        tokens += script-open-token
+        emit(point.x, "", span)
+        tokens += script-comma-token
+        emit(point.y, "", span)
+        tokens += script-close-token(!point.closed)
+    | group ScriptGroup
+        tokens += script-open-token
+        emit(group.inner, "", span)
+        tokens += script-close-token(!group.closed)
+    | phrase ScriptPhraseExpression
+        emit-phrase(phrase, span)
+    | unresolved ScriptUnresolved
+        tokens += unresolved.token
+    | sequence ScriptSequence
+        for item in sequence.items
+            emit(item, "", span)
+    | list ScriptListExpression
+        for index in 0 .. < list.items.length
+            if index > 0
+                tokens += script-comma-token
+            emit(list.items[index], "", span)
+    ??
+        tokens += script-hole-token(label)
+
+────────────────────
+_ do emit-phrase
+    - phrase ScriptPhraseExpression
+    - span Index
+
+. form = grammar.form(phrase.kind)
+if !form
+    tokens += script-word-token(phrase.kind, 0, phrase.kind, true)
+    =
+if form.is-function
+    . slots = form.slots
+    tokens += script-call-token(phrase.kind, form.name)
+    tokens += script-open-token
+    for index in 0 .. < slots.length
+        if index > 0
+            tokens += script-comma-token
+        emit(phrase.arguments[slots[index].slot] ?? ScriptHole(), slots[index].slot, span)
+    tokens += script-close-token()
+    =
+. last = form.parts.length - 1
+for index in 0 .. < form.parts.length
+    . part = form.parts[index]
+    if part.is-slot
+        emit(phrase.arguments[part.slot] ?? ScriptHole(), part.slot, span)
+    else
+        tokens += script-word-token(phrase.kind, index, part.word, index == last)
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-value-expression
+    - value ScriptValue
+    - grammar ScriptGrammar? = null
+
+do match? value
+    | .node(node)
+        = ScriptReferenceExpression(script-node-reference(node.id), "")
+    | .part(part)
+        . phrased = grammar.part-expression(part) if grammar
+        =? phrased if phrased
+    | .parts(parts)
+        . phrased = grammar.parts-expression(parts) if grammar
+        =? phrased if phrased
+    | .truth(truth)
+        . kind = if truth then "script.true" else "script.false"
+        =? ScriptPhraseExpression(kind, empty-arguments) if grammar && grammar.form(kind)
+        .. empty-arguments = Map'String'ScriptExpression()
+= ScriptLiteral(value, script-literal-text(value))
+
+━━━━━━━━━━━━━━━━━━━━
++ script-literal-text String
+    - value ScriptValue
+
+match value
+    | .number(number)
+        script-number-text(number)
+    | .point(point)
+        "(${script-number-text(point.x)}, ${script-number-text(point.y)})"
+    | .color(color)
+        script-color-text(color)
+    | .text(text)
+        "\"$text\""
+    | .node(node)
+        "${node.kind} ${node.id}"
+    | .nodes(nodes)
+        "${nodes.length} nodes"
+    | .loop(loop)
+        script-number-text(loop.number)
+    | .range(range)
+        script-range-text(range)
+    | .part(part)
+        "${part.kind} ${part.number} of ${part.node.kind} ${part.node.id}"
+    | .parts(parts)
+        "${parts.length} parts"
+    | .truth(truth)
+        if truth then "true" else "false"
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-range-text String
+    - range ScriptRange
+
+if range.items.length
+    = ", ".join(script-literal-text(each) in range.items)
+. result = "${script-literal-text(range.first)} to ${script-literal-text(range.last)}"
+if range.step
+    result = "$result by ${script-number-text(range.step!)}"
+do match? range.easing
+    |= .ease-in
+        result = "$result eased in"
+    |= .ease-out
+        result = "$result eased out"
+    |= .ease-in-out
+        result = "$result eased in and out"
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-describe String
+    - expression ScriptExpression
+    - grammar ScriptGrammar
+
+do match expression
+    | literal ScriptLiteral
+        = if literal.value.as-number then literal.text else script-literal-text(literal.value)
+    | reference ScriptReferenceExpression
+        = reference.name
+    | negation ScriptNegation
+        = "(- ${script-describe(negation.operand, grammar)})"
+    | binary ScriptBinary
+        = "(${binary.operator.symbol} ${script-describe(binary.left, grammar)} $right-text)"
+            .. right-text = script-describe(binary.right, grammar)
+    | point ScriptPointExpression
+        . tail = if point.closed then "" else " …"
+        = "(point ${script-describe(point.x, grammar)} ${script-describe(point.y, grammar)}$tail)"
+    | group ScriptGroup
+        . tail = if group.closed then "" else " …"
+        = "[${script-describe(group.inner, grammar)}$tail]"
+    | phrase ScriptPhraseExpression
+        . form = grammar.form(phrase.kind)
+        . names = if form then List'String(each.slot in form.slots) else List'String(each in phrase.arguments.keys)
+        . arguments = " ".join(script-describe(phrase.arguments[each] ?? ScriptHole(), grammar) in names)
+        = if arguments.length then "(${phrase.kind} $arguments)" else "(${phrase.kind})"
+    | unresolved ScriptUnresolved
+        = "?${unresolved.token.text}"
+    | sequence ScriptSequence
+        = "(seq ${" ".join(script-describe(each, grammar) in sequence.items)})"
+    | list ScriptListExpression
+        = "(list ${" ".join(script-describe(each, grammar) in list.items)})"
+    ??
+        = "_"

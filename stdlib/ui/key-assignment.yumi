@@ -1,0 +1,151 @@
+./key-combo
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyScopeNode is Interface
+
+────────────────────
++ get key-scope-parent KeyScopeNode?
+
+────────────────────
++ get is-key-scope Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyAssignment is Interface
+    is KeyScopeNode
+
+────────────────────
++ get display-title String
+
+────────────────────
++ get key KeyCombo
+
+────────────────────
++ get stable-key String
+
+────────────────────
++ get enabled Bool
+
+────────────────────
++ get allow-while-input Bool
+
+────────────────────
++ get allow-while-modal Bool
+
+────────────────────
++ get mapping-default KeyMappingDefault
+
+────────────────────
++ do get key-scope KeyScopeNode?
+
+. cursor = key-scope-parent
+while cursor
+    . node = cursor
+    =? node if node.is-key-scope
+    cursor = node.key-scope-parent
+= null
+
+────────────────────
++ do set-binding-key
+    - next KeyCombo
+
+────────────────────
++ do set-binding-enabled
+    - next Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyMappingDefault
+
+_ key = KeyCombo()
+_ enabled = false
+_ is-captured = false
+
+────────────────────
++ This
+
+────────────────────
++ do capture
+    - assignment KeyAssignment
+
+=? if is-captured
+key = assignment.key
+enabled = assignment.enabled
+is-captured = true
+
+────────────────────
++ do restore
+    - assignment KeyAssignment
+
+=? if !is-captured
+assignment.set-binding-key(key)
+assignment.set-binding-enabled(enabled)
+
+━━━━━━━━━━━━━━━━━━━━
++ key-assignment-routable Bool
+    - assignment KeyAssignment
+    - input-owned Bool
+    - outside-modal Bool
+
+|? outside-modal && !assignment.allow-while-modal
+    false
+|? assignment.key.is-focus-navigation()
+    false
+|? input-owned && !assignment.allow-while-input
+    false
+??
+    true
+
+━━━━━━━━━━━━━━━━━━━━
++ do active-key-assignments'Assignment [Assignment]
+    - registered [Assignment]
+    - focused KeyScopeNode?
+    - modal KeyScopeNode?
+    - Assignment is KeyAssignment
+
+. scopes [KeyScopeNode?]
+for assignment in registered
+    scopes += assignment.key-scope
+
+. active [Assignment]
+. cursor = focused
+while cursor
+    . node = cursor
+    if node.is-key-scope
+        for index in 0 .. < registered.length
+            if same-key-scope(scopes[index], node)
+                active += registered[index]
+    cursor = node.key-scope-parent
+
+. outside-modal [Assignment]
+for index in 0 .. < registered.length
+    if !scopes[index]
+        . assignment = registered[index]
+        if modal && !key-scope-contains(modal, assignment)
+            outside-modal += assignment
+        else
+            active += assignment
+for assignment in outside-modal
+    active += assignment
+= active
+
+━━━━━━━━━━━━━━━━━━━━
++ do key-scope-contains Bool
+    - ancestor KeyScopeNode
+    - node KeyScopeNode
+
+. cursor KeyScopeNode? = node
+while cursor
+    . current = cursor
+    =? true if current as Pointer == ancestor as Pointer
+    cursor = current.key-scope-parent
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ same-key-scope Bool
+    - scope KeyScopeNode?
+    - node KeyScopeNode
+
+match scope
+    | found KeyScopeNode
+        found as Pointer == node as Pointer
+    ??
+        false

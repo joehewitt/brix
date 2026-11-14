@@ -1,0 +1,809 @@
+./media
+./model
+./questions
+/stream/aggregate
+/stream/combine
+/time/datetime
+/time/duration
+/time/timestamp
+/time/zone
+
+_ ai-chat-title-limit Size = 40
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatMessage
+
++ id String
++ role AIMessageRole
++ parts [AIMessagePart]
++ created-at Timestamp
++ model String?
++ usage AIUsage?
++ finish-reason AIFinishReason?
++ error AIError?
++ elapsed Duration?
+
+────────────────────
++ This
+    - id
+    - role
+    - parts [AIMessagePart]
+    - created-at
+    - model String? = null
+    - usage AIUsage? = null
+    - finish-reason AIFinishReason? = null
+
+────────────────────
++ This
+    - id
+    - role
+    - text String
+    - created-at
+    - images [AIImage] = List'AIImage()
+
+.. parts = ai-prompt-parts(id, text, images)
+
+────────────────────
++ get joins-request
+
+!error && parts.length > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatProgress is Tuple
+
++ message AIChatMessage
++ part Index?
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatBranch
+
++ id String
++ parent-branch-id String?
++ fork-message-id String?
++ messages [AIChatMessage]
++ forks = false
++ is-collapsed = false
+
+_ shared-prefix [AIChatMessage]
+
+────────────────────
++ This
+    - id
+    - parent-branch-id String? = null
+    - fork-message-id String? = null
+    - shared-prefix [AIChatMessage] = List'AIChatMessage()
+    - forks = false
+    - is-collapsed = false
+
+this.shared-prefix = copy-chat-messages(shared-prefix)
+
+────────────────────
++ get shared-messages
+
+shared-prefix
+
+────────────────────
+_ This
+    - branch AIChatBranch
+
+id = branch.id
+parent-branch-id = branch.parent-branch-id
+fork-message-id = branch.fork-message-id
+forks = branch.forks
+is-collapsed = branch.is-collapsed
+.. shared-prefix = copy-chat-messages(branch.shared-prefix)
+.. messages = copy-chat-messages(branch.messages)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChat
+
++ id String
++ title String?
++ root-branch-id String
++ branches [AIChatBranch]
++ is-kept = false
+
+────────────────────
++ This
+    - id
+    - root-branch-id = "root"
+    - title String? = null
+
+.. branches =
+    * AIChatBranch(root-branch-id)
+
+────────────────────
+_ This
+    - chat AIChat
+
+id = chat.id
+title = chat.title
+root-branch-id = chat.root-branch-id
+is-kept = chat.is-kept
+.. branches = AIChatBranch(each) in chat.branches
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatBranchSummary is Tuple
+
++ id String
++ parent-branch-id String?
++ title String?
++ is-collapsed Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatOutcome is Union
+
+| asks
+| failed
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatPlace is Union
+
+| active
+| done
+| archived
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatActivity is Tuple
+
++ sent-at Int? = null
++ replied-at Int? = null
++ active-at Int? = null
++ outcome AIChatOutcome? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ AIChatMarks is Tuple
+
++ seen-at Int? = null
++ done-at Int? = null
++ archived-at Int? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-activity AIChatActivity
+    - chat AIChat
+
+. sent Int? = null
+. replied Int? = null
+for branch in chat.branches
+    . has-sent = false
+    . has-replied = false
+    . index = branch.messages.length
+    while index > 0 && !(has-sent && has-replied)
+        index -= 1
+        . message = branch.messages[index]
+        if message.role == AIMessageRole.user && !has-sent
+            has-sent = true
+            sent = ai-later(sent, ai-chat-time(message.created-at))
+        else if message.role == AIMessageRole.assistant && is-finished && !has-replied
+            has-replied = true
+            replied = ai-later(replied, chat-reply-time(message))
+        .. is-finished = message.finish-reason != null
+= AIChatActivity(sent, replied, ai-later(sent, replied), chat-outcome(chat))
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-outcome AIChatOutcome?
+    - chat AIChat
+
+|? !messages || !messages.length
+    null
+|? last.role != AIMessageRole.assistant || last.finish-reason == null
+    null
+|? last.error != null || last.finish-reason == AIFinishReason.error
+    AIChatOutcome.failed
+|? ai-reply-asks(last.parts)
+    AIChatOutcome.asks
+??
+    null
+
+.. messages = chat-branch(chat, chat.root-branch-id)?.messages
+.. last = messages[messages.length - 1]
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-marks-after AIChatMarks
+    - marks AIChatMarks
+    - activity AIChatActivity
+
+AIChatMarks(marks.seen-at, kept(marks.done-at), kept(marks.archived-at))
+
+.. kept = :: mark Int? => if ai-is-later(activity.sent-at, mark) then null else mark
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-is-unread Bool
+    - activity AIChatActivity
+    - marks AIChatMarks
+
+ai-is-later(activity.replied-at, marks.seen-at)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-place AIChatPlace
+    - marks AIChatMarks
+
+|? marks.archived-at != null
+    AIChatPlace.archived
+|? marks.done-at != null
+    AIChatPlace.done
+??
+    AIChatPlace.active
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-chat-now Int
+
+DateTime(utc).since-epoch
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-chat-time Int?
+    - stamp Timestamp
+
+parsed.since-epoch as Int if parsed
+
+.. parsed = parse-iso8601(stamp, utc)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-reply-time Int?
+    - message AIChatMessage
+
+|? started == null || elapsed == null
+    started
+??
+    started + (elapsed / 1s) as Int
+
+.. started = ai-chat-time(message.created-at)
+.. elapsed = message.elapsed
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-later Int?
+    - one Int?
+    - other Int?
+
+if ai-is-later(other, one) then other else one ?? other
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-is-later Bool
+    - one Int?
+    - other Int?
+
+|? one == null
+    false
+|? other == null
+    true
+??
+    one > other
+
+━━━━━━━━━━━━━━━━━━━━
++ append-chat-message ?! AIError
+    - chat AIChat
+    - branch-id String
+    - message AIChatMessage
+
+insert-chat-message(chat, branch-id, chat-owned-message-count(chat, branch-id), message)
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-chat-messages ?! AIError
+    - chat AIChat
+    - branch-id String
+    - messages [AIChatMessage]
+
+. result = AIChat(chat)
+. branch = require-chat-branch(result, branch-id)
+. taken = Map'String'Bool()
+for owner in result.branches
+    for message in owner.messages
+        taken[message.id] = true
+for message in messages
+    ?! AIError(AIErrorKind.invalid-request, "Duplicate chat message ID: ${message.id}")
+        if taken[message.id] != null
+    taken[message.id] = true
+    branch.messages += message
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do insert-chat-message ?! AIError
+    - chat AIChat
+    - branch-id String
+    - index Index
+    - message AIChatMessage
+
+?! AIError(AIErrorKind.invalid-request, "Duplicate chat message ID: ${message.id}")
+    if chat-has-message(chat, message.id)
+
+. result = AIChat(chat)
+. branch = require-chat-branch(result, branch-id)
+?! AIError(AIErrorKind.invalid-request, "Chat insertion index is outside the branch suffix")
+    if index > branch.messages.length
+
+branch.messages.insert(message, index)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do remove-chat-message ?! AIError
+    - chat AIChat
+    - branch-id String
+    - message-id String
+
+. result = AIChat(chat)
+. branch = require-chat-branch(result, branch-id)
+. index = chat-message-index(branch.messages, message-id)
+?! AIError(AIErrorKind.invalid-request, "Message $message-id is not owned by branch $branch-id")
+    if !index
+
+?! AIError(AIErrorKind.invalid-request, "Message $message-id anchors a child branch")
+    if chat-message-anchors-child(result, branch-id, message-id)
+
+branch.messages.remove(index)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do replace-chat-message AIChat
+    - chat AIChat
+    - message AIChatMessage
+
+. result = AIChat(chat)
+for branch in result.branches
+    replace-chat-message-in(branch.shared-prefix, message)
+    replace-chat-message-in(branch.messages, message)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do replace-chat-message-in
+    - messages [AIChatMessage]
+    - message AIChatMessage
+
+for index in 0 .. < messages.length
+    if messages[index].id == message.id
+        messages[index] = message
+
+━━━━━━━━━━━━━━━━━━━━
++ do revised-chat-message AIChatMessage
+    - message AIChatMessage
+    - parts [AIMessagePart]
+
+. revised = AIChatMessage
+    - message.id
+    - message.role
+    - parts
+    - message.created-at
+    - message.model
+    - message.usage
+    - message.finish-reason
+revised.error = message.error
+revised.elapsed = message.elapsed
+= revised
+
+━━━━━━━━━━━━━━━━━━━━
++ do branch-chat-at ?! AIError
+    - chat AIChat
+    - branch-id String
+    - fork-message-id String
+    - child-branch-id String
+
+?! AIError(AIErrorKind.invalid-request, "Duplicate chat branch ID: $child-branch-id")
+    if chat-branch(chat, child-branch-id)
+
+. transcript = chat-transcript(chat, branch-id)
+. index = chat-message-index(transcript, fork-message-id)
+?! AIError(AIErrorKind.invalid-request, "Message $fork-message-id is not in branch $branch-id")
+    if !index
+
+. shared = transcript[0 .. index]
+
+. result = AIChat(chat)
+result.branches += AIChatBranch(child-branch-id, branch-id, fork-message-id, shared, true)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do collapse-chat-at ?! AIError
+    - chat AIChat
+    - branch-id String
+    - message-id String
+    - child-branch-id String
+
+?! AIError(AIErrorKind.invalid-request, "Duplicate chat branch ID: $child-branch-id")
+    if chat-branch(chat, child-branch-id)
+
+. result = AIChat(chat)
+. branch = require-chat-branch(result, branch-id)
+. index = chat-message-index(branch.messages, message-id)
+?! AIError(AIErrorKind.invalid-request, "Message $message-id is not owned by branch $branch-id")
+    if !index
+
+. transcript = chat-transcript(result, branch-id)
+. start = branch.shared-messages.length + index
+. anchor = transcript[start - 1].id if start > 0
+. child = AIChatBranch
+    - child-branch-id
+    - branch-id
+    - anchor
+    - transcript[0 .. < start]
+    - branch.forks
+    - true
+. moved = Map'String'Bool()
+for message in branch.messages[index .. < branch.messages.length]
+    child.messages += message
+    moved[message.id] = true
+for other in result.branches
+    if is-child && other.fork-message-id && moved has other.fork-message-id
+        other.parent-branch-id = child-branch-id
+    .. is-child = other.parent-branch-id == branch-id
+branch.messages.remove(index, child.messages.length)
+branch.forks = true
+result.branches += child
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do unfold-chat-branch ?! AIError
+    - chat AIChat
+    - branch-id String
+
+. result = AIChat(chat)
+. child = require-chat-branch(result, branch-id)
+?! AIError(AIErrorKind.invalid-request, "The root chat branch cannot be unfolded")
+    if !child.parent-branch-id
+. parent-id = child.parent-branch-id
+. parent = require-chat-branch(result, parent-id)
+. index = chat-unfold-index(parent, child.fork-message-id)
+?! AIError(AIErrorKind.invalid-request, "Branch $branch-id no longer has its fork message")
+    if index == null
+
+. later = parent.messages.length - index
+for message in child.messages |> indexed
+    parent.messages.insert(message[1], index + message[0])
+if !later
+    parent.forks = child.forks
+for other in result.branches
+    if other.parent-branch-id == branch-id
+        other.parent-branch-id = parent-id
+        other.fork-message-id = other.fork-message-id ?? child.fork-message-id
+result.branches.remove(chat-branch-index(result, branch-id)!)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do remove-chat-branch ?! AIError
+    - chat AIChat
+    - branch-id String
+
+?! AIError(AIErrorKind.invalid-request, "The root chat branch cannot be removed")
+    if branch-id == chat.root-branch-id
+require-chat-branch(chat, branch-id)
+
+. doomed = chat-branch-family(chat, branch-id)
+. result = AIChat(chat)
+. index = result.branches.length
+while index > 0
+    index -= 1
+    if doomed has result.branches[index].id
+        result.branches.remove(index)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-chat-branch-forks ?! AIError
+    - chat AIChat
+    - branch-id String
+    - forks Bool
+
+. result = AIChat(chat)
+require-chat-branch(result, branch-id).forks = forks
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-branch-family Map'String'Bool
+    - chat AIChat
+    - branch-id String
+
+. family = Map'String'Bool
+    • (branch-id) true
+. grew = true
+while grew
+    grew = false
+    for branch in chat.branches
+        if branch.parent-branch-id && family has branch.parent-branch-id && !(family has branch.id)
+            family[branch.id] = true
+            grew = true
+= family
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-child-branches [AIChatBranch]
+    - chat AIChat
+    - branch-id String
+
+** chat.branches
+?> each.parent-branch-id == branch-id
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-branch-trail [AIChatBranch]
+    - chat AIChat
+    - branch-id String
+
+. trail = List'AIChatBranch()
+. current = chat-branch(chat, branch-id)
+while current && trail.length <= chat.branches.length
+    . found = current
+    trail.insert(found, 0)
+    =? trail if !found.parent-branch-id
+    current = chat-branch(chat, found.parent-branch-id)
+= trail
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-can-branch-at Bool
+    - chat AIChat
+    - branch-id String
+    - message-id String
+
+|? transcript == null
+    false
+|? index == null
+    false
+??
+    index + 1 >= chat-compaction-floor(transcript)
+
+.. transcript = catch? chat-transcript(chat, branch-id)
+.. index = chat-message-index(transcript, message-id)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-can-collapse-at Bool
+    - chat AIChat
+    - branch-id String
+    - message-id String
+
+|? !branch
+    false
+|? index == null
+    false
+??
+    branch.shared-messages.length + index >= chat-compaction-floor(transcript)
+
+.. branch = chat-branch(chat, branch-id)
+.. index = chat-message-index(branch.messages, message-id)
+.. transcript = chat-transcript(chat, branch-id)
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-can-unfold Bool
+    - chat AIChat
+    - branch-id String
+
+. branch = chat-branch(chat, branch-id)
+=? false if !branch || !branch.parent-branch-id
+. parent = chat-branch(chat, branch.parent-branch-id)
+=? false if !parent
+. index = chat-unfold-index(parent, branch.fork-message-id)
+=? false if index == null
+= all(parent.messages[index .. < parent.messages.length]) • where !chat-message-compacts(each)
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-next-branch-id String
+    - chat AIChat
+
+. number = chat.branches.length
+while chat-branch(chat, "branch-$number")
+    number += 1
+= "branch-$number"
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-branch-title String
+    - branch AIChatBranch
+
+chat-branch-label(branch) ?? "Side chat"
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-branch-label String?
+    - branch AIChatBranch
+
+chat-title(ai-parts-text(prompt.parts)) if prompt
+
+.. prompt = chat-branch-prompt(branch)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-branch-prompt AIChatMessage?
+    - branch AIChatBranch
+
+first(each in branch.messages when each.role == AIMessageRole.user)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-branch-summaries [AIChatBranchSummary]
+    - chat AIChat
+
+** chat.branches
+*> AIChatBranchSummary(each.id, each.parent-branch-id, chat-branch-label(each), each.is-collapsed)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-is-empty
+    - chat AIChat
+
+!chat.is-kept && chat-message-count(chat) == 0
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-message-compacts
+    - message AIChatMessage
+
+some(message.parts) • where chat-part-compacts(each)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-transcript ?! AIError
+    - chat AIChat
+    - branch-id String
+
+List'AIChatMessage(branch.shared-prefix) ++ branch.messages
+
+.. branch = require-chat-branch(chat, branch-id)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-request-messages [AIMessage] ?! AIError
+    - chat AIChat
+    - branch-id String
+
+AIMessage(each.role, each.parts) in chat-transcript(chat, branch-id) when each.joins-request
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-next-message-number Size
+    - chat AIChat
+    - issued Size = 0
+
+. count = chat-message-count(chat)
+. number = (if issued > count then issued else count) + 1
+while chat-has-message(chat, chat-message-id(chat, number))
+    number += 1
+= number
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ai-prompt-parts [AIMessagePart]
+    - id String
+    - text String
+    - images [AIImage]
+
+. parts = List'AIMessagePart()
+if text.length || !images.length
+    parts += AITextPart("$id:text", text)
+for image in images
+    parts += AIImagePart("$id:image:${parts.length}", image)
+= parts
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-message-id
+    - chat AIChat
+    - number Size
+
+"${chat.id}:$number"
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-title
+    - prompt String
+
+|? line.length > ai-chat-title-limit
+    "${line[0 .. < ai-chat-title-limit].trim()}…"
+??
+    line
+
+.. line = chat-first-line(prompt)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-named-title
+    - text String
+
+chat-title(unquoted)
+
+.. line = chat-first-line(text)
+.. is-quoted = line.length > 1 && line.starts-with("\"") && line.ends-with("\"")
+.. unquoted = if is-quoted then line[1 .. < line.length - 1] else line
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-first-line String
+    - text String
+
+if break != null then trimmed[0 .. < break].trim() else trimmed
+
+.. trimmed = text.trim()
+.. break = trimmed.find("\n")
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-part-compacts
+    - part AIMessagePart
+
+part is AIExtensionPart && (part as AIExtensionPart).part-type == ai-compaction-part
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-compaction-floor Size
+    - transcript [AIChatMessage]
+
+. index = transcript.length
+while index > 0
+    index -= 1
+    =? index + 1 if chat-message-compacts(transcript[index])
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-unfold-index Index?
+    - parent AIChatBranch
+    - anchor String?
+
+|? !anchor
+    0
+|? index != null
+    index + 1
+|? chat-message-index(parent.shared-messages, anchor) != null
+    0
+??
+    null
+
+.. index = chat-message-index(parent.messages, anchor)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-message-count Size
+    - chat AIChat
+
+** chat.branches
+*> each.messages.length
+|> sum
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-owned-message-count ?! AIError
+    - chat AIChat
+    - branch-id String
+
+require-chat-branch(chat, branch-id).messages.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-has-message
+    - chat AIChat
+    - message-id String
+
+** chat.branches
+*> each.messages
+|> flat-map
+|> some • where each.id == message-id
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-branch AIChatBranch?
+    - chat AIChat
+    - branch-id String
+
+** chat.branches
+?> each.id == branch-id
+|> first
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-message-index Index?
+    - messages [AIChatMessage]
+    - message-id String
+
+** messages
+|> indexed
+?*> each[0] if each[1].id == message-id
+|> first
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-branch-index Index?
+    - chat AIChat
+    - branch-id String
+
+** chat.branches
+|> indexed
+?*> each[0] if each[1].id == branch-id
+|> first
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-message-anchors-child
+    - chat AIChat
+    - branch-id String
+    - message-id String
+
+chat.branches
+|> some • where each.parent-branch-id == branch-id && each.fork-message-id == message-id
+
+━━━━━━━━━━━━━━━━━━━━
+_ require-chat-branch ?! AIError
+    - chat AIChat
+    - branch-id String
+
+?! AIError(AIErrorKind.invalid-request, "Unknown chat branch: $branch-id")
+    if !branch
+
+branch
+
+.. branch = chat-branch(chat, branch-id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ copy-chat-messages
+    - messages [AIChatMessage]
+
+List'AIChatMessage(messages)

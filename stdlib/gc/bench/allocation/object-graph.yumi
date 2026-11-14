@@ -1,0 +1,61 @@
+`benchmark.meta description: Builds and walks a connected object graph to expose allocation pressure.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gc-runtime,allocator
+
+/YuCore/YuCore.h
+
+. roots [BenchNode]
+. index [String = BenchNode]
+. checksum = 0 as Size
+
+for i in 0 .. < 1800
+    . node = BenchNode(i, "node-$i")
+    node.payload = Payload("payload-$i", Byte[(i % 31) + 8])
+    if roots.length > 0
+        node.parent = roots[roots.length - 1]
+    roots += node
+    index[node.name] = node
+    checksum += node.score
+
+for i in 0 .. < roots.length
+    . node = roots[i]
+    node.tags += "tag-${i % 7}"
+    node.tags += "bucket-${i % 13}"
+    if i > 2
+        node.links += roots[i - 1]
+        node.links += roots[i / 2]
+    checksum += node.score + node.tags.length + node.links.length
+
+for key, node in index
+    checksum += key.length + node.score
+
+C:yumiBenchCollect()
+
+-- "bench-result allocation/object-graph checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchNode
+
++ id Int
++ name String
++ parent BenchNode?
++ links [BenchNode]
++ tags [String]
++ payload Payload?
++ score => id + name.length + links.length + tags.length
+
+────────────────────
++ This
+    - id
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload
+
++ label String
++ bytes Byte[]
+
+────────────────────
++ This
+    - label
+    - bytes

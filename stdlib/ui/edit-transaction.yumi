@@ -1,0 +1,170 @@
+./command-log
+./command-parameters
+/graphics/snapshottable
+/time/duration
+/time/timer
+
+━━━━━━━━━━━━━━━━━━━━
++ EditTransaction'Step'State
+
++ document Snapshottable'State
++ log CommandLog'Step?
++ title = ""
++ running = false
++ serial Size = 0
++ work Duration = 0ns
+
+_ start State?
+_ step Step?
+
+────────────────────
++ This
+    - document
+
+────────────────────
++ get live
+
+step
+
+────────────────────
++ get before
+
+start
+
+────────────────────
++ do begin
+    - label String
+    - recording CommandLog'Step
+
+log = recording
+clear()
+=? if running
+serial += 1
+title = label
+work = 0ns
+. snapshot = start
+if snapshot
+    document.snapshot-into(snapshot)
+else
+    start = document.snapshot()
+running = true
+
+────────────────────
++ do record
+    - recorded Step
+
+step = recorded
+
+────────────────────
++ do apply ?! Error
+    - applied Step
+
+record(applied)
+. started = monotonic-time-nanoseconds()
+applied.execute()
+work = (monotonic-time-nanoseconds() - started) as Nanoseconds
+changed()
+
+────────────────────
++ do replay
+    - restores = true
+
+. snapshot = start
+. active = step
+=? if !snapshot || !active
+if restores
+    document.restore(snapshot)
+    restored()
+. started = monotonic-time-nanoseconds()
+active.execute()
+    catch error Error
+        unhandled-error(error)
+work = (monotonic-time-nanoseconds() - started) as Nanoseconds
+changed()
+
+────────────────────
++ do restore-start
+
+. snapshot = start
+if snapshot
+    document.restore(snapshot)
+    restored()
+
+────────────────────
++ do update
+    - key String
+    - value CommandParameterValue
+
+=? if !key.length
+. replacement = step?.replacing(key, value)
+if replacement
+    step = replacement
+
+────────────────────
++ do return-to
+    - earlier Step
+
+if step
+    step = earlier
+
+────────────────────
++ do run
+
+=? if !running
+running = false
+. recorded = take()
+. active = log
+if !recorded || !active
+    revert()
+    ?! Panic("An edit must record a step before it runs")
+active.record(recorded, work)
+ran(recorded)
+
+────────────────────
++ do cancel
+
+=? if !running
+running = false
+take()
+revert()
+
+────────────────────
++ do discard
+
+running = false
+take()
+
+────────────────────
++ do release
+
+. snapshot = start
+if snapshot
+    snapshot.release()
+start = null
+
+────────────────────
++ do clear
+
+step = null
+
+────────────────────
++ do revert
+
+restore-start()
+
+────────────────────
++ do restored
+
+────────────────────
++ do changed
+
+────────────────────
++ do ran
+    - recorded Step
+
+────────────────────
+_ do take
+
+. recorded = step
+clear()
+= recorded

@@ -1,0 +1,1740 @@
+./binding
+./idmap
+./stable-key
+./type-store
+./types
+/core/arena
+/core/scratch
+/core/table
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/row-range
+
++ InstanceId is U32
++ no-instance InstanceId = U32.max
++ dispatch-effect-bits U32 = 94
++ binder-slot = "(binder)"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-effects U32
+    - effects EffectMask
+
+. normalized = effects
+if (normalized /and/ CompilationEffect.gc-free) != 0
+    normalized = normalized /or/ (CompilationEffect.no-heap)
+    normalized = normalized /or/ (CompilationEffect.no-safepoint)
+if (normalized /and/ CompilationEffect.no-safepoint) != 0
+    normalized = normalized /or/ (CompilationEffect.no-suspend)
+= normalized /and/ dispatch-effect-bits
+
+━━━━━━━━━━━━━━━━━━━━
++ InstanceState is U32
+
+| instance-unstarted = 0
+| instance-in-progress = 1
+| instance-done = 2
+| instance-failed = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ ReturnState is U32
+
+| return-declared = 0
+| return-pending = 1
+| return-inferred = 2
+| return-failed = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ HeaderState is U32
+
+` What a call reads of a callee before the callee's body is typed. An open header leaves the
+` return type to the body, so a call types the body first. A settled one gives the return type
+` itself, and the body waits in the queue.
+| header-unread = 0
+| header-open = 1
+| header-settled = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ ErrorState is U32
+
+` Whether the errors an instance raises are known. They are stated when the declaration lists
+` them or inherits a list. Otherwise they are those its body lets out, and they stay unsettled
+` until the body and every callee whose errors pass through it are typed.
+| errors-unsettled = 0
+| errors-stated = 1
+| errors-settled = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ BoundCall is U8
+
+` How a binding made a value of a function type calls the instance it runs, as the
+` instance's declaration says: as a function of no object, as a method of the object the
+` binding holds, as a constructor written for a class, or as none of these.
+
+| bound-call-none = 0
+| bound-call-function = 1
+| bound-call-method = 2
+| bound-call-constructor = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Instance is Struct
+
+` `fills-share` says a constructor's properties, as it gives them their first values, read a
+` lazy local nested functions capture or make a nested function, where TypeScript keeps two
+` of each lazy local: one read then and one the body reads. A rule a pattern calls under a
+` helper is typed again as an instance of its own, given the `helper` it runs under, which
+` `uses-helper` where its pattern makes a value through the helper or calls a rule that needs
+` it to roll back, and `rolls-helper` where it needs the helper to roll back. A rule called for
+` the text it matched under a helper that observes literal words is typed for the helper as one
+` of its own that `spans`, which makes nothing through the helper. A rule a pattern on a String
+` calls is typed again as one of its own that is `encoded`, whose buffer holds the String's
+` UTF-8 bytes rather than its characters. A rule whose
+` pattern holds a rollback mark `carries-mark`, which it gives the pattern calling it. A
+` constructor a markup element calls with attributes is an instance of its own: it takes,
+` after its arguments, the value of each property in `fills`, and gives the property that
+` value in place of the one its class writes.
+` A constructor a markup element calls giving slots content is one too: it takes, after
+` those, the function that builds each slot in `slots`, which it gives the function that fills
+` the object with its class's markup, which is one of its own for those slots too. So is one a
+` markup element calls for a class whose markup is its content, for the styles and style
+` sheets the element sees, its `context` among `contexts`, and the function that fills it;
+` both take, after the values of properties and before the builders of slots, the `carried`
+` state cells the context gives (`context-values`). The values a rule applied on a root `<This`
+` is given are typed by an instance of their own, which types only the application
+` `root-values` (`intern-root-values`). An instance that `casts-errors` lets out an error of a
+` class above one it states, cast to that one. A style rule a style sheet writes is typed for
+` the class of the `element` it is applied to, whose styles answer its names with the sheet's.
+` A function typed in a GC-free zone names the `zone` it was first called in, as TypeScript
+` keeps where the zone is entered as it compiles the functions called there. The default of a
+` parameter written as a constant is typed with its function, and any other where a call first
+` takes it; `typed-defaults` keeps a bit for each of the first 64 typed (`type-default`).
+` A method that yields and states no errors, which a class's table holds in the place of a base's
+` method whose generator carries errors, is typed again as an instance of its own that states
+` those errors, as the reference's method inherits them: it `inherits` them from the base's
+` instance, and the instance typed again names it as `retyped`. A constructor of a class above
+` the one it makes, called with no value for a parameter named as a property the class it makes
+` writes a default of its own for, is one of its own too: `redefaults` keeps a bit for each such
+` parameter, among the first 32, whose property it leaves to that default, as the reference's
+` `redefaultedArgNames` does. One typed on trial keeps the `probe` that numbers it. One whose
+` typing changed what another type pass cannot take in is `unshared` (`Checker.run`), and
+` `unretirable` where it changed more than rows retiring it removes (`Facts.retire`) and what an
+` edit typed again in place keeps (`Facts.kept-weight`). One whose typing another pass published,
+` which this pass took in in place of typing its body, is `imported` (`import-result`): its body
+` stays the other's. One written in another whose typing that one's depends on, by what it notes
+` there or keeps of it, is typed `with-enclosing`: no pass takes it in from another, and the merge
+` takes it from a pass only with the one it is written in (`merge-sessions`).
+
++ module ModuleId
++ decl DeclId
++ self-type TypeId
++ effects EffectMask
++ enclosing InstanceId
++ state InstanceState
++ binding BindingId = no-binding
++ node-start U32 = U32.max
++ subtree SyntaxRange
++ may-panic Bool
++ polls Bool
++ is-generator Bool
++ slot-start U32 = U32.max
++ slot-count U32
++ slot-base U32
++ holds-closure Bool
++ queued Bool
++ initializer DeclId = 0
++ reads-self Bool
++ branches Bool
++ returns-own Bool
++ gives-unwritten Bool
++ casts-errors Bool
++ makes TypeId = no-type
++ yields TypeId = no-type
++ step-errors RowRange'TypeId
++ ends-generator Bool
++ quiet Bool
++ splits-yields Bool
++ compares Bool
++ row-receiver TypeId = no-type
++ row-case U32 = U32.max
++ row-validated Bool
++ materialized InstanceId = no-instance
++ bound-call BoundCall = .bound-call-none
++ fills-share Bool
++ helper TypeId = no-type
++ spans Bool
++ encoded Bool
++ uses-helper Bool
++ rolls-helper Bool
++ carries-mark Bool
++ fills RowRange'U32 = RowRange'U32()
++ slots RowRange'U32 = RowRange'U32()
++ is-live Bool
++ context U32 = U32.max
++ carried U32
++ root-values SyntaxId = 0
++ element TypeId = no-type
++ zone ZoneEntry = ZoneEntry()
++ typed-defaults U64
++ inherits InstanceId = no-instance
++ redefaults U32
++ retyped InstanceId = no-instance
++ probe U32
++ unshared Bool
++ unretirable Bool
++ imported Bool
++ with-enclosing Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ ZoneEntry is Struct
+
+` Where a GC-free zone is entered: the `do` block that enters it, or the declaration of the
+` function that makes it, in its module. A site of 0 is no zone.
+
++ module ModuleId = 0
++ site SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleContext is Struct
+
+` The styles and style sheets markup sees where it makes an object of a class whose markup is
+` its content, as the reference's `MarkupStyleContext` holds them: `styles` styles from `first`
+` among `context-types`, the one that answers a name first first, then `sheets` style sheets,
+` each with its group among `context-levels`, numbered from 0, lowest first; the style rules
+` written in rules it sees, `scopes` of them from `scope-first` among `context-scopes`, each
+` with how many state cells of the `when`s around it are given with it (`context-cells`); and
+` for the content of a class above the object's, the object's class (`made`), or no type. The
+` context of the function that builds content a style rule generates holds the `layer` the
+` declarations of the markup it makes take, which no other does, and its `context-cells` say
+` which rules are seen under the state cell of a `when`, which it is not given. The values of the
+` rules around rules written in rules that it gives follow the cells, `values` of them of the
+` types from `value-first` among `context-value-types`; `context-valued` holds, for each rule,
+` the place among what the context gives of the first value of the rule around it that takes
+` some, or `U32.max`.
+
++ first U32
++ styles U32
++ sheets U32
++ scope-first U32
++ scopes U32
++ made TypeId
++ layer U32 = 0
++ value-first U32 = 0
++ values U32 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ StateKey is Struct
+
+` Where the state cell of a `when` is made, which tells apart the cells a markup element and the
+` function that builds content its outlet mounts agree on, as the reference's `stateKey` numbers
+` one for a `when` at a site: the site, in `module`, a markup element, a root `<This`, or a class
+` for its rules `• This`, and the `when`, in `when-module`.
+
++ module ModuleId
++ site SyntaxId
++ when-module ModuleId
++ when SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
+_ InitializerKey is Tuple
+    is Hashable
+
+` What the typing of one property's value is found by: the module that declares the property,
+` the property, the receiver it is typed for, and the class of the element a style rule a style
+` sheet writes is typed for, or no type.
+
++ module ModuleId
++ property DeclId
++ receiver TypeId
++ element TypeId
+
+────────────────────
++ this == other This
+
+same-property && receiver == other.receiver && element == other.element
+
+.. same-property = module == other.module && property == other.property
+
+────────────────────
++ get hash Hash
+
+mixed(mixed(mixed(mixed(stable-key-seed, module), property), receiver), element) as Hash
+
+━━━━━━━━━━━━━━━━━━━━
++ ScopeOwn is U8
+
+` Whether a rule written in a rule reaches only the markup of an element's own class, as one
+` written `• own` does, and where it is, as the reference's `MarkupStyleRuleScope.own` says:
+` - `scope-plain`: it reaches all the markup under the element.
+` - `scope-pending`: it was brought into view at the element and matches nothing until the function
+`   that fills the element's object takes it.
+` - `scope-entered`: it matches in the markup of the class being filled, and the function that fills
+`   the object of an element there does not take it.
+
+| scope-plain = 0
+| scope-pending = 1
+| scope-entered = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ RuleScope is Struct
+
+` A style rule written in another, which markup under an element the other is applied to sees,
+` as the reference's `MarkupStyleRuleScope` holds one: the rule; the class or style sheet that
+` holds it as the rule around it was matched (`owner`), which is a sheet for a rule of a sheet
+` and else the class whose element the rule around it was applied to, or the class that writes
+` it; the rules applied around it, the innermost among `frames`, or `U32.max` for none; and
+` whether it reaches only the markup of the element's own class (`own`).
+
++ module ModuleId
++ decl DeclId
++ owner TypeId
++ frames U32
++ own ScopeOwn = .scope-plain
+
+━━━━━━━━━━━━━━━━━━━━
++ ScopeUse is Struct
+
+` A rule written in a rule as markup being typed sees it: the scope, and the state cell that
+` holds whether the innermost `when` around it holds, among `Facts.scope-cells`, or `U32.max`
+` where no `when` is around it; the values of the rule around it that takes some, among
+` `Facts.scope-values`, or `U32.max` where none does, or `U32.max - 1` where they are not here;
+` and the state cells of the `when`s further out (`Facts.scope-links`), or `U32.max`.
+
++ scope RuleScope
++ cell U32 = U32.max
++ values U32 = U32.max
++ outer-cells U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ RuleFrame is Struct
+
+` One style rule applied around a rule written in a rule, as the reference's
+` `MarkupStyleRuleFrame` holds one: the rule, the class or style sheet it was matched for, the
+` `when` of it the inner rule is written in, or none, and the frames around it (`outer`), or
+` `U32.max`.
+
++ outer U32
++ module ModuleId
++ decl DeclId
++ owner TypeId
++ gate SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ InstanceSignature is Struct
+
++ args RowRange'TypeId
++ returns TypeId = no-type
++ declared-returns TypeId = no-type
++ return-state ReturnState
++ param-count U32 = 0
++ read-in-progress Bool
++ read-by InstanceId = no-instance
++ errors RowRange'TypeId
++ unreturned SyntaxId = 0
++ header HeaderState
++ error-state ErrorState
++ errors-read-early Bool
++ pending U32 = U32.max
++ result TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeRuntime is Struct
+
+` The functions of the probes module that a program whose probes compile calls of its own
+` accord, each `no-instance` until the type pass demands them: those that open the record of
+` probes, make room for counters and for profile metrics, declare a key, a class, a log, an event,
+` a counter, the type of one of their values, which `argument-type` is the type of, and a metric of
+` the profile, and say the declarations are done; then the one that adds to a counter, which the
+` counts the compiler keeps of events publish through, the one that counts what the collector did,
+` the one that closes the record, the one that flushes what a thread has written, and the one a
+` loop and a call that suspends the task look in at, which flushes when it is time and answers the
+` controller.
+
++ begin InstanceId = no-instance
++ counter-setup InstanceId = no-instance
++ profile-setup InstanceId = no-instance
++ declare-key InstanceId = no-instance
++ declare-type InstanceId = no-instance
++ declare-log InstanceId = no-instance
++ declare-event InstanceId = no-instance
++ declare-counter InstanceId = no-instance
++ declare-argument InstanceId = no-instance
++ declare-profile-metric InstanceId = no-instance
++ counter-add InstanceId = no-instance
++ ready InstanceId = no-instance
++ collector-counts InstanceId = no-instance
++ end InstanceId = no-instance
++ task-flush InstanceId = no-instance
++ safepoint InstanceId = no-instance
++ argument-type TypeId = no-type
++ demanded Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ PanicReport is Struct
+
+` The instances the report of an unhandled panic is built from, the same for every root. Each
+` is `no-instance` until the type pass demands the report.
+` `message` and `source-text` convert the panic and its source to text. `source` constructs
+` a source. `termination` is the check a polling call makes for a terminating task, and
+` `termination-error` constructs the panic it raises. `panic` constructs a panic from a
+` message, for the panics the compiler raises itself. `source-slot`, `trace-slot` and
+` `previous-slot` are the slots of the panic's properties that hold its source, its stack
+` trace, and the error a transformer raised it in place of. `union-error`
+` constructs the error of a union that holds another case than the one asked for, and
+` `union-text` converts it to the message of the panic raised for it; both are demanded where
+` a union is first unwrapped. `error-text` converts to text an error that no caller handles,
+` and is demanded where the main of some module lets an error out, or where a text written in
+` source is converted by a function that raises.
+
++ message InstanceId = no-instance
++ source-text InstanceId = no-instance
++ source InstanceId = no-instance
++ termination InstanceId = no-instance
++ termination-error InstanceId = no-instance
++ panic InstanceId = no-instance
++ source-slot U32 = U32.max
++ trace-slot U32 = U32.max
++ previous-slot U32 = U32.max
++ union-error InstanceId = no-instance
++ union-text InstanceId = no-instance
++ error-text InstanceId = no-instance
+
+━━━━━━━━━━━━━━━━━━━━
++ LiveRuntime is Struct
+
+` The instances a tracked value runs through, the same for every root, each `no-instance`
+` until the type pass first types a tracked read. `trackers`, `subscribers` and `actions` make
+` the empty lists of trackers, of subscribers and of live actions, `action` makes a live
+` action of trackers and a callback, and `add-action` adds one to a list of them, as
+` `add-tracker` adds a tracker to a list of trackers. `track` notes
+` a read in the trackers of the action that runs, and `track-collection` the read of a
+` collection, whose changes it then follows; `dispatch` runs the actions that read a
+` property, and `previous` and `next` answer the trackers of the action that runs. `pop` and
+` `close` take the actions an object owns off their list and close each, and `has-actions`
+` says whether the list holds none. `callback` is the type of an action's callback, and
+` `callback-result` what the callback answers with its errors. `demanded` says the type pass
+` has begun typing them.
+
++ trackers InstanceId = no-instance
++ subscribers InstanceId = no-instance
++ actions InstanceId = no-instance
++ action InstanceId = no-instance
++ add-action InstanceId = no-instance
++ add-tracker InstanceId = no-instance
++ track InstanceId = no-instance
++ track-collection InstanceId = no-instance
++ dispatch InstanceId = no-instance
++ memo-action InstanceId = no-instance
++ memo-settle InstanceId = no-instance
++ previous InstanceId = no-instance
++ next InstanceId = no-instance
++ enter InstanceId = no-instance
++ leave InstanceId = no-instance
++ pop InstanceId = no-instance
++ close InstanceId = no-instance
++ has-actions InstanceId = no-instance
++ callback TypeId = no-type
++ callback-result TypeId = no-type
++ demanded Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ Instances
+
++ rows Table'Instance
++ report = PanicReport()
++ live = LiveRuntime()
++ probe-runtime = ProbeRuntime()
++ signatures Table'InstanceSignature
++ signature-types List'TypeId'ArenaBacking
++ fill-places List'U32'ArenaBacking
++ slot-places List'U32'ArenaBacking
++ slot-atoms List'Atom'ArenaBacking
++ stable-keys List'StableKey'ArenaBacking
++ contexts List'StyleContext'ArenaBacking
++ context-types List'TypeId'ArenaBacking
++ context-levels List'U32'ArenaBacking
++ context-scopes List'RuleScope'ArenaBacking
++ context-cells List'U32'ArenaBacking
++ context-valued List'U32'ArenaBacking
++ context-value-types List'TypeId'ArenaBacking
++ state-keys List'StateKey'ArenaBacking
++ frames List'RuleFrame'ArenaBacking
++ ranked Array'InstanceId'ArenaBacking
++ ordered Array'InstanceId'ArenaBacking
++ ranks Array'U32'ArenaBacking
++ worklist List'InstanceId'ArenaBacking
++ worklist-next Size = 0
++ written-in List'InstanceId'ArenaBacking
++ typed-on-read List'InstanceId'ArenaBacking
++ settled List'InstanceId'ArenaBacking
++ keeps-settled Bool
++ held Scratch'InstanceId
++ holding U32
++ last-inserted Bool
++ sealed Bool
++ probes U32
++ arena Arena
+_ types Types
++ wide-defaults List'U64'ArenaBacking
++ dead InstanceId = no-instance
+_ keys IdMap
+_ key-scratch Array'U32'ArenaBacking
+_ initializers Map'InitializerKey'InstanceId'ArenaBacking
+_ slot-ids Map'Atom'U32
+
+────────────────────
++ This
+    - arena Arena
+    - types Types
+
+.. rows = Table'Instance(arena, 16)
+.. signatures = Table'InstanceSignature(arena, 16)
+.. signature-types = List'TypeId(arena)
+.. fill-places = List'U32(arena)
+.. slot-places = List'U32(arena)
+.. slot-atoms = List'Atom(arena)
+.. stable-keys = List'StableKey(arena)
+.. contexts = List'StyleContext(arena)
+.. context-types = List'TypeId(arena)
+.. context-levels = List'U32(arena)
+.. context-scopes = List'RuleScope(arena)
+.. context-cells = List'U32(arena)
+.. context-valued = List'U32(arena)
+.. context-value-types = List'TypeId(arena)
+.. state-keys = List'StateKey(arena)
+.. frames = List'RuleFrame(arena)
+.. ranked = Array'InstanceId(arena, 0)
+.. ordered = Array'InstanceId(arena, 0)
+.. ranks = Array'U32(arena, 0)
+.. worklist = List'InstanceId(arena)
+.. written-in = List'InstanceId(arena)
+.. typed-on-read = List'InstanceId(arena)
+.. settled = List'InstanceId(arena)
+.. held = Scratch'InstanceId(arena, 16)
+.. key-scratch = Array'U32(arena, 16)
+.. initializers = Map'InitializerKey'InstanceId(arena)
+.. wide-defaults = List'U64(arena)
+
+────────────────────
++ get length Size
+
+rows.length
+
+────────────────────
++ do type-default Bool
+    - callee InstanceId
+    - position U32
+
+` Notes that the default of a callee's parameter at a position is typed, answering whether it
+` was not yet. One past the 64th is kept apart from its instance's bits, as a key of both.
+if position < 64
+    . bit = 1u64 /lshift/ (position as U64)
+    if (rows[callee].typed-defaults /and/ bit) != 0
+        = false
+    rows[callee].typed-defaults = rows[callee].typed-defaults /or/ bit
+    = true
+. key = ((callee as U64) /lshift/ 32) /or/ (position as U64)
+for kept in wide-defaults
+    if kept == key
+        = false
+wide-defaults += key
+= true
+
+────────────────────
++ do default-typed Bool
+    - callee InstanceId
+    - position U32
+
+` Whether the default of a callee's parameter at a position is typed (`type-default`).
+if position < 64
+    = (rows[callee].typed-defaults /and/ (1u64 /lshift/ (position as U64))) != 0
+. key = ((callee as U64) /lshift/ 32) /or/ (position as U64)
+for kept in wide-defaults
+    if kept == key
+        = true
+= false
+
+────────────────────
++ do release
+
+keys.release()
+
+────────────────────
++ do seal
+
+` Ends the table's growth: program tables and emission read a whole program's instances, so
+` one interned after this point would be a function nothing laid out or emitted. The instances
+` are then ranked by declaration and stable key, those that type a property's value after the
+` rest. `ordered` lists them all by rank and `ranked` those that are not a property's value.
+` Whatever lists a program's instances goes by rank, since an id records only which instance
+` typing reached first.
+sealed = true
+. total = rows.length
+ordered = Array'InstanceId(arena, total)
+. spare = Array'InstanceId(arena, total)
+. count Size = 0
+for id in 0 .. < total
+    ordered[id] = id as InstanceId
+    if rows[id].initializer == 0
+        count += 1
+. width Size = 1
+while width < total
+    . start Size = 0
+    while start < total
+        . middle = if start + width < total then start + width else total
+        . end = if middle + width < total then middle + width else total
+        merge-ranked(spare, start, middle, end)
+        start = end
+    . merged = ordered
+    ordered = spare
+    spare = merged
+    width *= 2
+for position in 1 .. < total
+    ?! Panic("Two instances of one declaration share a stable key")
+        if !ranks-before(ordered[position - 1], ordered[position])
+ranked = Array'InstanceId(arena, count)
+ranks = Array'U32(arena, total)
+for position in 0 .. < total
+    if position < count
+        ranked[position] = ordered[position]
+    ranks[ordered[position]] = position as U32
+
+────────────────────
++ do unseal
+
+sealed = false
+
+────────────────────
++ do retype
+    - id InstanceId
+
+` Starts an instance over, to be typed again where an edit is typed in place (`retype-edit`),
+` keeping what its demanders gave it. An initializer keeps the type its property's declarations
+` give it (`declared-returns`), which a reader sets only as it first demands the initializer.
+. row = rows[id] as Instance
+. fresh = Instance
+    - row.module
+    - row.decl
+    - row.self-type
+    - row.effects
+    - row.enclosing
+    - .instance-unstarted
+fresh.holds-closure = row.holds-closure
+fresh.initializer = row.initializer
+fresh.compares = row.compares
+fresh.row-receiver = row.row-receiver
+fresh.row-case = row.row-case
+fresh.row-validated = row.row-validated
+fresh.bound-call = row.bound-call
+fresh.helper = row.helper
+fresh.spans = row.spans
+fresh.encoded = row.encoded
+fresh.fills = row.fills
+fresh.slots = row.slots
+fresh.context = row.context
+fresh.carried = row.carried
+fresh.root-values = row.root-values
+fresh.element = row.element
+fresh.zone = row.zone
+fresh.inherits = row.inherits
+fresh.redefaults = row.redefaults
+fresh.probe = row.probe
+rows[id] = fresh
+. signature = signatures[id] as InstanceSignature
+. declared = if row.initializer != 0 then signature.declared-returns else no-type
+signatures[id] = InstanceSignature
+    - signature.args
+    - no-type
+    - declared
+    - .return-pending
+    - signature.param-count
+. wide = List'U64(arena)
+for key in wide-defaults
+    if (key /rshift/ 32) != (id as U64)
+        wide += key
+wide-defaults = wide
+
+────────────────────
++ do move-syntax
+    - module ModuleId
+    - moved [SyntaxId]
+
+` Moves the nodes of an edited module that instances name to where the edit puts them, as
+` `Facts.move-syntax` moves those facts name: where state cells are made, the `when`s of rules
+` applied around rules written in rules, and where zones are entered.
+for position in 0 .. < state-keys.length
+    if state-keys[position].module == module
+        state-keys[position].site = moved-node(moved, state-keys[position].site)
+    if state-keys[position].when-module == module
+        state-keys[position].when = moved-node(moved, state-keys[position].when)
+for position in 0 .. < frames.length
+    if frames[position].module == module
+        frames[position].gate = moved-node(moved, frames[position].gate)
+for position in 0 .. < rows.length
+    . zone = rows[position].zone
+    if zone.module == module && zone.site != 0
+        rows[position].zone = ZoneEntry(module, moved-node(moved, zone.site))
+
+────────────────────
++ do add-dead InstanceId
+    - module ModuleId
+    - decl DeclId
+
+=? dead if dead != no-instance
+ensure-scratch(1)
+key-scratch[0] = U32.max
+. id = keys.store(key-scratch.data, 1) as InstanceId
+rows.append(Instance(module, decl, no-type, 0, no-instance, .instance-done))
+rows[id].initializer = decl
+signatures.append
+    - InstanceSignature
+        - RowRange'TypeId(signature-types.length as U32, 0)
+        - no-type
+        - no-type
+        - .return-inferred
+        - 0
+stable-keys += U64.max
+dead = id
+= id
+
+────────────────────
++ rank-of U32
+    - instance InstanceId
+
+` Where an instance stands in `ordered`, or `U32.max` for none.
+if instance < ranks.length then ranks[instance] else U32.max
+
+────────────────────
+_ do merge-ranked
+    - into Array'InstanceId'ArenaBacking
+    - start Size
+    - middle Size
+    - end Size
+
+. left = start
+. right = middle
+for position in start .. < end
+    if left < middle && (right >= end || !ranks-before(ordered[right], ordered[left]))
+        into[position] = ordered[left]
+        left += 1
+    else
+        into[position] = ordered[right]
+        right += 1
+
+────────────────────
+_ ranks-before Bool
+    - first InstanceId
+    - second InstanceId
+
+|? (left.initializer == 0) != (right.initializer == 0)
+    left.initializer == 0
+|? left.module != right.module
+    left.module < right.module
+|? left.decl != right.decl
+    left.decl < right.decl
+??
+    stable-keys[first] < stable-keys[second]
+
+.. left = rows[first]
+.. right = rows[second]
+
+────────────────────
++ do intern InstanceId
+    - module ModuleId
+    - decl DeclId
+    - self-type TypeId
+    - effects EffectMask
+    - enclosing InstanceId
+    - params ImmutableArray'TypeId'ArenaBacking = ImmutableArray'TypeId'ArenaBacking()
+    - args ImmutableArray'TypeId'ArenaBacking = ImmutableArray'TypeId'ArenaBacking()
+    - schedule Bool = true
+    - row-receiver TypeId = no-type
+    - row-case U32 = U32.max
+    - row-validated Bool = false
+    - probe U32 = 0
+    - helper TypeId = no-type
+    - fills ImmutableArray'U32'ArenaBacking = ImmutableArray'U32'ArenaBacking()
+    - slots ImmutableArray'U32'ArenaBacking = ImmutableArray'U32'ArenaBacking()
+    - context U32 = U32.max
+    - zone ZoneEntry = ZoneEntry()
+    - inherits InstanceId = no-instance
+    - redefaults U32 = 0
+    - spans Bool = false
+    - encoded Bool = false
+
+` Interns the instance of a declaration bound to its type parameters and argument types under
+` an effect mask, appending its signature row and scheduling it on first sight. A member of a
+` case of a union called on a row of a table of unions that holds that case is an instance of
+` its own: it takes the row, `row-receiver`, and its receiver is the case's cells, which it
+` reads with no check where `row-validated`, as TypeScript's `table-row-extension` does. A
+` `probe` numbers an instance of its own that a part of another is typed in on trial. A rule
+` typed for the `helper` a pattern calls it under is an instance of its own, and one that
+` `spans` too, and one that is `encoded`. So is a
+` constructor given the properties in `fills`, by their places among all properties: their
+` types are the last of `args`. So is one given the slots in `slots`, by their numbers as
+` `slot-id` gives them, whose builders' types are the last of `args`, after those of `fills`.
+` So is one for the styles and style sheets of a `context`. One interned in a GC-free zone keeps
+` the `zone` it is first called in. So is a method that states the errors a base's generator
+` carries, which it `inherits` from that base's instance. So is a constructor that leaves the
+` properties of the parameters in `redefaults` to the defaults the class it makes writes.
+. param-count U32 = params.length as U32
+. count = params.length + args.length
+. filled = if fills.length == 0 then 0 else fills.length + 1
+. slotted = if slots.length == 0 then 0 else slots.length + 1
+. contexted = if context == U32.max then 0u32 else 2u32
+. inheriting = if inherits == no-instance then 0u32 else 2u32
+. redefaulting = if redefaults == 0 then 0u32 else 2u32
+. spanning = if spans then 1u32 else 0u32
+. encoding = if encoded then 1u32 else 0u32
+ensure-scratch
+    - 10 + count + filled + slotted + contexted + inheriting + redefaulting + spanning + encoding
+key-scratch[0] = module
+key-scratch[1] = decl
+key-scratch[2] = self-type
+key-scratch[3] = effects
+key-scratch[4] = enclosing
+key-scratch[5] = param-count
+key-scratch[6] = row-receiver
+key-scratch[7] = row-case
+key-scratch[8] = (if row-validated then 1 else 0) + probe * 2
+key-scratch[9] = helper
+for offset in 0 .. < params.length
+    key-scratch[10 + offset] = params[offset]
+for offset in 0 .. < args.length
+    key-scratch[10 + params.length + offset] = args[offset]
+if fills.length != 0
+    key-scratch[10 + count] = U32.max - 3
+    for offset in 0 .. < fills.length
+        key-scratch[11 + count + offset] = fills[offset]
+if slots.length != 0
+    key-scratch[10 + count + filled] = U32.max - 4
+    for offset in 0 .. < slots.length
+        key-scratch[11 + count + filled + offset] = slots[offset]
+if context != U32.max
+    key-scratch[10 + count + filled + slotted] = U32.max - 5
+    key-scratch[11 + count + filled + slotted] = context
+if inherits != no-instance
+    key-scratch[10 + count + filled + slotted + contexted] = U32.max - 6
+    key-scratch[11 + count + filled + slotted + contexted] = inherits
+if redefaults != 0
+    key-scratch[10 + count + filled + slotted + contexted + inheriting] = U32.max - 7
+    key-scratch[11 + count + filled + slotted + contexted + inheriting] = redefaults
+if spans
+    key-scratch[10 + count + filled + slotted + contexted + inheriting + redefaulting] = U32.max - 8
+if encoded
+    key-scratch[spans-at + spanning] = U32.max - 9
+    .. spans-at = 10 + count + filled + slotted + contexted + inheriting + redefaulting
+
+. id = keys.store(key-scratch.data, tail-at + redefaulting + spanning + encoding) as InstanceId
+    .. tail-at = 10 + count + filled + slotted + contexted + inheriting
+last-inserted = keys.last-inserted
+if last-inserted
+    ?! Panic("An instance cannot be interned after the instance table is sealed")
+        if sealed
+    . row = Instance
+        - module
+        - decl
+        - self-type
+        - effects
+        - enclosing
+        - .instance-unstarted
+    row.row-receiver = row-receiver
+    row.row-case = row-case
+    row.row-validated = row-validated
+    row.helper = helper
+    row.spans = spans
+    row.encoded = encoded
+    row.context = context
+    row.inherits = inherits
+    row.redefaults = redefaults
+    row.probe = probe
+    row.carried = context-values(context)
+    if (effects /and/ CompilationEffect.gc-free) != 0
+        row.zone = zone
+    if fills.length != 0
+        row.fills = RowRange'U32(fill-places.length as U32, fills.length as U32)
+        for place in fills
+            fill-places += place
+    if slots.length != 0
+        row.slots = RowRange'U32(slot-places.length as U32, slots.length as U32)
+        for slot in slots
+            slot-places += slot
+    rows.append(row)
+    . start U32 = signature-types.length as U32
+    for type in params
+        signature-types += type
+    for type in args
+        signature-types += type
+    . signature = InstanceSignature
+        - RowRange'TypeId(start + param-count, args.length as U32)
+        - no-type
+        - no-type
+        - .return-pending
+        - param-count
+    signatures.append(signature)
+    . key = mixed(mixed(mixed(stable-key-seed, module), decl), types.key-of(self-type))
+    key = mixed
+        - mixed(key, effects)
+        - if enclosing != no-instance then stable-keys[enclosing] else 0u64
+    key = mixed(key, param-count)
+    if row-receiver != no-type
+        key = mixed
+            - mixed(mixed(key, types.key-of(row-receiver)), row-case)
+            - if row-validated then 1 else 0
+    for type in params
+        key = mixed(key, types.key-of(type))
+    for type in args
+        key = mixed(key, types.key-of(type))
+    if probe != 0
+        key = mixed(mixed(key, U32.max), probe)
+    if helper != no-type
+        key = mixed(mixed(key, U32.max - 2), types.key-of(helper))
+    if fills.length != 0
+        key = mixed(key, U32.max - 3)
+        for place in fills
+            key = mixed-text(key, types.properties[place].name.text)
+    if slots.length != 0
+        key = mixed(key, U32.max - 4)
+        for slot in slots
+            key = mixed-text(key, slot-atoms[slot].text)
+    if context != U32.max
+        key = mixed-context(key, context)
+    if inherits != no-instance
+        key = mixed(mixed(key, U32.max - 6), stable-keys[inherits])
+    if redefaults != 0
+        key = mixed(mixed(key, U32.max - 7), redefaults)
+    if spans
+        key = mixed(key, U32.max - 8)
+    if encoded
+        key = mixed(key, U32.max - 9)
+    stable-keys += key
+    . closes = self-type != no-type && types.completions[self-type].has-closures
+    for type in params
+        closes = closes || types.completions[type].has-closures
+    for type in args
+        closes = closes || types.completions[type].has-closures
+    rows[id].holds-closure = closes
+    if schedule
+        queue(id)
+    ?! Panic("Instance and signature tables are misaligned")
+        if rows.length != signatures.length
+= id
+
+────────────────────
++ do intern-retyped InstanceId
+    - method InstanceId
+    - base InstanceId
+    - params ImmutableArray'TypeId'ArenaBacking
+    - args ImmutableArray'TypeId'ArenaBacking
+
+` The instance of a method that yields typed again for a class's table in the place of the
+` base's method `base`, which states the errors the base's generator carries; the method names
+` it as `retyped`.
+. row = rows[method]
+. retyped = intern
+    - row.module
+    - row.decl
+    - row.self-type
+    - row.effects
+    - row.enclosing
+    - params
+    - args
+    - true
+    - no-type
+    - U32.max
+    - false
+    - 0
+    - no-type
+    - ImmutableArray'U32'ArenaBacking()
+    - ImmutableArray'U32'ArenaBacking()
+    - U32.max
+    - ZoneEntry()
+    - base
+rows[method].retyped = retyped
+= retyped
+
+────────────────────
++ do intern-dispatched InstanceId
+    - module ModuleId
+    - decl DeclId
+    - self-type TypeId
+    - declared EffectMask
+    - caller InstanceId
+    - params ImmutableArray'TypeId'ArenaBacking = ImmutableArray'TypeId'ArenaBacking()
+    - args ImmutableArray'TypeId'ArenaBacking = ImmutableArray'TypeId'ArenaBacking()
+
+. row = rows[caller]
+= intern
+    - module
+    - decl
+    - self-type
+    - dispatch-effects(declared /or/ row.effects)
+    - no-instance
+    - params
+    - args
+    - true
+    - no-type
+    - U32.max
+    - false
+    - 0
+    - no-type
+    - ImmutableArray'U32'ArenaBacking()
+    - ImmutableArray'U32'ArenaBacking()
+    - U32.max
+    - row.zone
+
+────────────────────
++ do intern-context U32
+    - styles [TypeId]
+    - sheets [TypeId]
+    - levels [U32]
+    - scopes [RuleScope]
+    - cells [U32]
+    - made TypeId
+    - layer U32
+    - valued [U32]
+    - value-types [TypeId]
+
+` The number among `contexts` of the styles, style sheets and rules written in rules given, in
+` their order, each sheet in its group as `levels` gives them, which are renumbered from 0, each
+` rule with how many state cells of its `when`s are given with it (`cells`) and the place of the
+` values of the rule around it given with it (`valued`, empty where none are), of the class of
+` the object whose content of a class above it is made, or no type, and of the `layer` of
+` generated content, or 0; the values given are of the types `value-types`. Made at the first,
+` and none where there are none.
+if styles.length == 0 && sheets.length == 0 && scopes.length == 0 && made == no-type && layer == 0
+    = U32.max
+. groups [U32]
+. group = 0u32
+for position in 0 .. < levels.length
+    if position != 0 && levels[position] != levels[position - 1]
+        group += 1
+    groups += group
+for index in 0 .. < contexts.length
+    . held = contexts[index]
+    if other-sheets || held.scopes != scopes.length || held.made != made || other-values
+        continue
+    .. other-sheets = held.styles != styles.length || held.sheets != sheets.length
+    .. other-values = held.layer != layer || held.values != value-types.length
+    . same = true
+    for position in 0 .. < scopes.length
+        . place = if valued.length != 0 then valued[position] else U32.max
+        if !scope-same || cell-differs || context-valued[held.scope-first + position] != place
+            same = false
+        .. scope-same = same-scope(context-scopes[held.scope-first + position], scopes[position])
+        .. cell-differs = context-cells[held.scope-first + position] != cells[position]
+    for position in 0 .. < value-types.length
+        if context-value-types[held.value-first + position] != value-types[position]
+            same = false
+    for position in 0 .. < styles.length
+        if context-types[held.first + position] != styles[position]
+            same = false
+    for position in 0 .. < sheets.length
+        . place = held.first + held.styles + position
+        if context-types[place] != sheets[position] || context-levels[place] != groups[position]
+            same = false
+    if same
+        = index as U32
+. first = context-types.length as U32
+for style in styles
+    context-types += style
+    context-levels += U32.max
+for position in 0 .. < sheets.length
+    context-types += sheets[position]
+    context-levels += groups[position]
+. scope-first = context-scopes.length as U32
+for position in 0 .. < scopes.length
+    context-scopes += scopes[position]
+    context-cells += cells[position]
+    context-valued += if valued.length != 0 then valued[position] else U32.max
+. value-first = context-value-types.length as U32
+for type in value-types
+    context-value-types += type
+contexts += StyleContext
+    - first
+    - styles.length as U32
+    - sheets.length as U32
+    - scope-first
+    - scopes.length as U32
+    - made
+    - layer
+    - value-first
+    - value-types.length as U32
+= (contexts.length - 1) as U32
+
+────────────────────
++ context-values U32
+    - context U32
+
+` How many values a context gives: the state cells of the `when`s around each rule written in a
+` rule that are given with it, then the values of the rules around them, as the reference gives the
+` values of the frames of each in turn. That of generated content gives none: its flags say
+` which rules are seen under a cell it is not given.
+if context == U32.max || contexts[context].layer != 0 then 0 else given
+
+.. given = context-cell-count(context) + contexts[context].values
+
+────────────────────
++ do context-cell-count U32
+    - context U32
+
+` How many state cells a context gives, before the values it gives (`context-values`).
+if context == U32.max
+    = 0
+. held = contexts[context]
+if held.layer != 0
+    = 0
+. count U32
+for position in held.scope-first .. < held.scope-first + held.scopes
+    count += context-cells[position]
+= count
+
+────────────────────
++ value-argument U32
+    - instance InstanceId
+    - offset U32
+
+` The place among an instance's arguments of a value its context gives, a state cell or a value
+` of a rule, by its place among them: after the values of properties, before the builders of
+` slots.
+signatures[instance].args.count - rows[instance].slots.count - rows[instance].carried + offset
+
+────────────────────
++ do state-key U32
+    - module ModuleId
+    - site SyntaxId
+    - when-module ModuleId
+    - when SyntaxId
+
+` The number among `state-keys` of where the state cell of a `when` is made; made at the first.
+for index in 0 .. < state-keys.length
+    . held = state-keys[index]
+    if held.module == module && held.site == site && same-when
+        = index as U32
+    .. same-when = held.when-module == when-module && held.when == when
+state-keys += StateKey(module, site, when-module, when)
+= (state-keys.length - 1) as U32
+
+────────────────────
++ do intern-frame U32
+    - outer U32
+    - module ModuleId
+    - decl DeclId
+    - owner TypeId
+    - gate SyntaxId
+
+` The number among `frames` of a style rule applied for a class or style sheet within the frames
+` `outer`, under one of its `when`s or none; made at the first.
+for index in 0 .. < frames.length
+    . held = frames[index]
+    if held.outer == outer && held.module == module && held.decl == decl && same-owner
+        = index as U32
+    .. same-owner = held.owner == owner && held.gate == gate
+frames += RuleFrame(outer, module, decl, owner, gate)
+= (frames.length - 1) as U32
+
+────────────────────
++ same-scope Bool
+    - first RuleScope
+    - second RuleScope
+
+same-decl && first.owner == second.owner && first.frames == second.frames && first.own == second.own
+
+.. same-decl = first.module == second.module && first.decl == second.decl
+
+────────────────────
+_ do mixed-context StableKey
+    - key StableKey
+    - context U32
+
+` Mixes a style context into a stable key by what it holds rather than by its number, which
+` another type pass gives another context.
+. held = contexts[context]
+. mixed-key = mixed(mixed(mixed(mixed(key, U32.max - 5), held.styles), held.sheets), held.layer)
+if held.made != no-type
+    mixed-key = mixed(mixed-key, types.key-of(held.made))
+for position in held.first .. < held.first + held.styles + held.sheets
+    mixed-key = mixed
+        - mixed(mixed-key, types.key-of(context-types[position]))
+        - context-levels[position]
+for position in held.scope-first .. < held.scope-first + held.scopes
+    . scoped = mixed-scope(mixed-key, context-scopes[position])
+    mixed-key = mixed(mixed(scoped, context-cells[position]), context-valued[position])
+for position in held.value-first .. < held.value-first + held.values
+    mixed-key = mixed(mixed-key, types.key-of(context-value-types[position]))
+= mixed-key
+
+────────────────────
+_ do mixed-scope StableKey
+    - key StableKey
+    - scope RuleScope
+
+` Mixes a rule written in a rule into a stable key by what it is: the rule, its owner, whether it
+` reaches only its element's own markup, and each frame around it, innermost first.
+. mixed-key = mixed
+    - mixed(mixed(mixed(key, scope.module), scope.decl), types.key-of(scope.owner))
+    - scope.own as U32
+. frame = scope.frames
+while frame != U32.max
+    . held = frames[frame]
+    mixed-key = mixed
+        - mixed(mixed(mixed(mixed-key, held.module), held.decl), types.key-of(held.owner))
+        - held.gate
+    frame = held.outer
+= mixed-key
+
+────────────────────
++ do intern-initializer InstanceId
+    - module ModuleId
+    - property DeclId
+    - receiver TypeId
+    - element TypeId = no-type
+    - context U32 = U32.max
+
+` Interns the typing of one property's value: a global's, a class property's for one receiver,
+` or an enum case's for its enum. The value is typed in the frame of its module's main, but as
+` an instance of its own, so that it is typed once and the same way whichever instance reads
+` the property first.
+` Nothing calls it and it is never queued: the first read types it. The facts of a global's
+` value and of an enum's case are its main's, and are moved there when typing ends
+` (`Facts.fold-initializers`). Those of a class property's value stay its own (`keeps-facts`).
+` A style rule is interned this way too, one a style sheet writes once for each `element`, and
+` one a class writes once for each `context` of the styles it is applied under; only the first
+` of those is found again (`find-initializer`).
+. main = types.program.modules[module].main-decl
+. length = if context != U32.max then 9 else if element == no-type then 7 else 8
+ensure-scratch(9)
+key-scratch[0] = module
+key-scratch[1] = main
+key-scratch[2] = receiver
+key-scratch[3] = 0
+key-scratch[4] = no-instance
+key-scratch[5] = U32.max
+key-scratch[6] = property
+key-scratch[7] = element
+key-scratch[8] = context
+. id = keys.store(key-scratch.data, length) as InstanceId
+last-inserted = keys.last-inserted
+if last-inserted
+    ?! Panic("An instance cannot be interned after the instance table is sealed")
+        if sealed
+    rows.append(Instance(module, main, receiver, 0, no-instance, .instance-unstarted))
+    rows[id].initializer = property
+    rows[id].element = element
+    rows[id].context = context
+    if context == U32.max
+        initializers[InitializerKey(module, property, receiver, element)] = id
+    . none = RowRange'TypeId(signature-types.length as U32, 0)
+    signatures.append(InstanceSignature(none, no-type, no-type, .return-pending, 0))
+    . key = mixed(mixed(mixed(stable-key-seed, module), main), types.key-of(receiver))
+    . stable = mixed(mixed(key, U32.max), property)
+    if element != no-type
+        stable = mixed(stable, types.key-of(element))
+    if context != U32.max
+        stable = mixed-context(stable, context)
+    stable-keys += stable
+= id
+
+────────────────────
++ do intern-root-values InstanceId
+    - module ModuleId
+    - receiver TypeId
+    - application SyntaxId
+    - context U32
+
+` Interns the typing of the values a style rule applied on the root `<This` of the markup of a
+` class is given, for the class `receiver` whose constructor applies it under the styles and
+` style sheets of a `context`: typed in the frame of its module's main, as the value of a
+` property is, but only the application, whose facts the constructor reads as it applies the
+` rule. Nothing calls it and it is never queued: the constructor types it.
+. content = types.program.modules[module].main-decl
+ensure-scratch(9)
+key-scratch[0] = module
+key-scratch[1] = content
+key-scratch[2] = receiver
+key-scratch[3] = 0
+key-scratch[4] = no-instance
+key-scratch[5] = U32.max - 2
+key-scratch[6] = application
+key-scratch[7] = U32.max - 5
+key-scratch[8] = context
+. id = keys.store(key-scratch.data, 9) as InstanceId
+last-inserted = keys.last-inserted
+if last-inserted
+    ?! Panic("An instance cannot be interned after the instance table is sealed")
+        if sealed
+    rows.append(Instance(module, content, receiver, 0, no-instance, .instance-unstarted))
+    rows[id].root-values = application
+    rows[id].context = context
+    . none = RowRange'TypeId(signature-types.length as U32, 0)
+    signatures.append(InstanceSignature(none, no-type, no-type, .return-pending, 0))
+    . key = mixed(mixed(mixed(stable-key-seed, module), content), types.key-of(receiver))
+    . stable = mixed(mixed(key, U32.max - 2), application)
+    stable-keys += if context != U32.max then mixed-context(stable, context) else stable
+= id
+
+────────────────────
++ find-initializer InstanceId
+    - module ModuleId
+    - property DeclId
+    - receiver TypeId
+
+` The typing of one property's value for a receiver, or no instance when the type pass made
+` none. Emission's workers ask at once, so it reads only what interning wrote and never the
+` scratch a key is built in.
+initializers[InitializerKey(module, property, receiver, no-type)] ?? no-instance
+
+────────────────────
++ do intern-equality InstanceId
+    - module ModuleId
+    - value TypeId
+
+` Interns the comparison of two values of a type that a witness table holds, which the
+` function the table holds for equality runs. It is typed in the frame of its module's main,
+` as an instance of its own, and queued on first sight.
+fill-equality-key(module, value)
+. id = keys.store(key-scratch.data, 7) as InstanceId
+last-inserted = keys.last-inserted
+if last-inserted
+    ?! Panic("An instance cannot be interned after the instance table is sealed")
+        if sealed
+    . main = types.program.modules[module].main-decl
+    rows.append(Instance(module, main, value, 0, no-instance, .instance-unstarted))
+    rows[id].compares = true
+    . none = RowRange'TypeId(signature-types.length as U32, 0)
+    signatures.append(InstanceSignature(none, no-type, no-type, .return-pending, 0))
+    . key = mixed(mixed(mixed(stable-key-seed, module), main), types.key-of(value))
+    stable-keys += mixed(key, U32.max - 1)
+    queue(id)
+= id
+
+────────────────────
++ do find-equality InstanceId
+    - module ModuleId
+    - value TypeId
+
+` The comparison of two values of a type for a witness table, or no instance when the type
+` pass made none.
+fill-equality-key(module, value)
+. found = keys.find(key-scratch.data, 7)
+= if found then (found as InstanceId) else no-instance
+
+────────────────────
+_ do fill-equality-key
+    - module ModuleId
+    - value TypeId
+
+ensure-scratch(7)
+key-scratch[0] = module
+key-scratch[1] = types.program.modules[module].main-decl
+key-scratch[2] = value
+key-scratch[3] = 0
+key-scratch[4] = no-instance
+key-scratch[5] = U32.max - 1
+key-scratch[6] = 0
+
+────────────────────
++ is-initializer Bool
+    - instance InstanceId
+
+rows[instance].initializer != 0
+
+────────────────────
++ do keeps-facts Bool
+    - instance InstanceId
+
+` Whether an instance types the value of a class's property, or a rule or a style rule of a
+` class, for a receiver. Its facts stay its own, because the value has others for each receiver, and
+` emission reads them for the receiver it gives the value to.
+. row = rows[instance]
+if row.initializer == 0 || row.self-type == no-type
+    = false
+do match? types.program.modules[row.module].decls[row.initializer]
+    | .decl-property
+        = true
+    | .decl-rule
+        = true
+    | .decl-style-rule
+        = true
+= false
+
+────────────────────
++ do queue
+    - instance InstanceId
+
+` Puts an instance on the list of bodies to type, once. While a call holds back what is
+` queued, the instance waits in `held` for the call to release it.
+if holding != 0
+    held.push(instance)
+    =
+if !rows[instance].queued
+    rows[instance].queued = true
+    worklist += instance
+
+────────────────────
++ do hold ScratchMark
+
+` Starts holding back the instances queued from here on, for a call that may find the
+` instance it resolved to replaced by another, whose body nothing then needs typed. Gives
+` the mark to release them from.
+holding += 1
+= held.mark
+
+────────────────────
++ do release
+    - mark ScratchMark
+    - resolved ScratchMark
+    - dropped InstanceId
+
+` Queues the instances held back since a mark, but for one the call dropped, where it was
+` held before `resolved`, when the call had resolved its callee. While an outer call still
+` holds, the others stay held for it.
+holding -= 1
+. first = mark as Size
+. past = resolved as Size
+. kept = first
+for position in first .. < held.length
+    if held[position] != dropped || position >= past
+        held[kept] = held[position]
+        kept += 1
+held.rewind(kept)
+if holding == 0
+    for position in first .. < held.length
+        queue(held[position])
+    held.rewind(mark)
+
+────────────────────
++ do finish-body
+    - instance InstanceId
+
+` Ends an instance's body. Errors that are not stated are settled here unless the body left
+` some to be worked out later.
+rows[instance].state = .instance-done
+. signature = signatures[instance]
+if signature.error-state == .errors-unsettled && signature.pending == U32.max
+    signatures[instance].error-state = .errors-settled
+
+────────────────────
++ do set-state
+    - instance InstanceId
+    - state InstanceState
+
+rows[instance].state = state
+
+────────────────────
++ do set-returns
+    - instance InstanceId
+    - returns TypeId
+    - declared TypeId
+    - state ReturnState
+
+signatures[instance].returns = returns
+signatures[instance].declared-returns = declared
+signatures[instance].return-state = state
+
+────────────────────
++ do set-unreturned
+    - instance InstanceId
+    - statement SyntaxId
+
+` Notes the value a `do` function ends on without returning it.
+signatures[instance].unreturned = statement
+
+────────────────────
++ do mark-read-in-progress
+    - instance InstanceId
+    - reader InstanceId
+
+` Notes that an instance was called while still being checked, and by which instance first.
+signatures[instance].read-in-progress = true
+if signatures[instance].read-by == no-instance
+    signatures[instance].read-by = reader
+
+────────────────────
++ do set-errors
+    - instance InstanceId
+    - errors ImmutableArray'TypeId'ArenaBacking
+
+signatures[instance].errors = RowRange'TypeId(signature-types.length as U32, errors.length as U32)
+for type in errors
+    signature-types += type
+
+────────────────────
++ do set-step-errors
+    - instance InstanceId
+    - errors ImmutableArray'TypeId'ArenaBacking
+
+` Gives a function that yields the errors a step of its body raises, which its generator
+` carries. The function itself raises none: it makes the generator and returns it.
+rows[instance].step-errors = RowRange'TypeId(signature-types.length as U32, errors.length as U32)
+for type in errors
+    signature-types += type
+
+────────────────────
++ do move-step-errors
+    - instance InstanceId
+
+` Gives the errors a function that yields states, or inherits, to a step of its body.
+if signatures[instance].errors.count == 0
+    =
+rows[instance].step-errors = signatures[instance].errors
+signatures[instance].errors = RowRange'TypeId()
+
+────────────────────
++ step-error-type TypeId
+    - instance InstanceId
+    - position U32
+
+signature-types[rows[instance].step-errors.start + position]
+
+────────────────────
++ do state-errors
+    - instance InstanceId
+    - errors ImmutableArray'TypeId'ArenaBacking
+
+` Gives an instance the errors its declaration lists or inherits.
+set-errors(instance, errors)
+signatures[instance].error-state = .errors-stated
+
+────────────────────
++ do set-result
+    - instance InstanceId
+    - result TypeId
+
+` Gives an instance that raises errors the type it returns: its value, or one of them.
+signatures[instance].result = result
+
+────────────────────
++ errors-known Bool
+    - instance InstanceId
+
+signatures[instance].error-state != .errors-unsettled
+
+────────────────────
++ param-type TypeId
+    - instance InstanceId
+    - position U32
+
+|? position < row.param-count
+    signature-types[row.args.start - row.param-count + position]
+??
+    no-type
+
+.. row = signatures[instance]
+
+────────────────────
++ error-type TypeId
+    - instance InstanceId
+    - position U32
+
+|? position < row.errors.count
+    signature-types[row.errors.start + position]
+??
+    no-type
+
+.. row = signatures[instance]
+
+────────────────────
++ do slot-id U32
+    - name Atom
+
+` The number of a slot's name among those of every slot an instance is given, as `intern`
+` takes them; the name of the default slot is the empty text.
+. found = slot-ids[name]
+if found
+    = found
+. id = slot-atoms.length as U32
+slot-atoms += name
+slot-ids[name] = id
+= id
+
+────────────────────
++ slot-name Atom
+    - instance InstanceId
+    - position U32
+
+` The name of a slot an instance is given, among those it is given in order.
+slot-atoms[slot-places[rows[instance].slots.start + position]]
+
+────────────────────
++ takes-binder Bool
+    - instance InstanceId
+
+` Whether a constructor is given, last, the function that gives a markup element's name its
+` object.
+slots.count != 0 && slot-atoms[slot-places[slots.start + slots.count - 1]].text == binder-slot
+
+.. slots = rows[instance].slots
+
+────────────────────
++ do slot-argument U32
+    - instance InstanceId
+    - name Atom
+
+` The place among an instance's arguments of the function that builds the slot of a name, or
+` `U32.max` where it is given none for it.
+. slots = rows[instance].slots
+. declared = signatures[instance].args.count - slots.count
+for offset in 0 .. < slots.count
+    if slot-atoms[slot-places[slots.start + offset]] == name
+        = declared + offset
+= U32.max
+
+────────────────────
++ do fill-argument U32
+    - instance InstanceId
+    - name Atom
+
+` The place among a constructor's arguments of the value a markup element gives it for the
+` property of a name, or `U32.max` where the constructor is given none for it.
+. fills = rows[instance].fills
+. declared = unfilled - rows[instance].carried - rows[instance].slots.count
+    .. unfilled = signatures[instance].args.count - fills.count
+for offset in 0 .. < fills.count
+    if types.properties[fill-places[fills.start + offset]].name == name
+        = declared + offset
+= U32.max
+
+────────────────────
++ argument-type TypeId
+    - instance InstanceId
+    - position U32
+
+|? position < row.args.count
+    signature-types[row.args.start + position]
+??
+    no-type
+
+.. row = signatures[instance]
+
+────────────────────
++ do mark-may-panic
+    - instance InstanceId
+
+rows[instance].may-panic = true
+
+────────────────────
++ do mark-live
+    - instance InstanceId
+
+` Says a property's value reads something tracked: it runs in a live action of its own.
+rows[instance].is-live = true
+
+────────────────────
++ do mark-quiet
+    - instance InstanceId
+
+` Says a call of an instance is never checked for a panic: the reference takes it for one
+` that raises none, whatever runs.
+rows[instance].quiet = true
+
+────────────────────
++ do mark-casts-errors
+    - instance InstanceId
+
+` Says an instance lets out an error of a class above one it states, cast to that one, which
+` panics where the error is not of it.
+rows[instance].casts-errors = true
+rows[instance].may-panic = true
+
+────────────────────
++ do mark-returns-own
+    - instance InstanceId
+
+` Says a constructor written in source returns a value of its own: it constructs what it
+` returns, and makes nothing of its class.
+rows[instance].returns-own = true
+
+────────────────────
++ do mark-gives-unwritten
+    - instance InstanceId
+
+` Says a function written with no body gives what the type it returns makes with nothing
+` written.
+rows[instance].gives-unwritten = true
+
+────────────────────
++ do clear-may-panic
+    - instance InstanceId
+
+rows[instance].may-panic = false
+
+────────────────────
++ do mark-polls
+    - instance InstanceId
+
+` Says a body has a loop that polls for the collector and for a terminating task. Such a
+` function returns the panic the poll can raise. It is not one that may panic: no caller
+` checks after it, as in the reference.
+rows[instance].polls = true
+
+────────────────────
++ do mark-generator
+    - instance InstanceId
+
+` Says a function yields. The errors it states are a step's from here on: the function
+` makes its generator and raises none itself.
+rows[instance].is-generator = true
+if signatures[instance].error-state == .errors-stated
+    move-step-errors(instance)
+
+────────────────────
++ do set-generator
+    - instance InstanceId
+    - makes TypeId
+    - yields TypeId
+    - splits Bool = false
+
+` Says what a function that yields makes where it is called, the generator of its items, and what
+` each step of its body gives: an optional of an item, which holds nothing once the body has
+` finished, or that or an error where a step raises. `splits` says the type of the items depends on
+` the order its yields are folded in, some of them in loops, where the reference folds them in the
+` order of its blocks: such a function has no shape.
+rows[instance].makes = makes
+rows[instance].yields = yields
+rows[instance].splits-yields = splits
+
+────────────────────
++ do mark-ends-generator
+    - instance InstanceId
+    - yields TypeId
+
+` Says a function is the one that ends a generator, which gives the generator its last
+` step where it waits at a yield, and what a step of that generator gives.
+rows[instance].ends-generator = true
+rows[instance].yields = yields
+
+────────────────────
+_ do ensure-scratch
+    - count Size
+
+if count > key-scratch.length
+    . capacity = key-scratch.length
+    while capacity < count
+        capacity *= 2
+    key-scratch = key-scratch.resize(capacity, arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ runs-inline Bool
+    - row Instance
+
+` Whether an instance is typed only in the run of another, never alone from the queue: one written
+` in another and one typed on trial.
+row.enclosing != no-instance || row.probe != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ moved-node SyntaxId
+    - moved [SyntaxId]
+    - syntax SyntaxId
+
+` Where an edit moves a node of the module it edits (`Instances.move-syntax`), or the node itself
+` where it is in a body, or is none.
+if (syntax as Size) < moved.length && moved[syntax] != 0 then moved[syntax] else syntax
+
+━━━━━━━━━━━━━━━━━━━━
++ unmoved Bool
+    - moved [SyntaxId]
+    - syntax SyntaxId
+
+` Whether a node of the module an edit edits is in a body the edit changes, so has nowhere it moves
+` to (`Instances.move-syntax`).
+(syntax as Size) < moved.length && syntax != 0 && moved[syntax] == 0

@@ -1,0 +1,2608 @@
+
+./color
+./gradient
+./matrix
+./outline
+./point
+./primitives
+./shader
+./text
+/YuGraphics/YuGraphics.h
+/math
+/os/file
+/os/path
+/units
+
+_ default-text-color = white
+_ native-fill-known U8 = 1
+_ native-stroke-known U8 = 2
+_ native-width-known U8 = 4
+_ native-cap-known U8 = 8
+_ native-join-known U8 = 16
+_ native-dash-known U8 = 32
+_ canvas-group-mask U8 = 1
+_ canvas-group-blur U8 = 2
+_ canvas-group-opacity U8 = 3
+_ canvas-group-filter U8 = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ Canvas
+    is Closable
+
++ width I32
++ height I32
+
+_ state CanvasState?
+_ spare-state CanvasState?
+
+────────────────────
++ This
+    - width I32
+    - height I32
+
+state = create-state()
+
+────────────────────
++ get fill-color
+
+state?.fill-color
+
+────────────────────
++ get stroke-color
+
+state?.stroke-color
+
+────────────────────
++ get stroke-width Length
+
+state?.stroke-width ?? 0
+
+────────────────────
++ get stroke-cap LineCap
+
+state?.stroke-cap ?? LineCap.butt
+
+────────────────────
++ get stroke-join LineJoin
+
+state?.stroke-join ?? LineJoin.miter
+
+────────────────────
++ get stroke-dash Length
+
+state?.stroke-dash ?? 0
+
+────────────────────
++ get font Font
+
+state?.font ?? system-font()
+
+────────────────────
++ get text-color RGBA
+
+state?.text-color ?? default-text-color
+
+────────────────────
++ get blend-mode
+
+state?.blend-mode ?? BlendMode.normal
+
+────────────────────
++ get fill-paint Paint?
+
+state?.fill-paint
+
+────────────────────
++ get stroke-brush Brush?
+
+state?.stroke-brush
+
+────────────────────
++ do fill-color = color RGBA?
+
+state?.set-fill-color(color)
+
+────────────────────
++ do stroke-color = color RGBA?
+
+state?.set-stroke-color(color)
+
+────────────────────
++ do stroke-width = width Length
+
+state?.set-stroke-width(width)
+
+────────────────────
++ do stroke-cap = cap LineCap
+
+state?.set-stroke-cap(cap)
+
+────────────────────
++ do stroke-join = join LineJoin
+
+state?.set-stroke-join(join)
+
+────────────────────
++ do stroke-dash = length Length
+
+state?.set-stroke-dash(length)
+
+────────────────────
++ do font = font Font
+
+state?.set-font(font)
+
+────────────────────
++ do text-color = color RGBA
+
+state?.set-text-color(color)
+
+────────────────────
++ do blend-mode = mode BlendMode
+
+state?.set-blend-mode(mode)
+
+────────────────────
++ do fill-paint = paint Paint?
+
+state?.set-fill-paint(paint)
+
+────────────────────
++ do stroke-brush = brush Brush?
+
+state?.set-stroke-brush(brush)
+
+────────────────────
++ get text-fill ShaderFill?
+
+state?.text-fill
+
+────────────────────
++ do text-fill = fill ShaderFill?
+
+state?.set-text-fill(fill)
+
+────────────────────
++ get shape-fill ShaderFill?
+
+state?.shape-fill
+
+────────────────────
++ do shape-fill = fill ShaderFill?
+
+state?.set-shape-fill(fill)
+
+────────────────────
++ get current-matrix Matrix
+
+state?.current-transform ?? Matrix()
+
+────────────────────
++ get scale F64
+
+1
+
+────────────────────
++ do close
+
+────────────────────
++ do write ?! Error
+    - path Path
+
+────────────────────
++ get saved-state
+
+CanvasStateScope(this)
+
+────────────────────
++ do push
+
+//gui.canvas.state-pushes ++
+. current = state!
+. next = spare-state ?? create-state()
+spare-state = next.previous
+next.copy-from(current)
+next.previous = current
+state = next
+
+────────────────────
++ do pop
+
+. current = state
+. previous = current?.previous
+if current && previous
+    current.previous = spare-state
+    spare-state = current
+    state = previous
+else
+    state = create-state()
+
+────────────────────
++ create-state CanvasState
+
+CanvasState()
+
+────────────────────
++ do erase
+    - color RGBA?
+
+────────────────────
++ do fill-gradient
+    - rect Rect
+    - gradient Gradient
+
+────────────────────
++ do fill-shader
+    - rect Rect
+    - shader Shader
+    - args [F64] = List'F64()
+
+────────────────────
++ do begin-filter
+    - rect Rect
+    - filter ShaderFilter
+
+────────────────────
++ do end-filter
+
+────────────────────
++ do rect
+    - rect Rect
+
+────────────────────
++ do square
+    - x Coord
+    - y Coord
+    - width Length
+
+────────────────────
++ do oval
+    - rect Rect
+
+────────────────────
++ do circle
+    - cx Coord
+    - cy Coord
+    - radius Length
+
+────────────────────
++ do move
+    - x Coord
+    - y Coord
+
+────────────────────
++ do line
+    - point Point
+
+line(point.x, point.y)
+
+────────────────────
++ do line
+    - point1 Point
+    - point2 Point
+
+line(point1.x, point1.y, point2.x, point2.y)
+
+────────────────────
++ do line
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+
+begin()
+move(x1, y1)
+line(x2, y2)
+end()
+
+────────────────────
++ do line
+    - x Coord
+    - y Coord
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+    - x4 Coord
+    - y4 Coord
+
+begin()
+move(x1, y1)
+curve(x2, y2, x3, y3, x4, y4)
+end()
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+
+────────────────────
++ do translate
+    - x Coord
+    - y Coord
+
+transform(matrix-from-translation(Point(x, y)))
+
+────────────────────
++ do transform
+    - matrix Matrix
+
+state?.concatenate-transform(matrix)
+
+────────────────────
++ do transform-content
+    - matrix Matrix
+
+transform(matrix)
+
+────────────────────
++ do outline
+    - shape Outline
+
+begin()
+outline-path(shape)
+end()
+
+────────────────────
++ do rect-path
+    - rect Rect
+
+move(rect.x, rect.y)
+line(rect.right, rect.y)
+line(rect.right, rect.bottom)
+line(rect.x, rect.bottom)
+enclose()
+
+────────────────────
++ do oval-path
+    - rect Rect
+
+. rx = rect.width / 2
+. ry = rect.height / 2
+. cx = rect.x + rx
+. cy = rect.y + ry
+. kx = rx * 0.5522847498307936
+. ky = ry * 0.5522847498307936
+move(cx + rx, cy)
+curve(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry)
+curve(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy)
+curve(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry)
+curve(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy)
+enclose()
+
+────────────────────
++ do outline-path
+    - shape Outline
+
+. b = shape.bounds
+=? if b.width <= 0 || b.height <= 0
+. r = shape.effective-radius
+. k = r * 0.4477152501692064
+. side = shape.arrow?.side
+. size = shape.arrow?.size ?? 0
+. tip = shape.arrow-tip
+. half = shape.arrow-half
+. arrowed = side != null && half > 0 && size > 0
+move(b.x + r, b.y)
+if arrowed && side == Side.top
+    line(b.x + tip - half, b.y)
+    line(b.x + tip, b.y - size)
+    line(b.x + tip + half, b.y)
+line(b.right - r, b.y)
+if r > 0
+    curve(b.right - k, b.y, b.right, b.y + k, b.right, b.y + r)
+if arrowed && side == Side.right
+    line(b.right, b.y + tip - half)
+    line(b.right + size, b.y + tip)
+    line(b.right, b.y + tip + half)
+line(b.right, b.bottom - r)
+if r > 0
+    curve(b.right, b.bottom - k, b.right - k, b.bottom, b.right - r, b.bottom)
+if arrowed && side == Side.bottom
+    line(b.x + tip + half, b.bottom)
+    line(b.x + tip, b.bottom + size)
+    line(b.x + tip - half, b.bottom)
+line(b.x + r, b.bottom)
+if r > 0
+    curve(b.x + k, b.bottom, b.x, b.bottom - k, b.x, b.bottom - r)
+if arrowed && side == Side.left
+    line(b.x, b.y + tip + half)
+    line(b.x - size, b.y + tip)
+    line(b.x, b.y + tip - half)
+line(b.x, b.y + r)
+if r > 0
+    curve(b.x, b.y + k, b.x + k, b.y, b.x + r, b.y)
+enclose()
+
+────────────────────
++ do clip
+    - rect Rect
+
+begin()
+rect-path(rect)
+clip-path()
+
+────────────────────
++ do clip-outline
+    - shape Outline
+
+begin()
+outline-path(shape)
+clip-path()
+
+────────────────────
++ do clip-path
+    - fill-rule FillRule = FillRule.nonzero
+
+. ignored = fill-rule
+
+────────────────────
++ do clip-mask
+    - image RasterCanvas
+    - rect Rect
+
+────────────────────
++ do begin-mask
+
+────────────────────
++ do end-mask
+
+────────────────────
++ do begin-blur
+    - radius Length
+
+────────────────────
++ do end-blur
+
+────────────────────
++ do draw-image
+    - image RasterCanvas
+    - rect Rect
+    - template-alpha Bool = false
+    - sampling = ImageSampling.smooth
+
+────────────────────
++ do fill-image
+    - image RasterCanvas
+    - rect Rect
+    - tile Rect
+    - sampling = ImageSampling.smooth
+
+────────────────────
++ text-layout TextLayout
+    - text String
+    - maximum-width Length? = null
+    - overflow TextOverflow = TextOverflow.truncate-tail
+    - wrap TextWrap = TextWrap.no-wrap
+
+TextLayout(text, font, maximum-width, overflow, wrap)
+
+────────────────────
++ do draw-text
+    - layout TextLayout
+    - rect Rect
+    - alignment TextAlignment = TextAlignment.left
+
+────────────────────
++ record-vector-geometry Bool
+    - index U32
+    - generation U32
+    - palette [RGBA]
+    - transform Matrix
+    - clip Rect?
+
+false
+
+────────────────────
++ record-image-resource Bool
+    - index U32
+    - generation U32
+    - rect Rect
+    - tint RGBA?
+
+false
+
+────────────────────
++ do shadow
+    - shape Outline
+    - shadow Shadow
+
+────────────────────
++ do shadow-path
+    - shadow Shadow
+
+────────────────────
++ do backdrop-blur
+    - shape Outline
+    - radius Length
+
+────────────────────
++ do backdrop-shader
+    - shape Outline
+    - backdrop ShaderFilter
+    - blur Length = 0
+
+────────────────────
++ do begin-opacity
+    - opacity Ratio
+
+. ignored = opacity
+
+────────────────────
++ do end-opacity
+
+────────────────────
++ do begin
+
+────────────────────
++ do enclose
+
+────────────────────
++ do end
+    - closed Bool = false
+    - fill-rule FillRule = FillRule.nonzero
+
+────────────────────
++ do trace-path
+    - verbs Array'PathVerb
+    - coords Array'Coord
+    - count Size
+
+trace-canvas-path(this, verbs, coords, count)
+
+━━━━━━━━━━━━━━━━━━━━
++ do trace-canvas-path
+    - canvas Canvas
+    - verbs Array'PathVerb
+    - coords Array'Coord
+    - count Size
+
+. coord Index
+. current-x Coord
+. current-y Coord
+. subpath-x Coord
+. subpath-y Coord
+. has-current = false
+for index in 0 .. < count
+    do match? verbs[index]
+        |= .path-verb-move
+            current-x = coords[coord]
+            current-y = coords[coord + 1]
+            coord += 2
+            subpath-x = current-x
+            subpath-y = current-y
+            has-current = true
+            canvas.move(current-x, current-y)
+        |= .path-verb-line
+            current-x = coords[coord]
+            current-y = coords[coord + 1]
+            coord += 2
+            canvas.line(current-x, current-y)
+        |= .path-verb-cubic
+            current-x = coords[coord + 4]
+            current-y = coords[coord + 5]
+            canvas.curve
+                - coords[coord]
+                - coords[coord + 1]
+                - coords[coord + 2]
+                - coords[coord + 3]
+                - current-x
+                - current-y
+            coord += 6
+        |= .path-verb-close
+            if has-current && (current-x != subpath-x || current-y != subpath-y)
+                canvas.line(subpath-x, subpath-y)
+                current-x = subpath-x
+                current-y = subpath-y
+            canvas.enclose()
+
+━━━━━━━━━━━━━━━━━━━━
++ CountingCanvas is Canvas
+
++ command-count Size = 0
++ state-command-count Size = 0
++ primitive-command-count Size = 0
++ path-command-count Size = 0
++ path-count Size = 0
++ path-segment-count Size = 0
++ push-count Size = 0
++ pop-count Size = 0
++ color-change-count Size = 0
++ cap-change-count Size = 0
++ join-change-count Size = 0
++ translate-count Size = 0
++ transform-count Size = 0
++ erase-count Size = 0
++ gradient-count Size = 0
++ shader-count Size = 0
++ rect-count Size = 0
++ square-count Size = 0
++ oval-count Size = 0
++ circle-count Size = 0
++ immediate-line-count Size = 0
++ immediate-curve-count Size = 0
++ begin-count Size = 0
++ move-count Size = 0
++ path-line-count Size = 0
++ path-curve-count Size = 0
++ enclose-count Size = 0
++ checksum Size = 0
+
+_ current-path-segments Size = 0
+
+────────────────────
++ This
+    - width I32
+    - height I32
+
+state = create-state()
+tally(1, width, height)
+
+╌╌╌╌╌╌╌╌╌╌ is Canvas ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-color = color RGBA?
+
+//graphics.canvas.state ++
+//graphics.canvas.color-changes ++
+color-change-count += 1
+state-command-count += 1
+tally-color(4, color)
+state?.set-fill-color(color)
+
+────────────────────
++ do stroke-color = color RGBA?
+
+//graphics.canvas.state ++
+//graphics.canvas.color-changes ++
+color-change-count += 1
+state-command-count += 1
+tally-color(5, color)
+state?.set-stroke-color(color)
+
+────────────────────
++ do stroke-width = width Length
+
+//graphics.canvas.state ++
+//graphics.canvas.color-changes ++
+color-change-count += 1
+state-command-count += 1
+tally(6, width)
+state?.set-stroke-width(width)
+
+────────────────────
++ do stroke-cap = cap LineCap
+
+//graphics.canvas.state ++
+cap-change-count += 1
+state-command-count += 1
+tally(21, line-cap-key(cap))
+state?.set-stroke-cap(cap)
+
+────────────────────
++ do stroke-join = join LineJoin
+
+//graphics.canvas.state ++
+join-change-count += 1
+state-command-count += 1
+tally(22, line-join-key(join))
+state?.set-stroke-join(join)
+
+────────────────────
++ do stroke-dash = length Length
+
+//graphics.canvas.state ++
+state-command-count += 1
+tally(25, length)
+state?.set-stroke-dash(length)
+
+────────────────────
++ do push
+
+//graphics.canvas.state ++
+push-count += 1
+state-command-count += 1
+tally(2)
+super.push()
+
+────────────────────
++ do pop
+
+//graphics.canvas.state ++
+pop-count += 1
+state-command-count += 1
+tally(3)
+super.pop()
+
+────────────────────
++ do erase
+    - color RGBA?
+
+//graphics.canvas.primitives ++
+erase-count += 1
+primitive-command-count += 1
+tally-color(7, color)
+
+────────────────────
++ do fill-gradient
+    - rect Rect
+    - gradient Gradient
+
+gradient.validate()
+//graphics.canvas.primitives ++
+gradient-count += 1
+primitive-command-count += 1
+do match gradient
+    | linear LinearGradient
+        tally(24, rect.x, rect.y, rect.width, rect.height, linear.start.x, linear.start.y)
+        checksum += coordinate-key(linear.end.x) * 17 + coordinate-key(linear.end.y) * 19
+    | radial RadialGradient
+        . start = radial.start-center
+        . end = radial.end-center
+        tally(25, rect.x, rect.y, rect.width, rect.height, start.x, start.y)
+        checksum += coordinate-key(end.x) * 17 + coordinate-key(end.y) * 19
+        checksum += coordinate-key(radial.start-radius) * 47
+        checksum += coordinate-key(radial.end-radius) * 53
+    | conic ConicGradient
+        tally(26, rect.x, rect.y, rect.width, rect.height, conic.center.x, conic.center.y)
+        checksum += coordinate-key(conic.angle) * 17
+. stops = gradient.stops
+for index in 0 .. < stops.length
+    . stop = stops[index]
+    . order = index + 1
+    checksum += order * 23 + coordinate-key(stop.offset) * 29
+    checksum += coordinate-key(stop.color.red) * 31 + coordinate-key(stop.color.green) * 37
+    checksum += coordinate-key(stop.color.blue) * 41 + coordinate-key(stop.color.alpha) * 43
+
+────────────────────
++ do fill-shader
+    - rect Rect
+    - shader Shader
+    - args [F64] = List'F64()
+
+//graphics.canvas.primitives ++
+shader-count += 1
+primitive-command-count += 1
+tally(27, rect.x, rect.y, rect.width, rect.height, shader.id, args.length as Coord)
+for index in 0 .. < args.length
+    checksum += (index + 1) * 59 + coordinate-key(args[index]) * 61
+
+────────────────────
++ do begin-filter
+    - rect Rect
+    - filter ShaderFilter
+
+//graphics.canvas.state ++
+state-command-count += 1
+tally(28, rect.x, rect.y, rect.width, rect.height, filter.shader.id, filter.args.length as Coord)
+for index in 0 .. < filter.args.length
+    checksum += (index + 1) * 67 + coordinate-key(filter.args[index]) * 71
+
+────────────────────
++ do end-filter
+
+//graphics.canvas.state ++
+state-command-count += 1
+tally(29)
+
+────────────────────
++ do rect
+    - rect Rect
+
+//graphics.canvas.primitives ++
+rect-count += 1
+primitive-command-count += 1
+tally(8, rect.x, rect.y, rect.width, rect.height)
+
+────────────────────
++ do square
+    - x Coord
+    - y Coord
+    - width Length
+
+//graphics.canvas.primitives ++
+square-count += 1
+primitive-command-count += 1
+tally(9, x, y, width)
+
+────────────────────
++ do oval
+    - rect Rect
+
+//graphics.canvas.primitives ++
+oval-count += 1
+primitive-command-count += 1
+tally(10, rect.x, rect.y, rect.width, rect.height)
+
+────────────────────
++ do circle
+    - cx Coord
+    - cy Coord
+    - radius Length
+
+//graphics.canvas.primitives ++
+circle-count += 1
+primitive-command-count += 1
+tally(11, cx, cy, radius)
+
+────────────────────
++ do move
+    - x Coord
+    - y Coord
+
+//graphics.canvas.path.commands ++
+move-count += 1
+path-command-count += 1
+tally(16, x, y)
+
+────────────────────
++ do line
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+
+//graphics.canvas.primitives ++
+immediate-line-count += 1
+primitive-command-count += 1
+tally(12, x1, y1, x2, y2)
+
+────────────────────
++ do line
+    - x Coord
+    - y Coord
+
+//graphics.canvas.path.commands ++
+//graphics.canvas.path.segments ++
+path-line-count += 1
+path-command-count += 1
+path-segment-count += 1
+current-path-segments += 1
+tally(17, x, y)
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+    - x4 Coord
+    - y4 Coord
+
+//graphics.canvas.primitives ++
+immediate-curve-count += 1
+primitive-command-count += 1
+tally(13, x1 + x2, y1 + y2, x3 + x4, y3 + y4)
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+
+//graphics.canvas.path.commands ++
+//graphics.canvas.path.segments ++
+path-curve-count += 1
+path-command-count += 1
+path-segment-count += 1
+current-path-segments += 1
+tally(18, x1 + x2, y1 + y2, x3, y3)
+
+────────────────────
++ do translate
+    - x Coord
+    - y Coord
+
+//graphics.canvas.state ++
+//graphics.canvas.translates ++
+translate-count += 1
+state-command-count += 1
+tally(14, x, y)
+state?.concatenate-transform(matrix-from-translation(Point(x, y)))
+
+────────────────────
++ do transform
+    - matrix Matrix
+
+//graphics.canvas.state ++
+transform-count += 1
+state-command-count += 1
+tally(23, matrix.a, matrix.c, matrix.b, matrix.d, matrix.tx, matrix.ty)
+state?.concatenate-transform(matrix)
+
+────────────────────
++ do begin
+
+//+graphics.canvas.path
+//graphics.canvas.path.commands ++
+begin-count += 1
+path-command-count += 1
+current-path-segments = 0
+tally(15)
+
+────────────────────
++ do enclose
+
+//graphics.canvas.path.commands ++
+enclose-count += 1
+path-command-count += 1
+tally(19)
+
+────────────────────
++ do end
+    - closed Bool = false
+    - fill-rule FillRule = FillRule.nonzero
+
+if closed
+    enclose()
+
+path-count += 1
+path-command-count += 1
+//graphics.canvas.path.commands ++
+tally(20, current-path-segments as Coord, fill-rule-key(fill-rule))
+//graphics.canvas.paths ++
+//-graphics.canvas.path
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do tally
+    - code Size
+    - a Coord = 0
+    - b Coord = 0
+    - c Coord = 0
+    - d Coord = 0
+    - e Coord = 0
+    - f Coord = 0
+
+command-count += 1
+//graphics.canvas.commands ++
+checksum += command-count * 131 + code * 17
+checksum += coordinate-key(a) + coordinate-key(b) * 3 + coordinate-key(c) * 5
+checksum += coordinate-key(d) * 7 + coordinate-key(e) * 11 + coordinate-key(f) * 13
+
+────────────────────
+_ do tally-color
+    - code Size
+    - color RGBA?
+
+if color
+    tally(code, color.red, color.green, color.blue, color.alpha)
+else
+    tally(code)
+
+────────────────────
+_ coordinate-key Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003
+
+━━━━━━━━━━━━━━━━━━━━
++ PNGCompression is Union
+
+| fast
+| smallest
+
+━━━━━━━━━━━━━━━━━━━━
+_ RasterSavedState is Tuple
+
++ fill RGBA?
++ stroke RGBA?
++ stroke-width Length
++ stroke-cap LineCap
++ stroke-join LineJoin
++ stroke-dash Length
++ text-color RGBA
++ font Font
++ transform Matrix
++ native-fill RGBA
++ native-stroke RGBA
++ native-stroke-width Length
++ native-stroke-cap LineCap
++ native-stroke-join LineJoin
++ native-stroke-dash Length
++ native-known U8
++ blend-mode BlendMode
++ fill-paint Paint?
++ stroke-brush Brush?
++ text-fill ShaderFill?
++ shape-fill ShaderFill?
+
+━━━━━━━━━━━━━━━━━━━━
++ RasterCanvas is Canvas
+    is Closable
+
+_ graphics Pointer
+_ is-closed = false
+_ current-fill RGBA?
+_ current-stroke RGBA?
+_ current-stroke-width Length
+_ current-stroke-cap = LineCap.butt
+_ current-stroke-join = LineJoin.miter
+_ current-stroke-dash Length
+_ current-text-color = default-text-color
+_ current-font = system-font()
+_ current-transform = Matrix()
+_ native-fill RGBA
+_ native-stroke RGBA
+_ native-stroke-width Length
+_ native-stroke-cap = LineCap.butt
+_ native-stroke-join = LineJoin.miter
+_ native-stroke-dash Length
+_ native-known U8
+_ current-blend-mode = BlendMode.normal
+_ current-fill-paint Paint?
+_ current-stroke-brush Brush?
+_ current-text-fill ShaderFill?
+_ current-shape-fill ShaderFill?
+_ saved-states [RasterSavedState]
+_ group-targets [Pointer]
+_ group-kinds [U8]
+_ group-opacities [Ratio]
+_ group-filters [ShaderFilter]
+
+────────────────────
++ This
+    - width I32
+    - height I32
+    - scale F64 = 1
+    - clear-color RGBA? = null
+    - output-color-space Pointer? = null
+    - alpha-only Bool = false
+
+//gui.canvas.surface-creates ++
+if alpha-only
+    graphics = C:yumiGraphicsCanvasCreateAlphaOnly(width, height, scale)
+else if output-color-space
+    graphics = C:yumiGraphicsCanvasCreateScaledWithColorSpace
+        - width
+        - height
+        - scale
+        - output-color-space
+else
+    graphics = C:yumiGraphicsCanvasCreateScaled(width, height, scale)
+if clear-color
+    . color = clear-color
+    C:yumiGraphicsClear(graphics, color.red, color.green, color.blue, color.alpha)
+
+────────────────────
++ This
+    - extent Dimensions
+    - scale F64
+    - clear-color RGBA? = null
+    - output-color-space Pointer? = null
+
+//gui.canvas.surface-creates ++
+if output-color-space
+    graphics = C:yumiGraphicsCanvasCreateScaledWithColorSpace
+        - extent.width
+        - extent.height
+        - scale
+        - output-color-space
+else
+    graphics = C:yumiGraphicsCanvasCreateScaled(extent.width, extent.height, scale)
+if clear-color
+    . color = clear-color
+    C:yumiGraphicsClear(graphics, color.red, color.green, color.blue, color.alpha)
+
+────────────────────
++ This
+    - width I32
+    - height I32
+    - scale F64
+    - color-space ColorSpace
+    - pixel-format = PixelFormat.rgba8
+
+//gui.canvas.surface-creates ++
+graphics = C:yumiGraphicsCanvasCreateFormatted
+    - width
+    - height
+    - scale
+    - color-space as I32
+    - pixel-format as I32
+
+────────────────────
++ This
+    - native Pointer
+
+graphics = native
+
+────────────────────
++ get fill-color
+
+current-fill
+
+────────────────────
++ get stroke-color
+
+current-stroke
+
+────────────────────
++ get stroke-width
+
+current-stroke-width
+
+────────────────────
++ get stroke-cap
+
+current-stroke-cap
+
+────────────────────
++ get stroke-join
+
+current-stroke-join
+
+────────────────────
++ get stroke-dash
+
+current-stroke-dash
+
+────────────────────
++ get font
+
+current-font
+
+────────────────────
++ get text-color
+
+current-text-color
+
+────────────────────
++ get text-fill
+
+current-text-fill
+
+────────────────────
++ get shape-fill
+
+current-shape-fill
+
+────────────────────
++ get blend-mode
+
+current-blend-mode
+
+────────────────────
++ get fill-paint
+
+current-fill-paint
+
+────────────────────
++ get stroke-brush
+
+current-stroke-brush
+
+────────────────────
++ do fill-paint = paint Paint?
+
+current-fill-paint = paint
+
+────────────────────
++ do stroke-brush = brush Brush?
+
+current-stroke-brush = brush
+
+────────────────────
++ get current-matrix
+
+current-transform
+
+────────────────────
++ do fill-color = color RGBA?
+
+current-fill = color
+=? if !color
+. value = color
+=? if (native-known /and/ native-fill-known) != 0 && native-fill == value
+native-fill = value
+native-known = native-known /or/ native-fill-known
+C:yumiGraphicsSetFillColor(graphics, value.red, value.green, value.blue, value.alpha)
+
+────────────────────
++ do stroke-color = color RGBA?
+
+current-stroke = color
+=? if !color
+. value = color
+=? if (native-known /and/ native-stroke-known) != 0 && native-stroke == value
+native-stroke = value
+native-known = native-known /or/ native-stroke-known
+C:yumiGraphicsSetStrokeColor(graphics, value.red, value.green, value.blue, value.alpha)
+
+────────────────────
++ do stroke-width = width Length
+
+current-stroke-width = width
+=? if (native-known /and/ native-width-known) != 0 && native-stroke-width == width
+native-stroke-width = width
+native-known = native-known /or/ native-width-known
+C:yumiGraphicsSetStrokeWidth(graphics, width)
+
+────────────────────
++ do stroke-cap = cap LineCap
+
+current-stroke-cap = cap
+=? if (native-known /and/ native-cap-known) != 0 && native-stroke-cap == cap
+native-stroke-cap = cap
+native-known = native-known /or/ native-cap-known
+C:yumiGraphicsSetStrokeCap(graphics, line-cap-code(cap))
+
+────────────────────
++ do stroke-join = join LineJoin
+
+current-stroke-join = join
+=? if (native-known /and/ native-join-known) != 0 && native-stroke-join == join
+native-stroke-join = join
+native-known = native-known /or/ native-join-known
+C:yumiGraphicsSetStrokeJoin(graphics, line-join-code(join))
+
+────────────────────
++ do stroke-dash = length Length
+
+current-stroke-dash = length
+=? if (native-known /and/ native-dash-known) != 0 && native-stroke-dash == length
+native-stroke-dash = length
+native-known = native-known /or/ native-dash-known
+C:yumiGraphicsSetStrokeDash(graphics, length)
+
+────────────────────
++ do font = font Font
+
+current-font = font
+
+────────────────────
++ do text-color = color RGBA
+
+current-text-color = color
+
+────────────────────
++ do text-fill = fill ShaderFill?
+
+current-text-fill = fill
+
+────────────────────
++ do shape-fill = fill ShaderFill?
+
+current-shape-fill = fill
+
+────────────────────
++ do blend-mode = mode BlendMode
+
+current-blend-mode = mode
+C:yumiGraphicsSetBlendMode(graphics, mode)
+
+╌╌╌╌╌╌╌╌╌╌ is Canvas ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+if !is-closed
+    saved-states.clear()
+    while group-targets.length > 0
+        . target = group-targets.pop()
+        . kind = group-kinds.pop()
+        . opacity = group-opacities.pop()
+        do match kind
+            |= canvas-group-blur
+                C:yumiGraphicsEndBlur(target, graphics, current-blend-mode)
+            |= canvas-group-filter
+                . filter = group-filters.pop()
+                . natives = filter.image-natives
+                . scales = filter.image-scales
+                C:yumiGraphicsEndFilter
+                    - target
+                    - graphics
+                    - filter.shader.id
+                    - filter.args.buffer-pointer
+                    - filter.args.length
+                    - natives.buffer-pointer
+                    - scales.buffer-pointer
+                    - natives.length
+                    - filter.time
+                    - 1
+                    - current-blend-mode
+            |= canvas-group-opacity
+                C:yumiGraphicsEndOpacity(target, graphics, opacity, current-blend-mode)
+            ??
+                C:yumiGraphicsEndMask(target, graphics)
+        graphics = target
+    C:yumiGraphicsCanvasRelease(graphics)
+    is-closed = true
+
+────────────────────
++ do write
+    - path Path
+    - compression = PNGCompression.fast
+
+. did-write = C:yumiGraphicsCanvasWritePNG(graphics, path as String, compression == PNGCompression.smallest)
+
+?! IOError("Unable to write image $path")
+    if !did-write
+
+────────────────────
++ do encode-png Byte[] ?! IOError
+    - compression = PNGCompression.fast
+
+. encoded = C:yumiGraphicsCanvasEncodePNG(graphics, compression == PNGCompression.smallest)
+?! IOError("Unable to encode image")
+    if encoded == Pointer()
+. bytes = Byte[C:yumiGraphicsEncodedLength(encoded) as Size]
+C:yumiGraphicsEncodedCopy(encoded, bytes.data, bytes.size)
+C:yumiGraphicsEncodedRelease(encoded)
+= bytes
+
+────────────────────
++ do encode-jpeg Byte[] ?! IOError
+    - quality F64 = 0.85
+
+. encoded = C:yumiGraphicsCanvasEncodeJPEG(graphics, quality)
+?! IOError("Unable to encode image")
+    if encoded == Pointer()
+. bytes = Byte[C:yumiGraphicsEncodedLength(encoded) as Size]
+C:yumiGraphicsEncodedCopy(encoded, bytes.data, bytes.size)
+C:yumiGraphicsEncodedRelease(encoded)
+= bytes
+
+────────────────────
++ get content-serial U64
+
+C:yumiGraphicsCanvasContentSerial(graphics)
+
+────────────────────
++ get identity U64
+
+C:yumiGraphicsCanvasIdentity(graphics)
+
+────────────────────
++ get is-gpu-resident Bool
+
+C:yumiGraphicsCanvasIsGPUResident(graphics)
+
+────────────────────
++ do surface-changed
+
+C:yumiGraphicsCanvasSurfaceChanged(graphics)
+
+────────────────────
++ get pixel-width I32
+
+C:yumiGraphicsCanvasGetPixelWidth(graphics)
+
+────────────────────
++ get pixel-height I32
+
+C:yumiGraphicsCanvasGetPixelHeight(graphics)
+
+────────────────────
++ get color-space ColorSpace
+
+C:yumiGraphicsCanvasGetColorSpaceKind(graphics) as ColorSpace
+
+────────────────────
++ get pixel-format PixelFormat
+
+C:yumiGraphicsCanvasGetPixelFormat(graphics) as PixelFormat
+
+────────────────────
++ get bytes-per-pixel I32
+
+C:yumiGraphicsCanvasGetBytesPerPixel(graphics)
+
+────────────────────
++ get scale
+
+C:yumiGraphicsCanvasGetScale(graphics)
+
+────────────────────
++ nontransparent-pixel-count U64
+    - rect Rect
+
+C:yumiGraphicsCanvasCountNonTransparentPixels
+    - graphics
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+
+────────────────────
++ do opaque-pixel-bounds Rect?
+    - minimum-alpha I32 = 0
+
+. box = [0.0, 0.0, 0.0, 0.0]
+=? null if !C:yumiGraphicsCanvasOpaqueBounds(graphics, minimum-alpha, box.buffer-pointer)
+= Rect(box[0], box[1], box[2], box[3])
+
+────────────────────
++ pixel-color RGBA
+    - point Point
+
+|? pixel.alpha <= 0%%
+    transparent
+??
+    RGBA
+        - pixel.red / pixel.alpha
+        - pixel.green / pixel.alpha
+        - pixel.blue / pixel.alpha
+        - pixel.alpha
+
+.. pixel = rgba8(C:yumiGraphicsCanvasGetPixel(graphics, point.x, point.y))
+
+────────────────────
++ do premultiplied-pixels Byte[]
+
+. bytes = Byte[(pixel-width as Size) * (pixel-height as Size) * 4]
+C:yumiGraphicsCanvasCopyPixels(graphics, bytes.data, bytes.size)
+= bytes
+
+────────────────────
++ do write-premultiplied-pixels Bool
+    - bytes Byte[]
+
+= C:yumiGraphicsCanvasWritePixels(graphics, bytes.data, bytes.size)
+
+────────────────────
++ pixel-difference-count U64
+    - other RasterCanvas
+
+C:yumiGraphicsCanvasCountDifferentPixels(graphics, other.native)
+
+────────────────────
++ do push
+
+//gui.canvas.state-pushes ++
+saved-states += RasterSavedState
+    - current-fill
+    - current-stroke
+    - current-stroke-width
+    - current-stroke-cap
+    - current-stroke-join
+    - current-stroke-dash
+    - current-text-color
+    - current-font
+    - current-transform
+    - native-fill
+    - native-stroke
+    - native-stroke-width
+    - native-stroke-cap
+    - native-stroke-join
+    - native-stroke-dash
+    - native-known
+    - current-blend-mode
+    - current-fill-paint
+    - current-stroke-brush
+    - current-text-fill
+    - current-shape-fill
+C:yumiGraphicsSave(graphics)
+
+────────────────────
++ do pop
+
+if saved-states.length > 0
+    . saved = saved-states.pop()
+    current-fill = saved.fill
+    current-stroke = saved.stroke
+    current-stroke-width = saved.stroke-width
+    current-stroke-cap = saved.stroke-cap
+    current-stroke-join = saved.stroke-join
+    current-stroke-dash = saved.stroke-dash
+    current-text-color = saved.text-color
+    current-font = saved.font
+    current-transform = saved.transform
+    native-fill = saved.native-fill
+    native-stroke = saved.native-stroke
+    native-stroke-width = saved.native-stroke-width
+    native-stroke-cap = saved.native-stroke-cap
+    native-stroke-join = saved.native-stroke-join
+    native-stroke-dash = saved.native-stroke-dash
+    native-known = saved.native-known
+    current-blend-mode = saved.blend-mode
+    current-fill-paint = saved.fill-paint
+    current-stroke-brush = saved.stroke-brush
+    current-text-fill = saved.text-fill
+    current-shape-fill = saved.shape-fill
+    C:yumiGraphicsRestore(graphics)
+else
+    reset-current-state()
+    C:yumiGraphicsRestore(graphics)
+    C:yumiGraphicsSave(graphics)
+
+────────────────────
+_ do reset-current-state
+
+current-fill = null
+current-stroke = null
+current-stroke-width = 0
+current-stroke-cap = LineCap.butt
+current-stroke-join = LineJoin.miter
+current-stroke-dash = 0
+current-text-color = default-text-color
+current-font = system-font()
+current-transform = Matrix()
+current-blend-mode = BlendMode.normal
+current-fill-paint = null
+current-stroke-brush = null
+current-text-fill = null
+current-shape-fill = null
+native-known = 0
+
+────────────────────
++ do erase
+    - color RGBA?
+
+. erase-color = color ?? transparent
+. red = erase-color.red
+. green = erase-color.green
+. blue = erase-color.blue
+. alpha = erase-color.alpha
+//+gui.canvas.erase
+C:yumiGraphicsClear(graphics, red, green, blue, alpha)
+//-gui.canvas.erase
+
+────────────────────
++ do fill-gradient
+    - rect Rect
+    - gradient Gradient
+
+gradient.validate()
+. stops = gradient.stops
+. components [F64]
+. locations [F64]
+for stop in stops
+    components += stop.color.red
+    components += stop.color.green
+    components += stop.color.blue
+    components += stop.color.alpha
+    locations += stop.offset
+. kind I32
+. geometry [F64]
+do match gradient
+    | linear LinearGradient
+        kind = 1
+        geometry = [linear.start.x, linear.start.y, 0, linear.end.x, linear.end.y, 0]
+    | radial RadialGradient
+        kind = 2
+        . start = radial.start-center
+        . end = radial.end-center
+        geometry = [start.x, start.y, radial.start-radius, end.x, end.y, radial.end-radius]
+    | conic ConicGradient
+        kind = 3
+        geometry = [conic.center.x, conic.center.y, conic.angle, 0, 0, 0]
+C:yumiGraphicsFillGradient
+    - graphics
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - kind
+    - geometry.buffer-pointer
+    - components.buffer-pointer
+    - locations.buffer-pointer
+    - stops.length
+
+────────────────────
++ do fill-shader
+    - rect Rect
+    - shader Shader
+    - args [F64] = List'F64()
+
+C:yumiGraphicsFillShader
+    - graphics
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - shader.id
+    - args.buffer-pointer
+    - args.length
+
+────────────────────
++ do rect
+    - rect Rect
+
+if current-shape-fill
+    begin()
+    rect-path(rect)
+    end(true)
+    =
+. has-fill = fill-color != null
+. has-stroke = stroke-color != null
+C:yumiGraphicsDrawRect(graphics, rect.x, rect.y, rect.width, rect.height, has-fill, has-stroke)
+
+────────────────────
++ do square
+    - x Coord
+    - y Coord
+    - width Length
+
+if current-shape-fill
+    rect(Rect(x, y, width, width))
+    =
+. has-fill = fill-color != null
+. has-stroke = stroke-color != null
+C:yumiGraphicsDrawRect(graphics, x, y, width, width, has-fill, has-stroke)
+
+────────────────────
++ do outline
+    - shape Outline
+
+if current-shape-fill
+    begin()
+    outline-path(shape)
+    end(true)
+    =
+. has-fill = fill-color != null
+. has-stroke = stroke-color != null
+=? if !has-fill && !has-stroke
+. b = shape.bounds
+C:yumiGraphicsDrawOutline
+    - graphics
+    - b.x
+    - b.y
+    - b.width
+    - b.height
+    - shape.radius
+    - outline-side-code(shape.arrow)
+    - shape.arrow?.offset ?? 0
+    - shape.arrow?.size ?? 0
+    - has-fill
+    - has-stroke
+
+────────────────────
++ do shadow
+    - shape Outline
+    - shadow Shadow
+
+. b = shape.bounds
+C:yumiGraphicsDrawOutlineShadow
+    - graphics
+    - b.x
+    - b.y
+    - b.width
+    - b.height
+    - shape.radius
+    - outline-side-code(shape.arrow)
+    - shape.arrow?.offset ?? 0
+    - shape.arrow?.size ?? 0
+    - shadow.color.red
+    - shadow.color.green
+    - shadow.color.blue
+    - shadow.color.alpha
+    - shadow.blur
+    - shadow.x
+    - shadow.y
+    - shadow.spread
+
+────────────────────
++ do clip-outline
+    - shape Outline
+
+. b = shape.bounds
+C:yumiGraphicsClipOutline
+    - graphics
+    - b.x
+    - b.y
+    - b.width
+    - b.height
+    - shape.radius
+    - outline-side-code(shape.arrow)
+    - shape.arrow?.offset ?? 0
+    - shape.arrow?.size ?? 0
+
+────────────────────
++ do shadow-path
+    - shadow Shadow
+
+C:yumiGraphicsDrawPathShadow
+    - graphics
+    - shadow.color.red
+    - shadow.color.green
+    - shadow.color.blue
+    - shadow.color.alpha
+    - shadow.blur
+    - shadow.x
+    - shadow.y
+
+────────────────────
++ do oval
+    - rect Rect
+
+if current-shape-fill
+    begin()
+    oval-path(rect)
+    end(true)
+    =
+. has-fill = fill-color != null
+. has-stroke = stroke-color != null
+C:yumiGraphicsDrawEllipse(graphics, rect.x, rect.y, rect.width, rect.height, has-fill, has-stroke)
+
+────────────────────
++ do circle
+    - cx Coord
+    - cy Coord
+    - radius Length
+
+. diameter = radius * 2
+. x = cx - radius
+. y = cy - radius
+if current-shape-fill
+    oval(Rect(x, y, diameter, diameter))
+    =
+. has-fill = fill-color != null
+. has-stroke = stroke-color != null
+C:yumiGraphicsDrawEllipse(graphics, x, y, diameter, diameter, has-fill, has-stroke)
+
+────────────────────
++ do draw-image
+    - image RasterCanvas
+    - rect Rect
+    - template-alpha Bool = false
+    - sampling = ImageSampling.smooth
+
+C:yumiGraphicsDrawImage
+    - graphics
+    - image.native
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - template-alpha
+    - sampling
+
+────────────────────
++ do fill-image
+    - image RasterCanvas
+    - rect Rect
+    - tile Rect
+    - sampling = ImageSampling.smooth
+
+C:yumiGraphicsFillImage
+    - graphics
+    - image.native
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - tile.x
+    - tile.y
+    - tile.width
+    - tile.height
+    - sampling
+
+────────────────────
++ do move
+    - x Coord
+    - y Coord
+
+C:yumiGraphicsMoveTo(graphics, x, y)
+
+────────────────────
++ do line
+    - x Coord
+    - y Coord
+
+C:yumiGraphicsLineTo(graphics, x, y)
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+
+C:yumiGraphicsCurveTo(graphics, x1, y1, x2, y2, x3, y3)
+
+────────────────────
++ do translate
+    - x Coord
+    - y Coord
+
+transform(matrix-from-translation(Point(x, y)))
+
+────────────────────
++ do transform
+    - matrix Matrix
+
+current-transform = current-transform.concatenate(matrix)
+C:yumiGraphicsTransform
+    - graphics
+    - matrix.a
+    - matrix.c
+    - matrix.b
+    - matrix.d
+    - matrix.tx
+    - matrix.ty
+
+────────────────────
++ do clip
+    - rect Rect
+
+C:yumiGraphicsClipRect(graphics, rect.x, rect.y, rect.width, rect.height)
+
+────────────────────
++ do clip-path
+    - fill-rule FillRule = FillRule.nonzero
+
+C:yumiGraphicsClipPath(graphics, fill-rule-code(fill-rule))
+
+────────────────────
++ do path-contains Bool
+    - point Point
+    - fill-rule FillRule = FillRule.nonzero
+
+. inside = C:yumiGraphicsPathContainsPoint(graphics, point.x, point.y, fill-rule-code(fill-rule))
+//-graphics.canvas.path
+= inside
+
+────────────────────
++ do clip-mask
+    - image RasterCanvas
+    - rect Rect
+
+C:yumiGraphicsClipMask(graphics, image.native, rect.x, rect.y, rect.width, rect.height)
+
+────────────────────
++ do begin-mask
+
+enter-group(canvas-group-mask, 1%%)
+graphics = C:yumiGraphicsBeginMask(graphics)
+apply-native-state()
+
+────────────────────
++ do end-mask
+
+=? if !is-in-group(canvas-group-mask)
+. mask = graphics
+leave-group()
+C:yumiGraphicsEndMask(graphics, mask)
+
+────────────────────
++ do begin-blur
+    - radius Length
+
+enter-group(canvas-group-blur, 1%%)
+graphics = C:yumiGraphicsBeginBlur(graphics, radius)
+apply-native-state()
+
+────────────────────
++ do end-blur
+
+=? if !is-in-group(canvas-group-blur)
+. layer = graphics
+leave-group()
+C:yumiGraphicsEndBlur(graphics, layer, current-blend-mode)
+
+────────────────────
++ do begin-filter
+    - rect Rect
+    - filter ShaderFilter
+
+enter-group(canvas-group-filter, 1%%)
+group-filters += filter
+graphics = C:yumiGraphicsBeginFilter(graphics, rect.x, rect.y, rect.width, rect.height)
+apply-native-state()
+
+────────────────────
++ do end-filter
+
+=? if !is-in-group(canvas-group-filter)
+. layer = graphics
+. filter = group-filters.pop()
+leave-group()
+. natives = filter.image-natives
+. scales = filter.image-scales
+C:yumiGraphicsEndFilter
+    - graphics
+    - layer
+    - filter.shader.id
+    - filter.args.buffer-pointer
+    - filter.args.length
+    - natives.buffer-pointer
+    - scales.buffer-pointer
+    - natives.length
+    - filter.time
+    - 1
+    - current-blend-mode
+
+────────────────────
++ do backdrop-blur
+    - shape Outline
+    - radius Length
+
+. b = shape.bounds
+=? if b.width <= 0 || b.height <= 0
+use saved-state
+clip-outline(shape)
+backdrop-blur-in-clip(b, radius)
+
+────────────────────
++ do backdrop-blur-in-clip
+    - bounds Rect
+    - radius Length
+
+C:yumiGraphicsBackdropBlur(graphics, bounds.x, bounds.y, bounds.width, bounds.height, radius)
+
+────────────────────
++ do backdrop-shader
+    - shape Outline
+    - backdrop ShaderFilter
+    - blur Length = 0
+
+. b = shape.bounds
+=? if b.width <= 0 || b.height <= 0
+use saved-state
+clip-outline(shape)
+backdrop-shader-in-clip(b, backdrop, blur)
+
+────────────────────
++ do backdrop-shader-in-clip
+    - bounds Rect
+    - backdrop ShaderFilter
+    - blur Length = 0
+
+C:yumiGraphicsBackdropShader
+    - graphics
+    - bounds.x
+    - bounds.y
+    - bounds.width
+    - bounds.height
+    - backdrop.shader.id
+    - backdrop.args.buffer-pointer
+    - backdrop.args.length
+    - backdrop.time
+    - blur
+
+────────────────────
+_ do enter-group
+    - kind U8
+    - opacity Ratio
+
+push()
+current-blend-mode = BlendMode.normal
+group-targets += graphics
+group-kinds += kind
+group-opacities += opacity
+
+────────────────────
+_ is-in-group
+    - kind U8
+
+group-kinds.length > 0 && group-kinds[group-kinds.length - 1] == kind
+
+────────────────────
+_ do leave-group
+
+graphics = group-targets.pop()
+group-kinds.pop()
+group-opacities.pop()
+pop()
+
+────────────────────
+_ do apply-native-state
+
+if (native-known /and/ native-fill-known) != 0
+    C:yumiGraphicsSetFillColor
+        - graphics
+        - native-fill.red
+        - native-fill.green
+        - native-fill.blue
+        - native-fill.alpha
+if (native-known /and/ native-stroke-known) != 0
+    C:yumiGraphicsSetStrokeColor
+        - graphics
+        - native-stroke.red
+        - native-stroke.green
+        - native-stroke.blue
+        - native-stroke.alpha
+if (native-known /and/ native-width-known) != 0
+    C:yumiGraphicsSetStrokeWidth(graphics, native-stroke-width)
+if (native-known /and/ native-cap-known) != 0
+    C:yumiGraphicsSetStrokeCap(graphics, line-cap-code(native-stroke-cap))
+if (native-known /and/ native-join-known) != 0
+    C:yumiGraphicsSetStrokeJoin(graphics, line-join-code(native-stroke-join))
+if (native-known /and/ native-dash-known) != 0
+    C:yumiGraphicsSetStrokeDash(graphics, native-stroke-dash)
+
+────────────────────
++ do begin-opacity
+    - opacity Ratio
+
+enter-group(canvas-group-opacity, opacity)
+graphics = C:yumiGraphicsBeginOpacity(graphics)
+apply-native-state()
+
+────────────────────
++ do end-opacity
+
+=? if !is-in-group(canvas-group-opacity)
+. layer = graphics
+. opacity = group-opacities[group-opacities.length - 1]
+leave-group()
+C:yumiGraphicsEndOpacity(graphics, layer, opacity, current-blend-mode)
+
+────────────────────
++ do draw-text
+    - layout TextLayout
+    - rect Rect
+    - alignment TextAlignment = TextAlignment.left
+
+=? if !layout.native
+
+. line-count = C:yumiGraphicsTextLayoutGetLineCount(layout.native)
+for index in 0 .. < line-count
+    . ignored = index
+    //graphics.text.lines-drawn ++
+. fill = current-text-fill
+if fill
+    C:yumiGraphicsDrawTextLayoutShader
+        - graphics
+        - layout.native!
+        - rect.x
+        - rect.y
+        - rect.width
+        - rect.height
+        - text-alignment-code(alignment)
+        - fill.shader.id
+        - fill.args.buffer-pointer
+        - fill.args.length
+        - fill.time
+    =
+C:yumiGraphicsDrawTextLayout
+    - graphics
+    - layout.native!
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - text-alignment-code(alignment)
+    - text-color.red
+    - text-color.green
+    - text-color.blue
+    - text-color.alpha
+
+────────────────────
++ do begin
+
+//+graphics.canvas.path
+C:yumiGraphicsBeginPath(graphics)
+
+────────────────────
++ do enclose
+
+C:yumiGraphicsClosePath(graphics)
+
+────────────────────
++ do trace-path
+    - verbs Array'PathVerb
+    - coords Array'Coord
+    - count Size
+
+trace-path-buffer(verbs.data, count, coords.data as CPointer'F64)
+
+────────────────────
++ do end
+    - closed Bool = false
+    - fill-rule FillRule = FillRule.nonzero
+
+if closed
+    enclose()
+
+. paint = current-fill-paint
+. brush = current-stroke-brush
+. fill = fill-color
+. stroke = stroke-color
+. brushed = brush != null && stroke != null
+. shading = current-shape-fill
+if shading
+    C:yumiGraphicsFillPathShader
+        - graphics
+        - shading.shader.id
+        - shading.args.buffer-pointer
+        - shading.args.length
+        - shading.time
+        - fill-rule-code(fill-rule)
+    if brushed
+        stroke-path-brush(brush!, stroke!, false, fill-rule)
+    else
+        C:yumiGraphicsDrawPath(graphics, false, stroke != null, fill-rule-code(fill-rule))
+else if paint && fill
+    . color = fill
+    C:yumiGraphicsFillPathPaint
+        - graphics
+        - paint.shader.id
+        - paint.args.buffer-pointer
+        - paint.args.length
+        - color.red
+        - color.green
+        - color.blue
+        - color.alpha
+        - fill-rule-code(fill-rule)
+    if brushed
+        stroke-path-brush(brush!, stroke!, false, fill-rule)
+    else
+        C:yumiGraphicsDrawPath(graphics, false, stroke != null, fill-rule-code(fill-rule))
+else if brushed
+    stroke-path-brush(brush!, stroke!, fill != null, fill-rule)
+else
+    C:yumiGraphicsDrawPath(graphics, fill != null, stroke != null, fill-rule-code(fill-rule))
+//graphics.canvas.paths ++
+//-graphics.canvas.path
+
+────────────────────
+_ do stroke-path-brush
+    - brush Brush
+    - color RGBA
+    - fill Bool
+    - fill-rule FillRule
+
+. values [F64]
+append-brush-arguments(brush, values)
+C:yumiGraphicsStrokePathBrush
+    - graphics
+    - brush.shader.id
+    - values.buffer-pointer
+    - values.length
+    - color.red
+    - color.green
+    - color.blue
+    - color.alpha
+    - stroke-width
+    - fill
+    - fill-rule-code(fill-rule)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get native
+
+graphics
+
+────────────────────
++ do trace-path-buffer
+    - verbs CPointer'U8
+    - count Size
+    - coords CPointer'F64
+
+C:yumiGraphicsAppendPath(graphics, verbs, count, coords)
+
+
+━━━━━━━━━━━━━━━━━━━━
++ SVGCanvas is Canvas
+
+_ strings [String]
+_ path-points [String]
+_ gradient-count Size = 0
+
+────────────────────
++ This
+    - width I32
+    - height I32
+
+state = create-state()
+
+╌╌╌╌╌╌╌╌╌╌ is Canvas ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+────────────────────
++ do write
+    - path Path
+
+` . head = "<svg width=\"8.5in\" height=\"11in\" xmlns=\"http://www.w3.org/2000/svg\">"
+. head = "<svg width=\"$width\" height=\"$height\" viewBox=\"0 0 $width $height\""
+head += " xmlns=\"http://www.w3.org/2000/svg\">"
+. tail = "</svg>"
+
+. content = "\n".join(strings)
+. buf = head + content + tail
+
+. f = File(path, FileFlags.create-mode + FileFlags.write-mode + FileFlags.truncate-mode)
+f.write(buf)
+f.close()
+
+────────────────────
++ do erase
+    - color RGBA?
+
+strings = List'String()
+gradient-count = 0
+
+────────────────────
++ do begin-opacity
+    - opacity Ratio
+
+. value = opacity as Percent as UnitString
+strings += "<g opacity=\"$value\">"
+
+────────────────────
++ do end-opacity
+
+strings += "</g>"
+
+────────────────────
++ do fill-gradient
+    - rect Rect
+    - gradient Gradient
+
+gradient.validate()
+gradient-count += 1
+. id = "gradient-$gradient-count"
+. element String
+. definition String
+do match gradient
+    | linear LinearGradient
+        element = "linearGradient"
+        definition = "<defs><linearGradient id=\"$id\" gradientUnits=\"userSpaceOnUse\""
+        definition += " x1=\"${linear.start.x}\" y1=\"${linear.start.y}\""
+        definition += " x2=\"${linear.end.x}\" y2=\"${linear.end.y}\">"
+    | radial RadialGradient
+        element = "radialGradient"
+        definition = "<defs><radialGradient id=\"$id\" gradientUnits=\"userSpaceOnUse\""
+        definition += " fx=\"${radial.start-center.x}\" fy=\"${radial.start-center.y}\""
+        definition += " fr=\"${radial.start-radius}\""
+        definition += " cx=\"${radial.end-center.x}\" cy=\"${radial.end-center.y}\""
+        definition += " r=\"${radial.end-radius}\">"
+    | ConicGradient
+        =
+for stop in gradient.stops
+    . offset = stop.offset as Percent as UnitString
+    . opacity = stop.color.alpha as Percent as UnitString
+    definition += "<stop offset=\"$offset\" stop-color=\"${stop.color as Hex}\""
+    definition += " stop-opacity=\"$opacity\"/>"
+definition += "</$element></defs>"
+strings += definition
+. geometry = " x=\"${rect.x}\" y=\"${rect.y}\""
+geometry += " width=\"${rect.width}\" height=\"${rect.height}\""
+. transform-style = svg-transform-style(state?.current-transform ?? Matrix())
+strings += "<rect$geometry fill=\"url(#$id)\" stroke=\"none\"$transform-style/>"
+
+────────────────────
++ do rect
+    - rect Rect
+
+if fill-color || stroke-color
+    . geometry = " x=\"${rect.x}\" y=\"${rect.y}\""
+    geometry += " width=\"${rect.width}\" height=\"${rect.height}\""
+    strings += "<rect$geometry${svg-style(FillRule.nonzero)}/>"
+
+────────────────────
++ do square
+    - x Coord
+    - y Coord
+    - width Length
+
+rect(Rect(x, y, width, width))
+
+────────────────────
++ do oval
+    - rect Rect
+
+if fill-color || stroke-color
+    . cx = rect.x + rect.width / 2
+    . cy = rect.y + rect.height / 2
+    . geometry = " cx=\"$cx\" cy=\"$cy\""
+    geometry += " rx=\"${rect.width / 2}\" ry=\"${rect.height / 2}\""
+    strings += "<ellipse$geometry${svg-style(FillRule.nonzero)}/>"
+
+────────────────────
++ do circle
+    - cx Coord
+    - cy Coord
+    - radius Length
+
+if fill-color || stroke-color
+    strings += "<circle cx=\"$cx\" cy=\"$cy\" r=\"$radius\"${svg-style(FillRule.nonzero)}/>"
+
+────────────────────
++ do move
+    - x Coord
+    - y Coord
+
+path-points += "M $x $y"
+
+────────────────────
++ do line
+    - x Coord
+    - y Coord
+
+path-points += "L $x $y"
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+
+path-points += "C $x1,$y1 $x2,$y2 $x3,$y3"
+
+────────────────────
++ do translate
+    - x Coord
+    - y Coord
+
+transform(matrix-from-translation(Point(x, y)))
+
+────────────────────
++ do begin
+
+//+graphics.canvas.path
+path-points = List'String()
+
+────────────────────
++ do enclose
+
+path-points += "Z"
+
+────────────────────
++ do end
+    - closed Bool = false
+    - fill-rule FillRule = FillRule.nonzero
+
+. points = " ".join(path-points)
+. style = if stroke-color || fill-color then svg-style(fill-rule) else ""
+
+if fill-color || stroke-color
+    strings += "<path d=\"$points\"$style/>"
+    //graphics.canvas.paths ++
+//-graphics.canvas.path
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ color-to-svg
+    - color RGBA?
+
+|? color
+    color as Hex
+??
+    "none"
+
+────────────────────
+_ ¶ svg-style
+    - fill-rule FillRule
+
+ fill="$fill"$fill-opacity stroke="$stroke"$stroke-opacity stroke-width="$stroke-width"$stroke-style$fill-rule-style$transform-style
+
+════════════════════
+.. fill = color-to-svg(state?.fill-color)
+.. fill-opacity = svg-opacity-style("fill", state?.fill-color)
+.. stroke-opacity = svg-opacity-style("stroke", state?.stroke-color)
+.. stroke = color-to-svg(state?.stroke-color)
+.. stroke-style = if stroke-color then stroke-attributes else ""
+.. stroke-attributes = " stroke-linecap=\"$stroke-cap\" stroke-linejoin=\"$stroke-join\"$dash-style"
+.. dash-style = if stroke-dash > 0 then " stroke-dasharray=\"$stroke-dash\"" else ""
+.. fill-rule-style = if fill-rule == FillRule.even-odd then " fill-rule=\"evenodd\"" else ""
+.. transform-style = svg-transform-style(state?.current-transform ?? Matrix())
+
+────────────────────
+_ svg-opacity-style String
+    - attribute String
+    - color RGBA?
+
+|? alpha < 1
+    " ${attribute}-opacity=\"$alpha\""
+??
+    ""
+
+.. alpha = color?.alpha ?? 1
+
+────────────────────
+_ svg-transform-style String
+    - matrix Matrix
+
+|? matrix.is-identity
+    ""
+??
+    " transform=\"matrix(${matrix.a} ${matrix.c} ${matrix.b} ${matrix.d} ${matrix.tx} ${matrix.ty})\""
+
+━━━━━━━━━━━━━━━━━━━━
+_ CanvasState
+
++ text-color = default-text-color
++ font = system-font()
++ fill-color RGBA?
++ stroke-color RGBA?
++ stroke-width Length
++ stroke-cap LineCap = LineCap.butt
++ stroke-join LineJoin = LineJoin.miter
++ stroke-dash Length
++ current-transform Matrix = Matrix()
++ blend-mode = BlendMode.normal
++ fill-paint Paint?
++ stroke-brush Brush?
++ text-fill ShaderFill?
++ shape-fill ShaderFill?
++ previous CanvasState?
+
+────────────────────
++ do copy-from
+    - source CanvasState
+
+text-color = source.text-color
+font = source.font
+fill-color = source.fill-color
+stroke-color = source.stroke-color
+stroke-width = source.stroke-width
+stroke-cap = source.stroke-cap
+stroke-join = source.stroke-join
+stroke-dash = source.stroke-dash
+current-transform = source.current-transform
+blend-mode = source.blend-mode
+fill-paint = source.fill-paint
+stroke-brush = source.stroke-brush
+text-fill = source.text-fill
+shape-fill = source.shape-fill
+
+────────────────────
++ do set-fill-color
+    - color RGBA?
+
+fill-color = color
+
+────────────────────
++ do set-fill-paint
+    - paint Paint?
+
+fill-paint = paint
+
+────────────────────
++ do set-stroke-brush
+    - brush Brush?
+
+stroke-brush = brush
+
+────────────────────
++ do set-text-fill
+    - fill ShaderFill?
+
+text-fill = fill
+
+────────────────────
++ do set-shape-fill
+    - fill ShaderFill?
+
+shape-fill = fill
+
+────────────────────
++ do set-stroke-color
+    - color RGBA?
+
+stroke-color = color
+
+────────────────────
++ do set-stroke-width
+    - width Length
+
+stroke-width = width
+
+────────────────────
++ do set-stroke-cap
+    - cap LineCap
+
+stroke-cap = cap
+
+────────────────────
++ do set-stroke-join
+    - join LineJoin
+
+stroke-join = join
+
+────────────────────
++ do set-stroke-dash
+    - length Length
+
+stroke-dash = length
+
+────────────────────
++ do concatenate-transform
+    - matrix Matrix
+
+current-transform = current-transform.concatenate(matrix)
+
+────────────────────
++ do set-font
+    - value Font
+
+font = value
+
+────────────────────
++ do set-text-color
+    - color RGBA
+
+text-color = color
+
+────────────────────
++ do set-blend-mode
+    - mode BlendMode
+
+blend-mode = mode
+
+━━━━━━━━━━━━━━━━━━━━
+_ line-cap-key Coord
+    - cap LineCap
+
+line-cap-code(cap)
+
+━━━━━━━━━━━━━━━━━━━━
+_ line-join-key Coord
+    - join LineJoin
+
+line-join-code(join)
+
+━━━━━━━━━━━━━━━━━━━━
+_ fill-rule-key Coord
+    - fill-rule FillRule
+
+fill-rule-code(fill-rule)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-cap-code
+    - cap LineCap
+
+|? 1i32 if cap == LineCap.round
+|? 2i32 if cap == LineCap.square
+?? 0i32
+
+━━━━━━━━━━━━━━━━━━━━
++ line-join-code
+    - join LineJoin
+
+|? 1i32 if join == LineJoin.round
+|? 2i32 if join == LineJoin.bevel
+?? 0i32
+
+━━━━━━━━━━━━━━━━━━━━
+_ fill-rule-code I32
+    - fill-rule FillRule
+
+if fill-rule == FillRule.even-odd then 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-alignment-code I32
+    - alignment TextAlignment
+
+|? alignment == TextAlignment.center
+    1i32
+|? alignment == TextAlignment.right
+    2i32
+??
+    0i32
+
+━━━━━━━━━━━━━━━━━━━━
++ CanvasStateScope is Tuple
+    is Usable'Void
+
+_ canvas Canvas
+
+────────────────────
++ This
+    - canvas
+
+────────────────────
++ do begin-using
+
+canvas.push()
+
+────────────────────
++ do end-using
+
+canvas.pop()

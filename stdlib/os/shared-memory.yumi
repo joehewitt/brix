@@ -1,0 +1,56 @@
+./file
+/YuEvents/YuEvents.h
+/unistd.h
+
+━━━━━━━━━━━━━━━━━━━━
++ SharedMemory
+    is Closable
+
++ name String
++ size Size
++ data Pointer
++ owned Bool
+
+────────────────────
+_ This
+    - name
+    - size
+    - data
+    - owned
+
+────────────────────
++ do close
+
+C:yumiSharedMemoryUnmap(data, size)
+if owned
+    C:yumiSharedMemoryUnlink(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ do create-shared-memory SharedMemory ?! IOError
+    - name String
+    - size Size
+
+. fd = C:yumiSharedMemoryCreate(name, size)
+?! IOError("Unable to create shared memory $name")
+    if fd < 0
+. data = C:yumiSharedMemoryMap(fd, size, true)
+C:close(fd)
+if !data
+    C:yumiSharedMemoryUnlink(name)
+    ?! IOError("Unable to map shared memory $name")
+= SharedMemory(name, size, data, true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do open-shared-memory SharedMemory ?! IOError
+    - name String
+    - size Size
+
+. fd = C:yumiSharedMemoryOpen(name)
+?! IOError("Unable to open shared memory $name")
+    if fd < 0
+. data = C:yumiSharedMemoryMap(fd, size, false)
+C:close(fd)
+C:yumiSharedMemoryUnlink(name)
+?! IOError("Unable to map shared memory $name")
+    if !data
+= SharedMemory(name, size, data, false)

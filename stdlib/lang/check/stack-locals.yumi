@@ -1,0 +1,286 @@
+./facts
+./instances
+./session
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ StackLocals
+
+` A global that each `do with` binds anew must be bound wherever it is read. A function requires
+` the ones it reads outside a binding of its own, and the ones the functions it calls require
+` unless it calls them under a binding. A closure answers for itself: what it requires does not
+` reach its callers. What a module's own statements still require is never bound. What each
+` function reads outside its bindings, with or without a value of its own, is recorded too.
+
+_ program Program
+_ instances Instances
+_ facts Facts
+_ holders [InstanceId]
+_ modules [ModuleId]
+_ decls [DeclId]
+_ readers [InstanceId]
+_ read-modules [ModuleId]
+_ read-decls [DeclId]
+_ keepers [InstanceId]
+_ kept-modules [ModuleId]
+_ kept-decls [DeclId]
+_ call-heads [U32]
+_ call-links [U32]
+
+────────────────────
++ This
+    - session Session
+
+.. program = session.program
+.. instances = session.instances
+.. facts = session.facts
+
+────────────────────
++ do check
+
+for read in facts.stack-reads
+    . bound = binds(read.instance, read.syntax, read.module, read.decl)
+    if !bound && !has-default(read.module, read.decl)
+        require(read.instance, read.module, read.decl)
+. grew = holders.length != 0
+while grew
+    grew = false
+    for call in facts.calls
+        if call.callee != no-instance && requires-any(call.callee) && propagates(call.callee)
+            . total = holders.length
+            for position in 0 .. < total
+                if holders[position] == call.callee
+                    . module = modules[position]
+                    . decl = decls[position]
+                    if !binds(call.instance, call.syntax, module, decl)
+                        grew = require(call.instance, module, decl) || grew
+report()
+gather-needs()
+gather-holds()
+
+────────────────────
+_ do gather-needs
+
+` Records the globals each function reads outside its own bindings of them, itself or through
+` the functions it calls outside one. Calling a nested function reads nothing: it holds what
+` it captured. Each function found to read one hands it on to the calls of it once.
+for read in facts.stack-reads
+    if !binds(read.instance, read.syntax, read.module, read.decl)
+        need(read.instance, read.module, read.decl)
+if readers.length != 0
+    index-calls()
+. next Size = 0
+while next < readers.length
+    . module = read-modules[next]
+    . decl = read-decls[next]
+    . call = call-heads[readers[next]]
+    next += 1
+    while call != U32.max
+        . fact = facts.calls[call]
+        if !binds(fact.instance, fact.syntax, module, decl)
+            need(fact.instance, module, decl)
+        call = call-links[call]
+for position in 0 .. < readers.length
+    facts.stack-needs.append
+        - StackNeed(readers[position], read-modules[position], read-decls[position])
+
+────────────────────
+_ do index-calls
+
+` Chains the calls of each function that hands on what it reads to its callers.
+for instance in 0 .. < instances.length
+    call-heads += U32.max
+for position in 0 .. < facts.calls.length
+    call-links += U32.max
+    . callee = facts.calls[position].callee
+    if callee != no-instance && propagates(callee)
+        call-links[position] = call-heads[callee]
+        call-heads[callee] = position as U32
+
+────────────────────
+_ do gather-holds
+
+` Records the globals whose state each nested function holds from where it is made: those it
+` reads outside its own bindings of them, and those each function nested in it holds where no
+` binding of its own is open where that function is made. A function that is not nested reads
+` the slot of the task running where it makes one.
+for position in 0 .. < readers.length
+    if is-nested(readers[position])
+        hold(readers[position], read-modules[position], read-decls[position])
+. grew = keepers.length != 0
+while grew
+    grew = false
+    . total = keepers.length
+    for position in 0 .. < total
+        . outer = instances.rows[keepers[position]].enclosing
+        if outer != no-instance && is-nested(outer)
+            . module = kept-modules[position]
+            . decl = kept-decls[position]
+            if !binds(outer, made-at(keepers[position]), module, decl)
+                grew = hold(outer, module, decl) || grew
+for position in 0 .. < keepers.length
+    facts.stack-holds.append
+        - StackHold(keepers[position], kept-modules[position], kept-decls[position])
+
+────────────────────
+_ do hold Bool
+    - keeper InstanceId
+    - module ModuleId
+    - decl DeclId
+
+for position in 0 .. < keepers.length
+    if keepers[position] == keeper && kept-modules[position] == module && same-decl
+        = false
+    .. same-decl = kept-decls[position] == decl
+keepers += keeper
+kept-modules += module
+kept-decls += decl
+= true
+
+────────────────────
+_ do is-nested Bool
+    - instance InstanceId
+
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = is-nested-kind(fn.kind)
+= false
+
+────────────────────
+_ do made-at SyntaxId
+    - instance InstanceId
+
+` Where a nested function is written in the function it is nested in.
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.syntax
+= 0
+
+────────────────────
+_ do need Bool
+    - reader InstanceId
+    - module ModuleId
+    - decl DeclId
+
+for position in 0 .. < readers.length
+    if readers[position] == reader && read-modules[position] == module && same-decl
+        = false
+    .. same-decl = read-decls[position] == decl
+readers += reader
+read-modules += module
+read-decls += decl
+= true
+
+────────────────────
+_ do require Bool
+    - holder InstanceId
+    - module ModuleId
+    - decl DeclId
+
+for position in 0 .. < holders.length
+    if holders[position] == holder && modules[position] == module && decls[position] == decl
+        = false
+holders += holder
+modules += module
+decls += decl
+= true
+
+────────────────────
+_ do requires-any Bool
+    - holder InstanceId
+
+for known in holders
+    if known == holder
+        = true
+= false
+
+────────────────────
+_ do binds Bool
+    - instance InstanceId
+    - syntax SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+for scope in facts.stack-scopes
+    if scope.instance == instance && scope.module == module && scope.decl == decl
+        if syntax >= scope.first && syntax <= scope.last
+            = true
+= false
+
+────────────────────
+_ do has-default Bool
+    - module ModuleId
+    - decl DeclId
+
+do match? program.modules[module].decls[decl]
+    | .decl-property(row)
+        = row.value != 0
+= false
+
+────────────────────
+_ do propagates Bool
+    - callee InstanceId
+
+. row = instances.rows[callee]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = !is-nested-kind(fn.kind)
+= true
+
+────────────────────
+_ is-root Bool
+    - holder InstanceId
+
+program.modules[row.module].main-decl == row.decl
+
+.. row = instances.rows[holder]
+
+────────────────────
+_ do report
+
+. reported [InstanceId]
+for position in 0 .. < holders.length
+    . root = holders[position]
+    . seen = false
+    for done in reported
+        seen = seen || done == root
+    if !seen && is-root(root)
+        reported += root
+        . names [String]
+        for other in position .. < holders.length
+            if holders[other] == root
+                names += "'${name-of(modules[other], decls[other])}'"
+        . sorted [String] = sort(names)
+        . listed = ", ".join(sorted)
+        . message = "Stack-local variable $listed is not bound"
+        if names.length != 1
+            message = "Stack-local variables $listed are not bound"
+        . site = site-of(modules[position], decls[position])
+        facts.record-diagnostic(root, modules[position], site, .stated, program.store-atom(message))
+
+────────────────────
+_ do name-of String
+    - module ModuleId
+    - decl DeclId
+
+do match? program.modules[module].decls[decl]
+    | .decl-property(row)
+        if row.name
+            = row.name.text
+= ""
+
+────────────────────
+_ do site-of SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+do match? program.modules[module].decls[decl]
+    | .decl-property(row)
+        = row.syntax
+= 0

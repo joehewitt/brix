@@ -1,0 +1,135 @@
+`benchmark.meta description: Repeatedly mounts and unmounts a large styled TUI subtree.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,markup-runtime,compile-timing
+
+/YuCore/YuCore.h
+/YuGC/YuGC.h
+/core/markup
+/core/style
+/tui/box
+/tui/colors
+/tui/layout
+/tui/primitives
+
+. attachment-lane = C:yumiGCStyleAttachmentsSidePayloadLane()
+. template-lane = C:yumiGCStyleTemplatesSidePayloadLane()
+. object-lane = C:yumiGCStyleObjectsSidePayloadLane()
+. opening-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
+. opening-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
+. opening-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+
+. root = StyleChurnRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 40)
+
+. subtree = StyleChurnBranch()
+. node-count Size = 1
+for branch-index in 0 .. < 100
+    . branch = StyleChurnBranch()
+    markup-append(subtree, branch)
+    node-count += 1
+
+    for leaf-index in 0 .. < 49
+        . leaf = StyleChurnLeaf()
+        markup-append(branch, leaf)
+        node-count += 1
+
+. cold-objects-before = C:yumiGCAllocatedObjectCount()
+. cold-bytes-before = C:yumiGCAllocatedByteCount()
+markup-append(root, subtree)
+root.markup-batch-queue.checkpoint()
+. cold-objects = C:yumiGCAllocatedObjectCount() - cold-objects-before
+. cold-bytes = C:yumiGCAllocatedByteCount() - cold-bytes-before
+. cold-style-side-payloads = style-side-payload-count()
+
+markup-remove(root, subtree)
+root.markup-batch-queue.checkpoint()
+
+. warm-objects Size = 0
+. warm-bytes Size = 0
+. checksum = node-count
+for cycle in 0 .. < 6
+    . objects-before = C:yumiGCAllocatedObjectCount()
+    . bytes-before = C:yumiGCAllocatedByteCount()
+    markup-append(root, subtree)
+    root.markup-batch-queue.checkpoint()
+    root.update-layout()
+    checksum += root.inner-width + root.inner-height + cycle
+    markup-remove(root, subtree)
+    root.markup-batch-queue.checkpoint()
+    warm-objects += (C:yumiGCAllocatedObjectCount() - objects-before) as Size
+    warm-bytes += (C:yumiGCAllocatedByteCount() - bytes-before) as Size
+
+. warm-objects-per-cycle = warm-objects / 6
+. warm-bytes-per-cycle = warm-bytes / 6
+. cold-objects-per-node = cold-objects / node-count
+. cold-bytes-per-node = cold-bytes / node-count
+. warm-objects-per-node = warm-objects-per-cycle / node-count
+. warm-bytes-per-node = warm-bytes-per-cycle / node-count
+
+C:yumiBenchCollect()
+
+. final-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
+. final-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
+. final-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+. maximum-style-objects = opening-style-objects + 16
+?! Panic("style/mount-churn attachment lane escaped its mounted root bound")
+    if final-style-attachments != opening-style-attachments + 1
+?! Panic("style/mount-churn template lane lost or retained an owner association")
+    if final-style-templates != opening-style-templates + node-count + 1
+?! Panic("style/mount-churn object lane escaped its static-site bound")
+    if final-style-objects < opening-style-objects || final-style-objects > maximum-style-objects
+
+-- "bench-result style/mount-churn checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleChurnRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+
+    layout = flex-col
+    flex = 1
+    background-color = navy
+    color = white
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleChurnBranch is Box
+
+• This
+
+    layout = flex-row
+    flex = 1
+    background-color = blue
+    color = silver
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleChurnLeaf is Box
+
+• This
+
+    layout = flow-col
+    flex = 1
+    background-color = teal
+    color = white
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-attachments-side-payload-count Size
+
+C:yumiGCObjectSidePayloadCount(C:yumiGCStyleAttachmentsSidePayloadLane()) as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-side-payload-count
+
+. count = style-attachments-side-payload-count()
+count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane()) as Size
+count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane()) as Size
+= count

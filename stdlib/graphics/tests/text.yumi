@@ -1,0 +1,310 @@
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/math
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Text Layout Paragraph Breaks And Wrapping")
+cases.run(text-layout-paragraph-tests)
+cases = cases.then("Text Layout Constraints And Raster", text-layout-constraint-tests)
+cases = cases.then("Styled Text Layout Fragments", styled-layout-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-layout-paragraph-tests TestCase
+    - t TestCase
+
+. font = Font("Helvetica", 14, FontWeight.regular)
+. separators [String]
+separators += "\n"
+separators += "\r"
+separators += "\r\n"
+separators += "\u2028"
+separators += "\u2029"
+. separator-reference TextLayoutSnapshot?
+for separator in separators
+    . layout = TextLayout("alpha${separator}beta", font, null, TextOverflow.clip)
+    do use layout
+        . snapshot = layout.snapshot
+        t.expect("separator creates two lines", 2, snapshot.line-count)
+        if separator-reference
+            t.expect("hard separators have equivalent geometry", separator-reference, snapshot)
+        else
+            separator-reference = snapshot
+
+. empty = TextLayout("", font)
+. leading = TextLayout("\nalpha", font)
+. trailing = TextLayout("alpha\n", font)
+. consecutive = TextLayout("alpha\n\nbeta", font)
+do use empty
+    do use leading
+        do use trailing
+            do use consecutive
+                t.expect("empty string remains one empty line", 1, empty.line-count)
+                t.expect("leading boundary creates an empty first line", 2, leading.line-count)
+                t.expect("trailing boundary creates an empty final line", 2, trailing.line-count)
+                t.expect
+                    - "consecutive boundaries create an empty middle line"
+                    - 3
+                    - consecutive.line-count
+                t.expect
+                    - "every empty line contributes a normal line box"
+                    - empty.height * 3
+                    - consecutive.height
+                for index in 1 .. < consecutive.line-count
+                    . previous = consecutive.snapshot.lines[index - 1]
+                    . current = consecutive.snapshot.lines[index]
+                    t.expect
+                        - "paragraph typographic lines stack without gaps"
+                        - previous.typographic-bounds.bottom
+                        - current.typographic-bounds.top
+
+. natural = TextLayout("one two three four", font, null, TextOverflow.clip)
+do use natural
+    . word-unbounded = TextLayout
+        - natural.request.text
+        - font
+        - null
+        - TextOverflow.truncate-tail
+        - TextWrap.word
+    . word-wide = TextLayout
+        - natural.request.text
+        - font
+        - natural.natural-width
+        - TextOverflow.truncate-tail
+        - TextWrap.word
+    . word-narrow = TextLayout
+        - natural.request.text
+        - font
+        - 48.5
+        - TextOverflow.truncate-tail
+        - TextWrap.word
+    do use word-unbounded
+        do use word-wide
+            do use word-narrow
+                t.expect
+                    - "unbounded word wrapping inserts no soft break"
+                    - 1
+                    - word-unbounded.line-count
+                t.expect("exact-fit word wrapping inserts no soft break", 1, word-wide.line-count)
+                t.check("narrow word wrapping creates multiple lines", word-narrow.line-count > 1)
+                t.expect
+                    - "wrapping preserves unwrapped natural width"
+                    - natural.natural-width
+                    - word-narrow.natural-width
+                t.check("complete word wrapping is not truncation", !word-narrow.is-truncated)
+
+. zero = TextLayout("one\ntwo", font, 0, TextOverflow.truncate-tail, TextWrap.word)
+do use zero
+    t.expect("zero-width wrapping keeps one line per hard source line", 2, zero.line-count)
+    t.expect("zero-width wrapping has zero layout width", 0, zero.width)
+    t.check("zero-width nonempty wrapping is marked truncated", zero.is-truncated)
+    for line in zero.snapshot.lines
+        t.expect("zero-width wrapping paints no ink", 0, line.ink-bounds.width)
+
+. word-only = TextLayout("word", font)
+do use word-only
+    . spaced = TextLayout
+        - "word   next"
+        - font
+        - word-only.width + 0.5
+        - TextOverflow.clip
+        - TextWrap.word
+    do use spaced
+        t.expect("a break-supplying whitespace run creates two lines", 2, spaced.line-count)
+        t.expect
+            - "whitespace at a soft wrap edge contributes no visible advance"
+            - word-only.width
+            - spaced.snapshot.lines[0].typographic-bounds.width
+
+. token = TextLayout
+    - "supercalifragilisticexpialidocious"
+    - font
+    - 24
+    - TextOverflow.clip
+    - TextWrap.word
+do use token
+    t.check("long tokens use emergency grapheme wrapping", token.line-count > 1)
+    for line in token.snapshot.lines
+        t.check("ordinary emergency-wrapped clusters fit", line.typographic-bounds.width <= 24)
+
+. emoji = TextLayout("👩🏽‍💻", font)
+do use emoji
+    . over-wide = TextLayout("👩🏽‍💻", font, 1, TextOverflow.clip, TextWrap.word)
+    . joined = TextLayout
+        - "👩🏽‍💻👩🏽‍💻"
+        - font
+        - emoji.width + 0.01
+        - TextOverflow.clip
+        - TextWrap.word
+    do use over-wide
+        do use joined
+            t.expect("one over-wide grapheme remains one line", 1, over-wide.line-count)
+            t.expect("one over-wide grapheme remains intact", emoji.width, over-wide.width)
+            t.check("one over-wide grapheme is clipped without truncation", !over-wide.is-truncated)
+            t.expect("emoji ZWJ sequences wrap only between clusters", 2, joined.line-count)
+            for line in joined.snapshot.lines
+                t.expect
+                    - "each wrapped emoji line retains one full cluster"
+                    - emoji.width
+                    - line.typographic-bounds.width
+
+. combining = TextLayout("e\u0301", font)
+do use combining
+    . combined-pair = TextLayout
+        - "e\u0301e\u0301"
+        - font
+        - combining.width + 0.01
+        - TextOverflow.clip
+        - TextWrap.word
+    do use combined-pair
+        t.expect("combining sequences wrap only between graphemes", 2, combined-pair.line-count)
+        for line in combined-pair.snapshot.lines
+            t.expect
+                - "each combining line retains one full grapheme"
+                - combining.width
+                - line.typographic-bounds.width
+
+. independently-truncated = TextLayout
+    - "a deliberately long first line\nshort"
+    - font
+    - 44
+    - TextOverflow.truncate-tail
+    - TextWrap.no-wrap
+do use independently-truncated
+    t.expect("no-wrap overflow keeps every hard line", 2, independently-truncated.line-count)
+    t.check
+        - "any independently truncated hard line marks the snapshot"
+        - independently-truncated.is-truncated
+    for line in independently-truncated.snapshot.lines
+        t.check
+            - "each truncated hard line respects its constraint"
+            - line.typographic-bounds.width <= 44
+
+. two-x = RasterCanvas(240, 180, 2)
+do use two-x
+    two-x.font = font
+    two-x.text-color = black
+    . paragraph-two = two-x.text-layout("I\nMMMM", 220, TextOverflow.clip)
+    do use paragraph-two
+        two-x.draw-text(paragraph-two, Rect(120, 60, 100, 10), TextAlignment.left)
+        t.expect
+            - "fixed-height paragraph clips below its ten-point box"
+            - 0
+            - two-x.nontransparent-pixel-count(Rect(120, 70, 100, 42))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-layout-constraint-tests TestCase
+    - t TestCase
+
+. font = Font("Helvetica", 14, FontWeight.regular)
+. text = "A long label with e\u0301 and 👩🏽‍💻 clusters"
+. natural = TextLayout(text, font, null, TextOverflow.clip)
+do use natural
+    . clipped = TextLayout(text, font, 42, TextOverflow.clip)
+    do use clipped
+        t.expect("clip keeps the natural layout width", natural.natural-width, clipped.width)
+        t.check("clip is not truncation", !clipped.is-truncated)
+
+    . fitting = TextLayout(text, font, natural.natural-width, TextOverflow.truncate-tail)
+    do use fitting
+        t.expect("fitting truncation request is unchanged", natural.natural-width, fitting.width)
+        t.check("fitting request is not truncated", !fitting.is-truncated)
+
+    . narrow = TextLayout(text, font, 42, TextOverflow.truncate-tail)
+    do use narrow
+        t.check("narrow request truncates", narrow.is-truncated)
+        t.check("narrow result fits", narrow.width <= 42)
+        t.expect
+            - "narrow result retains natural advance"
+            - natural.natural-width
+            - narrow.natural-width
+
+. clip-zero = TextLayout(text, font, 0, TextOverflow.clip)
+. truncate-zero = TextLayout(text, font, 0, TextOverflow.truncate-tail)
+do use clip-zero
+    do use truncate-zero
+        t.check("zero-width clip retains natural line", clip-zero.width > 0)
+        t.expect("zero-width truncation paints no line", 0, truncate-zero.width)
+        t.check("zero-width nonempty truncation is marked", truncate-zero.is-truncated)
+
+. ellipsis = TextLayout("…", font)
+do use ellipsis
+    . sub-ellipsis = TextLayout(text, font, ellipsis.natural-width - 0.01)
+    do use sub-ellipsis
+        t.expect("sub-ellipsis width emits no partial token", 0, sub-ellipsis.width)
+        t.check("sub-ellipsis request is truncated", sub-ellipsis.is-truncated)
+
+. aligned = RasterCanvas(180, 90, 2)
+do use aligned
+    aligned.font = font
+    aligned.text-color = black
+    . glyph = aligned.text-layout("I", null, TextOverflow.clip)
+    do use glyph
+        aligned.draw-text(glyph, Rect(0, 0, 180, 24), TextAlignment.left)
+        aligned.draw-text(glyph, Rect(0, 32, 180, 24), TextAlignment.center)
+        aligned.draw-text(glyph, Rect(0, 64, 180, 24), TextAlignment.right)
+        t.check
+            - "left alignment paints at the leading edge"
+            - aligned.nontransparent-pixel-count(Rect(0, 0, 30, 24)) > 0
+        t.check
+            - "center alignment paints at the center"
+            - aligned.nontransparent-pixel-count(Rect(70, 32, 40, 24)) > 0
+        t.check
+            - "right alignment paints at the trailing edge"
+            - aligned.nontransparent-pixel-count(Rect(150, 64, 30, 24)) > 0
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do styled-layout-tests TestCase
+    - t TestCase
+
+. font = Font("Helvetica", 14)
+. segments [TextSegment]
+segments += TextSegment(0, "Hello ", font)
+segments += TextSegment(1, "bold", Font("Helvetica", 14, FontWeight.bold), red)
+segments += TextSegment(2, "", font, null, TextObjectMetrics(30, 12, 4))
+segments += TextSegment(3, " world", Font("Helvetica", 14, FontWeight.regular, FontSlant.italic))
+. layout = TextLayout(segments, font)
+. fragments = layout.fragments
+t.expect("one fragment per tagged run", 4, fragments.length)
+t.expect("fragments keep text order", [0, 1, 2, 3], fragment-tags(layout))
+t.expect("object keeps its width", 30, fragments[2].width)
+t.expect("object keeps its ascent", 12, fragments[2].ascent)
+t.expect("object keeps its descent", 4, fragments[2].descent)
+t.check("fragments are adjacent", abs(fragments[1].x + fragments[1].width - fragments[2].x) < 0.01)
+
+. wrapped = TextLayout([TextSegment(7, "alpha beta gamma delta", font)], font, 60)
+t.check("wrapping splits one tag across lines", wrapped.fragments.length > 1)
+t.check
+    - "wrapped fragments share the tag"
+    - wrapped.fragments[1].tag == 7 && wrapped.fragments[1].line == 1
+. spaced = TextLayout
+    - [TextSegment(7, "alpha beta gamma delta", font)]
+    - font
+    - 60
+    - TextOverflow.clip
+    - TextWrap.word
+    - 6
+t.expect
+    - "line spacing adds between lines"
+    - wrapped.height + 6 * (wrapped.line-count - 1)
+    - spaced.height
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ fragment-tags
+    - layout TextLayout
+
+** layout.fragments
+*> each.tag
+|> List

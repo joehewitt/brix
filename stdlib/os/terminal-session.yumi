@@ -1,0 +1,264 @@
+./env
+./outbox
+./process
+./pty
+./terminal-emulator
+./terminal-path
+/time/duration
+/time/timer
+
+_ terminal-read-size Size = 65536
+_ terminal-read-budget-ns U64 = 4000000
+_ terminal-stop-grace = 1500ms
+_ terminal-newline-byte Byte = 10
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalSession
+    is Closable
+
++ emulator TerminalEmulator
++ directory String
++ shell String
++ title = ""
++ revision Size = 0
++ exit-code Int?
++ is-running = false
++ event bell TerminalSession
++ event exited Int
+
+_ pty Pty?
+_ generation Size = 0
+_ buffer = Byte[terminal-read-size]
+_ outbox Outbox?
+_ ends-line = true
+_ is-shell = false
+
+────────────────────
++ This
+    - directory String
+    - columns Size = 80
+    - rows Size = 24
+
+this.directory = directory
+shell = env("SHELL") ?? "/bin/zsh"
+emulator = TerminalEmulator(columns, rows)
+
+────────────────────
++ do start ?! Error
+
+=? if pty
+is-shell = true
+. opened = open(shell, ["-l"], terminal-environment())
+. current = generation
+do new
+    pump(opened, current)
+
+────────────────────
++ do execute Int? ?! Error
+    - path String
+    - args [String]
+    - variables [String = String]
+
+?! Error("A process is already running in this terminal")
+    if pty
+. opened = open(path, args, variables)
+= pump(opened, generation)
+
+────────────────────
++ do working-directory String
+
+. opened = pty
+=? directory if !opened
+. group = opened.foreground-group
+. found String? = null
+if group > 0
+    found = process-directory(group)
+= found ?? process-directory(opened.pid) ?? directory
+
+────────────────────
++ do resolve-link TerminalPathLink?
+    - text String
+
+. parsed = terminal-path-link(text)
+. found = terminal-resolve-file(parsed.path, [working-directory(), directory])
+=? null if !found
+= TerminalPathLink(found, parsed.line, parsed.column)
+
+────────────────────
++ do interrupt
+
+. opened = pty
+=? if !opened
+opened.hang-up()
+. current = generation
+do new
+    escalate(opened, current)
+
+────────────────────
++ do restart ?! Error
+
+stop()
+emulator.reset()
+revision += 1
+start()
+
+────────────────────
++ do clear
+
+emulator.reset()
+ends-line = true
+revision += 1
+
+────────────────────
++ do echo
+    - text String
+
+. bytes = Array'Byte(text)
+=? if bytes.size == 0
+emulator.write(bytes, bytes.size)
+ends-line = bytes[bytes.size - 1] == terminal-newline-byte
+revision += 1
+
+────────────────────
++ do clear-scrollback
+
+emulator.clear-selection()
+. bytes = Array'Byte("\x1b[H\x1b[2J\x1b[3J")
+. ignored = emulator.write(bytes, bytes.size)
+ends-line = true
+revision += 1
+if is-shell && is-running && !is-busy
+    send-text("\x0c")
+
+────────────────────
++ do echo-line
+    - text String
+
+if !ends-line
+    echo("\r\n")
+echo("$text\r\n")
+
+────────────────────
++ do send
+    - bytes Byte[]
+
+outbox?.send(bytes)
+
+────────────────────
++ do send-text
+    - text String
+
+send(Array'Byte(text))
+
+────────────────────
++ do resize
+    - columns Size
+    - rows Size
+    - cell-width Size
+    - cell-height Size
+
+=? if columns == emulator.columns && rows == emulator.rows
+emulator.resize(columns, rows, cell-width, cell-height)
+pty?.resize(columns, rows, columns * cell-width, rows * cell-height)
+revision += 1
+
+────────────────────
++ get is-busy Bool
+
+pty?.has-foreground-job ?? false
+
+────────────────────
++ do close
+
+stop()
+emulator.close()
+
+────────────────────
+_ do open Pty ?! Error
+    - path String
+    - args [String]
+    - variables [String = String]
+
+. opened = Pty(path, emulator.columns, emulator.rows, args, directory, variables)
+pty = opened
+outbox = Outbox(opened)
+exit-code = null
+is-running = true
+generation += 1
+revision += 1
+= opened
+
+────────────────────
+_ do stop
+
+generation += 1
+. opened = pty
+pty = null
+outbox?.clear()
+outbox = null
+is-running = false
+opened?.close()
+
+────────────────────
+_ do pump Int?
+    - opened Pty
+    - current Size
+
+. started = monotonic-time-nanoseconds()
+while true
+    . count = opened.read(buffer.length, buffer)
+    if current != generation
+        . ignored = opened.wait()
+        = null
+    if count == 0
+        break
+    . replies = emulator.write(buffer, count)
+    ends-line = buffer[count - 1] == terminal-newline-byte
+    if replies
+        send(replies)
+    deliver-events()
+    revision += 1
+    if monotonic-time-nanoseconds() - started > terminal-read-budget-ns
+        1ms.wait()
+        started = monotonic-time-nanoseconds()
+. code = opened.wait() ?? -1
+=? null if current != generation
+pty = null
+outbox = null
+is-running = false
+exit-code = code
+opened.close()
+revision += 1
+exited <- code
+= code
+
+────────────────────
+_ do escalate
+    - opened Pty
+    - current Size
+
+terminal-stop-grace.wait()
+=? if current != generation || !is-running
+opened.terminate()
+terminal-stop-grace.wait()
+=? if current != generation || !is-running
+opened.kill()
+
+────────────────────
+_ do deliver-events
+
+. events = emulator.take-events()
+=? if events == 0
+if (events /and/ terminal-event-title) != 0
+    title = emulator.title
+if (events /and/ terminal-event-bell) != 0
+    bell <- this
+
+━━━━━━━━━━━━━━━━━━━━
++ do terminal-environment [String = String]
+
+. variables = environment()
+variables["TERM"] = "xterm-256color"
+variables["COLORTERM"] = "truecolor"
+variables["TERM_PROGRAM"] = "Brix"
+= variables

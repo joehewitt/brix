@@ -1,0 +1,346 @@
+./suite-runner
+./test-protocol
+/data/json
+/lang/constants
+/os/cli
+/os/env
+/os/file
+/os/path
+/os/process
+/unistd.h
+
+_ suite-protocol = "ometer.testometer.v1"
+_ suite-statuses [String] = ["passed", "failed", "skipped", "crashed", "killed"]
+_ suite-reserved-cores = 2
+_ suite-core-batch-floor = 100
+_ suite-batch-ceiling = 32
+
+request-process-termination(SuiteTool().run())
+
+━━━━━━━━━━━━━━━━━━━━
+_ SuiteTool is CommandLine
+
+────────────────────
+
+<This
+    name = "yumi test-suite"
+
+    <Subcommand "catalog"
+        about = "list the tests of the suite YUMI_TEST_SUITE names, under YUMI_TEST_ROOT"
+        action = => emit-suite-catalog()
+
+    <Subcommand "run"
+        about = "run the tests OMETER_TESTOMETER_SELECTED_TEST_IDS names, in batches across processes"
+        action = => run-suite()
+
+    <Subcommand "batch"
+        about = "run the tests YUMI_TEST_PAYLOAD names in this process, as run does in each process it starts"
+        action = => run-batch()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SuitePlace is Tuple
+
++ suite String
++ project-path String
++ tests-path String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do suite-place SuitePlace ?! Error
+
+. suite = env-required("YUMI_TEST_SUITE")
+. project-path = Path(env("OMETER_TESTOMETER_PROJECT_ROOT") ?? cwd()).normalized as String
+. given = env-required("YUMI_TEST_ROOT")
+. relative = if given.starts-with("./") then given[2 ...] else given
+. tests-path = (if given.starts-with("/") then Path(given) else under-project).normalized as String
+    .. under-project = Path(project-path) / relative
+check-suite(suite, project-path, tests-path)
+= SuitePlace(suite, project-path, tests-path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do emit-suite-catalog Int ?! Error
+
+. place = suite-place()
+. start = (env("OMETER_TESTOMETER_CATALOG_START_INDEX") ?? "0") as Int
+emit-catalog(place.suite, place.project-path, place.tests-path, start)
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-suite Int ?! Error
+
+. place = suite-place()
+. ids = selected-test-ids
+    - env("OMETER_TESTOMETER_SELECTED_TEST_IDS") ?? env("OMETER_TESTOMETER_SELECTED_IDS") ?? "[]"
+?! Error("No Testometer-selected tests were provided")
+    if !ids
+emit-json(run-start-json(ids))
+for id in ids
+    emit-json(test-start-json(id))
+. variables = suite-variables(place)
+. scratch String?
+if place.suite != parse-suite
+    variables["YUMI_TEST_COMPILER"] = suite-compiler(place.project-path, variables)
+    . parent = Path(place.project-path) / ".tmp/selfhost/${place.suite}"
+    parent.make-directories()
+    scratch = temporary-directory("run", parent as String) as String
+. batches = SuiteBatches(place, executable-path() as String, variables, scratch, ids)
+do finally remove-scratch(scratch)
+batches.run()
+emit-json(batches.end-json())
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do suite-variables [String = String]
+    - place SuitePlace
+
+. variables = environment()
+-= variables["OMETER_TESTOMETER_SELECTED_TEST_IDS"]
+-= variables["OMETER_TESTOMETER_SELECTED_IDS"]
+. build = env("YUMI_BUILD_PATH") ?? ".tmp/build"
+variables["YUMIPATH"] = (toolchain-root / "stdlib") as String
+variables["YUMI_BUILD_PATH"] = (if is-absolute then Path(build) else under-project).normalized
+    .. is-absolute = build.starts-with("/")
+    .. under-project = Path(place.project-path) / build
+variables["YUMI_DEBUG_LOG"] = ""
+variables["PROBES_ENABLED"] = ""
+variables["PROBES_PATH"] = ""
+variables["PROBES_CONTROL_PATH"] = ""
+variables["YUMI_TEST_SUITE"] = place.suite
+variables["YUMI_TEST_PROJECT_ROOT"] = place.project-path
+variables["YUMI_TEST_ROOT"] = place.tests-path
+= variables
+
+━━━━━━━━━━━━━━━━━━━━
+_ do suite-compiler String ?! Error
+    - project-path String
+    - variables [String = String]
+
+. given = env("YUMI_TEST_COMPILER")
+=? Path(given).normalized if given
+. builder = Process
+    - (toolchain-root / "bin/yumi") as String
+    - ProcessStderr.inherit
+    - ["--build-only"]
+    - project-path
+    - variables
+. built = ChunkedTokenStream'Byte(builder).read().slice-string()
+. status = builder.wait(null) ?? -1
+builder.close()
+?! Error("Building the compiler failed")
+    if status != 0
+= built.trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do remove-scratch
+    - scratch String?
+
+=? if !scratch
+. remover = Process("/bin/rm", ["-rf", scratch])
+remover.wait(null)
+remover.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SuiteBatches
+
++ counts [String = Int]
+
+_ place SuitePlace
+_ executable String
+_ variables [String = String]
+_ scratch String?
+_ ids [String]
+_ batches [[String]]
+_ selected [String = Bool]
+_ completed [String = Bool]
+_ workers Size
+_ next Index = 0
+_ failure Error?
+_ output := Mutex()
+
+────────────────────
++ This
+    - place
+    - executable
+    - variables
+    - scratch
+    - ids
+
+for id in ids
+    selected[id] = true
+for status in suite-statuses
+    counts[status] = 0
+workers = worker-count()
+. size = batch-size(ids.length, workers)
+. start Index = 0
+while start < ids.length
+    . end = if start + size < ids.length then start + size else ids.length
+    . batch [String]
+    for index in start .. < end
+        batch += ids[index]
+    batches += batch
+    start = end
+
+────────────────────
++ do run ?! Error
+
+. running = if workers < batches.length then workers else batches.length
+. finished = SyncBufferedChannel'Bool()
+for _ in 0 .. < running
+    do new
+        work()
+            catch caught Error
+                failure = failure ?? caught
+        finished <- true
+for _ in 0 .. < running
+    <- finished
+?! failure
+    if failure
+
+────────────────────
++ end-json [String = JSON]
+
+run-end-json
+    - ids.length
+    - counts["passed"]!
+    - counts["failed"]!
+    - counts["skipped"]!
+    - counts["crashed"]!
+    - counts["killed"]!
+
+────────────────────
+_ batch-size Index
+    - count Size
+    - workers Size
+
+|? place.suite == core-suite
+    if spread > suite-core-batch-floor then spread else suite-core-batch-floor
+??
+    if narrow < 1 then 1 else if narrow > suite-batch-ceiling then suite-batch-ceiling else narrow
+
+.. spread = (count + workers * 2 - 1) / (workers * 2)
+.. narrow = (count + workers * 4 - 1) / (workers * 4)
+
+────────────────────
+_ do work ?! Error
+
+while next < batches.length
+    . index = next
+    next += 1
+    run-group(batches[index], index)
+
+────────────────────
+_ do run-group ?! Error
+    - batch [String]
+    - index Index
+
+. attempts = 0
+while true
+    . pending [String] = <* id in batch when !completed[id]
+    =? if !pending
+    attempts += 1
+    . started [String = Bool]
+    . ended = attempt(pending, "batch-${index}-$attempts", started)
+    . unfinished [String] = <* id in pending when !completed[id]
+    =? if !unfinished
+    . begun [String] = <* id in unfinished when started[id]
+    . stranded = if begun then begun[0] else unfinished[0]
+    completed[stranded] = true
+    counts["crashed"] = counts["crashed"]! + 1
+    write-line(to-json(crashed-json(stranded, ended)))
+
+────────────────────
+_ do attempt String ?! Error
+    - pending [String]
+    - name String
+    - started [String = Bool]
+
+. attempt-variables = Map'String'String(each in variables)
+attempt-variables["YUMI_TEST_PAYLOAD"] = to-json(json-strings(pending))
+if scratch
+    . directory = Path("${scratch}/$name")
+    directory.make-directories()
+    attempt-variables["YUMI_TEST_SCRATCH"] = directory as String
+. child = Process
+    - executable
+    - ProcessStderr.inherit
+    - ["batch"]
+    - place.project-path
+    - attempt-variables
+child.close-input()
+for line in child ~> \event-line
+    accept(line, started)
+. usage = child.wait-usage()
+child.close()
+|? usage && usage.signal != 0
+    = "The test runner terminated with signal ${usage.signal}"
+|? usage && usage.exit-code != 0
+    = "The test runner terminated with exit code ${usage.exit-code}"
+??
+    = "The test runner ended without reporting a result"
+
+────────────────────
+_ do accept
+    - line String
+    - started [String = Bool]
+
+=? if !line.trim()
+. decoded = catch JSON(line)
+if decoded is not [String = JSON]
+    stderr <- "Ignoring invalid runner output: $line\n"
+    =
+. fields = decoded as [String = JSON]
+. kind = event-field(fields, "type")
+. id = event-field(fields, "id")
+if kind == "testStart" && id
+    started[id] = true
+=? if kind != "testResult"
+. status = event-field(fields, "status")
+=? if !selected[id] || completed[id] || !(suite-statuses has status)
+completed[id] = true
+counts[status] = counts[status]! + 1
+write-line(line)
+
+────────────────────
+_ do write-line
+    - line String
+
+use output
+stdout.write("$line\n")
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-line ~ Char String
+
+~ text (!"\n" .)* "\n"
+    text
+~ text (!"\n" .)+ !.
+    text
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-field String
+    - fields [String = JSON]
+    - key String
+
+if value is String then value as String else ""
+
+.. value = fields[key]
+
+━━━━━━━━━━━━━━━━━━━━
+_ crashed-json [String = JSON]
+    - id String
+    - errors String
+
+Map'String'JSON
+    • "protocol" suite-protocol as JSON
+    • "version" 1 as JSON
+    • "type" "testResult" as JSON
+    • "id" id as JSON
+    • "status" "crashed" as JSON
+    • "duration" 0 as JSON
+    • "errors" errors as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ worker-count Size
+
+if requested > 0 then requested as Size else if online > suite-reserved-cores then (online - suite-reserved-cores) as Size else 1
+
+.. requested = (env("YUMI_TEST_JOBS") ?? "0") as Int
+.. online = C:sysconf(C:_SC_NPROCESSORS_ONLN) as Int

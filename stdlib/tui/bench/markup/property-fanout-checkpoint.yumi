@@ -1,0 +1,74 @@
+`benchmark.meta description: Fans one selected-index property out to many tracked declarations before checkpoint.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/core/style
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. row-count Size = 640
+. step-count Size = 180
+
+<PropertyFanoutRoot root
+
+root.row-indexes = make-indexes(row-count)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+for step in 0 .. < step-count
+    root.selected-index = (step * 37) % row-count
+    root.status-prefix = "selected-$step"
+    root.markup-batch-queue.checkpoint()
+    //markup.bench.steps ++
+    checksum += root.selected-index + root.status-text.length + step
+
+-- "bench-result markup/property-fanout-checkpoint checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyFanoutRoot is Box
+    is MarkupBatch
+
++ row-indexes [SyntheticIndex]
++ selected-index Size = 0
++ status-prefix = "selected-0"
++ markup-batch-queue := MarkupBatchQueue(this)
++ status-text => "$status-prefix:$selected-index"
+
+────────────────────
+
+<This
+    for row in #row-indexes keyed by row.value
+        <Label
+            text = fanout-row-text(row.value, #selected-index, #status-prefix)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntheticIndex is Tuple
+
++ value Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ fanout-row-text String
+    - index Size
+    - selected-index Size
+    - status-prefix String
+
+|? index == selected-index
+    "$status-prefix [$index]"
+??
+    "$status-prefix $index"
+
+━━━━━━━━━━━━━━━━━━━━
+_ make-indexes [SyntheticIndex]
+    - count Size
+
+SyntheticIndex(each) in 0 .. < count

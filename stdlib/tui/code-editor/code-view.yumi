@@ -1,0 +1,239 @@
+./code-surface
+./code-syntax-style
+/code
+/code/syntax
+/math
+/tui
+/ui/input
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeEditor is CodeSurface
+
++ session CodeSession?
++ caret-line Size
++ caret-column Size
++ line-count Size
++ language-title String = "Plain Text"
++ is-modified Bool
++ event save-requested CodeSession
+
+_ shown-generation U64
+
+────────────────────
+for event on key-input
+
+. active = session
+if active && event.modifiers.control
+    if press(active, event.char)
+        event.cancel()
+else if active && !event.modifiers.option && !event.modifiers.command
+    active.type(event.char as String)
+    refresh()
+    event.cancel()
+
+────────────────────
+for event on paste
+
+. active = session
+if active
+    active.paste(event.text)
+    refresh()
+    event.cancel()
+
+────────────────────
+for event on key-press
+
+if handle-key(event)
+    event.cancel()
+
+────────────────────
++ do show
+    - next CodeSession
+
+shown-generation += 1
+. generation = shown-generation
+session = next
+language-title = if next.language then next.language.title else "Plain Text"
+top = 0
+left = 0
+refresh()
+for revision on next.updated until generation != shown-generation
+    refresh()
+
+────────────────────
++ do clear
+
+shown-generation += 1
+session = null
+line-count = 0
+invalidate-paint()
+
+────────────────────
++ do jump-to
+    - line Size
+    - column Size = 0
+
+. active = session
+=? if !active
+active.place(line, column as Float)
+refresh()
+center-caret()
+
+────────────────────
++ do refresh
+
+. active = session
+=? if !active
+caret-line = active.caret-line
+caret-column = active.caret-column
+line-count = active.line-count
+is-modified = active.is-modified
+reveal-caret()
+
+────────────────────
++ do handle-key Bool
+    - event KeyPressEvent
+
+. active = session
+=? false if !active
+. extends = code-event-shift(event)
+. word = code-event-option(event)
+do match event.key
+    |= Key.backspace
+        if word
+            active.delete-word-backward()
+        else
+            active.delete-backward()
+    |= Key.delete
+        if word
+            active.delete-word-forward()
+        else
+            active.delete-forward()
+    |= Key.arrow-left
+        if word
+            active.move-word-left(extends)
+        else
+            active.move-left(extends)
+    |= Key.arrow-right
+        if word
+            active.move-word-right(extends)
+        else
+            active.move-right(extends)
+    |= Key.arrow-up
+        active.move-up(extends)
+    |= Key.arrow-down
+        active.move-down(extends)
+    |= Key.home
+        active.move-to-line-start(extends)
+    |= Key.end
+        active.move-to-line-end(extends)
+    |= Key.page-up
+        active.move-up(extends, page-rows)
+    |= Key.page-down
+        active.move-down(extends, page-rows)
+    |= Key.enter
+        active.newline()
+    |= Key.tab
+        if extends
+            active.outdent-lines()
+        else
+            active.insert-tab()
+    |= Key.escape
+        active.collapse()
+    ??
+        = false
+refresh()
+= true
+
+────────────────────
++ do press Bool
+    - active CodeSession
+    - char Char
+
+do match char
+    |= 'a'
+        active.select-all()
+    |= 'c'
+        if active.has-selection
+            copy-text(active.selected-text)
+    |= 'x'
+        if active.has-selection
+            copy-text(active.selected-text)
+            active.delete-selection()
+    |= 'v'
+        active.paste(clipboard.text)
+    |= 'z'
+        . ignored = active.undo()
+    |= 'y'
+        . ignored = active.redo()
+    |= 's'
+        save-requested <- active
+    ??
+        = false
+refresh()
+= true
+
+╌╌╌╌╌╌╌╌╌╌ is CodeSurface ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ surface-row-count Size
+
+if active then active.folds.row-count(active.line-count) else 0
+
+.. active = session
+
+────────────────────
++ surface-number-limit Size
+
+line-count
+
+────────────────────
++ do surface-row CodeSurfaceRow
+    - row Size
+
+. active = session!
+. line = active.folds.actual(row)
+. runs = List'CodeRun(CodeRun(each.text, code-role-color(each.role)) in active.styled-runs(line))
+if active.folds.is-folded(line)
+    runs += CodeRun(" ⋯", code-fold-color)
+. start = active.selection-start
+. end = active.selection-end
+. first = active.text.line-at(start)
+. last = active.text.line-at(end)
+if start == end || line < first || line > last
+    = CodeSurfaceRow(runs, line + 1)
+. from = if line == first then active.display-column(start) else 0
+. to = if line == last then active.display-column(end) else active.line-columns(line)
+= CodeSurfaceRow(runs, line + 1, from, to, line < last)
+
+────────────────────
++ surface-caret CodeSurfacePoint
+
+|? !active
+    CodeSurfacePoint(0, 0)
+??
+    CodeSurfacePoint(active.folds.shown(active.caret-line), active.caret-column)
+
+.. active = session
+
+────────────────────
++ do surface-place
+    - point CodeSurfacePoint
+    - extends Bool
+
+. active = session
+=? if !active
+active.place(active.folds.actual(point.row), point.column as Float, extends)
+refresh()
+
+━━━━━━━━━━━━━━━━━━━━
++ code-event-shift Bool
+    - event KeyPressEvent
+
+event.modifiers.shift
+
+━━━━━━━━━━━━━━━━━━━━
++ code-event-option Bool
+    - event KeyPressEvent
+
+event.modifiers.option

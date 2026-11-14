@@ -1,0 +1,24 @@
+/data/markdown
+/YuCore/YuCore.h
+/YuGC/YuGC.h
+
+. heap-goal = 1048576
+C:yumiGCSetHeapGoal(heap-goal)
+
+. chunks = 16
+. chunk = "This is a streaming markdown sentence with **bold text**, *emphasis*, and [a link](https://example.com). "
+. transcript = ""
+. checksum = 0 as Size
+
+for i in 0 .. < chunks
+    transcript ++= chunk
+    . document = Markdown(transcript)
+    . html = markdown-to-html(document)
+    checksum += html.length
+    if i % 4 == 3
+        C:yumiCollect()
+
+if checksum < transcript.length
+    ?! Panic("markdown refresh result was too short")
+
+-- "markdown-refresh-ok ${checksum}"

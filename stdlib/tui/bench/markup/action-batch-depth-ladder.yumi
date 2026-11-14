@@ -1,0 +1,86 @@
+`benchmark.meta description: Holds distinct markup actions dirty across 1, 8, and 64 writes per checkpoint.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. row-count Size = 64
+
+<ActionBatchDepthRoot root
+
+root.row-indexes = make-action-batch-depth-indexes(row-count)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+
+. phase-1 = run-action-batch-depth(root, 1)
+. phase-8 = run-action-batch-depth(root, 8)
+. phase-64 = run-action-batch-depth(root, 64)
+?! Panic("Depth-1 action batch did not reach its checkpoint")
+    if phase-1 != row-count
+?! Panic("Depth-8 action batch did not reach its checkpoint")
+    if phase-8 != row-count
+?! Panic("Depth-64 action batch did not reach its checkpoint")
+    if phase-64 != row-count
+. checksum = root.source + phase-1 + phase-8 + phase-64
+
+-- "bench-result markup/action-batch-depth-ladder checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ ActionBatchDepthRoot is Box
+    is MarkupBatch
+
++ row-indexes [ActionBatchDepthIndex]
++ source Size = 0
++ runs [Bool]
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This
+    for row in #row-indexes keyed by row.value
+        <ActionBatchDepthRow
+            sink = this
+            value = #source
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ActionBatchDepthRow is Box
+
++ sink ActionBatchDepthRoot
++ value Size = 0
+
+────────────────────
+whenever #value
+
+sink.runs += true
+
+━━━━━━━━━━━━━━━━━━━━
++ ActionBatchDepthIndex is Tuple
+
++ value Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-action-batch-depth Size
+    - root ActionBatchDepthRoot
+    - depth Size
+
+root.runs.clear()
+for write in 0 .. < depth
+    root.source += 1
+    //markup.action.depth-ladder.writes ++
+
+root.markup-batch-queue.checkpoint()
+
+= root.runs.length
+
+━━━━━━━━━━━━━━━━━━━━
++ make-action-batch-depth-indexes [ActionBatchDepthIndex]
+    - count Size
+
+ActionBatchDepthIndex(each) in 0 .. < count

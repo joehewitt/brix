@@ -1,0 +1,73 @@
+
+/data/csv
+/data/json
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Decode Scalars")
+
+"true",        JSON("true") as String
+"1000",        JSON("1e3") as String
+
+════════════════════
+test("Decode Strings")
+
+"",                JSON("\"\"") as String
+"\t\n",            JSON("\"\\t\\n\"") as String
+"a\"b\\c/d",       JSON("\"a\\\"b\\\\c\\/d\"") as String
+"\b\f\r",          JSON("\"\\b\\f\\r\"") as String
+"éab",             JSON("\"\\u00e9ab\"") as String
+"a🙂b",            JSON("\"a\\uD83D\\uDE42b\"") as String
+"\uFFFD",          JSON("\"\\ud83d\"") as String
+"\uFFFDx",         JSON("\"\\ude42x\"") as String
+"\uFFFDA",         JSON("\"\\ud83d\\u0041\"") as String
+false,             parses("\"\\u41\"")
+false,             parses("\"\\u00g1\"")
+
+════════════════════
+test("Encode Values")
+
+"\"a\\u0001b\"",           to-json("a\x01b")
+
+════════════════════
+test("Encode Parsed Values")
+
+encoded-complex-json-expected(), encoded-complex-json()
+"[]",     to-json(JSON("[]"))
+"{}",     to-json(JSON("{}"))
+
+════════════════════
+test("CSV File Grammar")
+
+"(a, b, 1, 2, 3, 4, ba,\"by, x)", parsed-csv() as String
+
+━━━━━━━━━━━━━━━━━━━━
++ encoded-complex-json-expected
+
+"[null, 1, [2, 3.5], \"foo\\tA\", {\"yy\": [1, 2, 3], " ++ tail
+
+.. tail = "\"xx\": 999.999}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ parses Bool
+    - text String
+
+parsed != null
+
+.. parsed = match? text
+    ~ \json-text
+
+━━━━━━━━━━━━━━━━━━━━
++ encoded-complex-json
+
+to-json(JSON(" [null, 1, [2, 3.5], \"foo\\t\\u0041\",\n    {\"xx\": 999.999, \"yy\": [1, 2, 3]}]"))
+
+━━━━━━━━━━━━━━━━━━━━
++ parsed-csv
+
+~ \csv-file = "a,b\n1,2\n3,4,\"ba,\\\"by\",x"

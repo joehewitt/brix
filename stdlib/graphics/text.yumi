@@ -1,0 +1,927 @@
+/YuGraphics/YuGraphics.h
+/graphics/color
+/graphics/path
+/graphics/point
+/graphics/primitives
+/math
+
+_ text-layout-live Size = 0
+_ text-layout-high-water Size = 0
+_ text-layout-created Size = 0
+_ text-layout-released Size = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ FontWeight is Union
+
+| ultra-light
+| thin
+| light
+| regular
+| medium
+| semibold
+| bold
+| heavy
+| black
+
+────────────────────
++ get trait F64
+
+match this
+    | FontWeight.ultra-light
+        -0.8
+    | FontWeight.thin
+        -0.6
+    | FontWeight.light
+        -0.4
+    | FontWeight.medium
+        0.23
+    | FontWeight.semibold
+        0.3
+    | FontWeight.bold
+        0.4
+    | FontWeight.heavy
+        0.56
+    | FontWeight.black
+        0.62
+    ??
+        0.0
+
+────────────────────
++ get css-weight Int
+
+match this
+    | FontWeight.ultra-light
+        100
+    | FontWeight.thin
+        200
+    | FontWeight.light
+        300
+    | FontWeight.medium
+        500
+    | FontWeight.semibold
+        600
+    | FontWeight.bold
+        700
+    | FontWeight.heavy
+        800
+    | FontWeight.black
+        900
+    ??
+        400
+
+━━━━━━━━━━━━━━━━━━━━
++ TextAlignment is Union
+
+| left
+| center
+| right
+
+━━━━━━━━━━━━━━━━━━━━
++ TextOverflow is Union
+
+| clip
+| truncate-tail
+| truncate-head
+
+━━━━━━━━━━━━━━━━━━━━
++ TextWrap is Union
+
+| no-wrap
+| word
+
+━━━━━━━━━━━━━━━━━━━━
++ TextWrapSizing is Union
+
+| available
+| tight
+
+━━━━━━━━━━━━━━━━━━━━
++ FontSlant is Union
+
+| upright
+| italic
+
+━━━━━━━━━━━━━━━━━━━━
++ Font is Tuple
+
++ family String
++ size Length
++ weight FontWeight = FontWeight.regular
++ slant FontSlant = FontSlant.upright
+
+━━━━━━━━━━━━━━━━━━━━
++ TextObjectMetrics is Tuple
+
++ width Length
++ ascent Length
++ descent Length
+
+━━━━━━━━━━━━━━━━━━━━
++ TextSegment is Tuple
+
++ tag Int
++ text String
++ font Font
++ color RGBA? = null
++ object TextObjectMetrics? = null
++ join-before = false
++ join-after = false
+
+━━━━━━━━━━━━━━━━━━━━
++ TextFragment is Tuple
+
++ tag Int
++ line Index
++ x Length
++ width Length
++ ascent Length
++ descent Length
+
+━━━━━━━━━━━━━━━━━━━━
++ system-font Font
+    - size Length = 13
+    - weight FontWeight = FontWeight.regular
+
+Font("", size, weight)
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLayoutRequest is Tuple
+
++ text String
++ font Font
++ maximum-width Length?
++ overflow TextOverflow
++ wrap TextWrap
++ line-spacing Length
++ maximum-height Length?
+
+────────────────────
++ This
+    - text String
+    - font Font
+    - maximum-width Length? = null
+    - overflow TextOverflow = TextOverflow.truncate-tail
+    - wrap TextWrap = TextWrap.no-wrap
+    - line-spacing Length = 0
+    - maximum-height Length? = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-truncation
+    - overflow TextOverflow
+
+match overflow
+    | .truncate-tail
+        1
+    | .truncate-head
+        2
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-request-is-valid Bool
+    - request TextLayoutRequest
+
+text-span-is-valid(request.maximum-width) && text-span-is-valid(request.maximum-height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-span-is-valid
+    - span Length?
+
+|? span != null
+    is-finite(span) && span >= 0
+??
+    true
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLineSnapshot is Tuple
+
++ typographic-bounds Rect
++ ink-bounds Rect
++ baseline Length
++ ascent Length
++ descent Length
++ leading Length
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLayoutSnapshot is Tuple
+
++ size Dimensions
++ natural-width Length
++ constrained-width Length
++ line-count Int
++ first-baseline Length
++ last-baseline Length
++ is-truncated Bool
++ lines [TextLineSnapshot]
+
+────────────────────
++ get normalized String
+
+"".join
+    * "size=(${text-scalar(size.width)},${text-scalar(size.height)});"
+    * "natural-width=${text-scalar(natural-width)};"
+    * "constrained-width=${text-scalar(constrained-width)};"
+    * "line-count=$line-count;"
+    * "first-baseline=${text-scalar(first-baseline)};"
+    * "last-baseline=${text-scalar(last-baseline)};"
+    * "is-truncated=$is-truncated;"
+    * "lines=[${",".join(normalized-text-line(each) in lines)}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLayoutRequestPanic is Panic
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLayout
+    is Closable
+
++ request TextLayoutRequest
++ line-spacing => request.line-spacing
++ width => shaped.size.width
++ height => simple-line?.height ?? shaped.size.height
++ natural-width => shaped.natural-width
++ constrained-width => shaped.constrained-width
++ line-count => if simple-line then 1 else shaped.line-count
++ ascent => simple-line?.ascent ?? snapshot.lines[0].ascent
++ descent => simple-line?.descent ?? snapshot.lines[0].descent
++ leading => simple-line?.leading ?? snapshot.lines[0].leading
++ baseline => simple-line?.ascent ?? shaped.first-baseline
++ is-truncated => if simple-line && !may-truncate then false else shaped.is-truncated
++ is-simple => simple-line != null
++ is-shaped => snapshot-value != null
+
+_ native-value Pointer?
+_ simple-line TextSimpleLine?
+_ is-closed = false
+_ snapshot-value TextLayoutSnapshot?
+_ fragments-value [TextFragment]?
+_ objects [TextLayoutObject]
+
+────────────────────
++ This
+    - source TextLayoutRequest
+
+?! TextLayoutRequestPanic("Text maximum width and height must be finite and nonnegative")
+    if !text-layout-request-is-valid(source)
+
+request = source
+. metrics = F64[4]
+. simple = C:yumiGraphicsTextLayoutSimpleMetrics
+    - source.text
+    - source.font.family
+    - source.font.size
+    - source.font.weight.trait
+    - source.font.slant == FontSlant.italic
+    - source.maximum-width != null
+    - text-truncation(source.overflow)
+    - source.wrap == TextWrap.word
+    - metrics
+//graphics.text.fonts-created += C:yumiGraphicsTextLayoutGetLastFontCreateMissCount() as U64
+if simple
+    simple-line = TextSimpleLine(metrics[0], metrics[1], metrics[2], metrics[3])
+    //graphics.text.simple-layouts ++
+else
+    shape()
+
+────────────────────
+_ get may-truncate Bool
+
+bounded-overflow && request.wrap == TextWrap.no-wrap
+
+.. bounded-overflow = request.maximum-width != null && request.overflow != TextOverflow.clip
+
+────────────────────
++ do get native Pointer?
+
+=? native-value if native-value || is-closed
+shape()
+= native-value
+
+────────────────────
+_ do shape
+
+. maximum-width = request.maximum-width ?? 0
+. created = C:yumiGraphicsTextLayoutCreate
+    - request.text
+    - request.font.family
+    - request.font.size
+    - request.font.weight.trait
+    - request.font.slant == FontSlant.italic
+    - request.maximum-width != null
+    - maximum-width
+    - request.maximum-height != null
+    - request.maximum-height ?? 0
+    - text-truncation(request.overflow)
+    - request.wrap == TextWrap.word
+    - request.line-spacing
+//graphics.text.fonts-created += C:yumiGraphicsTextLayoutGetLastFontCreateMissCount() as U64
+?! TextLayoutRequestPanic("Unable to create text layout")
+    if !created
+native-value = created
+adopt-native()
+
+────────────────────
+_ do get shaped TextLayoutSnapshot
+
+. head = snapshot-value
+=? head if head
+shape()
+if is-closed
+    release-native()
+= snapshot-value!
+
+────────────────────
++ This
+    - segments [TextSegment]
+    - font Font
+    - maximum-width Length? = null
+    - overflow TextOverflow = TextOverflow.clip
+    - wrap TextWrap = TextWrap.word
+    - spacing Length = 0
+    - maximum-height Length? = null
+
+request = TextLayoutRequest
+    - "".join(each.text in segments)
+    - font
+    - maximum-width
+    - overflow
+    - wrap
+    - spacing
+    - maximum-height
+?! TextLayoutRequestPanic("Text maximum width and height must be finite and nonnegative")
+    if !text-layout-request-is-valid(request)
+
+. builder = C:yumiGraphicsStyledTextCreate
+    - font.family
+    - font.size
+    - font.weight.trait
+    - font.slant == FontSlant.italic
+?! TextLayoutRequestPanic("Unable to create styled text")
+    if !builder
+. offset Size = 0
+for segment in segments
+    append-native-segment(builder, segment)
+    if segment.object != null
+        objects += TextLayoutObject(offset, text-object-units(segment), segment.join-before)
+    offset += segment.text.size
+. created = C:yumiGraphicsStyledTextLayoutCreate
+    - builder
+    - maximum-width != null
+    - maximum-width ?? 0
+    - maximum-height != null
+    - maximum-height ?? 0
+    - text-truncation(overflow)
+    - wrap == TextWrap.word
+    - line-spacing
+C:yumiGraphicsStyledTextRelease(builder)
+//graphics.text.fonts-created += C:yumiGraphicsTextLayoutGetLastFontCreateMissCount() as U64
+?! TextLayoutRequestPanic("Unable to create text layout")
+    if !created
+native-value = created
+adopt-native()
+
+────────────────────
+_ do adopt-native
+
+. head = native-text-layout-head(native-value!)
+snapshot-value = head
+text-layout-live += 1
+text-layout-created += 1
+//graphics.text.layouts-created ++
+if head.is-truncated
+    //graphics.text.truncated-layouts ++
+else
+    //graphics.text.natural-layouts ++
+if text-layout-live > text-layout-high-water
+    //graphics.text.layouts-high-water += (text-layout-live - text-layout-high-water) as U64
+    text-layout-high-water = text-layout-live
+
+────────────────────
++ This
+    - text String
+    - font Font
+    - maximum-width Length? = null
+    - overflow TextOverflow = TextOverflow.truncate-tail
+    - wrap TextWrap = TextWrap.no-wrap
+    - line-spacing Length = 0
+    - maximum-height Length? = null
+
+= This(TextLayoutRequest(text, font, maximum-width, overflow, wrap, line-spacing, maximum-height))
+
+────────────────────
++ do to-path Path
+
+?! TextLayoutRequestPanic("Cannot extract a path from a closed text layout") if is-closed
+
+. handle = native
+. count = C:yumiGraphicsTextLayoutGetPathCommandCount(handle)
+. path = Path()
+=? path if count == 0
+
+. verbs = U8[count]
+. coordinates = F64[count * 6]
+C:yumiGraphicsTextLayoutGetPathCommands(handle, verbs, coordinates, count)
+path.reserve(count, count * 6)
+for index in 0 .. < count
+    . offset = index * 6
+    do match verbs[index]
+        |= C:YuGraphicsTextPathMove
+            path.move-to(coordinates[offset], coordinates[offset + 1])
+        |= C:YuGraphicsTextPathLine
+            path.line-to(coordinates[offset], coordinates[offset + 1])
+        |= C:YuGraphicsTextPathQuadratic
+            path.quadratic-curve-to
+                - coordinates[offset]
+                - coordinates[offset + 1]
+                - coordinates[offset + 2]
+                - coordinates[offset + 3]
+        |= C:YuGraphicsTextPathCubic
+            path.cubic-curve-to
+                - Point(coordinates[offset], coordinates[offset + 1])
+                - Point(coordinates[offset + 2], coordinates[offset + 3])
+                - Point(coordinates[offset + 4], coordinates[offset + 5])
+        |= C:YuGraphicsTextPathClose
+            path.close()
+= path
+
+────────────────────
++ do get fragments [TextFragment]
+
+. cached = fragments-value
+=? cached if cached
+. handle = native
+. loaded = if handle then native-text-layout-fragments(handle) else List'TextFragment()
+fragments-value = loaded
+= loaded
+
+────────────────────
++ line-offset Length
+    - line Index
+    - width Length
+    - alignment TextAlignment
+
+match alignment
+    | .center
+        (width - line-width) / 2
+    | .right
+        width - line-width
+    ??
+        0
+
+.. line-width = snapshot.lines[line].typographic-bounds.width
+
+────────────────────
++ offset-at Size
+    - point Point
+
+if !handle then 0 else text-offset(C:yumiGraphicsTextLayoutGetIndexAtPoint(handle, point.x, point.y))
+
+.. handle = native
+
+────────────────────
++ line-at Index
+    - offset Size
+
+if !handle then 0 else C:yumiGraphicsTextLayoutGetLineForIndex(handle, native-offset) as Index
+
+.. handle = native
+.. native-offset = native-index(offset)
+
+────────────────────
++ line-start-offset Size
+    - line Index
+
+if !handle then 0 else text-offset(C:yumiGraphicsTextLayoutGetLineStart(handle, line))
+
+.. handle = native
+
+────────────────────
++ line-end-offset Size
+    - line Index
+
+if !handle then 0 else text-offset(C:yumiGraphicsTextLayoutGetLineEnd(handle, line))
+
+.. handle = native
+
+────────────────────
++ do caret-rect Rect
+    - offset Size
+
+. handle = native
+=? Rect(0, 0, 0, 0) if !handle
+. index = native-index(offset)
+. line = C:yumiGraphicsTextLayoutGetLineForIndex(handle, index) as Index
+. bounds = snapshot.lines[line].typographic-bounds
+= Rect(C:yumiGraphicsTextLayoutGetXForIndex(handle, index), bounds.y, 0, bounds.height)
+
+────────────────────
+_ do native-index I64
+    - offset Size
+
+. bytes = request.text as Byte[]
+. end = min(offset, bytes.size)
+. units Size = 0
+. index Size = 0
+. next Index = 0
+while true
+    if next < objects.length && objects[next].offset <= index && counts-object
+        units += objects[next].units
+        next += 1
+    else if index < end
+        . width = text-utf8-width(bytes[index])
+        units += if width == 4 then 2 else 1
+        index += width
+    else
+        break
+    .. counts-object = index < end || objects[next].is-trailing
+= units
+
+────────────────────
+_ do text-offset Size
+    - units Size
+
+. bytes = request.text as Byte[]
+. seen Size = 0
+. index Size = 0
+. next Index = 0
+while seen < units
+    if next < objects.length && objects[next].offset <= index
+        seen += objects[next].units
+        next += 1
+    else if index < bytes.size
+        . width = text-utf8-width(bytes[index])
+        seen += if width == 4 then 2 else 1
+        index += width
+    else
+        break
+= index
+
+────────────────────
++ do get snapshot TextLayoutSnapshot
+
+//graphics.text.metric-queries ++
+. head = shaped
+=? head if head.lines.length > 0 || head.line-count == 0
+. loaded = TextLayoutSnapshot
+    - head.size
+    - head.natural-width
+    - head.constrained-width
+    - head.line-count
+    - head.first-baseline
+    - head.last-baseline
+    - head.is-truncated
+    - native-text-layout-lines(native!, head.line-count)
+snapshot-value = loaded
+= loaded
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+release-native()
+
+────────────────────
+_ do release-native
+
+. handle = native-value
+=? if !handle
+C:yumiGraphicsTextLayoutRelease(handle)
+native-value = null
+text-layout-live -= 1
+text-layout-released += 1
+//graphics.text.layouts-released ++
+
+━━━━━━━━━━━━━━━━━━━━
++ text-path Path
+    - text String
+    - font Font = system-font()
+
+layout.to-path()
+    .. layout = use TextLayout(text, font)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TextSimpleLine is Tuple
+
++ ascent Length
++ descent Length
++ leading Length
++ height Length
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLayoutBuilder is () TextLayout
+    - maximum-width Length?
+
+━━━━━━━━━━━━━━━━━━━━
+_ TextLayoutObject is Tuple
+
++ offset Size
++ units Size
++ is-trailing Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-object-units Size
+    - segment TextSegment
+
+1 + (if segment.join-before then 1 else 0) + (if segment.join-after then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-utf8-width Size
+    - lead Byte
+
+|? lead >= 0xF0
+    4
+|? lead >= 0xE0
+    3
+|? lead >= 0xC0
+    2
+??
+    1
+
+━━━━━━━━━━━━━━━━━━━━
++ TightTextLayout is Tuple
+
++ layout TextLayout
++ width Length
++ cap Length?
+
+────────────────────
++ serves
+    - maximum-width Length?
+
+|? maximum-width == null
+    cap == null
+??
+    tight-text-width-serves(width, maximum-width, cap)
+
+━━━━━━━━━━━━━━━━━━━━
++ tight-text-width-serves
+    - selected Length
+    - width Length
+    - cap Length?
+
+selected <= width + 0.01 && (cap == null || width <= cap + 0.01)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tight-text-layout TightTextLayout
+    - build TextLayoutBuilder
+    - precision Length
+    - snap Mapper'Length'Length
+    - maximum-width Length?
+
+if maximum-width == null
+    . unbounded = build(null)
+    = TightTextLayout(unbounded, snap(unbounded.natural-width), null)
+
+. cap = text-safe-span(maximum-width)
+. winner = narrowest-text-layout(build, cap, precision)
+. width = if cap == 0 || winner.width > cap then cap else winner.width
+. stable-width = snap(width)
+if stable-width <= cap && stable-width != width
+    . stable = build(stable-width)
+    if same-text-lines(stable, winner)
+        winner.close()
+        winner = stable
+        width = stable-width
+    else
+        stable.close()
+= TightTextLayout(winner, width, cap)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do narrowest-text-layout
+    - build TextLayoutBuilder
+    - cap Length
+    - precision Length
+
+. winner = build(cap)
+=? winner if cap == 0 || winner.width > cap || winner.line-count == 1
+. lower = 0.0
+. upper = cap
+while upper - lower > precision
+    . midpoint = (lower + upper) / 2
+    if midpoint == lower || midpoint == upper
+        break
+    . candidate = build(midpoint)
+    if same-text-lines(candidate, winner)
+        winner.close()
+        winner = candidate
+        upper = midpoint
+    else
+        candidate.close()
+        lower = midpoint
+
+. derived-width = winner.width
+if derived-width > 0 && derived-width < (winner.request.maximum-width ?? cap)
+    . derived = build(derived-width)
+    if same-text-lines(derived, winner)
+        winner.close()
+        winner = derived
+    else
+        derived.close()
+= winner
+
+━━━━━━━━━━━━━━━━━━━━
+_ same-text-lines
+    - candidate TextLayout
+    - target TextLayout
+
+candidate.line-count == target.line-count && candidate.height == target.height
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-safe-span
+    - value Length
+
+if is-finite(value) then max(0, value) else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-live-count Size
+
+text-layout-live
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-high-water-count Size
+
+text-layout-high-water
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-created-count Size
+
+text-layout-created
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-released-count Size
+
+text-layout-released
+
+━━━━━━━━━━━━━━━━━━━━
++ text-font-created-count Size
+
+C:yumiGraphicsTextFontCreatedCount()
+
+━━━━━━━━━━━━━━━━━━━━
++ FontRegistrationError is Error
+
+╌╌╌╌╌╌╌╌╌╌ is Error ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ to String
+
+message ?? "Unable to register font"
+
+━━━━━━━━━━━━━━━━━━━━
++ FontRegistration
+    is Closable
+
++ family String
+_ native Pointer?
+
+────────────────────
++ This ?! FontRegistrationError
+    - path String
+
+. candidate = C:yumiGraphicsFontRegister(path)
+?! FontRegistrationError("Unable to register font '$path'")
+    if !C:yumiGraphicsFontRegistrationIsValid(candidate)
+native = candidate
+family = C:yumiGraphicsFontRegistrationGetFamily(candidate)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+if native
+    C:yumiGraphicsFontRegistrationRelease(native)
+    native = null
+
+━━━━━━━━━━━━━━━━━━━━
++ FontCatalog
+
+────────────────────
++ register FontRegistration ?! FontRegistrationError
+    - path String
+
+FontRegistration(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do native-text-layout-head TextLayoutSnapshot
+    - native Pointer
+
+. width = C:yumiGraphicsTextLayoutGetWidth(native)
+. height = C:yumiGraphicsTextLayoutGetHeight(native)
+. line-count = C:yumiGraphicsTextLayoutGetLineCount(native)
+. lines [TextLineSnapshot]
+= TextLayoutSnapshot
+    - Dimensions(width, height)
+    - C:yumiGraphicsTextLayoutGetNaturalWidth(native)
+    - C:yumiGraphicsTextLayoutGetConstrainedWidth(native)
+    - line-count
+    - C:yumiGraphicsTextLayoutGetBaseline(native)
+    - C:yumiGraphicsTextLayoutGetLastBaseline(native)
+    - C:yumiGraphicsTextLayoutIsTruncated(native)
+    - lines
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-native-segment
+    - builder Pointer
+    - segment TextSegment
+
+do match segment.object
+    | TextObjectMetrics
+        C:yumiGraphicsStyledTextAppendObject
+            - builder
+            - it.width
+            - it.ascent
+            - it.descent
+            - segment.tag
+            - segment.join-before
+            - segment.join-after
+    ??
+        . color = segment.color ?? transparent
+        C:yumiGraphicsStyledTextAppendText
+            - builder
+            - segment.text
+            - segment.font.family
+            - segment.font.size
+            - segment.font.weight.trait
+            - segment.font.slant == FontSlant.italic
+            - segment.color != null
+            - color.red
+            - color.green
+            - color.blue
+            - color.alpha
+            - segment.tag
+
+━━━━━━━━━━━━━━━━━━━━
+_ native-text-layout-fragments
+    - native Pointer
+
+** 0 .. < C:yumiGraphicsTextLayoutGetFragmentCount(native)
+*> TextFragment
+    - C:yumiGraphicsTextLayoutGetFragmentTag(native, each)
+    - C:yumiGraphicsTextLayoutGetFragmentLine(native, each)
+    - C:yumiGraphicsTextLayoutGetFragmentX(native, each)
+    - C:yumiGraphicsTextLayoutGetFragmentWidth(native, each)
+    - C:yumiGraphicsTextLayoutGetFragmentAscent(native, each)
+    - C:yumiGraphicsTextLayoutGetFragmentDescent(native, each)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ native-text-layout-lines
+    - native Pointer
+    - line-count Int
+
+** 0 .. < line-count
+*> TextLineSnapshot
+    - typographic
+    - ink
+    - C:yumiGraphicsTextLayoutGetLineBaseline(native, index)
+    - C:yumiGraphicsTextLayoutGetLineAscent(native, index)
+    - C:yumiGraphicsTextLayoutGetLineDescent(native, index)
+    - C:yumiGraphicsTextLayoutGetLineLeading(native, index)
+    .. index = each
+    .. typographic = Rect
+        - C:yumiGraphicsTextLayoutGetLineTypographicX(native, index)
+        - C:yumiGraphicsTextLayoutGetLineTypographicY(native, index)
+        - C:yumiGraphicsTextLayoutGetLineWidth(native, index)
+        - C:yumiGraphicsTextLayoutGetLineHeight(native, index)
+    .. ink = Rect
+        - C:yumiGraphicsTextLayoutGetLineInkX(native, index)
+        - C:yumiGraphicsTextLayoutGetLineInkY(native, index)
+        - C:yumiGraphicsTextLayoutGetLineInkWidth(native, index)
+        - C:yumiGraphicsTextLayoutGetLineInkHeight(native, index)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ normalized-text-line String
+    - line TextLineSnapshot
+
+"".join
+    * "typographic-bounds=(${text-rect(line.typographic-bounds)}),"
+    * "ink-bounds=(${text-rect(line.ink-bounds)}),"
+    * "baseline=${text-scalar(line.baseline)},"
+    * "ascent=${text-scalar(line.ascent)},"
+    * "descent=${text-scalar(line.descent)},"
+    * "leading=${text-scalar(line.leading)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-rect String
+    - rect Rect
+
+"".join
+    * "${text-scalar(rect.x)},${text-scalar(rect.y)},"
+    * "${text-scalar(rect.width)},${text-scalar(rect.height)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text-scalar String
+    - value Float
+
+. scaled = round(value * 1000) as I64
+. sign = if scaled < 0 then "-" else ""
+. magnitude = if scaled < 0 then -scaled else scaled
+. whole = magnitude / 1000
+. fraction = magnitude % 1000
+. fraction-text = "$fraction"
+while fraction-text.length < 3
+    fraction-text = "0$fraction-text"
+= "$sign$whole.$fraction-text"

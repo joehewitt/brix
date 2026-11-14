@@ -1,0 +1,83 @@
+/core/channel
+/time
+/tui
+
+<Window win • flex-col
+    <AnimationLab app • flex-col flex:1 bg:black
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ AnimationLab is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ box-left-stream = left-loop()
+
+────────────────────
+
+<Label " Animation Lab " • bg:lime text:black
+
+<Box stage • flex-col flex:1 bg:black border:grey p:1
+    <Box • flex-row h:1
+        <Label " sweep " • bg:blue text:white
+        <Box • flex:1 bg:black
+    <Box • flex-row flex:1 bg:black
+        <Box • flex-col flex:1
+            <Label " lane 1" • bg:navy text:white
+            <Box • flex:1
+            <Label " lane 2" • bg:green text:black
+        <Box • flex-col flex:1
+            <Label " lane 3" • bg:maroon text:white
+            <Box • flex:1
+            <Label " lane 4" • bg:yellow text:black
+
+    <Box • flow-col absolute border p:1 bg:aqua text:black
+        anchor = .parent
+        left = ##box-left-stream
+        top = 3
+        width = 18
+        <Label " absolute"
+        <Label " stream"
+
+<Label • bg:grey text:black
+    text = " latest-from-stream "
+
+<Shortcut "Quit"
+    key = .escape
+    action = => do close-lab()
+
+<Shortcut "Quit"
+    key = 'q'
+    action = => do close-lab()
+
+────────────────────
++ do close-lab
+
+box-left-stream.close()
+root.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do left-loop AsyncChannel'Coord
+
+. channel = AsyncChannel'Coord()
+do new
+    28ms.wait()
+
+    while !channel.is-closed
+        for position in bounce-pass(2, 56)
+            if channel.is-closed
+                break
+
+            channel <- position
+            28ms.wait()
+= channel
+
+━━━━━━━━━━━━━━━━━━━━
++ bounce-pass @inline
+    - first Coord
+    - last Coord
+
+** first .. last
+**? (last - 1 .. first + 1) if last - first > 1

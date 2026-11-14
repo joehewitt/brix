@@ -1,0 +1,188 @@
+/data/diff
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Diff Alignment")
+
+"=5 -4 =3", => runs(dividers(), dividers-without-b())
+"=2 -2 =1", => runs(["a", "    x", "", "    y", "b"], ["a", "    x", "b"])
+"=4 +4 =4", => runs(blocks(), blocks-with-z())
+"=3 +3 =2", => runs(functions(), functions-with-b())
+"=1 -1 +3 =2", => runs(load(), load-with-blanks())
+"=1 -1 +3 =1", => runs(assignment(), assignment-after-calls())
+
+════════════════════
+test("Diff Line Changes")
+
+"", => changes(["a", "b"], ["a", "b"])
+"inserted 1", => changes(["a", "c"], ["a", "b", "c"])
+"deleted before 1", => changes(["a", "b", "c"], ["a", "c"])
+"modified 1", => changes(["a", "foo()", "z"], ["a", "bar = 3", "z"])
+"inserted 0-1", => changes(List'String(), ["a", "b"])
+"deleted before 0", => changes(["a", "b"], List'String())
+"deleted before 5", => changes(dividers(), dividers-without-b())
+"inserted 3-5", => changes(functions(), functions-with-b())
+"modified 1, inserted 2-3", => changes(load(), load-with-blanks())
+"inserted 1-2, modified 3", => changes(assignment(), assignment-after-calls())
+"modified 1, deleted before 2", => changes(assignment-with-extra(), ["a", "value = 2", "z"])
+
+════════════════════
+test("Diff Word Changes")
+
+"2", => words(["a", "value = 1", "z"], ["a", "first()", "value = 2", "z"], false, 2)
+"1", => words(["a", "value = 1", "z"], ["a", "first()", "value = 2", "z"], true, 1)
+"", => words(["a", "value = 1", "z"], ["a", "first()", "value = 2", "z"], false, 1)
+
+════════════════════
+test("Diff Line Change Shifting")
+
+"modified 2, deleted before 7", => shifted(3, 2)
+"modified 2, deleted before 4", => shifted(3, -1)
+"modified 2, deleted before 5", => shifted(5, 2)
+"modified 4, deleted before 7", => shifted(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ runs
+    - old [String]
+    - new [String]
+
+" ".join("${run-symbol(each.kind)}${each.count}" in document(old, new).runs)
+
+━━━━━━━━━━━━━━━━━━━━
+_ changes
+    - old [String]
+    - new [String]
+
+described(document(old, new).line-changes())
+
+━━━━━━━━━━━━━━━━━━━━
+_ words
+    - old [String]
+    - new [String]
+    - is-old Bool
+    - line Index
+
+", ".join(bytes.slice-string(each) in found.word-changes(is-old, line))
+
+.. found = document(old, new)
+.. bytes = if is-old then found.old-text.bytes else found.new-text.bytes
+
+━━━━━━━━━━━━━━━━━━━━
+_ shifted
+    - last-line Size
+    - delta I64
+
+described(diff-shifted-changes(changes, last-line, delta))
+
+.. changes = [DiffLineChange(.modified, 2, 1), DiffLineChange(.deleted, 5, 0)]
+
+━━━━━━━━━━━━━━━━━━━━
+_ described
+    - changes [DiffLineChange]
+
+", ".join(describe(each) in changes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ describe
+    - change DiffLineChange
+
+|? change.kind == DiffLineChangeKind.deleted
+    "deleted before ${change.line}"
+|? change.count == 1
+    "${change.kind} ${change.line}"
+??
+    "${change.kind} ${change.line}-${change.line + change.count - 1}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ run-symbol
+    - kind DiffKind
+
+|? kind == DiffKind.equal
+    "="
+|? kind == DiffKind.inserted
+    "+"
+|? kind == DiffKind.deleted
+    "-"
+??
+    "?"
+
+━━━━━━━━━━━━━━━━━━━━
+_ document
+    - old [String]
+    - new [String]
+
+diff-document(text(old), text(new))
+
+━━━━━━━━━━━━━━━━━━━━
+_ text
+    - lines [String]
+
+|? lines.length == 0
+    ""
+??
+    "$joined\n"
+
+.. joined = "\n".join(lines)
+
+━━━━━━━━━━━━━━━━━━━━
+_ dividers
+
+["────", "+ a", "", "x", "────", "+ b", "", "y", "────", "+ c", "", "z"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ dividers-without-b
+
+["────", "+ a", "", "x", "────", "+ c", "", "z"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ blocks
+
+["if x", "    a()", "    b()", "end", "if y", "    a()", "    b()", "end"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ blocks-with-z
+
+List'String
+    ** ["if x", "    a()", "    b()", "end"]
+    ** ["if z", "    a()", "    b()", "end"]
+    ** ["if y", "    a()", "    b()", "end"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ assignment
+
+["a", "value = 1", "z"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ assignment-after-calls
+
+["a", "first()", "second()", "value = 2", "z"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ assignment-with-extra
+
+["a", "value = 1", "extra()", "z"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ functions
+
+["def a", "    1", "", "def c", "    3"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ functions-with-b
+
+["def a", "    1", "", "def b", "    2", "", "def c", "    3"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ load
+
+["load", "    = decode(read(path))", "", "title"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ load-with-blanks
+
+["load", "    = decode(read-text(path))", "", "", "", "title"]

@@ -1,0 +1,139 @@
+/core/markup
+/test
+/tui/box
+/tui/layout
+/tui/primitives
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("TUI Flow Row Shrink")
+cases.run(tui-flow-row-shrink-tests)
+cases = cases.then("TUI Hidden Subtree Reveal", tui-hidden-subtree-reveal-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-flow-row-shrink-tests TestCase
+    - t TestCase
+
+. root = TuiFlowRowRoot()
+. tall = TuiFlowRowCell()
+. middle = TuiFlowRowCell()
+. last = TuiFlowRowCell()
+tall.measured-height = 5
+middle.measured-height = 2
+last.measured-height = 3
+markup-mount-root(root, root)
+markup-append(root, tall)
+markup-append(root, middle)
+markup-append(root, last)
+root.markup-batch-queue.checkpoint()
+root.bounds = Rect(0, 0, 40, 8)
+root.update-layout()
+t = t.expect("row height starts at the tallest child", 5, root.inner-height)
+
+tall.measured-height = 1
+root.update-layout()
+t = t.expect("row height shrinks to the remaining tallest child", 3, root.inner-height)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-hidden-subtree-reveal-tests TestCase
+    - t TestCase
+
+. root = TuiHiddenRevealRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.bounds = Rect(0, 0, 20, 8)
+root.update-layout()
+
+root.leaf.measured-height = 3
+root.group.is-hidden = false
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+t = t.expect("revealed leaf y", 0, root.leaf.bounds.y)
+t = t.expect("revealed leaf height", 3, root.leaf.bounds.height)
+t = t.expect("following sibling y", 3, root.after.bounds.y)
+t = t.expect("following sibling height", 1, root.after.bounds.height)
+t = t.expect("root inner height", 4, root.inner-height)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiFlowRowRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-row
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiFlowRowCell is Box
+
++ measured-width Coord = 3
++ measured-height Coord = 1
+
+. invalidate-content-size < measured-width
+. invalidate-content-size < measured-height
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(measured-width, measured-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiHiddenRevealRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
+
+<This
+    <TuiHiddenRevealGroup group
+        <TuiHiddenRevealLeaf leaf
+    <TuiHiddenRevealLeaf after
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiHiddenRevealGroup is Box
+
++ is-hidden = true
+
+• This
+    layout = flow-col
+    display = if #is-hidden then Display.hidden else Display.visible
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiHiddenRevealLeaf is Box
+
++ measured-height Coord = 1
+
+. invalidate-content-size < measured-height
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(3, measured-height)

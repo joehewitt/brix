@@ -1,0 +1,364 @@
+./curve
+./network
+./network-regions
+./point
+/math
+
+_ network-length-samples Size = 64
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkWovenPiece is Tuple
+
++ source Index
++ network VectorNetwork
++ over Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkVisit is Tuple
+
++ strand Index
++ order Size
++ crossing Index
++ segment Index
++ parameter Float
++ distance Float
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-free-end Index?
+    - network VectorNetwork
+
+. result Index?
+for trace in network.traces(false)
+    . ends = network-free-ends(network, trace)
+    if ends
+        result = ends[1]
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-free-ends [Index]?
+    - network VectorNetwork
+    - trace NetworkTrace
+
+|? trace.closed
+    null
+|? ends[0] == ends[1]
+    null
+|? network.degree(ends[0]) != 1 || network.degree(ends[1]) != 1
+    null
+??
+    ends
+
+.. ends = network.trace-ends(trace)
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-join
+    - network VectorNetwork
+    - start Index? = null
+    - tolerance Float = 0.001
+
+. seed = if start && network.has-vertex(start) && network.degree(start) == 1 then start else any-end
+    .. any-end = network-free-end(network)
+=? if !seed
+. chain = network-run-ends(network, seed)
+=? if !chain
+. head = if chain[1] == seed then chain[0] else chain[1]
+. tail = seed
+while true
+    . joined Index?
+    . nearest Index?
+    . other Index?
+    . distance = 0.0
+    for trace in network.traces(false)
+        . ends = network-free-ends(network, trace)
+        if ends && ends[0] != head && ends[0] != tail && ends[1] != head && ends[1] != tail
+            for chain-end in [head, tail]
+                . position = network.vertex(chain-end).position
+                for side in 0 .. < 2
+                    . gap = network.vertex(ends[side]).position.distance(position)
+                    if !nearest || gap < distance
+                        joined = chain-end
+                        nearest = ends[side]
+                        other = ends[1 - side]
+                        distance = gap
+    if !nearest
+        break
+    if distance <= tolerance
+        network.merge-vertices(nearest, joined!, network.vertex(joined!).position)
+    else
+        network.connect(joined!, nearest)
+    if joined! == head
+        head = other!
+    else
+        tail = other!
+. run = network-run(network, head)
+if run
+    network.order-vertices(run)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-run-ends [Index]?
+    - network VectorNetwork
+    - vertex Index
+
+for trace in network.traces(false)
+    . ends = network-free-ends(network, trace)
+    =? ends if ends && (ends[0] == vertex || ends[1] == vertex)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-run [Index]?
+    - network VectorNetwork
+    - head Index
+
+for trace in network.traces(false)
+    . ends = network-free-ends(network, trace)
+    if ends && (ends[0] == head || ends[1] == head)
+        . vertices [Index] = List'Index(ends[0])
+        for index in 0 .. < trace.segments.length
+            . edge = network.segment(trace.segments[index])
+            vertices += if trace.reversed[index] then edge.start else edge.end
+        = if ends[1] == head then List'Index(each in vertices.reversed()) else vertices
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-split [VectorNetwork]
+    - network VectorNetwork
+
+. result = network.copy()
+. crossings = NetworkRegionWorkspace().crossings(result)
+. index Index = 0
+while index < crossings.length
+    . segment = crossings[index].segment
+    . parameters [Float]
+    while index < crossings.length && crossings[index].segment == segment
+        parameters += crossings[index].parameter
+        index += 1
+    result.cut(segment, parameters)
+= List'VectorNetwork(result.extract(each) in result.traces(false))
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-weave [NetworkWovenPiece]
+    - networks [VectorNetwork]
+
+. merged = VectorNetwork()
+. bounds [Index]
+for network in networks
+    merged.add-network(network)
+    bounds += merged.next-segment-id
+. crossings = NetworkRegionWorkspace().crossings(merged)
+. counts [Size]
+for item in crossings
+    while counts.length <= item.crossing
+        counts += 0
+    counts[item.crossing] += 1
+. woven = Map'Index'([NetworkCrossing])()
+for item in crossings when counts[item.crossing] == 2
+    . along = woven[item.segment] ?? List'NetworkCrossing()
+    along += item
+    woven[item.segment] = along
+. strands = merged.traces(false)
+. visits [NetworkVisit]
+. lengths [Float]
+. spans [[Float]]
+for strand in 0 .. < strands.length
+    . trace = strands[strand]
+    . covered = 0.0
+    . order Size = 0
+    . measured [Float]
+    for index in 0 .. < trace.segments.length
+        . id = trace.segments[index]
+        . reversed = trace.reversed[index]
+        . curve = network-travel-curve(merged.curve(id), reversed)
+        . along = woven[id]
+        if along
+            . passed = if reversed then List'NetworkCrossing(each in along.reversed()) else along
+            for item in passed
+                . travelled = network-curve-length
+                    - curve
+                    - if reversed then 1 - item.parameter else item.parameter
+                visits += NetworkVisit
+                    - strand
+                    - order
+                    - item.crossing
+                    - id
+                    - item.parameter
+                    - covered + travelled
+                order += 1
+        . length = network-curve-length(curve, 1)
+        measured += length
+        covered += length
+    lengths += covered
+    spans += measured
+. partners [Index]
+. first-visits = Map'Index'Index()
+for index in 0 .. < visits.length
+    partners += index
+    . crossing = visits[index].crossing
+    . earlier = first-visits[crossing]
+    if earlier != null
+        partners[earlier] = index
+        partners[index] = earlier
+    else
+        first-visits[crossing] = index
+. phases [Size]
+for index in 0 .. < strands.length
+    phases += 2
+for start in 0 .. < strands.length
+    if phases[start] == 2
+        phases[start] = 0
+        . changed = true
+        while changed
+            changed = false
+            for index in 0 .. < visits.length
+                . visit = visits[index]
+                . partner = visits[partners[index]]
+                if phases[visit.strand] != 2 && phases[partner.strand] == 2
+                    phases[partner.strand] = order-sum % 2
+                        .. order-sum = phases[visit.strand] + visit.order + partner.order + 1
+                    changed = true
+. above [Bool]
+for index in 0 .. < visits.length
+    . leading = index <= partners[index]
+    . lead = visits[if leading then index else partners[index]]
+    . leads = (phases[lead.strand] + lead.order) % 2 == 0
+    above += if leading then leads else !leads
+. cuts [Index]
+. cut-parameters [[Float]]
+for strand in 0 .. < strands.length
+    . trace = strands[strand]
+    . distances [Float]
+    for visit in visits
+        if visit.strand == strand
+            distances += visit.distance
+    . targets [Float]
+    if distances.length > 1
+        for index in 1 .. < distances.length
+            targets += (distances[index - 1] + distances[index]) / 2
+    if trace.closed && distances.length
+        . wrapped = (distances[distances.length - 1] + distances[0] + lengths[strand]) / 2
+        targets += if wrapped >= lengths[strand] then wrapped - lengths[strand] else wrapped
+    for target in targets
+        network-add-cut(merged, trace, spans[strand], target, cuts, cut-parameters)
+. placed [Index]
+for visit in visits
+    placed += visit.segment
+for index in 0 .. < cuts.length
+    . pieces = merged.cut(cuts[index], cut-parameters[index])
+    for visit-index in 0 .. < visits.length
+        . visit = visits[visit-index]
+        if visit.segment == cuts[index]
+            . slot Index = 0
+            for parameter in cut-parameters[index]
+                if parameter < visit.parameter
+                    slot += 1
+            placed[visit-index] = pieces[slot]
+. lower [NetworkWovenPiece]
+. upper [NetworkWovenPiece]
+. pieces = merged.traces(false)
+. owners = Map'Index'Index()
+for index in 0 .. < pieces.length
+    for id in pieces[index].segments
+        owners[id] = index
+. tops [Bool]
+for index in 0 .. < pieces.length
+    tops += false
+for index in 0 .. < visits.length when above[index]
+    . owner = owners[placed[index]]
+    if owner != null
+        tops[owner] = true
+for index in 0 .. < pieces.length
+    . trace = pieces[index]
+    . source = network-source-index(bounds, merged.segment(trace.segments[0]).source)
+    . piece = NetworkWovenPiece(source, merged.extract(trace), tops[index])
+    if tops[index]
+        upper += piece
+    else
+        lower += piece
+= List'NetworkWovenPiece
+    ** lower
+    ** upper
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-add-cut
+    - network VectorNetwork
+    - trace NetworkTrace
+    - lengths [Float]
+    - distance Float
+    - cuts [Index]
+    - cut-parameters [[Float]]
+
+. covered = 0.0
+for index in 0 .. < trace.segments.length
+    . length = lengths[index]
+    if distance < covered + length || index == trace.segments.length - 1
+        . id = trace.segments[index]
+        . reversed = trace.reversed[index]
+        . curve = network-travel-curve(network.curve(id), reversed)
+        . travelled = network-curve-parameter(curve, distance - covered)
+        . parameter = min(max(if reversed then 1 - travelled else travelled, 0.001), 0.999)
+        for slot in 0 .. < cuts.length
+            if cuts[slot] == id
+                network-insert-sorted(cut-parameters[slot], parameter)
+                =
+        cuts += id
+        cut-parameters += List'Float(parameter)
+        =
+    covered += length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-insert-sorted
+    - values [Float]
+    - value Float
+
+for index in 0 .. < values.length
+    =? if abs(values[index] - value) < 0.000000001
+    if values[index] > value
+        values.insert(value, index)
+        =
+values += value
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-source-index Index
+    - bounds [Index]
+    - source Index
+
+for index in 0 .. < bounds.length
+    =? index if source < bounds[index]
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-travel-curve Curve
+    - curve Curve
+    - reversed Bool
+
+if reversed then Curve(curve.anchor2, curve.handle-in, curve.handle-out, curve.anchor1) else curve
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-curve-length Float
+    - curve Curve
+    - extent Float
+
+. total = 0.0
+. previous = curve.anchor1
+for index in 0 .. < network-length-samples
+    . point = network-curve-point
+        - curve
+        - extent * ((index + 1) as Float) / (network-length-samples as Float)
+    total += point.distance(previous)
+    previous = point
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-curve-parameter Float
+    - curve Curve
+    - length Float
+
+. total = 0.0
+. previous = curve.anchor1
+for index in 0 .. < network-length-samples
+    . point = network-curve-point(curve, ((index + 1) as Float) / (network-length-samples as Float))
+    . piece = point.distance(previous)
+    if piece > 0 && total + piece >= length
+        = ((index as Float) + (length - total) / piece) / (network-length-samples as Float)
+    total += piece
+    previous = point
+= 1.0

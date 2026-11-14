@@ -1,0 +1,1382 @@
+./types
+/core/arena
+/core/map
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+
++ BindingId is U32
++ no-binding BindingId = U32.max
++ SlotId is U32
++ ScopeId is U32
++ LazyUseId is U32
++ SlotMask is U32
++ CaptureMask is U32
++ LazyUseMask is U32
++ ResolutionMask is U32
+
++ no-slot SlotId = U32.max
+_ forgotten-module ModuleId = U32.max
++ member-chain-limit = 32u32
++ loop-state-count = 4u32
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotKind is U32
+
+| slot-argument = 0
+| slot-local = 1
+| slot-lazy = 2
+| slot-pattern = 3
+| slot-loop-item = 4
+| slot-this = 5
+| slot-it = 6
+| slot-each = 7
+| slot-super = 8
+| slot-closure-env = 9
+| slot-held = 10
+| slot-loop-state = 11
+| slot-location = 12
+| slot-subscribers = 13
+| slot-builder = 14
+| slot-machine = 15
+| slot-use = 16
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotFlag is U32
+
+| slot-none = 0
+| slot-constant = 1
+| slot-assigned = 2
+| slot-address-taken = 4
+| slot-tracked = 8
+| slot-captured = 16
+| slot-by-value = 32
+| slot-assigned-own = 64
+| slot-together = 128
+| slot-placed = 256
+| slot-shared-read = 512
+
+━━━━━━━━━━━━━━━━━━━━
++ Slot is Struct
+
++ kind SlotKind
++ name Atom
++ syntax SyntaxId
++ scope ScopeId
++ owner DeclId
++ group SyntaxId
++ flags SlotMask
++ use LazyUseId = U32.max
++ property SyntaxId = 0
++ getter SyntaxId = 0
++ namesake SlotId = no-slot
+
+━━━━━━━━━━━━━━━━━━━━
++ LazyUseFlag is U32
+
+| use-none = 0
+| declared-in-loop = 1
+| read-in-loop = 2
+| read-in-nested = 4
+| read-in-branch = 8
+| read-in-subscription = 16
+| read-in-state-machine = 32
+| read-in-lazy = 64
+
+━━━━━━━━━━━━━━━━━━━━
++ LazyPolicy is U8
+
+` Where a lazy local takes its value, as the reference's planner settles it from the uses.
+` - `lazy-inline`: its one read evaluates the value, each time the read runs. One declared in
+`   a loop is not read in a loop of its turn or in a nested function.
+` - `lazy-first-read`: a local declared in a loop and read more than once is evaluated by the
+`   first of its reads, each time that read runs, and the others read what it stored.
+` - `lazy-memo`: the value is evaluated once in a run of the function, by whichever read
+`   comes first, which a flag cleared where the function starts remembers. An assignment
+`   stores its value and sets the flag, so the value declared is not evaluated after it.
+`   One declared in a loop is evaluated once a turn: its flag is cleared again where the
+`   block that declares it starts, as TypeScript clears it, since a read may come before
+`   the line that declares it. A local read tracked, one whose value reads something tracked
+`   outside a loop, and one referred to, whose address a read of the local evaluates and
+`   takes, are kept so too, as the reference keeps them behind a flag.
+` - `lazy-shared`: nested functions capture the local. Its value and its flag live in the
+`   environment of the function that declares it, and whichever function reads it first
+`   evaluates it there, once for the environment. An assignment stores and sets the flag.
+`   Where the program's tables find that the function that declares it can give it its value
+`   before it makes each nested function that reads it, the environment holds the value alone,
+`   as an eager local's, and that function keeps the flag (`holds-lazy`).
+` - `lazy-unsettled`: no rule here yet: one read in a state machine or in a loop on a stream
+`   that no nested function captures it for, or one captured that is declared with others or
+`   referred to.
+` The locals one declaration names together take their values together, once in a run of
+` the function, by whichever read of any of them comes first: `lazy-memo` for each, or
+` unsettled where one of them is assigned or would be unsettled alone.
+` A local that gives a property its value is evaluated for the property apart from this, and
+` its reads in the values of other such locals are settled as any local's. A constructor that
+` builds its own class reads the property itself where its body names one.
+
+| lazy-unsettled = 0
+| lazy-inline = 1
+| lazy-first-read = 2
+| lazy-memo = 3
+| lazy-shared = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ LazyUse is Struct
+
++ slot SlotId
++ reads U32
++ writes U32
++ refs U32
++ tracked U32
++ flags LazyUseMask
++ branch-base U32
++ loop-base U32
++ subscription-base U32
++ state-base U32
++ policy LazyPolicy = .lazy-unsettled
++ inlines Bool
++ reads-once Bool
++ flagged Bool
++ settled Bool
++ undominated Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ CaptureFlag is U32
+
+| capture-none = 0
+| capture-by-value = 1
+| capture-assigned = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Capture is Struct
+
++ slot SlotId
++ flags CaptureMask
+
+━━━━━━━━━━━━━━━━━━━━
++ MachineSlots is Struct
+
+` What a state machine keeps: slots no program names, declared in the scope of the machine's
+` own function, whose environment holds them for as long as anything the machine subscribed
+` can run. Each is named for what it holds and declared at the case or the first transition
+` of a group it holds it for. `bound` is the local a machine written as a declaration's value
+` is kept in, which the machine writes as it moves, or none; such a machine's flags are
+` declared in the scope `bound` is, first, where a case test of the local reads them.
++ module ModuleId
++ syntax SyntaxId
++ decl DeclId
++ slots RowRange'Slot
++ bound SlotId
+
+━━━━━━━━━━━━━━━━━━━━
++ MachineRead is Struct
+
+` What a name a case keeps reads where a transition enters the case: the local of that name
+` in reach there, or none.
++ module ModuleId
++ site SyntaxId
++ name Atom
++ slot SlotId
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedFunction is Struct
+
++ decl DeclId
++ syntax SyntaxId
++ scope ScopeId
++ captures RowRange'Capture
+
+━━━━━━━━━━━━━━━━━━━━
++ ScanKind is U32
+
+| scan-yield = 0
+| scan-tracked-read = 1
+| scan-latest = 2
+| scan-use-expression = 3
+| scan-use-block = 4
+| scan-do-finally = 5
+| scan-stack-local = 6
+| scan-nested-function = 7
+| scan-call = 8
+| scan-assertion = 9
+| scan-force = 10
+| scan-index = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ BodyScan is Struct
+
++ decl DeclId
++ syntax SyntaxId
++ yields U32
++ tracked-reads U32
++ latests U32
++ use-expressions U32
++ use-blocks U32
++ do-finallys U32
++ stack-locals U32
++ nested-functions U32
++ calls U32
++ assertions U32
++ forces U32
++ indexes U32
+
+━━━━━━━━━━━━━━━━━━━━
++ ScanSite is Struct
+
+` Where a body does something its scan row counts: the scan row it belongs to, what it is, and
+` the node. Sites follow the source order of their binding.
+
++ scan U32
++ kind ScanKind
++ syntax SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ScopeKind is U32
+
+` What opens a scope. A loop's body and the activation of a case or continuation of a state
+` machine run anew each time, and keep the names declared in them that nested functions capture
+` in an environment of their own each time, a turn.
+
+| scope-function = 0
+| scope-nested = 1
+| scope-block = 2
+| scope-loop = 3
+| scope-arm = 4
+| scope-catch = 5
+| scope-use = 6
+| scope-do = 7
+| scope-activation = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ Scope is Struct
+
++ parent ScopeId
++ kind ScopeKind
++ syntax SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ResolutionKind is U32
+
+| resolve-none = 0
+| resolve-slot = 1
+| resolve-member = 2
+| resolve-global = 3
+| resolve-function = 4
+| resolve-type = 5
+| resolve-unresolved = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ ResolutionFlag is U32
+
+| resolution-none = 0
+| resolution-declares = 1
+| resolution-write = 2
+| resolution-ref = 4
+| resolution-tracked = 8
+| resolution-received = 16
+| resolution-styled = 32
+| resolution-quiet = 64
+| resolution-hides = 128
+
+━━━━━━━━━━━━━━━━━━━━
++ Resolution is Struct
+
++ kind ResolutionKind
++ module ModuleId
++ slot SlotId = no-slot
++ decl DeclId = 0
++ flags ResolutionMask
+
+━━━━━━━━━━━━━━━━━━━━
++ DiagnosticKind is U32
+
+| name-not-found = 0
+| already-defined = 1
+| required-self = 2
+| context-not-found = 3
+| variable-not-declared = 4
+| stream-not-found = 5
+| lazy-defined = 6
+| stated = 7
+| redeclared = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ Diagnostic is Struct
+
++ module ModuleId
++ syntax SyntaxId
++ kind DiagnosticKind
++ name Atom?
++ earlier SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotWindow is Struct
+
++ syntax SyntaxId
++ slots RowRange'Slot
+
+━━━━━━━━━━━━━━━━━━━━
++ Binding is Struct
+
++ module ModuleId
++ decl DeclId
++ subtree SyntaxRange
++ slots RowRange'Slot
++ scopes RowRange'Scope
++ resolution-base U32
++ diagnostics RowRange'Diagnostic
++ nested RowRange'NestedFunction
++ scans RowRange'BodyScan
++ sites RowRange'ScanSite
++ windows RowRange'SlotWindow
++ lazy-uses RowRange'LazyUse
++ captures RowRange'Capture
++ machines RowRange'MachineSlots
++ machine-reads RowRange'MachineRead
+
+━━━━━━━━━━━━━━━━━━━━
+_ BindingCopy is Tuple
+
++ other Bindings
++ id BindingId
++ taken Binding
+
+━━━━━━━━━━━━━━━━━━━━
++ Bindings
+    is Usable'Void
+
+_ arena Arena
++ bindings Table'Binding
++ slots Table'Slot
++ scopes Table'Scope
++ resolutions Table'Resolution
++ diagnostics Table'Diagnostic
++ lazy-uses Table'LazyUse
++ nested Table'NestedFunction
++ captures Table'Capture
++ scans Table'BodyScan
++ scan-sites Table'ScanSite
++ windows Table'SlotWindow
++ machines Table'MachineSlots
++ machine-reads Table'MachineRead
+_ by-decl Map'Size'U32'ArenaBacking
+_ copies [BindingCopy]
+_ ends Binding
+_ taking Bool
+_ copied SyncBufferedChannel'Bool?
+
+────────────────────
++ This
+
+.. bindings = Table'Binding(arena, 16)
+.. slots = Table'Slot(arena, 16)
+.. scopes = Table'Scope(arena, 16)
+.. resolutions = Table'Resolution(arena, 16)
+.. diagnostics = Table'Diagnostic(arena, 16)
+.. lazy-uses = Table'LazyUse(arena, 16)
+.. nested = Table'NestedFunction(arena, 16)
+.. captures = Table'Capture(arena, 16)
+.. scans = Table'BodyScan(arena, 16)
+.. scan-sites = Table'ScanSite(arena, 16)
+.. windows = Table'SlotWindow(arena, 16)
+.. machines = Table'MachineSlots(arena, 4)
+.. machine-reads = Table'MachineRead(arena, 4)
+.. by-decl = Map'Size'U32(arena)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release
+
+arena.release()
+
+────────────────────
++ binding-for BindingId?
+    - module ModuleId
+    - decl DeclId
+
+by-decl[DeclRef(module, decl).key]
+
+────────────────────
++ do forget-module
+    - module ModuleId
+
+` Forgets the bindings of a module's declarations, and the diagnostics and state machines it
+` bound, so that binding the module again finds and counts only what it binds then.
+. forgotten [Size]
+for key, _ in by-decl
+    if (key /rshift/ 32) == (module as Size)
+        forgotten += key
+for key in forgotten
+    -= by-decl[key]
+for index in 0 .. < machines.length
+    if machines[index].module == module
+        machines[index].module = forgotten-module
+for index in 0 .. < diagnostics.length
+    if diagnostics[index].module == module
+        diagnostics[index].module = forgotten-module
+
+────────────────────
++ do reports Bool
+    - skipped ModuleId? = null
+
+for diagnostic in diagnostics
+    if diagnostic.module != forgotten-module && diagnostic.module != skipped && not-redeclared
+        = true
+    .. not-redeclared = diagnostic.kind != .redeclared
+= false
+
+────────────────────
++ do reserve BindingId
+    - module ModuleId
+    - decl DeclId
+    - subtree SyntaxRange
+
+. row = Binding
+    - module
+    - decl
+    - subtree
+    - RowRange'Slot(slots.length as U32, 0)
+    - RowRange'Scope(scopes.length as U32, 0)
+    - resolutions.length as U32
+    - RowRange'Diagnostic(diagnostics.length as U32, 0)
+    - RowRange'NestedFunction(nested.length as U32, 0)
+    - RowRange'BodyScan(scans.length as U32, 0)
+    - RowRange'ScanSite(scan-sites.length as U32, 0)
+    - RowRange'SlotWindow(windows.length as U32, 0)
+    - RowRange'LazyUse(lazy-uses.length as U32, 0)
+    - RowRange'Capture(captures.length as U32, 0)
+    - RowRange'MachineSlots(machines.length as U32, 0)
+    - RowRange'MachineRead(machine-reads.length as U32, 0)
+. id = bindings.append(row) as BindingId
+by-decl[DeclRef(module, decl).key] = id
+for _ in 0 .. < subtree.count
+    resolutions.append(Resolution(.resolve-none, 0, no-slot, 0, 0))
+= id
+
+────────────────────
++ do finish
+    - id BindingId
+    - tree AST
+
+` Closes a binding's tables, settles the plan of each of its lazy locals, now that every use
+` of them is counted, and links each local with its namesakes.
+. row = bindings[id]
+. slot-count = (slots.length - row.slots.start) as U32
+. scope-count = (scopes.length - row.scopes.start) as U32
+. diagnostic-count = (diagnostics.length - row.diagnostics.start) as U32
+. nested-count = (nested.length - row.nested.start) as U32
+. scan-count = (scans.length - row.scans.start) as U32
+. site-count = (scan-sites.length - row.sites.start) as U32
+bindings[id].slots = RowRange'Slot(row.slots.start, slot-count)
+bindings[id].scopes = RowRange'Scope(row.scopes.start, scope-count)
+bindings[id].diagnostics = RowRange'Diagnostic(row.diagnostics.start, diagnostic-count)
+bindings[id].nested = RowRange'NestedFunction(row.nested.start, nested-count)
+bindings[id].scans = RowRange'BodyScan(row.scans.start, scan-count)
+bindings[id].sites = RowRange'ScanSite(row.sites.start, site-count)
+bindings[id].windows = RowRange'SlotWindow
+    - row.windows.start
+    - (windows.length - row.windows.start) as U32
+bindings[id].lazy-uses = RowRange'LazyUse
+    - row.lazy-uses.start
+    - (lazy-uses.length - row.lazy-uses.start) as U32
+bindings[id].captures = RowRange'Capture
+    - row.captures.start
+    - (captures.length - row.captures.start) as U32
+bindings[id].machines = RowRange'MachineSlots
+    - row.machines.start
+    - (machines.length - row.machines.start) as U32
+bindings[id].machine-reads = RowRange'MachineRead
+    - row.machine-reads.start
+    - (machine-reads.length - row.machine-reads.start) as U32
+for slot in row.slots.start .. < slots.length
+    if slots[slot].kind != .slot-lazy
+        continue
+    do match? tree.nodes[slots[slot].group]
+        | .node-declare(declaration)
+            if !declaration.is-pattern && names-several(tree, declaration.left)
+                slots[slot].flags = slots[slot].flags /or/ SlotFlag.slot-together
+    . use = slots[slot].use
+    if use != U32.max
+        lazy-uses[use].policy = policy-of(tree, slot as SlotId)
+        lazy-uses[use].inlines = inlines-of(tree, slot as SlotId)
+        lazy-uses[use].reads-once = reads-once-of(tree, slot as SlotId)
+        lazy-uses[use].flagged = flagged-of(tree, slot as SlotId)
+link-namesakes(row.slots.start)
+
+────────────────────
+_ do link-namesakes
+    - start U32
+
+` Links each local from `start` on into a ring, through `namesake`, with the others the
+` function or the nested function it lies in declares with its name; one with no other is
+` linked to none.
+. last = Map'MemberKey'U32()
+for slot in start .. < slots.length
+    . home = slots[slot].scope
+    while scopes[home].kind != .scope-function && scopes[home].kind != .scope-nested
+        home = scopes[home].parent
+    . key = MemberKey(home, slots[slot].name)
+    . previous = last[key] ?? no-slot
+    if previous != no-slot
+        slots[slot].namesake = if slots[previous].namesake != no-slot then original else previous
+        .. original = slots[previous].namesake
+        slots[previous].namesake = slot as SlotId
+    last[key] = slot as U32
+
+────────────────────
++ do take BindingId
+    - other Bindings
+    - id BindingId
+
+` The binding here of the function that `other`'s binding `id` binds, taken from `other` the
+` first time it is asked for, as binding the function here would make it: each slot, scope, lazy
+` use, capture and scan its rows name is numbered here.
+. row = other.bindings[id]
+. existing = binding-for(row.module, row.decl)
+if existing
+    = existing
+?! Panic("Bindings takes a binding of another pass only while taking")
+    if !taking || copied
+. taken = Binding
+    - row.module
+    - row.decl
+    - row.subtree
+    - RowRange'Slot(slots.length as U32, row.slots.count)
+    - RowRange'Scope(scopes.length as U32, row.scopes.count)
+    - ends.resolution-base + ends.subtree.count
+    - RowRange'Diagnostic(ends.diagnostics.end, row.diagnostics.count)
+    - RowRange'NestedFunction(ends.nested.end, row.nested.count)
+    - RowRange'BodyScan(ends.scans.end, row.scans.count)
+    - RowRange'ScanSite(ends.sites.end, row.sites.count)
+    - RowRange'SlotWindow(ends.windows.end, row.windows.count)
+    - RowRange'LazyUse(ends.lazy-uses.end, row.lazy-uses.count)
+    - RowRange'Capture(ends.captures.end, row.captures.count)
+    - RowRange'MachineSlots(ends.machines.end, row.machines.count)
+    - RowRange'MachineRead(ends.machine-reads.end, row.machine-reads.count)
+. made = bindings.append(taken) as BindingId
+by-decl[DeclRef(row.module, row.decl).key] = made
+for offset in 0 .. < row.slots.count
+    . slot = other.slots[row.slots.start + offset] as Slot
+    slot.scope = moved(slot.scope, row.scopes.start, row.scopes.count, taken.scopes.start)
+    if slot.use != U32.max
+        slot.use = moved(slot.use, row.lazy-uses.start, row.lazy-uses.count, taken.lazy-uses.start)
+    if slot.namesake != no-slot
+        slot.namesake = moved(slot.namesake, row.slots.start, row.slots.count, taken.slots.start)
+    slots.append(slot)
+for offset in 0 .. < row.scopes.count
+    . scope = other.scopes[row.scopes.start + offset] as Scope
+    if offset != 0
+        scope.parent = moved(scope.parent, row.scopes.start, row.scopes.count, taken.scopes.start)
+    scopes.append(scope)
+ends = taken
+copies += BindingCopy(other, id, taken)
+= made
+
+────────────────────
++ do begin-taking
+
+?! Panic("Bindings is taking the bindings of other passes already")
+    if taking
+taking = true
+ends = Binding
+    - 0
+    - 0
+    - SyntaxRange(0, 0)
+    - RowRange'Slot(slots.length as U32, 0)
+    - RowRange'Scope(scopes.length as U32, 0)
+    - resolutions.length as U32
+    - RowRange'Diagnostic(diagnostics.length as U32, 0)
+    - RowRange'NestedFunction(nested.length as U32, 0)
+    - RowRange'BodyScan(scans.length as U32, 0)
+    - RowRange'ScanSite(scan-sites.length as U32, 0)
+    - RowRange'SlotWindow(windows.length as U32, 0)
+    - RowRange'LazyUse(lazy-uses.length as U32, 0)
+    - RowRange'Capture(captures.length as U32, 0)
+    - RowRange'MachineSlots(machines.length as U32, 0)
+    - RowRange'MachineRead(machine-reads.length as U32, 0)
+
+────────────────────
++ do start-copying
+    - pool Worker
+
+?! Panic("Bindings copies only the bindings it took")
+    if !taking || copied
+resolutions.reserve(ends.resolution-base + ends.subtree.count)
+diagnostics.reserve(ends.diagnostics.end)
+nested.reserve(ends.nested.end)
+scans.reserve(ends.scans.end)
+scan-sites.reserve(ends.sites.end)
+windows.reserve(ends.windows.end)
+lazy-uses.reserve(ends.lazy-uses.end)
+captures.reserve(ends.captures.end)
+machines.reserve(ends.machines.end)
+machine-reads.reserve(ends.machine-reads.end)
+. pending = copies
+. done SyncBufferedChannel'Bool
+copied = done
+do (pool) new
+    for copy in pending
+        copy-rows(copy)
+    done <- true
+
+────────────────────
++ do end-taking
+
+. done = copied
+if done
+    <- done
+copied = null
+copies = List'BindingCopy()
+taking = false
+
+────────────────────
+_ do copy-rows
+    - copy BindingCopy
+
+. other = copy.other
+. row = other.bindings[copy.id]
+. taken = copy.taken
+?! Panic("The rows of the bindings taken from other passes are copied out of order")
+    if resolutions.length != taken.resolution-base as Size
+for offset in 0 .. < row.subtree.count
+    . resolution = other.resolutions[row.resolution-base + offset] as Resolution
+    if resolution.slot != no-slot
+        resolution.slot = moved
+            - resolution.slot
+            - row.slots.start
+            - row.slots.count
+            - taken.slots.start
+    resolutions.append(resolution)
+for offset in 0 .. < row.diagnostics.count
+    diagnostics.append(other.diagnostics[row.diagnostics.start + offset])
+for offset in 0 .. < row.nested.count
+    . function = other.nested[row.nested.start + offset] as NestedFunction
+    function.scope = moved(function.scope, row.scopes.start, row.scopes.count, taken.scopes.start)
+    . start = moved
+        - function.captures.start
+        - row.captures.start
+        - row.captures.count + 1
+        - taken.captures.start
+    function.captures = RowRange'Capture(start, function.captures.count)
+    nested.append(function)
+for offset in 0 .. < row.scans.count
+    scans.append(other.scans[row.scans.start + offset])
+for offset in 0 .. < row.sites.count
+    . site = other.scan-sites[row.sites.start + offset] as ScanSite
+    site.scan = moved(site.scan, row.scans.start, row.scans.count, taken.scans.start)
+    scan-sites.append(site)
+for offset in 0 .. < row.windows.count
+    . window = other.windows[row.windows.start + offset] as SlotWindow
+    . start = moved(window.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
+    window.slots = RowRange'Slot(start, window.slots.count)
+    windows.append(window)
+for offset in 0 .. < row.lazy-uses.count
+    . use = other.lazy-uses[row.lazy-uses.start + offset] as LazyUse
+    use.slot = moved(use.slot, row.slots.start, row.slots.count, taken.slots.start)
+    lazy-uses.append(use)
+for offset in 0 .. < row.captures.count
+    . capture = other.captures[row.captures.start + offset] as Capture
+    capture.slot = moved(capture.slot, row.slots.start, row.slots.count, taken.slots.start)
+    captures.append(capture)
+for offset in 0 .. < row.machines.count
+    . machine = other.machines[row.machines.start + offset] as MachineSlots
+    . start = moved(machine.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
+    machine.slots = RowRange'Slot(start, machine.slots.count)
+    if machine.bound != no-slot
+        machine.bound = moved(machine.bound, row.slots.start, row.slots.count, taken.slots.start)
+    machines.append(machine)
+for offset in 0 .. < row.machine-reads.count
+    . read = other.machine-reads[row.machine-reads.start + offset] as MachineRead
+    if read.slot != no-slot
+        read.slot = moved(read.slot, row.slots.start, row.slots.count, taken.slots.start)
+    machine-reads.append(read)
+
+────────────────────
+_ moved U32
+    - id U32
+    - start U32
+    - count U32
+    - base U32
+
+` An id among `count` rows from `start` in another binding's table, numbered from `base` here.
+?! Panic("A binding names a row of another binding")
+    if id < start || id - start >= count
+base + (id - start)
+
+────────────────────
++ do machine-slots MachineSlots?
+    - module ModuleId
+    - syntax SyntaxId
+
+` What the binder declared for a state machine written at a node of a module, if it bound one.
+for index in 0 .. < machines.length
+    if machines[index].module == module && machines[index].syntax == syntax
+        = machines[index]
+= null
+
+────────────────────
++ do machine-slot SlotId
+    - row MachineSlots
+    - node SyntaxId
+    - name Atom
+
+` The slot a machine keeps under a name for a case or a group, or none.
+for slot in row.slots.start .. < row.slots.start + row.slots.count
+    if slots[slot].syntax == node && slots[slot].name == name
+        = slot
+= no-slot
+
+────────────────────
++ do declared-at SlotId
+    - range RowRange'Slot
+    - node SyntaxId
+    - name Atom
+
+` The slot of a name declared at a node among a range of slots, or none.
+for slot in range.start .. < range.start + range.count
+    if slots[slot].syntax == node && slots[slot].name == name
+        = slot
+= no-slot
+
+────────────────────
++ do declared-kind-at SlotId
+    - range RowRange'Slot
+    - node SyntaxId
+    - kind SlotKind
+
+` The slot of a kind declared at a node among a range of slots, or none.
+for slot in range.start .. < range.start + range.count
+    if slots[slot].syntax == node && slots[slot].kind == kind
+        = slot
+= no-slot
+
+────────────────────
++ do window-of RowRange'Slot
+    - id BindingId
+    - syntax SyntaxId
+
+` The locals the value of a property holds: those the binder declared for it, which are few
+` beside all of its module's main. No locals for a property that declared none.
+. row = bindings[id]
+. low = row.windows.start
+. end = low + row.windows.count
+. high = end
+while low < high
+    . middle = low + (high - low) / 2
+    if windows[middle].syntax < syntax
+        low = middle + 1
+    else
+        high = middle
+if low < end && windows[low].syntax == syntax
+    = windows[low].slots
+= RowRange'Slot(row.slots.start, 0)
+
+────────────────────
++ resolution-of Resolution
+    - id BindingId
+    - syntax SyntaxId
+
+|? syntax < row.subtree.start || syntax >= row.subtree.start + row.subtree.count
+    Resolution(.resolve-none, 0, no-slot, 0, 0)
+??
+    resolutions[row.resolution-base + syntax - row.subtree.start]
+
+.. row = bindings[id]
+
+────────────────────
++ do loop-state SlotId
+    - id BindingId
+    - loop SyntaxId
+
+` The first of the slots that keep what a loop holds from one pass to the next, which no
+` name reaches. The header of a loop resolves to the first slot declared for it: `each` or
+` `it` where its body may read one, and these follow.
+. first = resolution-of(id, loop)
+if first.kind != .resolve-slot
+    = no-slot
+. slot = first.slot
+while slot < slots.length && slots[slot].syntax == loop && slots[slot].kind != .slot-loop-state
+    slot += 1
+if slot < slots.length && slots[slot].syntax == loop
+    = slot
+= no-slot
+
+────────────────────
++ using-slot SlotId
+    - id BindingId
+    - use SyntaxId
+
+` The slot that keeps the object of a `use` where its end may run, which no name reaches.
+|? found.kind != .resolve-slot || found.slot >= slots.length || slots[found.slot].kind != .slot-use
+    no-slot
+??
+    found.slot
+
+.. found = resolution-of(id, use)
+
+────────────────────
++ do set-resolution
+    - id BindingId
+    - syntax SyntaxId
+    - resolution Resolution
+
+. row = bindings[id]
+if syntax < row.subtree.start || syntax >= row.subtree.start + row.subtree.count
+    =
+resolutions[row.resolution-base + syntax - row.subtree.start] = resolution
+
+────────────────────
++ do record-lazy-use
+    - slot SlotId
+    - reads U32
+    - writes U32
+    - refs U32
+    - tracked U32
+    - flags U32
+
+if slots[slot].use == U32.max
+    slots[slot].use = (lazy-uses.append(LazyUse(slot, 0, 0, 0, 0, 0, 0, 0, 0, 0))) as LazyUseId
+. use = slots[slot].use
+lazy-uses[use].reads += reads
+lazy-uses[use].writes += writes
+lazy-uses[use].refs += refs
+lazy-uses[use].tracked += tracked
+lazy-uses[use].flags = lazy-uses[use].flags /or/ flags
+
+────────────────────
++ do set-lazy-bases
+    - slot SlotId
+    - branch U32
+    - loop U32
+    - subscription U32
+    - state U32
+
+. use = slots[slot].use
+lazy-uses[use].branch-base = branch
+lazy-uses[use].loop-base = loop
+lazy-uses[use].subscription-base = subscription
+lazy-uses[use].state-base = state
+
+────────────────────
++ do settle-lazy-read
+    - slot SlotId
+
+` Notes a read of a lazy local in the function that declares it that runs each time the scope
+` that declares it runs, outside any loop, branch or value of a lazy local of its own.
+lazy-uses[slots[slot].use].settled = true
+
+────────────────────
++ do note-lazy-capture
+    - slot SlotId
+    - within-lazy Bool
+
+` Notes a nested function written in the function that declares a lazy local, which reads the
+` local: one written in the value of a lazy local, or before any read `settle-lazy-read` noted,
+` is not sure to be made after the local has its value.
+. use = slots[slot].use
+if within-lazy || !lazy-uses[use].settled
+    lazy-uses[use].undominated = true
+
+────────────────────
++ lazy-dominated Bool
+    - slot SlotId
+
+` Whether each nested function written in the function that declares a lazy local, which reads
+` the local, is made after a read of it that its scope always runs.
+slots[slot].use != U32.max && !lazy-uses[slots[slot].use].undominated
+
+────────────────────
++ lazy-use-of LazyUse
+    - slot SlotId
+
+lazy-uses[slots[slot].use]
+
+────────────────────
++ lazy-inlines Bool
+    - slot SlotId
+
+` Whether a lazy local's one read evaluates it, as its binding settled.
+slots[slot].use != U32.max && lazy-uses[slots[slot].use].inlines
+
+────────────────────
++ lazy-reads-once Bool
+    - slot SlotId
+
+` Whether a lazy local is read in one place that runs no more than once each time the value
+` it is declared under is evaluated, as its binding settled.
+slots[slot].use != U32.max && lazy-uses[slots[slot].use].reads-once
+
+────────────────────
++ lazy-flagged Bool
+    - slot SlotId
+
+` Whether the reference keeps a lazy local behind a flag, as its binding settled.
+slots[slot].use != U32.max && lazy-uses[slots[slot].use].flagged
+
+────────────────────
++ lazy-policy LazyPolicy
+    - slot SlotId
+
+` Where a lazy local takes its value, as its binding settled.
+|? slots[slot].use != U32.max
+    lazy-uses[slots[slot].use].policy
+??
+    LazyPolicy.lazy-unsettled
+
+────────────────────
++ lazy-together Bool
+    - slot SlotId
+
+` Whether a lazy local is declared together with others, which take their values with it.
+(slots[slot].flags /and/ SlotFlag.slot-together) != 0
+
+────────────────────
+_ do inlines-of Bool
+    - tree AST
+    - slot SlotId
+
+. row = slots[slot]
+if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
+    = false
+. grouped = true
+do match? tree.nodes[row.group]
+    | .node-declare(declaration)
+        grouped = declaration.is-pattern || names-several(tree, declaration.left)
+if grouped
+    = false
+. use = lazy-uses[row.use]
+if use.refs != 0 || use.writes != 0 || use.tracked != 0
+    = false
+if (use.flags /and/ (LazyUseFlag.declared-in-loop)) != 0
+    . repeats U32 = LazyUseFlag.read-in-loop
+    repeats = repeats /or/ (LazyUseFlag.read-in-nested)
+    repeats = repeats /or/ (LazyUseFlag.read-in-subscription)
+    repeats = repeats /or/ (LazyUseFlag.read-in-state-machine)
+    = use.reads == 1 && (use.flags /and/ repeats) == 0
+. blocked U32 = LazyUseFlag.read-in-loop
+blocked = blocked /or/ (LazyUseFlag.read-in-nested)
+blocked = blocked /or/ (LazyUseFlag.read-in-branch)
+blocked = blocked /or/ (LazyUseFlag.read-in-subscription)
+blocked = blocked /or/ (LazyUseFlag.read-in-state-machine)
+blocked = blocked /or/ (LazyUseFlag.read-in-lazy)
+if (use.flags /and/ blocked) != 0 || value-tracks(tree, row.group)
+    = false
+= use.reads == 1
+
+────────────────────
+_ do flagged-of Bool
+    - tree AST
+    - slot SlotId
+
+` Whether the reference's planner keeps a lazy local behind a flag, where each read evaluates the
+` whole declaration (`FullMemoFlag`), and neither puts its value at its one read nor stores it at
+` the first of reads that each run once in a straight line. One declared in a loop and read once
+` where nothing repeats it, or read only in a straight line, is not; one read under a branch, in
+` the value of a lazy local, where something repeats it, or tracked, is, and so is one declared
+` with others, referred to or assigned, and one whose value reads something tracked.
+. row = slots[slot]
+if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
+    = true
+. use = lazy-uses[row.use]
+. grouped = true
+do match? tree.nodes[row.group]
+    | .node-declare(declaration)
+        grouped = declaration.is-pattern || names-several(tree, declaration.left)
+if grouped || use.refs != 0 || use.writes != 0 || use.tracked != 0
+    = true
+. repeats U32 = LazyUseFlag.read-in-loop
+repeats = repeats /or/ (LazyUseFlag.read-in-nested)
+repeats = repeats /or/ (LazyUseFlag.read-in-subscription)
+repeats = repeats /or/ (LazyUseFlag.read-in-state-machine)
+. scattered = repeats
+scattered = scattered /or/ (LazyUseFlag.read-in-branch)
+scattered = scattered /or/ (LazyUseFlag.read-in-lazy)
+if (use.flags /and/ (LazyUseFlag.declared-in-loop)) != 0
+    if use.reads == 1 && (use.flags /and/ repeats) == 0
+        = false
+    if use.reads >= 2 && (use.flags /and/ scattered) == 0
+        = false
+if (use.flags /and/ scattered) != 0 || value-tracks(tree, row.group)
+    = true
+= use.reads == 0
+
+────────────────────
++ do value-tracks Bool
+    - tree AST
+    - group SyntaxId
+
+` Whether the value a declaration writes reads something tracked, which the reference
+` evaluates once, behind a flag (`tracking-initializer`).
+do match? tree.nodes[group]
+    | .node-declare(declaration)
+        if declaration.right == 0
+            = false
+        for node in tree.subtree-start(declaration.right) .. declaration.right
+            do match? tree.nodes[node]
+                | .node-identifier(read)
+                    if read.is-tracked
+                        = true
+                | .node-get-expression(read)
+                    if read.is-tracked
+                        = true
+= false
+
+────────────────────
+_ do reads-once-of Bool
+    - tree AST
+    - slot SlotId
+
+` Whether a lazy local is read in one place that runs no more than once each time the value
+` it is declared under is evaluated: a read under a branch, or in the value of another lazy
+` local, is such a place, and one in a loop or in a nested function is not. Declared under a
+` value that is evaluated in one place, the value of a property or of a global, such a local
+` is evaluated by its read.
+. row = slots[slot]
+if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
+    = false
+if (row.flags /and/ (SlotFlag.slot-tracked /or/ SlotFlag.slot-captured)) != 0
+    = false
+. grouped = true
+do match? tree.nodes[row.group]
+    | .node-declare(declaration)
+        grouped = declaration.is-pattern || names-several(tree, declaration.left)
+. use = lazy-uses[row.use]
+if grouped || use.reads != 1 || use.refs != 0 || use.writes != 0 || use.tracked != 0
+    = false
+. apart U32 = LazyUseFlag.declared-in-loop
+apart = apart /or/ (LazyUseFlag.read-in-loop)
+apart = apart /or/ (LazyUseFlag.read-in-nested)
+apart = apart /or/ (LazyUseFlag.read-in-subscription)
+apart = apart /or/ (LazyUseFlag.read-in-state-machine)
+= (use.flags /and/ apart) == 0
+
+────────────────────
+_ do policy-of LazyPolicy
+    - tree AST
+    - slot SlotId
+
+. row = slots[slot]
+if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
+    = .lazy-unsettled
+. use = lazy-uses[row.use]
+if (row.flags /and/ SlotFlag.slot-captured) != 0
+    = if shares(tree, row, use) then .lazy-shared else .lazy-unsettled
+. apart U32 = LazyUseFlag.read-in-nested
+apart = apart /or/ (LazyUseFlag.read-in-subscription)
+apart = apart /or/ (LazyUseFlag.read-in-state-machine)
+if (use.flags /and/ apart) != 0
+    = .lazy-unsettled
+if inlines-of(tree, slot)
+    = .lazy-inline
+. grouped = true
+. several = false
+do match? tree.nodes[row.group]
+    | .node-declare(declaration)
+        grouped = declaration.is-pattern
+        several = names-several(tree, declaration.left)
+if grouped
+    = .lazy-unsettled
+if several
+    = if settles-together(slot) then .lazy-memo else .lazy-unsettled
+if outside-loop || use.refs != 0 || use.writes != 0 || use.tracked != 0
+    = .lazy-memo
+.. outside-loop = (use.flags /and/ (LazyUseFlag.declared-in-loop)) == 0
+. scattered U32 = LazyUseFlag.read-in-loop
+scattered = scattered /or/ (LazyUseFlag.read-in-branch)
+scattered = scattered /or/ (LazyUseFlag.read-in-lazy)
+= if (use.flags /and/ scattered) != 0 then .lazy-memo else .lazy-first-read
+
+────────────────────
+_ do shares Bool
+    - tree AST
+    - row Slot
+    - use LazyUse
+
+` Whether a lazy local that nested functions capture is one an environment can hold: no
+` pattern declares it and nothing refers to it. One declared in a loop is held by the
+` environment of the loop's turn, so each turn evaluates its own. The subscriber of a loop on a
+` stream that reads it is one of those functions, as the reference's closure is, and so are the
+` functions of a state machine, whose reads the reference evaluates once for the function that
+` writes the machine, whichever comes first.
+. plain = false
+do match? tree.nodes[row.group]
+    | .node-declare(declaration)
+        plain = !declaration.is-pattern
+= plain && use.refs == 0
+
+────────────────────
++ names-several Bool
+    - tree AST
+    - left SyntaxId
+
+` Whether what a declaration writes before its value names several locals together.
+match tree.nodes[left]
+    | .node-tuple-syntax
+        true
+    | .node-type-tuple
+        true
+    ??
+        false
+
+────────────────────
+_ do settles-together Bool
+    - slot SlotId
+
+` Whether the locals a lazy declaration names together can all be evaluated by the first
+` read of any: the slots of one declaration follow one another. Those declared in a loop are
+` evaluated again by the first read of each turn.
+. group = slots[slot].group
+. first = slot
+while first != 0 && slots[first - 1].group == group
+    first -= 1
+. position = first
+while position < slots.length && slots[position].group == group
+    . row = slots[position]
+    if row.kind != .slot-lazy || row.use == U32.max
+        = false
+    . unkept = SlotFlag.slot-captured /or/ SlotFlag.slot-tracked
+    if (row.flags /and/ unkept) != 0
+        = false
+    . use = lazy-uses[row.use]
+    if use.refs != 0 || use.writes != 0 || use.tracked != 0
+        = false
+    . apart U32 = LazyUseFlag.read-in-nested
+    apart = apart /or/ (LazyUseFlag.read-in-subscription)
+    apart = apart /or/ (LazyUseFlag.read-in-state-machine)
+    if (use.flags /and/ apart) != 0
+        = false
+    position += 1
+= true
+
+────────────────────
++ begin-scan U32
+    - decl DeclId
+    - syntax SyntaxId
+
+scans.append(BodyScan(decl, syntax, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) as U32
+
+────────────────────
++ do record-scan
+    - scan U32
+    - kind ScanKind
+    - syntax SyntaxId
+
+scan-sites.append(ScanSite(scan, kind, syntax))
+match kind
+    |= .scan-yield
+        scans[scan].yields += 1
+    |= .scan-tracked-read
+        scans[scan].tracked-reads += 1
+    |= .scan-latest
+        scans[scan].latests += 1
+    |= .scan-use-expression
+        scans[scan].use-expressions += 1
+    |= .scan-use-block
+        scans[scan].use-blocks += 1
+    |= .scan-do-finally
+        scans[scan].do-finallys += 1
+    |= .scan-stack-local
+        scans[scan].stack-locals += 1
+    |= .scan-nested-function
+        scans[scan].nested-functions += 1
+    |= .scan-call
+        scans[scan].calls += 1
+    |= .scan-assertion
+        scans[scan].assertions += 1
+    |= .scan-force
+        scans[scan].forces += 1
+    |= .scan-index
+        scans[scan].indexes += 1
+
+────────────────────
++ do record-capture
+    - slot SlotId
+    - flags CaptureMask
+
+captures.append(Capture(slot, flags))
+
+────────────────────
++ captures-from RowRange'Capture
+    - start U32
+
+` The capture rows appended since `start`.
+RowRange'Capture(start, (captures.length - start) as U32)
+
+────────────────────
++ do mark-slot
+    - slot SlotId
+    - flags SlotMask
+
+slots[slot].flags = slots[slot].flags /or/ flags
+
+────────────────────
++ do set-getter
+    - slot SlotId
+    - declaration SyntaxId
+
+` Makes a local one the reference reads as a getter, which evaluates the value the
+` declaration gives it again at each read.
+slots[slot].getter = declaration
+
+
+━━━━━━━━━━━━━━━━━━━━
++ is-public Bool
+    - access Access
+
+match access
+    | .public-access
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ type-head-name Atom?
+    - tree AST
+    - id SyntaxId
+
+match? tree.nodes[id]
+    | .node-type-identifier(row)
+        row.name
+    | .node-identifier(row)
+        row.name
+    | .node-type-arguments(row)
+        type-head-name(tree, row.base)
+
+━━━━━━━━━━━━━━━━━━━━
++ identifier-name Atom?
+    - tree AST
+    - id SyntaxId
+
+match? tree.nodes[id]
+    | .node-identifier(row)
+        row.name
+    | .node-ref-identifier(row)
+        row.name
+
+━━━━━━━━━━━━━━━━━━━━
++ do returns-value Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether a statement returns a value, itself or under what it branches to: a condition, a
+` loop, or an arm of a match.
+if id == 0
+    = false
+do match? tree.nodes[id]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if returns-value(tree, statement)
+                = true
+    | .node-return(row)
+        = row.expr != 0
+    | .node-return-if-true(row)
+        = row.expr != 0
+    | .node-if-block(row)
+        = returns-value(tree, row.body) || returns-value(tree, row.next)
+    | .node-do-block(row)
+        = returns-value(tree, row.body)
+    | .node-while-block(row)
+        = returns-value(tree, row.body)
+    | .node-for-block(row)
+        = returns-value(tree, row.body)
+    | .node-match-expression(row)
+        = returns-value(tree, row.body)
+    | .node-structure-match(row)
+        = returns-value(tree, row.pattern)
+    | .node-type-or(row)
+        = returns-value(tree, row.left) || returns-value(tree, row.right)
+    | .node-type-transform(row)
+        = returns-value(tree, row.expr)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ returns-own Bool
+    - tree AST
+    - body SyntaxId
+
+` Whether the body of a constructor returns a value and leaves on every way through it, as the
+` reference finds as it compiles the body: the constructor then constructs what it returns and
+` makes nothing of its class. One that may run past its end makes an object of its class first,
+` which it gives where the body ends.
+returns-value(tree, body) && leaves(tree, body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do leaves Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether control never runs past a statement: the last of a block that declares no lazy name
+` leaves, a return or a raise does, and a condition or a match leaves where every way through
+` it does.
+if id == 0
+    = false
+do match? tree.nodes[id]
+    | .node-block(row)
+        . last = 0u32
+        for statement in tree.children[row.body]
+            do match? tree.nodes[statement]
+                | .node-declare(declared)
+                    if !declared.is-lazy
+                        last = statement
+                ??
+                    last = statement
+        = leaves(tree, last)
+    | .node-return
+        = true
+    | .node-assertion-syntax(row)
+        = row.condition == 0
+    | .node-if-block(row)
+        if row.condition == 0
+            = leaves(tree, row.body)
+        = row.next != 0 && leaves(tree, row.body) && leaves(tree, row.next)
+    | .node-do-block(row)
+        = leaves(tree, row.body)
+    | .node-match-expression(row)
+        = leaves(tree, row.body)
+    | .node-structure-match(row)
+        = arms-leave(tree, row.pattern) && has-else-arm(tree, row.pattern)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do arms-leave Bool
+    - tree AST
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        = arms-leave(tree, row.left) && arms-leave(tree, row.right)
+    | .node-type-transform(row)
+        = leaves(tree, row.expr)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do has-else-arm Bool
+    - tree AST
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        = has-else-arm(tree, row.left) || has-else-arm(tree, row.right)
+    | .node-type-transform(row)
+        if row.pattern == 0
+            = true
+        do match? tree.nodes[row.pattern]
+            | .node-type-wildcard
+                = true
+= false

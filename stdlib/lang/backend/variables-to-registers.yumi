@@ -1,0 +1,788 @@
+./builder
+./mir
+/core/arena
+/core/table
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRVariablesToRegisters
+
+_ builder MIRBuilder
+_ function MIRFunction
+_ blocks IdList
+_ post-indexes CPointer'U32
+_ doms CPointer'U32
+_ climbed CPointer'U32
+_ children CPointer'IdList
+_ frontiers CPointer'IdList
+_ promotable CPointer'Byte
+_ promoted IdList
+_ def-blocks CPointer'IdList
+_ exposed-use-blocks CPointer'IdList
+_ block-phis CPointer'IdList
+_ block-phi-variables CPointer'IdList
+_ def-marks CPointer'U32
+_ live-marks CPointer'U32
+_ phi-marks CPointer'U32
+_ variable-mark U32
+_ tops CPointer'U32
+_ stack-variables IdList
+_ stack-values IdList
+_ stack-previous IdList
+_ alias-by-view CPointer'U32
+_ alias-by-vreg CPointer'U32
+_ view-count U32
+_ seen-vregs CPointer'U32
+_ seen-mark U32
+_ promotes-narrow Bool
+
+────────────────────
++ This
+    - builder MIRBuilder
+    - promotes-narrow Bool = true
+
+` Without `promotes-narrow`, an object a byte or half-word access reads or writes stays in the
+` frame, as the reference's backend leaves it.
+.. function = builder.function
+
+────────────────────
+_ get arena Arena @inline
+
+function.arena
+
+────────────────────
++ do run
+
+. order = function.post-order()
+. count = order.length
+if count == 0
+    =
+post-indexes = arena.allocate'U32(function.blocks.length)
+for index in 0 .. < count
+    post-indexes[order[index]] = index
+blocks = new-id-list(arena, count)
+for index in 0 .. < count
+    blocks = blocks.appended(arena, order[count - 1 - index])
+find-immediate-dominators()
+find-dominator-frontiers()
+find-promotable-variables()
+collect-def-blocks()
+promote()
+
+────────────────────
+_ do find-immediate-dominators
+
+. block-count = function.blocks.length
+doms = arena.allocate'U32(block-count)
+climbed = arena.allocate'U32(block-count)
+for block in 0 .. < block-count
+    doms[block] = no-id
+. entry = blocks[0]
+doms[entry] = entry
+. join U32
+. changed = true
+while changed
+    changed = false
+    for position in 1 .. < blocks.length
+        . block = blocks[position]
+        . predecessors = function.blocks[block].predecessors
+        . dominator = no-id
+        join += 1
+        for index in 0 .. < predecessors.length
+            . predecessor = predecessors[index]
+            if doms[predecessor] == no-id
+                continue
+            if dominator == no-id
+                dominator = predecessor
+            else
+                dominator = intersect(predecessor, dominator, join)
+        if dominator != no-id && doms[block] != dominator
+            doms[block] = dominator
+            changed = true
+
+────────────────────
+_ do intersect BlockId
+    - left BlockId
+    - right BlockId
+    - join U32
+
+` The nearest block that dominates both. `right` dominates the predecessors already joined at
+` one block, and `join` numbers that block's turn. Every block a climb leaves is under the
+` answer and is marked with the turn, so a later predecessor that climbs to a marked block is
+` under `right` too, and no block is climbed twice in one turn.
+. first = left
+. second = right
+while first != second
+    while post-indexes[first] < post-indexes[second]
+        if climbed[first] == join
+            = second
+        climbed[first] = join
+        first = doms[first]
+    while post-indexes[second] < post-indexes[first]
+        climbed[second] = join
+        second = doms[second]
+= first
+
+────────────────────
+_ do find-dominator-frontiers
+
+. block-count = function.blocks.length
+children = arena.allocate'IdList(block-count)
+frontiers = arena.allocate'IdList(block-count)
+for position in 0 .. < blocks.length
+    . block = blocks[position]
+    . dominator = doms[block]
+    if dominator != no-id && dominator != block
+        children[dominator] = children[dominator].appended(arena, block)
+
+. marks = arena.allocate'U32(block-count)
+. order = dominator-post-order(doms[blocks[0]])
+for position in 0 .. < order.length
+    . block = order[position]
+    . mark = block + 1
+    . frontier = IdList()
+    . successors = function.blocks[block].successors
+    for index in 0 .. < successors.length
+        . successor = successors[index]
+        if doms[successor] != block && marks[successor] != mark
+            marks[successor] = mark
+            frontier = frontier.appended(arena, successor)
+    . kids = children[block]
+    for index in 0 .. < kids.length
+        . inherited = frontiers[kids[index]]
+        for entry in 0 .. < inherited.length
+            . candidate = inherited[entry]
+            if doms[candidate] != block && marks[candidate] != mark
+                marks[candidate] = mark
+                frontier = frontier.appended(arena, candidate)
+    frontiers[block] = frontier
+
+────────────────────
+_ do dominator-post-order IdList
+    - root BlockId
+
+. order = new-id-list(arena, blocks.length)
+. pending = arena.allocate'U32(blocks.length)
+. cursors = arena.allocate'U32(blocks.length)
+. depth U32 = 1
+pending[0] = root
+while depth != 0
+    . block = pending[depth - 1]
+    . kids = children[block]
+    . cursor = cursors[depth - 1]
+    if cursor < kids.length
+        cursors[depth - 1] = cursor + 1
+        pending[depth] = kids[cursor]
+        cursors[depth] = 0
+        depth += 1
+        continue
+    order = order.appended(arena, block)
+    depth -= 1
+= order
+
+────────────────────
+_ do find-promotable-variables
+
+. object-count = function.frame-objects.length
+promotable = arena.allocate'Byte(object-count)
+. vars = function.vars
+for index in 0 .. < vars.length
+    . variable = vars[index]
+    if function.frame-objects[variable].can-promote
+        promotable[variable] = 1
+
+for position in 0 .. < blocks.length
+    . instructions = function.blocks[blocks[position]].instructions
+    for index in 0 .. < instructions.length
+        . row = function.instructions[instructions[index]]
+        . opcode = row.opcode
+        . operands = row.operands
+        for entry in 0 .. < operands.length
+            . object = frame-object-of(operands[entry])
+            if object == no-frame-object || promotable[object] == 0
+                continue
+            if opcode != .ldr && opcode != .str && (entry != 1 || !promotes-narrow || !is-narrow)
+                promotable[object] = 0
+            else if !has-compatible-register-class(operands[0], object)
+                promotable[object] = 0
+            .. is-narrow = is-narrow-access(opcode, object)
+
+promoted = new-id-list(arena, vars.length)
+for index in 0 .. < vars.length
+    . variable = vars[index]
+    if promotable[variable] == 1
+        promotable[variable] = 2
+        promoted = promoted.appended(arena, variable)
+    else if promotable[variable] == 0 && function.frame-objects[variable].can-promote
+        function.frame-objects[variable].can-promote = false
+if promotes-narrow
+    widen-promoted-accesses()
+
+────────────────────
+_ is-narrow-access Bool
+    - opcode Opcode
+    - object FrameObjectId
+
+(byte-opcode && size == 1) || ((opcode == .ldrh || opcode == .strh) && size == 2)
+
+.. size = function.types[function.frame-objects[object].type].size
+.. byte-opcode = opcode == .ldrb || opcode == .strb
+
+────────────────────
+_ do widen-promoted-accesses
+
+for position in 0 .. < blocks.length
+    . block = blocks[position]
+    . instructions = function.blocks[block].instructions
+    . rebuilt = new-id-list(arena, instructions.length)
+    . count U32
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . row = function.instructions[id]
+        . opcode = row.opcode
+        . operands = row.operands
+        if narrow-opcode && promoted-object(operands) != no-frame-object
+            if opcode == .strb || opcode == .strh
+                . stored = operands[0]
+                . held = view-of(stored)
+                if held != no-id
+                    . narrowed = builder.vreg-operand
+                        - builder.new-vreg(function.vregs[held].reg-class)
+                    rebuilt = rebuilt.appended
+                        - arena
+                        - builder.new-assembly
+                            - if opcode == .strb then .uxtb else .uxth
+                            - narrowed
+                            - stored
+                    operands.data[0] = narrowed
+                    count += 1
+                rewrite-opcode(id, .str)
+            else
+                rewrite-opcode(id, .ldr)
+        .. narrow-opcode = opcode == .strb || opcode == .strh || opcode == .ldrb || opcode == .ldrh
+        rebuilt = rebuilt.appended(arena, id)
+    if count != 0
+        function.blocks[block].instructions = rebuilt
+
+────────────────────
+_ do rewrite-opcode
+    - id InstructionId
+    - opcode Opcode
+
+do match? function.instructions[id]
+    | .assembly-instruction(row)
+        row.opcode = opcode
+
+────────────────────
+_ do has-compatible-register-class Bool
+    - value OperandId
+    - variable FrameObjectId
+
+. type = function.frame-objects[variable].type
+do match? function.types[type]
+    | .array-type
+        = false
+    | .void-type
+        = false
+. expected = builder.type-reg-class(type)
+do match? function.operands[value]
+    | .vreg-operand(operand)
+        = function.vregs[operand.vreg].reg-class == expected
+    | .preg-operand
+        = false
+= true
+
+────────────────────
+_ do frame-object-of FrameObjectId
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .frame-object-operand(row)
+        = row.object
+= no-frame-object
+
+────────────────────
+_ do collect-def-blocks
+
+. object-count = function.frame-objects.length
+def-blocks = arena.allocate'IdList(object-count)
+exposed-use-blocks = arena.allocate'IdList(object-count)
+. defined = arena.allocate'U32(object-count)
+for position in 0 .. < blocks.length
+    . block = blocks[position]
+    . mark = position + 1
+    . instructions = function.blocks[block].instructions
+    for index in 0 .. < instructions.length
+        . row = function.instructions[instructions[index]]
+        . opcode = row.opcode
+        if opcode != .str && opcode != .ldr
+            continue
+        . operands = row.operands
+        if operands.length < 2
+            continue
+        . object = frame-object-of(operands[1])
+        if object == no-frame-object
+            continue
+        if opcode == .str
+            def-blocks[object] = with-block(def-blocks[object], block)
+            defined[object] = mark
+        else if defined[object] != mark
+            exposed-use-blocks[object] = with-block(exposed-use-blocks[object], block)
+
+────────────────────
+_ do with-block IdList
+    - list IdList
+    - block BlockId
+
+if list.length != 0 && list[list.length - 1] == block
+    = list
+= list.appended(arena, block)
+
+────────────────────
+_ do promote
+
+. block-count = function.blocks.length
+. object-count = function.frame-objects.length
+block-phis = arena.allocate'IdList(block-count)
+block-phi-variables = arena.allocate'IdList(block-count)
+def-marks = arena.allocate'U32(block-count)
+live-marks = arena.allocate'U32(block-count)
+phi-marks = arena.allocate'U32(block-count)
+variable-mark = 0
+for index in 0 .. < promoted.length
+    place-phi-nodes(promoted[index])
+
+tops = arena.allocate'U32(object-count)
+stack-variables = IdList()
+stack-values = IdList()
+stack-previous = IdList()
+view-count = function.vregs.length as U32
+alias-by-view = arena.allocate'U32(view-count)
+alias-by-vreg = arena.allocate'U32(function.vreg-count)
+seen-vregs = arena.allocate'U32(function.vreg-count)
+seen-mark = 0
+rewrite()
+settle-phis()
+
+────────────────────
+_ do settle-phis
+
+` Resolves again what each phi takes from its predecessors. A phi the function had before this
+` pass, as one an earlier promotion placed at the head of a loop, can take a value loaded in a
+` block the dominator walk reaches after the phi's own, which only then has the value it loads.
+for position in 0 .. < blocks.length
+    . instructions = function.blocks[blocks[position]].instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        if function.instructions[id].opcode == .phi
+            . exprs = phi-exprs(id)
+            for entry in 0 .. < exprs.length
+                exprs.data[entry] = resolve-alias(exprs[entry])
+
+────────────────────
+_ do place-phi-nodes
+    - variable FrameObjectId
+
+variable-mark += 1
+. mark = variable-mark
+. defs = def-blocks[variable]
+for index in 0 .. < defs.length
+    def-marks[defs[index]] = mark
+
+. work = copied(exposed-use-blocks[variable])
+while work.length != 0
+    . block = work[work.length - 1]
+    work = IdList(work.data, work.length - 1, work.capacity)
+    if live-marks[block] == mark
+        continue
+    live-marks[block] = mark
+    . predecessors = function.blocks[block].predecessors
+    for index in 0 .. < predecessors.length
+        . predecessor = predecessors[index]
+        if live-marks[predecessor] != mark && def-marks[predecessor] != mark
+            work = work.appended(arena, predecessor)
+
+work = copied(defs)
+while work.length != 0
+    . block = work[work.length - 1]
+    work = IdList(work.data, work.length - 1, work.capacity)
+    . frontier = frontiers[block]
+    for index in 0 .. < frontier.length
+        . target = frontier[index]
+        if phi-marks[target] == mark || live-marks[target] != mark
+            continue
+        insert-phi-stub(target, variable)
+        phi-marks[target] = mark
+        if def-marks[target] != mark
+            def-marks[target] = mark
+            work = work.appended(arena, target)
+
+────────────────────
+_ do copied IdList
+    - list IdList
+
+. copy = new-id-list(arena, list.length)
+for index in 0 .. < list.length
+    copy.data[index] = list[index]
+= IdList(copy.data, list.length, copy.capacity)
+
+────────────────────
+_ do insert-phi-stub
+    - block BlockId
+    - variable FrameObjectId
+
+. type = function.frame-objects[variable].type
+. gc-root = function.frame-objects[variable].gc-root
+. gc-descriptor = function.frame-objects[variable].gc-descriptor
+. gc-root-mode = function.frame-objects[variable].gc-root-mode
+builder.set-insert-block(block)
+. register = builder.new-vreg
+    - builder.type-reg-class(type)
+    - no-register
+    - gc-root
+    - gc-descriptor
+    - gc-root-mode
+. phi = builder.phi(builder.vreg-operand(register))
+
+. predecessors = function.blocks[block].predecessors
+. exprs = new-id-list(arena, predecessors.length)
+. names = new-id-list(arena, predecessors.length)
+for index in 0 .. < predecessors.length
+    exprs = exprs.appended(arena, builder.add-operand(PlaceholderOperand()))
+    names = names.appended(arena, function.blocks[predecessors[index]].name)
+do match? function.instructions[phi]
+    | .phi-instruction(row)
+        row.exprs = exprs
+        row.blocks = names
+block-phis[block] = block-phis[block].appended(arena, phi)
+block-phi-variables[block] = block-phi-variables[block].appended(arena, variable)
+
+────────────────────
+_ do rewrite
+
+. count = blocks.length
+. frame-blocks = arena.allocate'U32(count)
+. frame-cursors = arena.allocate'U32(count)
+. frame-starts = arena.allocate'U32(count)
+. frame-entered = arena.allocate'Byte(count)
+. depth U32 = 1
+frame-blocks[0] = blocks[0]
+while depth != 0
+    . top = depth - 1
+    . block = frame-blocks[top]
+    if frame-entered[top] == 0
+        frame-entered[top] = 1
+        frame-starts[top] = stack-values.length
+        rewrite-block-contents(block)
+    . kids = children[block]
+    . cursor = frame-cursors[top]
+    if cursor < kids.length
+        frame-cursors[top] = cursor + 1
+        frame-blocks[depth] = kids[cursor]
+        frame-cursors[depth] = 0
+        frame-entered[depth] = 0
+        depth += 1
+        continue
+    unwind(frame-starts[top])
+    depth -= 1
+
+────────────────────
+_ do rewrite-block-contents
+    - block BlockId
+
+. phis = block-phis[block]
+. variables = block-phi-variables[block]
+for index in 0 .. < phis.length
+    push(variables[index], phi-register(phis[index]))
+
+. instructions = builder.take-instructions(block)
+for index in 0 .. < instructions.length
+    . id = instructions[index]
+    . row = function.instructions[id]
+    . opcode = row.opcode
+    . operands = row.operands
+    . variable = no-frame-object
+    if opcode == .str || opcode == .ldr
+        variable = promoted-object(operands)
+    if variable == no-frame-object
+        rewrite-instruction(id, opcode, operands)
+        builder.append(id)
+    else if opcode == .str
+        push(variable, resolve-alias(operands[0]))
+    else
+        . value = top-value(variable)
+        if value != no-operand
+            set-alias(operands[0], resolve-alias(value))
+
+. successors = function.blocks[block].successors
+for index in 0 .. < successors.length
+    . successor = successors[index]
+    . incoming = block-phis[successor]
+    if incoming.length == 0
+        continue
+    . argument = predecessor-index(successor, block)
+    if argument == no-id
+        continue
+    . incoming-variables = block-phi-variables[successor]
+    for entry in 0 .. < incoming.length
+        . value = top-value(incoming-variables[entry])
+        if value != no-operand
+            phi-exprs(incoming[entry]).data[argument] = value
+
+────────────────────
+_ do rewrite-instruction
+    - id InstructionId
+    - opcode Opcode
+    - operands IdList
+
+for position in 0 .. < operands.length
+    . operand = operands[position]
+    . replacement = resolve-alias(operand)
+    if replacement != operand
+        operands.data[position] = replacement
+    rewrite-operand-vregs(operand)
+if opcode == .phi
+    . exprs = phi-exprs(id)
+    for position in 0 .. < exprs.length
+        exprs.data[position] = resolve-alias(exprs[position])
+
+────────────────────
+_ do rewrite-operand-vregs
+    - operand OperandId
+
+. is-address = false
+. base = no-operand
+. offset = no-operand
+. members Span
+do match? function.operands[operand]
+    | .load-address-operand(address)
+        is-address = true
+        base = address.base
+        offset = address.offset
+    | .vreg-group-operand(group)
+        members = group.vregs
+if is-address
+    . new-base = base
+    if is-vreg(base)
+        new-base = resolve-alias(base)
+    . new-offset = offset
+    if offset != no-operand && is-vreg(offset)
+        new-offset = resolve-alias(offset)
+    if new-base != base || new-offset != offset
+        do match? function.operands[operand]
+            | .load-address-operand(address)
+                address.base = new-base
+                address.offset = new-offset
+    =
+for index in members.start .. < members.end
+    . view = function.group-vregs[index]
+    if view-alias(view) == no-operand
+        continue
+    . replacement = resolve-alias(builder.vreg-operand(view))
+    . aliased = view-of(replacement)
+    ?! Panic("A register group member is replaced by a value that is not a register")
+        if aliased == no-id
+    function.group-vregs.data[index] = aliased
+
+────────────────────
+_ promoted-object FrameObjectId
+    - operands IdList
+
+|? operands.length < 2
+    no-frame-object
+|? object != no-frame-object && promotable[object] != 0
+    object
+??
+    no-frame-object
+
+.. object = frame-object-of(operands[1])
+
+────────────────────
+_ do phi-register OperandId
+    - phi InstructionId
+
+do match? function.instructions[phi]
+    | .phi-instruction(row)
+        = row.reg
+= no-operand
+
+────────────────────
+_ do phi-exprs IdList
+    - phi InstructionId
+
+do match? function.instructions[phi]
+    | .phi-instruction(row)
+        = row.exprs
+= IdList()
+
+────────────────────
+_ do predecessor-index U32
+    - block BlockId
+    - predecessor BlockId
+
+. predecessors = function.blocks[block].predecessors
+. found = no-id
+for index in 0 .. < predecessors.length
+    if predecessors[index] == predecessor
+        found = index
+= found
+
+────────────────────
+_ do push
+    - variable FrameObjectId
+    - value OperandId
+
+stack-previous = stack-previous.appended(arena, tops[variable])
+stack-variables = stack-variables.appended(arena, variable)
+stack-values = stack-values.appended(arena, value)
+tops[variable] = stack-values.length
+
+────────────────────
+_ top-value OperandId
+    - variable FrameObjectId
+
+if top == 0 then no-operand else stack-values[top - 1]
+
+.. top = tops[variable]
+
+────────────────────
+_ do unwind
+    - start U32
+
+. length = stack-values.length
+while length > start
+    length -= 1
+    tops[stack-variables[length]] = stack-previous[length]
+stack-previous = IdList(stack-previous.data, start, stack-previous.capacity)
+stack-variables = IdList(stack-variables.data, start, stack-variables.capacity)
+stack-values = IdList(stack-values.data, start, stack-values.capacity)
+
+────────────────────
+_ do set-alias
+    - from OperandId
+    - to OperandId
+
+do match? function.operands[from]
+    | .vreg-operand(row)
+        ?! Panic("A promoted load targets a register view made during promotion")
+            if row.vreg >= view-count
+        alias-by-view[row.vreg] = to + 1
+        alias-by-vreg[function.vregs[row.vreg].id] = to + 1
+
+────────────────────
+_ do resolve-alias OperandId
+    - operand OperandId
+
+. first = direct-alias(operand)
+if first == no-operand
+    = operand
+if same-key(operand, first)
+    = coerced(operand, first)
+. second = direct-alias(first)
+if second == no-operand
+    = coerced(operand, first)
+
+seen-mark += 1
+mark-seen(operand)
+mark-seen(first)
+. current = second
+while true
+    if mark-seen(current)
+        break
+    . next = direct-alias(current)
+    if next == no-operand
+        break
+    current = next
+= coerced(operand, current)
+
+────────────────────
+_ do direct-alias OperandId
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = view-alias(row.vreg)
+= no-operand
+
+────────────────────
+_ view-alias OperandId
+    - view VRegId
+
+|? view < view-count && direct != 0
+    direct - 1
+|? shared != 0
+    shared - 1
+??
+    no-operand
+
+.. direct = alias-by-view[view]
+.. shared = alias-by-vreg[function.vregs[view].id]
+
+────────────────────
+_ same-key Bool
+    - left OperandId
+    - right OperandId
+
+left == right || (vreg != no-id && vreg == vreg-id(right))
+
+.. vreg = vreg-id(left)
+
+────────────────────
+_ do mark-seen Bool
+    - operand OperandId
+
+. vreg = vreg-id(operand)
+if vreg != no-id
+    . was-seen = seen-vregs[vreg] == seen-mark
+    seen-vregs[vreg] = seen-mark
+    = was-seen
+= false
+
+────────────────────
+_ do coerced OperandId
+    - original OperandId
+    - alias OperandId
+
+. original-view = view-of(original)
+. alias-view = view-of(alias)
+if original-view == no-id || alias-view == no-id
+    = alias
+. reg-class = function.vregs[original-view].reg-class
+if reg-class == function.vregs[alias-view].reg-class
+    = alias
+. id = function.vregs[alias-view].id
+. hint = function.vregs[alias-view].hint
+. gc-root = function.vregs[original-view].gc-root || function.vregs[alias-view].gc-root
+. gc-descriptor = function.vregs[original-view].gc-descriptor
+if gc-descriptor == no-string
+    gc-descriptor = function.vregs[alias-view].gc-descriptor
+. gc-root-mode = function.vregs[original-view].gc-root-mode
+. view VRegId = function.vregs.length as VRegId
+function.vregs.append(MIRVirtualRegister(id, reg-class, hint, gc-root, gc-descriptor, gc-root-mode))
+= builder.vreg-operand(view)
+
+────────────────────
+_ do view-of VRegId
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = row.vreg
+= no-id
+
+────────────────────
+_ do vreg-id U32
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = function.vregs[row.vreg].id
+= no-id
+
+────────────────────
+_ do is-vreg Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand
+        = true
+= false

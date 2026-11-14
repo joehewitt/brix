@@ -1,0 +1,176 @@
+./ast-nodes
+/core/arena
+/core/array-builder
+/core/atom-pool
+/core/table
+
+━━━━━━━━━━━━━━━━━━━━
++ AST
+    is Usable'Void
+
++ source String
++ source-path String
++ nodes ImmutableTable'Syntax
++ children ImmutableArray'SyntaxId'ArenaBacking
++ atoms ImmutableArray'Atom'ArenaBacking
++ stored-atoms ImmutableArray'Atom'ArenaBacking
++ child-links ImmutableArray'SyntaxId'ArenaBacking
++ child-ends Array'U32'ArenaBacking
++ subtree-starts Array'SyntaxId'ArenaBacking
++ root SyntaxId
+_ text-arena Arena
+_ storage-arena Arena
+_ local-atoms AtomPool
+_ borrowed Bool
+
+────────────────────
++ This
+    - text-arena Arena
+    - storage-arena Arena
+    - local-atoms AtomPool
+    - source String
+    - source-path String
+    - nodes ImmutableTable'Syntax
+    - children ImmutableArray'SyntaxId'ArenaBacking
+    - atoms ImmutableArray'Atom'ArenaBacking
+    - stored-atoms ImmutableArray'Atom'ArenaBacking
+    - child-links ImmutableArray'SyntaxId'ArenaBacking
+    - child-ends Array'U32'ArenaBacking
+    - subtree-starts Array'SyntaxId'ArenaBacking
+    - root SyntaxId
+
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using @no-gc
+
+release()
+
+────────────────────
++ get is-lent Bool
+
+borrowed
+
+────────────────────
++ do lend AST
+
+. lent = AST
+    - text-arena
+    - storage-arena
+    - local-atoms
+    - source
+    - source-path
+    - nodes
+    - children
+    - atoms
+    - stored-atoms
+    - child-links
+    - child-ends
+    - subtree-starts
+    - root
+lent.borrowed = true
+= lent
+
+────────────────────
++ do release @no-gc
+
+=? if borrowed
+local-atoms.release()
+text-arena.release()
+storage-arena.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ is-declaration-syntax Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-import-syntax
+        true
+    | .node-function-syntax
+        true
+    | .node-getter-syntax
+        true
+    | .node-setter-syntax
+        true
+    | .node-class-block
+        true
+    | .node-extension
+        true
+    | .node-style-sheet-extension
+        true
+    | .node-property-syntax
+        true
+    | .node-event-declaration
+        true
+    | .node-unit-declaration
+        true
+    | .node-enum-declaration
+        true
+    | .node-delegate-declaration
+        true
+    | .node-implements-declaration
+        true
+    | .node-using-declaration
+        true
+    | .node-dependency-declaration
+        true
+    | .node-style-domain-item
+        true
+    | .node-style-annotation
+        true
+    | .node-rule-syntax
+        true
+    | .node-when-rule-syntax
+        true
+    | .node-whenever-rule-syntax
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-type-syntax Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-type-identifier
+        true
+    | .node-core-type-identifier
+        true
+    | .node-type-arguments
+        true
+    | .node-type-associated
+        true
+    | .node-type-optional
+        true
+    | .node-type-tuple
+        true
+    | .node-type-function
+        true
+    | .node-type-iterable
+        true
+    | .node-type-or
+        true
+    | .node-type-and
+        true
+    | .node-type-numeric
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-comment-syntax Bool
+    - tree AST
+    - id SyntaxId
+
+` A `//` line that names no probe: text for the reader, which no pass compiles.
+match tree.nodes[id]
+    | .node-probe(row)
+        row.object == 0 && !row.key
+    ??
+        false

@@ -1,0 +1,1346 @@
+./rule-context
+./source
+./symbols
+./templates
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/operator
+/lang/ast/row-range
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ PlanKind is U32
+
+| plan-open = 0
+| plan-prefix = 1
+| plan-leaf = 2
+| plan-choice = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ PlanStep is Tuple
+
+` One step down a path of choices: the choice, the condition of the branch taken or none for the
+` fallback, and the branch's place among the choice's branches from one.
+
++ choice U32
++ condition SyntaxId
++ ordinal U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Plan
+
+` A way through a `do` function's body to its results: an open end that gives no result, a
+` statement before the rest, a returned result, or a choice among branches and a fallback.
+
++ kind PlanKind
++ statement SyntaxId
++ result SyntaxId
++ next Plan?
++ choice U32
++ conditions [SyntaxId]
++ branches [Plan]
++ fallback Plan?
+
+────────────────────
++ This
+    - kind PlanKind
+
+━━━━━━━━━━━━━━━━━━━━
++ open-plan Plan
+
+Plan(.plan-open)
+
+━━━━━━━━━━━━━━━━━━━━
++ do prefix-plan Plan
+    - statement SyntaxId
+    - next Plan
+
+. plan = Plan(.plan-prefix)
+plan.statement = statement
+plan.next = next
+= plan
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf-plan Plan
+    - result SyntaxId
+    - statement SyntaxId
+
+. plan = Plan(.plan-leaf)
+plan.result = result
+plan.statement = statement
+= plan
+
+━━━━━━━━━━━━━━━━━━━━
++ do choice-plan Plan
+    - choice U32
+    - conditions [SyntaxId]
+    - branches [Plan]
+    - fallback Plan?
+
+. plan = Plan(.plan-choice)
+plan.choice = choice
+plan.conditions = conditions
+plan.branches = branches
+plan.fallback = fallback
+= plan
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-open-path Bool
+    - plan Plan
+
+` Whether some way through a plan ends without a result.
+if plan.kind == .plan-open
+    = true
+if plan.kind == .plan-prefix
+    = has-open-path(plan.next!)
+if plan.kind == .plan-leaf
+    = false
+for branch in plan.branches
+    if has-open-path(branch)
+        = true
+. fallback = plan.fallback
+= !fallback || has-open-path(fallback)
+
+━━━━━━━━━━━━━━━━━━━━
++ do replace-open-paths Plan
+    - plan Plan
+    - continuation Plan
+
+` A plan whose open ends go on to `continuation`.
+if plan.kind == .plan-open
+    = continuation
+if plan.kind == .plan-prefix
+    = prefix-plan(plan.statement, replace-open-paths(plan.next!, continuation))
+if plan.kind == .plan-leaf
+    = plan
+. branches [Plan]
+for branch in plan.branches
+    branches += replace-open-paths(branch, continuation)
+. replaced = continuation
+. fallback = plan.fallback
+if fallback
+    replaced = replace-open-paths(fallback, continuation)
+= choice-plan(plan.choice, plan.conditions, branches, replaced)
+
+━━━━━━━━━━━━━━━━━━━━
++ do normalized-plan Plan
+    - tree AST
+    - plan Plan
+
+` A plan whose choices take in a fallback choice on the same subject, or on none, as more branches.
+if plan.kind == .plan-prefix
+    = prefix-plan(plan.statement, normalized-plan(tree, plan.next!))
+if plan.kind != .plan-choice
+    = plan
+. branches [Plan]
+for branch in plan.branches
+    branches += normalized-plan(tree, branch)
+. kept Plan? = null
+. fallback = plan.fallback
+if fallback
+    kept = normalized-plan(tree, fallback)
+. normalized = choice-plan(plan.choice, plan.conditions, branches, kept)
+while true
+    . inner = normalized.fallback
+    if !inner || inner.kind != .plan-choice || !can-flatten(tree, normalized, inner)
+        break
+    . conditions [SyntaxId]
+    conditions ++= normalized.conditions
+    conditions ++= inner.conditions
+    . joined [Plan]
+    joined ++= normalized.branches
+    joined ++= inner.branches
+    normalized = choice-plan(normalized.choice, conditions, joined, inner.fallback)
+= normalized
+
+━━━━━━━━━━━━━━━━━━━━
++ can-flatten Bool
+    - tree AST
+    - outer Plan
+    - fallback Plan
+
+|? outer-subject.length == 0
+    fallback-subject.length == 0
+??
+    outer-subject == fallback-subject
+
+.. outer-subject = choice-subject(tree, outer)
+.. fallback-subject = choice-subject(tree, fallback)
+
+━━━━━━━━━━━━━━━━━━━━
++ do choice-subject String
+    - tree AST
+    - plan Plan
+
+` The local every branch of a choice tests with `is` or `==`, or none.
+. subject = ""
+for condition in plan.conditions
+    . direct = direct-subject(tree, condition)
+    if direct.length == 0 || (subject.length != 0 && direct != subject)
+        = ""
+    subject = direct
+= subject
+
+━━━━━━━━━━━━━━━━━━━━
++ do direct-subject String
+    - tree AST
+    - condition SyntaxId
+
+do match? tree.nodes[guard-expression(tree, condition)]
+    | .node-binary-expression(row)
+        if row.op == .is-op || row.op == .equals-op
+            do match? tree.nodes[row.lhs]
+                | .node-identifier(left)
+                    if !left.is-tracked
+                        = left.name.text
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
++ guard-expression SyntaxId
+    - tree AST
+    - condition SyntaxId
+
+match tree.nodes[condition]
+    | .node-type-predicate(row)
+        row.expr
+    ??
+        condition
+
+━━━━━━━━━━━━━━━━━━━━
++ do after-prefixes Plan
+    - plan Plan
+
+. current = plan
+while current.kind == .plan-prefix
+    current = current.next!
+= current
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-leading-assertions Bool
+    - tree AST
+    - plan Plan
+
+. current = plan
+while current.kind == .plan-prefix
+    if tree.nodes[current.statement] is .node-assertion-syntax
+        = true
+    current = current.next!
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ Planner
+
+` Builds the plan of a function's body, numbering its choices in the order they are made.
+
++ tree AST
+_ choices U32
+
+────────────────────
++ This
+    - tree AST
+
+────────────────────
+_ do next-choice U32
+
+choices += 1
+= choices
+
+────────────────────
++ do plan-block Plan?
+    - block SyntaxId
+
+` The plan of a block, with its lazy locals first, or none where a statement has no plan.
+. lazies [SyntaxId]
+. statements [SyntaxId]
+match tree.nodes[block]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if is-lazy-local(tree, statement)
+                if !has-local-value(tree, statement)
+                    = null
+                lazies += statement
+            else
+                statements += statement
+    ?! Panic("Expected a block")
+. body = plan-statements(statements, 0)
+if !body
+    = null
+. plan = body
+for step in 0 .. < lazies.length
+    plan = prefix-plan(lazies[lazies.length - 1 - step], plan)
+= plan
+
+────────────────────
+_ do plan-statements Plan?
+    - statements [SyntaxId]
+    - index Index
+
+if index >= statements.length
+    = open-plan()
+. statement = statements[index]
+do match? tree.nodes[statement]
+    | .node-declare(row)
+        if row.is-pattern || row.right == 0
+            = null
+        . next = plan-statements(statements, index + 1)
+        if !next
+            = null
+        = prefix-plan(statement, next)
+    | .node-assertion-syntax
+        . next = plan-statements(statements, index + 1)
+        if !next
+            = null
+        = prefix-plan(statement, next)
+    | .node-return(row)
+        if !is-successful-value(tree, row.expr)
+            = null
+        = leaf-plan(row.expr, statement)
+    | .node-return-if-true(row)
+        if !is-successful-value(tree, row.expr)
+            = null
+        . fallback = plan-statements(statements, index + 1)
+        if !fallback
+            = null
+        . conditions [SyntaxId]
+        conditions += row.condition
+        . branches [Plan]
+        branches += leaf-plan(row.expr, statement)
+        = choice-plan(next-choice(), conditions, branches, fallback)
+    | .node-if-block
+        = plan-if(statements, index)
+= null
+
+────────────────────
+_ do plan-if Plan?
+    - statements [SyntaxId]
+    - index Index
+
+` The plan of an `if` chain, whose branches that end without a result go on to what follows it.
+. conditions [SyntaxId]
+. branches [Plan]
+. fallback Plan? = null
+. branch = statements[index]
+while branch != 0
+    match tree.nodes[branch]
+        | .node-if-block(row)
+            if !(tree.nodes[row.body] is .node-block)
+                = null
+            . branch-plan = plan-block(row.body)
+            if !branch-plan
+                = null
+            if row.condition != 0
+                conditions += row.condition
+                branches += branch-plan
+            else
+                fallback = branch-plan
+                if row.next != 0
+                    = null
+            branch = row.next
+        ??
+            = null
+
+. last = fallback ?? open-plan()
+. open = has-open-path(last)
+for each-plan in branches
+    open = open || has-open-path(each-plan)
+if open
+    . continuation = plan-statements(statements, index + 1)
+    if !continuation
+        = null
+    . replaced [Plan]
+    for each-plan in branches
+        replaced += replace-open-paths(each-plan, continuation)
+    branches = replaced
+    last = replace-open-paths(last, continuation)
+= choice-plan(next-choice(), conditions, branches, last)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-lazy-local Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        row.is-lazy
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ has-local-value Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        !row.is-pattern && row.right != 0
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-successful-value Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether a returned value is one that always succeeds as written: not optional, not caught.
+id != 0 && !(tree.nodes[id] is .node-optional-chain) && !(tree.nodes[id] is .node-catch-expression)
+
+━━━━━━━━━━━━━━━━━━━━
++ do local-name String
+    - tree AST
+    - id SyntaxId
+
+` The name a declaration of one local gives, or none.
+do match? tree.nodes[id]
+    | .node-declare(row)
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                = identifier-name(tree, capture.id)
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do local-display-name String
+    - source LintSource
+    - tree AST
+    - id SyntaxId
+    - name String
+
+` The name of a local as written, where it is written as a plain name.
+do match? tree.nodes[id]
+    | .node-declare(row)
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                . text = node-text(source, tree, capture.id)
+                if is-plain-name(text)
+                    = text
+= name
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-plain-name Bool
+    - text String
+
+if text.length == 0 || !is-name-start(text[0])
+    = false
+for char in text
+    if !is-name-start(char) && !(char >= '0' && char <= '9') && char != '-'
+        = false
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ is-name-start Bool
+    - char Char
+
+(char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char == '_'
+
+━━━━━━━━━━━━━━━━━━━━
++ local-value SyntaxId
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        row.right
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ is-direct-value Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether a value is written as an untracked name or a literal.
+match tree.nodes[id]
+    | .node-identifier(row)
+        !row.is-tracked
+    | .node-integer-syntax(row)
+        !row.unit
+    | .node-float-syntax(row)
+        !row.unit
+    | .node-string-syntax
+        true
+    | .node-symbol
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-proven-value Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether a value is written as one that cannot fail: a direct value, or a tuple or list of them.
+if is-direct-value(tree, id)
+    = true
+do match? tree.nodes[id]
+    | .node-tuple-syntax(row)
+        for item in tree.children[row.items]
+            if !is-proven-value(tree, item)
+                = false
+        = true
+    | .node-list-syntax(row)
+        for item in tree.children[row.items]
+            if !is-proven-value(tree, item)
+                = false
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ PlanContext
+
+` An expression a plan evaluates on a path: a guard or result, which decides what is returned, or
+` an assertion's condition or exception, which does not.
+
++ affects-certainty Bool
++ node SyntaxId
++ path [PlanStep]
+
+────────────────────
++ This
+    - affects-certainty Bool
+    - node SyntaxId
+    - path [PlanStep]
+
+━━━━━━━━━━━━━━━━━━━━
++ PlanDependency
+
+` A local a multi-result function declares, the paths it is declared on and where its readers
+` are, and so the path it belongs on as a lazy local.
+
++ node SyntaxId
++ name String
++ display String
++ occurrences [[PlanStep]]
++ contexts [PlanContext]
++ dependents [Index]
++ placement [PlanStep]
+
+────────────────────
++ This
+    - node SyntaxId
+    - name String
+    - display String
+
+━━━━━━━━━━━━━━━━━━━━
++ MultiResult
+
+` A `do` function with several returned results that one ordered match could give.
+
++ dependencies [PlanDependency]
++ contexts [PlanContext]
++ leading-assertions Bool
++ outer-match String
++ result-paths Int
+
+────────────────────
++ This
+
+━━━━━━━━━━━━━━━━━━━━
++ PlanReader
+
+` Reads the locals, expressions and results of a plan along every path through it.
+
++ source LintSource
++ tree AST
++ dependencies [PlanDependency]
++ by-node [SyntaxId = Index]
++ by-name [String = Index]
++ contexts [PlanContext]
++ returns [SyntaxId = Bool]
++ result-paths Int
++ invalid Bool
+
+────────────────────
++ This
+    - source LintSource
+    - tree AST
+
+────────────────────
++ do visit
+    - plan Plan
+    - path [PlanStep]
+
+if plan.kind == .plan-open
+    invalid = true
+    =
+if plan.kind == .plan-prefix
+    visit-prefix(plan.statement, path)
+    visit(plan.next!, path)
+    =
+if plan.kind == .plan-leaf
+    result-paths += 1
+    returns[plan.statement] = true
+    contexts += PlanContext(true, plan.result, path)
+    =
+
+for position in 0 .. < plan.branches.length
+    . condition = plan.conditions[position]
+    contexts += PlanContext(true, guard-expression(tree, condition), path)
+    . step = PlanStep(plan.choice, condition, (position + 1) as U32)
+    visit(plan.branches[position], extended(path, step))
+. fallback = plan.fallback
+if fallback
+    . ordinal = plan.branches.length + 1
+    visit(fallback, extended(path, PlanStep(plan.choice, 0, ordinal as U32)))
+
+────────────────────
+_ do visit-prefix
+    - statement SyntaxId
+    - path [PlanStep]
+
+do match? tree.nodes[statement]
+    | .node-assertion-syntax(row)
+        if row.condition != 0
+            contexts += PlanContext(false, row.condition, path)
+        contexts += PlanContext(false, row.exception, path)
+        =
+
+. name = local-name(tree, statement)
+if name.length == 0 || local-value(tree, statement) == 0
+    invalid = true
+    =
+. known = by-node[statement]
+if known != null
+    dependencies[known].occurrences += path
+    =
+. duplicate = by-name[name]
+if duplicate != null
+    invalid = true
+    =
+. dependency = PlanDependency(statement, name, local-display-name(source, tree, statement, name))
+dependency.occurrences += path
+by-node[statement] = dependencies.length
+by-name[name] = dependencies.length
+dependencies += dependency
+
+━━━━━━━━━━━━━━━━━━━━
++ do extended [PlanStep]
+    - path [PlanStep]
+    - step PlanStep
+
+. longer [PlanStep]
+longer ++= path
+longer += step
+= longer
+
+━━━━━━━━━━━━━━━━━━━━
++ do referenced-locals [String]
+    - tree AST
+    - id SyntaxId
+    - known [String = Index]
+
+` The locals in `known` an expression reads, in the order first read, apart from reads inside a
+` declaration, a function or a `do` block within it.
+. names [String]
+. seen [String = Bool]
+gather-referenced(tree, id, known, false, seen, names)
+= names
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gather-referenced
+    - tree AST
+    - id SyntaxId
+    - known [String = Index]
+    - inside Bool
+    - seen [String = Bool]
+    - names [String]
+
+if id == 0
+    =
+do match? tree.nodes[id]
+    | .node-identifier(row)
+        . name = row.name.text
+        if !inside && known[name] != null && !seen[name]
+            seen[name] = true
+            names += name
+. hides = inside || hides-locals(tree, id)
+for child in tree.children-of(id)
+    gather-referenced(tree, child, known, hides, seen, names)
+
+━━━━━━━━━━━━━━━━━━━━
++ hides-locals Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare
+        true
+    | .node-function-syntax
+        true
+    | .node-do-block
+        true
+    | .node-do-task-block
+        true
+    | .node-do-finally-block
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do common-path [PlanStep]
+    - paths [[PlanStep]]
+
+` The steps every path shares from its start.
+. common [PlanStep]
+if paths.length == 0
+    = common
+common ++= paths[0]
+for position in 1 .. < paths.length
+    . path = paths[position]
+    . shared = 0
+    while shared < common.length && shared < path.length && same-step(common[shared], path[shared])
+        shared += 1
+    . kept [PlanStep]
+    for index in 0 .. < shared
+        kept += common[index]
+    common = kept
+= common
+
+━━━━━━━━━━━━━━━━━━━━
++ do path-starts-with Bool
+    - path [PlanStep]
+    - prefix [PlanStep]
+
+for index in 0 .. < prefix.length
+    if index >= path.length || !same-step(prefix[index], path[index])
+        = false
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ same-step Bool
+    - left PlanStep
+    - right PlanStep
+
+left.choice == right.choice && left.ordinal == right.ordinal
+
+━━━━━━━━━━━━━━━━━━━━
++ do multi-result MultiResult?
+    - source LintSource
+    - tree AST
+    - function ASTFunction
+
+` The multi-result form of a `do` function's body, or none where its paths do not all end in a
+` result, it returns fewer than two, or a local cannot be placed on the paths that read it.
+. planner = Planner(tree)
+. raw = planner.plan-block(function.body)
+if !raw || has-open-path(raw)
+    = null
+. plan = normalized-plan(tree, raw)
+. outer = after-prefixes(plan)
+if outer.kind != .plan-choice
+    = null
+
+. reader = PlanReader(source, tree)
+. empty [PlanStep]
+reader.visit(plan, empty)
+if reader.invalid || reader.returns.length < 2
+    = null
+
+. dependencies = reader.dependencies
+for context in reader.contexts
+    for name in referenced-locals(tree, context.node, reader.by-name)
+        dependencies[reader.by-name[name]!].contexts += context
+for position in 0 .. < dependencies.length
+    . value = local-value(tree, dependencies[position].node)
+    for name in referenced-locals(tree, value, reader.by-name)
+        . required = reader.by-name[name]!
+        if required == position
+            = null
+        if !has-index(dependencies[required].dependents, position)
+            dependencies[required].dependents += position
+
+. finder = PathFinder(dependencies)
+for dependency in dependencies
+    . declared = common-path(dependency.occurrences)
+    dependency.placement = common-path(finder.paths-of(dependency))
+    if !path-starts-with(dependency.placement, declared)
+        = null
+if finder.invalid
+    = null
+
+. result = MultiResult()
+result.dependencies = sorted-by-place(tree, dependencies)
+result.contexts = reader.contexts
+result.leading-assertions = has-leading-assertions(tree, plan)
+result.outer-match = if choice-subject(tree, outer).length != 0 then "subject" else "bare"
+result.result-paths = reader.result-paths
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-index Bool
+    - items [Index]
+    - item Index
+
+for found in items
+    if found == item
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do sorted-by-place [PlanDependency]
+    - tree AST
+    - dependencies [PlanDependency]
+
+` Locals in the order they are declared, keeping the order of any declared at one place.
+. sorted [PlanDependency]
+for dependency in dependencies
+    . place = tree.nodes.loc[dependency.node].begin
+    . position = sorted.length
+    while position > 0 && is-before(place, tree.nodes.loc[sorted[position - 1].node].begin)
+        position -= 1
+    sorted.insert(dependency, position)
+= sorted
+
+━━━━━━━━━━━━━━━━━━━━
++ is-before Bool
+    - left TokenLocation
+    - right TokenLocation
+
+left.line < right.line || (left.line == right.line && left.column < right.column)
+
+━━━━━━━━━━━━━━━━━━━━
++ PathFinder
+
+` The paths on which each local is read, directly or through the locals that read it.
+
++ dependencies [PlanDependency]
++ invalid Bool
+_ found [Index = [[PlanStep]]]
+_ visiting [Index = Bool]
+
+────────────────────
++ This
+    - dependencies [PlanDependency]
+
+────────────────────
++ paths-of [[PlanStep]]
+    - dependency PlanDependency
+
+paths-at(index-of(dependency))
+
+────────────────────
+_ do index-of Index
+    - dependency PlanDependency
+
+for position in 0 .. < dependencies.length
+    if dependencies[position].node == dependency.node
+        = position
+?! Panic("Expected a local of the plan")
+
+────────────────────
+_ do paths-at [[PlanStep]]
+    - position Index
+
+. cached = found[position]
+if cached
+    = cached
+. paths [[PlanStep]]
+if visiting[position]
+    invalid = true
+    = paths
+visiting[position] = true
+. dependency = dependencies[position]
+for context in dependency.contexts
+    paths += context.path
+for dependent in dependency.dependents
+    paths ++= paths-at(dependent)
+if paths.length == 0
+    paths ++= dependency.occurrences
+visiting[position] = false
+found[position] = paths
+= paths
+
+━━━━━━━━━━━━━━━━━━━━
++ do lint-expression-functions
+    - source LintSource
+    - tree AST
+    - context RuleContext
+
+. attached = attached-nodes(tree)
+for id in 1u32 .. < tree.nodes.length
+    if !attached[id]
+        continue
+    do match? tree.nodes[id]
+        | .node-function-syntax(row)
+            lint-expression-function(source, tree, id as SyntaxId, row, context)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lint-expression-function
+    - source LintSource
+    - tree AST
+    - id SyntaxId
+    - function ASTFunction
+    - context RuleContext
+
+if !is-expression-function-kind(tree, function) || !(tree.nodes[function.body] is .node-block)
+    =
+if text-builder(source, tree, function).length != 0
+    =
+. place = imperative-token-place(source, tree, id)
+
+. dependencies [SyntaxId]
+. result = single-result(tree, function, dependencies)
+if result != 0
+    . late = eager-read-crosses-assertion(tree, function, dependencies, null)
+    . status = if has-late then "review" else single-result-status(tree, dependencies, result)
+        .. has-late = late.length != 0
+    context.report(single-result-message(tree, late, status), place.line, place.column, status)
+    =
+
+. multi = multi-result(source, tree, function)
+if !multi
+    =
+. found = multi
+. locals [SyntaxId]
+for dependency in found.dependencies
+    locals += dependency.node
+. late = eager-read-crosses-assertion(tree, function, locals, found)
+. status = if late.length != 0 then "review" else multi-result-status(tree, found)
+. message = multi-result-message(source, tree, found, status, late)
+context.report(message, place.line, place.column, status)
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-expression-form Bool
+    - source LintSource
+    - tree AST
+    - function ASTFunction
+
+if !is-expression-function-kind(tree, function) || !(tree.nodes[function.body] is .node-block)
+    = false
+. dependencies [SyntaxId]
+= single-result(tree, function, dependencies) != 0 || multi-result(source, tree, function) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ is-expression-function-kind Bool
+    - tree AST
+    - function ASTFunction
+
+` Whether a function is a plain `do` function that could be written as an expression.
+is-plain && !function.is-setter && !is-constructor && function.pattern == 0
+
+.. is-plain = function.imperative && function.compilation-effects == .none
+.. is-constructor = function.names.count != 0 && first-name == "This"
+.. first-name = tree.atoms[function.names.start].text
+
+━━━━━━━━━━━━━━━━━━━━
++ do single-result SyntaxId
+    - tree AST
+    - function ASTFunction
+    - dependencies [SyntaxId]
+
+` The value a `do` function returns last, where everything before is assertions and locals with
+` values, which it adds to `dependencies`; or none.
+. statements = match tree.nodes[function.body]
+    | .node-block(row)
+        row.body
+    ?! Panic("Expected a block")
+if statements.count == 0
+    = 0
+. last = tree.children[statements.start + statements.count - 1]
+. result = match tree.nodes[last]
+    | .node-return(row)
+        row.expr
+    ??
+        0
+if result == 0 || tree.nodes[result] is .node-catch-expression
+    = 0
+for position in 0 .. < statements.count - 1
+    . statement = tree.children[statements.start + position]
+    if tree.nodes[statement] is .node-assertion-syntax
+        continue
+    match tree.nodes[statement]
+        | .node-declare(row)
+            if row.is-pattern || row.right == 0
+                = 0
+            dependencies += statement
+        ??
+            = 0
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do single-result-status String
+    - tree AST
+    - dependencies [SyntaxId]
+    - result SyntaxId
+
+for dependency in dependencies
+    if !is-local-value-proven(tree, dependency)
+        = "review"
+= if is-proven-value(tree, result) then "actionable" else "review"
+
+━━━━━━━━━━━━━━━━━━━━
++ is-local-value-proven Bool
+    - tree AST
+    - id SyntaxId
+
+` Whether moving a local to `..` keeps its value: a lazy one proven, an eager one direct.
+if is-lazy-local(tree, id) then is-proven-value(tree, value) else is-direct-value(tree, value)
+
+.. value = local-value(tree, id)
+
+━━━━━━━━━━━━━━━━━━━━
++ single-result-message String
+    - tree AST
+    - late [SyntaxId]
+    - status String
+
+|? late.length != 0
+    "$review-head; ${late-clause(late-names)}."
+|? status == "actionable"
+    "$actionable-head $actionable-tail"
+??
+    "$review-head; $review-tail"
+
+.. actionable-head = "Prefer an expression function: remove `do` and the explicit return,"
+.. actionable-tail = "keep assertions first, then the value, then `..` lazy dependencies."
+.. review-head = "Review this single-result `do` function for expression form"
+.. review-tail = "keep `do` only when its value is an effect's result or $misplaced"
+.. misplaced = "a lazy's first read would come in the wrong place."
+.. late-names = listed(late *> "`${local-name(tree, each)}`")
+
+━━━━━━━━━━━━━━━━━━━━
++ late-clause String
+    - names String
+
+"as `..` lazies, $names would first be read after assertion work that makes calls, so $check"
+
+.. check = "check that each still reads the value it should"
+
+━━━━━━━━━━━━━━━━━━━━
++ do multi-result-status String
+    - tree AST
+    - found MultiResult
+
+for dependency in found.dependencies
+    if !is-local-value-proven(tree, dependency.node)
+        = "review"
+for context in found.contexts
+    if context.affects-certainty && !is-proven-value(tree, context.node)
+        = "review"
+= "actionable"
+
+━━━━━━━━━━━━━━━━━━━━
++ do multi-result-message String
+    - source LintSource
+    - tree AST
+    - found MultiResult
+    - status String
+    - late [SyntaxId]
+
+` The advice for a multi-result function: the match its results become, where its locals go, and
+` what to check before removing `do`.
+. paths = found.result-paths
+. shape = found.outer-match
+. prefix = "Prefer an expression function: replace $paths successful return paths with one "
+prefix += "ordered $shape match"
+if status != "actionable"
+    prefix = "Review this multi-result `do` function for expression form: its $paths successful "
+    prefix += "return paths can become one ordered $shape match"
+
+. clauses [String]
+if found.leading-assertions
+    clauses += "keep dominating assertions before the match"
+
+. function-level [PlanDependency]
+for dependency in found.dependencies
+    if dependency.placement.length == 0
+        function-level += dependency
+if function-level.length != 0
+    clauses += "move ${listed-names(function-level)} to function-level `..` lazies"
+
+. keys [String]
+. groups [String = [PlanDependency]]
+for dependency in found.dependencies
+    if dependency.placement.length == 0
+        continue
+    . key = "/".join((dependency.placement *> "${each.choice}:${each.ordinal}"))
+    if !groups[key]
+        . fresh [PlanDependency]
+        groups[key] = fresh
+        keys += key
+    groups[key]! += dependency
+for key in keys
+    . group = groups[key]!
+    . kind = if group.length == 1 then "a `..` lazy" else "`..` lazies"
+    . location = path-description(source, tree, group[0].placement)
+    clauses += "place ${listed-names(group)} as $kind in $location"
+
+if status == "review"
+    . crossing [PlanDependency]
+    . eager [PlanDependency]
+    for dependency in found.dependencies
+        if late.find(dependency.node) != null
+            crossing += dependency
+        else if !is-lazy-local(tree, dependency.node)
+            eager += dependency
+    if crossing.length != 0
+        clauses += late-clause(listed-names(crossing))
+    if eager.length != 0
+        . names = listed-names(eager)
+        . clause = "verify eager order and effects: moving $names to `..` defers evaluation "
+        clause += "and failure until first use"
+        clauses += clause
+    if crossing.length == 0 && eager.length == 0
+        clauses += "verify guard and result evaluation order and effects before removing `do`"
+if clauses.length == 0
+    clauses += "preserve branch order and nesting"
+. joined = "; ".join(clauses)
+= "$prefix; $joined."
+
+━━━━━━━━━━━━━━━━━━━━
++ listed-names String
+    - dependencies [PlanDependency]
+
+listed(dependencies *> "`${each.display}`")
+
+━━━━━━━━━━━━━━━━━━━━
++ listed String
+    - names [String]
+
+|? names.length < 2
+    if names.length == 1 then names[0] else ""
+|? names.length == 2
+    "${names[0]} and ${names[1]}"
+??
+    "$leading, and ${names[names.length - 1]}"
+
+.. leading = ", ".join(names[... names.length - 1])
+
+━━━━━━━━━━━━━━━━━━━━
++ path-description String
+    - source LintSource
+    - tree AST
+    - path [PlanStep]
+
+` A path of choices as the conditions of the branches it takes.
+" then ".join(step-description(source, tree, each) in path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ step-description String
+    - source LintSource
+    - tree AST
+    - step PlanStep
+
+if is-fallback then "choice ${step.ordinal} (fallback)" else "choice ${step.ordinal} (`$summary`)"
+
+.. summary = condensed(node-text(source, tree, guard-expression(tree, step.condition)))
+.. is-fallback = step.condition == 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do condensed String
+    - text String
+
+` Text on one line, with each run of spaces one space and backticks as quotes.
+. result String
+. pending = false
+for char in text
+    if is-space-char(char)
+        pending = true
+        continue
+    if pending && result.length != 0
+        result += " "
+    pending = false
+    result += if char == '`' then "'" else "$char"
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do eager-read-crosses-assertion [SyntaxId]
+    - tree AST
+    - function ASTFunction
+    - dependencies [SyntaxId]
+    - multi MultiResult?
+
+` The eager locals that, made lazy, would first be read after an assertion whose condition calls or
+` assigns, and so could read a different value.
+. declarations [String = SyntaxId]
+for dependency in dependencies
+    declarations[local-name(tree, dependency)] = dependency
+. stable [String = Bool]
+stable["true"] = true
+stable["false"] = true
+stable["null"] = true
+stable["this"] = true
+for arg in tree.children[function.args]
+    do match? tree.nodes[arg]
+        | .node-argument-decl(row)
+            stable[declared-name(tree, row.pattern)] = true
+
+. snapshots [SyntaxId]
+for dependency in dependencies
+    . value = local-value(tree, dependency)
+    . visiting [String = Bool]
+    if !is-lazy-local(tree, dependency) && value != 0
+        if !is-stable-value(tree, value, stable, declarations, visiting)
+            snapshots += dependency
+. late [SyntaxId]
+if snapshots.length != 0
+    . read [String = Bool]
+    note-late-reads(tree, function.body, false, snapshots, multi, declarations, read, late)
+= late
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-stable-value Bool
+    - tree AST
+    - id SyntaxId
+    - stable [String = Bool]
+    - declarations [String = SyntaxId]
+    - visiting [String = Bool]
+
+do match? tree.nodes[id]
+    | .node-identifier(row)
+        if row.is-tracked
+            = false
+        . name = row.name.text
+        if stable[name]
+            = true
+        . declaration = declarations[name]
+        if declaration == null || visiting[name]
+            = false
+        . value = local-value(tree, declaration)
+        if value == 0
+            = false
+        visiting[name] = true
+        . result = is-stable-value(tree, value, stable, declarations, visiting)
+        visiting[name] = false
+        = result
+= is-direct-value(tree, id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do note-late-reads
+    - tree AST
+    - id SyntaxId
+    - nested Bool
+    - snapshots [SyntaxId]
+    - multi MultiResult?
+    - declarations [String = SyntaxId]
+    - read [String = Bool]
+    - late [SyntaxId]
+
+if id == 0
+    =
+. condition = if nested then 0 else checked-condition(tree, id)
+if condition != 0
+    for snapshot in snapshots
+        . name = local-name(tree, snapshot)
+        . visiting [String = Bool]
+        if !read[name] && reads-local(tree, condition, name, declarations, visiting)
+            read[name] = true
+    do match? tree.nodes[id]
+        | .node-assertion-syntax(row)
+            if calls-or-assigns(tree, condition)
+                for snapshot in snapshots
+                    if !read[local-name(tree, snapshot)] && late.find(snapshot) == null
+                        if follows-snapshot(tree, id, row, snapshot, multi)
+                            late += snapshot
+. inner = nested || is-function-node(tree, id)
+for child in tree.children-of(id)
+    note-late-reads(tree, child, inner, snapshots, multi, declarations, read, late)
+
+━━━━━━━━━━━━━━━━━━━━
++ checked-condition SyntaxId
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-assertion-syntax(row)
+        row.condition
+    | .node-return-if-true(row)
+        row.condition
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ do reads-local Bool
+    - tree AST
+    - id SyntaxId
+    - name String
+    - declarations [String = SyntaxId]
+    - visiting [String = Bool]
+
+if id == 0
+    = false
+do match? tree.nodes[id]
+    | .node-identifier(row)
+        . found = row.name.text
+        if found == name
+            = true
+        . declaration = declarations[found]
+        if declaration != null && !visiting[found]
+            visiting[found] = true
+            . through = reads-local
+                - tree
+                - local-value(tree, declaration)
+                - name
+                - declarations
+                - visiting
+            visiting[found] = false
+            if through
+                = true
+for child in tree.children-of(id)
+    if reads-local(tree, child, name, declarations, visiting)
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do follows-snapshot Bool
+    - tree AST
+    - id SyntaxId
+    - assertion ASTAssertion
+    - snapshot SyntaxId
+    - multi MultiResult?
+
+if !is-before(tree.nodes.loc[snapshot].begin, tree.nodes.loc[id].begin)
+    = false
+if !multi
+    = true
+. found = multi
+for context in found.contexts
+    if context.node != assertion.condition && context.node != assertion.exception
+        continue
+    for dependency in found.dependencies
+        if dependency.node == snapshot
+            for path in dependency.occurrences
+                if path-starts-with(context.path, path)
+                    = true
+    break
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do calls-or-assigns Bool
+    - tree AST
+    - id SyntaxId
+
+if id == 0
+    = false
+if tree.nodes[id] is .node-call-expression || tree.nodes[id] is .node-assign
+    = true
+for child in tree.children-of(id)
+    if calls-or-assigns(tree, child)
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do imperative-token-place TokenLocation
+    - source LintSource
+    - tree AST
+    - id SyntaxId
+
+` Where a function is reported: at its `do`, or else where it begins, counted from one.
+. begin = tree.nodes.loc[id].begin
+=? TokenLocation(begin.line + 1, begin.column + 1) if source.is-brix
+. line = if begin.line < source.lines.length then source.lines[begin.line] else ""
+for position in begin.column .. < line.length
+    if line[position] != 'd' || position + 1 >= line.length || line[position + 1] != 'o'
+        continue
+    if position > begin.column && is-word-char(line[position - 1])
+        continue
+    if position + 2 < line.length && is-word-char(line[position + 2])
+        continue
+    = TokenLocation(begin.line + 1, (position + 1) as U32)
+= TokenLocation(begin.line + 1, begin.column + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-word-char Bool
+    - char Char
+
+is-name-start(char) || (char >= '0' && char <= '9')

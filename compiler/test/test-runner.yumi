@@ -1,0 +1,598 @@
+./test-catalog
+./test-config
+/YuCore/YuString.h
+/data/json
+/os/file
+/os/process
+/time/duration
+/time/timer
+
+_ test-stop-grace = 1s
+_ test-drain-grace = 2s
+_ test-settle-poll = 20ms
+_ test-settle-polls = 25
+_ test-attempt-limit = 3
+_ test-read-size Size = 0x10000
+_ test-line-limit Size = 0x1000000
+_ test-tail-limit Size = 0x4000
+_ test-note-limit Size = 2000
+_ test-newline Byte = 10
+_ test-lifeline = "(read line <&3; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec \"\$@\" 3<&-"
+
+━━━━━━━━━━━━━━━━━━━━
++ TestStatus is Union
+
+| idle
+| queued
+| running
+| passed
+| failed
+| crashed
+| timed-out
+| stopped
+| not-run
+| skipped
+
+━━━━━━━━━━━━━━━━━━━━
++ TestResult is Tuple
+
++ run Int
++ node Index
++ status TestStatus
++ duration U64
++ expected String
++ actual String
++ errors String
+
+━━━━━━━━━━━━━━━━━━━━
++ TestEvent is Union
+
+| discovered(catalog TestCatalog)
+| started(node Index, at U64)
+| reported(result TestResult)
+| phase(name String)
+| noted(text String)
+| completed(stuck [Int])
+
+━━━━━━━━━━━━━━━━━━━━
++ TestFrame is (run Int, event TestEvent)
+
+━━━━━━━━━━━━━━━━━━━━
++ TestBatch is Tuple
+
++ suite TestSuiteConfig
++ arguments [String]
++ ids [String]
++ nodes [String = Index]
+
+━━━━━━━━━━━━━━━━━━━━
++ TestOrder is Tuple
+
++ run Int
++ config TestConfig
++ batches [TestBatch]
+
+━━━━━━━━━━━━━━━━━━━━
+_ TestCommand is Union
+
+| discover(config TestConfig)
+| start(order TestOrder)
+| stop(run Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ TestRunner
+    is Closable
+
++ frames := SyncBufferedChannel'TestFrame()
+
+_ commands := SyncBufferedChannel'TestCommand()
+_ served := SyncBufferedChannel'Bool()
+_ worker := Worker()
+
+────────────────────
++ This
+
+do (worker) new
+    serve()
+
+────────────────────
++ do discover
+    - config TestConfig
+
+commands <- TestCommand.discover(config)
+
+────────────────────
++ do start
+    - order TestOrder
+
+commands <- TestCommand.start(order)
+
+────────────────────
++ do stop
+    - run Int
+
+commands <- TestCommand.stop(run)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if commands.is-closed
+commands.close()
+<- served
+worker.stop()
+frames.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do serve
+
+. current TestExecution?
+. discoveries [TestDiscovery]
+for command in commands
+    do match command
+        | .discover(config)
+            . discovery = TestDiscovery()
+            discoveries = List'TestDiscovery(each in discoveries when !each.is-finished)
+            discoveries += discovery
+            do new
+                . found = discover-tests(config, discovery)
+                if !discovery.is-stopped
+                    frames <- TestFrame(0, TestEvent.discovered(found))
+                discovery.finish()
+        | .start(order)
+            . previous = current
+            previous?.stop()
+            . execution = TestExecution(order, frames)
+            current = execution
+            do new
+                previous?.await()
+                execution.execute()
+        | .stop(run)
+            if current && current.order.run == run
+                current.stop()
+for discovery in discoveries
+    discovery.stop()
+current?.stop()
+for discovery in discoveries
+    discovery.await()
+current?.await()
+served.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ TestExecution
+
++ order TestOrder
+
+_ frames SyncBufferedChannel'TestFrame
+_ attempt TestAttempt?
+_ is-stopping = false
+_ stuck [Int]
+_ done := SyncBufferedChannel'Bool()
+
+────────────────────
++ This
+    - order
+    - frames
+
+────────────────────
++ do stop
+
+=? if is-stopping
+is-stopping = true
+attempt?.stop()
+
+────────────────────
++ do await
+
+<- done
+
+────────────────────
++ do execute
+
+for batch in order.batches
+    if is-stopping
+        break
+    run-batch(batch)
+frames <- TestFrame(order.run, TestEvent.completed(stuck))
+done.close()
+
+────────────────────
+_ do run-batch
+    - batch TestBatch
+
+. pending = batch.ids
+. attempts = 0
+. problem = ""
+while pending.length > 0 && !is-stopping
+    attempts += 1
+    . current = TestAttempt(order, batch, pending, frames)
+    attempt = current
+    current.run()
+    attempt = null
+    stuck ++= current.stuck
+    if current.problem != ""
+        problem = current.problem
+    pending = current.unstarted
+    if !current.has-progressed || attempts >= test-attempt-limit
+        break
+=? if is-stopping
+. reason = if problem != "" then problem else "${batch.suite.id} reported no result"
+for id in pending
+    frames <- TestFrame(order.run, TestEvent.reported(missing))
+        .. missing = TestResult(order.run, batch.nodes[id]!, TestStatus.not-run, 0, "", "", reason)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TestAttempt
+
++ unstarted [String]
++ stuck [Int]
++ problem = ""
++ has-progressed = false
+
+_ order TestOrder
+_ batch TestBatch
+_ ids [String]
+_ frames SyncBufferedChannel'TestFrame
+_ wanted [String = Bool]
+_ started [String = U64]
+_ finished [String = Bool]
+_ process Process?
+_ lifeline File?
+_ status Int = -1
+_ errors = ""
+_ last-activity U64
+_ is-stopping = false
+_ is-exited = false
+_ is-timed-out = false
+_ is-settled = false
+_ timers [Task]
+_ exited := SyncBufferedChannel'Bool()
+_ drained := SyncBufferedChannel'Bool()
+
+────────────────────
++ This
+    - order
+    - batch
+    - ids
+    - frames
+
+for id in ids
+    wanted[id] = true
+
+────────────────────
++ do run
+
+spawn()
+    catch failure Error
+        problem = "${batch.suite.id} did not start: ${failure.message}"
+        unstarted = ids
+        =
+. child = process!
+last-activity = monotonic-time-nanoseconds()
+do new
+    drain-errors(child)
+do new
+    await-exit(child)
+do new
+    watch(child)
+if is-stopping
+    child.kill-tree()
+read-output(child)
+<- exited
+<- drained
+settle(child)
+classify()
+
+────────────────────
++ do stop
+
+=? if is-stopping
+is-stopping = true
+. child = process
+=? if !child
+if is-exited
+    child.kill-tree()
+    catch child.close()
+    =
+child.terminate-group()
+do new
+    timers += get-active-task()
+    test-stop-grace.wait()
+    if !is-exited
+        child.kill-tree()
+
+────────────────────
+_ do spawn ?! Error
+
+. extra = Map'String'String
+    • "OMETER_TESTOMETER_SELECTED_TEST_IDS" to-json(List'JSON(each as JSON in ids) as JSON)
+. step = order.config.step(batch.suite, batch.arguments, extra)
+. arguments =
+    * "-c"
+    * test-lifeline
+    * "sh"
+    ** step.arguments
+    |> List
+. pipe = process-pipe()
+. child = Process("/bin/sh", ProcessStderr.capture, arguments, order.config.root, step.variables, [pipe.reader.fd]) • group ProcessGroup.own
+    catch failure Error
+        catch pipe.reader.close()
+        catch pipe.writer.close()
+        ?! failure
+catch pipe.reader.close()
+lifeline = pipe.writer
+process = child
+catch child.close-input()
+
+────────────────────
+_ do read-output
+    - child Process
+
+. chunk = Byte[test-read-size]
+. line = Byte[test-read-size]
+. length Size = 0
+. is-dropping = false
+while true
+    . count = read-chunk(child, chunk)
+    if count == 0
+        break
+    last-activity = monotonic-time-nanoseconds()
+    for index in 0 .. < count
+        . byte = chunk[index]
+        if byte == test-newline
+            finish-line(line, length, is-dropping)
+            length = 0
+            is-dropping = false
+        else if length < test-line-limit
+            if length == line.size
+                line = line.resize(length * 2)
+            line[length] = byte
+            length += 1
+        else
+            is-dropping = true
+finish-line(line, length, is-dropping)
+
+────────────────────
+_ do finish-line
+    - line Byte[]
+    - length Size
+    - is-dropping Bool
+
+if is-dropping
+    note("${batch.suite.id} wrote a line longer than $test-line-limit bytes")
+else if length > 0
+    accept(test-byte-text(line, length))
+
+────────────────────
+_ do accept
+    - text String
+
+. trimmed = text.trim()
+=? if trimmed.length == 0
+. parsed = catch? parse-json(trimmed)
+. event = catch? JSONReader("${batch.suite.id} event", parsed).object() if parsed
+if !event
+    note(trimmed)
+    =
+handle(event)
+    catch failure Error
+        note("${failure.message}: $trimmed")
+
+────────────────────
+_ do handle ?! Error
+    - event JSONObjectReader
+
+do match? test-field(event, "type")
+    |= "testStart"
+        begin(test-field(event, "id"))
+    |= "testResult"
+        report(event)
+    |= "phase"
+        send(TestEvent.phase(test-field(event, "name")))
+    |= "error"
+        problem = test-field(event, "message")
+        note(problem)
+
+────────────────────
+_ do begin
+    - id String
+
+=? if wanted[id] == null || started[id] != null
+. now = monotonic-time-nanoseconds()
+started[id] = now
+has-progressed = true
+send(TestEvent.started(batch.nodes[id]!, now))
+
+────────────────────
+_ do report ?! Error
+    - event JSONObjectReader
+
+. id = test-field(event, "id")
+=? if wanted[id] == null
+begin(id)
+finished[id] = true
+has-progressed = true
+. milliseconds = event-number(event, "duration")
+. measured = monotonic-time-nanoseconds() - started[id]!
+. duration = if milliseconds then ((milliseconds * 1000000.0) as U64) else measured
+. status = provider-status(event-text(event, "status"))
+send
+    - TestEvent.reported
+        - TestResult
+            - order.run
+            - batch.nodes[id]!
+            - status
+            - duration
+            - event-text(event, "expected")
+            - event-text(event, "actual")
+            - event-text(event, "errors")
+
+────────────────────
+_ do drain-errors
+    - child Process
+
+. chunk = Byte[test-read-size]
+. source = child.stderr!
+while true
+    . count = read-chunk(source, chunk)
+    if count == 0
+        break
+    last-activity = monotonic-time-nanoseconds()
+    . text = "$errors${test-byte-text(chunk, count)}"
+    errors = if text.length > test-tail-limit then text[text.length - test-tail-limit ...] else text
+drained.close()
+
+────────────────────
+_ do await-exit
+    - child Process
+
+timers += get-active-task()
+status = child.wait(null) ?? -1
+is-exited = true
+exited.close()
+test-drain-grace.wait()
+=? if is-settled
+child.kill-tree()
+catch child.close()
+
+────────────────────
+_ do watch
+    - child Process
+
+timers += get-active-task()
+. limit = (batch.suite.idle-timeout as Nanoseconds) as U64
+while !is-settled
+    . idle = monotonic-time-nanoseconds() - last-activity
+    if idle >= limit
+        is-timed-out = true
+        child.kill-tree()
+        =
+    (((limit - idle) as F64) as Nanoseconds).wait()
+
+────────────────────
+_ do settle
+    - child Process
+
+is-settled = true
+for timer in timers
+    timer.cancel()
+child.kill-tree()
+catch lifeline!.close()
+catch child.close()
+. remaining = child.group-members
+. polls = 0
+while remaining.length > 0 && polls < test-settle-polls
+    test-settle-poll.wait()
+    remaining = child.group-members
+    polls += 1
+stuck = remaining
+
+────────────────────
+_ do classify
+
+. in-flight [String]
+for id in ids
+    if finished[id] == null
+        if started[id] != null
+            in-flight += id
+        else
+            unstarted += id
+=? if is-stopping
+. failure = exit-text()
+if is-timed-out || status != 0
+    problem = failure
+. now = monotonic-time-nanoseconds()
+for id in in-flight
+    . elapsed = now - started[id]!
+    if is-timed-out
+        conclude(id, TestStatus.timed-out, elapsed, failure)
+    else if in-flight.length == 1
+        conclude(id, TestStatus.crashed, elapsed, failure)
+    else
+        conclude(id, TestStatus.not-run, 0, failure)
+
+────────────────────
+_ do exit-text String
+
+. summary = "${batch.suite.id} exited with status $status"
+if is-timed-out
+    summary = "${batch.suite.id} wrote nothing for ${batch.suite.idle-timeout}s and was killed"
+else if status == 0
+    summary = "${batch.suite.id} exited without reporting every result"
+. tail = errors.trim()
+= if tail != "" then "$summary\n$tail" else summary
+
+────────────────────
+_ do conclude
+    - id String
+    - status TestStatus
+    - duration U64
+    - errors String
+
+send(TestEvent.reported(TestResult(order.run, batch.nodes[id]!, status, duration, "", "", errors)))
+
+────────────────────
+_ do note
+    - text String
+
+send(TestEvent.noted(if text.length > test-note-limit then text[0 .. < test-note-limit] else text))
+
+────────────────────
+_ do send
+    - event TestEvent
+
+frames <- TestFrame(order.run, event)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-chunk Size
+    - source ByteReadable
+    - chunk Byte[]
+
+= source.read(chunk.size, chunk)
+    catch failure Error
+        = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do test-byte-text String
+    - bytes Byte[]
+    - count Size
+
+=? bytes.slice-string(0 .. < count) if C:yumiStringValidateUtf8(bytes.data, count) == 0
+. cleaned = Byte[count]
+for index in 0 .. < count
+    cleaned[index] = if bytes[index] < 128 then bytes[index] else 63
+= cleaned.slice-string(0 .. < count)
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-number F64?
+    - event JSONObjectReader
+    - key String
+
+catch? event[key].number()
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-text String
+    - event JSONObjectReader
+    - key String
+
+text ?? ""
+
+.. text = catch? event[key].string()
+
+━━━━━━━━━━━━━━━━━━━━
+_ provider-status TestStatus
+    - status String
+
+|? status == "passed"
+    TestStatus.passed
+|? status == "failed"
+    TestStatus.failed
+|? status == "skipped"
+    TestStatus.skipped
+|? status == "killed"
+    TestStatus.timed-out
+??
+    TestStatus.crashed

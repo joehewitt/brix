@@ -1,0 +1,369 @@
+./model
+/ai/model
+/data/json
+/net/http
+/net/url
+/time/duration
+
+_ jev-api-base URL = "https://api.typesafe.ai/v1"
+
+━━━━━━━━━━━━━━━━━━━━
++ Jev
+
++ api-key String
++ base-url URL
++ retry-policy JevRetryPolicy
+
+────────────────────
++ This
+    - api-key
+    - base-url = jev-api-base
+    - retry-policy = JevRetryPolicy()
+
+────────────────────
+_ get headers [HTTPHeader]
+
+* "Authorization", "Bearer $api-key"
+* "Content-Type", "application/json"
+* "Accept", "application/json"
+
+────────────────────
++ do evaluate JevResponse ?! AIError
+    - request JevRequest
+
+. body = to-json(encode(request))
+. attempts = retry-policy.maximum-attempts
+attempts = if attempts == 0 then 1 else attempts
+. attempt Size = 0
+. delay = retry-policy.initial-delay
+
+while attempt < attempts
+    attempt += 1
+    . response = post(body)
+    if should-retry(response) && attempt < attempts
+        delay.wait()
+        delay = delay * 2
+        delay = if delay > retry-policy.maximum-delay then retry-policy.maximum-delay else delay
+    else
+        = decode(response)
+
+?! AIError(AIErrorKind.unknown, "Jev request did not complete")
+
+────────────────────
++ evaluate JevResponse ?! AIError
+    - state String
+    - questions [String = JevQuestion]
+    - model = "jev-latest"
+
+evaluate(JevRequest(state, questions, model))
+
+────────────────────
++ evaluate JevResponse ?! AIError
+    - state JSON
+    - questions [String = JevQuestion]
+    - model = "jev-latest"
+
+evaluate(JevRequest(state, questions, model))
+
+────────────────────
+_ post HTTPResponse ?! AIError
+    - body String
+
+?! AIError(AIErrorKind.unknown, "$transport-error")
+    catch transport-error Error
+
+http-post(endpoint, body, headers)
+
+.. endpoint = base-url / "systemone"
+
+────────────────────
+_ should-retry
+    - response HTTPResponse
+
+response.status == 429 || response.status == 529
+
+────────────────────
++ do encode JSON ?! AIError
+    - request JevRequest
+
+?! AIError(AIErrorKind.invalid-request, "Jev request model is required")
+    if !request.model
+
+. questions = Map'String'JSON()
+for id, question in request.questions
+    ?! AIError(AIErrorKind.invalid-request, "Jev question IDs cannot be empty")
+        if !id
+    questions[id] = question-value(question)
+
+= Map'String'JSON
+    • state validate-value(request.state, "Jev request state")
+    • model request.model
+    • questions questions
+
+────────────────────
+_ do question-value JSON ?! AIError
+    - question JevQuestion
+
+match question
+    | noul JevNoulQuestion
+        = Map'String'JSON
+            • type "noul"
+            • instructions validate-value(noul.instructions, "Jev Noul instructions")
+            •? criteria noul-criteria-value(noul.criteria) if noul.criteria
+    | choice JevChoiceQuestion
+        ?! AIError(AIErrorKind.invalid-request, "Jev Choice accepts at most 255 options")
+            if choice.criteria.length > 255
+
+        for name, value in choice.criteria
+            ?! AIError(AIErrorKind.invalid-request, "Jev Choice option names cannot be empty")
+                if !name
+            validate-choice-criterion(value)
+
+        = Map'String'JSON
+            • type "choice"
+            • instructions validate-value(choice.instructions, "Jev Choice instructions")
+            • criteria choice.criteria
+    | score JevScoreQuestion
+        ?! AIError(AIErrorKind.invalid-request, "Jev Score requires between 2 and 10 levels")
+            if score.criteria.length < 2 || score.criteria.length > 10
+
+        for value in score.criteria
+            validate-value(value, "Jev Score criterion")
+
+        = Map'String'JSON
+            • type "score"
+            • instructions validate-value(score.instructions, "Jev Score instructions")
+            • criteria score.criteria
+
+────────────────────
+_ noul-criteria-value JSON ?! AIError
+    - criteria JevNoulCriteria
+
+Map'String'JSON()
+    •? true validate-value(criteria.yes, "Jev Noul yes criterion") if criteria.yes
+    •? false validate-value(criteria.no, "Jev Noul no criterion") if criteria.no
+
+────────────────────
+_ validate-value
+    - value JSON
+    - label String
+
+?! AIError(AIErrorKind.invalid-request, "$label must be a string, object, or array")
+    if value is not String && value is not [JSON] && value is not [String = JSON]
+
+value
+
+────────────────────
+_ validate-choice-criterion
+    - value JSON
+
+?! AIError(AIErrorKind.invalid-request, "Choice criteria must be null, strings, objects, or arrays")
+    if value is not Null && value is not String && value is not [JSON] && value is not [String = JSON]
+
+value
+
+────────────────────
++ do decode JevResponse ?! AIError
+    - response HTTPResponse
+
+. text = response.text
+    catch error Error
+        ?! AIError(AIErrorKind.invalid-response, "$error")
+?! response-error(response, text)
+    if response.status != HTTPStatus.ok
+
+= response-value(parse-json(text, "Jev returned invalid response JSON"))
+
+────────────────────
+_ response-value ?! AIError
+    - value JSON
+
+JevResponse(model, answers, usage)
+
+.. model = require-string("Jev response model", root["model"])
+.. root = require-object("Jev response", value)
+.. answers =
+    ** require-object("Jev response answers", root["answers"])
+    *> each[0], answer-value(each[1])
+    |> Map
+.. usage = AIUsage
+    • input-tokens require-size("Jev input token usage", wire-usage["input_tokens"])
+    • output-tokens require-size("Jev output token usage", wire-usage["output_tokens"])
+
+    .. wire-usage = require-object("Jev response usage", root["usage"])
+
+────────────────────
+_ answer-value JevAnswer ?! AIError
+    - value JSON
+
+match kind
+    |= "noul"
+        JevNoulAnswer
+            - require-probability("Jev Noul probability", root["noul"])
+    |= "choice"
+        JevChoiceAnswer
+            - require-string("Jev Choice selection", root["choice"])
+            - require-probabilities("Jev Choice probabilities", root["probabilities"])
+            - require-probability("Jev Choice confidence", root["confidence"])
+    |= "score"
+        JevScoreAnswer
+            - require-number("Jev Score value", root["score"])
+            - require-legend(root["legend"])
+            - require-probabilities("Jev Score probabilities", root["probabilities"])
+            - require-probability("Jev Score confidence", root["confidence"])
+    ?! AIError(AIErrorKind.invalid-response, "Unknown Jev answer type: $kind")
+
+.. root = require-object("Jev answer", value)
+.. kind = require-string("Jev answer type", root["type"])
+
+────────────────────
+_ require-object ?! AIError
+    - label String
+    - value JSON?
+
+?! AIError(AIErrorKind.invalid-response, "$label must be an object")
+    if !value
+
+match value
+    | object [String = JSON]
+        object
+    ?! AIError(AIErrorKind.invalid-response, "$label must be an object")
+
+────────────────────
+_ require-string ?! AIError
+    - label String
+    - value JSON?
+
+?! AIError(AIErrorKind.invalid-response, "$label must be a string")
+    if !value
+
+match value
+    | text String
+        text
+    ?! AIError(AIErrorKind.invalid-response, "$label must be a string")
+
+────────────────────
+_ require-number ?! AIError
+    - label String
+    - value JSON?
+
+?! AIError(AIErrorKind.invalid-response, "$label must be a number")
+    if !value
+
+match value
+    | number Float
+        number
+    | number Int
+        number as Float
+    ?! AIError(AIErrorKind.invalid-response, "$label must be a number")
+
+────────────────────
+_ require-probability ?! AIError
+    - label String
+    - value JSON?
+
+?! AIError(AIErrorKind.invalid-response, "$label must be between 0 and 1")
+    if number < 0 || number > 1
+
+number
+
+.. number = require-number(label, value)
+
+────────────────────
+_ do require-size Size ?! AIError
+    - label String
+    - value JSON?
+
+?! AIError(AIErrorKind.invalid-response, "$label must be a non-negative integer")
+    if !value
+
+match value
+    | number Int {it >= 0}
+        = number
+    ?! AIError(AIErrorKind.invalid-response, "$label must be a non-negative integer")
+
+────────────────────
+_ require-probabilities ?! AIError
+    - label String
+    - value JSON?
+
+** require-object(label, value)
+*> each[0], require-probability("$label value", each[1])
+|> Map
+
+────────────────────
+_ require-legend ?! AIError
+    - value JSON?
+
+** require-object("Jev Score legend", value)
+*> each[0], require-string("Jev Score legend value", each[1])
+|> Map
+
+────────────────────
+_ parse-json ?! AIError
+    - text String
+    - service-message String
+
+match text
+    ~ \json-text
+    ?! AIError(AIErrorKind.invalid-response, service-message)
+
+────────────────────
+_ parse-json-optional JSON?
+    - text String
+
+match? text
+    ~ \json-text
+
+────────────────────
+_ response-message
+    - body String
+
+message ?? detail ?? nested-message ?? body
+
+.. root = match? parse-json-optional(body)
+    | root [String = JSON]
+        root
+.. message = match? root
+    | root [String = JSON]
+        match? root["message"]
+            | message String
+.. detail = match? root
+    | root [String = JSON]
+        match? root["detail"]
+            | detail String
+.. nested-message = match? root
+    | root [String = JSON]
+        match? root["error"]
+            | error [String = JSON]
+                match? error["message"]
+                    | message String
+
+────────────────────
+_ error-kind
+    - status Int
+
+match status
+    |= 401
+        AIErrorKind.authentication
+    |= 403
+        AIErrorKind.authentication
+    |= 429
+        AIErrorKind.rate-limit
+    |= 529
+        AIErrorKind.server
+    |= 500
+        AIErrorKind.server
+    ??
+        AIErrorKind.invalid-request
+
+────────────────────
+_ response-error
+    - response HTTPResponse
+    - text String
+
+AIError(kind, message, response.status, retryable, response.header("Retry-After"))
+
+.. kind = error-kind(response.status)
+.. message = response-message(text)
+.. retryable = should-retry(response)

@@ -1,0 +1,249 @@
+./box
+./button
+./icon-button
+./icons/lucide/x
+./label
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./theme
+/core/markup
+/core/tracker
+/graphics/color
+/graphics/outline
+/graphics/point
+/graphics/primitives
+/graphics/text
+/stream/aggregate
+/time/duration
+/units
+
+_ toast-tick = 100ms
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxTransform
+    using GUITextPaint
+    using GUIFontStyle
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+
+• Toaster • pt:8 px:18 pb:22
+
+• Toast • bg:gui-popup-color text:gui-text-color pl:14 pr:8 py:6 mt:8 min-w:240 max-w:420
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-popup-radius
+    shadow = gui-popup-shadow
+    motion = gui-motion-smooth
+    motion.size = gui-motion-smooth
+    leave-space = LeaveSpace.collapse
+
+    when #is-entering
+        opacity = 0%%
+        translate = Point(32, 0)
+
+    when #is-leaving
+        opacity = 0%%
+        scale = 0.96
+
+    when #is-hover-within
+        background-color = gui-hover-color.over(gui-popup-color)
+
+    when #is-success
+        border-color = gui-success-color
+
+    when #is-warning
+        border-color = gui-warning-color
+
+    when #is-error
+        border-color = gui-danger-color
+
+    • toast-label • my:3
+        text-wrap = TextWrap.word
+
+    • toast-action • h:22 px:8 ml:8
+
+    • toast-close • w:22 h:22 ml:4
+
+━━━━━━━━━━━━━━━━━━━━
++ ToastSeverity is Union
+
+| info
+| success
+| warning
+| error
+
+━━━━━━━━━━━━━━━━━━━━
++ ToastLifetime is Union
+
+| standard
+| sticky
+| timed Seconds
+
+━━━━━━━━━━━━━━━━━━━━
++ ToastMessage is Tuple
+
++ id U64
++ text String
++ severity ToastSeverity
++ lifetime Seconds?
++ action-title String
++ action Doer?
+
+━━━━━━━━━━━━━━━━━━━━
++ Toaster is Popup
+
++ messages [ToastMessage]
++ lifetime Seconds = 3.5s
++ max-count Size = 5
+
+_ next-id U64
+_ emptied MarkupBatchAction?
+
+. messages-changed < messages
+
+• This • persistent flex-col
+    placement = CornerPlacement(Corner.bottom-right, 0)
+
+────────────────────
+
+<This
+    for message in #messages keyed by message.id
+        <Toast
+            message = message
+
+────────────────────
++ do post ToastMessage
+    - text String
+    - severity = ToastSeverity.info
+    - message-lifetime = ToastLifetime.standard
+    - action-title = ""
+    - action Doer? = null
+
+next-id += 1
+. life = toast-lifetime-seconds(message-lifetime, lifetime)
+. message = ToastMessage(next-id, text, severity, life, action-title, action)
+messages = messages-with(message)
+if !is-open
+    show(PopupAnchor.window)
+if life
+    do new
+        expire(message.id, life)
+= message
+
+────────────────────
++ do remove
+    - id U64
+
+messages = messages-without(id)
+
+────────────────────
+_ do messages-changed
+
+=? if messages.length != 0
+. root = markup-batch-root
+if !root
+    dismiss()
+    =
+. action = ensure-markup-batch-action(root, this.dismiss-if-empty, emptied)
+emptied = action
+action()
+
+────────────────────
+_ do dismiss-if-empty [Tracker]
+
+if messages.length == 0
+    dismiss()
+= List'Tracker()
+
+────────────────────
+_ do expire
+    - id U64
+    - life Seconds
+
+. remaining Nanoseconds = life
+while remaining > 0ns && holds(id)
+    toast-tick.wait()
+    if !is-hover-within
+        remaining -= toast-tick
+remove(id)
+
+────────────────────
+_ holds Bool
+    - id U64
+
+some(messages) • where each.id == id
+
+────────────────────
+_ do messages-with [ToastMessage]
+    - message ToastMessage
+
+. next = List'ToastMessage(messages)
+next += message
+= if next.length <= max-count then next else next[next.length - max-count .. < next.length]
+
+────────────────────
+_ messages-without
+    - id U64
+
+** messages
+?> each.id != id
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
++ Toast is Box
+
++ message ToastMessage
++ is-success = #message.severity == ToastSeverity.success
++ is-warning = #message.severity == ToastSeverity.warning
++ is-error = #message.severity == ToastSeverity.error
+
+_ toaster Ancestor'Toaster
+
+────────────────────
+
+<This • flex-row
+    <Label • toast-label flex:1
+        align-y = Alignment.center
+        text = message.text
+    if message.action-title.length
+        <Button • toast-action
+            title = message.action-title
+            align-y = Alignment.start
+            action = => do run-action()
+    <IconButton • toast-close icon-x
+        align-y = Alignment.start
+        action = => do toaster?.remove(message.id)
+
+────────────────────
+for event on click
+
+toaster?.remove(message.id)
+event.cancel()
+
+────────────────────
+_ do run-action
+
+. callback = message.action
+toaster?.remove(message.id)
+if callback
+    callback()
+
+━━━━━━━━━━━━━━━━━━━━
+_ toast-lifetime-seconds Seconds?
+    - requested ToastLifetime
+    - standard Seconds
+
+match requested
+    | ToastLifetime.timed(seconds)
+        seconds
+    | ToastLifetime.sticky
+        null
+    ??
+        standard

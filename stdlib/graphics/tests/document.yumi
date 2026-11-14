@@ -1,0 +1,609 @@
+/graphics/appearance
+/graphics/boolean
+/graphics/color
+/graphics/document
+/graphics/document-paths
+/graphics/document-rows
+/graphics/effect
+/graphics/matrix
+/graphics/network
+/graphics/network-graphic
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/style
+/stream/aggregate
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Vector Document Tree")
+cases.run(tree-tests)
+cases = cases.then("Vector Document Cursor Traversal", traversal-tests)
+cases = cases.then("Vector Document Id Map Growth", id-map-growth-tests)
+cases = cases.then("Vector Document Id Map Deletes", id-map-delete-tests)
+cases = cases.then("Vector Document Stamp Preservation", stamp-tests)
+cases = cases.then("Vector Document Subtree Stamps", subtree-stamp-tests)
+cases = cases.then("Vector Document Compaction", compaction-tests)
+cases = cases.then("Vector Document Snapshots", snapshot-tests)
+cases = cases.then("Vector Document Change Tracking", change-tests)
+cases = cases.then("Vector Document Subtree Copies", copy-tests)
+cases = cases.then("Vector Document Region Fill Remapping", region-remap-tests)
+cases = cases.then("Vector Document Region Fill Merges", region-merge-tests)
+cases = cases.then("Vector Document Region Fill Openings", region-open-tests)
+cases = cases.then("Vector Document Resolved Appearance", appearance-tests)
+cases = cases.then("Vector Document Paths", paths-tests)
+cases = cases.then("Vector Document Content Restore", content-restore-tests)
+cases = cases.then("Vector Document Values", value-tests)
+cases = cases.then("Vector Document World Transforms", world-transform-tests)
+cases = cases.then("Vector Document World Networks", world-network-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do tree-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. root = doc.root
+. layer = doc.create-group(root, "Layer")
+. first = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "First")
+. second = doc.add-path(layer, rectangle(Rect(20, 0, 10, 10)), "Second")
+. third = doc.add-path(layer, rectangle(Rect(40, 0, 10, 10)), "Third", 0)
+t.expect("children keep insertion order", [first, second, third], List(doc.children(layer)))
+doc.move(third, layer, first)
+t.expect
+    - "move before an anchor reorders siblings"
+    - [third, first, second]
+    - List(doc.children(layer))
+doc.move(third, root)
+t.expect("move appends to a new parent", [layer, third], List(doc.children(root)))
+t.expect("descendants walk the subtree", [layer, first, second, third], List(doc.descendants(root)))
+. script = doc.create-group(root, "Script", 0, layer)
+t.expect("insertion before an anchor", [script, layer, third], List(doc.children(root)))
+doc.delete(layer)
+t.expect("delete removes the subtree", [script, third], List(doc.children(root)))
+t.check("deleted descendants leave the id map", !doc.contains(first))
+t.check("every deleted descendant leaves the id map", !doc.contains(second))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do id-map-growth-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. first = doc.add-path(doc.root, rectangle(Rect(0, 0, 1, 1)))
+doc.delete(first)
+doc.add-path(doc.root, rectangle(Rect(0, 0, 1, 1)), "Again", first)
+. script-id = vector-document-loop-id(7, [1])
+doc.add-path(doc.root, rectangle(Rect(0, 0, 1, 1)), "", script-id)
+for index in 0 .. < 200
+    doc.add-path(doc.root, rectangle(Rect(index as Coord, 0, 1, 1)))
+t.expect("the id map grows", "Again", doc.name(first))
+t.check("script ids survive id map growth", doc.contains(script-id))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do id-map-delete-tests
+    - t TestCase
+
+. grown = use VectorDocument()
+. created [U64]
+for index in 0 .. < 40
+    created += grown.add-path(grown.root, rectangle(Rect(index as Coord, 0, 4, 4)))
+for id in created
+    grown.delete(id)
+. leftover = some(created) • where grown.contains(each)
+t.check("ids placed while the id map grows are removed on delete", !leftover)
+for id in created
+    grown.add-path(grown.root, rectangle(Rect(0, 0, 4, 4)), "", id)
+t.expect("deleted ids can be reused after the id map grows", 40, grown.child-count(grown.root))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do stamp-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. shape = doc.add-path(doc.root, rectangle(Rect(0, 0, 10, 10)), "Shape")
+. stamp = doc.stamp(shape)
+. geometry = doc.geometry-stamp(shape)
+doc.set-name(shape, "Shape")
+t.expect("identical names keep the stamp", stamp, doc.stamp(shape))
+doc.set-network(shape, doc.network(shape))
+t.expect("identical geometry keeps the stamp", stamp, doc.stamp(shape))
+doc.set-opacity(shape, 0.5)
+. faded = doc.stamp(shape)
+t.check("opacity advances the stamp", faded != stamp)
+t.expect("opacity keeps the geometry stamp", geometry, doc.geometry-stamp(shape))
+doc.set-opacity(shape, 0.5)
+t.expect("repeated opacity keeps the stamp", faded, doc.stamp(shape))
+. paint = doc.paint-stamp(shape)
+doc.set-fill(shape, "#ff0000" as RGBA)
+t.check("fill advances the paint stamp", doc.paint-stamp(shape) != paint)
+t.expect("fill keeps the geometry stamp", geometry, doc.geometry-stamp(shape))
+. filled = doc.stamp(shape)
+doc.set-fill(shape, "#ff0000" as RGBA)
+t.expect("identical fill keeps the stamp", filled, doc.stamp(shape))
+. filled-paint = doc.paint-stamp(shape)
+doc.set-transform(shape, matrix-from-translation((3, 4)))
+t.expect("transform keeps the paint stamp", filled-paint, doc.paint-stamp(shape))
+t.expect("transform keeps the geometry stamp", geometry, doc.geometry-stamp(shape))
+. moved = doc.network(shape)
+moved.move-vertex(1, (1, 1))
+doc.set-network(shape, moved)
+t.check("geometry edits advance the geometry stamp", doc.geometry-stamp(shape) != geometry)
+. root-stamp = doc.stamp(doc.root)
+doc.add-path(doc.root, rectangle(Rect(0, 0, 1, 1)))
+t.check("structure edits advance the parent stamp", doc.stamp(doc.root) != root-stamp)
+. other = use VectorDocument()
+. twin = other.add-path(other.root, rectangle(Rect(0, 0, 10, 10)), "Shape")
+. fresh = doc.add-path(doc.root, rectangle(Rect(0, 0, 10, 10)), "Shape")
+t.expect
+    - "identical content in another document stamps identically"
+    - doc.geometry-stamp(fresh)
+    - other.geometry-stamp(twin)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do subtree-stamp-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. outer = doc.create-group(doc.root, "Outer")
+. inner = doc.create-group(outer, "Inner")
+. deep = doc.add-path(inner, rectangle(Rect(0, 0, 10, 10)), "Deep")
+. sibling = doc.add-path(doc.root, rectangle(Rect(20, 0, 10, 10)), "Sibling")
+t.expect("a leaf's subtree stamp is its stamp", doc.stamp(deep), doc.subtree-stamp(deep))
+. outer-stamp = doc.stamp(outer)
+. subtree = doc.subtree-stamp(outer)
+doc.set-name(deep, "Renamed")
+t.expect("a deep edit keeps the group's own stamp", outer-stamp, doc.stamp(outer))
+t.check("a deep edit changes the group's subtree stamp", doc.subtree-stamp(outer) != subtree)
+doc.set-name(deep, "Deep")
+t.expect("equal content restores the subtree stamp", subtree, doc.subtree-stamp(outer))
+doc.set-name(sibling, "Renamed")
+t.expect("edits outside the subtree keep its stamp", subtree, doc.subtree-stamp(outer))
+. snapshot = use doc.snapshot()
+doc.delete(deep)
+t.check("removing a descendant changes the subtree stamp", doc.subtree-stamp(outer) != subtree)
+doc.restore(snapshot)
+t.expect("a restore brings the subtree stamp back", subtree, doc.subtree-stamp(outer))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do compaction-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. keep [U64]
+. names [String]
+for index in 0 .. < 600
+    . id = doc.add-path
+        - doc.root
+        - rectangle(Rect(index as Coord, index as Coord, 5, 5))
+        - "Shape $index"
+    if index % 3 == 0
+        keep += id
+        names += "Shape $index"
+. row-total = doc.store.nodes.length
+for id in List(doc.children(doc.root))
+    if doc.name(id) != "" && !keep.has(id)
+        doc.delete(id)
+t.check("compaction reclaims node rows", doc.store.nodes.length < row-total)
+t.expect("compaction keeps the order", keep, List(doc.children(doc.root)))
+t.expect("compaction preserves ids and content", names, List'String(doc.name(each) in keep))
+t.expect("compaction preserves geometry", Rect(3, 3, 5, 5), doc.geometry-bounds(keep[1]))
+t.expect
+    - "compaction preserves network rows"
+    - Rect(3, 3, 5, 5)
+    - doc.network(keep[1]).geometry().bounding-box
+. stamp = doc.stamp(keep[1])
+doc.compact()
+t.expect("explicit compaction keeps stamps", stamp, doc.stamp(keep[1]))
+t.expect
+    - "explicit compaction keeps networks"
+    - Rect(3, 3, 5, 5)
+    - doc.network(keep[1]).geometry().bounding-box
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do snapshot-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. saved = use doc.snapshot()
+. added = doc.add-path(doc.root, rectangle(Rect(50, 50, 5, 5)))
+doc.delete(layer)
+doc.restore(saved)
+t.expect("restore brings back the tree", [layer], List(doc.children(doc.root)))
+t.check("restore removes later nodes", !doc.contains(added))
+. next = doc.add-path(doc.root, rectangle(Rect(0, 0, 1, 1)))
+t.check("restore never reissues ids", next > added)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do change-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. ids [U64]
+for index in 0 .. < 300
+    ids += doc.add-path(doc.root, rectangle(Rect(index as Coord, 0, 5, 5)))
+. tracker = VectorDocumentChangeTracker()
+. initial = tracker.scan(doc)
+t.expect("the first scan reports every node", 301, initial.changed.length)
+. quiet = tracker.scan(doc)
+t.expect("an unchanged document reports nothing", 0, quiet.changed.length)
+. saved = use doc.snapshot()
+doc.set-opacity(ids[250], 0.5)
+. edited = tracker.scan(doc)
+t.expect("one edit reports one node", [ids[250]], edited.changed)
+doc.delete(ids[10])
+. deleted = tracker.scan(doc)
+t.expect("deletes report the removed id", [ids[10]], deleted.removed)
+doc.restore(saved)
+. restored = tracker.scan(doc)
+t.check("restores report reverted nodes", restored.changed.has(ids[250]))
+t.check("restores report restored nodes", restored.changed.has(ids[10]))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do copy-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. first = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "First")
+doc.add-path(layer, rectangle(Rect(20, 0, 10, 10)), "Second")
+. copy = doc.copy-node(doc, layer, doc.root, [900u64, 901u64])
+t.expect("the copy takes the first requested id", 900, copy)
+. copied = List(doc.children(copy))
+t.expect("the copy keeps child order", 2, copied.length)
+t.expect("the first child takes the next requested id", 901, copied[0])
+t.expect("unrequested ids come from the advanced counter", 902, copied[1])
+t.expect("the copy is appended", [layer, copy], List(doc.children(doc.root)))
+. other = use VectorDocument()
+. imported = other.copy-node(doc, first, other.root)
+t.expect("copies between documents keep names", "First", other.name(imported))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do region-remap-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. network = VectorNetwork()
+. a = network.add-vertex((0, 0))
+. b = network.add-vertex((100, 0))
+. c = network.add-vertex((100, 100))
+. d = network.add-vertex((0, 100))
+network.connect(a, b)
+network.connect(b, c)
+network.connect(c, d)
+network.connect(d, a)
+. shape = doc.create-network(doc.root, network, "Square")
+doc.set-region-fills(shape, [NetworkRegionAppearance(1, RGBA(1, 0, 0, 1))])
+. moved = doc.network(shape)
+moved.move-vertex(c, (120, 110))
+doc.set-network(shape, moved)
+. fills = doc.region-fills(shape)
+t.expect("a reshaped region keeps its fill", 1, fills.length)
+t.expect("the kept fill uses the fresh region id", 1, fills[0].region)
+t.expect("the kept fill keeps its color", RGBA(1, 0, 0, 1), fills[0].fill!)
+. split = doc.network(shape)
+split.connect(a, c)
+doc.set-network(shape, split)
+. halves = doc.region-fills(shape)
+t.expect("splitting a region yields one fill per half", 2, halves.length)
+t.expect("the first half inherits the fill", RGBA(1, 0, 0, 1), halves[0].fill!)
+t.expect("the second half inherits the fill", RGBA(1, 0, 0, 1), halves[1].fill!)
+t.expect("region ids follow fresh resolution", [1, 2], [halves[0].region, halves[1].region])
+. stamp = doc.stamp(shape)
+doc.set-network(shape, doc.network(shape))
+t.expect("rewriting identical geometry keeps the stamp", stamp, doc.stamp(shape))
+. plain = doc.create-network(doc.root, network, "Plain")
+doc.set-region-fills(plain, [NetworkRegionAppearance(1, null)])
+doc.set-network(plain, doc.network(plain))
+t.expect
+    - "unpainted region entries are dropped on geometry writes"
+    - 0
+    - doc.region-fills(plain).length
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do region-merge-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. shape = doc.add-path(doc.root, rectangle(Rect(0, 0, 100, 100)), "Square")
+. split = doc.network(shape)
+. divider = split.connect(1, 3)
+doc.set-network(shape, split)
+doc.set-region-fills
+    - shape
+    - [NetworkRegionAppearance(1, RGBA(1, 0, 0, 1)), NetworkRegionAppearance(2, RGBA(0, 0, 1, 1))]
+. merged = doc.network(shape)
+merged.remove-segment(divider)
+doc.set-network(shape, merged)
+. fills = doc.region-fills(shape)
+t.expect("merged regions store one entry", 1, fills.length)
+t.check("differently painted regions merge into a conflict", fills[0].conflict)
+t.check("a conflict stores no fill", fills[0].fill == null)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do region-open-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. shape = doc.add-path(doc.root, rectangle(Rect(0, 0, 100, 100)), "Square")
+doc.set-region-fills(shape, [NetworkRegionAppearance(1, RGBA(1, 0, 0, 1))])
+. opened = doc.network(shape)
+opened.remove-segment(1)
+doc.set-network(shape, opened)
+t.expect("opening a painted boundary drops its fill", 0, doc.region-fills(shape).length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do appearance-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+doc.set-stroke(doc.root, RGBA(0, 0, 0, 1))
+doc.set-stroke-cap(doc.root, LineCap.round)
+. layer = doc.create-group(doc.root, "Layer")
+doc.set-fill(layer, RGBA(0, 1, 0, 1))
+. shape = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "Shape")
+doc.set-stroke-width(shape, 4)
+. appearance = doc.resolved-appearance(shape)
+t.expect("fill inherits from the layer", RGBA(0, 1, 0, 1), appearance.fill as RGBA)
+t.expect("stroke inherits from the root", RGBA(0, 0, 0, 1), appearance.stroke as RGBA)
+t.expect("cap inherits from the root", LineCap.round, appearance.stroke-cap)
+t.expect("own width applies", 4, appearance.stroke-width)
+doc.set-fill(shape, Fill.none)
+t.expect("own fill overrides", Fill.none, doc.resolved-appearance(shape).fill)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do paths-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. first = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "First")
+doc.add-path(layer, rectangle(Rect(5, 0, 10, 10)), "Second")
+. paths = VectorDocumentPaths(doc)
+t.expect("group paths gather children", 2, paths.paths(layer).length)
+. network = doc.network(first)
+. corner = List'NetworkVertex(network.vertices)[0].id
+network.move-vertex(corner, (-5, -5))
+doc.set-network(first, network)
+t.expect
+    - "geometry edits refresh cached networks"
+    - Point(-5, -5)
+    - paths.network(first).vertex(corner).position
+doc.set-effects(layer, VectorEffects([BooleanEffect(BooleanEffectMode.union-effect)]))
+t.expect("group effects combine children", 1, paths.paths(layer).length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do content-restore-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. outside = doc.add-path(doc.root, rectangle(Rect(0, 0, 5, 5)), "Outside")
+. first = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "First")
+. group = doc.create-group(layer, "Group")
+. nested = doc.add-path(group, rectangle(Rect(20, 0, 10, 10)), "Nested")
+doc.set-value(layer, "count", VectorDocumentValue.number(2))
+doc.set-setting(layer, "size", VectorDocumentValue.number(10))
+. first-stamp = doc.stamp(first)
+. snapshot = use doc.snapshot()
+doc.delete(first)
+doc.add-path(layer, rectangle(Rect(50, 50, 10, 10)), "Later")
+doc.set-name(outside, "Renamed")
+doc.set-value(layer, "count", VectorDocumentValue.number(7))
+doc.set-value(layer, "extra", VectorDocumentValue.number(1))
+doc.set-setting(layer, "size", VectorDocumentValue.number(20))
+doc.restore-contents(snapshot, layer)
+t.expect("children come back in order with their ids", [first, group], List(doc.children(layer)))
+t.expect("nested children come back", [nested], List(doc.children(group)))
+t.expect("restored children keep their stamps", first-stamp, doc.stamp(first))
+t.expect("nodes outside the subtree are untouched", "Renamed", doc.name(outside))
+t.expect("values come back", "count=2", value-list(doc, layer))
+t.expect("settings are kept", "size=20", setting-list(doc, layer))
+doc.restore-contents(snapshot, outside)
+t.expect("restoring a childless node leaves it childless", 0, doc.child-count(outside))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do value-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Script", 0, 0, VectorDocumentGroupKind.script-group)
+. shape = doc.add-path(layer, rectangle(Rect(0, 0, 10, 10)), "Shape")
+doc.set-value(layer, "count", VectorDocumentValue.number(3))
+doc.set-value(layer, "corner", VectorDocumentValue.point(Point(1, 2)))
+doc.set-value(layer, "tint", VectorDocumentValue.color(RGBA(1, 0, 0, 1)))
+doc.set-value(layer, "label", VectorDocumentValue.text("hi there"))
+doc.set-value(layer, "target", VectorDocumentValue.node(shape))
+doc.set-value(layer, "group", VectorDocumentValue.nodes([shape, layer]))
+. all = "count=3 corner=(1, 2) tint=#ff0000 label='hi there' target=node $shape group=nodes $shape $layer"
+t.expect("every kind reads back in order", all, value-list(doc, layer))
+. spread-kind = VectorDocumentValue.text("range")
+. spread-start = VectorDocumentValue.number(0)
+. spread-point = VectorDocumentValue.point(Point(3, 4))
+. spread-color = VectorDocumentValue.color(RGBA(0, 0, 1, 1))
+. spread = VectorDocumentValue.values([spread-kind, spread-start, spread-point, spread-color])
+doc.set-value(layer, "spread", spread)
+t.expect
+    - "a list of values reads back in order"
+    - "values 'range', 0, (3, 4), #0000ff"
+    - value-text(doc.value(layer, "spread"))
+doc.set-value(layer, "after", VectorDocumentValue.number(9))
+t.expect
+    - "a value after a list keeps its place"
+    - "${all} spread=values 'range', 0, (3, 4), #0000ff after=9"
+    - value-list(doc, layer)
+doc.set-value(layer, "spread", null)
+doc.set-value(layer, "after", null)
+t.expect("removing a list leaves the rest", all, value-list(doc, layer))
+. previous = doc.values-stamp(layer)
+doc.set-value(layer, "count", VectorDocumentValue.number(4))
+t.check("a changed value changes the stamp", previous != doc.values-stamp(layer))
+t.check("replacing keeps the position", value-list(doc, layer).starts-with("count=4"))
+doc.set-value(layer, "count", VectorDocumentValue.number(3))
+t.expect("equal content restores the stamp", previous, doc.values-stamp(layer))
+. copy = doc.copy-node(doc, layer, doc.root)
+. other = use VectorDocument()
+. imported = other.copy-node(doc, layer, other.root, [layer, shape])
+t.expect("copies between documents carry values", all, value-list(other, imported))
+t.expect("copies keep the values stamp", doc.values-stamp(layer), other.values-stamp(imported))
+doc.set-values(copy, [VectorDocumentKeyedValue("size", VectorDocumentValue.number(8))])
+for index in 0 .. < 400
+    doc.set-value(copy, "count", VectorDocumentValue.nodes(List'U64(shape in 0 .. < (index % 9))))
+doc.set-value(copy, "count", VectorDocumentValue.number(5))
+doc.compact()
+t.expect("compaction keeps values", all, value-list(doc, layer))
+t.expect("compaction keeps rewritten values", "size=8 count=5", value-list(doc, copy))
+. unset = doc.settings-stamp(layer)
+. values-before = doc.values-stamp(layer)
+. node-before = doc.stamp(layer)
+doc.set-setting(layer, "7 value", VectorDocumentValue.number(32))
+doc.set-setting(layer, "9 start", VectorDocumentValue.point(Point(5, 6)))
+t.expect("settings are apart from values", all, value-list(doc, layer))
+t.expect("a setting leaves the values stamp alone", values-before, doc.values-stamp(layer))
+. set-copy = doc.copy-node(doc, layer, doc.root)
+for index in 0 .. < 400
+    . rewritten = VectorDocumentValue.nodes(List'U64(shape in 0 .. < (index % 9)))
+    doc.set-setting(set-copy, "7 value", rewritten)
+doc.set-setting(set-copy, "7 value", VectorDocumentValue.number(40))
+doc.compact()
+t.expect("compaction keeps settings", "7 value=32 9 start=(5, 6)", setting-list(doc, layer))
+t.expect
+    - "compaction keeps rewritten settings"
+    - "7 value=40 9 start=(5, 6)"
+    - setting-list(doc, set-copy)
+t.expect("compaction keeps values beside settings", all, value-list(doc, layer))
+doc.set-setting(layer, "7 value", null)
+doc.set-setting(layer, "9 start", null)
+t.expect("removing every setting restores the stamp", unset, doc.settings-stamp(layer))
+t.expect("removing every setting restores the node", node-before, doc.stamp(layer))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ value-list String
+    - doc VectorDocument
+    - id U64
+
+" ".join("${each.key}=${value-text(each.value)}" in doc.values(id))
+
+━━━━━━━━━━━━━━━━━━━━
++ setting-list
+    - doc VectorDocument
+    - id U64
+
+" ".join("${each.key}=${value-text(each.value)}" in doc.settings(id))
+
+━━━━━━━━━━━━━━━━━━━━
++ do value-text String
+    - value VectorDocumentValue?
+
+=? "none" if !value
+do match value
+    | .number(number)
+        = "$number"
+    | .point(point)
+        = "(${point.x}, ${point.y})"
+    | .color(color)
+        = "${color as Hex}"
+    | .text(text)
+        = "'$text'"
+    | .node(id)
+        = "node $id"
+    | .nodes(ids)
+        . parts [String]
+        for id in ids
+            parts += "$id"
+        = "nodes ${" ".join(parts)}"
+    | .values(items)
+        . parts [String]
+        for item in items
+            parts += value-text(item)
+        = "values ${", ".join(parts)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do world-transform-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. inner = doc.create-group(layer, "Inner")
+. shape = doc.add-path(inner, rectangle(Rect(0, 0, 10, 10)), "Shape")
+t.check("untransformed nodes have no world transform", doc.world-transform(shape) == null)
+doc.set-transform(layer, matrix-from-translation(Point(100, 0)))
+doc.set-transform(inner, matrix-from-scale(Dimensions(2, 2)))
+doc.set-transform(shape, matrix-from-translation(Point(5, 0)))
+t.expect
+    - "world transforms compose from the root"
+    - Point(110, 0)
+    - doc.world-transform(shape)!.transform(Point(0, 0))
+t.expect
+    - "world transforms apply outer scales to inner offsets"
+    - Point(130, 20)
+    - doc.world-transform(shape)!.transform(Point(10, 10))
+t.expect
+    - "parent transforms exclude the node"
+    - Point(100, 0)
+    - doc.parent-transform(shape)!.transform(Point(0, 0))
+t.check("children of the root have no parent transform", doc.parent-transform(layer) == null)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do world-network-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. layer = doc.create-group(doc.root, "Layer")
+. inner = doc.create-group(layer, "Inner")
+. shape = doc.add-path(inner, rectangle(Rect(0, 0, 10, 10)), "Shape")
+doc.set-transform(layer, matrix-from-translation(Point(100, 0)))
+doc.set-transform(inner, matrix-from-scale(Dimensions(2, 2)))
+doc.set-transform(shape, matrix-from-translation(Point(5, 0)))
+. paths = VectorDocumentPaths(doc)
+paths.world-network(shape)
+. corner = doc.network(shape).vertex(1).position
+doc.set-transform(layer, matrix-from-translation(Point(200, 0)))
+t.expect
+    - "moving an ancestor refreshes the world network"
+    - doc.world-transform(shape)!.transform(corner)
+    - paths.world-network(shape).vertex(1).position
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do traversal-tests
+    - t TestCase
+
+. doc = use VectorDocument()
+. first = doc.create-group(doc.root)
+. nested = doc.create-group(first)
+. last = doc.create-group(doc.root)
+. view = doc.descendants(doc.root)
+t.expect("preorder excludes the root", [first, nested, last], List(view))
+t.expect("a leaf has no descendants", 0, List(doc.descendants(nested)).length)
+. added = doc.create-group(first)
+t.expect("views see edits before traversal begins", [first, nested, added, last], List(view))
+for id in List(doc.children(first))
+    doc.delete(id)
+. subtree = doc.descendants(last)
+. tail = doc.create-group(last)
+doc.compact()
+t.expect("views resolve stable ids after compaction", [tail], List(subtree))
+t.expect("root views survive row compaction", [first, last, tail], List(view))
+= t

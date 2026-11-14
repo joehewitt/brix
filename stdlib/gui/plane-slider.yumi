@@ -1,0 +1,369 @@
+./box
+./events
+./keys
+./painter
+./position
+./primitives
+./shorthands
+./styles
+./theme
+/core/function
+/core/intrinsics
+/core/markup
+/graphics/point
+/graphics/primitives
+/math
+/ui/input
+/ui/key-combo
+/ui/value-change-phase
+/units
+
++ plane-slider-thumb-size Length = 16
++ plane-slider-ring-width Length = 3
+_ plane-slider-thumb-radius Length = plane-slider-thumb-size / 2 + plane-slider-ring-width
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIFocusRingStyle
+    using GUIBoxSize
+
+• PlaneSlider • bg:gui-well-color
+    corner-radius = gui-control-radius
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+        motion.focus-ring = gui-motion-quick
+
+• PlaneSliderThumb • w:plane-slider-thumb-size h:plane-slider-thumb-size
+    border-color = gui-accent-text-color
+    border-width = plane-slider-ring-width
+    corner-radius = 1000
+
+• PlaneSliderThumbEdge
+    border-color = gui-scrim-color
+    border-width = 1
+    corner-radius = 1000
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaneSlider is Box
+
+• This
+    focus-mode = FocusMode.keys
+    window-draggable = false
+
++ value = Point(0, 0)
++ minimum = Point(0, 0)
++ maximum = Point(1, 1)
++ step = Point(0, 0)
++ plane-painter Painter?
+
++ event value-changing ValueChange'Point
++ event value-changed ValueChange'Point
+
+_ thumb-area PlaneSliderThumbArea
+_ thumb PlaneSliderThumb
+_ drag-offset = Point(0, 0)
+_ render-x Ratio
+_ render-y Ratio
+_ event inoperable Bool
+_ event unmounting Bool
+
+. plane-state-changed < value, minimum, maximum, is-effectively-enabled
+
+────────────────────
+
+<This
+    background = #plane-painter
+    <PlaneSliderThumbArea thumb-area • absolute
+        anchor = Anchor.parent
+        left = PositionOffset.coord(-plane-slider-thumb-radius)
+        top = PositionOffset.coord(-plane-slider-thumb-radius)
+        right = PositionOffset.coord(-plane-slider-thumb-radius)
+        bottom = PositionOffset.coord(-plane-slider-thumb-radius)
+        <PlaneSliderThumb thumb • absolute flex-row
+            anchor = Anchor.parent
+            left = PositionOffset.percent(#render-x)
+            top = PositionOffset.percent(#render-y)
+            <PlaneSliderThumbEdge • flex:1
+
+    <KeyShortcut "Right"
+        key = .arrow-right
+        discoverable = false
+        action = => do step-values(1, 0)
+
+    <KeyShortcut "Left"
+        key = .arrow-left
+        discoverable = false
+        action = => do step-values(-1, 0)
+
+    <KeyShortcut "Down"
+        key = .arrow-down
+        discoverable = false
+        action = => do step-values(0, 1)
+
+    <KeyShortcut "Up"
+        key = .arrow-up
+        discoverable = false
+        action = => do step-values(0, -1)
+
+    <KeyShortcut "Page Right"
+        key = KeyModifier.shift + Key.arrow-right
+        discoverable = false
+        action = => do step-values(10, 0)
+
+    <KeyShortcut "Page Left"
+        key = KeyModifier.shift + Key.arrow-left
+        discoverable = false
+        action = => do step-values(-10, 0)
+
+    <KeyShortcut "Page Down"
+        key = KeyModifier.shift + Key.arrow-down
+        discoverable = false
+        action = => do step-values(0, 10)
+
+    <KeyShortcut "Page Up"
+        key = KeyModifier.shift + Key.arrow-up
+        discoverable = false
+        action = => do step-values(0, -10)
+
+    <KeyShortcut "Minimum"
+        key = .home
+        discoverable = false
+        action = => do accept-user-value(minimum)
+
+    <KeyShortcut "Maximum"
+        key = .end
+        discoverable = false
+        action = => do accept-user-value(maximum)
+
+────────────────────
+_ gesture ~>
+
+~> idle
+
+~> dragging for press on pointer-down when press.button == PointerButton.primary && is-effectively-enabled && !(gesture is .dragging)
+    do
+        if event-target-is-thumb(press)
+            drag-offset = thumb-center - press.point
+            accept-user-value(effective-value, ValueChangePhase.began)
+        else
+            drag-offset = Point(0, 0)
+            accept-pointer-point(press.point, ValueChangePhase.began)
+
+    for drag on pointer-drag when drag.pointer-id == press.pointer-id && drag.button == PointerButton.primary
+        accept-pointer-point(drag.point, ValueChangePhase.changed)
+        drag.cancel()
+
+    then idle for up on pointer-up when up.pointer-id == press.pointer-id && up.button == PointerButton.primary
+        do
+            accept-pointer-point(up.point, ValueChangePhase.ended)
+            up.cancel()
+
+    then awaiting-release(press.pointer-id) on blur
+    then awaiting-release(press.pointer-id) on inoperable
+    then idle on unmounting
+        do publish-drag-ended()
+
+~> awaiting-release(pointer-id)
+    do publish-drag-ended()
+
+    for drag on pointer-drag when drag.pointer-id == pointer-id && drag.button == PointerButton.primary
+        drag.cancel()
+
+    then idle for up on pointer-up when up.pointer-id == pointer-id && up.button == PointerButton.primary
+        do up.cancel()
+
+    then idle on unmounting
+
+────────────────────
+for press on pointer-down when press.button != PointerButton.primary || !is-effectively-enabled || gesture is .dragging
+
+press.cancel()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+plane-state-changed()
+
+────────────────────
++ do unmounted
+
+unmounting <- true
+super.unmounted()
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+Dimensions(200, 150)
+
+────────────────────
+_ do plane-state-changed
+
+. ratio = value-ratio(effective-value)
+render-x = ratio.x as Ratio
+render-y = ratio.y as Ratio
+if !is-effectively-enabled
+    inoperable <- true
+
+────────────────────
++ do accept-user-value
+    - candidate Point
+    - phase ValueChangePhase = ValueChangePhase.discrete
+
+=? if !is-effectively-enabled
+. old = effective-value
+. next = normalized-value(candidate)
+=? if next == old && (phase == ValueChangePhase.discrete || phase == ValueChangePhase.changed)
+if next != old
+    . change = ValueChange'Point(old, next, phase)
+    value-changing <- change
+    =? if change.is-canceled
+value = next
+value-changed <- ValueChange'Point(old, next, phase)
+
+────────────────────
+_ do step-values
+    - x-steps F64
+    - y-steps F64
+
+. current = effective-value
+. increment = small-increment
+accept-user-value(Point(current.x + x-steps * increment.x, current.y + y-steps * increment.y))
+
+────────────────────
+_ do accept-pointer-point
+    - point Point
+    - phase ValueChangePhase
+
+. plane = plane-rect
+. target = point + drag-offset
+. current = value-ratio(effective-value)
+. x-ratio = if plane.width > 0 then (target.x - plane.x) / plane.width else current.x
+. y-ratio = if plane.height > 0 then (target.y - plane.y) / plane.height else current.y
+accept-user-value(value-at-ratio(Point(x-ratio, y-ratio)), phase)
+
+────────────────────
+_ get effective-value Point
+
+Point(clamped-axis(value.x, minimum.x, maximum.x), clamped-axis(value.y, minimum.y, maximum.y))
+
+────────────────────
+_ normalized-value Point
+    - candidate Point
+
+Point
+    - snapped-axis(candidate.x, minimum.x, maximum.x, step.x)
+    - snapped-axis(candidate.y, minimum.y, maximum.y, step.y)
+
+────────────────────
+_ value-ratio Point
+    - point Point
+
+Point(axis-ratio(point.x, minimum.x, maximum.x), axis-ratio(point.y, minimum.y, maximum.y))
+
+────────────────────
+_ value-at-ratio Point
+    - ratio Point
+
+Point(minimum.x + ratio.x * (maximum.x - minimum.x), minimum.y + ratio.y * (maximum.y - minimum.y))
+
+────────────────────
+_ get small-increment Point
+
+Point(axis-increment(minimum.x, maximum.x, step.x), axis-increment(minimum.y, maximum.y, step.y))
+
+────────────────────
+_ get plane-rect
+
+Rect
+    - content-bounds.x - bounds.x
+    - content-bounds.y - bounds.y
+    - content-bounds.width
+    - content-bounds.height
+
+────────────────────
+_ get thumb-center
+
+thumb.bounds.center - Point(bounds.x, bounds.y)
+
+────────────────────
+_ event-target-is-thumb
+    - event GUIEvent
+
+|? !hit-thumb
+    false
+??
+    owner as Pointer? == this as Pointer?
+
+.. hit-thumb = event.hit-box?.ancestor-or-self'PlaneSliderThumb
+.. owner = hit-thumb.ancestor'PlaneSlider
+
+────────────────────
+_ do publish-drag-ended
+
+. current = effective-value
+value-changed <- ValueChange'Point(current, current, ValueChangePhase.ended)
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlaneSliderThumbArea is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaneSliderThumb is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaneSliderThumbEdge is Box
+
+━━━━━━━━━━━━━━━━━━━━
+_ clamped-axis F64
+    - value F64
+    - minimum F64
+    - maximum F64
+
+|? !is-finite(value) || value <= minimum
+    minimum
+|? value >= maximum
+    maximum
+??
+    value
+
+━━━━━━━━━━━━━━━━━━━━
+_ snapped-axis F64
+    - value F64
+    - minimum F64
+    - maximum F64
+    - step F64
+
+|? !is-finite(step) || step <= 0
+    clamped-axis(value, minimum, maximum)
+??
+    clamped-axis(minimum + round((clamped - minimum) / step) * step, minimum, maximum)
+
+.. clamped = clamped-axis(value, minimum, maximum)
+
+━━━━━━━━━━━━━━━━━━━━
+_ axis-ratio F64
+    - value F64
+    - minimum F64
+    - maximum F64
+
+|? !is-finite(minimum) || !is-finite(maximum) || maximum <= minimum
+    0
+??
+    (clamped-axis(value, minimum, maximum) - minimum) / (maximum - minimum)
+
+━━━━━━━━━━━━━━━━━━━━
+_ axis-increment F64
+    - minimum F64
+    - maximum F64
+    - step F64
+
+|? is-finite(step) && step > 0
+    step
+??
+    (maximum - minimum) * 0.01

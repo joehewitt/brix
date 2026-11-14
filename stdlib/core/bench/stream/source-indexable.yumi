@@ -1,0 +1,37 @@
+`benchmark.meta description: Parses through an indexable stream source.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+/core/tokenstream
+
+. stream = IndexableTokenStream'Char(source-adapter-source())
+. rows = match stream
+    ~ \source-adapter-document
+    ?! Panic("source-indexable did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row
+
+-- "bench-result stream/source-indexable checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ source-adapter-document ~ Char
+
+~ rows \source-adapter-row+
+    rows
+
+.. source-adapter-row Size ~
+    ~ "src:" name \source-adapter-word ":" value \source-adapter-digits "\n"
+        name.length * 31 + value.length
+
+.. source-adapter-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+.. source-adapter-digits String ~
+    ~ [0-9]+
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-adapter-source
+
+"".join("src:name_$each:${each * 43}\n" in 0 .. < 180)

@@ -1,0 +1,29 @@
+`benchmark.meta description: Builds many line-heavy paths to expose segment append and invalidation overhead.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/path
+/graphics/point
+/graphics/primitives
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 420
+    . path = Path()
+    . base = pass as Float
+    path.move-to(base % 37, base % 19)
+    for i in 0 .. < 48
+        . f = i as Float
+        path.line-to((base + f * 7) % 200, (base * 3 + f * 11) % 180)
+    if pass % 2 == 0
+        path.close()
+    checksum += path.count + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+-- "bench-result graphics/path-build-lines checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

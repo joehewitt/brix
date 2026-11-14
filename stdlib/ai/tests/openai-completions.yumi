@@ -1,0 +1,290 @@
+/ai
+/ai/openai/completions
+/data
+/data/json
+/data/stream
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("OpenAI Transcript Encoding")
+cases.run(openai-transcript-tests)
+cases = cases.then("OpenAI Fragmented Stream", openai-stream-tests)
+cases = cases.then("OpenAI Search And Media", openai-search-media-tests)
+cases = cases.then("OpenAI Invalid Stream", openai-invalid-stream-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-transcript-tests TestCase
+    - t TestCase
+
+. reply [AIMessagePart]
+reply += AIReasoningPart("thought", "considering")
+reply += AITextPart("text", "It is sunny.")
+reply += AIToolCallPart("ran", "call-1", "Read", JSON("{}"))
+reply += AIToolResultPart("ran:result", "call-1", "contents")
+reply += AIToolCallPart("asked", "call-2", "weather", JSON("{}"))
+reply += AIExtensionPart("session", "elsewhere", "session", JSON("{}"))
+. marker [AIMessagePart]
+marker += AIExtensionPart("session", "elsewhere", "session", JSON("{}"))
+
+. messages [AIMessage]
+messages += AIMessage(AIMessageRole.user, "weather")
+messages += AIMessage(AIMessageRole.assistant, reply)
+messages += AIMessage(AIMessageRole.assistant, marker)
+messages += AIMessage(AIMessageRole.user, "and tomorrow?")
+. root = openai-request-value(AIRequest("gpt-test", messages)) as [String = JSON]
+. sent = root["messages"] as [JSON]
+
+t.expect("a reply with nothing to send is left out", 3, sent.length)
+. answer = sent[1] as [String = JSON]
+t.expect("a reply keeps its text", "It is sunny.", answer["content"] as String)
+. calls = answer["tool_calls"] as [JSON]
+t.expect("a call the provider already answered is left out", 1, calls.length)
+t.expect("an open call is sent", "call-2", (calls[0] as [String = JSON])["id"] as String)
+t.check("another provider's data is left out", answer["session"] == null)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-stream-tests TestCase
+    - t TestCase
+
+. source = FragmentedAIStream(openai-tool-sse(), 3)
+. lines = collect-event-summaries(source)
+
+. expected = "".join
+    * "begin:text\ndelta:Hel\ndelta:lo\nbegin:tool\ndelta:{\"x\":"
+    * "\ndelta:1}\nusage:2\nend:text:1\nend:tool:weather:{\"x\": 1}"
+    * "\ndone:tool-calls:3"
+t.expect("fragmented SSE event lifecycle", expected, "\n".join(lines))
+
+. null-source = DataStream'Byte(openai-null-tool-sse())
+. null-lines = collect-event-summaries(null-source)
+t.expect("JSON null tool arguments remain valid", true, has-line(null-lines, "end:tool:none:null"))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-search-media-tests TestCase
+    - t TestCase
+
+. source = DataStream'Byte(openai-search-audio-sse())
+. lines = collect-event-summaries(source)
+
+t.expect("search is observed without inference", true, has-line(lines, "end:search:yumi ai"))
+t.expect("audio part completes", true, has-line(lines, "end:audio:foo"))
+t.expect("stream completes", "done:stop:1", lines.tail)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-invalid-stream-tests TestCase
+    - t TestCase
+
+. source-text = "".join
+    * "data: {\"id\":\"chat-3\",\"choices\":[{"
+    * "\"delta\":{\"content\":\"unfinished\"},\"finish_reason\":null}]}\n\n"
+. source = DataStream'Byte(source-text)
+. provider = OpenAIStreamProvider(source)
+. result = catch complete(provider, AIRequest("mock"))
+t.check("missing terminal marker is invalid", result is AIError)
+if result is AIError
+    . error = result as AIError
+    t.expect("missing terminal marker kind", AIErrorKind.invalid-response, error.kind)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do has-line
+    - lines [String]
+    - expected String
+
+for line in lines
+    if line == expected
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-event-summaries ?! AIError
+    - source ReadableData'Byte
+
+. lines [String]
+for event in openai-stream-events(source)
+    lines += ai-event-summary(event)
+= lines
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-event-summary
+    - event AIEvent
+
+match event
+    | begin AIPartBeginEvent
+        "begin:${ai-part-kind(begin.part)}"
+    | delta AIPartDeltaEvent
+        ai-delta-summary(delta.delta)
+    | usage AIUsageEvent
+        "usage:${usage.usage.input-tokens ?? 0}"
+    | end AIPartEndEvent
+        ai-part-end-summary(end.part)
+    | done AIDoneEvent
+        "done:${finish-summary(done.finish-reason)}:${done.usage?.total-tokens ?? 0}"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-delta-summary
+    - delta AIContentDelta
+
+match delta
+    | text AITextDelta
+        "delta:${text.text}"
+    | arguments AIToolArgumentsDelta
+        "delta:${arguments.text}"
+    | audio AIAudioDelta
+        "audio-delta:${audio.data.size}"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-part-end-summary
+    - part AIMessagePart
+
+match part
+    | text AITextPart
+        "end:text:${text.citations.length}"
+    | tool AIToolCallPart
+        "end:tool:${tool.tool-name}:${to-json(tool.arguments)}"
+    | search AIWebSearchPart
+        "end:search:${search.query}"
+    | audio AIAudioPart
+        "end:audio:${audio.audio.transcript ?? ""}"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-part-kind
+    - part AIMessagePart
+
+match part
+    | AITextPart
+        "text"
+    | AIToolCallPart
+        "tool"
+    | AIWebSearchPart
+        "search"
+    | AIAudioPart
+        "audio"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ finish-summary
+    - reason AIFinishReason
+
+match reason
+    | {it == AIFinishReason.stop}
+        "stop"
+    | {it == AIFinishReason.tool-calls}
+        "tool-calls"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-tool-sse
+
+"".join
+    * "data: {\"id\":\"chat-1\",\"choices\":[{"
+    * "\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-1\",\"choices\":[{"
+    * "\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
+    * "\"content\":\"lo\",\"annotations\":[{"
+    * "\"type\":\"url_citation\",\"url_citation\":{"
+    * "\"title\":\"Example\",\"url\":\"https://example.com\","
+    * "\"start_index\":0,\"end_index\":5}}]},"
+    * "\"finish_reason\":null}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
+    * "\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{"
+    * "\"name\":\"weather\",\"arguments\":\"{\\\"x\\\":\"}}]},"
+    * "\"finish_reason\":null}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
+    * "\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]},"
+    * "\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-1\",\"choices\":[],\"usage\":{"
+    * "\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\n"
+    * "data: [DONE]\n\n"
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-null-tool-sse
+
+"".join
+    * "data: {\"id\":\"chat-null\",\"choices\":[{\"delta\":{"
+    * "\"tool_calls\":[{\"index\":0,\"id\":\"call-null\",\"function\":{"
+    * "\"name\":\"none\",\"arguments\":\"null\"}}]},"
+    * "\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n"
+    * "data: [DONE]\n\n"
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-search-audio-sse
+
+"".join
+    * "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{"
+    * "\"web_search\":{\"id\":\"search-1\",\"query\":\"yumi ai\"}},"
+    * "\"finish_reason\":null}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{"
+    * "\"audio\":{\"id\":\"audio-1\",\"data\":\"Zm9v\",\"transcript\":\"foo\"}},"
+    * "\"finish_reason\":\"stop\"}],\"usage\":null}\n\n"
+    * "data: {\"id\":\"chat-2\",\"choices\":[],\"usage\":{"
+    * "\"prompt_tokens\":1,\"completion_tokens\":0,\"total_tokens\":1}}\n\n"
+    * "data: [DONE]\n\n"
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenAIStreamProvider is AIProvider
+
++ source ReadableData'Byte
+
+────────────────────
+_ This
+    - source
+
+super()
+
+╌╌╌╌╌╌╌╌╌╌ is AIProvider ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do stream <AIEvent>
+    - request AIRequest
+
+for event in openai-stream-events(source)
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
+_ FragmentedAIStream
+    is ReadableData'Byte
+
++ data Byte[]
++ max-read Size
++ cursor Index
+
+────────────────────
+_ This
+    - data
+    - max-read
+
+────────────────────
++ get is-encoded
+
+false
+
+────────────────────
++ do read Size
+    - size Size
+    - buffer Byte[]
+
+. remaining = data.size - cursor
+. wanted = if size < max-read then size else max-read
+. amount = if remaining < wanted then remaining else wanted
+if amount
+    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
+    cursor += amount
+= amount

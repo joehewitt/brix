@@ -1,0 +1,512 @@
+./bundle
+./mir
+/core/arena
+/core/table
+
+_ int-signed I32
+
+_ flag-has-loc I32 = 1
+_ flag-has-panic-target I32 = 2
+_ flag-gc-free-zone I32 = 4
+_ flag-gc-exceptional-safepoint I32 = 8
+_ flag-gc-safepoint I32 = 16
+_ flag-gc-safepoint-proven-free I32 = 32
+_ flag-direct-struct-return I32 = 64
+_ flag-has-gc-roots I32 = 128
+
+_ root-register I32
+
+━━━━━━━━━━━━━━━━━━━━
+_ MIROperandKind is I32
+
+| vreg
+| preg
+| vreg-group
+| label
+| symbol
+| label-address
+| load-address
+| frame-object
+| int
+| cond
+| placeholder
+| null
+
+━━━━━━━━━━━━━━━━━━━━
+_ MIRTypeKind is I32
+
+| named
+| void
+| int
+| float
+| pointer
+| struct
+| array
+
+━━━━━━━━━━━━━━━━━━━━
++ JobDecoder
+
+_ function MIRFunction
+_ words CPointer'I32
+_ word-count Size
+_ cursor Size
+_ strings CPointer'U32
+_ string-count U32
+_ type-ids IdList
+_ frame-object-ids IdList
+
+────────────────────
++ This
+    - function MIRFunction
+
+────────────────────
++ do decode
+    - record FunctionRecord
+
+function.reset()
+function.order = record.order
+function.label = record.label
+function.symbol = record.symbol
+function.is-lowered = record.is-lowered
+words = record.words
+word-count = record.word-count
+strings = record.strings
+string-count = record.string-count
+cursor = 1
+read-locs()
+read-types()
+read-slots()
+read-vregs()
+read-frame-objects()
+read-header()
+read-frame()
+read-blocks()
+if record.is-lowered
+    function.gc-roots = read-roots()
+    for _ in 0 .. < next()
+        . register = next()
+        function.saved-registers.append(SavedRegister(register as RegisterId, next()))
+?! Panic("MIR job for function $record.order has ${word-count - cursor} unread words")
+    if cursor != word-count
+
+────────────────────
+_ do next I32 @inline
+
+?! Panic("MIR job is truncated")
+    if cursor >= word-count
+. value = words[cursor]
+cursor += 1
+= value
+
+────────────────────
+_ do next-bit Bool @inline
+
+= next() != 0
+
+────────────────────
+_ do next-string StringId
+
+. index = next()
+if index < 0
+    = no-string
+?! Panic("MIR job names string $index of $string-count")
+    if index >= string-count
+= strings[index]
+
+────────────────────
+_ do next-ids IdList
+    - count U32
+
+. ids = new-id-list(function.arena, count)
+for index in 0 .. < count
+    ids.data[index] = next() as U32
+= IdList(ids.data, count, count)
+
+────────────────────
+_ do read-locs
+
+for _ in 0 .. < next()
+    . file = next-string()
+    . is-known = next-bit()
+    . line = next()
+    . column = next()
+    . offset = next()
+    function.locs.append(MIRLoc(file, is-known, line, column, offset, next()))
+
+────────────────────
+_ do read-types
+
+. count = next()
+type-ids = new-id-list(function.arena, count as U32)
+for _ in 0 .. < count
+    type-ids = type-ids.appended(function.arena, read-type())
+
+────────────────────
+_ do read-type MIRTypeId
+
+. tag = next()
+if tag == MIRTypeKind.named
+    = next() as MIRTypeId
+. id MIRTypeId = function.types.length as MIRTypeId
+if tag == MIRTypeKind.struct
+    . format = next() as StructFormat
+    . size = next() as U32
+    . alignment = next() as U32
+    . field-count = next()
+    . fields = Span(function.struct-fields.length as U32, field-count as U32)
+    for _ in 0 .. < field-count
+        . type = type-ids[next()]
+        function.struct-fields.append(StructField(type, next() as U32))
+    function.types.append(MIRStructType(size, alignment, format, fields))
+else if tag == MIRTypeKind.array
+    . size = next() as U32
+    . alignment = next() as U32
+    . item = type-ids[next()]
+    function.types.append(ArrayType(size, alignment, item, next() as U32))
+else if tag == MIRTypeKind.void
+    . size = next() as U32
+    function.types.append(VoidType(size, next() as U32))
+else if tag == MIRTypeKind.int
+    . size = next() as U32
+    . alignment = next() as U32
+    . bit-size = next() as U32
+    . is-signed = next-bit()
+    function.types.append(IntType(size, alignment, bit-size, is-signed, next() as RegClass))
+else if tag == MIRTypeKind.float
+    . size = next() as U32
+    . alignment = next() as U32
+    . bit-size = next() as U32
+    function.types.append(FloatType(size, alignment, bit-size, next() as RegClass))
+else if tag == MIRTypeKind.pointer
+    . size = next() as U32
+    . alignment = next() as U32
+    function.types.append(PointerType(size, alignment, next() as RegClass))
+else
+    ?! Panic("Unexpected MIR type tag $tag")
+= id
+
+────────────────────
+_ do read-slots
+
+for _ in 0 .. < next()
+    . slot MIRSlotId = function.slots.length as MIRSlotId
+    . index = next()
+    . is-stack = next-bit()
+    . object-count = next()
+    . objects = new-id-list(function.arena, object-count as U32)
+    for position in 0 .. < object-count
+        . type = type-ids[next()]
+        . offset = next()
+        . can-promote = next-bit()
+        . gc-root = next-bit()
+        . gc-descriptor = next-string()
+        . gc-root-mode = next() as GCRootMode
+        objects = objects.appended(function.arena, function.frame-objects.length as U32)
+        function.frame-objects.append
+            MIRFrameObject
+                - slot
+                - position
+                - type
+                - offset
+                - can-promote
+                - gc-root
+                - gc-descriptor
+                - gc-root-mode
+                - next-bit()
+    function.slots.append(MIRFrameSlot(index, is-stack, objects))
+
+────────────────────
+_ do read-vregs
+
+for _ in 0 .. < next()
+    . id = next()
+    . reg-class = next() as RegClass
+    . hint = next()
+    . gc-root = next-bit()
+    . gc-descriptor = next-string()
+    function.vregs.append
+        MIRVirtualRegister
+            - id as U32
+            - reg-class
+            - if hint < 0 then no-register else hint as RegisterId
+            - gc-root
+            - gc-descriptor
+            - next() as GCRootMode
+
+────────────────────
+_ do read-frame-objects
+
+. count = next()
+frame-object-ids = new-id-list(function.arena, count as U32)
+for _ in 0 .. < count
+    . slot MIRSlotId = next() as MIRSlotId
+    . index = next()
+    . objects = function.slots[slot].objects
+    . id FrameObjectId = function.frame-objects.length as FrameObjectId
+    if index >= 0 && index < objects.length
+        id = objects[index]
+    else
+        function.frame-objects.append
+            MIRFrameObject(slot, -1, void-type-id, 0, false, false, no-string, .value-root, false)
+    frame-object-ids = frame-object-ids.appended(function.arena, id)
+
+────────────────────
+_ do next-frame-object FrameObjectId
+
+. index = next()
+if index < 0
+    = no-frame-object
+= frame-object-ids[index]
+
+────────────────────
+_ do read-header
+
+function.name = next-string()
+function.display-name = next-string()
+function.compilation-effects = next() as U32
+function.is-exported = next-bit()
+function.uses-table-union-cursor-plan = next-bit()
+. loc = next()
+function.loc = if loc < 0 then no-loc else loc as LocId
+function.vreg-count = next() as U32
+function.uses-layout-context = next-bit()
+function.closure-root = next-frame-object()
+function.capture-closure-root = next-frame-object()
+
+────────────────────
+_ do read-frame
+
+function.frame-slots = next-ids(next() as U32)
+if next-bit()
+    . is-stack = next-bit()
+    . slot = next()
+    . size = next()
+    . alignment = next()
+    . length = next()
+    . count = next()
+    function.overflow = MIRCallOverflow
+        - true
+        - is-stack
+        - slot as MIRSlotId
+        - size
+        - alignment
+        - length
+        - count
+        - next()
+. var-count = next()
+. vars = new-id-list(function.arena, var-count as U32)
+for _ in 0 .. < var-count
+    vars = vars.appended(function.arena, next-frame-object())
+function.vars = vars
+for _ in 0 .. < next()
+    . name = next-string()
+    function.jump-tables.append(MIRJumpTable(name, next-names()))
+
+────────────────────
+_ do next-names Span
+
+. count = next()
+. names = function.names
+. start = names.length
+for _ in 0 .. < count
+    names = names.appended(function.arena, next-string())
+function.names = names
+= Span(start, count as U32)
+
+────────────────────
+_ do next-name-list IdList
+
+. count = next()
+. names = new-id-list(function.arena, count as U32)
+for _ in 0 .. < count
+    names = names.appended(function.arena, next-string())
+= names
+
+────────────────────
+_ do read-blocks
+
+. function-block-count = next()
+. order = new-id-list(function.arena, function-block-count as U32)
+for block in 0 .. < function-block-count
+    order = order.appended(function.arena, block as U32)
+function.block-order = order
+for _ in 0 .. < next()
+    . name = next-string()
+    . successors = next-ids(next() as U32)
+    . predecessors = next-ids(next() as U32)
+    . instruction-count = next()
+    . instructions = new-id-list(function.arena, instruction-count as U32)
+    for _ in 0 .. < instruction-count
+        instructions = instructions.appended(function.arena, read-instruction())
+    function.blocks.append(MIRBlock(name, instructions, successors, predecessors))
+
+────────────────────
+_ do read-instruction InstructionId
+
+. id InstructionId = function.instructions.length as InstructionId
+. opcode = next() as Opcode
+. flags = next()
+. loc = no-loc
+if (flags /and/ flag-has-loc) != 0
+    loc = next() as LocId
+. operand-count = next()
+. operands = new-id-list(function.arena, operand-count as U32)
+for _ in 0 .. < operand-count
+    operands = operands.appended(function.arena, read-operand())
+. has-gc-roots = (flags /and/ flag-has-gc-roots) != 0
+. gc-roots Span
+if has-gc-roots
+    gc-roots = read-roots()
+. gc-free-zone = (flags /and/ flag-gc-free-zone) != 0
+. gc-exceptional-safepoint = (flags /and/ flag-gc-exceptional-safepoint) != 0
+. gc-safepoint = (flags /and/ flag-gc-safepoint) != 0
+if opcode == .call
+    . return-type = type-ids[next()]
+    . copied-count = next() as U32
+    . words = function.words
+    . copied = Span(words.length, copied-count)
+    for _ in 0 .. < copied-count
+        words = words.appended(function.arena, next() as U32)
+    . size-count = next()
+    . sizes = Span(words.length, size-count as U32)
+    for _ in 0 .. < size-count
+        words = words.appended(function.arena, next() as U32)
+    function.words = words
+    . panic-target = no-operand
+    if (flags /and/ flag-has-panic-target) != 0
+        panic-target = read-operand()
+    function.instructions.append
+        CallInstruction
+            - opcode
+            - operands
+            - loc
+            - no-position
+            - gc-free-zone
+            - gc-exceptional-safepoint
+            - gc-safepoint
+            - false
+            - has-gc-roots
+            - gc-roots
+            - return-type
+            - copied
+            - sizes
+            - panic-target
+            - (flags /and/ flag-gc-safepoint-proven-free) != 0
+            - (flags /and/ flag-direct-struct-return) != 0
+else if opcode == .comment
+    function.instructions.append
+        CommentInstruction
+            - opcode
+            - operands
+            - loc
+            - no-position
+            - gc-free-zone
+            - gc-exceptional-safepoint
+            - gc-safepoint
+            - false
+            - has-gc-roots
+            - gc-roots
+            - next-string()
+else if opcode == .phi
+    . reg = read-operand()
+    . expr-count = next()
+    . exprs = new-id-list(function.arena, expr-count as U32)
+    for _ in 0 .. < expr-count
+        exprs = exprs.appended(function.arena, read-operand())
+    function.instructions.append
+        PhiInstruction
+            - opcode
+            - operands
+            - loc
+            - no-position
+            - gc-free-zone
+            - gc-exceptional-safepoint
+            - gc-safepoint
+            - false
+            - has-gc-roots
+            - gc-roots
+            - reg
+            - exprs
+            - next-name-list()
+else
+    function.instructions.append
+        AssemblyInstruction
+            - opcode
+            - operands
+            - loc
+            - no-position
+            - gc-free-zone
+            - gc-exceptional-safepoint
+            - gc-safepoint
+            - false
+            - has-gc-roots
+            - gc-roots
+= id
+
+────────────────────
+_ do read-roots Span
+
+. count = next()
+. start = function.roots.length
+for _ in 0 .. < count
+    if next() == root-register
+        function.roots.append(RegisterRoot(next() as RegisterId))
+    else
+        . object = next-frame-object()
+        . gc-descriptor = next-string()
+        function.roots.append(StackRoot(object, gc-descriptor, next() as GCRootMode))
+= Span(start as U32, count as U32)
+
+────────────────────
+_ do read-operand OperandId
+
+. tag = next()
+if tag == MIROperandKind.null
+    = no-operand
+if tag == MIROperandKind.vreg
+    = add-operand(VRegOperand(next() as VRegId))
+if tag == MIROperandKind.preg
+    = add-operand(PRegOperand(next() as RegisterId))
+if tag == MIROperandKind.vreg-group
+    . reg-class = next() as RegClass
+    . count = next() as U32
+    . vregs = function.group-vregs
+    . span = Span(vregs.length, count)
+    for _ in 0 .. < count
+        vregs = vregs.appended(function.arena, next() as U32)
+    function.group-vregs = vregs
+    = add-operand(VRegGroupOperand(reg-class, span))
+if tag == MIROperandKind.label
+    . name = next-string()
+    = add-operand(LabelOperand(name, next() as Reloc))
+if tag == MIROperandKind.symbol
+    . name = next-string()
+    = add-operand(SymbolOperand(name, next() as Reloc))
+if tag == MIROperandKind.label-address
+    = add-operand(LabelAddressOperand(read-operand()))
+if tag == MIROperandKind.load-address
+    . is-pre-index = next-bit()
+    . base = read-operand()
+    = add-operand(LoadAddressOperand(base, read-operand(), is-pre-index))
+if tag == MIROperandKind.frame-object
+    = add-operand(FrameObjectOperand(next-frame-object()))
+if tag == MIROperandKind.int
+    . mode = next()
+    . low U64 = next() as U32
+    . high U64 = next() as U32
+    . bits = low /or/ (high /lshift/ 32)
+    . is-negative = mode == int-signed && (bits /zrshift/ 63) != 0
+    = add-operand(IntOperand(MIRInt(bits, is-negative)))
+if tag == MIROperandKind.cond
+    = add-operand(CondOperand(next() as U32))
+if tag == MIROperandKind.placeholder
+    = add-operand(PlaceholderOperand())
+?! Panic("Unexpected MIR operand tag $tag")
+
+────────────────────
+_ do add-operand OperandId
+    - operand MIROperand
+
+. id OperandId = function.operands.length as OperandId
+function.operands.append(operand)
+= id

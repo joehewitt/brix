@@ -1,0 +1,2036 @@
+./curve
+./curve-kernels
+./effect
+./graphic
+./intersection
+./offset-kernels
+./path
+./path-set
+./point
+./primitives
+./shapes
+./stroke
+/math
+/stream/sort
+/units
+
+_ offset-path-teeny = 0.000001
+_ offset-cleanup-tolerance = 0.001
+_ offset-trim-epsilon = 0.000000001
+_ offset-trim-snap = 0.5
+_ offset-trim-flatness = 0.01
+
+━━━━━━━━━━━━━━━━━━━━
++ OffsetEffect is VectorEffect
+
+_ effect-distance Length
+_ effect-join-type JoinType = .square-join-type
+_ effect-miter-limit Length = 1
+
++ distance => effect-distance
++ join-type => effect-join-type
++ miter-limit => effect-miter-limit
+
+────────────────────
++ This
+    - value Length
+    - join JoinType = .square-join-type
+    - limit Length = 1
+
+effect-distance = value
+effect-join-type = join
+effect-miter-limit = limit
+
+╌╌╌╌╌╌╌╌╌╌ is VectorEffect ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ equals Bool
+    - other VectorEffect
+
+|? !(other is OffsetEffect)
+    false
+??
+    same-distance && join-type == offset.join-type && miter-limit == offset.miter-limit
+
+.. offset = other as OffsetEffect
+.. same-distance = enabled == offset.enabled && distance == offset.distance
+
+────────────────────
++ do apply [Path]
+    - source [Path]
+
+if distance == 0
+    = source
+
+. result Path
+for path in source
+    if offset-path-is-single-subpath(path)
+        . offset = offset-subpath-plan(OffsetPlan(path), distance, join-type, miter-limit)
+        if offset.count
+            if result.count
+                result.add-path(offset)
+            else
+                result = offset
+    else
+        for span in path.subpaths
+            . subpath = span.materialize()
+            . offset = offset-subpath-plan(OffsetPlan(subpath), distance, join-type, miter-limit)
+            if offset.count
+                if result.count
+                    result.add-path(offset)
+                else
+                    result = offset
+
+. output [Path]
+if result.count
+    output += result
+= output
+
+────────────────────
++ copy
+
+OffsetEffect(effect-distance, effect-join-type, effect-miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
++ OffsetPlanSpan is Tuple
+
++ type SegmentType
++ x1 Coord
++ y1 Coord
++ hox Coord
++ hoy Coord
++ hix Coord
++ hiy Coord
++ x2 Coord
++ y2 Coord
++ min-x Coord
++ min-y Coord
++ max-x Coord
++ max-y Coord
++ is-line-like Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ OffsetRawPath is Tuple
+
++ path Path
++ spans [CurveRangeScalars]
++ origins [CurveRangeScalars]
++ sources [OffsetPlanSpan]
+
+━━━━━━━━━━━━━━━━━━━━
++ OffsetPlan
+
++ path Path
++ spans [OffsetPlanSpan]
++ is-closed = false
++ is-clockwise = true
++ is-all-lines = true
++ is-convex = false
++ is-single-subpath = false
++ has-self-intersections = false
++ bounds Rect
+
+────────────────────
++ This
+    - source Path
+
+.. path = source
+is-closed = source.is-closed
+is-clockwise = source.is-clockwise
+is-single-subpath = offset-path-is-single-subpath(source)
+build-spans()
+is-convex = offset-plan-is-convex(this)
+has-self-intersections = offset-plan-has-self-intersections(this)
+
+────────────────────
+_ do build-spans
+
+. reader = path.curve-reader
+. waiting-for-bounds = true
+while reader.next()
+    . x1 = reader.x1
+    . y1 = reader.y1
+    . hox = reader.handle-out-x
+    . hoy = reader.handle-out-y
+    . hix = reader.handle-in-x
+    . hiy = reader.handle-in-y
+    . x2 = reader.x2
+    . y2 = reader.y2
+    . is-line-like = reader.type == .segment-type-line || scalars-line-like
+        .. scalars-line-like = line-like-scalars(x1, y1, hox, hoy, hix, hiy, x2, y2)
+    if !is-line-like
+        is-all-lines = false
+
+    . min-x Coord
+    . min-y Coord
+    . max-x Coord
+    . max-y Coord
+    if reader.type == .segment-type-line || is-line-like
+        min-x = min(x1, x2)
+        min-y = min(y1, y2)
+        max-x = max(x1, x2)
+        max-y = max(y1, y2)
+    else
+        min-x = min(min(x1, hox), min(hix, x2))
+        min-y = min(min(y1, hoy), min(hiy, y2))
+        max-x = max(max(x1, hox), max(hix, x2))
+        max-y = max(max(y1, hoy), max(hiy, y2))
+
+    if waiting-for-bounds
+        bounds = Rect(min-x, min-y, max-x - min-x, max-y - min-y)
+        waiting-for-bounds = false
+    else
+        bounds += Rect(min-x, min-y, max-x - min-x, max-y - min-y)
+
+    spans += OffsetPlanSpan()
+        - reader.type
+        - x1
+        - y1
+        - hox
+        - hoy
+        - hix
+        - hiy
+        - x2
+        - y2
+        - min-x
+        - min-y
+        - max-x
+        - max-y
+        - is-line-like
+
+━━━━━━━━━━━━━━━━━━━━
+_ OffsetCrossing
+
++ i Index
++ t PointOnCurve
++ pt Point
++ next OffsetCrossing?
++ previous OffsetCrossing?
++ counter OffsetCrossing?
++ visited = false
+
+────────────────────
++ This
+    - crossing-i Index
+    - crossing-t PointOnCurve
+    - crossing-pt Point
+
+i = crossing-i
+t = crossing-t
+pt = crossing-pt
+
+━━━━━━━━━━━━━━━━━━━━
+_ OffsetContour
+
++ distance Length
++ join-type JoinType
++ miter-limit Length
++ normal-sign Float
++ out = OffsetPathWriter()
++ first-point Point
++ prev-point Point
++ first-unit-normal Point
++ prev-unit-normal Point
++ first-tangent Point
++ prev-tangent Point
++ segment-count Size
++ has-current = false
++ first-is-line = false
+
+────────────────────
++ This
+    - point Point
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+    - normal-sign Float
+
+out.collect-spans = true
+out.is-exact = true
+move-to(point)
+
+────────────────────
++ do move-to
+    - point Point
+
+first-point = point
+prev-point = point
+has-current = true
+segment-count = 0
+out.reset()
+
+────────────────────
++ do line-to
+    - point Point
+
+line-to(point) • is line
+
+────────────────────
++ do line-to
+    - point Point
+    - is-line Bool
+
+if !has-current
+    move-to(point)
+    =
+. delta = point - prev-point
+. len = delta.length
+=? if len <= offset-path-teeny
+
+. tangent = delta / len
+. unit-normal = offset-unit-normal(tangent, normal-sign)
+pre-join-to(unit-normal, tangent) • is-line
+out.originate(offset-origin-line(prev-point, point))
+append-line-to-offset(point, unit-normal)
+post-join-to(point, unit-normal, tangent)
+
+────────────────────
++ do cubic-to
+    - handle-out Point
+    - handle-in Point
+    - point Point
+
+if !has-current
+    move-to(point)
+    =
+=? if cubic-is-point-like(prev-point, handle-out, handle-in, point)
+
+if cubic-is-chord-like(prev-point, handle-out, handle-in, point)
+    line-to(point) • is !line
+    =
+. start-tangent = cubic-tangent-at(prev-point, handle-out, handle-in, point, 0)
+. end-tangent = cubic-tangent-at(prev-point, handle-out, handle-in, point, 1)
+. start-normal = offset-unit-normal(start-tangent, normal-sign)
+. end-normal = offset-unit-normal(end-tangent, normal-sign)
+
+pre-join-to(start-normal, start-tangent) • is !line
+append-offset-cubic-split-inflections()
+    - out
+    - prev-point
+    - handle-out
+    - handle-in
+    - point
+    - distance
+    - normal-sign
+post-join-to(point, end-normal, end-tangent)
+
+────────────────────
++ do finish-raw
+    - close Bool
+
+if segment-count <= 0
+    = OffsetRawPath(Path(), out.spans, out.origins, offset-source-spans(out.sources))
+
+if close
+    out.origin = offset-origin-line(prev-point, prev-point)
+    add-contour-join()
+        - prev-point
+        - prev-unit-normal
+        - first-unit-normal
+        - prev-tangent
+        - first-tangent
+        • is-line first-is-line
+    out.close()
+
+= OffsetRawPath(out.path, out.spans, out.origins, offset-source-spans(out.sources))
+
+────────────────────
+_ do pre-join-to
+    - unit-normal Point
+    - tangent Point
+    - is-line Bool
+
+if segment-count == 0
+    first-unit-normal = unit-normal
+    prev-unit-normal = unit-normal
+    first-tangent = tangent
+    prev-tangent = tangent
+    first-is-line = is-line
+    out.line-to(prev-point + unit-normal * distance)
+else
+    out.origin = offset-origin-line(prev-point, prev-point)
+    add-contour-join()
+        - prev-point
+        - prev-unit-normal
+        - unit-normal
+        - prev-tangent
+        - tangent
+        • is-line
+
+────────────────────
+_ do append-line-to-offset
+    - point Point
+    - unit-normal Point
+
+out.line-to(point + unit-normal * distance)
+
+────────────────────
+_ do post-join-to
+    - point Point
+    - unit-normal Point
+    - tangent Point
+
+prev-point = point
+prev-unit-normal = unit-normal
+prev-tangent = tangent
+segment-count += 1
+
+────────────────────
+_ do add-contour-join
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - before-tangent Point
+    - after-tangent Point
+    - is-line Bool
+
+//graphics.offset.joins ++
+add-side-join()
+    - out
+    - pivot
+    - before-normal
+    - after-normal
+    - before-tangent
+    - after-tangent
+    • is-line
+
+────────────────────
+_ do add-side-join
+    - writer OffsetPathWriter
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - before-tangent Point
+    - after-tangent Point
+    - is-line Bool
+
+. before-offset = pivot + before-normal * distance
+. after-offset = pivot + after-normal * distance
+. turn = before-tangent.cross(after-tangent)
+
+if abs(distance) <= offset-path-teeny
+    writer.line-to(pivot)
+    =
+if abs(turn) <= offset-path-teeny
+    if before-tangent.dot(after-tangent) >= -0.999
+        writer.line-to(after-offset)
+    else if join-type == .round-join-type
+        add-round-offset-join(writer, pivot, before-offset, after-offset)
+    else if join-type == .square-join-type
+        append-square-join(writer, pivot, before-normal, after-normal, before-tangent, after-tangent, distance) • is-line
+    else
+        writer.line-to(before-offset)
+        writer.line-to(after-offset)
+    =
+if turn * distance * normal-sign < 0
+    writer.line-to(after-offset)
+    =
+if join-type == .miter-join-type
+    add-miter-side-join(writer, pivot, before-normal, after-normal) • is-line
+else if join-type == .round-join-type
+    add-round-offset-join(writer, pivot, before-offset, after-offset)
+else if join-type == .square-join-type
+    append-square-join(writer, pivot, before-normal, after-normal, before-tangent, after-tangent, distance) • is-line
+else
+    writer.line-to(after-offset)
+
+────────────────────
+_ do add-miter-side-join
+    - writer OffsetPathWriter
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - is-line Bool
+
+. dot = before-normal.dot(after-normal)
+if dot > 0.999 || miter-limit <= 1
+    writer.line-to(pivot + after-normal * distance)
+    =
+if dot < -0.999
+    writer.line-to(pivot + before-normal * distance)
+    writer.line-to(pivot + after-normal * distance)
+    =
+. sin-half = sqrt(max(0.0, (1.0 + dot) / 2.0))
+if sin-half <= 0 || sin-half < 1.0 / miter-limit
+    writer.line-to(pivot + after-normal * distance)
+    =
+. mid Point
+if abs(dot) <= offset-path-teeny && miter-limit >= 1.41421356237
+    mid = (before-normal + after-normal) * distance
+else
+    . sum = before-normal + after-normal
+    . sum-length = sum.length
+    if sum-length <= offset-path-teeny
+        writer.line-to(pivot + after-normal * distance)
+        =
+    mid = (sum / sum-length) * (abs(distance) / sin-half)
+    if distance < 0
+        mid = -mid
+
+writer.line-to(pivot + mid)
+if !is-line
+    writer.line-to(pivot + after-normal * distance)
+
+────────────────────
+_ do add-round-offset-join
+    - writer OffsetPathWriter
+    - center Point
+    - from Point
+    - to Point
+
+. radius = abs(distance)
+if radius < offset-path-teeny || from.distance(to) < offset-path-teeny
+    writer.line-to(to)
+else
+    writer.line-to(from)
+    writer.arc(center, radius, from.angle(center), to.angle(center), distance * normal-sign < 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan
+    - path Path
+
+OffsetPlan(path)
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan-path
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+offset-subpath-plan(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan-layer
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+if path.count then PathSet(path) else PathSet()
+
+.. path = offset-plan-path(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-path
+    - layer PathSet
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+if distance == 0
+    = layer
+
+. result Path
+for source in layer.paths
+    if offset-path-is-single-subpath(source)
+        . offset = offset-subpath-plan(OffsetPlan(source), distance, join-type, miter-limit)
+        if offset.count
+            if result.count
+                result.add-path(offset)
+            else
+                result = offset
+    else
+        for span in source.subpaths
+            . subpath = span.materialize()
+            . offset = offset-subpath-plan(OffsetPlan(subpath), distance, join-type, miter-limit)
+            if offset.count
+                if result.count
+                    result.add-path(offset)
+                else
+                    result = offset
+
+if result.count
+    = PathSet(result)
+
+= PathSet()
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-path-is-single-subpath
+    - path Path
+
+. moves Size
+. span = path.commands
+for i in 0 .. < span.command-count
+    if span.verbs[i] == .path-verb-move
+        moves += 1
+        =? if moves > 1
+
+= moves == 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-special-path
+    - path Path
+    - distance Float
+
+if path.is-closed
+    . rect = axis-rect(path)
+    if rect
+        . expanded = rect.inflate(distance * 2, distance * 2)
+        if expanded.width <= 0 || expanded.height <= 0
+            = Path()
+        = rectangle(expanded)
+else
+    = straight-line-offset(path, distance)
+
+━━━━━━━━━━━━━━━━━━━━
++ do straight-line-offset
+    - path Path
+    - distance Float
+
+=? if path.is-closed
+=? if path.count < 2
+
+. span = path.commands
+for i in 0 .. < span.command-count
+    =? if span.verbs[i] == .path-verb-cubic
+
+. first-x = span.coords[0]
+. first-y = span.coords[1]
+. last-x = first-x
+. last-y = first-y
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    if verb == .path-verb-line || verb == .path-verb-move
+        . start = span.coord-offsets[i]
+        last-x = span.coords[start]
+        last-y = span.coords[start + 1]
+
+. line-dx = last-x - first-x
+. line-dy = last-y - first-y
+. line-length2 = line-dx * line-dx + line-dy * line-dy
+=? if line-length2 < 0.0000000001
+
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    if verb == .path-verb-close
+        continue
+    . start = span.coord-offsets[i]
+    . x = span.coords[start]
+    . y = span.coords[start + 1]
+    =? if !point-on-line-xy(x, y, first-x, first-y, last-x, last-y)
+
+. normal = line-normal-xy(first-x, first-y, last-x, last-y)
+. normal-x = normal.x
+. normal-y = normal.y
+. offset-x = normal-x * distance
+. offset-y = normal-y * distance
+. result = Path()
+result.move-to(first-x + offset-x, first-y + offset-y)
+result.line-to(last-x + offset-x, last-y + offset-y)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ point-on-line
+    - point Point
+    - first Point
+    - last Point
+
+near-line && within-x && within-y
+
+.. near-line = abs(cross) < 0.00001
+.. cross = dx * py - dy * px
+.. dx = last.x - first.x
+.. dy = last.y - first.y
+.. px = point.x - first.x
+.. py = point.y - first.y
+.. within-x = point.x >= min-x && point.x <= max-x
+.. min-x = min(first.x, last.x) - 0.00001
+.. max-x = max(first.x, last.x) + 0.00001
+.. within-y = point.y >= min-y && point.y <= max-y
+.. min-y = min(first.y, last.y) - 0.00001
+.. max-y = max(first.y, last.y) + 0.00001
+
+━━━━━━━━━━━━━━━━━━━━
++ point-on-line-xy
+    - x Coord
+    - y Coord
+    - first-x Coord
+    - first-y Coord
+    - last-x Coord
+    - last-y Coord
+
+near-line && within-x && within-y
+
+.. near-line = abs(cross) < 0.00001
+.. cross = dx * py - dy * px
+.. dx = last-x - first-x
+.. dy = last-y - first-y
+.. px = x - first-x
+.. py = y - first-y
+.. within-x = x >= min-x && x <= max-x
+.. min-x = min(first-x, last-x) - 0.00001
+.. max-x = max(first-x, last-x) + 0.00001
+.. within-y = y >= min-y && y <= max-y
+.. min-y = min(first-y, last-y) - 0.00001
+.. max-y = max(first-y, last-y) + 0.00001
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-plan-is-convex
+    - plan OffsetPlan
+
+=? if !plan.is-closed
+=? if !plan.is-all-lines
+=? if plan.spans.length < 3
+
+. sign Coord
+. has-sign = false
+for i in 0 .. < plan.spans.length
+    . a = plan.spans[i]
+    . b = plan.spans[(i + 1) % plan.spans.length]
+    . ax = a.x2 - a.x1
+    . ay = a.y2 - a.y1
+    . bx = b.x2 - b.x1
+    . bdy = b.y2 - b.y1
+    . cross = ax * bdy - ay * bx
+    if abs(cross) <= offset-path-teeny
+        continue
+    if !has-sign
+        sign = cross
+        has-sign = true
+    else
+        =? if sign * cross < 0
+
+= has-sign
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-plan-has-self-intersections
+    - plan OffsetPlan
+
+. count = plan.spans.length
+for i in 0 .. < count
+    . c1 = plan.spans[i]
+    for j in i + 1 .. < count
+        . c2 = plan.spans[j]
+        . both-lines = c1.is-line-like && c2.is-line-like
+        if both-lines && offset-curves-are-adjacent(i, j, count, plan.is-closed)
+            continue
+        if !offset-plan-span-bounds-overlap(c1, c2)
+            continue
+
+        . hits [CurveIntersection]
+        append-offset-span-intersections()
+            - hits
+            - offset-plan-span-curve(c1)
+            - offset-plan-span-curve(c2)
+            - i
+            - j
+        for hit in hits
+            if offset-is-endpoint-hit(hit.t1, i) || offset-is-endpoint-hit(hit.t2, j)
+                continue
+            = true
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-span-bounds-overlap
+    - a OffsetPlanSpan
+    - b OffsetPlanSpan
+
+!(a-left-of-b || b-left-of-a || a-above-b || b.max-y < a.min-y - offset-cleanup-tolerance)
+
+.. a-left-of-b = a.max-x < b.min-x - offset-cleanup-tolerance
+.. b-left-of-a = b.max-x < a.min-x - offset-cleanup-tolerance
+.. a-above-b = a.max-y < b.min-y - offset-cleanup-tolerance
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-span-curve
+    - span OffsetPlanSpan
+
+CurveRangeScalars()
+    - span.type
+    - span.x1
+    - span.y1
+    - span.hox
+    - span.hoy
+    - span.hix
+    - span.hiy
+    - span.x2
+    - span.y2
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-subpath-plan Path
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+
+|? plan.spans.length < 1
+    Path()
+|? self-crossing
+    self-crossing
+??
+    offset-simple-plan(plan, distance, join-type, miter-limit)
+
+.. self-crossing = offset-self-crossing-plan(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-simple-plan
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+
+|? special
+    special
+|? convex
+    convex
+|? !raw.path.count
+    raw.path
+|? plan.is-convex && distance >= 0
+    raw.path
+??
+    trim-offset-plan(raw, plan, distance)
+
+.. special = offset-special-plan(plan, distance, join-type, miter-limit)
+.. convex = offset-convex-polygon-plan(plan, distance, join-type, miter-limit)
+.. raw = raw-offset-plan(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-convex-polygon-plan
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+
+=? if !plan.is-closed
+=? if !plan.is-convex
+=? if !plan.is-all-lines
+
+=? if distance < 0
+=? if join-type == .round-join-type
+
+. miter = offset-convex-polygon-miter-path(plan, distance)
+=? if !miter
+if !miter.count
+    = Path()
+
+if join-type == .miter-join-type && offset-convex-polygon-miter-limit-ok(plan, miter-limit)
+    = miter
+
+= offset-convex-polygon-corner-path(plan, distance, join-type)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-convex-polygon-miter-path
+    - plan OffsetPlan
+    - distance Length
+
+. result = Path()
+. count = plan.spans.length
+. normal-sign = offset-plan-normal-sign(plan)
+for i in 0 .. < count
+    . prev = plan.spans[(i + count - 1) % count]
+    . span = plan.spans[i]
+    . point = offset-plan-shifted-line-intersection(prev, span, distance, normal-sign)
+    =? if !point
+    if i == 0
+        result.move-to(point)
+    else
+        result.line-to(point)
+
+result.close()
+if result.is-clockwise != plan.is-clockwise
+    = Path()
+
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-convex-polygon-corner-path
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+
+. result = Path()
+. count = plan.spans.length
+. normal-sign = offset-plan-normal-sign(plan)
+for i in 0 .. < count
+    . previous-span = plan.spans[(i + count - 1) % count]
+    . span = plan.spans[i]
+    . pivot = Point(span.x1, span.y1)
+    . before-normal = offset-plan-span-unit-normal(previous-span, normal-sign)
+    . after-normal = offset-plan-span-unit-normal(span, normal-sign)
+    . extent =
+        |? join-type == .square-join-type
+            square-join-extent(before-normal, after-normal, distance)
+        ??
+            0.0
+    . before-point = pivot + before-normal * distance + before-tangent * extent
+        .. before-tangent = offset-plan-span-unit-tangent(previous-span)
+    . after-point = pivot + after-normal * distance - offset-plan-span-unit-tangent(span) * extent
+    if i == 0
+        result.move-to(before-point)
+    else
+        result.line-to(before-point)
+    result.line-to(after-point)
+
+result.close()
+= if result.is-clockwise == plan.is-clockwise then result else Path()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-convex-polygon-miter-limit-ok
+    - plan OffsetPlan
+    - miter-limit Length
+
+=? if miter-limit <= 1
+
+. count = plan.spans.length
+. normal-sign = offset-plan-normal-sign(plan)
+for i in 0 .. < count
+    . previous-span = plan.spans[(i + count - 1) % count]
+    . previous-normal = offset-plan-span-unit-normal(previous-span, normal-sign)
+    . next-normal = offset-plan-span-unit-normal(plan.spans[i], normal-sign)
+    . dot = previous-normal.dot(next-normal)
+    if dot > 0.999
+        continue
+    =? if dot < -0.999
+
+    . sin-half = sqrt(max(0.0, (1.0 + dot) / 2.0))
+    =? if sin-half <= 0
+    =? if sin-half < 1.0 / miter-limit
+
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-shifted-line-intersection
+    - previous-span OffsetPlanSpan
+    - next-span OffsetPlanSpan
+    - distance Length
+    - normal-sign Float
+
+intersect-lines()
+    - Point(previous-span.x1, previous-span.y1) + before-offset
+    - Point(previous-span.x2, previous-span.y2) + before-offset
+    - Point(next-span.x1, next-span.y1) + after-offset
+    - Point(next-span.x2, next-span.y2) + after-offset
+    - true
+
+.. before-normal = offset-plan-span-unit-normal(previous-span, normal-sign)
+.. after-normal = offset-plan-span-unit-normal(next-span, normal-sign)
+.. before-offset = before-normal * distance
+.. after-offset = after-normal * distance
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-span-unit-normal
+    - span OffsetPlanSpan
+    - normal-sign Float
+
+offset-unit-normal(offset-plan-span-unit-tangent(span), normal-sign)
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-span-unit-tangent
+    - span OffsetPlanSpan
+
+unit-vector(Point(span.x2 - span.x1, span.y2 - span.y1))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-self-crossing-plan
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+
+=? if !plan.is-closed
+=? if !plan.has-self-intersections
+
+. spans = offset-plan-span-ranges(plan)
+. first = first-offset-crossing(spans) • is closed
+=? if !first
+
+. result Path
+. saw-contour = false
+. crossing = first
+while true
+    . contour = offset-crossed-contour(plan.path, crossing, spans.length)
+    if contour.count
+        saw-contour = true
+        . offset = offset-simple-plan(OffsetPlan(contour), distance, join-type, miter-limit)
+        if offset.count
+            . oriented = if offset.is-clockwise then offset else offset.reverse()
+            if result.count
+                result.add-path(oriented)
+            else
+                result = oriented
+
+    . next = next-offset-crossing(crossing)
+    if next
+        crossing = next
+    else
+        break
+
+if saw-contour
+    = if result.count then result else Path()
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-span-ranges [CurveRangeScalars]
+    - plan OffsetPlan
+
+offset-plan-span-curve(each) in plan.spans
+
+━━━━━━━━━━━━━━━━━━━━
+_ do raw-offset-plan
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType
+    - miter-limit Length
+
+. first = plan.spans[0]
+. contour = OffsetContour()
+    - Point()
+        - first.x1
+        - first.y1
+    - distance
+    - join-type
+    - miter-limit
+    - offset-plan-normal-sign(plan)
+for span in plan.spans
+    if span.type == .segment-type-line || span.is-line-like
+        contour.line-to(Point(span.x2, span.y2))
+    else
+        contour.cubic-to()
+            - Point(span.hox, span.hoy)
+            - Point(span.hix, span.hiy)
+            - Point(span.x2, span.y2)
+
+= contour.finish-raw(plan.is-closed)
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-plan-normal-sign Float
+    - plan OffsetPlan
+
+|? plan.is-closed && !plan.is-clockwise
+    -1
+??
+    1
+
+━━━━━━━━━━━━━━━━━━━━
+_ OffsetCut is Tuple
+
++ t PointOnCurve
++ point Point
++ is-crossing Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ OffsetSample is Tuple
+
++ t PointOnCurve
++ is-valid Bool
++ cut Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ OffsetRun
+
++ start OffsetCut
++ end OffsetCut
++ next OffsetRun?
++ has-previous = false
++ visited = false
+
+────────────────────
++ This
+    - run-start OffsetCut
+    - run-end OffsetCut
+
+start = run-start
+end = run-end
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-origin-line
+    - start Point
+    - end Point
+
+CurveRangeScalars()
+    - .segment-type-line
+    - start.x
+    - start.y
+    - start.x
+    - start.y
+    - end.x
+    - end.y
+    - end.x
+    - end.y
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-source-spans
+    - curves [CurveRangeScalars]
+
+. spans [OffsetPlanSpan]
+for curve in curves
+    spans += OffsetPlanSpan()
+        - curve.type
+        - curve.x1
+        - curve.y1
+        - curve.hox
+        - curve.hoy
+        - curve.hix
+        - curve.hiy
+        - curve.x2
+        - curve.y2
+        - offset-span-min-x(curve)
+        - offset-span-min-y(curve)
+        - offset-span-max-x(curve)
+        - offset-span-max-y(curve)
+        - curve.type == .segment-type-line
+
+= spans
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trim-offset-plan
+    - raw OffsetRawPath
+    - plan OffsetPlan
+    - distance Length
+
+if raw.spans.length < 1 || abs(distance) <= offset-path-teeny
+    = raw.path
+
+. normal-sign = offset-plan-normal-sign(plan)
+. cuts = offset-trim-cuts(raw, plan, distance)
+. samples = offset-trim-samples(raw, cuts, distance, normal-sign)
+. valid-count Size
+for sample in samples
+    if sample.is-valid
+        valid-count += 1
+
+if valid-count == samples.length
+    = raw.path
+if !valid-count
+    = Path()
+
+. runs = offset-trim-runs(raw, cuts, samples, distance, normal-sign, plan.is-closed)
+link-offset-runs(runs, offset-path-teeny)
+link-offset-runs(runs, offset-trim-snap)
+
+. result = Path()
+for run in runs
+    if !run.has-previous
+        append-offset-chain(result, raw.spans, run, plan.is-closed)
+for run in runs
+    if !run.visited
+        append-offset-chain(result, raw.spans, run, plan.is-closed)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-trim-cuts
+    - raw OffsetRawPath
+    - plan OffsetPlan
+    - distance Length
+
+. spans = raw.spans
+. count = spans.length
+. bounds = offset-span-bounds(spans)
+. cuts [OffsetCut]
+for i in 0 .. < count + 1
+    cuts += OffsetCut(i as Float, offset-spans-point-at(spans, i as Float), false)
+
+for i in 0 .. < count
+    . c1 = spans[i]
+    for j in i + 1 .. < count
+        if offset-curves-are-adjacent(i, j, count) • is-closed plan.is-closed
+            continue
+        if !offset-bounds-overlap(bounds[i], bounds[j])
+            continue
+
+        . hits [CurveIntersection]
+        append-offset-span-intersections(hits, c1, spans[j], i, j)
+        for hit in hits
+            . t1 = offset-clamped-span-parameter(hit.t1, i)
+            . point = offset-span-point(c1, t1 - i)
+            cuts += OffsetCut(t1, point, true)
+            cuts += OffsetCut(offset-clamped-span-parameter(hit.t2, j), point, true)
+
+if !plan.is-closed
+    . envelope = offset-trim-envelope(raw, plan, distance)
+    . envelope-bounds = offset-span-bounds(envelope)
+    for i in 0 .. < count
+        . c1 = spans[i]
+        for j in 0 .. < envelope.length
+            if !offset-bounds-overlap(bounds[i], envelope-bounds[j])
+                continue
+
+            . hits [CurveIntersection]
+            append-offset-span-intersections(hits, c1, envelope[j], i, j)
+            for hit in hits
+                . t1 = offset-clamped-span-parameter(hit.t1, i)
+                cuts += OffsetCut(t1, offset-span-point(c1, t1 - i), true)
+
+= sort(cuts) • using :: a, b => if a.t < b.t then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-clamped-span-parameter PointOnCurve
+    - t PointOnCurve
+    - curve-index Index
+
+min(max(t, curve-index as Float), (curve-index + 1) as Float)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-trim-envelope
+    - raw OffsetRawPath
+    - plan OffsetPlan
+    - distance Length
+
+. spans [CurveRangeScalars]
+for span in raw-offset-plan(plan, -distance, .round-join-type, 1).spans
+    spans += span
+
+if raw.sources.length
+    . first = raw.sources[0]
+    . last = raw.sources[raw.sources.length - 1]
+    append-offset-cap-spans(spans, Point(first.x1, first.y1), abs(distance))
+    append-offset-cap-spans(spans, Point(last.x2, last.y2), abs(distance))
+
+= spans
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-cap-spans
+    - spans [CurveRangeScalars]
+    - center Point
+    - radius Length
+
+. writer = OffsetPathWriter()
+writer.collect-spans = true
+writer.line-to(center + Point(radius, 0))
+writer.arc(center, radius, 0, π * 2, false)
+for span in writer.spans
+    spans += span
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-span-bounds
+    - spans [CurveRangeScalars]
+
+. bounds [RectScalars]
+for span in spans
+    bounds += RectScalars()
+        - offset-span-min-x(span)
+        - offset-span-min-y(span)
+        - offset-span-max-x(span)
+        - offset-span-max-y(span)
+
+= bounds
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-bounds-overlap
+    - a RectScalars
+    - b RectScalars
+
+|? a.max-x < b.min-x - offset-cleanup-tolerance
+    false
+|? b.max-x < a.min-x - offset-cleanup-tolerance
+    false
+|? a.max-y < b.min-y - offset-cleanup-tolerance
+    false
+|? b.max-y < a.min-y - offset-cleanup-tolerance
+    false
+??
+    true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-trim-samples
+    - raw OffsetRawPath
+    - cuts [OffsetCut]
+    - distance Length
+    - normal-sign Float
+
+. samples [OffsetSample]
+for index in 0 .. < cuts.length - 1
+    . a = cuts[index].t
+    . b = cuts[index + 1].t
+    if b - a <= offset-trim-epsilon
+        continue
+
+    . t = (a + b) * 0.5
+    samples += OffsetSample(t, offset-raw-point-is-valid(raw, t, distance, normal-sign), index)
+
+= samples
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-raw-point-is-valid
+    - raw OffsetRawPath
+    - t PointOnCurve
+    - distance Length
+    - normal-sign Float
+
+. count = raw.spans.length
+. i = floor(t) as Index
+if i >= count
+    i = count - 1
+
+. local = t - i
+. origin = raw.origins[i]
+. radius = abs(distance)
+. reach Length = radius
+. point Point
+if origin.type == .segment-type-cubic
+    point = offset-cubic-point()
+        - Point(origin.x1, origin.y1)
+        - Point(origin.hox, origin.hoy)
+        - Point(origin.hix, origin.hiy)
+        - Point(origin.x2, origin.y2)
+        - local
+        - distance
+        - normal-sign
+else
+    point = offset-span-point(raw.spans[i], local)
+    . foot = segment-foot(point, Point(origin.x1, origin.y1), Point(origin.x2, origin.y2))
+    . extent = point.distance(foot)
+    if extent > radius + offset-trim-slack(radius) && offset-sources-cross(raw.sources, foot, point)
+        = false
+    reach = min(radius, extent)
+
+= !offset-sources-reach(raw.sources, point, reach - offset-trim-slack(radius))
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-trim-slack Length
+    - radius Length
+
+max(0.0000001, radius * 0.0000001)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-sources-reach
+    - sources [OffsetPlanSpan]
+    - point Point
+    - reach Length
+
+=? false if reach <= 0
+
+for span in sources
+    . dx = max(max(span.min-x - point.x, point.x - span.max-x), 0.0)
+    . dy = max(max(span.min-y - point.y, point.y - span.max-y), 0.0)
+    if dx * dx + dy * dy >= reach * reach
+        continue
+
+    if span.is-line-like
+        . start = Point(span.x1, span.y1)
+        . end = Point(span.x2, span.y2)
+        =? true if point-segment-distance(point, start, end) < reach
+    else
+        =? true if offset-cubic-reaches(point, offset-plan-span-curve(span), reach, 0)
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-sources-cross
+    - sources [OffsetPlanSpan]
+    - from Point
+    - to Point
+
+for span in sources
+    if span.max-x < min(from.x, to.x) || span.min-x > max(from.x, to.x)
+        continue
+    if span.max-y < min(from.y, to.y) || span.min-y > max(from.y, to.y)
+        continue
+
+    if span.is-line-like
+        =? true if offset-segments-cross(from, to, Point(span.x1, span.y1), Point(span.x2, span.y2))
+    else
+        =? true if offset-cubic-crosses(from, to, offset-plan-span-curve(span), 0)
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-segments-cross
+    - from Point
+    - to Point
+    - start Point
+    - end Point
+
+hit.hit && hit.t1 > offset-trim-epsilon
+
+.. hit = line-line-intersection-scalars(from.x, from.y, to.x, to.y, start.x, start.y, end.x, end.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-cubic-crosses Bool
+    - from Point
+    - to Point
+    - curve CurveRangeScalars
+    - depth Int
+
+|? offset-span-max-x(curve) < min(from.x, to.x)
+    false
+|? offset-span-min-x(curve) > max(from.x, to.x)
+    false
+|? offset-span-max-y(curve) < min(from.y, to.y)
+    false
+|? offset-span-min-y(curve) > max(from.y, to.y)
+    false
+|? bulge <= offset-cleanup-tolerance || depth >= 16
+    offset-segments-cross(from, to, p0, p3)
+??
+    offset-cubic-crosses(from, to, split.left, depth + 1) || right-crosses
+
+.. p0 = Point(curve.x1, curve.y1)
+.. right-crosses = offset-cubic-crosses(from, to, split.right, depth + 1)
+.. p3 = Point(curve.x2, curve.y2)
+.. p1 = Point(curve.hox, curve.hoy)
+.. p2 = Point(curve.hix, curve.hiy)
+.. bulge = max(point-segment-distance(p1, p0, p3), point-segment-distance(p2, p0, p3))
+.. split = cubic-subdivide-scalars()
+    - curve.x1
+    - curve.y1
+    - curve.hox
+    - curve.hoy
+    - curve.hix
+    - curve.hiy
+    - curve.x2
+    - curve.y2
+    - 0.5
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-cubic-reaches Bool
+    - point Point
+    - curve CurveRangeScalars
+    - reach Length
+    - depth Int
+
+|? point.distance(p0) < reach || point.distance(p3) < reach
+    true
+|? chord - bulge >= reach
+    false
+|? bulge <= offset-trim-flatness || depth >= 12
+    chord + bulge < reach || offset-flat-cubic-distance(point, curve) < reach
+??
+    offset-cubic-reaches(point, split.left, reach, depth + 1) || right-reaches
+
+.. p0 = Point(curve.x1, curve.y1)
+.. right-reaches = offset-cubic-reaches(point, split.right, reach, depth + 1)
+.. p1 = Point(curve.hox, curve.hoy)
+.. p2 = Point(curve.hix, curve.hiy)
+.. p3 = Point(curve.x2, curve.y2)
+.. chord = point-segment-distance(point, p0, p3)
+.. bulge = max(point-segment-distance(p1, p0, p3), point-segment-distance(p2, p0, p3))
+.. split = cubic-subdivide-scalars()
+    - curve.x1
+    - curve.y1
+    - curve.hox
+    - curve.hoy
+    - curve.hix
+    - curve.hiy
+    - curve.x2
+    - curve.y2
+    - 0.5
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-flat-cubic-distance Length
+    - point Point
+    - curve CurveRangeScalars
+
+. cx = cubic-coefficients-1d(curve.x1, curve.hox, curve.hix, curve.x2)
+. cy = cubic-coefficients-1d(curve.y1, curve.hoy, curve.hiy, curve.y2)
+. span-x = curve.x2 - curve.x1
+. span-y = curve.y2 - curve.y1
+. length2 = span-x * span-x + span-y * span-y
+. t PointOnCurve = 0.5
+if length2 > offset-path-teeny
+    . along = (point.x - curve.x1) * span-x + (point.y - curve.y1) * span-y
+    t = max(0.0, min(1.0, along / length2))
+
+. first-x = cubic-evaluate-1d(cx.a, cx.b, cx.c, curve.x1, t)
+. first-y = cubic-evaluate-1d(cy.a, cy.b, cy.c, curve.y1, t)
+. first = point.distance(Point(first-x, first-y))
+for step in 0 .. < 8
+    . dx = cubic-evaluate-1d(cx.a, cx.b, cx.c, curve.x1, t) - point.x
+    . dy = cubic-evaluate-1d(cy.a, cy.b, cy.c, curve.y1, t) - point.y
+    . vx = cubic-derivative-1d(cx.a, cx.b, cx.c, t)
+    . vy = cubic-derivative-1d(cy.a, cy.b, cy.c, t)
+    . ax = 6.0 * cx.a * t + 2.0 * cx.b
+    . ay = 6.0 * cy.a * t + 2.0 * cy.b
+    . slope = vx * vx + vy * vy + dx * ax + dy * ay
+    if abs(slope) <= offset-path-teeny
+        break
+
+    . next = max(0.0, min(1.0, t - (dx * vx + dy * vy) / slope))
+    . settled = abs(next - t) <= offset-trim-epsilon
+    t = next
+    if settled
+        break
+
+. x = cubic-evaluate-1d(cx.a, cx.b, cx.c, curve.x1, t)
+. y = cubic-evaluate-1d(cy.a, cy.b, cy.c, curve.y1, t)
+= min(first, point.distance(Point(x, y)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-trim-runs
+    - raw OffsetRawPath
+    - cuts [OffsetCut]
+    - samples [OffsetSample]
+    - distance Length
+    - normal-sign Float
+    - is-closed Bool
+
+. runs [OffsetRun]
+. count = samples.length
+. first Index = 0
+if is-closed
+    while samples[first].is-valid
+        first += 1
+
+. was-valid = false
+. run-start = cuts[0]
+for step in 0 .. < count
+    . index = (first + step) % count
+    . sample = samples[index]
+    if sample.is-valid == was-valid
+        continue
+
+    . edge = cuts[0]
+    if step > 0
+        edge = offset-trim-transition()
+            - raw
+            - cuts
+            - samples[(index + count - 1) % count]
+            - sample
+            - distance
+            - normal-sign
+    if sample.is-valid
+        run-start = edge
+    else
+        append-offset-run(runs, run-start, edge)
+    was-valid = sample.is-valid
+
+if was-valid && is-closed
+    append-offset-run()
+        - runs
+        - run-start
+        - offset-trim-transition()
+            - raw
+            - cuts
+            - samples[(first + count - 1) % count]
+            - samples[first]
+            - distance
+            - normal-sign
+else if was-valid
+    append-offset-run(runs, run-start, cuts[cuts.length - 1])
+
+= runs
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-run
+    - runs [OffsetRun]
+    - start OffsetCut
+    - end OffsetCut
+
+if abs(end.t - start.t) > offset-trim-epsilon
+    runs += OffsetRun(start, end)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-trim-transition
+    - raw OffsetRawPath
+    - cuts [OffsetCut]
+    - before OffsetSample
+    - after OffsetSample
+    - distance Length
+    - normal-sign Float
+
+. index = before.cut + 1
+while true
+    . cut = cuts[index]
+    =? cut if cut.is-crossing
+    if index == after.cut
+        break
+    index += 1
+    if index >= cuts.length
+        index = 0
+
+. count = raw.spans.length as Float
+. low = before.t
+. high = if after.t > before.t then after.t else after.t + count
+for step in 0 .. < 48
+    . middle = (low + high) * 0.5
+    . t = if middle < count then middle else middle - count
+    if offset-raw-point-is-valid(raw, t, distance, normal-sign) == before.is-valid
+        low = middle
+    else
+        high = middle
+
+. edge = if before.is-valid then low else high
+if edge >= count && after.t < before.t
+    edge -= count
+
+. point = offset-spans-point-at(raw.spans, edge)
+. lower = cuts[before.cut]
+. upper = cuts[after.cut + 1]
+|? lower.is-crossing && lower.point.distance(point) < offset-trim-snap
+    = lower
+|? upper.is-crossing && upper.point.distance(point) < offset-trim-snap
+    = upper
+??
+    = OffsetCut(edge, point, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do link-offset-runs
+    - runs [OffsetRun]
+    - tolerance Length
+
+for run in runs
+    if run.next
+        continue
+
+    . best OffsetRun?
+    . best-gap = tolerance
+    for candidate in runs
+        if candidate.has-previous
+            continue
+        . gap = run.end.point.distance(candidate.start.point)
+        if gap <= best-gap
+            best = candidate
+            best-gap = gap
+
+    if best
+        run.next = best
+        best.has-previous = true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-chain
+    - target Path
+    - spans [CurveRangeScalars]
+    - first OffsetRun
+    - is-closed Bool
+
+target.move-to(first.start.point)
+. run = first
+. loops = false
+while true
+    run.visited = true
+    . next = run.next
+    loops = next == first
+    append-offset-run-spans(target, spans, run, loops)
+    if !next || loops || next.visited
+        break
+
+    if run.end.point.distance(next.start.point) > offset-path-teeny
+        target.line-to(next.start.point)
+    run = next
+
+if loops || is-closed
+    target.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-run-spans
+    - target Path
+    - spans [CurveRangeScalars]
+    - run OffsetRun
+    - closes Bool
+
+. count = spans.length as Float
+if run.end.t > run.start.t
+    append-offset-span-range(target, spans, run.start.t, run.end.t, run.end.point, closes)
+else
+    append-offset-span-range()
+        - target
+        - spans
+        - run.start.t
+        - count
+        - offset-spans-point-at(spans, count)
+        - false
+    append-offset-span-range(target, spans, 0, run.end.t, run.end.point, closes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-span-range
+    - target Path
+    - spans [CurveRangeScalars]
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+    - end Point
+    - closes Bool
+
+=? if t2 <= t1 + offset-trim-epsilon
+
+. count = spans.length
+. start-curve = floor(t1) as Index
+. end-curve = floor(t2) as Index
+. local1 = t1 - start-curve
+. local2 = t2 - end-curve
+if end-curve >= count
+    end-curve = count - 1
+    local2 = 1
+else if local2 <= offset-trim-epsilon
+    end-curve -= 1
+    local2 = 1
+
+for i in start-curve .. < end-curve + 1
+    . a = if i == start-curve then local1 else 0
+    . b = if i == end-curve then local2 else 1
+    if b <= a + offset-trim-epsilon
+        continue
+
+    . span = spans[i]
+    if span.type == .segment-type-line
+        if i != end-curve
+            target.line-to(span.x1 + (span.x2 - span.x1) * b, span.y1 + (span.y2 - span.y1) * b)
+        else if !closes
+            target.line-to(end)
+    else
+        . piece = cubic-range-scalars()
+            - span.x1
+            - span.y1
+            - span.hox
+            - span.hoy
+            - span.hix
+            - span.hiy
+            - span.x2
+            - span.y2
+            - a
+            - b
+        if i != end-curve
+            target.cubic-curve-to(piece.hox, piece.hoy, piece.hix, piece.hiy, piece.x2, piece.y2)
+        else
+            target.cubic-curve-to(piece.hox, piece.hoy, piece.hix, piece.hiy, end.x, end.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-crossed-contour
+    - raw Path
+    - crossing OffsetCrossing
+    - span-count Size
+
+. contour Path
+. start = crossing
+if !crossing.visited
+    while true
+        crossing.visited = true
+        . next = crossing.next
+        if !next
+            break
+
+        append-offset-raw-range(contour, raw, crossing.i + crossing.t, next.i + next.t, span-count)
+        crossing = next.counter!
+        if crossing == start
+            break
+
+if contour.count
+    contour.close()
+
+= contour
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-raw-range
+    - target Path
+    - raw Path
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+    - span-count Size
+
+=? if t1 == t2
+
+if t1 > t2
+    append-offset-raw-range-forward(target, raw, t1, span-count as Float, span-count)
+    append-offset-raw-range-forward(target, raw, 0, t2, span-count)
+else
+    append-offset-raw-range-forward(target, raw, t1, t2, span-count)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-raw-range-forward
+    - target Path
+    - raw Path
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+    - span-count Size
+
+=? if t2 <= t1 + offset-path-teeny
+
+. start-curve = floor(t1) as Index
+. end-curve = floor(t2) as Index
+. local1 = t1 - start-curve
+. local2 = t2 - end-curve
+if end-curve >= span-count
+    end-curve = span-count - 1
+    local2 = 1
+else if local2 <= offset-path-teeny && t2 > t1
+    end-curve -= 1
+    local2 = 1
+
+for i in start-curve .. < end-curve + 1
+    . a = if i == start-curve then local1 else 0
+    . b = if i == end-curve then local2 else 1
+    if b <= a + offset-path-teeny
+        continue
+    target.add-curve-range(raw, i, a, b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first-offset-crossing
+    - spans [CurveRangeScalars]
+    - is-closed Bool
+
+. crossings [OffsetCrossing]
+. count = spans.length
+for i in 0 .. < count
+    . c1 = spans[i]
+    for j in i + 1 .. < count
+        . c2 = spans[j]
+        . both-lines = offset-span-is-line(c1) && offset-span-is-line(c2)
+        if both-lines && offset-curves-are-adjacent(i, j, count, is-closed)
+            continue
+        if !offset-raw-span-bounds-overlap(c1, c2)
+            continue
+
+        . hits [CurveIntersection]
+        append-offset-span-intersections(hits, c1, c2, i, j)
+        for hit in hits
+            if offset-is-endpoint-hit(hit.t1, i) || offset-is-endpoint-hit(hit.t2, j)
+                continue
+
+            . local1 = hit.t1 - i
+            . local2 = hit.t2 - j
+            . pt = offset-span-point(c1, local1)
+            . a = OffsetCrossing(i, local1, pt)
+            . b = OffsetCrossing(j, local2, pt)
+            a.counter = b
+            b.counter = a
+            crossings += a
+            crossings += b
+
+=? if !crossings
+
+crossings = sort(crossings) • using :: a, b => if (a.i + a.t) < (b.i + b.t) then .lesser else .greater
+
+. prev OffsetCrossing?
+for crossing in crossings
+    prev?.next = crossing
+    crossing.previous = prev
+    prev = crossing
+
+. first = crossings[0]
+first.previous = prev
+prev?.next = first
+= first
+
+━━━━━━━━━━━━━━━━━━━━
+_ do next-offset-crossing
+    - first OffsetCrossing
+
+. crossing = first
+while true
+    if !crossing.visited
+        = crossing
+    crossing = crossing.next!
+    if crossing == first
+        break
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-point
+    - span CurveRangeScalars
+    - t PointOnCurve
+
+|? span.type == .segment-type-line
+    Point(span.x1 + (span.x2 - span.x1) * t, span.y1 + (span.y2 - span.y1) * t)
+??
+    cubic-point()
+        - Point()
+            - span.x1
+            - span.y1
+        - Point()
+            - span.hox
+            - span.hoy
+        - Point()
+            - span.hix
+            - span.hiy
+        - Point()
+            - span.x2
+            - span.y2
+        - t
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-raw-span-bounds-overlap
+    - a CurveRangeScalars
+    - b CurveRangeScalars
+
+!(a-left-of-b || b-left-of-a || a-above-b || b-above-a)
+
+.. a-left-of-b = offset-span-max-x(a) < offset-span-min-x(b) - offset-cleanup-tolerance
+.. b-left-of-a = offset-span-max-x(b) < offset-span-min-x(a) - offset-cleanup-tolerance
+.. a-above-b = offset-span-max-y(a) < offset-span-min-y(b) - offset-cleanup-tolerance
+.. b-above-a = offset-span-max-y(b) < offset-span-min-y(a) - offset-cleanup-tolerance
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-min-x
+    - span CurveRangeScalars
+
+min(min(span.x1, span.hox), min(span.hix, span.x2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-max-x
+    - span CurveRangeScalars
+
+max(max(span.x1, span.hox), max(span.hix, span.x2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-min-y
+    - span CurveRangeScalars
+
+min(min(span.y1, span.hoy), min(span.hiy, span.y2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-max-y
+    - span CurveRangeScalars
+
+max(max(span.y1, span.hoy), max(span.hiy, span.y2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-span-is-line
+    - span CurveRangeScalars
+
+|? span.type == .segment-type-line
+    true
+??
+    line-like-scalars()
+        - span.x1
+        - span.y1
+        - span.hox
+        - span.hoy
+        - span.hix
+        - span.hiy
+        - span.x2
+        - span.y2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-span-intersections
+    - hits [CurveIntersection]
+    - c1 CurveRangeScalars
+    - c2 CurveRangeScalars
+    - i Index
+    - j Index
+
+. line1 = offset-span-is-line(c1)
+. line2 = offset-span-is-line(c2)
+if line1 && line2
+    intersect-line-line-scalars()
+        - hits
+        - c1.x1
+        - c1.y1
+        - c1.x2
+        - c1.y2
+        - c2.x1
+        - c2.y1
+        - c2.x2
+        - c2.y2
+        - i
+        - j
+        - null
+        - null
+else if line1
+    intersect-line-curve-scalars()
+        - hits
+        - c1.x1
+        - c1.y1
+        - c1.x2
+        - c1.y2
+        - c2.x1
+        - c2.y1
+        - c2.hox
+        - c2.hoy
+        - c2.hix
+        - c2.hiy
+        - c2.x2
+        - c2.y2
+        - i
+        - j
+        - null
+        - null
+else if line2
+    intersect-curve-line-scalars()
+        - hits
+        - c1.x1
+        - c1.y1
+        - c1.hox
+        - c1.hoy
+        - c1.hix
+        - c1.hiy
+        - c1.x2
+        - c1.y2
+        - c2.x1
+        - c2.y1
+        - c2.x2
+        - c2.y2
+        - i
+        - j
+        - null
+        - null
+else
+    . curve1 = Curve((c1.x1, c1.y1), (c1.hox, c1.hoy), (c1.hix, c1.hiy), (c1.x2, c1.y2), c1.type)
+    . curve2 = Curve((c2.x1, c2.y1), (c2.hox, c2.hoy), (c2.hix, c2.hiy), (c2.x2, c2.y2), c2.type)
+    intersect-curves(hits, curve1, curve2, 0, i, j, null, null)
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-spans-point-at
+    - spans [CurveRangeScalars]
+    - t PointOnCurve
+
+|? t <= 0
+    offset-span-point(spans[0], 0)
+|? t >= count
+    offset-span-point(spans[count - 1], 1)
+??
+    offset-span-point(spans[i], t - i)
+
+.. count = spans.length
+.. i = floor(t) as Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-curves-are-adjacent
+    - i Index
+    - j Index
+    - count Size
+    - is-closed Bool
+
+|? j == i + 1
+    true
+??
+    is-closed && i == 0 && j == count - 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-is-endpoint-hit
+    - t PointOnCurve
+    - curve-index Index
+
+local <= offset-cleanup-tolerance || local >= 1 - offset-cleanup-tolerance
+
+.. local = t - curve-index
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-special-plan
+    - plan OffsetPlan
+    - distance Float
+    - join-type JoinType
+    - miter-limit Length
+
+if plan.is-closed
+    . rect = axis-rect-plan(plan)
+    if rect && (distance < 0 || (join-type == .miter-join-type && miter-ok))
+        . expanded = rect.inflate(distance * 2, distance * 2)
+        if expanded.width <= 0 || expanded.height <= 0
+            = Path()
+        = rectangle(expanded)
+    .. miter-ok = offset-convex-polygon-miter-limit-ok(plan, miter-limit)
+else
+    = straight-line-offset(plan.path, distance)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do axis-rect-plan
+    - plan OffsetPlan
+
+=? if !plan.is-closed
+=? if !plan.is-all-lines
+=? if plan.spans.length != 4
+
+. bbox = plan.bounds
+. has-top-left = false
+. has-top-right = false
+. has-bottom-right = false
+. has-bottom-left = false
+
+for span in plan.spans
+    =? if !axis-rect-segment-xy(span.x1, span.y1, span.x2, span.y2)
+
+    if near-corner-xy(span.x1, span.y1, bbox.left, bbox.top)
+        has-top-left = true
+    else if near-corner-xy(span.x1, span.y1, bbox.right, bbox.top)
+        has-top-right = true
+    else if near-corner-xy(span.x1, span.y1, bbox.right, bbox.bottom)
+        has-bottom-right = true
+    else if near-corner-xy(span.x1, span.y1, bbox.left, bbox.bottom)
+        has-bottom-left = true
+    else
+        =
+=? if !has-top-left
+=? if !has-top-right
+=? if !has-bottom-right
+=? if !has-bottom-left
+
+= bbox

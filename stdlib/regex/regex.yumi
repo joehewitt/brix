@@ -1,0 +1,313 @@
+/YuRegex/YuRegex.h
+
+━━━━━━━━━━━━━━━━━━━━
++ RegexErrorKind is Union
+
+| pattern
+| template
+| limit
+| match
+
+━━━━━━━━━━━━━━━━━━━━
++ RegexError is Error
+
++ kind RegexErrorKind
++ offset Size?
+
+────────────────────
++ This
+    - kind
+    - reason String
+    - offset Size?
+
+message = reason
+
+━━━━━━━━━━━━━━━━━━━━
++ RegexSpan is Tuple
+
++ start Size
++ end Size
+
+━━━━━━━━━━━━━━━━━━━━
++ Regex
+
++ pattern String
++ ignores-case Bool
++ is-multiline Bool
++ dot-matches-newline Bool
++ group-count Size
+
+_ flags U32
+
+────────────────────
++ This ?! RegexError
+    - pattern
+    - ignores-case = false
+    - is-multiline = false
+    - dot-matches-newline = false
+
+flags = regex-flags(ignores-case, is-multiline, dot-matches-newline)
+. error I32
+. offset U32
+. count = C:yumiRegexCompile(pattern, pattern.size, flags, &error, &offset)
+?! RegexError(RegexErrorKind.pattern, regex-message(error), offset as Size)
+    if count < 0
+group-count = count as Size
+
+────────────────────
++ do matches Bool ?! RegexError
+    - text String
+
+. none = U32[0]
+. count = C:yumiRegexFind(pattern, pattern.size, flags, text, text.size, 0, 1, none, 0)
+regex-check(count)
+= count > 0
+
+────────────────────
++ do find RegexMatch? ?! RegexError
+    - text String
+    - from = 0
+
+. bounds = U32[stride]
+. count = C:yumiRegexFind
+    - pattern
+    - pattern.size
+    - flags
+    - text
+    - text.size
+    - from
+    - 1
+    - bounds
+    - bounds.size
+regex-check(count)
+=? null if count == 0
+= RegexMatch(this, text, bounds, 0)
+
+────────────────────
++ do find-all [RegexMatch] ?! RegexError
+    - text String
+
+. bounds = U32[stride * 16]
+. count = C:yumiRegexFind(pattern, pattern.size, flags, text, text.size, 0, 0, bounds, bounds.size)
+regex-check(count)
+if (count as Size) * stride > bounds.size
+    bounds = U32[(count as Size) * stride]
+    count = C:yumiRegexFind
+        - pattern
+        - pattern.size
+        - flags
+        - text
+        - text.size
+        - 0
+        - 0
+        - bounds
+        - bounds.size
+    regex-check(count)
+. total = count as Size
+. found [RegexMatch]
+for index in 0 .. < total
+    found += RegexMatch(this, text, bounds, index * stride)
+= found
+
+────────────────────
++ replace String ?! RegexError
+    - text String
+    - template String
+    - is-global = true
+
+substitute(text, template, 0, if is-global then 1 else 0)
+
+────────────────────
++ expand String ?! RegexError
+    - text String
+    - template String
+    - from = 0
+
+substitute(text, template, from, 2)
+
+────────────────────
++ do split [String] ?! RegexError
+    - text String
+
+. pieces [String]
+. last Size = 0
+for found in find-all(text)
+    pieces += text[last .. < found.start]
+    last = found.end
+pieces += text[last .. < text.length]
+= pieces
+
+────────────────────
++ group-number Size?
+    - name String
+
+if number < 0 then null else number as Size
+
+.. number = C:yumiRegexGroupNumber(pattern, pattern.size, flags, name, name.size)
+
+────────────────────
+_ get stride Size
+
+(group-count + 1) * 2
+
+────────────────────
+_ do substitute String ?! RegexError
+    - text String
+    - template String
+    - from Size
+    - mode U32
+
+. output = Byte[text.size + template.size + 16]
+. length U32
+. offset I32
+. status = C:yumiRegexReplace
+    - pattern
+    - pattern.size
+    - flags
+    - text
+    - text.size
+    - from
+    - template
+    - template.size
+    - mode
+    - output
+    - output.size
+    - &length
+    - &offset
+if status >= 0 && length > output.size
+    output = Byte[length]
+    status = C:yumiRegexReplace
+        - pattern
+        - pattern.size
+        - flags
+        - text
+        - text.size
+        - from
+        - template
+        - template.size
+        - mode
+        - output
+        - output.size
+        - &length
+        - &offset
+?! regex-failure(status, offset)
+    if status < 0
+= output.slice-string(0 .. < length)
+
+━━━━━━━━━━━━━━━━━━━━
++ RegexMatch
+
++ regex Regex
++ text String
+
+_ bounds U32[]
+_ base Size
+
+────────────────────
++ This
+    - regex
+    - text
+    - bounds
+    - base
+
+────────────────────
++ get start Size
+
+bounds[base]
+
+────────────────────
++ get end Size
+
+bounds[base + 1]
+
+────────────────────
++ get value String
+
+text[start .. < end]
+
+────────────────────
++ span RegexSpan?
+    - index Size
+
+|? index > regex.group-count || first == U32.max
+    null
+??
+    RegexSpan(first as Size, bounds[base + index * 2 + 1] as Size)
+
+.. first = bounds[base + index * 2]
+
+────────────────────
++ group String?
+    - index Size
+
+text[found.start .. < found.end] if found
+
+.. found = span(index)
+
+────────────────────
++ named String?
+    - name String
+
+group(index) if index != null
+
+.. index = regex.group-number(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ do regex-escape String
+    - text String
+
+. source = text as Byte[]
+. output = Byte[source.size * 2]
+. cursor Size = 0
+for byte in source
+    if is-regex-special(byte)
+        output[cursor] = 92
+        cursor += 1
+    output[cursor] = byte
+    cursor += 1
+= output.slice-string(0 .. < cursor)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-regex-special Bool
+    - byte Byte
+
+is-operator || (byte >= 91 && byte <= 94) || (byte >= 123 && byte <= 125)
+
+.. is-operator = byte == 36 || byte == 46 || byte == 63 || (byte >= 40 && byte <= 43)
+
+━━━━━━━━━━━━━━━━━━━━
+_ regex-flags U32
+    - ignores-case Bool
+    - is-multiline Bool
+    - dot-matches-newline Bool
+
+((if ignores-case then 1 else 0) + (if is-multiline then 2 else 0) + (if dot-matches-newline then 4 else 0)) as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ do regex-check ?! RegexError
+    - status I32
+
+?! regex-failure(status, -1)
+    if status < 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ regex-failure RegexError
+    - status I32
+    - offset I32
+
+|? offset >= 0
+    RegexError(RegexErrorKind.template, reason, offset as Size)
+|? C:yumiRegexIsLimitError(status)
+    RegexError(RegexErrorKind.limit, reason, null)
+??
+    RegexError(RegexErrorKind.match, reason, null)
+
+.. reason = regex-message(status)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do regex-message String
+    - status I32
+
+. buffer = Byte[256]
+. length = C:yumiRegexErrorMessage(status, buffer, buffer.size)
+= buffer.slice-string(0 .. < length)

@@ -1,0 +1,122 @@
+/graphics/crossings
+/graphics/network
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/tests/support/geometry
+/math
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Path Nearest Point")
+
+true, near-point((5, 0), path-nearest(line((0, 0), (10, 0)), (5, 3))!.point)
+true, near(3, path-nearest(line((0, 0), (10, 0)), (5, 3))!.distance)
+true, near(0.5, path-nearest(line((0, 0), (10, 0)), (5, 3))!.parameter)
+true, near-point((10, 0), path-nearest(line((0, 0), (10, 0)), (14, 0))!.point)
+true, path-nearest(line((0, 0), (10, 0)), (5, 3), 2) == null
+true, near-point((10, 4), path-nearest(box(), (12, 4))!.point)
+true, near(1.4, path-nearest(box(), (12, 4))!.parameter)
+true, near(14, box().get-length-at-parameter(path-nearest(box(), (12, 4))!.parameter))
+true, near(34, box().get-length-at-parameter(path-nearest(box(), (-3, 6))!.parameter))
+
+════════════════════
+test("Path Nearest Point Inside A Curve")
+
+true, near-point((26, 22), path-nearest(circle((10, 10), 20), (28.4, 23.8))!.point, 0.02)
+true, near(3, path-nearest(circle((10, 10), 20), (28.4, 23.8))!.distance, 0.02)
+true, near-point((26, 22), path-nearest(circle((10, 10), 20), (22, 19))!.point, 0.02)
+true, near-point((26, 22), path-nearest(circle((10, 10), 20), (1010, 760))!.point, 0.02)
+true, near(1230, path-nearest(circle((10, 10), 20), (1010, 760))!.distance, 0.02)
+true, nearest-agrees(ellipse((120, 315), Dimensions(20, 15)), (143, 322))
+true, nearest-agrees(ellipse((120, 315), Dimensions(20, 15)), (125, 318))
+true, nearest-agrees(ellipse((120, 315), Dimensions(20, 15)), (1043, 797))
+true, nearest-agrees(ellipse((120, 315), Dimensions(20, 15)), (-600, 40))
+true, nearest-agrees(ellipse((120, 315), Dimensions(200, 3)), (150, 330))
+true, nearest-agrees(circle((10, 10), 0.05), (12, 14))
+true, nearest-agrees(swerve(), (60, 10))
+true, nearest-agrees(swerve(), (20, 45))
+true, nearest-agrees(swerve(), (900, -700))
+true, path-nearest(circle((10, 10), 20), (1010, 760), 100) == null
+
+════════════════════
+test("Path Point Along A Line")
+
+true, near-point((10, 4), box().get-point-at-distance(14))
+true, near-point((0, 6), box().get-point-at-distance(34))
+true, near-point((2.92893, 2.92893), disc().get-point-at-distance(disc().length / 8), 0.01)
+true, near-point((20, 10), path-nearest(disc(), (30, 10))!.point, 0.001)
+
+════════════════════
+test("Path Intersection Order")
+
+0, path-crossings(line((0, 0), (10, 0)), line((0, 5), (10, 5))).length
+1, path-crossings(line((0, 0), (10, 10)), line((0, 10), (10, 0))).length
+true, near-point((5, 5), path-crossings(line((0, 0), (10, 10)), line((0, 10), (10, 0)))[0].point)
+2, path-crossings(line((-5, 5), (15, 5)), box()).length
+true, near-point((0, 5), path-crossings(line((-5, 5), (15, 5)), box())[0].point)
+true, near-point((10, 5), path-crossings(line((-5, 5), (15, 5)), box())[1].point)
+true, near-point((10, 5), path-crossings(line((15, 5), (-5, 5)), box())[0].point)
+true, near-point((10, 5), path-crossings(box(), line((-5, 5), (15, 5)))[0].point)
+true, near-point((0, 5), path-crossings(box(), line((-5, 5), (15, 5)))[1].point)
+2, path-crossings(box(), rectangle(Rect(5, 5, 10, 10))).length
+true, near-point((10, 5), path-crossings(box(), rectangle(Rect(5, 5, 10, 10)))[0].point)
+true, near-point((5, 10), path-crossings(box(), rectangle(Rect(5, 5, 10, 10)))[1].point)
+2, path-crossings(line((-5, 10), (25, 10)), disc()).length
+true, near-point((0, 10), path-crossings(line((-5, 10), (25, 10)), disc())[0].point, 0.001)
+true, near-point((20, 10), path-crossings(line((-5, 10), (25, 10)), disc())[1].point, 0.001)
+true, crossings-ascend(path-crossings(disc(), circle((18, 10), 10)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ box
+
+rectangle(Rect(0, 0, 10, 10))
+
+━━━━━━━━━━━━━━━━━━━━
+_ disc
+
+circle((10, 10), 10)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do swerve
+
+. path = Path()
+path.move-to(0, 0)
+path.cubic-curve-to(120, 0, -40, 60, 80, 40)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do nearest-agrees
+    - path Path
+    - spot Point
+
+. found = path-nearest(path, spot)
+=? false if !found
+. least = 100000000.0
+. along = found.point
+. index Index = 0
+for curve in path.curves
+    for step in 0 .. 4000
+        least = min(least, network-curve-point(curve, (step as Float) / 4000).distance(spot))
+    if found.parameter >= (index as Float) && found.parameter <= (index as Float) + 1
+        along = network-curve-point(curve, found.parameter - (index as Float))
+    index += 1
+. slack = max(0.0005, least * 0.000002)
+|? abs(found.distance - least) > slack
+    = false
+|? abs(found.point.distance(spot) - found.distance) > slack
+    = false
+??
+    = along.distance(found.point) < 0.001
+
+━━━━━━━━━━━━━━━━━━━━
+_ crossings-ascend
+    - crossings [PathCrossing]
+
+crossings.length == 2 && crossings[0].along < crossings[1].along

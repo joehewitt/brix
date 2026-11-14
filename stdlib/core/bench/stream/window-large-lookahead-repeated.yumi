@@ -1,0 +1,31 @@
+`benchmark.meta description: Repeats large stream lookahead parsing to dominate process startup.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. source = window-large-lookahead-source()
+. checksum = 0 as Size
+
+for iteration in 0 .. < 300
+    . rows = match source
+        ~ \window-large-lookahead-document
+        ?! Panic("window-large-lookahead-repeated did not parse")
+
+    for row in rows
+        checksum += row
+
+-- "bench-result stream/window-large-lookahead-repeated checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ window-large-lookahead-document ~ Char
+
+~ rows \window-large-row+
+    rows
+
+.. window-large-row Size ~
+    ~ &("block:" (!"\n" .)* "\n") "block:" text (!"\n" .)* "\n"
+        text.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ window-large-lookahead-source
+
+"".join("block:${"abcdefghijklmnopqrstuvwxyz-" * 24}$each\n" in 0 .. < 70)

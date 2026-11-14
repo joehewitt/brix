@@ -1,0 +1,57 @@
+`benchmark.meta description: Measures size-stable edits in a wide vertical Flow layout.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+<BenchFlowWideRoot root
+    <BenchFlowWideCell changing
+    for index in 1 .. < 640
+        <BenchFlowWideCell
+
+root.markup-batch-queue.checkpoint()
+root.bounds = Rect(0, 0, 120, 40)
+root.update-layout()
+
+. checksum Size = 0
+for frame in 0 .. < 64
+    changing.revision += 1
+    root.update-layout()
+    //tui.bench.mutations ++
+    //tui.bench.frames ++
+    checksum += root.inner-height + root.inner-width + frame
+
+-- "bench-result tui/layout-flow-wide checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchFlowWideRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchFlowWideCell is Box
+
++ revision Size = 0
+
+. invalidate-content-size < revision
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(7, 1)

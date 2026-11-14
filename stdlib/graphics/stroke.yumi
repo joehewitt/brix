@@ -1,0 +1,896 @@
+./curve-kernels
+./effect
+./offset-kernels
+./path
+./point
+./primitives
+./shapes
+/math
+
+_ stroke-teeny = 0.000001
+_ stroke-inversion-samples = 32
+_ stroke-patch-tolerance = 0.25
+
+━━━━━━━━━━━━━━━━━━━━
++ JoinType
+
+| bevel-join-type
+| square-join-type
+| miter-join-type
+| round-join-type
+
+━━━━━━━━━━━━━━━━━━━━
++ StrokeEffect is VectorEffect
+
+_ effect-width Length
+_ effect-join-type JoinType = .round-join-type
+_ effect-cap LineCap = .round
+_ effect-miter-limit Length = 4
+
++ width => effect-width
++ join-type => effect-join-type
++ cap => effect-cap
++ miter-limit => effect-miter-limit
+
+────────────────────
++ This
+    - value Length
+    - join JoinType = .round-join-type
+    - end LineCap = .round
+    - limit Length = 4
+
+effect-width = value
+effect-join-type = join
+effect-cap = end
+effect-miter-limit = limit
+
+╌╌╌╌╌╌╌╌╌╌ is VectorEffect ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ equals
+    - other VectorEffect
+
+|? !(other is StrokeEffect)
+    false
+??
+    enabled == stroked.enabled && same-shape && miter-limit == stroked.miter-limit
+
+.. stroked = other as StrokeEffect
+.. same-shape = width == stroked.width && join-type == stroked.join-type && cap == stroked.cap
+
+────────────────────
++ do apply
+    - source [Path]
+
+. result = Path()
+for path in source
+    . outline = stroke(path, width, .center, join-type, cap, miter-limit)
+    if outline.count
+        result.add-path(outline)
+= if result.count then [result] else List'Path()
+
+────────────────────
++ copy
+
+StrokeEffect(effect-width, effect-join-type, effect-cap, effect-miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ StrokeZone is (start PointOnCurve, end PointOnCurve)
+
+━━━━━━━━━━━━━━━━━━━━
+_ StrokeContour
+
++ width Length
++ radius Length
++ outer-distance Length
++ inner-distance Length
++ join-type JoinType
++ cap LineCap
++ miter-limit Length
++ normal-sign Float
++ outer = OffsetPathWriter()
++ inner = OffsetPathWriter()
++ patches = Path()
++ first-point Point
++ prev-point Point
++ first-unit-normal Point
++ prev-unit-normal Point
++ first-tangent Point
++ prev-tangent Point
++ first-outer-point Point
++ first-is-line = false
++ segment-count Size
++ has-current = false
++ has-zero-draw = false
+
+────────────────────
++ This
+    - width Length
+    - outer-distance Length
+    - inner-distance Length
+    - join-type JoinType
+    - cap LineCap
+    - miter-limit Length
+    - normal-sign Float
+
+radius = width / 2
+
+────────────────────
++ do move-to
+    - point Point
+
+first-point = point
+prev-point = point
+has-current = true
+has-zero-draw = false
+segment-count = 0
+outer.reset()
+inner.reset()
+patches = Path()
+
+────────────────────
++ do mark-zero-draw
+
+if has-current
+    has-zero-draw = true
+
+────────────────────
++ do line-to
+    - point Point
+
+line-to(point) • is line
+
+────────────────────
++ do line-to
+    - point Point
+    - is-line Bool
+
+if !has-current
+    move-to(point)
+    =
+. delta = point - prev-point
+. len = delta.length
+if len <= stroke-teeny
+    has-zero-draw = true
+    //graphics.stroke.teeny-drops ++
+    =
+. tangent = delta / len
+. unit-normal = stroke-unit-normal(tangent, normal-sign)
+pre-join-to(unit-normal, tangent) • is-line
+append-line-to-offsets(point, unit-normal)
+post-join-to(point, unit-normal, tangent)
+
+────────────────────
++ do cubic-to
+    - handle-out Point
+    - handle-in Point
+    - point Point
+
+if !has-current
+    move-to(point)
+    =
+if cubic-is-point-like(prev-point, handle-out, handle-in, point)
+    has-zero-draw = true
+    =
+if cubic-is-line-like(prev-point, handle-out, handle-in, point)
+    . saved-join = join-type
+    join-type = .round-join-type
+    line-to(point) • is !line
+    join-type = saved-join
+    =
+. start-tangent = cubic-tangent-at(prev-point, handle-out, handle-in, point, 0)
+. end-tangent = cubic-tangent-at(prev-point, handle-out, handle-in, point, 1)
+. start-normal = stroke-unit-normal(start-tangent, normal-sign)
+. end-normal = stroke-unit-normal(end-tangent, normal-sign)
+
+pre-join-to(start-normal, start-tangent) • is !line
+append-cubic-side(outer, prev-point, handle-out, handle-in, point, outer-distance)
+append-cubic-side(inner, prev-point, handle-out, handle-in, point, inner-distance)
+
+. cusp = cubic-cusp-parameter(prev-point, handle-out, handle-in, point)
+if cusp > 0
+    //graphics.stroke.cusp-patches ++
+    . loc = cubic-point(prev-point, handle-out, handle-in, point, cusp)
+    add-patch(circle(loc, radius))
+
+post-join-to(point, end-normal, end-tangent)
+
+────────────────────
++ do finish
+    - close Bool
+
+if segment-count <= 0
+    = if has-zero-draw then zero-length-stroke(first-point, width, cap) else Path()
+
+if close
+    add-contour-join()
+        - prev-point
+        - prev-unit-normal
+        - first-unit-normal
+        - prev-tangent
+        - first-tangent
+        • is-line first-is-line
+    outer.close()
+    inner.close()
+    . outline = Path()
+    outline.add-path(outer.path)
+    outline.add-path(inner.path.reverse())
+    outline.add-path(patches)
+    = outline
+
+. outline = Path(outer.path)
+. reversed-inner = inner.path.reverse()
+add-stroke-cap()
+    - outline
+    - prev-tangent
+    - outer.last
+    - inner.last
+    - width
+    - cap
+    • is end-cap
+append-path-tail(outline, reversed-inner)
+add-stroke-cap()
+    - outline
+    - first-tangent
+    - inner.first
+    - first-outer-point
+    - width
+    - cap
+    • is !end-cap
+outline.close()
+outline.add-path(patches)
+= outline
+
+────────────────────
+_ do append-cubic-side
+    - writer OffsetPathWriter
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - distance Length
+
+. last-t PointOnCurve = 0
+for zone in inverted-stroke-zones(p0, p1, p2, p3, distance, normal-sign)
+    if zone.start > last-t
+        append-offset-range(writer, p0, p1, p2, p3, last-t, zone.start, distance)
+    hug-inverted-range(writer, p0, p1, p2, p3, zone, distance)
+    last-t = zone.end
+if last-t < 1
+    append-offset-range(writer, p0, p1, p2, p3, last-t, 1, distance)
+
+────────────────────
+_ do append-offset-range
+    - writer OffsetPathWriter
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t0 PointOnCurve
+    - t1 PointOnCurve
+    - distance Length
+
+. piece = cubic-range-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, t0, t1)
+append-offset-cubic-split-inflections()
+    - writer
+    - Point(piece.x1, piece.y1)
+    - Point(piece.hox, piece.hoy)
+    - Point(piece.hix, piece.hiy)
+    - Point(piece.x2, piece.y2)
+    - distance
+    - normal-sign
+
+────────────────────
+_ do hug-inverted-range
+    - writer OffsetPathWriter
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - zone StrokeZone
+    - distance Length
+
+//graphics.stroke.inverted-zones ++
+. piece = cubic-range-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, zone.start, zone.end)
+writer.line-to(Point(piece.x1, piece.y1))
+writer.cubic-curve-to
+    - Point(piece.hox, piece.hoy)
+    - Point(piece.hix, piece.hiy)
+    - Point(piece.x2, piece.y2)
+writer.line-to(offset-cubic-point(p0, p1, p2, p3, zone.end, distance, normal-sign))
+
+. steps = inverted-patch-steps(p0, p1, p2, p3, zone, distance)
+. previous-t = zone.start
+. previous-normal = stroke-unit-normal(cubic-tangent-at(p0, p1, p2, p3, zone.start), normal-sign)
+for index in 0 .. < steps
+    . t = zone.start + (zone.end - zone.start) * ((index + 1) as Float) / steps
+    . normal = stroke-unit-normal(cubic-tangent-at(p0, p1, p2, p3, t), normal-sign)
+    . arc = cubic-range-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, previous-t, t)
+    add-brush-patch(arc, previous-normal, normal, distance)
+    previous-t = t
+    previous-normal = normal
+
+────────────────────
+_ do add-brush-patch
+    - arc CurveRangeScalars
+    - normal-a Point
+    - normal-b Point
+    - distance Length
+
+. near-a = Point(arc.x1, arc.y1)
+. near-b = Point(arc.x2, arc.y2)
+. handle-a = Point(arc.hox, arc.hoy)
+. handle-b = Point(arc.hix, arc.hiy)
+. far-a = near-a + normal-a * distance
+. far-b = near-b + normal-b * distance
+. denominator = normal-a.cross(normal-b)
+if abs(denominator) > stroke-teeny
+    . along-a = (near-b - near-a).cross(normal-b) / denominator / distance
+    . along-b = (near-b - near-a).cross(normal-a) / denominator / distance
+    if along-a > 0 && along-a < 1 && along-b > 0 && along-b < 1
+        . crossing = near-a + normal-a * (along-a * distance)
+        if patch-is-forward((near-b - near-a).cross(crossing - near-a))
+            patches.move-to(near-a)
+            patches.cubic-curve-to(handle-a, handle-b, near-b)
+        else
+            patches.move-to(near-b)
+            patches.cubic-curve-to(handle-b, handle-a, near-a)
+        patches.line-to(crossing)
+        patches.close()
+        patches.move-to(crossing)
+        if patch-is-forward((far-b - crossing).cross(far-a - crossing))
+            patches.line-to(far-b)
+            patches.line-to(far-a)
+        else
+            patches.line-to(far-a)
+            patches.line-to(far-b)
+        patches.close()
+        =
+. twice-area = near-a.cross(near-b) + near-b.cross(far-b) + far-b.cross(far-a) + far-a.cross(near-a)
+patches.move-to(near-a)
+if patch-is-forward(twice-area)
+    patches.cubic-curve-to(handle-a, handle-b, near-b)
+    patches.line-to(far-b)
+    patches.line-to(far-a)
+else
+    patches.line-to(far-a)
+    patches.line-to(far-b)
+    patches.line-to(near-b)
+    patches.cubic-curve-to(handle-b, handle-a, near-a)
+patches.close()
+
+────────────────────
+_ patch-is-forward
+    - twice-area Float
+
+twice-area * normal-sign >= 0
+
+────────────────────
+_ do add-patch
+    - patch Path
+
+patches.add-path(if patch.is-clockwise == (normal-sign > 0) then patch else patch.reverse())
+
+────────────────────
+_ do pre-join-to
+    - unit-normal Point
+    - tangent Point
+    - is-line Bool
+
+if segment-count == 0
+    first-unit-normal = unit-normal
+    prev-unit-normal = unit-normal
+    first-tangent = tangent
+    prev-tangent = tangent
+    first-outer-point = prev-point + unit-normal * outer-distance
+    first-is-line = is-line
+    outer.line-to(first-outer-point)
+    inner.line-to(prev-point + unit-normal * inner-distance)
+else
+    add-contour-join()
+        - prev-point
+        - prev-unit-normal
+        - unit-normal
+        - prev-tangent
+        - tangent
+        • is-line
+
+────────────────────
+_ do append-line-to-offsets
+    - point Point
+    - unit-normal Point
+
+outer.line-to(point + unit-normal * outer-distance)
+inner.line-to(point + unit-normal * inner-distance)
+
+────────────────────
+_ do post-join-to
+    - point Point
+    - unit-normal Point
+    - tangent Point
+
+prev-point = point
+prev-unit-normal = unit-normal
+prev-tangent = tangent
+segment-count += 1
+
+────────────────────
+_ do add-contour-join
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - before-tangent Point
+    - after-tangent Point
+    - is-line Bool
+
+//graphics.stroke.joins ++
+add-side-join()
+    - outer
+    - pivot
+    - before-normal
+    - after-normal
+    - before-tangent
+    - after-tangent
+    - outer-distance
+    • is-line
+add-side-join()
+    - inner
+    - pivot
+    - before-normal
+    - after-normal
+    - before-tangent
+    - after-tangent
+    - inner-distance
+    • is-line
+
+────────────────────
+_ do add-side-join
+    - writer OffsetPathWriter
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - before-tangent Point
+    - after-tangent Point
+    - distance Length
+    - is-line Bool
+
+. before-offset = pivot + before-normal * distance
+. after-offset = pivot + after-normal * distance
+. turn = before-tangent.cross(after-tangent)
+
+if abs(distance) <= stroke-teeny
+    writer.line-to(pivot)
+    =
+if abs(turn) <= stroke-teeny
+    if before-tangent.dot(after-tangent) >= -0.999
+        writer.line-to(after-offset)
+    else if join-type == .square-join-type
+        append-square-join(writer, pivot, before-normal, after-normal, before-tangent, after-tangent, distance) • is-line
+    else
+        writer.line-to(before-offset)
+        writer.line-to(after-offset)
+    =
+if turn * distance * normal-sign < 0
+    writer.line-to(pivot)
+    writer.line-to(after-offset)
+    =
+if join-type == .miter-join-type
+    add-miter-side-join(writer, pivot, before-normal, after-normal, distance) • is-line
+else if join-type == .round-join-type
+    add-round-stroke-join(writer, pivot, before-offset, after-offset, distance, normal-sign)
+else if join-type == .square-join-type
+    append-square-join(writer, pivot, before-normal, after-normal, before-tangent, after-tangent, distance) • is-line
+else
+    writer.line-to(after-offset)
+
+────────────────────
+_ do add-miter-side-join
+    - writer OffsetPathWriter
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - distance Length
+    - is-line Bool
+
+. dot = before-normal.dot(after-normal)
+if dot > 0.999 || miter-limit <= 1
+    writer.line-to(pivot + after-normal * distance)
+    =
+if dot < -0.999
+    writer.line-to(pivot + before-normal * distance)
+    writer.line-to(pivot + after-normal * distance)
+    =
+. sin-half = sqrt(max(0.0, (1.0 + dot) / 2.0))
+if sin-half <= 0 || sin-half < 1.0 / miter-limit
+    writer.line-to(pivot + after-normal * distance)
+    =
+. mid Point
+if abs(dot) <= stroke-teeny && miter-limit >= 1.41421356237
+    mid = (before-normal + after-normal) * distance
+else
+    . sum = before-normal + after-normal
+    . sum-length = sum.length
+    if sum-length <= stroke-teeny
+        writer.line-to(pivot + after-normal * distance)
+        =
+    mid = (sum / sum-length) * (abs(distance) / sin-half)
+    if distance < 0
+        mid = -mid
+
+writer.line-to(pivot + mid)
+if !is-line
+    writer.line-to(pivot + after-normal * distance)
+
+━━━━━━━━━━━━━━━━━━━━
++ do stroke
+    - path Path
+    - width Length
+    - alignment StrokeAlignment = .center
+    - join-type JoinType = .bevel-join-type
+    - cap LineCap = .butt
+    - miter-limit Length = 1
+    - offset Length = 0
+
+if width <= 0 || path.count < 2
+    = Path()
+
+. outer-distance =
+    |? alignment == .center
+        offset + width / 2
+    |? alignment == .outside
+        offset + width
+    ??
+        offset
+. inner-distance =
+    |? alignment == .center
+        offset - width / 2
+    |? alignment == .outside
+        offset
+    ??
+        offset - width
+
+. result = Path()
+for subpath in path.subpaths
+    . stroked = stroke-subpath()
+        - subpath.materialize()
+        - width
+        - outer-distance
+        - inner-distance
+        - join-type
+        - cap
+        - miter-limit
+    if stroked.count
+        result.add-path(stroked)
+
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-subpath
+    - path Path
+    - width Length
+    - outer-distance Length
+    - inner-distance Length
+    - join-type JoinType
+    - cap LineCap
+    - miter-limit Length
+
+//graphics.stroke.subpaths ++
+. normal-sign = if path.is-closed && !path.is-clockwise then -1.0 else 1.0
+
+. contour = StrokeContour()
+    - width
+    - outer-distance
+    - inner-distance
+    - join-type
+    - cap
+    - miter-limit
+    - normal-sign
+. span = path.commands
+. current = Point(0, 0)
+. subpath-start = Point(0, 0)
+. has-current = false
+. closed = false
+
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    . start = span.coord-offsets[i]
+    if verb == .path-verb-move
+        current = Point(span.coords[start], span.coords[start + 1])
+        subpath-start = current
+        has-current = true
+        contour.move-to(current)
+    else if verb == .path-verb-line && has-current
+        current = Point(span.coords[start], span.coords[start + 1])
+        contour.line-to(current)
+    else if verb == .path-verb-cubic && has-current
+        . h1 = Point(span.coords[start], span.coords[start + 1])
+        . h2 = Point(span.coords[start + 2], span.coords[start + 3])
+        current = Point(span.coords[start + 4], span.coords[start + 5])
+        contour.cubic-to(h1, h2, current)
+    else if verb == .path-verb-close && has-current
+        closed = true
+        if current.distance(subpath-start) > stroke-teeny
+            contour.line-to(subpath-start)
+        else
+            contour.mark-zero-draw()
+        current = subpath-start
+
+= contour.finish(closed)
+
+━━━━━━━━━━━━━━━━━━━━
+_ zero-length-stroke
+    - point Point
+    - width Length
+    - cap LineCap
+
+|? cap == .round
+    circle(point, width / 2)
+|? cap == .square
+    rectangle(Rect(point.x - width / 2, point.y - width / 2, width, width))
+??
+    Path()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-round-stroke-join
+    - writer OffsetPathWriter
+    - center Point
+    - from Point
+    - to Point
+    - distance Length
+    - normal-sign Float
+
+. radius = abs(distance)
+if radius < stroke-teeny || from.distance(to) < stroke-teeny
+    writer.line-to(to)
+else
+    writer.line-to(from)
+    writer.arc(center, radius, from.angle(center), to.angle(center), distance * normal-sign < 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-stroke-cap
+    - outline Path
+    - tangent Point
+    - from Point
+    - to Point
+    - width Length
+    - cap LineCap
+    - is-end-cap Bool
+
+if cap == .round
+    add-round-stroke-cap(outline, from, to)
+else if cap == .square
+    . extension = tangent * (width / 2)
+    if !is-end-cap
+        extension = -extension
+    stroke-path-line-to(outline, from + extension)
+    stroke-path-line-to(outline, to + extension)
+    stroke-path-line-to(outline, to)
+else
+    stroke-path-line-to(outline, to)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-round-stroke-cap
+    - outline Path
+    - from Point
+    - to Point
+
+. center = from.midpoint(to)
+. radius = from.distance(to) / 2
+if radius < stroke-teeny
+    stroke-path-line-to(outline, to)
+else
+    outline.arc(center, radius, from.angle(center), to.angle(center)) • is continued
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-path-line-to
+    - path Path
+    - point Point
+
+if !path.count
+    path.move-to(point)
+else if path.last-point.distance(point) > stroke-teeny
+    path.line-to(point)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-path-tail
+    - target Path
+    - source Path
+
+. span = source.commands
+. skip-first-move = true
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    . start = span.coord-offsets[i]
+    if verb == .path-verb-move && skip-first-move
+        skip-first-move = false
+        continue
+    else if verb == .path-verb-move
+        target.line-to(span.coords[start], span.coords[start + 1])
+    else if verb == .path-verb-line
+        target.line-to(span.coords[start], span.coords[start + 1])
+    else if verb == .path-verb-cubic
+        target.cubic-curve-to()
+            - span.coords[start]
+            - span.coords[start + 1]
+            - span.coords[start + 2]
+            - span.coords[start + 3]
+            - span.coords[start + 4]
+            - span.coords[start + 5]
+
+━━━━━━━━━━━━━━━━━━━━
++ do stroke-join Path
+    - pivot Point
+    - incoming Point
+    - outgoing Point
+    - width Length
+    - join-type JoinType = .round-join-type
+    - miter-limit Length = 4
+
+=? Path() if width <= 0 || incoming.length <= stroke-teeny || outgoing.length <= stroke-teeny
+. first = incoming / incoming.length
+. second = outgoing / outgoing.length
+. radius = width / 2
+. contour = StrokeContour(width, radius, -radius, join-type, .butt, miter-limit, 1)
+. first-normal = stroke-unit-normal(first, 1)
+. second-normal = stroke-unit-normal(second, 1)
+contour.outer.line-to(pivot)
+contour.outer.line-to(pivot + first-normal * radius)
+contour.inner.line-to(pivot)
+contour.inner.line-to(pivot - first-normal * radius)
+contour.add-contour-join(pivot, first-normal, second-normal, first, second) • is !line
+contour.outer.line-to(pivot)
+contour.inner.line-to(pivot)
+contour.outer.close()
+contour.inner.close()
+= if first.cross(second) < 0 then Path(contour.inner.path) else Path(contour.outer.path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inverted-stroke-zones [StrokeZone]
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - distance Length
+    - normal-sign Float
+
+. zones [StrokeZone]
+=? zones if abs(distance) <= stroke-teeny || !may-invert-stroke(p0, p1, p2, p3, distance)
+. previous-t PointOnCurve = 0
+. previous-inverted = stroke-inversion(p0, p1, p2, p3, 0, distance, normal-sign) < 0
+. start PointOnCurve = 0
+for index in 1 .. < stroke-inversion-samples + 1
+    . t PointOnCurve = (index as Float) / stroke-inversion-samples
+    . inverted = stroke-inversion(p0, p1, p2, p3, t, distance, normal-sign) < 0
+    if inverted != previous-inverted
+        . boundary = refine-stroke-inversion
+            - p0
+            - p1
+            - p2
+            - p3
+            - previous-t
+            - t
+            - previous-inverted
+            - distance
+            - normal-sign
+        if inverted
+            start = boundary
+        else if boundary > start
+            zones += StrokeZone(start, boundary)
+    previous-t = t
+    previous-inverted = inverted
+if previous-inverted && start < 1
+    zones += StrokeZone(start, 1)
+= zones
+
+━━━━━━━━━━━━━━━━━━━━
+_ do refine-stroke-inversion PointOnCurve
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - low PointOnCurve
+    - high PointOnCurve
+    - low-inverted Bool
+    - distance Length
+    - normal-sign Float
+
+. a = low
+. b = high
+for ignored in 0 .. < 20
+    . middle = (a + b) / 2
+    if (stroke-inversion(p0, p1, p2, p3, middle, distance, normal-sign) < 0) == low-inverted
+        a = middle
+    else
+        b = middle
+= (a + b) / 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ stroke-inversion Float
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t PointOnCurve
+    - distance Length
+    - normal-sign Float
+
+speed-squared * sqrt(speed-squared) + distance * normal-sign * cross
+
+.. sample = min(max(t, stroke-teeny), 1 - stroke-teeny)
+.. rest = 1 - sample
+.. a = 3 * rest * rest
+.. b = 6 * rest * sample
+.. c = 3 * sample * sample
+.. first-x = a * (p1.x - p0.x) + b * (p2.x - p1.x) + c * (p3.x - p2.x)
+.. first-y = a * (p1.y - p0.y) + b * (p2.y - p1.y) + c * (p3.y - p2.y)
+.. second-x = 6 * (rest * (p2.x - 2 * p1.x + p0.x) + sample * (p3.x - 2 * p2.x + p1.x))
+.. second-y = 6 * (rest * (p2.y - 2 * p1.y + p0.y) + sample * (p3.y - 2 * p2.y + p1.y))
+.. speed-squared = first-x * first-x + first-y * first-y
+.. cross = first-x * second-y - first-y * second-x
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inverted-patch-steps Size
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - zone StrokeZone
+    - distance Length
+
+. turn = 0.0
+. previous = cubic-tangent-at(p0, p1, p2, p3, zone.start)
+for index in 1 .. < 17
+    . tangent = cubic-tangent-at
+        - p0
+        - p1
+        - p2
+        - p3
+        - zone.start + (zone.end - zone.start) * (index as Float) / 16
+    turn += abs(atan2(previous.cross(tangent), previous.dot(tangent)))
+    previous = tangent
+. step-angle = min(π / 16, sqrt(8 * stroke-patch-tolerance / abs(distance)))
+= min(max(ceil(turn / step-angle) as Size, 1), 512)
+
+━━━━━━━━━━━━━━━━━━━━
+_ may-invert-stroke Bool
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - distance Length
+
+slowest * slowest < abs(distance) * bend
+
+.. first = (p1 - p0) * 3
+.. second = (p2 - p1) * 3
+.. third = (p3 - p2) * 3
+.. slowest = origin-triangle-distance(first, second, third)
+.. bend = 2 * max((second - first).length, (third - second).length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ origin-triangle-distance Float
+    - a Point
+    - b Point
+    - c Point
+
+|? (ab >= 0 && bc >= 0 && ca >= 0) || (ab <= 0 && bc <= 0 && ca <= 0)
+    0.0
+??
+    min
+        - origin-segment-distance(a, b)
+        - min(origin-segment-distance(b, c), origin-segment-distance(c, a))
+
+.. ab = (b - a).cross(-a)
+.. bc = (c - b).cross(-b)
+.. ca = (a - c).cross(-c)
+
+━━━━━━━━━━━━━━━━━━━━
+_ origin-segment-distance Float
+    - a Point
+    - b Point
+
+(a + segment * along).length
+
+.. segment = b - a
+.. length-squared = segment.dot(segment)
+.. along = if length-squared <= 0 then 0.0 else min(max(-a.dot(segment) / length-squared, 0), 1)

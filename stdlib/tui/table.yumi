@@ -1,0 +1,801 @@
+./box
+./colors
+./events
+./layout
+./listbox
+./primitives
+./shortcuts
+./styles
+./text
+./theme
+/core/function
+/core/list
+/core/markup
+/core/string
+/math
+/stream/aggregate
+/stream/combine
+/stream/sort
+/ui/input
+/units
+
+━━━━━━━━━━━━━━━━━━━━
+• extend TUIDefaultTheme
+    using BoxPaint
+    using TextPaint
+
+• Table
+    background-color = AnsiColor(0)
+    color = AnsiColor(7)
+
+• TableHeaderRow
+    background-color = AnsiColor(0)
+    color = AnsiColor(255)
+
+• TableRow
+    background-color = AnsiColor(0)
+    color = AnsiColor(7)
+
+    when #is-selected
+        color = AnsiColor(255)
+        background-color = AnsiColor(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ TableRowHandle is (index Index, generation U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ Table'Row is ListBox
+
++ rows [Row] = List'Row()
++ key-builder MarkupKeyBuilder'Row?
++ visible-columns [TableColumn'Row] = List'(TableColumn'Row)()
++ column-gap Coord = 2
++ show-header = true
++ metrics [TableColumnMetric'Row] = List'(TableColumnMetric'Row)()
++ sort-column-id String?
++ sort-direction TableSortDirection = TableSortDirection.none
++ metrics-width Coord => width-of-metrics(metrics)
++ selected-row-handle TableRowHandle?
++ event sorted TableSortEvent
++ event row-selection SelectEvent keyed by TableRowHandle
++ event row-activation ActivateEvent keyed by TableRowHandle
+
+_ columns-value [TableColumn'Row] = List'(TableColumn'Row)()
+_ row-handle-generations [U64] = List'U64()
+_ row-handle-live [Bool] = List'Bool()
+_ free-row-handle-indexes [Index] = List'Index()
+
+. refresh-metrics < rows, visible-columns, column-gap, sort-column-id, sort-direction
+
+• This
+    layout = flex-col
+
+────────────────────
+
+<This
+    <Shortcut "Scroll Left"
+        key = .arrow-left
+        show-in-status = false
+        action = => do scroll-body(4, Direction.left)
+
+    <Shortcut "Scroll Right"
+        key = .arrow-right
+        show-in-status = false
+        action = => do scroll-body(4, Direction.right)
+
+    if #show-header
+        <TableHeaderRow'Row
+            table = this
+
+    for row in ordered-rows(#rows, #sort-column-id, #sort-direction) keyed by key-for-row-with(row, #key-builder)
+        <TableRow'Row row-box • h:1 flex-row
+            table = this
+            item = row
+            row-key = key-for-row-with(row, #key-builder)
+            min-width = width-of-metrics(#metrics)
+
+            for column in #visible-columns keyed by column.id
+                <TableCell'Row cell-box • flex-row h:1
+                    item = row
+                    column = column
+                    row = row-box
+                    column-width = column-width-for(column, #metrics)
+                    margin-right = if column == #visible-columns.tail then 0 else #column-gap
+
+                    + <Box cell - cell-box TableCell'Row • flex:1 flex-row
+                        <Label • flex:1
+                            text = cell-box.#text
+
+────────────────────
+whenever children TableHeaderRow'Row
+
+invalidate-layout()
+
+────────────────────
+whenever children TableRow'Row
+
+invalidate-layout()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-outer-bounds
+    - rect Rect
+
+super.arrange-outer-bounds(rect)
+ensure-active-child-links()
+metrics = resolve-metrics(content-bounds.width)
+
+────────────────────
++ do update-layout
+
+ensure-active-child-links()
+metrics = resolve-metrics(content-bounds.width)
+invalidate-layout()
+flex-col.arrange-box(this)
+super.update-layout()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get columns [TableColumn'Row]
+
+columns-value
+
+────────────────────
++ do get selected-item Row?
+
+. row = selected-table-row()
+=? if !row
+= row.item
+
+────────────────────
++ do get selected-key String?
+
+. row = selected-table-row()
+=? if !row
+= row.row-key
+
+────────────────────
++ selected-table-row TableRow'Row?
+
+|? handle
+    matching-rows[0] if matching-rows.length
+|? unmounted-row && unmounted-row is TableRow'Row
+    unmounted-row as TableRow'Row
+??
+    null
+
+.. handle = selected-row-handle
+.. matching-rows [TableRow'Row] = <* row in ordered-row-boxes() when row.row-handle == handle
+.. unmounted-row = valid-row(selected-row)
+
+────────────────────
+_ table-row-for'Row TableRow'Row?
+    - row ListItem?
+
+|? live-row && live-row is TableRow'Row
+    live-row as TableRow'Row
+??
+    null
+
+.. live-row = valid-row(row)
+
+────────────────────
++ do select-row ?! Error
+    - row ListItem?
+
+. table-row = table-row-for'Row(row)
+. next-handle = table-row?.row-handle
+. current-row = selected-row
+if same-row
+    if table-row
+        ensure-row-visible(table-row)
+else
+    . old-row = selected-table-row()
+    . old-handle = old-row?.row-handle
+    selected-row = table-row
+    selected-row-handle = next-handle
+
+    if old-handle
+        row-selection[old-handle] <- SelectEvent()
+    else if old-row
+        old-row.is-selected = false
+    if table-row
+        if next-handle
+            row-selection[next-handle] <- SelectEvent()
+        else
+            table-row.is-selected = true
+        ensure-row-visible(table-row)
+
+    selected <- SelectEvent()
+
+.. same-row =
+    |? !current-row
+        !table-row
+    |? table-row
+        current-row as Pointer == table-row as Pointer
+    ??
+        false
+
+────────────────────
++ do activate-selection ?! Error
+
+ensure-selection()
+. row = selected-table-row()
+if row
+    . handle = row.row-handle
+    if handle
+        row-activation[handle] <- ActivateEvent()
+    else
+        row.is-selected = true
+activated <- ActivateEvent()
+
+────────────────────
++ do ensure-selection
+
+. row = selected-table-row()
+if row
+    . handle = row.row-handle
+    if handle
+        row-selection[handle] <- SelectEvent()
+    else
+        row.is-selected = true
+    ensure-row-visible(row)
+
+────────────────────
+_ do claim-row-handle TableRowHandle
+
+. index Index
+if free-row-handle-indexes
+    index = free-row-handle-indexes.pop()
+else
+    index = row-handle-generations.length
+    row-handle-generations += 1
+    row-handle-live += false
+
+. generation = row-handle-generations[index]
+?! Panic("Table row handle generation overflow")
+    if !generation
+row-handle-live[index] = true
+= (index, generation)
+
+────────────────────
+_ do release-row-handle
+    - handle TableRowHandle
+
+=? if handle.index >= row-handle-generations.length
+=? if !row-handle-live[handle.index]
+=? if row-handle-generations[handle.index] != handle.generation
+
+row-handle-live[handle.index] = false
+. next-generation = handle.generation + 1
+?! Panic("Table row handle generation overflow")
+    if !next-generation
+row-handle-generations[handle.index] = next-generation
+free-row-handle-indexes += handle.index
+
+────────────────────
+_ do replace-row-handle TableRowHandle
+    - handle TableRowHandle
+
+release-row-handle(handle)
+= claim-row-handle()
+
+────────────────────
+_ do did-unmount-row
+    - row TableRow'Row
+    - handle TableRowHandle
+
+if selected-row-handle == handle || selected-row == row
+    selected-row-handle = null
+    selected-row = null
+
+────────────────────
+_ do did-change-row-handle
+    - row TableRow'Row
+    - old-handle TableRowHandle
+    - next-handle TableRowHandle
+
+if selected-row-handle == old-handle
+    selected-row = row
+    selected-row-handle = next-handle
+
+────────────────────
++ do columns = value [TableColumn'Row]
+
+columns-value = value
+refresh-visible-columns()
+
+────────────────────
++ key-for-row String?
+    - row Row
+
+key-for-row-with(row, key-builder)
+
+────────────────────
++ do key-for-row-with String?
+    - row Row
+    - builder MarkupKeyBuilder'Row?
+
+=? builder(row)
+    if builder
+
+────────────────────
++ do refresh-visible-columns
+
+visible-columns = <* column in columns when column.is-visible
+
+────────────────────
++ header-text String
+    - column TableColumn'Row
+
+table-header-label(column, sort-column-id, sort-direction)
+
+────────────────────
++ do column-at-x TableColumn'Row?
+    - x Coord
+
+for metric in metrics
+    if x >= metric.x && x < metric.x + metric.width
+        = metric.column
+
+────────────────────
++ column-width-for Coord
+    - column TableColumn'Row
+
+column-width-for(column, metrics)
+
+────────────────────
++ column-width-for Coord
+    - column TableColumn'Row
+    - current-metrics [TableColumnMetric'Row]
+
+|? metric
+    metric.width
+??
+    table-column-min-width(column)
+
+.. metric = metric-for-column(column, current-metrics)
+
+────────────────────
++ metric-for-column TableColumnMetric'Row?
+    - column TableColumn'Row
+
+metric-for-column(column, metrics)
+
+────────────────────
++ do metric-for-column TableColumnMetric'Row?
+    - column TableColumn'Row
+    - current-metrics [TableColumnMetric'Row]
+
+for metric in current-metrics
+    if metric.column == column
+        = metric
+
+────────────────────
++ do column-for-id TableColumn'Row?
+    - id String?
+
+=? if !id
+
+for column in columns
+    if column.id == id
+        = column
+
+────────────────────
++ do toggle-sort
+    - column TableColumn'Row
+
+=? if !column.is-sortable
+
+. old-column = sort-column-id
+. old-direction = sort-direction
+. same-column = sort-column-id == column.id
+if !same-column
+    sort-column-id = column.id
+    sort-direction = TableSortDirection.ascending
+else
+    sort-direction = match sort-direction
+        | TableSortDirection.none
+            TableSortDirection.ascending
+        | TableSortDirection.ascending
+            TableSortDirection.descending
+        ??
+            TableSortDirection.none
+    if sort-direction == TableSortDirection.none
+        sort-column-id = null
+
+if old-column != sort-column-id || old-direction != sort-direction
+    sorted <- TableSortEvent()
+
+────────────────────
++ scroll-body
+    - amount Coord
+    - direction Direction
+
+scroll(amount, direction)
+
+────────────────────
++ do header-row TableHeaderRow'Row?
+
+for child in active-children
+    if child is TableHeaderRow'Row
+        = child as TableHeaderRow'Row
+
+────────────────────
++ ordered-row-boxes
+
+** active-children
+?*> match? each
+    | row TableRow'Row
+        row
+?> each.is-effectively-enabled && each.$display == .visible
+|> List
+
+────────────────────
+_ do refresh-metrics
+
+metrics = resolve-metrics(content-bounds.width)
+invalidate-layout()
+
+────────────────────
++ do resolve-metrics [TableColumnMetric'Row]
+    - available-width Coord
+
+. visible = visible-columns
+. gap = max(0, column-gap)
+. gap-total = if visible.length > 0 then gap * Coord(visible.length - 1) else 0
+. column-space = max(0, available-width - gap-total)
+. fixed-total Coord = 0
+. flex-total Float = 0
+. flex-columns [TableColumn'Row] = List'(TableColumn'Row)()
+. widths [Coord] = List'Coord()
+
+for column in visible
+    . width Coord = table-column-min-width(column)
+    match column.column-width
+        | TableWidth.fixed(value)
+            width = table-clamp-column-width(column, value)
+        | TableWidth.percent(percent)
+            width = table-clamp-column-width
+                - column
+                - round((percent as Ratio) * column-space) as Coord
+        | TableWidth.flex(flex)
+            flex-total += flex as Float
+            flex-columns += column
+        ??
+            width = auto-column-width(column)
+    widths += width
+    fixed-total += width
+
+. remaining = max(0, column-space - fixed-total)
+. last-flex TableColumn'Row? = flex-columns.tail if flex-columns.length > 0
+. assigned-flex Coord = 0
+. index Index = 0
+for column in visible
+    . flex = table-column-flex(column)
+    if flex != 0
+        . is-last = false
+        if last-flex
+            is-last = column == last-flex
+        . extra = if is-last then leftover else round((flex / flex-total) * remaining) as Coord
+            .. leftover = remaining - assigned-flex
+        . width = table-clamp-column-width(column, widths[index] + extra)
+        assigned-flex += extra
+        widths[index] = width
+    index += 1
+
+= metrics
+
+.. metrics =
+    zip(visible, widths)
+    *> TableColumnMetric'Row(each[0], 0, each[1])
+    |> scan • using :: previous, current =>
+        TableColumnMetric'Row(current.column, previous.x + previous.width + gap, current.width)
+    |> List
+
+────────────────────
++ width-of-metrics Coord
+    - current-metrics [TableColumnMetric'Row]
+
+max • stream
+    * 0 as Coord
+    **
+        current-metrics
+        *> each.x + each.width
+
+────────────────────
++ auto-column-width Coord
+    - column TableColumn'Row
+
+table-clamp-column-width(column, width as Coord)
+
+.. width = max • stream
+    * DisplayText(header-text(column)).display-width
+    **
+        rows
+        *> DisplayText(column.value-text(each)).display-width
+
+────────────────────
++ ordered-rows [Row]
+    - current-rows [Row]
+    - current-sort-column-id String?
+    - current-sort-direction TableSortDirection = TableSortDirection.none
+
+|? !column || current-sort-direction == TableSortDirection.none
+    source
+|? comparer
+    sort(source) • using comparer • is-reverse is-descending
+|? keyer
+    sort(source) • using key-comparer • is-reverse is-descending
+
+    .. key-comparer Comparer'Row = :: left Row, right Row =>
+        compare-basic(keyer(left), keyer(right))
+??
+    source
+
+.. source = List'Row(current-rows)
+.. column = column-for-id(current-sort-column-id)
+.. sort-column = column
+.. is-descending = current-sort-direction == TableSortDirection.descending
+.. comparer = sort-column.compare
+.. keyer = sort-column.sort-key ?? sort-column.value
+
+━━━━━━━━━━━━━━━━━━━━
++ TableTextProvider'Row is () String
+    - row Row
+
+━━━━━━━━━━━━━━━━━━━━
++ TableWidth is Union
+
+| auto
+| fixed Coord
+| flex Flex
+| percent Percent
+
+━━━━━━━━━━━━━━━━━━━━
++ TableAlign is Union
+
+| left
+| center
+| right
+
+━━━━━━━━━━━━━━━━━━━━
++ TableSortDirection is Union
+
+| none
+| ascending
+| descending
+
+━━━━━━━━━━━━━━━━━━━━
++ TableSortEvent is BoxEvent
+
+────────────────────
++ to String
+
+"TableSortEvent()"
+
+━━━━━━━━━━━━━━━━━━━━
++ TableColumnMetric'Row is Tuple
+
++ column TableColumn'Row
++ x Coord
++ width Coord
++ right => x + width
+
+━━━━━━━━━━━━━━━━━━━━
++ TableColumn'Row
+
++ id String = ""
++ title String = ""
++ column-width TableWidth = TableWidth.auto
++ min-width Coord = 0
++ max-width Coord?
++ align TableAlign = TableAlign.left
++ is-visible = true
++ compare Comparer'Row?
++ sort-key TableTextProvider'Row?
++ value TableTextProvider'Row?
++ is-sortable => compare != null || sort-key != null || value != null
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - title String
+
+this.title = title
+id = title
+
+────────────────────
++ value-text String
+    - row Row
+
+|? provider
+    provider(row)
+??
+    ""
+
+.. provider = value
+
+━━━━━━━━━━━━━━━━━━━━
++ TableHeaderRow'Row is Box
+
++ table Table'Row?
+
+────────────────────
+
+<This • flex-row h:1
+    for metric in #table?.#metrics ?? List'(TableColumnMetric'Row)() keyed by metric.column.id
+        <Label • w:metric.width
+            text = table-aligned-text(table-header-label(metric.column, #table?.#sort-column-id, #table?.#sort-direction), metric.width, metric.column.align)
+            margin-right = if metric.column == #table?.#visible-columns.tail then 0 else #table?.#column-gap ?? 0
+
+────────────────────
+for event on mouse-up
+
+. owner = table
+if owner && content-bounds.contains(event.point)
+    . column = owner.column-at-x(event.point.x - owner.scroll-x - content-bounds.x)
+    if column
+        owner.toggle-sort(column)
+    event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
+_ table-header-label'Row String
+    - column TableColumn'Row
+    - sort-column-id String?
+    - sort-direction TableSortDirection = TableSortDirection.none
+
+column.title + marker
+
+.. marker =
+    |? sort-column-id != column.id
+        ""
+    ??
+        match sort-direction
+            | TableSortDirection.ascending
+                " ↑"
+            | TableSortDirection.descending
+                " ↓"
+            ??
+                ""
+
+━━━━━━━━━━━━━━━━━━━━
++ TableCell'Row is Box
+
++ item Row
++ column TableColumn'Row
++ row TableRow'Row?
++ column-width Coord
++ is-selected = #row?.#is-selected ?? false
++ text = table-aligned-text(#column.value-text(#item), #column-width, #column.align)
+
+• This
+    min-width = #column-width
+    max-width = #column-width
+
+━━━━━━━━━━━━━━━━━━━━
++ TableRow'Row is ListItem
+
++ table Table'Row?
++ item Row?
++ row-handle TableRowHandle?
++ row-key String?
+_ claimed-row-key String?
+
+────────────────────
++ do sync-row-key-handle
+
+=? if claimed-row-key == row-key
+
+. owner = table
+. old-handle = row-handle
+if owner && old-handle
+    . next-handle = owner.replace-row-handle(old-handle)
+    owner.row-selection[old-handle].rekey(next-handle)
+        catch err Error
+            ?! Panic(err.message)
+    owner.row-activation[old-handle].rekey(next-handle)
+        catch err Error
+            ?! Panic(err.message)
+    row-handle = next-handle
+    owner.did-change-row-handle(this, old-handle, next-handle)
+claimed-row-key = row-key
+
+────────────────────
+whenever #row-key
+
+sync-row-key-handle()
+
+────────────────────
+_ do claim-row-endpoints ?! Error
+    - owner Table'Row
+    - claimed TableRowHandle
+
+for event on owner.row-selection[claimed]
+    is-selected = row-handle != null && owner.selected-row-handle == row-handle
+for event on owner.row-activation[claimed]
+    is-selected = row-handle != null && owner.selected-row-handle == row-handle
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+. owner = table
+=? if !owner
+
+. claimed = owner.claim-row-handle()
+row-handle = claimed
+claimed-row-key = row-key
+claim-row-endpoints(owner, claimed)
+    catch err Error
+        ?! Panic(err.message)
+. selected = owner.selected-row
+if selected && selected as Pointer == this as Pointer
+    owner.selected-row-handle = claimed
+    is-selected = true
+
+────────────────────
++ do unmounted
+
+. owner = table
+. claimed = row-handle
+if owner && claimed
+    owner.did-unmount-row(this, claimed)
+    owner.row-selection[claimed].release()
+    owner.row-activation[claimed].release()
+    owner.release-row-handle(claimed)
+row-handle = null
+claimed-row-key = null
+is-selected = false
+super.unmounted()
+
+━━━━━━━━━━━━━━━━━━━━
+_ table-column-min-width'Row Coord
+    - column TableColumn'Row
+
+max(0, column.min-width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ table-column-flex'Row Float
+    - column TableColumn'Row
+
+match column.column-width
+    | TableWidth.flex(flex)
+        flex as Float
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do table-clamp-column-width'Row Coord
+    - column TableColumn'Row
+    - width Coord
+
+. result = max(table-column-min-width(column), width)
+if column.max-width
+    result = min(result, column.max-width)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ table-aligned-text String
+    - text String
+    - width Coord
+    - align TableAlign
+
+" " * left-padding + text + " " * right-padding
+
+.. display-width = DisplayText(text).display-width as Coord
+.. padding = max(0, width - display-width)
+.. left-padding =
+    |? align == TableAlign.right
+        padding
+    |? align == TableAlign.center
+        padding / 2
+    ??
+        0
+.. right-padding = padding - left-padding

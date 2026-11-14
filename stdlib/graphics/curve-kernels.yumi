@@ -1,0 +1,830 @@
+
+./primitives
+/math
+
+_ kernel-tolerance = 10e-6
+
+━━━━━━━━━━━━━━━━━━━━
++ CubicCoefficients1D is Tuple
+
++ a Coord
++ b Coord
++ c Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ XYScalars is Tuple
+
++ x Coord
++ y Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ CoordBounds is Tuple
+
++ min Coord
++ max Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ RectScalars is Tuple
+
++ min-x Coord
++ min-y Coord
++ max-x Coord
++ max-y Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ CurveRangeScalars is Tuple
+
++ type SegmentType
++ x1 Coord
++ y1 Coord
++ hox Coord
++ hoy Coord
++ hix Coord
++ hiy Coord
++ x2 Coord
++ y2 Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ CurveSplitScalars is Tuple
+
++ left CurveRangeScalars
++ right CurveRangeScalars
+
+━━━━━━━━━━━━━━━━━━━━
++ CubicRootsScalars is Tuple
+
++ root1 Coord
++ root2 Coord
++ root3 Coord
++ count I8
+
+────────────────────
++ This
+    - r1 Coord
+
+= CubicRootsScalars(r1, 0, 0, 1)
+
+────────────────────
++ This
+    - r1 Coord
+    - r2 Coord
+
+= CubicRootsScalars(r1, r2, 0, 2)
+
+────────────────────
++ This
+    - r1 Coord
+    - r2 Coord
+    - r3 Coord
+
+= CubicRootsScalars(r1, r2, r3, 3)
+
+────────────────────
++ this[index Index]
+
+|? index == 0
+    root1
+|? index == 1
+    root2
+|? index == 2
+    root3
+??
+    -1
+
+━━━━━━━━━━━━━━━━━━━━
++ LineIntersectionScalars is Tuple
+
++ hit Bool
++ t1 PointOnCurve
++ t2 PointOnCurve
++ x Coord
++ y Coord
+
+━━━━━━━━━━━━━━━━━━━━
++ CubicLineIntersectionsScalars is Tuple
+
++ count I8
++ curve-first PointOnCurve
++ line-first PointOnCurve
++ curve-second PointOnCurve
++ line-second PointOnCurve
++ curve-third PointOnCurve
++ line-third PointOnCurve
+
+━━━━━━━━━━━━━━━━━━━━
++ CubicSampleScalars is Tuple
+
++ x Coord
++ y Coord
++ distance Length
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-coefficients-1d @inline
+    - a1 Coord
+    - ho Coord
+    - hi Coord
+    - a2 Coord
+
+CubicCoefficients1D(a, b, c)
+
+.. c = 3.0 * (ho - a1)
+.. b = 3.0 * (hi - ho) - c
+.. a = a2 - a1 - c - b
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-evaluate-1d Coord @inline
+    - a Coord
+    - b Coord
+    - c Coord
+    - a1 Coord
+    - t PointOnCurve
+
+((a * t + b) * t + c) * t + a1
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-evaluate-control-1d @inline
+    - a1 Coord
+    - ho Coord
+    - hi Coord
+    - a2 Coord
+    - t PointOnCurve
+
+cubic-evaluate-1d(coeffs.a, coeffs.b, coeffs.c, a1, t)
+    .. coeffs = cubic-coefficients-1d(a1, ho, hi, a2)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-derivative-1d Coord @inline
+    - a Coord
+    - b Coord
+    - c Coord
+    - t PointOnCurve
+
+(3.0 * a * t + 2.0 * b) * t + c
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-evaluate-xy
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t PointOnCurve
+
+XYScalars
+    - cubic-evaluate-1d(cx.a, cx.b, cx.c, x1, t)
+    - cubic-evaluate-1d(cy.a, cy.b, cy.c, y1, t)
+
+.. cx = cubic-coefficients-1d(x1, hox, hix, x2)
+.. cy = cubic-coefficients-1d(y1, hoy, hiy, y2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-derivative-xy
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t PointOnCurve
+
+. cx = cubic-coefficients-1d(x1, hox, hix, x2)
+. cy = cubic-coefficients-1d(y1, hoy, hiy, y2)
+. dx Coord
+. dy Coord
+. degenerate-start = t < kernel-tolerance && hox == x1 && hoy == y1
+. degenerate-end = t > 1 - kernel-tolerance && hix == x2 && hiy == y2
+if degenerate-start && (hix != x1 || hiy != y1)
+    dx = hix - x1
+    dy = hiy - y1
+else if degenerate-end && (hox != x2 || hoy != y2)
+    dx = x2 - hox
+    dy = y2 - hoy
+else if degenerate-start || degenerate-end
+    dx = x2 - x1
+    dy = y2 - y1
+else if t < kernel-tolerance
+    dx = cx.c
+    dy = cy.c
+else if t > 1.0 - kernel-tolerance
+    dx = 3.0 * (x2 - hix)
+    dy = 3.0 * (y2 - hiy)
+else
+    dx = cubic-derivative-1d(cx.a, cx.b, cx.c, t)
+    dy = cubic-derivative-1d(cy.a, cy.b, cy.c, t)
+
+= XYScalars(dx, dy)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-normal-xy
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t PointOnCurve
+
+XYScalars(tangent.y, -tangent.x)
+    .. tangent = cubic-derivative-xy(x1, y1, hox, hoy, hix, hiy, x2, y2, t)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-offset-point-xy @no-gc
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t PointOnCurve
+    - distance Length
+
+. point = cubic-evaluate-xy(x1, y1, hox, hoy, hix, hiy, x2, y2, t)
+. normal = cubic-normal-xy(x1, y1, hox, hoy, hix, hiy, x2, y2, t)
+. normal-length = sqrt(normal.x * normal.x + normal.y * normal.y)
+. scale = if !normal-length then 1.0 else distance / normal-length
+= XYScalars(point.x + normal.x * scale, point.y + normal.y * scale)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-like-scalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+
+abs(x1 - hox) < 0.01 && abs(y1 - hoy) < 0.01 && abs(hix - x2) < 0.01 && abs(hiy - y2) < 0.01
+
+━━━━━━━━━━━━━━━━━━━━
++ line-length-scalars Length
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+
+sqrt(dx * dx + dy * dy)
+    .. dx = x2 - x1
+    .. dy = y2 - y1
+
+━━━━━━━━━━━━━━━━━━━━
++ line-normal-xy
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+
+|? length <= kernel-tolerance
+    XYScalars(0, 0)
+??
+    XYScalars(dy / length, -dx / length)
+
+.. dx = x2 - x1
+.. dy = y2 - y1
+.. length = sqrt(dx * dx + dy * dy)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-bounds-1d
+    - a1 Coord
+    - a2 Coord
+
+CoordBounds(min(a1, a2), max(a1, a2))
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-bounds-1d CoordBounds
+    - a1 Coord
+    - ho Coord
+    - hi Coord
+    - a2 Coord
+    - epsilon = kernel-tolerance
+
+. a = 3.0 * (ho - hi) - a1 + a2
+. b = 2.0 * (a1 + hi) - 4.0 * ho
+. c = ho - a1
+. min = min(a1, a2)
+. max = max(a1, a2)
+. t-min = epsilon
+. t-max = 1.0 - epsilon
+. roots = solve-quadratic-scalars(a, b, c, epsilon)
+if roots.count >= 0
+    for i in 0 .. < roots.count
+        . t = if i == 0 then roots.root1 else roots.root2
+        if t > t-min && t < t-max
+            . pt = cubic-evaluate-control-1d(a1, ho, hi, a2, t)
+            if pt < min
+                min = pt
+            if pt > max
+                max = pt
+
+= CoordBounds(min, max)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-bounds-xy RectScalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - epsilon = kernel-tolerance
+
+RectScalars(bx.min, bounds-y.min, bx.max, bounds-y.max)
+
+.. bx = cubic-bounds-1d(x1, hox, hix, x2, epsilon)
+.. bounds-y = cubic-bounds-1d(y1, hoy, hiy, y2, epsilon)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-roots-for-x CubicRootsScalars
+    - value Coord
+    - x1 Coord
+    - hox Coord
+    - hix Coord
+    - x2 Coord
+    - epsilon = kernel-tolerance
+
+solve-cubic-scalars(c.a, c.b, c.c, x1 - value, epsilon)
+
+.. c = cubic-coefficients-1d(x1, hox, hix, x2)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-roots-for-y CubicRootsScalars
+    - value Coord
+    - y1 Coord
+    - hoy Coord
+    - hiy Coord
+    - y2 Coord
+    - epsilon = kernel-tolerance
+
+solve-cubic-scalars(c.a, c.b, c.c, y1 - value, epsilon)
+
+.. c = cubic-coefficients-1d(y1, hoy, hiy, y2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-parameter-at-point PointOnCurve
+    - point-x Coord
+    - point-y Coord
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - epsilon = kernel-tolerance
+
+if abs(x1 - point-x) < epsilon && abs(y1 - point-y) < epsilon
+    = 0
+
+if abs(x2 - point-x) < epsilon && abs(y2 - point-y) < epsilon
+    = 1
+
+. txs = cubic-roots-for-x(point-x, x1, hox, hix, x2, epsilon)
+. tys = cubic-roots-for-y(point-y, y1, hoy, hiy, y2, epsilon)
+. sx = txs.count
+. sy = tys.count
+. tx PointOnCurve
+. ty PointOnCurve
+. cx Index = 0
+while sx == -1 || cx < sx
+    if (sx == -1 || (tx = txs[cx]) >= 0) && tx <= 1
+        . cy Index = 0
+        while sy == -1 || cy < sy
+            if (sy == -1 || (ty = tys[cy]) >= 0) && ty <= 1
+                if sx == -1
+                    tx = ty
+                else if sy == -1
+                    ty = tx
+
+                if abs(tx - ty) < epsilon
+                    = (tx + ty) * 0.5
+
+            cy += 1
+
+        if sx == -1
+            break
+
+    cx += 1
+
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
++ point-on-cubic-scalars Bool
+    - point-x Coord
+    - point-y Coord
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - epsilon = kernel-tolerance
+
+cubic-parameter-at-point(point-x, point-y, x1, y1, hox, hoy, hix, hiy, x2, y2, epsilon) >= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ line-range-scalars
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+
+CurveRangeScalars(.segment-type-line, sx, sy, sx, sy, ex, ey, ex, ey)
+
+.. sx = x1 + (x2 - x1) * t1
+.. sy = y1 + (y2 - y1) * t1
+.. ex = x1 + (x2 - x1) * t2
+.. ey = y1 + (y2 - y1) * t2
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-subdivide-scalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t PointOnCurve
+
+CurveSplitScalars
+    - CurveRangeScalars(.segment-type-cubic, x1, y1, p3x, p3y, p6x, p6y, p8x, p8y)
+    - CurveRangeScalars(.segment-type-cubic, p8x, p8y, p7x, p7y, p5x, p5y, x2, y2)
+
+.. u = 1 - t
+.. p3x = u * x1 + t * hox
+.. p3y = u * y1 + t * hoy
+.. p4x = u * hox + t * hix
+.. p4y = u * hoy + t * hiy
+.. p5x = u * hix + t * x2
+.. p5y = u * hiy + t * y2
+.. p6x = u * p3x + t * p4x
+.. p6y = u * p3y + t * p4y
+.. p7x = u * p4x + t * p5x
+.. p7y = u * p4y + t * p5y
+.. p8x = u * p6x + t * p7x
+.. p8y = u * p6y + t * p7y
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-range-scalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+
+. out = CurveRangeScalars(.segment-type-cubic, x1, y1, hox, hoy, hix, hiy, x2, y2)
+if t1 > 0
+    . split = cubic-subdivide-scalars()
+        - out.x1
+        - out.y1
+        - out.hox
+        - out.hoy
+        - out.hix
+        - out.hiy
+        - out.x2
+        - out.y2
+        - t1
+    out = split.right
+
+if t2 < 1
+    . split = cubic-subdivide-scalars()
+        - out.x1
+        - out.y1
+        - out.hox
+        - out.hoy
+        - out.hix
+        - out.hiy
+        - out.x2
+        - out.y2
+        - (t2 - t1) / (1.0 - t1)
+    out = split.left
+
+= out
+
+━━━━━━━━━━━━━━━━━━━━
++ curve-range-scalars
+    - type SegmentType
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+
+|? type == .segment-type-line
+    line-range-scalars(x1, y1, x2, y2, t1, t2)
+??
+    cubic-range-scalars(x1, y1, hox, hoy, hix, hiy, x2, y2, t1, t2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-sample-length @no-gc
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - prev-x Coord
+    - prev-y Coord
+    - t PointOnCurve
+
+. point = cubic-evaluate-xy(x1, y1, hox, hoy, hix, hiy, x2, y2, t)
+. dx = point.x - prev-x
+. dy = point.y - prev-y
+= CubicSampleScalars(point.x, point.y, sqrt(dx * dx + dy * dy))
+
+━━━━━━━━━━━━━━━━━━━━
++ line-line-intersection-scalars LineIntersectionScalars
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+    - x4 Coord
+    - y4 Coord
+    - as-infinity = false
+
+|? den == 0
+    LineIntersectionScalars(false, 0, 0, 0, 0)
+|? !as-infinity && (t1 < 0 || t2 < 0 || t1 > 1 || t2 > 1)
+    LineIntersectionScalars(false, t1, t2, 0, 0)
+??
+    LineIntersectionScalars(true, t1, t2, x1 + t1 * (x2 - x1), y1 + t1 * (y2 - y1))
+
+.. den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+.. t1 = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den
+.. t2 = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-line-intersections-prepared-scalars CubicLineIntersectionsScalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - lx1 Coord
+    - ly1 Coord
+    - linelength Length
+    - lux Coord
+    - luy Coord
+    - epsilon = kernel-tolerance
+
+` Translate and align the curve so the line points along the negative x axis.
+. dx = x1 - lx1
+. dy = y1 - ly1
+. sx = -(dx * lux + dy * luy)
+. sy = dx * luy - dy * lux
+
+dx = hox - lx1
+dy = hoy - ly1
+. ox = -(dx * lux + dy * luy)
+. oy = dx * luy - dy * lux
+
+dx = hix - lx1
+dy = hiy - ly1
+. ix = -(dx * lux + dy * luy)
+. iy = dx * luy - dy * lux
+
+dx = x2 - lx1
+dy = y2 - ly1
+. ex = -(dx * lux + dy * luy)
+. ey = dx * luy - dy * lux
+
+if min(min(sy, oy), min(iy, ey)) > epsilon || max(max(sy, oy), max(iy, ey)) < -epsilon
+    = CubicLineIntersectionsScalars(0, 0, 0, 0, 0, 0, 0)
+
+. candidates = cubic-roots-for-y(0.0, sy, oy, iy, ey, epsilon)
+. count I8
+. curvefirst PointOnCurve
+. linefirst PointOnCurve
+. curvesecond PointOnCurve
+. linesecond PointOnCurve
+. curvethird PointOnCurve
+. linethird PointOnCurve
+
+if candidates.count < 0
+    . endpoint = 0
+    while endpoint < 2
+        . curveparam = if endpoint == 0 then 0.0 else 1.0
+        . root = round(curveparam / epsilon) * epsilon
+        if !has-root-scalar(count, curvefirst, curvesecond, curvethird, root, epsilon)
+            . x = cubic-evaluate-control-1d(sx, ox, ix, ex, curveparam)
+            . lineparam = -x / linelength
+            if lineparam >= -epsilon && lineparam <= 1.0 + epsilon
+                lineparam = if lineparam < 0 then 0.0 else lineparam
+                lineparam = if lineparam > 1 then 1.0 else lineparam
+                if count == 0
+                    curvefirst = curveparam
+                    linefirst = lineparam
+                else if count == 1
+                    curvesecond = curveparam
+                    linesecond = lineparam
+                else
+                    curvethird = curveparam
+                    linethird = lineparam
+                count += 1
+        endpoint += 1
+else
+    for candidateindex in 0 .. < candidates.count
+        . candidate = candidates[candidateindex]
+        if candidate < -epsilon || candidate > 1.0 + epsilon
+            continue
+        . curveparam = if candidate < 0 then 0.0 else candidate
+        curveparam = if curveparam > 1 then 1.0 else curveparam
+        . root = round(curveparam / epsilon) * epsilon
+        if has-root-scalar(count, curvefirst, curvesecond, curvethird, root, epsilon)
+            continue
+
+        . x = cubic-evaluate-control-1d(sx, ox, ix, ex, curveparam)
+        . lineparam = -x / linelength
+        if lineparam >= -epsilon && lineparam <= 1.0 + epsilon
+            lineparam = if lineparam < 0 then 0.0 else lineparam
+            lineparam = if lineparam > 1 then 1.0 else lineparam
+            if count == 0
+                curvefirst = curveparam
+                linefirst = lineparam
+            else if count == 1
+                curvesecond = curveparam
+                linesecond = lineparam
+            else
+                curvethird = curveparam
+                linethird = lineparam
+            count += 1
+
+= CubicLineIntersectionsScalars()
+    - count
+    - curvefirst
+    - linefirst
+    - curvesecond
+    - linesecond
+    - curvethird
+    - linethird
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-line-intersections-scalars CubicLineIntersectionsScalars
+    - x1 Coord
+    - y1 Coord
+    - hox Coord
+    - hoy Coord
+    - hix Coord
+    - hiy Coord
+    - x2 Coord
+    - y2 Coord
+    - lx1 Coord
+    - ly1 Coord
+    - lx2 Coord
+    - ly2 Coord
+    - epsilon = kernel-tolerance
+
+|? linelength <= epsilon
+    CubicLineIntersectionsScalars(0, 0, 0, 0, 0, 0, 0)
+??
+    cubic-line-intersections-prepared-scalars()
+        - x1
+        - y1
+        - hox
+        - hoy
+        - hix
+        - hiy
+        - x2
+        - y2
+        - lx1
+        - ly1
+        - linelength
+        - lux
+        - luy
+        - epsilon
+
+.. linelength = line-length-scalars(lx1, ly1, lx2, ly2)
+.. lux = (lx2 - lx1) / linelength
+.. luy = (ly2 - ly1) / linelength
+
+━━━━━━━━━━━━━━━━━━━━
+_ has-root-scalar
+    - count I8
+    - first PointOnCurve
+    - second PointOnCurve
+    - third PointOnCurve
+    - root PointOnCurve
+    - epsilon Coord
+
+|? count > 0 && abs(first - root) < epsilon
+    true
+|? count > 1 && abs(second - root) < epsilon
+    true
+|? count > 2 && abs(third - root) < epsilon
+    true
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
+_ solve-quadratic-scalars CubicRootsScalars
+    - a
+    - b
+    - c
+    - epsilon
+
+|? abs(a) < epsilon
+    |? abs(b) >= epsilon
+        CubicRootsScalars(-c / b)
+    |? abs(c) < epsilon
+        CubicRootsScalars(0, 0, 0, -1)
+    ??
+        CubicRootsScalars()
+|? q < 0
+    CubicRootsScalars()
+|? sqrt-q > 0
+    CubicRootsScalars(x1, x2)
+??
+    CubicRootsScalars(x1)
+
+.. q = b * b - 4.0 * a * c
+.. sqrt-q = sqrt(q)
+.. x1 = (-b + sqrt-q) / (2.0 * a)
+.. x2 = (-b - sqrt-q) / (2.0 * a)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do solve-cubic-scalars CubicRootsScalars
+    - a
+    - b
+    - c
+    - d
+    - epsilon
+
+if abs(a) < epsilon
+    = solve-quadratic-scalars(b, c, d, epsilon)
+
+` Normalize to form: x^3 + b x^2 + c x + d = 0:
+b /= a
+c /= a
+d /= a
+
+. bb = b * b
+if abs(b) > 1 / sqrt(epsilon) && abs(c) < bb / 64 && abs(d) < abs(b) * bb / 64
+    . root = -b
+    for ignored in 0 .. < 4
+        . value = ((root + b) * root + c) * root + d
+        . slope = (3 * root + 2 * b) * root + c
+        root -= value / slope
+    . constant = -d / root
+    . linear = (constant - c) / root
+    . remaining = solve-quadratic-scalars(1.0, linear, constant, epsilon)
+    if remaining.count == 2
+        = CubicRootsScalars(root, remaining.root1, remaining.root2)
+    else if remaining.count == 1
+        = CubicRootsScalars(root, remaining.root1)
+    = CubicRootsScalars(root)
+
+. p = 1.0 / 3.0 * (-1.0 / 3.0 * bb + c)
+. q = 1.0 / 2.0 * (2.0 / 27.0 * b * bb - 1.0 / 3.0 * b * c + d)
+. ppp = p * p * p
+. dd = q * q + ppp
+
+b /= 3
+
+if abs(dd) < epsilon
+    if abs(q) < epsilon
+        = CubicRootsScalars(-b)
+    else
+        . u = cbrt(-q)
+        = CubicRootsScalars(2.0 * u - b, -u - b)
+else if dd < 0
+    . phi = 1.0 / 3.0 * acos(-q / sqrt(-ppp))
+    . t = 2.0 * sqrt(-p)
+    = CubicRootsScalars(t * cos(phi) - b, -t * cos(phi + π / 3.0) - b, -t * cos(phi - π / 3.0) - b)
+else
+    . sdd = sqrt(dd)
+    = CubicRootsScalars(cbrt(sdd - q) - cbrt(sdd + q) - b)

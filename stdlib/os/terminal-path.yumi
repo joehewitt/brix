@@ -1,0 +1,128 @@
+./env
+./path
+./terminal-emulator
+/math
+
+_ terminal-path-delimiters = "\"'`()[]{}<>|,;=*$!?&"
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalPathSpan is Tuple
+
++ start Size
++ end Size
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalPathLink is Tuple
+
++ path String
++ line Size?
++ column Size?
+
+━━━━━━━━━━━━━━━━━━━━
++ do terminal-row-cells [String]
+    - runs [TerminalRun]
+
+. cells [String]
+for run in runs
+    while cells.length < run.column
+        cells += " "
+    if run.has-flag(terminal-run-isolated)
+        cells += run.text
+        for index in 1 .. < run.columns
+            cells += ""
+    else
+        for point in run.text.codepoints
+            cells += "$point"
+= cells
+
+━━━━━━━━━━━━━━━━━━━━
++ do terminal-path-span TerminalPathSpan?
+    - cells [String]
+    - column Size
+
+=? null if column >= cells.length || !terminal-is-path-cell(cells[column])
+. start = column
+while start > 0 && terminal-is-path-cell(cells[start - 1])
+    start -= 1
+. end = column + 1
+while end < cells.length && terminal-is-path-cell(cells[end])
+    end += 1
+while end > start && (cells[end - 1] == "." || cells[end - 1] == ":")
+    end -= 1
+=? null if end <= column
+. text = ""
+for index in start .. < end
+    text += cells[index]
+= TerminalPathSpan(start, end, text)
+
+━━━━━━━━━━━━━━━━━━━━
++ do terminal-path-link TerminalPathLink
+    - text String
+
+. parts = List'String(text.split(":"))
+. numbers [Size]
+while parts.length > 1 && numbers.length < 2
+    . number = terminal-path-number(parts[parts.length - 1])
+    if number == null
+        break
+    numbers.insert(number, 0)
+    parts.remove(parts.length - 1)
+. line = terminal-path-index(numbers[0]) if numbers.length > 0
+. column = terminal-path-index(numbers[1]) if numbers.length > 1
+= TerminalPathLink(":".join(parts), line, column)
+
+━━━━━━━━━━━━━━━━━━━━
++ do terminal-resolve-file String?
+    - text String
+    - bases [String]
+
+for candidate in terminal-path-candidates(text, bases)
+    . path = Path(candidate, 0)
+    if path.exists && !path.is-dir
+        = "${catch? path.resolved ?? path}"
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do terminal-path-candidates [String]
+    - text String
+    - bases [String]
+
+. found [String]
+=? found if text.length == 0
+if text.starts-with("/")
+    found += text
+    = found
+if text.starts-with("~/")
+    . home = env("HOME")
+    if home
+        found += "$home${text[1 ...]}"
+    = found
+for base in bases
+    found += "$base/$text"
+    if text.starts-with("a/") || text.starts-with("b/")
+        found += "$base/${text[2 ...]}"
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ terminal-is-path-cell Bool
+    - cell String
+
+cell.length == 0 || (cell != " " && cell != "\t" && terminal-path-delimiters.find(cell) == null)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do terminal-path-number Size?
+    - text String
+
+=? null if !text
+. value Size = 0
+for char in text
+    =? null if char < '0' || char > '9'
+    value = value * 10 + ((char as U32) - ('0' as U32))
+= value
+
+━━━━━━━━━━━━━━━━━━━━
+_ terminal-path-index Size
+    - number Size
+
+max(number, 1) - 1

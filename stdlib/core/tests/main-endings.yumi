@@ -1,0 +1,50 @@
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Main endings")
+cases.run(main-ending-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do main-ending-tests TestCase
+    - t TestCase
+
+. log = MainEndingLog()
+do new play-main-endings(log)
+log.finished.wait()
+t.expect
+    - "an action runs where main ends, and one given after once its task finishes"
+    - ["before end", "first", "after end", "second"]
+    - log.events
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do play-main-endings
+    - log MainEndingLog
+
+when-main-ends(log.first)
+log.events += "before end"
+end-main()
+when-main-ends(log.second)
+log.events += "after end"
+
+━━━━━━━━━━━━━━━━━━━━
+_ MainEndingLog
+
++ events [String]
++ finished = Semaphore()
+
+────────────────────
++ do first
+
+events += "first"
+
+────────────────────
++ do second
+
+events += "second"
+finished.post()

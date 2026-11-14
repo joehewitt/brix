@@ -1,0 +1,217 @@
+./syntax
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFolds
+
++ version U64
+
+_ collapsed [SyntaxFold]
+_ starts [Size]
+_ ends [Size]
+_ before [Size]
+_ hidden Size
+_ synced-version U64
+_ is-synced = false
+
+────────────────────
++ This
+
+────────────────────
++ get is-plain Bool
+
+collapsed.length == 0
+
+────────────────────
++ do row-count Size
+    - line-count Size
+
+=? line-count if is-plain
+sync()
+= line-count - hidden
+
+────────────────────
++ do shown Size
+    - line Size
+
+=? line if is-plain
+sync()
+. index = spans-before(line)
+=? line if index == 0
+. span = index - 1
+=? starts[span] - before[span] if line <= ends[span]
+= line - before[span] - (ends[span] - starts[span])
+
+────────────────────
++ do actual Size
+    - display Size
+
+=? display if is-plain
+sync()
+. low Index = 0
+. high = starts.length
+while low < high
+    . middle = low + (high - low) / 2
+    if starts[middle] - before[middle] < display
+        low = middle + 1
+    else
+        high = middle
+=? display if low == 0
+. span = low - 1
+= display + before[span] + ends[span] - starts[span]
+
+────────────────────
++ do is-hidden Bool
+    - line Size
+
+=? false if is-plain
+sync()
+. index = spans-before(line)
+= index > 0 && line <= ends[index - 1]
+
+────────────────────
++ is-folded Bool
+    - line Size
+
+folded-end(line) != null
+
+────────────────────
++ do folded-end Size?
+    - line Size
+
+=? null if is-plain
+sync()
+. index = spans-before(line + 1)
+=? null if index == 0 || starts[index - 1] != line
+= ends[index - 1]
+
+────────────────────
++ do has-fold Bool
+    - line Size
+
+for fold in collapsed
+    =? true if fold.start == line
+    =? false if fold.start > line
+= false
+
+────────────────────
++ do collapse Bool
+    - fold SyntaxFold
+
+=? false if fold.end <= fold.start
+. position Index = 0
+while position < collapsed.length && collapsed[position].start < fold.start
+    position += 1
+=? false if position < collapsed.length && collapsed[position].start == fold.start
+collapsed.insert(fold, position)
+version += 1
+= true
+
+────────────────────
++ do unfold Bool
+    - line Size
+
+for position in 0 .. < collapsed.length
+    if collapsed[position].start == line
+        collapsed.remove(position)
+        version += 1
+        = true
+= false
+
+────────────────────
++ do reveal Bool
+    - line Size
+
+=? false if !is-hidden(line)
+. kept [SyntaxFold]
+for fold in collapsed
+    if fold.start >= line || fold.end < line
+        kept += fold
+collapsed = kept
+version += 1
+= true
+
+────────────────────
++ do fold-all
+    - folds [SyntaxFold]
+
+. kept [SyntaxFold]
+for fold in folds
+    if fold.end > fold.start
+        kept += fold
+collapsed = kept
+version += 1
+
+────────────────────
++ do unfold-all
+
+=? if is-plain
+collapsed = List'SyntaxFold()
+version += 1
+
+────────────────────
++ do shift
+    - start SyntaxPoint
+    - old-end SyntaxPoint
+    - new-end SyntaxPoint
+
+=? if is-plain
+. kept [SyntaxFold]
+for fold in collapsed
+    if start.row > fold.end
+        kept += fold
+    else if ends-before || (old-end.row == fold.start && keeps-head(fold, start, old-end, new-end))
+        kept += SyntaxFold
+            - fold.start - old-end.row + new-end.row
+            - fold.end - old-end.row + new-end.row
+    .. ends-before = old-end.row < fold.start
+collapsed = kept
+version += 1
+
+────────────────────
+_ keeps-head Bool
+    - fold SyntaxFold
+    - start SyntaxPoint
+    - old-end SyntaxPoint
+    - new-end SyntaxPoint
+
+start.row < fold.start || old-end.column == 0 || new-end.row == old-end.row
+
+────────────────────
+_ do spans-before Index
+    - line Size
+
+. low Index = 0
+. high = starts.length
+while low < high
+    . middle = low + (high - low) / 2
+    if starts[middle] < line
+        low = middle + 1
+    else
+        high = middle
+= low
+
+────────────────────
+_ do sync
+
+=? if is-synced && synced-version == version
+is-synced = true
+synced-version = version
+. made-starts [Size]
+. made-ends [Size]
+for fold in collapsed
+    . count = made-starts.length
+    if count > 0 && fold.start <= made-ends[count - 1]
+        made-ends[count - 1] = max(made-ends[count - 1], fold.end)
+    else
+        made-starts += fold.start
+        made-ends += fold.end
+. made-before [Size]
+. total Size = 0
+for index in 0 .. < made-starts.length
+    made-before += total
+    total += made-ends[index] - made-starts[index]
+starts = made-starts
+ends = made-ends
+before = made-before
+hidden = total

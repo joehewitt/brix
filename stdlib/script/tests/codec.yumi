@@ -1,0 +1,57 @@
+./support/fixture
+/data/json
+/script
+/stream/aggregate
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script JSON Round Trips")
+
+"", round-trip-problem("{\"number\": 0.5, \"typed\": \"50%\"}")
+"", round-trip-problem("{\"number\": 12.25}")
+"", round-trip-problem("{\"color\": \"#ff8000\"}")
+"", round-trip-problem("{\"color\": \"#ff800080\"}")
+
+════════════════════
+test("Script JSON Parts")
+
+"", round-trip-problem("{\"part\": \"segment\", \"of\": {\"id\": 2, \"kind\": \"path\"}, \"number\": 2}")
+
+━━━━━━━━━━━━━━━━━━━━
++ round-trip-problem String
+    - text String
+
+|? first != second
+    "unstable: $first then $second"
+|? !same-json(JSON(text), JSON(first))
+    "changed: $text became $first"
+??
+    ""
+
+.. first = script-test-json(script-expression-from-json(JSON(text)))
+.. second = script-test-json(script-expression-from-json(JSON(first)))
+
+━━━━━━━━━━━━━━━━━━━━
++ do same-json Bool
+    - left JSON
+    - right JSON
+
+do match left
+    | fields [String = JSON]
+        . others = right as [String = JSON] if right is [String = JSON]
+        =? false if !others || others.length != fields.length
+        for key, value in fields
+            . other = others[key]
+            =? false if !other || !same-json(value, other)
+        = true
+    | items [JSON]
+        . others = right as [JSON] if right is [JSON]
+        =? false if !others || others.length != items.length
+        = all(0 .. < items.length) • where same-json(items[each], others[each])
+    ??
+        = to-json(left) == to-json(right)

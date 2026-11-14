@@ -1,0 +1,312 @@
+./expression
+./phrase
+./token
+./value
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
++ script-parse ScriptExpression
+    - tokens [ScriptToken]
+    - grammar ScriptGrammar
+
+ScriptParser(tokens, grammar).parse()
+
+━━━━━━━━━━━━━━━━━━━━
++ script-number-value F64?
+    - text String
+
+match? text
+    ~ magnitude \script-number-magnitude "%" !.
+        magnitude / 100
+    ~ magnitude \script-number-magnitude "°" !.
+        magnitude
+    ~ magnitude \script-number-magnitude !.
+        magnitude
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-number-magnitude ~ Char
+
+~ [0-9]+ ("." [0-9]*)?
+    it as F64
+~ "." [0-9]+
+    it as F64
+
+━━━━━━━━━━━━━━━━━━━━
++ script-number-expression ScriptExpression
+    - token ScriptToken
+
+match script-number-value(token.text)
+    | value F64
+        ScriptLiteral(ScriptValue.number(value), token.text)
+    ??
+        ScriptUnresolved(token)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptExpectedWord is Tuple
+
++ phrase String
++ part Size
++ groups Size
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptParser
+
++ tokens [ScriptToken]
++ grammar ScriptGrammar
+
+_ position Index = 0
+_ groups Size = 0
+_ expected [ScriptExpectedWord]
+
+────────────────────
++ This
+    - tokens
+    - grammar
+
+────────────────────
++ do parse ScriptExpression
+
+position = 0
+groups = 0
+expected.clear()
+= slot()
+
+────────────────────
+_ get at-end
+
+position >= tokens.length
+
+────────────────────
+_ get next ScriptToken
+
+tokens[position]
+
+────────────────────
+_ do take ScriptToken
+
+. token = tokens[position]
+position += 1
+= token
+
+────────────────────
+_ do slot ScriptExpression
+
+. elements = List'ScriptExpression()
+. items = List'ScriptExpression()
+. listed = false
+while !at-end && !ends-slot(next)
+    if listing && next.kind == ScriptTokenKind.comma
+        take()
+        elements += collected(items)
+        items = List'ScriptExpression()
+        listed = true
+    else if starts-expression(next)
+        items += expression(ScriptPrecedence.slot.level)
+    else
+        items += ScriptUnresolved(take())
+. last = collected(items)
+=? last if !listed
+elements += last
+= ScriptListExpression(elements)
+
+────────────────────
+_ collected ScriptExpression
+    - items [ScriptExpression]
+
+|? items.length == 0
+    ScriptHole()
+|? items.length == 1
+    items[0]
+??
+    ScriptSequence(items)
+
+────────────────────
+_ do expression ScriptExpression
+    - minimum Size
+
+. left = prefix()
+while !at-end
+    . token = next
+    if token.kind == ScriptTokenKind.operator
+        . operator = script-operator-named(token.text)
+        =? left if !operator || operator.precedence.level < minimum
+        take()
+        left = ScriptBinary(operator, left, expression(operator.precedence.level + 1))
+    else if is-postfix-trigger(token)
+        . form = grammar.form(token.phrase)!
+        =? left if form.result.kind == ScriptTypeKind.range && above-range
+        .. above-range = minimum > ScriptPrecedence.range.level
+        left = phrase-rest(form, 1, left)
+    else
+        = left
+= left
+
+────────────────────
+_ do prefix ScriptExpression
+
+=? ScriptHole() if at-end
+. token = next
+do match token.kind
+    |= .number
+        = script-number-expression(take())
+    |= .query
+        = ScriptUnresolved(take())
+    |= .chip
+        take()
+        = ScriptReferenceExpression(token.reference, token.text)
+    |= .literal
+        take()
+        =? ScriptLiteral(token.value, token.text) if token.value
+        = ScriptUnresolved(token)
+    |= .hole
+        take()
+        = ScriptHole()
+    |= .open
+        take()
+        = group()
+    |= .operator
+        =? ScriptHole() if !is-prefix-operator(token)
+        take()
+        = ScriptNegation(expression(ScriptPrecedence.prefix.level))
+    |= .word
+        if starts-prefix-phrase(token)
+            . form = grammar.form(token.phrase)!
+            =? call(form) if token.called && form.is-function
+            = phrase-rest(form, 0)
+        =? phrase-rest(grammar.form(token.phrase)!, 1, ScriptHole()) if is-postfix-trigger(token)
+        = ScriptHole()
+    ??
+        = ScriptHole()
+
+────────────────────
+_ do group ScriptExpression
+
+groups += 1
+. first = slot()
+if at-end || next.kind != ScriptTokenKind.comma
+    groups -= 1
+    = ScriptGroup(first, close())
+take()
+. items = List'ScriptExpression(slot())
+while !at-end && next.kind == ScriptTokenKind.comma
+    items += ScriptUnresolved(take())
+    items += slot()
+groups -= 1
+. second = if items.length == 1 then items[0] else ScriptSequence(items)
+= ScriptPointExpression(first, second, close())
+
+────────────────────
+_ do close Bool
+
+=? false if at-end || next.kind != ScriptTokenKind.close
+= !take().ghost
+
+────────────────────
+_ do call ScriptExpression
+    - form ScriptPhraseForm
+
+take()
+. slots = form.slots
+. arguments = Map'String'ScriptExpression()
+=? ScriptPhraseExpression(form.kind, arguments) if at-end || next.kind != ScriptTokenKind.open
+take()
+groups += 1
+for index in 0 .. < slots.length
+    if index > 0 && !at-end && next.kind == ScriptTokenKind.comma
+        take()
+    arguments[slots[index].slot] = slot()
+. last = slots[slots.length - 1].slot
+. items = List'ScriptExpression(arguments[last]!)
+while !at-end && next.kind == ScriptTokenKind.comma
+    take()
+    items += slot()
+if items.length > 1
+    arguments[last] = ScriptListExpression(items)
+groups -= 1
+close()
+= ScriptPhraseExpression(form.kind, arguments)
+
+────────────────────
+_ do phrase-rest ScriptExpression
+    - form ScriptPhraseForm
+    - start Index
+    - first ScriptExpression? = null
+
+. arguments = Map'String'ScriptExpression()
+if first
+    arguments[form.parts[0].slot] = first
+for index in start .. < form.parts.length
+    . part = form.parts[index]
+    if part.is-slot
+        . word = form.next-word(index)
+        if word
+            expected += ScriptExpectedWord(form.kind, word, groups)
+        if form.is-function
+            groups += 1
+        arguments[part.slot] = if form.result.kind == ScriptTypeKind.range then expression(ScriptPrecedence.range.level + 1) else slot()
+        if form.is-function
+            groups -= 1
+        if word
+            expected.pop()
+    else if !at-end && next.kind == ScriptTokenKind.word && next.phrase == form.kind && same-part
+        take()
+    .. same-part = next.part == index
+= ScriptPhraseExpression(form.kind, arguments)
+
+────────────────────
+_ ends-slot
+    - token ScriptToken
+
+match token.kind
+    |= .close
+        groups > 0
+    |= .comma
+        !listing
+    |= .word
+        expects(token)
+    ??
+        false
+
+────────────────────
+_ get listing
+
+groups == 0 || (expected.length > 0 && expected[expected.length - 1].groups == groups)
+
+────────────────────
+_ expects Bool
+    - token ScriptToken
+
+some(expected) • where each.phrase == token.phrase && each.part == token.part
+
+────────────────────
+_ starts-expression Bool
+    - token ScriptToken
+
+|? token.starts-operand
+    true
+|? token.kind == ScriptTokenKind.operator
+    script-operator-named(token.text) != null
+??
+    starts-prefix-phrase(token) || is-postfix-trigger(token)
+
+────────────────────
+_ starts-prefix-phrase Bool
+    - token ScriptToken
+
+token.kind == ScriptTokenKind.word && token.part == 0 && form != null && !form.starts-with-slot
+
+.. form = grammar.form(token.phrase)
+
+────────────────────
+_ is-postfix-trigger Bool
+    - token ScriptToken
+
+token.kind == ScriptTokenKind.word && token.part == 1 && form != null && form.starts-with-slot
+
+.. form = grammar.form(token.phrase)
+
+────────────────────
+_ is-prefix-operator
+    - token ScriptToken
+
+token.kind == ScriptTokenKind.operator && token.text == "-"

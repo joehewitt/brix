@@ -1,0 +1,162 @@
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+/gui/border
+/gui/painter
+
+━━━━━━━━━━━━━━━━━━━━
++ PaintersPanel is Box
+
+• This • w:980 h:540
+
+────────────────────
+
+<This
+    <Label • absolute w:900 h:34
+        left = PositionOffset.coord(40)
+        top = PositionOffset.coord(28)
+        text = "Background & border painters"
+        font-size = 25
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <Label • absolute w:900 h:24 text:gui-muted-text-color
+        left = PositionOffset.coord(40)
+        top = PositionOffset.coord(68)
+        text = "Painters receive the Box and its full bounds; border painters also define layout insets."
+        font-size = 14
+        text-alignment = TextAlignment.center
+
+    <PainterCard • absolute w:280 h:350
+        left = PositionOffset.coord(40)
+        top = PositionOffset.coord(124)
+        heading = "Built-in painters"
+        detail = "Solid background, uniform border, and rounded clipping come from the default painters."
+
+    <PainterCard • absolute w:280 h:350
+        left = PositionOffset.coord(350)
+        top = PositionOffset.coord(124)
+        heading = "Custom background"
+        detail = "A Painter can draw any canvas content while the Box keeps ownership of clipping."
+        background-painter = PatternBackgroundPainter()
+
+    <PainterCard • absolute w:280 h:350
+        left = PositionOffset.coord(660)
+        top = PositionOffset.coord(124)
+        heading = "Custom border"
+        detail = "A BorderPainter supplies asymmetric insets and paints each edge independently."
+        background-painter = PatternBackgroundPainter()
+        border-painter = AccentBorderPainter()
+
+━━━━━━━━━━━━━━━━━━━━
++ PainterCard is Box
+
++ heading String = ""
++ detail String = ""
++ background-painter Painter?
++ border-painter BorderPainter = DefaultBorderPainter()
+
+• This
+    background = #background-painter
+    border = #border-painter
+    background-color = "#0f172a"
+    border-color = "#6366f1"
+    border-width = 6
+    corner-radius = 28
+    padding-left = 24
+    padding-top = 28
+    padding-right = 24
+    padding-bottom = 24
+    gap = 18
+    color = white
+
+────────────────────
+
+<This • flex-col
+    <Label • w:210 h:34
+        text = #heading
+        font-size = 18
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <Label • w:210 h:106
+        text = #detail
+        color = "#e2e8f0"
+        font-size = 14
+        text-wrap = TextWrap.word
+        text-alignment = TextAlignment.center
+
+    <PainterSwatch • w:210 h:92
+
+━━━━━━━━━━━━━━━━━━━━
++ PainterSwatch is Box
+
+• This
+    background-color = "#f8fafc"
+    border-color = "#cbd5e1"
+    border-width = 2
+    corner-radius = 18
+
+────────────────────
+
+<This
+    <Box • absolute w:64 h:64 bg:"#22c55e"
+        left = PositionOffset.coord(24)
+        top = PositionOffset.coord(14)
+        corner-radius = 32
+
+    <Box • absolute w:88 h:48 bg:"#f59e0b"
+        left = PositionOffset.coord(98)
+        top = PositionOffset.coord(22)
+        corner-radius = 16
+
+━━━━━━━━━━━━━━━━━━━━
++ PatternBackgroundPainter is Painter
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+canvas.fill-color = node.$background-color
+canvas.stroke-color = null
+canvas.rect(rect)
+canvas.fill-color = RGBA("#312e81")
+canvas.circle(rect.x + 36, rect.y + 38, 92)
+canvas.fill-color = RGBA("#0e7490")
+canvas.circle(rect.right - 24, rect.y + 130, 116)
+canvas.fill-color = RGBA("#7c3aed")
+canvas.rect(Rect(rect.x + 34, rect.bottom - 94, rect.width - 68, 56))
+
+━━━━━━━━━━━━━━━━━━━━
++ AccentBorderPainter is BorderPainter
+
+╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ border-insets
+    - node Box
+
+Insets(8, 16, 12, 6)
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+. edges = node.border-edges
+canvas.stroke-color = null
+canvas.fill-color = node.$border-color
+canvas.rect(Rect(rect.x, rect.y, rect.width, edges.top))
+canvas.fill-color = RGBA("#f97316")
+canvas.rect(Rect(rect.right - edges.right, rect.y, edges.right, rect.height))
+canvas.fill-color = RGBA("#22c55e")
+canvas.rect(Rect(rect.x, rect.bottom - edges.bottom, rect.width, edges.bottom))
+canvas.fill-color = RGBA("#38bdf8")
+canvas.rect(Rect(rect.x, rect.y, edges.left, rect.height))

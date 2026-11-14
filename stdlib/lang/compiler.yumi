@@ -1,0 +1,126 @@
+./ast/c-header
+./ast/module
+./ast/probe-selection
+./ast/program
+./ast/program-builder
+./ast/syntax-program
+./check/parallel-typing
+./check/session
+./constants
+./report/facts-text
+./target
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ YumiCompiler
+
++ search-paths [Path]
++ c-module-paths [String = [Path]]
++ sources [String = String]
++ parse-worker-count = default-worker-count
++ typing-worker-count = default-worker-count
++ probes = ProbeSelection()
++ target Target?
++ c-headers CHeaders?
++ modules ModuleView?
+
+────────────────────
++ do compile-program
+    - source-path String
+    - module-name = "__source__"
+
+. ast-program = use source-to-ast(source-path, module-name)
+= ast-to-ir(source-path, ast-program)
+
+────────────────────
++ do source-to-syntax SyntaxProgram
+    - source-path String
+    - module-name String
+    - source String? = null
+
+. syntax = SyntaxProgram(search-paths, c-module-paths)
+syntax.sources = sources
+syntax.probes = probes
+syntax.target = target
+if c-headers
+    syntax.use-c-headers(c-headers)
+if modules
+    syntax.use-modules(modules)
+//+compiler.parse.syntax
+syntax.parse(source-path, module-name, parse-worker-count, source)
+//-compiler.parse.syntax
+= syntax
+
+────────────────────
++ do syntax-to-ast Program
+    - syntax SyntaxProgram
+
+//+compiler.parse.headers
+syntax.materialize-c-headers()
+//-compiler.parse.headers
+. builder = ProgramBuilder(syntax.take-atoms())
+builder.shares-atoms = syntax.shares-atoms
+//+compiler.parse.modules
+. program = builder.build(syntax)
+//-compiler.parse.modules
+program.probes = syntax.probes
+program.target = syntax.target!
+program.absent-imports = syntax.absent-imports
+= program
+
+────────────────────
++ do source-to-ast Program
+    - source-path String
+    - module-name String
+    - source String? = null
+
+. syntax = use source-to-syntax(source-path, module-name, source)
+= syntax-to-ast(syntax)
+
+────────────────────
++ do batch-to-ast Program
+    - roots [(String, String)]
+
+` The program of a batch: each root, given its path and the name of its module, and what each
+` imports.
+. syntax = use SyntaxProgram(search-paths, c-module-paths)
+syntax.sources = sources
+syntax.probes = probes
+syntax.target = target
+if c-headers
+    syntax.use-c-headers(c-headers)
+if modules
+    syntax.use-modules(modules)
+syntax.parse-batch(roots, parse-worker-count)
+= syntax-to-ast(syntax)
+
+────────────────────
++ do ast-to-ir
+    - source-path String
+    - ast-program Program
+
+//compiler.link// linked $ast-program.modules.length modules
+
+. session = use Session(ast-program)
+type-program(session, typing-worker-count)
+session.seal()
+
+. text = FactsText(session, search-paths)
+for position in 0 .. < ast-program.modules.length
+    . module = position as ModuleId
+    . report = text.rendered-diagnostics(module)
+    if report.length != 0
+        -- report
+    . declines = text.rendered-declines(module)
+    if declines.length != 0
+        -- declines
+ast-program.release-trees()
+session.release-typing()
+= session.instances.length
+
+────────────────────
++ do path-to-module Path?
+    - name String
+
+. syntax = use SyntaxProgram(search-paths, c-module-paths)
+= syntax.path-to-module(name)

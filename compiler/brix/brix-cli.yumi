@@ -1,0 +1,381 @@
+/core/arena
+/core/array-builder
+/data/sexp
+/lang/ast/ast-builder
+/lang/ast/ast-nodes
+/lang/ast/ast-xml
+/lang/ast/brix
+/lang/ast/grammar
+/lang/brix/convert
+/lang/constants
+/lang/lint/config
+/lang/lint/diagnostics
+/lang/lint/linter
+/lang/lint/source
+/lang/target
+/os/cli
+/os/env
+/os/file
+/os/path
+
+request-process-termination(run())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run Int
+
+. command = cmdline()
+. out = env("BRIX_OUT")
+=? sweep(command.args, out) if command.has-flag("sweep")
+=? check-parity(command.args) if command.has-flag("parity")
+=? brix-round-trips(command.args) if command.has-flag("brix-round-trip")
+. is-check = command.has-flag("check")
+. is-round-trip = command.has-flag("round-trip")
+. converted = 0
+. failed = 0
+. differing = 0
+for path in command.args
+    if is-round-trip
+        . same = catch round-trips(path)
+        if same is Error
+            failed += 1
+            -- "$path: $same"
+        else if same as Bool
+            converted += 1
+        else
+            differing += 1
+            -- "$path: reads back differently"
+        continue
+    . outcome = catch convert-file(path, is-check, out)
+    if outcome is String
+        converted += 1
+        if !is-check
+            -- outcome as String
+    else
+        failed += 1
+        -- "$path: $outcome"
+if is-round-trip
+    -- "same $converted, different $differing, failed $failed"
+else
+    -- "converted $converted, failed $failed"
+= if failed + differing == 0 then 0 else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sweep Int
+    - paths [String]
+    - out String?
+
+. tally = ParityTally()
+. problems Size = 0
+for path in paths
+    . found = catch sweep-file(path, out, tally)
+    if found is Error
+        problems += 1
+        -- "$path: $found"
+    else
+        problems += found as Size
+problems += tally.failed-files + tally.different-forms + tally.failed-forms
+-- "sweep files ${paths.length} problems $problems"
+= if problems == 0 then 0 else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sweep-file Size ?! Error
+    - path String
+    - out String?
+    - tally ParityTally
+
+. source-file = use File(path)
+. source = source-file as String
+. brix = brix-convert(source)
+if out
+    write-brix(path, brix, out)
+. compared = catch compare-text(path, source, brix, tally)
+if compared is Error
+    tally.failed-files += 1
+    -- "$path: $compared"
+. view = brix-yumi-text(brix)
+. problems Size = 0
+if !views-match(source, view)
+    problems += 1
+    -- "$path: its UBrix view reads back differently"
+. mismatch = save-mismatch(brix, view)
+if mismatch
+    problems += 1
+    -- "$path:$mismatch: saving its UBrix view changes its Brix"
+= problems
+
+━━━━━━━━━━━━━━━━━━━━
+_ do convert-file String ?! Error
+    - path String
+    - is-check Bool
+    - out String?
+
+. source-file = use File(path)
+. source = source-file as String
+. text = brix-convert(source)
+=? path if is-check
+= write-brix(path, text, out)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-brix String ?! Error
+    - path String
+    - text String
+    - out String?
+
+. name = "${source-stem(path) ?? path}$brix-extension"
+. target = if out then Path(out) / name else Path(name)
+. folder = target.parent
+if folder
+    folder.make-directories()
+. mode = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
+. file = use File(target as String, mode)
+file.write(text)
+= target as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do round-trips Bool ?! Error
+    - path String
+
+. source-file = use File(path)
+. source = source-file as String
+= views-match(source, brix-yumi-text(brix-convert(source)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ views-match Bool ?! Error
+    - source String
+    - view String
+
+read != null && read == syntax-text(source)
+
+.. read = catch? syntax-text(view)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-round-trips Int
+    - paths [String]
+
+. linter = catch format-linter()
+if linter is Error
+    -- "$linter"
+    = 1
+. same Size = 0
+. differing Size = 0
+. failed Size = 0
+for path in paths
+    . mismatch = catch brix-mismatch(path, linter)
+    if mismatch is Error
+        failed += 1
+        -- "$path: $mismatch"
+    else if mismatch is Size
+        differing += 1
+        -- "$path:$mismatch: reads back differently"
+    else
+        same += 1
+-- "same $same, different $differing, failed $failed"
+= if failed + differing == 0 then 0 else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do format-linter Linter ?! Error
+
+. root = cwd()
+. catalog = rule-catalog()
+. config = load-lint-config(root, catalog)
+if !config.rules["layout/format"]
+    config.rules["layout/format"] = copy-options
+        - find-rule(catalog, "layout/format")!.default-options
+. search-path = config.search-path ?? ":".join((each as String) in module-search-paths())
+= Linter(root, search-path, config, catalog, ["layout/format"])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-mismatch Size? ?! Error
+    - path String
+    - linter Linter
+
+. source-file = use File(path)
+. source = formatted(linter, path, source-file as String)
+= save-mismatch(source, brix-yumi-text(source))
+
+━━━━━━━━━━━━━━━━━━━━
+_ formatted String
+    - linter Linter
+    - path String
+    - text String
+
+if candidates.length != 0 then candidates[0].replacement else text
+
+.. absolute = if path.starts-with("/") then path else "${cwd()}/$path"
+.. candidates = linter.format-candidates(LintSource(absolute, text))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do save-mismatch Size? ?! Error
+    - brix String
+    - view String
+
+. reread = catch brix-convert(view)
+?! Error("its UBrix view does not convert: $reread") if reread is Error
+. printed = reread as String
+=? null if printed == brix
+. wanted = List'String(brix.split("\n"))
+. made = List'String(printed.split("\n"))
+. line Size = 0
+while line < wanted.length && line < made.length && wanted[line] == made[line]
+    line += 1
+= line + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do syntax-text String ?! Error
+    - source String
+
+. builder = parse-yumi(source)
+use builder
+= builder.view(builder.root) as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ ParityTally
+
++ same-files Size = 0
++ split-files Size = 0
++ failed-files Size = 0
++ same-forms Size = 0
++ different-forms Size = 0
++ failed-forms Size = 0
++ reasons [String = Size]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do check-parity Int
+    - paths [String]
+
+. tally = ParityTally()
+for path in paths
+    . compared = catch compare-file(path, tally)
+    if compared is Error
+        tally.failed-files += 1
+        -- "$path: $compared"
+-- "files: same ${tally.same-files}, split ${tally.split-files}, failed ${tally.failed-files}"
+-- "forms: same ${tally.same-forms}, different ${tally.different-forms}, failed $form-failures"
+.. form-failures = tally.failed-forms
+for reason, count in tally.reasons
+    -- "$count $reason"
+= if tally.failed-files + tally.different-forms + tally.failed-forms == 0 then 0 else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compare-file ?! Error
+    - path String
+    - tally ParityTally
+
+. source-file = use File(path)
+. source = source-file as String
+compare-text(path, source, brix-convert(source), tally)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compare-text ?! Error
+    - path String
+    - source String
+    - brix String
+    - tally ParityTally
+
+. yumi = use parse-yumi(source, path)
+. whole = catch? parse-brix(brix, path)
+if whole
+    . same = (whole.view(whole.root) as String) == (yumi.view(yumi.root) as String)
+    whole.release()
+    if same
+        tally.same-files += 1
+        =
+tally.split-files += 1
+compare-forms(path, brix, yumi, tally)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compare-forms ?! Error
+    - path String
+    - brix String
+    - yumi ASTBuilder
+    - tally ParityTally
+
+. statements = top-statements(yumi)
+. arena = use Arena()
+. tape = sexp-tape(brix, arena, false)
+. bytes = brix as Byte[]
+. cursor Size = 0
+. index Index = 0
+while index < tape.length
+    . head = if tape.is-open(index) && tape.is-atom(index + 1) then head-atom else "?"
+        .. head-atom = tape.atom-text(index + 1)
+    . span = form-span(tape, index, head)
+    if span == 0
+        index = tape.after(index)
+        continue
+    . part = catch parse-brix(bytes.slice-string(tape.start(index) .. < tape.end(index)), path)
+    if part is ASTBuilder
+        . made = top-statements(part)
+        ?! Error("$path: ($head …) makes more statements than the source") if overruns
+        .. overruns = cursor + made.length > statements.length
+        for offset in 0 .. < made.length
+            . expected = closure-free(yumi.view(statements[cursor + offset]) as String)
+            if closure-free(part.view(made[offset]) as String) == expected
+                tally.same-forms += 1
+            else
+                tally.different-forms += 1
+                -- "$path: ($head …) differs"
+        cursor += made.length
+        part.release()
+    else
+        cursor += span
+        tally.failed-forms += span
+        . message = (part as Error).message
+        tally.reasons[message] = (tally.reasons[message] ?? 0) + 1
+        -- "$path:${tape.token-location(index).line + 1}: ($head …) fails: $message"
+    index = tape.after(index)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do form-span Size
+    - tape SexpTape
+    - index Index
+    - head String
+
+=? 0 if head == "blank"
+=? 1 if head != "main"
+. span Size = 0
+. row = index + 2
+while row < tape.close-of(index)
+    if !(tape.is-open(row) && tape.atom-is(row + 1, "blank"))
+        span += 1
+    row = tape.after(row)
+= span
+
+━━━━━━━━━━━━━━━━━━━━
+_ do top-statements [SyntaxId]
+    - tree ASTBuilder
+
+. ids [SyntaxId]
+do match? tree.nodes[tree.root]
+    | .node-top-level-syntax(row)
+        for offset in 0 .. < row.statements.count
+            ids += tree.children[row.statements.start + offset]
+= ids
+
+━━━━━━━━━━━━━━━━━━━━
+_ do closure-free String
+    - text String
+
+. bytes = text as Byte[]
+. marker = "(closure" as Byte[]
+. kept = ArrayBuilder'Byte()
+. index Index = 0
+while index < bytes.length
+    . matched = index + marker.length <= bytes.length && marker-at(bytes, index, marker)
+    . step = if matched then marker.length else 1
+    for offset in 0 .. < step
+        kept.append(bytes[index + offset])
+    index += step
+    while matched && index < bytes.length && bytes[index] >= 48 && bytes[index] <= 57
+        index += 1
+= kept.finish-mutable().slice-string()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do marker-at Bool
+    - bytes Byte[]
+    - index Index
+    - marker Byte[]
+
+for offset in 0 .. < marker.length
+    =? false if bytes[index + offset] != marker[offset]
+= true

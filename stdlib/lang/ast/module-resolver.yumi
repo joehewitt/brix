@@ -1,0 +1,317 @@
+./c-header
+/core/parsing
+/lang/constants
+/lang/target
+/os/env
+/os/path
+/stream/aggregate
+
+_ private-prefix = "_"
+
+━━━━━━━━━━━━━━━━━━━━
++ ResolvedModule is Tuple
+
++ name String
++ path Path
+
+━━━━━━━━━━━━━━━━━━━━
++ AbsentImport is Tuple
+
++ module String
++ path String
+
+━━━━━━━━━━━━━━━━━━━━
++ ModuleResolver
+
++ search-paths [Path]
++ c-module-paths [String = [Path]]
++ c-headers = host-c-headers
+_ module-hits [String = ResolvedModule]
+_ module-misses [String = Bool]
+_ c-module-hits [String = Path]
+_ c-module-misses [String = Bool]
+_ absent [String]
+
+────────────────────
++ This
+    - configured-search-paths [Path]
+    - configured-c-module-paths [String = [Path]]
+
+for configured in configured-search-paths
+    search-paths += resolved-path(configured, "")
+c-module-paths += runtime-c-paths
+c-module-paths["c"] = [c-headers.c-root]
+c-module-paths += configured-c-module-paths
+
+────────────────────
++ do use-c-headers
+    - headers CHeaders
+
+` Finds and reads C headers in `headers` from now on.
+c-headers = headers
+c-module-paths["c"] = [headers.c-root]
+c-module-hits.clear()
+c-module-misses.clear()
+
+────────────────────
++ path-to-module Path?
+    - name String
+
+match? find-module(name, null, null)
+    | _, module-path
+        module-path
+
+────────────────────
++ do relative-path String
+    - path String
+    - root-paths [String]
+
+=? path if !path
+. whole = resolved-path(path, "")
+for root in search-paths
+    . base = root as String
+    =? whole[base.length + 1 ...] if whole.starts-with("$base$separator")
+for _, roots in c-module-paths
+    for root in roots
+        . base = resolved-path(root, "")
+        =? whole[base.length + 1 ...] if whole.starts-with("$base$separator")
+for root-path in root-paths
+    . base = resolved-path(Path(root-path).dir, "")
+    =? whole[base.length + 1 ...] if whole.starts-with("$base$separator")
+= path-between(resolved-path(Path(if root-paths then root-paths[0] else "").dir, ""), whole)
+
+────────────────────
++ do resolve-module ResolvedModule?
+    - name String
+    - base-path String?
+
+. header = find-c-module(name)
+if header
+    = ResolvedModule(name, header)
+
+= match? find-module(name, null, base-path)
+    | module-name, module-path
+        ResolvedModule(module-name, module-path)
+
+────────────────────
++ c-module-functions [CHeaderFunction]
+    - header String
+
+c-header-functions(c-headers, c-include-paths(), header)
+
+────────────────────
++ do find-module
+    - written String
+    - base-name String?
+    - base-path String?
+
+. name = if written.starts-with("../") then "./$written" else written
+. key =
+    |? name.starts-with("./")
+        "$name\n${Path(base-name ?? "").dir}\n${Path(base-path ?? "").dir}"
+    ??
+        name
+=? match? module-hits[key]
+    | hit ResolvedModule
+        (hit.name, hit.path)
+if module-misses[key]
+    = null
+
+. found = search-module(name, base-name, base-path)
+do match? found
+    | module-name, module-path
+        module-hits[key] = ResolvedModule(module-name, module-path)
+if !found
+    module-misses[key] = true
+= found
+
+────────────────────
++ do take-absent [String]
+
+. taken = absent
+absent = List'String()
+= taken
+
+────────────────────
++ do find-c-module Path?
+    - name String
+
+=? match? c-module-hits[name]
+    | hit Path
+        hit
+if c-module-misses[name]
+    = null
+
+. found = search-c-module(name)
+if found
+    c-module-hits[name] = found
+else
+    c-module-misses[name] = true
+= found
+
+────────────────────
+_ do search-module
+    - name String
+    - base-name String?
+    - base-path String?
+
+. tail-name =
+    |? name.find-reverse("/")
+        name[it! + 1 ...]
+    ??
+        name
+for each in try-module-paths(name, base-name, base-path)
+    . found = source-file("${each[1]}/$tail-name") ?? source-file(each[1] as String)
+    =? (folder-name(each[0], found), found) if found
+= null
+
+────────────────────
+_ folder-name String
+    - name String
+    - file Path
+
+|? file.dir.name == stem && (name == doubled || name.ends-with("/$doubled"))
+    name[0 .. < name.length - stem.length - 1]
+??
+    name
+
+.. stem = file.base-name
+.. doubled = "$stem/$stem"
+
+────────────────────
+_ do source-file Path?
+    - stem String
+
+. brix-path Path = "$stem$brix-extension"
+. has-brix = catch? brix-path.is-file ?? false
+=? brix-path if has-brix
+absent += brix-path as String
+. yumi-path Path = "$stem$yumi-extension"
+. has-yumi = catch? yumi-path.is-file ?? false
+=? yumi-path if has-yumi
+absent += yumi-path as String
+= null
+
+────────────────────
+_ do search-c-module Path?
+    - name String
+
+. head = Path(name).head as String
+. tail = Path(name).tail as String
+. c-root = head
+. c-tail = tail
+
+if head == name
+    c-root = "c"
+    c-tail = name
+
+. c-paths = c-module-paths[c-root]
+if !c-paths
+    c-root = "c"
+    c-tail = name
+    c-paths = c-module-paths[c-root]
+
+. found =
+    **? c-paths
+    *> match c-root
+        |= "c"
+            each / c-tail
+        ??
+            each / c-root / c-tail
+    ?> has-c-file(each)
+    |> first
+
+= found
+
+────────────────────
+_ do has-c-file Bool
+    - path Path
+
+` Whether a C header is at `path`: in the snapshot the headers are read from, or on disk.
+=? c-headers.snapshot.has(header-key) if c-headers.snapshot
+.. header-key = snapshot-key(c-headers.c-root, c-include-paths(), path as String)
+= catch? path.is-file ?? false
+
+────────────────────
++ do c-include-paths [Path]
+
+. paths [Path]
+for root, roots in c-module-paths
+    if root != "c"
+        paths ++= roots
+= paths
+
+────────────────────
+_ try-module-paths
+    - name String
+    - base-name String?
+    - base-path Path?
+
+` The names and paths a module `name` may be found at, in order. A name that starts with `./` is
+` found beside the module at `base-path`, or its private file there; any other name in each
+` search path. A path beside a module is absolute, as the search paths are, so a module reached
+` by a relative import and by a rooted one has one name. One in no search path is named from the
+` module that imports it, with its `..` folded (`folded-name`), so that relative imports from
+` modules in different directories name it alike. Every path has its `.` and `..` segments
+` folded, so a module reached by different paths is one module.
+|? name.starts-with("./")
+    * full-name, full-path as Path
+    * private-full-name, private-path
+
+    .. private-full-name = (Path(full-name).dir / "$private-prefix${Path(abs-name).name}") as String
+    .. full-name = local-name ?? default-name
+        .. local-name
+            search-paths as <String>
+            ?> full-path.starts-with(each)
+            *> full-path[each.length + (if has-tail-slash then 0 else 1) ...]
+                .. has-tail-slash = each.ends-with("/")
+            |> first
+        .. default-name = folded-name((base-dir / abs-name) as String)
+            .. base-dir = Path(base-name ?? "").dir
+
+    .. full-path = resolved-path(abs-base-path, abs-name)
+
+    .. private-path Path = resolved-path(abs-base-path, private-name)
+        .. private-name = (dir-name / "$private-prefix$file-name") as String
+        .. dir-name = name-as-path.dir
+        .. file-name = name-as-path.name
+        .. name-as-path Path = abs-name
+
+    .. abs-name = name[2 ...]
+    .. abs-base-path = base-path?.dir ?? cwd() as Path
+??
+    search-paths
+    *> rooted-name, resolved-path(each as String, rooted-name) as Path
+
+    .. rooted-name = if name.starts-with("/") then name[1 ...] else name
+
+────────────────────
+_ do folded-name String
+    - name String
+
+` `name` without its `.` segments, and with each `..` segment folded into the segment before it.
+. parts [String]
+for part in name.split(separator)
+    if part == ".." && parts.length != 0 && parts[parts.length - 1] != ".."
+        parts.pop()
+    else if part && part != "."
+        parts += part
+= separator.join(parts)
+
+────────────────────
+_ do path-between String
+    - base String
+    - whole String
+
+. base-parts [String] = base.split(separator)
+. whole-parts [String] = whole.split(separator)
+. shared Size = 0
+while shared < base-parts.length && shared < whole-parts.length && base-parts[shared] == whole-parts[shared]
+    shared += 1
+. parts [String]
+for part in base-parts[shared ...]
+    if part
+        parts += ".."
+for part in whole-parts[shared ...]
+    parts += part
+= separator.join(parts)

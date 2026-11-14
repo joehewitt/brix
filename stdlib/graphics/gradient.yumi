@@ -1,0 +1,150 @@
+./color
+./point
+./primitives
+/math
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ GradientStop is Tuple
+
++ offset Ratio
++ color RGBA
+
+━━━━━━━━━━━━━━━━━━━━
++ LinearGradient is Tuple
+
++ start Point
++ end Point
++ stops [GradientStop]
+
+────────────────────
++ do validate
+
+?! Panic("Linear gradient coordinates must be finite")
+    if !gradient-point-is-finite(start) || !gradient-point-is-finite(end)
+?! Panic("Linear gradient endpoints must be distinct")
+    if start == end
+validate-gradient-stops(stops)
+
+━━━━━━━━━━━━━━━━━━━━
++ RadialGradient is Tuple
+
++ start-center Point
++ start-radius Length
++ end-center Point
++ end-radius Length
++ stops [GradientStop]
+
+────────────────────
++ do validate
+
+?! Panic("Radial gradient coordinates must be finite")
+    if !gradient-point-is-finite(start-center) || !gradient-point-is-finite(end-center)
+?! Panic("Radial gradient radii must be finite and not negative")
+    if !is-finite(start-radius) || !is-finite(end-radius) || start-radius < 0 || end-radius < 0
+?! Panic("Radial gradient circles must be distinct")
+    if start-center == end-center && start-radius == end-radius
+validate-gradient-stops(stops)
+
+━━━━━━━━━━━━━━━━━━━━
++ ConicGradient is Tuple
+
++ center Point
++ angle Radians
++ stops [GradientStop]
+
+────────────────────
++ do validate
+
+?! Panic("Conic gradient center and angle must be finite")
+    if !gradient-point-is-finite(center) || !is-finite(angle)
+validate-gradient-stops(stops)
+
+━━━━━━━━━━━━━━━━━━━━
++ Gradient is Union
+
+| LinearGradient
+| RadialGradient
+| ConicGradient
+
+────────────────────
++ do validate
+
+do match this
+    | linear LinearGradient
+        linear.validate()
+    | radial RadialGradient
+        radial.validate()
+    | conic ConicGradient
+        conic.validate()
+
+────────────────────
++ get stops
+
+match this
+    | linear LinearGradient
+        linear.stops
+    | radial RadialGradient
+        radial.stops
+    | conic ConicGradient
+        conic.stops
+
+━━━━━━━━━━━━━━━━━━━━
++ linear-gradient
+    - start Point
+    - end Point
+    - start-color RGBA
+    - end-color RGBA
+
+LinearGradient(start, end, [GradientStop(0%%, start-color), GradientStop(1%%, end-color)])
+
+━━━━━━━━━━━━━━━━━━━━
++ radial-gradient
+    - center Point
+    - radius Length
+    - start-color RGBA
+    - end-color RGBA
+
+RadialGradient
+    - center
+    - 0
+    - center
+    - radius
+    - [GradientStop(0%%, start-color), GradientStop(1%%, end-color)]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do validate-gradient-stops
+    - stops [GradientStop]
+
+?! Panic("Gradients require at least two stops")
+    if stops.length < 2
+. previous = 0%%
+for index in 0 .. < stops.length
+    . stop = stops[index]
+    ?! Panic("Gradient stop offsets must be finite and between zero and one")
+        if !is-finite(stop.offset) || stop.offset < 0%% || stop.offset > 1%%
+    ?! Panic("Gradient stop offsets must be ordered")
+        if index > 0 && stop.offset < previous
+    ?! Panic("Gradient stop colors must be finite")
+        if !gradient-color-is-finite(stop.color)
+    previous = stop.offset
+
+━━━━━━━━━━━━━━━━━━━━
+_ gradient-point-is-finite
+    - point Point
+
+is-finite(point.x) && is-finite(point.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gradient-color-is-finite Bool
+    - color RGBA
+
+is-finite(color.red) && is-finite(color.green) && is-finite(color.blue) && is-finite(color.alpha)
+
+━━━━━━━━━━━━━━━━━━━━
++ hue-spectrum-stops
+
+List
+    ** 0 .. 6
+    *> GradientStop(ratio, HSVA(ratio, 1, 1))
+        .. ratio = (each as F64) / 6

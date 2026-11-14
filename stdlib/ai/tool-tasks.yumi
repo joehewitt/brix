@@ -1,0 +1,117 @@
+_ ai-tool-output-limit Size = 16384
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolTaskStatus is Union
+
+| running
+| completed
+| failed
+| stopped
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolTask
+
++ id String
++ call-id String?
++ kind String
++ title String
++ is-backgrounded Bool
++ status = AIToolTaskStatus.running
++ summary String?
++ output String?
+
+────────────────────
++ This
+    - id
+    - call-id String?
+    - kind String
+    - title String
+    - is-backgrounded Bool
+
+────────────────────
++ get is-running
+
+status == AIToolTaskStatus.running
+
+────────────────────
++ get is-working-behind
+
+is-running && is-backgrounded
+
+────────────────────
++ do show-output
+    - text String
+
+output = if text.size > ai-tool-output-limit then tail else text
+    .. tail = text[text.size - ai-tool-output-limit .. < text.size]
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolTasks
+
++ revision U64
+
+_ tasks = Map'String'AIToolTask()
+_ calls = Map'String'AIToolTask()
+
+────────────────────
++ task AIToolTask?
+    - id String
+
+tasks[id]
+
+────────────────────
++ for-call AIToolTask?
+    - call-id String
+
+calls[call-id]
+
+────────────────────
++ do add
+    - task AIToolTask
+
+tasks[task.id] = task
+if task.call-id
+    calls[task.call-id] = task
+revision += 1
+
+────────────────────
++ do settle
+    - id String
+    - status AIToolTaskStatus
+    - summary String? = null
+
+. task = tasks[id]
+=? if !task || task.status != AIToolTaskStatus.running
+task.status = status
+if summary
+    task.summary = summary
+revision += 1
+
+────────────────────
++ do note
+    - id String
+    - summary String?
+    - is-backgrounded Bool?
+
+. task = tasks[id]
+=? if !task
+if summary
+    task.summary = summary
+if is-backgrounded != null
+    task.is-backgrounded = is-backgrounded
+revision += 1
+
+────────────────────
++ working-behind [AIToolTask]
+    - call-ids [String = Bool]
+
+<* id, task in calls when task.is-working-behind && call-ids has id
+    task
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-tool-task AIToolTask?
+    - revision U64
+    - tasks AIToolTasks
+    - call-id String
+
+tasks.for-call(call-id)

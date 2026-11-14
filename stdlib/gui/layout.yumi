@@ -1,0 +1,1520 @@
+
+./box
+./primitives
+/graphics/primitives
+/math
+
++ flex-col = FlexLayout(Orientation.vertical)
++ flex-row = FlexLayout(Orientation.horizontal)
++ flow-col = FlowLayout(Orientation.vertical)
++ flow-row = FlowLayout(Orientation.horizontal)
+
+_ gui-flex-scratch-stack [GUIFlexScratch]
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutArrangeHint is U8
+
+| full = 0
+| children-only = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+────────────────────
++ do child-content-size-invalidated
+    - box Box
+    - child Box
+
+────────────────────
++ get preserves-positioned-children-on-children-only
+
+false
+
+────────────────────
++ get sequence-axis Orientation?
+
+null
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+Dimensions(0, 0)
+
+────────────────────
++ carry-slot Index?
+    - box Box
+    - child Box
+
+null
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexLayout is Layout
+
++ orient Orientation
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+//gui.layout.builtin.arrange-fast ++
+if hint == LayoutArrangeHint.children-only
+    =? if box.has-rigid-flex-children && !box.carried-child && arrange-flex-stack-incremental(box)
+    arrange-flex-content(box)
+    box.arrange-positioned-children()
+    =
+arrange-flex-content(box)
+
+────────────────────
++ do child-content-size-invalidated
+    - box Box
+    - child Box
+
+=? if box.$is-active-list-invalid
+if !child.participates-in-parent-layout(box)
+    box.invalidate-layout()
+    =
+box.retain-indexed-dirty-layout-child(child)
+
+────────────────────
++ get preserves-positioned-children-on-children-only
+
+true
+
+────────────────────
++ get sequence-axis
+
+orient
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+gui-flex-natural-size(box, orient, query, box.computed-gap)
+
+────────────────────
++ carry-slot Index?
+    - box Box
+    - child Box
+
+gui-carry-slot(box, child, orient)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do arrange-flex-content
+    - box Box
+
+. content = box.content-bounds
+. available = gui-main-size(content.size, orient)
+. query = box.child-layout-query()
+. scratch GUIFlexScratch = acquire-gui-flex-scratch()
+. coupled = box.$stack-motion == StackMotion.coupled
+
+. order = gui-carried-order(box)
+if order
+    for live in order
+        gather-flex-child(scratch, live, query, coupled, false)
+else
+    . child = box.first-active-child
+    . whole = !coupled && !box.has-spaced-children
+    . spaced = false
+    while child
+        . live = child
+        child = live.next-active-sibling
+        if !whole
+            if live.is-released
+                spaced = true
+                continue
+            spaced = spaced || live.layout-space < 1
+        gather-flex-child(scratch, live, query, coupled, whole)
+    if !whole && !spaced
+        box.has-spaced-children = false
+. fixed = scratch.fixed
+. total-flex = scratch.total-flex
+
+. gap = box.computed-gap
+. gaps Length = 0
+if scratch.is-uniform
+    if scratch.children.length > 1
+        gaps = gap * (scratch.children.length - 1)
+else
+    . reach Float
+    for space in scratch.spaces
+        gaps += gap * space * reach
+        reach = max(reach, space)
+fixed += gaps
+if fixed > available
+    fixed -= gui-flex-shrink(scratch, fixed - available, orient, available)
+. remaining = gui-safe-span(available - fixed)
+while total-flex > 0
+    . clamped-one = false
+    for index in 0 .. < scratch.children.length
+        if !scratch.flexible[index]
+            continue
+        . live = scratch.children[index]
+        . weight = scratch.weights[index]
+        . proposed = remaining * weight / total-flex
+        . margin = scratch.margins[index]
+        . proposed-outer = proposed + margin
+        . constrained-outer = live.constrained-outer-main-size(proposed-outer, orient, available)
+        if constrained-outer != proposed-outer
+            . constrained = gui-safe-span(constrained-outer - margin)
+            . space = scratch.space-at(index)
+            . taken = if space < 1 && constrained > proposed then scaled else constrained
+                .. scaled = max(proposed, constrained * space)
+            scratch.allocations[index] = constrained
+            scratch.flexible[index] = false
+            if space < 1
+                scratch.shares[index] = gui-flex-footprint(constrained, taken, margin, space)
+            remaining = gui-safe-span(remaining - taken)
+            total-flex -= weight
+            clamped-one = true
+    if !clamped-one
+        break
+
+. allocated-flex Length = 0
+. last-flex Index?
+if total-flex > 0
+    for index in 0 .. < scratch.children.length
+        if scratch.flexible[index]
+            last-flex = index
+
+for index in 0 .. < scratch.children.length
+    if scratch.flexible[index]
+        . weight = scratch.weights[index]
+        . allocation = remaining * weight / total-flex
+        if last-flex && index == last-flex
+            allocation = remaining - allocated-flex
+        scratch.allocations[index] = gui-safe-span(allocation)
+        allocated-flex += scratch.allocations[index]
+        . space = scratch.space-at(index)
+        if space < 1
+            . span = scratch.allocations[index]
+            scratch.shares[index] = gui-flex-footprint(span, span, scratch.margins[index], space)
+
+if coupled
+    . horizontal = orient == Orientation.horizontal
+    for index in 0 .. < scratch.children.length
+        if scratch.weights[index] > 0 && scratch.space-at(index) == 1
+            . outer = scratch.allocations[index] + scratch.margins[index]
+            scratch.set-share(index, scratch.children[index].presented-share(outer, horizontal))
+
+. count = scratch.children.length
+. used Length = 0
+for index in 0 .. < count
+    if scratch.weights[index] <= 0
+        used += gui-main-size(scratch.measures[index], orient) * scratch.share-at(index)
+    else
+        used += (scratch.allocations[index] + scratch.margins[index]) * scratch.share-at(index)
+used += gaps
+. spacing = gui-flex-justify-spacing(box.$justify, gui-safe-span(available - used), count)
+. offset = spacing.lead
+. cross-size Length = 0
+. has-baseline = false
+. rigid = !coupled && !order && scratch.is-uniform && box.$justify == Justify.start
+. reach Float
+for index in 0 .. < count
+    . live = scratch.children[index]
+    . space = scratch.space-at(index)
+    if index > 0
+        offset += gap * space * reach + spacing.between
+    reach = max(reach, space)
+    . size = scratch.allocations[index]
+    . is-flexible = scratch.weights[index] > 0
+    if is-flexible
+        size += scratch.margins[index]
+    else
+        size = gui-main-size(scratch.measures[index], orient)
+    //gui.layout.arrange.children-arranged ++
+    . align = flex-child-align(box, live)
+    . child-query = query
+    if is-flexible || scratch.shrinks[index] > 0
+        rigid = false
+        if orient == Orientation.horizontal
+            child-query = MeasureQuery
+                - if is-flexible then exact-axis-query(size) else fit-axis-query(size)
+                - query.block
+            live.flow-measure(child-query)
+    if orient == Orientation.horizontal
+        has-baseline = has-baseline || align == Alignment.first-baseline
+    . rect = place-flex-child
+        - live
+        - content
+        - child-query
+        - scratch.measures[index]
+        - offset
+        - size
+        - align
+    cross-size = max(cross-size, flex-cross-extent(content, rect))
+    offset += size * scratch.share-at(index)
+
+box.has-rigid-flex-children = rigid && !has-baseline
+if has-baseline
+    cross-size = max(cross-size, gui-flex-align-baselines(box, scratch.children, content.y))
+
+if orient == Orientation.horizontal
+    box.inner-width = offset
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+    box.inner-height = offset
+
+scratch.clear()
+gui-flex-scratch-stack += scratch
+
+────────────────────
+_ do gather-flex-child @inline
+    - scratch GUIFlexScratch
+    - live Box
+    - query MeasureQuery
+    - coupled Bool
+    - whole Bool
+
+//gui.layout.arrange.children-considered ++
+. space = if whole then 1.0 else live.layout-space
+. weight = gui-flex-weight(live.$flex) * space
+. margin = gui-main-inset-size(live.margin-edges, orient)
+. size = Dimensions(0, 0)
+. share = space
+if weight > 0
+    scratch.total-flex += weight
+    scratch.fixed += margin * space
+    if !whole
+        live.place-flexibly()
+else
+    size = live.flow-measure(query).outer-size
+    if !whole
+        share = live.layout-share
+            - gui-main-size(size, orient)
+            - orient == Orientation.horizontal
+            - coupled
+    scratch.fixed += gui-main-size(size, orient) * share
+if !whole
+    scratch.add-space(space, share)
+scratch.children += live
+scratch.weights += weight
+scratch.margins += margin
+scratch.measures += size
+scratch.allocations += 0
+scratch.flexible += weight > 0
+scratch.shrinks += if weight > 0 then 0.0 else gui-flex-weight(live.$shrink)
+
+────────────────────
+_ flex-child-align Alignment
+    - box Box
+    - live Box
+
+|? orient == Orientation.horizontal
+    live.$align-y ?? box.$align-children
+??
+    live.$align-x ?? box.$align-children
+
+────────────────────
+_ flex-cross-extent Length
+    - content Rect
+    - rect Rect
+
+|? orient == Orientation.horizontal
+    max(content.height, rect.bottom - content.y)
+??
+    max(content.width, rect.right - content.x)
+
+────────────────────
+_ flex-main-start Length
+    - child Box
+
+if orient == Orientation.horizontal then bounds.left else bounds.top
+
+.. bounds = child.outer-bounds
+
+────────────────────
+_ do place-flex-child Rect
+    - live Box
+    - content Rect
+    - query MeasureQuery
+    - measured Dimensions
+    - offset Length
+    - size Length
+    - align Alignment
+
+if orient == Orientation.horizontal
+    . stretched = gui-flex-stretched-cross(live, content.height, Orientation.vertical, measured)
+    . cross = gui-flex-cross-axis(live, content.y, content.height, stretched, query, orient, align)
+    . rect = Rect(content.x + offset, cross.start, size, cross.span)
+    live.arrange-outer-bounds(rect)
+    = rect
+. stretched = gui-flex-stretched-cross(live, content.width, Orientation.horizontal, measured)
+. cross = gui-flex-cross-axis(live, content.x, content.width, stretched, query, orient, align)
+. rect = Rect(cross.start, content.y + offset, cross.span, size)
+live.arrange-outer-bounds(rect)
+= rect
+
+────────────────────
+_ do arrange-flex-stack-incremental Bool
+    - box Box
+
+. indexed-dirty = box.indexed-dirty-layout-children
+if indexed-dirty
+    . dirty = indexed-dirty
+    . first-dirty = dirty[0]
+    . last-dirty = first-dirty
+    . first-start = flex-main-start(first-dirty)
+    . last-start = first-start
+    . ambiguous-order = false
+    for index in 1 .. < dirty.length
+        . candidate = dirty[index]
+        . candidate-start = flex-main-start(candidate)
+        if candidate-start < first-start
+            first-dirty = candidate
+            first-start = candidate-start
+        else if candidate-start == first-start && candidate as Pointer != first-dirty as Pointer
+            ambiguous-order = true
+        if candidate-start > last-start
+            last-dirty = candidate
+            last-start = candidate-start
+        else if candidate-start == last-start && candidate as Pointer != last-dirty as Pointer
+            ambiguous-order = true
+    if !ambiguous-order
+        //gui.layout.arrange.indexed-dirty-ranges ++
+        = arrange-flex-stack-range(box, first-dirty, last-dirty)
+    //gui.layout.arrange.fallback.indexed-order ++
+
+. query = box.child-layout-query()
+. first-dirty Box?
+. last-dirty Box?
+. child = box.first-active-child
+while child
+    . live = child
+    //gui.layout.arrange.children-considered ++
+    if !live.has-last-measure-result(query)
+        //gui.layout.arrange.fallback.no-child-history ++
+        = false
+    if live.$is-layout-invalid
+        if !first-dirty
+            first-dirty = live
+        last-dirty = live
+    child = live.next-active-sibling
+
+if !first-dirty
+    //gui.layout.arrange.fallback.no-candidate ++
+    = false
+= arrange-flex-stack-range(box, first-dirty, last-dirty!)
+
+────────────────────
+_ do arrange-flex-stack-range Bool
+    - box Box
+    - first-dirty Box
+    - last-dirty Box
+
+=? false if !first-dirty.participates-in-parent-layout(box) || last-outside
+.. last-outside = !last-dirty.participates-in-parent-layout(box)
+if !first-dirty.has-arrangement
+    //gui.layout.arrange.fallback.unarranged ++
+    = false
+. content = box.content-bounds
+. query = box.child-layout-query()
+. gap = box.computed-gap
+. horizontal = orient == Orientation.horizontal
+. start = flex-main-start(first-dirty)
+. offset = if horizontal then start - content.x else start - content.y
+. retained-cross = if horizontal then box.inner-height else box.inner-width
+. cross-size = retained-cross
+. recompute-cross = false
+. passed-dirty-range = false
+. end = offset
+. child Box? = first-dirty
+
+while child
+    . live = child
+    . next-child = live.next-active-sibling
+    //gui.layout.arrange.children-considered ++
+    //gui.layout.arrange.children-arranged ++
+    if !live.has-last-measure-result(query)
+        //gui.layout.arrange.fallback.no-child-history ++
+        = false
+    =? false if live.is-released || live.layout-space != 1
+    =? false if gui-flex-weight(live.$flex) > 0 || gui-flex-weight(live.$shrink) > 0
+    . align = flex-child-align(box, live)
+    =? false if horizontal && align == Alignment.first-baseline
+    . previous = live.outer-bounds
+    . previous-extent = flex-cross-extent(content, previous)
+    . measured = live.flow-measure(query).outer-size
+    . size = gui-main-size(measured, orient)
+    . rect = place-flex-child(live, content, query, measured, offset, size, align)
+    live.effective-position.settle(box, live)
+    . extent = flex-cross-extent(content, rect)
+    cross-size = max(cross-size, extent)
+    if previous-extent >= retained-cross && extent < previous-extent
+        recompute-cross = true
+    end = offset + size
+    offset = end + gap
+
+    if live as Pointer == last-dirty as Pointer
+        passed-dirty-range = true
+    if passed-dirty-range && rect == previous
+        settle-flex-stack-cross(box, content, cross-size, recompute-cross)
+        //gui.layout.arrange.early-outs ++
+        = true
+
+    child = next-child
+
+if horizontal
+    box.inner-width = end
+else
+    box.inner-height = end
+settle-flex-stack-cross(box, content, cross-size, recompute-cross)
+//gui.layout.arrange.early-outs ++
+= true
+
+────────────────────
+_ do settle-flex-stack-cross
+    - box Box
+    - content Rect
+    - cross-size Length
+    - recompute Bool
+
+. size = cross-size
+if recompute
+    size = 0
+    . child = box.first-active-child
+    while child
+        . live = child
+        //gui.layout.arrange.children-considered ++
+        size = max(size, flex-cross-extent(content, live.outer-bounds))
+        child = live.next-active-sibling
+if orient == Orientation.horizontal
+    box.inner-height = size
+else
+    box.inner-width = size
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-footprint Float
+    - span Length
+    - taken Length
+    - margin Length
+    - space Float
+
+if outer > 0 then (taken + margin * space) / outer else 0.0
+
+.. outer = span + margin
+
+━━━━━━━━━━━━━━━━━━━━
++ FlowLayout is Layout
+
++ orient Orientation
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+//gui.layout.builtin.arrange-fast ++
+if hint == LayoutArrangeHint.children-only && !box.carried-child
+    =? if arrange-flow-content-incremental(box)
+arrange-flow-content(box)
+
+────────────────────
++ do child-content-size-invalidated
+    - box Box
+    - child Box
+
+=? if box.$is-active-list-invalid
+if !child.participates-in-parent-layout(box)
+    box.invalidate-layout()
+    =
+box.retain-indexed-dirty-layout-child(child)
+
+────────────────────
++ get preserves-positioned-children-on-children-only
+
+true
+
+────────────────────
++ get sequence-axis
+
+orient
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+gui-layout-natural-size(box, orient, query, 0)
+
+────────────────────
++ carry-slot Index?
+    - box Box
+    - child Box
+
+gui-carry-slot(box, child, orient)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do arrange-flow-content
+    - box Box
+
+. offset Length = 0
+. cross-size Length = 0
+. content = box.content-bounds
+. query = box.child-layout-query()
+. coupled = box.$stack-motion == StackMotion.coupled
+. order = gui-carried-order(box)
+if order
+    for live in order
+        . step = flow-place(live, content, query, coupled, offset)
+        offset += step.width
+        cross-size = max(cross-size, step.height)
+else
+    . child = box.first-active-child
+    while child
+        . live = child
+        child = live.next-active-sibling
+        //gui.layout.arrange.children-considered ++
+        //gui.layout.arrange.children-arranged ++
+        if !live.is-released
+            . step = flow-place(live, content, query, coupled, offset)
+            offset += step.width
+            cross-size = max(cross-size, step.height)
+
+if orient == Orientation.horizontal
+    box.inner-width = offset
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+    box.inner-height = offset
+
+────────────────────
+_ do flow-place Dimensions
+    - live Box
+    - content Rect
+    - query MeasureQuery
+    - coupled Bool
+    - offset Length
+
+. intrinsic = live.flow-measure(query).outer-size
+if orient == Orientation.horizontal
+    . share = live.layout-share(intrinsic.width, true, coupled)
+    live.arrange-outer-bounds
+        - Rect(content.x + offset, content.y, intrinsic.width, intrinsic.height)
+    = Dimensions(intrinsic.width * share, intrinsic.height)
+. share = live.layout-share(intrinsic.height, false, coupled)
+live.arrange-outer-bounds(Rect(content.x, content.y + offset, content.width, intrinsic.height))
+= Dimensions(intrinsic.height * share, intrinsic.width)
+
+────────────────────
+_ do arrange-flow-content-incremental
+    - box Box
+
+. indexed-dirty = box.indexed-dirty-layout-children
+if indexed-dirty
+    . dirty = indexed-dirty
+    . first-dirty = dirty[0]
+    . last-dirty = first-dirty
+    . first-start = flow-retained-main-start(first-dirty)
+    . last-start = first-start
+    . ambiguous-order = false
+    for index in 1 .. < dirty.length
+        . candidate = dirty[index]
+        . candidate-start = flow-retained-main-start(candidate)
+        if candidate-start < first-start
+            first-dirty = candidate
+            first-start = candidate-start
+        else if candidate-start == first-start && candidate as Pointer != first-dirty as Pointer
+            ambiguous-order = true
+        if candidate-start > last-start
+            last-dirty = candidate
+            last-start = candidate-start
+        else if candidate-start == last-start && candidate as Pointer != last-dirty as Pointer
+            ambiguous-order = true
+    if !ambiguous-order
+        //gui.layout.arrange.indexed-dirty-ranges ++
+        = arrange-flow-dirty-range(box, first-dirty, last-dirty)
+    //gui.layout.arrange.fallback.indexed-order ++
+
+. query = box.child-layout-query()
+. first-dirty Box?
+. last-dirty Box?
+. has-history = true
+. child = box.first-active-child
+while child
+    . live = child
+    //gui.layout.arrange.children-considered ++
+    if !live.has-last-measure-result(query)
+        has-history = false
+    if live.$is-layout-invalid
+        if !first-dirty
+            first-dirty = live
+        last-dirty = live
+    child = live.next-active-sibling
+
+if !first-dirty
+    //gui.layout.arrange.fallback.no-candidate ++
+    = false
+if !has-history
+    //gui.layout.arrange.fallback.no-child-history ++
+    = false
+= arrange-flow-dirty-range(box, first-dirty, last-dirty!)
+
+────────────────────
+_ flow-retained-main-start Length
+    - child Box
+
+if orient == Orientation.horizontal then bounds.left else bounds.top
+
+.. bounds = child.outer-bounds
+
+────────────────────
+_ do arrange-flow-dirty-range
+    - box Box
+    - first-dirty Box
+    - last-dirty Box
+
+. content = box.content-bounds
+. query = box.child-layout-query()
+=? false if box.$stack-motion == StackMotion.coupled
+if !first-dirty.has-last-measure-result(query)
+    //gui.layout.arrange.fallback.no-child-history ++
+    = false
+if !first-dirty.has-arrangement
+    //gui.layout.arrange.fallback.unarranged ++
+    = false
+
+. previous-first-bounds = first-dirty.outer-bounds
+. offset =
+    |? orient == Orientation.horizontal
+        previous-first-bounds.left - content.x
+    ??
+        previous-first-bounds.top - content.y
+
+. retained-cross = if orient == Orientation.horizontal then box.inner-height else box.inner-width
+. cross-size = retained-cross
+. recompute-cross = false
+. passed-dirty-range = false
+. child Box? = first-dirty
+
+while child
+    . live = child
+    . next-child = live.next-active-sibling
+    //gui.layout.arrange.children-considered ++
+    //gui.layout.arrange.children-arranged ++
+    if !live.has-last-measure-result(query)
+        //gui.layout.arrange.fallback.no-child-history ++
+        = false
+    =? false if live.is-released || live.layout-space != 1
+    . previous-bounds = live.outer-bounds
+    . previous-cross = live.last-measured-outer-cross-size(query, orient)
+    . intrinsic = live.flow-measure(query).outer-size
+    . intrinsic-cross = if is-horizontal then intrinsic.height else intrinsic.width
+        .. is-horizontal = orient == Orientation.horizontal
+    . rect =
+        |? orient == Orientation.horizontal
+            Rect(content.x + offset, content.y, intrinsic.width, intrinsic.height)
+        ??
+            Rect(content.x, content.y + offset, content.width, intrinsic.height)
+    live.arrange-outer-bounds(rect)
+
+    if orient == Orientation.horizontal
+        offset += intrinsic.width
+    else
+        offset += intrinsic.height
+    cross-size = max(cross-size, intrinsic-cross)
+    if previous-cross == retained-cross && intrinsic-cross < previous-cross
+        recompute-cross = true
+
+    if live as Pointer == last-dirty as Pointer
+        passed-dirty-range = true
+    if passed-dirty-range && rect == previous-bounds
+        if recompute-cross
+            =? false if !recompute-flow-cross-size(box, query)
+        else if orient == Orientation.horizontal
+            box.inner-height = cross-size
+        else
+            box.inner-width = cross-size
+        //gui.layout.arrange.early-outs ++
+        = true
+
+    child = next-child
+
+if orient == Orientation.horizontal
+    box.inner-width = offset
+else
+    box.inner-height = offset
+if recompute-cross
+    =? false if !recompute-flow-cross-size(box, query)
+else if orient == Orientation.horizontal
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+
+//gui.layout.arrange.early-outs ++
+= true
+
+────────────────────
+_ do recompute-flow-cross-size
+    - box Box
+    - query MeasureQuery
+
+. cross-size Length = 0
+. child = box.first-active-child
+while child
+    . live = child
+    //gui.layout.arrange.children-considered ++
+    =? false if !live.has-last-measure-result(query)
+    . intrinsic-cross = live.last-measured-outer-cross-size(query, orient)
+    cross-size = max(cross-size, intrinsic-cross)
+    child = live.next-active-sibling
+if orient == Orientation.horizontal
+    box.inner-height = cross-size
+else
+    box.inner-width = cross-size
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ GridTrack is Union
+
+| auto
+| fixed Length
+| flex Float
+
+━━━━━━━━━━━━━━━━━━━━
++ GridFill is Tuple
+
++ width Length
++ stretches = true
+
+━━━━━━━━━━━━━━━━━━━━
++ GridLayout is Layout
+
++ tracks [GridTrack]
++ min-track Length
++ fill GridFill?
++ column-gap Length?
++ row-gap Length?
+
+────────────────────
++ This
+    - columns Size
+    - min-track Length = 0
+
+.. tracks = gui-grid-auto-tracks(columns)
+
+────────────────────
++ This
+    - tracks [GridTrack]
+    - min-track Length = 0
+
+────────────────────
++ This
+    - filling GridFill
+
+fill = filling
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+. content = box.content-bounds
+. grid = solve(box, box.child-layout-query())
+. gap-x = column-gap ?? box.computed-gap
+. gap-y = row-gap ?? box.computed-gap
+. count = grid.widths.length
+. y = content.y
+for row in 0 .. < grid.heights.length
+    . x = content.x
+    for column in 0 .. < count
+        . index = row * count + column
+        if index < grid.cells.length
+            . cell = grid.cells[index]
+            . track = Rect(x, y, grid.widths[column], grid.heights[row])
+            cell.arrange-outer-bounds(gui-grid-cell-rect(cell, track, grid.sizes[index]))
+        x += grid.widths[column] + gap-x
+    y += grid.heights[row] + gap-y
+box.inner-width = grid.width
+box.inner-height = grid.height
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+Dimensions(grid.width, grid.height)
+
+.. grid = solve(box, box.derived-child-measure-query(query))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do solve GUIGridSolution
+    - box Box
+    - query MeasureQuery
+
+. grid = GUIGridSolution()
+. child = box.first-active-child
+while child
+    . live = child
+    grid.cells += live
+    child = live.next-active-sibling
+
+. gap-x = column-gap ?? box.computed-gap
+. gap-y = row-gap ?? box.computed-gap
+. available = query.inline.available
+. shape = resolved-tracks(available, grid.cells.length, gap-x)
+. count = shape.length
+=? grid if count == 0
+
+. natural-query = MeasureQuery(fit-axis-query(), query.block)
+for column in 0 .. < count
+    . fixed = gui-grid-fixed-width(shape[column])
+    . natural Length = 0
+    if fixed == null
+        . index = column
+        while index < grid.cells.length
+            natural = max
+                - natural
+                - ceil(grid.cells[index].flow-measure(natural-query).outer-size.width)
+            index += count
+    grid.widths += fixed ?? natural
+
+. gaps = gap-x * (count - 1)
+if available != null
+    fit-tracks(shape, grid.widths, gui-safe-span(available - gaps))
+
+. rows = (grid.cells.length + count - 1) / count
+. height Length = 0
+for row in 0 .. < rows
+    . row-height Length = 0
+    for column in 0 .. < count
+        . index = row * count + column
+        if index < grid.cells.length
+            . cell-query = MeasureQuery(fit-axis-query(grid.widths[column]), query.block)
+            . size = grid.cells[index].flow-measure(cell-query).outer-size
+            grid.sizes += size
+            row-height = max(row-height, size.height)
+    grid.heights += row-height
+    height += row-height
+if rows > 1
+    height += gap-y * (rows - 1)
+
+. width = gaps
+for column in 0 .. < count
+    width += grid.widths[column]
+grid.width = width
+grid.height = height
+= grid
+
+────────────────────
+_ do resolved-tracks [GridTrack]
+    - available Length?
+    - cells Size
+    - gap Length
+
+. filling = fill
+=? tracks if !filling
+. span = max(gui-safe-span(filling.width), 1)
+. count = if available != null then (max(1.0, floor((available + gap) / (span + gap))) as Size) else max(1, cells)
+. track = if filling.stretches then GridTrack.flex(1) else GridTrack.fixed(span)
+= List'GridTrack
+    ** 0 .. < count
+    *> track
+
+────────────────────
+_ do fit-tracks
+    - shape [GridTrack]
+    - widths [Length]
+    - available Length
+
+. total-flex Float
+. reserved Length = 0
+. natural Length = 0
+for column in 0 .. < shape.length
+    . track = shape[column]
+    . weight = gui-grid-flex-weight(track)
+    if gui-grid-fixed-width(track) != null
+        reserved += widths[column]
+    else if weight > 0
+        total-flex += weight
+        widths[column] = min(widths[column], gui-safe-span(min-track))
+        reserved += widths[column]
+    else
+        natural += widths[column]
+
+. space = gui-safe-span(available - reserved)
+if natural > space
+    natural = shrink-auto-tracks(shape, widths, space)
+=? if total-flex <= 0
+
+. leftover = gui-safe-span(space - natural)
+for column in 0 .. < shape.length
+    . weight = gui-grid-flex-weight(shape[column])
+    if weight > 0
+        widths[column] += floor(leftover * weight / total-flex)
+
+────────────────────
+_ do shrink-auto-tracks Length
+    - shape [GridTrack]
+    - widths [Length]
+    - space Length
+
+. settled [Bool]
+. unsettled Size = 0
+for column in 0 .. < shape.length
+    . is-auto = gui-grid-is-auto(shape[column])
+    settled += !is-auto
+    if is-auto
+        unsettled += 1
+
+. remaining = space
+. progressed = true
+while progressed && unsettled > 0
+    progressed = false
+    . share = remaining / unsettled
+    for column in 0 .. < shape.length
+        if !settled[column] && widths[column] <= share
+            settled[column] = true
+            remaining -= widths[column]
+            unsettled -= 1
+            progressed = true
+
+. total = space - remaining
+=? total if unsettled == 0
+. share = floor(remaining / unsettled)
+. floor-width = gui-safe-span(min-track)
+for column in 0 .. < shape.length
+    if !settled[column]
+        widths[column] = max(min(widths[column], floor-width), share)
+        total += widths[column]
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ GUIGridSolution
+
++ cells [Box]
++ sizes [Dimensions]
++ widths [Length]
++ heights [Length]
++ width Length
++ height Length
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-grid-auto-tracks [GridTrack]
+    - count Size
+
+** 0 .. < count
+*> GridTrack.auto
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-grid-is-auto
+    - track GridTrack
+
+match track
+    | GridTrack.auto
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-grid-fixed-width Length?
+    - track GridTrack
+
+match? track
+    | GridTrack.fixed(value)
+        gui-safe-span(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-grid-flex-weight Float
+    - track GridTrack
+
+match track
+    | GridTrack.flex(weight)
+        gui-flex-weight(weight)
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-grid-cell-rect Rect
+    - cell Box
+    - track Rect
+    - size Dimensions
+
+Rect(x, y, width, height)
+
+.. align-x = if cell.$align-x == Alignment.stretch then null else cell.$align-x
+.. align-y = if cell.$align-y == Alignment.stretch then null else cell.$align-y
+.. width = if align-x != null then min(size.width, track.width) else track.width
+.. height = if align-y != null then min(size.height, track.height) else track.height
+.. x = if align-x != null then track.x + (track.width - width) * align-x.fraction else track.x
+.. y = if align-y != null then track.y + (track.height - height) * align-y.fraction else track.y
+
+━━━━━━━━━━━━━━━━━━━━
+_ GUIFlexSpacing is (lead Length, between Length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-justify-spacing GUIFlexSpacing
+    - justify Justify
+    - free Length
+    - count Size
+
+match justify
+    | Justify.center
+        GUIFlexSpacing(free / 2, 0)
+    | Justify.end
+        GUIFlexSpacing(free, 0)
+    | Justify.space-between
+        if count > 1 then GUIFlexSpacing(0, free / (count - 1)) else GUIFlexSpacing(0, 0)
+    | Justify.space-around
+        GUIFlexSpacing(free / count / 2, free / count)
+    | Justify.space-evenly
+        GUIFlexSpacing(free / (count + 1), free / (count + 1))
+    ??
+        GUIFlexSpacing(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-align-baselines Length
+    - box Box
+    - children [Box]
+    - top Length
+
+. rises = List'Length()
+. line Length = 0
+for live in children
+    . rise = if gui-flex-aligns-baseline(box, live) then gui-flex-child-rise(live) else -1
+    rises += rise
+    line = max(line, rise)
+. bottom Length = 0
+for index in 0 .. < children.length
+    . rise = rises[index]
+    if rise >= 0
+        . live = children[index]
+        . outer = live.outer-bounds
+        live.arrange-outer-bounds(Rect(outer.x, top + line - rise, outer.width, outer.height))
+        bottom = max(bottom, line - rise + outer.height)
+= bottom
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-aligns-baseline Bool
+    - box Box
+    - child Box
+
+(child.$align-y ?? box.$align-children) == Alignment.first-baseline
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-child-rise Length
+    - child Box
+
+child.update-layout()
+. outer = child.outer-bounds
+= (child.first-baseline ?? outer.bottom) - outer.y
+
+━━━━━━━━━━━━━━━━━━━━
+_ GUIFlexScratch
+
++ children [Box]
++ weights [Float]
++ margins [Length]
++ measures [Dimensions]
++ allocations [Length]
++ flexible [Bool]
++ shrinks [Float]
++ settled [Bool]
++ spaces [Float]
++ shares [Float]
++ is-uniform = true
++ fixed Length = 0
++ total-flex Float
+
+────────────────────
++ do clear
+
+children.clear()
+weights.clear()
+margins.clear()
+measures.clear()
+allocations.clear()
+flexible.clear()
+shrinks.clear()
+settled.clear()
+spaces.clear()
+shares.clear()
+is-uniform = true
+fixed = 0
+total-flex = 0
+
+────────────────────
++ do add-space
+    - space Float
+    - share Float
+
+if is-uniform
+    =? if space == 1 && share == 1
+    is-uniform = false
+    for index in 0 .. < children.length
+        spaces += 1.0
+        shares += 1.0
+spaces += space
+shares += share
+
+────────────────────
++ do set-share
+    - index Index
+    - share Float
+
+if is-uniform
+    =? if share == 1
+    is-uniform = false
+    for kid in 0 .. < children.length
+        spaces += 1.0
+        shares += 1.0
+shares[index] = share
+
+────────────────────
++ space-at Float @inline
+    - index Index
+
+if is-uniform then 1.0 else spaces[index]
+
+────────────────────
++ share-at Float @inline
+    - index Index
+
+if is-uniform then 1.0 else shares[index]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do acquire-gui-flex-scratch
+
+= if gui-flex-scratch-stack.length > 0 then gui-flex-scratch-stack.pop() else GUIFlexScratch()
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-stretched-cross Length
+    - box Box
+    - available Length
+    - orient Orientation
+    - measured Dimensions
+
+|? orient == Orientation.horizontal && !box.has-inline-limits
+    available
+|? orient == Orientation.vertical && !box.has-block-limits
+    available
+|? orient == Orientation.horizontal && box.has-exact-inline-size && measured.width > 0
+    measured.width
+|? orient == Orientation.vertical && box.has-exact-block-size && measured.height > 0
+    measured.height
+??
+    box.constrained-outer-main-size(available, orient, available)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-natural-size
+    - box Box
+    - orient Orientation
+    - query MeasureQuery
+    - gap Length
+
+. child-query = box.derived-child-measure-query(query)
+. available = child-query.inline.available
+=? gui-layout-natural-size(box, orient, query, gap)
+    if orient != Orientation.horizontal || !available
+
+. fixed Length = 0
+. shrinkable Length = 0
+. total-flex Float
+. cross Length = 0
+. count Size = 0
+. child = box.first-active-child
+. reach Float
+while child
+    . live = child
+    child = live.next-active-sibling
+    if live.is-released
+        continue
+    . space = live.layout-space
+    . weight = gui-flex-weight(live.$flex) * space
+    if weight > 0
+        total-flex += weight
+        fixed += gui-main-inset-size(live.margin-edges, orient)
+    else
+        . size = live.flow-measure(child-query).outer-size
+        fixed += size.width * space
+        if gui-flex-weight(live.$shrink) > 0
+            shrinkable += size.width * space
+        cross = max(cross, size.height)
+    fixed += gap * space * reach
+    reach = max(reach, space)
+    count += 1
+if fixed > available && shrinkable > 0
+    fixed -= gui-flex-natural-shrink(box, child-query, fixed - available, available)
+
+=? Dimensions(fixed, cross) if total-flex <= 0
+
+. remaining = gui-safe-span(available - fixed)
+. primary = fixed
+child = box.first-active-child
+while child
+    . live = child
+    . weight = if live.is-released then 0 else gui-flex-weight(live.$flex) * live.layout-space
+    if weight > 0
+        . margin = gui-main-inset-size(live.margin-edges, orient)
+        . share = remaining * weight / total-flex + margin
+        . share-query = MeasureQuery(fit-axis-query(share), child-query.block)
+        . size = live.flow-measure(share-query).outer-size
+        primary += size.width - margin
+        cross = max(cross, size.height)
+    child = live.next-active-sibling
+
+= Dimensions(primary, cross)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-natural-shrink Length
+    - box Box
+    - query MeasureQuery
+    - overflow Length
+    - available Length
+
+. scratch GUIFlexScratch = acquire-gui-flex-scratch()
+. child = box.first-active-child
+while child
+    . live = child
+    child = live.next-active-sibling
+    if live.is-released || gui-flex-weight(live.$flex) > 0
+        continue
+    . space = live.layout-space
+    scratch.add-space(space, space)
+    scratch.children += live
+    scratch.measures += live.flow-measure(query).outer-size
+    scratch.shrinks += gui-flex-weight(live.$shrink)
+. reduced = gui-flex-shrink(scratch, overflow, Orientation.horizontal, available)
+scratch.clear()
+gui-flex-scratch-stack += scratch
+= reduced
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-layout-natural-size
+    - box Box
+    - orient Orientation
+    - query MeasureQuery
+    - gap Length
+
+. primary Length = 0
+. cross Length = 0
+. reach Float
+. child-query = box.derived-child-measure-query(query)
+. child = box.first-active-child
+while child
+    . live = child
+    child = live.next-active-sibling
+    if live.is-released
+        continue
+    . size = live.flow-measure(child-query).outer-size
+    . space = live.layout-space
+    primary += gap * space * reach
+    reach = max(reach, space)
+    if orient == Orientation.horizontal
+        primary += size.width * space
+        cross = max(cross, size.height)
+    else
+        primary += size.height * space
+        cross = max(cross, size.width)
+
+= if is-horizontal then Dimensions(primary, cross) else Dimensions(cross, primary)
+    .. is-horizontal = orient == Orientation.horizontal
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-main-size
+    - size Dimensions
+    - orient Orientation
+
+if orient == Orientation.horizontal then size.width else size.height
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-shrink Length
+    - scratch GUIFlexScratch
+    - overflow Length
+    - orient Orientation
+    - available Length
+
+. settled = scratch.settled
+settled.clear()
+for index in 0 .. < scratch.children.length
+    settled += scratch.shrinks[index] <= 0
+. remaining = overflow
+. reduced Length = 0
+while remaining > 0
+    . snap Index?
+    . snap-size Length = 0
+    . snap-main Length = 0
+    . snap-weight Float
+    for index in 0 .. < scratch.children.length
+        if settled[index]
+            continue
+        . weight = scratch.shrinks[index]
+        . main = gui-main-size(scratch.measures[index], orient)
+        . probe = gui-safe-span(main - 1)
+        . size = scratch.children[index].constrained-outer-main-size(probe, orient, available)
+        if size < probe - 0.01 && outweighs
+            snap = index
+            snap-size = size
+            snap-main = main
+            snap-weight = weight
+        .. outweighs = weight > snap-weight || (weight == snap-weight && main > snap-main)
+    if | chosen Index = snap
+        . taken = (snap-main - snap-size) * scratch.share-at(chosen)
+        reduced += taken
+        remaining -= taken
+        gui-flex-set-main(scratch, chosen, snap-size, orient)
+    else
+        break
+. total Float
+for index in 0 .. < scratch.children.length
+    if !settled[index]
+        total += scratch.shrinks[index] * gui-main-size(scratch.measures[index], orient)
+. clamped-one = true
+while clamped-one && total > 0 && remaining > 0
+    clamped-one = false
+    for index in 0 .. < scratch.children.length
+        if settled[index]
+            continue
+        . weight = scratch.shrinks[index]
+        . main = gui-main-size(scratch.measures[index], orient)
+        . proposed = gui-safe-span(main - max(remaining, 0) * weight * main / total)
+        . size = min
+            - main
+            - scratch.children[index].constrained-outer-main-size(proposed, orient, available)
+        if abs(size - proposed) > 0.01
+            total -= weight * main
+            . taken = gui-flex-settle(scratch, index, main, size, orient)
+            reduced += taken
+            remaining -= taken
+            clamped-one = true
+for index in 0 .. < scratch.children.length
+    if !settled[index] && total > 0
+        . main = gui-main-size(scratch.measures[index], orient)
+        . proposed = gui-safe-span(main - max(remaining, 0) * scratch.shrinks[index] * main / total)
+        . size = min
+            - main
+            - scratch.children[index].constrained-outer-main-size(proposed, orient, available)
+        reduced += (main - size) * scratch.share-at(index)
+        gui-flex-set-main(scratch, index, size, orient)
+= reduced
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-settle Length
+    - scratch GUIFlexScratch
+    - index Index
+    - main Length
+    - size Length
+    - orient Orientation
+
+scratch.settled[index] = true
+gui-flex-set-main(scratch, index, size, orient)
+= (main - size) * scratch.share-at(index)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-flex-set-main
+    - scratch GUIFlexScratch
+    - index Index
+    - size Length
+    - orient Orientation
+
+. measure = scratch.measures[index]
+scratch.measures[index] = if orient == Orientation.horizontal then by-width else by-height
+    .. by-width = Dimensions(size, measure.height)
+    .. by-height = Dimensions(measure.width, size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-main-inset-size
+    - insets Insets
+    - orient Orientation
+
+if orient == Orientation.horizontal then insets.horizontal else insets.vertical
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-weight
+    - value Float
+
+if is-finite(value) && value > 0 then value else 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ GUIFlexCrossAxis is (start Length, span Length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-flex-cross-axis
+    - child Box
+    - start Length
+    - span Length
+    - stretched Length
+    - query MeasureQuery
+    - orient Orientation
+    - align Alignment
+
+|? align == Alignment.stretch
+    GUIFlexCrossAxis(start, stretched)
+??
+    GUIFlexCrossAxis(start + (span - size) * align.fraction, size)
+
+.. natural = child.flow-measure(query).outer-size
+.. size = min(if orient == Orientation.horizontal then natural.height else natural.width, span)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-carry-slot Index?
+    - box Box
+    - child Box
+    - orient Orientation
+
+. center = child.carried-center
+=? null if !center
+. horizontal = orient == Orientation.horizontal
+. along = if horizontal then center.x else center.y
+. slot Index = 0
+. cursor = box.first-active-child
+while cursor
+    . live = cursor
+    cursor = live.next-active-sibling
+    if !live.is-released && live as Pointer != child as Pointer
+        . frame = live.bounds
+        . middle = if horizontal then frame.x + frame.width / 2 else frame.y + frame.height / 2
+        if middle < along
+            slot += 1
+= slot
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-carried-order [Box]?
+    - box Box
+
+. carried = box.carried-child
+=? null if !carried
+=? null if carried.layout-parent as Pointer? != box as Pointer
+. slot = carried.carry-slot
+=? null if slot == null
+. order [Box]
+. cursor = box.first-active-child
+while cursor
+    . live = cursor
+    cursor = live.next-active-sibling
+    if !live.is-released && live as Pointer != carried as Pointer
+        order += live
+order.insert(carried, min(slot, order.length))
+= order

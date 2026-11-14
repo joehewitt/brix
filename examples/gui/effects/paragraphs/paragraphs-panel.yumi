@@ -1,0 +1,144 @@
+./paragraphs-atlas
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
++ ParagraphsPanel is Box
+    using ParagraphsTheme
+
++ font-family-name String = "Noto Sans"
++ status = "width 360 · word · left · guides true"
+
+────────────────────
+
+<This • flex-col
+    <Box • h:116
+        <Label • absolute w:120 h:20
+            left = PositionOffset.coord(24)
+            top = PositionOffset.coord(16)
+            text = "Paragraph text"
+
+        <TextInput • absolute w:490 h:28
+            left = PositionOffset.coord(24)
+            top = PositionOffset.coord(40)
+            text = "".join
+                * "Live paragraph text wraps through the production Label path: "
+                * "e\u0301 · 👩🏽‍💻 · 日本語."
+            for event on input
+                atlas.sample-text = event.text
+                refresh-status()
+
+        <Label • absolute w:150 h:20
+            left = PositionOffset.coord(534)
+            top = PositionOffset.coord(16)
+            text = "Constraint width"
+
+        <Slider • absolute w:180 h:28
+            left = PositionOffset.coord(534)
+            top = PositionOffset.coord(40)
+            minimum = 0
+            maximum = 560
+            value = 360
+            for event on value-changed
+                atlas.sample-width = event.value
+                atlas.sample-bubble-width = event.value + 18
+                refresh-status()
+
+        <ParagraphLabButton "Wrap" • absolute w:90 h:32
+            left = PositionOffset.coord(734)
+            top = PositionOffset.coord(36)
+
+        <ParagraphLabButton "Align" • absolute w:90 h:32
+            left = PositionOffset.coord(836)
+            top = PositionOffset.coord(36)
+
+        <ParagraphLabButton "Sizing" • absolute w:90 h:32
+            left = PositionOffset.coord(938)
+            top = PositionOffset.coord(36)
+
+        <ParagraphLabButton "Guides" • absolute w:90 h:32
+            left = PositionOffset.coord(1040)
+            top = PositionOffset.coord(36)
+
+        <Label • absolute w:700 h:28
+            left = PositionOffset.coord(24)
+            top = PositionOffset.coord(78)
+            text = #status
+
+    <ParagraphLabViewport • flex:1 ml:40
+        <ParagraphsAtlas atlas • w:1200 h:1560
+            font-family-name = #font-family-name
+
+────────────────────
++ do press
+    - action String
+
+if action == "Wrap"
+    if atlas.sample-wrap == TextWrap.no-wrap
+        atlas.sample-wrap = TextWrap.word
+    else
+        atlas.sample-wrap = TextWrap.no-wrap
+else if action == "Align"
+    atlas.sample-alignment = match atlas.sample-alignment
+        | TextAlignment.left
+            TextAlignment.center
+        | TextAlignment.center
+            TextAlignment.right
+        | TextAlignment.right
+            TextAlignment.left
+else if action == "Sizing"
+    if atlas.sample-wrap-sizing == TextWrapSizing.available
+        atlas.sample-wrap-sizing = TextWrapSizing.tight
+    else
+        atlas.sample-wrap-sizing = TextWrapSizing.available
+else if action == "Guides"
+    atlas.guides-visible = !atlas.guides-visible
+refresh-status()
+
+────────────────────
+_ do refresh-status
+
+status = atlas.control-summary
+
+━━━━━━━━━━━━━━━━━━━━
++ ParagraphLabViewport is Box
+
+• This
+    layout = FlowLayout(Orientation.vertical)
+    overflow-x = ScrollOverflow.auto
+    overflow-y = ScrollOverflow.auto
+    scroll-indicator-y = ScrollIndicatorVisibility.always
+    scroll-indicator-gutter = ScrollIndicatorGutter.stable
+
+━━━━━━━━━━━━━━━━━━━━
++ ParagraphLabButton is Box
+
++ action String
+
+• This • bg:gui-field-color
+    focus-mode = FocusMode.press
+    border-color = gui-border-color
+    border-width = 2
+    font-weight = FontWeight.bold
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+    when #is-press-within
+        • bg:gui-pressed-color
+
+────────────────────
++ This
+    - action
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        text = action
+        text-alignment = TextAlignment.center
+
+────────────────────
+for event on click
+
+ancestor'ParagraphsPanel()?.press(action)

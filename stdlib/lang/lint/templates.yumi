@@ -1,0 +1,365 @@
+./quantifiers
+./rule-context
+./source
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/operator
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ do lint-text-templates
+    - source LintSource
+    - tree AST
+    - context RuleContext
+
+. attached = attached-nodes(tree)
+for id in 1u32 .. < tree.nodes.length
+    if !attached[id]
+        continue
+    do match? tree.nodes[id]
+        | .node-function-syntax(row)
+            . builder = text-builder(source, tree, row)
+            if builder.length != 0
+                . loc = tree.nodes.loc[id].begin
+                context.report(builder-message(builder), loc.line + 1, loc.column + 1, "review")
+
+━━━━━━━━━━━━━━━━━━━━
++ builder-message String
+    - builder String
+
+|? builder == "appended-string"
+    "$string-head $string-tail"
+|? builder == "appended-lines"
+    "$lines-head $lines-tail"
+??
+    "$interpolation-head $interpolation-tail"
+
+.. string-head = "Review this text builder: write the text as a `¶` template instead of appending"
+.. string-tail = "to a string, unless it works character by character (YS-04)."
+.. lines-head = "Review this line builder: write the text as a `¶` template, with repeated lines as"
+.. lines-tail = "`\"\\n\".join(…)`, instead of appending to a list (YS-04)."
+.. interpolation-head = "Review this long interpolated result: write it as a `¶` template, with its"
+.. interpolation-tail = "values as `..` lazies below the `════` boundary (YS-04)."
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-builder String
+    - source LintSource
+    - tree AST
+    - function ASTFunction
+
+. statements = match? tree.nodes[function.body]
+    | .node-block(row)
+        row.body
+if !statements || (!source.is-brix && is-template-header(source, function.loc.begin.line))
+    = ""
+. body = statements
+. result = result-expression(tree, body)
+if result == 0 || (source.is-brix && is-paragraph(source, tree, result))
+    = ""
+
+. locals [String = SyntaxId]
+for statement in tree.children[body]
+    . declared = declared-name(tree, statement)
+    if declared.length != 0
+        locals[declared] = statement
+. appended [String]
+gather-appended(tree, function.body, appended)
+
+. name = identifier-text(tree, result)
+if name.length != 0 && appended has name && is-string-declaration(tree, locals[name] ?? 0)
+    = "appended-string"
+. joined = joined-name(tree, result)
+if joined.length != 0 && appended has joined && is-lines-declaration(tree, locals[joined] ?? 0)
+    = "appended-lines"
+if only-locals(tree, body, result) && is-long-interpolation(source, tree, result, locals)
+    = "long-interpolation"
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
++ is-template-header Bool
+    - source LintSource
+    - line U32
+
+|? (line as Index) >= source.lines.length
+    false
+|? head.length < 4 || (head[0] != '+' && head[0] != '_') || !is-space-char(head[1])
+    false
+??
+    rest.length > 1 && rest[0] == '¶' && is-space-char(rest[1])
+
+.. head = source.lines[line].trim()
+.. rest = head[1 ...].trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do result-expression SyntaxId
+    - tree AST
+    - body RowRange'SyntaxId
+
+. last SyntaxId = 0
+for statement in tree.children[body]
+    if !is-lazy-declaration(tree, statement)
+        last = statement
+= match tree.nodes[last]
+    | .node-return(row)
+        if !(tree.nodes[row.expr] is .node-optional-chain) then row.expr else 0
+    | .node-identifier
+        last
+    | .node-binary-expression
+        last
+    | .node-call-expression
+        last
+    | .node-string-syntax
+        last
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ is-lazy-declaration Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        row.is-lazy
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ declared-name String
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        match tree.nodes[row.left]
+            | .node-type-capture(capture)
+                identifier-text(tree, capture.id)
+            ??
+                ""
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gather-appended
+    - tree AST
+    - id SyntaxId
+    - names [String]
+
+do match? tree.nodes[id]
+    | .node-assign(row)
+        . name = identifier-text(tree, row.lhs)
+        if row.op == .add-eq-op && name.length != 0
+            names += name
+for child in tree.children-of(id)
+    gather-appended(tree, child, names)
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-string-declaration Bool
+    - tree AST
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-declare(row)
+        if row.is-lazy
+            = false
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                if row.right != 0
+                    = is-string-expression(tree, row.right)
+                = is-type-named(tree, capture.type, "String")
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-string-expression Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-binary-expression(row)
+        is-concatenation(row.op) && (is-string-expression(tree, row.lhs) || has-string-right)
+            .. has-string-right = is-string-expression(tree, row.rhs)
+    | .node-string-syntax
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-concatenation Bool
+    - op Operator
+
+op == .concat-op || op == .concat-string-op
+
+━━━━━━━━━━━━━━━━━━━━
++ is-type-named Bool
+    - tree AST
+    - id SyntaxId
+    - name String
+
+match tree.nodes[id]
+    | .node-type-identifier(row)
+        row.name.text == name
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-lines-declaration Bool
+    - tree AST
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-declare(row)
+        if row.is-lazy
+            = false
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                do match? tree.nodes[capture.type]
+                    | .node-type-list(list)
+                        = is-string-type(tree, list.patterns)
+                = is-string-list-call(tree, row.right)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-string-list-call Bool
+    - tree AST
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-call-expression(call)
+        do match? tree.nodes[call.callable]
+            | .node-type-arguments(type)
+                = is-type-named(tree, type.base, "List") && is-string-type(tree, type.args)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-string-type Bool
+    - tree AST
+    - range RowRange'SyntaxId
+
+range.count == 1 && is-type-named(tree, tree.children[range.start], "String")
+
+━━━━━━━━━━━━━━━━━━━━
++ do joined-name String
+    - tree AST
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-call-expression(call)
+        do match? tree.nodes[call.callable]
+            | .node-get-expression(get)
+                if get.name.text != "join"
+                    = ""
+                . object = identifier-text(tree, get.object)
+                if object.length != 0
+                    = object
+                for operand in tree.children[call.operands]
+                    . name = identifier-text(tree, argument-value(tree, operand))
+                    if name.length != 0
+                        = name
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
++ argument-value SyntaxId
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-argument(row)
+        row.expr
+    ??
+        id
+
+━━━━━━━━━━━━━━━━━━━━
++ do only-locals Bool
+    - tree AST
+    - body RowRange'SyntaxId
+    - result SyntaxId
+
+for statement in tree.children[body]
+    if statement != result && !is-local-or-return(tree, statement, result)
+        = false
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ is-local-or-return Bool
+    - tree AST
+    - statement SyntaxId
+    - result SyntaxId
+
+match tree.nodes[statement]
+    | .node-declare
+        true
+    | .node-return(row)
+        row.expr == result
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-long-interpolation Bool
+    - source LintSource
+    - tree AST
+    - id SyntaxId
+    - locals [String = SyntaxId]
+
+. parts [SyntaxId]
+gather-parts(tree, id, parts)
+if parts.length < 2
+    = false
+. names [String]
+. has-text = false
+for part in parts
+    if tree.nodes[part] is .node-string-syntax
+        has-text = true
+    . name = identifier-text(tree, part)
+    if name.length != 0 && locals[name] != null && !(names has name)
+        names += name
+if !has-text || names.length < 2
+    = false
+=? is-long-brix-interpolation(source, tree, parts) if source.is-brix
+. text = node-text(source, tree, id)
+= utf16-length(text) >= 80 || text.find("\\n") != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-paragraph Bool
+    - source LintSource
+    - tree AST
+    - id SyntaxId
+
+source.slice(start, start + 10) == "(paragraph"
+
+.. begin = tree.nodes.loc[id].begin
+.. start = source.offset-of(begin.line, begin.column)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-long-brix-interpolation Bool
+    - source LintSource
+    - tree AST
+    - parts [SyntaxId]
+
+. length Index = 2
+for part in parts
+    . name = identifier-text(tree, part)
+    do match tree.nodes[part]
+        | .node-string-syntax(row)
+            for char in row.text
+                =? true if char == '\n'
+                length += if char == '"' || char == '\\' || char == '$' || is-tab then 2 else 1
+                    .. is-tab = char == '\t'
+        ??
+            length += if name.length != 0 then 1 + name.length else 3 + text-length
+                .. text-length = utf16-length(node-text(source, tree, part))
+= length >= 80
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gather-parts
+    - tree AST
+    - id SyntaxId
+    - parts [SyntaxId]
+
+do match? tree.nodes[id]
+    | .node-binary-expression(row)
+        if is-concatenation(row.op)
+            gather-parts(tree, row.lhs, parts)
+            gather-parts(tree, row.rhs, parts)
+            =
+parts += id

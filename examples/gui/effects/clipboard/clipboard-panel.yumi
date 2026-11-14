@@ -1,0 +1,297 @@
+/graphics/image
+/graphics/text
+/gui
+/os/path
+/stream/aggregate
+
++ pasted-max-pixel-size I32 = 640
+
+━━━━━━━━━━━━━━━━━━━━
+• ClipboardTheme
+    using GUIDefaultTheme
+
+• gallery-panel • bg:gui-panel-color
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 8
+
+• panel-title
+    font-size = 15
+    font-weight = FontWeight.bold
+
+• panel-note • text:gui-muted-text-color
+    font-size = 12
+
+• paste-well • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 8
+    overflow-x = ScrollOverflow.auto
+
+    when #is-focused
+        border-color = gui-accent-bright-color
+
+    when #is-armed
+        • bg:gui-hover-color
+        border-color = gui-accent-bright-color
+
+• paste-hint • text:gui-muted-text-color
+    font-size = 14
+
+• pasted-tile • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 6
+
+    when #is-selected
+        border-color = gui-accent-bright-color
+        border-width = 2
+
+• pasted-caption • text:gui-muted-text-color
+    font-size = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ PastedImage is Tuple
+
++ id Size
++ image Image
++ source ClipboardItem
++ caption String
+
+━━━━━━━━━━━━━━━━━━━━
++ ClipboardPanel is Box
+    using ClipboardTheme
+
++ pasted [PastedImage]
++ selected Size?
++ status = "Nothing pasted yet"
++ inspected [String]
+_ next-id Size = 0
+
+────────────────────
+
+<This • flex-row p:16
+    <Box • gallery-panel flex-col flex:1 p:12
+        <Label • panel-title h:22
+            text = "Paste and drop images"
+        <Label • panel-note h:34
+            text = "".join
+                * "Copy an image or an image file, click the well and press ⌘V, or drag images onto it "
+                * "from Finder, Photos or a browser. Select a picture and press ⌘C to copy it or ⌘X to cut it."
+            text-wrap = TextWrap.word
+        <PasteWell well • paste-well flex-row flex:1 mt:6 p:10
+            if #pasted.length == 0
+                <Label • paste-hint flex:1
+                    text = "Click here and press ⌘V, or drop images here"
+                    align-x = Alignment.center
+            for item in #pasted keyed by item.id
+                <PastedTile • pasted-tile flex-col w:180 h:170 mr:10 p:6
+                    item = item
+                    is-selected = #selected == item.id
+
+                    for event on pointer-down
+                        selected = item.id
+        <Label • panel-note h:18 mt:8
+            text = #status
+
+    <Box • gallery-panel flex-col w:340 p:12 ml:12
+        <Label • panel-title h:22
+            text = "Last clipboard"
+        <Label • panel-note h:18
+            text = "Each item on the pasteboard and the types it offers"
+        <Box • flex-col flex:1 mt:6
+            for line in #inspected
+                <Label • panel-note h:18
+                    text = line
+
+────────────────────
+for event on well.paste
+
+. clipboard = event.clipboard
+inspected = clipboard-lines(clipboard)
+. entries = clipboard.images
+if entries.length
+    event.cancel()
+    status = "Reading ${entries.length} image(s)…"
+    do new add-images(entries, List'Path(), "Pasted")
+else
+    . text = clipboard.read-text()
+    status = if text then "The clipboard holds text, not an image: “${text}”" else "The clipboard holds no image"
+
+────────────────────
+for event on well.copy
+
+. item = selected-item
+if item && event.clipboard.write([item.source])
+    status = "Copied ${item.caption}"
+    event.cancel()
+
+────────────────────
+for event on well.cut
+
+. item = selected-item
+if item && event.clipboard.write([item.source])
+    remove(item.id)
+    status = "Cut ${item.caption}"
+    event.cancel()
+
+────────────────────
+for event on well.drag-over
+
+if takes-drop(event.payload)
+    well.is-armed = true
+    event.accept()
+
+────────────────────
+for event on well.drag-leave
+
+well.is-armed = false
+
+────────────────────
+for event on well.drop
+
+well.is-armed = false
+. drag = event.payload as ClipboardDrag
+inspected = clipboard-lines(drag.clipboard)
+status = "Reading dropped images…"
+do new drop-images(drag)
+
+────────────────────
++ get selected-item PastedImage?
+
+first(each in pasted when each.id == selected)
+
+────────────────────
+_ do drop-images
+    - drag ClipboardDrag
+
+. items = drag.clipboard.items
+. entries = dropped-entries(items)
+. promised = some(items) • where each.is-promised-image
+. files = if promised then drag.receive-promised-files() else List'Path()
+add-images(entries, files, "Dropped")
+
+────────────────────
+_ do add-images
+    - entries [ClipboardEntry]
+    - files [Path]
+    - verb String
+
+. existing = pasted.length
+for entry in entries
+    add(catch? read-pasted-image(entry, next-id))
+for file in files
+    add(catch? read-pasted-file(file, next-id))
+status = "$verb ${pasted.length - existing} of ${entries.length + files.length} image(s)"
+
+────────────────────
+_ do add
+    - item PastedImage?
+
+=? if !item
+next-id += 1
+pasted += item
+selected = item.id
+
+────────────────────
+_ do remove
+    - id Size
+
+. item = first(each in pasted when each.id == id)
+=? if !item
+pasted = pasted-without(pasted, id)
+item.image.release()
+selected = null
+
+━━━━━━━━━━━━━━━━━━━━
++ PasteWell is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ is-armed = false
+
+────────────────────
+for event on pointer-down
+
+request-focus()
+
+━━━━━━━━━━━━━━━━━━━━
++ PastedTile is Box
+
++ item PastedImage
++ is-selected = false
+
+────────────────────
+
+<This
+    <ImageView • flex:1
+        image = item.image
+    <Label • pasted-caption h:16 mt:4
+        text = item.caption
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-pasted-image PastedImage ?! IOError
+    - entry ClipboardEntry
+    - id Size
+
+. file = entry.path
+=? read-pasted-file(file, id) if file
+. type = entry.conforming-type(clipboard-image-type) ?? ""
+. bytes = entry.read-data(type)
+?! IOError("The pasteboard item has no $type data")
+    if !bytes
+. decoded = decode-image(bytes, 1, pasted-max-pixel-size)
+= PastedImage(id, decoded, clipboard-data-item(type, bytes), "$type · ${pasted-size(decoded)}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-pasted-file PastedImage ?! IOError
+    - file Path
+    - id Size
+
+. loaded = load-image(file, pasted-max-pixel-size)
+= PastedImage(id, loaded, clipboard-file-item(file), "${file.name} · ${pasted-size(loaded)}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ takes-drop Bool
+    - payload DragPayload
+
+|? payload is ClipboardDrag
+    some((payload as ClipboardDrag).clipboard.items) • where each.is-image || each.is-promised-image
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
+_ dropped-entries [ClipboardEntry]
+    - items [ClipboardEntry]
+
+** items
+?> each.is-image && each.promised-type == null
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ pasted-without [PastedImage]
+    - items [PastedImage]
+    - id Size
+
+** items
+?> each.id != id
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ pasted-size String
+    - image Image
+
+"${image.pixel-width}×${image.pixel-height}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do clipboard-lines [String]
+    - clipboard Clipboard
+
+. lines [String]
+for entry in clipboard.items
+    . file = entry.path
+    lines += if file then "Item ${entry.index + 1}: ${file.name}" else "Item ${entry.index + 1}"
+    for type in entry.types
+        lines += "    $type"
+= lines

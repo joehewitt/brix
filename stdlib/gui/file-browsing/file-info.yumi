@@ -1,0 +1,197 @@
+./file-icon
+/graphics/color
+/graphics/primitives
+/graphics/style
+/graphics/text
+/gui/box
+/gui/label
+/gui/primitives
+/gui/shorthands
+/gui/styles
+/gui/theme
+/os/file
+/os/file-tree
+/os/path
+/time/datetime
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUIFontStyle
+    using GUIParagraphStyle
+    using GUITextPaint
+    using VectorPaintStyle
+
+• file-info • p:24
+    • file-glyph-icon • w:96 h:96
+        stroke-width = 1
+
+• file-info-icon • mt:24 mb:16
+
+• file-info-name • h:28
+    font-size = 18
+    font-weight = FontWeight.bold
+    text-alignment = TextAlignment.center
+
+• file-info-summary • text:gui-muted-text-color h:20
+    text-alignment = TextAlignment.center
+
+• file-info-rule • h:1 mt:20 mb:12 bg:gui-divider-color
+
+• file-info-heading • h:24
+    font-weight = FontWeight.bold
+
+• file-info-row • h:24
+
+• file-info-title • text:gui-muted-text-color w:80
+
+━━━━━━━━━━━━━━━━━━━━
++ FileInfoPane is Box
+
++ files FileTree
++ node FileNode?
++ revision Size = 0
++ info FileInfo = file-info(#revision, #node?.#name ?? "", #node)
+
+_ observed-node FileNode?
+
+────────────────────
+
+<This • flex-col file-info
+    <FileIcon • file-info-icon
+        glyph = #info.glyph
+        align-x = Alignment.center
+    <Label • file-info-name
+        text = #node?.#name ?? ""
+    <Label • file-info-summary
+        text = #info.summary
+    <Box • file-info-rule
+    <Label • file-info-heading
+        text = "Information"
+    <FileInfoRow "Kind"
+        value = #info.kind
+    <FileInfoRow "Size"
+        value = #info.size
+    <FileInfoRow "Created"
+        value = #info.created
+    <FileInfoRow "Modified"
+        value = #info.modified
+    <FileInfoRow "Where"
+        value = #info.location
+
+────────────────────
+whenever #node
+
+observe(node)
+
+────────────────────
+for changed on files.modified
+
+if changed.key == node?.key
+    revision += 1
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+observe(null)
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do observe
+    - next FileNode?
+
+. previous = observed-node
+=? if previous?.key == next?.key
+observed-node = next
+if previous
+    files.unobserve(previous)
+if next
+    files.observe(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ FileInfoRow is Box
+
++ title = ""
++ value = ""
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This • flex-row file-info-row
+    <Label • file-info-title
+        text = #title
+    <Label • file-info-value flex:1
+        text = #value
+        text-alignment = TextAlignment.right
+
+━━━━━━━━━━━━━━━━━━━━
++ FileInfo is Tuple
+
++ glyph FileGlyph
++ kind String
++ size String
++ created String
++ modified String
++ location String
++ summary String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-info FileInfo
+    - revision Size
+    - name String
+    - node FileNode?
+
+=? FileInfo(FileGlyph.file, "", "", "", "", "", "") if !node
+. glyph = file-glyph(node.is-directory, node.kind, name)
+. kind = file-kind-text(glyph, file-extension(name))
+. path = node.path
+. location = "${path.parent ?? path}"
+. size = catch? path.size
+. created = catch? path.created
+. modified = catch? path.modified
+=? FileInfo(glyph, kind, "--", "--", "--", location, kind) if size == null || !created || !modified
+. size-text = if node.is-directory then "--" else file-size-text(size)
+= FileInfo
+    - glyph
+    - kind
+    - size-text
+    - created.readable
+    - modified.readable
+    - location
+    - if node.is-directory then kind else "$kind · $size-text"
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-kind-text String
+    - glyph FileGlyph
+    - extension String
+
+match glyph
+    |= FileGlyph.folder
+        "Folder"
+    |= FileGlyph.folder-link
+        "Folder link"
+    |= FileGlyph.file-link
+        "Symbolic link"
+    |= FileGlyph.code
+        "$label source"
+    |= FileGlyph.text
+        "$label document"
+    |= FileGlyph.data
+        "$label data"
+    |= FileGlyph.image
+        "$label image"
+    |= FileGlyph.archive
+        "$label archive"
+    ??
+        if extension then "$label file" else "Document"
+
+.. label = extension.uppercased

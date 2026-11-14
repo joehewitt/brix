@@ -1,0 +1,219 @@
+/data/json
+/math
+/probes/trace
+/stream/sort
+
+_ bench-group-type U16 = 16
+_ bench-nanoseconds U64 = 1000000000
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-probe-metrics [String = JSON]?
+    - path String
+
+. reading = BenchProbeReading()
+. reader = use TraceReader(path, false)
+. read = catch reading.read(reader)
+=? null if read is Error
+= reading.metrics()
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchProbeKey
+
++ is-group-expected = false
++ group-count U64
++ group-ms = 0.0
++ samples [F64]
++ least F64?
++ most F64?
++ active-count U64
++ active-ms = 0.0
++ is-counter-seen = false
++ is-counter-expected = false
++ counter-value U64
++ owners [U32 = Bool]
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchOpenGroup is (key String, time U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchProbeReading
+
++ keys [String = BenchProbeKey]
++ counts [String = TraceCounter]
++ measures [U16 = TraceMetric]
++ open [U32 = BenchOpenGroup]
+
+────────────────────
++ do read Bool ?! Error
+    - reader TraceReader
+
+for item in reader.read-all()
+    observe(item)
+= reader.is-done
+
+────────────────────
++ do metrics [String = JSON]
+
+. counters [String = U64]
+for _, counter in counts
+    . key = counter.site.key
+    if key == ""
+        continue
+    . named = if counter.object-id != 0 then "${counter.object-id}:$key" else key
+    counters[named] = (counters[named] ?? 0) + counter.value
+    . found = entry(key)
+    found.is-counter-seen = true
+    found.counter-value += counter.value
+    if counter.object-id != 0
+        found.owners[counter.object-id] = true
+for _, metric in measures
+    . key = metric.site.key
+    if key == ""
+        continue
+    . found = entry(key)
+    if metric.site.kind == TraceMetricKind.counter
+        counters[key] = (counters[key] ?? 0) + metric.value
+        found.is-counter-seen = true
+        found.counter-value += metric.value
+    else
+        found.is-group-expected = true
+        found.group-count += metric.value
+        found.group-ms += (metric.total-ns as F64) / 1000000.0
+        found.active-count += metric.active-count
+        found.active-ms += (metric.active-elapsed-ns as F64) / 1000000.0
+. values [String = JSON]
+for key, value in counters
+    values[key] = value as JSON
+. profiles [String = JSON]
+. names [String]
+for key, _ in keys
+    names += key
+for key in sort(names)
+    . fields = profile-fields(keys[key]!)
+    if fields.length > 0
+        profiles[key] = fields
+. found [String = JSON]
+found["probeCounters"] = values
+found["probeProfiles"] = profiles
+= found
+
+────────────────────
+_ do observe
+    - item TraceItem
+
+do match? item
+    | .site(site)
+        if site.kind == TraceSiteKind.counter && site.key != ""
+            entry(site.key).is-counter-expected = true
+    | .metric-site(site)
+        if site.key != ""
+            . found = entry(site.key)
+            if site.kind == TraceMetricKind.counter
+                found.is-counter-expected = true
+            else
+                found.is-group-expected = true
+    | .log(record)
+        group(record)
+    | .event(record)
+        group(record)
+    | .counter(counter)
+        counts["${counter.site.id}:${counter.object-id}"] = counter
+    | .metric(metric)
+        measures[metric.site.id] = metric
+
+────────────────────
+_ do group
+    - record TraceRecord
+
+. name = record.site.name ?? ""
+=? if record.site.key == "" || (name != "groupBegin" && name != "groupEnd")
+. id = group-id(record)
+=? if !id
+. time = record.time.seconds * bench-nanoseconds + record.time.nanoseconds
+if name == "groupBegin"
+    open[id] = BenchOpenGroup(record.site.key, time)
+    =
+. started = open[id]
+=? if !started
+-= open[id]
+. elapsed = if time > started.time then ((time - started.time) as F64) / 1000000.0 else 0.0
+. found = entry(started.key)
+found.group-count += 1
+found.group-ms += elapsed
+found.samples += elapsed
+found.least = if !found.least || elapsed < found.least then elapsed else found.least
+found.most = if !found.most || elapsed > found.most then elapsed else found.most
+
+────────────────────
+_ do group-id U32?
+    - record TraceRecord
+
+for value in record.values
+    do match? value
+        | .object(object)
+            =? object.object-id if object.type-id == bench-group-type
+= null
+
+────────────────────
+_ do entry BenchProbeKey
+    - key String
+
+. found = keys[key]
+=? found if found
+. made = BenchProbeKey()
+keys[key] = made
+= made
+
+━━━━━━━━━━━━━━━━━━━━
+_ do profile-fields [String = JSON]
+    - found BenchProbeKey
+
+. fields [String = JSON]
+if found.group-count > 0 || found.active-count > 0
+    . sorted = sort(found.samples)
+    fields["count"] = found.group-count as JSON
+    fields["totalMs"] = found.group-ms
+    fields["averageMs"] = if found.group-count > 0 then average-ms else (null as JSON)
+        .. average-ms = (found.group-ms / (found.group-count as F64)) as JSON
+    fields["minMs"] = optional-json(found.least)
+    fields["p50Ms"] = percentile(sorted, 0.5)
+    fields["p95Ms"] = percentile(sorted, 0.95)
+    fields["p99Ms"] = percentile(sorted, 0.99)
+    fields["maxMs"] = optional-json(found.most)
+    fields["activeCount"] = found.active-count as JSON
+    fields["activeMs"] = found.active-ms
+else if found.is-group-expected
+    fields["count"] = 0
+    fields["totalMs"] = 0.0
+    fields["averageMs"] = null
+    fields["minMs"] = null
+    fields["p50Ms"] = null
+    fields["p95Ms"] = null
+    fields["p99Ms"] = null
+    fields["maxMs"] = null
+    fields["activeCount"] = 0
+    fields["activeMs"] = 0.0
+if found.is-counter-seen || found.is-counter-expected
+    fields["value"] = if found.is-counter-seen then counter-json else (null as JSON)
+        .. counter-json = found.counter-value as JSON
+    fields["objectCount"] = found.owners.length
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ percentile JSON
+    - sorted [F64]
+    - fraction F64
+
+|? sorted.length == 0
+    null as JSON
+??
+    sorted[index as Size] as JSON
+
+.. rank = (ceil((sorted.length as F64) * fraction) as Int) - 1
+.. index = max(0, min((sorted.length as Int) - 1, rank))
+
+━━━━━━━━━━━━━━━━━━━━
+_ optional-json JSON
+    - value F64?
+
+if value then (value as JSON) else (null as JSON)

@@ -1,0 +1,283 @@
+====================================================================================================
+If blocks
+====================================================================================================
+:====
+
+if foo
+    body()
+
+:----
+%brix
+(main
+  (if foo
+    (call body)
+  )
+)
+:----
+
+<If>
+    <TypePredicate>
+        <Id name="foo"/>
+    </TypePredicate>
+    <Block>
+        <CallExpression>
+            <Id name="body"/>
+        </CallExpression>
+    </Block>
+</If>
+;====
+:====
+
+if foo
+    body()
+else if bar
+    body2()
+
+:----
+%brix
+(main
+  (if foo
+    (call body)
+    (else-if bar
+      (call body2)
+    )
+  )
+)
+:----
+
+<If>
+    <TypePredicate>
+        <Id name="foo"/>
+    </TypePredicate>
+    <Block>
+        <CallExpression>
+            <Id name="body"/>
+        </CallExpression>
+    </Block>
+    <If>
+        <TypePredicate>
+            <Id name="bar"/>
+        </TypePredicate>
+        <Block>
+            <CallExpression>
+                <Id name="body2"/>
+            </CallExpression>
+        </Block>
+    </If>
+</If>
+;====
+:====
+
+if foo
+    body()
+else
+    body2()
+
+:----
+%brix
+(main
+  (if foo
+    (call body)
+    (else
+      (call body2)
+    )
+  )
+)
+:----
+
+<If>
+    <TypePredicate>
+        <Id name="foo"/>
+    </TypePredicate>
+    <Block>
+        <CallExpression>
+            <Id name="body"/>
+        </CallExpression>
+    </Block>
+    <If>
+        <Block>
+            <CallExpression>
+                <Id name="body2"/>
+            </CallExpression>
+        </Block>
+    </If>
+</If>
+;====
+:====
+
+if foo
+    body()
+else if bar
+    body2()
+else
+    body3()
+
+:----
+%brix
+(main
+  (if foo
+    (call body)
+    (else-if bar
+      (call body2)
+    )
+    (else
+      (call body3)
+    )
+  )
+)
+:----
+
+<If>
+    <TypePredicate>
+        <Id name="foo"/>
+    </TypePredicate>
+    <Block>
+        <CallExpression>
+            <Id name="body"/>
+        </CallExpression>
+    </Block>
+    <If>
+        <TypePredicate>
+            <Id name="bar"/>
+        </TypePredicate>
+        <Block>
+            <CallExpression>
+                <Id name="body2"/>
+            </CallExpression>
+        </Block>
+        <If>
+            <Block>
+                <CallExpression>
+                    <Id name="body3"/>
+                </CallExpression>
+            </Block>
+        </If>
+    </If>
+</If>
+;====
+====================================================================================================
+Match/Bind Tests
+====================================================================================================
+:====
+
+if | Foo = bar
+    body()
+
+:----
+%brix
+(main
+  (if (= (| Foo) bar)
+    (call body)
+  )
+)
+:----
+
+<If>
+    <Match>
+        <Id name="bar"/>
+        <StructureMatch>
+            <TypeTransform>
+                <TypeId name="Foo"/>
+                <Block>
+                    <Do>
+                        <Block>
+                            <CallExpression>
+                                <Id name="body"/>
+                            </CallExpression>
+                        </Block>
+                    </Do>
+                    <Id name="true"/>
+                </Block>
+            </TypeTransform>
+        </StructureMatch>
+    </Match>
+</If>
+;====
+:====
+
+if ~ Foo = bar
+    body()
+
+:----
+%brix
+(main
+  (if (= (~ Foo) bar)
+    (call body)
+  )
+)
+:----
+
+<If>
+    <Match>
+        <Id name="bar"/>
+        <StreamMatch>
+            <StreamTransform>
+                <StreamType>
+                    <TypeId name="Foo"/>
+                </StreamType>
+                <Block>
+                    <Do>
+                        <Block>
+                            <CallExpression>
+                                <Id name="body"/>
+                            </CallExpression>
+                        </Block>
+                    </Do>
+                    <Id name="true"/>
+                </Block>
+            </StreamTransform>
+        </StreamMatch>
+    </Match>
+</If>
+;====
+:====
+
+if ~ Foo = bar
+    f()
+
+:----
+%brix
+(main
+  (if (= (~ Foo) bar)
+    (call f)
+  )
+)
+:----
+
+<If>
+    <Match>
+        <Id name="bar"/>
+        <StreamMatch>
+            <StreamTransform>
+                <StreamType>
+                    <TypeId name="Foo"/>
+                </StreamType>
+                <Block>
+                    <Do>
+                        <Block>
+                            <CallExpression>
+                                <Id name="f"/>
+                            </CallExpression>
+                        </Block>
+                    </Do>
+                    <Id name="true"/>
+                </Block>
+            </StreamTransform>
+        </StreamMatch>
+    </Match>
+</If>
+;====
+:====
+
+. a Int? = 42
+if a?
+    -- a
+
+:----
+%crash
+
+Exception: Syntax error
+<no file:3>
+    if a?
+         ^
+;====

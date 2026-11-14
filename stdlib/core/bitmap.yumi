@@ -1,0 +1,252 @@
+./backing
+./core
+./error
+./number
+./range
+./stream
+
+━━━━━━━━━━━━━━━━━━━━
++ Bitmap'Integer is Integer
+
+────────────────────
++ This
+    - integer Integer = 0 as Integer
+
+Integer.bit-width
+= integer as This
+
+────────────────────
++ get capacity Size
+
+Integer.bit-width
+
+────────────────────
++ this[index Index]
+
+?! OutOfBoundsError("Bitmap index out of bounds")
+    if index >= capacity
+((this as Integer) /and/ mask) != (0 as Integer)
+
+.. mask = (1 as Integer) /lshift/ index
+
+────────────────────
++ this[index Index] = truth Bool
+
+?! OutOfBoundsError("Bitmap index out of bounds")
+    if index >= capacity
+|? truth
+    ((this as Integer) /or/ mask) as This
+??
+    ((this as Integer) /and/ (mask /xor/ bitmap-mask'Integer(capacity))) as This
+
+.. mask = (1 as Integer) /lshift/ index
+
+────────────────────
++ fill
+    - truth Bool
+
+(if truth then bitmap-mask'Integer(capacity) else (0 as Integer)) as This
+
+────────────────────
++ copy
+
+this
+
+────────────────────
++ find
+    - truth Bool
+
+bitmap-find(this, truth)
+
+────────────────────
++ find-consecutive
+    - count Size
+    - truth Bool
+
+bitmap-find-consecutive(this, count, truth)
+
+────────────────────
++ count
+    - truth Bool
+
+bitmap-count(this, truth)
+
+────────────────────
++ do to Iterable'Bool @inline
+
+for index in 0 .. < capacity
+    <= this[index]
+
+────────────────────
++ do indices
+    - truth Bool
+
+for index in 0 .. < capacity
+    <=? index if this[index] == truth
+
+━━━━━━━━━━━━━━━━━━━━
++ BitmapBuffer'Backing is Tuple
+    - Backing = GCBacking
+    - Backing is StorageBacking
+
+_ storage Backing.Storage'U64
+_ bit-capacity Size
+
+────────────────────
++ This
+    - capacity Size
+    - Backing = GCBacking
+
+= This(Void(), capacity)
+
+────────────────────
++ This
+    - context Backing.Context
+    - capacity Size
+
+. words = capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+storage = Backing.allocate'U64(context, words)
+bit-capacity = capacity
+for index in 0 .. < words
+    Backing.store'U64(storage, 0ul, index)
+
+────────────────────
++ This'Provider
+    - provider Provider
+    - capacity Size
+    - Provider is ArrayStorageProvider
+    - Backing = Provider.Backing'U64
+
+. context = provider as Backing.Context
+. words = capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+storage = Backing.allocate'U64(context, words)
+bit-capacity = capacity
+for index in 0 .. < words
+    Backing.store'U64(storage, 0ul, index)
+
+────────────────────
++ get capacity Size
+
+bit-capacity
+
+────────────────────
++ this[index Index]
+
+?! OutOfBoundsError("Bitmap index out of bounds")
+    if index >= capacity
+(word /and/ (1ul /lshift/ (index % 64))) != 0ul
+
+.. word = Backing.load'U64(storage, index / 64)
+
+────────────────────
++ do this[index Index] = truth Bool
+
+?! OutOfBoundsError("Bitmap index out of bounds")
+    if index >= capacity
+. word-index = index / 64
+. word = Backing.load'U64(storage, word-index)
+. mask = 1ul /lshift/ (index % 64)
+if truth
+    word = word /or/ mask
+else
+    word = word /and/ (mask /xor/ U64.max)
+Backing.store'U64(storage, word, word-index)
+
+────────────────────
++ do fill
+    - truth Bool
+
+. full-words = capacity / 64
+. word = if truth then U64.max else 0ul
+for index in 0 .. < full-words
+    Backing.store'U64(storage, word, index)
+if capacity % 64 != 0
+    . tail = if truth then bitmap-mask'U64(capacity % 64) else 0ul
+    Backing.store'U64(storage, tail, full-words)
+
+────────────────────
++ do copy
+    - context Backing.Context = Void()
+
+. result = This(context, capacity)
+for index in 0 .. < capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+    . word = Backing.load'U64(storage, index)
+    Backing.store'U64(result.storage, word, index)
+= result
+
+────────────────────
++ find
+    - truth Bool
+
+bitmap-find(this, truth)
+
+────────────────────
++ find-consecutive
+    - count Size
+    - truth Bool
+
+bitmap-find-consecutive(this, count, truth)
+
+────────────────────
++ count
+    - truth Bool
+
+bitmap-count(this, truth)
+
+────────────────────
++ do to Iterable'Bool @inline
+
+for index in 0 .. < capacity
+    <= this[index]
+
+────────────────────
++ do indices
+    - truth Bool
+
+for index in 0 .. < capacity
+    <=? index if this[index] == truth
+
+━━━━━━━━━━━━━━━━━━━━
+_ bitmap-mask'Integer
+    - capacity Size
+
+|? capacity == Integer.bit-width
+    ((0 as Integer) - (1 as Integer)) as Integer
+??
+    (((1 as Integer) /lshift/ capacity) - (1 as Integer)) as Integer
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bitmap-find'Bits Index?
+    - bitmap Bits
+    - truth Bool
+
+for index in 0 .. < bitmap.capacity
+    =? index if bitmap[index] == truth
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bitmap-find-consecutive'Bits Index?
+    - bitmap Bits
+    - count Size
+    - truth Bool
+
+=? null if count == 0 || count > bitmap.capacity
+. run Size = 0
+for index in 0 .. < bitmap.capacity
+    if bitmap[index] == truth
+        run += 1
+        =? index + 1 - count if run == count
+    else
+        run = 0
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bitmap-count'Bits Size
+    - bitmap Bits
+    - truth Bool
+
+. result Size = 0
+for index in 0 .. < bitmap.capacity
+    if bitmap[index] == truth
+        result += 1
+= result

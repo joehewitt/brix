@@ -1,0 +1,107 @@
+/stream/sort
+
+_ bars [String] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+
+━━━━━━━━━━━━━━━━━━━━
++ Stats
+
++ count Size = 0
++ sum F64
++ min F64
++ max F64
+
+_ values [F64]
+_ ordered [F64]
+_ is-ordered = false
+
+────────────────────
++ do add
+    - value F64
+
+if count == 0 || value < min
+    min = value
+if count == 0 || value > max
+    max = value
+count += 1
+sum += value
+values += value
+is-ordered = false
+
+────────────────────
++ get mean F64
+
+if count != 0 then sum / (count as F64) else 0.0
+
+────────────────────
++ do percentile F64
+    - rank F64
+
+=? 0.0 if count == 0
+if !is-ordered
+    ordered = sort(values) • using :: a, b => if a < b then .lesser else .greater
+    is-ordered = true
+. position = (rank / 100.0 * (count as F64) + 0.999999) as Size
+. index = if position > 0 then position - 1 else 0
+= ordered[if index < count then index else count - 1]
+
+────────────────────
++ do stat F64?
+    - name String
+
+do match? name
+    |= "count"
+        = count as F64
+    |= "sum"
+        = sum
+    |= "total"
+        = sum
+    |= "min"
+        = min
+    |= "max"
+        = max
+    |= "mean"
+        = mean
+    |= "avg"
+        = mean
+    |= "median"
+        = percentile(50.0)
+=? null if !name.starts-with("p")
+. rank = parse-rank(name[1 ...])
+=? null if !rank
+= percentile(rank)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do parse-rank F64?
+    - text String
+
+=? null if text.length == 0
+for char in text
+    =? null if (char < '0' || char > '9') && char != '.'
+. rank = text as F64
+=? null if rank > 100.0
+= rank
+
+━━━━━━━━━━━━━━━━━━━━
++ is-stat-name Bool
+    - name String
+
+["count", "sum", "total", "min", "max", "mean", "avg", "median"] has name || is-rank
+
+.. is-rank = name.starts-with("p") && parse-rank(name[1 ...]) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ do sparkline String
+    - values [F64]
+
+. top F64
+for value in values
+    if value > top
+        top = value
+. line = ""
+for value in values
+    if value <= 0.0 || top <= 0.0
+        line += " "
+    else
+        . level = (value / top * 7.0 + 0.5) as Size
+        line += bars[if level < 8 then level else 7]
+= line

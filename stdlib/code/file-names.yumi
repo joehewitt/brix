@@ -1,0 +1,305 @@
+/data/fuzzy
+/git
+/os/path
+/stream/sort
+/time/debounced
+/time/duration
+
++ file-name-relist-delay = 250ms
++ file-name-match-limit Size = 200
+_ file-name-walk-limit Size = 500000
+_ file-name-name-bonus = 10000
+
+━━━━━━━━━━━━━━━━━━━━
++ FileNameEntry is Tuple
+
++ path String
++ name String
++ is-directory Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileNameMatch is Tuple
+
++ entry FileNameEntry
++ score Int
++ positions [Index]
++ is-in-name Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileNameIndex
+    is Closable
+
++ root Path
++ entries [FileNameEntry]
++ is-ready = false
++ revision U64
+
+_ known [String = Bool]
+_ listed = OneShotChannel()
+_ watch Closable?
+_ changes Broadcastable'PathWatchEvent?
+_ is-started = false
+_ is-listing = false
+_ is-stale = false
+_ schedule-relist := throttled(file-name-relist-delay, this.relist)
+_ is-closed = false
+
+────────────────────
++ This
+    - location Path
+    - changes = null
+
+. resolved = catch? location.resolved ?? location
+root = resolved
+
+────────────────────
++ do start
+
+=? if is-started || is-closed
+is-started = true
+watch = catch? listen()
+do new relist()
+
+────────────────────
++ do search [FileNameMatch]
+    - query String
+    - scope String = ""
+    - limit = file-name-match-limit
+
+await-listing()
+. snapshot = entries
+. done = Semaphore'[FileNameMatch]()
+do new thread
+    done.post(file-name-ranked(snapshot, query, scope, limit))
+= done.await() ?? List'FileNameMatch()
+
+────────────────────
++ do await-listing
+
+start()
+while !is-ready && !is-closed
+    <- listed
+
+────────────────────
++ relative String?
+    - location Path
+
+"$inner" if inner
+
+.. inner = location.relative-to(root)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+listed.done()
+. stream = watch
+watch = null
+if stream
+    catch? stream.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do listen Closable ?! Error
+
+. source = changes ?? (root.watch(true) as Broadcastable'PathWatchEvent)
+= listen-for-changes(source, this.note)
+
+────────────────────
+_ do note
+    - event PathWatchEvent
+
+=? if is-closed
+if event.must-rescan
+    schedule-relist()
+    =
+. inner = relative(event.path)
+=? if inner == null || inner == "" || file-name-is-git(inner)
+. name = event.path.name
+. is-rule = name == ".gitignore"
+=? if !is-rule && !file-name-changes-names(event.flags)
+. slash = inner.find-reverse("/")
+. above = if slash != null then inner[0 .. < (slash as Index)] else ""
+if is-rule || above == "" || known has inner || known has above
+    schedule-relist()
+
+────────────────────
+_ do relist
+
+is-stale = true
+=? if is-listing
+is-listing = true
+while is-stale && !is-closed
+    is-stale = false
+    . location = root
+    . done = Semaphore'FileNameListing()
+    do new thread
+        done.post(file-name-listing(location))
+    . found = done.await()
+    if found && !is-closed
+        entries = found.entries
+        known = found.known
+        revision += 1
+    if !is-ready
+        is-ready = true
+        listed.done()
+is-listing = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileNameListing
+
++ entries [FileNameEntry]
++ known [String = Bool]
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileNameRank is Tuple
+
++ score Int
++ length Size
++ order Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name-listing FileNameListing
+    - root Path
+
+. listing = FileNameListing()
+. paths = catch? file-name-git-paths("$root")
+if paths != null
+    for path in paths
+        if path.ends-with("/")
+            file-name-add(listing, path[0 .. < path.length - 1], true)
+        else
+            file-name-add(listing, path, false)
+else
+    file-name-walk(listing, root, "")
+= listing
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name-git-paths [String] ?! Error
+    - directory String
+
+. listed = git-fields
+    - git-output
+        - directory
+        - ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate"]
+. deleted = git-fields(git-output(directory, ["ls-files", "-z", "--deleted"]))
+=? listed if deleted.length == 0
+. gone = Map'String'Bool()
+for path in deleted
+    gone[path] = true
+. kept [String]
+for path in listed
+    if !(gone has path)
+        kept += path
+= kept
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name-walk
+    - listing FileNameListing
+    - location Path
+    - prefix String
+
+. listed = catch? List'PathEntry(location.entries)
+=? if listed == null
+for entry in listed
+    =? if listing.entries.length >= file-name-walk-limit
+    if !file-name-walk-hides(entry.name)
+        . path = "$prefix${entry.name}"
+        . is-directory = entry.kind == PathKind.directory
+        file-name-add(listing, path, is-directory)
+        if is-directory
+            file-name-walk(listing, location / entry.name, "$path/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name-add
+    - listing FileNameListing
+    - path String
+    - is-directory Bool
+
+=? if !path || listing.known has path
+listing.known[path] = true
+. slash = path.find-reverse("/")
+. name = path
+if slash != null
+    . cut = slash as Index
+    name = path[cut + 1 ...]
+    file-name-add(listing, path[0 .. < cut], true)
+listing.entries += FileNameEntry(path, name, is-directory)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name-ranked [FileNameMatch]
+    - entries [FileNameEntry]
+    - query String
+    - scope String
+    - limit Size
+
+. found [FileNameMatch]
+. pattern = FuzzyQuery(query)
+=? found if pattern.is-empty
+. prefix = if scope then "$scope/" else ""
+. ranks [FileNameRank]
+for order in 0 .. < entries.length
+    . entry = entries[order]
+    if !prefix || entry.path.starts-with(prefix)
+        . scored = pattern.score(entry.path, prefix.size)
+        if scored != null
+            . total = scored
+            . named = pattern.score(entry.name)
+            if named != null
+                total += named + file-name-name-bonus
+            ranks += FileNameRank(total, entry.path.length, order)
+. ordered = sort(ranks) • using file-name-rank-compare
+for rank in ordered
+    =? found if found.length >= limit
+    . entry = entries[rank.order]
+    . named = pattern.positions(entry.name)
+    if named.length > 0
+        found += FileNameMatch(entry, rank.score, named, true)
+    else
+        found += FileNameMatch(entry, rank.score, pattern.positions(entry.path, prefix.size), false)
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-name-rank-compare Comparison
+    - left FileNameRank
+    - right FileNameRank
+
+|? left.score > right.score
+    Comparison.lesser
+|? left.score < right.score
+    Comparison.greater
+|? left.length < right.length
+    Comparison.lesser
+|? left.length > right.length
+    Comparison.greater
+|? left.order < right.order
+    Comparison.lesser
+|? left.order > right.order
+    Comparison.greater
+??
+    Comparison.equal
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-name-is-git Bool
+    - inner String
+
+inner == ".git" || inner.starts-with(".git/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-name-walk-hides Bool
+    - name String
+
+name == ".git" || name == ".DS_Store"
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-name-changes-names Bool
+    - flags PathWatchFlags
+
+flags /and/ names != 0
+
+.. names = entries /or/ mounts
+.. entries = PathWatchFlags.created /or/ PathWatchFlags.removed /or/ PathWatchFlags.renamed
+.. mounts = PathWatchFlags.mounted /or/ PathWatchFlags.unmounted

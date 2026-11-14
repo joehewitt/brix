@@ -1,0 +1,40 @@
+./duration
+
+━━━━━━━━━━━━━━━━━━━━
++ DebouncedAction is () Void
+
+━━━━━━━━━━━━━━━━━━━━
++ do debounced DebouncedAction
+    - delay Duration
+    - action Doer
+
+. calls U64
+= => do
+    calls += 1
+    . call = calls
+    do new
+        delay.wait()
+        if call == calls
+            action()
+                catch error Error
+                    unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ do throttled DebouncedAction
+    - delay Duration
+    - action Doer
+
+. is-pending = false
+. is-requested = false
+= => do
+    is-requested = true
+    if !is-pending
+        is-pending = true
+        do new
+            while is-requested
+                delay.wait()
+                is-requested = false
+                action()
+                    catch error Error
+                        unhandled-error(error)
+            is-pending = false

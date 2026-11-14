@@ -1,0 +1,406 @@
+/core/markup
+/core/virtual
+/core/virtual-layout
+/test
+/tui/box
+/tui/colors
+/tui/columntree
+/tui/events
+/tui/listbox
+/tui/primitives
+/tui/text
+/tui/virtual
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("TUI Box Scroll")
+cases.run(box-scroll-2d-tests)
+cases = cases.then("TUI Scroll Routing", scroll-routing-tests)
+cases = cases.then("TUI Virtual Two Axis", virtual-two-axis-tests)
+cases = cases.then("TUI Virtual Overscan Focus", virtual-overscan-focus-tests)
+cases = cases.then("TUI Virtual Region Input", virtual-region-input-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-two-axis-tests
+    - t TestCase
+
+<VirtualTwoAxisHost host
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.arrange-bounds(Rect(0, 0, 80, 24))
+host.update-layout()
+
+. columns = host.columns
+columns.scroll(25, Direction.right)
+host.update-layout()
+. partial = virtual-root-for-address(columns, 2)!
+t = t.expect
+    - "partly visible columns sit left of the viewport edge"
+    - columns.content-bounds.x - 5
+    - partial.bounds.x
+t = t.expect("columns keep their width", 10, partial.bounds.width)
+t = t.expect("columns span the region height", columns.content-bounds.height, partial.bounds.height)
+t = t.check("partly visible columns are in the viewport", partial.is-in-viewport)
+
+. wide = host.wide
+wide.scroll(30, Direction.right)
+wide.scroll(2, Direction.down)
+host.update-layout()
+. wide-root = virtual-root-for-address(wide, 2)!
+t = t.expect
+    - "wide rows shift by the horizontal scroll"
+    - wide.content-bounds.x - 30
+    - wide-root.bounds.x
+t = t.expect("the top wide row sits at the viewport top", wide.content-bounds.y, wide-root.bounds.y)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-overscan-focus-tests
+    - t TestCase
+
+<VirtualScrollHost host
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.region.arrange-bounds(Rect(0, 0, 80, 24))
+host.region.virtual-scroll = VirtualPoint(0vcoord, 4000vcoord)
+host.region.update-layout()
+
+. first = host.region.next-focus-candidate(null)
+. first-root = first?.ancestor-or-self'(VirtualSlotRoot'I64)
+t = t.expect("traversal starts at the first visible row", 1000, first-root?.slot.address ?? -1)
+. focused-root = first-root!
+
+host.region.virtual-scroll = VirtualPoint(0vcoord, 4008vcoord)
+host.region.update-layout()
+. keeps-address = focused-root.slot.address == 1000
+t = t.check("a row scrolled into overscan stays bound", focused-root.slot.is-bound && keeps-address)
+t = t.check("a row in overscan is outside the viewport", !focused-root.is-in-viewport)
+. next = host.region.next-focus-candidate(null)
+. next-root = next?.ancestor-or-self'(VirtualSlotRoot'I64)
+t = t.expect("traversal skips overscan rows", 1002, next-root?.slot.address ?? -1)
+. candidates = host.region.focus-candidates()
+. offscreen Size
+for candidate in candidates
+    if !(candidate.ancestor-or-self'(VirtualSlotRoot'I64)?.is-in-viewport ?? false)
+        offscreen += 1
+t = t.expect("focus candidates come only from the viewport", 0, offscreen)
+t = t.expect("every visible row offers a focus candidate", 6, candidates.length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-region-input-tests
+    - t TestCase
+
+<VirtualScrollHost host
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.region.arrange-bounds(Rect(0, 0, 80, 24))
+host.region.virtual-scroll = VirtualPoint(0vcoord, 4000vcoord)
+host.region.update-layout()
+
+. root = virtual-root-for-address(host.region, 1000)!
+. row = root.%first-child! as VirtualScrollRow
+. frames [HitFrame] =
+    * HitFrame(host.region, Point(1, 1), host.region.input-generation)
+    * HitFrame(root, Point(1, 1), root.input-generation)
+    * HitFrame(row, Point(1, 1), row.input-generation)
+. pressed-hit = HitPath(row, host.region, Point(0, 0), Point(1, 1), null, frames)
+
+host.region.virtual-scroll = VirtualPoint(0vcoord, 8000vcoord)
+host.region.update-layout()
+pressed-hit.publish-click(ClickEvent())
+t = t.expect("a click on a row recycled since the press is dropped", 0, row.click-count)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-root-for-address VirtualSlotRoot'I64?
+    - region VirtualRegion'I64
+    - address I64
+
+. index Index
+while index < region.pool-size
+    . root = region.root-at(index)
+    if root && root.slot.is-bound && root.slot.address == address
+        = root
+    index += 1
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do box-scroll-2d-tests
+    - t TestCase
+
+<ScrollBoxHost host • flow-row
+    <Box first
+        min-width = SizeSpec.coord(40)
+        max-width = SizeSpec.coord(40)
+        min-height = SizeSpec.coord(4)
+        max-height = SizeSpec.coord(4)
+    <Box second
+        min-width = SizeSpec.coord(40)
+        max-width = SizeSpec.coord(40)
+        min-height = SizeSpec.coord(4)
+        max-height = SizeSpec.coord(4)
+
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.arrange-bounds(Rect(0, 0, 30, 3))
+host.update-layout()
+
+t = t.expect("inner width tracks laid out content", 80, host.inner-width)
+t = t.expect("inner height tracks laid out content", 4, host.inner-height)
+
+t = t.check("scrolls right", host.scroll(10, Direction.right))
+t = t.expect("scroll right changes x", -10, host.scroll-x)
+t = t.expect("scroll right leaves y", 0, host.scroll-y)
+
+t = t.check("scrolls down", host.scroll(10, Direction.down))
+t = t.expect("scroll down keeps x", -10, host.scroll-x)
+t = t.expect("scroll down clips y", -1, host.scroll-y)
+t = t.check("cannot scroll down past bottom", !(host.scroll(10, Direction.down)))
+
+t = t.check("scrolls left", host.scroll(100, Direction.left))
+t = t.expect("scroll left clips x", 0, host.scroll-x)
+t = t.check("scrolls up", host.scroll(10, Direction.up))
+t = t.expect("scroll up clips y", 0, host.scroll-y)
+
+t = t.check("scroll bounds visible moves x and y", host.scroll-bounds-visible(second.bounds))
+t = t.expect("visible second box x", -50, host.scroll-x)
+t = t.expect("visible second box y", -1, host.scroll-y)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scroll-routing-tests
+    - t TestCase
+
+<ListScrollHost list-host • flex-col
+
+markup-mount-root(list-host, list-host)
+list-host.markup-batch-queue.checkpoint()
+list-host.arrange-bounds(Rect(0, 0, 20, 5))
+list-host.update-layout()
+
+list-host.list.scroll(99, Direction.down)
+
+. edge-scroll = ScrollEvent(Point(1, 1), Direction.down)
+. edge-canceled = list-host.publish-pointer(edge-scroll)
+t.check("clipped scroll does not cancel event", !edge-canceled)
+
+<TreeScrollHost tree-host • flex-col
+
+markup-mount-root(tree-host, tree-host)
+tree-host.markup-batch-queue.checkpoint()
+tree-host.arrange-bounds(Rect(0, 0, 40, 8))
+tree-host.update-layout()
+
+tree-host.tree.enter()
+tree-host.markup-batch-queue.checkpoint()
+tree-host.update-layout()
+
+tree-host.tree.scroll((0, tree-host.tree.scroll-y))
+. horizontal-scroll = ScrollEvent(Point(1, 1), Direction.right)
+tree-host.publish-pointer(horizontal-scroll)
+t = t.expect("horizontal wheel scrolls tree", -1, tree-host.tree.scroll-x)
+
+. vertical-scroll = ScrollEvent(Point(31, 2), Direction.down)
+tree-host.publish-pointer(vertical-scroll)
+t = t.expect("vertical wheel scrolls hovered column", -1, column-scroll-y(tree-host.tree, 1))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ long-row-texts [String]
+
+** "Row $each" in 1 .. 20
+
+━━━━━━━━━━━━━━━━━━━━
++ scroll-node-children
+    - item ScrollNode
+
+match item.id
+    | "tree"
+        * ScrollNode("root", "Root") • has children
+    | "root"
+        ** ScrollNode("leaf-${each}", "Leaf ${each}") in 1 .. 20
+    ??
+        List'ScrollNode()
+
+━━━━━━━━━━━━━━━━━━━━
++ column-scroll-y
+    - tree ColumnTree'ScrollNode
+    - index Index
+
+if index < tree.columns.length then tree.columns[index].scroll-y else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollBoxHost is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualScrollHost is Box
+    is MarkupBatch
+
++ source := VirtualRangeSource(1000000000vcoord)
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<VirtualRegion'I64 region • flex:1
+    source = #source
+    virtual-layout = VerticalFixedLayout(4vcoord)
+    overscan = VirtualInsets(12vcoord, 0vcoord, 12vcoord, 0vcoord)
+
+    <VirtualScrollRow (row) - slot
+        item = slot.#item
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualTwoAxisHost is Box
+    is MarkupBatch
+
++ source := VirtualRangeSource(1000vcoord)
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col
+    <VirtualRegion'I64 columns • flex:1
+        source = #source
+        virtual-layout = HorizontalFixedLayout(10vcoord)
+        overscan = VirtualInsets(0vcoord, 10vcoord, 0vcoord, 10vcoord)
+
+        <VirtualScrollRow (row) - slot
+            item = slot.#item
+
+    <VirtualRegion'I64 wide • flex:1
+        source = #source
+        virtual-layout = VerticalFixedLayout(1vcoord, 200vcoord)
+
+        <VirtualScrollRow (row) - slot
+            item = slot.#item
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualScrollRow is Box
+
++ item I64
++ click-count Size = 0
+
+• This • flex:1
+    background-color = if #item % 2 == 0 then navy else black
+
+────────────────────
+
+<This
+    <VirtualScrollOwnedChild
+
+────────────────────
+for event on click
+
+click-count += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualScrollOwnedChild is Box
+
+• This
+    focus-mode = FocusMode.keys
+
+━━━━━━━━━━━━━━━━━━━━
++ ListScrollHost is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<ListBox list • flex:1
+    for text in long-row-texts()
+        <ListItem
+            text = text
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeScrollHost is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<ColumnTree'ScrollNode tree • flex:1
+    root-node = ScrollNode("tree", "Tree") • has children
+    load-children = scroll-node-children
+
+    <ScrollTreeRow (row) - item
+        item = item
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollNode
+
++ id String
++ text String
++ has-children = false
+
+────────────────────
++ This
+    - id
+    - text
+    - has-children = false
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollTreeRow is ListItem
+
++ item ScrollNode
+
+────────────────────
++ This
+    - item
+
+has-children = item.has-children
+text = " 📁 ${item.text}"

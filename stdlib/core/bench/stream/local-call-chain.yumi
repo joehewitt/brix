@@ -1,0 +1,42 @@
+`benchmark.meta description: Exercises local pattern calls through a call chain.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. entries = match local-call-chain-source()
+    ~ \local-call-chain-document
+    ?! Panic("local-call-chain did not parse")
+
+. checksum = 0 as Size
+for entry in entries
+    checksum += entry
+
+-- "bench-result stream/local-call-chain checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ local-call-chain-document ~ Char
+
+~ entries \local-message+
+    entries
+
+.. local-message Size ~
+    ~ head \local-header body \local-body "\n"
+        head + body
+
+.. local-header Size ~
+    ~ "msg:" name \local-word "#" serial \local-digits ";"
+        name.length * 5 + serial.length
+
+.. local-body Size ~
+    ~ "body(" first \local-word "," second \local-word "," third \local-word ")"
+        first.length + second.length * 2 + third.length * 3
+
+.. local-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+.. local-digits String ~
+    ~ [0-9]+
+
+━━━━━━━━━━━━━━━━━━━━
+_ local-call-chain-source
+
+"".join("msg:name_$each#${each * 7};body(alpha_${each % 5},beta_${each % 7},gamma_${each % 11})\n" in 0 .. < 140)

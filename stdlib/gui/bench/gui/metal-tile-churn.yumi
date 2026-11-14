@@ -1,0 +1,89 @@
+`benchmark.meta description: Re-records 300 canvas paths in a 1000x700pt, 2x cell and rebuilds their GPU path set on each of 120 frames with up to three frames in flight.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/metal
+/gui/primitives
+/gui/scene
+
+. root = BenchRoot()
+markup-mount-root(root, root)
+. art = ArtCell()
+markup-append(root, art)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1000, 700))
+
+. renderer = MetalOffscreenRenderer(1000, 700, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. checksum Size
+do use renderer
+    scene.build(root)
+    scene.commit()
+    scene.frame-metal(renderer)
+    for frame in 0 .. < 120
+        art.shade = frame % 16
+        art.invalidate-paint()
+        scene.update(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        checksum += scene.items-encoded
+        scene.reset-frame-counters()
+    renderer.finish()
+
+scene.close()
+root.close()
+markup-release(root)
+-- "bench-result gui/metal-tile-churn checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ ArtCell is Box
+
++ shade Size
+
+• This
+    min-width = SizeSpec.coord(1000)
+    max-width = SizeSpec.coord(1000)
+    min-height = SizeSpec.coord(700)
+    max-height = SizeSpec.coord(700)
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.stroke-color = RGBA(0.1, 0.1, 0.2, 1)
+canvas.stroke-width = 1
+for index in 0 .. < 300
+    . column = index % 20
+    . row = index / 20
+    . x = (column * 50) as F64
+    . y = (row * 46) as F64
+    . tone = (((index + shade) % 16) as F64) / 16
+    canvas.fill-color = RGBA(tone, 0.4, 1 - tone, 1)
+    canvas.begin()
+    canvas.move(x + 4, y + 40)
+    canvas.curve(x + 10, y + 2, x + 40, y + 2, x + 46, y + 40)
+    canvas.line(x + 25, y + 28)
+    canvas.end(true)
+canvas.pop()

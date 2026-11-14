@@ -1,0 +1,431 @@
+/YuGC/YuGC.h
+/core/markup
+/core/virtual
+/core/virtual-layout
+/core/virtual-recycler
+/os/env
+/tui/bench/collect
+/tui/box
+/tui/primitives
+/tui/virtual
+
+_ virtual-kernel-count VirtualCoord = 1000000000vcoord
+_ virtual-kernel-opening-scroll VirtualCoord = 4001vcoord
+_ virtual-kernel-row-height VirtualCoord = 4vcoord
+_ virtual-kernel-pool-high-water Size = 19
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualKernelStats is Tuple
+
++ pool-created Size
++ pool-high-water Size
++ roots-created Size
++ window-refreshes Size
++ placements-emitted Size
++ layout-addresses-inspected Size
++ rebinds Size
++ source-binds Size
++ placement-buffer-grows Size
++ stale-commits Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-virtual-fixed-stable-window Size
+
+. root = prepare-virtual-fixed-kernel()
+run-virtual-fixed-stable-updates(root, 2)
+. stats-before = virtual-kernel-stats(root.region)
+. objects-before = C:yumiGCAllocatedObjectCount()
+. bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-stable-updates(root, 4096)
+
+. allocated-objects = C:yumiGCAllocatedObjectCount() - objects-before
+. allocated-bytes = C:yumiGCAllocatedByteCount() - bytes-before
+. delta = virtual-stats-delta(stats-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, delta)
+emit-virtual-kernel-high-water(root)
+assert-no-growth(delta, allocated-objects as Size, allocated-bytes as Size, "stable-window")
+?! Panic("virtual-fixed-stable-window rebound an unchanged placement window")
+    if delta.source-binds != 0 || delta.rebinds != 0
+?! Panic("virtual-fixed-stable-window produced unexpected refresh or placement counts")
+    if delta.window-refreshes != 4096 || delta.placements-emitted != 53248
+
+. checksum = virtual-kernel-checksum(delta, allocated-objects as Size, allocated-bytes as Size)
+root.region.publish-bindings()
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-stable-updates
+    - root VirtualFixedKernelRoot
+    - count Size
+
+. step Size = 0
+while step < count
+    . y = if step % 2 == 0 then virtual-kernel-opening-scroll else next-scroll
+        .. next-scroll = virtual-kernel-opening-scroll + 1vcoord
+    root.region.refresh-bindings-at(0vcoord, y, 80vcoord, 24vcoord)
+    step += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-virtual-fixed-adjacent-scroll Size
+
+. root = prepare-virtual-fixed-kernel()
+run-virtual-fixed-adjacent-updates(root, virtual-kernel-opening-scroll, 19)
+root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 24vcoord)
+. stats-before = virtual-kernel-stats(root.region)
+. objects-before = C:yumiGCAllocatedObjectCount()
+. bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-adjacent-updates(root, virtual-kernel-opening-scroll, 4096)
+
+. allocated-objects = C:yumiGCAllocatedObjectCount() - objects-before
+. allocated-bytes = C:yumiGCAllocatedByteCount() - bytes-before
+. delta = virtual-stats-delta(stats-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, delta)
+emit-virtual-kernel-high-water(root)
+assert-no-growth(delta, allocated-objects as Size, allocated-bytes as Size, "adjacent-scroll")
+?! Panic("virtual-fixed-adjacent-scroll did not rotate exactly one slot per row")
+    if delta.source-binds != 4096 || delta.rebinds != 4096
+?! Panic("virtual-fixed-adjacent-scroll changed the prewarmed pool high-water")
+    if root.region.pool-size != virtual-kernel-pool-high-water
+
+. checksum = virtual-kernel-checksum(delta, allocated-objects as Size, allocated-bytes as Size)
+root.region.publish-bindings()
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-adjacent-updates
+    - root VirtualFixedKernelRoot
+    - opening-scroll VirtualCoord
+    - count Size
+
+. step Size = 0
+. scroll = opening-scroll
+while step < count
+    scroll += virtual-kernel-row-height
+    root.region.refresh-bindings-at(0vcoord, scroll, 80vcoord, 24vcoord)
+    step += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-virtual-fixed-jump-ladder Size
+
+. root = prepare-virtual-fixed-kernel()
+run-virtual-fixed-jump-updates(root, 1)
+root.region.refresh-bindings-at(0vcoord, 168001vcoord, 80vcoord, 24vcoord)
+. stats-before = virtual-kernel-stats(root.region)
+. objects-before = C:yumiGCAllocatedObjectCount()
+. bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-jump-updates(root, 256)
+
+. allocated-objects = C:yumiGCAllocatedObjectCount() - objects-before
+. allocated-bytes = C:yumiGCAllocatedByteCount() - bytes-before
+. delta = virtual-stats-delta(stats-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, delta)
+emit-virtual-kernel-high-water(root)
+assert-no-growth(delta, allocated-objects as Size, allocated-bytes as Size, "jump-ladder")
+?! Panic("virtual-fixed-jump-ladder refresh count was distance-dependent")
+    if delta.window-refreshes != 1024
+?! Panic("virtual-fixed-jump-ladder did not bind exactly one window per jump")
+    if delta.source-binds != 13312 || delta.rebinds != 13312
+?! Panic("virtual-fixed-jump-ladder emitted or inspected more than thirteen rows per jump")
+    if delta.placements-emitted != 13312 || delta.layout-addresses-inspected != 13312
+
+. checksum = virtual-kernel-checksum(delta, allocated-objects as Size, allocated-bytes as Size)
+root.region.publish-bindings()
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-jump-updates
+    - root VirtualFixedKernelRoot
+    - count Size
+
+. cycle Size = 0
+while cycle < count
+    root.region.refresh-bindings-at(0vcoord, 4001vcoord, 80vcoord, 24vcoord)
+    root.region.refresh-bindings-at(0vcoord, 4000001vcoord, 80vcoord, 24vcoord)
+    root.region.refresh-bindings-at(0vcoord, 2000000001vcoord, 80vcoord, 24vcoord)
+    root.region.refresh-bindings-at(0vcoord, 3999999921vcoord, 80vcoord, 24vcoord)
+    cycle += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-virtual-fixed-lifetime Size
+
+. root = prepare-virtual-fixed-kernel()
+. opening-revision = root.source.revision.value
+bench-collect()
+. opening-live-bytes = C:yumiGCLiveByteCount()
+. checksum = run-virtual-fixed-lifetime-phases(root)
+
+root.source.revision.value = opening-revision
+root.region.virtual-scroll = VirtualPoint(0vcoord, virtual-kernel-opening-scroll)
+root.region.arrange-bounds(Rect(0, 0, 80, 24))
+root.region.update-layout()
+bench-collect()
+. final-live-bytes = C:yumiGCLiveByteCount()
+?! Panic("virtual-fixed-lifetime live memory grew from $opening-live-bytes to $final-live-bytes")
+    if !virtual-kernel-has-runtime-probes() && final-live-bytes > opening-live-bytes
+?! Panic("virtual-fixed-lifetime exceeded the prewarmed pool capacity")
+    if root.region.pool-size != virtual-kernel-pool-high-water
+
+= (checksum + final-live-bytes) as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-lifetime-phases Size
+    - root VirtualFixedKernelRoot
+
+run-virtual-fixed-resize-updates(root, 19)
+root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 24vcoord)
+. checksum Size
+
+. resize-before = virtual-kernel-stats(root.region)
+. resize-objects-before = C:yumiGCAllocatedObjectCount()
+. resize-bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-resize-updates(root, 256)
+. resize-objects = C:yumiGCAllocatedObjectCount() - resize-objects-before
+. resize-bytes = C:yumiGCAllocatedByteCount() - resize-bytes-before
+. resize-delta = virtual-stats-delta(resize-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, resize-delta)
+assert-no-growth(resize-delta, resize-objects as Size, resize-bytes as Size, "lifetime-resize")
+checksum += virtual-kernel-checksum(resize-delta, resize-objects as Size, resize-bytes as Size)
+root.region.publish-bindings()
+
+run-virtual-fixed-revision-updates(root, 2)
+. revision-before = virtual-kernel-stats(root.region)
+. revision-objects-before = C:yumiGCAllocatedObjectCount()
+. revision-bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-revision-updates(root, 256)
+. revision-objects = C:yumiGCAllocatedObjectCount() - revision-objects-before
+. revision-bytes = C:yumiGCAllocatedByteCount() - revision-bytes-before
+. revision-delta = virtual-stats-delta(revision-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, revision-delta)
+assert-no-growth
+    - revision-delta
+    - revision-objects as Size
+    - revision-bytes as Size
+    - "lifetime-revision"
+?! Panic("virtual-fixed-lifetime revision reset bound more than one active window")
+    if revision-delta.source-binds > 256 * 13
+checksum += virtual-kernel-checksum
+    - revision-delta
+    - revision-objects as Size
+    - revision-bytes as Size
+root.region.publish-bindings()
+
+run-virtual-fixed-adjacent-updates(root, virtual-kernel-opening-scroll, 19)
+root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 24vcoord)
+. adjacent-before = virtual-kernel-stats(root.region)
+. adjacent-objects-before = C:yumiGCAllocatedObjectCount()
+. adjacent-bytes-before = C:yumiGCAllocatedByteCount()
+run-virtual-fixed-adjacent-updates(root, virtual-kernel-opening-scroll, 65536)
+. adjacent-objects = C:yumiGCAllocatedObjectCount() - adjacent-objects-before
+. adjacent-bytes = C:yumiGCAllocatedByteCount() - adjacent-bytes-before
+. adjacent-delta = virtual-stats-delta(adjacent-before, virtual-kernel-stats(root.region))
+emit-virtual-kernel-stats(root, adjacent-delta)
+assert-no-growth
+    - adjacent-delta
+    - adjacent-objects as Size
+    - adjacent-bytes as Size
+    - "lifetime-adjacent"
+?! Panic("virtual-fixed-lifetime adjacent phase did not bind exactly one entering row")
+    if adjacent-delta.source-binds != 65536 || adjacent-delta.rebinds != 65536
+checksum += virtual-kernel-checksum
+    - adjacent-delta
+    - adjacent-objects as Size
+    - adjacent-bytes as Size
+root.region.publish-bindings()
+emit-virtual-kernel-high-water(root)
+
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-resize-updates
+    - root VirtualFixedKernelRoot
+    - count Size
+
+. cycle Size = 0
+while cycle < count
+    root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 48vcoord)
+    root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 24vcoord)
+    cycle += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-virtual-fixed-revision-updates
+    - root VirtualFixedKernelRoot
+    - count Size
+
+. cycle Size = 0
+while cycle < count
+    root.source.bump-revision()
+    root.region.refresh-bindings-at(0vcoord, virtual-kernel-opening-scroll, 80vcoord, 24vcoord)
+    cycle += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do prepare-virtual-fixed-kernel VirtualFixedKernelRoot
+
+. root = VirtualFixedKernelRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.region.arrange-bounds(Rect(0, 0, 80, 24))
+root.region.virtual-scroll = VirtualPoint(0vcoord, virtual-kernel-opening-scroll)
+root.region.update-layout()
+root.region.arrange-bounds(Rect(0, 0, 80, 48))
+root.region.update-layout()
+root.region.arrange-bounds(Rect(0, 0, 80, 24))
+root.region.update-layout()
+root.region.virtual-scroll = VirtualPoint(0vcoord, virtual-kernel-opening-scroll + 1vcoord)
+root.region.update-layout()
+root.region.virtual-scroll = VirtualPoint(0vcoord, virtual-kernel-opening-scroll)
+root.region.update-layout()
+?! Panic("virtual fixed kernel did not prewarm exactly nineteen physical slots")
+    if root.region.pool-size != virtual-kernel-pool-high-water
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do emit-virtual-kernel-stats
+    - root VirtualFixedKernelRoot
+    - delta VirtualKernelStats
+
+//tui.virtual.pool.created += delta.pool-created
+//tui.virtual.roots.created += delta.roots-created
+//tui.virtual.window.refreshes += delta.window-refreshes
+//tui.virtual.placements.emitted += delta.placements-emitted
+//tui.virtual.layout.addresses-inspected += delta.layout-addresses-inspected
+//tui.virtual.rebinds += delta.rebinds
+//tui.virtual.source.binds += delta.source-binds
+//tui.virtual.placement-buffer-grows += delta.placement-buffer-grows
+//tui.virtual.stale-commits += delta.stale-commits
+
+━━━━━━━━━━━━━━━━━━━━
+_ do emit-virtual-kernel-high-water
+    - root VirtualFixedKernelRoot
+
+//tui.virtual.pool.high-water += root.region.pool-size
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-virtual-region-stats
+    - region VirtualRegion'I64
+    - opening VirtualKernelStats
+    - closing VirtualKernelStats
+
+. delta = virtual-stats-delta(opening, closing)
+//tui.virtual.pool.created += delta.pool-created
+//tui.virtual.pool.high-water += region.pool-size
+//tui.virtual.roots.created += delta.roots-created
+//tui.virtual.window.refreshes += delta.window-refreshes
+//tui.virtual.placements.emitted += delta.placements-emitted
+//tui.virtual.layout.addresses-inspected += delta.layout-addresses-inspected
+//tui.virtual.rebinds += delta.rebinds
+//tui.virtual.source.binds += delta.source-binds
+//tui.virtual.placement-buffer-grows += delta.placement-buffer-grows
+//tui.virtual.stale-commits += delta.stale-commits
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-zero-virtual-kernel-stats
+
+//tui.virtual.pool.created += 0
+//tui.virtual.pool.high-water += 0
+//tui.virtual.roots.created += 0
+//tui.virtual.window.refreshes += 0
+//tui.virtual.placements.emitted += 0
+//tui.virtual.layout.addresses-inspected += 0
+//tui.virtual.rebinds += 0
+//tui.virtual.source.binds += 0
+//tui.virtual.placement-buffer-grows += 0
+//tui.virtual.stale-commits += 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do assert-no-growth
+    - delta VirtualKernelStats
+    - allocated-objects Size
+    - allocated-bytes Size
+    - scenario String
+
+?! Panic("virtual-fixed-$scenario created a slot or root after prewarm")
+    if delta.pool-created != 0 || delta.roots-created != 0
+?! Panic("virtual-fixed-$scenario grew the reusable placement buffer after prewarm")
+    if delta.placement-buffer-grows != 0
+?! Panic("virtual-fixed-$scenario allocated $allocated-objects objects after prewarm")
+    if !virtual-kernel-has-runtime-probes() && allocated-objects != 0
+?! Panic("virtual-fixed-$scenario allocated $allocated-bytes bytes after prewarm")
+    if !virtual-kernel-has-runtime-probes() && allocated-bytes != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ virtual-kernel-has-runtime-probes Bool
+
+if probes then probes.size > 0 else false
+
+.. probes = env("PROBES_ENABLED")
+
+━━━━━━━━━━━━━━━━━━━━
+_ virtual-stats-delta
+    - opening VirtualKernelStats
+    - closing VirtualKernelStats
+
+VirtualKernelStats
+    - closing.pool-created - opening.pool-created
+    - closing.pool-high-water - opening.pool-high-water
+    - closing.roots-created - opening.roots-created
+    - closing.window-refreshes - opening.window-refreshes
+    - closing.placements-emitted - opening.placements-emitted
+    - closing.layout-addresses-inspected - opening.layout-addresses-inspected
+    - closing.rebinds - opening.rebinds
+    - closing.source-binds - opening.source-binds
+    - closing.placement-buffer-grows - opening.placement-buffer-grows
+    - closing.stale-commits - opening.stale-commits
+
+━━━━━━━━━━━━━━━━━━━━
++ virtual-kernel-stats VirtualKernelStats
+    - region VirtualRegion'I64
+
+VirtualKernelStats
+    - recycler.pool-created
+    - recycler.pool-high-water
+    - region.roots-created
+    - recycler.window-refreshes
+    - recycler.placements-emitted
+    - recycler.layout-addresses-inspected
+    - recycler.rebinds
+    - recycler.source-binds
+    - recycler.placement-buffer-grows
+    - recycler.stale-commits
+
+.. recycler = region.stats
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-kernel-checksum Size
+    - delta VirtualKernelStats
+    - allocated-objects Size
+    - allocated-bytes Size
+
+. checksum = delta.window-refreshes * 3 + delta.placements-emitted * 5
+checksum += delta.source-binds * 7 + delta.rebinds * 11
+checksum += allocated-objects * 13 + allocated-bytes * 17
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualFixedKernelRoot is Box
+    is MarkupBatch
+
++ source := VirtualRangeSource(virtual-kernel-count)
++ virtual-layout := VerticalFixedLayout(virtual-kernel-row-height)
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    <VirtualRegion'I64 region
+        source = #source
+        virtual-layout = #virtual-layout
+        overscan = VirtualInsets(12vcoord, 0vcoord, 12vcoord, 0vcoord)
+
+        <VirtualFixedKernelRow (row) - slot
+            item = slot.#item
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualFixedKernelRow is Box
+
++ item I64

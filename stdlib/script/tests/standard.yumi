@@ -1,0 +1,140 @@
+./support/fixture
+/graphics/point
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Standard Numbers")
+
+"8", evaluated("round(7 / 2) * 2")
+"type-mismatch: Expected a number, not a point", evaluated("abs((1, 2))")
+"type-mismatch: Expected a number, not a range", evaluated("abs(1, 2)")
+
+════════════════════
+test("Script Comparisons")
+
+"true", evaluated("2 + 1 = 3")
+"false", evaluated("2!=2")
+"true", evaluated("(1, 2) = (1, 2)")
+"type-mismatch: Cannot compare a point and a number with '>'", evaluated("(1, 2) > 3")
+"type-mismatch: Cannot compare true or false and a number with '<'", evaluated("1 < 2 < 3")
+"Ball's width >= 3", printed("Ball's width>=3")
+
+════════════════════
+test("Script Standard Functions As Phrases")
+
+"7", evaluated("round 7 / 2 * 2")
+
+════════════════════
+test("Script Standard Points")
+
+"90", evaluated("angle from (0, 0) to (0, 10)")
+"(0, 10)", evaluated("(10, 0) rotated by 90° around (0, 0)")
+"(1, 12)", evaluated("(1, 2) moved by 10 at 90°")
+
+════════════════════
+test("Script Standard Mixes")
+
+"72.5", evaluated("mix(5, 50, 150%)")
+
+════════════════════
+test("Script Conversions")
+
+"50", evaluated-with(converting-vocabulary(), "distance between Ball and Star's center")
+"type-mismatch: Expected a point, not a path", evaluated-with(converting-vocabulary(), "distance between Ball and Star")
+"(11, 21)", evaluated-with(converting-vocabulary(), "Ball + (1, 1)")
+"shape 1", evaluated-with(converting-vocabulary(), "Ball")
+"none", point-issue(converting-vocabulary(), "Ball")
+"Cannot use '+' with a point and a number", point-issue(converting-vocabulary(), "Ball + 1")
+
+━━━━━━━━━━━━━━━━━━━━
++ do standard-vocabulary ScriptVocabulary'ScriptTestContext
+
+. vocabulary = ScriptVocabulary'ScriptTestContext()
+vocabulary.add-node-kind("shape")
+vocabulary.add-node-kind("path")
+vocabulary.add-node-kind("layer")
+vocabulary.add
+    - "width"
+    - "{node}'s width"
+    - script-number-type
+    - :: arguments, context => script-test-width(arguments, context)
+vocabulary.add
+    - "center"
+    - "{node}'s center"
+    - ScriptType(ScriptTypeKind.point)
+    - :: arguments, context => script-test-center(arguments, context)
+script-add-standard(vocabulary)
+= vocabulary
+
+━━━━━━━━━━━━━━━━━━━━
++ standard-tree ScriptExpression
+    - text String
+    - grammar ScriptGrammar
+
+script-parse(script-read(text, grammar, script-test-names()), grammar)
+
+━━━━━━━━━━━━━━━━━━━━
++ do converting-vocabulary
+
+. vocabulary = standard-vocabulary()
+. shape = ScriptType(ScriptTypeKind.node) • node-kind "shape"
+. point = ScriptType(ScriptTypeKind.point)
+vocabulary.add-conversion(shape, point, :: value, context => shape-center(value, context))
+= vocabulary
+
+━━━━━━━━━━━━━━━━━━━━
++ shape-center ?! Error
+    - value ScriptValue
+    - context ScriptTestContext
+
+ScriptValue.point(context.node(value.as-node!.id).center)
+
+━━━━━━━━━━━━━━━━━━━━
++ point-issue
+    - vocabulary ScriptVocabulary'ScriptTestContext
+    - text String
+
+outline.issue()?.message ?? "none"
+
+.. grammar = vocabulary.grammar
+.. outline = script-outline
+    - script-read(text, grammar, script-test-names())
+    - grammar
+    - script-test-names()
+    - ScriptType(ScriptTypeKind.point)
+
+━━━━━━━━━━━━━━━━━━━━
++ evaluated
+    - text String
+
+evaluated-with(standard-vocabulary(), text)
+
+━━━━━━━━━━━━━━━━━━━━
++ do evaluated-with
+    - vocabulary ScriptVocabulary'ScriptTestContext
+    - text String
+
+. context = ScriptTestContext()
+. evaluator = ScriptEvaluator'ScriptTestContext(vocabulary, context, context)
+. result = catch evaluator.evaluate(standard-tree(text, vocabulary.grammar), script-any-type)
+do match result
+    | error ScriptError
+        = "${error.kind.name}: ${error.message}"
+    | error Error
+        = "error: ${error.message}"
+    | value ScriptValue
+        = script-literal-text(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ printed String
+    - text String
+
+script-text(script-print(standard-tree(text, grammar), grammar))
+
+.. grammar = standard-vocabulary().grammar

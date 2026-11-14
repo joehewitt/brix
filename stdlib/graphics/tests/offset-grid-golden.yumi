@@ -1,0 +1,127 @@
+
+./support/offset-grid-cells
+/graphics/canvas
+/graphics/primitives
+/os/file
+/os/path
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Offset Grid Source Sampling")
+cases.run(offset-grid-source-sampling-tests)
+= cases.then("Offset Grid SVG Goldens", offset-grid-svg-golden-tests)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-source-sampling-tests
+    - t TestCase
+
+for index in [13, 29]
+    . source = offset-grid-cell-source-path(index, Rect(0, 0, 251, 248))
+    t.expect("cell $index has 58 samples and a close command", 59, source.count)
+    t.check("cell $index source winding", source.is-clockwise)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-grid-svg-golden-tests
+    - t TestCase
+
+for index in 0 .. < 32
+    . name = offset-grid-cell-name(index)
+    . actual = offset-grid-cell-svg(index).trim()
+    . expected = offset-grid-cell-golden-svg(index).trim()
+    t.check("cell $name golden svg exists", expected.find("<svg") != null)
+    t.expect("cell $name svg", expected, actual)
+    if offset-grid-cell-collapses(index)
+        t.check("cell $name collapsed inset is empty", actual.find("<path") == null)
+    else if offset-grid-cell-source-is-closed(index)
+        t.check("cell $name closed fill only", actual.find("stroke=\"none\"") != null)
+        t.check("cell $name closed offset paths", offset-grid-cell-result-paths-closed(index))
+    else
+        t.check("cell $name open stroke only", actual.find("fill=\"none\"") != null)
+        t.check("cell $name open visible stroke", actual.find("stroke=\"none\"") == null)
+        t.check("cell $name open offset paths", offset-grid-cell-result-paths-open(index))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ offset-grid-cell-collapses
+    - index
+
+index == 29
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-cell-golden-svg
+    - index
+
+. file = File(offset-grid-cell-golden-path(index), FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-cell-golden-path
+    - index
+
+. local = "cell-${offset-grid-cell-name(index)}.svg"
+if Path(local).is-file
+    = local
+
+= "stdlib/graphics/tests/fixtures/offset-grid-golden/$local"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-cell-svg
+    - index
+
+. path = "/private/tmp/yumi-offset-grid-cell-${offset-grid-cell-name(index)}.svg"
+write-offset-grid-cell-svg(index, path)
+. file = File(path, FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-offset-grid-cell-svg
+    - index
+    - path String
+
+. canvas = SVGCanvas(251, 248)
+if offset-grid-cell-source-is-closed(index)
+    canvas.fill-color = offset-grid-cell-fill-color(index)
+    canvas.stroke-color = null
+else
+    canvas.fill-color = null
+    canvas.stroke-color = offset-grid-cell-fill-color(index)
+    canvas.stroke-width = 4
+. result = offset-grid-cell-result-path(index, Rect(0, 0, 251, 248))
+if result.count
+    result.outline(canvas)
+canvas.write(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-cell-result-paths-closed
+    - index
+
+. layer = offset-grid-cell-result-layer(index, Rect(0, 0, 251, 248))
+=? if !layer.paths.length
+
+for path in layer.paths
+    =? if !path.is-closed
+
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-grid-cell-result-paths-open
+    - index
+
+. layer = offset-grid-cell-result-layer(index, Rect(0, 0, 251, 248))
+=? if !layer.paths.length
+
+for path in layer.paths
+    =? if path.is-closed
+
+= true

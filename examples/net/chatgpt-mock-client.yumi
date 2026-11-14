@@ -1,0 +1,78 @@
+
+/ai
+/ai/openai/completions
+/data/json
+/net/http
+/net/socket
+/net/url
+/os/env
+
+. base-url-text = env("MOCK_CHATGPT_BASE_URL") ?? "http://localhost:8787/v1"
+. health-url-text = env("MOCK_CHATGPT_HEALTH_URL") ?? "http://localhost:8787/health"
+. api-key = env("MOCK_CHATGPT_API_KEY") ?? "mock-api-key"
+. model = env("MOCK_CHATGPT_MODEL") ?? "gpt-5.2-mock"
+
+. client = OpenAICompletions(api-key, URL(base-url-text))
+
+. messages [AIMessage] =
+    * AIMessage(AIMessageRole.system, "Use only the local mock ChatGPT server.")
+    * AIMessage(AIMessageRole.user, "Please stream a short compliance check from Yumi.")
+. request = AIRequest(model, messages)
+
+-- "mock chatgpt example: connecting to $base-url-text"
+-- "mock chatgpt example: model $model"
+-- "mock chatgpt example: health check $health-url-text"
+. health-url = URL(health-url-text)
+. health-socket = TCP(health-url.host, health-url.port)
+    catch Error
+        do
+            -- "mock chatgpt example: server is not reachable at $health-url-text"
+            -- "mock chatgpt example: start it with: examples/net/chatgpt-mock-server.py"
+        ?! Error("Mock ChatGPT server is not reachable")
+health-socket.close()
+
+. health = http-get(health-url)
+if health.status != HTTPStatus.ok
+    -- "mock chatgpt example: health check failed (${health.status}): ${health.text}"
+    ?! Error("Mock ChatGPT server health check failed")
+-- "mock chatgpt example: server health ok"
+//+ mock chatgpt streaming example started base $base-url-text model $model
+// request prepared with $messages.length messages
+
+. final = ""
+. chunk-count = 0
+. saw-finish = false
+. saw-usage = false
+
+for event in client.stream(request)
+    if event is AIPartDeltaEvent && (event as AIPartDeltaEvent).delta is AITextDelta
+        chunk-count += 1
+        . piece = ((event as AIPartDeltaEvent).delta as AITextDelta).text
+        final += piece
+        -- "delta[$chunk-count]: $piece"
+        // stream delta $chunk-count "$piece"
+
+    if event is AIDoneEvent
+        saw-finish = true
+        . reason = (event as AIDoneEvent).finish-reason
+        -- "finish: $reason"
+        // finish reason $reason
+
+    if event is AIUsageEvent
+        saw-usage = true
+        . usage = (event as AIUsageEvent).usage
+        . usage-text = "".join
+            * "input=${usage.input-tokens ?? 0} "
+            * "output=${usage.output-tokens ?? 0} "
+            * "total=${usage.total-tokens ?? 0}"
+        -- "usage: $usage-text"
+        // usage $usage-text
+
+if chunk-count == 0 && !saw-finish && !saw-usage
+    ?! Error("Mock ChatGPT stream produced no events. Start the mock server first.")
+
+-- "final: $final"
+-- "chunks: $chunk-count"
+-- "saw finish: $saw-finish"
+-- "saw usage: $saw-usage"
+//- mock chatgpt streaming example completed chunks $chunk-count finish $saw-finish usage $saw-usage

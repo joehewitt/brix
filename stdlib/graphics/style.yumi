@@ -1,0 +1,214 @@
+./color
+./effect
+./matrix
+./primitives
+/core/style
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ FillLayer is Tuple
+
++ color RGBA
++ visible Bool = true
+
+────────────────────
++ get is-plain
+
+visible
+
+────────────────────
++ get painted-color RGBA?
+
+color if visible && color.alpha > 0%%
+
+━━━━━━━━━━━━━━━━━━━━
++ StrokeLayer is Tuple
+
++ color RGBA
++ width Length?
++ alignment StrokeAlignment?
++ join LineJoin?
++ cap LineCap?
++ visible Bool = true
+
+────────────────────
++ get is-plain
+
+visible && !width && !alignment && !join && !cap
+
+────────────────────
++ get painted-color RGBA?
+
+color if visible && color.alpha > 0%%
+
+━━━━━━━━━━━━━━━━━━━━
++ FillStack
+
+_ stack-layers [FillLayer]
+
+────────────────────
++ This
+    - layers [FillLayer]
+
+for layer in layers
+    stack-layers += layer
+
+────────────────────
++ do get layers [FillLayer]
+
+for layer in stack-layers
+    <= layer
+
+────────────────────
++ get length
+
+stack-layers.length
+
+────────────────────
++ this == other FillStack
+
+stack-layers == other.stack-layers
+
+━━━━━━━━━━━━━━━━━━━━
++ StrokeStack
+
+_ stack-layers [StrokeLayer]
+
+────────────────────
++ This
+    - layers [StrokeLayer]
+
+for layer in layers
+    stack-layers += layer
+
+────────────────────
++ do get layers [StrokeLayer]
+
+for layer in stack-layers
+    <= layer
+
+────────────────────
++ get length
+
+stack-layers.length
+
+────────────────────
++ this == other StrokeStack
+
+stack-layers == other.stack-layers
+
+━━━━━━━━━━━━━━━━━━━━
++ Fill is Union
+
+| inherit
+| none
+| stroke
+| RGBA
+| FillStack
+
+────────────────────
++ from value String
+
+value as RGBA
+
+────────────────────
++ from layers [FillLayer]
+
+|? !layers.length
+    Fill.none
+|? layers.length == 1 && layers[0].is-plain
+    layers[0].color
+??
+    FillStack(layers)
+
+────────────────────
++ get layers [FillLayer]
+
+match this
+    | stack FillStack
+        stack.layers
+    | color RGBA
+        [FillLayer(color)]
+    ??
+        List'FillLayer()
+
+━━━━━━━━━━━━━━━━━━━━
++ Stroke is Union
+
+| inherit
+| none
+| RGBA
+| StrokeStack
+
+────────────────────
++ from value String
+
+value as RGBA
+
+────────────────────
++ from layers [StrokeLayer]
+
+|? !layers.length
+    Stroke.none
+|? layers.length == 1 && layers[0].is-plain
+    layers[0].color
+??
+    StrokeStack(layers)
+
+────────────────────
++ get layers [StrokeLayer]
+
+match this
+    | stack StrokeStack
+        stack.layers
+    | color RGBA
+        [StrokeLayer(color)]
+    ??
+        List'StrokeLayer()
+
+────────────────────
++ do get top-color RGBA?
+
+match this
+    | color RGBA
+        = color
+    | stack StrokeStack
+        . result RGBA?
+        for layer in stack.layers
+            if layer.visible
+                result = layer.color
+        = result
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorPaintStyle is Style
+
++ @inherited fill Fill = Fill.inherit
++ @inherited stroke Stroke = Stroke.inherit
++ @inherited stroke-width Length? = null
++ @inherited stroke-alignment StrokeAlignment? = null
++ @inherited stroke-cap LineCap? = null
++ @inherited stroke-join LineJoin? = null
++ @inherited fill-rule FillRule? = null
+
+. fill -> vector-appearance, paint
+. stroke -> vector-appearance, paint
+. stroke-width -> vector-appearance, paint
+. stroke-alignment -> vector-appearance, paint
+. stroke-cap -> vector-appearance, paint
+. stroke-join -> vector-appearance, paint
+. fill-rule -> vector-appearance, paint
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorCompositeStyle is Style
+
++ opacity Ratio = 1%%
++ visible Bool = true
++ transform Matrix?
++ effects VectorEffects
+
+. opacity -> vector-composite, paint
+. visible -> vector-geometry, vector-composite, layout, layout on parent, paint
+. transform -> vector-geometry, vector-composite, layout, layout on parent, paint
+. effects -> vector-effects, vector-composite, layout, layout on parent, paint

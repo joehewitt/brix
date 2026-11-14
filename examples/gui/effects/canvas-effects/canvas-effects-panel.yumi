@@ -1,0 +1,682 @@
+/graphics/canvas
+/graphics/color
+/graphics/gradient
+/graphics/matrix
+/graphics/outline
+/graphics/point
+/graphics/primitives
+/graphics/shader
+/graphics/text
+/gui
+/math
+/units
+
+_ canvas-effects-photo-image RasterCanvas?
+_ canvas-effects-badge-image RasterCanvas?
+_ canvas-effects-shader-list [Shader]
+
+━━━━━━━━━━━━━━━━━━━━
+• CanvasEffectsTheme
+    using GUIDefaultTheme
+
+• canvas-effects-tile • bg:white px:12 pt:10 pb:12 mr:16
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 16
+
+• canvas-effects-control • mr:28
+
+━━━━━━━━━━━━━━━━━━━━
++ CanvasEffectsTile is Tuple
+
++ kind String
++ heading String
++ detail String
++ width Length = 220
+
+━━━━━━━━━━━━━━━━━━━━
++ CanvasEffectsPanel is Box
+    using CanvasEffectsTheme
+
++ angle F64
++ spin F64
++ zoom F64 = 1
++ blur-radius F64 = 8
++ blend-code I32 = 2
++ time F64
+
+• This • w:1224 h:722
+
+────────────────────
+
+<This • flex-col px:22 pt:20
+    <Label • h:34
+        text = "Canvas effects"
+        font-size = 25
+        font-weight = FontWeight.bold
+
+    <Label • h:22 text:gui-muted-text-color
+        text = join • stream
+            * "Gradients, path shadows, blend modes, masks, clips, images, strokes, groups, "
+            * "layer blur, and MSL shaders, drawn through the canvas API."
+        font-size = 14
+
+    <Box • flex-row h:58 mt:14
+        <Box • canvas-effects-control flex-col w:210
+            <Label • h:20
+                text = "Rotate ${round(#angle)}°"
+                font-size = 13
+                font-weight = FontWeight.bold
+            <Slider • h:28 mt:4
+                minimum = -180
+                maximum = 180
+                value = 0
+                for event on value-changed
+                    angle = event.value
+
+        <Box • canvas-effects-control flex-col w:210
+            <Label • h:20
+                text = "Zoom ${round(#zoom * 100)}%"
+                font-size = 13
+                font-weight = FontWeight.bold
+            <Slider • h:28 mt:4
+                minimum = 0.5
+                maximum = 1.6
+                value = 1
+                for event on value-changed
+                    zoom = event.value
+
+        <Box • canvas-effects-control flex-col w:210
+            <Label • h:20
+                text = "Blur ${round(#blur-radius)}"
+                font-size = 13
+                font-weight = FontWeight.bold
+            <Slider • h:28 mt:4
+                minimum = 0
+                maximum = 24
+                value = 8
+                for event on value-changed
+                    blur-radius = event.value
+
+        <Box • canvas-effects-control flex-col w:250
+            <Label • h:20
+                text = "Blend mode: ${canvas-effects-mode-name(#blend-code)}"
+                font-size = 13
+                font-weight = FontWeight.bold
+            <Slider • h:28 mt:4
+                minimum = 0
+                maximum = 27
+                step = 1
+                value = 2
+                for event on value-changed
+                    blend-code = round(event.value) as I32
+
+    for row in 0 .. < 2
+        <Box • flex-row mt:18
+            for tile in canvas-effects-tiles(row)
+                <Box • canvas-effects-tile flex-col h:254 w:(tile.width)
+                    <Label • h:22 text:"#0f172a"
+                        text = tile.heading
+                        font-size = 15
+                        font-weight = FontWeight.bold
+                    <CanvasEffectArt • h:170 mt:6 w:(tile.width)
+                        kind = tile.kind
+                        angle = #angle + #spin
+                        zoom = #zoom
+                        blur-radius = #blur-radius
+                        blend-code = #blend-code
+                        time = #time
+                    <Label • h:48 mt:8 text:"#475569"
+                        text = tile.detail
+                        font-size = 12
+                        text-wrap = TextWrap.word
+
+━━━━━━━━━━━━━━━━━━━━
++ CanvasEffectArt is Box
+
++ kind = "gradients"
++ angle F64 = 0
++ zoom F64 = 1
++ blur-radius F64 = 8
++ blend-code I32 = 2
++ time F64 = 0
+
+. invalidate-paint < kind, angle, zoom, blur-radius, blend-code, time
+
+• This • bg:"#f1f5f9"
+    corner-radius = 12
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.clip
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = content-bounds
+. center = Point(rect.width / 2, rect.height / 2)
+. mode = blend-code as BlendMode
+do use canvas.saved-state
+    canvas.translate(rect.x, rect.y)
+    canvas.transform(canvas-effects-matrix(angle, zoom, center))
+    do match kind
+        |= "gradients"
+            paint-effect-gradients(canvas)
+        |= "shadows"
+            paint-effect-shadows(canvas, blur-radius)
+        |= "blend"
+            paint-effect-blend(canvas, mode)
+        |= "masks"
+            paint-effect-masks(canvas)
+        |= "clips"
+            paint-effect-clips(canvas)
+        |= "images"
+            paint-effect-images(canvas)
+        |= "strokes"
+            paint-effect-strokes(canvas)
+        |= "shaders"
+            paint-effect-shaders(canvas, mode, time)
+        ??
+            paint-effect-groups(canvas, mode, blur-radius)
+
+━━━━━━━━━━━━━━━━━━━━
++ canvas-effects-tiles
+    - row Size
+
+if row == 0 then canvas-effects-first-row() else canvas-effects-second-row()
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-first-row [CanvasEffectsTile]
+
+* CanvasEffectsTile
+    - "gradients"
+    - "Gradients"
+    - "Linear, radial, and conic gradients, clipped to rounded shapes."
+* CanvasEffectsTile
+    - "shadows"
+    - "Path shadows"
+    - "shadow-path on a card, a star, and a heart with a coloured glow."
+* CanvasEffectsTile
+    - "blend"
+    - "Blend modes"
+    - "Three circles drawn with the chosen mode over a photo and a grey ramp."
+* CanvasEffectsTile
+    - "masks"
+    - "Masks"
+    - "begin-mask with a radial fade, and clip-mask with an image's alpha."
+* CanvasEffectsTile
+    - "clips"
+    - "Clips"
+    - "A speech-bubble outline clip and an even-odd ring path clip."
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-second-row [CanvasEffectsTile]
+
+* CanvasEffectsTile
+    - "images"
+    - "Images"
+    - "A tilted photo in a shadowed frame, and a badge tinted as a template."
+* CanvasEffectsTile
+    - "strokes"
+    - "Strokes"
+    - "Caps, joins, a dashed curve, and hairlines."
+* CanvasEffectsTile
+    - "groups"
+    - "Groups and blur"
+    - join • stream
+        * "Left: a 60% opacity group blurred by the Blur slider. "
+        * "Right: a group composited with the chosen mode."
+* CanvasEffectsTile
+    - "shaders"
+    - "Shaders"
+    - join • stream
+        * "MSL fill shaders: plasma in a rounded clip, translucent ripples, and light bands "
+        * "drawn over a photo with the chosen mode. Animate runs them."
+    - 456
+
+━━━━━━━━━━━━━━━━━━━━
++ canvas-effects-mode-name
+    - code I32
+
+canvas-effects-mode-names()[code]
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-mode-names [String]
+
+* "Normal"
+* "Multiply"
+* "Screen"
+* "Overlay"
+* "Darken"
+* "Lighten"
+* "Color dodge"
+* "Color burn"
+* "Soft light"
+* "Hard light"
+* "Difference"
+* "Exclusion"
+* "Hue"
+* "Saturation"
+* "Color"
+* "Luminosity"
+* "Clear"
+* "Copy"
+* "Source in"
+* "Source out"
+* "Source atop"
+* "Destination over"
+* "Destination in"
+* "Destination out"
+* "Destination atop"
+* "XOR"
+* "Plus darker"
+* "Plus lighter"
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-matrix
+    - angle F64
+    - zoom F64
+    - center Point
+
+rotated.translate(center).scale(Dimensions(zoom, zoom)).translate(Point(-center.x, -center.y))
+
+.. rotated = Matrix().rotate(angle as Degrees, center)
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-rainbow [GradientStop]
+
+* GradientStop(0%%, RGBA("#ef4444"))
+* GradientStop(0.17%%, RGBA("#f59e0b"))
+* GradientStop(0.33%%, RGBA("#84cc16"))
+* GradientStop(0.5%%, RGBA("#06b6d4"))
+* GradientStop(0.67%%, RGBA("#6366f1"))
+* GradientStop(0.83%%, RGBA("#d946ef"))
+* GradientStop(1%%, RGBA("#ef4444"))
+
+━━━━━━━━━━━━━━━━━━━━
++ do canvas-effects-photo
+
+=? canvas-effects-photo-image! if canvas-effects-photo-image
+. photo = RasterCanvas(160, 110, 2, RGBA("#0f172a"))
+photo.fill-gradient
+    - Rect(0, 0, 160, 110)
+    - linear-gradient(Point(0, 0), Point(0, 80), RGBA("#1e3a8a"), RGBA("#fb923c"))
+photo.fill-gradient
+    - Rect(0, 0, 160, 110)
+    - radial-gradient(Point(112, 56), 26, RGBA(1, 0.95, 0.7, 1), RGBA(1, 0.6, 0.3, 0))
+photo.fill-color = RGBA("#312e81")
+photo.begin()
+photo.move(0, 84)
+photo.line(34, 50)
+photo.line(58, 70)
+photo.line(92, 36)
+photo.line(132, 74)
+photo.line(160, 60)
+photo.line(160, 110)
+photo.line(0, 110)
+photo.end(true)
+photo.fill-color = RGBA("#0f766e")
+photo.begin()
+photo.move(0, 96)
+photo.curve(40, 80, 90, 104, 160, 88)
+photo.line(160, 110)
+photo.line(0, 110)
+photo.end(true)
+canvas-effects-photo-image = photo
+= photo
+
+━━━━━━━━━━━━━━━━━━━━
++ do canvas-effects-badge
+
+=? canvas-effects-badge-image! if canvas-effects-badge-image
+. badge = RasterCanvas(96, 96, 2, transparent)
+badge.fill-color = null
+badge.stroke-color = RGBA(0, 0, 0, 1)
+badge.stroke-width = 8
+badge.oval(Rect(6, 6, 84, 84))
+badge.stroke-color = null
+badge.fill-color = RGBA(0, 0, 0, 1)
+trace-effect-star(badge, Point(48, 50), 30, 13)
+badge.end()
+canvas-effects-badge-image = badge
+= badge
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trace-effect-star
+    - canvas Canvas
+    - center Point
+    - outer Length
+    - inner Length
+
+canvas.begin()
+for index in 0 .. < 10
+    . radius = if index % 2 == 0 then outer else inner
+    . turn = ((index as F64) * 36 - 90) as Degrees
+    . x = center.x + radius * cos(turn)
+    . y = center.y + radius * sin(turn)
+    if index == 0
+        canvas.move(x, y)
+    else
+        canvas.line(x, y)
+canvas.enclose()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trace-effect-heart
+    - canvas Canvas
+    - center Point
+    - size Length
+
+. x = center.x
+. y = center.y
+canvas.begin()
+canvas.move(x, y + size * 0.5)
+canvas.curve
+    - x - size * 0.15
+    - y + size * 0.35
+    - x - size * 0.5
+    - y + size * 0.15
+    - x - size * 0.5
+    - y - size * 0.1
+canvas.curve
+    - x - size * 0.5
+    - y - size * 0.45
+    - x - size * 0.05
+    - y - size * 0.5
+    - x
+    - y - size * 0.22
+canvas.curve
+    - x + size * 0.05
+    - y - size * 0.5
+    - x + size * 0.5
+    - y - size * 0.45
+    - x + size * 0.5
+    - y - size * 0.1
+canvas.curve
+    - x + size * 0.5
+    - y + size * 0.15
+    - x + size * 0.15
+    - y + size * 0.35
+    - x
+    - y + size * 0.5
+canvas.enclose()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-gradients
+    - canvas Canvas
+
+. sunset =
+    * GradientStop(0%%, RGBA("#f97316"))
+    * GradientStop(0.5%%, RGBA("#ec4899"))
+    * GradientStop(1%%, RGBA("#6366f1"))
+. card = Rect(14, 16, 116, 66)
+do use canvas.saved-state
+    canvas.clip-outline(Outline(card, 16))
+    canvas.fill-gradient(card, LinearGradient(card.top-left, card.bottom-right, sunset))
+. ball = Rect(144, 14, 66, 66)
+. gold =
+    * GradientStop(0%%, RGBA("#fef9c3"))
+    * GradientStop(0.35%%, RGBA("#facc15"))
+    * GradientStop(1%%, RGBA("#854d0e"))
+do use canvas.saved-state
+    canvas.begin()
+    canvas.outline-path(Outline(ball, 33))
+    canvas.clip-path()
+    canvas.fill-gradient
+        - ball
+        - RadialGradient(Point(ball.x + 22, ball.y + 20), 2, ball.center, 44, gold)
+. wheel = Rect(18, 92, 68, 68)
+do use canvas.saved-state
+    canvas.begin()
+    canvas.outline-path(Outline(wheel, 34))
+    canvas.clip-path()
+    canvas.fill-gradient
+        - wheel
+        - ConicGradient(wheel.center, -90°, canvas-effects-rainbow())
+. bar = Rect(102, 106, 108, 40)
+do use canvas.saved-state
+    canvas.clip-outline(Outline(bar, 20))
+    canvas.fill-gradient
+        - bar
+        - linear-gradient
+            - bar.left-center
+            - bar.right-center
+            - RGBA(0.05, 0.65, 0.9, 0.15)
+            - RGBA(0.05, 0.65, 0.9, 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-shadows
+    - canvas Canvas
+    - blur F64
+
+. card = Outline(Rect(16, 20, 92, 62), 14)
+canvas.begin()
+canvas.outline-path(card)
+canvas.shadow-path(Shadow(RGBA(0.06, 0.09, 0.16, 0.35), blur, 0, 6))
+canvas.fill-color = white
+canvas.outline(card)
+trace-effect-star(canvas, Point(162, 54), 40, 17)
+canvas.shadow-path(Shadow(RGBA(0.4, 0.1, 0.5, 0.45), blur, 4, 8))
+canvas.fill-color = RGBA("#f59e0b")
+trace-effect-star(canvas, Point(162, 54), 40, 17)
+canvas.end()
+trace-effect-heart(canvas, Point(70, 128), 54)
+canvas.shadow-path(Shadow(RGBA(0.95, 0.2, 0.35, 0.9), blur, 0, 0))
+canvas.fill-color = RGBA("#f43f5e")
+trace-effect-heart(canvas, Point(70, 128), 54)
+canvas.end()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-blend
+    - canvas Canvas
+    - mode BlendMode
+
+canvas.draw-image(canvas-effects-photo(), Rect(10, 10, 200, 120))
+canvas.fill-gradient
+    - Rect(10, 132, 200, 28)
+    - linear-gradient(Point(10, 0), Point(210, 0), RGBA(0, 0, 0, 1), RGBA(1, 1, 1, 1))
+do use canvas.saved-state
+    canvas.blend-mode = mode
+    canvas.fill-color = RGBA("#ef4444")
+    canvas.oval(Rect(44, 22, 76, 76))
+    canvas.fill-color = RGBA("#22c55e")
+    canvas.oval(Rect(100, 22, 76, 76))
+    canvas.fill-color = RGBA("#3b82f6")
+    canvas.oval(Rect(72, 70, 76, 76))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-masks
+    - canvas Canvas
+
+. left = Rect(8, 26, 106, 118)
+do use canvas.saved-state
+    canvas.begin-mask()
+    canvas.fill-gradient(left, radial-gradient(left.center, 58, RGBA(0, 0, 0, 1), RGBA(0, 0, 0, 0)))
+    canvas.end-mask()
+    canvas.draw-image(canvas-effects-photo(), left)
+. right = Rect(118, 36, 96, 96)
+do use canvas.saved-state
+    canvas.clip-mask(canvas-effects-badge(), right)
+    canvas.fill-gradient(right, ConicGradient(right.center, 0rad, canvas-effects-rainbow()))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-clips
+    - canvas Canvas
+
+. bubble = Outline(Rect(10, 16, 104, 84), 18, OutlineArrow(Side.bottom, 28, 16))
+do use canvas.saved-state
+    canvas.clip-outline(bubble)
+    canvas.fill-color = RGBA("#fde68a")
+    canvas.rect(Rect(0, 0, 130, 130))
+    canvas.fill-color = null
+    canvas.stroke-color = RGBA("#f97316")
+    canvas.stroke-width = 6
+    for index in 0 .. < 12
+        . x = (index as F64) * 16 - 60
+        canvas.line(x, 0, x + 90, 130)
+do use canvas.saved-state
+    canvas.begin()
+    canvas.outline-path(Outline(Rect(122, 32, 90, 90), 45))
+    canvas.outline-path(Outline(Rect(148, 58, 38, 38), 19))
+    canvas.clip-path(FillRule.even-odd)
+    canvas.draw-image(canvas-effects-photo(), Rect(104, 26, 140, 100))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-images
+    - canvas Canvas
+
+. photo = canvas-effects-photo()
+. badge = canvas-effects-badge()
+do use canvas.saved-state
+    canvas.transform(Matrix().rotate(-0.16rad, Point(72, 82)))
+    . frame = Outline(Rect(16, 22, 112, 112), 4)
+    canvas.begin()
+    canvas.outline-path(frame)
+    canvas.shadow-path(Shadow(RGBA(0, 0, 0, 0.3), 6, 0, 4))
+    canvas.fill-color = white
+    canvas.outline(frame)
+    canvas.draw-image(photo, Rect(24, 30, 96, 66))
+canvas.fill-color = RGBA("#0ea5e9")
+canvas.draw-image(badge, Rect(152, 18, 48, 48), true)
+canvas.fill-color = RGBA("#a855f7")
+canvas.draw-image(badge, Rect(140, 80, 74, 74), true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-strokes
+    - canvas Canvas
+
+canvas.fill-color = null
+canvas.stroke-color = RGBA("#0f172a")
+canvas.stroke-width = 10
+for index in 0 .. < 3
+    . y = 22 + (index as F64) * 20
+    canvas.stroke-cap = match index
+        |= 0
+            LineCap.butt
+        |= 1
+            LineCap.round
+        ??
+            LineCap.square
+    canvas.line(22, y, 92, y)
+canvas.stroke-cap = LineCap.butt
+canvas.stroke-width = 8
+canvas.stroke-color = RGBA("#0d9488")
+for index in 0 .. < 3
+    . x = 118 + (index as F64) * 32
+    canvas.stroke-join = match index
+        |= 0
+            LineJoin.miter
+        |= 1
+            LineJoin.round
+        ??
+            LineJoin.bevel
+    canvas.begin()
+    canvas.move(x, 66)
+    canvas.line(x + 12, 18)
+    canvas.line(x + 24, 66)
+    canvas.end()
+canvas.stroke-join = LineJoin.miter
+canvas.stroke-color = RGBA("#6366f1")
+canvas.stroke-width = 3
+canvas.stroke-cap = LineCap.round
+canvas.stroke-dash = 7
+canvas.curve(16, 150, 50, 80, 110, 170, 150, 96)
+canvas.stroke-dash = 0
+canvas.stroke-color = RGBA("#475569")
+canvas.stroke-width = 0.5
+for index in 0 .. < 9
+    . x = 160 + (index as F64) * 6
+    canvas.line(186, 160, x, 104)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-groups
+    - canvas Canvas
+    - mode BlendMode
+    - blur F64
+
+for index in 0 .. < 11
+    canvas.fill-color = if index % 2 == 0 then RGBA("#e2e8f0") else RGBA("#94a3b8")
+    canvas.rect(Rect((index as F64) * 20, 0, 20, 170))
+canvas.begin-opacity(0.6)
+canvas.begin-blur(blur)
+canvas.fill-color = RGBA("#2563eb")
+canvas.oval(Rect(10, 30, 66, 66))
+canvas.fill-color = RGBA("#f97316")
+canvas.oval(Rect(40, 66, 66, 66))
+canvas.end-blur()
+canvas.end-opacity()
+do use canvas.saved-state
+    canvas.blend-mode = mode
+    canvas.begin-opacity(0.9)
+    canvas.fill-color = RGBA("#2563eb")
+    canvas.oval(Rect(116, 30, 66, 66))
+    canvas.fill-color = RGBA("#f97316")
+    canvas.oval(Rect(146, 66, 66, 66))
+    canvas.end-opacity()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-effect-shaders
+    - canvas Canvas
+    - mode BlendMode
+    - time F64
+
+. shaders = canvas-effects-shaders()
+. plasma = Rect(14, 14, 132, 142)
+do use canvas.saved-state
+    canvas.clip-outline(Outline(plasma, 18))
+    canvas.fill-shader(plasma, shaders[0], [time])
+canvas.fill-shader(Rect(160, 14, 142, 142), shaders[1], [time, 26])
+. photo = Rect(316, 14, 126, 142)
+do use canvas.saved-state
+    canvas.clip-outline(Outline(photo, 12))
+    canvas.draw-image(canvas-effects-photo(), photo)
+    canvas.blend-mode = mode
+    canvas.fill-shader(photo, shaders[2], [time])
+
+━━━━━━━━━━━━━━━━━━━━
++ do canvas-effects-shaders
+
+if !canvas-effects-shader-list
+    canvas-effects-shader-list =
+        * Shader(canvas-effects-plasma-source())
+        * Shader(canvas-effects-ripple-source())
+        * Shader(canvas-effects-band-source())
+= canvas-effects-shader-list
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-plasma-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float2 uv = position / size;"
+    * "    float t = args[0];"
+    * "    float v = sin(uv.x * 10.0 + t) + sin((uv.y * 8.0 - t) * 1.3)"
+    * "        + sin((uv.x + uv.y) * 7.0 + t * 0.7);"
+    * "    float2 c = uv - 0.5 + 0.35 * float2(sin(t * 0.5), cos(t * 0.3));"
+    * "    v += sin(sqrt(dot(c, c) * 160.0) - t * 2.0);"
+    * "    return float4(0.5 + 0.5 * cos(float3(0.0, 2.1, 4.2) + v * 1.1), 1.0);"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-ripple-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float r = length(position - size * 0.5) / (0.5 * min(size.x, size.y));"
+    * "    float wave = 0.5 + 0.5 * sin(r * args[1] - args[0] * 4.0);"
+    * "    float fade = 1.0 - smoothstep(0.82, 1.0, r);"
+    * "    float3 color = mix(float3(0.05, 0.2, 0.55), float3(0.4, 0.9, 1.0), wave);"
+    * "    return float4(color, fade * (0.55 + 0.45 * wave));"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-band-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float2 uv = position / size;"
+    * "    float band = sin(uv.y * 24.0 + sin(uv.x * 6.0 + args[0]) * 3.0);"
+    * "    float glow = smoothstep(0.1, 1.0, band);"
+    * "    float3 color = 0.5 + 0.5 * cos(float3(0.0, 2.0, 4.0) + uv.x * 3.0 + args[0]);"
+    * "    return float4(color, 0.2 + 0.6 * glow);"
+    * "}"

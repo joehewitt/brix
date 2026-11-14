@@ -1,0 +1,61 @@
+`benchmark.meta description: Resizes a stable TUI layout while intrinsic content is unchanged.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchResizeStableRoot()
+markup-mount-root(root, root)
+
+for row-index in 0 .. < 28
+    . row = BenchResizeStableRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 10
+        . cell = BenchResizeStableCell()
+        markup-append(row, cell)
+        markup-append(cell, Label("stable-${row-index}-$cell-index"))
+
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+for frame in 0 .. < 144
+    root.bounds = Rect(0, 0, 80 + Coord(frame % 9) * 4, 24 + Coord(frame % 7))
+    root.invalidate-layout()
+    root.update-layout()
+    //tui.bench.frames ++
+    checksum += root.inner-width + root.inner-height + frame
+
+-- "bench-result tui/layout-resize-intrinsic-stable checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeStableRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flex-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeStableRow is Box
+
+• This
+    layout = flex-row
+    flex = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeStableCell is Box
+
+• This
+    layout = flow-col
+    flex = 1

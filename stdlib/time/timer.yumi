@@ -1,0 +1,216 @@
+
+./clock
+./duration
+/YuEvents/YuEvents.h
+
+━━━━━━━━━━━━━━━━━━━━
++ Timer'Interval
+    is Usable'Void
+
++ start-time Interval
++ end-time Interval
++ increment Interval
+
+_ lock Semaphore
+_ runs U64
+
+as Broadcastable'Interval for
+_ channel := AsyncOnDemandChannel'Interval(this)
+
+────────────────────
++ This
+    - increment Interval
+    - start-time Interval = 0
+    - end-time Interval = 0
+
+────────────────────
++ do begin-using
+
+`XXXjoe Create a unique timer id and save it! Don't be casting the semaphore ptr to a uid!!
+
+runs += 1
+. run = runs
+do new
+    . elapsed = Interval(0)
+    if start-time > 0 && run == runs
+        . us = start-time as Microseconds
+        =? if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
+
+        elapsed = start-time
+        channel <- elapsed
+
+    . us = increment as Microseconds
+    while run == runs
+        if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
+            break
+
+        elapsed += increment
+        if end-time && elapsed >= end-time
+            break
+        else
+            channel <- elapsed
+
+────────────────────
++ do end-using
+
+runs += 1
+C:yumiCancelTimerEventListener(lock.native-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ TimerLoop
+
+_ sem = Semaphore()
+_ is-canceled = false
+
+────────────────────
++ do loop
+    - duration Microseconds
+    - fn Doer
+
+. t1 = clock()
+. t = duration
+while !is-canceled
+    if C:yumiSuspendActiveTaskUntilTime(t, sem.native-pointer)
+        break
+
+    fn()
+    . diff = t1.elapsed'Microseconds()
+    . place = diff % duration
+    t = duration - (diff % duration)
+
+────────────────────
++ do cancel
+
+is-canceled = true
+C:yumiCancelTimerEventListener(sem.native-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ AnimationLoop
+
++ interval-ns U64
++ callback Doer?
+
+_ dirty = false
+_ painting = false
+_ waiting = false
+_ waiting-deadline-ns U64
+_ wait-generation U64
+_ last-deadline-ns U64
+_ sem := Semaphore()
+
+────────────────────
++ This
+    - interval Nanoseconds
+    - callback
+
+interval-ns = interval as U64
+
+────────────────────
++ do request-now
+
+request(monotonic-time-nanoseconds())
+
+────────────────────
++ do request-next
+
+request(next-deadline(monotonic-time-nanoseconds()))
+
+────────────────────
++ do cancel
+
+callback = null
+dirty = false
+waiting = false
+wait-generation += 1
+cancel-timer-event-listener(sem)
+
+────────────────────
+_ do request
+    - deadline-ns U64
+
+=? if !callback
+
+dirty = true
+if waiting && deadline-ns < waiting-deadline-ns
+    wait-generation += 1
+    waiting = false
+    cancel-timer-event-listener(sem)
+if !waiting && !painting
+    wait-then-fire(deadline-ns)
+
+────────────────────
+_ do wait-then-fire
+    - deadline-ns U64
+
+=? if waiting
+
+waiting = true
+waiting-deadline-ns = deadline-ns
+wait-generation += 1
+. generation = wait-generation
+do new
+    =? if generation != wait-generation || !callback
+    =? if wait-until-absolute-time(deadline-ns, sem)
+    =? if generation != wait-generation
+    waiting = false
+    fire(deadline-ns)
+
+────────────────────
+_ do fire
+    - deadline-ns U64
+
+=? if !callback
+=? if !dirty
+
+dirty = false
+painting = true
+last-deadline-ns = deadline-ns
+do finally
+    painting = false
+
+callback()
+    catch error Error
+        unhandled-error(error)
+
+if callback && dirty
+    wait-then-fire(next-deadline(monotonic-time-nanoseconds()))
+
+────────────────────
+_ next-deadline
+    - now U64
+
+|? !last-deadline-ns || !interval-ns
+    now
+|? next > now
+    next
+??
+    last-deadline-ns + (((now - last-deadline-ns) / interval-ns) + 1) * interval-ns
+
+.. next = last-deadline-ns + interval-ns
+
+━━━━━━━━━━━━━━━━━━━━
++ monotonic-time-nanoseconds U64
+
+C:yumiMonotonicTimeNanoseconds()
+
+━━━━━━━━━━━━━━━━━━━━
++ do wait-until-absolute-time
+    - deadline-ns U64
+    - sem Semaphore
+
+` Keep absolute deadlines at the API boundary, but sleep through the relative timer path; repeated
+` native absolute waits can miss their resume.
+. now = monotonic-time-nanoseconds()
+=? if deadline-ns <= now
+
+. delay-ns = deadline-ns - now
+. delay = (delay-ns as Nanoseconds) as Microseconds
+=? if delay <= 0
+
+= C:yumiSuspendActiveTaskUntilTime(delay, sem.native-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cancel-timer-event-listener
+    - sem Semaphore
+
+C:yumiCancelTimerEventListener(sem.native-pointer)

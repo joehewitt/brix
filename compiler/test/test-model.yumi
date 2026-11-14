@@ -1,0 +1,620 @@
+./test-catalog
+./test-config
+./test-runner
+/os/path
+/stream/aggregate
+/time/debounced
+/time/duration
+/time/timer
+
++ test-status-count Size = 10
+_ test-refresh-delay = 300ms
+_ test-statuses [TestStatus] = [TestStatus.running, TestStatus.queued, TestStatus.crashed, TestStatus.timed-out, TestStatus.failed, TestStatus.stopped, TestStatus.not-run, TestStatus.passed, TestStatus.skipped, TestStatus.idle]
+
+━━━━━━━━━━━━━━━━━━━━
++ TestOutcome is Tuple
+
++ suite String
++ id String
++ label String
++ result TestResult
+
+━━━━━━━━━━━━━━━━━━━━
++ TestRun
+
++ number Int
++ leaves [Index]
++ started U64
++ ended U64
++ phase = ""
++ notes [String]
++ reported [Index]
++ stuck [Int]
++ outcomes [TestOutcome]
++ suite-times [String = U64]
++ running Size = 0
++ is-settled = false
++ is-stopped = false
++ is-complete = false
+
+────────────────────
++ This
+    - number
+    - leaves
+    - started
+
+────────────────────
++ get elapsed U64
+
+(if ended != 0 then ended else monotonic-time-nanoseconds()) - started
+
+━━━━━━━━━━━━━━━━━━━━
++ TestModel
+    is Closable
+
++ root String
++ changes Broadcastable'PathWatchEvent?
++ config TestConfig?
++ catalog TestCatalog?
++ run TestRun?
++ revision = 0
++ is-discovering = false
++ is-configured = true
++ problem String?
++ selection [String]
+
+_ runner := TestRunner()
+_ listener Closable?
+_ base = ""
+_ inputs [String = Bool]
+_ folders [String = [String]]
+_ is-stale = false
+_ schedule-refresh DebouncedAction
+_ live [TestStatus]
+_ results [TestResult?]
+_ tallies = Size[0]
+_ busy = U64[0]
+_ busy-since = U64[0]
+_ starts = U64[0]
+_ next-run = 1
+
+────────────────────
++ This
+    - root
+    - changes = null
+
+base = "${catch? Path(root, 0).resolved ?? Path(root, 0)}"
+schedule-refresh = throttled(test-refresh-delay, this.refresh)
+do new
+    consume()
+
+────────────────────
++ do discover
+
+is-stale = false
+problem = null
+listen()
+. loaded = catch load-test-config(root)
+if loaded is Error
+    problem = (loaded as Error).message
+    revision += 1
+    =
+config = loaded as TestConfig
+is-discovering = true
+revision += 1
+runner.discover(config!)
+
+────────────────────
++ do select
+    - keys [String]
+
+selection = keys
+
+────────────────────
++ do start
+    - leaves [Index]
+    - mode String? = null
+
+=? if !catalog || !config || leaves.length == 0
+stop()
+. found = catalog!
+. suites = config!.suites
+. batches [TestBatch]
+for suite in 0 .. < suites.length
+    . ids [String]
+    . nodes = Map'String'Index()
+    for leaf in leaves
+        . node = found.nodes[leaf]
+        if node.suite == suite
+            ids += node.id
+            nodes[node.id] = leaf
+    if ids.length > 0
+        . arguments [String]
+        arguments ++= suites[suite].run
+        if mode
+            arguments ++= suites[suite].modes[mode] ?? List'String()
+        batches += TestBatch(suites[suite], arguments, ids, nodes)
+. number = next-run
+next-run += 1
+run = TestRun(number, leaves, monotonic-time-nanoseconds())
+for leaf in leaves
+    . parent = found.nodes[leaf].parent
+    while parent
+        busy[parent] = 0
+        busy-since[parent] = 0
+        parent = found.nodes[parent].parent
+for leaf in leaves
+    set-live(leaf, TestStatus.queued)
+revision += 1
+runner.start(TestOrder(number, config!, batches))
+
+────────────────────
++ do stop
+
+. current = run
+=? if !current || current.is-settled
+. now = monotonic-time-nanoseconds()
+for leaf in current.leaves
+    if live[leaf] == TestStatus.running
+        record(TestResult(current.number, leaf, TestStatus.stopped, now - starts[leaf], "", "", ""))
+    else if live[leaf] == TestStatus.queued
+        set-live(leaf, TestStatus.idle)
+seal(current)
+current.is-settled = true
+current.is-stopped = true
+current.ended = now
+revision += 1
+runner.stop(current.number)
+
+────────────────────
++ do status-of TestStatus
+    - node Index
+
+=? leaf-status(node) if catalog!.nodes[node].is-test
+. base = node * test-status-count
+for status in test-statuses
+    =? status if tallies[base + test-status-slot(status)] > 0
+= TestStatus.idle
+
+────────────────────
++ count Size
+    - node Index
+    - status TestStatus
+
+|? catalog!.nodes[node].is-test
+    if leaf-status(node) == status then 1 else 0
+??
+    tallies[node * test-status-count + test-status-slot(status)]
+
+────────────────────
++ do elapsed U64?
+    - node Index
+
+. now = monotonic-time-nanoseconds()
+if catalog!.nodes[node].is-test
+    =? null if live[node] == TestStatus.queued
+    if live[node] == TestStatus.running
+        =? now - starts[node] if run && run.running == 1
+        = null
+    = results[node]?.duration
+=? busy[node] + now - busy-since[node] if busy-since[node] != 0
+= busy[node] if busy[node] > 0
+
+────────────────────
++ problem-count Size
+    - node Index
+
+failed-or-crashed + count(node, TestStatus.timed-out) + count(node, TestStatus.not-run)
+
+.. failed-or-crashed = count(node, TestStatus.failed) + count(node, TestStatus.crashed)
+
+────────────────────
++ do run-counts [Size]?
+
+. current = run
+=? null if !current
+. counts [Size]
+for slot in 0 .. < test-status-count
+    counts += 0
+for leaf in current.leaves
+    counts[test-status-slot(leaf-status(leaf))] += 1
+= counts
+
+────────────────────
++ result-of TestResult?
+    - node Index
+
+results[node]
+
+────────────────────
++ get is-running Bool
+
+run != null && !run.is-settled
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+stop()
+listener?.close()
+listener = null
+runner.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ leaf-status TestStatus
+    - node Index
+
+if live[node] != TestStatus.idle then live[node] else (results[node]?.status ?? TestStatus.idle)
+
+────────────────────
+_ active Bool
+    - number Int
+
+run?.number == number && !run!.is-settled
+
+────────────────────
+_ do consume
+
+for frame in runner.frames
+    apply(frame)
+    while !runner.frames.is-empty
+        . next = <- runner.frames
+        if next
+            apply(next)
+    revision += 1
+    refresh()
+
+────────────────────
+_ do listen
+
+=? if listener || !changes
+listener = catch? listen-for-changes(changes, this.note)
+
+────────────────────
+_ do note
+    - event PathWatchEvent
+
+=? if !affects(event)
+is-stale = true
+schedule-refresh()
+
+────────────────────
+_ do affects Bool
+    - event PathWatchEvent
+
+=? true if event.must-rescan
+. text = "${event.path}"
+=? true if text.ends-with("/$test-config-path") || inputs[text] ?? false
+. slash = text.find-reverse("/")
+=? false if !slash
+. extensions = folders[text[0 .. < slash]]
+=? false if !extensions || !test-changes-names(event.flags)
+= some(extensions) • where text.ends-with(each)
+
+────────────────────
+_ do refresh
+
+=? if !is-stale || is-discovering || is-running
+discover()
+
+────────────────────
+_ do note-inputs
+    - found TestCatalog
+
+. files [String = Bool]
+. places [String = [String]]
+for node in found.nodes
+    if node.relative-path == ""
+        continue
+    . path = "$base/${node.relative-path}"
+    files[path] = true
+    . slash = path.find-reverse("/")
+    . dot = path.find-reverse(".")
+    if slash && dot && dot > slash
+        . folder = path[0 .. < slash]
+        . extension = path[dot ...]
+        . known = places[folder] ?? List'String()
+        if !(known has extension)
+            known += extension
+            places[folder] = known
+inputs = files
+folders = places
+
+────────────────────
+_ do apply
+    - frame TestFrame
+
+. current = run
+do match frame.event
+    | .discovered(found)
+        adopt(found)
+    | .completed(stuck)
+        if current?.number == frame.run
+            current!.stuck = stuck
+            current!.is-complete = true
+            if !current!.is-settled
+                finish(current!)
+    | .started(node, at)
+        if active(frame.run)
+            starts[node] = at
+            set-live(node, TestStatus.running)
+    | .reported(result)
+        if active(frame.run)
+            record(result)
+    | .phase(name)
+        if active(frame.run)
+            current!.phase = name
+    | .noted(text)
+        if active(frame.run)
+            current!.notes += text
+
+────────────────────
+_ do adopt
+    - found TestCatalog
+
+stop()
+. previous = catalog
+. earlier = results
+. spent = busy
+. last = run
+run = null
+catalog = found
+is-configured = has-config || found.select(List'String()).leaves.length > 0
+    .. has-config = Path("$root/$test-config-path", 0).exists
+. count = found.nodes.length
+. statuses [TestStatus]
+. outcomes [TestResult?]
+for _ in 0 .. < count
+    statuses += TestStatus.idle
+    outcomes += null
+live = statuses
+results = outcomes
+tallies = Size[count * test-status-count]
+busy = U64[count]
+busy-since = U64[count]
+starts = U64[count]
+if previous
+    . moved = test-moved-nodes(previous, found)
+    for old in 0 .. < moved.length
+        . index = moved[old]
+        if index != null
+            busy[index] = spent[old]
+            . result = earlier[old]
+            if result && found.nodes[index].is-test
+                results[index] = TestResult
+                    - result.run
+                    - index
+                    - result.status
+                    - result.duration
+                    - result.expected
+                    - result.actual
+                    - result.errors
+    if last && last.is-settled
+        run = test-moved-run(last, moved)
+for index in 0 .. < count
+    if found.nodes[index].is-test
+        . slot = test-status-slot(leaf-status(index))
+        . parent = found.nodes[index].parent
+        while parent
+            tallies[parent * test-status-count + slot] += 1
+            parent = found.nodes[parent].parent
+is-discovering = false
+note-inputs(found)
+
+────────────────────
+_ do finish
+    - current TestRun
+
+for leaf in current.leaves
+    if live[leaf] != TestStatus.idle
+        record
+            - TestResult
+                - current.number
+                - leaf
+                - TestStatus.not-run
+                - 0
+                - ""
+                - ""
+                - "no result was reported"
+seal(current)
+current.is-settled = true
+current.ended = monotonic-time-nanoseconds()
+
+────────────────────
+_ do seal
+    - current TestRun
+
+. found = catalog!
+. sealed [TestOutcome]
+for leaf in current.leaves
+    . result = results[leaf]
+    . kept = if result && result.run == current.number then result else stopped-result
+        .. stopped-result = TestResult(current.number, leaf, TestStatus.stopped, 0, "", "", "")
+    sealed += test-outcome(found, kept)
+    . suite = found.suite-of(leaf)
+    . name = found.nodes[suite].id
+    . spent = elapsed(suite)
+    if spent && current.suite-times[name] == null
+        current.suite-times[name] = spent
+current.outcomes = sealed
+
+────────────────────
+_ do record
+    - result TestResult
+
+. node = result.node
+. previous = leaf-status(node)
+results[node] = result
+live[node] = TestStatus.idle
+shift(node, previous, leaf-status(node))
+run?.reported += node
+
+────────────────────
+_ do set-live
+    - node Index
+    - status TestStatus
+
+. previous = leaf-status(node)
+live[node] = status
+shift(node, previous, leaf-status(node))
+
+────────────────────
+_ do shift
+    - node Index
+    - previous TestStatus
+    - updated TestStatus
+
+=? if previous == updated
+. current = run
+if current
+    if previous == TestStatus.running
+        current.running -= 1
+    if updated == TestStatus.running
+        current.running += 1
+. now = monotonic-time-nanoseconds()
+. vacated = test-status-slot(previous)
+. entered = test-status-slot(updated)
+. running = test-status-slot(TestStatus.running)
+. parent = catalog!.nodes[node].parent
+while parent
+    . base = parent * test-status-count
+    . was-busy = tallies[base + running] > 0
+    tallies[base + vacated] -= 1
+    tallies[base + entered] += 1
+    . is-busy = tallies[base + running] > 0
+    if !was-busy && is-busy
+        busy-since[parent] = now
+    else if was-busy && !is-busy
+        busy[parent] += now - busy-since[parent]
+        busy-since[parent] = 0
+    parent = catalog!.nodes[parent].parent
+
+━━━━━━━━━━━━━━━━━━━━
+_ do test-moved-nodes [Index?]
+    - previous TestCatalog
+    - found TestCatalog
+
+. positions [String = Index]
+for index in 0 .. < found.nodes.length
+    positions[found.nodes[index].selector] = index
+. moved [Index?]
+for node in previous.nodes
+    moved += positions[node.selector]
+= moved
+
+━━━━━━━━━━━━━━━━━━━━
+_ do test-moved-run TestRun
+    - last TestRun
+    - moved [Index?]
+
+. made = TestRun(last.number, test-moved-indices(last.leaves, moved), last.started)
+made.ended = last.ended
+made.phase = last.phase
+made.notes = last.notes
+made.reported = test-moved-indices(last.reported, moved)
+made.stuck = last.stuck
+made.outcomes = last.outcomes
+made.suite-times = last.suite-times
+made.is-settled = last.is-settled
+made.is-stopped = last.is-stopped
+made.is-complete = last.is-complete
+= made
+
+━━━━━━━━━━━━━━━━━━━━
+_ do test-moved-indices [Index]
+    - indices [Index]
+    - moved [Index?]
+
+. kept [Index]
+for index in indices
+    . found = moved[index] if index < moved.length
+    if found != null
+        kept += found
+= kept
+
+━━━━━━━━━━━━━━━━━━━━
++ test-outcome TestOutcome
+    - catalog TestCatalog
+    - result TestResult
+
+TestOutcome(catalog.nodes[catalog.suite-of(result.node)].id, test.id, test.label, result)
+
+.. test = catalog.nodes[result.node]
+
+━━━━━━━━━━━━━━━━━━━━
+_ test-changes-names Bool
+    - flags PathWatchFlags
+
+flags.contains(PathWatchFlags.created) || flags.contains(PathWatchFlags.removed) || is-renamed
+
+.. is-renamed = flags.contains(PathWatchFlags.renamed)
+
+━━━━━━━━━━━━━━━━━━━━
++ test-status-slot Index
+    - status TestStatus
+
+match status
+    | .running
+        0
+    | .queued
+        1
+    | .crashed
+        2
+    | .timed-out
+        3
+    | .failed
+        4
+    | .stopped
+        5
+    | .not-run
+        6
+    | .passed
+        7
+    | .skipped
+        8
+    | .idle
+        9
+
+━━━━━━━━━━━━━━━━━━━━
++ test-status-name String
+    - status TestStatus
+
+match status
+    | .running
+        "running"
+    | .queued
+        "queued"
+    | .crashed
+        "crashed"
+    | .timed-out
+        "timed out"
+    | .failed
+        "failed"
+    | .stopped
+        "stopped"
+    | .not-run
+        "not run"
+    | .passed
+        "passed"
+    | .skipped
+        "skipped"
+    | .idle
+        "idle"
+
+━━━━━━━━━━━━━━━━━━━━
++ test-elapsed-text String
+    - nanoseconds U64
+
+|? milliseconds < 1000
+    "${milliseconds}ms"
+|? milliseconds < 60000
+    "${tenths / 10}.${tenths % 10}s"
+??
+    "${seconds / 60}m ${seconds % 60}s"
+
+.. milliseconds = nanoseconds / 1000000
+.. tenths = milliseconds / 100
+.. seconds = milliseconds / 1000

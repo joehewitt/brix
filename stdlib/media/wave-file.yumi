@@ -1,0 +1,106 @@
+/os/file
+
+_ wave-chunk-bytes Size = 196608
+
+━━━━━━━━━━━━━━━━━━━━
++ WaveWriter
+    is Closable
+
++ path String
++ rate F64
++ frames Size = 0
+_ file File
+_ chunk Byte[]
+_ used Size = 0
+_ scratch = F32[4096]
+_ is-closed = false
+
+────────────────────
++ This ?! Error
+    - path String
+    - rate F64
+
+this.path = path
+this.rate = rate
+file = File
+    - path
+    - FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
+    - user-read-perm /or/ user-write-perm
+chunk = Byte[wave-chunk-bytes]
+file.write(Byte[44], 44)
+
+────────────────────
++ get seconds F64
+
+(frames as F64) / rate
+
+────────────────────
++ get buffer CPointer'F32
+
+scratch.data
+
+────────────────────
++ do add-frames
+    - count Size
+
+. source = scratch.data
+for index in 0 .. < count * 2
+    if used + 2 > chunk.size
+        flush()
+    . value = source[index] as F64
+    . clipped = if value < -1 then -1.0 else if value > 1 then 1.0 else value
+    (chunk.data as CPointer'I16)[used / 2] = (clipped * 32767) as I16
+    used += 2
+frames += count
+
+────────────────────
+_ do flush
+
+if used > 0
+    file.write(chunk, used)
+        catch problem Error
+            ?! Panic("Unable to write $path: ${problem.message}")
+    used = 0
+
+────────────────────
+_ do header Byte[]
+
+. data-size = frames * 4
+. bytes = Byte[44]
+. half = bytes.data as CPointer'U16
+put-word(half, 0, 1179011410)
+put-word(half, 4, (36 + data-size) as U64)
+put-word(half, 8, 1163280727)
+put-word(half, 12, 544501094)
+put-word(half, 16, 16)
+half[10] = 1u16
+half[11] = 2u16
+put-word(half, 24, rate as U64)
+put-word(half, 28, (rate * 4) as U64)
+half[16] = 4u16
+half[17] = 16u16
+put-word(half, 36, 1635017060)
+put-word(half, 40, data-size as U64)
+= bytes
+
+────────────────────
+_ do put-word
+    - half CPointer'U16
+    - offset Size
+    - value U64
+
+half[offset / 2] = (value % 65536) as U16
+half[offset / 2 + 1] = (value / 65536) as U16
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if is-closed
+is-closed = true
+flush()
+file.write(header(), 44, 0)
+    catch problem Error
+        ?! Panic("Unable to write $path: ${problem.message}")
+file.close()

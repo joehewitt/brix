@@ -1,0 +1,20 @@
+`benchmark.meta description: Constructs repeated, concatenated, and sliced ASCII plus mixed UTF-8 Strings.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+. ascii-unit = "0123456789abcdef"
+. mixed-unit = "Aé漢😀"
+. passes = 8192
+. checksum = 0 as Size
+
+for pass in 0 .. < passes
+    . ascii = ascii-unit * 64
+    . mixed = mixed-unit * 16
+    . joined = ascii ++ mixed
+    . tail = joined[1024 .. < 1088]
+    checksum += joined.size + joined.length + tail.size + tail.length
+
+if checksum != 20447232
+    ?! Panic("construction-mixed benchmark produced the wrong checksum")
+
+-- "bench-result string/construction-mixed checksum=$checksum"

@@ -1,0 +1,525 @@
+./trace
+/os/file
+/stream/sort
+
+_ group-type U16 = 16
+_ footer-limit Size = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ trace-nanoseconds U64
+    - time TraceTime
+
+time.seconds * 1000000000 + time.nanoseconds
+
+━━━━━━━━━━━━━━━━━━━━
++ duration-text String
+    - nanoseconds U64
+
+|? nanoseconds < 1000
+    "${nanoseconds}ns"
+|? nanoseconds < 1000000
+    tenths(nanoseconds, 100, "µs")
+|? nanoseconds < 1000000000
+    tenths(nanoseconds, 100000, "ms")
+??
+    tenths(nanoseconds, 100000000, "s")
+
+━━━━━━━━━━━━━━━━━━━━
+_ tenths String
+    - value U64
+    - unit U64
+    - suffix String
+
+"${count / 10}.${count % 10}$suffix"
+
+.. count = value / unit
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-text String
+    - value U64
+
+. digits = "$value"
+. text = ""
+for index in 0 .. < digits.length
+    if index != 0 && (digits.length - index) % 3 == 0
+        text += ","
+    text += digits[index .. < index + 1]
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ type-label String
+    - id U16
+    - types [U16 = String]
+
+|? id == group-type
+    "group"
+|? name
+    short-name(name)
+??
+    "object"
+
+.. name = types[id]
+
+━━━━━━━━━━━━━━━━━━━━
+_ short-name String
+    - name String
+
+|? colon
+    name[colon + 1 ...]
+??
+    name
+
+.. colon = name.find-reverse(":")
+
+━━━━━━━━━━━━━━━━━━━━
++ value-text String
+    - value TraceValue
+    - types [U16 = String]
+
+match value
+    | .truth(truth)
+        if truth then "true" else "false"
+    | .character(character)
+        "$character"
+    | .integer(integer)
+        "$integer"
+    | .unsigned(unsigned)
+        "$unsigned"
+    | .real(real)
+        "$real"
+    | .text(text)
+        text
+    | .object(object)
+        "${type-label(object.type-id, types)}#${object.object-id}"
+    | .array(array)
+        "${type-label(array.type-id, types)}[${array.length}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ do written-values [TraceValue]
+    - record TraceRecord
+
+. values [TraceValue]
+for index in 0 .. < record.values.length
+    . slot = if index < record.site.slots.length then record.site.slots[index] else empty-slot
+        .. empty-slot = TraceSlot(.none, 0)
+    if slot.type == TraceSlotType.object && slot.class-type == group-type
+        continue
+    values += record.values[index]
+= values
+
+━━━━━━━━━━━━━━━━━━━━
++ do record-text String
+    - record TraceRecord
+    - types [U16 = String]
+
+. values = written-values(record)
+. texts [String]
+for value in values
+    texts += value-text(value, types)
+. template = record.site.template
+=? " ".join(texts) if template == ""
+. parts [String] = template.split("%%")
+. text = parts[0]
+for index in 1 .. < parts.length
+    text += if index - 1 < texts.length then texts[index - 1] else ""
+    text += parts[index]
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ site-label String
+    - site TraceSite
+
+|? site.key != ""
+    site.key
+|? site.template != ""
+    "…".join(site.template.split("%%"))
+??
+    site.name ?? "probe"
+
+━━━━━━━━━━━━━━━━━━━━
++ site-location String
+    - site TraceSite
+
+|? site.source-path == ""
+    ""
+??
+    "${base-name(site.source-path)}:${site.line}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ base-name String
+    - path String
+
+|? slash
+    path[slash + 1 ...]
+??
+    path
+
+.. slash = path.find-reverse("/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenGroup is Tuple
+
++ depth Size
++ start U64
++ label String
++ site TraceSite
+
+━━━━━━━━━━━━━━━━━━━━
+_ GroupStats is Tuple
+
++ label String
++ location String
++ count U64
++ total U64
++ longest U64
+
+━━━━━━━━━━━━━━━━━━━━
+_ SiteStats is (label String, location String, count U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ CounterValue is (key String, object-id U32, value U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeConsole
+
++ shows-lines Bool
++ line-limit Size
++ shown Size = 0
++ hidden Size = 0
++ records U64
++ logs U64
++ events U64
++ snapshots U64
++ system-logs U64
++ first-time U64
++ last-time U64
+
+_ types [U16 = String]
+_ end-lines [String = Bool]
+_ groups [U32 = OpenGroup]
+_ end-texts [U32 = String]
+_ snapshot-object U32
+_ group-stats [String = GroupStats]
+_ site-stats [U16 = SiteStats]
+_ counters [String = CounterValue]
+_ metrics [String = TraceMetric]
+
+────────────────────
++ This
+    - shows-lines = true
+    - line-limit Size = 400
+
+────────────────────
++ do observe
+    - item TraceItem
+
+do match? item
+    | .site(site)
+        if site.name == "groupEnd" && site.source-path != ""
+            end-lines[site-location(site)] = true
+    | .type-name(named)
+        types[named.id] = named.name
+    | .log(record)
+        observe-log(record)
+    | .event(record)
+        observe-event(record)
+    | .counter(counter)
+        counters["${counter.site.id}:${counter.object-id}"] = CounterValue
+            - counter.site.key
+            - counter.object-id
+            - counter.value
+    | .metric(metric)
+        metrics[metric.site.key] = metric
+    | .snapshot(snapshot)
+        note-time(snapshot.time)
+        snapshots += 1
+        snapshot-object = snapshot.object-id
+    | .system-log(log)
+        note-time(log.time)
+        system-logs += 1
+        show(log.time, 0, "[system] ${log.text}", "")
+
+────────────────────
+_ do observe-log
+    - record TraceRecord
+
+note-time(record.time)
+logs += 1
+snapshot-object = 0
+. depth = depth-of(record)
+if record.site.name == "groupBegin"
+    begin-group(record, depth, record-text(record, types), site-label(record.site))
+    =
+if record.site.name == "groupEnd"
+    end-group(record)
+    =
+. text = record-text(record, types)
+if record.object-type-id == group-type && end-lines[site-location(record.site)]
+    end-texts[record.object-id] = text
+    =
+count-site(record.site)
+show(record.time, depth, key-text(record.site, text), site-location(record.site))
+
+────────────────────
+_ do observe-event
+    - record TraceRecord
+
+note-time(record.time)
+events += 1
+if record.object-type-id != group-type && has-object && record.object-id == snapshot-object
+    =
+.. has-object = record.object-id != 0
+snapshot-object = 0
+. depth = depth-of(record)
+if record.site.name == "groupBegin"
+    begin-group(record, depth, record.site.key, record.site.key)
+    =
+if record.site.name == "groupEnd"
+    end-group(record)
+    =
+count-site(record.site)
+. values [String]
+for value in written-values(record)
+    values += value-text(value, types)
+. owner = if record.object-id != 0 && record.object-type-id != group-type then object-tag else ""
+    .. object-tag = "${type-label(record.object-type-id, types)}#${record.object-id}."
+if record.site.name == "set-property" && values.length == 2
+    show(record.time, depth, "$owner${values[0]} = ${values[1]}", "")
+    =
+. label = if record.site.key != "" then record.site.key else (record.site.name ?? "event")
+show(record.time, depth, "$owner$label: ${", ".join(values)}", "")
+
+────────────────────
+_ do begin-group
+    - record TraceRecord
+    - depth Size
+    - text String
+    - label String
+
+. group = first-group(record)
+if group
+    groups[group] = OpenGroup(depth, trace-nanoseconds(record.time), text, record.site)
+show(record.time, depth, "+ $text", site-location(record.site))
+
+────────────────────
+_ do end-group
+    - record TraceRecord
+
+. group = first-group(record)
+=? if !group
+. found = groups[group]
+. text = end-texts[group]
+-= end-texts[group]
+if !found
+    show
+        - record.time
+        - depth-of(record)
+        - "- ${text ?? site-label(record.site)}"
+        - site-location(record.site)
+    =
+. open = found
+-= groups[group]
+. elapsed = if trace-nanoseconds(record.time) > open.start then since-start else 0u64
+    .. since-start = trace-nanoseconds(record.time) - open.start
+add-group(open.site, elapsed)
+show
+    - record.time
+    - open.depth
+    - "- ${text ?? open.label} ${duration-text(elapsed)}"
+    - site-location(record.site)
+
+────────────────────
+_ do first-group U32?
+    - record TraceRecord
+
+for value in record.values
+    do match? value
+        | .object(object)
+            if object.type-id == group-type
+                = object.object-id
+= null
+
+────────────────────
+_ depth-of Size
+    - record TraceRecord
+
+|? record.object-type-id != group-type || !open
+    0
+??
+    open.depth + 1
+
+.. open = groups[record.object-id]
+
+────────────────────
+_ key-text String
+    - site TraceSite
+    - text String
+
+if site.key != "" then "[${site.key}] $text" else text
+
+────────────────────
+_ do note-time
+    - time TraceTime
+
+. now = trace-nanoseconds(time)
+records += 1
+if first-time == 0 || now < first-time
+    first-time = now
+if now > last-time
+    last-time = now
+
+────────────────────
+_ do count-site
+    - site TraceSite
+
+. found = site-stats[site.id]
+if found
+    site-stats[site.id] = SiteStats(found.label, found.location, found.count + 1)
+else
+    site-stats[site.id] = SiteStats(site-label(site), site-location(site), 1)
+
+────────────────────
+_ do add-group
+    - site TraceSite
+    - elapsed U64
+
+. label = site-label(site)
+. found = group-stats[label]
+if found
+    . stats = found
+    . longest = if elapsed > stats.longest then elapsed else stats.longest
+    group-stats[label] = GroupStats
+        - label
+        - stats.location
+        - stats.count + 1
+        - stats.total + elapsed
+        - longest
+else
+    group-stats[label] = GroupStats(label, site-location(site), 1, elapsed, elapsed)
+
+────────────────────
+_ do show
+    - time TraceTime
+    - depth Size
+    - text String
+    - location String
+
+=? if !shows-lines
+if shown >= line-limit
+    hidden += 1
+    =
+shown += 1
+. offset = if trace-nanoseconds(time) > first-time then since-first else 0u64
+    .. since-first = trace-nanoseconds(time) - first-time
+. stamp = duration-text(offset)
+. padding = if stamp.length < 8 then " " * (8 - stamp.length) else ""
+. indent = "  " * depth
+. place = if location != "" then "  $location" else ""
+stderr <- "· $padding$stamp  $indent$text$place\n"
+
+────────────────────
++ do footer-lines [String]
+
+. lines [String]
+. counted = counter-texts()
+if counted.length != 0
+    lines += "counters: ${capped(counted)}"
+. timed = group-texts()
+if timed.length != 0
+    lines += "groups: ${capped(timed)}"
+. busy = site-texts()
+if busy.length != 0
+    lines += "busiest: ${capped(busy)}"
+. measured = metric-texts()
+if measured.length != 0
+    lines += "metrics: ${capped(measured)}"
+. kinds [String]
+if logs != 0
+    kinds += "${count-text(logs)} logs"
+if events != 0
+    kinds += "${count-text(events)} events"
+if snapshots != 0
+    kinds += "${count-text(snapshots)} snapshots"
+if system-logs != 0
+    kinds += "${count-text(system-logs)} system log${if system-logs != 1 then "s" else ""}"
+if kinds.length != 0
+    lines += "records: ${", ".join(kinds)} over $elapsed"
+        .. elapsed = duration-text(if last-time > first-time then last-time - first-time else 0u64)
+if hidden != 0
+    lines += "warning: $omitted probe lines not shown (limit $line-limit); the trace has them all"
+        .. omitted = count-text(hidden as U64)
+if open-groups() != 0
+    lines += "warning: ${open-groups()} groups never ended"
+= lines
+
+────────────────────
+_ open-groups Size
+
+groups.length
+
+────────────────────
+_ capped String
+    - texts [String]
+
+|? texts.length <= footer-limit
+    " · ".join(texts)
+??
+    "${" · ".join(texts[0 .. < footer-limit])} · +${texts.length - footer-limit} more"
+
+────────────────────
+_ do counter-texts [String]
+
+. totals [String = U64]
+. objects [String = U64]
+for _, counter in counters
+    totals[counter.key] = (totals[counter.key] ?? 0u64) + counter.value
+    if counter.object-id != 0
+        objects[counter.key] = (objects[counter.key] ?? 0u64) + 1
+. keys = sort(totals.keys) • using :: a, b => if a < b then .lesser else .greater
+. texts [String]
+for key in keys
+    . owners = objects[key]
+    . suffix = if owners && owners > 1 then " (${owners} objects)" else ""
+    texts += "$key ${count-text(totals[key]!)}$suffix"
+= texts
+
+────────────────────
+_ do group-texts [String]
+
+. ordered = sort(group-values) • using :: a, b => if a.total > b.total then .lesser else .greater
+.. group-values = group-stats.values
+. texts [String]
+for stats in ordered
+    if stats.count == 1
+        texts += "${stats.label} ${duration-text(stats.total)}"
+    else
+        texts += "${stats.label} ${count-text(stats.count)}× $total-text (max $longest-text)"
+            .. total-text = duration-text(stats.total)
+            .. longest-text = duration-text(stats.longest)
+= texts
+
+────────────────────
+_ do site-texts [String]
+
+. ordered = sort(site-values) • using :: a, b => if a.count > b.count then .lesser else .greater
+.. site-values = site-stats.values
+. texts [String]
+for stats in ordered
+    if stats.count < 2
+        break
+    . place = if stats.location != "" then " ${stats.location}" else ""
+    texts += "${stats.label} ${count-text(stats.count)}×$place"
+= texts
+
+────────────────────
+_ do metric-texts [String]
+
+. keys = sort(metrics.keys) • using :: a, b => if a < b then .lesser else .greater
+. texts [String]
+for key in keys
+    . metric = metrics[key]!
+    if metric.site.kind == TraceMetricKind.timer
+        texts += "$key ${count-text(metric.value)}× ${duration-text(metric.total-ns)}"
+    else
+        texts += "$key ${count-text(metric.value)}"
+= texts

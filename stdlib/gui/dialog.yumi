@@ -1,0 +1,129 @@
+./box
+./button
+./events
+./label
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./theme
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/graphics/text
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIFontStyle
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+
+• Dialog • bg:gui-scrim-color text:gui-text-color
+    • dialog-panel • bg:gui-popup-color pt:18 px:20 pb:16 min-w:320
+        border-color = gui-border-color
+        border-width = 1
+        corner-radius = gui-popup-radius
+        shadow = gui-popup-shadow
+
+    • dialog-title • text:gui-strong-text-color h:22 mb:10
+        font-size = gui-title3-font-size
+        font-weight = FontWeight.bold
+
+    • dialog-message • max-w:420
+        text-wrap = TextWrap.word
+
+    • dialog-actions • mt:16
+
+    • dialog-button • min-w:66 ml:8
+
+━━━━━━━━━━━━━━━━━━━━
++ Dialog is Popup
+
++ title = ""
++ event accepted DismissReason
++ event canceled DismissReason
+
+• This • flex-col fill-window modal
+    focus-mode = FocusMode.inside
+    deactivate-dismiss = false
+    anchor-hidden-dismiss = false
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This
+    <Box • flex-row flex:1
+        align-x = Alignment.center
+        <Box panel • dialog-panel flex-col
+            align-y = Alignment.center
+            if #title != ""
+                <Label title-label • dialog-title
+                    text = #title
+            + <Box body • flex-col
+            + <Box actions • dialog-actions flex-row
+
+────────────────────
+for reason on dismissed when arrival
+
+if reason == DismissReason.chosen
+    accepted <- reason
+else
+    canceled <- reason
+
+────────────────────
++ do accept
+
+dismiss(DismissReason.chosen)
+
+────────────────────
++ do cancel
+
+dismiss(DismissReason.programmatic)
+
+━━━━━━━━━━━━━━━━━━━━
++ AlertDialog is Dialog
+
++ message = ""
++ accept-title = "OK"
+
+────────────────────
+
+<This
+    <Label (body) • dialog-message
+        text = #message
+    <Box (actions) • flex-row
+        <Box • flex:1
+        <Button • dialog-button
+            title = #accept-title
+            role = ButtonRole.default
+            action = => do accept()
+
+━━━━━━━━━━━━━━━━━━━━
++ ConfirmDialog is Dialog
+
++ message = ""
++ accept-title = "OK"
++ cancel-title = "Cancel"
+
+────────────────────
+
+<This
+    <Label (body) • dialog-message
+        text = #message
+    <Box (actions) • flex-row
+        <Box • flex:1
+        <Button • dialog-button
+            title = #cancel-title
+            role = ButtonRole.cancel
+            action = => do cancel()
+        <Button • dialog-button
+            title = #accept-title
+            role = ButtonRole.default
+            action = => do accept()

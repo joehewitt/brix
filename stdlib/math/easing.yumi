@@ -1,0 +1,148 @@
+./math
+
+━━━━━━━━━━━━━━━━━━━━
++ Easing is Union
+
+| linear
+| ease
+| ease-in
+| ease-out
+| ease-in-out
+| cubic-bezier CubicBezier
+| steps Int
+
+────────────────────
++ get curve CubicBezier?
+
+match? this
+    |= .ease
+        CubicBezier(0.25, 0.1, 0.25, 1)
+    |= .ease-in
+        CubicBezier(0.42, 0, 1, 1)
+    |= .ease-out
+        CubicBezier(0, 0, 0.58, 1)
+    |= .ease-in-out
+        CubicBezier(0.42, 0, 0.58, 1)
+    | .cubic-bezier(points)
+        points
+
+────────────────────
++ do eased F64
+    - t F64
+
+=? 0 if t <= 0
+=? 1 if t >= 1
+do match? this
+    | .steps(count)
+        =? t if count <= 0
+        = floor(t * count) / count
+. points = curve
+=? t if !points
+= points.eased(t)
+
+────────────────────
++ do slope F64
+    - t F64
+
+do match? this
+    | .steps(count)
+        = 0
+. points = curve
+=? 1 if !points
+= points.slope(clamp-unit(t))
+
+━━━━━━━━━━━━━━━━━━━━
++ CubicBezier is Tuple
+
++ x1 F64
++ y1 F64
++ x2 F64
++ y2 F64
+
+────────────────────
++ eased F64
+    - t F64
+
+|? t <= 0
+    0
+|? t >= 1
+    1
+??
+    axis(solve(t), y1, y2)
+
+────────────────────
++ slope F64
+    - t F64
+
+|? abs(run) > 0.000001
+    rise / run
+|? abs(bend) <= 0.000001
+    0
+??
+    axis-bend(u, y1, y2) / bend
+
+.. u = solve(clamp-unit(t))
+.. run = axis-slope(u, x1, x2)
+.. rise = axis-slope(u, y1, y2)
+.. bend = axis-bend(u, x1, x2)
+
+────────────────────
+_ do solve F64
+    - x F64
+
+. guess = x
+for _ in 0 .. < 8
+    . error = axis(guess, x1, x2) - x
+    =? guess if abs(error) < 0.0000001
+    . run = axis-slope(guess, x1, x2)
+    if abs(run) < 0.000001
+        break
+    guess -= error / run
+. low = 0.0
+. high = 1.0
+guess = x
+for _ in 0 .. < 40
+    . found = axis(guess, x1, x2)
+    =? guess if abs(found - x) < 0.0000001
+    if found < x
+        low = guess
+    else
+        high = guess
+    guess = (low + high) / 2
+= guess
+
+━━━━━━━━━━━━━━━━━━━━
+_ axis F64
+    - u F64
+    - first F64
+    - second F64
+
+((a * u + b) * u + c) * u
+
+.. c = 3 * first
+.. b = 3 * (second - first) - c
+.. a = 1 - c - b
+
+━━━━━━━━━━━━━━━━━━━━
+_ axis-slope F64
+    - u F64
+    - first F64
+    - second F64
+
+(3 * a * u + 2 * b) * u + c
+
+.. c = 3 * first
+.. b = 3 * (second - first) - c
+.. a = 1 - c - b
+
+━━━━━━━━━━━━━━━━━━━━
+_ axis-bend F64
+    - u F64
+    - first F64
+    - second F64
+
+6 * a * u + 2 * b
+
+.. c = 3 * first
+.. b = 3 * (second - first) - c
+.. a = 1 - c - b

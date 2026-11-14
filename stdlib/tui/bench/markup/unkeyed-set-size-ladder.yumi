@@ -1,0 +1,130 @@
+`benchmark.meta description: Measures a two-row middle set from 16 through 16,384 unkeyed rows.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/core/style
+/time/timer
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. checksum Size = 0
+
+checksum += run-unkeyed-set-ladder(16)
+checksum += run-unkeyed-set-ladder(64)
+checksum += run-unkeyed-set-ladder(256)
+checksum += run-unkeyed-set-ladder(1024)
+checksum += run-unkeyed-set-ladder(4096)
+checksum += run-unkeyed-set-ladder(16384)
+
+-- "bench-result markup/unkeyed-set-size-ladder checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-unkeyed-set-ladder Size
+    - size Size
+
+. root = UnkeyedSetLadderRoot()
+root.items = make-unkeyed-set-ladder-items(size)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+
+. middle Index = size / 2
+
+root.measuring = true
+. started = monotonic-time-nanoseconds()
+root.items[middle] = UnkeyedSetLadderItem("changed-a")
+root.items[middle + 1] = UnkeyedSetLadderItem("changed-b")
+root.markup-batch-queue.checkpoint()
+. elapsed = monotonic-time-nanoseconds() - started
+root.measuring = false
+
+?! Panic("markup/unkeyed-set-size-ladder remounted outside the changed range")
+    if root.mounts != 2 || root.unmounts != 2
+record-unkeyed-set-ladder(size, elapsed, root.mounts)
+
+// Count-changing controls retain their shifting semantics outside the set timing.
+root.items.insert(UnkeyedSetLadderItem("insert-control"), middle)
+root.markup-batch-queue.checkpoint()
+root.items.remove(middle)
+root.markup-batch-queue.checkpoint()
+
+= size + middle + root.mounts + root.unmounts + (elapsed as Size)
+
+━━━━━━━━━━━━━━━━━━━━
++ UnkeyedSetLadderItem is Tuple
+
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ UnkeyedSetLadderRow is Label
+
++ sink UnkeyedSetLadderRoot
+
+────────────────────
++ do mounted
+
+if sink.measuring
+    sink.mounts += 1
+
+────────────────────
++ do unmounted
+
+if sink.measuring
+    sink.unmounts += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ UnkeyedSetLadderRoot is Box
+    is MarkupBatch
+
++ items [UnkeyedSetLadderItem]
++ measuring = false
++ mounts Size = 0
++ unmounts Size = 0
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    for item in #items
+        <UnkeyedSetLadderRow
+            sink = this
+            text = item.text
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+_ make-unkeyed-set-ladder-items [UnkeyedSetLadderItem]
+    - count Size
+
+UnkeyedSetLadderItem("row-$each") in 0 .. < count
+
+━━━━━━━━━━━━━━━━━━━━
+_ do record-unkeyed-set-ladder
+    - size Size
+    - elapsed U64
+    - remounts Size
+
+if size == 16
+    //markup.bench.unkeyed-set.ladder-16-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-16-remounts += remounts
+else if size == 64
+    //markup.bench.unkeyed-set.ladder-64-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-64-remounts += remounts
+else if size == 256
+    //markup.bench.unkeyed-set.ladder-256-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-256-remounts += remounts
+else if size == 1024
+    //markup.bench.unkeyed-set.ladder-1024-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-1024-remounts += remounts
+else if size == 4096
+    //markup.bench.unkeyed-set.ladder-4096-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-4096-remounts += remounts
+else if size == 16384
+    //markup.bench.unkeyed-set.ladder-16384-ns += elapsed
+    //markup.bench.unkeyed-set.ladder-16384-remounts += remounts

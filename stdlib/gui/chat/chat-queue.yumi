@@ -1,0 +1,148 @@
+./chat-theme
+/ai
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/gui/icons/lucide/check
+/gui/icons/lucide/grip-vertical
+/gui/icons/lucide/pencil
+/gui/icons/lucide/x
+
+_ chat-queue-max-lines Size = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatQueueDrag is Tuple
+    is DragPayload
+
++ view ChatQueueView
++ row ChatQueueRow
+
+╌╌╌╌╌╌╌╌╌╌ is DragPayload ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get drag-kind
+
+"chat.queued"
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatQueueView is Box
+
++ queue AIChatQueue
++ items = #queue.#items
+
+────────────────────
+
+<This • chat-queue-row flex-row
+    <Box rows • flex-col flex:1
+        for item in #items keyed by item.id
+            <ChatQueueRow
+                item = item
+                queue = queue
+
+────────────────────
+for event on drag-over
+
+if event.payload is ChatQueueDrag
+    . drag = event.payload as ChatQueueDrag
+    if drag.view == this
+        event.accept(this)
+
+────────────────────
+for event on drop when arrival
+
+if event.payload is ChatQueueDrag
+    . drag = event.payload as ChatQueueDrag
+    . index = drag.row.carry-slot
+    if drag.view == this && index != null
+        queue.move(drag.row.item.id, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatQueueRow is Box
+
++ item AIQueuedPrompt
++ queue AIChatQueue
++ is-editing = #queue.#editing == #item.id
+
+_ view Ancestor'ChatQueueView
+
+────────────────────
+
+<This • chat-queue-entry flex-col
+    <Box • chat-queued flex-row pl:8 pr:6 py:5 mb:4
+        <LucideGripVertical • icon chat-queue-grip w:14 h:14 mr:6
+            align-y = Alignment.center
+        if #is-editing
+            <TextInput editor • chat-queue-input flex:1
+                text = #item.text
+                is-bare = true
+                wraps = true
+                max-lines = chat-queue-max-lines
+            <IconButton save-button • icon-check w:24 h:24 ml:4
+                align-y = Alignment.center
+        else
+            <Label • chat-queue-text flex:1
+                text = chat-queued-label(#item)
+                align-y = Alignment.center
+                text-overflow = TextOverflow.truncate-tail
+            <IconButton edit-button • icon-pencil w:24 h:24 ml:4
+                align-y = Alignment.center
+        <IconButton cancel-button • icon-x w:24 h:24 ml:2
+            align-y = Alignment.center
+
+────────────────────
+for event on drag-start
+
+. owner = view
+if owner && !is-editing
+    . ignored = event.carry(ChatQueueDrag(owner, this))
+
+────────────────────
+for event on edit-button.click
+
+queue.edit(item.id)
+event.cancel()
+
+────────────────────
+for event on save-button.click
+
+save()
+event.cancel()
+
+────────────────────
+for event on editor.submit
+
+save()
+event.cancel()
+
+────────────────────
+for event on cancel-button.click
+
+if is-editing
+    queue.finish-editing()
+else
+    queue.remove(item.id)
+event.cancel()
+
+────────────────────
+_ do save
+
+. text = editor.text.trim()
+if text.length || item.images.length
+    queue.replace(item.id, text)
+else
+    queue.remove(item.id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-queued-label String
+    - item AIQueuedPrompt
+
+|? !count
+    item.text
+|? !item.text.length
+    pictures
+??
+    "${item.text} · $pictures"
+
+.. count = item.images.length
+.. pictures = if count == 1 then "1 image" else "$count images"

@@ -1,0 +1,693 @@
+./file-icon
+/code/file-names
+/data/fuzzy
+/graphics/color
+/graphics/primitives
+/graphics/style
+/gui/box
+/gui/button
+/gui/events
+/gui/icon
+/gui/icons/lucide/chevron-right
+/gui/icons/lucide/search
+/gui/keys
+/gui/label
+/gui/match-label
+/gui/popup
+/gui/primitives
+/gui/search-palette
+/gui/shorthands
+/gui/styles
+/gui/theme
+/math
+/os/file-tree
+/os/path
+/stream/sort
+/time/debounced
+/ui/input
+/units
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUIBoxScroll
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUITextPaint
+    using VectorPaintStyle
+
+• FilePalette
+    • file-palette-chevron • text:gui-muted-text-color w:12 h:12
+        stroke-width = 2
+
+    • file-palette-search • text:gui-muted-text-color w:14 h:14 mr:6
+        stroke-width = 2
+
+    • file-palette-trail
+        max-width = SizeSpec.percent(60%)
+        overflow-x = ScrollOverflow.auto
+        scroll-indicator-x = ScrollIndicatorVisibility.hidden
+
+    • file-palette-crumb • bg:transparent h:20 px:3 my:4
+        shadow = null
+        corner-radius = gui-control-radius
+
+        when #is-hover-within
+            • bg:gui-hover-color
+
+    • file-palette-crumb-chevron • mx:1
+
+    • file-palette-detail • text:gui-muted-text-color ml:8
+
+    • PaletteRow
+        when #is-highlighted
+            • file-palette-chevron • text:gui-accent-text-color
+
+            • file-icon • text:gui-accent-text-color
+
+            • folder-icon • text:gui-accent-text-color
+
+            • file-palette-detail • text:gui-accent-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteItem
+
++ path Path
++ name String
++ sort-name String
++ kind PathKind
++ is-directory Bool
++ detail String
++ name-hits [MatchSpan]
++ detail-hits [MatchSpan]
++ line Size?
++ column Size?
++ is-recent Bool
+
+────────────────────
++ This
+    - path
+    - name
+    - kind
+    - is-directory
+    - detail String = ""
+    - name-hits [MatchSpan] = List'MatchSpan()
+    - detail-hits [MatchSpan] = List'MatchSpan()
+    - line Size? = null
+    - column Size? = null
+    - is-recent = false
+
+sort-name = name.lowercased
+
+────────────────────
++ get key String
+
+if is-recent then "recent:$path" else "$path"
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteSpot is Tuple
+
++ name String
++ suffix String
++ line Size?
++ column Size?
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteCrumb is Tuple
+
++ name String
++ path Path
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePalette is Palette'FilePaletteItem
+
++ files FileTree
++ names FileNameIndex?
++ searches-checkouts = false
++ start Path?
++ recent [FilePaletteItem]
++ shows-file FileNameFilter?
++ enters-folders = false
++ folder Path = Path("/", 0)
++ is-confined = false
++ items [FilePaletteItem]
++ trail [FilePaletteCrumb] = file-palette-trail(#folder, files.root.path)
++ prompt = file-palette-prompt(#trail)
++ empty-text = file-palette-empty-text(#query)
++ results = file-palette-results(#items, #query, #recent, #found)
++ event line-chosen FilePaletteSpot
++ key-builder = :: item => item.key
++ takes-keys = [Key.arrow-up, Key.arrow-down, Key.arrow-left, Key.arrow-right]
+
+_ found [FilePaletteItem]?
+_ watch Closable?
+_ schedule-relist := throttled(file-tree-flush-delay, this.relist)
+_ is-searching = false
+_ checkouts [String = FileNameIndex]
+
+────────────────────
+
+<This
+    <Box (leading) • flex-row
+        <LucideSearch • icon file-palette-search
+            align-y = Alignment.center
+        <FilePaletteTrail • flex-row file-palette-trail
+            for crumb in #trail
+                <Box • flex-row
+                    <Button • file-palette-crumb
+                        title = crumb.name
+                        action = => do open-crumb(crumb.path)
+                    <LucideChevronRight • icon file-palette-chevron file-palette-crumb-chevron
+                        align-y = Alignment.center
+
+    <FilePaletteRow (row) - row
+        item = row.#item
+
+    <KeyShortcut "Open Folder"
+        key = .arrow-right
+        discoverable = false
+        allow-while-input = true
+        action = => do enter-selected()
+    <KeyShortcut "Parent Folder"
+        key = .arrow-left
+        discoverable = false
+        allow-while-input = true
+        action = => do leave()
+
+────────────────────
+for event on key-press
+
+if event.key == Key.tab
+    enter-selected()
+    event.cancel()
+else if event.key == Key.backspace && !query
+    leave()
+    event.cancel()
+
+────────────────────
+for reason on dismissed when arrival
+
+unwatch()
+items = List'FilePaletteItem()
+found = null
+
+╌╌╌╌╌╌╌╌╌╌ is Palette'FilePaletteItem ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do show
+    - at PopupAnchor? = null
+
+if !is-open
+    names?.start()
+    open-folder(file-palette-existing(start ?? files.root.path, boundary))
+super.show(at)
+
+────────────────────
++ do refresh
+
+. spot = file-palette-spot(query)
+if spot.name.find("/") != null
+    walk(spot)
+else
+    search()
+
+────────────────────
++ do choose-selected
+
+. spot = file-palette-spot(query)
+if spot.name == "" && spot.line != null
+    dismiss(DismissReason.chosen)
+    line-chosen <- spot
+else
+    super.choose-selected()
+
+────────────────────
++ do choose
+    - item FilePaletteItem
+
+if enters-folders && item.is-directory
+    enter(item)
+    =
+. spot = file-palette-spot(query)
+if spot.line == null || item.is-directory
+    super.choose(item)
+else
+    super.choose
+        - FilePaletteItem
+            - item.path
+            - item.name
+            - item.kind
+            - item.is-directory
+            - item.detail
+            - item.name-hits
+            - item.detail-hits
+            - spot.line
+            - spot.column
+
+────────────────────
++ do unmounted
+
+unwatch()
+for index in checkouts.values
+    index.close()
+checkouts.clear()
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do open-folder
+    - location Path
+
+folder = location
+found = null
+items = file-palette-list(location, files.hides-name, shows-file)
+watch-folder(location)
+
+────────────────────
++ do enter
+    - item FilePaletteItem
+
+=? if !item.is-directory
+open-folder(item.path)
+reset()
+
+────────────────────
++ do enter-selected
+
+. item = selected-item
+if item
+    enter(item)
+
+────────────────────
++ do open-crumb
+    - location Path
+
+search-input.request-focus()
+=? if "$location" == "$folder"
+. origin = folder
+open-folder(location)
+if query
+    search()
+else
+    . child = file-palette-child-toward(location, origin)
+    if child
+        select-key("${child}")
+
+────────────────────
++ do leave
+
+=? if is-boundary(folder)
+. above = folder.parent
+=? if !above
+. left = folder
+open-folder(above)
+reset()
+select-key("$left")
+
+────────────────────
+_ do search
+
+if !index-for(folder) || !file-palette-spot(query).name
+    found = null
+    =
+=? if is-searching
+is-searching = true
+do new seek()
+
+────────────────────
+_ do seek
+
+while is-open
+    . asked = file-palette-spot(query).name
+    . place = folder
+    . index = index-for(place)
+    . scope = index?.relative(place)
+    if !asked || !index || scope == null || asked.find("/") != null
+        found = null
+        break
+    . matches = index.search(asked, scope)
+    if asked == file-palette-spot(query).name && place == folder
+        found = file-palette-found(index, matches, scope, shows-file)
+        break
+is-searching = false
+
+────────────────────
+_ do index-for FileNameIndex?
+    - location Path
+
+=? names if names || !searches-checkouts
+. top = file-palette-checkout(location)
+=? null if !top
+. key = "${top}"
+. known = checkouts[key]
+=? known if known
+. made = FileNameIndex(top)
+made.start()
+checkouts[key] = made
+= made
+
+────────────────────
+_ do watch-folder
+    - location Path
+
+unwatch()
+watch = catch? listen(location)
+
+────────────────────
+_ do listen Closable ?! Error
+    - location Path
+
+. stream = location.watch()
+for event on stream
+    schedule-relist()
+= stream
+
+────────────────────
+_ do unwatch
+
+. stream = watch
+watch = null
+if stream
+    catch? stream.close()
+
+────────────────────
+_ do relist
+
+=? if !is-open
+. location = file-palette-existing(folder, boundary)
+if location == folder
+    items = file-palette-list(location, files.hides-name, shows-file)
+else
+    open-folder(location)
+
+────────────────────
+_ do walk
+    - spot FilePaletteSpot
+
+. parts = List'String(spot.name.split("/"))
+. last = parts.length - 1
+. rest = parts[last]
+. location = folder
+for index in 0 .. < last
+    . part = parts[index]
+    if part == "" && index == 0
+        location = boundary ?? Path("/", 0)
+    else if part == ".."
+        if !is-boundary(location)
+            location = location.parent ?? location
+    else if part != "" && part != "."
+        . listed = if location == folder then items else file-palette-list(location, files.hides-name, shows-file)
+        . target = file-palette-folder(listed, part)
+        if !target
+            rest = "$part${"/".join(parts[index + 1 ...])}"
+            break
+        location = target.path
+if location != folder
+    open-folder(location)
+rewrite(rest + spot.suffix)
+
+────────────────────
+_ get boundary
+
+files.root.path if is-confined
+
+────────────────────
+_ is-boundary
+    - location Path
+
+is-confined && "$location" == "${files.root.path}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ FilePaletteTrail is Box
+
+_ pinned-width Length?
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+=? if inner-width == pinned-width
+pinned-width = inner-width
+. ignored = scroll-to-end(Orientation.horizontal)
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteRow is Box
+
++ item FilePaletteItem?
+
+────────────────────
+
+<This • flex-row flex:1
+    <FileIcon • mr:8
+        glyph = file-palette-glyph(#item)
+        align-y = Alignment.center
+    <MatchLabel
+        text = #item?.name ?? ""
+        hits = #item?.name-hits ?? List'MatchSpan()
+        align-y = Alignment.center
+    <MatchLabel • file-palette-detail flex:1
+        text = #item?.detail ?? ""
+        hits = #item?.detail-hits ?? List'MatchSpan()
+        align-y = Alignment.center
+    if #item?.is-directory ?? false
+        <LucideChevronRight • icon file-palette-chevron
+            align-y = Alignment.center
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-glyph FileGlyph
+    - item FilePaletteItem?
+
+|? !item
+    FileGlyph.file
+??
+    file-glyph(item.is-directory, item.kind, item.name)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-list [FilePaletteItem]
+    - location Path
+    - hides FileNameFilter
+    - shows FileNameFilter?
+
+. listed = file-entries(location, hides) ?? List'FileEntry()
+. unsorted = List'FilePaletteItem
+    ** listed
+    ?*> FilePaletteItem(location / each.name, each.name, each.kind, each.is-directory) if file-palette-shows(each.name, each.is-directory, shows)
+= sort(unsorted) • using file-order
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-shows Bool
+    - name String
+    - is-directory Bool
+    - shows FileNameFilter?
+
+is-directory || !shows || shows(name)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-checkout Path?
+    - location Path
+
+. cursor Path? = location
+while cursor
+    . candidate = cursor
+    =? candidate if (candidate / ".git").exists
+    cursor = candidate.parent
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-matches [FilePaletteItem]
+    - items [FilePaletteItem]
+    - query String
+
+=? items if !query || query.find("/") != null
+. pattern = FuzzyQuery(query)
+. marked [FilePaletteItem]
+for item in fuzzy-ranked(items, query, :: item => item.name)
+    . hits = match-spans(pattern.positions(item.name), 0)
+    marked += FilePaletteItem
+        - item.path
+        - item.name
+        - item.kind
+        - item.is-directory
+        - item.detail
+        - hits
+        - List'MatchSpan()
+        - null
+        - null
+        - item.is-recent
+= marked
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-results [FilePaletteItem]
+    - items [FilePaletteItem]
+    - query String
+    - recent [FilePaletteItem]
+    - found [FilePaletteItem]?
+
+|? !name && spot.line != null
+    List'FilePaletteItem()
+|? !name
+    recent ++ items
+|? name.find("/") != null
+    file-palette-matches(items, name)
+|? found != null
+    file-palette-matches(recent, name) ++ found
+??
+    file-palette-matches(recent, name) ++ file-palette-matches(items, name)
+
+.. spot = file-palette-spot(query)
+.. name = spot.name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-found [FilePaletteItem]
+    - index FileNameIndex
+    - matches [FileNameMatch]
+    - scope String
+    - shows FileNameFilter?
+
+. skip Index = if scope then scope.size + 1 else 0
+. found [FilePaletteItem]
+for match in matches when file-palette-shows(match.entry.name, match.entry.is-directory, shows)
+    . entry = match.entry
+    . kind = if entry.is-directory then PathKind.directory else PathKind.file
+    . name-start = entry.path.size - entry.name.size
+    . has-folder = name-start > skip
+    . slash = name-start - 1
+    . detail = if has-folder then (entry.path as Byte[]).slice-string(skip .. < slash) else ""
+    . name-hits [MatchSpan]
+    . detail-hits [MatchSpan]
+    if match.is-in-name
+        name-hits = match-spans(match.positions, 0)
+    else
+        . inside [Index]
+        . outside [Index]
+        for position in match.positions
+            if has-folder && position < slash
+                outside += position
+            else if position >= name-start
+                inside += position
+        name-hits = match-spans(inside, name-start)
+        detail-hits = match-spans(outside, skip)
+    found += FilePaletteItem
+        - index.root / entry.path
+        - entry.name
+        - kind
+        - entry.is-directory
+        - detail
+        - name-hits
+        - detail-hits
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-folder FilePaletteItem?
+    - items [FilePaletteItem]
+    - name String
+
+for item in items
+    =? item if item.is-directory && item.name == name
+for item in fuzzy-ranked(items, name, :: item => item.name)
+    =? item if item.is-directory
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-existing Path
+    - location Path
+    - boundary Path?
+
+. cursor = location
+while !file-palette-is-folder(cursor)
+    =? cursor if boundary != null && "$cursor" == "${boundary}"
+    . above = cursor.parent
+    =? cursor if !above
+    cursor = above
+= cursor
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-is-folder Bool
+    - location Path
+
+catch? location.is-dir ?? false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-trail [FilePaletteCrumb]
+    - folder Path
+    - root Path
+
+. inner = folder.relative-to(root)
+. location = if inner then root else Path(separator, 0)
+. crumbs [FilePaletteCrumb]
+for name in (inner ?? folder).components
+    location = location / name
+    crumbs += FilePaletteCrumb(name, location)
+= crumbs
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-child-toward Path?
+    - location Path
+    - origin Path
+
+location / names[0] if names && names.length > 0
+
+.. names = origin.relative-to(location)?.components
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-prompt
+    - trail [FilePaletteCrumb]
+
+if trail.length == 0 then "Find in this folder" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-empty-text String
+    - query String
+
+|? !spot.name && spot.line != null && spot.column != null
+    "Go to line ${spot.line + 1}, column ${spot.column + 1}"
+|? !spot.name && spot.line != null
+    "Go to line ${spot.line + 1}"
+|? query
+    "Nothing here matches"
+??
+    "This folder is empty"
+
+.. spot = file-palette-spot(query)
+
+━━━━━━━━━━━━━━━━━━━━
++ file-palette-spot FilePaletteSpot
+    - query String
+
+|? colon == null
+    FilePaletteSpot(query, "")
+|? parts.length > 2
+    FilePaletteSpot(query, "")
+|? (parts[0] && line == null) || (parts.length > 1 && parts[1] && column == null)
+    FilePaletteSpot(query, "")
+??
+    FilePaletteSpot
+        - query[0 .. < colon]
+        - query[colon ...]
+        - file-palette-index(line)
+        - file-palette-index(column)
+
+.. colon = query.find(":")
+.. parts = List'String(query[colon + 1 ...].split(":"))
+.. line = file-palette-number(parts[0])
+.. column = file-palette-number(parts[1]) if parts.length > 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-palette-index Size?
+    - number Size?
+
+max(number, 1) - 1 if number != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-palette-number Size?
+    - text String
+
+=? null if !text
+. value Size = 0
+for char in text
+    =? null if char < '0' || char > '9'
+    value = value * 10 + ((char as U32) - ('0' as U32))
+= value

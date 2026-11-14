@@ -1,0 +1,577 @@
+./builder
+./bundle
+./frame-coloring
+./mir
+/core/arena
+/core/table
+
+_ max-aligned-stack-immediate I64 = 4080
+_ max-frame-address-immediate I64 = 16773120
+_ stack-probe-threshold I64 = 0x8000
+_ stack-probe-interval I64 = 0x4000
+_ zero-stack-frame-stub-threshold I32 = 128
+_ saved-frame-size I32 = 16
+_ first-address-scratch RegisterId = 16
+_ second-address-scratch RegisterId = 17
+_ layout-context-register RegisterId = 28
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRPrologueEpilogue
+
+_ builder MIRBuilder
+_ bundle Bundle
+_ function MIRFunction
+_ coloring MIRFrameColoring
+_ stack-size I64
+_ scratch-register RegisterId
+_ address-scratch RegisterId
+_ first-pairs IdList
+_ second-pairs IdList
+
+────────────────────
++ This
+    - builder MIRBuilder
+    - coloring MIRFrameColoring
+
+.. bundle = builder.bundle
+.. function = builder.function
+
+────────────────────
+_ get arena Arena @inline
+
+function.arena
+
+────────────────────
++ do run
+    - used-callee-saved IdList
+    - scratch RegisterId
+    - outgoing I64
+
+. size = coloring.pack-frame-objects(builder.finalize-stack())
+coloring.deduplicate-roots()
+stack-size = (size as I64) + outgoing
+scratch-register = scratch
+function.frame-bytes = stack-size as U32
+write-prologue-and-epilogue(used-callee-saved)
+rewrite-frame-operands()
+
+────────────────────
+_ do write-prologue-and-epilogue
+    - used-callee-saved IdList
+
+. order = function.block-order
+if order.length == 0
+    =
+. fp = builder.preg(frame-pointer-register)
+. lr = builder.preg(link-register)
+. sp = builder.preg(stack-pointer-register)
+. entry = order[0]
+. entry-instructions = builder.take-instructions(entry)
+. callee-saved-size I32
+. saved-registers IdList
+. saved-offsets = arena.allocate'I32(used-callee-saved.length + 1)
+
+if function.uses-layout-context
+    builder.comment(function.add-local-name(.save-layout-context-name, no-string, no-string, 0))
+    builder.str(builder.preg(first-address-scratch), builder.load-address-offset(sp, -16, true))
+    callee-saved-size += 16
+    saved-offsets[saved-registers.length] = 0 - callee-saved-size
+    saved-registers = saved-registers.appended(arena, layout-context-register)
+
+builder.comment(function.add-local-name(.save-callee-saved-name, no-string, no-string, 0))
+group-pairs(used-callee-saved)
+. cursor U32
+while cursor < first-pairs.length
+    . first = first-pairs[cursor]
+    . second = second-pairs[cursor]
+    cursor += 1
+    . address = builder.load-address-offset(sp, -16, true)
+    callee-saved-size += 16
+    saved-offsets[saved-registers.length] = 0 - callee-saved-size
+    saved-registers = saved-registers.appended(arena, first)
+    if second == no-register
+        builder.str(builder.preg(first), address)
+    else
+        builder.stp(builder.preg(first), builder.preg(second), address)
+        saved-offsets[saved-registers.length] = 8 - callee-saved-size
+        saved-registers = saved-registers.appended(arena, second)
+for index in 0 .. < saved-registers.length
+    function.saved-registers.append
+        SavedRegister
+            - saved-registers[index]
+            - saved-offsets[index] + callee-saved-size + saved-frame-size
+
+builder.comment(function.add-local-name(.save-frame-name, no-string, no-string, 0))
+builder.stp(fp, lr, builder.load-address-offset(sp, -16, true))
+builder.mov(fp, sp)
+
+if function.overflow.is-present
+    . overflow = function.overflow
+    . count = overflow.count + (function.slots[overflow.slot].objects.length as I32)
+    . start = saved-frame-size + callee-saved-size
+    . offset = builder.finalize-overflow(overflow.slot, start)
+    . size = ((offset - start + 15) / 16) * 16
+    function.overflow = MIRCallOverflow
+        - true
+        - overflow.is-stack
+        - overflow.slot
+        - size
+        - size
+        - count
+        - count
+        - offset
+
+allocate-frame(sp)
+zero-root-frame-objects(fp)
+
+. merged = function.blocks[entry].instructions
+for index in 0 .. < entry-instructions.length
+    merged = merged.appended(arena, entry-instructions[index])
+function.blocks[entry].instructions = merged
+
+for position in 0 .. < order.length
+    . instructions = builder.take-instructions(order[position])
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        if function.instructions[id].opcode == .ret
+            write-epilogue(fp, lr, sp)
+        builder.append(id)
+
+────────────────────
+_ do allocate-frame
+    - sp OperandId
+
+` Moves the stack pointer down over the frame. A frame larger than the probe threshold is
+` taken a probe interval at a time, each step stored to as it is taken, so that a stack that
+` overflows faults in the guard below it rather than past the guard.
+. remaining = stack-size
+if remaining > stack-probe-threshold
+    . zero = builder.preg(zero-register)
+    while remaining > stack-probe-interval
+        builder.sub-immediate(sp, sp, stack-probe-interval, stack-probe-interval)
+        builder.str(zero, builder.load-address(sp))
+        remaining -= stack-probe-interval
+if remaining > 0
+    builder.sub-immediate(sp, sp, remaining, max-aligned-stack-immediate)
+
+────────────────────
+_ do write-epilogue
+    - fp OperandId
+    - lr OperandId
+    - sp OperandId
+
+if stack-size > 0
+    builder.add-immediate(sp, sp, stack-size, max-aligned-stack-immediate)
+builder.comment(function.add-local-name(.restore-frame-name, no-string, no-string, 0))
+builder.ldp(fp, lr, builder.load-address(sp), builder.small-int(16))
+if first-pairs.length != 0
+    builder.comment(function.add-local-name(.restore-callee-saved-name, no-string, no-string, 0))
+    . address = builder.load-address(sp)
+    . cursor = first-pairs.length
+    while cursor > 0
+        cursor -= 1
+        if second-pairs[cursor] == no-register
+            builder.ldr(builder.preg(first-pairs[cursor]), address, builder.small-int(16))
+        else
+            builder.ldp
+                - builder.preg(first-pairs[cursor])
+                - builder.preg(second-pairs[cursor])
+                - address
+                - builder.small-int(16)
+if function.uses-layout-context
+    builder.comment(function.add-local-name(.restore-layout-context-name, no-string, no-string, 0))
+    builder.ldr
+        - builder.preg(layout-context-register)
+        - builder.load-address(sp)
+        - builder.small-int(16)
+
+────────────────────
+_ do group-pairs
+    - registers IdList
+
+first-pairs = IdList()
+second-pairs = IdList()
+if registers.length == 0
+    =
+. first-class = register-class(registers[0])
+add-pairs(registers, first-class, true)
+add-pairs(registers, first-class, false)
+
+────────────────────
+_ do add-pairs
+    - registers IdList
+    - first-class RegClass
+    - is-first-class Bool
+
+. pending = no-register
+for index in 0 .. < registers.length
+    . register = registers[index]
+    if (register-class(register) == first-class) != is-first-class
+        continue
+    if pending == no-register
+        pending = register
+    else
+        first-pairs = first-pairs.appended(arena, pending)
+        second-pairs = second-pairs.appended(arena, register)
+        pending = no-register
+if pending != no-register
+    first-pairs = first-pairs.appended(arena, pending)
+    second-pairs = second-pairs.appended(arena, no-register)
+
+────────────────────
+_ do zero-root-frame-objects
+    - fp OperandId
+
+. objects IdList
+for position in 0 .. < function.frame-slots.length
+    . slot-objects = function.slots[function.frame-slots[position]].objects
+    for index in 0 .. < slot-objects.length
+        . object = slot-objects[index]
+        if function.frame-objects[object].gc-root && !function.frame-objects[object].can-promote
+            objects = objects.appended(arena, object)
+. count = objects.length
+if count == 0
+    =
+. keys = arena.allocate'U32(count)
+for index in 0 .. < count
+    keys[index] = ((function.frame-objects[objects[index]].offset as I64) + 0x80000000) as U32
+objects = stable-order(arena, objects, keys)
+
+. scratch = builder.preg(first-address-scratch)
+. address = builder.preg(0)
+. byte-count = builder.preg(1)
+. sp = builder.preg(stack-pointer-register)
+. xzr = builder.preg(zero-register)
+. wzr = builder.preg(zero-register-32)
+. index U32
+while index < count
+    . start = function.frame-objects[objects[index]].offset
+    . end = start + (builder.frame-object-size(function.frame-objects[objects[index]].type) as I32)
+    index += 1
+    while index < count && function.frame-objects[objects[index]].offset <= end
+        . other = objects[index]
+        . other-end = function.frame-objects[other].offset + other-size
+            .. other-size = builder.frame-object-size(function.frame-objects[other].type) as I32
+        if other-end > end
+            end = other-end
+        index += 1
+
+    . size = end - start
+    if size >= zero-stack-frame-stub-threshold
+        builder.stp(address, byte-count, builder.load-address-offset(sp, -16, true))
+        materialize-frame-address(fp, address, start)
+        builder.mov(byte-count, builder.small-int(size))
+        builder.bl(builder.symbol(bundle.zero-stack-frame-symbol))
+        builder.ldp(address, byte-count, builder.load-address(sp), builder.small-int(16))
+        continue
+
+    . offset = start
+    while offset + 16 <= end
+        builder.stp(xzr, xzr, frame-pair-address(fp, scratch, offset))
+        offset += 16
+    if offset + 8 <= end
+        builder.str(xzr, frame-address(fp, scratch, offset))
+        offset += 8
+    if offset + 4 <= end
+        builder.str(wzr, frame-address(fp, scratch, offset))
+        offset += 4
+    if offset + 2 <= end
+        builder.strh(wzr, frame-address(fp, scratch, offset))
+        offset += 2
+    if offset < end
+        builder.strb(wzr, frame-address(fp, scratch, offset))
+
+────────────────────
+_ do frame-pair-address OperandId
+    - fp OperandId
+    - scratch OperandId
+    - offset I32
+
+if offset % 8 == 0 && offset >= -512 && offset <= 504
+    = builder.load-address-offset(fp, offset)
+materialize-frame-address(fp, scratch, offset)
+= builder.load-address-offset(scratch, 0)
+
+────────────────────
+_ do frame-address OperandId
+    - fp OperandId
+    - scratch OperandId
+    - offset I32
+
+if offset >= -255 && offset <= 4095
+    = builder.load-address-offset(fp, offset)
+materialize-frame-address(fp, scratch, offset)
+= builder.load-address-offset(scratch, 0)
+
+────────────────────
+_ do materialize-frame-address
+    - fp OperandId
+    - scratch OperandId
+    - offset I64
+
+if offset < 0
+    builder.sub-immediate(scratch, fp, 0 - offset, max-frame-address-immediate)
+else
+    builder.add-immediate(scratch, fp, offset, max-frame-address-immediate)
+
+────────────────────
+_ do rewrite-frame-operands
+
+. order = function.block-order
+for position in 0 .. < order.length
+    . instructions = builder.take-instructions(order[position])
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . opcode = function.instructions[id].opcode
+        . operands = function.instructions[id].operands
+        . count = operands.length
+        . lowers-address = opcode == .addptr || (opcode == .mov && count > 1 && loads-address)
+            .. loads-address = is-load-address(operands[1])
+        if !lowers-address && !has-frame-operand(operands)
+            builder.append(id)
+            continue
+        address-scratch = no-register
+        . rewritten = new-id-list(arena, count)
+        for operand in 0 .. < count
+            rewritten.data[operand] = rewrite-operand(id, operands, operand)
+        function.instructions[id].operands = IdList(rewritten.data, count, count)
+        ?! Panic("An address is lowered from an instruction without a source")
+            if lowers-address && count < 2
+        if opcode == .addptr || (opcode == .mov && count > 1 && is-load-address(rewritten.data[1]))
+            add-address(rewritten.data[0], rewritten.data[1])
+        else
+            builder.append(id)
+
+────────────────────
+_ do is-load-address Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .load-address-operand
+        = true
+= false
+
+────────────────────
+_ do frame-object-of FrameObjectId
+    - operand OperandId
+
+. base = no-operand
+do match? function.operands[operand]
+    | .frame-object-operand(row)
+        = row.object
+    | .load-address-operand(row)
+        base = row.base
+if base != no-operand
+    do match? function.operands[base]
+        | .frame-object-operand(row)
+            = row.object
+= no-frame-object
+
+────────────────────
+_ do has-frame-operand Bool
+    - operands IdList
+
+for index in 0 .. < operands.length
+    if has-frame-base(operands[index])
+        = true
+= false
+
+────────────────────
+_ do has-frame-base Bool
+    - operand OperandId
+
+. base = no-operand
+do match? function.operands[operand]
+    | .frame-object-operand
+        = true
+    | .load-address-operand(row)
+        base = row.base
+if base != no-operand
+    = has-frame-base(base)
+= false
+
+────────────────────
+_ do take-address-scratch RegisterId
+    - id InstructionId
+    - operands IdList
+
+if address-scratch != no-register
+    = address-scratch
+. unavailable RegisterSet
+for index in 0 .. < operands.length
+    unavailable = reserved-registers(unavailable, operands[index])
+if !unavailable.has(first-address-scratch)
+    address-scratch = first-address-scratch
+else if !unavailable.has(second-address-scratch)
+    address-scratch = second-address-scratch
+else if !unavailable.has(scratch-register)
+    address-scratch = scratch-register
+?! Panic("No frame-address scratch available while rewriting ${opcode-name}")
+    if address-scratch == no-register
+.. opcode-name = opcode-names[function.instructions[id].opcode]
+= address-scratch
+
+────────────────────
+_ do reserved-registers RegisterSet
+    - registers RegisterSet
+    - operand OperandId
+
+. base = no-operand
+. offset = no-operand
+do match? function.operands[operand]
+    | .preg-operand(row)
+        = registers.with(register-parent(row.register))
+    | .load-address-operand(row)
+        base = row.base
+        offset = row.offset
+. reserved = registers
+if base != no-operand
+    reserved = reserved-registers(reserved, base)
+if offset != no-operand
+    reserved = reserved-registers(reserved, offset)
+= reserved
+
+────────────────────
+_ do rewrite-operand OperandId
+    - id InstructionId
+    - operands IdList
+    - index U32
+
+. operand = operands[index]
+. object = frame-object-of(operand)
+if object == no-frame-object
+    = operand
+if function.frame-objects[object].index < 0
+    = builder.load-address-offset(builder.preg(take-address-scratch(id, operands)), 0)
+
+. opcode = function.instructions[id].opcode
+. size = address-size(opcode, operands, index)
+. frame-offset I64 = function.frame-objects[object].offset
+. base = frame-pointer-register
+. offset = frame-offset
+if function.slots[function.frame-objects[object].slot].is-stack
+    base = stack-pointer-register
+else
+    . stack-offset = stack-size + frame-offset
+    if stack-offset >= 0 && offset-cost(stack-offset, size) < offset-cost(frame-offset, size)
+        base = stack-pointer-register
+        offset = stack-offset
+. pair = pair-size(opcode, operands, index)
+. fits = if pair > 0 then can-address-pair(offset, pair) else can-address(offset, size)
+if fits
+    = builder.load-address-offset(builder.preg(base), offset)
+. scratch = builder.preg(take-address-scratch(id, operands))
+if offset < 0
+    builder.sub-immediate(scratch, builder.preg(base), 0 - offset, max-frame-address-immediate)
+else
+    builder.add-immediate(scratch, builder.preg(base), offset, max-frame-address-immediate)
+= builder.load-address-offset(scratch, 0)
+
+────────────────────
+_ do address-size I64
+    - opcode Opcode
+    - operands IdList
+    - index U32
+
+if index != 1
+    = 0
+if opcode == .ldrb || opcode == .strb || opcode == .ldrsb || opcode == .ldarb || opcode == .stlrb
+    = 1
+if opcode == .ldrh || opcode == .strh || opcode == .ldrsh
+    = 2
+if opcode == .ldrsw
+    = 4
+if opcode == .ldr || opcode == .ldar || opcode == .str
+    do match? function.operands[operands[0]]
+        | .preg-operand(row)
+            . reg-class = register-class(row.register)
+            = if reg-class == .gpr32 || reg-class == .fpr32 then 4 else 8
+= 0
+
+────────────────────
+_ do pair-size I64
+    - opcode Opcode
+    - operands IdList
+    - index U32
+
+if index != 2 || (opcode != .ldp && opcode != .stp)
+    = 0
+do match? function.operands[operands[0]]
+    | .preg-operand(row)
+        . reg-class = register-class(row.register)
+        = if reg-class == .gpr32 || reg-class == .fpr32 then 4 else 8
+= 8
+
+────────────────────
+_ do add-address
+    - destination OperandId
+    - address OperandId
+
+. base = no-operand
+. offset = no-operand
+do match? function.operands[address]
+    | .load-address-operand(row)
+        base = row.base
+        offset = row.offset
+?! Panic("A lowered address is not a load address")
+    if base == no-operand
+do match? function.operands[base]
+    | .preg-operand(row)
+        if register-class(row.register) == .gpr32
+            base = builder.preg(register-parent(row.register))
+if offset == no-operand
+    builder.mov(destination, base)
+    =
+. is-int = false
+. value I64
+do match? function.operands[offset]
+    | .int-operand(row)
+        is-int = true
+        value = row.value.bits as I64
+if !is-int
+    builder.add(destination, base, offset)
+else if value < 0
+    builder.sub-immediate(destination, base, 0 - value, max-frame-address-immediate)
+else
+    builder.add-immediate(destination, base, value, max-frame-address-immediate)
+
+━━━━━━━━━━━━━━━━━━━━
+_ can-address Bool
+    - offset I64
+    - size I64
+
+|? offset >= -255 && offset <= 255
+    true
+|? size > 0
+    offset >= 0 && offset % size == 0 && offset / size <= 4095
+??
+    offset >= 0 && offset <= 4095
+
+━━━━━━━━━━━━━━━━━━━━
+_ can-address-pair Bool
+    - offset I64
+    - size I64
+
+offset % size == 0 && offset / size >= -64 && offset / size <= 63
+
+━━━━━━━━━━━━━━━━━━━━
+_ do offset-cost U32
+    - offset I64
+    - size I64
+
+if can-address(offset, size)
+    = 0
+. remaining = if offset >= 0 then offset else 0 - offset
+if remaining == 0
+    = 1
+. count U32
+while remaining > 0
+    if remaining <= 4095
+        remaining = 0
+    else
+        . units = remaining / 4096
+        if units > 4095
+            units = 4095
+        remaining -= units * 4096
+    count += 1
+= count

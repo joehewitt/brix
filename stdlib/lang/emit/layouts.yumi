@@ -1,0 +1,1137 @@
+/core/arena
+/core/table
+/lang/ast/decl
+/lang/ast/program
+/lang/backend/bundle
+/lang/backend/mir
+/lang/check/stable-key
+/lang/check/type-store
+/lang/check/types
+
++ LayoutId is U32
++ no-layout LayoutId = U32.max
++ first-struct-layout LayoutId = 14
++ object-header-fields U32 = 2
++ large-struct-size U32 = 16
+
++ void-layout LayoutId = 0
++ pointer-layout LayoutId = 1
++ managed-layout LayoutId = 2
++ u8-layout LayoutId = 3
++ i8-layout LayoutId = 4
++ u16-layout LayoutId = 5
++ i16-layout LayoutId = 6
++ u32-layout LayoutId = 7
++ i32-layout LayoutId = 8
++ u64-layout LayoutId = 9
++ i64-layout LayoutId = 10
++ f32-layout LayoutId = 11
++ f64-layout LayoutId = 12
+
+_ empty-vector-name = "gcvec.empty"
+_ pointer-descriptor-name = "gcdesc.pointer"
+_ pointer-buffer-name = "gcbufdesc.pointer"
+_ function-descriptor-name = "gcdesc.function"
+_ function-buffer-name = "gcbufdesc.function"
+_ interface-descriptor-name = "gcdesc.interface"
+_ interface-buffer-name = "gcbufdesc.interface"
+
++ compiler-buffer-count U32 = 512
++ plain-site-count U32 = 129
+_ inline-allocation-limit U64 = 1024
+_ site-key-size U64 = 48
+_ thread-cache-compiler-buffers-offset U64 = 104
+_ runtime-buffer-size U64 = 80
+
+━━━━━━━━━━━━━━━━━━━━
++ MachineKind is U32
+
+| machine-void = 0
+| machine-pointer = 1
+| machine-managed-pointer = 2
+| machine-u8 = 3
+| machine-i8 = 4
+| machine-u16 = 5
+| machine-i16 = 6
+| machine-u32 = 7
+| machine-i32 = 8
+| machine-u64 = 9
+| machine-i64 = 10
+| machine-f32 = 11
+| machine-f64 = 12
+| machine-struct = 13
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout is Struct
+
+` How a value is held. A scalar is one machine kind in a register. A struct is `size` bytes
+` of fields in memory, and its value in a register is its address. `descriptor` names the GC
+` descriptor of a layout that holds managed pointers, `buffer` that of a buffer of such
+` values, and `type` is the type it was built for. `format` is how a struct travels to a
+` function and back. A union is a struct of its tag alone, with `cases` the payload each case
+` holds behind the tag, all at one place.
+
++ kind MachineKind
++ size U32
++ alignment U32
++ fields Span
++ is-managed Bool
++ descriptor StringId = no-string
++ type TypeId = no-type
++ format StructFormat = .small-format
++ buffer StringId = no-string
++ cases Span = Span()
++ site StringId = no-string
++ shape LayoutId = no-layout
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutField is Struct
+
+` Where a struct holds a field, how the field is held, and the type of the property it
+` holds, when it holds one.
+
++ offset U32
++ layout LayoutId
++ type TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
+_ TaggedRange is Tuple
+
+` Where an optional or a union that holds managed pointers lies in a layout: its flag or tag,
+` what it holds, and the layout of the optional's value or of the union.
+
++ flag U32
++ payload U32
++ layout LayoutId
++ is-union Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ Layouts
+
+` The machine layout of every type of the sealed store that has one, built once before
+` emission and read by every worker. A scalar's layout id is its machine kind. `values` gives
+` the layout of a value of a type, and `objects` the layout of the object a class's value
+` points to. `function-layout` is that of a value of any function type: the code it runs, and
+` the data that code is given first. `interface-layout` is that of a value of any interface
+` type: what it holds, which the collector follows, and the witness table of what it holds.
+` A type without a layout is one emission has no shape for yet.
+
++ rows Table'Layout
++ fields Table'LayoutField
++ values CPointer'U32
++ objects CPointer'U32
++ function-layout LayoutId = no-layout
++ interface-layout LayoutId = no-layout
+_ types Types
+_ bundle Bundle
+_ arena Arena
+_ states CPointer'Byte
+_ placed CPointer'Byte
+_ described [Byte]
+_ buffered [Byte]
+_ plain-sites [StringId]
+_ empty-slot StringId = no-string
+_ shapes Map'Size'U32'ArenaBacking
++ memo-places CPointer'Byte?
+_ memo-flags = Map'Size'U32()
+
+────────────────────
++ This
+    - types Types
+    - bundle Bundle
+    - arena Arena
+
+.. rows = Table'Layout(arena, 64)
+.. fields = Table'LayoutField(arena, 64)
+.. shapes = Map'Size'U32(arena)
+
+────────────────────
++ do build
+
+` Lays out every type the seal reached. Scalars come first, in the order of their machine kinds,
+` so a kind is its own layout id, and then the types in their ranked order.
+. count = types.rows.length
+values = arena.allocate'U32(count)
+objects = arena.allocate'U32(count)
+states = arena.allocate'Byte(count)
+placed = arena.allocate'Byte(count)
+for id in 0 .. < count
+    values[id] = no-layout
+    objects[id] = no-layout
+    states[id] = 0
+    placed[id] = 0
+for slots in 0 .. < plain-site-count
+    plain-sites += bundle.intern("gcsite.plain.${slots * 8}")
+add-scalar(.machine-void, 0)
+add-scalar(.machine-pointer, 8)
+add-scalar(.machine-managed-pointer, 8)
+add-scalar(.machine-u8, 1)
+add-scalar(.machine-i8, 1)
+add-scalar(.machine-u16, 2)
+add-scalar(.machine-i16, 2)
+add-scalar(.machine-u32, 4)
+add-scalar(.machine-i32, 4)
+add-scalar(.machine-u64, 8)
+add-scalar(.machine-i64, 8)
+add-scalar(.machine-f32, 4)
+add-scalar(.machine-f64, 8)
+rows.append(Layout(.machine-struct, 0, 1, Span(), false))
+rows[managed-layout].descriptor = bundle.intern(pointer-descriptor-name)
+rows[managed-layout].buffer = bundle.intern(pointer-buffer-name)
+. parts [LayoutId]
+parts += pointer-layout
+parts += managed-layout
+. held [TypeId]
+held += no-type
+held += no-type
+function-layout = placed-fields(parts, held, false, no-type)
+rows[function-layout].descriptor = bundle.intern(function-descriptor-name)
+rows[function-layout].buffer = bundle.intern(function-buffer-name)
+. words [LayoutId]
+words += managed-layout
+words += pointer-layout
+interface-layout = placed-fields(words, held, false, no-type)
+rows[interface-layout].descriptor = bundle.intern(interface-descriptor-name)
+rows[interface-layout].buffer = bundle.intern(interface-buffer-name)
+for id in types.ranked
+    if id != invalid-type
+        value-layout(id)
+for id in types.ranked
+    if id != invalid-type
+        object-layout(id)
+. total U32 = rows.length as U32
+for id in 0 .. < total
+    described += 0
+    buffered += 0
+    . row = rows[id]
+    if row.kind == .machine-struct && row.is-managed && row.type != no-type
+        . shape = share(id)
+        if shape != id
+            rows[id].descriptor = rows[shape].descriptor
+            rows[id].site = rows[shape].site
+            rows[id].buffer = rows[shape].buffer
+            continue
+        . key = hex-text(types.stable-keys[row.type])
+        rows[id].descriptor = bundle.intern("gcdesc.$key")
+        rows[id].site = bundle.intern("gcsite.$key")
+        rows[id].buffer = bundle.intern("gcbufdesc.$key")
+
+────────────────────
+_ do add-scalar
+    - kind MachineKind
+    - size U32
+
+. alignment = if size != 0 then size else 1u32
+rows.append(Layout(kind, size, alignment, Span(), kind == .machine-managed-pointer))
+
+────────────────────
++ get count U32
+
+rows.length as U32
+
+────────────────────
++ kind-of MachineKind @inline
+    - layout LayoutId
+
+rows[layout].kind
+
+────────────────────
++ is-struct Bool @inline
+    - layout LayoutId
+
+layout >= first-struct-layout
+
+────────────────────
++ is-large Bool
+    - layout LayoutId
+
+` Whether a struct travels through memory: the caller passes the address of a copy, and gives
+` the address a result is written to.
+layout >= first-struct-layout && rows[layout].format == .large-format
+
+────────────────────
++ field LayoutField
+    - layout LayoutId
+    - index U32
+
+fields[rows[layout].fields.start + index]
+
+────────────────────
++ memo-flag U32
+    - layout LayoutId
+    - index U32
+
+memo-flags[rows[layout].fields.start + index] ?? U32.max
+
+────────────────────
++ stack-descriptor StringId
+    - layout LayoutId
+
+` The descriptor the collector reads memory of a layout by, when the memory is a struct that
+` holds managed pointers. A pointer alone needs none.
+if layout < first-struct-layout || !rows[layout].is-managed then no-string else struct-descriptor
+
+.. struct-descriptor = rows[layout].descriptor
+
+────────────────────
+_ do value-layout LayoutId
+    - type TypeId
+
+` The layout of a value of a type, built when first asked for. A type that holds itself by
+` value has none.
+if type == no-type || type == invalid-type
+    = no-layout
+if states[type] == 2
+    = values[type]
+if states[type] == 1
+    = no-layout
+states[type] = 1
+. layout = build-value(type)
+values[type] = layout
+states[type] = 2
+= layout
+
+────────────────────
+_ do build-value LayoutId
+    - type TypeId
+
+. completion = types.completions[type]
+if completion.completion != .completion-done || completion.has-variables
+    = no-layout
+. fn = function-row(types, type)
+if fn != no-type
+    do match? types.rows[fn]
+        | .type-function(row)
+            = if row.is-c then pointer-layout else function-layout
+do match completion.intrinsic
+    |= .void
+        = void-layout
+    |= .string
+        = managed-layout
+    |= .class
+        = managed-layout
+    |= .style
+        = managed-layout
+    |= .style-sheet
+        = managed-layout
+    |= .cpointer
+        if traces-pointer(type)
+            = managed-layout
+        = pointer-layout
+    |= .bool
+        = u8-layout
+    |= .int1
+        = u8-layout
+    |= .char
+        = u32-layout
+    |= .float32
+        = f32-layout
+    |= .float64
+        = f64-layout
+    |= .int8
+        = i8-layout
+    |= .uint8
+        = u8-layout
+    |= .int16
+        = i16-layout
+    |= .uint16
+        = u16-layout
+    |= .int32
+        = i32-layout
+    |= .uint32
+        = u32-layout
+    |= .int64
+        = i64-layout
+    |= .uint64
+        = u64-layout
+    |= .tuple
+        = struct-layout(type, false, collects-storage(type))
+    |= .array-builder
+        = struct-layout(type, false)
+    |= .struct
+        = struct-layout(type, false)
+    |= .table
+        = struct-layout(type, false, true)
+    |= .table-row
+        = struct-layout(type, false, true)
+    |= .table-span
+        = struct-layout(type, false, true)
+    |= .table-column
+        = struct-layout(type, false, true)
+    |= .immutable-table
+        = struct-layout(type, false, true)
+    |= .immutable-table-row
+        = struct-layout(type, false, true)
+    |= .immutable-table-span
+        = struct-layout(type, false, true)
+    |= .immutable-table-column
+        = struct-layout(type, false, true)
+    |= .table-selection
+        = struct-layout(type, false)
+    |= .immutable-table-selection
+        = struct-layout(type, false)
+    |= .index-span
+        = struct-layout(type, false)
+    |= .table-mark
+        = struct-layout(type, false)
+    |= .optional
+        = optional-layout(type)
+    |= .union
+        = union-layout(type)
+    |= .type-info
+        = pointer-layout
+    |= .atom
+        = pointer-layout
+    |= .binding
+        = binding-layout(type)
+    |= .closure
+        = managed-layout
+    |= .interface
+        = interface-layout
+    ??
+        = no-layout
+= no-layout
+
+────────────────────
++ do pointee-size U32
+    - type TypeId
+
+` The size of what a C pointer points at, which a count added to the pointer steps by. A
+` pointer to nothing steps by the size of a pointer, and one whose type does not say by one
+` byte.
+. owner = types.type-decl(.cpointer)
+. current = type
+while current != no-type
+    do match? types.rows[current]
+        | .type-class(row)
+            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+                . pointee = types.child-type(row.args, 0)
+                if pointee == no-type || pointee == invalid-type
+                    = 1
+                . layout = values[pointee]
+                if layout == void-layout
+                    = rows[pointer-layout].size
+                if layout == no-layout || rows[layout].size == 0
+                    = 1
+                = rows[layout].size
+    current = types.completions[current].base
+= 1
+
+────────────────────
++ do pointee-type TypeId
+    - type TypeId
+
+` What a C pointer points at, or no type for a type that is not a C pointer or does not say.
+. owner = types.type-decl(.cpointer)
+. current = type
+while current != no-type
+    do match? types.rows[current]
+        | .type-class(row)
+            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+                = types.child-type(row.args, 0)
+    current = types.completions[current].base
+= no-type
+
+────────────────────
+_ do traces-pointer Bool
+    - type TypeId
+
+` Whether the collector follows a C pointer: one that points at values, not at pointers.
+. owner = types.type-decl(.cpointer)
+. current = type
+while current != no-type
+    do match? types.rows[current]
+        | .type-class(row)
+            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+                . pointee = types.child-type(row.args, 0)
+                if pointee == no-type || pointee == invalid-type
+                    = false
+                = types.completions[pointee].intrinsic != .cpointer
+    current = types.completions[current].base
+= false
+
+────────────────────
+_ do collects-storage Bool
+    - type TypeId
+
+` Whether a type is an array or an immutable array on the collected heap, whose first field,
+` the storage, the collector follows however its items are typed, as TypeScript traces it.
+do match? types.rows[type]
+    | .type-class(row)
+        . array = types.array-decl.refers-to(row.module, row.decl)
+        . immutable = types.immutable-array-decl.refers-to(row.module, row.decl)
+        . backed = row.args.count == 2 && types.child-type(row.args, 1) == types.gc-backing-type
+        = (array || immutable) && backed
+= false
+
+────────────────────
+_ do object-layout
+    - type TypeId
+
+` Lays out the object of a class after the objects of the classes above it, each once.
+. waiting [TypeId]
+. current = type
+while current != no-type && placed[current] == 0
+    placed[current] = 1
+    waiting += current
+    current = types.completions[current].base
+for offset in 0 .. < waiting.length
+    place-object(waiting[waiting.length - 1 - offset])
+
+────────────────────
+_ do place-object
+    - type TypeId
+
+` The layout of the object a class's value points to: the class table's address, the
+` object's id, and the stored properties. An object of a class is also an object of its
+` base, so a class has no object here when its base has none, or when it gives a property
+` another type than its base does: a read through the base would find another value at the
+` property's place.
+. completion = types.completions[type]
+if completion.completion != .completion-done || completion.has-variables
+    =
+if !intrinsic-is-class(completion.intrinsic)
+    =
+do match? types.rows[type]
+    | .type-class
+        if holds-base(type)
+            objects[type] = struct-layout(type, true)
+
+────────────────────
+_ do holds-base Bool
+    - type TypeId
+
+. completion = types.completions[type]
+. base = completion.base
+if base == no-type
+    = true
+if objects[base] == no-layout
+    = false
+. above = types.completions[base].properties
+if above.count > completion.properties.count
+    = false
+for position in 0 .. < above.count
+    . theirs = types.properties[above.start + position]
+    . mine = types.properties[completion.properties.start + position]
+    if theirs.storage-kind != .storage-getter && theirs.type != mine.type
+        = false
+= true
+
+────────────────────
+_ do struct-layout LayoutId
+    - type TypeId
+    - is-object Bool
+    - traces-first Bool = false
+
+` A struct of a type's stored properties, each at the next multiple of its alignment, behind
+` the object header when it lays out an object. A lazy property is held with a byte beside
+` it that says whether it has its value, so both are at one place in an object of the class
+` that declares the property and of every class derived from it. A table and its views, and an
+` array on the collected heap (`collects-storage`), trace their first field, the columns or the
+` data, however it is typed, as TypeScript traces it.
+. range = types.completions[type].properties
+. children [LayoutId]
+. held [TypeId]
+. memos [Bool]
+for position in 0 .. < range.count
+    . place = range.start + position
+    . property = types.properties[place]
+    if property.storage-kind == .storage-getter
+        continue
+    . child = value-layout(property.type)
+    if child == no-layout
+        = no-layout
+    if traces-first && children.length == 0
+        child = managed-layout
+    if property.storage-kind == .storage-lazy
+        child = flagged-layout(child, property.type)
+    children += child
+    held += property.type
+    memos += is-object && is-memo-place(place)
+= placed-fields(children, held, is-object, type, memos)
+
+────────────────────
+_ is-memo-place Bool
+    - place U32
+
+if found then found[place] != 0 else false
+
+.. found = memo-places
+
+────────────────────
+_ do binding-layout LayoutId
+    - type TypeId
+
+` A binding as the tuple of what it holds: the value it calls on or calls, where it has one,
+` then the arguments bound so far, each as it was given. One that holds nothing has no size.
+. children [LayoutId]
+. held [TypeId]
+do match? types.rows[type]
+    | .type-binding(row)
+        if row.object != no-type && row.form != .bound-constructor
+            held += row.object
+        for offset in row.param-count .. < row.items.count
+            held += types.child-type(row.items, offset)
+. sized = false
+for item in held
+    . child = value-layout(item)
+    if child == no-layout
+        = no-layout
+    if child != void-layout
+        sized = true
+    children += child
+if !sized
+    = void-layout
+= placed-fields(children, held, false, type)
+
+────────────────────
+_ do placed-fields LayoutId
+    - children [LayoutId]
+    - held [TypeId]
+    - is-object Bool
+    - type TypeId
+    - memos [Bool]? = null
+
+` A struct of fields of these layouts, each at the next multiple of its alignment, behind
+` the object header when it lays out an object.
+. start U32 = fields.length as U32
+. offset U32
+. alignment U32 = 1
+. managed = false
+if is-object
+    fields.append(LayoutField(0, pointer-layout))
+    fields.append(LayoutField(8, u32-layout))
+    offset = 12
+    alignment = 8
+. position = 0
+for child in children
+    . row = rows[child]
+    if row.size != 0
+        offset = aligned(offset, row.alignment)
+        if row.alignment > alignment
+            alignment = row.alignment
+    fields.append(LayoutField(offset, child, held[position]))
+    offset += row.size
+    if memos && memos[position]
+        memo-flags[fields.length - 1] = offset
+        offset += 1
+    position += 1
+    if row.is-managed
+        managed = true
+. size = aligned(offset, alignment)
+. id LayoutId = rows.length as LayoutId
+. count U32 = (fields.length - start) as U32
+rows.append(Layout(.machine-struct, size, alignment, Span(start, count), managed, no-string, type))
+rows[id].format = format-of(id)
+= id
+
+────────────────────
++ do environment LayoutId
+    - children [LayoutId]
+    - held [TypeId]
+    - name String
+
+` The layout of an environment, which holds the locals of one run of a scope that nested
+` functions capture: the fields given, the first of them the link to the environment around
+` it. The capture of a spawned task's body is laid out so too, with no link, and the memory
+` of a task's locals. No type has any of them, so each is named for what describes it to the
+` collector.
+. id = placed-fields(children, held, false, no-type)
+described += 0
+buffered += 0
+if rows[id].is-managed
+    . shape = share(id)
+    if shape != id
+        rows[id].descriptor = rows[shape].descriptor
+        rows[id].site = rows[shape].site
+        = id
+rows[id].descriptor = bundle.intern("gcdesc.$name")
+rows[id].site = bundle.intern("gcsite.$name")
+= id
+
+────────────────────
+_ do flagged-layout LayoutId
+    - child LayoutId
+    - inner TypeId
+
+` A lazy property as an object holds it: its value, and a byte that is set once it has one.
+. row = rows[child]
+. alignment = if row.alignment != 0 then row.alignment else 1
+. start U32 = fields.length as U32
+fields.append(LayoutField(0, child, inner))
+fields.append(LayoutField(row.size, u8-layout))
+. size = aligned(row.size + 1, alignment)
+. id LayoutId = rows.length as LayoutId
+rows.append
+    - Layout(.machine-struct, size, alignment, Span(start, 2), row.is-managed, no-string, no-type)
+rows[id].format = format-of(id)
+= id
+
+────────────────────
+_ do optional-layout LayoutId
+    - type TypeId
+
+` An optional is its value and a byte that says whether it has one. An optional of an atom
+` or a class is the pointer, which points at nothing where there is none. `Null`'s own value
+` is that pointer, so an optional of it keeps the byte.
+. inner = types.optional-inner(type)
+if inner == type
+    = no-layout
+. held = types.completions[inner].intrinsic
+if held == .atom || (held == .class && inner != types.null-type)
+    = value-layout(inner)
+. child = value-layout(inner)
+if child == no-layout
+    = no-layout
+. row = rows[child]
+. start U32 = fields.length as U32
+fields.append(LayoutField(0, child, inner))
+fields.append(LayoutField(row.size, i8-layout))
+. size = aligned(row.size + 1, row.alignment)
+. id LayoutId = rows.length as LayoutId
+. fields-span = Span(start, 2)
+rows.append
+    - Layout(.machine-struct, size, row.alignment, fields-span, row.is-managed, no-string, type)
+rows[id].format = format-of(id)
+= id
+
+────────────────────
+_ do union-layout LayoutId
+    - type TypeId
+
+` A union is a byte that says which case it holds and then the case, with no padding between
+` or after: as large as its largest case and one byte. A case with no value of its own holds
+` a byte.
+. children [LayoutId]
+. held [TypeId]
+for fact in types.cases-of(type)
+    . child = value-layout(fact.type)
+    if child == no-layout
+        = no-layout
+    children += child
+    held += fact.type
+if children.length == 0 || children.length > 256
+    = no-layout
+. start U32 = fields.length as U32
+fields.append(LayoutField(0, u8-layout))
+. largest U32
+. managed = false
+. position = 0
+for child in children
+    . row = rows[child]
+    if row.size > largest
+        largest = row.size
+    if row.is-managed
+        managed = true
+    fields.append(LayoutField(1, child, held[position]))
+    position += 1
+. id LayoutId = rows.length as LayoutId
+rows.append(Layout(.machine-struct, largest + 1, 1, Span(start, 1), managed, no-string, type))
+rows[id].cases = Span(start + 1, children.length as U32)
+rows[id].format = format-of(id)
+= id
+
+────────────────────
++ is-union Bool
+    - layout LayoutId
+
+layout >= first-struct-layout && rows[layout].cases.count != 0
+
+────────────────────
++ case-field LayoutField
+    - layout LayoutId
+    - index U32
+
+fields[rows[layout].cases.start + index]
+
+────────────────────
+_ format-of StructFormat
+    - layout LayoutId
+
+` How a struct travels: up to four floats of one size in float registers, 16 bytes or less
+` in one or two general registers, and anything else through memory.
+|? (leaf == f32-layout || leaf == f64-layout) && leaf-count(layout, leaf) <= 4
+    StructFormat.hfa-format
+|? rows[layout].size > large-struct-size
+    StructFormat.large-format
+??
+    StructFormat.small-format
+
+.. leaf = first-leaf(layout)
+
+────────────────────
+_ do first-leaf LayoutId
+    - layout LayoutId
+
+` The first field of a struct that is no struct itself, or nothing for a struct without one.
+. current = layout
+while current >= first-struct-layout
+    if rows[current].fields.count == 0
+        = void-layout
+    current = fields[rows[current].fields.start].layout
+= current
+
+────────────────────
+_ do leaf-count U32
+    - layout LayoutId
+    - leaf LayoutId
+
+` How many fields a struct holds when each is of one scalar layout, inside any struct it
+` holds too. More than four for a struct that holds anything else, or none.
+if layout < first-struct-layout
+    = if layout == leaf then 1 else 5
+. row = rows[layout]
+if row.fields.count == 0
+    = 5
+. count U32
+for position in row.fields.start .. < row.fields.end
+    count += leaf-count(fields[position].layout, leaf)
+    if count > 4
+        = 5
+= count
+
+────────────────────
++ shared LayoutId
+    - layout LayoutId
+
+if rows[layout].shape != no-layout then rows[layout].shape else layout
+
+────────────────────
+_ do share LayoutId
+    - layout LayoutId
+
+. words = shape-words(layout)
+. key = stable-key-seed
+for word in words
+    key = mixed(key, word)
+. slot = key as Size
+. held = shapes[slot] ?? no-layout
+while held != no-layout && shape-words(held) != words
+    slot += 1
+    held = shapes[slot] ?? no-layout
+if held == no-layout
+    shapes[slot] = layout
+    held = layout
+rows[layout].shape = held
+= held
+
+────────────────────
+_ do shape-words [U64]
+    - layout LayoutId
+
+. pointers [U32]
+. ranges [TaggedRange]
+collect(layout, 0, pointers, ranges)
+. words [U64]
+words += rows[layout].size
+words += pointers.length as U64
+for offset in pointers
+    words += offset
+words += ranges.length as U64
+for range in ranges
+    . cases = case-descriptors(range)
+    words += range.flag
+    words += range.payload
+    words += cases.length as U64
+    for described-case in cases
+        words += described-case
+= words
+
+────────────────────
+_ do case-descriptors [StringId]
+    - range TaggedRange
+
+. cases [StringId]
+if !range.is-union
+    cases += no-string
+    cases += rows[range.layout].descriptor
+    = cases
+. held = rows[range.layout].cases
+for position in held.start .. < held.end
+    . child = rows[fields[position].layout]
+    cases += if child.is-managed then child.descriptor else no-string
+= cases
+
+────────────────────
++ do add-descriptor
+    - layout LayoutId
+
+` Adds a layout's GC descriptor to the object, and the descriptors it names, each once: the
+` layout's size, the offsets of its managed pointers, and a range for each optional or union
+` that holds them. A range names what describes each case by the number the tag gives it,
+` and nothing for a case that holds no pointers.
+if layout == no-layout
+    =
+. own = shared(layout)
+if described[own] != 0
+    =
+described[own] = 1
+. row = rows[own]
+if !row.is-managed
+    =
+. pointers [U32]
+. ranges [TaggedRange]
+collect(own, 0, pointers, ranges)
+for range in ranges
+    if range.is-union
+        . held = rows[range.layout].cases
+        for position in held.start .. < held.end
+            add-descriptor(fields[position].layout)
+    else
+        add-descriptor(range.layout)
+. name = bundle.text(row.descriptor)
+. pointer-items [ConstantItem]
+for offset in pointers
+    pointer-items += quad(offset)
+. pointer-slot = vector("${name}.ptrs", pointer-items)
+. range-items [ConstantItem]
+. index = 0
+for range in ranges
+    . case-items [ConstantItem]
+    for described-case in case-descriptors(range)
+        case-items += if described-case != no-string then label(described-case) else quad(0)
+    . cases = vector("${name}.range${index}.cases", case-items)
+    . range-name = bundle.intern("${name}.range$index")
+    . entry [ConstantItem]
+    entry += quad(range.flag)
+    entry += quad(range.payload)
+    entry += label(cases)
+    add-table(range-name, entry)
+    range-items += label(range-name)
+    index += 1
+. range-slot = vector("${name}.unions", range-items)
+. none [ConstantItem]
+. nothing = vector("", none)
+. items [ConstantItem]
+items += quad(row.size)
+items += label(pointer-slot)
+items += label(nothing)
+items += quad(0)
+items += label(nothing)
+items += quad(0)
+items += label(range-slot)
+items += ConstantItem(.byte-constant, 0, no-string)
+items += ConstantItem(.byte-constant, 0, no-string)
+add-table(row.descriptor, items)
+
+────────────────────
++ do add-buffer-descriptor
+    - layout LayoutId
+
+` Adds to the object the GC descriptor of a buffer of items of a layout, once, and the
+` descriptor of an item, which it names: no object, the size of an item, and what describes
+` one.
+. own = shared(layout)
+. row = rows[own]
+if row.buffer == no-string || buffered[own] != 0
+    =
+buffered[own] = 1
+add-descriptor(own)
+. none [ConstantItem]
+. nothing = vector("", none)
+. items [ConstantItem]
+items += quad(0)
+items += label(nothing)
+items += label(nothing)
+items += quad(row.size)
+items += label(nothing)
+items += label(row.descriptor)
+items += label(nothing)
+items += ConstantItem(.byte-constant, 1, no-string)
+items += ConstantItem(.byte-constant, 0, no-string)
+add-table(row.buffer, items)
+
+────────────────────
++ descriptor-order Comparison
+    - layout LayoutId
+    - other LayoutId
+
+` Orders two layouts as their GC descriptors go in the object: by the stable keys of their types,
+` then by the names of their descriptors, which tell apart those of no type, and then by number,
+` an order that does not depend on the order typing interned the types or the program tables
+` laid them out.
+|? key < held
+    Comparison.lesser
+|? key > held
+    Comparison.greater
+|? name < other-name
+    Comparison.lesser
+|? name > other-name
+    Comparison.greater
+|? layout < other
+    Comparison.lesser
+|? layout > other
+    Comparison.greater
+??
+    Comparison.equal
+
+.. key = if rows[layout].type != no-type then (types.stable-keys[rows[layout].type] as U64) else 0u64
+.. held = if rows[other].type != no-type then (types.stable-keys[rows[other].type] as U64) else 0u64
+.. name = if rows[layout].descriptor != no-string then bundle.text(rows[layout].descriptor) else ""
+.. other-name = if rows[other].descriptor != no-string then bundle.text(rows[other].descriptor) else ""
+
+────────────────────
+_ do collect
+    - layout LayoutId
+    - base U32
+    - pointers [U32]
+    - ranges [TaggedRange]
+
+. row = rows[layout]
+if row.kind == .machine-managed-pointer
+    pointers += base
+    =
+if row.kind != .machine-struct || !row.is-managed
+    =
+. first = row.fields.start
+if row.cases.count != 0
+    ranges += TaggedRange(base, base + 1, layout, true)
+    =
+if is-optional-value(layout)
+    . payload = fields[first]
+    if rows[payload.layout].is-managed
+        . flag = base + fields[first + 1].offset
+        ranges += TaggedRange(flag, base + payload.offset, payload.layout, false)
+    =
+for position in first .. < row.fields.end
+    collect(fields[position].layout, base + fields[position].offset, pointers, ranges)
+
+────────────────────
+_ is-optional-value Bool
+    - layout LayoutId
+
+|? type == no-type || values[type] != layout
+    false
+??
+    types.completions[type].intrinsic == .optional
+
+.. type = rows[layout].type
+
+────────────────────
+_ do vector StringId
+    - name String
+    - items [ConstantItem]
+
+` A list the runtime reads: a slot that points at its state, which points at its items. Every
+` empty list is the same one.
+if items.length == 0
+    if empty-slot == no-string
+        . empty-state = bundle.intern("${empty-vector-name}.state")
+        . state [ConstantItem]
+        state += quad(0)
+        state += quad(0)
+        state += quad(0)
+        add-table(empty-state, state)
+        empty-slot = bundle.intern("${empty-vector-name}.slot")
+        . slot [ConstantItem]
+        slot += label(empty-state)
+        add-table(empty-slot, slot)
+    = empty-slot
+. items-name = bundle.intern("${name}.items")
+add-table(items-name, items)
+. state-name = bundle.intern("${name}.state")
+. state [ConstantItem]
+state += label(items-name)
+state += quad(items.length as U64)
+state += quad(items.length as U64)
+add-table(state-name, state)
+. slot-name = bundle.intern("${name}.slot")
+. slot [ConstantItem]
+slot += label(state-name)
+add-table(slot-name, slot)
+= slot-name
+
+────────────────────
+_ do add-table
+    - name StringId
+    - items [ConstantItem]
+
+. start U32 = bundle.constant-items.length as U32
+for item in items
+    bundle.constant-items.append(item)
+bundle.constant-tables.append(ConstantTable(name, 8, Span(start, items.length as U32)))
+
+────────────────────
++ do add-site-key
+    - layout LayoutId
+    - index U32
+
+. row = rows[layout]
+add-table(row.site, site-items(row.size, label(row.descriptor), 1, index))
+
+────────────────────
++ plain-site StringId
+    - requested U64
+
+plain-sites[(allocated-size(requested) / 8) as U32]
+
+────────────────────
++ do add-plain-site-key
+    - allocated U64
+    - index U32
+
+add-table(plain-site(allocated), site-items(allocated, quad(0), 0, index))
+
+────────────────────
+_ do site-items [ConstantItem]
+    - requested U64
+    - descriptor ConstantItem
+    - pointer-kind U64
+    - index U32
+
+. allocated = allocated-size(requested)
+. offset = 0u64
+if index != 0
+    offset = thread-cache-compiler-buffers-offset + ((index - 1) as U64) * runtime-buffer-size
+. items [ConstantItem]
+items += quad(allocated / 8)
+items += quad(requested)
+items += quad(allocated)
+items += descriptor
+items += quad((index as U64) /or/ (pointer-kind /lshift/ 32))
+items += quad((bundle.gc-allocation-buffer-version as U64) /or/ (site-key-size /lshift/ 32))
+items += quad(offset)
+= items
+
+━━━━━━━━━━━━━━━━━━━━
++ allocated-size U64
+    - requested U64
+
+(least + 7) / 8 * 8
+
+.. least = if requested > 8 then requested else 8u64
+
+━━━━━━━━━━━━━━━━━━━━
++ inlines-allocation Bool
+    - requested U64
+
+requested != 0 && allocated-size(requested) <= inline-allocation-limit
+
+━━━━━━━━━━━━━━━━━━━━
+_ quad ConstantItem
+    - value U64
+
+ConstantItem(.quad-constant, value, no-string)
+
+━━━━━━━━━━━━━━━━━━━━
+_ label ConstantItem
+    - name StringId
+
+ConstantItem(.label-constant, 0, name)
+
+━━━━━━━━━━━━━━━━━━━━
+_ aligned U32
+    - offset U32
+    - alignment U32
+
+((offset + alignment - 1) / alignment) * alignment
+
+━━━━━━━━━━━━━━━━━━━━
++ do hex-text String
+    - value U64
+
+. text = Byte[16]
+for position in 0 .. < 16
+    . digit = ((value /zrshift/ (60 - position * 4)) /and/ 15) as U32
+    text[position] = (if digit < 10 then digit + 48 else digit + 87) as Byte
+= text.slice-string(0 .. < 16)

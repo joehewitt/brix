@@ -1,0 +1,127 @@
+./popups-panel
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
++ AnchoringSection is Box
+
+────────────────────
+
+<This • flow-row
+    <DemoCard "Anchors in a scroll view" • w:330 h:420
+        caption = join • stream
+            * "Open a row’s details, then scroll. The popover tracks its row and closes once the "
+            * "row scrolls out of view."
+        <Box • demo-well flex-col flex:1
+            overflow-y = ScrollOverflow.auto
+            for index in 1 .. 30
+                <ScrollRow • h:34
+                    index = index
+    <DemoCard "Placement playground" • w:560 h:420
+        caption = join • stream
+            * "Drag the anchor. The popover stays open and flips or shifts at the edges of the "
+            * "screen. Drag the window near a screen edge to push it off the window."
+        <PlaygroundArea • flex:1
+            <DraggableAnchor anchor • absolute w:96 h:36
+                left = PositionOffset.coord(200)
+                top = PositionOffset.coord(120)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollRow is Box
+
++ index Int
+
+• This • pl:12
+    border-color = gui-border-color
+    border-bottom-width = 1
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = "Row $index"
+    <Button "Details" • w:76 mr:6
+        align-y = Alignment.center
+        action = => do details.toggle()
+        <Popover details • w:200
+            <Label • card-title h:20
+                text = "Row $index"
+            <Label • card-caption h:18
+                text = "Scroll to watch me follow."
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaygroundArea is Box
+
+• This • demo-well
+    corner-radius = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ DraggableAnchor is Box
+
++ offset Point
++ side-name = "bottom"
++ window-draggable => false
+
+• This • bg:gui-accent-color text:gui-accent-text-color
+    corner-radius = 18
+    cursor = CursorStyle.open-hand
+    drag-cursor = CursorStyle.closed-hand
+    font-weight = FontWeight.bold
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = "Drag me"
+        text-alignment = TextAlignment.center
+    <PlaygroundPopover follower • w:210
+
+────────────────────
+for event on pointer-down
+
+offset = Point(event.root-point.x - bounds.x, event.root-point.y - bounds.y)
+follower.show()
+
+────────────────────
+for event on pointer-drag
+
+. parent-bounds = layout-parent?.content-bounds ?? bounds
+left = PositionOffset.coord(event.root-point.x - offset.x - parent-bounds.x)
+top = PositionOffset.coord(event.root-point.y - offset.y - parent-bounds.y)
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaygroundPopover is Popover
+
+• This
+    popup-stacking = PopupStacking.manual
+    outside-press-dismiss = false
+
+────────────────────
+
+<This
+    <Label • card-title h:20
+        text = "Placed on the ${placement-side-name(#placed-side)}"
+    <Label • card-caption h:36
+        text = "Prefers the bottom; flips to the top, shifts along the edge."
+    <Button "Close" • mt:8
+        action = => do dismiss()
+
+━━━━━━━━━━━━━━━━━━━━
++ placement-side-name
+    - side Side?
+
+match side
+    | Side.top
+        "top"
+    | Side.bottom
+        "bottom"
+    | Side.left
+        "left"
+    | Side.right
+        "right"
+    ??
+        "screen"

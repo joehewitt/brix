@@ -1,0 +1,260 @@
+/YuAppleGUI/YuAppleGUI.h
+/graphics/image
+/os/path
+/stream/aggregate
+
++ clipboard-text-type = "public.utf8-plain-text"
++ clipboard-file-type = "public.file-url"
++ clipboard-image-type = "public.image"
++ clipboard-promise-type = "com.apple.pasteboard.promised-file-content-type"
+
+━━━━━━━━━━━━━━━━━━━━
++ ClipboardData is Union
+
+| text String
+| bytes Byte[]
+| file Path
+
+━━━━━━━━━━━━━━━━━━━━
++ ClipboardRepresentation is Tuple
+
++ type String
++ data ClipboardData
+
+━━━━━━━━━━━━━━━━━━━━
++ ClipboardItem is Tuple
+
++ representations [ClipboardRepresentation]
+
+━━━━━━━━━━━━━━━━━━━━
++ clipboard-text-item ClipboardItem
+    - text String
+
+ClipboardItem([ClipboardRepresentation(clipboard-text-type, ClipboardData.text(text))])
+
+━━━━━━━━━━━━━━━━━━━━
++ clipboard-data-item ClipboardItem
+    - type String
+    - bytes Byte[]
+
+ClipboardItem([ClipboardRepresentation(type, ClipboardData.bytes(bytes))])
+
+━━━━━━━━━━━━━━━━━━━━
++ clipboard-file-item ClipboardItem
+    - path Path
+
+ClipboardItem([ClipboardRepresentation(clipboard-file-type, ClipboardData.file(path))])
+
+━━━━━━━━━━━━━━━━━━━━
++ ClipboardEntry is Tuple
+
++ clipboard Clipboard
++ index Size
++ types [String]
+
+────────────────────
++ get path Path?
+
+(value as String) as Path if value
+
+.. value = C:yumiGuiClipboardItemPath(clipboard.name, index)
+
+────────────────────
++ get is-image Bool
+
+match path
+    |= null
+        conforming-type(clipboard-image-type) != null
+    | file Path
+        clipboard-path-is-image(file)
+
+────────────────────
++ get promised-type String?
+
+read-string(clipboard-promise-type)
+
+────────────────────
++ get is-promised-image Bool
+
+match promised-type
+    |= null
+        false
+    | type String
+        clipboard-type-conforms(type, clipboard-image-type)
+
+────────────────────
++ conforming-type String?
+    - type String
+
+first(each in types when clipboard-type-conforms(each, type))
+
+────────────────────
++ do read-string String?
+    - type String
+
+. value = C:yumiGuiClipboardItemString(clipboard.name, index, type)
+= value as String if value
+
+────────────────────
++ do read-text String?
+
+= read-string(clipboard-text-type)
+
+────────────────────
++ do read-data Byte[]?
+    - type String
+
+. data = C:yumiGuiClipboardItemData(clipboard.name, index, type)
+=? null if data == Pointer()
+do finally C:yumiGuiClipboardDataRelease(data)
+. bytes = Byte[C:yumiGuiClipboardDataLength(data) as Size]
+C:yumiGuiClipboardDataCopy(data, bytes.data, bytes.size)
+= bytes
+
+────────────────────
++ do read-image Image ?! IOError
+    - max-pixel-size I32 = 0
+
+. file = path
+=? load-image(file, max-pixel-size) if file
+. type = conforming-type(clipboard-image-type)
+. bytes = read-data(type) if type
+?! IOError("The clipboard item holds no image")
+    if !bytes
+= decode-image(bytes, 1, max-pixel-size)
+
+━━━━━━━━━━━━━━━━━━━━
++ Clipboard is Tuple
+
++ name String
+
+────────────────────
++ get items [ClipboardEntry]
+
+** 0 .. < (C:yumiGuiClipboardItemCount(name) as Size)
+*> ClipboardEntry(this, each, clipboard-item-types(name, each))
+|> List
+
+────────────────────
++ get images [ClipboardEntry]
+
+** items
+?> each.is-image
+|> List
+
+────────────────────
++ get paths [Path]
+
+** items
+?*> each.path if each.path
+|> List
+
+────────────────────
++ has Bool
+    - type String
+
+some(items) • where each.conforming-type(type) != null
+
+────────────────────
++ get has-image Bool
+
+some(items) • where each.is-image
+
+────────────────────
++ do read-string String?
+    - type String
+
+for entry in items
+    . value = entry.read-string(type)
+    =? value if value
+= null
+
+────────────────────
++ do read-text String?
+
+= read-string(clipboard-text-type)
+
+────────────────────
++ do write Bool
+    - items [ClipboardItem]
+
+. writer = clipboard-writer(items)
+=? false if writer == Pointer()
+do finally C:yumiGuiClipboardWriterRelease(writer)
+= C:yumiGuiClipboardWriterCommit(writer, name)
+
+────────────────────
++ do write-text Bool
+    - text String
+
+= write([clipboard-text-item(text)])
+
+────────────────────
++ do get change-count U64
+
+= C:yumiGuiClipboardChangeCount(name)
+
+────────────────────
++ do discard
+
+=? if !name.length
+C:yumiGuiClipboardDiscard(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ clipboard-type-conforms Bool
+    - type String
+    - parent String
+
+type == parent || C:yumiGuiTypeConforms(type, parent)
+
+━━━━━━━━━━━━━━━━━━━━
++ clipboard-path-type String?
+    - path Path
+
+type as String if type
+
+.. type = C:yumiGuiTypeOfPath("$path")
+
+━━━━━━━━━━━━━━━━━━━━
+_ clipboard-path-is-image Bool
+    - path Path
+
+if type then clipboard-type-conforms(type, clipboard-image-type) else false
+
+.. type = clipboard-path-type(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ clipboard-item-types [String]
+    - name String
+    - index Size
+
+if joined then (joined as String).split("\n") else List'String()
+
+.. joined = C:yumiGuiClipboardItemTypes(name, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ do clipboard-writer Pointer
+    - items [ClipboardItem]
+
+. writer = C:yumiGuiClipboardWriterCreate()
+=? writer if writer == Pointer()
+for item in items
+    C:yumiGuiClipboardWriterAddItem(writer)
+    for representation in item.representations
+        if !clipboard-writer-set(writer, representation)
+            C:yumiGuiClipboardWriterRelease(writer)
+            = Pointer()
+= writer
+
+━━━━━━━━━━━━━━━━━━━━
+_ clipboard-writer-set Bool
+    - writer Pointer
+    - representation ClipboardRepresentation
+
+match representation.data
+    | ClipboardData.text(text)
+        C:yumiGuiClipboardWriterSetString(writer, representation.type, text)
+    | ClipboardData.bytes(bytes)
+        C:yumiGuiClipboardWriterSetData(writer, representation.type, bytes.data, bytes.size)
+    | ClipboardData.file(file)
+        C:yumiGuiClipboardWriterSetPath(writer, "$file")

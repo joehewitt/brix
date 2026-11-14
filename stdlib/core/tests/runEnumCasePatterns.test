@@ -1,0 +1,211 @@
+:====
+# Enum members match as values with |=.
+
+describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe
+    - kind Kind
+
+do match kind
+    |= .a
+        -- "a"
+    |= .b
+        -- "b"
+
+:----
+
+b
+;====
+:====
+# A union case arm on an enum names the enum value syntax.
+
+describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe
+    - kind Kind
+
+do match kind
+    | .a
+        -- "a"
+    | .b
+        -- "b"
+
+:----
+%crash
+
+Exception: Kind.a is an enum value, not a union case; match it with '|= .a'
+<no file:15>
+        | .a
+          ^^
+;====
+:====
+# A qualified union case arm on an enum names the qualified value syntax.
+
+describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe
+    - kind Kind
+
+do match kind
+    |= Kind.a
+        -- "a"
+    | Kind.b
+        -- "b"
+
+:----
+%crash
+
+Exception: Kind.b is an enum value, not a union case; match it with '|= Kind.b'
+<no file:17>
+        | Kind.b
+          ^^^^^^
+;====
+:====
+# Expression matches report the enum value syntax.
+
+-- describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+
+━━━━━━━━━━━━━━━━━━━━
++ describe
+    - kind Kind
+
+match kind
+    | .a
+        "a"
+    | .b
+        "b"
+
+:----
+%crash
+
+Exception: Kind.a is an enum value, not a union case; match it with '|= .a'
+<no file:15>
+        | .a
+          ^^
+;====
+:====
+# Optional matches report the enum value syntax instead of skipping the arm.
+
+. kind = Kind.b
+do match? kind
+    | Kind.a
+        -- "a"
+    | Kind.b
+        -- "b"
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| a = 0
+| b = 1
+
+:----
+%crash
+
+Exception: Kind.a is an enum value, not a union case; match it with '|= Kind.a'
+<no file:4>
+        | Kind.a
+          ^^^^^^
+;====
+:====
+# Matches with a default arm report the enum value syntax.
+
+. kind = Kind.b
+do match kind
+    | .b
+        -- "b"
+    | _
+        -- "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| a = 0
+| b = 1
+
+:----
+%crash
+
+Exception: Kind.b is an enum value, not a union case; match it with '|= .b'
+<no file:4>
+        | .b
+          ^^
+;====
+:====
+# An is test that names an enum value as a case reports the enum value syntax.
+
+. kind = Kind.b
+-- kind is .a
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| a = 0
+| b = 1
+
+:----
+%crash
+
+Exception: Kind.a is an enum value, not a union case; match it with '|= .a'
+<no file:3>
+    -- kind is .a
+               ^^
+;====
+:====
+# An arm that is a name alone binds the name even where the enum has a value of that name.
+
+describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe
+    - kind Kind
+
+do match kind
+    |= Kind.a
+        -- "a"
+    | b
+        -- "b"
+
+:----
+%compile-error
+
+Exception: Arm '| b' binds a new name, not the value Kind.b; match the value with '|= Kind.b'
+<no file:17>
+        | b
+          ^
+;====

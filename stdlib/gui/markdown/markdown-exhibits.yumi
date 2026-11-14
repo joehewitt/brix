@@ -1,0 +1,120 @@
+./markdown-blocks
+./markdown-theme
+/data/json
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownStat is Tuple
+
++ index Index
++ label String
++ value String
++ change String?
++ tone String
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownExhibit is Box
+
++ block MarkdownBlock
++ stats = markdown-exhibit-stats(#block)
+
+────────────────────
+
+<This • flex-col flex:1
+    if #stats != null
+        <MarkdownStatsView
+            stats = #stats!
+    else if markdown-exhibit-is-settled(#block.code)
+        <Box • markdown-code-block flex-col flex:1 px:14 py:12
+            <Text • markdown-code
+                <Span
+                    text = #block.code
+    else
+        <Label • markdown-waiting h:22
+            text = "Drawing…"
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownStatsView is Box
+
++ stats [MarkdownStat]
+
+────────────────────
+
+<This • markdown-stats flex-row flex:1
+    for stat in #stats keyed by stat.index
+        <MarkdownStatView • markdown-stat flex-col px:12 py:8 mr:8
+            stat = stat
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownStatView is Box
+
++ stat MarkdownStat
++ is-good = #stat.tone == "good"
++ is-bad = #stat.tone == "bad"
++ is-warn = #stat.tone == "warn"
+
+────────────────────
+
+<This
+    <Label • markdown-stat-label h:18
+        text = #stat.label
+    <Label • markdown-stat-value h:26
+        text = #stat.value
+    if #stat.change != null
+        <Label • markdown-stat-change h:18
+            text = #stat.change!
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-exhibit-stats [MarkdownStat]?
+    - block MarkdownBlock
+
+|? block.language != "stat"
+    null
+??
+    catch? read-markdown-stats(block.code)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-markdown-stats [MarkdownStat] ?! Error
+    - code String
+
+. stats = List'MarkdownStat()
+for item in markdown-exhibit-items(parse-json(code))
+    . fields = item.object()
+    . tone = if fields["tone"].is-present then fields["tone"].string() else "neutral"
+    . change = markdown-exhibit-text(fields["change"]) if fields["change"].is-present
+    stats += MarkdownStat
+        - stats.length
+        - fields["label"].string()
+        - markdown-exhibit-text(fields["value"])
+        - change
+        - tone
+= stats
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-exhibit-items [JSONReader] ?! Error
+    - root JSON
+
+if | fields [String = JSON] = root
+    = JSONReader("exhibit items", fields["items"]).items()
+= JSONReader("exhibit", root).items()
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-exhibit-text ?! Error
+    - reader JSONReader
+
+match reader.value
+    | text String
+        text
+    | number Int
+        "$number"
+    | number Float
+        "$number"
+    ?! Error("${reader.label} must be text or a number")
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-exhibit-is-settled
+    - code String
+
+trimmed.ends-with("]") || trimmed.ends-with("}")
+
+.. trimmed = code.trim()

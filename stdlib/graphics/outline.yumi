@@ -1,0 +1,168 @@
+./color
+./point
+./primitives
+/core/animatable
+/math
+
+_ outline-arrow-inset-ratio = 0.41421356237309515
+
+━━━━━━━━━━━━━━━━━━━━
++ OutlineArrow is (side Side, offset Length, size Length)
+
+━━━━━━━━━━━━━━━━━━━━
++ Outline is Tuple
+
++ bounds Rect
++ radius Length = 0
++ arrow OutlineArrow? = null
+
+────────────────────
++ get effective-radius Length
+
+max(0, min(radius, min(bounds.width, bounds.height) / 2))
+
+────────────────────
++ get is-rectangular
+
+effective-radius <= 0 && !arrow
+
+────────────────────
++ get extent Rect
+
+match arrow?.side
+    |= Side.top
+        Rect(bounds.x, bounds.y - size, bounds.width, bounds.height + size)
+    |= Side.bottom
+        Rect(bounds.x, bounds.y, bounds.width, bounds.height + size)
+    |= Side.left
+        Rect(bounds.x - size, bounds.y, bounds.width + size, bounds.height)
+    |= Side.right
+        Rect(bounds.x, bounds.y, bounds.width + size, bounds.height)
+    ??
+        bounds
+
+.. size = arrow?.size ?? 0
+
+────────────────────
++ grow Outline
+    - amount Length
+
+Outline
+    - bounds.pad(-amount)
+    - if radius > 0 then max(0, radius + amount) else 0
+    - OutlineArrow(arrow.side, arrow.offset + amount, grown-size) if arrow
+
+.. grown-size = max(0, arrow.size + amount * outline-arrow-inset-ratio)
+
+────────────────────
++ get arrow-span Length
+
+if arrow?.side == Side.left || arrow?.side == Side.right then bounds.height else bounds.width
+
+────────────────────
++ get arrow-fits
+
+arrow-span - effective-radius * 2 >= (arrow?.size ?? 0) * 2
+
+────────────────────
++ get arrow-tip Length
+
+if arrow-fits then min(max(arrow?.offset ?? 0, low), high) else arrow-span / 2
+
+.. low = effective-radius + (arrow?.size ?? 0)
+.. high = arrow-span - effective-radius - (arrow?.size ?? 0)
+
+────────────────────
++ get arrow-half
+
+if arrow-fits then (arrow?.size ?? 0) else max(0, arrow-span / 2 - effective-radius)
+
+────────────────────
++ contains
+    - point Point
+
+|? bounds.contains(point)
+    radius <= 0 || dx * dx + dy * dy <= radius * radius
+|? size <= 0 || depth < 0 || depth > size
+    false
+??
+    abs(along - arrow-tip) <= arrow-half * (1 - depth / size)
+
+.. radius = effective-radius
+.. dx = point.x - min(max(point.x, bounds.x + radius), bounds.right - radius)
+.. dy = point.y - min(max(point.y, bounds.y + radius), bounds.bottom - radius)
+.. size = arrow?.size ?? 0
+.. side = arrow!.side
+.. depth = match side
+    |= Side.top
+        bounds.y - point.y
+    |= Side.bottom
+        point.y - bounds.bottom
+    |= Side.left
+        bounds.x - point.x
+    ??
+        point.x - bounds.right
+.. along = if vertical-side then point.y - bounds.y else point.x - bounds.x
+.. vertical-side = side == Side.left || side == Side.right
+
+━━━━━━━━━━━━━━━━━━━━
++ Shadow is Tuple
+    is Animatable
+
++ color RGBA
++ blur Length = 0
++ x Coord = 0
++ y Coord = 0
++ spread Length = 0
+
+────────────────────
++ This
+    - vector [F64]
+
+= This
+    - RGBA([vector[0], vector[1], vector[2], vector[3]])
+    - max(0.0, vector[4])
+    - vector[5]
+    - vector[6]
+    - vector[7]
+
+────────────────────
++ get reach Length
+
+max(0, blur) * 1.5 + max(0, spread)
+
+────────────────────
++ extent Rect
+    - rect Rect
+
+Rect(rect.x + x, rect.y + y, rect.width, rect.height).pad(-reach)
+
+╌╌╌╌╌╌╌╌╌╌ is Animatable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get motion-vector [F64]
+
+[paint[0], paint[1], paint[2], paint[3], blur as F64, x as F64, y as F64, spread as F64]
+
+.. paint = color.motion-vector
+
+────────────────────
++ get motion-none-vector [F64]
+
+[0.0, 0.0, 0.0, 0.0, blur as F64, x as F64, y as F64, spread as F64]
+
+━━━━━━━━━━━━━━━━━━━━
++ outline-side-code
+    - arrow OutlineArrow?
+
+match arrow?.side
+    |= Side.top
+        0
+    |= Side.bottom
+        1
+    |= Side.left
+        2
+    |= Side.right
+        3
+    ??
+        -1

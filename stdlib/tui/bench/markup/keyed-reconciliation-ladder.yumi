@@ -1,0 +1,158 @@
+`benchmark.meta description: Measures unchanged, reverse, shuffled, and sparse-edit keyed rebuilds by size.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/core/style
+/time/timer
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. checksum Size = 0
+
+checksum += run-keyed-reconciliation-ladder(0)
+checksum += run-keyed-reconciliation-ladder(4)
+checksum += run-keyed-reconciliation-ladder(16)
+checksum += run-keyed-reconciliation-ladder(32)
+checksum += run-keyed-reconciliation-ladder(64)
+checksum += run-keyed-reconciliation-ladder(256)
+checksum += run-keyed-reconciliation-ladder(1023)
+checksum += run-keyed-reconciliation-ladder(1024)
+checksum += run-keyed-reconciliation-ladder(4096)
+checksum += run-keyed-reconciliation-ladder(16384)
+
+-- "bench-result markup/keyed-reconciliation-ladder checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-keyed-reconciliation-ladder Size
+    - size Size
+
+. forward = make-keyed-ladder-items(size, "row")
+. unchanged = make-keyed-ladder-items(size, "same")
+. backward = reverse-keyed-ladder-items(forward)
+. shuffled = shuffle-keyed-ladder-items(forward)
+. sparse = sparse-keyed-ladder-items(forward)
+
+. root = KeyedLadderRoot()
+root.items = forward
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+
+. started = monotonic-time-nanoseconds()
+root.items = unchanged
+root.markup-batch-queue.checkpoint()
+root.items = backward
+root.markup-batch-queue.checkpoint()
+root.items = shuffled
+root.markup-batch-queue.checkpoint()
+root.items = sparse
+root.markup-batch-queue.checkpoint()
+. elapsed = monotonic-time-nanoseconds() - started
+
+record-keyed-ladder-time(size, elapsed)
+= size + (elapsed as Size)
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyedLadderItem is Tuple
+
++ id String
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyedLadderRoot is Box
+    is MarkupBatch
+
++ items [KeyedLadderItem]
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        <Label
+            text = item.text
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+_ make-keyed-ladder-items [KeyedLadderItem]
+    - count Size
+    - prefix String
+
+KeyedLadderItem("id-$each", "${prefix}-$each") in 0 .. < count
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reverse-keyed-ladder-items [KeyedLadderItem]
+    - source [KeyedLadderItem]
+
+. items [KeyedLadderItem]
+. index = source.length
+while index > 0
+    index -= 1
+    items += source[index]
+= items
+
+━━━━━━━━━━━━━━━━━━━━
+_ do shuffle-keyed-ladder-items [KeyedLadderItem]
+    - source [KeyedLadderItem]
+
+. items [KeyedLadderItem]
+for item in source
+    items += item
+
+. state Size = 17
+. index = items.length
+while index > 1
+    index -= 1
+    state = state * 1664525 + 1013904223
+    . swap-index = state % (index + 1)
+    . temporary = items[index]
+    items[index] = items[swap-index]
+    items[swap-index] = temporary
+= items
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sparse-keyed-ladder-items [KeyedLadderItem]
+    - source [KeyedLadderItem]
+
+. items [KeyedLadderItem]
+. index Index = 0
+for item in source
+    if index % 16 == 0
+        items += KeyedLadderItem("edited-$index", "edited-$index")
+    else
+        items += item
+    index += 1
+= items
+
+━━━━━━━━━━━━━━━━━━━━
+_ do record-keyed-ladder-time
+    - size Size
+    - elapsed U64
+
+if size == 0
+    //markup.bench.keyed-ladder-0-ns += elapsed
+else if size == 4
+    //markup.bench.keyed-ladder-4-ns += elapsed
+else if size == 16
+    //markup.bench.keyed-ladder-16-ns += elapsed
+else if size == 32
+    //markup.bench.keyed-ladder-32-ns += elapsed
+else if size == 64
+    //markup.bench.keyed-ladder-64-ns += elapsed
+else if size == 256
+    //markup.bench.keyed-ladder-256-ns += elapsed
+else if size == 1023
+    //markup.bench.keyed-ladder-1023-ns += elapsed
+else if size == 1024
+    //markup.bench.keyed-ladder-1024-ns += elapsed
+else if size == 4096
+    //markup.bench.keyed-ladder-4096-ns += elapsed
+else if size == 16384
+    //markup.bench.keyed-ladder-16384-ns += elapsed

@@ -1,0 +1,69 @@
+`benchmark.meta description: Scans an array-of-structs particle set through the same row-oriented loop.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/array
+
+. row-count = 32768 as Size
+. pass-count = 2048 as Size
+. particles = Array'Particle(row-count) • with particle-for-index(each)
+
+. checksum = 0 as Size
+for pass in 0 .. < pass-count
+    . pass-bias = (pass as Size) + 1
+    for index in 0 .. < particles.length
+        . score = position-score + velocity-score + mass-score + particles[index].kind
+            .. position-score = particles[index].x * 3 + particles[index].y * 5
+            .. velocity-score = particles[index].vx * 7 + particles[index].vy * 11
+            .. mass-score = particles[index].mass * 13
+
+        if (particles[index].group + pass-bias) % 4 == 0
+            checksum += score + particles[index].id + pass-bias
+        else
+            checksum += score / ((particles[index].group % 5) + 1) + particles[index].kind
+
+-- "bench-result table/row-scan-array checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ Particle is Struct
+
++ id Size
++ x Size
++ y Size
++ vx Size
++ vy Size
++ mass Size
++ kind Size
++ group Size
++ cold-a Size
++ cold-b Size
++ cold-c Size
++ cold-d Size
++ cold-e Size
++ cold-f Size
++ cold-g Size
++ cold-h Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ particle-for-index
+    - index Index
+
+Particle
+    - index-size
+    - (index-size * 17 + 3) % 100003
+    - (index-size * 31 + 7) % 100019
+    - (index-size * 13 + 11) % 9973
+    - (index-size * 19 + 5) % 9967
+    - (index-size % 23) + 1
+    - (index-size / 7) % 19
+    - (index-size / 11) % 17
+    - (index-size * 29 + 101) % 1009
+    - (index-size * 37 + 103) % 1013
+    - (index-size * 41 + 107) % 1019
+    - (index-size * 43 + 109) % 1021
+    - (index-size * 47 + 113) % 1031
+    - (index-size * 53 + 127) % 1033
+    - (index-size * 59 + 131) % 1039
+    - (index-size * 61 + 137) % 1049
+
+.. index-size = index as Size

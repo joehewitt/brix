@@ -1,0 +1,530 @@
+./frame
+./numeric
+./type-relation
+./type-store
+./type-text
+./types
+/lang/ast/ast
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ CoverKind is U32
+
+| cover-bool = 0
+| cover-optional = 1
+| cover-union = 2
+| cover-result = 3
+| cover-enum = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ Coverage
+
+` Whether the arms of a match that must take every value of its subject do. A subject has a
+` closed set of cases when it is a boolean, an optional, a union, a result, or a number whose
+` type names its values; any other subject is open and no match over it is checked.
+
++ site SyntaxId = 0
+_ frame Frame
+_ host Demander
+_ types Types
+_ relations Relations
+_ program Program
+_ tree AST
+_ kind CoverKind = .cover-bool
+_ domain TypeId = no-type
+_ label String
+_ labels [String]
++ held [TypeId]
+_ names [Atom?]
+_ plain [Bool]
+_ covered [Bool]
+
+────────────────────
++ This
+    - frame Frame
+    - host Demander
+
+.. types = frame.types
+.. relations = frame.relations
+.. program = frame.program
+.. tree = frame.tree
+
+────────────────────
++ do gap String?
+    - pattern SyntaxId
+    - subject TypeId
+
+` What the arms leave out of a closed subject, as the diagnostic says it, and nothing when
+` they leave nothing out or the subject is open. `site` is where to say it when that is not
+` the arms themselves.
+if subject == no-type || subject == invalid-type || !close(subject)
+    = null
+collect(pattern)
+for index in 0 .. < held.length
+    if held[index] != no-type && covers(pattern, held[index])
+        covered[index] = true
+. missing = ""
+for index in 0 .. < labels.length
+    if !covered[index]
+        if missing.length != 0
+            missing += ", "
+        missing += labels[index]
+if missing.length == 0
+    = null
+. misnamed = enum-case(pattern)
+if misnamed
+    = misnamed
+= "Non-exhaustive match for $label; missing $missing"
+
+────────────────────
++ do bound-case String?
+    - pattern SyntaxId
+    - subject TypeId
+
+. type = subject
+if type != no-type && type != invalid-type && types.is-optional(type)
+    type = types.optional-inner(type)
+if type == no-type || type == invalid-type || !close(type)
+    = null
+if kind != .cover-union && kind != .cover-enum
+    = null
+. name = bare-name(pattern)
+if !name || names.find(name) == null
+    = null
+. member = "${type-short-name(types, domain)}.${name.text}"
+if kind == .cover-enum
+    = "Arm '| ${name.text}' binds a new name, not the value $member; match the value with '|= $member'"
+= "Arm '| ${name.text}' binds a new name, not the case $member; match the case with '| $member'"
+
+────────────────────
+_ do bare-name Atom?
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-capture(row)
+        if row.type == 0
+            do match? tree.nodes[row.id]
+                | .node-identifier(named)
+                    = named.name
+= null
+
+────────────────────
+_ do add
+    - shown String
+    - type TypeId
+    - name Atom?
+    - is-plain Bool = false
+
+` A case, the type of what it holds, and its name. A plain case of a union holds nothing: it
+` stands as the void type, which only a pattern that takes anything covers.
+labels += shown
+held += type
+names += name
+plain += is-plain
+covered += false
+
+────────────────────
+_ do close Bool
+    - subject TypeId
+
+. type = subject
+. row-kind = types.intrinsic-of(type)
+if row-kind == .table-row || row-kind == .immutable-table-row
+    . row = class-arg(types, type, 0)
+    if row != no-type && types.intrinsic-of(row) == .union
+        type = row
+domain = type
+label = type-display(types, type)
+if type == types.bool-type
+    kind = .cover-bool
+    add("true", type, null)
+    add("false", type, null)
+    = true
+if types.is-optional(type)
+    kind = .cover-optional
+    add("present", types.optional-inner(type), null)
+    add("null", no-type, null)
+    = true
+do match? types.rows[type]
+    | .type-result(row)
+        kind = .cover-result
+        label = "Result"
+        if row.value != types.void-type
+            add(type-short-name(types, row.value), row.value, null)
+        for offset in 0 .. < row.errors.count
+            . error = types.child-type(row.errors, offset)
+            add(type-short-name(types, error), error, null)
+        = true
+if types.intrinsic-of(type) == .union
+    kind = .cover-union
+    for index in 0 .. < types.cases-of(type).length
+        . fact = types.cases-of(type)[index]
+        . payload = if fact.is-default then types.void-type else fact.type
+        if fact.name
+            add(".${fact.name!.text}", payload, fact.name, fact.is-default)
+        else
+            add(type-display(types, fact.type), payload, null, fact.is-default)
+    = labels.length != 0
+= close-enum(type)
+
+────────────────────
+_ do close-enum Bool
+    - type TypeId
+
+` A type of whole numbers that names its values is closed when each name stands for its own
+` plain integer. A class that names values of its own is open.
+if !types.completions[type].has-enums || !is-integer-kind(types.intrinsic-of(type))
+    = false
+. ref = class-ref(types, type)
+. owner = program.modules[ref.module]
+. shown = type-short-name(types, type)
+. values [U64]
+do match? owner.decls[ref.decl]
+    | .decl-class(class)
+        for member in owner.member-pool[class.members]
+            do match? owner.decls[member]
+                | .decl-case(case)
+                    . value U64 = values.length as U64
+                    if case.value != 0
+                        do match owner.tree.nodes[case.value]
+                            | .node-integer-syntax(literal)
+                                if literal.unit
+                                    = false
+                                value = parse-integer-literal(literal.value).value
+                            ??
+                                = false
+                    if !case.name || values.find(value) != null
+                        = false
+                    . case-name = case.name
+                    values += value
+                    add("$shown.${case-name.text}", type, case-name)
+kind = .cover-enum
+= labels.length != 0
+
+────────────────────
+_ do cover-all
+
+for index in 0 .. < covered.length
+    covered[index] = true
+
+────────────────────
+_ do collect
+    - pattern SyntaxId
+
+if pattern == 0
+    cover-all()
+    =
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        collect(row.left)
+        collect(row.right)
+        =
+    | .node-type-transform(row)
+        collect(row.pattern)
+        =
+    | .node-type-panic(row)
+        collect(row.pattern)
+        =
+. whole = kind == .cover-bool || kind == .cover-enum
+if whole && covers(pattern, domain)
+    cover-all()
+    =
+do match kind
+    |= .cover-bool
+        . name = equality-name(pattern)
+        if name && name.text == "true"
+            covered[0] = true
+        if name && name.text == "false"
+            covered[1] = true
+    |= .cover-optional
+        do match? tree.nodes[pattern]
+            | .node-type-wildcard
+                cover-all()
+                =
+        . name = equality-name(pattern)
+        if name && name.text == "null"
+            covered[1] = true
+        if covers(pattern, held[0])
+            covered[0] = true
+    |= .cover-union
+        collect-union(pattern)
+    |= .cover-result
+        cover-held(pattern)
+    |= .cover-enum
+        . name = equality-name(pattern)
+        . index = names.find(name) if name
+        if index != null
+            covered[index] = true
+
+────────────────────
+_ do collect-union
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-case(row)
+        . index = names.find(row.name)
+        if index != null && (row.value == 0 || covers(row.value, held[index]))
+            covered[index] = true
+        =
+. name = equality-name(pattern)
+. index = names.find(name) if name
+if index != null && plain[index]
+    covered[index] = true
+    =
+cover-held(pattern)
+
+────────────────────
+_ do cover-held
+    - pattern SyntaxId
+
+for index in 0 .. < held.length
+    if held[index] != no-type && covers(pattern, held[index])
+        covered[index] = true
+
+────────────────────
+_ do equality-name Atom?
+    - pattern SyntaxId
+
+` The name an equality arm compares its subject with: a bare name or symbol, or a value named
+` under the subject's own type.
+do match? tree.nodes[pattern]
+    | .node-type-equality(row)
+        do match? tree.nodes[row.expr]
+            | .node-identifier(named)
+                = named.name
+            | .node-symbol(named)
+                = named.name
+            | .node-get-expression(get)
+                . owner = named-type(get.object)
+                if owner != no-type && owner == domain
+                    = get.name
+= null
+
+────────────────────
+_ do enum-case String?
+    - pattern SyntaxId
+
+` An arm that names a value of a number type as if it were the case of a union matches
+` nothing: the message says how to write the arm, at the arm.
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        . left = enum-case(row.left)
+        if left
+            = left
+        = enum-case(row.right)
+    | .node-type-transform(row)
+        = enum-case(row.pattern) if row.pattern != 0
+    | .node-type-panic(row)
+        = enum-case(row.pattern)
+    | .node-type-case(row)
+        if kind != .cover-enum || names.find(row.name) == null
+            = null
+        if row.type != 0 && named-type(row.type) != domain
+            = null
+        . shown = type-short-name(types, domain)
+        . member = ".${row.name.text}"
+        if row.type != 0
+            member = shown ++ member
+        site = pattern
+        = "$shown.${row.name.text} is an enum value, not a union case; match it with '|= $member'"
+= null
+
+────────────────────
+_ do covers Bool
+    - pattern SyntaxId
+    - subject TypeId
+
+` Whether a pattern takes every value of a type. A list pattern of a rest alone takes every
+` value that has items.
+if pattern == 0
+    = true
+do match? tree.nodes[pattern]
+    | .node-type-wildcard
+        = true
+    | .node-type-transform(row)
+        = covers(row.pattern, subject)
+    | .node-type-capture(row)
+        = covers(row.type, subject)
+do match? types.rows[subject]
+    | .type-result(row)
+        if covers-whole(pattern, subject)
+            = true
+        if row.value != types.void-type && !covers(pattern, row.value)
+            = false
+        for offset in 0 .. < row.errors.count
+            if !covers(pattern, types.child-type(row.errors, offset))
+                = false
+        = true
+if types.intrinsic-of(subject) == .union
+    if covers-whole(pattern, subject)
+        = true
+    for index in 0 .. < types.cases-of(subject).length
+        . fact = types.cases-of(subject)[index]
+        if fact.is-default || fact.type == no-type || !covers(pattern, fact.type)
+            = false
+    = types.cases-of(subject).length != 0
+do match? tree.nodes[pattern]
+    | .node-type-tuple(row)
+        = covers-fields(row.field-types, subject)
+    | .node-type-list(row)
+        if !is-collection-type(tree, pattern)
+            = row.patterns.count == 1 && remainder && host.has-items(subject)
+                .. remainder = is-remainder(tree.children[row.patterns][0])
+    | .node-type-or(row)
+        = covers(row.left, subject) || covers(row.right, subject)
+    | .node-type-and(row)
+        = covers(row.left, subject) && covers(row.right, subject)
+    | .node-type-case
+        = false
+    | .node-type-equality
+        = false
+    | .node-type-panic
+        = false
+    | .node-type-predicate
+        = false
+. target = named-type(pattern)
+if target == no-type
+    = false
+. relation = relations.compare(subject, target, false, false, null, frame.module)
+. down = relation.kind == .relation-down-cast || relation.kind == .relation-interface-down-cast
+= !down && relations.holds-as(relation, required(pattern))
+
+────────────────────
+_ do covers-whole Bool
+    - pattern SyntaxId
+    - subject TypeId
+
+` Whether a pattern takes a union as the one type it is, rather than case by case.
+if pattern == 0
+    = true
+do match? tree.nodes[pattern]
+    | .node-type-wildcard
+        = true
+    | .node-type-transform(row)
+        = covers-whole(row.pattern, subject)
+    | .node-type-capture(row)
+        = covers-whole(row.type, subject)
+    | .node-type-or(row)
+        = covers-whole(row.left, subject) || covers-whole(row.right, subject)
+    | .node-type-tuple
+        = false
+    | .node-type-and
+        = false
+    | .node-type-case
+        = false
+    | .node-type-equality
+        = false
+    | .node-type-panic
+        = false
+    | .node-type-predicate
+        = false
+. target = named-type(pattern)
+if target == no-type
+    = false
+. relation = relations.compare(subject, target, false, false, null, frame.module)
+. kind = relation.kind
+= kind == .relation-same || kind == .relation-equal || kind == .relation-or-cast
+
+────────────────────
+_ is-remainder Bool
+    - pattern SyntaxId
+
+match tree.nodes[pattern]
+    | .node-type-remainder
+        true
+    ??
+        false
+
+────────────────────
+_ do covers-fields Bool
+    - fields RowRange'SyntaxId
+    - subject TypeId
+
+. count = host.tuple-arity(subject)
+if count == U32.max || count != fields.count
+    = false
+. position = 0u32
+for field in tree.children[fields]
+    if !covers(field, host.field-of(subject, position))
+        = false
+    position += 1
+= true
+
+────────────────────
+_ do named-type TypeId
+    - pattern SyntaxId
+
+` The type a pattern names, and no type for a pattern that names none. A type written in
+` brackets names the list or the map of it.
+. syntax = pattern
+do match? tree.nodes[pattern]
+    | .node-type-match(row)
+        syntax = row.type
+if is-collection-type(tree, syntax)
+    . named = types.evaluate-type(frame.module, tree, syntax, frame.env)
+    = if named != invalid-type then named else no-type
+do match? tree.nodes[syntax]
+    | .node-type-identifier
+        . named = types.evaluate-type(frame.module, tree, syntax, frame.env)
+        = if named != invalid-type then named else no-type
+    | .node-type-arguments
+        . named = types.evaluate-type(frame.module, tree, syntax, frame.env)
+        = if named != invalid-type then named else no-type
+    | .node-type-optional
+        . named = types.evaluate-type(frame.module, tree, syntax, frame.env)
+        = if named != invalid-type then named else no-type
+= no-type
+
+────────────────────
+_ do required Specificity
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-match(row)
+        = required-match(row.op)
+= .similar
+
+━━━━━━━━━━━━━━━━━━━━
++ names-type Bool
+    - tree AST
+    - pattern SyntaxId
+
+` Whether a pattern is a type named and no more.
+match tree.nodes[pattern]
+    | .node-type-identifier
+        true
+    | .node-type-arguments
+        true
+    | .node-type-optional
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-collection-type Bool
+    - tree AST
+    - pattern SyntaxId
+
+` Whether a pattern written in brackets is a type and no pattern of items: one type named
+` between them is the type of a list of it, and one named for a key with one for what it
+` holds that of a map, which the reference matches as it matches any type named.
+match tree.nodes[pattern]
+    | .node-type-list(row)
+        row.patterns.count == 1 && types-item(tree, tree.children[row.patterns.start])
+    | .node-type-map(row)
+        row.patterns.count == 1 && types-item(tree, tree.children[row.patterns.start])
+    | .node-type-map-item(row)
+        types-item(tree, row.key) && types-item(tree, row.value)
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ types-item Bool
+    - tree AST
+    - pattern SyntaxId
+
+names-type(tree, pattern) || is-collection-type(tree, pattern)

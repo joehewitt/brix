@@ -1,0 +1,981 @@
+
+./box
+./clipboard
+./primitives
+/core/event
+/core/intrinsics
+/graphics/point
+/graphics/primitives
+/ui/input
+/ui/value-change-phase
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerDeviceKind is Union
+
+| mouse
+| pen
+| cursor
+| eraser
+| touch
+| unknown U32
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollPhase is U64
+
+| none = 0
+| began = 1
+| stationary = 2
+| changed = 4
+| ended = 8
+| cancelled = 16
+| may-begin = 32
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerEventData is Tuple
+
++ root-point Point
++ pointer-id U64
++ device-kind PointerDeviceKind = PointerDeviceKind.mouse
++ modifiers PointerModifiers = PointerModifiers()
++ buttons U64
++ ordering-time F64
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerEvent is Union
+
+| PointerDownEvent
+| PointerUpEvent
+| PointerMoveEvent
+| PointerDragEvent
+| ScrollEvent
+| MagnifyEvent
+| ClickEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusedInputEvent is Union
+
+| KeyPressEvent
+| KeyReleaseEvent
+| KeyInputEvent
+| TextCommandEvent
+| TextCompositionEvent
+| CopyEvent
+| CutEvent
+| PasteEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIRoutedEvent is Union
+
+| PointerDownEvent
+| PointerUpEvent
+| PointerMoveEvent
+| PointerDragEvent
+| ScrollEvent
+| MagnifyEvent
+| TouchEvent
+| ClickEvent
+| FocusEvent
+| BlurEvent
+| KeyPressEvent
+| KeyReleaseEvent
+| KeyInputEvent
+| TextCommandEvent
+| TextCompositionEvent
+| CopyEvent
+| CutEvent
+| PasteEvent
+| ModifiersChangedEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ ModifiersChangedEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIEventRouteNext is () Pointer?
+    - event Pointer
+    - current Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIEventRouteFrame is Tuple
+
++ owner Pointer
++ generation U64
++ point Point
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIEventRouteState is Tuple
+
++ next GUIEventRouteNext?
++ frames [GUIEventRouteFrame]
++ index Size
++ point Point
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIEvent
+    is RoutedEvent
+
++ data PointerEventData
++ point Point
++ route-frames [GUIEventRouteFrame]
++ route-index Size
++ is-canceled = false
++ root-point => data.root-point
++ pointer-id => data.pointer-id
++ device-kind => data.device-kind
++ modifiers => data.modifiers
++ buttons => data.buttons
++ ordering-time => data.ordering-time
+
+_ route-next GUIEventRouteNext?
+
+────────────────────
++ get hit-box Box?
+
+gc-object-from-pointer'Box(route-frames[0].owner) if route-frames.length > 0
+
+────────────────────
++ get has-own-route Bool
+
+if route-next then true else false
+
+────────────────────
++ do cancel
+
+is-canceled = true
+
+────────────────────
++ do begin-route
+    - next GUIEventRouteNext
+    - frames [GUIEventRouteFrame]
+
+. saved = GUIEventRouteState(route-next, route-frames, route-index, point)
+route-next = next
+route-frames = frames
+route-index = 0
+point = frames[0].point
+= saved
+
+────────────────────
++ do end-route
+    - saved GUIEventRouteState
+
+route-next = saved.next
+route-frames = saved.frames
+route-index = saved.index
+point = saved.point
+
+────────────────────
++ do advance-route
+    - index Size
+    - next-point Point
+
+route-index = index
+point = next-point
+
+────────────────────
++ do next-event-owner
+    - current Pointer
+
+=? if !route-next
+= route-next(this as Pointer, current)
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerDownEvent is GUIEvent
+
++ button PointerButton
++ click-count U32
++ window-drag-token U64
+
+────────────────────
++ This
+    - data PointerEventData
+    - button PointerButton = PointerButton.primary
+    - click-count U32 = 1
+    - window-drag-token U64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerUpEvent is GUIEvent
+
++ button PointerButton
++ is-interrupted Bool
+
+────────────────────
++ This
+    - data PointerEventData
+    - button PointerButton = PointerButton.primary
+    - is-interrupted Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerMoveEvent is GUIEvent
+
++ delta Point
+
+────────────────────
++ This
+    - data PointerEventData
+    - delta Point = Point(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerDragEvent is GUIEvent
+
++ button PointerButton
++ delta Point
+
+────────────────────
++ This
+    - data PointerEventData
+    - button PointerButton = PointerButton.primary
+    - delta Point = Point(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollEvent is GUIEvent
+
++ delta-x Length
++ delta-y Length
++ is-precise Bool
++ phase ScrollPhase
++ momentum-phase ScrollPhase
++ delta => Point(delta-x, delta-y)
+
+────────────────────
++ This
+    - data PointerEventData
+    - delta-x Length = 0
+    - delta-y Length = 0
+    - is-precise Bool = false
+    - phase ScrollPhase = ScrollPhase.none
+    - momentum-phase ScrollPhase = ScrollPhase.none
+
+━━━━━━━━━━━━━━━━━━━━
++ MagnifyEvent is GUIEvent
+
++ magnification F64
++ phase ScrollPhase
++ scale => 1 + magnification
+
+────────────────────
++ This
+    - data PointerEventData
+    - magnification F64 = 0
+    - phase ScrollPhase = ScrollPhase.none
+
+━━━━━━━━━━━━━━━━━━━━
++ TouchPhase is U32
+
+| began = 0
+| moved = 1
+| ended = 2
+| cancelled = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ TouchEvent is GUIEvent
+
++ phase TouchPhase
++ delta Point
++ tap-count U32
++ radius F64
++ touch-id => pointer-id
+
+────────────────────
++ This
+    - data PointerEventData
+    - phase TouchPhase = TouchPhase.began
+    - delta Point = Point(0, 0)
+    - tap-count U32 = 0
+    - radius F64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollChangedEvent is Tuple
+
++ old-position Point
++ position Point
++ cause ScrollCause
++ phase ScrollPhase = ScrollPhase.none
++ momentum-phase ScrollPhase = ScrollPhase.none
+
+━━━━━━━━━━━━━━━━━━━━
++ ClickEvent is GUIEvent
+
++ button PointerButton
++ click-count U32
+
+────────────────────
++ This
+    - data PointerEventData
+    - button PointerButton = PointerButton.primary
+    - click-count U32 = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusMode is Union
+
+| none
+| press
+| keys
+| inside
+| input
+
+━━━━━━━━━━━━━━━━━━━━
++ FocusEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ BlurEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyPressEvent is GUIEvent
+
++ key Key
++ is-repeat Bool
++ native-key-code U32
++ characters String
+
+────────────────────
++ This
+    - key
+    - key-modifiers PointerModifiers = PointerModifiers()
+    - is-repeat Bool = false
+    - native-key-code U32 = 0
+    - characters String = ""
+    - data PointerEventData = PointerEventData()
+
+this.data = PointerEventData
+    - data.root-point
+    - data.pointer-id
+    - data.device-kind
+    - key-modifiers
+    - data.buttons
+    - data.ordering-time
+
+────────────────────
++ get typed-text String
+
+if is-shortcut then "" else key-typed-text(key, characters)
+
+.. is-shortcut = modifiers.control || modifiers.option || modifiers.command
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-typed-text String
+    - key Key
+    - characters String
+
+match key
+    | Key.unknown(code)
+        characters
+    | Key.space
+        characters
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyReleaseEvent is GUIEvent
+
++ key Key
++ native-key-code U32
++ characters String
+
+────────────────────
++ This
+    - key
+    - key-modifiers PointerModifiers = PointerModifiers()
+    - native-key-code U32 = 0
+    - characters String = ""
+    - data PointerEventData = PointerEventData()
+
+this.data = PointerEventData
+    - data.root-point
+    - data.pointer-id
+    - data.device-kind
+    - key-modifiers
+    - data.buttons
+    - data.ordering-time
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyInputEvent is GUIEvent
+
++ text String
++ replaces-before Size
+
+────────────────────
++ This
+    - text
+    - replaces-before Size = 0
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextCommand is Union
+
+| move-backward
+| move-forward
+| move-up
+| move-down
+| move-word-backward
+| move-word-forward
+| move-to-line-start
+| move-to-line-end
+| move-to-paragraph-start
+| move-to-paragraph-end
+| move-to-start
+| move-to-end
+| page-up
+| page-down
+| scroll-to-start
+| scroll-to-end
+| scroll-page-up
+| scroll-page-down
+| delete-backward
+| delete-forward
+| delete-word-backward
+| delete-word-forward
+| delete-to-line-start
+| delete-to-line-end
+| delete-to-paragraph-end
+| insert-newline
+| insert-line-break
+| insert-tab
+| insert-backtab
+| cancel
+| complete
+| transpose
+| select-all
+| other String
+
+━━━━━━━━━━━━━━━━━━━━
++ TextCommandEvent is GUIEvent
+
++ command TextCommand
++ extends-selection Bool
++ selector String
+
+────────────────────
++ This
+    - command
+    - extends-selection Bool = false
+    - selector String = ""
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ text-command-event TextCommandEvent
+    - selector String
+
+TextCommandEvent(text-command-from-selector(base), extends, selector)
+
+.. suffix = "AndModifySelection:"
+.. extends = selector.length > suffix.length && selector.ends-with(suffix)
+.. base = if extends then "${selector[0 .. < selector.length - suffix.length]}:" else selector
+
+━━━━━━━━━━━━━━━━━━━━
++ text-command-from-selector TextCommand
+    - selector String
+
+match selector
+    |= "moveLeft:"
+        TextCommand.move-backward
+    |= "moveBackward:"
+        TextCommand.move-backward
+    |= "moveRight:"
+        TextCommand.move-forward
+    |= "moveForward:"
+        TextCommand.move-forward
+    |= "moveUp:"
+        TextCommand.move-up
+    |= "moveDown:"
+        TextCommand.move-down
+    |= "moveWordLeft:"
+        TextCommand.move-word-backward
+    |= "moveWordBackward:"
+        TextCommand.move-word-backward
+    |= "moveWordRight:"
+        TextCommand.move-word-forward
+    |= "moveWordForward:"
+        TextCommand.move-word-forward
+    |= "moveToLeftEndOfLine:"
+        TextCommand.move-to-line-start
+    |= "moveToBeginningOfLine:"
+        TextCommand.move-to-line-start
+    |= "moveToRightEndOfLine:"
+        TextCommand.move-to-line-end
+    |= "moveToEndOfLine:"
+        TextCommand.move-to-line-end
+    |= "moveToBeginningOfParagraph:"
+        TextCommand.move-to-paragraph-start
+    |= "moveParagraphBackward:"
+        TextCommand.move-to-paragraph-start
+    |= "moveToEndOfParagraph:"
+        TextCommand.move-to-paragraph-end
+    |= "moveParagraphForward:"
+        TextCommand.move-to-paragraph-end
+    |= "moveToBeginningOfDocument:"
+        TextCommand.move-to-start
+    |= "moveToEndOfDocument:"
+        TextCommand.move-to-end
+    |= "pageUp:"
+        TextCommand.page-up
+    |= "pageDown:"
+        TextCommand.page-down
+    |= "scrollToBeginningOfDocument:"
+        TextCommand.scroll-to-start
+    |= "scrollToEndOfDocument:"
+        TextCommand.scroll-to-end
+    |= "scrollPageUp:"
+        TextCommand.scroll-page-up
+    |= "scrollPageDown:"
+        TextCommand.scroll-page-down
+    |= "deleteBackward:"
+        TextCommand.delete-backward
+    |= "deleteBackwardByDecomposingPreviousCharacter:"
+        TextCommand.delete-backward
+    |= "deleteForward:"
+        TextCommand.delete-forward
+    |= "deleteWordBackward:"
+        TextCommand.delete-word-backward
+    |= "deleteWordForward:"
+        TextCommand.delete-word-forward
+    |= "deleteToBeginningOfLine:"
+        TextCommand.delete-to-line-start
+    |= "deleteToEndOfLine:"
+        TextCommand.delete-to-line-end
+    |= "deleteToEndOfParagraph:"
+        TextCommand.delete-to-paragraph-end
+    |= "insertNewline:"
+        TextCommand.insert-newline
+    |= "insertLineBreak:"
+        TextCommand.insert-line-break
+    |= "insertNewlineIgnoringFieldEditor:"
+        TextCommand.insert-line-break
+    |= "insertTab:"
+        TextCommand.insert-tab
+    |= "insertTabIgnoringFieldEditor:"
+        TextCommand.insert-tab
+    |= "insertBacktab:"
+        TextCommand.insert-backtab
+    |= "cancelOperation:"
+        TextCommand.cancel
+    |= "complete:"
+        TextCommand.complete
+    |= "transpose:"
+        TextCommand.transpose
+    |= "selectAll:"
+        TextCommand.select-all
+    ??
+        TextCommand.other(selector)
+
+━━━━━━━━━━━━━━━━━━━━
++ TextCompositionEvent is GUIEvent
+
++ text String
++ selection-start Size
++ selection-length Size
++ is-composing => text.length > 0
+
+────────────────────
++ This
+    - text
+    - selection-start Size = 0
+    - selection-length Size = 0
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextInputContext is Tuple
+
++ preceding String
++ selected String
++ caret Rect
+
+━━━━━━━━━━━━━━━━━━━━
++ PasteEvent is GUIEvent
+
++ clipboard Clipboard
+
+────────────────────
++ This
+    - clipboard Clipboard = Clipboard()
+    - data PointerEventData = PointerEventData()
+
+────────────────────
++ do get text String
+
+= clipboard.read-text() ?? ""
+
+━━━━━━━━━━━━━━━━━━━━
++ CopyEvent is GUIEvent
+
++ clipboard Clipboard
+
+────────────────────
++ This
+    - clipboard Clipboard = Clipboard()
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ CutEvent is GUIEvent
+
++ clipboard Clipboard
+
+────────────────────
++ This
+    - clipboard Clipboard = Clipboard()
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ InputEvent is GUIEvent
+
++ text String
+
+────────────────────
++ This
+    - text
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChangeEvent is GUIEvent
+
++ old-text String
++ text String
+
+────────────────────
++ This
+    - old-text
+    - text
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditEvent is GUIEvent
+
++ text String
++ phase ValueChangePhase
+
+────────────────────
++ This
+    - text
+    - phase
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ SubmitEvent is GUIEvent
+
++ text String
+
+────────────────────
++ This
+    - text
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextSelectionEvent is GUIEvent
+
++ start Size
++ end Size
+
+────────────────────
++ This
+    - start
+    - end
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ SelectEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ ActivateEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChooseEvent is GUIEvent
+
++ key String?
+
+────────────────────
++ This
+    - key String? = null
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choosing is Interface
+
++ event chosen ChooseEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ TextEditing is Interface
+
++ event input InputEvent
++ event change ChangeEvent
++ event text-edited TextEditEvent
++ event submit SubmitEvent
++ event text-selected TextSelectionEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ ValueChange'T is GUIEvent
+
++ old-value T
++ value T
++ phase ValueChangePhase
+
+────────────────────
++ This
+    - old-value
+    - value
+    - phase ValueChangePhase = ValueChangePhase.discrete
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ WindowActivatedEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ WindowDeactivatedEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ ClosingEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ ClosedEvent is GUIEvent
+
+────────────────────
++ This
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-device-kind-from-native
+    - raw U32
+
+match raw
+    |= 0
+        PointerDeviceKind.mouse
+    |= 1
+        PointerDeviceKind.pen
+    |= 2
+        PointerDeviceKind.cursor
+    |= 3
+        PointerDeviceKind.eraser
+    |= 4
+        PointerDeviceKind.touch
+    ??
+        PointerDeviceKind.unknown(raw)
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-button-from-native
+    - raw U32
+
+match raw
+    |= 0
+        PointerButton.primary
+    |= 1
+        PointerButton.secondary
+    |= 2
+        PointerButton.middle
+    ??
+        PointerButton.other(raw)
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-device-kind-to-native
+    - kind PointerDeviceKind
+
+match kind
+    | PointerDeviceKind.mouse
+        0u32
+    | PointerDeviceKind.pen
+        1u32
+    | PointerDeviceKind.cursor
+        2u32
+    | PointerDeviceKind.eraser
+        3u32
+    | PointerDeviceKind.touch
+        4u32
+    | PointerDeviceKind.unknown(raw)
+        raw
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-button-to-native
+    - button PointerButton
+
+match button
+    | PointerButton.primary
+        0u32
+    | PointerButton.secondary
+        1u32
+    | PointerButton.middle
+        2u32
+    | PointerButton.other(raw)
+        raw
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerRecordKind is U32
+
+| move = 0
+| down = 1
+| up = 2
+| drag = 3
+| scroll = 4
+| exit = 5
+| deactivate = 6
+| magnify = 7
+| cancel = 8
+| drop-enter = 9
+| drop-over = 10
+| drop-exit = 11
+| drop = 12
+| peer-press = 13
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerRecord is Tuple
+
++ kind PointerRecordKind
++ point Point
++ delta Point = Point(0, 0)
++ pointer-id U64
++ device-kind U32
++ button U32
++ buttons U64
++ modifier-bits U64
++ ordering-time F64
++ click-count U32
++ is-precise = false
++ phase U64
++ momentum-phase U64
++ window-drag-token U64
+
+────────────────────
++ get data PointerEventData
+
+PointerEventData
+    - point
+    - pointer-id
+    - pointer-device-kind-from-native(device-kind)
+    - pointer-modifiers-from-native(modifier-bits)
+    - buttons
+    - ordering-time
+
+────────────────────
++ get pointer-button PointerButton
+
+pointer-button-from-native(button)
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-modifiers-from-native
+    - raw U64
+
+PointerModifiers
+    - (raw /and/ 1) != 0
+    - (raw /and/ 2) != 0
+    - (raw /and/ 4) != 0
+    - (raw /and/ 8) != 0
+    - (raw /and/ 16) != 0
+    - (raw /and/ 32) != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ key-from-native
+    - raw U32
+    - native-key-code U32
+
+match raw
+    |= 1
+        Key.tab
+    |= 2
+        Key.enter
+    |= 3
+        Key.escape
+    |= 4
+        Key.space
+    |= 5
+        Key.arrow-up
+    |= 6
+        Key.arrow-down
+    |= 7
+        Key.arrow-left
+    |= 8
+        Key.arrow-right
+    |= 9
+        Key.home
+    |= 10
+        Key.end
+    |= 11
+        Key.page-up
+    |= 12
+        Key.page-down
+    |= 13
+        Key.backspace
+    |= 14
+        Key.delete
+    |? raw >= 100 && raw <= 115
+        Key.function-key(raw - 99)
+    ??
+        Key.unknown(native-key-code)
+
+━━━━━━━━━━━━━━━━━━━━
++ key-to-native
+    - key Key
+
+match key
+    | Key.tab
+        1u32
+    | Key.enter
+        2u32
+    | Key.escape
+        3u32
+    | Key.space
+        4u32
+    | Key.arrow-up
+        5u32
+    | Key.arrow-down
+        6u32
+    | Key.arrow-left
+        7u32
+    | Key.arrow-right
+        8u32
+    | Key.home
+        9u32
+    | Key.end
+        10u32
+    | Key.page-up
+        11u32
+    | Key.page-down
+        12u32
+    | Key.backspace
+        13u32
+    | Key.delete
+        14u32
+    | Key.function-key(index)
+        index + 99
+    ??
+        0u32
+
+━━━━━━━━━━━━━━━━━━━━
++ pointer-modifiers-to-native
+    - modifiers PointerModifiers
+
+shift-bit /or/ control-bit /or/ option-bit /or/ command-bit /or/ caps-lock-bit /or/ function-bit
+
+.. shift-bit = if modifiers.shift then 1u64 else 0u64
+.. control-bit = if modifiers.control then 2u64 else 0u64
+.. option-bit = if modifiers.option then 4u64 else 0u64
+.. command-bit = if modifiers.command then 8u64 else 0u64
+.. caps-lock-bit = if modifiers.caps-lock then 16u64 else 0u64
+.. function-bit = if modifiers.function then 32u64 else 0u64

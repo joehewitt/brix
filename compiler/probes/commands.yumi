@@ -1,0 +1,777 @@
+./analysis
+./model
+./options
+./output
+./query
+./stats
+/data/json
+/os/file
+/os/path
+/probes/console
+/probes/model
+/probes/supervise
+/probes/trace
+/stream/aggregate
+/stream/sort
+/time/duration
+
+_ default-stats [String] = ["count", "min", "mean", "p50", "p95", "max"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-trace ProbeTrace ?! Error
+    - options ProbeQuery
+    - position Size = 0
+
+= load-trace(options.trace-name(position), options.catalog)
+
+━━━━━━━━━━━━━━━━━━━━
++ do summary Int ?! Error
+    - options ProbeQuery
+
+. trace = open-trace(options)
+. out = options.output
+. logs = 0
+. events = 0
+. groups = 0
+. systems = 0
+. snapshots = trace.snapshots
+. busy [U16 = Size]
+for row in trace.rows
+    do match row.kind
+        |= .log
+            logs += 1
+            busy[row.site-id] = (busy[row.site-id] ?? 0) + 1
+        |= .event
+            events += 1
+            busy[row.site-id] = (busy[row.site-id] ?? 0) + 1
+        |= .begin
+            groups += 1
+        |= .system
+            systems += 1
+        ??
+            continue
+. summaries = group-summaries(trace, options.filter)
+. ranked = sort(busy.keys) • using :: a, b => if busy[a]! > busy[b]! then .lesser else .greater
+. warnings = trace-warnings(trace)
+if !out.is-text
+    . record = Map'String'JSON
+        • "trace" trace.source.trace as JSON
+        • "program" trace.source.program as JSON
+    if trace.source.status
+        record["status"] = trace.source.status as Int
+    record["timed_out"] = trace.source.timed-out
+    record["closed"] = trace.is-closed
+    record["span_ns"] = trace.span as Int
+    record["records"] = trace.rows.length as Int
+    record["logs"] = logs as Int
+    record["events"] = events as Int
+    record["groups"] = groups as Int
+    . grouped [JSON]
+    for item in summaries
+        grouped += group-json(item)
+    record["group_totals"] = grouped
+    . sited [JSON]
+    for id in ranked
+        sited += site-json(trace, trace.sites[id]!, busy[id]!)
+    record["sites"] = sited
+    record["counters"] = counters-json(trace)
+    . warned [JSON]
+    for warning in warnings
+        warned += warning
+    record["warnings"] = warned
+    out.value(record)
+    = 0
+. outcome = ""
+if trace.source.timed-out
+    outcome = " · timed out"
+else if trace.source.status
+    outcome = " · exit ${trace.source.status}"
+out.line("trace    ${trace.source.trace}${outcome}")
+if trace.source.program != ""
+    out.line("program  ${trace.source.program}")
+. kinds [String]
+kinds += "${count-text(logs as U64)} logs"
+if events != 0
+    kinds += "${count-text(events as U64)} events"
+if groups != 0
+    kinds += "${count-text(groups as U64)} groups"
+if systems != 0
+    kinds += "${count-text(systems as U64)} system logs"
+if snapshots != 0
+    kinds += "${count-text(snapshots as U64)} snapshots"
+out.line("records  $record-count over ${duration-text(trace.span)}: ${", ".join(kinds)}")
+    .. record-count = count-text(trace.rows.length as U64)
+if summaries.length != 0
+    out.line("")
+    out.line("groups by total time")
+    for text in group-table(summaries, 8).lines()
+        out.line("  $text")
+    if summaries.length > 8
+        out.line("  … +${summaries.length - 8} more (yumi probes durations)")
+. counted = counter-table(trace, options.filter)
+if counted.length != 0
+    out.line("")
+    out.line("counters")
+    for text in counted.lines()
+        out.line("  $text")
+if ranked.length != 0
+    out.line("")
+    out.line("busiest sites")
+    . table = Table(["records", "site", "fields", "location"], [true])
+    for position in 0 .. < (if ranked.length < 8 then ranked.length else 8)
+        . site = trace.sites[ranked[position]]!
+        table.add(["${count-text(busy[ranked[position]]! as U64)}", site-text(trace, site), ", ".join(trace.field-names(site)), trace.location-of(site)])
+    for text in table.lines()
+        out.line("  $text")
+    if ranked.length > 8
+        out.line("  … +${ranked.length - 8} more (yumi probes sites)")
+for warning in warnings
+    out.line("warning: $warning")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trace-warnings [String]
+    - trace ProbeTrace
+
+. warnings [String]
+if !trace.is-closed
+    warnings += "the program did not close its trace, so records it had not flushed are missing"
+for selector in trace.unmatched
+    warnings += "--probes selector $selector matched no probe sites"
+if trace.unended != 0
+    warnings += "${trace.unended} groups never ended"
+if trace.problem
+    warnings += trace.problem
+if trace.source.catalog == ""
+    warnings += "no catalog for this trace; values are named value1, value2, …"
+else if trace.unnamed-sites != 0
+    warnings += "${trace.unnamed-sites} sites do not match the catalog ${trace.source.catalog}; their values are named value1, value2, …"
+= warnings
+
+━━━━━━━━━━━━━━━━━━━━
+_ do site-text String
+    - trace ProbeTrace
+    - site TraceSite
+
+. names = trace.field-names(site)
+=? site.key if site.template == "" && site.key != ""
+=? "(begin)" if site.template == "" && site.name == "groupBegin"
+=? "(end)" if site.template == "" && site.name == "groupEnd"
+=? site.name ?? "probe" if site.template == ""
+. parts [String] = site.template.split("%%")
+. text = parts[0]
+for index in 1 .. < parts.length
+    . name = if index - 1 < names.length then names[index - 1] else "value$index"
+    text += "{$name}${parts[index]}"
+= if site.key != "" then "[${site.key}] $text" else text
+
+━━━━━━━━━━━━━━━━━━━━
+_ site-kind String
+    - site TraceSite
+
+|? site.name == "groupBegin"
+    "begin"
+|? site.name == "groupEnd"
+    "end"
+|? site.kind == TraceSiteKind.log
+    "log"
+|? site.kind == TraceSiteKind.event
+    "event"
+??
+    "counter"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do site-json JSON
+    - trace ProbeTrace
+    - site TraceSite
+    - records Size
+
+. record = Map'String'JSON
+    • "id" (site.id as Int) as JSON
+    • "kind" site-kind(site) as JSON
+    • "key" site.key as JSON
+    • "template" site.template as JSON
+    • "text" site-text(trace, site) as JSON
+. fields [JSON]
+for name in trace.field-names(site)
+    fields += name
+record["fields"] = fields
+record["location"] = trace.location-of(site)
+record["path"] = site.source-path
+record["line"] = site.line as Int
+record["records"] = records as Int
+= record
+
+━━━━━━━━━━━━━━━━━━━━
++ do sites Int ?! Error
+    - options ProbeQuery
+    - shows-all Bool
+
+. trace = open-trace(options)
+. out = options.output
+. ids = sort(trace.sites.keys) • using :: a, b => if a < b then .lesser else .greater
+. table = Table(["id", "kind", "records", "site", "fields", "location"], [true, false, true])
+for id in ids
+    . site = trace.sites[id]!
+    . records = trace.site-rows[id] ?? 0
+    if records == 0 && !shows-all
+        continue
+    if !out.is-text
+        out.record(site-json(trace, site, records))
+        continue
+    table.add(["$id", site-kind(site), count-text(records as U64), site-text(trace, site), ", ".join(trace.field-names(site)), trace.location-of(site)])
+if out.is-text
+    for text in table.lines()
+        out.line(text)
+    . hidden = ids.length - table.length
+    if hidden != 0
+        out.line("… $hidden sites wrote no records (--all lists them)")
+out.finish()
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do log Int ?! Error
+    - options ProbeQuery
+
+. trace = open-trace(options)
+. out = options.output
+. rows [TraceRow]
+for row in trace.rows
+    if options.filter.accepts(row)
+        rows += row
+for position in out.page(rows.length, 100)
+    if out.is-text
+        out.line(row-line(rows[position]))
+    else
+        out.record(row-json(rows[position], trace.types))
+if out.is-text && rows.length == 0
+    out.line("no records match")
+out.more(rows.length, 100, "records")
+out.finish()
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do around Int ?! Error
+    - options ProbeQuery
+    - context Size?
+
+. target = options.positionals[0]
+. trace = open-trace(options, 1)
+. out = options.output
+. rows [TraceRow]
+for row in trace.rows
+    if options.filter.accepts(row)
+        rows += row
+. index = parse-number(target)
+. time U64? = null
+if !index
+    time = parse-duration(target)
+. center = rows.length
+for position in 0 .. < rows.length
+    . row = rows[position]
+    if (index && row.index as F64 >= index) || (time && row.time >= time)
+        center = position
+        break
+?! Error("No record at or after $target")
+    if center == rows.length
+. shown = context ?? 10
+. first = if center > shown then center - shown else 0
+. last = if center + shown + 1 < rows.length then center + shown + 1 else rows.length
+for position in first .. < last
+    if out.is-text
+        . mark = if position == center then "→ " else "  "
+        out.line("$mark${row-line(rows[position])}")
+    else
+        out.record(row-json(rows[position], trace.types))
+out.finish()
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do counter-table Table
+    - trace ProbeTrace
+    - filter RowFilter
+
+. totals [String = U64]
+. owners [String = Size]
+for count in trace.counts
+    if filter.keys.length != 0 && !key-selected(filter, count.key)
+        continue
+    totals[count.key] = (totals[count.key] ?? 0u64) + count.value
+    if count.owner != "" && !count.owner.ends-with("#0")
+        owners[count.key] = (owners[count.key] ?? 0) + 1
+. owned = owners.length != 0
+. table = Table
+    - if owned then ["counter", "value", "objects"] else ["counter", "value"]
+    - [false, true, true]
+. keys = sort(totals.keys) • using :: a, b => if a < b then .lesser else .greater
+for key in keys
+    if owned
+        table.add([key, count-text(totals[key]!), if owners[key] then "${owners[key]!}" else ""])
+    else
+        table.add([key, count-text(totals[key]!)])
+. metrics = sort(trace.metrics) • using :: a, b => if a.site.key < b.site.key then .lesser else .greater
+for metric in metrics
+    if filter.keys.length != 0 && !key-selected(filter, metric.site.key)
+        continue
+    . shown = if is-timer then timer-text else count-text(metric.value)
+        .. is-timer = metric.site.kind == TraceMetricKind.timer
+        .. timer-text = "${count-text(metric.value)}× ${duration-text(metric.total-ns)}"
+    . cells [String]
+    cells += "${metric.site.key} (metric)"
+    cells += shown
+    if owned
+        cells += ""
+    table.add(cells)
+= table
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-selected Bool
+    - filter RowFilter
+    - key String
+
+some(filter.keys) • where glob-matches(each, key) || key.starts-with("$each.")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do counters-json [JSON]
+    - trace ProbeTrace
+
+. records [JSON]
+for count in trace.counts
+    . record = Map'String'JSON
+        • "key" count.key as JSON
+        • "owner" count.owner as JSON
+        • "value" (count.value as Int) as JSON
+    records += record
+for metric in trace.metrics
+    . record = Map'String'JSON
+        • "key" metric.site.key as JSON
+        • "metric" (if metric.site.kind == TraceMetricKind.timer then "timer" else "counter") as JSON
+        • "value" (metric.value as Int) as JSON
+        • "total_ns" (metric.total-ns as Int) as JSON
+    records += record
+= records
+
+━━━━━━━━━━━━━━━━━━━━
++ do counters Int ?! Error
+    - options ProbeQuery
+
+. trace = open-trace(options)
+. out = options.output
+if !out.is-text
+    for record in counters-json(trace)
+        out.record(record)
+    out.finish()
+    = 0
+. table = counter-table(trace, options.filter)
+if table.length == 0
+    out.line("no counters (the program wrote none, or none match --key)")
+    = 0
+for text in table.lines()
+    out.line(text)
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do group-table Table
+    - summaries [GroupSummary]
+    - limit Size
+
+. table = Table
+    - ["group", "count", "total", "mean", "p50", "p95", "max", "location"]
+    - [false, true, true, true, true, true, true]
+for position in 0 .. < (if summaries.length < limit then summaries.length else limit)
+    . item = summaries[position]
+    . stats = item.stats
+    . unended = if item.unended != 0 then " (+${item.unended} open)" else ""
+    table.add([item.label, "${count-text(stats.count as U64)}$unended", nanoseconds-text(stats.sum), nanoseconds-text(stats.mean), nanoseconds-text(stats.percentile(50.0)), nanoseconds-text(stats.percentile(95.0)), nanoseconds-text(stats.max), item.location])
+= table
+
+━━━━━━━━━━━━━━━━━━━━
+_ nanoseconds-text String
+    - value F64
+
+duration-text(value as U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do group-json JSON
+    - item GroupSummary
+
+. record = Map'String'JSON
+    • "group" item.label as JSON
+    • "location" item.location as JSON
+    • "count" (item.stats.count as Int) as JSON
+    • "open" (item.unended as Int) as JSON
+    • "total_ns" number-json(item.stats.sum)
+    • "mean_ns" number-json(item.stats.mean)
+    • "p50_ns" number-json(item.stats.percentile(50.0))
+    • "p95_ns" number-json(item.stats.percentile(95.0))
+    • "max_ns" number-json(item.stats.max)
+= record
+
+━━━━━━━━━━━━━━━━━━━━
++ do durations Int ?! Error
+    - options ProbeQuery
+
+. trace = open-trace(options)
+. out = options.output
+. summaries = group-summaries(trace, options.filter)
+if !out.is-text
+    for position in out.page(summaries.length, 20)
+        out.record(group-json(summaries[position]))
+    out.finish()
+    = 0
+if summaries.length == 0
+    out.line("no groups (write //+key// … and //-key// … around the work to time it)")
+    = 0
+. shown = out.page(summaries.length, 20)
+. page [GroupSummary]
+for position in shown
+    page += summaries[position]
+for text in group-table(page, page.length).lines()
+    out.line(text)
+out.more(summaries.length, 20, "groups")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do tree Int ?! Error
+    - options ProbeQuery
+    - depth Size?
+
+. trace = open-trace(options)
+. out = options.output
+. nodes = group-tree(trace, options.filter)
+. kept [TreeNode]
+for node in nodes
+    if !depth || node.depth <= depth
+        kept += node
+if !out.is-text
+    for node in kept
+        . record = Map'String'JSON
+            • "path" node.path as JSON
+            • "group" node.label as JSON
+            • "depth" (node.depth as Int) as JSON
+            • "count" (node.count as Int) as JSON
+            • "total_ns" (node.total as Int) as JSON
+            • "self_ns" (node.own as Int) as JSON
+        out.record(record)
+    out.finish()
+    = 0
+if kept.length == 0
+    out.line("no groups (write //+key// … and //-key// … around the work to time it)")
+    = 0
+. table = Table(["total", "self", "count", "group"], [true, true, true])
+for position in out.page(kept.length, 60)
+    . node = kept[position]
+    table.add([duration-text(node.total), duration-text(node.own), count-text(node.count as U64), "${"  " * node.depth}${node.label}"])
+for text in table.lines()
+    out.line(text)
+out.more(kept.length, 60, "groups")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do split-positionals [String]
+    - options ProbeQuery
+    - stats [String]
+
+. traces [String]
+for positional in options.positionals
+    if is-stat-list(positional)
+        for name in stat-names(positional)
+            stats += name
+    else
+        traces += positional
+= traces
+
+━━━━━━━━━━━━━━━━━━━━
++ do agg Int ?! Error
+    - options ProbeQuery
+    - stats [String]
+    - field String?
+    - group-by String?
+
+. traces = split-positionals(options, stats)
+. trace = load-trace(if traces.length != 0 then traces[0] else "last", options.catalog)
+. out = options.output
+?! Error("agg needs --field NAME; fields with numbers here: ${", ".join(numeric-fields(trace))}")
+    if !field
+. named = field
+. names = if stats.length != 0 then stats else default-stats
+. groups = field-groups(trace, options.filter, named, group-by)
+. timed = named == "duration" || named == "time"
+if !out.is-text
+    for position in out.page(groups.length, 50)
+        . group = groups[position]
+        . record = Map'String'JSON()
+        if group-by
+            record[group-by] = group.name
+        record["field"] = named
+        for name in names
+            record[name] = number-json(group.stats.stat(name) ?? 0.0)
+        out.record(record)
+    out.finish()
+    = 0
+if groups.length == 0
+    out.line("no records with a number in $named match; fields with numbers here: $numeric-names")
+        .. numeric-names = ", ".join(numeric-fields(trace))
+    = 0
+. headers [String]
+. rights [Bool]
+headers += group-by ?? "field"
+rights += false
+for name in names
+    headers += name
+    rights += true
+. table = Table(headers, rights)
+for position in out.page(groups.length, 50)
+    . group = groups[position]
+    . cells [String]
+    cells += if group-by then group.name else named
+    for name in names
+        . value = group.stats.stat(name) ?? 0.0
+        cells += stat-text(name, value, timed)
+    table.add(cells)
+for text in table.lines()
+    out.line(text)
+out.more(groups.length, 50, "groups")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ stat-text String
+    - name String
+    - value F64
+    - timed Bool
+
+|? name == "count"
+    count-text(value as U64)
+|? timed && value >= 0.0
+    duration-text(value as U64)
+??
+    number-text(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do numeric-fields [String]
+    - trace ProbeTrace
+
+. found [String = Bool]
+. names [String]
+for row in trace.rows
+    for index in 0 .. < row.fields.length
+        . name = row.fields[index]
+        if found[name] || index >= row.values.length
+            continue
+        if datum-number(value-datum(row.values[index]))
+            found[name] = true
+            names += name
+names += "duration"
+= names
+
+━━━━━━━━━━━━━━━━━━━━
++ do timeline Int ?! Error
+    - options ProbeQuery
+    - stats [String]
+    - bucket U64?
+    - field String?
+
+. trace = open-trace(options)
+. out = options.output
+. width = bucket ?? nice-bucket(trace.span, 60)
+?! Error("--bucket $bucket-text gives more than 400 columns over $span-text; use a larger bucket")
+    if trace.span / width > 400
+.. bucket-text = duration-text(width)
+.. span-text = duration-text(trace.span)
+. stat = if stats.length != 0 then stats[0] else if field then "max" else "count"
+. series = timeline-series(trace, options.filter, width, stat, field)
+if !out.is-text
+    for position in out.page(series.length, 12)
+        . line = series[position]
+        . record = Map'String'JSON
+            • "label" line.label as JSON
+            • "records" (line.count as Int) as JSON
+            • "bucket_ns" (width as Int) as JSON
+            • "stat" stat as JSON
+        . values [JSON]
+        for value in line.buckets
+            values += number-json(value)
+        record["buckets"] = values
+        out.record(record)
+    out.finish()
+    = 0
+if series.length == 0
+    out.line("no records match")
+    = 0
+. measure = if field then "$stat of ${field}" else "records"
+out.line("each column is ${duration-text(width)} over $trace-span; bars show $measure per column")
+    .. trace-span = duration-text(trace.span)
+. table = Table(["", "records", "peak"], [false, true, true])
+. lines [String]
+for position in out.page(series.length, 12)
+    . line = series[position]
+    . peak F64
+    for value in line.buckets
+        if value > peak
+            peak = value
+    table.add
+        - [line.label, count-text(line.count as U64), stat-text(stat, peak, field == "duration")]
+    lines += sparkline(line.buckets)
+. texts = table.lines()
+out.line(texts[0])
+for index in 1 .. < texts.length
+    out.line("${texts[index]}  │${lines[index - 1]}│")
+out.more(series.length, 12, "series")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do outliers Int ?! Error
+    - options ProbeQuery
+    - field String?
+    - context Size?
+
+. trace = open-trace(options)
+. out = options.output
+. found = find-outliers(trace, options.filter, field)
+. timed = !field || field == "duration" || field == "time"
+if !out.is-text
+    for position in out.page(found.length, 10)
+        . outlier = found[position]
+        . record = Map'String'JSON
+            • "row" row-json(outlier.row, trace.types)
+            • "value" number-json(outlier.value)
+            • "median" number-json(outlier.median)
+            • "ratio" number-json(ratio(outlier))
+        out.record(record)
+    out.finish()
+    = 0
+if found.length == 0
+    . wanted = if field then "records with a number in ${field}" else "ended groups (or pass --field NAME)"
+    out.line("no $wanted match")
+    = 0
+for position in out.page(found.length, 10)
+    . outlier = found[position]
+    . value = stat-text("value", outlier.value, timed)
+    . median = stat-text("value", outlier.median, timed)
+    out.line("${ratio-text(ratio(outlier))}× median ($value vs $median)  ${outlier.row.label}  #${outlier.row.index} at ${duration-text(outlier.row.time)}  ${outlier.row.location}")
+    for text in context-lines(trace, outlier.row, context)
+        out.line("    $text")
+out.more(found.length, 10, "outliers")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ ratio-text String
+    - value F64
+
+number-text((((value * 10.0 + 0.5) as U64) as F64) / 10.0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do context-lines [String]
+    - trace ProbeTrace
+    - row TraceRow
+    - context Size?
+
+. lines [String]
+if row.kind == TraceRowKind.begin
+    . limit = context ?? 8
+    . shown = 0
+    . inside = 0
+    for index in row.index + 1 .. < trace.rows.length
+        . other = trace.rows[index]
+        if other.kind == TraceRowKind.end && other.span == row.span
+            break
+        inside += 1
+        if shown < limit
+            lines += row-line(other)
+            shown += 1
+    if inside > shown
+        lines += "… +${inside - shown} more inside (yumi probes around ${row.index})"
+    = lines
+. reach = context ?? 2
+. first = if row.index > reach then row.index - reach else 0
+. last = if row.index + reach + 1 < trace.rows.length then reach-end else trace.rows.length
+    .. reach-end = row.index + reach + 1
+for index in first .. < last
+    . mark = if index == row.index then "→ " else "  "
+    lines += "$mark${row-line(trace.rows[index])}"
+= lines
+
+━━━━━━━━━━━━━━━━━━━━
++ do diff Int ?! Error
+    - options ProbeQuery
+    - shows-all Bool
+
+. left = load-trace(options.positionals[0], null)
+. right = load-trace(options.positionals[1], null)
+. out = options.output
+. changes = trace-changes(left, right, shows-all)
+if !out.is-text
+    for position in out.page(changes.length, 30)
+        . change = changes[position]
+        . record = Map'String'JSON
+            • "section" change.section as JSON
+            • "name" change.name as JSON
+            • "a" number-json(change.left)
+            • "b" number-json(change.right)
+            • "delta" number-json(change.delta)
+        out.record(record)
+    out.finish()
+    = 0
+out.line("a  ${left.source.trace}  ${duration-text(left.span)} · $left-count records")
+    .. left-count = count-text(left.rows.length as U64)
+out.line("b  ${right.source.trace}  ${duration-text(right.span)} · $right-count records")
+    .. right-count = count-text(right.rows.length as U64)
+if changes.length == 0
+    out.line("no differences in records per site, group times or counters")
+    = 0
+. table = Table(["", "name", "a", "b", "change"], [false, false, true, true, true])
+for position in out.page(changes.length, 30)
+    . change = changes[position]
+    table.add([change.section, change.name, change-value(change, change.left), change-value(change, change.right), change-text(change)])
+for text in table.lines()
+    out.line(text)
+out.more(changes.length, 30, "changes")
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ change-value String
+    - change Change
+    - value F64
+
+if change.is-duration then duration-text(value as U64) else number-text(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ change-text String
+    - change Change
+
+|? change.left == 0.0 && change.right != 0.0
+    "new"
+|? change.right == 0.0 && change.left != 0.0
+    "gone"
+|? change.left == change.right
+    "same"
+|? percent >= 0.0
+    "+${ratio-text(percent)}%"
+??
+    "-${ratio-text(-percent)}%"
+
+.. percent = change.delta / change.left * 100.0
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-program Int ?! Error
+    - command [String]
+    - is-quiet Bool
+    - timeout Seconds?
+    - trace-path String?
+
+. program = command[0]
+?! Error("No program at $program; build it first with `yumi x.yumi -o $program --probes --compile`")
+    if !Path(program).is-file
+. run = ProbeRun(program, command[1 ...])
+. catalog = "${program}.probes.json"
+if Path(catalog).is-file
+    run.catalog-path = catalog
+else
+    stderr <- "warning: no catalog at $catalog; was $program compiled with --probes?\n"
+run.timeout = timeout
+. traces = probes-directory()
+run.trace-path = trace-path ?? (new-trace-path(traces, Path(program).name) as String)
+run.shows-lines = !is-quiet
+. code = run.run()
+catch write-last-run(traces, run, code)
+= code

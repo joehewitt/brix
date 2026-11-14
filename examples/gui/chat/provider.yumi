@@ -1,0 +1,49 @@
+/ai
+/ai/services
+/os/env
+/os/path
+
++ chat-reasoning-effort = "medium"
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-store
+    - images AIImageStore
+
+. home = chat-home()
+= AIChatStore(chat-services(home, images), AIChatDatabase(home, images))
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-images
+
+AIImageStore(chat-home() / "images")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-services [AIChatService]
+    - home Path
+    - images AIImageStore
+
+. accounts = AIChatAccounts(home / "access.json")
+= ai-chat-services(accounts) • setup
+    AIChatSetup()
+        • working-directory env("CHAT_DIRECTORY") ?? chat-workspace(home)
+        • effort chat-reasoning-effort
+        • images images
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-home
+
+Path(home, 0) / ".yumi-chat"
+
+.. home = env-required("HOME")
+    catch failure Error
+        ?! Panic("Could not locate the chat directory: $failure")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-workspace String
+    - home Path
+
+. directory = home / "workspace"
+for missing in [home, directory]
+    if !missing.exists
+        catch missing.make-directory()
+= "$directory"

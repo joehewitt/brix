@@ -1,0 +1,158 @@
+./command
+./log
+./reader
+./status
+./untracked
+/os/process
+/stream/aggregate
+
+_ git-stats-sentinel = "--END--\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ GitLineCount is Tuple
+
++ path String
++ additions I64
++ deletions I64
++ is-binary Bool
++ old-path String? = null
++ status String = "M"
+
+━━━━━━━━━━━━━━━━━━━━
++ GitLineCounts is Tuple
+
++ files [GitLineCount]
++ additions I64
++ deletions I64
+
+━━━━━━━━━━━━━━━━━━━━
++ git-line-counts
+    - files [GitLineCount]
+
+GitLineCounts(files, additions, deletions)
+
+.. additions =
+    ** files
+    *> each.additions
+    |> sum
+.. deletions =
+    ** files
+    *> each.deletions
+    |> sum
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-worktree-line-counts ?! Error
+    - directory String
+    - status GitStatus
+    - since String
+
+. base = if since.length > 0 then since else git-empty-tree
+. index = use GitUntrackedIndex(directory, status)
+. output = git-output
+    - directory
+    - ["diff", "--raw", "--numstat", "-z", "-M", "--end-of-options", base, "--"]
+    - null
+    - index.path
+= git-parse-line-counts(output)
+
+━━━━━━━━━━━━━━━━━━━━
++ git-parse-line-counts
+    - bytes Byte[]
+
+git-count-fields(git-fields(bytes))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-count-fields
+    - fields [String]
+
+. statuses = Map'String'String()
+. counts = List'GitLineCount()
+. index Index = 0
+while index < fields.length
+    . field = fields[index]
+    index += 1
+    if field.starts-with(":")
+        . header = List'String(field.split(" "))
+        . status = if header.length == 5 && header[4].length > 0 then header[4][0 .. < 1] else "M"
+        . paths Index = if status == "R" || status == "C" then 2 else 1
+        if index + paths <= fields.length
+            statuses[fields[index + paths - 1]] = status
+        index += paths
+    else
+        . count = git-parse-line-count(field)
+        if count != null && count.path.length == 0 && index + 1 < fields.length
+            counts += git-renamed-count(count, fields[index], fields[index + 1])
+            index += 2
+        else if count != null
+            counts += count
+. files = List'GitLineCount
+    ** counts
+    *> GitLineCount
+        - each.path
+        - each.additions
+        - each.deletions
+        - each.is-binary
+        - each.old-path
+        - statuses[each.path] ?? "M"
+= git-line-counts(files)
+
+━━━━━━━━━━━━━━━━━━━━
++ git-parse-line-count
+    - field String
+
+|? first == null
+    null
+|? second == null
+    null
+|? added == "-"
+    GitLineCount(path, 0, 0, true)
+??
+    GitLineCount(path, added as I64, deleted as I64, false)
+
+.. first = field.find("\t")
+.. second = field.find("\t", first + 1)
+.. added = field[0 .. < first]
+.. deleted = field[first + 1 .. < second]
+.. path = field[second + 1 ...]
+
+━━━━━━━━━━━━━━━━━━━━
+_ git-renamed-count
+    - count GitLineCount
+    - old-path String
+    - path String
+
+GitLineCount(path, count.additions, count.deletions, count.is-binary, old-path)
+
+━━━━━━━━━━━━━━━━━━━━
++ GitStatsReader
+
++ process Process
+
+_ reader GitReader
+_ sentinel Byte[] = git-stats-sentinel as Byte[]
+
+────────────────────
++ This ?! Error
+    - directory String
+
+.. process = git-process
+    - directory
+    - ["diff-tree", "--stdin", "-r", "--raw", "--numstat", "-z", "-M", "--root"]
+.. reader = GitReader(process)
+
+────────────────────
++ do read ?! Error
+    - commit GitCommit
+
+. line = if commit.parents.length > 0 then "${commit.id} ${commit.first-parent}" else commit.id
+process.write("$line\n$git-stats-sentinel")
+. fields = List'String()
+while !reader.consume(sentinel)
+    fields += reader.require-text(0)
+= git-count-fields(fields)
+
+────────────────────
++ do close
+
+process.close()
+process.wait(null)

@@ -1,0 +1,231 @@
+/core/markup
+/graphics/point
+/graphics/primitives
+/gui/events
+/gui/primitives
+/gui/tests/support/probe-boxes
+/gui/window
+/test
+/ui/input
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Box Scroll State And Reveal")
+cases.run(gui-box-scroll-state-tests)
+cases = cases.then("GUI Box Scroll Geometry", gui-box-scroll-geometry-tests)
+cases = cases.then("GUI Nested Scroll Defaults", gui-nested-scroll-default-tests)
+cases = cases.then("GUI Scroll Reveal And Focus", gui-scroll-reveal-focus-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-box-scroll-state-tests
+    - t TestCase
+
+. root = ProbeRoot()
+. scroller = ScrollProbeBox()
+markup-append(root, scroller)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+scroller.arrange-bounds(Rect(0, 0, 20, 20))
+scroller.inner-width = 100
+scroller.inner-height = 100
+scroller.scroll-bounds-visible(Rect(70, 75, 10, 10))
+t.expect("nearest reveal moves the minimum distance", Point(60, 65), scroller.scroll-position)
+
+scroller.scroll-to(Point(0, 0))
+scroller.scroll-bounds-visible(Rect(40, 40, 40, 40))
+t.expect("oversized nearest reveal keeps its leading edge", Point(40, 40), scroller.scroll-position)
+scroller.scroll-to(Point(80, 80))
+scroller.scroll-bounds-visible(Rect(40, 40, 40, 40))
+t.expect
+    - "oversized nearest reveal keeps its trailing edge"
+    - Point(60, 60)
+    - scroller.scroll-position
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-box-scroll-geometry-tests
+    - t TestCase
+
+. trace [String]
+. window = PointerTestWindow(trace)
+window.size = Dimensions(80, 60)
+. scroller = ScrollProbeBox()
+. child = PointerProbeBox("child", trace)
+markup-append(window, scroller)
+markup-append(scroller, child)
+window.open()
+scroller.arrange-bounds(Rect(10, 10, 30, 20))
+scroller.inner-width = 30
+scroller.inner-height = 60
+child.arrange-bounds(Rect(10, 25, 20, 10))
+scroller.scroll-to(Point(0, 10))
+
+t.expect
+    - "route coordinates include live ancestor scroll"
+    - Point(5, 1)
+    - child.point-in-box(Point(15, 16))
+
+window.dispatch-pointer-event(PointerDownEvent(PointerEventData(Point(15, 16), 7)))
+scroller.scroll-to(Point(0, 12))
+trace.clear()
+window.dispatch-pointer-event
+    - PointerDragEvent(PointerEventData(Point(15, 16), 7), PointerButton.primary, Point(0, 0))
+t.expect
+    - "captured route recomputes after ancestor scrolling"
+    - "child:drag:5:3"
+    - trace[0]
+
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-nested-scroll-default-tests
+    - t TestCase
+
+. trace [String]
+. window = PointerTestWindow(trace)
+window.size = Dimensions(120, 100)
+. outer = HorizontalScrollProbeBox()
+. inner = VerticalScrollProbeBox()
+. target = PointerProbeBox("target", trace)
+. other = VerticalScrollProbeBox()
+. other-target = PointerProbeBox("other", trace)
+markup-append(window, outer)
+markup-append(outer, inner)
+markup-append(inner, target)
+markup-append(window, other)
+markup-append(other, other-target)
+window.open()
+outer.arrange-bounds(Rect(10, 10, 60, 60))
+outer.inner-width = 100
+outer.inner-height = 100
+inner.arrange-bounds(Rect(10, 10, 100, 60))
+inner.inner-width = 100
+inner.inner-height = 100
+target.arrange-bounds(Rect(10, 10, 20, 20))
+other.arrange-bounds(Rect(80, 10, 30, 30))
+other.inner-width = 30
+other.inner-height = 100
+other-target.arrange-bounds(Rect(80, 10, 20, 20))
+
+window.dispatch-pointer-event
+    - ScrollEvent
+        - PointerEventData(Point(15, 15))
+        - 5
+        - 7
+        - true
+        - ScrollPhase.began
+t.expect("inner vertical Box consumes precise y", 7, inner.scroll-y)
+t.expect("outer horizontal Box consumes precise x", 5, outer.scroll-x)
+
+inner.scroll-to(Point(0, inner.scroll-max.y))
+window.dispatch-pointer-event
+    - ScrollEvent
+        - PointerEventData(Point(15, 15))
+        - 0
+        - 10
+        - true
+        - ScrollPhase.changed
+t.expect("edge remainder chains to the vertical ancestor", 10, outer.scroll-y)
+window.dispatch-pointer-event
+    - ScrollEvent(PointerEventData(Point(15, 15)), 0, 0.25, true, ScrollPhase.changed)
+
+window.dispatch-pointer-event
+    - ScrollEvent
+        - PointerEventData(Point(85, 15))
+        - 0
+        - 0
+        - true
+        - ScrollPhase.none
+        - ScrollPhase.ended
+t.expect("final momentum delivery remains on the latched route", 4, target.scroll-count)
+window.dispatch-pointer-event
+    - ScrollEvent(PointerEventData(Point(85, 15)), 0, 3, true, ScrollPhase.none)
+t.expect("final momentum end releases the route latch", 3, other.scroll-y)
+t.expect("released route no longer publishes to the original target", 4, target.scroll-count)
+
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-scroll-reveal-focus-tests
+    - t TestCase
+
+. trace [String]
+. window = PointerTestWindow(trace)
+window.size = Dimensions(80, 60)
+window.focus-adapter = GUIFocusAdapter()
+. scroller = VerticalScrollProbeBox()
+. target = FocusProbeBox("target", trace)
+markup-append(window, scroller)
+markup-append(scroller, target)
+window.open()
+scroller.arrange-bounds(Rect(0, 0, 40, 30))
+scroller.inner-width = 40
+scroller.inner-height = 100
+target.arrange-bounds(Rect(0, 70, 30, 10))
+window.update-layout()
+
+t.check("focus request reveals before native focus", target.request-focus())
+t.expect("focus reveal uses the same Box state", 50, scroller.scroll-y)
+
+target.clear-focus()
+scroller.scroll-to(Point(0, 45))
+window.dispatch-pointer-event(PointerDownEvent(PointerEventData(Point(5, 27))))
+window.dispatch-pointer-event(PointerUpEvent(PointerEventData(Point(5, 27))))
+t.check("a press focuses a partly shown box", target.is-focused)
+t.expect("a press leaves the scroll position alone", 45, scroller.scroll-y)
+
+scroller.scroll-to(Point(0, 0))
+target.invalidate-layout()
+t.check
+    - "dirty layout queues reveal instead of using stale geometry"
+    - !scroller.ensure-visible(target)
+window.update-layout()
+t.expect("queued reveal settles after layout", 50, scroller.scroll-y)
+
+scroller.scroll-to(Point(0, 0))
+target.invalidate-layout()
+scroller.ensure-visible(target)
+markup-remove(scroller, target)
+window.update-layout()
+t.expect("queued reveal drops a removed generation", 0, scroller.scroll-y)
+
+window.close()
+
+. contained-window = PointerTestWindow(trace)
+contained-window.size = Dimensions(80, 60)
+. outer = ScrollProbeBox()
+. inner = ContainedVerticalScrollProbeBox()
+. row = PointerProbeBox("row", trace)
+markup-append(contained-window, outer)
+markup-append(outer, inner)
+markup-append(inner, row)
+contained-window.open()
+outer.arrange-bounds(Rect(0, 0, 40, 30))
+outer.inner-width = 40
+outer.inner-height = 80
+inner.arrange-bounds(Rect(0, 0, 40, 50))
+inner.inner-width = 40
+inner.inner-height = 80
+row.arrange-bounds(Rect(0, 20, 20, 10))
+inner.scroll-to(Point(0, 30))
+contained-window.dispatch-pointer-event
+    - ScrollEvent(PointerEventData(Point(5, 5)), 0, 8, true, ScrollPhase.none)
+t.expect("contained overscroll does not move an ancestor", 0, outer.scroll-y)
+
+contained-window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ HorizontalScrollProbeBox is ScrollProbeBox
+
+━━━━━━━━━━━━━━━━━━━━
++ ContainedVerticalScrollProbeBox is VerticalScrollProbeBox
+
+• This
+    overscroll-behavior-y = OverscrollBehavior.contain

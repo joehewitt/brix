@@ -1,0 +1,181 @@
+./curve
+./network
+./network-regions
+./path
+./point
+./primitives
+./shapes
+./stroke
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-stroke
+    - network VectorNetwork
+    - width Length
+    - join JoinType = .round-join-type
+    - cap LineCap = .round
+    - miter-limit Length = 4
+
+if !is-finite(width) || !is-finite(miter-limit) || miter-limit < 1
+    ?! Panic("Invalid network stroke settings")
+. result = Path()
+. pieces [Path]
+=? result if width <= 0
+for trace in network.traces()
+    . first = network.segment(trace.segments[0])
+    . last = network.segment(trace.segments[Position.last])
+    . start = if trace.reversed[0] then first.end else first.start
+    . end = if trace.reversed[Position.last] then last.start else last.end
+    . both-leaves = network.degree(start) == 1 && network.degree(end) == 1
+    . outline = stroke
+        - trace.path
+        - width
+        - .center
+        - join
+        - if both-leaves then cap else .butt
+        - miter-limit
+    pieces += outline
+    if !both-leaves && !trace.path.is-closed
+        if network.degree(start) == 1
+            pieces += network-end-cap
+                - network-outgoing(network, NetworkEnd(first.id, trace.reversed[0]))
+                - width
+                - cap
+        if network.degree(end) == 1
+            pieces += network-end-cap
+                - network-outgoing(network, NetworkEnd(last.id, !trace.reversed[Position.last]))
+                - width
+                - cap
+for vertex in network.vertices
+    if network.degree(vertex.id) > 2
+        . curves [Curve]
+        . angles [Float]
+        for edge in network.segments
+            if edge.start == vertex.id
+                network-insert-ray
+                    - curves
+                    - angles
+                    - network-outgoing(network, NetworkEnd(edge.id, false))
+            if edge.end == vertex.id
+                network-insert-ray
+                    - curves
+                    - angles
+                    - network-outgoing(network, NetworkEnd(edge.id, true))
+        for i in 0 .. < curves.length
+            . a = curves[i]
+            . b = curves[if i == curves.length - 1 then 0 else i + 1]
+            . patch = stroke-join
+                - vertex.position
+                - network-start-direction(a) * -1
+                - network-start-direction(b)
+                - width
+                - join
+                - miter-limit
+            pieces += patch
+=? pieces[0] if pieces.length == 1
+for piece in pieces
+    . area Float
+    for curve in piece.curves
+        area += network-curve-area(curve)
+    if area < 0
+        for subpath in piece.subpaths
+            result.add-path(subpath.materialize().reverse())
+    else
+        result.add-path(piece)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ network-outgoing
+    - network VectorNetwork
+    - endpoint NetworkEnd
+
+if endpoint.at-end then flipped else curve
+
+.. curve = network.curve(endpoint.segment)
+.. flipped = Curve(curve.anchor2, curve.handle-in, curve.handle-out, curve.anchor1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-insert-ray
+    - curves [Curve]
+    - angles [Float]
+    - curve Curve
+
+. tangent = network-start-direction(curve)
+. angle = atan2(tangent.y, tangent.x)
+for i in 0 .. < angles.length
+    if angle < angles[i]
+        curves.insert(curve, i)
+        angles.insert(angle, i)
+        =
+curves += curve
+angles += angle
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-start-direction
+    - curve Curve
+
+. delta = curve.handle-out - curve.anchor1
+if delta.length <= 0.000000001
+    delta = curve.handle-in - curve.anchor1
+if delta.length <= 0.000000001
+    delta = curve.anchor2 - curve.anchor1
+= if delta.length > 0 then delta / delta.length else Point(1, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-end-cap
+    - curve Curve
+    - width Length
+    - cap LineCap
+
+=? Path() if cap == .butt
+=? circle(curve.anchor1, width / 2) if cap == .round
+. direction = network-start-direction(curve) * (width / 2)
+. normal = Point(-direction.y, direction.x)
+. center = curve.anchor1
+. result = Path()
+result.move-to(center + normal)
+result.line-to(center + normal - direction)
+result.line-to(center - normal - direction)
+result.line-to(center - normal)
+result.close()
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkStrokeWorkspace
+
+_ owner VectorNetwork?
+_ version Size
+_ last-width Length
+_ last-join JoinType = .round-join-type
+_ last-cap LineCap = .round
+_ last-limit Length = 4
+_ cached Path?
+
+────────────────────
++ do resolve Path
+    - network VectorNetwork
+    - width Length
+    - join JoinType = .round-join-type
+    - cap LineCap = .round
+    - miter-limit Length = 4
+
+. same-owner = owner && owner as Pointer == network as Pointer
+. same-version = version == network.revision
+. same-settings = width == last-width && join == last-join && cap == last-cap
+if same-owner && same-version && same-settings && miter-limit == last-limit && cached
+    = cached
+. result = network-stroke(network, width, join, cap, miter-limit)
+owner = network
+version = network.revision
+last-width = width
+last-join = join
+last-cap = cap
+last-limit = miter-limit
+cached = result
+= result
+
+────────────────────
++ do clear
+
+owner = null
+cached = null

@@ -1,0 +1,182 @@
+./box
+./primitives
+/core/markup
+/graphics/canvas
+/graphics/graphic
+/graphics/matrix
+/graphics/primitives
+/graphics/vector-group
+/graphics/vectorgeometry
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorImage is Box
+    is VectorGroupHost
+    is MarkupBatch
+
++ view-box = Rect()
++ fit = ImageFit.contain
++ content-align-x = AnchorPoint.center
++ content-align-y = AnchorPoint.center
++ group := VectorGroup(this)
++ markup-batch-queue := MarkupBatchQueue(this)
+
+_ layout-content Rect
+_ has-layout-content Bool
+
+. vector-intrinsic-changed < view-box
+. vector-fit-changed < fit, content-align-x, content-align-y
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - view-box
+
+────────────────────
++ do markup-absorb
+    - content VectorNode
+
+group.markup-absorb(content)
+
+────────────────────
+_ do vector-intrinsic-changed
+
+group.graphic-invalidate(graphic-change-intrinsic /or/ graphic-change-geometry)
+
+────────────────────
+_ do vector-fit-changed
+
+group.graphic-invalidate(graphic-change-geometry)
+
+────────────────────
++ do markup-style-domains-changed
+    - mask U32
+
+super.markup-style-domains-changed(mask)
+. kinds = vector-style-change-kinds(mask) /and/ graphic-change-appearance
+if kinds
+    group.graphic-invalidate(kinds)
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+. next = content-bounds
+. did-change = !has-layout-content || layout-content != next
+layout-content = next
+has-layout-content = true
+if did-change && group.parent && effective-view-box()
+    group.graphic-invalidate(graphic-change-geometry)
+
+────────────────────
++ do mounted
+
+super.mounted()
+markup-adopt(group, this, markup-batch-root)
+
+────────────────────
++ do unmounted
+
+markup-release(group)
+super.unmounted()
+
+────────────────────
++ do close
+
+group.close()
+super.close()
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+if viewport then Dimensions(viewport.width, viewport.height) else Dimensions(0, 0)
+
+.. viewport = effective-view-box()
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+=? if group.parent
+. viewport = effective-view-box()
+if !viewport
+    group.paint-vector(canvas, null, true, null, content-bounds)
+    =
+. view = viewport
+. content = content-bounds
+=? if content.width <= 0 || content.height <= 0
+use canvas.saved-state
+. transform = fitted-transform(view, content)
+=? if group.paint-vector-geometry(canvas, view, transform, content, $color)
+canvas.clip(content)
+canvas.transform(transform)
+group.paint-vector(canvas, null, false, null, view)
+
+────────────────────
++ do markup-attach-child
+    - child GuiNode
+    - anchor GuiNode?
+
+super.markup-attach-child(child, anchor)
+=? if !(child is VectorImage)
+. next = (anchor as VectorImage).group if anchor && anchor is VectorImage
+group.insert-group((child as VectorImage).group, next)
+
+────────────────────
++ do markup-detach-child
+    - child GuiNode
+
+super.markup-detach-child(child)
+=? if !(child is VectorImage)
+group.remove-group((child as VectorImage).group)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌ is VectorGroupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get vector-host-viewport Rect?
+
+effective-view-box()
+
+────────────────────
++ get vector-host-transform Matrix?
+
+|? !viewport || content.width <= 0 || content.height <= 0
+    null
+??
+    fitted-transform(viewport, content)
+
+.. viewport = effective-view-box()
+.. content = content-bounds
+
+────────────────────
++ do vector-host-changed
+    - kinds U8
+
+if kinds /and/ graphic-change-intrinsic
+    invalidate-content-size()
+else
+    invalidate-paint()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ effective-view-box Rect?
+
+view-box if view-box.width > 0 && view-box.height > 0
+
+────────────────────
+_ fitted-transform Matrix
+    - view Rect
+    - content Rect
+
+vector-view-transform
+    - view
+    - image-fit-rect(view.size, content, fit, content-align-x, content-align-y)

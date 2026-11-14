@@ -1,0 +1,962 @@
+:====
+
+/YuEvents/YuGCHandshake.h
+/YuGC/YuGC.h
+
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+-- zone-state(4)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+zone-collection-boundary()
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ do zone-state Bool @no-gc
+    - count Int
+
+. total = 0
+for index in 0 .. < count
+    total += index
+= C:yumiGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ do zone-collection-boundary @no-gc
+
+C:yumiCollect()
+
+:----
+
+true
+false
+true
+true
+;====
+:====
+
+/YuEvents/YuGCHandshake.h
+
+-- catch gc-free-propagate(false)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+-- gc-free-catch(false)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+-- catch gc-free-catch-replace(false)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ GCFreeFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ GCFreeReplacement is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-fallible Int ?! GCFreeFailure @no-gc
+    - succeeds Bool
+
+if succeeds
+    = 7
+?! GCFreeFailure("failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-propagate Int ?! GCFreeFailure @no-gc
+    - succeeds Bool
+
+= gc-free-fallible(succeeds) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-catch Int @no-gc
+    - succeeds Bool
+
+. value = gc-free-fallible(succeeds)
+    catch GCFreeFailure
+        40
+= value + 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-catch-replace Int ?! GCFreeReplacement @no-gc
+    - succeeds Bool
+
+. value = gc-free-fallible(succeeds)
+    catch GCFreeFailure
+        ?! GCFreeReplacement("replaced")
+= value
+
+:----
+
+failed
+true
+42
+true
+replaced
+true
+;====
+:====
+
+/YuEvents/YuGCHandshake.h
+
+-- managed-catch-then-allocate(true)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+-- managed-catch-value(false)
+-- C:yumiGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ ManagedFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do managed-fallible Int ?! ManagedFailure
+    - succeeds Bool
+
+if succeeds
+    = 7
+?! ManagedFailure("failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do managed-catch-then-allocate Size
+    - succeeds Bool
+
+. value = managed-fallible(succeeds)
+    catch ManagedFailure
+        ?! Panic("managed failure")
+. values = [value]
+= values.length
+
+━━━━━━━━━━━━━━━━━━━━
++ managed-catch-value Int
+    - succeeds Bool
+
+managed-fallible(succeeds)
+    catch ManagedFailure
+        3
+
+:----
+
+1
+true
+3
+true
+;====
+:====
+
+. seed = 5
+do @no-gc
+    . value = seed + 7
+    value += 1
+-- seed
+
+:----
+
+5
+;====
+:====
+
+. seed = 5
+do @no-gc
+    . box = Box()
+-- seed
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+:----
+%crash
+
+Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1)
+<no file:8>
+    + Box
+    ^^^^
+;====
+:====
+
+allocate-in-zone()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do allocate-in-zone @no-gc
+
+. box = Box()
+-- box.value
+
+:----
+%crash
+
+Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1)
+<no file:5>
+    + Box
+    ^^^^
+;====
+:====
+
+. holder = Holder()
+holder.replace("after")
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value String = "before"
+
+────────────────────
++ do replace @no-gc
+    - next String
+
+value = next
+
+:----
+%crash
+
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:11:1); compute into a zone buffer and publish after the zone exits
+<no file:14>
+    value = next
+    ^^^^^^^^^^^^
+;====
+:====
+
+. generator = suspended-values()
+-- generator()
+
+━━━━━━━━━━━━━━━━━━━━
++ do suspended-values @no-gc
+
+<= 1
+
+:----
+%crash
+
+Exception: cannot suspend inside a GC-free zone (entered at no file:6:1)
+<no file:8>
+    <= 1
+    ^^^^
+;====
+:====
+
+conflict()
+
+━━━━━━━━━━━━━━━━━━━━
++ conflict @no-gc @no-heap
+
+:----
+%crash
+
+Exception: Conflicting compilation effect 'no-heap'
+<no file:4>
+    ━━━━━━━━━━━━━━━━━━━━
+    ^^^^^^^^^^^^^^^^^^^
+;====
+:====
+
+. generator = suspended-values()
+-- generator()
+
+━━━━━━━━━━━━━━━━━━━━
++ do suspended-values @no-safepoint
+
+<= 1
+
+:----
+%crash
+
+Exception: cannot suspend inside a @no-suspend context
+<no file:8>
+    <= 1
+    ^^^^
+;====
+:====
+
+/core/arena
+/core/table
+
+. span-source = "span-owned".codepoints
+-- arena-cycle(span-source)
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-cycle U64 @no-gc
+    - span-source Char[]
+
+. arena = Arena(4096)
+do finally
+    arena.release()
+. alias = arena
+. checksum = 0u64
+. copied = arena-copy-string(alias)
+checksum += copied.length as U64
+. copied-span = arena-copy-codepoint-span(alias, span-source)
+checksum += copied-span.length as U64
+for index in 0 .. < 16
+    . value = alias.allocate'U64(1)
+    value[0] = index as U64
+    checksum += value[0]
+. mark = alias.mark
+. discarded = alias.allocate'U64(1)
+discarded[0] = 99u64
+alias.rewind(mark)
+. rows = Table'ArenaBenchRow(arena, 1)
+rows.append(ArenaBenchRow(10u64, 20u64))
+. table-mark = rows.mark
+rows.append(ArenaBenchRow(30u64, 40u64))
+checksum += rows[0].left + rows[1].right
+rows.rewind(table-mark)
+rows.clear()
+arena.reset()
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-copy-string String @no-gc
+    - arena Arena
+
+= arena.copy-string("arena-owned")
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-copy-codepoint-span String @no-gc
+    - arena Arena
+    - source Char[]
+
+= arena.copy-span(source, 0, source.length)
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBenchRow is Struct
+
++ left U64
++ right U64
+
+:----
+
+191
+;====
+:====
+
+/core/arena
+
+. arena = Arena(256)
+do finally arena.release()
+-- arena-cycle(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ ManagedBacking'Value
+
++ marker Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBacking'Value is Tuple
+
++ arena Arena
+
+━━━━━━━━━━━━━━━━━━━━
++ Storage'Value'Backing is Tuple
+    - Backing = ManagedBacking'Value
+
++ storage Backing
++ value Value
+
+────────────────────
++ This
+    - value Value
+
+storage = ManagedBacking'Value()
+
+────────────────────
++ This
+    - arena Arena
+    - value Value
+    - Backing = ArenaBacking'Value
+
+storage = ArenaBacking'Value(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-cycle U32 @no-gc
+    - arena Arena
+
+. storage Storage'U32'(ArenaBacking'U32) = Storage'U32(arena, 41u32)
+= storage.value
+
+:----
+
+41
+;====
+:====
+
+/core/arena
+/core/table
+
+-- controlled-union-cycle()
+
+━━━━━━━━━━━━━━━━━━━━
++ do controlled-union-cycle U64 @no-gc
+
+. arena = Arena(8192)
+do finally
+    arena.release()
+. rows = Table'Node(arena, 1)
+rows.append(Node.small(1u32, 1u64, 2u32))
+rows.reserve(8)
+rows.append(Node.wide(2u32, 3u64, 4u32, 5u32))
+rows.append(Node.small(3u32, 6u64, 7u32))
+
+rows[0].lower(2u64)
+rows[1].lower(3u64)
+. extension-checksum = (rows[0].source-plus as U64) + rows[0].score() + rows[1].score()
+
+match rows[1]
+    | .small(small)
+        small.value += 1u64
+    | .wide(wide)
+        wide.hot += 1u64
+match rows[1]
+    | .small(small)
+        small.cold += 1u32
+    | .wide(wide)
+        wide.cold += 1u32
+
+. live = rows[1]
+rows[0] = live
+. span = rows[0 .. < 2]
+rows[1 .. < 3] = span
+
+. snapshot Node = rows[1] as Node
+. checksum = match snapshot
+    | .small(small)
+        small.value + (small.cold as U64)
+    | .wide(wide)
+        wide.hot + (wide.cold as U64) + (wide.other as U64)
+rows.clear()
+= checksum + extension-checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Small is Syntax
+
++ @hot value U64
++ cold U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Syntax
+
++ @hot hot U64
++ cold U32
++ other U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| small Small
+| wide Wide
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Node
+
+────────────────────
++ do lower
+    - delta U64
+
+match this
+    | .small(small)
+        small.lower(delta)
+    | .wide(wide)
+        wide.lower(delta)
+
+────────────────────
++ score U64
+
+match this
+    | .small(small)
+        small.value + (small.cold as U64)
+    | .wide(wide)
+        wide.hot + (wide.cold as U64) + (wide.other as U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Small
+
+────────────────────
++ do lower
+    - delta U64
+
+this.value += delta
+this.cold += delta as U32
+this.source += delta as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Wide
+
+────────────────────
++ do lower
+    - delta U64
+
+this.hot += delta
+this.cold += delta as U32
+this.source += delta as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Syntax
+
+────────────────────
++ get source-plus U64
+
+this.source as U64
+
+:----
+
+48
+;====
+:====
+
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal @no-gc
+    - left View
+    - right View
+
+= left == right
+
+:----
+%crash
+
+Exception: Interface equality requires unrestricted effects
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+;====
+:====
+
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal @no-heap
+    - left View
+    - right View
+
+= left == right
+
+:----
+%crash
+
+Exception: Interface equality requires unrestricted effects
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+;====
+:====
+
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal @no-safepoint
+    - left View
+    - right View
+
+= left == right
+
+:----
+%crash
+
+Exception: Interface equality requires unrestricted effects
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+;====
+:====
+
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal @no-suspend
+    - left View
+    - right View
+
+= left == right
+
+:----
+%crash
+
+Exception: Interface equality requires unrestricted effects
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+;====
+:====
+
+. shape Shape = Square(3)
+. base Base = Derived()
+-- measure(shape, base)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ do area Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+────────────────────
++ do area Int
+
+= side * side
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int @no-gc
+    - shape Shape
+    - base Base
+
+= shape.area() + base.area()
+
+:----
+
+16
+;====
+:====
+
+. shape Shape = Square(3)
+-- measure(shape)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ do area Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+────────────────────
++ do area Int
+
+. box = Box()
+= side * side
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int @no-gc
+    - shape Shape
+
+= shape.area()
+
+:----
+%crash
+
+Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1)
+<no file:28>
+    + Box
+    ^^^^
+;====
+:====
+
+. base Base = Derived()
+-- measure(base)
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+. box = Box()
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int @no-gc
+    - base Base
+
+= base.area()
+
+:----
+%crash
+
+Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1)
+<no file:29>
+    + Box
+    ^^^^
+;====
+:====
+
+-- run(:: n Int => n + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int @no-suspend
+    - action () Int
+        - Int
+
+= action(4)
+
+:----
+%crash
+
+Exception: Function value call requires unrestricted effects
+<no file:9>
+    = action(4)
+      ^^^^^^^^^
+;====
+:====
+# A GC-free block assigns a local declared outside it, at the top level and in a function
+
+. seed = 5
+. total = 0
+do @no-gc
+    total = seed + 8
+-- total
+-- run(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run I64
+    - seed I64
+
+. total = 0
+do @no-gc
+    total = seed + 8
+= total
+
+:----
+
+13
+13
+;====
+:====
+# A GC-free block assigns fields of an outer struct local
+
+. point = Point(1, 2)
+do @no-gc
+    point.x = 10
+    point.y += 5
+-- point.x
+-- point.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+:----
+
+10
+7
+;====
+:====
+# A loop in a GC-free block, and a nested GC-free block, update outer locals
+
+. sum = 0
+do @no-gc
+    for index in 0 .. < 5
+        sum += index
+-- sum
+. outer = 1
+do @no-gc
+    outer += 10
+    do @no-gc
+        outer += 100
+-- outer
+
+:----
+
+10
+111
+;====
+:====
+# A GC-free block assigns a global, arguments, and locals taken apart into
+
++ counter = 1
+
+counter = 2
+do @no-gc
+    counter += 40
+-- counter
+-- bump(5)
+-- shift(Point(1, 2))
+. left = 1
+. right = 2
+do @no-gc
+    (left, right) = (right, left)
+-- left
+-- right
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump I64
+    - seed I64
+
+do @no-gc
+    seed += 10
+= seed
+
+━━━━━━━━━━━━━━━━━━━━
++ do shift Int
+    - point Point
+
+do @no-gc
+    point.x += 100
+= point.x
+
+:----
+
+42
+15
+101
+2
+1
+;====
+:====
+# A GC-free block narrows outer locals as a plain block does
+
+. known Int? = 4
+if known
+    do @no-gc
+        -- known + 1
+        known = 9
+    -- known + 1
+. unset Int? = null
+do @no-gc
+    unset = 7
+-- unset + 1
+. cleared I64? = 3
+if cleared
+    do @no-gc
+        cleared = null
+    -- cleared ?? -1
+
+:----
+
+5
+10
+8
+-1
+;====
+:====
+# A GC-free block leaves the fields of an outer struct it assigns as a plain block does
+
+. holder = Holder(3)
+if holder.value
+    do @no-gc
+        holder.value = null
+    -- holder.value ?? -1
+do @no-gc
+    holder.value = 7
+-- holder.value ?? -1
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Struct
+
++ value Int?
+
+:----
+
+-1
+7
+;====
+:====
+
+. name = "before"
+. other = "after"
+do @no-gc
+    name = other
+-- name
+
+:----
+%crash
+
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:4:1); compute into a zone buffer and publish after the zone exits
+<no file:5>
+        name = other
+        ^^^^^^^^^^^^
+;====

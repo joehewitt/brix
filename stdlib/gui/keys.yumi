@@ -1,0 +1,645 @@
+
+./box
+./commands
+./events
+/core/function
+/core/markup
+/stream/aggregate
+/time/deadline
+/time/duration
+/time/timer
+/ui/command
+/ui/input
+/ui/key-assignment
+/ui/key-combo
+/ui/mode
+
++ cut-key := KeyCombo("Cmd+X")
++ copy-key := KeyCombo("Cmd+C")
++ paste-key := KeyCombo("Cmd+V")
++ undo-key := KeyCombo("Cmd+Z")
++ redo-key := KeyCombo("Cmd+Shift+Z")
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyPart is Union
+
+| press
+| hold
+| tap
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyBinding is Box
+    is KeyAssignment
+
++ title = ""
++ key = KeyCombo()
++ stable-key = ""
++ enabled = true
++ when Getter'Bool?
++ allow-while-input = false
++ allow-while-modal = false
++ is-container-wide = false
++ is-markup-shadow => true
++ mapping-default := KeyMappingDefault()
+
+────────────────────
++ get display-title String
+
+title
+
+────────────────────
++ get key-scope KeyScopeNode?
+
+shortcut-scope-owner(this)
+
+────────────────────
++ get is-active Bool
+
+is-effectively-enabled && key-binding-predicate-enabled(enabled, when)
+
+────────────────────
++ get command-target Command?
+
+null
+
+────────────────────
++ get part
+
+KeyPart.press
+
+────────────────────
++ get display-label
+
+key.display-label
+
+────────────────────
++ get symbol-label
+
+key.symbol-label
+
+────────────────────
++ get status-label
+
+shortcut-status-label(key, display-title)
+
+────────────────────
++ is-routable Bool
+    - focused Box?
+    - modal Box?
+
+is-input-visible && key-assignment-routable(this, input-owned, outside-modal)
+
+.. input-owned = focused?.$focus-mode == FocusMode.input && key.is-text-input()
+.. outside-modal = modal != null && !is-within(modal)
+
+────────────────────
++ do set-binding-key
+    - next KeyCombo
+
+release-active()
+key = next
+
+────────────────────
++ do set-binding-enabled
+    - next Bool
+
+if !next
+    release-active()
+enabled = next
+
+────────────────────
++ do press
+    - event KeyPressEvent
+
+────────────────────
++ do press-shared
+    - event KeyPressEvent
+
+press(event)
+
+────────────────────
++ do release
+    - event KeyReleaseEvent
+
+────────────────────
++ do pointer-pressed
+
+────────────────────
++ do update-modifiers
+    - modifiers PointerModifiers
+
+────────────────────
++ do release-active
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyBindingConflict is Tuple
+
++ key KeyCombo
++ bindings [KeyBinding]
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyShortcut is KeyBinding
+    is Command
+
++ repeat = true
++ discoverable = true
++ description = ""
++ is-on = false
++ running = false
++ unavailable-reason = ""
++ action Doer?
+
+────────────────────
++ This
+    - title = ""
+
+╌╌╌╌╌╌╌╌╌╌ is Command ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-available
+
+is-active
+
+────────────────────
++ get identity Pointer
+
+this as Pointer
+
+────────────────────
++ do run
+
+=? if !is-active
+. callback = action
+if callback
+    callback()
+        catch error Error
+            unhandled-error(error)
+
+╌╌╌╌╌╌╌╌╌╌ is KeyBinding ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get command-target
+
+this as Command
+
+────────────────────
++ do press
+    - event KeyPressEvent
+
+=? if event.is-repeat && !repeat
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyCommandActivation is Union
+
+| press
+| tap
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyCommand is KeyBinding
+
++ repeat = true
++ command Command?
++ activation = KeyCommandActivation.press
++ tap-threshold = 200ms
+
+_ armed-native-key-code U32
+_ tap-deadline Deadline?
+
+────────────────────
++ This
+    - title = ""
+
+╌╌╌╌╌╌╌╌╌╌ is KeyBinding ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get display-title
+
+command?.title ?? title
+
+────────────────────
++ get is-active
+
+is-effectively-enabled && key-command-predicate-enabled(enabled, when, command)
+
+────────────────────
++ get command-target
+
+command
+
+────────────────────
++ get part
+
+|? activation == KeyCommandActivation.tap
+    KeyPart.tap
+??
+    KeyPart.press
+
+────────────────────
++ do press
+    - event KeyPressEvent
+
+if activation == KeyCommandActivation.tap
+    if !event.is-repeat
+        armed-native-key-code = event.native-key-code
+        tap-deadline = Deadline(tap-threshold)
+    =
+=? if event.is-repeat && !repeat
+command?.run()
+
+────────────────────
++ do release
+    - event KeyReleaseEvent
+
+=? if !tap-deadline || event.native-key-code != armed-native-key-code
+. is-tap = !tap-deadline.has-passed
+tap-deadline = null
+if is-tap && is-active
+    command?.run()
+
+────────────────────
++ do pointer-pressed
+
+tap-deadline = null
+
+────────────────────
++ do release-active
+
+tap-deadline = null
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyModeActivation is Union
+
+| persistent
+| held
+| tap-or-hold
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyModeBinding is KeyBinding
+
++ represented-command Command?
+
+────────────────────
++ get command-target
+
+represented-command
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyMode'T is KeyModeBinding
+
++ mode Mode'T
++ value T
++ activation = KeyModeActivation.persistent
++ hold-threshold = 200ms
+
+_ lease ModeActivation?
+_ event key-pressed U32
+_ event key-pressed-shared U32
+_ event key-released U32
+_ event modifiers-matched Bool
+_ event modifiers-released Bool
+_ event pointer-pressing Bool
+_ event releasing Bool
+
+────────────────────
++ This
+    - title = ""
+
+╌╌╌╌╌╌╌╌╌╌ is KeyBinding ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get part
+
+|? activation == KeyModeActivation.held
+    KeyPart.hold
+??
+    KeyPart.press
+
+────────────────────
++ do press
+    - event KeyPressEvent
+
+=? if event.is-repeat
+if activation == KeyModeActivation.persistent
+    mode.set(value)
+else
+    key-pressed <- event.native-key-code
+
+────────────────────
++ do press-shared
+    - event KeyPressEvent
+
+if activation != KeyModeActivation.held
+    press(event)
+    =
+=? if event.is-repeat
+key-pressed-shared <- event.native-key-code
+
+────────────────────
++ do release
+    - event KeyReleaseEvent
+
+key-released <- event.native-key-code
+
+────────────────────
++ do pointer-pressed
+
+pointer-pressing <- true
+
+────────────────────
++ do update-modifiers
+    - modifiers PointerModifiers
+
+=? if activation == KeyModeActivation.persistent || !key.is-modifier-only()
+if key.matches-modifiers(modifiers)
+    modifiers-matched <- true
+else
+    modifiers-released <- true
+    release-active()
+
+────────────────────
++ do release-active
+
+releasing <- true
+
+────────────────────
+_ hold ~>
+
+~> idle
+    then leased(code) for code on key-pressed
+    then pending(code) for code on key-pressed-shared
+    then leased(null) on modifiers-matched
+
+~> pending(code)
+    then leased(code) on Timer(hold-threshold)
+    then leased(code) on pointer-pressing
+    then idle on key-released when each == code
+    then idle on releasing
+
+~> leased(code)
+    do lease = mode.acquire(value)
+
+    do finally
+        lease?.close()
+        lease = null
+
+    ~> tapping
+        then holding on Timer(hold-threshold)
+        then tapped on key-released when each == code
+        then tapped on modifiers-released
+
+    ~> holding
+        then idle on key-released when each == code
+
+    ~> tapped
+        do
+            if activation == KeyModeActivation.tap-or-hold
+                mode.set(value)
+
+        then idle
+
+    then idle on releasing
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+release-active()
+super.unmounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ active-bindings
+    - registered-bindings [KeyBinding]
+    - focused Box?
+    - modal Box?
+
+<* binding in active when binding.is-routable(focused, modal)
+
+.. active = active-key-assignments(registered-bindings, focused, modal)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-key-binding-key-press
+    - bindings [KeyBinding]
+    - event KeyPressEvent
+
+. matches = matching-key-bindings(bindings, event)
+=? false if matches.length == 0
+event.cancel()
+=? true if key-binding-parts-conflict(matches)
+. enabled = List'KeyBinding(each in matches when each.is-active)
+for binding in enabled
+    if enabled.length > 1
+        binding.press-shared(event)
+    else
+        binding.press(event)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-key-binding-key-release
+    - bindings [KeyBinding]
+    - event KeyReleaseEvent
+
+for binding in bindings
+    binding.release(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-key-binding-pointer-press
+    - bindings [KeyBinding]
+
+for binding in bindings
+    binding.pointer-pressed()
+
+━━━━━━━━━━━━━━━━━━━━
++ do update-key-binding-modifiers
+    - registered [KeyBinding]
+    - active [KeyBinding]
+    - modifiers PointerModifiers
+
+for binding in registered
+    . key = binding.key
+    if key.is-modifier-only() && !key.matches-modifiers(modifiers)
+        binding.update-modifiers(modifiers)
+        binding.release-active()
+for binding in active
+    . key = binding.key
+    if !key.is-modifier-only() || key.matches-modifiers(modifiers)
+        binding.update-modifiers(modifiers)
+
+━━━━━━━━━━━━━━━━━━━━
++ do release-key-bindings
+    - bindings [KeyBinding]
+
+for binding in bindings
+    binding.release-active()
+
+━━━━━━━━━━━━━━━━━━━━
++ do find-key-binding-conflicts [KeyBindingConflict]
+    - bindings [KeyBinding]
+
+. conflicts [KeyBindingConflict]
+for index in 0 .. < bindings.length
+    . binding = bindings[index]
+    . key = binding.key
+    . owner = shortcut-scope-owner(binding)
+    . already-grouped = false
+    for earlier in 0 .. < index
+        . previous = bindings[earlier]
+        if previous.key == key
+            if same-shortcut-scope(owner, shortcut-scope-owner(previous))
+                already-grouped = true
+                break
+    if already-grouped
+        continue
+    . matches [KeyBinding]
+    matches += binding
+    for later in index + 1 .. < bindings.length
+        . candidate = bindings[later]
+        if candidate.key == key
+            if same-shortcut-scope(owner, shortcut-scope-owner(candidate))
+                matches += candidate
+    if key-binding-parts-conflict(matches)
+        conflicts += KeyBindingConflict(key, matches)
+= conflicts
+
+━━━━━━━━━━━━━━━━━━━━
+_ do key-binding-parts-conflict
+    - bindings [KeyBinding]
+
+=? false if bindings.length < 2
+. holds = 0
+. taps = 0
+for binding in bindings
+    . claimed = binding.part
+    if claimed == KeyPart.hold
+        holds += 1
+    else if claimed == KeyPart.tap
+        taps += 1
+    else
+        = true
+= holds > 1 || taps > 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ matching-key-bindings [KeyBinding]
+    - bindings [KeyBinding]
+    - event KeyPressEvent
+
+|? shift-exact.length > 0
+    shift-exact
+??
+    scoped-matching-key-bindings(bindings, event, false)
+
+.. shift-exact = scoped-matching-key-bindings(bindings, event, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scoped-matching-key-bindings [KeyBinding]
+    - bindings [KeyBinding]
+    - event KeyPressEvent
+    - shift-exact Bool
+
+. result [KeyBinding]
+. owner Box?
+for binding in bindings
+    . key = binding.key
+    if key.matches(event) && (!shift-exact || key.matches-shift(event))
+        if result.length == 0
+            owner = shortcut-scope-owner(binding)
+            result += binding
+        else if same-shortcut-scope(owner, shortcut-scope-owner(binding))
+            result += binding
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ same-shortcut-scope
+    - left Box?
+    - right Box?
+
+|? left
+    right == left
+??
+    !right
+
+━━━━━━━━━━━━━━━━━━━━
++ shortcut-summary String
+    - shortcuts [KeyBinding]
+
+match shortcuts.length
+    |= 0
+        "No shortcuts"
+    ??
+        " | ".join(each.status-label in shortcuts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shortcut-scope-owner
+    - shortcut KeyBinding
+
+shortcut.ancestor'Box • where shortcut-scope-accepts(shortcut, each.$focus-mode)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shortcut-scope-accepts Bool
+    - shortcut KeyBinding
+    - mode FocusMode
+
+focus-mode-contributes-shortcuts(mode) && !(shortcut.is-container-wide && mode == FocusMode.press)
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-binding-predicate-enabled
+    - enabled Bool
+    - predicate Getter'Bool?
+
+|? !enabled
+    false
+|? predicate
+    predicate()
+??
+    true
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-command-predicate-enabled
+    - enabled Bool
+    - predicate Getter'Bool?
+    - command Command?
+
+|? !enabled || !command
+    false
+|? predicate && !predicate()
+    false
+??
+    command.is-available
+
+━━━━━━━━━━━━━━━━━━━━
++ extend KeyCombo
+
+────────────────────
++ matches Bool
+    - event KeyPressEvent
+
+matches-key(event.key, event.characters, event.modifiers)
+
+────────────────────
++ matches Bool
+    - event KeyReleaseEvent
+
+matches-key(event.key, event.characters, event.modifiers)
+
+────────────────────
++ matches Bool
+    - event KeyInputEvent
+
+matches-text(event.text)
+
+────────────────────
++ matches-shift Bool
+    - event KeyPressEvent
+
+modifiers.shift == event.modifiers.shift
+
+━━━━━━━━━━━━━━━━━━━━
+_ shortcut-status-label String
+    - key KeyCombo
+    - title String
+
+if label then "$label $title" else title
+
+.. label = key.display-label
+

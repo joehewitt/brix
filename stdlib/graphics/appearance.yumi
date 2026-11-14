@@ -1,0 +1,218 @@
+./canvas
+./color
+./path
+./primitives
+./style
+/math
+/stream/aggregate
+/units
+
++ vector-stroke-miter-limit Length = 10
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorAppearance is Tuple
+
++ fill Fill = Fill.none
++ stroke Stroke = Stroke.none
++ stroke-width Length = 1
++ stroke-alignment StrokeAlignment = StrokeAlignment.center
++ stroke-cap LineCap = LineCap.butt
++ stroke-join LineJoin = LineJoin.miter
++ fill-rule FillRule = FillRule.nonzero
+
+────────────────────
++ over VectorAppearance
+    - own-fill Fill
+    - own-stroke Stroke
+    - own-stroke-width Length?
+    - own-stroke-alignment StrokeAlignment?
+    - own-stroke-cap LineCap?
+    - own-stroke-join LineJoin?
+    - own-fill-rule FillRule?
+
+VectorAppearance
+    - resolved-fill
+    - resolved-stroke
+    - own-stroke-width ?? stroke-width
+    - own-stroke-alignment ?? stroke-alignment
+    - own-stroke-cap ?? stroke-cap
+    - own-stroke-join ?? stroke-join
+    - own-fill-rule ?? fill-rule
+
+.. resolved-stroke = if own-stroke == Stroke.inherit then stroke else own-stroke
+.. resolved-fill = match own-fill
+    |= Fill.inherit
+        fill
+    |= Fill.stroke
+        fill-color-paint(resolved-stroke.top-color)
+    ??
+        own-fill
+
+────────────────────
++ get is-simple
+
+simple-fill && simple-stroke
+
+.. simple-fill = fill == Fill.none || fill is RGBA
+.. simple-stroke = stroke == Stroke.none || centered-color-stroke
+.. centered-color-stroke = stroke is RGBA && stroke-alignment == StrokeAlignment.center
+
+────────────────────
++ get has-ink
+
+fill != Fill.none || stroke != Stroke.none
+
+────────────────────
++ get paints-fill Bool
+
+some(fill.layers) • where each.painted-color
+
+────────────────────
++ do get stroke-extent Length
+
+. result Length = 0
+for layer in resolved-stroke-layers
+    if layer.visible
+        result = max(result, stroke-layer-extent(layer))
+= result
+
+────────────────────
++ do get resolved-stroke-layers [StrokeLayer]
+
+. result [StrokeLayer]
+for layer in stroke.layers
+    result += StrokeLayer
+        - layer.color
+        - layer.width ?? stroke-width
+        - layer.alignment ?? stroke-alignment
+        - layer.join ?? stroke-join
+        - layer.cap ?? stroke-cap
+        - layer.visible
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ stroke-layer-extent Length
+    - layer StrokeLayer
+
+match layer.alignment
+    |= StrokeAlignment.inside
+        0
+    |= StrokeAlignment.outside
+        width
+    ??
+        width / 2
+
+.. width = layer.width ?? 1
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-paint-is-compact Bool
+    - fill Fill
+    - stroke Stroke
+    - alignment StrokeAlignment?
+
+!(fill is FillStack) && !(stroke is StrokeStack) && centered
+
+.. centered = !alignment || alignment == StrokeAlignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ canvas-vector-appearance VectorAppearance
+    - canvas Canvas
+
+VectorAppearance
+    - fill-color-paint(canvas.fill-color)
+    - stroke-color-paint(canvas.stroke-color)
+    - canvas.stroke-width
+    - StrokeAlignment.center
+    - canvas.stroke-cap
+    - canvas.stroke-join
+    - FillRule.nonzero
+
+━━━━━━━━━━━━━━━━━━━━
++ fill-color-paint Fill
+    - color RGBA?
+
+if color then color else Fill.none
+
+━━━━━━━━━━━━━━━━━━━━
++ stroke-color-paint Stroke
+    - color RGBA?
+
+if color then color else Stroke.none
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-appearance
+    - canvas Canvas
+    - paths [Path]
+    - appearance VectorAppearance
+
+canvas.stroke-cap = appearance.stroke-cap
+canvas.stroke-join = appearance.stroke-join
+if appearance.is-simple
+    canvas.fill-color = simple-color(appearance.fill)
+    canvas.stroke-color = simple-color(appearance.stroke)
+    canvas.stroke-width = appearance.stroke-width
+    for path in paths
+        path.outline(canvas, appearance.fill-rule)
+    =
+canvas.stroke-color = null
+for layer in appearance.fill.layers
+    . color = layer.painted-color
+    if color
+        canvas.fill-color = color
+        for path in paths
+            path.outline(canvas, appearance.fill-rule)
+canvas.fill-color = null
+for layer in appearance.stroke.layers
+    paint-stroke-layer(canvas, paths, appearance, layer)
+canvas.fill-color = null
+canvas.stroke-color = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-stroke-layer
+    - canvas Canvas
+    - paths [Path]
+    - appearance VectorAppearance
+    - layer StrokeLayer
+
+. color = layer.painted-color
+. width = layer.width ?? appearance.stroke-width
+=? if !color || width <= 0
+. alignment = layer.alignment ?? appearance.stroke-alignment
+canvas.stroke-color = color
+canvas.stroke-join = layer.join ?? appearance.stroke-join
+canvas.stroke-cap = layer.cap ?? appearance.stroke-cap
+for path in paths
+    paint-aligned-stroke(canvas, path, appearance.fill-rule, alignment, width)
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-aligned-stroke
+    - canvas Canvas
+    - path Path
+    - fill-rule FillRule
+    - alignment StrokeAlignment
+    - width Length
+
+canvas.fill-color = null
+if alignment == StrokeAlignment.center
+    canvas.stroke-width = width
+    path.outline(canvas, fill-rule)
+    =
+canvas.stroke-width = width * 2
+do use canvas.saved-state
+    if alignment == StrokeAlignment.inside
+        path.clip(canvas, fill-rule)
+    else
+        path.clip-outside(canvas, path.bounding-box.inflate(width * vector-stroke-miter-limit + 1))
+    path.outline(canvas, fill-rule)
+
+━━━━━━━━━━━━━━━━━━━━
+_ simple-color RGBA?
+    - paint Fill
+
+paint as RGBA if paint is RGBA
+
+━━━━━━━━━━━━━━━━━━━━
+_ simple-color RGBA?
+    - paint Stroke
+
+paint as RGBA if paint is RGBA

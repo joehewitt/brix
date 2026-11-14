@@ -1,0 +1,304 @@
+./box
+./button
+./events
+./icon-button
+./icons/lucide/chevron-right
+./list-box
+./primitives
+./resizer
+./shorthands
+./styles
+./theme
+./timeline
+./tree-box
+./virtual
+/data/json
+/graphics/color
+/graphics/primitives
+/graphics/style
+/graphics/text
+/math
+
++ gui-sidebar-row-inset Length = 10
++ gui-sidebar-row-radius Length = 7
++ gui-sidebar-icon-gap Length = 6
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxCursor
+    using GUIBoxDisplay
+    using GUIBoxLayout
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxPlacement
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUIFontStyle
+    using GUITextPaint
+    using GUIVirtualRowStyle
+    using VectorPaintStyle
+
+• Sidebar • bg:gui-panel-color text:gui-text-color
+    border-color = gui-divider-color
+    border-right-width = 1
+    motion.size = gui-motion-quick
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    when #is-collapsed
+        display = Display.hidden
+
+    when #is-focus-within
+        • SidebarItem
+            when #is-on
+                • bg:gui-accent-color
+                • text:gui-accent-text-color
+
+    • sidebar-header-divider • absolute h:1 bg:gui-divider-color
+        animation = fade-in
+
+    • SidebarSection • pb:12
+        • sidebar-section-list
+            gap = 2
+
+    • TreeBox • sidebar-tree
+
+    • ListItem • sidebar-row
+
+    • SidebarFooter
+        border-color = gui-divider-color
+        border-top-width = 1
+
+        when !#has-content
+            display = Display.hidden
+
+• sidebar-tree
+    row-height = 28
+
+    • TreeBoxDisclosure • mr:gui-sidebar-icon-gap
+
+    • ListItem • sidebar-row
+
+    when #is-focused
+        • ListItem
+            when #is-selected
+                • bg:gui-accent-color
+                • text:gui-accent-text-color
+
+• sidebar-row • text:gui-text-color mx:gui-sidebar-row-inset h:28
+    corner-radius = gui-sidebar-row-radius
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+    when #is-selected
+        • bg:gui-pressed-color
+        • text:gui-strong-text-color
+
+• SidebarItem • bg:transparent text:gui-text-color h:28 mx:gui-sidebar-row-inset pl:tree-box-row-inset pr:8
+    shadow = null
+    font-size = inherit
+    corner-radius = gui-sidebar-row-radius
+    cursor = CursorStyle.pointing-hand
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+    when #is-press-within
+        • bg:gui-pressed-color
+
+    when #is-on
+        • bg:gui-pressed-color
+        • text:gui-strong-text-color
+
+    • button-content
+        align-x = null
+
+    • button-title • flex:1
+
+    • icon • w:tree-box-chevron-width h:tree-box-chevron-width mr:gui-sidebar-icon-gap
+
+• SidebarSectionHeader • group-heading mb:2
+
+    when #is-hover-within
+        • bg:transparent
+        • text:gui-text-color
+
+        • icon
+            display = Display.visible
+
+    when #is-press-within
+        • bg:transparent
+
+    when #is-focus-visible
+        • icon
+            display = Display.visible
+
+    • button-title • flex:0
+
+    • icon • w:12 h:12 ml:4 mr:0
+        stroke-width = 2
+        display = Display.hidden
+
+━━━━━━━━━━━━━━━━━━━━
++ Sidebar is Box
+
++ resize-edge Side?
++ state-key String?
++ collapse-size Length?
++ is-collapsed = false
+
+. collapse-changed < is-collapsed
+
+────────────────────
+
+<This • flex-col
+    <Box heading • flex-col
+        + <Box header • flex-col
+        <Box header-divider • sidebar-header-divider
+            left = PositionOffset.coord(0)
+            right = PositionOffset.coord(0)
+            bottom = PositionOffset.coord(0)
+    + <Box • sidebar-body flex-col flex:1
+        overflow-y = ScrollOverflow.auto
+    <SidebarFooter • flex-row
+        + <Box footer • flex-row flex:1
+    if #resize-edge != null
+        <Resizer
+            edge = #resize-edge!
+            state-key = #state-key
+            collapse-size = #collapse-size
+            for event on collapse-requested
+                is-collapsed = true
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+restore-collapse()
+header-divider.timeline = scroll-timeline(0 .. 12, scrolling-body())
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do toggle
+
+is-collapsed = !is-collapsed
+
+────────────────────
+_ do scrolling-body Box?
+
+. after = false
+for child in children
+    =? child as Box if after && child is Box
+    after = child as Pointer == heading as Pointer
+= null
+
+────────────────────
+_ get storage-key String?
+
+"sidebar:${state-key}" if state-key
+
+────────────────────
+_ do restore-collapse
+
+. key = storage-key
+. store = gui-app-state(this)
+=? if !key || !store
+. saved = store.read(key, 1)
+=? if !saved
+. collapsed = catch? JSONReader("sidebar", saved).bool()
+if collapsed != null
+    is-collapsed = collapsed
+
+────────────────────
+_ do collapse-changed
+
+. key = storage-key
+. store = gui-app-state(this)
+=? if !key || !store
+store.write(key, 1, is-collapsed)
+
+━━━━━━━━━━━━━━━━━━━━
++ SidebarFooter is Box
+
++ has-content = false
+
+────────────────────
+whenever descendants Box
+
+has-content = %first-child?.%first-child != null
+
+━━━━━━━━━━━━━━━━━━━━
++ SidebarSection is Box
+
++ title = ""
++ is-expanded = true
+
+• This • flex-col
+    • sidebar-section-list • flex-col
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This
+    if #title != ""
+        <SidebarSectionHeader header
+            title = #title
+            is-expanded = #is-expanded
+            action = => do toggle()
+
+    + <Box • sidebar-section-list
+        display = if #is-expanded then Display.visible else Display.hidden
+
+────────────────────
++ do toggle
+
+is-expanded = !is-expanded
+
+━━━━━━━━━━━━━━━━━━━━
++ SidebarItem is Button
+    is Choosing
+
+────────────────────
++ get can-choose Bool
+
+true
+
+╌╌╌╌╌╌╌╌╌╌ is Button ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do activate Bool
+
+=? false if !super.activate()
+if can-choose
+    chosen <- ChooseEvent()
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ SidebarSectionHeader is SidebarItem
+
++ is-expanded = true
+
+• This
+    • button-title
+        <LucideChevronRight (after) • icon sidebar-section-chevron
+
+    • sidebar-section-chevron
+        motion.rotate = gui-motion-quick
+
+    when #is-expanded
+        • sidebar-section-chevron
+            rotate = π / 2
+
+╌╌╌╌╌╌╌╌╌╌ is SidebarItem ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get can-choose
+
+false

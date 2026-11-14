@@ -1,0 +1,247 @@
+`benchmark.meta description: Five thousand fill-only vector items with mixed alpha, fill rules, palettes, clips, and rotations through DisplayScene on Metal at 1600x1000 and scale 2, as simple and complex paths, with frame CPU, GPU, fill work, tile fallback, overflow, and CoreGraphics parity evidence.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui-metal
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/matrix
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/vectorgeometry
+/gui/box
+/gui/layout
+/gui/metal
+/gui/primitives
+/gui/scene
+/math
+/stream/sort
+/time/timer
+
+. simple = run-vector-fills(false)
+. complex = run-vector-fills(true)
+//gui.bench.metal.fill-cpu-p50-ns += simple.cpu-p50
+//gui.bench.metal.fill-gpu-p50-ns += simple.gpu-p50
+//gui.bench.metal.fill-segments += simple.segments
+//gui.bench.metal.fill-tiles += simple.tiles
+//gui.bench.metal.fill-pieces += simple.pieces
+//gui.bench.metal.fill-opaque-tiles += simple.opaque-tiles
+//gui.bench.metal.fill-draw-calls += simple.draw-calls
+//gui.bench.metal.fill-overflows += simple.overflows
+//gui.bench.metal.fill-diff-ppm += simple.diff-ppm
+//gui.bench.metal.fill-max-delta += simple.max-delta
+//gui.bench.metal.fill-gross-ppm += simple.gross-ppm
+//gui.bench.metal.fill-complex-cpu-p50-ns += complex.cpu-p50
+//gui.bench.metal.fill-complex-gpu-p50-ns += complex.gpu-p50
+//gui.bench.metal.fill-complex-segments += complex.segments
+//gui.bench.metal.fill-complex-overflows += complex.overflows
+//gui.bench.metal.fill-complex-diff-ppm += complex.diff-ppm
+//gui.bench.metal.fill-complex-max-delta += complex.max-delta
+//gui.bench.metal.fill-complex-gross-ppm += complex.gross-ppm
+. checksum = simple.segments + complex.segments + simple.tiles + complex.tiles
+-- "bench-result gui/metal-vector-fills checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorFillsResult is Tuple
+
++ cpu-p50 U64
++ gpu-p50 U64
++ segments I64
++ tiles I64
++ pieces I64
++ opaque-tiles I64
++ draw-calls I64
++ overflows I64
++ diff-ppm I64
++ max-delta I64
++ gross-ppm I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-vector-fills
+    - complex Bool
+
+. root = VectorFillsRoot()
+for band in 0 .. < 10
+    markup-append(root, VectorFillsBand(band * 500, complex))
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1600, 1000))
+. renderer = MetalOffscreenRenderer(1600, 1000, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(1600, 1000, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. result VectorFillsResult
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        renderer.finish()
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for frame in 0 .. < 31
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference, 2)
+        . gross = renderer.diff(reference, 10)
+        result = VectorFillsResult
+            - vector-fills-median(elapsed)
+            - vector-fills-median(gpu)
+            - renderer.fill-segments
+            - renderer.fill-tiles
+            - renderer.fill-pieces
+            - renderer.fill-opaque-tiles
+            - renderer.draw-calls
+            - renderer.fill-overflows
+            - (diff.differing-pixels * 1000000) / diff.pixel-count
+            - diff.maximum-channel-delta
+            - (gross.differing-pixels * 1000000) / gross.pixel-count
+        ?! Panic("Vector fills fell back to CoreGraphics tiles")
+            if scene.metal-tile-fallbacks != 0
+        ?! Panic("Vector fills skipped Metal operations")
+            if renderer.skipped-ops != 0
+        ?! Panic("Vector fills did not draw every span on the GPU")
+            if renderer.fill-draws != 6250
+        ?! Panic("Vector fills differ from CoreGraphics beyond the GR-D13 budget")
+            if result.gross-ppm > 100
+scene.close()
+root.close()
+markup-release(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-fills-median
+    - samples [U64]
+
+sorted[sorted.length / 2]
+
+.. sorted = sort(samples) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorFillsRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorFillsBand is Box
+
++ first Size
++ complex Bool
+_ handles [VectorGeometryHandle]
+
+• This
+    min-width = SizeSpec.coord(1600)
+    max-width = SizeSpec.coord(1600)
+    min-height = SizeSpec.coord(100)
+    max-height = SizeSpec.coord(100)
+
+────────────────────
++ This
+    - first
+    - complex
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. table = vector-geometry-table-for(markup-batch-root)
+if !handles
+    for serial in first .. < first + 500
+        . key = serial * 2 + (if complex then 1 else 0)
+        handles += table.intern-geometry(key as U64, => vector-fills-geometry(serial, complex))
+. origin = bounds.top-left
+for serial in first .. < first + 500
+    . hue = ((serial % 12) as F64) / 12
+    . palette =
+        * RGBA(0.2 + hue * 0.7, 0.45, 0.9 - hue * 0.6, if serial % 7 == 0 then 0.6 else 1)
+        * RGBA(0.95, 0.8 - hue * 0.5, 0.2, if serial % 9 == 0 then 0.7 else 1)
+    . x = origin.x + ((serial * 37) % 1520) as F64
+    . y = origin.y + ((serial * 53) % 40) as F64
+    . transform = matrix-from-translation(Point(x, y))
+    if serial % 10 == 3
+        . angle = ((serial % 7) as F64) * 0.23rad + 0.1rad
+        transform = matrix-from-rotation(angle, Point(x + 30, y + 30)).concatenate(transform)
+    canvas.fill-color = RGBA(0.1, 0.6, 0.3, 1)
+    canvas.stroke-color = null
+    . clip Rect? = Rect(x, y, 40, 36) if serial % 13 == 5
+    . painted = table.paint-vector(handles[serial - first], canvas, palette, transform, clip)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-fills-geometry
+    - serial Size
+    - complex Bool
+
+. spans [VectorGeometrySpan]
+. span = (20 + (serial * 7) % 44) as F64
+. none = VectorGeometryPaint(VectorGeometryPaintRole.none, 0)
+. rule = if serial % 11 == 0 then FillRule.even-odd else FillRule.nonzero
+. role = if serial % 5 == 1 then VectorGeometryPaintRole.inherit else VectorGeometryPaintRole.color
+. outer = Path()
+if complex
+    . center = Point(4 + span * 0.5, 4 + span * 0.5)
+    . petals = 48
+    for petal in 0 .. < petals
+        . start = (petal as F64) * 2 * π / (petals as F64)
+        . step = 2 * π / (petals as F64)
+        . radius = if petal % 2 == 0 then span * 0.5 else span * 0.4
+        . next = if petal % 2 == 0 then span * 0.4 else span * 0.5
+        . head = center + Point(cos(start) * radius, sin(start) * radius)
+        . tail = center + Point(cos(start + step) * next, sin(start + step) * next)
+        . bulge = span * 0.55
+        if petal == 0
+            outer.move-to(head)
+        outer.cubic-curve-to
+            - center + Point(cos(start + step / 3) * bulge, sin(start + step / 3) * bulge)
+            - center + Point(cos(start + step * 2 / 3) * bulge, sin(start + step * 2 / 3) * bulge)
+            - tail
+    outer.close()
+else
+    . lean = ((serial % 29) as F64) * 0.5
+    . a = Point(4, 10)
+    . b = Point(4 + span + lean, 16)
+    . c = Point(4 + span * 0.4, 10 + span * 0.8 + lean * 0.5)
+    outer.move-to(a)
+    outer.cubic-curve-to(a + Point(span * 0.3, -span * 0.4), b + Point(-span * 0.3, -span * 0.4), b)
+    outer.cubic-curve-to(b + Point(span * 0.15, span * 0.3), c + Point(0, -span * 0.3), c)
+    outer.line-to(a)
+if serial % 11 == 0
+    outer.move-to(Point(span * 0.3, 14))
+    outer.line-to(Point(span * 0.5, 14))
+    outer.line-to(Point(span * 0.4, 22))
+    outer.close()
+spans += VectorGeometrySpan(outer, VectorGeometryPaint(role, 0), none, null, null, null, rule)
+if serial % 4 == 0
+    . inner = Path()
+    inner.move-to(Point(10, 24))
+    inner.cubic-curve-to(Point(16, 16), Point(28, 16), Point(34, 24))
+    inner.cubic-curve-to(Point(28, 32), Point(16, 32), Point(10, 24))
+    inner.close()
+    spans += VectorGeometrySpan
+        - inner
+        - VectorGeometryPaint(VectorGeometryPaintRole.color, 1)
+        - none
+        - null
+        - null
+        - null
+        - FillRule.nonzero
+= VectorGeometry(Rect(0, 0, 100, 100), Rect(0, 0, 100, 100), spans, serial % 5 == 1, false)

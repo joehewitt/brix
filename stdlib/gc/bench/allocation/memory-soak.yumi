@@ -1,0 +1,40 @@
+`benchmark.meta description: Repeats growth and drop cycles around a stable live set to measure residency and fragmentation.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,allocator
+
+/YuGC/YuGC.h
+
+C:yumiGCSetHeapGoal(1073741824)
+
+. live [Byte[]]
+. checksum = 0 as Size
+for index in 0 .. < 64
+    . bytes = Byte[1048576]
+    bytes[0] = (index + 3) as U8
+    bytes[1048575] = (index + 7) as U8
+    live += bytes
+    checksum += (bytes[0] as Size) + (bytes[1048575] as Size)
+
+for round in 0 .. < 8
+    checksum += growth-drop(round)
+    C:yumiGCCollect()
+    C:yumiGCScavenge()
+    . probe = live[round % live.length]
+    checksum += (probe[0] as Size) + (probe[1048575] as Size)
+
+-- "bench-result allocation/memory-soak checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do growth-drop Size
+    - round Size
+
+. transient [Byte[]]
+. checksum = 0 as Size
+for index in 0 .. < 32
+    . bytes = Byte[1048576]
+    bytes[0] = (round + index) as U8
+    bytes[1048575] = (round * 3 + index) as U8
+    transient += bytes
+    checksum += (bytes[0] as Size) + (bytes[1048575] as Size)
+
+= checksum

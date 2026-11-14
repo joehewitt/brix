@@ -1,0 +1,412 @@
+
+./box
+./primitives
+/YuAppleGUI/YuAppleGUI.h
+/graphics/canvas
+/graphics/primitives
+/graphics/text
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+
++ text String
++ shorthand String?
+
+_ text-layout TextLayout?
+_ shorthand-layout TextLayout?
+_ tight-selected-width Length = -1
+_ tight-cap Length?
+_ cached-style-bits U8
+
+. invalidate-content-size < text, shorthand
+
+────────────────────
++ This
+    - text String
+
+────────────────────
++ get text-layout-snapshot
+
+text-layout?.snapshot
+
+────────────────────
+_ get selected-text-width
+
+tight-selected-width
+
+────────────────────
+_ has-cached-style-bit
+    - bit U8
+
+(cached-style-bits /and/ bit) != 0
+
+────────────────────
+_ do set-cached-style-bit
+    - bit U8
+    - value Bool
+
+if value
+    cached-style-bits = cached-style-bits /or/ bit
+else
+    cached-style-bits = cached-style-bits /and/ not(bit)
+
+────────────────────
+_ layout-style-matches
+
+|? has-cached-style-bit(1) != truncates-tail
+    false
+|? has-cached-style-bit(8) != truncates-head
+    false
+|? has-cached-style-bit(2) != wrap
+    false
+??
+    has-cached-style-bit(4) == tight
+
+.. truncates-tail = $text-overflow == TextOverflow.truncate-tail
+.. truncates-head = $text-overflow == TextOverflow.truncate-head
+.. wrap = $text-wrap == TextWrap.word
+.. tight = wrap && $text-wrap-sizing == TextWrapSizing.tight
+
+────────────────────
+_ do cache-layout-style
+
+. wrap = $text-wrap == TextWrap.word
+cached-style-bits = 0
+set-cached-style-bit(1, $text-overflow == TextOverflow.truncate-tail)
+set-cached-style-bit(8, $text-overflow == TextOverflow.truncate-head)
+set-cached-style-bit(2, wrap)
+set-cached-style-bit(4, wrap && $text-wrap-sizing == TextWrapSizing.tight)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do measure
+    - query MeasureQuery = measure-fit-query()
+
+. font = effective-font
+if text-layout
+    . request = text-layout.request
+    . inputs-changed = request.text != text || request.font != font
+    inputs-changed = inputs-changed || !layout-style-matches()
+    if inputs-changed
+        clear-measure-cache()
+= super.measure(query)
+
+────────────────────
++ do close
+
+release-text-layout()
+release-shorthand-layout()
+super.close()
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. content = content-bounds
+=? if content.width <= 0 || content.height <= 0
+
+do use canvas.saved-state
+    canvas.font = effective-font
+    canvas.text-color = $color
+    canvas.text-fill = $text-fill
+    canvas.clip(content)
+    . full = ensure-text-layout(canvas)
+    . layout = if abbreviated then ensure-shorthand-layout(shorthand!, content.width) else full
+        .. abbreviated = abbreviates(full, content.width)
+    canvas.draw-text(layout, text-rect(content, layout), $text-alignment)
+
+────────────────────
++ do constrained-outer-main-size Length
+    - proposed Length
+    - orient Orientation
+    - available Length
+
+. base = super.constrained-outer-main-size(proposed, orient, available)
+. short = shorthand
+. layout = text-layout
+=? base if !short || !layout || orient != Orientation.horizontal || $text-wrap == TextWrap.word
+. extras = margin-edges.horizontal + padding-edges.horizontal + border-edges.horizontal
+=? base if base >= gui-device-ceiled(layout.natural-width) + extras - 0.01
+. condensed = gui-device-ceiled(ensure-shorthand-layout(short, null).natural-width) + extras
+= super.constrained-outer-main-size(min(base, condensed), orient, available)
+
+────────────────────
++ get first-baseline
+
+if !layout then null else text-rect(content, layout).y + layout.baseline
+
+.. layout = text-layout
+.. content = content-bounds
+
+────────────────────
++ do measured-content-size
+    - query MeasureQuery
+
+. font = effective-font
+. maximum-width = measured-text-maximum-width(query)
+. wrap-word = $text-wrap == TextWrap.word
+. use-tight = wrap-word && $text-wrap-sizing == TextWrapSizing.tight
+if use-tight
+    . layout = ensure-tight-text-layout(font, maximum-width, TextOverflow.clip)
+    = Dimensions(gui-device-ceiled(selected-text-width), gui-device-ceiled(layout.height))
+
+if !measure-layout-serves(font, wrap-word, maximum-width)
+    replace-text-layout
+        - TextLayout
+            - text
+            - font
+            - maximum-width
+            - TextOverflow.clip
+            - $text-wrap
+            - effective-line-spacing
+        - -1
+. layout = text-layout!
+. height = gui-device-ceiled(layout.height)
+. pinned-width = if wrap-word then null else pinned-content-width(query)
+=? Dimensions(pinned-width, height) if pinned-width != null
+. ceiled-width = gui-device-ceiled(layout.natural-width)
+if | short String = shorthand
+    . limit = measured-available-width(query)
+    if !wrap-word && $shrink <= 0 && limit != null && ceiled-width > limit + 0.01
+        = Dimensions(gui-device-ceiled(ensure-shorthand-layout(short, null).natural-width), height)
+. measured-width = if maximum-width == null then ceiled-width else min(ceiled-width, maximum-width)
+= Dimensions(measured-width, height)
+
+────────────────────
+_ text-rect Rect
+    - content Rect
+    - layout TextLayout
+
+|? layout.line-count != 1 || layout.height >= content.height
+    content
+??
+    Rect(content.x, content.y + (content.height - layout.height) / 2, content.width, layout.height)
+
+────────────────────
+_ abbreviates
+    - layout TextLayout
+    - width Length
+
+shorthand != null && $text-wrap != TextWrap.word && layout.natural-width > width + 0.01
+
+────────────────────
+_ do ensure-shorthand-layout TextLayout
+    - short String
+    - maximum-width Length?
+
+. font = effective-font
+if | retained TextLayout = shorthand-layout
+    . request = retained.request
+    . same = same-text && request.line-spacing == effective-line-spacing
+        .. same-text = request.text == short && request.font == font
+    =? retained if same && (maximum-width == null || same-limit)
+    .. same-limit = request.maximum-width == maximum-width && request.overflow == $text-overflow
+    retained.close()
+. layout = TextLayout
+    - short
+    - font
+    - maximum-width
+    - $text-overflow
+    - TextWrap.no-wrap
+    - effective-line-spacing
+shorthand-layout = layout
+= layout
+
+────────────────────
+_ do release-shorthand-layout
+
+if shorthand-layout
+    shorthand-layout.close()
+    shorthand-layout = null
+
+────────────────────
++ get effective-line-spacing
+
+gui-safe-span($line-spacing)
+
+────────────────────
++ get effective-font
+
+Font($font-family, $font-size, $font-weight, $font-slant)
+
+────────────────────
++ do ensure-text-layout
+    - canvas Canvas
+
+. font = effective-font
+. content-width = content-bounds.width
+. wrap-word = $text-wrap == TextWrap.word
+. use-tight = wrap-word && $text-wrap-sizing == TextWrapSizing.tight
+if use-tight
+    = ensure-tight-text-layout(font, content-width, $text-overflow)
+
+. ignored = canvas
+if !paint-layout-serves(font, wrap-word, content-width)
+    install-text-layout
+        - TextLayout(text, font, content-width, $text-overflow, $text-wrap, effective-line-spacing)
+        - -1
+
+= text-layout!
+
+────────────────────
+_ do ensure-tight-text-layout
+    - font Font
+    - maximum-width Length?
+    - overflow TextOverflow = TextOverflow.clip
+
+if maximum-width == null
+    =? text-layout! if unbounded-tight-layout-serves(font)
+else
+    =? text-layout! if tight-layout-serves(font, gui-safe-span(maximum-width))
+. tight = tight-text-layout
+    - :: width => TextLayout(text, font, width, overflow, TextWrap.word, effective-line-spacing)
+    - gui-text-search-precision(this)
+    - gui-packed-span-up
+    - maximum-width
+replace-text-layout(tight.layout, tight.width, tight.cap)
+= text-layout!
+
+────────────────────
+_ measure-layout-serves
+    - font Font
+    - wrap-word Bool
+    - maximum-width Length?
+
+|? !text-layout || has-cached-style-bit(4) || !layout-style-matches()
+    false
+|? request.text != text || request.font != font || spacing-changed
+    false
+|? request.wrap != $text-wrap
+    false
+|? !wrap-word && text-layout!.is-simple
+    true
+|? text-layout!.is-truncated
+    false
+|? !wrap-word
+    true
+|? request.maximum-width == maximum-width
+    true
+??
+    retained-unwrapped && requested-unwrapped
+
+.. request = text-layout.request
+.. spacing-changed = request.line-spacing != effective-line-spacing
+.. natural-width = text-layout!.natural-width
+.. retained-maximum = request.maximum-width
+.. retained-unwrapped = retained-maximum == null || natural-width <= retained-maximum + 0.01
+.. requested-unwrapped = maximum-width == null || natural-width <= maximum-width + 0.01
+
+────────────────────
+_ paint-layout-serves
+    - font Font
+    - wrap-word Bool
+    - content-width Length
+
+|? !text-layout || has-cached-style-bit(4) || !layout-style-matches()
+    false
+|? request.text != text || request.font != font || request.wrap != $text-wrap
+    false
+|? request.line-spacing != effective-line-spacing
+    false
+|? exact-width && (wrap-word || request.overflow == $text-overflow)
+    true
+|? !text-layout!.is-shaped
+    false
+|? text-layout!.is-truncated
+    false
+|? natural-width > content-width + 0.01
+    false
+|? request.maximum-width == null || !wrap-word
+    true
+??
+    natural-width <= request.maximum-width + 0.01
+
+.. request = text-layout.request
+.. exact-width = request.maximum-width != null && request.maximum-width == content-width
+.. natural-width = text-layout!.natural-width
+
+────────────────────
+_ unbounded-tight-layout-serves
+    - font Font
+
+|? !text-layout || !has-cached-style-bit(4) || !layout-style-matches()
+    false
+??
+    request.text == text && request.font == font && same-spacing && request.maximum-width == null
+
+.. request = text-layout.request
+.. same-spacing = request.line-spacing == effective-line-spacing
+
+────────────────────
+_ tight-layout-serves
+    - font Font
+    - cap Length
+
+|? !text-layout || !has-cached-style-bit(4) || !layout-style-matches()
+    false
+|? request.text != text || request.font != font || request.wrap != TextWrap.word
+    false
+|? request.line-spacing != effective-line-spacing
+    false
+|? text-layout!.is-truncated
+    request.maximum-width != null && request.maximum-width == cap
+|? request.maximum-width != null && text-layout!.width > request.maximum-width
+    request.maximum-width == cap
+??
+    tight-text-width-serves(tight-selected-width, cap, tight-cap)
+
+.. request = text-layout.request
+
+────────────────────
+_ do replace-text-layout
+    - replacement TextLayout
+    - selected-width Length
+    - cap Length? = null
+
+install-text-layout(replacement, selected-width, cap)
+invalidate-paint()
+
+────────────────────
+_ do install-text-layout
+    - replacement TextLayout
+    - selected-width Length
+    - cap Length? = null
+
+release-text-layout()
+text-layout = replacement
+tight-selected-width = selected-width
+tight-cap = cap
+cache-layout-style()
+
+────────────────────
+_ measured-text-maximum-width
+    - query MeasureQuery
+
+measured-available-width(query) if $text-wrap == TextWrap.word
+
+────────────────────
+_ measured-available-width
+    - query MeasureQuery
+
+|? !proposed
+    null
+??
+    constrained-axis-size
+        - gui-safe-span(proposed)
+        - query.inline
+        - $min-width
+        - $max-width
+
+.. proposed = derived-child-measure-query(query).inline.available ?? resolved
+.. resolved = resolved-size-spec(query.inline, $max-width)
+
+────────────────────
+_ do release-text-layout
+
+if text-layout
+    text-layout.close()
+    text-layout = null
+tight-selected-width = -1
+tight-cap = null

@@ -1,0 +1,45 @@
+`benchmark.meta description: Computes bounding boxes for many cubic-heavy paths.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/path
+/graphics/point
+/graphics/primitives
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 260
+    . path = cubic-path(pass)
+    for i in 0 .. < path.count - 1
+        . box = path.get-curve-bounding-box(i)
+        checksum += origin-check + numeric-check(box.width) + numeric-check(box.height)
+            .. origin-check = numeric-check(box.x) + numeric-check(box.y)
+    . bounds = path.bounding-box
+    checksum += numeric-check(bounds.width) + numeric-check(bounds.height)
+
+-- "bench-result graphics/path-bounding-box-cubics checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do cubic-path
+    - seed Int
+
+. path = Path()
+. base = seed as Float
+path.move-to(base % 40, base % 30)
+for i in 0 .. < 16
+    . f = i as Float
+    path.cubic-curve-to()
+        - base + f * 3
+        - 20 + f * 5
+        - base / 2 + f * 7
+        - 80 - f * 2
+        - base + 60 + f * 4
+        - 30 + f * 6
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

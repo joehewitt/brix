@@ -1,0 +1,67 @@
+./support/fixture
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Reading Names")
+
+"chip:Ball word:'s width:width:1 operator:* number:2", read("Ball's width * 2")
+"chip:Joe's layer word:'s width:width:1", read("Joe's layer's width")
+"chip:Bars word:'s width:width:1", read("Bars' width")
+"chip:Ball word:'s width:width:1", read("BALL's WIDTH")
+"query:ballroom", read("ballroom")
+"chip:star points operator:% chip:i", read("star points % i")
+"query:zz of chip:Star", read("zz of Star")
+
+════════════════════
+test("Script Reading Copies")
+
+"Ball #2's width", script-text(script-test-tokens("Ball #2's width"))
+"Ball #i's width", script-text(script-test-tokens("ball #I's width"))
+"chip:Ball query:#0", read("Ball #0")
+"chip:i query:#2", read("i #2")
+
+════════════════════
+test("Script Reading Phrases")
+
+"word:point:point-of:0 number:3 word:of:point-of:2 chip:Star", read("point 3 of Star")
+"chip:Ball word:'s center:center:1 word:rotated by:rotated:1 hole:angle word:around:rotated:3 hole:center", read("Ball's center rotated by ‹angle› around ‹center›")
+"query:tangent chip:Star", read("tangent Star")
+
+════════════════════
+test("Script Reading Calls")
+
+"word:round:round:call open:( number:2 close:)", called("ROUND (2)")
+"word:round:round:0 number:2", called("round 2")
+"query:least number:1", called("least 1")
+"word:least of:least:0 open:( number:1 comma:, number:2 close:) word:and:least:2 number:3", called("least of (1, 2) and 3")
+"word:point:point-of:0 word:least of:least:0 number:1 comma:, number:2 word:of:point-of:2 chip:Star", called("point least of 1, 2 of Star")
+"query:reach open:( number:1 comma:, number:2 close:)", called("reach (1, 2)")
+"round(2) * least(1, 2)", script-text(script-read("round (2)*least( 1,2 )", script-call-grammar(), script-test-names()))
+
+════════════════════
+test("Script Reading Numbers And Operators")
+
+"number:10% operator:* number:45°", read("10% * 45°")
+"number:10 operator:% number:3", read("10 % 3")
+"number:.5 operator:+ number:0.50", read(".5 + 0.50")
+"-2 - -3", script-text(script-test-tokens("-2 - -3"))
+"(1, 2)", script-text(script-test-tokens(" ( 1 ,2 ) "))
+"Bars' width * 2", script-text(script-test-tokens("Bars's width*2"))
+
+━━━━━━━━━━━━━━━━━━━━
++ called String
+    - text String
+
+script-test-signatures(script-read(text, script-call-grammar(), script-test-names()))
+
+━━━━━━━━━━━━━━━━━━━━
++ read String
+    - text String
+
+script-test-signatures(script-test-tokens(text))

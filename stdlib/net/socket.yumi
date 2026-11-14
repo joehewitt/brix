@@ -1,0 +1,467 @@
+
+/os/file
+/data
+/math
+/time/deadline
+/unistd.h
+./cnet
+./dns
+/YuCore/YuCore.h
+/YuEvents/YuEvents.h
+/YuTLS/YuTLS.h
+/errno.h
+/netdb.h
+/stdlib.h
+/sys/socket.h
+/openssl/ssl.h
+/openssl/err.h
+
+_ listen-backlog = 128
+_ ssl-write-chunk-size Size = 2048
+
+━━━━━━━━━━━━━━━━━━━━
++ Socket'Token is Interface
+    - Token = Char
+    is ReadableData'Token
+    is WritableData
+    is Closable
+
+────────────────────
++ This ?! Error
+    - host String
+    - port Port
+    - is-secure Bool
+
+=
+    |? is-secure
+        SSL'Token(host, port)
+    ??
+        TCP'Token(host, port)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+do close()
+
+━━━━━━━━━━━━━━━━━━━━
++ TCP'Token
+    - Token = Char
+    is Socket'Token
+
++ fd I32
++ read-deadline Deadline?
++ write-deadline Deadline?
+
+────────────────────
++ This
+    - fd I32
+
+────────────────────
++ This ?! Error
+    - host String
+    - port Port
+    - deadline Deadline? = null
+
+. info = get-addr-info(host, port)
+    ?! IOError("Couldn't create socket")
+        if it is DNSError
+do finally C:free(info.addr)
+. fd = C:socket(info.family, info.socktype, info.protocol)
+    ?! current-file-error()
+        if it == -1
+
+. socket = File'Token(fd, true, false)
+socket.set-flag(FileFlags.non-block-mode, true)
+
+. error = C:connect(fd, info.addr, info.addrlen)
+    ?! current-file-error()
+        if it == -1 && C:yumiGetErrNo() != SocketErrorCode.in-progress
+if error == -1
+    wait-until-writable(fd, deadline)
+        catch timeout TimeoutError
+            do
+                C:yumiReleaseEventDescriptor(fd)
+                C:close(fd)
+            ?! timeout
+    . connect-error = socket-connect-error(fd)
+    if connect-error != 0
+        C:yumiReleaseEventDescriptor(fd)
+        C:close(fd)
+        ?! IOError("Unable to connect socket ($connect-error)")
+
+= This(socket)
+
+────────────────────
++ do local-address IP4Address ?! Error
+
+. address = CSockAddrInet4[1]
+. length = I32[1]
+length[0] = CSockAddrInet4.size as I32
+C:getsockname(fd, address, length)
+    ?! current-file-error()
+        if it == -1
+= IP4Address(address[0].address, network-to-host(address[0].port))
+
+────────────────────
++ do close ?! Error
+
+=? if fd < 0
+
+. descriptor = fd
+fd = -1
+C:yumiReleaseEventDescriptor(descriptor)
+do C:close(descriptor)
+    ?! IOError("Unable to close socket")
+        if it != 0
+
+────────────────────
++ do read Size
+    - size Size
+    - buffer Byte[]
+
+while fd >= 0
+    . read-size = C:recv(fd, buffer, size, 0)
+    if read-size >= 0
+        = read-size
+
+    . err = C:yumiGetErrNo() as SocketErrorCode
+    if err == .bad-descriptor
+        = 0
+    ?! IOError("Unable to read socket ($err)")
+        if err != .would-block
+
+    wait-until-readable(fd, read-deadline)
+
+= 0
+
+────────────────────
++ do write Size
+    - buffer Byte[]
+    - size Size
+
+while true
+    ?! IOError("Socket is closed")
+        if fd < 0
+    . wrote-size = C:send(fd, buffer, size, 0)
+    if wrote-size == size
+        = size
+
+    if wrote-size >= 0 && wrote-size < size
+        wait-until-writable(fd, write-deadline)
+        buffer = buffer + wrote-size
+        size = size - wrote-size
+    else if C:yumiGetErrNo() == SocketErrorCode.would-block
+        wait-until-writable(fd, write-deadline)
+    else
+        ?! IOError("Unable to write socket (${C:yumiGetErrNo()})")
+
+━━━━━━━━━━━━━━━━━━━━
++ SSL'Token
+    - Token = Char
+    is Socket'Token
+    is ReadableData'Token
+    is WritableData
+
+_ socket TCP'Token
+_ ssl CPointer'I8
+_ read-bio CPointer'I8
+_ write-bio CPointer'I8
+_ util-buf = Byte[4096]
+
+────────────────────
++ This ?! Error
+    - host String
+    - port Port
+
+.. socket = TCP'Token(host, port)
+. ctx = ssl-get-context()
+ssl = C:SSL_new(ctx)
+read-bio = C:BIO_new(C:BIO_s_mem())
+write-bio = C:BIO_new(C:BIO_s_mem())
+
+C:SSL_set_bio(ssl, read-bio, write-bio)
+C:SSL_set_connect_state(ssl)
+C:xSSL_set_tlsext_host_name(ssl, host)
+if C:xSSL_set1_host(ssl, host) != 1
+    ssl-error("Unable to set SSL host")
+
+while !C:xSSL_is_init_finished(ssl)
+    handshake()
+
+╌╌╌╌╌╌╌╌╌╌ is WritableData ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do write Size
+    - buffer Byte[]
+    - size Size
+
+. wrote Size = 0
+while wrote < size
+    . remaining = size - wrote
+    . amount = if remaining > ssl-write-chunk-size then ssl-write-chunk-size else remaining
+    . write-size = C:SSL_write(ssl, buffer + wrote, amount)
+    if write-size > 0
+        wrote += write-size
+        flush-writes()
+    else
+        . err = C:SSL_get_error(ssl, write-size) as SSLErrorCode
+        if err == .want-read
+            read-to-bio()
+                ?! IOError("Unable to write SSL")
+                    if !it
+        else if err == .want-write
+            flush-writes()
+        else
+            ssl-error("Unable to write SSL")
+
+= wrote
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close ?! Error
+
+do socket.close()
+
+────────────────────
++ do read Size
+    - size Size
+    - buffer Byte[]
+
+while true
+    . read-size = flush-reads(size, buffer)
+    if read-size
+        = read-size
+
+    if !read-to-bio()
+        = 0
+
+= 0
+
+────────────────────
+_ do handshake
+
+. r = C:SSL_do_handshake(ssl)
+if r != 1
+    . err = C:SSL_get_error(ssl, r) as SSLErrorCode
+    if err == .want-read
+        flush-writes()
+        read-to-bio()
+            ?! IOError("Unable to handshake SSL")
+                if !it
+    else if err == .want-write
+        flush-writes()
+    else
+        ssl-error("SSL Error")
+
+────────────────────
+_ do read-to-bio Bool
+
+. read-size = socket.read(util-buf.size, util-buf)
+=? if read-size == 0
+
+C:BIO_write(read-bio, util-buf, read-size)
+    ?! IOError("Unable to write to SSL")
+        if it == -1
+
+= true
+
+────────────────────
+_ do flush-writes
+
+while true
+    . pending = C:BIO_ctrl_pending(write-bio)
+    if pending > 0
+        . bio-read-size = C:BIO_read(write-bio, util-buf, util-buf.size)
+            ?! IOError("Unable to write to SSL")
+                if it == -1
+        if bio-read-size > 0
+            socket.write(util-buf, bio-read-size)
+    else
+        break
+
+────────────────────
+_ do flush-reads Size?
+    - size Size
+    - buffer Byte[]
+
+. read-size = C:SSL_read(ssl, buffer, size)
+if read-size > 0
+    = read-size
+
+. err = C:SSL_get_error(ssl, read-size) as SSLErrorCode
+=? if err == .want-read
+if err == .want-write
+    flush-writes()
+    = null
+else if err == .zero-return
+    = 0
+else
+    ssl-error("Unable to read SSL")
+
+────────────────────
+_ do ssl-error
+    - message String
+
+. e = C:ERR_get_error()
+. buf = Byte[4096]
+C:ERR_error_string_n(e, buf, 4096)
+?! IOError("$message: ${buf as CPointer'Char8}")
+
+━━━━━━━━━━━━━━━━━━━━
++ TCPListener
+    is Closable
+    is Usable'TCPListener
+
++ host String
++ port Port
+
+_ fd I32 = -1
+
+────────────────────
++ This ?! Error
+    - port Port = 0
+    - host = "127.0.0.1"
+
+fd = listening-socket(host, port)
+if port == 0
+    this.port = bound-port(fd)
+
+────────────────────
++ get is-closed
+
+fd < 0
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+do close()
+
+────────────────────
++ do accept TCP'Byte? ?! Error
+
+while fd >= 0
+    . connection = C:accept(fd, null, null)
+    if connection >= 0
+        File'Byte(connection, true, false)
+        = TCP'Byte(connection)
+
+    . err = C:yumiGetErrNo() as SocketErrorCode
+    if err == .bad-descriptor
+        = null
+    else if err == .would-block
+        wait-until-readable(fd)
+    else if err != .interrupted && err != .connection-aborted
+        ?! IOError("Unable to accept connection ($err)")
+
+= null
+
+────────────────────
++ do close ?! Error
+
+=? if fd < 0
+
+. descriptor = fd
+fd = -1
+C:yumiReleaseEventDescriptor(descriptor)
+do C:close(descriptor)
+    ?! IOError("Unable to close listening socket")
+        if it != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do listening-socket I32 ?! Error
+    - host String
+    - port Port
+
+. info = get-addr-info(host, port, C:AI_PASSIVE)
+    ?! IOError("Unable to resolve $host")
+        if it is DNSError
+do finally C:free(info.addr)
+. fd = C:socket(info.family, info.socktype, info.protocol)
+    ?! current-file-error()
+        if it == -1
+
+. is-listening = false
+do finally
+    if !is-listening
+        C:close(fd)
+
+. reuse = I32[1]
+reuse[0] = 1
+C:setsockopt(fd, C:SOL_SOCKET, C:SO_REUSEADDR, reuse, 4)
+    ?! current-file-error()
+        if it == -1
+C:bind(fd, info.addr, info.addrlen)
+    ?! IOError("Unable to listen on $host:$port")
+        if it == -1
+C:listen(fd, listen-backlog)
+    ?! current-file-error()
+        if it == -1
+File'Byte(fd, true, false)
+
+is-listening = true
+= fd
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bound-port Port ?! Error
+    - fd I32
+
+. address = CSockAddrInet4[1]
+. length = I32[1]
+length[0] = CSockAddrInet4.size as I32
+C:getsockname(fd, address, length)
+    ?! current-file-error()
+        if it == -1
+= network-to-host(address[0].port)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SocketErrorCode is I32
+
+| interrupted = C:EINTR
+| bad-descriptor = C:EBADF
+| would-block = C:EWOULDBLOCK
+| in-progress = C:EINPROGRESS
+| connection-aborted = C:ECONNABORTED
+
+━━━━━━━━━━━━━━━━━━━━
+_ SSLErrorCode is I32
+
+| ssl = 1
+| want-read = 2
+| want-write = 3
+| zero-return = 6
+
+━━━━━━━━━━━━━━━━━━━━
+_ do socket-connect-error
+    - fd I32
+
+. error = I32[1]
+. length = I32[1]
+length[0] = 4
+
+. result = C:getsockopt(fd, C:SOL_SOCKET, C:SO_ERROR, error, length)
+if result == -1
+    ?! current-file-error()
+
+= error[0]
+
+━━━━━━━━━━━━━━━━━━━━
+_ ssl-get-context
+
+C:yumiInitSSL(certpem, keypem, capem)
+    ?! Error("Invalid SSL certificates")
+        if !it
+
+.. keypem = C:getenv("YUMI_SSL_KEY_PEM") ?? ""
+.. certpem = C:getenv("YUMI_SSL_CERT_PEM") ?? ""
+.. capem = C:getenv("YUMI_SSL_CA_PEM") ?? ""

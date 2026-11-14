@@ -1,0 +1,55 @@
+`benchmark.meta description: Parses parameterized delimited records.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. rows = match parameterized-delimited-source()
+    ~ \parameterized-delimited-document
+    ?! Panic("parameterized-delimited did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row.length
+
+-- "bench-result stream/parameterized-delimited checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ parameterized-delimited-document ~ Char
+
+~ rows \parameterized-row+
+    rows
+
+.. parameterized-row [String] ~
+    ~ "row[" items \bench-delimited(",", ~ \parameterized-item) "]" "\n"
+        items
+
+.. parameterized-item String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-delimited'Result ~ Char
+    - delimiter
+    - pattern PatternFunc'Char'Result
+
+~ \items
+
+.. items [Result] ~
+    ~ head \item $delimiter tail \items
+        head ++ tail
+    ~ \item
+
+.. item [Result] ~
+    ~ $pattern
+        [it]
+
+━━━━━━━━━━━━━━━━━━━━
+_ parameterized-delimited-source
+
+"".join(parameterized-delimited-row(each) in 0 .. < 100)
+
+━━━━━━━━━━━━━━━━━━━━
+_ parameterized-delimited-row String
+    - row Int
+
+"row[$items]\n"
+
+.. items = ",".join("item_${row}_$each" in 0 .. < 10)

@@ -1,0 +1,84 @@
+
+./support/stroke-grid-cells
+/graphics/canvas
+/graphics/primitives
+/os/file
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Stroke Grid SVG Goldens")
+cases.run(stroke-grid-svg-golden-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do stroke-grid-svg-golden-tests
+    - t TestCase
+
+for index in 0 .. < 12
+    . name = stroke-grid-cell-name(index)
+    . actual = stroke-grid-cell-svg(index).trim()
+    . expected = stroke-grid-cell-golden-svg(index).trim()
+    t.expect("cell $name svg", expected, actual)
+    t.check("cell $name one path", count-substring(actual, "<path ") == 1)
+    t.check("cell $name fill only", actual.find("stroke=\"none\"") != null)
+    t.check("cell $name nonzero fill", actual.find("fill-rule=\"evenodd\"") == null)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-grid-cell-golden-svg
+    - index
+
+. file = File(stroke-grid-cell-golden-path(index), FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ stroke-grid-cell-golden-path
+    - index
+
+"cell-${stroke-grid-cell-name(index)}.svg"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-grid-cell-svg
+    - index
+
+. path = "/private/tmp/yumi-stroke-grid-cell-${stroke-grid-cell-name(index)}.svg"
+write-stroke-grid-cell-svg(index, path)
+. file = File(path, FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-stroke-grid-cell-svg
+    - index
+    - path String
+
+. canvas = SVGCanvas(251, 248)
+canvas.fill-color = stroke-grid-cell-fill-color(index)
+canvas.stroke-color = null
+stroke-grid-cell-stroked-path(index, Rect(0, 0, 251, 248)).outline(canvas)
+canvas.write(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do count-substring
+    - text String
+    - needle String
+
+. count = 0
+. start Index = 0
+while start < text.length
+    . found = text.find(needle, start)
+    if !found
+        break
+
+    count += 1
+    start = found + needle.length
+
+= count

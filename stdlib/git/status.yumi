@@ -1,0 +1,108 @@
+./command
+
+━━━━━━━━━━━━━━━━━━━━
++ GitStatusKind is Union
+
+| changed
+| renamed
+| unmerged
+| untracked
+
+━━━━━━━━━━━━━━━━━━━━
++ GitStatusEntry is Tuple
+
++ kind GitStatusKind
++ path String
++ original-path String?
++ staged String
++ unstaged String
+
+━━━━━━━━━━━━━━━━━━━━
++ GitStatus is Tuple
+
++ head String
++ branch String?
++ upstream String?
++ ahead I64
++ behind I64
++ entries [GitStatusEntry]
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-status ?! Error
+    - directory String
+
+. output = git-output
+    - directory
+    - ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"]
+= git-parse-status(output)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-ignored-paths ?! Error
+    - directory String
+    - paths [String]
+
+=? List'String() if paths.length == 0
+. input = "\0".join(each in paths)
+. output = catch git-output(directory, ["check-ignore", "-z", "--stdin"], "$input\0")
+if output is Error
+    . failure = output as Error
+    =? List'String() if failure is GitError && (failure as GitError).status == 1
+    ?! failure
+= git-fields(output)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-parse-status ?! Error
+    - bytes Byte[]
+
+. head = ""
+. branch String?
+. upstream String?
+. ahead I64
+. behind I64
+. entries = List'GitStatusEntry()
+. fields = git-fields(bytes)
+. index Index = 0
+while index < fields.length
+    . field = fields[index]
+    index += 1
+    if field.starts-with("# branch.oid ")
+        . oid = field[13 ...]
+        head = if oid == "(initial)" then "" else oid
+    else if field.starts-with("# branch.head ")
+        . name = field[14 ...]
+        branch = if name == "(detached)" then null else name
+    else if field.starts-with("# branch.upstream ")
+        upstream = field[18 ...]
+    else if field.starts-with("# branch.ab ")
+        . counts = List'String(field[12 ...].split(" "))
+        ?! Error("Invalid Git status branch counts")
+            if counts.length != 2
+        ahead = counts[0][1 ...] as I64
+        behind = counts[1][1 ...] as I64
+    else if field.starts-with("1 ")
+        entries += git-status-entry(.changed, field, 8, null)
+    else if field.starts-with("2 ")
+        ?! Error("Incomplete Git status rename")
+            if index >= fields.length
+        entries += git-status-entry(.renamed, field, 9, fields[index])
+        index += 1
+    else if field.starts-with("u ")
+        entries += git-status-entry(.unmerged, field, 10, null)
+    else if field.starts-with("? ")
+        entries += GitStatusEntry(.untracked, field[2 ...], null, "?", "?")
+= GitStatus(head, branch, upstream, ahead, behind, entries)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-status-entry ?! Error
+    - kind GitStatusKind
+    - field String
+    - spaces Size
+    - original-path String?
+
+. start Index = 0
+for count in 0 .. < spaces
+    . found = field.find(" ", start)
+    ?! Error("Invalid Git status entry")
+        if found == null
+    start = found + 1
+= GitStatusEntry(kind, field[start ...], original-path, field[2 .. < 3], field[3 .. < 4])

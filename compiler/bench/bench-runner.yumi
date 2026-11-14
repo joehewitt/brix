@@ -1,0 +1,995 @@
+./../command-template
+./bench-catalog
+./bench-config
+./bench-metrics
+./bench-probes
+./bench-report
+/YuCore/YuString.h
+/data/json
+/os/env
+/os/file
+/os/path
+/os/process
+/time/clock
+/time/duration
+/time/timer
+
+_ bench-stop-grace = 1500ms
+_ bench-drain-grace = 2s
+_ bench-settle-poll = 20ms
+_ bench-settle-polls = 25
+_ bench-prune-age = 172800
+_ bench-output-lines Size = 12
+_ bench-setup-lines Size = 20
+_ bench-lifeline = "(read line <&3; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec \"\$@\" 3<&-"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchPhase is Union
+
+| warmup-compile
+| warmup-compile-done
+| warmup-run
+| warmup-run-done
+| compile
+| compile-done
+| run
+| run-done
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchEvent is Union
+
+| setup(state String)
+| progress(bench Index, phase BenchPhase, iteration Size, at U64, values [F64?])
+| finished(bench Index, result BenchResult)
+| saved(path String)
+| failed(message String)
+| completed(is-stopped Bool)
+| discovered(config BenchConfig, cases [BenchCase])
+| loaded(state BenchLoad)
+| unavailable(message String)
+| unconfigured
+| changed
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchFrame is (run Int, event BenchEvent)
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchLoad is Tuple
+
++ profile String
++ compare String
++ latest [String = BenchRecord]
++ baseline [String = BenchRecord]
++ runs [BenchSavedRun]
++ unsaved [String]
++ problem String
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchOrder is Tuple
+
++ run Int
++ info BenchRunInfo
++ cases [BenchCase]
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchRequest is Union
+
+| start(order BenchOrder)
+| stop(run Int)
+| discover(request Int, root String)
+| load(request Int, root String, profile String, compare String)
+| save(request Int, root String, profiles [String], reason String)
+| archive(request Int, root String, name String)
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchStopped is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRunner
+    is Closable
+
++ frames := SyncBufferedChannel'BenchFrame()
+
+_ requests := SyncBufferedChannel'BenchRequest()
+_ served := SyncBufferedChannel'Bool()
+_ worker := Worker()
+
+────────────────────
++ This
+
+do (worker) new
+    serve()
+
+────────────────────
++ do start
+    - order BenchOrder
+
+requests <- BenchRequest.start(order)
+
+────────────────────
++ do stop
+    - run Int
+
+requests <- BenchRequest.stop(run)
+
+────────────────────
++ do discover
+    - request Int
+    - root String
+
+requests <- BenchRequest.discover(request, root)
+
+────────────────────
++ do load
+    - request Int
+    - root String
+    - profile String
+    - compare String
+
+requests <- BenchRequest.load(request, root, profile, compare)
+
+────────────────────
++ do save
+    - request Int
+    - root String
+    - profiles [String]
+    - reason String
+
+requests <- BenchRequest.save(request, root, profiles, reason)
+
+────────────────────
++ do archive
+    - request Int
+    - root String
+    - name String
+
+requests <- BenchRequest.archive(request, root, name)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if requests.is-closed
+requests.close()
+<- served
+worker.stop()
+frames.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do serve
+
+. executions [BenchExecution]
+. last BenchExecution?
+for request in requests
+    do match request
+        | .start(order)
+            . previous = last
+            . execution = BenchExecution(order, frames)
+            . live [BenchExecution]
+            for each in executions
+                if !each.is-finished
+                    live += each
+            live += execution
+            executions = live
+            last = execution
+            do new
+                previous?.await()
+                execution.execute()
+        | .stop(run)
+            for execution in executions
+                if execution.order.run == run
+                    execution.stop()
+        | .discover(request, root)
+            do new
+                frames <- BenchFrame(request, bench-discovery(root))
+        | .load(request, root, profile, compare)
+            do new
+                frames <- BenchFrame(request, bench-loading(root, profile, compare))
+        | .save(request, root, profiles, reason)
+            do new
+                frames <- BenchFrame(request, bench-saving(root, profiles, reason))
+        | .archive(request, root, name)
+            do new
+                frames <- BenchFrame(request, bench-archiving(root, name))
+for execution in executions
+    execution.stop()
+last?.await()
+served.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-discovery BenchEvent
+    - root String
+
+. config = load-bench-config(root)
+    catch failure Error
+        =? BenchEvent.unconfigured if failure is BenchUnconfiguredError
+        = BenchEvent.unavailable(failure.message)
+. cases = discover-bench-cases(config)
+    catch failure Error
+        = BenchEvent.unavailable(failure.message)
+= BenchEvent.discovered(config, cases)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-loading BenchEvent
+    - root String
+    - profile String
+    - compare String
+
+. problem = ""
+. latest = Map'String'BenchRecord()
+. loaded = catch load-bench-latest(root, profile)
+if loaded is Error
+    problem = loaded.message
+else
+    latest = loaded
+. baseline = Map'String'BenchRecord()
+if compare != ""
+    . compared = catch load-bench-compared(root, compare, profile)
+    if compared is Error
+        problem = compared.message
+    else
+        baseline = compared
+. listed = bench-saved-runs(root, null)
+. runs [BenchSavedRun]
+for run in listed
+    if run.profile == profile
+        runs += run
+= BenchEvent.loaded
+    - BenchLoad
+        - profile
+        - compare
+        - latest
+        - baseline
+        - runs
+        - bench-unsaved-profiles(root, listed)
+        - problem
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-saving BenchEvent
+    - root String
+    - profiles [String]
+    - reason String
+
+for profile in profiles
+    . failure = catch save-bench-comparison(root, profile, reason)
+    =? BenchEvent.failed((failure as Error).message) if failure is Error
+= BenchEvent.changed
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-archiving BenchEvent
+    - root String
+    - name String
+
+. failure = catch archive-bench-run(root, name)
+=? BenchEvent.failed((failure as Error).message) if failure is Error
+= BenchEvent.changed
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchAttempt is Tuple
+
++ compile BenchSample?
++ run BenchSample?
++ checksum F64?
++ result-line String?
++ diagnostics [String]
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchValidation is Tuple
+
++ checksum F64?
++ result-line String?
++ problem String
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchExecution
+
++ order BenchOrder
+
+_ frames SyncBufferedChannel'BenchFrame
++ is-finished = false
+
+_ process BenchProcess?
+_ is-stopping = false
+_ done := SyncBufferedChannel'Bool()
+
+────────────────────
++ This
+    - order
+    - frames
+
+────────────────────
++ do stop
+
+=? if is-stopping
+is-stopping = true
+process?.stop()
+
+────────────────────
++ do await
+
+<- done
+
+────────────────────
++ do execute
+
+run-order()
+    catch failure Error
+        if !is-stopping
+            send(BenchEvent.failed(failure.message))
+send(BenchEvent.completed(is-stopping))
+is-finished = true
+done.close()
+
+────────────────────
+_ do run-order ?! Error
+
+. info = order.info
+. root = info.config.root
+. baseline JSON?
+if info.compare-name != ""
+    baseline = load-bench-baseline(root, info.compare-name)
+if info.profile.setup
+    send(BenchEvent.setup("provider-setup"))
+    run-setup()
+    send(BenchEvent.setup("setup-ready"))
+else
+    send(BenchEvent.setup("setup-not-needed"))
+. directory = make-bench-directory(info.run-id)
+do finally
+    if !info.keeps
+        catch remove-bench-tree(directory)
+. results [BenchResult]
+for index in 0 .. < order.cases.length
+    check-stopped()
+    . result = run-case(index, directory)
+    check-stopped()
+    results += result
+    send(BenchEvent.finished(index, result))
+. comparison BenchComparison?
+if baseline
+    comparison = bench-comparison(root, info.compare-name, baseline, results, info.profile.metrics)
+        catch failure Error
+            ?! Error("Measurement finished, but the comparison failed: ${failure.message}")
+. path = save-bench-reports(info, results, comparison)
+    catch failure Error
+        ?! Error("Measurement finished, but saving the report failed: ${failure.message}")
+send(BenchEvent.saved(path))
+
+────────────────────
+_ do run-setup ?! Error
+
+. info = order.info
+. step = info.config.step(info.profile.setup!, info.profile, variables("", "", "", "", ""))
+. limit = if info.timeout > bench-setup-timeout then info.timeout else bench-setup-timeout
+. sample = execute(step, limit, 0)
+?! Error("benchmark setup ${sample.status}${bench-exit-label(sample)}\n$output-tail")
+    if sample.status != "passed"
+.. output-tail = bench-tail(trim-joined(sample.stdout, sample.stderr), bench-setup-lines)
+
+────────────────────
+_ do run-case BenchResult ?! Error
+    - index Index
+    - directory String
+
+. info = order.info
+. bench = order.cases[index]
+. case-directory = "$directory/${bench-sanitized(bench.id)}"
+Path(case-directory, 0).make-directories()
+. source = bench.source-path
+. diagnostics [String]
+for iteration in 0 .. < info.warmup
+    . warmup = attempt(index, source, case-directory, iteration, true)
+    if warmup.diagnostics.length > 0
+        for diagnostic in warmup.diagnostics
+            diagnostics += "warmup $iteration: $diagnostic"
+        break
+. compile-samples [BenchSample]
+. run-samples [BenchSample]
+. checksum F64?
+. result-line String?
+if diagnostics.length == 0
+    for iteration in 0 .. < info.iterations
+        . sample = attempt(index, source, case-directory, iteration, false)
+        if sample.compile
+            compile-samples += sample.compile
+        if sample.run
+            run-samples += sample.run
+        if sample.checksum
+            checksum = sample.checksum
+        if sample.result-line
+            result-line = sample.result-line
+        diagnostics ++= sample.diagnostics
+. values [[F64?]]
+. summaries [BenchSummary]
+for metric in info.profile.metrics
+    . samples = if metric.source == BenchSource.compile then compile-samples else run-samples
+    . extracted [F64?]
+    for sample in samples
+        extracted += bench-extract(metric, bench-sample-json(sample, metric.source, false))
+    values += extracted
+    summaries += bench-summary(extracted)
+= BenchResult
+    - bench
+    - bench-status(compile-samples, run-samples, diagnostics)
+    - checksum
+    - result-line
+    - compile-samples
+    - run-samples
+    - values
+    - summaries
+    - diagnostics
+
+────────────────────
+_ do attempt BenchAttempt ?! Error
+    - index Index
+    - source String
+    - directory String
+    - iteration Size
+    - is-warmup Bool
+
+. info = order.info
+. bench = order.cases[index]
+. tag = if is-warmup then "warmup-$iteration" else "iter-$iteration"
+. executable = "$directory/${bench-sanitized(bench.id)}-$tag"
+. metrics-path = "${executable}.metrics.json"
+. compiler-trace = if info.profile.compiler-probes.length > 0 then traced-path else ""
+    .. traced-path = "${executable}.compiler.probes"
+. probes-path = "${executable}.probes"
+progress
+    - index
+    - if is-warmup then BenchPhase.warmup-compile else BenchPhase.compile
+    - iteration
+    - null
+. step = info.config.step
+    - bench.suite.compile
+    - info.profile
+    - variables(source, executable, "", compiler-trace, probes-path)
+. outcome = execute(step, info.timeout, iteration)
+. data = compiler-metrics(compiler-trace)
+. compile = BenchSample
+    - iteration
+    - outcome.duration
+    - outcome.status
+    - outcome.exit-code
+    - outcome.signal
+    - outcome.stdout
+    - outcome.stderr
+    - executable
+    - ""
+    - compiler-trace
+    - data
+progress
+    - index
+    - if is-warmup then BenchPhase.warmup-compile-done else BenchPhase.compile-done
+    - iteration
+    - compile
+. diagnostics [String]
+if compile.status != "passed"
+    diagnostics += "compile ${compile.status}${bench-exit-label(compile)}"
+    diagnostics ++= bench-output-diagnostics("compile", compile)
+    = BenchAttempt(compile, null, null, null, diagnostics)
+=? BenchAttempt(compile, null, null, null, diagnostics) if !info.profile.runs-executable
+. ran = run-executable(index, source, executable, metrics-path, probes-path, iteration, is-warmup)
+= BenchAttempt(compile, ran.run, ran.checksum, ran.result-line, ran.diagnostics)
+
+────────────────────
+_ do run-executable BenchAttempt ?! Error
+    - index Index
+    - source String
+    - executable String
+    - metrics-path String
+    - probes-path String
+    - iteration Size
+    - is-warmup Bool
+
+. info = order.info
+. bench = order.cases[index]
+progress(index, if is-warmup then BenchPhase.warmup-run else BenchPhase.run, iteration, null)
+. step = info.config.step
+    - bench.suite.run
+    - info.profile
+    - variables(source, executable, metrics-path, "", probes-path)
+. outcome = execute(step, info.timeout, iteration)
+. diagnostics [String]
+. probes = if info.profile.probes.length > 0 then probes-path else ""
+. data = runtime-metrics(metrics-path, probes, outcome.stdout, diagnostics)
+. run = BenchSample
+    - iteration
+    - outcome.duration
+    - outcome.status
+    - outcome.exit-code
+    - outcome.signal
+    - outcome.stdout
+    - outcome.stderr
+    - executable
+    - metrics-path
+    - probes
+    - data
+progress
+    - index
+    - if is-warmup then BenchPhase.warmup-run-done else BenchPhase.run-done
+    - iteration
+    - run
+. validation = bench-validation(bench.id, run.stdout)
+if run.status != "passed"
+    diagnostics += "run ${run.status}${bench-exit-label(run)}"
+    diagnostics ++= bench-output-diagnostics("run", run)
+else if validation.problem != ""
+    diagnostics += validation.problem
+= BenchAttempt(null, run, validation.checksum, validation.result-line, diagnostics)
+
+────────────────────
+_ do execute BenchSample ?! Error
+    - step TargetStep
+    - timeout U64
+    - iteration Size
+
+check-stopped()
+. current = BenchProcess(step, order.info.config.root, timeout)
+process = current
+if is-stopping
+    current.stop()
+. sample = current.run()
+process = null
+check-stopped()
+= sample
+
+────────────────────
+_ do variables [String = String]
+    - source String
+    - artifact String
+    - metrics String
+    - compiler-trace String
+    - trace String
+
+. info = order.info
+. root = info.config.root
+. values = Map'String'String
+    • "root" root
+    • "source" source
+    • "artifact" artifact
+    • "metrics" metrics
+    • "compilerProbes" info.profile.compiler-probe-selectors
+    • "compilerTrace" compiler-trace
+    • "probes" info.profile.probe-selectors
+    • "trace" trace
+    • "build" bench-build(root, info.profile)
+    • "benchmarkMetrics" if info.profile.has-benchmark-metrics then "1" else ""
+= values
+
+────────────────────
+_ do compiler-metrics JSON?
+    - trace String
+
+. fields [String = JSON]
+. probed = bench-probe-metrics(trace) if trace != ""
+for key, value in probed ?? Map'String'JSON()
+    fields[key] = value
+=? null if fields.length == 0
+= fields as JSON
+
+────────────────────
+_ do runtime-metrics JSON?
+    - metrics-path String
+    - trace String
+    - stdout String
+    - diagnostics [String]
+
+. fields [String = JSON]
+. sidecar = bench-read-json(metrics-path) if metrics-path != ""
+if sidecar
+    do match? sidecar
+        | found [String = JSON]
+            for key, value in found
+                fields[key] = value
+for line in stdout.split("\n")
+    . text = if line.ends-with("\r") then line[0 .. < line.length - 1] else line
+    if !text.starts-with("bench-metrics ")
+        continue
+    . parsed = catch parse-json(text["bench-metrics ".length ...].trim())
+    if parsed is Error
+        diagnostics += "invalid bench-metrics JSON: ${(parsed as Error).message}"
+        continue
+    do match parsed as JSON
+        | found [String = JSON]
+            for key, value in found
+                fields[key] = value
+        ??
+            diagnostics += "invalid bench-metrics line: expected JSON object"
+. probed = bench-probe-metrics(trace) if trace != ""
+for key, value in probed ?? Map'String'JSON()
+    fields[key] = value
+=? null if fields.length == 0
+= fields as JSON
+
+────────────────────
+_ do progress
+    - index Index
+    - phase BenchPhase
+    - iteration Size
+    - sample BenchSample?
+
+. values [F64?]
+if sample
+    . source = if is-compile then BenchSource.compile else BenchSource.run
+        .. is-compile = phase == BenchPhase.compile-done || phase == BenchPhase.warmup-compile-done
+    . sampled = bench-sample-json(sample, source, false)
+    for metric in order.info.profile.metrics
+        values += bench-extract(metric, sampled) if metric.source == source
+send(BenchEvent.progress(index, phase, iteration, monotonic-time-nanoseconds(), values))
+
+────────────────────
+_ do check-stopped ?! Error
+
+?! BenchStopped("Benchmark run stopped")
+    if is-stopping
+
+────────────────────
+_ do send
+    - event BenchEvent
+
+frames <- BenchFrame(order.run, event)
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchProcess
+
+_ step TargetStep
+_ root String
+_ timeout U64
+_ child Process?
+_ lifeline File?
+_ status Int = -1
+_ errors = ""
+_ is-stopping = false
+_ is-exited = false
+_ is-timed-out = false
+_ is-settled = false
+_ timers [Task]
+_ exited := SyncBufferedChannel'Bool()
+_ drained := SyncBufferedChannel'Bool()
+
+────────────────────
++ This
+    - step
+    - root
+    - timeout
+
+────────────────────
++ do run BenchSample ?! Error
+
+. started = monotonic-time-nanoseconds()
+spawn()
+. current = child!
+do new
+    drain-errors(current)
+do new
+    await-exit(current)
+do new
+    watch(current)
+if is-stopping
+    current.kill-tree()
+. output = read-output(current)
+<- exited
+<- drained
+settle(current)
+. duration = bench-rounded(((monotonic-time-nanoseconds() - started) as F64) / 1000000.0)
+. signal-number = if status > 128 then status - 128 else 0
+. sample-status = if is-timed-out then "timeout" else if is-signaled then "signal" else exit-status
+    .. is-signaled = signal-number > 0
+    .. exit-status = if status != 0 then "failed" else "passed"
+. exit-code Int? = if signal-number > 0 then null else status
+. signal String? = bench-signal-name(signal-number) if signal-number > 0
+= BenchSample
+    - 0
+    - duration
+    - sample-status
+    - exit-code
+    - signal
+    - output.trim()
+    - errors.trim()
+    - ""
+    - ""
+    - ""
+    - null
+
+────────────────────
++ do stop
+
+=? if is-stopping
+is-stopping = true
+. current = child
+=? if !current
+if is-exited
+    current.kill-tree()
+    =
+current.terminate-group()
+do new
+    timers += get-active-task()
+    bench-stop-grace.wait()
+    if !is-exited
+        current.kill-tree()
+
+────────────────────
+_ do spawn ?! Error
+
+. arguments =
+    * "-c"
+    * bench-lifeline
+    * "sh"
+    ** step.arguments
+    |> List
+. pipe = process-pipe()
+. created = Process("/bin/sh", ProcessStderr.capture, arguments, root, step.variables, [pipe.reader.fd]) • group ProcessGroup.own
+    catch failure Error
+        catch pipe.reader.close()
+        catch pipe.writer.close()
+        ?! failure
+catch pipe.reader.close()
+lifeline = pipe.writer
+child = created
+catch created.close-input()
+
+────────────────────
+_ do read-output String
+    - current Process
+
+. chunk = Byte[0x10000]
+. buffer = Byte[0x10000]
+. length Size = 0
+while true
+    . count = bench-read-chunk(current, chunk)
+    if count == 0
+        break
+    while length + count > buffer.size
+        buffer = buffer.resize(buffer.size * 2)
+    for index in 0 .. < count
+        buffer[length + index] = chunk[index]
+    length += count
+= bench-byte-text(buffer, length)
+
+────────────────────
+_ do drain-errors
+    - current Process
+
+. chunk = Byte[0x10000]
+. buffer = Byte[0x10000]
+. length Size = 0
+. source = current.stderr!
+while true
+    . count = bench-read-chunk(source, chunk)
+    if count == 0
+        break
+    while length + count > buffer.size
+        buffer = buffer.resize(buffer.size * 2)
+    for index in 0 .. < count
+        buffer[length + index] = chunk[index]
+    length += count
+errors = bench-byte-text(buffer, length)
+drained.close()
+
+────────────────────
+_ do await-exit
+    - current Process
+
+timers += get-active-task()
+status = current.wait(null) ?? -1
+is-exited = true
+exited.close()
+bench-drain-grace.wait()
+=? if is-settled
+current.kill-tree()
+
+────────────────────
+_ do watch
+    - current Process
+
+timers += get-active-task()
+. limit = timeout * 1000000
+. started = monotonic-time-nanoseconds()
+while !is-settled && !is-exited
+    . elapsed = monotonic-time-nanoseconds() - started
+    if elapsed >= limit
+        is-timed-out = true
+        current.kill-tree()
+        =
+    (((limit - elapsed) as F64) as Nanoseconds).wait()
+
+────────────────────
+_ do settle
+    - current Process
+
+is-settled = true
+for timer in timers
+    timer.cancel()
+current.kill-tree()
+catch lifeline!.close()
+catch current.close()
+. polls = 0
+while current.group-members.length > 0 && polls < bench-settle-polls
+    bench-settle-poll.wait()
+    polls += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-status String
+    - compile-samples [BenchSample]
+    - run-samples [BenchSample]
+    - diagnostics [String]
+
+for sample in compile-samples
+    =? "compile-failed" if sample.status != "passed"
+for sample in run-samples
+    =? "run-failed" if sample.status != "passed"
+=? "passed" if diagnostics.length == 0
+for diagnostic in diagnostics
+    =? "validation-failed" if is-bad-result || diagnostic.find("bench-result") != null
+    .. is-bad-result = diagnostic.starts-with("missing") || diagnostic.starts-with("invalid")
+= "run-failed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-validation BenchValidation
+    - id String
+    - stdout String
+
+. line String?
+for each in stdout.split("\n")
+    if each.starts-with("bench-result ")
+        line = if each.ends-with("\r") then each[0 .. < each.length - 1] else each
+        break
+=? BenchValidation(null, null, "missing bench-result line") if !line
+. words [String]
+for word in line["bench-result ".length ...].split(" ")
+    if word != ""
+        words += word
+. digits = if words.length == 2 && words[1].starts-with("checksum=") then checksum-text else ""
+    .. checksum-text = words[1]["checksum=".length ...]
+. is-valid = digits != ""
+for char in digits
+    is-valid = is-valid && char >= '0' && char <= '9'
+=? BenchValidation(null, line, "invalid bench-result line: ${line}") if !is-valid
+. checksum = digits as F64
+=? BenchValidation(checksum, line, mismatch-message) if words[0] != id
+.. mismatch-message = "bench-result identity '${words[0]}' did not match '$id'"
+= BenchValidation(checksum, line, "")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-output-diagnostics [String]
+    - label String
+    - sample BenchSample
+
+. diagnostics [String]
+if sample.stdout != ""
+    diagnostics += "$label stdout:\n${bench-tail(sample.stdout, bench-output-lines)}"
+if sample.stderr != ""
+    diagnostics += "$label stderr:\n${bench-tail(sample.stderr, bench-output-lines)}"
+= diagnostics
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-exit-label String
+    - sample BenchSample
+
+if sample.signal then " signal=${sample.signal}" else exit-text
+
+.. exit-text = if sample.exit-code && sample.exit-code != 0 then " exit=${sample.exit-code}" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-tail String
+    - text String
+    - count Size
+
+. lines [String]
+for line in text.split("\n")
+    lines += line
+=? text if lines.length <= count
+= "\n".join(lines[lines.length - count ...])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trim-joined String
+    - first String
+    - second String
+
+. parts [String]
+if first != ""
+    parts += first
+if second != ""
+    parts += second
+= "\n".join(parts).trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-byte-text String
+    - bytes Byte[]
+    - count Size
+
+=? "" if count == 0
+=? bytes.slice-string(0 .. < count) if C:yumiStringValidateUtf8(bytes.data, count) == 0
+. cleaned = Byte[count]
+for index in 0 .. < count
+    cleaned[index] = if bytes[index] < 128 then bytes[index] else 63
+= cleaned.slice-string(0 .. < count)
+
+━━━━━━━━━━━━━━━━━━━━
+_ bench-signal-name String
+    - number Int
+
+match number
+    |= 1
+        "SIGHUP"
+    |= 2
+        "SIGINT"
+    |= 3
+        "SIGQUIT"
+    |= 4
+        "SIGILL"
+    |= 5
+        "SIGTRAP"
+    |= 6
+        "SIGABRT"
+    |= 8
+        "SIGFPE"
+    |= 9
+        "SIGKILL"
+    |= 10
+        "SIGBUS"
+    |= 11
+        "SIGSEGV"
+    |= 13
+        "SIGPIPE"
+    |= 14
+        "SIGALRM"
+    |= 15
+        "SIGTERM"
+    ??
+        "SIG$number"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do make-bench-directory String ?! Error
+    - run-id String
+
+. root = bench-temp-root()
+Path(root, 0).make-directories()
+prune-bench-directories(root)
+. directory = "$root/${bench-sanitized(run-id)}"
+Path(directory, 0).make-directories()
+= directory
+
+━━━━━━━━━━━━━━━━━━━━
+_ bench-temp-root String
+
+"$trimmed/brix-bench"
+
+.. base = environment()["TMPDIR"] ?? "/tmp"
+.. trimmed = if base.ends-with("/") then base[0 .. < base.length - 1] else base
+
+━━━━━━━━━━━━━━━━━━━━
+_ do prune-bench-directories
+    - root String
+
+. now = clock().s as I64
+. found = catch? Path(root, 0).entries
+=? if !found
+for entry in found
+    if entry.kind != PathKind.directory || entry.name == "." || entry.name == ".."
+        continue
+    . path = "$root/${entry.name}"
+    . stat = catch? Path(path, 0).stat
+    if stat && now - (stat.mtime.s as I64) > bench-prune-age
+        catch remove-bench-tree(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do remove-bench-tree ?! Error
+    - path String
+
+=? if !path.starts-with("${bench-temp-root()}/")
+. found = catch? Path(path, 0).entries
+if found
+    for entry in found
+        if entry.name == "." || entry.name == ".."
+            continue
+        . child = "$path/${entry.name}"
+        if entry.kind == PathKind.directory
+            remove-bench-tree(child)
+        else
+            catch Path(child, 0).delete()
+catch Path(path, 0).delete()

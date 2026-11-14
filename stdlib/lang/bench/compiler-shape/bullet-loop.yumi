@@ -1,0 +1,29 @@
+`benchmark.meta description: Repeated bullet map/filter pipelines consumed by a loop.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+/core
+
+. rounds = 40000
+. upper-bound = 256
+. checksum = bullet-checksum(rounds, upper-bound)
+?! Panic("bullet checksum mismatch")
+    if checksum != rounds * 3 * 128 * 129
+
+-- "bench-result compiler-shape/bullet-loop checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bullet-checksum Int
+    - rounds Int
+    - upper-bound Int
+
+. total = 0
+for round in 0 .. < rounds
+    . values =
+        ** 1 .. upper-bound
+        *> each * 3
+        ?> each % 2 == 0
+    for value in values
+        total += value
+= total
+

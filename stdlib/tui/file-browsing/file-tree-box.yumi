@@ -1,0 +1,93 @@
+./file-row
+./file-view
+/os/file-tree
+/tui
+/tui/treebox
+
+━━━━━━━━━━━━━━━━━━━━
++ FileTreeBox is FileView
+
+────────────────────
+
+<This • flex-col
+    <TreeBox'FileNode tree • flex:1
+        root-node = files.root
+        load-children = :: node => files.children-of(node)
+        key-builder = :: node => node.key
+
+        <FileTreeRow (row) - item
+            item = item
+
+────────────────────
+for touched on files.changed
+
+tree.reload()
+
+────────────────────
+whenever tree.#entries
+
+sync-retained()
+
+────────────────────
+for event on tree.selected
+
+note-selection()
+
+────────────────────
+for event on tree.activated
+
+. node = selected-node()
+if node && !node.is-directory
+    open(node)
+
+╌╌╌╌╌╌╌╌╌╌ is FileView ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ selected-node FileNode?
+
+tree.selected-item
+
+────────────────────
++ do show-node
+    - node FileNode
+
+. ignored = catch? tree.reveal-key-path(files.keys-to(node))
+
+────────────────────
++ do focus-list
+
+tree.focus-list()
+
+────────────────────
++ do follow-current
+
+. node = session.current
+=? if !node || node.is-detached || tree.selected-item?.key == node.key
+show-node(node)
+
+────────────────────
++ search-candidates [FileNode]
+
+List'FileNode(each.item in tree.entries)
+
+────────────────────
++ do select-node
+    - node FileNode
+
+for index in 0 .. < tree.entries.length
+    if tree.entries[index].key == node.key
+        . row = tree.row-at-index(index)
+        if row
+            catch tree.select-row(row)
+        =
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do sync-retained
+
+. next = Map'String'FileNode()
+for entry in tree.entries
+    if entry.is-expanded
+        next[entry.key] = entry.item
+retain-only(next)

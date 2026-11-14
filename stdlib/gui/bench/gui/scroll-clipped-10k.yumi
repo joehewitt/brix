@@ -1,0 +1,232 @@
+`benchmark.meta description: Retained chunks drawn and frame time for a 40-visible-row scroll frame over a clipped 10k-row list.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/primitives
+/gui/scene
+/stream/sort
+/time/timer
+
+_ paint-visits Size = 0
+_ sync-visits Size = 0
+_ measure-calls Size = 0
+_ layout-visits Size = 0
+
+. row-count Size = 10000
+. root = CountingRoot()
+markup-mount-root(root, root)
+. viewport = ScrollViewport()
+markup-append(root, viewport)
+for row-index in 0 .. < row-count
+    markup-append(viewport, CountingCell())
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1200, 320))
+
+. checksum Size = 0
+. canvas = RasterCanvas(1200, 320, 2)
+. scene = DisplayScene(2, transparent)
+do use canvas
+    ` Settle the packed scene and its persistent surface before scrolling.
+    scene.build(root)
+    scene.commit()
+    scene.frame(canvas)
+
+    ` counted scroll frame
+    viewport.scroll-to(Point(0, 1000))
+    reset-counters()
+    scene.reset-frame-counters()
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    . bytes0 = C:yumiGCRequestedByteCount()
+    . first0 = monotonic-time-nanoseconds()
+    scene.update(root)
+    scene.commit()
+    scene.frame(canvas)
+    ` Legacy paint-visits output now carries the retained chunks-drawn count.
+    paint-visits = scene.chunks-drawn
+    . first1 = monotonic-time-nanoseconds()
+    . frame-objects = C:yumiGCAllocatedObjectCount() - objects0
+    . frame-bytes = C:yumiGCRequestedByteCount() - bytes0
+    . first-frame-us = (first1 - first0) / 1000
+    . visible-rows = (viewport.content-bounds.height / 8) as Size
+
+    //gui.bench.scroll.paint-visits += paint-visits
+    //gui.bench.scroll.objects += frame-objects
+    //gui.bench.scroll.bytes += frame-bytes
+    //gui.bench.scroll.visible-rows += visible-rows
+    //gui.bench.scroll.rows += row-count
+    //gui.bench.scroll.first-frame-us += first-frame-us
+    checksum += paint-visits + visible-rows + row-count
+
+    ` timed scroll frames
+    . frames Size = 30
+    . frame-ns [U64]
+    . offset F64 = 1000
+    for frame in 0 .. < frames
+        offset += 10
+        viewport.scroll-to(Point(0, offset))
+        . t0 = monotonic-time-nanoseconds()
+        scene.update(root)
+        scene.commit()
+        scene.frame(canvas)
+        . t1 = monotonic-time-nanoseconds()
+        frame-ns += t1 - t0
+
+    . frame-p50 = percentile-us(frame-ns, 50)
+    . frame-p95 = percentile-us(frame-ns, 95)
+    . frame-p99 = percentile-us(frame-ns, 99)
+    . frame-min = min-us(frame-ns)
+    //gui.bench.scroll.frame-p50-us += frame-p50
+    //gui.bench.scroll.frame-p95-us += frame-p95
+    //gui.bench.scroll.frame-p99-us += frame-p99
+    //gui.bench.scroll.frame-min-us += frame-min
+scene.close()
+root.close()
+markup-release(root)
+
+-- "bench-result gui/scroll-clipped-10k checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do reset-counters
+
+paint-visits = 0
+sync-visits = 0
+measure-calls = 0
+layout-visits = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ percentile-us
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
++ min-us
+    - values [U64]
+
+|? !values
+    0
+??
+    sorted[0] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
++ CountingRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
++ do paint-traversal-visit
+
+paint-visits += 1
+
+────────────────────
++ do sync-native-geometry-traversal-visit
+
+sync-visits += 1
+
+────────────────────
++ do did-layout
+
+layout-visits += 1
+super.did-layout()
+
+━━━━━━━━━━━━━━━━━━━━
++ CountingRow is Box
+
+• This
+    layout = flow-row
+
+────────────────────
++ do paint-traversal-visit
+
+paint-visits += 1
+
+────────────────────
++ do sync-native-geometry-traversal-visit
+
+sync-visits += 1
+
+────────────────────
++ do measure MeasureResult
+    - query MeasureQuery = measure-fit-query()
+
+measure-calls += 1
+= super.measure(query)
+
+────────────────────
++ do did-layout
+
+layout-visits += 1
+super.did-layout()
+
+━━━━━━━━━━━━━━━━━━━━
++ CountingCell is Box
+
+• This • bg:"#8080e6"
+    min-width = SizeSpec.coord(11)
+    min-height = SizeSpec.coord(8)
+    max-width = SizeSpec.coord(11)
+    max-height = SizeSpec.coord(8)
+
+────────────────────
++ do paint-traversal-visit
+
+paint-visits += 1
+
+────────────────────
++ do sync-native-geometry-traversal-visit
+
+sync-visits += 1
+
+────────────────────
++ do measure MeasureResult
+    - query MeasureQuery = measure-fit-query()
+
+measure-calls += 1
+= super.measure(query)
+
+────────────────────
++ do did-layout
+
+layout-visits += 1
+super.did-layout()
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollViewport is Box
+
+• This
+    layout = flow-col
+    overflow-y = ScrollOverflow.auto
+    min-height = SizeSpec.coord(320)
+    max-height = SizeSpec.coord(320)
+    min-width = SizeSpec.coord(1200)
+    max-width = SizeSpec.coord(1200)
+
+────────────────────
++ do paint-traversal-visit
+
+paint-visits += 1

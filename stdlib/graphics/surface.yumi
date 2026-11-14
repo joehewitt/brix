@@ -1,0 +1,61 @@
+./canvas
+/YuGraphics/YuGraphics.h
+
+━━━━━━━━━━━━━━━━━━━━
++ SharedSurface
+    is Closable
+
++ native Pointer
+
+────────────────────
++ This ?! IOError
+    - pixel-width I32
+    - pixel-height I32
+
+. created = C:yumiGraphicsSurfaceCreate(pixel-width, pixel-height)
+?! IOError("Unable to create a $pixel-width by $pixel-height surface")
+    if !created
+= This(created)
+
+────────────────────
++ This
+    - native
+
+────────────────────
++ get pixel-width I32
+
+C:yumiGraphicsSurfaceGetPixelWidth(native)
+
+────────────────────
++ get pixel-height I32
+
+C:yumiGraphicsSurfaceGetPixelHeight(native)
+
+────────────────────
++ do make-port U32
+
+=? 0 if !native
+= C:yumiGraphicsSurfaceCreateMachPort(native)
+
+────────────────────
++ do canvas RasterCanvas?
+    - scale F64
+
+. graphics = C:yumiGraphicsCanvasCreateWithSurface(native, scale)
+=? null if !graphics
+= RasterCanvas(graphics)
+
+────────────────────
++ do close
+
+=? if !native
+C:yumiGraphicsSurfaceRelease(native)
+native = Pointer()
+
+━━━━━━━━━━━━━━━━━━━━
++ do shared-surface-from-port SharedSurface?
+    - port U32
+
+. found = C:yumiGraphicsSurfaceLookUpMachPort(port)
+=? null if !found
+= SharedSurface(found)

@@ -1,0 +1,493 @@
+
+/os/file
+/data
+/data/stream
+/os/signal
+/os/tty
+/graphics/color
+/time/debounced
+/time/duration
+/time/timer
+./cterm
+./primitives
+./events
+./input
+./canvas
+./colors
+/YuCore/YuCore.h
+/sys/ioctl.h
+
++ full-screen-code = 1049
++ mouse-code = [1000, 1001, 1002, 1003, 1006]
++ show-cursor-code = 25
++ auto-wrap-code = 7
++ bracketed-paste-code = 2004
++ synchronized-output-code = 2026
++ resize-settle-delay = 80ms
+
+` 24fps is all xterm can handle
++ terminal-frame-interval = 42ms
+
+` 60fps looks great in ghostty and mac terminal
+`  + terminal-frame-interval = 16666667ns
+
++ TerminalPaintResult is (cursor-point Point, is-cursor-shown Bool)
+
+━━━━━━━━━━━━━━━━━━━━
++ Terminal
+    is Closable
+
++ painter TerminalPainter?
+
+╌╌╌╌╌╌╌╌╌╌ States ╌╌╌╌╌╌╌╌╌╌
+
++ is-raw = true
++ sends-signals = true
++ is-full-screen = false
++ is-mouse-handled = false
++ is-cursor-shown = false
++ is-open = true
++ event ready Terminal
++ event resized PSize
++ event closed Terminal
++ event mouse-down MouseDownEvent
++ event mouse-up MouseUpEvent
++ event mouse-move MouseMoveEvent
++ event mouse-drag MouseDragEvent
++ event scroll ScrollEvent
++ event key-press KeyPressEvent
++ event char KeyInputEvent
++ event paste PasteEvent
+
+_ is-painting = false
+_ paint-task U32
+_ paint-finished SyncBufferedChannel'Bool
+
+╌╌╌╌╌╌╌╌╌╌ Events ╌╌╌╌╌╌╌╌╌╌
+
+_ close-wait SyncBufferedChannel'Bool
+_ tty-in = File(["/dev/tty", "/dev/stdin"], FileFlags.read-mode)
++ view-size = PSize(0, 10)
+_ origin-x Coord
+_ origin-y Coord
+_ cursor-x Coord
+_ cursor-y Coord
+_ is-paint-invalid = true
+_ is-resizing = false
+_ settle-resize := debounced(resize-settle-delay, this.finish-resize)
+_ previous-canvas Canvas?
+_ current-canvas Canvas?
+_ frame-output = DataStream'Byte(8192)
+_ term-state = Termios[1]
+_ cursor-query AsyncChannel'CursorEvent
+
+╌╌╌╌╌╌╌╌╌╌ Internal streams ╌╌╌╌╌╌╌╌╌╌
+
+_ paint-loop := terminal-frame-interval.animation-loop • with repaint
+
+as Writable'String for
+_ tty-out = File(["/dev/tty", "/dev/stdout"], FileFlags.write-mode)
+
+╌╌╌╌╌╌╌╌╌╌ Coordinates ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ This
+    - painter TerminalPainter?
+    - is-full-screen = false
+    - is-mouse-handled = false
+    - is-cursor-shown = true
+
+╌╌╌╌╌╌╌╌╌╌ Painting ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+for sig on sig-wnch whenever #is-open
+
+is-resizing = true
+sync-size()
+schedule-paint()
+settle-resize()
+
+────────────────────
+when #is-raw
+
+C:yumiTerminalEnter(tty-in, term-state)
+apply-signals()
+sync-size()
+
+────────────────────
+whenever #sends-signals
+
+apply-signals()
+
+────────────────────
+when !#is-raw
+
+C:yumiTerminalExit(tty-in, term-state)
+
+────────────────────
+when #is-open
+
+do new
+    set-mode(auto-wrap-code, false)
+    set-mode(bracketed-paste-code, true)
+    fill-out()
+    ready <- this
+
+    for event in ~ TerminalEvents in TerminalInput(tty-in)
+        if event is KeyPressEvent
+            key-press <- (event as KeyPressEvent)
+        else if event is KeyInputEvent
+            char <- (event as KeyInputEvent)
+        else if event is PasteEvent
+            paste <- (event as PasteEvent)
+        else if event is MouseDownEvent
+            mouse-down <- (event as MouseDownEvent)
+        else if event is MouseUpEvent
+            mouse-up <- (event as MouseUpEvent)
+        else if event is MouseMoveEvent
+            mouse-move <- (event as MouseMoveEvent)
+        else if event is MouseDragEvent
+            mouse-drag <- (event as MouseDragEvent)
+        else if event is ScrollEvent
+            scroll <- (event as ScrollEvent)
+        else if event is CursorEvent
+            cursor-query <- event
+
+    close()
+
+────────────────────
+when #is-full-screen
+
+set-mode(full-screen-code, is-full-screen)
+
+────────────────────
+when #is-mouse-handled
+
+set-mode(mouse-code, is-mouse-handled)
+
+────────────────────
+when #is-cursor-shown
+
+set-mode(show-cursor-code, is-cursor-shown)
+
+────────────────────
++ text-color = color AnsiColor
+
+escapes("[38;5;$colorm")
+
+────────────────────
++ text-color = color RGBA
+
+escapes("[38;2;$r;$g;${b}m")
+    .. r = (color.red * 255) as Int
+    .. g = (color.green * 255) as Int
+    .. b = (color.blue * 255) as Int
+
+────────────────────
++ background = color AnsiColor
+
+escapes("[48;5;${color}m")
+
+────────────────────
++ background = color RGBA
+
+escapes("[48;2;$r;$g;${b}m")
+    .. r = (color.red * 255) as Int
+    .. g = (color.green * 255) as Int
+    .. b = (color.blue * 255) as Int
+
+────────────────────
++ do background = color HSVA
+
+background = color as RGBA
+
+────────────────────
++ do cursor
+
+escapes("[6n")
+. point, _ = <- cursor-query
+= point
+
+────────────────────
++ move
+    - point Point
+
+write-move(tty-out, point)
+
+────────────────────
++ move-by
+    - offset Point
+
+move(cursor + offset)
+
+────────────────────
++ do clear
+    - color AnsiColor = black
+
+escapes("[48;5;$colorm")
+escapes("[0J")
+
+────────────────────
++ do schedule-paint
+
+=? if !is-open
+is-paint-invalid = true
+paint-loop.request-now()
+
+────────────────────
++ do schedule-animation-frame
+
+=? if !is-open
+is-paint-invalid = true
+paint-loop.request-next()
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+catch close()
+
+────────────────────
++ do close
+
+if is-open
+    is-open = false
+    paint-loop.cancel()
+    . closes-from-paint = is-painting && paint-task == get-current-task-id()
+
+    do new
+        if is-painting
+            <- paint-finished
+        restore-terminal()
+        finish-close()
+
+    if !closes-from-paint
+        <- close-wait
+
+────────────────────
+_ do write-move
+    - out
+    - point Point
+
+cursor-x = point.x
+cursor-y = point.y
+. col = point.x + origin-x + 1
+. row = point.y + origin-y + 1
+= write-escape(out, "[$row;$colH")
+
+────────────────────
+_ do repaint
+
+if is-open && is-paint-invalid && painter && !is-painting && !is-resizing
+    . frame-start-nanos = monotonic-time-nanoseconds()
+    `  //+-tui.paint// Repaint terminal
+    //tui.paint.frames ++
+    //tui.frame.actual ++
+    //+tui.paint.frame
+    //+tui.frame.total
+    is-paint-invalid = false
+    is-painting = true
+    paint-task = get-current-task-id()
+    do finally
+        is-painting = false
+        paint-task = 0
+        if !is-open
+            paint-finished <- true
+
+    //+tui.frame.canvas
+    . canvas Canvas
+    if current-canvas && current-canvas.width == view-size.width && current-canvas.height == view-size.height
+        canvas = current-canvas
+        current-canvas = null
+    else
+        canvas = Canvas(view-size)
+    canvas.reset()
+    //-tui.frame.canvas
+
+    `  //this:paint -> canvas
+    //+tui.frame.app-paint
+    . paint-result = TerminalPaintResult((0, 0), is-cursor-shown)
+    if painter
+        paint-result = painter.paint(canvas)
+    //-tui.frame.app-paint
+    =? if !is-open
+
+    //+tui.frame.output
+    frame-output.reset()
+    write-mode(frame-output, show-cursor-code, false)
+    write-mode(frame-output, synchronized-output-code, true)
+    if previous-canvas
+        //tui.frame.diff-dumps ++
+        //+tui.frame.dump-diff
+        canvas.dump-diff(frame-output, previous-canvas)
+        //-tui.frame.dump-diff
+    else
+        //tui.frame.full-dumps ++
+        //tui.frame.event.dump-full -> view-size.width, view-size.height
+        //+tui.frame.dump-full
+        canvas.dump(frame-output)
+        //-tui.frame.dump-full
+    ` Flush the frame before moving the real terminal cursor out of any right-margin state.
+    write-mode(frame-output, synchronized-output-code, false)
+    //+tui.frame.cursor
+    write-move(frame-output, paint-result.cursor-point)
+    //-tui.frame.cursor
+    if paint-result.is-cursor-shown
+        write-mode(frame-output, show-cursor-code, true)
+    tty-out.write(frame-output.data, frame-output.length)
+    //-tui.frame.output
+
+    current-canvas = previous-canvas
+    previous-canvas = canvas
+
+    //tui.frame.event.end -> view-size.width, view-size.height
+    //-tui.frame.total
+    //-tui.paint.frame
+
+    . frame-elapsed-nanos = monotonic-time-nanoseconds() - frame-start-nanos
+    . frame-interval-nanos = terminal-frame-interval as U64
+    . frame-budget-nanos = 0u64
+    if frame-elapsed-nanos < frame-interval-nanos
+        frame-budget-nanos = frame-interval-nanos - frame-elapsed-nanos
+    C:yumiGCFrameBudget(frame-budget-nanos)
+
+────────────────────
++ do write-clipboard
+    - text String
+
+tty-out <- "\x1b]52;c;${(text as Byte[]) as Base64}\x07"
+
+────────────────────
+_ do apply-signals
+
+=? if !is-raw
+C:yumiTerminalSetSignals(tty-in, if sends-signals then 1 else 0)
+
+────────────────────
+_ do sync-size
+
+//tui.resize.events ++
+//+tui.resize.sync-size
+. win-size = Winsize[1]
+. err = C:yumiioctl(tty-out, C:TIOCGWINSZ, win-size)
+if err
+    ?! Error("Unable to read terminal size")
+
+. size = win-size[0]
+. w = size.col
+. h = size.row
+`  //tui.events.sync-size -> w, h
+//tui.resize.event.sync-size -> w, h
+
+. previous-view-size = view-size
+view-size =
+    |? is-full-screen
+        (w, h)
+    ??
+        (w, view-size.height)
+
+if view-size != previous-view-size
+    previous-canvas = null
+    current-canvas = null
+
+resized <- view-size
+//-tui.resize.sync-size
+
+────────────────────
+_ do finish-resize
+
+=? if !is-open
+is-resizing = false
+schedule-paint()
+repaint()
+
+────────────────────
+_ escapes
+    - text
+`_ escapes <- text
+
+`  //tui.terminal.escapes// text
+write-escape(tty-out, text)
+
+────────────────────
+_ do write-escape
+    - out
+    - text
+
+out <- "\x1b$text"
+= out
+
+────────────────────
+_ set-mode
+    - code Int
+    - is-on Bool
+`_ mode[code Int] = is-on Bool
+
+write-mode(tty-out, code, is-on)
+
+────────────────────
+_ do set-mode
+    - codes [Int]
+    - is-on Bool
+
+for code in codes
+    set-mode(code, is-on)
+
+────────────────────
+_ write-mode
+    - out
+    - code Int
+    - is-on Bool
+
+write-escape(out, "[?$code$on-or-off")
+    .. on-or-off = if is-on then "h" else "l"
+
+────────────────────
+_ do fill-out
+
+origin-y = cursor-y
+
+`  //tui.terminal.fill-out// view-size.height
+= tty-out <- "\n" * view-size.height
+
+────────────────────
+_ do restore-terminal
+
+catch set-mode(mouse-code, false)
+catch set-mode(synchronized-output-code, false)
+catch set-mode(bracketed-paste-code, false)
+catch set-mode(auto-wrap-code, true)
+catch set-mode(full-screen-code, false)
+catch set-mode(show-cursor-code, true)
+catch C:yumiTerminalExit(tty-in, term-state)
+
+────────────────────
+_ do finish-close
+
+catch tty-in.close()
+catch tty-out.close()
+paint-loop.cancel()
+closed <- this
+close-wait <- true
+
+` ----------------------------------------------------------------------------------------------------
+` whenever is-open
+`
+` mode[full-screen-code] = #is-full-screen
+` mode[mouse-code] = #is-mouse-handled
+` mode[show-cursor-code] = #is-cursor-shown
+
+` on sig-wnch
+`     sync-size()
+`     schedule-paint()
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalPainter is Interface
+
+────────────────────
++ paint TerminalPaintResult
+    - canvas Canvas

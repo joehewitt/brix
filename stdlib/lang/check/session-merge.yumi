@@ -1,0 +1,491 @@
+./binding
+./checker
+./instances
+./peer-ids
+./session
+./stable-key
+./types
+./typing
+/core/map
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/row-range
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ do merge-sessions
+    - session Session
+    - peers [Session]
+    - pool Worker
+
+` Takes into `session` what `peers`, type passes over the same program, typed: each instance from
+` the first peer that typed its body, with everything known of it, and each fact no one instance
+` owns that the session lacks. An instance whose typing changed what a pass cannot take in
+` (`Instance.unshared`) is taken from none: the session types it again (`queue-unshared`). What a
+` peer reported of an instance no peer typed is taken from the first peer that reported any. A
+` default of a parameter that a peer typed where the peer the instance is taken from did not is
+` typed here. Whatever no peer typed is left for the session to type, as it types anything left in
+` its queue. Nor is one taken that typed a section of a class otherwise than the plans of every
+` peer together type it, or that was written in one that did (`stale-sections`), nor one typed only
+` with the one it is written in (`Instance.with-enclosing`) from a peer that one is not taken from.
+. typed = Map'StableKey'Bool()
+for peer in peers
+    . rows = peer.instances.rows
+    for id in 0 .. < rows.length
+        if is-typed(rows[id])
+            typed[peer.instances.stable-keys[id]] = true
+. names [PeerNames]
+for peer in peers
+    names += PeerNames(peer.types, peer.instances)
+. stale = stale-sections(peers)
+. owners = Map'StableKey'Bool()
+. owned-by [[Bool]]
+. node-count Size = 0
+for position in 0 .. < peers.length
+    . peer = peers[position]
+    . owned [Bool]
+    . rows = peer.instances.rows
+    for id in 0 .. < rows.length
+        . key = peer.instances.stable-keys[id]
+        . outer = rows[id].enclosing
+        . beside = !rows[id].with-enclosing || owned-outer
+            .. owned-outer = outer != no-instance && (outer as Size) < owned.length && owned[outer]
+        . open = shareable && !stale[position][id] && beside && owners[key] == null
+            .. shareable = is-typed(rows[id]) && !rows[id].unshared
+        . takes = open && names[position].instance-named(id as InstanceId)
+        if takes
+            owners[key] = true
+            if rows[id].node-start != U32.max
+                node-count += rows[id].subtree.count
+        owned += takes
+    owned-by += owned
+. taken [PeerIds]
+session.bindings.begin-taking()
+for position in 0 .. < peers.length
+    . peer = peers[position]
+    . ids = PeerIds
+        - session.types
+        - session.instances
+        - session.bindings
+        - peer.types
+        - peer.instances
+        - peer.bindings
+        - owned-by[position]
+    for id in 0 .. < peer.bindings.bindings.length
+        ids.binding(id as BindingId)
+    taken += ids
+absorb-query-targets(session, peers, taken, names)
+session.bindings.start-copying(pool)
+session.facts.start-copying-nodes(pool, node-count)
+for position in 0 .. < peers.length
+    absorb-peer(session, peers[position], taken[position], names[position])
+session.facts.end-copying-nodes()
+session.bindings.end-taking()
+queue-unshared(session, peers, taken, names, owners)
+absorb-untyped(session, peers, taken, typed)
+type-defaults(session, peers, taken, names)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stale-sections [[Bool]]
+    - peers [Session]
+
+` For each peer, which of its instances typed a section of a class as run from tables where the
+` plans of every peer together subscribe it, or as a subscription where they run it from tables
+` and subscribe it nowhere (`Facts.lowers-only`), and which were written in one that did. A pass
+` types such a section as the plans it holds when it is typed say, and those of one peer lack
+` what the others planned.
+. lowered = Map'StableKey'Bool()
+. subscribed = Map'StableKey'Bool()
+for peer in peers
+    for row in peer.facts.lowered-handlers
+        lowered[section-key(peer, row.level, row.module, row.syntax)] = true
+    for row in peer.facts.subscribed-sections
+        subscribed[section-key(peer, row.level, row.module, row.syntax)] = true
+. stale [[Bool]]
+for peer in peers
+    . rows = peer.instances.rows
+    . marked [Bool]
+    for _ in 0 .. < rows.length
+        marked += false
+    for row in peer.facts.typed-sections
+        . key = section-key(peer, row.level, row.module, row.syntax)
+        . planned = lowered[key] != null && subscribed[key] == null
+        if row.lowered != planned
+            //typing.stale-sections ++
+            marked[row.instance] = true
+    for id in 0 .. < rows.length
+        . outer = rows[id].enclosing
+        while outer != no-instance && !marked[id]
+            marked[id] = marked[outer]
+            outer = rows[outer].enclosing
+    stale += marked
+= stale
+
+━━━━━━━━━━━━━━━━━━━━
+_ section-key StableKey
+    - peer Session
+    - level TypeId
+    - module ModuleId
+    - syntax SyntaxId
+
+` The key of a section of a class typed for `level`, the same in every peer.
+mixed(mixed(peer.types.key-of(level), module), syntax)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-query-targets
+    - session Session
+    - peers [Session]
+    - taken [PeerIds]
+    - names [PeerNames]
+
+` Takes in each class a peer numbered as the target of descendant queries, in the order of their
+` stable keys, before the session types anything again.
+. found = Map'StableKey'TypeId()
+for position in 0 .. < peers.length
+    for target in peers[position].facts.query-targets
+        ?! Panic("A target of descendant queries of another type pass cannot be named here")
+            if !names[position].type-named(target)
+        . type = taken[position].type(target)
+        . key = session.types.key-of(type)
+        if found[key] == null && session.facts.query-targets.find(type) == null
+            found[key] = type
+. keys [StableKey]
+for (key, _) in found
+    keys += key
+. sorted = sort(keys)
+for key in sorted
+    session.facts.query-targets += found[key]!
+
+━━━━━━━━━━━━━━━━━━━━
+_ do queue-unshared
+    - session Session
+    - peers [Session]
+    - taken [PeerIds]
+    - names [PeerNames]
+    - owners Map'StableKey'Bool
+
+` Queues here each instance a peer typed and none is taken from, as its typing changed what a pass
+` cannot take in, for the session to type again, in the order of their stable keys, which is the
+` same whichever peers typed them. One written in another is typed again in the run of that one
+` (`Checker.run`), or else once that one is typed (`Instances.written-in`), and one typed on trial
+` where it is tried. The value of a property or of a rule a root applies, and a rule of a class,
+` are typed again where first read, as a pass alone types them, or else once nothing is left to
+` type (`Instances.typed-on-read`): what a rule of a class does depends on what typing its class
+` planned before (`plan-event-handlers`).
+. found = Map'StableKey'U64()
+. written = Map'StableKey'U64()
+. read = Map'StableKey'U64()
+for position in 0 .. < peers.length
+    . peer = peers[position]
+    . rows = peer.instances.rows
+    for id in 0 .. < rows.length
+        . key = peer.instances.stable-keys[id]
+        . open = is-typed(rows[id]) && owners[key] == null && rows[id].probe == 0
+        if open && names[position].instance-named(id as InstanceId)
+            . place = ((position as U64) /lshift/ 32) /or/ (id as U64)
+            . on-read = rows[id].initializer != 0 || rows[id].root-values != 0
+            if rows[id].enclosing != no-instance
+                if written[key] == null
+                    written[key] = place
+            else if on-read
+                if read[key] == null
+                    read[key] = place
+            else if found[key] == null
+                found[key] = place
+for key in sorted-keys(found)
+    //typing.unshared ++
+    session.instances.queue(peer-instance(taken, found[key]!))
+for key in sorted-keys(written)
+    //typing.unshared-written ++
+    session.instances.written-in += peer-instance(taken, written[key]!)
+for key in sorted-keys(read)
+    //typing.unshared-read ++
+    session.instances.typed-on-read += peer-instance(taken, read[key]!)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sorted-keys [StableKey]
+    - places Map'StableKey'U64
+
+. keys [StableKey]
+for (key, _) in places
+    keys += key
+= sort(keys)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do peer-instance InstanceId
+    - taken [PeerIds]
+    - place U64
+
+` The instance here that is the instance of a peer a place names: the peer in its high bits and
+` the peer's instance in its low bits.
+= taken[(place /rshift/ 32) as Index].instance((place /and/ 0xffffffff) as InstanceId)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-typed Bool
+    - row Instance
+
+` Whether a pass typed an instance's body, to the end or failing, rather than taking it in.
+(row.state == .instance-done || row.state == .instance-failed) && !row.imported
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-peer
+    - session Session
+    - peer Session
+    - ids PeerIds
+    - names PeerNames
+
+` Takes in one peer: the types it completed, the classes it found declared as C function types
+` and the places it noted for closures, of those this pass can name, the classes whose
+` declarations the instances taken from it checked, then its instances, their facts, what it
+` noted of panics, and the errors it still held.
+. completions = peer.types.completions
+for id in 0 .. < completions.length
+    . state = completions[id].completion
+    if (state == .completion-done || state == .completion-failed) && names.type-named(id as TypeId)
+        session.types.complete(ids.type(id as TypeId))
+for (type, declared) in peer.types.c-function-decls
+    if names.type-named(type as TypeId)
+        session.types.note-c-function-decl(ids.type(type as TypeId), declared)
+for (closure, bits) in peer.types.placed
+    if names.type-named(closure as TypeId)
+        . held = ids.type(closure as TypeId) as Size
+        if session.types.placed[held] == null
+            session.types.placed[held] = bits
+for (class, checker) in peer.types.checked-classes
+    if ids.owns(checker) && session.types.checked-classes[class] == null
+        session.types.checked-classes[class] = ids.instance(checker)
+absorb-instances(session, peer, ids, names)
+session.facts.absorb(peer.facts, ids)
+session.panics.absorb(peer.panics, ids)
+session.errors.absorb(peer.errors, ids)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-instances
+    - session Session
+    - peer Session
+    - ids PeerIds
+    - names PeerNames
+
+` Gives each instance taken from the peer what the peer knew of it once its body was typed, and
+` any instance the peer bound to a value of a function type how such a value calls it.
+. instances = session.instances
+. given = peer.instances
+for id in 0 .. < given.rows.length
+    . row = given.rows[id] as Instance
+    if row.bound-call != .bound-call-none && names.instance-named(id as InstanceId)
+        instances.rows[ids.instance(id as InstanceId)].bound-call = row.bound-call
+    if !ids.owns(id as InstanceId)
+        continue
+    . instance = ids.instance(id as InstanceId)
+    . makes = ids.type(row.makes)
+    . yields = ids.type(row.yields)
+    . materialized = ids.instance(row.materialized)
+    . retyped = ids.instance(row.retyped)
+    instances.rows[instance].state = row.state
+    instances.rows[instance].may-panic = row.may-panic
+    instances.rows[instance].polls = row.polls
+    instances.rows[instance].is-generator = row.is-generator
+    instances.rows[instance].reads-self = row.reads-self
+    instances.rows[instance].branches = row.branches
+    instances.rows[instance].returns-own = row.returns-own
+    instances.rows[instance].gives-unwritten = row.gives-unwritten
+    instances.rows[instance].casts-errors = row.casts-errors
+    instances.rows[instance].makes = makes
+    instances.rows[instance].yields = yields
+    instances.rows[instance].ends-generator = row.ends-generator
+    instances.rows[instance].quiet = row.quiet
+    instances.rows[instance].splits-yields = row.splits-yields
+    instances.rows[instance].materialized = materialized
+    instances.rows[instance].fills-share = row.fills-share
+    instances.rows[instance].uses-helper = row.uses-helper
+    instances.rows[instance].rolls-helper = row.rolls-helper
+    instances.rows[instance].carries-mark = row.carries-mark
+    instances.rows[instance].unretirable = row.unretirable
+    instances.rows[instance].is-live = row.is-live
+    instances.rows[instance].typed-defaults = row.typed-defaults
+    instances.rows[instance].retyped = retyped
+    if row.step-errors.count != 0
+        . stack = session.types.scratch.types
+        . mark = stack.mark
+        push-types(ids, given, row.step-errors)
+        instances.set-step-errors(instance, stack.since(mark))
+        stack.rewind(mark)
+    absorb-signature(session, ids, id as InstanceId, instance)
+absorb-report(session, peer, ids)
+absorb-live(session, peer, ids)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-signature
+    - session Session
+    - ids PeerIds
+    - id InstanceId
+    - instance InstanceId
+
+` Gives an instance taken from a peer the signature the peer settled for it. Errors the peer
+` still held wait here as they waited there (`ErrorSets.absorb`).
+. given = ids.peer-instances
+. signature = given.signatures[id] as InstanceSignature
+. returns = ids.type(signature.returns)
+. declared = ids.type(signature.declared-returns)
+. read-by = ids.instance(signature.read-by)
+. instances = session.instances
+instances.set-returns(instance, returns, declared, signature.return-state)
+if signature.errors.count != 0
+    . stack = session.types.scratch.types
+    . mark = stack.mark
+    push-types(ids, given, signature.errors)
+    instances.set-errors(instance, stack.since(mark))
+    stack.rewind(mark)
+instances.signatures[instance].read-in-progress = signature.read-in-progress
+instances.signatures[instance].read-by = read-by
+instances.signatures[instance].unreturned = signature.unreturned
+instances.signatures[instance].header = signature.header
+instances.signatures[instance].error-state = signature.error-state
+instances.signatures[instance].errors-read-early = signature.errors-read-early
+
+━━━━━━━━━━━━━━━━━━━━
+_ do push-types
+    - ids PeerIds
+    - given Instances
+    - range RowRange'TypeId
+
+` Pushes the types a peer's signature types hold over a range, as they are here.
+for offset in 0 .. < range.count
+    . type = ids.type(given.signature-types[range.start + offset])
+    ids.types.scratch.types.push(type)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-report
+    - session Session
+    - peer Session
+    - ids PeerIds
+
+` Takes in the functions a peer typed for the report of an unhandled panic, where this pass has
+` none yet.
+. report = session.instances.report
+. given = peer.instances.report
+if report.message == no-instance
+    session.instances.report.message = ids.instance(given.message)
+if report.source-text == no-instance
+    session.instances.report.source-text = ids.instance(given.source-text)
+if report.source == no-instance
+    session.instances.report.source = ids.instance(given.source)
+if report.termination == no-instance
+    session.instances.report.termination = ids.instance(given.termination)
+if report.termination-error == no-instance
+    session.instances.report.termination-error = ids.instance(given.termination-error)
+if report.panic == no-instance
+    session.instances.report.panic = ids.instance(given.panic)
+if report.source-slot == U32.max
+    session.instances.report.source-slot = given.source-slot
+if report.trace-slot == U32.max
+    session.instances.report.trace-slot = given.trace-slot
+if report.previous-slot == U32.max
+    session.instances.report.previous-slot = given.previous-slot
+if report.union-error == no-instance
+    session.instances.report.union-error = ids.instance(given.union-error)
+if report.union-text == no-instance
+    session.instances.report.union-text = ids.instance(given.union-text)
+if report.error-text == no-instance
+    session.instances.report.error-text = ids.instance(given.error-text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-live
+    - session Session
+    - peer Session
+    - ids PeerIds
+
+` Takes in the functions a peer typed for tracked values, where this pass has none yet, and the one
+` that follows the read of a collection where this pass has not typed it, which a pass types only
+` as it first notes such a read (`note-collection-read`). They are left to be demanded here again
+` where this pass types a tracked read, as what such a read reads of them is settled by demanding
+` them (`demand-live-runtime`).
+. given = peer.instances.live
+if !given.demanded
+    =
+if session.instances.live.track-collection == no-instance
+    session.instances.live.track-collection = ids.instance(given.track-collection)
+if session.instances.live.trackers != no-instance
+    =
+. live = LiveRuntime()
+live.trackers = ids.instance(given.trackers)
+live.subscribers = ids.instance(given.subscribers)
+live.actions = ids.instance(given.actions)
+live.action = ids.instance(given.action)
+live.add-action = ids.instance(given.add-action)
+live.add-tracker = ids.instance(given.add-tracker)
+live.track = ids.instance(given.track)
+live.track-collection = ids.instance(given.track-collection)
+live.dispatch = ids.instance(given.dispatch)
+live.memo-action = ids.instance(given.memo-action)
+live.memo-settle = ids.instance(given.memo-settle)
+live.previous = ids.instance(given.previous)
+live.next = ids.instance(given.next)
+live.enter = ids.instance(given.enter)
+live.leave = ids.instance(given.leave)
+live.pop = ids.instance(given.pop)
+live.close = ids.instance(given.close)
+live.has-actions = ids.instance(given.has-actions)
+live.callback = ids.type(given.callback)
+live.callback-result = ids.type(given.callback-result)
+session.instances.live = live
+
+━━━━━━━━━━━━━━━━━━━━
+_ do absorb-untyped
+    - session Session
+    - peers [Session]
+    - taken [PeerIds]
+    - typed Map'StableKey'Bool
+
+` Takes in what peers reported of the instances none of them typed, each from the first peer
+` that reported anything of it (`Facts.absorb-diagnostics`).
+. reported = Map'StableKey'Bool()
+for position in 0 .. < peers.length
+    . peer = peers[position]
+    . flags [Bool]
+    for _ in 0 .. < peer.instances.rows.length
+        flags += false
+    . keys [StableKey]
+    for row in peer.facts.diagnostics
+        . key = peer.instances.stable-keys[row.instance]
+        if typed[key] == null && reported[key] == null
+            flags[row.instance] = true
+            keys += key
+    for key in keys
+        reported[key] = true
+    session.facts.absorb-diagnostics(peer.facts, taken[position], flags)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do type-defaults
+    - session Session
+    - peers [Session]
+    - taken [PeerIds]
+    - names [PeerNames]
+
+` Types each default of a parameter that some peer typed and this pass has not, as the first call
+` that takes it would have.
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+for position in 0 .. < peers.length
+    . peer = peers[position]
+    . ids = taken[position]
+    . rows = peer.instances.rows
+    for id in 0 .. < rows.length
+        . bits = rows[id].typed-defaults
+        if bits == 0 || !names[position].instance-named(id as InstanceId)
+            continue
+        . callee = ids.instance(id as InstanceId)
+        for place in 0u32 .. < 64u32
+            if place-set && !session.instances.default-typed(callee, place)
+                checker.type-default(callee, place)
+            .. place-set = (bits /and/ (1u64 /lshift/ (place as U64))) != 0
+    for key in peer.instances.wide-defaults
+        if !names[position].instance-named((key /rshift/ 32) as InstanceId)
+            continue
+        . callee = ids.instance((key /rshift/ 32) as InstanceId)
+        . place = (key /and/ (U32.max as U64)) as U32
+        if !session.instances.default-typed(callee, place)
+            checker.type-default(callee, place)
+checker.close()
+checker.retire()

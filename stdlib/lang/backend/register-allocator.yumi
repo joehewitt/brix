@@ -1,0 +1,2136 @@
+./builder
+./bundle
+./frame-coloring
+./linear-scan
+./liveness
+./mir
+./pointer-flow
+./prologue-epilogue
+/core/arena
+/core/table
+
+_ max-aligned-stack-immediate I64 = 4080
+_ scratch-register RegisterId = 9
+_ float-scratch-register RegisterId = 95
+_ struct-return-register RegisterId = 8
+_ panic-signal-register RegisterId = 15
+_ preserved-callee-register RegisterId = 17
+_ layout-thunk-register RegisterId = 27
+_ layout-context-register RegisterId = 28
+_ no-end U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
+_ CallPlan is Struct
+
++ callee OperandId
++ return-operand OperandId
++ call-use-slot U32
++ moves Span
++ reloads Span
++ overflow-entries Span
++ struct-return-buffer FrameObjectId
++ struct-return-destination OperandId
++ argument-registers RegisterSet
++ safepoint U32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRRegisterAllocator
+
+_ builder MIRBuilder
+_ bundle Bundle
+_ function MIRFunction
++ liveness MIRLiveness
++ coloring MIRFrameColoring
++ scan MIRLinearScan
+_ frame MIRPrologueEpilogue
+_ flow MIRPointerFlow
+_ use-counts CPointer'U32
+_ vreg-count U32
+_ available IdList
+_ root-slot MIRSlotId
+_ root-homes CPointer'U32
+_ root-home-count U32
+_ relevant IdList
+_ relevant-marks CPointer'Byte
+_ return-sizes IdMap
+_ return-counts IdList
+_ return-active CPointer'IdList
+_ return-free CPointer'IdList
+_ has-return-flow Bool
+_ return-roots CPointer'U32
+_ return-root-ends CPointer'U32
+_ safepoint-positions IdList
+_ safepoint-roots CPointer'IdList
+_ plans CPointer'CallPlan
+_ plan-of CPointer'U32
+_ plan-capacity U32
+_ outgoing-size I64
+_ call-overflow-slot MIRSlotId
+_ move-destinations IdList
+_ move-sources IdList
+_ move-classes IdList
+_ reload-destinations IdList
+_ reload-slots IdList
+_ reload-views IdList
+_ overflow-slots IdList
+_ overflow-sources IdList
+_ next-general-argument U32
+_ next-float-argument U32
+_ current-position U32
+_ has-position Bool
+_ reserved RegisterSet
+_ taken RegisterSet
+_ def-reloads IdList
+_ cached-reload U32
+_ live-homes CPointer'U32
+_ home-stamp U32
+_ seen-vregs CPointer'U32
+_ seen-objects CPointer'U32
+_ seen-capacity U32
+_ seen-stamp U32
+_ materializations IdList
+_ defined-homes IdList
+_ hfa-types IdList
+_ hfa-offsets IdList
+_ coalesces Bool
+_ recomputes Bool
+_ cheap CPointer'Byte
+_ wide CPointer'Byte
+_ recompute-sources CPointer'IdList
+_ recompute-defs CPointer'IdList
+
+────────────────────
++ This
+    - builder MIRBuilder
+    - narrows-roots Bool = true
+    - coalesces Bool = true
+    - recomputes Bool = true
+    - splits Bool = true
+
+.. bundle = builder.bundle
+.. function = builder.function
+.. liveness = MIRLiveness(builder, coalesces)
+.. flow = MIRPointerFlow(builder)
+.. coloring = MIRFrameColoring(builder, liveness, flow, narrows-roots)
+.. scan = MIRLinearScan(builder, liveness, splits)
+.. frame = MIRPrologueEpilogue(builder, coloring)
+
+────────────────────
+_ get arena Arena @inline
+
+function.arena
+
+────────────────────
++ do form-post-indexed-loads
+
+use-counts = arena.allocate'U32(function.vreg-count)
+while form-post-indexed-load()
+    continue
+
+────────────────────
+_ do form-post-indexed-load Bool
+
+count-post-index-uses()
+. order = function.block-order
+for position in 0 .. < order.length
+    . block = order[position]
+    . instructions = function.blocks[block].instructions
+    for index in 0 .. < instructions.length
+        . add = instructions[index]
+        . opcode = function.instructions[add].opcode
+        if opcode != .add && opcode != .addptr
+            continue
+        . operands = function.instructions[add].operands
+        if operands.length < 3
+            continue
+        . next = vreg-of(operands[0])
+        . current = vreg-of(operands[1])
+        if next == no-id || current == no-id || !is-post-index-stride(operands[2])
+            continue
+        if block-use-count(instructions, current) != 2 || reused || !has-move-use(next)
+            continue
+        .. reused = use-counts[next] != 1
+
+        . load-index = previous-instruction(instructions, index)
+        if load-index == no-id
+            continue
+        . load = instructions[load-index]
+        . load-opcode = function.instructions[load].opcode
+        if load-opcode != .ldr && not-narrow && load-opcode != .ldrsw
+            continue
+        .. not-narrow = load-opcode != .ldrb && load-opcode != .ldrh
+        . load-operands = function.instructions[load].operands
+        if load-operands.length != 2
+            continue
+        . loaded = vreg-of(load-operands[0])
+        if loaded == no-id || loaded == current
+            continue
+        . base = no-operand
+        . offset = no-operand
+        . is-plain-address = false
+        do match? function.operands[load-operands[1]]
+            | .load-address-operand(address)
+                base = address.base
+                offset = address.offset
+                is-plain-address = !address.is-pre-index
+        if !is-plain-address || !is-zero-or-missing(offset)
+            continue
+
+        . alias-index = no-id
+        . base-vreg = vreg-of(base)
+        if base-vreg != current
+            alias-index = previous-instruction(instructions, load-index)
+            if base-vreg == no-id || use-counts[base-vreg] != 1 || alias-index == no-id
+                continue
+            . alias = instructions[alias-index]
+            . alias-operands = function.instructions[alias].operands
+            if function.instructions[alias].opcode != .mov || alias-operands.length < 2
+                continue
+            if vreg-of(alias-operands[0]) != base-vreg || vreg-of(alias-operands[1]) != current
+                continue
+
+        . rewritten = new-id-list(arena, 3)
+        rewritten = rewritten.appended(arena, load-operands[0])
+        rewritten = rewritten.appended(arena, builder.load-address(operands[1], offset))
+        rewritten = rewritten.appended(arena, operands[2])
+        function.instructions[load].operands = rewritten
+        rename-uses(next, operands[1], add)
+        . kept U32
+        for read in 0 .. < instructions.length
+            if read != index && read != alias-index
+                instructions.data[kept] = instructions[read]
+                kept += 1
+        function.blocks[block].instructions = IdList(instructions.data, kept, instructions.capacity)
+        = true
+= false
+
+────────────────────
+_ do vreg-of U32
+    - operand OperandId
+
+if operand == no-operand
+    = no-id
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = function.vregs[row.vreg].id
+= no-id
+
+────────────────────
+_ do is-post-index-stride Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .int-operand(row)
+        if row.value.is-negative
+            = (row.value.bits as I64) >= -256
+        = row.value.bits <= 255
+= false
+
+────────────────────
+_ do is-zero-or-missing Bool
+    - operand OperandId
+
+if operand == no-operand
+    = true
+do match? function.operands[operand]
+    | .int-operand(row)
+        = row.value.bits == 0
+= false
+
+────────────────────
+_ do previous-instruction U32
+    - instructions IdList
+    - before U32
+
+. index = before
+while index > 0
+    index -= 1
+    if function.instructions[instructions[index]].opcode != .comment
+        = index
+= no-id
+
+────────────────────
+_ do count-post-index-uses
+
+for id in 0 .. < function.vreg-count
+    use-counts[id] = 0
+. order = function.block-order
+for position in 0 .. < order.length
+    . instructions = function.blocks[order[position]].instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . roles = function.operand-roles(id)
+        . operands = function.instructions[id].operands
+        for operand in 0 .. < operands.length
+            if (role-at(roles, operand) /and/ use-role) == 0
+                continue
+            . vreg = used-vreg(operands[operand])
+            if vreg != no-id
+                use-counts[vreg] = use-counts[vreg] + 1
+
+────────────────────
+_ do used-vreg U32
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = function.vregs[row.vreg].id
+    | .load-address-operand(row)
+        = vreg-of(row.base)
+= no-id
+
+────────────────────
+_ do block-use-count U32
+    - instructions IdList
+    - target U32
+
+. count U32
+for index in 0 .. < instructions.length
+    . id = instructions[index]
+    . roles = function.operand-roles(id)
+    . operands = function.instructions[id].operands
+    for operand in 0 .. < operands.length
+        if (role-at(roles, operand) /and/ use-role) != 0 && used-vreg(operands[operand]) == target
+            count += 1
+= count
+
+────────────────────
+_ do has-move-use Bool
+    - next U32
+
+. order = function.block-order
+for position in 0 .. < order.length
+    . instructions = function.blocks[order[position]].instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        if function.instructions[id].opcode != .mov
+            continue
+        . operands = function.instructions[id].operands
+        if operands.length > 1 && vreg-of(operands[1]) == next
+            = true
+= false
+
+────────────────────
+_ do rename-uses
+    - from U32
+    - to OperandId
+    - excluded InstructionId
+
+. order = function.block-order
+for position in 0 .. < order.length
+    . instructions = function.blocks[order[position]].instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        if id == excluded
+            continue
+        . roles = function.operand-roles(id)
+        . operands = function.instructions[id].operands
+        for operand in 0 .. < operands.length
+            if (role-at(roles, operand) /and/ use-role) == 0
+                continue
+            if vreg-of(operands[operand]) == from
+                operands.data[operand] = to
+                continue
+            do match? function.operands[operands[operand]]
+                | .load-address-operand(row)
+                    if vreg-of(row.base) == from
+                        row.base = to
+
+────────────────────
++ do begin
+
+available = IdList()
+for register in 0 .. < register-count
+    . reg-class = register-class(register)
+    if !is-general-register(register) || (reg-class != .gpr64 && reg-class != .fpr64)
+        continue
+    if register == layout-thunk-register || holds-context
+        continue
+    .. holds-context = function.uses-layout-context && register == layout-context-register
+    available = available.appended(arena, register)
+
+────────────────────
++ do scan-intervals
+
+. allocatable IdList
+for index in 0 .. < available.length
+    . register = available[index]
+    if register != scratch-register && !is-float-scratch(register)
+        allocatable = allocatable.appended(arena, register)
+if coalesces
+    prefer-call-registers()
+find-recomputable()
+scan.run(allocatable, cheap, recompute-sources)
+
+────────────────────
+_ do find-recomputable
+
+` Marks each register that its uses can compute again rather than load from the frame. One
+` that only a constant, a symbol's address or a frame object's address defines reads no other
+` register. One that a single cheap instruction defines reads registers that hold the same values
+` wherever it is used, and no call reads it, since a call's moves may take those registers.
+` Every view of either is as wide as the one it is defined in, so a view computed again into a
+` register that keeps it is the value the definition gave.
+vreg-count = liveness.vreg-count
+cheap = arena.allocate'Byte(vreg-count)
+recompute-sources = arena.allocate'IdList(vreg-count)
+recompute-defs = arena.allocate'IdList(vreg-count)
+if !recomputes
+    =
+. called = arena.allocate'Byte(vreg-count)
+. broken = arena.allocate'Byte(vreg-count)
+. widths = arena.allocate'Byte(vreg-count)
+. order = function.block-order
+for position in 0 .. < order.length
+    . instructions = function.blocks[order[position]].instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . opcode = function.instructions[id].opcode
+        . roles = function.operand-roles(id)
+        . operands = function.instructions[id].operands
+        for entry in 0 .. < operands.length
+            . operand = operands[entry]
+            . role = role-at(roles, entry)
+            do match? function.operands[operand]
+                | .vreg-operand(row)
+                    . vreg = checked-id(row.vreg)
+                    note-width(widths, broken, row.vreg)
+                    if opcode == .call && called[vreg] == 0
+                        called[vreg] = 1
+                    if (role /and/ def-role) != 0
+                        . defs = recompute-defs[vreg]
+                        if defs.length != 0 && detached
+                            broken[vreg] = 1
+                        .. detached = index == 0 || instructions[index - 1] != defs[defs.length - 1]
+                        recompute-defs[vreg] = defs.appended(arena, id)
+                | .vreg-group-operand(group)
+                    for member in group.vregs.start .. < group.vregs.end
+                        . vreg = checked-id(function.group-vregs[member])
+                        called[vreg] = 2
+                        broken[vreg] = 1
+                | .load-address-operand(row)
+                    . base = vreg-of(row.base)
+                    if base != no-id
+                        note-width(widths, broken, view-of(row.base))
+                        if opcode == .call && called[base] == 0
+                            called[base] = 1
+                        if (role /and/ def-role) != 0
+                            broken[base] = 1
+                    . offset = vreg-of(row.offset)
+                    if offset != no-id
+                        note-width(widths, broken, view-of(row.offset))
+                        if opcode == .call && called[offset] == 0
+                            called[offset] = 1
+for vreg in 0 .. < vreg-count
+    if broken[vreg] == 0 && called[vreg] != 2
+        cheap[vreg] = recompute-kind(vreg, called[vreg] != 0)
+
+────────────────────
+_ do note-width
+    - widths CPointer'Byte
+    - broken CPointer'Byte
+    - view VRegId
+
+. vreg = checked-id(view)
+. width = ((function.vregs[view].reg-class as U32) + 1) as Byte
+if widths[vreg] == 0
+    widths[vreg] = width
+else if widths[vreg] != width
+    broken[vreg] = 1
+
+────────────────────
+_ do recompute-kind Byte
+    - vreg U32
+    - is-called Bool
+
+. interval = liveness.intervals[vreg]
+. defs = recompute-defs[vreg]
+if !interval.exists || interval.view == no-id || interval.pinned != no-register || defs.length == 0
+    = 0
+. first = defs[0]
+. operands = function.instructions[first].operands
+. view = view-of(operands[0])
+if view == no-id || function.vregs[view].gc-root || function.vregs[interval.view].gc-root
+    = 0
+. opcode = function.instructions[first].opcode
+if defs.length > 1
+    = if is-constant-chain(defs) then 1 else 0
+if moves-wide && operands.length == 3 && is-int-operand(operands[1]) && is-int-operand(operands[2])
+    = 1
+.. moves-wide = opcode == .movz || opcode == .movn
+if (opcode == .adrp || opcode == .adr) && operands.length == 2 && is-symbol-operand(operands[1])
+    = 1
+if opcode == .addptr && operands.length == 2
+    do match? function.operands[operands[1]]
+        | .frame-object-operand
+            = 1
+if is-called || !is-cheap-opcode(opcode, operands.length)
+    = 0
+. sources IdList
+for entry in 1 .. < operands.length
+    . source-view = view-of(operands[entry])
+    if source-view != no-id
+        . source = checked-id(source-view)
+        if source == vreg || !holds-same-value(source, vreg)
+            = 0
+        sources = sources.appended(arena, source)
+    else if !is-int-operand(operands[entry])
+        = 0
+if opcode == .mov && (sources.length != 1 || class-differs)
+    = 0
+.. class-differs = function.vregs[view-of(operands[1])].reg-class != function.vregs[view].reg-class
+recompute-sources[vreg] = sources
+= 2
+
+────────────────────
+_ do is-constant-chain Bool
+    - defs IdList
+
+. first = function.instructions[defs[0]].opcode
+. operands = function.instructions[defs[0]].operands
+if first == .adrp
+    if defs.length != 2 || function.instructions[defs[1]].opcode != .add
+        = false
+    . added = function.instructions[defs[1]].operands
+    = added.length == 3 && vreg-of(added[1]) == vreg-of(operands[0]) && is-symbol-operand(added[2])
+if first != .movz && first != .movn
+    = false
+for index in 0 .. < defs.length
+    . part = function.instructions[defs[index]]
+    if index != 0 && part.opcode != .movk
+        = false
+    if part.operands.length != 3 || !is-int-operand(part.operands[1]) || !int-shift
+        = false
+    .. int-shift = is-int-operand(part.operands[2])
+= true
+
+────────────────────
+_ do is-symbol-operand Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .symbol-operand
+        = true
+    | .label-operand
+        = true
+= false
+
+────────────────────
+_ do is-int-operand Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .int-operand
+        = true
+= false
+
+────────────────────
+_ do holds-same-value Bool
+    - source U32
+    - vreg U32
+
+` Whether `source` is live wherever `vreg` is read and no write to it falls where `vreg` is live,
+` so it holds at each read of `vreg` the value it had where `vreg` was defined.
+if !liveness.intervals[source].exists
+    = false
+. source-ranges = liveness.intervals[source].ranges
+. ranges = liveness.intervals[vreg].ranges
+. uses = liveness.intervals[vreg].uses
+for index in 0 .. < uses.length
+    if (uses[index] /and/ 1) == 0 && !holds-slot(source-ranges, uses[index])
+        = false
+. writes = liveness.intervals[source].uses
+for index in 0 .. < writes.length
+    if (writes[index] /and/ 1) != 0 && holds-slot(ranges, writes[index])
+        = false
+= true
+
+────────────────────
+_ do prefer-call-registers
+
+vreg-count = liveness.vreg-count
+. calls = liveness.call-instructions
+for index in 0 .. < calls.length
+    . call = calls[index]
+    . operands = function.instructions[call].operands
+    . return-type = call-return-type(call)
+    . first U32 = 1
+    if !is-void(return-type)
+        first = 2
+        . view = view-of(operands[1])
+        if view != no-id && struct-format(return-type) == no-id
+            prefer-register(view, register-of(function.vregs[view].reg-class, 0))
+        do match? function.operands[operands[1]]
+            | .vreg-group-operand(row)
+                for member in row.vregs.start .. < row.vregs.end
+                    . part = function.group-vregs[member]
+                    prefer-register
+                        - part
+                        - register-of(function.vregs[part].reg-class, member - row.vregs.start)
+    . last = operands.length
+    if is-direct-return(call)
+        last -= 1
+    next-general-argument = 0
+    next-float-argument = 0
+    for position in first .. < last
+        do match? function.operands[operands[position]]
+            | .vreg-operand(row)
+                prefer-register(row.vreg, take-argument(function.vregs[row.vreg].reg-class))
+            | .vreg-group-operand(row)
+                for member in row.vregs.start .. < row.vregs.end
+                    prefer-register(function.group-vregs[member], take-argument(row.reg-class))
+
+────────────────────
+_ do prefer-register
+    - view VRegId
+    - register RegisterId
+
+if view == no-id || register == no-register
+    =
+. id = checked-id(view)
+if liveness.intervals[id].crosses-call || liveness.intervals[id].preferred != no-register
+    =
+liveness.intervals[id].preferred = register-parent(register)
+
+────────────────────
++ do rewrite
+
+vreg-count = liveness.vreg-count
+plan-all-calls()
+index-root-intervals()
+prepare-root-homes()
+function.gc-roots = collect-invariant-roots()
+rewrite-instructions()
+
+────────────────────
++ do finish-frame
+
+. saved IdList
+. used = scan.used-order
+for index in 0 .. < used.length
+    if is-callee-saved-register(used[index])
+        saved = saved.appended(arena, used[index])
+frame.run(saved, scratch-register, outgoing-size)
+
+────────────────────
++ do remove-panic-check-fallthrough-branches
+
+. order = function.block-order
+if order.length < 2
+    =
+. last-block = order.length - 1
+for position in 0 .. < last-block
+    . block = order[position]
+    . instructions = function.blocks[block].instructions
+    . last = instructions.length
+    while last > 0
+        . opcode = function.instructions[instructions[last - 1]].opcode
+        if opcode != .comment && opcode != .phi
+            break
+        last -= 1
+    if last == 0
+        continue
+    last -= 1
+    . branch = instructions[last]
+    if function.instructions[branch].opcode != .b
+        continue
+    . operands = function.instructions[branch].operands
+    if operands.length == 0
+        continue
+    . target = no-string
+    do match? function.operands[operands[0]]
+        | .label-operand(row)
+            target = row.name
+    if target == no-string || target != function.blocks[order[position + 1]].name
+        continue
+    if !has-panic-check(instructions)
+        continue
+    for index in last + 1 .. < instructions.length
+        instructions.data[index - 1] = instructions[index]
+    function.blocks[block].instructions = IdList
+        - instructions.data
+        - instructions.length - 1
+        - instructions.capacity
+
+────────────────────
+_ do has-panic-check Bool
+    - instructions IdList
+
+for index in 0 .. < instructions.length
+    . id = instructions[index]
+    . opcode = function.instructions[id].opcode
+    if opcode != .cbz && opcode != .cbnz
+        continue
+    . operands = function.instructions[id].operands
+    if operands.length != 0 && preg-of(operands[0]) == panic-signal-register
+        = true
+= false
+
+────────────────────
+_ checked-id U32
+    - view VRegId
+
+?! Panic("V$id is outside the $vreg-count registers of its function")
+    if id >= vreg-count
+
+id
+
+.. id = function.vregs[view].id
+
+────────────────────
+_ do view-of VRegId
+    - operand OperandId
+
+if operand == no-operand
+    = no-id
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = row.vreg
+= no-id
+
+────────────────────
+_ do preg-of RegisterId
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .preg-operand(row)
+        = row.register
+= no-register
+
+────────────────────
+_ do is-void Bool
+    - type MIRTypeId
+
+do match? function.types[type]
+    | .void-type
+        = true
+= false
+
+────────────────────
+_ do struct-format U32
+    - type MIRTypeId
+
+do match? function.types[type]
+    | .struct-type(row)
+        = row.format
+= no-id
+
+────────────────────
+_ do plan-all-calls
+
+. calls = liveness.call-instructions
+. count = calls.length
+plans = arena.allocate'CallPlan(count)
+plan-capacity = function.instructions.length as U32
+plan-of = arena.allocate'U32(plan-capacity)
+safepoint-positions = IdList()
+outgoing-size = 0
+move-destinations = IdList()
+move-sources = IdList()
+move-classes = IdList()
+reload-destinations = IdList()
+reload-slots = IdList()
+reload-views = IdList()
+overflow-slots = IdList()
+overflow-sources = IdList()
+return-sizes = new-id-map(arena, 4)
+return-counts = IdList()
+return-active = arena.allocate'IdList(count)
+return-free = arena.allocate'IdList(count)
+has-return-flow = false
+root-slot = no-id
+root-homes = arena.allocate'U32(vreg-count)
+root-home-count = 0
+for index in 0 .. < count
+    . return-type = call-return-type(calls[index])
+    if struct-format(return-type) != no-id && !is-direct-return(calls[index])
+        . size = function.types[return-type].size
+        . pool = return-sizes.get(size)
+        if pool == no-id
+            return-sizes = return-sizes.inserted(arena, size, return-counts.length)
+            return-counts = return-counts.appended(arena, 1)
+        else
+            return-counts.data[pool] = return-counts[pool] + 1
+for index in 0 .. < count
+    . call = calls[index]
+    . safepoint = no-id
+    if function.instructions[call].gc-safepoint
+        safepoint = safepoint-positions.length
+        safepoint-positions = safepoint-positions.appended
+            - arena
+            - function.instructions[call].position as U32
+    plan-of[call] = index + 1
+    plan-call(index, call, safepoint)
+
+────────────────────
+_ do call-return-type MIRTypeId
+    - call InstructionId
+
+do match? function.instructions[call]
+    | .call-instruction(row)
+        = row.return-type
+= void-type-id
+
+────────────────────
+_ do is-direct-return Bool
+    - call InstructionId
+
+do match? function.instructions[call]
+    | .call-instruction(row)
+        = row.direct-struct-return
+= false
+
+────────────────────
+_ do plan-call
+    - index U32
+    - call InstructionId
+    - safepoint U32
+
+. operands = function.instructions[call].operands
+. return-type = call-return-type(call)
+. first U32 = 1
+. return-operand = no-operand
+if !is-void(return-type)
+    return-operand = operands[1]
+    first = 2
+. last = operands.length
+. destination = no-operand
+if is-direct-return(call)
+    ?! Panic("Direct struct return destination must be a VReg")
+        if last <= first || view-of(operands[last - 1]) == no-id
+    last -= 1
+    destination = operands[last]
+. call-use-slot = (function.instructions[call].position as U32) * 2
+next-general-argument = 0
+next-float-argument = 0
+call-overflow-slot = no-id
+. moves-start = move-destinations.length
+. reloads-start = reload-destinations.length
+. overflow-start = overflow-slots.length
+for position in first .. < last
+    . view = no-id
+    . group-class RegClass = .gpr64
+    . members Span
+    . is-group = false
+    do match? function.operands[operands[position]]
+        | .vreg-operand(row)
+            view = row.vreg
+        | .vreg-group-operand(row)
+            is-group = true
+            group-class = row.reg-class
+            members = row.vregs
+    if view != no-id
+        . reg-class = function.vregs[view].reg-class
+        plan-single-argument
+            - view
+            - take-argument(reg-class)
+            - stack-argument-type(call, position - first, reg-class)
+    else if is-group
+        plan-group-argument(group-class, members)
+    else
+        ?! Panic("Call arg must be VReg or VRegGroup")
+
+if call-overflow-slot != no-id
+    . end = builder.finalize-overflow(call-overflow-slot, 0) as I64
+    . overflow-size = ((end + 15) / 16) * 16
+    if overflow-size > outgoing-size
+        outgoing-size = overflow-size
+
+. buffer = no-frame-object
+if return-operand != no-operand && destination == no-operand && returns-struct
+    buffer = struct-return-scratch(return-type, return-operand, call-use-slot)
+.. returns-struct = struct-format(return-type) != no-id && !is-group-operand(return-operand)
+
+. argument-registers RegisterSet
+for move in moves-start .. < move-destinations.length
+    argument-registers = argument-registers.with(register-parent(move-destinations[move]))
+for reload in reloads-start .. < reload-destinations.length
+    argument-registers = argument-registers.with(register-parent(reload-destinations[reload]))
+
+plans[index].callee = operands[0]
+plans[index].return-operand = return-operand
+plans[index].call-use-slot = call-use-slot
+plans[index].moves = Span(moves-start, move-destinations.length - moves-start)
+plans[index].reloads = Span(reloads-start, reload-destinations.length - reloads-start)
+plans[index].overflow-entries = Span(overflow-start, overflow-slots.length - overflow-start)
+plans[index].struct-return-buffer = buffer
+plans[index].struct-return-destination = destination
+plans[index].argument-registers = argument-registers
+plans[index].safepoint = safepoint
+
+────────────────────
+_ do take-argument RegisterId
+    - reg-class RegClass
+
+if is-general-class(reg-class)
+    if next-general-argument >= 8
+        = no-register
+    next-general-argument += 1
+    = register-of(reg-class, next-general-argument - 1)
+if next-float-argument >= 8
+    = no-register
+next-float-argument += 1
+= register-of(reg-class, next-float-argument - 1)
+
+────────────────────
+_ do overflow-object FrameObjectId
+    - type MIRTypeId
+
+if call-overflow-slot == no-id
+    call-overflow-slot = function.slots.length as MIRSlotId
+    function.slots.append(MIRFrameSlot(-1, true, IdList()))
+= builder.add-frame-object(call-overflow-slot, type)
+
+────────────────────
+_ do stack-argument-type MIRTypeId
+    - call InstructionId
+    - index U32
+    - reg-class RegClass
+
+` The type an argument a call passes on the stack takes there: its own where the call records
+` it narrower than 4 bytes, and else that of its register class.
+do match? function.instructions[call]
+    | .call-instruction(row)
+        if index < row.argument-sizes.count
+            . size = function.words[row.argument-sizes.start + index]
+            if size == 1
+                = i8-type-id
+            if size == 2
+                = i16-type-id
+= builder.reg-class-type(reg-class)
+
+────────────────────
+_ do plan-single-argument
+    - view VRegId
+    - argument RegisterId
+    - overflow-type MIRTypeId
+
+if argument == no-register
+    overflow-slots = overflow-slots.appended(arena, overflow-object(overflow-type))
+    overflow-sources = overflow-sources.appended(arena, view)
+    =
+. id = checked-id(view)
+if scan.allocations[id].kind == .in-register
+    . reg-class = function.vregs[view].reg-class
+    move-destinations = move-destinations.appended(arena, argument)
+    move-sources = move-sources.appended
+        - arena
+        - register-view(scan.allocations[id].register, reg-class)
+    move-classes = move-classes.appended(arena, reg-class)
+else if scan.allocations[id].kind == .in-spill
+    reload-destinations = reload-destinations.appended(arena, argument)
+    reload-slots = reload-slots.appended(arena, scan.allocations[id].spill-slot)
+    reload-views = reload-views.appended(arena, no-id)
+else if scan.allocations[id].kind == .recomputed
+    reload-destinations = reload-destinations.appended(arena, argument)
+    reload-slots = reload-slots.appended(arena, no-frame-object)
+    reload-views = reload-views.appended(arena, view)
+
+────────────────────
+_ do plan-group-argument
+    - group-class RegClass
+    - members Span
+
+. parents = arena.allocate'U32(members.count)
+. found U32
+while found < members.count
+    . argument = take-argument(group-class)
+    if argument == no-register
+        break
+    parents[found] = register-parent(argument)
+    found += 1
+if found != members.count
+    for index in 0 .. < members.count
+        overflow-slots = overflow-slots.appended
+            - arena
+            - overflow-object(builder.reg-class-type(group-class))
+        overflow-sources = overflow-sources.appended
+            - arena
+            - function.group-vregs[members.start + index]
+    =
+for index in 0 .. < members.count
+    . view = function.group-vregs[members.start + index]
+    . reg-class = function.vregs[view].reg-class
+    ?! Panic("Group arg unexpectedly overflowed")
+        if is-general-class(reg-class) != is-general-class(register-class(parents[index]))
+    plan-single-argument
+        - view
+        - register-view(parents[index], reg-class)
+        - builder.reg-class-type(reg-class)
+
+────────────────────
+_ do struct-return-scratch FrameObjectId
+    - type MIRTypeId
+    - return-operand OperandId
+    - call-use-slot U32
+
+. size = function.types[type].size
+. storage-size = size
+. storage-alignment = function.types[type].alignment
+if struct-format(type) == (StructFormat.small-format as U32)
+    storage-size = ((size + 7) / 8) * 8
+    if storage-alignment < 8
+        storage-alignment = 8
+. pool = return-sizes.get(size)
+if pool == no-id || return-counts[pool] <= 1
+    = new-scratch(storage-size, storage-alignment)
+
+. active = return-active[pool]
+. kept U32
+. cursor U32
+while cursor < active.length
+    if active[cursor + 1] <= call-use-slot
+        return-free[pool] = return-free[pool].appended(arena, active[cursor])
+    else
+        active.data[kept] = active[cursor]
+        active.data[kept + 1] = active[cursor + 1]
+        kept += 2
+    cursor += 2
+return-active[pool] = IdList(active.data, kept, active.capacity)
+
+. free = return-free[pool]
+. scratch = no-frame-object
+if free.length == 0
+    scratch = new-scratch(storage-size, storage-alignment)
+else
+    scratch = free[free.length - 1]
+    return-free[pool] = IdList(free.data, free.length - 1, free.capacity)
+    do match? function.types[function.frame-objects[scratch].type]
+        | .array-type(row)
+            if storage-size > row.size
+                row.size = storage-size
+            row.length = row.size
+            if storage-alignment > row.alignment
+                row.alignment = storage-alignment
+. end = struct-return-lifetime-end(return-operand, call-use-slot)
+. grown = return-active[pool].appended(arena, scratch)
+return-active[pool] = grown.appended(arena, end)
+= scratch
+
+────────────────────
+_ do new-scratch FrameObjectId
+    - size U32
+    - alignment U32
+
+. type MIRTypeId = function.types.length as MIRTypeId
+function.types.append(ArrayType(size, alignment, u8-type-id, size))
+= builder.add-frame-object(builder.frame-slot(), type, 0, false, false)
+
+────────────────────
+_ do struct-return-lifetime-end U32
+    - return-operand OperandId
+    - call-use-slot U32
+
+if !has-return-flow
+    run-return-flow(return-operand)
+    has-return-flow = true
+. view = view-of(return-operand)
+. end = call-use-slot + 2
+if view == no-id || return-roots[checked-id(view)] == 0
+    = end
+. root = return-roots[checked-id(view)] - 1
+if flow.escapes[root] != 0
+    = no-end
+. references = flow.references[root]
+for index in 0 .. < references.length
+    . slot = (function.instructions[references[index]].position as U32) * 2
+    if slot < call-use-slot
+        = no-end
+    if slot + 2 > end
+        end = slot + 2
+if return-root-ends[root] > end
+    end = return-root-ends[root]
+= end
+
+────────────────────
+_ do run-return-flow
+    - return-operand OperandId
+
+return-roots = arena.allocate'U32(vreg-count)
+. roots IdList
+. calls = liveness.call-instructions
+for index in 0 .. < calls.length
+    . call = calls[index]
+    . operands = function.instructions[call].operands
+    if operands.length < 2 || is-direct-return(call) || scalar-return
+        continue
+    .. scalar-return = struct-format(call-return-type(call)) == no-id
+    roots = with-return-root(roots, operands[1])
+roots = with-return-root(roots, return-operand)
+flow.run-vregs(liveness.blocks, roots)
+return-root-ends = arena.allocate'U32(roots.length)
+for id in 0 .. < vreg-count
+    . origins = flow.origins[id]
+    if origins.length == 0
+        continue
+    . end = liveness.end(id)
+    for index in 0 .. < origins.length
+        if end > return-root-ends[origins[index]]
+            return-root-ends[origins[index]] = end
+
+────────────────────
+_ do with-return-root IdList
+    - roots IdList
+    - operand OperandId
+
+. view = view-of(operand)
+if view == no-id
+    = roots
+. id = checked-id(view)
+if return-roots[id] != 0
+    = roots
+return-roots[id] = roots.length + 1
+= roots.appended(arena, id)
+
+────────────────────
+_ do index-root-intervals
+
+. count = safepoint-positions.length
+safepoint-roots = arena.allocate'IdList(count)
+if count == 0
+    =
+. order = liveness.order
+for index in 0 .. < order.length
+    . id = order[index]
+    . view = liveness.intervals[id].view
+    if view == no-id || !function.vregs[view].gc-root
+        continue
+    . ranges = liveness.intervals[id].ranges
+    . cursor U32
+    while cursor < ranges.length
+        . safepoint = first-safepoint-after(ranges[cursor])
+        while safepoint < count && safepoint-positions[safepoint] * 2 + 1 < ranges[cursor + 1]
+            safepoint-roots[safepoint] = safepoint-roots[safepoint].appended(arena, id)
+            safepoint += 1
+        cursor += 2
+
+────────────────────
+_ do first-safepoint-after U32
+    - slot U32
+
+. low U32
+. high = safepoint-positions.length
+while low < high
+    . middle = (low + high) / 2
+    if safepoint-positions[middle] * 2 + 1 <= slot
+        low = middle + 1
+    else
+        high = middle
+= low
+
+────────────────────
+_ do prepare-root-homes
+
+. count = safepoint-positions.length
+if count == 0
+    =
+relevant = IdList()
+relevant-marks = arena.allocate'Byte(vreg-count)
+for safepoint in 0 .. < count
+    . roots = safepoint-roots[safepoint]
+    for index in 0 .. < roots.length
+        add-relevant(roots[index])
+. calls = liveness.call-instructions
+for index in 0 .. < calls.length
+    . call = calls[index]
+    if !function.instructions[call].gc-safepoint
+        continue
+    . roles = function.operand-roles(call)
+    . operands = function.instructions[call].operands
+    for position in 0 .. < operands.length
+        if (role-at(roles, position) /and/ use-role) != 0
+            add-relevant-operand(operands[position])
+
+. homes IdList
+for index in 0 .. < relevant.length
+    . id = relevant[index]
+    if liveness.intervals[id].reg-class == .gpr64 && scan.allocations[id].kind == .in-register
+        homes = homes.appended(arena, id)
+. ends = arena.allocate'U32(homes.length)
+for index in 0 .. < homes.length
+    ends[index] = liveness.end(homes[index])
+homes = stable-order(arena, homes, ends)
+. starts = arena.allocate'U32(homes.length)
+for index in 0 .. < homes.length
+    starts[index] = liveness.start(homes[index])
+homes = stable-order(arena, homes, starts)
+
+. active IdList
+. free IdList
+for index in 0 .. < homes.length
+    . id = homes[index]
+    . start = liveness.start(id)
+    . cursor = active.length
+    while cursor > 0
+        cursor -= 2
+        if active[cursor] <= start
+            free = free.appended(arena, active[cursor + 1])
+            for position in cursor + 2 .. < active.length
+                active.data[position - 2] = active[position]
+            active = IdList(active.data, active.length - 2, active.capacity)
+    . object = no-frame-object
+    if root-slot == no-id
+        root-slot = builder.frame-slot()
+    if free.length != 0
+        object = free[free.length - 1]
+        free = IdList(free.data, free.length - 1, free.capacity)
+    else
+        object = builder.add-frame-object(root-slot, pointer-type-id, 0, false, false)
+    set-root-home(id, object)
+    active = active.appended(arena, liveness.end(id))
+    active = active.appended(arena, object)
+
+────────────────────
+_ do set-root-home
+    - id U32
+    - object FrameObjectId
+
+if root-homes[id] == 0
+    root-home-count += 1
+root-homes[id] = object + 1
+
+────────────────────
+_ do add-relevant
+    - id U32
+
+if relevant-marks[id] == 0
+    relevant-marks[id] = 1
+    relevant = relevant.appended(arena, id)
+
+────────────────────
+_ do add-relevant-view
+    - view VRegId
+
+. id = checked-id(view)
+if function.vregs[view].gc-root && liveness.intervals[id].exists
+    add-relevant(id)
+
+────────────────────
+_ do add-relevant-operand
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        add-relevant-view(row.vreg)
+    | .vreg-group-operand(row)
+        for index in row.vregs.start .. < row.vregs.end
+            add-relevant-view(function.group-vregs[index])
+    | .load-address-operand(row)
+        add-relevant-operand(row.base)
+
+────────────────────
+_ do collect-invariant-roots Span
+
+. first = function.roots.length
+if safepoint-positions.length == 0
+    = Span(first as U32, 0)
+for position in 0 .. < function.frame-slots.length
+    . objects = function.slots[function.frame-slots[position]].objects
+    for index in 0 .. < objects.length
+        . object = function.frame-objects[objects[index]]
+        if object.is-spill || !object.gc-root || object.can-promote
+            continue
+        function.roots.append(StackRoot(objects[index], object.gc-descriptor, object.gc-root-mode))
+= Span(first as U32, (function.roots.length - first) as U32)
+
+────────────────────
+_ do rewrite-instructions
+
+live-homes = arena.allocate'U32(vreg-count)
+home-stamp = 0
+seen-vregs = arena.allocate'U32(vreg-count)
+seen-capacity = (function.frame-objects.length + vreg-count + 1) as U32
+seen-objects = arena.allocate'U32(seen-capacity)
+seen-stamp = 0
+def-reloads = IdList()
+defined-homes = IdList()
+materializations = IdList()
+hfa-types = IdList()
+hfa-offsets = IdList()
+. order = function.block-order
+find-wide(order)
+for position in 0 .. < order.length
+    . block = order[position]
+    . instructions = builder.take-instructions(block)
+    cached-reload = no-id
+    home-stamp += 1
+    . ending = no-id
+    if scan.has-pieces
+        emit-piece-reloads(scan.start-reloads[block])
+        if scan.end-reloads[block].length != 0
+            ending = instructions.length
+            while ending > 0 && is-terminator(function.instructions[instructions[ending - 1]].opcode)
+                ending -= 1
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . opcode = function.instructions[id].opcode
+        if index == ending
+            emit-piece-reloads(scan.end-reloads[block])
+        if opcode == .phi
+            continue
+        . numbered = function.instructions[id].position
+        current-position = 0
+        has-position = numbered != no-position
+        if has-position
+            current-position = numbered as U32
+        reserved = RegisterSet()
+        taken = RegisterSet()
+        def-reloads = IdList(def-reloads.data, 0, def-reloads.capacity)
+        if opcode == .call
+            cached-reload = no-id
+            emit-call(id)
+            cached-reload = no-id
+        else
+            rewrite-normal(id)
+        if scan.has-pieces && has-position
+            emit-piece-reloads(scan.call-reloads[current-position])
+    if ending == instructions.length
+        emit-piece-reloads(scan.end-reloads[block])
+
+────────────────────
+_ do emit-piece-reloads
+    - pairs IdList
+
+` Loads the values of spilled intervals into the registers their stretches hold them in, where
+` control enters those stretches.
+. cursor U32
+while cursor < pairs.length
+    . id = pairs[cursor]
+    . register = register-view(pairs[cursor + 1], liveness.intervals[id].reg-class)
+    builder.ldr
+        - builder.preg(register)
+        - builder.frame-object-operand(scan.allocations[id].spill-slot)
+    cursor += 2
+
+────────────────────
+_ do find-wide
+    - order IdList
+
+` Marks each vreg that some operand reads or writes through a view wider than 32 bits, so a move
+` of one that none does into the register it is in already can go: no read sees the upper half
+` the move would clear.
+wide = arena.allocate'Byte(vreg-count)
+for position in 0 .. < order.length
+    . instructions = function.blocks[order[position]].instructions
+    for index in 0 .. < instructions.length
+        . operands = function.instructions[instructions[index]].operands
+        for entry in 0 .. < operands.length
+            do match? function.operands[operands[entry]]
+                | .vreg-operand(row)
+                    note-wide(row.vreg)
+                | .vreg-group-operand(group)
+                    for member in group.vregs.start .. < group.vregs.end
+                        note-wide(function.group-vregs[member])
+                | .load-address-operand(row)
+                    note-wide(view-of(row.base))
+                    note-wide(view-of(row.offset))
+
+────────────────────
+_ do note-wide
+    - view VRegId
+
+if view != no-id && function.vregs[view].reg-class != .gpr32
+    wide[checked-id(view)] = 1
+
+────────────────────
+_ do emit-call
+    - call InstructionId
+
+?! Panic("Missing plan for CALL")
+    if call >= plan-capacity || plan-of[call] == 0
+. plan = plans[plan-of[call] - 1]
+. roots = roots-for-call(call, plan.safepoint)
+for entry in plan.overflow-entries.start .. < plan.overflow-entries.end
+    . source = read-register
+        - no-operand
+        - overflow-sources[entry]
+        - plan.call-use-slot
+        - plan.argument-registers
+    builder.store
+        - builder.frame-object-operand(overflow-slots[entry])
+        - source
+        - function.frame-objects[overflow-slots[entry]].type
+
+. callee = plan.callee
+if view-of(callee) != no-id
+    callee = read-register(callee, view-of(callee), plan.call-use-slot, plan.argument-registers)
+. callee-register = preg-of(callee)
+if callee-register != no-register
+    . parent = register-parent(callee-register)
+    . uses-struct-return = plan.struct-return-buffer != no-frame-object || has-destination
+        .. has-destination = plan.struct-return-destination != no-operand
+    if plan.argument-registers.has(parent) || parent == scratch-register || in-return-register
+        . preserved = builder.preg(preserved-callee-register)
+        builder.move(preserved, callee)
+        callee = preserved
+    .. in-return-register = uses-struct-return && parent == struct-return-register
+
+if plan.struct-return-destination != no-operand
+    . destination = read-register
+        - plan.struct-return-destination
+        - view-of(plan.struct-return-destination)
+        - plan.call-use-slot
+        - plan.argument-registers
+    builder.add-pointer
+        - builder.preg(struct-return-register)
+        - builder.load-address-offset(destination, 0)
+
+emit-parallel-moves(plan.moves)
+for reload in plan.reloads.start .. < plan.reloads.end
+    if reload-views[reload] != no-id
+        recompute(register-parent(reload-destinations[reload]), checked-id(reload-views[reload]))
+    else
+        builder.ldr
+            - builder.preg(reload-destinations[reload])
+            - builder.frame-object-operand(reload-slots[reload])
+
+. return-type = call-return-type(call)
+if plan.struct-return-buffer != no-frame-object && returns-large
+    builder.add-pointer
+        - builder.preg(struct-return-register)
+        - builder.frame-object-operand(plan.struct-return-buffer)
+.. returns-large = struct-format(return-type) == (StructFormat.large-format as U32)
+
+. branch = no-id
+if view-of(callee) != no-id || preg-of(callee) != no-register
+    branch = builder.blr(callee)
+else
+    branch = builder.bl(callee)
+function.instructions[branch].gc-free-zone = function.instructions[call].gc-free-zone
+function.instructions[branch].gc-exceptional-safepoint = function.instructions[call].gc-exceptional-safepoint
+if function.instructions[call].gc-safepoint
+    function.instructions[branch].gc-safepoint = true
+if roots.count != 0
+    function.instructions[branch].has-gc-roots = true
+    function.instructions[branch].gc-roots = roots
+if bundle.stack-trace-metadata
+    function.instructions[branch].loc = function.instructions[call].loc
+
+. panic-target = no-operand
+do match? function.instructions[call]
+    | .call-instruction(row)
+        panic-target = row.panic-target
+if panic-target != no-operand
+    builder.cbnz(builder.preg(panic-signal-register), panic-target)
+if is-group-operand(plan.return-operand)
+    bind-parts(plan.return-operand)
+else if plan.return-operand != no-operand && plan.struct-return-destination == no-operand
+    bind-return(return-type, plan.return-operand, plan.struct-return-buffer)
+    . view = view-of(plan.return-operand)
+    if view != no-id
+        live-homes[checked-id(view)] = 0
+
+────────────────────
+_ do roots-for-call Span
+    - call InstructionId
+    - safepoint U32
+
+. first = function.roots.length
+if !function.instructions[call].gc-safepoint || safepoint == no-id
+    = Span(first as U32, 0)
+seen-stamp += 1
+for root in function.gc-roots.start .. < function.gc-roots.end
+    do match? function.roots[root]
+        | .stack-root(row)
+            mark-object-seen(row.object)
+materializations = IdList(materializations.data, 0, materializations.capacity)
+first = function.roots.length
+. live = safepoint-roots[safepoint]
+for index in 0 .. < live.length
+    add-root-for-view(liveness.intervals[live[index]].view)
+. roles = function.operand-roles(call)
+. operands = function.instructions[call].operands
+for position in 0 .. < operands.length
+    if (role-at(roles, position) /and/ use-role) != 0
+        add-root-for-operand(operands[position])
+emit-materializations()
+= Span(first as U32, (function.roots.length - first) as U32)
+
+────────────────────
+_ do add-root-for-operand
+    - operand OperandId
+
+. view = no-id
+. base = no-operand
+. members Span
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        view = row.vreg
+    | .vreg-group-operand(row)
+        members = row.vregs
+    | .load-address-operand(row)
+        base = row.base
+if view != no-id
+    add-root-for-view(view)
+for index in members.start .. < members.end
+    add-root-for-view(function.group-vregs[index])
+if base != no-operand && view-of(base) != no-id
+    add-root-for-view(view-of(base))
+
+────────────────────
+_ do add-root-for-view
+    - view VRegId
+
+if view == no-id || !function.vregs[view].gc-root
+    =
+. id = checked-id(view)
+. descriptor = function.vregs[view].gc-descriptor
+. mode = function.vregs[view].gc-root-mode
+if scan.allocations[id].kind == .in-register
+    if seen-vregs[id] == seen-stamp
+        =
+    . register = register-parent(scan.allocations[id].register)
+    if register-class(register) != .gpr64
+        =
+    seen-vregs[id] = seen-stamp
+    . object = root-home-for(id)
+    if live-homes[id] != home-stamp
+        materializations = materializations.appended(arena, register)
+        materializations = materializations.appended(arena, object)
+        live-homes[id] = home-stamp
+    mark-object-seen(object)
+    function.roots.append(StackRoot(object, descriptor, mode))
+else if scan.allocations[id].kind == .in-spill
+    . slot = scan.allocations[id].spill-slot
+    function.frame-objects[slot].gc-root = true
+    if mark-object-seen(slot)
+        function.roots.append(StackRoot(slot, descriptor, mode))
+
+────────────────────
+_ do mark-object-seen Bool
+    - object FrameObjectId
+
+?! Panic("Frame object $object is outside the $seen-capacity objects the allocator tracks")
+    if object >= seen-capacity
+if seen-objects[object] == seen-stamp
+    = false
+seen-objects[object] = seen-stamp
+= true
+
+────────────────────
+_ do root-home-for FrameObjectId
+    - id U32
+
+if root-homes[id] == 0
+    if root-slot == no-id
+        root-slot = builder.frame-slot()
+    set-root-home(id, builder.add-frame-object(root-slot, pointer-type-id, 0, false, false))
+. object = root-homes[id] - 1
+function.frame-objects[object].gc-root = true
+= object
+
+────────────────────
+_ home-order U64
+    - object FrameObjectId
+
+((slot + 0x40000000) as U64) * 0x100000000 + ((index + 0x40000000) as U64)
+
+.. slot I64 = function.slots[function.frame-objects[object].slot].index
+.. index I64 = function.frame-objects[object].index
+
+────────────────────
+_ do emit-materializations
+
+. pairs = materializations
+. count = pairs.length / 2
+if count == 0
+    =
+for position in 1 .. < count
+    . register = pairs[position * 2]
+    . object = pairs[position * 2 + 1]
+    . key = home-order(object)
+    . target = position
+    while target > 0 && home-order(pairs[target * 2 - 1]) > key
+        pairs.data[target * 2] = pairs[target * 2 - 2]
+        pairs.data[target * 2 + 1] = pairs[target * 2 - 1]
+        target -= 1
+    pairs.data[target * 2] = register
+    pairs.data[target * 2 + 1] = object
+. index U32
+while index < count
+    . register = pairs[index * 2]
+    . object = pairs[index * 2 + 1]
+    if index + 1 < count
+        . next = pairs[index * 2 + 3]
+        . is-adjacent = function.frame-objects[object].slot == function.frame-objects[next].slot
+        if is-adjacent && function.frame-objects[object].index + 1 == next-index
+            builder.stp
+                - builder.preg(pairs[index * 2 + 2])
+                - builder.preg(register)
+                - builder.frame-object-operand(next)
+            index += 2
+            continue
+        .. next-index = function.frame-objects[next].index
+    builder.store
+        - builder.frame-object-operand(object)
+        - builder.preg(register)
+        - function.frame-objects[object].type
+    index += 1
+
+────────────────────
+_ do rewrite-normal
+    - id InstructionId
+
+. roles = function.operand-roles(id)
+. operands = function.instructions[id].operands
+if operands.length != 0 && (role-at(roles, 0) /and/ def-role) != 0 && defines-recomputed
+    =
+.. defines-recomputed = is-recomputed(view-of(operands[0]))
+if function.instructions[id].opcode == .mov && operands.length == 2 && copies-recomputed
+    . destination = view-of(operands[0])
+    if destination != no-id && !function.vregs[destination].gc-root && has-register
+        recompute
+            - register-parent(scan.allocations[checked-id(destination)].register)
+            - checked-id(view-of(operands[1]))
+        =
+    .. has-register = scan.allocations[checked-id(destination)].kind == .in-register
+.. copies-recomputed = is-recomputed(view-of(operands[1]))
+. moved = if operands.length == 2 then view-of(operands[0]) else no-id
+defined-homes = IdList(defined-homes.data, 0, defined-homes.capacity)
+if root-home-count != 0
+    for position in 0 .. < operands.length
+        if (role-at(roles, position) /and/ def-role) == 0
+            continue
+        . view = view-of(operands[position])
+        if view != no-id && root-homes[checked-id(view)] != 0
+            defined-homes = defined-homes.appended(arena, checked-id(view))
+for position in 0 .. < operands.length
+    reserve-operand(operands[position])
+. opcode = function.instructions[id].opcode
+if coalesces && is-move && operands.length == 2 && rewrite-spilled-move(operands)
+    for index in 0 .. < defined-homes.length
+        live-homes[defined-homes[index]] = 0
+    =
+.. is-move = opcode == .mov || opcode == .fmov
+
+for position in 0 .. < operands.length
+    . operand = operands[position]
+    . role = role-at(roles, position)
+    . is-def = (role /and/ def-role) != 0
+    . is-use = (role /and/ use-role) != 0
+    . view = no-id
+    . base = no-operand
+    . offset = no-operand
+    . is-pre-index = false
+    . index-shift U32
+    do match? function.operands[operand]
+        | .vreg-operand(row)
+            view = row.vreg
+        | .vreg-group-operand
+            ?! Panic("A register group is an operand outside a call")
+        | .load-address-operand(row)
+            base = row.base
+            offset = row.offset
+            is-pre-index = row.is-pre-index
+            index-shift = row.index-shift
+    if view != no-id
+        operands.data[position] = resolve(operand, view, is-def, is-use)
+    else if base != no-operand && (view-of(base) != no-id || view-of(offset) != no-id)
+        . resolved = base
+        if view-of(base) != no-id
+            resolved = resolve(base, view-of(base), is-def, is-use)
+        . index = offset
+        if view-of(offset) != no-id
+            index = resolve(offset, view-of(offset), false, true)
+        operands.data[position] = builder.load-address(resolved, index, is-pre-index, index-shift)
+
+. drops = false
+if (opcode == .mov || (coalesces && opcode == .fmov)) && operands.length > 1
+    . destination = preg-of(operands[0])
+    if destination != no-register && destination == preg-of(operands[1]) && full-width
+        drops = true
+    else if opcode == .mov && copies-self && register-class(destination) == .gpr32 && unneeded
+        =
+    .. full-width = register-class(destination) != .gpr32 && register-class(destination) != .fpr32
+    .. copies-self = destination != no-register && destination == preg-of(operands[1])
+    .. unneeded = moved != no-id && wide[checked-id(moved)] == 0 && def-reloads.length == 0
+if drops && def-reloads.length == 0
+    =
+if !drops
+    builder.append(id)
+. cursor U32
+while cursor < def-reloads.length
+    builder.str
+        - builder.preg(def-reloads[cursor])
+        - builder.frame-object-operand(def-reloads[cursor + 1])
+    cursor += 2
+for index in 0 .. < defined-homes.length
+    live-homes[defined-homes[index]] = 0
+
+────────────────────
+_ do rewrite-spilled-move Bool
+    - operands IdList
+
+` Gives a copy that writes a value to its spill slot as a store of the register it copies, and
+` one that reads a value from its spill slot into a register as a load into that register, in
+` place of a copy through the register the value would be reloaded into or stored from.
+. target = view-of(operands[0])
+. source = view-of(operands[1])
+if (target == no-id && preg-of(operands[0]) == no-register) || source-not-register
+    = false
+.. source-not-register = source == no-id && preg-of(operands[1]) == no-register
+if operand-class(operands[0]) != operand-class(operands[1])
+    = false
+. stored = memory-slot(target, false)
+if stored != no-frame-object
+    . value = if source != no-id then resolve(operands[1], source, false, true) else operands[1]
+    if cached-reload == checked-id(target)
+        cached-reload = no-id
+    builder.str(value, builder.frame-object-operand(stored))
+    = true
+. loaded = memory-slot(source, true)
+if loaded == no-frame-object || (target != no-id && target-unallocated)
+    = false
+.. target-unallocated = scan.allocations[checked-id(target)].kind == .unallocated
+. destination = if target != no-id then resolve(operands[0], target, true, false) else operands[0]
+if register-parent(preg-of(destination)) == scratch-register
+    cached-reload = no-id
+builder.ldr(destination, builder.frame-object-operand(loaded))
+. cursor U32
+while cursor < def-reloads.length
+    builder.str
+        - builder.preg(def-reloads[cursor])
+        - builder.frame-object-operand(def-reloads[cursor + 1])
+    cursor += 2
+= true
+
+────────────────────
+_ operand-class RegClass
+    - operand OperandId
+
+if view != no-id then function.vregs[view].reg-class else register-class(preg-of(operand))
+
+.. view = view-of(operand)
+
+────────────────────
+_ memory-slot FrameObjectId
+    - view VRegId
+    - is-use Bool
+
+` The spill slot an instruction at the current position reads or writes `view` through, or none
+` when a register holds it there.
+|? view == no-id || scan.allocations[id].kind != .in-spill || (is-use && cached-reload == id)
+    no-frame-object
+|? scan.has-pieces && has-position && scan.piece-register(id, slot) != no-register
+    no-frame-object
+??
+    scan.allocations[id].spill-slot
+
+.. id = checked-id(view)
+.. slot = if is-use then current-position * 2 else current-position * 2 + 1
+
+────────────────────
+_ do reserve-operand
+    - operand OperandId
+
+. base = no-operand
+. offset = no-operand
+do match? function.operands[operand]
+    | .preg-operand(row)
+        reserved = reserved.with(register-parent(row.register))
+    | .load-address-operand(row)
+        base = row.base
+        offset = row.offset
+if base != no-operand
+    reserve-operand(base)
+if offset != no-operand
+    reserve-operand(offset)
+
+────────────────────
+_ do resolve OperandId
+    - operand OperandId
+    - view VRegId
+    - is-def Bool
+    - is-use Bool
+
+. id = checked-id(view)
+if scan.allocations[id].kind == .unallocated
+    = operand
+. reg-class = function.vregs[view].reg-class
+if scan.allocations[id].kind == .in-register
+    = builder.preg(register-view(scan.allocations[id].register, reg-class))
+if scan.allocations[id].kind == .recomputed
+    = recomputed-operand(id, reg-class, reserved, current-position * 2, true)
+
+. slot = scan.allocations[id].spill-slot
+if scan.has-pieces && has-position
+    . held = scan.piece-register
+        - id
+        - if is-use then current-position * 2 else current-position * 2 + 1
+    if held != no-register
+        . kept = register-view(held, reg-class)
+        if is-def
+            if cached-reload == id
+                cached-reload = no-id
+            def-reloads = def-reloads.appended(arena, kept)
+            def-reloads = def-reloads.appended(arena, slot)
+        = builder.preg(kept)
+if is-use && cached-reload == id && !taken.has(scratch-register) && !reserved.has(scratch-register)
+    taken = taken.with(scratch-register)
+    . cached = register-view(scratch-register, reg-class)
+    if is-def
+        def-reloads = def-reloads.appended(arena, cached)
+        def-reloads = def-reloads.appended(arena, slot)
+    = builder.preg(cached)
+
+. register = pick-reload-register(reg-class, reserved, current-position * 2)
+. parent = register-parent(register)
+taken = taken.with(parent)
+if is-use
+    builder.ldr(builder.preg(register), builder.frame-object-operand(slot))
+    if parent == scratch-register
+        cached-reload = id
+if is-def
+    if parent == scratch-register
+        cached-reload = no-id
+    def-reloads = def-reloads.appended(arena, register)
+    def-reloads = def-reloads.appended(arena, slot)
+= builder.preg(register)
+
+────────────────────
+_ do pick-reload-register RegisterId
+    - reg-class RegClass
+    - excluded RegisterSet
+    - use-slot U32
+
+. is-general = is-general-class(reg-class)
+if is-general && !taken.has(scratch-register) && !excluded.has(scratch-register)
+    = register-view(scratch-register, reg-class)
+for index in 0 .. < available.length
+    . parent = available[index]
+    if parent == scratch-register || is-float-scratch(parent)
+        continue
+    if taken.has(parent) || excluded.has(parent) || scan.is-parent-live-at(parent, use-slot)
+        continue
+    if is-general-class(register-class(parent)) == is-general
+        scan.mark-used(parent)
+        = register-view(parent, reg-class)
+if is-general
+    if !taken.has(16) && !excluded.has(16)
+        = register-view(16, reg-class)
+    if !taken.has(17) && !excluded.has(17)
+        = register-view(17, reg-class)
+else
+    if !taken.has(float-scratch-register) && !excluded.has(float-scratch-register)
+        = register-view(float-scratch-register, reg-class)
+    if !taken.has(64) && !excluded.has(64)
+        = register-view(64, reg-class)
+    if !taken.has(65) && !excluded.has(65)
+        = register-view(65, reg-class)
+?! Panic("No scratch register available for spill reload")
+
+────────────────────
+_ do read-register OperandId
+    - operand OperandId
+    - view VRegId
+    - slot U32
+    - excluded RegisterSet
+
+. id = checked-id(view)
+if scan.allocations[id].kind == .unallocated
+    if operand == no-operand
+        = builder.vreg-operand(view)
+    = operand
+. reg-class = function.vregs[view].reg-class
+if scan.allocations[id].kind == .in-register
+    = builder.preg(register-view(scan.allocations[id].register, reg-class))
+if scan.allocations[id].kind == .recomputed
+    = recomputed-operand(id, reg-class, excluded, slot, false)
+. register = builder.preg(pick-reload-register(reg-class, excluded, slot))
+builder.ldr(register, builder.frame-object-operand(scan.allocations[id].spill-slot))
+= register
+
+────────────────────
+_ is-recomputed Bool
+    - view VRegId
+
+view != no-id && scan.allocations[checked-id(view)].kind == .recomputed
+
+────────────────────
+_ do recomputed-operand OperandId
+    - id U32
+    - reg-class RegClass
+    - excluded RegisterSet
+    - use-slot U32
+    - caches Bool
+
+` A register holding the value of `id` where it is read: the register a copy reads, or one its
+` instructions are given again into.
+. defined = recompute-defs[id][0]
+if function.instructions[defined].opcode == .mov
+    . source = checked-id(view-of(function.instructions[defined].operands[1]))
+    = builder.preg(register-view(register-parent(scan.allocations[source].register), reg-class))
+if caches && cached-reload == id && !taken.has(scratch-register) && !excluded.has(scratch-register)
+    taken = taken.with(scratch-register)
+    = builder.preg(register-view(scratch-register, reg-class))
+. register = pick-reload-register(reg-class, excluded, use-slot)
+. parent = register-parent(register)
+recompute(parent, id)
+if caches
+    taken = taken.with(parent)
+    if parent == scratch-register
+        cached-reload = id
+= builder.preg(register)
+
+────────────────────
+_ do recompute
+    - parent RegisterId
+    - id U32
+
+` Gives the instructions that define `id` again, into `parent`, reading their other registers
+` where they were left.
+. defs = recompute-defs[id]
+for index in 0 .. < defs.length
+    . operands = function.instructions[defs[index]].operands
+    . made = new-id-list(arena, operands.length)
+    for entry in 0 .. < operands.length
+        . operand = operands[entry]
+        . view = view-of(operand)
+        if view != no-id
+            . source = checked-id(view)
+            . register = if source == id then parent else source-register
+                .. source-register = register-parent(scan.allocations[source].register)
+            operand = builder.preg(register-view(register, function.vregs[view].reg-class))
+        made.data[entry] = operand
+    . first = made.data[0]
+    . second = if operands.length > 1 then made.data[1] else no-operand
+    . third = if operands.length > 2 then made.data[2] else no-operand
+    builder.asm(function.instructions[defs[index]].opcode, first, second, third)
+
+────────────────────
+_ do bind-return
+    - return-type MIRTypeId
+    - return-operand OperandId
+    - buffer FrameObjectId
+
+. view = view-of(return-operand)
+if view == no-id
+    =
+. id = checked-id(view)
+. kind = scan.allocations[id].kind
+if kind == .unallocated
+    =
+. slot = scan.allocations[id].spill-slot
+. format = struct-format(return-type)
+if format == no-id
+    . return-class = function.vregs[view].reg-class
+    . result = register-of(return-class, 0)
+    if kind == .in-register
+        . destination = register-view(scan.allocations[id].register, return-class)
+        if destination != result
+            builder.move(builder.preg(destination), builder.preg(result))
+    else
+        builder.str(builder.preg(result), builder.frame-object-operand(slot))
+    =
+
+. destination = if kind == .in-register then scan.allocations[id].register else scratch-register
+. scratch = builder.preg(scratch-register)
+if format == (StructFormat.large-format as U32)
+    builder.add-pointer(builder.preg(destination), builder.frame-object-operand(buffer))
+    if kind == .in-spill
+        builder.str(builder.preg(destination), builder.frame-object-operand(slot))
+    =
+builder.add-pointer(scratch, builder.frame-object-operand(buffer))
+if format == (StructFormat.small-format as U32)
+    . count U32 = if function.types[return-type].size <= 8 then 1 else 2
+    for index in 0 .. < count
+        builder.store
+            - builder.load-address-offset(scratch, index * 8)
+            - builder.preg-argument(index, .gpr64)
+            - u64-type-id
+else
+    hfa-types = IdList(hfa-types.data, 0, hfa-types.capacity)
+    hfa-offsets = IdList(hfa-offsets.data, 0, hfa-offsets.capacity)
+    collect-hfa-fields(return-type, 0)
+    ?! Panic("An HFA return has no floating fields")
+        if hfa-types.length == 0
+    . field-type = hfa-types[0]
+    . field-class = builder.type-reg-class(field-type)
+    for index in 0 .. < hfa-types.length
+        builder.store
+            - builder.load-address-offset(scratch, hfa-offsets[index])
+            - builder.preg-argument(index, field-class)
+            - field-type
+if destination != scratch-register
+    builder.move(builder.preg(destination), scratch)
+if kind == .in-spill
+    builder.str(builder.preg(destination), builder.frame-object-operand(slot))
+
+────────────────────
+_ do bind-parts
+    - operand OperandId
+
+` Moves the parts of a struct a call returns in registers to the places allocated to them. A
+` part that lives in the frame is stored first, before the moves can overwrite the register it
+` arrives in.
+. members Span
+do match? function.operands[operand]
+    | .vreg-group-operand(group)
+        members = group.vregs
+for index in 0 .. < members.count
+    . view = function.group-vregs[members.start + index]
+    . id = checked-id(view)
+    if scan.allocations[id].kind == .in-spill
+        . result = register-of(function.vregs[view].reg-class, index)
+        builder.str
+            - builder.preg(result)
+            - builder.frame-object-operand(scan.allocations[id].spill-slot)
+. start = move-destinations.length
+for index in 0 .. < members.count
+    . view = function.group-vregs[members.start + index]
+    . id = checked-id(view)
+    live-homes[id] = 0
+    if scan.allocations[id].kind == .in-register
+        . reg-class = function.vregs[view].reg-class
+        move-destinations = move-destinations.appended
+            - arena
+            - register-view(scan.allocations[id].register, reg-class)
+        move-sources = move-sources.appended(arena, register-of(reg-class, index))
+        move-classes = move-classes.appended(arena, reg-class)
+emit-parallel-moves(Span(start, move-destinations.length - start))
+
+────────────────────
+_ do is-group-operand Bool
+    - operand OperandId
+
+if operand == no-operand
+    = false
+do match? function.operands[operand]
+    | .vreg-group-operand
+        = true
+= false
+
+────────────────────
+_ do collect-hfa-fields
+    - type MIRTypeId
+    - offset U32
+
+. fields Span
+. is-struct = false
+. is-float = false
+do match? function.types[type]
+    | .struct-type(row)
+        is-struct = true
+        fields = row.fields
+    | .float-type
+        is-float = true
+if is-float
+    hfa-types = hfa-types.appended(arena, type)
+    hfa-offsets = hfa-offsets.appended(arena, offset)
+    =
+?! Panic("HFA contains a non-floating field")
+    if !is-struct
+for index in fields.start .. < fields.end
+    collect-hfa-fields
+        - function.struct-fields[index].type
+        - offset + function.struct-fields[index].offset
+
+────────────────────
+_ do emit-parallel-moves
+    - moves Span
+
+. destinations = arena.allocate'U32(moves.count)
+. sources = arena.allocate'U32(moves.count)
+. classes = arena.allocate'U32(moves.count)
+. count U32
+for move in moves.start .. < moves.end
+    if move-sources[move] != move-destinations[move]
+        destinations[count] = move-destinations[move]
+        sources[count] = move-sources[move]
+        classes[count] = move-classes[move]
+        count += 1
+while count > 0
+    . ready = no-id
+    for index in 0 .. < count
+        . is-read = false
+        . parent = register-parent(destinations[index])
+        for other in 0 .. < count
+            if other != index && register-parent(sources[other]) == parent
+                is-read = true
+                break
+        if !is-read
+            ready = index
+            break
+    if ready != no-id
+        builder.move(builder.preg(destinations[ready]), builder.preg(sources[ready]))
+        count -= 1
+        for index in ready .. < count
+            destinations[index] = destinations[index + 1]
+            sources[index] = sources[index + 1]
+            classes[index] = classes[index + 1]
+        continue
+
+    . cycle-parent = register-parent(destinations[0])
+    . scratch-class = classes[0] as RegClass
+    . first-source-class RegClass = .gpr64
+    . has-source = false
+    . has-wide-source = false
+    for index in 0 .. < count
+        if register-parent(sources[index]) != cycle-parent
+            continue
+        . source-class = classes[index] as RegClass
+        if !has-source
+            has-source = true
+            first-source-class = source-class
+        if source-class == .gpr64 || source-class == .fpr64
+            has-wide-source = true
+    if has-wide-source
+        scratch-class = if is-general-class(first-source-class) then .gpr64 else .fpr64
+    . scratch = scratch-for-class(scratch-class)
+    builder.move(builder.preg(scratch), builder.preg(register-view(cycle-parent, scratch-class)))
+    for index in 0 .. < count
+        if register-parent(sources[index]) == cycle-parent
+            sources[index] = register-view(register-parent(scratch), classes[index] as RegClass)
+
+────────────────────
+_ scratch-for-class RegisterId
+    - reg-class RegClass
+
+if is-general-class(reg-class) then register-view(scratch-register, reg-class) else float-scratch
+
+.. float-scratch = register-view(float-scratch-register, reg-class)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-cheap-opcode Bool
+    - opcode Opcode
+    - count U32
+
+|? count == 3
+    opcode == .add || opcode == .sub || opcode == .lsl || opcode == .lsr || opcode == .asr || opcode == .and || opcode == .orr || opcode == .eor
+??
+    count == 2 && (unsigned-copy || opcode == .sxtb || opcode == .sxth || opcode == .sxtw)
+
+.. unsigned-copy = opcode == .mov || opcode == .uxtb || opcode == .uxth || opcode == .uxtw
+
+━━━━━━━━━━━━━━━━━━━━
+_ do holds-slot Bool
+    - ranges IdList
+    - slot U32
+
+. low U32
+. high = ranges.length / 2
+while low < high
+    . middle = (low + high) / 2
+    if ranges[middle * 2 + 1] <= slot
+        low = middle + 1
+    else
+        high = middle
+= low * 2 < ranges.length && ranges[low * 2] <= slot
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-general-class Bool
+    - reg-class RegClass
+
+reg-class == .gpr32 || reg-class == .gpr64
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-float-scratch Bool
+    - register RegisterId
+
+register == float-scratch-register || register == 64 || register == 65
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-terminator Bool
+    - opcode Opcode
+
+opcode == .b || opcode == .b-cond || opcode == .cbz || opcode == .cbnz || opcode == .tbz || opcode == .tbnz || opcode == .br || opcode == .ret

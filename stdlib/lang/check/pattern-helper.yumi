@@ -1,0 +1,292 @@
+./facts
+./instances
+./type-store
+./types
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/operator
+
+━━━━━━━━━━━━━━━━━━━━
++ PatternHelper
+
+` What a helper given a stream match with `with` can do, as the reference finds it: among the
+` helper's type and the interfaces that type declares or delegates, each with the interfaces
+` those derive from, in that order, the ones of each capability of `core/parsing`. A helper
+` that rolls back, observes literals, stores collectors, marks the records a pipe matches, or
+` is a materialization root with a materializer is active; a match given any other reports it.
+` A `problem` is what the reference reports at the helper. The `storage` is the backing its
+` collector storages agree on, or `invalid-type` where they name more than one or one that is
+` not concrete, which the reference reports where the helper keeps a collector. The `boundary`
+` is the interface whose `begin-pattern-record` a pipe calls before it matches each record.
+
++ participant TypeId
++ rollback TypeId = no-type
++ observer TypeId = no-type
++ root TypeId = no-type
++ storages [TypeId]
++ storage TypeId = no-type
++ boundary TypeId = no-type
++ captures [TypeId]
++ values [TypeId]
++ problem String?
+
+────────────────────
++ This
+    - participant TypeId
+
+────────────────────
++ get is-active Bool
+
+rollback != no-type || observer != no-type || storages.length != 0 || boundary != no-type || rooted
+
+.. rooted = root != no-type && (captures.length != 0 || values.length != 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pattern-helper PatternHelper
+    - types Types
+    - participant TypeId
+
+` The capabilities of a helper of a type, as the reference resolves them once for a match.
+. helper = PatternHelper(participant)
+. candidates [TypeId]
+add-candidate(candidates, participant)
+add-interfaces(types, candidates, participant)
+. rollbacks [TypeId]
+. roots [TypeId]
+. observers [TypeId]
+for candidate in candidates
+    . ref = class-ref(types, candidate)
+    if is-capability(ref, types.pattern-rollback-decl)
+        rollbacks += candidate
+    else if is-capability(ref, types.pattern-root-decl)
+        roots += candidate
+    else if is-capability(ref, types.pattern-capture-materializer-decl)
+        helper.captures += candidate
+    else if is-capability(ref, types.pattern-value-materializer-decl)
+        helper.values += candidate
+    else if is-capability(ref, types.pattern-literal-observer-decl)
+        observers += candidate
+    else if is-capability(ref, types.pattern-collector-storage-decl)
+        helper.storages += candidate
+    else if is-capability(ref, types.pattern-record-boundary-decl)
+        helper.boundary = candidate
+if rollbacks.length > 1
+    helper.problem = "Pattern helper has ambiguous PatternRollback capabilities"
+    = helper
+if roots.length > 1
+    helper.problem = "Pattern helper has ambiguous PatternMaterializationRoot capabilities"
+    = helper
+if observers.length > 1
+    helper.problem = "Pattern helper has ambiguous PatternLiteralObserver capabilities"
+    = helper
+for storage in helper.storages
+    . backing = first-type-arg(types, storage)
+    if helper.storage == no-type
+        helper.storage = backing
+    else if helper.storage != backing
+        helper.storage = invalid-type
+if helper.storage != no-type && helper.storage != invalid-type && !concrete
+    helper.storage = invalid-type
+.. concrete = is-concrete(types, helper.storage)
+helper.rollback = if rollbacks.length != 0 then rollbacks[0] else no-type
+helper.root = if roots.length != 0 then roots[0] else no-type
+helper.observer = if observers.length != 0 then observers[0] else no-type
+. mark = first-type-arg(types, helper.rollback)
+if mark != no-type && !is-concrete(types, mark)
+    helper.problem = "Rollback participant must implement PatternRollback with a concrete Mark type"
+    = helper
+. primary = first-type-arg(types, helper.root)
+if primary != no-type && !is-concrete(types, primary)
+    helper.problem = "PatternMaterializationRoot must have a concrete Primary type"
+    = helper
+for materializers in [helper.captures, helper.values]
+    for materializer in materializers
+        if !is-concrete(types, materializer)
+            helper.problem = "Pattern materializer types must be concrete"
+            = helper
+= helper
+
+━━━━━━━━━━━━━━━━━━━━
++ do spanning-helper PatternHelper
+    - helper PatternHelper
+
+` What a helper does for a rule called for the text it matched, as the reference compiles such a
+` rule under a helper that observes literal words: it rolls back, observes literal words and
+` keeps collectors as it does, but makes no value.
+. spanning = PatternHelper(helper.participant)
+spanning.rollback = helper.rollback
+spanning.observer = helper.observer
+spanning.storages = helper.storages
+spanning.storage = helper.storage
+spanning.problem = helper.problem
+= spanning
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-scanned Bool
+    - syntax AST
+    - id SyntaxId
+
+` Whether the reference scans a part repeated with `*` or `+` by testing each item: one item
+` in a range, any item, a text of one character, or alternatives of those.
+do match? syntax.nodes[id]
+    | .node-stream-string(row)
+        = row.text.codepoints.size == 1
+    | .node-stream-any
+        = true
+    | .node-stream-char-range
+        = true
+    | .node-stream-or(row)
+        = is-scanned(syntax, row.left) && is-scanned(syntax, row.right)
+    | .node-stream-transform(row)
+        = row.pattern != 0 && syntax.lazies-only(row.right) && is-scanned(syntax, row.pattern)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do observes-literals Bool
+    - syntax AST
+    - facts Facts
+    - instance InstanceId
+    - id SyntaxId
+
+` Whether the reference runs a part of a stream pattern of an instance under a helper that
+` observes literal words, as it runs one that holds text matched as written, a call of a rule or
+` of a pattern given to the rule, an arm with no pattern, which matches the empty text, or an arm
+` marked to roll back. Text among alternatives the reference tests as one item, or that a repeat
+` scans, is no such part.
+do match? syntax.nodes[id]
+    | .node-stream-string
+        = true
+    | .node-stream-call
+        = true
+    | .node-stream-equality
+        = facts.plan-of(instance, id) == .plan-pattern-call
+    | .node-stream-transform(row)
+        = row.rollback || row.pattern == 0 || observed
+            .. observed = observes-literals(syntax, facts, instance, row.pattern)
+    | .node-stream-panic(row)
+        = observes-literals(syntax, facts, instance, row.pattern)
+    | .node-stream-capture(row)
+        = observes-literals(syntax, facts, instance, row.pattern)
+    | .node-stream-and(row)
+        = observes-literals(syntax, facts, instance, row.left) || right-observes
+            .. right-observes = observes-literals(syntax, facts, instance, row.right)
+    | .node-stream-or(row)
+        = !is-scanned(syntax, id) && (left-option || right-option)
+            .. left-option = observes-literals(syntax, facts, instance, row.left)
+            .. right-option = observes-literals(syntax, facts, instance, row.right)
+    | .node-stream-unary(row)
+        if (row.op == .zero-or-more-op || row.op == .one-or-more-op) && scanned
+            = false
+        .. scanned = is-scanned(syntax, row.operand)
+        = observes-literals(syntax, facts, instance, row.operand)
+    | .node-stream-length(row)
+        = observes-literals(syntax, facts, instance, row.operand)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ can-roll-back Bool
+    - types Types
+    - participant TypeId
+
+` Whether a helper of a type can roll back.
+pattern-helper(types, participant).rollback != no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ helper-mark-type TypeId
+    - types Types
+    - participant TypeId
+
+` The type of the rollback marks a helper of a type gives, or none where it cannot roll back.
+first-type-arg(types, pattern-helper(types, participant).rollback)
+
+━━━━━━━━━━━━━━━━━━━━
++ do ambient-position U32
+    - types Types
+    - instances Instances
+    - instance InstanceId
+
+` The argument of an instance of a rule that is the helper of the rule's pattern, as the
+` reference finds one whatever helper a pattern calls the rule under: the only argument after
+` the stream whose type rolls back, is a materialization root and materializes captures or
+` values. None where no argument does, or more than one.
+. found U32 = U32.max
+for position in 1 .. < instances.signatures[instance].args.count
+    if provides-materialization(types, instances.argument-type(instance, position))
+        if found != U32.max
+            = U32.max
+        found = position
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do provides-materialization Bool
+    - types Types
+    - type TypeId
+
+. kind = types.intrinsic-of(type)
+if kind != .class && kind != .interface
+    = false
+. candidates [TypeId]
+add-candidate(candidates, type)
+add-interfaces(types, candidates, type)
+. rolls = false
+. roots = false
+. makes = false
+for candidate in candidates
+    . ref = class-ref(types, candidate)
+    rolls = rolls || is-capability(ref, types.pattern-rollback-decl)
+    roots = roots || is-capability(ref, types.pattern-root-decl)
+    makes = makes || is-capability(ref, types.pattern-capture-materializer-decl) || value-maker
+        .. value-maker = is-capability(ref, types.pattern-value-materializer-decl)
+= rolls && roots && makes
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-candidate
+    - candidates [TypeId]
+    - type TypeId
+
+if candidates.find(type) == null
+    candidates += type
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-interfaces
+    - types Types
+    - candidates [TypeId]
+    - type TypeId
+
+` Adds the interfaces a type declares, each followed by those it derives from, as the reference
+` lists them. An interface itself comes first.
+. kind = types.intrinsic-of(type)
+if kind == .interface
+    add-candidate(candidates, type)
+if kind != .class && kind != .interface
+    =
+for interface in types.interfaces-of(type)
+    add-interfaces(types, candidates, interface)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-capability Bool
+    - ref DeclRef
+    - decl DeclRef
+
+ref.module == decl.module && ref.decl == decl.decl
+
+━━━━━━━━━━━━━━━━━━━━
++ do first-type-arg TypeId
+    - types Types
+    - type TypeId
+
+if type == no-type
+    = no-type
+do match? types.rows[type]
+    | .type-class(row)
+        if row.args.count != 0
+            = types.child-type(row.args, 0)
+= no-type
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-concrete Bool
+    - types Types
+    - type TypeId
+
+!types.is-generic(type)

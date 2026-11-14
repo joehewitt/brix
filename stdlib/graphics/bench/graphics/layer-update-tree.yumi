@@ -1,0 +1,50 @@
+`benchmark.meta description: Updates a deterministic layer tree that generates many paths.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/graphic
+/graphics/point
+/graphics/primitives
+/graphics/vector
+/graphics/vector-group
+
+. root = build-layer-tree()
+. bounds = Rect(0, 0, 320, 240)
+. checksum = 0 as Size
+
+for frame in 0 .. < 160
+    root.update(bounds)
+    . child-count = 0
+    for child-path in root.child-paths
+        child-count += child-path.count
+    checksum += root.paths.length + child-count
+    for path in root.paths
+        checksum += path.count + frame
+
+-- "bench-result graphics/layer-update-tree checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-layer-tree
+
+. root = VectorGroup()
+root.cache-policy = GraphicsCachePolicy.no-cache
+for i in 0 .. < 48
+    . f = i as Float
+    . child GraphicNode
+    if i % 3 == 0
+        . drawing = Circle(Point(), 1)
+        drawing.center = (20 + f * 5, 30 + (f % 17))
+        drawing.radius = 8 + (f % 7)
+        child = drawing
+    else if i % 3 == 1
+        . drawing = Rectangle(Rect())
+        drawing.rect = Rect(10 + f * 3, 20 + f, 14 + (f % 9), 18 + (f % 11))
+        child = drawing
+    else
+        . drawing = Polygon(3, Point(), 1)
+        drawing.sides = (5 + (i % 5)) as U32
+        drawing.center = (30 + f * 4, 40 + (f % 13))
+        drawing.radius = 10 + (f % 6)
+        child = drawing
+    root += child
+= root

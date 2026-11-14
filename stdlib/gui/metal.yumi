@@ -1,0 +1,1058 @@
+/YuAppleGUI/YuMetalRenderer.h
+/core/error
+/graphics/canvas
+/graphics/color
+/graphics/matrix
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/roundedrect
+/graphics/shader
+/graphics/surface
+/graphics/text
+/graphics/vectorgeometry
+/math
+/units
+
+_ metal-stroke-inherit U8 = 255
+
+━━━━━━━━━━━━━━━━━━━━
+_ MetalStat is I32
+
+| encode-nanos = 0
+| walk-nanos = 1
+| gpu-nanos = 2
+| draw-calls = 3
+| pipeline-switches = 4
+| packet-bytes = 5
+| skipped-ops = 6
+| renderer-allocations = 7
+| instances = 8
+| commits = 9
+| presents = 10
+| packet-capacity = 11
+| glyph-atlas-bytes = 12
+| glyph-atlas-uploads = 13
+| glyph-atlas-upload-bytes = 14
+| glyph-atlas-evictions = 15
+| image-atlas-bytes = 16
+| run-count = 17
+| fallback-runs = 18
+| image-atlas-evictions = 19
+| drawable-wait-nanos = 20
+| maximum-frames-per-second = 21
+| fill-draws = 22
+| fill-segments = 23
+| fill-tiles = 24
+| fill-pieces = 25
+| fill-lines = 26
+| fill-opaque-tiles = 27
+| fill-overflows = 28
+| fill-frames-pending = 30
+| layer-passes = 31
+| coverage-clips = 32
+| image-texture-bytes = 33
+| image-texture-evictions = 34
+| image-texture-upload-bytes = 35
+| image-tile-source-bytes = 36
+| image-tile-count = 37
+| tile-gpu-nanos = 38
+| tiles-rendered = 39
+
+━━━━━━━━━━━━━━━━━━━━
++ DisplayGlyphHandle is (index U32, generation U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ DisplayGlyphRegistrar is Interface
+
+────────────────────
++ register-display-glyph DisplayGlyphHandle?
+    - layout TextLayout
+
+null
+
+────────────────────
++ do release-display-glyph
+    - handle DisplayGlyphHandle
+
+. ignored = handle.index
+
+────────────────────
++ register-display-image
+    - table VectorGeometryTable
+    - handle ImageHandle
+    - destination Rect
+
+false
+
+━━━━━━━━━━━━━━━━━━━━
++ is-metal-renderer-available Bool
+
+C:yumiGuiMetalRendererIsAvailable()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextureResidency is I32
+
+| missing = 0
+| ready = 1
+| pending = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ MetalPixelDiff is Tuple
+
++ differing-pixels I64
++ maximum-channel-delta I64
++ pixel-count I64
++ total-delta I64
+
+────────────────────
++ get differing-ratio F64
+
+if !pixel-count then 0 else (differing-pixels as F64) / (pixel-count as F64)
+
+━━━━━━━━━━━━━━━━━━━━
++ MetalOffscreenRenderer
+    is Closable
+    is DisplayGlyphRegistrar
+
++ width Length
++ height Length
++ scale F64
++ background RGBA
+
+_ renderer Pointer
+_ is-closed = false
+_ path-capture MetalPathCapture?
+
+────────────────────
++ This
+    - render-width Length
+    - render-height Length
+    - render-scale F64 = 1
+    - clear-background RGBA = transparent
+    - allow-failure = false
+
+width = render-width
+height = render-height
+scale = render-scale
+background = clear-background
+renderer = C:yumiGuiMetalRendererCreate
+    - width
+    - height
+    - scale
+    - background.red
+    - background.green
+    - background.blue
+    - background.alpha
+?! Panic("Unable to create the offscreen Metal renderer")
+    if !renderer && !allow-failure
+
+────────────────────
++ do close
+
+if !is-closed
+    if renderer
+        C:yumiGuiMetalRendererRelease(renderer)
+        renderer = Pointer()
+    is-closed = true
+
+────────────────────
++ get is-available Bool
+
+renderer as Bool
+
+────────────────────
++ do resize
+    - render-width Length
+    - render-height Length
+    - render-scale F64
+    - clear-background RGBA
+
+=? false if !renderer
+. did-resize = C:yumiGuiMetalRendererResize
+    - renderer
+    - render-width
+    - render-height
+    - render-scale
+    - clear-background.red
+    - clear-background.green
+    - clear-background.blue
+    - clear-background.alpha
+=? false if !did-resize
+width = render-width
+height = render-height
+scale = render-scale
+background = clear-background
+= true
+
+────────────────────
++ do present-into Bool
+    - surface SharedSurface?
+
+=? false if !renderer
+= C:yumiGuiMetalRendererSetOutputSurface(renderer, surface?.native ?? Pointer())
+
+────────────────────
++ get completed-frame I64
+
+if renderer then C:yumiGuiMetalRendererCompletedFrame(renderer) else -1
+
+────────────────────
++ do attach-window
+    - window Pointer
+
+=? false if !renderer
+= C:yumiGuiMetalRendererAttachWindow(renderer, window) == 1
+
+────────────────────
++ do attach-popup
+    - popup Pointer
+
+=? false if !renderer
+= C:yumiGuiMetalRendererAttachPopup(renderer, popup) == 1
+
+────────────────────
++ get attach-status
+
+C:yumiGuiMetalRendererAttachStatus(renderer)
+
+────────────────────
++ get is-wide-gamut Bool
+
+C:yumiGuiMetalRendererIsWideGamut(renderer)
+
+────────────────────
++ do set-output-gamut Bool
+    - wide Bool
+    - opaque Bool
+
+=? false if !renderer
+= C:yumiGuiMetalRendererSetOutputGamut(renderer, wide, opaque)
+
+────────────────────
++ do pixel-color RGBA?
+    - x I32
+    - y I32
+
+=? null if !renderer
+. values = List'F64(0, 0, 0, 0)
+=? null if !C:yumiGuiMetalRendererReadColor(renderer, x, y, values.buffer-pointer)
+= RGBA(values[0], values[1], values[2], values[3])
+
+────────────────────
++ do detach-window
+    - window Pointer
+
+if renderer
+    C:yumiGuiMetalRendererDetachWindow(renderer, window)
+
+────────────────────
++ do finish
+
+C:yumiGuiMetalRendererFinish(renderer)
+
+────────────────────
++ do mark-renderer-allocations
+
+C:yumiGuiMetalRendererStatMark(renderer)
+
+────────────────────
++ do diff
+    - canvas RasterCanvas
+    - tolerance I64 = 0
+
+C:yumiGuiMetalRendererDiffWithCanvas(renderer, canvas.native, tolerance)
+= MetalPixelDiff
+    - C:yumiGuiMetalRendererDiffValue(renderer, 0)
+    - C:yumiGuiMetalRendererDiffValue(renderer, 1)
+    - C:yumiGuiMetalRendererDiffValue(renderer, 2)
+    - C:yumiGuiMetalRendererDiffValue(renderer, 3)
+
+────────────────────
++ do write
+    - path String
+
+. did-write = C:yumiGuiMetalRendererWritePNG(renderer, path)
+?! IOError("Unable to write Metal output image $path")
+    if !did-write
+
+────────────────────
++ do read-into Bool
+    - canvas RasterCanvas
+
+= C:yumiGuiMetalRendererReadIntoCanvas(renderer, canvas.native)
+
+────────────────────
++ get native
+
+renderer
+
+────────────────────
++ do set-fill-time
+    - seconds F64
+
+C:yumiGuiMetalRendererSetFillTime(renderer, seconds)
+
+────────────────────
++ do begin-packet
+
+C:yumiGuiMetalPacketBegin(renderer)
+
+────────────────────
++ do commit-packet
+    - mode I32
+    - damage Rect
+
+= C:yumiGuiMetalPacketCommit
+    - renderer
+    - mode
+    - damage.x
+    - damage.y
+    - damage.width
+    - damage.height
+
+────────────────────
++ do set-damage-areas
+    - values [F64]
+
+C:yumiGuiMetalPacketSetDamageAreas(renderer, values.buffer-pointer, values.length / 4)
+
+────────────────────
++ do commit-tiles I64
+
+= C:yumiGuiMetalPacketCommitTiles(renderer)
+
+────────────────────
++ do push-clip
+    - clip Rect
+
+C:yumiGuiMetalPacketPushClip(renderer, clip.x, clip.y, clip.width, clip.height)
+
+────────────────────
++ do push-rounded-clip
+    - clip RoundedRect
+
+if clip.is-rounded
+    C:yumiGuiMetalPacketPushRoundedClip
+        - renderer
+        - clip.bounds.x
+        - clip.bounds.y
+        - clip.bounds.width
+        - clip.bounds.height
+        - clip.left
+        - clip.top
+        - clip.right
+        - clip.bottom
+else
+    push-clip(clip.bounds)
+
+────────────────────
++ do push-path-clip
+    - path-set I64
+    - state U32
+    - even-odd Bool
+
+C:yumiGuiMetalPacketPushPathClip(renderer, path-set, state, even-odd)
+
+────────────────────
++ do pop-clip
+
+C:yumiGuiMetalPacketPopClip(renderer)
+
+────────────────────
++ do push-translate
+    - offset Point
+
+C:yumiGuiMetalPacketPushTranslate(renderer, offset.x, offset.y)
+
+────────────────────
++ do pop-translate
+
+C:yumiGuiMetalPacketPopTranslate(renderer)
+
+────────────────────
++ do push-transform
+    - matrix Matrix
+
+C:yumiGuiMetalPacketPushTransform
+    - renderer
+    - matrix.a
+    - matrix.c
+    - matrix.b
+    - matrix.d
+    - matrix.tx
+    - matrix.ty
+
+────────────────────
++ do pop-transform
+
+C:yumiGuiMetalPacketPopTranslate(renderer)
+
+────────────────────
++ do push-transform-layer
+    - matrix Matrix
+    - opacity Ratio
+
+C:yumiGuiMetalPacketPushTransformLayer
+    - renderer
+    - matrix.a
+    - matrix.c
+    - matrix.b
+    - matrix.d
+    - matrix.tx
+    - matrix.ty
+    - opacity
+
+────────────────────
++ do push-layer
+    - opacity Ratio
+
+C:yumiGuiMetalPacketPushLayer(renderer, opacity)
+
+────────────────────
++ do push-filter-layer
+    - rect Rect
+    - filter ShaderFilter
+    - opacity Ratio = 1%%
+
+. natives = filter.image-natives
+. scales = filter.image-scales
+C:yumiGuiMetalPacketPushFilterLayer
+    - renderer
+    - rect.x
+    - rect.y
+    - rect.width
+    - rect.height
+    - filter.shader.id
+    - filter.args.buffer-pointer
+    - filter.args.length
+    - natives.buffer-pointer
+    - scales.buffer-pointer
+    - natives.length
+    - filter.time
+    - opacity
+
+────────────────────
++ do pop-layer
+
+C:yumiGuiMetalPacketPopLayer(renderer)
+
+────────────────────
++ do append-items
+    - scalar-items CPointer'Void
+    - count Size
+    - clips CPointer'Void
+    - clip-count Size
+    - palette CPointer'Void
+    - palette-count Size
+    - shapes CPointer'Void
+    - shape-count Size
+    - transforms CPointer'Void = null
+    - transform-count Size = 0
+    - item-transforms CPointer'Void = null
+    - colors CPointer'Void = null
+    - color-count Size = 0
+    - item-strokes CPointer'Void = null
+    - item-dashes CPointer'Void = null
+    - states CPointer'Void = null
+    - state-count Size = 0
+    - item-states CPointer'Void = null
+    - image-identities CPointer'Void = null
+    - image-count Size = 0
+    - path-set I64 = -1
+
+= C:yumiGuiMetalPacketAppendItems
+    - renderer
+    - scalar-items
+    - count
+    - clips
+    - clip-count
+    - palette
+    - palette-count
+    - shapes
+    - shape-count
+    - transforms
+    - transform-count
+    - item-transforms
+    - colors
+    - color-count
+    - item-strokes
+    - item-dashes
+    - states
+    - state-count
+    - item-states
+    - image-identities
+    - image-count
+    - path-set
+
+────────────────────
++ do chunk-paths
+    - retained-key U64
+    - generation U32
+    - scalar-items CPointer'Void
+    - count Size
+    - verbs CPointer'Void
+    - verb-count Size
+    - coords CPointer'Void
+    - coord-count Size
+    - styles CPointer'Void
+    - style-count Size
+    - gradients CPointer'Void
+    - gradient-count Size
+    - stops CPointer'Void
+    - stop-count Size
+    - shader-args CPointer'Void
+    - shader-arg-count Size
+    - states CPointer'Void
+    - state-count Size
+
+= C:yumiGuiMetalChunkPaths
+    - renderer
+    - retained-key
+    - generation
+    - scalar-items
+    - count
+    - verbs
+    - verb-count
+    - coords
+    - coord-count
+    - styles
+    - style-count
+    - gradients
+    - gradient-count
+    - stops
+    - stop-count
+    - shader-args
+    - shader-arg-count
+    - states
+    - state-count
+
+────────────────────
++ do append-tile
+    - handle U64
+    - bounds Rect
+    - opacity Ratio = 1%%
+
+C:yumiGuiMetalPacketAppendTile
+    - renderer
+    - handle
+    - bounds.x
+    - bounds.y
+    - bounds.width
+    - bounds.height
+    - opacity
+
+────────────────────
++ tile-lookup U64
+    - retained-key U64
+    - generation U32
+
+C:yumiGuiMetalTileLookup(renderer, retained-key, generation)
+
+────────────────────
++ do tile-upsert U64
+    - retained-key U64
+    - generation U32
+    - canvas RasterCanvas
+    - points-width F64
+    - points-height F64
+
+= C:yumiGuiMetalTileUpsertCanvas
+    - renderer
+    - retained-key
+    - generation
+    - canvas.native
+    - points-width
+    - points-height
+
+────────────────────
++ tile-lookup-rendered U64
+    - retained-key U64
+    - generation U32
+
+C:yumiGuiMetalTileLookupRendered(renderer, retained-key, generation)
+
+────────────────────
++ do tile-reserve U64
+    - retained-key U64
+    - generation U32
+    - pixel-width I32
+    - pixel-height I32
+    - points-width F64
+    - points-height F64
+    - slot-x I32
+    - slot-y I32
+
+= C:yumiGuiMetalTileReserve
+    - renderer
+    - retained-key
+    - generation
+    - pixel-width
+    - pixel-height
+    - points-width
+    - points-height
+    - slot-x
+    - slot-y
+
+────────────────────
++ do release-chunk
+    - retained-key U64
+
+C:yumiGuiMetalChunkRelease(renderer, retained-key)
+
+────────────────────
++ do release-all-chunks
+
+C:yumiGuiMetalChunkReleaseAll(renderer)
+
+────────────────────
++ do register-display-glyph
+    - layout TextLayout
+
+=? null if !layout.native
+. packed = C:yumiGuiMetalRunRegister(renderer, layout.native)
+=? null if packed < 0
+. bits = packed as U64
+= DisplayGlyphHandle
+    - (bits /and/ 4294967295) as U32
+    - (bits /rshift/ 32) as U32
+
+────────────────────
++ do release-display-glyph
+    - handle DisplayGlyphHandle
+
+C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
+
+────────────────────
++ do register-display-vector
+    - table VectorGeometryTable
+    - handle VectorGeometryHandle
+
+. geometry = table.resolve(handle)
+=
+    |? !geometry
+        false
+    |? C:yumiGuiMetalPathLookup(renderer, handle.index, handle.generation)
+        true
+    ??
+        register-display-path(handle, geometry)
+
+────────────────────
+_ do register-display-path
+    - handle VectorGeometryHandle
+    - geometry VectorGeometry
+
+. capture = path-capture ?? MetalPathCapture(renderer)
+path-capture = capture
+C:yumiGuiMetalPathBegin(renderer, handle.index, handle.generation)
+. captured [Path]
+for span in geometry.spans
+    . path-index U32 = captured.length as U32
+    for index in 0 .. < captured.length
+        if captured[index] as Pointer == span.path as Pointer
+            path-index = index as U32
+    if path-index == captured.length as U32
+        span.path.outline(capture)
+        path-index = C:yumiGuiMetalPathEndPath(renderer)
+        captured += span.path
+    . fill-role U8 = match span.fill.role
+        |= .inherit
+            0
+        |= .inherited-stroke
+            1
+        |= .none
+            2
+        ??
+            3
+    . stroke-role U8 = match span.stroke.role
+        |= .inherit
+            0
+        |= .none
+            2
+        ??
+            3
+    . rule U8 = if span.fill-rule == FillRule.nonzero then 0 else 1
+    . width = span.stroke-width ?? -1
+    . cap U8 = if span.stroke-cap then cap-code else metal-stroke-inherit
+        .. cap-code = line-cap-code(span.stroke-cap) as U8
+    . join U8 = if span.stroke-join then join-code else metal-stroke-inherit
+        .. join-code = line-join-code(span.stroke-join) as U8
+    . alignment U8 = match span.stroke-alignment
+        |= .inside
+            1
+        |= .outside
+            2
+        ??
+            0
+    C:yumiGuiMetalPathAddSpan
+        - renderer
+        - path-index
+        - fill-role
+        - span.fill.index
+        - rule
+        - stroke-role
+        - span.stroke.index
+        - width
+        - cap
+        - join
+        - alignment
+= C:yumiGuiMetalPathEnd(renderer)
+
+────────────────────
++ do register-display-image
+    - table VectorGeometryTable
+    - handle ImageHandle
+    - destination Rect
+
+. pixel-width = round(destination.width * scale) as I32
+. pixel-height = round(destination.height * scale) as I32
+=? false if pixel-width <= 0 || pixel-height <= 0
+. resource = table.resolve-image(handle)
+=? false if !resource
+. found = C:yumiGuiMetalImageLookup
+    - renderer
+    - handle.index
+    - handle.generation
+    - pixel-width
+    - pixel-height
+    - resource.template-alpha
+=? true if found
+. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
+= C:yumiGuiMetalImageUpsert
+    - renderer
+    - handle.index
+    - handle.generation
+    - pixel-width
+    - pixel-height
+    - resource.template-alpha
+    - image
+
+────────────────────
++ do register-display-image-source
+    - table VectorGeometryTable
+    - handle ImageHandle
+
+. resource = table.resolve-image(handle)
+=? false if !resource
+. template-alpha = resource.template-alpha
+. found = C:yumiGuiMetalImageLookup
+    - renderer
+    - handle.index
+    - handle.generation
+    - 0
+    - 0
+    - template-alpha
+=? true if found
+. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
+= C:yumiGuiMetalImageUpsertSource
+    - renderer
+    - handle.index
+    - handle.generation
+    - resource.pixel-width
+    - resource.pixel-height
+    - template-alpha
+    - image
+
+────────────────────
++ do register-canvas-image-source
+    - image RasterCanvas
+    - serial U64
+    - template-alpha Bool
+
+=? true if C:yumiGuiMetalCanvasImageLookup(renderer, serial, 0, 0, template-alpha)
+. snapshot = C:yumiGuiMetalCanvasCreateCGImage(image.native)
+= C:yumiGuiMetalCanvasImageUpsertSource
+    - renderer
+    - serial
+    - image.pixel-width
+    - image.pixel-height
+    - template-alpha
+    - snapshot
+
+────────────────────
++ do register-canvas-image
+    - image RasterCanvas
+    - serial U64
+    - destination Rect
+    - template-alpha Bool
+
+. pixel-width = round(destination.width * scale) as I32
+. pixel-height = round(destination.height * scale) as I32
+=? false if pixel-width <= 0 || pixel-height <= 0
+. found = C:yumiGuiMetalCanvasImageLookup
+    - renderer
+    - serial
+    - pixel-width
+    - pixel-height
+    - template-alpha
+=? true if found
+. snapshot = C:yumiGuiMetalCanvasCreateCGImage(image.native)
+= C:yumiGuiMetalCanvasImageUpsert
+    - renderer
+    - serial
+    - pixel-width
+    - pixel-height
+    - template-alpha
+    - snapshot
+
+────────────────────
++ do register-canvas-texture TextureResidency
+    - image RasterCanvas
+
+= C:yumiGuiMetalCanvasTextureUpsert(renderer, image.native) as TextureResidency
+
+────────────────────
+_ stat I64
+    - kind MetalStat
+
+C:yumiGuiMetalRendererStatValue(renderer, kind)
+
+────────────────────
++ get encode-nanos I64
+
+stat(MetalStat.encode-nanos)
+
+────────────────────
++ get walk-nanos I64
+
+stat(MetalStat.walk-nanos)
+
+────────────────────
++ get gpu-nanos
+
+stat(MetalStat.gpu-nanos)
+
+────────────────────
++ get draw-calls
+
+stat(MetalStat.draw-calls)
+
+────────────────────
++ get pipeline-switches I64
+
+stat(MetalStat.pipeline-switches)
+
+────────────────────
++ get packet-bytes
+
+stat(MetalStat.packet-bytes)
+
+────────────────────
++ get skipped-ops
+
+stat(MetalStat.skipped-ops)
+
+────────────────────
++ get renderer-allocations
+
+stat(MetalStat.renderer-allocations)
+
+────────────────────
++ get instance-count
+
+stat(MetalStat.instances)
+
+────────────────────
++ get commits
+
+stat(MetalStat.commits)
+
+────────────────────
++ get presents
+
+stat(MetalStat.presents)
+
+────────────────────
++ get pooled-capacity-bytes I64
+
+stat(MetalStat.packet-capacity)
+
+────────────────────
++ get glyph-atlas-bytes I64
+
+stat(MetalStat.glyph-atlas-bytes)
+
+────────────────────
++ get glyph-atlas-uploads
+
+stat(MetalStat.glyph-atlas-uploads)
+
+────────────────────
++ get glyph-atlas-upload-bytes I64
+
+stat(MetalStat.glyph-atlas-upload-bytes)
+
+────────────────────
++ get glyph-atlas-evictions
+
+stat(MetalStat.glyph-atlas-evictions)
+
+────────────────────
++ get image-atlas-bytes
+
+stat(MetalStat.image-atlas-bytes)
+
+────────────────────
++ get image-atlas-evictions
+
+stat(MetalStat.image-atlas-evictions)
+
+────────────────────
++ get image-texture-bytes
+
+stat(MetalStat.image-texture-bytes)
+
+────────────────────
++ get image-texture-evictions
+
+stat(MetalStat.image-texture-evictions)
+
+────────────────────
++ get image-texture-upload-bytes
+
+stat(MetalStat.image-texture-upload-bytes)
+
+────────────────────
++ get image-tile-source-bytes
+
+stat(MetalStat.image-tile-source-bytes)
+
+────────────────────
++ get image-tile-count
+
+stat(MetalStat.image-tile-count)
+
+────────────────────
++ get tile-gpu-nanos I64
+
+stat(MetalStat.tile-gpu-nanos)
+
+────────────────────
++ get tiles-rendered I64
+
+stat(MetalStat.tiles-rendered)
+
+────────────────────
++ do take-tile-damage Rect?
+
+=? null if !C:yumiGuiMetalRendererTakeTileDamage(renderer)
+= Rect
+    - C:yumiGuiMetalRendererTileDamageValue(renderer, 0)
+    - C:yumiGuiMetalRendererTileDamageValue(renderer, 1)
+    - C:yumiGuiMetalRendererTileDamageValue(renderer, 2)
+    - C:yumiGuiMetalRendererTileDamageValue(renderer, 3)
+
+────────────────────
++ get run-count
+
+stat(MetalStat.run-count)
+
+────────────────────
++ get fallback-runs
+
+stat(MetalStat.fallback-runs)
+
+────────────────────
++ get drawable-wait-nanos I64
+
+stat(MetalStat.drawable-wait-nanos)
+
+────────────────────
++ get maximum-frames-per-second I64
+
+stat(MetalStat.maximum-frames-per-second)
+
+────────────────────
++ get fill-draws
+
+stat(MetalStat.fill-draws)
+
+────────────────────
++ get fill-segments
+
+stat(MetalStat.fill-segments)
+
+────────────────────
++ get fill-tiles
+
+stat(MetalStat.fill-tiles)
+
+────────────────────
++ get fill-pieces
+
+stat(MetalStat.fill-pieces)
+
+────────────────────
++ get fill-lines
+
+stat(MetalStat.fill-lines)
+
+────────────────────
++ get fill-opaque-tiles
+
+stat(MetalStat.fill-opaque-tiles)
+
+────────────────────
++ get fill-overflows
+
+stat(MetalStat.fill-overflows)
+
+────────────────────
++ get layer-passes
+
+stat(MetalStat.layer-passes)
+
+────────────────────
++ get coverage-clips
+
+stat(MetalStat.coverage-clips)
+
+────────────────────
++ get has-pending-fill-frames
+
+stat(MetalStat.fill-frames-pending) > 0
+
+────────────────────
++ do take-fill-redraw
+
+= C:yumiGuiMetalRendererTakeFillRedraw(renderer)
+
+────────────────────
++ do take-present-copied-pixels U64
+
+= C:yumiGuiMetalRendererTakePresentCopiedPixels(renderer)
+
+────────────────────
++ frame-stat
+    - frame I64
+    - field I32
+
+C:yumiGuiMetalRendererFrameStatValue(renderer, frame, field)
+
+────────────────────
++ get maximum-run-width-delta
+
+C:yumiGuiMetalRunMaximumWidthDelta(renderer)
+
+━━━━━━━━━━━━━━━━━━━━
+_ MetalPathCapture is Canvas
+
+_ renderer Pointer
+
+────────────────────
++ This
+    - target Pointer
+
+width = 0
+height = 0
+renderer = target
+
+╌╌╌╌╌╌╌╌╌╌ is Canvas ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do trace-path
+    - verbs Array'PathVerb
+    - coords Array'Coord
+    - count Size
+
+C:yumiGuiMetalPathAppend(renderer, verbs.data, count, coords.data)

@@ -1,0 +1,32 @@
+(import /graphics/point)
+(import /graphics/shader-declarations)
+
+(type + ResonanceField (is FillShader)
+  (prop + time Float)
+  (prop + bloom Float)
+  (prop + center Point)
+  (prop + radius Float)
+  (fn-do + This _
+    (param time _)
+    (param bloom _)
+    (param center _)
+    (param radius _)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 fill(float2 p, float2 size, ResonanceFieldArgs args) {"
+      "    float2 uv = (p - args.center) / args.radius;"
+      "    float radius = length(uv);"
+      "    float haze = exp(-dot(uv * float2(0.8, 1.3), uv * float2(0.8, 1.3)) * 2.0);"
+      "    float angle = atan2(uv.y, uv.x);"
+      "    float veil = sin(angle * 3.0 + radius * 8.0 - args.time * 0.14);"
+      "    veil = pow(max(0.0, veil), 4.0) * exp(-radius * radius * 1.7);"
+      "    float3 color = float3(0.0012, 0.0025, 0.0045);"
+      "    color += float3(0.001, 0.003, 0.004) * haze;"
+      "    color += float3(0.0025, 0.001, 0.004) * veil;"
+      "    color += float3(0.006, 0.010, 0.015) * args.bloom * haze;"
+      "    return float4(color, 1.0);"
+      "}"
+    )
+  )
+)

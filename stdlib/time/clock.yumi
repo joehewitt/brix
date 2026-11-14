@@ -1,0 +1,82 @@
+
+./ctime
+./duration
+/YuCore/YuTime.h
+
+━━━━━━━━━━━━━━━━━━━━
++ ClockTime is Tuple
+
++ s CSeconds
++ ns CNanoseconds
+
+╌╌╌╌╌╌╌╌╌╌ Comparison ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other ClockTime
+
+s == other.s && ns == other.ns
+
+────────────────────
++ this > other ClockTime
+
+s > other.s || (s == other.s && ns > other.ns)
+
+────────────────────
++ this < other ClockTime
+
+s < other.s || (s == other.s && ns < other.ns)
+
+╌╌╌╌╌╌╌╌╌╌ Arithmetic ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this - other ClockTime
+
+ds + dns
+
+.. ds Milliseconds = s - other.s
+.. dns Milliseconds = ns - other.ns
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ elapsed'Unit
+
+clock().diff'Unit(this)
+
+────────────────────
++ diff'Unit
+    - other ClockTime
+
+ds + dns
+
+.. ds = (s - other.s) as Unit
+.. dns = (ns - other.ns) as Unit
+
+━━━━━━━━━━━━━━━━━━━━
++ clock
+
+ClockTime(ts.sec, ts.nsec)
+
+.. ts = get-clock-time()
+
+━━━━━━━━━━━━━━━━━━━━
++ get-clock-time
+
+?! Error("Unable to retrieve clock ($err)")
+    if err != 0
+
+time-spec
+
+.. tsbuf = CTimeSpec[1]
+.. err = C:clock_gettime(C:CLOCK_REALTIME, tsbuf)
+.. time-spec = tsbuf[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure'T
+    - fn T
+
+. c = clock()
+. result = fn()
+. d = clock() - c
+-- "MEASURED $d"
+= result

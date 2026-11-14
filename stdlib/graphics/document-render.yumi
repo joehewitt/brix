@@ -1,0 +1,642 @@
+./appearance
+./canvas
+./color
+./document
+./document-paths
+./document-rows
+./effect
+./matrix
+./network
+./network-regions
+./path
+./point
+./primitives
+./style
+./vectorgeometry
+/core/map
+/math
+/units
+
+_ vector-document-render-seed U64 = 1469598103934665603u64
++ vector-document-render-entries-per-node Size = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentRegionPaint is Tuple
+
++ path Path
++ color RGBA
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentRenderItemKind is U8
+
+| render-element = 0
+| render-begin-layer = 1
+| render-end-layer = 2
+| render-embed = 3
+| render-begin-content = 4
+| render-end-content = 5
+| render-image = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentImagePainter is Interface
+
+────────────────────
++ do paint-document-image
+    - canvas Canvas
+    - image String
+    - bounds Rect
+    - world Matrix
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentEmbedPainter is Interface
+
+────────────────────
++ do paint-embed
+    - canvas Canvas
+    - id U64
+    - world Matrix
+
+────────────────────
++ do paints-embed-content Bool
+    - id U64
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentRenderEntry
+
++ id U64
++ key U64
++ paths [Path]
++ appearance VectorAppearance
++ regions [VectorDocumentRegionPaint]
++ ink-bounds Rect
++ palette [RGBA]
++ geometry VectorGeometry
++ handle VectorGeometryHandle?
++ table VectorGeometryTable?
++ last-use Size
+
+────────────────────
++ This
+    - id
+    - key
+    - paths
+    - appearance
+    - regions
+    - ink-bounds
+    - palette
+    - geometry
+
+────────────────────
++ do release-handle
+
+. current = handle
+. owner = table
+if current && owner
+    owner.release(current)
+handle = null
+table = null
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentRenderItem is Tuple
+
++ kind VectorDocumentRenderItemKind
++ id U64
++ transform Matrix
++ opacity Ratio
++ entry VectorDocumentRenderEntry?
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorDocumentRenderer
+    is Usable'Void
+
++ document VectorDocument
++ paths VectorDocumentPaths
++ base-appearance = VectorAppearance()
++ built Size
++ reused Size
++ last-built Size
++ last-reused Size
++ syncs Size
+
+_ tracker = VectorDocumentChangeTracker()
+_ entries Map'U64'[VectorDocumentRenderEntry]
+_ render-items [VectorDocumentRenderItem]
+_ entry-count Size
+_ clock Size
+_ synced = false
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ This
+    - document
+
+.. paths = VectorDocumentPaths(document)
+
+────────────────────
++ This
+    - document
+    - paths
+
+────────────────────
++ get effect-computations Size
+
+paths.effect-computations
+
+────────────────────
++ do get items [VectorDocumentRenderItem]
+
+for item in render-items
+    <= item
+
+────────────────────
++ get item-count
+
+render-items.length
+
+────────────────────
++ get cached-entry-count Size
+
+entry-count
+
+────────────────────
++ do sync
+
+. changes = tracker.scan(document)
+=? false if synced && !changes.changed.length && !changes.removed.length
+synced = true
+syncs += 1
+clock += 1
+last-built = 0
+last-reused = 0
+render-items.clear()
+walk
+    - document.store.root
+    - base-appearance
+    - appearance-hash(base-appearance)
+    - vector-document-render-seed
+    - Matrix()
+if changes.removed.length || entry-count > entry-budget
+    trim()
+if changes.removed.length
+    paths.trim()
+= true
+
+────────────────────
++ do invalidate
+
+synced = false
+
+────────────────────
++ do paint
+    - canvas Canvas
+    - base Matrix = Matrix()
+    - table VectorGeometryTable? = null
+    - embeds VectorDocumentEmbedPainter? = null
+    - subtree U64? = null
+    - images VectorDocumentImagePainter? = null
+
+. sealed Size = 0
+. members = subtree-members(subtree)
+for item in render-items
+    if item.kind == .render-begin-content
+        if sealed > 0 || !embeds || !embeds.paints-embed-content(item.id)
+            sealed += 1
+    else if item.kind == .render-end-content
+        if sealed > 0
+            sealed -= 1
+    else if sealed > 0
+        continue
+    else if members && !members[item.id]
+        continue
+    else if item.kind == .render-begin-layer
+        canvas.push()
+        canvas.begin-opacity(item.opacity)
+    else if item.kind == .render-end-layer
+        canvas.end-opacity()
+        canvas.pop()
+    else if item.kind == .render-embed
+        embeds?.paint-embed(canvas, item.id, base.concatenate(item.transform))
+    else if item.kind == .render-image
+        if images
+            images.paint-document-image
+                - canvas
+                - document.image(item.id)
+                - document.view-box(item.id)
+                - base.concatenate(item.transform)
+    else
+        paint-entry(canvas, item.entry!, base.concatenate(item.transform), table)
+
+────────────────────
++ do release
+
+for id in List'U64(entries.keys)
+    for entry in entries[id]!
+        entry.release-handle()
+entries.clear()
+entry-count = 0
+synced = false
+
+────────────────────
+_ do subtree-members Map'U64'Bool?
+    - root U64?
+
+=? null if !root
+. members = Map'U64'Bool
+    • (root) true
+for id in document.descendants(root)
+    members[id] = true
+= members
+
+────────────────────
+_ do paint-entry
+    - canvas Canvas
+    - entry VectorDocumentRenderEntry
+    - world Matrix
+    - table VectorGeometryTable?
+
+if table
+    . handle = acquire-handle(entry, table)
+    =? if table.paint-vector(handle, canvas, entry.palette, world)
+do use canvas.saved-state
+    if !world.is-identity
+        canvas.transform(world)
+    entry.geometry.paint(canvas, entry.palette)
+
+────────────────────
+_ do acquire-handle
+    - entry VectorDocumentRenderEntry
+    - table VectorGeometryTable
+
+if entry.handle && entry.table && entry.table as Pointer == table as Pointer
+    = entry.handle
+entry.release-handle()
+. geometry = entry.geometry
+. handle = table.intern-geometry(entry.key, => geometry)
+entry.handle = handle
+entry.table = table
+= handle
+
+────────────────────
+_ do walk
+    - row Index
+    - inherited VectorAppearance
+    - inherited-key U64
+    - chain-key U64
+    - parent-transform Matrix
+    - chain VectorEffects? = null
+
+. node = document.store.nodes[row]
+=? if (node.flags /and/ (vector-document-hidden /or/ vector-document-guide)) != 0
+. opacity = clamped-opacity(node.opacity)
+=? if opacity <= 0%%
+. id = node.id
+. own-transform = document.row-transform(row)
+. transform = if own-transform then parent-transform.concatenate(own-transform) else parent-transform
+. own-fill = document.row-fill(row)
+. own-stroke = document.row-stroke(row)
+. own-stroke-width Length? = node.stroke-width if node.has-stroke-width
+. own-alignment = vector-document-alignment(node.stroke-alignment)
+. own-cap = vector-document-cap(node.stroke-cap)
+. own-join = vector-document-join(node.stroke-join)
+. own-fill-rule = vector-document-fill-rule(node.fill-rule)
+. appearance = inherited
+. paint-key = inherited-key
+. inherits-fill = !own-fill || own-fill == Fill.inherit
+. inherits-stroke = !own-stroke || own-stroke == Stroke.inherit
+. inherits-style = !own-stroke-width && !own-alignment && !own-cap && !own-join && !own-fill-rule
+if !inherits-fill || !inherits-stroke || !inherits-style
+    appearance = inherited.over
+        - own-fill ?? Fill.inherit
+        - own-stroke ?? Stroke.inherit
+        - own-stroke-width
+        - own-alignment
+        - own-cap
+        - own-join
+        - own-fill-rule
+    paint-key = appearance-hash(appearance)
+if opacity < 1%%
+    render-items += VectorDocumentRenderItem(.render-begin-layer, id, transform, opacity, null)
+if node.kind == .group-node && node.group-kind == .embed-group
+    render-items += VectorDocumentRenderItem(.render-embed, id, transform, 1%%, null)
+    if node.first-child != 0
+        render-items += VectorDocumentRenderItem(.render-begin-content, id, transform, 1%%, null)
+        . child = node.first-child
+        while child != 0
+            walk(child, appearance, paint-key, chain-key, transform, chain)
+            child = document.store.nodes[child].next-sibling
+        render-items += VectorDocumentRenderItem(.render-end-content, id, transform, 1%%, null)
+else if node.kind == .image-node
+    render-items += VectorDocumentRenderItem(.render-image, id, transform, 1%%, null)
+else if node.kind == .group-node
+    . effects = document.row-effects(row) if node.effects.count
+    if effects && effects.combines-geometry
+        . key = element-key(id, paths.combined-key(id), chain-key, paint-key)
+        . entry = cached(id, key) ?? build(id, key, paths.group-paths(id), appearance, false, chain)
+        render-items += VectorDocumentRenderItem(.render-element, id, transform, 1%%, entry)
+    else
+        . member-chain = chain
+        . member-key = chain-key
+        if effects && effects.has-enabled
+            member-chain = if !chain then effects else effects.followed-by(chain)
+            member-key = vector-document-mix(chain-key, node.effects-stamp)
+        . child = node.first-child
+        while child != 0
+            walk(child, appearance, paint-key, member-key, transform, member-chain)
+            child = document.store.nodes[child].next-sibling
+else
+    . own-key = vector-document-mix
+        - vector-document-mix(node.geometry-stamp, node.effects-stamp)
+        - node.paint-stamp
+    . key = element-key(id, own-key, chain-key, paint-key)
+    . entry = cached(id, key) ?? build(id, key, paths.network-paths(id), appearance, true, chain)
+    render-items += VectorDocumentRenderItem(.render-element, id, transform, 1%%, entry)
+if opacity < 1%%
+    render-items += VectorDocumentRenderItem(.render-end-layer, id, transform, opacity, null)
+
+────────────────────
+_ do cached
+    - id U64
+    - key U64
+
+. list = entries[id]
+=? null if !list
+for entry in list
+    if entry.key == key
+        entry.last-use = clock
+        reused += 1
+        last-reused += 1
+        //graphics.document.render.reused ++
+        = entry
+= null
+
+────────────────────
+_ do build
+    - id U64
+    - key U64
+    - source [Path]
+    - appearance VectorAppearance
+    - network Bool
+    - chain VectorEffects? = null
+
+built += 1
+last-built += 1
+//graphics.document.render.built ++
+. paths = if chain then chain.apply(source) else source
+. regions = if network then region-paints(id) else List'VectorDocumentRegionPaint()
+. ink-bounds = ink-bounds-of(paths, regions, appearance)
+. palette [RGBA]
+. geometry = compile-geometry(paths, regions, appearance, ink-bounds, palette)
+. entry = VectorDocumentRenderEntry
+    - id
+    - key
+    - paths
+    - appearance
+    - regions
+    - ink-bounds
+    - palette
+    - geometry
+entry.last-use = clock
+. list = entries[id]
+if list
+    if list.length >= vector-document-render-entries-per-node
+        . oldest = oldest-index(list)
+        list[oldest].release-handle()
+        -= list[oldest]
+        entry-count -= 1
+    list += entry
+else
+    . created [VectorDocumentRenderEntry]
+    created += entry
+    entries[id] = created
+entry-count += 1
+= entry
+
+────────────────────
+_ do compile-geometry
+    - paths [Path]
+    - regions [VectorDocumentRegionPaint]
+    - appearance VectorAppearance
+    - ink-bounds Rect
+    - palette [RGBA]
+
+. spans [VectorGeometrySpan]
+. no-paint = VectorGeometryPaint(VectorGeometryPaintRole.none, 0)
+for region in regions
+    spans += VectorGeometrySpan
+        - region.path
+        - VectorGeometryPaint(VectorGeometryPaintRole.color, palette.length as U32)
+        - no-paint
+        - appearance.stroke-width
+        - appearance.stroke-cap
+        - appearance.stroke-join
+        - FillRule.nonzero
+    palette += region.color
+if appearance.is-simple
+    . fill = no-paint
+    if appearance.fill is RGBA
+        fill = VectorGeometryPaint(VectorGeometryPaintRole.color, palette.length as U32)
+        palette += appearance.fill
+    . stroke = no-paint
+    if appearance.stroke is RGBA
+        stroke = VectorGeometryPaint(VectorGeometryPaintRole.color, palette.length as U32)
+        palette += appearance.stroke
+    for path in paths
+        spans += VectorGeometrySpan
+            - path
+            - fill
+            - stroke
+            - appearance.stroke-width
+            - appearance.stroke-cap
+            - appearance.stroke-join
+            - appearance.fill-rule
+    = VectorGeometry(ink-bounds, ink-bounds, spans, false, false)
+for layer in appearance.fill.layers
+    . color = layer.painted-color
+    if color
+        . fill = VectorGeometryPaint(VectorGeometryPaintRole.color, palette.length as U32)
+        palette += color
+        for path in paths
+            spans += VectorGeometrySpan
+                - path
+                - fill
+                - no-paint
+                - null
+                - null
+                - null
+                - appearance.fill-rule
+for layer in appearance.resolved-stroke-layers
+    . color = layer.painted-color
+    . width = layer.width ?? appearance.stroke-width
+    if color && width > 0
+        . stroke = VectorGeometryPaint(VectorGeometryPaintRole.color, palette.length as U32)
+        palette += color
+        for path in paths
+            spans += VectorGeometrySpan
+                - path
+                - no-paint
+                - stroke
+                - width
+                - layer.cap ?? appearance.stroke-cap
+                - layer.join ?? appearance.stroke-join
+                - appearance.fill-rule
+                - layer.alignment ?? appearance.stroke-alignment
+= VectorGeometry(ink-bounds, ink-bounds, spans, false, false)
+
+────────────────────
+_ do region-paints
+    - id U64
+
+. result [VectorDocumentRegionPaint]
+. fills = document.region-fills(id)
+. painted = false
+for fill in fills
+    if fill.fill || fill.conflict
+        painted = true
+=? result if !painted
+. regions = paths.regions(id)
+for region in regions.regions
+    for fill in fills
+        if fill.region == region.id && fill.fill
+            result += VectorDocumentRegionPaint(region.path, fill.fill)
+= result
+
+────────────────────
+_ get entry-budget Size
+
+document.node-count * vector-document-render-entries-per-node + 64
+
+────────────────────
+_ do trim
+
+. budget = entry-budget
+for id in List'U64(entries.keys)
+    . list = entries[id]!
+    . limit = if document.contains(id) then vector-document-render-entries-per-node else 1
+    if entry-count > budget && !document.contains(id)
+        limit = 0
+    while list.length > limit
+        . oldest = oldest-index(list)
+        list[oldest].release-handle()
+        -= list[oldest]
+        entry-count -= 1
+    if !list.length
+        -= entries[id]
+
+────────────────────
+_ do oldest-index
+    - list [VectorDocumentRenderEntry]
+
+. result Index = 0
+for index in 1 .. < list.length
+    if list[index].last-use < list[result].last-use
+        result = index
+= result
+
+────────────────────
+_ do appearance-hash
+    - appearance VectorAppearance
+
+. result = mix-fill(vector-document-render-seed, appearance.fill)
+result = mix-stroke(result, appearance.stroke)
+result = document.mix-number(result, appearance.stroke-width)
+result = vector-document-mix
+    - result
+    - vector-document-optional-alignment(appearance.stroke-alignment)
+result = vector-document-mix(result, vector-document-optional-cap(appearance.stroke-cap))
+result = vector-document-mix(result, vector-document-optional-join(appearance.stroke-join))
+= vector-document-mix(result, vector-document-optional-fill-rule(appearance.fill-rule))
+
+────────────────────
+_ do mix-fill
+    - hash U64
+    - fill Fill
+
+=? vector-document-mix(hash, 1) if fill == Fill.none
+=? vector-document-mix(hash, 2) if fill == Fill.inherit
+=? vector-document-mix(hash, 3) if fill == Fill.stroke
+. result = vector-document-mix(hash, 4)
+for layer in fill.layers
+    result = mix-color(result, layer.color)
+    result = vector-document-mix(result, if layer.visible then 1u64 else 2u64)
+= result
+
+────────────────────
+_ do mix-stroke
+    - hash U64
+    - stroke Stroke
+
+=? vector-document-mix(hash, 5) if stroke == Stroke.none
+=? vector-document-mix(hash, 6) if stroke == Stroke.inherit
+. result = vector-document-mix(hash, 7)
+for layer in stroke.layers
+    result = mix-color(result, layer.color)
+    result = vector-document-mix(result, if layer.visible then 1u64 else 2u64)
+    result = document.mix-number(result, layer.width ?? -1)
+    result = vector-document-mix(result, vector-document-optional-alignment(layer.alignment))
+    result = vector-document-mix(result, vector-document-optional-join(layer.join))
+    result = vector-document-mix(result, vector-document-optional-cap(layer.cap))
+= result
+
+────────────────────
+_ do mix-color
+    - hash U64
+    - color RGBA
+
+. result = document.mix-number(hash, color.red)
+result = document.mix-number(result, color.green)
+result = document.mix-number(result, color.blue)
+= document.mix-number(result, color.alpha)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do element-key
+    - id U64
+    - content U64
+    - chain-key U64
+    - paint-key U64
+
+. result = vector-document-mix(vector-document-render-seed, id)
+result = vector-document-mix(result, content)
+result = vector-document-mix(result, chain-key)
+= vector-document-mix(result, paint-key)
+
+━━━━━━━━━━━━━━━━━━━━
+_ clamped-opacity
+    - value Ratio
+
+|? !is-finite(value)
+    1%%
+|? value <= 0%%
+    0%%
+|? value >= 1%%
+    1%%
+??
+    value
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ink-bounds-of
+    - paths [Path]
+    - regions [VectorDocumentRegionPaint]
+    - appearance VectorAppearance
+
+. found = false
+. result = Rect(0, 0, 0, 0)
+. reach = if appearance.stroke != Stroke.none then appearance.stroke-extent else 0
+for path in paths
+    if path.count
+        . bounds = path.bounding-box.inflate(reach * 2 + 1, reach * 2 + 1)
+        result = if !found then bounds else result + bounds
+        found = true
+for region in regions
+    . bounds = region.path.bounding-box
+    result = if !found then bounds else result + bounds
+    found = true
+= result

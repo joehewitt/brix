@@ -1,0 +1,3194 @@
+====
+Type narrowing
+
+These tests specify the desired flow-sensitive narrowing behavior. Phase-one optional
+and union narrowing cases are active; future smart-cast behavior remains marked %nyi.
+====
+:====
+# Optional locals narrow to their payload type in a truthy branch.
+
+. value Int? = 41
+if value
+    -- value + 1
+    -- type-of value
+-- type-of value
+
+:----
+42
+[TypeInfo I64]
+[TypeInfo Optional'I64]
+;====
+:====
+# Optional parameters narrow to their payload type.
+
+-- describe(Color(10, 20, 30))
+-- describe(null)
+-- describe-guard(Color(40, 50, 60))
+-- describe-guard(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe
+    - color Color?
+
+if color
+    = "${color.red},${color.green},${color.blue}"
+else
+    = "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe-guard
+    - color Color?
+
+|? color
+    describe-present(color)
+??
+    "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe-present String
+    - color Color
+
+"${color.red},${color.green},${color.blue}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Color is (red Int, green Int, blue Int)
+
+:----
+10,20,30
+none
+40,50,60
+none
+;====
+:====
+# Guard returns narrow the remainder of the function.
+
+-- add-one(41)
+-- add-one(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do add-one
+    - value Int?
+
+if !value
+    = 0
+
+= value + 1
+
+:----
+42
+0
+;====
+:====
+# Panic assertions narrow the fallthrough path.
+
+-- guarded-name("Yumi")
+
+━━━━━━━━━━━━━━━━━━━━
++ do guarded-name String?
+    - name String?
+
+?! Panic("missing")
+    if !name
+
+= name
+
+:----
+Yumi
+;====
+:====
+# Implicit self properties share flow facts with explicit property paths.
+
+. holder = NarrowingHolder("present")
+holder.after-assert()
+holder.after-early-return()
+holder.after-returning-branch()
+holder.after-explicit-guard()
+holder.explicit-read-after-implicit-guard()
+holder.after-other-assignment()
+holder.after-same-assignment()
+holder.value = "present"
+holder.after-mutating-call()
+holder.shadowed-local()
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowingHolder
+
++ value String?
++ other Int
+
+────────────────────
++ This
+    - value
+
+────────────────────
++ do after-assert
+
+?! Panic("missing")
+    if !value
+-- type-of value
+
+────────────────────
++ do after-early-return
+
+=? if !value
+-- type-of value
+
+────────────────────
++ do after-returning-branch
+
+if !value
+    =
+-- type-of value
+
+────────────────────
++ do after-explicit-guard
+
+=? if !this.value
+-- type-of value
+
+────────────────────
++ do explicit-read-after-implicit-guard
+
+=? if !value
+-- type-of this.value
+
+────────────────────
++ do after-other-assignment
+
+=? if !value
+other = 1
+-- type-of value
+
+────────────────────
++ do after-same-assignment
+
+=? if !value
+value = null
+-- type-of value
+
+────────────────────
++ do after-mutating-call
+
+=? if !value
+clear()
+-- type-of value
+
+────────────────────
++ do clear
+
+value = null
+
+────────────────────
++ do shadowed-local
+
+. value String? = "local"
+=? if !value
+-- type-of value
+
+:----
+[TypeInfo String]
+[TypeInfo String]
+[TypeInfo String]
+[TypeInfo String]
+[TypeInfo String]
+[TypeInfo String]
+[TypeInfo Optional'String]
+[TypeInfo Optional'String]
+[TypeInfo String]
+;====
+:====
+# A property that takes the type of its value narrows as one written with its type.
+
+. holder = InferredHolder()
+holder.check()
+
+━━━━━━━━━━━━━━━━━━━━
++ do found String?
+    - wanted Bool
+
+= "present" if wanted
+
+━━━━━━━━━━━━━━━━━━━━
++ InferredHolder
+
++ value = found(true)
+
+────────────────────
++ do check
+
+=? if !value
+-- type-of value
+if value && value.length > 0
+    -- type-of value
+
+:----
+[TypeInfo String]
+[TypeInfo String]
+;====
+:====
+# Optional chaining sees the payload type of a narrowed implicit self property.
+
+. holder = ImplicitChainHolder()
+holder.check()
+
+━━━━━━━━━━━━━━━━━━━━
++ ImplicitChainHolder
+
++ value String? = "present"
+
+────────────────────
++ do check
+
+=? if !value
+-- value?.length
+
+:----
+%crash
+
+Exception: "value" is String, which is never null, so it needs no "?"; write "value.length"
+<no file:14>
+    -- value?.length
+       ^^^^^^^^^^^^^
+;====
+:====
+# The right side of && sees facts introduced by the left side.
+
+. color Color? = Color(255, 128, 64)
+if color && color.red > 200
+    -- color.green
+
+━━━━━━━━━━━━━━━━━━━━
++ Color is (red Int, green Int, blue Int)
+
+:----
+128
+;====
+:====
+# Stable optional path subjects narrow to their payload type.
+
+. box Box? = Box()
+if box && box.child
+    -- box.child.hello
+
+if box && box.child
+    . child = box.child
+    -- child.hello
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ child Child? = Child()
+
+━━━━━━━━━━━━━━━━━━━━
++ Child
+
++ hello = "hi"
+
+:----
+hi
+hi
+;====
+:====
+# Optional-chain receivers keep their optional wrapper after path narrowing.
+
+. anchor Node? = Node()
+. previous = Node()
+anchor!.previous = previous
+. child = Node()
+
+if anchor
+    . target = anchor
+    child.previous = target.previous
+    child.next = target
+    if target.previous
+        target.previous.next = child
+    target.previous = child
+
+if previous.next
+    -- "linked"
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ previous Node?
++ next Node?
+
+:----
+linked
+;====
+:====
+# The right side of || sees the negated facts from the left side when it evaluates.
+
+. value Int? = 5
+if !value || value > 3
+    -- "pass"
+
+:----
+pass
+;====
+:====
+# The right side of || can use a narrowed optional with payload-specific truthiness.
+
+-- check(null)
+-- check("")
+-- check("body")
+
+━━━━━━━━━━━━━━━━━━━━
++ do check
+    - head String?
+
+= if !head || empty-string(head) then "empty" else "body"
+
+━━━━━━━━━━━━━━━━━━━━
++ do empty-string
+    - value String
+
+= !value
+
+:----
+empty
+empty
+body
+;====
+:====
+# Negated optional checks narrow the else branch.
+
+. name String? = "Yumi"
+if !name
+    -- "missing"
+else
+    -- name.length
+    -- type-of name
+
+:----
+4
+[TypeInfo String]
+;====
+:====
+# Conditional expressions should narrow the result expression.
+
+. value Int? = 41
+-- if value then value + 1 else 0
+
+:----
+42
+;====
+:====
+# Lazy Bool dependencies used as conditional bullet guards should not be projected.
+
+-- ", ".join
+    ** headers("body")
+-- ", ".join
+    ** headers(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ headers
+    - body String?
+
+*? "json" if has-body
+
+.. has-body = if body then true else false
+
+:----
+json
+;====
+:====
+# Assignment to a narrowed optional name updates the original.
+
+. value Int? = 41
+if value
+    value = 10
+    -- value + 1
+
+-- value ?? 0
+. total Int? = 1
+. other Int? = 2
+if other && total
+    total = total + other
+-- total ?? 0
+. missing Int?
+if missing
+    missing = 0
+else if total
+    total = total * 10
+else
+    total = null
+-- total ?? 0
+. cleared Int? = 5
+if cleared
+    cleared = null
+-- cleared ?? 0
+
+:----
+11
+10
+3
+30
+0
+;====
+:====
+# Branch assignments to narrowed locals carry across loop iterations.
+
+. values [Int?]
+values += 5
+values += null
+values += 7
+. total Int?
+for value in values
+    if value && total
+        total = total + value
+    else if value
+        total = value
+-- total ?? 0
+. items [Pair?]
+items += Pair(1, 2)
+items += Pair(3, 4)
+. merged Pair?
+for item in items
+    if item && merged
+        merged = Pair(merged.x + item.x, merged.y + item.y)
+    else
+        merged = item
+-- merged!.x
+-- merged!.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (x Int, y Int)
+
+:----
+12
+4
+6
+;====
+:====
+# The original optional can be reassigned and re-narrowed after a narrowed scope.
+
+. value Int? = 1
+if value
+    -- value + 1
+
+value = null
+if value
+    -- "unexpected"
+else
+    -- "missing"
+
+value = 40
+if value
+    -- value + 2
+
+:----
+2
+missing
+42
+;====
+:====
+# Reassignment to a payload-compatible value can be narrowed by a later test.
+
+. value Int? = null
+value = 40
+if value
+    -- value + 2
+
+:----
+42
+;====
+:====
+# While conditions narrow inside the loop body.
+
+. value Int? = 1
+. once = true
+while value && once
+    -- value + 1
+    once = false
+
+:----
+2
+;====
+:====
+# Assignment to a while condition local updates the loop carrier, not the narrowed shadow.
+
+. value Link? = Link()
+while value
+    value = value.next
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Link
+
++ next Link?
+
+:----
+done
+;====
+:====
+# Clause conditions can narrow loop body values.
+
+for value in [Optional'Int(1), Optional'Int(), Optional'Int(3)] when value
+    -- value + 1
+
+:----
+2
+4
+;====
+:====
+# Optional payload narrowing composes with union case narrowing.
+
+. event Event? = Event.click(10, 20)
+if event
+    if event is .click
+        -- event.x
+        -- event.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+10
+20
+;====
+:====
+# Optional payload and union case narrowing compose inside one && condition.
+
+. event Event? = Event.click(10, 20)
+if event && event is .click && event.x > 5
+    -- event.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+20
+;====
+:====
+# A union a closure captures and tests is read there as the case the test found.
+
+probe(Spot.edge(2))
+probe(Spot.cell("a"))
+
+━━━━━━━━━━━━━━━━━━━━
++ do probe
+    - spot Spot
+
+run • edit => do
+    if spot is .edge
+        -- spot + 1
+    . open = spot is .edge && spot > 0
+    -- open
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+    - edit () Void
+
+edit()
+
+━━━━━━━━━━━━━━━━━━━━
++ Spot is Union
+
+| edge(side Int)
+| cell(name String)
+
+:----
+3
+true
+false
+;====
+:====
+# Anonymous unions narrow by payload type.
+
+. value Choice = 41
+if value is Int
+    -- value + 1
+    -- type-of value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+42
+[TypeInfo I64]
+;====
+:====
+# Else-if chains carry the negative facts from earlier branches.
+
+. value Choice = "hello"
+if value is Int
+    -- value + 1
+else if value is String
+    -- value.length
+    -- type-of value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+5
+[TypeInfo String]
+;====
+:====
+# is-not narrows the true branch by subtracting the rejected type.
+
+. value Choice = "hello"
+if value is not Int
+    -- value.length
+    -- type-of value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+5
+[TypeInfo String]
+;====
+:====
+# Guard-style is-not checks narrow the remainder.
+
+-- length-or-zero("hello")
+-- length-or-zero(42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do length-or-zero
+    - value Choice
+
+if value is not String
+    = 0
+
+= value.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+5
+0
+;====
+:====
+# The right side of && sees union narrowing facts.
+
+. value Choice = "hello"
+if value is String && value.length == 5
+    -- value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+hello
+;====
+:====
+# The right side of || sees the negated union fact from the left side.
+
+. value Choice = 41
+if value is not Int || value > 40
+    -- "pass"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+pass
+;====
+:====
+# Narrowing does not leak out of an ordinary branch.
+
+. value Choice = 41
+if value is Int
+    -- value + 1
+
+-- type-of value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+42
+[TypeInfo Choice]
+;====
+:====
+# Nested scopes inherit active narrowing facts.
+
+. value Choice = "hello"
+if value is String
+    do
+        -- value.length
+        -- type-of value
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+5
+[TypeInfo String]
+;====
+:====
+# Assignment to a narrowed union name updates the original and narrows to the assigned case.
+
+. value Choice = "hello"
+if value is String
+    -- value.length
+    value = "cat"
+    -- value.length
+if value is String
+    -- value
+. other Choice = "hello"
+if other is String
+    other = 7
+    -- other + 1
+if other is Int
+    -- other + 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+5
+3
+cat
+8
+9
+;====
+:====
+# Assigning a case value to a union local narrows later reads, and union members stay reachable.
+
+. value Choice = 5
+value = "cat"
+-- value.length
+-- value.type
+-- value.case
+value = 9
+-- value + 1
+-- value.type
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+3
+Class:core/string:String
+1
+10
+Class:core/number:I64
+;====
+:====
+# Narrowing carries into a loop when every back edge keeps it, and re-checks see the current value.
+
+. value Int? = 1
+if value
+    for step in [1, 2]
+        -- value + step
+        value = value + 10
+. count Int? = 3
+if count
+    while count && count > 0
+        -- count
+        count = count - 1 if count > 1
+. choice Choice = "hi"
+if choice is String
+    for step in [1, 2]
+        if choice is String
+            -- choice.length
+        else
+            -- "int"
+        choice = 4
+-- guarded(3)
+-- guarded(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ do guarded Int
+    - start Int?
+
+. value = start
+=? 0 if !value
+. count = 0
+while count < 2
+    count += 1
+    =? -1 if !value
+    value = null
+= count
+
+:----
+2
+13
+3
+2
+1
+2
+int
+-1
+0
+;====
+:====
+# Using carried narrowing in a loop whose back edge breaks it is an error.
+
+. value Int? = 1
+if value
+    for step in [1, 2]
+        -- value + 1
+        value = null
+
+:----
+%crash
+
+Exception: Narrowing of 'value' is used in the loop but does not hold when the loop repeats
+<no file:4>
+        for step in [1, 2]
+           ^^^^^^^^^^^^^^
+;====
+:====
+# Named union cases narrow to their payload value.
+
+. result Result = Result.success(41)
+if result is .success
+    -- result + 1
+    -- type-of result
+
+━━━━━━━━━━━━━━━━━━━━
++ Result is Union
+
+| success Int
+| failure String
+
+:----
+42
+[TypeInfo I64]
+;====
+:====
+# Named union case narrowing distinguishes duplicate payload types.
+
+. value Foo = Foo.b(41)
+if value is .b
+    -- value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| a Int
+| b Int
+
+:----
+42
+;====
+:====
+# Named tuple payload cases narrow to the tuple payload with named fields.
+
+. event Event = Event.click(10, 20)
+if event is .click
+    -- event.x
+    -- event.y
+    -- type-of event
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+10
+20
+[TypeInfo Tuple]
+;====
+:====
+# Exact named-case checks can flow into else-if cases.
+
+. event Event = Event.key("K")
+if event is .click
+    -- event.x
+else if event is .key
+    -- event
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+K
+;====
+:====
+# Base-class values narrow to subclasses after runtime checks.
+
+. animal Animal = Dog()
+if animal is Dog
+    -- animal.sound
+    -- type-of animal
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
+━━━━━━━━━━━━━━━━━━━━
++ Dog is Animal
+
++ sound = "woof"
+
+:----
+%nyi
+woof
+[TypeInfo Dog]
+;====
+:====
+# Subclass negative checks narrow the else branch.
+
+. animal Animal = Dog()
+if animal is not Dog
+    -- "other"
+else
+    -- animal.sound
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
+━━━━━━━━━━━━━━━━━━━━
++ Dog is Animal
+
++ sound = "woof"
+
+:----
+%nyi
+woof
+;====
+:====
+# Convertible type checks project the narrowed read through the converter.
+
+. value = Foo()
+if value is Bar
+    -- type-of value
+    -- value.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ to Bar
+
+Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ name = "bar"
+
+:----
+%nyi
+[TypeInfo Bar]
+bar
+;====
+:====
+# Structure-pattern captures keep the projected type.
+
+. value = Foo()
+if | projected Bar~ = value
+    -- type-of projected
+    -- projected.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ to Bar
+
+Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ name = "bar"
+
+:----
+[TypeInfo Bar]
+bar
+;====
+:====
+# Match-expression pattern captures keep the projected type.
+
+. value = Foo()
+-- match value
+    | projected Bar~
+        "${type-of projected}: ${projected.name}"
+    ??
+        "miss"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ to Bar
+
+Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ name = "bar"
+
+:----
+[TypeInfo Bar]: bar
+;====
+:====
+# Optional pattern captures unwrap and project to the captured payload type.
+
+. value Int? = 41
+if | projected Float~ = value
+    -- projected + 1.5
+    -- type-of projected
+
+:----
+42.5
+[TypeInfo F64]
+;====
+:====
+# Captures from named union patterns expose typed payload fields in the body.
+
+. submission Authorization = Authorization.valid("joe@example.com", "secret")
+if | .valid(email, password) = submission
+    -- email
+    -- password.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Authorization is Union
+
+| invalid-password
+| invalid-email
+| valid(email String, password String)
+
+:----
+joe@example.com
+6
+;====
+:====
+# Flow narrowing should work inside if-expression arrow arms.
+
+-- describe(41)
+-- describe("hello")
+
+━━━━━━━━━━━━━━━━━━━━
++ describe
+    - value Choice
+
+if {
+    value is Int -> value + 1
+    value is String -> value.length
+}
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+%nyi
+42
+5
+;====
+:====
+# Closures created in a narrowed branch capture the projected value.
+
+. value Choice = "hello"
+if value is String
+    . get-length = -> value.length
+    -- get-length()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+%nyi
+5
+;====
+:====
+# Closures that escape a narrowed branch capture the projected shadow.
+
+. value Choice = "hello"
+. get-length Getter'Int?
+if value is String
+    get-length = -> value.length
+
+value = 42
+-- get-length()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+:----
+%nyi
+5
+;====
+:====
+# Guards narrow locals the block assigns without copying them, so updates persist across iterations.
+
+-- guard-loop(1)
+-- guard-loop(null)
+-- guard-union()
+-- case-chain()
+-- case-match()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+━━━━━━━━━━━━━━━━━━━━
++ do guard-loop Int
+    - start Int?
+
+. total = start
+for step in [1, 2, 3]
+    =? -1 if !total
+    total = total + step
+= total ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do guard-union Int
+
+. value Choice = "hi"
+. count = 0
+for step in [1, 2, 3]
+    =? -1 if value is Int
+    count += value.length
+    value = "hello"
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ do case-chain String
+
+. event Event = Event.key("K")
+. out = ""
+if event is .click
+    out = "click"
+else if event is .key
+    out = "key"
+event = Event.click(1, 2)
+= out
+
+━━━━━━━━━━━━━━━━━━━━
++ do case-match String
+
+. event Event = Event.key("K")
+=? "click" if event is .click
+. out = match event
+    | .click(click)
+        "click"
+    | .key(key)
+        key
+event = Event.click(1, 2)
+= out
+
+:----
+7
+-1
+12
+key
+K
+;====
+:====
+# A presence check reads only the checked local unnarrowed, not locals its lazy initializer reads.
+
+-- first-x(true, Pair(3, 4))
+-- first-x(false, Pair(3, 4))
+-- first-x(true, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (x Int, y Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ first-x Int
+    - use Bool
+    - pair Pair?
+
+|? !pair
+    0
+|? !picked
+    -1
+??
+    picked
+
+.. picked = pair.x if use
+
+:----
+3
+-1
+0
+;====
+:====
+# Carried narrowing does not survive past a loop that can break after breaking it.
+
+. x Int? = 5
+if x
+    for i in [1, 2]
+        if i == 1
+            x = null
+            break
+    -- x + 1
+
+:----
+%crash
+
+Exception: Operator "+" is not defined for I64? and I64
+<no file:8>
+        -- x + 1
+           ^^^^^
+;====
+:====
+# Match on a union narrowed by an earlier guard still sees the union case.
+
+-- case-of(Event.key("K"))
+-- case-of(Event.click(1, 2))
+-- optional-case-of(Event.key("J"))
+-- optional-case-of(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+━━━━━━━━━━━━━━━━━━━━
++ do case-of String
+    - event Event
+
+=? "click" if event is .click
+= match event
+    | .click(click)
+        "click"
+    | .key(key)
+        key
+
+━━━━━━━━━━━━━━━━━━━━
++ do optional-case-of String
+    - event Event?
+
+=? "none" if !event
+=? "click" if event is .click
+= match event
+    | .click(click)
+        "click"
+    | .key(key)
+        key
+
+:----
+K
+click
+J
+none
+;====
+:====
+# Comparing a union with == or != against a payload-free case narrows like is.
+
+. color Paint = Swatch("abc")
+. none Paint = Paint.none
+-- chain-hex(color)
+-- chain-hex(Paint.inherit)
+-- chain-hex(none)
+-- both-not(color)
+-- both-not(none)
+-- reversed(color)
+-- reversed(none)
+-- symbol-else(color)
+-- symbol-else(Paint.inherit)
+-- valued(Shade.light)
+-- valued(Swatch("def"))
+
+━━━━━━━━━━━━━━━━━━━━
++ Swatch
+
++ text String
+
+────────────────────
++ This
+    - text
+
+────────────────────
++ to String
+
+"swatch($text)"
+
+────────────────────
++ to Hex
+
+"#$text"
+
+━━━━━━━━━━━━━━━━━━━━
++ Paint is Union
+
+| inherit
+| none
+| Swatch
+
+━━━━━━━━━━━━━━━━━━━━
++ Shade is Union
+
+| light = 1
+| dark = 2
+| Swatch
+
+━━━━━━━━━━━━━━━━━━━━
++ chain-hex String
+    - paint Paint
+
+|? paint == Paint.inherit
+    "inherit"
+|? paint == Paint.none
+    "none"
+??
+    paint as Hex
+
+━━━━━━━━━━━━━━━━━━━━
++ do both-not String
+    - paint Paint
+
+if paint != Paint.inherit && paint != Paint.none
+    = paint.text
+= "named"
+
+━━━━━━━━━━━━━━━━━━━━
++ do reversed String
+    - paint Paint
+
+=? "plain" if Paint.inherit == paint || Paint.none == paint
+= paint.text
+
+━━━━━━━━━━━━━━━━━━━━
++ do symbol-else String
+    - paint Paint
+
+if paint == .inherit || paint == .none
+    = "named"
+else
+    = paint.text
+
+━━━━━━━━━━━━━━━━━━━━
++ do valued String
+    - shade Shade
+
+if shade == Shade.light
+    = "light"
+= "${type-of shade}"
+
+:----
+#abc
+inherit
+none
+abc
+named
+abc
+plain
+abc
+named
+light
+[TypeInfo Shade]
+;====
+:====
+# Narrowing carried across a loop survives nested loops and breaks that keep it.
+
+-- nested-for()
+-- nested-while()
+-- kept-break()
+
+━━━━━━━━━━━━━━━━━━━━
++ do nested-for Int
+
+. x Int? = 3
+. total = 0
+if x
+    for i in 0 .. < 2
+        total += x
+        for j in 0 .. < 2
+            x = x + 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do nested-while Int
+
+. x Int? = 3
+. total = 0
+. n = 0
+if x
+    while n < 2
+        n += 1
+        total += x
+        . m = 0
+        while m < 2
+            m += 1
+            x = x + 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do kept-break Int
+
+. x Int? = 3
+. n = 0
+if x
+    while n < 3
+        n += 1
+        if n == 2
+            x = 9
+            break
+    = x + 1
+= 0
+
+:----
+8
+8
+10
+;====
+:====
+# A break that clears the value ends the narrowing after the loop.
+
+-- run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+
+. x Int? = 3
+. n = 0
+if x
+    while n < 3
+        n += 1
+        if n == 2
+            x = null
+            break
+    = x + 1
+= 0
+
+:----
+%crash
+
+Exception: Operator "+" is not defined for I64? and I64
+<no file:15>
+        = x + 1
+          ^^^^^
+;====
+:====
+# A type test that can never match skips its branch, as match skips impossible cases.
+
+. box = NarrowingBox()
+box.run(bump)
+box.run(bump-or-fail)
+box.run(bump-and-return)
+-- box.count
+-- box.copied
+-- box.failures
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowingFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump
+    - box NarrowingBox
+
+box.count += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump-or-fail ?! NarrowingFailure
+    - box NarrowingBox
+
+box.count += 1
+if box.count == 2
+    ?! NarrowingFailure("second")
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump-and-return NarrowingBox
+    - box NarrowingBox
+
+box.count += 1
+= box
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowingBox
+
++ count = 0
++ copied = 0
++ failures = 0
+
+────────────────────
++ do run
+    - body
+
+. result = catch body(this)
+if result is Error
+    failures += 1
+else if result is NarrowingBox
+    copied = result.count
+
+:----
+3
+3
+1
+;====
+:====
+# A type test that can never match short-circuits the rest of an && condition.
+
+-- describe-count(12345)
+-- describe-count(NarrowingCounter(5))
+-- describe-count(NarrowingCounter(2))
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe-count String
+    - value
+
+if value is NarrowingCounter && value.count > 3
+    = "many"
+= "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowingCounter
+
++ count = 0
+
+────────────────────
++ This
+    - count
+
+:----
+other
+many
+other
+;====
+:====
+# A property of a struct that a test found to hold a value is read as what it holds, as an index too.
+
+-- run(4)
+-- run(9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - at Index
+
+. probe = find(at)
+. slots = Array'Int(8)
+if probe.found
+    slots[probe.found] = 7
+    = slots[4] + 1
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ find Probe
+    - at Index
+
+Probe(at if at < 8, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Probe is Struct
+
++ found Index?
++ slot Index
+
+:----
+
+8
+0
+;====
+:====
+# An optional local known to hold a value still holds one after an operator that assigns nothing
+
+. list = find()
+if list
+    list += 3
+    -- list.size
+
+━━━━━━━━━━━━━━━━━━━━
++ do find [Int]?
+
+= [1, 2]
+
+:----
+
+3
+;====
+:====
+# is and is not between a union and the types and cases it may hold
+
+-- kind(.count(1))
+-- kind(.wide(2.5))
+-- kind(.named("n"))
+-- kind(.empty)
+-- test(.count(1))
+-- test(.empty)
+. s Shape? = Shape.empty
+-- s is .empty
+-- s is .count
+. t Shape?
+-- t is .empty
+-- t is not .empty
+
+━━━━━━━━━━━━━━━━━━━━
++ do kind String
+    - shape Shape
+
+. text = ""
+if shape is Int
+    text ++= "int "
+if shape is Float
+    text ++= "float "
+if shape is String
+    text ++= "string "
+if shape is not Int
+    text ++= "not-int "
+if shape is .empty
+    text ++= "empty "
+if shape is not .named
+    text ++= "not-named "
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ test Bool
+    - shape Shape
+
+shape is .count || shape is .wide
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| count Int
+| wide Float
+| named String
+| empty
+
+:----
+
+int not-named 
+float not-int not-named 
+string not-int 
+not-int empty not-named 
+true
+false
+true
+false
+false
+true
+;====
+:====
+# A union read as the case an is test found
+
+-- grow(.count(1))
+-- grow(.named("n"))
+-- size(.count(5))
+-- size(.named("abc"))
+-- size(.empty)
+
+━━━━━━━━━━━━━━━━━━━━
++ do grow String
+    - shape Shape
+
+if shape is Int
+    = "int ${shape + 1}"
+if shape is String && shape.length == 1
+    = "one $shape"
+= "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ do size Int
+    - shape Shape
+
+if shape is not String
+    = -1
+= shape.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| count Int
+| named String
+| empty
+
+:----
+
+int 2
+one n
+-1
+3
+-1
+;====
+:====
+# A union known to hold one case is tested and matched as the union
+
+-- trace(.click(1, 2))
+-- trace(.key("K"))
+-- trace(.idle)
+-- again(.key("Q"))
+-- again(.click(3, 4))
+-- pair(.left(1))
+-- pair(.right("r"))
+
+━━━━━━━━━━━━━━━━━━━━
++ do trace String
+    - event Event
+
+if event is .click
+    = "click ${event.x}"
+else if event is .key
+    = "key $event"
+= "idle"
+
+━━━━━━━━━━━━━━━━━━━━
++ do again String
+    - event Event
+
+if event is not .click
+    if event is .idle
+        = "idle"
+    = match event
+        | .key(text)
+            "key $text"
+        ??
+            "none"
+= match event
+    | .click(x, y)
+        "click $x $y"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do pair String
+    - side Side
+
+if side is .left
+    = "left ${side + 1}"
+= match side
+    | Int
+        "int $it"
+    | String
+        "text $it"
+
+━━━━━━━━━━━━━━━━━━━━
++ Side is Union
+
+| left Int
+| right String
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+| idle
+
+:----
+
+click 1
+key K
+idle
+key Q
+click 3 4
+left 2
+text r
+;====
+:====
+# An optional of a union known to hold a value and one case is read as that case, in arguments and locals.
+
+-- show(null)
+-- show(Event.click(1, 2))
+-- show(Event.key("k"))
+-- both(Event.click(3, 4), Event.key("z"))
+-- both(null, Event.click(5, 6))
+. event Event? = Event.key("q")
+if event && event is .key
+    -- event
+event = again(Event.click(7, 8))
+if event
+    if event is .click
+        -- event.x + event.y
+        event = null
+        -- event == null
+
+━━━━━━━━━━━━━━━━━━━━
++ do again Event?
+    - event Event?
+
+= event
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String
+    - event Event?
+
+if event && event is .click
+    = "click ${event.x},${event.y}"
+if !event
+    = "none"
+if event is .key
+    = "key $event"
+= "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ do both String
+    - first Event?
+    - second Event?
+
+if first && second && first is .click && second is .key
+    = "${first.x} $second"
+if second && second is .click
+    = "second ${second.y} ${first == null}"
+= "neither"
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+
+none
+click 1,2
+key k
+3 z
+second 6 true
+q
+15
+true
+;====
+:====
+# A type test that can never hold leaves the operand it guards and the branch it guards out
+
+-- describe(12345)
+-- describe(Counter(5))
+-- describe(Counter(2))
+-- either(7)
+-- either(Counter(1))
+-- either(Counter(8))
+-- nested(3)
+-- nested(1)
+-- nested(Counter(9))
+-- nested("text")
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - value
+
+if value is Counter && value.count > 3
+    = "many"
+= "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ do either String
+    - value
+
+if value is not Counter || value.count > 3
+    = "not few"
+= "few"
+
+━━━━━━━━━━━━━━━━━━━━
++ do nested String
+    - value
+
+if value is Counter
+    if value.count > 3
+        = "many"
+    = "few"
+else if value is Int && value > 2
+    = "int"
+= "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+────────────────────
++ This
+    - count
+
+:----
+
+other
+many
+other
+not few
+few
+not few
+int
+other
+many
+other
+;====
+:====
+# A union local that an if assigns one case and whose condition leaves the same case otherwise is that case after it
+
+. value Choice = "hello"
+if value is String
+    value = 7
+-- value + 1
+. other Choice = 5
+if other is String
+    other = 9
+-- other + 1
+. third Choice = "x"
+if third is Int
+    third = "was int"
+-- third.length
+-- settle("four")
+-- settle(10)
+-- text-of(3)
+-- text-of("kept")
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle Int
+    - given Choice
+
+. choice = given
+if choice is String
+    choice = choice.length
+if choice is Int
+    = choice + 1
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-of String
+    - given Choice
+
+. choice = given
+if choice is Int
+    choice = "number"
+= "${choice}!"
+
+:----
+
+8
+6
+1
+5
+11
+number!
+kept!
+;====
+:====
+# What a test found of a property ends at a print, a loop and a call, and holds past an assertion with a condition, a branch that leaves and an assignment to a local.
+
+. holder = Holder()
+holder.after-print()
+holder.after-loop()
+holder.after-call()
+holder.after-assertion(1)
+holder.after-leaving(1)
+holder.after-local(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value Int? = 0
++ count Int = 0
+
+────────────────────
++ do after-print
+
+=? if !value
+-- "print"
+-- type-of value
+
+────────────────────
++ do after-loop
+
+=? if !value
+for at-turn in 0 .. < 2
+    . next = at-turn + 1
+-- type-of value
+
+────────────────────
++ do after-call
+
+=? if !value
+touch()
+-- type-of value
+
+────────────────────
++ do after-assertion
+    - given Int
+
+=? if !value
+?! Panic("negative")
+    if given < 0
+-- type-of value
+
+────────────────────
++ do after-leaving
+    - given Int
+
+=? if !value
+if given < 0
+    touch()
+    =
+-- type-of value
+
+────────────────────
++ do after-local
+    - given Int
+
+=? if !value
+. sum = given + 1
+sum = sum * 2
+-- type-of value
+
+────────────────────
++ do touch
+
+count += 1
+
+:----
+
+print
+[TypeInfo Optional'I64]
+[TypeInfo Optional'I64]
+[TypeInfo Optional'I64]
+[TypeInfo I64]
+[TypeInfo I64]
+[TypeInfo I64]
+;====
+:====
+# What a test found of a property is read as what it holds until something ends it.
+
+. holder = Holder()
+holder.after-print()
+holder.after-loop()
+holder.after-call()
+holder.after-assertion(1)
+holder.after-leaving(1)
+holder.after-local(2)
+holder.after-store()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value Int? = 0
++ count Int = 0
+
+────────────────────
++ do after-print
+
+=? if !value
+-- "print"
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-loop
+
+=? if !value
+for at-turn in 0 .. < 2
+    . next = at-turn + 1
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-call
+
+=? if !value
+touch()
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-assertion
+    - given Int
+
+=? if !value
+?! Panic("negative")
+    if given < 0
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-leaving
+    - given Int
+
+=? if !value
+if given < 0
+    touch()
+    =
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-local
+    - given Int
+
+=? if !value
+. sum = given + 1
+sum = sum * 2
+. read = value ?? 9
+-- read
+
+────────────────────
++ do after-store
+
+=? if !value
+count = 1
+. read = value ?? 9
+-- read
+
+────────────────────
++ do touch
+
+count += 1
+
+:----
+
+print
+0
+0
+0
+9
+9
+9
+9
+;====
+:====
+# What a test found of a field of a tuple read through a local holds past a loop, a print and a call.
+
+. holder = Holder([1, 2])
+if holder.items
+    for item in holder.items
+        -- item
+    for item in holder.items
+        -- item
+    -- ",".join("$each" in holder.items)
+    -- ",".join("$each" in holder.items)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Tuple
+
++ items [Int]? = null
+
+:----
+1
+2
+1
+2
+1,2
+1,2
+;====
+:====
+# A field of a tuple read through a local that a test found to hold one case of a union is read
+# as what the case holds, past a call too.
+
+. shaped = Shaped(Shape.circle(2.0), Event.click(3, 4))
+if shaped.shape is .circle
+    touch()
+    -- shaped.shape + 1.0
+if shaped.event is .click
+    touch()
+    -- shaped.event.x + shaped.event.y
+
+━━━━━━━━━━━━━━━━━━━━
++ do touch
+
+-- "touch"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shaped is Tuple
+
++ shape Shape
++ event Event
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| circle(radius Float)
+| square(side Float)
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| click(x Int, y Int)
+| key(String)
+
+:----
+touch
+3
+touch
+7
+;====
+:====
+# An assignment to a property leaves it as it is declared, and one to another property named alone leaves it as the test found it.
+
+. holder = Holder()
+holder.after-other-property()
+holder.after-adding()
+holder.after-own()
+holder.after-receiver()
+holder.after-null()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value Int? = 0
++ count Int = 0
+
+────────────────────
++ do after-other-property
+
+=? if !value
+count = 1
+-- type-of value
+
+────────────────────
++ do after-adding
+
+=? if !value
+count += 1
+-- type-of value
+
+────────────────────
++ do after-own
+
+=? if !value
+value = 4
+-- type-of value
+
+────────────────────
++ do after-null
+
+=? if !value
+value = null
+-- type-of value
+
+────────────────────
++ do after-receiver
+
+=? if !value
+this.value = 4
+-- type-of value
+
+:----
+
+[TypeInfo I64]
+[TypeInfo I64]
+[TypeInfo Optional'I64]
+[TypeInfo Optional'I64]
+[TypeInfo Optional'I64]
+;====
+:====
+# A local that a closure assigns keeps what is known of it until a call.
+
+. value Int?
+value = 7
+. clear = => do
+    value = null
+-- type-of value
+. noop = => 1
+noop()
+-- value ?? 0
+clear()
+-- value ?? 0
+
+:----
+
+[TypeInfo I64]
+7
+0
+;====
+:====
+# A call of a closure that assigns a narrowed local ends what a test found.
+
+. value Int?
+value = maybe()
+. clear = => do
+    value = null
+if value
+    -- value + 1
+    clear()
+    -- value ?? -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe Int?
+
+= 7
+
+:----
+
+8
+-1
+;====
+:====
+# A closure that assigns another local leaves a narrowed one as it was.
+
+. count = 5
+. held Int? = count
+. grow = => do
+    count += 1
+if held
+    grow()
+    -- held + count
+
+:----
+
+11
+;====
+:====
+# `is~` of a list and a list of another item answers whether the value converts.
+
+-- [1,2,3] is~ List'Float
+-- [1,2,3] is~ List'Int
+-- [1,2,3] is~ List'String
+-- [1.5] is~ List'Int
+. list = [1, 2, 3]
+-- list is~ List'Float
+-- list is~ List'Int
+-- 1 is~ Float
+-- 1 is~ Int
+
+:----
+
+true
+true
+true
+true
+true
+true
+true
+true
+;====
+:====
+# `is`, `is!` and `is~` between classes derived from one another and between lists.
+
+. a A = B()
+-- a is B
+-- a is C
+-- a is A
+. b = B()
+-- b is A
+-- b is B
+-- b is! A
+-- b is! B
+. list = [1, 2]
+-- list is List'Int
+-- list is! List'Float
+-- list is~ List'Float
+-- list is List'A
+
+━━━━━━━━━━━━━━━━━━━━
++ A
+
+━━━━━━━━━━━━━━━━━━━━
++ B is A
+
+━━━━━━━━━━━━━━━━━━━━
++ C is A
+
+:----
+
+true
+false
+true
+true
+true
+false
+true
+true
+false
+true
+false
+;====
+:====
+# What a call ended of a property stays ended after a test of another property.
+
+. holder = Holder()
+holder.retest()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ first Int? = 0
++ second Int? = 1
++ count Int = 0
+
+────────────────────
++ do retest
+
+=? if !first
+touch()
+=? if !second
+. second-type = type-of second
+. first-type = type-of first
+-- second-type
+-- first-type
+
+────────────────────
++ do touch
+
+count += 1
+
+:----
+
+[TypeInfo I64]
+[TypeInfo Optional'I64]
+;====
+:====
+# A property tested before a method call on it stays narrowed for the receiver when an argument calls a function
+
+. holder = Holder()
+-- holder.depth()
+holder.node = Node()
+-- holder.depth()
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ n Int = 4
+
+────────────────────
++ plus Int
+    - k Int
+
+n + k
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ node Node?
+
+────────────────────
++ depth Int
+
+|? node
+    node.plus(seven())
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
++ seven Int
+
+7
+
+:----
+
+0
+11
+;====
+:====
+# A property stored in a local is no longer narrowed by the test before the store
+
+. holder = Holder()
+holder.node = Node()
+holder.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ n Int = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ node Node?
+
+────────────────────
++ do show
+
+=? if !node
+-- type-of node
+. kept = node
+-- type-of node
+-- type-of kept
+
+:----
+
+[TypeInfo Node]
+[TypeInfo Optional'Node]
+[TypeInfo Optional'Node]
+;====
+:====
+# A property known to hold a value keeps it in an assignment that adds to a property of it.
+
+. r = Recorder()
+r.chunk = Chunk()
+r.push()
+-- r.chunk!.items.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Chunk
+
++ items [I32]
+
+━━━━━━━━━━━━━━━━━━━━
++ Recorder
+
++ chunk Chunk?
+
+────────────────────
++ do push
+
+if chunk
+    chunk.items += next()
+
+━━━━━━━━━━━━━━━━━━━━
++ next I32
+
+3
+
+:----
+
+1
+;====
+:====
+# A local an `if` leaves present through a match whose other arms return is present after it.
+
+-- read(null, 4) ?? 0
+-- read(Box(7), 4) ?? 0
+-- read(null, 0) ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do read U32?
+    - given Box?
+    - size U32 = 0
+
+. value = given
+if !value
+    do match size
+        |= 0
+            = null
+        ??
+            value = Box(size)
+= value.size
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ size U32
+
+────────────────────
++ This
+    - size U32
+
+:----
+
+4
+7
+0
+;====
+:====
+# Reading a field of a tuple by a constant index keeps what a test found of a property.
+
+-- Snap(7).find((1, 7))
+-- Snap(7).find((1, 3))
+-- Snap(null).find((1, 7))
+
+━━━━━━━━━━━━━━━━━━━━
++ Snap
+
+_ primary-id U64?
+
+────────────────────
++ This
+    - primary-id
+
+────────────────────
++ find String
+    - pair (Index, U64)
+
+if primary-id && pair[1] == primary-id then "found ${pair[0]}" else "none"
+
+:----
+
+found 1
+none
+none
+;====
+:====
+# Arithmetic between the test of a property and its read keeps what the test found: dividing
+# calls nothing.
+
+. doc = Doc()
+-- doc.fill()
+
+━━━━━━━━━━━━━━━━━━━━
++ Doc
+
+_ name String? = "abcdef"
+_ buffer U32[] = U32[6]
+
+────────────────────
++ do fill Size
+
+=? 0 if !name
+. capacity = buffer.size / 3
+= capacity + name.length
+
+:----
+
+8
+;====
+:====
+# `is` with a base of a case's class narrows a union to that case: inside the test, a caught
+# error reads as its case, which casts up to the base.
+
+for text in ["good", "bad"]
+    . read = catch parse(text)
+    if read is Error
+        -- "error: ${(read as Error).message}"
+    else
+        -- "value: ${(read as Doc).name}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Doc
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ ParseError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse Doc ?! ParseError
+    - text String
+
+?! ParseError("cannot read $text")
+    if text == "bad"
+= Doc(text)
+
+:----
+
+value: good
+error: cannot read bad
+;====
+:====
+# A test for a class derived from the class of a union's case leaves the case on its false
+# edge, since a value of the case may be of another class.
+
+-- describe(0)
+-- describe(1)
+-- describe(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Special is Error
+
+────────────────────
++ This
+    - text String
+
+message = text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pick I64 ?! Error
+    - n I64
+
+?! Special("special")
+    if n == 1
+?! Error("plain")
+    if n == 2
+= n + 10
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe String
+    - n I64
+
+. result = catch pick(n)
+if result is Special
+    = "special ${(result as Special).message}"
+if result is Error
+    = "error ${(result as Error).message}"
+= "value ${result as I64}"
+
+:----
+value 10
+special special
+error plain
+;====
+:====
+# A property a conditional tests again after a call holds a value in the branch that finds one,
+# though the call ended what an earlier test found of it.
+
+. holder = Holder()
+holder.name = "four"
+-- holder.measure()
+holder.name = null
+-- holder.measure()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name String?
+
+────────────────────
++ This
+
+────────────────────
++ do measure Size
+
+=? 0 if !name
+. count = twice(1)
+= if name then name.length + count else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ twice Size
+    - value Size
+
+value * 2
+
+:----
+6
+0
+;====
+:====
+# A test of a value for a case of a union named alone calls nothing, so what a test found of a
+# property holds past it.
+
+Holder().run(Shape.circle(1.0))
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value Int? = 0
+
+────────────────────
++ do run
+    - shape Shape
+
+=? if !value
+. round = shape is .circle
+. kind = type-of value
+-- kind
+-- round
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| circle(radius Float)
+| square(side Float)
+
+:----
+[TypeInfo I64]
+true
+;====
+:====
+# A float `min` or `max` of the math module is answered in place, with no call, so what a test
+# found of a property holds past it.
+
+/math
+
+. holder = Holder()
+holder.maximum = 2.0
+-- holder.bounded(5.0)
+-- holder.bounded(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ maximum F64?
+
+────────────────────
++ This
+
+────────────────────
++ do bounded F64
+    - candidate F64
+
+= if maximum then max(min(candidate, 9.0), maximum) else candidate
+
+:----
+5
+2
+;====
+:====
+# A row of a table read at an index is read in place, with no call, so what a test found of a
+# property holds past it.
+
+/core/table
+
+. holder = Holder()
+holder.name = "four"
+-- holder.measure(0)
+-- holder.measure(1)
+holder.name = null
+-- holder.measure(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name String?
++ points Table'Point = Table'Point(2) • with Point(each as I32, 0)
+
+────────────────────
++ This
+
+────────────────────
++ do measure Size
+    - at Size
+
+=? 0 if !name
+if points[at].x == 0
+    = name.length
+= 1
+
+:----
+4
+1
+0
+;====
+:====
+# A force of an optional the flow does not know to hold a value may panic, which ends what is
+# known of properties; a property read after it is forced again.
+
+. holder = Holder()
+holder.name = "four"
+holder.other = "ab"
+-- holder.measure()
+holder.name = null
+-- holder.measure()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name String?
++ other String?
+
+────────────────────
++ This
+
+────────────────────
++ do measure Size
+
+=? 0 if !name
+. given = other!
+= name!.length + given.length
+
+:----
+6
+0
+;====
+:====
+# A local declared with the type its value already has is taken as it is, with no test that may
+# panic, so what a test found of a property holds past it.
+
+. holder = Holder()
+holder.name = "four"
+-- holder.measure()
+holder.name = null
+-- holder.measure()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name String?
+
+────────────────────
++ This
+
+────────────────────
++ do measure I64
+
+=? 0 if !name
+. extra I64 = 2i64
+= (name.length as I64) + extra
+
+:----
+6
+0
+;====
+:====
+# A read of a lazy property calls for its value, which ends what a test found of a property.
+
+. holder = Holder()
+holder.name = "four"
+-- holder.measure()
+
+━━━━━━━━━━━━━━━━━━━━
++ Helper
+
++ count Size = 2
+
+────────────────────
++ This
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name String?
+_ helper := Helper()
+
+────────────────────
++ This
+
+────────────────────
++ do measure Size
+
+=? 0 if !name
+. found = helper.count
+= name.length + found
+
+:----
+%crash
+
+Exception: Property "length" is read from String?, which may be null; unwrap it first with ! or ?.
+<no file:28>
+    = name.length + found
+      ^^^^^^^^^^^
+;====
+:====
+# A condition reads an array's items by integer index, not as fields of a tuple.
+
+. values = U64[4]
+values[2] = 5
+if values[0] || values[2]
+    -- values[2]
+
+:----
+
+5
+;====
+
+:====
+# A map-filter stage reads its item as the union case its condition narrowed it to.
+
+. parts = List'Part()
+parts += Leaf("a")
+parts += Twig(2)
+parts += Leaf("b")
+for leaf in leaves(parts)
+    -- leaf.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ Twig
+
++ size Int
+
+────────────────────
++ This
+    - size
+
+━━━━━━━━━━━━━━━━━━━━
++ Part is Union
+
+| Leaf
+| Twig
+
+━━━━━━━━━━━━━━━━━━━━
++ leaves [Leaf]
+    - parts [Part]
+
+** parts
+?*> each as Leaf if each is Leaf
+|> List
+
+:----
+
+a
+b
+;====
+
+:====
+# A property written without a type is narrowed by a test as one with its type is.
+
+. holder = Holder()
+-- holder.has-paths()
+-- holder.has-tracked-paths()
+
+━━━━━━━━━━━━━━━━━━━━
++ Change
+
++ paths = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ source Change? = Change()
++ change = source
++ tracked = #source
+
+────────────────────
++ do has-paths Bool
+
+= change && change.paths > 0
+
+────────────────────
++ do has-tracked-paths Bool
+
+= tracked && tracked.paths > 0
+
+:----
+
+true
+true
+;====
+:====
+# A narrowed optional compared with null, alone and as the condition of a value
+
+-- described("a/b")
+-- described("ab")
+-- tail("a/b")
+-- tail("ab")
+
+━━━━━━━━━━━━━━━━━━━━
++ do described String
+    - path String
+
+. slash = path.find("/")
+if slash != null
+    = "${slash != null} ${slash == null} ${null != slash}"
+= "${slash != null} ${slash == null}"
+
+━━━━━━━━━━━━━━━━━━━━
++ tail String
+    - path String
+
+if slash != null && name.length > 0 then name else "none"
+
+.. slash = path.find("/")
+.. name = if slash != null then path[slash + 1 ...] else path
+
+:----
+
+true false true
+false true
+b
+none
+;====
+:====
+# A property tested after `value if` tests another property, read again after a call
+
+. holder = Holder()
+-- holder.moved()
+holder.drag = Kind.shape
+-- holder.moved()
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is Union
+
+| shape
+| move
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ count Int?
++ drag = Kind.move
+
+────────────────────
++ do placed Int
+
+= 1
+
+────────────────────
++ do moved String
+
+. counted = count + 1 if count
+if drag == Kind.shape
+    = "shape ${placed()} ${counted ?? 0}"
+= "move ${drag == Kind.move} ${counted ?? 0}"
+
+:----
+
+move true 0
+shape 1 0
+;====
+:====
+# A narrowed optional property that holds a callable object is called as the object it holds.
+
+. holder = Holder()
+holder.action = Action()
+holder.fire()
+
+━━━━━━━━━━━━━━━━━━━━
++ Action
+
+────────────────────
++ do this
+
+-- "fired"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ action Action?
+
+────────────────────
++ do fire
+
+if action
+    action()
+
+:----
+
+fired
+;====
+:====
+# An optional local assigned a lambda holds a function until it is assigned again.
+
+. action Getter'Int?
+action = => 7
+-- action()
+
+:----
+
+7
+;====

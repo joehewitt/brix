@@ -1,0 +1,71 @@
+`benchmark.meta description: Rebuilds a keyed dynamic collection after source replacement.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/tui/box
+/tui/text
+
+. row-count Size = 256
+. frame-count Size = 8
+. forward = make-items(row-count)
+. backward = reversed(forward)
+
+<Demo demo
+    for item in #items keyed by item.id
+        <TextBox = item.text
+
+. checksum Size = 0
+for frame in 0 .. < frame-count
+    if frame % 2 == 0
+        demo.items = backward
+    else
+        demo.items = forward
+
+    . region = demo.%first-child!
+    checksum += count-children(region)
+    checksum += (region.%first-child! as TextBox).text.length
+    checksum += (region.%last-child! as TextBox).text.length
+
+-- "bench-result tui/keyed-rebuild checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id String
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ items [RowData]
+
+━━━━━━━━━━━━━━━━━━━━
++ make-items [RowData]
+    - count Size
+
+RowData("id-$each", "row-$each") in 0 .. < count
+
+━━━━━━━━━━━━━━━━━━━━
++ do reversed [RowData]
+    - source [RowData]
+
+. items [RowData]
+. index = source.length
+while index > 0
+    index -= 1
+    items += source[index]
+= items
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children Size
+    - box Box
+
+. count Size = 0
+for child in box.children
+    count += 1
+= count

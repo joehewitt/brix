@@ -1,0 +1,82 @@
+./chat-theme
+/ai
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxCursor
+
+• chat-question • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-card-radius
+
+• chat-question-text • text:gui-strong-text-color
+    font-size = gui-body-font-size
+    font-weight = FontWeight.bold
+    line-spacing = 3
+
+• chat-question-context • text:gui-muted-text-color
+    font-size = gui-callout-font-size
+    line-spacing = 3
+
+• chat-choice
+    corner-radius = 6
+    cursor = CursorStyle.pointing-hand
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+• chat-choice-glyph • text:gui-muted-text-color
+    font-size = gui-callout-font-size
+
+• chat-choice-label • text:gui-strong-text-color
+    font-size = gui-callout-font-size
+    line-spacing = 3
+
+• chat-choice-detail • text:gui-muted-text-color
+    font-size = gui-callout-font-size
+    line-spacing = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatQuestionView is Box
+
++ question AIQuestion
++ event answering String
+
+────────────────────
+
+<This • chat-question flex-col px:14 pt:11 pb:8
+    <Text • chat-question-text
+        <Span
+            text = #question.text
+    if #question.context != null
+        <Text • chat-question-context mt:4
+            <Span
+                text = #question.context!
+    <Box • flex-col mt:8
+        for choice in #question.choices keyed by choice.label
+            <ChatChoiceView • chat-bare chat-choice px:8 py:6
+                choice = choice
+                action = => do answering <- choice.label
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatChoiceView is Button
+
++ choice AIQuestionChoice
+
+────────────────────
+
+<This
+    <Box (leading) • flex-row flex:1
+        <Label • chat-choice-glyph w:18
+            text = "→"
+        <Box • flex-col flex:1
+            <Text • chat-choice-label
+                <Span
+                    text = #choice.label
+            if #choice.detail != null
+                <Text • chat-choice-detail mt:2
+                    <Span
+                        text = #choice.detail!

@@ -1,0 +1,86 @@
+`benchmark.meta description: Strokes open line and curve paths with mixed caps and joins.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/stroke
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 220
+    . source = open-stroke-source(pass)
+    . stroked = stroke()
+        - source
+        - 3.0 + (pass % 9)
+        - .center
+        - stroke-join(pass)
+        - stroke-cap(pass)
+        - 5
+        - 0
+    checksum += source.count + path-score(stroked)
+
+-- "bench-result graphics/stroke-open-paths checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-stroke-source
+    - seed Int
+
+. base = seed as Float
+. path = Path()
+path.move-to(8 + (base % 9), 44 + (base % 17))
+for i in 0 .. < 7
+    . f = i as Float
+    path.line-to(20 + f * 18, 54 + sin((base + f * 1.7) * 0.34) * 28)
+
+path.cubic-curve-to()
+    - 150 + (base % 13)
+    - 18 + (base % 11)
+    - 180 - (base % 9)
+    - 118 - (base % 15)
+    - 212
+    - 62 + (base % 25)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ stroke-join
+    - seed Int
+
+|? kind == 0
+    .bevel-join-type
+|? kind == 1
+    .miter-join-type
+??
+    .round-join-type
+
+.. kind = seed % 3
+
+━━━━━━━━━━━━━━━━━━━━
+_ stroke-cap LineCap
+    - seed Int
+
+|? kind == 0
+    .butt
+|? kind == 1
+    .square
+??
+    .round
+
+.. kind = seed % 3
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score Size
+    - path Path
+
+|? !path.count
+    0
+??
+    path.count + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

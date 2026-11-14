@@ -1,0 +1,396 @@
+./box
+./events
+./keys
+./label
+./match-label
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./text-input
+./theme
+./virtual
+./window
+/core/intrinsics
+/core/markup
+/core/virtual
+/core/virtual-layout
+/data/fuzzy
+/graphics/point
+/graphics/primitives
+/math
+/stream/aggregate
+/ui/input
+/units
+
+_ palette-overscan-rows VirtualCoord = 3vcoord
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUIFocusRingStyle
+    using GUITextPaint
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+    using GUIVirtualRowStyle
+
+• Palette • bg:gui-glass-color text:gui-text-color p:10 w:498 h:338
+    window-material = gui-glass-material
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-popup-radius
+    shadow = gui-popup-shadow
+    placement = CenteredPlacement(56)
+    row-height = 25
+
+    • palette-field • bg:gui-glass-well-color text:gui-text-color h:28 px:8 mb:6
+        corner-radius = gui-control-radius
+
+    • palette-empty • text:gui-muted-text-color h:24 px:8
+
+    • palette-notice • text:gui-muted-text-color h:24 px:8 mt:6
+
+• PaletteRow • px:8 mb:1
+    corner-radius = gui-control-radius
+
+    when #is-highlighted
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+        • MatchLabelSpan
+            when #is-hit
+                • text:gui-accent-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ PaletteSource'Item is () [Item]
+    - query String
+
+━━━━━━━━━━━━━━━━━━━━
++ Palette'Item is Popup
+    using GUIVirtualRowStyle
+
+• This
+    focus-mode = FocusMode.inside
+
++ prompt = ""
++ empty-text = ""
++ notice = ""
++ query = ""
++ results [Item] = List'Item()
++ source PaletteSource'Item?
++ key-builder MarkupKeyBuilder'Item?
++ takes-keys [Key] = [Key.arrow-up, Key.arrow-down]
++ selected-index Size = 0
++ selected-item Item? = palette-item-at'Item(#results, #selected-index)
++ result-source := VirtualListSource'Item()
+
++ event chosen Item
+
+_ applied-query String?
+_ selected-key String?
+_ follows-selection = false
+_ is-live = false
+
+────────────────────
+
+<This • flex-col modal
+    outside-press-dismiss = true
+    outside-press-passes = false
+
+    <Box • palette-field flex-row
+        + <Box leading • flex-row
+        <TextInput search-input • flex:1
+            is-bare = true
+            placeholder = #prompt
+            passes-keys = #takes-keys
+        + <Box trailing • flex-row
+
+    if #results.length == 0 && #empty-text
+        <Label • palette-empty
+            text = #empty-text
+            align-y = Alignment.center
+
+    <VirtualRegion'Item rows • flex:1
+        source = result-source
+        virtual-layout = VerticalRowLayout()
+        overscan-rows = palette-overscan-rows
+
+        <PaletteRow'Item palette-row(row) - slot
+            palette = this
+            item = slot.#item
+            index = slot.#address as Size
+
+            + <Box row - palette-row PaletteRow'Item • flex-row flex:1
+
+    if #notice
+        <Label • palette-notice
+            text = #notice
+            align-y = Alignment.center
+
+    <KeyShortcut "Previous"
+        key = .arrow-up
+        discoverable = false
+        allow-while-input = true
+        action = => do move-selection(-1)
+    <KeyShortcut "Next"
+        key = .arrow-down
+        discoverable = false
+        allow-while-input = true
+        action = => do move-selection(1)
+    <KeyShortcut "First"
+        key = .home
+        discoverable = false
+        allow-while-input = true
+        action = => do select-first()
+    <KeyShortcut "Last"
+        key = .end
+        discoverable = false
+        allow-while-input = true
+        action = => do select-last()
+    <KeyShortcut "Page Up"
+        key = .page-up
+        discoverable = false
+        allow-while-input = true
+        action = => do move-selection-page(-1)
+    <KeyShortcut "Page Down"
+        key = .page-down
+        discoverable = false
+        allow-while-input = true
+        action = => do move-selection-page(1)
+    <KeyShortcut "Choose"
+        key = .enter
+        repeat = false
+        discoverable = false
+        allow-while-input = true
+        action = => do choose-selected()
+
+────────────────────
+for event on search-input.input
+
+query = event.text
+
+────────────────────
+whenever #query
+
+apply-query()
+
+────────────────────
+whenever #results
+
+show-results()
+
+╌╌╌╌╌╌╌╌╌╌ is Popup ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do show
+    - at PopupAnchor? = null
+
+reset()
+super.show(at)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+is-live = true
+show-results()
+
+────────────────────
++ do unmounted
+
+is-live = false
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do reset
+
+rewrite("")
+applied-query = null
+apply-query()
+
+────────────────────
++ do rewrite
+    - text String
+
+if search-input.text != text
+    search-input.replace-text(text)
+    search-input.select-range(text.length, text.length)
+if query != text
+    query = text
+
+────────────────────
++ do refresh
+
+. provider = source
+if provider
+    results = provider(query)
+
+────────────────────
++ do move-selection
+    - offset Int
+
+. count = results.length
+=? if count == 0
+. next = (selected-index as Int) + offset
+next = max(0, (min(next, (count as Int) - 1)))
+select(next)
+
+────────────────────
++ do move-selection-page
+    - direction Int
+
+move-selection(direction * page-row-count)
+
+────────────────────
++ do select-first
+
+select(0)
+
+────────────────────
++ do select-last
+
+. count = results.length
+if count > 0
+    select(count - 1)
+
+────────────────────
++ do select
+    - index Size
+
+=? if index >= results.length
+selected-index = index
+selected-key = key-of(results[index])
+follows-selection = true
+reveal-selection()
+
+────────────────────
++ do select-key
+    - key String
+
+selected-key = key
+follows-selection = true
+. index = index-of-key(key)
+if index != null
+    selected-index = index
+    reveal-selection()
+
+────────────────────
++ do choose-selected
+
+. index = selected-index
+=? if index >= results.length
+choose(results[index])
+
+────────────────────
++ do choose
+    - item Item
+
+dismiss(DismissReason.chosen)
+chosen <- item
+
+────────────────────
++ do row-at-index PaletteRow'Item?
+    - index Size
+
+=? if !is-live
+for position in 0 .. < rows.pool-size
+    . root = rows.root-at(position)
+    if root && root.slot.is-bound && root.slot.address == (index as I64)
+        = match? root.%first-child
+            | row PaletteRow'Item
+                row
+= null
+
+────────────────────
+_ get page-row-count Int
+
+|? count < 1
+    1
+??
+    count
+
+.. count = floor(rows.content-bounds.height / rows.row-extent) as Int
+
+────────────────────
+_ do apply-query
+
+=? if applied-query == query
+applied-query = query
+notice = ""
+selected-index = 0
+selected-key = null
+follows-selection = false
+if is-live
+    . ignored = rows.scroll-to(Point(0, 0))
+refresh()
+
+────────────────────
+_ do show-results
+
+result-source.replace(results)
+. count = results.length
+. index = selected-index
+if follows-selection && selected-key
+    index = index-of-key(selected-key) ?? index
+if count == 0
+    index = 0
+else if index >= count
+    index = count - 1
+if selected-index != index
+    selected-index = index
+selected-key = key-of(results[index]) if index < count
+if follows-selection
+    reveal-selection()
+
+────────────────────
+_ index-of-key Size?
+    - key String
+
+first(each in 0 .. < results.length when key-of(results[each]) == key)
+
+────────────────────
+_ key-of String?
+    - item Item
+
+builder(item) if builder
+
+.. builder = key-builder
+
+────────────────────
+_ do reveal-selection
+
+=? if !is-live
+. ignored = rows.scroll-to-address(selected-index, ScrollAlignment.nearest)
+
+━━━━━━━━━━━━━━━━━━━━
++ PaletteRow'Item is Box
+
++ palette Palette'Item?
++ item Item?
++ index Size = 0
++ is-highlighted = #palette?.#selected-index == #index
+
+• This • flex-row
+    focus-mode = FocusMode.press
+
+────────────────────
+for event on click
+
+. owner = palette
+. picked = item
+if owner && picked
+    owner.choose(picked)
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
+_ palette-item-at'Item Item?
+    - items [Item]
+    - index Size
+
+items[index] if index < items.length

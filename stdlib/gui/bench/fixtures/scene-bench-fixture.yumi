@@ -1,0 +1,1885 @@
+/YuGC/YuGC.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/gradient
+/graphics/matrix
+/graphics/outline
+/graphics/point
+/graphics/primitives
+/graphics/shader
+/graphics/shader-filters
+/graphics/shapes
+/graphics/style
+/graphics/text
+/graphics/vector
+/gui/box
+/gui/label
+/gui/layout
+/gui/metal
+/gui/position
+/gui/primitives
+/gui/scene
+/gui/shape
+/gui/vector-image
+/math
+/stream/sort
+/time/timer
+/units
+
+_ scene-bench-cells [SceneBenchCell]
+_ scene-bench-shader-cache [Shader]
+_ scene-bench-text-cells [SceneBenchTextCell]
+_ scene-bench-vector-images [SceneBenchSharedVectorImage]
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-scene-leaf-mutation
+
+. checksum Size
+checksum += run-scene-leaf-scale(1000)
+checksum += run-scene-leaf-scale(10000)
+-- "bench-result gui/scene-leaf-mutation checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-scene-leaf-scale Size
+    - count Size
+
+. root = build-scene-bench-grid(count)
+. scene = DisplayScene(2, white)
+. surface = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. target = scene-bench-cells[scene-bench-cells.length / 2]
+do use surface
+    scene.build(root)
+    scene.commit()
+    scene.frame(surface)
+    scene.reset-frame-counters()
+    for frame in 0 .. < 30
+        target.color = if frame % 2 == 0 then red else blue
+        target.invalidate-paint()
+        . started = monotonic-time-nanoseconds()
+        scene.update(root)
+        scene.commit()
+        scene.frame(surface)
+        elapsed += monotonic-time-nanoseconds() - started
+
+    target.color = green
+    target.invalidate-paint()
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    . bytes0 = C:yumiGCRequestedByteCount()
+    scene.update(root)
+    scene.commit()
+    scene.frame(surface)
+    . objects = C:yumiGCAllocatedObjectCount() - objects0
+    . bytes = C:yumiGCRequestedByteCount() - bytes0
+
+    if count == 1000
+        //gui.bench.scene.leaf-p50-ns-1k += scene-percentile(elapsed, 50)
+        //gui.bench.scene.leaf-chunks-rebuilt-1k += scene.chunks-rebuilt
+        //gui.bench.scene.leaf-chunks-drawn-1k += scene.chunks-drawn
+        //gui.bench.scene.leaf-objects-1k += objects
+        //gui.bench.scene.leaf-bytes-1k += bytes
+    else
+        //gui.bench.scene.leaf-p50-ns-10k += scene-percentile(elapsed, 50)
+        //gui.bench.scene.leaf-chunks-rebuilt-10k += scene.chunks-rebuilt
+        //gui.bench.scene.leaf-chunks-drawn-10k += scene.chunks-drawn
+        //gui.bench.scene.leaf-objects-10k += objects
+        //gui.bench.scene.leaf-bytes-10k += bytes
+
+. result = scene.chunks-rebuilt + scene.chunks-drawn + scene.items-drawn
+scene.close()
+release-scene-bench-root(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-scene-scroll-10k
+
+. root = SceneBenchRoot()
+. viewport = SceneBenchScroll()
+markup-append(root, viewport)
+for index in 0 .. < 10000
+    markup-append(viewport, SceneBenchScrollCell())
+mount-scene-bench-root(root, Rect(0, 0, 1200, 320))
+
+. scene = DisplayScene(2, white)
+. surface = RasterCanvas(1200, 320, 2, white)
+. elapsed [U64]
+do use surface
+    scene.build(root)
+    scene.commit()
+    scene.frame(surface)
+    scene.reset-frame-counters()
+    . offset F64 = 1000
+    for frame in 0 .. < 30
+        offset += 10
+        viewport.scroll-to(Point(0, offset))
+        . started = monotonic-time-nanoseconds()
+        scene.update(root)
+        scene.commit()
+        scene.frame(surface)
+        elapsed += monotonic-time-nanoseconds() - started
+
+    offset += 10
+    viewport.scroll-to(Point(0, offset))
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    . bytes0 = C:yumiGCRequestedByteCount()
+    scene.update(root)
+    . objects-after-update = C:yumiGCAllocatedObjectCount()
+    scene.commit()
+    . objects-after-commit = C:yumiGCAllocatedObjectCount()
+    scene.frame(surface)
+    . objects-after-replay = C:yumiGCAllocatedObjectCount()
+    . objects = objects-after-replay - objects0
+    . bytes = C:yumiGCRequestedByteCount() - bytes0
+    //gui.bench.scene.scroll-p50-ns += scene-percentile(elapsed, 50)
+    //gui.bench.scene.scroll-p99-ns += scene-percentile(elapsed, 99)
+    //gui.bench.scene.scroll-chunks-rebuilt += scene.chunks-rebuilt
+    //gui.bench.scene.scroll-chunks-drawn += scene.chunks-drawn
+    //gui.bench.scene.scroll-objects += objects
+    //gui.bench.scene.scroll-bytes += bytes
+    //gui.bench.scene.scroll-update-objects += objects-after-update - objects0
+    //gui.bench.scene.scroll-commit-objects += objects-after-commit - objects-after-update
+    //gui.bench.scene.scroll-replay-objects += objects-after-replay - objects-after-commit
+
+-- "bench-result gui/scene-scroll-10k checksum=${scene.chunks-drawn + scene.cull-tests}"
+scene.close()
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-scene-idle
+
+. root = build-scene-bench-grid(10000)
+. scene = DisplayScene(2, white)
+. surface = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+do use surface
+    scene.build(root)
+    scene.commit()
+    scene.frame(surface)
+    . replays0 = scene.frames-replayed
+    . draws0 = scene.chunks-drawn
+    for frame in 0 .. < 1000
+        . started = monotonic-time-nanoseconds()
+        scene.frame(surface)
+        elapsed += monotonic-time-nanoseconds() - started
+    //gui.bench.scene.idle-p50-ns += scene-percentile(elapsed, 50)
+    //gui.bench.scene.idle-replays += scene.frames-replayed - replays0
+    //gui.bench.scene.idle-draws += scene.chunks-drawn - draws0
+
+-- "bench-result gui/scene-idle checksum=${scene.frames-idle}"
+scene.close()
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-scene-settled-frame
+
+. checksum Size
+checksum += run-scene-settled-scale(1000)
+checksum += run-scene-settled-scale(10000)
+-- "bench-result gui/scene-settled-frame checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-scene-settled-scale Size
+    - count Size
+
+. root = build-scene-bench-grid(count)
+. scene = DisplayScene(2, white)
+. surface = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+do use surface
+    scene.build(root)
+    scene.commit()
+    scene.frame(surface)
+    scene.reset-frame-counters()
+    for frame in 0 .. < 30
+        scene.add-damage(root.bounds)
+        . started = monotonic-time-nanoseconds()
+        scene.frame(surface)
+        elapsed += monotonic-time-nanoseconds() - started
+    if count == 1000
+        //gui.bench.scene.settled-p50-ns-1k += scene-percentile(elapsed, 50)
+    else
+        //gui.bench.scene.settled-p50-ns-10k += scene-percentile(elapsed, 50)
+
+. result = scene.items-drawn
+scene.close()
+release-scene-bench-root(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-scene-build
+
+. root = build-scene-bench-grid(10000)
+. scene = DisplayScene(2, white)
+. started = monotonic-time-nanoseconds()
+scene.build(root)
+scene.commit()
+. elapsed = monotonic-time-nanoseconds() - started
+//gui.bench.scene.build-ns-10k += elapsed
+//gui.bench.scene.build-boxes-10k += scene.boxes-visited
+//gui.bench.scene.build-items-10k += scene.items-built
+-- "bench-result gui/scene-build checksum=${scene.boxes-visited + scene.items-built}"
+scene.close()
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-frame-anatomy-1k
+
+. checksum = run-metal-frame-anatomy(1000)
+-- "bench-result gui/metal-frame-anatomy-1k checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-frame-anatomy-10k
+
+. checksum = run-metal-frame-anatomy(10000)
+-- "bench-result gui/metal-frame-anatomy-10k checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-metal-frame-anatomy Size
+    - count Size
+
+. root = build-scene-bench-grid(count)
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. idle [U64]
+. result Size
+elapsed.reserve(30)
+gpu.reserve(30)
+idle.reserve(1000)
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+
+        renderer.finish()
+        renderer.mark-renderer-allocations()
+        scene.add-damage(root.bounds)
+        . objects0 = C:yumiGCAllocatedObjectCount()
+        scene.frame-metal(renderer)
+        . objects = C:yumiGCAllocatedObjectCount() - objects0
+        renderer.finish()
+
+        . commits = renderer.commits
+        for frame in 0 .. < 1000
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            idle += monotonic-time-nanoseconds() - started
+        . idle-commits = renderer.commits - commits
+
+        root.paint(reference)
+        . diff = renderer.diff(reference)
+        //gui.bench.metal.frame-count += count
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-renderer-allocations += renderer.renderer-allocations
+        //gui.bench.metal.frame-gc-objects += objects
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        //gui.bench.metal.idle-p50-ns += scene-percentile(idle, 50)
+        //gui.bench.metal.idle-commits += idle-commits
+        result = (renderer.packet-bytes as Size) + (renderer.draw-calls as Size)
+        result += scene.items-encoded
+
+scene.close()
+release-scene-bench-root(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-leaf-mutation
+
+. checksum Size
+checksum += run-metal-leaf-scale(1000)
+checksum += run-metal-leaf-scale(10000)
+-- "bench-result gui/metal-leaf-mutation checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-metal-leaf-scale Size
+    - count Size
+
+. root = build-scene-bench-grid(count)
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. target = scene-bench-cells[scene-bench-cells.length / 2]
+. elapsed [U64]
+elapsed.reserve(30)
+. maximum-chunks Size
+. maximum-cull-tests Size
+. result Size
+do use renderer
+    scene.build(root)
+    scene.commit()
+    scene.frame-metal(renderer)
+    for warmup in 0 .. < 6
+        target.color = if warmup % 2 == 0 then red else blue
+        target.invalidate-paint()
+        scene.update(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+    renderer.finish()
+
+    for frame in 0 .. < 30
+        target.color = if frame % 2 == 0 then red else blue
+        target.invalidate-paint()
+        scene.reset-frame-counters()
+        . started = monotonic-time-nanoseconds()
+        scene.update(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        elapsed += monotonic-time-nanoseconds() - started
+        if scene.chunks-encoded > maximum-chunks
+            maximum-chunks = scene.chunks-encoded
+        if scene.cull-tests > maximum-cull-tests
+            maximum-cull-tests = scene.cull-tests
+
+    renderer.finish()
+    renderer.mark-renderer-allocations()
+    target.color = green
+    target.invalidate-paint()
+    scene.reset-frame-counters()
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    scene.update(root)
+    scene.commit()
+    scene.frame-metal(renderer)
+    . objects = C:yumiGCAllocatedObjectCount() - objects0
+    renderer.finish()
+    if count == 1000
+        //gui.bench.metal.leaf-p50-ns-1k += scene-percentile(elapsed, 50)
+        //gui.bench.metal.leaf-chunks-1k += maximum-chunks
+        //gui.bench.metal.leaf-cull-tests-1k += maximum-cull-tests
+        //gui.bench.metal.leaf-objects-1k += objects
+        //gui.bench.metal.leaf-renderer-allocations-1k += renderer.renderer-allocations
+    else
+        //gui.bench.metal.leaf-p50-ns-10k += scene-percentile(elapsed, 50)
+        //gui.bench.metal.leaf-chunks-10k += maximum-chunks
+        //gui.bench.metal.leaf-cull-tests-10k += maximum-cull-tests
+        //gui.bench.metal.leaf-objects-10k += objects
+        //gui.bench.metal.leaf-renderer-allocations-10k += renderer.renderer-allocations
+    result = maximum-chunks + maximum-cull-tests + scene.items-encoded
+
+scene.close()
+release-scene-bench-root(root)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-scroll-10k
+
+. root = SceneBenchRoot()
+. viewport = SceneBenchScroll()
+markup-append(root, viewport)
+for index in 0 .. < 10000
+    markup-append(viewport, SceneBenchScrollCell())
+mount-scene-bench-root(root, Rect(0, 0, 1200, 320))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 320, 2, white)
+. reference = RasterCanvas(1200, 320, 2, white)
+. elapsed [U64]
+elapsed.reserve(30)
+. offset F64 = 1000
+. maximum-chunks Size
+. rebuilt-chunks Size
+do use renderer
+    do use reference
+        viewport.scroll-to(Point(0, offset))
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            offset += 10
+            viewport.scroll-to(Point(0, offset))
+            scene.update(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+        renderer.finish()
+
+        for frame in 0 .. < 30
+            offset += 10
+            viewport.scroll-to(Point(0, offset))
+            scene.reset-frame-counters()
+            . started = monotonic-time-nanoseconds()
+            scene.update(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            if scene.chunks-encoded > maximum-chunks
+                maximum-chunks = scene.chunks-encoded
+            rebuilt-chunks += scene.chunks-rebuilt
+
+        renderer.finish()
+        renderer.mark-renderer-allocations()
+        offset += 10
+        viewport.scroll-to(Point(0, offset))
+        scene.reset-frame-counters()
+        . objects0 = C:yumiGCAllocatedObjectCount()
+        scene.update(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        . objects = C:yumiGCAllocatedObjectCount() - objects0
+        renderer.finish()
+        reference.erase(white)
+        root.paint(reference)
+        . diff = renderer.diff(reference)
+        //gui.bench.metal.scroll-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.scroll-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.scroll-chunks += maximum-chunks
+        //gui.bench.metal.scroll-rebuilt-chunks += rebuilt-chunks
+        //gui.bench.metal.scroll-objects += objects
+        //gui.bench.metal.scroll-renderer-allocations += renderer.renderer-allocations
+        //gui.bench.metal.scroll-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.scroll-max-delta += diff.maximum-channel-delta as U64
+
+. checksum = maximum-chunks + rebuilt-chunks + scene.cull-tests
+-- "bench-result gui/metal-scroll-10k checksum=$checksum"
+scene.close()
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-text-mixed
+
+. root = build-scene-bench-text(61, false)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+elapsed.reserve(30)
+. objects U64
+. diff MetalPixelDiff
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+        renderer.finish()
+
+        renderer.mark-renderer-allocations()
+        scene.add-damage(root.bounds)
+        . objects0 = C:yumiGCAllocatedObjectCount()
+        scene.frame-metal(renderer)
+        objects = C:yumiGCAllocatedObjectCount() - objects0
+        renderer.finish()
+        root.paint(reference)
+        diff = renderer.diff(reference)
+
+        //gui.gpu.glyph-atlas-bytes += renderer.glyph-atlas-bytes
+        //gui.gpu.glyph-atlas-uploads += renderer.glyph-atlas-uploads
+        //gui.gpu.glyph-atlas-evictions += renderer.glyph-atlas-evictions
+        //gui.bench.metal.text-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.text-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.text-glyph-atlas-bytes += renderer.glyph-atlas-bytes
+        //gui.bench.metal.text-glyph-uploads += renderer.glyph-atlas-uploads
+        //gui.bench.metal.text-glyph-evictions += renderer.glyph-atlas-evictions
+        //gui.bench.metal.text-run-count += renderer.run-count
+        //gui.bench.metal.text-width-delta-micros += text-width-delta
+            .. text-width-delta = round(renderer.maximum-run-width-delta * 1000000) as U64
+        //gui.bench.metal.text-diff-ppm += round(diff.differing-ratio * 1000000) as U64
+        //gui.bench.metal.text-renderer-allocations += renderer.renderer-allocations
+        //gui.bench.metal.text-gc-objects += objects
+        checksum = renderer.run-count
+        checksum += diff.differing-pixels as Size
+        scene.close()
+
+-- "bench-result gui/metal-text-mixed checksum=$checksum"
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-atlas-pressure
+
+. renderer = MetalOffscreenRenderer(1200, 900, 1, white)
+. reference = RasterCanvas(1200, 900, 1, white)
+. roots [SceneBenchRoot]
+. scenes [DisplayScene]
+. probe-items [DisplayItem]
+. probe-clips [Rect]
+. probe-palette [U32]
+. probe-shapes [DisplayShape]
+. probe-handle DisplayGlyphHandle?
+. upload-total I64
+. fallback-total I64
+. diff MetalPixelDiff
+. checksum Size
+do use renderer
+    do use reference
+        for group in 0 .. < 4
+            . root = build-scene-bench-text(16, true, group * 16)
+            . scene = DisplayScene(1, white, renderer)
+            roots += root
+            scenes += scene
+            scene.build(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+            upload-total += renderer.glyph-atlas-uploads
+            fallback-total += renderer.fallback-runs
+        probe-handle = renderer.register-display-glyph
+            - scene-bench-text-cells[scene-bench-text-cells.length - 1].text-layout
+        ?! Panic("Unable to retain pressure-probe glyph run")
+            if !probe-handle
+        for frame in 0 .. < 80
+            . group = frame % 4
+            . subpixel = ((frame % 4) as F32) * 0.25
+            probe-items.clear()
+            probe-items += DisplayItem
+                - 2
+                - 2
+                - 0
+                - subpixel
+                - (group * 225) as F32
+                - 1200
+                - 225
+                - 0
+                - probe-handle.index
+                - probe-handle.generation
+                - pack-rgba8(RGBA("#1f2937"))
+                - 0
+            renderer.begin-packet()
+            renderer.append-items
+                - probe-items.buffer-pointer
+                - probe-items.length
+                - probe-clips.buffer-pointer
+                - probe-clips.length
+                - probe-palette.buffer-pointer
+                - probe-palette.length
+                - probe-shapes.buffer-pointer
+                - probe-shapes.length
+            . probe-frame = renderer.commit-packet
+                - 1
+                - Rect(0, (group * 225) as F64, 1200, 225)
+            ?! Panic("Unable to commit pressure-probe packet")
+                if probe-frame < 0
+            upload-total += renderer.glyph-atlas-uploads
+            fallback-total += renderer.fallback-runs
+            scenes[group].add-damage(roots[group].bounds)
+            scenes[group].frame-metal(renderer)
+            upload-total += renderer.glyph-atlas-uploads
+            fallback-total += renderer.fallback-runs
+        renderer.finish()
+
+        for group in 0 .. < 4
+            scenes[group].add-damage(roots[group].bounds)
+            scenes[group].frame-metal(renderer)
+            upload-total += renderer.glyph-atlas-uploads
+            fallback-total += renderer.fallback-runs
+        renderer.finish()
+        for root in roots
+            root.paint(reference)
+        diff = renderer.diff(reference)
+        renderer.release-display-glyph(probe-handle)
+
+        //gui.gpu.glyph-atlas-bytes += renderer.glyph-atlas-bytes
+        //gui.gpu.glyph-atlas-uploads += upload-total
+        //gui.gpu.glyph-atlas-evictions += renderer.glyph-atlas-evictions
+        //gui.bench.metal.pressure-glyph-atlas-bytes += renderer.glyph-atlas-bytes
+        //gui.bench.metal.pressure-glyph-uploads += upload-total
+        //gui.bench.metal.pressure-glyph-evictions += renderer.glyph-atlas-evictions
+        //gui.bench.metal.pressure-fallback-runs += fallback-total
+        //gui.bench.metal.pressure-run-count += renderer.run-count
+        //gui.bench.metal.pressure-diff-ppm += round(diff.differing-ratio * 1000000) as U64
+        checksum = upload-total
+        checksum += renderer.glyph-atlas-evictions as Size
+        for scene in scenes
+            scene.close()
+
+-- "bench-result gui/metal-atlas-pressure checksum=$checksum"
+for root in roots
+    release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-vector-shared
+
+. root = build-scene-bench-vectors(1000)
+. renderer = MetalOffscreenRenderer(1200, 240, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(1200, 240, 2, white)
+. elapsed [U64]
+elapsed.reserve(30)
+. diff MetalPixelDiff
+. initial-draw-calls I64
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+        renderer.finish()
+        renderer.mark-renderer-allocations()
+        scene.add-damage(root.bounds)
+        scene.frame-metal(renderer)
+        renderer.finish()
+        initial-draw-calls = renderer.draw-calls
+        root.paint(reference)
+        diff = renderer.diff(reference)
+
+        //gui.bench.metal.vector-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.vector-draw-calls += initial-draw-calls
+        //gui.bench.metal.vector-diff-ppm += round(diff.differing-ratio * 1000000) as U64
+        //gui.bench.metal.vector-renderer-allocations += renderer.renderer-allocations
+        checksum = initial-draw-calls
+        scene.close()
+
+-- "bench-result gui/metal-vector-shared checksum=$checksum"
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-shapes-1k
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 20
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 50
+        . cell = SceneBenchShapeCell()
+        cell.is-callout = (row-index + cell-index) % 4 == 0
+        markup-append(row, cell)
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference)
+        //gui.bench.metal.frame-count += 1000
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        ?! Panic("Shaped boxes fell back to opaque tiles")
+            if scene.opaque-demotions != 0
+        ?! Panic("Shaped boxes skipped Metal operations")
+            if renderer.skipped-ops != 0
+        checksum = scene.items-encoded + (renderer.draw-calls as Size)
+scene.close()
+release-scene-bench-root(root)
+-- "bench-result gui/metal-shapes-1k checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-gradients
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchGradientCell(row-index * 25 + cell-index))
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference, 2)
+        . gross = renderer.diff(reference, 10)
+        //gui.bench.metal.frame-count += 625
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        ?! Panic("Gradients fell back to opaque tiles")
+            if scene.opaque-demotions != 0 || scene.metal-tile-fallbacks != 0
+        ?! Panic("Gradients skipped Metal operations")
+            if renderer.skipped-ops != 0
+        ?! Panic("Gradients differ from CoreGraphics beyond GR-D13")
+            if gross.differing-pixels * 10000 > gross.pixel-count
+        checksum = scene.items-encoded + (renderer.draw-calls as Size)
+scene.close()
+release-scene-bench-root(root)
+-- "bench-result gui/metal-gradients checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-fill-shaders
+
+. root = SceneBenchRoot()
+. cells [SceneBenchShaderCell]
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        . cell = SceneBenchShaderCell(row-index * 25 + cell-index)
+        cells += cell
+        markup-append(row, cell)
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. animated [U64]
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference, 2)
+        . gross = renderer.diff(reference, 10)
+        //gui.bench.metal.frame-count += 625
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        ?! Panic("Fill shaders fell back to opaque tiles")
+            if scene.opaque-demotions != 0 || scene.metal-tile-fallbacks != 0
+        ?! Panic("Fill shaders skipped Metal operations")
+            if renderer.skipped-ops != 0
+        ?! Panic("Fill shaders differ from CoreGraphics beyond GR-D13")
+            if gross.differing-pixels * 10000 > gross.pixel-count
+        checksum = scene.items-encoded + (renderer.draw-calls as Size)
+        for frame in 0 .. < 36
+            for cell in cells
+                cell.phase = (frame as F64) * 0.2
+                cell.invalidate-paint()
+            . started = monotonic-time-nanoseconds()
+            scene.update(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+            if frame >= 6
+                animated += monotonic-time-nanoseconds() - started
+            renderer.finish()
+        //gui.bench.metal.shader-anim-cpu-p50-ns += scene-percentile(animated, 50)
+        //gui.bench.metal.shader-anim-cpu-p99-ns += scene-percentile(animated, 99)
+        ?! Panic("Animated fill shaders skipped Metal operations")
+            if renderer.skipped-ops != 0
+scene.close()
+release-scene-bench-root(root)
+-- "bench-result gui/metal-fill-shaders checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-box-filters
+
+. root = SceneBenchRoot()
+. frame = SceneBenchFilterFrame()
+markup-append(root, frame)
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(frame, row)
+    for cell-index in 0 .. < 25
+        . cell = SceneBenchGroundCell(row-index * 25 + cell-index)
+        if cell-index == row-index
+            cell.filters = [Pixelate(4)]
+        markup-append(row, cell)
+frame.filters = [CRT()]
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. animated [U64]
+. animated-gpu [U64]
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        for index in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference, 2)
+        . gross = renderer.diff(reference, 10)
+        //gui.bench.metal.frame-count += 625
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        ?! Panic("Box filters fell back to opaque tiles")
+            if scene.opaque-demotions != 0 || scene.metal-tile-fallbacks != 0
+        ?! Panic("Box filters skipped Metal operations")
+            if renderer.skipped-ops != 0
+        ?! Panic("Box filters differ from CoreGraphics beyond GR-D13")
+            if gross.differing-pixels * 10000 > gross.pixel-count
+        checksum = scene.items-encoded + (renderer.draw-calls as Size)
+        for index in 0 .. < 36
+            frame.filters = [CRT(0.08 + (index as F64) / 600)]
+            root.markup-batch-queue.checkpoint()
+            . started = monotonic-time-nanoseconds()
+            scene.update(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+            if index >= 6
+                animated += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if index >= 6 && renderer.gpu-nanos >= 0
+                animated-gpu += renderer.gpu-nanos as U64
+        //gui.bench.metal.filter-anim-cpu-p50-ns += scene-percentile(animated, 50)
+        //gui.bench.metal.filter-anim-cpu-p99-ns += scene-percentile(animated, 99)
+        //gui.bench.metal.filter-anim-gpu-p50-ns += scene-percentile(animated-gpu, 50)
+        ?! Panic("Animated box filters skipped Metal operations")
+            if renderer.skipped-ops != 0
+scene.close()
+release-scene-bench-root(root)
+-- "bench-result gui/metal-box-filters checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scene-bench-shaders
+
+if !scene-bench-shader-cache
+    scene-bench-shader-cache =
+        * Shader(scene-bench-rings-source())
+        * Shader(scene-bench-checker-source())
+        * Shader(scene-bench-plasma-source())
+        * Shader(scene-bench-vignette-source())
+= scene-bench-shader-cache
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-bench-rings-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float d = length(position - size * 0.5);"
+    * "    return float4(0.5 + 0.5 * sin(d * args[0] * 0.25 + args[1]), 0.4, 0.7, 1.0);"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-bench-checker-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float2 cell = floor((position + args[1]) / args[0]);"
+    * "    float on = fmod(abs(cell.x + cell.y), 2.0);"
+    * "    return float4(on, 0.6, 1.0 - on, 0.85);"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-bench-plasma-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float2 uv = position / size;"
+    * "    float v = sin(uv.x * 9.0 + args[1]) + sin(uv.y * 7.0 - args[1])"
+    * "        + sin((uv.x + uv.y) * args[0]);"
+    * "    return float4(0.5 + 0.5 * sin(v), 0.5 + 0.5 * cos(v), 0.8, 1.0);"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-bench-vignette-source
+
+"\n".join
+    * "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    * "    float2 uv = position / size - 0.5;"
+    * "    float edge = smoothstep(0.1, 0.7, length(uv) + 0.05 * sin(args[1]));"
+    * "    return float4(args[0] / 9.0, 0.3, 0.6, edge);"
+    * "}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-images
+
+. photo = scene-bench-photo(36, 24)
+. small = scene-bench-photo(24, 16)
+. icon = RasterCanvas(16, 16, 2, transparent)
+icon.fill-color = RGBA(0, 0, 0, 1)
+icon.oval(Rect(1, 1, 14, 14))
+icon.fill-color = RGBA(0, 0, 0, 0.4)
+icon.rect(Rect(4, 4, 8, 8))
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchImageCell(row-index * 25 + cell-index, photo, small, icon))
+run-metal-paint-grid("metal-images", root)
+photo.close()
+small.close()
+icon.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-masks
+
+. mask = RasterCanvas(36, 24, 2, transparent)
+mask.fill-gradient
+    - Rect(0, 0, 36, 24)
+    - linear-gradient(Point(0, 0), Point(36, 0), RGBA(0, 0, 0, 1), RGBA(0, 0, 0, 0.15))
+mask.fill-color = RGBA(0, 0, 0, 1)
+mask.oval(Rect(18, 2, 16, 16))
+. photo = scene-bench-photo(36, 24)
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchMaskCell(row-index * 25 + cell-index, mask, photo))
+run-metal-paint-grid("metal-masks", root)
+mask.close()
+photo.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-layer-masks
+
+. photo = scene-bench-photo(36, 24)
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchLayerMaskCell(row-index * 25 + cell-index, photo))
+run-metal-paint-grid("metal-layer-masks", root)
+photo.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-path-shadows
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchShadowCell(row-index * 25 + cell-index))
+run-metal-paint-grid("metal-path-shadows", root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-layer-blur
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchBlurCell(row-index * 25 + cell-index))
+run-metal-paint-grid("metal-layer-blur", root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-backdrop-blur
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        markup-append(row, SceneBenchGroundCell(row-index * 25 + cell-index))
+. panels [SceneBenchBackdropPanel] =
+    * SceneBenchBackdropPanel(Rect(0, 0, 1200, 56), 0, 30, RGBA(1, 1, 1, 0.55), 1%%)
+    * SceneBenchBackdropPanel(Rect(0, 56, 240, 844), 0, 40, RGBA(0.95, 0.96, 0.98, 0.5), 1%%)
+    * SceneBenchBackdropPanel(Rect(320, 120, 360, 260), 18, 24, RGBA(1, 1, 1, 0.35), 1%%)
+    * SceneBenchBackdropPanel(Rect(740, 200, 380, 300), 28, 60, RGBA(0.1, 0.12, 0.2, 0.3), 1%%)
+    * SceneBenchBackdropPanel(Rect(360, 470, 300, 220), 22, 16, RGBA(1, 1, 1, 0.4), 0.8%%)
+    * SceneBenchBackdropPanel(Rect(760, 560, 200, 60), 30, 3, RGBA(1, 1, 1, 0.5), 1%%)
+    * SceneBenchBackdropPanel(Rect(980, 620, 180, 240), 14, 120, RGBA(0, 0, 0, 0.25), 1%%)
+for panel in panels
+    markup-append(root, panel)
+run-metal-paint-grid("metal-backdrop-blur", root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-metal-blend-modes
+
+. photo = scene-bench-photo(36, 24)
+. modes [BlendMode] = <* code in 0 .. < 28
+    (code as I32) as BlendMode
+. steady-modes [BlendMode] = <* mode in modes when !scene-bench-blend-amplifies(mode)
+run-metal-paint-grid("metal-blend-modes", scene-bench-blend-grid(modes, photo), false)
+check-metal-parity("metal-blend-modes", scene-bench-blend-grid(steady-modes, photo))
+photo.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-bench-blend-amplifies
+    - mode BlendMode
+
+is-dodge-or-burn || mode == BlendMode.hue || mode == BlendMode.saturation
+
+.. is-dodge-or-burn = mode == BlendMode.color-dodge || mode == BlendMode.color-burn
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scene-bench-blend-grid
+    - modes [BlendMode]
+    - photo RasterCanvas
+
+. root = SceneBenchRoot()
+for row-index in 0 .. < 25
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 25
+        . index = row-index * 25 + cell-index
+        . mode = modes[index % modes.length]
+        markup-append(row, SceneBenchBlendCell(mode, (index / modes.length) % 3, photo))
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scene-bench-photo
+    - width F64
+    - height F64
+
+. photo = RasterCanvas(width as I32, height as I32, 2, RGBA(0.95, 0.85, 0.4, 1))
+photo.fill-gradient
+    - Rect(0, 0, width, height)
+    - linear-gradient
+        - Point(0, 0)
+        - Point(width, height)
+        - RGBA(0.9, 0.3, 0.2, 1)
+        - RGBA(0.2, 0.4, 0.9, 0.7)
+photo.fill-color = RGBA(1, 1, 1, 1)
+photo.oval(Rect(width * 0.2, height * 0.2, height * 0.6, height * 0.6))
+= photo
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-metal-paint-grid
+    - name String
+    - root SceneBenchRoot
+    - gated Bool = true
+
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+. elapsed [U64]
+. gpu [U64]
+. checksum Size
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for warmup in 0 .. < 6
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        scene.metal-tile-fallbacks = 0
+        for frame in 0 .. < 30
+            scene.add-damage(root.bounds)
+            . started = monotonic-time-nanoseconds()
+            scene.frame-metal(renderer)
+            elapsed += monotonic-time-nanoseconds() - started
+            renderer.finish()
+            if renderer.gpu-nanos >= 0
+                gpu += renderer.gpu-nanos as U64
+        root.paint(reference)
+        . diff = renderer.diff(reference, 2)
+        . gross = renderer.diff(reference, 10)
+        //gui.bench.metal.frame-count += 625
+        //gui.bench.metal.frame-cpu-p50-ns += scene-percentile(elapsed, 50)
+        //gui.bench.metal.frame-cpu-p99-ns += scene-percentile(elapsed, 99)
+        //gui.bench.metal.frame-gpu-p50-ns += scene-percentile(gpu, 50)
+        //gui.bench.metal.frame-draw-calls += renderer.draw-calls as U64
+        //gui.bench.metal.frame-pipeline-switches += renderer.pipeline-switches as U64
+        //gui.bench.metal.frame-packet-bytes += renderer.packet-bytes as U64
+        //gui.bench.metal.frame-differing-pixels += diff.differing-pixels as U64
+        //gui.bench.metal.frame-max-delta += diff.maximum-channel-delta as U64
+        ?! Panic("${name} fell back to opaque tiles")
+            if scene.opaque-demotions != 0 || scene.metal-tile-fallbacks != 0
+        ?! Panic("${name} skipped Metal operations")
+            if renderer.skipped-ops != 0
+        ?! Panic("${name} differs from CoreGraphics beyond GR-D13")
+            if gated && gross.differing-pixels * 10000 > gross.pixel-count
+        checksum = scene.items-encoded + (renderer.draw-calls as Size)
+scene.close()
+release-scene-bench-root(root)
+-- "bench-result gui/${name} checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do check-metal-parity
+    - name String
+    - root SceneBenchRoot
+
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. reference = RasterCanvas(1200, 900, 2, white)
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        renderer.finish()
+        scene.metal-tile-fallbacks = 0
+        for warmup in 0 .. < 3
+            scene.add-damage(root.bounds)
+            scene.frame-metal(renderer)
+        renderer.finish()
+        root.paint(reference)
+        . gross = renderer.diff(reference, 10)
+        . fell-back = scene.opaque-demotions != 0 || scene.metal-tile-fallbacks != 0
+        ?! Panic("${name} falls back or skips Metal operations")
+            if fell-back || renderer.skipped-ops != 0
+        ?! Panic("${name} differs from CoreGraphics beyond GR-D13")
+            if gross.differing-pixels * 10000 > gross.pixel-count
+scene.close()
+release-scene-bench-root(root)
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-percentile U64
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index]
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-scene-bench-grid SceneBenchRoot
+    - count Size
+
+scene-bench-cells = List'SceneBenchCell()
+. root = SceneBenchRoot()
+. rows = count / 100
+for row-index in 0 .. < rows
+    . row = SceneBenchRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 100
+        . cell = SceneBenchCell()
+        scene-bench-cells += cell
+        markup-append(row, cell)
+mount-scene-bench-root(root, Rect(0, 0, 1200, 900))
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-scene-bench-text
+    - count Size
+    - pressure Bool
+    - pressure-offset Size = 0
+
+scene-bench-text-cells = List'SceneBenchTextCell()
+. root = SceneBenchRoot()
+for index in 0 .. < count
+    . absolute-index = index + pressure-offset
+    . font-size F64
+    . text String
+    . maximum-width F64 = 1200
+    if pressure
+        font-size = 16.0 + absolute-index * 4
+        maximum-width = 2000
+        text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !@#$%^&*()[]{}<>?"
+    else
+        font-size = 11.0 + index % 5
+        text = "Retained Metal label $index: quick brown fox 0123456789"
+    . cell = SceneBenchTextCell(text, font-size, maximum-width)
+    scene-bench-text-cells += cell
+    markup-append(root, cell)
+. dimensions = Rect(0, 0, 1200, 900)
+if pressure
+    . group = pressure-offset / 16
+    dimensions = Rect(0, (group * 225) as F64, 1200, 225)
+mount-scene-bench-root(root, dimensions)
+for index in 0 .. < scene-bench-text-cells.length
+    if pressure
+        . absolute-index = index + pressure-offset
+        . group = absolute-index / 16
+        . group-index = absolute-index % 16
+        . column = group-index % 4
+        . row = group-index / 4
+        . cell-bounds = Rect
+            - (column * 300) as F64
+            - (group * 225 + row * 56) as F64
+            - 300
+            - 56
+        scene-bench-text-cells[index].layout(cell-bounds)
+    else
+        scene-bench-text-cells[index].layout(Rect(0, (index * 14) as F64, 1200, 14))
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-scene-bench-vectors SceneBenchRoot
+    - count Size
+
+scene-bench-vector-images = List'SceneBenchSharedVectorImage()
+. root = SceneBenchRoot()
+for index in 0 .. < count
+    . image = SceneBenchSharedVectorImage()
+    scene-bench-vector-images += image
+    markup-append(root, image)
+mount-scene-bench-root(root, Rect(0, 0, 1200, 240))
+for index in 0 .. < scene-bench-vector-images.length
+    . column = index % 50
+    . row = index / 50
+    . image-bounds = Rect
+        - (column * 24) as F64
+        - (row * 12) as F64
+        - 24
+        - 12
+    scene-bench-vector-images[index].layout(image-bounds)
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mount-scene-bench-root
+    - root SceneBenchRoot
+    - rect Rect
+
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(rect)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do release-scene-bench-root
+    - root SceneBenchRoot
+
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchRow is Box
+
+• This
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchCell is Box
+
++ color = blue
+
+• This
+    min-width = SizeSpec.coord(11)
+    max-width = SizeSpec.coord(11)
+    min-height = SizeSpec.coord(8)
+    max-height = SizeSpec.coord(8)
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.fill-color = color
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchShapeCell is Box
+
++ is-callout = false
+
+• This
+    min-width = SizeSpec.coord(16)
+    max-width = SizeSpec.coord(16)
+    min-height = SizeSpec.coord(12)
+    max-height = SizeSpec.coord(12)
+    margin-right = 6
+    margin-bottom = 8
+    background-color = "#ffffff"
+    border-color = "#c9ccd6"
+    border-width = 1
+    corner-radius = 4
+    shadow = Shadow(RGBA("#0f172a40"), 6, 0, 2)
+    shape = CalloutShape(3, Side.top) if #is-callout
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchGradientCell is Box
+
++ variant Size
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. center = rect.center
+. stops [GradientStop] =
+    * GradientStop(0%%, RGBA(0.9, 0.3, 0.2, 1))
+    * GradientStop(0.45%%, RGBA(0.95, 0.85, 0.3, 1))
+    * GradientStop(1%%, RGBA(0.2, 0.4, 0.9, 1))
+do match variant % 6
+    |= 0
+        canvas.fill-gradient
+            - rect
+            - linear-gradient
+                - rect.top-center
+                - rect.bottom-center
+                - RGBA(0.96, 0.96, 0.94, 1)
+                - RGBA(0.35, 0.37, 0.45, 1)
+    |= 1
+        canvas.fill-gradient
+            - rect
+            - LinearGradient(Point(rect.x, rect.y), Point(rect.right, rect.bottom), stops)
+    |= 2
+        canvas.fill-gradient
+            - rect
+            - radial-gradient(center, 22, RGBA(1, 1, 0.85, 1), RGBA(0.45, 0.15, 0.35, 1))
+    |= 3
+        canvas.fill-gradient
+            - rect
+            - RadialGradient(Point(rect.x + 10, rect.y + 8), 2, center, 24, stops)
+    |= 4
+        . angle = (variant % 7) * 0.9rad
+        canvas.fill-gradient(rect, ConicGradient(center, angle, stops))
+    ??
+        do use canvas.saved-state
+            canvas.transform(Matrix().rotate(0.3rad, center))
+            canvas.fill-gradient
+                - rect.pad(-4)
+                - linear-gradient
+                    - rect.left-center
+                    - rect.right-center
+                    - RGBA(0.1, 0.6, 0.5, 0.2)
+                    - RGBA(0.1, 0.6, 0.5, 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchShaderCell is Box
+
++ variant Size
++ phase F64
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. shader = scene-bench-shaders()[(variant / 25) % 4]
+. args [F64] = [4 + ((variant % 5) as F64), phase + ((variant % 7) as F64)]
+if variant % 5 == 4
+    do use canvas.saved-state
+        canvas.transform(Matrix().rotate(0.3rad, rect.center))
+        canvas.fill-shader(rect.pad(-4), shader, args)
+else
+    canvas.fill-shader(rect, shader, args)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchImageCell is Box
+
++ variant Size
++ photo RasterCanvas
++ small RasterCanvas
++ icon RasterCanvas
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+    - photo
+    - small
+    - icon
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. center = rect.center
+do match variant % 6
+    |= 0
+        canvas.draw-image(photo, Rect(rect.x + 2, rect.y + 2, 36, 24))
+    |= 1
+        canvas.draw-image(small, rect)
+    |= 2
+        canvas.fill-color = RGBA(0.2, 0.5, 0.3, 1)
+        canvas.draw-image(icon, Rect(center.x - 10, center.y - 10, 20, 20), true)
+    |= 3
+        do use canvas.saved-state
+            canvas.transform(Matrix().rotate(0.3rad, center))
+            canvas.draw-image(small, Rect(center.x - 16, center.y - 10, 32, 20))
+    |= 4
+        do use canvas.saved-state
+            canvas.transform(Matrix().rotate(-0.5rad, center))
+            canvas.fill-color = RGBA(0.7, 0.2, 0.4, 1)
+            canvas.draw-image(icon, Rect(center.x - 10, center.y - 10, 20, 20), true)
+    ??
+        canvas.draw-image(photo, Rect(rect.x + 5, rect.y + 4, 30, 20))
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchMaskCell is Box
+
++ variant Size
++ mask RasterCanvas
++ photo RasterCanvas
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+    - mask
+    - photo
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. kind = variant % 4
+. area = Rect(rect.x + 2, rect.y + 2, 36, 24)
+do use canvas.saved-state
+    if kind == 3
+        canvas.transform(Matrix().rotate(0.3rad, rect.center))
+    canvas.clip-mask(mask, area)
+    do match kind
+        |= 0
+            canvas.fill-color = RGBA(0.2, 0.45, 0.85, 1)
+            canvas.rect(rect)
+        |= 1
+            canvas.fill-gradient
+                - rect
+                - linear-gradient
+                    - rect.top-left
+                    - rect.bottom-right
+                    - RGBA(0.9, 0.3, 0.2, 1)
+                    - RGBA(0.2, 0.4, 0.9, 1)
+        |= 2
+            canvas.draw-image(photo, area)
+        ??
+            canvas.fill-color = RGBA(0.7, 0.2, 0.4, 1)
+            canvas.oval(rect)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchLayerMaskCell is Box
+
++ variant Size
++ photo RasterCanvas
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+    - photo
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. kind = variant % 4
+. black = RGBA(0, 0, 0, 1)
+do use canvas.saved-state
+    if kind == 3
+        canvas.transform(Matrix().rotate(0.3rad, rect.center))
+    canvas.begin-mask()
+    if kind == 1
+        canvas.fill-gradient
+            - rect
+            - linear-gradient(rect.left-center, rect.right-center, black, RGBA(0, 0, 0, 0))
+    else
+        canvas.fill-color = black
+        canvas.oval(Rect(rect.x + 2, rect.y + 2, 30, 22))
+        canvas.fill-color = RGBA(0, 0, 0, 0.4)
+        canvas.oval(Rect(rect.x + 16, rect.y + 6, 22, 18))
+    canvas.end-mask()
+    do match kind
+        |= 0
+            canvas.fill-color = RGBA(0.2, 0.45, 0.85, 1)
+            canvas.rect(rect)
+            canvas.fill-color = RGBA(0.9, 0.3, 0.2, 0.6)
+            canvas.oval(Rect(rect.x + 8, rect.y + 4, 26, 20))
+        |= 1
+            canvas.draw-image(photo, Rect(rect.x + 2, rect.y + 2, 36, 24))
+        |= 2
+            canvas.fill-gradient
+                - rect
+                - linear-gradient
+                    - rect.top-left
+                    - rect.bottom-right
+                    - RGBA(0.9, 0.3, 0.2, 1)
+                    - RGBA(0.2, 0.4, 0.9, 1)
+        ??
+            canvas.fill-color = RGBA(0.7, 0.2, 0.4, 1)
+            canvas.oval(rect)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchBlendCell is Box
+
++ mode BlendMode
++ kind Size
++ photo RasterCanvas
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - mode
+    - kind
+    - photo
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+canvas.fill-color = RGBA(0.2, 0.45, 0.85, 1)
+canvas.rect(Rect(rect.x, rect.y, rect.width * 0.5, rect.height))
+canvas.fill-color = RGBA(0.95, 0.75, 0.2, 0.6)
+canvas.oval(Rect(rect.x + 10, rect.y + 2, 24, 16))
+canvas.fill-gradient
+    - Rect(rect.x, rect.y + 19, rect.width, 9)
+    - linear-gradient
+        - rect.left-center
+        - rect.right-center
+        - RGBA(0.1, 0.8, 0.3, 1)
+        - RGBA(0.8, 0.1, 0.6, 0.3)
+do use canvas.saved-state
+    canvas.clip(rect)
+    canvas.blend-mode = mode
+    do match kind
+        |= 0
+            canvas.fill-color = RGBA(0.9, 0.3, 0.2, 0.7)
+            canvas.oval(Rect(rect.x + 2, rect.y + 6, 20, 18))
+            canvas.fill-color = RGBA(0.3, 0.8, 0.4, 0.8)
+            canvas.rect(Rect(rect.x + 20, rect.y + 1, 18, 10))
+            canvas.draw-image(photo, Rect(rect.x + 20, rect.y + 13, 18, 12))
+        |= 1
+            canvas.transform(Matrix().rotate(0.4rad, rect.center))
+            canvas.fill-color = RGBA(0.6, 0.2, 0.8, 0.9)
+            canvas.begin()
+            canvas.move(rect.x + 4, rect.y + 6)
+            canvas.line(rect.x + 36, rect.y + 9)
+            canvas.line(rect.x + 28, rect.y + 25)
+            canvas.line(rect.x + 7, rect.y + 20)
+            canvas.end(true)
+        ??
+            canvas.begin-opacity(0.85%%)
+            canvas.fill-color = RGBA(0.9, 0.3, 0.2, 1)
+            canvas.oval(Rect(rect.x + 4, rect.y + 4, 18, 18))
+            canvas.fill-color = RGBA(0.2, 0.7, 0.9, 0.6)
+            canvas.rect(Rect(rect.x + 16, rect.y + 8, 18, 14))
+            canvas.end-opacity()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchShadowCell is Box
+
++ variant Size
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. kind = variant % 4
+. hue = ((variant % 9) as F64) / 9
+canvas.fill-color = RGBA(0.92, 0.9, 0.85, 1)
+canvas.rect(Rect(rect.x, rect.y + 20, rect.width, 8))
+do use canvas.saved-state
+    do match kind
+        |= 0
+            scene-bench-shadow-wedge(canvas, rect)
+            canvas.shadow-path(Shadow(RGBA(0, 0, 0, 0.5), 3, 2, 3))
+        |= 1
+            canvas.begin()
+            canvas.outline-path(Outline(Rect(rect.x + 6, rect.y + 4, 26, 16), 6))
+            canvas.shadow-path(Shadow(RGBA(0.1, 0.1, 0.3, 0.6), 6, 0, 3))
+        |= 2
+            canvas.transform(Matrix().rotate(0.3rad, rect.center))
+            scene-bench-shadow-wedge(canvas, rect)
+            canvas.shadow-path(Shadow(RGBA(0, 0, 0, 0.45), 4, 3, 2))
+        ??
+            canvas.clip-outline(Outline(rect, 8))
+            canvas.begin-opacity(0.8%%)
+            scene-bench-shadow-wedge(canvas, rect)
+            canvas.shadow-path(Shadow(RGBA(0.2, 0, 0.1, 0.7), 2, 1, 1))
+            canvas.end-opacity()
+    canvas.fill-color = RGBA(0.3 + hue * 0.6, 0.55, 0.9 - hue * 0.5, 1)
+    if kind == 1
+        canvas.outline(Outline(Rect(rect.x + 6, rect.y + 4, 26, 16), 6))
+    else
+        scene-bench-shadow-wedge(canvas, rect)
+        canvas.end()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchBlurCell is Box
+
++ variant Size
+
+• This • w:40 h:28 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. kind = variant % 4
+. hue = ((variant % 9) as F64) / 9
+canvas.fill-color = RGBA(0.92, 0.9, 0.85, 1)
+canvas.rect(Rect(rect.x, rect.y + 20, rect.width, 8))
+do use canvas.saved-state
+    do match? kind
+        |= 1
+            canvas.transform(Matrix().rotate(0.3rad, rect.center))
+        |= 2
+            canvas.clip-outline(Outline(rect, 8))
+        |= 3
+            canvas.begin-opacity(0.8%%)
+    canvas.begin-blur(1.5 + (kind as F64))
+    canvas.fill-color = RGBA(0.3 + hue * 0.6, 0.55, 0.9 - hue * 0.5, 1)
+    scene-bench-shadow-wedge(canvas, rect)
+    canvas.end()
+    canvas.fill-color = RGBA(0.95, 0.4, 0.2, 0.85)
+    canvas.oval(Rect(rect.x + 20, rect.y + 10, 14, 12))
+    canvas.end-blur()
+    if kind == 3
+        canvas.end-opacity()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchGroundCell is Box
+
++ variant Size
+
+• This • w:44 h:32 mr:4 mb:4
+
+────────────────────
++ This
+    - variant
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. rect = bounds
+. hue = ((variant % 11) as F64) / 11
+canvas.fill-color = RGBA(0.98, 0.97, 0.94, 1)
+canvas.rect(rect)
+for stripe in 0 .. < 4
+    canvas.fill-color = RGBA(0.9 - hue * 0.6, 0.3 + hue * 0.5, 0.35 + (stripe as F64) * 0.15, 1)
+    canvas.rect(Rect(rect.x + (stripe * 11) as F64, rect.y, 5, rect.height))
+canvas.fill-color = RGBA(0.1, 0.12 + hue * 0.3, 0.2, 1)
+canvas.oval(Rect(rect.x + 12, rect.y + 6, 20, 20))
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchFilterFrame is Box
+
+• This
+    layout = flow-col
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchBackdropPanel is Box
+
+• This • absolute
+    anchor = Anchor.parent
+
+────────────────────
++ This
+    - frame Rect
+    - radius Length
+    - blur Length
+    - tint RGBA
+    - fade Ratio
+
+left = PositionOffset.coord(frame.x)
+top = PositionOffset.coord(frame.y)
+min-width = SizeSpec.coord(frame.width)
+max-width = SizeSpec.coord(frame.width)
+min-height = SizeSpec.coord(frame.height)
+max-height = SizeSpec.coord(frame.height)
+corner-radius = radius
+backdrop-blur = blur
+background-color = tint
+opacity = fade
+if radius > 0
+    shadow = Shadow(RGBA(0, 0, 0, 0.3), 12, 0, 4)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scene-bench-shadow-wedge
+    - canvas Canvas
+    - rect Rect
+
+canvas.begin()
+canvas.move(rect.x + 5, rect.y + 5)
+canvas.line(rect.x + 33, rect.y + 8)
+canvas.line(rect.x + 24, rect.y + 22)
+canvas.line(rect.x + 9, rect.y + 18)
+canvas.enclose()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchTextCell is Box
+
++ text-layout TextLayout
+
+────────────────────
++ This
+    - text String
+    - font-size F64
+    - maximum-width F64
+
+.. text-layout = TextLayout(text, Font("Helvetica", font-size, FontWeight.regular), maximum-width)
+
+────────────────────
++ do close
+
+text-layout.close()
+super.close()
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+canvas.push()
+canvas.clip(bounds)
+canvas.text-color = RGBA("#1f2937")
+canvas.draw-text(text-layout, bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchSharedVectorImage is VectorImage
+
+────────────────────
++ This
+
+view-box = Rect(0, 0, 24, 12)
+
+────────────────────
+
+<This
+    fill = "#2563eb"
+    stroke = Stroke.none
+
+    <Circle
+        center = Point(12, 6)
+        radius = 5
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchScroll is Box
+
+• This
+    layout = flow-col
+    overflow-y = ScrollOverflow.auto
+    scroll-indicator-y = ScrollIndicatorVisibility.hidden
+    min-width = SizeSpec.coord(1200)
+    max-width = SizeSpec.coord(1200)
+    min-height = SizeSpec.coord(320)
+    max-height = SizeSpec.coord(320)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SceneBenchScrollCell is Box
+
+• This • bg:"#8080e6"
+    min-width = SizeSpec.coord(1200)
+    max-width = SizeSpec.coord(1200)
+    min-height = SizeSpec.coord(8)
+    max-height = SizeSpec.coord(8)

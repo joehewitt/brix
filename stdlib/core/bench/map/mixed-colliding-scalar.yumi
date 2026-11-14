@@ -1,0 +1,45 @@
+`benchmark.meta description: Mixed Map operations with fully colliding scalar keys at 16 and 1,024 entries.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core
+
+. checksum = exercise-collisions(16, 500)
+checksum += exercise-collisions(1024, 4)
+
+-- "bench-result map/mixed-colliding-scalar checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do exercise-collisions U64
+    - count Size
+    - repetitions Size
+
+. checksum = 0u64
+for repetition in 0 .. < repetitions
+    . map = Map'CollisionKey'U64()
+    for index in 0 .. < count
+        map[CollisionKey(index as U64)] = index as U64
+    for index in 0 .. < count
+        checksum += map[CollisionKey(index as U64)]!
+    for index in 0 .. < count by 2
+        -= map[CollisionKey(index as U64)]
+    for index in 0 .. < count by 2
+        map[CollisionKey(index as U64)] = (index + 1) as U64
+    checksum += map.length as U64
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ CollisionKey is Struct
+    is Hashable
+
++ identity U64
+
+────────────────────
++ this == other CollisionKey
+
+identity == other.identity
+
+────────────────────
++ get hash Hash
+
+0u32

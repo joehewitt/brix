@@ -1,0 +1,1021 @@
+/os/file
+/time/duration
+
+_ poll-interval = 40ms
+_ batch-size Size = 4096
+_ file-magic U32 = 0x32504d59
+_ segment-magic U32 = 0x32475350
+_ transport-version U32 = 2
+_ minimum-header-size U64 = 88
+_ segment-header-size U64 = 64
+_ record-header-size U64 = 64
+
+━━━━━━━━━━━━━━━━━━━━
+_ RecordState is U32
+
+| empty
+| writing
+| committed
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceError is Error
+
+╌╌╌╌╌╌╌╌╌╌ is Error ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ to String
+
+message ?? "Invalid probe trace"
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceRecordType is U8
+
+| done = 0
+| declare-log = 1
+| declare-event = 2
+| declare-property = 3
+| declare-type = 4
+| system-log = 5
+| log = 6
+| event = 7
+| snapshot = 8
+| declare-log2 = 9
+| declare-key = 10
+| declare-counter = 11
+| counter = 12
+| declare-profile-metric = 13
+| profile-metric = 14
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSlotType is U8
+
+| none = 0
+| bool = 1
+| char = 2
+| int8 = 3
+| uint8 = 4
+| int16 = 5
+| uint16 = 6
+| int32 = 7
+| uint32 = 8
+| int64 = 9
+| uint64 = 10
+| float32 = 11
+| float64 = 12
+| string = 13
+| array = 14
+| object = 15
+| group = 16
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSiteKind is U8
+
+| log = 1
+| event = 2
+| counter = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceMetricKind is U8
+
+| counter = 1
+| timer = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSlot is (type TraceSlotType, class-type U16)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSite is Tuple
+
++ id U16
++ kind TraceSiteKind
++ key String
++ name String?
++ template String
++ module-name String
++ source-path String
++ line U32
++ slots [TraceSlot]
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceMetricSite is Tuple
+
++ id U16
++ kind TraceMetricKind
++ key String
++ module-name String
++ source-path String
++ line U32
++ object-type-id U16
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceTime is (seconds U64, nanoseconds U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceObject is (object-id U32, type-id U16)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceArray is Tuple
+
++ object-id U32
++ type-id U16
++ length U32
++ item-type U16
++ data Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceValue is Union
+
+| truth Bool
+| character Char
+| integer I64
+| unsigned U64
+| real F64
+| text String
+| object TraceObject
+| array TraceArray
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceRecord is Tuple
+
++ site TraceSite
++ object-id U32
++ object-type-id U16
++ values [TraceValue]
++ time TraceTime
++ sequence U64?
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceCounter is Tuple
+
++ site TraceSite
++ object-id U32
++ object-type-id U16
++ value U64
++ time TraceTime
++ sequence U64?
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceMetric is Tuple
+
++ site TraceMetricSite
++ value U64
++ total-ns U64
++ active-count U64
++ active-elapsed-ns U64
++ time TraceTime
++ sequence U64?
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSnapshot is (object-id U32, object-type-id U16, time TraceTime, sequence U64?)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceSystemLog is (text String, time TraceTime, sequence U64?)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceTypeName is (id U16, name String)
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceItem is Union
+
+| site TraceSite
+| metric-site TraceMetricSite
+| type-name TraceTypeName
+| key String
+| compiled
+| log TraceRecord
+| event TraceRecord
+| counter TraceCounter
+| metric TraceMetric
+| snapshot TraceSnapshot
+| system-log TraceSystemLog
+
+━━━━━━━━━━━━━━━━━━━━
+_ TraceHeader is Tuple
+
++ header-size U64
++ segment-size U64
++ segment-count U64
++ record-header-size U64
++ is-done Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ TraceSegment is (header-size U64, segment-size U64, reserve-cursor U64, sealed-cursor U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TracePending is Tuple
+
++ time TraceTime
++ payload Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
+_ TraceInProgress is (position U64, length U64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TraceCursor
+
++ data Byte[]
++ offset Size = 0
+
+────────────────────
++ This
+    - data Byte[]
+
+────────────────────
++ get has-more
+
+offset < data.size
+
+────────────────────
++ do read'Num Num ?! TraceError
+    - Num is Number
+
+. value = data.read'Num(offset, .little)
+?! TraceError("Probe record ends early at offset $offset")
+    if value == null
+offset += Num.size
+= value
+
+────────────────────
++ do u8 U8 ?! TraceError
+
+= read'U8()
+
+────────────────────
++ do u16 U16 ?! TraceError
+
+= read'U16()
+
+────────────────────
++ do u32 U32 ?! TraceError
+
+= read'U32()
+
+────────────────────
++ do u64 U64 ?! TraceError
+
+= read'U64()
+
+────────────────────
++ do bytes Byte[] ?! TraceError
+    - length Size
+
+?! TraceError("Probe record ends early at offset $offset")
+    if length > data.size - offset
+. slice = data[offset .. < offset + length]
+offset += length
+= slice
+
+────────────────────
++ do string String ?! TraceError
+
+. length = u32()
+?! TraceError("Probe record ends early at offset $offset")
+    if length > data.size - offset
+. text = data.slice-string(offset .. < offset + length)
+offset += length
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ TraceReader
+    is Closable
+
++ path String
++ follows Bool
++ is-done = false
++ advanced = false
++ sites [U16 = TraceSite]
++ metric-sites [U16 = TraceMetricSite]
+
+_ file File?
+_ segment-index U64
+_ segment-offset U64 = segment-header-size
+_ expected-sequence U64 = 1
+_ pending [U64 = TracePending]
+_ in-progress [U64 = TraceInProgress]
+_ has-head = false
+_ current-sequence U64?
+_ current-time = TraceTime(0, 0)
+_ items [TraceItem]
+
+────────────────────
++ This
+    - path String
+    - follows = false
+
+────────────────────
++ do close
+
+. opened = file
+file = null
+opened?.close()
+
+────────────────────
++ do read-available [TraceItem] ?! Error
+
+items = List'TraceItem()
+advanced = false
+=? items if is-done
+if file == null
+    file = open-file()
+    =? items if file == null
+. header = read-header()
+=? items if header == null
+refresh-in-progress(header)
+process-pending()
+. at-end = scan(header)
+process-pending()
+if header.is-done && at-end
+    ?! TraceError("Probe trace ended with incomplete committed records")
+        if in-progress.length != 0
+    ?! TraceError("Probe transport sequence gap: expected $expected-sequence, got ${first-pending()}")
+        if pending.length != 0
+    is-done = true
+= items
+
+────────────────────
++ do read-all <TraceItem> ?! Error
+
+while !is-done
+    for item in read-available()
+        <= item
+    if !advanced
+        if !follows
+            break
+        poll-interval.wait()
+
+────────────────────
+_ do open-file File? ?! Error
+
+. opened = File(path)
+    catch error IOError
+        ?! error
+            if !follows
+        = null
+= opened
+
+────────────────────
+_ do read-at Byte[]? ?! Error
+    - position U64
+    - length U64
+
+. buffer = Byte[length as Size]
+. count = file!.read(length as Size, buffer, position as Index)
+=? null if count < length
+= buffer
+
+────────────────────
+_ do read-header TraceHeader? ?! Error
+
+. data = read-at(0, minimum-header-size)
+=? null if data == null
+. bytes = data
+. magic = word'U32(bytes, 0)
+. version = word'U32(bytes, 4)
+=? null if (magic == 0 || version == 0) && follows
+?! TraceError("Unsupported probe trace format: magic=$magic version=$version")
+    if magic != file-magic || version != transport-version
+if word'U64(bytes, 80) == 0
+    =? null if follows
+    ?! TraceError("Probe trace header is not ready")
+. header = TraceHeader
+    - word'U64(bytes, 8)
+    - word'U64(bytes, 16)
+    - word'U64(bytes, 24)
+    - word'U64(bytes, 40)
+    - word'U64(bytes, 48) != 0
+?! TraceError("Invalid probe trace header size: ${header.header-size}")
+    if header.header-size < minimum-header-size
+?! TraceError("Invalid probe trace segment size: ${header.segment-size}")
+    if header.segment-size < segment-header-size + record-header-size
+?! TraceError("Invalid probe trace record header size: ${header.record-header-size}")
+    if header.record-header-size < record-header-size
+= header
+
+────────────────────
+_ do read-segment TraceSegment? ?! Error
+    - header TraceHeader
+
+. data = read-at(segment-position(header), segment-header-size)
+=? null if data == null
+. bytes = data
+. magic = word'U32(bytes, 0)
+=? null if magic == 0
+?! TraceError("Invalid probe segment magic at segment $segment-index: $magic")
+    if magic != segment-magic
+. segment = TraceSegment
+    - word'U32(bytes, 4)
+    - word'U64(bytes, 8)
+    - word'U64(bytes, 16)
+    - word'U64(bytes, 24)
+. index = word'U64(bytes, 32)
+?! TraceError("Probe segment index mismatch: expected $segment-index, got $index")
+    if index != segment-index
+?! TraceError("Invalid probe segment header size: ${segment.header-size}")
+    if segment.header-size < segment-header-size || segment.header-size > segment.segment-size
+?! TraceError("Probe segment size mismatch: expected ${header.segment-size}, got ${segment.segment-size}")
+    if segment.segment-size != header.segment-size
+= segment
+
+────────────────────
+_ segment-position U64
+    - header TraceHeader
+
+header.header-size + segment-index * header.segment-size
+
+────────────────────
+_ scan-limit U64
+    - segment TraceSegment
+    - scans-reserved Bool
+
+|? scans-reserved && segment.sealed-cursor == 0
+    segment.segment-size
+|? bounded < segment.header-size
+    segment.header-size
+??
+    bounded
+
+.. cursor = if segment.sealed-cursor != 0 then segment.sealed-cursor else segment.reserve-cursor
+.. bounded = if cursor < segment.segment-size then cursor else segment.segment-size
+
+────────────────────
+_ do scan Bool ?! Error
+    - header TraceHeader
+
+while true
+    =? true if segment-index >= header.segment-count
+    . found = read-segment(header)
+    if found == null
+        ?! TraceError("Probe trace ended before segment $segment-index was initialized")
+            if header.is-done
+        = false
+    . segment = found
+    if segment-offset < segment.header-size
+        segment-offset = segment.header-size
+    if segment-offset >= scan-limit(segment, follows && !header.is-done)
+        if segment-index + 1 < header.segment-count
+            segment-index += 1
+            segment-offset = segment-header-size
+            advanced = true
+            continue
+        = true
+    . position = segment-position(header) + segment-offset
+    . envelope = read-at(position, header.record-header-size)
+    if envelope == null
+        ?! TraceError("Probe trace ended with an incomplete record header")
+            if header.is-done
+        = false
+    . state = word'U32(envelope, 0)
+    . length = word'U64(envelope, 8)
+    if !is-valid-length(header, segment, envelope, length)
+        ?! TraceError("Invalid probe record length $length at segment $segment-index offset $segment-offset")
+            if header.is-done
+        = false
+    if state == RecordState.committed
+        . data = read-at(position, length)
+        if data == null
+            ?! TraceError("Probe trace ended with an incomplete committed record")
+                if header.is-done
+            = false
+        queue(data)
+        process-pending()
+        segment-offset += length
+        advanced = true
+        =? false if items.length >= batch-size
+        continue
+    ?! TraceError("Invalid probe record state $state at segment $segment-index offset $segment-offset")
+        if state != RecordState.writing && state != RecordState.empty
+    in-progress[position] = TraceInProgress(position, length)
+    segment-offset += length
+    advanced = true
+= false
+
+────────────────────
+_ is-valid-length Bool
+    - header TraceHeader
+    - segment TraceSegment
+    - envelope Byte[]
+    - length U64
+
+envelope-size >= record-header-size && envelope-size <= header.record-header-size && length >= envelope-size && payload-length <= length - envelope-size && segment-offset + length <= segment.segment-size
+
+.. envelope-size = word'U32(envelope, 4)
+.. payload-length = word'U64(envelope, 16)
+
+────────────────────
+_ do refresh-in-progress ?! Error
+    - header TraceHeader
+
+. committed [U64]
+for position in in-progress.keys
+    . record = in-progress[position]!
+    . envelope = read-at(position, header.record-header-size)
+    if envelope == null
+        ?! TraceError("Probe trace ended with an incomplete record header")
+            if header.is-done
+        continue
+    if word'U32(envelope, 0) == RecordState.committed
+        . data = read-at(position, record.length)
+        if data == null
+            ?! TraceError("Probe trace ended with an incomplete committed record")
+                if header.is-done
+            continue
+        committed += position
+        queue(data)
+        process-pending()
+        advanced = true
+    else if header.is-done
+        ?! TraceError("Probe trace ended with incomplete committed records")
+for position in committed
+    -= in-progress[position]
+
+────────────────────
+_ do queue ?! TraceError
+    - data Byte[]
+
+. envelope-size = word'U32(data, 4)
+. length = word'U64(data, 8)
+. payload-length = word'U64(data, 16)
+. sequence = word'U64(data, 24)
+?! TraceError("Probe record length mismatch: expected $length, got ${data.size}")
+    if length != data.size
+?! TraceError("Invalid probe record payload length: $payload-length")
+    if payload-length > length - envelope-size
+?! TraceError("Probe sequence moved backwards: expected $expected-sequence, got $sequence")
+    if sequence < expected-sequence
+?! TraceError("Duplicate probe transport sequence: $sequence")
+    if pending has sequence
+. time = TraceTime(word'U64(data, 32), word'U64(data, 40))
+pending[sequence] = TracePending(time, data[envelope-size .. < envelope-size + payload-length])
+
+────────────────────
+_ do first-pending U64
+
+. first U64? = null
+for sequence in pending.keys
+    if first == null || sequence < first
+        first = sequence
+= first ?? 0
+
+────────────────────
+_ do process-pending ?! TraceError
+
+while true
+    . record = pending[expected-sequence]
+    =? if record == null
+    -= pending[expected-sequence]
+    current-sequence = expected-sequence
+    current-time = record.time
+    . cursor = TraceCursor(record.payload)
+    if has-head
+        process-body(cursor, false)
+    else
+        process-head(cursor)
+    current-sequence = null
+    expected-sequence += 1
+    advanced = true
+
+────────────────────
+_ do consume-sequence U64?
+
+. sequence = current-sequence
+current-sequence = null
+= sequence
+
+────────────────────
+_ do emit
+    - item TraceItem
+
+items += item
+
+────────────────────
+_ do process-head ?! TraceError
+    - cursor TraceCursor
+
+while cursor.has-more
+    . type = cursor.u8() as TraceRecordType
+    do match type
+        |= .done
+            has-head = true
+            emit(TraceItem.compiled)
+            process-body(cursor, false)
+            =
+        |= .declare-key
+            emit(TraceItem.key(cursor.string()))
+        |= .declare-log
+            declare-log(cursor, false)
+        |= .declare-log2
+            declare-log(cursor, true)
+        |= .declare-event
+            declare-event(cursor)
+        |= .declare-counter
+            declare-counter(cursor)
+        |= .declare-profile-metric
+            declare-metric(cursor)
+        |= .declare-type
+            declare-type(cursor)
+        ?! TraceError("Unrecognized probe declaration type: $type")
+
+────────────────────
+_ do declare-log ?! TraceError
+    - cursor TraceCursor
+    - is-located Bool
+
+. id = cursor.u16()
+. key = if is-located then cursor.string() else ""
+. name = cursor.string()
+. template = cursor.string()
+. module-name = if is-located then cursor.string() else ""
+. source-path = if is-located then cursor.string() else ""
+. line = if is-located then cursor.u32() else 0
+remember
+    - TraceSite
+        - id
+        - TraceSiteKind.log
+        - key
+        - name if name.size != 0
+        - template
+        - module-name
+        - source-path
+        - line
+        - read-slots(cursor)
+
+────────────────────
+_ do declare-event ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+. key = cursor.string()
+. name = cursor.string()
+. module-name = cursor.string()
+remember(TraceSite(id, TraceSiteKind.event, key, name, "", module-name, "", 0, read-slots(cursor)))
+
+────────────────────
+_ do declare-counter ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+. key = cursor.string()
+. module-name = cursor.string()
+. source-path = cursor.string()
+. line = cursor.u32()
+remember
+    - TraceSite
+        - id
+        - TraceSiteKind.counter
+        - key
+        - null
+        - ""
+        - module-name
+        - source-path
+        - line
+        - List'TraceSlot()
+
+────────────────────
+_ do declare-metric ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+. kind = metric-kind(cursor.u8())
+. key = cursor.string()
+. module-name = cursor.string()
+. source-path = cursor.string()
+. line = cursor.u32()
+. site = TraceMetricSite(id, kind, key, module-name, source-path, line, cursor.u16())
+metric-sites[id] = site
+emit(TraceItem.metric-site(site))
+
+────────────────────
+_ do declare-type ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+emit(TraceItem.type-name(TraceTypeName(id, cursor.string())))
+
+────────────────────
+_ do remember
+    - site TraceSite
+
+sites[site.id] = site
+emit(TraceItem.site(site))
+
+────────────────────
+_ do read-slots [TraceSlot] ?! TraceError
+    - cursor TraceCursor
+
+. count = cursor.u32()
+. slots [TraceSlot]
+for _ in 0 .. < count
+    . type = cursor.u8() as TraceSlotType
+    slots += TraceSlot(type, cursor.u16())
+= slots
+
+────────────────────
+_ metric-kind TraceMetricKind ?! TraceError
+    - value U8
+
+?! TraceError("Unrecognized profile metric kind: $value")
+    if value != TraceMetricKind.counter && value != TraceMetricKind.timer
+
+value as TraceMetricKind
+
+────────────────────
+_ do process-body Bool ?! TraceError
+    - cursor TraceCursor
+    - stops-on-done Bool
+
+while cursor.has-more
+    . type = cursor.u8() as TraceRecordType
+    do match type
+        |= .done
+            =? true if stops-on-done
+        |= .log
+            process-record(cursor, false)
+        |= .event
+            process-record(cursor, true)
+        |= .snapshot
+            . object-id = cursor.u32()
+            . object-type-id = cursor.u16()
+            emit
+                - TraceItem.snapshot
+                    - TraceSnapshot(object-id, object-type-id, current-time, consume-sequence())
+        |= .system-log
+            . text = cursor.string()
+            emit(TraceItem.system-log(TraceSystemLog(text, current-time, consume-sequence())))
+        |= .counter
+            process-counter(cursor)
+        |= .profile-metric
+            process-metric(cursor)
+        |= .declare-type
+            declare-type(cursor)
+        ?! TraceError("Unrecognized probe type: $type")
+= false
+
+────────────────────
+_ do process-record ?! TraceError
+    - cursor TraceCursor
+    - is-event Bool
+
+. id = cursor.u16()
+. object-id = cursor.u32()
+. object-type-id = cursor.u16()
+. seconds = cursor.u64()
+. nanoseconds = cursor.u64()
+. site = record-site(id, if is-event then TraceSiteKind.event else TraceSiteKind.log)
+. values = if is-group-event(site) then read-group-values(cursor, site.slots) else read-values(cursor, site.slots)
+. record = TraceRecord
+    - site
+    - object-id
+    - object-type-id
+    - values
+    - TraceTime(seconds, nanoseconds)
+    - consume-sequence()
+emit(if is-event then TraceItem.event(record) else TraceItem.log(record))
+
+────────────────────
+_ record-site TraceSite ?! TraceError
+    - id U16
+    - kind TraceSiteKind
+
+?! TraceError("Unrecognized ${kind-name(kind)} probe: $id")
+    if site == null || site.kind != kind
+
+site
+
+.. site = sites[id]
+
+────────────────────
+_ kind-name String
+    - kind TraceSiteKind
+
+match kind
+    |= .log
+        "log"
+    |= .event
+        "event"
+    ??
+        "counter"
+
+────────────────────
+_ is-group-event Bool
+    - site TraceSite
+
+is-event && site.key.size != 0 && (site.name == "groupBegin" || site.name == "groupEnd")
+
+.. is-event = site.kind == TraceSiteKind.event
+
+────────────────────
+_ do process-counter ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+. object-id = cursor.u32()
+. object-type-id = cursor.u16()
+. value = cursor.u64()
+. site = record-site(id, TraceSiteKind.counter)
+emit
+    - TraceItem.counter
+        - TraceCounter(site, object-id, object-type-id, value, current-time, consume-sequence())
+
+────────────────────
+_ do process-metric ?! TraceError
+    - cursor TraceCursor
+
+. id = cursor.u16()
+. kind = metric-kind(cursor.u8())
+. value = cursor.u64()
+. total-ns = cursor.u64()
+. active-count = cursor.u64()
+. active-elapsed-ns = cursor.u64()
+. site = metric-sites[id]
+?! TraceError("Unrecognized profile metric: $id")
+    if site == null
+?! TraceError("Profile metric kind mismatch for $id")
+    if site.kind != kind
+emit
+    - TraceItem.metric
+        - TraceMetric
+            - site
+            - value
+            - total-ns
+            - active-count
+            - active-elapsed-ns
+            - current-time
+            - consume-sequence()
+
+────────────────────
+_ do read-values [TraceValue] ?! TraceError
+    - cursor TraceCursor
+    - slots [TraceSlot]
+
+. values [TraceValue]
+for slot in slots
+    values += read-value(cursor, slot)
+= values
+
+────────────────────
+_ do read-value TraceValue ?! TraceError
+    - cursor TraceCursor
+    - slot TraceSlot
+
+do match slot.type
+    |= .string
+        = TraceValue.text(cursor.string())
+    |= .array
+        . length = cursor.u32()
+        . item-type = cursor.u16()
+        . data = cursor.bytes(length)
+        . object-id = cursor.u32()
+        process-body(cursor, true)
+        = TraceValue.array(TraceArray(object-id, slot.class-type, length, item-type, data))
+    |= .object
+        = read-object(cursor, slot)
+    |= .group
+        = read-object(cursor, slot)
+    ??
+        = read-primitive(cursor, slot.type)
+
+────────────────────
+_ do read-object TraceValue ?! TraceError
+    - cursor TraceCursor
+    - slot TraceSlot
+
+. object-id = cursor.u32()
+process-body(cursor, true)
+= TraceValue.object(TraceObject(object-id, slot.class-type))
+
+────────────────────
+_ do read-primitive TraceValue ?! TraceError
+    - cursor TraceCursor
+    - type TraceSlotType
+
+do match type
+    |= .bool
+        = TraceValue.truth(cursor.u8() != 0)
+    |= .char
+        = TraceValue.character(cursor.u8() as Char)
+    |= .int8
+        = TraceValue.integer(cursor.read'I8())
+    |= .uint8
+        = TraceValue.unsigned(cursor.u8())
+    |= .int16
+        = TraceValue.integer(cursor.read'I16())
+    |= .uint16
+        = TraceValue.unsigned(cursor.u16())
+    |= .int32
+        = TraceValue.integer(cursor.read'I32())
+    |= .uint32
+        = TraceValue.unsigned(cursor.u32())
+    |= .int64
+        = TraceValue.integer(cursor.read'I64())
+    |= .uint64
+        = TraceValue.unsigned(cursor.u64())
+    |= .float32
+        = TraceValue.real(cursor.read'F32())
+    |= .float64
+        = TraceValue.real(cursor.read'F64())
+    ?! TraceError("Unsupported probe slot type: $type")
+
+────────────────────
+_ do read-group-values [TraceValue] ?! TraceError
+    - cursor TraceCursor
+    - slots [TraceSlot]
+
+. values [TraceValue]
+for slot in slots
+    . is-kept = values.length == 0
+    do match slot.type
+        |= .string
+            . length = cursor.u32()
+            . text = cursor.bytes(length)
+            if is-kept
+                values += TraceValue.text(text.slice-string(0 .. < text.size))
+        |= .array
+            . length = cursor.u32()
+            . item-type = cursor.u16()
+            cursor.bytes(length)
+            . object-id = cursor.u32()
+            if is-kept
+                values += TraceValue.array
+                    - TraceArray(object-id, slot.class-type, length, item-type, Byte[0])
+            skip-body(cursor)
+        |= .object
+            . object-id = cursor.u32()
+            if is-kept
+                values += TraceValue.object(TraceObject(object-id, slot.class-type))
+            skip-body(cursor)
+        |= .group
+            . object-id = cursor.u32()
+            if is-kept
+                values += TraceValue.object(TraceObject(object-id, slot.class-type))
+            skip-body(cursor)
+        ??
+            . value = read-primitive(cursor, slot.type)
+            if is-kept
+                values += value
+= values
+
+────────────────────
+_ do skip-body ?! TraceError
+    - cursor TraceCursor
+
+while cursor.has-more
+    . type = cursor.u8() as TraceRecordType
+    do match type
+        |= .done
+            =
+        |= .log
+            skip-record(cursor, TraceSiteKind.log)
+        |= .event
+            skip-record(cursor, TraceSiteKind.event)
+        |= .snapshot
+            cursor.bytes(6)
+        |= .system-log
+            cursor.string()
+        |= .counter
+            cursor.bytes(16)
+        |= .profile-metric
+            cursor.bytes(35)
+        |= .declare-type
+            declare-type(cursor)
+        |= .declare-profile-metric
+            cursor.bytes(3)
+            cursor.string()
+            cursor.string()
+            cursor.string()
+            cursor.bytes(6)
+        ?! TraceError("Unrecognized nested probe type: $type")
+
+────────────────────
+_ do skip-record ?! TraceError
+    - cursor TraceCursor
+    - kind TraceSiteKind
+
+. id = cursor.u16()
+cursor.bytes(22)
+. site = sites[id]
+?! TraceError("Unrecognized nested ${kind-name(kind)} probe: $id")
+    if site == null || site.kind != kind
+for slot in site.slots
+    do match slot.type
+        |= .string
+            cursor.string()
+        |= .array
+            . length = cursor.u32()
+            cursor.bytes(length + 6)
+            skip-body(cursor)
+        |= .object
+            cursor.bytes(4)
+            skip-body(cursor)
+        |= .group
+            cursor.bytes(4)
+            skip-body(cursor)
+        ??
+            read-primitive(cursor, slot.type)
+
+━━━━━━━━━━━━━━━━━━━━
+_ word'Num Num
+    - data Byte[]
+    - offset Size
+    - Num is Number
+
+data.read'Num(offset, .little)!

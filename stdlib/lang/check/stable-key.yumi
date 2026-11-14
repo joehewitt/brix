@@ -1,0 +1,25 @@
++ StableKey is U64
+
++ stable-key-seed StableKey = 14695981039346656037
+
+━━━━━━━━━━━━━━━━━━━━
++ mixed StableKey
+    - key StableKey
+    - word U64
+
+` A stable key is hashed from what a type or an instance is, never from its id, so two runs
+` that intern the same rows in different orders give each row the same key.
+scrambled /xor/ (scrambled /zrshift/ 32)
+
+.. scrambled = (key /xor/ word) * 11400714819323198485
+
+━━━━━━━━━━━━━━━━━━━━
++ do mixed-text StableKey
+    - key StableKey
+    - text String
+
+. bytes = text as CPointer'Byte
+. result = mixed(key, text.size as U64)
+for index in 0 .. < text.size
+    result = (result /xor/ bytes[index]) * 1099511628211
+= result

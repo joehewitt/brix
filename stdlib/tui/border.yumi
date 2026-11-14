@@ -1,0 +1,188 @@
+./box
+./canvas
+./primitives
+
+━━━━━━━━━━━━━━━━━━━━
++ BorderPainter
+
+────────────────────
++ border-insets
+    - node Box
+
+Insets(0, 0, 0, 0)
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+━━━━━━━━━━━━━━━━━━━━
++ DefaultBorderPainter is BorderPainter
+
+╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ border-insets Insets
+    - node Box
+
+match node.$border-style
+    |= BorderStyle.none
+        Insets(0, 0, 0, 0)
+    ??
+        Insets(1, 1, 1, 1)
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+=? if node.$border-style == BorderStyle.none
+=? if rect.width <= 0
+=? if rect.height <= 0
+
+. chars = border-chars(node.$border-style)
+paint-border-frame(rect, chars, node.$border-color, canvas)
+
+━━━━━━━━━━━━━━━━━━━━
++ BorderStyle is Union
+
+| none
+| single
+| rounded
+| double
+| heavy
+| dashed
+
+━━━━━━━━━━━━━━━━━━━━
++ BorderChars is Tuple
+
++ top-left String
++ top-right String
++ bottom-left String
++ bottom-right String
++ horizontal String
++ vertical String
+
+━━━━━━━━━━━━━━━━━━━━
++ border-chars
+    - style BorderStyle
+
+match style
+    | BorderStyle.rounded
+        BorderChars("╭", "╮", "╰", "╯", "─", "│")
+    | BorderStyle.double
+        BorderChars("╔", "╗", "╚", "╝", "═", "║")
+    | BorderStyle.heavy
+        BorderChars("┏", "┓", "┗", "┛", "━", "┃")
+    | BorderStyle.dashed
+        BorderChars("┌", "┐", "└", "┘", "╌", "╎")
+    ??
+        BorderChars("┌", "┐", "└", "┘", "─", "│")
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-box-border
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+node.$border.paint(node, rect, canvas)
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-border-frame
+    - rect Rect
+    - chars BorderChars
+    - color AnsiColor
+    - canvas Canvas
+
+=? if rect.width <= 0
+=? if rect.height <= 0
+
+do use canvas
+    canvas.text-color = color
+
+    if rect.width == 1 && rect.height == 1
+        print-border-cell(canvas, rect.x, rect.y, chars.top-left)
+        =
+    if rect.height == 1
+        paint-border-row
+            - canvas
+            - rect.x
+            - rect.y
+            - rect.width
+            - chars.top-left
+            - chars.horizontal
+            - chars.top-right
+        =
+    if rect.width == 1
+        paint-border-column
+            - canvas
+            - rect.x
+            - rect.y
+            - rect.height
+            - chars.top-left
+            - chars.vertical
+            - chars.bottom-left
+        =
+    paint-border-row
+        - canvas
+        - rect.x
+        - rect.y
+        - rect.width
+        - chars.top-left
+        - chars.horizontal
+        - chars.top-right
+    paint-border-row
+        - canvas
+        - rect.x
+        - rect.bottom - 1
+        - rect.width
+        - chars.bottom-left
+        - chars.horizontal
+        - chars.bottom-right
+    for y in rect.y + 1 .. < rect.bottom - 1
+        print-border-cell(canvas, rect.x, y, chars.vertical)
+        print-border-cell(canvas, rect.right - 1, y, chars.vertical)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-border-row
+    - canvas Canvas
+    - x Coord
+    - y Coord
+    - width Coord
+    - left String
+    - middle String
+    - right String
+
+print-border-cell(canvas, x, y, left)
+if width > 1
+    for cell-x in x + 1 .. < x + width - 1
+        print-border-cell(canvas, cell-x, y, middle)
+    print-border-cell(canvas, x + width - 1, y, right)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-border-column
+    - canvas Canvas
+    - x Coord
+    - y Coord
+    - height Coord
+    - top String
+    - middle String
+    - bottom String
+
+print-border-cell(canvas, x, y, top)
+if height > 1
+    for cell-y in y + 1 .. < y + height - 1
+        print-border-cell(canvas, x, cell-y, middle)
+    print-border-cell(canvas, x, y + height - 1, bottom)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do print-border-cell
+    - canvas Canvas
+    - x Coord
+    - y Coord
+    - text String
+
+canvas.move((x, y))
+canvas.print(text)

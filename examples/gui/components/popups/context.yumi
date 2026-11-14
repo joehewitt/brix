@@ -1,0 +1,173 @@
+./popups-panel
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
++ ContextSection is Box
+
++ canvas-color RGBA = "#f7f8fb"
+
+────────────────────
+
+<This • flow-row
+    <DemoCard "Canvas and shapes" • w:520 h:360
+        caption = join • stream
+            * "Right-click the background or a shape. Each shape carries its own menu; the "
+            * "background menu is the fallback."
+        <ShapeArea • flex:1
+            background-color = #canvas-color
+            <ContextMenu
+                <MenuItem "Paste"
+                    action = => do report("Canvas ▸ Paste")
+                <MenuItem "Select All"
+                    action = => do report("Canvas ▸ Select All")
+                <MenuSeparator
+                <MenuItem "Background"
+                    <Menu
+                        for color in ["#f7f8fb", "#fff4e0", "#e8f6ee", "#eaf0ff"]
+                            <MenuItem
+                                title = color
+                                is-on = #canvas-color == RGBA(color)
+                                action = => do set-canvas(color)
+            <ShapeChip "Circle" • absolute w:120 h:70
+                left = PositionOffset.coord(40)
+                top = PositionOffset.coord(40)
+                fill = "#ffb35c"
+            <ShapeChip "Square" • absolute w:120 h:70
+                left = PositionOffset.coord(220)
+                top = PositionOffset.coord(90)
+                fill = "#64b5f6"
+            <ShapeChip "Star" • absolute w:120 h:70
+                left = PositionOffset.coord(110)
+                top = PositionOffset.coord(170)
+                fill = "#81c784"
+    <DemoCard "Press, drag, release" • w:330 h:360
+        caption = join • stream
+            * "Hold the right button (or Control and the left button) over the list, drag onto an "
+            * "item, and release to choose it without a second click."
+        <Box • demo-well flex-col flex:1 p:8
+            for row in ["Inbox", "Drafts", "Sent", "Archive", "Trash"]
+                <ContextRow • h:30 mb:4
+                    title = row
+
+────────────────────
++ do report
+    - text String
+
+popups-report(this, text)
+
+────────────────────
++ do set-canvas
+    - color String
+
+canvas-color = RGBA(color)
+report("Canvas ▸ Background ▸ $color")
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeArea is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeChip is Box
+
++ title = ""
++ fill RGBA = "#cccccc"
++ is-locked = false
+
+• This
+    corner-radius = 12
+    color = "#1d1d24"
+    font-weight = FontWeight.bold
+
+    when #is-hover-within
+        border-color = "#1d1d2466"
+        border-width = 2
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This • flex-row
+    background-color = #fill
+    <Label • flex:1
+        align-y = Alignment.center
+        text = "${#title}${if #is-locked then " 🔒" else ""}"
+        text-alignment = TextAlignment.center
+    <ContextMenu
+        <MenuItem "Bring to Front"
+            action = => do report("${title} ▸ Bring to Front")
+        <MenuItem "Send to Back"
+            action = => do report("${title} ▸ Send to Back")
+        <MenuSeparator
+        <MenuItem "Fill"
+            <Menu
+                for color in ["#ffb35c", "#64b5f6", "#81c784", "#e57373", "#ba68c8"]
+                    <MenuItem
+                        title = color
+                        is-on = #fill == RGBA(color)
+                        action = => do recolor(color)
+        <MenuItem "Lock"
+            is-on = #is-locked
+            action = => do toggle-lock()
+        <MenuSeparator
+        <MenuItem "Delete"
+            is-enabled = !#is-locked
+            action = => do report("${title} ▸ Delete")
+
+────────────────────
++ do report
+    - text String
+
+popups-report(this, text)
+
+────────────────────
++ do recolor
+    - color String
+
+fill = RGBA(color)
+report("$title ▸ Fill ▸ $color")
+
+────────────────────
++ do toggle-lock
+
+is-locked = !is-locked
+report("$title ▸ ${if is-locked then "Locked" else "Unlocked"}")
+
+━━━━━━━━━━━━━━━━━━━━
++ ContextRow is Box
+
++ title = ""
+
+• This • pl:10
+    corner-radius = gui-control-radius
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = #title
+    <ContextMenu
+        <MenuItem "Open"
+            action = => do report("$title ▸ Open")
+        <MenuItem "Mark as Read"
+            action = => do report("$title ▸ Mark as Read")
+        <MenuItem "Move to"
+            <Menu
+                for folder in ["Inbox", "Archive", "Trash"]
+                    <MenuItem
+                        title = folder
+                        action = => do report("$title ▸ Move to ▸ $folder")
+
+────────────────────
++ do report
+    - text String
+
+popups-report(this, text)

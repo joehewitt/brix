@@ -1,0 +1,308 @@
+./motion-kit
+/graphics/color
+/graphics/point
+/graphics/primitives
+/gui
+/gui/icons/lucide/plus
+/gui/icons/lucide/x
+/math
+/math/motion
+/time/duration
+/units
+
+_ note-limit = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionNote is Tuple
+
++ id Index
++ title String
++ body String
++ hue Index
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionSwatch is Tuple
+
++ name String
++ hue RGBA
++ is-warm Bool
+
+━━━━━━━━━━━━━━━━━━━━
+• EnterLeaveTheme
+    using GUIDefaultTheme
+    using GUIMotionTheme
+    using MotionKitTheme
+
+• note-stack • flex-col mt:14
+    gap = 8
+    motion-stagger = 60ms
+
+• note-card • flex-row items-center bg:gui-field-color px:12 py:10
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 12
+    motion = gui-motion-smooth
+    motion.size = gui-motion-smooth
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    when #is-entering
+        opacity = 0%%
+        scale = 0.92
+        translate = Point(0, -18)
+
+    when #is-leaving
+        opacity = 0%%
+        translate = Point(48, 0)
+        motion = spring(520ms)
+        motion.size = spring(520ms)
+
+• note-icon • w:34 h:34
+    corner-radius = 10
+
+• swatch-list • flex-col mt:14
+    gap = 6
+    motion-stagger = 40ms
+
+• swatch-row • flex-row items-center bg:gui-field-color h:36 px:10
+    corner-radius = 10
+    motion = spring(460ms)
+    motion.size = spring(460ms)
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    when #is-entering
+        opacity = 0%%
+        translate = Point(-24, 0)
+
+    when #is-leaving
+        opacity = 0%%
+        translate = Point(24, 0)
+
+• swatch-dot • w:16 h:16
+    corner-radius = 8
+
+• profile • flex-col bg:gui-field-color mt:14
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 14
+
+• profile-head • flex-row items-center p:14
+
+• avatar • w:46 h:46
+    corner-radius = 23
+
+• profile-details • flex-col px:14 pb:6
+    motion = gui-motion-smooth
+    motion.size = spring(560ms, 0.3)
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    when #is-entering
+        opacity = 0%%
+        translate = Point(0, -10)
+
+    when #is-leaving
+        opacity = 0%%
+
+• profile-row • flex-row items-center h:30
+    border-color = gui-border-color
+    border-top-width = 1
+
+• profile-footer • flex-row items-center bg:gui-well-color h:38 px:14
+    corner-radius = 13
+
+━━━━━━━━━━━━━━━━━━━━
++ EnterLeavePanel is Box
+    using MotionKitTheme
+    using EnterLeaveTheme
+
++ notes [MotionNote] = enter-leave-seed()[0 .. < 3]
++ restorable [MotionNote]
++ serial Index = 3
++ filter = "all"
++ swatches [MotionSwatch] = enter-leave-swatches()
++ is-detail-shown = true
+
+────────────────────
+
+<This • motion-page
+    <MotionHeader "Things arrive and leave"
+        lede = "Removing a node from markup plays its #is-leaving rules before it goes, and its siblings close the gap. Bring a key back while it leaves and the same node revives."
+    <Box • motion-row
+        <MotionCard "Notifications" • flex:1.3
+            <Box • flex-row mt:12
+                <Button add-button "Add" • icon-plus
+                    action = => do add()
+                <Button clear-button "Clear all" • ml:8
+                    action = => do clear()
+                <Button undo-button "Undo" • ml:8
+                    action = => do undo()
+            <Box • note-stack
+                for note in #notes keyed by note.id
+                    <NoteCard
+                        note = note
+        <MotionCard "Filtered list" • flex:1
+            <SegmentedControl'String • mt:12
+                selected = #filter
+                for event on selection-changed
+                    filter = event.value
+                <Segment'String all-segment "All"
+                    value = "all"
+                <Segment'String warm-segment "Warm"
+                    value = "warm"
+                <Segment'String cool-segment "Cool"
+                    value = "cool"
+            <Box • swatch-list
+                for swatch in shown-swatches(#swatches, #filter) keyed by swatch.name
+                    <Box • swatch-row
+                        <Box • swatch-dot
+                            background-color = swatch.hue
+                        <Label • ml:10
+                            text = swatch.name
+        <MotionCard "Display" • flex:1
+            <Box • flex-row mt:12
+                <Button detail-button
+                    title = if #is-detail-shown then "Hide details" else "Show details"
+                    action = => do toggle-details()
+            <Box • profile
+                <Box • profile-head
+                    <Box • avatar
+                        background = motion-glow(5)
+                    <Box • flex-col ml:12 flex:1
+                        <Label "Ada Okafor" • motion-card-title
+                        <Label "Motion designer" • motion-note mt:2
+                <Box • profile-details
+                    display = if #is-detail-shown then Display.visible else Display.hidden
+                    <ProfileRow
+                        key = "Email"
+                        value = "ada@example.com"
+                    <ProfileRow
+                        key = "Studio"
+                        value = "Lagos · Remote"
+                    <ProfileRow
+                        key = "Projects"
+                        value = "Springs, Flights, Reels"
+                    <ProfileRow
+                        key = "Joined"
+                        value = "March 2024"
+                <Box • profile-footer
+                    <Box • w:8 h:8
+                        corner-radius = 4
+                        background-color = motion-hue(2)
+                    <Label "Active 2 minutes ago" • motion-note ml:8
+
+────────────────────
++ do add
+
+serial += 1
+. seeds = enter-leave-seed()
+. seed = seeds[serial % seeds.length]
+. made = MotionNote(serial, seed.title, seed.body, serial)
+. next = List'MotionNote()
+next += made
+for note in notes
+    if next.length < note-limit
+        next += note
+restorable = List'MotionNote()
+notes = next
+
+────────────────────
++ do dismiss
+    - id Index
+
+restorable = notes
+. next = List'MotionNote()
+for note in notes
+    if note.id != id
+        next += note
+notes = next
+
+────────────────────
++ do clear
+
+restorable = notes
+notes = List'MotionNote()
+
+────────────────────
++ do undo
+
+=? if restorable.length == 0
+notes = restorable
+restorable = List'MotionNote()
+
+────────────────────
++ do toggle-details
+
+is-detail-shown = !is-detail-shown
+
+━━━━━━━━━━━━━━━━━━━━
++ NoteCard is Box
+    using MotionKitTheme
+    using EnterLeaveTheme
+
++ note MotionNote
+
+_ owner Ancestor'EnterLeavePanel
+
+────────────────────
+
+<This • note-card
+    <Box • note-icon
+        background = motion-glow(note.hue)
+    <Box • flex-col flex:1 ml:12
+        <Label • motion-label
+            text = note.title
+        <Label • motion-note mt:2
+            text = note.body
+    <IconButton dismiss • icon-x w:24 h:24 ml:8
+        action = => do owner?.dismiss(note.id)
+
+━━━━━━━━━━━━━━━━━━━━
++ ProfileRow is Box
+    using MotionKitTheme
+    using EnterLeaveTheme
+
++ key = ""
++ value = ""
+
+────────────────────
+
+<This • profile-row
+    <Label • motion-caption w:90
+        text = #key
+    <Label • flex:1
+        text = #value
+
+━━━━━━━━━━━━━━━━━━━━
+_ shown-swatches [MotionSwatch]
+    - swatches [MotionSwatch]
+    - filter String
+
+** swatches
+?> filter == "all" || (filter == "warm") == each.is-warm
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ enter-leave-seed [MotionNote]
+
+* MotionNote(1, "Build finished", "motion-app compiled in 14.2s", 0)
+* MotionNote(2, "3 new comments", "On “Layout motion, phase 8”", 4)
+* MotionNote(3, "Deploy to staging", "Rolling out to 12 hosts", 6)
+* MotionNote(4, "Tests passed", "5,605 of 5,605 in 21.5s", 2)
+* MotionNote(5, "Low disk space", "Only 18 GB left on Macintosh HD", 7)
+* MotionNote(6, "Meeting in 5 minutes", "Animation review with the GUI team", 5)
+
+━━━━━━━━━━━━━━━━━━━━
+_ enter-leave-swatches [MotionSwatch]
+
+* MotionSwatch("Tangerine", RGBA("#f97316"), true)
+* MotionSwatch("Teal", RGBA("#14b8a6"), false)
+* MotionSwatch("Saffron", RGBA("#f59e0b"), true)
+* MotionSwatch("Sky", RGBA("#0ea5e9"), false)
+* MotionSwatch("Rose", RGBA("#f43f5e"), true)
+* MotionSwatch("Indigo", RGBA("#6366f1"), false)
+* MotionSwatch("Coral", RGBA("#fb7185"), true)
+* MotionSwatch("Mint", RGBA("#34d399"), false)
+* MotionSwatch("Amber", RGBA("#fbbf24"), true)
+* MotionSwatch("Violet", RGBA("#a855f7"), false)

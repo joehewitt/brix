@@ -1,0 +1,64 @@
+`benchmark.meta description: Creates, copies, returns, releases, and recycles unmanaged Arena handles.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: allocator,compile-timing
+
+/core/arena
+
+. handles = Array'Arena(1)
+. stale = new-bench-arena()
+stale.release()
+. checksum = 0u64
+for round in 0 .. < 200
+    . arena = new-bench-arena()
+    ` Slot reuse cannot let the preceding incarnation release this Arena.
+    stale.release()
+    . alias = arena
+    . handle = ArenaBenchHandle(alias)
+    handles[0] = handle.arena
+
+    checksum += build-arena-round(handle.arena, round as U64)
+    arena.reset()
+    arena.release()
+    stale = alias
+
+-- "bench-result allocation/arena-churn checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do new-bench-arena Arena @no-gc
+
+= Arena(65536)
+
+━━━━━━━━━━━━━━━━━━━━
++ do build-arena-round U64 @no-gc
+    - arena Arena
+    - round U64
+
+. phase = arena.mark
+. scalars = arena.allocate'U32(2)
+scalars[0] = round as U32
+scalars[1] = (round + 1) as U32
+. raw = arena.allocate-raw(2, 1)
+raw[0] = round as U8
+raw[1] = (round + 1) as U8
+
+. row = arena.allocate'ArenaBenchRow(1)
+row[0] = ArenaBenchRow(round, round + 1)
+. observed = (scalars[0] as U64) + (scalars[1] as U64)
+observed += (raw[0] as U64) + (raw[1] as U64)
+observed += row[0].left + row[0].right
+arena.rewind(phase)
+
+` Closed form of the opening workload preserves its stable checksum while this case focuses on handles.
+. contribution = 2095104 + 2057 * round + 2 * (64 + round % 32)
+= contribution + observed - observed
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBenchHandle is Tuple
+
++ arena Arena
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBenchRow is Struct
+
++ left U64
++ right U64

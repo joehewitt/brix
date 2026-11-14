@@ -1,0 +1,102 @@
+`benchmark.meta description: Selects and scrolls a keyed rich TUI table with 300 rows and embedded progress meters.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,timing
+
+/core/markup
+/data/stream
+/tui
+/tui/painter
+/stream/sort
+
+. root = RichTableBench()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 32)
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+. compositor = LayerCompositor()
+. previous = Canvas(root.bounds.size)
+compositor.paint(root, previous)
+. current = Canvas(root.bounds.size)
+. output = DataStream'Byte(8192)
+. checksum Size
+for step in 0 .. < 60
+    //+tui.bench.input-step
+    root.table.select-row(root.table.row-at-index((step * 7) % 300))
+    //+tui.bench.checkpoint
+    root.markup-batch-queue.checkpoint()
+    //-tui.bench.checkpoint
+    //+tui.bench.layout
+    root.update-layout()
+    //-tui.bench.layout
+    current.reset()
+    //+tui.bench.paint
+    compositor.paint(root, current)
+    //-tui.bench.paint
+    output.reset()
+    //+tui.bench.canvas-diff
+    current.dump-diff(output, previous)
+    //-tui.bench.canvas-diff
+    checksum += output.length + root.table.selected-index!
+    //tui.bench.frames ++
+    //tui.bench.mutations ++
+    //-tui.bench.input-step
+    . recycled = previous
+    previous = current
+    current = recycled
+root.close()
+-- "bench-result tui/rich-table-navigation checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ RichRecord is Tuple
+
++ id Int
++ name String
++ usage Int
+
+━━━━━━━━━━━━━━━━━━━━
++ RichTableBench is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+<This • flex-col
+    <Table'RichRecord table • flex:1
+        rows = List'RichRecord(RichRecord(each, "process-$each", each % 100) in 0 .. < 300)
+        columns = rich-columns()
+        key-builder = :: item => "${item.id}"
+        <Box (cell) - cell • flex-row
+            if cell.column.id == "usage"
+                <ProgressBar • flex:1
+                    value = cell.#item.usage
+                    bar-prefix = ""
+                    bar-suffix = ""
+                    show-percent = false
+            else
+                <Label • flex:1
+                    text = cell.#text
+                    color = if cell.#is-selected then yellow else cyan
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ do rich-columns [TableColumn'RichRecord]
+
+. id = TableColumn'RichRecord("ID")
+id.id = "id"
+id.column-width = TableWidth.fixed(8)
+id.value = :: item => "${item.id}"
+. name = TableColumn'RichRecord("Process")
+name.id = "name"
+name.column-width = TableWidth.flex(1)
+name.value = :: item => item.name
+. usage = TableColumn'RichRecord("Usage")
+usage.id = "usage"
+usage.column-width = TableWidth.fixed(16)
+= [id, name, usage]

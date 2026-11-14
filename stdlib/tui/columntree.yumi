@@ -1,0 +1,1038 @@
+./border
+./box
+./colors
+./events
+./layout
+./listbox
+./painter
+./position
+./primitives
+./shortcuts
+./styles
+./text
+./theme
+./window
+/core/channel
+/core/markup
+/math
+/ui/input
+
+━━━━━━━━━━━━━━━━━━━━
+• extend TUIDefaultTheme
+    using BoxPaint
+    using BoxBorder
+    using BoxSpacing
+
+• ColumnTree
+    background-color = AnsiColor(0)
+
+    • ListItem
+        when #has-children
+            padding-right = 2
+
+            <Label (after) "›" • absolute
+                anchor = style-target
+                right = 1
+                align-y = center
+
+• ColumnTreeColumn
+    background-color = AnsiColor(0)
+    border-style = BorderStyle.single
+    border-color = AnsiColor(8)
+
+    when #is-active-column
+        border-color = AnsiColor(14)
+
+• ColumnTreeColumnSpace
+    background-color = AnsiColor(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ ColumnTree'Item is Box
+
+• This
+    focus-mode = FocusMode.inside
+
++ root-node Item?
++ load-children ColumnTreeChildProvider'Item = column-tree-no-children
++ key-builder MarkupKeyBuilder'Item?
++ active-column ColumnTreeColumn'Item?
++ selected-item Item? = column-tree-selected-item-from'Item()
+    - #path.#active-index
+    - #path.#levels
++ owners [Item] = column-tree-owners-from'Item()
+    - #root-node
+    - #path.#levels
++ can-go-back Bool = #path.#active-index > 0
++ can-enter Bool = column-tree-can-enter-from'Item()
+    - #path.#active-index
+    - #path.#levels
+    - (#active-column?.#selected-row?.#has-children ?? false)
+
++ event active-column-changed ActivateEvent
++ event selected SelectEvent
++ event activated ActivateEvent
++ event interacted Bool
+_ event level-mounted Bool
+_ event laid-out Bool
+_ event path-shortened Bool
+_ event focus-requests ColumnFocusRequest
+_ event scroll-requests ColumnScrollRequest
+
+_ path ColumnTreePath'Item
+_ viewport-retention ColumnTreeViewportRetention
+_ pending-preview-level-id String?
+
+────────────────────
++ focus ~>
+
+~> settled
+~> waiting-for-level(i, id) for (i, id) on focus-requests
+
+    then applying(i, id) if requested-column(i, id) != null
+
+    then applying(i, id) on level-mounted when requested-column(i, id) != null
+
+    then settled on path-shortened when path.level-id(i) != id
+
+~> applying(i, id)
+    do
+        . column = requested-column(i, id)
+        if column
+            ancestor'Window?.focus(column)
+            ensure-active-column-visible()
+            publish-active-column-changed()
+
+    then settled if true
+
+────────────────────
++ scroll-into-view ~>
+
+~> settled
+~> waiting-for-layout(i, id) for (i, id) on scroll-requests
+    then settled if requested-column-is-laid-out(i, id)
+        do scroll-requested-column-into-view(i, id)
+
+    then settled on laid-out when requested-column-is-laid-out(i, id)
+        do scroll-requested-column-into-view(i, id)
+
+    then settled on path-shortened when path.level-id(i) != id
+
+────────────────────
+
+<This • flex-row
+    if #can-go-back
+        <Shortcut "Back"
+            key = .arrow-left
+            action = => do interact-back()
+
+    if #can-enter
+        <Shortcut "Open"
+            key = .arrow-right
+            action = => do interact-enter()
+
+    for level in #path.#levels keyed by level.id
+        <ColumnTreeColumn'Item
+            tree = this
+            level = level
+            items = level.items
+            is-active-column = column-tree-level-is-active'Item
+                - level
+                - #path.#levels
+                - #path.#active-index
+
+            for item in #items
+                + <ListItem row - item Item
+
+    if #viewport-retention.#slot-count > 0
+        <ColumnTreeColumnSpace
+            slot-count = #viewport-retention.#slot-count
+
+────────────────────
+whenever #root-node
+
+reload-root()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+viewport-retention.release-if-unscrolled(scroll-x)
+laid-out <- true
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+reload-root()
+project-active-column()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get columns [ColumnTreeColumn'Item]
+
+live-columns()
+
+────────────────────
+_ do interact-enter
+
+enter()
+interacted <- true
+
+────────────────────
+_ do interact-back
+
+back()
+interacted <- true
+
+────────────────────
++ do select-relative
+    - offset Int
+
+. column = active-column
+if column
+    if offset < 0
+        column.select-relative(Direction.up)
+    else
+        column.select-relative(Direction.down)
+
+────────────────────
++ do enter
+    - source ColumnTreeColumn'Item? = null
+
+. index = path.active-index
+if source
+    . source-index = column-index-of(source)
+    =? if !source-index
+    index = source-index
+
+. next-index = index + 1
+if next-index < path.levels.length
+    . selection-changed = path.ensure-selection(next-index)
+    focus-level(next-index)
+    if selection-changed
+        publish-selection()
+    preview-selection(next-index)
+    =
+
+. child-items = children-of-selection(index)
+if !child-items
+    activated <- ActivateEvent()
+    =
+
+truncate-path-after(index)
+path.append(child-items, 0)
+focus-level(next-index)
+publish-selection()
+preview-selection(next-index)
+
+────────────────────
++ do back
+
+=? if path.active-index == 0
+
+. index = path.active-index - 1
+focus-level(index)
+truncate-path-after-retaining-space(index)
+
+────────────────────
++ do focus-column
+    - column ColumnTreeColumn'Item?
+
+=? if !column
+
+. index = column-index-of(column)
+if index != null
+    focus-level(index)
+
+────────────────────
++ do focus-level
+    - index Index
+
+=? if !path.focus(index)
+. id = path.level-id(index)
+=? if !id
+
+project-active-column()
+focus-requests <- ColumnFocusRequest(index, id)
+
+────────────────────
++ do restore-path Bool
+    - keys [String]
+
+if !keys
+    reload-root()
+    = false
+
+clear-path()
+
+. current-root = root-node
+if !current-root
+    = false
+
+. items [Item]? = load-children(current-root)
+if items == null
+    = false
+
+. key-prefix = ""
+. depth Index = 0
+while depth < keys.length
+    . current-items = items
+    . match-index = index-of-key(keys[depth], current-items, key-prefix)
+    if match-index == null
+        if depth == 0 && current-items
+            path.append(current-items)
+            focus-level(0)
+        = false
+
+    . item = current-items[match-index]
+    path.append(current-items, match-index)
+    key-prefix = keys[depth]
+    depth += 1
+
+    if depth < keys.length
+        . child-items = load-children(item)
+        if child-items == null
+            focus-level(path.levels.length - 1)
+            = false
+        items = child-items
+
+if path.levels
+    focus-level(path.levels.length - 1)
+= true
+
+────────────────────
+_ do preview-selection
+    - index Index
+
+. next-index = index + 1
+if next-index < path.levels.length
+    request-level-scroll(next-index)
+    =
+if selected-item-at(index) && !level-column(index)
+    pending-preview-level-id = path.level-id(index)
+    =
+. child-items = children-of-selection(index)
+if child-items == null
+    truncate-path-after(index)
+    =
+. selected-index = if next-index == path.active-index then 0 else -1
+path.append(child-items, selected-index)
+if selected-index >= 0
+    publish-selection()
+viewport-retention.consume()
+request-level-scroll(next-index)
+
+────────────────────
+_ do request-level-scroll
+    - index Index
+
+. id = path.level-id(index)
+if id
+    scroll-requests <- ColumnScrollRequest(index, id)
+
+────────────────────
+_ do truncate-path-after-retaining-space
+    - index Index
+
+. removed-count = truncate-path-after(index)
+if removed-count > 0 && scroll-x < 0
+    viewport-retention.retain(removed-count)
+
+────────────────────
+_ do truncate-path-after Size
+    - index Index
+
+. removed-count = path.truncate-after(index)
+if !path.levels
+    viewport-retention.release()
+path-shortened <- true
+= removed-count
+
+────────────────────
++ do select-row
+    - row ListItem
+    - column ColumnTreeColumn'Item
+
+. maybe-row-index = column.selected-index
+=? if maybe-row-index == null
+select-row-at-index(maybe-row-index, column)
+
+────────────────────
++ do clear-row-selection
+    - column ColumnTreeColumn'Item
+
+select-row-at-index(-1, column)
+
+────────────────────
+_ do select-row-at-index
+    - row-index Int
+    - column ColumnTreeColumn'Item
+
+. maybe-index = column-index-of(column)
+=? if maybe-index == null
+. index = maybe-index
+=? if index >= path.levels.length
+
+. changed = path.select(row-index, index)
+
+if index != path.active-index
+    focus-level(index)
+
+if changed
+    truncate-path-after-retaining-space(index)
+    publish-selection()
+
+preview-selection(index)
+
+────────────────────
+_ do column-index-of Index?
+    - column ColumnTreeColumn'Item
+
+. target = column.level
+=? if !target
+
+= path.index-of(target)
+
+────────────────────
+_ live-columns
+
+** active-children
+?*> match? each
+    | column ColumnTreeColumn'Item
+        column
+|> List
+
+────────────────────
+_ do project-active-column
+
+. index = path.active-index
+. level-id = path.level-id(index)
+. column = column-tree-level-column'Item(columns, path.levels, index, level-id)
+if active-column != column
+    active-column = column
+release-unused-viewport-retention()
+
+────────────────────
++ do column-mounted
+    - column ColumnTreeColumn'Item
+
+project-active-column()
+level-mounted <- true
+preview-pending-level(column)
+
+────────────────────
+_ do preview-pending-level
+    - column ColumnTreeColumn'Item
+
+. pending-id = pending-preview-level-id
+=? if !pending-id
+. level = column.level
+=? if !level
+=? if level.id != pending-id
+
+pending-preview-level-id = null
+. index = path.index-of(level)
+if index != null && index + 1 == path.levels.length
+    preview-selection(index)
+
+────────────────────
+_ do release-unused-viewport-retention
+
+viewport-retention.release-if-unscrolled(scroll-x)
+
+────────────────────
+_ requested-column ColumnTreeColumn'Item?
+    - index Index
+    - level-id String
+
+column-tree-level-column'Item(columns, path.levels, index, level-id)
+
+────────────────────
+_ requested-column-is-laid-out Bool
+    - index Index
+    - level-id String
+
+|? column
+    column.bounds.width > 0
+??
+    false
+
+.. column = requested-column(index, level-id)
+
+────────────────────
+_ do scroll-requested-column-into-view
+    - index Index
+    - level-id String
+
+. column = requested-column(index, level-id)
+if column
+    scroll-bounds-visible(column.bounds)
+
+────────────────────
+_ do ensure-active-column-visible
+
+. column = active-column
+if !column
+    if scroll-x != 0
+        scroll((0, scroll-y))
+    =
+= scroll-bounds-visible(column.bounds)
+
+────────────────────
++ do reload-root
+
+clear-path()
+
+. current-root = root-node
+if current-root
+    . child-items = load-children(current-root)
+    if child-items != null
+        if child-items
+            path.append(child-items, 0)
+            focus-level(0)
+
+project-active-column()
+
+────────────────────
++ do refresh
+
+. current-root = root-node
+if !current-root || !path.levels
+    reload-root()
+    =
+
+. held-active = path.active-index
+. held-focus = active-column?.is-focused ?? false
+. owner Item = current-root
+. key-prefix = ""
+. index Index = 0
+while index < path.levels.length
+    . level = path.levels[index]
+    . items = load-children(owner) ?? List'Item()
+    if !items
+        if index == 0
+            clear-path()
+        else
+            . ignored = truncate-path-after(index - 1)
+        break
+
+    . previous = level.selected-index
+    . held = level.selected-item
+    . found Index? = null
+    if held
+        found = index-of-key(key-for-item(held, key-prefix, previous), items, key-prefix)
+    . lost = previous >= 0 && found == null
+    . selected = -1
+    if found != null
+        selected = found
+    else if lost
+        selected = min(previous, (items.length as Int) - 1)
+    if selected != previous || !column-tree-items-match'Item(level.items, items)
+        path.replace(index, items, selected)
+    if selected < 0
+        break
+
+    owner = items[selected]
+    if lost
+        . ignored = truncate-path-after(index)
+        publish-selection()
+    if lost || index + 1 == path.levels.length
+        append-preview(index, owner)
+        break
+    key-prefix = key-for-item(owner, key-prefix, selected)
+    index += 1
+
+refresh-selected-item()
+project-active-column()
+if held-focus && path.levels && path.active-index != held-active
+    focus-level(path.active-index)
+
+────────────────────
+_ do append-preview
+    - index Index
+    - owner Item
+
+. children = load-children(owner) ?? List'Item()
+=? if !children
+path.append(children)
+viewport-retention.consume()
+request-level-scroll(index + 1)
+
+────────────────────
+_ do clear-path
+
+path.clear()
+path-shortened <- true
+project-active-column()
+viewport-retention.release()
+if scroll-x != 0
+    scroll((0, scroll-y))
+
+────────────────────
+_ do children-of-selection [Item]?
+    - index Index
+
+=? if index >= path.levels.length
+. item = selected-item-at(index)
+=? if !item
+. row = selected-row-at(index)
+=? if !row
+=? if !row.has-children
+
+. children = load-children(item)
+if children != null
+    if children
+        = children
+
+────────────────────
+_ do selected-row-at ListItem?
+    - index Index
+
+=? if index >= path.levels.length
+. selected-index = path.levels[index].selected-index
+=? if selected-index < 0
+. column = level-column(index)
+=? if !column
+= column.row-at-index(selected-index)
+
+────────────────────
+_ level-column ColumnTreeColumn'Item?
+    - index Index
+
+column-tree-level-column'Item(columns, path.levels, index, path.level-id(index))
+
+────────────────────
++ selected-item-at Item?
+    - index Index
+
+path.selected-item-at(index)
+
+────────────────────
+_ do index-of-key Index?
+    - key String
+    - items [Item]
+    - key-prefix String
+
+. index Index = 0
+for item in items
+    if key-for-item(item, key-prefix, index) == key
+        = index
+    index += 1
+
+────────────────────
+_ key-for-item String
+    - item Item
+    - key-prefix String
+    - index Index
+
+|? builder
+    builder(item)
+|? key-prefix
+    "$key-prefix/$index"
+??
+    "$index"
+
+.. builder = key-builder
+
+────────────────────
+_ do publish-active-column-changed
+
+refresh-selected-item()
+active-column-changed <- ActivateEvent()
+
+────────────────────
+_ do publish-selection
+
+refresh-selected-item()
+selected <- SelectEvent()
+
+────────────────────
+_ do refresh-selected-item
+
+selected-item = column-tree-selected-item-from'Item(path.active-index, path.levels)
+
+━━━━━━━━━━━━━━━━━━━━
++ ColumnTreeColumn'Item is ListBox
+
++ items [Item] = List'Item()
++ is-active-column = false
+
+_ tree ColumnTree'Item?
+_ level ColumnTreeLevel'Item?
+` Markup can transiently detach a keyed column while its row event is still in flight.
+_ selection-owner ColumnTree'Item?
+
+• This • flex-col
+    min-width = SizeSpec.coord(28)
+    max-width = SizeSpec.coord(28)
+
+────────────────────
+whenever #level
+
+project-level-selection()
+
+────────────────────
+whenever children ListItem
+
+catch project-level-selection()
+
+────────────────────
+for event on interacted
+
+. owner = selection-owner-for-update()
+if owner
+    owner.interacted <- true
+
+╌╌╌╌╌╌╌╌╌╌ is ListBox ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do select-row
+    - row ListItem?
+
+. owner = selection-owner-for-update()
+super.select-row(row)
+
+if owner
+    if selected-row
+        owner.select-row(selected-row, this)
+    else
+        owner.clear-row-selection(this)
+
+────────────────────
+_ do selection-owner-for-update ColumnTree'Item?
+
+if tree
+    = tree
+
+. owner = selection-owner
+if owner && owner.active-column == this
+    = owner
+
+────────────────────
++ do activate-selection
+
+. owner = tree
+if owner
+    owner.enter(this)
+    =
+super.activate-selection()
+
+────────────────────
++ do ensure-selection
+
+project-level-selection()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+selection-owner = tree
+tree?.column-mounted(this)
+project-level-selection()
+
+────────────────────
++ do unmounted
+
+is-active-column = false
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do project-level-selection
+
+=? if %parent == null
+. model = level
+=? if !model
+
+. desired ListItem?
+. index = model.selected-index
+if index >= 0
+    desired = row-at-index(index)
+
+if selected-row != desired
+    catch super.select-row(desired)
+
+━━━━━━━━━━━━━━━━━━━━
++ ColumnTreeColumnSpace is Box
+
++ slot-count Index = 0
+
+• This
+    min-width = column-tree-column-space-width(slot-count)
+    max-width = column-tree-column-space-width(slot-count)
+
+────────────────────
+_ do column-tree-column-space-width
+    - count Index
+
+. width Coord = 0
+. remaining = count
+while remaining > 0
+    width += 30
+    remaining -= 1
+
+= width
+
+━━━━━━━━━━━━━━━━━━━━
++ ColumnTreeChildProvider'ColumnItem is () [ColumnItem]?
+    - item ColumnItem
+
+━━━━━━━━━━━━━━━━━━━━
+_ ColumnFocusRequest is Tuple
+
++ index Index
++ level-id String
+
+━━━━━━━━━━━━━━━━━━━━
+_ ColumnScrollRequest is Tuple
+
++ index Index
++ level-id String
+
+━━━━━━━━━━━━━━━━━━━━
+_ ColumnTreeLevel'Item
+
++ id String
++ items [Item]
++ selected-index Int = -1
+
+────────────────────
++ This
+    - id
+    - items
+    - selected-index = -1
+
+────────────────────
++ get selected-item Item?
+
+items[selected-index] if selected-index >= 0 && selected-index < items.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ ColumnTreePath'Item
+
++ levels [ColumnTreeLevel'Item]
++ active-index Index
+
+_ next-level-id Size
+
+────────────────────
++ do clear
+
+levels.release()
+active-index = 0
+
+────────────────────
++ do focus Bool
+    - index Index
+
+=? if index >= levels.length
+active-index = index
+= true
+
+────────────────────
++ do append
+    - items [Item]
+    - selected-index Int = -1
+
+next-level-id += 1
+levels += ColumnTreeLevel'Item("$next-level-id", items, selected-index)
+
+────────────────────
++ do truncate-after Size
+    - index Index
+
+. before-count = levels.length
+. next-count = index + 1
+while levels.length > next-count
+    levels.remove(levels.length - 1)
+
+if !levels
+    active-index = 0
+else if active-index >= levels.length
+    active-index = levels.length - 1
+
+= before-count - levels.length
+
+────────────────────
++ do select Bool
+    - selected-index Int
+    - index Index
+
+=? if index >= levels.length
+. current = levels[index]
+=? if current.selected-index == selected-index
+
+replace(index, current.items, selected-index)
+= true
+
+────────────────────
++ do replace
+    - index Index
+    - items [Item]
+    - selected-index Int
+
+=? if index >= levels.length
+. next-levels = List'(ColumnTreeLevel'Item)(levels)
+next-levels[index] = ColumnTreeLevel'Item
+    - levels[index].id
+    - items
+    - selected-index
+levels = next-levels
+
+────────────────────
++ do ensure-selection Bool
+    - index Index
+
+=? if index >= levels.length
+. level = levels[index]
+=? if level.selected-index >= 0 && level.selected-index < level.items.length
+=? if !level.items
+
+= select(0, index)
+
+────────────────────
++ do index-of Index?
+    - target ColumnTreeLevel'Item
+
+. index Index = 0
+for candidate in levels
+    if candidate.id == target.id
+        = index
+    index += 1
+
+────────────────────
++ do level-id String?
+    - index Index
+
+=? levels[index].id
+    if index < levels.length
+
+────────────────────
++ do selected-item-at Item?
+    - index Index
+
+=? if index >= levels.length
+. level = levels[index]
+. selected-index = level.selected-index
+=? if selected-index < 0
+
+. items = level.items
+. item-index = selected-index
+=? items[item-index]
+    if item-index < items.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ ColumnTreeViewportRetention
+
++ slot-count Index = 0
+
+────────────────────
++ do retain
+    - count Size
+
+slot-count += count
+
+────────────────────
++ do consume
+
+if slot-count > 0
+    slot-count -= 1
+
+────────────────────
++ do release
+
+slot-count = 0
+
+────────────────────
++ do release-if-unscrolled
+    - scroll-x Coord
+
+if scroll-x == 0
+    release()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-no-children'Item [Item]?
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-level-column'Item ColumnTreeColumn'Item?
+    - live-columns [ColumnTreeColumn'Item]
+    - levels [ColumnTreeLevel'Item]
+    - index Index
+    - level-id String?
+
+=? if index >= levels.length
+. current-id = levels[index].id
+=? if level-id != null && level-id != current-id
+
+for column in live-columns
+    if column.level?.id == current-id
+        = column
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-owners-from'Item [Item]
+    - root Item?
+    - levels [ColumnTreeLevel'Item]
+
+. owners [Item] = List'Item()
+=? owners if !root
+owners += root
+for level in levels
+    . owner = level.selected-item
+    if owner
+        owners += owner
+= owners
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-items-match'Item Bool
+    - current [Item]
+    - next [Item]
+
+=? false if current.length != next.length
+for index in 0 .. < current.length
+    =? false if !(current[index] == next[index])
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-level-is-active'Item Bool
+    - level ColumnTreeLevel'Item
+    - levels [ColumnTreeLevel'Item]
+    - active-index Index
+
+=? if active-index >= levels.length
+= levels[active-index].id == level.id
+
+━━━━━━━━━━━━━━━━━━━━
+_ do column-tree-selected-item-from'Item Item?
+    - active-index Index
+    - levels [ColumnTreeLevel'Item]
+
+=? if active-index >= levels.length
+
+. level = levels[active-index]
+. selected-index = level.selected-index
+=? if selected-index < 0
+
+. items = level.items
+. index = selected-index
+=? items[index]
+    if index < items.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ column-tree-can-enter-from'Item Bool
+    - index Index
+    - levels [ColumnTreeLevel'Item]
+    - selected-row-has-children Bool
+
+|? index >= levels.length
+    levels.length > 0
+|? next-index < levels.length
+    true
+??
+    selected-row-has-children
+
+.. next-index = index + 1

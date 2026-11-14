@@ -1,0 +1,345 @@
+./file-menu
+/graphics/color
+/graphics/primitives
+/gui/box
+/gui/clipboard
+/gui/drag
+/gui/events
+/gui/keys
+/gui/primitives
+/os/file-session
+/os/file-tree
+/os/path
+/stream/aggregate
+/ui/input
+/ui/key-combo
+
+━━━━━━━━━━━━━━━━━━━━
++ FileMark is Tuple
+
++ text String
++ color RGBA
++ is-dot = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileRenameCommit is Tuple
+
++ key String
++ name String
++ keeps-focus Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileView is Box
+
+• This
+    focus-mode = FocusMode.inside
+
++ files FileTree
++ session FileSession = FileSession()
++ marks Map'String'[FileMark]?
++ context-node FileNode?
++ context-targets [FileNode]
++ context-owner FileNode?
+
+_ retained Map'String'FileNode = Map'String'FileNode()
+_ discarded FileNode?
+_ event rename-requested FileNode
+_ event rename-committed FileRenameCommit
+_ event rename-canceled Bool
+
+────────────────────
+
+<This
+    <KeyShortcut rename-shortcut "Rename"
+        key = KeyCombo("F2")
+        stable-key = "files.rename"
+        repeat = false
+        action = => do begin-rename(selected-node())
+    <KeyShortcut trash-shortcut "Move to Trash"
+        key = KeyCombo("Cmd+Backspace")
+        stable-key = "files.trash"
+        repeat = false
+        action = => do menu.trash(selected-nodes())
+
+    <FileMenu menu
+        files = files
+        session = session
+        node = #context-node
+        folder = #context-owner
+        targets = #context-targets
+        rename-key = rename-shortcut.key
+        trash-key = trash-shortcut.key
+        <+ (leading)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+~> is-idle
+
+~> renaming(node) for node on rename-requested
+    then is-idle for commit on rename-committed when commit.key == node.key
+        do
+            discarded = null
+            report(attempt-rename(node, commit.name))
+            if commit.keeps-focus
+                show-node(node)
+                focus-list()
+
+    then is-idle on rename-canceled
+        do
+            discard(node)
+            focus-list()
+
+────────────────────
+for event on pointer-down
+
+if event.button == PointerButton.secondary || event.modifiers.control
+    context-node = pressed-node(event)
+    context-owner = pressed-owner(event)
+    context-targets = targets-for(context-node)
+
+────────────────────
+for request on menu.rename-requested
+
+show-node(request.node)
+begin-rename(request.node, request.discards)
+
+────────────────────
+for node on session.revealed
+
+choose(node)
+if node.is-directory
+    expand-node(node)
+show-node(node, ScrollAlignment.center)
+focus-list()
+
+────────────────────
+whenever session.#current
+
+follow-current()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+retain-only(Map'String'FileNode())
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ selected-node FileNode?
+
+null
+
+────────────────────
++ selected-nodes [FileNode]
+
+if node then [node] else List'FileNode()
+
+.. node = selected-node()
+
+────────────────────
++ do show-node
+    - node FileNode
+    - alignment = ScrollAlignment.nearest
+
+────────────────────
++ do expand-node
+    - node FileNode
+
+────────────────────
++ do focus-list
+
+────────────────────
++ do follow-current
+
+────────────────────
++ pressed-node FileNode?
+    - event GUIEvent
+
+null
+
+────────────────────
++ pressed-owner FileNode?
+    - event GUIEvent
+
+null
+
+────────────────────
++ do reveal Bool
+    - target Path
+
+. node = files.find(target)
+=? false if !node
+show-node(node)
+= true
+
+────────────────────
++ do begin-rename
+    - node FileNode?
+    - discards = false
+
+=? if !node || !node.parent
+discarded = node if discards
+rename-requested <- node
+
+────────────────────
++ do commit-rename
+    - key String
+    - name String
+    - keeps-focus Bool
+
+rename-committed <- FileRenameCommit(key, name, keeps-focus)
+
+────────────────────
++ do cancel-rename
+
+rename-canceled <- true
+
+────────────────────
++ accepts Bool
+    - nodes [FileNode]
+    - owner FileNode
+
+owner.is-directory && !blocked
+
+.. blocked = some(nodes) • where each.parent?.key == owner.key || file-node-is-within(owner, each)
+
+────────────────────
++ do move
+    - nodes [FileNode]
+    - owner FileNode
+
+report(attempt-move(nodes, owner))
+
+────────────────────
++ do drop-operation DropOperation
+    - payload DragPayload
+    - owner FileNode
+    - modifiers PointerModifiers
+
+=? DropOperation.none if !owner.is-directory || !(payload is ClipboardDrag)
+. paths = (payload as ClipboardDrag).clipboard.paths
+=? DropOperation.none if paths.length == 0
+=? DropOperation.copy if modifiers.option
+. device = file-view-device(owner.path)
+for path in paths
+    =? DropOperation.copy if file-view-device(path) != device
+= DropOperation.move
+
+────────────────────
++ do receive
+    - payload DragPayload
+    - owner FileNode
+    - modifiers PointerModifiers
+
+. operation = drop-operation(payload, owner, modifiers)
+=? if operation == DropOperation.none
+. paths = (payload as ClipboardDrag).clipboard.paths
+report(attempt-receive(paths, owner, operation == DropOperation.copy))
+
+────────────────────
++ do open
+    - node FileNode?
+
+if node
+    session.opened <- node
+
+────────────────────
++ do note-selection
+
+choose(selected-node())
+
+────────────────────
++ do choose
+    - node FileNode?
+
+if session.current?.key != node?.key
+    session.current = node
+
+────────────────────
++ do retain-only
+    - next Map'String'FileNode
+
+for pair in retained.items
+    if !(next has pair.key)
+        files.release(pair.value)
+for pair in next.items
+    if !(retained has pair.key)
+        files.retain(pair.value)
+retained = next
+
+────────────────────
+_ do targets-for [FileNode]
+    - node FileNode?
+
+=? List'FileNode() if !node
+. key = node.key
+. selected = selected-nodes()
+=? selected if some(selected) • where each.key == key
+= [node]
+
+────────────────────
+_ do discard
+    - node FileNode
+
+. kept = discarded
+discarded = null
+=? if !kept || kept.key != node.key
+report(attempt-discard(node))
+
+────────────────────
+_ do report
+    - message String?
+
+if message
+    session.failed <- message
+
+────────────────────
+_ do attempt-rename String?
+    - node FileNode
+    - name String
+
+files.rename(node, name)
+    catch failure Error
+        = "Could not rename ${node.name}: ${failure.message}"
+= null
+
+────────────────────
+_ do attempt-move String?
+    - nodes [FileNode]
+    - owner FileNode
+
+files.move(nodes, owner)
+    catch failure Error
+        = "Could not move into ${owner.path.name}: ${failure.message}"
+= null
+
+────────────────────
+_ do attempt-discard String?
+    - node FileNode
+
+node.path.delete()
+    catch failure Error
+        = "Could not remove ${node.name}: ${failure.message}"
+files.removed(node)
+= null
+
+────────────────────
+_ do attempt-receive String?
+    - paths [Path]
+    - owner FileNode
+    - copies Bool
+
+files.receive(paths, owner, copies)
+    catch failure Error
+        = "Could not ${if copies then "copy" else "move"} into ${owner.path.name}: ${failure.message}"
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-view-device U64?
+    - path Path
+
+. found = catch? path.stat
+= found?.dev

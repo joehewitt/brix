@@ -1,0 +1,73 @@
+./program-tables
+/data/json
+/lang/ast/probe-selection
+/lang/ast/program
+/os/file
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ unmatched-probe-selectors [String]
+    - program Program
+    - tables ProgramTables
+
+each in program.probes.selectors when !tables.selects-any(ProbeSelection(true, each))
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-probe-catalog ?! Error
+    - path String
+    - program Program
+    - tables ProgramTables
+    - unmatched [String]
+
+. sites [String]
+for position in 0 .. < tables.probes.length
+    . site = tables.probe-site(tables.probes[position])
+    if site
+        sites += "    ${site-json(position + 1, site)}"
+. metrics [String]
+for position in 0 .. < tables.profile-metrics.length
+    metrics += "    ${site-json(position + 1, metric)}"
+    .. metric = tables.metric-site(tables.profile-metrics[position])
+. lines [String]
+lines += "{"
+lines += "  \"version\": 1,"
+lines += "  \"selectors\": ${strings-json(program.probes.selectors)},"
+lines += "  \"locals\": ${strings-json(program.probes.locals)},"
+lines += "  \"unmatched\": ${strings-json(unmatched)},"
+lines += "  \"sites\": ["
+lines += ",\n".join(sites)
+lines += "  ],"
+lines += "  \"metrics\": ["
+lines += ",\n".join(metrics)
+lines += "  ]"
+lines += "}"
+write-file-atomically(Path(path), "${"\n".join(lines)}\n")
+
+━━━━━━━━━━━━━━━━━━━━
+_ site-json String
+    - id Size
+    - site ProbeSite
+
+"{\"id\": $id, \"kind\": \"${kind-name(site.kind)}\", \"key\": ${json-quote(site.key)}, \"name\": ${json-quote(site.name)}, \"template\": ${json-quote(site.template)}, \"fields\": ${strings-json(site.fields)}, \"module\": ${json-quote(site.module-name)}, \"path\": ${json-quote(site.path)}, \"line\": ${site.line}}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ kind-name String
+    - kind ProbeSiteKind
+
+match kind
+    |= .log
+        "log"
+    |= .event
+        "event"
+    |= .counter
+        "counter"
+    ??
+        "timer"
+
+━━━━━━━━━━━━━━━━━━━━
+_ strings-json String
+    - values [String]
+
+"[${", ".join(quoted)}]"
+
+.. quoted = json-quote(each) in values

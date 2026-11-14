@@ -1,0 +1,2176 @@
+:====
+
+do new
+    -- "hi"
+
+:----
+
+hi
+;===
+:====
+
+do new
+    ?! Panic("task boom")
+
+:----
+%crash-stderr
+
+Unhandled panic: task boom
+<no file:3>
+
+Task 2, spawned by task 1 from no file:2:1
+
+Stack trace:
+  0  __source__:Fork no file:3:5
+;===
+:====
+
+. worker = Worker(1)
+do (worker) new
+    ?! Panic("worker boom")
+
+:----
+%crash-stderr
+
+Unhandled panic: worker boom
+<no file:4>
+
+Task 2 (worker), spawned by task 1 from no file:3:1
+
+Stack trace:
+  0  __source__:Fork no file:4:5
+;===
+:====
+
+do new foo(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n
+
+-- "ok $n"
+
+:----
+
+ok 1
+;===
+:====
+# Single suspend point
+
+. waiter = Waiter()
+do new foo(waiter)
+waiter.resume()
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Waiter
+
++ sem = Semaphore()
+
+────────────────────
++ do await
+
+sem.wait()
+
+────────────────────
++ do resume
+
+sem.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - waiter Waiter
+
+-- "start"
+waiter.await()
+-- "resume"
+
+:----
+
+start
+done
+resume
+;===
+:====
+# Multiple suspend points
+
+. waiter = Waiter()
+do new foo(waiter)
+waiter.resume()
+waiter.resume()
+waiter.resume()
+
+━━━━━━━━━━━━━━━━━━━━
++ Waiter
+
++ sem = Semaphore()
+
+────────────────────
++ do await
+
+sem.wait()
+
+────────────────────
++ do resume
+
+sem.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - waiter Waiter
+
+-- "a"
+waiter.await()
+-- "b"
+waiter.await()
+-- "c"
+waiter.await()
+= 1
+
+:----
+
+a
+b
+c
+;===
+:====
+# Nested suspension
+
+. waiter = Waiter()
+do new bar(waiter)
+waiter.resume()
+waiter.resume()
+
+━━━━━━━━━━━━━━━━━━━━
++ Waiter
+
++ sem = Semaphore()
+
+────────────────────
++ do await
+
+sem.wait()
+
+────────────────────
++ do resume
+
+sem.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - waiter Waiter
+
+-- "foo start"
+waiter.await()
+-- "foo resume"
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do bar
+    - waiter Waiter
+
+-- "bar start"
+-- foo(waiter)
+-- "bar resume"
+waiter.await()
+
+:----
+
+bar start
+foo start
+foo resume
+1
+bar resume
+;===
+====================================================================================================
+Capture scope
+====================================================================================================
+:====
+
+for i in 0 .. < 3
+    do new foo(i)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - i
+
+-- i
+
+:----
+
+0
+1
+2
+;===
+:====
+
+do new thread
+    foo(42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - i
+
+-- 42
+
+:----
+
+42
+;===
+:====
+# Fork inside a method which refers to and modifies properties
+
+. foo = Foo()
+foo.branch()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 42
+
+────────────────────
++ do foo
+    - i
+
+-- i
+
+────────────────────
++ do branch
+
+do new
+    -- this.a
+    this.a = 24
+    -- this.a
+
+:----
+
+42
+24
+;===
+:====
+# Fork inside a method which refers to and modifies properties
+
+. foo = Foo()
+foo.branch()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 42
+
+────────────────────
++ do foo
+    - i
+
+-- i
+
+────────────────────
++ do branch
+
+do new
+    -- a
+    a = 24
+    -- a
+
+:----
+
+42
+24
+;===
+:====
+# Fork inside a method which calls a method
+
+. foo = Foo()
+foo.branch()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 42
+
+────────────────────
++ do foo
+    - i
+
+-- i
+
+────────────────────
++ do branch
+
+do new
+    foo(10)
+
+:----
+
+10
+;===
+:====
+# Fork inside a closure
+
+. foo = => do
+    . b = 20
+    do new
+        -- b
+
+foo()
+
+:----
+
+20
+;===
+:====
+# Fork inside a closure
+
+. a = 10
+. foo = => do
+    do new
+        -- a
+        a = 20
+        -- a
+
+foo()
+
+:----
+
+10
+20
+;===
+:====
+# Fork inside a nested closure
+
+. a = 10
+. foo = => do
+    . b = 20
+    . bar = => do
+        do new
+            -- a
+            a = 20
+            -- a
+
+            -- b
+            b = 30
+            -- b
+
+    bar()
+
+foo()
+
+:----
+
+10
+20
+20
+30
+;===
+:====
+# Closure inside a fork
+
+. a = 10
+do new
+    . foo = => do
+        -- a
+
+    foo()
+
+:----
+
+10
+;===
+:====
+# Fork in a closure captures method self and a typed list
+
+. app = App()
+app.submit()
+
+━━━━━━━━━━━━━━━━━━━━
++ App
+
++ values [Int]
+    * 1
+    * 2
+
+────────────────────
++ do submit
+
+. handler = => do
+    . request [Int] = values
+    do new stream-response(request)
+handler()
+
+────────────────────
++ do stream-response
+    - request [Int]
+
+-- request[0]
+
+:----
+
+1
+;===
+:====
+# Modifying outer variable inside fork doesn't affect outside variable
+
+. a = 10
+do new
+    . foo = => do
+        -- a
+        a = 20
+        -- a
+    foo()
+-- "still $a"
+
+:----
+
+still 10
+10
+20
+;===
+:====
+# Fork which references global variables
+
+_ x = 1
+
+do new thread
+    -- x
+    x = 2
+    -- x
+
+:----
+
+1
+2
+;===
+:====
+# Lazy script variable first read inside a fork materializes at the spawn site, in the
+# spawning function's frame, not the fork's
+
+.. y = 1
+. done = Semaphore()
+
+do new
+    -- "task y=$y"
+    done.post()
+done.wait()
+-- "main y=$y"
+
+:----
+
+task y=1
+main y=1
+;===
+:====
+# Lazy script variables written inside a fork mutate the fork's snapshot only; the spawning
+# task and later forks keep intact values
+
+.. y = 1
+.. z = y * 3
+. done = Semaphore()
+
+do new
+    y = 2
+    -- "first y=$y z=$z"
+    done.post()
+done.wait()
+-- "main y=$y"
+
+do new
+    -- "second y=$y z=$z"
+    done.post()
+done.wait()
+-- "end y=$y z=$z"
+
+:----
+
+first y=2 z=3
+main y=1
+second y=1 z=3
+end y=1 z=3
+;===
+====================================================================================================
+Workers
+====================================================================================================
+:====
+
+. worker = Worker(1)
+do (worker) new
+    foo(1, worker)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n
+    - worker
+
+-- "ok $n"
+
+:----
+
+ok 1
+;===
+:====
+
+. worker = Worker(1)
+do (42) new
+    -- 1
+
+:----
+%crash
+
+Exception: Fork target is not a Worker
+<no file:3>
+    do (42) new
+    ^^^^^^^^^^
+;===
+:====
+
+. worker = Worker(1)
+-- worker.is-stopped
+worker.stop()
+-- worker.is-stopped
+do (worker) new
+    -- 1
+-- "nada"
+
+:----
+
+false
+true
+nada
+;===
+====================================================================================================
+Priority Tasks
+====================================================================================================
+:====
+
+do new
+    -- "normal"
+
+do new @priority
+    -- "priority"
+
+-- "main"
+
+:----
+
+main
+priority
+normal
+;===
+:====
+
+do new @priority
+    -- "priority 1"
+
+do new @priority
+    -- "priority 2"
+
+do new
+    -- "normal"
+
+-- "main"
+
+:----
+
+main
+priority 1
+priority 2
+normal
+;===
+:====
+
+. ready = Semaphore()
+. box = TaskBox()
+
+do new @priority
+    -- "priority start"
+    box.parked = Task()
+    ready.post()
+    . parked = box.parked!
+    if parked.suspend()
+        ?! TaskCancelationError()
+    -- "priority resumed"
+
+ready.wait()
+
+do new
+    -- "normal pending"
+
+. parked = box.parked!
+parked.resume-later()
+-- "main after resume"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ parked Task?
+
+:----
+
+priority start
+main after resume
+priority resumed
+normal pending
+;===
+:====
+
+. ready = Semaphore()
+
+do new
+    do finally
+        . panic = recover()
+        if panic
+            -- "recover saw termination"
+        -- "worker cleanup"
+    ready.post()
+    Semaphore().wait()
+    -- "unexpected resume"
+
+ready.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+recover saw termination
+worker cleanup
+;====
+:====
+
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+
+do new
+    box.task = Task()
+    ready.post()
+    do finally
+        . panic = recover()
+        if panic
+            -- "recovered $panic"
+        done.post()
+
+    Semaphore().wait()
+    -- "unexpected resume"
+
+ready.wait()
+. task = box.task!
+task.cancel()
+done.wait()
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+recovered Task cancelled
+done
+;===
+:====
+
+for i in 0 .. < 10
+    do new @priority
+        -- "priority $i"
+
+do new
+    -- "normal"
+
+-- "main"
+
+:----
+
+main
+priority 0
+priority 1
+priority 2
+priority 3
+priority 4
+priority 5
+priority 6
+priority 7
+normal
+priority 8
+priority 9
+;===
+:====
+
+. done = Semaphore()
+. worker = Worker(1)
+
+do (worker) new
+    do (worker) new
+        -- "worker normal"
+        done.post()
+
+    do (worker) new @priority
+        -- "worker priority"
+
+    -- "worker parent"
+
+done.wait()
+worker.stop()
+
+:----
+
+worker parent
+worker priority
+worker normal
+;===
+====================================================================================================
+Threads
+====================================================================================================
+:====
+
+do new thread foo(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n
+
+-- "ok $n"
+= n
+
+:----
+
+ok 1
+;===
+====================================================================================================
+Task Local Variables
+====================================================================================================
+:================================================================================================
+
++ @task bar = (42, 99)
++ @task baz = 88
+
+-- bar, baz
+bar = (100, 200)
+baz = 3
+-- bar, baz
+
+do new
+    -- "task 1", bar, baz
+    bar = (1, 2)
+    baz = 5
+    -- "task 1", bar, baz
+
+:------------------------------------------------------------------------------------------------
+
+((42, 99), 88)
+((100, 200), 3)
+(task 1, (42, 99), 88)
+(task 1, (1, 2), 5)
+
+;====
+:====
+# Task-local and stack-local initializers run once in the main task and once in each spawned task;
+# the spawned task inherits the stack-local binding.
+
+-- "main", label, depth
+. done = Semaphore()
+do new
+    -- "task", label, depth
+    done.post()
+done.wait()
+-- count
+
++ count = 0
++ @task label = next-count()
++ @stack depth = next-count()
+
+━━━━━━━━━━━━━━━━━━━━
++ do next-count Int
+
+count += 1
+= count
+
+:----
+
+(main, 1, 2)
+(task, 3, 2)
+4
+;====
+:====
+# The main task initializes a module's task-locals before its eager globals.
+
+-- first-seen, later
+
++ count = 0
++ later = next-count()
++ @task first-seen = next-count()
+
+━━━━━━━━━━━━━━━━━━━━
++ do next-count Int
+
+count += 1
+= count
+
+:----
+
+(1, 2)
+;====
+:====
+# A panic in a spawned task's task-local initializer is reported.
+
+armed = true
+do new
+    -- label
+
++ armed = false
++ @task label = pick()
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick String
+
+if armed
+    armed = false
+    ?! Panic("armed")
+= "ok"
+
+:----
+%crash-stderr
+
+Unhandled panic: armed
+<no file:14>
+
+Task 2, spawned by task 1 from no file:3:1
+
+Stack trace:
+  0  __source__:pick no file:14:5
+  1  __source__:init.__source__.task-local.label no file:7:17
+  2  __source__:taskinit no file
+  3  __source__:Fork no file:3:1
+;====
+:====
+# A task that native code schedules on the main queue runs the task-local initializers.
+
+/YuEvents/YuEvents.h
+
+label = "main"
+C:yumiScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+done.wait()
+-- label
+
++ done = Semaphore()
++ @task label = "initialized"
+
+━━━━━━━━━━━━━━━━━━━━
++ NativeTaskStart is (*C) Void
+    - closure Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ do native-task
+    - closure Pointer
+
+-- label
+done.post()
+C:yumiTerminateActiveTask()
+
+:----
+
+initialized
+main
+;====
+:====
+# Arena handles and allocation pointers may cross a quiescent task handoff.
+
+/core/arena
+
+. arena = Arena()
+. value = arena.allocate'U32(1)
+value[0] = 42u32
+. done = Semaphore()
+do new
+    -- value[0]
+    . other = arena.allocate'U32(1)
+    other[0] = 43u32
+    -- other[0]
+    done.post()
+done.wait()
+arena.release()
+
+:----
+
+42
+43
+;====
+:====
+
+. sem = Semaphore'Int()
+. copy = sem
+do new
+    -- sem.await()
+copy.post(42)
+
+:----
+
+42
+;====
+:====
+
+. sem = Semaphore'String()
+do new
+    sem.post("message")
+-- sem.await()
+
+:----
+
+message
+;====
+
+:====
+
+. sem = Semaphore'Payload()
+if false
+    sem.post("wrong")
+-- "unexpected acceptance"
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload
+
++ value Int
+
+:----
+%crash
+
+Exception: No method "post" of Semaphore'Payload accepts (String); it is declared as "post(value Payload)"
+<no file:4>
+        sem.post("wrong")
+        ^^^^^^^^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+if false
+    . copy Semaphore'F32 = sem
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: "copy" is declared Semaphore'F32, but its value is Semaphore'I64, which can never be Semaphore'F32; convert the value, or declare "copy" without a type
+<no file:4>
+        . copy Semaphore'F32 = sem
+          ^^^^^^^^^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+if false
+    -- sem.await'String()
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: No method "await" of Semaphore'I64 accepts (); it is declared as "await(mutex Mutex?)"
+<no file:4>
+        -- sem.await'String()
+           ^^^^^^^^^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+if false
+    sem.post()
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: No method "post" of Semaphore'I64 accepts (); it is declared as "post(value Payload)"
+<no file:4>
+        sem.post()
+        ^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+if false
+    sem.wait()
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: Semaphore'I64 has no method "wait"; did you mean "await"?
+<no file:4>
+        sem.wait()
+        ^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore()
+if false
+    sem.post(42)
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: No method "post" of Semaphore'Void accepts (I64); it is declared as "post(value Payload)" or "post"
+<no file:4>
+        sem.post(42)
+        ^^^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+. mutex = Mutex()
+mutex.lock()
+do new
+    mutex.lock()
+    mutex.unlock()
+    sem.post(7)
+-- sem.await(mutex)!
+
+:----
+
+7
+;====
+:====
+
+. sem = Semaphore'Payload()
+. mutex = Mutex()
+. copy = sem
+mutex.lock()
+do new
+    copy.post(Payload("hello", 7))
+. received = sem.await(mutex)!
+-- received.text
+-- received.number
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload is Tuple
+
++ text String
++ number Int
+
+────────────────────
++ This
+    - text
+    - number
+
+:----
+
+hello
+7
+;====
+
+:====
+
+. sem = Semaphore'Int()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "canceled receiver"
+        done.post()
+    ready.post()
+    -- sem.await()
+    -- "unexpected receive"
+ready.wait()
+. canceled = box.task!
+canceled.cancel()
+done.wait()
+do new
+    sem.post(9)
+-- sem.await()
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+canceled receiver
+9
+;====
+:====
+
+. sem = Semaphore'Int()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "canceled sender"
+        done.post()
+    ready.post()
+    sem.post(17)
+    -- "unexpected post"
+ready.wait()
+. canceled = box.task!
+canceled.cancel()
+done.wait()
+do new
+    sem.post(9)
+-- sem.await()
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+canceled sender
+9
+;====
+:====
+
+. sem = Semaphore'I64()
+. value I32 = 123
+do new
+    sem.post(value)
+-- sem.await()
+
+:----
+
+123
+;====
+:====
+
+. sem = Semaphore'Int()
+if false
+    sem.post((1, 2, 3))
+-- "unexpected acceptance"
+
+:----
+%crash
+
+Exception: No method "post" of Semaphore'I64 accepts ((I64, I64, I64)); it is declared as "post(value Payload)"
+<no file:4>
+        sem.post((1, 2, 3))
+        ^^^^^^^^^^^^^^^^^^^
+;====
+:====
+
+. sem = Semaphore'Int()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    ready.post()
+    -- sem.await() == null
+    done.post()
+ready.wait()
+. receiver = box.task!
+receiver.resume-later()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+true
+;====
+
+:====
+
+/YuCore/YuCore.h
+/core/arena
+
+. reserved-before = C:yumiArenaRuntimeReservedBytes()
+. output SyncBufferedChannel'Int
+. scratch-pool SyncBufferedChannel'Arena
+. worker = Worker(4)
+for _ in 0 .. < 4
+    scratch-pool <- Arena()
+for value in 0 .. < 128
+    do (worker) new
+        . scratch = (<- scratch-pool)!
+        do finally
+            scratch-pool <- scratch
+        . buffer = scratch.allocate'Int(1)
+        buffer[0] = value
+        . resume SyncBufferedChannel'Bool
+        do new
+            resume <- true
+        <- resume
+        . copied = buffer[0]
+        scratch.reset()
+        output <- copied
+
+. total = 0
+for _ in 0 .. < 128
+    total += (<- output)!
+worker.stop()
+scratch-pool.close()
+for scratch in scratch-pool
+    scratch.release()
+-- total == 8128
+-- C:yumiArenaRuntimeReservedBytes() == reserved-before
+
+:----
+
+true
+true
+;====
+:====
+# Task-local variables of the main task start at their values and keep what is assigned.
++ @task depth = 5
++ @task scale = 2.5
++ @task seen Bool
+
+-- depth, scale, seen
+depth += 3
+seen = true
+-- depth, scale, seen
+bump()
+-- depth
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump
+
+depth *= 2
+
+:----
+
+(5, 2.5, false)
+(8, 2.5, true)
+16
+;====
+:====
+# A task-local with no value written starts as its type's default value, field by field.
+-- pt
+pt = Point(4, 5)
+-- pt
+-- line
+
++ @task pt Point
++ @task line Line
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32 = 7
++ y I32 = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ Line is Struct
+
++ a Point
++ b Point
+
+:----
+
+(7, 8)
+(4, 5)
+((7, 8), (7, 8))
+;====
+:====
+# An eager global may read a task-local declared after it: the main task stores task-locals first.
+-- later
+-- depth
+
++ later = depth + 1
++ @task depth = 5
+
+:----
+
+6
+5
+;====
+:====
+# A task-local no function reads never takes its value, so what its value does never runs.
+
+-- "start"
+-- seen
+
++ seen = 0
++ @task noisy = bump()
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Int
+
+seen += 10
+-- "bumped"
+= seen
+
+:----
+
+start
+0
+;====
+:====
+# A task-local only a spawned task reads is given its value by the main task too.
+
+. done = Semaphore()
+do new
+    -- "task", label
+    done.post()
+done.wait()
+-- "main done"
+
++ @task label = make()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make String
+
+-- "making"
+= "made"
+
+:----
+
+making
+making
+(task, made)
+main done
+;====
+:====
+# Task-locals take their values in the order they are declared, in the main task and in each
+# spawned task.
+
+-- second, first
+. done = Semaphore()
+do new
+    -- "task", first, second
+    done.post()
+done.wait()
+
++ count = 0
++ @task first = next("first")
++ @task second = next("second")
+
+━━━━━━━━━━━━━━━━━━━━
++ do next Int
+    - name String
+
+count += 1
+-- "init $name $count"
+= count
+
+:----
+
+init first 1
+init second 2
+(2, 1)
+init first 3
+init second 4
+(task, 3, 4)
+;====
+:====
+# A task-local's value cannot read one declared after it, which takes its value later.
+
+-- first
+
++ @task first = second + 1
++ @task second = 5
+
+:----
+%crash
+
+Exception: Global 'second' is read before it is initialized
+<no file:4>
+    + @task first = second + 1
+                    ^^^^^^
+;====
+:====
+# An error that leaves the body of a spawned task is reported as unhandled.
+
+do new
+    ?! IOError("lost")
+
+:----
+%crash-stderr
+
+Unhandled error: lost
+<no file:3>
+
+Task 2, spawned by task 1 from no file:2:1
+
+Stack trace:
+  0  __source__:Fork no file:3:5
+libc++abi: terminating
+;====
+:====
+# An error that leaves the body of a task in a worker through a call runs the cleanups open
+# and is reported as unhandled.
+
+. worker = Worker(1)
+do (worker) new
+    do finally
+        -- "closing"
+    fetch(2)
+Semaphore().wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - n Int
+
+if n > 1
+    ?! IOError("too far $n")
+
+:----
+%crash-stderr
+
+Unhandled error: too far 2
+<no file:14>
+
+Task 2 (worker), spawned by task 1 from no file:3:1
+
+Stack trace:
+  0  __source__:fetch no file:14:5
+  1  __source__:Fork no file:6:5
+libc++abi: terminating
+;====
+:====
+# A return in the body of a spawned task ends that task, after the cleanups open, and the
+# program goes on.
+
+. ch SyncChannel'Int
+. stop = true
+do new
+    do finally
+        -- "closing"
+    =? if stop
+    -- "not reached"
+do new
+    =? if !stop
+    ch <- 2
+-- <-ch
+-- "main goes on"
+
+:----
+closing
+2
+main goes on
+;====
+:====
+# A task spawned in a closure shares a name declared further out than the closure, which
+# copies only what the closure declares.
+
+. a = 1
+. g = => do
+    . b = 2
+    do new
+        -- "task a=$a b=$b"
+    b = 3
+g()
+a = 99
+-- "main $a"
+
+:----
+main 99
+task a=99 b=2
+;====
+:====
+# A task spawned in a task's body shares what that body copied.
+
+. a = 10
+do new
+    do new
+        -- "inner task $a"
+    a = 20
+    -- "outer task $a"
+
+:----
+outer task 20
+inner task 20
+;====
+:====
+# A task's body reads a name a match pattern binds, which it copies where it is spawned, as does a task spawned in a closure written in the arm.
+. item = Item.num(5)
+. ch SyncChannel'Int
+do match item
+    | .num(n)
+        do new
+            ch <- n
+        -- <-ch
+        . g = => do
+            do new
+                ch <- n * 2
+        g()
+        -- <-ch
+    | .word(w)
+        -- "word $w"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| num Int
+| word String
+
+:----
+
+5
+10
+;====
+:====
+# A task spawned in a closure shares a lazy local declared further out: it is evaluated at the spawn, and the task reads what was written to it after.
+.. lz = make()
+. done = Semaphore()
+. f = => do
+    . g = => do
+        do new
+            -- "task $lz"
+            done.post()
+    g()
+-- "start"
+f()
+lz = 50
+done.wait()
+-- "end $lz"
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+
+-- "make"
+= 7
+
+:----
+
+start
+make
+task 50
+end 50
+;====
+:====
+# A task spawned in a task's body shares the lazy local the outer body copied, which that body changes.
+.. lz = make()
+. done = Semaphore()
+do new
+    do new
+        -- "inner $lz"
+        done.post()
+    lz = 40
+    -- "outer $lz"
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+
+-- "make"
+= 7
+
+:----
+
+make
+outer 40
+inner 40
+;====
+:====
+# Cleanup in a cancelled task runs to completion
+
+. gate = SyncBufferedChannel'Bool()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "recovered $panic"
+        done.post()
+    do finally
+        -- "cleanup: begin"
+        . total = busy(2000)
+        -- "cleanup: computed $total"
+    ready.post()
+    <- gate
+    -- "unexpected resume"
+ready.wait()
+box.task!.cancel()
+done.wait()
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+━━━━━━━━━━━━━━━━━━━━
++ do busy Int
+    - count Int
+
+. total = 0
+. parts = List'String()
+for index in 0 .. < count
+    parts += "item $index"
+    total += parts[index].length
+= total
+
+:----
+
+cleanup: begin
+cleanup: computed 16890
+recovered Task cancelled
+done
+;====
+:====
+# A wait inside a cancelled task's cleanup reports the cancellation, and the cleanups of
+# the callers still run
+
+. gate = SyncBufferedChannel'Bool()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "outer: recovered $panic"
+        done.post()
+    middle(ready, gate)
+ready.wait()
+box.task!.cancel()
+done.wait()
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+━━━━━━━━━━━━━━━━━━━━
++ do middle
+    - ready Semaphore
+    - gate SyncBufferedChannel'Bool
+
+do finally
+    . parts = List'String()
+    for index in 0 .. < 3
+        parts += "part $index"
+    -- "middle: ${parts.length} ${parts[2]}"
+inner(ready, gate)
+
+━━━━━━━━━━━━━━━━━━━━
++ do inner
+    - ready Semaphore
+    - gate SyncBufferedChannel'Bool
+
+do finally
+    -- "inner: begin"
+    Semaphore().wait()
+    -- "inner: unexpected resume"
+ready.post()
+<- gate
+
+:----
+
+inner: begin
+middle: 3 part 2
+outer: recovered Task cancelled
+done
+;====
+:====
+# A channel delivers to the next reader after a waiting reader is cancelled
+
+. numbers = SyncBufferedChannel'Int()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "canceled reader"
+        done.post()
+    ready.post()
+    . number = <- numbers
+    -- "unexpected read $number"
+ready.wait()
+box.task!.cancel()
+done.wait()
+numbers <- 7
+. number = <- numbers
+-- "read $number"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+canceled reader
+read 7
+;====
+:====
+# A cancelled writer's message is withdrawn from an unbuffered channel
+
+. numbers = SyncChannel'Int()
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        . panic = recover()
+        if panic
+            -- "canceled writer"
+        done.post()
+    ready.post()
+    numbers <- 1
+    -- "unexpected write"
+ready.wait()
+box.task!.cancel()
+done.wait()
+do new
+    numbers <- 2
+. number = <- numbers
+-- "read $number"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+canceled writer
+read 2
+;====
+:====
+# A handle kept after its task finished is inert: it reports finished, and cancelling or
+# resuming it leaves other tasks alone
+
+. box = TaskBox()
+. finished = Semaphore()
+do new
+    box.task = Task()
+    -- "running finished ${box.task!.is-finished}"
+    finished.post()
+finished.wait()
+. stale = box.task!
+
+. started = SyncBufferedChannel'Int()
+. gate = SyncBufferedChannel'Bool()
+. done = SyncBufferedChannel'Int()
+for index in 0 .. < 4
+    do new
+        do finally
+            . panic = recover()
+            if panic
+                -- "bystander $index: $panic"
+            done <- index
+        started <- index
+        <- gate
+        -- "bystander $index: released"
+for index in 0 .. < 4
+    <- started
+
+-- "stale finished ${stale.is-finished}"
+stale.cancel()
+stale.resume-later()
+stale.resume-now()
+-- "stale canceled ${stale.is-canceled}"
+gate.close()
+for index in 0 .. < 4
+    <- done
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+running finished false
+stale finished true
+stale canceled false
+bystander 0: released
+bystander 1: released
+bystander 2: released
+bystander 3: released
+done
+;====
+:====
+
+-- greeting
+
++ name = noisy("world")
++ @task greeting = "hello $name"
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy String
+    - name String
+
+= name
+
+:----
+%crash-stderr
+
+Unhandled panic: Global 'name' is read before it is initialized
+<no file:5>
+
+Task 1
+
+Stack trace:
+  0  __source__:init.__source__.task-local.greeting no file:5:28
+  1  __source__:yumi.main no file
+;====
+:====
+# An object held only by the stack of a task that is still running survives a collection.
+
+/YuGC/YuGC.h
+
++ stop-worker = false
+
+. addresses SyncChannel'U64
+. results SyncChannel'String
+
+do new
+    . node = GCNode(616)
+    addresses <- (node as Pointer).address
+    while !stop-worker
+        node.value += 0
+    if C:yumiGCVerifyObject(node as Pointer)
+        results <- "alive $node.value"
+    else
+        results <- "missing"
+
+. address = <- addresses
+C:yumiCollect()
+-- C:yumiGCVerifyObject(address as Pointer)
+stop-worker = true
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+:----
+
+true
+alive 616
+;====
+:====
+# An object held only by the closure of a task that has not started survives a collection.
+
+/YuGC/YuGC.h
+
+. results SyncChannel'String
+start-parked-task(results)
+C:yumiCollect()
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ do start-parked-task
+    - results SyncChannel'String
+
+. node = GCNode(909)
+do new
+    if C:yumiGCVerifyObject(node as Pointer)
+        results <- "alive $node.value"
+    else
+        results <- "missing"
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+:----
+
+alive 909
+;====
+:====
+# A tuple of objects posted to a Semaphore survives collections until it is awaited.
+
+/YuGC/YuGC.h
+
+. sem = Semaphore'(GCNode, GCNode, [GCNode])()
+. ready = Semaphore()
+
+do new
+    . payload = (GCNode(1), GCNode(2), [GCNode(3), GCNode(4)])
+    ready.post()
+    sem.post(payload)
+    C:yumiCollect()
+
+ready.wait()
+C:yumiCollect()
+. received = sem.await()!
+C:yumiCollect()
+-- C:yumiGCVerifyObject(received[0] as Pointer)
+-- received[0].value, received[1].value, received[2][0].value, received[2][1].value
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+:----
+
+true
+(1, 2, 3, 4)
+;====
+:====
+
+/os/process
+/time/duration
+
+. process = Process("sleep", ["5"])
+. done = Semaphore'Size()
+do new
+    . buffer = Byte[16]
+    . count = process.read(16, buffer)
+    done.post(count)
+20ms.wait()
+process.close()
+-- "read ${done.await() ?? 99}"
+process.kill()
+. status = process.wait(null)
+
+:----
+
+read 0
+;====
+:====
+# A task whose cancellation reaches its root ends quietly after its cleanups run.
+
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+
+do new
+    box.task = Task()
+    ready.post()
+    do finally
+        done.post()
+
+    Semaphore().wait()
+    -- "unexpected resume"
+
+ready.wait()
+box.task!.cancel()
+done.wait()
+-- "still running"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+still running
+;====
+:====
+# A lazy global that tasks on several threads read at once is evaluated once, and each reads its value.
+
++ shared := slow-value()
+
+. pool = Worker(8)
+. done SyncBufferedChannel'Int
+for _ in 0 .. < 8
+    do (pool) new
+        done <- shared
+. total = 0
+for _ in 0 .. < 8
+    total += (<- done)!
+pool.stop()
+-- total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do slow-value Int
+
+-- "evaluated"
+. sum = 0
+for step in 0 .. < 20000000
+    sum += step % 3
+= if sum > 0 then 1 else 0
+
+:----
+
+evaluated
+8
+;====
+:====
+# A task forked onto a property's worker, where a test found it holds one, runs on it.
+
+. server = Server()
+server.worker = Worker(1)
+server.start(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Server
+
++ worker Worker?
+
+────────────────────
++ This
+
+────────────────────
++ do start
+    - value Int
+
+if worker
+    do (worker) new report(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do report
+    - value Int
+
+-- "ok $value"
+
+:----
+
+ok 3
+;====
+:====
+# A loop in a function that may not panic runs to its end when the task is being terminated,
+# and the termination is raised later, where a function that may panic or the task's body checks.
+
+. last = count-up(1000000)
+if last == 999999
+    -- "counted to the end"
+else
+    -- "stopped early"
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-up Int
+    - limit Int
+
+. last = 0
+for index in 0 .. < limit
+    if index == 10
+        request-process-termination(130)
+    last = index
+= last
+
+:----
+%crash
+
+counted to the end
+;====
+:====
+# A loop in a function that may panic ends when the task is terminated.
+
+. box = Box()
+do finally
+    if box.last < 999999
+        -- "stopped early"
+    else
+        -- "counted to the end"
+count-up(box, 1000000)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ last Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-up
+    - box Box
+    - limit Int
+
+for index in 0 .. < limit
+    if index == 10
+        request-process-termination(130)
+    if index < 0
+        ?! Panic("negative")
+    box.last = index
+
+:----
+%crash
+
+stopped early
+;====
+:====
+# A task's finish action runs in a new main-queue task after the task's body returns.
+
+. log = FinishLog()
+do new
+    Task().when-finished(log.child-finished)
+    log.notes += "child body"
+log.done.wait()
+Task().when-finished(log.main-finished)
+log.notes += "main body"
+
+━━━━━━━━━━━━━━━━━━━━
++ FinishLog
+
++ notes [String]
++ done = Semaphore()
+
+────────────────────
++ do child-finished
+
+notes += "child finished"
+done.post()
+
+────────────────────
++ do main-finished
+
+notes += "main finished"
+for note in notes
+    -- note
+
+:----
+
+child body
+child finished
+main body
+main finished
+;====
+:====
+# An action given to when-main-ends runs where main's statements end, before what main uses is
+# closed and its do finally blocks run.
+
+do finally
+    -- "finally"
+use Thing()
+when-main-ends(report)
+-- "last statement"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do report
+
+-- "main ended"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Closable
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+-- "closed"
+
+:----
+
+last statement
+main ended
+closed
+finally
+;====

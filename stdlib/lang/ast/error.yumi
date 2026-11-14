@@ -1,0 +1,100 @@
+
+/core/parsing
+/core/tokenstream
+
+━━━━━━━━━━━━━━━━━━━━
++ YumiSyntaxError is Error
+
++ message = "Syntax error"
++ path String
++ source-line String
++ loc MatchLocation
+
+_ has-source-line Bool
+_ has-line-break Bool
+
+────────────────────
++ This
+    - loc
+    - message String = "Syntax error"
+    - source-line String? = null
+    - path String? = null
+
+if source-line
+    has-source-line = true
+    . line = diagnostic-line(source-line, loc.begin.line)
+    this.source-line = line.text
+    has-line-break = line.has-line-break
+if path
+    this.path = (path as Byte[]).slice-string()
+
+────────────────────
++ do attach-source
+    - source String
+    - source-path String
+
+if !has-source-line
+    has-source-line = true
+    . line = diagnostic-line(source, loc.begin.line)
+    source-line = line.text
+    has-line-break = line.has-line-break
+if !path
+    path = source-path
+
+────────────────────
++ to String
+
+"\n".join(format())
+
+────────────────────
++ do format
+
+<= "Exception: $message"
+if path
+    <= "<$path:${loc.begin.line + 1}:$loc.begin.column>"
+else
+    <= "<(no file):${loc.begin.line + 1}:$loc.begin.column>"
+
+if has-source-line
+    <= "    $source-line"
+    <= "    $caret-indent^"
+        .. caret-indent = " " * loc.begin.column
+    `  <= loc
+
+────────────────────
++ get exception-text String
+
+|? !has-source-line
+    "Exception: $message\n<$shown-path>"
+??
+    "Exception: $message\n$location\n    $source-line\n$caret-indent$carets"
+
+.. location = "<$shown-path:${loc.begin.line + 1}>"
+.. shown-path = if path.length != 0 then path else "no file"
+.. caret-indent = " " * (4 + loc.begin.column)
+.. carets = "^" * caret-count
+.. caret-count =
+    |? loc.end.line > loc.begin.line
+        if source-line.length > loc.begin.column + 1 then source-line.length - loc.begin.column - 1 else 0
+    |? loc.begin.column >= source-line.length
+        if has-line-break && loc.begin.column == source-line.length then 1 else 0
+    |? loc.end.column > loc.begin.column
+        loc.end.column - loc.begin.column
+    ??
+        1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diagnostic-line'Token (text String, has-line-break Bool)
+    - source Token[]
+    - line Index
+
+. cursor Index = 0
+. current-line Index = 0
+while cursor < source.size && current-line < line
+    if source[cursor] == 10
+        current-line += 1
+    cursor += 1
+. start = cursor
+while cursor < source.size && source[cursor] != 10
+    cursor += 1
+= (source.slice-string(start .. < cursor), cursor < source.size)

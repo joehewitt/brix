@@ -1,0 +1,231 @@
+# The Compiler
+
+How the compiler in `stdlib/lang` is built, and the rules its design keeps. The program is
+`compiler/yumi-cli.yumi`; `bin/yumi` builds it into `.tmp/build/tools/yumi` from the seed
+that `.release.json` pins (`toolchain/compiler.py`).
+
+| Directory | Holds |
+|---|---|
+| `stdlib/lang/ast` | parser, AST tables, declarations, modules, the program and its name index |
+| `stdlib/lang/check` | binding, the type store and relations, typing, facts, diagnostics |
+| `stdlib/lang/report` | the text of facts, diagnostics and declarations, for reports and inspection |
+| `stdlib/lang/emit` | program tables, the emitter, the inliner, IR to MIR, the emission round, linking |
+| `stdlib/lang/ir` | the IR the emitter writes, its text and its digest |
+| `stdlib/lang/backend` | MIR passes, register allocation, AArch64 encoding, Mach-O |
+| `stdlib/lang/product` | the product interfaces an app declares, and the app bundles, signing and device installs made from them |
+| `stdlib/lang/lint` | the linter, whose semantic rules read facts |
+| `stdlib/lang/analysis` | the analysis service behind `yumi --serve` |
+| `compiler` | the command line, the build daemon, and the test, lint, probe and bench tools |
+
+## Pipeline
+
+1. **Parse.** `SyntaxProgram` parses modules on workers, a large file in pieces between its
+   dividers (`piece-parse.yumi`). `ProgramBuilder` makes each module's `AST` and declaration
+   rows (`ModuleBuilder`) and links them into a `Program`.
+2. **Bind.** `Binder` binds each declaration once into `Bindings`, shared by all its instances.
+3. **Type.** `type-program` (`parallel-typing.yumi`) types the program on parallel passes
+   (`type-in-parallel`). `merge-sessions` takes in what they typed. `check-pass` types what is
+   left, then settles class tables, witness tables, panics and stack locals on one thread.
+   `Session.seal` then seals the type store and the instance table.
+4. **Diagnostics.** `FactsText` renders them; the build stops if there are any.
+5. **Program tables.** `ProgramTables.build` numbers everything whole-program on one thread. A
+   construct emission has no shape for is a `Refusal`, and refuses the whole program.
+6. **Emission round.** `EmissionWorker`s take functions heaviest first (`WorkQueue`). Each
+   emits IR, inlines (`IRInliner`), lowers to MIR (`IRToMIR`) and runs the backend's
+   `FunctionPipeline`, all in its own arenas. A build daemon's round has two passes so it can
+   reuse functions.
+7. **Merge.** Literals are named in function order, through prefix sums over each function's
+   count. GC descriptors are sorted into one table.
+8. **Object and link.** `MachOWriter` writes the object. Then `Program.release-trees` and
+   `Session.release-typing` free the trees and the typing state, and `link-executable` links.
+
+| Owned by | Contents | Released |
+|---|---|---|
+| Module trees | syntax rows, name index | `Program.release-trees`, after emission |
+| Session | type store, instances, signatures | with the session |
+| Typing state | facts, bindings, scratch | `Session.release-typing`, after emission |
+| Program tables | layouts, functions, class and witness tables, storage | after the object is written |
+| Function arenas | IR, then MIR | reset when a worker takes its next function |
+
+## Architecture Rules
+
+**Passes**
+1. The pass order is parse, declare, link, bind, type, program tables, emit, IR to MIR, machine
+   code. Binding runs once per declaration. Typing and emission run per instance.
+2. One walker per pass enumerates the language: `Binder`, `Checker`, `Emitter`. Lowering is
+   never spread across type, operator and builder objects.
+3. There are two lowering modes, statement and expression. A subsystem (markup, styles, state
+   machines, stream patterns, reactivity) desugars, uses typed intrinsics, or uses a
+   whole-construct emitter shape. It never adds a third mode.
+4. Dependencies point one way. Modules in `emit` import no checker, dispatch, relations or
+   binder. The backend imports nothing from `/lang/ast`, `/lang/check`, `/lang/ir` or
+   `/lang/emit`. This holds today, but no tool checks it.
+
+**Decisions before emission**
+5. Each pass asks only its own questions. Binding never reads types. Typing never resolves
+   names. Emission never resolves, dispatches, infers, compares types or reports a
+   diagnostic. When emission lacks something, fix the type pass or program tables.
+6. Emission reads syntax plus facts. No second representation of a body exists.
+7. Program tables seal everything whole-program before emission: class-table and witness slots,
+   layouts, GC descriptors, symbols, task-local and thread-local layouts, tracked properties,
+   event ids and style indexes. The type pass schedules every instance those tables need, so
+   interning an instance after the seal panics.
+8. Emitted IR is never reopened. Result, panic and cleanup shapes are chosen at entry from the
+   signature, the facts, the body scans and program tables. Inlining reads finished IR and
+   writes a new function.
+9. Generated declarations are rows. If dispatch can choose it, it has a `DeclId`.
+10. An instance key carries every dimension that changes code: declaration, type arguments,
+    effect mask, markup property fills and slot sets, style context, stream-helper ABI variant.
+
+**Identity and data**
+11. Every type roots in a declaration. What the compiler knows about a core declaration is an
+    `IntrinsicKind` tag, bound once by `bind-types`. Generic code names no stdlib class.
+12. Identity is interned once and never mutated. Later knowledge lives in side tables keyed by
+    id, and facts are written once.
+13. No strings as keys. Keys are U32 word sequences through `IdMap`.
+14. High-volume data is `Table` rows with U32 ids in arenas, released at phase boundaries.
+15. Syntax ids are post-order: a child's id is below its parent's, except the late-linked `next`
+    fields of if, for and loop blocks. A body is one contiguous range
+    (`post-order-violation` checks this).
+
+**Demand, errors, determinism**
+16. Typing is demand-driven, with a state per instance. A cycle is a diagnostic. Panic capability
+    (`Panics`) and error sets (`ErrorSets`) are settled over the call graph after the bodies.
+17. Type relations never instantiate anything, so ranking overloads cannot recurse into typing
+    a body.
+18. Diagnostics are data. An instance with a diagnostic is never emitted.
+19. Build mutable, seal, then share read-only. IR rows copy their locations (line and column
+    inline), so nothing after emission reads a tree.
+20. Work runs on workers wherever it splits: parsing per module and per piece, typing on
+    parallel passes, emission, IR to MIR and the backend per function. Program tables and the
+    merge are serial today. Parallel work writes rows indexed by stable ids, never into shared
+    lists in finishing order.
+21. Output is deterministic. The object is the same at any worker count and in any typing order.
+    Program tables renumber what typing registered in source or stable-key order
+    (`keep-reached-styles`, `declare-projection-remaps`, `number-keys`, `gate-order`,
+    `application-order`).
+22. Every emitted function records its dependencies (`IRDependency`: callees with their
+    may-panic and generator flags).
+23. IR is append-only tables. A block is a contiguous range ending in a terminator, and one
+    emitter owns block creation through a closed set of shapes.
+24. The runtime contracts are exact: object and table layouts; x15 as the panic signal tested
+    after each call that may panic, and x27 as the task context; GC maps, roots and write
+    barriers; the calling convention; the `__yumi_gcmap`, `__yumi_gcroots` and `__yumi_trace`
+    sections.
+25. Facts are the tooling contract. The linter's semantic rules and the analysis service read
+    them in process; nothing is emitted for tooling.
+
+## Layer Invariants
+
+**Binding**
+- Binding reads syntax and declaration rows, never types. No type id appears in a binding table.
+- Resolution order is fixed: slots innermost first, then the implicit names, members of the
+  owner chain, module globals, then functions and types through the name index, then
+  unresolved. A local shadows a member, a member a global, a global a function.
+- The identifier map is total over a body. Type identifiers are another node kind, evaluated by
+  the type store.
+- A lambda's identifiers live in its owner's map, but its body scans are its own. A yield inside
+  a lambda makes the lambda a generator, not its owner.
+- An unresolved name binds to the unresolved kind with a diagnostic row, and the walk goes on.
+  Binding records use summaries and captures; it never decides how a slot is stored.
+
+**Type store and relations**
+- Every type row points at a declaration. Anonymous tuples, unions, functions, closures and
+  results root at core's `Tuple`, `Union`, `Function` and `Closure`.
+- Representation is derived by walking the base chain to a tagged declaration.
+- Completion fills a type's pools lazily (`Types.complete`), gathering into scratch and
+  committing one contiguous range per pool. It is cycle-safe: entering a type in progress is a
+  diagnostic. Accessors such as `completion-of`, `properties-of` and `cases-of` complete first.
+- A relation is a `Relation` record (rank, match kind, unified type, payload), never a Bool.
+- Units are ordinary classes whose base chain reaches a numeric root; ratios are equalities.
+
+**Typing**
+- Every identifier reads its `Resolution` from the bindings. Every question about a declaration
+  is a column read, and every question about a type a fact-pool read.
+- A demand on an instance in progress is a cycle and is diagnosed at the demanding site.
+- Facts are written once per instance. A join writes the join type on the join node and a
+  conversion fact on each arm; it never rewrites an arm.
+- The invalid type is absorbing: an expression with an invalid operand is invalid without a
+  second diagnostic, and a call with an invalid argument is not dispatched.
+- Instances are interned once. A return type found late is written into the signature, never
+  into the key. A lambda instance is keyed by its closure row plus its enclosing instance.
+
+## Vocabulary
+
+| Term | Meaning |
+|---|---|
+| Syntax id | `SyntaxId`, a row of a module's AST node table; zero is the no-op node |
+| Decl id | `DeclId`, a row of a module's declaration table; zero is no declaration |
+| Module id | `ModuleId`, a module's index in the program |
+| Type id | `TypeId`, an interned row of `Types`; equal ids are equal types |
+| Instance | `Instance`, a declaration bound to type arguments under an effect mask: the unit of typing and emission |
+| Session | `Session`, one compile's typing state: program, bindings, binder, types, relations, scratch, instances, facts, error sets, panics |
+| Role | One object a session holds. A leaf algorithm takes the narrowest role it needs, not the session |
+| Facts | `Facts`, per-instance product tables: node types, calls, conversions, pairs, forces, diagnostics |
+| Completion | `TypeCompletion`, a type's lazily filled row, with `TypeProperty`, `TypeCase`, `TypeAssociated` and `TypeEquality` pools |
+| Scratch, span | A `core/scratch` stack (`TypingScratch` keeps one per kind), and a read-only slice over a finished run on it |
+| Row range | `RowRange`, a start and count over one table |
+| Mask | A bit set over one flag enum: `SlotMask`, `CaptureMask`, `LazyUseMask`, `ResolutionMask`, `EffectMask` |
+| Argument shape, call argument | `ArgumentShape` is a declared argument without types; `CallArgument` a supplied one. `Viability` lays one over the other |
+| Candidate, hit | Name lookup yields candidates; ranking with types yields a `Hit`, or a partial hit or an ambiguity |
+| Narrowing key | `NarrowingKey`, what a narrowing is recorded against, made by `slot-key`, `member-key` and `path-key-at` |
+| Schedule, demand | `schedule` interns an instance and queues it; `demand` types something now, re-entrantly |
+| Emitter shape | A control-flow template the emitter owns: branch, loop, switch, result check, panic check, cleanup |
+
+## Naming Conventions
+
+- A store is a plural noun, its row the singular, and the row id the singular plus `Id`:
+  `Instances` holds `Instance` rows addressed by `InstanceId`. No `Row` or `Store` suffixes.
+- Suffixes say what a name is: `Kind` an enum, `Id` a row id, `Mask` a bit set, `Fact` a
+  per-instance product row, `Hit` a ranked dispatch result.
+- A bare `U32` or `Size` field is a count or a depth. Every id, index, mask, rank, mark and range
+  is an alias, so a signature says what a number means.
+- Sentinels follow the id family: an id over a table with a reserved zero row is zero when
+  absent (`DeclId`, `SyntaxId`, `ScopeId`); any other id has a `no-` constant
+  (`no-type`, `no-instance`, `no-slot`, `no-binding`).
+- Verbs have fixed meanings: `intern` maps a key to an id idempotently; `schedule` queues;
+  `demand` types now; `complete` fills a completion; `record` appends a product row; `note`
+  changes walker state only; `mark` sets a flag on an existing row.
+- Walkers are agent nouns (`Checker`, `Binder`, `Ranking`). An algorithm that belongs to a walker
+  lives with it.
+
+## What The Design Rejects
+
+These were the TypeScript compiler's structural costs, and each rule above answers one:
+- typing and lowering in one walk, so a type decision could depend on what was already emitted,
+  and return types were found late and patched in by whole-program fixpoints;
+- finished IR rewritten for generators, environments, results and late table offsets;
+- every diagnostic an exception, which needed rollback machinery;
+- tooling fed by side-channel trace arrays and dead functions lowered only to fill them;
+- eight lowering modes per node kind, spread over AST, type and operator classes.
+
+## Why Earlier Attempts Failed
+
+Two attempts to replace the TypeScript compiler failed before the port that worked:
+- An in-place refactor kept old paths as fallbacks. Keeping one stayed green and removing one went
+  red, so passing tests proved nothing about the new code, and progress was counted in additions.
+- A first port judged success by IR text identical to TypeScript's, which forced it to copy
+  TypeScript's accidents.
+- Ledgers written by the implementing agent claimed "done, oracle-verified" while every oracle had
+  drifted and 44% of core cases did not type clean.
+
+What worked: progress was claimed only from tools the implementing agent did not control (whole
+spec cases compiled and run), each claim checked structure as well as behavior, and old code was
+deleted rather than kept beside the new.
+
+## Language Decisions Without A Spec Case
+
+The port's decisions log recorded each language decision the owner made. Every one has a case in
+`stdlib/core/tests` except these:
+- **core-type-wins** (2026-10-03): core's type wins over a type of the same name in an imported
+  module, with no diagnostic.
+- **core-capture-closure** (2026-10-03): core's `Capture` and `Closure` are types a program may
+  name (`. x Capture? = null`).
+- **source-order-numbering** (2026-10-13): functions the compiler makes under one name in a module
+  are numbered top to bottom, as a stack trace shows. Traces show it only in passing.
+- **c-type-map** (2026-10-20): only `unsigned long long` as `U64` is pinned (`runCCalls`);
+  `unsigned char` as `U8` and `signed char` as `I8` are not.
+- **keep-transitive** (2026-10-22): a C header import exposes every declaration of its
+  translation unit, including those of the headers it includes.
+- **uid-order** (2026-10-23): an object's `uid` is unique, but the order uids are given in is not
+  defined, and no code may depend on it.

@@ -1,0 +1,177 @@
+/code/code-session
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/gui
+/gui/markdown
+/gui/scene
+
++ markdown-bench-sections Size = 300
++ markdown-bench-wheel-step Length = 120
++ markdown-bench-tables Size = 40
++ markdown-bench-table-rows Size = 24
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownBench
+
++ window MarkdownBenchWindow
++ scene DisplayScene
++ canvas RasterCanvas
++ session CodeSession
+
+────────────────────
++ This
+    - source String
+    - caret-text String
+    - reveal-text String? = null
+
+.. window = MarkdownBenchWindow()
+window.open()
+scene = DisplayScene(2, black)
+canvas = RasterCanvas(900, 800, 2, black)
+session = CodeSession(source)
+session.move-to(source.find(caret-text, 0) ?? 0)
+window.editor.show(session)
+if reveal-text
+    window.editor.reveal-line(session.text.line-at(source.find(reveal-text, 0) ?? 0))
+. ignored = frame(true)
+
+────────────────────
++ do frame Size
+    - builds = false
+
+. queue = window.markup-batch-root!.markup-batch-queue
+queue.checkpoint()
+. checkpoints Size = 1
+while queue.actions && checkpoints < 64
+    queue.checkpoint()
+    checkpoints += 1
+window.layout()
+if builds
+    scene.build(window)
+else
+    scene.update(window)
+scene.commit()
+scene.frame(canvas)
+= checkpoints
+
+────────────────────
++ do type Size
+    - keys Size
+
+. checksum Size = 0
+for key in 0 .. < keys
+    if key % 15 == 14
+        window.editor.perform(TextCommand.insert-newline)
+    else
+        window.editor.insert-text("x")
+    checksum += frame()
+= checksum + session.text.length
+
+────────────────────
++ do sweep Size
+    - step Length
+
+. scroller = markdown-bench-scroller(window)!
+. checksum Size = 0
+while scroller.scroll-y < scroller.scroll-max.y
+    . ignored = scroller.scroll-by(Point(0, step), ScrollCause.wheel)
+    checksum += frame()
+while scroller.scroll-y > 0
+    . ignored = scroller.scroll-by(Point(0, -step), ScrollCause.wheel)
+    checksum += frame()
+= checksum
+
+────────────────────
++ do close
+
+scene.close()
+canvas.close()
+window.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownBenchWindow is Window
+
+────────────────────
+
+<This • flex-col
+    size = Dimensions(900, 800)
+    <MarkdownReferenceScope • flex-col flex:1
+        <MarkdownEditor editor • flex:1
+            column-width = 820
+            column-padding = Insets(32, 40, 64, 40)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-bench-scroller Box?
+    - box Box
+
+for child in RenderedChildCursor(box)
+    =? child if child.is-scroll-axis-enabled(Orientation.vertical)
+    . found = markdown-bench-scroller(child)
+    =? found if found
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-bench-document String
+    - sections Size
+
+"\n".join(markdown-bench-section(each) in 0 .. < sections)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ markdown-bench-section
+    - section Size
+
+## Section $section
+
+Paragraph ${section * 2} has **strong text**, *emphasis*, `inline code`, and [a link](https://example.com/$section). It runs long enough to wrap across a few lines in the editor column.
+
+- First item $section
+- Second item with `code`
+  - Nested item
+- Third item
+
+> Quoted note $section stays in the document.
+
+```
+let value = $section
+print(value)
+```
+
+| Name | Value |
+|------|-------|
+| a$section | ${section * 3} |
+| b$section | ${section * 5} |
+
+Paragraph ${section * 2 + 1} closes the section.${"\n"}
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-bench-table-document String
+    - tables Size
+    - rows Size
+
+"".join(markdown-bench-table(each, rows) in 0 .. < tables)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ markdown-bench-table
+    - table Size
+    - rows Size
+
+## Table $table
+
+Table $table lists every callback site with its **verdict** and the `cursor` state at invocation.
+
+| # | file:line | callback | paths | cursor state at invocation | per-exit values / side effects | verdict |
+|---|---|---|---|---|---|---|
+$lines
+Table $table closes with a short paragraph.${"\n\n"}
+
+════════════════════
+.. lines = "".join(markdown-bench-table-row(table, each) in 0 .. < rows)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ markdown-bench-table-row
+    - table Size
+    - row Size
+
+| T${table}-${row} | match.ts:${1000 + row} (`StreamMatchMaker.next`) | `ended()` if defined, else `failed(null)` (${1600 + row}) | 1 | fresh `nonexists` block after condjump on stream-read | none; failedBuf constant `null`. Caller emits **nothing after** and the continuation decides | **SAFE** per se; joins at the parent group |${"\n"}

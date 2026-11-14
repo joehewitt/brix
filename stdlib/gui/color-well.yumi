@@ -1,0 +1,111 @@
+./box
+./color-picker
+./events
+./icons/lucide/minus
+./popover
+./popup
+./position
+./primitives
+./shorthands
+./styles
+./theme
+/graphics/color
+/graphics/primitives
+/graphics/style
+/ui/value-change-phase
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxCursor
+    using GUIBoxDisplay
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxSize
+    using GUIBoxSpacing
+    using GUIFocusRingStyle
+    using GUITextPaint
+    using VectorPaintStyle
+
+• ColorWell • w:16 h:16
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-control-radius
+    cursor = CursorStyle.pointing-hand
+
+    • color-well-mark
+        display = Display.hidden
+
+    when #is-open
+        border-color = gui-accent-bright-color
+
+    when #is-mixed
+        • color-well-mark
+            display = Display.visible
+
+    when !#is-effectively-enabled
+        cursor = CursorStyle.arrow
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+        motion.focus-ring = gui-motion-quick
+
+    • color-well-mark • text:gui-muted-text-color w:10 h:10 mx:3
+        stroke-width = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ ColorWell is Box
+
+• This
+    focus-mode = FocusMode.press
+    window-draggable = false
+
++ color = RGBA(0, 0, 0)
++ is-mixed = false
++ is-open = popover.#is-open
++ event value-changing ValueChange'RGBA
++ event value-changed ValueChange'RGBA
+
+────────────────────
+
+<This • flex-row
+    background = ColorSwatchPainter(color-well-swatch(#color, #is-mixed))
+    <LucideMinus • icon color-well-mark
+        align-y = Alignment.center
+    <Popover popover
+        <ColorPicker picker
+            color = #color
+            for event on value-changed
+                accept-color(event.value, event.phase)
+
+────────────────────
+for event on pointer-down
+
+if is-effectively-enabled
+    popover.toggle-on-press(event)
+
+────────────────────
+for event on click
+
+if is-effectively-enabled
+    popover.toggle-on-click(event)
+event.cancel()
+
+────────────────────
++ do accept-color
+    - next RGBA
+    - phase ValueChangePhase = ValueChangePhase.discrete
+
+=? if !is-effectively-enabled
+. change = ValueChange'RGBA(color, next, phase)
+value-changing <- change
+=? if change.is-canceled
+color = next
+is-mixed = false
+value-changed <- ValueChange'RGBA(change.old-value, next, phase)
+
+━━━━━━━━━━━━━━━━━━━━
++ color-well-swatch RGBA
+    - color RGBA
+    - is-mixed Bool
+
+if is-mixed then transparent else color

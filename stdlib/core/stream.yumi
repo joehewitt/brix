@@ -1,0 +1,399 @@
+
+./array
+./channel
+./core
+./error
+./function
+./io
+./list
+./number
+./range
+./string
+./task
+
++ Stream'T is CursorIterable'T || Indexable'T || Iterable'T || Broadcastable'T || ImmutableArray'T
+
+━━━━━━━━━━━━━━━━━━━━
++ CursorIterable'Item'State is Interface
+
+────────────────────
++ do to Iterable''T @inline
+    - T =~ Item as T
+
+for item in this
+    <= item as T
+
+────────────────────
++ get initial-iterator-state State
+
+────────────────────
++ do next-iterator (State, Item?)
+    - state State
+
+━━━━━━━━━━━━━━━━━━━━
++ Readable'Message is Interface
+
+────────────────────
++ <- this Message?
+
+━━━━━━━━━━━━━━━━━━━━
++ Writable'Message is Interface
+
+────────────────────
++ this <- item Message
+
+━━━━━━━━━━━━━━━━━━━━
++ Indexable'Item is Interface
+
+────────────────────
++ do to Iterable''T
+    - T =~ Item as T
+
+for item in this
+    <= item as T
+
+────────────────────
++ get length Size
+
+────────────────────
++ this[index Position] Item
+
+this[index.normalize(this)]
+
+────────────────────
++ this[index Index] Item
+
+────────────────────
++ this[range Range'Position] Indexable'Item
+
+this[range.normalize(this)]
+
+────────────────────
++ this[range Range'Index] Indexable'Item
+
+────────────────────
++ do reversed
+
+for index in length - 1 .. 0
+    <= this[index]
+
+━━━━━━━━━━━━━━━━━━━━
++ Iterable'Message is Interface
+    is Readable'Message
+
+────────────────────
++ to List''T @inline
+    - T =~ Message as T
+
+List(this)
+
+────────────────────
++ do to Iterable''T
+    - T =~ Message as T
+
+for item in this
+    <= item as T
+
+`  -------------------------------------------------------------------------------------------------
+`  + to Broadcastable'Message @async-restarting
+
+`  <<= this
+
+────────────────────
++ do to Broadcastable'Message
+
+. chan AsyncChannel'Message
+do new
+    for message in this
+        chan <- message
+= chan
+
+────────────────────
++ do begin-iterating ?! Error
+
+────────────────────
++ do end-iterating ?! Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Broadcastable'Message is Interface
+    is Readable'Message
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ to Iterable'Message
+
+BroadcasterIterator(this)
+
+`  ----------------------------------------------------------------------------------------------------
+`  + to Iterable''T
+`      - T =~ Message as T
+
+`  BroadcasterIterator'T(this)
+
+╌╌╌╌╌╌╌╌╌╌ is Readable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do <- this Message?
+
+=? if is-closed
+
+. subscriber = BroadcasterReader'Message()
+=? if !catch? subscribe(subscriber)
+
+. message = <- subscriber
+catch unsubscribe(subscriber)
+= message
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-closed Bool
+
+────────────────────
++ subscribe ?! Error
+    - subscriber Subscriber'Message
+
+────────────────────
++ unsubscribe ?! Error
+    - subscriber Subscriber'Message
+
+────────────────────
++ subscribe ?! Error
+    - subscriber Subscribable'Message
+
+────────────────────
++ unsubscribe ?! Error
+    - subscriber Subscribable'Message
+
+━━━━━━━━━━━━━━━━━━━━
++ Closable is Interface
+
+────────────────────
++ close ?! Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Subscribable'Message is Interface
+
+────────────────────
++ get event-arrival-only Bool
+
+false
+
+────────────────────
++ get event-is-machine Bool
+
+false
+
+────────────────────
++ do event-bind-address
+    - address Pointer
+    - generation U64
+
+────────────────────
++ this == sub Subscriber'Message
+
+false
+
+────────────────────
++ this
+    - message Message
+    - broadcaster Broadcastable'Message
+
+────────────────────
++ do unsubscribe
+
+────────────────────
++ do finish
+    - broadcaster Broadcastable'Message
+
+broadcaster.unsubscribe(this)
+    catch error Error
+        unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ Subscriber'Message is () Void ?! Error
+    - item Message
+    - broadcaster Broadcastable'Message
+
+━━━━━━━━━━━━━━━━━━━━
++ Generator'Item is () Item
+    is Iterable'Item
+
+────────────────────
++ to List'Item @inline
+
+List'Item(this)
+
+────────────────────
++ do to Iterable''T
+    - T =~ Item as T
+
+for item in this
+    <= item as T
+
+────────────────────
++ <- this Item?
+
+this()
+
+────────────────────
++ do begin-iterating
+
+────────────────────
++ do end-iterating
+
+━━━━━━━━━━━━━━━━━━━━
++ Subscription'Message
+    is Subscribable'Message
+
+_ queue [Message]
+_ broadcaster-queue [Broadcastable'Message]
+_ sub Subscriber'Message
+_ is-dispatching = false
+_ finishing Broadcastable'Message?
+
+────────────────────
++ This
+    - sub Subscriber'Message
+
+╌╌╌╌╌╌╌╌╌╌ is Subscribable'Message ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - message Message
+    - broadcaster Broadcastable'Message
+
+`  // enqueue on ${get-current-task-id()}
+queue += message
+broadcaster-queue += broadcaster
+
+if !is-dispatching
+    is-dispatching = true
+    do new
+        dispatch()
+
+────────────────────
++ do unsubscribe
+
+queue.clear()
+broadcaster-queue.clear()
+is-dispatching = false
+finishing = null
+
+────────────────────
++ do finish
+    - broadcaster Broadcastable'Message
+
+if is-dispatching
+    finishing = broadcaster
+else
+    broadcaster.unsubscribe(this)
+        catch error Error
+            unhandled-error(error)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other Subscriber'Message
+
+sub == other
+
+────────────────────
++ do dispatch
+
+. count = queue.length
+while count && queue
+    `  // dispatch on ${get-current-task-id()}
+    sub(queue.pop-first(), broadcaster-queue.pop-first())
+        catch error Error
+            unhandled-error(error)
+    count -= 1
+
+if queue
+    do new
+        dispatch()
+else
+    is-dispatching = false
+    . broadcaster = finishing
+    if broadcaster
+        finishing = null
+        broadcaster.unsubscribe(this)
+            catch error Error
+                unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ publisher'Item
+    - stream Broadcastable'Item
+
+stream
+
+━━━━━━━━━━━━━━━━━━━━
++ publisher'Item
+    - stream Iterable'Item
+
+stream as Broadcastable'Item
+
+━━━━━━━━━━━━━━━━━━━━
++ publisher'Item
+    - stream Indexable'Item
+
+(stream as Iterable'Item) as Broadcastable'Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do map-do'From
+    - stream <From>
+    - with Statement'From
+
+for item in stream
+    with(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ do map'From'To @inline
+    - stream <From>
+    - with Mapper'From'To
+
+for item in stream
+    <= with(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ do flat-map'Item <Item> @inline
+    - streams <<Item>>
+
+for stream in streams
+    for item in stream
+        <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do flat-map'Item'Result <Item> @inline
+    - streams <<Item>>
+    - with Selector'Item'Result
+
+for stream in streams
+    for item in stream
+        <= with(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tap'From'To @inline
+    - stream <From>
+    - with Mapper'From'To
+
+for item in stream
+    with(item)
+    <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do map-filter'From'To @inline
+    - stream <From>
+    - with OptionalMapper'From'To
+
+for item in stream
+    <=? with(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ do filter'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+for item in stream when where(item)
+    <= item

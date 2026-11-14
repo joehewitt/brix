@@ -1,0 +1,76 @@
+====
+A match that leaves cases out names the type in source form, the cases it leaves out, and the arm to add
+====
+
+:====
+# a match on Bool without false
+
+do match true
+    |= true
+        -- "true"
+
+:----
+%crash
+
+Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
+<no file:3>
+        |= true
+        ^^^^^^
+;====
+
+:====
+# a match on an optional without null
+
+. value I32? = 41
+-- match value
+    | n I32
+        n + 1
+
+:----
+%crash
+
+Exception: This match on I32? does not handle null; add "|= null", or "??" for the rest
+<no file:4>
+        | n I32
+        ^^^^^^
+;====
+
+:====
+# a match on an optional that handles only null
+
+. value I32?
+-- match value
+    |= null
+        0
+
+:----
+%crash
+
+Exception: This match on I32? handles only null; add a case for a present value, as in "| value I32", or "??" for the rest
+<no file:4>
+        |= null
+        ^^^^^^
+;====
+
+:====
+# a match on an enum that leaves out two cases
+
+. level = Level.low
+-- match level
+    |= Level.low
+        1
+━━━━━━━━━━━━━━━━━━━━
++ Level is U32
+
+| low = 0
+| mid = 1
+| high = 2
+
+:----
+%crash
+
+Exception: This match on Level does not handle Level.mid and Level.high; add "|= Level.mid" and "|= Level.high", or "??" for the rest
+<no file:4>
+        |= Level.low
+        ^^^^^^^^^^^
+;====

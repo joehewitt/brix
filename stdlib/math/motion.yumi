@@ -1,0 +1,501 @@
+./easing
+./math
+/time/duration
+/units
+
+_ motion-rest-pace = 40.0
+
++ instant = InstantMotion()
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionSample is Tuple
+
++ offset F64
++ speed F64
++ is-done Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ Motion
+
+────────────────────
++ get is-additive Bool
+
+false
+
+────────────────────
++ sample MotionSample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+MotionSample(0, 0, true)
+
+────────────────────
++ rest F64
+    - offset F64
+    - speed F64
+
+0
+
+━━━━━━━━━━━━━━━━━━━━
++ spring SpringMotion
+    - duration Duration
+    - bounce F64 = 0
+
+SpringMotion(duration, bounce)
+
+━━━━━━━━━━━━━━━━━━━━
++ curve CurveMotion
+    - duration Duration
+    - easing Easing
+
+CurveMotion(duration, easing)
+
+━━━━━━━━━━━━━━━━━━━━
++ linear CurveMotion
+    - duration Duration
+
+CurveMotion(duration, Easing.linear)
+
+━━━━━━━━━━━━━━━━━━━━
++ ease CurveMotion
+    - duration Duration
+
+CurveMotion(duration, Easing.ease)
+
+━━━━━━━━━━━━━━━━━━━━
++ ease-in CurveMotion
+    - duration Duration
+
+CurveMotion(duration, Easing.ease-in)
+
+━━━━━━━━━━━━━━━━━━━━
++ ease-out CurveMotion
+    - duration Duration
+
+CurveMotion(duration, Easing.ease-out)
+
+━━━━━━━━━━━━━━━━━━━━
++ ease-in-out CurveMotion
+    - duration Duration
+
+CurveMotion(duration, Easing.ease-in-out)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-bezier CurveMotion
+    - duration Duration
+    - x1 F64
+    - y1 F64
+    - x2 F64
+    - y2 F64
+
+CurveMotion(duration, Easing.cubic-bezier(CubicBezier(x1, y1, x2, y2)))
+
+━━━━━━━━━━━━━━━━━━━━
++ steps CurveMotion
+    - duration Duration
+    - count Int
+
+CurveMotion(duration, Easing.steps(count))
+
+━━━━━━━━━━━━━━━━━━━━
++ decay DecayMotion
+    - rate F64 = 0.998
+
+DecayMotion(rate)
+
+━━━━━━━━━━━━━━━━━━━━
++ follow FollowMotion
+    - rate F64
+
+FollowMotion(rate)
+
+━━━━━━━━━━━━━━━━━━━━
++ keyframes KeyframeMotion
+    - duration Duration
+    - stops [MotionStop]
+    - settle SpringMotion? = null
+
+KeyframeMotion(duration, stops, settle)
+
+━━━━━━━━━━━━━━━━━━━━
++ motion KeyframeMotion
+    - duration Duration
+
+KeyframeMotion(duration, List'MotionStop(), null)
+
+━━━━━━━━━━━━━━━━━━━━
++ SpringMotion is Motion
+
++ duration Duration
++ bounce F64
+
+_ frequency = 0.0
+_ damping = 1.0
+
+────────────────────
++ This
+    - duration
+    - bounce
+
+. seconds = (duration as Seconds) as F64
+frequency = if seconds > 0 then 2 * (π as F64) / seconds else 0.0
+damping = if bounce >= 0 then 1 - bounce else 1 / (1 + max(bounce, -0.99))
+
+────────────────────
++ do sample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+=? MotionSample(0, 0, true) if frequency <= 0
+. t = (elapsed as Seconds) as F64
+. place = 0.0
+. pace = 0.0
+if damping < 0.999999
+    . fading = damping * frequency
+    . ringing = frequency * sqrt(1 - damping * damping)
+    . fade = exp(-fading * t)
+    . turn = cos(ringing * t)
+    . swing = sin(ringing * t)
+    place = fade * (offset * turn + (speed + fading * offset) / ringing * swing)
+    pace = fade * (speed * turn - (frequency * frequency * offset + drag) / ringing * swing)
+        .. drag = fading * speed
+else if damping <= 1.000001
+    . fade = exp(-frequency * t)
+    . lead = speed + frequency * offset
+    place = (offset + lead * t) * fade
+    pace = (speed - frequency * lead * t) * fade
+else
+    . spread = frequency * sqrt(damping * damping - 1)
+    . fast = -damping * frequency - spread
+    . slow = -damping * frequency + spread
+    . second = (speed - slow * offset) / (fast - slow)
+    . first = offset - second
+    place = first * exp(slow * t) + second * exp(fast * t)
+    pace = first * slow * exp(slow * t) + second * fast * exp(fast * t)
+=? MotionSample(0, 0, true) if abs(place) < precision && abs(pace) < precision * motion-rest-pace
+= MotionSample(place, pace, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ CurveMotion is Motion
+
++ duration Duration
++ easing Easing
+
+────────────────────
++ This
+    - duration
+    - easing
+
+────────────────────
++ get is-additive
+
+true
+
+────────────────────
++ sample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+|? span <= 0 || t >= span
+    MotionSample(0, 0, true)
+??
+    MotionSample
+        - offset * (1 - easing.eased(progress))
+        - -offset * easing.slope(progress) / span
+        - false
+
+.. span = (duration as Seconds) as F64
+.. t = (elapsed as Seconds) as F64
+.. progress = t / span
+
+━━━━━━━━━━━━━━━━━━━━
++ DecayMotion is Motion
+
++ rate F64
+
+_ fade = 0.0
+
+────────────────────
++ This
+    - rate
+
+fade = if rate > 0 && rate < 1 then -1000 * log(rate) else 0.0
+
+────────────────────
++ sample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+|? fade <= 0 || abs(place - resting) < precision
+    MotionSample(resting, 0, true)
+??
+    MotionSample(place, speed * remaining, false)
+
+.. resting = rest(offset, speed)
+.. t = (elapsed as Seconds) as F64
+.. remaining = exp(-fade * t)
+.. place = resting - speed / fade * remaining
+
+────────────────────
++ rest
+    - offset F64
+    - speed F64
+
+if fade > 0 then offset + speed / fade else offset
+
+━━━━━━━━━━━━━━━━━━━━
++ FollowMotion is Motion
+
++ rate F64
+
+────────────────────
++ This
+    - rate
+
+────────────────────
++ sample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+|? rate <= 0 || abs(place) < precision
+    MotionSample(0, 0, true)
+??
+    MotionSample(place, -rate * place, false)
+
+.. place = offset * exp(-rate * ((elapsed as Seconds) as F64))
+
+━━━━━━━━━━━━━━━━━━━━
++ InstantMotion is Motion
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionStop is Tuple
+
++ at F64
++ progress F64
++ easing = Easing.linear
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyframePlace is Tuple
+
++ segment Index
++ fraction F64
++ slope F64
+
+━━━━━━━━━━━━━━━━━━━━
++ do keyframe-place'Stop KeyframePlace
+    - stops [Stop]
+    - at F64
+
+=? KeyframePlace(0, 0, 0) if stops.length == 0 || at <= stops[0].at
+. last = stops.length - 1
+=? KeyframePlace(last, 1, 0) if at >= stops[last].at
+. segment = 1
+while segment < last && at >= stops[segment].at
+    segment += 1
+. start = stops[segment - 1].at
+. span = stops[segment].at - start
+=? KeyframePlace(segment, 1, 0) if span <= 0
+. local = (at - start) / span
+. easing = stops[segment].easing
+= KeyframePlace(segment, easing.eased(local), easing.slope(local) / span)
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyframeMotion is Motion
+
++ duration Duration
++ stops [MotionStop]
++ settle SpringMotion?
+
+────────────────────
++ This
+    - duration
+    - stops
+    - settle
+
+────────────────────
++ do at This
+    - at Ratio
+    - progress F64
+    - easing Easing = Easing.linear
+    - motion SpringMotion? = null
+
+?! Panic("Only the last stop of a keyframe motion ends on a spring")
+    if settle
+stops += MotionStop(at, progress, easing)
+if motion
+    settle = motion
+= this
+
+────────────────────
++ progress (F64, F64)
+    - elapsed Duration
+
+|? span <= 0 || stops.length == 0
+    (1, 0)
+|? place.segment == 0
+    (stops[0].progress, 0)
+??
+    (from + (to - from) * place.fraction, (to - from) * place.slope / span)
+
+.. span = (duration as Seconds) as F64
+.. place = keyframe-place(stops, ((elapsed as Seconds) as F64) / span)
+.. from = stops[place.segment - 1].progress
+.. to = stops[place.segment].progress
+
+────────────────────
+_ settling MotionSample?
+    - elapsed Duration
+    - precision F64
+
+|? !spring || stops.length < 2
+    null
+|? t < begins
+    null
+??
+    MotionSample(stops[last].progress + sample.offset, sample.speed, sample.is-done)
+
+.. spring = settle
+.. last = stops.length - 1
+.. span = (duration as Seconds) as F64
+.. begins = stops[last - 1].at * span
+.. t = (elapsed as Seconds) as F64
+.. arrival = progress(max(begins - 0.000001, 0.0) as Seconds)
+.. offset = stops[last - 1].progress - stops[last].progress
+.. pace = if last >= 2 then arrival[1] else 0.0
+.. sample = spring.sample(offset, pace, (t - begins) as Seconds, precision)
+
+────────────────────
++ get is-additive
+
+true
+
+────────────────────
++ do sample
+    - offset F64
+    - speed F64
+    - elapsed Duration
+    - precision F64
+
+=? MotionSample(0, 0, true) if offset == 0
+. tolerance = precision / abs(offset)
+. settled = settling(elapsed, tolerance)
+if settled
+    =? MotionSample(0, 0, true) if settled.is-done
+    = MotionSample(offset * (1 - settled.offset), -offset * settled.speed, false)
+. span = (duration as Seconds) as F64
+=? MotionSample(0, 0, true) if ((elapsed as Seconds) as F64) >= span
+. shape = progress(elapsed)
+= MotionSample(offset * (1 - shape[0]), -offset * shape[1], false)
+
+━━━━━━━━━━━━━━━━━━━━
++ MotionChannel
+
++ value [F64]
++ speed [F64]
++ target [F64]
++ precision F64
+
+_ runs = List'MotionRun()
+
+────────────────────
++ This
+    - start [F64]
+    - precision F64 = 0.01
+
+.. value = List'F64(start)
+.. target = List'F64(start)
+.. speed = List'F64(0.0 in start)
+
+────────────────────
++ get is-moving Bool
+
+runs.length > 0
+
+────────────────────
++ do update
+    - now Duration
+
+=? if runs.length == 0
+for index in 0 .. < value.length
+    value[index] = target[index]
+    speed[index] = 0
+. kept Size = 0
+for at in 0 .. < runs.length
+    . run = runs[at]
+    . elapsed = if now > run.start then now - run.start else 0ns
+    . is-done = true
+    for index in 0 .. < value.length
+        . sample = run.motion.sample(run.offset[index], run.speed[index], elapsed, precision)
+        value[index] += sample.offset
+        speed[index] += sample.speed
+        if !sample.is-done
+            is-done = false
+    if !is-done
+        runs[kept] = run
+        kept += 1
+runs.remove(kept, runs.length - kept)
+
+────────────────────
++ do retarget
+    - to [F64]
+    - motion Motion
+    - now Duration
+
+update(now)
+. offset = List'F64()
+. pace = List'F64()
+. is-still = true
+if motion.is-additive
+    for index in 0 .. < value.length
+        offset += target[index] - to[index]
+        pace += 0
+        target[index] = to[index]
+        if offset[index] != 0
+            is-still = false
+else
+    runs = List'MotionRun()
+    for index in 0 .. < value.length
+        . resting = to[index] + motion.rest(value[index] - to[index], speed[index])
+        offset += value[index] - resting
+        pace += speed[index]
+        target[index] = resting
+        if offset[index] != 0 || pace[index] != 0
+            is-still = false
+=? if is-still
+runs += MotionRun(motion, now, offset, pace)
+
+────────────────────
++ do jump
+    - to [F64]
+    - pace [F64]? = null
+
+runs = List'MotionRun()
+for index in 0 .. < value.length
+    value[index] = to[index]
+    target[index] = to[index]
+    speed[index] = if pace then pace[index] else 0.0
+
+────────────────────
++ do stop
+    - now Duration
+
+update(now)
+jump(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ MotionRun is Tuple
+
++ motion Motion
++ start Duration
++ offset [F64]
++ speed [F64]

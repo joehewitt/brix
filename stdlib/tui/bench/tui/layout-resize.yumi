@@ -1,0 +1,60 @@
+`benchmark.meta description: Measures repeated terminal-style resize layout updates.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchResizeRoot()
+markup-mount-root(root, root)
+
+for row-index in 0 .. < 24
+    . row = BenchResizeRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 12
+        . cell = BenchResizeCell()
+        markup-append(row, cell)
+        markup-append(cell, Label("r${row-index}-c${cell-index}"))
+
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+for frame in 0 .. < 96
+    root.bounds = Rect(0, 0, 80 + Coord(frame % 8) * 5, 24 + Coord(frame % 5))
+    root.invalidate-layout()
+    root.update-layout()
+    checksum += root.inner-height + root.inner-width + frame
+
+-- "bench-result tui/layout-resize checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flex-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeRow is Box
+
+• This
+    layout = flex-row
+    flex = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResizeCell is Box
+
+• This
+    layout = flow-col
+    flex = 1

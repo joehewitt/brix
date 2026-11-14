@@ -1,0 +1,301 @@
+./motion-kit
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/math
+/math/motion
+/time/duration
+/units
+
+_ stat-names = ["VISITORS", "REVENUE", "CONVERSION", "LATENCY"]
+_ bar-count = 12
+_ bar-reach = 230.0
+_ ring-width = 14.0
+_ spark-gravity = 900.0
+
+━━━━━━━━━━━━━━━━━━━━
+• ValuesTheme
+    using GUIDefaultTheme
+    using MotionKitTheme
+    using GUIBoxMotion
+    using GUIBoxPaint
+
+• stat-card • motion-card flex:1 py:16
+
+• stat-name • motion-tag
+
+• stat-value • text:gui-strong-text-color mt:8
+    font-size = 30
+    font-weight = FontWeight.bold
+
+• stat-delta • mt:6
+    font-size = 12
+    font-weight = FontWeight.semibold
+
+• chart • flex-row items-end flex:1 mt:14 px:4
+
+• chart-bar • flex:1 mx:5
+    corner-radius = 6
+    motion.layout = spring(700ms, 0.4)
+
+• ring-stage • flex-col items-center justify-center w:190 h:190 mt:14
+
+• ring-score • text:gui-strong-text-color
+    font-size = 40
+    font-weight = FontWeight.bold
+
+• ring-caption • motion-tag mt:2
+
+━━━━━━━━━━━━━━━━━━━━
++ ValuesPanel is Box
+    using MotionKitTheme
+    using ValuesTheme
+
++ stats [F64] = [18240, 48210, 3.4, 182]
++ changes [F64] = [4.2, 7.8, -0.6, -3.1]
++ bars [F64] = [0.42, 0.55, 0.38, 0.61, 0.72, 0.5, 0.66, 0.81, 0.58, 0.7, 0.88, 0.64]
++ score = 0.62
+
+────────────────────
+
+<This • motion-page
+    <MotionHeader "Numbers that move themselves"
+        lede = "Every figure here is animated(#value, spring(…)) in the attribute that shows it. Press Randomize twice quickly: each value turns toward its new target with the speed it had."
+        <Button randomize-button "Randomize" • ml:20
+            action = => do randomize()
+    <Box • flex-row h:122 mt:20 gap:16
+        for index in 0 .. < stat-names.length
+            <Box • stat-card
+                <Label • stat-name
+                    text = stat-names[index]
+                <Label • stat-value
+                    text = stat-text(index, animated(#stats[index], spring(900ms + 150ms * index)))
+                <Label • stat-delta
+                    text = delta-text(index, animated(#changes[index], spring(900ms)))
+                    color = if #changes[index] >= 0 then motion-hue(2) else motion-hue(7)
+    <Box • motion-row mt:18
+        <MotionCard "Sessions by month" • flex:1
+            note = "Bars change height by layout motion, under spring(700ms, 0.4)."
+            <Box • chart
+                for index in 0 .. < bar-count
+                    <Box • chart-bar
+                        background = motion-glow(index)
+                        min-height = SizeSpec.coord(#bars[index] * bar-reach)
+                        max-height = SizeSpec.coord(#bars[index] * bar-reach)
+        <MotionCard "Health score" • items-center w:250
+            <Box • ring-stage
+                <ScoreRing • absolute cover:.parent
+                    amount = animated(#score, spring(1400ms, 0.3))
+                <Label • ring-score
+                    text = "${round(animated(#score, spring(1400ms, 0.3)) * 100) as Int}"
+                <Label "OUT OF 100" • ring-caption
+        <MotionCard "Sparks" • w:280
+            note = "A frames loop that runs only while sparks are in the air."
+            <BurstField burst • motion-well flex:1 mt:12
+            <Button burst-button "Burst" • mt:12
+                action = => do burst.burst()
+
+────────────────────
++ do randomize
+
+. next-stats = List'F64()
+. next-changes = List'F64()
+for index in 0 .. < stats.length
+    . base = stats[index]
+    . factor = 0.7 + 0.6 * next-random()
+    . value = if index == 2 then round(base * factor * 10) / 10 else round(base * factor)
+    next-stats += value
+    next-changes += (value - base) / base * 100
+stats = next-stats
+changes = next-changes
+. next-bars = List'F64()
+for index in 0 .. < bar-count
+    next-bars += 0.15 + 0.85 * next-random()
+bars = next-bars
+score = 0.2 + 0.78 * next-random()
+burst.burst()
+
+━━━━━━━━━━━━━━━━━━━━
++ ScoreRing is Box
+
++ amount = 0.0
+
+. amount-changed < amount
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. center = Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+. radius = min(bounds.width, bounds.height) / 2 - ring-width / 2
+do use canvas.saved-state
+    canvas.fill-color = null
+    canvas.stroke-width = ring-width
+    canvas.stroke-cap = LineCap.round
+    canvas.stroke-color = RGBA("#ffffff14")
+    canvas.circle(center.x, center.y, radius)
+    . sweep = clamp(amount, 0.0, 1.0)
+    =? if sweep <= 0
+    canvas.stroke-color = ring-color(sweep)
+    . steps = max(2, round(sweep * 96) as Int)
+    canvas.begin()
+    for index in 0 .. steps
+        . angle = -π / 2 + 2 * π * sweep * (index as F64) / (steps as F64)
+        . point = Point(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
+        if index == 0
+            canvas.move(point.x, point.y)
+        else
+            canvas.line(point.x, point.y)
+    canvas.end()
+
+────────────────────
+_ do amount-changed
+
+invalidate-paint()
+
+━━━━━━━━━━━━━━━━━━━━
+_ Spark
+
++ place Point
++ speed Point
++ life F64
++ color RGBA
++ size Length
+
+────────────────────
++ This
+    - place
+    - speed
+    - life
+    - color
+    - size
+
+━━━━━━━━━━━━━━━━━━━━
++ BurstField is Box
+    using MotionKitTheme
+
+_ sparks = List'Spark()
+_ event flights Bool
+
+• This • motion-clip
+
+────────────────────
+_ flight ~>
+
+~> is-resting
+    then is-flying on flights when each
+
+~> is-flying
+    for tick on frames
+        advance(tick.delta)
+
+    then is-resting on flights when !each
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+do use canvas.saved-state
+    canvas.stroke-color = null
+    for spark in sparks
+        . fade = clamp(spark.life, 0.0, 1.0)
+        canvas.fill-color = spark.color.with-alpha(fade)
+        canvas.circle
+            - bounds.x + spark.place.x
+            - bounds.y + spark.place.y
+            - spark.size * (0.4 + 0.6 * fade)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do burst
+
+. origin = Point(bounds.width / 2, bounds.height * 0.78)
+for index in 0 .. < 90
+    . angle = -π / 2 + (next-random() - 0.5) * 1.6
+    . pace = 260 + 520 * next-random()
+    . speed = Point(cos(angle) * pace, sin(angle) * pace)
+    sparks += Spark
+        - origin
+        - speed
+        - 0.9 + 0.8 * next-random()
+        - motion-hue(index)
+        - 2.5 + 3.5 * next-random()
+flights <- true
+
+────────────────────
+_ do advance
+    - delta Nanoseconds
+
+. seconds = (delta as Seconds) as F64
+. kept = List'Spark()
+for spark in sparks
+    spark.speed = Point(spark.speed.x * 0.99, spark.speed.y + spark-gravity * seconds)
+    spark.place = Point
+        - spark.place.x + spark.speed.x * seconds
+        - spark.place.y + spark.speed.y * seconds
+    spark.life -= seconds
+    if spark.life > 0
+        kept += spark
+sparks = kept
+invalidate-paint()
+if sparks.length == 0
+    flights <- false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do next-random F64
+
+= random(0, 1000000) / 1000000.0
+
+━━━━━━━━━━━━━━━━━━━━
+_ stat-text String
+    - index Index
+    - value F64
+
+|? index == 0
+    grouped(value)
+|? index == 1
+    "\$${grouped(value)}"
+|? index == 2
+    "${round(value * 10) / 10}%"
+??
+    "${round(value) as Int} ms"
+
+━━━━━━━━━━━━━━━━━━━━
+_ delta-text String
+    - index Index
+    - change F64
+
+"${if change >= 0 then "▲" else "▼"} ${round(abs(change) * 10) / 10}% vs last week"
+
+━━━━━━━━━━━━━━━━━━━━
+_ grouped String
+    - value F64
+
+|? whole < 1000
+    "$whole"
+??
+    "${grouped(high as F64)},$tail"
+
+.. whole = round(abs(value)) as Int
+.. high = whole / 1000
+.. low = whole % 1000
+.. tail = if low < 10 then "00$low" else if low < 100 then "0$low" else "$low"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ring-color RGBA
+    - amount F64
+
+|? amount < 0.4
+    motion-hue(7)
+|? amount < 0.7
+    motion-hue(1)
+??
+    motion-hue(2)

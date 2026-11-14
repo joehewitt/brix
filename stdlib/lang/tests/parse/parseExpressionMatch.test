@@ -1,0 +1,306 @@
+====================================================================================================
+Apply without input
+====================================================================================================
+:====
+
+result <* binding
+
+:----
+%brix
+(main
+  (select result (<* binding))
+)
+:----
+
+<StructureMatch>
+    <TypeTransform>
+        <TypeCapture>
+            <Id name="binding"/>
+        </TypeCapture>
+        <Id name="result"/>
+    </TypeTransform>
+</StructureMatch>
+;====
+:====
+
+result ~ Binding
+
+:----
+%brix
+(main
+  (select result (~ Binding))
+)
+:----
+
+<StreamMatch>
+    <StreamTransform>
+        <StreamType>
+            <TypeId name="Binding"/>
+        </StreamType>
+        <Id name="result"/>
+    </StreamTransform>
+</StreamMatch>
+;====
+====================================================================================================
+Apply without binding
+====================================================================================================
+:====
+
+result = input
+
+:----
+%brix
+(main
+  (= result input)
+)
+:----
+
+<AssignmentExpression op="=">
+    <Id name="result"/>
+    <Id name="input"/>
+</AssignmentExpression>
+;====
+:====
+
+result in input
+
+:----
+%brix
+(main
+  (in result input)
+)
+:----
+
+<Iterator>
+    <In>
+        <Id name="input"/>
+    </In>
+    <Id name="result"/>
+</Iterator>
+;====
+====================================================================================================
+Structural match with binding and input
+====================================================================================================
+:====
+
+result | binding = input
+
+:----
+%brix
+(main
+  (= (select result (| binding)) input)
+)
+:----
+
+<Match>
+    <Id name="input"/>
+    <StructureMatch>
+        <TypeTransform>
+            <TypeCapture>
+                <Id name="binding"/>
+            </TypeCapture>
+            <Id name="result"/>
+        </TypeTransform>
+    </StructureMatch>
+</Match>
+;====
+:====
+
+result <* binding in input
+
+:----
+%brix
+(main
+  (in (select result (<* binding)) input)
+)
+:----
+
+<Iterator>
+    <In>
+        <StructureMatch>
+            <TypeTransform>
+                <TypeCapture>
+                    <Id name="binding"/>
+                </TypeCapture>
+                <Id name="result"/>
+            </TypeTransform>
+        </StructureMatch>
+        <Id name="input"/>
+    </In>
+    <Id name="each"/>
+</Iterator>
+;====
+:====
+
+result <* binding in input until later
+
+:----
+%brix
+(main
+  (in (select result (<* binding)) input (until later))
+)
+:----
+
+<Iterator>
+    <In>
+        <StructureMatch>
+            <TypeTransform>
+                <TypeCapture>
+                    <Id name="binding"/>
+                </TypeCapture>
+                <Id name="result"/>
+            </TypeTransform>
+        </StructureMatch>
+        <Id name="input"/>
+        <Until>
+            <Id name="later"/>
+        </Until>
+    </In>
+    <Id name="each"/>
+</Iterator>
+;====
+====================================================================================================
+Pattern match with binding and input
+====================================================================================================
+:====
+
+result ~ Binding = input
+
+:----
+%brix
+(main
+  (= (select result (~ Binding)) input)
+)
+:----
+
+<Match>
+    <Id name="input"/>
+    <StreamMatch>
+        <StreamTransform>
+            <StreamType>
+                <TypeId name="Binding"/>
+            </StreamType>
+            <Id name="result"/>
+        </StreamTransform>
+    </StreamMatch>
+</Match>
+;====
+:====
+
+result ~ Binding in input
+
+:----
+%brix
+(main
+  (in (select result (~ Binding)) input)
+)
+:----
+
+<Iterator>
+    <In>
+        <StreamTransform>
+            <StreamType>
+                <TypeId name="Binding"/>
+            </StreamType>
+            <Id name="result"/>
+        </StreamTransform>
+        <Id name="input"/>
+    </In>
+    <Id name="each"/>
+</Iterator>
+;====
+====================================================================================================
+Structural pattern first
+====================================================================================================
+:====
+
+:: binding
+
+:----
+%nyi
+
+<StructureMatch>
+    <Id name="binding"/>
+    <Id name="it"/>
+</StructureMatch>
+;====
+:====
+
+:: binding = input
+
+:----
+%nyi
+
+<Match>
+    <Id name="input"/>
+    <StructureMatch>
+        <Id name="binding"/>
+        <Id name="it"/>
+    </StructureMatch>
+</Match>
+;====
+:====
+
+:: binding in input
+
+:----
+%nyi
+
+<Iterator>
+    <In>
+        <Id name="binding"/>
+        <Id name="input"/>
+    </In>
+    <Id name="each"/>
+</Iterator>
+;====
+====================================================================================================
+Stream pattern first
+====================================================================================================
+:====
+
+~ Binding
+
+:----
+%nyi
+
+<StreamMatch>
+    <StreamOr>
+        <StreamAnd>
+            <TypeId name="Binding"/>
+        </StreamAnd>
+    </StreamOr>
+</StreamMatch>
+;====
+:====
+
+~ Binding = input
+
+:----
+%nyi
+
+<Match>
+    <Id name="input"/>
+    <StreamMatch>
+        <StreamAnd>
+            <TypeId name="Binding"/>
+        </StreamAnd>
+    </StreamMatch>
+</Match>
+;====
+:====
+
+~ Binding in input
+
+:----
+%nyi
+
+<Match iterative="true">
+    <Id name="input"/>
+    <StreamMatch iterative="true">
+        <StreamAnd>
+            <TypeId name="Binding"/>
+        </StreamAnd>
+    </StreamMatch>
+</Match>
+;====

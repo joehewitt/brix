@@ -1,0 +1,920 @@
+./chat-access
+./chat-actions
+./chat-branching
+./chat-caches
+./chat-image-viewer
+./chat-memory
+./chat-parts
+./chat-questions
+./chat-reply
+./chat-theme
+/ai
+/ai/claude/icon
+/ai/codex/icon
+/ai/openai/icon
+/core/virtual
+/core/virtual-layout
+/graphics/point
+/graphics/primitives
+/graphics/style
+/gui
+/gui/icons/lucide/chevron-down
+/gui/icons/lucide/chevron-left
+/gui/markdown
+/gui/virtual
+/math
+/time/timestamp
+/units
+
+_ chat-row-overscan VirtualCoord = 600vcoord
+_ chat-row-retention VirtualCoord = 20000vcoord
+_ chat-row-estimate VirtualCoord = 80vcoord
+_ chat-row-leading VirtualCoord = 24vcoord
+_ chat-row-trailing VirtualCoord = 8vcoord
+_ chat-estimated-line VirtualCoord = 22vcoord
+_ chat-estimated-gap VirtualCoord = 18vcoord
+_ chat-estimated-char-span VirtualCoord = 14vcoord
+_ chat-estimated-column VirtualCoord = 760vcoord
+_ chat-estimated-image-lines VirtualCoord = 20vcoord
+_ chat-estimated-image-row-lines VirtualCoord = 6vcoord
+_ chat-estimated-image-columns Size = 4
+_ chat-estimated-prompt-lines VirtualCoord = 15vcoord
+_ chat-prompt-image-limit = Dimensions(160, 160)
+_ chat-prompt-inset Length = 24
+_ chat-end-slack Length = 24
+_ chat-page-overlap Length = 40
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatServiceIcon is Box
+
++ icon AIServiceIcon?
+
+────────────────────
+
+<This • flex-row
+    if #icon == AIServiceIcon.claude
+        <ClaudeIcon • flex:1
+    else if #icon == AIServiceIcon.codex
+        <CodexIcon • flex:1
+    else if #icon == AIServiceIcon.openai
+        <OpenAIIcon • flex:1
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatInsertion is Union
+
+| pins-end
+| pins-prompt
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatRow is Tuple
+
++ key String
++ message AIChatMessage
++ fold AIChatBranch? = null
++ is-last = false
++ is-wake = false
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatLaunch
+
++ message-id String
++ key String
++ is-flying = true
+
+────────────────────
++ This
+    - message-id
+    - key
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatTranscript is Box
+    is ChatImageOpener
+
++ session AIChatSession
++ branching ChatBranching
++ services [AIChatService]
++ caches = ChatBlockCaches()
++ images AIImageStore?
++ gutter VirtualCoord = 0vcoord
++ top-inset Length = 0
++ greeting = ""
++ has-folds = false
++ insertion = ChatInsertion.pins-prompt
++ event answering String
++ source = ChatMessageSource(#session, #has-folds)
++ is-end-hidden = false
++ is-launching = #launched?.#is-flying ?? false
+
+_ jumped I64?
+_ launched ChatLaunch?
+_ is-denied = session.document.#service.access?.#is-granted == false
+_ row-inset = if #is-denied then 0 else #top-inset
+_ row-leading = chat-row-leading + (ceil(#row-inset) as VirtualCoord)
+_ prompt-inset = chat-prompt-inset + #row-inset
+
+────────────────────
+
+<This • flex-col
+    if session.document.#is-empty
+        <Label • chat-empty h:28
+            margin-top = 144 + #top-inset
+            text = #greeting
+        if #services.length > 1
+            <SegmentedControl'AIChatService • mt:20
+                align-x = Alignment.center
+                selected = session.document.#service
+                for event on selection-changing
+                    . failure = catch session.document.choose(event.value)
+                    if failure is AIError
+                        event.cancel()
+                for service in #services keyed by service.id
+                    <Segment'AIChatService
+                        title = service.title
+                        value = service
+                        <ChatServiceIcon (leading) • icon
+                            icon = service.icon
+                            display = if service.icon != null then Display.visible else Display.hidden
+    if #is-denied
+        <ChatAccessCard
+            margin-top = 24 + (if session.document.#is-empty then 0 else #top-inset)
+            service = session.document.#service
+            access = session.document.#service.access!
+    <VirtualRegion'ChatRow rows • chat-transcript flex:1
+        source = #source
+        virtual-layout = chat-row-layout(#source, row-leading, gutter)
+        overscan = VirtualInsets(chat-row-overscan, 0vcoord, chat-row-overscan, 0vcoord)
+        retention = VirtualInsets(chat-row-retention, 0vcoord, chat-row-retention, 0vcoord)
+        anchors-end = true
+
+        <Box (row) - slot • flex-col
+            <Box • chat-column flex-col pl:18
+                for row in [slot.#item] keyed by row.key
+                    <ChatMessageRow
+                        row = row
+                        session = session
+                        branching = branching
+                        caches = caches
+                        images = images
+                        has-folds = #has-folds
+                        launch = chat-row-launch(#launched, row)
+                        for toggled on toggle
+                            fold-toggle(toggled)
+                        for pinned on pin
+                            pin-row(pinned)
+                        for shrunk on shrink
+                            pin-row(shrunk) • reveals-start true
+                        for text on answer
+                            answering <- text
+    <ChatImageViewer viewer
+        images = images
+
+────────────────────
+whenever #gutter
+
+if | layout VerticalMeasuredLayout = rows.virtual-layout
+    layout.trailing = chat-row-trailing + gutter
+
+────────────────────
+whenever #row-leading
+
+if | layout VerticalMeasuredLayout = rows.virtual-layout
+    layout.leading = row-leading
+
+────────────────────
+whenever session.#turn-count
+
+show-turn()
+
+────────────────────
+whenever session.#is-busy
+
+if !session.is-busy
+    launched = null
+
+────────────────────
+whenever #is-launching
+
+if !is-launching
+    launched = null
+
+────────────────────
+for _ on rows.scroll-changed when arrival
+
+check-end()
+
+────────────────────
+whenever rows.#virtual-extent-y
+
+check-end()
+
+────────────────────
+whenever rows.#follows-end
+
+check-end()
+
+────────────────────
++ do jump-to-start
+
+jumped = null
+rows.restore-scroll(Point(0, 0))
+
+────────────────────
++ do jump-to-end
+
+jumped = null
+rows.follow-end()
+is-end-hidden = false
+
+────────────────────
++ do launch
+    - key String
+
+. address = source.prompt-address()
+=? if address == null
+launched = ChatLaunch(source.row-at(address).message.id, key)
+
+────────────────────
++ do page
+    - forward Bool
+
+jumped = null
+. step = max
+    - rows.content-bounds.height - (gutter as Length) - row-inset - chat-page-overlap
+    - chat-page-overlap
+. target = if forward then ahead else max(rows.scroll-y - step, 0)
+    .. ahead = min(rows.scroll-y + step, rows.scroll-max.y)
+rows.restore-scroll(Point(rows.scroll-x, target))
+
+────────────────────
++ do jump-to-prompt
+    - forward Bool
+
+. found = prompt-beyond(forward)
+if found == null
+    if forward
+        jump-to-end()
+    else
+        jump-to-start()
+    =
+jumped = found
+. ignored = rows.glide-to-address(found, prompt-inset)
+
+────────────────────
+_ do prompt-beyond I64?
+    - forward Bool
+
+. origin = jumped if rows.is-gliding
+. count = source.row-count() as I64
+. step I64 = if forward then 1 else -1
+. index I64 = if forward then 0 else count - 1
+while index >= 0 && index < count
+    if chat-row-is-prompt(source.row-at(index)) && is-beyond(index, origin, forward)
+        = index
+    index += step
+= null
+
+────────────────────
+_ is-beyond Bool
+    - address I64
+    - origin I64?
+    - forward Bool
+
+|? origin != null
+    if forward then address > origin else address < origin
+|? offset == null
+    false
+??
+    if forward then offset > prompt-inset + 1 else offset < prompt-inset - 1
+
+.. offset = rows.address-offset(address)
+
+────────────────────
+_ do check-end
+
+. extent = rows.virtual-extent-y.known as Length
+. hidden = !rows.follows-end && rows.scroll-y + rows.content-bounds.height < extent - chat-end-slack
+if hidden != is-end-hidden
+    is-end-hidden = hidden
+
+────────────────────
+_ do show-turn
+
+if insertion == ChatInsertion.pins-prompt
+    . address = source.prompt-address()
+    if address != null
+        jumped = null
+        . ignored = rows.glide-to-address(address, prompt-inset)
+        =
+jumped = null
+rows.glide-to-end()
+is-end-hidden = false
+
+╌╌╌╌╌╌╌╌╌╌ is ChatImageOpener ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do open-image
+    - image AIImage
+
+. pictures = chat-viewer-pictures(session.messages)
+for index in 0 .. < pictures.length
+    if pictures[index] as Pointer == image as Pointer
+        viewer.present(pictures, index)
+        =
+viewer.present([image], 0)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+restore-scroll()
+
+────────────────────
++ do unmounted
+
+keep-scroll()
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do keep-scroll
+
+if rows.follows-end
+    branching.memory.keep-scroll(session.branch-id, ChatScrollMark("", 0, true))
+    =
+. count = source.row-count()
+=? if count == 0
+. top I64
+. top-offset Length = 0
+for address in 0 .. < count
+    . offset = rows.address-offset(address)
+    if offset != null && offset <= 0
+        top = address
+        top-offset = offset
+. row = source.row-at(top)
+branching.memory.keep-scroll(session.branch-id, ChatScrollMark(row.message.id, top-offset, false))
+
+────────────────────
+_ do restore-scroll
+
+. mark = branching.memory.scroll-for(session.branch-id)
+=? if !mark || mark.is-at-end
+. shown = source.message-address(mark.message-id)
+=? if shown == null
+rows.pin-address(shown, mark.offset)
+
+────────────────────
+_ do pin-row
+    - row ChatRow
+    - reveals-start = false
+
+. shown = source.message-address(row.message.id)
+=? if shown == null
+. offset = rows.address-offset(shown)
+=? if offset == null
+rows.pin-address(shown, if reveals-start && offset < row-inset then prompt-inset else offset)
+
+────────────────────
+_ do fold-toggle
+    - row ChatRow
+
+. id = row.message.id
+. shown = source.message-address(id)
+. offset = rows.address-offset(shown) if shown != null
+if row.fold
+    branching.unfold(row.fold.id)
+else
+    branching.collapse(session, id)
+. moved = source.message-address(id)
+if moved != null && offset != null
+    rows.pin-address(moved, offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatMessageRow is Box
+
++ row ChatRow
++ session AIChatSession
++ branching ChatBranching
++ caches ChatBlockCaches
++ images AIImageStore?
++ has-folds = false
++ launch ChatLaunch? = null
++ message = #row.message
++ fold = #row.fold
++ is-user = #message.role == AIMessageRole.user
++ is-folded = #fold != null
++ can-collapse =
+    |? #has-folds && #is-user && !session.#is-busy
+        chat-can-collapse-at
+            - session.document.#chat
+            - session.branch-id
+            - #message.id
+    ??
+        false
++ can-unfold = !session.#is-busy && chat-fold-unfolds(session.document.#chat, #fold)
++ can-toggle = if #is-folded then #can-unfold else #can-collapse
++ is-open = #is-folded && branching.#focus?.branch-id == #fold!.id
++ is-fold-revealed = #is-folded || #is-hover-within
++ has-actions = !#is-folded && (#is-user || #message.#finish-reason != null)
++ has-menu = !#is-folded
++ can-copy = false
++ question = ai-reply-question(#message.#parts) if #row.is-last && #message.#finish-reason != null && !session.#is-busy
++ event toggle ChatRow
++ event pin ChatRow
++ event shrink ChatRow
++ event answer String
+
+────────────────────
+
+<This • flex-row
+    if #has-menu
+        <ContextMenu message-menu
+            <MenuItem "Copy"
+                key = copy-key
+                is-enabled = #can-copy
+                action = => do copy-selection()
+            <MenuItem "Copy Message"
+                action = => do copy-message()
+    <Box • flex-col flex:1
+        if #is-folded
+            <ChatPrompt fold-prompt
+                message = #message
+                caches = caches
+                images = images
+                is-collapsed = true
+                is-open = #is-open
+        else if #is-user
+            <ChatPrompt prompt
+                message = #message
+                caches = caches
+                images = images
+                state = branching.memory.prompt-for(#message.id)
+                launch = #launch
+        else
+            <ChatReply reply
+                message = #message
+                session = session
+                messages = session.#messages
+                caches = caches
+                images = images
+                memory = branching.memory
+                is-wake = #row.is-wake
+        if #has-actions
+            <ChatMessageActions • mt:2
+                message = #message
+                is-user = #is-user
+                is-shown = #is-hover-within
+        if #question != null
+            <ChatQuestionView question-view • mt:10
+                question = #question!
+        if !#has-actions
+            <Box • h:18
+    <Box • flex-col w:18
+        if #can-toggle || #is-folded
+            <ChatFoldButton fold-button • w:16 h:16 ml:2 mt:10
+                is-collapsed = #is-folded
+                is-revealed = #is-fold-revealed
+                is-enabled = #can-toggle
+
+────────────────────
+for event on fold-button.click
+
+toggle <- row
+event.cancel()
+
+────────────────────
+for _ on reply.resizing
+
+pin <- row
+
+────────────────────
+for expanded on prompt.expanding
+
+if expanded
+    pin <- row
+else
+    shrink <- row
+
+────────────────────
+for text on question-view.answering
+
+answer <- text
+
+────────────────────
+for _ on fold-prompt.open
+
+branching.open(fold!.id)
+
+────────────────────
+for _ on message-menu.opened when arrival
+
+can-copy = chat-message-selection(this) != null
+
+────────────────────
+_ do copy-selection
+
+. view = chat-message-selection(this)
+if view
+    . ignored = Clipboard().write-text(view.selected-source())
+
+────────────────────
+_ do copy-message
+
+. ignored = Clipboard().write-text(chat-copy-text(message.parts))
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPrompt is Box
+
++ message AIChatMessage
++ caches ChatBlockCaches
++ images AIImageStore?
++ state = ChatPromptState()
++ is-collapsed = false
++ is-open = false
++ is-long = false
++ is-expanded = #state.#is-expanded
++ launch ChatLaunch? = null
++ is-launched = #launch != null
++ text = ai-parts-text(#message.parts)
++ event open Bool
++ event expanding Bool
+
+────────────────────
+
+<This • chat-prompt flex-row
+    <Box • flex:1
+    if #is-collapsed
+        <Button bubble • chat-bare chat-bubble px:14 py:9
+            <Box (leading) • flex-col flex:1
+                <Text • chat-bubble-text
+                    <Span
+                        text = chat-prompt-summary(#message.parts)
+    else
+        <ChatPromptCard • chat-bubble flex-col px:14 pt:9
+            padding-bottom = if #text.length > 0 then 0 else 9
+            launch = #launch
+            match = #launch?.key
+            if chat-prompt-images(#message.parts).length > 0
+                <Box • flex-row py:2
+                    for image in chat-prompt-images(#message.parts)
+                        <ChatImage • chat-image mr:6
+                            image = image
+                            images = images
+                            thumbnails = caches.thumbnails
+                            limit = chat-prompt-image-limit
+            if #text.length > 0
+                <ChatPromptBody • chat-prompt-body flex-col
+                    <MarkdownView • chat-bubble-markdown
+                        text = #text
+                        cache = caches.cache-for("${#message.id}/prompt")
+            if #is-long || #is-expanded
+                <Button more • chat-bare chat-stack-toggle mt:2 mb:8
+                    title = if #is-expanded then "Show less" else "Show more"
+
+────────────────────
+for event on bubble.click
+
+open <- true
+event.cancel()
+
+────────────────────
+for event on more.click
+
+expanding <- !state.is-expanded
+state.is-expanded = !state.is-expanded
+event.cancel()
+
+────────────────────
++ do note-body
+    - body ChatPromptBody
+
+=? if state.is-expanded
+. overflowing = body.has-vertical-overflow
+if overflowing != is-long
+    is-long = overflowing
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPromptCard is Box
+
++ launch ChatLaunch?
+
+. flight-changed < is-flying
+
+────────────────────
+_ do flight-changed
+
+launch?.is-flying = is-flying
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPromptBody is Box
+
+_ prompt Ancestor'ChatPrompt
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+prompt?.note-body(this)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-prompt-images [AIImage]
+    - parts [AIMessagePart]
+
+List'AIImage((each as AIImagePart).image in parts when each is AIImagePart)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-prompt-summary String
+    - parts [AIMessagePart]
+
+|? text.length || !count
+    text
+|? count == 1
+    "1 image"
+??
+    "$count images"
+
+.. text = ai-parts-text(parts)
+.. count = chat-prompt-images(parts).length
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatFoldButton is IconButton
+
++ is-collapsed = false
++ is-revealed = false
+
+• This • min-w:16 min-h:16
+    • icon • w:12 h:12
+
+    when !#is-revealed
+        opacity = 0%%
+
+    when #is-collapsed
+        • own icon-host
+            <LucideChevronLeft (first-child) • icon
+
+    when !#is-collapsed
+        • own icon-host
+            <LucideChevronDown (first-child) • icon
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatMessageSource
+    is VirtualSequenceDomain
+    is VirtualSource'ChatRow
+
++ session AIChatSession
++ has-folds = false
++ revision := VirtualRevision()
+
+_ rows = List'ChatRow()
+_ built U64
+_ is-built = false
+
+────────────────────
++ This
+    - session
+    - has-folds = false
+
+revision.value = session.revision + session.document.revision
+
+────────────────────
+whenever session.#revision + session.document.#revision
+
+revision.value = session.revision + session.document.revision
+
+────────────────────
++ row-count Size
+
+current-rows().length
+
+────────────────────
++ row-at ChatRow
+    - address I64
+
+current-rows()[address]
+
+────────────────────
++ do prompt-address I64?
+
+. found = current-rows()
+. index = found.length
+while index > 0
+    index -= 1
+    . row = found[index]
+    =? index as I64 if row.fold == null && row.message.role == AIMessageRole.user
+= null
+
+────────────────────
++ do message-address I64?
+    - id String
+
+. found = current-rows()
+. index Index
+while index < found.length
+    =? index as I64 if found[index].message.id == id
+    index += 1
+= null
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSequenceDomain ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get known-count VirtualCoord
+
+current-rows().length
+
+────────────────────
++ get estimated-count VirtualCoord?
+
+current-rows().length as VirtualCoord
+
+────────────────────
++ get is-final Bool
+
+true
+
+────────────────────
++ address-at I64
+    - index VirtualCoord
+
+index
+
+────────────────────
++ index-of VirtualCoord?
+    - address I64
+
+|? address < 0 || address >= (current-rows().length as I64)
+    null
+??
+    address as VirtualCoord
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSource'ChatRow ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get domain VirtualSequenceDomain
+
+this
+
+────────────────────
++ do bind
+    - address I64
+    - generation U64
+    - target VirtualBindingTarget'ChatRow
+
+. found = current-rows()
+if address < 0 || address >= (found.length as I64)
+    target.fail(generation)
+else
+    target.commit(VirtualKey(revision.value, address), found[address], generation)
+
+────────────────────
++ do identity-at U64?
+    - address I64
+
+. found = current-rows()
+=? if address < 0 || address >= (found.length as I64)
+= hash-for(found[address].key) as U64
+
+────────────────────
+_ do current-rows [ChatRow]
+
+. key = session.revision + session.document.revision
+if !is-built || key != built
+    rows = chat-rows(session, has-folds)
+    if rows.length > 0
+        . last = rows[rows.length - 1]
+        rows[rows.length - 1] = ChatRow
+            - last.key
+            - last.message
+            - last.fold
+            - true
+            - last.is-wake
+    built = key
+    is-built = true
+= rows
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-rows [ChatRow]
+    - session AIChatSession
+    - has-folds Bool
+
+. chat = session.chat
+. folds = if has-folds then chat-folds(child-branches) else List'AIChatBranch()
+    .. child-branches = chat-child-branches(chat, session.branch-id)
+. owned = Map'String'Bool()
+for message in session.messages
+    owned[message.id] = true
+. rows = List'ChatRow()
+for fold in folds
+    . anchor = fold.fork-message-id
+    if !anchor || !(owned has anchor)
+        chat-add-fold(rows, fold)
+. previous AIMessageRole? = null
+for message in session.messages
+    . is-wake = message.role == AIMessageRole.assistant && previous == AIMessageRole.assistant
+    previous = message.role
+    rows += ChatRow(message.id, message) • is-wake is-wake
+    for fold in folds
+        if fold.fork-message-id == message.id
+            chat-add-fold(rows, fold)
+= rows
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-row-launch ChatLaunch?
+    - launched ChatLaunch?
+    - row ChatRow
+
+|? launched && launched.message-id == row.message.id
+    launched
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-row-is-prompt Bool
+    - row ChatRow
+
+row.fold == null && row.message.role == AIMessageRole.user
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-add-fold
+    - rows [ChatRow]
+    - fold AIChatBranch
+
+. prompt = chat-branch-prompt(fold)
+if prompt
+    rows += ChatRow("fold:${fold.id}", prompt, fold)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-fold-unfolds
+    - chat AIChat
+    - fold AIChatBranch?
+
+fold != null && chat-can-unfold(chat, fold.id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-row-layout
+    - source ChatMessageSource
+    - leading VirtualCoord
+    - gutter VirtualCoord
+
+VerticalMeasuredLayout(chat-row-estimate, estimate, leading, chat-row-trailing + gutter)
+
+.. estimate = :: address, width => chat-message-estimate(source.row-at(address).message, width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-message-estimate
+    - message AIChatMessage
+    - width VirtualCoord
+
+lines * chat-estimated-line + chat-estimated-gap
+
+.. column = if width > chat-estimated-column then chat-estimated-column else width
+.. line-size = (if is-narrow then 1vcoord else column / chat-estimated-char-span)
+.. is-narrow = column < chat-estimated-char-span
+.. found = 1vcoord + chat-message-lines(message, line-size)
+.. is-clamped = message.role == AIMessageRole.user && found > chat-estimated-prompt-lines
+.. lines = if is-clamped then chat-estimated-prompt-lines else found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-message-lines VirtualCoord
+    - message AIChatMessage
+    - line-size VirtualCoord
+
+. size Size = 0
+. calls Size = 0
+. images Size = 0
+. rows Size = 0
+. run Size = 0
+for part in message.parts
+    if part is AIImagePart
+        run += 1
+    else
+        images += chat-run-images(run)
+        rows += chat-run-rows(run)
+        run = 0
+    if | text AITextPart = part
+        size += text.text.size
+    else if | reasoning AIReasoningPart = part
+        size += reasoning.text.size
+    else if | call AIToolCallPart = part
+        size += ai-call-reply(call)?.size ?? 0
+        calls += 1
+images += chat-run-images(run)
+rows += chat-run-rows(run)
+. image-lines = (images as VirtualCoord) * chat-estimated-image-lines + row-lines
+    .. row-lines = (rows as VirtualCoord) * chat-estimated-image-row-lines
+= (size as VirtualCoord) / line-size + (calls as VirtualCoord) + image-lines
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-run-images Size
+    - run Size
+
+if run == 1 then 1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-run-rows Size
+    - run Size
+
+if run > 1 then (run + chat-estimated-image-columns - 1) / chat-estimated-image-columns else 0

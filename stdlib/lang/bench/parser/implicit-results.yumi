@@ -1,0 +1,129 @@
+`benchmark.meta description: Materializes implicit String and Atom pattern results into their final arena.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+/core/arena
+/core/tokenstream
+
+. arena = Arena()
+. helper = SourceOwner(arena)
+. stream = ArrayTokenStream'Char("éabc😀!".codepoints)
+. checksum Size
+for i in 0 .. < 100000
+    stream.cursor = 0
+    checksum += source-result(stream, helper).length
+    stream.cursor = 0
+    checksum += it-result(stream, helper).length
+    stream.cursor = 0
+    checksum += atom-result(stream, helper).text.length
+    arena.reset()
+
+arena.release()
+-- "bench-result parser/implicit-results checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do source-result String
+    - stream TokenStream'Char
+    - helper SourceOwner
+
+= match stream
+    with helper
+    ~ \source-word
+    ?? ""
+
+    .. source-word String ~
+        ~ . [a-z]+ . "!"
+
+━━━━━━━━━━━━━━━━━━━━
++ do it-result String
+    - stream TokenStream'Char
+    - helper SourceOwner
+
+= match stream
+    with helper
+    ~ \source-word
+    ?? ""
+
+    .. source-word String ~
+        ~ . [a-z]+ . "!"
+            it
+
+━━━━━━━━━━━━━━━━━━━━
++ do atom-result Atom
+    - stream TokenStream'Char
+    - helper SourceOwner
+
+= match stream
+    with helper
+    ~ \source-word
+    ?? "" as Atom
+
+    .. source-word Atom ~
+        ~ . [a-z]+ . "!"
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceOwner
+    is PatternMaterializationRoot'U32
+    is PatternCaptureMaterializer'Char'String
+    is PatternValueMaterializer'String'String
+    is PatternRollback'Size
+
++ arena Arena
+
+as PatternCaptureMaterializer'Char'Atom for
+as PatternValueMaterializer'String'Atom for
+_ atoms := SourceAtoms(arena)
+
+────────────────────
++ This
+    - arena Arena
+
+────────────────────
++ materialize-capture String @no-gc
+    - source Char[]
+    - start Index
+    - end Index
+
+arena.copy-span(source, start, end)
+
+────────────────────
++ materialize-value String @no-gc
+    - source String
+
+arena.copy-string(source)
+
+────────────────────
++ mark Size @no-gc
+
+?! Panic("Unexpected source materialization mark")
+
+────────────────────
++ do rewind @no-gc
+    - mark Size
+
+?! Panic("Unexpected source materialization rewind")
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceAtoms is Tuple
+    is PatternCaptureMaterializer'Char'Atom
+    is PatternValueMaterializer'String'Atom
+
+_ arena Arena
+
+────────────────────
++ This
+    - arena Arena
+
+────────────────────
++ materialize-capture Atom @no-gc
+    - source Char[]
+    - start Index
+    - end Index
+
+arena.copy-span(source, start, end) as Atom
+
+────────────────────
++ materialize-value Atom @no-gc
+    - source String
+
+arena.copy-string(source) as Atom

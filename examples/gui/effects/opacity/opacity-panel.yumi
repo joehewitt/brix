@@ -1,0 +1,203 @@
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+/math
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacityPanel is Box
+
++ level F64 = 0.65
+
+• This • w:980 h:680
+
+────────────────────
+
+<This
+    <Label • absolute w:880 h:34
+        left = PositionOffset.coord(50)
+        top = PositionOffset.coord(24)
+        text = "Subtree opacity"
+        font-size = 25
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <Label • absolute w:880 h:24 text:gui-muted-text-color
+        left = PositionOffset.coord(50)
+        top = PositionOffset.coord(62)
+        text = "One composited group preserves opaque overlap; per-item opacity blends every overlap."
+        font-size = 14
+        text-alignment = TextAlignment.center
+
+    <Label • absolute w:400 h:24 text:gui-muted-text-color
+        left = PositionOffset.coord(55)
+        top = PositionOffset.coord(108)
+        text = "GROUP OPACITY"
+        font-size = 12
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <Label • absolute w:400 h:24 text:gui-muted-text-color
+        left = PositionOffset.coord(525)
+        top = PositionOffset.coord(108)
+        text = "THE SAME OPACITY ON EACH ITEM"
+        font-size = 12
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <OpacityCheckerboard • absolute w:400 h:250
+        left = PositionOffset.coord(55)
+        top = PositionOffset.coord(138)
+
+    <GroupedOpacityArtwork • absolute w:400 h:250
+        left = PositionOffset.coord(55)
+        top = PositionOffset.coord(138)
+        alpha = #level as Ratio
+
+    <OpacityCheckerboard • absolute w:400 h:250
+        left = PositionOffset.coord(525)
+        top = PositionOffset.coord(138)
+
+    <ItemizedOpacityArtwork • absolute w:400 h:250
+        left = PositionOffset.coord(525)
+        top = PositionOffset.coord(138)
+        alpha = #level as Ratio
+
+    <Label • absolute w:880 h:24
+        left = PositionOffset.coord(50)
+        top = PositionOffset.coord(420)
+        text = "Opacity ${round(#level * 100)}% · nested child effective ${round(#level * 75)}%"
+        font-size = 14
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <Slider • absolute w:760 h:30
+        left = PositionOffset.coord(110)
+        top = PositionOffset.coord(454)
+        minimum = 0
+        maximum = 1
+        value = 0.65
+        for event on value-changed
+            level = event.value
+
+    <Label • absolute w:880 h:20 text:gui-muted-text-color
+        left = PositionOffset.coord(50)
+        top = PositionOffset.coord(510)
+        text = "NESTED OPACITY · 75% PARENT × LIVE CHILD OPACITY"
+        font-size = 12
+        font-weight = FontWeight.bold
+        text-alignment = TextAlignment.center
+
+    <OpacityCheckerboard • absolute w:760 h:92
+        left = PositionOffset.coord(110)
+        top = PositionOffset.coord(540)
+
+    <NestedOpacityArtwork • absolute w:760 h:92
+        left = PositionOffset.coord(110)
+        top = PositionOffset.coord(540)
+        child-alpha = #level as Ratio
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacityCheckerboard is Box
+
+• This • bg:"#f8fafc"
+    border-color = gui-border-color
+    border-width = 2
+    corner-radius = 22
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.clip
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+canvas.fill-color = RGBA("#e2e8f0")
+canvas.stroke-color = null
+for row in 0 .. < 14
+    for column in 0 .. < 44
+        if (row + column) % 2 == 0
+            canvas.rect(Rect(bounds.x + column * 18, bounds.y + row * 18, 18, 18))
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacityPiece is Box
+
++ caption String
++ alpha Ratio = 1%%
+
+• This • text:white
+    opacity = #alpha
+    corner-radius = 28
+    font-size = 17
+    font-weight = FontWeight.bold
+
+────────────────────
++ This
+    - caption
+
+────────────────────
+
+<This • flex-col
+    <Label • flex:1
+        text = #caption
+        text-alignment = TextAlignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ GroupedOpacityArtwork is Box
+
++ alpha Ratio = 1%%
+
+• This
+    opacity = #alpha
+
+────────────────────
+
+<This
+    <OpacityPiece "BLUE" • absolute w:245 h:142 bg:"#2563eb"
+        left = PositionOffset.coord(34)
+        top = PositionOffset.coord(30)
+
+    <OpacityPiece "ORANGE" • absolute w:225 h:132 bg:"#f97316"
+        left = PositionOffset.coord(140)
+        top = PositionOffset.coord(86)
+
+━━━━━━━━━━━━━━━━━━━━
++ ItemizedOpacityArtwork is Box
+
++ alpha Ratio = 1%%
+
+────────────────────
+
+<This
+    <OpacityPiece "BLUE" • absolute w:245 h:142 bg:"#2563eb"
+        left = PositionOffset.coord(34)
+        top = PositionOffset.coord(30)
+        alpha = #alpha
+
+    <OpacityPiece "ORANGE" • absolute w:225 h:132 bg:"#f97316"
+        left = PositionOffset.coord(140)
+        top = PositionOffset.coord(86)
+        alpha = #alpha
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedOpacityArtwork is Box
+
++ child-alpha Ratio = 1%%
+
+• This
+    opacity = 0.75%%
+
+────────────────────
+
+<This
+    <OpacityPiece "PARENT 75%" • absolute w:660 h:58 bg:"#7c3aed"
+        left = PositionOffset.coord(50)
+        top = PositionOffset.coord(17)
+
+    <OpacityPiece "CHILD × LIVE" • absolute w:250 h:58 bg:"#06b6d4"
+        left = PositionOffset.coord(460)
+        top = PositionOffset.coord(17)
+        alpha = #child-alpha

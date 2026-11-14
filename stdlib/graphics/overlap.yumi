@@ -1,0 +1,179 @@
+./point
+./primitives
+/math
+/stream/sort
+
+_ overlap-parameter-floor = 0.000000001
+_ overlap-side-step = 0.001
+
+━━━━━━━━━━━━━━━━━━━━
+_ OverlapSplit is Tuple
+
++ t F64
++ node Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ OverlapPiece is Tuple
+
++ from Index
++ to Index
+
+━━━━━━━━━━━━━━━━━━━━
++ do remove-overlap [[Point]]
+    - rings [[Point]]
+
+. nodes = List'Point()
+. starts = List'Index()
+. ends = List'Index()
+for ring in rings
+    if ring.length >= 3
+        . first = nodes.length
+        for point in ring
+            nodes += point
+        for index in 0 .. < ring.length
+            . from = first + index
+            . to = first + (index + 1) % ring.length
+            if nodes[from] != nodes[to]
+                starts += from
+                ends += to
+. count = starts.length
+. splits = List'([OverlapSplit])()
+for index in 0 .. < count
+    splits += List'OverlapSplit()
+for i in 0 .. < count
+    . a = nodes[starts[i]]
+    . b = nodes[ends[i]]
+    for j in i + 1 .. < count
+        if starts[j] != ends[i] && ends[j] != starts[i] && distinct-ends
+            . c = nodes[starts[j]]
+            . d = nodes[ends[j]]
+            if overlap-boxes-meet(a, b, c, d)
+                . along = b - a
+                . other = d - c
+                . denominator = along.cross(other)
+                if abs(denominator) > 0
+                    . offset = c - a
+                    . t = offset.cross(other) / denominator
+                    . u = offset.cross(along) / denominator
+                    if t > overlap-parameter-floor && t < 1 - overlap-parameter-floor && u-inside
+                        . node = nodes.length
+                        nodes += a + along * t
+                        splits[i] += OverlapSplit(t, node)
+                        splits[j] += OverlapSplit(u, node)
+                    .. u-inside = u > overlap-parameter-floor && u < 1 - overlap-parameter-floor
+        .. distinct-ends = starts[j] != starts[i] && ends[j] != ends[i]
+. pieces = List'OverlapPiece()
+for index in 0 .. < count
+    . ordered = sort(splits[index]) • using :: a, b => if a.t < b.t then .lesser else .greater
+    . from = starts[index]
+    for split in ordered
+        overlap-keep(pieces, nodes, starts, ends, from, split.node)
+        from = split.node
+    overlap-keep(pieces, nodes, starts, ends, from, ends[index])
+= overlap-rings(pieces, nodes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do overlap-keep
+    - pieces [OverlapPiece]
+    - nodes [Point]
+    - starts [Index]
+    - ends [Index]
+    - from Index
+    - to Index
+
+. a = nodes[from]
+. b = nodes[to]
+. along = b - a
+. length = along.length
+=? if length <= 0
+. step = min(length * 0.25, overlap-side-step)
+. side = a.midpoint(b) + Point(-along.y, along.x) * (step / length)
+. winding = overlap-winding(nodes, starts, ends, side)
+if winding == 1
+    pieces += OverlapPiece(from, to)
+else if winding == 0
+    pieces += OverlapPiece(to, from)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do overlap-winding Int
+    - nodes [Point]
+    - starts [Index]
+    - ends [Index]
+    - point Point
+
+. winding Int
+for index in 0 .. < starts.length
+    . a = nodes[starts[index]]
+    . b = nodes[ends[index]]
+    . side = (b - a).cross(point - a)
+    if a.y <= point.y
+        if b.y > point.y && side > 0
+            winding += 1
+    else if b.y <= point.y && side < 0
+        winding -= 1
+= winding
+
+━━━━━━━━━━━━━━━━━━━━
+_ do overlap-rings [[Point]]
+    - pieces [OverlapPiece]
+    - nodes [Point]
+
+. leaving = List'([Index])()
+for index in 0 .. < nodes.length
+    leaving += List'Index()
+for index in 0 .. < pieces.length
+    leaving[pieces[index].from] += index
+. used = U8[pieces.length]
+. rings = List'([Point])()
+for first in 0 .. < pieces.length
+    if used[first] == 0
+        . ring = List'Point()
+        . current = first
+        . closed = false
+        while true
+            used[current] = 1
+            . piece = pieces[current]
+            ring += nodes[piece.from]
+            . next = overlap-next(pieces, nodes, leaving[piece.to], used, piece, first)
+            if next == (first as Int)
+                closed = true
+                break
+            if next < 0
+                break
+            current = next as Index
+        if closed && ring.length >= 3
+            rings += ring
+= rings
+
+━━━━━━━━━━━━━━━━━━━━
+_ do overlap-next Int
+    - pieces [OverlapPiece]
+    - nodes [Point]
+    - choices [Index]
+    - used U8[]
+    - arriving OverlapPiece
+    - first Index
+
+. heading = nodes[arriving.to] - nodes[arriving.from]
+. best = -1
+. best-turn = 0.0
+for choice in choices
+    . piece = pieces[choice]
+    if used[choice] == 0 || choice == first
+        . leaving = nodes[piece.to] - nodes[piece.from]
+        . turn = atan2(heading.cross(leaving), heading.dot(leaving))
+        if best < 0 || turn < best-turn
+            best = choice
+            best-turn = turn
+= best
+
+━━━━━━━━━━━━━━━━━━━━
+_ overlap-boxes-meet Bool
+    - a Point
+    - b Point
+    - c Point
+    - d Point
+
+meets-x && max(a.y, b.y) >= min(c.y, d.y) && max(c.y, d.y) >= min(a.y, b.y)
+
+.. meets-x = max(a.x, b.x) >= min(c.x, d.x) && max(c.x, d.x) >= min(a.x, b.x)

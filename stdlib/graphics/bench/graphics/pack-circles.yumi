@@ -1,0 +1,32 @@
+`benchmark.meta description: Runs deterministic circle packing and circle intersection helpers.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/pack
+/graphics/point
+
+. points [Point]
+. radii [Float]
+for i in 0 .. < 54
+    . f = i as Float
+    points += Point(20 + (f % 9) * 9, 20 + (f / 9) * 9)
+    radii += 3 + (f % 7)
+
+. checksum = 0 as Size
+for pass in 0 .. < 260
+    for i in 1 .. < points.length - 1
+        . a = points[i - 1]
+        . b = points[i]
+        . c = points[i + 1]
+        . ar = radii[i - 1]
+        . br = radii[i]
+        . cr = radii[i + 1]
+
+        //graphics.pack.circle-tests ++
+        if a.distance(b) < ar + br
+            checksum += i + pass
+
+        if circle-line-intersect(a, b, c, cr)
+            checksum += i * 3 + pass
+
+-- "bench-result graphics/pack-circles checksum=$checksum"

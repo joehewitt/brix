@@ -1,0 +1,615 @@
+./inliner
+./ir-to-mir
+./layouts
+./program-tables
+/core/arena
+/lang/backend/bundle
+/lang/backend/mir
+/lang/backend/mir-digest
+/lang/check/stable-key
+/lang/ir/ir
+/lang/ir/ir-digest
+/string.h
+
+_ kept-rounds U64 = 4
++ no-place U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ Consult is Struct
+
+` A function a run of the inliner consulted, by its name, with what it read of it
+` (`IRDigester.context`).
+
++ name StableKey
++ context IRDigest
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotConsult is Struct
+
+` A witness slot a run of the inliner looked up: the symbol of the table, as an id of the pool
+` its entry names strings in, the slot's offset, and the name of the function found, or zero.
+
++ symbol StringId
++ offset U32
++ target StableKey
+
+━━━━━━━━━━━━━━━━━━━━
++ KeptMark is Struct
+
+` A mark lowering made for the merge: a layout by its key, or a plain site by its slot.
+
++ kind LoweringMark
++ value U64
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseEntry is Struct
+
+` What a round kept of a function it inlined and lowered, by the function's name:
+` - its IR digest and the round's context;
+` - the functions and the witness slots the inliner consulted;
+` - the MIR digest, which finds its record in the backend cache;
+` - the strings that record names, in the order the MIR digest met them, as ids of the pool of
+`   the round that kept it (`pool`), each with its facts;
+` - its literals, and the marks its lowering made.
+` `round` is the last round that kept or reused it.
+
++ name StableKey
++ ir IRDigest
++ context IRDigest
++ mir MIRDigest
++ pool U64
++ consults CPointer'Consult
++ consult-count U32
++ slots CPointer'SlotConsult
++ slot-count U32
++ strings CPointer'U32
++ facts CPointer'U32
++ string-count U32
++ literals CPointer'StringLiteral
++ literal-count U32
++ marks CPointer'KeptMark
++ mark-count U32
++ round U64
+
+━━━━━━━━━━━━━━━━━━━━
++ KeptPool
+
+` A round's pool of strings, kept while an entry names strings by its ids. `found` holds, for
+` the current round, each id's id in the round's bundle plus one, `U32.max` where the bundle does
+` not hold it, or zero where no worker asked yet; workers that ask at once find the same id.
+
++ round U64
++ strings StringPool
++ found CPointer'U32
+_ arena Arena
+
+────────────────────
++ This
+    - round U64
+    - bundle Bundle
+
+this.round = round
+strings = bundle.copied-pool(arena)
+
+────────────────────
++ do release
+
+arena.release()
+
+────────────────────
++ do mapped StringId
+    - id StringId
+    - bundle Bundle
+
+` The id in the round's bundle of the string with this id in the pool, or none.
+. known = found[id]
+if known != 0
+    = if known != U32.max then known - 1 else no-string
+. text = bundle.found(strings.string(id))
+found[id] = if text != no-string then text + 1 else U32.max
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyIndex
+
+` Ids by 64-bit keys, by open addressing: built by one worker, then read by many. Key zero is
+` taken as one; a key put again keeps its first id.
+
+_ keys CPointer'U64
+_ ids CPointer'U32
+_ capacity U32
+_ count U32
+
+────────────────────
++ This
+    - storage Arena
+    - expected U32
+
+capacity = 16
+while capacity < expected * 2
+    capacity *= 2
+keys = storage.allocate'U64(capacity)
+ids = storage.allocate'U32(capacity)
+for slot in 0 .. < capacity
+    keys[slot] = 0
+
+────────────────────
++ do find U32
+    - key U64
+
+. wanted = if key != 0 then key else 1u64
+. mask = capacity - 1
+. slot = slot-of(wanted, mask)
+while keys[slot] != 0
+    if keys[slot] == wanted
+        = ids[slot]
+    slot = (slot + 1) /and/ mask
+= no-place
+
+────────────────────
++ do put
+    - storage Arena
+    - key U64
+    - id U32
+
+. wanted = if key != 0 then key else 1u64
+if (count + 1) * 2 > capacity
+    grow(storage)
+. mask = capacity - 1
+. slot = slot-of(wanted, mask)
+while keys[slot] != 0
+    if keys[slot] == wanted
+        =
+    slot = (slot + 1) /and/ mask
+keys[slot] = wanted
+ids[slot] = id
+count += 1
+
+────────────────────
+_ do grow
+    - storage Arena
+
+. old-keys = keys
+. old-ids = ids
+. old-capacity = capacity
+capacity = old-capacity * 2
+keys = storage.allocate'U64(capacity)
+ids = storage.allocate'U32(capacity)
+for slot in 0 .. < capacity
+    keys[slot] = 0
+. mask = capacity - 1
+for index in 0 .. < old-capacity
+    if old-keys[index] != 0
+        . slot = slot-of(old-keys[index], mask)
+        while keys[slot] != 0
+            slot = (slot + 1) /and/ mask
+        keys[slot] = old-keys[index]
+        ids[slot] = old-ids[index]
+
+━━━━━━━━━━━━━━━━━━━━
+_ slot-of U32
+    - key U64
+    - mask U32
+
+((key /xor/ (key /zrshift/ 32)) /and/ (mask as U64)) as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ EmissionMemory
+    is Usable'Void
+
+` What emission keeps from round to round, so that a round reuses a function before inlining it
+` where its IR, the round's context and every function its inlining consulted are what they
+` were: an entry per function name, the pools of strings the entries name, and a store for each
+` worker of the round. An entry no round used for `kept-rounds` rounds is not reused, and goes
+` when the entries are copied anew.
+
++ round U64
++ reused U64
++ verified U64
+_ entries [ReuseEntry]
+_ places KeyIndex
+_ pools [KeptPool]
+_ arenas [Arena]
+_ stores [ReuseStore]
+_ index-arena Arena
+_ round-arena Arena
+_ replaced U32
+
+────────────────────
++ This
+
+.. places = KeyIndex(index-arena, 1024)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release
+
+for store in stores
+    store.arena.release()
+stores.clear()
+for arena in arenas
+    arena.release()
+arenas.clear()
+for pool in pools
+    pool.release()
+pools.clear()
+entries.clear()
+index-arena.release()
+round-arena.release()
+
+────────────────────
++ do begin-round
+    - worker-count Size
+
+round += 1
+reused = 0
+verified = 0
+for store in stores
+    store.arena.release()
+stores.clear()
+for _ in 0 .. < worker-count
+    stores += ReuseStore(this)
+round-arena.reset()
+for pool in pools
+    pool.found = round-arena.allocate'U32(pool.strings.count)
+    C:memset(pool.found as CPointer'Byte, 0, (pool.strings.count as Size) * 4)
+
+────────────────────
++ store-for ReuseStore
+    - worker Size
+
+stores[worker]
+
+────────────────────
++ place U32
+    - name StableKey
+
+` The entry kept for a function's name, where a later round may reuse it.
+if place == no-place || entries[place].round + kept-rounds <= round then no-place else place
+
+.. place = places.find(name)
+
+────────────────────
++ entry ReuseEntry
+    - place U32
+
+entries[place]
+
+────────────────────
++ do pool KeptPool
+    - round U64
+
+for kept in pools
+    if kept.round == round
+        = kept
+?! Panic("An entry names strings of a pool no longer kept")
+
+────────────────────
++ do finish-round
+    - bundle Bundle
+
+` Takes in what the workers kept and reused. The round's pool of strings is kept for the
+` entries the round kept, and each entry it reused moves onto it, so that an older pool stays only
+` while an entry no round reused since names its strings.
+. touched = false
+for store in stores
+    if store.kept.length != 0 || store.used.length != 0
+        touched = true
+if touched
+    . made = KeptPool(round, bundle)
+    pools += made
+for store in stores
+    for place in store.used
+        rebase(place, bundle)
+        entries[place].round = round
+        reused += 1
+    for entry in store.kept
+        if entry.round != round
+            continue
+        . place = places.find(entry.name)
+        if place != no-place
+            replaced += 1
+            entries[place] = entry
+        else
+            places.put(index-arena, entry.name, entries.length as U32)
+            entries += entry
+    arenas += store.arena
+stores.clear()
+. live U32
+for entry in entries
+    if entry.round + kept-rounds > round
+        live += 1
+if replaced > live || entries.length > (live * 2) as Size
+    compact()
+release-pools()
+
+────────────────────
+_ do rebase
+    - place U32
+    - bundle Bundle
+
+` Names a reused entry's strings by their ids in the round's pool, which the reuse found.
+. entry = entries[place]
+if entry.pool == round
+    =
+. kept = pool(entry.pool)
+for index in 0 .. < entry.string-count
+    entry.strings[index] = kept.mapped(entry.strings[index], bundle)
+for index in 0 .. < entry.slot-count
+    . slot = entry.slots[index]
+    entry.slots[index] = SlotConsult(kept.mapped(slot.symbol, bundle), slot.offset, slot.target)
+entries[place].pool = round
+
+────────────────────
+_ do compact
+
+. arena = Arena()
+. kept [ReuseEntry]
+for entry in entries
+    if entry.round + kept-rounds > round
+        kept += copied(arena, entry)
+for old in arenas
+    old.release()
+arenas.clear()
+arenas += arena
+entries.clear()
+index-arena.reset()
+places = KeyIndex(index-arena, kept.length as U32)
+for entry in kept
+    places.put(index-arena, entry.name, entries.length as U32)
+    entries += entry
+replaced = 0
+
+────────────────────
+_ do release-pools
+
+. held [U64]
+for entry in entries
+    if entry.round + kept-rounds > round && held.find(entry.pool) == null
+        held += entry.pool
+. kept [KeptPool]
+for pool in pools
+    if held.find(pool.round) != null
+        kept += pool
+    else
+        pool.release()
+pools = kept
+
+────────────────────
+_ do copied ReuseEntry
+    - arena Arena
+    - entry ReuseEntry
+
+. consults = arena.allocate'Consult(entry.consult-count)
+C:memcpy
+    - consults as CPointer'Byte
+    - entry.consults as CPointer'Byte
+    - (entry.consult-count as Size) * Consult.size
+. slots = arena.allocate'SlotConsult(entry.slot-count)
+C:memcpy
+    - slots as CPointer'Byte
+    - entry.slots as CPointer'Byte
+    - (entry.slot-count as Size) * SlotConsult.size
+. strings = arena.allocate'U32(entry.string-count)
+C:memcpy(strings as CPointer'Byte, entry.strings as CPointer'Byte, (entry.string-count as Size) * 4)
+. facts = arena.allocate'U32(entry.string-count)
+C:memcpy(facts as CPointer'Byte, entry.facts as CPointer'Byte, (entry.string-count as Size) * 4)
+. literals = arena.allocate'StringLiteral(entry.literal-count)
+for index in 0 .. < entry.literal-count
+    . row = entry.literals[index]
+    literals[index] = StringLiteral
+        - row.name
+        - row.character-length
+        - row.flags
+        - copied-bytes(arena, row.bytes)
+. marks = arena.allocate'KeptMark(entry.mark-count)
+C:memcpy
+    - marks as CPointer'Byte
+    - entry.marks as CPointer'Byte
+    - (entry.mark-count as Size) * KeptMark.size
+= ReuseEntry
+    - entry.name
+    - entry.ir
+    - entry.context
+    - entry.mir
+    - entry.pool
+    - consults
+    - entry.consult-count
+    - slots
+    - entry.slot-count
+    - strings
+    - facts
+    - entry.string-count
+    - literals
+    - entry.literal-count
+    - marks
+    - entry.mark-count
+    - entry.round
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseStore
+
+` What one worker keeps and reuses in a round, taken into the memory once the round ends. A
+` kept entry names the functions its inlining consulted, and the layouts its lowering marked,
+` by their ids in the round until `settle`, which needs every function's context.
+
++ memory EmissionMemory
++ arena Arena
++ kept [ReuseEntry]
++ used [U32]
+_ consulted [CPointer'U32]
+
+────────────────────
++ This
+    - memory EmissionMemory
+
+this.memory = memory
+
+────────────────────
++ do keep
+    - name StableKey
+    - ir IRDigest
+    - context IRDigest
+    - mir MIRDigest
+    - inliner IRInliner
+    - lowering IRToMIR
+    - strings IdList
+    - bundle Bundle
+    - literals CPointer'StringLiteral
+    - literal-count U32
+
+` Keeps what the round made of a function it inlined and lowered. One whose inlining fused a
+` reader is not kept, so that every round inlines it again.
+if inliner.fused
+    =
+. consult-count U32 = inliner.consulted.length as U32
+. consults = arena.allocate'Consult(consult-count)
+. positions = arena.allocate'U32(consult-count)
+for index in 0 .. < consult-count
+    positions[index] = inliner.consulted[index]
+. slot-count U32 = inliner.slot-symbols.length as U32
+. slots = arena.allocate'SlotConsult(slot-count)
+for index in 0 .. < slot-count
+    slots[index] = SlotConsult
+        - inliner.slot-symbols[index]
+        - inliner.slot-offsets[index]
+        - inliner.slot-targets[index] as U64
+. string-count U32 = strings.length
+. ids = arena.allocate'U32(string-count)
+. facts = arena.allocate'U32(string-count)
+for index in 0 .. < string-count
+    ids[index] = strings[index]
+    facts[index] = bundle.string-facts(strings[index])
+. rows = arena.allocate'StringLiteral(literal-count)
+for index in 0 .. < literal-count
+    . row = literals[index]
+    rows[index] = StringLiteral
+        - row.name
+        - row.character-length
+        - row.flags
+        - copied-bytes(arena, row.bytes)
+. mark-count U32 = lowering.marks.length as U32
+. marks = arena.allocate'KeptMark(mark-count)
+for index in 0 .. < mark-count
+    . packed = lowering.marks[index]
+    marks[index] = KeptMark(mark-kind(packed), mark-value(packed))
+kept += ReuseEntry
+    - name
+    - ir
+    - context
+    - mir
+    - memory.round
+    - consults
+    - consult-count
+    - slots
+    - slot-count
+    - ids
+    - facts
+    - string-count
+    - rows
+    - literal-count
+    - marks
+    - mark-count
+    - memory.round
+consulted += positions
+
+────────────────────
++ do settle
+    - names CPointer'U64
+    - contexts CPointer'IRDigest
+    - layout-keys CPointer'U64
+
+` Names each consulted function, slot target and marked layout of the kept entries by its key.
+` An entry with a layout no key was found for is dropped.
+for index in 0 .. < kept.length
+    . entry = kept[index]
+    . positions = consulted[index]
+    for item in 0 .. < entry.consult-count
+        . position = positions[item]
+        entry.consults[item] = Consult(names[position], contexts[position])
+    for item in 0 .. < entry.slot-count
+        . slot = entry.slots[item]
+        . target = if slot.target != (no-function as U64) then names[slot.target] else 0u64
+        entry.slots[item] = SlotConsult(slot.symbol, slot.offset, target)
+    for item in 0 .. < entry.mark-count
+        . mark = entry.marks[item]
+        if mark.kind != .plain-mark
+            . key = layout-keys[mark.value]
+            if key == 0
+                kept[index].round = 0
+            entry.marks[item] = KeptMark(mark.kind, key)
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseRound
+
+` What a round's workers share to reuse functions: the round's context, and for each function
+` its name, its IR digest and its context, which the first pass writes, each worker its own
+` functions'; and once that pass is done, the functions by name and the layouts by key.
+
++ memory EmissionMemory
++ context IRDigest
++ names CPointer'U64
++ digests CPointer'IRDigest
++ contexts CPointer'IRDigest
++ layout-keys CPointer'U64
++ by-name KeyIndex
++ by-layout KeyIndex
+_ storage Arena
+
+────────────────────
++ This
+    - memory EmissionMemory
+    - context IRDigest
+    - function-count U32
+    - layout-count U32
+    - storage Arena
+
+this.memory = memory
+this.context = context
+this.storage = storage
+names = storage.allocate'U64(function-count)
+digests = storage.allocate'IRDigest(function-count)
+contexts = storage.allocate'IRDigest(function-count)
+layout-keys = storage.allocate'U64(layout-count)
+by-name = KeyIndex(storage, function-count)
+by-layout = KeyIndex(storage, layout-count)
+
+────────────────────
++ do index
+    - digesters [IRDigester]
+    - function-count U32
+    - layout-count U32
+
+` Indexes the functions by name and the layouts by key, once every worker has met each
+` function's IR.
+for position in 0 .. < function-count
+    by-name.put(storage, names[position], position)
+for id in 0 .. < layout-count
+    . key = if id < first-struct-layout then id as U64 else 0u64
+    if key == 0
+        for digester in digesters
+            . known = digester.known(id)
+            if known != 0
+                key = known
+                break
+    layout-keys[id] = key
+    if key != 0
+        by-layout.put(storage, key, id)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do copied-bytes ByteSpan
+    - arena Arena
+    - bytes ByteSpan
+
+. copy = arena.allocate-raw(if bytes.length != 0 then bytes.length else 1)
+C:memcpy(copy, bytes.data, bytes.length)
+= ByteSpan(copy, bytes.length)

@@ -1,0 +1,372 @@
+./names
+./phrase
+./token
+./value
+
+━━━━━━━━━━━━━━━━━━━━
++ script-read [ScriptToken]
+    - text String
+    - grammar ScriptGrammar
+    - names ScriptNames? = null
+
+ScriptReader(text, grammar, names).read()
+
+━━━━━━━━━━━━━━━━━━━━
++ script-reader-space
+    - c Char
+
+c == ' ' || c == '\t' || c == '\r' || c == '\n'
+
+━━━━━━━━━━━━━━━━━━━━
++ script-reader-mark
+    - c Char
+
+arithmetic || c == '(' || c == ')' || c == ',' || c == '‹' || c == '<' || c == '>' || c == '='
+
+.. arithmetic = c == '+' || c == '-' || c == '*' || c == '/' || c == '%'
+
+━━━━━━━━━━━━━━━━━━━━
++ script-reader-digit
+    - c Char
+
+c >= '0' && c <= '9'
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptOpenPhrase is Tuple
+
++ form ScriptPhraseForm
++ next Index
++ parens Index = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptReaderMatch is Tuple
+
++ length Size
++ token ScriptToken
++ form ScriptPhraseForm?
++ depth Index?
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptReader
+
++ text String
++ grammar ScriptGrammar
++ names ScriptNames?
+
+_ position Index = 0
+_ parens Index = 0
+_ expecting = true
+_ tokens [ScriptToken]
+_ open [ScriptOpenPhrase]
+
+────────────────────
++ This
+    - text
+    - grammar
+    - names ScriptNames? = null
+
+────────────────────
++ do read [ScriptToken]
+
+position = 0
+parens = 0
+expecting = true
+tokens = List'ScriptToken()
+open.clear()
+while position < text.length
+    . c = text[position]
+    if script-reader-space(c)
+        position += 1
+        continue
+    . found = best-match()
+    if found
+        accept(found)
+        continue
+    if script-reader-digit(c) || (c == '.' && has-next && script-reader-digit(text[position + 1]))
+        read-number()
+    else if c == '(' || c == ')' || c == ','
+        read-bracket(c)
+    else if c == '‹'
+        read-hole()
+    else if c == '<' || c == '>' || c == '=' || at-unequal
+        read-comparison()
+    else if script-reader-mark(c)
+        tokens += script-operator-token("$c", expecting && c == '-')
+        expecting = true
+        position += 1
+    else
+        read-query()
+    .. has-next = position + 1 < text.length
+= tokens
+
+────────────────────
+_ do read-number
+
+. start = position
+while position < text.length && (script-reader-digit(text[position]) || text[position] == '.')
+    position += 1
+if position < text.length && (text[position] == '%' || text[position] == '°')
+    position += 1
+tokens += script-number-token(text[start .. < position])
+expecting = false
+
+────────────────────
+_ get at-unequal Bool
+
+text[position] == '!' && position + 1 < text.length && text[position + 1] == '='
+
+────────────────────
+_ do read-comparison
+
+. start = position
+position += 1
+if text[start] != '=' && position < text.length && text[position] == '='
+    position += 1
+tokens += script-operator-token(text[start .. < position])
+expecting = true
+
+────────────────────
+_ do read-bracket
+    - c Char
+
+position += 1
+if c == '('
+    tokens += script-open-token
+    parens += 1
+    expecting = true
+else if c == ')'
+    tokens += script-close-token()
+    parens = if parens then parens - 1 else 0
+    expecting = false
+else
+    tokens += script-comma-token
+    expecting = true
+    end-functions()
+
+────────────────────
+_ do end-functions
+
+. kept = open.length
+for index in 0 .. < open.length
+    if index < kept && open[index].form.is-function && open[index].parens == parens
+        kept = index
+while open.length > kept
+    open.pop()
+
+────────────────────
+_ do read-hole
+
+. start = position + 1
+position = start
+while position < text.length && text[position] != '›'
+    position += 1
+tokens += script-hole-token(text[start .. < position])
+if position < text.length
+    position += 1
+expecting = false
+
+────────────────────
+_ do read-query
+
+. start = position
+expecting = false
+while position < text.length
+    . c = text[position]
+    if script-reader-mark(c) || at-unequal
+        break
+    if script-reader-space(c)
+        . ahead = position
+        while ahead < text.length && script-reader-space(text[ahead])
+            ahead += 1
+        if at-end || script-reader-mark(text[ahead]) || script-reader-digit(text[ahead])
+            break
+        .. at-end = ahead >= text.length
+        . saved = position
+        position = ahead
+        . found = best-match()
+        position = saved
+        if found
+            break
+    position += 1
+tokens += script-query-token(text[start .. < position].trim())
+
+────────────────────
+_ do best-match ScriptReaderMatch?
+
+. best = open-match(true)
+if !expecting
+    for form in grammar.all
+        if form.starts-with-slot && form.parts.length > 1
+            best = longer(best, word-match(form, 1, form.parts[1].word, form.parts.length == 2))
+            if elides()
+                best = longer
+                    - best
+                    - word-match(form, 1, form.parts[1].word, form.parts.length == 2, null, true)
+for candidate in names?.candidates() ?? List'ScriptName()
+    . length = matched-length(candidate.name)
+    if length
+        best = longer
+            - best
+            - ScriptReaderMatch(length, script-chip-token(candidate.reference, candidate.name))
+for form in grammar.all
+    if !form.starts-with-slot && form.parts.length
+        best = longer(best, call-match(form))
+        best = longer(best, word-match(form, 0, form.parts[0].word, form.parts.length == 1))
+= open-match(false, best)
+
+────────────────────
+_ do open-match ScriptReaderMatch?
+    - enclosing Bool
+    - found ScriptReaderMatch? = null
+
+. best = found
+for depth in 0 .. < open.length
+    . entry = open[open.length - 1 - depth]
+    if (entry.parens == parens) == enclosing
+        . part = entry.form.parts[entry.next]
+        . closes = entry.next == entry.form.parts.length - 1
+        best = longer(best, word-match(entry.form, entry.next, part.word, closes, depth))
+= best
+
+────────────────────
+_ word-match ScriptReaderMatch?
+    - form ScriptPhraseForm
+    - part Index
+    - word String
+    - closes Bool
+    - depth Index? = null
+    - elided = false
+
+|? elided && spelled == word
+    null
+|? !length
+    null
+??
+    ScriptReaderMatch(length, script-word-token(form.kind, part, word, closes), form, depth)
+
+.. spelled = if elided && word.starts-with("'s") then "'${word[2 .. < word.length]}" else word
+.. length = matched-length(spelled)
+
+────────────────────
+_ do call-match ScriptReaderMatch?
+    - form ScriptPhraseForm
+
+=? null if !form.is-function
+. name = form.name
+. length = matched-length(name)
+=? null if !length
+. ahead = position + length
+while ahead < text.length && script-reader-space(text[ahead])
+    ahead += 1
+=? null if ahead >= text.length || text[ahead] != '('
+= ScriptReaderMatch(length, script-call-token(form.kind, name), form)
+
+────────────────────
+_ elides Bool
+
+has-tokens && previous.kind == ScriptTokenKind.chip && previous.text.lowercased.ends-with("s")
+
+.. previous = tokens[tokens.length - 1]
+.. has-tokens = tokens.length != 0
+
+────────────────────
+_ do read-copy
+
+. chip = tokens[tokens.length - 1]
+=? if chip.reference.kind != ScriptReferenceKind.node
+. start = position
+while start < text.length && script-reader-space(text[start])
+    start += 1
+=? if start >= text.length || text[start] != '#'
+. resumed = position
+position = start + 1
+. copy ScriptCopy?
+. label = ""
+. length Size = 0
+. number Index = 0
+while position + length < text.length && script-reader-digit(text[position + length])
+    number = number * 10 + ((text[position + length] as Index) - ('0' as Index))
+    length += 1
+if length && number > 0 && matched-length(text[position .. < position + length])
+    copy = ScriptCopy.numbers(List'Index(number))
+else
+    length = 0
+    for candidate in names?.candidates() ?? List'ScriptName()
+        . matched = matched-length(candidate.name)
+        if candidate.reference.kind == ScriptReferenceKind.variable && matched && matched > length
+            length = matched
+            copy = ScriptCopy.variable(candidate.reference.id)
+            label = candidate.name
+if !copy
+    position = resumed
+    =
+position += length
+. reference = ScriptReference(chip.reference.kind, chip.reference.id, copy)
+tokens[tokens.length - 1] = script-chip-token(reference, script-copy-text(chip.text, copy, label))
+
+────────────────────
+_ matched-length Size?
+    - candidate String
+
+|? length == 0 || position + length > text.length
+    null
+|? text[position .. < position + length].lowercased != candidate.lowercased
+    null
+|? end >= text.length
+    length
+|? script-reader-space(ahead) || script-reader-mark(ahead) || ahead == '\'' || ahead == '›' || ahead == '!'
+    length
+|? !is-word-end(candidate)
+    length
+??
+    null
+
+.. length = candidate.length
+.. end = position + length
+.. ahead = text[end]
+
+────────────────────
+_ is-word-end
+    - candidate String
+
+script-reader-digit(last) || (last >= 'a' && last <= 'z') || (last >= 'A' && last <= 'Z') || last > '\x7f'
+
+.. last = candidate[candidate.length - 1]
+
+────────────────────
+_ longer ScriptReaderMatch?
+    - current ScriptReaderMatch?
+    - candidate ScriptReaderMatch?
+
+|? !candidate
+    current
+|? !current
+    candidate
+|? candidate.length > current.length
+    candidate
+??
+    current
+
+────────────────────
+_ do accept
+    - found ScriptReaderMatch
+
+position += found.length
+tokens += found.token
+. token = found.token
+if token.kind == ScriptTokenKind.chip
+    expecting = false
+    read-copy()
+    =
+. form = found.form!
+if token.called
+    expecting = true
+    =
+if found.depth
+    for index in 0 .. < found.depth
+        open.pop()
+    open.pop()
+. next = form.next-word(token.part)
+if next
+    open += ScriptOpenPhrase(form, next, parens)
+expecting = token.part < form.parts.length - 1

@@ -1,0 +1,223 @@
+./support/providers
+/ai
+/data/sqlite
+/os/file
+/os/path
+/test
+/time/duration
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("AI Chat Branching")
+cases.run(branching-tests)
+cases = cases.then("AI Chat Archive Round Trip", round-trip-tests)
+cases = cases.then("AI Chat Archive Unsettled Turns", unsettled-turn-tests)
+cases = cases.then("AI Chat Archive Damaged Files", damaged-file-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do branching-tests TestCase
+    - t TestCase
+
+. chat = AIChat("chat-1")
+chat = append-chat-message(chat, "root", message("m1", AIMessageRole.user, "hello"))
+chat = append-chat-message(chat, "root", message("m2", AIMessageRole.assistant, "first reply"))
+chat = branch-chat-at(chat, "root", "m1", "alternate")
+chat = append-chat-message(chat, "root", message("m3", AIMessageRole.user, "parent only"))
+chat = append-chat-message(chat, "alternate", message("m4", AIMessageRole.assistant, "child only"))
+
+t.expect("parent transcript", "m1, m2, m3", message-ids(chat-transcript(chat, "root")))
+t.expect("child transcript", "m1, m4", message-ids(chat-transcript(chat, "alternate")))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do round-trip-tests TestCase
+    - t TestCase
+
+. directory = fresh-archive-directory("round-trip")
+do finally clean-archive-directory(directory)
+. store = AIChatStore(test-services(), AIChatDatabase(directory))
+t.check("an unused store writes nothing", !directory.exists)
+
+. first = store.active
+first.ask("What is a monad?")
+t.check("a turn saves the chat list", (directory / "chats.db").exists)
+t.check("a turn saves the chat", AIChatDatabase(directory).has(first.chat.id))
+
+. second = store.new-session()
+second.document.choose(store.services[1])
+second.ask("Second chat")
+
+. reopened = AIChatStore(test-services(), AIChatDatabase(directory))
+t.expect
+    - "saved chats keep their ids"
+    - "${second.chat.id}, ${first.chat.id}"
+    - "${reopened.sessions[1].chat.id}, ${reopened.sessions[2].chat.id}"
+t.expect
+    - "saved chats keep their services, and a fresh chat takes the newest one"
+    - "failing, failing, echo"
+    - ", ".join(each.service.id in reopened.sessions)
+. restored = reopened.sessions[2]
+t.check("a saved chat waits to be opened", !restored.is-loaded && restored.messages.length == 0)
+reopened.select(restored)
+t.check("selecting a saved chat opens it", reopened.active == restored && restored.is-loaded)
+t.expect("the reply returns", "Echo: 1 message", text-of(restored.messages[1]))
+
+restored.ask("And a functor?")
+t.expect
+    - "a reopened chat continues its ids"
+    - "${first.chat.id}:1, ${first.chat.id}:2, ${first.chat.id}:3, ${first.chat.id}:4"
+    - message-ids(restored.messages)
+. again = AIChatStore(test-services(), AIChatDatabase(directory))
+again.select(again.sessions[2])
+t.expect("later turns are saved", 4, again.active.messages.length)
+
+. narrowed = AIChatStore([echo-service(EchoProvider())], AIChatDatabase(directory))
+. orphan = narrowed.sessions[1]
+t.expect("a fresh chat takes a service the store offers", "echo", narrowed.active.service.id)
+narrowed.select(orphan)
+orphan.ask("Hello again")
+t.expect
+    - "a chat whose service is gone says so"
+    - "This chat began with failing, which is not set up here"
+    - orphan.messages[3].error!.service-message
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do unsettled-turn-tests TestCase
+    - t TestCase
+
+. directory = fresh-archive-directory("unsettled")
+do finally clean-archive-directory(directory)
+. store = AIChatStore([echo-service(GateProvider("Half a rep"))], AIChatDatabase(directory))
+. session = store.active
+session.send("Are you there?")
+for attempt in 0 .. < 2000
+    if !text-of(session.messages[1]).length
+        1ms.wait()
+
+. interrupted = AIChatStore(test-services(), AIChatDatabase(directory))
+interrupted.select(interrupted.sessions[1])
+t.expect
+    - "an interrupted turn keeps its reply so far"
+    - "Half a rep"
+    - text-of(interrupted.active.messages[1])
+t.check
+    - "an interrupted reply reopens as stopped"
+    - interrupted.active.messages[1].finish-reason == AIFinishReason.cancellation
+t.check("an interrupted turn is not left running", !interrupted.active.is-busy)
+
+session.stop()
+. stopped = AIChatStore(test-services(), AIChatDatabase(directory))
+stopped.select(stopped.sessions[1])
+t.expect("a stopped reply keeps its text", "Half a rep", text-of(stopped.active.messages[1]))
+
+. unused = store.new-session()
+. listed = AIChatStore(test-services(), AIChatDatabase(directory))
+t.expect("unused chats stay out of the list", 2, listed.sessions.length)
+t.check("unused chats are not saved", !AIChatDatabase(directory).has(unused.chat.id))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do damaged-file-tests TestCase
+    - t TestCase
+
+. directory = fresh-archive-directory("damaged")
+do finally clean-archive-directory(directory)
+. store = AIChatStore(test-services(), AIChatDatabase(directory))
+store.active.ask("Keep me")
+. kept = store.active.chat.id
+. database-path = directory / "chats.db"
+
+alter(database-path, "update parts set kind = 'broken-' || kind where chat = '$kept'")
+. broken = AIChatStore(test-services(), AIChatDatabase(directory))
+. fresh = broken.active
+broken.select(broken.sessions[1])
+t.check("a damaged chat stays closed", broken.active == fresh && !broken.sessions[1].is-loaded)
+t.check("a damaged chat reports why", broken.error != null)
+alter(database-path, "update parts set kind = substr(kind, 8) where chat = '$kept'")
+broken.select(broken.sessions[1])
+t.check("a repaired chat opens", broken.active == broken.sessions[1] && broken.error == null)
+
+alter(database-path, "pragma user_version = 9")
+. newer = AIChatStore(test-services(), AIChatDatabase(directory))
+t.check("an unsupported chat list reports why", newer.error != null)
+
+write-text(database-path, "not a database")
+. detached = AIChatStore(test-services(), AIChatDatabase(directory))
+t.check("a damaged chat list reports why", detached.error != null)
+t.expect("a damaged chat list leaves one fresh chat", 1, detached.sessions.length)
+detached.active.ask("Unsaved")
+t.expect("a damaged chat list is left alone", "not a database", read-text(database-path))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ test-services [AIChatService]
+
+* echo-service(EchoProvider())
+* AIChatService("failing", "Failing", FailingProvider(), "echo-model")
+
+━━━━━━━━━━━━━━━━━━━━
+_ message
+    - id String
+    - role AIMessageRole
+    - text String
+
+AIChatMessage(id, role, text, "2026-08-21T00:00:00Z")
+
+━━━━━━━━━━━━━━━━━━━━
+_ message-ids
+    - messages [AIChatMessage]
+
+", ".join(each.id in messages)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fresh-archive-directory
+    - name String
+
+. directory = Path("/tmp/ai-chat-archive-${name}-${Task().id}", 0)
+clean-archive-directory(directory)
+= directory
+
+━━━━━━━━━━━━━━━━━━━━
+_ do clean-archive-directory
+    - directory Path
+
+=? if !directory.exists
+for child in directory.contents
+    child.delete()
+directory.delete()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-text
+    - path Path
+
+. file = use File(path)
+. text = file as String
+= text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do alter
+    - path Path
+    - sql String
+
+. database = use SQLite("$path")
+database.execute-script(sql)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-text
+    - path Path
+    - text String
+
+. file = File(path, FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode)
+do use file
+    file.write(text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-of
+    - message AIChatMessage
+
+ai-parts-text(message.parts)

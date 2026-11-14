@@ -1,0 +1,74 @@
+./command
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-resolve String? ?! Error
+    - directory String
+    - revision String
+
+. output = catch git-text(directory, ["rev-parse", "--verify", "--quiet", "--end-of-options", revision])
+if output is Error
+    . failure = output as Error
+    =? null if failure is GitError && (failure as GitError).status == 1
+    ?! failure
+= (output as String).trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-commit-all String ?! Error
+    - directory String
+    - message String
+
+. staged = git-output(directory, ["add", "-A"])
+. committed = git-output(directory, ["commit", "--quiet", "-F", "-"], message)
+= git-text(directory, ["rev-parse", "HEAD"]).trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-commit-tree String ?! Error
+    - directory String
+    - tree String
+    - parents [String]
+    - message String
+
+. arguments = List'String
+    * "commit-tree"
+    * tree
+for parent in parents
+    arguments += "-p"
+    arguments += parent
+arguments += "-F"
+arguments += "-"
+= git-text(directory, arguments, message).trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-is-ancestor Bool ?! Error
+    - directory String
+    - ancestor String
+    - descendant String
+
+. checked = catch git-output(directory, ["merge-base", "--is-ancestor", "--end-of-options", ancestor, descendant])
+if checked is Error
+    . failure = checked as Error
+    =? false if failure is GitError && (failure as GitError).status == 1
+    ?! failure
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-reset-keep ?! Error
+    - directory String
+    - commit String
+
+. reset = git-output(directory, ["reset", "--keep", "--quiet", commit])
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-restore ?! Error
+    - directory String
+    - source String
+    - paths [String]
+
+. arguments = List'String
+    * "restore"
+    * "--source=$source"
+    * "--staged"
+    * "--worktree"
+    * "--"
+    ** paths
+. restored = git-output(directory, arguments)

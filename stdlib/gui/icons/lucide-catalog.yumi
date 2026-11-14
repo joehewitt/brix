@@ -1,0 +1,78 @@
+./lucide-tags
+/math
+/stream/sort
+
++ lucide-catalog := lucide-catalog-entries()
+
+━━━━━━━━━━━━━━━━━━━━
++ LucideCatalogEntry is Tuple
+
++ name String
++ tags [String]
+
+━━━━━━━━━━━━━━━━━━━━
+_ LucideCatalogMatch is Tuple
+
++ entry LucideCatalogEntry
++ score Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do lucide-catalog-search [LucideCatalogEntry]
+    - query String
+    - limit Size = 24
+
+. words = List'String(each in query.lowercased.split(" ") when each.length)
+=? List'LucideCatalogEntry() if !words
+. matches = List'LucideCatalogMatch()
+for entry in lucide-catalog
+    . score = lucide-catalog-score(entry, words)
+    if score > 0
+        matches += LucideCatalogMatch(entry, score)
+. ordered = sort(matches) • using :: a, b => if a.score > b.score || (a.score == b.score && a.entry.name < b.entry.name) then .lesser else .greater
+= List'LucideCatalogEntry(each.entry in ordered[0 .. < min(limit, ordered.length)])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lucide-catalog-score Int
+    - entry LucideCatalogEntry
+    - words [String]
+
+. total = 0
+for word in words
+    . best = lucide-word-score(entry, word)
+    =? 0 if best == 0
+    total += best
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lucide-word-score Int
+    - entry LucideCatalogEntry
+    - word String
+
+=? 40 if entry.name == word
+. best = 0
+for part in entry.name.split("-")
+    if part == word
+        best = max(best, 20)
+if entry.name.find(word) != null
+    best = max(best, 8)
+for tag in entry.tags
+    if tag == word
+        best = max(best, 12)
+    else if tag.find(word) != null
+        best = max(best, 4)
+= best
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lucide-catalog-entries [LucideCatalogEntry]
+
+. entries = List'LucideCatalogEntry()
+for line in lucide-tag-lines().split("\n")
+    . bar = line.find("|")
+    if bar == null
+        if line.length
+            entries += LucideCatalogEntry(line, List'String())
+    else
+        . split = bar as Index
+        . listed = line[split + 1 .. < line.size]
+        entries += LucideCatalogEntry(line[0 .. < split], List'String(each in listed.split(",") when each.length))
+= entries

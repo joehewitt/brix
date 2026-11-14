@@ -1,0 +1,879 @@
+./box
+./colors
+./events
+./layout
+./listbox
+./primitives
+./shortcuts
+./styles
+./theme
+./window
+/core/channel
+/core/list
+/core/markup
+/stream/combine
+/ui/input
+
+━━━━━━━━━━━━━━━━━━━━
+• extend TUIDefaultTheme
+    using BoxPaint
+
+• TreeBox • bg:AnsiColor(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBox'Item is Box
+
+• This
+    focus-mode = FocusMode.inside
+
++ root-node Item?
++ load-children TreeBoxChildProvider'Item = tree-box-no-children
++ key-builder MarkupKeyBuilder'Item?
++ entries [TreeBoxEntry'Item] = List'(TreeBoxEntry'Item)()
++ selected-entry TreeBoxEntry'Item? = tree-box-entry-for-key'Item()
+    - #entries
+    - #selected-key
+    - #selection-generation
++ selected-item Item? = tree-box-entry-item'Item()
+    - #selected-entry
+    - #selection-generation
++ selected-row ListItem?
++ selected-entry-is-expanded Bool = #selected-entry?.is-expanded ?? false
++ can-open-selection Bool = #selected-row-has-children && !#selected-entry-is-expanded
++ can-leave-selection Bool = tree-box-can-leave-selection'Item()
+    - selected-entry
+    - #selected-row-has-children
+    - #selection-generation
++ event selected SelectEvent
++ event activated ActivateEvent
++ event interacted Bool
+
+_ list TreeBoxList'Item?
+_ expanded-keys [String] = List'String()
+_ child-cache [TreeBoxChildren'Item] = List'(TreeBoxChildren'Item)()
+_ selected-key String?
+_ selected-row-has-children = false
+_ selection-generation Size = 0
+
+────────────────────
+
+<This • flex-col
+    if #can-leave-selection
+        <Shortcut "Back"
+            key = .arrow-left
+            action = => do interact-leave-selection()
+
+    if #can-open-selection
+        <Shortcut "Open"
+            key = .arrow-right
+            action = => do interact-open-selection()
+
+    for current-entries in tree-box-entry-snapshots'Item(#entries)
+        <TreeBoxList'Item list • flex:1
+            tree = this
+            entries = current-entries
+
+            for entry in current-entries
+                . item = entry.item
+                + <ListItem row - item Item
+
+────────────────────
+whenever #root-node
+
+reset-tree()
+
+────────────────────
+whenever children ListItem
+
+catch sync-selected-row()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+catch sync-selected-row()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+catch reset-tree()
+catch sync-selected-row()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do reset-tree
+
+expanded-keys = List'String()
+child-cache = List'(TreeBoxChildren'Item)()
+selected-key = null
+selection-generation += 1
+
+. current-root = root-node
+if current-root
+    . root-children = load-children(current-root)
+    if root-children != null
+        cache-children("", root-children)
+
+rebuild-entries()
+
+────────────────────
+_ do interact-open-selection
+
+open-selection()
+interacted <- true
+
+────────────────────
+_ do interact-leave-selection
+
+leave-selection()
+interacted <- true
+
+────────────────────
++ do open-selection
+
+ensure-selection()
+
+. row = current-selected-row()
+sync-selected-state-from-row(row)
+=? if !row
+=? if !row.has-children
+
+. entry = entry-for-row(row)
+=? if !entry
+
+if !entry.is-expanded
+    . ignored = expand-entry(entry)
+
+────────────────────
++ do leave-selection
+
+ensure-selection()
+
+. row = current-selected-row()
+sync-selected-state-from-row(row)
+
+. entry = entry-for-row(row)
+=? if !entry
+
+if row && row.has-children && entry.is-expanded
+    collapse-entry(entry)
+    =
+. parent-key = entry.parent-key
+if parent-key
+    select-entry-key(parent-key)
+
+────────────────────
++ do select-relative
+    - direction Direction
+
+. current-list = list
+if current-list
+    current-list.select-relative(direction)
+
+────────────────────
++ do row-at-index ListItem?
+    - index Index
+
+. current-list = list
+if current-list
+    = current-list.row-at-index(index)
+
+────────────────────
++ do activate-selection
+
+ensure-selection()
+
+. row = current-selected-row()
+sync-selected-state-from-row(row)
+if row && row.has-children
+    . entry = entry-for-row(row)
+    if entry
+        if entry.is-expanded
+            collapse-entry(entry)
+        else
+            . ignored = expand-entry(entry)
+    =
+notify-activated()
+
+────────────────────
++ do ensure-selection
+
+. current-list = list
+if current-list
+    catch current-list.ensure-selection()
+
+────────────────────
++ do select-row
+    - row ListItem?
+
+. current-list = list
+if current-list
+    current-list.select-row(row)
+    focus-list()
+
+────────────────────
++ do rebuild-entries
+
+entries = visible-entries()
+restore-selected-key()
+sync-selected-row()
+
+────────────────────
++ do reload
+
+child-cache = List'(TreeBoxChildren'Item)()
+. next = visible-entries()
+=? if tree-box-entries-match'Item(entries, next)
+
+. held = selected-key
+if held && tree-box-entry-for-key'Item(next, held) == null
+    selected-key = surviving-key(held, next)
+    selection-generation += 1
+entries = next
+restore-selected-key()
+sync-selected-row()
+if selected-key != held
+    notify-selected()
+
+────────────────────
+_ do visible-entries [TreeBoxEntry'Item]
+
+. next [TreeBoxEntry'Item] = List'(TreeBoxEntry'Item)()
+. current-root = root-node
+if current-root
+    . root-children = children-for("", current-root)
+    if root-children != null
+        append-visible-entries(next, root-children, "", 0)
+= next
+
+────────────────────
+_ do surviving-key String?
+    - key String
+    - next [TreeBoxEntry'Item]
+
+. start = entry-index-for-key(key)
+=? if start == null
+. present = Map'String'Bool()
+for entry in next
+    present[entry.key] = true
+for index in start + 1 .. < entries.length
+    =? entries[index].key if present has entries[index].key
+. index = start
+while index > 0
+    index -= 1
+    =? entries[index].key if present has entries[index].key
+
+────────────────────
++ do append-visible-entries
+    - target [TreeBoxEntry'Item]
+    - items [Item]
+    - key-prefix String
+    - depth Index
+    - parent-key String? = null
+
+. index Index = 0
+for item in items
+    . key = key-for-item(item, key-prefix, index)
+    . is-expanded = expanded-key(key)
+    target += TreeBoxEntry'Item(item, key, depth, parent-key, is-expanded)
+    if is-expanded
+        . child-items = children-for(key, item)
+        if child-items != null
+            append-visible-entries(target, child-items, key, depth + 1, key)
+    index += 1
+
+────────────────────
++ key-for-item String
+    - item Item
+    - key-prefix String
+    - index Index
+
+match key-builder, key-prefix
+    | builder MarkupKeyBuilder'Item, _
+        builder(item)
+    | _, {it}
+        "$key-prefix/$index"
+    ??
+        "$index"
+
+────────────────────
++ do expand-entry Bool
+    - entry TreeBoxEntry'Item
+
+. children = children-for(entry.key, entry.item)
+=? if children == null
+=? if !children
+
+add-expanded-key(entry.key)
+select-entry-key(entry.key)
+rebuild-entries()
+= true
+
+────────────────────
++ do collapse-entry
+    - entry TreeBoxEntry'Item
+
+remove-expanded-key(entry.key)
+select-entry-key(entry.key)
+rebuild-entries()
+
+────────────────────
++ do select-entry-key
+    - key String
+
+. row = row-for-key(key)
+if row
+    select-row(row)
+else if selected-key != key
+    selected-key = key
+    selection-generation += 1
+
+────────────────────
++ do reveal-key-path Bool
+    - keys [String]
+
+=? if !keys
+
+. target-key = keys[keys.length - 1]
+. last-ancestor = keys.length - 1
+. index Index = 0
+while index < last-ancestor
+    add-expanded-key(keys[index])
+    index += 1
+
+rebuild-entries()
+=? if entry-index-for-key(target-key) == null
+
+select-entry-key(target-key)
+= true
+
+────────────────────
++ do sync-selected-row
+
+sync-tree-rows()
+
+. current-list = list
+if !current-list
+    restore-selected-key()
+    =
+if !entries
+    if current-list.selected-row
+        current-list.select-row(null)
+    sync-selected-row-state(null)
+    =
+restore-selected-key()
+
+. row = row-for-key(selected-key)
+=? if !row
+if current-list.selected-row != row || selected-row != row
+    current-list.select-row(row)
+else
+    sync-selected-row-state(row)
+    current-list.ensure-row-visible(row)
+
+────────────────────
++ do sync-selected-key-from-row
+
+. row = current-selected-row()
+sync-selected-row-state(row)
+=? if !row
+
+. key = key-for-row(row)
+if selected-key != key
+    selected-key = key
+    selection-generation += 1
+
+────────────────────
++ current-selected-row ListItem?
+
+|? selected-list-row
+    selected-list-row
+|? current-list
+    valid-selected-row
+??
+    selected-row
+
+.. current-list = list
+.. selected-list-row = current-list?.selected-row
+.. valid-selected-row = current-list.valid-row(selected-row)
+
+────────────────────
++ entry-for-row TreeBoxEntry'Item?
+    - row ListItem?
+
+tree-box-entry-for-key'Item(entries, key, selection-generation)
+
+.. key = key-for-row(row)
+
+────────────────────
++ do sync-selected-state-from-row
+    - row ListItem?
+
+sync-selected-row-state(row)
+=? if !row
+
+. key = key-for-row(row)
+if selected-key != key
+    selected-key = key
+    selection-generation += 1
+
+────────────────────
++ do focus-list
+
+. current-list = list
+if current-list
+    ancestor'Window?.focus(current-list)
+
+────────────────────
++ do sync-selected-row-state Bool
+    - row ListItem?
+
+. live-row = row
+. has-children = live-row?.has-children ?? false
+. changed = selected-row != live-row || selected-row-has-children != has-children
+selected-row = live-row
+selected-row-has-children = has-children
+= changed
+
+────────────────────
++ do sync-tree-rows
+
+. current-list = list
+=? if !current-list
+
+for row, entry in zip(current-list.selectable-rows(), entries)
+    if row is TreeBoxItem'Item
+        (row as TreeBoxItem'Item).sync-entry-from(entry)
+
+────────────────────
++ do restore-selected-key
+
+if !entries
+    if selected-key != null
+        selected-key = null
+        selection-generation += 1
+    =
+=? if entry-index-for-key(selected-key) != null
+
+selected-key = entries[0].key
+selection-generation += 1
+
+────────────────────
++ do row-for-key ListItem?
+    - key String?
+
+. current-list = list
+=? if !current-list
+
+. index = entry-index-for-key(key)
+=? if !index
+
+= current-list.row-at-index(index)
+
+────────────────────
++ do key-for-row String?
+    - row ListItem?
+
+=? if !row
+
+. current-list = list
+=? if !current-list
+
+. index Index = 0
+for child in current-list.active-children
+    . candidate = current-list.selectable-row(child)
+    if candidate
+        if candidate == row
+            = entry-key-at(index)
+        index += 1
+
+────────────────────
++ do entry-key-at String?
+    - index Index?
+
+=? if !index
+
+. live-index = index
+if live-index < entries.length
+    = entries[live-index].key
+
+────────────────────
++ do entry-index-for-key Index?
+    - key String?
+
+=? if !key
+
+. live-key = key
+. index Index = 0
+for entry in entries
+    if entry.key == live-key
+        = index
+    index += 1
+
+────────────────────
++ do children-for [Item]?
+    - key String
+    - item Item
+
+. cached = cached-children-for(key)
+if cached
+    = cached.items
+
+. children = load-children(item)
+if children != null
+    cache-children(key, children)
+    = children
+
+────────────────────
++ do cached-children-for TreeBoxChildren'Item?
+    - key String
+
+for cached in child-cache
+    if cached.key == key
+        = cached
+
+────────────────────
++ do cache-children
+    - key String
+    - items [Item]
+
+for cached in child-cache
+    if cached.key == key
+        cached.items = items
+        =
+child-cache += TreeBoxChildren'Item(key, items)
+
+────────────────────
++ expanded-key Bool
+    - key String
+
+expanded-keys has key
+
+────────────────────
++ do add-expanded-key
+    - key String
+
+if !expanded-key(key)
+    expanded-keys += key
+    selection-generation += 1
+
+────────────────────
++ do remove-expanded-key
+    - key String
+
+. index Index = 0
+while index < expanded-keys.length
+    if expanded-keys[index] == key
+        expanded-keys.remove(index)
+        selection-generation += 1
+        =
+    index += 1
+
+────────────────────
++ do notify-selected
+
+selection-generation += 1
+selected-entry = tree-box-entry-for-key'Item(entries, selected-key, selection-generation)
+selected-item = tree-box-entry-item'Item(selected-entry, selection-generation)
+selected <- SelectEvent()
+
+────────────────────
++ do notify-activated
+
+activated <- ActivateEvent()
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBoxList'Item is ListBox
+
++ entries [TreeBoxEntry'Item] = List'(TreeBoxEntry'Item)()
+
+_ tree TreeBox'Item?
+
+────────────────────
+whenever children ListItem
+
+. owner = tree
+if owner
+    catch owner.sync-selected-row()
+
+────────────────────
+for event on selected
+
+. owner = tree
+if owner
+    . old-key = owner.selected-key
+    owner.sync-selected-key-from-row()
+    if old-key != owner.selected-key
+        owner.notify-selected()
+
+────────────────────
+for event on interacted
+
+if tree
+    tree.interacted <- true
+
+╌╌╌╌╌╌╌╌╌╌ is ListBox ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do select-row
+    - row ListItem?
+
+. owner = tree
+. live-row = valid-row(row)
+if selected-row == live-row
+    if live-row
+        ensure-row-visible(live-row)
+        owner?.sync-selected-key-from-row()
+else
+    . old = selected-row
+    if old
+        old.is-selected = false
+
+    selected-row = live-row
+    if live-row
+        live-row.is-selected = true
+        ensure-row-visible(live-row)
+
+    if owner
+        owner.sync-selected-key-from-row()
+        owner.notify-selected()
+    else
+        selected <- SelectEvent()
+
+────────────────────
++ do activate-selection
+
+. owner = tree
+if owner
+    owner.activate-selection()
+    =
+super.activate-selection()
+
+────────────────────
++ do ensure-selection
+
+. row = valid-row(selected-row)
+if row
+    if !row.is-selected
+        row.is-selected = true
+    ensure-row-visible(row)
+    tree?.sync-selected-key-from-row()
+    =
+. owner = tree
+if owner
+    catch owner.sync-selected-row()
+else
+    super.ensure-selection()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+. owner = tree
+if owner
+    owner.list = this
+    catch owner.sync-selected-row()
+    owner.focus-list()
+
+────────────────────
++ do unmounted
+
+. owner = tree
+if owner && owner.list == this
+    owner.list = null
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBoxItem'Item is ListItem
+
++ entry TreeBoxEntry'Item?
++ item Item?
++ depth Index = 0
++ indent Coord = 0
++ is-expanded = false
++ content-text = ""
+
+────────────────────
++ This
+    - item Item
+
+────────────────────
+when #content-text
+
+sync-text()
+
+────────────────────
+when #entry
+
+sync-entry()
+
+────────────────────
+whenever #has-children
+
+sync-text()
+
+────────────────────
+whenever #is-expanded
+
+sync-text()
+
+────────────────────
++ do sync-entry-from
+    - next-entry TreeBoxEntry'Item
+
+=? if entry == next-entry
+entry = next-entry
+sync-entry()
+
+────────────────────
++ do sync-entry
+
+. current = entry
+if current
+    item = current.item
+    depth = current.depth
+    indent = tree-box-indent(depth)
+    is-expanded = current.is-expanded
+    sync-text()
+
+────────────────────
++ do sync-text
+
+text = tree-box-row-text(depth, has-children, is-expanded, content-text)
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBoxEntry'Item
+
++ item Item
++ key String
++ parent-key String?
++ depth Index
++ is-expanded = false
+
+────────────────────
++ This
+    - item
+    - key
+    - depth
+    - parent-key = null
+    - is-expanded = false
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBoxChildProvider'TreeItem is () [TreeItem]?
+    - item TreeItem
+
+━━━━━━━━━━━━━━━━━━━━
+_ TreeBoxChildren'Item
+
++ key String
++ items [Item]
+
+────────────────────
++ This
+    - key
+    - items
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-no-children'Item [Item]?
+    - item Item
+
+null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tree-box-entry-for-key'Item TreeBoxEntry'Item?
+    - entries [TreeBoxEntry'Item]
+    - key String?
+    - selection-generation Size = 0
+
+=? if !key
+
+. live-key = key
+for entry in entries
+    if entry.key == live-key
+        = entry
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tree-box-entries-match'Item Bool
+    - current [TreeBoxEntry'Item]
+    - next [TreeBoxEntry'Item]
+
+=? false if current.length != next.length
+for index in 0 .. < current.length
+    . a = current[index]
+    . b = next[index]
+    =? false if a.key != b.key || a.depth != b.depth || a.is-expanded != b.is-expanded
+    =? false if !(a.item == b.item)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-entry-snapshots'Item [[TreeBoxEntry'Item]]
+    - entries [TreeBoxEntry'Item]
+
+* entries
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tree-box-entry-item'Item Item?
+    - entry TreeBoxEntry'Item?
+    - selection-generation Size = 0
+
+=? entry.item
+    if entry
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-can-leave-selection'Item
+    - entry TreeBoxEntry'Item?
+    - has-children Bool = false
+    - selection-generation Size = 0
+
+|? !entry
+    false
+|? entry.parent-key
+    true
+??
+    has-children && entry.is-expanded
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tree-box-indent
+    - depth Index
+
+. indent = 0tx
+. remaining = depth
+while remaining > 0
+    indent += 2
+    remaining -= 1
+
+= indent
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-row-text
+    - depth Index
+    - has-children Bool
+    - is-expanded Bool
+    - content String
+
+"$indent-text$disclosure-marker $content"
+
+.. indent-text = tree-box-indent-string(depth)
+.. disclosure-marker = tree-box-disclosure-marker(has-children, is-expanded)
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-indent-string
+    - depth Index
+
+" " * tree-box-indent(depth)
+
+━━━━━━━━━━━━━━━━━━━━
+_ tree-box-disclosure-marker
+    - has-children Bool
+    - is-expanded Bool
+
+|? !has-children
+    " "
+|? is-expanded
+    "▾"
+??
+    "▸"

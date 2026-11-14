@@ -1,0 +1,98 @@
+/YuCore/YuSystem.h
+/netdb.h
+
+━━━━━━━━━━━━━━━━━━━━
++ CAddrInfo is Tuple
+
++ family I32
++ socktype I32
++ protocol I32
++ addrlen I32
++ addr CPointer'Char8
+
+━━━━━━━━━━━━━━━━━━━━
++ CSockAddrInet4 is Tuple
+
++ family I16
++ port U16
++ address U32
++ zero CPointer'Char8
+
+━━━━━━━━━━━━━━━━━━━━
++ DNSError is Error
+
++ error DNSErrorCode
+
+────────────────────
++ This
+    - error
+
+━━━━━━━━━━━━━━━━━━━━
++ DNSErrorCode is I32
+
+| addr-family = C:EAI_ADDRFAMILY
+| again = C:EAI_AGAIN
+| bad-flags = C:EAI_BADFLAGS
+| fail = C:EAI_FAIL
+| family = C:EAI_FAMILY
+| memory = C:EAI_MEMORY
+| no-data = C:EAI_NODATA
+| no-name = C:EAI_NONAME
+| service = C:EAI_SERVICE
+| sock-type = C:EAI_SOCKTYPE
+| system = C:EAI_SYSTEM
+
+────────────────────
++ to String
+
+match this
+    |= .addr-family
+        "No addresses in family"
+    |= .again
+        "Try again later"
+    |= .bad-flags
+        "Bad flags"
+    |= .fail
+        "Permanent failure"
+    |= .family
+        "Family not supported"
+    |= .memory
+        "Out of memory"
+    |= .no-data
+        "No addresses defined"
+    |= .no-name
+        "Name not recognized"
+    |= .service
+        "Service not available"
+    |= .sock-type
+        "Socket type not supported"
+    |= .system
+        "System error"
+
+━━━━━━━━━━━━━━━━━━━━
++ get-addr-info
+    - host String
+    - port U16
+    - flags I32 = (C:AI_ADDRCONFIG /or/ C:AI_V4MAPPED) as I32
+
+` The first IPv4 TCP address of a host. Its `addr` is the caller's to free.
+?! DNSError(error as DNSErrorCode)
+    if error != 0
+
+buf[0]
+
+.. buf = CAddrInfo[1]
+.. error = C:yumiGetAddressInfo
+    - host
+    - port as String
+    - flags
+    - C:AF_INET
+    - C:SOCK_STREAM
+    - C:IPPROTO_TCP
+    - buf
+
+━━━━━━━━━━━━━━━━━━━━
++ network-to-host U16
+    - value U16
+
+((value /and/ 0xff) /lshift/ 8) /or/ (value /zrshift/ 8)

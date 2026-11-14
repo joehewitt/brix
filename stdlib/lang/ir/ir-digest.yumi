@@ -1,0 +1,442 @@
+./ir
+/core/arena
+/core/table
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/backend/bundle
+/lang/backend/mir
+/lang/backend/mir-digest
+/lang/check/facts
+/lang/check/instances
+/lang/check/stable-key
+/lang/check/type-store
+/lang/check/types
+/lang/emit/layouts
+/lang/emit/program-tables
+
+_ first-multiplier U64 = 0x9e3779b97f4a7c15
+_ second-multiplier U64 = 0xc2b2ae3d27d4eb4f
+_ first-offset U64 = 0x165667b19e3779f9
+_ second-offset U64 = 0x27d4eb2f165667c5
+_ absent-mark U64 = 0x4142534e54
+
+━━━━━━━━━━━━━━━━━━━━
++ IRDigest is Tuple
+
++ high U64
++ low U64
+
+━━━━━━━━━━━━━━━━━━━━
++ same-digest Bool
+    - first IRDigest
+    - second IRDigest
+
+first.high == second.high && first.low == second.low
+
+━━━━━━━━━━━━━━━━━━━━
++ IRDigester
+
+` A digest of a function's IR as the emitter leaves it, before inlining, which one round of
+` emission shares with the next wherever the IR is the same. Each id in the IR goes in as what it
+` names in its round: a string by its bytes, a function by its name, a layout by what it holds
+` (`layout-key`) and a type by its stable key. Syntax ids, lines, columns and modules go in as
+` they are, as does each number that is the IR's own: a value, a block, a local or a constant.
+` What lowering reads of the function's row goes in too: its symbol, the name a stack trace
+` prints, where its declaration is written, and the module and placelessness its locations take.
+
+_ tables ProgramTables
+_ program Program
+_ instances Instances
+_ facts Facts
+_ types Types
+_ layout-keys CPointer'U64
+_ layout-states CPointer'Byte
+_ first U64
+_ second U64
+
+────────────────────
++ This
+    - tables ProgramTables
+    - program Program
+    - instances Instances
+    - facts Facts
+    - types Types
+    - storage Arena
+
+. count = tables.layouts.count
+layout-keys = storage.allocate'U64(count)
+layout-states = storage.allocate'Byte(count)
+for id in 0 .. < count
+    layout-keys[id] = 0
+    layout-states[id] = 0
+
+────────────────────
++ do digest IRDigest
+    - ir IRFunction
+    - bridged Bool
+
+first = first-offset
+second = second-offset
+. row = tables.functions[ir.function]
+string(row.symbol)
+string(if bridged then row.bridge-display else row.display)
+. declared = tables.declared-at(ir.function)
+flag(declared != null)
+if declared
+    string(declared.file)
+    word(declared.line as U64)
+    word(declared.column as U64)
+flag(row.placeless)
+word(row.module)
+word(row.site-module)
+layout(ir.returns)
+flag(ir.signals)
+word(ir.arguments.length)
+for position in 0 .. < ir.arguments.length
+    layout(ir.arguments[position])
+word(ir.locals.length as U64)
+for id in 0 .. < ir.locals.length
+    . local = ir.locals[id]
+    layout(local.layout)
+    flag(local.address-taken)
+    flag(local.filled)
+ids(ir.order)
+word(ir.blocks.length as U64)
+for block in 0 .. < ir.blocks.length
+    span(ir.blocks[block].instructions)
+word(ir.instructions.length as U64)
+for id in 0 .. < ir.instructions.length
+    instruction(ir, ir.instructions[id])
+word(ir.numbers.length as U64)
+for id in 0 .. < ir.numbers.length
+    word(ir.numbers[id].kind)
+    word(ir.numbers[id].bits)
+word(ir.constants.length as U64)
+for id in 0 .. < ir.constants.length
+    . constant = ir.constants[id]
+    word(constant.kind)
+    word(constant.character-length)
+    word(constant.flags)
+    bytes(constant.bytes)
+word(ir.dependencies.length as U64)
+for id in 0 .. < ir.dependencies.length
+    . dependency = ir.dependencies[id]
+    word(dependency.kind)
+    word(dependency.flags)
+    if dependency.kind == .callee-function
+        function(dependency.symbol)
+    else if dependency.kind == .callee-c
+        string(dependency.symbol)
+    else
+        word(dependency.symbol)
+ids(ir.made-calls)
+word(ir.streams.length as U64)
+for id in 0 .. < ir.streams.length
+    . stream = ir.streams[id]
+    operand(stream.made)
+    word(stream.begin)
+    word(stream.read)
+    ids(stream.ends)
+    word(stream.head)
+    word(stream.polled)
+    word(stream.done)
+word(ir.notes.length as U64)
+for id in 0 .. < ir.notes.length
+    . note = ir.notes[id]
+    word(note.row)
+    function(note.target)
+    word(note.site-module)
+    word(note.site-syntax)
+    word(note.chain.length)
+    for position in 0 .. < note.chain.length
+        function(note.chain[position])
+= IRDigest(settled(first), settled(second))
+
+────────────────────
++ do context IRDigest
+    - id FunctionId
+    - ir IRDigest
+    - bridged Bool
+
+` What the inliner reads of a function it consults: its IR as the emitter leaves it, whether
+` it is bridged, and what its verdicts read besides, from its row, its instance, its
+` declaration and its signature, and for a union dispatch the read it forwards.
+first = first-offset
+second = second-offset
+word(ir.high)
+word(ir.low)
+flag(bridged)
+. row = tables.functions[id]
+word(row.kind)
+flag(row.may-panic)
+if row.kind == .union-dispatch
+    forward(row.place)
+. instance = row.instance
+if instance != no-instance
+    flag(tables.is-recursive(instance))
+    flag(tables.asks-inline(instance))
+    flag(tables.step-functions[instance] != no-function)
+    . held = instances.rows[instance]
+    flag(held.may-panic)
+    flag(held.is-generator)
+    declaration(held)
+    . signature = instances.signatures[instance]
+    word(signature.args.count)
+    word(signature.errors.count)
+    word(types.key-of(signature.returns))
+    if signature.args.count != 0
+        . argument = instances.argument-type(instance, 0)
+        word(types.key-of(argument))
+        if argument != no-type && types.intrinsic-of(argument) == .tuple
+            layout(tables.layouts.values[argument])
+= IRDigest(settled(first), settled(second))
+
+────────────────────
++ do round-context IRDigest
+    - seed MIRDigest
+    - optimizes Bool
+
+` What inlining and lowering read of the round as a whole: the bundle's settings, its special
+` and runtime symbols, the paths of the modules, the layout an interface's table is read
+` through, and whether the round inlines.
+first = first-offset
+second = second-offset
+word(seed.high)
+word(seed.low)
+flag(optimizes)
+. bundle = tables.bundle
+for symbol in [bundle.entry-name, bundle.main-name, bundle.gc-public-control-word-symbol, bundle.write-barrier-record-symbol, bundle.zero-stack-frame-symbol, bundle.memory-copy-symbol, bundle.memory-zero-symbol, bundle.bulk-write-barrier-symbol, bundle.thread-cache-symbol, bundle.allocation-refill-symbol, bundle.allocate-object-symbol]
+    string(symbol)
+. runtime = tables.runtime-symbols
+word(runtime.length)
+for index in 0 .. < runtime.length
+    string(runtime[index])
+. paths = tables.module-paths
+word(paths.length)
+for index in 0 .. < paths.length
+    string(paths[index])
+layout(tables.layouts.interface-layout)
+= IRDigest(settled(first), settled(second))
+
+────────────────────
++ name-key StableKey
+    - id FunctionId
+
+` A function's name as a key, the same in every round that emits it.
+named(stable-key-seed, tables.functions[id].name)
+
+────────────────────
++ known StableKey
+    - id LayoutId
+
+` The key of a layout this digester has met, or zero.
+if layout-states[id] == 2 then layout-keys[id] else 0
+
+────────────────────
+_ do declaration
+    - held Instance
+
+. module = program.modules[held.module]
+do match? module.decls[held.decl]
+    | .decl-function(fn)
+        word(fn.kind)
+        do match? module.tree.nodes[fn.syntax]
+            | .node-function-syntax(syntax)
+                flag(syntax.is-inline)
+                if syntax.body != 0
+                    . loc = module.tree.nodes[syntax.body].loc
+                    word(loc.end.line - loc.begin.line)
+
+────────────────────
+_ do forward
+    - place U32
+
+. found = facts.forwards[place]
+word(found.given)
+do match? program.modules[instances.rows[found.instance].module].tree.nodes[found.syntax]
+    | .node-get-expression(read)
+        word(types.key-of(facts.node-type(found.instance, read.object)))
+
+────────────────────
+_ do instruction
+    - ir IRFunction
+    - row IRInstruction
+
+word(row.op)
+word(row.block)
+layout(row.layout)
+word(types.key-of(row.type))
+word(row.syntax)
+word(row.line)
+word(row.column)
+word(row.module)
+if row.op == .op-frame || row.op == .op-zero
+    layout(row.aux)
+else if row.op == .op-copy
+    layout(row.aux /and/ 0x7fffffff)
+    word(row.aux /and/ managed-store-flag)
+else
+    word(row.aux)
+word(row.operands.count)
+for position in row.operands.start .. < row.operands.end
+    operand(ir.operands[position])
+
+────────────────────
+_ do operand
+    - operand Operand
+
+. kind = operand-kind(operand)
+. payload = operand-payload(operand)
+word(kind)
+do match kind
+    |= .operand-symbol
+        string(payload)
+    |= .operand-descriptor
+        layout(payload)
+    |= .operand-buffer-descriptor
+        layout(payload)
+    ??
+        word(payload)
+
+────────────────────
+_ do function
+    - id FunctionId
+
+if id == no-function
+    word(absent-mark)
+    =
+string(tables.functions[id].name)
+
+────────────────────
+_ do string
+    - id StringId
+
+if id == no-string
+    word(absent-mark)
+    =
+bytes(tables.bundle.string(id))
+
+────────────────────
+_ do bytes
+    - text ByteSpan
+
+word(text.length as U64)
+. packed = 0u64
+for index in 0 .. < text.length
+    packed = (packed /lshift/ 8) /or/ (text.data[index] as U64)
+    if index % 8 == 7
+        word(packed)
+        packed = 0
+word(packed)
+
+────────────────────
+_ do layout
+    - id LayoutId
+
+word(layout-word(id))
+
+────────────────────
+_ layout-word U64
+    - id LayoutId
+
+` A layout as a word: a scalar's machine kind, or a struct's key (`layout-key`).
+if id < first-struct-layout || id == no-layout then id as U64 else layout-key(id)
+
+────────────────────
+_ do layout-key StableKey
+    - id LayoutId
+
+` What a struct's layout holds, kept once it is known: its kind, size, alignment and format,
+` whether it holds managed pointers, the names of its descriptors and its allocation site, the
+` type it was built for, its fields and its cases each with its place, its layout and its type,
+` and the layout it shares its shape with, where that is another.
+if layout-states[id] == 2
+    = layout-keys[id]
+if layout-states[id] == 1
+    = absent-mark
+layout-states[id] = 1
+. row = tables.layouts.rows[id]
+. key = mixed(mixed(mixed(stable-key-seed, row.kind), row.size), row.alignment)
+key = mixed(mixed(key, row.format), if row.is-managed then 1u64 else 0u64)
+key = named(named(named(key, row.descriptor), row.buffer), row.site)
+key = mixed(key, types.key-of(row.type))
+key = fields(key, row.fields)
+key = fields(key, row.cases)
+key = mixed(key, if row.shape != id then layout-word(row.shape) else absent-mark)
+layout-keys[id] = key
+layout-states[id] = 2
+= key
+
+────────────────────
+_ do fields StableKey
+    - key StableKey
+    - range Span
+
+. result = mixed(key, range.count)
+for index in range.start .. < range.end
+    . field = tables.layouts.fields[index]
+    result = mixed
+        - mixed(mixed(result, field.offset), layout-word(field.layout))
+        - types.key-of(field.type)
+= result
+
+────────────────────
+_ do named StableKey
+    - key StableKey
+    - id StringId
+
+if id == no-string
+    = mixed(key, absent-mark)
+. text = tables.bundle.string(id)
+. result = mixed(key, text.length as U64)
+for index in 0 .. < text.length
+    result = mixed(result, text.data[index])
+= result
+
+────────────────────
+_ do ids
+    - list IdList
+
+word(list.length)
+for index in 0 .. < list.length
+    word(list[index])
+
+────────────────────
+_ do span
+    - range Span
+
+word(range.start)
+word(range.count)
+
+────────────────────
+_ do flag
+    - value Bool
+
+word(if value then 1u64 else 0u64)
+
+────────────────────
+_ do word @inline
+    - value U64
+
+first = lane(first, value, first-multiplier)
+second = lane(second, value /xor/ second-offset, second-multiplier)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lane U64 @inline
+    - hash U64
+    - value U64
+    - multiplier U64
+
+(((combined /lshift/ 27) /or/ (combined /zrshift/ 37)) * multiplier) + first-offset
+
+.. combined = hash /xor/ (value * multiplier)
+
+━━━━━━━━━━━━━━━━━━━━
+_ settled U64
+    - hash U64
+
+(folded /xor/ (folded /zrshift/ 29)) * first-multiplier
+
+.. folded = (hash /xor/ (hash /zrshift/ 33)) * second-multiplier

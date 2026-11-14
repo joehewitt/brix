@@ -1,0 +1,201 @@
+./box
+./events
+./keys
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./theme
+/core/list-cursor
+/ui/input
+/ui/key-combo
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+
+• Switcher • transient centered:56 flex-col bg:gui-glass-color text:gui-text-color p:5 w:420 max-h:480
+    window-material = gui-glass-material
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-popup-radius
+    shadow = gui-popup-shadow
+    overflow-y = ScrollOverflow.auto
+
+• SwitcherRow • flex-row h:25 px:8 mb:1
+    corner-radius = gui-control-radius
+
+    when #is-highlighted
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ SwitcherEntry'Item is Tuple
+
++ index Size
++ item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ Switcher'Item is Popup
+
+• This
+    focus-mode = FocusMode.keys
+
++ items [Item] = List'Item()
++ entries [SwitcherEntry'Item] = switcher-entries'Item(#items)
++ selected-index Size = 0
++ trigger = KeyCombo()
+
++ event chosen Item
+
+────────────────────
+
+<This
+    outside-press-passes = false
+
+    for entry in #entries
+        <SwitcherRow'Item
+            switcher = this
+            index = entry.index
+
+            + <Box row - entry SwitcherEntry'Item • flex-row flex:1
+
+    <KeyShortcut "Next"
+        key = #trigger
+        discoverable = false
+        action = => do advance(1)
+    if !#trigger.modifiers.shift
+        <KeyShortcut "Previous"
+            key = #trigger + KeyModifier.shift
+            discoverable = false
+            action = => do advance(-1)
+    <KeyShortcut "Next"
+        key = .arrow-down
+        discoverable = false
+        action = => do advance(1)
+    <KeyShortcut "Previous"
+        key = .arrow-up
+        discoverable = false
+        action = => do advance(-1)
+    <KeyShortcut "Choose"
+        key = .enter
+        repeat = false
+        discoverable = false
+        action = => do choose-selected()
+    <SwitcherHold
+        key = switcher-held-key(#trigger)
+        for modifiers on changed
+            release(modifiers)
+
+────────────────────
++ do present
+    - choices [Item]
+    - key KeyCombo
+
+if is-open
+    advance(1)
+    =
+=? if choices.length == 0
+items = choices
+trigger = key
+selected-index = 0
+show()
+advance(1)
+
+────────────────────
++ do advance
+    - offset Int
+
+. next = ListCursor(items.length, selected-index).wrapped(offset)
+if next != null
+    selected-index = next
+
+────────────────────
++ do choose-selected
+
+choose-at(selected-index)
+
+────────────────────
++ do choose-at
+    - index Size
+
+=? if index >= items.length
+choose(items[index])
+
+────────────────────
++ do choose
+    - item Item
+
+dismiss(DismissReason.chosen)
+chosen <- item
+
+────────────────────
+_ do release
+    - modifiers PointerModifiers
+
+=? if !is-open || !switcher-released(trigger.modifiers, modifiers)
+choose-selected()
+
+━━━━━━━━━━━━━━━━━━━━
++ SwitcherRow'Item is Box
+
++ switcher Switcher'Item?
++ index Size = 0
++ is-highlighted = #switcher?.#selected-index == #index
+
+────────────────────
+whenever #is-highlighted
+
+if is-highlighted
+    . ignored = switcher?.ensure-visible(this)
+
+────────────────────
+for event on click
+
+switcher?.choose-at(index)
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SwitcherHold is KeyBinding
+
++ event changed PointerModifiers
+
+╌╌╌╌╌╌╌╌╌╌ is KeyBinding ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do update-modifiers
+    - modifiers PointerModifiers
+
+changed <- modifiers
+
+━━━━━━━━━━━━━━━━━━━━
+_ switcher-entries'Item [SwitcherEntry'Item]
+    - items [Item]
+
+** 0 .. < items.length
+*> SwitcherEntry'Item(each, items[each])
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ switcher-held-key
+    - trigger KeyCombo
+
+KeyCombo(PointerModifiers(false, held.control, held.option, held.command), KeyTrigger.none)
+
+.. held = trigger.modifiers
+
+━━━━━━━━━━━━━━━━━━━━
+_ switcher-released
+    - held PointerModifiers
+    - pressed PointerModifiers
+
+command-released || control-released || option-released
+
+.. command-released = held.command && !pressed.command
+.. control-released = held.control && !pressed.control
+.. option-released = held.option && !pressed.option

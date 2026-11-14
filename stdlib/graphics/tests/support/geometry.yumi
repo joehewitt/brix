@@ -1,0 +1,300 @@
+
+/graphics/intersection
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ near Bool
+    - expected
+    - actual
+    - epsilon = 0.00001
+
+abs(actual - expected) < epsilon
+
+━━━━━━━━━━━━━━━━━━━━
++ near-point Bool
+    - expected Point
+    - actual Point
+    - epsilon = 0.00001
+
+x-ok && y-ok
+
+.. x-ok = near(expected.x, actual.x, epsilon)
+.. y-ok = near(expected.y, actual.y, epsilon)
+
+━━━━━━━━━━━━━━━━━━━━
++ near-rect Bool
+    - expected Rect
+    - actual Rect
+    - epsilon = 0.00001
+
+origin-ok && size-ok
+
+.. origin-ok = x-ok && y-ok
+.. x-ok = near(expected.x, actual.x, epsilon)
+.. y-ok = near(expected.y, actual.y, epsilon)
+.. size-ok = width-ok && height-ok
+.. width-ok = near(expected.width, actual.width, epsilon)
+.. height-ok = near(expected.height, actual.height, epsilon)
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ path-summary
+    - path Path
+
+count=${path.count}; closed=${path.is-closed}; first=$first; last=$last; bbox=$bbox; types=$types
+
+════════════════════
+.. first = if path.count then path.first-point as String else "none"
+.. last = if path.count then path.last-point as String else "none"
+.. bbox = if path.count > 1 then path.bounding-box as String else "none"
+.. types = path-segment-types(path)
+
+━━━━━━━━━━━━━━━━━━━━
++ optional-path-summary
+    - path Path?
+
+|? path
+    path-summary(path)
+??
+    "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ optional-path-near-bbox Bool
+    - rect Rect
+    - path Path?
+    - epsilon = 0.00001
+
+|? path && path.count >= 2
+    near-rect(rect, path.bounding-box, epsilon)
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
++ optional-path-contains
+    - point Point
+    - path Path?
+
+|? path && path.count >= 2
+    path.contains(point)
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
++ do path-segment-types
+    - path Path
+
+. types [String]
+. reader = path.command-reader
+while reader.next()
+    types += "${reader.verb}"
+= ",".join(types)
+
+━━━━━━━━━━━━━━━━━━━━
++ path-area Length
+    - path Path
+
+abs(path-signed-area(path))
+
+━━━━━━━━━━━━━━━━━━━━
++ do path-signed-area Length
+    - path Path
+
+. area Length
+if path.curve-count < 1
+    = area
+
+. reader = path.curve-reader
+while reader.next()
+    area += reader.x1 * reader.y2 - reader.x2 * reader.y1
+
+= area / 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do near-intersections Bool
+    - intersections [CurveIntersection]
+    - t1s [PointOnCurve]
+    - t2s [PointOnCurve]
+    - epsilon = 0.00001
+
+=? if !count-ok
+
+.. count-ok = intersections.length == t1s.length && intersections.length == t2s.length
+
+for i in 0 .. < intersections.length
+    . intr = intersections[i]
+    . t1-ok = near(t1s[i], intr.t1, epsilon)
+    . t2-ok = near(t2s[i], intr.t2, epsilon)
+    =? if !t1-ok
+    =? if !t2-ok
+
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ tilted-line-shape Path
+    - center Point
+    - radius Length
+
+line(center + (-radius * 0.82, -radius * 0.22), center + (radius * 0.82, radius * 0.22))
+
+━━━━━━━━━━━━━━━━━━━━
++ do zigzag-shape Path
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (-radius * 0.82, -radius * 0.45))
+path.line-to(center + (-radius * 0.42, radius * 0.36))
+path.line-to(center + (-radius * 0.05, -radius * 0.24))
+path.line-to(center + (radius * 0.34, radius * 0.48))
+path.line-to(center + (radius * 0.82, -radius * 0.34))
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ spiral-shape Path
+    - center Point
+    - radius Length
+
+bounded-spiral(center, radius * 0.95, 3.4, 72, -45deg)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bounded-spiral Path
+    - center Point
+    - radius Length
+    - coils Float
+    - steps Int
+    - rotation Radians
+
+. path = Path()
+for i in 0 .. < steps
+    . t = (i as Float) / ((steps - 1) as Float)
+    . angle = rotation + t * coils * π * 2
+    . point = center.translate-at-angle(angle, radius * t)
+    if i == 0
+        path.move-to(point)
+    else
+        path.line-to(point)
+
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do open-wave-shape Path
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (-radius * 0.9, radius * 0.15))
+path.cubic-curve-to()
+    - center + (-radius * 0.68, -radius * 0.85)
+    - center + (-radius * 0.32, radius * 0.95)
+    - center + (-radius * 0.06, radius * 0.02)
+path.cubic-curve-to()
+    - center + (radius * 0.26, -radius * 1.0)
+    - center + (radius * 0.62, radius * 0.82)
+    - center + (radius * 0.9, -radius * 0.2)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do hairpin-shape Path
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (-radius * 0.86, -radius * 0.55))
+path.line-to(center + (radius * 0.2, -radius * 0.55))
+path.cubic-curve-to()
+    - center + (radius * 0.88, -radius * 0.55)
+    - center + (radius * 0.88, radius * 0.52)
+    - center + (radius * 0.2, radius * 0.52)
+path.line-to(center + (-radius * 0.86, radius * 0.52))
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do cusp-sweep-shape Path
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (-radius * 0.8, radius * 0.42))
+path.cubic-curve-to()
+    - center + (-radius * 0.2, -radius * 0.95)
+    - center + (radius * 0.16, -radius * 0.95)
+    - center + (-radius * 0.04, radius * 0.05)
+path.cubic-curve-to()
+    - center + (-radius * 0.2, radius * 0.85)
+    - center + (radius * 0.72, radius * 0.62)
+    - center + (radius * 0.84, -radius * 0.46)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do tilted-rect-shape Path
+    - center Point
+    - radius Length
+
+. path = rectangle()
+    - Rect()
+        - center.x - radius * 0.72
+        - center.y - radius * 0.5
+        - radius * 1.44
+        - radius
+path.rotate(-9deg, center)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do triangle-shape Path
+    - center Point
+    - radius Length
+
+. path = polygon(3, radius * 1.82, center)
+path.rotate(18deg, center)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do pentagon-shape Path
+    - center Point
+    - radius Length
+
+. path = polygon(5, radius * 1.78, center)
+path.rotate(-12deg, center)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ rosette-shape Path
+    - center Point
+    - radius Length
+
+lobed-rosette(center, radius * 0.92, radius * 0.28, 9, -18deg)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lobed-rosette Path
+    - center Point
+    - outer-radius Length
+    - inner-radius Length
+    - lobes Int
+    - rotation Radians
+
+. path = Path()
+. count = lobes * 2
+. step = (π * 2) / count
+
+for i in 0 .. < count
+    . a1 = rotation + step * i
+    . a2 = rotation + step * (i + 1)
+    . r1 = if i % 2 == 0 then outer-radius else inner-radius
+    . r2 = if (i + 1) % 2 == 0 then outer-radius else inner-radius
+    . bulge = outer-radius * (0.52 + ((i % 3) as Float) * 0.08)
+    . p1 = center.translate-at-angle(a1, r1)
+    . p2 = center.translate-at-angle(a2, r2)
+    . h1 = center.translate-at-angle(a1 + step * 0.42, r1 + bulge)
+    . h2 = center.translate-at-angle(a2 - step * 0.42, r2 + bulge)
+
+    if i == 0
+        path.move-to(p1)
+
+    path.cubic-curve-to(h1, h2, p2)
+
+path.close()
+= path

@@ -1,0 +1,157 @@
+./support/providers
+/ai
+/data/json
+/test
+/time/duration
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("AI Chat Session Turns")
+cases.run(session-turn-tests)
+cases = cases.then("AI Chat Session Failure", session-failure-tests)
+cases = cases.then("AI Chat Session Stop", session-stop-tests)
+cases = cases.then("AI Chat Session Early Stop", session-early-stop-tests)
+cases = cases.then("AI Chat Session Manual Turns", session-manual-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do session-turn-tests TestCase
+    - t TestCase
+
+. session = AIChatSession(AIChat("one"), echo-service(EchoProvider()))
+session.ask("  What is a monad?\nBe brief.  ")
+t.expect("the first prompt titles the session", "What is a monad?", session.title ?? "")
+
+session.ask("And a functor?")
+t.expect("a later turn sees the transcript", "Echo: 3 messages", text-of(session.messages[3]))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do session-failure-tests TestCase
+    - t TestCase
+
+. session = AIChatSession(AIChat("three"), echo-service(FailingProvider()))
+session.ask("Hello")
+t.expect("the chat keeps a failed reply", 2, chat-transcript(session.chat, "root").length)
+
+. resumed = AIChatSession(AIChat("three"), echo-service(EchoProvider()))
+resumed.document.restore(session.chat)
+resumed.ask("Still there?")
+t.expect
+    - "a failed reply stays out of the request"
+    - "Echo: 2 messages"
+    - text-of(resumed.messages[3])
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do session-stop-tests TestCase
+    - t TestCase
+
+. provider = GateProvider("Half a rep")
+. session = AIChatSession(AIChat("four"), echo-service(provider))
+session.send("Are you there?")
+t.expect
+    - "the chat holds only the prompt during a turn"
+    - 1
+    - chat-transcript(session.chat, "root").length
+
+await-text(session)
+t.expect("deltas reach the waiting reply", "Half a rep", text-of(session.messages[1]))
+session.stop()
+t.check("stopping ends the provider's stream", provider.is-closed)
+t.expect("a stopped reply keeps its text", "Half a rep", text-of(session.messages[1]))
+t.expect
+    - "a stopped reply records why it ended"
+    - AIFinishReason.cancellation
+    - session.messages[1].finish-reason!
+
+. resumed = AIChatSession(AIChat("four"), echo-service(EchoProvider()))
+resumed.document.restore(session.chat)
+resumed.ask("Go on")
+t.expect("a stopped reply joins the request", "Echo: 3 messages", text-of(resumed.messages[3]))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do session-early-stop-tests TestCase
+    - t TestCase
+
+. provider = GateProvider("")
+. session = AIChatSession(AIChat("five"), echo-service(provider))
+session.send("One more")
+session.stop()
+t.expect("an empty stopped reply is dropped", 1, session.messages.length)
+
+session.send("And again")
+await-start(provider)
+session.stop()
+t.expect("a reply stopped before any content is dropped", 2, session.messages.length)
+t.expect
+    - "a dropped reply's id is not used again"
+    - "five:1, five:3"
+    - ", ".join(each.id in session.messages)
+t.check("its stream is ended", provider.is-closed)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do session-manual-tests TestCase
+    - t TestCase
+
+. session = AIChatSession(AIChat("six"), echo-service(AIProvider()))
+session.begin-turn("Count")
+
+. waiting = session.reply!.parts
+session.apply-event(AIPartBeginEvent(AITextPart("count", "")))
+session.apply-event(AIPartDeltaEvent("count", AITextDelta("One")))
+session.apply-event(AIPartDeltaEvent("count", AITextDelta(", two")))
+session.apply-event(AIPartEndEvent(AITextPart("count", "One, two.")))
+t.check
+    - "the reply keeps one part list while it streams"
+    - session.reply!.parts as Pointer == waiting as Pointer
+session.apply-event(AIDoneEvent(AIFinishReason.length, usage))
+session.finish-reply()
+t.expect
+    - "a finished reply keeps the reason its stream gave"
+    - AIFinishReason.length
+    - session.messages[1].finish-reason!
+
+session.begin-turn("Again")
+session.apply-event(AIPartBeginEvent(AITextPart("again", "Three")))
+session.fail-reply(AIError(AIErrorKind.timeout, "Offline"))
+
+session.begin-turn("Once more")
+session.finish-reply()
+
+session.begin-turn("And once more")
+session.apply-event(AIPartBeginEvent(AIExtensionPart("note", "echo", "note", null)))
+session.finish-reply(AIFinishReason.cancellation)
+t.expect("a reply holding only provider notes is dropped", 6, session.messages.length)
+= t
+
+.. usage = AIUsage
+    • input-tokens 4
+    • output-tokens 5
+
+━━━━━━━━━━━━━━━━━━━━
+_ do await-text
+    - session AIChatSession
+
+for attempt in 0 .. < 2000
+    if !text-of(session.messages[1]).length
+        1ms.wait()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do await-start
+    - provider GateProvider
+
+for attempt in 0 .. < 2000
+    if !provider.is-open
+        1ms.wait()
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-of
+    - message AIChatMessage
+
+ai-parts-text(message.parts)

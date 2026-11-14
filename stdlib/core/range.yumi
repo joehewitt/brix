@@ -1,0 +1,193 @@
+./core
+./error
+./number
+./stream
+./string
+
++ Size is I64
++ Index is I64
++ Increment is I64
+
+━━━━━━━━━━━━━━━━━━━━
++ Range'Item is Tuple
+    is CursorIterable'Item'(Item, Item, Size, Size)
+    is Indexable'Item
+
++ start Item
++ end Item
++ increment Item = Item() + 1
++ is-through = false
+
+╌╌╌╌╌╌╌╌╌╌ is CursorIterable'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get initial-iterator-state (Item, Item, Size, Size) @inline
+
+start, step, 0, length
+    .. step = if start <= end then increment else Item() - increment
+
+────────────────────
++ do next-iterator ((Item, Item, Size, Size), Item?) @inline
+    - state (Item, Item, Size, Size)
+
+if state[3] == 0
+    . none Item?
+    = (state, none)
+if Item.is-integer
+    = ((state[0] + state[1], state[1], state[2], state[3] - 1), state[0])
+else
+    = ((state[0], state[1], state[2] + 1, state[3] - 1), this[state[2]])
+
+╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get length Size @inline
+
+|? Item.is-integer
+    |? is-through
+        (distance / step + 1) as Size
+    |? distance == 0
+        0
+    ??
+        ((distance - 1) / step + 1) as Size
+    .. distance = (new-end as I64 as U64) - (new-start as I64 as U64)
+    .. step = increment as U64
+??
+    whole-steps + final-item-count
+    .. whole-steps = (delta / increment) as Size
+    .. final-item-count = if includes-final-item then 1 else 0
+    .. includes-final-item = is-through || has-partial-step
+    .. has-partial-step = stepped-distance < delta
+    .. stepped-distance = (whole-steps as Item) * increment
+    .. delta = new-end - new-start
+
+.. new-start = if start > end then end else start
+.. new-end = if start > end then start else end
+
+────────────────────
++ this[index Index] Item @inline
+
+|? start > end
+    start - (index as Item) * increment
+??
+    start + (index as Item) * increment
+
+────────────────────
++ this[range Range'Index] Indexable'Item
+
+Range'Item(start + range.start, start + range.end, increment, is-through)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this[pos Position]
+
+this[pos.normalize(this)]
+
+╌╌╌╌╌╌╌╌╌╌ Sequencing and normalization ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ forward @inline
+
+This(first, last, increment, false)
+
+.. first = if start > end then end + n1 else start
+.. last = if start > end then start + increment else end + n0
+.. n0 = if is-through then increment else 0
+.. n1 = if is-through then Item() else increment
+
+────────────────────
++ normalize'SeqItem @inline
+    - seq Indexable'SeqItem
+
+Range'Index(s, e, i, is-through)
+
+.. len = seq.length
+.. s = normalize(start, 0 .. < len)
+.. e = normalize(end, 0 .. < len)
+.. i = normalize(increment, 0 .. < len)
+
+────────────────────
++ this
+    - increment () Item
+        - item Item
+
+Stepper(this, increment)
+
+────────────────────
++ to String
+
+"[Range $start $to-or-thru $end by $increment]"
+    .. to-or-thru = if is-through then "thru" else "to"
+
+━━━━━━━━━━━━━━━━━━━━
++ Position is Union
+
+| first
+| middle
+| last
+| end
+| infinity
+| index Index
+
+────────────────────
++ normalize'Item Index @inline
+    - seq Indexable'Item
+
+normalize(0 .. < seq.length)
+
+────────────────────
++ normalize'SeqItem Index
+    - range Range'SeqItem
+
+match this
+    `
+    | Position.first
+        start
+    | Position.middle
+        length / 2
+    | Position.last
+        length - 1
+    | Position.end
+        length
+    | Position.infinity
+        Index.max
+    | Position.index(n)
+        n
+    `
+    .. start = range.start
+    .. length = range.length
+
+╌╌╌╌╌╌╌╌╌╌ Numeric range types ╌╌╌╌╌╌╌╌╌╌
+
+╌╌╌╌╌╌╌╌╌╌ Explicit range constructors ╌╌╌╌╌╌╌╌╌╌
+
+━━━━━━━━━━━━━━━━━━━━
++ to'RangeItem
+    - start RangeItem
+    - end RangeItem
+    - increment RangeItem?
+
+Range'RangeItem(start, end, increment, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ thru'RangeItem
+    - start RangeItem
+    - end RangeItem
+    - increment RangeItem?
+
+Range'RangeItem(start, end, increment, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ normalize'T
+    - n Int
+    - range Range'T
+
+n
+
+━━━━━━━━━━━━━━━━━━━━
+_ normalize'T
+    - n Position
+    - range Range'T
+
+n.normalize(range)

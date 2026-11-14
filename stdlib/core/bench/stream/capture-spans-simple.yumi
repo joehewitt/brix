@@ -1,0 +1,31 @@
+`benchmark.meta description: Exercises simple named stream captures over repeated rows.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. rows = match capture-spans-simple-source()
+    ~ \capture-spans-simple-document
+    ?! Panic("capture-spans-simple did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row
+
+-- "bench-result stream/capture-spans-simple checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ capture-spans-simple-document ~ Char
+
+~ rows \capture-spans-simple-row+
+    rows
+
+.. capture-spans-simple-row Size ~
+    ~ "id=" id \capture-spans-word ";value=" value \capture-spans-word ";kind=" kind \capture-spans-word "\n"
+        id.length * 7 + value.length * 11 + kind.length
+
+.. capture-spans-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_-]*
+
+━━━━━━━━━━━━━━━━━━━━
+_ capture-spans-simple-source
+
+"".join("id=item-$each;value=value_${each % 23};kind=kind_${each % 5}\n" in 0 .. < 150)

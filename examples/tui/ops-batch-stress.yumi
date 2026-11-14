@@ -1,0 +1,711 @@
+/stream/aggregate
+/tui
+
+<Window win • flex-col
+    <OpsDesk desk • flex-col flex:1 bg:black
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ OpsDesk is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ incidents [Incident]
++ event-log [OpsEvent]
++ cycle = 0
++ pulse = 0
++ selected-index Index = 0
++ incident-window-start Index = 0
++ region-index Index = 0
++ severity-floor = 0
++ is-auto-running = false
++ desk-self OpsDesk?
++ incident-slots [Int]
++ log-slots [Int]
++ next-log-id = 1
++ visible-incident-count Int = 16
+
+` Tracked refresh fence: row text and paint declarations in markup track this alongside their
+` real inputs, so mutations with no tracked representation (queue reshuffles, log pushes, window
+` shifts) re-evaluate every visible row through the markup batch.
++ data-serial = 0
++ regions [String]
+    * "global"
+    * "edge-us"
+    * "edge-eu"
+    * "payments"
+    * "search"
+
+────────────────────
+
+<Label • text:black bg:lime
+    text = header-text(#cycle, #pulse, #region-index, #severity-floor, #is-auto-running)
+
+<Label • text:white bg:grey
+    text = " Space/click advances one minute. A toggles auto. Up/down select. R rotates region. F changes severity floor. S reshuffles queue. Escape quits. "
+
+<Box • flex-row h:1 bg:black
+    <Button " Advance " • bg:blue text:white
+        for event on click
+            advance-minute()
+            event.cancel()
+
+    <Button " Auto " • bg:purple text:white
+        for event on click
+            toggle-auto()
+            event.cancel()
+
+    <Button " Region " • bg:navy text:white
+        for event on click
+            rotate-region()
+            event.cancel()
+
+    <Button " Floor " • bg:olive text:black
+        for event on click
+            raise-floor()
+            event.cancel()
+
+    <Button " Shuffle " • bg:yellow text:black
+        for event on click
+            reshuffle-queue()
+            event.cancel()
+
+    <Box • flex:1
+
+<Box • flex-row flex:1 bg:black
+    <Box • flex-col flex:3 bg:black
+        <Label queue-title-label • text:white bg:blue
+            text = queue-title(#cycle, #selected-index, #region-index, #severity-floor)
+
+        <Box incident-pane • flex-col flex:1 bg:black
+            for slot in #incident-slots
+                <IncidentSlot
+                    desk = desk-self!
+                    slot = slot
+                    text = incident-line
+                        - slot
+                        - #cycle
+                        - #selected-index
+                        - #region-index
+                        - #severity-floor
+                        - #pulse
+                        - #data-serial
+                    color = incident-line-color(slot, #severity-floor, #data-serial)
+                    background-color = incident-line-background
+                        - slot
+                        - #selected-index
+                        - #pulse
+                        - #data-serial
+
+    <Box • flex-col flex:2 bg:black
+        <Label detail-title-label • text:black bg:yellow
+            text = detail-title(#selected-index, #cycle, #pulse)
+
+        <Label detail-line-one-label • text:white bg:navy
+            text = detail-line-one(#selected-index, #cycle, #region-index)
+
+        <Label detail-line-two-label • text:white bg:navy
+            text = detail-line-two(#selected-index, #severity-floor, #pulse)
+
+        <Label metrics-label • text:black bg:silver
+            text = metrics-line(#cycle, #pulse)
+
+        <Label " Activity " • bg:blue text:white
+
+        <Box activity-pane • flex-col flex:1 bg:black
+            for slot in #log-slots
+                <ActivitySlot • bg:black
+                    desk = desk-self!
+                    slot = slot
+                    text = log-line(slot, #cycle, #pulse, #data-serial)
+                    color = log-line-color(slot, #data-serial)
+
+<Shortcut "Quit"
+    key = .escape
+    action = => do root.close()
+
+<Shortcut "Select previous"
+    key = .arrow-up
+    action = => do select-relative(-1)
+
+<Shortcut "Select next"
+    key = .arrow-down
+    action = => do select-relative(1)
+
+<Shortcut "Advance minute"
+    key = .enter
+    action = => do advance-minute()
+
+<Shortcut "Advance minute"
+    key = .space
+    action = => do advance-minute()
+
+<Shortcut "Toggle auto"
+    key = 'a'
+    action = => do toggle-auto()
+
+<Shortcut "Rotate region"
+    key = 'r'
+    action = => do rotate-region()
+
+<Shortcut "Raise floor"
+    key = 'f'
+    action = => do raise-floor()
+
+<Shortcut "Reshuffle queue"
+    key = 's'
+    action = => do reshuffle-queue()
+
+────────────────────
++ This
+
+desk-self = this
+for index in 0 .. < 72
+    incidents += Incident
+        - "INC-${1000 + index}"
+        - service-name(index)
+        - region-name(index)
+        - owner-name(index)
+        - (index * 17) % 280 + 35
+        - (index * 29) % 900 + 20
+        - index % 5
+        - index % 9
+
+for slot in 0 .. < 72
+    incident-slots += slot
+    log-slots += slot
+
+append-log("desk opened with ${incidents.length} watched services")
+
+────────────────────
++ do advance-minute
+
+cycle += 1
+pulse = (pulse + 1) % 4
+severity-floor = if cycle % 11 == 0 then (severity-floor + 1) % 5 else severity-floor
+region-index = if cycle % 17 == 0 then (region-index + 1) % regions.length else region-index
+
+. index Index = 0
+for incident in incidents
+    incident.advance(cycle, index)
+    index += 1
+
+if cycle % 3 == 0
+    reshuffle-queue()
+
+selected-index = clipped-selection(if cycle % 5 == 0 then selected-index + 1 else selected-index)
+push-log("minute $cycle: ${active-count()} active, ${critical-count()} critical, focus $focus-id")
+    .. focus-id = selected-incident().id
+refresh-panels()
+
+────────────────────
++ do toggle-auto
+
+is-auto-running = !is-auto-running
+push-log("auto run $auto-state")
+if is-auto-running
+    request-animation-frame(this.auto-frame)
+
+.. auto-state = if is-auto-running then "started" else "paused"
+
+────────────────────
++ do auto-frame
+
+=? if !is-auto-running
+
+advance-minute()
+request-animation-frame(this.auto-frame)
+
+────────────────────
++ do rotate-region
+
+region-index = (region-index + 1) % regions.length
+push-log("region focus changed to ${regions[region-index]}")
+refresh-panels()
+
+────────────────────
++ do raise-floor
+
+severity-floor = (severity-floor + 1) % 5
+push-log("severity floor raised to P$severity-floor")
+refresh-panels()
+
+────────────────────
++ do reshuffle-queue
+
+=? if incidents.length < 2
+
+. moved = incidents[0]
+incidents.remove(0)
+incidents += moved
+selected-index = clipped-selection(selected-index)
+refresh-panels()
+
+────────────────────
++ do select-relative
+    - offset Int
+
+selected-index = clipped-selection(selected-index + offset)
+push-log("selected ${selected-incident().id}")
+refresh-panels()
+
+────────────────────
++ do refresh-panels
+
+sync-visible-count()
+ensure-selection-visible()
+queue-title-label.text = queue-title(cycle, selected-index, region-index, severity-floor)
+detail-title-label.text = detail-title(selected-index, cycle, pulse)
+detail-line-one-label.text = detail-line-one(selected-index, cycle, region-index)
+detail-line-two-label.text = detail-line-two(selected-index, severity-floor, pulse)
+metrics-label.text = metrics-line(cycle, pulse)
+data-serial += 1
+
+────────────────────
++ do sync-visible-count
+
+visible-incident-count = clipped-visible-count(incident-pane.bounds.height)
+
+────────────────────
++ clipped-visible-count Int
+    - requested Int
+
+|? requested <= 0
+    16
+|? requested >= incident-slots.length
+    incident-slots.length as Int
+??
+    requested
+
+────────────────────
++ do ensure-selection-visible
+
+if selected-index < incident-window-start
+    incident-window-start = clipped-window-start(selected-index)
+else if selected-index >= incident-window-start + visible-incident-count
+    incident-window-start = clipped-window-start(selected-index - visible-incident-count + 1)
+
+────────────────────
++ clipped-window-start Index
+    - requested Int
+
+|? requested < 0
+    0
+|? incidents.length <= visible-incident-count
+    0
+|? requested >= max-start
+    max-start
+??
+    requested
+
+.. max-start = incidents.length - visible-incident-count
+
+────────────────────
++ incident-index Index
+    - slot Int
+
+incident-window-start + (slot as Index)
+
+────────────────────
++ incident-line String
+    - slot Int
+    - active-cycle Int
+    - selection Index
+    - active-region Index
+    - active-floor Int
+    - active-pulse Int
+    - serial Int = 0
+
+|? index >= incidents.length
+    ""
+??
+    ". ${incident-marker(index, selection, active-pulse)} ${incident.id} ${incident.service}/${incident.region} ${incident.owner} P${incident.#severity} ${incident.#latency}ms q${incident.#backlog} ${incident-region-flag(incident, active-region)} ${incident-floor-flag(incident, active-floor)} ${incident.#status-text} t${active-cycle}"
+
+.. index = incident-index(slot)
+.. incident = incidents[index]
+
+────────────────────
++ incident-marker String
+    - index Index
+    - selection Index
+    - active-pulse Int
+
+match index
+    |= selection
+        ">" * (active-pulse + 1)
+    ??
+        " "
+
+────────────────────
++ incident-region-flag String
+    - incident Incident
+    - active-region Index
+
+|? regions[active-region] == "global" || regions[active-region] == incident.region
+    "*"
+??
+    " "
+
+────────────────────
++ incident-floor-flag String
+    - incident Incident
+    - active-floor Int
+
+|? incident.severity >= active-floor
+    "watch"
+??
+    "quiet"
+
+────────────────────
++ incident-line-color AnsiColor
+    - slot Int
+    - active-floor Int
+    - serial Int = 0
+
+|? index >= incidents.length
+    silver
+|? incident.severity >= 4
+    red
+|? incident.severity >= active-floor
+    yellow
+??
+    silver
+
+.. index = incident-index(slot)
+.. incident = incidents[index]
+
+────────────────────
++ incident-line-background AnsiColor
+    - slot Int
+    - selection Index
+    - active-pulse Int
+    - serial Int = 0
+
+match index
+    |= selection
+        if active-pulse % 2 == 0 then blue else navy
+    ??
+        black
+
+.. index = incident-index(slot)
+
+────────────────────
++ clipped-selection Index
+    - requested Int
+
+|? requested < 0
+    0
+|? requested >= incidents.length
+    incidents.length - 1
+??
+    requested
+
+────────────────────
++ do push-log
+    - message String
+
+append-log(message)
+data-serial += 1
+
+────────────────────
++ do append-log
+    - message String
+
+event-log.insert(OpsEvent("log-$next-log-id", cycle, message, cycle % 5), 0)
+next-log-id += 1
+while event-log.length > 160
+    event-log.remove(event-log.length - 1)
+
+────────────────────
++ log-line String
+    - index Int
+    - active-cycle Int
+    - active-pulse Int
+    - serial Int = 0
+
+|? index >= event-log.length
+    ""
+??
+    " ${entry.minute}: ${entry.message} (${active-cycle}.${active-pulse}) "
+
+.. entry = event-log[index]
+
+────────────────────
++ log-line-color AnsiColor
+    - index Int
+    - serial Int = 0
+
+|? index >= event-log.length
+    silver
+|? entry.severity >= 4
+    red
+|? entry.severity >= 2
+    yellow
+??
+    silver
+
+.. entry = event-log[index]
+
+────────────────────
++ selected-incident Incident
+
+incidents[clipped-selection(selected-index)]
+
+────────────────────
++ header-text String
+    - active-cycle Int
+    - active-pulse Int
+    - active-region Index
+    - active-floor Int
+    - auto-running Bool
+
+" Ops desk | minute $active-cycle | pulse $active-pulse | region $region | P$active-floor+ | $mode "
+
+.. region = regions[active-region]
+.. mode = if auto-running then "AUTO" else "manual"
+
+────────────────────
++ queue-title String
+    - active-cycle Int
+    - selection Index
+    - active-region Index
+    - active-floor Int
+
+" Incident queue | selected ${selection + 1}/${incidents.length} | ${regions[active-region]} | showing pressure >= P$active-floor | cycle $active-cycle "
+
+────────────────────
++ detail-title String
+    - selection Index
+    - active-cycle Int
+    - active-pulse Int
+
+" Detail | ${selected-incident().id} | minute $active-cycle | phase $active-pulse "
+
+────────────────────
++ detail-line-one String
+    - selection Index
+    - active-cycle Int
+    - active-region Index
+
+" ${incident.service} in ${incident.region}; owner ${incident.owner}; focused region ${regions[active-region]}; age ${incident.age + active-cycle}m "
+
+.. incident = selected-incident()
+
+────────────────────
++ detail-line-two String
+    - selection Index
+    - active-floor Int
+    - active-pulse Int
+
+" latency ${incident.#latency}ms; backlog ${incident.#backlog}; pressure P${incident.#severity}; floor P$active-floor; ${incident.#status-text}; pulse $active-pulse "
+
+.. incident = selected-incident()
+
+────────────────────
++ metrics-line String
+    - active-cycle Int
+    - active-pulse Int
+
+" summary: ${active-count()} active / ${critical-count()} critical / backlog ${total-backlog()} / minute $active-cycle.$active-pulse "
+
+────────────────────
++ active-count
+
+** incidents
+?> each.severity >= severity-floor
+|> count
+
+────────────────────
++ critical-count
+
+** incidents
+?> each.severity >= 4
+|> count
+
+────────────────────
++ total-backlog
+
+** incidents
+*> each.backlog
+|> sum
+
+━━━━━━━━━━━━━━━━━━━━
++ IncidentSlot is Label
+
+` Row presentation is fully declarative: text and paints are tracked markup declarations on the
+` construction site, re-evaluated through the desk's tracked inputs and data-serial fence.
+
++ desk OpsDesk
++ slot Int
+
+────────────────────
++ This
+    - desk
+    - slot
+
+━━━━━━━━━━━━━━━━━━━━
++ ActivitySlot is Label
+
++ desk OpsDesk
++ slot Int
+
+────────────────────
++ This
+    - desk
+    - slot
+
+━━━━━━━━━━━━━━━━━━━━
++ Incident
+
++ id String
++ service String
++ region String
++ owner String
++ latency Int
++ backlog Int
++ severity Int
++ age Int
++ status-text = "watching"
+
+────────────────────
++ This
+    - id
+    - service
+    - region
+    - owner
+    - latency
+    - backlog
+    - severity
+    - age
+
+────────────────────
++ do advance
+    - cycle Int
+    - index Index
+
+latency = ((latency + (cycle * 7) + (index * 13)) % 640) + 25
+backlog = ((backlog + latency + cycle + (index * 11)) % 1200) + 5
+severity = pressure-level(latency, backlog, cycle, index)
+status-text = status-for(severity, latency, backlog)
+
+━━━━━━━━━━━━━━━━━━━━
++ OpsEvent
+
++ id String
++ minute Int
++ message String
++ severity Int
+
+────────────────────
++ This
+    - id
+    - minute
+    - message
+    - severity
+
+━━━━━━━━━━━━━━━━━━━━
++ service-name String
+    - index Int
+
+match bucket
+    |= 0
+        "auth"
+    |= 1
+        "checkout"
+    |= 2
+        "catalog"
+    |= 3
+        "search"
+    |= 4
+        "profile"
+    |= 5
+        "billing"
+    |= 6
+        "orders"
+    |= 7
+        "queue"
+    |= 8
+        "email"
+    |= 9
+        "cdn"
+    |= 10
+        "warehouse"
+    ??
+        "routing"
+
+.. bucket = index % 12
+
+━━━━━━━━━━━━━━━━━━━━
++ region-name String
+    - index Int
+
+match bucket
+    |= 0
+        "edge-us"
+    |= 1
+        "edge-eu"
+    |= 2
+        "payments"
+    ??
+        "search"
+
+.. bucket = index % 4
+
+━━━━━━━━━━━━━━━━━━━━
++ owner-name String
+    - index Int
+
+match bucket
+    |= 0
+        "ana"
+    |= 1
+        "sam"
+    |= 2
+        "mei"
+    |= 3
+        "jo"
+    |= 4
+        "ivy"
+    |= 5
+        "li"
+    |= 6
+        "noor"
+    ??
+        "max"
+
+.. bucket = index % 8
+
+━━━━━━━━━━━━━━━━━━━━
++ pressure-level Int
+    - latency Int
+    - backlog Int
+    - cycle Int
+    - index Index
+
+|? score > 4
+    4
+|? score < 0
+    0
+??
+    score
+
+.. score = latency / 110 + backlog / 260 + ((cycle + index) % 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ status-for String
+    - severity Int
+    - latency Int
+    - backlog Int
+
+|? severity >= 4
+    "mitigate-now"
+|? severity >= 3
+    "paging"
+|? latency > 420
+    "latency"
+|? backlog > 800
+    "backlog"
+??
+    "steady"

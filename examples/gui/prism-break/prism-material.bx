@@ -1,0 +1,33 @@
+(import /graphics/color)
+(import /graphics/shader-declarations)
+
+(type + PrismGlass (is FillShader)
+  (prop + tint RGBA)
+  (prop + flash Float)
+  (prop + splitter Float)
+  (fn-do + This _
+    (param tint _)
+    (param flash _)
+    (param splitter _)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 fill(float2 p, float2 size, PrismGlassArgs args) {"
+      "    float2 q = abs(p - size * 0.5);"
+      "    float2 h = size * 0.5 - 1.0;"
+      "    float edge = max(max(q.x - h.x, q.y - h.y), (q.x + q.y - h.x - h.y + 5.0) * 0.7071);"
+      "    float aa = max(fwidth(edge), 0.5);"
+      "    float alpha = 1.0 - smoothstep(-aa, aa, edge);"
+      "    float bevel = smoothstep(-3.5, -1.0, edge);"
+      "    float top = 1.0 - p.y / size.y;"
+      "    float streak = exp(-pow((p.x * 0.38 + p.y - size.y * 0.4) / 5.0, 2.0));"
+      "    float3 color = args.tint.rgb * (0.16 + top * 0.28 + streak * 0.28);"
+      "    color += args.tint.rgb * bevel * (0.35 + top * 0.5);"
+      "    color += float3(0.8, 0.9, 1.0) * streak * 0.16;"
+      "    color = mix(color, float3(0.92, 0.98, 1.0), args.flash * 0.85);"
+      "    color += args.splitter * float3(0.05, 0.07, 0.10);"
+      "    return float4(color, alpha);"
+      "}"
+    )
+  )
+)

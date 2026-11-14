@@ -1,0 +1,168 @@
+`benchmark.meta description: Keeps optional, nested-optional, generic-choice, and lookahead stream lowering additive.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+. optional-checksum = match optional-scaling-source()
+    ~ \optional-scaling
+    ?! Panic("optional scaling pattern did not parse")
+. nested-checksum = match nested-scaling-source()
+    ~ \nested-scaling
+    ?! Panic("nested scaling pattern did not parse")
+. choice-checksum = match choice-scaling-source()
+    ~ \choice-scaling
+    ?! Panic("choice scaling pattern did not parse")
+. lookahead-zero = match lookahead-scaling-source()
+    ~ \lookahead-scaling-zero
+    ?! Panic("zero-guard lookahead scaling pattern did not parse")
+. lookahead-one = match lookahead-scaling-source()
+    ~ \lookahead-scaling-one
+    ?! Panic("one-guard lookahead scaling pattern did not parse")
+. lookahead-two = match lookahead-scaling-source()
+    ~ \lookahead-scaling-two
+    ?! Panic("two-guard lookahead scaling pattern did not parse")
+. lookahead-three = match lookahead-scaling-source()
+    ~ \lookahead-scaling-three
+    ?! Panic("three-guard lookahead scaling pattern did not parse")
+. lookahead-four = match lookahead-scaling-source()
+    ~ \lookahead-scaling-four
+    ?! Panic("four-guard lookahead scaling pattern did not parse")
+. lookahead-five = match lookahead-scaling-source()
+    ~ \lookahead-scaling-five
+    ?! Panic("five-guard lookahead scaling pattern did not parse")
+. lookahead-six = match lookahead-scaling-source()
+    ~ \lookahead-scaling-six
+    ?! Panic("six-guard lookahead scaling pattern did not parse")
+. lookahead-low = lookahead-zero + lookahead-one + lookahead-two + lookahead-three
+. lookahead-high = lookahead-four + lookahead-five + lookahead-six
+. checksum = optional-checksum + nested-checksum + choice-checksum + lookahead-low + lookahead-high
+
+-- "bench-result compiler-shape/stream-join-scaling checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ optional-scaling ~ Char
+
+~ "x" a \z? b \z? c \z? d \z? e \z? f \z? g \z? h \z? ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ nested-scaling ~ Char
+
+~ "x" (a \z \n?)? (b \z \n?)? (c \z \n?)? (d \z \n?)? ";"
+    (a?.length ?? 0) + (b?.length ?? 0) + (c?.length ?? 0) + (d?.length ?? 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ choice-scaling ~ Char
+
+~ "x" (\a | \b | \c | \d | \e | \f | \g | \h) p \z q \z r \z s \z t \z u \z v \z w \z ";"
+    p.length + q.length + r.length + s.length + t.length + u.length + v.length + w.length
+
+.. a String ~
+    ~ "1" ","
+
+.. b String ~
+    ~ "2" ","
+
+.. c String ~
+    ~ "3" ","
+
+.. d String ~
+    ~ "4" ","
+
+.. e String ~
+    ~ "5" ","
+
+.. f String ~
+    ~ "6" ","
+
+.. g String ~
+    ~ "7" ","
+
+.. h String ~
+    ~ "8" ","
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-zero ~ Char
+
+~ a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-one ~ Char
+
+~ !"0" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-two ~ Char
+
+~ !"0" !"1" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-three ~ Char
+
+~ !"0" !"1" !"2" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-four ~ Char
+
+~ !"0" !"1" !"2" !"3" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-five ~ Char
+
+~ !"0" !"1" !"2" !"3" !"4" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-six ~ Char
+
+~ !"0" !"1" !"2" !"3" !"4" !"5" a \z b \z c \z d \z e \z f \z g \z h \z ";"
+    optional-total(a, b, c, d, e, f, g, h)
+
+━━━━━━━━━━━━━━━━━━━━
+_ z ~ Char
+
+~ [a-z]+ ","
+
+━━━━━━━━━━━━━━━━━━━━
+_ n ~ Char
+
+~ [0-9]+ ","
+
+━━━━━━━━━━━━━━━━━━━━
+_ do optional-total Size
+    - a String?
+    - b String?
+    - c String?
+    - d String?
+    - e String?
+    - f String?
+    - g String?
+    - h String?
+
+. first = (a?.length ?? 0) + (b?.length ?? 0) + (c?.length ?? 0) + (d?.length ?? 0)
+. second = (e?.length ?? 0) + (f?.length ?? 0) + (g?.length ?? 0) + (h?.length ?? 0)
+= first + second
+
+━━━━━━━━━━━━━━━━━━━━
+_ optional-scaling-source
+
+"xab,ab,ab,ab,ab,ab,ab,ab,;"
+
+━━━━━━━━━━━━━━━━━━━━
+_ nested-scaling-source
+
+"xab,12,ab,12,ab,12,ab,12,;"
+
+━━━━━━━━━━━━━━━━━━━━
+_ choice-scaling-source
+
+"x1,ab,ab,ab,ab,ab,ab,ab,ab,;"
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-scaling-source
+
+"ab,ab,ab,ab,ab,ab,ab,ab,;"

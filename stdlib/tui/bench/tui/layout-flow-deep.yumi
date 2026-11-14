@@ -1,0 +1,52 @@
+`benchmark.meta description: Measures a deeply nested vertical Flow layout tree.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchFlowDeepRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 80, 24)
+
+. parent Box = root
+. deepest Box = root
+for depth in 0 .. < 160
+    . node = BenchFlowDeepNode()
+    markup-append(parent, node)
+    markup-append(node, Label("node-$depth"))
+    parent = node
+    deepest = node
+
+root.markup-batch-queue.checkpoint()
+
+. checksum Size = 0
+for frame in 0 .. < 48
+    root.update-layout()
+    checksum += root.inner-height + root.inner-width + deepest.bounds.y + frame
+
+-- "bench-result tui/layout-flow-deep checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchFlowDeepRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchFlowDeepNode is Box
+
+• This
+    layout = flow-col

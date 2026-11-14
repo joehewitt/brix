@@ -1,0 +1,163 @@
+./bundle-files
+./ios-app-bundle
+./ios-device
+./ios-simulator
+./mac-app-bundle
+/data/json
+/lang/emit/link
+/lang/emit/products
+/lang/target
+/os/file
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ ProgramRun is Tuple
+
+` How a packaged program runs: the command that starts it once it is installed, the app bundle a
+` simulator or device installs first, the executable it was packaged from, and the id its app
+` launches by. A simulator's or device's command is empty, since it is chosen when the program runs.
+
++ command [String]
++ bundle Path?
++ executable Path
++ app-id String?
+
+━━━━━━━━━━━━━━━━━━━━
++ do package-program ProgramRun ?! Error
+    - output String
+    - target Target
+    - product AppProduct?
+    - claims-documents Bool
+
+. run = packaged-run(Path(output), target, product, claims-documents)
+write-run-report(output, run, target)
+= run
+
+━━━━━━━━━━━━━━━━━━━━
+_ do packaged-run ProgramRun ?! Error
+    - executable Path
+    - target Target
+    - product AppProduct?
+    - claims-documents Bool
+
+if target.runner is .host && product
+    . written = write-mac-app-bundle(product, executable, claims-documents)
+    = ProgramRun([written.executable as String], written.path, executable, product.id)
+if target.runner is .host
+    = ProgramRun([executable as String], null, executable, null)
+=? ProgramRun(List'String(), null, executable, null) if !product
+= ProgramRun
+    - List'String()
+    - write-ios-app-bundle(product, executable, target)
+    - executable
+    - product.id
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-program Int ?! Error
+    - run ProgramRun
+    - target Target
+    - arguments [String]
+    - device String?
+
+?! Error("A ${target.name} program does not run on ${host-target().name}; build it with --compile -o PATH and run it on ${target.name}")
+    if target.runner is .host && !target.runs-on-host
+. command = run.command
+if target.runner is .simulator
+    . simulator = chosen-simulator(device)
+    if run.bundle
+        install-simulator-app(simulator, run.bundle)
+        command = simulator-launch-command(simulator, run.app-id!)
+    else
+        command = simulator-spawn-command(simulator, run.executable)
+if target.runner is .device
+    . bundle = run.bundle
+    ?! Error("A program runs on an iOS device only as an app; declare an ${app-class}")
+        if !bundle
+    .. app-class = target.product-class-name!
+    . connected = connected-device(device-work-path(run.executable), device)
+    install-device-app(connected, bundle)
+    command = device-launch-command(connected, run.app-id!)
+. command-arguments = command[1 ...]
+command-arguments ++= arguments
+= run-executable(command[0], command-arguments)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-built-program Int ?! Error
+    - output String
+    - arguments [String]
+    - device String?
+
+. report-path = Path("${output}.run.json")
+?! Error("$output has no run report; build it with --compile -o $output")
+    if !report-path.is-file
+. report = JSON(read-file-text(report-path))
+. target = target-named(json-text("target", report))
+?! Error("$report-path names no target this compiler builds")
+    if !target
+. command [String]
+if target.runner is .host
+    for part in json-items(json-field("run", report))
+        command += json-text-of(part)
+. bundle = json-text("bundle", report)
+. app-id = json-text("app-id", report)
+. run = ProgramRun(command, Path(bundle) if bundle != "", Path(output), app-id if app-id != "")
+= run-program(run, target, arguments, device)
+
+━━━━━━━━━━━━━━━━━━━━
++ do device-records [String] ?! Error
+    - target Target
+    - work Path
+
+. records [String]
+if target.runner is .simulator
+    for simulator in ios-simulators()
+        records += device-record(simulator.udid, simulator.name, simulator.detail)
+else if target.runner is .device
+    for device in ios-devices(work)
+        records += device-record(device.id, device.name, device.detail)
+else
+    ?! Error("A ${target.name} program runs on this machine; --list-devices lists the simulators or devices of an iOS target")
+= records
+
+━━━━━━━━━━━━━━━━━━━━
+_ do device-record String
+    - id String
+    - name String
+    - detail String
+
+. record = Map'String'JSON
+    • "id" id as JSON
+    • "name" name as JSON
+    • "detail" detail as JSON
+= to-json(record)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-run-report ?! Error
+    - output String
+    - run ProgramRun
+    - target Target
+
+. report = Map'String'JSON
+    • "target" target.name as JSON
+. command [JSON]
+if run.command.length != 0
+    for argument in run.command
+        command += argument
+    command[0] = Path(run.command[0]).resolved as String
+else
+    command += executable-path().resolved as String
+    command += "--run"
+    command += Path(output).resolved as String
+    command += "--"
+report["run"] = command
+if run.bundle
+    report["bundle"] = run.bundle.resolved as String
+if run.app-id
+    report["app-id"] = run.app-id
+write-file-atomically(Path("${output}.run.json"), to-json(report))
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-text-of String
+    - value JSON
+
+if value is String then value as String else ""

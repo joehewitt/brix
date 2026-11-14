@@ -1,0 +1,636 @@
+./ast
+./ast-children
+./ast-nodes
+./decl
+./module
+./module-resolver
+./probe-selection
+/core/arena
+/core/array-builder
+/core/atom-pool
+/core/map
+/lang/target
+/stream/aggregate
+
++ ImportDistance is U16
+
+━━━━━━━━━━━━━━━━━━━━
++ Program
+    is Usable'Void
+
++ modules ImmutableArray'Module'ArenaBacking
++ entry-module ModuleId
++ init-order ImmutableArray'U32'ArenaBacking
++ declare-order ImmutableArray'U32'ArenaBacking
+_ atoms AtomPool
+_ index-arena Arena
+_ module-arena Arena
+_ name-ids Map'Atom'U32'ArenaBacking
+_ path-ids Map'Atom'U32'ArenaBacking
+_ module-names Map'Atom'U32'ArenaBacking
+_ bucket-starts ImmutableArray'U32'ArenaBacking
+_ entry-modules ImmutableArray'U32'ArenaBacking
+_ entry-decls ImmutableArray'U32'ArenaBacking
+_ ranks ImmutableArray'U16'ArenaBacking
+_ extension-ranks ImmutableArray'U16'ArenaBacking
+_ extension-key-modules ImmutableArray'U32'ArenaBacking
+_ extension-key-decls ImmutableArray'U32'ArenaBacking
+_ extension-starts ImmutableArray'U32'ArenaBacking
+_ extension-modules ImmutableArray'U32'ArenaBacking
+_ extension-decls ImmutableArray'U32'ArenaBacking
+_ listing ImmutableArray'U16'ArenaBacking
+_ latest-listing ImmutableArray'U32'ArenaBacking
+_ parse-atoms Map'String'Atom'ArenaBacking
+_ atom-ordinals Map'Atom'U32'ArenaBacking
+_ later-ordinals = Map'Atom'U32()
+_ later-keys = Map'Atom'U32()
+_ carried-keys Map'Atom'U32?
+_ derived-names = Map'Atom'Bool()
+_ atom-lock Mutex
++ batch-roots ImmutableArray'U32'ArenaBacking
++ batch-order-starts ImmutableArray'U32'ArenaBacking
++ batch-order-modules ImmutableArray'U32'ArenaBacking
++ probes = ProbeSelection()
++ target = host-target()
++ absent-imports [AbsentImport]
++ feature-gate-starts ImmutableArray'U32'ArenaBacking
++ feature-gates ImmutableArray'U32'ArenaBacking
+_ batch-cases ImmutableArray'U64'ArenaBacking
+_ borrows Bool
+_ shares-atoms Bool
+_ trees-released Bool
+_ released Bool
+
+────────────────────
++ This
+    - atoms AtomPool
+    - index-arena Arena
+    - module-arena Arena
+    - modules ImmutableArray'Module'ArenaBacking
+    - entry-module ModuleId
+    - init-order ImmutableArray'U32'ArenaBacking
+    - declare-order ImmutableArray'U32'ArenaBacking
+    - name-ids Map'Atom'U32'ArenaBacking
+    - path-ids Map'Atom'U32'ArenaBacking
+    - module-names Map'Atom'U32'ArenaBacking
+    - bucket-starts ImmutableArray'U32'ArenaBacking
+    - entry-modules ImmutableArray'U32'ArenaBacking
+    - entry-decls ImmutableArray'U32'ArenaBacking
+    - ranks ImmutableArray'U16'ArenaBacking
+    - extension-ranks ImmutableArray'U16'ArenaBacking
+    - extension-key-modules ImmutableArray'U32'ArenaBacking
+    - extension-key-decls ImmutableArray'U32'ArenaBacking
+    - extension-starts ImmutableArray'U32'ArenaBacking
+    - extension-modules ImmutableArray'U32'ArenaBacking
+    - extension-decls ImmutableArray'U32'ArenaBacking
+    - listing ImmutableArray'U16'ArenaBacking
+    - latest-listing ImmutableArray'U32'ArenaBacking
+    - parse-atoms Map'String'Atom'ArenaBacking
+    - atom-ordinals Map'Atom'U32'ArenaBacking
+    - batch-roots ImmutableArray'U32'ArenaBacking
+    - batch-order-starts ImmutableArray'U32'ArenaBacking
+    - batch-order-modules ImmutableArray'U32'ArenaBacking
+    - batch-cases ImmutableArray'U64'ArenaBacking
+    - feature-gate-starts ImmutableArray'U32'ArenaBacking
+    - feature-gates ImmutableArray'U32'ArenaBacking
+    - borrows Bool
+    - shares-atoms Bool
+    - atom-lock Mutex
+
+────────────────────
++ get is-batch Bool
+
+` Whether the program is a batch of cases, each a root module that starts in a task of its own.
+batch-roots.length != 0
+
+────────────────────
++ do runs-main Bool
+    - module ModuleId
+
+` Whether the statements of a module are a program's main: those of the entry module, or of the
+` root module of each case of a batch.
+if module == entry-module
+    = true
+for root in batch-roots
+    if root == module as U32
+        = true
+= false
+
+────────────────────
++ do shares-case Bool
+    - first ModuleId
+    - second ModuleId
+
+` Whether some case of a batch reaches both of two modules, as each module of a program that is
+` not one reaches every other.
+if batch-roots.length == 0
+    = true
+. words = (batch-roots.length + 63) / 64
+for word in 0 .. < words
+    if (batch-cases[(first as Size) * words + word] /and/ second-cases) != 0
+        = true
+    .. second-cases = batch-cases[(second as Size) * words + word]
+= false
+
+────────────────────
++ do note-derived-names
+
+. live = Map'Atom'Bool()
+for module in modules
+    for decl in module.decls
+        do match? decl
+            | .decl-function(fn)
+                . name = fn.name
+                if name
+                    do match? module.tree.nodes[fn.syntax]
+                        | .node-function-syntax(row)
+                            if row.is-live
+                                live[name] = true
+. found = Map'Atom'Bool()
+for module in modules
+    for decl in module.decls
+        do match? decl
+            | .decl-property(row)
+                . name = row.name
+                if name && row.value != 0 && !row.is-lazy && reaches-live
+                    found[name] = true
+                .. reaches-live = reads-live(module.tree, row.value, live)
+derived-names = found
+
+────────────────────
++ is-derived-name Bool
+    - name Atom
+
+derived-names has name
+
+────────────────────
++ do same-derived-names Bool
+    - other Program
+
+=? false if derived-names.length != other.derived-names.length
+= all(derived-names.keys) • where other.derived-names has each
+
+────────────────────
+_ do reads-live Bool
+    - tree AST
+    - value SyntaxId
+    - live Map'Atom'Bool
+
+for node in tree.subtree-start(value) .. < value + 1
+    do match? tree.nodes[node]
+        | .node-identifier(row)
+            =? true if row.is-tracked || live has row.name
+        | .node-get-expression(row)
+            =? true if row.is-tracked || live has row.name
+        | .node-style-read-expression
+            = true
+        | .node-latest-expression
+            = true
+= false
+
+────────────────────
++ do compiles-probe Bool
+    - module ModuleId
+    - decl DeclId
+    - id SyntaxId
+
+` Whether a probe written in a function of a module compiles (see `ProbeSelection`). Every one
+` written in a function named `inspectable-snapshot`, which writes the snapshot of an object,
+` compiles wherever probes do.
+. snapshots = false
+do match? modules[module].decls[decl]
+    | .decl-function(row)
+        snapshots = row.name != null && row.name.text == "inspectable-snapshot"
+= probes.compiles-node(modules[module].name, modules[module].tree, id, snapshots)
+
+────────────────────
++ do store-atom Atom
+    - text String
+
+` The atom of a text. One the parse made is found without the pool. Typing stores others on many
+` threads at once, so the pool is locked.
+. parsed = parse-atoms[text]
+if parsed
+    = parsed
+use atom-lock
+= atoms.store(text)
+
+────────────────────
++ do atom-ordinal Index
+    - atom Atom
+
+` A number for an atom that no other atom has, and that does not depend on the order modules were
+` parsed in: the atoms the modules made are numbered in the order of their texts, and others in
+` the order they are first numbered, after all of those.
+= numbered(atom, later-ordinals)
+
+────────────────────
++ do atom-key Index
+    - atom Atom
+
+. carried = carried-keys
+if carried
+    use atom-lock
+    . found = carried[atom]
+    =? found if found
+    . made = carried.length
+    carried[atom] = made
+    = made
+= numbered(atom, later-keys)
+
+────────────────────
+_ do numbered Index
+    - atom Atom
+    - later Map'Atom'U32
+
+. ranked = atom-ordinals[atom]
+if ranked
+    = ranked
+use atom-lock
+. found = later[atom]
+=? found if found
+. made = atom-ordinals.length + later.length
+later[atom] = made
+= made
+
+────────────────────
++ do continue-keys
+    - other Program
+
+. carried = Map'Atom'U32()
+. kept = other.carried-keys
+if kept
+    for atom, key in kept
+        carried[atom] = key
+else
+    for atom, ordinal in other.atom-ordinals
+        carried[atom] = ordinal
+    for atom, key in other.later-keys
+        carried[atom] = key
+carried-keys = carried
+
+────────────────────
++ shares-atoms-with Bool
+    - other Program
+
+atoms == other.atoms
+
+────────────────────
++ module-by-path Index?
+    - path String
+
+|? found
+    found
+
+.. found = path-ids[store-atom(path)]
+
+────────────────────
++ module-by-name Index?
+    - name String
+
+|? found
+    found
+
+.. found = module-names[store-atom(name)]
+
+────────────────────
++ sees Bool
+    - caller ModuleId
+    - module ModuleId
+
+` Whether a module can name what another declares: itself, or a module it imports.
+ranks[caller * modules.length + module] != U16.max
+
+────────────────────
++ listed U16
+    - caller ModuleId
+    - module ModuleId
+
+` Where a module comes among those another can name, in the order the reference lists what
+` they declare: the modules it imports first, and itself last. The most there is for a
+` module it cannot name.
+listing[caller * modules.length + module]
+
+────────────────────
++ listed-last U32
+    - caller ModuleId
+    - module ModuleId
+
+` Where a module comes last among those another can name, in the order `listed` follows; the
+` reference looks for a type written by name from the last of these places to the first.
+latest-listing[caller * modules.length + module]
+
+────────────────────
++ lookup Candidates
+    - caller ModuleId
+    - name Atom
+
+?! OutOfBoundsError("Program caller module index out of bounds")
+    if caller >= modules.length
+
+|? !name-id
+    Candidates(this, caller, 0, 0)
+??
+    Candidates(this, caller, bucket-starts[name-id], bucket-starts[name-id + 1])
+
+.. name-id = name-ids[name]
+
+────────────────────
++ do c-constant-text String?
+    - caller ModuleId
+    - name Atom
+
+` The number a constant a C header defines is written as, where a header module the caller
+` imports declares one by the name, behind a minus sign when it is negative. A name read as a
+` constant is that number written with no suffix.
+for candidate in lookup(caller, name)
+    . owner = modules[candidate.module]
+    if owner.name.ends-with(".h")
+        do match? owner.decls[candidate.decl]
+            | .decl-property(property)
+                do match? owner.tree.nodes[property.value]
+                    | .node-integer-syntax(row)
+                        = row.value
+                    | .node-unary-expression(row)
+                        do match? owner.tree.nodes[row.operand]
+                            | .node-integer-syntax(literal)
+                                if row.op == .negative-op
+                                    = "-${literal.value}"
+= null
+
+────────────────────
++ do unseen-declarations [Candidate]
+    - caller ModuleId
+    - name Atom
+
+. found [Candidate]
+if caller >= modules.length
+    = found
+. name-id = name-ids[name]
+if !name-id
+    = found
+. total = modules.length
+for entry in bucket-starts[name-id] .. < bucket-starts[name-id + 1]
+    . module = entry-modules[entry]
+    if ranks[caller * total + module] == U16.max
+        found += Candidate(module, entry-decls[entry], U16.max)
+= found
+
+────────────────────
++ do visible-names [Atom]
+    - caller ModuleId
+
+. found [Atom]
+if caller >= modules.length
+    = found
+. total = modules.length
+for name in name-ids.keys
+    . name-id = name-ids[name]!
+    for entry in bucket-starts[name-id] .. < bucket-starts[name-id + 1]
+        if ranks[caller * total + entry-modules[entry]] != U16.max
+            found += name
+            break
+= found
+
+────────────────────
++ do candidate-after (Size, Candidate?)
+    - found Candidates
+    - last-key Size
+
+` The nearest candidate past the one whose key was last, with its own key. A key is the import
+` distance and then the position among the name's declarations, and no key is zero.
+. total = modules.length
+. best-key = Size.max
+. best-offset = Size.max
+for entry in found.begin .. < found.end
+    . rank = ranks[found.caller * total + entry-modules[entry]]
+    if rank != U16.max
+        . key = (((rank as Size) + 1) /lshift/ 32) /or/ (entry - found.begin)
+        if key < best-key && key > last-key
+            best-key = key
+            best-offset = entry
+. none Candidate?
+if best-offset == Size.max
+    = (last-key, none)
+. found-module = entry-modules[best-offset]
+. found-rank = ranks[found.caller * total + found-module]
+= (best-key, Candidate(found-module, entry-decls[best-offset], found-rank))
+
+────────────────────
++ do extensions-for Extensions
+    - caller ModuleId
+    - module ModuleId
+    - decl DeclId
+
+?! OutOfBoundsError("Program caller module index out of bounds")
+    if caller >= modules.length
+
+for key in 0 .. < extension-key-modules.length
+    if extension-key-modules[key] == module && extension-key-decls[key] == decl
+        = Extensions(this, caller, extension-starts[key], extension-starts[key + 1])
+= Extensions(this, caller, 0, 0)
+
+────────────────────
++ do extension-after (Size, ExtensionRef?)
+    - found Extensions
+    - entry Size
+
+` The first extension at or past an entry that the caller can see, with the entry after it.
+. total = modules.length
+for position in entry .. < found.end
+    . owner = extension-modules[position]
+    if extension-ranks[found.caller * total + owner] != U16.max
+        . extension = extension-decls[position] as DeclId
+        if owner == found.caller || extension-is-public(owner, extension)
+            = (position + 1, ExtensionRef(owner, extension))
+. none ExtensionRef?
+= (found.end, none)
+
+────────────────────
+_ extension-is-public Bool
+    - module ModuleId
+    - decl DeclId
+
+match modules[module].decls[decl]
+    | .decl-extension(row)
+        match row.access
+            | .public-access
+                true
+            ??
+                false
+    ??
+        false
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release-trees
+
+` Frees every module's syntax tree and the name and extension index, which only name
+` resolution reads. Declarations and atoms stay until release.
+if !trees-released
+    if !borrows
+        for module in modules
+            module.release-tree()
+    index-arena.release()
+    trees-released = true
+
+────────────────────
++ do release
+
+if !released
+    release-trees()
+    if !borrows
+        for module in modules
+            module.release()
+        if !shares-atoms
+            atoms.release()
+    module-arena.release()
+    released = true
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionRef is Tuple
+
++ module ModuleId
++ decl DeclId
+
+━━━━━━━━━━━━━━━━━━━━
++ Candidate is Tuple
+
++ module ModuleId
++ decl DeclId
++ rank ImportDistance
+
+━━━━━━━━━━━━━━━━━━━━
++ Candidates is Tuple
+    is CursorIterable'Candidate'Size
+
+` The declarations a name reaches from a module, nearest first. It is a value a loop steps
+` through, so looking a name up allocates nothing.
+
++ program Program
++ caller ModuleId
++ begin Size
++ end Size
+
+────────────────────
++ get initial-iterator-state Size
+
+0
+
+────────────────────
++ next-iterator (Size, Candidate?)
+    - last-key Size
+
+program.candidate-after(this, last-key)
+
+━━━━━━━━━━━━━━━━━━━━
++ Extensions is Tuple
+    is CursorIterable'ExtensionRef'Size
+
+` The extensions of a class that a module can see.
+
++ program Program
++ caller ModuleId
++ begin Size
++ end Size
+
+────────────────────
++ get initial-iterator-state Size
+
+begin
+
+────────────────────
++ next-iterator (Size, ExtensionRef?)
+    - entry Size
+
+program.extension-after(this, entry)
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedDecl is Tuple
+
++ kind DeclKind
++ body SyntaxId
++ syntax SyntaxId
++ subtree SyntaxRange
++ is-generated Bool
++ is-imperative Bool
++ is-main Bool
++ is-content Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe CheckedDecl?
+    - program Program
+    - module ModuleId
+    - decl DeclId
+
+. tree = program.modules[module].tree
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        . imperative = true
+        do match? tree.nodes[fn.syntax]
+            | .node-function-syntax(syntax)
+                imperative = syntax.imperative
+            | .node-getter-syntax(syntax)
+                imperative = syntax.imperative
+            | .node-setter-syntax(syntax)
+                imperative = syntax.imperative
+        if fn.kind == .pipeline-decl
+            imperative = false
+        . is-main = fn.kind == .main-decl
+        = CheckedDecl
+            - fn.kind
+            - fn.body
+            - fn.syntax
+            - fn.subtree
+            - fn.is-generated
+            - imperative
+            - is-main
+            - fn.is-content
+    | .decl-converter(row)
+        do match? tree.nodes[row.syntax]
+            | .node-converter-syntax(node)
+                = described-body(tree, row.syntax, node.body, node.imperative)
+    | .decl-fromverter(row)
+        do match? tree.nodes[row.syntax]
+            | .node-fromverter-syntax(node)
+                = described-body(tree, row.syntax, node.body, node.imperative)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do rule-match SyntaxId
+    - program Program
+    - module ModuleId
+    - decl DeclId
+
+` The stream pattern of a rule a module declares: the body of a function declared over the
+` items of a stream, where the body is that pattern, beside any lazy locals declared for it.
+` None for any other declaration.
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        . tree = program.modules[module].tree
+        do match? tree.nodes[fn.syntax]
+            | .node-function-syntax(syntax)
+                if syntax.pattern != 0 && !fn.is-generated
+                    = tree.stream-statement(fn.body)
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ described-body CheckedDecl
+    - tree AST
+    - syntax SyntaxId
+    - body SyntaxId
+    - imperative Bool
+
+CheckedDecl(.function-decl, body, syntax, subtree, false, imperative, false)
+
+.. start = tree.subtree-start(syntax)
+.. subtree = SyntaxRange(start, syntax - start + 1)

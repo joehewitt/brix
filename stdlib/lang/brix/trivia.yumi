@@ -1,0 +1,418 @@
+./build
+./layout
+/core/table
+/data/source-tree
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
+_ TriviaKind is U8
+
+| code
+| blank
+| comment
+| divider
+| ruler
+| dropped
+
+━━━━━━━━━━━━━━━━━━━━
+_ BrixWoven is Tuple
+
++ slot Size
++ node ImmutableTableRow'SourceNode
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixTrivia
+
+_ store SourceStore
+_ spans BrixSpans
+_ layout BrixLayout
+_ kinds [TriviaKind]
+_ indents [Size]
+_ texts [String]
+_ woven [U32 = [BrixWoven]]
+
+────────────────────
++ This
+    - store
+    - spans
+    - source String
+
+.. layout = BrixLayout(store)
+for line in source.split("\n")
+    scan(line)
+
+────────────────────
++ do weave ImmutableTableRow'SourceNode
+    - root ImmutableTableRow'SourceNode
+
+spans.set(root, 0, kinds.length)
+conceal(root)
+extend(root)
+. gathered = gather(root)
+drop-blanks()
+for index in 0 .. < kinds.length
+    if is-loose(index)
+        plan(gathered, index + 1)
+= settled(gathered)
+
+────────────────────
+_ is-loose Bool
+    - index Size
+
+kinds[index] == TriviaKind.blank || kinds[index] == TriviaKind.comment
+
+────────────────────
+_ is-skipped Bool
+    - index Size
+
+kinds[index] == TriviaKind.blank || kinds[index] == TriviaKind.dropped
+
+────────────────────
+_ do scan
+    - line String
+
+. bytes = line as Byte[]
+. last = bytes.length
+if last > 0 && bytes[last - 1] == 13
+    last -= 1
+. first Size = 0
+while first < last && (bytes[first] == 32 || bytes[first] == 9)
+    first += 1
+indents += first
+if first >= last
+    kinds += TriviaKind.blank
+    texts += ""
+else if bytes[first] == 96
+    . start = first + 1
+    if start < last && bytes[start] == 32
+        start += 1
+    kinds += TriviaKind.comment
+    texts += bytes.slice-string(start .. < last)
+else if trivia-starts-box(bytes, first, last, 149, 140)
+    kinds += TriviaKind.comment
+    texts += bytes.slice-string(first .. < last)
+else if trivia-starts-box(bytes, first, last, 148, 129)
+    kinds += TriviaKind.divider
+    texts += "thick"
+else if trivia-starts-box(bytes, first, last, 148, 128)
+    kinds += TriviaKind.divider
+    texts += "thin"
+else if trivia-starts-box(bytes, first, last, 149, 144)
+    kinds += TriviaKind.ruler
+    texts += ""
+else
+    kinds += TriviaKind.code
+    texts += if trivia-starts-arm(bytes.slice-string(first .. < last)) then "arm" else ""
+
+────────────────────
+_ is-divided Bool
+    - node ImmutableTableRow'SourceNode
+
+store.is-list(node) && start > 0 && start <= kinds.length && kinds[start - 1] == TriviaKind.divider
+
+.. start = spans.start(node)
+
+────────────────────
+_ do extend
+    - node ImmutableTableRow'SourceNode
+
+. items = store.items(node)
+for index in 0 .. < items.length
+    . item = items[index]
+    if is-divided(item)
+        . start = spans.start(item)
+        . end = spans.end(node)
+        . is-followed = false
+        for later in index + 1 .. < items.length
+            . next = items[later]
+            if store.is-list(next) && spans.start(next) > start
+                . first = leading-start(spans.start(next), start)
+                if first < spans.start(next)
+                    drop-above(first, start)
+                end = (orphan-divider(first, start) ?? first) - 1
+                is-followed = true
+                break
+        if is-followed || end > spans.end(item)
+            spans.extend(item, end)
+for item in items
+    if store.is-list(item)
+        extend(item)
+
+────────────────────
+_ do leading-start Size
+    - line Size
+    - floor Size
+
+. first = line
+while first - 1 > floor && kinds[first - 2] == TriviaKind.comment
+    first -= 1
+if follows-rule && first - 2 > floor && is-skipped(first - 2) && is-section-comment(first - 3)
+    first -= 2
+    while first - 1 > floor && is-section-comment(first - 2)
+        first -= 1
+.. follows-rule = first == line || is-dashed-rule(first - 1)
+. above = first
+while above - 1 > floor && is-skipped(above - 2)
+    above -= 1
+if above < first && above - 1 > floor && is-dashed-rule(above - 2)
+    first = above - 1
+if first - 2 > floor && is-skipped(first - 2) && is-generated-rule(first - 3)
+    first -= 2
+= first
+
+────────────────────
+_ do drop-above
+    - first Size
+    - floor Size
+
+. line = first
+while line - 1 > floor && kinds[line - 2] == TriviaKind.blank
+    kinds[line - 2] = TriviaKind.dropped
+    line -= 1
+
+────────────────────
+_ do orphan-divider Size?
+    - first Size
+    - floor Size
+
+. line = first
+while line - 1 > floor && (is-skipped(line - 2) || kinds[line - 2] == TriviaKind.comment)
+    line -= 1
+=? line - 1 if line - 1 > floor && kinds[line - 2] == TriviaKind.divider
+= null
+
+────────────────────
+_ is-dashed-rule Bool
+    - index Size
+
+kinds[index] == TriviaKind.comment && texts[index].starts-with("╌")
+
+────────────────────
+_ is-section-comment Bool
+    - index Size
+
+kinds[index] == TriviaKind.comment && texts[index].starts-with("`")
+
+────────────────────
+_ is-generated-rule Bool
+    - index Size
+
+|? !is-dashed-rule(index)
+    false
+??
+    label.length == 0 || label.starts-with("is ") || label.starts-with("as ")
+
+.. label = "".join(each as String in texts[index] when each != '╌').trim()
+
+────────────────────
+_ do gather ImmutableTableRow'SourceNode
+    - root ImmutableTableRow'SourceNode
+
+. items = store.listed(root)
+. changed = false
+for index in 0 .. < kinds.length
+    . is-thick = kinds[index] == TriviaKind.divider && texts[index] == "thick"
+    if !is-thick || index + 1 >= kinds.length || kinds[index + 1] != TriviaKind.blank
+        continue
+    . opened = index + 1
+    . limit = kinds.length + 1
+    for later in index + 1 .. < kinds.length
+        if kinds[later] == TriviaKind.divider
+            limit = later + 1
+            break
+    . kept = List'(ImmutableTableRow'SourceNode)(items[0])
+    . held = List'(ImmutableTableRow'SourceNode)(store.atom("content"))
+    . slot Size = 0
+    for position in 1 .. < items.length
+        . item = items[position]
+        . start = spans.start(item)
+        if start > opened && start < limit
+            if held.length == 1
+                slot = kept.length
+            held += item
+        else
+            kept += item
+    if held.length > 1
+        . section = store.list(held)
+        spans.set(section, opened, limit - 1)
+        kept.insert(section, slot)
+        items = kept
+        changed = true
+= if changed then store.with-items(root, items) else root
+
+────────────────────
+_ do conceal
+    - node ImmutableTableRow'SourceNode
+
+. first = if is-opaque(node) then spans.start(node) else 0
+if first > 0
+    for line in first .. spans.end(node)
+        if line <= kinds.length && is-loose(line - 1)
+            kinds[line - 1] = TriviaKind.code
+for item in store.items(node)
+    if store.is-list(item)
+        conceal(item)
+
+────────────────────
+_ do drop-blanks
+
+. total = kinds.length
+for index in 0 .. < total
+    if (kinds[index] == TriviaKind.divider || kinds[index] == TriviaKind.ruler) && index + 1 < total
+        . header = index + 1
+        . cursor = header
+        if kinds[header] != TriviaKind.blank
+            cursor = header + 1
+            . depth = indents[header]
+            while cursor < total && kinds[cursor] == TriviaKind.code && (indents[cursor] > depth || texts[cursor] == "arm")
+                cursor += 1
+        while cursor < total && kinds[cursor] == TriviaKind.blank
+            kinds[cursor] = TriviaKind.dropped
+            cursor += 1
+. following = TriviaKind.divider
+. index = total
+while index > 0
+    index -= 1
+    if kinds[index] == TriviaKind.blank
+        if following == TriviaKind.divider || following == TriviaKind.ruler
+            kinds[index] = TriviaKind.dropped
+    else if kinds[index] != TriviaKind.dropped
+        following = kinds[index]
+. is-leading = true
+. follows-blank = false
+for line in 0 .. < total
+    if kinds[line] == TriviaKind.blank
+        if is-leading || follows-blank
+            kinds[line] = TriviaKind.dropped
+        follows-blank = true
+    else if kinds[line] != TriviaKind.dropped
+        is-leading = false
+        follows-blank = false
+
+────────────────────
+_ do plan
+    - root ImmutableTableRow'SourceNode
+    - line Size
+
+. index = line - 1
+. depth = indents[index]
+if kinds[index] == TriviaKind.blank
+    . cursor = index + 1
+    while cursor < kinds.length && is-skipped(cursor)
+        cursor += 1
+    depth = if cursor < kinds.length then indents[cursor] else 0
+. node = root
+. reach = root
+while true
+    . inner ImmutableTableRow'SourceNode? = null
+    for item in store.items(reach)
+        if store.is-list(item) && covers(item, line) && !is-opaque(item)
+            inner = item
+    if !inner
+        break
+    reach = inner
+    if layout.header-count(inner) != null
+        node = inner
+. items = store.items(node)
+. slot = items.length
+for position in 1 .. < items.length
+    if spans.start(items[position]) > line
+        slot = position
+        break
+while slot > 1 && !has-woven(node, slot)
+    . previous = items[slot - 1]
+    . start = spans.start(previous)
+    . is-flat = !store.is-list(previous) || start == 0 || spans.end(previous) <= start
+    if is-flat || (depth <= indents[start - 1] && !brix-is-arm(store, previous))
+        break
+    . deeper = holder-in(previous)
+    if !deeper
+        break
+    node = deeper
+    items = store.items(node)
+    slot = items.length
+=? if kinds[index] == TriviaKind.blank && (slot as Int) < (layout.header-count(node) ?? 0)
+. made = if kinds[index] == TriviaKind.blank then store.blank() else store.comment(texts[index])
+spans.set(made, line, line)
+. held = woven[node.id]
+if held
+    held.append(BrixWoven(slot, made))
+else
+    woven[node.id] = List'BrixWoven(BrixWoven(slot, made))
+
+────────────────────
+_ do has-woven Bool
+    - node ImmutableTableRow'SourceNode
+    - slot Size
+
+. held = woven[node.id]
+=? false if !held
+= some(held) • where each.slot == slot
+
+────────────────────
+_ do settled ImmutableTableRow'SourceNode
+    - node ImmutableTableRow'SourceNode
+
+=? node if !store.is-list(node)
+. held = woven[node.id]
+. items = store.items(node)
+. changed = held != null
+. made [ImmutableTableRow'SourceNode]
+for index in 0 .. < items.length
+    if held
+        for entry in held
+            if entry.slot == index
+                made += entry.node
+    . item = items[index]
+    . next = settled(item)
+    if next.index != item.index
+        changed = true
+    made += next
+if held
+    for entry in held
+        if entry.slot >= items.length
+            made += entry.node
+= if changed then store.with-items(node, made) else node
+
+────────────────────
+_ covers Bool
+    - node ImmutableTableRow'SourceNode
+    - line Size
+
+start > 0 && start < line && line <= spans.end(node)
+
+.. start = spans.start(node)
+
+────────────────────
+_ do holder-in ImmutableTableRow'SourceNode?
+    - node ImmutableTableRow'SourceNode
+
+. current = node
+while store.is-list(current) && !is-opaque(current)
+    =? current if layout.header-count(current) != null
+    . count = store.count(current)
+    =? null if count == 0 || has-woven(current, count)
+    current = store.item(current, count - 1)
+= null
+
+────────────────────
+_ is-opaque Bool
+    - node ImmutableTableRow'SourceNode
+
+store.is-form(node, "paragraph") || store.is-form(node, "str")
+
+━━━━━━━━━━━━━━━━━━━━
+_ trivia-starts-arm Bool
+    - text String
+
+text.starts-with("and ") || text.starts-with("or ")
+
+━━━━━━━━━━━━━━━━━━━━
+_ trivia-starts-box Bool
+    - bytes Byte[]
+    - first Size
+    - last Size
+    - second Byte
+    - third Byte
+
+first + 2 < last && bytes[first] == 226 && bytes[first + 1] == second && bytes[first + 2] == third

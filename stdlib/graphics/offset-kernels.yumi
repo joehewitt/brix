@@ -1,0 +1,609 @@
+./curve-kernels
+./path
+./point
+./primitives
+/math
+
+_ offset-teeny = 0.000001
+_ offset-curve-tolerance = 0.25
+_ offset-recursive-limit = 24
+_ offset-turn-cosine = 0.5
+
+━━━━━━━━━━━━━━━━━━━━
++ OffsetPathWriter
+
++ path Path
++ has-last = false
++ first Point
++ last Point
++ collect-spans = false
++ is-exact = false
++ spans [CurveRangeScalars]
++ origins [CurveRangeScalars]
++ origin CurveRangeScalars
++ sources [CurveRangeScalars]
+
+────────────────────
++ This
+
+.. path = Path()
+
+────────────────────
++ do reset
+
+path = Path()
+has-last = false
+spans.clear()
+origins.clear()
+sources.clear()
+
+────────────────────
++ do originate
+    - source CurveRangeScalars
+
+origin = source
+if collect-spans
+    sources += source
+
+────────────────────
++ do line-to
+    - point Point
+
+if !has-last
+    path.move-to(point)
+    first = point
+    last = point
+    has-last = true
+else if last.distance(point) > offset-teeny
+    if collect-spans
+        . segment-type SegmentType = .segment-type-line
+        spans += CurveRangeScalars()
+            - segment-type
+            - last.x
+            - last.y
+            - last.x
+            - last.y
+            - point.x
+            - point.y
+            - point.x
+            - point.y
+        origins += origin
+    path.line-to(point)
+    last = point
+
+────────────────────
++ do cubic-curve-to
+    - h1 Point
+    - h2 Point
+    - point Point
+
+if !has-last
+    line-to(point)
+    =
+if collect-spans
+    . segment-type SegmentType = .segment-type-cubic
+    spans += CurveRangeScalars()
+        - segment-type
+        - last.x
+        - last.y
+        - h1.x
+        - h1.y
+        - h2.x
+        - h2.y
+        - point.x
+        - point.y
+    origins += origin
+path.cubic-curve-to(h1, h2, point)
+last = point
+
+────────────────────
++ do arc
+    - center Point
+    - radius Length
+    - start-angle Radians
+    - end-angle Radians
+    - ccw Bool
+
+if collect-spans
+    append-arc-cubics(center, radius, start-angle, end-angle, ccw)
+else
+    path.arc(center, radius, start-angle, end-angle, ccw, true)
+    last = Point(center.x + radius * cos(end-angle), center.y + radius * sin(end-angle))
+
+────────────────────
++ do close
+
+path.close()
+if collect-spans && has-last && last.distance(first) > offset-teeny
+    . segment-type SegmentType = .segment-type-line
+    spans += CurveRangeScalars()
+        - segment-type
+        - last.x
+        - last.y
+        - last.x
+        - last.y
+        - first.x
+        - first.y
+        - first.x
+        - first.y
+    origins += origin
+last = if has-last then first else last
+
+────────────────────
+_ do append-arc-cubics
+    - center Point
+    - radius Length
+    - start-angle Radians
+    - end-angle Radians
+    - ccw Bool
+
+. remaining =
+    |? ccw
+        start-angle - end-angle
+    ??
+        end-angle - start-angle
+if remaining < 0
+    remaining = normalize-offset-angle(remaining)
+
+. a1 = start-angle
+. sign Float = if ccw then -1 else 1
+while remaining > 0
+    . amount Float = sign * min(remaining, π / 2)
+    . a2 = a1 + amount
+    append-small-arc-cubic(center, radius, a1, a2)
+    remaining -= abs(amount)
+    a1 = a2
+
+────────────────────
+_ do append-small-arc-cubic
+    - center Point
+    - radius Length
+    - start-angle Radians
+    - end-angle Radians
+
+. a = (end-angle - start-angle) / 2.0
+
+. x4 = radius * cos(a)
+. y4 = radius * sin(a)
+. x1 = x4
+. y1 = -y4
+
+. f = (4.0 / 3.0) * tan(a / 2.0)
+
+. x2 = x1 + f * y4
+. y2 = y1 + f * x4
+. x3 = x2
+. y3 = -y2
+
+. ar = a + start-angle
+. cos-ar = cos(ar)
+. sin-ar = sin(ar)
+
+. hox = center.x + (x2 * cos-ar - y2 * sin-ar)
+. hoy = center.y + (x2 * sin-ar + y2 * cos-ar)
+. hix = center.x + (x3 * cos-ar - y3 * sin-ar)
+. hiy = center.y + (x3 * sin-ar + y3 * cos-ar)
+. ax4 = center.x + (radius * cos(end-angle))
+. ay4 = center.y + (radius * sin(end-angle))
+cubic-curve-to(Point(hox, hoy), Point(hix, hiy), Point(ax4, ay4))
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-offset-cubic-split-inflections
+    - writer OffsetPathWriter
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - distance Length
+    - normal-sign Float
+
+. roots = cubic-inflection-roots(p0, p1, p2, p3)
+. cusp = cubic-cusp-parameter(p0, p1, p2, p3)
+if cusp > offset-teeny && cusp < 1 - offset-teeny
+    roots += cusp
+    roots = sorted-unit-roots(roots)
+. last-t PointOnCurve = 0
+for root in roots
+    if root > last-t + offset-teeny && root < 1 - offset-teeny
+        . piece = cubic-range-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, last-t, root)
+        append-offset-cubic-recursive(writer, piece, distance, normal-sign, 0)
+        last-t = root
+
+if last-t < 1
+    . piece = cubic-range-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, last-t, 1)
+    append-offset-cubic-recursive(writer, piece, distance, normal-sign, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-quadratic-as-cubic
+    - writer OffsetPathWriter
+    - p0 Point
+    - control Point
+    - p2 Point
+
+if writer.has-last && writer.last.distance(p0) > offset-teeny
+    writer.line-to(p0)
+else if !writer.has-last
+    writer.line-to(p0)
+
+if p0.distance(p2) <= offset-teeny
+    writer.line-to(p2)
+    =
+. c1 = p0 + (control - p0) * (2.0 / 3.0)
+. c2 = p2 + (control - p2) * (2.0 / 3.0)
+writer.cubic-curve-to(c1, c2, p2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-square-join
+    - writer OffsetPathWriter
+    - pivot Point
+    - before-normal Point
+    - after-normal Point
+    - before-tangent Point
+    - after-tangent Point
+    - distance Length
+    - is-line Bool
+
+. extent = square-join-extent(before-normal, after-normal, distance)
+writer.line-to(pivot + before-normal * distance + before-tangent * extent)
+writer.line-to(pivot + after-normal * distance - after-tangent * extent)
+if !is-line
+    writer.line-to(pivot + after-normal * distance)
+
+━━━━━━━━━━━━━━━━━━━━
++ square-join-extent Length
+    - before-normal Point
+    - after-normal Point
+    - distance Length
+
+abs(distance) * tan(turn / 4)
+
+.. turn = atan2(abs(before-normal.cross(after-normal)), before-normal.dot(after-normal))
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-cubic-point
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t PointOnCurve
+    - distance Length
+    - normal-sign Float
+
+point + normal * distance
+
+.. point = cubic-point(p0, p1, p2, p3, t)
+.. tangent = cubic-tangent-at(p0, p1, p2, p3, t)
+.. normal = offset-unit-normal(tangent, normal-sign)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-point
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t PointOnCurve
+
+Point(p.x, p.y)
+
+.. p = cubic-evaluate-xy(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, t)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-tangent-at
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t PointOnCurve
+
+|? tangent.length > offset-teeny
+    unit-vector(tangent)
+|? t < 0.5
+    first-nonzero-unit(p1 - p0, p2 - p0, p3 - p0)
+??
+    first-nonzero-unit(p3 - p2, p3 - p1, p3 - p0)
+
+.. d = cubic-derivative-xy(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, t)
+.. tangent = Point(d.x, d.y)
+
+━━━━━━━━━━━━━━━━━━━━
++ unit-vector
+    - point Point
+
+|? length <= offset-teeny
+    Point(1, 0)
+??
+    point / length
+
+.. length = point.length
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-unit-normal
+    - tangent Point
+    - normal-sign Float
+
+Point(tangent.y * normal-sign, -tangent.x * normal-sign)
+
+━━━━━━━━━━━━━━━━━━━━
++ stroke-unit-normal
+    - tangent Point
+    - normal-sign Float
+
+offset-unit-normal(tangent, normal-sign)
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-is-point-like
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+handles-near && p0.distance(p3) <= offset-teeny
+
+.. handles-near = p0.distance(p1) <= offset-teeny && p0.distance(p2) <= offset-teeny
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-is-line-like
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+|? p0.distance(p3) <= offset-teeny
+    cubic-is-point-like(p0, p1, p2, p3)
+??
+    p1-on-chord && point-line-distance(p2, p0, p3) <= offset-curve-tolerance
+
+.. p1-on-chord = point-line-distance(p1, p0, p3) <= offset-curve-tolerance
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-is-chord-like
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+|? p0.distance(p3) <= offset-teeny
+    cubic-is-point-like(p0, p1, p2, p3)
+|? point-segment-distance(p1, p0, p3) <= offset-curve-tolerance
+    point-segment-distance(p2, p0, p3) <= offset-curve-tolerance
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
++ cubic-inflection-roots
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+sorted-unit-roots(roots)
+
+.. cx = cubic-coefficients-1d(p0.x, p1.x, p2.x, p3.x)
+.. cy = cubic-coefficients-1d(p0.y, p1.y, p2.y, p3.y)
+.. a = Point(cx.a, cy.a)
+.. b = Point(cx.b, cy.b)
+.. c = Point(cx.c, cy.c)
+.. roots = quadratic-roots(-3.0 * a.cross(b), 3.0 * c.cross(a), c.cross(b), 0.000001)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cubic-cusp-parameter
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+. cx = cubic-coefficients-1d(p0.x, p1.x, p2.x, p3.x)
+. cy = cubic-coefficients-1d(p0.y, p1.y, p2.y, p3.y)
+. xroots = quadratic-roots(3.0 * cx.a, 2.0 * cx.b, cx.c, 0.000001)
+for root in xroots
+    if root > offset-teeny && root < 1 - offset-teeny
+        . dy = (3.0 * cy.a * root + 2.0 * cy.b) * root + cy.c
+        if abs(dy) <= 0.0001
+            = root
+
+. yroots = quadratic-roots(3.0 * cy.a, 2.0 * cy.b, cy.c, 0.000001)
+for root in yroots
+    if root > offset-teeny && root < 1 - offset-teeny
+        . dx = (3.0 * cx.a * root + 2.0 * cx.b) * root + cx.c
+        if abs(dx) <= 0.0001
+            = root
+
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
++ point-line-distance Length
+    - point Point
+    - line-start Point
+    - line-end Point
+
+|? length <= offset-teeny
+    point.distance(line-start)
+??
+    abs((point - line-start).cross(line)) / length
+
+.. line = line-end - line-start
+.. length = line.length
+
+━━━━━━━━━━━━━━━━━━━━
++ point-segment-distance Length
+    - point Point
+    - start Point
+    - end Point
+
+point.distance(segment-foot(point, start, end))
+
+━━━━━━━━━━━━━━━━━━━━
++ segment-foot
+    - point Point
+    - start Point
+    - end Point
+
+|? length2 <= offset-teeny
+    start
+|? t < 0
+    start
+|? t > 1
+    end
+??
+    start + segment * t
+
+.. segment = end - start
+.. length2 = segment.x * segment.x + segment.y * segment.y
+.. t = ((point - start).dot(segment)) / length2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-cubic-recursive
+    - writer OffsetPathWriter
+    - curve CurveRangeScalars
+    - distance Length
+    - normal-sign Float
+    - depth Int
+
+. p0 = Point(curve.x1, curve.y1)
+. p1 = Point(curve.hox, curve.hoy)
+. p2 = Point(curve.hix, curve.hiy)
+. p3 = Point(curve.x2, curve.y2)
+
+. q0 = offset-cubic-point(p0, p1, p2, p3, 0, distance, normal-sign)
+. q2 = offset-cubic-point(p0, p1, p2, p3, 1, distance, normal-sign)
+. mid = offset-cubic-point(p0, p1, p2, p3, 0.5, distance, normal-sign)
+. q1 = mid * 2 - (q0 + q2) * 0.5
+. q25 = quadratic-point(q0, q1, q2, 0.25)
+. q75 = quadratic-point(q0, q1, q2, 0.75)
+. o25 = offset-cubic-point(p0, p1, p2, p3, 0.25, distance, normal-sign)
+. o75 = offset-cubic-point(p0, p1, p2, p3, 0.75, distance, normal-sign)
+. error = max(q25.distance(o25), q75.distance(o75))
+. fits = error <= offset-curve-tolerance
+. settled = fits && !(writer.is-exact && cubic-turns-sharply(p0, p1, p2, p3))
+
+if settled || depth >= offset-recursive-limit || cubic-is-point-like(p0, p1, p2, p3)
+    //graphics.offset.curve-pieces ++
+    if writer.is-exact
+        append-offset-swing(writer, p0, q0, distance, normal-sign)
+    writer.originate(curve)
+    append-quadratic-as-cubic(writer, q0, q1, q2)
+    =
+//graphics.offset.curve-splits ++
+. split = cubic-subdivide-scalars(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, 0.5)
+append-offset-cubic-recursive(writer, split.left, distance, normal-sign, depth + 1)
+append-offset-cubic-recursive(writer, split.right, distance, normal-sign, depth + 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-offset-swing
+    - writer OffsetPathWriter
+    - pivot Point
+    - target Point
+    - distance Length
+    - normal-sign Float
+
+=? if !writer.has-last
+
+. last = writer.last
+=? if last.distance(target) <= offset-curve-tolerance
+=? if abs(last.distance(pivot) - abs(distance)) > offset-curve-tolerance
+
+. start = last.angle(pivot)
+. end = target.angle(pivot)
+. sweep = normalize-offset-angle(end - start)
+. ccw = sweep > π
+if abs(sweep - π) <= offset-curve-tolerance / abs(distance)
+    ccw = distance * normal-sign < 0
+
+writer.origin = CurveRangeScalars()
+    - .segment-type-line
+    - pivot.x
+    - pivot.y
+    - pivot.x
+    - pivot.y
+    - pivot.x
+    - pivot.y
+    - pivot.x
+    - pivot.y
+writer.arc(pivot, abs(distance), start, end, ccw)
+
+━━━━━━━━━━━━━━━━━━━━
+_ cubic-turns-sharply
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+
+start.dot(end) < offset-turn-cosine
+
+.. start = cubic-tangent-at(p0, p1, p2, p3, 0)
+.. end = cubic-tangent-at(p0, p1, p2, p3, 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ first-nonzero-unit
+    - a Point
+    - b Point
+    - c Point
+
+|? a.length > offset-teeny
+    unit-vector(a)
+|? b.length > offset-teeny
+    unit-vector(b)
+|? c.length > offset-teeny
+    unit-vector(c)
+??
+    Point(1, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ quadratic-point
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - t PointOnCurve
+
+p0 * (u * u) + p1 * (2 * u * t) + p2 * (t * t)
+
+.. u = 1 - t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do quadratic-roots
+    - a Float
+    - b Float
+    - c Float
+    - epsilon Float
+
+. roots [PointOnCurve]
+if abs(a) < epsilon
+    if abs(b) >= epsilon
+        roots += -c / b
+    = roots
+
+. q = b * b - 4.0 * a * c
+if q < 0
+    = roots
+
+. sqrt-q = sqrt(q)
+roots += (-b + sqrt-q) / (2.0 * a)
+if sqrt-q > epsilon
+    roots += (-b - sqrt-q) / (2.0 * a)
+= roots
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sorted-unit-roots
+    - roots [PointOnCurve]
+
+. out [PointOnCurve]
+for root in roots
+    if root > offset-teeny && root < 1 - offset-teeny
+        if !out.length
+            out += root
+        else if root < out[0] - offset-teeny
+            out.insert(root, 0)
+        else if root > out[out.length - 1] + offset-teeny
+            out += root
+= out
+
+━━━━━━━━━━━━━━━━━━━━
+_ do normalize-offset-angle
+    - angle Radians
+
+while angle < 0
+    angle += π * 2
+while angle >= π * 2
+    angle -= π * 2
+
+= angle

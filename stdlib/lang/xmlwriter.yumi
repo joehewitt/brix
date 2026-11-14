@@ -1,0 +1,88 @@
+
+━━━━━━━━━━━━━━━━━━━━
++ XMLWriter
+
+_ indent = 0
+_ lines [String]
+
+────────────────────
++ do tag
+    - node XML
+
+if node.node-name
+    write-line
+        * "<$node.node-name"
+        ** " ${each.key}=\"${each.value}\"" in node.attrs
+        * if node.children then ">" else "/>"
+        |> join
+    indent += 1
+
+for child in node.children
+    this.tag(child)
+
+if node.node-name
+    indent -= 1
+    if node.children
+        write-line
+            "</$node.node-name>"
+
+────────────────────
++ render
+
+"\n".join(lines)
+
+────────────────────
++ do write-line
+    - line String
+
+lines += indentation + line
+    .. indentation = "    " * indent
+
+━━━━━━━━━━━━━━━━━━━━
++ XML
+
++ node-name String
++ attrs [KeyValuePair'String'String]
++ children [This]
+
+────────────────────
++ This
+    - node-name String = ""
+
+────────────────────
++ do to String
+
+. writer XMLWriter
+writer.tag(this)
+= writer.render()
+
+────────────────────
++ do this += child This?
+
+if child
+    children += child
+
+────────────────────
++ do this ++= kids <This>
+
+for kid in kids
+    children += kid
+
+────────────────────
++ do this ++= kids <This>?
+
+if kids
+    for kid in kids
+        children += kid
+
+────────────────────
++ do this += kv KeyValuePair'String'String?
+
+if kv
+    attrs += kv
+
+────────────────────
++ do this += kv KeyValuePair'String''Value?
+
+if kv
+    attrs += (kv.key, "${kv.value}")

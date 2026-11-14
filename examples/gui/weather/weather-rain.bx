@@ -1,0 +1,109 @@
+(import /graphics/color)
+(import /graphics/shader-declarations)
+
+(type + RainDrops (is BackdropShader)
+  (prop + wet F64)
+  (prop + highlight F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param wet _ (= 0))
+    (param highlight _ (= 0.5))
+    (= frame-rate 60)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float rainHash(float2 p) {"
+      "    return fract(sin(dot(p, float2(91.7, 247.3))) * 43758.5453);"
+      "}"
+      (blank)
+      "float2 rainHash2(float2 p) {"
+      "    return fract(sin(float2(dot(p, float2(127.1, 311.7)), dot(p, float2(269.5, 183.3)))) * 43758.5453);"
+      "}"
+      (blank)
+      "float rainPath(float y, float seed, float lap) {"
+      "    return sin(y * 0.031 + seed * 20.0 + lap * 1.7) * 5.0 + sin(y * 0.0113 + lap * 3.1 + seed * 7.0) * 6.0;"
+      "}"
+      (blank)
+      "float4 backdrop(float2 position, ShaderLayer layer, RainDropsArgs args) {"
+      "    float4 pane = layer.sample(position);"
+      "    if (args.wet <= 0.004) {"
+      "        return pane;"
+      "    }"
+      "    float t = args.time;"
+      "    float2 low = float2(0.5);"
+      "    float2 high = layer.size - 0.5;"
+      "    float2 lens = float2(0.0);"
+      "    float size = 1.0;"
+      "    float bead = 0.0;"
+      "    float trail = 0.0;"
+      (blank)
+      "    float2 grid = position / 19.0;"
+      "    float2 cell = floor(grid);"
+      "    float2 seed = rainHash2(cell);"
+      "    float life = fract(t * (0.02 + seed.x * 0.03) + seed.y * 5.0);"
+      "    float grown = smoothstep(0.0, 0.1, life) * (1.0 - smoothstep(0.9, 1.0, life));"
+      "    float beadRadius = (0.09 + 0.17 * fract(seed.y * 7.3)) * grown * (seed.x < args.wet * 0.85 ? 1.0 : 0.0);"
+      "    float2 beadOffset = grid - (cell + 0.5 + (seed - 0.5) * 0.45);"
+      "    if (beadRadius > 0.0) {"
+      "        bead = 1.0 - smoothstep(beadRadius * 0.7, beadRadius, length(beadOffset));"
+      "        lens = beadOffset * 19.0;"
+      "        size = beadRadius * 19.0;"
+      "    }"
+      (blank)
+      "    float2 wide = position / 43.0 + float2(0.37, 0.61);"
+      "    float2 wideCell = floor(wide);"
+      "    float2 wideSeed = rainHash2(wideCell + 71.0);"
+      "    float wideLife = fract(t * (0.012 + wideSeed.x * 0.02) + wideSeed.y * 3.0);"
+      "    float wideGrown = smoothstep(0.0, 0.08, wideLife) * (1.0 - smoothstep(0.92, 1.0, wideLife));"
+      "    float wideRadius = (0.1 + 0.1 * fract(wideSeed.y * 5.1)) * wideGrown * (wideSeed.x < args.wet * 0.45 ? 1.0 : 0.0);"
+      "    float2 wideOffset = wide - (wideCell + 0.5 + (wideSeed - 0.5) * 0.5);"
+      "    wideOffset.y *= wideOffset.y < 0.0 ? 0.8 : 1.0;"
+      "    if (wideRadius > 0.0) {"
+      "        float wideBead = 1.0 - smoothstep(wideRadius * 0.75, wideRadius, length(wideOffset));"
+      "        if (wideBead > bead) {"
+      "            bead = wideBead;"
+      "            lens = wideOffset * 43.0;"
+      "            size = wideRadius * 43.0;"
+      "        }"
+      "    }"
+      (blank)
+      "    float lane = 52.0;"
+      "    float column = floor(position.x / lane);"
+      "    for (int side = -1; side <= 1; side++) {"
+      "        float index = column + float(side);"
+      "        float pick = rainHash(float2(index, 3.0));"
+      "        if (pick >= args.wet * 0.7) {"
+      "            continue;"
+      "        }"
+      "        float cycle = t * (0.045 + 0.06 * fract(pick * 31.7)) + pick * 13.0;"
+      "        float lap = floor(cycle);"
+      "        float along = fract(cycle);"
+      "        float y = (along + 0.035 * sin(along * 31.0 + pick * 6.0)) * (layer.size.y + 200.0) - 100.0;"
+      "        float base = (index + 0.5) * lane + (fract(pick * 91.3 + lap * 0.37) - 0.5) * lane * 0.4;"
+      "        float radius = 4.5 + 4.0 * fract(pick * 5.3 + lap * 0.61);"
+      "        float2 d = position - float2(base + rainPath(y, pick, lap), y);"
+      "        float2 drop = float2(d.x, d.y < 0.0 ? d.y * 0.6 : d.y);"
+      "        float mask = 1.0 - smoothstep(radius * 0.72, radius, length(drop));"
+      "        if (mask > bead) {"
+      "            bead = mask;"
+      "            lens = drop;"
+      "            size = radius;"
+      "        }"
+      "        float behind = y - position.y;"
+      "        if (behind > 0.0) {"
+      "            float across = abs(position.x - (base + rainPath(position.y, pick, lap)));"
+      "            trail = max(trail, (1.0 - smoothstep(radius * 0.35, radius * 0.85, across)) * exp(-behind / 140.0));"
+      "        }"
+      "    }"
+      (blank)
+      "    float3 wet = pane.rgb * (1.0 - trail * 0.12);"
+      "    float2 normal = lens / max(size, 0.001);"
+      "    float3 clear = layer.sample(clamp(position - lens * 1.75, low, high)).rgb;"
+      "    clear *= 1.0 - smoothstep(0.5, 1.0, length(normal)) * 0.34 + normal.y * 0.2;"
+      "    float glint = args.highlight * (0.2 + 0.8 * saturate(dot(pane.rgb, float3(0.3, 0.5, 0.2)) * 4.0));"
+      "    clear += (1.0 - smoothstep(0.0, 0.3, length(normal - float2(-0.38, -0.42)))) * glint;"
+      "    return float4(mix(wet, clear, bead), pane.a);"
+      "}"
+    )
+  )
+)

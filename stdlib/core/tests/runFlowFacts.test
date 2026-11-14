@@ -1,0 +1,336 @@
+====
+Compiler flow facts
+====
+:====
+# Arena handles are ordinary copied arguments.
+
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+-- borrow-arena(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ do borrow-arena U32
+    - arena Arena
+
+. value = arena.allocate'U32(1)
+value[0] = 42u32
+= value[0]
+
+:----
+
+42
+;====
+:====
+# Arena handles may be copied into aliases.
+
+/core/arena
+
+. arena = Arena()
+. alias = arena
+. value = alias.allocate'U32(1)
+value[0] = 17u32
+-- value[0]
+alias.release()
+arena.release()
+
+:----
+
+17
+;====
+:====
+# Arena handles may be returned, reassigned, and ignored without ownership flow facts.
+
+/core/arena
+
+. arena = make-arena(21u32)
+. cleanup = arena
+. first = arena.allocate'U32(1)
+first[0] = 22u32
+-- first[0]
+arena = Arena()
+. second = arena.allocate'U32(1)
+second[0] = 23u32
+-- second[0]
+ignored-arena()
+cleanup.release()
+arena.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-arena Arena
+    - value U32
+
+. arena = Arena()
+. stored = arena.allocate'U32(1)
+stored[0] = value
+= arena
+
+━━━━━━━━━━━━━━━━━━━━
++ do ignored-arena Arena
+
+= Arena()
+
+:----
+
+22
+23
+;====
+:====
+# A copied Arena argument may explicitly reset its caller's storage.
+
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+-- borrow-and-reset(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ do borrow-and-reset Size
+    - arena Arena
+
+arena.reset()
+= arena.state
+
+:----
+
+1
+;====
+:====
+# Arena allocation pointers may be returned from helpers.
+
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+. returned = returned-pointer(arena)
+-- returned[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ do returned-pointer CPointer'U32
+    - arena Arena
+
+. result = arena.allocate'U32(1)
+result[0] = 1u32
+= result
+
+:----
+
+1
+;====
+:====
+# Arena pointer returns require no unique input provenance.
+
+/core/arena
+
+. first = Arena()
+. second = Arena()
+. returned = ambiguous-pointer(first, second)
+-- returned[0]
+first.release()
+second.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ do ambiguous-pointer CPointer'U32
+    - first Arena
+    - second Arena
+
+. result = first.allocate'U32(1)
+result[0] = 1u32
+= result
+
+:----
+
+1
+;====
+:====
+# A function may use copied and locally created Arena handles independently.
+
+/core/arena
+
+. borrowed = Arena()
+do finally
+    borrowed.release()
+-- local-owner-lifecycle(borrowed)
+
+━━━━━━━━━━━━━━━━━━━━
++ do local-owner-lifecycle U32
+    - borrowed Arena
+
+. local = Arena()
+do finally
+    local.release()
+local.reset()
+. result = borrowed.allocate'U32(1)
+result[0] = 9u32
+= result[0]
+
+:----
+
+9
+;====
+:====
+# Arena allocation pointers may be nested in storage owned by the same Arena.
+
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+. item = arena.allocate'U32(1)
+item[0] = 7u32
+. holder = arena.allocate'ArenaHolder(1)
+holder[0] = ArenaHolder(item)
+-- holder[0].item[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaHolder is Tuple
+
++ item CPointer'U32
+
+:----
+
+7
+;====
+:====
+# Cross-Arena allocation pointers are legal pointer-free payload.
+
+/core/arena
+
+. first = Arena()
+. second = Arena()
+. item = second.allocate'U32(1)
+item[0] = 7u32
+. holder = first.allocate'ArenaHolder(1)
+holder[0] = ArenaHolder(item)
+-- holder[0].item[0]
+first.release()
+-- item[0]
+second.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaHolder is Tuple
+
++ item CPointer'U32
+
+:----
+
+7
+7
+;====
+:====
+# Slot reuse changes the incarnation, so releasing a stale alias cannot affect its replacement.
+
+/core/arena
+
+. original = Arena()
+. alias = original
+original.release()
+. replacement = Arena()
+alias.release()
+. value = replacement.allocate'U32(1)
+value[0] = 2u32
+-- value[0]
+replacement.release()
+
+:----
+
+2
+;====
+
+:====
+
+. name Atom? = "name" as Atom
+. key Atom? = "key" as Atom
+if name && name != key
+    -- name.text
+
+:----
+
+name
+;====
+
+:====
+
+. owner = Owner()
+owner.test()
+-- "published"
+
+━━━━━━━━━━━━━━━━━━━━
++ Owner
+
+_ target Target? = Target()
+
+────────────────────
++ do test
+
+if target
+    target.changed <- true
+
+━━━━━━━━━━━━━━━━━━━━
++ Target
+
++ event changed Bool
+
+:----
+
+published
+;====
+
+:====
+
+. owner = Owner()
+owner.test()
+-- "released"
+
+━━━━━━━━━━━━━━━━━━━━
++ Owner
+
+_ target Target? = Target()
+
+────────────────────
++ do test
+
+if target
+    target.messages[1].release()
+
+━━━━━━━━━━━━━━━━━━━━
++ Target
+
++ event messages Int keyed by U64
+
+:----
+
+released
+;====
+
+:====
+
+. owner = Owner()
+if false
+    owner.test()
+-- "rekeyed"
+
+━━━━━━━━━━━━━━━━━━━━
++ Owner
+
+_ target Target? = Target()
+
+────────────────────
++ do test
+
+if target
+    target.messages[1].rekey(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Target
+
++ event messages Int keyed by U64
+
+:----
+
+rekeyed
+;====

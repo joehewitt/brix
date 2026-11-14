@@ -1,0 +1,93 @@
+/YuEvents/YuEvents.h
+
+_ mach-parcel-port-limit I32 = 8
+_ mach-parcel-byte-limit I32 = 256
+
+━━━━━━━━━━━━━━━━━━━━
++ MachParcel is Tuple
+
++ sender I32
++ ports [U32]
++ bytes Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
++ MachRendezvous
+    is Closable
+
++ name String
++ port U32
+
+────────────────────
++ This ?! IOError
+    - name String
+
+. checked-in = C:yumiMachRendezvousCheckIn(name)
+?! IOError("Unable to check in the Mach rendezvous $name")
+    if checked-in == 0
+= This(name, checked-in)
+
+────────────────────
+_ This
+    - name
+    - port
+
+────────────────────
++ do receive MachParcel?
+
+=? null if port == 0
+. rights = U32[mach-parcel-port-limit]
+. bytes = Byte[mach-parcel-byte-limit]
+. counts = I32[3]
+=? null if !C:yumiMachReceiveParcel(port, rights, mach-parcel-port-limit, bytes, mach-parcel-byte-limit, counts)
+. ports [U32]
+for index in 0 .. < counts[0]
+    ports += rights[index]
+= MachParcel(counts[2], ports, bytes[0 .. < counts[1]])
+
+────────────────────
++ do close
+
+=? if port == 0
+C:yumiMachRendezvousClose(port)
+port = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ MachPort
+    is Closable
+
++ port U32
+
+────────────────────
++ This ?! IOError
+    - name String
+
+. found = C:yumiMachRendezvousLookUp(name)
+?! IOError("Unable to find the Mach rendezvous $name")
+    if found == 0
+= This(found)
+
+────────────────────
+_ This
+    - port
+
+────────────────────
++ do send Bool
+    - rights [U32]
+    - data CPointer'Void
+    - size Size
+
+=? false if port == 0
+= C:yumiMachSendParcel(port, rights.buffer-pointer, rights.length, data, size)
+
+────────────────────
++ do close
+
+=? if port == 0
+C:yumiMachPortRelease(port)
+port = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do release-mach-right
+    - port U32
+
+C:yumiMachPortRelease(port)

@@ -1,0 +1,530 @@
+/core/arena
+/core/table
+/lang/ast/ast-nodes
+/lang/ast/module
+/lang/backend/mir
+/lang/check/types
+/lang/emit/layouts
+/lang/emit/program-tables
+/lang/emit/string-header
+/string.h
+
++ ValueId is U32
++ IRBlockId is U32
++ ConstantId is U32
++ LocalId is U32
++ Operand is U32
+
++ no-block IRBlockId = U32.max
+
+_ operand-kind-shift U32 = 28
+_ operand-payload-mask U32 = 0x0fffffff
+
++ may-panic-dependency U32 = 1
++ generator-dependency U32 = 2
+
++ callee-kind-mask U32 = 0xff
++ checked-call-flag U32 = 0x100
++ stack-map-call-flag U32 = 0x200
++ managed-store-flag U32 = 0x80000000
+
+━━━━━━━━━━━━━━━━━━━━
++ OperandKind is U32
+
+| operand-void = 0
+| operand-value = 1
+| operand-number = 2
+| operand-constant = 4
+| operand-symbol = 5
+| operand-argument = 6
+| operand-environment = 7
+| operand-panic-signal = 8
+| operand-block = 9
+| operand-result = 10
+| operand-descriptor = 11
+| operand-buffer-descriptor = 12
+
+━━━━━━━━━━━━━━━━━━━━
++ IROp is U32
+
+| op-call-void = 0
+| op-return = 1
+| op-call = 2
+| op-jump = 3
+| op-branch = 4
+| op-phi = 5
+| op-arithmetic = 6
+| op-bitwise = 7
+| op-num-cast = 8
+| op-load = 9
+| op-store = 10
+| op-address = 11
+| op-frame = 12
+| op-copy = 13
+| op-zero = 14
+| op-load-task-panic = 15
+| op-load-panic-signal = 16
+| op-negate = 17
+| op-bitwise-not = 18
+| op-compare = 19
+| op-load-local = 20
+| op-store-local = 21
+| op-count-leading-zeros = 22
+| op-local-address = 23
+| op-load-task-word = 24
+| op-float-math = 25
+| op-switch = 26
+| op-yield = 27
+| op-inlined-name = 28
+| op-load-acquire = 29
+| op-store-release = 30
+
+━━━━━━━━━━━━━━━━━━━━
++ ArithmeticOp is U32
+
+| arithmetic-add = 0
+| arithmetic-subtract = 1
+| arithmetic-multiply = 2
+| arithmetic-divide = 3
+| arithmetic-remainder = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ FloatMath is U32
+
+| float-sqrt = 0
+| float-abs = 1
+| float-min = 2
+| float-max = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ BitwiseOp is U32
+
+| bitwise-and = 0
+| bitwise-or = 1
+| bitwise-xor = 2
+| bitwise-shift-left = 3
+| bitwise-shift-right = 4
+| bitwise-shift-right-zero = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ ComparePredicate is U32
+
+| compare-equal = 0
+| compare-not-equal = 1
+| compare-less = 2
+| compare-less-equal = 3
+| compare-greater = 4
+| compare-greater-equal = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ ReturnKind is U32
+
+| return-normal = 0
+| return-panic = 1
+| return-error = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ CalleeKind is U32
+
+| callee-function = 0
+| callee-runtime = 1
+| callee-c = 2
+| callee-value = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ IRConstantKind is U32
+
+| constant-string = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ IRInstruction is Struct
+
+` A row of a function's body; its index is the id of the value it makes. `layout` is the
+` layout of that value: a scalar's machine kind, or a struct, whose value is its address.
+` `type` is the sealed type the value has in the source, when it has one. `aux` is the op's
+` own parameter:
+` - a call: the kind of its callee, whether a panic target is its last operand, and whether
+`   the call records the stack of its caller for the collector;
+` - arithmetic, bitwise: the operator;
+` - compare: the predicate. The operands' layout says how they are compared;
+` - load, address: the byte offset from the base;
+` - store: the byte offset, and whether the store takes a write barrier;
+` - copy, zero, frame: the layout copied, cleared or reserved, with the barrier flag;
+` - load-local, store-local, local-address: the local read, written, or whose address it is;
+` - load-task-word: the byte offset in the task's context of the word read;
+` - float-math: the function of floats it computes;
+` - return: whether it returns a panic.
+` `line` and `column` count from one, and are zero for a row no source stands behind. `module`
+` is the module whose file holds that source, where it is not the function's.
+
++ op IROp
++ block IRBlockId
++ layout LayoutId
++ type TypeId
++ syntax SyntaxId
++ line U32
++ column U32
++ operands Span
++ aux U32
++ module ModuleId = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ IRBlock is Struct
+
+` A contiguous range of instructions that ends in a terminator. A block is reserved when the
+` shape that jumps to it begins, and its range starts when its turn comes.
+
++ instructions Span
+
+━━━━━━━━━━━━━━━━━━━━
++ IRLocal is Struct
+
+` A cell of the function's frame that holds one value and is read and written whole: a local
+` the source declares, or one the compiler keeps. `layout` is how its value is held.
+` `address-taken` says something has the cell's address, so its value must stay in memory.
+` `filled` says a call given its address fills it, as a rule's function fills where it ended.
+
++ layout LayoutId
++ address-taken Bool
++ filled Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ IRConstant is Struct
+
+` Data a function's code addresses. A string holds its bytes with the length in characters
+` and the flags its header carries.
+
++ kind IRConstantKind
++ bytes ByteSpan
++ character-length U32
++ flags U32
+
+━━━━━━━━━━━━━━━━━━━━
++ IRNumber is Struct
+
+` A number the code uses, with the machine kind it is held in. A float's bits are those of
+` its kind: 32 of them for the narrower one.
+
++ kind MachineKind
++ bits U64
+
+━━━━━━━━━━━━━━━━━━━━
++ IRDependency is Struct
+
+` Something outside the function its code relies on: a function it calls, with what the call
+` assumed of it.
+
++ kind CalleeKind
++ symbol U32
++ flags U32
+
+━━━━━━━━━━━━━━━━━━━━
++ IRStream is Struct
+
++ made Operand
++ begin ValueId
++ read ValueId
++ ends IdList
++ head IRBlockId = no-block
++ polled IRBlockId = no-block
++ done IRBlockId = no-block
+
+━━━━━━━━━━━━━━━━━━━━
++ IRNote is Struct
+
++ row ValueId
++ target FunctionId
++ site-module ModuleId
++ site-syntax SyntaxId
++ chain IdList
+
+━━━━━━━━━━━━━━━━━━━━
++ make-operand Operand @inline
+    - kind OperandKind
+    - payload U32
+
+((kind as U32) /lshift/ operand-kind-shift) /or/ (payload /and/ operand-payload-mask)
+
+━━━━━━━━━━━━━━━━━━━━
++ operand-kind OperandKind @inline
+    - operand Operand
+
+(operand /zrshift/ operand-kind-shift) as OperandKind
+
+━━━━━━━━━━━━━━━━━━━━
++ operand-payload U32 @inline
+    - operand Operand
+
+operand /and/ operand-payload-mask
+
+━━━━━━━━━━━━━━━━━━━━
++ IRFunction
+
+` One function's IR: append-only tables in the arena of the worker emitting it, reset for each
+` function. `order` lists the blocks as they started, `arguments` holds the layout of each
+` argument, `locals` the cells of its frame, and `returns` the layout of the value the function
+` returns. `signals` says the function writes the panic signal on every return. `made-calls`
+` lists the rows after which TypeScript calls a function it generates, where this IR makes in
+` place what that function makes.
+
++ function FunctionId = no-function
++ instructions Table'IRInstruction
++ blocks Table'IRBlock
++ order IdList
++ current IRBlockId = 0
++ arguments IdList
++ locals Table'IRLocal
++ returns LayoutId
++ signals Bool
++ operands IdList
++ constants Table'IRConstant
++ numbers Table'IRNumber
++ dependencies Table'IRDependency
++ made-calls IdList
++ streams Table'IRStream
++ notes Table'IRNote
+_ depended IdMap
+_ arena Arena
+
+────────────────────
++ This
+    - arena Arena
+
+.. instructions = Table'IRInstruction(arena, 16)
+.. blocks = Table'IRBlock(arena, 4)
+.. locals = Table'IRLocal(arena, 4)
+.. constants = Table'IRConstant(arena, 4)
+.. numbers = Table'IRNumber(arena, 4)
+.. dependencies = Table'IRDependency(arena, 4)
+.. streams = Table'IRStream(arena, 4)
+.. notes = Table'IRNote(arena, 2)
+
+────────────────────
++ do reset
+    - emitted FunctionId
+
+` Starts a function's IR over, after the arena was reset.
+function = emitted
+instructions = Table'IRInstruction(arena, 16)
+blocks = Table'IRBlock(arena, 4)
+order = IdList()
+current = 0
+arguments = IdList()
+locals = Table'IRLocal(arena, 4)
+returns = void-layout
+signals = false
+operands = IdList()
+constants = Table'IRConstant(arena, 4)
+numbers = Table'IRNumber(arena, 4)
+dependencies = Table'IRDependency(arena, 4)
+made-calls = IdList()
+streams = Table'IRStream(arena, 4)
+notes = Table'IRNote(arena, 2)
+depended = IdMap()
+
+────────────────────
++ do note-made-call
+
+` Notes that TypeScript calls a function it generates after the last row so far.
+if instructions.length != 0
+    made-calls = made-calls.appended(arena, (instructions.length - 1) as U32)
+
+────────────────────
++ do reserve-block IRBlockId
+
+` A block to jump to, before its rows exist.
+. id IRBlockId = blocks.length as IRBlockId
+blocks.append(IRBlock(Span()))
+= id
+
+────────────────────
++ do start-block
+    - block IRBlockId
+
+` Begins a reserved block's rows. The blocks of a function are walked in the order they
+` start.
+blocks[block].instructions = Span(instructions.length as U32, 0)
+order = order.appended(arena, block)
+current = block
+
+────────────────────
++ dominates Bool
+    - dominator IRBlockId
+    - target IRBlockId
+
+` Whether every way the blocks started so far lead from the function's first block to a block
+` passes through another, as TypeScript asks of its own blocks. A block dominates itself.
+dominator == target || (reaches(target, no-block) && !reaches(target, dominator))
+
+────────────────────
+_ do reaches Bool
+    - target IRBlockId
+    - excluded IRBlockId
+
+` Whether a block is reached from the function's first block by the jumps, the branches and
+` the landing pads of the blocks started so far, passing through no excluded block.
+if order.length == 0
+    = false
+. seen [Bool]
+for position in 0 .. < blocks.length
+    seen += false
+. pending [IRBlockId]
+pending += order[0]
+while pending.length != 0
+    . block = pending[pending.length - 1]
+    pending.pop()
+    if block == excluded || seen[block]
+        continue
+    if block == target
+        = true
+    seen[block] = true
+    . rows = blocks[block].instructions
+    for id in rows.start .. < rows.end
+        if instructions[id].op != .op-phi
+            . span = instructions[id].operands
+            for position in span.start .. < span.end
+                . operand = operands[position]
+                if operand-kind(operand) == .operand-block
+                    pending += operand-payload(operand)
+= false
+
+────────────────────
++ do add-argument
+    - layout LayoutId
+
+` Declares the function's next argument, in the order callers pass them.
+arguments = arguments.appended(arena, layout)
+
+────────────────────
++ do end-stream
+    - stream U32
+    - row ValueId
+
+streams[stream].ends = streams[stream].ends.appended(arena, row)
+
+────────────────────
++ do note
+    - row ValueId
+    - target FunctionId
+    - site-module ModuleId
+    - site-syntax SyntaxId
+    - chain IdList = IdList()
+
+notes.append(IRNote(row, target, site-module, site-syntax, chain))
+
+────────────────────
++ do extended IdList
+    - chain IdList
+    - function FunctionId
+
+= chain.appended(arena, function)
+
+────────────────────
++ do add-local LocalId
+    - layout LayoutId
+    - address-taken Bool = false
+    - filled Bool = false
+
+` Declares a cell of the function's frame.
+. id LocalId = locals.length as LocalId
+locals.append(IRLocal(layout, address-taken, filled))
+= id
+
+────────────────────
++ do operand-layout LayoutId
+    - operand Operand
+
+` The layout of the value an operand stands for.
+. payload = operand-payload(operand)
+do match operand-kind(operand)
+    |= .operand-value
+        = instructions[payload].layout
+    |= .operand-argument
+        = arguments[payload]
+    |= .operand-number
+        = numbers[payload].kind
+    |= .operand-constant
+        = managed-layout
+    |= .operand-void
+        = void-layout
+    ??
+        = pointer-layout
+= void-layout
+
+────────────────────
++ do add-number U32
+    - kind MachineKind
+    - bits U64
+
+. id U32 = numbers.length as U32
+numbers.append(IRNumber(kind, bits))
+= id
+
+────────────────────
++ do add-float U32
+    - kind MachineKind
+    - value F64
+
+` A float of one of the two widths, kept as its bits. The narrower one is rounded first.
+if kind == .machine-f32
+    . narrow = arena.allocate'F32(1)
+    narrow[0] = value as F32
+    = add-number(kind, (narrow as CPointer'U32)[0])
+. wide = arena.allocate'F64(1)
+wide[0] = value
+= add-number(kind, (wide as CPointer'U64)[0])
+
+────────────────────
++ do add-operand
+    - operand Operand
+
+operands = operands.appended(arena, operand)
+
+────────────────────
++ do append ValueId
+    - row IRInstruction
+
+` Appends a row to the block being built, which is the one that started last.
+. id ValueId = instructions.length as ValueId
+instructions.append(row)
+. start = blocks[current].instructions.start
+blocks[current].instructions = Span(start, id + 1 - start)
+= id
+
+────────────────────
++ do add-string ConstantId
+    - text String
+
+. id ConstantId = constants.length as ConstantId
+. length = text.size
+. bytes = ByteSpan(arena.allocate-raw(if length != 0 then length else 1), length)
+C:memcpy(bytes.data, text as CPointer'Byte, length)
+. header = measure-string(bytes)
+constants.append(IRConstant(.constant-string, bytes, header.character-length, header.flags))
+= id
+
+────────────────────
++ do adopt-constant
+    - constant IRConstant
+
+` Appends a constant another function's code addresses, with its bytes copied here.
+. length = constant.bytes.length
+. bytes = ByteSpan(arena.allocate-raw(if length != 0 then length else 1), length)
+C:memcpy(bytes.data, constant.bytes.data, length)
+constants.append(IRConstant(constant.kind, bytes, constant.character-length, constant.flags))
+
+────────────────────
++ do depend
+    - kind CalleeKind
+    - symbol U32
+    - flags U32
+
+` Lists something the function relies on, once for each kind it is relied on as. `depended`
+` holds the kinds each symbol is listed under, so a function of many callees does not read
+` its list again for each call.
+. listed = depended.get(symbol)
+. bit = 1u32 /lshift/ (kind as U32)
+if listed != no-id && (listed /and/ bit) != 0
+    =
+depended = depended.inserted(arena, symbol, if listed == no-id then bit else listed /or/ bit)
+dependencies.append(IRDependency(kind, symbol, flags))

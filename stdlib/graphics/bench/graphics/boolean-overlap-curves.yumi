@@ -1,0 +1,115 @@
+`benchmark.meta description: Combines overlapping curved closed paths with boolean operations.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/boolean
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+
+. checksum = 0 as Size
+. a = Path()
+. b = Path()
+. result = Path()
+. workspace = BooleanWorkspace()
+
+` Exercise every shape/operation combination once so the repeated-query loop stays within capacity.
+for warmup in 0 .. < 4
+    reset-curve-source-a(a, warmup)
+    reset-curve-source-b(b, warmup)
+    for operation in 0 .. < 4
+        run-boolean-operation(operation, result, workspace, a, b)
+
+for pass in 0 .. < 120
+    reset-curve-source-a(a, pass)
+    reset-curve-source-b(b, pass)
+    for operation in 0 .. < 4
+        . maybe-result = run-boolean-operation(operation, result, workspace, a, b)
+        checksum += path-score(maybe-result) + pass + operation
+
+-- "bench-result graphics/boolean-overlap-curves checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reset-curve-source-a
+    - path Path
+    - pass Int
+
+. f = pass as Float
+. kind = pass % 4
+path.clear()
+if kind == 0
+    path.append-circle((82 + (f % 5), 82), 54)
+else if kind == 1
+    path.append-ellipse((84, 82), Dimensions(58, 38))
+    path.rotate(12deg + f * 0.05deg, Point(84, 82))
+else if kind == 2
+    path.append-circle((86, 82), 52)
+else
+    path.append-ellipse((86, 82), Dimensions(60, 36))
+    path.rotate(-10deg + f * 0.04deg, Point(86, 82))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reset-curve-source-b
+    - path Path
+    - pass Int
+
+. f = pass as Float
+. kind = pass % 4
+path.clear()
+if kind == 0
+    path.append-circle((112, 82 + (f % 7)), 46)
+else if kind == 1
+    path.append-circle((112 + sin(f * 0.14) * 4, 82), 42)
+else if kind == 2
+    path.append-ellipse((106, 80 + cos(f * 0.11) * 4), Dimensions(48, 34))
+    path.rotate(18deg, Point(106, 80))
+else
+    path.append-ellipse((106, 82), Dimensions(54, 32))
+    path.rotate(-22deg + f * 0.05deg, Point(106, 82))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-boolean-operation
+    - operation
+    - out Path
+    - workspace BooleanWorkspace
+    - a Path
+    - b Path
+
+if operation == 0
+    = boolean-union-reusing(out, workspace, a, b)
+else if operation == 1
+    = boolean-intersect-reusing(out, workspace, a, b)
+else if operation == 2
+    = boolean-subtract-reusing(out, workspace, a, b)
+
+= boolean-clip-reusing(out, workspace, a, b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score
+    - path Path?
+
+|? path
+    solid-path-score(path)
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
+_ solid-path-score Size
+    - path Path
+
+|? !path.count
+    0
+??
+    box-score + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+.. bounds = path.bounding-box
+.. box-score = origin-score + numeric-check(bounds.width) + numeric-check(bounds.height)
+.. origin-score = path.count + numeric-check(bounds.x) + numeric-check(bounds.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

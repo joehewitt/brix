@@ -1,0 +1,269 @@
+./binary-writer
+./mir
+./object-builder
+./relocations
+/core/arena
+/core/table
+
+_ et-rel U32 = 1
+_ em-aarch64 U32 = 183
+_ sht-progbits U32 = 1
+_ sht-symtab U32 = 2
+_ sht-strtab U32 = 3
+_ sht-rela U32 = 4
+_ sht-nobits U32 = 8
+_ shf-write U64 = 1
+_ shf-alloc U64 = 2
+_ shf-execinstr U64 = 4
+_ shf-info-link U64 = 0x40
+_ header-size U64 = 64
+_ section-header-size U32 = 64
+_ symbol-size U64 = 24
+_ rela-size U64 = 24
+_ section-names [String] = [".text", "", ".data.rel.ro", "yumi_trace", "yumi_gcmap", "yumi_gcroots", ".bss"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ ElfBinding is U32
+
+| local
+| global
+
+━━━━━━━━━━━━━━━━━━━━
+_ ElfSymbolType is U32
+
+| notype
+| object
+| func
+
+━━━━━━━━━━━━━━━━━━━━
+_ ElfSection is Struct
+
++ name U32
++ type U32
++ flags U64
++ offset U64
++ data ByteSpan
++ size U64
++ link U32
++ info U32
++ alignment U64
++ entry-size U64
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-elf ByteSpan
+    - builder ObjectBuilder
+
+` The object as an AArch64 ELF relocatable. Its sections are the builder's, except the empty C
+` string section, then a `.rela` section for each that has relocations, the symbol and string
+` tables, and an empty `.note.GNU-stack`, which keeps the stack from being executable.
+. arena = builder.arena
+. names = BinaryWriter(arena, 256)
+names.u8(0)
+. empty = ByteSpan(names.data, 0)
+. sections = Table'ElfSection(arena, 16)
+sections.append(ElfSection(0, 0, 0, 0, empty, 0, 0, 0, 0, 0))
+. indexes = arena.allocate'U32(builder.sections.length + 1)
+. relocated U32
+for position in 0 .. < builder.sections.length
+    . index U32 = (position + 1) as U32
+    if index == SectionId.cstring
+        continue
+    . source = builder.sections[position]
+    . type = if source.is-zero-fill then sht-nobits else sht-progbits
+    . flags = if index == SectionId.text then executable-flags else shf-alloc /or/ shf-write
+        .. executable-flags = shf-alloc /or/ shf-execinstr
+    indexes[index] = sections.length as U32
+    sections.append
+        - ElfSection
+            - add-name(names, section-names[position])
+            - type
+            - flags
+            - 0
+            - source.data
+            - source.size
+            - 0
+            - 0
+            - 1u64 /lshift/ source.alignment-power
+            - 0
+    if source.relocations.length != 0
+        relocated += 1
+
+. symbol-table-index U32 = (sections.length + relocated) as U32
+for position in 0 .. < builder.sections.length
+    . index U32 = (position + 1) as U32
+    . source = builder.sections[position]
+    if index != SectionId.cstring && source.relocations.length != 0
+        . entries = relocation-entries(builder, source)
+        . name = add-name(names, ".rela${section-names[position]}")
+        sections.append
+            - ElfSection
+                - name
+                - sht-rela
+                - shf-info-link
+                - 0
+                - entries
+                - entries.length as U64
+                - symbol-table-index
+                - indexes[index]
+                - 8
+                - rela-size
+
+. symbols = symbol-entries(builder, indexes)
+. symbol-name = add-name(names, ".symtab")
+sections.append
+    - ElfSection
+        - symbol-name
+        - sht-symtab
+        - 0
+        - 0
+        - symbols
+        - symbols.length as U64
+        - symbol-table-index + 1
+        - 1 + builder.local-count
+        - 8
+        - symbol-size
+. string-name = add-name(names, ".strtab")
+sections.append
+    - ElfSection
+        - string-name
+        - sht-strtab
+        - 0
+        - 0
+        - builder.string-table
+        - builder.string-table.length as U64
+        - 0
+        - 0
+        - 1
+        - 0
+. note-name = add-name(names, ".note.GNU-stack")
+. section-name-index U32 = sections.length as U32
+. section-names-name = add-name(names, ".shstrtab")
+sections.append
+    - ElfSection(section-names-name, sht-strtab, 0, 0, names.view, names.length as U64, 0, 0, 1, 0)
+sections.append(ElfSection(note-name, sht-progbits, 0, 0, empty, 0, 0, 0, 1, 0))
+
+. cursor = header-size
+for index in 1 .. < sections.length
+    cursor = align-value(cursor, sections[index].alignment)
+    sections[index].offset = cursor
+    if sections[index].type != sht-nobits
+        cursor += sections[index].size
+. section-headers = align-value(cursor, 8)
+. total = section-headers + sections.length * section-header-size
+check-layout(total)
+
+. writer = BinaryWriter(arena, total as Size)
+writer.u8(0x7f)
+writer.text("ELF")
+writer.u8(2)
+writer.u8(1)
+writer.u8(1)
+writer.zeros(9)
+writer.u16(et-rel)
+writer.u16(em-aarch64)
+writer.u32(1)
+writer.u64(0)
+writer.u64(0)
+writer.u64(section-headers)
+writer.u32(0)
+writer.u16(header-size as U32)
+writer.u16(0)
+writer.u16(0)
+writer.u16(section-header-size)
+writer.u16(sections.length as U32)
+writer.u16(section-name-index)
+
+for index in 1 .. < sections.length
+    if sections[index].type != sht-nobits && sections[index].size != 0
+        writer.zeros((sections[index].offset - writer.length) as Size)
+        writer.bytes(sections[index].data)
+writer.zeros((section-headers - writer.length) as Size)
+for index in 0 .. < sections.length
+    . section = sections[index]
+    writer.u32(section.name)
+    writer.u32(section.type)
+    writer.u64(section.flags)
+    writer.u64(0)
+    writer.u64(section.offset)
+    writer.u64(section.size)
+    writer.u32(section.link)
+    writer.u32(section.info)
+    writer.u64(section.alignment)
+    writer.u64(section.entry-size)
+= writer.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-name U32
+    - names BinaryWriter
+    - name String
+
+. offset U32 = names.length as U32
+names.text(name)
+names.u8(0)
+= offset
+
+━━━━━━━━━━━━━━━━━━━━
+_ do relocation-entries ByteSpan
+    - builder ObjectBuilder
+    - section ObjectSection
+
+. count = section.relocations.length
+. writer = BinaryWriter(builder.arena, (count * rela-size) as Size)
+for position in 0 .. < count
+    . relocation = section.relocations[position]
+    . symbol U64 = builder.symbols[relocation.symbol].index + 1
+    writer.u64(relocation.offset)
+    writer.u64((symbol /lshift/ 32) /or/ relocation-type(relocation.kind))
+    writer.u64(0)
+= writer.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ do symbol-entries ByteSpan
+    - builder ObjectBuilder
+    - indexes CPointer'U32
+
+. count = builder.symbols.length
+. writer = BinaryWriter(builder.arena, ((count + 1) * symbol-size) as Size)
+writer.zeros(symbol-size as Size)
+for position in 0 .. < count
+    . symbol = builder.symbols[builder.symbol-order[position]]
+    . defined = symbol.section != SectionId.none
+    . binding = if defined && !symbol.is-external then ElfBinding.local else ElfBinding.global
+    . type = ElfSymbolType.notype
+    if symbol.is-function
+        type = ElfSymbolType.func
+    else if defined && symbol.section != SectionId.text
+        type = ElfSymbolType.object
+    writer.u32(symbol.string-offset)
+    writer.u8(((binding as U32) /lshift/ 4) /or/ type)
+    writer.u8(0)
+    writer.u16(if defined then indexes[symbol.section] else 0)
+    writer.u64(symbol.value)
+    writer.u64(symbol.size)
+= writer.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ relocation-type U64
+    - kind RelocationKind
+
+match kind
+    |= .call26-relocation
+        283
+    |= .jump26-relocation
+        282
+    |= .page21-relocation
+        275
+    |= .add-pageoff12-relocation
+        277
+    |= .load-store8-pageoff12-relocation
+        278
+    |= .load-store16-pageoff12-relocation
+        284
+    |= .load-store32-pageoff12-relocation
+        285
+    |= .load-store64-pageoff12-relocation
+        286
+    |= .load-store128-pageoff12-relocation
+        299
+    |= .unsigned-relocation
+        257

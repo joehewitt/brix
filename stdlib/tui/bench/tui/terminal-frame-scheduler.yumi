@@ -1,0 +1,229 @@
+`benchmark.meta description: Measures terminal frame scheduler invalidation latency, pacing jitter, coalescing, and overrun skipping.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,tui,tui-fps,ui-smoothness,compile-timing
+
+/YuCore/YuCore.h
+/stream/sort
+/time/duration
+/time/timer
+
+. immediate-count Size = 60
+. coalesced-request-count Size = 24
+. animation-count Size = 36
+. overrun-count Size = 6
+. scheduler-interval = 4ms
+. scheduler-interval-ns = scheduler-interval-nanoseconds()
+
+. immediate = ImmediateFrameRecorder()
+. immediate-scheduler = scheduler-interval.animation-loop • with immediate.frame
+
+for index in 0 .. < immediate-count
+    immediate.request-time = monotonic-time-nanoseconds()
+    immediate-scheduler.request-now()
+    immediate.done.wait()
+immediate-scheduler.cancel()
+
+. coalesced = CoalescedFrameRecorder()
+. coalesced-scheduler = scheduler-interval.animation-loop • with coalesced.frame
+
+for index in 0 .. < coalesced-request-count
+    coalesced-scheduler.request-now()
+coalesced.done.wait()
+coalesced-scheduler.cancel()
+
+. animation = AnimationFrameRecorder(animation-count)
+. animation-scheduler = scheduler-interval.animation-loop • with animation.frame
+animation.scheduler = animation-scheduler
+animation-scheduler.request-next()
+animation.done.wait()
+animation-scheduler.cancel()
+
+. overrun = OverrunFrameRecorder(overrun-count, (scheduler-interval as Nanoseconds) * 3)
+. overrun-scheduler = scheduler-interval.animation-loop • with overrun.frame
+overrun.scheduler = overrun-scheduler
+overrun-scheduler.request-next()
+overrun.done.wait()
+overrun-scheduler.cancel()
+
+. animation-intervals = frame-intervals(animation.times)
+. overrun-intervals = frame-intervals(overrun.times)
+. invalidate-p50-us = percentile-us(immediate.latencies, 50)
+. invalidate-p95-us = percentile-us(immediate.latencies, 95)
+. invalidate-max-us = max-us(immediate.latencies)
+. interval-p50-us = percentile-us(animation-intervals, 50)
+. interval-p95-us = percentile-us(animation-intervals, 95)
+. interval-max-us = max-us(animation-intervals)
+. coalesced-invalidations = coalesced-request-count - coalesced.callbacks
+. dropped-frames = dropped-frame-count(overrun-intervals, scheduler-interval-ns)
+
+//tui.bench.terminal.invalidate-p50-us += invalidate-p50-us
+//tui.bench.terminal.invalidate-p95-us += invalidate-p95-us
+//tui.bench.terminal.invalidate-max-us += invalidate-max-us
+//tui.bench.terminal.interval-p50-us += interval-p50-us
+//tui.bench.terminal.interval-p95-us += interval-p95-us
+//tui.bench.terminal.interval-max-us += interval-max-us
+//tui.bench.terminal.coalesced-invalidations += coalesced-invalidations
+//tui.bench.terminal.dropped-frames += dropped-frames
+//tui.bench.mutations += immediate-count + coalesced-request-count + animation-count + overrun-count
+
+. checksum = immediate.latencies.length * 1000000
+checksum += animation.times.length * 1000 + overrun.times.length
+
+C:yumiBenchCollect()
+
+-- "bench-result tui/terminal-frame-scheduler checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ ImmediateFrameRecorder
+
++ request-time U64
++ latencies [U64]
++ done := Semaphore()
+
+────────────────────
++ do frame
+
+. frame-start = monotonic-time-nanoseconds()
+latencies += monotonic-time-nanoseconds() - request-time
+//tui.bench.frames ++
+spend-frame-budget(frame-start)
+done.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ CoalescedFrameRecorder
+
++ callbacks Size = 0
++ done := Semaphore()
+
+────────────────────
++ do frame
+
+. frame-start = monotonic-time-nanoseconds()
+callbacks += 1
+//tui.bench.frames ++
+spend-frame-budget(frame-start)
+done.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ AnimationFrameRecorder
+
++ frame-count Size
++ frames Size = 0
++ scheduler AnimationLoop?
++ times [U64]
++ done := Semaphore()
+
+────────────────────
++ This
+    - frame-count
+
+────────────────────
++ do frame
+
+. frame-start = monotonic-time-nanoseconds()
+times += monotonic-time-nanoseconds()
+frames += 1
+//tui.bench.frames ++
+spend-frame-budget(frame-start)
+if frames < frame-count
+    scheduler!.request-next()
+else
+    done.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ OverrunFrameRecorder
+
++ frame-count Size
++ overrun-duration Nanoseconds
++ frames Size = 0
++ scheduler AnimationLoop?
++ times [U64]
++ done := Semaphore()
+
+────────────────────
++ This
+    - frame-count
+    - overrun-duration
+
+────────────────────
++ do frame
+
+. frame-start = monotonic-time-nanoseconds()
+times += monotonic-time-nanoseconds()
+frames += 1
+//tui.bench.frames ++
+if frames < frame-count
+    busy-wait(overrun-duration)
+    spend-frame-budget(frame-start)
+    scheduler!.request-next()
+else
+    spend-frame-budget(frame-start)
+    done.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ do spend-frame-budget
+    - frame-start U64
+
+. elapsed = monotonic-time-nanoseconds() - frame-start
+if elapsed < scheduler-interval-nanoseconds()
+    C:yumiGCFrameBudget(scheduler-interval-nanoseconds() - elapsed)
+
+━━━━━━━━━━━━━━━━━━━━
++ scheduler-interval-nanoseconds U64
+
+(4ms as Nanoseconds) as U64
+
+━━━━━━━━━━━━━━━━━━━━
++ do frame-intervals
+    - times [U64]
+
+. result [U64]
+for index in 1 .. < times.length
+    result += times[index] - times[index - 1]
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ percentile-us
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
++ do max-us
+    - values [U64]
+
+. maximum U64
+for value in values
+    if value > maximum
+        maximum = value
+= maximum / 1000
+
+━━━━━━━━━━━━━━━━━━━━
++ do dropped-frame-count
+    - intervals [U64]
+    - target-ns U64
+
+if !target-ns
+    = 0
+
+. dropped U64
+for interval in intervals
+    if interval > target-ns + target-ns / 2
+        dropped += (interval / target-ns) - 1
+= dropped
+
+━━━━━━━━━━━━━━━━━━━━
++ do busy-wait
+    - duration Nanoseconds
+
+. end-time = monotonic-time-nanoseconds() + (duration as U64)
+. spin U64
+while monotonic-time-nanoseconds() < end-time
+    spin += 1

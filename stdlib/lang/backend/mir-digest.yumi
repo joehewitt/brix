@@ -1,0 +1,490 @@
+./bundle
+./mir
+
+_ first-multiplier U64 = 0x9e3779b97f4a7c15
+_ second-multiplier U64 = 0xc2b2ae3d27d4eb4f
+_ first-offset U64 = 0x165667b19e3779f9
+_ second-offset U64 = 0x27d4eb2f165667c5
+_ local-string-mark U64 = 0x4c4f43414c
+_ new-string-mark U64 = 0x4e4557
+_ seen-string-mark U64 = 0x5345454e
+_ absent-mark U64 = 0x4142534e54
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRDigest is Tuple
+
++ high U64
++ low U64
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRDigester
+
++ strings IdList
+_ bundle Bundle
+_ function MIRFunction
+_ seen IdMap
+_ specials [StringId]
+_ first U64
+_ second U64
+
+────────────────────
++ This
+    - bundle Bundle
+    - function MIRFunction
+
+.. specials = [bundle.entry-name, bundle.main-name, bundle.gc-public-control-word-symbol, bundle.write-barrier-record-symbol, bundle.zero-stack-frame-symbol, bundle.memory-copy-symbol, bundle.memory-zero-symbol, bundle.bulk-write-barrier-symbol, bundle.thread-cache-symbol, bundle.allocation-refill-symbol, bundle.allocate-object-symbol]
+
+────────────────────
++ do digest MIRDigest
+    - seed MIRDigest
+
+first = seed.high
+second = seed.low
+seen = new-id-map(function.arena, 64)
+strings = new-id-list(function.arena, 32)
+for symbol in specials
+    string(symbol)
+header()
+locs()
+types()
+frame()
+vregs()
+operands()
+roots()
+instructions()
+blocks()
+names()
+= MIRDigest(settled(first), settled(second))
+
+────────────────────
+_ do header
+
+. f = function
+string(f.label)
+string(f.symbol)
+flag(f.is-lowered)
+string(f.name)
+string(f.display-name)
+word(f.compilation-effects)
+flag(f.is-exported)
+flag(f.uses-table-union-cursor-plan)
+word(f.loc)
+word(f.vreg-count)
+flag(f.uses-layout-context)
+word(f.closure-root)
+word(f.capture-closure-root)
+word(f.frame-bytes)
+. overflow = f.overflow
+flag(overflow.is-present)
+flag(overflow.is-stack)
+word(overflow.slot)
+signed(overflow.size)
+signed(overflow.alignment)
+signed(overflow.length)
+signed(overflow.count)
+signed(overflow.offset)
+ids(f.frame-slots)
+ids(f.vars)
+ids(f.block-order)
+span(f.gc-roots)
+ids(f.group-vregs)
+ids(f.lifetimes)
+ids(f.words)
+
+────────────────────
+_ do locs
+
+. table = function.locs
+word(table.length as U64)
+for index in 0 .. < table.length
+    . loc = table[index]
+    string(loc.file)
+    flag(loc.is-known)
+    signed(loc.line)
+    signed(loc.column)
+    signed(loc.offset)
+    signed(loc.end-offset)
+
+────────────────────
+_ do types
+
+. table = function.types
+word(table.length as U64)
+for index in 0 .. < table.length
+    do match table[index]
+        | .void-type(row)
+            layout(0, row.size, row.alignment)
+        | .int-type(row)
+            layout(1, row.size, row.alignment)
+            word(row.bit-size)
+            flag(row.is-signed)
+            word(row.reg-class)
+        | .float-type(row)
+            layout(2, row.size, row.alignment)
+            word(row.bit-size)
+            word(row.reg-class)
+        | .pointer-type(row)
+            layout(3, row.size, row.alignment)
+            word(row.reg-class)
+        | .struct-type(row)
+            layout(4, row.size, row.alignment)
+            word(row.format)
+            span(row.fields)
+        | .array-type(row)
+            layout(5, row.size, row.alignment)
+            word(row.item)
+            word(row.length)
+. fields = function.struct-fields
+word(fields.length as U64)
+for index in 0 .. < fields.length
+    . field = fields[index]
+    word(field.type)
+    word(field.offset)
+
+────────────────────
+_ do frame
+
+. slots = function.slots
+word(slots.length as U64)
+for index in 0 .. < slots.length
+    . slot = slots[index]
+    signed(slot.index)
+    flag(slot.is-stack)
+    ids(slot.objects)
+. objects = function.frame-objects
+word(objects.length as U64)
+for index in 0 .. < objects.length
+    . object = objects[index]
+    word(object.slot)
+    signed(object.index)
+    word(object.type)
+    signed(object.offset)
+    flag(object.can-promote)
+    flag(object.gc-root)
+    string(object.gc-descriptor)
+    word(object.gc-root-mode)
+    flag(object.is-spill)
+    span(object.lifetime)
+. saved = function.saved-registers
+word(saved.length as U64)
+for index in 0 .. < saved.length
+    word(saved[index].register)
+    signed(saved[index].fp-offset)
+
+────────────────────
+_ do vregs
+
+. table = function.vregs
+word(table.length as U64)
+for index in 0 .. < table.length
+    . vreg = table[index]
+    word(vreg.id)
+    word(vreg.reg-class)
+    word(vreg.hint)
+    flag(vreg.gc-root)
+    string(vreg.gc-descriptor)
+    word(vreg.gc-root-mode)
+
+────────────────────
+_ do operands
+
+. table = function.operands
+word(table.length as U64)
+for index in 0 .. < table.length
+    do match table[index]
+        | .vreg-operand(row)
+            word(0)
+            word(row.vreg)
+        | .preg-operand(row)
+            word(1)
+            word(row.register)
+        | .vreg-group-operand(row)
+            word(2)
+            word(row.reg-class)
+            span(row.vregs)
+        | .label-operand(row)
+            word(3)
+            string(row.name)
+            word(row.reloc)
+        | .symbol-operand(row)
+            word(4)
+            string(row.name)
+            word(row.reloc)
+        | .label-address-operand(row)
+            word(5)
+            word(row.base)
+        | .load-address-operand(row)
+            word(6)
+            word(row.base)
+            word(row.offset)
+            flag(row.is-pre-index)
+            word(row.index-shift)
+        | .frame-object-operand(row)
+            word(7)
+            word(row.object)
+        | .int-operand(row)
+            word(8)
+            word(row.value.bits)
+            flag(row.value.is-negative)
+        | .cond-operand(row)
+            word(9)
+            word(row.code)
+        | .placeholder-operand
+            word(10)
+        | .shift-operand(row)
+            word(11)
+            word(row.kind)
+            word(row.amount)
+
+────────────────────
+_ do roots
+
+. table = function.roots
+word(table.length as U64)
+for index in 0 .. < table.length
+    do match table[index]
+        | .register-root(row)
+            word(0)
+            word(row.register)
+        | .stack-root(row)
+            word(1)
+            word(row.object)
+            string(row.gc-descriptor)
+            word(row.gc-root-mode)
+
+────────────────────
+_ do instructions
+
+. table = function.instructions
+word(table.length as U64)
+for index in 0 .. < table.length
+    do match table[index]
+        | .assembly-instruction(row)
+            word(0)
+            instruction
+                - row.opcode
+                - row.operands
+                - row.loc
+                - row.position
+                - row.gc-free-zone
+                - row.gc-exceptional-safepoint
+                - row.gc-safepoint
+                - row.is-phi-copy
+                - row.has-gc-roots
+                - row.gc-roots
+        | .call-instruction(row)
+            word(1)
+            instruction
+                - row.opcode
+                - row.operands
+                - row.loc
+                - row.position
+                - row.gc-free-zone
+                - row.gc-exceptional-safepoint
+                - row.gc-safepoint
+                - row.is-phi-copy
+                - row.has-gc-roots
+                - row.gc-roots
+            word(row.return-type)
+            span(row.copied-struct-arguments)
+            span(row.argument-sizes)
+            word(row.panic-target)
+            flag(row.gc-safepoint-proven-free)
+            flag(row.direct-struct-return)
+        | .phi-instruction(row)
+            word(2)
+            instruction
+                - row.opcode
+                - row.operands
+                - row.loc
+                - row.position
+                - row.gc-free-zone
+                - row.gc-exceptional-safepoint
+                - row.gc-safepoint
+                - row.is-phi-copy
+                - row.has-gc-roots
+                - row.gc-roots
+            word(row.reg)
+            ids(row.exprs)
+            ids(row.blocks)
+        | .comment-instruction(row)
+            word(3)
+            instruction
+                - row.opcode
+                - row.operands
+                - row.loc
+                - row.position
+                - row.gc-free-zone
+                - row.gc-exceptional-safepoint
+                - row.gc-safepoint
+                - row.is-phi-copy
+                - row.has-gc-roots
+                - row.gc-roots
+            string(row.text)
+
+────────────────────
+_ do instruction
+    - opcode Opcode
+    - operands IdList
+    - loc LocId
+    - position I32
+    - gc-free-zone Bool
+    - gc-exceptional-safepoint Bool
+    - gc-safepoint Bool
+    - is-phi-copy Bool
+    - has-gc-roots Bool
+    - gc-roots Span
+
+word(opcode)
+ids(operands)
+word(loc)
+signed(position)
+flag(gc-free-zone)
+flag(gc-exceptional-safepoint)
+flag(gc-safepoint)
+flag(is-phi-copy)
+flag(has-gc-roots)
+span(gc-roots)
+
+────────────────────
+_ do blocks
+
+. table = function.blocks
+word(table.length as U64)
+for index in 0 .. < table.length
+    . block = table[index]
+    string(block.name)
+    ids(block.instructions)
+    ids(block.successors)
+    ids(block.predecessors)
+. tables = function.jump-tables
+word(tables.length as U64)
+for index in 0 .. < tables.length
+    string(tables[index].name)
+    span(tables[index].labels)
+
+────────────────────
+_ do names
+
+. listed = function.names
+word(listed.length)
+for index in 0 .. < listed.length
+    string(listed[index])
+. locals = function.local-names
+word(locals.length as U64)
+for index in 0 .. < locals.length
+    . local = locals[index]
+    word(local.kind)
+    string(local.first)
+    string(local.second)
+    word(local.index)
+
+────────────────────
+_ do string
+    - id StringId
+
+if id == no-string
+    word(absent-mark)
+    =
+if id >= function.pool-size
+    word(local-string-mark)
+    word(id - function.pool-size)
+    =
+. ordinal = seen.get(id)
+if ordinal != no-id
+    word(seen-string-mark)
+    word(ordinal)
+    =
+seen = seen.inserted(function.arena, id, strings.length)
+strings = strings.appended(function.arena, id)
+word(new-string-mark)
+word(bundle.string-facts(id))
+. text = bundle.string(id)
+word(text.length as U64)
+. packed = 0u64
+for index in 0 .. < text.length
+    packed = (packed /lshift/ 8) /or/ (text.data[index] as U64)
+    if index % 8 == 7
+        word(packed)
+        packed = 0
+word(packed)
+
+────────────────────
+_ do ids
+    - list IdList
+
+word(list.length)
+for index in 0 .. < list.length
+    word(list[index])
+
+────────────────────
+_ do span
+    - range Span
+
+word(range.start)
+word(range.count)
+
+────────────────────
+_ do layout
+    - kind U64
+    - size U32
+    - alignment U32
+
+word(kind)
+word(size)
+word(alignment)
+
+────────────────────
+_ do flag
+    - value Bool
+
+word(if value then 1u64 else 0u64)
+
+────────────────────
+_ do signed
+    - value I32
+
+word((value as I64) as U64)
+
+────────────────────
+_ do word @inline
+    - value U64
+
+first = mixed(first, value, first-multiplier)
+second = mixed(second, value /xor/ second-offset, second-multiplier)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bundle-seed MIRDigest
+    - bundle Bundle
+
+. first = first-offset
+. second = second-offset
+. values [U64]
+values += if bundle.gc-enabled then 1u64 else 0u64
+values += if bundle.stack-trace-metadata then 1u64 else 0u64
+values += if bundle.apple-abi then 1u64 else 0u64
+values += bundle.output-mode
+values += bundle.gc-allocation-buffer-version
+values += bundle.gc-control-phase-mask
+for value in values
+    first = mixed(first, value, first-multiplier)
+    second = mixed(second, value /xor/ second-offset, second-multiplier)
+= MIRDigest(first, second)
+
+━━━━━━━━━━━━━━━━━━━━
+_ mixed U64 @inline
+    - hash U64
+    - value U64
+    - multiplier U64
+
+(((combined /lshift/ 27) /or/ (combined /zrshift/ 37)) * multiplier) + first-offset
+
+.. combined = hash /xor/ (value * multiplier)
+
+━━━━━━━━━━━━━━━━━━━━
+_ settled U64
+    - hash U64
+
+(folded /xor/ (folded /zrshift/ 29)) * first-multiplier
+
+.. folded = (hash /xor/ (hash /zrshift/ 33)) * second-multiplier

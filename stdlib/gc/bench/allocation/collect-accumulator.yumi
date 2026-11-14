@@ -1,0 +1,57 @@
+`benchmark.meta description: Builds filtered lists and joined text with imperative accumulators.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+. rows = collect-accumulator-rows()
+. checksum = 0 as Size
+for iteration in 0 .. < 4000
+    . labels = collect-accumulator-labels(rows)
+    . depths = collect-accumulator-depths(rows)
+    checksum += labels.length + depths.length + collect-accumulator-text(rows).length
+
+-- "bench-result allocation/collect-accumulator checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ CollectAccumulatorRow is Tuple
+
++ name String
++ depth Size
++ is-live Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-accumulator-labels [String]
+    - rows [CollectAccumulatorRow]
+
+. result [String]
+for row in rows
+    if row.is-live
+        result += "${row.name}:${row.depth}"
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-accumulator-depths [Size]
+    - rows [CollectAccumulatorRow]
+
+. result [Size]
+for row in rows
+    if row.depth > 2
+        result += row.depth * 2
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-accumulator-text String
+    - rows [CollectAccumulatorRow]
+
+. parts [String]
+for row in rows
+    if row.is-live
+        parts += row.name
+= " ".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-accumulator-rows [CollectAccumulatorRow]
+
+. rows [CollectAccumulatorRow]
+for index in 0 .. < 400
+    rows += CollectAccumulatorRow("row-$index", index % 7, index % 3 != 0)
+= rows

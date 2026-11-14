@@ -1,0 +1,39 @@
+`benchmark.meta description: Exercises basic stream lookahead.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. entries = match lookahead-basic-source()
+    ~ \lookahead-basic-document
+    ?! Panic("lookahead-basic did not parse")
+
+. checksum = 0 as Size
+for entry in entries
+    checksum += entry
+
+-- "bench-result stream/lookahead-basic checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ lookahead-basic-document ~ Char
+
+~ entries \lookahead-entry+
+    entries
+
+.. lookahead-entry Size ~
+    ~ &"name:" "name:" name \lookahead-word "\n"
+        name.length * 3
+    ~ !"name:" "note:" text (!"\n" .)* "\n"
+        text.length * 5
+
+.. lookahead-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-basic-source
+
+"".join(lookahead-basic-line(each) in 0 .. < 140)
+
+━━━━━━━━━━━━━━━━━━━━
+_ lookahead-basic-line String
+    - index Int
+
+if index % 3 == 0 then "note:deterministic lookahead note $index\n" else "name:alpha_$index\n"

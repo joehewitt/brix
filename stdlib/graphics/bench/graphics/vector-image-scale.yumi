@@ -1,0 +1,89 @@
+`benchmark.meta description: Builds, retains, compiles, and incrementally recompiles VectorGroup scenes containing 10k and 100k lightweight path nodes.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/style
+/graphics/vector
+/graphics/vector-group
+/graphics/vectorgeometry
+/time/timer
+
+. checksum Size
+checksum += run-vector-image-scale(10000)
+checksum += run-vector-image-scale(100000)
+-- "bench-result graphics/vector-image-scale checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-vector-image-scale Size
+    - count Size
+
+. viewport = Rect(0, 0, 1000, 1000)
+. live-before = vector-scene-live-bytes()
+. build-start = monotonic-time-nanoseconds()
+. scene = build-vector-scene(count)
+. build-us = (monotonic-time-nanoseconds() - build-start) / 1000
+. live-after = vector-scene-live-bytes()
+. live-bytes-per-path = (live-after - live-before) / count
+
+. compile-start = monotonic-time-nanoseconds()
+scene.group.compile-vector-geometry(viewport)
+. compile-us = (monotonic-time-nanoseconds() - compile-start) / 1000
+
+. update-start = monotonic-time-nanoseconds()
+scene.target.rect = Rect(7, 9, 3, 4)
+scene.group.checkpoint()
+scene.group.compile-vector-geometry(viewport)
+. update-us = (monotonic-time-nanoseconds() - update-start) / 1000
+
+if count == 10000
+    //graphics.bench.vector-scene.build-us-10k += build-us
+    //graphics.bench.vector-scene.live-bytes-per-path-10k += live-bytes-per-path
+    //graphics.bench.vector-scene.compile-us-10k += compile-us
+    //graphics.bench.vector-scene.leaf-recompile-us-10k += update-us
+else
+    //graphics.bench.vector-scene.build-us-100k += build-us
+    //graphics.bench.vector-scene.live-bytes-per-path-100k += live-bytes-per-path
+    //graphics.bench.vector-scene.compile-us-100k += compile-us
+    //graphics.bench.vector-scene.leaf-recompile-us-100k += update-us
+
+. result = scene.group.vector-geometry-chunk-count + scene.group.items.length
+scene.group.close()
+markup-release(scene.group)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-vector-scene VectorScaleScene
+    - count Size
+
+. group = VectorGroup()
+group.fill = "#2563eb"
+group.stroke = Stroke.none
+group.begin-update()
+. target Rectangle?
+for index in 0 .. < count
+    . x = (index % 1000) as F64
+    . y = (index / 1000) as F64
+    . rectangle = Rectangle(Rect(x, y, 1, 1))
+    group += rectangle
+    if index == count / 2
+        target = rectangle
+group.end-update()
+= VectorScaleScene(group, target!)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do vector-scene-live-bytes Size
+
+C:yumiCollect()
+C:yumiCollect()
+= C:yumiGCLiveByteCount() as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorScaleScene is Tuple
+
++ group VectorGroup
++ target Rectangle

@@ -1,0 +1,1551 @@
+./test-protocol
+/data/json
+/lang/ast/ast-builder
+/lang/ast/ast-nodes
+/lang/ast/ast-xml
+/lang/ast/brix
+/lang/ast/error
+/lang/ast/grammar
+/lang/constants
+/lang/target
+/math
+/os/env
+/os/file
+/os/path
+/os/process
+/stream/aggregate
+/stream/combine
+/stream/filter
+/stream/sort
+/time/clock
+/time/duration
+
++ parse-suite = "parse"
++ core-suite = "core"
++ diagnostics-suite = "diagnostics"
++ scratch-suite = "scratch"
+_ batch-name-rounds Index = 8
+
+━━━━━━━━━━━━━━━━━━━━
++ TestCase
+
++ suite String
++ source-path String
++ relative-path String
++ file-label String
++ case-index Int
++ source String
++ expected String
++ line-no-start Int
++ line-no-end Int
++ is-focused Bool
++ options [String = String]
++ files [String = String]
++ brix String?
+
+────────────────────
++ This
+    - suite String
+    - source-path String
+    - relative-path String
+    - file-label String
+    - case-index Int
+    - source String
+    - expected String
+    - line-no-start Int
+    - line-no-end Int
+    - is-focused Bool
+    - options [String = String]
+    - files [String = String]
+    - brix String? = null
+
+────────────────────
++ get id String
+
+"test:$suite:$relative-path:$case-index"
+
+────────────────────
++ get file-id String
+
+"file:$suite:$relative-path"
+
+────────────────────
++ get catalog-relative-path String
+
+"$suite:$relative-path"
+
+────────────────────
++ get label String
+
+if source.length > 50 then source[0 .. < 50] else source
+
+────────────────────
++ has-option
+    - name String
+
+options[name] != null
+
+━━━━━━━━━━━━━━━━━━━━
++ ParsedSource is (text String, line-no Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ ParsedSetting is Union
+
+| option(name String, value String)
+| file(path String, content String)
+| brix(content String)
+
+━━━━━━━━━━━━━━━━━━━━
++ ParsedTail is Tuple
+
++ expected String
++ line-no-end Int
++ options [String = String]
++ files [String = String]
++ brix String?
+
+━━━━━━━━━━━━━━━━━━━━
++ ParsedCase
+
++ source String
++ expected String
++ line-no-start Int
++ line-no-end Int
++ is-focused Bool
++ options [String = String]
++ files [String = String]
++ brix String?
+
+────────────────────
++ This
+    - parsed ParsedSource
+    - tail ParsedTail
+    - is-focused Bool
+
+source = parsed.text.trim()
+expected = tail.expected
+line-no-start = parsed.line-no
+line-no-end = tail.line-no-end
+this.is-focused = is-focused
+.. options = tail.options
+.. files = tail.files
+.. brix = tail.brix
+
+━━━━━━━━━━━━━━━━━━━━
+_ without-test-notes String
+    - text String
+
+"\n".join(each in text.split("\n") when !each.starts-with("?"))
+
+━━━━━━━━━━━━━━━━━━━━
++ ParsedTestFile
+
++ cases [ParsedCase]
+
+────────────────────
++ This
+    - cases [ParsedCase]
+
+────────────────────
++ This ~ Char
+
+~ entries \file-entry* \blank-line* /
+    This(parsed-cases(entries))
+
+.. file-entry ParsedCase? ~
+    ~ \blank-line* test \test-case
+        test
+    ~ \blank-line* \comment
+        null
+    ~ \blank-line* \ignored-remainder
+        null
+    ~ \blank-line* \empty-trailing-test
+        null
+
+.. test-case ParsedCase ~
+    ~ focused \head-separator source \test-source tail \test-tail
+        ParsedCase(source, tail, focused)
+
+.. test-tail ParsedTail ~
+    ~ \mid-separator settings \test-setting* expected \test-expected end-line \tail-separator
+        parsed-tail(expected, end-line, settings)
+
+.. test-source ParsedSource ~
+    ~ \source-comment-line* first \source-content-line rest \source-part*
+        combined-source(first, rest)
+    ~ \source-comment-line* &(\mid-separator)
+        ParsedSource("", 0)
+
+.. source-part ParsedSource? ~
+    ~ \source-comment-line
+        null
+    ~ line \source-content-line
+        line
+
+.. source-content-line ParsedSource ~
+    ~ !(\mid-separator | \source-comment-line) text \source-line \nl
+        ParsedSource("$text\n", location.begin.line)
+    ~ !(\mid-separator | \source-comment-line) text \source-line
+        ParsedSource(text, location.begin.line)
+
+.. source-line String ~
+    ~ chars \line-char*
+        Array'Char(chars).slice-string()
+
+.. source-comment-line ~
+    ~ "#" \horizontal-space \line-char* \nl
+
+.. test-setting ParsedSetting ~
+    ~ file \file-block
+        file
+    ~ brix \brix-block
+        brix
+    ~ option \option-line
+        option
+
+.. file-block ParsedSetting ~
+    ~ "%file:" \horizontal-space+ name \source-line \nl content \file-content \mid-separator
+        ParsedSetting.file(name.trim(), content)
+
+.. brix-block ParsedSetting ~
+    ~ "%brix" \horizontal-space* \nl content \file-content \mid-separator
+        ParsedSetting.brix(content)
+
+.. file-content String ~
+    ~ chars \file-char*
+        without-final-newline(Array'Char(chars).slice-string())
+
+.. file-char Char ~
+    ~ !(\mid-separator) .
+
+.. option-line ParsedSetting ~
+    ~ "%" !("file" (":" | &\nl)) name \option-name value \option-value? \nl
+        .option(name, value ?? "true")
+
+.. option-name String ~
+    ~ chars \option-name-char*
+        chars
+
+.. option-name-char ~
+    ~ !(\nl | \option-value-start) .
+
+.. option-value String ~
+    ~ \option-value-start value \line-char*
+        value.trim()
+
+.. option-value-start ~
+    ~ ":" \horizontal-space+
+
+.. test-expected String ~
+    ~ chars \expected-char*
+        Array'Char(chars).slice-string()
+
+.. expected-char Char ~
+    ~ !(\tail-separator) .
+
+.. comment ~
+    ~ \comment-separator \comment-char* \comment-separator
+
+.. comment-char ~
+    ~ !(\comment-separator) .
+
+.. ignored-remainder ~
+    ~ "/:===" "="* .*
+
+.. empty-trailing-test ~
+    ~ \head-separator /
+
+.. head-separator Bool ~
+    ~ "::===" "="* \nl
+        true
+    ~ ":===" "="* \nl
+        false
+
+.. mid-separator ~
+    ~ ":---" "-"* \nl
+
+.. tail-separator Int ~
+    ~ ";===" "="* \nl?
+        (location.begin.line as Int) + 1
+
+.. comment-separator ~
+    ~ "===" "="* \nl
+
+.. horizontal-space ~
+    ~ " " | "\t" | "\r" | "\v" | "\f"
+
+.. blank-line ~
+    ~ \horizontal-space* \nl
+
+.. line-char ~
+    ~ !(\nl) .
+
+━━━━━━━━━━━━━━━━━━━━
++ TestFile
+
+_ suite String
+_ source-path String
+_ relative-path String
+_ file-label String
+
+────────────────────
++ This
+    - suite String
+    - source-path String
+    - project-path String
+
+this.suite = suite
+this.source-path = source-path
+relative-path = relative-test-path(source-path, project-path)
+file-label = test-file-label(source-path)
+
+────────────────────
++ do parse [TestCase]
+
+. source-file = use File(source-path)
+. text = source-file as String
+. parsed = match text
+    ~ ParsedTestFile
+        it
+    ?! Error("Malformed test file $relative-path")
+
+= <* index, test-case in indexed(parsed.cases)
+    TestCase()
+        - suite
+        - source-path
+        - relative-path
+        - file-label
+        - index + 1
+        - test-case.source
+        - without-test-notes(test-case.expected).trim()
+        - test-case.line-no-start
+        - test-case.line-no-end
+        - test-case.is-focused
+        - test-case.options
+        - test-case.files
+        - test-case.brix
+
+━━━━━━━━━━━━━━━━━━━━
+_ parsed-cases
+    - entries <ParsedCase?>
+
+** entries
+?*> each
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ parsed-tail ParsedTail
+    - expected String
+    - line-no-end Int
+    - settings [ParsedSetting]
+
+ParsedTail(expected, line-no-end, options, files, brix)
+
+.. options =
+    ** settings
+    ?*> match? each
+        | .option(name, value)
+            name, value
+    |> Map
+.. files =
+    ** settings
+    ?*> match? each
+        | .file(path, content)
+            path, content
+    |> Map
+.. brix =
+    ** settings
+    ?*> match? each
+        | .brix(content)
+            content
+    |> first
+
+━━━━━━━━━━━━━━━━━━━━
+_ without-final-newline String
+    - text String
+
+if text.ends-with("\n") then text[0 .. < text.length - 1] else text
+
+━━━━━━━━━━━━━━━━━━━━
+_ combined-source
+    - first ParsedSource
+    - rest <ParsedSource?>
+
+ParsedSource(text, first.line-no)
+
+.. text = "".join
+    * first.text
+    **
+        rest
+        ?*> each?.text
+
+━━━━━━━━━━━━━━━━━━━━
+_ relative-test-path String
+    - source-path String
+    - project-path String
+
+?! Error("Test file is outside the project: $source-path")
+    if !source-path.starts-with("$project-path/")
+
+source-path[project-path.length + 1 ...]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do test-file-label String
+    - source-path String
+
+. words [String]
+. word = ""
+. previous Char?
+for char in Path(source-path).base-name
+    . is-separator = char == '-' || char == '_'
+    . starts-after-lowercase = previous && previous >= 'a' && previous <= 'z'
+    . starts-camel-word = starts-after-lowercase && char >= 'A' && char <= 'Z'
+    if is-separator || starts-camel-word
+        if word
+            words += word
+        word = ""
+    if !is-separator
+        word += char
+    previous = char
+if word
+    words += word
+
+= " ".join
+    ** 1 .. < words.length
+    *> words[each].lowercased
+
+━━━━━━━━━━━━━━━━━━━━
++ CaseResult
+
++ status = "crashed"
++ actual = ""
++ expected = ""
++ errors = ""
++ duration = 0ms
++ compiled = false
++ exit = 0
+
+────────────────────
++ do compare
+    - actual String
+    - expected String
+
+this.actual = actual
+this.expected = expected
+status = if actual.trim() == expected.trim() then "passed" else "failed"
+
+━━━━━━━━━━━━━━━━━━━━
++ RunContext
+
++ suite String
++ compiler String
++ scratch String
++ project String
++ library String
++ is-brix Bool
++ case-count = 0
+
+────────────────────
++ This
+    - suite String
+    - compiler String
+    - scratch String
+    - project String
+    - library String
+    - is-brix Bool
+
+────────────────────
++ get source-name String
+
+if is-brix then "__source__$brix-extension" else "__source__.yumi"
+
+────────────────────
++ get source-extension String
+
+if is-brix then brix-extension else ".yumi"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-batch Int ?! Error
+
+. suite = env-required("YUMI_TEST_SUITE")
+. project-path = env-required("YUMI_TEST_PROJECT_ROOT")
+. tests-path = env-required("YUMI_TEST_ROOT")
+. payload = env-required("YUMI_TEST_PAYLOAD")
+check-suite(suite, project-path, tests-path)
+. compiler = env("YUMI_TEST_COMPILER") ?? ""
+. scratch = env("YUMI_TEST_SCRATCH") ?? ""
+if suite != parse-suite && (!compiler || !scratch)
+    ?! Error("The $suite suite needs YUMI_TEST_COMPILER and YUMI_TEST_SCRATCH")
+. is-brix = (env("YUMI_TEST_BRIX") ?? "") != ""
+. stdlib = (toolchain-root / "stdlib") as String
+. context = RunContext(suite, compiler, scratch, project-path, stdlib, is-brix)
+emit-run(context, project-path, tests-path, selected-test-ids(payload))
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-suite ?! Error
+    - suite String
+    - project-path String
+    - tests-path String
+
+if is-not-language-suite && suite != diagnostics-suite && suite != scratch-suite
+    ?! Error("Unknown test suite: $suite")
+.. is-not-language-suite = suite != parse-suite && suite != core-suite
+if tests-path != project-path && !tests-path.starts-with("$project-path/")
+    ?! Error("The test root is outside the project: $tests-path")
+=? if suite == scratch-suite && !Path(tests-path).exists
+if !Path(tests-path).is-dir
+    ?! Error("The test root is not a directory: $tests-path")
+
+━━━━━━━━━━━━━━━━━━━━
++ selected-test-paths ?! Error
+    - suite String
+    - root String
+    - selected-ids [String]
+
+distinct(selected-test-path(suite, root, each) in selected-ids)
+
+━━━━━━━━━━━━━━━━━━━━
++ selected-test-path String ?! Error
+    - suite String
+    - root String
+    - id String
+
+match id
+    ~ "test:" $suite ":" $root "/" name (!\case-index .)+ \case-index
+        "$root/$name"
+    ?! Error("The selected test is outside the $suite catalog: $id")
+
+    .. case-index ~
+        ~ ":" [0-9]+ !.
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-catalog
+    - suite String
+    - project-path String
+    - tests-path String
+    - start-index Int
+
+. test-paths [String] = sort(find-test-paths(Path(tests-path)))
+. file-case-lists [[TestCase]] = <* test-path in test-paths
+    TestFile(suite, test-path, project-path).parse()
+. all-cases [TestCase] = <* test-case in all-test-cases(file-case-lists)
+. catalog-tests [JSON] = <* index, test-case in indexed(all-cases)
+    test-catalog-json(test-case, start-index + index + 1) as JSON
+. file-nodes [JSON] = <* file-cases in file-case-lists
+    . test-nodes [JSON] = <* test-case in file-cases
+        test-node-json(test-case) as JSON
+    file-node-json(file-cases, test-nodes) as JSON
+
+. root = Map'String'JSON
+    • "protocol" "ometer.testometer.catalog.v1" as JSON
+    • "protocolVersion" 1 as JSON
+    • "version" 2 as JSON
+    • "projectPath" project-path as JSON
+    • "suites" [suite-node-json(suite, file-nodes, catalog-tests.length) as JSON] as JSON
+    • "tests" catalog-tests as JSON
+    • "scopes" List'JSON() as JSON
+    • "isExclusive" false as JSON
+emit-json(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-run
+    - context RunContext
+    - project-path String
+    - tests-path String
+    - selected-ids [String]
+
+if !selected-ids
+    ?! Error("No Testometer-selected tests were provided")
+
+. selected-cases = file-cases(context.suite, project-path, tests-path, selected-ids)
+
+emit-json(run-start-json(selected-ids))
+
+. results [CaseResult] = run-cases(selected-cases, context)
+. passed-results [CaseResult] = <* result in results when result.status == "passed"
+. failed-results [CaseResult] = <* result in results when result.status == "failed"
+. skipped-results [CaseResult] = <* result in results when result.status == "skipped"
+. crashed-results [CaseResult] = <* result in results when result.status == "crashed"
+. passed = passed-results.length
+. failed = failed-results.length
+. skipped = skipped-results.length
+. crashed = crashed-results.length
+. killed = results.length - passed - failed - skipped - crashed
+
+emit-json(run-end-json(selected-ids.length, passed, failed, skipped, crashed, killed))
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-cases [TestCase] ?! Error
+    - suite String
+    - project-path String
+    - tests-path String
+    - selected-ids [String]
+
+` The cases of test files the ids select, in the order of the ids.
+. root = relative-test-path(tests-path, project-path)
+. test-paths = selected-test-paths(suite, root, selected-ids)
+. file-case-lists [[TestCase]] = <* test-path in test-paths
+    TestFile(suite, "$project-path/$test-path", project-path).parse()
+. all-cases [TestCase] = <* test-case in all-test-cases(file-case-lists)
+= <* id in selected-ids
+    selected-test-case(id, all-cases)
+
+━━━━━━━━━━━━━━━━━━━━
++ do all-test-cases <TestCase>
+    - file-case-lists [[TestCase]]
+
+for file-cases in file-case-lists
+    <<= file-cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do selected-test-case TestCase
+    - id String
+    - all-cases [TestCase]
+
+for test-case in all-cases
+    if test-case.id == id
+        = test-case
+?! Error("The selected test is outside the catalog: $id")
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-cases [CaseResult]
+    - cases [TestCase]
+    - context RunContext
+
+` Runs the cases of a suite and reports each. A case of the core suite runs in a batch, as the
+` batches of `yumitest` run theirs, unless it must run alone; one that expects the compiler to
+` fail is compiled alone first, and goes to the batch only where the compiler reports nothing.
+if context.suite != core-suite
+    = <* test-case in cases
+        run-and-emit-result(test-case, context)
+. results [CaseResult]
+. batched [Index]
+for test-case in cases
+    . result = CaseResult()
+    results += result
+    emit-json(test-start-json(test-case.id))
+    if test-case.has-option("skip") || test-case.has-option("nyi") || runs-alone(test-case)
+        run-into(test-case, result, context)
+        emit-json(test-result-json(test-case, result))
+    else if !expects-compile-failure(test-case) || compiles-alone(test-case, result, context)
+        batched += results.length - 1
+    else
+        emit-json(test-result-json(test-case, result))
+run-batch(cases, batched, results, context)
+for position in batched
+    emit-json(test-result-json(cases[position], results[position]))
+= results
+
+━━━━━━━━━━━━━━━━━━━━
+_ runs-alone Bool
+    - test-case TestCase
+
+` Whether a case runs by itself: one that expects what the compiler warns, which the compiler
+` warns of for a whole batch at once, one that compiles probes in, or one that stops the runner.
+some(["warnings", "warn", "probes", "runner-panic"]) • where test-case.has-option(each)
+
+━━━━━━━━━━━━━━━━━━━━
+_ expects-compile-failure Bool
+    - test-case TestCase
+
+some(["crash", "compile-error"]) • where test-case.has-option(each)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-into
+    - test-case TestCase
+    - result CaseResult
+    - context RunContext
+
+` Runs a case by itself into its result.
+. ran = run-case(test-case, context)
+result.status = ran.status
+result.actual = ran.actual
+result.expected = ran.expected
+result.errors = ran.errors
+result.duration = ran.duration
+result.compiled = ran.compiled
+result.exit = ran.exit
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compiles-alone Bool
+    - test-case TestCase
+    - result CaseResult
+    - context RunContext
+
+` Type checks a case that expects the compiler to fail without building it, and gives whether
+` the compiler reported nothing, so the case runs in a batch. Where it reported what it found,
+` that is the case's result, as it is where the case runs alone; where it failed for any other
+` reason, the case runs alone.
+. started = clock()
+context.case-count += 1
+. directory = "$context.scratch/case-$context.case-count"
+Path(directory).make-directory()
+for name, content in test-case.files
+    write-case-file(directory, name, content)
+. errors-path = "$directory/stderr"
+. command = " ".join
+    * "cd ${shell-quoted(directory)} &&"
+    * shell-quoted(context.compiler)
+    * "--reached-only"
+    * source-switch(context, directory, test-case.source)
+    * "2>${shell-quoted(errors-path)}"
+. process = Process("/bin/sh", "-c", command)
+. output = unsourced(process as String, directory, context)
+. status = process.wait(null) ?? 1
+process.close()
+if status == 0
+    = true
+if status != diagnostic-status
+    run-into(test-case, result, context)
+    = false
+. errors = unsourced(read-text(errors-path), directory, context)
+. run = CompilerRun(output, errors, status, "$directory/case", "", errors)
+finish-case(test-case, run, result, context, directory)
+result.duration = clock() - started
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-and-emit-result CaseResult
+    - test-case TestCase
+    - context RunContext
+
+emit-json(test-start-json(test-case.id))
+. result = run-case(test-case, context)
+emit-json(test-result-json(test-case, result))
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-case CaseResult
+    - test-case TestCase
+    - context RunContext
+
+. result = CaseResult()
+. started = clock()
+if test-case.has-option("skip") || test-case.has-option("nyi")
+    result.status = "skipped"
+else
+    execute-case(test-case, result, context)
+result.duration = clock() - started
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do execute-case
+    - test-case TestCase
+    - result CaseResult
+    - context RunContext
+
+do finally
+    . panic = recover()
+    if panic
+        result.status = "crashed"
+        result.errors = "$panic"
+
+if test-case.has-option("runner-panic")
+    ?! Panic("Test runner panic boundary")
+
+. execution = catch execute-case-body(test-case, result, context)
+if execution is Error
+    result.status = "crashed"
+    result.errors = "$execution"
+
+━━━━━━━━━━━━━━━━━━━━
++ do execute-case-body
+    - test-case TestCase
+    - result CaseResult
+    - context RunContext
+
+if context.suite == parse-suite
+    parse-case-body(test-case, result, context.is-brix)
+else
+    core-case-body(test-case, result, context)
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse-case-body
+    - test-case TestCase
+    - result CaseResult
+    - is-brix Bool
+
+if is-brix
+    parse-compare("\n$test-case.source", true, test-case.expected, result)
+    =
+if test-case.source
+    parse-compare("\n$test-case.source", false, test-case.expected, result)
+. brix = test-case.brix
+if brix && (result.status == "passed" || !test-case.source)
+    parse-compare("\n$brix", true, test-case.expected, result)
+    if result.status != "passed"
+        result.errors = "The case's %brix source does not read as expected.\n$result.errors"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do parse-compare
+    - source String
+    - is-brix Bool
+    - expected String
+    - result CaseResult
+
+. parsed = catch parsed-source(source, is-brix)
+if parsed is ASTBuilder
+    . tree = parsed as ASTBuilder
+    use tree
+    . actual = "\n".join
+        ** 0 .. < root-statement-count(tree)
+        *> tree.view(root-statement(tree, each)) as String
+    result.compare(actual, expected)
+else if parsed is YumiSyntaxError
+    result.compare((parsed as YumiSyntaxError).exception-text, expected)
+else
+    result.status = "crashed"
+    result.errors = "$parsed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ parsed-source ASTBuilder ?! YumiSyntaxError
+    - source String
+    - is-brix Bool
+
+if is-brix then parse-brix(source) else parse-yumi(source)
+
+━━━━━━━━━━━━━━━━━━━━
+_ root-statement-count Size
+    - tree ASTBuilder
+
+match tree.nodes[tree.root]
+    | .node-top-level-syntax(top)
+        top.statements.count as Size
+    ?! Panic("ASTBuilder root has the wrong syntax case")
+
+━━━━━━━━━━━━━━━━━━━━
+_ root-statement SyntaxId
+    - tree ASTBuilder
+    - index Index
+
+match tree.nodes[tree.root]
+    | .node-top-level-syntax(top)
+        ?! Panic("ASTBuilder statement index is out of bounds")
+            if index >= top.statements.count
+        tree.children[(top.statements.start) + index]
+    ?! Panic("ASTBuilder root has the wrong syntax case")
+
+━━━━━━━━━━━━━━━━━━━━
++ do core-case-body
+    - test-case TestCase
+    - result CaseResult
+    - context RunContext
+
+context.case-count += 1
+. directory = "$context.scratch/case-$context.case-count"
+Path(directory).make-directory()
+for name, content in test-case.files
+    write-case-file(directory, name, content)
+
+. warns = test-case.has-option("warnings") || test-case.has-option("warn")
+. probes = test-case.options["probes"] ?? ""
+. run = run-compiler
+    - context
+    - directory
+    - source-switch(context, directory, test-case.source)
+    - warns
+    - probes
+finish-case(test-case, run, result, context, directory)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do finish-case
+    - test-case TestCase
+    - run CompilerRun
+    - result CaseResult
+    - context RunContext
+    - directory String
+
+` Gives a case its result from what compiling and running it printed, and how it ended.
+. crash = crash-reason(run, test-case)
+result.compiled = Path(run.executable).is-file
+result.exit = run.status
+if crash
+    result.status = "crashed"
+    result.errors = crash
+    result.actual = run.output
+else
+    result.compare
+        - case-output(test-case, run, context.library, context.source-extension, directory)
+        - test-case.expected
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-batch ?! Error ?! IOError
+    - cases [TestCase]
+    - batched [Index]
+    - results [CaseResult]
+    - context RunContext
+    - rounds Index = 0
+
+` Builds the cases of a batch into one program and runs it. Each case is written to a directory
+` of its own as the module the compiler names by its place in the batch, and the program runs
+` from where each case of a run starts: one that ends the program ends its case, and the program
+` runs again from the next. The sources are removed once built, as a case run alone has no file
+` for a place its program reports to show. Where the batch cannot be built, it is split.
+if !batched
+    =
+. started = clock()
+context.case-count += 1
+. directory = "$context.scratch/batch-$context.case-count"
+Path(directory).make-directory()
+. control = "$directory/control"
+. output = "$directory/stdout"
+. errors = "$directory/stderr"
+. lines [String] = ["$control\t$output\t$errors"]
+. directories [String]
+for position in batched
+    . case-directory = "$directory/t${(directories.length as Int).pad(6)}"
+    Path(case-directory).make-directory()
+    for name, content in cases[position].files
+        write-case-file(case-directory, name, content)
+    write-case-file(case-directory, context.source-name, "\n${cases[position].source}")
+    lines += "${cases[position].id}\t$case-directory\t$case-directory/${context.source-name}"
+    directories += case-directory
+write-case-file(directory, "manifest", "\n".join(lines))
+write-case-file(directory, "stdout", "")
+write-case-file(directory, "stderr", "")
+. executable = "$directory/batch"
+. command = " ".join
+    * "cd ${shell-quoted(directory)} &&"
+    * shell-quoted(context.compiler)
+    * "--batch manifest -o ${shell-quoted(executable)}"
+    * ">${shell-quoted("$directory/build")} 2>&1"
+. process = Process("/bin/sh", "-c", command)
+. status = process.wait(null) ?? 1
+process.close()
+if status != 0 || !Path(executable).is-file
+    split-batch(cases, batched, results, context, read-text("$directory/build"), rounds)
+    =
+for case-directory in directories
+    Path("$case-directory/${context.source-name}").delete()
+. next = 0
+while next < batched.length
+    next = run-batch-from(next, cases, batched, results, context, directory, directories)
+. each = (clock() - started) / (batched.length as F64)
+for position in batched
+    results[position].duration = each
+
+━━━━━━━━━━━━━━━━━━━━
+_ do split-batch ?! Error ?! IOError
+    - cases [TestCase]
+    - batched [Index]
+    - results [CaseResult]
+    - context RunContext
+    - report String
+    - rounds Index
+
+` Runs the cases of a batch that could not be built: each whose source the compiler's report
+` names runs alone and the others in a batch again, for a few such rounds. Where it names none, or
+` the rounds are spent, each half runs as a batch of its own, and a case by itself runs alone.
+. named = named-cases(report, batched.length)
+. alone [Index]
+. rest [Index]
+for position in 0 .. < batched.length
+    if named[position] && rounds < batch-name-rounds
+        alone += batched[position]
+    else
+        rest += batched[position]
+if alone
+    for position in alone
+        run-into(cases[position], results[position], context)
+    run-batch(cases, rest, results, context, rounds + 1)
+    =
+if batched.length == 1
+    run-into(cases[batched[0]], results[batched[0]], context)
+    =
+. half = batched.length / 2
+. first [Index]
+. second [Index]
+for position in 0 .. < batched.length
+    if position < half
+        first += batched[position]
+    else
+        second += batched[position]
+run-batch(cases, first, results, context, rounds)
+run-batch(cases, second, results, context, rounds)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do named-cases [Bool]
+    - report String
+    - count Index
+
+` Which of the cases of a batch a report names a place in the source of, by the directory the
+` batch gives each: a path in it to a Yumi source, followed by a line.
+. named [Bool]
+for position in 0 .. < count
+    named += false
+. pieces [String] = report.split("t")
+for position in 1 .. < pieces.length
+    . piece = pieces[position]
+    . prior = pieces[position - 1]
+    if digit-count(piece) != 6 || piece.length < 7 || piece[6] != '/'
+        continue
+    if prior.length != 0 && !prior.ends-with("/") && !prior.ends-with(" ") && !prior.ends-with("\n")
+        continue
+    . place [String] = piece.split(":")
+    . number = leading-number(piece)
+    . is-source = place.length > 1 && has-extension
+        .. has-extension = place[0].ends-with(".yumi") || place[0].ends-with(brix-extension)
+    if is-source && leading-number(place[1]) >= 0 && number < (count as Int)
+        named[number] = true
+= named
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-batch-from Index
+    - first Index
+    - cases [TestCase]
+    - batched [Index]
+    - results [CaseResult]
+    - context RunContext
+    - directory String
+    - directories [String]
+
+` Runs a batch from one of its cases on, gives each case that finished its result and the case
+` that ended the program its own, and gives where the batch runs from next.
+. control = "$directory/control"
+write-case-file(directory, "control", "")
+. command = " ".join
+    * "cd ${shell-quoted(directory)} &&"
+    * "YUMITEST_BATCH_START_INDEX=$first YUMITEST_BATCH_END_INDEX=${batched.length}"
+    * "YUMITEST_BATCH_CONTINUE_AFTER_PANIC=1 exec ./batch"
+    * ">>${shell-quoted("$directory/process")} 2>&1"
+. process = Process("/bin/sh", "-c", command)
+. status = process.wait(null) ?? 1
+process.close()
+. marks [String = BatchMark]
+for line in read-text(control).split("\n")
+    . fields [String] = line.split("\t")
+    if fields.length != 4
+        continue
+    . mark = marks[fields[1]] ?? BatchMark()
+    if fields[0] == "started"
+        mark.started = true
+        mark.output-start = (fields[2] as Int) as Size
+        mark.errors-start = (fields[3] as Int) as Size
+    else if fields[0] == "finished"
+        mark.finished = true
+        mark.output-end = (fields[2] as Int) as Size
+        mark.errors-end = (fields[3] as Int) as Size
+    marks[fields[1]] = mark
+. output = read-bytes("$directory/stdout")
+. errors = read-bytes("$directory/stderr")
+for position in first .. < batched.length
+    . test-case = cases[batched[position]]
+    . mark = marks[test-case.id] ?? BatchMark()
+    if !mark.started
+        if position == first
+            run-into(test-case, results[batched[position]], context)
+            = position + 1
+        = position
+    . ended = mark.finished
+    . printed = output.slice-string
+        - mark.output-start .. < (if ended then mark.output-end else output.size)
+    . reported = errors.slice-string
+        - mark.errors-start .. < (if ended then mark.errors-end else errors.size)
+    . case-directory = directories[position]
+    . held = task-numbers(in-case(reported, case-directory, context))
+    . run = CompilerRun
+        - in-case(printed, case-directory, context)
+        - held
+        - if ended then 0 else status
+        - "$directory/batch"
+        - ""
+        - held
+    finish-case(test-case, run, results[batched[position]], context, case-directory)
+    if !ended
+        = position + 1
+= batched.length
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchMark
+
+` Where a case of a batch starts and finishes printing in the files the batch prints to.
+
++ started = false
++ finished = false
++ output-start Size = 0
++ output-end Size = 0
++ errors-start Size = 0
++ errors-end Size = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do in-case String
+    - text String
+    - directory String
+    - context RunContext
+
+` What a case of a batch printed as the case would print it alone: its module and the modules
+` beside it are named without the place the batch gives them, its source has no file, and what the
+` program numbers across its cases is named as the batches of `yumitest` name it.
+. pieces [String] = text.split("__test__/t")
+. kept [String] = [pieces[0]]
+for position in 1 .. < pieces.length
+    . piece = pieces[position]
+    if piece.length > 7 && piece[6] == '/'
+        kept += piece[7 ...]
+    else
+        kept += "__test__/t$piece"
+. placed = unsourced("".join(kept), directory, context)
+. dispatched = without-number(placed, "__source__:union-dispatch-", "__source__:union-dispatch-1")
+. transitioned = without-number
+    - dispatched
+    - "__source__:state-transition"
+    - "__source__:state-transition"
+= without-number(transitioned, "__source__:Fork", "__source__:Fork")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do without-number String
+    - text String
+    - name String
+    - kept String
+
+` Text where each name that is `name` followed by a number is `kept`.
+. pieces [String] = text.split(name)
+. joined [String] = [pieces[0]]
+for position in 1 .. < pieces.length
+    . piece = pieces[position]
+    . digits = digit-count(piece)
+    if digits == 0
+        joined += "$name$piece"
+    else
+        . rest = piece[digits ...]
+        joined += "$kept$rest"
+= "".join(joined)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do digit-count Size
+    - text String
+
+` How many digits a text begins with.
+. count Size = 0
+for char in text
+    if char < '0' || char > '9'
+        break
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-text String
+    - path String
+
+. file = use File(path)
+= file as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-bytes Byte[]
+    - path String
+
+. file = use File(path)
+= file
+
+━━━━━━━━━━━━━━━━━━━━
+_ do task-numbers String
+    - text String
+
+` What a case of a batch reported, with the tasks the runtime names numbered from the first it
+` names, as a case run alone numbers them.
+. words [String] = text.split("ask ")
+if words.length < 2
+    = text
+. first = Int.max
+for position in 1 .. < words.length
+    . number = leading-number(words[position])
+    if number >= 0 && number < first && follows-task
+        first = number
+    .. follows-task = words[position - 1].ends-with("T") || words[position - 1].ends-with("t")
+if first == Int.max
+    = text
+. kept [String] = [words[0]]
+for position in 1 .. < words.length
+    . number = leading-number(words[position])
+    . word = words[position]
+    if number >= 0 && (words[position - 1].ends-with("T") || words[position - 1].ends-with("t"))
+        . digits = "$number".length as Size
+        . rest = word[digits ...]
+        word = "${number - first + 1}$rest"
+    kept += word
+= "ask ".join(kept)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do leading-number Int
+    - text String
+
+` The number a text begins with, or -1.
+. number = -1
+for char in text
+    if char < '0' || char > '9'
+        break
+    number = (if number < 0 then 0 else number * 10) + ((char as Int) - ('0' as Int))
+= number
+
+━━━━━━━━━━━━━━━━━━━━
++ CompilerRun is Tuple
+
++ output String
++ errors String
++ status Int
++ executable String
++ warnings String
++ ran String
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-compiler CompilerRun
+    - context RunContext
+    - directory String
+    - source-switch String
+    - warns Bool
+    - probes String
+
+` Compiles a case and runs its program as the batches of `yumitest` run theirs: a program
+` that reports an unhandled panic or error goes on (`YUMITEST_BATCH_CONTINUE_AFTER_PANIC`).
+. process = Process("/bin/sh", "-c", command)
+. output = process as String
+. status = process.wait(null) ?? 1
+process.close()
+. warned = unsourced(read-text(warnings-path), directory, context)
+. ran = unsourced(read-text(errors-path), directory, context)
+= CompilerRun
+    - unsourced(output, directory, context)
+    - "$warned$ran"
+    - status
+    - executable
+    - warned.trim()
+    - ran
+
+.. executable = "$directory/case"
+.. errors-path = "$directory/stderr"
+.. warnings-path = "$directory/compile-stderr"
+.. switches = if warns then "--compile --warnings" else "--compile"
+.. probing = if probes then "--probes ${shell-quoted(probes)}" else ""
+.. tracing = if probes then "PROBES_ENABLED=${shell-quoted(probes)} PROBES_PATH=${shell-quoted(trace-path)}" else ""
+.. trace-path = "$directory/probes.trace"
+.. command = " ".join
+    * "cd ${shell-quoted(directory)} &&"
+    * ": >${shell-quoted(errors-path)} &&"
+    * shell-quoted(context.compiler)
+    * source-switch
+    * "-o ${shell-quoted(executable)}"
+    * "$switches $probing 2>${shell-quoted(warnings-path)} &&"
+    * if context.is-brix then "rm -f ${context.source-name} &&" else ""
+    * "YUMITEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)}"
+    * "2>>${shell-quoted(errors-path)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ crash-reason String?
+    - run CompilerRun
+    - test-case TestCase
+
+` Why a run counts as crashed whatever the case expects. A compiler that reported diagnostics
+` exits with their status and no executable; one that produced no executable for any other
+` reason failed, which no expected crash of the program stands for.
+|? !produced && run.status != 0 && run.status != diagnostic-status
+    if run.errors then run.errors else "The compiler exited with status $run.status"
+|? run.status != 0 && !expects-failure
+    if run.errors then run.errors else "The compiler exited with status $run.status"
+??
+    null
+
+.. produced = Path(run.executable).is-file
+.. expects-failure = some • stream ["crash", "compile-error", "runtime-crash", "crash-stderr"] • where
+    test-case.has-option(each)
+
+━━━━━━━━━━━━━━━━━━━━
+_ case-output String
+    - test-case TestCase
+    - run CompilerRun
+    - library String
+    - extension String
+    - directory String
+
+|? test-case.has-option("crash-stderr")
+    without-library-locations(run.errors, library, extension)
+|? test-case.has-option("warnings")
+    without-case-directory(warned, directory)
+??
+    without-case-directory(run.output, directory)
+
+.. warned = "\n".join(each in [run.warnings, run.ran, run.output] when each.length != 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-switch String
+    - context RunContext
+    - directory String
+    - source String
+
+=? "-c ${shell-quoted("\n$source")}" if !context.is-brix
+write-case-file(directory, context.source-name, "\n$source")
+= context.source-name
+
+━━━━━━━━━━━━━━━━━━━━
+_ unsourced String
+    - text String
+    - directory String
+    - context RunContext
+
+"no file".join(unplaced.split(context.source-name))
+
+.. unplaced = "no file".join(text.split("$directory/${context.source-name}"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ without-case-directory String
+    - text String
+    - directory String
+
+` Output whose places in the case's own files are named from the case's directory, as the batches
+` of `yumitest` name them: the directory the case was written to is no part of what it expects.
+"".join(text.split("$directory/"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do without-library-locations String
+    - text String
+    - library String
+    - extension String
+
+` A stack trace whose places in the library are named by their files alone, so that a case holds
+` neither where the project is kept nor a line of the library.
+. root = "$library/"
+. lines [String] = text.split("\n")
+. kept [String]
+. index = 0
+while index < lines.length
+    . line = lines[index]
+    . start = library-place(line, library, extension)
+    if start
+        . offset = start as Size
+        . place = line[offset .. < line.length]
+        . file = library-file(if place.starts-with(root) then place[root.length ...] else place)
+        if line.starts-with("<") && line.ends-with(">")
+            kept += "<$file>"
+            if index + 2 < lines.length && marks-column(lines[index + 2])
+                index += 2
+        else
+            kept += "${line[0 .. < offset]}$file"
+    else
+        kept += line
+    index += 1
+= "\n".join(kept)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do library-place Index?
+    - line String
+    - library String
+    - extension String
+
+=? line.find("$library/")
+. found = line.find("$extension:")
+if !found
+    = null
+. end = found as Size
+. start = end
+while start > 0 && line[start - 1] != ' ' && line[start - 1] != '<'
+    start -= 1
+=? start as Index if Path("$library/${line[start .. < end + extension.length]}").is-file
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ library-file String
+    - place String
+
+` The file a place in the library names, without its line and column.
+|? end
+    place[0 .. < (end as Size)]
+|? place.ends-with(">")
+    place[0 .. < place.length - 1]
+??
+    place
+
+.. end = place.find(":")
+
+━━━━━━━━━━━━━━━━━━━━
+_ marks-column Bool
+    - line String
+
+` Whether a line is the mark a panic draws under the line it echoes.
+mark.length != 0 && mark == "^" * mark.length
+
+.. mark = line.trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-case-file
+    - directory String
+    - name String
+    - content String
+
+. target = Path("$directory/$name")
+make-directories(target.dir as String, directory)
+. flags = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
+. file = File(target as String, flags)
+file.write(content)
+file.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do make-directories ?! Error
+    - path String
+    - root String
+
+if path == root || Path(path).is-dir
+    =
+make-directories(Path(path).dir as String, root)
+Path(path).make-directory()
+
+━━━━━━━━━━━━━━━━━━━━
+_ shell-quoted String
+    - text String
+
+"'${"'\\''".join(text.split("'"))}'"
+
+━━━━━━━━━━━━━━━━━━━━
++ do find-test-paths [String]
+    - root Path
+
+. paths [String]
+=? paths if !root.exists
+. directories [Path] = [root]
+while directories
+    . directory = directories.pop()
+    for child in directory.contents
+        if child.is-dir
+            directories += child
+        else if child.is-file && child.ext == "test"
+            paths += child as String
+= paths
+
+━━━━━━━━━━━━━━━━━━━━
++ test-catalog-json [String = JSON]
+    - test-case TestCase
+    - catalog-index Int
+
+Map'String'JSON
+    • "id" test-case.id as JSON
+    • "groupName" test-case.suite as JSON
+    • "fileLabel" test-case.file-label as JSON
+    • "sourcePath" test-case.source-path as JSON
+    • "relativePath" test-case.catalog-relative-path as JSON
+    • "label" test-case.label as JSON
+    • "lineNoStart" test-case.line-no-start as JSON
+    • "lineNoEnd" test-case.line-no-end as JSON
+    • "selector" test-case.id as JSON
+    • "fileId" test-case.file-id as JSON
+    • "groupId" "group:$test-case.suite" as JSON
+    • "suiteIds" json-strings([suite-id, test-case.file-id]) as JSON
+    • "selectors" selectors as JSON
+    • "index" catalog-index as JSON
+    • "caseIndex" test-case.case-index as JSON
+    • "configName" test-case.suite as JSON
+    • "suiteName" test-case.suite as JSON
+    • "configuredSuiteSelector" suite-id as JSON
+    • "isDefault" false as JSON
+
+.. suite-id = "suite:$test-case.suite"
+.. selectors = json-strings([test-case.id, test-case.file-id, suite-id])
+
+━━━━━━━━━━━━━━━━━━━━
++ suite-node-json [String = JSON]
+    - suite String
+    - children [JSON]
+    - count Int
+
+Map'String'JSON
+    • "id" "suite:$suite" as JSON
+    • "label" suite as JSON
+    • "kind" "suite" as JSON
+    • "selector" "suite:$suite" as JSON
+    • "count" count as JSON
+    • "children" children as JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-node-json [String = JSON]
+    - file-cases [TestCase]
+    - children [JSON]
+
+if !file-cases
+    ?! Error("Cannot create a catalog node for an empty test file")
+. first = file-cases[0]
+= Map'String'JSON
+    • "id" first.file-id as JSON
+    • "label" first.file-label as JSON
+    • "kind" "suite" as JSON
+    • "selector" first.file-id as JSON
+    • "count" children.length as JSON
+    • "path" first.source-path as JSON
+    • "sourcePath" first.source-path as JSON
+    • "relativePath" first.catalog-relative-path as JSON
+    • "children" children as JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ test-node-json [String = JSON]
+    - test-case TestCase
+
+Map'String'JSON
+    • "id" test-case.id as JSON
+    • "label" test-case.label as JSON
+    • "kind" "test" as JSON
+    • "selector" test-case.id as JSON
+    • "count" 1 as JSON
+    • "path" test-case.source-path as JSON
+    • "sourcePath" test-case.source-path as JSON
+    • "relativePath" test-case.catalog-relative-path as JSON
+    • "lineNoStart" test-case.line-no-start as JSON
+    • "lineNoEnd" test-case.line-no-end as JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ test-result-json [String = JSON]
+    - test-case TestCase
+    - result CaseResult
+
+|? result.status == "failed"
+    Map'String'JSON
+        • "protocol" "ometer.testometer.v1" as JSON
+        • "version" 1 as JSON
+        • "type" "testResult" as JSON
+        • "id" test-case.id as JSON
+        • "groupName" test-case.suite as JSON
+        • "fileLabel" test-case.file-label as JSON
+        • "sourcePath" test-case.source-path as JSON
+        • "relativePath" test-case.catalog-relative-path as JSON
+        • "label" test-case.label as JSON
+        • "lineNoStart" test-case.line-no-start as JSON
+        • "lineNoEnd" test-case.line-no-end as JSON
+        • "index" test-case.case-index as JSON
+        • "status" result.status as JSON
+        • "duration" result.duration as JSON
+        • "expected" result.expected as JSON
+        • "actual" result.actual as JSON
+        • "compiled" result.compiled as JSON
+        • "exit" result.exit as JSON
+|? result.status == "crashed"
+    Map'String'JSON
+        • "protocol" "ometer.testometer.v1" as JSON
+        • "version" 1 as JSON
+        • "type" "testResult" as JSON
+        • "id" test-case.id as JSON
+        • "groupName" test-case.suite as JSON
+        • "fileLabel" test-case.file-label as JSON
+        • "sourcePath" test-case.source-path as JSON
+        • "relativePath" test-case.catalog-relative-path as JSON
+        • "label" test-case.label as JSON
+        • "lineNoStart" test-case.line-no-start as JSON
+        • "lineNoEnd" test-case.line-no-end as JSON
+        • "index" test-case.case-index as JSON
+        • "status" result.status as JSON
+        • "duration" result.duration as JSON
+        • "errors" result.errors as JSON
+        • "output" result.actual as JSON
+        • "compiled" result.compiled as JSON
+        • "exit" result.exit as JSON
+??
+    Map'String'JSON
+        • "protocol" "ometer.testometer.v1" as JSON
+        • "version" 1 as JSON
+        • "type" "testResult" as JSON
+        • "id" test-case.id as JSON
+        • "groupName" test-case.suite as JSON
+        • "fileLabel" test-case.file-label as JSON
+        • "sourcePath" test-case.source-path as JSON
+        • "relativePath" test-case.catalog-relative-path as JSON
+        • "label" test-case.label as JSON
+        • "lineNoStart" test-case.line-no-start as JSON
+        • "lineNoEnd" test-case.line-no-end as JSON
+        • "index" test-case.case-index as JSON
+        • "status" result.status as JSON
+        • "duration" result.duration as JSON

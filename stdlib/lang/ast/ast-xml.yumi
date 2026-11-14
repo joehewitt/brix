@@ -1,0 +1,1897 @@
+./ast-builder
+./ast-nodes
+./row-range
+/core/array-builder
+/lang/xmlwriter
+/stream/aggregate
+
+_ @stack syntax-xml-tree ASTBuilder
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBuilder
+
+────────────────────
++ do syntax-xml XML
+    - id SyntaxId
+
+do with syntax-xml-tree = this
+    = syntax-xml-tree.nodes[id].xml
+
+────────────────────
++ view XML
+    - id SyntaxId
+
+syntax-xml(id)
+
+────────────────────
++ get xml XML
+
+syntax-xml(root)
+
+────────────────────
++ to XML
+
+xml
+
+────────────────────
++ to String
+
+xml
+
+━━━━━━━━━━━━━━━━━━━━
+_ child-xml XML?
+    - id SyntaxId
+
+syntax-xml-tree.nodes[id].xml if id != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do child-xmls ImmutableArray'XML?
+    - range RowRange'SyntaxId
+
+=? if range.count == 0
+
+. builder = ArrayBuilder'XML()
+for syntax-node in syntax-xml-tree.nodes[syntax-xml-tree.child-ids(range)]
+    . xml = syntax-node.xml
+    if xml.node-name || xml.children.length
+        builder.append(xml)
+= builder.finish-immutable()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do atoms-in ImmutableArray'Atom
+    - range RowRange'Atom
+
+. builder = ArrayBuilder'Atom()
+for offset in 0 .. < range.count
+    builder.append(syntax-xml-tree.atoms[range.start + offset])
+= builder.finish-immutable()
+
+━━━━━━━━━━━━━━━━━━━━
+_ syntax-type-name String
+    - id SyntaxId
+
+match syntax-xml-tree.nodes[id]
+    | .node-type-identifier(type)
+        type.name.text
+    | .node-core-type-identifier(type)
+        type.name.text
+    | .node-type-arguments(type)
+        "${syntax-type-name(type.base)}$suffix"
+        .. suffix = if type.args.count then "'${argument-names}" else ""
+        .. argument-names = "'".join(syntax-type-name(each) in argument-ids)
+            .. argument-ids = syntax-xml-tree.child-ids(type.args)
+    | .node-type-associated(type)
+        "${syntax-type-name(type.owner)}.${type.name.text}$suffix"
+        .. suffix = if type.args.count then "'${argument-names}" else ""
+        .. argument-names = "'".join(syntax-type-name(each) in argument-ids)
+            .. argument-ids = syntax-xml-tree.child-ids(type.args)
+    ?! Panic("Expected a named type syntax node")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do probe-object (String?, XML?)
+    - id SyntaxId
+
+=? (null, null) if !id
+. object-name String?
+. object-child XML?
+do match syntax-xml-tree.nodes[id]
+    | .node-identifier(row)
+        object-name = row.name.text
+    ??
+        object-child = <XML "Object"
+            child-xml(id)
+= (object-name, object-child)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTNoop
+
+────────────────────
++ get xml XML
+
+<XML
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTopLevel
+
+────────────────────
++ get xml XML
+
+<XML
+    child-xmls(statements)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBlock
+
+────────────────────
++ get xml XML
+
+<XML "Block"
+    if body.count
+        child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeScope
+
+────────────────────
++ get xml XML
+
+<XML "Block"
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTPrint
+
+────────────────────
++ get xml XML
+
+<XML "Print"
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDeclare
+
+────────────────────
++ get xml XML
+
+<XML "Declaration"
+    •? lazy is-lazy
+    •? pattern is-pattern
+    •? rollback
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTAssertion
+
+────────────────────
++ get xml XML
+
+<XML "Assert"
+    child-xml(condition)
+    child-xml(exception)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTClassBlock
+
+────────────────────
++ get xml XML
+
+<XML "Class"
+    • name name.text
+    • access
+    if alias-atoms.length
+        • aliases ", ".join(each.text in alias-atoms)
+    if tag-atoms.length
+        • tags ", ".join(each.text in tag-atoms)
+    child-xmls(type-args)
+    if base
+        <XML "Implements"
+            • inherited true
+            child-xml(base)
+    if or-bases.count
+        <XML "Or"
+            child-xmls(or-bases)
+    child-xmls(param-constraints)
+    child-xmls(param-assignments)
+    child-xmls(members)
+
+.. alias-atoms = atoms-in(aliases)
+.. tag-atoms = atoms-in(tags)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTExtension
+
+────────────────────
++ get xml XML
+
+<XML "Extension"
+    • access
+    child-xml(receiver)
+    if as-types.count
+        <XML "As"
+            child-xmls(as-types)
+    child-xmls(param-constraints)
+    child-xmls(param-assignments)
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleSheetExtension
+
+────────────────────
++ get xml XML
+
+<XML "StyleSheetExtension"
+    child-xml(receiver)
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTEventDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Event"
+    • name name.text
+    • type syntax-type-name(type)
+    • access
+    if key-type
+        • keyed syntax-type-name(key-type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTFunction
+
+────────────────────
++ get xml XML
+
+<XML "Function"
+    • names ", ".join(each.text in atoms-in(names))
+    • access
+    if is-getter
+        • getter true
+    else if is-setter
+        • setter true
+    •? imperative
+    if is-static
+        • ("static") true
+    if compilation-effects
+        • effects format-compilation-effect-mask(compilation-effects)
+    if is-inline
+        • ("inline") true
+    if is-live
+        • ("live") true
+    •? rollback
+    if pattern
+        <XML "pattern"
+            child-xml(pattern)
+    child-xmls(type-args)
+    child-xmls(args)
+    child-xmls(param-constraints)
+    child-xmls(param-assignments)
+    child-xml(return-type)
+    if errors.count
+        <XML "errors"
+            child-xmls(errors)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTGetter
+
+────────────────────
++ get xml XML
+
+<XML "Getter"
+    • access
+    • names ", ".join(each.text in atoms-in(names))
+    • imperative
+    child-xmls(type-args)
+    child-xmls(args)
+    child-xml(return-type)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTSetter
+
+────────────────────
++ get xml XML
+
+<XML "Setter"
+    • access
+    • names ", ".join(each.text in atoms-in(names))
+    • imperative
+    child-xmls(args)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProperty
+
+────────────────────
++ get xml XML
+
+<XML "Property"
+    • access
+    •? decoration decoration?.text
+    •? lazy is-lazy
+    if annotation-atoms.length
+        • annotations ", ".join(each.text in annotation-atoms)
+    child-xml(left)
+    child-xml(value)
+
+.. annotation-atoms = atoms-in(annotations)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateMachine
+
+────────────────────
++ get xml XML
+
+<XML "StateMachine"
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateCase
+
+────────────────────
++ get xml XML
+
+<XML "StateCase"
+    • name name.text
+    if target.count
+        <XML "target"
+            child-xmls(target)
+    child-xml(trigger)
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateContinuation
+
+────────────────────
++ get xml XML
+
+<XML "StateContinuation"
+    • name name.text
+    if target.count
+        <XML "target"
+            child-xmls(target)
+    child-xml(trigger)
+    child-xmls(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateFallback
+
+────────────────────
++ get xml XML
+
+<XML "StateFallback"
+    • target target.text
+    if values.count
+        <XML "target"
+            child-xmls(values)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateTrigger
+
+────────────────────
++ get xml XML
+
+<XML "StateTrigger"
+    • kind match kind
+        |= .state-trigger-for-on-when
+            "for-on-when"
+        |= .state-trigger-for-on
+            "for-on"
+        |= .state-trigger-on-when
+            "on-when"
+        |= .state-trigger-on
+            "on"
+        |= .state-trigger-if-match
+            "if-match"
+        |= .state-trigger-if
+            "if"
+        |= .state-trigger-when-stream
+            "when-stream"
+    child-xmls(items)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStateMatchExpression
+
+────────────────────
++ get xml XML
+
+<XML "MatchExpression"
+    child-xml(subject)
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTUnitDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Unit"
+    • access
+    child-xml(number)
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTEnumDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Enum"
+    •? name name?.text
+    child-xml(type)
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDelegateDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "TypeDelegates"
+    child-xmls(types)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTImplementsDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Implements"
+    child-xml(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTUsingDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Using"
+    child-xml(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleDomainItem
+
+────────────────────
++ get xml XML
+
+<XML "domain"
+    child-xml(target)
+    child-xml(domain)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleAnnotation
+
+────────────────────
++ get xml XML
+
+<XML "StyleAnnotation"
+    child-xml(left)
+    child-xmls(domains)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDependencyDeclaration
+
+────────────────────
++ get xml XML
+
+<XML "Dependencies"
+    child-xml(left)
+    child-xmls(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTContentBlock
+
+────────────────────
++ get xml XML
+
+<XML "Content"
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTFromverter
+
+────────────────────
++ get xml XML
+
+<XML "Fromverter"
+    • access
+    •? imperative
+    child-xml(type)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTConverter
+
+────────────────────
++ get xml XML
+
+<XML "Converter"
+    • access
+    •? imperative
+    if compilation-effects
+        • effects format-compilation-effect-mask(compilation-effects)
+    if is-inline
+        • ("inline") true
+    child-xml(type)
+    child-xmls(param-constraints)
+    child-xmls(param-assignments)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTSubscriber
+
+────────────────────
++ get xml XML
+
+<XML "Subscriber"
+    child-xml(iterator)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTWhenRule
+
+────────────────────
++ get xml XML
+
+<XML "When"
+    child-xml(expr)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTWheneverRule
+
+────────────────────
++ get xml XML
+
+<XML "Whenever"
+    • kind kind.text
+    |? target-type
+        child-xml(target-type)
+    ??
+        child-xml(expr)
+    child-xmls(args)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTRule
+
+────────────────────
++ do get xml XML
+
+.. style-rule-applications-xml = child-xmls(style-rule-applications)
+. params = ArrayBuilder'XML()
+for offset in 0 .. < args.count
+    . id = syntax-xml-tree.children[args.start + offset]
+    . argument = match syntax-xml-tree.nodes[id]
+        | .node-argument-decl(row)
+            row
+        ?! Panic("Expected a style rule argument")
+    . param = match syntax-xml-tree.nodes[argument.pattern]
+        | .node-type-capture(capture)
+            <XML "Param"
+                • name rule-parameter-name(capture.id)
+                |? capture.type
+                    child-xml(capture.type)
+                ??
+                    child-xml(argument.pattern)
+        ??
+            <XML "Param"
+                child-xml(argument.pattern)
+    params.append(param)
+
+= <XML "StyleRule"
+    • name name.text
+    •? own is-own
+    params.finish-immutable()
+    if style-rule-applications-xml
+        <XML "StyleRuleApplications"
+            style-rule-applications-xml
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ rule-parameter-name String
+    - id SyntaxId
+
+match syntax-xml-tree.nodes[id]
+    | .node-identifier(row)
+        row.name.text
+    ?! Panic("Expected a style rule parameter name")
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleWhen
+
+────────────────────
++ get xml XML
+
+<XML "StyleWhen"
+    • state state.text
+    •? negated is-negated
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTInteger
+
+────────────────────
++ get xml XML
+
+<XML "Integer"
+    • value
+    •? unit unit?.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTFloat
+
+────────────────────
++ get xml XML
+
+<XML "Float"
+    • value
+    •? unit unit?.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTString
+
+────────────────────
++ get xml XML
+
+<XML "String"
+    • text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTIdentifier
+
+────────────────────
++ get xml XML
+
+<XML "Id"
+    • name name.text
+    •? tracked is-tracked
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTRefIdentifier
+
+────────────────────
++ get xml XML
+
+<XML "Ref"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTSymbol
+
+────────────────────
++ get xml XML
+
+<XML "Symbol"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTAnonymousCase
+
+────────────────────
++ get xml XML
+
+<XML "AnonymousCase"
+    • name name.text
+    •? owner owner?.text
+    child-xmls(args)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDecoration
+
+────────────────────
++ get xml XML
+
+<XML "Decoration"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCIdentifier
+
+────────────────────
++ get xml XML
+
+<XML "CId"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTUseExpression
+
+────────────────────
++ get xml XML
+
+<XML "Use"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTLatestExpression
+
+────────────────────
++ get xml XML
+
+<XML "Latest"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTHeaderExpression
+
+────────────────────
++ get xml XML
+
+<XML "Header"
+    child-xml(expr)
+    <XML "items"
+        child-xmls(items)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTPipelineExpression
+
+────────────────────
++ get xml XML
+
+<XML "Pipeline"
+    • op
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBulletExpression
+
+────────────────────
++ get xml XML
+
+<XML "Bullet"
+    •? multi is-multi
+    •? optional is-optional
+    child-xml(item)
+    child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMarkupHead
+
+────────────────────
++ get xml XML
+
+<XML "Syntax"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMarkupSlotParameter
+
+────────────────────
++ get xml XML
+
+<XML "SlotParameter"
+    child-xml(name)
+    child-xml(type-id)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMarkup
+
+────────────────────
++ get xml XML
+
+<XML "Markup"
+    child-xml(type-id)
+    child-xml(id)
+    if slot-binding-xml
+        <XML "SlotBinding"
+            slot-binding-xml
+            child-xml(slot-parameter)
+    if args.count
+        <XML "args"
+            args-xml
+    if style-rule-applications-xml
+        <XML "StyleRuleApplications"
+            style-rule-applications-xml
+    child-xml(body)
+
+.. slot-binding-xml = child-xml(slot-binding)
+.. args-xml = child-xmls(args)
+.. style-rule-applications-xml = child-xmls(style-rule-applications)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMarkupSlotForward
+
+────────────────────
++ get xml XML
+
+<XML "MarkupSlotForward"
+    child-xml(slot-binding)
+    child-xml(outlet)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTSlotOutlet
+
+────────────────────
++ get xml XML
+
+<XML "SlotOutlet"
+    child-xml(name)
+    child-xml(type-id)
+    child-xml(slot-parameter)
+    if slot-attrs-xml
+        <XML "attrs"
+            slot-attrs-xml
+    if style-rule-applications-xml
+        <XML "StyleRuleApplications"
+            style-rule-applications-xml
+    child-xml(body)
+
+.. slot-attrs-xml = child-xmls(slot-attrs)
+.. style-rule-applications-xml = child-xmls(style-rule-applications)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleRuleApplication
+
+────────────────────
++ get xml XML
+
+<XML "StyleRuleApplication"
+    • name name.text
+    if args-xml
+        <XML "args"
+            args-xml
+    if condition-xml
+        <XML "condition"
+            condition-xml
+
+.. args-xml = child-xmls(args)
+.. condition-xml = child-xml(condition)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStructureMatch
+
+────────────────────
++ get xml XML
+
+<XML "StructureMatch"
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeIdentifier
+
+────────────────────
++ get xml XML
+
+<XML "TypeId"
+    • name name.text
+    •? declare is-declare
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCoreTypeIdentifier
+
+────────────────────
++ get xml XML
+
+<XML "TypeId"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeArguments
+
+────────────────────
++ get xml XML
+
+<XML "TypeArguments"
+    child-xml(base)
+    child-xmls(args)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeAssociated
+
+────────────────────
++ get xml XML
+
+<XML "AssociatedType"
+    • name name.text
+    child-xml(owner)
+    child-xmls(args)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeOptional
+
+────────────────────
++ get xml XML
+
+<XML "TypeOptional"
+    child-xmls(field-types)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeTuple
+
+────────────────────
++ get xml XML
+
+<XML = if is-struct then "TypeStruct" else "TypeTuple"
+    child-xmls(field-types)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeCapture
+
+────────────────────
++ get xml XML
+
+<XML "TypeCapture"
+    child-xml(id)
+    child-xml(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypePredicate
+
+────────────────────
++ get xml XML
+
+<XML "TypePredicate"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeEquality
+
+────────────────────
++ get xml XML
+
+<XML "TypeEquality"
+    •? is-contextual
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeTransform
+
+────────────────────
++ get xml XML
+
+<XML "TypeTransform"
+    if is-union
+        • ("isUnion") true
+    child-xml(pattern)
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypePanic
+
+────────────────────
++ get xml XML
+
+<XML "TypePanic"
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeAnd
+
+────────────────────
++ get xml XML
+
+<XML "TypeAnd"
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeOr
+
+────────────────────
++ get xml XML
+
+<XML "TypeOr"
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeRelation
+
+────────────────────
++ get xml XML
+
+<XML "TypeRelation"
+    • op
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeMatch
+
+────────────────────
++ get xml XML
+
+<XML "TypeMatch"
+    • op match op
+        | .match-convertible
+            "convertible"
+        | .match-similar
+            "similar"
+        | .match-exactly
+            "exactly"
+    child-xml(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeWildcard
+
+────────────────────
++ get xml XML
+
+<XML "TypeWildcard"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeRemainder
+
+────────────────────
++ get xml XML
+
+<XML "TypeRemainder"
+    child-xml(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeList
+
+────────────────────
++ get xml XML
+
+<XML "TypeList"
+    child-xmls(patterns)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeMap
+
+────────────────────
++ get xml XML
+
+<XML "TypeMap"
+    child-xmls(patterns)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeMapItem
+
+────────────────────
++ get xml XML
+
+<XML "MapItem"
+    child-xml(key)
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeFunction
+
+────────────────────
++ get xml XML
+
+<XML "TypeFunction"
+    child-xml(return-type)
+    child-xmls(args)
+    if errors.count
+        <XML "errors"
+            child-xmls(errors)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeIterable
+
+────────────────────
++ get xml XML
+
+<XML "TypeIterable"
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeCase
+
+────────────────────
++ get xml XML
+
+<XML "TypeCase"
+    • name name.text
+    child-xml(type)
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeProperty
+
+────────────────────
++ get xml XML
+
+<XML "TypeProperty"
+    • name name.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTypeNumeric
+
+────────────────────
++ get xml XML
+
+<XML "TypeNumeric"
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTIfBlock
+
+────────────────────
++ get xml XML
+
+<XML "If"
+    •? is-optional
+    child-xml(condition)
+    child-xml(body)
+    child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTWhileBlock
+
+────────────────────
++ get xml XML
+
+<XML "While"
+    •? is-optional
+    child-xml(condition)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTForBlock
+
+────────────────────
++ get xml XML
+
+<XML "For"
+    child-xml(loop)
+    child-xml(body)
+    child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDoBlock
+
+────────────────────
++ get xml XML
+
+<XML "Do"
+    if compilation-effects
+        • effects format-compilation-effect-mask(compilation-effects)
+    if feature-gate-features
+        • features "feature-collection-observers"
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do format-compilation-effect-mask String
+    - effects CompilationEffect
+
+. visible = match effects /and/ CompilationEffect.gc-free
+    |= CompilationEffect.none
+        effects
+    ??
+        effects - (effects /and/ (CompilationEffect.no-heap /or/ CompilationEffect.no-safepoint))
+visible = match effects /and/ CompilationEffect.no-safepoint
+    |= CompilationEffect.none
+        visible
+    ??
+        visible - (visible /and/ CompilationEffect.no-suspend)
+. names = ArrayBuilder'String()
+for index in 0 .. < 5
+    . effect, name = match index
+        |= 0
+            (CompilationEffect.gc-free, "no-gc")
+        |= 1
+            (CompilationEffect.no-heap, "no-heap")
+        |= 2
+            (CompilationEffect.no-safepoint, "no-safepoint")
+        |= 3
+            (CompilationEffect.no-probe-safepoint, "no-probe-safepoint")
+        ??
+            (CompilationEffect.no-suspend, "no-suspend")
+    if (visible /and/ effect) != CompilationEffect.none
+        names.append(name)
+= ",".join(names.finish-immutable())
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeStatement
+
+────────────────────
++ get xml XML
+
+<XML "ProbeStatement"
+    •? object object-name
+    •? key key?.text
+    object-child
+    child-xml(body)
+
+.. object-name, object-child = probe-object(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDoFinallyBlock
+
+────────────────────
++ get xml XML
+
+<XML "Defer"
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTDoTaskBlock
+
+────────────────────
++ get xml XML
+
+<XML "DoTask"
+    •? parallel is-parallel
+    if scheduling == .task-scheduling-priority
+        • scheduling "priority"
+    if worker-xml
+        <XML "worker"
+            worker-xml
+    child-xml(body)
+
+.. worker-xml = child-xml(worker)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTUseBlock
+
+────────────────────
++ get xml XML
+
+<XML "UseBlock"
+    child-xml(subject)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStackLocalBindingBlock
+
+────────────────────
++ get xml XML
+
+<XML "StackLocalBinding"
+    • name name.text
+    child-xml(value)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTLoop
+
+────────────────────
++ get xml XML
+
+<XML = if is-subscriber then "On" else "In"
+    child-xml(pattern)
+    child-xml(container)
+    child-xml(clause)
+    child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTReturn
+
+────────────────────
++ get xml XML
+
+<XML "Return"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTReturnIfTrue
+
+────────────────────
++ get xml XML
+
+<XML "ReturnIfTrue"
+    child-xml(expr)
+    child-xml(condition)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTYield
+
+────────────────────
++ get xml XML
+
+<XML "Yield"
+    •? does-yield-all
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBreak
+
+────────────────────
++ get xml XML
+
+<XML "Break"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTContinue
+
+────────────────────
++ get xml XML
+
+<XML "Continue"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCatcher
+
+────────────────────
++ get xml XML
+
+<XML "Catch"
+    child-xml(type)
+    child-xmls(previous)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTUnaryExpression
+
+────────────────────
++ get xml XML
+
+<XML "UnaryExpression"
+    • operator op
+    child-xml(operand)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTHeldExpression
+
+────────────────────
++ get xml XML
+
+<XML "Held"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTHeldRead
+
+────────────────────
++ get xml XML
+
+<XML "HeldRead"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBinaryExpression
+
+────────────────────
++ get xml XML
+
+<XML "BinaryExpression"
+    • operator
+    child-xml(lhs)
+    child-xml(rhs)
+
+.. operator = match op
+    |= .or-op
+        "||"
+    |= .and-op
+        "&&"
+    |= .bitwise-or-op
+        "or"
+    |= .bitwise-and-op
+        "and"
+    |= .bitwise-xor-op
+        "xor"
+    ??
+        "$op"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCastExpression
+
+────────────────────
++ get xml XML
+
+<XML "CastExpression"
+    child-xml(lhs)
+    child-xml(rhs)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCallExpression
+
+────────────────────
++ get xml XML
+
+<XML "CallExpression"
+    •? curried is-curried
+    child-xml(callable)
+    if params.count
+        <XML "params"
+            child-xmls(params)
+    child-xmls(args)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTRangeExpression
+
+────────────────────
++ get xml XML
+
+<XML "RangeExpression"
+    • operator op
+    child-xml(left)
+    child-xml(right)
+    child-xml(increment)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTGetExpression
+
+────────────────────
++ get xml XML
+
+<XML "Get"
+    • name name.text
+    •? tracked is-tracked
+    •? optional is-optional
+    •? loop is-loop
+    child-xml(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStyleReadExpression
+
+────────────────────
++ get xml XML
+
+<XML "StyleRead"
+    • name name.text
+    •? optional is-optional
+    child-xml(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStylePropertyExpression
+
+────────────────────
++ get xml XML
+
+<XML "StyleProperty"
+    • name name.text
+    •? component component?.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMarkupReadExpression
+
+────────────────────
++ get xml XML
+
+<XML "MarkupRead"
+    • name name.text
+    •? optional is-optional
+    child-xml(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTIndexExpression
+
+────────────────────
++ get xml XML
+
+<XML "Index"
+    •? is-optional
+    child-xml(object)
+    child-xml(index)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTMatchExpression
+
+────────────────────
++ get xml XML
+
+<XML "Match"
+    •? is-optional
+    child-xml(subject)
+    if helper
+        <XML "PatternHelper"
+            child-xml(helper)
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTPatternHelper
+
+────────────────────
++ get xml XML
+
+<XML "PatternHelper"
+    child-xml(helper)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCatchOptionalExpression
+
+────────────────────
++ get xml XML
+
+<XML "CatchOptional"
+    child-xml(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTCatchExpression
+
+────────────────────
++ get xml XML
+
+match is-raw-result
+    |= true
+        <XML "CatchBlock"
+            • ("rawResult") true
+            child-xml(body)
+            child-xmls(catchers)
+    ??
+        <XML "CatchBlock"
+            child-xml(body)
+            child-xmls(catchers)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTTuple
+
+────────────────────
++ get xml XML
+
+<XML "Tuple"
+    child-xmls(items)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTList
+
+────────────────────
++ get xml XML
+
+<XML "List"
+    child-xmls(items)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTIterableExpression
+
+────────────────────
++ get xml XML
+
+<XML "Iterable"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTIteratorExpression
+
+────────────────────
++ get xml XML
+
+<XML "Iterator"
+    child-xml(loop)
+    child-xml(body)
+    child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTOptionalChain
+
+────────────────────
++ get xml XML
+
+<XML "OptionalChain"
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTArgument
+
+────────────────────
++ get xml XML
+
+<XML "Argument"
+    •? name name?.text
+    •? optional is-optional
+    child-xml(expr)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTArgumentDecl
+
+────────────────────
++ get xml XML
+
+<XML "ArgumentDecl"
+    •? variadic is-variadic
+    child-xml(pattern)
+    child-xml(default-value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTImport
+
+────────────────────
++ get xml XML
+
+<XML "Import"
+    • ("path") "/".join(each.text in atoms-in(paths))
+    •? export is-export
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTAssign
+
+────────────────────
++ get xml XML
+
+<XML "AssignmentExpression"
+    • op
+    child-xml(lhs)
+    child-xml(rhs)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTClause
+
+────────────────────
++ get xml XML
+
+match op
+    | .when-clause
+        <XML "When"
+            child-xml(expr)
+            child-xml(next)
+    | .while-clause
+        <XML "While"
+            child-xml(expr)
+            child-xml(next)
+    | .until-clause
+        <XML "Until"
+            child-xml(expr)
+            child-xml(next)
+    ??
+        <XML "Clause"
+            • op
+            child-xml(expr)
+            child-xml(next)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamMatch
+
+────────────────────
++ get xml XML
+
+<XML "StreamMatch"
+    child-xml(pattern)
+    if helper
+        <XML "PatternHelper"
+            child-xml(helper)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamAnd
+
+────────────────────
++ get xml XML
+
+<XML "StreamAnd"
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamOr
+
+────────────────────
++ get xml XML
+
+<XML "StreamOr"
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamTransform
+
+────────────────────
++ get xml XML
+
+<XML "StreamTransform"
+    •? rollback
+    child-xml(pattern)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamPanic
+
+────────────────────
++ get xml XML
+
+<XML "StreamPanic"
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamType
+
+────────────────────
++ get xml XML
+
+<XML "StreamType"
+    child-xml(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamEquality
+
+────────────────────
++ get xml XML
+
+<XML "StreamEquality"
+    child-xml(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamLength
+
+────────────────────
++ get xml XML
+
+<XML "StreamLength"
+    child-xml(operand)
+    child-xml(min)
+    child-xml(max)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamUnary
+
+────────────────────
++ get xml XML
+
+<XML "UnaryStream"
+    • op
+    child-xml(operand)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamCall
+
+────────────────────
++ get xml XML
+
+<XML "StreamCall"
+    • name name.text
+    if params.count
+        <XML "params"
+            child-xmls(params)
+    if args.count
+        <XML "args"
+            child-xmls(args)
+    if collector-mappings.count
+        <XML "collectorMappings"
+            child-xmls(collector-mappings)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamCallExpressionArgument
+
+────────────────────
++ get xml XML
+
+child-xml(expression)!
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamCollectorMapping
+
+────────────────────
++ get xml XML
+
+<XML "CollectorMapping"
+    •? callee callee?.text
+    • caller caller.text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamPredicate
+
+────────────────────
++ get xml XML
+
+<XML "StreamPredicate"
+    child-xml(predicate)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamCapture
+
+────────────────────
++ get xml XML
+
+<XML "StreamCapture"
+    if accumulating
+        • ("accumulating") true
+    child-xml(name)
+    child-xml(pattern)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamCharRange
+
+────────────────────
++ get xml XML
+
+<XML "StreamCharRange"
+    child-xml(first)
+    child-xml(last)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamString
+
+────────────────────
++ get xml XML
+
+<XML "StreamString"
+    • text
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTStreamAny
+
+────────────────────
++ get xml XML
+
+<XML "StreamAny"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbe
+
+────────────────────
++ get xml XML
+
+<XML "Probe"
+    •? object object-name
+    •? name probe-name
+    •? key key?.text
+    object-child
+    child-xmls(content)
+
+.. probe-name = name.text if name && name != key 
+.. object-name, object-child = probe-object(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeGroup
+
+────────────────────
++ get xml XML
+
+<XML "ProbeGroup"
+    •? begin is-begin
+    •? end is-end
+    •? key key?.text
+    •? data is-data
+    •? object object-name
+    object-child
+    child-xmls(content)
+
+.. object-name, object-child = probe-object(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeAssign
+
+────────────────────
++ get xml XML
+
+<XML "ProbeAssign"
+    • key key.text
+    •? object object-name
+    object-child
+    child-xml(content)
+
+.. object-name, object-child = probe-object(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeCounter
+
+────────────────────
++ get xml XML
+
+<XML "ProbeCounter"
+    • key key.text
+    •? object object-name
+    object-child
+    child-xml(delta)
+
+.. object-name, object-child = probe-object(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbeSnapshot
+
+────────────────────
++ get xml XML
+
+<XML "ProbeSnapshot"
+    child-xml(content)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTProbePreview
+
+────────────────────
++ get xml XML
+
+<XML "ProbePreview"
+    child-xml(content)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTParamConstraint
+
+────────────────────
++ get xml XML
+
+<XML "TypeConstraint"
+    • op match op
+        | .match-convertible
+            "convertible"
+        | .match-similar
+            "similar"
+        | .match-exactly
+            "exactly"
+    child-xml(left)
+    child-xml(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTParamAssignment
+
+────────────────────
++ get xml XML
+
+<XML "ConstAssignment"
+    •? specificity is-specificity
+    child-xml(left)
+    child-xml(right)

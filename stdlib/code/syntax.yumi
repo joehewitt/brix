@@ -1,0 +1,494 @@
+/YuSyntax/YuSyntax.h
+/core/array-builder
+/math
+
+_ syntax-language-table := load-syntax-languages()
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxPoint is Tuple
+
++ row Size
++ column Size
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxSpan is Tuple
+
++ start Size
++ end Size
++ capture Size
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxFold is Tuple
+
++ start Size
++ end Size
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxRole is Union
+
+| plain
+| comment
+| keyword
+| operator
+| punctuation
+| string
+| escape
+| number
+| constant
+| function
+| type-name
+| variable
+| parameter
+| builtin
+| property
+| attribute
+| tag
+| label
+| namespace
+| invalid
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxStyledRun is Tuple
+
++ text String
++ role SyntaxRole
++ is-marked = false
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxLanguage
+
++ id I32
++ name String
++ title String
++ extensions [String]
+
+_ capture-list [String]?
+_ role-list [SyntaxRole]?
+
+────────────────────
++ This
+    - id I32
+
+this.id = id
+name = C:yumiSyntaxLanguageName(id) as String
+title = C:yumiSyntaxLanguageTitle(id) as String
+extensions = (C:yumiSyntaxLanguageExtensions(id) as String).split(" ")
+
+────────────────────
++ do get captures [String]
+
+. cached = capture-list
+=? cached if cached
+. loaded [String]
+for index in 0 .. < C:yumiSyntaxCaptureCount(id)
+    loaded += C:yumiSyntaxCaptureName(id, index)
+capture-list = loaded
+= loaded
+
+────────────────────
++ do get roles [SyntaxRole]
+
+. cached = role-list
+=? cached if cached
+. made = List'SyntaxRole(syntax-role(each) in captures)
+role-list = made
+= made
+
+────────────────────
++ get comment-marker String?
+
+|? name == "python" || name == "bash"
+    "# "
+|? name == "json" || name == "css" || name == "html" || name == "markdown"
+    null
+??
+    "// "
+
+────────────────────
++ get query-error String
+
+C:yumiSyntaxQueryError(id) as String
+
+────────────────────
++ get fold-query-error String
+
+C:yumiSyntaxFoldQueryError(id) as String
+
+━━━━━━━━━━━━━━━━━━━━
++ syntax-languages [SyntaxLanguage]
+
+syntax-language-table
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-language-named SyntaxLanguage?
+    - name String
+
+for language in syntax-language-table
+    =? language if language.name == name
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ syntax-comment-marker String?
+    - file-name String
+
+if file-name.ends-with(".yumi") then "` " else syntax-language-for-file(file-name)?.comment-marker
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-language-for-file SyntaxLanguage?
+    - file-name String
+
+. dot = file-name.find-reverse(".")
+=? null if !dot || dot == 0
+. extension = file-name[dot + 1 ...].lowercased
+for language in syntax-language-table
+    for candidate in language.extensions
+        =? language if candidate == extension
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxDocument
+    is Closable
+
++ language SyntaxLanguage
+
+_ native Pointer?
+_ span-buffer U32[] = U32[768]
+_ fold-buffer U32[] = U32[512]
+_ is-closing Bool
+
+────────────────────
++ This
+    - language
+
+native = C:yumiSyntaxDocumentCreate(language.id)
+
+────────────────────
++ get has-tree Bool
+
+if native then C:yumiSyntaxDocumentHasTree(native!) else false
+
+────────────────────
++ get has-error Bool
+
+if native then C:yumiSyntaxDocumentHasError(native) else false
+
+────────────────────
++ get is-parsing Bool
+
+if native then C:yumiSyntaxDocumentIsParsing(native) else false
+
+────────────────────
++ do edit
+    - start Size
+    - old-end Size
+    - new-end Size
+    - start-point SyntaxPoint
+    - old-end-point SyntaxPoint
+    - new-end-point SyntaxPoint
+
+=? if !native
+C:yumiSyntaxDocumentEdit
+    - native
+    - start
+    - old-end
+    - new-end
+    - start-point.row
+    - start-point.column
+    - old-end-point.row
+    - old-end-point.column
+    - new-end-point.row
+    - new-end-point.column
+
+────────────────────
++ do parse Bool
+    - text Byte[]
+    - length Size
+    - budget-microseconds U32 = 0
+
+=? false if !native || is-closing
+= C:yumiSyntaxDocumentParse(native, text, length, budget-microseconds) == 0
+
+────────────────────
++ do continue-parse Bool
+
+=? false if !native
+= C:yumiSyntaxDocumentContinueParse(native)
+
+────────────────────
++ do finish-parse Bool
+
+=? false if !native
+. edited = C:yumiSyntaxDocumentFinishParse(native)
+if is-closing
+    release()
+    = false
+= edited
+
+────────────────────
++ do highlight [SyntaxSpan]
+    - text Byte[]
+    - length Size
+    - start Size
+    - end Size
+
+. spans [SyntaxSpan]
+. count = fill(text, length, start, end)
+for index in 0 .. < count
+    . base = index * 3
+    spans += SyntaxSpan(span-buffer[base], span-buffer[base + 1], span-buffer[base + 2])
+= spans
+
+────────────────────
++ do highlight-ranges
+    - text Byte[]
+    - ranges [Range'Index]
+
+. output = ArrayBuilder'U32()
+for range in ranges
+    . count = fill(text, text.length, range.start, range.end)
+    for index in 0 .. < count * 3
+        output.append(span-buffer[index])
+= output.finish-immutable()
+
+────────────────────
++ do folds [SyntaxFold]
+    - text Byte[]
+    - length Size
+    - first Size = 0
+    - last Size = U32.max
+
+. found [SyntaxFold]
+=? found if !native
+. capacity = fold-buffer.size / 2
+. count = C:yumiSyntaxDocumentFolds(native, text, length, first, last, fold-buffer, capacity)
+if count > capacity
+    fold-buffer = U32[count * 2]
+    count = C:yumiSyntaxDocumentFolds(native!, text, length, first, last, fold-buffer, count)
+for index in 0 .. < count
+    found += SyntaxFold(fold-buffer[index * 2], fold-buffer[index * 2 + 1])
+= found
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if !native || is-closing
+if is-parsing
+    C:yumiSyntaxDocumentCancelParse(native!)
+    is-closing = true
+    =
+release()
+
+────────────────────
+_ do fill Size
+    - text Byte[]
+    - length Size
+    - start Size
+    - end Size
+
+=? 0 if !native
+. capacity = span-buffer.size / 3
+. count = C:yumiSyntaxDocumentHighlight(native, text, length, start, end, span-buffer, capacity)
+if count > capacity
+    span-buffer = U32[count * 3]
+    count = C:yumiSyntaxDocumentHighlight(native!, text, length, start, end, span-buffer, count)
+= count
+
+────────────────────
+_ do release
+
+if native
+    C:yumiSyntaxDocumentRelease(native)
+    native = null
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxHighlights
+
++ spans ImmutableArray'U32
+
+────────────────────
++ This
+    - spans
+
+────────────────────
++ get count Size
+
+spans.length / 3
+
+────────────────────
++ do spans-in
+    - start Size
+    - end Size
+
+. found [SyntaxSpan]
+. low Size = 0
+. high = count
+while low < high
+    . middle = low + (high - low) / 2
+    if (spans[middle * 3 + 1] as Size) <= start
+        low = middle + 1
+    else
+        high = middle
+. index = low
+while index < count && (spans[index * 3] as Size) < end
+    . first = spans[index * 3] as Size
+    . last = spans[index * 3 + 1] as Size
+    found += SyntaxSpan
+        - if first > start then first else start
+        - if last < end then last else end
+        - spans[index * 3 + 2]
+    index += 1
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-highlight-ranges
+    - language SyntaxLanguage
+    - text Byte[]
+    - ranges [Range'Index]
+
+=? SyntaxHighlights(ArrayBuilder'U32().finish-immutable()) if ranges.length == 0
+. document = use SyntaxDocument(language)
+=? SyntaxHighlights(ArrayBuilder'U32().finish-immutable()) if !document.parse(text, text.length, 0)
+= SyntaxHighlights(document.highlight-ranges(text, ranges))
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-role SyntaxRole
+    - capture String
+
+. current = capture
+while true
+    . role = syntax-role-named(current)
+    =? role if role
+    . dot = current.find-reverse(".")
+    =? SyntaxRole.plain if !dot
+    current = current[0 .. < dot]
+= SyntaxRole.plain
+
+━━━━━━━━━━━━━━━━━━━━
+_ syntax-role-named SyntaxRole?
+    - name String
+
+match? name
+    |= "comment"
+        SyntaxRole.comment
+    |= "keyword"
+        SyntaxRole.keyword
+    |= "operator"
+        SyntaxRole.operator
+    |= "punctuation.special"
+        SyntaxRole.operator
+    |= "punctuation"
+        SyntaxRole.punctuation
+    |= "delimiter"
+        SyntaxRole.punctuation
+    |= "string.special.key"
+        SyntaxRole.property
+    |= "string.special"
+        SyntaxRole.escape
+    |= "string.escape"
+        SyntaxRole.escape
+    |= "string"
+        SyntaxRole.string
+    |= "escape"
+        SyntaxRole.escape
+    |= "number"
+        SyntaxRole.number
+    |= "float"
+        SyntaxRole.number
+    |= "boolean"
+        SyntaxRole.constant
+    |= "constant.builtin"
+        SyntaxRole.constant
+    |= "constant"
+        SyntaxRole.constant
+    |= "function.builtin"
+        SyntaxRole.builtin
+    |= "function"
+        SyntaxRole.function
+    |= "method"
+        SyntaxRole.function
+    |= "constructor"
+        SyntaxRole.type-name
+    |= "type"
+        SyntaxRole.type-name
+    |= "variable.builtin"
+        SyntaxRole.builtin
+    |= "variable.parameter"
+        SyntaxRole.parameter
+    |= "parameter"
+        SyntaxRole.parameter
+    |= "variable"
+        SyntaxRole.variable
+    |= "property"
+        SyntaxRole.property
+    |= "attribute"
+        SyntaxRole.attribute
+    |= "tag.error"
+        SyntaxRole.invalid
+    |= "tag"
+        SyntaxRole.tag
+    |= "label"
+        SyntaxRole.label
+    |= "namespace"
+        SyntaxRole.namespace
+    |= "module"
+        SyntaxRole.namespace
+    |= "text.title"
+        SyntaxRole.keyword
+    |= "text.literal"
+        SyntaxRole.string
+    |= "text.uri"
+        SyntaxRole.string
+    |= "text.reference"
+        SyntaxRole.label
+    |= "embedded"
+        SyntaxRole.plain
+    |= "error"
+        SyntaxRole.invalid
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-styled-runs [SyntaxStyledRun]
+    - text Byte[]
+    - start Size
+    - end Size
+    - spans [SyntaxSpan]
+    - roles [SyntaxRole]
+    - marks [Range'Index] = List'(Range'Index)()
+
+. pieces [SyntaxRolePiece]
+. position = start
+for span in spans
+    . low = max(span.start, position)
+    if low > position
+        pieces += SyntaxRolePiece(position, low, SyntaxRole.plain)
+    if span.end > low
+        pieces += SyntaxRolePiece
+            - low
+            - span.end
+            - if span.capture < roles.length then roles[span.capture] else SyntaxRole.plain
+        position = span.end
+if end > position
+    pieces += SyntaxRolePiece(position, end, SyntaxRole.plain)
+. runs [SyntaxStyledRun]
+. mark Index = 0
+for piece in pieces
+    position = piece.start
+    while position < piece.end
+        while mark < marks.length && marks[mark].end <= position
+            mark += 1
+        . is-marked = mark < marks.length && marks[mark].start <= position
+        . stop = piece.end
+        if mark < marks.length
+            stop = min(stop, if is-marked then marks[mark].end else marks[mark].start)
+        runs += SyntaxStyledRun(text.slice-string(position .. < stop), piece.role, is-marked)
+        position = stop
+= runs
+
+━━━━━━━━━━━━━━━━━━━━
+_ SyntaxRolePiece is (start Size, end Size, role SyntaxRole)
+
+━━━━━━━━━━━━━━━━━━━━
+_ load-syntax-languages [SyntaxLanguage]
+
+SyntaxLanguage(each) in 0 .. < C:yumiSyntaxLanguageCount()

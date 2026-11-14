@@ -1,0 +1,1270 @@
+./linter
+./protocol
+./semantic-facts
+./semantic-plan
+/data/json
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/check/facts
+/lang/check/instances
+/lang/check/parallel-typing
+/lang/check/session
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/compiler
+/lang/report/facts-text
+/os/path
+/stream/aggregate
+/stream/sort
+
++ semantic-limit = "Module reachability and root compilation do not prove that every generic function was exercised."
++ failed-batch-limit = "No semantic findings are returned from a failed shared compiler batch; successful-root traces are not treated as independent evidence."
+
+━━━━━━━━━━━━━━━━━━━━
++ SemanticAnalysis
+
+` The facts the semantic rules read, by target path, from typing the roots the plan chose, in the
+` batches the reference types them in, with the text of each file in `sources` in place of what is
+` on disk. A target is `compiled` where a root covering it typed with no error; the rules run
+` only on those. A root whose program does not parse or type has an error, which fails the run as
+` it fails the reference's. Progress names the semantic rules by `rule-label`.
++ project-root String
++ planner SemanticPlanner
++ plan SemanticCoveragePlan
++ sources [String = String]
++ facts [String = SemanticFacts]
++ compiled [String = Bool]
++ reports-progress Bool
++ rule-label String?
+
+────────────────────
++ This
+    - project-root String
+    - search-paths [Path]
+    - reports-progress Bool
+    - rule-label String?
+
+.. planner = SemanticPlanner(project-root, search-paths)
+.. plan = SemanticCoveragePlan()
+
+────────────────────
++ failed Bool
+
+` Whether a root has an error.
+!!failing
+
+.. failing
+    **? plan.roots
+    ?> each.error
+    |> first
+
+────────────────────
++ do analyze
+    - targets [String]
+    - overrides [String]
+    - configured [String]
+
+progress("plan", targets.length)
+planner.sources = sources
+plan = planner.plan(targets, overrides, configured)
+for target in plan.targets
+    facts[target.path] = SemanticFacts()
+. index = 0
+for batch in semantic-root-batches(plan.roots)
+    for root in batch
+        index += 1
+        progress("compile", plan.roots.length, root.path, index)
+    type-batch(batch)
+    progress("finish", batch.length, batch[0].path)
+for target in plan.targets
+    for root in plan.roots
+        if root.compiled && root.covers.find(target.path) != null
+            compiled[target.path] = true
+
+────────────────────
++ failure-message String
+
+` The message the run fails with, naming each root with an error and the error, as the
+` reference's does.
+"\n\n".join(parts)
+
+.. parts = List'String
+    * "Semantic lint compiler failed."
+    ** failures
+.. failures = <* root in plan.roots when root.error
+    "${root.path}:1\n${root.error!}"
+
+────────────────────
++ do report JSON
+
+` The coverage report the reference gives: which roots were typed and what each covers, which
+` roots reach and cover each target and how many facts were gathered for it, the targets no root
+` covers, and the errors. A failed run reports no target covered.
+. failing = failed()
+. roots [JSON]
+for root in plan.roots
+    . row = Map'String'JSON
+        • path relative(root.path)
+        • covers relative(each) in root.covers
+        • "didCompile" root.compiled
+        • reason root.reason
+        •? error root.error if root.error
+    roots += row
+. targets [JSON]
+for target in plan.targets
+    . gathered = facts[target.path]
+    . observed = if gathered && !failing then gathered.trace-count() else 0
+    . covered-by [JSON]
+    if !failing
+        covered-by = relative(each) in target.covered-by
+    targets += Map'String'JSON
+        • path relative(target.path)
+        • "coveredBy" covered-by
+        • "reachableBy" relative(each) in target.reachable-by
+        • "observedTraces" observed
+        • "didCompile" (compiled[target.path] ?? false) && !failing
+. errors [JSON]
+for root in plan.roots
+    if root.error
+        errors += Map'String'JSON
+            • message root.error
+            • root relative(root.path)
+            • path relative(root.path)
+. limits [JSON]
+limits += semantic-limit
+if failing
+    limits += failed-batch-limit
+. uncovered [JSON]
+if failing
+    uncovered = relative(each.path) in plan.targets
+else
+    uncovered = relative(each) in plan.uncovered
+. status = if plan.uncovered.length != 0 then "uncovered" else "complete"
+= Map'String'JSON
+    • status if failing then "error" else status
+    • roots roots
+    • targets targets
+    • uncovered uncovered
+    • errors errors
+    • limits limits
+
+────────────────────
+_ relative String
+    - path String
+
+relative-report-path(project-root, path)
+
+────────────────────
+_ do progress
+    - step String
+    - total Int
+    - file String? = null
+    - index Int? = null
+
+if reports-progress
+    emit-semantic-progress(total, relative(file) if file, index, rule-label, step)
+
+────────────────────
+_ do type-batch
+    - batch [SemanticRootPlan]
+
+` Types the roots of a batch in one program, every module's main and what they reach, and takes
+` the facts of each instance written in a target. An error of a module goes to each root of the
+` batch that reaches it, and to all of them where none does.
+. named [(String, String)]
+for root in batch
+    if !root.error
+        named += (root.path, planner.module-name(root.path))
+if named.length == 0
+    =
+. compiler = YumiCompiler()
+compiler.search-paths = planner.search-paths
+compiler.sources = sources
+. built = catch compiler.batch-to-ast(named)
+if built is Error
+    fail-batch(batch, (built as Error).message)
+    =
+. program = use built as Program
+. session = use Session(program)
+session.facts.traces-lint = true
+type-program(session)
+. text = FactsText(session)
+. failing = false
+for position in 0 .. < program.modules.length
+    . module = position as ModuleId
+    . parts [String]
+    . report = text.rendered-diagnostics(module)
+    if report.length != 0
+        parts += report
+    . declines = text.rendered-declines(module)
+    if declines.length != 0
+        parts += declines
+    if parts.length != 0
+        fail-batch(batch, "\n".join(parts), program.modules[module].path)
+        failing = true
+if failing
+    =
+for root in batch
+    root.compiled = !root.error
+session.instances.seal()
+. graph = call-graph(session)
+. roots = compile-roots(session, graph)
+. ranks = compile-ranks(session, graph, roots)
+gather-defaults(session)
+gather-overwrites(session, ranks)
+gather-casts(session, ranks)
+gather-payloads(session, ranks)
+gather-case-owners(session, ranks)
+
+────────────────────
+_ do fail-batch
+    - batch [SemanticRootPlan]
+    - message String
+    - path String? = null
+
+. reaching [SemanticRootPlan]
+if path
+    reaching = each in batch when each.reachable.find(path) != null
+if reaching.length == 0
+    reaching = batch
+for root in reaching
+    root.error = if root.error then "${root.error}\n\n$message" else message
+
+────────────────────
+_ do gather-defaults
+    - session Session
+
+` The values of the instances written in targets that are written as the default of the type
+` they are declared as, where the reference traces them for
+` `style/no-redundant-default-initializer` (`traces-default`, `writes-default`).
+. program = session.program
+. scanned [Bool]
+for _ in 0 .. < program.modules.length
+    scanned += false
+. declares [U64 = SyntaxId]
+for fact in session.facts.declared-values
+    . row = session.instances.rows[fact.instance]
+    . module = program.modules[row.module]
+    . gathered = facts[module.path]
+    if !gathered
+        continue
+    if fact.pattern != 0 && !scanned[row.module]
+        scanned[row.module] = true
+        note-declares(module.tree, row.module, declares)
+    if !traces-default(session, fact, declares) || !writes-default(session, fact)
+        continue
+    . value = module.tree.nodes.loc[fact.value]
+    . annotation = module.tree.nodes.loc[fact.annotation]
+    gathered.defaults += SemanticDefault
+        - value.begin.line + 1
+        - value.begin.column + 1
+        - value.end.line + 1
+        - value.end.column + 2
+        - annotation.end.line + 1
+        - annotation.end.column + 2
+        - owned(type-display(session.types, fact.declared))
+
+────────────────────
+_ do note-declares
+    - tree AST
+    - module ModuleId
+    - declares [U64 = SyntaxId]
+
+` Notes the value of each declaration of a module that declares its locals as they are written,
+` neither lazily nor as a pattern, by the module and what the declaration declares.
+for id in 1u32 .. < tree.nodes.length
+    do match? tree.nodes[id]
+        | .node-declare(row)
+            if !row.is-lazy && !row.is-pattern
+                declares[declare-key(module, row.left)] = row.right
+
+────────────────────
+_ declare-key U64
+    - module ModuleId
+    - left SyntaxId
+
+((module as U64) /lshift/ 32) /or/ (left as U64)
+
+────────────────────
+_ do traces-default Bool
+    - session Session
+    - fact DeclaredValueFact
+    - declares [U64 = SyntaxId]
+
+` Whether the reference traces a declared value for being the default of its type: a local of a
+` function no type parameters write, declared alone with its type written by name; a global that
+` is no local of a task, a thread or a stack; or a property a class that takes no type
+` parameters stores and writes without annotations, typed for that class, which takes no
+` property of its name from a class above it.
+. row = session.instances.rows[fact.instance]
+. module = session.program.modules[row.module]
+if fact.property == 0
+    if declares[declare-key(row.module, fact.pattern)] != fact.value
+        = false
+    = names-type(module.tree, fact.annotation) && !takes-type-params(session, row.module, row.decl)
+do match? module.decls[fact.property]
+    | .decl-property(property)
+        if property.is-lazy || property.decoration
+            = false
+        if property.owner == 0
+            = true
+        if annotated(module.tree, property.syntax)
+            = false
+        if takes-type-params(session, row.module, property.owner)
+            = false
+        . ref = class-ref(session.types, row.self-type)
+        if ref.module != row.module || ref.decl != property.owner
+            = false
+        . base = session.types.base-of(row.self-type)
+        = !base || !property.name || !session.types.property-named(base, property.name)
+= false
+
+────────────────────
+_ names-type Bool
+    - tree AST
+    - type SyntaxId
+
+` Whether a type is written by its name, with its arguments, or as a list or a map.
+match tree.nodes[type]
+    | .node-type-identifier
+        true
+    | .node-core-type-identifier
+        true
+    | .node-type-arguments
+        true
+    | .node-type-list
+        true
+    | .node-type-map
+        true
+    ??
+        false
+
+────────────────────
+_ annotated Bool
+    - tree AST
+    - syntax SyntaxId
+
+match tree.nodes[syntax]
+    | .node-property-syntax(row)
+        row.annotations.count != 0
+    ??
+        false
+
+────────────────────
+_ do takes-type-params Bool
+    - session Session
+    - module ModuleId
+    - decl DeclId
+
+` Whether a function or a class takes type parameters, or a function is a member of a class
+` that does.
+do match? session.program.modules[module].decls[decl]
+    | .decl-function(row)
+        if row.type-args.count != 0
+            = true
+        = row.owner != 0 && takes-type-params(session, module, row.owner)
+    | .decl-class(row)
+        = row.type-args.count != 0
+= false
+
+────────────────────
+_ do writes-default Bool
+    - session Session
+    - fact DeclaredValueFact
+
+` Whether a declared value is written as the default of its type, as the reference reads it: an
+` unsigned zero with no unit for a number the compiler builds in, an empty string for its
+` string, `false` for its `Bool`, or a class's constructor called with nothing.
+. types = session.types
+. completion = types.completions[fact.declared]
+. tree = session.program.modules[session.instances.rows[fact.instance].module].tree
+do match? tree.nodes[fact.value]
+    | .node-integer-syntax(row)
+        = !row.unit && is-zero(row.value) && builtin-number(types, fact.declared)
+    | .node-float-syntax(row)
+        = !row.unit && is-zero(row.value) && builtin-number(types, fact.declared)
+    | .node-string-syntax(row)
+        = row.text.length == 0 && completion.is-builtin && completion.intrinsic == .string
+    | .node-identifier(row)
+        = types.false-atom && row.name == types.false-atom && fact.declared == types.bool-type
+    | .node-call-expression(row)
+        if row.operands.count != 0 || row.is-curried || !is-type-syntax(tree, row.callable)
+            = false
+        = completion.intrinsic == .class && fact.found == fact.declared
+= false
+
+────────────────────
+_ builtin-number Bool
+    - types Types
+    - type TypeId
+
+` Whether a type is a number the compiler builds in whose default is zero.
+types.completions[type].is-builtin && ((code >= first && code <= last) || kind == .char)
+
+.. kind = types.completions[type].intrinsic
+.. code = kind as U32
+.. first = IntrinsicKind.number as U32
+.. last = IntrinsicKind.float64 as U32
+
+────────────────────
+_ do is-zero Bool
+    - text String
+
+` Whether a number as written is zero: digits that are all zero, before any exponent.
+if text.starts-with("-")
+    = false
+. digits = 0
+for char in text
+    if char == 'e' || char == 'E'
+        break
+    if char == '0'
+        digits += 1
+    else if char != '.'
+        = false
+= digits != 0
+
+────────────────────
+_ do gather-payloads
+    - session Session
+    - ranks [U32]
+
+` The payloads of events with effects written in targets, in the order the reference compiles
+` the instances (`compile-ranks`), each with its effects in the order it met them.
+. program = session.program
+. effects = session.facts.payload-effects
+. keys [U64]
+for position in 0 .. < effects.length
+    . rank U64 = ranks[effects[position].instance]
+    keys += (rank /lshift/ 32) /or/ (position as U64)
+. sorted = sort(keys)
+. position = 0
+while position < sorted.length
+    . fact = effects[(sorted[position] /and/ 0xffffffff) as Index]
+    . labels [String]
+    while position < sorted.length
+        . next = effects[(sorted[position] /and/ 0xffffffff) as Index]
+        if next.instance != fact.instance || next.payload != fact.payload
+            break
+        labels += effect-label(next.kind)
+        position += 1
+    . module = program.modules[session.instances.rows[fact.instance].module]
+    . gathered = facts[module.path]
+    if gathered
+        . begin = module.tree.nodes.loc[fact.payload].begin
+        . event = owned(fact.event.text)
+        . listed = ", ".join(labels)
+        gathered.payloads += SemanticPayload(begin.line + 1, begin.column + 1, event, listed)
+
+────────────────────
+_ effect-label String
+    - kind PayloadEffectKind
+
+` An effect as the reference's message names it.
+match kind
+    |= .effect-call
+        "an imperative do call"
+    |= .effect-assignment
+        "an assignment"
+    ??
+        "a channel write"
+
+────────────────────
+_ do gather-case-owners
+    - session Session
+    - ranks [U32]
+
+` The cases given by their symbols alone written in targets that functions a call may choose
+` take as cases of more than one type, in the order the reference compiles the instances
+` (`compile-ranks`), each with the names of those types in order.
+. program = session.program
+. owners = session.facts.case-owners
+. keys [U64]
+for position in 0 .. < owners.length
+    . rank U64 = ranks[owners[position].instance]
+    keys += (rank /lshift/ 32) /or/ (position as U64)
+. sorted = sort(keys)
+. position = 0
+while position < sorted.length
+    . fact = owners[(sorted[position] /and/ 0xffffffff) as Index]
+    . names [String]
+    . chosen = ""
+    while position < sorted.length
+        . next = owners[(sorted[position] /and/ 0xffffffff) as Index]
+        if next.instance != fact.instance || next.syntax != fact.syntax || next.name != fact.name
+            break
+        . named = owned(class-name(session, next.owner))
+        names += named
+        if next.chosen
+            chosen = named
+        position += 1
+    . module = program.modules[session.instances.rows[fact.instance].module]
+    . gathered = facts[module.path]
+    if gathered && names.length > 1 && chosen.length != 0
+        . begin = module.tree.nodes.loc[fact.syntax].begin
+        . name = owned(fact.name.text)
+        . listed = sort(names)
+        gathered.case-owners += SemanticCaseOwner
+            - begin.line + 1
+            - begin.column + 1
+            - name
+            - listed
+            - chosen
+
+────────────────────
+_ do class-name String
+    - session Session
+    - type TypeId
+
+` The name a class is declared with, which the reference names a type of it by.
+do match? session.types.rows[type]
+    | .type-class(row)
+        do match? session.program.modules[row.module].decls[row.decl]
+            | .decl-class(owner)
+                = owner.name.text
+= type-display(session.types, type)
+
+────────────────────
+_ do encloses-params Bool
+    - session Session
+    - module ModuleId
+    - decl DeclId
+
+` Whether the function an instance runs takes type parameters or is a member of a class that
+` does, as the reference counts them for a rule: a closure takes none of its own.
+do match? session.program.modules[module].decls[decl]
+    | .decl-function(row)
+        if row.kind == .closure-decl
+            = false
+= takes-type-params(session, module, decl)
+
+────────────────────
+_ do gather-casts
+    - session Session
+    - ranks [U32]
+
+` The casts of the instances written in targets to the type their place already takes the value
+` as, in the order the reference compiles the instances (`compile-ranks`).
+. program = session.program
+. casts = session.facts.context-casts
+. keys [U64]
+for position in 0 .. < casts.length
+    . rank U64 = ranks[casts[position].instance]
+    keys += (rank /lshift/ 32) /or/ (position as U64)
+. sorted = sort(keys)
+for key in sorted
+    . fact = casts[(key /and/ 0xffffffff) as Index]
+    . row = session.instances.rows[fact.instance]
+    . module = program.modules[row.module]
+    . gathered = facts[module.path]
+    if gathered && !answered-by-reference(session, fact.instance)
+        . unit = suffix-unit(module.tree, fact.syntax)
+        if !unit
+            gathered.casts += cast-of(session, fact)
+        else if !encloses-params(session, row.module, row.decl)
+            . loc = module.tree.nodes.loc[fact.syntax]
+            . found = SemanticSuffix
+                - loc.begin.line + 1
+                - loc.begin.column + 1
+                - loc.end.line + 1
+                - loc.end.column + 2
+                - unit
+            gathered.suffixes += found
+
+────────────────────
+_ do suffix-unit String?
+    - tree AST
+    - syntax SyntaxId
+
+. unit Atom?
+do match? tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        unit = row.unit
+    | .node-float-syntax(row)
+        unit = row.unit
+= owned(unit.text) if unit
+
+────────────────────
+_ do cast-of SemanticCast
+    - session Session
+    - fact ContextCastFact
+
+` A cast as the rule reads it.
+. row = session.instances.rows[fact.instance]
+. tree = session.program.modules[row.module].tree
+. begin = tree.nodes.loc[fact.syntax].begin
+. written SyntaxId = 0
+do match? tree.nodes[fact.syntax]
+    | .node-cast-expression(cast)
+        written = cast.rhs
+. target = owned(type-display(session.types, fact.target))
+. text = owned(written-type(tree, written) ?? "")
+. context = cast-context(fact.kind)
+. generic = encloses-params(session, row.module, row.decl)
+= SemanticCast(begin.line + 1, begin.column + 1, context, target, text, generic)
+
+────────────────────
+_ do answered-by-reference Bool
+    - session Session
+    - instance InstanceId
+
+` Whether the reference answers what an instance computes without typing its body: a getter of
+` an array's storage, size or length, of the size or length of a table, a view of one or an index
+` span, of a table's capacity or mark, or of the length of an `ArrayBuilder` an arena backs.
+. types = session.types
+. row = session.instances.rows[instance]
+. name = ""
+do match? session.program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        if fn.kind == .getter-decl && fn.name
+            name = fn.name.text
+if name == "" || row.self-type == no-type
+    = false
+. measures = name == "size" || name == "length"
+. kind = types.intrinsic-of(row.self-type)
+if kind == .table
+    = measures || name == "capacity" || name == "mark"
+if kind == .array-builder
+    = name == "length" && types.builder-item(row.self-type) != no-type
+. tables = kind == .immutable-table || kind == .index-span
+. spans = kind == .table-span || kind == .immutable-table-span
+. columns = kind == .table-column || kind == .immutable-table-column
+. selects = kind == .table-selection || kind == .immutable-table-selection
+if tables || spans || columns || selects
+    = measures
+do match? types.rows[row.self-type]
+    | .type-class(owner)
+        . array = types.array-decl.refers-to(owner.module, owner.decl) && owner.args.count == 2
+        = array && (measures || name == "data")
+= false
+
+────────────────────
+_ cast-context String
+    - kind ContextCastKind
+
+` The place a cast is written, as the reference's message names it.
+match kind
+    |= .cast-argument
+        "the call argument"
+    |= .cast-return
+        "the function return type"
+    |= .cast-assignment
+        "the variable declaration"
+    ??
+        "the pattern type"
+
+────────────────────
+_ do written-type String?
+    - tree AST
+    - type SyntaxId
+
+` A type as the reference names it as written: by its name, with the names of its arguments.
+do match? tree.nodes[type]
+    | .node-type-identifier(row)
+        = row.name.text
+    | .node-core-type-identifier(row)
+        = row.name.text
+    | .node-type-arguments(row)
+        . base = written-type(tree, row.base)
+        if !base
+            = null
+        . text = base
+        for arg in tree.children[row.args]
+            . named = written-type(tree, arg)
+            if !named
+                = null
+            text += "'" ++ named
+        = text
+= null
+
+────────────────────
+_ do gather-overwrites
+    - session Session
+    - ranks [U32]
+
+` The assignments of the constructors written in targets that discard a value the constructor
+` built, as the reference traces them for `style/prefer-constructor-initializer`, from each
+` instance of a constructor in the order the reference compiles them (`trace-overwrites`).
+. keys [U64]
+for position in 0 .. < session.instances.length
+    keys += ((ranks[position] as U64) /lshift/ 32) /or/ (position as U64)
+. sorted = sort(keys)
+for key in sorted
+    . instance = (key /and/ 0xffffffff) as InstanceId
+    . row = session.instances.rows[instance]
+    . module = session.program.modules[row.module]
+    . gathered = facts[module.path]
+    if !gathered
+        continue
+    do match? module.decls[row.decl]
+        | .decl-function(fn)
+            if fn.kind == .constructor-decl && !fn.is-generated && fn.body != 0
+                trace-overwrites(session, instance, gathered)
+
+────────────────────
+_ do trace-overwrites
+    - session Session
+    - instance InstanceId
+    - gathered SemanticFacts
+
+` The assignments a constructor's body writes among its statements that discard a value the
+` constructor built for a property, as the reference traces them: an assignment by name or
+` through `this` to a stored property the constructor is given no value for, whose value is built
+` by a call, or is a class or a tuple constructed with nothing given. One can be an initializer
+` where each statement before it is one too, the property has no value written, comes after the
+` properties of those before it, has no setter, and no rule reads it, and the value reads nothing
+` the body assigns or declares, no property a function answers, and not the object.
+. types = session.types
+. row = session.instances.rows[instance]
+. receiver = row.self-type
+. source = session.program.modules[row.module]
+. tree = source.tree
+. body SyntaxId = 0
+. given [Atom]
+. args = RowRange'ArgumentShape()
+do match? source.decls[row.decl]
+    | .decl-function(fn)
+        body = fn.body
+        args = fn.args
+for shape in source.arg-pool[args]
+    if shape.name && types.property-named(receiver, shape.name)
+        given += shape.name
+. range = RowRange'SyntaxId()
+do match? tree.nodes[body]
+    | .node-block(block)
+        range = block.body
+. statements [SyntaxId]
+for statement in tree.children[range]
+    . lazy = lazy-declare(tree, statement)
+    if lazy && types.property-named(receiver, lazy)
+        given += lazy
+    else if !lazy && !(tree.nodes[statement] is .node-noop)
+        statements += statement
+. locals [Atom]
+for statement in statements
+    for id in tree.subtree-start(statement) .. < statement + 1
+        do match? tree.nodes[id]
+            | .node-declare(declare)
+                . name = declared-name(tree, declare.left)
+                if name && !declare.is-lazy
+                    locals += name
+. assigned [Atom]
+for statement in statements
+    for id in tree.subtree-start(statement) .. < statement + 1
+        do match? tree.nodes[id]
+            | .node-assign(assign)
+                . name = assigned-name(types, receiver, tree, assign.lhs, locals)
+                if name
+                    assigned += name
+. accessors [Atom]
+for property in types.properties-of(receiver)
+    if property.storage-kind != .storage-eager
+        accessors += property.name
+. methods = method-names(session, receiver)
+. leading = true
+. last = -1
+for statement in statements
+    . name Atom? = null
+    . target SyntaxId = 0
+    . value SyntaxId = 0
+    do match? tree.nodes[statement]
+        | .node-assign(assign)
+            if assign.op == .eq-op
+                name = assigned-name(types, receiver, tree, assign.lhs, locals)
+                target = assign.lhs
+                value = assign.rhs
+    . index = property-index(types, receiver, name)
+    if index < 0 || given.find(name!) != null
+        leading = false
+        continue
+    . property = types.properties-of(receiver)[index as Index]
+    . declared = declaring-property(session, receiver, property.name)
+    . stored = property.storage-kind == .storage-eager && declared.element == 0
+    if !stored || !builds-value(session, property, declared)
+        leading = false
+        continue
+    . reads = reads-any(tree, value, assigned) || reads-any(tree, value, locals)
+    . accesses = reads-any(tree, value, accessors) || reads-any(tree, value, methods)
+    . open = declared.value == 0 && index > last && !declared.has-setter
+    . observed = observed-by-rule(session, receiver, property.name)
+    . actionable = leading && open && !observed && !reads && !accesses
+    if actionable
+        last = index
+    else
+        leading = false
+    . begin = tree.nodes.loc[statement].begin
+    . written = tree.nodes.loc[target]
+    gathered.overwrites += SemanticOverwrite
+        - begin.line + 1
+        - begin.column + 1
+        - written.begin.line + 1
+        - written.begin.column + 1
+        - written.end.column + 2
+        - owned(property.name.text)
+        - owned(type-short-name(types, property.type))
+        - actionable
+
+────────────────────
+_ do lazy-declare Atom?
+    - tree AST
+    - statement SyntaxId
+
+` The name a statement declares where it is a lazy declaration of one name.
+do match? tree.nodes[statement]
+    | .node-declare(declare)
+        if declare.is-lazy
+            = declared-name(tree, declare.left)
+= null
+
+────────────────────
+_ declared-name Atom?
+    - tree AST
+    - left SyntaxId
+
+` The name a declaration declares where it declares one name.
+match? tree.nodes[left]
+    | .node-type-capture(row)
+        declared-name(tree, row.id)
+    | .node-identifier(row)
+        row.name
+    | .node-type-identifier(row)
+        row.name
+
+────────────────────
+_ do assigned-name Atom?
+    - types Types
+    - receiver TypeId
+    - tree AST
+    - target SyntaxId
+    - locals [Atom]
+
+` The property of the object an assignment's target names: by a name no local of the body
+` declares, or through `this`.
+do match? tree.nodes[target]
+    | .node-identifier(row)
+        if locals.find(row.name) == null && types.property-named(receiver, row.name)
+            = row.name
+    | .node-get-expression(row)
+        do match? tree.nodes[row.object]
+            | .node-identifier(object)
+                if object.name.text == "this" && types.property-named(receiver, row.name)
+                    = row.name
+= null
+
+────────────────────
+_ do property-index Int
+    - types Types
+    - receiver TypeId
+    - name Atom?
+
+` The place of a property of a type among its properties, or -1.
+if !name
+    = -1
+. index = 0
+for property in types.properties-of(receiver)
+    if property.name == name
+        = index
+    index += 1
+= -1
+
+────────────────────
+_ do declaring-property DeclaredProperty
+    - session Session
+    - receiver TypeId
+    - name Atom
+
+` The declaration of a property in the nearest class, from a class up through its bases, that
+` declares it.
+. current = receiver
+while current != no-type
+    . ref = class-ref(session.types, current)
+    . module = session.program.modules[ref.module]
+    for member in module.member-pool[class-members(module, ref.decl)]
+        do match? module.decls[member]
+            | .decl-property(property)
+                if property.name && property.name == name
+                    . setter = declares-setter(module, ref.decl, name)
+                    = DeclaredProperty(ref.module, property.value, property.element, setter)
+    current = session.types.base-of(current) ?? no-type
+= DeclaredProperty(0, 0, 0, false)
+
+────────────────────
+_ do method-names [Atom]
+    - session Session
+    - receiver TypeId
+
+. names [Atom]
+. current = receiver
+while current != no-type
+    . ref = class-ref(session.types, current)
+    . module = session.program.modules[ref.module]
+    for member in module.member-pool[class-members(module, ref.decl)]
+        do match? module.decls[member]
+            | .decl-function(fn)
+                if fn.kind == .function-decl && fn.name
+                    names += fn.name
+    current = session.types.base-of(current) ?? no-type
+= names
+
+────────────────────
+_ do class-members RowRange'DeclId
+    - module Module
+    - decl DeclId
+
+. members = RowRange'DeclId()
+do match? module.decls[decl]
+    | .decl-class(class)
+        members = class.members
+= members
+
+────────────────────
+_ do declares-setter Bool
+    - module Module
+    - owner DeclId
+    - name Atom
+
+for member in module.member-pool[class-members(module, owner)]
+    do match? module.decls[member]
+        | .decl-function(fn)
+            if fn.kind == .setter-decl && fn.name && fn.name == name
+                = true
+= false
+
+────────────────────
+_ do builds-value Bool
+    - session Session
+    - property TypeProperty
+    - declared DeclaredProperty
+
+` Whether the value a constructor builds for a property does work: a value written that calls
+` something, of a class, or of a tuple with a constructor that is given nothing.
+if declared.value != 0
+    . tree = session.program.modules[declared.module].tree
+    . calls = false
+    for id in tree.subtree-start(declared.value) .. < declared.value + 1
+        if tree.nodes[id] is .node-call-expression
+            calls = true
+    if !calls
+        = false
+. kind = session.types.completions[property.type].intrinsic
+if kind == .class || kind == .style || kind == .style-sheet
+    = true
+if !is-tuple-kind(kind)
+    = false
+. ref = class-ref(session.types, property.type)
+. module = session.program.modules[ref.module]
+for member in module.member-pool[class-members(module, ref.decl)]
+    . args = constructor-args(module, member)
+    if args && takes-nothing(module, args)
+        = true
+= false
+
+────────────────────
+_ do constructor-args RowRange'ArgumentShape?
+    - module Module
+    - decl DeclId
+
+do match? module.decls[decl]
+    | .decl-function(fn)
+        if fn.kind == .constructor-decl
+            = fn.args
+= null
+
+────────────────────
+_ do takes-nothing Bool
+    - module Module
+    - args RowRange'ArgumentShape
+
+for shape in module.arg-pool[args]
+    if !shape.has-default
+        = false
+= true
+
+────────────────────
+_ is-tuple-kind Bool
+    - kind IntrinsicKind
+
+` Whether a type is a tuple as the reference builds it: a tuple, a struct, an array builder, or a
+` table or a part of one.
+kind == .tuple || kind == .struct || kind == .array-builder || (code >= first && code <= last)
+
+.. code = kind as U32
+.. first = IntrinsicKind.table as U32
+.. last = IntrinsicKind.table-mark as U32
+
+────────────────────
+_ do observed-by-rule Bool
+    - session Session
+    - receiver TypeId
+    - name Atom
+
+` Whether a rule of a class or of a class above it reads a property in its test: a `when`, or a
+` `whenever` on a value.
+. names [Atom]
+names += name
+. current = receiver
+while current != no-type
+    . ref = class-ref(session.types, current)
+    . module = session.program.modules[ref.module]
+    for member in module.member-pool[class-members(module, ref.decl)]
+        . test = rule-test(module.tree, member-syntax(module, member))
+        if test != 0 && reads-any(module.tree, test, names)
+            = true
+    current = session.types.base-of(current) ?? no-type
+= false
+
+────────────────────
+_ do member-syntax SyntaxId
+    - module Module
+    - decl DeclId
+
+` Where a rule of a class is written, or 0 for any other member.
+do match? module.decls[decl]
+    | .decl-rule(rule)
+        = rule.syntax
+= 0
+
+────────────────────
+_ rule-test SyntaxId
+    - tree AST
+    - syntax SyntaxId
+
+match tree.nodes[syntax]
+    | .node-when-rule-syntax(row)
+        row.expr
+    | .node-whenever-rule-syntax(row)
+        if row.kind.text == "value" then row.expr else 0u32
+    ??
+        0u32
+
+────────────────────
+_ do reads-any Bool
+    - tree AST
+    - expr SyntaxId
+    - names [Atom]
+
+` Whether an expression reads the object, its base, or a name among `names`.
+if expr == 0
+    = false
+for id in tree.subtree-start(expr) .. < expr + 1
+    do match? tree.nodes[id]
+        | .node-identifier(row)
+            if row.name.text == "this" || row.name.text == "super" || names.find(row.name) != null
+                = true
+= false
+
+────────────────────
+_ do compile-ranks [U32]
+    - session Session
+    - graph CallGraph
+    - roots [InstanceId]
+
+` The order the reference compiles the instances of a program in: from each of `roots`
+` (`compile-roots`), depth first through what each compiles, in the order of its body.
+. ranks [U32]
+for _ in 0 .. < session.instances.length
+    ranks += U32.max
+. next U32
+. stack [InstanceId]
+for root in roots
+    stack += root
+    while stack.length != 0
+        . instance = stack[stack.length - 1]
+        stack.pop()
+        if ranks[instance] != U32.max
+            continue
+        ranks[instance] = next
+        next += 1
+        . first = graph.starts[instance]
+        . position = graph.starts[instance + 1]
+        while position > first
+            position -= 1
+            . callee = graph.callees[position]
+            if ranks[callee] == U32.max
+                stack += callee
+= ranks
+
+────────────────────
+_ do compile-roots [InstanceId]
+    - session Session
+    - graph CallGraph
+
+` The instances the reference begins compiling from, in order: the main of each module in the
+` order the modules initialize, then the instances of the functions nothing compiles, then the
+` rest, each in the order of the sealed instance table (`Instances.ordered`), as an id records
+` only which instance typing reached first, which depends on how many passes typed the program.
+` A function is reached where another instance compiles any of its instances (`function-key`).
+. instances = session.instances
+. reached [String = Bool]
+for position in 0 .. < instances.length
+    for offset in graph.starts[position] .. < graph.starts[position + 1]
+        . callee = graph.callees[offset]
+        if callee != position as InstanceId
+            reached[function-key(instances, callee)] = true
+. roots [InstanceId]
+. mains = module-mains(session)
+for module in session.program.init-order
+    if mains[module] != no-instance
+        roots += mains[module]
+. called [InstanceId]
+for instance in instances.ordered
+    if reached[function-key(instances, instance)]
+        called += instance
+    else
+        roots += instance
+= roots ++ called
+
+────────────────────
+_ function-key String
+    - instances Instances
+    - instance InstanceId
+
+` The function the reference compiles for an instance: its declaration, the type of its object,
+` the instance it is written in, and the types it takes, but not its effects or the row it reads
+` its object from, which the reference does not tell apart.
+"${row.module}:${row.decl}:${row.self-type}:${row.enclosing}$taken"
+
+.. row = instances.rows[instance]
+.. signature = instances.signatures[instance]
+.. first = signature.args.start - signature.param-count
+.. taken = "".join(":${instances.signature-types[each]}" in first .. < signature.args.start + signature.args.count)
+
+────────────────────
+_ do call-graph CallGraph
+    - session Session
+
+` What the reference compiles while it compiles each instance's body, in the order of the body:
+` at each node, the closures written there, the instances its calls call, and what its
+` conversions compile (`add-conversion`). The reference compiles a closure where it is written,
+` and a function where a call, a conversion or a value of a function type first needs it.
+. instances = session.instances
+. facts = session.facts
+. closures = closures-by-node(session)
+. graph = CallGraph()
+for position in 0 .. < instances.length
+    graph.starts += graph.callees.length as U32
+    . row = instances.rows[position]
+    if row.node-start == U32.max
+        continue
+    . written = closures[position]
+    . next = 0
+    for offset in 0 .. < row.subtree.count
+        while next < written.length && written[next].offset == offset
+            graph.callees += written[next].closure
+            next += 1
+        . cursor = facts.node-calls[row.node-start + offset]
+        while cursor != no-fact
+            . callee = facts.calls[cursor].callee
+            if callee != no-instance
+                graph.callees += callee
+            cursor = facts.calls[cursor].next
+        . conversion = facts.node-conversions[row.node-start + offset]
+        while conversion != no-fact
+            add-conversion(facts, facts.conversions[conversion], graph)
+            conversion = facts.conversions[conversion].next
+graph.starts += graph.callees.length as U32
+= graph
+
+────────────────────
+_ do add-conversion
+    - facts Facts
+    - fact ConversionFact
+    - graph CallGraph
+
+` Adds what a conversion compiles: the functions that convert its parts, the function that
+` converts the value, and the function a value of a function type it makes runs.
+. part = fact.parts
+while part != no-fact
+    add-conversion(facts, facts.conversion-parts[part], graph)
+    part = facts.conversion-parts[part].next
+if fact.callee != no-instance
+    graph.callees += fact.callee
+if fact.runs != no-instance
+    graph.callees += fact.runs
+
+────────────────────
+_ do closures-by-node [[WrittenClosure]]
+    - session Session
+
+` The closures written in each instance with a body, by that instance, each at the node of the
+` body it is written at, in the order of those nodes and then of the instance table.
+. instances = session.instances
+. program = session.program
+. found [[WrittenClosure]]
+for _ in 0 .. < instances.length
+    . none [WrittenClosure]
+    found += none
+for instance in instances.ordered
+    . row = instances.rows[instance]
+    if row.enclosing == no-instance
+        continue
+    . outer = instances.rows[row.enclosing]
+    if outer.node-start == U32.max
+        continue
+    do match? program.modules[row.module].decls[row.decl]
+        | .decl-function(fn)
+            . start = outer.subtree.start
+            if fn.syntax >= start && fn.syntax < start + outer.subtree.count
+                . offset = fn.syntax - start
+                . list = found[row.enclosing]
+                . place = list.length
+                while place > 0 && list[place - 1].offset > offset
+                    place -= 1
+                list.insert(WrittenClosure(offset, instance), place)
+= found
+
+────────────────────
+_ do module-mains [InstanceId]
+    - session Session
+
+` The instance of the main of each module, by module, or `no-instance` for one none runs.
+. instances = session.instances
+. program = session.program
+. mains [InstanceId]
+for _ in 0 .. < program.modules.length
+    mains += no-instance
+for position in 0 .. < instances.length
+    . row = instances.rows[position]
+    if row.enclosing == no-instance && row.decl == program.modules[row.module].main-decl
+        if mains[row.module] == no-instance
+            mains[row.module] = position as InstanceId
+= mains
+
+────────────────────
+_ owned String
+    - text String
+
+` `text` copied to collected memory: the name of a type can be text the program's arena holds,
+` which the program releases before the rules read it.
+(text as Byte[]).slice-string()
+
+━━━━━━━━━━━━━━━━━━━━
+_ DeclaredProperty is Tuple
+
+` What the nearest class that declares a property writes for it: its module and value, whether it
+` names a markup element, and whether the class declares a setter of its name.
++ module ModuleId
++ value SyntaxId
++ element SyntaxId
++ has-setter Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ CallGraph
+
+` What each instance of a program compiles while its body is compiled (`call-graph`): instance
+` `i` compiles `callees[starts[i] .. < starts[i + 1]]`, in the order of its body.
++ starts [U32]
++ callees [InstanceId]
+
+━━━━━━━━━━━━━━━━━━━━
+_ WrittenClosure is Tuple
+
+` A closure written in an instance's body, at a node's offset in that body.
++ offset U32
++ closure InstanceId

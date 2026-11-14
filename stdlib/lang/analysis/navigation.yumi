@@ -1,0 +1,782 @@
+./program-store
+/core/parsing
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+/lang/check/binder
+/lang/check/binding
+/lang/check/facts
+/lang/check/instances
+/lang/check/session
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/check/typing-scratch
+/lang/target
+
+━━━━━━━━━━━━━━━━━━━━
++ DefinitionSite is Tuple
+
++ path String
++ line U32
++ column U32
+
+━━━━━━━━━━━━━━━━━━━━
++ DefinitionLink is Tuple
+
++ line U32
++ start U32
++ end U32
++ target DefinitionSite
++ signature String?
+
+━━━━━━━━━━━━━━━━━━━━
++ HoverText is Tuple
+
++ line U32
++ start U32
++ end U32
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ link-at DefinitionLink?
+    - store ProgramStore
+    - path String
+    - line U32
+    - column U32
+
+|? !place
+    null
+|? !target
+    null
+??
+    DefinitionLink(span.begin.line, span.begin.column, span.end.column + 1, target, signature)
+
+.. place = place-at(store, path, line, column)
+.. navigator = place.navigator
+.. target = navigator.definition(place.syntax)
+.. span = place.span
+.. signature = navigator.shown-text(place.syntax)
+
+━━━━━━━━━━━━━━━━━━━━
++ do hover-at HoverText?
+    - store ProgramStore
+    - path String
+    - line U32
+    - column U32
+
+` What an editor shows over a name: the header of the function it names, or else its name and the
+` type the type pass gave its value.
+. place = place-at(store, path, line, column)
+=? null if !place
+. navigator = place.navigator
+navigator.definition(place.syntax)
+. text = navigator.shown-text(place.syntax)
+=? null if !text
+. span = place.span
+= HoverText(span.begin.line, span.begin.column, span.end.column + 1, text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ NamePlace is Tuple
+
++ navigator Navigator
++ syntax SyntaxId
++ span MatchLocation
+
+━━━━━━━━━━━━━━━━━━━━
+_ do place-at NamePlace?
+    - store ProgramStore
+    - path String
+    - line U32
+    - column U32
+
+` The name a position in a module is on, with a navigator for its module.
+store.open(path)
+=? null if !store.has(path)
+. program = store.program()!
+. found = program.module-by-path(path)
+=? null if !found
+. module = found as ModuleId
+. tree = program.modules[module].tree
+. text = store.text-of(path)
+=? null if !text
+. source [String] = text.split("\n")
+. syntax = syntax-at(tree, source, line, column)
+if syntax == 0 && column > 0
+    syntax = syntax-at(tree, source, line, column - 1)
+=? null if syntax == 0
+= NamePlace(Navigator(store, program, module), syntax, navigable-span(tree, source, syntax)!)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do signature-of String?
+    - store ProgramStore
+    - program Program
+    - ref DeclRef?
+
+=? null if !ref
+. holder = program.modules[ref.module]
+. function = match? holder.decls[ref.decl]
+    | .decl-function(row)
+        row
+=? null if !function || function.is-generated || holder.path.ends-with(".h")
+. text = store.text-of(holder.path)
+=? null if !text
+. first = holder.tree.nodes.loc[holder.decls.syntax[ref.decl]].begin.line as Size
+. lines [String] = text.split("\n")
+=? null if first >= lines.length
+. last = first
+. is-brix = holder.path.ends-with(brix-extension)
+while last + 1 < lines.length && is-header-row(lines[last + 1], is-brix)
+    last += 1
+= "\n".join(lines[first .. last])
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-header-row Bool
+    - line String
+    - is-brix Bool
+
+if is-brix then line.trim().starts-with("(param ") else is-indented
+.. is-indented = line.length != 0 && (line.starts-with(" ") || line.starts-with("\t")) && line.trim().length != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do syntax-at SyntaxId
+    - tree AST
+    - source [String]
+    - line U32
+    - column U32
+
+` The narrowest name on one line at a position whose place in the source holds it.
+. best SyntaxId = 0
+. best-size = U64.max
+for id in 1u32 .. < tree.nodes.length
+    . span = navigable-span(tree, source, id as SyntaxId)
+    if span && span.begin.line == span.end.line && covers(span, line, column)
+        . size = span-size(span)
+        if size < best-size && is-spelled(tree, source, id as SyntaxId, span)
+            best = id as SyntaxId
+            best-size = size
+= best
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-spelled Bool
+    - tree AST
+    - source [String]
+    - id SyntaxId
+    - span MatchLocation
+
+` Whether a node's name is written in the source where its span is. A node the compiler makes
+` has a place that does not hold its name, and an import has no one name to compare.
+. name = match? tree.nodes[id]
+    | .node-identifier(row)
+        row.name
+    | .node-ref-identifier(row)
+        row.name
+    | .node-type-identifier(row)
+        row.name
+    | .node-get-expression(row)
+        row.name
+    | .node-anonymous-case(row)
+        row.name
+=? true if !name
+. row = span.begin.line as Index
+=? false if row >= (source.length as Index)
+. text = source[row]
+. begin = span.begin.column as Index
+. end = (span.end.column as Index) + 1
+=? false if begin >= end || end > (text.length as Index)
+= text[begin .. < end].find(name.text) != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do navigable-span MatchLocation?
+    - tree AST
+    - source [String]
+    - id SyntaxId
+
+. loc = tree.nodes.loc[id]
+do match? tree.nodes[id]
+    | .node-identifier
+        = loc
+    | .node-ref-identifier
+        = loc
+    | .node-type-identifier
+        = loc
+    | .node-import-syntax
+        = loc
+    | .node-get-expression(row)
+        = member-span(source, tree.nodes.loc[row.object].end, row.name)
+    | .node-anonymous-case(row)
+        . offset = if row.owner then (row.owner.text.length as U32) + 1 else 1u32
+        = name-span(loc.begin.line, loc.begin.column + offset, row.name)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do member-span MatchLocation?
+    - source [String]
+    - after TokenLocation
+    - name Atom
+
+` Where a member's name is written after the end of the value it is read from: the first `.`
+` and the name on that line past it. The place recorded for the value can end before the value
+` as written, as in a member read of its own or inside parentheses.
+. row = after.line as Index
+=? null if row >= (source.length as Index)
+. text = source[row]
+. dotted = ".${name.text}"
+. length = name.text.length as Index
+. cursor = (after.column as Index) + 1
+while cursor < (text.length as Index)
+    . found = text[cursor ...].find(dotted)
+    =? null if !found
+    . begin = cursor + found + 1
+    . end = begin + length
+    if end >= (text.length as Index) || !is-name-char(text[end])
+        = name-span(after.line, begin as U32, name)
+    cursor = begin
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-name-char Bool
+    - char Char
+
+letter || digit || char == '-' || char == '_'
+
+.. letter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+.. digit = char >= '0' && char <= '9'
+
+━━━━━━━━━━━━━━━━━━━━
+_ name-span MatchLocation
+    - line U32
+    - column U32
+    - name Atom
+
+MatchLocation
+    - TokenLocation(line, column)
+    - TokenLocation(line, column + (name.text.length as U32) - 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ covers Bool
+    - loc MatchLocation
+    - line U32
+    - column U32
+
+after-begin && before-end
+
+.. after-begin = line > loc.begin.line || (line == loc.begin.line && column >= loc.begin.column)
+.. before-end = line < loc.end.line || (line == loc.end.line && column <= loc.end.column)
+
+━━━━━━━━━━━━━━━━━━━━
+_ span-size U64
+    - loc MatchLocation
+
+|? loc.end.line > loc.begin.line
+    ((loc.end.line - loc.begin.line) as U64) /lshift/ 32
+??
+    (loc.end.column - loc.begin.column) as U64
+
+━━━━━━━━━━━━━━━━━━━━
+_ Navigator
+
++ store ProgramStore
++ program Program
++ module ModuleId
++ resolved DeclRef?
++ tree AST
+_ owner Module
+_ builtins BuiltinClasses
+
+────────────────────
++ This
+    - store ProgramStore
+    - program Program
+    - module ModuleId
+
+.. owner = program.modules[module]
+.. tree = owner.tree
+.. builtins = builtin-classes-of(program)
+
+────────────────────
++ do definition DefinitionSite?
+    - syntax SyntaxId
+
+do match? tree.nodes[syntax]
+    | .node-identifier(row)
+        = typed-call-site(syntax) ?? name-site(syntax, row.name)
+    | .node-ref-identifier(row)
+        = name-site(syntax, row.name)
+    | .node-type-identifier(row)
+        = type-site(syntax, row.name)
+    | .node-get-expression(row)
+        = typed-member-site(syntax, row.object, row.name) ?? member-site(row.object, row.name)
+    | .node-import-syntax(row)
+        = import-site(row)
+    | .node-anonymous-case(row)
+        = case-site(row.name, row.owner)
+= null
+
+────────────────────
+_ do name-site DefinitionSite?
+    - syntax SyntaxId
+    - name Atom
+
+. function = bindable-owner(syntax)
+if function != 0
+    . bindings = use Bindings()
+    . binder = Binder(bindings, program, builtins)
+    . binding = binder.bind(module, function)
+    . resolved = resolution-site(bindings, bindings.resolution-of(binding, syntax))
+    =? resolved if resolved
+= named-site(name)
+
+────────────────────
++ shown-text String?
+    - syntax SyntaxId
+
+` What an editor shows for a node once its definition is found: the header of the function it
+` names, or else its name and the type of its value (`typed-text`).
+signature-of(store, program, resolved) ?? typed-text(syntax)
+
+────────────────────
+_ typed-call-site DefinitionSite?
+    - syntax SyntaxId
+
+` The function a call of a name runs, as the type pass chose it among those of that name.
+|? instance == no-instance
+    null
+|? callee == no-instance
+    null
+|? !is-written(row.module, row.decl)
+    null
+??
+    decl-site(row.module, row.decl)
+
+.. session = store.session()
+.. instance = instance-at(session, syntax)
+.. callee = callee-at(session, instance, syntax)
+.. row = session.instances.rows[callee]
+
+────────────────────
++ typed-text String?
+    - syntax SyntaxId
+
+` A node's name and the type the type pass gave its value, as an editor shows it, or nothing
+` where the pass typed no value there.
+|? !name
+    null
+|? instance == no-instance
+    null
+|? type == no-type || type == invalid-type
+    null
+??
+    "${name.text} ${shown-type(session.types, type)}"
+
+.. name = match? tree.nodes[syntax]
+    | .node-identifier(row)
+        row.name
+    | .node-ref-identifier(row)
+        row.name
+    | .node-get-expression(row)
+        row.name
+.. session = store.session()
+.. instance = instance-at(session, syntax)
+.. type = value-type(session, instance, syntax)
+
+────────────────────
+_ do value-type TypeId
+    - session Session
+    - instance InstanceId
+    - syntax SyntaxId
+
+` For a name a declaration declares, the type the instance keeps for the local it declares;
+` otherwise the type the type pass gave the node's value, or the declaration's, or else that of
+` what the declaration declares.
+. chain [SyntaxId]
+chain += syntax
+. holder = tree.holder-of(syntax)
+do match? tree.nodes[holder]
+    | .node-type-capture(row)
+        if row.id == syntax
+            chain += holder
+            holder = tree.holder-of(holder)
+. right SyntaxId = 0
+do match? tree.nodes[holder]
+    | .node-declare(row)
+        if row.left == chain[chain.length - 1]
+            chain += holder
+            right = row.right
+for node in chain
+    . local = local-type(session, instance, node)
+    =? local if local != no-type
+for node in chain
+    . type = session.facts.node-type(instance, node)
+    =? type if type != no-type
+= if right != 0 then session.facts.node-type(instance, right) else no-type
+
+────────────────────
+_ do local-type TypeId
+    - session Session
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The type an instance keeps for the local a node declares, or none.
+. row = session.instances.rows[instance]
+=? no-type if row.binding == no-binding
+. slots = session.bindings.bindings[row.binding].slots
+for offset in 0 .. < slots.count
+    if session.bindings.slots[slots.start + offset].syntax == syntax
+        = session.facts.slot-type(instance, offset)
+= no-type
+
+────────────────────
+_ do typed-member-site DefinitionSite?
+    - syntax SyntaxId
+    - object SyntaxId
+    - name Atom
+
+` The member a node reads of the value of `object`, as the type pass chose it: the function a
+` call of it runs, or else the member of that name of the class of the value's type.
+. session = store.session()
+. instance = instance-at(session, syntax)
+=? null if instance == no-instance
+. callee = callee-at(session, instance, syntax)
+if callee != no-instance
+    . row = session.instances.rows[callee]
+    if is-written(row.module, row.decl)
+        = decl-site(row.module, row.decl)
+. held = session.facts.node-type(instance, object)
+=? null if held == no-type
+. type = session.types.optional-inner(held)
+=? null if type == invalid-type
+. owner = match? session.types.rows[type]
+    | .type-class(row)
+        DeclRef(row.module, row.decl)
+=? null if !owner
+. bindings = use Bindings()
+. binder = Binder(bindings, program, builtins)
+. member = binder.member-of-class(owner.module, owner.decl, name)
+if !member || (member.module == owner.module && member.decl == owner.decl)
+    . field = written-field(owner, name)
+    = site(owner.module, field) if field != 0
+= decl-site(member.module, member.decl)
+
+────────────────────
+_ do written-field SyntaxId
+    - owner DeclRef
+    - name Atom
+
+` A field a class writes in its own declaration, as a tuple written in one line names its fields,
+` or none.
+. holder = program.modules[owner.module]
+. root = holder.decls.syntax[owner.decl]
+for id in holder.tree.subtree-start(root) .. < root
+    do match? holder.tree.nodes[id]
+        | .node-identifier(row)
+            =? id if row.name == name
+= 0
+
+────────────────────
+_ do instance-at InstanceId
+    - session Session
+    - syntax SyntaxId
+
+` The instance innermost around a node of the module the type pass typed that gave the node a
+` type, or else the innermost around it, or none. The source of a generator is typed by the
+` function it is written in, not by the body of the generator around it.
+. best = no-instance
+. size = U32.max
+. typed = no-instance
+. typed-size = U32.max
+for position in 0 .. < session.instances.length
+    . row = session.instances.rows[position]
+    . end = row.subtree.start + row.subtree.count
+    . around = syntax >= row.subtree.start && syntax < end
+    if row.module == module && row.node-start != U32.max && around
+        . id = position as InstanceId
+        if row.subtree.count < size
+            best = id
+            size = row.subtree.count
+        if row.subtree.count < typed-size && session.facts.node-type(id, syntax) != no-type
+            typed = id
+            typed-size = row.subtree.count
+= if typed != no-instance then typed else best
+
+────────────────────
+_ do callee-at InstanceId
+    - session Session
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The function the type pass chose to run a member a node reads: a getter or a method read at
+` the node, or what a call of it runs.
+. found = called(session, instance, syntax)
+=? found if found != no-instance
+. holder = tree.holder-of(syntax)
+do match? tree.nodes[holder]
+    | .node-call-expression(row)
+        if row.callable == syntax
+            = called(session, instance, holder)
+= no-instance
+
+────────────────────
+_ do called InstanceId
+    - session Session
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The first function a call recorded at a node runs that the source names there: one run as a
+` function, a method, a static method, a constructor, a getter or a setter.
+. facts = session.facts
+. cursor = facts.first-call(instance, syntax)
+while cursor != no-fact
+    . call = facts.calls[cursor]
+    cursor = call.next
+    . named = call.form == .call-function || call.form == .call-method || call.form == .call-static
+    . accessed = call.form == .call-getter || call.form == .call-setter
+    if call.callee != no-instance && (named || accessed || call.form == .call-constructor)
+        = call.callee
+= no-instance
+
+────────────────────
+_ is-written Bool
+    - target ModuleId
+    - decl DeclId
+
+` Whether a function is written in its module's source, and so has a place to go to.
+match program.modules[target].decls[decl]
+    | .decl-function(row)
+        !row.is-generated
+    ??
+        false
+
+────────────────────
+_ resolution-site DefinitionSite?
+    - bindings Bindings
+    - resolution Resolution
+
+|? kind == .resolve-slot
+    site(module, bindings.slots[resolution.slot].syntax)
+|? kind == .resolve-none || kind == .resolve-unresolved
+    null
+??
+    decl-site(resolution.module, resolution.decl)
+
+.. kind = resolution.kind
+
+────────────────────
+_ type-site DefinitionSite?
+    - syntax SyntaxId
+    - name Atom
+
+|? parameter != 0
+    site(module, parameter)
+|? found
+    decl-site(found.module, found.decl)
+??
+    named-site(name)
+
+.. parameter = type-parameter(syntax, name)
+.. found = class-named(name)
+
+────────────────────
+_ do member-site DefinitionSite?
+    - object SyntaxId
+    - name Atom
+
+. receiver-name = match? tree.nodes[object]
+    | .node-identifier(row)
+        row.name
+    | .node-type-identifier(row)
+        row.name
+=? null if !receiver-name
+. receiver = class-named(receiver-name)
+=? null if !receiver
+. bindings = use Bindings()
+. binder = Binder(bindings, program, builtins)
+. function = bindable-owner(object)
+if function != 0
+    binder.bind(module, function)
+. member = binder.member-of-class(receiver.module, receiver.decl, name)
+if !member || (member.module == receiver.module && member.decl == receiver.decl)
+    . case-syntax = enum-case(receiver, name)
+    =? site(receiver.module, case-syntax) if case-syntax != 0
+=? null if !member
+= decl-site(member.module, member.decl)
+
+────────────────────
+_ case-site DefinitionSite?
+    - name Atom
+    - owner Atom?
+
+|? !owner
+    null
+|? !receiver
+    null
+|? case-syntax != 0
+    site(receiver.module, case-syntax)
+??
+    decl-site(receiver.module, receiver.decl)
+
+.. receiver = class-named(owner)
+.. case-syntax = enum-case(receiver, name)
+
+────────────────────
+_ do enum-case SyntaxId
+    - receiver DeclRef
+    - name Atom
+
+. holder = program.modules[receiver.module]
+. root = holder.decls.syntax[receiver.decl]
+for id in holder.tree.subtree-start(root) .. < root
+    do match? holder.tree.nodes[id]
+        | .node-enum-declaration(row)
+            =? id if row.name == name
+        | .node-type-case(row)
+            =? id if row.name == name
+= 0
+
+────────────────────
+_ do import-site DefinitionSite?
+    - row ASTImport
+
+. name = ""
+for offset in 0 .. < row.paths.count
+    if offset
+        name += "/"
+    name += tree.atoms[row.paths.start + offset].text
+= match? store.resolver.find-module(name, owner.name, owner.path)
+    | _, module-path
+        DefinitionSite("$module-path", 0, 0)
+
+────────────────────
+_ do named-site DefinitionSite?
+    - name Atom
+
+for candidate in program.lookup(module, name)
+    = decl-site(candidate.module, candidate.decl)
+= null
+
+────────────────────
+_ do class-named DeclRef?
+    - name Atom
+
+for candidate in program.lookup(module, name)
+    do match? program.modules[candidate.module].decls[candidate.decl]
+        | .decl-class
+            = DeclRef(candidate.module, candidate.decl)
+= null
+
+────────────────────
+_ do type-parameter SyntaxId
+    - syntax SyntaxId
+    - name Atom
+
+for decl in 1 .. < owner.decls.length
+    do match? owner.decls[decl]
+        | .decl-function(row)
+            if encloses(row.syntax, syntax)
+                . found = parameter-named(row.type-args, name)
+                =? found if found != 0
+        | .decl-class(row)
+            if encloses(row.syntax, syntax)
+                . found = parameter-named(row.type-args, name)
+                =? found if found != 0
+= 0
+
+────────────────────
+_ do parameter-named SyntaxId
+    - args RowRange'SyntaxId
+    - name Atom
+
+for arg in tree.children[args]
+    do match? tree.nodes[arg]
+        | .node-type-identifier(row)
+            =? arg if row.name == name
+        | .node-identifier(row)
+            =? arg if row.name == name
+= 0
+
+────────────────────
+_ do bindable-owner DeclId
+    - syntax SyntaxId
+
+. best DeclId = 0
+. best-start SyntaxId = 0
+for decl in 1 .. < owner.decls.length
+    . range = bindable-range(owner.decls[decl])
+    if range.count != 0 && syntax >= range.start && syntax < range.start + range.count
+        if best == 0 || range.start >= best-start
+            best = decl as DeclId
+            best-start = range.start
+= best
+
+────────────────────
+_ bindable-range SyntaxRange
+    - decl Decl
+
+match decl
+    | .decl-function(row)
+        if is-bindable then row.subtree else SyntaxRange(0, 0)
+        .. is-bindable = (!row.is-generated || row.kind == .main-decl) && !is-nested-kind(row.kind)
+    | .decl-converter(row)
+        subtree-of(row.syntax)
+    | .decl-fromverter(row)
+        subtree-of(row.syntax)
+    ??
+        SyntaxRange(0, 0)
+
+────────────────────
+_ subtree-of SyntaxRange
+    - syntax SyntaxId
+
+SyntaxRange(start, syntax - start + 1)
+
+.. start = tree.subtree-start(syntax)
+
+────────────────────
+_ encloses Bool
+    - root SyntaxId
+    - syntax SyntaxId
+
+tree.subtree-start(root) <= syntax && syntax <= root
+
+────────────────────
+_ do decl-site DefinitionSite
+    - target ModuleId
+    - decl DeclId
+
+resolved = DeclRef(target, decl)
+= site(target, program.modules[target].decls.syntax[decl])
+
+────────────────────
+_ site DefinitionSite
+    - target ModuleId
+    - syntax SyntaxId
+
+DefinitionSite(holder.path, loc.begin.line, loc.begin.column)
+
+.. holder = program.modules[target]
+.. loc = holder.tree.nodes.loc[syntax]
+
+━━━━━━━━━━━━━━━━━━━━
+_ shown-type String
+    - types Types
+    - type TypeId
+
+` A type as an editor shows it: by the names of its class and arguments, an optional by what it
+` holds with `?`.
+|? types.is-optional(type)
+    "${shown-type(types, types.optional-inner(type))}?"
+??
+    type-short-name(types, type)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do builtin-classes-of BuiltinClasses
+    - program Program
+
+` The classes of core whose members the binder answers itself, as the type pass binds them.
+. types = use Types(program, TypingScratch())
+types.bind-types()
+= types.builtin-classes

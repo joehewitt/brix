@@ -1,0 +1,16 @@
+`benchmark.meta description: Reads buffered character streams through EOF at exact and partial growth boundaries.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: allocator,compile-timing
+
+/core/tokenstream
+
+. source = "x" * 2097152
+. checksum = 0 as Size
+for size in [0, 1024, 1500, 1048576, 1500000, 2097152]
+    . stream = ChunkedTokenStream'Char(source[0 .. < size].codepoints)
+    . result = stream.read()
+    if result.size != size || stream.has-more
+        Panic("read-all length mismatch")
+    checksum += result.size
+
+-- "bench-result stream/read-all checksum=$checksum"

@@ -1,0 +1,253 @@
+/core/markup
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/events
+/gui/primitives
+/gui/tests/support/probe-boxes
+/gui/window
+/test
+/ui/input
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Window Drag Routing")
+cases.run(window-drag-routing-tests)
+cases = cases.then("GUI Window Drag Cancellation", window-drag-cancellation-tests)
+cases = cases.then("GUI Window Drag Boundaries", window-drag-boundary-tests)
+cases = cases.then("GUI Window Press Within", window-press-within-tests)
+cases = cases.then("Window Lifecycle", window-lifecycle-tests)
+cases = cases.then("GUI Window Event Lifecycle", gui-window-event-lifecycle-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ DragProbeBox is Box
+
++ click-count Size
+
+────────────────────
+for event on click
+
+click-count += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ DragRegionBox is DragProbeBox
+
+• This
+    window-draggable = true
+
+━━━━━━━━━━━━━━━━━━━━
++ DragClipBox is Box
+
+• This
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.clip
+
+━━━━━━━━━━━━━━━━━━━━
++ DragTestWindow is Window
+
++ drag-count Size
++ accepts-drag = true
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ render
+
+true
+
+────────────────────
++ do schedule-render
+
+────────────────────
++ do begin-window-drag
+    - event PointerDownEvent
+
+drag-count += 1
+= accepts-drag && event.window-drag-token != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do window-drag-routing-tests
+    - t TestCase
+
+. window = DragTestWindow()
+window.size = Dimensions(200, 100)
+. header = DragRegionBox()
+. decoration = DragProbeBox()
+markup-append(window, header)
+markup-append(header, decoration)
+window.open()
+header.arrange-bounds(Rect(0, 0, 200, 60))
+decoration.arrange-bounds(Rect(0, 0, 80, 60))
+. title-point = PointerEventData(Point(20, 20))
+window.dispatch-pointer-event(PointerDownEvent(title-point, PointerButton.primary, 1, 123))
+t.check("handoff leaves no pressed state", !decoration.is-pressed)
+window.dispatch-pointer-event(PointerUpEvent(title-point))
+t.expect("handoff cannot synthesize a click", 0, decoration.click-count)
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do window-drag-cancellation-tests
+    - t TestCase
+
+. window = DragTestWindow()
+window.size = Dimensions(200, 100)
+. header = DragRegionBox()
+markup-append(window, header)
+window.open()
+header.arrange-bounds(Rect(0, 0, 100, 50))
+. data = PointerEventData(Point(20, 20))
+window.accepts-drag = false
+window.dispatch-pointer-event(PointerDownEvent(data, PointerButton.primary, 1, 123))
+t.check("native rejection preserves normal capture", header.is-pressed)
+window.dispatch-pointer-event(PointerUpEvent(data))
+t.expect("native rejection preserves click behavior", 1, header.click-count)
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do window-drag-boundary-tests
+    - t TestCase
+
+. window = DragTestWindow()
+window.size = Dimensions(200, 100)
+. clip = DragClipBox()
+. region = DragRegionBox()
+markup-append(window, clip)
+markup-append(clip, region)
+window.open()
+clip.arrange-bounds(Rect(0, 0, 50, 50))
+region.arrange-bounds(Rect(0, 0, 100, 50))
+window.dispatch-pointer-event
+    - PointerDownEvent(PointerEventData(Point(70, 20)), PointerButton.primary, 1, 1)
+t.expect("clipped overflow cannot start window drag", 0, window.drag-count)
+window.dispatch-pointer-event
+    - PointerDownEvent(PointerEventData(Point(30, 20)), PointerButton.primary, 1, 3)
+t.expect("visible region remains draggable", 1, window.drag-count)
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do window-press-within-tests
+    - t TestCase
+
+. window = HoverSwapWindow()
+window.open()
+window.layout()
+. holder = window.holder
+. position = holder.bounds.center
+window.dispatch-pointer-event
+    - PointerDownEvent(PointerEventData(position, 6), PointerButton.primary)
+window.close()
+t.check("closing the window releases the press", !holder.is-press-within)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ HoverSwapHolder is Box
+
+────────────────────
+
+<This
+    <Box • absolute cover:.parent
+
+━━━━━━━━━━━━━━━━━━━━
++ HoverSwapWindow is Window
+
++ holder HoverSwapHolder
+
+────────────────────
+
+<This
+    size = Dimensions(120, 80)
+    <HoverSwapHolder holder • w:40 h:40 m:10
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do window-lifecycle-tests
+    - t TestCase
+
+. window = HeadlessWindow()
+. child = window.%first-child! as ProbeBox
+window.open()
+window.close()
+t.expect("close releases the mounted tree", 1, child.unmounted-count)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ HeadlessWindow is Window
+
+────────────────────
+
+<This
+    <ProbeBox child "child"
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-window-event-lifecycle-tests
+    - t TestCase
+
+. window = LifecycleTestWindow()
+window.open()
+window.cancel-next-close = true
+t.check("cancelable Closing keeps the window open", !window.request-close())
+t.expect("canceled close does not publish Closed", 0, window.closed-count)
+t.check("a canceled close keeps the window's events", window.request-close())
+t.expect("each close request publishes Closing", 2, window.closing-count)
+
+window.request-close()
+window.close()
+t.expect("closed window ignores repeated close requests", 2, window.closing-count)
+t.expect("Closed publishes exactly once", 1, window.closed-count)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ LifecycleTestWindow is Window
+
++ cancel-next-close = false
++ closing-count Size = 0
++ closed-count Size = 0
+
+────────────────────
+for event on closing
+
+closing-count += 1
+if cancel-next-close
+    cancel-next-close = false
+    event.cancel()
+
+────────────────────
+for event on closed
+
+closed-count += 1
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false

@@ -1,0 +1,42 @@
+`benchmark.meta description: Exercises stream pattern actions across public boundary materialization.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. rows = match action-boundary-source()
+    ~ \action-boundary-document
+    ?! Panic("action-boundary did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row
+
+-- "bench-result stream/action-boundary checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ action-boundary-document ~ Char
+
+~ rows \action-boundary-row+
+    rows
+
+.. action-boundary-row Size ~
+    ~ "item:" name \action-boundary-word ":" value \action-boundary-digits ":" text (!"\n" .)* "\n"
+        action-boundary-score(name, value, text)
+
+.. action-boundary-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+.. action-boundary-digits String ~
+    ~ [0-9]+
+
+━━━━━━━━━━━━━━━━━━━━
+_ action-boundary-score Size
+    - name String
+    - value String
+    - text String
+
+name.length * 19 + value.length * 23 + text.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ action-boundary-source
+
+"".join("item:name_$each:${each * 31}:materialized action boundary text $each\n" in 0 .. < 120)

@@ -1,0 +1,115 @@
+
+./clock
+./ctime
+./timer
+/YuEvents/YuEvents.h
+/math
+/time.h
+
+━━━━━━━━━━━━━━━━━━━━
++ Duration is F64
+
+────────────────────
++ to Broadcastable'Seconds
+
+interval'Seconds()
+
+────────────────────
++ to CTimeSpec
+
+CTimeSpec(s, ns)
+
+.. nd = modf(this as Seconds)
+.. s = nd[0] as CSeconds
+.. ns = (nd[1] * 1000 * 1000 * 1000) as CNanoseconds
+
+` ====================================================================================================
+` + Range ...
+`     _ Duration Duration
+`
+` -------------------------------------------------------------------------------------------------
+` + interval'Interval
+`
+` Timer(increment, start, end)
+`
+` -------------------------------------------------------------------------------------------------
+` + to Broadcastable'Seconds
+`
+` interval'Seconds()
+`
+` -------------------------------------------------------------------------------------------------
+` + to Iterable'Seconds
+`
+` interval'Seconds()
+
+────────────────────
++ do wait
+
+. sem = Semaphore()
+. canceled = C:yumiSuspendActiveTaskUntilTime(this as Microseconds, sem.native-pointer)
+check-task-cancelation(canceled)
+
+= this
+
+────────────────────
++ do freeze
+
+. spec = this as CTimeSpec
+C:yumiGCEnterFFI()
+do C:nanosleep(&spec, null)
+C:yumiGCLeaveFFI()
+
+────────────────────
++ do loop
+    - with Doer
+
+. loop = TimerLoop()
+do new loop.loop(this, with)
+= loop
+
+────────────────────
++ animation-loop
+    - with Doer
+
+AnimationLoop(this, with)
+
+────────────────────
++ interval'Interval
+
+Timer(this as Interval)
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Nanoseconds (ns)              is Duration
++ Microseconds (µs)             is 1000ns
++ Milliseconds (ms)             is 1000µs
++ Seconds (s, seconds)          is 1000ms
++ Minutes (minutes)             is 60s
++ Hours (hours)                 is 60minutes
++ Days (days)                   is 24hours
++ Weeks (weeks)                 is 7days
+
+` These intervals are approximations since not all months or years have the same length
++ Months (months)               is 31days
++ Years (years)                 is 365days
++ Decades (decades)             is 10years
++ Centuries (centuries)         is 100years
++ Milleniums (milleniums)       is 1000years
+
+━━━━━━━━━━━━━━━━━━━━
+
++ 1csec = 1000000000cnsec
++ 1csec = 1seconds
++ 1cnsec = 1ns
+
+━━━━━━━━━━━━━━━━━━━━
++ do timeout'Item
+    - stream <Item>
+
+for message in stream
+    <= message
+    break
+or t in this
+    <= TimeoutError()
+
+<<= stream

@@ -1,0 +1,275 @@
+(import /graphics/color)
+(import /graphics/matrix)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(import /units)
+
+(type + RepeatMode (is U8)
+  (variant straight)
+  (variant half-drop)
+  (variant brick)
+  (variant mirror)
+)
+
+(type + MotifKind (is U8)
+  (variant flower)
+  (variant leaf)
+  (variant sprig)
+  (variant fan)
+)
+
+(type + PatternParameter (is U8)
+  (variant spacing)
+  (variant scale)
+  (variant rotation)
+  (variant shape)
+)
+
+(type + PatternMotif (is Tuple)
+  (prop + id Int)
+  (prop + kind MotifKind)
+  (prop + position Point)
+  (prop + scale Float)
+  (prop + rotation Degrees)
+  (prop + shape Float)
+  (prop + ink Index)
+)
+
+(type + PatternDesign (is Tuple)
+  (prop + name String)
+  (prop + motifs (list PatternMotif))
+  (prop + colors (list RGBA))
+  (prop + repeat RepeatMode)
+  (prop + spacing Float)
+)
+
+(type + PatternPalette (is Tuple)
+  (prop + name String)
+  (prop + colors (list RGBA))
+)
+
+(prop + pattern-palettes (list PatternPalette)
+  (=
+    (call List
+      (block
+        (arg (call palette "Ochre & iris" (list "#f4ecd9" "#4e5686" "#cc725e" "#c59a45" "#74876d")))
+        (arg (call palette "Rose garden" (list "#f3e3df" "#653d58" "#bd637d" "#dfa66b" "#7c8e80")))
+        (arg (call palette "Blue hour" (list "#233b50" "#d4e4df" "#8fb4c0" "#e7ae79" "#638f92")))
+        (arg (call palette "Citrus" (list "#f4efd7" "#326559" "#de7846" "#e7ba48" "#9aa75c")))
+      )
+    )
+  )
+)
+
+(fn-expr _ palette PatternPalette
+  (param name String)
+  (param colors (list String))
+  (call PatternPalette name (call List (in (call RGBA each) colors)))
+)
+
+(fn-expr + repeat-name String
+  (param mode RepeatMode)
+  (match mode
+    (case= (. RepeatMode straight)
+      "Straight"
+    )
+    (case= (. RepeatMode half-drop)
+      "Half-drop"
+    )
+    (case= (. RepeatMode brick)
+      "Brick"
+    )
+    (case= (. RepeatMode mirror)
+      "Mirror"
+    )
+  )
+)
+
+(fn-expr + motif-name String
+  (param kind MotifKind)
+  (match kind
+    (case= (. MotifKind flower)
+      "Flower"
+    )
+    (case= (. MotifKind leaf)
+      "Leaf"
+    )
+    (case= (. MotifKind sprig)
+      "Sprig"
+    )
+    (case= (. MotifKind fan)
+      "Fan"
+    )
+  )
+)
+
+(fn-expr + pattern-pitch Float
+  (param design PatternDesign)
+  (* 3 (. design spacing))
+)
+
+(fn-expr + pattern-period Dimensions
+  (param design PatternDesign)
+  (call Dimensions (* pitch (if-expr (or (== mode (. RepeatMode half-drop)) (== mode (. RepeatMode mirror))) 2 1)) (* pitch (if-expr (or (== mode (. RepeatMode brick)) (== mode (. RepeatMode mirror))) 2 1)))
+  (where
+    (lazy pitch (call pattern-pitch design))
+    (lazy mode (. design repeat))
+  )
+)
+
+(fn-expr + repeat-transform Matrix
+  (param design PatternDesign)
+  (param column Int)
+  (param row Int)
+  (call Matrix sx 0 0 sy x y)
+  (where
+    (lazy pitch (call pattern-pitch design))
+    (lazy mode (. design repeat))
+    (lazy odd-column (== (% (call abs column) 2) 1))
+    (lazy odd-row (== (% (call abs row) 2) 1))
+    (lazy sx (if-expr (and (== mode (. RepeatMode mirror)) odd-column) -1.0 1.0))
+    (lazy sy (if-expr (and (== mode (. RepeatMode mirror)) odd-row) -1.0 1.0))
+    (lazy x (* pitch (+ column (if-expr (and (== mode (. RepeatMode brick)) odd-row) 0.5 0.0) (if-expr (< sx 0) 1 0))))
+    (lazy y (* pitch (+ row (if-expr (and (== mode (. RepeatMode half-drop)) odd-column) 0.5 0.0) (if-expr (< sy 0) 1 0))))
+  )
+)
+
+(fn-expr + motif-transform Matrix
+  (param motif PatternMotif)
+  (param pitch Float)
+  (call Matrix (* c scale) (* s scale) (* (- s) scale) (* c scale) (* (. motif position x) pitch) (* (. motif position y) pitch))
+  (where
+    (lazy scale (/ (. motif scale) 100))
+    (lazy c (call cos (. motif rotation)))
+    (lazy s (call sin (. motif rotation)))
+  )
+)
+
+(fn-expr + pattern-wrapped-position Point
+  (param design PatternDesign)
+  (param point Point)
+  (call Point (* (- (/ (. point x) width) (call floor (/ (. point x) width))) width) (* (- (/ (. point y) height) (call floor (/ (. point y) height))) height))
+  (where
+    (lazy period (call pattern-period design))
+    (lazy pitch (call pattern-pitch design))
+    (lazy width (/ (. period width) pitch))
+    (lazy height (/ (. period height) pitch))
+  )
+)
+
+(fn-expr + pattern-with-motifs PatternDesign
+  (param design PatternDesign)
+  (param motifs (list PatternMotif))
+  (call PatternDesign (. design name) motifs (. design colors) (. design repeat) (. design spacing))
+)
+
+(fn-expr + pattern-with-colors PatternDesign
+  (param design PatternDesign)
+  (param colors (list RGBA))
+  (call PatternDesign (. design name) (. design motifs) colors (. design repeat) (. design spacing))
+)
+
+(fn-expr + pattern-with-repeat PatternDesign
+  (param design PatternDesign)
+  (param mode RepeatMode)
+  (call PatternDesign (. design name) (. design motifs) (. design colors) mode (. design spacing))
+)
+
+(fn-expr + motif-at PatternMotif
+  (param motif PatternMotif)
+  (param position Point)
+  (call PatternMotif (. motif id) (. motif kind) position (. motif scale) (. motif rotation) (. motif shape) (. motif ink))
+)
+
+(fn-expr + motif-parameter Float
+  (param motif PatternMotif)
+  (param parameter PatternParameter)
+  (match parameter
+    (case= (. PatternParameter scale)
+      (. motif scale)
+    )
+    (case= (. PatternParameter rotation)
+      (as (. motif rotation) Float)
+    )
+    (case= (. PatternParameter shape)
+      (. motif shape)
+    )
+    (case= (. PatternParameter spacing)
+      100
+    )
+  )
+)
+
+(fn-expr + motif-with-parameter PatternMotif
+  (param motif PatternMotif)
+  (param parameter PatternParameter)
+  (param value Float)
+  (call PatternMotif (. motif id) (. motif kind) (. motif position) (if-expr (== parameter (. PatternParameter scale)) value (. motif scale)) (if-expr (== parameter (. PatternParameter rotation)) (as value Degrees) (. motif rotation)) (if-expr (== parameter (. PatternParameter shape)) value (. motif shape)) (. motif ink))
+)
+
+(fn-expr + starter-design PatternDesign
+  (param index Index)
+  (match index
+    (case= 1
+      (call PatternDesign
+        (block
+          (arg "Canopy")
+          (arg
+            (call List
+              (block
+                (arg (call PatternMotif 1 (. MotifKind sprig) (call Point 0.27 0.25) 112 -25° 65 1))
+                (arg (call PatternMotif 2 (. MotifKind leaf) (call Point 0.76 0.65) 105 155° 70 4))
+                (arg (call PatternMotif 3 (. MotifKind sprig) (call Point 0.78 0.1) 65 35° 35 3))
+                (arg (call PatternMotif 4 (. MotifKind leaf) (call Point 0.21 0.77) 70 -35° 45 2))
+              )
+            )
+          )
+          (arg (. ([] pattern-palettes 3) colors))
+          (arg (. RepeatMode half-drop))
+          (arg 100)
+        )
+      )
+    )
+    (case= 2
+      (call PatternDesign
+        (block
+          (arg "Paper garden")
+          (arg
+            (call List
+              (block
+                (arg (call PatternMotif 1 (. MotifKind fan) (call Point 0.26 0.26) 105 -25° 65 1))
+                (arg (call PatternMotif 2 (. MotifKind flower) (call Point 0.78 0.71) 85 20° 75 2))
+                (arg (call PatternMotif 3 (. MotifKind leaf) (call Point 0.72 0.2) 75 65° 45 3))
+                (arg (call PatternMotif 4 (. MotifKind fan) (call Point 0.18 0.8) 65 160° 35 4))
+              )
+            )
+          )
+          (arg (. ([] pattern-palettes 1) colors))
+          (arg (. RepeatMode brick))
+          (arg 100)
+        )
+      )
+    )
+    (default
+      (call PatternDesign
+        (block
+          (arg "Wildflower")
+          (arg
+            (call List
+              (block
+                (arg (call PatternMotif 1 (. MotifKind flower) (call Point 0.25 0.24) 105 -12° 55 2))
+                (arg (call PatternMotif 2 (. MotifKind sprig) (call Point 0.75 0.28) 90 30° 60 1))
+                (arg (call PatternMotif 3 (. MotifKind leaf) (call Point 0.27 0.76) 90 -35° 60 4))
+                (arg (call PatternMotif 4 (. MotifKind flower) (call Point 0.76 0.78) 65 25° 40 3))
+              )
+            )
+          )
+          (arg (. ([] pattern-palettes 0) colors))
+          (arg (. RepeatMode half-drop))
+          (arg 100)
+        )
+      )
+    )
+  )
+)

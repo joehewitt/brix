@@ -1,0 +1,123 @@
+(import ./weather-forecast)
+(import /math)
+(import /units)
+(blank)
+(prop _ weekdays _ (= (list "Sunday" "Monday" "Tuesday" "Wednesday" "Thursday" "Friday" "Saturday")))
+(prop _ compass-points _ (= (list "N" "NE" "E" "SE" "S" "SW" "W" "NW")))
+
+(fn-expr + fahrenheit Fahrenheit
+  (param value Celsius)
+  (as (+ (* (as value F64) 1.8) 32) Fahrenheit)
+)
+
+(fn-expr + shown-degrees F64
+  (param value Celsius)
+  (param uses-fahrenheit Bool)
+  (if-expr uses-fahrenheit (as (call fahrenheit value) F64) (as value F64))
+)
+
+(fn-expr + degrees-label String
+  (param amount F64)
+  (if-expr (< whole 0) (str "−" (- whole) "°") (str whole "°"))
+  (where
+    (lazy whole (as (call round amount) Int))
+  )
+)
+
+(fn-expr + temperature-label String
+  (param value Celsius)
+  (param uses-fahrenheit Bool)
+  (call degrees-label (call shown-degrees value uses-fahrenheit))
+)
+
+(fn-expr + local-hour Int
+  (param time Int)
+  (param offset Int)
+  (as (call floor (/ (as (% (+ time offset) 86400) F64) 3600)) Int)
+)
+
+(fn-expr + local-minute Int
+  (param time Int)
+  (param offset Int)
+  (as (call floor (/ (as (% (+ time offset) 3600) F64) 60)) Int)
+)
+
+(fn-expr + hour-label String
+  (param time Int)
+  (param offset Int)
+  (str (call twelve hour) (if-expr (< hour 12) "AM" "PM"))
+  (where
+    (lazy hour (call local-hour time offset))
+  )
+)
+
+(fn-expr + clock-label String
+  (param time Int)
+  (param offset Int)
+  (str (call twelve hour) ":" (if-expr (< minute 10) "0" "") minute (if-expr (< hour 12) " AM" " PM"))
+  (where
+    (lazy hour (call local-hour time offset))
+    (lazy minute (call local-minute time offset))
+  )
+)
+
+(fn-expr + weekday-label String
+  (param time Int)
+  (param offset Int)
+  ([] weekdays (% (+ (as (call floor (/ (as (+ time offset) F64) 86400)) Int) 4) 7))
+)
+
+(fn-expr + moment-label String
+  (param time Int)
+  (param offset Int)
+  (str (call weekday-label time offset) " " (call clock-label time offset))
+)
+
+(fn-expr + speed-label String
+  (param speed KilometersPerHour)
+  (param uses-miles Bool)
+  (if-expr uses-miles (str (as (call round (as (as speed MilesPerHour) F64)) Int) " mph") (str (as (call round (as speed F64)) Int) " km/h"))
+)
+
+(fn-expr + compass-label String
+  (param direction Degrees)
+  ([] compass-points (% (as (call round (/ (as direction F64) 45)) Int) 8))
+)
+
+(fn-expr + percent-label String
+  (param amount Percent)
+  (str (as (call round (as amount F64)) Int) "%")
+)
+
+(fn-expr + uv-label String
+  (param index F64)
+  (match index
+    (case? (< it 3)
+      "Low"
+    )
+    (case? (< it 6)
+      "Moderate"
+    )
+    (case? (< it 8)
+      "High"
+    )
+    (case? (< it 11)
+      "Very high"
+    )
+    (default
+      "Extreme"
+    )
+  )
+)
+
+(fn-expr _ twelve Int
+  (param hour Int)
+  (match (% hour 12)
+    (case= 0
+      12
+    )
+    (default
+      (% hour 12)
+    )
+  )
+)

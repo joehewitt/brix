@@ -1,0 +1,78 @@
+
+/YuGC/YuGC.h
+/gc/gc
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+
+━━━━━━━━━━━━━━━━━━━━
++ GCCleanupState
+
++ value Int
++ should-panic Bool
+
+────────────────────
++ This
+    - v Int
+    - panic Bool = false
+
+value = v
+should-panic = panic
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("End To End")
+
+"cleanup-once-ok", gc-cleanup-once()
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-cleanup-once
+
+. fire-before = C:yumiGCCleanupFireCount()
+. exception-before = C:yumiGCCleanupExceptionCount()
+. cancel-target = GCNode(80)
+. canceled = on-reclaim(cancel-target, GCCleanupState(80), gc-test-cleanup)
+do cancel(canceled)
+do cancel-target.value
+
+do gc-make-cleanup(81, false)
+do gc-make-cleanup(82, true)
+C:yumiCollect()
+do drain-reclaim-cleanups()
+
+if C:yumiGCCleanupFireCount() != fire-before + 2
+    = "cleanup-fire-count ${fire-before}->${C:yumiGCCleanupFireCount()}"
+if C:yumiGCCleanupExceptionCount() != exception-before + 1
+    = "cleanup-exception-count ${exception-before}->${C:yumiGCCleanupExceptionCount()}"
+
+= "cleanup-once-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-make-cleanup CleanupHandle
+    - value Int
+    - should-panic Bool
+
+. target = GCNode(value)
+= on-reclaim(target, GCCleanupState(value, should-panic), gc-test-cleanup)
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-test-cleanup
+    - state GCCleanupState
+
+if state.should-panic
+    ?! Error("expected cleanup test error")
+if state.value != 81
+    ?! Panic("cleanup state was not delivered")

@@ -1,0 +1,82 @@
+
+/core/arena
+/data/json
+/data/jsonl
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("JSON Lines Values")
+cases.run(value-tests)
+cases = cases.then("JSON Lines Terminators", terminator-tests)
+cases = cases.then("JSON Lines Invalid Lines", invalid-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do value-tests TestCase
+    - t TestCase
+
+. text = "{\"a\": 1}\n[1, 2]\n\"text\"\n42\nnull\ntrue\n"
+. expected = "{\"a\": 1} [1, 2] \"text\" 42 null true"
+t.expect("every kind of JSON value is read", expected, values-of(text))
+t.expect("an empty source has no lines", "", values-of(""))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do terminator-tests TestCase
+    - t TestCase
+
+t.expect("a final terminator is optional", "1 2", values-of("1\n2"))
+t.expect("carriage returns are ignored", "1 2", values-of("1\r\n2\r\n"))
+t.expect("surrounding spaces are ignored", "[1] 7", values-of("  [1] \t\n7\n"))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do invalid-tests TestCase
+    - t TestCase
+
+. seen = List'String()
+. malformed = catch read-into("{\"a\": 1}\nnot json\n[3]\n", seen)
+t.check("malformed JSON is rejected", malformed is JSONLineError)
+if malformed is JSONLineError
+    t.expect("the error counts the line", 2, (malformed as JSONLineError).line)
+t.expect("lines before the failure are read", "{\"a\": 1}", " ".join(seen))
+
+. blank = catch read-into("1\n\n2\n", List'String())
+t.check("a blank line is rejected", blank is JSONLineError)
+if blank is JSONLineError
+    t.expect("the blank line is counted", 2, (blank as JSONLineError).line)
+
+. trailing = catch read-into("1\n2\n{\"b\": 2} trailing\n", List'String())
+t.check("text after a value is rejected", trailing is JSONLineError)
+if trailing is JSONLineError
+    t.expect("the trailing text is located", 3, (trailing as JSONLineError).line)
+    t.expect("the trailing text is located in its line", 10, (trailing as JSONLineError).column)
+
+. truncated = catch read-into("1\n{\"b\": ", List'String())
+t.check("a truncated value is rejected", truncated is JSONLineError)
+
+. mark = catch read-into("\uFEFF1\n", List'String())
+t.check("a byte order mark is rejected", mark is JSONLineError)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do values-of String ?! JSONLineError
+    - text String
+
+. seen = List'String()
+read-into(text, seen)
+= " ".join(seen)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-into Size ?! JSONLineError
+    - text String
+    - seen [String]
+
+. scratch = use Arena()
+for value in text ~> \json-line with JSONParser(scratch)
+    seen += to-json(value)
+= seen.length

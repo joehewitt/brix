@@ -1,0 +1,117 @@
+/core/virtual
+/core/virtual-layout
+/tui
+/tui/virtual
+
+_ billion-row-count VirtualCoord = 1000000000vcoord
+
+<Window win • flex-col bg:black
+    <BillionRowsDemo demo • flex:1
+
+    <Shortcut "Previous row"
+        key = .arrow-up
+        action = => do demo.move(-1)
+
+    <Shortcut "Next row"
+        key = .arrow-down
+        action = => do demo.move(1)
+
+    <Shortcut "Page up"
+        key = KeyCombo(Key.page-up)
+        action = => do demo.move(-10)
+
+    <Shortcut "Page down"
+        key = KeyCombo(Key.page-down)
+        action = => do demo.move(10)
+
+    <Shortcut "First row"
+        key = KeyCombo(Key.home)
+        action = => do demo.go-to(0)
+
+    <Shortcut "Last row"
+        key = KeyCombo(Key.end)
+        action = => do demo.go-to(999999999)
+
+    <Shortcut "Jump to row 100,000,000"
+        key = 'j'
+        action = => do demo.go-to(99999999)
+
+    <Shortcut "Quit"
+        key = .escape
+        action = => do win.close()
+
+    <Shortcut "Quit"
+        key = 'q'
+        action = => do win.close()
+
+    <StatusBar
+        message = "${demo.#status-message} | ↑↓ | PgUp/PgDn | Home/End | J 100m | Q quit"
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ BillionRowsDemo is Box
+    is MarkupBatch
+
+• This
+    focus-mode = FocusMode.keys
+
++ source := VirtualRangeSource(billion-row-count)
++ selected-address I64
++ status-message = "Row 1 of 1,000,000,000"
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col bg:black
+    <VirtualRegion'I64 region • flex:1 bg:black
+        source = #source
+        virtual-layout = VerticalFixedLayout(1vcoord)
+        overscan = VirtualInsets(2vcoord, 0vcoord, 2vcoord, 0vcoord)
+
+        <BillionRow (row) - slot
+            address = slot.#address
+            text = " Row ${slot.#address + 1}"
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+────────────────────
++ do move
+    - rows I64
+
+go-to(selected-address + rows)
+
+────────────────────
++ do go-to
+    - requested I64
+
+. address = requested
+if address < 0
+    address = 0
+if address >= (billion-row-count as I64)
+    address = (billion-row-count as I64) - 1
+selected-address = address
+status-message = "Row ${address + 1} of 1,000,000,000"
+region.virtual-scroll = VirtualPoint(0vcoord, address)
+region.invalidate-layout()
+region.invalidate-paint()
+
+━━━━━━━━━━━━━━━━━━━━
++ BillionRow is Label
+
++ address I64
+
+• This • flex:1 text:white
+    background-color = billion-row-background(#address)
+
+━━━━━━━━━━━━━━━━━━━━
+_ billion-row-background
+    - address I64
+
+if address % 2 == 0 then navy else black

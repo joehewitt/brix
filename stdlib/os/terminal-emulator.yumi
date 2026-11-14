@@ -1,0 +1,518 @@
+/YuTerminal/YuTerminal.h
+/gc/gc
+
++ terminal-event-bell U32 = 1
++ terminal-event-title U32 = 2
++ terminal-event-pwd U32 = 4
++ terminal-event-reset U32 = 8
+
++ terminal-run-bold U32 = 1
++ terminal-run-italic U32 = 2
++ terminal-run-faint U32 = 4
++ terminal-run-underline U32 = 8
++ terminal-run-strike U32 = 16
++ terminal-run-overline U32 = 32
++ terminal-run-invisible U32 = 64
++ terminal-run-blink U32 = 128
++ terminal-run-wide U32 = 256
++ terminal-run-isolated U32 = 512
++ terminal-run-sprite U32 = 1024
++ terminal-run-background U32 = 32768
+
++ terminal-dirty-none = 0
++ terminal-dirty-partial = 1
++ terminal-dirty-full = 2
+
++ terminal-cursor-bar = 0
++ terminal-cursor-block = 1
++ terminal-cursor-underline = 2
++ terminal-cursor-block-hollow = 3
+
++ terminal-mods-shift U32 = 1
++ terminal-mods-control U32 = 2
++ terminal-mods-alt U32 = 4
++ terminal-mods-super U32 = 8
++ terminal-mods-caps-lock U32 = 16
+
+_ terminal-run-fields Size = 7
+_ terminal-mode-alternate-scroll U32 = 1007
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalKeyAction is U32
+
+| release
+| press
+| repeat
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalMouseAction is U32
+
+| press
+| release
+| motion
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalMouseButton is U32
+
+| none
+| left
+| right
+| middle
+| wheel-up
+| wheel-down
+| wheel-left
+| wheel-right
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalRun is Tuple
+
++ column Size
++ columns Size
++ foreground U32
++ background U32
++ flags U32
++ text String
+
+────────────────────
++ get has-background Bool
+
+(flags /and/ terminal-run-background) != 0
+
+────────────────────
++ has-flag Bool
+    - flag U32
+
+(flags /and/ flag) != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalRow is Tuple
+
++ y Int
++ runs [TerminalRun]
++ selection-start Int
++ selection-end Int
++ wraps Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalCursor is Tuple
+
++ is-visible Bool
++ column Size
++ row Size
++ style Int
++ is-blinking Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalColors is Tuple
+
++ foreground U32
++ background U32
++ cursor U32
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalScrollbar is Tuple
+
++ total Size
++ offset Size
++ length Size
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalEmulator
+    is Closable
+
++ columns Size
++ rows Size
+
+_ handle Pointer?
+_ cleanup CleanupHandle?
+_ byte-buffer Byte[] = Byte[4096]
+_ run-buffer U32[] = U32[512]
+_ text-buffer Byte[] = Byte[2048]
+_ int-buffer I32[] = I32[8]
+_ word-buffer U32[] = U32[8]
+
+────────────────────
++ This
+    - columns Size
+    - rows Size
+    - scrollback-lines Size = 10000
+
+this.columns = columns
+this.rows = rows
+. native = C:yumiTerminalCreate(columns, rows, scrollback-lines)
+?! Error("Unable to create terminal emulator")
+    if native == Pointer()
+handle = native
+cleanup = on-reclaim(this, native, release-terminal-emulator)
+
+────────────────────
++ get is-open Bool
+
+handle != null
+
+────────────────────
++ do close
+
+if handle
+    cleanup?.cancel()
+    release-terminal-emulator(handle!)
+    handle = null
+
+────────────────────
++ do reset
+
+=? if !handle
+C:yumiTerminalReset(handle)
+
+────────────────────
++ do resize
+    - columns Size
+    - rows Size
+    - cell-width Size
+    - cell-height Size
+
+=? if !handle
+this.columns = columns
+this.rows = rows
+C:yumiTerminalResize(handle!, columns, rows, cell-width, cell-height)
+
+────────────────────
++ do write Byte[]?
+    - bytes Byte[]
+    - length Size
+
+=? null if !handle
+C:yumiTerminalWrite(handle, bytes, length)
+= take-replies()
+
+────────────────────
++ do take-replies Byte[]?
+
+=? null if !handle
+. length = C:yumiTerminalReplyLength(handle) as Size
+=? null if length == 0
+. replies = Byte[length]
+C:yumiTerminalTakeReplies(handle!, replies, length)
+= replies
+
+────────────────────
++ do take-events U32
+
+=? 0 if !handle
+= C:yumiTerminalTakeEvents(handle)
+
+────────────────────
++ do get title String
+
+=? "" if !handle
+. length = C:yumiTerminalCopyTitle(handle, byte-buffer, byte-buffer.length) as Size
+=? "" if length == 0
+if length > byte-buffer.length
+    byte-buffer = Byte[length]
+    C:yumiTerminalCopyTitle(handle!, byte-buffer, length)
+= byte-buffer.slice-string(0 .. < length)
+
+────────────────────
++ do get pwd String
+
+=? "" if !handle
+. length = C:yumiTerminalCopyPwd(handle!, byte-buffer, byte-buffer.length) as Size
+=? "" if length == 0
+if length > byte-buffer.length
+    byte-buffer = Byte[length]
+    C:yumiTerminalCopyPwd(handle!, byte-buffer, length)
+= byte-buffer.slice-string(0 .. < length)
+
+────────────────────
++ do set-colors
+    - foreground U32
+    - background U32
+    - cursor U32
+    - palette U32[]
+
+=? if !handle
+C:yumiTerminalSetColors(handle, foreground, background, cursor, palette, palette.length)
+
+────────────────────
++ do set-dark
+    - is-dark Bool
+
+=? if !handle
+C:yumiTerminalSetDark(handle, is-dark)
+
+────────────────────
++ mode-enabled Bool
+    - mode U32
+    - is-ansi = false
+
+if !handle then false else C:yumiTerminalModeEnabled(handle, mode, is-ansi)
+
+────────────────────
++ get is-alternate-scrolling Bool
+
+mode-enabled(terminal-mode-alternate-scroll)
+
+────────────────────
++ get is-mouse-tracking Bool
+
+if handle then C:yumiTerminalMouseTracking(handle) else false
+
+────────────────────
++ get is-alternate-screen Bool
+
+if handle then C:yumiTerminalIsAlternateScreen(handle) else false
+
+────────────────────
++ get is-viewport-at-bottom Bool
+
+if handle then C:yumiTerminalViewportAtBottom(handle) else true
+
+────────────────────
++ do scroll-by
+    - rows Int
+
+=? if !handle
+C:yumiTerminalScrollDelta(handle, rows)
+
+────────────────────
++ do scroll-to-top
+
+=? if !handle
+C:yumiTerminalScrollTop(handle)
+
+────────────────────
++ do scroll-to-bottom
+
+=? if !handle
+C:yumiTerminalScrollBottom(handle)
+
+────────────────────
++ do scroll-to-row
+    - row Size
+
+=? if !handle
+C:yumiTerminalScrollRow(handle, row)
+
+────────────────────
++ do get scrollbar TerminalScrollbar
+
+=? TerminalScrollbar(0, 0, 0) if !handle
+C:yumiTerminalScrollbar(handle, word-buffer)
+= TerminalScrollbar(word-buffer[0], word-buffer[1], word-buffer[2])
+
+────────────────────
++ do render-update Int
+
+=? terminal-dirty-none if !handle
+= C:yumiTerminalRenderUpdate(handle)
+
+────────────────────
++ do get cursor TerminalCursor
+
+=? TerminalCursor(false, 0, 0, terminal-cursor-block, false) if !handle
+C:yumiTerminalRenderCursor(handle, int-buffer)
+= TerminalCursor
+    - int-buffer[0] != 0
+    - int-buffer[1]
+    - int-buffer[2]
+    - int-buffer[3]
+    - int-buffer[4] != 0
+
+────────────────────
++ do get colors TerminalColors
+
+=? TerminalColors(0, 0, 0) if !handle
+C:yumiTerminalRenderColors(handle, word-buffer)
+= TerminalColors(word-buffer[0], word-buffer[1], word-buffer[2])
+
+────────────────────
++ do render-rows [TerminalRow]
+    - dirty-only Bool
+
+. rendered [TerminalRow]
+=? rendered if !handle
+C:yumiTerminalRenderBeginRows(handle, dirty-only)
+while true
+    . y = C:yumiTerminalRenderNextRow(handle!)
+    =? rendered if y < 0
+    rendered += read-row(y)
+= rendered
+
+────────────────────
++ do render-clean
+
+=? if !handle
+C:yumiTerminalRenderClean(handle)
+
+────────────────────
++ do encode-key Byte[]?
+    - key-code U32
+    - mods U32
+    - action U32
+    - text String?
+    - unshifted U32 = 0
+
+=? null if !handle
+. input = text ?? ""
+. length = C:yumiTerminalEncodeKey
+    - handle
+    - key-code
+    - mods
+    - action
+    - input
+    - input.size
+    - unshifted
+    - byte-buffer
+    - byte-buffer.length
+= encoded(length)
+
+────────────────────
++ do encode-mouse Byte[]?
+    - action U32
+    - button U32
+    - mods U32
+    - x F32
+    - y F32
+
+=? null if !handle
+. length = C:yumiTerminalEncodeMouse
+    - handle
+    - action
+    - button
+    - mods
+    - x
+    - y
+    - byte-buffer
+    - byte-buffer.length
+= encoded(length)
+
+────────────────────
++ do encode-paste Byte[]?
+    - text String
+
+=? null if !handle || text.size == 0
+. length = C:yumiTerminalEncodePaste(handle, text, text.size, byte-buffer, byte-buffer.length) as Size
+if length > byte-buffer.length
+    byte-buffer = Byte[length]
+    length = C:yumiTerminalEncodePaste(handle!, text, text.size, byte-buffer, byte-buffer.length)
+= encoded(length)
+
+────────────────────
++ do encode-focus Byte[]?
+    - is-focused Bool
+
+=? null if !handle
+. length = C:yumiTerminalEncodeFocus(handle, is-focused, byte-buffer, byte-buffer.length)
+= encoded(length)
+
+────────────────────
++ do select-press
+    - column Size
+    - row Size
+    - x F64
+    - y F64
+
+=? if !handle
+C:yumiTerminalSelectPress(handle, column, row, x, y)
+
+────────────────────
++ do select-drag
+    - column Size
+    - row Size
+    - x F64
+    - y F64
+    - is-rectangle = false
+
+=? if !handle
+C:yumiTerminalSelectDrag(handle, column, row, x, y, is-rectangle)
+
+────────────────────
++ do select-release
+    - column Size
+    - row Size
+
+=? if !handle
+C:yumiTerminalSelectRelease(handle, column, row)
+
+────────────────────
++ do select-all
+
+=? if !handle
+C:yumiTerminalSelectAll(handle)
+
+────────────────────
++ do clear-selection
+
+=? if !handle
+C:yumiTerminalSelectClear(handle)
+
+────────────────────
++ get has-selection Bool
+
+if handle then C:yumiTerminalHasSelection(handle) else false
+
+────────────────────
++ do selection-text String?
+
+=? null if !handle
+. length = C:yumiTerminalCopySelection(handle, byte-buffer, byte-buffer.length) as Size
+=? null if length == 0
+if length > byte-buffer.length
+    byte-buffer = Byte[length]
+    C:yumiTerminalCopySelection(handle!, byte-buffer, length)
+= byte-buffer.slice-string(0 .. < length)
+
+────────────────────
++ do all-text String?
+
+=? null if !handle
+. length = C:yumiTerminalCopyAll(handle, byte-buffer, byte-buffer.length) as Size
+=? null if length == 0
+=? byte-buffer.slice-string(0 .. < length) if length <= byte-buffer.length
+. bytes = Byte[length]
+C:yumiTerminalCopyAll(handle!, bytes, length)
+= bytes.slice-string(0 .. < length)
+
+────────────────────
+_ do encoded Byte[]?
+    - length Size
+
+=? null if length == 0 || length > byte-buffer.length
+. bytes = Byte[length]
+for index in 0 .. < length
+    bytes[index] = byte-buffer[index]
+= bytes
+
+────────────────────
+_ do read-row TerminalRow
+    - y Int
+
+. count = C:yumiTerminalRowRunCount(handle!) as Size
+. text-length = C:yumiTerminalRowTextLength(handle!) as Size
+if count * terminal-run-fields > run-buffer.length
+    run-buffer = U32[count * terminal-run-fields]
+if text-length > text-buffer.length
+    text-buffer = Byte[text-length]
+C:yumiTerminalRowCopy(handle!, run-buffer, text-buffer)
+. runs [TerminalRun]
+for index in 0 .. < count
+    . base = index * terminal-run-fields
+    . offset = run-buffer[base + 5] as Size
+    . length = run-buffer[base + 6] as Size
+    runs += TerminalRun
+        - run-buffer[base]
+        - run-buffer[base + 1]
+        - run-buffer[base + 2]
+        - run-buffer[base + 3]
+        - run-buffer[base + 4]
+        - text-buffer.slice-string(offset .. < offset + length)
+C:yumiTerminalRowInfo(handle!, int-buffer)
+. wraps = int-buffer[3] != 0
+=? TerminalRow(y, runs, -1, -1, wraps) if int-buffer[0] == 0
+= TerminalRow(y, runs, int-buffer[1], int-buffer[2], wraps)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do release-terminal-emulator
+    - handle Pointer
+
+C:yumiTerminalRelease(handle)

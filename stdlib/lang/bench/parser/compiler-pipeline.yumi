@@ -1,0 +1,23 @@
+`benchmark.meta description: Runs the complete compiler pipeline, including C headers, linking, typing, and diagnostics.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,compile-timing,parser-queue,allocator
+
+/lang/compiler
+/os/env
+
+. yumi YumiCompiler
+yumi.parse-worker-count = 8
+
+. paths = env("YUMIPATH")
+if paths
+    yumi.search-paths ++= paths.split(":")
+
+. source-path = yumi.path-to-module("/../compiler/yumi-cli")
+?! Panic("Unable to resolve /../compiler/yumi-cli")
+    if !source-path
+
+. checksum = yumi.compile-program(source-path as String, "__source__")
+if checksum == 0
+    ?! Panic("The compiler did not check any instances")
+
+-- "bench-result parser/compiler-pipeline checksum=$checksum"

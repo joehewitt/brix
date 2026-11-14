@@ -1,0 +1,167 @@
+./vector-scene
+/graphics/appearance
+/graphics/boolean
+/graphics/canvas
+/graphics/color
+/graphics/effect
+/graphics/fields
+/graphics/intersection
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/vector
+/graphics/vector-group
+/math
+/stream/coincidence
+/stream/combine
+/units
+
+<VectorScene scene
+    size = 850, 1100
+    output = "/private/tmp/yumi-linefill1.png"
+    background = white
+
+    ` <LineFill
+    `     angle = 5deg
+    `     spacing = 50.0
+    `     line-color = HSVA(55%, 20%, 100%)
+    `     line-width = 10
+    `     overdraw = grad(450, 20%) ... self
+    `
+    `     <Circle
+    `         center = 640, 640
+    `         radius = 520
+
+    <LineFill
+        angle = 0
+        spacing = 18
+        line-color = RGBA(0%, 0%, 0%, 15%)
+        line-width = 13
+        ` sin-grad(15deg, 15.0, 5.0) ... self
+
+        <Polygon
+            center = 425, 550
+            radius = 280
+            sides = 6
+
+    <LineFill
+        angle = 45deg
+        spacing = 18.0
+        line-color = black
+        ` line-color = ... self
+        `     for i in 100% .. < 50% by 2%
+        `         <= RGBA(0, 0, 0, i)
+        line-width = :: self => sin-grad(5deg, 15.0, 3.0)
+        ` line-width = 3
+        overdraw = :: self => grad(320.0, 25%)
+
+        <Polygon
+            center = 425, 550
+            radius = 280
+            sides = 6
+
+scene.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ LineFill is VectorGroup
+
++ angle Radians = 0
++ spacing Streamer'This'Length = 1.0
++ line-color Streamer'This'RGBA = black
++ line-width Streamer'This'Length = 1.0
++ overdraw Streamer'This'Length = 1.0
+
+╌╌╌╌╌╌╌╌╌╌ is VectorGroup ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-vector
+    - canvas Canvas
+    - inherited VectorAppearance? = null
+    - apply-opacity = true
+    - outer-effects VectorEffects? = null
+    - area Rect? = null
+
+. spacesx = spacing(this)
+. line-widthx = line-width(this)
+. line-colorx = line-color(this)
+
+canvas.stroke-color = RGBA(50%, 50%, 50%)
+canvas.stroke-width = 3
+
+for drawing in child-paths
+    . center = drawing.bounding-box.center
+    . origin = center
+
+    . outlen = drawing.bounding-box.width / 2 + drawing.bounding-box.longest * 0.1
+    . outside1 = center.translate-at-angle(angle, outlen)
+    . outside2 = center.translate-at-angle(angle, -outlen)
+    canvas.line(outside1.x, outside1.y, outside2.x, outside2.y)
+
+    . space Length = (<- spacesx)!
+    for ov in overdraw(this)
+        canvas.stroke-width = (<- line-widthx)!
+        canvas.stroke-color = <- line-colorx
+
+        center = origin.normal(outside1, space)
+        draw-lines-mirrored(canvas, drawing, ov, center, angle, outlen)
+
+        center = origin.normal(outside1, -space)
+        draw-lines-mirrored(canvas, drawing, ov, center, angle, outlen)
+
+        canvas.circle(center.x, center.y, 4)
+        if !drawing.contains(center)
+            break
+
+        space += (<- spacesx)!
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do draw-lines-mirrored
+    - canvas
+    - drawing
+    - ov Radians
+    - center Point
+    - angle Radians
+    - outlen Length
+
+. outside1 = center.translate-at-angle(angle, outlen)
+. outside2 = center.translate-at-angle(angle, -outlen)
+` canvas.line(outside1.x, outside1.y, outside2.x, outside2.y)
+
+. ln = line(outside1, outside2)
+. intersections = intersect-paths(ln, drawing)
+for pair in intersections
+    for intr1, intr2 in pairwise(pair.intersections)
+        . pt1 = intr1.path1?.get-point-at(intr1.t1)!
+        . pt2 = intr2.path1?.get-point-at(intr2.t1)!
+        . ang = pt2.angle(pt1)
+        . dist = pt1.distance(pt2)
+        pt2 = pt1.translate-at-angle(ang, dist + ov)
+        pt1 = pt2.translate-at-angle(ang + π, dist + ov * 2)
+        canvas.line(pt1, pt2)
+        ` canvas.circle(pt1 .x, pt1.y, 4)
+        ` canvas.circle(pt2.x, pt2.y, 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ do iterate-tiles
+    - tile-size Dimensions
+    - container-size Dimensions
+
+. x Coord = 0
+. y Coord = 0
+. row = 0
+. col = 0
+while y < container-size.height
+    x = 0
+    col = 0
+
+    while x < container-size.width
+        if x < container-size.width
+            <= row, col, Point(x, y)
+        x += tile-size.width
+        col += 1
+
+    y += tile-size.height
+    row += 1

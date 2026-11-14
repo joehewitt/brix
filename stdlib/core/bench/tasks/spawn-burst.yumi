@@ -1,0 +1,18 @@
+`benchmark.meta description: Spawns a burst of short allocating tasks before any of them runs, then collects their results.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/channel
+
+. count = 20000
+. results SyncBufferedChannel'Int
+for i in 0 .. < count
+    do new
+        . items = [i, i + 1, i + 2]
+        results <- items[0] + items[2]
+
+. checksum = 0
+for i in 0 .. < count
+    checksum += (<- results)!
+
+-- "bench-result tasks/spawn-burst checksum=$checksum"

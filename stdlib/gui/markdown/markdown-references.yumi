@@ -1,0 +1,348 @@
+/gui
+/stream/aggregate
+
+_ markdown-reference-extension-limit Size = 8
+_ markdown-reference-code-limit Size = 240
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownReference is Tuple
+
++ path String
++ line Size? = null
++ column Size? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownLinkTarget is Tuple
+
++ path String
++ line Size? = null
++ column Size? = null
++ is-directory = false
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownLinkDetail is Tuple
+
++ path String
++ additions I64? = null
++ deletions I64? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownReferenceSpan is Tuple
+
++ start Index
++ end Index
++ reference MarkdownReference
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownOpening is Tuple
+
++ target MarkdownLinkTarget
++ origin String?
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownReferences
+
++ revision U64
++ event opened MarkdownOpening
+
+_ found = Map'String'MarkdownLinkTarget()
+_ asked = Map'String'Bool()
+_ wanted = List'MarkdownReference()
+_ is-resolving = false
+
+────────────────────
++ do target-for MarkdownLinkTarget?
+    - reference MarkdownReference
+
+. key = markdown-reference-key(reference)
+. known = found[key]
+=? known if known
+=? null if asked[key]
+asked[key] = true
+wanted += reference
+if !is-resolving
+    is-resolving = true
+    do new
+        resolve-wanted()
+= null
+
+────────────────────
++ do follow
+    - reference MarkdownReference
+    - origin String? = null
+
+. known = found[markdown-reference-key(reference)]
+=? if !known
+. target = MarkdownLinkTarget
+    - known.path
+    - reference.line ?? known.line
+    - reference.column ?? known.column
+    - known.is-directory
+opened <- MarkdownOpening(target, origin)
+
+────────────────────
++ do resolve-all [String = MarkdownLinkTarget] ?! Error
+    - references [MarkdownReference]
+
+= Map'String'MarkdownLinkTarget()
+
+────────────────────
++ describe MarkdownLinkDetail?
+    - target MarkdownLinkTarget
+
+MarkdownLinkDetail(target.path)
+
+────────────────────
+_ do resolve-wanted
+
+while wanted.length > 0
+    . batch = wanted
+    wanted = List'MarkdownReference()
+    . targets = catch? resolve-all(batch)
+    if targets && targets.length > 0
+        for key, target in targets
+            found[key] = target
+        revision += 1
+is-resolving = false
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownReferenceScope is Box
+
++ references MarkdownReferences?
++ origin String?
++ hovered-url String?
+
+_ hovered-owner Box?
+
+────────────────────
++ do hover-link
+    - owner Box
+    - url String?
+
+if url != null
+    hovered-owner = owner
+    hovered-url = url
+else if hovered-owner && hovered-owner as Pointer == owner as Pointer
+    hovered-owner = null
+    hovered-url = null
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-reference-target MarkdownLinkTarget?
+    - revision U64
+    - references MarkdownReferences?
+    - reference MarkdownReference?
+
+references.target-for(reference) if references && reference
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-reference-detail MarkdownLinkDetail?
+    - revision U64
+    - references MarkdownReferences?
+    - target MarkdownLinkTarget?
+
+references.describe(target) if references && target
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-reference-key String
+    - reference MarkdownReference
+
+reference.path
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-text-references [MarkdownReferenceSpan]
+    - text String
+
+. chars = text.codepoints
+. found [MarkdownReferenceSpan]
+. index Index = 0
+while index < chars.length
+    if markdown-is-path-char(chars[index]) && starts-path
+        . span = markdown-path-span(text, chars, index)
+        if span
+            found += span
+            index = span.end
+        else
+            index += 1
+    else
+        index += 1
+    .. starts-path = index == 0 || !markdown-is-path-char(chars[index - 1])
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-code-reference MarkdownReference?
+    - text String
+
+|? !trimmed.length || trimmed.length > markdown-reference-code-limit
+    null
+|? span && span.end == chars.length
+    span.reference
+??
+    null
+
+.. trimmed = text.trim()
+.. chars = trimmed.codepoints
+.. span = markdown-path-span(trimmed, chars, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-url-reference MarkdownReference?
+    - url String
+    - base = ""
+
+|? !local.length || local.find("://") != null
+    null
+|? local.starts-with("#") || local.starts-with("mailto:")
+    null
+??
+    markdown-based-reference(markdown-local-reference(local), base)
+
+.. local = if url.starts-with("file://") then url[7 ...] else url
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-local-reference MarkdownReference?
+    - local String
+
+match local.find("#L")
+    | hash I32
+        |? !path.length
+            null
+        ??
+            MarkdownReference(path, line - 1 if line && line > 0)
+
+        .. line = markdown-parse-number(local[hash + 2 ...])
+        .. path = local[0 .. < hash]
+    ??
+        |? span && span.end == chars.length
+            span.reference
+        ??
+            MarkdownReference(bare)
+
+        .. fragment = local.find("#")
+        .. bare = if fragment != null then local[0 .. < fragment] else local
+        .. chars = bare.codepoints
+        .. span = markdown-path-span(bare, chars, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-based-reference MarkdownReference?
+    - reference MarkdownReference?
+    - base String
+
+|? !reference || !base.length || reference.path.starts-with("/")
+    reference
+??
+    MarkdownReference(markdown-joined-path(base, reference.path), reference.line, reference.column)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-joined-path String
+    - base String
+    - path String
+
+. parts [String]
+for part in "$base/$path".split("/")
+    if part == ".."
+        if parts.length > 0
+            parts.pop()
+    else if part.length > 0 && part != "."
+        parts += part
+= "/".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-path-span MarkdownReferenceSpan?
+    - text String
+    - chars Char[]
+    - start Index
+
+=? null if start > 0 && chars[start - 1] == ':'
+. end = start
+while end < chars.length && markdown-is-path-char(chars[end])
+    end += 1
+while end > start && (chars[end - 1] == '.' || chars[end - 1] == '-' || chars[end - 1] == '/')
+    end -= 1
+=? null if end == start
+. path = text[start .. < end]
+=? null if !markdown-looks-like-path(path)
+. line Size? = null
+. column Size? = null
+. stop = end
+. first = markdown-digits-at(chars, end + 1) if end < chars.length && chars[end] == ':'
+if first
+    line = first.value
+    stop = first.end
+    . second = markdown-digits-at(chars, stop + 1) if stop < chars.length && chars[stop] == ':'
+    if second
+        column = second.value
+        stop = second.end
+    else
+        .. has-range = stop < chars.length && chars[stop] == '-'
+        . last = markdown-digits-at(chars, stop + 1) if has-range
+        if last
+            stop = last.end
+. shown-line = line - 1 if line && line > 0
+. shown-column = column - 1 if column && column > 0
+= MarkdownReferenceSpan(start, stop, MarkdownReference(path, shown-line, shown-column))
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownDigits is Tuple
+
++ value Size
++ end Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-digits-at MarkdownDigits?
+    - chars Char[]
+    - start Index
+
+. value Size = 0
+. end = start
+while end < chars.length && chars[end] >= '0' && chars[end] <= '9'
+    value = value * 10 + ((chars[end] as U32) - ('0' as U32))
+    end += 1
+= MarkdownDigits(value, end) if end > start
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-parse-number Size?
+    - text String
+
+markdown-digits-at(text.codepoints, 0)?.value
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-looks-like-path Bool
+    - path String
+
+!path.starts-with("//") && name.length > 0 && (has-extension || (slash != null && has-letter))
+
+.. slash = path.find-reverse("/")
+.. name = if slash != null then path[slash + 1 ...] else path
+.. has-letter = markdown-has-letter(name)
+.. dot = name.find-reverse(".")
+.. extension = if dot != null && dot > 0 then name[dot + 1 ...] else ""
+.. fits-limit = extension.length > 0 && extension.length <= markdown-reference-extension-limit
+.. has-extension = fits-limit && markdown-has-letter(extension) && markdown-is-word(extension)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-has-letter Bool
+    - text String
+
+some(text) • where (each >= 'a' && each <= 'z') || (each >= 'A' && each <= 'Z')
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-is-word Bool
+    - text String
+
+all(text) • where markdown-is-word-char(each)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-is-word-char Bool
+    - char Char
+
+is-letter || is-digit || char == '_'
+
+.. is-letter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+.. is-digit = char >= '0' && char <= '9'
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-is-path-char Bool
+    - char Char
+
+is-word-char || char == '-' || char == '.' || char == '/' || char == '~' || char == '@'
+
+.. is-word-char = markdown-is-word-char(char)

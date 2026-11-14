@@ -1,0 +1,113 @@
+./bundle-files
+/data/json
+/os/path
+/stream/sort
+
+_ xcrun = "/usr/bin/xcrun"
+_ open = "/usr/bin/open"
+_ ios-runtime-prefix = "com.apple.CoreSimulator.SimRuntime.iOS-"
+
+━━━━━━━━━━━━━━━━━━━━
++ IOSSimulator is Tuple
+
++ udid String
++ name String
++ runtime String
++ is-booted Bool
++ last-booted String
++ is-ipad Bool
+
+────────────────────
++ get detail String
+
+if is-booted then "$runtime · Booted" else runtime
+
+━━━━━━━━━━━━━━━━━━━━
++ do chosen-simulator String ?! Error
+    - named String?
+
+. listed = ios-simulators()
+?! Error("No iOS simulator is available; add one in Xcode")
+    if listed.length == 0
+if !named
+    = ready(listed[0])
+for simulator in listed
+    if simulator.udid == named || simulator.name == named
+        = ready(simulator)
+?! Error("No available iOS simulator is named ${named}")
+
+━━━━━━━━━━━━━━━━━━━━
++ do ios-simulators [IOSSimulator] ?! Error
+
+. text = tool-output(xcrun, ["simctl", "list", "devices", "--json"])
+?! Error("simctl could not list the iOS simulators")
+    if !text
+. found [IOSSimulator]
+. runtimes = json-field("devices", JSON(text))
+if runtimes && runtimes is [String = JSON]
+    for runtime, devices in runtimes as [String = JSON]
+        if runtime.starts-with(ios-runtime-prefix)
+            . version = ".".join(runtime[ios-runtime-prefix.length ...].split("-"))
+            for device in json-items(devices)
+                if json-flag("isAvailable", device)
+                    found += IOSSimulator
+                        - json-text("udid", device)
+                        - json-text("name", device)
+                        - "iOS $version"
+                        - json-text("state", device) == "Booted"
+                        - json-text("lastBootedAt", device)
+                        - json-text("deviceTypeIdentifier", device).find("iPad") != null
+= sort(found) • using :: a, b => compare-simulators(a, b)
+
+━━━━━━━━━━━━━━━━━━━━
++ do install-simulator-app ?! Error
+    - simulator String
+    - bundle Path
+
+run-tool(xcrun, ["simctl", "install", simulator, bundle as String])
+
+━━━━━━━━━━━━━━━━━━━━
++ simulator-launch-command [String]
+    - simulator String
+    - app-id String
+
+[xcrun, "simctl", "launch", "--console-pty", "--terminate-running-process", simulator, app-id]
+
+━━━━━━━━━━━━━━━━━━━━
++ simulator-spawn-command [String]
+    - simulator String
+    - executable Path
+
+[xcrun, "simctl", "spawn", simulator, executable.resolved as String]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ready String ?! Error
+    - simulator IOSSimulator
+
+=? simulator.udid if simulator.is-booted
+run-tool(xcrun, ["simctl", "bootstatus", simulator.udid, "-b"])
+run-tool(open, ["-a", "Simulator"])
+= simulator.udid
+
+━━━━━━━━━━━━━━━━━━━━
+_ compare-simulators Comparison
+    - a IOSSimulator
+    - b IOSSimulator
+
+|? a.is-booted != b.is-booted
+    if a.is-booted then .lesser else .greater
+|? a.last-booted != b.last-booted
+    if a.last-booted > b.last-booted then .lesser else .greater
+|? a.is-ipad != b.is-ipad
+    if a.is-ipad then .lesser else .greater
+??
+    .equal
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-flag Bool
+    - name String
+    - object JSON?
+
+value != null && value is Bool && value as Bool
+
+.. value = json-field(name, object)

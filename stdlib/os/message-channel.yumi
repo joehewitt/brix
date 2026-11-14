@@ -1,0 +1,182 @@
+./file
+./outbox
+/string.h
+
++ message-header-size Size = 8
+_ message-buffer-size Size = 65536
+
+━━━━━━━━━━━━━━━━━━━━
++ Message is Tuple
+
++ kind U32
++ bytes Byte[]
+
+────────────────────
++ get data Pointer
+
+bytes.data
+
+────────────────────
++ get size Size
+
+bytes.size
+
+────────────────────
++ do record'Record Record?
+    - offset Size = 0
+
+=? null if offset + Record.size > bytes.size
+= ((bytes.data + offset) as CPointer'Record)[0]
+
+────────────────────
++ text String
+    - offset Size = 0
+
+if offset >= bytes.size then "" else bytes.slice-string(offset .. < bytes.size)
+
+━━━━━━━━━━━━━━━━━━━━
++ MessageChannel
+    is Closable
+
++ file File
+_ outbox Outbox
+_ is-reading = true
+_ buffer = Byte[message-buffer-size]
+_ start Size
+_ filled Size
+
+────────────────────
++ This
+    - file
+
+.. outbox = Outbox(file)
+
+────────────────────
++ get is-open Bool
+
+is-reading && !outbox.has-failed
+
+────────────────────
++ do close
+
+=? if !is-reading
+is-reading = false
+if outbox.is-idle
+    catch file.close()
+    =
+outbox.on-drained = => catch file.close()
+
+────────────────────
++ do send
+    - kind U32
+    - data Pointer? = null
+    - size Size = 0
+    - tail Pointer? = null
+    - tail-size Size = 0
+
+=? if !is-open
+. packet = Byte[message-header-size + size + tail-size]
+. words = packet.data as CPointer'U32
+words[0] = kind
+words[1] = (size + tail-size) as U32
+. head = data
+if head && size > 0
+    C:memcpy((packet.data + message-header-size) as Pointer, head, size)
+. rest = tail
+if rest && tail-size > 0
+    C:memcpy((packet.data + message-header-size + size) as Pointer, rest, tail-size)
+outbox.send(packet)
+
+────────────────────
++ do send-record'Record
+    - kind U32
+    - record Record
+    - tail Pointer? = null
+    - tail-size Size = 0
+
+. copy = record
+send(kind, &copy as Pointer, Record.size, tail, tail-size)
+
+────────────────────
++ do send-text
+    - kind U32
+    - text String
+    - data Pointer? = null
+    - size Size = 0
+
+send(kind, data, size, text as Pointer, text.size)
+
+────────────────────
++ do receive Message?
+
+while true
+    . message = take()
+    =? message if message
+    =? null if !fill(true)
+
+────────────────────
++ do poll Message?
+
+. message = take()
+=? message if message
+fill(false)
+= take()
+
+────────────────────
+_ do take Message?
+
+. available = filled - start
+=? null if available < message-header-size
+. header = (buffer.data + start) as CPointer'U32
+. kind = header[0]
+. length = header[1] as Size
+if message-header-size + length > buffer.size
+    compact()
+    buffer = buffer.resize(message-header-size + length)
+=? null if available < message-header-size + length
+. bytes = Byte[length]
+if length > 0
+    C:memcpy(bytes.data as Pointer, (buffer.data + start + message-header-size) as Pointer, length)
+start += message-header-size + length
+if start == filled
+    start = 0
+    filled = 0
+= Message(kind, bytes)
+
+────────────────────
+_ do compact
+
+=? if start == 0
+. remaining = filled - start
+if remaining > 0
+    C:memmove(buffer.data as Pointer, (buffer.data + start) as Pointer, remaining)
+start = 0
+filled = remaining
+
+────────────────────
+_ do fill Bool
+    - waits Bool
+
+=? false if !is-reading
+compact()
+if filled == buffer.size
+    buffer = buffer.resize(buffer.size * 2)
+. count = read-more(waits)
+    catch failure IOError
+        is-reading = false
+        = false
+=? false if count == null
+if count == 0
+    is-reading = false
+    = false
+filled += count
+= true
+
+────────────────────
+_ do read-more Size? ?! IOError
+    - waits Bool
+
+. space = buffer.size - filled
+if waits
+    = file.read(space, buffer[filled ...])
+= file.read-available(space, buffer[filled ...])

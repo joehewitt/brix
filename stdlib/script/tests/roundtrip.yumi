@@ -1,0 +1,103 @@
+./support/fixture
+/data/sexp
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Script Generated Call Trees")
+cases.run(call-tree-tests)
+cases = cases.then("Script Part Phrases", part-phrase-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do part-phrase-tests
+    - t TestCase
+
+part-prints(t, "one vertex", script-part-value("vertex", 1), "point 1 of Star")
+part-prints(t, "one segment", script-part-value("segment", 2), "Star's segment 2")
+part-prints
+    - t
+    - "a list of vertices"
+    - script-parts-value("vertex", List'Index(3, 1))
+    - "points 3, 1 of Star"
+part-prints
+    - t
+    - "a list of one vertex"
+    - script-parts-value("vertex", List'Index(3))
+    - "point 3 of Star"
+part-round-trips
+    - t
+    - "a bracketed list of vertices"
+    - ScriptBinary
+        - ScriptOperator.add
+        - script-part-tree("points 1, 3 of Star")
+        - script-part-tree("1")
+    - "(points 1, 3 of Star) + 1"
+part-sexp-round-trips
+    - t
+    - "segments"
+    - script-parts-value("segment", List'Index(1, 2))
+    - "(parts (segment @2 1) (segment @2 2))"
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do part-prints
+    - t TestCase
+    - label String
+    - value ScriptValue
+    - phrase String
+
+. printed = script-part-text(script-value-expression(value, script-part-grammar()))
+t.expect("$label prints as its phrase", phrase, printed)
+
+━━━━━━━━━━━━━━━━━━━━
++ do part-round-trips
+    - t TestCase
+    - label String
+    - expression ScriptExpression
+    - text String
+
+t.expect("$label prints as its text", text, script-part-text(expression))
+t.expect
+    - "$label reads back from its text"
+    - script-test-json(script-parenthesized(expression, script-part-grammar()))
+    - script-test-json(script-part-tree(text))
+
+━━━━━━━━━━━━━━━━━━━━
++ do part-sexp-round-trips
+    - t TestCase
+    - label String
+    - value ScriptValue
+    - sexp String
+
+t.expect
+    - "$label encode as their S-expression"
+    - sexp
+    - sexp-written(script-value-sexp(value, script-part-grammar()))
+t.expect("$label decode from their S-expression", sexp, => part-sexp-reencoded(sexp))
+
+━━━━━━━━━━━━━━━━━━━━
++ part-sexp-reencoded String ?! Error
+    - sexp String
+
+sexp-written(script-expression-sexp(decoded, grammar))
+
+.. grammar = script-part-grammar()
+.. decoded = script-sexp-expression(script-sexp-read(sexp), grammar, script-test-names())
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-tree-tests
+    - t TestCase
+
+. grammar = script-call-grammar()
+. generator = ScriptTreeGenerator(grammar, 23)
+for index in 0 .. < 400
+    . tree = generator.tree(4)
+    . expected = script-test-json(script-parenthesized(tree, grammar))
+    . reparsed = script-parse(script-print(tree, grammar), grammar)
+    t.expect("call tree $index parses back from its tokens", expected, script-test-json(reparsed))
+= t

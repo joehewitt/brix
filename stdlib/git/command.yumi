@@ -1,0 +1,107 @@
+/core/tokenstream
+/os/env
+/os/process
+
++ git-empty-tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+_ git-blocked-variables = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]
+
+━━━━━━━━━━━━━━━━━━━━
++ GitError is Error
+
++ arguments [String]
++ status Int
++ errors String
+
+────────────────────
++ This
+    - arguments
+    - status
+    - errors
+
+message = git-error-message(arguments, status, errors)
+
+━━━━━━━━━━━━━━━━━━━━
+_ git-error-message
+    - arguments [String]
+    - status Int
+    - errors String
+
+if detail.length > 0 then detail else "git ${" ".join(arguments)} exited with status $status"
+
+.. detail = errors.trim()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-process ?! Error
+    - directory String
+    - arguments [String]
+    - stderr-mode = ProcessStderr.discard
+    - index String? = null
+
+. full = List'String
+    * "-c"
+    * "core.quotepath=off"
+    ** arguments
+= Process("git", stderr-mode, full, directory, git-variables(index))
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-output ?! Error
+    - directory String
+    - arguments [String]
+    - input String? = null
+    - index String? = null
+
+. process = use git-process(directory, arguments, ProcessStderr.capture, index)
+. errors = process.stderr!
+. drained = Semaphore'String()
+do new
+    . text = errors as String
+    drained.post(text)
+. fed = Semaphore'Void()
+do new
+    if input != null
+        catch process.write(input)
+    process.close-input()
+    fed.post()
+. output = ChunkedTokenStream'Byte(process).read()
+. status = process.wait(null) ?? -1
+fed.wait()
+. message = drained.await() ?? ""
+?! GitError(arguments, status, message)
+    if status != 0
+= output
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-text ?! Error
+    - directory String
+    - arguments [String]
+    - input String? = null
+
+= git-output(directory, arguments, input).slice-string()
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-fields
+    - bytes Byte[]
+
+. fields = List'String()
+. start Index = 0
+for index in 0 .. < bytes.length
+    if bytes[index] == 0
+        fields += bytes.slice-string(start .. < index)
+        start = index + 1
+if start < bytes.length
+    fields += bytes.slice-string(start ...)
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-variables
+    - index String?
+
+. variables = environment()
+for name in git-blocked-variables
+    -= variables[name]
+if index
+    variables["GIT_INDEX_FILE"] = index
+variables["GIT_TERMINAL_PROMPT"] = "0"
+variables["GIT_OPTIONAL_LOCKS"] = "0"
+= variables

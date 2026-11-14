@@ -1,0 +1,232 @@
+/tui/box
+/tui/colors
+/tui/shortcuts
+/tui/statusbar
+/tui/text
+/tui/treebox
+/tui/window
+/ui/input
+
+<Window win • flex-col bg:black
+    <Label " TreeBox demo " • bg:blue text:white
+
+    <TreeBoxDemo demo • flex:1 bg:black
+
+    <Shortcut "Quit"
+        key = .escape
+        action = => do win.close()
+
+    <StatusBar
+        message = demo.#status-message
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ TreeBoxDemo is Box
+
++ status-message = "Ready"
+
+────────────────────
+
+<This • flex-col flex:1 bg:black
+    <TreeBox'DemoNode tree • flex:1 bg:black
+        root-node = DemoNode("root", "Root", true)
+        load-children = demo-children
+        key-builder = demo-key
+
+        <DemoRow (row) - item
+            item = item
+
+────────────────────
+for event on tree.selected
+
+status-message = demo-selected-message(tree.selected-entry)
+
+────────────────────
+for event on tree.activated
+
+status-message = demo-activated-message(tree.selected-item)
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoRow is TreeBoxItem'DemoNode
+
+────────────────────
+when #item
+
+. current = item
+if current
+    has-children = current.has-children
+    content-text = current.text
+
+────────────────────
+when #entry
+
+. current = entry
+if current
+    has-children = current.item.has-children
+    content-text = current.item.text
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoNode is Tuple
+
++ id String
++ text String
++ has-children = false
+
+━━━━━━━━━━━━━━━━━━━━
++ demo-key String
+    - item DemoNode
+
+item.id
+
+━━━━━━━━━━━━━━━━━━━━
++ demo-selected-message String
+    - entry TreeBoxEntry'DemoNode?
+
+|? !entry
+    "Ready"
+??
+    "Selected depth ${entry.depth}: ${entry.item.text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ demo-activated-message String
+    - item DemoNode?
+
+|? !item
+    "Activated"
+??
+    "Activated ${item.text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ demo-children [DemoNode]?
+    - item DemoNode
+
+match item.id
+    | "root"
+        * DemoNode("workspace", "Workspace", true)
+        * DemoNode("projects", "Projects", true)
+        * DemoNode("systems", "Systems", true)
+        * DemoNode("notes", "Notes")
+
+    | "workspace"
+        * DemoNode("workspace/design", "Design Notes", true)
+        * DemoNode("workspace/research", "Research", true)
+        * DemoNode("workspace/roadmap", "Roadmap", true)
+        * DemoNode("workspace/readme", "README.md")
+        * DemoNode("workspace/today", "Today.todo")
+
+    | "workspace/design"
+        * DemoNode("workspace/design/components", "Components", true)
+        * DemoNode("workspace/design/tui", "TUI", true)
+        * DemoNode("workspace/design/accessibility", "Accessibility")
+        * DemoNode("workspace/design/theme", "Theme palette.md")
+
+    | "workspace/design/components"
+        * DemoNode("workspace/design/components/listbox", "ListBox")
+        * DemoNode("workspace/design/components/columntree", "ColumnTree")
+        * DemoNode("workspace/design/components/treebox", "TreeBox")
+        * DemoNode("workspace/design/components/shortcuts", "Shortcuts")
+
+    | "workspace/design/tui"
+        * DemoNode("workspace/design/tui/layout", "Layout")
+        * DemoNode("workspace/design/tui/style", "Style")
+        * DemoNode("workspace/design/tui/events", "Events")
+        * DemoNode("workspace/design/tui/window", "Window")
+
+    | "workspace/research"
+        * DemoNode("workspace/research/lazy-trees", "Lazy trees", true)
+        * DemoNode("workspace/research/keyboard", "Keyboard models")
+        * DemoNode("workspace/research/terminal", "Terminal UX")
+
+    | "workspace/research/lazy-trees"
+        * DemoNode("workspace/research/lazy-trees/memo", "Memo.md")
+        * DemoNode("workspace/research/lazy-trees/open-questions", "Open questions.md")
+        ** DemoNode("workspace/research/lazy-trees/prototype-${each}", "Prototype ${each}") in 1 .. 4
+
+    | "workspace/roadmap"
+        * DemoNode("workspace/roadmap/now", "Now")
+        * DemoNode("workspace/roadmap/next", "Next")
+        * DemoNode("workspace/roadmap/later", "Later")
+        ** DemoNode("workspace/roadmap/milestone-${each}", "Milestone ${each}") in 1 .. 6
+
+    | "projects"
+        * DemoNode("projects/yumi", "Yumi", true)
+        * DemoNode("projects/sketchbook", "Sketchbook", true)
+        * DemoNode("projects/orbit", "Orbit.app", true)
+        * DemoNode("projects/archive", "Archive")
+
+    | "projects/yumi"
+        * DemoNode("projects/yumi/stdlib", "stdlib", true)
+        * DemoNode("projects/yumi/examples", "examples", true)
+        * DemoNode("projects/yumi/tests", "tests", true)
+        * DemoNode("projects/yumi/compiler", "compiler", true)
+
+    | "projects/yumi/stdlib"
+        * DemoNode("projects/yumi/stdlib/tui", "tui")
+        * DemoNode("projects/yumi/stdlib/core", "core")
+        * DemoNode("projects/yumi/stdlib/net", "net")
+        * DemoNode("projects/yumi/stdlib/graphics", "graphics")
+
+    | "projects/yumi/examples"
+        * DemoNode("projects/yumi/examples/tui", "tui")
+        * DemoNode("projects/yumi/examples/gui", "gui")
+        * DemoNode("projects/yumi/examples/net", "net")
+
+    | "projects/yumi/tests"
+        * DemoNode("projects/yumi/tests/tui", "TUI tests")
+        * DemoNode("projects/yumi/tests/core", "Core tests")
+        * DemoNode("projects/yumi/tests/compiler", "Compiler tests")
+
+    | "projects/yumi/compiler"
+        * DemoNode("projects/yumi/compiler/ast", "AST")
+        * DemoNode("projects/yumi/compiler/ir", "IR")
+        * DemoNode("projects/yumi/compiler/types", "Types")
+        * DemoNode("projects/yumi/compiler/diagnostics", "Diagnostics")
+
+    | "projects/sketchbook"
+        * DemoNode("projects/sketchbook/assets", "assets")
+        * DemoNode("projects/sketchbook/story", "story.md")
+        * DemoNode("projects/sketchbook/timeline", "timeline.md")
+        ** DemoNode("projects/sketchbook/page-${each}", "page-${each}.md") in 1 .. 8
+
+    | "projects/orbit"
+        * DemoNode("projects/orbit/app", "app")
+        * DemoNode("projects/orbit/design", "design")
+        * DemoNode("projects/orbit/releases", "releases", true)
+        ** DemoNode("projects/orbit/issue-${each}", "Issue ${each}") in 100 .. 106
+
+    | "projects/orbit/releases"
+        ** DemoNode("projects/orbit/releases/2026-${each}", "2026.${each}") in 1 .. 6
+
+    | "systems"
+        * DemoNode("systems/tui", "TUI", true)
+        * DemoNode("systems/compiler", "Compiler", true)
+        * DemoNode("systems/runtime", "Runtime", true)
+        * DemoNode("systems/networking", "Networking", true)
+
+    | "systems/tui"
+        * DemoNode("systems/tui/box", "Box")
+        * DemoNode("systems/tui/listbox", "ListBox")
+        * DemoNode("systems/tui/treebox", "TreeBox")
+        * DemoNode("systems/tui/shortcuts", "Shortcuts")
+
+    | "systems/compiler"
+        * DemoNode("systems/compiler/parser", "Parser")
+        * DemoNode("systems/compiler/type-checker", "Type checker")
+        * DemoNode("systems/compiler/codegen", "Codegen")
+        * DemoNode("systems/compiler/tests", "Tests")
+
+    | "systems/runtime"
+        * DemoNode("systems/runtime/gc", "GC")
+        * DemoNode("systems/runtime/tasks", "Tasks")
+        * DemoNode("systems/runtime/io", "IO")
+        * DemoNode("systems/runtime/events", "Events")
+
+    | "systems/networking"
+        * DemoNode("systems/networking/http", "HTTP")
+        * DemoNode("systems/networking/sse", "SSE")
+        * DemoNode("systems/networking/websocket", "WebSocket")
+        * DemoNode("systems/networking/jsonrpc", "JSON-RPC")
+
+    ??
+        List'DemoNode()

@@ -1,0 +1,531 @@
+./brix-forms
+./brix-heads
+/core/arena
+/data/sexp
+/stream/aggregate
+
++ brix-catalog BrixCatalog := BrixCatalog()
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixKind
+
++ name String
++ index Index
++ accepts [String]
++ meaning String
++ note String?
++ overflow String?
+
+────────────────────
++ This
+    - name
+    - index
+    - accepts
+    - meaning
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixPlace
+
++ wanted [String]
++ admits [Bool]
++ rejects [Bool]
++ literals [String]
++ leads [String]
++ is-free Bool
++ takes-atoms Bool
++ takes-types Bool
++ takes-strings Bool
++ takes-params Bool
++ takes-piped Bool
++ note String?
++ width Size
+_ literal-bytes [Byte[]]
+_ lead-bytes [Byte[]]
+
+────────────────────
++ This
+    - wanted
+    - admits
+    - rejects
+    - literals
+    - leads
+    - is-free
+    - takes-atoms
+    - takes-types
+    - takes-strings
+    - takes-params
+    - takes-piped
+    - note
+    - width
+
+.. literal-bytes = List(each as Byte[] in literals)
+.. lead-bytes = List(each as Byte[] in leads)
+
+────────────────────
++ get names String
+
+" or ".join(wanted)
+
+────────────────────
++ do takes-atom Bool
+    - tape SexpTape
+    - index Index
+
+=? true if is-free
+for literal in literal-bytes
+    =? true if tape.atom-matches(index, literal)
+. bytes = tape.bytes
+. start = tape.start(index)
+. size = tape.end(index) - start
+for lead in lead-bytes
+    if size >= lead.length && brix-span-equal(lead, bytes, start)
+        = true
+. first = bytes[start]
+=? true if takes-types && ((first >= 65 && first <= 90) || first == 39)
+= takes-atoms && !(size == 1 && first == 95) && first != 58 && first != 64
+
+────────────────────
++ do takes Bool
+    - sense BrixSense
+
+=? true if is-free
+. is-admitted = false
+for kind in sense.kind-ids
+    =? false if rejects[kind]
+    if admits[kind]
+        is-admitted = true
+= is-admitted
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixSlot
+
++ role String
++ place BrixPlace?
++ literal String?
++ form BrixSense?
++ mark String
++ label String
++ spot String
++ is-repeating Bool
++ is-optional Bool
++ width Size
++ literal-bytes Byte[]?
+
+────────────────────
++ This
+    - role
+    - mark
+    - label
+    - spot
+    - place BrixPlace?
+    - literal String? = null
+    - form BrixSense? = null
+
+is-repeating = mark == "*" || mark == "+"
+is-optional = mark == "?" || mark == "*"
+width = place?.width ?? 0
+literal-bytes = literal as Byte[] if literal
+
+────────────────────
++ is-skippable Bool
+    - used Size
+
+is-optional || (is-repeating && used > 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixSense
+
++ kinds [String]
++ kind-ids [Index]
++ head String
++ slots [BrixSlot]
++ meaning String
++ shape String
++ is-doing Bool
++ head-bytes Byte[]
+
+────────────────────
++ This
+    - kinds
+    - kind-ids
+    - head
+    - slots
+    - meaning
+    - shape
+    - is-doing
+
+.. head-bytes = head as Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixSection
+
++ title String
++ senses [BrixSense]
+
+────────────────────
++ This
+    - title
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixCatalog
+
++ kinds [BrixKind]
++ sections [BrixSection]
++ top BrixPlace
++ binder BrixPlace
++ section BrixPlace
++ piped BrixPlace
+
++ label-senses [BrixSense]?
++ infix-senses [BrixSense]?
+
+_ named [String = BrixKind]
+_ headed [String = [BrixSense]]
+_ exact [[BrixSense]?]
+_ optional [[BrixSense]?]
+_ head-sizes [Size]
+_ firm-heads [Bool]
+_ places [String = BrixPlace]
+_ hints [String = String]
+_ refusals [String = [BrixSense]]
+_ refused [[BrixSense]?]
+
+────────────────────
++ This
+
+load-forms()
+top = place(["Top"])
+binder = place(["Binder"])
+section = place(["Section"])
+piped = place(["Value"])
+label-senses = headed[":label"]
+infix-senses = headed["/infix/"]
+exact = List(headed[each] in brix-head-names)
+optional = List(headed["${each}?"] in brix-head-names)
+refused = List(refusals[each] in brix-head-names)
+head-sizes = List(each.size in brix-head-names)
+firm-heads = List(is-firm(each) in brix-head-names)
+for name in brix-head-names
+    ?! Panic("The Brix reader reads a head the catalog does not declare: $name")
+        if name && !headed[name]
+
+────────────────────
+_ is-firm Bool
+    - head String
+
+some(hints.keys) • where each.starts-with("$head ")
+
+────────────────────
++ senses [BrixSense]?
+    - head String
+
+|? found != null
+    found
+|? head.length > 1 && head.starts-with(":") && !head.ends-with(":")
+    headed[":label"]
+|? head.length > 2 && head.starts-with("/") && head.ends-with("/")
+    headed["/infix/"]
+??
+    null
+
+.. found = headed[head]
+
+────────────────────
++ senses-of [BrixSense]?
+    - head BrixHead
+    - size Size
+    - is-marked Bool
+
+if is-marked && size != head-sizes[head] then optional[head] else exact[head]
+
+────────────────────
++ refusals-of [BrixSense]?
+    - head BrixHead
+
+refused[head]
+
+────────────────────
++ has-firm-hint Bool
+    - head BrixHead
+
+firm-heads[head]
+
+────────────────────
++ do has-forms Bool
+    - kind BrixKind
+
+for section in sections
+    for sense in section.senses
+        =? true if sense.kind-ids has kind.index
+= false
+
+────────────────────
++ hint String?
+    - head String
+    - place BrixPlace
+
+firm-hint(head, place) ?? hints[head]
+
+────────────────────
++ remark String?
+    - head String
+    - topic String
+
+hints["$head $topic"]
+
+────────────────────
++ do overflow String?
+    - place BrixPlace
+
+for name in place.wanted
+    . text = kind(name).overflow
+    =? text if text != null
+= null
+
+────────────────────
++ do firm-hint String?
+    - head String
+    - place BrixPlace
+
+for kind in place.wanted
+    . found = hints["$head $kind"]
+    =? found if found != null
+= null
+
+────────────────────
+_ do place BrixPlace
+    - wanted [String]
+
+. key = "/".join(wanted)
+. known = places[key]
+=? known if known != null
+. reach [String]
+. queue [String]
+queue ++= wanted
+. cursor Index = 0
+while cursor < queue.length
+    . name = queue[cursor]
+    cursor += 1
+    if reach has name
+        continue
+    reach += name
+    for word in kind(name).accepts
+        if word.length > 1 && word.starts-with("+")
+            queue += word[1 ...]
+. dropped [String]
+for name in reach
+    for word in kind(name).accepts
+        if word.length > 1 && word.starts-with("-")
+            dropped += word[1 ...]
+. admits = List(false in kinds)
+. rejects = List(false in kinds)
+for name in reach
+    for word in kind(name).accepts
+        if word.length > 1 && word.starts-with("!")
+            rejects[kind(word[1 ...]).index] = true
+. literals [String]
+. leads [String]
+. is-free = false
+. takes-atoms = false
+. takes-types = false
+. takes-strings = false
+. takes-params = false
+. takes-piped = false
+. width Size = 0
+for name in reach
+    if dropped has name
+        continue
+    . held = kind(name)
+    admits[held.index] = true
+    width += 1
+    if name == "Params"
+        takes-params = true
+    for word in held.accepts
+        if word == "any"
+            is-free = true
+        else if word == "atoms"
+            takes-atoms = true
+        else if word == "types"
+            takes-types = true
+        else if word == "strings"
+            takes-strings = true
+        else if word == "piped"
+            takes-piped = true
+        else if word.length > 1 && has-prefix-mark
+            continue
+        else if word.length > 1 && word.ends-with("*")
+            leads += word[0 .. < word.length - 1]
+        else
+            literals += word
+        .. has-prefix-mark = word.starts-with("+") || word.starts-with("-") || word.starts-with("!")
+. note String? = null
+for name in wanted
+    . text = kind(name).note
+    if text != null && note == null
+        note = text
+. made = BrixPlace
+    - wanted
+    - admits
+    - rejects
+    - literals
+    - leads
+    - is-free
+    - takes-atoms
+    - takes-types
+    - takes-strings
+    - takes-params
+    - takes-piped
+    - note
+    - width
+places[key] = made
+= made
+
+────────────────────
+_ kind BrixKind
+    - name String
+
+?! Panic("The Brix catalog names a kind it does not declare: $name")
+    if known == null
+
+known
+
+.. known = named[name]
+
+────────────────────
+_ do load-forms
+
+. scratch = use Arena()
+for line in brix-form-lines
+    load(line, scratch)
+
+────────────────────
+_ do load
+    - line String
+    - scratch Arena
+
+if line.starts-with("= ")
+    sections += BrixSection(line[2 ...])
+    =
+. parts = List(line.split(" | "))
+. lead = parts[0]
+if lead.starts-with("kind ")
+    . made = BrixKind(lead[5 ...], kinds.length, words(parts[1]), parts[2])
+    kinds += made
+    named[made.name] = made
+    =
+if lead.starts-with("note ")
+    kind(lead[5 ...]).note = parts[1]
+    =
+if lead.starts-with("after ")
+    kind(lead[6 ...]).overflow = parts[1]
+    =
+if lead.starts-with("hint ")
+    hints[lead[5 ...]] = parts[1]
+    =
+?! Panic("The Brix catalog has a malformed line: $line")
+    if parts.length != 3
+. is-refusal = lead.starts-with("refuse ")
+. tape = sexp-tape(parts[1], scratch, false)
+    catch failure SexpError
+        ?! Panic("The Brix catalog has a malformed form: ${parts[1]}")
+. sense = read((if is-refusal then lead[7 ...] else lead).split(","), tape, 0, parts[2], parts[1])
+scratch.reset()
+if is-refusal
+    . held = refusals[sense.head]
+    if held != null
+        held += sense
+    else
+        refusals[sense.head] = List'BrixSense(sense)
+    =
+. known = headed[sense.head]
+if known != null
+    known += sense
+else
+    headed[sense.head] = List'BrixSense(sense)
+if sections.length > 0
+    sections[sections.length - 1].senses += sense
+
+────────────────────
+_ words [String]
+    - text String
+
+if text == "-" then List'String() else List(text.split(" "))
+
+────────────────────
+_ do read BrixSense
+    - names <String>
+    - tape SexpTape
+    - index Index
+    - meaning String
+    - shape String
+
+. close = tape.close-of(index)
+. head = tape.atom-text(index + 1)
+. slots [BrixSlot]
+. is-doing = false
+. item = tape.after(index + 1)
+while item < close
+    if tape.is-open(item)
+        . form = read(List'String(), tape, item, "", "")
+        item = tape.after(item)
+        . mark = ""
+        if item < close && is-mark(tape, item)
+            mark = tape.atom-text(item)
+            item = tape.after(item)
+        slots += BrixSlot("", mark, "(${form.head} …)", "", null, null, form)
+        continue
+    . text = tape.atom-text(item)
+    item = tape.after(item)
+    . mark = suffix(text)
+    . body = if mark != "" then text[0 .. < text.length - 1] else text
+    . pieces = List(body.split(":"))
+    if pieces.length == 2 && pieces[0] != "" && pieces[1] != ""
+        . role = pieces[0]
+        slots += BrixSlot
+            - role
+            - mark
+            - body
+            - spot(role, mark, head)
+            - place(List(pieces[1].split("/")))
+    else
+        if body == ":do"
+            is-doing = true
+        slots += BrixSlot("", mark, "`${body}`", "", null, body)
+. kinds = List(names)
+= BrixSense(kinds, List(kind(each).index in kinds), head, slots, meaning, shape, is-doing)
+
+────────────────────
+_ is-mark Bool
+    - tape SexpTape
+    - index Index
+
+tape.is-atom(index) && is-quantifier
+
+.. is-quantifier = tape.atom-is(index, "?") || tape.atom-is(index, "*") || tape.atom-is(index, "+")
+
+────────────────────
+_ suffix String
+    - text String
+
+|? text.length < 2
+    ""
+|? text.ends-with("?")
+    "?"
+|? text.ends-with("*")
+    "*"
+|? text.ends-with("+")
+    "+"
+??
+    ""
+
+────────────────────
+_ spot String
+    - role String
+    - mark String
+    - head String
+
+"$article `${role}` of ($head …)"
+
+.. is-many = mark == "*" || mark == "+"
+.. is-vowel = ["a", "e", "i", "o", "u"] has role[0 .. < 1]
+.. article = if is-many then (if is-vowel then "an" else "a") else "the"

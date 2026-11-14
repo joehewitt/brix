@@ -1,0 +1,287 @@
+
+/core/intrinsics
+
+/YuCore/YuCore.h
+/math.h
+/sys/random.h
+
++ π = 3.14159265358979323846264338327rad
++ euler = 2.7182818284590451
++ epsilon = 0.000000000001
+
+_ random-state U64 = random-seed()
+_ random-increment U64 = 0x9e3779b97f4a7c15
+_ random-first-multiplier U64 = 0xbf58476d1ce4e5b9
+_ random-second-multiplier U64 = 0x94d049bb133111eb
+
+━━━━━━━━━━━━━━━━━━━━
++ Radians (rad) is F64
+
+━━━━━━━━━━━━━━━━━━━━
++ Degrees (°, deg) is 0.017453292519943295rad
+
+━━━━━━━━━━━━━━━━━━━━
++ is-finite
+    - n Float
+
+n == n && n != C:getInfinity() && n != -C:getInfinity()
+
+━━━━━━━━━━━━━━━━━━━━
++ abs
+    - n I32
+
+C:abs(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ abs
+    - n I64
+
+C:llabs(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ abs
+    - n F32
+
+C:fabsf(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ abs F64
+    - n F64
+
+━━━━━━━━━━━━━━━━━━━━
++ round
+    - n F32
+
+C:roundf(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ round
+    - n F64
+
+C:round(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ floor
+    - n F32
+
+C:floorf(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ floor
+    - n F64
+
+C:floor(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ ceil
+    - n F32
+
+C:ceilf(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ ceil
+    - n F64
+
+C:ceil(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ fmod
+    - n F64
+    - x F64
+
+C:fmod(n, x)
+
+━━━━━━━━━━━━━━━━━━━━
++ log
+    - n F64
+
+C:log(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ exp
+    - n F64
+
+C:exp(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ sqrt F64
+    - n F64
+
+━━━━━━━━━━━━━━━━━━━━
++ cbrt
+    - n F64
+
+C:cbrt(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do modf
+    - n F64
+
+. mod = F64[1]
+. rem = C:modf(n, mod)
+
+= mod[0], rem
+
+━━━━━━━━━━━━━━━━━━━━
++ sin
+    - n Radians
+
+C:sin(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ cos
+    - n Radians
+
+C:cos(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ tan
+    - n Radians
+
+C:tan(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ acos Radians
+    - n F64
+
+C:acos(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ asin Radians
+    - n F64
+
+C:asin(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ atan Radians
+    - n F64
+
+C:atan(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ atan2 Radians
+    - y F64
+    - x F64
+
+C:atan2(y, x)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do random-seed U64
+
+. seed = U64[1]
+C:getentropy(seed, 8)
+= seed[0]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do next-random U64
+
+random-state += random-increment
+. first = (random-state /xor/ (random-state /zrshift/ 30)) * random-first-multiplier
+. second = (first /xor/ (first /zrshift/ 27)) * random-second-multiplier
+= second /xor/ (second /zrshift/ 31)
+
+━━━━━━━━━━━━━━━━━━━━
++ do random F64
+
+= ((next-random() /zrshift/ 11) as F64) / 9007199254740992.0
+
+━━━━━━━━━━━━━━━━━━━━
++ do random'Num Num
+    - min Num
+    - max Num
+
+if Num.is-integer
+    . width = ((max as I64) - (min as I64)) as U64
+    = ((min as I64) + ((next-random() % width) as I64)) as Num
+. value = (min + random() * (max - min)) as Num
+= if value != max then value else min
+
+━━━━━━━━━━━━━━━━━━━━
++ not'Num
+    - n Num
+
+Num.max - n
+
+━━━━━━━━━━━━━━━━━━━━
++ min F64
+    - n1 F64
+    - n2 F64
+
+━━━━━━━━━━━━━━━━━━━━
++ min'Num
+    - n1 Num
+    - n2 Num
+
+|? n2 < n1
+    n2
+??
+    n1
+
+━━━━━━━━━━━━━━━━━━━━
++ max F64
+    - n1 F64
+    - n2 F64
+
+━━━━━━━━━━━━━━━━━━━━
++ max'Num
+    - n1 Num
+    - n2 Num
+
+|? n2 > n1
+    n2
+??
+    n1
+
+━━━━━━━━━━━━━━━━━━━━
++ clamp'Num
+    - value Num
+    - low Num
+    - high Num
+
+|? value < low
+    low
+|? value > high
+    high
+??
+    value
+
+━━━━━━━━━━━━━━━━━━━━
++ clamp-unit F64
+    - value F64
+
+if !is-finite(value) then 0 else clamp(value, 0, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-even'Num
+    - n Num
+
+n % 2 == 0
+
+━━━━━━━━━━━━━━━━━━━━
++ is-odd'Num
+    - n Num
+
+n % 2 != 0
+
+━━━━━━━━━━━━━━━━━━━━
++ num
+    - numerator Float
+    - denominator Float
+
+numerator / denominator
+
+━━━━━━━━━━━━━━━━━━━━
++ denom
+    - denominator Float
+    - numerator Float
+
+numerator / denominator
+
+━━━━━━━━━━━━━━━━━━━━
++ power-of-2'Num
+    - n Num
+
+if shift == bit-width then (0 as Num) else (1 as Num) /lshift/ shift
+
+.. shift = bit-width - count-leading-zeros((n - 1) as Num)
+.. bit-width = (type-of n).size * 8

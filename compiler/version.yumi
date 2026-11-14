@@ -1,0 +1,81 @@
+/data/json
+/lang/constants
+/os/file
+/os/path
+/os/process
+
+━━━━━━━━━━━━━━━━━━━━
++ do version-text String
+
+. release = release-text(toolchain-root / "release.json")
+=? release if release
+= local-text(toolchain-root)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do release-text String?
+    - path Path
+
+. text = catch? read-file-text(path)
+=? null if !text
+. release = JSON(text)
+. version = json-text(release, "version")
+=? null if !version
+. commit = json-text(json-field(release, "source"), "commit")
+=? "yumi $version" if !commit
+= "yumi $version (${commit[0 .. < 12]})"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do local-text String
+    - root Path
+
+. place = root as String
+. described = git-output(root, ["describe", "--tags", "--match", "v*", "--long", "--dirty", "--abbrev=12"]) if (root / ".git").exists
+=? "yumi unreleased build in $place" if !described
+. parts [String] = described.split("-")
+. changed = parts[parts.length - 1] == "dirty"
+if changed
+    parts.pop()
+. commit = parts.pop()[1 ...]
+. distance = parts.pop()
+. tag = "-".join(parts)
+. release = if tag.starts-with("v") then tag[1 ...] else tag
+. ahead = if distance == "0" then "" else "+$distance"
+. branch = git-output(root, ["rev-parse", "--abbrev-ref", "HEAD"])
+. source = if branch && branch != "HEAD" then "$branch at $commit" else commit
+. state = if changed then ", uncommitted changes" else ""
+= "yumi $release$ahead local build ($source$state) in $place"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-output String?
+    - root Path
+    - arguments [String]
+
+. process = catch? Process("git", ProcessStderr.discard, arguments, root as String)
+=? null if !process
+. output = process as String
+. status = process.wait(null) ?? 1
+process.close()
+. text = output.trim()
+= text if status == 0 && text != ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-field JSON?
+    - value JSON?
+    - name String
+
+|? !value || value is not [String = JSON]
+    null
+??
+    (value as [String = JSON])[name]
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-text String?
+    - value JSON?
+    - name String
+
+|? !field || field is not String
+    null
+??
+    field as String
+
+.. field = json-field(value, name)

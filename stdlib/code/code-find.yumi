@@ -1,0 +1,316 @@
+/regex
+
+_ code-find-limit Size = 20000
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFindQuery is Tuple
+
++ text String
++ matches-case Bool
++ matches-word Bool
++ is-regex Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeHit is Tuple
+
++ row Size
++ start Size
++ end Size
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFindPlace is Tuple
+
++ row Size
++ column Size
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFindRow is Tuple
+
++ content String
++ start Size
++ is-searched Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeRewrite is Tuple
+
++ changed Size
++ held Size
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeReplaced is Tuple
+
++ count Size
++ rows Size
++ skipped Size
++ held Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodeRowReplaced is Tuple
+
++ text String
++ count Size
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFindTarget is Interface
+
+────────────────────
++ do find-stamp U64
+
+────────────────────
++ do find-rows [CodeFindRow]
+    - editing Bool
+
+────────────────────
++ do find-caret CodeFindPlace
+
+────────────────────
++ do find-origin CodeFindPlace
+
+────────────────────
++ do find-selection CodeHit?
+
+────────────────────
++ do find-seed String?
+
+────────────────────
++ do find-reveal
+    - hit CodeHit
+
+────────────────────
++ do find-replace Bool
+    - hit CodeHit
+    - text String
+
+────────────────────
++ do find-can-edit Bool
+    - row Size
+
+────────────────────
++ do find-rewrite CodeRewrite
+    - rows [Size]
+    - texts [String]
+
+────────────────────
++ do find-show
+    - model CodeFind?
+
+────────────────────
++ do find-focus
+
+━━━━━━━━━━━━━━━━━━━━
++ CodeFind
+
++ query CodeFindQuery?
++ found [CodeHit]
++ current Size?
++ problem String?
++ is-truncated Bool
+
+_ pattern Regex?
+_ rows [CodeFindRow]
+_ searched U64
+
+────────────────────
++ get is-active Bool
+
+pattern != null
+
+────────────────────
++ get current-found CodeHit?
+
+if index == null || index >= found.length then null else found[index]
+
+.. index = current
+
+────────────────────
++ do set-query
+    - next CodeFindQuery?
+
+query = next
+pattern = null
+problem = null
+found = List'CodeHit()
+current = null
+is-truncated = false
+searched = 0
+=? if next == null || next.text.length == 0
+. compiled = catch Regex(code-find-pattern(next), code-find-ignores-case(next))
+if compiled is RegexError
+    problem = (compiled as RegexError).message
+else
+    pattern = compiled as Regex
+
+────────────────────
++ do reset
+
+rows = List'CodeFindRow()
+found = List'CodeHit()
+current = null
+searched = 0
+
+────────────────────
++ is-stale Bool
+    - target CodeFindTarget
+
+searched != target.find-stamp()
+
+────────────────────
++ do search
+    - target CodeFindTarget
+
+. held = current-found
+found = List'CodeHit()
+current = null
+is-truncated = false
+searched = target.find-stamp()
+. active = pattern
+=? if !active
+problem = null
+rows = target.find-rows(false)
+. made [CodeHit]
+for row in 0 .. < rows.length
+    . shown = rows[row]
+    if made.length < code-find-limit && shown.is-searched
+        for hit in row-hits(active, shown, row)
+            made += hit
+is-truncated = made.length >= code-find-limit
+found = made
+if held
+    pick(held.row, held.start)
+
+────────────────────
++ do pick
+    - row Size
+    - column Size
+
+current = null
+=? if found.length == 0
+. low Size = 0
+. high = found.length
+while low < high
+    . middle = low + (high - low) / 2
+    . hit = found[middle]
+    if hit.row < row || (hit.row == row && hit.start < column)
+        low = middle + 1
+    else
+        high = middle
+current = if low < found.length then low else 0
+
+────────────────────
++ do step
+    - forward Bool
+
+=? if found.length == 0
+. index = current
+if index == null
+    current = if forward then 0 else found.length - 1
+else if forward
+    current = if index + 1 < found.length then index + 1 else 0
+else
+    current = if index > 0 then index - 1 else found.length - 1
+
+────────────────────
++ do first-at Size
+    - row Size
+
+. low Size = 0
+. high = found.length
+while low < high
+    . middle = low + (high - low) / 2
+    if found[middle].row < row
+        low = middle + 1
+    else
+        high = middle
+= low
+
+────────────────────
++ replacement String ?! RegexError
+    - hit CodeHit
+    - template String
+
+expanded(shown.content, hit.start - shown.start, template)
+
+.. shown = rows[hit.row]
+
+────────────────────
++ do replace-all CodeReplaced ?! RegexError
+    - target CodeFindTarget
+    - template String
+
+. active = pattern
+=? CodeReplaced(0, 0, 0, 0) if !active
+. lines = target.find-rows(true)
+. targets [Size]
+. contents [String]
+. total Size = 0
+. skipped Size = 0
+for row in 0 .. < lines.length
+    . shown = lines[row]
+    if shown.is-searched
+        . made = row-replaced(active, shown.content, template)
+        if made
+            if target.find-can-edit(row)
+                targets += row
+                contents += made.text
+                total += made.count
+            else
+                skipped += 1
+. outcome = target.find-rewrite(targets, contents)
+= CodeReplaced(total, outcome.changed, skipped, outcome.held)
+
+────────────────────
+_ expanded String ?! RegexError
+    - content String
+    - offset Size
+    - template String
+
+if !(query?.is-regex ?? false) then template else pattern!.expand(content, template, offset)
+
+────────────────────
+_ do row-replaced CodeRowReplaced? ?! RegexError
+    - active Regex
+    - content String
+    - template String
+
+. parts [String]
+. last Size = 0
+. count Size = 0
+for hit in active.find-all(content)
+    if hit.end > hit.start
+        parts += content[last .. < hit.start]
+        parts += expanded(content, hit.start, template)
+        last = hit.end
+        count += 1
+=? null if count == 0
+parts += content[last .. < content.length]
+= CodeRowReplaced("".join(parts), count)
+
+────────────────────
+_ do row-hits [CodeHit]
+    - active Regex
+    - shown CodeFindRow
+    - row Size
+
+. hits [CodeHit]
+. matched = catch active.find-all(shown.content)
+if matched is RegexError
+    problem = (matched as RegexError).message
+    = hits
+for hit in matched as [RegexMatch]
+    if hit.end > hit.start
+        hits += CodeHit(row, shown.start + hit.start, shown.start + hit.end)
+= hits
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-find-pattern String
+    - query CodeFindQuery
+
+if !query.matches-word then body else "(?<![\\p{L}\\p{N}_-])(?:$body)(?![\\p{L}\\p{N}_-])"
+
+.. body = if query.is-regex then query.text else regex-escape(query.text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-find-ignores-case Bool
+    - query CodeFindQuery
+
+!query.matches-case && query.text == query.text.lowercased

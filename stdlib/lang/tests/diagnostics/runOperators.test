@@ -1,0 +1,200 @@
+====
+Operator and conversion errors name the operator and the types involved
+====
+
+:====
+# binary operator
+
+-- "a" - 1
+
+:----
+%crash
+
+Exception: Operator "-" is not defined for String and I64
+<no file:2>
+    -- "a" - 1
+       ^^^^^^^
+;====
+
+:====
+# unary operator
+
+-- -"a"
+
+:----
+%crash
+
+Exception: Operator "-" is not defined for String
+<no file:2>
+    -- -"a"
+       ^^^^
+;====
+
+:====
+# compound assignment
+
+. items = [1]
+items += Pair(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Tuple
+
++ x I32
++ y I32
+
+:----
+%crash
+
+Exception: Operator "+=" is not defined for [I64] and Pair
+<no file:3>
+    items += Pair(1, 2)
+    ^^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# function value as an operand
+
+-- !Box().is-empty
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+────────────────────
++ is-empty Bool
+    - strict Bool
+
+strict
+
+:----
+%crash
+
+Exception: Operator "!" is not defined for function is-empty; it is a function, so call it first
+<no file:2>
+    -- !Box().is-empty
+       ^^^^^^^^^^^^^^^
+;====
+
+:====
+# explicit cast
+
+-- Pair(1, 2) as I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Tuple
+
++ x I32
++ y I32
+
+:----
+%crash
+
+Exception: Pair cannot be cast to I32; there is no conversion between them
+<no file:2>
+    -- Pair(1, 2) as I32
+       ^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# implicit conversion
+
+. box = Box()
+box.count = Pair(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ count = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Tuple
+
++ x I32
++ y I32
+
+:----
+%crash
+
+Exception: Expected I64 here, but this is Pair, and there is no conversion between them
+<no file:3>
+    box.count = Pair(1, 2)
+    ^^^^^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# optional value used as its value
+
+. maybe I32? = 4
+. count I32 = maybe
+
+:----
+%crash
+
+Exception: Expected I32 here, but this is I32?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
+<no file:3>
+    . count I32 = maybe
+            ^^^
+;====
+
+:====
+# number used as text
+
+. label String = 42
+
+:----
+%crash
+
+Exception: Expected String here, but this is I64, which becomes text only inside a text or a print, or when asked; write "as String", or write it inside a text, as in "$name"
+<no file:2>
+    . label String = 42
+            ^^^^^^
+;====
+
+:====
+# base class used as a subclass
+
+. pet Animal = Dog()
+. dog Dog = pet
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
+━━━━━━━━━━━━━━━━━━━━
++ Dog is Animal
+
+:----
+%crash
+
+Exception: Expected Dog here, but this is Animal, which is not always Dog; match it with "| name Dog", or write "as Dog"
+<no file:3>
+    . dog Dog = pet
+          ^^^
+;====
+
+:====
+# float used as an integer
+
+. ratio = 2.5
+. whole I32 = ratio
+
+:----
+%crash
+
+Exception: Expected I32 here, but this is F64, which becomes I32 only when asked; write "as I32"
+<no file:3>
+    . whole I32 = ratio
+            ^^^
+;====
+
+:====
+# number compared with a Bool
+
+-- 1 == true
+
+:----
+%crash
+
+Exception: Operator "==" is not defined for I64 and Bool
+<no file:2>
+    -- 1 == true
+       ^^^^^^^^^
+;====

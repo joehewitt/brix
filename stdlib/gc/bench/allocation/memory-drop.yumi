@@ -1,0 +1,38 @@
+`benchmark.meta description: Holds and drops a known live byte set before explicit collection and scavenging.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,allocator,compile-timing
+
+/YuGC/YuGC.h
+
+C:yumiGCSetHeapGoal(1073741824)
+
+. checksum = allocate-and-drop(96, 1048576)
+
+C:yumiGCCollect()
+C:yumiGCScavenge()
+
+. rebound [Byte[]]
+for index in 0 .. < 8
+    . bytes = Byte[1048576]
+    bytes[index] = (index + 17) as U8
+    checksum += bytes[index] as Size
+    rebound += bytes
+
+-- "bench-result allocation/memory-drop checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do allocate-and-drop Size
+    - chunk-count Size
+    - chunk-size Size
+
+. held [Byte[]]
+. checksum = 0 as Size
+for index in 0 .. < chunk-count
+    . bytes = Byte[chunk-size]
+    bytes[0] = (index % 251) as U8
+    bytes[chunk-size - 1] = ((index * 3) % 251) as U8
+    checksum += (bytes[0] as Size) + (bytes[chunk-size - 1] as Size) + index
+    held += bytes
+
+checksum += held.length * chunk-size
+= checksum

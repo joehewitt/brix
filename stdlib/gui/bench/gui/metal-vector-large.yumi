@@ -1,0 +1,149 @@
+`benchmark.meta description: Repaints eight 180pt Lucide icons through a 2x Metal DisplayScene on each of 120 frames, where every 360px icon would exceed the BGRA per-frame mask upload cap, and asserts that their strokes draw as GPU paths without CoreGraphics tile fallbacks or skipped operations.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,gui-metal
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/gui/box
+/gui/icons/lucide/activity
+/gui/icons/lucide/airplay
+/gui/icons/lucide/alarm-clock
+/gui/icons/lucide/album
+/gui/layout
+/gui/metal
+/gui/primitives
+/gui/scene
+/gui/vector-image
+
+. root = BenchRoot()
+markup-mount-root(root, root)
+. icons [Box]
+for row-index in 0 .. < 2
+    . row = BenchRow()
+    markup-append(root, row)
+    for column in 0 .. < 4
+        . icon Box = match (row-index + column) % 4
+            |= 0
+                ActivityIcon()
+            |= 1
+                AirplayIcon()
+            |= 2
+                AlbumIcon()
+            ??
+                AlarmIcon()
+        icons += icon
+        markup-append(row, icon)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 720, 360))
+
+. renderer = MetalOffscreenRenderer(720, 360, 2, white)
+. scene = DisplayScene(2, white, renderer)
+. reference = RasterCanvas(720, 360, 2, white)
+. checksum Size
+. fallbacks Size
+. skipped I64
+do use renderer
+    do use reference
+        scene.build(root)
+        scene.commit()
+        scene.frame-metal(renderer)
+        for frame in 0 .. < 120
+            for icon in icons
+                icon.invalidate-paint()
+            scene.update(root)
+            scene.commit()
+            scene.frame-metal(renderer)
+            checksum += 1
+        renderer.finish()
+        fallbacks = scene.metal-tile-fallbacks
+        skipped = renderer.skipped-ops
+        root.paint(reference)
+        checksum += renderer.diff(reference, 2).differing-pixels as Size
+
+scene.close()
+root.close()
+markup-release(root)
+?! Panic("Large vectors fell back to CoreGraphics tiles")
+    if fallbacks != 0
+?! Panic("Large vectors skipped Metal operations")
+    if skipped != 0
+-- "bench-result gui/metal-vector-large checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRow is Box
+
+• This
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ ActivityIcon is LucideActivity
+
+• This
+    min-width = SizeSpec.coord(180)
+    max-width = SizeSpec.coord(180)
+    min-height = SizeSpec.coord(180)
+    max-height = SizeSpec.coord(180)
+
+────────────────────
+
+<This
+    stroke = "#334155"
+
+━━━━━━━━━━━━━━━━━━━━
++ AirplayIcon is LucideAirplay
+
+• This
+    min-width = SizeSpec.coord(180)
+    max-width = SizeSpec.coord(180)
+    min-height = SizeSpec.coord(180)
+    max-height = SizeSpec.coord(180)
+
+────────────────────
+
+<This
+    stroke = "#2563eb"
+
+━━━━━━━━━━━━━━━━━━━━
++ AlbumIcon is LucideAlbum
+
+• This
+    min-width = SizeSpec.coord(180)
+    max-width = SizeSpec.coord(180)
+    min-height = SizeSpec.coord(180)
+    max-height = SizeSpec.coord(180)
+
+────────────────────
+
+<This
+    stroke = "#334155"
+
+━━━━━━━━━━━━━━━━━━━━
++ AlarmIcon is LucideAlarmClock
+
+• This
+    min-width = SizeSpec.coord(180)
+    max-width = SizeSpec.coord(180)
+    min-height = SizeSpec.coord(180)
+    max-height = SizeSpec.coord(180)
+
+────────────────────
+
+<This
+    stroke = "#b91c1c"

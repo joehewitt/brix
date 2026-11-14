@@ -1,0 +1,52 @@
+/data
+
+━━━━━━━━━━━━━━━━━━━━
++ Outbox
+
++ target WritableData
++ has-failed = false
++ on-drained Doer?
+_ queued [Byte[]]
+_ is-flushing = false
+
+────────────────────
++ This
+    - target
+
+────────────────────
++ get is-idle Bool
+
+!is-flushing
+
+────────────────────
++ do send
+    - bytes Byte[]
+
+=? if has-failed || bytes.size == 0
+queued += bytes
+=? if is-flushing
+is-flushing = true
+do new
+    flush()
+
+────────────────────
++ do clear
+
+queued.clear()
+
+────────────────────
+_ do flush
+
+while queued.length > 0 && !has-failed
+    . next = queued[0]
+    queued.remove(0)
+    . written = catch target.write(next, next.size)
+    do match? written
+        | failure Error
+            has-failed = true
+            queued.clear()
+is-flushing = false
+. drained = on-drained
+on-drained = null
+if drained
+    drained()

@@ -1,0 +1,86 @@
+`benchmark.meta description: Boolean operations over many disjoint curved paths to validate bounds pruning.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/boolean
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 40
+    . a = many-disjoint-contours-a(pass)
+    . b = many-disjoint-contours-b(pass)
+    for operation in 0 .. < 4
+        . result = boolean-operation(operation, a, b)
+        checksum += path-score(result) + pass + operation
+
+-- "bench-result graphics/boolean-many-disjoint checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do many-disjoint-contours-a
+    - pass Int
+
+. path = Path()
+for y in 0 .. < 4
+    for x in 0 .. < 4
+        path.add-path(circle((42.0 + x * 54 + (pass % 5), 42.0 + y * 54), 12))
+
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do many-disjoint-contours-b
+    - pass Int
+
+. path = Path()
+for y in 0 .. < 4
+    for x in 0 .. < 4
+        path.add-path(circle((69.0 + x * 54, 69.0 + y * 54 + (pass % 3)), 10))
+
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-operation
+    - operation
+    - a Path
+    - b Path
+
+|? operation == 0
+    union(a, b)
+|? operation == 1
+    intersect(a, b)
+|? operation == 2
+    subtract(a, b)
+??
+    clip(a, b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score
+    - path Path?
+
+|? path
+    solid-path-score(path)
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
+_ solid-path-score Size
+    - path Path
+
+|? !path.count
+    0
+??
+    box-score + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+.. bounds = path.bounding-box
+.. box-score = origin-score + numeric-check(bounds.width) + numeric-check(bounds.height)
+.. origin-score = path.count + numeric-check(bounds.x) + numeric-check(bounds.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

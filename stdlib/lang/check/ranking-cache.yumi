@@ -1,0 +1,106 @@
+./idmap
+./types
+/core/arena
+/core/scratch
+/core/table
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+
+━━━━━━━━━━━━━━━━━━━━
++ CachedHit is Struct
+
+` A hit kept by a ranking cache: its runs are places and counts in the cache's stacks.
+
++ module ModuleId
++ decl DeclId
++ receiver TypeId
++ level TypeId
++ is-extension Bool
++ params U32
++ param-count U32
++ args U32
++ arg-count U32
++ fills U32
++ fill-count U32
++ relations U32
++ relation-count U32
++ tail-fills U32
++ tail-fill-count U32
++ tail-relations U32
++ tail-relation-count U32
+
+━━━━━━━━━━━━━━━━━━━━
++ CachedRanking is Struct
+
+` What ranking a call chose: the places of its best and partial hits among the cache's hits,
+` none being `U32.max`, and what it found ambiguous or missing.
+
++ best U32
++ partial U32
++ ambiguous-constructor Bool
++ ambiguous-static Bool
++ ambiguous-extension Bool
++ conflicting Bool
++ missing-module ModuleId
++ missing-site SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ RankingCache
+
+` Calls already ranked, each by what was asked and what the call gives, so that ranking the
+` same call again reads back what it chose. Rows are only added, so a span read from the stacks
+` lasts as long as the cache.
+
++ rankings Table'CachedRanking
++ hits Table'CachedHit
++ types Scratch'TypeId
++ words Scratch'U32
++ relations Scratch'Relation
+_ arena Arena
+_ keys IdMap
+_ key-scratch Array'U32'ArenaBacking
+_ key-count Size
+
+────────────────────
++ This
+    - arena Arena
+
+.. rankings = Table'CachedRanking(arena, 64)
+.. hits = Table'CachedHit(arena, 64)
+.. types = Scratch'TypeId(arena)
+.. words = Scratch'U32(arena)
+.. relations = Scratch'Relation(arena)
+.. key-scratch = Array'U32(arena, 32)
+
+────────────────────
++ do release
+
+keys.release()
+
+────────────────────
++ do open-key
+
+key-count = 0
+
+────────────────────
++ do add-key
+    - word U32
+
+if key-count == key-scratch.length
+    key-scratch = key-scratch.resize(key-scratch.length * 2, arena)
+key-scratch[key-count] = word
+key-count += 1
+
+────────────────────
++ get found Index?
+
+keys.find(key-scratch.data, key-count)
+
+────────────────────
++ do keep
+    - row CachedRanking
+
+keys.store(key-scratch.data, key-count)
+if keys.last-inserted
+    rankings.append(row)

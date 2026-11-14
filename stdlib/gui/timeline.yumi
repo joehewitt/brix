@@ -1,0 +1,70 @@
+./box
+./primitives
+/graphics/primitives
+/math
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ AnimationTimeline
+
++ amount F64?
++ start Length = 0
++ end Length = 0
++ axis = Orientation.vertical
++ source Box?
+
+────────────────────
++ This
+    - amount F64?
+    - start Length = 0
+    - end Length = 0
+    - axis = Orientation.vertical
+    - source Box? = null
+
+────────────────────
++ get follows-scrolling Bool
+
+amount == null
+
+────────────────────
++ do scroller Box?
+    - owner Box
+
+=? source if source
+. cursor = owner.material-parent
+while cursor
+    . box = cursor
+    =? box if !box.is-markup-shadow && box.is-scroll-axis-enabled(axis)
+    cursor = box.material-parent
+= null
+
+────────────────────
++ progress F64
+    - owner Box
+
+|? fixed != null
+    clamp(fixed, 0.0, 1.0)
+|? !box
+    0
+|? end <= start
+    if offset >= end then 1.0 else 0.0
+??
+    clamp((offset - start) / (end - start), 0.0, 1.0)
+
+.. fixed = amount
+.. box = scroller(owner)
+.. offset = if axis == Orientation.vertical then box.scroll-y else box.scroll-x
+
+━━━━━━━━━━━━━━━━━━━━
++ scroll-timeline AnimationTimeline
+    - range Range'Length
+    - source Box? = null
+    - axis = Orientation.vertical
+
+AnimationTimeline(null, range.start, range.end, axis, source)
+
+━━━━━━━━━━━━━━━━━━━━
++ progress-timeline AnimationTimeline
+    - amount F64
+
+AnimationTimeline(amount)

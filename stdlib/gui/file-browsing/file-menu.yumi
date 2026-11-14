@@ -1,0 +1,152 @@
+/gui/box
+/gui/clipboard
+/gui/desktop
+/gui/menu
+/os/file-session
+/os/file-tree
+/ui/key-combo
+
+━━━━━━━━━━━━━━━━━━━━
++ FileRenameRequest is Tuple
+
++ node FileNode
++ discards Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileMenu is ContextMenu
+
++ files FileTree
++ session FileSession
++ node FileNode?
++ folder FileNode?
++ targets [FileNode]
++ rename-key KeyCombo?
++ trash-key KeyCombo?
++ can-create = #node?.is-directory ?? true
++ can-modify = true
++ event rename-requested FileRenameRequest
+
+────────────────────
+
+<This
+    + <Box leading • flex-col
+    if #can-modify
+        if #can-create
+            <MenuItem "New File"
+                action = => do create(false)
+            <MenuItem "New Folder"
+                action = => do create(true)
+            <MenuSeparator
+        <MenuItem "Rename…"
+            key = #rename-key
+            is-enabled = #targets.length == 1
+            action = => do rename()
+        if !#can-create
+            <MenuItem "Duplicate"
+                is-enabled = #targets.length == 1
+                action = => do duplicate()
+        <MenuItem "Move to Trash"
+            key = #trash-key
+            is-enabled = #targets.length > 0
+            action = => do trash(targets)
+        <MenuSeparator
+    <MenuItem "Copy Path"
+        action = => do copy-paths()
+    <MenuItem "Open in Finder"
+        action = => do reveal()
+
+────────────────────
++ do trash
+    - nodes [FileNode]
+
+for node in nodes
+    if node.parent && !node.is-detached
+        report(attempt-trash(node))
+
+────────────────────
+_ do create
+    - is-folder Bool
+
+. made = attempt-create(creation-folder(), is-folder)
+if made
+    rename-requested <- FileRenameRequest(made, false)
+
+────────────────────
+_ do rename
+
+. pressed = node
+if pressed && pressed.parent
+    rename-requested <- FileRenameRequest(pressed, false)
+
+────────────────────
+_ do duplicate
+
+. pressed = node
+=? if !pressed
+. made = attempt-duplicate(pressed)
+if made
+    rename-requested <- FileRenameRequest(made, true)
+
+────────────────────
+_ creation-folder FileNode
+
+match node
+    |= null
+        folder ?? files.root
+    |? it.is-directory
+        it
+    ??
+        it.parent ?? files.root
+
+────────────────────
+_ listed-nodes [FileNode]
+
+if targets.length then targets else [folder ?? files.root]
+
+────────────────────
+_ do copy-paths
+
+. ignored = Clipboard().write-text("\n".join("${each.path}" in listed-nodes()))
+
+────────────────────
+_ do reveal
+
+. ignored = reveal-in-file-viewer((node ?? folder ?? files.root).path)
+
+────────────────────
+_ do report
+    - message String?
+
+if message
+    session.failed <- message
+
+────────────────────
+_ do attempt-create FileNode?
+    - owner FileNode
+    - is-folder Bool
+
+. made = files.create(owner, is-folder)
+    catch failure Error
+        session.failed <- "Could not create an item in ${owner.path.name}: ${failure.message}"
+        = null
+= made
+
+────────────────────
+_ do attempt-duplicate FileNode?
+    - node FileNode
+
+. made = files.duplicate(node)
+    catch failure Error
+        session.failed <- "Could not duplicate ${node.name}: ${failure.message}"
+        = null
+= made
+
+────────────────────
+_ do attempt-trash String?
+    - node FileNode
+
+move-to-trash(node.path)
+    catch failure Error
+        = failure.message
+files.removed(node)
+= null

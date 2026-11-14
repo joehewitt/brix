@@ -1,0 +1,27 @@
+`benchmark.meta description: Direct map/filter calls matching the bullet-loop workload.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+/core
+
+. rounds = 40000
+. upper-bound = 256
+. checksum = bullet-checksum(rounds, upper-bound)
+?! Panic("bullet checksum mismatch")
+    if checksum != rounds * 3 * 128 * 129
+
+-- "bench-result compiler-shape/generator-pipeline checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bullet-checksum Int
+    - rounds Int
+    - upper-bound Int
+
+. total = 0
+for round in 0 .. < rounds
+    . mapped = map((1 .. upper-bound)) • with each * 3
+    . values = filter(mapped) • where each % 2 == 0
+    for value in values
+        total += value
+= total
+

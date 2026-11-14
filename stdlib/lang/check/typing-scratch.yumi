@@ -1,0 +1,254 @@
+./binding
+./narrowing-key
+./ranking-cache
+./signature-cache
+./types
+/core/arena
+/core/scratch
+/lang/ast/ast-nodes
+/lang/ast/decl
+
+━━━━━━━━━━━━━━━━━━━━
++ Narrowed is Tuple
+
+` What is known of a key from some point on. `assigned` says an assignment left it so, and
+` no condition: it holds where the region it was made in ends, as far as that region ran.
+
++ key NarrowingKey
++ type TypeId
++ cases U64
++ assigned Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ TypedSite is Tuple
+
++ type TypeId
++ syntax SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ Outgoing is Tuple
+
+` An error on its way out of a function, at the syntax that lets it out. A call whose callee
+` has not settled its errors holds their place instead: it names the callee and the fact of the
+` call, and counts the function's transformers declared before it.
++ type TypeId
++ syntax SyntaxId
++ callee U32 = U32.max
++ call U32 = U32.max
++ transforms U32
+
+━━━━━━━━━━━━━━━━━━━━
++ OperatorQuery is Tuple
+    is Hashable
+
+` What a module asks when it asks whether a type declares an operator: the type, the
+` operator's name, and the types of its arguments, the second none for one that takes one.
+
++ caller U32
++ receiver U32
++ name Atom
++ arg U32
++ second U32
+
+────────────────────
++ this == other This
+
+same-receiver && name == other.name && arg == other.arg && second == other.second
+
+.. same-receiver = caller == other.caller && receiver == other.receiver
+
+────────────────────
++ do get hash Hash
+
+. fingerprint = (2166136261 /xor/ caller) * 16777619
+fingerprint = (fingerprint /xor/ receiver) * 16777619
+fingerprint = (fingerprint /xor/ arg) * 16777619
+fingerprint = (fingerprint /xor/ second) * 16777619
+= hash-for(name) /xor/ hash-for(fingerprint)
+
+━━━━━━━━━━━━━━━━━━━━
++ TypingScratch
+    is Usable'Void
+
+` The working stacks of the type pass. Each is a Scratch whose finished runs become read-only
+` spans: a call's argument types, a hit's slot fills and relations, a signature's parameter
+` names. Runs are marked, pushed, sliced, and rewound in LIFO order; a span taken over a finished
+` run stays valid for the compile because the arena never reuses storage before release.
+` A narrowing is found by its key: `latest` holds the place of the last one pushed for each
+` key, and `links` the place of the one each narrowing followed. `using-types` holds the type
+` each `using` of a class or a style sheet names, by its module and syntax, once one is found.
+` `visible-styles` holds, by class or style sheet, the place and count in `visible-style-list`
+` of the styles it sees, once each of its usings is found, and whether it has any.
+` `missing-styles` holds, by class and interface, the first style the interface uses that the
+` class does not, or no type, once it is found (`Checker.conform-styles`). `operators` holds
+` whether a type declares an operator a module asks it for (`Calls.has-operator`). `rankings`
+` holds what ranking chose for calls ranked before (`Ranking.recall`).
+` `nested-unshared` and `inline-runs` hold, for the instances being typed, what the instances typed
+` in turn changed that another pass cannot take in, and those typed only in another's run
+` (`Checker.run`); `nested-unretirable` holds what they changed that retiring them cannot undo.
+
++ arena Arena
++ types Scratch'TypeId
++ names Scratch'Atom
++ words Scratch'U32
++ relations Scratch'Relation
++ call-arguments Scratch'CallArgument
++ syntax Scratch'SyntaxId
++ narrowings Scratch'Narrowed
+_ links Scratch'U32
+_ latest Map'NarrowingKey'U32'ArenaBacking
++ returns Scratch'TypedSite
++ yields Scratch'TypedSite
++ outgoing Scratch'Outgoing
++ slots Scratch'TypeId
++ signatures SignatureCache
++ rankings RankingCache
++ using-types Map'Size'U32'ArenaBacking
++ visible-styles Map'U32'U64'ArenaBacking
++ visible-style-list List'TypeId'ArenaBacking
++ missing-styles Map'U64'U32'ArenaBacking
++ operators Map'OperatorQuery'Bool'ArenaBacking
++ runners [Runner]
++ nested-unshared I64
++ nested-unretirable I64
++ inline-runs [U32]
++ running [U32]
++ idle [IdleKit]
++ no-types ImmutableArray'TypeId'ArenaBacking
++ no-names ImmutableArray'Atom'ArenaBacking
++ no-fills ImmutableArray'U32'ArenaBacking
++ no-relations ImmutableArray'Relation'ArenaBacking
++ no-shapes ImmutableArray'CallArgument'ArenaBacking
++ no-syntax ImmutableArray'SyntaxId'ArenaBacking
+
+────────────────────
++ This
+
+.. types = Scratch'TypeId(arena, 1024)
+.. names = Scratch'Atom(arena, 256)
+.. words = Scratch'U32(arena, 512)
+.. relations = Scratch'Relation(arena, 256)
+.. call-arguments = Scratch'CallArgument(arena, 256)
+.. syntax = Scratch'SyntaxId(arena, 256)
+.. narrowings = Scratch'Narrowed(arena, 256)
+.. links = Scratch'U32(arena, 256)
+.. latest = Map'NarrowingKey'U32(arena)
+.. returns = Scratch'TypedSite(arena, 256)
+.. yields = Scratch'TypedSite(arena, 64)
+.. outgoing = Scratch'Outgoing(arena, 256)
+.. slots = Scratch'TypeId(arena, 256)
+.. signatures = SignatureCache(arena)
+.. rankings = RankingCache(arena)
+.. using-types = Map'Size'U32(arena)
+.. visible-styles = Map'U32'U64(arena)
+.. visible-style-list = List'TypeId(arena)
+.. missing-styles = Map'U64'U32(arena)
+.. operators = Map'OperatorQuery'Bool(arena)
+.. no-types = types.since(0)
+.. no-names = names.since(0)
+.. no-fills = words.since(0)
+.. no-relations = relations.since(0)
+.. no-shapes = call-arguments.since(0)
+.. no-syntax = syntax.since(0)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release
+
+signatures.release()
+rankings.release()
+arena.release()
+
+────────────────────
++ do push-narrowing
+    - narrowed Narrowed
+
+` Pushes a narrowing, which becomes the latest of its key.
+. position U32 = narrowings.length as U32
+links.push(latest[narrowed.key] ?? U32.max)
+latest[narrowed.key] = position
+narrowings.push(narrowed)
+
+────────────────────
++ do rewind-narrowings
+    - mark ScratchMark
+
+` Takes back the narrowings pushed since a mark. Each key's latest is again the one the
+` narrowing taken back followed.
+. position = narrowings.length
+while position > mark
+    position -= 1
+    latest[narrowings[position].key] = links[position]
+narrowings.rewind(mark)
+links.rewind(mark)
+
+────────────────────
++ do assigned-since [Narrowed]
+    - mark ScratchMark
+
+` What each key an assignment settled since a mark is narrowed to now: the latest narrowing
+` of each, in the order the keys were last settled, latest first.
+. found [Narrowed]
+. position = narrowings.length
+while position > mark
+    position -= 1
+    . row = narrowings[position]
+    if !row.assigned
+        continue
+    . seen = false
+    for known in found
+        if known.key == row.key
+            seen = true
+    if !seen
+        . now = narrowings[latest[row.key] ?? position]
+        found += Narrowed(now.key, now.type, now.cases, true)
+= found
+
+────────────────────
++ narrowed-since TypeId
+    - start ScratchMark
+    - key NarrowingKey
+
+` The most recent narrowing of a slot pushed since the mark, or no type.
+|? position == U32.max || position < start
+    no-type
+??
+    narrowings[position].type
+
+.. position = latest[key] ?? U32.max
+
+────────────────────
++ was-assigned Bool
+    - start ScratchMark
+    - key NarrowingKey
+
+` Whether the most recent narrowing of a slot pushed since the mark is what an assignment
+` left it as.
+|? position == U32.max || position < start
+    false
+??
+    narrowings[position].assigned
+
+.. position = latest[key] ?? U32.max
+
+────────────────────
++ narrowed-cases-since U64
+    - start ScratchMark
+    - key NarrowingKey
+
+` The cases the most recent narrowing of a slot leaves its union, as a mask, or none.
+|? position == U32.max || position < start
+    0
+??
+    narrowings[position].cases
+
+.. position = latest[key] ?? U32.max

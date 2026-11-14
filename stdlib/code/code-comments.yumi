@@ -1,0 +1,56 @@
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ do code-toggled-comments [String]
+    - lines [String]
+    - marker String
+
+. bare = marker.trim()
+. filled = List'String(each in lines when each.trim().size > 0)
+. counted = if filled.length > 0 then filled else lines
+. uncomments = filled.length > 0
+for line in counted
+    if !line[code-indent-size(line) ...].starts-with(bare)
+        uncomments = false
+if uncomments
+    = List'String(code-uncommented-line(each, bare) in lines)
+. column = code-indent-size(counted[0])
+for line in counted
+    column = min(column, code-indent-size(line))
+= List'String(code-commented-line(each, marker, column, filled.length == 0) in lines)
+
+━━━━━━━━━━━━━━━━━━━━
++ do code-indent-size Size
+    - line String
+
+. count Size = 0
+for char in line
+    if char != ' ' && char != '\t'
+        break
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-commented-line String
+    - line String
+    - marker String
+    - column Size
+    - includes-blank Bool
+
+if !includes-blank && line.trim().size == 0 then line else marked
+
+.. marked = "${line[0 .. < column]}$marker${line[column ...]}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-uncommented-line String
+    - line String
+    - bare String
+
+|? !rest.starts-with(bare)
+    line
+??
+    "${line[0 .. < indent]}${if kept.starts-with(" ") then kept[1 ...] else kept}"
+
+.. indent = code-indent-size(line)
+.. rest = line[indent ...]
+.. kept = rest[bare.size ...]

@@ -1,0 +1,522 @@
+:====
+# $property reads resolve statically against the visible style vocabulary and compile to the
+# declared value type: bare $name reads the current node and object.$name reads an explicit
+# subject. Reads never settle: values read before settling are the style's initial values.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = 9
+        bold = true
+        scale = 2.5
+        margin = 3
+
+. label = demo.%first-child!
+-- demo.read-styles(label)
+demo.markup-batch-queue.checkpoint()
+-- demo.read-styles(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupBatch
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
++ do read-styles String
+    - label Box
+
+. own = $ink
+. child-ink = label.$ink
+. child-bold = label.$bold
+. child-scale = label.$scale
+. child-margin = label.$margin
+= "own=$own ink=$child-ink bold=$child-bold scale=$child-scale margin=$child-margin"
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
++ bold Bool = false
++ scale F64 = 1.5
++ margin I64 = 0
+
+. ink -> paint
+. bold -> paint
+. scale -> layout
+. margin -> layout
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+:----
+own=7 ink=7 bold=false scale=1.5 margin=0
+own=7 ink=9 bold=true scale=2.5 margin=3
+;====
+:====
+# Bare style reads can be the root of an ordinary member chain.
+
+/core/style
+/core/tests/support/markup-fixtures
+
+. demo = ChainDemo()
+-- demo.read-chain()
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainMetric is Tuple
+
++ amount I64
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainStyle is Style
+
++ metric ChainMetric = ChainMetric(41)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainDemo is Box
+    using ChainStyle
+
+────────────────────
++ read-chain I64
+
+$metric.amount
+
+:----
+41
+;====
+:====
+# Style reads are legal anywhere: free functions and ordinary methods read settled computed
+# values directly through subject.$property without any annotation.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = 9
+
+demo.markup-batch-queue.checkpoint()
+. label = demo.%first-child! as Label
+-- "free=${read-ink-anywhere(label)}"
+-- "method=${demo.plain-read(label)}"
+-- "top=${label.$ink}"
+
+━━━━━━━━━━━━━━━━━━━━
++ read-ink-anywhere I64
+    - label Label
+
+label.$ink
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupBatch
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
++ plain-read I64
+    - label Label
+
+label.$ink
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+:----
+free=9
+method=9
+top=9
+;====
+:====
+# Optional chaining on style reads returns the computed value for a present subject and null for
+# a missing subject, matching ordinary member and structural markup chains.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = 14
+
+demo.markup-batch-queue.checkpoint()
+
+. maybe-label Label? = demo.%first-child! as Label
+. missing Label? = null
+-- "present=${maybe-label?.$ink ?? -1}"
+-- "missing=${missing?.$ink ?? -1}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupBatch
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+:----
+present=14
+missing=-1
+;====
+:====
+# Style reads are total: authored values are contextual to the mounted tree, so an object that
+# leaves it reads the property's registered initial value instead of its settled value.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = 42
+
+demo.markup-batch-queue.checkpoint()
+
+. label = demo.%first-child! as Label
+-- label.$ink
+
+markup-remove(demo, label)
+-- label.$ink
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupBatch
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+:----
+42
+7
+;====
+:====
+# Styles register at the head of their defining module's init: module-level code in an
+# importing module can mount, settle, and read styled nodes during its own initialization,
+# before main runs, and sees authored values and unauthored defaults.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+./theme
+
+<InitDemo demo
+    <Label
+        ink = 12
+
+demo.markup-batch-queue.checkpoint()
+
+. label = demo.%first-child! as Label
+. ink = label.$ink
+. tone = label.$tone
+-- "init-read ink=$ink tone=$tone"
+
+━━━━━━━━━━━━━━━━━━━━
++ InitDemo is Box
+    is MarkupBatch
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+:----
+%file: theme.yumi
+
+/core/style
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
++ tone I64 = 3
+
+. ink -> paint
+
+:----
+
+init-read ink=12 tone=3
+;====
+:====
+# An interface can declare the style vocabularies its values expose. Style reads and imperative
+# writes on interface values resolve through the interface's usings.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. items [Tinted] = List'Tinted()
+items += Swatch()
+items += Chip()
+. level = 5
+for item in items
+    item.tint = level
+    level += 1
+for item in items
+    -- "tint=${item.$tint} authored=${style-has-authored-property(item, "TintStyle", "tint")}"
+-- "fresh=${tint-of(Chip())}"
+
+━━━━━━━━━━━━━━━━━━━━
++ tint-of I64
+    - item Tinted
+
+item.$tint
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ tint I64 = 1
+
+. tint -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ Tinted is Interface
+    is MarkupHost
+    using TintStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Swatch is Box
+    is Tinted
+    using TintStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Chip is Box
+    is Tinted
+    using TintStyle
+
+:----
+tint=5 authored=true
+tint=6 authored=true
+fresh=1
+;====
+:====
+# Implementing an interface that declares a style vocabulary requires using that style.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. item Tinted = Plain()
+-- item.$tint
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ tint I64 = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Tinted is Interface
+    is MarkupHost
+    using TintStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+    is Tinted
+
+:----
+%crash
+
+Exception: Plain must use TintStyle to implement Tinted
+<no file:20>
+    + Plain is Box
+    ^^^^^^^^^^^^^
+;====
+:====
+# A character style value set from a name is kept in its slot as a number and read back as
+# the character.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. chosen = 'y'
+
+<BatchDemo demo
+    <Label
+        mark = chosen
+
+demo.markup-batch-queue.checkpoint()
+-- (demo.%first-child! as Label).$mark
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupBatch
+    using MarkStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkStyle is Style
+
++ mark Char = 'a'
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using MarkStyle
+
+:----
+y
+;====
+:====
+# A style that only an object the program never makes uses is not registered, so its initial values are never evaluated.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. label = Label()
+-- "made"
+
+━━━━━━━━━━━━━━━━━━━━
++ InkStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ ToneStyle is Style
+
++ tone I64 = boom()
+
+━━━━━━━━━━━━━━━━━━━━
++ do boom I64
+
+?! Panic("boom")
+= 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using InkStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Badge is Box
+    using ToneStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ badge := Badge()
+
+:----
+made
+;====
+:====
+# A name a method assigns that nothing declares is the property of a style the object uses, which the assignment declares for the object.
+
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    <Label label
+
+demo.markup-batch-queue.checkpoint()
+label.paint()
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+────────────────────
++ do paint
+
+ink = 12
+
+:----
+
+node TextStyle seg=owned gen=1 mask=1 ink=12
+;====
+:====
+# A style read with no object reads this, so a script, which has none, sees no style property.
+
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+-- $ink
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+:----
+%crash
+
+Exception: Style property "ink" not found
+<no file:6>
+    -- $ink
+       ^^^^
+;====

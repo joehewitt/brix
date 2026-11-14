@@ -1,0 +1,122 @@
+/os/process
+
+━━━━━━━━━━━━━━━━━━━━
++ GitReader
+
++ process Process
+
+_ buffer = Byte[65536]
+_ cursor Index
+_ length Size
+
+────────────────────
++ This
+    - process
+
+────────────────────
++ do read-bytes
+    - terminator Byte
+
+. head Byte[]?
+while true
+    if cursor == length && !refill()
+        = head
+    . start = cursor
+    while cursor < length && buffer[cursor] != terminator
+        cursor += 1
+    . piece = joined(start, cursor, head)
+    if cursor < length
+        cursor += 1
+        = piece
+    head = piece
+
+────────────────────
++ do read-text
+    - terminator Byte
+
+. bytes = read-bytes(terminator)
+=? null if bytes == null
+= bytes.slice-string()
+
+────────────────────
++ do require-text ?! Error
+    - terminator Byte
+
+. text = read-text(terminator)
+?! Error("Incomplete Git output")
+    if text == null
+= text
+
+────────────────────
++ do read-byte
+
+=? null if cursor == length && !refill()
+. byte = buffer[cursor]
+cursor += 1
+= byte
+
+────────────────────
++ do read-exact ?! Error
+    - size Size
+
+. output = Byte[size]
+. offset Index = 0
+while offset < size
+    if cursor < length
+        . count = length - cursor
+        if count > size - offset
+            count = size - offset
+        output[offset .. < offset + count] = buffer[cursor .. < cursor + count]
+        cursor += count
+        offset += count
+    else
+        . count = process.read(size - offset, output[offset ...])
+        ?! Error("Incomplete Git output")
+            if count == 0
+        offset += count
+= output
+
+────────────────────
++ do consume ?! Error
+    - expected Byte[]
+
+while length - cursor < expected.length
+    ?! Error("Incomplete Git output")
+        if !append()
+for index in 0 .. < expected.length
+    =? false if buffer[cursor + index] != expected[index]
+cursor += expected.length
+= true
+
+────────────────────
+_ do refill
+
+length = process.read(buffer.length, buffer)
+cursor = 0
+= length > 0
+
+────────────────────
+_ do append
+
+if cursor > 0
+    . remaining = length - cursor
+    for index in 0 .. < remaining
+        buffer[index] = buffer[cursor + index]
+    length = remaining
+    cursor = 0
+. count = process.read(buffer.length - length, buffer[length ...])
+length += count
+= count > 0
+
+────────────────────
+_ do joined
+    - start Index
+    - end Index
+    - head Byte[]?
+
+. prefix = head?.length ?? 0
+. output = Byte[prefix + end - start]
+if head != null
+    output[0 .. < prefix] = head
+output[prefix ...] = buffer[start .. < end]
+= output

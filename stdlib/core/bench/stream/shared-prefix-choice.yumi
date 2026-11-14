@@ -1,0 +1,56 @@
+`benchmark.meta description: Stresses choices that share long prefixes.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. values = match shared-prefix-choice-source()
+    ~ \shared-prefix-choice-document
+    ?! Panic("shared-prefix-choice did not parse")
+
+. checksum = 0 as Size
+for value in values
+    checksum += value
+
+-- "bench-result stream/shared-prefix-choice checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ shared-prefix-choice-document ~ Char
+
+~ rows \shared-prefix-row+
+    rows
+
+.. shared-prefix-row Size ~
+    ~ "command-alpha:" name \shared-word ":" number \shared-digits "\n"
+        name.length + number.length
+    ~ "command-beta:" name \shared-word ":" number \shared-digits "\n"
+        name.length * 2 + number.length
+    ~ "command-gamma:" name \shared-word ":" number \shared-digits "\n"
+        name.length * 3 + number.length
+    ~ "command-delta:" name \shared-word ":" number \shared-digits "\n"
+        name.length * 4 + number.length
+
+.. shared-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+.. shared-digits String ~
+    ~ [0-9]+
+
+━━━━━━━━━━━━━━━━━━━━
+_ shared-prefix-choice-source
+
+"".join(shared-prefix-choice-line(each) in 0 .. < 160)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shared-prefix-choice-line String
+    - index Int
+
+"command-$kind:name_$index:${index * 13}\n"
+
+.. kind =
+    |? index % 4 == 0
+        "alpha"
+    |? index % 4 == 1
+        "beta"
+    |? index % 4 == 2
+        "gamma"
+    ??
+        "delta"

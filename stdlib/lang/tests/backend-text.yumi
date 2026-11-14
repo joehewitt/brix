@@ -1,0 +1,88 @@
+/lang/backend/mir
+/lang/backend/mir-text
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Backend Text Numbers")
+cases.run(number-tests)
+cases = cases.then("Backend Text Hash", hash-tests)
+cases = cases.then("Backend Post Order", post-order-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do number-tests TestCase
+    - t TestCase
+
+. out TextBuffer
+out.unsigned(0)
+out.byte(32)
+out.unsigned(18446744073709551615)
+out.byte(32)
+out.signed(-1)
+out.byte(32)
+out.signed((1u64 /lshift/ 63) as I64)
+out.byte(32)
+out.signed(9223372036854775807)
+t.expect
+    - "decimal"
+    - "0 18446744073709551615 -1 -9223372036854775808 9223372036854775807"
+    - written(out)
+
+out.clear()
+out.hex64(0)
+out.byte(32)
+out.hex64(0xcbf29ce484222325)
+t.expect("hex64", "0000000000000000 cbf29ce484222325", written(out))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do hash-tests TestCase
+    - t TestCase
+
+. out TextBuffer
+t.expect("empty", 0xcbf29ce484222325, out.hash)
+out.text("hello")
+t.expect("hello", 0xa430d84680aabd0b, out.hash)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do post-order-tests TestCase
+    - t TestCase
+
+. function = use MIRFunction()
+t.expect("no blocks", 0, function.post-order().length)
+for block in 0 .. < 5
+    function.blocks.append(MIRBlock(no-string, IdList(), IdList(), IdList()))
+    function.block-order = function.block-order.appended(function.arena, block as U32)
+connect(function, 0, 1)
+connect(function, 0, 2)
+connect(function, 1, 3)
+connect(function, 2, 3)
+connect(function, 3, 1)
+connect(function, 4, 0)
+. order = function.post-order()
+t.expect("reachable blocks", 4, order.length)
+t.expect("deepest first", 3, order[0])
+t.expect("then its predecessor", 1, order[1])
+t.expect("then the second branch", 2, order[2])
+t.expect("root last", 0, order[3])
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do connect
+    - function MIRFunction
+    - from BlockId
+    - to BlockId
+
+function.blocks[from].successors = function.blocks[from].successors.appended(function.arena, to)
+function.blocks[to].predecessors = function.blocks[to].predecessors.appended(function.arena, from)
+
+━━━━━━━━━━━━━━━━━━━━
+_ written String
+    - out TextBuffer
+
+out.bytes[0 .. < out.length].slice-string()

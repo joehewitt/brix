@@ -1,0 +1,145 @@
+/graphics/primitives
+/gui
+/gui/icons/lucide/file-code
+/gui/icons/lucide/file-text
+/gui/icons/lucide/folder
+
+━━━━━━━━━━━━━━━━━━━━
++ FileRow is Box
+
++ item FileNode
+
+────────────────────
+
+<This • flex-row flex:1
+    if #item.children != null
+        <LucideFolder • icon folder-icon w:15 h:15 mr:6
+            align-y = Alignment.center
+    if #item.children == null && #item.name.ends-with(".md")
+        <LucideFileText • icon file-icon w:15 h:15 mr:6
+            align-y = Alignment.center
+    if #item.children == null && !#item.name.ends-with(".md")
+        <LucideFileCode • icon file-icon w:15 h:15 mr:6
+            align-y = Alignment.center
+    <Label • flex:1
+        text = #item.name
+        align-y = Alignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ FileNode
+
++ id String
++ name String
++ children [FileNode]?
+
+────────────────────
++ This
+    - id
+    - name
+    - children [FileNode]? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ file-children [FileNode]?
+    - node FileNode
+
+node.children
+
+━━━━━━━━━━━━━━━━━━━━
++ file-key String
+    - node FileNode
+
+node.id
+
+━━━━━━━━━━━━━━━━━━━━
++ file-is-folder Bool
+    - node FileNode
+
+node.children != null
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-path String?
+    - node FileNode
+    - id String
+    - prefix String = ""
+
+. children = node.children
+=? if !children
+for child in children
+    . path = "$prefix${child.name}"
+    =? path if child.id == id
+    . found = file-path(child, id, "$path/")
+    =? found if found
+
+━━━━━━━━━━━━━━━━━━━━
++ do detach-file
+    - parent FileNode
+    - node FileNode
+
+. children = parent.children
+=? if !children
+for index in 0 .. < children.length
+    if children[index].id == node.id
+        children.remove(index)
+        =
+for child in children
+    detach-file(child, node)
+
+━━━━━━━━━━━━━━━━━━━━
+_ file FileNode
+    - path String
+
+FileNode(path, file-leaf-name(path))
+
+━━━━━━━━━━━━━━━━━━━━
+_ folder FileNode
+    - path String
+    ... children [FileNode]
+
+FileNode(path, file-leaf-name(path), children)
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-leaf-name String
+    - path String
+
+if slash == null then path else path[(slash as Index) + 1 .. < path.length]
+
+.. slash = path.find-reverse("/")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do notes-folder FileNode
+    - count Size
+
+. notes [FileNode]
+for index in 0 .. < count
+    notes += file("notes/note-${index + 1}.md")
+= FileNode("notes", "notes", notes)
+
+━━━━━━━━━━━━━━━━━━━━
++ file-fixture FileNode
+
+folder
+    - "workspace"
+    - folder
+        - "docs"
+        - file("docs/README.md")
+        - file("docs/sidebar.md")
+    - folder
+        - "examples"
+        - folder
+            - "examples/gui"
+            - folder
+                - "examples/gui/sidebar"
+                - file("examples/gui/sidebar/button.yumi")
+                - file("examples/gui/sidebar/section.yumi")
+                - file("examples/gui/sidebar/showcase.yumi")
+                - file("examples/gui/sidebar/theme.yumi")
+            - file("examples/gui/tree-box-showcase.yumi")
+    - folder
+        - "stdlib"
+        - folder
+            - "stdlib/gui"
+            - file("stdlib/gui/button.yumi")
+            - file("stdlib/gui/list-box.yumi")
+            - file("stdlib/gui/tree-box.yumi")
+    - notes-folder(120)
+    - file("README.md")

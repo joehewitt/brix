@@ -1,0 +1,77 @@
+
+./combine
+
+━━━━━━━━━━━━━━━━━━━━
++ do any'Item <Bool> @inline
+    - stream <Item>
+    - where Predicate'Item
+
+. ok = false
+for item in stream when where(item)
+    ok = true
+    break
+<= ok
+
+━━━━━━━━━━━━━━━━━━━━
++ do all'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+. ok = true
+for item in stream when !where(item)
+    ok = false
+    break
+<= ok
+
+━━━━━━━━━━━━━━━━━━━━
++ contains'Item <Bool>
+    - contained Item
+    - stream <Item>
+
+any(stream) • where each == contained
+
+━━━━━━━━━━━━━━━━━━━━
++ do flat-map-latest'Item'Result <Item>
+    - streams <<Item>>
+    - with Selector'Item'Result
+
+. sources SyncChannel'(SyncBufferedChannel'Item)
+
+do new
+    . latest Optional'(SyncBufferedChannel'Item)
+    for stream in streams
+        latest?.close()
+        . output = SyncBufferedChannel'Item()
+        do new
+            for item in stream when !output.is-closed
+                output <- item
+            output.close()
+
+        latest = output
+        sources <- output
+    latest?.close()
+    sources.close()
+
+for source in sources
+    for item in source
+        <= with(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ do forever'Thing
+    - thing Thing
+
+while true
+    <= thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do forever'Result
+    - where Getter'Result
+
+while true
+    <= where
+
+━━━━━━━━━━━━━━━━━━━━
++ reversed'Item @inline
+    - stream <Item>
+
+List(stream).reversed()

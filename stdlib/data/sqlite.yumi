@@ -1,0 +1,506 @@
+/YuCore/YuString.h
+/YuSQLite/YuSQLite.h
+/sqlite/sqlite3.h
+/string.h
+/time/duration
+
+━━━━━━━━━━━━━━━━━━━━
++ SQLiteValue is Union
+
+| Null
+| Bool
+| I64
+| F64
+| String
+| Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
++ SQLiteError is Error
+
++ code I32
++ offset Size?
+
+────────────────────
++ This
+    - code
+    - reason String
+    - offset Size? = null
+
+message = reason
+
+────────────────────
++ get primary-code I32
+
+code /and/ 0xff
+
+━━━━━━━━━━━━━━━━━━━━
++ SQLite
+    is Closable
+    is Usable'SQLite
+
++ path String
++ is-shared-across-threads Bool
+
+_ handle CPointer'I8
+
+────────────────────
++ This ?! SQLiteError
+    - path
+    - is-read-only = false
+    - is-shared-across-threads = false
+    - busy-timeout Milliseconds = 5000ms
+
+. access = if is-read-only then C:SQLITE_OPEN_READONLY else (C:SQLITE_OPEN_READWRITE /or/ C:SQLITE_OPEN_CREATE)
+. locking = if is-shared-across-threads then C:SQLITE_OPEN_FULLMUTEX else C:SQLITE_OPEN_NOMUTEX
+. opened CPointer'I8
+. status = C:sqlite3_open_v2(path, &opened, access /or/ locking, null)
+if status != C:SQLITE_OK
+    . failure = if opened == null then SQLiteError(status, "Unable to open $path") else last-error
+        .. last-error = connection-error(opened, "Unable to open $path")
+    C:sqlite3_close_v2(opened)
+    ?! failure
+handle = opened
+C:sqlite3_busy_timeout(handle, busy-timeout)
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'SQLite ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+do close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get last-insert-id I64
+
+C:sqlite3_last_insert_rowid(handle)
+
+────────────────────
++ get changes I64
+
+C:sqlite3_changes64(handle)
+
+────────────────────
++ do close ?! SQLiteError
+
+=? if handle == null
+. closing = handle
+handle = null
+. status = C:sqlite3_close_v2(closing)
+?! SQLiteError(status, "Unable to close $path")
+    if status != C:SQLITE_OK
+
+────────────────────
++ do prepare SQLiteStatement ?! SQLiteError
+    - sql String
+
+?! SQLiteError(C:SQLITE_MISUSE, "$path is closed")
+    if handle == null
+. prepared CPointer'I8
+. has-more I32
+. status = C:yumiSQLitePrepare(handle, sql, sql.size, &prepared, &has-more)
+?! failure("Unable to prepare \"$sql\"")
+    if status != C:SQLITE_OK
+?! SQLiteError(C:SQLITE_MISUSE, "\"$sql\" holds no statement")
+    if prepared == null
+if has-more != 0
+    C:sqlite3_finalize(prepared)
+    ?! SQLiteError(C:SQLITE_MISUSE, "\"$sql\" holds more than one statement; run it with execute-script")
+= SQLiteStatement(this, sql, prepared)
+
+────────────────────
++ do execute I64 ?! SQLiteError
+    - sql String
+    ... params [SQLiteValue] = List'SQLiteValue()
+
+. statement = use prepare(sql)
+statement.bind-values(params)
+statement.finish()
+= changes
+
+────────────────────
++ do execute-script ?! SQLiteError
+    - sql String
+
+?! SQLiteError(C:SQLITE_MISUSE, "$path is closed")
+    if handle == null
+. status = C:sqlite3_exec(handle, sql, null, null, null)
+?! failure("Unable to run script")
+    if status != C:SQLITE_OK
+
+────────────────────
++ do query'Item <Item> ?! SQLiteError @inline
+    - sql String
+    - decode () Item ?! SQLiteError
+        - row SQLiteRow
+    ... params [SQLiteValue] = List'SQLiteValue()
+
+. statement = use prepare(sql)
+statement.bind-values(params)
+while statement.step()
+    <= decode(statement.row)
+
+────────────────────
++ do query-first'Item Item? ?! SQLiteError
+    - sql String
+    - decode () Item ?! SQLiteError
+        - row SQLiteRow
+    ... params [SQLiteValue] = List'SQLiteValue()
+
+. statement = use prepare(sql)
+statement.bind-values(params)
+=? null if !statement.step()
+= decode(statement.row)
+
+────────────────────
++ do transaction ?! Error
+    - body Doer
+    - is-immediate = false
+
+execute(if is-immediate then "begin immediate" else "begin")
+. committed = false
+do finally
+    if !committed
+        execute("rollback")
+            catch SQLiteError
+                0
+body()
+execute("commit")
+committed = true
+
+────────────────────
+_ failure SQLiteError
+    - context String
+
+connection-error(handle, context)
+
+━━━━━━━━━━━━━━━━━━━━
++ SQLiteStatement
+    is Closable
+    is Usable'SQLiteStatement
+
++ database SQLite
++ sql String
+
+_ handle CPointer'I8
+
+────────────────────
++ This
+    - database
+    - sql
+    - handle
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'SQLiteStatement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+do close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get row SQLiteRow
+
+SQLiteRow(this)
+
+────────────────────
++ do bind ?! SQLiteError
+    ... params [SQLiteValue] = List'SQLiteValue()
+
+bind-values(params)
+
+────────────────────
++ do step Bool ?! SQLiteError
+
+?! SQLiteError(C:SQLITE_MISUSE, "\"$sql\" is closed")
+    if handle == null
+. status = C:sqlite3_step(handle)
+=? true if status == C:SQLITE_ROW
+=? false if status == C:SQLITE_DONE
+?! database.failure("Unable to run \"$sql\"")
+
+────────────────────
++ do reset
+
+=? if handle == null
+C:sqlite3_reset(handle)
+
+────────────────────
++ do close
+
+=? if handle == null
+C:sqlite3_finalize(handle)
+handle = null
+
+────────────────────
+_ do bind-values ?! SQLiteError
+    - params [SQLiteValue]
+
+?! SQLiteError(C:SQLITE_MISUSE, "\"$sql\" is closed")
+    if handle == null
+C:sqlite3_reset(handle)
+C:sqlite3_clear_bindings(handle)
+. expected = C:sqlite3_bind_parameter_count(handle) as Size
+?! SQLiteError(C:SQLITE_RANGE, "\"$sql\" takes $expected parameters, not ${params.length}")
+    if params.length != expected
+for index in 0 .. < params.length
+    . position = (index + 1) as I32
+    lock()
+    . status = match params[index]
+        | Null!
+            C:yumiSQLiteBindNull(handle, position)
+        | flag Bool
+            C:yumiSQLiteBindInt64(handle, position, if flag then 1 else 0)
+        | number I64
+            C:yumiSQLiteBindInt64(handle, position, number)
+        | number F64
+            C:yumiSQLiteBindDouble(handle, position, number)
+        | text String
+            C:yumiSQLiteBindText(handle, position, text, text.size)
+        | bytes Byte[]
+            C:yumiSQLiteBindBlob(handle, position, bytes, bytes.size)
+    unlock()
+    ?! database.failure("Unable to bind parameter ${index + 1} of \"$sql\"")
+        if status != C:SQLITE_OK
+
+────────────────────
+_ do lock @inline
+
+=? if !database.is-shared-across-threads
+C:yumiSQLiteLock(database.handle)
+
+────────────────────
+_ do unlock @inline
+
+=? if !database.is-shared-across-threads
+C:yumiSQLiteUnlock(database.handle)
+
+────────────────────
+_ do finish ?! SQLiteError
+
+. stepping = true
+while stepping
+    stepping = step()
+
+━━━━━━━━━━━━━━━━━━━━
++ SQLiteRow is Tuple
+
++ statement SQLiteStatement
+
+────────────────────
++ get length Size
+
+C:yumiSQLiteColumnCount(statement.handle)
+
+────────────────────
++ do name String ?! SQLiteError
+    - index Size
+
+kind(index)
+= C:sqlite3_column_name(statement.handle, index) as CPointer'Char8
+
+────────────────────
++ is-null Bool ?! SQLiteError
+    - index Size
+
+kind(index) == C:SQLITE_NULL
+
+────────────────────
++ value SQLiteValue ?! SQLiteError
+    - index Size
+
+match? kind(index)
+    |= C:SQLITE_INTEGER
+        int(index)
+    |= C:SQLITE_FLOAT
+        real(index)
+    |= C:SQLITE_TEXT
+        string(index)
+    |= C:SQLITE_BLOB
+        blob(index)
+
+────────────────────
++ int I64 ?! SQLiteError @inline
+    - index Size
+
+?! column-error(index, C:SQLITE_NULL, "an integer")
+    if number == null
+number
+
+.. number = optional-int(index)
+
+────────────────────
++ real F64 ?! SQLiteError @inline
+    - index Size
+
+?! column-error(index, C:SQLITE_NULL, "a number")
+    if number == null
+number
+
+.. number = optional-real(index)
+
+────────────────────
++ bool Bool ?! SQLiteError @inline
+    - index Size
+
+truth(index, int(index))
+
+────────────────────
++ string String ?! SQLiteError @inline
+    - index Size
+
+?! column-error(index, C:SQLITE_NULL, "text")
+    if text == null
+text
+
+.. text = optional-string(index)
+
+────────────────────
++ blob Byte[] ?! SQLiteError @inline
+    - index Size
+
+?! column-error(index, C:SQLITE_NULL, "a blob")
+    if bytes == null
+bytes
+
+.. bytes = optional-blob(index)
+
+────────────────────
++ do optional-int I64? ?! SQLiteError @inline
+    - index Size
+
+. found I32
+statement.lock()
+. number = C:yumiSQLiteReadInt64(statement.handle, index, &found)
+statement.unlock()
+=? null if found == C:SQLITE_NULL
+?! column-error(index, found, "an integer")
+    if found != C:SQLITE_INTEGER
+= number
+
+────────────────────
++ do optional-real F64? ?! SQLiteError @inline
+    - index Size
+
+. found I32
+statement.lock()
+. number = C:yumiSQLiteReadDouble(statement.handle, index, &found)
+statement.unlock()
+=? null if found == C:SQLITE_NULL
+?! column-error(index, found, "a number")
+    if found != C:SQLITE_FLOAT && found != C:SQLITE_INTEGER
+= number
+
+────────────────────
++ optional-bool Bool? ?! SQLiteError @inline
+    - index Size
+
+if number == null then null else truth(index, number)
+
+.. number = optional-int(index)
+
+────────────────────
++ do optional-string String? ?! SQLiteError @inline
+    - index Size
+
+. found I32
+. size I64
+statement.lock()
+. text = C:yumiSQLiteReadText(statement.handle, index, &found, &size)
+statement.unlock()
+=? null if found == C:SQLITE_NULL
+?! column-error(index, found, "text")
+    if found != C:SQLITE_TEXT
+=? "" if size == 0
+?! SQLiteError(C:SQLITE_MISMATCH, "Column $index (${name(index)}) holds text that is not UTF-8")
+    if C:yumiStringValidateUtf8(text, size as Size) != 0
+= C:yumiStringCreate(text, size as Size)
+
+────────────────────
++ do optional-blob Byte[]? ?! SQLiteError @inline
+    - index Size
+
+. found I32
+. size I64
+statement.lock()
+. bytes = C:yumiSQLiteReadBlob(statement.handle, index as I64, &found, &size)
+statement.unlock()
+=? null if found == C:SQLITE_NULL
+?! column-error(index, found, "a blob")
+    if found != C:SQLITE_BLOB
+. copy = Byte[size as Size]
+if size > 0
+    C:memcpy(copy, bytes, size as Size)
+= copy
+
+────────────────────
+_ do kind I32 ?! SQLiteError
+    - index Size
+
+statement.lock()
+. found = C:yumiSQLiteReadType(statement.handle, index)
+statement.unlock()
+?! range-error(index)
+    if found == 0
+= found
+
+────────────────────
+_ truth Bool ?! SQLiteError @inline
+    - index Size
+    - number I64
+
+?! SQLiteError(C:SQLITE_MISMATCH, "Column $index (${name(index)}) holds $number, not 0 or 1")
+    if number != 0 && number != 1
+number == 1
+
+────────────────────
+_ column-error SQLiteError ?! SQLiteError
+    - index Size
+    - found I32
+    - wanted String
+
+|? found == 0
+    range-error(index)
+??
+    SQLiteError
+        - C:SQLITE_MISMATCH
+        - "Column $index (${name(index)}) holds ${sqlite-type-name(found)}, not $wanted"
+
+────────────────────
+_ range-error SQLiteError
+    - index Size
+
+SQLiteError(C:SQLITE_RANGE, "Column $index is out of range; the row has $length columns")
+
+━━━━━━━━━━━━━━━━━━━━
+_ connection-error SQLiteError
+    - handle CPointer'I8
+    - context String
+
+SQLiteError(code, "$context: $reason", offset as Size if offset >= 0)
+
+.. code = C:sqlite3_extended_errcode(handle)
+.. reason = (C:sqlite3_errmsg(handle) as CPointer'Char8) as String
+.. offset = C:sqlite3_error_offset(handle)
+
+━━━━━━━━━━━━━━━━━━━━
+_ sqlite-type-name String
+    - type I32
+
+|? "an integer" if type == C:SQLITE_INTEGER
+|? "a real" if type == C:SQLITE_FLOAT
+|? "text" if type == C:SQLITE_TEXT
+|? "a blob" if type == C:SQLITE_BLOB
+?? "NULL"

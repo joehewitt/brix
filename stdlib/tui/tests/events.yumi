@@ -1,0 +1,56 @@
+
+/test
+/tui/events
+/ui/key-combo
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Terminal Events")
+
+"Option+Left", key-press-summary("\x1b[1;3D")
+"Option+Left", key-press-summary("\x1bb")
+"Option+Right", key-press-summary("\x1b[1;3C")
+"Option+Right", key-press-summary("\x1bf")
+"Option+Shift+Left", key-press-summary("\x1b[1;4D")
+"Option+Shift+Left", key-press-summary("\x1bB")
+"Option+Shift+Right", key-press-summary("\x1b[1;4C")
+"Option+Shift+Right", key-press-summary("\x1bF")
+"Home, End", key-press-summary("\x1b[H\x1b[F")
+"Home, End", key-press-summary("\x1b[1~\x1b[4~")
+"Shift+Enter", key-press-summary("\x1b[13;2u")
+"Shift+Enter", key-press-summary("\x1b[27;2;13~")
+
+════════════════════
+test("Terminal Input")
+
+"", input-text("\x1b[?2004h")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do input-text
+    - source String
+
+. text = ""
+for event in ~ TerminalEvents in source
+    if event is KeyInputEvent
+        . input = event as KeyInputEvent
+        text += input.char
+
+= text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do key-press-summary
+    - source String
+
+. events [String]
+for event in ~ TerminalEvents in source
+    if event is KeyPressEvent
+        . press = event as KeyPressEvent
+        events += KeyCombo(press.modifiers, KeyTrigger.key(press.key)).display-label
+    else
+        events += "$event"
+
+= ", ".join(events)

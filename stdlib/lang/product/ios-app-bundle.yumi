@@ -1,0 +1,104 @@
+./bundle-files
+./ios-device
+/lang/emit/products
+/lang/target
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-ios-app-bundle Path ?! Error
+    - product AppProduct
+    - executable Path
+    - target Target
+
+` Writes the flat app bundle an iOS device or simulator installs: the executable and its
+` Info.plist at the bundle's root. A simulator's bundle is signed ad hoc; a device's embeds the
+` provisioning profile it is signed with.
+. bundle = executable.dir / "${product.name}.app"
+?! Error("-o $executable is where the app bundle goes; give the executable another name")
+    if (bundle as String) == (executable as String)
+. info = bundle / "Info.plist"
+. inner = bundle / product.name
+. signature = bundle / "_CodeSignature"
+. profile = bundle / "embedded.mobileprovision"
+. kept [String] = [info as String, inner as String, signature as String, (signature / "CodeResources") as String]
+if target.runner is .device
+    kept += profile as String
+make-directories(bundle)
+prune(bundle, kept)
+write-if-changed(info, info-plist(product, target))
+if inner.exists
+    inner.delete()
+executable.clone(inner)
+if target.runner is .device
+    sign-for-device(bundle, product.id, device-work-path(executable))
+else
+    sign(bundle)
+= bundle
+
+━━━━━━━━━━━━━━━━━━━━
++ device-work-path Path
+    - executable Path
+
+Path("${executable}.device")
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ info-plist
+    - product AppProduct
+    - target Target
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    ${plist-string(product.name)}
+    <key>CFBundleIdentifier</key>
+    ${plist-string(product.id)}
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    ${plist-string(product.name)}
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    ${plist-string(product.version ?? "1.0")}
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>${supported-platform(target)}</string>
+    </array>
+    <key>CFBundleVersion</key>
+    ${plist-string(product.version ?? "1.0")}
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>MinimumOSVersion</key>
+    <string>${os-version-text(target.minimum-os-version)}</string>
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    <key>UIStatusBarHidden</key>
+    <true/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict>
+</plist>
+
+━━━━━━━━━━━━━━━━━━━━
+_ os-version-text String
+    - version U32
+
+"${version /zrshift/ 16}.${(version /zrshift/ 8) /and/ 0xff}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ supported-platform String
+    - target Target
+
+if target.runner is .device then "iPhoneOS" else "iPhoneSimulator"

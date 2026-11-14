@@ -1,0 +1,130 @@
+`benchmark.meta description: Replays 1,632 retained 24pt Lucide icons in four shapes through a 2x CoreGraphics DisplayScene for 120 full-damage frames.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/gui/box
+/gui/icons/lucide/activity
+/gui/icons/lucide/airplay
+/gui/icons/lucide/alarm-clock
+/gui/icons/lucide/album
+/gui/layout
+/gui/primitives
+/gui/scene
+/gui/vector-image
+
+. root = BenchRoot()
+markup-mount-root(root, root)
+for row-index in 0 .. < 34
+    . row = BenchRow()
+    markup-append(root, row)
+    for column in 0 .. < 48
+        do match (row-index + column) % 4
+            |= 0
+                markup-append(row, ActivityIcon())
+            |= 1
+                markup-append(row, AirplayIcon())
+            |= 2
+                markup-append(row, AlbumIcon())
+            ??
+                markup-append(row, AlarmIcon())
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1180, 820))
+
+. surface = RasterCanvas(1180, 820, 2, white)
+. scene = DisplayScene(2, white)
+. items Size
+do use surface
+    scene.build(root)
+    scene.commit()
+    scene.frame(surface)
+    for frame in 0 .. < 120
+        scene.add-damage(root.bounds)
+        scene.frame(surface)
+        items += scene.items-drawn
+        scene.reset-frame-counters()
+
+scene.close()
+root.close()
+markup-release(root)
+-- "bench-result gui/scene-vector-icons checksum=$items"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRow is Box
+
+• This
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ ActivityIcon is LucideActivity
+
+• This
+    min-width = SizeSpec.coord(24)
+    max-width = SizeSpec.coord(24)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
+
+<This
+    stroke = "#334155"
+
+━━━━━━━━━━━━━━━━━━━━
++ AirplayIcon is LucideAirplay
+
+• This
+    min-width = SizeSpec.coord(24)
+    max-width = SizeSpec.coord(24)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
+
+<This
+    stroke = "#2563eb"
+
+━━━━━━━━━━━━━━━━━━━━
++ AlbumIcon is LucideAlbum
+
+• This
+    min-width = SizeSpec.coord(24)
+    max-width = SizeSpec.coord(24)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
+
+<This
+    stroke = "#334155"
+
+━━━━━━━━━━━━━━━━━━━━
++ AlarmIcon is LucideAlarmClock
+
+• This
+    min-width = SizeSpec.coord(24)
+    max-width = SizeSpec.coord(24)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
+
+<This
+    stroke = "#b91c1c"

@@ -1,0 +1,43 @@
+
+/YuCore/YuSystem.h
+/YuEvents/YuEvents.h
+
++ sig-int = SignalStream(2)
++ sig-quit = SignalStream(3)
++ sig-term = SignalStream(15)
++ sig-wnch = SignalStream(28)
+
++ Signal is Int
+
+━━━━━━━━━━━━━━━━━━━━
+_ SignalStream
+    is Usable'Void
+
++ sig Signal
+
+_ lock Semaphore
+
+as Broadcastable'Signal for
+_ channel := AsyncOnDemandChannel'Signal(this)
+
+────────────────────
++ This
+    - sig Signal
+
+────────────────────
++ do begin-using
+
+C:yumiSetSignalIgnored(sig, 1)
+
+do new
+    while true
+        if C:yumiSuspendActiveTaskUntilSignal(sig, lock.native-pointer)
+            break
+
+        channel <- sig
+
+────────────────────
++ do end-using
+
+C:yumiSetSignalIgnored(sig, 0)
+C:yumiCancelSignalEventListener(sig, lock.native-pointer)

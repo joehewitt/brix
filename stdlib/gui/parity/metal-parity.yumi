@@ -1,0 +1,781 @@
+./support
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/graphics/vectorgeometry
+/gui/border
+/gui/box
+/gui/icons/lucide/activity
+/gui/layout
+/gui/metal
+/gui/painter
+/gui/primitives
+/gui/scene
+/gui/shape
+/math
+/test
+/units
+
+_ opacity-content-color = RGBA("#38bdf8")
+_ opacity-overlay-color = RGBA("#fde047")
+_ painter-active-color = RGBA("#22c55e")
+_ painter-inactive-color = RGBA("#a855f7")
+_ spiral-fill-color = RGBA("#e6d980")
+_ spiral-stroke-color = RGBA("#333399")
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Rounded Metal Clip Parity")
+cases.run(rounded-metal-tests)
+cases = cases.then("Retained Opacity Group Parity", retained-opacity-tests)
+cases = cases.then("GUI Retained Painter Parity", retained-painter-tests)
+cases = cases.then("Display Scene Metal Mixed Tiles", scene-metal-mixed-tests)
+cases = cases.then("Display Scene Metal Stroke Vector Atlas", scene-metal-stroke-vector-tests)
+cases = cases.then("Display Scene Metal Image Atlas", scene-metal-image-tests)
+cases = cases.then("Offset Scene Metal Parity", offset-scene-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do rounded-metal-tests
+    - t TestCase
+
+. scales [F64] = [1, 1.5, 2]
+for scale in scales
+    check-rounded-metal(t, scale)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-rounded-metal
+    - t TestCase
+    - scale F64
+
+. root = RoundedSceneRoot()
+. outer = RoundedSceneBox()
+. inner = RoundedSceneBox()
+. fill = RoundedSceneBox()
+outer.radius = 22
+outer.inset = 3
+inner.radius = 18
+inner.inset = 1
+inner.fill = RGBA(204 / 255.0, 102 / 255.0, 51 / 255.0, 128 / 255.0)
+fill.fill = RGBA(51 / 255.0, 204 / 255.0, 102 / 255.0, 170 / 255.0)
+fill.radius = 0
+markup-append(root, outer)
+markup-append(outer, inner)
+markup-append(inner, fill)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.arrange-bounds(Rect(0, 0, 120, 90))
+outer.arrange-bounds(Rect(8, 8, 92, 68))
+inner.arrange-bounds(Rect(18, 16, 80, 56))
+fill.arrange-bounds(Rect(0, 0, 120, 90))
+. immediate = RasterCanvas(120, 90, scale)
+. retained = RasterCanvas(120, 90, scale)
+. renderer = MetalOffscreenRenderer(120, 90, scale)
+. scene = DisplayScene(scale)
+do use scene
+    do use immediate
+        do use retained
+            do use renderer
+                scene.build(root)
+                scene.commit()
+                root.paint(immediate)
+                t.check("Metal produces a frame", scene.frame-metal(renderer))
+                scene.add-damage(root.bounds)
+                scene.frame(retained)
+                t.expect
+                    - "nested rounded CoreGraphics clips match at $scale"
+                    - 0u64
+                    - retained.pixel-difference-count(immediate)
+                . diff = renderer.diff(immediate, 2)
+                t.check
+                    - "nested rounded Metal clips differ only along curves at $scale"
+                    - diff.differing-ratio <= 0.02
+                t.check
+                    - "nested rounded Metal coverage stays close at $scale"
+                    - diff.total-delta <= diff.pixel-count
+                t.expect("rounded Metal clips encode every operation", 0, renderer.skipped-ops)
+                outer.fill = RGBA("#3366cc")
+                inner.fill = RGBA("#cc6633")
+                fill.fill = RGBA("#33cc66")
+                outer.radius = 0
+                inner.radius = 0
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                scene.commit()
+                t.check("Metal produces a frame", scene.frame-metal(renderer))
+                immediate.erase(null)
+                root.paint(immediate)
+                t.check
+                    - "Metal radius reset stays within fractional-edge coverage at $scale"
+                    - renderer.diff(immediate).maximum-channel-delta <= 128
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do retained-opacity-tests
+    - t TestCase
+
+. scales [F64] = [1, 1.5, 2]
+for scale in scales
+    check-retained-opacity(t, scale)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-retained-opacity
+    - t TestCase
+    - scale F64
+
+. root = OpacitySceneRoot()
+. outer = OpacitySceneOverlayBox()
+. inner = OpacitySceneBox()
+. overflow = OpacitySceneBox()
+. overlap = OpacitySceneBox()
+outer.alpha = 0.65%%
+outer.fill = RGBA("#d946ef")
+inner.alpha = 0.5%%
+inner.fill = RGBA("#2563eb")
+overflow.fill = RGBA("#f97316")
+overlap.fill = RGBA("#22c55e")
+markup-append(root, outer)
+markup-append(outer, inner)
+markup-append(inner, overflow)
+markup-append(inner, overlap)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.arrange-bounds(Rect(0, 0, 120, 90))
+outer.arrange-bounds(Rect(10, 10, 70, 55))
+inner.arrange-bounds(Rect(20, 18, 50, 38))
+overflow.arrange-bounds(Rect(62, 20, 36, 24))
+overlap.arrange-bounds(Rect(50, 28, 34, 24))
+
+. immediate = RasterCanvas(120, 90, scale)
+. retained = RasterCanvas(120, 90, scale)
+. renderer = MetalOffscreenRenderer(120, 90, scale)
+. scene = DisplayScene(scale)
+do use scene
+    do use immediate
+        do use retained
+            do use renderer
+                scene.build(root)
+                t.check
+                    - "partial opacity groups the outer box at $scale"
+                    - scene.layer-group-for(outer) != null
+                t.check
+                    - "partial opacity groups the inner box at $scale"
+                    - scene.layer-group-for(inner) != null
+                check-opacity-frame(t, root, scene, immediate, retained, renderer, "nested $scale")
+
+                inner.alpha = 0.25%%
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "nested update $scale"
+
+                inner.alpha = 1%%
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "child direct path $scale"
+
+                outer.alpha = 1%%
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                t.check
+                    - "100% removes the outer opacity group at $scale"
+                    - scene.layer-group-for(outer) == null
+                t.check
+                    - "100% removes the inner opacity group at $scale"
+                    - scene.layer-group-for(inner) == null
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "all direct $scale"
+
+                outer.alpha = 0%%
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame(t, root, scene, immediate, retained, renderer, "zero $scale")
+                t.expect
+                    - "zero opacity clears all retained ink at $scale"
+                    - 0u64
+                    - retained.nontransparent-pixel-count(Rect(0, 0, 120, 90))
+
+                outer.alpha = 0.6%%
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "restored $scale"
+
+                inner.is-clipped = true
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame(t, root, scene, immediate, retained, renderer, "clipped $scale")
+
+                inner.is-clipped = false
+                root.markup-batch-queue.checkpoint()
+                scene.update(root)
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "unclipped $scale"
+
+                overflow.arrange-bounds(Rect(4, 58, 36, 24))
+                scene.update(root)
+                check-opacity-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "overflow move $scale"
+                t.expect
+                    - "moving overflow damages and clears its old visible extent at $scale"
+                    - 0u64
+                    - retained.nontransparent-pixel-count(Rect(85, 20, 13, 24))
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-opacity-frame
+    - t TestCase
+    - root OpacitySceneRoot
+    - scene DisplayScene
+    - immediate RasterCanvas
+    - retained RasterCanvas
+    - renderer MetalOffscreenRenderer
+    - label String
+
+scene.commit()
+immediate.erase(null)
+root.paint(immediate)
+. pending-damage = scene.damage
+t.check("Metal produces the $label frame", scene.frame-metal(renderer))
+scene.add-damage(pending-damage)
+scene.frame(retained)
+t.expect("retained CoreGraphics matches $label", 0u64, retained.pixel-difference-count(immediate))
+. diff = renderer.diff(immediate, 2)
+t.check("Metal coverage stays close for $label", diff.differing-ratio <= 0.02)
+t.expect("Metal encodes every $label operation", 0, renderer.skipped-ops)
+
+━━━━━━━━━━━━━━━━━━━━
++ do retained-painter-tests
+    - t TestCase
+
+. scales [F64] = [1, 1.5, 2]
+for scale in scales
+    check-retained-painters(t, scale)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-retained-painters
+    - t TestCase
+    - scale F64
+
+. root = PainterSceneRoot()
+. background = SceneBackgroundPainter()
+. border = SceneBorderPainter()
+. next-background = SceneBackgroundPainter()
+. next-border = SceneBorderPainter()
+. box = PainterSceneBox()
+box.background-painter = background
+box.border-painter = border
+next-background.variant = true
+next-border.requested = Insets(2, 7, 5, 1)
+box.alternate-background-painter = next-background
+box.alternate-border-painter = next-border
+markup-append(root, box)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.arrange-bounds(Rect(0, 0, 100, 72))
+box.arrange-bounds(Rect(12, 10, 68, 48))
+
+. immediate = RasterCanvas(100, 72, scale)
+. retained = RasterCanvas(100, 72, scale)
+. renderer = MetalOffscreenRenderer(100, 72, scale)
+. scene = DisplayScene(scale)
+do use scene
+    do use immediate
+        do use retained
+            do use renderer
+                scene.build(root)
+                t.expect
+                    - "retained recording calls background once at $scale"
+                    - 1
+                    - background.paint-count
+                t.expect("retained recording calls border once at $scale", 1, border.paint-count)
+                check-painter-frame(t, root, scene, immediate, retained, renderer, "initial $scale")
+
+                box.alternate = true
+                root.markup-batch-queue.checkpoint()
+                box.arrange-bounds(Rect(12, 10, 68, 48))
+                scene.update(root)
+                check-painter-frame
+                    - t
+                    - root
+                    - scene
+                    - immediate
+                    - retained
+                    - renderer
+                    - "replacement $scale"
+                t.expect
+                    - "replacement border updates layout before paint at $scale"
+                    - Insets(2, 7, 5, 1)
+                    - box.border-edges
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-painter-frame
+    - t TestCase
+    - root PainterSceneRoot
+    - scene DisplayScene
+    - immediate RasterCanvas
+    - retained RasterCanvas
+    - renderer MetalOffscreenRenderer
+    - label String
+
+scene.commit()
+immediate.erase(null)
+root.paint(immediate)
+. pending-damage = scene.damage
+t.check("Metal produces the $label painter frame", scene.frame-metal(renderer))
+scene.add-damage(pending-damage)
+scene.frame(retained)
+t.expect
+    - "retained CoreGraphics preserves $label painter output"
+    - 0u64
+    - retained.pixel-difference-count(immediate)
+. diff = renderer.diff(immediate, 2)
+t.check("Metal preserves $label painter output", diff.differing-ratio <= 0.02)
+t.check("Metal draws every $label painter edge", diff.maximum-channel-delta <= 16)
+t.expect("Metal retains every $label painter operation", 0, renderer.skipped-ops)
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-metal-mixed-tests
+    - t TestCase
+
+. root = SceneParityRoot()
+. panel = SceneParityPanel()
+. spiral = SceneParitySpiral()
+markup-append(root, panel)
+for index in 0 .. < 20
+    markup-append(panel, SceneParityCell())
+markup-append(root, spiral)
+mount-scene-root(root, Rect(0, 0, 900, 700))
+. background = RGBA("#fafaf5")
+. immediate = RasterCanvas(900, 700, 2, background)
+. renderer = MetalOffscreenRenderer(900, 700, 2, background)
+. scene = DisplayScene(2, background)
+do use immediate
+    do use renderer
+        scene.build(root)
+        scene.commit()
+        root.paint(immediate)
+        scene.frame-metal(renderer)
+        . diff = renderer.diff(immediate)
+        t.check
+            - "no-text mixed differing pixels stay within one percent"
+            - diff.differing-ratio <= 0.01
+        t.expect("mixed composition skips no supported ops", 0, renderer.skipped-ops)
+
+        spiral.phase = 1
+        scene.update(root)
+        scene.commit()
+        immediate.erase(background)
+        root.paint(immediate)
+        scene.frame-metal(renderer)
+        . mutation-diff = renderer.diff(immediate)
+        t.check
+            - "partial path tile pixels stay within one percent"
+            - mutation-diff.differing-ratio <= 0.01
+        t.expect("partial path tile skips no supported ops", 0, renderer.skipped-ops)
+scene.close()
+release-scene-root(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-metal-stroke-vector-tests
+    - t TestCase
+
+. root = SceneMetalStrokeVectorRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 80))
+root.image.layout(Rect(0, 0, 48, 48))
+. immediate = RasterCanvas(120, 80, 2, white)
+. renderer = MetalOffscreenRenderer(120, 80, 2, white)
+. scene = DisplayScene(2, white, renderer)
+do use immediate
+    do use renderer
+        scene.build(root)
+        scene.commit()
+        root.paint(immediate)
+        scene.frame-metal(renderer)
+        . diff = renderer.diff(immediate)
+        t.check("stroke vector pixels stay within one percent", diff.differing-ratio <= 0.01)
+        t.check("stroke vector total channel delta stays negligible", diff.total-delta <= 512)
+        t.check("stroke vector draws as GPU paths", renderer.fill-draws > 0)
+        t.expect("stroke vector frame skips no supported ops", 0, renderer.skipped-ops)
+        t.expect("stroke vector stays packed", 0, scene.opaque-demotions)
+        scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-metal-image-tests
+    - t TestCase
+
+. root = SceneParityRoot()
+. image-box = SceneMetalImageBox()
+markup-append(root, image-box)
+mount-scene-root(root, Rect(0, 0, 120, 80))
+image-box.layout(Rect(0, 0, 32, 24))
+. source = RasterCanvas(16, 12, 2, transparent)
+source.fill-color = RGBA("#dc2626")
+source.stroke-color = null
+source.rect(Rect(0, 0, 8, 12))
+source.fill-color = RGBA("#2563eb")
+source.rect(Rect(8, 0, 8, 12))
+. table = vector-geometry-table-for(root)
+. handle = table.insert-image(ImageResource(source, 2))
+image-box.table = table
+image-box.handle = handle
+. immediate = RasterCanvas(120, 80, 2, white)
+. renderer = MetalOffscreenRenderer(120, 80, 2, white)
+. scene = DisplayScene(2, white, renderer)
+do use immediate
+    do use renderer
+        scene.build(root)
+        scene.commit()
+        root.paint(immediate)
+        scene.frame-metal(renderer)
+        . diff = renderer.diff(immediate)
+        t.check("RGBA image atlas pixels stay within one percent", diff.differing-ratio <= 0.01)
+        t.expect("image frame skips no supported ops", 0, renderer.skipped-ops)
+        t.check("image frame emits an instance", renderer.instance-count > 0)
+        t.expect("image resource stays packed", 0, scene.opaque-demotions)
+        t.check
+            - "image atlas stays within 8 MiB"
+            - renderer.image-atlas-bytes <= 8 * 1024 * 1024
+        scene.close()
+table.release-image(handle)
+release-scene-root(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-scene-tests
+    - t TestCase
+
+. root = ShapeSceneRoot()
+. box = ShapeSceneBox()
+box.shape-style = CalloutShape(9, Side.top)
+box.drop-shadow = Shadow(RGBA("#0f172a55"), 12, 0, 5)
+markup-append(root, box)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.arrange-bounds(Rect(0, 0, 400, 300))
+box.arrange-bounds(Rect(220, 160, 80, 50))
+. frame = Rect(200, 130, 120, 110)
+. canvas = RasterCanvas(120, 110, 2)
+. renderer = MetalOffscreenRenderer(120, 110, 2)
+. canvas-scene = DisplayScene(2)
+. metal-scene = DisplayScene(2, transparent, renderer)
+do use metal-scene
+    canvas-scene.origin = frame.top-left
+    metal-scene.origin = frame.top-left
+    do use canvas
+        do use renderer
+            canvas-scene.build(box)
+            canvas-scene.commit()
+            canvas-scene.add-damage(frame)
+            canvas-scene.frame(canvas)
+            metal-scene.build(box)
+            metal-scene.commit()
+            metal-scene.add-damage(frame)
+            t.check("an offset scene encodes a Metal frame", metal-scene.frame-metal(renderer))
+            t.check
+                - "the offset box lands at its local position"
+                - canvas.nontransparent-pixel-count(Rect(30, 40, 60, 30)) == 60 * 30 * 4
+            t.check
+                - "the offset arrow lands above the box"
+                - canvas.nontransparent-pixel-count(Rect(58, 24, 4, 4)) > 0
+            . diff = renderer.diff(canvas, 2)
+            t.check("offset Metal output tracks CoreGraphics", diff.total-delta <= diff.pixel-count)
+            t.check("offset Metal output covers the arrow", diff.differing-ratio <= 0.08)
+    canvas-scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ RoundedSceneRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ RoundedSceneBox is Box
+
++ radius Length = 12
++ inset Length = 0
++ fill RGBA = RGBA(51 / 255.0, 102 / 255.0, 204 / 255.0, 128 / 255.0)
+
+• This
+    corner-radius = #radius
+    padding-left = #inset
+    padding-top = #inset * 2
+    padding-right = #inset * 3
+    padding-bottom = #inset
+    background-color = #fill
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.clip
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacitySceneRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacitySceneBox is Box
+
++ alpha Ratio = 1%%
++ fill RGBA = transparent
++ is-clipped = false
+
+• This
+    opacity = #alpha
+    background-color = #fill
+    border-color = RGBA("#111827")
+    border-width = 1
+    when #is-clipped
+        overflow-x = ScrollOverflow.clip
+        overflow-y = ScrollOverflow.clip
+
+━━━━━━━━━━━━━━━━━━━━
++ OpacitySceneOverlayBox is OpacitySceneBox
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+canvas.fill-color = opacity-content-color
+canvas.stroke-color = null
+canvas.rect(Rect(bounds.x + 7, bounds.y + 5, 28, 22))
+
+────────────────────
++ do paint-overlay
+    - canvas Canvas
+
+canvas.fill-color = opacity-overlay-color
+canvas.stroke-color = null
+canvas.rect(Rect(bounds.x + 30, bounds.y + 20, 26, 20))
+
+━━━━━━━━━━━━━━━━━━━━
++ PainterSceneRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ PainterSceneBox is Box
+
++ background-painter SceneBackgroundPainter?
++ border-painter BorderPainter = DefaultBorderPainter()
++ alternate-background-painter SceneBackgroundPainter?
++ alternate-border-painter BorderPainter = DefaultBorderPainter()
++ alternate = false
+
+• This
+    background = #background-painter
+    border = #border-painter
+    background-color = RGBA("#3b82f6")
+    border-color = RGBA("#f97316")
+    border-width = 3
+    corner-radius = 9
+    when #alternate
+        background = #alternate-background-painter
+        border = #alternate-border-painter
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneBackgroundPainter is Painter
+
++ paint-count Size
++ variant = false
+
+╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+paint-count += 1
+canvas.fill-color = node.$background-color
+canvas.stroke-color = null
+canvas.oval(rect)
+canvas.fill-color = if variant then painter-active-color else painter-inactive-color
+canvas.rect(Rect(rect.x + 10, rect.y + 8, rect.width - 20, rect.height - 16))
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneBorderPainter is BorderPainter
+
++ requested Insets = Insets(4, 2, 6, 5)
++ paint-count Size
+
+╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ border-insets
+    - node Box
+
+requested
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+paint-count += 1
+. edges = node.border-edges
+canvas.fill-color = node.$border-color
+canvas.stroke-color = null
+canvas.rect(Rect(rect.x, rect.y, rect.width, edges.top))
+canvas.rect(Rect(rect.right - edges.right, rect.y, edges.right, rect.height))
+canvas.rect(Rect(rect.x, rect.bottom - edges.bottom, rect.width, edges.bottom))
+canvas.rect(Rect(rect.x, rect.y, edges.left, rect.height))
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneParityPanel is Box
+
+• This • bg:"#fff4e6"
+    layout = flow-col
+    overflow-y = ScrollOverflow.clip
+    min-height = SizeSpec.coord(240)
+    max-height = SizeSpec.coord(240)
+    border-width = 2px
+    border-color = "#886633"
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneParitySpiral is Box
+
++ phase Size
+
+. invalidate-paint < phase
+
+• This
+    min-width = SizeSpec.coord(200)
+    max-width = SizeSpec.coord(200)
+    min-height = SizeSpec.coord(120)
+    max-height = SizeSpec.coord(120)
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+canvas.push()
+canvas.fill-color = spiral-fill-color
+canvas.stroke-color = null
+canvas.circle(bounds.center.x, bounds.center.y, 50)
+canvas.fill-color = null
+canvas.stroke-color = spiral-stroke-color
+canvas.stroke-width = 2
+canvas.begin()
+canvas.move(bounds.center.x, bounds.center.y)
+. angle = (phase as F64) * 0.1
+. radius F64 = 2
+while radius < 48
+    canvas.line
+        - bounds.center.x + radius * cos(angle)
+        - bounds.center.y + radius * sin(angle)
+    angle += 0.5
+    radius += 1.2
+canvas.end()
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneMetalStrokeVectorRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This
+    <LucideActivity image • w:48 h:48
+        stroke = "#2563eb"
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneMetalImageBox is Box
+
++ table VectorGeometryTable?
++ handle = ImageHandle(0, 0)
+
+• This
+    min-width = SizeSpec.coord(32)
+    max-width = SizeSpec.coord(32)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+=? if !table
+. ignored = table.paint-image-resource(handle, canvas, bounds)

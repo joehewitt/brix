@@ -1,0 +1,353 @@
+./popups-panel
+/graphics/canvas
+/graphics/point
+/graphics/primitives
+/graphics/roundedrect
+/graphics/text
+/gui
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ CreativeSection is Box
+
++ drops = 0
++ section-self => this
+
+────────────────────
+
+<This • flow-row
+    <DemoCard "Radial menu" • w:276 h:300
+        caption = join • stream
+            * "Right-click in the dark area. A custom Placement centers the popup on the pointer "
+            * "and a custom Layout arranges items on a ring. Press, drag to a slice, and release."
+        <Box • demo-well flex:1
+            <RadialMenu
+                <RadialItem "Copy" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Copy")
+                <RadialItem "Paste" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Paste")
+                <RadialItem "Undo" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Undo")
+                <RadialItem "Redo" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Redo")
+                <RadialItem "Share" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Share")
+                <RadialItem "Delete" • w:64 h:64
+                    action = => do popups-report(this, "Radial ▸ Delete")
+    <DemoCard "Drag ghost" • w:276 h:300
+        caption = join • stream
+            * "Drag a chip. A pointer-transparent popup follows the pointer, even outside the "
+            * "window, and the drop target lights up."
+        <Box • flex-row h:36
+            for chip in ["Photo", "Song", "Note"]
+                <DragChip • w:80 h:32 mr:8
+                    title = chip
+                    section = section-self
+        <DropBin bin • h:120 mt:20
+            drops = #drops
+    <DemoCard "Spotlight tour" • w:276 h:300
+        caption = join • stream
+            * "A modal popup paints a dimmed window with a hole around its target, and a popover "
+            * "anchored to a box it does not own explains each step."
+        <Box • flex-row h:30
+            <Button tour-first "Toolbar" • w:58
+            <Button tour-second "Search" • w:58 ml:8
+            <Button tour-third "Profile" • w:58 ml:8
+        <Button "Start tour" • w:120 mt:24
+            action = => do spotlight.start(tour-first, tour-second, tour-third)
+        <Spotlight spotlight
+
+────────────────────
++ do hover-bin
+    - point Point
+
+= bin.hover-check(point)
+
+────────────────────
++ do accept-drop
+    - title String
+
+drops += 1
+popups-report(this, "Dropped “$title” in the bin")
+
+━━━━━━━━━━━━━━━━━━━━
++ CenterOnPointPlacement is Placement
+
+╌╌╌╌╌╌╌╌╌╌ is Placement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ place
+    - request PlacementRequest
+
+PlacementResult(Rect(x, y, size.width, size.height))
+
+.. size = placement-natural-size(request.popup, request.boundary)
+.. center = request.anchor.top-left
+.. x = placement-clamp(center.x - size.width / 2, boundary.x, boundary.width, size.width)
+.. y = placement-clamp(center.y - size.height / 2, boundary.y, boundary.height, size.height)
+.. boundary = request.boundary
+
+━━━━━━━━━━━━━━━━━━━━
++ RadialLayout is Layout
+
++ radius Length
+
+────────────────────
++ This
+    - radius = 70
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+Dimensions(radius * 2 + 72, radius * 2 + 72)
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+. content = box.content-bounds
+. center = content.center
+. children [Box]
+for child in box.active-children
+    children += child
+. count = children.length
+=? if count == 0
+for index in 0 .. < count
+    . child = children[index]
+    . size = child.measure().outer-size
+    . angle = π * (2.0 * index / count - 0.5)
+    . x = center.x + cos(angle) * radius - size.width / 2
+    . y = center.y + sin(angle) * radius - size.height / 2
+    child.arrange-outer-bounds(Rect(x, y, size.width, size.height))
+
+━━━━━━━━━━━━━━━━━━━━
++ RadialMenu is Popup
+
+• This • transient
+    focus-mode = FocusMode.keys
+    context-trigger = true
+    outside-press-passes = false
+    placement = CenterOnPointPlacement()
+    layout = RadialLayout(78)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+. ring = bounds.center
+canvas.push()
+canvas.stroke-color = null
+canvas.fill-color = $gui-popup-color
+canvas.circle(ring.x, ring.y, min(bounds.width, bounds.height) / 2)
+canvas.fill-color = $gui-border-color
+canvas.circle(ring.x, ring.y, 20)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ RadialItem is Box
+
++ title = ""
++ action Doer?
+
+• This • bg:gui-field-color
+    corner-radius = 32
+    font-size = 12
+
+    when #is-hover-within
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = #title
+        text-alignment = TextAlignment.center
+
+────────────────────
+for event on click
+
+. callback = action
+if callback
+    callback()
+ancestor'RadialMenu()?.dismiss(DismissReason.chosen)
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
++ DragChip is Box
+
++ title = ""
++ section CreativeSection
++ window-draggable => false
+
+• This • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 16
+    cursor = CursorStyle.open-hand
+    drag-cursor = CursorStyle.closed-hand
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = #title
+        text-alignment = TextAlignment.center
+    <DragGhostPopup ghost • w:96 h:36
+        title = #title
+
+────────────────────
+for event on pointer-drag
+
+if !ghost.is-open
+    ghost.show()
+section.hover-bin(event.root-point)
+
+────────────────────
+for event on pointer-up
+
+if ghost.is-open
+    ghost.dismiss()
+    if section.hover-bin(event.root-point)
+        section.accept-drop(title)
+section.hover-bin(Point(-100000, -100000))
+
+━━━━━━━━━━━━━━━━━━━━
++ DragGhostPopup is Popup
+
++ title = ""
+
+• This • passive follow-pointer bg:gui-accent-color text:gui-accent-text-color
+    corner-radius = 18
+    font-weight = FontWeight.bold
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = "↗ ${#title}"
+        text-alignment = TextAlignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ DropBin is Box
+
++ drops = 0
++ is-targeted = false
+
+• This • bg:gui-well-color text:gui-muted-text-color
+    border-color = gui-border-color
+    border-width = 2
+    corner-radius = 12
+
+    when #is-targeted
+        • bg:gui-hover-color
+        • text:gui-text-color
+        border-color = gui-accent-bright-color
+
+────────────────────
+
+<This • flex-row
+    <Label • flex:1
+        align-y = Alignment.center
+        text = "Drop here · ${#drops} dropped"
+        text-alignment = TextAlignment.center
+
+────────────────────
++ do hover-check
+    - point Point
+
+. targeted = presentation-rect(bounds).contains(point)
+if targeted != is-targeted
+    is-targeted = targeted
+= targeted
+
+━━━━━━━━━━━━━━━━━━━━
++ Spotlight is Popup
+
++ step Size = 0
++ targets [Box]
++ titles = ["Toolbar", "Search", "Profile"]
++ spotlight-self => this
+
+• This • fill-window modal
+    popup-stacking = PopupStacking.manual
+
+────────────────────
+
+<This
+    <Popover coach • w:240
+        popup-stacking = PopupStacking.manual
+        outside-press-dismiss = false
+        escape-dismiss = false
+        <Label • card-title h:20
+            text = "Step ${#step + 1} of 3: ${#titles[#step]}"
+        <Label • card-caption h:36
+            text = "This popover is anchored to a box it does not own."
+        <Box • flex-row mt:10
+            <Button "Skip" • flex:1
+                action = => do dismiss()
+            <Button • flex:1 ml:8
+                title = if #step == 2 then "Done" else "Next"
+                is-on = true
+                action = => do advance()
+
+────────────────────
++ do start
+    - first Box
+    - second Box
+    - third Box
+
+targets = [first, second, third]
+step = 0
+show(PopupAnchor.window)
+focus-step()
+
+────────────────────
++ do advance
+
+if step >= 2
+    dismiss(DismissReason.chosen)
+    popups-report(this, "Tour finished")
+    =
+step += 1
+focus-step()
+
+────────────────────
++ do focus-step
+
+. target = targets[step]
+coach.dismiss()
+coach.show(PopupAnchor.box(target))
+invalidate-paint()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.stroke-color = null
+canvas.fill-color = $gui-scrim-color
+canvas.begin()
+RoundedRect(bounds, 0, 0, 0, 0).outline(canvas)
+if step < targets.length
+    . target = targets[step]
+    . hole = target.presentation-rect(target.bounds).pad(-8)
+    RoundedRect(hole, 12, 12, 12, 12).outline(canvas)
+canvas.end(false, FillRule.even-odd)
+canvas.pop()

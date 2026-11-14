@@ -1,0 +1,330 @@
+
+./array
+./core
+./error
+./function
+./intrinsics
+./list
+./number
+/YuEvents/YuEvents.h
+
+_ @task main-endings [MainEnding]
+_ @task main-has-ended = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Task is Tuple
+
+_ handle U64
+
+────────────────────
++ This
+
+.. handle = C:yumiGetActiveTaskHandle()
+
+────────────────────
++ get id
+
+C:yumiGetTaskHandleId(handle)
+
+────────────────────
++ get is-finished
+
+C:yumiGetTaskFinished(handle)
+
+────────────────────
++ get is-canceled
+
+C:yumiGetTaskCanceled(handle)
+
+────────────────────
++ get is-terminating
+
+C:yumiGetTaskTerminating(handle)
+
+────────────────────
++ do cancel
+
+C:yumiCancelTask(handle)
+
+────────────────────
++ suspend
+
+C:yumiSuspendTask(handle)
+
+────────────────────
++ resume-now
+
+C:yumiResumeTaskNow(handle)
+
+────────────────────
++ do resume-later
+
+C:yumiResumeTaskLater(handle)
+
+────────────────────
++ do when-finished
+    - action Doer
+
+C:yumiScheduleMainTaskWhenTaskFinishes
+    - handle
+    - run-task-finish-action as TaskFinishCallback
+    - TaskFinishAction(action) as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ do when-main-ends
+    - action Doer
+
+` Runs an action where the statements of the program's main end, before the values main uses
+` are closed and its `do finally` blocks run. One given by another task, or once main's
+` statements have ended, runs once the task that gave it finishes.
+. ending = MainEnding(action)
+if !main-has-ended
+    main-endings += ending
+
+━━━━━━━━━━━━━━━━━━━━
++ do end-main
+
+` Runs the actions `when-main-ends` was given, in order. The program's main calls it where its
+` statements end.
+main-has-ended = true
+for ending in main-endings
+    ending.run()
+main-endings.clear()
+
+━━━━━━━━━━━━━━━━━━━━
+_ MainEnding
+
++ action Doer
++ has-run = false
+
+────────────────────
++ This
+    - action
+
+Task().when-finished(run)
+
+────────────────────
++ do run
+
+=? if has-run
+has-run = true
+action()
+    catch error Error
+        unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TaskFinishAction
+
++ action Doer
+
+────────────────────
++ This
+    - action
+
+━━━━━━━━━━━━━━━━━━━━
+_ TaskFinishCallback is (*C) Void
+    - context Pointer
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-task-finish-action
+    - context Pointer
+
+gc-object-from-pointer'TaskFinishAction(context).action()
+    catch error Error
+        unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ Worker is Tuple
+
+_ native CPointer'Char8
+
+────────────────────
++ This
+    - thread-count Int = 1
+
+= This(C:yumiNewWorker(thread-count))
+
+────────────────────
+_ This
+    - native CPointer'Char8
+
+────────────────────
++ to CPointer''T
+
+native as CPointer'T
+
+────────────────────
++ get is-stopped
+
+C:yumiWorkerGetStatus(this)
+
+────────────────────
++ do stop
+
+C:yumiWorkerStop(this)
+
+━━━━━━━━━━━━━━━━━━━━
++ usable-core-count Int
+
+` How many workers the machine keeps busy at once: every core it has online except efficiency cores,
+` and at least one.
+C:yumiUsableCoreCount()
+
+━━━━━━━━━━━━━━━━━━━━
++ Semaphore'Payload
+    - Payload = Void
+
+_ native CPointer'Char8
+
+────────────────────
++ This
+
+= This(C:yumiNewSemaphore())
+
+────────────────────
+_ This
+    - native CPointer'Char8
+
+────────────────────
++ to CPointer''T
+
+native as CPointer'T
+
+────────────────────
++ get native-pointer
+
+native
+
+────────────────────
++ do await Payload?
+    - mutex Mutex? = null
+
+. task = Task()
+. buf = Payload[1]
+. did-post Bool
+if mutex
+    did-post = C:yumiWaitForSemaphore(native, buf, Payload.size, mutex)
+else
+    did-post = C:yumiWaitForSemaphore(native, buf, Payload.size, null)
+check-task-cancelation(task.is-canceled)
+if did-post
+    = buf[0]
+
+────────────────────
++ do post
+    - value Payload
+
+. task = Task()
+C:yumiPostSemaphore(native, &value, Payload.size)
+check-task-cancelation(task.is-canceled)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Semaphore'Void
+
+────────────────────
++ do wait
+
+. task = Task()
+C:yumiWaitForSemaphore(native, null, 0, null)
+check-task-cancelation(task.is-canceled)
+
+────────────────────
++ do post
+
+C:yumiPostSemaphore(native, null, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Mutex is Tuple
+    is Usable'Void
+
+_ native CPointer'Char8
+
+────────────────────
++ This
+
+= This(C:yumiNewMutex())
+
+────────────────────
+_ This
+    - native CPointer'Char8
+
+────────────────────
++ to CPointer''T
+
+native as CPointer'T
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do begin-using
+
+lock()
+
+────────────────────
++ do end-using
+
+unlock()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do lock
+
+C:yumiLockMutex(native)
+
+────────────────────
++ do unlock
+
+C:yumiUnlockMutex(native)
+
+━━━━━━━━━━━━━━━━━━━━
++ get-current-task-id
+
+C:yumiGetActiveTaskId()
+
+━━━━━━━━━━━━━━━━━━━━
++ get-active-task
+
+Task()
+
+━━━━━━━━━━━━━━━━━━━━
++ request-process-termination
+    - exit-code Int = 130
+
+C:yumiRequestProcessTermination(exit-code)
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-task-cancelation
+    - was-canceled Bool
+
+if was-canceled
+    if Task().is-terminating
+        ?! TaskTerminationError()
+    ?! TaskCancelationError()
+
+━━━━━━━━━━━━━━━━━━━━
++ Completion'Value
+
++ value Value?
++ is-finished = false
++ is-abandoned = false
+
+_ task = Task()
+
+────────────────────
++ do await Value?
+
+if !is-finished
+    . was-canceled = task.suspend()
+    is-abandoned = was-canceled
+    check-task-cancelation(was-canceled)
+= value
+
+────────────────────
++ do finish
+    - result Value?
+
+=? if is-abandoned
+value = result
+is-finished = true
+task.resume-later()

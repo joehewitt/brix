@@ -1,0 +1,1339 @@
+./bundle
+./mir
+./mir-text
+./relocations
+/core/arena
+/core/table
+
++ no-label U32 = U32.max
++ no-float-immediate U32 = U32.max
+_ condition-always U32 = 14
+
+━━━━━━━━━━━━━━━━━━━━
++ TextLabels
+
+_ bundle Bundle
+_ function MIRFunction
+_ blocks IdMap
+_ symbols IdMap
+_ arena Arena
+
+────────────────────
++ This
+    - bundle Bundle
+    - function MIRFunction
+
+────────────────────
++ do reset
+    - storage Arena
+    - block-count U32
+    - symbol-count U32
+
+arena = storage
+blocks = new-id-map(storage, block-count)
+symbols = new-id-map(storage, symbol-count)
+
+────────────────────
++ do define-block
+    - name StringId
+    - offset U32
+
+?! Panic("Text label for block ${name-string(bundle, function, name)} is defined twice")
+    if blocks.get(name) != no-id
+blocks = blocks.inserted(arena, name, offset)
+
+────────────────────
++ do define-symbol
+    - name StringId
+    - offset U32
+
+?! Panic("Text label ${bundle.text(name)} is defined twice")
+    if symbols.get(name) != no-id
+symbols = symbols.inserted(arena, name, offset)
+
+────────────────────
++ block-offset U32
+    - name StringId
+
+blocks.get(name)
+
+────────────────────
++ symbol-offset U32
+    - name StringId
+
+symbols.get(name)
+
+────────────────────
++ label-offset U32
+    - name StringId
+
+if offset != no-label then offset else symbols.get(name)
+
+.. offset = blocks.get(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ MoveWideImmediate is Tuple
+
++ is-encodable Bool
++ is-negated Bool
++ halfword U32
++ imm16 U32
+
+━━━━━━━━━━━━━━━━━━━━
++ LogicalImmediate is Tuple
+
++ is-encodable Bool
++ n U32
++ immr U32
++ imms U32
+
+━━━━━━━━━━━━━━━━━━━━
++ AArch64Encoder
+
++ has-relocation Bool
++ relocation-kind RelocationKind
++ relocation-symbol StringId
++ relocation-offset U32
+_ bundle Bundle
+_ function MIRFunction
+_ labels TextLabels
+_ current-offset U32
+
+────────────────────
++ This
+    - bundle Bundle
+    - function MIRFunction
+    - labels TextLabels
+
+────────────────────
++ do encode U32
+    - id InstructionId
+    - offset U32
+
+. row = function.instructions[id]
+= encode-operation(row.opcode, row.operands, offset)
+
+────────────────────
++ do encode-operation U32
+    - opcode Opcode
+    - operands IdList
+    - offset U32
+
+current-offset = offset
+has-relocation = false
+. a = operand(operands, 0)
+. b = operand(operands, 1)
+. c = operand(operands, 2)
+. d = operand(operands, 3)
+= match opcode
+    |= .nop
+        0xd503201f
+    |= .ret
+        0xd65f0000 /or/ ((if a == no-operand then link-register else reg(a)) /lshift/ 5)
+    |= .br
+        0xd61f0000 /or/ (reg(a) /lshift/ 5)
+    |= .blr
+        0xd63f0000 /or/ (reg(a) /lshift/ 5)
+    |= .b
+        jump(0x14000000, .jump26-relocation, a, offset, true)
+    |= .bl
+        jump(0x94000000, .call26-relocation, a, offset, false)
+    |= .cbz
+        compare-branch(false, a, local-label-offset(b), offset)
+    |= .cbnz
+        compare-branch(true, a, local-label-offset(b), offset)
+    |= .tbz
+        test-branch(false, a, b, local-label-offset(c), offset)
+    |= .tbnz
+        test-branch(true, a, b, local-label-offset(c), offset)
+    |= .b-cond
+        conditional-branch(operands, local-label-offset(a), offset)
+    |= .adr
+        adr(a, b, offset)
+    |= .adrp
+        adrp(a, b)
+    |= .mov
+        mov(a, b)
+    |= .movz
+        move-wide(0x52800000, 0xd2800000, a, b, c)
+    |= .movk
+        move-wide(0x72800000, 0xf2800000, a, b, c)
+    |= .movn
+        move-wide(0x12800000, 0x92800000, a, b, c)
+    |= .fmov
+        fmov(a, b)
+    |= .neg
+        neg(a, b)
+    |= .add
+        add-sub(false, a, b, c, d)
+    |= .sub
+        add-sub(true, a, b, c, d)
+    |= .mul
+        three-reg(0x1b007c00, 0x9b007c00, a, b, c)
+    |= .madd
+        four-reg(0x1b000000, 0x9b000000, a, b, c, d)
+    |= .msub
+        four-reg(0x1b008000, 0x9b008000, a, b, c, d)
+    |= .umulh
+        three-reg(0x9bc07c00, 0x9bc07c00, a, b, c)
+    |= .smulh
+        three-reg(0x9b407c00, 0x9b407c00, a, b, c)
+    |= .umull
+        three-reg(0x9ba07c00, 0x9ba07c00, a, b, c)
+    |= .smull
+        three-reg(0x9b207c00, 0x9b207c00, a, b, c)
+    |= .sdiv
+        three-reg(0x1ac00c00, 0x9ac00c00, a, b, c)
+    |= .udiv
+        three-reg(0x1ac00800, 0x9ac00800, a, b, c)
+    |= .and
+        logical(0x0a000000, 0x8a000000, a, b, c, d)
+    |= .orr
+        logical(0x2a000000, 0xaa000000, a, b, c, d)
+    |= .eor
+        logical(0x4a000000, 0xca000000, a, b, c, d)
+    |= .mvn
+        mvn(a, b)
+    |= .clz
+        two-reg(0x5ac01000, 0xdac01000, a, b)
+    |= .lsl
+        shift(0, a, b, c)
+    |= .lsr
+        shift(1, a, b, c)
+    |= .asr
+        shift(2, a, b, c)
+    |= .lslv
+        three-reg(0x1ac02000, 0x9ac02000, a, b, c)
+    |= .lsrv
+        three-reg(0x1ac02400, 0x9ac02400, a, b, c)
+    |= .asrv
+        three-reg(0x1ac02800, 0x9ac02800, a, b, c)
+    |= .cmp
+        cmp(a, b, c)
+    |= .ccmp
+        conditional-compare(a, b, c, d)
+    |= .csel
+        conditional-select(0x1a800000, 0x9a800000, a, b, c, d)
+    |= .csinc
+        conditional-select(0x1a800400, 0x9a800400, a, b, c, d)
+    |= .csinv
+        conditional-select(0x5a800000, 0xda800000, a, b, c, d)
+    |= .csneg
+        conditional-select(0x5a800400, 0xda800400, a, b, c, d)
+    |= .fcsel
+        conditional-select(0x1e200c00, 0x1e600c00, a, b, c, d)
+    |= .cset
+        cset(a, b)
+    |= .ldr
+        load-store(true, a, b, c, 0, false)
+    |= .ldar
+        load-acquire(a, b)
+    |= .ldarb
+        byte-acquire-release(0x08dffc00, a, b)
+    |= .stlrb
+        byte-acquire-release(0x089ffc00, a, b)
+    |= .str
+        load-store(false, a, b, c, 0, false)
+    |= .ldrb
+        load-store(true, a, b, c, 1, false)
+    |= .strb
+        load-store(false, a, b, c, 1, false)
+    |= .ldrh
+        load-store(true, a, b, c, 2, false)
+    |= .strh
+        load-store(false, a, b, c, 2, false)
+    |= .ldrsw
+        load-store(true, a, b, c, 4, true)
+    |= .ldrsb
+        load-store(true, a, b, c, 1, true)
+    |= .ldrsh
+        load-store(true, a, b, c, 2, true)
+    |= .stp
+        load-store-pair(false, a, b, c, d)
+    |= .ldp
+        load-store-pair(true, a, b, c, d)
+    |= .fneg
+        two-reg(0x1e214000, 0x1e614000, a, b)
+    |= .fnegs
+        two-reg(0x1e214000, 0x1e614000, a, b)
+    |= .fnegd
+        two-reg(0x1e214000, 0x1e614000, a, b)
+    |= .fadd
+        three-reg(0x1e202800, 0x1e602800, a, b, c)
+    |= .fsub
+        three-reg(0x1e203800, 0x1e603800, a, b, c)
+    |= .fmul
+        three-reg(0x1e200800, 0x1e600800, a, b, c)
+    |= .fdiv
+        three-reg(0x1e201800, 0x1e601800, a, b, c)
+    |= .fabs
+        two-reg(0x1e20c000, 0x1e60c000, a, b)
+    |= .fsqrt
+        two-reg(0x1e21c000, 0x1e61c000, a, b)
+    |= .fcmps
+        fcmp(a, b)
+    |= .fcmpd
+        fcmp(a, b)
+    |= .scvtf
+        int-float-convert(0x1e220000, 0x9e220000, a, b)
+    |= .ucvtf
+        int-float-convert(0x1e230000, 0x9e230000, a, b)
+    |= .fcvtzs
+        float-int-convert(0x1e380000, 0x9e380000, a, b)
+    |= .fcvtzu
+        float-int-convert(0x1e390000, 0x9e390000, a, b)
+    |= .fcvt
+        fcvt(a, b)
+    |= .uxtw
+        extend(a, b, false, 31)
+    |= .sxtw
+        extend(a, b, true, 31)
+    |= .uxth
+        extend(a, b, false, 15)
+    |= .sxth
+        extend(a, b, true, 15)
+    |= .uxtb
+        extend(a, b, false, 7)
+    |= .sxtb
+        extend(a, b, true, 7)
+    |= .ubfx
+        bitfield(0x53000000, 0xd3400000, a, b, c, d, false)
+    |= .sbfx
+        bitfield(0x13000000, 0x93400000, a, b, c, d, false)
+    |= .bfi
+        bitfield(0x33000000, 0xb3400000, a, b, c, d, true)
+    ??
+        unsupported(opcode)
+
+────────────────────
++ do branch-to U32
+    - target-offset U32
+    - offset U32
+
+current-offset = offset
+has-relocation = false
+= branch(0x14000000, target-offset, offset, 26)
+
+────────────────────
++ do conditional-branch-to U32
+    - id InstructionId
+    - target-offset U32
+    - offset U32
+
+current-offset = offset
+has-relocation = false
+. row = function.instructions[id]
+if row.opcode == .b-cond
+    = conditional-branch(row.operands, target-offset, offset)
+if row.opcode == .tbz || row.opcode == .tbnz
+    = test-branch
+        - row.opcode == .tbnz
+        - operand(row.operands, 0)
+        - operand(row.operands, 1)
+        - target-offset
+        - offset
+= compare-branch(row.opcode == .cbnz, operand(row.operands, 0), target-offset, offset)
+
+────────────────────
++ branch-target OperandId
+    - id InstructionId
+
+|? row.opcode == .tbz || row.opcode == .tbnz
+    operand(row.operands, 2)
+??
+    operand(row.operands, if row.opcode == .b-cond then 0 else 1)
+
+.. row = function.instructions[id]
+
+────────────────────
++ do jump-to U32
+    - target OperandId
+    - offset U32
+
+current-offset = offset
+has-relocation = false
+= jump(0x14000000, .jump26-relocation, target, offset, true)
+
+────────────────────
+_ do unsupported U32
+    - opcode Opcode
+
+?! Panic("Unsupported AArch64 instruction: ${opcode-names[opcode]}")
+
+────────────────────
+_ operand OperandId
+    - operands IdList
+    - index U32
+
+if index >= operands.length then no-operand else operands[index]
+
+────────────────────
+_ do jump U32
+    - base U32
+    - kind RelocationKind
+    - target OperandId
+    - offset U32
+    - uses-blocks Bool
+
+. name = symbol-name(target)
+. target-offset = no-label
+if uses-blocks && is-label(target)
+    target-offset = labels.label-offset(name)
+else
+    target-offset = labels.symbol-offset(name)
+if target-offset != no-label
+    = branch(base, target-offset, offset, 26)
+emit-relocation(kind, name)
+= base
+
+────────────────────
+_ do branch U32
+    - base U32
+    - target-offset U32
+    - offset U32
+    - bits U32
+
+. delta = (target-offset as I32) - (offset as I32)
+?! Panic("Unaligned branch target")
+    if delta % 4 != 0
+. imm = delta /rshift/ 2
+check-signed-range(imm, bits, "branch")
+= base /or/ ((imm as U32) /and/ ((1u32 /lshift/ bits) - 1))
+
+────────────────────
+_ do compare-branch U32
+    - nonzero Bool
+    - register OperandId
+    - target-offset U32
+    - offset U32
+
+. delta = (target-offset as I32) - (offset as I32)
+?! Panic("Unaligned compare-branch target")
+    if delta % 4 != 0
+. imm = delta /rshift/ 2
+check-signed-range(imm, 19, "compare-branch")
+. base U32 = 0x34000000
+if nonzero
+    base = if is-64(register) then 0xb5000000 else 0x35000000
+else if is-64(register)
+    base = 0xb4000000
+= base /or/ (((imm as U32) /and/ 0x7ffff) /lshift/ 5) /or/ reg(register)
+
+────────────────────
+_ do test-branch U32
+    - nonzero Bool
+    - register OperandId
+    - bit-operand OperandId
+    - target-offset U32
+    - offset U32
+
+. bit = int(bit-operand)
+?! Panic("TBZ/TBNZ bit $bit is out of range")
+    if bit < 0 || bit >= (if is-64(register) then 64 else 32)
+. delta = (target-offset as I32) - (offset as I32)
+?! Panic("Unaligned test-branch target")
+    if delta % 4 != 0
+. imm = delta /rshift/ 2
+check-signed-range(imm, 14, "test-branch")
+. base U32 = if nonzero then 0x37000000 else 0x36000000
+. bits = bit as U32
+= with-bit /or/ (((imm as U32) /and/ 0x3fff) /lshift/ 5) /or/ reg(register)
+    .. with-bit = base /or/ ((bits /zrshift/ 5) /lshift/ 31) /or/ ((bits /and/ 31) /lshift/ 19)
+
+────────────────────
+_ do conditional-branch U32
+    - operands IdList
+    - target-offset U32
+    - offset U32
+
+?! Panic("B.cond requires a label and condition operand")
+    if operands.length != 2
+. condition = cond(operands[1])
+. delta = (target-offset as I32) - (offset as I32)
+?! Panic("Unaligned B.cond target")
+    if delta % 4 != 0
+. imm = delta /rshift/ 2
+check-signed-range(imm, 19, "B.cond")
+. base U32 = 0x54000000
+= base /or/ (((imm as U32) /and/ 0x7ffff) /lshift/ 5) /or/ condition
+
+────────────────────
+_ do adr U32
+    - dest OperandId
+    - label OperandId
+    - offset U32
+
+. imm = (local-label-offset(label) as I32) - (offset as I32)
+check-signed-range(imm, 21, "ADR")
+. bits = imm as U32
+. low = bits /and/ 3
+. high = (bits /zrshift/ 2) /and/ 0x7ffff
+. base U32 = 0x10000000
+= base /or/ (low /lshift/ 29) /or/ (high /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ do adrp U32
+    - dest OperandId
+    - label OperandId
+
+emit-relocation(.page21-relocation, symbol-name(label))
+. base U32 = 0x90000000
+= base /or/ reg(dest)
+
+────────────────────
+_ do mov U32
+    - dest OperandId
+    - src OperandId
+
+if is-int(src)
+    = mov-immediate(dest, int-value(src))
+?! Panic("MOV moves only general registers")
+    if is-float(dest) || is-float(src)
+if is-stack-pointer(dest) || is-stack-pointer(src)
+    . base U32 = if is-64(dest) then 0x91000000 else 0x11000000
+    = base /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+. base U32 = if is-64(dest) then 0xaa0003e0 else 0x2a0003e0
+= base /or/ (reg(src) /lshift/ 16) /or/ reg(dest)
+
+────────────────────
+_ do mov-immediate U32
+    - dest OperandId
+    - value MIRInt
+
+. wide = is-64(dest)
+. bits U32 = if wide then 64 else 32
+. normalized = if wide then value.bits else value.bits /and/ 0xffffffff
+. move-wide = encode-move-wide-immediate(normalized, bits)
+if move-wide.is-encodable
+    . base U32 = 0x52800000
+    if move-wide.is-negated
+        base = if wide then 0x92800000 else 0x12800000
+    else if wide
+        base = 0xd2800000
+    = base /or/ (move-wide.halfword /lshift/ 21) /or/ (move-wide.imm16 /lshift/ 5) /or/ reg(dest)
+. logical = encode-logical-immediate(normalized, bits)
+?! Panic("MOV immediate is out of direct range")
+    if !logical.is-encodable
+. base U32 = if wide then 0xb2000000 else 0x32000000
+= with-immr /or/ (logical.imms /lshift/ 10) /or/ (31u32 /lshift/ 5) /or/ reg(dest)
+    .. with-immr = base /or/ (logical.n /lshift/ 22) /or/ (logical.immr /lshift/ 16)
+
+────────────────────
+_ do move-wide U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - imm OperandId
+    - shift-operand OperandId
+
+. value = int(imm)
+?! Panic("Move-wide immediate must fit in 16 bits: $value")
+    if value < 0 || value > 0xffff
+. shift I64
+if shift-operand != no-operand
+    shift = int(shift-operand)
+?! Panic("Move-wide shift must be a multiple of 16: $shift")
+    if shift % 16 != 0
+. halfword = shift / 16
+?! Panic("Move-wide shift is out of range: $shift")
+    if halfword < 0 || halfword > (if is-64(dest) then 3 else 1)
+. base = if is-64(dest) then base64 else base32
+= base /or/ ((halfword as U32) /lshift/ 21) /or/ ((value as U32) /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ do fmov U32
+    - dest OperandId
+    - src OperandId
+
+if is-int(src)
+    . immediate = float-immediate(int-value(src).bits, is-64(dest))
+    ?! Panic("FMOV has no immediate for the float ${int-value(src).bits}")
+        if immediate == no-float-immediate || !is-float(dest)
+    = (if is-64(dest) then 0x1e601000 else 0x1e201000) /or/ (immediate /lshift/ 13) /or/ reg(dest)
+. dest-float = is-float(dest)
+. src-float = is-float(src)
+. base U32
+if dest-float && src-float
+    base = if is-64(dest) then 0x1e604000 else 0x1e204000
+else if src-float
+    base = if is-64(dest) then 0x9e660000 else 0x1e260000
+else if dest-float
+    base = if is-64(dest) then 0x9e670000 else 0x1e270000
+else
+    ?! Panic("FMOV requires at least one floating-point register")
+= base /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ neg U32
+    - dest OperandId
+    - src OperandId
+
+base /or/ (reg(src) /lshift/ 16) /or/ reg(dest)
+
+.. base U32 = if is-64(dest) then 0xcb0003e0 else 0x4b0003e0
+
+────────────────────
+_ do add-sub U32
+    - is-sub Bool
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+    - shift-operand OperandId
+
+. label = page-offset-label(rhs)
+if label != no-string
+    emit-relocation(.add-pageoff12-relocation, label)
+    . base U32 = if is-64(dest) then 0x91000000 else 0x11000000
+    = base /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+. wide = is-64(dest)
+if is-int(rhs)
+    . base U32 = 0x11000000
+    if is-sub
+        base = if wide then 0xd1000000 else 0x51000000
+    else if wide
+        base = 0x91000000
+    = base /or/ add-sub-immediate(int(rhs)) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+. base U32 = 0x0b000000
+if is-sub
+    base = if wide then 0xcb000000 else 0x4b000000
+else if wide
+    base = 0x8b000000
+= base /or/ shift-field /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+    .. shift-field = shift-bits(shift-operand, dest, false)
+
+────────────────────
+_ do add-sub-immediate U32
+    - imm I64
+
+if imm >= 0 && imm <= 4095
+    = (imm as U32) /lshift/ 10
+if imm >= 0 && imm % 4096 == 0 && imm / 4096 <= 4095
+    = (1u32 /lshift/ 22) /or/ (((imm / 4096) as U32) /lshift/ 10)
+?! Panic("ADD/SUB immediate out of range: $imm")
+
+────────────────────
+_ three-reg U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+
+base /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(dest) then base64 else base32
+
+────────────────────
+_ four-reg U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+    - addend OperandId
+
+base /or/ (reg(rhs) /lshift/ 16) /or/ addend-field /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(dest) then base64 else base32
+.. addend-field = reg(addend) /lshift/ 10
+
+────────────────────
+_ two-reg U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - src OperandId
+
+base /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(dest) then base64 else base32
+
+────────────────────
+_ do logical U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+    - shift-operand OperandId
+
+. wide = is-64(dest)
+if !is-int(rhs)
+    = shifted /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+        .. shifted = (if wide then base64 else base32) /or/ shift-bits(shift-operand, dest, true)
+. value = int-value(rhs)
+. encoded = encode-logical-immediate(value.bits, if wide then 64 else 32)
+?! Panic("Unsupported logical immediate")
+    if !encoded.is-encodable
+. base U32
+if base32 == 0x0a000000
+    base = if wide then 0x92000000 else 0x12000000
+else if base32 == 0x2a000000
+    base = if wide then 0xb2000000 else 0x32000000
+else
+    base = if wide then 0xd2000000 else 0x52000000
+= with-immr /or/ (encoded.imms /lshift/ 10) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+    .. with-immr = base /or/ (encoded.n /lshift/ 22) /or/ (encoded.immr /lshift/ 16)
+
+────────────────────
+_ mvn U32
+    - dest OperandId
+    - src OperandId
+
+base /or/ (reg(src) /lshift/ 16) /or/ reg(dest)
+
+.. base U32 = if is-64(dest) then 0xaa2003e0 else 0x2a2003e0
+
+────────────────────
+_ do shift U32
+    - kind U32
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+
+. wide = is-64(dest)
+if !is-int(rhs)
+    . base U32 = 0x1ac02000 + kind * 0x400
+    if wide
+        base = base /or/ 0x80000000
+    = base /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+. bits I64 = if wide then 64 else 32
+. amount = int(rhs)
+?! Panic("Shift immediate out of range: $amount")
+    if amount < 0 || amount >= bits
+. immr = amount as U32
+. imms = (bits - 1) as U32
+. base U32 = if wide then 0xd3400000 else 0x53000000
+if kind == 0
+    immr = ((bits - amount) /and/ (bits - 1)) as U32
+    imms = (bits - 1 - amount) as U32
+else if kind == 2
+    base = if wide then 0x93400000 else 0x13000000
+= base /or/ (immr /lshift/ 16) /or/ (imms /lshift/ 10) /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ do cmp U32
+    - lhs OperandId
+    - rhs OperandId
+    - shift-operand OperandId
+
+if is-int(rhs)
+    . base U32 = if is-64(lhs) then 0xf100001f else 0x7100001f
+    = base /or/ add-sub-immediate(int(rhs)) /or/ (reg(lhs) /lshift/ 5)
+. base U32 = if is-64(lhs) then 0xeb00001f else 0x6b00001f
+= base /or/ shift-field /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5)
+    .. shift-field = shift-bits(shift-operand, lhs, false)
+
+────────────────────
+_ do conditional-compare U32
+    - lhs OperandId
+    - rhs OperandId
+    - flags OperandId
+    - condition OperandId
+
+. nzcv = int(flags)
+?! Panic("CCMP flags are out of range: $nzcv")
+    if nzcv < 0 || nzcv > 15
+. base U32 = if is-64(lhs) then 0xfa400000 else 0x7a400000
+if is-int(rhs)
+    . value = int(rhs)
+    ?! Panic("CCMP immediate is out of range: $value")
+        if value < 0 || value > 31
+    = with-value /or/ (cond(condition) /lshift/ 12) /or/ (reg(lhs) /lshift/ 5) /or/ (nzcv as U32)
+        .. with-value = base /or/ 0x800 /or/ ((value as U32) /lshift/ 16)
+= with-register /or/ (cond(condition) /lshift/ 12) /or/ (reg(lhs) /lshift/ 5) /or/ (nzcv as U32)
+    .. with-register = base /or/ (reg(rhs) /lshift/ 16)
+
+────────────────────
+_ do shift-bits U32
+    - id OperandId
+    - dest OperandId
+    - allows-rotate Bool
+
+if id == no-operand
+    = 0
+do match? function.operands[id]
+    | .shift-operand(operand)
+        ?! Panic("Register shift $operand.amount is out of range")
+            if out-of-range || operand.kind > (if allows-rotate then 3 else 2)
+        .. out-of-range = operand.amount >= (if is-64(dest) then 64 else 32)
+        = (operand.kind /lshift/ 22) /or/ (operand.amount /lshift/ 10)
+?! Panic("Expected register shift operand")
+
+────────────────────
+_ conditional-select U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - lhs OperandId
+    - rhs OperandId
+    - condition OperandId
+
+base /or/ (reg(rhs) /lshift/ 16) /or/ condition-field /or/ (reg(lhs) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(dest) then base64 else base32
+.. condition-field = cond(condition) /lshift/ 12
+
+────────────────────
+_ do cset U32
+    - dest OperandId
+    - condition OperandId
+
+. code = cond(condition)
+if code != condition-always
+    code = code /xor/ 1
+. base U32 = if is-64(dest) then 0x9a9f07e0 else 0x1a9f07e0
+= base /or/ (code /lshift/ 12) /or/ reg(dest)
+
+────────────────────
+_ do load-store U32
+    - is-load Bool
+    - register OperandId
+    - address-operand OperandId
+    - post-operand OperandId
+    - forced-size U32
+    - is-signed Bool
+
+. addr = address(address-operand)
+. has-post-offset = post-operand != no-operand
+. post-offset I64
+if has-post-offset
+    post-offset = int(post-operand)
+. size = forced-size
+if size == 0
+    size = access-size(register)
+. label = page-offset-label(addr.offset)
+if label != no-string
+    emit-relocation(load-store-pageoff12-relocation(size), label)
+    = page-base /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+        .. page-base = load-store-unsigned-base(is-load, register, size, is-signed)
+if register-of(addr.offset) != no-register
+    ?! Panic("A load/store index must be a 64-bit register without writeback")
+        if !is-64(addr.offset) || is-float(addr.offset) || addr.is-pre-index || has-post-offset
+    . scaled U32
+    if addr.index-shift != 0
+        ?! Panic("A load/store index shifted by $index-shift does not scale a ${size}-byte access")
+            if (1u32 /lshift/ addr.index-shift) != size
+        .. index-shift = addr.index-shift
+        scaled = 1
+    = load-store-unscaled-base(is-load, register, size, is-signed) /or/ 0x206800 /or/ (reg(addr.offset) /lshift/ 16) /or/ (scaled /lshift/ 12) /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+if has-post-offset
+    check-signed-range(post-offset, 9, "load/store post-index offset")
+    = post-base /or/ post-field /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+        .. post-base = load-store-unscaled-base(is-load, register, size, is-signed) /or/ 0x400
+        .. post-field = ((post-offset as U32) /and/ 0x1ff) /lshift/ 12
+. offset I64
+if addr.offset != no-operand
+    offset = int(addr.offset)
+if addr.is-pre-index
+    check-signed-range(offset, 9, "load/store pre-index offset")
+    = pre-base /or/ pre-field /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+        .. pre-base = load-store-unscaled-base(is-load, register, size, is-signed) /or/ 0xc00
+        .. pre-field = ((offset as U32) /and/ 0x1ff) /lshift/ 12
+if offset >= 0 && offset % size == 0 && offset / size <= 4095
+    = unsigned-base /or/ scaled-field /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+        .. unsigned-base = load-store-unsigned-base(is-load, register, size, is-signed)
+        .. scaled-field = ((offset / size) as U32) /lshift/ 10
+check-signed-range(offset, 9, "load/store unscaled offset")
+= unscaled-base /or/ unscaled-field /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+    .. unscaled-base = load-store-unscaled-base(is-load, register, size, is-signed)
+    .. unscaled-field = ((offset as U32) /and/ 0x1ff) /lshift/ 12
+
+────────────────────
+_ do load-acquire U32
+    - register OperandId
+    - address-operand OperandId
+
+. addr = address(address-operand)
+. offset I64
+if addr.offset != no-operand
+    offset = int(addr.offset)
+?! Panic("LDAR requires an unindexed integer address")
+    if addr.is-pre-index || offset != 0 || is-float(register)
+. base U32 = if access-size(register) == 8 then 0xc8dffc00 else 0x88dffc00
+= base /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+
+────────────────────
+_ do byte-acquire-release U32
+    - base U32
+    - register OperandId
+    - address-operand OperandId
+
+. addr = address(address-operand)
+. offset I64
+if addr.offset != no-operand
+    offset = int(addr.offset)
+?! Panic("LDARB and STLRB require an unindexed integer address")
+    if addr.is-pre-index || offset != 0 || is-float(register)
+= base /or/ (reg(addr.base) /lshift/ 5) /or/ reg(register)
+
+────────────────────
+_ do load-store-unsigned-base U32
+    - is-load Bool
+    - register OperandId
+    - size U32
+    - is-signed Bool
+
+if is-signed
+    = signed-load-base(register, size, 0x39800000, 0x79800000, 0xb9800000)
+. base U32
+if is-float(register) && size == 4
+    base = 0xbd000000
+else if is-float(register) && size == 8
+    base = 0xfd000000
+else if size == 1
+    base = 0x39000000
+else if size == 2
+    base = 0x79000000
+else if size == 4
+    base = 0xb9000000
+else if size == 8
+    base = 0xf9000000
+else
+    ?! Panic("Unsupported load/store size $size")
+= if is-load then base /or/ 0x400000 else base
+
+────────────────────
+_ do load-store-unscaled-base U32
+    - is-load Bool
+    - register OperandId
+    - size U32
+    - is-signed Bool
+
+if is-signed
+    = signed-load-base(register, size, 0x38800000, 0x78800000, 0xb8800000)
+. base U32
+if is-float(register) && size == 4
+    base = 0xbc000000
+else if is-float(register) && size == 8
+    base = 0xfc000000
+else if size == 1
+    base = 0x38000000
+else if size == 2
+    base = 0x78000000
+else if size == 4
+    base = 0xb8000000
+else if size == 8
+    base = 0xf8000000
+else
+    ?! Panic("Unsupported unscaled load/store size $size")
+= if is-load then base /or/ 0x400000 else base
+
+────────────────────
+_ signed-load-base U32
+    - register OperandId
+    - size U32
+    - byte-base U32
+    - halfword-base U32
+    - word-base U32
+
+|? size == 4
+    word-base
+|? is-64(register)
+    base
+??
+    base /or/ 0x400000
+
+.. base = if size == 1 then byte-base else halfword-base
+
+────────────────────
+_ do load-store-pair U32
+    - is-load Bool
+    - first OperandId
+    - second OperandId
+    - address-operand OperandId
+    - post-operand OperandId
+
+. addr = address(address-operand)
+. has-post-offset = post-operand != no-operand
+. size = access-size(first)
+. offset I64
+if has-post-offset
+    offset = int(post-operand)
+else if addr.offset != no-operand
+    offset = int(addr.offset)
+. scale I64 = if size == 8 then 8 else 4
+?! Panic("Pair offset must be scaled by $scale: $offset")
+    if offset % scale != 0
+. imm = offset / scale
+check-signed-range(imm, 7, "load/store pair offset")
+. base U32 = 0x29000000
+if is-float(first)
+    base = if size == 8 then 0x6d000000 else 0x2d000000
+else if is-64(first)
+    base = 0xa9000000
+if is-load
+    base = base /or/ 0x400000
+if has-post-offset
+    base -= 0x00800000
+else if addr.is-pre-index
+    base += 0x00800000
+= with-offset /or/ (reg(second) /lshift/ 10) /or/ (reg(addr.base) /lshift/ 5) /or/ reg(first)
+    .. with-offset = base /or/ (((imm as U32) /and/ 0x7f) /lshift/ 15)
+
+────────────────────
+_ fcmp U32
+    - lhs OperandId
+    - rhs OperandId
+
+base /or/ (reg(rhs) /lshift/ 16) /or/ (reg(lhs) /lshift/ 5)
+
+.. base U32 = if is-64(lhs) then 0x1e602000 else 0x1e202000
+
+────────────────────
+_ int-float-convert U32
+    - base32-source U32
+    - base64-source U32
+    - dest OperandId
+    - src OperandId
+
+base /or/ float-type /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(src) then base64-source else base32-source
+.. float-type U32 = if is-64(dest) then 0x00400000 else 0
+
+────────────────────
+_ float-int-convert U32
+    - base32-dest U32
+    - base64-dest U32
+    - dest OperandId
+    - src OperandId
+
+base /or/ float-type /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+.. base = if is-64(dest) then base64-dest else base32-dest
+.. float-type U32 = if is-64(src) then 0x00400000 else 0
+
+────────────────────
+_ fcvt U32
+    - dest OperandId
+    - src OperandId
+
+|? is-64(dest) == is-64(src)
+    fmov(dest, src)
+??
+    base /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+.. base U32 = if is-64(dest) then 0x1e22c000 else 0x1e624000
+
+────────────────────
+_ do extend U32
+    - dest OperandId
+    - src OperandId
+    - is-signed Bool
+    - top-bit U32
+
+if !is-signed && top-bit == 31 && !is-64(dest)
+    = mov(dest, src)
+. base U32 = 0x53000000
+if is-signed
+    base = if is-64(dest) then 0x93400000 else 0x13000000
+else if is-64(dest)
+    base = 0xd3400000
+= base /or/ (top-bit /lshift/ 10) /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ do bitfield U32
+    - base32 U32
+    - base64 U32
+    - dest OperandId
+    - src OperandId
+    - lsb-operand OperandId
+    - width-operand OperandId
+    - is-insert Bool
+
+. bits I64 = if is-64(dest) then 64 else 32
+. lsb = int(lsb-operand)
+. width = int(width-operand)
+?! Panic("Bitfield #$lsb, #$width is out of range")
+    if lsb < 0 || width < 1 || lsb + width > bits
+. immr = lsb as U32
+. imms = (lsb + width - 1) as U32
+if is-insert
+    immr = ((bits - lsb) % bits) as U32
+    imms = (width - 1) as U32
+. base = if is-64(dest) then base64 else base32
+= base /or/ (immr /lshift/ 16) /or/ (imms /lshift/ 10) /or/ (reg(src) /lshift/ 5) /or/ reg(dest)
+
+────────────────────
+_ local-label-offset U32
+    - id OperandId
+
+?! Panic("Unknown local label ${name-string(bundle, function, name)}")
+    if offset == no-label
+
+offset
+
+.. name = symbol-name(id)
+.. offset = if is-label(id) then labels.label-offset(name) else labels.symbol-offset(name)
+
+────────────────────
+_ do is-label Bool
+    - id OperandId
+
+if id == no-operand
+    = false
+do match? function.operands[id]
+    | .label-operand
+        = true
+= false
+
+────────────────────
+_ do symbol-name StringId
+    - id OperandId
+
+if id != no-operand
+    do match? function.operands[id]
+        | .label-operand(operand)
+            = operand.name
+        | .symbol-operand(operand)
+            = operand.name
+?! Panic("Expected symbol operand")
+
+────────────────────
+_ do page-offset-label StringId
+    - id OperandId
+
+if id == no-operand
+    = no-string
+do match? function.operands[id]
+    | .label-operand(operand)
+        ?! Panic("Unsupported relocation on label ${name-string(bundle, function, operand.name)}")
+            if operand.reloc != .pageoff-reloc
+        = operand.name
+= no-string
+
+────────────────────
+_ do address LoadAddressOperand
+    - id OperandId
+
+if id != no-operand
+    do match? function.operands[id]
+        | .load-address-operand(operand)
+            = operand
+?! Panic("Expected load address")
+
+────────────────────
+_ do is-int Bool
+    - id OperandId
+
+if id == no-operand
+    = false
+do match? function.operands[id]
+    | .int-operand
+        = true
+= false
+
+────────────────────
+_ do int-value MIRInt
+    - id OperandId
+
+if id != no-operand
+    do match? function.operands[id]
+        | .int-operand(operand)
+            = operand.value
+?! Panic("Expected immediate integer")
+
+────────────────────
+_ int I64
+    - id OperandId
+
+?! Panic("Immediate is out of range: $value.bits")
+    if !value.is-negative && value.bits > 9223372036854775807
+
+value.bits as I64
+
+.. value = int-value(id)
+
+────────────────────
+_ do register-of RegisterId
+    - id OperandId
+
+if id == no-operand
+    = no-register
+do match? function.operands[id]
+    | .preg-operand(operand)
+        = operand.register
+= no-register
+
+────────────────────
+_ reg U32
+    - id OperandId
+
+?! Panic("Expected physical register")
+    if register == no-register
+?! Panic("Unsupported register $register")
+    if number < 0
+
+number as U32
+
+.. register = register-of(id)
+.. number = register-number(register)
+
+────────────────────
+_ access-size U32
+    - id OperandId
+
+?! Panic("Expected physical register")
+    if register == no-register
+
+if reg-class == .gpr64 || reg-class == .fpr64 then 8 else 4
+
+.. register = register-of(id)
+.. reg-class = register-class(register)
+
+────────────────────
+_ is-64 Bool
+    - id OperandId
+
+register != no-register && (reg-class == .gpr64 || reg-class == .fpr64)
+
+.. register = register-of(id)
+.. reg-class = register-class(register)
+
+────────────────────
+_ is-float Bool
+    - id OperandId
+
+register != no-register && (reg-class == .fpr32 || reg-class == .fpr64)
+
+.. register = register-of(id)
+.. reg-class = register-class(register)
+
+────────────────────
+_ is-stack-pointer Bool
+    - id OperandId
+
+register-of(id) == stack-pointer-register
+
+────────────────────
+_ do cond U32
+    - id OperandId
+
+if id != no-operand
+    do match? function.operands[id]
+        | .cond-operand(operand)
+            = operand.code
+?! Panic("Expected condition operand")
+
+────────────────────
+_ do check-signed-range
+    - value I64
+    - bits U32
+    - context String
+
+. limit I64 = 1
+limit = limit /lshift/ (bits - 1)
+?! Panic("$context is out of range: $value")
+    if value < 0 - limit || value > limit - 1
+
+────────────────────
+_ do emit-relocation
+    - kind RelocationKind
+    - symbol StringId
+
+has-relocation = true
+relocation-kind = kind
+relocation-symbol = symbol
+relocation-offset = current-offset
+
+━━━━━━━━━━━━━━━━━━━━
++ do encode-move-wide-immediate MoveWideImmediate
+    - value U64
+    - bits U32
+
+. halfword-count = bits / 16
+. chunk U64 = 0xffff
+for halfword in 0 .. < halfword-count
+    . shift = halfword * 16
+    . mask = chunk /lshift/ shift
+    if (value /and/ (mask /xor/ U64.max)) == 0
+        = MoveWideImmediate(true, false, halfword, ((value /zrshift/ shift) /and/ 0xffff) as U32)
+. inverted = (value /xor/ U64.max) /and/ bit-mask(bits)
+for halfword in 0 .. < halfword-count
+    . shift = halfword * 16
+    . mask = chunk /lshift/ shift
+    if (inverted /and/ (mask /xor/ U64.max)) == 0
+        = MoveWideImmediate(true, true, halfword, ((inverted /zrshift/ shift) /and/ 0xffff) as U32)
+= MoveWideImmediate()
+
+━━━━━━━━━━━━━━━━━━━━
++ float-immediate U32
+    - bits U64
+    - is-double Bool
+
+` The eight bits FMOV takes for a float, or none when the float has no such form: a sign, an
+` exponent of three bits that is not all of the exponent's, and the top four bits of a fraction.
+|? (bits /and/ ((1u64 /lshift/ fraction-bits) - 1)) != 0
+    no-float-immediate
+|? !is-double && (bits /zrshift/ 32) != 0
+    no-float-immediate
+|? repeated != (if b != 0 then ((1u64 /lshift/ exponent-bits) - 1) else 0)
+    no-float-immediate
+|? ((bits /zrshift/ (top - 1)) /and/ 1) == b
+    no-float-immediate
+??
+    ((sign /lshift/ 7) /or/ (b /lshift/ 6) /or/ low) as U32
+
+.. fraction-bits U64 = if is-double then 48 else 19
+.. exponent-bits U64 = if is-double then 8 else 5
+.. top = if is-double then 63u64 else 31u64
+.. low = (bits /zrshift/ fraction-bits) /and/ 0x3f
+.. repeated = (bits /zrshift/ (fraction-bits + 6)) /and/ ((1u64 /lshift/ exponent-bits) - 1)
+.. b = repeated /and/ 1
+.. sign = (bits /zrshift/ top) /and/ 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do encode-logical-immediate LogicalImmediate
+    - value U64
+    - bits U32
+
+. full-mask = bit-mask(bits)
+. normalized = value /and/ full-mask
+if normalized == 0 || normalized == full-mask
+    = LogicalImmediate()
+. size U32 = 2
+while size <= bits
+    . pattern = normalized /and/ bit-mask(size)
+    if replicate(pattern, size, bits) == normalized
+        for ones-length in 1 .. < size
+            . ones = bit-mask(ones-length)
+            for immr in 0 .. < size
+                if rotate-right(ones, immr, size) == pattern
+                    . n U32 = if bits == 64 && size == 64 then 1 else 0
+                    . imms = (size-prefix /or/ ((ones-length - 1) as U32)) /and/ 0x3f
+                        .. size-prefix = ((size - 1) /xor/ U32.max) /lshift/ 1
+                    = LogicalImmediate(true, n, immr, imms)
+    size *= 2
+= LogicalImmediate()
+
+━━━━━━━━━━━━━━━━━━━━
+_ bit-mask U64
+    - bits U32
+
+if bits >= 64 then U64.max else (1u64 /lshift/ bits) - 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do replicate U64
+    - pattern U64
+    - size U32
+    - bits U32
+
+. value U64
+. offset U32
+while offset < bits
+    value = value /or/ (pattern /lshift/ offset)
+    offset += size
+= value
+
+━━━━━━━━━━━━━━━━━━━━
+_ rotate-right U64
+    - value U64
+    - shift U32
+    - bits U32
+
+if amount == 0 then value /and/ mask else ((value /zrshift/ amount) /or/ wrapped) /and/ mask
+
+.. mask = bit-mask(bits)
+.. amount = shift % bits
+.. wrapped = value /lshift/ (bits - amount)

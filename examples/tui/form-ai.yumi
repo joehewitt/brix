@@ -1,0 +1,74 @@
+
+/tui
+/time
+/stream
+
+<Window win • flex-col
+    <Box • flex-col flex:1 bg:blue
+        <TextBox "hello at ${##0.5s}!!"
+
+    <LoginForm login • flex-col flex:1 bg:grey
+
+win.open()
+
+━━━━━━━━━━━━━━━━━━━━
++ LoginForm is Form
+
+────────────────────
+
+<Label "E-Mail Address"
+<TextEditor email-box
+
+<Label "Password"
+<TextEditor password-box
+    mask = '*'
+
+<Label "${#email} -> ${#is-authenticating} / ${#is-authenticated}"
+
+<OkButton login-button "Login"
+    is-enabled = !#is-authenticating
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+~> is-authenticating for .valid(e, p) on login-submission
+    then is-authenticated for .authentic on authenticate(e, p)
+    ?? is-authenticating
+
+.. email = email-box.#text
+.. password = password-box.#text
+`  .. valid-email EmailAddress = #email
+`  .. session = ##successes
+`  .. latest-error = ##errors
+`  .. successes, errors
+`      partition of ##login /or/ login-authenticated
+`          where each is .valid
+
+`  .. is-real-email = could-be-real-email(email-box.#text)
+
+`  .. login-submission = on submitted when is-real-email
+.. login-submission = on submitted
+    |? !email-box.text
+        ..invalid-email
+    |? !password-box.text
+        ..invalid-password
+    ??
+        ..valid(email-box.text, password-box.text)
+
+━━━━━━━━━━━━━━━━━━━━
++ do authenticate
+    - email String
+    - password String
+
+do 0.5s.wait()
+
+<=
+    |? password == "poop"
+        ..authentic(email, "2314324")
+    ??
+        ..incorrect-password
+
+`  ━━━━━━━━━━━━━━━━━━━━
+`  + ∞ could-be-real-email Bool @jev(80%)
+`      - email String
+
+`  The email address $email appears to be the user's real email address, and not an obviously fake email typed in just to get past the subscription gate. 

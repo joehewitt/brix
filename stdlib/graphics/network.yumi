@@ -1,0 +1,1586 @@
+./_utils
+./curve
+./curve-kernels
+./matrix
+./path
+./point
+./primitives
+/core/gc
+/math
+/stream/aggregate
+
+_ network-pick-depth Size = 8
+_ network-slot-threshold Size = 16
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkVertex is Tuple
+
++ id Index
++ position Point
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkSegment is Tuple
+
++ id Index
++ start Index
++ end Index
++ tangent-start Point
++ tangent-end Point
++ source Index
++ source-start Float
++ source-end Float = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkEnd is Tuple
+
++ segment Index
++ at-end Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkPair is Tuple
+
++ first NetworkEnd
++ second NetworkEnd
++ mirror-length Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkHit is Tuple
+
++ segment Index
++ parameter Float
++ position Point
++ distance Length
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkTrace
+
++ path = Path()
++ segments [Index]
++ reversed [Bool]
++ closed = false
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkTraceStep is Tuple
+
++ segment Index
++ reversed Bool
++ vertex Index
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkOutlineEnds is Tuple
+
++ first NetworkTraceStep
++ last NetworkTraceStep
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkOutline is Tuple
+
++ ends NetworkOutlineEnds?
++ chain Bool
++ fresh Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkTraceLookup
+
++ starts [Index]
++ ends [Index]
++ degrees [Index]
++ offsets [Index]
++ incident [Index]
++ used [Bool]
++ counts [Index]
++ first-edges [Index]
++ second-edges [Index]
++ paired = false
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkMutationObserver
+
+────────────────────
++ do network-mutated
+    - network VectorNetwork
+    - revision Size
+
+. ignored-network = network
+. ignored-revision = revision
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorNetwork
+
+_ vertex-list [NetworkVertex]
+_ segment-list [NetworkSegment]
+_ pair-list [NetworkPair]
+_ next-vertex Index = 1
+_ next-segment Index = 1
+_ version Size = 0
+_ mutation-depth Size
+_ mutation-pending = false
+_ mutation-observers [Weak'NetworkMutationObserver]
+_ vertex-slots Map'Index'Index?
+_ segment-slots Map'Index'Index?
+_ trace-scratch NetworkTraceLookup?
+_ known-outline NetworkOutline?
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - vertices [NetworkVertex]
+    - segments [NetworkSegment]
+    - pairs [NetworkPair]
+
+vertex-list.reserve(vertices.length)
+segment-list.reserve(segments.length)
+pair-list.reserve(pairs.length)
+for item in vertices
+    network-valid-point(item.position)
+    if vertex-slot(item.id) != null
+        ?! Panic("Duplicate network vertex id")
+    append-vertex-item(item)
+    next-vertex = max(next-vertex, item.id + 1)
+for item in segments
+    vertex(item.start)
+    vertex(item.end)
+    network-valid-point(item.tangent-start)
+    network-valid-point(item.tangent-end)
+    if !is-finite(item.source-start) || !is-finite(item.source-end)
+        ?! Panic("Invalid network segment source range")
+    if segment-slot(item.id) != null
+        ?! Panic("Duplicate network segment id")
+    append-segment-item(item)
+    next-segment = max(next-segment, item.id + 1)
+. paired = Map'Index'Bool()
+for pair in pairs
+    . first = network-end-key(pair.first)
+    . second = network-end-key(pair.second)
+    if paired has first || paired has second
+        pair-handles(pair.first, pair.second, pair.mirror-length)
+    else
+        validate-pair(pair.first, pair.second)
+        pair-list += pair
+    paired[first] = true
+    paired[second] = true
+version = 0
+mutation-pending = false
+
+────────────────────
++ get revision
+
+version
+
+────────────────────
++ do subscribe
+    - observer NetworkMutationObserver
+
+. index = mutation-observers.length
+while index > 0
+    index -= 1
+    . existing = mutation-observers[index].get
+    if !existing
+        mutation-observers.remove(index)
+    else if existing as Pointer == observer as Pointer
+        =
+. weak = catch? Weak(observer)
+?! Panic("Unable to subscribe to vector network mutations")
+    if !weak
+mutation-observers += weak
+
+────────────────────
++ do unsubscribe
+    - observer NetworkMutationObserver
+
+. index = mutation-observers.length
+while index > 0
+    index -= 1
+    . existing = mutation-observers[index].get
+    if !existing || existing as Pointer == observer as Pointer
+        mutation-observers.remove(index)
+
+────────────────────
++ get updating
+
+NetworkUpdateScope(this)
+
+────────────────────
++ do begin-update
+
+mutation-depth += 1
+
+────────────────────
++ do checkpoint
+
+if !mutation-depth
+    publish-mutation()
+
+────────────────────
++ do end-update
+
+if mutation-depth
+    mutation-depth -= 1
+if !mutation-depth
+    publish-mutation()
+
+────────────────────
++ get next-vertex-id
+
+next-vertex
+
+────────────────────
++ get next-segment-id
+
+next-segment
+
+────────────────────
++ do reserve-ids
+    - vertex Index
+    - segment Index
+
+next-vertex = max(next-vertex, vertex)
+next-segment = max(next-segment, segment)
+
+────────────────────
++ get vertex-count
+
+vertex-list.length
+
+────────────────────
++ get segment-count
+
+segment-list.length
+
+────────────────────
++ get pair-count
+
+pair-list.length
+
+────────────────────
++ do get vertices
+
+for item in vertex-list
+    <= item
+
+────────────────────
++ do get segments
+
+for item in segment-list
+    <= item
+
+────────────────────
++ do get pairs
+
+for item in pair-list
+    <= item
+
+────────────────────
++ vertex
+    - id Index
+
+vertex-list[require-vertex-slot(id)]
+
+────────────────────
++ has-vertex
+    - id Index
+
+vertex-slot(id) != null
+
+────────────────────
++ vertex-index
+    - id Index
+
+require-vertex-slot(id)
+
+────────────────────
++ segment
+    - id Index
+
+segment-list[require-segment-slot(id)]
+
+────────────────────
++ has-segment
+    - id Index
+
+segment-slot(id) != null
+
+────────────────────
++ segment-index
+    - id Index
+
+require-segment-slot(id)
+
+────────────────────
++ vertex-at
+    - index Index
+
+vertex-list[index]
+
+────────────────────
++ segment-at
+    - index Index
+
+segment-list[index]
+
+────────────────────
++ pair-at
+    - index Index
+
+pair-list[index]
+
+────────────────────
++ do degree
+    - id Index
+
+vertex(id)
+. count Size = 0
+for item in segment-list
+    if item.start == id
+        count += 1
+    if item.end == id
+        count += 1
+= count
+
+────────────────────
++ do vertex-ends [NetworkEnd]
+    - id Index
+
+vertex(id)
+. result [NetworkEnd]
+for item in segment-list
+    if item.start == id
+        result += NetworkEnd(item.id)
+    if item.end == id
+        result += NetworkEnd(item.id, true)
+= result
+
+────────────────────
++ do add-vertex
+    - position Point
+
+use updating
+network-valid-point(position)
+. id = next-vertex
+next-vertex += 1
+append-vertex-item(NetworkVertex(id, position))
+record-mutation()
+= id
+
+────────────────────
++ do connect
+    - start Index
+    - end Index
+    - tangent-start Point = (0, 0)
+    - tangent-end Point = (0, 0)
+
+use updating
+vertex(start)
+vertex(end)
+network-valid-point(tangent-start)
+network-valid-point(tangent-end)
+. id = next-segment
+next-segment += 1
+append-segment-item(NetworkSegment(id, start, end, tangent-start, tangent-end, id))
+record-mutation()
+= id
+
+────────────────────
++ curve
+    - id Index
+
+edge-curve(segment(id))
+
+────────────────────
++ do move-vertex
+    - id Index
+    - position Point
+
+use updating
+. slot = require-vertex-slot(id)
+network-valid-point(position)
+vertex-list[slot] = NetworkVertex(id, position)
+record-mutation()
+
+────────────────────
++ do set-tangents
+    - id Index
+    - start Point
+    - end Point
+
+use updating
+. slot = require-segment-slot(id)
+network-valid-point(start)
+network-valid-point(end)
+. edge = segment-list[slot]
+edge = edge.tangent-start = start
+edge = edge.tangent-end = end
+segment-list[slot] = edge
+record-mutation()
+
+────────────────────
++ end-vertex
+    - endpoint NetworkEnd
+
+if endpoint.at-end then edge.end else edge.start
+
+.. edge = segment(endpoint.segment)
+
+────────────────────
++ tangent
+    - endpoint NetworkEnd
+
+if endpoint.at-end then edge.tangent-end else edge.tangent-start
+
+.. edge = segment(endpoint.segment)
+
+────────────────────
++ do pair-handles
+    - first NetworkEnd
+    - second NetworkEnd
+    - mirror-length Bool = false
+
+use updating
+validate-pair(first, second)
+unpair(first)
+unpair(second)
+pair-list += NetworkPair(first, second, mirror-length)
+record-mutation()
+
+────────────────────
+_ do validate-pair
+    - first NetworkEnd
+    - second NetworkEnd
+
+if end-vertex(first) != end-vertex(second)
+    ?! Panic("Handles must share a vertex")
+if first == second
+    ?! Panic("Cannot pair a handle with itself")
+
+────────────────────
++ do unpair
+    - endpoint NetworkEnd
+
+use updating
+segment(endpoint.segment)
+. i = pair-list.length
+while i > 0
+    i -= 1
+    if pair-list[i].first == endpoint || pair-list[i].second == endpoint
+        pair-list.remove(i)
+        record-mutation()
+
+────────────────────
++ do set-handle
+    - endpoint NetworkEnd
+    - value Point
+    - independent Bool = false
+
+use updating
+segment(endpoint.segment)
+network-valid-point(value)
+validate-handle(endpoint, value, independent)
+set-end-tangent(endpoint, value)
+if !independent
+    for pair in pair-list
+        if pair.first == endpoint || pair.second == endpoint
+            . other = if pair.first == endpoint then pair.second else pair.first
+            . length = value.length
+            . opposite = Point(0, 0)
+            if length > 0
+                opposite = value * (if pair.mirror-length then -1 else ratio)
+                    .. ratio = -tangent(other).length / length
+            set-end-tangent(other, opposite)
+
+────────────────────
+_ do validate-handle
+    - endpoint NetworkEnd
+    - value Point
+    - independent Bool
+
+network-valid-point(value)
+if !independent
+    for pair in pair-list
+        if pair.first == endpoint || pair.second == endpoint
+            . other = if pair.first == endpoint then pair.second else pair.first
+            . length = value.length
+            if length > 0
+                network-valid-point
+                    - value * (if pair.mirror-length then -1 else -tangent(other).length / length)
+
+────────────────────
+_ do set-end-tangent
+    - endpoint NetworkEnd
+    - value Point
+
+. edge = segment(endpoint.segment)
+if endpoint.at-end
+    set-tangents(edge.id, edge.tangent-start, value)
+else
+    set-tangents(edge.id, value, edge.tangent-end)
+
+────────────────────
++ do remove-segment
+    - id Index
+
+use updating
+segment(id)
+unpair(NetworkEnd(id, false))
+unpair(NetworkEnd(id, true))
+segment-list.remove(require-segment-slot(id))
+segment-slots = null
+known-outline = null
+record-mutation()
+
+────────────────────
++ do remove-vertex
+    - id Index
+
+use updating
+vertex(id)
+. i = segment-list.length
+while i > 0
+    i -= 1
+    . edge = segment-list[i]
+    if edge.start == id || edge.end == id
+        remove-segment(edge.id)
+vertex-list.remove(require-vertex-slot(id))
+vertex-slots = null
+known-outline = null
+record-mutation()
+
+────────────────────
++ do merge-vertices
+    - source Index
+    - destination Index
+    - position Point
+
+use updating
+vertex(source)
+vertex(destination)
+network-valid-point(position)
+=? if source == destination
+for i in 0 .. < segment-list.length
+    . edge = segment-list[i]
+    if edge.start == source
+        edge = edge.start = destination
+    if edge.end == source
+        edge = edge.end = destination
+    segment-list[i] = edge
+remove-vertex(source)
+move-vertex(destination, position)
+
+────────────────────
++ do disconnect Index
+    - endpoint NetworkEnd
+
+use updating
+. old = end-vertex(endpoint)
+. position = vertex(old).position
+unpair(endpoint)
+. id = add-vertex(position)
+for i in 0 .. < segment-list.length
+    . edge = segment-list[i]
+    if edge.id == endpoint.segment
+        if endpoint.at-end
+            edge = edge.end = id
+        else
+            edge = edge.start = id
+        segment-list[i] = edge
+known-outline = null
+record-mutation()
+= id
+
+────────────────────
++ do split Index
+    - id Index
+    - parameter Float
+
+use updating
+. edge = segment(id)
+. known = known-outline
+if !is-finite(parameter) || parameter <= 0 || parameter >= 1
+    ?! Panic("Split parameter must lie inside a segment")
+. left Curve
+. right Curve
+left, right = curve(id).subdivide(parameter)
+. middle-position = left.anchor2
+network-valid-point(middle-position)
+network-valid-point(left.handle-out - left.anchor1)
+network-valid-point(left.handle-in - left.anchor2)
+network-valid-point(right.handle-out - right.anchor1)
+network-valid-point(right.handle-in - right.anchor2)
+. middle = add-vertex(middle-position)
+. second = connect
+    - middle
+    - edge.end
+    - right.handle-out - right.anchor1
+    - right.handle-in - right.anchor2
+. boundary = edge.source-start + (edge.source-end - edge.source-start) * parameter
+. slot = require-segment-slot(id)
+. second-slot = require-segment-slot(second)
+. item = segment-list[slot]
+item = item.end = middle
+item = item.tangent-start = left.handle-out - left.anchor1
+item = item.tangent-end = left.handle-in - left.anchor2
+item = item.source-end = boundary
+segment-list[slot] = item
+. added = segment-list[second-slot]
+added = added.source = edge.source
+added = added.source-start = boundary
+added = added.source-end = edge.source-end
+segment-list[second-slot] = added
+for i in 0 .. < pair-list.length
+    . pair = pair-list[i]
+    if pair.first == NetworkEnd(id, true)
+        pair = pair.first = NetworkEnd(second, true)
+    if pair.second == NetworkEnd(id, true)
+        pair = pair.second = NetworkEnd(second, true)
+    pair-list[i] = pair
+pair-handles(NetworkEnd(id, true), NetworkEnd(second, false))
+known-outline = split-outline(slot, second-slot, middle, known)
+record-mutation()
+= middle
+
+────────────────────
++ do reverse
+
+use updating
+. vertices = List'NetworkVertex(each in vertex-list.reversed())
+. segments = List'NetworkSegment
+    ** segment-list.reversed()
+    *> NetworkSegment(each.id, each.end, each.start, each.tangent-end, each.tangent-start, each.source, each.source-end, each.source-start)
+. pairs = List'NetworkPair
+    ** pair-list
+    *> NetworkPair(NetworkEnd(each.first.segment, !each.first.at-end), NetworkEnd(each.second.segment, !each.second.at-end), each.mirror-length)
+vertex-list = vertices
+segment-list = segments
+pair-list = pairs
+vertex-slots = null
+segment-slots = null
+known-outline = null
+record-mutation()
+
+────────────────────
++ do add-network
+    - other VectorNetwork
+
+use updating
+. vertex-sources [Index]
+. vertex-targets [Index]
+for item in other.vertex-list
+    vertex-sources += item.id
+    vertex-targets += next-vertex
+    next-vertex += 1
+. segment-sources [Index]
+. segment-targets [Index]
+for item in other.segment-list
+    segment-sources += item.id
+    segment-targets += next-segment
+    next-segment += 1
+for item in other.segment-list
+    if !network-has-id(segment-sources, item.source)
+        segment-sources += item.source
+        segment-targets += next-segment
+        next-segment += 1
+for item in other.vertex-list
+    . id = network-mapped-id(vertex-sources, vertex-targets, item.id)
+    append-vertex-item(NetworkVertex(id, item.position))
+for item in other.segment-list
+    . mapped = NetworkSegment
+        - network-mapped-id(segment-sources, segment-targets, item.id)
+        - network-mapped-id(vertex-sources, vertex-targets, item.start)
+        - network-mapped-id(vertex-sources, vertex-targets, item.end)
+        - item.tangent-start
+        - item.tangent-end
+        - network-mapped-id(segment-sources, segment-targets, item.source)
+        - item.source-start
+        - item.source-end
+    append-segment-item(mapped)
+for pair in other.pair-list
+    . first = NetworkEnd
+        - network-mapped-id(segment-sources, segment-targets, pair.first.segment)
+        - pair.first.at-end
+    . second = NetworkEnd
+        - network-mapped-id(segment-sources, segment-targets, pair.second.segment)
+        - pair.second.at-end
+    pair-list += NetworkPair(first, second, pair.mirror-length)
+known-outline = null
+record-mutation()
+
+────────────────────
++ do cut [Index]
+    - id Index
+    - parameters [Float]
+
+use updating
+segment(id)
+. upper = 1.0
+for parameter in parameters.reversed()
+    if !is-finite(parameter) || parameter <= 0 || parameter >= upper
+        ?! Panic("Cut parameters must increase inside a segment")
+    upper = parameter
+. pieces [Index]
+upper = 1.0
+for parameter in parameters.reversed()
+    split(id, parameter / upper)
+    . second = next-segment - 1
+    disconnect(NetworkEnd(second, false))
+    pieces.insert(second, 0)
+    upper = parameter
+pieces.insert(id, 0)
+= pieces
+
+────────────────────
++ do order-vertices
+    - ids [Index]
+
+use updating
+. placed [Index]
+. ordered [NetworkVertex]
+for id in ids
+    if !network-has-id(placed, id)
+        ordered += vertex(id)
+        placed += id
+for item in vertex-list
+    if !network-has-id(placed, item.id)
+        ordered += item
+vertex-list = ordered
+vertex-slots = null
+known-outline = null
+record-mutation()
+
+────────────────────
++ trace-ends [Index]
+    - trace NetworkTrace
+
+List'Index(start, end)
+
+.. first = segment(trace.segments[0])
+.. last = segment(trace.segments[trace.segments.length - 1])
+.. start = if trace.reversed[0] then first.end else first.start
+.. end = if trace.reversed[trace.reversed.length - 1] then last.start else last.end
+
+────────────────────
++ do extract VectorNetwork
+    - trace NetworkTrace
+
+. result = VectorNetwork()
+. current = trace-ends(trace)[0]
+result.append-vertex-item(vertex(current))
+for index in 0 .. < trace.segments.length
+    . edge = segment(trace.segments[index])
+    current = if trace.reversed[index] then edge.start else edge.end
+    if !result.has-vertex(current)
+        result.append-vertex-item(vertex(current))
+    result.append-segment-item(edge)
+for pair in pair-list
+    if network-has-id(trace.segments, pair.first.segment) && has-second
+        result.pair-list += pair
+    .. has-second = network-has-id(trace.segments, pair.second.segment)
+result.next-vertex = next-vertex
+result.next-segment = next-segment
+= result
+
+────────────────────
++ do copy VectorNetwork
+
+. result = VectorNetwork()
+result.vertex-list.reserve(vertex-list.length)
+result.segment-list.reserve(segment-list.length)
+result.pair-list.reserve(pair-list.length)
+for item in vertex-list
+    result.append-vertex-item(item)
+for item in segment-list
+    result.append-segment-item(item)
+for item in pair-list
+    result.pair-list += item
+result.next-vertex = next-vertex
+result.next-segment = next-segment
+result.version = version
+result.known-outline = known-outline
+= result
+
+────────────────────
++ do duplicate-vertices [Index]
+    - ids [Index]
+
+use updating
+. sources [Index]
+. duplicates [Index]
+for id in ids
+    vertex(id)
+    if !network-has-id(sources, id)
+        sources += id
+        duplicates += add-vertex(vertex(id).position)
+
+. prior-segments [NetworkSegment]
+for edge in segment-list
+    prior-segments += edge
+. source-segments [Index]
+. duplicate-segments [Index]
+for edge in prior-segments
+    . start = network-mapped-id(sources, duplicates, edge.start)
+    . end = network-mapped-id(sources, duplicates, edge.end)
+    if start != edge.start || end != edge.end
+        source-segments += edge.id
+        duplicate-segments += connect(start, end, edge.tangent-start, edge.tangent-end)
+
+. prior-pairs [NetworkPair]
+for pair in pair-list
+    prior-pairs += pair
+for pair in prior-pairs
+    . first = network-mapped-id(source-segments, duplicate-segments, pair.first.segment)
+    . second = network-mapped-id(source-segments, duplicate-segments, pair.second.segment)
+    if first != pair.first.segment && second != pair.second.segment
+        pair-handles
+            - NetworkEnd(first, pair.first.at-end)
+            - NetworkEnd(second, pair.second.at-end)
+            - pair.mirror-length
+= duplicates
+
+────────────────────
++ do transform
+    - matrix Matrix
+
+use updating
+. linear = matrix.create-shiftless()
+for item in vertex-list
+    network-valid-point(matrix.transform(item.position))
+for item in segment-list
+    network-valid-point(linear.transform(item.tangent-start))
+    network-valid-point(linear.transform(item.tangent-end))
+for i in 0 .. < vertex-list.length
+    . item = vertex-list[i]
+    vertex-list[i] = NetworkVertex(item.id, matrix.transform(item.position))
+for i in 0 .. < segment-list.length
+    . item = segment-list[i]
+    item = item.tangent-start = linear.transform(item.tangent-start)
+    item = item.tangent-end = linear.transform(item.tangent-end)
+    segment-list[i] = item
+record-mutation()
+
+────────────────────
++ do pick NetworkHit?
+    - position Point
+    - tolerance Length = 7
+
+network-valid-point(position)
+. best NetworkHit?
+for edge in segment-list
+    . limit = if best then best.distance else tolerance
+    . hit = network-curve-pick(edge-curve(edge), position, edge.id, limit)
+    if hit.distance <= tolerance && (!best || hit.distance < best.distance)
+        best = hit
+= best
+
+────────────────────
++ do bend
+    - id Index
+    - parameter Float
+    - displacement Point
+    - lock-start Bool = false
+    - lock-end Bool = false
+    - preserve-pairs Bool = true
+
+use updating
+. edge = segment(id)
+network-valid-point(displacement)
+if !is-finite(parameter) || parameter <= 0 || parameter >= 1
+    ?! Panic("Bend parameter must lie inside a segment")
+. u = 1 - parameter
+. a = if lock-start then 0.0 else 3 * u * u * parameter
+. b = if lock-end then 0.0 else 3 * u * parameter * parameter
+. divisor = a * a + b * b
+if divisor <= 0
+    ?! Panic("Both bend handles are locked")
+. start = edge.tangent-start + displacement * (a / divisor)
+. end = edge.tangent-end + displacement * (b / divisor)
+network-valid-point(start)
+network-valid-point(end)
+if preserve-pairs
+    for pair in pair-list
+        if pair.first.segment == id && pair.second.segment == id
+            ?! Panic("Bending paired ends of a self-loop requires independent handles")
+validate-handle(NetworkEnd(id, false), start, !preserve-pairs)
+validate-handle(NetworkEnd(id, true), end, !preserve-pairs)
+set-handle(NetworkEnd(id, false), start, !preserve-pairs)
+set-handle(NetworkEnd(id, true), end, !preserve-pairs)
+
+────────────────────
+_ do record-mutation
+
+version += 1
+mutation-pending = true
+if !mutation-depth
+    publish-mutation()
+
+────────────────────
+_ do publish-mutation
+
+=? if !mutation-pending
+mutation-pending = false
+. index = mutation-observers.length
+while index > 0
+    index -= 1
+    . observer = mutation-observers[index].get
+    if observer
+        observer.network-mutated(this, version)
+    else
+        mutation-observers.remove(index)
+
+────────────────────
++ traces
+    - paths = true
+
+collect-traces(paths, null)
+
+────────────────────
++ do outline-ends NetworkOutlineEnds?
+
+=? known-outline.ends if known-outline
+. found = trace-outline()
+known-outline = found
+= found.ends
+
+────────────────────
+_ do trace-outline NetworkOutline
+
+=? NetworkOutline(null, true, vertex-list.length) if !segment-list.length
+. lookup = outline-lookup()
+. first NetworkTraceStep?
+. last NetworkTraceStep?
+. chains Size = 0
+. cycles Size = 0
+for slot in 0 .. < vertex-list.length
+    if lookup.degrees[slot] != 2
+        for position in 0 .. < incident-count(lookup, slot)
+            . edge = incident-at(lookup, slot, position)
+            if !lookup.used[edge]
+                . walked = walk-trace(lookup, slot, edge)
+                first = first ?? walked.first
+                last = walked.last
+                chains += 1
+for edge in 0 .. < segment-list.length
+    if !lookup.used[edge]
+        . walked = walk-trace(lookup, lookup.starts[edge], edge)
+        first = first ?? walked.first
+        last = walked.last
+        cycles += 1
+= NetworkOutline(NetworkOutlineEnds(first!, last!), chains == 1 && !cycles, vertex-list.length)
+
+────────────────────
+_ do extend-outline NetworkOutline?
+    - item NetworkSegment
+
+. known = known-outline
+=? null if !known || !known.chain || item.start == item.end
+. slot = segment-list.length
+if !known.ends
+    . reversed = require-vertex-slot(item.start) > require-vertex-slot(item.end)
+    . step = NetworkTraceStep(slot, reversed, if reversed then item.start else item.end)
+    = NetworkOutline(NetworkOutlineEnds(step, step), true, vertex-list.length)
+. tail = known.ends.last.vertex
+. reversed = item.end == tail
+=? null if item.start != tail && !reversed
+. other = if reversed then item.start else item.end
+=? null if require-vertex-slot(other) < known.fresh
+= NetworkOutline
+    - NetworkOutlineEnds(known.ends.first, NetworkTraceStep(slot, reversed, other))
+    - true
+    - vertex-list.length
+
+────────────────────
+_ do split-outline NetworkOutline?
+    - slot Index
+    - second-slot Index
+    - middle Index
+    - known NetworkOutline?
+
+=? null if !known || !known.chain || !known.ends
+. first = known.ends.first
+. last = known.ends.last
+if first.segment == slot
+    first = if first.reversed then reversed-first else NetworkTraceStep(slot, false, middle)
+        .. reversed-first = NetworkTraceStep(second-slot, true, middle)
+if last.segment == slot
+    last = if last.reversed then NetworkTraceStep(slot, true, last.vertex) else forward-last
+        .. forward-last = NetworkTraceStep(second-slot, false, last.vertex)
+= NetworkOutline(NetworkOutlineEnds(first, last), true, vertex-list.length)
+
+────────────────────
+_ do walk-trace NetworkOutlineEnds
+    - lookup NetworkTraceLookup
+    - start Index
+    - first Index
+
+. current = start
+. next = first
+. opening NetworkTraceStep?
+. step NetworkTraceStep?
+. has-next = true
+while has-next
+    . edge-start = lookup.starts[next]
+    . edge-end = lookup.ends[next]
+    . reversed = edge-end == current && edge-start != current
+    lookup.used[next] = true
+    current = if reversed then edge-start else edge-end
+    step = NetworkTraceStep(next, reversed, vertex-list[current].id)
+    opening = opening ?? step
+    has-next = false
+    if current != start && lookup.degrees[current] == 2
+        for position in 0 .. < incident-count(lookup, current)
+            . candidate = incident-at(lookup, current, position)
+            if !lookup.used[candidate]
+                next = candidate
+                has-next = true
+                break
+= NetworkOutlineEnds(opening!, step!)
+
+────────────────────
+_ incident-count Index
+    - lookup NetworkTraceLookup
+    - slot Index
+
+|? !lookup.paired
+    lookup.offsets[slot + 1] - lookup.offsets[slot]
+|? lookup.first-edges[slot] == segment-list.length
+    0
+|? lookup.second-edges[slot] == segment-list.length
+    1
+??
+    2
+
+────────────────────
+_ incident-at Index
+    - lookup NetworkTraceLookup
+    - slot Index
+    - position Index
+
+|? !lookup.paired
+    lookup.incident[lookup.offsets[slot] + position]
+|? position == 0
+    lookup.first-edges[slot]
+??
+    lookup.second-edges[slot]
+
+────────────────────
+_ do outline-lookup NetworkTraceLookup
+
+. lookup = trace-scratch ?? NetworkTraceLookup()
+trace-scratch = lookup
+. none = segment-list.length
+lookup.starts.clear()
+lookup.ends.clear()
+lookup.degrees.clear()
+lookup.used.clear()
+lookup.first-edges.clear()
+lookup.second-edges.clear()
+lookup.degrees.reserve(vertex-list.length)
+lookup.first-edges.reserve(vertex-list.length)
+lookup.second-edges.reserve(vertex-list.length)
+lookup.starts.reserve(none)
+lookup.ends.reserve(none)
+lookup.used.reserve(none)
+for slot in 0 .. < vertex-list.length
+    lookup.degrees += 0
+    lookup.first-edges += none
+    lookup.second-edges += none
+for edge in 0 .. < none
+    . segment = segment-list[edge]
+    . start = require-vertex-slot(segment.start)
+    . end = require-vertex-slot(segment.end)
+    lookup.starts += start
+    lookup.ends += end
+    lookup.used += false
+    lookup.degrees[start] += 1
+    lookup.degrees[end] += 1
+    =? trace-lookup() if !pair-edge(lookup, start, edge, none)
+    if end != start
+        =? trace-lookup() if !pair-edge(lookup, end, edge, none)
+lookup.paired = true
+= lookup
+
+────────────────────
+_ do pair-edge Bool
+    - lookup NetworkTraceLookup
+    - slot Index
+    - edge Index
+    - none Index
+
+if lookup.first-edges[slot] == none
+    lookup.first-edges[slot] = edge
+else if lookup.second-edges[slot] == none
+    lookup.second-edges[slot] = edge
+else
+    = false
+= true
+
+────────────────────
+_ do collect-traces [NetworkTrace]
+    - paths Bool
+    - target Path?
+
+. lookup = trace-lookup()
+. result [NetworkTrace]
+for slot in 0 .. < vertex-list.length
+    if lookup.degrees[slot] != 2
+        for position in lookup.offsets[slot] .. < lookup.offsets[slot + 1]
+            . edge = lookup.incident[position]
+            if !lookup.used[edge]
+                result += trace-chain(lookup, slot, edge, paths, target)
+for edge in 0 .. < segment-list.length
+    if !lookup.used[edge]
+        result += trace-chain(lookup, lookup.starts[edge], edge, paths, target)
+= result
+
+────────────────────
+_ do trace-lookup
+
+. lookup = trace-scratch ?? NetworkTraceLookup()
+trace-scratch = lookup
+lookup.paired = false
+. counts = lookup.counts
+lookup.starts.clear()
+lookup.ends.clear()
+lookup.degrees.clear()
+lookup.offsets.clear()
+lookup.incident.clear()
+lookup.used.clear()
+counts.clear()
+lookup.degrees.reserve(vertex-list.length)
+counts.reserve(vertex-list.length)
+lookup.offsets.reserve(vertex-list.length + 1)
+lookup.starts.reserve(segment-list.length)
+lookup.ends.reserve(segment-list.length)
+lookup.used.reserve(segment-list.length)
+for slot in 0 .. < vertex-list.length
+    lookup.degrees += 0
+    counts += 0
+for edge in segment-list
+    . start = require-vertex-slot(edge.start)
+    . end = require-vertex-slot(edge.end)
+    lookup.starts += start
+    lookup.ends += end
+    lookup.degrees[start] += 1
+    lookup.degrees[end] += 1
+    counts[start] += 1
+    if end != start
+        counts[end] += 1
+    lookup.used += false
+. total Index
+for slot in 0 .. < vertex-list.length
+    lookup.offsets += total
+    total += counts[slot]
+    counts[slot] = lookup.offsets[slot]
+lookup.offsets += total
+lookup.incident.reserve(total)
+for position in 0 .. < total
+    lookup.incident += 0
+for edge in 0 .. < segment-list.length
+    . start = lookup.starts[edge]
+    lookup.incident[counts[start]] = edge
+    counts[start] += 1
+    . end = lookup.ends[edge]
+    if end != start
+        lookup.incident[counts[end]] = edge
+        counts[end] += 1
+= lookup
+
+────────────────────
+_ do trace-chain
+    - lookup NetworkTraceLookup
+    - start Index
+    - first Index
+    - paths Bool
+    - target Path?
+
+. result = NetworkTrace()
+. path = target ?? result.path
+. drawn = paths || target != null
+if drawn
+    path.move-to(vertex-list[start].position)
+. current = start
+. next = first
+. has-next = true
+while has-next
+    . edge = segment-list[next]
+    . edge-start = lookup.starts[next]
+    . edge-end = lookup.ends[next]
+    . reversed = edge-end == current && edge-start != current
+    if drawn
+        . c = network-edge-curve
+            - edge
+            - vertex-list[edge-start].position
+            - vertex-list[edge-end].position
+        if network-is-monotone-line(c)
+            path.line-to(if reversed then c.anchor1 else c.anchor2)
+        else
+            path.cubic-curve-to
+                - if reversed then c.handle-in else c.handle-out
+                - if reversed then c.handle-out else c.handle-in
+                - if reversed then c.anchor1 else c.anchor2
+    result.segments += edge.id
+    result.reversed += reversed
+    lookup.used[next] = true
+    current = if reversed then edge-start else edge-end
+    if current == start
+        result.closed = true
+        if drawn
+            path.close()
+        break
+    has-next = false
+    if lookup.degrees[current] == 2
+        for position in lookup.offsets[current] .. < lookup.offsets[current + 1]
+            . candidate = lookup.incident[position]
+            if !lookup.used[candidate]
+                next = candidate
+                has-next = true
+                break
+= result
+
+────────────────────
+_ edge-curve
+    - edge NetworkSegment
+
+network-edge-curve(edge, vertex(edge.start).position, vertex(edge.end).position)
+
+────────────────────
+_ do vertex-slot Index?
+    - id Index
+
+. count = vertex-list.length
+=? id - 1 if id > 0 && id <= count && vertex-list[id - 1].id == id
+if count <= network-slot-threshold
+    for slot in 0 .. < count
+        =? slot if vertex-list[slot].id == id
+    = null
+if !vertex-slots
+    . slots = Map'Index'Index()
+    for slot in 0 .. < count
+        slots[vertex-list[slot].id] = slot
+    vertex-slots = slots
+= vertex-slots![id]
+
+────────────────────
+_ do segment-slot Index?
+    - id Index
+
+. count = segment-list.length
+=? id - 1 if id > 0 && id <= count && segment-list[id - 1].id == id
+if count <= network-slot-threshold
+    for slot in 0 .. < count
+        =? slot if segment-list[slot].id == id
+    = null
+if !segment-slots
+    . slots = Map'Index'Index()
+    for slot in 0 .. < count
+        slots[segment-list[slot].id] = slot
+    segment-slots = slots
+= segment-slots![id]
+
+────────────────────
+_ require-vertex-slot Index
+    - id Index
+
+?! Panic("Unknown network vertex")
+    if slot == null
+slot
+
+.. slot = vertex-slot(id)
+
+────────────────────
+_ require-segment-slot Index
+    - id Index
+
+?! Panic("Unknown network segment")
+    if slot == null
+slot
+
+.. slot = segment-slot(id)
+
+────────────────────
+_ do append-vertex-item
+    - item NetworkVertex
+
+if vertex-slots
+    vertex-slots![item.id] = vertex-list.length
+vertex-list += item
+
+────────────────────
+_ do append-segment-item
+    - item NetworkSegment
+
+known-outline = extend-outline(item)
+if segment-slots
+    segment-slots![item.id] = segment-list.length
+segment-list += item
+
+────────────────────
++ do geometry Path
+
+. result = Path()
+collect-traces(false, result)
+= result
+
+────────────────────
++ do geometry-bounds Rect
+
+. left = 0.0
+. top = 0.0
+. right = 0.0
+. bottom = 0.0
+. found = false
+for trace in traces(false)
+    for index in 0 .. < trace.segments.length
+        . c = edge-curve(segment(trace.segments[index]))
+        . reversed = trace.reversed[index]
+        . head = if reversed then c.anchor2 else c.anchor1
+        . tail = if reversed then c.anchor1 else c.anchor2
+        . outgoing = if reversed then c.handle-in else c.handle-out
+        . incoming = if reversed then c.handle-out else c.handle-in
+        . line = network-is-monotone-line(c)
+        . xs = if line then line-bounds-1d(head.x, tail.x) else cubic-xs
+            .. cubic-xs = cubic-bounds-1d(head.x, outgoing.x, incoming.x, tail.x, tolerance)
+        . ys = if line then line-bounds-1d(head.y, tail.y) else cubic-ys
+            .. cubic-ys = cubic-bounds-1d(head.y, outgoing.y, incoming.y, tail.y, tolerance)
+        if !found
+            left = xs.min
+            top = ys.min
+            right = xs.max
+            bottom = ys.max
+            found = true
+        else
+            left = min(left, xs.min)
+            top = min(top, ys.min)
+            right = max(right, xs.max)
+            bottom = max(bottom, ys.max)
+= Rect(left, top, right - left, bottom - top)
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-from-path
+    - path Path
+
+. network = VectorNetwork()
+for subpath in path.subpaths
+    . material = subpath.materialize()
+    if !material.count
+        continue
+    . first = network.add-vertex(material.first-point)
+    . previous = first
+    . count = material.curve-count
+    for i in 0 .. < count
+        . curve = material.get-curve(i)
+        . next = if closes then first else network.add-vertex(curve.anchor2)
+            .. closes = subpath.is-closed && i == count - 1
+        network.connect
+            - previous
+            - next
+            - curve.handle-out - curve.anchor1
+            - curve.handle-in - curve.anchor2
+        previous = next
+= network
+
+━━━━━━━━━━━━━━━━━━━━
++ network-has-id
+    - ids [Index]
+    - id Index
+
+some(ids) • where each == id
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-mapped-id Index
+    - sources [Index]
+    - destinations [Index]
+    - id Index
+
+for i in 0 .. < sources.length
+    =? destinations[i] if sources[i] == id
+= id
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-end-key Index
+    - endpoint NetworkEnd
+
+endpoint.segment * 2 + (if endpoint.at-end then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-valid-point
+    - point Point
+
+if !is-finite(point.x) || !is-finite(point.y)
+    ?! Panic("Network coordinates must be finite")
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-edge-curve
+    - edge NetworkSegment
+    - start Point
+    - end Point
+
+Curve(start, start + edge.tangent-start, end + edge.tangent-end, end)
+
+━━━━━━━━━━━━━━━━━━━━
++ network-curve-point Point
+    - curve Curve
+    - t Float
+
+anchor + handle-out + handle-in + end
+
+.. u = 1 - t
+.. anchor = curve.anchor1 * (u * u * u)
+.. handle-out = curve.handle-out * (3 * u * u * t)
+.. handle-in = curve.handle-in * (3 * u * t * t)
+.. end = curve.anchor2 * (t * t * t)
+
+━━━━━━━━━━━━━━━━━━━━
++ network-is-monotone-line
+    - curve Curve
+
+|? !curve.is-line-like
+    false
+??
+    first >= 0 && second >= first && second <= length
+
+.. delta = curve.anchor2 - curve.anchor1
+.. length = delta.dot(delta)
+.. first = (curve.handle-out - curve.anchor1).dot(delta)
+.. second = (curve.handle-in - curve.anchor1).dot(delta)
+
+━━━━━━━━━━━━━━━━━━━━
++ do network-curve-pick NetworkHit
+    - curve Curve
+    - point Point
+    - id Index = 0
+    - limit Length? = null
+
+if curve.handle-out == curve.anchor1 && curve.handle-in == curve.anchor2
+    . delta = curve.anchor2 - curve.anchor1
+    . squared = delta.dot(delta)
+    . fraction = 0.0
+    if squared > 0
+        . projected = (point - curve.anchor1).dot(delta) / squared
+        fraction = max(0.0, min(1.0, projected))
+    . closest = curve.anchor1 + delta * fraction
+    . parameter = if squared > 0 then curve.get-parameter(closest) else 0.0
+    = NetworkHit(id, parameter, closest, point.distance(closest))
+. best = NetworkHit(id, 0, curve.anchor1, point.distance(curve.anchor1))
+. last-distance = point.distance(curve.anchor2)
+if last-distance < best.distance
+    best = NetworkHit(id, 1, curve.anchor2, last-distance)
+= network-pick-range(curve, curve, point, 0, 1, best, 0, limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-pick-range NetworkHit
+    - original Curve
+    - curve Curve
+    - point Point
+    - lo Float
+    - hi Float
+    - best NetworkHit
+    - depth Size
+    - limit Length?
+
+. min-x = min(min(curve.anchor1.x, curve.anchor2.x), min(curve.handle-out.x, curve.handle-in.x))
+. max-x = max(max(curve.anchor1.x, curve.anchor2.x), max(curve.handle-out.x, curve.handle-in.x))
+. min-y = min(min(curve.anchor1.y, curve.anchor2.y), min(curve.handle-out.y, curve.handle-in.y))
+. max-y = max(max(curve.anchor1.y, curve.anchor2.y), max(curve.handle-out.y, curve.handle-in.y))
+. nearest = Point(max(min-x, min(max-x, point.x)), max(min-y, min(max-y, point.y)))
+. bound = if limit then min(best.distance, limit) else best.distance
+=? best if nearest.distance(point) > bound
+. mid = (lo + hi) / 2
+. candidate = network-curve-point(original, mid)
+. distance = candidate.distance(point)
+. result = best
+if distance < result.distance
+    result = NetworkHit(best.segment, mid, candidate, distance)
+=? result if max(max-x - min-x, max-y - min-y) < 0.00001
+=? network-pick-refined(original, point, lo, hi, result) if depth >= network-pick-depth
+. left Curve
+. right Curve
+left, right = curve.subdivide(0.5)
+result = network-pick-range(original, left, point, lo, mid, result, depth + 1, limit)
+= network-pick-range(original, right, point, mid, hi, result, depth + 1, limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-pick-refined
+    - curve Curve
+    - point Point
+    - lo Float
+    - hi Float
+    - best NetworkHit
+
+=? best if network-pick-slope(curve, point, lo) >= 0 || network-pick-slope(curve, point, hi) <= 0
+. low = lo
+. high = hi
+. t = (lo + hi) / 2
+. settled = (hi - lo) * 0.00002
+for pass in 0 .. < 32
+    . slope = network-pick-slope(curve, point, t)
+    if slope == 0
+        break
+    if slope < 0
+        low = t
+    else
+        high = t
+    . bend = network-pick-bend(curve, point, t)
+    . next = if bend > 0 then t - slope / bend else (low + high) / 2
+    if next <= low || next >= high
+        next = (low + high) / 2
+    . moved = abs(next - t)
+    t = next
+    if moved <= settled
+        break
+. candidate = network-curve-point(curve, t)
+. distance = candidate.distance(point)
+= if distance < best.distance then NetworkHit(best.segment, t, candidate, distance) else best
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-pick-slope
+    - curve Curve
+    - point Point
+    - t Float
+
+(network-curve-point(curve, t) - point).dot(network-curve-velocity(curve, t))
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-pick-bend
+    - curve Curve
+    - point Point
+    - t Float
+
+velocity.dot(velocity) + (network-curve-point(curve, t) - point).dot(turn)
+
+.. velocity = network-curve-velocity(curve, t)
+.. u = 1 - t
+.. first = curve.handle-in - curve.handle-out * 2 + curve.anchor1
+.. second = curve.anchor2 - curve.handle-in * 2 + curve.handle-out
+.. turn = first * (6 * u) + second * (6 * t)
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-curve-velocity
+    - curve Curve
+    - t Float
+
+start + middle + end
+
+.. u = 1 - t
+.. start = (curve.handle-out - curve.anchor1) * (3 * u * u)
+.. middle = (curve.handle-in - curve.handle-out) * (6 * u * t)
+.. end = (curve.anchor2 - curve.handle-in) * (3 * t * t)
+
+━━━━━━━━━━━━━━━━━━━━
++ NetworkUpdateScope is Tuple
+    is Usable'Void
+
+_ network VectorNetwork
+
+────────────────────
++ This
+    - network
+
+────────────────────
++ do begin-using
+
+network.begin-update()
+
+────────────────────
++ do end-using
+
+network.end-update()

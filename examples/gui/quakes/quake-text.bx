@@ -1,0 +1,76 @@
+(import ./quake-feed)
+(import /math)
+(import /time/duration)
+(import /units/distance)
+
+(fn-expr + quake-title _
+  (param quake Quake)
+  (paragraph
+    (str (call magnitude-label (. quake magnitude)) " · " (. quake place))
+  )
+)
+
+(fn-expr + feed-summary _
+  (param count Size)
+  (param age Seconds)
+  (paragraph
+    (str count " earthquakes · updated " (call age-label age))
+  )
+)
+
+(fn-expr + quake-facts _
+  (param quake Quake)
+  (param age Seconds)
+  (param uses-miles Bool)
+  (paragraph
+    (str (call distance-label (. quake depth) uses-miles) " deep · " (call age-label age))
+  )
+)
+
+(fn-expr + cluster-note _
+  (param nearby Size)
+  (param reach Kilometers)
+  (param uses-miles Bool)
+  (paragraph
+    (str nearby " more within " (call distance-label reach uses-miles))
+  )
+)
+
+(fn-expr + magnitude-label String
+  (param magnitude Magnitude)
+  (str "M " (call tenths magnitude))
+)
+
+(fn-expr + distance-label String
+  (param distance Kilometers)
+  (param uses-miles Bool)
+  (case? uses-miles
+    (str (call tenths (as distance Miles)) " mi")
+  )
+  (default
+    (str (call tenths distance) " km")
+  )
+)
+
+(fn-expr + age-label String
+  (param age Seconds)
+  (match age
+    (case? (< it 1minutes)
+      "just now"
+    )
+    (case? (< it 1hours)
+      (str (as (as age Minutes) Int) " min ago")
+    )
+    (case? (< it 1days)
+      (str (as (as age Hours) Int) " h ago")
+    )
+    (default
+      (str (as (as age Days) Int) " d ago")
+    )
+  )
+)
+
+(fn-expr _ tenths F64
+  (param value F64)
+  (/ (call round (* value 10)) 10)
+)

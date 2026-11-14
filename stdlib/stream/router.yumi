@@ -1,0 +1,216 @@
+━━━━━━━━━━━━━━━━━━━━
++ Router'Key'RawEvent
+    is Iterable'RawEvent
+    is Broadcastable'RawEvent
+    is Writable'RawEvent
+    is Closable
+
+_ dispatchers [Dispatcher'Key'RawEvent]
+_ key-mapper Mapper'RawEvent'Key
+_ is-closed = false
+_ all-route AsyncChannel'RawEvent => route'RawEvent()
+
+────────────────────
++ This
+    - key-mapper Mapper'RawEvent'Key
+
+────────────────────
++ do this <- raw-event RawEvent
+
+=? if is-closed
+
+. key = key-mapper(raw-event)
+    ?! Error("Unrecognized event")
+        if !it
+
+dispatch(key, raw-event)
+
+────────────────────
++ <- this
+
+<- all-route
+
+────────────────────
++ do route'Event'Used AsyncChannel'Event
+    - key Key
+    - mapper MapKeyToUsable'Key'Used
+
+. dispatcher = this.create-dispatcher'Event(key, mapper)
+= dispatcher.get-channel'Event()
+
+────────────────────
++ do route'Event'Used AsyncChannel'Event
+    - key Key
+    - usable Usable'Used
+
+. dispatcher = this.create-dispatcher'Event(key, usable)
+= dispatcher.get-channel'Event()
+
+────────────────────
++ do route'Event AsyncChannel'Event
+    - key Key
+
+. dispatcher = this.create-dispatcher'Event(key)
+. channel = dispatcher.get-channel'Event()
+= channel
+
+────────────────────
++ route'Event AsyncChannel'Event
+
+route'Event(Event.key)
+
+────────────────────
++ route'Event AsyncChannel'Event
+    - Event is! RawEvent
+
+route'Event("")
+
+────────────────────
++ subscribe
+    - subscriber Subscriber'RawEvent
+
+all-route.subscribe(subscriber)
+
+────────────────────
++ unsubscribe
+    - subscriber Subscriber'RawEvent
+
+all-route.unsubscribe(subscriber)
+
+────────────────────
++ do close
+
+=? if is-closed
+
+is-closed = true
+for dispatcher in dispatchers
+    dispatcher.close()
+
+all-route.close()
+
+────────────────────
+_ do find-dispatcher
+    - key Key
+
+for disp in dispatchers
+    if disp.match(key)
+        = disp
+
+────────────────────
+_ do create-dispatcher'Event Dispatcher'Key'RawEvent
+    - key Key
+
+. existing = this.find-dispatcher(key)
+if existing
+    = existing
+else
+    . channel AsyncChannel'Event
+    . dispatcher = EventDispatcher'Key'RawEvent'Event(key, channel)
+    dispatchers += dispatcher
+    = dispatcher
+
+────────────────────
+_ do create-dispatcher'Event'Used Dispatcher'Key'RawEvent
+    - key Key
+    - mapper MapKeyToUsable'Key'Used
+
+. existing = this.find-dispatcher(key)
+if existing
+    = existing
+else
+    . usable = mapper(key)
+    . channel = AsyncOnDemandChannel'Event(usable)
+    . dispatcher = EventDispatcher'Key'RawEvent'Event(key, channel)
+    dispatchers += dispatcher
+    = dispatcher
+
+────────────────────
+_ do create-dispatcher'Event'Used Dispatcher'Key'RawEvent
+    - key Key
+    - usable Usable'Used
+
+. existing = this.find-dispatcher(key)
+if existing
+    = existing
+else
+    . channel = AsyncOnDemandChannel'Event(usable)
+    . dispatcher = EventDispatcher'Key'RawEvent'Event(key, channel)
+    dispatchers += dispatcher
+    = dispatcher
+
+────────────────────
+_ do dispatch
+    - key Key
+    - raw-event RawEvent
+
+. dispatcher = this.find-dispatcher(key)
+dispatcher?.dispatch(key, raw-event)
+
+do all-route <- raw-event
+
+━━━━━━━━━━━━━━━━━━━━
++ MapKeyToUsable'Key'Used is () Usable'Used
+    - key Key
+
+━━━━━━━━━━━━━━━━━━━━
++ Dispatcher'Key'RawEvent is Interface
+
+────────────────────
++ match Bool
+    - other Key
+
+────────────────────
++ get-channel'Event AsyncChannel'Event ?! Error
+
+────────────────────
++ dispatch
+    - key Key
+    - raw-event RawEvent
+
+────────────────────
++ close
+
+━━━━━━━━━━━━━━━━━━━━
++ EventDispatcher'Key'RawEvent'Event
+    is Dispatcher'Key'RawEvent
+
++ key Key
++ channel AsyncChannel'Event
+
+────────────────────
++ This
+    - key Key
+    - channel AsyncChannel'Event
+
+╌╌╌╌╌╌╌╌╌╌ is Dispatcher'Key'RawEvent ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ match Bool
+    - other Key
+
+other == key
+
+────────────────────
++ do dispatch
+    - key Key
+    - raw-event RawEvent
+
+channel <- (raw-event as Event)
+
+────────────────────
++ do close
+
+channel.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do get-channel'Item AsyncChannel'Item
+
+?! Error("Unsupported event")
+
+────────────────────
++ get-channel'Item AsyncChannel'Item
+    - Item is! Event
+
+channel

@@ -1,0 +1,32 @@
+`benchmark.meta description: Runs many short tasks in a two-thread worker pool that two long CPU-bound tasks also occupy, and ends once the short tasks finish.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/channel
+
+. hogs = 2
+. shorts = 200
+. pool = Worker(2)
+. results SyncBufferedChannel'Int
+. spent SyncBufferedChannel'Int
+
+for hog in 0 .. < hogs
+    do (pool) new
+        . x = hog
+        for step in 0 .. < 600000000
+            x = (x * 75 + 74) % 65537
+        spent <- x
+
+for short in 0 .. < shorts
+    do (pool) new
+        . x = short
+        for step in 0 .. < 40000
+            x = (x * 75 + 74) % 65537
+        results <- x % 1000
+
+. checksum = 0
+for short in 0 .. < shorts
+    checksum += (<- results)!
+
+-- "bench-result tasks/pool-fairness checksum=$checksum"
+request-process-termination(0)

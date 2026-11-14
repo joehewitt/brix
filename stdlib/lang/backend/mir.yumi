@@ -1,0 +1,1207 @@
+/core/arena
+/core/table
+
++ StringId is U32
++ MIRTypeId is U32
++ LocId is U32
++ MIRSlotId is U32
++ FrameObjectId is U32
++ VRegId is U32
++ OperandId is U32
++ InstructionId is U32
++ BlockId is U32
++ RegisterId is U32
+
++ no-string StringId = U32.max
++ no-loc LocId = U32.max
++ no-frame-object FrameObjectId = U32.max
++ no-operand OperandId = U32.max
++ no-register RegisterId = U32.max
++ no-position I32 = -1
++ no-id U32 = U32.max
++ no-mir-type MIRTypeId = U32.max
+
++ named-type-count U32 = 12
++ void-type-id MIRTypeId = 0
++ i8-type-id MIRTypeId = 1
++ i16-type-id MIRTypeId = 2
++ i32-type-id MIRTypeId = 3
++ i64-type-id MIRTypeId = 4
++ u8-type-id MIRTypeId = 5
++ u16-type-id MIRTypeId = 6
++ u32-type-id MIRTypeId = 7
++ u64-type-id MIRTypeId = 8
++ f32-type-id MIRTypeId = 9
++ f64-type-id MIRTypeId = 10
++ pointer-type-id MIRTypeId = 11
++ register-count U32 = 130
++ frame-pointer-register RegisterId = 29
++ link-register RegisterId = 30
++ zero-register RegisterId = 31
++ zero-register-32 RegisterId = 63
++ stack-pointer-register RegisterId = 128
++ no-safepoint-effect U32 = 4
++ gc-free-effect U32 = 64
+
++ use-role U32 = 1
++ def-role U32 = 2
+_ call-roles U32 = 0x80000000
+_ value-call-roles U32 = 0x40000000
+_ opcode-roles [U32] = [6, 22, 22, 22, 22, 22, 6, 22, 22, 22, 22, 6, 6, 6, 6, 22, 22, 22, 22, 22, 22, 22, 22, 22, 6, 6, 5, 5, 5, 6, 2, 7, 2, 6, 22, 22, 6, 6, 5, 6, 5, 6, 5, 6, 21, 26, 2, 2, 0, 0, 5, 5, 1, 0, 1, 1, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 9, 85, 0, 6, 6, 22, 22, 22, 22, 22, 86, 86, 22, 22, 22, 1, 1, 6, 6, 7, 5, 6, 6, 6, 5]
+
++ opcode-names [String] = ["NEG", "ADD", "SUB", "MUL", "SDIV", "UDIV", "FNEG", "FADD", "FSUB", "FMUL", "FDIV", "FABS", "FSQRT", "FNEGS", "FNEGD", "AND", "ORR", "EOR", "LSL", "LSR", "ASR", "LSLV", "LSRV", "ASRV", "MVN", "CLZ", "CMP", "FCMPS", "FCMPD", "MOV", "MOVZ", "MOVK", "MOVN", "FMOV", "CSEL", "FCSEL", "LDR", "LDAR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSW", "STP", "LDP", "ADR", "ADRP", "B", "B.cond", "CBZ", "CBNZ", "BR", "BL", "BLR", "RET", "NOP", "SCVTF", "UCVTF", "FCVT", "FCVTZS", "FCVTZU", "UXTW", "SXTW", "UXTH", "SXTH", "UXTB", "SXTB", "CSET", "COMMENT", "CALL", "GC_BARRIER", "PHI", "ADDPTR", "GC_ALLOC", "INLINED_NAME", "UMULH", "SMULH", "UMULL", "SMULL", "MADD", "MSUB", "CSINC", "CSINV", "CSNEG", "TBZ", "TBNZ", "UBFX", "SBFX", "BFI", "CCMP", "LDRSB", "LDRSH", "LDARB", "STLRB"]
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRShift is U32
+
+| left
+| right
+| right-signed
+
+━━━━━━━━━━━━━━━━━━━━
++ Opcode is U32
+
+| neg = 0
+| add = 1
+| sub = 2
+| mul = 3
+| sdiv = 4
+| udiv = 5
+| fneg = 6
+| fadd = 7
+| fsub = 8
+| fmul = 9
+| fdiv = 10
+| fabs = 11
+| fsqrt = 12
+| fnegs = 13
+| fnegd = 14
+| and = 15
+| orr = 16
+| eor = 17
+| lsl = 18
+| lsr = 19
+| asr = 20
+| lslv = 21
+| lsrv = 22
+| asrv = 23
+| mvn = 24
+| clz = 25
+| cmp = 26
+| fcmps = 27
+| fcmpd = 28
+| mov = 29
+| movz = 30
+| movk = 31
+| movn = 32
+| fmov = 33
+| csel = 34
+| fcsel = 35
+| ldr = 36
+| ldar = 37
+| str = 38
+| ldrb = 39
+| strb = 40
+| ldrh = 41
+| strh = 42
+| ldrsw = 43
+| stp = 44
+| ldp = 45
+| adr = 46
+| adrp = 47
+| b = 48
+| b-cond = 49
+| cbz = 50
+| cbnz = 51
+| br = 52
+| bl = 53
+| blr = 54
+| ret = 55
+| nop = 56
+| scvtf = 57
+| ucvtf = 58
+| fcvt = 59
+| fcvtzs = 60
+| fcvtzu = 61
+| uxtw = 62
+| sxtw = 63
+| uxth = 64
+| sxth = 65
+| uxtb = 66
+| sxtb = 67
+| cset = 68
+| comment = 69
+| call = 70
+| gc-barrier = 71
+| phi = 72
+| addptr = 73
+| gc-alloc = 74
+| inlined-name = 75
+| umulh = 76
+| smulh = 77
+| umull = 78
+| smull = 79
+| madd = 80
+| msub = 81
+| csinc = 82
+| csinv = 83
+| csneg = 84
+| tbz = 85
+| tbnz = 86
+| ubfx = 87
+| sbfx = 88
+| bfi = 89
+| ccmp = 90
+| ldrsb = 91
+| ldrsh = 92
+| ldarb = 93
+| stlrb = 94
+
+━━━━━━━━━━━━━━━━━━━━
++ RegClass is U32
+
+| gpr32 = 0
+| gpr64 = 1
+| fpr32 = 2
+| fpr64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ GCRootMode is U32
+
+| value-root = 0
+| address-root = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Reloc is U32
+
+| no-reloc = 0
+| page-reloc = 1
+| pageoff-reloc = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ StructFormat is U32
+
+| hfa-format = 0
+| small-format = 1
+| large-format = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Span is Tuple
+
++ start U32
++ count U32
+
+────────────────────
++ get end U32 @inline
+
+start + count
+
+━━━━━━━━━━━━━━━━━━━━
++ IdList is Tuple
+
++ data CPointer'U32
++ length U32
++ capacity U32
+
+────────────────────
++ this[index Index] U32 @inline
+
+data[index]
+
+────────────────────
++ do appended This @inline
+    - arena Arena
+    - id U32
+
+. grown = this
+if length == capacity
+    grown = resized(arena, if capacity >= 4 then capacity * 2 else 4)
+grown.data[length] = id
+= IdList(grown.data, length + 1, grown.capacity)
+
+────────────────────
++ do inserted This
+    - arena Arena
+    - index U32
+    - id U32
+
+. grown = this
+if length == capacity
+    grown = resized(arena, if capacity >= 4 then capacity * 2 else 4)
+. offset = length
+while offset > index
+    grown.data[offset] = grown.data[offset - 1]
+    offset -= 1
+grown.data[index] = id
+= IdList(grown.data, length + 1, grown.capacity)
+
+────────────────────
++ do resized This
+    - arena Arena
+    - new-capacity U32
+
+. replacement = arena.allocate'U32(new-capacity)
+for offset in 0 .. < length
+    replacement[offset] = data[offset]
+= IdList(replacement, length, new-capacity)
+
+━━━━━━━━━━━━━━━━━━━━
++ do new-id-list IdList
+    - arena Arena
+    - capacity U32
+
+if capacity == 0
+    = IdList()
+= IdList(arena.allocate'U32(capacity), 0, capacity)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sort-u64
+    - arena Arena
+    - values CPointer'U64
+    - count U32
+
+if count < 2
+    =
+if count <= 16
+    for position in 1 .. < count
+        . value = values[position]
+        . target = position
+        while target > 0 && values[target - 1] > value
+            values[target] = values[target - 1]
+            target -= 1
+        values[target] = value
+    =
+. source = values
+. target = arena.allocate'U64(count)
+. is-swapped = false
+. width U32 = 1
+while width < count
+    . start U32
+    while start < count
+        . middle = start + width
+        if middle > count
+            middle = count
+        . end = middle + width
+        if end > count
+            end = count
+        . left = start
+        . right = middle
+        . write = start
+        while left < middle && right < end
+            if source[right] < source[left]
+                target[write] = source[right]
+                right += 1
+            else
+                target[write] = source[left]
+                left += 1
+            write += 1
+        while left < middle
+            target[write] = source[left]
+            left += 1
+            write += 1
+        while right < end
+            target[write] = source[right]
+            right += 1
+            write += 1
+        start = end
+    . swapped = source
+    source = target
+    target = swapped
+    is-swapped = !is-swapped
+    width *= 2
+if is-swapped
+    for position in 0 .. < count
+        values[position] = source[position]
+
+━━━━━━━━━━━━━━━━━━━━
++ do stable-order IdList
+    - arena Arena
+    - ids IdList
+    - keys CPointer'U32
+
+. count = ids.length
+if count < 2
+    = ids
+. composite = arena.allocate'U64(count)
+for position in 0 .. < count
+    composite[position] = ((keys[position] as U64) /lshift/ 32) /or/ position
+sort-u64(arena, composite, count)
+. sorted = new-id-list(arena, count)
+for position in 0 .. < count
+    sorted.data[position] = ids[(composite[position] /and/ 0xffffffff) as U32]
+= IdList(sorted.data, count, count)
+
+━━━━━━━━━━━━━━━━━━━━
++ IdMap is Tuple
+
++ slots CPointer'U32
++ capacity U32
++ count U32
+
+────────────────────
++ do get U32
+    - key U32
+
+if capacity == 0
+    = no-id
+. mask = capacity - 1
+. index = id-slot(key, mask)
+while true
+    . found = slots[index * 2]
+    if found == key + 1
+        = slots[index * 2 + 1]
+    if found == 0
+        = no-id
+    index = (index + 1) /and/ mask
+
+────────────────────
++ do inserted This
+    - arena Arena
+    - key U32
+    - value U32
+
+. map = this
+if (count + 1) * 2 > capacity
+    map = resized(arena, if capacity >= 8 then capacity * 2 else 8)
+. mask = map.capacity - 1
+. index = id-slot(key, mask)
+while true
+    . found = map.slots[index * 2]
+    if found == 0
+        map.slots[index * 2] = key + 1
+        map.slots[index * 2 + 1] = value
+        = IdMap(map.slots, map.capacity, map.count + 1)
+    if found == key + 1
+        map.slots[index * 2 + 1] = value
+        = map
+    index = (index + 1) /and/ mask
+
+────────────────────
++ do resized This
+    - arena Arena
+    - new-capacity U32
+
+. map = IdMap(arena.allocate'U32(new-capacity * 2), new-capacity, 0)
+for index in 0 .. < capacity
+    . found = slots[index * 2]
+    if found != 0
+        map = map.inserted(arena, found - 1, slots[index * 2 + 1])
+= map
+
+━━━━━━━━━━━━━━━━━━━━
+_ id-slot U32 @inline
+    - key U32
+    - mask U32
+
+(hash /xor/ (hash /zrshift/ 16)) /and/ mask
+
+.. hash = key * 2654435769
+
+━━━━━━━━━━━━━━━━━━━━
++ do new-id-map IdMap
+    - arena Arena
+    - expected U32
+
+. capacity U32 = 8
+while capacity < expected * 2
+    capacity *= 2
+= IdMap(arena.allocate'U32(capacity * 2), capacity, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ ByteSpan is Tuple
+
++ data CPointer'Byte
++ length Size
+
+━━━━━━━━━━━━━━━━━━━━
++ register-number I32
+    - register RegisterId
+
+|? register < 128
+    (register % 32) as I32
+|? register == stack-pointer-register
+    31
+??
+    -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do role-at U32 @inline
+    - roles U32
+    - position U32
+
+if (roles /and/ call-roles) != 0
+    if position == 1 && (roles /and/ value-call-roles) != 0
+        = def-role
+    = use-role
+if position > 15
+    = 0
+= (roles /zrshift/ (position * 2)) /and/ 3
+
+━━━━━━━━━━━━━━━━━━━━
++ register-of RegisterId
+    - reg-class RegClass
+    - number U32
+
+match reg-class
+    |= .gpr64
+        number
+    |= .gpr32
+        32 + number
+    |= .fpr64
+        64 + number
+    |= .fpr32
+        96 + number
+
+━━━━━━━━━━━━━━━━━━━━
++ register-class RegClass
+    - register RegisterId
+
+|? register < 32
+    .gpr64
+|? register < 64
+    .gpr32
+|? register < 96
+    .fpr64
+|? register < 128
+    .fpr32
+??
+    .gpr64
+
+━━━━━━━━━━━━━━━━━━━━
++ register-parent RegisterId
+    - register RegisterId
+
+if (register >= 32 && register < 64) || (register >= 96 && register < 128) then parent else register
+
+.. parent = register - 32
+
+━━━━━━━━━━━━━━━━━━━━
++ do register-view RegisterId
+    - register RegisterId
+    - reg-class RegClass
+
+. current = register-class(register)
+if current == reg-class
+    = register
+if (reg-class == .gpr32 && current == .gpr64) || (reg-class == .fpr32 && current == .fpr64)
+    = register + 32
+if (reg-class == .gpr64 && current == .gpr32) || (reg-class == .fpr64 && current == .fpr32)
+    = register - 32
+?! Panic("Register $register has no view of the requested class")
+
+━━━━━━━━━━━━━━━━━━━━
++ is-caller-saved-register Bool
+    - register RegisterId
+
+|? register >= 128
+    false
+|? register < 64
+    number <= 15
+??
+    number <= 7 || number >= 16
+
+.. number = register % 32
+
+━━━━━━━━━━━━━━━━━━━━
++ is-callee-saved-register Bool
+    - register RegisterId
+
+|? register >= 128
+    false
+|? register < 64
+    number >= 19 && number <= 28
+??
+    number >= 8 && number <= 15
+
+.. number = register % 32
+
+━━━━━━━━━━━━━━━━━━━━
++ is-general-register Bool
+    - register RegisterId
+
+|? register >= 128
+    false
+|? register < 64
+    number <= 15 || (number >= 19 && number <= 28)
+??
+    number >= 8
+
+.. number = register % 32
+
+━━━━━━━━━━━━━━━━━━━━
++ RegisterSet is Tuple
+
++ low U64
++ middle U64
++ high U64
+
+────────────────────
++ has Bool
+    - register RegisterId
+
+|? register < 64
+    (low /and/ (1u64 /lshift/ register)) != 0
+|? register < 128
+    (middle /and/ (1u64 /lshift/ (register - 64))) != 0
+??
+    (high /and/ (1u64 /lshift/ (register - 128))) != 0
+
+────────────────────
++ with This
+    - register RegisterId
+
+|? register < 64
+    RegisterSet(low /or/ (1u64 /lshift/ register), middle, high)
+|? register < 128
+    RegisterSet(low, middle /or/ (1u64 /lshift/ (register - 64)), high)
+??
+    RegisterSet(low, middle, high /or/ (1u64 /lshift/ (register - 128)))
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRInt is Tuple
+
++ bits U64
++ is-negative Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRLoc is Struct
+
++ file StringId
++ is-known Bool
++ line I32
++ column I32
++ offset I32
++ end-offset I32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRType is Union
+
+| void-type VoidType
+| int-type IntType
+| float-type FloatType
+| pointer-type PointerType
+| struct-type MIRStructType
+| array-type ArrayType
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeLayout is Tuple
+
++ size U32
++ alignment U32
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidType is TypeLayout
+
+━━━━━━━━━━━━━━━━━━━━
++ IntType is TypeLayout
+
++ bit-size U32
++ is-signed Bool
++ reg-class RegClass
+
+━━━━━━━━━━━━━━━━━━━━
++ FloatType is TypeLayout
+
++ bit-size U32
++ reg-class RegClass
+
+━━━━━━━━━━━━━━━━━━━━
++ PointerType is TypeLayout
+
++ reg-class RegClass
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRStructType is TypeLayout
+
++ format StructFormat
++ fields Span
+
+━━━━━━━━━━━━━━━━━━━━
++ ArrayType is TypeLayout
+
++ item MIRTypeId
++ length U32
+
+━━━━━━━━━━━━━━━━━━━━
++ StructField is Struct
+
++ type MIRTypeId
++ offset U32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRFrameSlot is Struct
+
++ index I32
++ is-stack Bool
++ objects IdList
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRFrameObject is Struct
+
++ slot MIRSlotId
++ index I32
++ type MIRTypeId
++ offset I32
++ can-promote Bool
++ gc-root Bool
++ gc-descriptor StringId
++ gc-root-mode GCRootMode
++ is-spill Bool
++ lifetime Span
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRVirtualRegister is Struct
+
++ id U32
++ reg-class RegClass
++ hint RegisterId
++ gc-root Bool
++ gc-descriptor StringId
++ gc-root-mode GCRootMode
+
+━━━━━━━━━━━━━━━━━━━━
++ MIROperand is Union
+
+| vreg-operand VRegOperand
+| preg-operand PRegOperand
+| vreg-group-operand VRegGroupOperand
+| label-operand LabelOperand
+| symbol-operand SymbolOperand
+| label-address-operand LabelAddressOperand
+| load-address-operand LoadAddressOperand
+| frame-object-operand FrameObjectOperand
+| int-operand IntOperand
+| cond-operand CondOperand
+| placeholder-operand PlaceholderOperand
+| shift-operand ShiftOperand
+
+━━━━━━━━━━━━━━━━━━━━
++ VRegOperand is Tuple
+
++ vreg VRegId
+
+━━━━━━━━━━━━━━━━━━━━
++ PRegOperand is Tuple
+
++ register RegisterId
+
+━━━━━━━━━━━━━━━━━━━━
++ VRegGroupOperand is Tuple
+
++ reg-class RegClass
++ vregs Span
+
+━━━━━━━━━━━━━━━━━━━━
++ LabelOperand is Tuple
+
++ name StringId
++ reloc Reloc
+
+━━━━━━━━━━━━━━━━━━━━
++ SymbolOperand is Tuple
+
++ name StringId
++ reloc Reloc
+
+━━━━━━━━━━━━━━━━━━━━
++ LabelAddressOperand is Tuple
+
++ base OperandId
+
+━━━━━━━━━━━━━━━━━━━━
++ LoadAddressOperand is Tuple
+
++ base OperandId
++ offset OperandId
++ is-pre-index Bool
++ index-shift U32
+
+━━━━━━━━━━━━━━━━━━━━
++ FrameObjectOperand is Tuple
+
++ object FrameObjectId
+
+━━━━━━━━━━━━━━━━━━━━
++ IntOperand is Tuple
+
++ value MIRInt
+
+━━━━━━━━━━━━━━━━━━━━
++ CondOperand is Tuple
+
++ code U32
+
+━━━━━━━━━━━━━━━━━━━━
++ PlaceholderOperand is Tuple
+
+━━━━━━━━━━━━━━━━━━━━
++ ShiftOperand is Tuple
+
++ kind U32
++ amount U32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRGCRoot is Union
+
+| register-root RegisterRoot
+| stack-root StackRoot
+
+━━━━━━━━━━━━━━━━━━━━
++ RegisterRoot is Tuple
+
++ register RegisterId
+
+━━━━━━━━━━━━━━━━━━━━
++ StackRoot is Tuple
+
++ object FrameObjectId
++ gc-descriptor StringId
++ gc-root-mode GCRootMode
+
+━━━━━━━━━━━━━━━━━━━━
++ SavedRegister is Struct
+
++ register RegisterId
++ fp-offset I32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRInstruction is Union
+
+| assembly-instruction AssemblyInstruction
+| call-instruction CallInstruction
+| phi-instruction PhiInstruction
+| comment-instruction CommentInstruction
+
+━━━━━━━━━━━━━━━━━━━━
++ InstructionRow is Tuple
+
++ opcode Opcode
++ operands IdList
++ loc LocId
++ position I32
++ gc-free-zone Bool
++ gc-exceptional-safepoint Bool
++ gc-safepoint Bool
++ is-phi-copy Bool
++ has-gc-roots Bool
++ gc-roots Span
+
+━━━━━━━━━━━━━━━━━━━━
++ AssemblyInstruction is InstructionRow
+
+━━━━━━━━━━━━━━━━━━━━
++ CallInstruction is InstructionRow
+
++ return-type MIRTypeId
++ copied-struct-arguments Span
++ argument-sizes Span
++ panic-target OperandId
++ gc-safepoint-proven-free Bool
++ direct-struct-return Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ PhiInstruction is InstructionRow
+
++ reg OperandId
++ exprs IdList
++ blocks IdList
+
+━━━━━━━━━━━━━━━━━━━━
++ CommentInstruction is InstructionRow
+
++ text StringId
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRBlock is Struct
+
++ name StringId
++ instructions IdList
++ successors IdList
++ predecessors IdList
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRJumpTable is Struct
+
++ name StringId
++ labels Span
+
+━━━━━━━━━━━━━━━━━━━━
++ LocalNameKind is U32
+
+| edge-block-name = 0
+| barrier-record-name = 1
+| barrier-after-name = 2
+| phi-copy-name = 3
+| phi-cycle-name = 4
+| save-layout-context-name = 5
+| save-callee-saved-name = 6
+| save-frame-name = 7
+| restore-frame-name = 8
+| restore-callee-saved-name = 9
+| restore-layout-context-name = 10
+| literal-name = 11
+| block-name = 12
+| jump-table-name = 13
+| allocation-slow-name = 14
+| allocation-after-name = 15
+| switch-tree-name = 16
+
+━━━━━━━━━━━━━━━━━━━━
++ LocalName is Struct
+
++ kind LocalNameKind
++ first StringId
++ second StringId
++ index U32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRCallOverflow is Tuple
+
++ is-present Bool
++ is-stack Bool
++ slot MIRSlotId
++ size I32
++ alignment I32
++ length I32
++ count I32
++ offset I32
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRFunction
+    is Usable'Void
+
++ arena Arena
++ pool-size U32
++ order U32
++ label StringId = no-string
++ symbol StringId = no-string
++ is-lowered Bool
++ name StringId = no-string
++ display-name StringId = no-string
++ compilation-effects U32
++ is-exported Bool
++ uses-table-union-cursor-plan Bool
++ loc LocId = no-loc
++ vreg-count U32
++ uses-layout-context Bool
++ closure-root FrameObjectId = no-frame-object
++ capture-closure-root FrameObjectId = no-frame-object
++ frame-bytes U32
++ overflow MIRCallOverflow
++ frame-slots IdList
++ vars IdList
++ block-order IdList
++ gc-roots Span
++ locs Table'MIRLoc
++ types Table'MIRType
++ struct-fields Table'StructField
++ slots Table'MIRFrameSlot
++ frame-objects Table'MIRFrameObject
++ vregs Table'MIRVirtualRegister
++ operands Table'MIROperand
++ group-vregs IdList
++ lifetimes IdList
++ roots Table'MIRGCRoot
++ saved-registers Table'SavedRegister
++ instructions Table'MIRInstruction
++ words IdList
++ names IdList
++ blocks Table'MIRBlock
++ jump-tables Table'MIRJumpTable
++ local-names Table'LocalName
+_ use-counts CPointer'U32
+_ use-count-capacity U32
+_ has-use-counts Bool
+_ released Bool
+
+────────────────────
++ This
+
+add-named-types()
+
+.. locs = Table'MIRLoc(arena, 16)
+.. types = Table'MIRType(arena, 16)
+.. struct-fields = Table'StructField(arena, 4)
+.. slots = Table'MIRFrameSlot(arena, 8)
+.. frame-objects = Table'MIRFrameObject(arena, 8)
+.. vregs = Table'MIRVirtualRegister(arena, 32)
+.. operands = Table'MIROperand(arena, 128)
+.. roots = Table'MIRGCRoot(arena, 4)
+.. saved-registers = Table'SavedRegister(arena, 4)
+.. instructions = Table'MIRInstruction(arena, 64)
+.. blocks = Table'MIRBlock(arena, 8)
+.. jump-tables = Table'MIRJumpTable(arena, 4)
+.. local-names = Table'LocalName(arena, 4)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release
+
+if !released
+    arena.release()
+    released = true
+
+────────────────────
++ do reset
+
+arena.reset()
+order = 0
+label = no-string
+symbol = no-string
+is-lowered = false
+name = no-string
+display-name = no-string
+compilation-effects = 0
+is-exported = false
+uses-table-union-cursor-plan = false
+loc = no-loc
+vreg-count = 0
+uses-layout-context = false
+closure-root = no-frame-object
+capture-closure-root = no-frame-object
+frame-bytes = 0
+overflow = MIRCallOverflow()
+frame-slots = IdList()
+vars = IdList()
+block-order = IdList()
+gc-roots = Span()
+locs = Table'MIRLoc(arena, 16)
+types = Table'MIRType(arena, 16)
+struct-fields = Table'StructField(arena, 4)
+slots = Table'MIRFrameSlot(arena, 8)
+frame-objects = Table'MIRFrameObject(arena, 8)
+vregs = Table'MIRVirtualRegister(arena, 32)
+operands = Table'MIROperand(arena, 128)
+group-vregs = IdList()
+lifetimes = IdList()
+roots = Table'MIRGCRoot(arena, 4)
+saved-registers = Table'SavedRegister(arena, 4)
+instructions = Table'MIRInstruction(arena, 64)
+words = IdList()
+names = IdList()
+blocks = Table'MIRBlock(arena, 8)
+jump-tables = Table'MIRJumpTable(arena, 4)
+local-names = Table'LocalName(arena, 4)
+has-use-counts = false
+use-count-capacity = 0
+add-named-types()
+
+────────────────────
++ do add-local-name StringId
+    - kind LocalNameKind
+    - first StringId
+    - second StringId
+    - index U32
+
+. row U32 = local-names.length as U32
+local-names.append(LocalName(kind, first, second, index))
+= pool-size + row
+
+────────────────────
++ get is-gc-free Bool
+
+(compilation-effects /and/ gc-free-effect) != 0
+
+────────────────────
++ operand-roles U32 @inline
+    - id InstructionId
+
+roles-with(id, instructions[id].opcode)
+
+────────────────────
++ do roles-with U32 @inline
+    - id InstructionId
+    - opcode Opcode
+
+` The role of each operand of an instruction whose opcode is read already. Only a call is a call
+` instruction, so its kind is read only where its opcode is a call's.
+if opcode == .call
+    do match? instructions[id]
+        | .call-instruction(call)
+            do match? types[call.return-type]
+                | .void-type
+                    = call-roles
+            = call-roles /or/ value-call-roles
+. roles = opcode-roles[opcode]
+if (plain-load || signed-load) && instructions[id].operands.length == 3
+    roles = roles /or/ 12
+.. plain-load = opcode == .ldr || opcode == .ldrb || opcode == .ldrh
+.. signed-load = opcode == .ldrsw || opcode == .ldrsb || opcode == .ldrsh
+= roles
+
+────────────────────
++ instruction-def VRegId
+    - id InstructionId
+
+def-with(id, instructions[id].opcode)
+
+────────────────────
++ do def-with VRegId
+    - id InstructionId
+    - opcode Opcode
+
+` The vreg an instruction whose opcode is read already defines first.
+. roles = roles-with(id, opcode)
+. list = instructions[id].operands
+for position in 0 .. < list.length
+    if (role-at(roles, position) /and/ def-role) == 0
+        continue
+    do match? operands[list[position]]
+        | .vreg-operand(operand)
+            = operand.vreg
+= no-id
+
+────────────────────
++ do count-uses
+
+if has-use-counts
+    =
+use-count-capacity = vreg-count + vreg-count / 2 + 16
+use-counts = arena.allocate'U32(use-count-capacity)
+has-use-counts = true
+for position in 0 .. < block-order.length
+    . list = blocks[block-order[position]].instructions
+    for index in 0 .. < list.length
+        tally-uses(list[index], true)
+
+────────────────────
++ use-count U32 @inline
+    - vreg U32
+
+if vreg < use-count-capacity then use-counts[vreg] else 0
+
+────────────────────
++ do forget-use-counts
+
+has-use-counts = false
+
+────────────────────
++ do add-uses
+    - id InstructionId
+
+if has-use-counts
+    tally-uses(id, true)
+
+────────────────────
++ do drop-uses
+    - id InstructionId
+
+if has-use-counts
+    tally-uses(id, false)
+
+────────────────────
++ do drop-operand-uses
+    - operand OperandId
+
+if has-use-counts
+    tally-operand(operand, false)
+
+────────────────────
+_ do tally-uses
+    - id InstructionId
+    - adds Bool
+
+. opcode = instructions[id].opcode
+if opcode == .phi
+    do match? instructions[id]
+        | .phi-instruction(phi)
+            for entry in 0 .. < phi.exprs.length
+                tally-operand(phi.exprs[entry], adds)
+    =
+. roles = roles-with(id, opcode)
+. list = instructions[id].operands
+for position in 0 .. < list.length
+    if (role-at(roles, position) /and/ use-role) != 0
+        tally-operand(list[position], adds)
+
+────────────────────
+_ do tally-operand
+    - operand OperandId
+    - adds Bool
+
+if operand == no-operand
+    =
+do match? operands[operand]
+    | .vreg-operand(row)
+        tally(vregs[row.vreg].id, adds)
+    | .vreg-group-operand(group)
+        for index in group.vregs.start .. < group.vregs.end
+            tally(vregs[group-vregs[index]].id, adds)
+    | .load-address-operand(address)
+        tally-operand(address.base, adds)
+        tally-operand(address.offset, adds)
+
+────────────────────
+_ do tally
+    - vreg U32
+    - adds Bool
+
+if adds
+    if vreg >= use-count-capacity
+        . grown-capacity = vreg + vreg / 2 + 16
+        . grown = arena.allocate'U32(grown-capacity)
+        for index in 0 .. < use-count-capacity
+            grown[index] = use-counts[index]
+        use-counts = grown
+        use-count-capacity = grown-capacity
+    use-counts[vreg] = use-counts[vreg] + 1
+    =
+?! Panic("A use of V$vreg is released that was never counted")
+    if vreg >= use-count-capacity || use-counts[vreg] == 0
+use-counts[vreg] = use-counts[vreg] - 1
+
+────────────────────
++ do post-order IdList
+
+. count U32 = blocks.length as U32
+. order = new-id-list(arena, count)
+if block-order.length == 0
+    = order
+. visited = arena.allocate'Byte(count)
+. pending = arena.allocate'U32(count)
+. cursors = arena.allocate'U32(count)
+. root = block-order[0]
+. depth U32 = 1
+pending[0] = root
+visited[root] = 1
+while depth != 0
+    . block = pending[depth - 1]
+    . successors = blocks[block].successors
+    . cursor = cursors[depth - 1]
+    if cursor < successors.length
+        cursors[depth - 1] = cursor + 1
+        . successor = successors[cursor]
+        if visited[successor] == 0
+            visited[successor] = 1
+            pending[depth] = successor
+            cursors[depth] = 0
+            depth += 1
+        continue
+    order = order.appended(arena, block)
+    depth -= 1
+= order
+
+────────────────────
+_ do add-named-types
+
+types.append(VoidType(0, 0))
+types.append(IntType(1, 1, 8, true, .gpr32))
+types.append(IntType(2, 2, 16, true, .gpr32))
+types.append(IntType(4, 4, 32, true, .gpr32))
+types.append(IntType(8, 8, 64, true, .gpr64))
+types.append(IntType(1, 1, 8, false, .gpr32))
+types.append(IntType(2, 2, 16, false, .gpr32))
+types.append(IntType(4, 4, 32, false, .gpr32))
+types.append(IntType(8, 8, 64, false, .gpr64))
+types.append(FloatType(4, 4, 32, .fpr32))
+types.append(FloatType(8, 8, 64, .fpr64))
+types.append(PointerType(8, 8, .gpr64))

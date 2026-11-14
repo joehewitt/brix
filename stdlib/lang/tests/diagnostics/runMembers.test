@@ -1,0 +1,313 @@
+====
+Errors about members, cases and overrides name the type, the member, the declaration involved, and the fix
+====
+
+:====
+# a property declared twice
+
+-- Thing().a
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 1
++ a = 2
+
+:----
+%crash
+
+Exception: Thing declares "a" twice (first on line 6); remove one of them, or rename it
+<no file:7>
+    + a = 2
+    ^^^^^^^
+;====
+
+:====
+# an override that states a type
+
+. base Source = Narrow()
+-- base.value
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
+────────────────────
++ get value I32
+
+1
+━━━━━━━━━━━━━━━━━━━━
++ Narrow is Source
+
+────────────────────
++ get value I32
+
+7
+
+:----
+%crash
+
+Exception: "value" is inherited from Source, so it keeps the type it has there and cannot state its own; remove "I32"
+<no file:15>
+    + get value I32
+    ^^^^^^^^^^^^^^
+;====
+
+:====
+# an arrow override that states a type, reported on its own line
+
+. base Source = Narrow()
+-- base.value
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ value I32 => 1
+━━━━━━━━━━━━━━━━━━━━
++ Narrow is Source
+
++ value I32 => 7
++ other => 2
+
+:----
+%crash
+
+Exception: "value" is inherited from Source, so it keeps the type it has there and cannot state its own; remove "I32"
+<no file:11>
+    + value I32 => 7
+    ^^^^^^^^^^^^^^^^
+;====
+
+:====
+# an override stored differently from the property it overrides
+
+. base = Thing() as Base
+-- base.a
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ a = "Base"
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Base
+
++ a := "Thing"
+
+:----
+%crash
+
+Exception: "a" is inherited from Base, which declares it with "=", so declare it with "=" here too, not with ":="
+<no file:11>
+    + a := "Thing"
+    ^^^^^^^^^^^^^^
+;====
+
+:====
+# a misspelled case of an enum
+
+. kind = Kind.thrid
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| first = 0
+| third = 1
+
+:----
+%crash
+
+Exception: Kind has no case "thrid"; did you mean "third"?
+<no file:2>
+    . kind = Kind.thrid
+             ^^^^^^^^^^
+;====
+
+:====
+# a misspelled case named by its symbol alone
+
+. kind Kind = .thrid
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| first = 0
+| third = 1
+
+:----
+%crash
+
+Exception: Case ".thrid" not found; did you mean ".third"?
+<no file:2>
+    . kind Kind = .thrid
+                  ^^^^^^
+;====
+
+:====
+# a case named alone whose type is in a module this one does not import
+
+./lib/rows
+
+. kind = .second
+-- kind as U32
+
+:----
+%file: lib/rows.yumi
+
+./kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ first-kind Kind
+
+Kind.first
+
+:----
+%file: lib/kinds.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| first = 0
+| second = 1
+
+:----
+%crash
+
+Exception: Case ".second" belongs to Kind, which this module does not import, so the case cannot be named alone; write "Kind.second" and add the import ./lib/kinds
+<no file:4>
+    . kind = .second
+             ^^^^^^^
+;====
+
+:====
+# optional chaining on a value that is never null
+
+. thing = Thing()
+thing?.show()
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ do show
+
+-- "shown"
+
+:----
+%crash
+
+Exception: "thing" is Thing, which is never null, so it needs no "?"; write "thing.show()"
+<no file:3>
+    thing?.show()
+    ^^^^^^^^^^^^^
+;====
+
+:====
+# a member two extensions declare
+
+/core/table
+
+. rows = Table'Node(1)
+rows[0] = Node.literal(1)
+-- rows[0].conflict()
+━━━━━━━━━━━━━━━━━━━━
++ Literal is Tuple
+
++ value U32
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| literal Literal
+━━━━━━━━━━━━━━━━━━━━
++ extend Node
+
+────────────────────
++ conflict String
+
+"logical"
+━━━━━━━━━━━━━━━━━━━━
++ extend TableRow'Node
+
+────────────────────
++ conflict String
+
+"physical"
+
+:----
+%crash
+
+Exception: More than one extension declares "conflict" for TableRow'Node, so the call is ambiguous; remove or rename all but one of them
+<no file:6>
+    -- rows[0].conflict()
+       ^^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# an interface getter without a body that a class does not implement
+
+. source Source = Lines()
+-- source.revision
+━━━━━━━━━━━━━━━━━━━━
++ Source is Interface
+
+────────────────────
++ get revision U64
+━━━━━━━━━━━━━━━━━━━━
++ Lines
+    is Source
+
+:----
+%crash
+
+Exception: Lines does not implement "revision", which Source declares without a body; declare "revision" in Lines
+<no file:10>
+    + Lines
+    ^^^^^^
+Interface:
+<no file:8>
+    + get revision U64
+;====
+
+:====
+# a constructor's ".." initializer that calls a method of the object
+
+-- Steps().first
+━━━━━━━━━━━━━━━━━━━━
++ Steps
+
++ first String
+
+────────────────────
++ This
+
+.. first = add-step("Check")
+
+────────────────────
++ do add-step String
+    - title String
+
+= "step $title"
+
+:----
+%crash
+
+Exception: A ".." initializer runs before the object exists, so it cannot call "add-step", a method of Steps; compute the value from the constructor's parameters, or assign it in the constructor's body
+<no file:11>
+    .. first = add-step("Check")
+               ^^^^^^^^^^^^^^^^^
+;====
+
+:====
+# a property's value that calls a method of the object
+
+-- Steps().first
+━━━━━━━━━━━━━━━━━━━━
++ Steps
+
++ first = add-step("Check")
+
+────────────────────
++ do add-step String
+    - title String
+
+= "step $title"
+
+:----
+%crash
+
+Exception: A property's value is computed before the object exists, so it cannot call "add-step", a method of Steps; declare the property without a value and assign it in a constructor's body
+<no file:6>
+    + first = add-step("Check")
+              ^^^^^^^^^^^^^^^^^
+;====

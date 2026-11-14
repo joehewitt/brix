@@ -1,0 +1,127 @@
+`benchmark.meta description: Combines overlapping line-heavy closed paths with boolean operations.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/boolean
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 160
+    . a = polygon-source-a(pass)
+    . b = polygon-source-b(pass)
+    for operation in 0 .. < 4
+        . result = boolean-operation(operation, a, b)
+        checksum += path-score(result) + pass + operation
+
+-- "bench-result graphics/boolean-overlap-polygons checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do polygon-source-a
+    - pass Int
+
+. f = pass as Float
+. kind = pass % 5
+if kind == 0
+    = rectangle(Rect(20 + (f % 9), 24, 96, 76))
+else if kind == 1
+    = diamond((82 + (f % 5), 78), 58)
+else if kind == 2
+    . path = rectangle(Rect(32, 30, 102, 74))
+    path.rotate(-12deg + f * 0.06deg, Point(82, 68))
+    = path
+else if kind == 3
+    . path = polygon(6, 104, Point(86, 78))
+    path.rotate(12deg + f * 0.04deg, Point(86, 78))
+    = path
+
+= compound-boxes(f)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do polygon-source-b
+    - pass Int
+
+. f = pass as Float
+. kind = pass % 5
+if kind == 0
+    = rectangle(Rect(72 + (f % 7), 46, 92, 72))
+else if kind == 1
+    = diamond((113 + (f % 6), 78), 58)
+else if kind == 2
+    . path = polygon(5, 100, Point(106, 76))
+    path.rotate(18deg - f * 0.05deg, Point(106, 76))
+    = path
+else if kind == 3
+    . path = rectangle(Rect(58, 40, 108, 62))
+    path.rotate(-8deg, Point(112, 71))
+    = path
+
+= rectangle(Rect(66, 42 + (f % 5), 94, 54))
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-operation
+    - operation
+    - a Path
+    - b Path
+
+|? operation == 0
+    union(a, b)
+|? operation == 1
+    intersect(a, b)
+|? operation == 2
+    subtract(a, b)
+??
+    clip(a, b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diamond
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (0, -radius))
+path.line-to(center + (radius, 0))
+path.line-to(center + (0, radius))
+path.line-to(center + (-radius, 0))
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compound-boxes
+    - frame Float
+
+. path = rectangle(Rect(24 + (frame % 4), 30, 42, 42))
+path.add-path(rectangle(Rect(102, 70, 42, 42)))
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score
+    - path Path?
+
+|? path
+    solid-path-score(path)
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
+_ solid-path-score Size
+    - path Path
+
+|? !path.count
+    0
+??
+    box-score + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+.. bounds = path.bounding-box
+.. box-score = origin-score + numeric-check(bounds.width) + numeric-check(bounds.height)
+.. origin-score = path.count + numeric-check(bounds.x) + numeric-check(bounds.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

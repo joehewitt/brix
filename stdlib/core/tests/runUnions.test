@@ -1,0 +1,5872 @@
+:====
+
+. probe = Probe()
+. item Item = Item.first(10)
+-- item.render(probe.next())
+item = Item.second(20)
+-- item.render(probe.next())
+item = Item.right("R")
+-- item.render(probe.next())
+-- probe.next-calls
+
+━━━━━━━━━━━━━━━━━━━━
++ Probe
+
++ next-calls I32 = 0
+
+────────────────────
++ do next I32
+
+next-calls += 1
+= next-calls
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+    - amount I32
+
+"L${value + amount}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value String
+
+────────────────────
++ render String
+    - amount I32
+
+"${value}${amount}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| first Left
+| second Left
+| right Right
+
+:----
+
+L11
+L22
+R3
+3
+;====
+:====
+/core/table
+
+/core/arena
+
+. arena = Arena(8192)
+do finally arena.release()
+. rows = Table'Node(arena, 1)
+rows.append(Node.wide(1, 10, 20, 30, 40))
+
+match rows[0]
+    | .small(small)
+        show-union-case-call(small.value)
+    | .wide(wide)
+        . escaped = escape-union-case(wide)
+        rows[0] = Node.wide(2, 100, 200, 300, 400)
+        show-union-case-call(escaped.external-a)
+
+match rows[0]
+    | .small(small)
+        show-union-case-call(small.value)
+    | .wide(wide)
+        show-union-case-call(wide.external-a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show-union-case-call
+    - value U64
+
+-- value
+
+━━━━━━━━━━━━━━━━━━━━
++ escape-union-case Wide
+    - wide Wide
+
+wide
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Small is Syntax
+
++ value U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Syntax
+
++ @hot inline-a U64
++ @hot inline-b U64
++ external-a U64
++ external-b U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| small Small
+| wide Wide
+
+:----
+30
+300
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"case"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+
+────────────────────
++ render String
+
+"union"
+
+:----
+
+union
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.label
+item = Item.right("R")
+-- item.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value String
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Left
+
+────────────────────
++ get label String
+
+"left:$value"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Right
+
+────────────────────
++ get label String
+
+"right:$value"
+
+:----
+
+left:10
+right:R
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Left
+
+────────────────────
++ get label String
+
+"case"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Item
+
+────────────────────
++ get label String
+
+"union"
+
+:----
+
+union
+;====
+:====
+
+. item Item = Item.left(10)
+item.label = "one"
+item = Item.right("R")
+item.label = "two"
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ do label = value String
+
+-- "left:$value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value String
+
+────────────────────
++ do label = value String
+
+-- "right:$value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+left:one
+right:two
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ get label String
+
+"left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash
+
+Exception: Union case 'right' has no complete dispatch for getter 'label'
+<no file:3>
+    -- item.label
+       ^^^^^^^^^^
+;====
+:====
+
+. item Item = Item.value(10)
+-- item.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Tuple
+
++ value I32
+
+────────────────────
++ get label String
+
+"value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| value Value
+| empty
+
+:----
+%crash
+
+Exception: Union case 'empty' has no payload for getter 'label'
+<no file:3>
+    -- item.label
+       ^^^^^^^^^^
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash
+
+Exception: Union case 'right' has no complete dispatch for method 'render'
+<no file:3>
+    -- item.render()
+       ^^^^^^^^^^^^^
+;====
+:====
+
+. item Item = Item.value(10)
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| value Value
+| empty
+
+:----
+%crash
+
+Exception: Union case 'empty' has no payload for method 'render'
+<no file:3>
+    -- item.render()
+       ^^^^^^^^^^^^^
+;====
+:====
+# Inspect union contents without exceptions
+
+-- Foo(42).case
+-- Foo(42).type
+-- Foo(42) as Int
+-- ""
+-- Foo(10.5).case
+-- Foo(10.5).type
+-- Foo(10.5) as Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| Float
+
+:----
+
+0
+Class:core/number:I64
+42
+
+1
+Class:core/number:F64
+10.5
+;====
+:====
+# @hot metadata does not change ordinary tuple construction, union matching, conversion, or values.
+
+. first = Value.left(10, 20)
+. second Value = Value.right(30, 40)
+-- first
+-- second
+-- first as Left
+-- match second
+    | .left(left)
+        left.hot + left.cold
+    | .right(right)
+        right.hot + right.cold
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ @hot hot I32
++ cold I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ @hot hot I32
++ cold I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| left Left
+| right Right
+
+:----
+(10, 20)
+(30, 40)
+(10, 20)
+70
+;====
+:====
+
+-- Foo.error
+-- Foo.status
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error
+| status
+
+:----
+
+error
+status
+
+;====
+:====
+
+-- Foo.status == Foo.status
+-- Foo.status == Foo.error
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error
+| status
+
+:----
+
+true
+false
+
+;====
+:====
+# Explicitly declared Union type name in assignment
+
+. foo Foo = Foo.error
+-- foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error = 1
+| status = "good"
+
+:----
+
+1
+;====
+:====
+
+do finally
+    --? recover()
+
+. foo Foo = 42
+-- foo
+
+foo = 10.5
+-- foo
+
+foo = "hello"
+-- foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| Float
+| String
+
+:----
+
+42
+10.5
+hello
+;====
+:====
+
+. foo Foo = "hello"
+-- foo as String
+
+-- catch (foo as Int)
+-- catch? (foo as Int)
+-- type-of catch (foo as Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+:----
+
+hello
+Invalid union cast
+unknown
+[TypeInfo Union]
+;====
+:====
+
+. foo Foo = 42
+-- foo as Int
+
+foo = "hi"
+-- foo as String
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+:----
+
+42
+hi
+;====
+:====
+
+. foo Foo = 42
+-- foo.type
+
+foo = "hello"
+-- foo.type
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+:----
+
+Class:core/number:I64
+Class:core/string:String
+;====
+:====
+
+. foo Foo = 42
+-- foo is Int
+
+foo = "hello"
+-- foo is! Int
+-- foo is String
+
+foo = [Foo(42)]
+-- foo is List'Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+| [Foo]
+
+:----
+
+true
+false
+true
+true
+;====
+:====
+
+. foo Foo = [Foo(42)]
+-- foo is List
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+| [Foo]
+
+:----
+
+true
+;====
+:====
+
+. a Foo = 42
+. b Foo = 10.5
+. c Foo = "hello"
+. d Foo = [Foo(99), Foo(99.99f)]
+. foos Foo = [a, b, c, d]
+-- "\n".join(foos as [Foo])
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| Float
+| String
+| [Foo]
+
+:----
+
+42
+10.5
+hello
+99, 99.99
+;====
+:====
+
+. a Foo = 1
+-- match a
+    | Int
+        "num"
+    | String
+        "str"
+    ?? ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+:----
+
+num
+;====
+:====
+
+. a Foo = Foo.status
+-- match a
+    | .loading
+        "loading"
+    | .status
+        "status"
+    | .error
+        "error"
+    | .done
+        "done"
+    ??
+        "unknown"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| loading
+| status
+| error
+| done
+
+:----
+
+status
+;====
+:====
+
+. a Foo = Foo.status
+-- match a
+    |= .loading
+        "loading"
+    |= .status
+        "status"
+    |= .error
+        "error"
+    |= .done
+        "done"
+    ??
+        "unknown"
+-- match Foo.done
+    |= Foo.loading
+        "loading"
+    |= Foo.status
+        "status"
+    |= Foo.error
+        "error"
+    |= Foo.done
+        "done"
+    ??
+        "unknown"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| loading
+| status
+| error
+| done
+
+:----
+
+status
+done
+;====
+:====
+
+. a Foo = [Foo(42)]
+-- match a
+    | Int
+        "num"
+    | String!
+        "str"
+    | x List
+        "list $l"
+        .. l = x.length
+    | m Map
+        "map $l"
+        .. l = m.length
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| Float
+| String
+| [Foo]
+| [String = Foo]
+
+:----
+
+list 1
+;====
+====================================================================================================
+Enums in unions
+====================================================================================================
+:====
+
+-- Foo.default
+-- Foo.error
+-- Foo.status
+-- ""
+-- Foo.error is Int
+-- Foo.error is! String
+-- type-of Foo.error
+-- ""
+-- Foo.status is String
+-- Foo.status is! Int
+-- type-of Foo.status
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| default
+| error = -1
+| status = "good"
+
+:----
+
+default
+-1
+good
+
+true
+false
+[TypeInfo Foo]
+
+true
+false
+[TypeInfo Foo]
+;====
+====================================================================================================
+Union comparison
+====================================================================================================
+:====
+
+. foo = Foo.error
+
+-- foo == Foo.error
+-- foo == Foo.life
+
+-- foo == Foo.status
+
+-- foo == 1
+-- foo == 41
+-- foo != Foo.error
+-- foo != Foo.life
+-- foo != Foo.status
+
+-- foo != 1
+-- foo != 41
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error = 1
+| life = 42
+| status = "good"
+| Float
+| Int
+
+:----
+
+true
+false
+false
+true
+false
+false
+true
+true
+false
+true
+
+;====
+:================================================================================================
+
+. a = Authorization.valid("a", "b")
+-- | Authorization.valid = a
+-- | Authorization.invalid-password = a
+
+━━━━━━━━━━━━━━━━━━━━
++ Authorization is Union
+
+| invalid-password
+| invalid-email
+| valid(email String, password String)
+
+:------------------------------------------------------------------------------------------------
+
+(a, b)
+unknown
+
+;====
+:================================================================================================
+
+. y Foo? = Foo(1)
+-- (y as Foo).case
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+:------------------------------------------------------------------------------------------------
+
+0
+
+;====
+:================================================================================================
+
+-- Foo(List())
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| String
+| Int
+
+
+:------------------------------------------------------------------------------------------------
+%crash
+
+Exception: Could not resolve parameter Item
+<no file:2>
+    -- Foo(List())
+           ^^^^^^
+
+;====
+:================================================================================================
+
+. u = Foo(8.5)
+-- u
+-- u.case
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| String
+| Int
+
+:------------------------------------------------------------------------------------------------
+
+8
+1
+
+;====
+:================================================================================================
+
+. foo Foo = "hi"
+-- foo.case
+. bar Bar = foo
+-- bar.case
+-- bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Union
+
+| String
+| Int
+
+:------------------------------------------------------------------------------------------------
+
+1
+0
+hi
+
+;====
+:================================================================================================
+# Casting doesn't work for untyped cases
+
+-- 1 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+
+:------------------------------------------------------------------------------------------------
+%crash
+
+Exception: I64 cannot be cast to Foo; there is no conversion between them
+<no file:2>
+    -- 1 as Foo
+       ^^^^^^^^
+
+;====
+:================================================================================================
+# Casting works for typed cases
+
+-- 1 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo Int
+| bar String
+
+
+:------------------------------------------------------------------------------------------------
+
+1
+
+;====
+:================================================================================================
+# Constructors don't work for untyped cases
+
+-- Foo(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+
+:------------------------------------------------------------------------------------------------
+%crash
+
+Exception: No constructor of Foo accepts (I64)
+<no file:2>
+    -- Foo(1)
+       ^^^
+;====
+:================================================================================================
+# Constructors work for typed cases
+
+-- Foo(1).case
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo String
+| bar Int
+
+
+:------------------------------------------------------------------------------------------------
+
+1
+;====
+:================================================================================================
+# Named typed case accessor returns payload
+
+. foo Foo = Foo(42)
+-- foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo Int
+| bar String
+
+:------------------------------------------------------------------------------------------------
+
+42
+;====
+:================================================================================================
+# Named union case match distinguishes duplicate payload types
+
+. v Foo = Foo.b(2)
+-- match v
+    | .a(x)
+        "a $x"
+    | .b(x)
+        "b $x"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| a Int
+| b Int
+
+:------------------------------------------------------------------------------------------------
+
+b 2
+;====
+:================================================================================================
+# Non-capturing payload case match can dispatch before checking payload shape
+
+. v Foo = Foo.b(2)
+-- match v
+    | .a(Int)
+        "a $it"
+    | .b(Int)
+        "b $it"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| a Int
+| b Int
+
+:------------------------------------------------------------------------------------------------
+
+b 2
+;====
+:================================================================================================
+# Named typed case accessor defaults on wrong case
+
+. foo Foo = Foo(42)
+-- foo.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo Int
+| bar String
+
+:------------------------------------------------------------------------------------------------
+
+
+;====
+:================================================================================================
+# Named tuple case accessor returns tuple payload
+
+. auth = Authorization.valid("a", "b")
+. valid = auth.valid
+-- valid.email
+-- valid.password
+
+━━━━━━━━━━━━━━━━━━━━
++ Authorization is Union
+
+| invalid-password
+| invalid-email
+| valid(email String, password String)
+
+:------------------------------------------------------------------------------------------------
+
+a
+b
+;====
+:================================================================================================
+# Named untyped case accessor returns default payload
+
+. foo Foo = Foo.foo
+-- foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+:------------------------------------------------------------------------------------------------
+
+0
+;====
+====================================================================================================
+Anonymous unions
+====================================================================================================
+:================================================================================================
+
+-- v, type-of v, v.case
+    .. v = foo("hi")
+
+-- v, type-of v, v.case
+    .. v = foo("foo")
+
+-- v, type-of v, v.case
+    .. v = foo("bar")
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - value
+
+match value
+    ||= "foo"
+        42
+    ||= "bar"
+        [1,2,3]
+    ??
+        "abc"
+
+:------------------------------------------------------------------------------------------------
+
+(abc, [TypeInfo Union], 2)
+(42, [TypeInfo Union], 0)
+(1, 2, 3, [TypeInfo Union], 1)
+
+;====
+:================================================================================================
+
+-- .foo
+-- .foo == Foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+:------------------------------------------------------------------------------------------------
+
+foo
+true
+
+;====
+:================================================================================================
+
+./lib/stuff
+
+-- .bar
+-- .foo == Foo.foo
+-- .baz == Boo.baz
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+━━━━━━━━━━━━━━━━━━━━
+
+:----
+%file: lib/stuff.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Boo is Union
+
+| foo
+| baz
+
+:------------------------------------------------------------------------------------------------
+
+bar
+true
+true
+
+;====
+:====
+# A bare case that several visible types share needs an expected type or a qualified name.
+
+-- .foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| foo
+| bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Boo is Union
+
+| foo
+| baz
+
+:----
+%crash
+
+Exception: Case '.foo' is ambiguous between 'Boo', 'Foo'
+<no file:2>
+    -- .foo
+       ^^^^
+;====
+:====
+# A bare case constructor that several visible unions share must be qualified.
+
+-- .word("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ Token is Union
+
+| word(text String)
+| number(value Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Part is Union
+
+| word(text String)
+| space
+
+:----
+%crash
+
+Exception: Case '.word' is ambiguous between 'Part', 'Token'
+<no file:2>
+    -- .word("x")
+       ^^^^^
+;====
+:================================================================================================
+
+. v = if true then .x else .y
+-- v
+-- type-of v
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| x
+| y
+
+
+:------------------------------------------------------------------------------------------------
+
+x
+[TypeInfo Foo]
+
+;====
+:================================================================================================
+# Explicit constructor return type participates in constructor inference
+
+. event = Mouse(1)
+-- type-of event
+-- event as Down
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| Down
+| Unknown
+
+━━━━━━━━━━━━━━━━━━━━
++ Mouse
+
+────────────────────
++ This Event
+    - button Int
+
+if button == 1
+    = Down()
+else
+    = Unknown()
+
+━━━━━━━━━━━━━━━━━━━━
++ Down
+
+────────────────────
++ to String
+
+"down"
+
+━━━━━━━━━━━━━━━━━━━━
++ Unknown
+
+────────────────────
++ to String
+
+"unknown"
+
+:------------------------------------------------------------------------------------------------
+
+[TypeInfo Event]
+down
+
+;====
+:====
+
+. event = Mouse(1)
+-- type-of event
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| Down
+| Unknown
+
+━━━━━━━━━━━━━━━━━━━━
++ Mouse
+
+────────────────────
++ This Event
+    - button Int
+
+= match button
+    |= 1
+        Down()
+    ??
+        Unknown()
+
+━━━━━━━━━━━━━━━━━━━━
++ Down
+
+━━━━━━━━━━━━━━━━━━━━
++ Unknown
+
+:------------------------------------------------------------------------------------------------
+
+[TypeInfo Event]
+
+;====
+:====
+
+./lib/model
+./lib/use-one
+./lib/use-two
+
+. item Item = Item.left(10)
+-- call-one(item)
+-- call-two(item)
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%file: lib/extension-one.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Left
+
+────────────────────
++ render String
+
+"one-left"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Right
+
+────────────────────
++ render String
+
+"one-right"
+
+:----
+%file: lib/extension-two.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Left
+
+────────────────────
++ render String
+
+"two-left"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Right
+
+────────────────────
++ render String
+
+"two-right"
+
+:----
+%file: lib/use-one.yumi
+
+./model
+./extension-one
+
+━━━━━━━━━━━━━━━━━━━━
++ call-one String
+    - item Item
+
+item.render()
+
+:----
+%file: lib/use-two.yumi
+
+./model
+./extension-two
+
+━━━━━━━━━━━━━━━━━━━━
++ call-two String
+    - item Item
+
+item.render()
+
+:----
+
+one-left
+two-left
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"case"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| empty
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Item
+
+────────────────────
++ render String
+
+"union-extension"
+
+:----
+
+union-extension
+;====
+:====
+
+. leaf Node = Node.leaf("x")
+. branch Node = Node.branch([leaf])
+-- branch.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Tuple
+
++ text String
+
+────────────────────
++ render String
+
+text
+
+━━━━━━━━━━━━━━━━━━━━
++ Branch is Tuple
+
++ children [Node]
+
+────────────────────
++ render String
+
+children[0].render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| leaf Leaf
+| branch Branch
+
+:----
+
+x
+;====
+:====
+
+. item Item = Item.left(10)
+. described = item.describe()
+-- type-of described
+-- (described as Alpha).value
+item = Item.right("R")
+described = item.describe()
+-- (described as Beta).value
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ describe Alpha
+
+Alpha(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value String
+
+────────────────────
++ describe Beta
+
+Beta(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ Alpha
+
++ value I32
+
+────────────────────
++ This
+    - value
+
+━━━━━━━━━━━━━━━━━━━━
++ Beta
+
++ value String
+
+────────────────────
++ This
+    - value
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+[TypeInfo Union]
+10
+R
+;====
+:====
+
+. item Item = Item.left(1)
+-- catch? item.render() ?? "caught-left"
+item = Item.right(2)
+-- catch? item.render() ?? "caught-right"
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ RightError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! LeftError
+
+?! LeftError("left")
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! RightError
+
+?! RightError("right")
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+caught-left
+caught-right
+;====
+:====
+
+. xs = [1, 2]
+. generated = each in xs
+. payload = Payload(generated)
+
+-- payload.items.length
+-- payload.items[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload is Union
+
+| items [Int]
+| empty
+
+:----
+
+2
+1
+;====
+:================================================================================================
+# Union wrap case order breaks same-kind side-cast ties
+
+. offset PositionOffset = 4
+. offset-with-unit PositionOffset = 4tc
+
+-- offset-status(offset)
+-- offset-status(offset-with-unit)
+
+━━━━━━━━━━━━━━━━━━━━
++ TestCoord (tc) is I16
+
+━━━━━━━━━━━━━━━━━━━━
++ TestPercent (%) is F64
+
+━━━━━━━━━━━━━━━━━━━━
++ PositionOffset is Union
+
+| coord TestCoord
+| percent TestPercent
+| anchor
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-status String
+    - offset PositionOffset
+
+match offset
+    | PositionOffset.coord(n)
+        "coord $n"
+    | PositionOffset.percent(percent)
+        "percent ${percent as TestPercent}"
+    ??
+        "other"
+
+:------------------------------------------------------------------------------------------------
+
+coord 4
+coord 4
+
+;====
+:====
+# Arena handles and allocation pointers use ordinary union and optional copies.
+
+/core/arena
+
+. first = Arena()
+. second = Arena()
+. first-pointer = first.allocate'U32(1)
+first-pointer[0] = 1u32
+. second-pointer = second.allocate'U32(1)
+second-pointer[0] = 2u32
+. choice ArenaChoice = ArenaChoice.pointer(first-pointer)
+-- choice.pointer[0]
+choice = ArenaChoice.pointer(second-pointer)
+-- choice.pointer[0]
+
+. owner-choice ArenaChoice = first
+. owner-pointer = owner-choice.arena.allocate'U32(1)
+owner-pointer[0] = 3u32
+-- owner-pointer[0]
+. optional Arena? = second
+. optional-pointer = optional!.allocate'U32(1)
+optional-pointer[0] = 4u32
+-- optional-pointer[0]
+
+first.release()
+second.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaChoice is Union
+
+| arena Arena
+| pointer CPointer'U32
+
+:----
+
+1
+2
+3
+4
+;====
+:====
+# A map joins the union through its map case, not as a stream of truth-tested pairs.
+
+. entry = Map'String'Value
+    • "count" 1
+-- pick(entry)
+-- pick([entry, entry])
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| Bool
+| Int
+| [String = Value]
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String
+    - value Value
+
+"whole"
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String
+    - values <Value>
+
+"items"
+
+:----
+
+whole
+items
+;====
+:====
+# A value never joins a union through the truth test of its Bool case.
+
+-- describe(true)
+-- describe(Box(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ Box is Tuple
+
++ count Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| Bool
+| Int
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value Value
+
+"value"
+
+:----
+%crash
+
+Exception: No function "describe" accepts (Box); it is declared as "describe(value Value)"
+<no file:3>
+    -- describe(Box(3))
+       ^^^^^^^^^^^^^^^^
+;====
+:====
+# A payloadless union case can call getters declared on its union.
+
+. mode = Mode.pen
+-- mode.title
+-- mode.draws
+-- Mode.zoom.title
+-- Mode.zoom.draws
+
+━━━━━━━━━━━━━━━━━━━━
++ Mode is Union
+
+| pen
+| zoom
+
+────────────────────
++ get title
+
+match this
+    | Mode.pen
+        "Pen"
+    ??
+        "Zoom"
+
+────────────────────
++ get draws
+
+this == Mode.pen
+
+:----
+Pen
+true
+Zoom
+false
+;====
+:====
+# A union getter cannot shadow a reserved union property.
+
+-- Mode.pen.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Mode is Union
+
+| pen
+
+────────────────────
++ get name
+
+"Pen"
+
+:----
+%crash
+
+Exception: Union property 'name' conflicts with reserved union property
+<no file:10>
+    + get name
+    ^^^^^^^^^
+;====
+:====
+# A case whose single field is a tuple accepts a tuple value as well as the tuple's fields.
+
++ CaseSpot is (x I32, y I32)
+
+. spot = CaseSpot(1, 2)
+-- describe(CasePiece.single(spot))
+-- describe(CasePiece.single(3, 4))
+-- describe(wrap(CaseSpot(5, 6)))
+-- describe(CasePiece.pair(9, spot))
+
+━━━━━━━━━━━━━━━━━━━━
++ wrap CasePiece
+    - spot CaseSpot
+
+.single(spot)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - piece CasePiece
+
+match piece
+    | .single(place)
+        "single ${place.x} ${place.y}"
+    | .pair(x, place)
+        "pair $x ${place.y}"
+
+━━━━━━━━━━━━━━━━━━━━
++ CasePiece is Union
+
+| single(place CaseSpot)
+| pair(x I32, place CaseSpot)
+
+:----
+single 1 2
+single 3 4
+single 5 6
+pair 9 2
+;====
+:====
+# A case shorthand shared by several unions resolves against the type it is compared with,
+# assigned to, passed as, or listed beside, instead of whichever union was declared last.
+
+. cap = TipShape.round
+. join = BendShape.miter
+-- cap == .round
+-- join == .round
+-- .round == cap
+-- describe-tip(.square)
+-- describe-tip(.round)
+-- default-tip()
+. tips TipShape? = .round
+-- tips == .round
+for tip in [.butt, .round, .square]
+    -- describe-tip(tip)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe-tip String
+    - tip TipShape
+
+match tip
+    | TipShape.butt
+        "butt"
+    | TipShape.round
+        "round"
+    | TipShape.square
+        "square"
+
+━━━━━━━━━━━━━━━━━━━━
++ default-tip String
+    - tip TipShape = .round
+
+describe-tip(tip)
+
+━━━━━━━━━━━━━━━━━━━━
++ TipShape is Union
+
+| butt
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ BendShape is Union
+
+| miter
+| round
+| bevel
+
+:----
+true
+false
+true
+square
+round
+round
+true
+butt
+round
+square
+;====
+:====
+# Coalescing an optional alternative with a union that contains it widens to the union instead
+# of unwrapping the union, which would fail at runtime for the union's other cases.
+
+-- describe(pick(null))
+-- describe(pick(Tint(4)))
+
+━━━━━━━━━━━━━━━━━━━━
++ Tint is Tuple
+
++ amount I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Shade is Union
+
+| none
+| Tint
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Shade
+    - level Tint?
+
+if level then level else Shade.none
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - shade Shade
+
+match shade
+    |= Shade.none
+        "none"
+    | found Tint
+        "level ${found.amount}"
+
+:----
+none
+level 4
+;====
+:====
+# A function without a declared return type that returns shared case shorthands infers the union
+# its other returns agree on.
+
+-- describe-cap(pick-cap(0))
+-- describe-cap(pick-cap(1))
+-- describe-cap(pick-cap(2))
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick-cap
+    - kind I32
+
+if kind == 0
+    = .flat
+else if kind == 1
+    = .pointed
+
+= .rounded
+
+━━━━━━━━━━━━━━━━━━━━
++ describe-cap String
+    - cap CapShape
+
+match cap
+    | CapShape.flat
+        "flat"
+    | CapShape.pointed
+        "pointed"
+    | CapShape.rounded
+        "rounded"
+
+━━━━━━━━━━━━━━━━━━━━
++ CapShape is Union
+
+| flat
+| pointed
+| rounded
+
+━━━━━━━━━━━━━━━━━━━━
++ CornerShape is Union
+
+| sharp
+| rounded
+
+:----
+flat
+pointed
+rounded
+;====
+:====
+# A match capture narrows to a union alternative declared as a shorthand tuple.
+
+-- describe(pick(null))
+-- describe(pick(Tint(4)))
+
+━━━━━━━━━━━━━━━━━━━━
++ Tint is (amount I32)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shade is Union
+
+| none
+| Tint
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Shade
+    - level Tint?
+
+if level then level else Shade.none
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - shade Shade
+
+match shade
+    |= Shade.none
+        "none"
+    | found Tint
+        "level ${found.amount}"
+
+:----
+none
+level 4
+;====
+:====
+# A generic class can hold a union parameterized by its own type parameter.
+
+. h = Holder'Int()
+h.set(5)
+-- match h.m!
+    | .some(v)
+        "some $v"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Maybe'T is Union
+
+| some(T)
+| none
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Value
+
++ m Maybe'Value?
+
+────────────────────
++ do set
+    - v Value
+
+m = Maybe'Value.some(v)
+
+:----
+some 5
+;====
+:====
+# A case shorthand shared by two unions resolves to the one that converts to the expected type.
+
+. holder = Holder()
+-- holder.chord.label
+holder.chord = .second
+-- holder.chord.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Step
+
+| first
+| second
+
+━━━━━━━━━━━━━━━━━━━━
++ Motion
+
+| second
+| third
+
+━━━━━━━━━━━━━━━━━━━━
++ Chord is Tuple
+
++ label String
+
+────────────────────
++ from step Step
+
+This(if step == Step.first then "step first" else "step second")
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ chord Chord = Step.first
+
+:----
+step first
+step second
+;====
+:====
+# A case shorthand shared by two unions resolves by the parameter type in a constructor call.
+
+. span = Span(.invalid, "x")
+-- span.kind == SpanKind.invalid
+-- span.text
+
+━━━━━━━━━━━━━━━━━━━━
++ SpanKind is Union
+
+| plain
+| invalid
+
+━━━━━━━━━━━━━━━━━━━━
++ TokenKind is Union
+
+| word
+| invalid
+
+━━━━━━━━━━━━━━━━━━━━
++ Span is Tuple
+
++ kind SpanKind
++ text String
+
+:----
+true
+x
+;====
+:====
+# A union case built inside arguments whose types are inferred, such as a union's constructor,
+# resolves as a case constructor instead of a method on the union's values.
+
+. wrapped = Wrapped(label(Choice.previous(9)))
+do match wrapped
+    | .text(text)
+        -- text
+    ??
+        -- "number"
+-- label(Choice.every)
+-- render(Entry(render(choice-fields(Choice.previous(9)))))
+. checked = checked-text(render(choice-fields(Choice.previous(9))))
+    catch err Error
+        ?! Panic(err as String)
+-- checked
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrapped is Union
+
+| text String
+| number F64
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| previous U64
+| every
+
+━━━━━━━━━━━━━━━━━━━━
++ Entry is Union
+
+| String
+| [String = Entry]
+
+────────────────────
++ This
+    - text String
+
+= Map'String'Entry
+    • "text" text
+
+━━━━━━━━━━━━━━━━━━━━
++ label String
+    - choice Choice
+
+match choice
+    | .previous(source)
+        "previous $source"
+    ??
+        "every"
+
+━━━━━━━━━━━━━━━━━━━━
++ render String
+    - value
+
+match value
+    | String
+        "'$value'"
+    | map Map
+        "{$joined}"
+        .. joined = ", ".join(pairs)
+        .. pairs = <* key, val in map
+            "$key: ${render(val)}"
+    ??
+        "?"
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked-text String ?! Error
+    - text String
+
+?! Error("Empty text")
+    if !text.length
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ do choice-fields [String = Entry]
+    - choice Choice
+
+= Map'String'Entry
+    • "choice" label(choice)
+
+:----
+previous 9
+every
+{text: '{choice: 'previous 9'}'}
+{choice: 'previous 9'}
+;====
+:================================================================================================
+# A list built from one value of a union with a list case holds that value
+
+. trees = List'Tree(Tree.leaf("a"))
+-- trees.length
+-- trees[0].leaf
+. pair = List'Tree(Tree.leaf("a"), Tree.branch(List'Tree()))
+-- pair.length
+. shapes = List'Shape(Shape(3))
+-- shapes.length
+. copied = List'Tree(trees)
+-- copied.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Tree is Union
+
+| leaf String
+| branch [Tree]
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| Int
+| [Shape]
+
+:------------------------------------------------------------------------------------------------
+
+1
+a
+2
+1
+1
+;====
+:================================================================================================
+# Overloads that accept several owners of a bare case take the last visible owner
+
+./lib/one
+./lib/two
+
+-- choose(.enter)
+-- choose(.start)
+-- rank(.equal)
+-- fallback(.enter)
+
+━━━━━━━━━━━━━━━━━━━━
++ Local is Union
+
+| enter
+
+━━━━━━━━━━━━━━━━━━━━
++ Later is Union
+
+| enter
+
+━━━━━━━━━━━━━━━━━━━━
++ Record is Tuple
+
++ size Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ choose String
+    - two Two
+
+"Two"
+
+━━━━━━━━━━━━━━━━━━━━
++ choose String
+    - later Later
+
+"Later"
+
+━━━━━━━━━━━━━━━━━━━━
++ choose String
+    - one One
+
+"One"
+
+━━━━━━━━━━━━━━━━━━━━
++ choose String
+    - local Local
+
+"Local"
+
+━━━━━━━━━━━━━━━━━━━━
++ rank String
+    - comparison Comparison
+
+"Comparison"
+
+━━━━━━━━━━━━━━━━━━━━
++ rank String
+    - one One
+
+"One"
+
+━━━━━━━━━━━━━━━━━━━━
++ fallback String
+    - record Record
+
+"Record"
+
+━━━━━━━━━━━━━━━━━━━━
++ fallback String
+    - one One
+
+"One"
+
+:----
+%file: lib/one.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ One is Union
+
+| enter
+| equal
+| start
+
+:----
+%file: lib/two.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Two is Union
+
+| enter
+| start
+
+:------------------------------------------------------------------------------------------------
+
+Later
+One
+One
+One
+;====
+:====
+# A case named alone as a default is a case of its parameter's type, though another type has the name
+
+-- tip-name()
+-- tip-name(.square)
+-- bend-name()
+-- maybe-tip()
+
+━━━━━━━━━━━━━━━━━━━━
++ tip-name String
+    - tip TipShape = .round
+
+"tip ${tip}"
+
+━━━━━━━━━━━━━━━━━━━━
++ bend-name String
+    - bend BendShape = .round
+
+"bend ${bend}"
+
+━━━━━━━━━━━━━━━━━━━━
++ maybe-tip String
+    - tip TipShape? = .round
+
+"maybe ${tip ?? TipShape.butt}"
+
+━━━━━━━━━━━━━━━━━━━━
++ TipShape is Union
+
+| butt
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ BendShape is Union
+
+| miter
+| round
+| bevel
+
+:----
+
+tip round
+tip square
+bend round
+maybe round
+;====
+:====
+# A case named alone in a list is a case of the type the other items give the list
+
+. tips = [.butt, .round, .square]
+-- tip-name(tips[0]), tip-name(tips[1]), tip-name(tips[2])
+. bends = [.round, .miter]
+-- bend-name(bends[0]), bend-name(bends[1])
+
+━━━━━━━━━━━━━━━━━━━━
++ tip-name String
+    - tip TipShape
+
+"tip ${tip}"
+
+━━━━━━━━━━━━━━━━━━━━
++ bend-name String
+    - bend BendShape
+
+"bend ${bend}"
+
+━━━━━━━━━━━━━━━━━━━━
++ TipShape is Union
+
+| butt
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ BendShape is Union
+
+| miter
+| round
+| bevel
+
+:----
+
+(tip butt, tip round, tip square)
+(bend round, bend miter)
+;====
+:====
+# A case named alone and assigned to a property is a case of the property's type
+
+. holder = Holder()
+holder.tip = .round
+-- holder.tip
+holder.bend = .round
+-- holder.bend
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ tip TipShape = TipShape.butt
++ bend BendShape = BendShape.miter
+
+━━━━━━━━━━━━━━━━━━━━
++ TipShape is Union
+
+| butt
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ BendShape is Union
+
+| miter
+| round
+| bevel
+
+:----
+
+round
+round
+;====
+:====
+# Two unions of one type are equal where they hold the same case and what it holds is equal
+
+. a Shape = .count(3)
+. b Shape = .count(3)
+. c Shape = .count(4)
+. d Shape = .named("x")
+. e Shape = .named("x")
+. f Shape = .empty
+. g Shape = .pair(1, "p")
+. h Shape = .pair(1, "q")
+-- a == b
+-- a == c
+-- a != c
+-- a == d
+-- d == e
+-- d != e
+-- f == .empty
+-- f == a
+-- g == g
+-- g == h
+-- g != h
+-- .empty == f
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| count Int
+| named String
+| pair(a Int, b String)
+| empty
+
+:----
+
+true
+false
+true
+false
+true
+false
+true
+false
+true
+false
+true
+true
+;====
+:====
+# Unions compared inside a tuple and inside a union, and a case constructed as an equality pattern
+
+. a = Wrap(.count(3), 1)
+. b = Wrap(.count(3), 1)
+. c = Wrap(.named("n"), 1)
+-- a == b
+-- a == c
+-- a != c
+. n Nest = .inner(.count(2))
+. m Nest = .inner(.count(2))
+. o Nest = .inner(.named("z"))
+-- n == m
+-- n == o
+-- describe(.count(1))
+-- describe(.named("x"))
+-- describe(.empty)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - shape Shape
+
+match shape
+    |= .empty
+        "empty"
+    |= .count(1)
+        "one"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is (shape Shape, weight Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Nest is Union
+
+| inner Shape
+| other
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| count Int
+| named String
+| empty
+
+:----
+
+true
+false
+true
+true
+false
+one
+other
+empty
+;====
+:====
+# A case constructed by its symbol alone as an operand, for an optional, and inside a case
+
+. a Shape = .count(3)
+-- a == .count(3)
+-- a == .count(4)
+-- .count(3) == a
+-- a != .named("x")
+. o Shape? = .count(3)
+-- o
+. n Nest = .inner(.count(2))
+-- n
+. m Nest = Nest.inner(.empty)
+-- m
+-- n == m
+-- n == .inner(.count(2))
+
+━━━━━━━━━━━━━━━━━━━━
++ Nest is Union
+
+| inner Shape
+| other
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| count Int
+| named String
+| empty
+
+:----
+
+true
+false
+true
+true
+3
+2
+empty
+false
+true
+;====
+:====
+# Cases declared with values
+
+-- Code.missing
+-- Code.denied
+. code Code = Code.denied
+-- code == Code.denied
+-- code == Code.missing
+-- describe(Code.missing)
+-- describe(Code.denied)
+-- describe(.other)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - code Code
+
+match code
+    |= Code.missing
+        "missing"
+    | .denied
+        "denied"
+    | .other
+        "other"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Code is Union
+
+| missing = 404
+| denied = "no"
+| other
+
+:----
+
+404
+no
+true
+false
+missing
+denied
+other
+;====
+:====
+# A cast out of a union under catch gives an error where the union holds another case.
+
+. foo Foo = "hello"
+. num Foo = 42
+. pair Foo = (3, "three")
+-- catch (foo as Int)
+-- catch (num as Int)
+-- catch? (num as Int)
+-- catch? (foo as Int)
+-- (catch? (pair as (Int, String))) ?? (0, "none")
+-- (catch? (foo as (Int, String))) ?? (0, "none")
+-- match catch (foo as String)
+    | String
+        "text $it"
+    | UnionError
+        "not text"
+-- match catch (num as String)
+    | String
+        "text $it"
+    | UnionError
+        "not text"
+-- describe(foo)
+-- describe(num)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+| (Int, String)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - value Foo
+
+. number = catch (value as Int)
+= match number
+    | Int
+        "number $it"
+    | UnionError
+        "error ${it.message}"
+
+:----
+
+Invalid union cast
+42
+42
+unknown
+(3, three)
+(0, none)
+text hello
+text 42
+error 
+number 42
+;====
+:====
+# A pattern of a type matches a case that is an optional of it where the case holds a value
+
+-- describe(found(0))
+-- describe(found(1))
+-- describe(found(2))
+-- count(0)
+-- count(1)
+-- count(2)
+-- label(0)
+-- label(1)
+-- label(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Spot is Tuple
+
++ number Int
++ count Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Found is Union
+
+| spot Spot?
+| code Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do found Found
+    - kind Int
+
+if kind == 0
+    . none Spot? = null
+    = Found.spot(none)
+if kind == 1
+    = Found.spot(Spot(3, 4))
+= Found.code(9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - found Found
+
+do match? found
+    | spot Spot
+        = "spot ${spot.number}"
+    | code Int
+        = "code $code"
+= "nothing"
+
+━━━━━━━━━━━━━━━━━━━━
++ do look Spot? ?! IOError
+    - kind Int
+
+if kind == 0
+    ?! IOError("io")
+if kind == 1
+    = Spot(5, 6)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do count Int
+    - kind Int
+
+. held = catch look(kind)
+do match? held
+    | spot Spot
+        = spot.count
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do label String
+    - kind Int
+
+. held = catch look(kind)
+= match held
+    | spot Spot
+        "spot ${spot.number}"
+    | IOError
+        "io"
+    ?? "none"
+
+:----
+
+nothing
+spot 3
+code 9
+-1
+6
+-1
+io
+spot 5
+none
+;====
+:====
+# A union answers `case`, `name`, `type` and the name of a case by itself, and the first value of a case it does not hold.
+
+. a = pick(true)
+-- a.type
+-- a.case
+-- a.name
+. b = pick(false)
+-- b.type
+-- b.case
+-- b.name
+. kind Kind = Kind.second
+-- kind.name
+-- kind.type
+-- kind.case
+. mixed Mixed = Mixed.none
+-- mixed.name
+-- mixed.type
+-- mixed.some
+-- mixed.none
+-- mixed.word
+-- mixed.pair
+mixed = Mixed.some(4)
+-- mixed.name
+-- mixed.type
+-- mixed.some
+-- mixed.none
+mixed = Mixed.pair(1, 2.5)
+-- mixed.pair
+-- mixed.type
+-- held(mixed)
+-- held(Mixed.word("w"))
+
+━━━━━━━━━━━━━━━━━━━━
++ do held String
+    - mixed Mixed
+
+= "${mixed.name}:${mixed.case}:${mixed.word}:${mixed.some}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick Either
+    - really Bool
+
+if really
+    = 1
+= "one"
+
+━━━━━━━━━━━━━━━━━━━━
++ Either is Union
+
+| Int
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is Union
+
+| first
+| second
+
+━━━━━━━━━━━━━━━━━━━━
++ Mixed is Union
+
+| none
+| some(Int)
+| word(String)
+| pair(Int, Float)
+
+:----
+
+Class:core/number:I64
+0
+
+Class:core/string:String
+1
+
+second
+Class:core/number:U8
+1
+none
+Class:core/number:U8
+0
+0
+
+(0, 0)
+some
+Class:core/number:I64
+4
+0
+(1, 2.5)
+Tuple:((0:Class:core/number:I64), (1:Class:core/number:F64))
+pair:3::0
+word:2:w:0
+;====
+:====
+# A member of a union of objects is the member of the object it holds, with the arguments evaluated once.
+
+. shape Shape = Circle(2)
+-- shape.area(side(3))
+-- shape.sides
+-- shape.label
+shape.poke()
+shape = Square(3)
+-- shape.area(side(4))
+-- shape.sides
+-- shape.label
+shape.poke()
+. box = Box(shape)
+-- box.shape.area(1)
+box.shape.poke()
+-- total(Square(2))
+-- total(shape)
+
+━━━━━━━━━━━━━━━━━━━━
++ do side Int
+    - n Int
+
+-- "side $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do total Int
+    - shape Shape
+
+= shape.area(2) + shape.sides
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ shape Shape
+
+────────────────────
++ This
+    - shape
+
+━━━━━━━━━━━━━━━━━━━━
++ Circle
+
++ radius Int
++ sides = 0
+
+────────────────────
++ This
+    - radius
+
+────────────────────
++ do area Int
+    - scale Int
+
+= radius * radius * 3 * scale
+
+────────────────────
++ get label String
+
+"circle $radius"
+
+────────────────────
++ do poke
+
+-- "poke circle"
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+
++ edge Int
++ sides = 4
+
+────────────────────
++ This
+    - edge
+
+────────────────────
++ do area Int
+    - scale Int
+
+= edge * edge * scale
+
+────────────────────
++ get label String
+
+"square $edge"
+
+────────────────────
++ do poke
+
+-- "poke square"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| Circle
+| Square
+
+:----
+
+side 3
+36
+0
+circle 2
+poke circle
+side 4
+36
+4
+square 3
+poke square
+9
+poke square
+12
+22
+;====
+:====
+# A method one case of a union raises from and another does not is forwarded, and its error leaves the caller.
+
+. a = run(Job.quick(Quick()))
+-- a
+. b = catch run(Job.slow(Slow(true)))
+-- b
+-- (catch run(Job.slow(Slow(false))))
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int ?! Failed
+    - job Job
+
+= job.work()
+
+━━━━━━━━━━━━━━━━━━━━
++ Failed is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Quick
+
++ name = "quick"
+
+────────────────────
++ do work Int
+
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Slow
+
++ fails Bool
++ name = "slow"
+
+────────────────────
++ This
+    - fails
+
+────────────────────
++ do work Int ?! Failed
+
+if fails
+    ?! Failed()
+= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Job is Union
+
+| quick Quick
+| slow Slow
+
+:----
+
+1
+
+2
+;====
+:====
+# A property each case of a union stores in its own type, and a setter each case has, are forwarded.
+
+. item Item = Item.left(10)
+-- item.value
+item.label = word("a")
+item = Item.right(2.5)
+-- item.value
+item.label = word("b")
+
+━━━━━━━━━━━━━━━━━━━━
++ do side Int
+    - n Int
+
+-- "side $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do word String
+    - text String
+
+-- "word $text"
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ scaled Float
+    - by Float
+
+value * by
+
+────────────────────
++ do label = text String
+
+-- "left $text"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value Float
+
+────────────────────
++ scaled Float
+    - by Int
+
+value * by
+
+────────────────────
++ do label = text String
+
+-- "right $text"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+10
+word a
+left a
+2.5
+word b
+right b
+;====
+:====
+# A method every case of a union raises from is forwarded under `catch`.
+
+. a = catch run(Job.quick(Quick(false)))
+-- a
+. b = catch run(Job.slow(Slow(true)))
+-- b
+-- (catch run(Job.slow(Slow(false))))
+-- (catch run(Job.quick(Quick(true))))
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int ?! Failed
+    - job Job
+
+= job.work()
+
+━━━━━━━━━━━━━━━━━━━━
++ Failed is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Quick
+
++ fails Bool
++ name = "quick"
+
+────────────────────
++ This
+    - fails
+
+────────────────────
++ do work Int ?! Failed
+
+if fails
+    ?! Failed()
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Slow
+
++ fails Bool
++ name = "slow"
+
+────────────────────
++ This
+    - fails
+
+────────────────────
++ do work Int ?! Failed
+
+if fails
+    ?! Failed()
+= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Job is Union
+
+| quick Quick
+| slow Slow
+
+:----
+
+1
+
+2
+
+;====
+:====
+# A union that holds itself through an object forwards a member all the way down.
+
+. tree Tree = Tree.leaf(Leaf(3))
+-- tree.weight
+-- tree.describe(1)
+tree = Tree.node(Node(Tree.leaf(Leaf(4)), 5))
+-- tree.weight
+-- tree.describe(2)
+. kind = tree.case
+-- kind
+-- tree.name
+-- sum([Tree.leaf(Leaf(1)), tree])
+
+━━━━━━━━━━━━━━━━━━━━
++ do sum Int
+    - trees [Tree]
+
+. total = 0
+. index = 0
+while index < trees.length
+    total += trees[index].weight
+    index += 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf
+
++ value Int
+
+────────────────────
++ This
+    - value
+
+────────────────────
++ get weight Int
+
+value
+
+────────────────────
++ describe String
+    - depth Int
+
+"leaf $value at $depth"
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ child Tree
++ extra Int
+
+────────────────────
++ This
+    - child
+    - extra
+
+────────────────────
++ get weight Int
+
+child.weight + extra
+
+────────────────────
++ describe String
+    - depth Int
+
+"node over (${child.describe(depth + 1)})"
+
+━━━━━━━━━━━━━━━━━━━━
++ Tree is Union
+
+| leaf Leaf
+| node Node
+
+:----
+
+3
+leaf 3 at 1
+9
+node over (leaf 4 at 3)
+1
+node
+10
+;====
+:====
+# Objects and atoms held in tuples, structs and unions compare by identity
+
+
+. box = Box()
+. other = Box()
+. a = (1, box)
+. b = (1, box)
+. c = (1, other)
+-- a == b
+-- a == c
+-- a != c
+. k = ("x" as Atom, 2)
+. l = ("x" as Atom, 2)
+. m = ("y" as Atom, 2)
+-- k == l
+-- k == m
+. p Holder = box
+. q Holder = box
+. r Holder = other
+. s Holder = Holder.none
+-- p == q
+-- p == r
+-- p != r
+-- p == s
+-- s == Holder.none
+-- s != p
+. w = Wrap(box, 1)
+. x = Wrap(box, 1)
+. y = Wrap(other, 1)
+-- w == x
+-- w == y
+. deep = (1, (box, "t"), p)
+. same = (1, (box, "t"), q)
+. apart = (1, (box, "t"), r)
+-- deep == same
+-- deep == apart
+. opt (Int, Box)? = (1, box)
+. none (Int, Box)? = null
+-- opt == a
+-- a == opt
+-- opt == c
+-- none == a
+-- none == none
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Struct
+
++ box Box
++ count Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Union
+
+| none
+| Box
+| Int
+
+:----
+
+true
+false
+true
+true
+false
+true
+false
+true
+false
+true
+true
+true
+false
+true
+false
+true
+true
+false
+false
+true
+;====
+:====
+# Union compared with a value of the type a case holds
+
+
+. foo = Foo.error
+. bar = Foo.life
+. baz Foo = 7
+. flo Foo = 2.5
+. sta = Foo.status
+-- foo == 1
+-- bar == 42
+-- bar == 1
+-- baz == 7
+-- baz == 1
+-- flo == 2.5
+-- flo == 2
+-- sta == "good"
+-- sta == "bad"
+-- foo == "good"
+-- sta == 1
+-- foo != 1
+-- baz != 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error = 1
+| life = 42
+| status = "good"
+| Float
+| Int
+
+:----
+
+true
+false
+false
+true
+false
+true
+false
+true
+false
+false
+false
+false
+false
+;====
+:====
+# Valued case keeps its own number where another case holds the same type
+
+
+. foo = Foo.error
+. bar = Foo.life
+. sta = Foo.status
+-- foo.case
+-- bar.case
+-- sta.case
+-- bar == Foo.error
+-- foo == Foo.life
+-- sta == Foo.status
+-- bar != Foo.status
+-- bar.name
+-- bar
+-- held(bar)
+-- held(foo)
+-- held(7)
+-- same(bar, 42)
+-- same(foo, 1)
+-- same(bar, 1)
+-- same(7, 7)
+
+━━━━━━━━━━━━━━━━━━━━
++ held U8
+    - value Foo
+
+value.case
+
+━━━━━━━━━━━━━━━━━━━━
++ same Bool
+    - value Foo
+    - number Int
+
+value == number
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| error = 1
+| life = 42
+| status = "good"
+| Float
+| Int
+
+:----
+
+0
+1
+2
+false
+false
+true
+true
+life
+42
+1
+0
+0
+false
+true
+false
+true
+;====
+:====
+# Union compared with an object and a number
+
+
+. box = Box()
+. p Holder = box
+. q Holder = 3
+. r Holder = Holder.none
+-- p == box
+-- p == Box()
+-- q == 3
+-- q == 4
+-- r == 3
+-- r == box
+-- p != box
+-- q != 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Union
+
+| none
+| Box
+| Int
+
+:----
+
+true
+false
+true
+false
+false
+false
+false
+false
+;====
+:====
+# An optional union compared with a value of the type a case holds
+
+
+. no Flag? = false
+. yes Flag? = true
+. count Flag? = 3
+. none Flag? = null
+-- no == false
+-- no == true
+-- yes == true
+-- count == false
+-- count == 3
+-- none == false
+-- no != false
+-- none != false
+-- same(no, false)
+-- same(none, false)
+-- same(count, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ same Bool
+    - value Flag?
+    - other Bool?
+
+value == other
+
+━━━━━━━━━━━━━━━━━━━━
++ Flag is Union
+
+| Bool
+| Int
+
+:----
+
+true
+false
+true
+false
+true
+false
+false
+true
+true
+false
+false
+;====
+:====
+# Union compared with a value in conditions and by a declared ==
+
+
+. name Named = "ann"
+. other Named = "bob"
+. count Named = 3
+. box = Box(2)
+. held Named = box
+-- name == "ann"
+-- name == "bob"
+-- other != "ann"
+-- count == 3
+-- count == "3"
+-- held == box
+-- held == Box(2)
+-- held != box
+-- label(name)
+-- label(count)
+-- label(held)
+-- label(other)
+if name == "ann" && count == 3
+    -- "both"
+. maybe Named? = name
+-- twice(make(), "ann")
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Named
+
+-- "make"
+= "ann"
+
+━━━━━━━━━━━━━━━━━━━━
++ twice Bool
+    - value Named
+    - text String
+
+value == text && value != "zed"
+
+━━━━━━━━━━━━━━━━━━━━
++ label String
+    - value Named
+
+|? value == "ann"
+    "is ann"
+|? value == 3
+    "is three"
+??
+    "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ do this == other Box
+
+-- "box eq"
+= x == other.x
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is Union
+
+| nothing
+| String
+| Int
+| Box
+
+:----
+
+true
+false
+true
+true
+false
+box eq
+true
+box eq
+true
+box eq
+false
+is ann
+is three
+other
+other
+both
+make
+true
+;====
+:====
+# A union is tested for the first of its cases that is a list
+
+. foo Foo = [Foo(42)]
+-- foo is List
+-- foo is not List
+. bar Foo = 42
+-- bar is List
+. baz Foo = "text"
+-- baz is List
+-- baz is String
+show(foo)
+show(bar)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Union
+
+| Int
+| String
+| [Foo]
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - value Foo
+
+if value is List
+    -- "list"
+else
+    -- "not a list"
+
+:----
+
+true
+false
+false
+false
+true
+list
+not a list
+;====
+:====
+# A case read by name where the union holds another gives what its type makes with nothing written.
+. payload = Payload.box(Box(3))
+-- payload.box.size
+. other = Payload.empty
+-- other.box.size
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ size = 0
+
+────────────────────
++ This
+    - n Int
+
+size = n
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload is Union
+
+| box Box
+| empty
+
+:----
+
+3
+0
+;====
+:====
+# A case of a tuple, a list or text read by name where the union holds another gives its empty value.
+. payload = Payload.point(Point(1, 2))
+-- payload.point
+. other = Payload.empty
+-- other.point
+-- other.names.length
+-- "[${other.label}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is (x Int, y Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload is Union
+
+| point Point
+| names [String]
+| label String
+| empty
+
+:----
+
+(1, 2)
+(0, 0)
+0
+[]
+;====
+:====
+# A panic through a member a union forwards names its function
+. item Item = Item.left(Left(1))
+-- item.render()
+item = Item.right(Right(2))
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left")
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash-stderr
+
+Unhandled panic: left
+<no file:15>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:render no file:15:1
+  1  __source__:union-dispatch-1 no file:3:4
+  2  __source__:main no file:3:4
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# An unhandled error through a member a union forwards names its function
+. item Item = Item.left(Left(1))
+-- item.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! LeftError
+
+?! LeftError("left")
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! LeftError
+
+"right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash-stderr
+
+Unhandled error: left
+<no file:16>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:render no file:16:1
+  1  __source__:union-dispatch-1 no file:3:4
+  2  __source__:main no file:3:4
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# A member a union forwards that raises, caught in a function
+-- show(Item.right(Right(2)))
+-- show(Item.left(Left(1)))
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ RightError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! LeftError
+
+?! LeftError("left")
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String ?! RightError
+
+"right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String
+    - item Item
+
+= catch? item.render() ?? "caught"
+
+:----
+
+right
+caught
+;====
+:====
+# A panic from the second call of a member a union forwards
+. b Item = Item.left(Left(3))
+-- b.scale(2)
+-- b.scale(12)
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left") if value > 5
+"left $value"
+
+────────────────────
++ scale String
+    - by Int
+
+?! Panic("scale") if by > 9
+"scaled ${value * by}"
+
+────────────────────
++ check String ?! LeftError
+
+?! LeftError("bad left") if value > 5
+"ok left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right $value"
+
+────────────────────
++ scale String
+    - by Int
+
+"rscaled ${value + by}"
+
+────────────────────
++ check String ?! LeftError
+
+"ok right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash-stderr
+
+Unhandled panic: scale
+<no file:24>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:scale no file:24:1
+  1  __source__:union-dispatch-1 no file:3:4
+  2  __source__:main no file:4:4
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# A member a union forwards that raises, caught twice
+. b Item = Item.left(Left(9))
+-- catch? b.check() ?? "caught"
+. c Item = Item.left(Left(1))
+-- catch? c.check() ?? "caught"
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left") if value > 5
+"left $value"
+
+────────────────────
++ scale String
+    - by Int
+
+?! Panic("scale") if by > 9
+"scaled ${value * by}"
+
+────────────────────
++ check String ?! LeftError
+
+?! LeftError("bad left") if value > 5
+"ok left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right $value"
+
+────────────────────
++ scale String
+    - by Int
+
+"rscaled ${value + by}"
+
+────────────────────
++ check String ?! LeftError
+
+"ok right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+caught
+ok left
+;====
+:====
+# A member a union forwards that raises, caught by a block
+. b Item = Item.left(Left(7))
+. t = b.check()
+    catch error Error
+        "caught ${error.message}"
+-- t
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left") if value > 5
+"left $value"
+
+────────────────────
++ scale String
+    - by Int
+
+?! Panic("scale") if by > 9
+"scaled ${value * by}"
+
+────────────────────
++ check String ?! LeftError
+
+?! LeftError("bad left") if value > 5
+"ok left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right $value"
+
+────────────────────
++ scale String
+    - by Int
+
+"rscaled ${value + by}"
+
+────────────────────
++ check String ?! LeftError
+
+"ok right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+caught bad left
+;====
+:====
+# A member a union forwards compares the low 32 bits of a wide field
+. item Item = Item.wide(Wide(-4294967287))
+-- item.above()
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Tuple
+
++ value I64
+
+────────────────────
++ above String
+
+"above ${(value as I32) > 5}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Narrow is Tuple
+
++ value I32
+
+────────────────────
++ above String
+
+"above ${value > 5}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| wide Wide
+| narrow Narrow
+
+:----
+
+above true
+;====
+:====
+# A member a union forwards from two places of one function panics
+-- twice(Item.left(Left(1)))
+-- twice(Item.left(Left(8)))
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left") if value > 5
+"left $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+━━━━━━━━━━━━━━━━━━━━
++ do twice String
+    - item Item
+
+. first = item.render()
+= "$first/${item.render()}"
+
+:----
+%crash-stderr
+
+Unhandled panic: left
+<no file:13>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:render no file:13:1
+  1  __source__:union-dispatch-1 no file:36:11
+  2  __source__:twice no file:36:11
+  3  __source__:main no file:3:4
+  4  __source__:init.__source__ no file
+  5  __source__:yumi.main no file
+;====
+:====
+# A lazy property a union forwards panics in its value
+. a Item = Item.right(Right())
+-- a.label
+. b Item = Item.left(Left())
+-- b.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Left
+
++ value I32 = 7
++ label String := pick(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ Right
+
++ value I32 = 1
++ label String := "right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick String
+    - n I32
+
+if n > 5
+    ?! Panic("too big")
+= "small"
+
+:----
+%crash-stderr
+
+Unhandled panic: too big
+<no file:30>
+
+Task 1
+
+Stack trace:
+  0  __source__:pick no file:30:5
+  1  __source__:Left:label no file:11:19
+  2  __source__:main no file:5:4
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# A member a union forwards in a loop panics on the third item
+. items = [Item.left(Left(1)), Item.right(Right(2)), Item.left(Left(6))]
+for each in items
+    -- each.render()
+
+━━━━━━━━━━━━━━━━━━━━
++ LeftError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+?! Panic("left") if value > 5
+"left $value"
+
+────────────────────
++ scale String
+    - by Int
+
+?! Panic("scale") if by > 9
+"scaled ${value * by}"
+
+────────────────────
++ check String ?! LeftError
+
+?! LeftError("bad left") if value > 5
+"ok left"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+────────────────────
++ render String
+
+"right $value"
+
+────────────────────
++ scale String
+    - by Int
+
+"rscaled ${value + by}"
+
+────────────────────
++ check String ?! LeftError
+
+"ok right"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash-stderr
+
+Unhandled panic: left
+<no file:17>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:render no file:17:1
+  1  __source__:union-dispatch-1 no file:4:8
+  2  __source__:main no file:4:8
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# A setter a union forwards before a forwarded method is named union-dispatch-1 in a trace.
+. item Item = Item.right(1.5)
+item.label = "x"
+-- item.scale(2.0)
+item = Item.left(3)
+item.label = "boom"
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ do label = text String
+
+-- "left $text"
+?! Panic("bad left")
+    if text == "boom"
+
+────────────────────
++ do scale Float
+    - by Float
+
+?! Panic("bad scale")
+    if by == 0
+= value * by
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value Float
+
+────────────────────
++ do label = text String
+
+-- "right $text"
+
+────────────────────
++ do scale Float
+    - by Float
+
+= value * by
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+%crash-stderr
+
+Unhandled panic: bad left
+<no file:17>
+
+Task 1
+
+Stack trace:
+  0  __source__:Left:label no file:17:1
+  1  __source__:union-dispatch-1 no file:3:1
+  2  __source__:main no file:6:1
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
+;====
+:====
+# A setter a union forwards is given the value written, a local or a text made from one.
+. item Item = Item.left(1)
+item.label = "a"
+. name = "b"
+item.label = name
+item.label = "${name}c"
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ do label = text String
+
+-- "left $text"
+?! Panic("bad left")
+    if text == "boom"
+
+────────────────────
++ do scale Float
+    - by Float
+
+?! Panic("bad scale")
+    if by == 0
+= value * by
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value Float
+
+────────────────────
++ do label = text String
+
+-- "right $text"
+
+────────────────────
++ do scale Float
+    - by Float
+
+= value * by
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+left a
+left b
+left bc
+;====
+:====
+
+. item Item = Item.left(10)
+-- item.render(1)
+-- item.render(2)
+-- item.render("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+────────────────────
++ render String
+    - amount I32
+
+"L${value + amount}"
+
+────────────────────
++ render String
+    - suffix String
+
+"L${suffix}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value String
+
+────────────────────
++ render String
+    - amount I32
+
+"${value}${amount}"
+
+────────────────────
++ render String
+    - suffix String
+
+"${value}${suffix}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| left Left
+| right Right
+
+:----
+
+L11
+L12
+Lx
+;====
+:====
+
+-- describe(entry(null))
+-- describe(entry(1))
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| Null
+| Int
+| [Value]
+
+━━━━━━━━━━━━━━━━━━━━
++ entry
+    - value Int?
+
+Map'String'Value
+    • values optional-items(value) as Value
+
+━━━━━━━━━━━━━━━━━━━━
+_ optional-items
+    - value Int?
+
+match? value
+    | Int
+        items(it)
+
+━━━━━━━━━━━━━━━━━━━━
+_ items
+    - value Int
+
+* value as Value
+* (value + 1) as Value
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - map [String = Value]
+
+match map["values"]!
+    | Null
+        "${map.length} null"
+    | Int
+        "${map.length} int"
+    | list List
+        "${map.length} list ${", ".join(list)}"
+
+:----
+
+1 null
+1 list 1, 2
+;====
+:====
+# A base class test on a union holding a subclass in its own case matches and narrows to the base.
+
+show(Base())
+show(Derived())
+show(7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - value Choice
+
+if value is Base
+    -- value.name
+else
+    -- "not base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ name = "derived"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+| Derived
+
+:----
+
+base
+derived
+not base
+;====
+:====
+# A subclass test on a union holding a subclass object in the base class's case matches and narrows to the subclass, as a match arm for the subclass ahead of one for the base does.
+
+. held Base = Derived()
+show(held)
+show(Derived())
+show(Base())
+show(7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - value Choice
+
+. arm = match value
+    | d Derived
+        "derived arm ${d.extra}"
+    | b Base
+        "base arm ${b.name}"
+    ??
+        "other arm"
+if value is Derived
+    -- "derived ${value.extra}, $arm"
+else
+    -- "not derived, $arm"
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ extra = "extra"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+| Derived
+
+:----
+
+derived extra, derived arm extra
+derived extra, derived arm extra
+not derived, base arm base
+not derived, other arm
+;====
+:====
+# A union cast to a subclass, or narrowed past `is not` the subclass, gives a subclass object held in the base class's case.
+
+. held Base = Derived()
+. value Choice = held
+-- (value as Derived).extra
+-- describe(value)
+-- describe(Base())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe String
+    - value Choice
+
+if value is not Derived
+    = "not derived"
+= "derived ${value.extra}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ extra = "extra"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+| Derived
+
+:----
+
+extra
+derived extra
+not derived
+;====
+:====
+# A subclass test on a union with a case for the base class and none for the subclass narrows the union to the subclass.
+
+show(Derived())
+show(Base())
+show(7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - value Choice
+
+if value is Derived
+    -- "derived ${value.extra}"
+else
+    -- "not derived"
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ extra = "extra"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+
+:----
+
+derived extra
+not derived
+not derived
+;====
+:====
+# An attached catch for a subclass error catches one of that class raised as its base class, ahead of a catch for the base.
+
+show(1)
+show(2)
+show(3)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - n Int
+
+. text = describe(n)
+    catch IOError
+        "io"
+    catch Error
+        "error"
+-- text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe String ?! Error ?! IOError
+    - n Int
+
+if n == 1
+    . held Error = IOError("held")
+    ?! held
+if n == 2
+    ?! Error("plain")
+= "ok"
+
+:----
+
+io
+error
+ok
+;====
+:====
+# An error of a class above every error a function raises leaves it as the most derived of them that the error is of, raised there or by a call.
+
+-- describe(catch raise(1))
+-- describe(catch raise(2))
+-- describe(catch relay(1))
+-- describe(catch relay(2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ describe String
+    - result
+
+match result
+    | e Missing
+        "missing ${e.message}"
+    | e IOError
+        "io ${e.message}"
+    ??
+        "ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ Missing is IOError
+
+━━━━━━━━━━━━━━━━━━━━
+_ do raise Int ?! IOError ?! Missing
+    - n Int
+
+. error Error = if n == 1 then Missing("gone") else IOError("disk")
+if n < 3
+    ?! error
+= n
+
+━━━━━━━━━━━━━━━━━━━━
+_ do relay Int ?! IOError ?! Missing
+    - n Int
+
+= inner(n)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inner Int ?! Error
+    - n Int
+
+if n == 1
+    ?! Missing("gone")
+if n == 2
+    ?! IOError("disk")
+= n
+
+:----
+
+missing gone
+io disk
+missing gone
+io disk
+;====
+:====
+# A caught Result that can hold Error and one of its subclasses is an Error in either case.
+
+show("derived first", catch derived-first(1))
+show("base first", catch base-first(1))
+show("base thrown", catch derived-first(9))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - label String
+    - result
+
+if result is Error
+    -- "$label caught ${(result as Error).message}"
+else
+    -- "$label not caught"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do derived-first Int
+    - n Int
+
+if n > 5
+    ?! Error("plain")
+if n > 0
+    ?! IOError("boom")
+= n
+
+━━━━━━━━━━━━━━━━━━━━
+_ do base-first Int
+    - n Int
+
+if n > 0
+    ?! IOError("boom")
+if n > 5
+    ?! Error("plain")
+= n
+
+:----
+
+derived first caught boom
+base first caught boom
+base thrown caught plain
+;====
+:====
+
+. made = .other("x", true)
+-- made is .other
+
+━━━━━━━━━━━━━━━━━━━━
++ Partial is Union
+
+| get(name String)
+| other(name String, is-optional Bool)
+
+:----
+
+true
+;====
+:====
+
+. made = .nothing-here("x", true)
+-- 1
+
+:----
+%crash
+
+Exception: Unable to resolve symbol .nothing-here
+<no file:2>
+    . made = .nothing-here("x", true)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A class instance converts into a union through an interface it implements.
+
+-- describe(Reader())
+-- describe("text")
+-- describe(null)
+-- Holder(Reader()).describe-body()
+
+━━━━━━━━━━━━━━━━━━━━
++ Readable is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ Reader
+    is Readable
+
+────────────────────
++ get label
+
+"reader"
+
+━━━━━━━━━━━━━━━━━━━━
++ Body is Union
+
+| Null
+| String
+| Readable
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ body Body
+
+────────────────────
++ This
+    - body Body
+
+────────────────────
++ describe-body
+
+describe(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe
+    - body Body
+
+match body
+    | Null
+        "null"
+    | text String
+        "string $text"
+    | source Readable
+        "readable ${source.label}"
+
+:----
+readable reader
+string text
+null
+readable reader
+;====
+:====
+# A union's own string converter wins over a named case that holds a string.
+
+-- Verb.get
+-- Verb.other("PURGE")
+-- "verb ${Verb.post}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Verb is Union
+
+| get
+| post
+| other(name String)
+
+────────────────────
++ to String
+
+match this
+    | .get
+        "GET"
+    | .post
+        "POST"
+    | .other(name)
+        name
+
+:----
+GET
+PURGE
+verb POST
+;====
+:====
+# Testing a union's interface member for one implementing class checks the held object's class.
+
+-- Holder(First()).holds-first
+-- Holder(Second()).holds-first
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ First
+    is Named
+
+────────────────────
++ get label
+
+"first"
+
+━━━━━━━━━━━━━━━━━━━━
++ Second
+    is Named
+
+────────────────────
++ get label
+
+"second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Slot is Union
+
+| Null
+| Named
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ slot Slot
+
+────────────────────
++ This
+    - slot Slot
+
+────────────────────
++ get holds-first
+
+slot is First
+
+:----
+true
+false
+;====
+:====
+# Testing or matching as text a union that converts itself to text finds the case that holds text, though converting it gives the text it converts to.
+
+-- size(Verb.get)
+-- size(Verb.other("PURGE"))
+-- pick(Verb.post)
+-- pick(Verb.other("x"))
+-- "verb ${Verb.other("x")}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do size Int
+    - verb Verb
+
+if verb is not String
+    = -1
+= verb.length
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String
+    - verb Verb
+
+match verb
+    | s String
+        "text $s"
+    ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Verb is Union
+
+| get
+| post
+| other(name String)
+
+────────────────────
++ to String
+
+match this
+    | .get
+        "GET"
+    | .post
+        "POST"
+    | .other(name)
+        "<$name>"
+
+:----
+-1
+5
+none
+text x
+verb <x>
+;====
+:====
+# An arm that names a map type gives `it` as that type.
+
+. map = Map'String'Int()
+map["b"] = 3
+show(map)
+show(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| Int
+| [String = Int]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show
+    - value Value
+
+do match value
+    | [String = Int]
+        -- it["b"]!
+    ??
+        -- "not a map"
+
+:----
+
+3
+not a map
+;====
+:====
+# A match written as a statement runs its arms for what they do, one ending in a call that gives nothing.
+
+-- measure([W.flex(2), W.fixed(3), W.auto])
+
+━━━━━━━━━━━━━━━━━━━━
++ W is Union
+
+| auto
+| fixed Int
+| flex Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int
+    - widths [W]
+
+. total = 0
+. flexes [Int] = List'Int()
+for w in widths
+    . width = 1
+    match w
+        | W.fixed(value)
+            width = value
+        | W.flex(flex)
+            total += flex
+            flexes += flex
+        ??
+            width = 7
+    total += width
+= total + flexes.length
+
+:----
+
+14
+;====
+:====
+# A case named by its symbol alone that gives an arm of a returned match is of the type the function returns, though a union declared after that type has the case too.
+
+-- "${cap(0)}"
+-- "${cap(1)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ cap Cap
+    - index
+
+match kind
+    |= 0
+        .round
+    ??
+        .square
+
+.. kind = index % 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Cap is Union
+
+| butt
+| round
+| square
+
+────────────────────
++ to String
+
+|? "round" if this == Cap.round
+|? "square" if this == Cap.square
+?? "butt"
+
+━━━━━━━━━━━━━━━━━━━━
++ Join is Union
+
+| miter
+| round
+| bevel
+
+
+:----
+
+round
+square
+;====
+:====
+# A union, or an optional of one, cast to a subclass that has no case of its own is a checked down-cast through the case of a class it derives from, and a test or an arm for the subclass checks the object held there.
+
+. held Base = Derived()
+. derived Choice = held
+. optional Choice? = held
+. base Choice = Base()
+. number Choice = 7
+-- (derived as Derived).extra
+-- (optional as Derived).extra
+-- catch (base as Derived)
+-- catch (number as Derived)
+-- describe(derived)
+-- describe(base)
+-- describe(number)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe String
+    - value Choice
+
+. arm = match value
+    | d Derived
+        "derived arm ${d.extra}"
+    | b Base
+        "base arm ${b.name}"
+    ??
+        "other arm"
+if value is not Derived
+    = "not derived, $arm"
+= "derived ${value.extra}, $arm"
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ extra = "extra"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+
+:----
+
+extra
+extra
+Invalid union cast
+Invalid union cast
+derived extra, derived arm extra
+not derived, base arm base
+not derived, other arm
+;====
+:====
+# A union cast to a class no case of which derives from or is derived from it is illegal.
+
+. value Choice = 7
+-- (value as Other).name
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Other
+
++ name = "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+
+:----
+%crash
+
+Exception: Choice cannot be cast to Other; there is no conversion between them
+<no file:3>
+    -- (value as Other).name
+        ^^^^^^^^^^^^^^
+;====
+:====
+# The false edge of a test for a class keeps a union's case for an interface the class implements or for a class it derives from, either of which may hold an object of another class.
+
+show-slot(First())
+show-slot(Second())
+show-slot(7)
+show-choice(Derived())
+show-choice(Base())
+show-choice(7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show-slot
+    - value Slot
+
+if value is First
+    -- "first"
+else
+    -- describe-slot(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ describe-slot String
+    - value Slot
+
+match value
+    | Int
+        "int"
+    | n Named
+        "named ${n.label}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do show-choice
+    - value Choice
+
+if value is Derived
+    -- "derived"
+else
+    -- describe-choice(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ describe-choice String
+    - value Choice
+
+match value
+    | Int
+        "int"
+    | b Base
+        "base ${b.name}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ First
+    is Named
+
+────────────────────
++ get label
+
+"first"
+
+━━━━━━━━━━━━━━━━━━━━
++ Second
+    is Named
+
+────────────────────
++ get label
+
+"second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Slot is Union
+
+| Int
+| Named
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
++ name = "derived"
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Union
+
+| Int
+| Base
+
+:----
+
+first
+named second
+int
+derived
+base base
+int
+;====
+:====
+# A case an `is` test names must be a case some type declares.
+
+. shape Shape = Circle(2)
+-- shape is .triangle
+
+━━━━━━━━━━━━━━━━━━━━
++ Circle is Tuple
+
++ radius Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Square is Tuple
+
++ side Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| circle Circle
+| square Square
+
+:----
+%crash
+
+Exception: Case ".triangle" not found
+<no file:3>
+    -- shape is .triangle
+                ^^^^^^^^^
+;====
+:====
+# A local of a union whose first case is Null, declared with no value, holds null.
+
+. empty Shape
+-- describe(empty)
+empty = "text"
+-- describe(empty)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| Null
+| I64
+| String
+
+━━━━━━━━━━━━━━━━━━━━
+_ describe String
+    - value Shape
+
+|? value is Null
+    "null"
+|? value is String
+    "text"
+??
+    "number ${value as I64}"
+
+:----
+null
+text
+;====
+:====
+
+. a = Part.text("x")
+. b = Part.item(Thing(1))
+-- a != b
+-- a == Part.text("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Valued
+
++ id Int
+
+────────────────────
++ This
+    - id
+
+╌╌╌╌╌╌╌╌╌╌ is Valued ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get key String
+
+"$id"
+
+━━━━━━━━━━━━━━━━━━━━
++ Part is Union
+
+| text String
+| item Valued
+
+━━━━━━━━━━━━━━━━━━━━
++ Valued is Interface
+
+────────────────────
++ get key String
+
+:----
+
+true
+true
+
+;====
+
+:====
+# A number alias wraps into the union case of its own kind before converting to another one
+
+. amount Amount = 1.5
+. span Span = 2.5
+. count Count = 3
+. small F32 = 4.5
+-- describe(amount)
+-- describe(span)
+-- describe(count)
+-- describe(small)
+. listed = List'Number(each in [amount, amount * 2])
+-- describe(listed[1])
+
+━━━━━━━━━━━━━━━━━━━━
++ Amount is Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Span (sp) is Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Count is Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Number is Union
+
+| Int
+| Float
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value Number
+
+match value
+    | whole Int
+        "int $whole"
+    | real Float
+        "float $real"
+
+:----
+
+float 1.5
+float 2.5
+int 3
+float 4.5
+float 3
+
+;====
+
+:====
+# A union whose every case is a class casts to a pointer at the object it holds
+
+. circle = Circle(1)
+-- same(circle, circle)
+-- same(circle, Square(1))
+-- same(circle, Circle(1))
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| Circle
+| Square
+
+━━━━━━━━━━━━━━━━━━━━
++ Circle
+
++ radius Int
+
+────────────────────
++ This
+    - radius
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+━━━━━━━━━━━━━━━━━━━━
++ same Bool
+    - first Shape
+    - second Shape
+
+first as Pointer == second as Pointer
+
+:----
+
+true
+false
+false
+
+;====
+
+:====
+# A union casts to a number its case converts to by converting the value that case holds
+
+. whole Reading = 3
+-- (whole as Float) / 2
+-- whole as I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Reading is Union
+
+| Int
+| String
+
+:----
+
+1.5
+3
+
+;====
+
+:====
+# A pointer does not cast to a union, since nothing says which case it would hold
+
+. circle = Circle(1)
+. shape = (circle as Pointer) as Shape
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| Circle
+| Square
+
+━━━━━━━━━━━━━━━━━━━━
++ Circle
+
++ radius Int
+
+────────────────────
++ This
+    - radius
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+:----
+%compile-error
+
+Exception: Pointer cannot be cast to Shape; there is no conversion between them
+<no file:3>
+    . shape = (circle as Pointer) as Shape
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A value goes into a case of a union it converts to unasked before a nearer case it converts to
+# only when asked.
+
+. small = 7u32
+. v Mixed = small
+-- v is F64
+
+━━━━━━━━━━━━━━━━━━━━
++ Mixed is Union
+
+| I32
+| F64
+
+:----
+
+true
+;====
+:====
+# A U64 goes into a union of Int and Float only when asked, since neither holds every value of it.
+
+. big = 9u64
+. v Number = big
+-- v
+
+━━━━━━━━━━━━━━━━━━━━
++ Number is Union
+
+| Int
+| Float
+
+:----
+%compile-error
+
+Exception: Expected Number here, but this is U64, which becomes Number only when asked; write "as Number"
+<no file:3>
+    . v Number = big
+        ^^^^^^
+;====
+:====
+# A union, or an optional of one, read from an object and passed or returned in registers reads none of the bytes after it, so one that ends where readable memory ends is read without a fault.
+
+/core/intrinsics
+/sys/mman.h
+/unistd.h
+
+-- wide-argument(edge(24))
+-- wide-return(edge(24))
+-- narrow-argument(edge(24))
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Union
+
+| whole Int
+| ratio Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Narrow is Union
+
+| whole I32
+| flag Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ WideHolder
+
++ value Wide?
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowHolder
+
++ first Narrow?
++ second Narrow?
+
+━━━━━━━━━━━━━━━━━━━━
++ do wide-argument Int @no-gc
+    - address Pointer
+
+. holder = gc-object-from-pointer'WideHolder(address)
+holder.value = Wide.whole(42)
+= wide-whole(holder.value, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do wide-return Int @no-gc
+    - address Pointer
+
+. holder = gc-object-from-pointer'WideHolder(address)
+holder.value = Wide.whole(43)
+= wide-whole(wide-read(holder, 1), 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do narrow-argument Int @no-gc
+    - address Pointer
+
+. holder = gc-object-from-pointer'NarrowHolder(address)
+holder.first = Narrow.flag(true)
+holder.second = Narrow.whole(44)
+= narrow-whole(holder.second, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do wide-whole Int @no-gc
+    - value Wide?
+    - depth Int
+
+=? wide-whole(value, depth - 1) if depth > 0
+do match? value!
+    | .whole(whole)
+        = whole
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do wide-read Wide? @no-gc
+    - holder WideHolder
+    - depth Int
+
+=? wide-read(holder, depth - 1) if depth > 0
+= holder.value
+
+━━━━━━━━━━━━━━━━━━━━
++ do narrow-whole Int @no-gc
+    - value Narrow?
+    - depth Int
+
+=? narrow-whole(value, depth - 1) if depth > 0
+do match? value!
+    | .whole(whole)
+        = whole
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do edge Pointer
+    - size U64
+
+. page = C:getpagesize() as U64
+. base = C:mmap(null, page * 2, C:PROT_READ /or/ C:PROT_WRITE, C:MAP_PRIVATE /or/ C:MAP_ANON, -1, 0)
+C:mprotect((base.address + page) as CPointer'Void, page, C:PROT_NONE)
+= (base.address + page - size) as Pointer
+
+:----
+
+42
+43
+44
+;====
+
+:====
+. state = State()
+-- state.previous == null
+
+━━━━━━━━━━━━━━━━━━━━
++ Shade is Tuple
+
++ amount = 0.0
+
+━━━━━━━━━━━━━━━━━━━━
++ Color is Union
+
+| plain(Int)
+| shade(Shade)
+
+━━━━━━━━━━━━━━━━━━━━
++ State
+
++ color Color?
++ previous State?
+
+:----
+true
+;====

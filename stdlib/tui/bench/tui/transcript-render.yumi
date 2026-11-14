@@ -1,0 +1,46 @@
+`benchmark.meta description: Renders a deterministic terminal transcript.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,compile-timing
+
+/tui/canvas
+/tui/layout
+/tui/primitives
+/tui/text
+
+. transcript = MarkdownText("seed")
+transcript.bounds = Rect(0, 0, 84, 28)
+
+. canvas = Canvas(PSize(84, 28))
+. assistant = ""
+. checksum = 0 as Size
+
+for chunk in assistant-chunks()
+    assistant += chunk
+    transcript.text = transcript-markdown(assistant)
+    transcript.update-layout()
+    transcript.paint(canvas)
+    checksum += assistant.length + transcript.inner-height + transcript.inner-width
+
+-- "bench-result tui/transcript-render checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ transcript-markdown String
+    - assistant String
+
+"# Chat\n\n**User:** Please analyze this deterministic benchmark.\n\n**Assistant:** " ++ assistant
+
+━━━━━━━━━━━━━━━━━━━━
+_ do assistant-chunks [String]
+
+. chunks [String]
+chunks += "We can treat the workload as a fixed transcript with "
+chunks += "**markdown pressure**, stable parsing, and repeated layout. "
+chunks += "The key point is that no API calls or clocks are involved.\n\n"
+chunks += "* Parse the accumulated message\n"
+chunks += "* Rebuild rich text lines\n"
+chunks += "* Paint into an in-memory canvas\n\n"
+chunks += "`checksum` values make output validation small and stable. "
+chunks += "The final paragraph is deliberately long enough to wrap across "
+chunks += "multiple lines in the transcript surface."
+
+= chunks

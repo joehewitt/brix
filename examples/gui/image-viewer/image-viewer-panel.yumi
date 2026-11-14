@@ -1,0 +1,393 @@
+/graphics/canvas
+/graphics/color
+/graphics/image
+/graphics/pattern
+/graphics/primitives
+/graphics/text
+/graphics/thumbnail-cache
+/gui
+/gui/file-browsing
+/math
+/os/path
+
+_ viewer-stage-color = RGBA("#18181b")
+_ viewer-checkerboard := viewer-checkerboard-image()
+
+━━━━━━━━━━━━━━━━━━━━
+• ImageViewerTheme
+    using GUIDefaultTheme
+    using GUIImageStyle
+
+• viewer-toolbar • flex-row h:44 px:12 py:8
+    border-color = gui-border-color
+    border-bottom-width = 1
+
+• viewer-stage • bg:viewer-stage-color
+
+• viewer-status • flex-row text:gui-muted-text-color h:28 px:12 pt:6
+    font-size = 12
+
+• ImageViewerPanel
+    when #is-grid
+        • viewer-image-only
+            display = Display.hidden
+    when !#is-grid
+        • viewer-grid-only
+            display = Display.hidden
+
+━━━━━━━━━━━━━━━━━━━━
++ ViewerImage is ImageZoomView
+
++ is-pixelated = false
++ hides-grid = false
++ is-checkered = false
+
+• This
+    image-fit = ImageFit.scale-down
+    background-repeat = ImageRepeat.both
+    background-align-x = AnchorPoint.start
+    background-align-y = AnchorPoint.start
+
+    when #is-pixelated
+        image-sampling = ImageSampling.pixelated
+
+    when #hides-grid
+        pixel-grid-ratio = null
+
+    when #is-checkered
+        background-image = viewer-checkerboard
+
+━━━━━━━━━━━━━━━━━━━━
++ ImageViewerPanel is Box
+    using ImageViewerTheme
+
++ files FileTree
++ start Path?
++ session := FileSession()
++ image Image?
++ is-pixelated = false
++ shows-grid = true
++ is-checkered = false
++ is-fitted = true
++ zoom-label = "Fit"
++ status = "Choose an image"
++ selected = session.#current
++ is-grid = true
++ folder FileNode?
++ folder-name = ""
++ thumbnail-length Length = 160
++ thumbnails := ThumbnailCache()
+
+_ load-serial Size
+_ image-path Path?
+
+────────────────────
+
+<This • flex-row
+    <KeyShortcut "Zoom to Fit"
+        key = KeyCombo("Cmd+9")
+        stable-key = "viewer.fit"
+        repeat = false
+        action = => do viewer.fit()
+    <KeyShortcut "Actual Size"
+        key = KeyCombo("Cmd+0")
+        stable-key = "viewer.actual-size"
+        repeat = false
+        action = => do viewer.zoom-to(1)
+    <KeyShortcut "Zoom In"
+        key = KeyCombo("Cmd+=")
+        stable-key = "viewer.zoom-in"
+        action = => do zoom-step(true)
+    <KeyShortcut "Zoom Out"
+        key = KeyCombo("Cmd+-")
+        stable-key = "viewer.zoom-out"
+        action = => do zoom-step(false)
+    <KeyShortcut "Pixelated"
+        key = KeyCombo("Cmd+P")
+        stable-key = "viewer.pixelated"
+        repeat = false
+        action = => do toggle-pixelated()
+    <KeyShortcut "Pixel Grid"
+        key = KeyCombo("Cmd+'")
+        stable-key = "viewer.pixel-grid"
+        repeat = false
+        action = => do toggle-grid()
+    <KeyShortcut "Back to Grid"
+        key = .escape
+        stable-key = "viewer.back-to-grid"
+        repeat = false
+        action = => do show-grid()
+
+    <Sidebar • w:260
+        <SidebarSection • flex:1 pt:10 pb:0
+            title = files.root.path.name
+
+            <FileTreeBox • flex:1
+                files = files
+                session = session
+
+    <Box • flex-col flex:1
+        <Box • viewer-toolbar viewer-grid-only
+            <Label • flex:1
+                text = #folder-name
+            <Slider • w:180
+                minimum = image-viewer-octave(64)
+                maximum = image-viewer-octave(512)
+                value = image-viewer-octave(#thumbnail-length)
+                for event on value-changed
+                    zoom-thumbnails(event)
+
+        <Box • viewer-toolbar viewer-image-only
+            <Button "Grid" • mr:16
+                action = => do show-grid()
+            <Button "Fit" • mr:8
+                is-on = #is-fitted
+                action = => do viewer.fit()
+            <Button "Actual Size" • mr:8
+                action = => do viewer.zoom-to(1)
+            <Button "−" • mr:4
+                action = => do zoom-step(false)
+            <Button "+" • mr:16
+                action = => do zoom-step(true)
+            <Switch "Pixelated" • mr:16
+                is-on = #is-pixelated
+                for event on value-changed
+                    is-pixelated = event.value
+            <Switch "Grid" • mr:16
+                is-on = #shows-grid
+                for event on value-changed
+                    shows-grid = event.value
+            <Switch "Checkerboard"
+                is-on = #is-checkered
+                for event on value-changed
+                    is-checkered = event.value
+
+        <ThumbnailGrid thumbnails-view • viewer-stage viewer-grid-only flex:1
+            cache = thumbnails
+            cell-length = thumbnail-length
+            for event on chosen
+                status = event.name
+            for event on opened
+                open-path(event)
+            for event on zoomed
+                thumbnail-length = event
+
+        <ViewerImage viewer • viewer-stage viewer-image-only flex:1
+            image = #image
+            is-pixelated = #is-pixelated
+            hides-grid = !#shows-grid
+            is-checkered = #is-checkered
+            for event on zoomed
+                is-fitted = event.is-fit
+                zoom-label = image-viewer-zoom-label(event)
+
+        <Box • viewer-status
+            <Label • flex:1
+                text = #status
+            <Label • viewer-image-only
+                text = #zoom-label
+
+────────────────────
+whenever #selected
+
+show(selected)
+
+────────────────────
+for event on files.changed
+
+refresh-folder(event)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+. target = start
+if target
+    . node = files.find(target)
+    if node
+        session.revealed <- node
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+load-serial += 1
+image?.release()
+image = null
+super.close()
+thumbnails.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do toggle-pixelated
+
+is-pixelated = !is-pixelated
+
+────────────────────
+_ do toggle-grid
+
+shows-grid = !shows-grid
+
+────────────────────
+_ do zoom-thumbnails
+    - event ValueChange'F64
+
+if event.phase == ValueChangePhase.began
+    thumbnails-view.begin-zoom()
+thumbnails-view.zoom-to(exp(event.value * log(2)))
+if event.phase == ValueChangePhase.ended
+    thumbnails-view.end-zoom()
+
+────────────────────
+_ do zoom-step
+    - is-in Bool
+
+. exponent = log(viewer.effective-zoom) / log(2)
+. step = if is-in then floor(exponent + 0.001) + 1 else ceil(exponent - 0.001) - 1
+viewer.zoom-to(exp(step * log(2)))
+
+────────────────────
+_ do show
+    - node FileNode?
+
+=? if !node
+if node.is-directory
+    use-folder(node)
+    is-grid = true
+    status = image-viewer-folder-status(thumbnails-view.paths.length)
+    =
+. path = node.path
+=? if !image-viewer-shows(path.ext)
+. parent = node.parent
+if parent
+    use-folder(parent)
+thumbnails-view.selected = path
+is-grid = false
+=? if image-path == path
+image-path = path
+load-serial += 1
+do new load(path, load-serial)
+
+────────────────────
+_ do use-folder
+    - node FileNode
+
+=? if folder as Pointer? == node as Pointer
+folder = node
+folder-name = node.name
+thumbnails-view.paths = image-viewer-paths(files, node)
+thumbnails-view.scroll-to-top()
+
+────────────────────
+_ do refresh-folder
+    - changed [FileNode]
+
+. current = folder
+=? if !current
+for node in changed
+    if node as Pointer == current as Pointer
+        thumbnails-view.paths = image-viewer-paths(files, current)
+        =
+
+────────────────────
+_ do open-path
+    - path Path
+
+. node = files.find(path)
+=? if !node
+show(node)
+session.revealed <- node
+
+────────────────────
+_ do show-grid
+
+=? if is-grid
+. node = folder
+=? if !node
+is-grid = true
+status = image-viewer-folder-status(thumbnails-view.paths.length)
+session.revealed <- node
+. ignored = thumbnails-view.request-focus()
+
+────────────────────
+_ do load
+    - path Path
+    - serial Size
+
+status = "Loading ${path.name}"
+. loaded = catch? load-image(path)
+if serial != load-serial
+    loaded?.release()
+    =
+if !loaded
+    status = "${path.name} could not be opened"
+    =
+. previous = image
+image = loaded
+previous?.release()
+viewer.fit()
+status = image-viewer-status(path, loaded)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do viewer-checkerboard-image Image
+
+. canvas = RasterCanvas(16, 16, 2)
+fill-checkerboard(canvas, Rect(0, 0, 16, 16), 8, RGBA("#52525b"), RGBA("#3f3f46"))
+= Image(canvas, 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ image-viewer-shows Bool
+    - ext String
+
+|? name == "png" || name == "jpg" || name == "jpeg" || name == "gif" || name == "heic"
+    true
+??
+    name == "webp" || name == "tif" || name == "tiff" || name == "bmp"
+
+.. name = ext.lowercased
+
+━━━━━━━━━━━━━━━━━━━━
+_ do image-viewer-paths [Path]
+    - files FileTree
+    - node FileNode
+
+. found = List'Path()
+. children = files.children-of(node)
+=? found if !children
+for child in children
+    if !child.is-directory
+        . path = child.path
+        if image-viewer-shows(path.ext)
+            found += path
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ image-viewer-octave F64
+    - length Length
+
+log(length) / log(2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ image-viewer-folder-status String
+    - count Size
+
+if count == 1 then "1 image" else "$count images"
+
+━━━━━━━━━━━━━━━━━━━━
+_ image-viewer-zoom-label String
+    - event ImageZoomEvent
+
+if event.is-fit then "Fit" else "${round(event.zoom * 100)}%"
+
+━━━━━━━━━━━━━━━━━━━━
+_ image-viewer-status String
+    - path Path
+    - image Image
+
+"${path.name} · ${image.pixel-width} × ${image.pixel-height} px$density"
+
+.. density = if image.scale != 1 then " @${image.scale}x" else ""

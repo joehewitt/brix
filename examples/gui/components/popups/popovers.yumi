@@ -1,0 +1,190 @@
+./popups-panel
+/graphics/canvas
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/graphics/text
+/gui
+
+━━━━━━━━━━━━━━━━━━━━
++ PopoversSection is Box
+
++ color RGBA = "#3b82f6"
++ layer-name = "Background layer"
++ section-self => this
+
+────────────────────
+
+<This • flex-col
+    <Box • flow-row
+        <DemoCard "Arrows follow the side" • w:306 h:260
+            caption = join • stream
+                * "Each popover prefers a side. Its arrow is drawn on whichever side it actually "
+                * "lands, including after a flip."
+            <Box • flex-col flex:1
+                <Box • flex-row h:28 ml:84
+                    <Button "Top" • w:80
+                        action = => do top-popover.toggle()
+                        <Popover top-popover
+                            placement = AnchoredPlacement(Side.top, AnchorPoint.center, 0)
+                            <Label "Above the button"
+                <Box • flex-row h:28 mt:26
+                    <Button "Left" • w:80
+                        action = => do left-popover.toggle()
+                        <Popover left-popover
+                            placement = AnchoredPlacement(Side.left, AnchorPoint.center, 0)
+                            <Label "Left, and flipped if needed"
+                    <Button "Right" • w:80 ml:62
+                        action = => do right-popover.toggle()
+                        <Popover right-popover
+                            placement = AnchoredPlacement(Side.right, AnchorPoint.center, 0)
+                            <Label "To the right"
+                <Box • flex-row h:28 mt:26 ml:84
+                    <Button "Bottom" • w:80
+                        action = => do bottom-popover.toggle()
+                        <Popover bottom-popover
+                            <Label "Below the button"
+        <DemoCard "Color picker" • w:236 h:260
+            caption = "A popover of swatches. Choosing one applies it and closes the popover."
+            <Box • flex-row h:40
+                <Box • swatch w:40 h:40
+                    background-color = #color
+                <Button "Choose color…" • w:150 ml:12 mt:6
+                    action = => do picker.toggle()
+                    <Popover picker
+                        for row in showcase-swatch-rows()
+                            <Box • flex-row mb:6
+                                for swatch in row
+                                    <SwatchButton • w:28 h:28 mr:6
+                                        section = section-self
+                                        color = swatch
+        <DemoCard "Native text field in a popup" • w:286 h:260
+            caption = join • stream
+                * "The field is a real AppKit text field. It sits inside the popup panel, so it "
+                * "layers above everything and receives typing."
+            <Label • h:20
+                text = "Layer: ${#layer-name}"
+            <Button "Rename…" • w:120 mt:8
+                action = => do rename.toggle()
+                <Popover rename • w:240
+                    <Label • card-title h:20
+                        text = "Rename layer"
+                    <TextInput name-field • mt:8
+                        text = #layer-name
+                    <Box • flex-row mt:10
+                        <Button "Cancel" • flex:1
+                            action = => do rename.dismiss()
+                        <Button "Rename" • flex:1 ml:8
+                            action = => do apply-rename()
+    <Box • flow-row
+        <DemoCard "Shapes and shadows on any box" • w:790 h:196
+            caption = join • stream
+                * "Shapes and drop shadows are ordinary box styles. Bubbles and cards use the GPU "
+                * "outline and shadow primitives the popups use; the tag is a custom BoxShape that "
+                * "only describes its path."
+            <Box • flex-row flex:1 pt:8
+                <Box • flex-col w:280
+                    <Box • flex-row h:34 px:12 ml:10 bg:gui-field-color
+                        shape = CalloutShape(8, Side.left, 17)
+                        corner-radius = 12
+                        shadow = Shadow(gui-shadow-color, 6, 0, 2)
+                        <Label "Did the popups land?" • flex:1
+                    <Box • flex-row h:34 px:12 mt:14 ml:70 mr:10 bg:gui-accent-color text:gui-accent-text-color items-center
+                        shape = CalloutShape(8, Side.right, 17)
+                        corner-radius = 12
+                        shadow = Shadow(gui-shadow-color, 8, 0, 3)
+                        <Label "Arrows, shadows, all of it." • flex:1
+                for level in showcase-elevations()
+                    <Box • flex-row w:88 h:88 ml:22 mt:4 bg:gui-field-color items-center
+                        align-y = Alignment.start
+                        corner-radius = 14
+                        shadow = Shadow($gui-shadow-color, level.blur, 0, level.y, level.spread)
+                        <Label • flex:1 card-caption
+                            text = level.title
+                            text-alignment = TextAlignment.center
+                <Box • flex-row w:104 h:36 ml:28 mt:30 pl:14 text:"#ffffff"
+                    align-y = Alignment.start
+                    shape = ShowcaseTagShape()
+                    background-color = "#16a34a"
+                    shadow = Shadow("#14532d59", 8, 0, 3)
+                    <Label "Custom path" • flex:1
+
+────────────────────
++ do choose-color
+    - swatch RGBA
+
+color = swatch
+picker.dismiss(DismissReason.chosen)
+popups-report(this, "Color picked from a popover")
+
+────────────────────
++ do apply-rename
+
+layer-name = name-field.text
+rename.dismiss(DismissReason.chosen)
+popups-report(this, "Renamed to “${layer-name}” from a native field inside a popup")
+
+────────────────────
+for event on name-field.submit
+
+apply-rename()
+
+━━━━━━━━━━━━━━━━━━━━
++ SwatchButton is Box
+
++ section PopoversSection
++ color RGBA
+
+• This • swatch
+    focus-mode = FocusMode.press
+
+────────────────────
+
+<This
+    background-color = #color
+
+────────────────────
+for event on click
+
+section.choose-color(color)
+event.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
++ showcase-swatch-rows [[RGBA]]
+
+* [RGBA("#ef4444"), RGBA("#f97316"), RGBA("#f59e0b"), RGBA("#84cc16")]
+* [RGBA("#10b981"), RGBA("#06b6d4"), RGBA("#3b82f6"), RGBA("#6366f1")]
+* [RGBA("#a855f7"), RGBA("#ec4899"), RGBA("#78716c"), RGBA("#111827")]
+
+━━━━━━━━━━━━━━━━━━━━
++ ShowcaseElevation is (title String, blur Length, y Coord, spread Length)
+
+━━━━━━━━━━━━━━━━━━━━
++ showcase-elevations [ShowcaseElevation]
+
+* ShowcaseElevation("Resting", 4, 1, 0)
+* ShowcaseElevation("Raised", 14, 5, 0)
+* ShowcaseElevation("Floating", 30, 12, -2)
+
+━━━━━━━━━━━━━━━━━━━━
++ ShowcaseTagShape is BoxShape
+
+╌╌╌╌╌╌╌╌╌╌ is BoxShape ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do path
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+. point = rect.height / 2
+. corner = 5
+canvas.move(rect.x + corner, rect.y)
+canvas.line(rect.right - point, rect.y)
+canvas.line(rect.right, rect.y + point)
+canvas.line(rect.right - point, rect.bottom)
+canvas.line(rect.x + corner, rect.bottom)
+canvas.curve(rect.x, rect.bottom, rect.x, rect.bottom, rect.x, rect.bottom - corner)
+canvas.line(rect.x, rect.y + corner)
+canvas.curve(rect.x, rect.y, rect.x, rect.y, rect.x + corner, rect.y)
+canvas.enclose()

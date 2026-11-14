@@ -1,0 +1,28 @@
+/lang/backend/mir
+
+_ ascii-flag U32 = 1
+_ valid-utf8-flag U32 = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ StringHeader is Tuple
+
+` What the header of a String says of its bytes, as `YuString.h` lays it out. The length in
+` bytes is that of the span.
+
++ character-length U32
++ flags U32
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure-string StringHeader
+    - bytes ByteSpan
+
+` The header of UTF-8 bytes, from one pass over them.
+. characters U32
+. flags = valid-utf8-flag /or/ ascii-flag
+for index in 0 .. < bytes.length
+    . byte = bytes.data[index]
+    if byte >= 128
+        flags = valid-utf8-flag
+    if byte < 128 || byte >= 192
+        characters += 1
+= StringHeader(characters, flags)

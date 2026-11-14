@@ -1,0 +1,106 @@
+./box
+./primitives
+./shape
+/graphics/canvas
+/graphics/primitives
+/graphics/roundedrect
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ BorderPainter
+
+────────────────────
++ border-insets
+    - node Box
+
+Insets(0, 0, 0, 0)
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+━━━━━━━━━━━━━━━━━━━━
++ DefaultBorderPainter is BorderPainter
+
+╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ border-insets
+    - node Box
+
+node.computed-border-widths
+
+────────────────────
++ do paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+. color = node.$border-color
+. fill = node.$border-fill
+=? if !color && !fill
+=? if rect.width <= 0 || rect.height <= 0
+. edges = node.effective-border-widths
+=? if edges.top <= 0 && edges.right <= 0 && edges.bottom <= 0 && edges.left <= 0
+. radius = max(0, min(node.computed-corner-radius, min(rect.width, rect.height) / 2))
+do use canvas.saved-state
+    canvas.stroke-color = null
+    canvas.fill-color = color
+    canvas.shape-fill = fill
+    if edges.top == edges.right && edges.top == edges.bottom && edges.top == edges.left
+        . width = edges.top
+        if fill
+            node.effective-shape.ring(node, rect, width, canvas)
+        else
+            canvas.fill-color = null
+            canvas.stroke-color = color
+            canvas.stroke-width = width
+            node.effective-shape.stroke(node, rect, width / 2, canvas)
+    else if !fill && radius == 0 && edges.left <= 0 && edges.right <= 0 && top-bottom-fit
+        if edges.top > 0
+            canvas.rect(Rect(rect.x, rect.y, rect.width, edges.top))
+        if edges.bottom > 0
+            canvas.rect(Rect(rect.x, rect.bottom - edges.bottom, rect.width, edges.bottom))
+    else if !fill && radius == 0 && edges.top <= 0 && edges.bottom <= 0 && left-right-fit
+        if edges.left > 0
+            canvas.rect(Rect(rect.x, rect.y, edges.left, rect.height))
+        if edges.right > 0
+            canvas.rect(Rect(rect.right - edges.right, rect.y, edges.right, rect.height))
+    else
+        canvas.begin()
+        RoundedRect(rect, radius, radius, radius, radius).outline(canvas)
+        . inner = Rect
+            - rect.x + edges.left
+            - rect.y + edges.top
+            - max(0, rect.width - edges.left - edges.right)
+            - max(0, rect.height - edges.top - edges.bottom)
+        if inner.width > 0 && inner.height > 0
+            . left-radius = max(0, radius - edges.left)
+            . right-radius = max(0, radius - edges.right)
+            . top-radius = max(0, radius - edges.top)
+            . bottom-radius = max(0, radius - edges.bottom)
+            . horizontal = left-radius + right-radius
+            . vertical = top-radius + bottom-radius
+            . horizontal-scale = if horizontal > 0 then min(1.0, inner.width / horizontal) else 1.0
+            . vertical-scale = if vertical > 0 then min(1.0, inner.height / vertical) else 1.0
+            . inner-outline = RoundedRect
+                - inner
+                - left-radius * horizontal-scale
+                - top-radius * vertical-scale
+                - right-radius * horizontal-scale
+                - bottom-radius * vertical-scale
+            inner-outline.outline(canvas)
+        canvas.end(false, FillRule.even-odd)
+
+.. top-bottom-fit = edges.top + edges.bottom < rect.height
+.. left-right-fit = edges.left + edges.right < rect.width
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-gui-box-border
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+node.$border.paint(node, rect, canvas)

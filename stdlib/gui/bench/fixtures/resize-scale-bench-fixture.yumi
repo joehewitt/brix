@@ -1,0 +1,641 @@
+/YuAppleGUI/YuAppleGUI.h
+/YuGC/YuGC.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui/box
+/gui/label
+/gui/layout
+/gui/primitives
+/gui/scene
+/stream/sort
+/time/timer
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-gui-resize-scale-horizontal Size
+
+= run-gui-resize-scale(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-gui-resize-scale-vertical Size
+
+= run-gui-resize-scale(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-gui-resize-scale-both
+
+= run-gui-resize-scale(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-gui-resize-scale-noop Size
+
+= run-gui-resize-scale(3)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-gui-resize-scale Size
+    - mode Size
+
+. root = build-gui-resize-scale-root()
+. background RGBA = "#08111f"
+. native = C:yumiGuiWindowCreate("gui resize scale bench (offscreen)", 1360, 860)
+. scale = C:yumiGuiWindowGetBackingScaleFactor(native)
+. initial-width = gui-resize-scale-width(mode, 0)
+. initial-height = gui-resize-scale-height(mode, 0)
+root.layout(Rect(0, 0, initial-width as Coord, initial-height as Coord))
+. surface = RasterCanvas
+    - initial-width as I32
+    - initial-height as I32
+    - scale
+    - background
+. surface-width = initial-width
+. surface-height = initial-height
+. scene = DisplayScene(scale, background)
+root.sync-native-geometry()
+scene.maintain(root, scale, background)
+scene.add-damage(root.bounds)
+scene.frame(surface)
+C:yumiGuiWindowCommitFrame
+    - native
+    - surface.native
+    - scene.last-frame-damage.x
+    - scene.last-frame-damage.y
+    - scene.last-frame-damage.width
+    - scene.last-frame-damage.height
+
+. warmup-frames Size = 3
+for warmup in 0 .. < warmup-frames
+    . sequence-index = warmup + 1
+    . width = gui-resize-scale-width(mode, sequence-index)
+    . height = gui-resize-scale-height(mode, sequence-index)
+    root.layout(Rect(0, 0, width as Coord, height as Coord))
+    if width != surface-width || height != surface-height
+        surface.close()
+        surface = RasterCanvas(width as I32, height as I32, scale, background)
+        surface-width = width
+        surface-height = height
+    root.sync-native-geometry()
+    scene.maintain(root, scale, background)
+    scene.add-damage(root.bounds)
+    scene.frame(surface)
+    C:yumiGuiWindowCommitFrame
+        - native
+        - surface.native
+        - scene.last-frame-damage.x
+        - scene.last-frame-damage.y
+        - scene.last-frame-damage.width
+        - scene.last-frame-damage.height
+
+. frames Size = 120
+. total-ns [U64]
+. layout-ns [U64]
+. create-ns [U64]
+. sync-ns [U64]
+. paint-ns [U64]
+. commit-ns [U64]
+total-ns.reserve(frames)
+layout-ns.reserve(frames)
+create-ns.reserve(frames)
+sync-ns.reserve(frames)
+paint-ns.reserve(frames)
+commit-ns.reserve(frames)
+. allocated-objects Size
+. allocated-bytes Size
+. layout-objects Size
+. layout-bytes Size
+. paint-objects Size
+. paint-bytes Size
+. surface-recreates Size
+. misses-120hz Size
+. misses-60hz Size
+. text-layouts0 = text-layout-created-count()
+
+for frame in 0 .. < frames
+    . sequence-index = warmup-frames + frame + 1
+    . width = gui-resize-scale-width(mode, sequence-index)
+    . height = gui-resize-scale-height(mode, sequence-index)
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    . bytes0 = C:yumiGCRequestedByteCount()
+    . t0 = monotonic-time-nanoseconds()
+
+    //+gui.frame.phase.layout
+    root.layout(Rect(0, 0, width as Coord, height as Coord))
+    //-gui.frame.phase.layout
+    . t1 = monotonic-time-nanoseconds()
+    . objects1 = C:yumiGCAllocatedObjectCount()
+    . bytes1 = C:yumiGCRequestedByteCount()
+
+    //+gui.frame.phase.create
+    . surface-recreated = width != surface-width || height != surface-height
+    if surface-recreated
+        surface.close()
+        surface = RasterCanvas(width as I32, height as I32, scale, background)
+        surface-width = width
+        surface-height = height
+        surface-recreates += 1
+    //-gui.frame.phase.create
+    . t2 = monotonic-time-nanoseconds()
+
+    //+gui.frame.phase.sync
+    root.sync-native-geometry()
+    //-gui.frame.phase.sync
+    . t3 = monotonic-time-nanoseconds()
+    . objects3 = C:yumiGCAllocatedObjectCount()
+    . bytes3 = C:yumiGCRequestedByteCount()
+
+    //+gui.frame.phase.paint
+    scene.maintain(root, scale, background)
+    if surface-recreated
+        scene.add-damage(root.bounds)
+    . replay-count = scene.frames-replayed
+    scene.frame(surface)
+    . did-replay = scene.frames-replayed != replay-count
+    //-gui.frame.phase.paint
+    . t4 = monotonic-time-nanoseconds()
+    . objects4 = C:yumiGCAllocatedObjectCount()
+    . bytes4 = C:yumiGCRequestedByteCount()
+
+    //+gui.frame.phase.commit
+    if did-replay
+        C:yumiGuiWindowCommitFrame
+            - native
+            - surface.native
+            - scene.last-frame-damage.x
+            - scene.last-frame-damage.y
+            - scene.last-frame-damage.width
+            - scene.last-frame-damage.height
+    //-gui.frame.phase.commit
+    . t5 = monotonic-time-nanoseconds()
+
+    . elapsed = t5 - t0
+    total-ns += elapsed
+    layout-ns += t1 - t0
+    create-ns += t2 - t1
+    sync-ns += t3 - t2
+    paint-ns += t4 - t3
+    commit-ns += t5 - t4
+    allocated-objects += (C:yumiGCAllocatedObjectCount() - objects0) as Size
+    allocated-bytes += (C:yumiGCRequestedByteCount() - bytes0) as Size
+    layout-objects += (objects1 - objects0) as Size
+    layout-bytes += (bytes1 - bytes0) as Size
+    paint-objects += (objects4 - objects3) as Size
+    paint-bytes += (bytes4 - bytes3) as Size
+    if elapsed > 8333333
+        misses-120hz += 1
+    if elapsed > 16666667
+        misses-60hz += 1
+
+. text-layouts = text-layout-created-count() - text-layouts0
+//gui.bench.resize-scale.frames += frames
+//gui.bench.resize-scale.frame-p50-us += gui-resize-scale-percentile-us(total-ns, 50)
+//gui.bench.resize-scale.frame-p95-us += gui-resize-scale-percentile-us(total-ns, 95)
+//gui.bench.resize-scale.frame-p99-us += gui-resize-scale-percentile-us(total-ns, 99)
+//gui.bench.resize-scale.layout-p50-us += gui-resize-scale-percentile-us(layout-ns, 50)
+//gui.bench.resize-scale.layout-p95-us += gui-resize-scale-percentile-us(layout-ns, 95)
+//gui.bench.resize-scale.layout-p99-us += gui-resize-scale-percentile-us(layout-ns, 99)
+//gui.bench.resize-scale.create-p50-us += gui-resize-scale-percentile-us(create-ns, 50)
+//gui.bench.resize-scale.create-p95-us += gui-resize-scale-percentile-us(create-ns, 95)
+//gui.bench.resize-scale.create-p99-us += gui-resize-scale-percentile-us(create-ns, 99)
+//gui.bench.resize-scale.sync-p50-us += gui-resize-scale-percentile-us(sync-ns, 50)
+//gui.bench.resize-scale.sync-p95-us += gui-resize-scale-percentile-us(sync-ns, 95)
+//gui.bench.resize-scale.sync-p99-us += gui-resize-scale-percentile-us(sync-ns, 99)
+//gui.bench.resize-scale.paint-p50-us += gui-resize-scale-percentile-us(paint-ns, 50)
+//gui.bench.resize-scale.paint-p95-us += gui-resize-scale-percentile-us(paint-ns, 95)
+//gui.bench.resize-scale.paint-p99-us += gui-resize-scale-percentile-us(paint-ns, 99)
+//gui.bench.resize-scale.commit-p50-us += gui-resize-scale-percentile-us(commit-ns, 50)
+//gui.bench.resize-scale.commit-p95-us += gui-resize-scale-percentile-us(commit-ns, 95)
+//gui.bench.resize-scale.commit-p99-us += gui-resize-scale-percentile-us(commit-ns, 99)
+//gui.bench.resize-scale.misses-120hz += misses-120hz
+//gui.bench.resize-scale.misses-60hz += misses-60hz
+//gui.bench.resize-scale.objects-per-frame += allocated-objects / frames
+//gui.bench.resize-scale.bytes-per-frame += allocated-bytes / frames
+//gui.bench.resize-scale.layout-objects-per-frame += layout-objects / frames
+//gui.bench.resize-scale.layout-bytes-per-frame += layout-bytes / frames
+//gui.bench.resize-scale.paint-objects-per-frame += paint-objects / frames
+//gui.bench.resize-scale.paint-bytes-per-frame += paint-bytes / frames
+//gui.bench.resize-scale.surface-recreates += surface-recreates
+//gui.bench.resize-scale.text-layouts += text-layouts
+
+. checksum = frames + surface-recreates + text-layouts + misses-120hz + misses-60hz
+checksum += gui-resize-scale-percentile-us(total-ns, 50)
+scene.close()
+surface.close()
+C:yumiGuiWindowClose(native)
+C:yumiGuiWindowRelease(native)
+root.close()
+markup-release(root)
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-resize-scale-width Size
+    - mode Size
+    - frame Size
+
+|? mode == 1 || mode == 3
+    1360
+??
+    1120 + gui-resize-scale-triangle(frame, 240, 8)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-resize-scale-height Size
+    - mode Size
+    - frame Size
+
+|? mode == 0 || mode == 3
+    860
+??
+    700 + gui-resize-scale-triangle(frame, 160, 4)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-resize-scale-triangle Size
+    - frame Size
+    - span Size
+    - step Size
+
+. half-period = span / step
+. position = frame % (half-period * 2)
+if position > half-period
+    position = half-period * 2 - position
+= position * step
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-resize-scale-percentile-us Size
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    (sorted[index] / 1000) as Size
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
+_ do build-gui-resize-scale-root
+
+. root = GUIResizeScaleRoot()
+markup-mount-root(root, root)
+
+. header = GUIResizeScaleHeader()
+markup-append(root, header)
+. header-copy = GUIResizeScaleFlexColumn()
+markup-append(header, header-copy)
+append-gui-resize-scale-label(header-copy, "Static Layout Scale · Resize Benchmark")
+append-gui-resize-scale-label
+    - header-copy
+    - "1,000 cells · 480 rows + labels · deterministic frame sequence"
+. tags = GUIResizeScaleFlowRow()
+markup-append(header, tags)
+append-gui-resize-scale-pill(tags, "CORE GRAPHICS")
+append-gui-resize-scale-pill(tags, "STATIC")
+append-gui-resize-scale-pill(tags, "2,000+ BOXES")
+
+. stats = GUIResizeScaleStats()
+markup-append(root, stats)
+append-gui-resize-scale-stat(stats, "CELLS", "1,000")
+append-gui-resize-scale-stat(stats, "ROW BOXES", "480")
+append-gui-resize-scale-stat(stats, "ROW LABELS", "480")
+append-gui-resize-scale-stat(stats, "FRAME WORK", "RESIZE ONLY")
+
+. main = GUIResizeScaleMain()
+markup-append(root, main)
+. left-panel = GUIResizeScalePanel()
+markup-append(main, left-panel)
+append-gui-resize-scale-panel-header
+    - left-panel
+    - "FIXED CELL MATRIX"
+    - "40 × 25 physical cells inside flexible ancestors"
+    - "1,025 GRID NODES"
+. stage = GUIResizeScaleStage()
+markup-append(left-panel, stage)
+. grid = GUIResizeScaleGrid()
+markup-append(stage, grid)
+for row-index in 0 .. < 25
+    . row = GUIResizeScaleGridRow()
+    markup-append(grid, row)
+    for column-index in 0 .. < 40
+        markup-append(row, GUIResizeScaleCell())
+. districts = GUIResizeScaleFlowRow()
+markup-append(stage, districts)
+for district-index in 0 .. < 12
+    append-gui-resize-scale-pill
+        - districts
+        - gui-resize-scale-district(district-index)
+
+. right-panel = GUIResizeScaleFeedPanel()
+markup-append(main, right-panel)
+append-gui-resize-scale-panel-header
+    - right-panel
+    - "PHYSICAL INCIDENT FEED"
+    - "480 row boxes · 480 retained text labels"
+    - "960 FEED NODES"
+. filter = GUIResizeScaleFilter()
+markup-append(right-panel, filter)
+append-gui-resize-scale-label(filter, "Static filter chrome with intrinsic text")
+append-gui-resize-scale-pill(filter, "NO INPUT")
+. note = GUIResizeScaleNote()
+markup-append(right-panel, note)
+append-gui-resize-scale-label
+    - note
+    - "No scroll, animation, mutation, or scheduled render work"
+. feed = GUIResizeScaleFeed()
+markup-append(right-panel, feed)
+for index in 0 .. < 480
+    markup-append(feed, GUIResizeScaleFeedRow(index))
+
+. footer = GUIResizeScaleFooter()
+markup-append(root, footer)
+append-gui-resize-scale-pill(footer, "STATIC")
+append-gui-resize-scale-pill(footer, "NO TIMERS")
+append-gui-resize-scale-pill(footer, "NO MUTATIONS")
+append-gui-resize-scale-pill(footer, "NO AUTO-SCROLL")
+append-gui-resize-scale-label(footer, "Resize continuously across both axes")
+
+root.markup-batch-queue.checkpoint()
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-gui-resize-scale-label
+    - parent Box
+    - value String
+
+. label = GUIResizeScaleText()
+label.text = value
+markup-append(parent, label)
+= label
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-gui-resize-scale-pill
+    - parent Box
+    - value String
+
+. pill = GUIResizeScalePill()
+pill.text = value
+markup-append(parent, pill)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-gui-resize-scale-stat
+    - parent Box
+    - title String
+    - value String
+
+. card = GUIResizeScaleStat()
+markup-append(parent, card)
+. copy = GUIResizeScaleStatCopy()
+markup-append(card, copy)
+append-gui-resize-scale-label(copy, title)
+append-gui-resize-scale-label(copy, value)
+. bars = GUIResizeScaleBars()
+markup-append(card, bars)
+markup-append(bars, GUIResizeScaleBarA())
+markup-append(bars, GUIResizeScaleBarB())
+markup-append(bars, GUIResizeScaleBarC())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do append-gui-resize-scale-panel-header
+    - parent Box
+    - kicker String
+    - title String
+    - pill String
+
+. header = GUIResizeScalePanelHeader()
+markup-append(parent, header)
+. copy = GUIResizeScaleFlexColumn()
+markup-append(header, copy)
+append-gui-resize-scale-label(copy, kicker)
+append-gui-resize-scale-label(copy, title)
+append-gui-resize-scale-pill(header, pill)
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-resize-scale-district
+    - index Size
+
+match index % 8
+    | 0
+        "NORTH"
+    | 1
+        "HARBOR"
+    | 2
+        "MARKET"
+    | 3
+        "CIVIC"
+    | 4
+        "UNION"
+    | 5
+        "SOMA"
+    | 6
+        "MISSION"
+    ??
+        "SUNSET"
+
+━━━━━━━━━━━━━━━━━━━━
+_ gui-resize-scale-category
+    - index Size
+
+match index % 5
+    | 0
+        "FIRE"
+    | 1
+        "MEDICAL"
+    | 2
+        "TRAFFIC"
+    | 3
+        "TRANSIT"
+    ??
+        "UTILITY"
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This • flex-col p:14 bg:"#08111f"
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleHeader is Box
+
+• This • flex-row h:72 px:18 py:10 bg:"#0f1d32" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFlexColumn is Box
+
+• This • flex-col flex:1
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFlowRow is Box
+
+• This • flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleText is Label
+
+• This • text:white
+    font-size = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScalePill is Label
+
+• This • text:white bg:"#12304a" border px:8 py:5 ml:7
+    font-size = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleStats is Box
+
+• This • flex-row h:92 mt:12
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleStat is Box
+
+• This • flex-row flex:1 p:12 ml:10 bg:"#101f35" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleStatCopy is Box
+
+• This • flex-col w:155
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleBars is Box
+
+• This • flex-row flex:1 ml:10 h:14
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleBarA is Box
+
+• This • flex:3 bg:"#14b8a6"
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleBarB is Box
+
+• This • flex:2 bg:"#0ea5e9"
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleBarC is Box
+
+• This • flex:1 bg:"#8b5cf6"
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleMain is Box
+
+• This • flex-row flex:1 mt:12
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScalePanel is Box
+
+• This • flex-col flex:1 p:12 bg:"#0d192b" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFeedPanel is Box
+
+• This • flex-col w:432 ml:12 p:12 bg:"#0d192b" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScalePanelHeader is Box
+
+• This • flex-row h:40
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleStage is Box
+
+• This • flex-col flex:1 mt:10 p:10 bg:"#07101d" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleGrid is Box
+
+• This • flow-col w:600 h:375
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleGridRow is Box
+
+• This • flow-row w:600 h:15
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleCell is Box
+
+• This • w:15 h:15
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.fill-color = "#0e7490"
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFilter is Box
+
+• This • flex-row h:29 mt:9 px:9 bg:"#101f35" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleNote is Box
+
+• This • flex-row h:25 mt:7 px:8 bg:"#0b1626" border
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFeed is Box
+
+• This • flow-col flex:1 mt:9 bg:"#07101d" border
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.auto
+    scroll-indicator-y = ScrollIndicatorVisibility.always
+    scroll-indicator-gutter = ScrollIndicatorGutter.stable
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFeedRow is Box
+
++ index Size
+
+• This • h:18
+
+────────────────────
++ This
+    - index
+
+. label = GUIResizeScaleFeedText()
+. id = 10000 + index
+. unit = 10 + index % 89
+. category = gui-resize-scale-category(index)
+. district = gui-resize-scale-district(index)
+label.text = "#$id  $category · $district · unit $unit"
+markup-append(this, label)
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+match index % 5
+    | 0
+        canvas.fill-color = "#172554"
+    | 1
+        canvas.fill-color = "#134e4a"
+    | 2
+        canvas.fill-color = "#3f1d42"
+    | 3
+        canvas.fill-color = "#3b2f12"
+    ??
+        canvas.fill-color = "#1e293b"
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFeedText is Label
+
+• This • absolute cover:.parent px:5 text:white
+    font-family = "Menlo"
+    font-size = 10
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIResizeScaleFooter is Box
+
+• This • flex-row h:48 mt:12 px:12 py:8 bg:"#0f1d32" border

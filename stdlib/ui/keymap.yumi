@@ -1,0 +1,111 @@
+./key-assignment
+./key-combo
+/data/json
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyMapping is Tuple
+
++ stable-key String
++ key KeyCombo?
++ disabled = false
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyMappingProfile
+
++ version Int = 1
++ mappings [KeyMapping]
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - mappings
+
+────────────────────
++ get json
+
+root as JSON
+
+.. encoded [JSON] =
+    ** mappings
+    *> key-mapping-json(each)
+.. root = Map'String'JSON
+    - ("version", version as JSON)
+    - ("mappings", encoded as JSON)
+
+────────────────────
++ to String
+
+to-json(json)
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-mapping-json
+    - mapping KeyMapping
+
+Map'String'JSON
+    - ("stableKey", mapping.stable-key as JSON)
+    - ("disabled", mapping.disabled as JSON)
+    - ("key", key)
+
+.. key JSON = match mapping.key
+    | value KeyCombo
+        "$value" as JSON
+    ??
+        null as JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ load-key-mapping-profile KeyMappingProfile?
+    - text String
+
+catch? key-mapping-profile(JSONReader("Key mappings", catch? parse-json(text)))
+
+━━━━━━━━━━━━━━━━━━━━
++ load-key-mapping-json KeyMappingProfile?
+    - value JSON
+
+catch? key-mapping-profile(JSONReader("Key mappings", value))
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-mapping-profile ?! Error
+    - reader JSONReader
+
+?! Error("Unsupported key mapping profile version $version")
+    if version != 1
+KeyMappingProfile(mappings)
+
+.. root = reader.object()
+.. version = root["version"].int()
+.. mappings =
+    ** root["mappings"].items()
+    *> key-mapping(each.object())
+    |> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ key-mapping ?! Error
+    - fields JSONObjectReader
+
+KeyMapping
+    - fields["stableKey"].string()
+    - key
+    - fields["disabled"].bool()
+
+.. spec = fields["key"]
+.. key = KeyCombo(spec.string()) if spec.is-present
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply-key-mapping-profile
+    - assignments [KeyAssignment]
+    - profile KeyMappingProfile
+
+for assignment in assignments
+    . fallback = assignment.mapping-default
+    fallback.capture(assignment)
+    fallback.restore(assignment)
+for mapping in profile.mappings
+    for assignment in assignments
+        if assignment.stable-key == mapping.stable-key
+            assignment.set-binding-enabled(!mapping.disabled)
+            . remapped = mapping.key
+            if remapped
+                assignment.set-binding-key(remapped)

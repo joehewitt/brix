@@ -1,0 +1,54 @@
+/os/process
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Process wait yields")
+cases.run(wait-tests)
+cases = cases.then("Process input closes", input-tests)
+cases = cases.then("Process signals", signal-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do wait-tests TestCase
+    - t TestCase
+
+. process = Process("/bin/sleep", "0.02")
+do finally process.close()
+process.wait(null)
+. done = Semaphore'Bool()
+do new thread
+    done.post(true)
+t.expect("process exit does not wake an unrelated receive", true, done.await())
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do input-tests TestCase
+    - t TestCase
+
+. first = Process("/bin/cat")
+do finally first.close()
+. second = Process("/bin/cat")
+do finally second.close()
+first.write("echoed")
+first.close-input()
+. output = first as String
+t.expect("closing input ends the child's input", "echoed", output)
+t.expect("the child exits once its input ends", 0, first.wait(null))
+second.close-input()
+t.expect("a sibling keeps its own input", 0, second.wait(null))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do signal-tests TestCase
+    - t TestCase
+
+. defaults = Process("/bin/sh", "-c", "kill -PIPE \$\$; printf survived")
+do finally defaults.close()
+. output = defaults as String
+t.expect("an ignored signal is not inherited", "", output)
+t.expect("the default disposition ends the child", 141, defaults.wait(null))
+= t

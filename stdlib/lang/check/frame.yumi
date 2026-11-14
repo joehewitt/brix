@@ -1,0 +1,1163 @@
+./binding
+./error-sets
+./facts
+./instances
+./narrowing-key
+./session
+./type-env
+./type-relation
+./type-store
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ Demander is Interface
+
+────────────────────
++ do demand
+    - callee InstanceId
+
+────────────────────
++ do demand-errors
+    - callee InstanceId
+
+────────────────────
++ do note-live-call
+    - id SyntaxId
+    - name Atom
+
+────────────────────
++ do type-default
+    - callee InstanceId
+    - position U32
+
+────────────────────
++ demand-lambda InstanceId
+    - closure TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+
+────────────────────
++ lambda-fit TypeId
+    - closure TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+
+────────────────────
++ binding-return BoundReturn
+    - binding TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+    - asked Bool = false
+
+────────────────────
++ whole-answer TypeId
+    - callable TypeId
+    - returned TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+    - declared RowRange'TypeId
+    - bound InstanceId
+
+────────────────────
++ misused-endpoint Bool
+    - syntax SyntaxId
+
+────────────────────
++ default-type TypeId
+    - module ModuleId
+    - decl DeclId
+    - receiver TypeId
+    - syntax SyntaxId
+    - params ImmutableArray'TypeId'ArenaBacking
+
+────────────────────
++ demand-member TypeId
+    - fact TypeProperty
+    - receiver TypeId
+    - name Atom
+
+────────────────────
++ truth-callee InstanceId
+    - type TypeId
+
+────────────────────
++ tuple-arity U32
+    - value TypeId
+
+────────────────────
++ field-of TypeId
+    - value TypeId
+    - position U32
+
+────────────────────
++ has-items Bool
+    - type TypeId
+
+────────────────────
++ do note-enum-case
+    - about TypeId
+    - name Atom
+    - site SyntaxId
+    - settles Bool = true
+
+────────────────────
++ do note-symbol-choice
+    - about TypeId
+    - expr SyntaxId
+
+────────────────────
++ do note-enum-number
+    - site SyntaxId
+    - about TypeId
+
+────────────────────
++ do record-witness
+    - from TypeId
+    - to TypeId
+
+────────────────────
++ do demand-union-error
+
+────────────────────
++ do note-outgoing
+    - error TypeId
+    - syntax SyntaxId
+
+────────────────────
++ do defer-outgoing
+    - callee InstanceId
+    - syntax SyntaxId
+
+
+━━━━━━━━━━━━━━━━━━━━
++ BoundReturn is Tuple
+
+` What a binding returns for the argument types it is given, and the function, the method or the
+` constructor it calls with them, where it calls one.
+
++ type TypeId = invalid-type
++ callee InstanceId = no-instance
+
+━━━━━━━━━━━━━━━━━━━━
++ do lambda-return TypeId
+    - host Demander
+    - instances Instances
+    - closure TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+
+` The type a closure returns for these argument types, which the host types it for, or the invalid
+` type where it has none yet.
+. callee = host.demand-lambda(closure, args)
+if callee == no-instance
+    = invalid-type
+. signature = instances.signatures[callee]
+if signature.return-state == .return-pending
+    = invalid-type
+= signature.returns
+
+━━━━━━━━━━━━━━━━━━━━
++ do property-subtree SyntaxRange
+    - program Program
+    - module ModuleId
+    - property DeclId
+
+` The syntax of a property's declaration, or of an enum's case, which holds its type and its
+` value, or of a rule or a style rule of a class. An initializer instance keeps its facts over
+` these nodes alone, though it is typed in its main's frame.
+. tree = program.modules[module].tree
+. syntax = 0u32
+do match? program.modules[module].decls[property]
+    | .decl-property(row)
+        syntax = row.syntax
+    | .decl-case(row)
+        syntax = row.syntax
+    | .decl-rule(row)
+        syntax = row.syntax
+    | .decl-style-rule(row)
+        syntax = row.syntax
+if syntax == 0
+    = SyntaxRange(0, 0)
+. start = tree.subtree-start(syntax)
+= SyntaxRange(start, syntax - start + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do equality-site SyntaxId
+    - types Types
+    - program Program
+    - value TypeId
+
+` The node the comparison of two values of a type keeps its facts at: the declaration of the
+` type.
+. owner = class-ref(types, value)
+do match? program.modules[owner.module].decls[owner.decl]
+    | .decl-class(row)
+        = row.syntax
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ MemberState is Struct
+
+` What a frame knows of properties at a place: whether anything is known, and whether it
+` may differ from what the reference knows there, and the first narrowing that may hold.
+
++ narrowed Bool
++ unsure Bool
++ floor ScratchMark
+
+━━━━━━━━━━━━━━━━━━━━
++ Surround is Tuple
+
+` What the code being checked runs under: the compilation effects in force, the statement that
+` entered the zone it is in, and how many `catch`es and error transformers hold it.
+
++ effects EffectMask = 0
++ zone-site SyntaxId = 0
++ catch-depth U32
++ transformer-depth U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame
+
++ session Session
++ types Types
++ relations Relations
++ scratch TypingScratch
++ program Program
++ bindings Bindings
++ instances Instances
++ facts Facts
++ instance InstanceId
++ module ModuleId
++ decl DeclId
++ tree AST
++ declaration CheckedDecl
++ binding BindingId = no-binding
++ outer Frame? = null
++ nested-scope ScopeId = 0
+_ captures RowRange'Capture
++ slots RowRange'Slot
+_ slot-start ScratchMark = 0
+_ narrow-start ScratchMark = 0
++ returns-start ScratchMark = 0
++ yields-start ScratchMark = 0
++ outgoing-start ScratchMark = 0
++ assigned-syntax [SyntaxId]
++ assigned-slots [SlotId]
++ assigned-types [TypeId]
++ self-type TypeId = no-type
++ surround Surround = Surround()
++ members-narrowed Bool
++ forgotten U32
+_ members-floor ScratchMark = 0
+_ members-doubted Bool
++ member-reads U32
+_ members-calls Size = 0
+_ members-conversions Size = 0
++ narrowed-members [NarrowingKey]
++ member-declared [TypeId]
+_ kept-members [NarrowingKey]
+_ shared-slots [SlotId]
++ transforms [ErrorTransform]
+_ transform-chains [TypeId]
+_ transform-starts [Size]
++ trial-range SyntaxRange = SyntaxRange(0, 0)
+_ path-bases [NarrowingKey]
+_ path-names [Atom]
+_ path-declared [TypeId]
++ path-stable [Bool]
++ env TypeEnv
+_ env-open Bool
+
+────────────────────
++ This
+    - session Session
+
+.. types = session.types
+.. relations = session.relations
+.. scratch = session.scratch
+.. program = session.program
+.. bindings = session.bindings
+.. instances = session.instances
+.. facts = session.facts
+.. instance = no-instance
+.. module = 0
+.. decl = 0
+.. tree = program.modules[0].tree
+
+────────────────────
++ do begin
+    - checked InstanceId
+
+` A frame is reused from one instance to the next, so beginning one sets every field an
+` earlier instance could have left.
+. row = instances.rows[checked]
+. no-declaration CheckedDecl
+. no-env TypeEnv
+instance = checked
+module = row.module
+decl = row.decl
+tree = program.modules[module].tree
+declaration = no-declaration
+binding = no-binding
+outer = null
+nested-scope = 0
+captures = RowRange'Capture()
+slots = RowRange'Slot()
+slot-start = 0
+narrow-start = 0
+returns-start = 0
+yields-start = 0
+outgoing-start = 0
+assigned-syntax.clear()
+assigned-slots.clear()
+assigned-types.clear()
+self-type = if row.initializer != 0 then no-type else row.self-type
+surround = Surround(row.effects)
+members-narrowed = false
+members-floor = 0
+members-doubted = false
+member-reads = 0
+narrowed-members.clear()
+member-declared.clear()
+kept-members.clear()
+shared-slots.clear()
+transforms.clear()
+transform-chains.clear()
+transform-starts.clear()
+path-bases.clear()
+path-names.clear()
+path-declared.clear()
+path-stable.clear()
+env = no-env
+env-open = false
+
+
+────────────────────
++ do adopt
+    - enclosing Frame
+
+outer = enclosing
+binding = enclosing.binding
+self-type = enclosing.self-type
+. row = bindings.bindings[binding]
+for offset in 0 .. < row.nested.count
+    . nested = bindings.nested[row.nested.start + offset]
+    if nested.decl == decl
+        nested-scope = nested.scope
+        captures = nested.captures
+        =
+
+────────────────────
+_ do reaching-getters SyntaxRange
+    - range SyntaxRange
+
+` A range of a body widened back to hold the value of each row local read as a getter that
+` a node in it reads, and so on through the getters those values read.
+. start = range.start
+. low = range.start
+. high = range.start + range.count
+while low < high
+    . scanned = start
+    for node in low .. < high
+        . resolution = bindings.resolution-of(binding, node)
+        if resolution.kind == .resolve-slot && bindings.slots[resolution.slot].getter != 0
+            . written = tree.subtree-start(bindings.slots[resolution.slot].getter)
+            if written < start
+                start = written
+    high = scanned
+    low = start
+= SyntaxRange(start, range.start + range.count - start)
+
+────────────────────
+_ do reaching-match SyntaxRange
+    - range SyntaxRange
+    - body SyntaxId
+
+` A range of the body of a function that builds an arm of a markup match region widened to hold
+` the subject of the match and the arm's pattern, which may follow the body, through the arm;
+` that of any other body as it is.
+. arm = tree.body-arm(body)
+if arm == 0
+    = range
+. start = range.start
+. end = range.start + range.count
+do match? tree.nodes[tree.arm-match(arm)]
+    | .node-match-expression(row)
+        if row.subject != 0 && tree.subtree-start(row.subject) < start
+            start = tree.subtree-start(row.subject)
+do match? tree.nodes[arm]
+    | .node-type-transform(row)
+        if row.pattern != 0 && tree.subtree-start(row.pattern) < start
+            start = tree.subtree-start(row.pattern)
+if arm + 1 > end
+    end = arm + 1
+= SyntaxRange(start, end - start)
+
+────────────────────
++ do open
+    - opened BindingId
+    - reach SyntaxId = 0
+
+` Opens the frame of a body over its binding, reserving the facts of its nodes. A nested body
+` whose facts sit at a node of the enclosing one past its own, as a bullet list's sit at the
+` pipeline that consumes it, reserves them through that node, and one that reads a row local
+` as a getter reserves the getter's value too, which is typed where it is read. One that builds
+` an arm of a markup match region reserves the subject and the arm's pattern too, which it
+` reads again and matches. A frame that types one part of a body on trial reserves only that
+` part's.
+binding = opened
+. row = bindings.bindings[binding]
+. reserved = if outer then declaration.subtree else row.subtree
+if outer && reach >= reserved.start + reserved.count
+    reserved = SyntaxRange(reserved.start, reach - reserved.start + 1)
+if outer
+    reserved = reaching-getters(reserved)
+if outer && declaration.kind == .branch-arm-decl
+    reserved = reaching-match(reserved, declaration.syntax)
+if trial-range.count != 0
+    reserved = trial-range
+. initializer = instances.rows[instance].initializer
+slots = row.slots
+if initializer != 0
+    reserved = property-subtree(program, module, initializer)
+    slots = bindings.window-of(binding, reserved.start + reserved.count - 1)
+else if instances.rows[instance].compares
+    reserved = SyntaxRange(equality-site(types, program, instances.rows[instance].self-type), 1)
+    slots = RowRange'Slot(slots.start, 0)
+else if instances.rows[instance].root-values != 0
+    . application = instances.rows[instance].root-values
+    . start = program.modules[module].tree.subtree-start(application)
+    reserved = SyntaxRange(start, application - start + 1)
+    slots = bindings.window-of(binding, application)
+facts.reserve-nodes(instance, binding, reserved)
+slot-start = scratch.slots.mark
+for _ in 0 .. < slots.count
+    scratch.slots.push(no-type)
+narrow-start = scratch.narrowings.mark
+returns-start = scratch.returns.mark
+yields-start = scratch.yields.mark
+outgoing-start = scratch.outgoing.mark
+
+────────────────────
++ do close
+
+if slots.count != 0
+    instances.rows[instance].slot-base = slots.start - bindings.bindings[binding].slots.start
+for offset in 0 .. < slots.count
+    facts.retain-slot(instance, slots.count, offset, scratch.slots[slot-start + offset])
+close-env()
+scratch.outgoing.rewind(outgoing-start)
+scratch.yields.rewind(yields-start)
+scratch.returns.rewind(returns-start)
+scratch.rewind-narrowings(narrow-start)
+scratch.slots.rewind(slot-start)
+
+────────────────────
++ do open-env
+    - opened TypeEnv
+
+env = opened
+env-open = true
+
+────────────────────
++ do close-env
+
+if env-open
+    types.env-release(env)
+    env-open = false
+
+────────────────────
++ do is-captured Bool
+    - slot SlotId
+
+for offset in 0 .. < captures.count
+    if bindings.captures[captures.start + offset].slot == slot
+        = true
+= false
+
+────────────────────
++ known TypeId
+    - slot SlotId
+
+|? index < slots.count
+    scratch.slots[slot-start + index]
+??
+    invalid-type
+
+.. index = slot - slots.start
+
+────────────────────
++ slot-type TypeId
+    - slot SlotId
+
+|? outer && is-captured(slot)
+    outer.slot-type(slot)
+|? narrowed != no-type
+    narrowed
+??
+    known(slot)
+
+.. narrowed = scratch.narrowed-since(narrow-start, slot-key(slot))
+
+────────────────────
++ do note-member
+    - key NarrowingKey
+    - declared TypeId
+
+` A property the flow comes to know something of, `declared` before it does. The reference
+` comes to know it here too: where no other property is known, the two agree from here.
+. live = false
+for known in narrowed-members
+    if is-live(known)
+        live = true
+if !live
+    settle-members(false)
+if !members-narrowed || members-floor > scratch.narrowings.mark
+    members-floor = scratch.narrowings.mark
+members-narrowed = true
+if narrowed-members.find(key) == null
+    narrowed-members += key
+    member-declared += declared
+. kept = kept-members.find(key)
+if kept != null
+    -= kept-members[kept .. < kept + 1]
+
+────────────────────
++ do forget-members
+
+` Something ran that ends what is known of every property, here and in the reference: a
+` call this pass settled, a call of a function value or a nested function, a print, a loop
+` begun. Each time is counted (`forgotten`).
+members-narrowed = false
+forgotten += 1
+forget-shared()
+
+────────────────────
++ do forget-escaped
+    - key NarrowingKey
+
+` A value stored where the reference no longer follows it ends what is known of what it is
+` read from and of what is reached through that: a property or a path from one is left as it
+` was before it was known, as an assignment of it leaves it, and so is every path from what
+` the value is read from. What is known of a local itself the reference keeps.
+if is-member-key(key)
+    . index = narrowed-members.find(key)
+    if index != null && is-live(key)
+        push-assigned(key, member-declared[index])
+reset-unstable-paths(key)
+
+────────────────────
++ do forget-receiver
+
+` The receiver stored where the reference no longer follows it ends what is known of every
+` property of it and of every path from one (`forget-escaped`).
+for position in 0 .. < narrowed-members.length
+    . key = narrowed-members[position]
+    if !is-path-key(key) && is-live(key)
+        push-assigned(key, member-declared[position])
+for index in 0 .. < path-bases.length
+    if is-member-key(path-bases[index]) && !is-path-key(path-bases[index])
+        push-assigned(path-key-at(index as U32), path-declared[index])
+        reset-paths(path-key-at(index as U32))
+
+────────────────────
++ do forget-shared
+
+` A call ran. It ends what is known of a local this function assigns that a nested
+` function typed by now captures, here and in the reference, where what is known is that
+` an optional holds a value. Anything else known the reference keeps, so it is kept here,
+` and a read of the local wavers.
+for index in 0 .. < path-bases.length
+    . base = path-bases[index]
+    if path-stable[index] && !is-member-key(base) && is-changed-elsewhere(base)
+        . key = path-key-at(index as U32)
+        if is-narrowed-path(key)
+            push-assigned(key, path-declared[index])
+        reset-stable-paths(key)
+for slot in shared-slots
+    if (bindings.slots[slot].flags /and/ SlotFlag.slot-assigned-own) == 0 || !is-narrowed(slot)
+        continue
+    . held = known(slot)
+    . found = scratch.narrowed-since(narrow-start, slot-key(slot))
+    if types.is-optional(held) && types.optional-inner(held) == found
+        push-assigned(slot-key(slot), held)
+
+────────────────────
++ do share
+    - slot SlotId
+
+` A nested function that captures a local of this frame is typed: from here the local may
+` change wherever anything runs.
+if shared-slots.find(slot) == null
+    shared-slots += slot
+
+────────────────────
++ is-narrowed Bool
+    - slot SlotId
+
+narrowed != no-type && narrowed != known(slot)
+
+.. narrowed = scratch.narrowed-since(narrow-start, slot-key(slot))
+
+────────────────────
++ is-tested Bool
+    - slot SlotId
+
+` Whether what is known of a local beyond its type is what a test found, not what an
+` assignment left.
+is-narrowed(slot) && !scratch.was-assigned(narrow-start, slot-key(slot))
+
+────────────────────
++ wavers Bool
+    - slot SlotId
+
+` Whether the flow knows more of a local than its type where a nested function may have
+` assigned it since. The reference then forgets at the calls it emits, or reads what the
+` local held when it was tested.
+shared-slots.find(slot) != null && is-narrowed(slot)
+
+────────────────────
++ do knows-properties Bool
+
+` Whether the flow knows anything a call ends: of a property, or of a local a nested function
+` may assign.
+for key in narrowed-members
+    if is-live(key)
+        = true
+for slot in shared-slots
+    if is-narrowed(slot)
+        = true
+= false
+
+────────────────────
++ do doubt-members
+
+` Something ran that the reference may forget properties at, where this pass does not.
+members-doubted = true
+
+────────────────────
++ do doubt-members-at
+    - narrowed Bool
+
+` Doubts the members as `doubt-members` does, with whether any is narrowed put back to
+` `narrowed`, as it was before the value just typed.
+members-narrowed = narrowed
+members-doubted = true
+
+────────────────────
++ do keep-members
+    - known [NarrowingKey]
+
+` Properties were forgotten where the reference may still know them: in an arm of a match
+` that goes on, those `known` before the arm. What its own test found of one the reference
+` forgets past the match.
+for key in known
+    if kept-members.find(key) == null
+        kept-members += key
+
+────────────────────
++ live-members [NarrowingKey]
+
+` The properties a test's finding holds of here (`is-live`).
+each in narrowed-members when is-live(each)
+
+────────────────────
++ is-doubted Bool
+    - key NarrowingKey
+
+` Whether what this pass knows of a property may differ from what the reference knows of
+` it. The reference forgets every property at each call it emits but a probe's and each
+` conversion that is one there, and this pass at the calls it settles: a call or a conversion
+` that may be a call there (`converts-since`) recorded since the property was known, with
+` nothing forgotten, leaves the two in doubt.
+!is-stable-path(key) && (kept-members.find(key) != null || (is-live(key) && is-unsure))
+
+────────────────────
++ is-stable-path Bool
+    - key NarrowingKey
+
+is-path-key(key) && path-stable[path-index(key)]
+
+────────────────────
++ knows-member Bool
+    - key NarrowingKey
+
+members-narrowed || is-stable-path(key)
+
+────────────────────
+_ is-live Bool
+    - key NarrowingKey
+
+` Whether a test's finding of a property holds here. An assignment leaves a property as it
+` is declared, here and in the reference.
+members-narrowed && scratch.narrowed-since(member-start, key) != no-type && unassigned
+
+.. unassigned = !scratch.was-assigned(member-start, key)
+
+────────────────────
+_ get member-start ScratchMark
+
+` The first narrowing of a property that may hold here: none from before the flow last knew
+` nothing of properties holds again when it comes to know one.
+|? members-floor > narrow-start
+    members-floor
+??
+    narrow-start
+
+────────────────────
+_ get is-unsure Bool
+
+members-doubted || calls-since(members-calls) || converts-since(members-conversions)
+
+────────────────────
+_ do calls-since Bool
+    - start Size
+
+` Whether a call this frame's instance makes was recorded since `start`, but for one the
+` compiler answers with no call of its own (`answers-in-place`) and one a probe makes of the
+` probes module, which changes no property here or in the reference. The calls of other
+` functions typed meanwhile, as what a conversion or a call demands, are not this one's.
+. position = facts.latest-call-of(instance)
+while position != no-fact && (position as Size) >= start
+    . call = facts.calls[position]
+    . probes = plain-probe || call.form == .call-probe-metric
+        .. plain-probe = call.form == .call-probe || call.form == .call-probe-head
+    if !probes && !facts.answers-in-place(instance, call.syntax)
+        = true
+    position = facts.prior-call(position)
+= false
+
+────────────────────
+_ do converts-since Bool
+    - start Size
+
+` Whether a conversion recorded since `start` may be a call in the reference: any but one that
+` takes a value as what it is, as a class it derives from or an optional of it, or as a
+` number, a truth value or a pointer, which the reference makes in place, and one that takes
+` a function named as a C function's, whose value is the address of its code. The
+` conversions of other functions typed meanwhile are not this one's.
+. position = facts.latest-conversion-of(instance)
+while position != no-fact && (position as Size) >= start
+    . fact = facts.conversions[position]
+    . kind = fact.kind
+    . casts = kind == .relation-side-cast && runs-code
+        .. runs-code = fact.casts || fact.callee != no-instance || fact.runs != no-instance
+    . in-place = plain || kind == .relation-wrap-cast || (kind == .relation-side-cast && !casts)
+        .. plain = kind == .relation-same || kind == .relation-equal || kind == .relation-up-cast
+    if !in-place && !is-code-address(fact)
+        = true
+    position = facts.prior-conversion(position)
+= false
+
+────────────────────
+_ is-code-address Bool
+    - fact ConversionFact
+
+known-from && is-c-function(types, fact.to) && types.completions[fact.from].intrinsic == .binding
+
+.. known-from = fact.from != no-type && fact.from != invalid-type
+
+────────────────────
+_ do settle-members
+    - unsure Bool
+
+members-doubted = unsure
+members-calls = facts.calls.length
+members-conversions = facts.conversions.length
+
+────────────────────
++ save-members MemberState
+
+MemberState(members-narrowed, is-unsure, members-floor)
+
+────────────────────
++ do restore-members
+    - state MemberState
+
+` What was known of properties at a place holds again after a branch from it that leaves:
+` nothing the branch did reaches what follows.
+members-narrowed = state.narrowed
+members-floor = state.floor
+settle-members(state.unsure)
+
+────────────────────
++ do merge-members
+    - other MemberState
+
+` What is known of properties where two branches meet: what both know, in doubt where
+` either is, and nothing either forgot.
+. unsure = is-unsure || other.unsure
+members-narrowed = members-narrowed && other.narrowed
+if other.floor > members-floor
+    members-floor = other.floor
+settle-members(unsure)
+
+────────────────────
++ narrowed-slot TypeId
+    - slot SlotId
+
+` What the flow knows a local of this frame to hold, where that is more than its type, or
+` no type.
+scratch.narrowed-since(narrow-start, slot-key(slot))
+
+────────────────────
++ do assign
+    - slot SlotId
+    - assigned TypeId
+
+. index = slot - slots.start
+if index < slots.count
+    scratch.slots[slot-start + index] = assigned
+
+────────────────────
++ do narrowed-member TypeId
+    - key NarrowingKey
+
+` What the flow knows a property or a path to hold here, or no type. Each read that finds
+` something is counted (`member-reads`); the flow's own joins ask `held-member`, which is not.
+. narrowed = held-member(key)
+if narrowed != no-type
+    member-reads += 1
+= narrowed
+
+────────────────────
++ held-member TypeId
+    - key NarrowingKey
+
+scratch.narrowed-since(if is-stable-path(key) then narrow-start else member-start, key)
+
+────────────────────
++ do path-key NarrowingKey
+    - base NarrowingKey
+    - name Atom
+    - declared TypeId
+    - stable Bool
+
+. found = find-path-key(base, name)
+if found
+    = found
+path-bases += base
+path-names += name
+path-declared += declared
+path-stable += stable
+= path-key-at((path-bases.length - 1) as U32)
+
+────────────────────
++ do find-path-key NarrowingKey?
+    - base NarrowingKey
+    - name Atom
+
+for index in 0 .. < path-bases.length
+    if path-bases[index] == base && path-names[index] == name
+        = path-key-at(index as U32)
+= null
+
+────────────────────
++ path-declared-type TypeId
+    - key NarrowingKey
+
+path-declared[path-index(key)]
+
+────────────────────
++ do reset-paths
+    - base NarrowingKey
+
+` Leaves every path from a key as it was before it was known, and every path from those.
+for index in 0 .. < path-bases.length
+    if path-bases[index] == base
+        push-assigned(path-key-at(index as U32), path-declared[index])
+        reset-paths(path-key-at(index as U32))
+
+────────────────────
++ do reset-unstable-paths
+    - base NarrowingKey
+
+for index in 0 .. < path-bases.length
+    if path-bases[index] == base
+        . key = path-key-at(index as U32)
+        if path-stable[index]
+            reset-unstable-paths(key)
+        else
+            push-assigned(key, path-declared[index])
+            reset-paths(key)
+
+────────────────────
++ do reset-stable-paths
+    - base NarrowingKey
+
+for index in 0 .. < path-bases.length
+    if path-bases[index] == base && path-stable[index]
+        . key = path-key-at(index as U32)
+        if is-narrowed-path(key)
+            push-assigned(key, path-declared[index])
+        reset-stable-paths(key)
+
+────────────────────
+_ is-narrowed-path Bool
+    - key NarrowingKey
+
+held != no-type && held != path-declared[path-index(key)]
+
+.. held = scratch.narrowed-since(narrow-start, key)
+
+────────────────────
+_ is-changed-elsewhere Bool
+    - slot SlotId
+
+assigned && (shared-slots.find(slot) != null || is-captured(slot))
+
+.. assigned = (bindings.slots[slot].flags /and/ SlotFlag.slot-assigned) != 0
+
+────────────────────
++ do push-narrowing ScratchMark
+    - key NarrowingKey
+    - projected TypeId
+    - cases U64 = 0
+
+. mark = scratch.narrowings.mark
+scratch.push-narrowing(Narrowed(key, projected, cases))
+= mark
+
+────────────────────
++ do push-assigned
+    - key NarrowingKey
+    - projected TypeId
+    - cases U64 = 0
+
+` What an assignment leaves a key as, which holds past the end of the region it is made in.
+scratch.push-narrowing(Narrowed(key, projected, cases, true))
+
+────────────────────
++ is-evaluated Bool
+    - slot SlotId
+
+` Whether every way here passed a read of a lazy local kept behind a flag, so that the local
+` has its value here and a read of it evaluates nothing.
+scratch.narrowed-since(narrow-start, evaluated-key(slot)) != no-type
+
+────────────────────
++ do note-evaluated
+    - slot SlotId
+
+` A read of a lazy local kept behind a flag gave it its value: what follows in the region the
+` read is in, and no further, has it.
+if !is-evaluated(slot)
+    scratch.push-narrowing(Narrowed(evaluated-key(slot), types.bool-type))
+
+────────────────────
++ do tested-locals [SlotId]
+
+` The locals of this frame that a test, not an assignment, last found something of, each once.
+. found [SlotId]
+. seen [NarrowingKey]
+. position = scratch.narrowings.length
+while position > narrow-start
+    position -= 1
+    . row = scratch.narrowings[position]
+    if is-member-key(row.key) || is-evaluated-key(row.key) || seen.find(row.key) != null
+        continue
+    seen += row.key
+    if !row.assigned
+        found += row.key
+= found
+
+────────────────────
++ assigned-since [Narrowed]
+    - mark ScratchMark
+
+scratch.assigned-since(mark)
+
+────────────────────
++ get assigned-in-frame [Narrowed]
+
+` What each key an assignment settled in this frame is narrowed to now (`assigned-since`).
+scratch.assigned-since(narrow-start)
+
+────────────────────
++ do keep-assigned
+    - settled [Narrowed]
+
+` Makes what assignments left their keys as known again, after the region they were made in
+` ended and took it back: the region always runs before what follows it.
+. position = settled.length
+while position != 0
+    position -= 1
+    . row = settled[position]
+    push-assigned(row.key, row.type, row.cases)
+
+────────────────────
++ narrowed-cases U64
+    - key NarrowingKey
+
+scratch.narrowed-cases-since(narrow-start, key)
+
+────────────────────
++ do note-assignment
+    - syntax SyntaxId
+    - slot SlotId
+    - settled TypeId
+
+assigned-syntax += syntax
+assigned-slots += slot
+assigned-types += settled
+
+────────────────────
++ do forget-assignments
+    - mark ScratchMark
+
+-= assigned-syntax[mark .. < assigned-syntax.length]
+-= assigned-slots[mark .. < assigned-slots.length]
+-= assigned-types[mark .. < assigned-types.length]
+
+────────────────────
++ do pop-narrowing
+    - mark ScratchMark
+
+scratch.rewind-narrowings(mark)
+
+────────────────────
++ do note-return
+    - returned TypeId
+    - syntax SyntaxId
+
+scratch.returns.push(TypedSite(returned, syntax))
+
+────────────────────
++ do note-yielded
+    - yielded TypeId
+    - syntax SyntaxId
+
+` Keeps where a yield is written with the type of what it yields, until the function's
+` items have their type and each yield is converted to it.
+scratch.yields.push(TypedSite(yielded, syntax))
+
+────────────────────
++ do note-outgoing
+    - error TypeId
+    - syntax SyntaxId
+
+` An error leaving the function is tried with the transformers declared for it, in the order
+` TypeScript tries them, and leaves as what each raises, or as itself where none takes it.
+if transforms.length == 0
+    scratch.outgoing.push(Outgoing(error, syntax))
+    =
+. tried [U32]
+order-transforms(relations, error, transforms, tried)
+. leaving [TypeId]
+transform-leaving(facts, types, instance, syntax, error, transforms, tried, leaving, true)
+for type in leaving
+    scratch.outgoing.push(Outgoing(type, syntax))
+
+────────────────────
++ do defer-outgoing
+    - callee InstanceId
+    - syntax SyntaxId
+
+` A call lets its callee's errors out of the function before they are known. Its place among
+` the errors that leave is kept, with the call's fact and the transformers declared so far.
+. call = facts.latest-call(instance, syntax)
+. declared U32 = transforms.length as U32
+scratch.outgoing.push(Outgoing(no-type, syntax, callee, call, declared))
+
+────────────────────
++ do add-transform
+    - source TypeId
+    - raised TypeId
+    - chain [TypeId]
+    - site SyntaxId
+    - fact U32
+
+transforms += ErrorTransform(source, raised, site, fact, chain.length != 0)
+transform-starts += transform-chains.length
+for link in chain
+    transform-chains += link
+
+────────────────────
++ do has-transform Bool
+    - source TypeId
+    - chain [TypeId]
+
+` Whether a transformer is already declared for an error reached through the same chain of
+` earlier errors.
+for index in 0 .. < transforms.length
+    if transforms[index].source != source
+        continue
+    . start = transform-starts[index]
+    . next = index + 1
+    . end = if next < transform-starts.length then next-start else transform-chains.length
+        .. next-start = transform-starts[next]
+    if end - start != chain.length
+        continue
+    . same = true
+    for offset in 0 .. < chain.length
+        if transform-chains[start + offset] != chain[offset]
+            same = false
+    if same
+        = true
+= false
+
+────────────────────
++ do names-type-param Bool
+    - type SyntaxId
+
+` Whether a type as written names a type parameter of the function being typed, or of its
+` class.
+for id in tree.subtree-start(type) .. < type + 1
+    do match? tree.nodes[id]
+        | .node-type-identifier(row)
+            if types.env-lookup(env, row.name) != null
+                = true
+= false
+
+────────────────────
++ do diagnose
+    - syntax SyntaxId
+    - kind TypeDiagnosticKind
+    - name Atom? = null
+    - source TypeId = no-type
+    - target TypeId = no-type
+
+facts.record-diagnostic(instance, module, syntax, kind, name, source, target)
+
+────────────────────
++ do mention
+    - mentioned [TypeId]
+
+facts.mention-types(mentioned)
+
+────────────────────
++ zone-entry String
+
+` Where the zone being typed in is entered, as TypeScript names it: the file, line and column
+` of the `do` block that entered it, of the zone the function was first called in, or else of
+` the function's declaration.
+"$shown:${begin.line + 1}:${begin.column + 1}"
+
+.. zone = entered-zone()
+.. begin = program.modules[zone.module].tree.nodes.loc[zone.site].begin
+.. path = program.modules[zone.module].path
+.. shown = if path.length != 0 then path else "no file"
+
+────────────────────
++ zone ZoneEntry
+
+` The zone code being typed is in, which a function it calls is typed in: none outside one.
+if (surround.effects /and/ CompilationEffect.gc-free) == 0 then ZoneEntry() else entered-zone()
+
+────────────────────
+_ entered-zone ZoneEntry
+
+|? surround.zone-site != 0
+    ZoneEntry(module, surround.zone-site)
+|? held.site != 0
+    held
+??
+    ZoneEntry(module, declaration.syntax)
+
+.. held = instances.rows[instance].zone

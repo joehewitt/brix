@@ -1,0 +1,450 @@
+/graphics/boolean
+/graphics/color
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+/units
+
++ boolean-grid-cell-count Index = 20
++ boolean-grid-cell-width I32 = 266
++ boolean-grid-cell-height I32 = 200
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-name String
+    - index
+
+|? index < 10
+    "0$index"
+??
+    "$index"
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-source-a Path
+    - index
+    - cell Rect
+
+|? operation == 3
+    boolean-grid-clip-source-a(kind, cell)
+|? kind == 0
+    boolean-grid-rect-a(cell)
+|? kind == 1
+    boolean-grid-diamond-a(cell)
+|? kind == 2
+    boolean-grid-curve-a(cell)
+|? kind == 3
+    boolean-grid-contained-a(cell)
+??
+    boolean-grid-shared-edge-a(cell)
+
+.. operation = index % 4
+.. kind = boolean-grid-case-index(index)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-source-b Path
+    - index
+    - cell Rect
+
+|? operation == 3
+    boolean-grid-clip-source-b(kind, cell)
+|? kind == 0
+    boolean-grid-rect-b(cell)
+|? kind == 1
+    boolean-grid-diamond-b(cell)
+|? kind == 2
+    boolean-grid-curve-b(cell)
+|? kind == 3
+    boolean-grid-contained-b(cell)
+??
+    boolean-grid-shared-edge-b(cell)
+
+.. operation = index % 4
+.. kind = boolean-grid-case-index(index)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-result Path?
+    - index
+    - cell Rect
+
+match operation
+    |= 0
+        union(a, b)
+    |= 1
+        intersect(a, b)
+    |= 2
+        subtract(a, b)
+    ??
+        clip(a, b)
+
+.. a = boolean-grid-cell-source-a(index, cell)
+.. b = boolean-grid-cell-source-b(index, cell)
+.. operation = index % 4
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-result-fill-color RGBA
+    - index
+
+match operation
+    |= 0
+        RGBA(16%, 56%, 34%, 62%)
+    |= 1
+        RGBA(90%, 55%, 9%, 64%)
+    |= 2
+        RGBA(24%, 45%, 82%, 62%)
+    ??
+        RGBA(3%, 60%, 66%, 62%)
+
+.. operation = index % 4
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-source-a-fill-color
+
+RGBA(12%, 43%, 78%, 13%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-source-b-fill-color
+
+RGBA(86%, 24%, 35%, 13%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-source-a-stroke-color
+
+RGBA(8%, 34%, 74%, 68%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-source-b-stroke-color
+
+RGBA(78%, 15%, 27%, 68%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-clip-source-a-fill-color
+
+RGBA(12%, 43%, 78%, 10%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-clip-source-a-stroke-color
+
+RGBA(8%, 34%, 74%, 52%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-clip-window-stroke-color
+
+RGBA(3%, 7%, 14%, 76%)
+
+━━━━━━━━━━━━━━━━━━━━
++ boolean-grid-cell-border-color
+
+RGBA(3%, 7%, 14%, 10%)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-case-index
+    - index
+
+|? index < 4
+    0
+|? index < 8
+    1
+|? index < 12
+    2
+|? index < 16
+    3
+??
+    4
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-rect-a
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - frame.left
+        - frame.top + frame.height * 0.06
+        - frame.width * 0.66
+        - frame.height * 0.72
+
+.. frame = cell.pad(cell.width * 0.19, cell.height * 0.23)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-rect-b
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - frame.left + frame.width * 0.34
+        - frame.top + frame.height * 0.22
+        - frame.width * 0.66
+        - frame.height * 0.72
+
+.. frame = cell.pad(cell.width * 0.19, cell.height * 0.23)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-diamond-a
+    - cell Rect
+
+. center = cell.center + (-cell.width * 0.08, 0)
+. radius = min(cell.width, cell.height) * 0.34
+. path = Path()
+path.move-to(center + (0, -radius))
+path.line-to(center + (radius, 0))
+path.line-to(center + (0, radius))
+path.line-to(center + (-radius, 0))
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-diamond-b
+    - cell Rect
+
+. center = cell.center + (cell.width * 0.11, 0)
+. radius = min(cell.width, cell.height) * 0.34
+. path = Path()
+path.move-to(center + (0, -radius))
+path.line-to(center + (radius, 0))
+path.line-to(center + (0, radius))
+path.line-to(center + (-radius, 0))
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-curve-a
+    - cell Rect
+
+circle(cell.center + (-cell.width * 0.09, -cell.height * 0.01), min(cell.width, cell.height) * 0.29)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-curve-b
+    - cell Rect
+
+. center = cell.center + (cell.width * 0.09, cell.height * 0.02)
+. radius = min(cell.width, cell.height) * 0.34
+. path = ellipse(center, Dimensions(radius * 0.98, radius * 0.64))
+path.rotate(-17deg, cell.center)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-contained-a
+    - cell Rect
+
+circle(cell.center, min(cell.width, cell.height) * 0.33)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-contained-b
+    - cell Rect
+
+circle(cell.center + (cell.width * 0.05, -cell.height * 0.03), min(cell.width, cell.height) * 0.16)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-shared-edge-a
+    - cell Rect
+
+. frame = cell.pad(cell.width * 0.18, cell.height * 0.19)
+. step-x = frame.x + frame.width * 0.58
+. step-y = frame.y + frame.height * 0.42
+. path = Path()
+path.move-to(frame.left, frame.top)
+path.line-to(step-x, frame.top)
+path.line-to(step-x, step-y)
+path.line-to(frame.right, step-y)
+path.line-to(frame.right, frame.bottom)
+path.line-to(frame.left, frame.bottom)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-shared-edge-b
+    - cell Rect
+
+rectangle(Rect(step-x, frame.y + frame.height * 0.17, frame.width * 0.35, frame.height * 0.66))
+
+.. frame = cell.pad(cell.width * 0.18, cell.height * 0.19)
+.. step-x = frame.x + frame.width * 0.58
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-source-a Path
+    - kind
+    - cell Rect
+
+match kind
+    |= 0
+        boolean-grid-clip-ribbon-a(cell)
+    |= 1
+        boolean-grid-clip-circle-a(cell)
+    |= 2
+        boolean-grid-clip-blob-a(cell)
+    |= 3
+        boolean-grid-clip-compound-a(cell)
+    ??
+        boolean-grid-clip-stepped-a(cell)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-source-b Path
+    - kind
+    - cell Rect
+
+match kind
+    |= 0
+        boolean-grid-clip-rect-b(cell)
+    |= 1
+        boolean-grid-clip-diamond-b(cell)
+    |= 2
+        boolean-grid-clip-slot-b(cell)
+    |= 3
+        boolean-grid-clip-circle-b(cell)
+    ??
+        boolean-grid-clip-offset-rect-b(cell)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-clip-ribbon-a
+    - cell Rect
+
+. path = Path()
+path.move-to(cell.left + cell.width * 0.06, cell.bottom - cell.height * 0.16)
+path.line-to(cell.left + cell.width * 0.22, cell.bottom - cell.height * 0.06)
+path.line-to(cell.right - cell.width * 0.06, cell.top + cell.height * 0.16)
+path.line-to(cell.right - cell.width * 0.22, cell.top + cell.height * 0.06)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-rect-b
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - cell.x + cell.width * 0.29
+        - cell.y + cell.height * 0.25
+        - cell.width * 0.42
+        - cell.height * 0.50
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-circle-a
+    - cell Rect
+
+circle(cell.center + (-cell.width * 0.08, cell.height * 0.02), min(cell.width, cell.height) * 0.39)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-diamond-b
+    - cell Rect
+
+boolean-grid-clip-diamond(cell.center + (cell.width * 0.02, 0), min(cell.width, cell.height) * 0.31)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-clip-blob-a
+    - cell Rect
+
+. center = cell.center + (-cell.width * 0.02, cell.height * 0.01)
+. path = Path()
+path.move-to(center + (-cell.width * 0.38, -cell.height * 0.02))
+path.cubic-curve-to()
+    - center + (-cell.width * 0.34, -cell.height * 0.40)
+    - center + (cell.width * 0.15, -cell.height * 0.42)
+    - center + (cell.width * 0.34, -cell.height * 0.21)
+path.cubic-curve-to()
+    - center + (cell.width * 0.44, cell.height * 0.02)
+    - center + (cell.width * 0.34, cell.height * 0.40)
+    - center + (-cell.width * 0.08, cell.height * 0.39)
+path.cubic-curve-to()
+    - center + (-cell.width * 0.42, cell.height * 0.38)
+    - center + (-cell.width * 0.46, cell.height * 0.14)
+    - center + (-cell.width * 0.38, -cell.height * 0.02)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-slot-b
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - cell.x + cell.width * 0.41
+        - cell.y + cell.height * 0.15
+        - cell.width * 0.18
+        - cell.height * 0.70
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-clip-compound-a
+    - cell Rect
+
+. path = Path()
+path.add-path(boolean-grid-clip-compound-left-a(cell))
+path.add-path(boolean-grid-clip-compound-middle-a(cell))
+path.add-path(boolean-grid-clip-compound-right-a(cell))
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-circle-b
+    - cell Rect
+
+circle(cell.center + (cell.width * 0.02, -cell.height * 0.01), min(cell.width, cell.height) * 0.34)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-compound-left-a
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - cell.x + cell.width * 0.20
+        - cell.y + cell.height * 0.42
+        - cell.width * 0.20
+        - cell.height * 0.16
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-compound-middle-a
+    - cell Rect
+
+boolean-grid-clip-diamond()
+    - cell.center + (-cell.width * 0.01, -cell.height * 0.01)
+    - min(cell.width, cell.height) * 0.20
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-compound-right-a
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - cell.x + cell.width * 0.60
+        - cell.y + cell.height * 0.42
+        - cell.width * 0.20
+        - cell.height * 0.16
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-clip-stepped-a
+    - cell Rect
+
+. frame = cell.pad(cell.width * 0.09, cell.height * 0.12)
+. path = Path()
+path.move-to(frame.left, frame.top + cell.height * 0.05)
+path.line-to(frame.left + frame.width * 0.44, frame.top + cell.height * 0.05)
+path.line-to(frame.left + frame.width * 0.44, frame.top + frame.height * 0.34)
+path.line-to(frame.left + frame.width * 0.68, frame.top + frame.height * 0.34)
+path.line-to(frame.left + frame.width * 0.68, frame.top + frame.height * 0.58)
+path.line-to(frame.right, frame.top + frame.height * 0.58)
+path.line-to(frame.right, frame.bottom + cell.height * 0.05)
+path.line-to(frame.left, frame.bottom + cell.height * 0.05)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-clip-offset-rect-b
+    - cell Rect
+
+rectangle()
+    - Rect()
+        - cell.x + cell.width * 0.31
+        - cell.y + cell.height * 0.28
+        - cell.width * 0.49
+        - cell.height * 0.48
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-clip-diamond
+    - center Point
+    - radius
+
+. path = Path()
+path.move-to(center + (0, -radius))
+path.line-to(center + (radius, 0))
+path.line-to(center + (0, radius))
+path.line-to(center + (-radius, 0))
+path.close()
+= path

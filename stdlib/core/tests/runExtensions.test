@@ -1,0 +1,1145 @@
+:====
+# Extension functions, getters, and converters work in the declaring module
+
+. thing = Thing()
+-- thing.describe()
+-- thing.label
+-- thing as String
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ describe String
+
+"described"
+
+────────────────────
++ get label String
+
+"label"
+
+────────────────────
++ to String
+
+"converted"
+
+:----
+
+described
+label
+converted
+;====
+:====
+/core/table
+
+. rows = Table'Node(2)
+rows[0] = Node.left(10)
+rows[1] = Node.right(20)
+-- rows[0].label
+-- rows[1].label
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Right is Tuple
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| left Left
+| right Right
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Left
+
+────────────────────
++ get label String
+
+"left:$value"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Right
+
+────────────────────
++ get label String
+
+"right:$value"
+
+:----
+
+left:10
+right:20
+;====
+:====
+/core/table
+# Imported and re-exported union, shared-base, and narrowed-case extensions operate on live
+# Table row views.
+
+./lib/model
+./lib/reexport
+
+. rows = Table'Node(2)
+rows[0] = Node.literal(10, 2)
+rows[1] = Node.call(20, 3)
+
+-- rows[0].describe()
+-- rows[1].describe()
+-- rows[0].source-plus
+
+for row in rows
+    -- row.describe()
+
+do match rows[0]
+    | .literal(literal)
+        -- literal.case-label
+        literal.bump()
+        -- "bumped"
+    | .call
+        -- "unexpected"
+
+-- rows[0] as Node
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Literal is Syntax
+
++ value U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Call is Syntax
+
++ target U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| literal Literal
+| call Call
+
+:----
+%file: lib/extensions.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Node
+
+────────────────────
++ describe String
+
+match this
+    | .literal(literal)
+        "literal:${literal.value}"
+    | .call(call)
+        "call:${call.target}"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Syntax
+
+────────────────────
++ get source-plus U32
+
+this.source + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Literal
+
+────────────────────
++ get case-label String
+
+"literal:${this.value}"
+
+────────────────────
++ do bump
+
+this.value += 5
+
+:----
+%file: lib/reexport.yumi
+
++ ./extensions
+
+:----
+
+literal:2
+call:3
+11
+literal:2
+call:3
+literal:2
+bumped
+(10, 7)
+;====
+:====
+/core/table
+# A concrete-case extension is unavailable on an unmatched union row view.
+
+. rows = Table'Node(1)
+rows[0] = Node.literal(1)
+-- rows[0].only-literal()
+
+━━━━━━━━━━━━━━━━━━━━
++ Literal is Tuple
+
++ value U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Call is Tuple
+
++ target U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| literal Literal
+| call Call
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Literal
+
+────────────────────
++ only-literal String
+
+"literal"
+
+:----
+%crash
+
+Exception: Union case 'call' has no complete dispatch for method 'only-literal'
+<no file:6>
+    -- rows[0].only-literal()
+       ^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+/core/table
+# Logical and explicitly physical row extensions retain the existing ambiguity rule.
+
+. rows = Table'Node(1)
+rows[0] = Node.literal(1)
+-- rows[0].conflict()
+
+━━━━━━━━━━━━━━━━━━━━
++ Literal is Tuple
+
++ value U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Call is Tuple
+
++ target U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| literal Literal
+| call Call
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Node
+
+────────────────────
++ conflict String
+
+"logical"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend TableRow'Node
+
+────────────────────
++ conflict String
+
+"physical"
+
+:----
+%crash
+
+Exception: More than one extension declares "conflict" for TableRow'Node, so the call is ambiguous; remove or rename all but one of them
+<no file:6>
+    -- rows[0].conflict()
+       ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Extension members are visible after import
+
+./lib/model
+./lib/extension
+
+. thing = Thing()
+-- thing.describe()
+-- thing.label
+-- thing as String
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%file: lib/extension.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ describe String
+
+"imported"
+
+────────────────────
++ get label String
+
+"imported-label"
+
+────────────────────
++ to String
+
+"imported-conversion"
+
+:----
+
+imported
+imported-label
+imported-conversion
+;====
+:====
+# Extension members are unavailable without import
+
+./lib/model
+
+-- Thing().describe()
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%file: lib/extension.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ describe String
+
+"hidden"
+
+:----
+%crash
+
+Exception: Thing has no method "describe"
+<no file:4>
+    -- Thing().describe()
+       ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Ambiguous extension methods produce a diagnostic
+
+./lib/model
+./lib/ext-a
+./lib/ext-b
+
+-- Thing().conflict()
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%file: lib/ext-a.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ conflict String
+
+"a"
+
+:----
+%file: lib/ext-b.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ conflict String
+
+"b"
+
+:----
+%crash
+
+Exception: More than one extension declares "conflict" for Thing, so the call is ambiguous; remove or rename all but one of them
+<no file:6>
+    -- Thing().conflict()
+       ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Re-exported extension members are visible to importers
+
+./lib/model
+./lib/reexport
+
+-- Thing().describe()
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%file: lib/extension.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ describe String
+
+"reexported"
+
+:----
+%file: lib/reexport.yumi
+
++ ./extension
+
+:----
+
+reexported
+;====
+:====
+# Extension methods can overload direct methods with a distinct signature
+
+. thing = Thing()
+-- thing.describe()
+thing.describe(7)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ describe String
+
+"direct"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ do describe
+    - value Int
+
+-- "extension$value"
+
+:----
+
+direct
+extension7
+;====
+:====
+# Extension methods can not override direct methods with the same signature
+
+-- Thing().describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ describe String
+
+"direct"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ describe String
+
+"extension"
+
+:----
+%crash
+
+Exception: Extension member conflicts with existing member
+<no file:2>
+    -- Thing().describe()
+       ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Extension getters can not override stored properties
+
+-- Thing().label
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ label = "direct"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ get label String
+
+"extension"
+
+:----
+%crash
+
+Exception: Extension member conflicts with existing member
+<no file:2>
+    -- Thing().label
+       ^^^^^^^^^^^^^
+;====
+:====
+# Ambiguous extension getters produce a diagnostic
+
+-- Thing().label
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ get label String
+
+"a"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ get label String
+
+"b"
+
+:----
+%crash
+
+Exception: More than one extension declares "label" for Thing, so the call is ambiguous; remove or rename all but one of them
+<no file:2>
+    -- Thing().label
+       ^^^^^^^^^^^^^
+;====
+:====
+# Extension converters can not override direct converters
+
+-- Thing() as String
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ to String
+
+"direct"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ to String
+
+"extension"
+
+:----
+%crash
+
+Exception: Extension member conflicts with existing member
+<no file:2>
+    -- Thing() as String
+       ^^^^^^^^^^^^^^^^^
+;====
+:====
+# Ambiguous extension converters produce a diagnostic
+
+-- Thing() as String
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ to String
+
+"a"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
+────────────────────
++ to String
+
+"b"
+
+:----
+%crash
+
+Exception: Ambiguous extension member
+<no file:2>
+    -- Thing() as String
+       ^^^^^^^^^^^^^^^^^
+;====
+:====
+# Extension fromverters can not override direct fromverters
+
+. bar = Bar()
+-- bar as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ from bar Bar
+
+This()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Foo
+
+────────────────────
++ from bar Bar
+
+This()
+
+:----
+%crash
+
+Exception: Extension member conflicts with existing member
+<no file:3>
+    -- bar as Foo
+       ^^^^^^^^^^
+;====
+:====
+# Ambiguous extension fromverters produce a diagnostic
+
+. bar = Bar()
+-- bar as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Foo
+
+────────────────────
++ from bar Bar
+
+This()
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Foo
+
+────────────────────
++ from bar Bar
+
+This()
+
+:----
+%crash
+
+Exception: Ambiguous extension member
+<no file:3>
+    -- bar as Foo
+       ^^^^^^^^^^
+;====
+:====
+# Conditional extension member is available when the receiver type satisfies where
+
+-- Box'Good().describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Printable is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Good is Printable
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Box''T where T is Printable
+
+────────────────────
++ describe String
+
+"printable"
+
+:----
+
+printable
+;====
+:====
+# Conditional extension member is unavailable when the receiver type does not satisfy where
+
+-- Box'Other().describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Printable is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Other
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Box''T where T is Printable
+
+────────────────────
++ describe String
+
+"printable"
+
+:----
+%crash
+
+Exception: Box'Other has no method "describe"
+<no file:2>
+    -- Box'Other().describe()
+       ^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Generic function uses declaration-site extension visibility
+
+./lib/model
+./lib/use-extension
+
+-- call-describe(Box())
+
+:----
+%file: lib/model.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+:----
+%file: lib/extension.yumi
+
+./model
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Box
+
+────────────────────
++ describe String
+
+"declaration-site"
+
+:----
+%file: lib/use-extension.yumi
+
+./model
+./extension
+
+━━━━━━━━━━━━━━━━━━━━
++ call-describe
+    - box Box
+
+box.describe()
+
+:----
+
+declaration-site
+;====
+:====
+# Concrete extensions do not apply to unresolved generic construction.
+
+. box = Box'Concrete(1)
+. source = Source(box)
+-- source.ping()
+
+━━━━━━━━━━━━━━━━━━━━
++ Concrete
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T is Tuple
+
++ size Size
+
+────────────────────
++ This
+    - size Size
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Box'Concrete
+
+────────────────────
++ marker String
+
+"marker"
+
+━━━━━━━━━━━━━━━━━━━━
++ Readable'Token is Interface
+
+────────────────────
++ to Box'Concrete
+
+TokenStream'Token(this).read-box()
+
+━━━━━━━━━━━━━━━━━━━━
++ TokenStream'Token
+
+_ readable Readable'Token
+_ scratch = Box'Token(0)
+
+────────────────────
++ This
+    - readable Readable'Token
+
+────────────────────
++ read-box Box'Concrete
+
+Box'Concrete(scratch.size)
+
+━━━━━━━━━━━━━━━━━━━━
++ Source'Value
+    is Readable'Value
+
++ box Box'Value
+
+────────────────────
++ This
+    - box Box'Value
+
+────────────────────
++ ping String
+
+"pong"
+
+:----
+
+pong
+;====
+:====
+# Extension as clauses parse, then produce phase 1 NYI during AST lowering
+
+━━━━━━━━━━━━━━━━━━━━
++ SomeInterface is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing as SomeInterface
+
+────────────────────
++ describe String
+
+"nyi"
+
+:----
+%crash
+
+Exception: Not yet implemented
+<no file:9>
+    + extend Thing as SomeInterface
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Stored properties are rejected in phase 1 extensions
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Thing
+
++ value Int
+
+:----
+%crash
+
+Exception: Stored properties are not allowed in extensions
+<no file:8>
+    + value Int
+    ^^^^^^^^^^^
+;====
+:================================================================================================
+# Generic and backing-specific extensions use the constructor's final concrete owner type.
+
+. managed = ConstructorExtensionBox'U32()
+. native = ConstructorExtensionBox'U32(ExtensionArenaToken())
+-- managed.generic-label()
+-- native.generic-label()
+-- native.arena-label()
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionArenaToken
+
+━━━━━━━━━━━━━━━━━━━━
++ ManagedExtensionBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaExtensionBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorExtensionBox'Value'Backing
+    - Backing = ManagedExtensionBacking'Value
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - token ExtensionArenaToken
+    - Backing = ArenaExtensionBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ConstructorExtensionBox''Value''Backing
+
+────────────────────
++ generic-label String
+
+"generic"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ConstructorExtensionBox'U32'(ArenaExtensionBacking'U32)
+
+────────────────────
++ arena-label String
+
+"arena"
+
+:------------------------------------------------------------------------------------------------
+
+generic
+generic
+arena
+;====
+:====
+# A method and a getter that `extend` adds to a number or to text take the value as `this`.
+
+. x = 7
+-- x.double()
+-- x.double().double()
+-- x.half
+-- "ab".wrap("[", "]")
+-- (5).double()
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Int
+
+────────────────────
++ double Int
+
+this * 2
+
+────────────────────
++ get half Int
+
+this / 2
+
+━━━━━━━━━━━━━━━━━━━━
++ extend String
+
+────────────────────
++ wrap String
+    - left String
+    - right String
+
+left ++ this ++ right
+
+:----
+
+14
+28
+3
+[ab]
+10
+;====
+:====
+# The receiver of a method is evaluated before its arguments.
+
+-- show(1).plus(show(2), show(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ do show Int
+    - n Int
+
+-- n
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Int
+
+────────────────────
++ plus Int
+    - a Int
+    - b Int
+
+this + a + b
+
+:----
+
+1
+2
+3
+6
+;====
+:====
+# A name after a number and a dot is the number's unit, not a member.
+
+-- 5.double()
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Int
+
+────────────────────
++ double Int
+
+this * 2
+
+:----
+%crash
+
+Exception: Unit "double" not found
+<no file:2>
+    -- 5.double()
+         ^^^^^^
+;====
+:====
+# An extension gives a member to a class that has a subclass.
+
+. b Base = Kid()
+-- Base().who()
+-- Kid().who()
+-- b.who()
+-- b.tag
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ name String
+
+"base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kid is Base
+
+────────────────────
++ name String
+
+"kid"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Base
+
+────────────────────
++ who String
+
+"ext ${name()}"
+
+────────────────────
++ get tag String
+
+"tag ${name()}"
+
+:----
+
+ext base
+ext kid
+ext kid
+tag kid
+;====
+:====
+# An extension that names its class's parameter matches every instance, and its methods take their own parameters written.
+. d = Holder'Int()
+-- d.get'Int()
+-- d.describe'String()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Event
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Holder'Event
+
+────────────────────
++ get'T String
+    - T is! Event
+
+"event"
+
+────────────────────
++ describe'T String
+
+"described"
+
+:----
+
+event
+described
+;====
+:====
+# A method that `extend Number` adds takes the number it is called on as `this`, of that number's own type.
+
+. i = 5
+. f = 2.5
+-- i.doubled()
+-- f.doubled()
+-- i.kind()
+-- f.kind()
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Number
+
+────────────────────
++ doubled
+
+this * 2
+
+────────────────────
++ kind String
+
+"${type-of this}"
+
+:----
+
+10
+5
+[TypeInfo I64]
+[TypeInfo F64]
+;====

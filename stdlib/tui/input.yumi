@@ -1,0 +1,50 @@
+/os/file
+/time/deadline
+/time/duration
+
++ terminal-escape-delay = 50ms
+
+_ escape-byte Byte = 27
+
+━━━━━━━━━━━━━━━━━━━━
++ TerminalInput
+    is ByteReadable
+    is Decodable'Char
+
++ source File
++ escape-delay = terminal-escape-delay
+
+_ is-escape-open = false
+_ replay = Byte[0]
+_ replay-offset Size
+
+────────────────────
++ This
+    - source File
+
+────────────────────
++ do read Size ?! Error
+    - size Size
+    - buffer Byte[]
+
+if is-escape-open
+    is-escape-open = false
+    if !is-readable-within(escape-delay)
+        replay = Array'Byte("[27u")
+        replay-offset = 0
+if replay-offset < replay.size
+    . left = replay.size - replay-offset
+    . count = if size < left then size else left
+    buffer[0 .. < count] = replay[replay-offset .. < replay-offset + count]
+    replay-offset += count
+    = count
+. count = source.read(size, buffer)
+is-escape-open = count > 0 && buffer[count - 1] == escape-byte
+= count
+
+────────────────────
+_ do is-readable-within Bool
+    - delay Nanoseconds
+
+. waited = catch wait-until-readable(source.fd, Deadline(delay))
+= !(waited is TimeoutError)

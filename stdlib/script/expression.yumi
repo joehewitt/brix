@@ -1,0 +1,349 @@
+./token
+./value
+/graphics/point
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPrecedence is Union
+
+| slot
+| comparison
+| range
+| sum
+| product
+| prefix
+| postfix
+| atom
+
+────────────────────
++ get level Size
+
+match this
+    |= .slot
+        0
+    |= .comparison
+        1
+    |= .range
+        2
+    |= .sum
+        3
+    |= .product
+        4
+    |= .prefix
+        5
+    |= .postfix
+        6
+    ??
+        7
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptOperator is Union
+
+| add
+| subtract
+| multiply
+| divide
+| remainder
+| less
+| greater
+| at-most
+| at-least
+| equal
+| unequal
+
+────────────────────
++ get symbol
+
+match this
+    |= .add
+        "+"
+    |= .subtract
+        "-"
+    |= .multiply
+        "*"
+    |= .divide
+        "/"
+    |= .less
+        "<"
+    |= .greater
+        ">"
+    |= .at-most
+        "<="
+    |= .at-least
+        ">="
+    |= .equal
+        "="
+    |= .unequal
+        "!="
+    ??
+        "%"
+
+────────────────────
++ get compares Bool
+
+match this
+    |= .less
+        true
+    |= .greater
+        true
+    |= .at-most
+        true
+    |= .at-least
+        true
+    |= .equal
+        true
+    |= .unequal
+        true
+    ??
+        false
+
+────────────────────
++ get precedence
+
+|? compares
+    ScriptPrecedence.comparison
+|? this == ScriptOperator.add || this == ScriptOperator.subtract
+    ScriptPrecedence.sum
+??
+    ScriptPrecedence.product
+
+━━━━━━━━━━━━━━━━━━━━
++ script-operator-named ScriptOperator?
+    - symbol String
+
+match? symbol
+    |= "+"
+        ScriptOperator.add
+    |= "-"
+        ScriptOperator.subtract
+    |= "*"
+        ScriptOperator.multiply
+    |= "/"
+        ScriptOperator.divide
+    |= "%"
+        ScriptOperator.remainder
+    |= "<"
+        ScriptOperator.less
+    |= ">"
+        ScriptOperator.greater
+    |= "<="
+        ScriptOperator.at-most
+    |= ">="
+        ScriptOperator.at-least
+    |= "="
+        ScriptOperator.equal
+    |= "!="
+        ScriptOperator.unequal
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptExpression
+
+────────────────────
++ get precedence
+
+ScriptPrecedence.atom
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptLiteral is ScriptExpression
+
++ value ScriptValue
++ text String
+
+────────────────────
++ This
+    - value
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptReferenceExpression is ScriptExpression
+
++ reference ScriptReference
++ name String
+
+────────────────────
++ This
+    - reference
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptNegation is ScriptExpression
+
++ operand ScriptExpression
+
+────────────────────
++ This
+    - operand
+
+────────────────────
++ get precedence
+
+ScriptPrecedence.prefix
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptBinary is ScriptExpression
+
++ operator ScriptOperator
++ left ScriptExpression
++ right ScriptExpression
+
+────────────────────
++ This
+    - operator
+    - left
+    - right
+
+────────────────────
++ get precedence
+
+operator.precedence
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPointExpression is ScriptExpression
+
++ x ScriptExpression
++ y ScriptExpression
++ closed Bool
+
+────────────────────
++ This
+    - x
+    - y
+    - closed = true
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptGroup is ScriptExpression
+
++ inner ScriptExpression
++ closed Bool
+
+────────────────────
++ This
+    - inner
+    - closed = true
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPhraseExpression is ScriptExpression
+
++ kind String
++ arguments [String = ScriptExpression]
+
+────────────────────
++ This
+    - kind
+    - arguments [String = ScriptExpression] = Map'String'ScriptExpression()
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptHole is ScriptExpression
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptUnresolved is ScriptExpression
+
++ token ScriptToken
+
+────────────────────
++ This
+    - token
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptSequence is ScriptExpression
+
++ items [ScriptExpression]
+
+────────────────────
++ This
+    - items
+
+────────────────────
++ get precedence
+
+ScriptPrecedence.slot
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptListExpression is ScriptExpression
+
++ items [ScriptExpression]
+
+────────────────────
++ This
+    - items
+
+────────────────────
++ get precedence
+
+ScriptPrecedence.slot
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptErrorKind is Union
+
+| incomplete
+| unresolved
+| type-mismatch
+| missing
+| out-of-range
+| division-by-zero
+| non-finite
+| unknown-phrase
+| failed
+| dependency
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptError is Error
+
++ kind ScriptErrorKind
++ subtree ScriptExpression?
+
+────────────────────
++ This
+    - kind
+    - text String
+    - subtree ScriptExpression? = null
+
+message = text
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-literal-value ScriptValue?
+    - expression ScriptExpression
+
+do match expression
+    | literal ScriptLiteral
+        = literal.value
+    | reference ScriptReferenceExpression
+        =? null if reference.reference.kind != ScriptReferenceKind.node || reference.reference.copy
+        = ScriptValue.node(ScriptNode(reference.reference.id, ""))
+    | negation ScriptNegation
+        . number = script-literal-value(negation.operand)?.as-number
+        =? ScriptValue.number(-number) if number
+        = null
+    | point ScriptPointExpression
+        . x = script-literal-value(point.x)?.as-number
+        . y = script-literal-value(point.y)?.as-number
+        =? ScriptValue.point(Point(x, y)) if x && y
+        = null
+    | group ScriptGroup
+        = script-literal-value(group.inner)
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-is-complete Bool
+    - expression ScriptExpression
+
+do match expression
+    | negation ScriptNegation
+        = script-is-complete(negation.operand)
+    | binary ScriptBinary
+        = script-is-complete(binary.left) && script-is-complete(binary.right)
+    | point ScriptPointExpression
+        = script-is-complete(point.x) && script-is-complete(point.y)
+    | group ScriptGroup
+        = script-is-complete(group.inner)
+    | phrase ScriptPhraseExpression
+        = all(phrase.arguments.values) • where script-is-complete(each)
+    | list ScriptListExpression
+        = all(list.items) • where script-is-complete(each)
+    | literal ScriptLiteral
+        = true
+    | reference ScriptReferenceExpression
+        = true
+    ??
+        = false

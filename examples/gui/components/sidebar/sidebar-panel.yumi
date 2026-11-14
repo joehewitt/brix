@@ -1,0 +1,164 @@
+./files
+./theme
+/graphics/primitives
+/graphics/text
+/gui
+/gui/icons/lucide/box
+/gui/icons/lucide/download
+/gui/icons/lucide/inbox
+/gui/icons/lucide/map
+/gui/icons/lucide/palette
+/gui/icons/lucide/plus
+/gui/icons/lucide/rocket
+/gui/icons/lucide/search
+/gui/icons/lucide/settings
+/gui/icons/lucide/square-pen
+/gui/icons/lucide/star
+
+━━━━━━━━━━━━━━━━━━━━
++ SidebarPanel is Box
+    using SidebarTheme
+
++ current = "Roadmap"
++ current-title = "Roadmap"
++ last-action = "Nothing yet"
++ is-starred = false
++ projects = ["Compiler", "Runtime", "Standard library", "Website"]
++ teams = ["Language", "Graphics", "Tooling"]
++ files-root = file-fixture()
+
+────────────────────
+
+<This • flex-row
+    <Sidebar • w:264
+        <SidebarSection • pt:10
+            <SidebarItem "New chat" • icon-square-pen
+                action = => do run("New chat")
+            <SidebarItem "Search" • icon-search
+                action = => do run("Search")
+                <Label (trailing) "⌘K" • button-hint
+            <SidebarItem "Inbox" • icon-inbox
+                is-on = #current == "Inbox"
+                action = => do go("Inbox")
+                <Label (trailing) "12" • button-badge
+
+        <SidebarSection "Favorites"
+            <SidebarItem "Roadmap" • icon-map
+                is-on = #current == "Roadmap"
+                action = => do go("Roadmap")
+            <SidebarItem "Launch plan" • icon-rocket
+                is-on = #current == "Launch plan"
+                action = => do go("Launch plan")
+            <SidebarItem "Design system" • icon-palette
+                is-on = #current == "Design system"
+                action = => do go("Design system")
+
+        <SidebarSection "Projects"
+            for project in #projects keyed by project
+                <SidebarItem • icon-box
+                    title = project
+                    is-on = #current == project
+                    action = => do go(project)
+
+        <SidebarSection "Teams"
+            is-expanded = false
+
+            for team in #teams keyed by team
+                <SidebarItem
+                    title = team
+                    is-on = #current == team
+                    action = => do go(team)
+
+        <SidebarSection "Files"
+            <TreeBox'FileNode file-tree
+                root-node = files-root
+                load-children = file-children
+                key-builder = file-key
+                auto-expand = file-is-folder
+                selected-keys = [#current]
+                can-drag = :: node => true
+                can-drop = :: drop => drop.parent.children != null
+
+                for event on selection-changed
+                    open-selected-file()
+
+                for event on dropped
+                    move-files(event)
+
+                <FileRow (row) - row
+                    item = row.#item!
+
+        <Box (footer) • h:52 px:12 items-center
+            <Box • avatar flex-row
+                <Label "AL" • flex:1
+                    text-alignment = TextAlignment.center
+            <Label "Ada Lovelace" • account-name flex:1
+            <IconButton • icon-settings
+                action = => do run("Settings")
+
+    <Box • flex-col flex:1 p:32
+        <Label • content-title
+            text = #current-title
+        <Label • content-note
+            text = "Last action: ${#last-action}"
+
+        <Label "PUSH BUTTONS" • content-heading
+        <Box • flex-row h:28
+            <Button "Save" • mr:8
+                action = => do run("Save")
+            <Button "New file" • mr:8 icon-plus
+                action = => do run("New file")
+            <Button "Starred" • mr:8 icon-star
+                is-on = #is-starred
+                action = => do toggle-star()
+            <Button "Download" • mr:8 icon-download
+                is-enabled = false
+            <Button • icon-settings
+                action = => do run("Settings")
+
+────────────────────
+_ do run
+    - name String
+
+last-action = name
+
+────────────────────
+_ do go
+    - page String
+
+current = page
+current-title = page
+last-action = "Opened $page"
+
+────────────────────
+_ do open-selected-file
+
+. node = file-tree.selected-item
+=? if !node
+current = node.id
+current-title = file-path(files-root, node.id) ?? node.name
+last-action = "Opened ${node.name}"
+
+────────────────────
+_ do move-files
+    - drop TreeBoxDrop'FileNode
+
+. siblings = drop.parent.children
+=? if !siblings
+for node in drop.items
+    detach-file(files-root, node)
+. offset Index = drop.index ?? siblings.length
+for node in drop.items
+    siblings.insert(node, offset)
+    offset += 1
+drop.source?.reload()
+last-action = "Moved ${drop.items[0].name} into ${drop.parent.name}"
+. path = file-path(files-root, current)
+if path
+    current-title = path
+
+────────────────────
+_ do toggle-star
+
+is-starred = !is-starred
+last-action = if is-starred then "Starred" else "Unstarred"

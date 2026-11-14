@@ -1,0 +1,522 @@
+:====
+
+foo()
+
+:----
+%brix
+(main
+  (call foo)
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+</CallExpression>
+;====
+:====
+
+foo(a)
+
+:----
+%brix
+(main
+  (call foo a)
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument>
+        <Id name="a"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo(a, b)
+
+:----
+%brix
+(main
+  (call foo a b)
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument>
+        <Id name="a"/>
+    </Argument>
+    <Argument>
+        <Id name="b"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo(a)(b)
+
+:----
+%brix
+(main
+  (call (call foo a) b)
+)
+:----
+
+<CallExpression>
+    <CallExpression>
+        <Id name="foo"/>
+        <Argument>
+            <Id name="a"/>
+        </Argument>
+    </CallExpression>
+    <Argument>
+        <Id name="b"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo.bar
+
+:----
+%brix
+(main
+  (. foo bar)
+)
+:----
+
+<Get name="bar">
+    <Id name="foo"/>
+</Get>
+;====
+:====
+
+foo.bar.baz
+
+:----
+%brix
+(main
+  (. foo bar baz)
+)
+:----
+
+<Get name="baz">
+    <Get name="bar">
+        <Id name="foo"/>
+    </Get>
+</Get>
+;====
+:====
+
+foo[1]
+
+:----
+%brix
+(main
+  ([] foo 1)
+)
+:----
+
+<Index>
+    <Id name="foo"/>
+    <Integer value="1"/>
+</Index>
+;====
+:====
+
+foo[1][2]
+
+:----
+%brix
+(main
+  ([] ([] foo 1) 2)
+)
+:----
+
+<Index>
+    <Index>
+        <Id name="foo"/>
+        <Integer value="1"/>
+    </Index>
+    <Integer value="2"/>
+</Index>
+;====
+:====
+
+foo.bar[1]
+
+:----
+%brix
+(main
+  ([] (. foo bar) 1)
+)
+:----
+
+<Index>
+    <Get name="bar">
+        <Id name="foo"/>
+    </Get>
+    <Integer value="1"/>
+</Index>
+;====
+:====
+
+foo.bar[1](2)
+
+:----
+%brix
+(main
+  (call ([] (. foo bar) 1) 2)
+)
+:----
+
+<CallExpression>
+    <Index>
+        <Get name="bar">
+            <Id name="foo"/>
+        </Get>
+        <Integer value="1"/>
+    </Index>
+    <Argument>
+        <Integer value="2"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo.bar()[0]
+
+:----
+%brix
+(main
+  ([] (call (. foo bar)) 0)
+)
+:----
+
+<Index>
+    <CallExpression>
+        <Get name="bar">
+            <Id name="foo"/>
+        </Get>
+    </CallExpression>
+    <Integer value="0"/>
+</Index>
+;====
+:====
+
+foo'Bar()
+
+:----
+%brix
+(main
+  (call (of foo Bar))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <params>
+        <TypeId name="Bar"/>
+    </params>
+</CallExpression>
+;====
+:====
+
+foo • by bar
+
+:----
+%brix
+(main
+  (call foo (:by bar))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="by">
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo • of bar • by bar
+
+:----
+%brix
+(main
+  (call foo (:of bar) (:by bar))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="of">
+        <Id name="bar"/>
+    </Argument>
+    <Argument name="by">
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo'Bar • at bar
+
+:----
+%brix
+(main
+  (call (of foo Bar) (:at bar))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <params>
+        <TypeId name="Bar"/>
+    </params>
+    <Argument name="at">
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo.bar'Bar • at bar
+
+:----
+%brix
+(main
+  (call (of (. foo bar) Bar) (:at bar))
+)
+:----
+
+<CallExpression>
+    <Get name="bar">
+        <Id name="foo"/>
+    </Get>
+    <params>
+        <TypeId name="Bar"/>
+    </params>
+    <Argument name="at">
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+Foo'Bar'Baz[0]
+
+:----
+%brix
+(main
+  ([] (of Foo Bar Baz) 0)
+)
+:----
+
+<Index>
+    <TypeArguments>
+        <TypeId name="Foo"/>
+        <TypeId name="Bar"/>
+        <TypeId name="Baz"/>
+    </TypeArguments>
+    <Integer value="0"/>
+</Index>
+;====
+:====
+
+foo?.bar <- 1
+
+:----
+%brix
+(main
+  (<- (?. foo bar) 1)
+)
+:----
+
+<CallExpression>
+    <Get name="<-write">
+        <Get name="bar" optional="true">
+            <Id name="foo"/>
+        </Get>
+    </Get>
+    <Argument>
+        <Integer value="1"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo? <- bar
+
+:----
+%brix
+(main
+  (?<- foo bar)
+)
+:----
+
+<CallExpression>
+    <Get name="<-write" optional="true">
+        <Id name="foo"/>
+    </Get>
+    <Argument>
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+;====
+:====
+
+foo'Bar
+
+:----
+%brix
+(main
+  (of foo Bar)
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <params>
+        <TypeId name="Bar"/>
+    </params>
+</CallExpression>
+;====
+====================================================================================================
+Named arguments
+====================================================================================================
+:================================================================================================
+
+foo • bar
+
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo (:bar))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="bar">
+        <Id name="bar"/>
+    </Argument>
+</CallExpression>
+
+;====
+:================================================================================================
+
+foo • bar 42
+
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo (:bar 42))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="bar">
+        <Integer value="42"/>
+    </Argument>
+</CallExpression>
+
+;====
+:================================================================================================
+
+foo • where 42
+
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo (:where 42))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="where">
+        <Integer value="42"/>
+    </Argument>
+</CallExpression>
+
+;====
+:================================================================================================
+
+foo • is recursive
+
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo (:is-recursive true))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="is-recursive">
+        <Id name="true"/>
+    </Argument>
+</CallExpression>
+;====
+:================================================================================================
+
+foo • is !recursive
+
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo (:is-recursive false))
+)
+:----
+
+<CallExpression>
+    <Id name="foo"/>
+    <Argument name="is-recursive">
+        <Id name="false"/>
+    </Argument>
+</CallExpression>
+;====
+:================================================================================================
+
+foo(...)
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo ...)
+)
+:----
+
+<CallExpression curried="true">
+    <Id name="foo"/>
+</CallExpression>
+
+;====
+:================================================================================================
+
+foo(1, ...)
+
+:------------------------------------------------------------------------------------------------
+%brix
+(main
+  (call foo 1 ...)
+)
+:----
+
+<CallExpression curried="true">
+    <Id name="foo"/>
+    <Argument>
+        <Integer value="1"/>
+    </Argument>
+</CallExpression>
+
+;====

@@ -1,0 +1,102 @@
+
+━━━━━━━━━━━━━━━━━━━━
++ sort'Item @inline
+    - stream <Item>
+    - using Comparer'Item = compare-basic
+    - is-reverse = false
+
+merge-sort-list(List(stream), using, is-reverse)
+
+━━━━━━━━━━━━━━━━━━━━
++ merge-sort'Item @inline
+    - stream <Item>
+    - using Comparer'Item = compare-basic
+    - is-reverse = false
+
+merge-sort-list(List(stream), using, is-reverse)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bubble-sort'Item
+    - stream <Item>
+    - using Comparer'Item = compare-basic
+    - is-reverse = false
+
+. sorted = List(stream)
+. length = sorted.length
+if length == 0
+    = sorted
+
+for i in 0 .. < length - 1
+    for j in 0 .. < length - i - 1
+        . item = sorted[j]
+        . next = sorted[j + 1]
+        . cmp = using(item, next)
+        if (is-reverse && cmp == Comparison.lesser) || (!is-reverse && cmp == Comparison.greater)
+            sorted[j] = next
+            sorted[j + 1] = item
+= sorted
+
+━━━━━━━━━━━━━━━━━━━━
++ compare-basic
+    - a
+    - b
+
+|? a > b
+    Comparison.greater
+|? a < b
+    Comparison.lesser
+??
+    Comparison.equal
+
+━━━━━━━━━━━━━━━━━━━━
+_ merge-sort-list'Item List'Item
+    - items List'Item
+    - compare Comparer'Item
+    - is-reverse Bool
+
+|? items.length <= 1
+    items
+??
+    merge-sorted-lists(left, right, compare, is-reverse)
+
+.. middle = items.length / 2
+.. left = merge-sort-list(items[0 .. < middle], compare, is-reverse)
+.. right = merge-sort-list(items[middle .. < items.length], compare, is-reverse)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do merge-sorted-lists'Item List'Item
+    - left List'Item
+    - right List'Item
+    - compare Comparer'Item
+    - is-reverse Bool
+
+. merged = List'Item()
+merged.reserve(left.length + right.length)
+
+. left-index Index = 0
+. right-index Index = 0
+while left-index < left.length && right-index < right.length
+    . cmp = compare(left[left-index], right[right-index])
+    if should-take-right(cmp, is-reverse)
+        merged += right[right-index]
+        right-index += 1
+    else
+        merged += left[left-index]
+        left-index += 1
+
+while left-index < left.length
+    merged += left[left-index]
+    left-index += 1
+
+while right-index < right.length
+    merged += right[right-index]
+    right-index += 1
+
+= merged
+
+━━━━━━━━━━━━━━━━━━━━
+_ should-take-right
+    - cmp Comparison
+    - is-reverse Bool
+
+(is-reverse && cmp == Comparison.lesser) || (!is-reverse && cmp == Comparison.greater)

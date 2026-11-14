@@ -1,0 +1,97 @@
+`benchmark.meta description: Reuses boolean scratch across 10,000 alternating small and large geometry queries.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,compile-timing
+
+/graphics/boolean
+/graphics/path
+/graphics/point
+/graphics/primitives
+/math
+
+. a = Path()
+. b = Path()
+. result = Path()
+. workspace = BooleanWorkspace()
+
+` Warm both alternating shapes, including every operation kind.
+for warmup in 0 .. < 2
+    reset-alternating-curves(a, b, warmup)
+    for operation in 0 .. < 4
+        boolean-operation-reusing(operation, result, workspace, a, b)
+
+. warm-growth = workspace.growth-count
+. warm-bytes = workspace.retained-bytes
+. result-checksum = 0 as Size
+for frame in 0 .. < 10000
+    reset-alternating-curves(a, b, frame)
+
+    . operation = frame % 4
+    . maybe-result = boolean-operation-reusing(operation, result, workspace, a, b)
+    result-checksum += path-score(maybe-result) + frame + operation
+
+?! Panic("geometry scratch grew after maximum-capacity warmup")
+    if workspace.growth-count != warm-growth
+?! Panic("geometry scratch retained capacity drifted after warmup")
+    if workspace.retained-bytes != warm-bytes
+?! Panic("geometry scratch alternating result checksum changed")
+    if result-checksum != 4049122500
+
+-- "bench-result graphics/geometry-scratch-alternating checksum=$result-checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reset-alternating-curves
+    - a Path
+    - b Path
+    - frame Int
+
+. large = frame % 2 == 1
+. radius-a = if large then 60.0 else 18
+. radius-b = if large then 52.0 else 16
+a.clear()
+b.clear()
+a.append-circle((84, 82), radius-a)
+b.append-ellipse((108, 82), Dimensions(radius-b, radius-b * 0.72))
+b.rotate(-18deg, Point(108, 82))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-operation-reusing
+    - operation
+    - out Path
+    - workspace BooleanWorkspace
+    - a Path
+    - b Path
+
+if operation == 0
+    = boolean-union-reusing(out, workspace, a, b)
+else if operation == 1
+    = boolean-intersect-reusing(out, workspace, a, b)
+else if operation == 2
+    = boolean-subtract-reusing(out, workspace, a, b)
+= boolean-clip-reusing(out, workspace, a, b)
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score
+    - path Path?
+
+|? path
+    solid-path-score(path)
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do solid-path-score Size
+    - path Path
+
+if !path.count
+    = 0
+. bounds = path.bounding-box
+. score = path.count + numeric-check(bounds.x) + numeric-check(bounds.y)
+score += numeric-check(bounds.width) + numeric-check(bounds.height)
+score += numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+= score
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

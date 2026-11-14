@@ -1,0 +1,913 @@
+/ai/media
+/ai/model
+/data
+/data/json
+/net/http
+/net/sse
+/net/url
+/os/file
+/stream/aggregate
+
++ openai-api-base URL = "https://api.openai.com/v1"
+
+━━━━━━━━━━━━━━━━━━━━
++ OpenAICompletions is AIProvider
+
++ api-key String
++ base-url URL
+
+────────────────────
++ This
+    - api-key
+    - base-url = openai-api-base
+
+super()
+
+────────────────────
+_ get headers [HTTPHeader]
+
+* "Authorization", "Bearer $api-key"
+* "Content-Type", "application/json"
+* "Accept", "text/event-stream"
+
+╌╌╌╌╌╌╌╌╌╌ is AIProvider ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do stream <AIEvent>
+    - request AIRequest
+
+for event in openai-provider-events(this, request)
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-provider-events <AIEvent>
+    - provider OpenAICompletions
+    - request AIRequest
+
+. response = openai-provider-response(provider, request)
+    catch canceled TaskCancelationError
+        ?! AIError(AIErrorKind.cancellation, "$canceled")
+    catch terminated TaskTerminationError
+        ?! AIError(AIErrorKind.cancellation, "$terminated")
+if response.status != HTTPStatus.ok
+    . error-body = response.text
+    . error = openai-response-error(response, error-body)
+    do response.close()
+    ?! error
+
+for event in openai-response-events(OpenAIResponseLease(response))
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-provider-response HTTPResponse ?! AIError
+    - provider OpenAICompletions
+    - request AIRequest
+
+. body = openai-request-json(request)
+. endpoint = provider.base-url / "chat/completions"
+
+?! AIError(AIErrorKind.unknown, "$transport-error")
+    catch transport-error Error
+
+= http-send(HTTPRequest(HTTPMethod.post, endpoint, provider.headers, body))
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-openai-json JSON ?! AIError
+    - text String
+    - service-message String
+
+match text
+    ~ \json-text
+    ?! AIError(AIErrorKind.invalid-response, service-message)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-path-bytes Byte[] ?! AIError
+    - path String
+
+?! AIError(AIErrorKind.invalid-request, "Unable to read AI media path")
+    catch Error
+
+. source = File'Byte(path)
+do finally catch source.close()
+. reader ByteReadable = source
+. bytes = Byte[0]
+while true
+    . chunk = Byte[4096]
+    . count = reader.read(chunk.size, chunk)
+    if count == 0
+        break
+    . old-size = bytes.size
+    bytes = bytes.resize(old-size + count)
+    bytes[old-size ...] = chunk[0 .. < count]
+= bytes
+
+━━━━━━━━━━━━━━━━━━━━
++ OpenAIResponseLease
+
++ response HTTPResponse
++ close-count Size
++ is-closed Bool
+
+────────────────────
++ This
+    - response
+
+────────────────────
++ do close
+
+=? if is-closed
+
+is-closed = true
+close-count += 1
+response.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ openai-request-json String ?! AIError
+    - request AIRequest
+
+to-json(openai-request-value(request))
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-request-value JSON ?! AIError
+    - request AIRequest
+
+?! AIError(AIErrorKind.invalid-request, "AIRequest.model is required")
+    if !request.model
+?! AIError(AIErrorKind.invalid-request, "OpenAI Chat Completions does not support image output")
+    if request.image-output
+?! AIError(AIErrorKind.invalid-request, "OpenAI Chat Completions does not support video output")
+    if request.video-output
+
+. root = Map'String'JSON
+    • model request.model
+    • messages openai-messages-value(request.messages)
+    • stream true
+    • "stream_options" Map'String'JSON
+        • "include_usage" true
+    •? temperature request.options.temperature
+
+if request.options.maximum-output-tokens
+    root["max_completion_tokens"] = request.options.maximum-output-tokens as Int
+if request.options.stop-sequences
+    root["stop"] = openai-strings-value(request.options.stop-sequences)
+if request.tools
+    root["tools"] = openai-tools-value(request.tools)
+if request.tool-choice
+    root["tool_choice"] = openai-tool-choice-value(request.tool-choice)
+if request.response-schema
+    root["response_format"] = Map'String'JSON
+        • type "json_schema"
+        • "json_schema" Map'String'JSON
+            • name "response"
+            • strict true
+            • schema request.response-schema
+if request.web-search
+    root["web_search_options"] = openai-web-search-value(request.web-search)
+if request.audio-output
+    root["modalities"] = openai-modalities-value()
+    root["audio"] = openai-audio-output-value(request.audio-output!)
+if request.provider-json
+    merge-openai-object(root, request.provider-json, "AIRequest.provider-json")
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-messages-value JSON ?! AIError
+    - messages [AIMessage]
+
+** messages
+*> openai-message-value(each)
+?> !openai-says-nothing(each)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-says-nothing
+    - value JSON
+
+blank ?? false
+
+.. blank = match? value
+    | ["role" = "assistant", "content" = "", "tool_calls" = calls]
+        false
+    | ["role" = "assistant", "content" = "", "refusal" = refusal]
+        false
+    | ["role" = "assistant", "content" = ""]
+        true
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-strings-value [JSON]
+    - values [String]
+
+(each as JSON) in values
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-modalities-value JSON
+
+openai-modalities-list()
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-modalities-list [JSON]
+
+* "text"
+* "audio"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-message-value JSON ?! AIError
+    - message AIMessage
+
+. role = openai-role(message.role)
+. root = Map'String'JSON
+    • role role
+    •? name message.name
+
+if message.role == AIMessageRole.user
+    root["content"] = openai-user-content-value(message.parts)
+else if message.role == AIMessageRole.tool
+    encode-openai-tool-result-message(root, message.parts)
+else
+    encode-openai-text-message(root, message.role, message.parts)
+
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do encode-openai-text-message ?! AIError
+    - root [String = JSON]
+    - role AIMessageRole
+    - parts [AIMessagePart]
+
+. text = ""
+. refusal String?
+. tool-calls [JSON]
+
+for part in parts
+    if part is AITextPart
+        text += (part as AITextPart).text
+    else if part is AIToolCallPart && role == AIMessageRole.assistant
+        . call = part as AIToolCallPart
+        if !openai-has-result(parts, call.call-id)
+            . encoded = Map'String'JSON
+                • id call.call-id
+                • type "function"
+                • function Map'String'JSON
+                    • name call.tool-name
+                    • arguments to-json(call.arguments)
+            tool-calls.add(encoded)
+    else if part is AIRefusalPart && role == AIMessageRole.assistant
+        refusal = (part as AIRefusalPart).text
+    else if part is AIExtensionPart
+        encode-openai-extension(root, part)
+    else if role == AIMessageRole.assistant && openai-keeps-private(part)
+        continue
+    else
+        . message = "OpenAI cannot serialize ${type-of part} for role $role"
+        ?! AIError(AIErrorKind.invalid-request, message)
+
+root["content"] = text
+if refusal
+    root["refusal"] = refusal
+if tool-calls
+    root["tool_calls"] = tool-calls
+
+━━━━━━━━━━━━━━━━━━━━
+_ do encode-openai-tool-result-message ?! AIError
+    - root [String = JSON]
+    - parts [AIMessagePart]
+
+. results [AIToolResultPart] =
+    (each as AIToolResultPart) in parts when each is AIToolResultPart
+?! AIError(AIErrorKind.invalid-request, "An OpenAI tool message requires exactly one tool result")
+    if results.length != 1 || parts.length != 1
+
+. result = results[0]
+root["tool_call_id"] = result.call-id
+root["content"] = result.text-output ?? to-json(result.output)
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-user-content-value JSON ?! AIError
+    - parts [AIMessagePart]
+
+openai-user-content(each) in parts
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-user-content ?! AIError
+    - part AIMessagePart
+
+?! AIError(AIErrorKind.invalid-request, "Tool results must use the tool message role")
+    if part is AIToolResultPart
+?! AIError(AIErrorKind.invalid-request, "OpenAI content extensions require provider openai")
+    if part is AIExtensionPart && (part as AIExtensionPart).provider-id != "openai"
+
+match part
+    | text AITextPart
+        openai-text-content(text)
+    | image AIImagePart
+        openai-image-content(openai-file-url(image.image.file))
+    | audio AIAudioPart
+        openai-audio-content
+            - openai-file-base64(audio.audio.file)
+            - openai-audio-format(audio.audio.file.mime-type)
+    | file AIFilePart
+        openai-file-content-value(file.file)
+    | extension AIExtensionPart
+        extension.data
+    ?! AIError(AIErrorKind.invalid-request, "Unsupported OpenAI user content: ${type-of part}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-text-content JSON
+    - text AITextPart
+
+Map'String'JSON
+    • type "text"
+    • text text.text
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-image-content JSON
+    - url String
+
+Map'String'JSON
+    • type "image_url"
+    • "image_url" Map'String'JSON
+        • url url
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-audio-content JSON
+    - data String
+    - format String
+
+Map'String'JSON
+    • type "input_audio"
+    • "input_audio" Map'String'JSON
+        • data data
+        • format format
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-file-content-value JSON ?! AIError
+    - file AIFile
+
+|? file.source is AIProviderFileSource
+    ?! AIError(AIErrorKind.invalid-request, message)
+        if provider-file.provider-id != "openai"
+
+    Map'String'JSON
+        • type "file"
+        • file Map'String'JSON
+            • "file_id" provider-file.file-id
+
+    .. provider-file = file.source as AIProviderFileSource
+    .. message = "OpenAI cannot use a file ID owned by ${provider-file.provider-id}"
+??
+    Map'String'JSON
+        • type "file"
+        • file Map'String'JSON
+            • "file_data" openai-file-url(file)
+            •? filename file.filename
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-file-url ?! AIError
+    - file AIFile
+
+if file.source is AIURLSource
+    = (file.source as AIURLSource).url
+if file.source is AIBase64Source
+    = "data:${file.mime-type};base64,${(file.source as AIBase64Source).data}"
+if file.source is AIBytesSource
+    = "data:${file.mime-type};base64,${(file.source as AIBytesSource).data as Base64}"
+if file.source is AIPathSource
+    . bytes = openai-path-bytes((file.source as AIPathSource).path)
+    = "data:${file.mime-type};base64,${bytes as Base64}"
+
+?! AIError(AIErrorKind.invalid-request, "OpenAI cannot use a remote provider file as a media URL")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-file-base64 String ?! AIError
+    - file AIFile
+
+if file.source is AIBase64Source
+    = (file.source as AIBase64Source).data
+if file.source is AIBytesSource
+    = (file.source as AIBytesSource).data as Base64
+if file.source is AIPathSource
+    . bytes = openai-path-bytes((file.source as AIPathSource).path)
+    = bytes as Base64
+
+?! AIError(AIErrorKind.invalid-request, "OpenAI audio input requires bytes, base64, or a path")
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-audio-format ?! AIError
+    - mime-type String
+
+match mime-type
+    |= ai-format-wav
+        "wav"
+    |= ai-format-mp3
+        "mp3"
+    ?! AIError(AIErrorKind.invalid-request, "OpenAI audio input requires WAV or MP3")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do encode-openai-extension ?! AIError
+    - root [String = JSON]
+    - extension AIExtensionPart
+
+if extension.provider-id == "openai"
+    root[extension.part-type] = extension.data
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-keeps-private
+    - part AIMessagePart
+
+part is AIReasoningPart || part is AIWebSearchPart || part is AIToolResultPart
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-has-result
+    - parts [AIMessagePart]
+    - call-id String
+
+some(parts) • where each is AIToolResultPart && (each as AIToolResultPart).call-id == call-id
+
+━━━━━━━━━━━━━━━━━━━━
++ do merge-openai-object ?! AIError
+    - target [String = JSON]
+    - value JSON
+    - label String
+
+?! AIError(AIErrorKind.invalid-request, "$label must be a JSON object")
+    if value is not [String = JSON]
+
+for key, item in value as [String = JSON]
+    target[key] = item
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-tools-value JSON
+    - tools [AITool]
+
+openai-tool-list(tools)
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-tool-list [JSON]
+    - tools [AITool]
+
+openai-tool-value(each) in tools
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-tool-value
+    - tool AITool
+
+Map'String'JSON
+    • type "function"
+    • function Map'String'JSON
+        • name tool.name
+        • description tool.description
+        • parameters tool.parameters
+        • strict tool.is-strict
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-tool-choice-value
+    - choice AIToolChoice
+
+match choice
+    | AIToolChoice.automatic
+        "auto" as JSON
+    | AIToolChoice.none
+        "none" as JSON
+    | AIToolChoice.required
+        "required" as JSON
+    | named AINamedToolChoice
+        openai-named-tool-choice-value(named) as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-named-tool-choice-value
+    - choice AINamedToolChoice
+
+Map'String'JSON
+    • type "function"
+    • function Map'String'JSON
+        • name choice.name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-web-search-value JSON
+    - options AIWebSearchOptions
+
+. root = Map'String'JSON
+    • "search_context_size" openai-search-context(options.context)
+if options.provider-json
+    merge-openai-object(root, options.provider-json, "AIWebSearchOptions.provider-json")
+= root
+
+━━━━━━━━━━━━━━━━━━━━
++ openai-search-context
+    - context AIWebSearchContext
+
+match context
+    | AIWebSearchContext.low
+        "low"
+    | AIWebSearchContext.medium
+        "medium"
+    | AIWebSearchContext.high
+        "high"
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-audio-output-value JSON ?! AIError
+    - options AIAudioOptions
+
+?! AIError(AIErrorKind.invalid-request, "OpenAI audio output requires a voice")
+    if !options.voice
+?! AIError(AIErrorKind.invalid-request, "OpenAI audio output requires a format")
+    if !options.format
+
+Map'String'JSON
+    • voice options.voice
+    • format openai-audio-format(options.format)
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-role
+    - role AIMessageRole
+
+match role
+    | AIMessageRole.developer
+        "developer"
+    | AIMessageRole.system
+        "system"
+    | AIMessageRole.user
+        "user"
+    | AIMessageRole.assistant
+        "assistant"
+    | AIMessageRole.tool
+        "tool"
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-stream-events <AIEvent>
+    - body ReadableData'Byte
+
+. state = OpenAIStreamState()
+for event in server-sent-events(body)
+    if event.data == "[DONE]"
+        for final-event in finish-openai-stream(state)
+            <= final-event
+        =
+
+    . decoded = parse-openai-json(event.data, "OpenAI returned invalid stream JSON")
+    for ai-event in consume-openai-chunk(state, decoded)
+        <= ai-event
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-response-events <AIEvent>
+    - lease OpenAIResponseLease
+
+do finally lease.close()
+for event in openai-stream-events(lease.response.reader)
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenAIStreamState
+
++ completion-id String = "openai"
++ text = ""
++ text-started = false
++ citations [AICitation]
++ reasoning = ""
++ reasoning-started = false
++ refusal = ""
++ refusal-started = false
++ audio-id = ""
++ audio-data Byte[] = Byte[0]
++ audio-transcript = ""
++ audio-started = false
++ tools [OpenAIToolState]
++ usage AIUsage
++ finish-reason AIFinishReason?
++ next-search-id Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenAIToolState
+
++ index Index
++ part-id String
++ call-id String
++ name String
++ arguments String
+
+────────────────────
+_ This
+    - index
+    - part-id
+    - call-id = ""
+    - name = ""
+    - arguments = ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do consume-openai-chunk <AIEvent>
+    - state OpenAIStreamState
+    - value JSON
+
+?! AIError(AIErrorKind.invalid-response, "OpenAI stream chunk was not an object")
+    if value is not [String = JSON]
+. root = value as [String = JSON]
+
+. completion-id = json-string(root["id"])
+if completion-id
+    state.completion-id = completion-id
+
+. maybe-usage = json-object(root["usage"])
+if maybe-usage
+    . update = openai-usage(maybe-usage)
+    state.usage = merge-openai-stream-usage(state.usage, update)
+    <= AIUsageEvent(update)
+
+. choice = openai-first-choice(root)
+=? if !choice
+. finish = json-string(choice["finish_reason"])
+if finish
+    state.finish-reason = openai-finish-reason(finish)
+
+. delta = json-object(choice["delta"])
+=? if !delta
+
+. reasoning = json-string(delta["reasoning"]) ?? json-string(delta["reasoning_content"])
+if reasoning
+    if !state.reasoning-started
+        state.reasoning-started = true
+        <= AIPartBeginEvent(AIReasoningPart(openai-part-id(state, "reasoning"), ""))
+    state.reasoning += reasoning
+    <= AIPartDeltaEvent(openai-part-id(state, "reasoning"), AIReasoningDelta(reasoning))
+
+. content = json-string(delta["content"])
+if content
+    if !state.text-started
+        state.text-started = true
+        <= AIPartBeginEvent(AITextPart(openai-part-id(state, "text"), ""))
+    state.text += content
+    <= AIPartDeltaEvent(openai-part-id(state, "text"), AITextDelta(content))
+
+read-openai-annotations(state, delta)
+
+. refusal = json-string(delta["refusal"])
+if refusal
+    if !state.refusal-started
+        state.refusal-started = true
+        <= AIPartBeginEvent(AIRefusalPart(openai-part-id(state, "refusal"), ""))
+    state.refusal += refusal
+    <= AIPartDeltaEvent(openai-part-id(state, "refusal"), AITextDelta(refusal))
+
+. audio = json-object(delta["audio"])
+if audio
+    for ai-event in consume-openai-audio(state, audio)
+        <= ai-event
+
+. tool-calls = json-array(delta["tool_calls"])
+if tool-calls
+    for call in tool-calls
+        for ai-event in consume-openai-tool-call(state, call)
+            <= ai-event
+
+. search = json-object(delta["web_search"]) ?? json-object(delta["search_activity"])
+if search
+    . query = json-string(search["query"])
+    if query
+        . search-id = json-string(search["id"])
+        . part-id = openai-part-id(state, "search-${state.next-search-id}")
+        state.next-search-id += 1
+        . part = AIWebSearchPart(part-id, query, AIWebSearchStatus.completed, search-id)
+        <= AIPartBeginEvent(part)
+        <= AIPartEndEvent(part)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do consume-openai-audio <AIEvent>
+    - state OpenAIStreamState
+    - audio [String = JSON]
+
+?! AIError(AIErrorKind.invalid-response, "OpenAI returned invalid base64 audio")
+    catch SyntaxError
+
+if !state.audio-started
+    state.audio-started = true
+    state.audio-id = json-string(audio["id"]) ?? openai-part-id(state, "audio-output")
+    . file = AIFile(AIBytesSource(Byte[0]), ai-format-wav)
+    <= AIPartBeginEvent(AIAudioPart(openai-part-id(state, "audio"), AIAudio(file)))
+
+. data = json-string(audio["data"])
+if data
+    . bytes = decode-base64(data)
+    . combined = Byte[state.audio-data.size + bytes.size]
+    combined[0 .. < state.audio-data.size] = state.audio-data
+    combined[state.audio-data.size ...] = bytes
+    state.audio-data = combined
+    <= AIPartDeltaEvent(openai-part-id(state, "audio"), AIAudioDelta(bytes))
+
+. transcript = json-string(audio["transcript"])
+if transcript
+    state.audio-transcript += transcript
+
+━━━━━━━━━━━━━━━━━━━━
+_ do consume-openai-tool-call <AIEvent>
+    - state OpenAIStreamState
+    - value JSON
+
+?! AIError(AIErrorKind.invalid-response, "OpenAI tool call delta was not an object")
+    if value is not [String = JSON]
+. call = value as [String = JSON]
+. wire-index = match call["index"]
+    | value Int {it >= 0}
+        value as Index
+    ?! AIError(AIErrorKind.invalid-response, "OpenAI tool call delta omitted its index")
+
+. tool = openai-tool-state(state, wire-index)
+if !tool
+    . new-tool = OpenAIToolState(wire-index, openai-part-id(state, "tool-$wire-index"))
+    state.tools += new-tool
+    tool = new-tool
+    <= AIPartBeginEvent(AIToolCallPart(new-tool.part-id, "", "", null))
+. active-tool OpenAIToolState = tool
+
+. call-id = json-string(call["id"])
+if call-id
+    active-tool.call-id = call-id
+. function = json-object(call["function"])
+if function
+    . name = json-string(function["name"])
+    if name
+        active-tool.name += name
+    . arguments = json-string(function["arguments"])
+    if arguments
+        active-tool.arguments += arguments
+        <= AIPartDeltaEvent(active-tool.part-id, AIToolArgumentsDelta(arguments))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do finish-openai-stream <AIEvent>
+    - state OpenAIStreamState
+
+if state.reasoning-started
+    <= AIPartEndEvent(AIReasoningPart(openai-part-id(state, "reasoning"), state.reasoning))
+if state.text-started
+    <= AIPartEndEvent(AITextPart(openai-part-id(state, "text"), state.text, null, state.citations))
+if state.refusal-started
+    <= AIPartEndEvent(AIRefusalPart(openai-part-id(state, "refusal"), state.refusal))
+if state.audio-started
+    . file = AIFile(AIBytesSource(state.audio-data), ai-format-wav)
+    . audio = AIAudio(file, null, state.audio-transcript, null, state.audio-id)
+    <= AIPartEndEvent(AIAudioPart(openai-part-id(state, "audio"), audio))
+for tool in state.tools
+    . decoded = parse-openai-json(tool.arguments, "OpenAI returned invalid tool arguments")
+    <= AIPartEndEvent(AIToolCallPart(tool.part-id, tool.call-id, tool.name, decoded))
+
+?! AIError(AIErrorKind.invalid-response, "OpenAI stream ended without a finish reason")
+    if !state.finish-reason
+<= AIDoneEvent(state.finish-reason, state.usage)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-openai-annotations
+    - state OpenAIStreamState
+    - delta [String = JSON]
+
+. annotations = json-array(delta["annotations"])
+=? if !annotations
+for value in annotations
+    . annotation = json-object(value)
+    if annotation && json-string(annotation["type"]) == "url_citation"
+        . citation = json-object(annotation["url_citation"])
+        if citation
+            . title = json-string(citation["title"]) ?? ""
+            . url = json-string(citation["url"]) ?? ""
+            . start = json-index(citation["start_index"])
+            . end = json-index(citation["end_index"])
+            . parsed-citation = AICitation(title, url, start, end)
+            state.citations.add(parsed-citation)
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-first-choice
+    - root [String = JSON]
+
+match? root
+    | ["choices" = [choice [String = JSON], ...], ...]
+        choice
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-tool-state OpenAIToolState?
+    - state OpenAIStreamState
+    - index Index
+
+for tool in state.tools
+    if tool.index == index
+        = tool
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-part-id
+    - state OpenAIStreamState
+    - suffix String
+
+"${state.completion-id}:$suffix"
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-usage
+    - value [String = JSON]
+
+AIUsage
+    • input-tokens json-size(value["prompt_tokens"])
+    • output-tokens json-size(value["completion_tokens"])
+    • total-tokens json-size(value["total_tokens"])
+    • cached-input-tokens cached-input-tokens
+    • reasoning-tokens reasoning-tokens
+
+.. prompt-details = json-object(value["prompt_tokens_details"])
+.. completion-details = json-object(value["completion_tokens_details"])
+.. cached-input-tokens = json-size(prompt-details["cached_tokens"]) if prompt-details
+.. reasoning-tokens = json-size(completion-details["reasoning_tokens"]) if completion-details
+
+━━━━━━━━━━━━━━━━━━━━
+_ merge-openai-stream-usage
+    - target AIUsage
+    - update AIUsage
+
+AIUsage
+    • input-tokens update.input-tokens ?? target.input-tokens
+    • output-tokens update.output-tokens ?? target.output-tokens
+    • total-tokens update.total-tokens ?? target.total-tokens
+    • cached-input-tokens update.cached-input-tokens ?? target.cached-input-tokens
+    • cache-creation-tokens update.cache-creation-tokens ?? target.cache-creation-tokens
+    • cache-read-tokens update.cache-read-tokens ?? target.cache-read-tokens
+    • reasoning-tokens update.reasoning-tokens ?? target.reasoning-tokens
+    • thought-tokens update.thought-tokens ?? target.thought-tokens
+    • tool-prompt-tokens update.tool-prompt-tokens ?? target.tool-prompt-tokens
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-finish-reason
+    - reason String
+
+match reason
+    | "stop"
+        AIFinishReason.stop
+    | "length"
+        AIFinishReason.length
+    | "tool_calls"
+        AIFinishReason.tool-calls
+    | "content_filter"
+        AIFinishReason.content-filter
+    ??
+        AIProviderFinishReason("openai", reason)
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-response-error
+    - response HTTPResponse
+    - body String
+
+. decoded = catch? JSON(body)
+. service-message = body
+if decoded
+    . root = json-object(decoded)
+    if root
+        . error = json-object(root["error"])
+        if error && json-string(error["message"])
+            service-message = json-string(error["message"])!
+
+. status = response.status as Int
+. kind = openai-error-kind(status, decoded)
+. retryable = status == 408 || status == 409 || status == 429 || status >= 500
+= AIError(kind, service-message, status, retryable, response.header("Retry-After"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ openai-error-kind
+    - status Int
+    - decoded JSON?
+
+|? status == 401 || status == 403
+    AIErrorKind.authentication
+|? status == 429
+    AIErrorKind.rate-limit
+|? status >= 500
+    AIErrorKind.server
+|? decoded && "$decoded".lowercased.find("context")
+    AIErrorKind.context-length
+??
+    AIErrorKind.invalid-request
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-string
+    - value JSON?
+
+match? value
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-object
+    - value JSON?
+
+match? value
+    | [String = JSON]
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-array
+    - value JSON?
+
+match? value
+    | [JSON]
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-size Size?
+    - value JSON?
+
+match? value
+    | Int {it >= 0}
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-index
+    - value JSON?
+
+json-size(value)

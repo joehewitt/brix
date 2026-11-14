@@ -1,0 +1,518 @@
+./box
+./events
+./label
+./primitives
+./shorthands
+./styles
+./theme
+/graphics/point
+/graphics/primitives
+/math
+/ui/input
+/ui/value-change-phase
+
++ timeline-min-item-width Length = 6
++ timeline-item-inset Length = 2
++ timeline-drag-threshold Length = 3
++ timeline-snap-distance Length = 8
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxComposite
+
+• TimelineView • bg:gui-well-color
+
+• timeline-headers • bg:gui-panel-color
+    border-color = gui-divider-color
+    border-right-width = 1
+
+• timeline-lane-title • text:gui-muted-text-color px:8 pt:4
+    font-size = gui-footnote-font-size
+
+• timeline-ruler • bg:gui-panel-color
+    border-color = gui-divider-color
+    border-bottom-width = 1
+
+• timeline-tick • bg:gui-border-color
+
+• timeline-mark-label • text:gui-muted-text-color pl:3 pt:2
+    font-size = gui-caption-font-size
+
+• TimelineLaneBox
+    border-color = gui-divider-color
+    border-bottom-width = 1
+
+• TimelineItemBody • bg:gui-field-color
+    corner-radius = gui-inner-radius
+
+    when #is-selected
+        • bg:gui-accent-color
+
+• timeline-item-label • text:gui-text-color px:4
+    font-size = gui-footnote-font-size
+
+• timeline-marker • bg:gui-accent-bright-color
+
+• timeline-marker-label • text:gui-accent-bright-color pl:3
+    font-size = gui-caption-font-size
+
+• timeline-time • bg:gui-accent-bright-color
+
+• timeline-snap • bg:gui-accent-color
+
+• timeline-item-grip
+    cursor = CursorStyle.resize-horizontal
+    drag-cursor = CursorStyle.resize-horizontal
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineLane is Tuple
+
++ title String
++ rows Index = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineItem is Tuple
+
++ id U64
++ lane Index
++ row Index
++ start I64
++ end I64
++ label = ""
++ is-selected = false
++ movable = false
++ resizable = false
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineMarker is Tuple
+
++ lane Index
++ time I64
++ label = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineData is Tuple
+
++ lanes [TimelineLane]
++ items [TimelineItem]
++ markers [TimelineMarker]
++ duration I64
++ snaps [I64]
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineDrag is Tuple
+
++ id U64
++ resizes Bool
++ shift I64
++ snapped I64?
++ phase ValueChangePhase
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineMark is Tuple
+
++ time I64
++ label String
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineScale is Interface
+
+────────────────────
++ do marks [TimelineMark]
+    - span I64
+    - width Length
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineSecondsScale
+    is TimelineScale
+
++ units-per-second I64
+
+────────────────────
++ This
+    - units-per-second
+
+╌╌╌╌╌╌╌╌╌╌ is TimelineScale ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do marks [TimelineMark]
+    - span I64
+    - width Length
+
+. result [TimelineMark]
+=? result if width <= 0 || span <= 0
+. rate = units-per-second as F64
+. seconds = (span as F64) / rate
+. step = timeline-seconds-step(seconds * 64 / (width as F64))
+. tenths = round(step * 10) as I64
+. count = (seconds / step) as Index
+for index in 0 .. count
+    . point = tenths * (index as I64)
+    result += TimelineMark(round((point as F64) * rate / 10) as I64, timeline-tenths-label(point))
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do timeline-seconds-step F64
+    - minimum F64
+
+for step in [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0]
+    =? step if step >= minimum
+= 600.0
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-tenths-label String
+    - tenths I64
+
+if tenths % 10 == 0 then "${tenths / 10}s" else "${tenths / 10}.${tenths % 10}s"
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineLaneView is Tuple
+
++ lane TimelineLane
++ items [TimelineItem]
++ markers [TimelineMarker]
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineView is Box
+
++ data = TimelineData()
++ scale TimelineScale?
++ time I64?
++ zoom F64 = 1
++ row-height Length = 22
++ ruler-height Length = 20
++ header-width Length = 64
++ span I64 = timeline-span(#data.duration)
++ track-width Length = #viewport * #zoom
++ lanes [TimelineLaneView] = timeline-lane-views(#data)
++ marks [TimelineMark] = timeline-marks(#span, #track-width, #scale)
++ snap-time I64?
+
++ event seek-requested I64
++ event item-chosen U64
++ event item-dragged TimelineDrag
+
+_ viewport Length = 0
+_ seeking = false
+_ seeking-pointer U64
+_ pressed TimelineItem?
+_ press-pointer U64
+_ press-x Length = 0
+_ press-resizes = false
+_ press-snaps [I64]
+_ drag-x Length = 0
+_ dragging = false
+
+────────────────────
+
+<This • flex-row
+    overflow-y = ScrollOverflow.auto
+    <Box • timeline-headers flex-col
+        min-width = SizeSpec.coord(#header-width)
+        max-width = SizeSpec.coord(#header-width)
+        <Box
+            min-height = SizeSpec.coord(#ruler-height)
+            max-height = SizeSpec.coord(#ruler-height)
+        for lane in #lanes
+            <Label • timeline-lane-title
+                text = lane.lane.title
+                min-height = SizeSpec.coord(timeline-lane-height(lane.lane, #row-height))
+                max-height = SizeSpec.coord(timeline-lane-height(lane.lane, #row-height))
+    <Box scroller • flex-col flex:1
+        overflow-x = ScrollOverflow.auto
+        <Box • flex-col
+            min-width = SizeSpec.coord(#track-width)
+            max-width = SizeSpec.coord(#track-width)
+            for event on pointer-down
+                if event.button == PointerButton.primary
+                    begin-seek(event.pointer-id, event.point.x)
+                    event.cancel()
+            for event on pointer-drag
+                if event.button == PointerButton.primary
+                    continue-seek(event.pointer-id, event.point.x)
+                    event.cancel()
+            for event on pointer-up
+                end-seek(event.pointer-id)
+            <Box • timeline-ruler
+                min-height = SizeSpec.coord(#ruler-height)
+                max-height = SizeSpec.coord(#ruler-height)
+                for mark in #marks keyed by mark.time
+                    <Box • flex-row absolute
+                        anchor = Anchor.parent
+                        left = PositionOffset.coord(timeline-x(mark.time, #span, #track-width))
+                        top = PositionOffset.coord(0)
+                        bottom = PositionOffset.coord(0)
+                        <Box • timeline-tick w:1
+                        <Label • timeline-mark-label
+                            text = mark.label
+            for lane in #lanes
+                <TimelineLaneBox
+                    min-height = SizeSpec.coord(timeline-lane-height(lane.lane, #row-height))
+                    max-height = SizeSpec.coord(timeline-lane-height(lane.lane, #row-height))
+                    view = this
+                    items = lane.items
+                    markers = lane.markers
+
+                    <Box (content) - item-box • flex-row flex:1
+                        + <Box content - item-box TimelineItemBox • flex-row flex:1
+                            <TimelineItemBody • flex-row flex:1
+                                is-selected = item-box.#item.is-selected
+                                <Label • timeline-item-label flex:1
+                                    text = item-box.#item.label
+            if #time != null
+                <Box • timeline-time absolute w:2
+                    anchor = Anchor.parent
+                    layer = "adornments"
+                    left = PositionOffset.coord(timeline-x(#time!, #span, #track-width) - 1)
+                    top = PositionOffset.coord(0)
+                    bottom = PositionOffset.coord(0)
+            if #snap-time != null
+                <Box • timeline-snap absolute w:1
+                    anchor = Anchor.parent
+                    layer = "adornments"
+                    left = PositionOffset.coord(timeline-x(#snap-time!, #span, #track-width))
+                    top = PositionOffset.coord(0)
+                    bottom = PositionOffset.coord(0)
+
+────────────────────
+for event on magnify
+
+zoom = max(1.0, min(400.0, zoom * event.scale))
+event.cancel()
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+viewport = scroller.content-bounds.width
+
+────────────────────
+_ do begin-seek
+    - pointer U64
+    - x Length
+
+seeking = true
+seeking-pointer = pointer
+seek-at(x)
+
+────────────────────
+_ do continue-seek
+    - pointer U64
+    - x Length
+
+=? if !seeking || pointer != seeking-pointer
+seek-at(x)
+
+────────────────────
+_ do end-seek
+    - pointer U64
+
+=? if pointer != seeking-pointer
+seeking = false
+
+────────────────────
+_ do seek-at
+    - x Length
+
+=? if track-width <= 0
+. ratio = max(0.0, min(1.0, (x / track-width)))
+. sought = round(ratio * (span as F64)) as I64
+seek-requested <- sought
+
+────────────────────
+_ do press-item
+    - item TimelineItem
+    - event PointerDownEvent
+    - resizes Bool
+
+=? if event.button != PointerButton.primary
+event.cancel()
+item-chosen <- item.id
+pressed = item
+press-pointer = event.pointer-id
+press-x = event.root-point.x
+press-resizes = resizes
+press-snaps = data.snaps
+drag-x = press-x
+dragging = false
+
+────────────────────
+_ do drag-item
+    - event PointerDragEvent
+
+event.cancel()
+. item = pressed
+=? if !item || event.pointer-id != press-pointer
+=? if !(if press-resizes then item.resizable else item.movable)
+. x = event.root-point.x
+drag-x = x
+if dragging
+    publish-drag(item, ValueChangePhase.changed)
+    =
+=? if abs(x - press-x) < timeline-drag-threshold
+dragging = true
+publish-drag(item, ValueChangePhase.began)
+
+────────────────────
+_ do release-item
+    - pointer U64
+
+=? if pointer != press-pointer
+. item = pressed
+pressed = null
+if item && dragging
+    dragging = false
+    publish-drag(item, ValueChangePhase.ended)
+snap-time = null
+
+────────────────────
+_ do publish-drag
+    - item TimelineItem
+    - phase ValueChangePhase
+
+=? if track-width <= 0
+. edge = if press-resizes then item.end else item.start
+. moved = round((((drag-x - press-x) / track-width) as F64) * (span as F64)) as I64
+. sought = edge + moved
+. snapped = timeline-nearest(press-snaps, sought, span, track-width)
+. shift = if snapped != null then snapped - edge else moved
+snap-time = snapped if phase != ValueChangePhase.ended
+item-dragged <- TimelineDrag(item.id, press-resizes, shift, snapped, phase)
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineLaneBox is Box
+
++ view TimelineView
++ items [TimelineItem] = List'TimelineItem()
++ markers [TimelineMarker] = List'TimelineMarker()
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        <TimelineItemBox item-box • absolute
+            min-width = SizeSpec.coord(timeline-item-width(item, view.#span, view.#track-width))
+            max-width = SizeSpec.coord(timeline-item-width(item, view.#span, view.#track-width))
+            min-height = SizeSpec.coord(view.#row-height - timeline-item-inset * 2)
+            max-height = SizeSpec.coord(view.#row-height - timeline-item-inset * 2)
+            item = item
+            anchor = Anchor.parent
+            left = PositionOffset.coord(timeline-x(item.start, view.#span, view.#track-width))
+            top = PositionOffset.coord
+                - view.#row-height * (item.row as Length) + timeline-item-inset
+            for event on pointer-down
+                view.press-item(item, event, false)
+            for event on pointer-drag
+                view.drag-item(event)
+            for event on pointer-up
+                view.release-item(event.pointer-id)
+
+            + <Box content - item-box TimelineItemBox • flex-row flex:1
+            if item.resizable
+                <Box • timeline-item-grip absolute w:6
+                    anchor = Anchor.parent
+                    right = PositionOffset.coord(0)
+                    top = PositionOffset.coord(0)
+                    bottom = PositionOffset.coord(0)
+                    for event on pointer-down
+                        view.press-item(item, event, true)
+                    for event on pointer-drag
+                        view.drag-item(event)
+                    for event on pointer-up
+                        view.release-item(event.pointer-id)
+    for marker in #markers
+        <Box • flex-row absolute
+            anchor = Anchor.parent
+            left = PositionOffset.coord(timeline-x(marker.time, view.#span, view.#track-width))
+            top = PositionOffset.coord(0)
+            bottom = PositionOffset.coord(0)
+            <Box • timeline-marker w:2
+            <Label • timeline-marker-label
+                text = marker.label
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineItemBox is Box
+
++ item TimelineItem
+
+━━━━━━━━━━━━━━━━━━━━
++ TimelineItemBody is Box
+
++ is-selected = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-lane-views [TimelineLaneView]
+    - data TimelineData
+
+List'TimelineLaneView(timeline-lane-view(data, each) in 0 .. < data.lanes.length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-lane-view TimelineLaneView
+    - data TimelineData
+    - lane Index
+
+TimelineLaneView(data.lanes[lane], items, markers)
+
+.. items =
+    ** data.items
+    ?> each.lane == lane
+    |> List
+.. markers =
+    ** data.markers
+    ?> each.lane == lane
+    |> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-marks [TimelineMark]
+    - span I64
+    - width Length
+    - scale TimelineScale?
+
+if scale then scale.marks(span, width) else List'TimelineMark()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do timeline-nearest I64?
+    - snaps [I64]
+    - time I64
+    - span I64
+    - width Length
+
+. found I64?
+. closest = timeline-snap-distance
+for snap in snaps
+    . distance = abs(timeline-x(snap, span, width) - timeline-x(time, span, width))
+    if distance <= closest
+        closest = distance
+        found = snap
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-span I64
+    - duration I64
+
+max(duration + duration / 20, 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-x Length
+    - time I64
+    - span I64
+    - width Length
+
+width * (((time as F64) / (span as F64)) as Length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-item-width Length
+    - item TimelineItem
+    - span I64
+    - width Length
+
+max
+    - timeline-min-item-width
+    - timeline-x(item.end, span, width) - timeline-x(item.start, span, width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timeline-lane-height Length
+    - lane TimelineLane
+    - row-height Length
+
+row-height * (lane.rows as Length)

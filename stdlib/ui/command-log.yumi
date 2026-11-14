@@ -1,0 +1,817 @@
+./command-history
+./command-parameters
+./value-change-phase
+/data/json
+/math
+/stream/aggregate
+/time/duration
+/time/timer
+
+━━━━━━━━━━━━━━━━━━━━
++ ParameterizedCommand'Args is Interface
+
+────────────────────
++ get kind String
+
+────────────────────
++ do title String
+    - args Args
+
+────────────────────
++ do sentence [CommandSentencePart]
+    - args Args
+
+────────────────────
++ do execute ?! Error
+    - args Args
+
+────────────────────
++ do encode JSON ?! Error
+    - args Args
+
+────────────────────
++ do decode Args ?! Error
+    - json JSON
+
+?! Error("$kind cannot be decoded")
+
+────────────────────
++ replacing Args?
+    - args Args
+    - key String
+    - value CommandParameterValue
+
+null
+
+────────────────────
++ reverts Bool
+    - args Args
+
+false
+
+────────────────────
++ do revert ?! Error
+    - args Args
+
+?! Error("${title(args)} cannot be reverted")
+
+────────────────────
++ get defaults Args?
+
+null
+
+━━━━━━━━━━━━━━━━━━━━
++ Invocation is Interface
+
+────────────────────
++ get id U64
+
+────────────────────
++ get kind String
+
+────────────────────
++ get title String
+
+────────────────────
++ get sentence [CommandSentencePart]
+
+────────────────────
++ do execute ?! Error
+
+────────────────────
++ do encode JSON ?! Error
+
+────────────────────
++ get reverts Bool
+
+────────────────────
++ do revert ?! Error
+
+────────────────────
++ replacing Invocation?
+    - key String
+    - value CommandParameterValue
+
+━━━━━━━━━━━━━━━━━━━━
++ StoredInvocation'Args is Tuple
+    is Invocation
+
++ id U64
++ command ParameterizedCommand'Args
++ args Args
+
+╌╌╌╌╌╌╌╌╌╌ is Invocation ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get kind
+
+command.kind
+
+────────────────────
++ get title
+
+command.title(args)
+
+────────────────────
++ get sentence
+
+command.sentence(args)
+
+────────────────────
++ do execute ?! Error
+
+command.execute(args)
+
+────────────────────
++ encode JSON ?! Error
+
+command.encode(args)
+
+────────────────────
++ get reverts
+
+command.reverts(args)
+
+────────────────────
++ do revert ?! Error
+
+command.revert(args)
+
+────────────────────
++ replacing Invocation?
+    - key String
+    - value CommandParameterValue
+
+match? command.replacing(args, key, value)
+    | Args
+        StoredInvocation'Args(id, command, it)
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandReplayKind is U8
+
+| explicit
+| parameter-edit
+| history
+| scrub
+| rebuild
+| structure
+| recording
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogTarget is Interface
+
+────────────────────
++ do will-begin
+
+────────────────────
++ do restore Index
+    - position Index
+    - kind CommandReplayKind
+
+────────────────────
++ do executed
+    - position Index
+    - cost Duration
+
+────────────────────
++ do changed
+    - position Index
+
+────────────────────
++ do did-replay
+    - kind CommandReplayKind
+
+────────────────────
++ do pin
+    - position Index
+    - pinned Bool
+
+────────────────────
++ fold-point Index?
+    - minimum Index
+
+null
+
+────────────────────
++ do folded
+    - count Index
+
+━━━━━━━━━━━━━━━━━━━━
++ EditableLog is Interface
+
+────────────────────
++ get revision U64
+
+────────────────────
++ get length Index
+
+────────────────────
++ do step-id U64
+    - index Index
+
+────────────────────
++ do step-title String
+    - index Index
+
+────────────────────
++ do step-sentence [CommandSentencePart]
+    - index Index
+
+────────────────────
++ do step-failure String?
+    - index Index
+
+────────────────────
++ do edit-parameter Bool
+    - id U64
+    - key String
+    - value CommandParameterValue
+    - phase ValueChangePhase
+
+────────────────────
++ do cancel-edit Bool
+    - id U64
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLog'Step
+    is EditableLog
+
++ revision U64 = 0
++ failures-revision U64 = 0
++ position Index
++ step-limit Size = 0
++ target CommandLogTarget?
++ history CommandHistory?
++ steps [Step] = List'Step()
++ next-id U64 = 0
+
+_ begun = false
+_ ran [Step] = List'Step()
+_ failures Map'U64'String
+_ live-before Step?
+_ live-changed = false
+_ live-pin Index?
+
+────────────────────
++ This
+    - target CommandLogTarget? = null
+    - history CommandHistory? = null
+
+────────────────────
++ get length Index
+
+steps.length
+
+────────────────────
++ this[index Index]
+
+steps[index]
+
+────────────────────
++ get end Index
+
+steps.length
+
+────────────────────
++ get is-editing
+
+live-before != null
+
+────────────────────
++ do index-of Index?
+    - id U64
+
+for index in 0 .. < steps.length
+    =? index if steps[index].id == id
+= null
+
+────────────────────
++ position-of Index
+    - index Index
+
+index
+
+────────────────────
++ do claim-id U64
+
+next-id += 1
+= next-id
+
+────────────────────
++ do prepare-recording
+
+=? if begun
+begun = true
+target?.will-begin()
+
+────────────────────
++ do place
+    - index Index
+    - step Step
+
+. tick = position-of(index)
+steps.insert(step, index)
+revision += 1
+invalidate(tick)
+
+────────────────────
++ do place-after Index
+    - step Step
+    - previous U64?
+
+. found = index-of(previous) if previous
+. index = if found != null then found + 1 else 0
+place(index, step)
+= index
+
+────────────────────
++ do remove Step
+    - index Index
+
+. tick = position-of(index)
+. step = steps[index]
+steps.remove(index)
+revision += 1
+invalidate(tick)
+= step
+
+────────────────────
++ do replace
+    - index Index
+    - step Step
+
+. tick = position-of(index)
+steps[index] = step
+revision += 1
+invalidate(tick)
+
+────────────────────
++ do invalidate
+    - tick Index
+
+target?.changed(tick)
+
+────────────────────
++ do record
+    - step Step
+    - cost Duration = 0ns
+
+prepare-recording()
+. index = end
+. previous U64? = steps[index - 1].id if index
+place(index, step)
+ran += step
+position += 1
+target?.executed(position, cost)
+history?.record(step.title, CommandLogInsertEntry'Step(this, step, previous))
+fold()
+
+────────────────────
++ do perform Step ?! Error
+    - step Step
+
+prepare-recording()
+. started = monotonic-time-nanoseconds()
+step.execute()
+record(step, (monotonic-time-nanoseconds() - started) as Nanoseconds)
+= step
+
+────────────────────
++ do insert Step
+    - index Index
+    - step Step
+
+prepare-recording()
+. position = min(index, steps.length)
+. previous U64? = steps[position - 1].id if position
+place(position, step)
+history?.record("Insert ${step.title}", CommandLogInsertEntry'Step(this, step, previous))
+replay(CommandReplayKind.structure, position)
+fold()
+= step
+
+────────────────────
++ do delete Bool
+    - id U64
+
+. index = index-of(id)
+=? false if index == null
+. previous U64? = steps[index - 1].id if index
+. step = remove(index)
+history?.record("Delete ${step.title}", CommandLogRemoveEntry'Step(this, step, previous))
+replay(CommandReplayKind.structure, index)
+= true
+
+────────────────────
++ do move Bool
+    - id U64
+    - slot Index
+
+. first = index-of(id)
+=? false if first == null
+. wanted = min(slot, steps.length - 1)
+=? false if wanted == first
+. origin U64? = steps[first - 1].id if first
+. step = remove(first)
+. landing U64? = steps[wanted - 1].id if wanted
+place(wanted, step)
+history?.record("Move ${step.title}", CommandLogMoveEntry'Step(this, id, 1, origin, landing))
+replay(CommandReplayKind.structure, min(first, wanted))
+= true
+
+────────────────────
++ do edit Bool
+    - id U64
+    - key String
+    - value CommandParameterValue
+    - title String
+    - phase = ValueChangePhase.discrete
+
+. index = index-of(id)
+=? false if index == null
+= apply-edit(index, title, phase, steps[index].replacing(key, value))
+
+────────────────────
++ do apply-edit Bool
+    - index Index
+    - title String
+    - phase ValueChangePhase
+    - replacement Step?
+
+. original = live-before ?? steps[index]
+. live = phase == ValueChangePhase.began || phase == ValueChangePhase.changed
+if live && !live-pin
+    . pinned = position-of(index)
+    live-pin = pinned
+    target?.pin(pinned, true)
+if replacement
+    replace(index, adjusted(index, replacement))
+    replay(CommandReplayKind.parameter-edit, index)
+if live
+    live-before = original
+    live-changed = live-changed || replacement != null
+    = replacement != null
+. pinned = live-pin
+if pinned
+    target?.pin(pinned, false)
+live-pin = null
+. changed = live-changed || replacement != null
+live-before = null
+live-changed = false
+=? false if !changed
+. others = followed(index, replacement != null)
+. active = history
+=? true if !active
+do use active.group(title)
+    active.record(title, CommandLogReplaceEntry'Step(this, original, steps[index]))
+    for other in others
+        . spot = index-of(other.id)
+        if spot != null
+            active.record(title, CommandLogReplaceEntry'Step(this, other, steps[spot]))
+= true
+
+────────────────────
++ adjusted Step
+    - index Index
+    - replacement Step
+
+replacement
+
+────────────────────
++ followed [Step]
+    - index Index
+    - replaced Bool
+
+List'Step()
+
+────────────────────
++ do cancel-edit Bool
+    - id U64
+
+. index = index-of(id)
+. original = live-before
+. pinned = live-pin
+live-before = null
+live-changed = false
+live-pin = null
+if pinned
+    target?.pin(pinned, false)
+=? false if index == null || !original
+replace(index, original)
+replay(CommandReplayKind.parameter-edit, index)
+= true
+
+────────────────────
++ do replay
+    - kind = CommandReplayKind.explicit
+    - from Index = 0
+
+. start = rewind(position-of(min(from, end)), kind)
+for index in start .. < end
+    execute-step(index)
+target?.did-replay(kind)
+
+────────────────────
++ do rewind Index
+    - requested Index
+    - kind CommandReplayKind
+
+=? position if requested >= position
+=? requested if reverts-to(requested) && reverted-to(requested)
+. restored = target?.restore(requested, kind) ?? 0
+position = restored
+if ran.length > restored
+    -= ran[restored .. < ran.length]
+= restored
+
+────────────────────
++ reverts-to Bool
+    - requested Index
+
+ran.length == position && (all(ran[requested .. < position]) • where each.reverts)
+
+────────────────────
+_ do reverted-to Bool
+    - requested Index
+
+while position > requested
+    . step = ran.pop()
+    position -= 1
+    step.revert()
+        catch error Error
+            unhandled-error(error)
+            = false
+= true
+
+────────────────────
++ do execute-step
+    - index Index
+
+. step = steps[index]
+. started = monotonic-time-nanoseconds()
+step.execute()
+    catch error Error
+        fail(step.id, error.message)
+if failures.length && failures has step.id
+    -= failures[step.id]
+    failures-revision += 1
+ran += step
+position += 1
+target?.executed(position, (monotonic-time-nanoseconds() - started) as Nanoseconds)
+
+────────────────────
+_ do fail
+    - id U64
+    - message String
+
+failures[id] = message
+failures-revision += 1
+
+────────────────────
++ do fold
+
+=? if !step-limit || steps.length <= step-limit
+. active-target = target
+=? if !active-target
+. point = active-target.fold-point(steps.length - step-limit)
+=? if !point || point == 0
+-= steps[0 .. < point]
+if ran.length >= point
+    -= ran[0 .. < point]
+revision += 1
+active-target.folded(point)
+position -= point
+
+╌╌╌╌╌╌╌╌╌╌ is EditableLog ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ step-id U64
+    - index Index
+
+steps[index].id
+
+────────────────────
++ step-title String
+    - index Index
+
+steps[index].title
+
+────────────────────
++ step-sentence [CommandSentencePart]
+    - index Index
+
+steps[index].sentence
+
+────────────────────
++ step-failure String?
+    - index Index
+
+failures[steps[index].id] if failures.length
+
+────────────────────
++ do edit-parameter Bool
+    - id U64
+    - key String
+    - value CommandParameterValue
+    - phase ValueChangePhase
+
+. index = index-of(id)
+=? false if index == null
+. part = command-sentence-part(steps[index].sentence, key)
+= edit(id, key, value, "Edit ${if part then command-part-label(part!) else key}", phase)
+
+━━━━━━━━━━━━━━━━━━━━
++ InvocationLog is CommandLog'Invocation
+
+────────────────────
++ This
+    - target CommandLogTarget? = null
+    - history CommandHistory? = null
+
+super(target, history)
+
+────────────────────
++ do perform'Args Invocation ?! Error
+    - command ParameterizedCommand'Args
+    - args Args
+
+= perform(StoredInvocation'Args(claim-id(), command, args))
+
+────────────────────
++ do load'Args Invocation ?! Error
+    - command ParameterizedCommand'Args
+    - json JSON
+
+. step = StoredInvocation'Args(claim-id(), command, command.decode(json))
+steps += step
+revision += 1
+= step
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogInsertEntry'Step is Tuple
+    is CommandHistoryEntry
+
++ log CommandLog'Step
++ step Step
++ previous U64?
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+. index = log.index-of(step.id)
+=? if index == null
+log.remove(index)
+log.replay(CommandReplayKind.history, index)
+
+────────────────────
++ do redo
+
+=? if log.index-of(step.id) != null
+. index = log.place-after(step, previous)
+log.replay(CommandReplayKind.history, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogRemoveEntry'Step is Tuple
+    is CommandHistoryEntry
+
++ log CommandLog'Step
++ step Step
++ previous U64?
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+CommandLogInsertEntry'Step(log, step, previous).redo()
+
+────────────────────
++ do redo
+
+CommandLogInsertEntry'Step(log, step, previous).undo()
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogRangeEntry'Step is Tuple
+    is CommandHistoryEntry
+
++ log CommandLog'Step
++ steps [Step]
++ previous U64?
++ inserted Bool
+
+────────────────────
+_ do take-out
+
+. index = log.index-of(steps[0].id)
+=? if index == null
+for step in steps
+    log.remove(index)
+log.replay(CommandReplayKind.history, index)
+
+────────────────────
+_ do put-back
+
+=? if log.index-of(steps[0].id) != null
+. index = log.place-after(steps[0], previous)
+for offset in 1 .. < steps.length
+    log.place(index + offset, steps[offset])
+log.replay(CommandReplayKind.history, index)
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+if inserted
+    take-out()
+else
+    put-back()
+
+────────────────────
++ do redo
+
+if inserted
+    put-back()
+else
+    take-out()
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogReplaceEntry'Step
+    is CommandHistoryEntry
+
++ log CommandLog'Step
++ before Step
++ after Step
+
+────────────────────
++ This
+    - log
+    - before
+    - after
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do coalesce Bool
+    - next CommandHistoryEntry
+
+do match? next
+    | CommandLogReplaceEntry'Step
+        =? false if it.log as Pointer != log as Pointer || it.before.id != after.id
+        after = it.after
+        = true
+= false
+
+────────────────────
++ do undo
+
+. index = log.index-of(after.id)
+=? if index == null
+log.replace(index, before)
+log.replay(CommandReplayKind.history, index)
+
+────────────────────
++ do redo
+
+. index = log.index-of(before.id)
+=? if index == null
+log.replace(index, after)
+log.replay(CommandReplayKind.history, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandLogMoveEntry'Step is Tuple
+    is CommandHistoryEntry
+
++ log CommandLog'Step
++ id U64
++ count Index
++ before U64?
++ after U64?
+
+────────────────────
+_ do settle
+    - previous U64?
+
+. first = log.index-of(id)
+=? if first == null
+. moved [Step]
+for offset in 0 .. < count
+    moved += log.remove(first)
+. landed = log.place-after(moved[0], previous)
+for offset in 1 .. < moved.length
+    log.place(landed + offset, moved[offset])
+log.replay(CommandReplayKind.history, min(first, landed))
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+settle(before)
+
+────────────────────
++ do redo
+
+settle(after)

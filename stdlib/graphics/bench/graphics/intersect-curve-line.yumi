@@ -1,0 +1,36 @@
+`benchmark.meta description: Intersects cubic paths with lines to stress cubic root filtering.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/intersection
+/graphics/path
+/graphics/point
+/math
+
+. path = curve-path()
+. checksum = 0 as Size
+
+for pass in 0 .. < 700
+    . f = pass as Float
+    . hits = intersect-path-line(path, (0, 20 + (f % 120)), (260, 40 + (f % 90)))
+    checksum += hits.length
+    for hit in hits
+        checksum += numeric-check(hit.t1) + numeric-check(hit.t2)
+
+-- "bench-result graphics/intersect-curve-line checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do curve-path
+
+. path = Path()
+path.move-to(0, 80)
+for i in 0 .. < 12
+    . f = i as Float
+    path.cubic-curve-to(f * 20 + 8, 20 + f * 3, f * 20 + 14, 150 - f * 4, f * 20 + 20, 70 + f * 2)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Float
+
+(abs(value * 1000) as Size) % 1000003

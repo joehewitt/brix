@@ -1,0 +1,320 @@
+/graphics/network
+/graphics/network-combine
+/graphics/network-regions
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+/stream/aggregate
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Network Merging")
+cases.run(merging-tests)
+cases = cases.then("Network Cutting", cutting-tests)
+cases = cases.then("Network Crossings", crossing-tests)
+cases = cases.then("Network Joining", joining-tests)
+cases = cases.then("Network Splitting", splitting-tests)
+cases = cases.then("Network Weaving", weaving-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do merging-tests
+    - t TestCase
+
+. base = VectorNetwork()
+base.connect(base.add-vertex((0, 0)), base.add-vertex((100, 0)))
+. other = VectorNetwork()
+. c = other.add-vertex((0, 50))
+. d = other.add-vertex((50, 50))
+. e = other.add-vertex((100, 50))
+other.connect(c, d, (10, 0), (-10, 0))
+. second = other.connect(d, e, (10, 0), (-10, 0))
+other.split(second, 0.5)
+base.add-network(other)
+t.check("merged vertices get fresh ids", unique(List'Index(each.id in base.vertices)))
+t.check("merged segments get fresh ids", unique(List'Index(each.id in base.segments)))
+. sources = List'Index(each.source in base.segments)
+t.expect("split halves keep one source", 3, distinct-count(sources))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do cutting-tests
+    - t TestCase
+
+. network = VectorNetwork()
+. edge = network.connect
+    - network.add-vertex((0, 0))
+    - network.add-vertex((100, 0))
+    - (20, 20)
+    - (-20, 20)
+. original = network.curve(edge)
+. pieces = network.cut(edge, [0.25, 0.75])
+t.expect("cut pieces are separate paths", 3, network.traces().length)
+t.check
+    - "the middle piece starts at the first cut"
+    - near(network.curve(pieces[1]).anchor1, network-curve-point(original, 0.25))
+t.check
+    - "the middle piece ends at the second cut"
+    - near(network.curve(pieces[1]).anchor2, network-curve-point(original, 0.75))
+t.check
+    - "the last piece ends where the segment did"
+    - near(network.curve(pieces[2]).anchor2, (100, 0))
+t.expect("cut ends are not paired", 0, List'NetworkPair(each in network.pairs).length)
+
+. chain = VectorNetwork()
+. a = chain.add-vertex((0, 0))
+. b = chain.add-vertex((50, 0))
+. c = chain.add-vertex((100, 0))
+chain.connect(b, a, (0, 10), (0, 10))
+chain.connect(b, c, (0, -10), (0, -10))
+. extracted = chain.extract(chain.traces()[0])
+t.check
+    - "an extracted trace starts where the trace did"
+    - near(extracted.traces()[0].path.first-point, (0, 0))
+t.check
+    - "an extracted trace ends where the trace did"
+    - near(extracted.traces()[0].path.last-point, (100, 0))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do crossing-tests
+    - t TestCase
+
+. network = VectorNetwork()
+network.connect(network.add-vertex((0, 50)), network.add-vertex((100, 50)))
+network.connect(network.add-vertex((50, 0)), network.add-vertex((50, 100)))
+. workspace = NetworkRegionWorkspace()
+. crossings = workspace.crossings(network)
+t.expect("crossing lines meet once on each line", 2, crossings.length)
+t.expect("both lines share the crossing", crossings[0].crossing, crossings[1].crossing)
+t.check("the crossing is where the lines meet", near(crossings[0].position, (50, 50)))
+t.expect
+    - "the crossing parameter is on the segment"
+    - 0.5
+    - round(crossings[0].parameter * 1000) / 1000
+network.connect(network.add-vertex((25, 50)), network.add-vertex((25, 80)))
+crossings = workspace.crossings(network)
+t.expect("an end touching a line cuts the line only", 3, crossings.length)
+t.expect("a touch is its own crossing", 2, distinct-count(List'Index(each.crossing in crossings)))
+
+. looped = VectorNetwork()
+looped.connect(looped.add-vertex((0, 0)), looped.add-vertex((100, 0)), (150, 100), (-150, 100))
+. loops = workspace.crossings(looped)
+t.expect("a looped curve crosses itself twice", 2, loops.length)
+t.expect("a looped curve crosses itself at one place", loops[0].crossing, loops[1].crossing)
+
+. connected = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+t.expect("connected segments do not cross", 0, workspace.crossings(connected).length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do joining-tests
+    - t TestCase
+
+. network = VectorNetwork()
+. a = network.add-vertex((0, 0))
+. b = network.add-vertex((100, 0))
+network.connect(a, b)
+network.connect(network.add-vertex((200, 0)), network.add-vertex((100, 0.0001)))
+network.connect(network.add-vertex((300, 50)), network.add-vertex((250, 50)))
+. loop = network.add-vertex((0, 200))
+. corner = network.add-vertex((50, 250))
+network.connect(loop, corner)
+. back = network.add-vertex((0, 250))
+network.connect(corner, back)
+network.connect(back, loop)
+network-join(network, b)
+. traces = network.traces()
+t.expect("joined paths become one path beside the loop", 2, traces.length)
+t.expect("touching ends merge", 8, network.vertex-count)
+t.expect("a gap becomes a segment", 7, network.segment-count)
+t.check("the joined path starts at the first path", near(traces[0].path.first-point, (0, 0)))
+t.check
+    - "the joined path reverses a path that ends nearer"
+    - near(traces[0].path.get-point-at(2), (200, 0))
+t.check("the joined path ends at the far end", near(traces[0].path.last-point, (300, 50)))
+t.check("the loop stays closed", traces[1].path.is-closed)
+t.expect("the free end is the last open path's end", 6, network-free-end(three-lines())!)
+
+. hooked = VectorNetwork()
+. knee = hooked.add-vertex((254, 309))
+. apex = hooked.add-vertex((365, 100))
+. tip = hooked.add-vertex((700, 335))
+hooked.connect(knee, apex)
+hooked.connect(apex, tip)
+hooked.connect(hooked.add-vertex((75, 637)), hooked.add-vertex((254, 309)))
+network-join(hooked, tip)
+. joined = hooked.traces()
+t.expect("a path meeting the first path's start joins there", 1, joined.length)
+t.check("joining open paths leaves them open", !joined[0].path.is-closed)
+t.expect("the meeting ends merge", 4, hooked.vertex-count)
+t.expect("meeting ends add no segment", 3, hooked.segment-count)
+t.check
+    - "the joined path keeps the first path's direction"
+    - near(joined[0].path.first-point, (75, 637)) && near(joined[0].path.last-point, (700, 335))
+t.check
+    - "points number along the joined path"
+    - near(List'NetworkVertex(each in hooked.vertices)[1].position, (254, 309))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do splitting-tests
+    - t TestCase
+
+. network = VectorNetwork()
+network.connect(network.add-vertex((0, 50)), network.add-vertex((100, 50)))
+network.connect(network.add-vertex((50, 0)), network.add-vertex((50, 100)))
+. pieces = network-split(network)
+t.expect("crossing lines split into four pieces", 4, pieces.length)
+for piece in pieces
+    t.expect("each piece is one segment", 1, piece.segment-count)
+    t.check("each piece reaches the crossing", piece.pick((50, 50), 0.01) != null)
+t.expect("splitting leaves the original alone", 2, network.segment-count)
+
+. boxed = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+boxed.connect(boxed.add-vertex((50, -10)), boxed.add-vertex((50, 110)))
+t.expect("a crossed rectangle splits into five pieces", 5, network-split(boxed).length)
+t.expect
+    - "an uncrossed path stays whole"
+    - 1
+    - network-split(network-from-path(rectangle(Rect(0, 0, 100, 100)))).length
+
+. branched = VectorNetwork()
+. hub = branched.add-vertex((50, 50))
+branched.connect(hub, branched.add-vertex((0, 0)))
+branched.connect(hub, branched.add-vertex((100, 0)))
+branched.connect(hub, branched.add-vertex((50, 100)))
+t.expect("a branch splits at its junction", 3, network-split(branched).length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do weaving-tests
+    - t TestCase
+
+. across = VectorNetwork()
+add-line(across, (0, 30), (100, 30))
+add-line(across, (0, 70), (100, 70))
+. down = VectorNetwork()
+add-line(down, (30, 0), (30, 100))
+add-line(down, (70, 0), (70, 100))
+. pieces = network-weave([across, down])
+t.expect("each strand splits between its crossings", 8, pieces.length)
+t.expect("half the pieces go over", 4, over-count(pieces))
+t.check("pieces under come first", !pieces[0].over && !pieces[3].over)
+t.check("pieces over come last", pieces[4].over && pieces[7].over)
+t.expect
+    - "the first strand starts over"
+    - "over under"
+    - over-text(pieces, true, [(30, 30), (70, 30)])
+t.expect
+    - "the second strand alternates"
+    - "under over"
+    - over-text(pieces, true, [(30, 70), (70, 70)])
+t.expect
+    - "the third strand alternates"
+    - "under over"
+    - over-text(pieces, false, [(30, 30), (30, 70)])
+t.expect
+    - "the fourth strand alternates"
+    - "over under"
+    - over-text(pieces, false, [(70, 30), (70, 70)])
+for point in [Point(30, 30), Point(70, 30), Point(30, 70), Point(70, 70)]
+    t.check
+        - "one strand goes over at each crossing"
+        - over-text(pieces, true, [point]) != over-text(pieces, false, [point])
+t.check("across pieces come from the first network", all(pieces) • where (each.source == 0) == horizontal(each.network))
+
+. eight = VectorNetwork()
+. a = eight.add-vertex((0, 0))
+. b = eight.add-vertex((100, 100))
+. c = eight.add-vertex((100, 0))
+. d = eight.add-vertex((0, 100))
+eight.connect(a, b)
+eight.connect(b, c)
+eight.connect(c, d)
+eight.connect(d, a)
+. woven = network-weave([eight])
+t.expect("a figure eight weaves into two pieces", 2, woven.length)
+t.check("a figure eight crosses over itself once", !woven[0].over && woven[1].over)
+t.check("each piece of a figure eight passes the crossing", all(woven) • where each.network.pick((50, 50), 0.01) != null)
+. line = VectorNetwork()
+add-line(line, (0, 0), (10, 0))
+t.expect("an uncrossed path stays whole", 1, network-weave([line]).length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do three-lines VectorNetwork
+
+. network = VectorNetwork()
+network.connect(network.add-vertex((0, 0)), network.add-vertex((10, 0)))
+network.connect(network.add-vertex((0, 10)), network.add-vertex((10, 10)))
+network.connect(network.add-vertex((0, 20)), network.add-vertex((10, 20)))
+network.add-vertex((0, 30))
+= network
+
+━━━━━━━━━━━━━━━━━━━━
++ do add-line
+    - network VectorNetwork
+    - start Point
+    - end Point
+
+network.connect(network.add-vertex(start), network.add-vertex(end))
+
+━━━━━━━━━━━━━━━━━━━━
++ do over-text String
+    - pieces [NetworkWovenPiece]
+    - across Bool
+    - points [Point]
+
+. words [String]
+for point in points
+    for piece in pieces
+        if horizontal(piece.network) == across && piece.network.pick(point, 0.01) != null
+            words += if piece.over then "over" else "under"
+= " ".join(words)
+
+━━━━━━━━━━━━━━━━━━━━
++ do horizontal Bool
+    - network VectorNetwork
+
+. vertices = List'NetworkVertex(each in network.vertices)
+= all(vertices) • where each.position.y == vertices[0].position.y
+
+━━━━━━━━━━━━━━━━━━━━
++ unique Bool
+    - ids [Index]
+
+distinct-count(ids) == ids.length
+
+━━━━━━━━━━━━━━━━━━━━
++ do distinct-count Size
+    - ids [Index]
+
+. seen [Index]
+for id in ids
+    if !network-has-id(seen, id)
+        seen += id
+= seen.length
+
+━━━━━━━━━━━━━━━━━━━━
++ do over-count Size
+    - pieces [NetworkWovenPiece]
+
+. count Size = 0
+for piece in pieces
+    if piece.over
+        count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ near Bool
+    - point Point
+    - expected Point
+
+point.distance(expected) < 0.001

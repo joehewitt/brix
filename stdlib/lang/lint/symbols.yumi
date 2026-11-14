@@ -1,0 +1,785 @@
+./source
+/core/atom-pool
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/error
+/lang/ast/module-resolver
+/lang/ast/operator
+/lang/ast/row-range
+/lang/target
+/os/file
+/os/path
+/stream/aggregate
+
++ local-origin-name = "__source__"
+
+━━━━━━━━━━━━━━━━━━━━
++ NameSymbol
+
+` A declared name, and where only some targets' builds see it, the names of those targets.
+
++ namespace String
++ kind String
++ name String
++ line U32
++ column U32
++ origin-name String
++ origin-path String
++ origin-key String
++ call-shape FunctionCallShape?
++ import-priority = -1
++ import-line U32
++ import-column U32
++ builds [String]?
+
+────────────────────
++ This
+    - namespace String
+    - kind String
+    - name String
+    - site SymbolSite
+
+` A name declared at `site`, whose origin key tells its declaration from every other one.
+line = site.line
+column = site.column
+origin-name = site.origin-name
+origin-path = site.origin-path
+origin-key = "$module-key:$kind:$name:$line:$column"
+
+────────────────────
++ do imported-by NameSymbol
+    - priority Int
+    - entry ImportEntry
+    - builds [String]?
+
+` This symbol as brought in by the direct import `entry`, the `priority`th of its module, in the
+` builds of `builds`.
+. copy = NameSymbol(namespace, kind, name, SymbolSite(line, column, origin-name, origin-path))
+copy.origin-key = origin-key
+copy.call-shape = call-shape
+copy.import-priority = priority
+copy.import-line = entry.begin-line
+copy.import-column = entry.begin-column
+copy.builds = builds
+= copy
+
+────────────────────
++ do shares-build Bool
+    - other NameSymbol
+
+` Whether the build for some target sees both this symbol and `other`.
+for target in targets()
+    if sees(target.name) && other.sees(target.name)
+        = true
+= false
+
+────────────────────
++ sees Bool
+    - target String
+
+!builds || builds.find(target) != null
+
+────────────────────
++ get key String
+
+"$namespace:$name"
+
+────────────────────
++ get module-key String
+
+if origin-path.length != 0 then origin-path else origin-name
+
+────────────────────
++ get origin-label String
+
+|? origin-name.length != 0
+    origin-name
+|? origin-path.length != 0
+    origin-path
+??
+    "<unknown>"
+
+━━━━━━━━━━━━━━━━━━━━
++ FunctionCallShape is Tuple
+
++ minimum U32
++ maximum U32
++ labels [String]
++ no-args Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ SymbolSite is Tuple
+
++ line U32
++ column U32
++ origin-name String
++ origin-path String
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeParam is Tuple
+
++ name String
++ line U32
++ column U32
+
+━━━━━━━━━━━━━━━━━━━━
++ ImportEntry
+
++ import-path String
++ is-export Bool
++ begin-line U32
++ begin-column U32
++ end-line U32
++ end-column U32
++ resolved-name String?
++ resolved-path String?
+
+────────────────────
++ This
+    - import-path String
+    - is-export Bool
+    - loc MatchLocation
+
+begin-line = loc.begin.line
+begin-column = loc.begin.column
+end-line = loc.end.line
+end-column = loc.end.column
+
+━━━━━━━━━━━━━━━━━━━━
++ ModuleAnalysis
+
++ source LintSource
++ tree AST
++ imports [ImportEntry]
++ local-symbols [NameSymbol]
++ imported-symbols [NameSymbol]
++ type-params [TypeParam]
++ analyzer SymbolAnalyzer?
+
+────────────────────
++ This
+    - source LintSource
+    - tree AST
+
+━━━━━━━━━━━━━━━━━━━━
++ ExportedModule
+
++ name String
++ path String
++ symbols [NameSymbol]
++ imports [ImportEntry]
++ exports [ImportEntry]
++ classes [StyleClass]
+
+────────────────────
++ This
+    - name String
+    - path String
+
+━━━━━━━━━━━━━━━━━━━━
++ SymbolAnalyzer
+
++ atoms AtomPool
++ resolver ModuleResolver
+_ modules [String = ExportedModule]
+
+────────────────────
++ This
+    - search-paths [Path]
+
+. c-paths [String = [Path]]
+resolver = ModuleResolver(search-paths, c-paths)
+
+────────────────────
++ parse-source AST
+    - source LintSource
+
+builder.finish(atoms)
+
+.. builder = parse-lint-text(source.text, source.path)
+
+────────────────────
++ do analyze ModuleAnalysis
+    - source LintSource
+    - tree AST
+
+. analysis = ModuleAnalysis(source, tree)
+analysis.analyzer = this
+analysis.imports = collect-imports(tree)
+analysis.local-symbols = collect-symbols(tree, local-origin-name, source.path, false)
+analysis.type-params = collect-type-params(tree)
+
+. seen [String = Index]
+. builds = narrowed-builds(null, source.path)
+. priority = 0
+for entry in analysis.imports
+    . position = priority
+    priority += 1
+    . resolved = resolver.resolve-module(entry.import-path, source.path)
+    if !resolved
+        continue
+
+    . found = resolved
+    . resolved-name = module-display-name(found.name)
+    . resolved-path = found.path as String
+    entry.resolved-name = resolved-name
+    entry.resolved-path = resolved-path
+    . visited [String = Bool]
+    . output = analysis.imported-symbols
+    collect-exported(resolved-path, resolved-name, position, entry, builds, visited, seen, output)
+
+= analysis
+
+────────────────────
+_ do collect-exported ?! Error
+    - path String
+    - name String
+    - priority Int
+    - direct ImportEntry
+    - builds [String]?
+    - visited [String = Bool]
+    - seen [String = Index]
+    - output [NameSymbol]
+
+` Adds the public symbols of a module and then of the modules it exports, the last exported
+` first, as the direct import that reaches them brings them in, in the builds of `builds` that
+` load each module on the way. A symbol a later direct import also reaches takes that import's
+` place, and is seen in the builds of both.
+if visited[path]
+    =
+visited[path] = true
+
+. module = exported-module(path, name)
+if !module
+    =
+
+. loaded = narrowed-builds(builds, path)
+for symbol in module.symbols
+    . key = "${symbol.key}:${symbol.origin-key}"
+    if symbol.kind == "c-function"
+        key += ":$path"
+    . known = seen[key]
+    if known != null
+        . kept = output[known]
+        . joined = joined-builds(kept.builds, loaded)
+        if priority > kept.import-priority
+            output[known] = symbol.imported-by(priority, direct, joined)
+        else
+            kept.builds = joined
+        continue
+    seen[key] = output.length
+    output += symbol.imported-by(priority, direct, loaded)
+
+for position in 0 .. < module.exports.length
+    . entry = module.exports[module.exports.length - 1 - position]
+    . resolved = resolver.resolve-module(entry.import-path, path)
+    if resolved
+        . found = resolved
+        . found-path = found.path as String
+        . found-name = module-display-name(found.name)
+        collect-exported(found-path, found-name, priority, direct, loaded, visited, seen, output)
+
+────────────────────
+_ do exported-module ExportedModule?
+    - path String
+    - name String
+
+. cached = modules[path]
+if cached
+    = cached
+if path.ends-with(".h")
+    = c-header-module(path, name)
+if !Path(path).is-file
+    = null
+
+. text = read-file-text(Path(path))
+. builder = parse-lint-text(text, path)
+    catch YumiSyntaxError
+        = null
+. tree = use builder.finish(atoms)
+
+. module = ExportedModule(name, path)
+module.symbols = declared-order(collect-symbols(tree, name, path, true))
+module.classes = collect-style-classes(tree, path, true)
+for entry in collect-imports(tree)
+    module.imports += entry
+    if entry.is-export
+        module.exports += entry
+
+modules[path] = module
+= module
+
+────────────────────
++ module-at ExportedModule?
+    - path String
+
+` The module loaded from `path`, if one is.
+modules[path]
+
+────────────────────
++ do imported-module ExportedModule?
+    - entry ImportEntry
+    - from String
+
+` The module an import names, resolved from the module at `from`, or none where it is not found
+` or does not parse.
+if !entry.resolved-path
+    . resolved = resolver.resolve-module(entry.import-path, from)
+    if !resolved
+        = null
+    . found = resolved
+    entry.resolved-name = module-display-name(found.name)
+    entry.resolved-path = found.path as String
+. module = catch exported-module(entry.resolved-path!, entry.resolved-name ?? "")
+    catch Error
+        = null
+= module
+
+────────────────────
+_ do c-header-module ExportedModule
+    - path String
+    - name String
+
+. module = ExportedModule(name, path)
+. counts [String = Int]
+for function in resolver.c-module-functions(path)
+    . symbol = NameSymbol("c-value", "c-function", function.name, SymbolSite(0, 0, name, path))
+    . index = counts[function.name] ?? 0
+    counts[function.name] = index + 1
+    . declared = function.declaration-key
+    if declared
+        symbol.origin-key = "c-declaration:$declared"
+    else
+        symbol.origin-key += ":$index"
+    module.symbols += symbol
+
+modules[path] = module
+= module
+
+━━━━━━━━━━━━━━━━━━━━
+_ do narrowed-builds [String]?
+    - builds [String]?
+    - path String
+
+` Of the targets in `builds`, those whose builds load the module at `path`. Null stands for every
+` target, in `builds` and in the result.
+. suffix = platform-suffix(path)
+=? builds if !suffix || !is-platform(suffix)
+. narrowed [String]
+for target in targets()
+    if target.includes(suffix) && (!builds || builds.find(target.name) != null)
+        narrowed += target.name
+= narrowed
+
+━━━━━━━━━━━━━━━━━━━━
+_ do joined-builds [String]?
+    - first [String]?
+    - second [String]?
+
+` The targets in `first` or in `second`, where null stands for every target.
+=? null if !first || !second
+. joined [String]
+joined ++= first
+for target in second
+    if joined.find(target) == null
+        joined += target
+= joined
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleClass
+
+` What the style shorthand rule reads of a type a module declares: the types it uses or
+` implements, by name where written as one, whether it is a style, the properties it declares, and
+` its style rules with the property each one forwards its one argument to, if any.
+
++ name String
++ module-path String
++ key String
++ aliases [String]
++ is-public Bool
++ references [String]
++ is-style Bool
++ properties [String = Bool]
++ rules [String]
++ forwarded [String]
+
+────────────────────
++ This
+    - name String
+    - module-path String
+    - key String
+
+────────────────────
++ do names Bool
+    - name String
+
+if this.name == name
+    = true
+for alias in aliases
+    if alias == name
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-style-classes [StyleClass]
+    - tree AST
+    - path String
+    - imported Bool
+
+` The types a module declares, as declared where `imported`, or else as the linted source
+` writes them.
+. classes [StyleClass]
+match tree.nodes[tree.root]
+    | .node-top-level-syntax(root)
+        for id in tree.children[root.statements]
+            do match? tree.nodes[id]
+                | .node-class-block(row)
+                    classes += style-class(tree, id, row, path, imported)
+    ?! Panic("AST root has the wrong syntax case")
+= classes
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-class StyleClass
+    - tree AST
+    - id SyntaxId
+    - row ASTClassBlock
+    - path String
+    - imported Bool
+
+` A declared type, whose properties are its fields, and where `imported` also its getters and
+` setters. It is a style where a base it implements is `Style`, and also where it uses `Style`
+` unless `imported`.
+. found = StyleClass(row.name.text, path, "$path#$id")
+found.is-public = row.access == .public-access
+for offset in 0 .. < row.aliases.count
+    found.aliases += tree.atoms[row.aliases.start + offset].text
+
+. bases [SyntaxId]
+. usings [SyntaxId]
+if row.base != 0
+    bases += row.base
+for member in tree.children[row.members]
+    do match? tree.nodes[member]
+        | .node-implements-declaration(declaration)
+            bases += declaration.type
+        | .node-using-declaration(declaration)
+            usings += declaration.type
+        | .node-property-syntax(property)
+            found.properties[declared-name(tree, property.left)] = true
+        | .node-getter-syntax(getter)
+            if imported && getter.names.count != 0
+                found.properties[tree.atoms[getter.names.start].text] = true
+        | .node-setter-syntax(setter)
+            if imported && setter.names.count != 0
+                found.properties[tree.atoms[setter.names.start].text] = true
+        | .node-rule-syntax(rule)
+            found.rules += rule.name.text
+            found.forwarded += forwarded-property(tree, rule)
+
+for type in usings
+    found.references += plain-type-name(tree, type)
+    if !imported && type-name(tree, type) == "Style"
+        found.is-style = true
+for type in bases
+    found.references += plain-type-name(tree, type)
+    if type-name(tree, type) == "Style"
+        found.is-style = true
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ plain-type-name String
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-type-identifier(row)
+        row.name.text
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do forwarded-property String
+    - tree AST
+    - rule ASTRule
+
+` The property a style rule sets to its one argument and does nothing else, or none.
+if rule.args.count != 1 || rule.style-rule-applications.count != 0
+    = ""
+. parameter = match tree.nodes[tree.children[rule.args.start]]
+    | .node-argument-decl(arg)
+        arg
+    ??
+        = ""
+if parameter.is-variadic || parameter.default-value != 0
+    = ""
+do match? tree.nodes[rule.body]
+    | .node-block(block)
+        if block.body.count != 1
+            = ""
+        . statement = tree.children[block.body.start]
+        do match? tree.nodes[statement]
+            | .node-assign(assignment)
+                . left = identifier-name(tree, assignment.lhs)
+                . right = identifier-name(tree, assignment.rhs)
+                . argument = declared-name(tree, parameter.pattern)
+                if right.length != 0 && right == argument && !is-tracked-name(tree, assignment.rhs)
+                    = left
+= ""
+
+━━━━━━━━━━━━━━━━━━━━
++ identifier-name String
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-identifier(row)
+        row.name.text
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ is-tracked-name Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-identifier(row)
+        row.is-tracked
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do declared-order [NameSymbol]
+    - symbols [NameSymbol]
+
+` Symbols in the order a declared module lists them: its globals, functions, types and then type
+` aliases, each in the order written.
+. ordered [NameSymbol]
+for rank in 0 .. < 4
+    for symbol in symbols
+        if declared-rank(symbol.kind) == rank
+            ordered += symbol
+= ordered
+
+━━━━━━━━━━━━━━━━━━━━
++ declared-rank Int
+    - kind String
+
+|? kind == "global"
+    0
+|? kind == "function"
+    1
+|? kind == "type-alias"
+    3
+??
+    2
+
+━━━━━━━━━━━━━━━━━━━━
++ module-display-name String
+    - name String
+
+if name.starts-with("/") then name[1 ...] else name
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-imports [ImportEntry]
+    - tree AST
+
+. entries [ImportEntry]
+match tree.nodes[tree.root]
+    | .node-top-level-syntax(root)
+        for id in tree.children[root.statements]
+            do match? tree.nodes[id]
+                | .node-import-syntax(import)
+                    . text = import-path-text(tree, import.paths)
+                    entries += ImportEntry(text, import.is-export, import.loc)
+    ?! Panic("AST root has the wrong syntax case")
+
+= entries
+
+━━━━━━━━━━━━━━━━━━━━
++ import-path-text String
+    - tree AST
+    - paths RowRange'Atom
+
+"/".join(tree.atoms[paths.start + each].text in 0 .. < paths.count)
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-symbols [NameSymbol]
+    - tree AST
+    - origin-name String
+    - origin-path String
+    - only-public Bool
+
+. symbols [NameSymbol]
+match tree.nodes[tree.root]
+    | .node-top-level-syntax(root)
+        for id in tree.children[root.statements]
+            collect-statement-symbols(tree, id, origin-name, origin-path, only-public, symbols)
+    ?! Panic("AST root has the wrong syntax case")
+
+= symbols
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-statement-symbols
+    - tree AST
+    - id SyntaxId
+    - origin-name String
+    - origin-path String
+    - only-public Bool
+    - symbols [NameSymbol]
+
+. loc = tree.nodes.loc[id]
+. site = SymbolSite(loc.begin.line, loc.begin.column, origin-name, origin-path)
+
+do match? tree.nodes[id]
+    | .node-class-block(row)
+        if only-public && row.access != .public-access
+            =
+
+        . kind = if row.is-style-sheet then "style-sheet" else "type"
+        symbols += NameSymbol("type", kind, row.name.text, site)
+        for offset in 0 .. < row.aliases.count
+            . alias = tree.atoms[row.aliases.start + offset].text
+            symbols += NameSymbol("type", "type-alias", alias, site)
+
+    | .node-function-syntax(row)
+        if only-public && row.access != .public-access
+            =
+
+        for offset in 0 .. < row.names.count
+            . name = tree.atoms[row.names.start + offset].text
+            if name.length != 0
+                . symbol = NameSymbol("value", "function", name, site)
+                symbol.call-shape = function-call-shape(tree, row)
+                symbols += symbol
+
+    | .node-property-syntax(row)
+        if only-public && row.access != .public-access
+            =
+
+        . name = declared-name(tree, row.left)
+        if name.length == 0
+            =
+
+        symbols += NameSymbol("value", "global", name, site)
+        if row.value != 0 && is-state-machine(tree, row.value)
+            symbols += NameSymbol("type", "type", name, site)
+
+━━━━━━━━━━━━━━━━━━━━
++ do function-call-shape FunctionCallShape?
+    - tree AST
+    - function ASTFunction
+
+. minimum = 0u32
+. labels [String = Bool]
+. call-names [String]
+for id in tree.children[function.args]
+    match tree.nodes[id]
+        | .node-argument-decl(arg)
+            if arg.is-variadic
+                = null
+            . label = declared-name(tree, arg.pattern)
+            call-names += label
+            if label.length != 0
+                if labels[label]
+                    = null
+                labels[label] = true
+            if arg.default-value == 0
+                minimum += 1
+        ??
+            = null
+. generic = function.type-args.count + function.param-constraints.count
+generic += function.param-assignments.count
+= FunctionCallShape(minimum, function.args.count, call-names, function.args.count + generic == 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-state-machine Bool
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-state-machine
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ declared-name String
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-identifier(row)
+        row.name.text
+    | .node-ref-identifier(row)
+        row.name.text
+    | .node-type-capture(row)
+        declared-name(tree, row.id)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ type-name String
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-type-identifier(row)
+        row.name.text
+    | .node-type-arguments(row)
+        type-name(tree, row.base)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-type-params [TypeParam]
+    - tree AST
+
+. params [TypeParam]
+. seen [String = Bool]
+. total = tree.nodes.length
+
+for id in 1u32 .. < total
+    do match? tree.nodes[id]
+        | .node-class-block(row)
+            add-type-args(tree, row.type-args, params, seen)
+        | .node-function-syntax(row)
+            add-type-args(tree, row.type-args, params, seen)
+        | .node-getter-syntax(row)
+            add-type-args(tree, row.type-args, params, seen)
+        | .node-setter-syntax(row)
+            add-type-args(tree, row.type-args, params, seen)
+        | .node-type-identifier(row)
+            if row.is-declare
+                add-type-param(tree, id as SyntaxId, row.name.text, params, seen)
+
+= params
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-type-args
+    - tree AST
+    - range RowRange'SyntaxId
+    - params [TypeParam]
+    - seen [String = Bool]
+
+for child in tree.children[range]
+    . name = type-name(tree, child)
+    if name.length != 0
+        add-type-param(tree, child, name, params, seen)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-type-param
+    - tree AST
+    - id SyntaxId
+    - name String
+    - params [TypeParam]
+    - seen [String = Bool]
+
+. loc = tree.nodes.loc[id]
+. key = "$name:${loc.begin.line}:${loc.begin.column}"
+if seen[key]
+    =
+
+seen[key] = true
+params += TypeParam(name, loc.begin.line, loc.begin.column)

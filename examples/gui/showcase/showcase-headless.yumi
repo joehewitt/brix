@@ -1,0 +1,148 @@
+./showcase-panel
+/graphics/canvas
+/graphics/primitives
+/gui
+/gui/metal
+/gui/scene
+/os/cli
+/os/path
+
+_ output-directory = ".tmp/examples"
+_ command := cmdline()
+
+for path in [".tmp", output-directory]
+    . directory = Path(path)
+    if !directory.is-dir
+        directory.make-directory()
+
+<HeadlessShowcaseWindow window • flex-col
+    size = (1400, 880)
+
+    <ShowcasePanel panel • flex:1
+
+window.focus-adapter = GUIFocusAdapter()
+window.open()
+
+. ids = headless-ids(panel, command.args)
+. appearances = headless-appearances(command.options["appearance"] ?? "both")
+. uses-metal = command.has-flag("metal")
+. size = command.options["size"] ?? "regular"
+panel.set-size(headless-size(size))
+for appearance in appearances
+    panel.set-appearance(appearance)
+    for id in ids
+        panel.show(id)
+        settle(window)
+        . image-path = "$output-directory/showcase-${id}-${appearance-name(appearance)}-${size}.png"
+        if uses-metal
+            render-metal(window, image-path)
+        else
+            render-core-graphics(window, image-path)
+        -- "showcase image=$image-path"
+
+━━━━━━━━━━━━━━━━━━━━
+_ HeadlessShowcaseWindow is Window
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do settle
+    - window Window
+
+. root = window.markup-batch-root
+if root
+    catch root.markup-batch-queue.checkpoint()
+window.layout()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do render-core-graphics
+    - window Window
+    - path String
+
+. canvas = RasterCanvas(1400, 880, 1)
+do use canvas
+    canvas.erase(window.$gui-window-color)
+    window.paint(canvas)
+    canvas.write(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do render-metal
+    - window Window
+    - path String
+
+. background = window.$gui-window-color
+. renderer = MetalOffscreenRenderer(1400, 880, 2, background)
+. scene = DisplayScene(2, background, renderer)
+do use renderer
+    do use scene
+        for pass in 0 .. < 8
+            scene.maintain(window, 2, background)
+            scene.damage-pending-textures()
+            scene.add-damage(Rect(0, 0, 1400, 880))
+            scene.frame-metal(renderer)
+            renderer.finish()
+            if !renderer.has-pending-fill-frames && !scene.has-pending-textures
+                break
+        renderer.write(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do headless-ids [String]
+    - panel ShowcasePanel
+    - args [String]
+
+if args.length != 1 || args[0] != "all"
+    = args
+. ids = List'String()
+for entry in panel.controls
+    ids += entry.id
+for entry in panel.components
+    ids += entry.id
+for section in panel.popups
+    ids += section.id
+for entry in panel.painting
+    ids += entry.id
+for entry in panel.layout
+    ids += entry.id
+for entry in panel.interaction
+    ids += entry.id
+for entry in panel.motion
+    ids += entry.id
+= ids
+
+━━━━━━━━━━━━━━━━━━━━
+_ headless-appearances [WindowAppearance]
+    - choice String
+
+match choice
+    |= "light"
+        [WindowAppearance.light]
+    |= "dark"
+        [WindowAppearance.dark]
+    ??
+        [WindowAppearance.light, WindowAppearance.dark]
+
+━━━━━━━━━━━━━━━━━━━━
+_ headless-size ControlSize
+    - choice String
+
+match choice
+    |= "small"
+        ControlSize.small
+    |= "large"
+        ControlSize.large
+    ??
+        ControlSize.regular
+
+━━━━━━━━━━━━━━━━━━━━
+_ appearance-name String
+    - appearance WindowAppearance
+
+if appearance == WindowAppearance.dark then "dark" else "light"

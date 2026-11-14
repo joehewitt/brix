@@ -1,0 +1,90 @@
+/os/cli
+/os/env
+/os/file
+/os/path
+/stream/aggregate
+
+_ agents-file-name = "AGENTS.md"
+_ claude-file-name = "CLAUDE.md"
+_ agents-heading = "## Yumi"
+_ claude-import = "@AGENTS.md"
+
+━━━━━━━━━━━━━━━━━━━━
++ InitCommand is CommandLine
+
+────────────────────
+
+<This
+    name = "yumi init"
+    about = "Write the AGENTS.md section, and the CLAUDE.md import, that tell agents to read the Yumi guides before writing Yumi. Files that already have them are left alone."
+
+    <Argument folder "folder"
+        about = "the project folder; the current folder by default"
+
+╌╌╌╌╌╌╌╌╌╌ is CommandLine ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do main Int ?! Error
+
+. root = Path(folder.value ?? cwd())
+?! Error("${root as String} is not a folder")
+    if !root.is-dir
+-- add-agents-section(root / agents-file-name)
+-- add-claude-import(root / claude-file-name)
+= 0
+
+────────────────────
+_ do add-agents-section String ?! Error
+    - path Path
+
+. section = "${agents-section()}\n"
+=? write-new(path, section) if !path.exists
+. text = read-file-text(path)
+=? "$agents-file-name already has a Yumi section" if has-line(text, agents-heading)
+write-file-atomically(path, "${with-break(text)}\n$section")
+= "Added a Yumi section to $agents-file-name"
+
+────────────────────
+_ do add-claude-import String ?! Error
+    - path Path
+
+=? write-new(path, "$claude-import\n") if !path.exists
+. text = read-file-text(path)
+=? "$claude-file-name already imports $agents-file-name" if has-line(text, claude-import)
+write-file-atomically(path, "${with-break(text)}\n$claude-import\n")
+= "Added $claude-import to $claude-file-name"
+
+────────────────────
+_ do write-new String ?! Error
+    - path Path
+    - text String
+
+write-file-atomically(path, text)
+= "Wrote ${path.name}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ has-line Bool
+    - text String
+    - line String
+
+some(text.split("\n")) • where each.trim() == line
+
+━━━━━━━━━━━━━━━━━━━━
+_ with-break String
+    - text String
+
+if text == "" || text.ends-with("\n") then text else "$text\n"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ agents-section
+
+## Yumi
+
+This project is written in Yumi. Before writing or changing Yumi, run `yumi --help`: it names the
+index of the guides, the standard library and the examples that came with the installed
+toolchain. Read the correctness guide the index lists before writing any code.
+
+- Check a file with `yumi x.yumi`, and build and run it with `yumi x.yumi -o .tmp/build/x`.
+- To see what a program does, write probes and run it with `--probes` instead of adding prints.
+  `yumi probes --help` says how to query what they recorded.
+- Read a library's source in the standard library before using it, rather than guessing its API.

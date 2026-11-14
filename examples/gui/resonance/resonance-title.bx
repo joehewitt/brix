@@ -1,0 +1,62 @@
+(import ./resonance-game)
+(import /graphics/shader-declarations)
+(import /gui)
+(import /math)
+(import /time/duration)
+(blank)
+(prop _ wave-decay _ (= 3.5))
+
+(type + ResonanceTitle (is Box)
+  (prop + clock Seconds)
+  (prop _ strength Float)
+  (prop _ struck-at Seconds)
+  (prop _ voice Float)
+  (rule This
+    (= filters (list (call ResonanceTypeWave (call max 0.0 (as (- #clock #struck-at) Float)) #strength #voice)))
+  )
+  (fn-do + strike _
+    (param note ResonanceNote)
+    (let age (call max 0.0 (as (- clock struck-at) Float)))
+    (= strength (call max (. note strength) (* strength (call exp (* age (- wave-decay))))))
+    (= struck-at clock)
+    (= voice (as (. note voice) Float))
+  )
+  (fn-do + clear _
+    (= strength 0)
+    (= struck-at 0)
+  )
+)
+
+(type _ ResonanceTypeWave (is LayerShader)
+  (prop + age Float)
+  (prop + strength Float)
+  (prop + voice Float)
+  (fn-do + This _
+    (param age _)
+    (param strength _)
+    (param voice _)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 filter(float2 position, ShaderLayer layer, ResonanceTypeWaveArgs args) {"
+      "    float envelope = args.strength * exp(-args.age * 3.5);"
+      "    float phase = args.age * (28.0 + args.voice * 2.5);"
+      "    float x = (position.x - layer.size.x * 0.5) / 78.0;"
+      "    float y = (position.y - layer.size.y * 0.5) / 78.0;"
+      "    float wave = sin(x * (2.8 + args.voice * 0.16) - phase);"
+      "    float overtone = sin(x * 6.1 + y * 3.0 + phase * 1.7);"
+      "    float2 offset = float2("
+      "        sin(y * 5.5 + x * 1.1 + phase * 1.3) * 3.8,"
+      "        wave * 8.0 + overtone * 2.5"
+      "    ) * envelope;"
+      "    float2 p = position + offset;"
+      "    if (any(p < float2(0.0)) || any(p >= layer.size)) {"
+      "        return float4(0.0);"
+      "    }"
+      "    float4 color = layer.sample(p);"
+      "    color.a *= 1.0 + envelope * 0.35;"
+      "    return color;"
+      "}"
+    )
+  )
+)

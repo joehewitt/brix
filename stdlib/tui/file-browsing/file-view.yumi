@@ -1,0 +1,154 @@
+/os/file-session
+/os/file-tree
+/os/path
+/time/debounced
+/time/duration
+/tui
+
++ file-search-clear-delay = 850ms
+
+━━━━━━━━━━━━━━━━━━━━
++ FileView is Box
+
+• This
+    focus-mode = FocusMode.inside
+
++ files FileTree
++ session FileSession = FileSession()
++ query = ""
+
+_ clears-query := debounced(file-search-clear-delay, this.clear-query)
+_ retained Map'String'FileNode = Map'String'FileNode()
+
+────────────────────
+for event on key-input
+
+if file-is-search-char(event.char) && !event.modifiers.option && !event.modifiers.control
+    extend-query(event.char)
+    event.cancel()
+
+────────────────────
+for node on session.revealed
+
+choose(node)
+show-node(node)
+focus-list()
+
+────────────────────
+whenever session.#current
+
+follow-current()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+retain-only(Map'String'FileNode())
+super.unmounted()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ selected-node FileNode?
+
+null
+
+────────────────────
++ do show-node
+    - node FileNode
+
+────────────────────
++ do focus-list
+
+────────────────────
++ do follow-current
+
+────────────────────
++ search-candidates [FileNode]
+
+List'FileNode()
+
+────────────────────
++ do select-node
+    - node FileNode
+
+────────────────────
++ do reveal Bool
+    - target Path
+
+. node = files.find(target)
+=? false if !node
+show-node(node)
+= true
+
+────────────────────
++ do open
+    - node FileNode?
+
+if node
+    session.opened <- node
+
+────────────────────
++ do note-selection
+
+=? if hidden-layout-boundary()
+choose(selected-node())
+
+────────────────────
++ do choose
+    - node FileNode?
+
+if session.current?.key != node?.key
+    session.current = node
+
+────────────────────
++ do retain-only
+    - next Map'String'FileNode
+
+for pair in retained.items
+    if !(next has pair.key)
+        files.release(pair.value)
+for pair in next.items
+    if !(retained has pair.key)
+        files.retain(pair.value)
+retained = next
+
+────────────────────
++ do extend-query
+    - char Char
+
+. is-fresh = query.length == 0
+query += char.lowercase
+clears-query()
+. candidates = search-candidates()
+=? if candidates.length == 0
+. current = selected-node()
+. start Index = 0
+for index in 0 .. < candidates.length
+    if current && candidates[index].key == current.key
+        start = index
+. offset = if is-fresh then 1 else 0
+for scan in 0 .. < candidates.length
+    . node = candidates[(start + offset + scan) % candidates.length]
+    if node.sort-name.starts-with(query)
+        select-node(node)
+        =
+
+────────────────────
+_ do clear-query
+
+query = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ file-is-search-char Bool
+    - char Char
+
+|? char >= 'a' && char <= 'z'
+    true
+|? char >= 'A' && char <= 'Z'
+    true
+|? char >= '0' && char <= '9'
+    true
+??
+    char == '_' || char == '-' || char == '.'

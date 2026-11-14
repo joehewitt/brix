@@ -1,0 +1,132 @@
+
+./arena
+./array
+./number
+./parsing
+./string
+
+━━━━━━━━━━━━━━━━━━━━
++ PatternScratch
+    is PatternCollectorStorage'ArenaBacking
+    is PatternRecordBoundary
+
+` Stores the collectors of a stream match in an Arena. Before each record a `~>` pipe matches, the
+` Arena is rewound to where it was when the helper was made, so each record's values must own
+` their storage.
+
+_ arena Arena
+_ start ArenaMark
+
+────────────────────
++ This
+    - source Arena
+
+.. arena = source
+.. start = source.mark
+
+────────────────────
++ get pattern-collector-context Arena
+
+arena
+
+────────────────────
++ do begin-pattern-record
+
+arena.rewind(start)
+
+━━━━━━━━━━━━━━━━━━━━
++ PatternTextMemo
+    is PatternCaptureMaterializer'Char'String
+    is PatternCaptureMaterializer'Byte'String
+
+` Makes the Strings a stream match captures, giving back the String it made last for the same
+` short text where a table of them by hash still holds it. Text of bytes is read as the words
+` `short-words` gives, which both hash it and compare it.
+
+_ hashes Array'U32
+_ texts Array'String
+_ mask U32
+
+────────────────────
++ This
+
+.. hashes = Array'U32(256)
+.. texts = Array'String(256)
+mask = 255
+
+────────────────────
++ This
+    - length Size
+
+` A table sized for input of a length, or none for input under 1 KB.
+.. hashes = Array'U32(memo-slots(length))
+.. texts = Array'String(hashes.length)
+mask = if hashes.length == 0 then 0 else (hashes.length - 1) as U32
+
+────────────────────
++ do materialize-capture'Token String
+    - source Token[]
+    - start Index
+    - end Index
+
+=? "" if start == end
+=? source.slice-string(start .. < end) if mask == 0 || end - start > 24
+if Token == Byte
+    = remembered(source as Byte[], start, end)
+. data = source.data
+. hash = 2166136261u32
+. index = start
+while index < end
+    hash = (hash /xor/ (data[index] as U32)) * 16777619u32
+    index += 1
+hash = hash /or/ 1u32
+. slot = (hash /and/ mask) as Index
+=? texts[slot] if hashes[slot] == hash && CaptureSpan'Token(source, start, end) == texts[slot]
+. made = source.slice-string(start .. < end)
+hashes[slot] = hash
+texts[slot] = made
+= made
+
+────────────────────
+_ do remembered String
+    - source Byte[]
+    - start Index
+    - end Index
+
+. length = end - start
+. words = short-words(source.data + start, length)
+. mixed = (words.first /xor/ (length as U64)) * 0x9E3779B97F4A7C15
+mixed = (mixed /xor/ (mixed /zrshift/ 29) /xor/ words.second) * 0xBF58476D1CE4E5B9
+mixed = (mixed /xor/ (mixed /zrshift/ 32) /xor/ words.third) * 0x94D049BB133111EB
+. hash = ((mixed /xor/ (mixed /zrshift/ 32)) as U32) /or/ 1
+. slot = (hash /and/ mask) as Index
+. kept = texts.data[slot]
+=? kept if hashes.data[slot] == hash && kept.size == length && short-words(kept, length) == words
+. made = source.slice-string(start .. < end)
+hashes[slot] = hash
+texts[slot] = made
+= made
+
+━━━━━━━━━━━━━━━━━━━━
+_ do memo-slots Size
+    - length Size
+
+=? 0 if length < 1024
+. slots Size = 64
+while slots < 4096 && slots * 16 < length
+    slots *= 2
+= slots
+
+━━━━━━━━━━━━━━━━━━━━
+_ short-words (first U64, second U64, third U64) @inline
+    - at CPointer'Byte
+    - length Size
+
+` From 1 to 24 bytes as three words that between them read each byte, so two texts as long as
+` each other hold the same bytes where their words are the same.
+|? length >= 8
+    ((at as CPointer'U64)[0], if length > 16 then ((at + 8) as CPointer'U64)[0] else 0u64, ((at + (length - 8)) as CPointer'U64)[0])
+|? length >= 4
+    (((at as CPointer'U32)[0] as U64) /or/ ((((at + (length - 4)) as CPointer'U32)[0] as U64) /lshift/ 32), 0u64, 0u64)
+??
+    ((at[0] as U64) /or/ ((at[length / 2] as U64) /lshift/ 8) /or/ ((at[length - 1] as U64) /lshift/ 16), 0u64, 0u64)

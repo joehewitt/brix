@@ -1,0 +1,81 @@
+/core/markup
+/gui/box
+/gui/tests/support/probe-boxes
+/gui/text-input
+/gui/window
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Native Text Input Event Seams")
+cases.run(gui-control-event-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-control-event-tests
+    - t TestCase
+
+. trace [String]
+. window = PointerTestWindow(trace)
+window.focus-adapter = GUIFocusAdapter()
+. input = HeadlessTextInputProbe()
+input.text = "seed"
+markup-append(window, input)
+window.open()
+
+input.accept-native-input("draft")
+input.accept-native-input("draft")
+t.expect("native edits publish one realtime Input", 1, input.input-count)
+t.check("Input sees the already-updated model", input.input-state-was-current)
+input.accept-native-commit("done")
+t.expect("commit publishes one Change", 1, input.change-count)
+t.check
+    - "Change carries committed old and new text"
+    - input.last-old-text == "seed" && input.last-text == "done"
+input.accept-native-commit("done")
+t.expect("duplicate commit is suppressed", 1, input.change-count)
+
+input.text = "model"
+t.expect("programmatic text writes emit no user event", 2, input.input-count)
+t.expect("programmatic text writes emit no Change", 1, input.change-count)
+input.accept-native-submit("")
+t.expect("replacement publishes Change from current model baseline", 2, input.change-count)
+t.check
+    - "empty replacement preserves old/new payload"
+    - input.last-old-text == "model" && input.last-text == ""
+
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ HeadlessTextInputProbe is TextInput
+
++ input-count Size = 0
++ change-count Size = 0
++ input-state-was-current = false
++ last-old-text = ""
++ last-text = ""
+
+────────────────────
+for event on input
+
+input-count += 1
+input-state-was-current = text == event.text
+
+────────────────────
+for event on change
+
+change-count += 1
+last-old-text = event.old-text
+last-text = event.text
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+────────────────────
++ do unmounted

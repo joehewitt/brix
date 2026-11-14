@@ -1,0 +1,197 @@
+`benchmark.meta description: Build, retained bytes, paint time, and vector work for 10k identical 24pt Lucide Activity icons clipped by a real never-shown 1180x800 native window.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuAppleGUI/YuAppleGUI.h
+/YuGC/YuGC.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/vectorgeometry
+/gui/box
+/gui/icons/lucide/activity
+/gui/layout
+/gui/primitives
+/gui/vector-image
+/stream/sort
+/time/timer
+
+. icon-count Size = 10000
+. live0 = settle-live()
+. build-objects0 = C:yumiGCAllocatedObjectCount()
+. markup-before = C:yumiGCObjectSidePayloadCount(C:yumiGCMarkupAttachmentsSidePayloadLane())
+. style-attachments-before = C:yumiGCObjectSidePayloadCount
+    - C:yumiGCStyleAttachmentsSidePayloadLane()
+. style-templates-before = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane())
+. style-objects-before = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane())
+. build0 = monotonic-time-nanoseconds()
+. root = BenchRoot()
+markup-mount-root(root, root)
+. remaining = icon-count
+while remaining > 0
+    . row = BenchRow()
+    markup-append(root, row)
+    . in-row Size = 48
+    if remaining < in-row
+        in-row = remaining
+    for icon-index in 0 .. < in-row
+        markup-append(row, Icon24())
+    remaining -= in-row
+root.markup-batch-queue.checkpoint()
+. build1 = monotonic-time-nanoseconds()
+. live1 = settle-live()
+
+. native = C:yumiGuiWindowCreate("gui bench vector-icons-10k (offscreen)", 1180, 800)
+. scale = C:yumiGuiWindowGetBackingScaleFactor(native)
+. background = RGBA(1, 1, 1, 1)
+root.layout(Rect(0, 0, 1180, 800))
+
+for warm in 0 .. < 3
+    render-once(root, native, background, scale)
+
+. frames Size = 30
+. paint-ns [U64]
+. paint-objects Size = 0
+. paint-bytes Size = 0
+for frame in 0 .. < frames
+    . canvas = RasterCanvas(1180, 800, scale)
+    canvas.erase(background)
+    . objects0 = C:yumiGCAllocatedObjectCount()
+    . bytes0 = C:yumiGCRequestedByteCount()
+    . paint0 = monotonic-time-nanoseconds()
+    root.paint(canvas)
+    paint-objects += (C:yumiGCAllocatedObjectCount() - objects0) as Size
+    paint-bytes += (C:yumiGCRequestedByteCount() - bytes0) as Size
+    paint-ns += monotonic-time-nanoseconds() - paint0
+    C:yumiGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
+    canvas.close()
+
+. build-us = (build1 - build0) / 1000
+. built-live-bytes-per-icon = (live1 - live0) / icon-count
+. built-objects-per-icon = (C:yumiGCAllocatedObjectCount() - build-objects0) / icon-count
+. markup-per-icon = (markup-after - markup-before) / icon-count
+    .. markup-after = C:yumiGCObjectSidePayloadCount(C:yumiGCMarkupAttachmentsSidePayloadLane())
+. style-attachments-per-icon = (attachments-after - style-attachments-before) / icon-count
+    .. attachments-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleAttachmentsSidePayloadLane())
+. style-templates-per-icon = (templates-after - style-templates-before) / icon-count
+    .. templates-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane())
+. style-objects-per-icon = (objects-after - style-objects-before) / icon-count
+    .. objects-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane())
+. paint-p50-us = percentile-us(paint-ns, 50)
+. paint-p95-us = percentile-us(paint-ns, 95)
+. paint-p99-us = percentile-us(paint-ns, 99)
+. paint-min-us = min-us(paint-ns)
+. paint-objects-per-icon = paint-objects / frames / icon-count
+. paint-bytes-per-icon = paint-bytes / frames / icon-count
+. geometry-parses-per-frame Size = 0
+. state-pushes-per-icon Size = 0
+. resource-table = vector-geometry-table-for(root)
+. atlas-entries = resource-table.atlas-entry-count
+. atlas-bytes = resource-table.atlas-bytes
+
+//gui.bench.vector.build-us += build-us
+//gui.bench.vector.built-live-bytes-per-icon += built-live-bytes-per-icon
+//gui.bench.vector.built-objects-per-icon += built-objects-per-icon
+//gui.bench.vector.markup-per-icon += markup-per-icon
+//gui.bench.vector.style-attachments-per-icon += style-attachments-per-icon
+//gui.bench.vector.style-templates-per-icon += style-templates-per-icon
+//gui.bench.vector.style-objects-per-icon += style-objects-per-icon
+//gui.bench.vector.paint-p50-us += paint-p50-us
+//gui.bench.vector.paint-p95-us += paint-p95-us
+//gui.bench.vector.paint-p99-us += paint-p99-us
+//gui.bench.vector.paint-min-us += paint-min-us
+//gui.bench.vector.paint-objects-per-icon += paint-objects-per-icon
+//gui.bench.vector.paint-bytes-per-icon += paint-bytes-per-icon
+//gui.bench.vector.geometry-parses-per-frame += geometry-parses-per-frame
+//gui.bench.vector.state-pushes-per-icon += state-pushes-per-icon
+//gui.bench.vector.atlas-entries += atlas-entries
+//gui.bench.vector.atlas-bytes += atlas-bytes
+
+C:yumiGuiWindowClose(native)
+C:yumiGuiWindowRelease(native)
+root.close()
+markup-release(root)
+
+. checksum = icon-count + frames + geometry-parses-per-frame + state-pushes-per-icon
+checksum += atlas-entries + atlas-bytes
+-- "bench-result gui/vector-icons-10k checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle-live Size
+
+C:yumiCollect()
+C:yumiCollect()
+= C:yumiGCLiveByteCount() as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ percentile-us
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
++ min-us
+    - values [U64]
+
+|? !values
+    0
+??
+    sorted[0] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
++ do render-once
+    - root Box
+    - native Pointer
+    - background RGBA
+    - scale F64
+
+. canvas = RasterCanvas(1180, 800, scale)
+canvas.erase(background)
+root.paint(canvas)
+C:yumiGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
+canvas.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRow is Box
+
+• This
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ Icon24 is LucideActivity
+
+• This
+    min-width = SizeSpec.coord(24)
+    max-width = SizeSpec.coord(24)
+    min-height = SizeSpec.coord(24)
+    max-height = SizeSpec.coord(24)
+
+────────────────────
+
+<This
+    stroke = "#334155"

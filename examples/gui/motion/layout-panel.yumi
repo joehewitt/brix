@@ -1,0 +1,347 @@
+./motion-kit
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/math
+/math/motion
+/stream/sort
+/time/duration
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ GridTile is Tuple
+
++ id Index
++ hue Index
+
+━━━━━━━━━━━━━━━━━━━━
+• LayoutMotionTheme
+    using GUIDefaultTheme
+    using GUIMotionTheme
+    using MotionKitTheme
+
+• tile-grid • grid:7 mt:14
+    gap = 8
+
+• grid-tile • flex-col items-center justify-center w:64 h:64 text:gui-accent-text-color
+    corner-radius = 14
+    font-size = 15
+    font-weight = FontWeight.bold
+    motion = gui-motion-smooth
+    motion.position = spring(520ms, 0.2)
+    motion.size = spring(520ms, 0.35)
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    when #is-big
+        • w:136
+
+    when #is-entering
+        opacity = 0%%
+        scale = 0.4
+
+    when #is-leaving
+        opacity = 0%%
+        scale = 0.4
+
+• resize-slot • flex-col items-start w:146 h:150 mt:8
+
+• resize-demo • flex-col bg:gui-field-color w:84 h:80
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 12
+    motion.size = spring(900ms, 0.15)
+
+    when #is-wide
+        • w:140
+        • h:124
+
+• resize-strip • h:8
+    corner-radius = 4
+
+• resize-text • text:gui-strong-text-color mt:6
+    font-size = 10
+    text-wrap = TextWrap.word
+
+• resize-dots • flex-row justify-between items-end flex:1
+
+• resize-dot • w:10 h:10
+    corner-radius = 5
+
+• resize-caption • text:gui-muted-text-color mt:8
+    font-size = 11
+
+• stack-well • motion-well flex-col p:10 w:150 h:192 mt:8
+
+• stack-bar • flex-row items-center h:30 px:10 text:gui-accent-text-color
+    corner-radius = 8
+    font-size = 11
+    font-weight = FontWeight.bold
+    motion.position = gui-motion-quick
+    motion.size = spring(700ms, 0.3)
+
+    when #is-open
+        • h:84
+
+• scope-well • motion-well flex-row items-center h:84 px:12 mt:12
+
+• scope-ball • w:60 h:60
+    corner-radius = 30
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutPanel is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ tiles [GridTile] = layout-tiles(12)
++ big-id Index = -1
++ serial Index = 12
++ is-wide = false
++ is-stack-open = false
++ is-right = false
+
+────────────────────
+
+<This • motion-page
+    <MotionHeader "Layout moves itself"
+        lede = "When a write changes layout, each box slides and resizes from where it was under motion.position and motion.size. Nobody measures anything."
+    <Box • motion-row
+        <MotionCard "A flow of tiles" • flex:1.25
+            <Box • flex-row mt:12
+                <Button shuffle-button "Shuffle"
+                    action = => do shuffle()
+                <Button sort-button "Sort" • ml:8
+                    action = => do sort-tiles()
+                <Button add-button "Add" • ml:8
+                    action = => do add()
+                <Button remove-button "Remove" • ml:8
+                    action = => do remove()
+                <Button grow-button "Grow" • ml:8
+                    action = => do grow()
+            <Box • tile-grid
+                for tile in #tiles keyed by tile.id
+                    <TileBox
+                        tile = tile
+                        is-big = #big-id == tile.id
+        <Box • motion-card flex:1
+            <Box • flex-row items-center
+                <Label "resize-content" • motion-card-title flex:1
+                <Button resize-button "Resize"
+                    action = => do resize()
+            <Box • flex-row mt:10
+                <ResizeColumn
+                    title = "reveal"
+                    mode = ResizeContent.reveal
+                    hue = 0
+                    blurb = "Final layout, clipped"
+                    is-wide = #is-wide
+                <ResizeColumn • ml:8
+                    title = "reflow"
+                    mode = ResizeContent.reflow
+                    hue = 3
+                    blurb = "Laid out every frame"
+                    is-wide = #is-wide
+                <ResizeColumn • ml:8
+                    title = "scale"
+                    mode = ResizeContent.scale
+                    hue = 5
+                    blurb = "Stretched in its transform"
+                    is-wide = #is-wide
+    <Box • flex-row h:300 mt:18 gap:18
+        <Box • motion-card flex:1.25
+            <Box • flex-row items-center
+                <Label "Coupled stacks" • motion-card-title flex:1
+                <Button stack-button "Toggle"
+                    action = => do toggle-stack()
+            <Box • flex-row mt:4
+                <Box • flex-col
+                    <Label "free" • motion-tag mt:6
+                    <Box • stack-well
+                        <StackBars
+                            is-open = #is-stack-open
+                <Box • flex-col ml:16
+                    <Label "stack-motion = coupled" • motion-tag mt:6
+                    <Box • stack-well
+                        <StackBars
+                            stack-motion = StackMotion.coupled
+                            is-open = #is-stack-open
+                <Label • motion-note ml:16 flex:1 mt:28
+                    text = "The second bar grows on a slow spring while its siblings move on a quick one. A coupled stack places them from the presented sizes every frame, so they stay touching."
+        <MotionCard "Motion scopes" • flex:1
+            note = "The ball declares no motion at all. Move snaps it. Move in scope writes the same change inside do use motion(gui-motion-bouncy)."
+            <Box scope-well • scope-well
+                justify = if #is-right then Justify.end else Justify.start
+                <Box • scope-ball
+                    background-color = if #is-right then motion-hue(7) else motion-hue(4)
+            <Box • flex-row mt:14
+                <Button plain-button "Move"
+                    action = => do move-plain()
+                <Button scope-button "Move in scope" • ml:8
+                    action = => do move-scoped()
+
+────────────────────
++ do shuffle
+
+. next = List'GridTile(tiles)
+for index in 0 .. < next.length
+    . other = index + random(0, next.length - index)
+    . held = next[index]
+    next[index] = next[other]
+    next[other] = held
+tiles = next
+
+────────────────────
++ do sort-tiles
+
+tiles = sort(tiles) • using :: left, right => if left.id < right.id then .lesser else .greater
+
+────────────────────
++ do add
+
+serial += 1
+. next = List'GridTile(tiles)
+next.insert(GridTile(serial, serial), random(0, next.length + 1))
+tiles = next
+
+────────────────────
++ do remove
+
+=? if tiles.length == 0
+. next = List'GridTile(tiles)
+next.remove(random(0, next.length))
+tiles = next
+
+────────────────────
++ do grow
+
+=? if tiles.length == 0
+. candidate = tiles[random(0, tiles.length)].id
+big-id = if candidate == big-id then -1 else candidate
+
+────────────────────
++ do resize
+
+is-wide = !is-wide
+
+────────────────────
++ do toggle-stack
+
+is-stack-open = !is-stack-open
+
+────────────────────
++ do move-plain
+
+is-right = !is-right
+
+────────────────────
++ do move-scoped
+
+do use motion($gui-motion-bouncy)
+    is-right = !is-right
+
+━━━━━━━━━━━━━━━━━━━━
++ TileBox is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ tile GridTile
++ is-big = false
+
+────────────────────
+
+<This • grid-tile
+    background = motion-glow(tile.hue)
+    <Label
+        text = "${tile.id}"
+
+━━━━━━━━━━━━━━━━━━━━
++ ResizeColumn is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ title = ""
++ mode = ResizeContent.reveal
++ hue Index = 0
++ blurb = ""
++ is-wide = false
+
+────────────────────
+
+<This • flex-col
+    <Label • motion-tag
+        text = #title
+    <Box • resize-slot
+        <ResizeDemo
+            resize-content = #mode
+            is-wide = #is-wide
+            <Box • resize-strip
+                background = motion-glow(#hue)
+            <Label "These words rewrap as it grows" • resize-text
+            <Box • resize-dots
+                <Box • resize-dot
+                    background-color = motion-hue(#hue)
+                <Box • resize-dot
+                    background-color = motion-hue(#hue + 1)
+                <Box • resize-dot
+                    background-color = motion-hue(#hue + 2)
+    <Label • resize-caption
+        text = #blurb
+
+━━━━━━━━━━━━━━━━━━━━
++ ResizeDemo is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ is-wide = false
+
+────────────────────
+
+<This • resize-demo p:8
+
+━━━━━━━━━━━━━━━━━━━━
++ StackBars is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ is-open = false
+
+────────────────────
+
+<This • flex-col flex:1
+    <StackBar "one"
+        hue = 0
+    <StackBar "two"
+        hue = 2
+        is-open = #is-open
+    <StackBar "three"
+        hue = 4
+    <StackBar "four"
+        hue = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ StackBar is Box
+    using MotionKitTheme
+    using LayoutMotionTheme
+
++ title = ""
++ hue Index = 0
++ is-open = false
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This • stack-bar
+    background = motion-glow(#hue)
+    <Label
+        text = #title
+
+━━━━━━━━━━━━━━━━━━━━
+_ layout-tiles [GridTile]
+    - count Index
+
+GridTile(each, each) in 1 .. count

@@ -1,0 +1,156 @@
+./support/fixture
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Rewrites")
+
+"40 * 2", rewritten("Ball's width * 2", "40", 1)
+"80", rewritten("Ball's width * 2", "80", 2)
+"(1 + 1) * 3", rewritten("2 * 3", "1 + 1", 0)
+"point i + 1 of Star", rewritten("point 1 of Star", "i + 1", 1)
+
+════════════════════
+test("Script Alternates")
+
+"tangent of Star at ‹t›", alternated("point 1 of Star", "tangent")
+
+════════════════════
+test("Script Value Literals")
+
+"50%", literal-of(ScriptValue.number(0.5), ScriptUnit.percent)
+"12.3457", literal-of(ScriptValue.number(12.345678), ScriptUnit.none)
+"0", literal-of(ScriptValue.number(-0.00001), ScriptUnit.none)
+
+════════════════════
+test("Script Suggested Names")
+
+"distance", suggested("Ball's center's distance to Star's center")
+"value", script-name-from-words("'s of")
+"square root", script-name-from-words("square root of")
+
+════════════════════
+test("Script Arithmetic Rewrites")
+
+"(103 + Ball's width, 72)", summed("(103, 72)", "(Ball's width, 0)")
+"Ball's width", summed("2", "Ball's width - 2")
+"Ball's width", differenced("2 + Ball's width", "2")
+"(Ball's width, 0)", differenced("(103 + Ball's width, 72)", "(103, 72)")
+"Ball's width + 2 - 3", differenced("Ball's width + 2", "3")
+true, equivalent("Ball's width * 2", "(Ball's width) * 2")
+true, exact-kept(0.1 + 0.2, true)
+false, exact-kept(0.1 + 0.2, false)
+"0.3", literal-text(0.1 + 0.2)
+
+━━━━━━━━━━━━━━━━━━━━
++ summed String
+    - left String
+    - right String
+
+printed-tree(script-sum(script-test-tree(left), script-test-tree(right)))
+
+━━━━━━━━━━━━━━━━━━━━
++ differenced String
+    - left String
+    - right String
+
+printed-tree(script-difference(script-test-tree(left), script-test-tree(right)))
+
+━━━━━━━━━━━━━━━━━━━━
++ equivalent Bool
+    - left String
+    - right String
+
+script-equivalent(script-test-tree(left), script-test-tree(right))
+
+━━━━━━━━━━━━━━━━━━━━
++ exact-kept Bool
+    - value F64
+    - exact Bool
+
+script-number-constant(script-number-literal(value, ScriptUnit.none, exact))! == value
+
+━━━━━━━━━━━━━━━━━━━━
++ literal-text String
+    - value F64
+
+printed-tree(script-number-literal(value, ScriptUnit.none, true))
+
+━━━━━━━━━━━━━━━━━━━━
++ printed-tree String
+    - tree ScriptExpression
+
+script-text(script-print(tree, script-test-grammar(), script-test-names()))
+
+━━━━━━━━━━━━━━━━━━━━
++ test-outline ScriptOutline
+    - text String
+
+script-outline(script-test-tokens(text), script-test-grammar(), script-test-names())
+
+━━━━━━━━━━━━━━━━━━━━
++ rewritten String
+    - text String
+    - replacement String
+    - index Index?
+
+script-text(script-print(replaced, script-test-grammar(), script-test-names()))
+
+.. outline = test-outline(text)
+.. target = script-token-target(outline, index)
+.. replaced = script-replacing
+    - outline.expression
+    - outline.spans[target.span].expression
+    - script-test-tree(replacement)
+
+━━━━━━━━━━━━━━━━━━━━
++ do alternate-vocabulary ScriptVocabulary'ScriptTestContext
+
+. vocabulary = script-test-vocabulary()
+vocabulary.add-alternates(List'String("point-of", "tangent"))
+= vocabulary
+
+━━━━━━━━━━━━━━━━━━━━
++ alternated-tree ScriptExpression
+    - text String
+    - kind String
+
+script-alternate(tree as ScriptPhraseExpression, grammar, kind)
+
+.. grammar = alternate-vocabulary().grammar
+.. tree = script-parse(script-read(text, grammar, script-test-names()), grammar)
+
+━━━━━━━━━━━━━━━━━━━━
++ alternated String
+    - text String
+    - kind String
+
+script-text
+    - script-print(alternated-tree(text, kind), alternate-vocabulary().grammar, script-test-names())
+
+━━━━━━━━━━━━━━━━━━━━
++ literal-of String
+    - value ScriptValue
+    - unit ScriptUnit
+
+|? !literal
+    "none"
+??
+    script-text(script-print(literal, script-test-grammar()))
+
+.. literal = script-value-literal(value, ScriptType(script-value-type(value).kind, unit))
+
+━━━━━━━━━━━━━━━━━━━━
++ suggested String
+    - text String
+
+script-suggested-name
+    - script-test-tree(text)
+    - script-test-grammar()
+    - script-test-names()
+    - script-any-type

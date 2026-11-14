@@ -1,0 +1,965 @@
+./media
+./tool-tasks
+/data/json
+/time/duration
+/units
+
++ ai-compaction-part = "compaction"
++ ai-steer-part = "steer"
+
+━━━━━━━━━━━━━━━━━━━━
++ AIMessageRole is Union
+
+| developer
+| system
+| user
+| assistant
+| tool
+
+━━━━━━━━━━━━━━━━━━━━
++ AIWebSearchStatus is Union
+
+| started
+| searching
+| completed
+| failed
+
+━━━━━━━━━━━━━━━━━━━━
++ AICitation
+
++ title String
++ url String
++ start-offset Index?
++ end-offset Index?
+
+────────────────────
++ This
+    - title
+    - url
+    - start-offset Index?
+    - end-offset Index?
+
+━━━━━━━━━━━━━━━━━━━━
++ AIMessagePart is Union
+
+| AITextPart
+| AIReasoningPart
+| AIWebSearchPart
+| AIFilePart
+| AIImagePart
+| AIAudioPart
+| AIVideoPart
+| AIToolCallPart
+| AIToolResultPart
+| AIRefusalPart
+| AIExtensionPart
+
+━━━━━━━━━━━━━━━━━━━━
++ AIMessagePartBase
+
++ id String
+
+────────────────────
++ This
+    - id
+
+━━━━━━━━━━━━━━━━━━━━
++ AITextPart is AIMessagePartBase
+
++ text String
++ source-id String?
++ citations [AICitation]
+
+────────────────────
++ This
+    - id
+    - text
+    - source-id String? = null
+    - citations [AICitation] = List'AICitation()
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIReasoningPart is AIMessagePartBase
+
++ text String
++ source-id String?
++ provider-signature JSON?
++ is-update Bool
+
+────────────────────
++ This
+    - id
+    - text
+    - source-id String? = null
+    - provider-signature JSON? = null
+    - is-update = false
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIWebSearchPart is AIMessagePartBase
+
++ search-id String?
++ query String
++ status AIWebSearchStatus
+
+────────────────────
++ This
+    - id
+    - query
+    - status = AIWebSearchStatus.completed
+    - search-id String? = null
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIFilePart is AIMessagePartBase
+
++ file AIFile
+
+────────────────────
++ This
+    - id
+    - file
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIImagePart is AIMessagePartBase
+
++ image AIImage
+
+────────────────────
++ This
+    - id
+    - image
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIAudioPart is AIMessagePartBase
+
++ audio AIAudio
+
+────────────────────
++ This
+    - id
+    - audio
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIVideoPart is AIMessagePartBase
+
++ video AIVideo
+
+────────────────────
++ This
+    - id
+    - video
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolCallPart is AIMessagePartBase
+
++ call-id String
++ tool-name String
++ arguments JSON
++ provider-signature JSON?
+
+────────────────────
++ This
+    - id
+    - call-id
+    - tool-name
+    - arguments
+    - provider-signature JSON? = null
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolResultPart is AIMessagePartBase
+
++ call-id String
++ output JSON
++ text-output String?
++ is-error Bool
++ images [AIImage]
+
+────────────────────
++ This
+    - id
+    - call-id
+    - output = null as JSON
+    - text-output String? = null
+    - is-error = false
+    - images [AIImage] = List'AIImage()
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIRefusalPart is AIMessagePartBase
+
++ text String
+
+────────────────────
++ This
+    - id
+    - text
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIExtensionPart is AIMessagePartBase
+
++ provider-id String
++ part-type String
++ data JSON
+
+────────────────────
++ This
+    - id
+    - provider-id
+    - part-type
+    - data
+
+super(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIMessage
+
++ role AIMessageRole
++ parts [AIMessagePart]
++ name String?
+
+────────────────────
++ This
+    - role
+    - parts [AIMessagePart]
+    - name String? = null
+
+────────────────────
++ This
+    - role
+    - text String
+    - name String? = null
+
+.. parts =
+    * AITextPart("text", text)
+
+━━━━━━━━━━━━━━━━━━━━
++ AITool
+
++ name String
++ description String
++ parameters JSON
++ is-strict Bool
+
+────────────────────
++ This
+    - name
+    - description
+    - parameters
+    - is-strict = true
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolChoice is Union
+
+| automatic
+| none
+| required
+| AINamedToolChoice
+
+━━━━━━━━━━━━━━━━━━━━
++ AINamedToolChoice
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ AICommonOptions
+
++ temperature Float?
++ maximum-output-tokens Size?
++ timeout Duration?
++ stop-sequences [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ AIWebSearchContext is Union
+
+| low
+| medium
+| high
+
+━━━━━━━━━━━━━━━━━━━━
++ AIWebSearchOptions
+
++ context AIWebSearchContext = AIWebSearchContext.medium
++ provider-json JSON?
+
+━━━━━━━━━━━━━━━━━━━━
++ AIRequest
+
++ model String
++ messages [AIMessage]
++ options AICommonOptions
++ tools [AITool]
++ tool-choice AIToolChoice?
++ response-schema JSON?
++ web-search AIWebSearchOptions?
++ image-output AIImageOptions?
++ audio-output AIAudioOptions?
++ video-output AIVideoOptions?
++ provider-json JSON?
++ forks = false
++ chat-id String?
+
+────────────────────
++ This
+    - model
+    - messages [AIMessage] = List'AIMessage()
+
+.. options = AICommonOptions()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIUsage is Tuple
+
++ input-tokens Size? = ai-usage-sum
+    - cached-input-tokens
+    - cache-creation-tokens
+    - cache-read-tokens
+    - tool-prompt-tokens
++ output-tokens Size? = ai-usage-sum(reasoning-tokens, thought-tokens)
++ total-tokens Size? = ai-usage-sum(input-tokens, output-tokens)
++ cached-input-tokens Size? = null
++ cache-creation-tokens Size? = null
++ cache-read-tokens Size? = null
++ reasoning-tokens Size? = null
++ thought-tokens Size? = null
++ tool-prompt-tokens Size? = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-usage-sum Size?
+    - first Size?
+    - second Size?
+    - third Size? = null
+    - fourth Size? = null
+
+|? first is Size || second is Size || third is Size || fourth is Size
+    (first ?? 0) + (second ?? 0) + (third ?? 0) + (fourth ?? 0)
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
++ AIFinishReason is Union
+
+| stop
+| length
+| tool-calls
+| content-filter
+| cancellation
+| error
+| AIProviderFinishReason
+
+━━━━━━━━━━━━━━━━━━━━
++ AIProviderFinishReason is (provider-id String, reason String)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIErrorKind is Union
+
+| authentication
+| rate-limit
+| context-length
+| server
+| timeout
+| cancellation
+| invalid-request
+| invalid-response
+| unknown
+
+━━━━━━━━━━━━━━━━━━━━
++ AIError is Error
+
++ kind AIErrorKind
++ service-message String
++ http-status Int?
++ is-retryable Bool
++ rate-limit-reset String?
+
+────────────────────
++ This
+    - kind
+    - service-message
+    - http-status Int? = null
+    - is-retryable = false
+    - rate-limit-reset String? = null
+
+message = service-message
+
+━━━━━━━━━━━━━━━━━━━━
++ AIResponse
+
++ message AIMessage
++ usage AIUsage
++ finish-reason AIFinishReason
++ data JSON?
+
+────────────────────
++ This
+    - message
+    - usage
+    - finish-reason
+    - data JSON? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ AISubagent is Tuple
+
++ id String
++ title String
++ kind String
++ call-id String
++ is-running Bool
++ steps Size
++ latest String?
++ result String?
++ parts [AIMessagePart]
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolKind is Union
+
+| command
+| read
+| write
+| edit
+| search
+| fetch
+| web-search
+| agent
+| skill
+| tool-search
+| other
+
+━━━━━━━━━━━━━━━━━━━━
++ AIAccountStatus is Union
+
+| missing
+| signed-out
+| signed-in
+
+━━━━━━━━━━━━━━━━━━━━
++ AIAccountBilling is Union
+
+| subscription
+| api
+| unknown
+
+━━━━━━━━━━━━━━━━━━━━
++ AIAccount is Tuple
+
++ status AIAccountStatus
++ billing = AIAccountBilling.unknown
++ email String? = null
++ plan String? = null
++ organization String? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolkitResult is Tuple
+
++ output JSON
++ images [AIImage]
++ shown [AIImage]
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolkit is Interface
+
+────────────────────
++ do tools [AITool]
+
+────────────────────
++ do context String?
+    - request AIRequest
+
+────────────────────
++ prompt [AIMessage]
+    - messages [AIMessage]
+
+messages
+
+────────────────────
++ do run AIToolkitResult ?! Error
+    - request AIRequest
+    - call AIToolCallPart
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkit-for AIToolkit?
+    - toolkits [AIToolkit]
+    - name String
+
+for kit in toolkits
+    for tool in kit.tools()
+        =? kit if tool.name == name
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkits-context String?
+    - toolkits [AIToolkit]
+    - request AIRequest
+
+. notes = List'String()
+for kit in toolkits
+    . note = kit.context(request)
+    if note
+        notes += note
+=? null if !notes
+= "\n\n".join(notes)
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkit-messages [AIMessage]
+    - messages [AIMessage]
+    - context String?
+
+. transcript = List'AIMessage(messages)
+=? transcript if !context
+. index = transcript.length
+while index > 0
+    index -= 1
+    . message = transcript[index]
+    if message.role == AIMessageRole.user
+        . parts = List'AIMessagePart()
+        parts += AITextPart("toolkit-context", "${context}\n\n")
+        parts ++= message.parts
+        transcript[index] = AIMessage(message.role, parts, message.name)
+        = transcript
+= transcript
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkits-messages [AIMessage]
+    - toolkits [AIToolkit]
+    - request AIRequest
+
+. messages = List'AIMessage(request.messages)
+for kit in toolkits
+    messages = kit.prompt(messages)
+= ai-toolkit-messages(messages, ai-toolkits-context(toolkits, request))
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkit-request AIRequest
+    - toolkits [AIToolkit]
+    - request AIRequest
+
+. asked = AIRequest(request.model, ai-toolkits-messages(toolkits, request))
+asked.options = request.options
+asked.forks = request.forks
+asked.chat-id = request.chat-id
+= asked
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-toolkit-parts <AIPartEndEvent>
+    - call AIToolCallPart
+    - result AIToolkitResult
+
+<= AIPartEndEvent(AIToolResultPart("${call.id}:result", call.call-id, result.output) • images result.images)
+if result.shown.length == 1
+    <= AIPartEndEvent(AIImagePart("${call.id}:image", result.shown[0]))
+    =
+for index in 0 .. < result.shown.length
+    <= AIPartEndEvent(AIImagePart("${call.id}:image-$index", result.shown[index]))
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-toolkit-failure AIToolResultPart
+    - call AIToolCallPart
+    - message String
+
+AIToolResultPart("${call.id}:result", call.call-id, null, message, true)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIProvider
+
++ tool-tasks = AIToolTasks()
+
+────────────────────
++ do account AIAccount? ?! AIError
+
+= null
+
+────────────────────
++ tool-title String?
+    - call AIToolCallPart
+
+null
+
+────────────────────
++ tool-kind AIToolKind
+    - call AIToolCallPart
+
+AIToolKind.other
+
+────────────────────
++ tool-input String?
+    - call AIToolCallPart
+
+null
+
+────────────────────
++ do read-task-output String?
+    - task AIToolTask
+
+= null
+
+────────────────────
++ do stop-work ?! AIError
+    - parts [AIMessagePart]
+
+────────────────────
++ do subagents [AISubagent] ?! Error
+    - parts [AIMessagePart]
+
+= List'AISubagent()
+
+────────────────────
++ do caught-up [AIMessagePart]? ?! Error
+    - parts [AIMessagePart]
+
+= null
+
+────────────────────
++ do stream <AIEvent>
+    - request AIRequest
+
+if false
+    <= AIDoneEvent(AIFinishReason.error, AIUsage())
+?! AIError(AIErrorKind.invalid-request, "AIProvider.stream is not implemented")
+
+────────────────────
++ do follow-up <AIEvent>
+    - parts [AIMessagePart]
+
+if false
+    <= AIDoneEvent(AIFinishReason.stop, AIUsage())
+
+────────────────────
++ do steer ?! AIError
+    - parts [AIMessagePart]
+    - prompt String
+
+?! AIError(AIErrorKind.invalid-request, "This provider can't take a message while it replies")
+
+────────────────────
++ complete ?! AIError
+    - request AIRequest
+
+complete(this, request)
+
+━━━━━━━━━━━━━━━━━━━━
++ AIEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ AIPartBeginEvent is AIEvent
++ part AIMessagePart
+
+────────────────────
++ This
+    - part
+
+super()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIContentDelta is Union
+
+| AITextDelta
+| AIReasoningDelta
+| AIToolArgumentsDelta
+| AIAudioDelta
+| AIImageDelta
+| AIMediaProgressDelta
+
+━━━━━━━━━━━━━━━━━━━━
++ AITextDelta
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ AIReasoningDelta
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ AIToolArgumentsDelta
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ AIAudioDelta
++ data Byte[]
+
+────────────────────
++ This
+    - data
+
+━━━━━━━━━━━━━━━━━━━━
++ AIImageDelta
++ image AIImage
+
+────────────────────
++ This
+    - image
+
+━━━━━━━━━━━━━━━━━━━━
++ AIMediaProgressDelta
++ progress Percent
+
+────────────────────
++ This
+    - progress
+
+━━━━━━━━━━━━━━━━━━━━
++ AIPartDeltaEvent is AIEvent
+
++ part-id String
++ delta AIContentDelta
+
+────────────────────
++ This
+    - part-id
+    - delta
+
+super()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIPartEndEvent is AIEvent
++ part AIMessagePart
+
+────────────────────
++ This
+    - part
+
+super()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIUsageEvent is AIEvent
++ usage AIUsage
+
+────────────────────
++ This
+    - usage
+
+super()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIDoneEvent is AIEvent
+
++ finish-reason AIFinishReason
++ usage AIUsage?
+
+────────────────────
++ This
+    - finish-reason
+    - usage AIUsage?
+
+super()
+
+━━━━━━━━━━━━━━━━━━━━
++ AIReply
+
++ parts [AIMessagePart]
++ usage = AIUsage()
++ finish-reason AIFinishReason?
+
+────────────────────
++ do apply ?! AIError
+    - event AIEvent
+
+do match event
+    | begin AIPartBeginEvent
+        . id = ai-part-id(begin.part)
+        ?! AIError(AIErrorKind.invalid-response, "Duplicate AI part ID: $id")
+            if ai-part-index(parts, id)
+        parts += begin.part
+    | delta AIPartDeltaEvent
+        apply-ai-delta(parts, delta)
+    | end AIPartEndEvent
+        . index = ai-part-index(parts, ai-part-id(end.part))
+        if index
+            parts[index] = end.part
+        else
+            parts += end.part
+    | changed AIUsageEvent
+        usage = merge-ai-usage(usage, changed.usage)
+    | done AIDoneEvent
+        if done.usage
+            usage = merge-ai-usage(usage, done.usage)
+        finish-reason = done.finish-reason
+    ?! AIError(AIErrorKind.invalid-response, "Unknown AI stream event")
+
+━━━━━━━━━━━━━━━━━━━━
++ do complete ?! AIError
+    - provider AIProvider
+    - request AIRequest
+
+. reply = AIReply()
+for event in provider.stream(request)
+    reply.apply(event)
+
+. finish-reason = reply.finish-reason
+?! AIError(AIErrorKind.invalid-response, "AI stream ended without a done event")
+    if !finish-reason
+
+. message = AIMessage(AIMessageRole.assistant, reply.parts)
+. response = AIResponse(message, reply.usage, finish-reason)
+if request.response-schema
+    . decoded = match ai-final-text(reply.parts)
+        ~ \json-text
+        ?! AIError(AIErrorKind.invalid-response, "Structured AI response was not valid JSON")
+    response.data = decoded
+
+= response
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-response-text
+    - response AIResponse
+
+ai-parts-text(response.message.parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-parts-text
+    - parts [AIMessagePart]
+
+"".join((each as AITextPart).text in parts when each is AITextPart)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-final-text String
+    - parts [AIMessagePart]
+
+if texts.length > 0 then texts[texts.length - 1] else ""
+
+.. texts = List'String((each as AITextPart).text in parts when each is AITextPart)
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-part-id
+    - part AIMessagePart
+
+match part
+    | text AITextPart
+        text.id
+    | reasoning AIReasoningPart
+        reasoning.id
+    | search AIWebSearchPart
+        search.id
+    | file AIFilePart
+        file.id
+    | image AIImagePart
+        image.id
+    | audio AIAudioPart
+        audio.id
+    | video AIVideoPart
+        video.id
+    | tool-call AIToolCallPart
+        tool-call.id
+    | tool-result AIToolResultPart
+        tool-result.id
+    | refusal AIRefusalPart
+        refusal.id
+    | extension AIExtensionPart
+        extension.id
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-part-index Index?
+    - parts [AIMessagePart]
+    - id String
+
+for index in 0 .. < parts.length
+    if ai-part-id(parts[index]) == id
+        = index
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do apply-ai-delta ?! AIError
+    - parts [AIMessagePart]
+    - event AIPartDeltaEvent
+
+. index = ai-part-index(parts, event.part-id)
+?! AIError(AIErrorKind.invalid-response, "AI delta referenced unknown part ${event.part-id}")
+    if !index
+
+. part = parts[index]
+if event.delta is AITextDelta && part is AITextPart
+    . text = part as AITextPart
+    text.text += (event.delta as AITextDelta).text
+else if event.delta is AITextDelta && part is AIRefusalPart
+    . refusal = part as AIRefusalPart
+    refusal.text += (event.delta as AITextDelta).text
+else if event.delta is AIReasoningDelta && part is AIReasoningPart
+    . reasoning = part as AIReasoningPart
+    reasoning.text += (event.delta as AIReasoningDelta).text
+else if event.delta is AIToolArgumentsDelta && part is AIToolCallPart
+    apply-ai-tool-delta(part, event.delta as AIToolArgumentsDelta)
+else if event.delta is AIAudioDelta && part is AIAudioPart
+    apply-ai-audio-delta(part, event.delta as AIAudioDelta)
+else if event.delta is AIImageDelta && part is AIImagePart
+    . image = part as AIImagePart
+    image.image = (event.delta as AIImageDelta).image
+else if event.delta is AIMediaProgressDelta && part is AIVideoPart
+    . video = part as AIVideoPart
+    video.video.progress = (event.delta as AIMediaProgressDelta).progress
+else
+    ?! AIError(AIErrorKind.invalid-response, "AI delta type did not match its part")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do apply-ai-tool-delta
+    - tool AIToolCallPart
+    - delta AIToolArgumentsDelta
+
+. previous = match tool.arguments
+    | Null!
+        ""
+    | text String
+        text
+    ??
+        to-json(tool.arguments)
+. arrived = "$previous${delta.text}"
+. decoded = match? arrived
+    ~ \json-text
+tool.arguments = decoded ?? arrived as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ do apply-ai-audio-delta ?! AIError
+    - audio AIAudioPart
+    - delta AIAudioDelta
+
+. source = audio.audio.file.source
+?! AIError(AIErrorKind.invalid-response, "Audio delta requires an in-memory byte source")
+    if source is not AIBytesSource
+. previous = (source as AIBytesSource).data
+. combined = Byte[previous.size + delta.data.size]
+combined[0 .. < previous.size] = previous
+combined[previous.size .. < combined.size] = delta.data
+audio.audio.file.source = AIBytesSource(combined)
+
+━━━━━━━━━━━━━━━━━━━━
+_ merge-ai-usage
+    - target AIUsage
+    - update AIUsage
+
+AIUsage
+    • input-tokens update.input-tokens ?? target.input-tokens
+    • output-tokens update.output-tokens ?? target.output-tokens
+    • total-tokens update.total-tokens ?? target.total-tokens
+    • cached-input-tokens update.cached-input-tokens ?? target.cached-input-tokens
+    • cache-creation-tokens update.cache-creation-tokens ?? target.cache-creation-tokens
+    • cache-read-tokens update.cache-read-tokens ?? target.cache-read-tokens
+    • reasoning-tokens update.reasoning-tokens ?? target.reasoning-tokens
+    • thought-tokens update.thought-tokens ?? target.thought-tokens
+    • tool-prompt-tokens update.tool-prompt-tokens ?? target.tool-prompt-tokens

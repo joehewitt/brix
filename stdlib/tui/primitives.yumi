@@ -1,0 +1,219 @@
+/units
+
++ AnsiColor is U8
++ KeyCode is U8
++ Coord (tx) is I16
++ Flex is U8
++ AxisQuery is (mode AxisMeasureMode, min Coord, available Coord?, max Coord?)
++ MeasureQuery is (inline AxisQuery, block AxisQuery)
++ PositionPin is (source AnchorPoint, target AnchorPoint)
++ PSize is (width Coord, height Coord)
+
+━━━━━━━━━━━━━━━━━━━━
++ Display is Union
+
+| visible
+| invisible
+| hidden
+
+━━━━━━━━━━━━━━━━━━━━
++ AxisMeasureMode is Union
+
+| min-content
+| max-content
+| fit
+| exact
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutParticipation is Tuple
+
++ contributes-to-measure = true
++ arranged-by-parent-layout = true
++ arranged-after-parent-layout = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Anchor is Union
+
+| parent
+| screen
+| style-target
+
+━━━━━━━━━━━━━━━━━━━━
++ AnchorPoint is Union
+
+| start
+| center
+| end
+
+────────────────────
++ get fraction Ratio
+
+match this
+    | AnchorPoint.center
+        0.5%%
+    | AnchorPoint.end
+        1%%
+    ??
+        0%%
+
+━━━━━━━━━━━━━━━━━━━━
++ Orientation is Union
+
+| horizontal
+| vertical
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollAlignment is Union
+
+| nearest
+| start
+| center
+| end
+
+━━━━━━━━━━━━━━━━━━━━
++ Direction is Union
+
+| up
+| down
+| left
+| right
+
+────────────────────
++ to String
+
+match this
+    | Direction.up
+        "up"
+    | Direction.down
+        "down"
+    | Direction.left
+        "left"
+    | Direction.right
+        "right"
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ SizeSpec is Union
+
+| auto
+| coord Coord
+| percent Percent
+
+━━━━━━━━━━━━━━━━━━━━
++ MeasureResult is Tuple
+
++ content-size PSize
++ border-size PSize
++ outer-size PSize
++ min-content-size PSize? = null
++ max-content-size PSize? = null
++ overflow-size PSize? = null
++ baseline Coord? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ PositionOffset is Union
+
+| coord Coord
+| percent Percent
+| anchor-start
+| anchor-center
+| anchor-end
+| pin PositionPin
+
+━━━━━━━━━━━━━━━━━━━━
++ Insets is (top Coord, right Coord, bottom Coord, left Coord)
+
++ horizontal => left + right
++ vertical => top + bottom
+
+────────────────────
++ get clamped
+
+Insets(safe-top, safe-right, safe-bottom, safe-left)
+
+.. safe-top = if top > 0 then top else 0
+.. safe-right = if right > 0 then right else 0
+.. safe-bottom = if bottom > 0 then bottom else 0
+.. safe-left = if left > 0 then left else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is (x Coord, y Coord)
+
+────────────────────
++ this + other Point
+
+Point(x + other.x, y + other.y)
+
+━━━━━━━━━━━━━━━━━━━━
++ Rect is (x Coord, y Coord, width Coord, height Coord)
+
++ point => Point(x, y)
++ center => Point(x + width / 2, y + height / 2)
++ size => PSize(width, height)
++ right => x + width
++ bottom => y + height
+
+────────────────────
++ This
+    - width Coord
+    - height Coord
+    - point Point
+
+x = point.x
+y = point.y
+
+────────────────────
++ contains
+    - point Point
+
+point.x >= x && point.y >= y && point.x < x + width && point.y < y + height
+
+────────────────────
++ inset
+    - edges Insets
+
+Rect(x + safe.left, y + safe.top, safe-width, safe-height)
+
+.. safe = edges.clamped
+.. safe-width = if width > safe.horizontal then width - safe.horizontal else 0
+.. safe-height = if height > safe.vertical then height - safe.vertical else 0
+
+────────────────────
++ outset
+    - edges Insets
+
+Rect(x - safe.left, y - safe.top, width + safe.horizontal, height + safe.vertical)
+
+.. safe = edges.clamped
+
+━━━━━━━━━━━━━━━━━━━━
++ fit-axis-query
+    - available Coord? = null
+
+AxisQuery(AxisMeasureMode.fit, 0, available, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ exact-axis-query
+    - size Coord
+
+AxisQuery(AxisMeasureMode.exact, size, size, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ measure-fit-query
+    - inline Coord? = null
+    - block Coord? = null
+
+MeasureQuery(fit-axis-query(inline), fit-axis-query(block))
+
+━━━━━━━━━━━━━━━━━━━━
++ zero-measure-result
+
+MeasureResult(PSize(0, 0), PSize(0, 0), PSize(0, 0))
+
+━━━━━━━━━━━━━━━━━━━━
++ position-pin PositionOffset
+    - source AnchorPoint
+    - target AnchorPoint
+
+PositionOffset.pin(PositionPin(source, target))

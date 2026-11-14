@@ -1,0 +1,408 @@
+====
+Syntax errors at a known trap say what Yumi expects instead
+====
+
+:====
+# reserved word as a name
+
+. on = 1
+-- on
+
+:----
+%crash
+
+Exception: "on" is a reserved word and cannot be a name; choose another name
+<no file:2>
+    . on = 1
+         ^
+;====
+
+:====
+# preposition after an expression
+
+. items = [3, 1]
+. sorted = sort of items
+
+:----
+%crash
+
+Exception: "of" cannot follow an expression; a call takes its arguments in parentheses, as in "sort(keys)", and a callback after a bullet, as in "some(items) • where each > 2"
+<no file:3>
+    . sorted = sort of items
+                    ^
+;====
+
+:====
+# where after a loop source
+
+for x in [3, 1] where x > 2
+    -- x
+
+:----
+%crash
+
+Exception: A loop has no "where" clause; filter its items with "when", as in "for x in items when x > 2"
+<no file:2>
+    for x in [3, 1] where x > 2
+                    ^
+;====
+
+:====
+# bullet that ends a header line
+
+if some([3, 1]) • where
+    each > 2
+    -- "big"
+
+:----
+%crash
+
+Exception: "if" owns the block below it, so "• where" at the end of its line cannot take that block; finish the argument on this line, or compute it in a local above
+<no file:2>
+    if some([3, 1]) • where
+                           ^
+;====
+
+:====
+# label given twice on one line
+
+-- some([3, 1]) • where each > 1 • where each > 2
+
+:----
+%crash
+
+Exception: "where" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in "• where (some(each.kids) • where each > 2)"
+<no file:2>
+    -- some([3, 1]) • where each > 1 • where each > 2
+                                    ^^^^^^^^^^^^^^^^
+;====
+
+:====
+# camel case name
+
+. itemCount = 1
+-- itemCount
+
+:----
+%crash
+
+Exception: Names are kebab-case; write "item-count", not "itemCount"
+<no file:2>
+    . itemCount = 1
+          ^
+;====
+
+:====
+# cast followed by an operator
+
+. x = 3
+. n = x as I64 + 1
+
+:----
+%crash
+
+Exception: A cast cannot be followed by an operator; wrap it in parentheses, as in "(x as I64) + 1"
+<no file:3>
+    . n = x as I64 + 1
+                   ^
+;====
+
+:====
+# operator without spaces
+
+. x = 3
+. y = x+1
+
+:----
+%crash
+
+Exception: An operator needs a space on each side; write "x + 1"
+<no file:3>
+    . y = x+1
+           ^
+;====
+
+:====
+# compound operator without spaces
+
+. x = 3
+x+=1
+
+:----
+%crash
+
+Exception: An operator needs a space on each side; write "x += 1"
+<no file:3>
+    x+=1
+     ^
+;====
+
+:====
+# list continued across lines
+
+. xs = [
+    1, 2]
+
+:----
+%crash
+
+Exception: An expression ends at the end of its line, so this "[" is never closed; write it on one line, or give a call its arguments on indented "- value" lines below it
+<no file:2>
+    . xs = [
+            ^
+;====
+
+:====
+# call continued across lines
+
+-- add(
+    1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ add I32
+    - a I32
+    - b I32
+
+a + b
+
+:----
+%crash
+
+Exception: An expression ends at the end of its line, so this "(" is never closed; write it on one line, or give a call its arguments on indented "- value" lines below it
+<no file:2>
+    -- add(
+           ^
+;====
+
+:====
+# operator at the end of a line
+
+. x = 3 +
+    4
+
+:----
+%crash
+
+Exception: An expression ends at the end of its line, so nothing follows this "+"; write the whole expression on one line
+<no file:2>
+    . x = 3 +
+             ^
+;====
+
+:====
+# braces
+
+if true {
+    -- 1
+}
+
+:----
+%crash
+
+Exception: Blocks are written by indentation, not braces; remove "{" and "}" and indent the body below the line
+<no file:2>
+    if true {
+            ^
+;====
+
+:====
+# semicolon
+
+. x = 1;
+
+:----
+%crash
+
+Exception: A line needs no ";"; remove it
+<no file:2>
+    . x = 1;
+           ^
+;====
+
+:====
+# return keyword
+
+-- f()
+
+━━━━━━━━━━━━━━━━━━━━
++ f I32
+
+return 3
+
+:----
+%crash
+
+Exception: Yumi has no "return"; in a do function, return a value with "= value"
+<no file:7>
+    return 3
+           ^
+;====
+
+:====
+# let keyword
+
+let x = 3
+
+:----
+%crash
+
+Exception: Declare a local with ". name = value", not "let"
+<no file:2>
+    let x = 3
+        ^
+;====
+
+:====
+# def keyword
+
+def f(x):
+    -- 1
+
+:----
+%crash
+
+Exception: Declare a function after a thick divider (━) as "+ name ReturnType", with each parameter on an indented "- name Type" line
+<no file:2>
+    def f(x):
+        ^
+;====
+
+:====
+# hash comment
+
+#note
+-- 1
+
+:----
+%crash
+
+Exception: Name "note" not found
+<no file:2>
+    #note
+    ^^^^^
+;====
+
+:====
+# escaped quote in an embed
+
+. s = "a"
+-- "v ${s.find(\"a\")}"
+
+:----
+%crash
+
+Exception: Inside "${...}", write quotes without a backslash, as in "${name.find("a")}"
+<no file:3>
+    -- "v ${s.find(\"a\")}"
+                   ^
+;====
+
+:====
+# statement after a divider
+
+-- 1
+
+━━━━━━━━━━━━━━━━━━━━
++ f I32
+
+3
+
+━━━━━━━━━━━━━━━━━━━━
+-- f()
+
+:----
+%crash
+
+Exception: A divider starts a declaration, so a statement cannot follow it; put module-level statements above the first divider
+<no file:10>
+    -- f()
+    ^
+;====
+
+:====
+# declaration without a divider
+
+-- 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do a
+
+-- 1
+
+` second
++ do b
+
+-- 2
+
+:----
+%crash
+
+Exception: A declaration with a body needs a divider line above it: a thick divider (━) at module level, or a thin divider (─) for a member of a type
+<no file:10>
+    + do b
+         ^
+;====
+
+:====
+# a function with parameters written after another function body with no divider
+
+-- first(1)
+━━━━━━━━━━━━━━━━━━━━
++ first I32
+    - n I32
+
+n + 1
+
++ second I32
+    - n I32
+
+n * 2
+
+:----
+%crash
+
+Exception: "+ second I32" needs a divider line above it: a thick divider (━) at module level, or a thin divider (─) for a member of a type
+<no file:10>
+        - n I32
+            ^
+;====
+
+:====
+# a function written after a property with no divider
+
+-- Box().a
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ a = 1
++ size I32
+
+2
+
+:----
+%crash
+
+Exception: "+ size I32" needs a divider line above it: a thick divider (━) at module level, or a thin divider (─) for a member of a type
+<no file:9>
+    2
+    ^
+;====
+
+:====
+# a type at the top of a module with no divider above its member
+
++ Box
++ a I32
+
+────────────────────
++ This
+a = 1
+
+:----
+%crash
+
+Exception: Syntax error
+<no file:8>
+    
+     
+;====

@@ -1,0 +1,493 @@
+./dns
+./http
+./socket
+./sse
+/core/tokenstream
+/data
+/os/file
+/os/signal
+/stream/filter
+/time/deadline
+/time/duration
+
+_ http-accept-retry-delay Milliseconds = 5ms
+_ http-accept-retry-limit Milliseconds = 1000ms
+
+━━━━━━━━━━━━━━━━━━━━
++ HTTPHandler is () HTTPResponse ?! Error
+    - request HTTPRequest
+
+━━━━━━━━━━━━━━━━━━━━
++ Route
+
++ path String
++ get HTTPHandler?
++ post HTTPHandler?
++ put HTTPHandler?
++ patch HTTPHandler?
++ delete HTTPHandler?
++ routes [Route]
+
+────────────────────
++ This
+    - path String
+
+────────────────────
++ do this += route Route
+
+routes += route
+= route
+
+────────────────────
++ handler HTTPHandler?
+    - method HTTPMethod
+
+match? method
+    | .get
+        get
+    | .head
+        get
+    | .post
+        post
+    | .put
+        put
+    | .patch
+        patch
+    | .delete
+        delete
+
+────────────────────
++ get has-handlers
+
+get || post || put || patch || delete
+
+────────────────────
++ get allowed-methods String
+
+", ".join(methods)
+
+.. methods
+    *? "GET, HEAD" if get
+    *? "POST" if post
+    *? "PUT" if put
+    *? "PATCH" if patch
+    *? "DELETE" if delete
+
+━━━━━━━━━━━━━━━━━━━━
++ HTTPService
+
+────────────────────
++ do respond HTTPResponse ?! Error
+    - request HTTPRequest
+
+. route = request.route
+=? HTTPResponse(HTTPStatus.not-found) if !route
+. handler = route.handler(request.method)
+if !handler
+    . allow [HTTPHeader] =
+        * "Allow", route.allowed-methods
+    = HTTPResponse(HTTPStatus.method-not-allowed, null, allow)
+= handler(request)
+
+━━━━━━━━━━━━━━━━━━━━
++ HTTPServer
+    is Closable
+
++ host = "127.0.0.1"
++ port Port = 8080
++ service = HTTPService()
++ routes [Route]
++ read-timeout Seconds = 30s
++ write-timeout Seconds = 30s
++ max-connections Size = 10000
++ max-header-size Size = 0x10000
++ max-body-size Size = 0x100000
++ worker Worker?
+
+_ listener TCPListener?
+_ route-map HTTPRouteMap?
+_ connections [HTTPServerConnection]
+_ accept-waiter Task?
+_ lock Mutex
+
+────────────────────
++ do this += route Route
+
+routes += route
+= route
+
+────────────────────
++ get is-running
+
+listener != null
+
+────────────────────
++ do start ?! Error
+
+=? if listener
+
+. opened = TCPListener(port, host)
+listener = opened
+port = opened.port
+route-map = HTTPRouteMap(routes)
+if worker
+    do (worker) new accept-connections(opened)
+else
+    do new accept-connections(opened)
+
+────────────────────
++ do run ?! Error
+
+start()
+for sig on sig-int
+    close()
+    break
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+. current = take-listener()
+=? if !current
+
+catch current.close()
+close-connections()
+wake-acceptor()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do accept-connections
+    - opened TCPListener
+
+. delay = http-accept-retry-delay
+while is-accepting(opened)
+    if wait-for-capacity()
+        check-task-cancelation(Task().suspend())
+    else
+        . connection = opened.accept()
+            catch failure Error
+                do
+                    stderr <- "HTTP server failed to accept a connection: $failure\n"
+                    delay.wait()
+                    delay = (if delay * 2 < http-accept-retry-limit then delay * 2 else http-accept-retry-limit)
+                null
+        if connection
+            delay = http-accept-retry-delay
+            . served = HTTPServerConnection(connection, write-timeout)
+            track(served)
+            do new serve-connection(served)
+
+────────────────────
+_ do is-accepting Bool
+    - opened TCPListener
+
+use lock
+= listener == opened && !opened.is-closed
+
+────────────────────
+_ do wait-for-capacity Bool
+
+use lock
+=? false if connections.length < max-connections
+accept-waiter = Task()
+= true
+
+────────────────────
+_ do take-listener TCPListener?
+
+use lock
+. current = listener
+listener = null
+= current
+
+────────────────────
+_ do close-connections
+
+use lock
+for connection in connections
+    catch connection.socket.close()
+connections.clear()
+
+────────────────────
+_ do track
+    - connection HTTPServerConnection
+
+use lock
+connection.slot = connections.length
+connections += connection
+
+────────────────────
+_ do wake-acceptor
+
+. waiter = take-accept-waiter()
+waiter?.resume-later()
+
+────────────────────
+_ do take-accept-waiter Task?
+
+use lock
+. waiter = accept-waiter
+accept-waiter = null
+= waiter
+
+────────────────────
+_ do serve-connection
+    - connection HTTPServerConnection
+
+do finally
+    if !Task().is-canceled && !Task().is-terminating
+        . panic = recover()
+        if panic
+            stderr <- "HTTP server recovered from a panic: ${panic}\n"
+            if !connection.is-responding
+                catch reject(connection, HTTPStatus.internal-server-error)
+    forget(connection)
+    catch connection.socket.close()
+    wake-acceptor()
+catch serve-requests(connection)
+
+────────────────────
+_ do forget
+    - connection HTTPServerConnection
+
+use lock
+. slot = connection.slot
+=? if slot >= connections.length || connections[slot] as Pointer != connection as Pointer
+
+. last = connections.pop()
+if slot < connections.length
+    connections[slot] = last
+    last.slot = slot
+
+────────────────────
+_ do serve-requests ?! Error
+    - connection HTTPServerConnection
+
+. socket = connection.socket
+. stream = ChunkedTokenStream'Byte(socket)
+while true
+    connection.is-responding = false
+    socket.read-deadline = Deadline(read-timeout)
+    . request = read-http-request(stream, max-header-size, max-body-size)
+        catch SyntaxError
+            do
+                reject(connection, HTTPStatus.bad-request)
+            null
+        catch SizeLimitError
+            do
+                reject(connection, HTTPStatus.request-header-fields-too-large)
+            null
+    =? if !request
+
+    if declared-body-size(request) > max-body-size
+        reject(connection, HTTPStatus.content-too-large)
+        =
+
+    socket.read-deadline = Deadline(read-timeout)
+    . keeps-alive = http-keeps-alive(request)
+    route-map?.resolve(request)
+    . response = service.respond(request)
+        catch SizeLimitError
+            do
+                keeps-alive = false
+            HTTPResponse(HTTPStatus.content-too-large)
+        catch Error
+            HTTPResponse(HTTPStatus.internal-server-error)
+    connection.is-responding = true
+    write-http-response(connection, response, request.method == HTTPMethod.head, keeps-alive)
+    do match? request.body
+        | reader HTTPBodyReader
+            reader.drain()
+    =? if !keeps-alive
+
+────────────────────
+_ do reject ?! Error
+    - connection HTTPServerConnection
+    - status HTTPStatus
+
+connection.is-responding = true
+write-http-response(connection, HTTPResponse(status), false, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ HTTPServerConnection
+    is WritableData
+
++ socket TCP'Byte
++ write-timeout Nanoseconds
++ is-responding = false
++ slot Index
+
+────────────────────
++ This
+    - socket TCP'Byte
+    - write-timeout Nanoseconds
+
+╌╌╌╌╌╌╌╌╌╌ is WritableData ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do write Size ?! Error
+    - buffer Byte[]
+    - size Size
+
+socket.write-deadline = Deadline(write-timeout)
+= socket.write(buffer, size)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+━━━━━━━━━━━━━━━━━━━━
+_ HTTPRouteEntry is (segments [String], route Route)
+
+━━━━━━━━━━━━━━━━━━━━
++ HTTPRouteMap
+
+_ entries [HTTPRouteEntry]
+
+────────────────────
++ This
+    - routes [Route]
+
+for route in routes
+    add(route, List'String())
+
+────────────────────
++ do resolve
+    - request HTTPRequest
+
+. parts = request.paths
+. best HTTPRouteEntry?
+. best-score = -1
+for entry in entries
+    . score = route-match-score(entry.segments, parts)
+    if score > best-score
+        best = entry
+        best-score = score
+
+=? if !best
+
+request.route = best.route
+request.params = route-params(best.segments, parts)
+
+────────────────────
+_ do add
+    - route Route
+    - prefix [String]
+
+. segments = route-segments(prefix, route.path)
+if route.has-handlers
+    entries += (segments, route)
+for child in route.routes
+    add(child, segments)
+
+━━━━━━━━━━━━━━━━━━━━
+_ route-segments [String]
+    - prefix [String]
+    - path String
+
+** prefix
+** each in path.split("/") when each.length > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do route-match-score Int
+    - segments [String]
+    - parts [String]
+
+=? -1 if segments.length != parts.length
+
+. score = 0
+for i in 0 .. < segments.length
+    . segment = segments[i]
+    if !is-route-param(segment)
+        =? -1 if segment != parts[i]
+        score += 1
+= score
+
+━━━━━━━━━━━━━━━━━━━━
+_ do route-params [String = String]
+    - segments [String]
+    - parts [String]
+
+. params [String = String]
+for i in 0 .. < segments.length
+    . segment = segments[i]
+    if is-route-param(segment)
+        params[segment[1 .. < segment.length - 1]] = parts[i]
+= params
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-route-param
+    - segment String
+
+segment.length > 2 && segment.starts-with("{") && segment.ends-with("}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ declared-body-size Size
+    - request HTTPRequest
+
+match request.body
+    | reader HTTPBodyReader
+        match reader.framing
+            | .length(size)
+                size
+            ??
+                0
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ http-keeps-alive
+    - request HTTPRequest
+
+|? connection == "close"
+    false
+|? request.version == "HTTP/1.0"
+    connection == "keep-alive"
+??
+    true
+
+.. connection = request.header("Connection")?.lowercased ?? ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-http-response ?! Error
+    - output WritableData
+    - response HTTPResponse
+    - is-head-request Bool
+    - keeps-alive Bool
+
+. body = (response.body if response.status.has-body) as HTTPBody
+. headers = http-response-headers(response, body, keeps-alive)
+write-http-message(output, response.start-line, headers, if is-head-request then null else body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ http-response-headers [HTTPHeader]
+    - response HTTPResponse
+    - body HTTPBody
+    - keeps-alive Bool
+
+** response.headers
+*? ("Content-Type", content-type) if content-type
+*? ("Content-Length", "${size}") if has-body && size != null
+*? ("Transfer-Encoding", "chunked") if has-body && size == null
+*? ("Cache-Control", "no-cache") if is-events
+*? ("X-Accel-Buffering", "no") if is-events
+*? ("Connection", "close") if !keeps-alive
+|> distinct • where each.name.lowercased
+|> List
+
+.. has-body = response.status.has-body
+.. size = http-body-size(body)
+.. is-events = body is Iterable'ServerSentEvent
+.. content-type = http-content-type(body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ http-content-type String?
+    - body HTTPBody
+
+match? body
+    | String
+        "text/plain; charset=utf-8"
+    | Byte[]
+        "application/octet-stream"
+    | Iterable'ServerSentEvent
+        "text/event-stream"

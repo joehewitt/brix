@@ -1,0 +1,153 @@
+./host.linux
+./host.macos
+/stream/aggregate
+
++ yumi-extension = ".yumi"
+
++ brix-extension = ".bx"
+
++ macos-target Target := Target("macos", .macho, "_", 1, 0x000f0000, "lang/product/mac-app", "MacApp", .host, ["apple"])
+
++ ios-simulator-target Target := Target("ios-simulator", .macho, "_", 7, 0x00110000, "lang/product/ios-app", "IOSApp", .simulator, ["ios", "apple"])
+
++ ios-target Target := Target("ios", .macho, "_", 2, 0x00110000, "lang/product/ios-app", "IOSApp", .device, ["apple"])
+
++ linux-target Target := Target("linux", .elf, "", 0, 0, null, null, .host, ["linux"])
+
+━━━━━━━━━━━━━━━━━━━━
++ ObjectFormat is Union
+
+` The format of the object files a target's linker reads.
+
+| macho
+| elf
+
+━━━━━━━━━━━━━━━━━━━━
++ TargetRunner is Union
+
+` Where a program built for a target runs: on this machine, in a booted simulator, or on a
+` connected device.
+
+| host
+| simulator
+| device
+
+━━━━━━━━━━━━━━━━━━━━
++ Target is Tuple
+
+` A platform the compiler builds programs for. Its name selects the platform's entry in the runtime
+` build config. Its objects are in its object format, and their symbols carry its symbol prefix.
+` Its Mach-O platform and minimum OS version are what its Mach-O objects declare, and are zero for
+` a target whose objects are not Mach-O. Its product class, where it has one, is the app a program
+` declares to be packaged for it, and its runner is where the program runs.
+
++ name String
++ object-format ObjectFormat
++ symbol-prefix String
++ macho-platform U32
++ minimum-os-version U32
++ product-module-name String?
++ product-class-name String?
++ runner TargetRunner
++ families [String]
+
+────────────────────
++ includes Bool
+    - suffix String?
+
+!suffix || suffix == name || families.find(suffix) != null
+
+────────────────────
++ get runs-on-host Bool
+
+` Whether a program built for the target runs on the machine the compiler runs on.
+runner is .host && name == host-target().name
+
+────────────────────
++ get uses-apple-abi Bool
+
+` Whether the target's C calling convention is Apple's arm64 variant of AAPCS64. It packs the
+` arguments a call passes on the stack at their own size and alignment, where AAPCS64 gives each
+` a slot of 8 bytes or more. Its callers extend integer arguments narrower than 32 bits, and its
+` functions extend such results; under AAPCS64 neither does, so the receiving side must.
+includes("apple")
+
+────────────────────
++ symbol String
+    - name String
+
+` The linker's name for a symbol the source names `name`.
+"$symbol-prefix$name"
+
+━━━━━━━━━━━━━━━━━━━━
++ target-named Target?
+    - name String
+
+** targets()
+?> each.name == name
+|> first
+
+━━━━━━━━━━━━━━━━━━━━
++ do targets [Target]
+
+. all [Target]
+all += macos-target
+all += ios-simulator-target
+all += ios-target
+all += linux-target
+= all
+
+━━━━━━━━━━━━━━━━━━━━
++ host-target Target
+
+` The target of the machine the compiler runs on, which a program builds for unless it names another.
+target-named(host-target-name)!
+
+━━━━━━━━━━━━━━━━━━━━
++ platform-suffix String?
+    - path String
+
+|? !stem
+    null
+|? parts.length <= 1
+    null
+??
+    parts[parts.length - 1]
+
+.. file = last(path.split("/")) ?? path
+.. stem = source-stem(file)
+.. parts = List(stem.split("."))
+
+━━━━━━━━━━━━━━━━━━━━
++ source-stem String?
+    - path String
+
+|? path.ends-with(yumi-extension)
+    path[0 .. < path.length - yumi-extension.length]
+|? path.ends-with(brix-extension)
+    path[0 .. < path.length - brix-extension.length]
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
++ is-platform Bool
+    - suffix String
+
+some(targets()) • where each.includes(suffix)
+
+━━━━━━━━━━━━━━━━━━━━
++ builds-together Bool
+    - first String?
+    - second String?
+
+some(targets()) • where each.includes(first) && each.includes(second)
+
+━━━━━━━━━━━━━━━━━━━━
++ do target-including Target
+    - suffix String?
+
+=? host-target() if host-target().includes(suffix)
+for target in targets()
+    if target.includes(suffix)
+        = target
+= host-target()

@@ -1,0 +1,1058 @@
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/gui/icons/lucide/activity
+/gui/icons/lucide/flame
+/gui/icons/lucide/map-pin
+/gui/icons/lucide/search
+/math
+/stream/sort
+/time/duration
+/time/timer
+
+_ active-city-pulse-app App?
+_ active-city-pulse-window CityPulseWindow?
+_ active-city-pulse-map CityPulseMap?
+_ active-city-pulse-feed CityIncidentFeed?
+_ city-pulse-mode-label Label?
+_ city-pulse-performance-label Label?
+_ city-pulse-scene-label Label?
+_ city-pulse-filter-label Label?
+_ city-pulse-pause-label Label?
+_ city-pulse-scroll-label Label?
+_ city-pulse-live-value Label?
+_ city-pulse-sparklines [CitySparkline]
+
+_ city-pulse-launch-choice-made = false
+_ city-pulse-relaunch-requested = false
+_ city-pulse-relaunch-metal = true
+
+run-city-pulse()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-city-pulse
+
+. launcher-app = App()
+. launcher-window = CityPulseLauncherWindow()
+launcher-app += launcher-window
+active-city-pulse-app = launcher-app
+launcher-app.run()
+=? if !city-pulse-launch-choice-made
+
+. next-metal = city-pulse-relaunch-metal
+city-pulse-relaunch-requested = true
+while city-pulse-relaunch-requested
+    city-pulse-relaunch-requested = false
+    . dashboard-app = App()
+    . dashboard-window = CityPulseWindow(next-metal)
+    dashboard-app += dashboard-window
+    active-city-pulse-app = dashboard-app
+    active-city-pulse-window = dashboard-window
+    dashboard-app.run()
+    if city-pulse-relaunch-requested
+        next-metal = city-pulse-relaunch-metal
+
+active-city-pulse-app = null
+active-city-pulse-window = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose-city-pulse-mode
+    - mode String
+
+city-pulse-launch-choice-made = true
+city-pulse-relaunch-metal = mode == "metal"
+active-city-pulse-app?.stop()
+
+━━━━━━━━━━━━━━━━━━━━
++ do relaunch-city-pulse
+    - use-metal Bool
+
+city-pulse-relaunch-metal = use-metal
+city-pulse-relaunch-requested = true
+active-city-pulse-app?.stop()
+
+━━━━━━━━━━━━━━━━━━━━
+• CityPulseTheme
+    using GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+    using GUIFocusRingStyle
+    using GUIFontStyle
+    using GUIParagraphStyle
+    using GUITextComposition
+    using GUIBoxDisplay
+    using GUIBoxPlacement
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIBoxLayout
+    using GUIBoxScroll
+
+• city-header • bg:gui-panel-color
+    border-color = gui-border-color
+    border-width = 1
+
+• city-title • text:gui-strong-text-color
+    font-size = 25
+    font-weight = FontWeight.bold
+
+• city-subtitle • text:gui-muted-text-color
+    font-size = 12
+
+• city-panel • bg:gui-panel-color
+    border-color = gui-border-color
+    border-width = 1
+
+• city-panel-title • text:gui-strong-text-color
+    font-size = 15
+    font-weight = FontWeight.bold
+
+• city-kicker • text:gui-muted-text-color
+    font-size = 10
+    font-weight = FontWeight.bold
+
+• city-copy • text:gui-muted-text-color
+    font-size = 11
+
+• city-stat-card • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+
+• city-stat-title • text:gui-muted-text-color
+    font-size = 10
+    font-weight = FontWeight.bold
+
+• city-stat-value • text:gui-strong-text-color
+    font-size = 21
+    font-weight = FontWeight.bold
+
+• city-mode-badge • bg:gui-pressed-color
+    border-color = gui-border-color
+    border-width = 1
+    font-size = 11
+    font-weight = FontWeight.bold
+
+• city-map-stage • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 1
+
+• city-map-cell • border:"#07101d"
+    border-width = 1
+
+    when #is-hovered
+        • border:"#ffffff"
+        border-width = 2
+
+• city-feed • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 1
+
+• city-incident-text
+    font-family = "Menlo"
+    font-size = 10
+
+• city-action • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+    font-size = 10
+    font-weight = FontWeight.bold
+
+    when #is-hovered
+        • bg:gui-hover-color
+
+    when #is-pressed
+        • bg:gui-pressed-color
+
+    when #is-focus-visible
+        focus-ring = gui-focus-ring
+
+• city-launch-card • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+
+    when #is-hover-within
+        • bg:gui-hover-color
+        border-color = gui-accent-bright-color
+        border-width = 2
+
+    when #is-press-within
+        • bg:gui-pressed-color
+
+• city-launch-title • text:gui-strong-text-color
+    font-size = 19
+    font-weight = FontWeight.bold
+
+• city-launch-copy • text:gui-muted-text-color
+    font-size = 12
+
+• city-pill • bg:gui-field-color
+    border-color = gui-border-color
+    border-width = 1
+    font-size = 9
+
+• city-overlay • bg:gui-well-color
+    border-color = gui-border-color
+    border-width = 1
+    font-family = "Menlo"
+    font-size = 10
+
+• city-status • bg:gui-field-color text:gui-muted-text-color
+    border-color = gui-border-color
+    border-width = 1
+    font-size = 10
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseLauncherWindow is Window
+    using CityPulseTheme
+
+• This
+    font-family = "Helvetica Neue"
+
+────────────────────
+
+<This • flex-col p:22
+    title = "Yumi GUI: City Pulse"
+    size = (760, 470)
+
+    <Box • city-header flex-col h:92 px:20 py:14
+        <CityPulseLabel • city-title
+            text = "City Pulse"
+
+        <CityPulseLabel • city-subtitle mt:6
+            text = "".join
+                * "A deterministic retained-GUI stress scene — "
+                * "choose the renderer to inspect"
+
+    <Box • flex-row flex:1 mt:16
+        <CityPulseLaunchCard "metal" • flex:1
+
+        <CityPulseLaunchCard "core-graphics" • flex:1 ml:14
+
+    <CityPulseLabel • city-copy h:28 mt:14
+        text = "".join
+            * "Bounded demo: Low 32 · Normal 160 · High 640 cell mutations/frame. "
+            * "Pause requests no animation frames."
+        text-alignment = TextAlignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseLaunchCard is Box
+
+• This
+    focus-mode = FocusMode.press
+
++ mode String
++ use-metal => mode == "metal"
+
+────────────────────
++ This
+    - mode
+
+────────────────────
+
+<This • city-launch-card flex-col p:22
+    if use-metal
+        <LucideActivity • w:48 h:48
+            stroke = "#5eead4"
+
+        <CityPulseLabel • city-launch-title mt:12
+            text = "Launch with Metal"
+
+        <CityPulseLabel • city-launch-copy mt:8
+            text = "".join
+                * "Best for smooth partial updates, retained scrolling, shared vectors, "
+                * "and high-refresh displays."
+
+        <CityPulseLabel • city-mode-badge mt:18 px:10 py:7
+            text = "RECOMMENDED"
+    else
+        <LucideFlame • w:48 h:48
+            stroke = "#fb923c"
+
+        <CityPulseLabel • city-launch-title mt:12
+            text = "Launch with Core Graphics"
+
+        <CityPulseLabel • city-launch-copy mt:8
+            text = "".join
+                * "The same seed, nodes, animation, scrolling, and controls "
+                * "for a direct visual comparison."
+
+        <CityPulseLabel • city-mode-badge mt:18 px:10 py:7
+            text = "REFERENCE"
+
+────────────────────
+for event on click
+
+choose-city-pulse-mode(mode)
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseWindow is Window
+    using CityPulseTheme
+
++ requested-metal = true
++ is-playing = true
++ auto-scroll = true
++ load-name = "NORMAL"
++ updates-per-frame Size = 160
++ frame-index Size = 0
++ feed-offset F64
++ cpu-samples [U64]
++ gpu-samples [U64]
++ cpu-p99 U64
++ gpu-p99 U64
++ last-gpu-nanos I64 = -1
++ allocation-marked = false
+
+• This
+    font-family = "Helvetica Neue"
+
+────────────────────
++ This
+    - start-metal Bool
+
+use-metal = start-metal
+requested-metal = start-metal
+cpu-samples.reserve(120)
+gpu-samples.reserve(120)
+city-pulse-sparklines = List'CitySparkline()
+
+────────────────────
+
+<This • flex-col p:14
+    title = "Yumi GUI: City Pulse"
+    size = (1360, 860)
+
+    <KeyShortcut "Pause or resume animation"
+        key = .space
+        repeat = false
+        action = => do toggle-playing()
+
+    <Box • city-header flex-row h:72 px:18 py:10
+        <Box • flex-col flex:1
+            <CityPulseLabel • city-title
+                text = "City Pulse · Retained Operations Console"
+
+            <CityPulseLabel • city-subtitle mt:4
+                text = "".join
+                    * "1,000 live cells · 480 scroll rows · native input · "
+                    * "shared vector geometry"
+
+        <Box • flex-col w:410
+            <CityPulseModeLabel • city-mode-badge h:26 px:10
+                text = "OPENING RENDERER"
+                text-alignment = TextAlignment.center
+
+            <CityPulsePerformanceLabel • city-overlay h:28 mt:6 px:8
+                text = "Collecting display-linked frame telemetry…"
+                text-alignment = TextAlignment.center
+
+    <Box • flex-row h:92 mt:12
+        <CityPulseStatCard "active"
+        <CityPulseStatCard "rows" • ml:10
+        <CityPulseStatCard "events" • ml:10
+        <CityPulseStatCard "pins" • ml:10
+
+    <Box • flex-row flex:1 mt:12
+        <Box • city-panel flex-col flex:1 p:12
+            <Box • flex-row h:40
+                <Box • flex-col flex:1
+                    <CityPulseLabel • city-kicker
+                        text = "LIVE CITY GRID"
+
+                    <CityPulseLabel • city-panel-title mt:3
+                        text = "40 × 25 independently retained cells"
+
+                <CityPulseSceneLabel • city-status w:330 h:30 px:8
+                    text = "Preparing deterministic scene…"
+                    text-alignment = TextAlignment.center
+
+            <Box • city-map-stage flex-col flex:1 mt:10 p:10
+                <CityPulseMap • w:600 h:375
+
+                <Box • flow-row mt:10
+                    <CityDistrictPill "NORTH"
+                    <CityDistrictPill "HARBOR" • ml:6
+                    <CityDistrictPill "MARKET" • ml:6
+                    <CityDistrictPill "CIVIC" • ml:6
+                    <CityDistrictPill "UNION" • ml:6
+                    <CityDistrictPill "SOMA" • ml:6
+                    <CityDistrictPill "MISSION" • ml:6
+                    <CityDistrictPill "SUNSET" • ml:6
+                    <CityDistrictPill "NORTH" • ml:6
+                    <CityDistrictPill "HARBOR" • ml:6
+                    <CityDistrictPill "MARKET" • ml:6
+                    <CityDistrictPill "CIVIC" • ml:6
+
+        <Box • city-panel flex-col w:432 ml:12 p:12
+            <Box • flex-row h:40
+                <Box • flex-col flex:1
+                    <CityPulseLabel • city-kicker
+                        text = "INCIDENT STREAM"
+
+                    <CityPulseLabel • city-panel-title mt:3
+                        text = "480 physical rows · mixed retained text"
+
+                <LucideSearch • icon w:27 h:27 text:gui-accent-bright-color
+
+            <CityPulseFilterInput • h:29 mt:9
+                placeholder = "Filter: fire, medical, traffic, transit…"
+
+            <CityPulseFilterLabel • city-status h:25 mt:7 px:8
+                text = "Type a category and press Return"
+
+            <CityIncidentFeed • city-feed flex:1 mt:9
+
+    <Box • flex-row h:48 mt:12
+        <CityPulseAction "pause" • w:82
+        <CityPulseAction "low" • w:86 ml:7
+        <CityPulseAction "normal" • w:108 ml:7
+        <CityPulseAction "high" • w:98 ml:7
+        <CityPulseAction "scroll" • w:126 ml:7
+
+        <Box • flex:1
+
+        <CityPulseAction "metal" • w:144
+        <CityPulseAction "core-graphics" • w:194 ml:7
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do render Bool
+
+. started = monotonic-time-nanoseconds()
+if is-playing
+    advance-city-pulse-frame()
+. did-render = super.render()
+. elapsed = monotonic-time-nanoseconds() - started
+
+if did-render
+    cpu-samples += elapsed
+    collect-city-pulse-gpu-sample()
+    if frame-index > 0 && frame-index % 120 == 0
+        cpu-p99 = city-pulse-percentile(cpu-samples, 99)
+        gpu-p99 = city-pulse-percentile(gpu-samples, 99)
+        cpu-samples.clear()
+        gpu-samples.clear()
+
+    if frame-index == 30 && is-metal-rendering
+        mark-metal-renderer-allocations()
+        allocation-marked = true
+
+    if frame-index % 30 == 0
+        update-city-pulse-telemetry()
+
+if is-playing
+    schedule-render()
+= did-render
+
+────────────────────
+_ do advance-city-pulse-frame
+
+frame-index += 1
+active-city-pulse-map?.advance(frame-index, updates-per-frame)
+
+if auto-scroll
+    feed-offset += if load-name == "LOW" then 0.65 else if load-name == "NORMAL" then 1.1 else 2.2
+    . maximum = active-city-pulse-feed?.scroll-axis-maximum(Orientation.vertical) ?? 0
+    if feed-offset > maximum
+        feed-offset = 0
+    active-city-pulse-feed?.scroll-to(Point(0, feed-offset))
+
+if frame-index % 30 == 0
+    city-pulse-live-value?.text = "${2418 + (frame-index / 30) % 317}"
+    . scene-text = "$load-name · $updates-per-frame cell mutations/frame"
+    city-pulse-scene-label?.text = "$scene-text · tick $frame-index"
+
+────────────────────
+_ do collect-city-pulse-gpu-sample
+
+=? if !is-metal-rendering
+. completed-frame = last-metal-frame-id - 3
+=? if completed-frame < 0
+. gpu = metal-frame-gpu-nanos(completed-frame)
+if gpu >= 0
+    last-gpu-nanos = gpu
+    gpu-samples += gpu as U64
+
+────────────────────
+_ do update-city-pulse-telemetry
+
+. renderer = if is-metal-rendering then "METAL" else "CORE GRAPHICS"
+if requested-metal && !is-metal-rendering
+    city-pulse-mode-label?.text = "METAL FALLBACK · $metal-fallback-reason"
+else
+    city-pulse-mode-label?.text = "$renderer · $load-name · ${if is-playing then "RUNNING" else "PAUSED"}"
+
+. hertz U64
+if last-frame-refresh-interval > 0ns
+    hertz = (1s / last-frame-refresh-interval) as U64
+
+. gpu-text = city-pulse-duration(gpu-p99)
+if !is-metal-rendering
+    gpu-text = "n/a"
+. allocations = if allocation-marked then metal-renderer-allocations else -1
+. cpu-text = city-pulse-duration(cpu-p99)
+city-pulse-performance-label?.text = "".join
+    * "${hertz}Hz · CPU p99 $cpu-text · GPU p99 $gpu-text"
+    * " · presents $metal-present-count · allocs $allocations"
+
+────────────────────
++ do toggle-playing
+
+is-playing = !is-playing
+city-pulse-pause-label?.text = if is-playing then "PAUSE" else "RESUME"
+if is-playing
+    city-pulse-scene-label?.text = "$load-name · resuming display-linked animation"
+    schedule-render()
+else
+    city-pulse-scene-label?.text = "PAUSED · no animation frames are being requested"
+update-city-pulse-telemetry()
+
+────────────────────
++ do set-load
+    - name String
+    - mutations Size
+
+load-name = name
+updates-per-frame = mutations
+city-pulse-scene-label?.text = "$name · $mutations cell mutations/frame"
+schedule-render()
+
+────────────────────
++ do toggle-auto-scroll
+
+auto-scroll = !auto-scroll
+city-pulse-scroll-label?.text = if auto-scroll then "AUTO-SCROLL ON" else "AUTO-SCROLL OFF"
+if auto-scroll
+    city-pulse-filter-label?.text = "Feed animation resumed"
+else
+    city-pulse-filter-label?.text = "Feed released for manual scrolling"
+schedule-render()
+
+────────────────────
++ do user-took-feed-scroll
+
+=? if !auto-scroll
+auto-scroll = false
+city-pulse-scroll-label?.text = "AUTO-SCROLL OFF"
+city-pulse-filter-label?.text = "Manual scroll owns the feed · use Auto-scroll to resume"
+
+────────────────────
++ do apply-filter
+    - query String
+
+. normalized = query.lowercased
+active-city-pulse-feed?.apply-filter(normalized)
+if !normalized
+    city-pulse-filter-label?.text = "Showing all 480 incidents"
+else
+    city-pulse-filter-label?.text = "Filter applied: ‘$normalized’"
+schedule-render()
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseLabel is Label
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseModeLabel is CityPulseLabel
+
+────────────────────
++ This
+
+city-pulse-mode-label = this
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulsePerformanceLabel is CityPulseLabel
+
+────────────────────
++ This
+
+city-pulse-performance-label = this
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseSceneLabel is CityPulseLabel
+
+────────────────────
++ This
+
+city-pulse-scene-label = this
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseFilterLabel is CityPulseLabel
+
+────────────────────
++ This
+
+city-pulse-filter-label = this
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseLiveValueLabel is CityPulseLabel
+
+────────────────────
++ This
+
+city-pulse-live-value = this
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseStatCard is Box
+
++ kind String
++ title => city-pulse-stat-title(kind)
++ value => city-pulse-stat-value(kind)
++ tone => city-pulse-stat-tone(kind)
+
+────────────────────
++ This
+    - kind
+
+────────────────────
+
+<This • city-stat-card flex-row flex:1 p:12
+    <Box • flex-col w:155
+        <CityPulseLabel • city-stat-title
+            text = title
+
+        if kind == "events"
+            <CityPulseLiveValueLabel • city-stat-value mt:6
+                text = value
+        else
+            <CityPulseLabel • city-stat-value mt:6
+                text = value
+
+    <CitySparkline • flex:1 ml:8
+        tone = tone
+
+━━━━━━━━━━━━━━━━━━━━
++ CitySparkline is Box
+
++ tone Size
++ phase Size
+
+. invalidate-paint < phase
+
+────────────────────
++ This
+
+city-pulse-sparklines += this
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+canvas.push()
+canvas.clip(bounds)
+canvas.fill-color = null
+canvas.stroke-color = city-pulse-spark-color(tone)
+canvas.stroke-width = 2
+canvas.begin()
+for index in 0 .. < 42
+    . x = bounds.x + ((index as F64) / 41) * bounds.width
+    . wave = sin(((index * 3 + phase + tone * 11) as F64) * 0.17)
+    . ripple = cos(((index + phase * 2 + tone * 7) as F64) * 0.11) * 0.35
+    . y = bounds.center.y - (wave + ripple) * bounds.height * 0.28
+    if index == 0
+        canvas.move(x, y)
+    else
+        canvas.line(x, y)
+canvas.end()
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseMap is Box
+
++ cells [CityPulseMapCell]
++ sparklines [CitySparkline]
+
+• This
+    layout = flow-col
+
+────────────────────
++ This
+
+active-city-pulse-map = this
+cells.reserve(1000)
+for row-index in 0 .. < 25
+    . row = CityPulseMapRow()
+    markup-append(this, row)
+    for column-index in 0 .. < 40
+        . index = row-index * 40 + column-index
+        . cell = CityPulseMapCell(index)
+        cells += cell
+        markup-append(row, cell)
+
+────────────────────
++ do advance
+    - tick Size
+    - mutation-count Size
+
+for update in 0 .. < mutation-count
+    . index = (tick * 29 + update * 137) % cells.length
+    cells[index].color = city-pulse-cell-color(index, tick + update)
+
+if tick % 240 == 0
+    for index in 0 .. < cells.length
+        cells[index].color = city-pulse-cell-color(index, tick + index * 3)
+
+for sparkline in city-pulse-sparklines
+    sparkline.phase = tick
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseMapRow is Box
+
+• This • w:600 h:15
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseMapCell is Box
+
++ index Size
++ color RGBA = "#0e7490"
+
+. invalidate-paint < color
+
+• This • city-map-cell w:15 h:15
+
+────────────────────
++ This
+    - index
+
+color = city-pulse-cell-color(index, 0)
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.fill-color = color
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ CityDistrictPill is Box
+
++ title String
+
+────────────────────
++ This
+    - title
+
+────────────────────
+
+<This • city-pill flow-row h:27 px:7
+    <LucideMapPin • icon w:13 h:13 text:gui-accent-bright-color
+
+    <CityPulseLabel • ml:4
+        text = title
+
+━━━━━━━━━━━━━━━━━━━━
++ CityIncidentFeed is Box
+
++ rows [CityIncidentRow]
+
+• This
+    layout = flow-col
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.auto
+    scroll-indicator-y = ScrollIndicatorVisibility.always
+    scroll-indicator-gutter = ScrollIndicatorGutter.stable
+
+────────────────────
++ This
+
+active-city-pulse-feed = this
+rows.reserve(480)
+for index in 0 .. < 480
+    . row = CityIncidentRow(index)
+    rows += row
+    markup-append(this, row)
+
+────────────────────
++ do apply-filter
+    - next-query String
+
+for row in rows
+    . category = city-pulse-category(row.index)
+    . district = city-pulse-district(row.index)
+    . searchable = "$category $district".lowercased
+    row.is-filtered-out = next-query && searchable.find(next-query) == null
+
+────────────────────
+for event on scroll-changed
+
+if event.cause != ScrollCause.programmatic && event.cause != ScrollCause.layout-clamp
+    active-city-pulse-window?.user-took-feed-scroll()
+
+━━━━━━━━━━━━━━━━━━━━
++ CityIncidentRow is Box
+
++ index Size
++ is-filtered-out = false
+
+. invalidate-paint < is-filtered-out
+
+• This • h:18
+
+────────────────────
++ This
+    - index
+
+markup-append(this, CityIncidentText(index))
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.push()
+canvas.fill-color = if is-filtered-out then $gui-field-color else city-pulse-incident-color(index)
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ CityIncidentText is CityPulseLabel
+
+• This • city-incident-text absolute cover:.parent px:5
+
+────────────────────
++ This
+    - index Size
+
+. id = 10000 + index
+. category = city-pulse-category(index)
+. district = city-pulse-district(index)
+. unit = 10 + index % 89
+text = "#$id  $category · $district · unit $unit"
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseAction is CityPulseLabel
+
++ action String
++ title => city-pulse-action-title(action)
+
+• This • city-action h:48
+    focus-mode = FocusMode.press
+    text-alignment = TextAlignment.center
+
+────────────────────
++ This
+    - action
+
+text = title
+if action == "pause"
+    city-pulse-pause-label = this
+else if action == "scroll"
+    city-pulse-scroll-label = this
+
+────────────────────
+for event on click
+
+. dashboard = active-city-pulse-window
+if dashboard
+    if action == "pause"
+        dashboard.toggle-playing()
+    else if action == "low"
+        dashboard.set-load("LOW", 32)
+    else if action == "normal"
+        dashboard.set-load("NORMAL", 160)
+    else if action == "high"
+        dashboard.set-load("HIGH", 640)
+    else if action == "scroll"
+        dashboard.toggle-auto-scroll()
+    else if action == "metal"
+        relaunch-city-pulse(true)
+    else if action == "core-graphics"
+        relaunch-city-pulse(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ CityPulseFilterInput is TextInput
+
+────────────────────
+for event on input
+
+city-pulse-filter-label?.text = "Press Return to apply ‘${event.text.lowercased}’"
+
+────────────────────
+for event on submit
+
+active-city-pulse-window?.apply-filter(event.text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-cell-color RGBA
+    - index Size
+    - tick Size
+
+match (index * 17 + tick * 3) % 9
+    | 0
+        "#0e7490"
+    | 1
+        "#0891b2"
+    | 2
+        "#0284c7"
+    | 3
+        "#2563eb"
+    | 4
+        "#4f46e5"
+    | 5
+        "#7c3aed"
+    | 6
+        "#c026d3"
+    | 7
+        "#e11d48"
+    ??
+        "#f97316"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-incident-color RGBA
+    - index Size
+
+match index % 5
+    | 0
+        "#7f1d1d"
+    | 1
+        "#78350f"
+    | 2
+        "#164e63"
+    | 3
+        "#1e3a8a"
+    ??
+        "#3b0764"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-spark-color RGBA
+    - tone Size
+
+match tone % 4
+    | 0
+        "#2dd4bf"
+    | 1
+        "#38bdf8"
+    | 2
+        "#fb7185"
+    ??
+        "#c084fc"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-stat-title String
+    - kind String
+
+match kind
+    | "active"
+        "ACTIVE CELLS"
+    | "rows"
+        "SCROLL ROWS"
+    | "events"
+        "LIVE EVENTS"
+    ??
+        "SHARED PINS"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-stat-value String
+    - kind String
+
+match kind
+    | "active"
+        "1,000"
+    | "rows"
+        "480"
+    | "events"
+        "2,418"
+    ??
+        "12"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-stat-tone Size
+    - kind String
+
+match kind
+    | "active"
+        0
+    | "rows"
+        1
+    | "events"
+        2
+    ??
+        3
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-action-title String
+    - action String
+
+match action
+    | "pause"
+        "PAUSE"
+    | "low"
+        "LOW · 32"
+    | "normal"
+        "NORMAL · 160"
+    | "high"
+        "HIGH · 640"
+    | "scroll"
+        "AUTO-SCROLL ON"
+    | "metal"
+        "RESTART IN METAL"
+    ??
+        "RESTART IN CORE GRAPHICS"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-category String
+    - index Size
+
+match index % 5
+    | 0
+        "FIRE"
+    | 1
+        "MEDICAL"
+    | 2
+        "TRAFFIC"
+    | 3
+        "TRANSIT"
+    ??
+        "UTILITY"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-district String
+    - index Size
+
+match (index * 7) % 8
+    | 0
+        "North Loop"
+    | 1
+        "Harbor"
+    | 2
+        "Market"
+    | 3
+        "Civic"
+    | 4
+        "Union"
+    | 5
+        "SOMA"
+    | 6
+        "Mission"
+    ??
+        "Sunset"
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-percentile U64
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index]
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
+_ city-pulse-duration String
+    - nanoseconds U64
+
+match nanoseconds
+    |= 0
+        "—"
+    ??
+        "${tenths / 10}.${tenths % 10}ms"
+
+.. tenths = round((nanoseconds as F64) / 100000) as U64

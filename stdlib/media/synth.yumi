@@ -1,0 +1,193 @@
+/core/array-builder
+/math
+/time/duration
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ Frequency is F64
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Hertz (hz) is Frequency
++ Kilohertz (khz) is 1000hz
+
+━━━━━━━━━━━━━━━━━━━━
++ Interval is F64
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Semitones (st) is Interval
++ Octaves (oct) is 12st
+
+━━━━━━━━━━━━━━━━━━━━
++ pitch-ratio F64
+    - interval Semitones
+
+exp(log(2.0) * interval / 12)
+
+━━━━━━━━━━━━━━━━━━━━
++ SoundWave is Union
+
+| sine
+| triangle
+| saw
+| square
+| white
+| pink
+| brown
+
+━━━━━━━━━━━━━━━━━━━━
++ SoundFilter is Union
+
+| open
+| low
+| high
+| band
+
+━━━━━━━━━━━━━━━━━━━━
++ SoundLayer
+
++ wave = SoundWave.sine
++ pitch Hertz = 440hz
++ pitch-end Hertz = 0hz
++ glide Seconds = 80ms
++ vibrato-rate Hertz = 0hz
++ vibrato-depth Semitones = 0st
++ fm-ratio F64
++ fm-depth F64
++ fm-depth-end F64 = -1
++ filter = SoundFilter.open
++ cutoff Hertz = 2khz
++ cutoff-end Hertz = 0hz
++ sweep-time Seconds = 100ms
++ resonance F64 = 0.7
++ attack Seconds = 5ms
++ hold Seconds = 0s
++ decay Seconds = 300ms
++ is-sustained = false
++ release Seconds = 400ms
++ level Ratio = 50%
++ pan Ratio = 0%
++ reverb Ratio = 15%
++ delay Seconds = 0s
++ echoes Size = 0
++ echo-gap Seconds = 100ms
++ echo-level Ratio = 100%
++ echo-step Semitones = 0st
++ tremolo-rate Hertz = 0hz
++ tremolo-depth Ratio = 0%
++ level-control I64 = -1
++ cutoff-control I64 = -1
++ cutoff-range Octaves = 2oct
+
+• sine
+    wave = SoundWave.sine
+
+• triangle
+    wave = SoundWave.triangle
+
+• saw
+    wave = SoundWave.saw
+
+• square
+    wave = SoundWave.square
+
+• white-noise
+    wave = SoundWave.white
+
+• pink-noise
+    wave = SoundWave.pink
+
+• brown-noise
+    wave = SoundWave.brown
+
+• low-pass
+    filter = SoundFilter.low
+
+• high-pass
+    filter = SoundFilter.high
+
+• band-pass
+    filter = SoundFilter.band
+    resonance = 1.2
+
+• sustained
+    is-sustained = true
+
+────────────────────
++ get length Seconds
+
+if !is-sustained then delay + (attack + hold + decay + echo-gap) * (echoes + 1) else held-length
+
+.. held-length = delay + attack + release
+
+━━━━━━━━━━━━━━━━━━━━
++ SoundPatch
+
++ name String
++ layers [SoundLayer]
++ pitch-spread Semitones = 0st
++ level-spread Ratio = 0%
++ min-gap Seconds = 60ms
++ polyphony Size = 3
++ first Size = 0
++ count Size = 0
+
+────────────────────
++ This
+    - name String
+
+this.name = name
+
+────────────────────
++ do this += layer SoundLayer
+
+layers += layer
+
+────────────────────
++ get is-sustained Bool
+
+layers.length > 0 && layers[0].is-sustained
+
+────────────────────
++ do get length Seconds
+
+. longest Seconds = 0s
+for layer in layers
+    longest = max(longest, layer.length)
+= longest
+
+━━━━━━━━━━━━━━━━━━━━
++ SoundBank
+
++ rate F64 = 48000
++ patches [SoundPatch]
++ patch-table SoundPatch[]
++ layer-table SoundLayer[]
+_ names = Map'String'Size()
+
+────────────────────
++ do add Size
+    - patch SoundPatch
+
+. index = patches.length
+patches += patch
+names[patch.name] = index
+= index
+
+────────────────────
++ find Size?
+    - name String
+
+names[name]
+
+────────────────────
++ do seal
+
+. layers [SoundLayer]
+for patch in patches
+    patch.first = layers.length
+    patch.count = patch.layers.length
+    layers ++= patch.layers
+patch-table = Array(patches)
+layer-table = Array(layers)

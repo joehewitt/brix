@@ -1,0 +1,20 @@
+`benchmark.meta description: Parks thousands of tasks on short staggered sleeps so the poller juggles many pending timers.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/channel
+/time/duration
+
+. sleepers = 4000
+. done SyncBufferedChannel'Int
+
+for i in 0 .. < sleepers
+    do new
+        ((i % 50) as Milliseconds).wait()
+        done <- 1
+
+. checksum = 0
+for i in 0 .. < sleepers
+    checksum += (<- done)!
+
+-- "bench-result tasks/sleep-timers checksum=$checksum"

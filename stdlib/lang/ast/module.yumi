@@ -1,0 +1,121 @@
+./ast
+./ast-nodes
+./decl
+./row-range
+/core/arena
+/core/array-builder
+/core/table
+
++ ModuleId is U32
++ no-member = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ MemberKey is Tuple
+    is Hashable
+
++ owner U32
++ name Atom
+
+────────────────────
++ this == other This
+
+owner == other.owner && name == other.name
+
+────────────────────
++ get hash Hash
+
+hash-for(name) /xor/ hash-for(owner)
+
+━━━━━━━━━━━━━━━━━━━━
++ Module
+    is Usable'Void
+
++ path String
++ relative-path String
++ name String
++ tree AST
++ decls ImmutableTable'Decl
++ member-pool ImmutableArray'DeclId'ArenaBacking
++ member-links ImmutableArray'U32'ArenaBacking
+_ member-heads Map'MemberKey'U32'ArenaBacking
++ arg-pool ImmutableArray'ArgumentShape'ArenaBacking
++ syntax-pool ImmutableArray'SyntaxId'ArenaBacking
++ undeclared ImmutableArray'SyntaxId'ArenaBacking
++ undeclared-owners ImmutableArray'DeclId'ArenaBacking
++ made-atoms ImmutableArray'Atom'ArenaBacking
++ main-decl DeclId
++ init-decl DeclId
++ task-main-decl DeclId
+_ arena Arena
+_ tree-released Bool
+_ released Bool
+
+────────────────────
++ This
+    - path String
+    - relative-path String
+    - name String
+    - tree AST
+    - arena Arena
+    - decls ImmutableTable'Decl
+    - member-pool ImmutableArray'DeclId'ArenaBacking
+    - member-links ImmutableArray'U32'ArenaBacking
+    - member-heads Map'MemberKey'U32'ArenaBacking
+    - arg-pool ImmutableArray'ArgumentShape'ArenaBacking
+    - syntax-pool ImmutableArray'SyntaxId'ArenaBacking
+    - undeclared ImmutableArray'SyntaxId'ArenaBacking
+    - undeclared-owners ImmutableArray'DeclId'ArenaBacking
+    - made-atoms ImmutableArray'Atom'ArenaBacking
+    - main-decl DeclId
+    - init-decl DeclId
+    - task-main-decl DeclId
+
+────────────────────
++ first-member U32
+    - members RowRange'DeclId
+    - name Atom
+
+` The place in the member pool of the first member of a class or extension with a name, or
+` `no-member`. The next with the name is at the place in `member-links`.
+member-heads[MemberKey(members.start, name)] ?? no-member
+
+────────────────────
++ do begin-using
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do release-tree
+
+` Frees the syntax tree alone. The declarations, member pools, and argument shapes stay in the
+` module arena until release.
+if !tree-released
+    tree.release()
+    tree-released = true
+
+────────────────────
++ do release
+
+if !released
+    release-tree()
+    arena.release()
+    released = true
+
+━━━━━━━━━━━━━━━━━━━━
++ do extension-ordinal U32
+    - module Module
+    - decl DeclId
+
+. ordinal = 0u32
+. index = 0u32
+for row in module.decls
+    if index == decl
+        = ordinal
+    do match? row
+        | .decl-extension
+            ordinal += 1
+    index += 1
+= ordinal

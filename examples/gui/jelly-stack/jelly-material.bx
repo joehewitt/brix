@@ -1,0 +1,134 @@
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/shader-declarations)
+
+(type + Gelatin (is FillShader)
+  (prop + tint RGBA)
+  (prop + width Float)
+  (prop + height Float)
+  (prop + a Point)
+  (prop + b Point)
+  (prop + c Point)
+  (prop + d Point)
+  (prop + e Point)
+  (prop + f Point)
+  (prop + g Point)
+  (prop + h Point)
+  (prop + i Point)
+  (fn-do + This _
+    (param tint _)
+    (param width _)
+    (param height _)
+    (param a _)
+    (param b _)
+    (param c _)
+    (param d _)
+    (param e _)
+    (param f _)
+    (param g _)
+    (param h _)
+    (param i _)
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float2 jellyBlend(float2 a, float2 b, float2 c, float t) {"
+      "    float u = saturate(t) * 2.0;"
+      "    return u < 1.0 ? mix(a, b, u * u * (3.0 - 2.0 * u))"
+      "                   : mix(b, c, (u - 1.0) * (u - 1.0) * (5.0 - 2.0 * u));"
+      "}"
+      (blank)
+      "float2 jellyDisplace(float2 p, GelatinArgs args) {"
+      "    float2 uv = p / float2(args.width, args.height) + 0.5;"
+      "    float2 top = jellyBlend(args.a, args.b, args.c, uv.x);"
+      "    float2 middle = jellyBlend(args.d, args.e, args.f, uv.x);"
+      "    float2 bottom = jellyBlend(args.g, args.h, args.i, uv.x);"
+      "    return jellyBlend(top, middle, bottom, uv.y);"
+      "}"
+      (blank)
+      "float3 jellyRest(float3 p, GelatinArgs args) {"
+      "    float2 original = p.xy;"
+      "    p.xy = original - jellyDisplace(p.xy, args);"
+      "    p.xy = original - jellyDisplace(p.xy, args);"
+      "    return p;"
+      "}"
+      (blank)
+      "float jellyDistance(float3 p, GelatinArgs args) {"
+      "    p = jellyRest(p, args);"
+      "    float radius = min(args.width * 0.13, args.height * 0.24);"
+      "    float depth = args.height * 0.38;"
+      "    float3 halfSize = float3(args.width * 0.5,"
+      "                             args.height * 0.5 - depth * 0.28 + radius * 0.24, depth);"
+      "    float pillow = depth * 0.22 * cos(p.x / args.width * 2.8) * cos(p.y / args.height * 2.7);"
+      "    halfSize.z += pillow;"
+      "    float3 q = abs(p) - (halfSize - radius);"
+      "    return length(max(q, float3(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0) - radius;"
+      "}"
+      (blank)
+      "float3 jellyNormal(float3 p, GelatinArgs args) {"
+      "    float e = 0.35;"
+      "    return normalize(float3("
+      "        jellyDistance(p + float3(e, 0, 0), args) - jellyDistance(p - float3(e, 0, 0), args),"
+      "        jellyDistance(p + float3(0, e, 0), args) - jellyDistance(p - float3(0, e, 0), args),"
+      "        jellyDistance(p + float3(0, 0, e), args) - jellyDistance(p - float3(0, 0, e), args)"
+      "    ));"
+      "}"
+      (blank)
+      "float jellyHash(float n) {"
+      "    return fract(sin(n * 127.1 + 31.7) * 43758.5453);"
+      "}"
+      (blank)
+      "float4 fill(float2 position, float2 size, GelatinArgs args) {"
+      "    float2 pixel = position - size * 0.5;"
+      "    float3 ray = normalize(float3(0.08, 0.28, -1.0));"
+      "    float3 origin = float3(pixel - ray.xy / -ray.z * 140.0, 140.0);"
+      "    float distance = 0.0;"
+      "    float field = 100.0;"
+      "    float3 p = origin;"
+      "    for (int step = 0; step < 48; ++step) {"
+      "        p = origin + ray * distance;"
+      "        field = jellyDistance(p, args);"
+      "        if (field < 0.16 || distance > 220.0) break;"
+      "        distance += max(field * 0.72, 0.1);"
+      "    }"
+      "    if (field > 0.5 || distance > 220.0) return float4(0.0);"
+      "    float3 n = jellyNormal(p, args);"
+      "    float3 rest = jellyRest(p, args);"
+      "    float3 view = -ray;"
+      "    float3 light = normalize(float3(-0.5, -0.75, 1.1));"
+      "    float facing = saturate(dot(n, view));"
+      "    float fresnel = 0.035 + 0.65 * pow(1.0 - facing, 4.0);"
+      "    float thickness = args.height * 0.7 * sqrt(max(0.12, facing));"
+      "    float3 dye = max(args.tint.rgb * args.tint.rgb, float3(0.035));"
+      "    float3 absorption = -log(mix(float3(1.0), dye, 0.76)) * 0.025;"
+      "    float3 transmission = exp(-absorption * thickness);"
+      "    float3 color = transmission * float3(1.0, 0.96, 0.98);"
+      "    color *= 0.68 + 0.32 * saturate(dot(n, light));"
+      "    float3 reflected = reflect(ray, n);"
+      "    float softbox = exp(-pow((reflected.x + 0.45) / 0.32, 4.0)"
+      "                       -pow((reflected.y + 0.6) / 0.12, 4.0));"
+      "    float strip = exp(-pow((reflected.x - 0.65) / 0.06, 2.0)"
+      "                     -pow((reflected.y - 0.12) / 0.7, 4.0));"
+      "    float specular = pow(saturate(dot(n, normalize(light + view))), 90.0);"
+      "    color += float3(1.0, 0.97, 0.93) * (softbox * 0.8 + specular * 0.65 + strip * 0.33);"
+      "    color = mix(color, float3(1.0, 0.94, 1.0), fresnel * 0.76);"
+      "    float rim = pow(1.0 - facing, 2.0);"
+      "    color += transmission * rim * 0.18;"
+      "    float baseGlow = exp(-pow((rest.y - args.height * 0.3) / 5.0, 2.0));"
+      "    color += transmission * baseGlow * 0.16;"
+      "    for (int bubble = 0; bubble < 14; ++bubble) {"
+      "        float seed = float(bubble) + args.tint.r * 19.0;"
+      "        float2 center = (float2(jellyHash(seed), jellyHash(seed + 52.0)) - 0.5)"
+      "                      * float2(args.width * 0.82, args.height * 0.68);"
+      "        float radius = 0.65 + jellyHash(seed + 87.0) * 1.5;"
+      "        float2 delta = rest.xy + n.xy * 4.0 - center;"
+      "        float ring = exp(-pow((length(delta) - radius) / 0.4, 2.0));"
+      "        float glint = exp(-dot(delta + float2(0.4, 0.5), delta + float2(0.4, 0.5)) / 0.3);"
+      "        color += ring * 0.06 + glint * 0.24;"
+      "    }"
+      "    float alpha = 0.85 + rim * 0.14;"
+      "    float edge = smoothstep(0.0, 0.25, facing);"
+      "    return float4(clamp(color, float3(0.0), float3(1.0)), alpha * edge);"
+      "}"
+    )
+  )
+)

@@ -1,0 +1,480 @@
+./test-protocol
+/data/json
+/lang/target
+/os/env
+/os/file
+/os/path
+/os/process
+/stream/combine
+/stream/sort
+/time/clock
+/time/duration
+/unistd.h
+
+_ module-statuses [String] = ["passed", "failed", "crashed"]
+_ module-reserved-cores = 2
+_ default-suite-name = "tests"
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-module-catalog Int ?! Error
+    - sources [String]
+
+. suite = module-suite(sources)
+. start = (env("OMETER_TESTOMETER_CATALOG_START_INDEX") ?? "0") as Int
+emit-json(catalog-json(suite, test-modules(suite), start))
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-modules Int ?! Error
+    - sources [String]
+
+. suite = module-suite(sources)
+. ids = selected-test-ids(env("OMETER_TESTOMETER_SELECTED_TEST_IDS") ?? "[]")
+?! Error("No tests were selected")
+    if !ids
+. found [String = TestModule]
+for each in test-modules(suite)
+    found[each.id] = each
+. modules [TestModule]
+for id in ids
+    . module = found[id]
+    ?! Error("$id is not a test module of the ${suite.name} suite")
+        if !module
+    modules += module
+. parent = Path(suite.project) / ".tmp/build/tests"
+parent.make-directories()
+. scratch = temporary-directory("run", parent as String) as String
+do finally remove-folder(scratch)
+emit-json(run-start-json(ids))
+. run = ModuleRun(suite, (executable-path().dir / "yumi") as String, scratch, modules)
+run.run()
+emit-json(run.end-json())
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ ModuleSuite is Tuple
+
++ name String
++ project String
++ sources [String]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do module-suite ModuleSuite ?! Error
+    - written [String]
+
+` A suite of the test modules its sources hold: a folder holds those in its `tests` folders, and a
+` module named by its path without `.yumi` is one.
+. name = env("OMETER_TESTOMETER_SUITE_NAME") ?? default-suite-name
+. project = Path(env("OMETER_TESTOMETER_PROJECT_ROOT") ?? cwd()).normalized
+. sources [String]
+for source in written
+    . found = (if source.starts-with("/") then Path(source) else Path(project) / source).normalized
+    ?! Error("The $name suite's $source is neither a folder nor a module in $project")
+        if !Path(found).is-dir && !Path("${found}.yumi").is-file && !is-brix-file
+    .. is-brix-file = Path("$found$brix-extension").is-file
+    sources += found
+= ModuleSuite(name, project, sources)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TestModule is Tuple
+
++ id String
++ source-path String
++ relative-path String
++ display [String]
++ label String
++ fixtures String?
+
+━━━━━━━━━━━━━━━━━━━━
+_ do test-modules [TestModule] ?! Error
+    - suite ModuleSuite
+
+. modules [TestModule]
+for source in suite.sources
+    if Path(source).is-dir
+        . names [String]
+        collect-module-names(Path(source), "", names)
+        for name in sort(names)
+            modules += test-module(suite, source, name)
+    else
+        modules += test-module(suite, Path(source).dir as String, "/${Path(source).name}")
+= modules
+
+━━━━━━━━━━━━━━━━━━━━
+_ test-module TestModule
+    - suite ModuleSuite
+    - root String
+    - name String
+
+TestModule
+    - "test:${suite.name}:$relative-path:1"
+    - source-path
+    - relative-path
+    - display
+    - label
+    - fixtures-folder(root, name)
+
+.. source-path = if Path("$root$name$brix-extension").is-file then "$root$name$brix-extension" else "$root${name}.yumi"
+.. relative-path = project-relative(suite.project, source-path)
+.. display = module-display(name)
+.. label = if display then display[display.length - 1] else name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-module-names ?! Error
+    - directory Path
+    - prefix String
+    - names [String]
+
+for child in directory.contents
+    . base = child.name
+    if !child.is-dir || base.starts-with(".")
+        continue
+    if base != "tests"
+        collect-module-names(child, "$prefix/$base", names)
+        continue
+    for entry in child.contents
+        if entry.is-file && (entry.ext == "yumi" || ".${entry.ext}" == brix-extension)
+            names += "$prefix/$base/${entry.base-name}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do module-display [String]
+    - name String
+
+. segments [String] = <* part in name.split("/") when part && part != "tests"
+while segments.length > 1 && segments[segments.length - 1] == segments[segments.length - 2]
+    segments.pop()
+= segments
+
+━━━━━━━━━━━━━━━━━━━━
+_ fixtures-folder String?
+    - root String
+    - name String
+
+folder as String if folder.is-dir
+
+.. folder = Path("$root${Path(name).dir}/fixtures/${Path(name).name}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ project-relative String
+    - project String
+    - path String
+
+if path.starts-with("$project/") then path[project.length + 1 ...] else path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do catalog-json [String = JSON]
+    - suite ModuleSuite
+    - modules [TestModule]
+    - start Int
+
+. suite-id = "suite:${suite.name}"
+. root = CatalogNode(suite-id, suite.name)
+. nodes [String = CatalogNode]
+nodes[suite-id] = root
+. tests [JSON]
+for index, found in indexed(modules)
+    . relative-path = "${suite.name}:${found.relative-path}"
+    . file-id = "file:$relative-path"
+    . display = found.display
+    . suite-ids [String] = [suite-id]
+    . parent = root
+    root.count += 1
+    for depth in 1 .. < display.length
+        . child-id = "suite:${suite.name}/${"/".join(display[0 .. < depth])}"
+        . child = nodes[child-id] ?? CatalogNode(child-id, display[depth - 1])
+        if !nodes[child-id]
+            nodes[child-id] = child
+            parent.entries += CatalogEntry(child, null)
+        child.count += 1
+        suite-ids += child-id
+        parent = child
+    . selectors [String] = [found.id, "${suite.name}/${"/".join(display)}", file-id]
+    selectors ++= suite-ids
+    . test = Map'String'JSON
+        • "id" found.id as JSON
+        • "groupName" suite.name as JSON
+        • "fileLabel" "/".join(display) as JSON
+        • "sourcePath" found.source-path as JSON
+        • "relativePath" relative-path as JSON
+        • "label" found.label as JSON
+        • "lineNoStart" 1 as JSON
+        • "lineNoEnd" 1 as JSON
+        • "selector" found.id as JSON
+        • "fileId" file-id as JSON
+        • "groupId" "group:${suite.name}" as JSON
+        • "suiteIds" json-strings(suite-ids) as JSON
+        • "selectors" json-strings(selectors) as JSON
+        • "index" (start + index + 1) as JSON
+        • "caseIndex" 1 as JSON
+        • "configName" suite.name as JSON
+        • "suiteName" suite.name as JSON
+        • "configuredSuiteSelector" suite-id as JSON
+        • "isDefault" false as JSON
+    tests += test
+    . node = Map'String'JSON
+        • "id" found.id as JSON
+        • "label" found.label as JSON
+        • "kind" "test" as JSON
+        • "selector" found.id as JSON
+        • "count" 1 as JSON
+        • "path" found.source-path as JSON
+        • "sourcePath" found.source-path as JSON
+        • "relativePath" relative-path as JSON
+        • "lineNoStart" 1 as JSON
+        • "lineNoEnd" 1 as JSON
+    parent.entries += CatalogEntry(null, node as JSON)
+= Map'String'JSON
+    • "protocol" "ometer.testometer.catalog.v1" as JSON
+    • "protocolVersion" 1 as JSON
+    • "version" 2 as JSON
+    • "projectPath" suite.project as JSON
+    • "suites" [root.json()] as JSON
+    • "tests" tests as JSON
+    • "scopes" List'JSON() as JSON
+    • "isExclusive" false as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ CatalogEntry is Tuple
+
++ node CatalogNode?
++ test JSON?
+
+━━━━━━━━━━━━━━━━━━━━
+_ CatalogNode
+
++ id String
++ label String
++ count = 0
++ entries [CatalogEntry]
+
+────────────────────
++ This
+    - id
+    - label
+
+────────────────────
++ do json JSON
+
+. children [JSON]
+for entry in entries
+    . node = entry.node
+    children += if node then node.json() else entry.test!
+. fields = Map'String'JSON
+    • "id" id as JSON
+    • "label" label as JSON
+    • "kind" "suite" as JSON
+    • "selector" id as JSON
+    • "count" count as JSON
+    • "children" children as JSON
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ ModuleResult
+
++ status = "crashed"
++ actual = ""
++ expected = ""
++ errors = ""
++ duration = 0ms
++ compiled = false
++ exit = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ ModuleRun
+
+_ suite ModuleSuite
+_ compiler String
+_ scratch String
+_ modules [TestModule]
+_ counts [String = Int]
+_ next Index = 0
+_ output := Mutex()
+
+────────────────────
++ This
+    - suite
+    - compiler
+    - scratch
+    - modules
+
+for status in module-statuses
+    counts[status] = 0
+
+────────────────────
++ do run
+
+. workers = worker-count(modules.length)
+. finished = SyncBufferedChannel'Bool()
+for _ in 0 .. < workers
+    do new
+        work()
+        finished <- true
+for _ in 0 .. < workers
+    <- finished
+
+────────────────────
++ end-json [String = JSON]
+
+run-end-json(modules.length, counts["passed"]!, counts["failed"]!, 0, counts["crashed"]!, 0)
+
+────────────────────
+_ do work
+
+while true
+    . index = claim()
+    =? if index >= modules.length
+    . module = modules[index]
+    write(test-start-json(module.id))
+    . result = run-module(module, index)
+    report(module, result)
+
+────────────────────
+_ do claim Index
+
+use output
+. index = next
+next += 1
+= index
+
+────────────────────
+_ do write
+    - value [String = JSON]
+
+use output
+stdout.write("${to-json(value)}\n")
+
+────────────────────
+_ do report
+    - module TestModule
+    - result ModuleResult
+
+use output
+counts[result.status] = counts[result.status]! + 1
+stdout.write("${to-json(result-json(suite.name, module, result))}\n")
+
+────────────────────
+_ do run-module ModuleResult
+    - module TestModule
+    - index Index
+
+. result = ModuleResult()
+. started = clock()
+. ran = catch build-and-run(module, index, result)
+if ran is Error
+    result.status = "crashed"
+    result.errors = "$ran"
+result.duration = clock() - started
+= result
+
+────────────────────
+_ do build-and-run ?! Error
+    - module TestModule
+    - index Index
+    - result ModuleResult
+
+. directory = "$scratch/module-$index"
+. work = "$directory/work"
+Path(work).make-directories()
+. fixtures = module.fixtures
+if fixtures
+    . copy = Process("/bin/sh", "-c", "cp -R ${shell-quoted("$fixtures/.")} ${shell-quoted(work)}")
+    . copied = copy.wait(null) ?? 1
+    copy.close()
+    ?! Error("Unable to copy the fixtures of ${module.relative-path}")
+        if copied != 0
+. executable = "$directory/module"
+. build = "$directory/build"
+. errors-path = "$directory/stderr"
+. compile = " ".join
+    * "cd ${shell-quoted(suite.project)} &&"
+    * shell-quoted(compiler)
+    * "--compile -o ${shell-quoted(executable)} ${shell-quoted(module.source-path)}"
+    * ">${shell-quoted(build)} 2>&1"
+. compiling = Process("/bin/sh", "-c", compile)
+. compiled = compiling.wait(null) ?? 1
+compiling.close()
+result.compiled = Path(executable).is-file
+result.exit = compiled
+if compiled != 0 || !result.compiled
+    . report = read-text(build).trim()
+    result.status = "crashed"
+    result.errors = if report then report else "The compiler exited with status $compiled"
+    =
+. command = " ".join
+    * "cd ${shell-quoted(work)} &&"
+    * "exec ${shell-quoted(executable)} 2>${shell-quoted(errors-path)}"
+. process = Process("/bin/sh", "-c", command)
+. output = process as String
+. status = process.wait(null) ?? 1
+process.close()
+result.exit = status
+result.actual = output.trim()
+if output.find("RED (") != null
+    result.status = "failed"
+    result.expected = "every case GREEN"
+else if status != 0
+    result.status = "crashed"
+    result.errors = "${output.trim()}${read-text(errors-path).trim()}"
+else
+    result.status = "passed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do result-json [String = JSON]
+    - suite String
+    - module TestModule
+    - result ModuleResult
+
+. fields = Map'String'JSON
+    • "protocol" "ometer.testometer.v1" as JSON
+    • "version" 1 as JSON
+    • "type" "testResult" as JSON
+    • "id" module.id as JSON
+    • "groupName" suite as JSON
+    • "fileLabel" "/".join(module.display) as JSON
+    • "sourcePath" module.source-path as JSON
+    • "relativePath" "$suite:${module.relative-path}" as JSON
+    • "label" module.label as JSON
+    • "lineNoStart" 1 as JSON
+    • "lineNoEnd" 1 as JSON
+    • "index" 1 as JSON
+    • "status" result.status as JSON
+    • "duration" result.duration as JSON
+    • "compiled" result.compiled as JSON
+    • "exit" result.exit as JSON
+if result.status == "failed"
+    fields["expected"] = result.expected
+    fields["actual"] = result.actual
+else if result.status == "crashed"
+    fields["errors"] = result.errors
+    fields["output"] = result.actual
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ worker-count Size
+    - count Size
+
+if count < cores then count else cores
+
+.. online = C:sysconf(C:_SC_NPROCESSORS_ONLN) as Int
+.. cores = if online > module-reserved-cores then (online - module-reserved-cores) as Size else 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-text String
+    - path String
+
+. file = use File(path)
+= file as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ shell-quoted String
+    - text String
+
+"'${"'\\''".join(text.split("'"))}'"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do remove-folder
+    - path String
+
+. remover = Process("/bin/rm", ["-rf", path])
+remover.wait(null)
+remover.close()

@@ -1,0 +1,285 @@
+./array
+./backing
+./core
+./error
+./number
+./range
+./string
+/YuCore/YuCore.h
+
+━━━━━━━━━━━━━━━━━━━━
++ Arena is Tuple
+    is ArrayStorageProvider
+    is Usable'Void
+
+_ owner-handle CPointer'Byte
+_ incarnation Size
+
++ Backing'Item = ArenaBacking
+
+────────────────────
++ This
+    - initial-byte-capacity Size = 0
+
+. handle = C:yumiArenaCreate(initial-byte-capacity) as CPointer'Byte
+?! Panic("Arena allocation failed")
+    if handle.address == 0
+
+owner-handle = handle
+incarnation = (C:yumiArenaIncarnation(handle)) as Size
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using @no-gc
+
+release()
+
+────────────────────
++ do allocate'Value CPointer'Value @no-gc
+    - count Size
+
+if count != 0 && count > Size.max / Value.size
+    C:yumiArenaAllocationFailed(owner-handle, incarnation, 16)
+. data = C:yumiArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
+if data.address == 0
+    C:yumiArenaAllocationFailed(owner-handle, incarnation, 16)
+= data as CPointer'Value
+
+────────────────────
++ do try-allocate'Value CPointer'Value? @no-gc
+    - count Size
+
+if count != 0 && count > Size.max / Value.size
+    = null
+. data = C:yumiArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
+if data.address == 0
+    = null
+= data as CPointer'Value
+
+────────────────────
++ do allocate-raw CPointer'Byte @no-gc
+    - byte-count Size
+    - alignment Size = 1
+
+. data = C:yumiArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
+if data.address == 0
+    C:yumiArenaAllocationFailed(owner-handle, incarnation, alignment)
+= data
+
+────────────────────
++ do copy-string String @no-gc
+    - text String
+
+. copy = C:yumiArenaCopyString(owner-handle, incarnation, text)
+?! Panic("Arena String allocation failed")
+    if (copy as Pointer).address == 0
+= copy
+
+────────────────────
++ do copy-span String @no-gc
+    - source Char[]
+    - start Index
+    - end Index
+    - stop-at-null Bool = false
+
+. copy = C:yumiArenaCopyCodepointSpan
+    - owner-handle
+    - incarnation
+    - source.data
+    - source.length
+    - start
+    - end
+    - stop-at-null
+?! Panic("Arena codepoint span materialization failed")
+    if (copy as Pointer).address == 0
+= copy
+
+────────────────────
++ do copy-span String @no-gc
+    - source Byte[]
+    - start Index
+    - end Index
+
+. copy = C:yumiArenaCopyByteSpan
+    - owner-handle
+    - incarnation
+    - source.data
+    - source.length
+    - start
+    - end
+?! Panic("Arena byte span materialization failed")
+    if (copy as Pointer).address == 0
+= copy
+
+────────────────────
++ do owns Bool @no-gc
+    - value Pointer
+
+= C:yumiArenaOwns(owner-handle, incarnation, value)
+
+────────────────────
++ do try-allocate-raw CPointer'Byte? @no-gc
+    - byte-count Size
+    - alignment Size = 1
+
+. data = C:yumiArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
+if data.address == 0
+    = null
+= data
+
+────────────────────
++ get mark ArenaMark
+
+?! Panic("Arena is already released")
+    if mark == 0
+ArenaMark(mark as Size)
+
+.. mark = C:yumiArenaMark(owner-handle, incarnation)
+
+────────────────────
++ do rewind @no-gc
+    - mark ArenaMark
+
+. result = mark.rewind-from(owner-handle, incarnation)
+?! Panic("Arena mark is stale or belongs to another Arena")
+    if result != 0
+
+────────────────────
++ do reset @no-gc
+
+C:yumiArenaReset(owner-handle, incarnation)
+
+────────────────────
++ do release @no-gc
+
+C:yumiArenaRelease(owner-handle, incarnation)
+
+────────────────────
++ get state Size
+
+C:yumiArenaState(owner-handle, incarnation) as Size
+
+────────────────────
++ get generation Size
+
+C:yumiArenaGeneration(owner-handle, incarnation) as Size
+
+────────────────────
++ get active-block-count Size
+
+C:yumiArenaActiveBlockCount(owner-handle, incarnation) as Size
+
+────────────────────
++ get retained-block-count Size
+
+C:yumiArenaRetainedBlockCount(owner-handle, incarnation) as Size
+
+────────────────────
++ get active-bytes Size
+
+C:yumiArenaActiveBytes(owner-handle, incarnation) as Size
+
+────────────────────
++ get reserved-bytes Size
+
+C:yumiArenaReservedBytes(owner-handle, incarnation) as Size
+
+────────────────────
++ get retained-bytes Size
+
+C:yumiArenaRetainedBytes(owner-handle, incarnation) as Size
+
+────────────────────
++ get peak-active-bytes Size
+
+C:yumiArenaPeakActiveBytes(owner-handle, incarnation) as Size
+
+────────────────────
++ get system-block-allocation-count Size
+
+C:yumiArenaOwnerSystemBlockAllocationCount(owner-handle, incarnation) as Size
+
+────────────────────
++ get reset-count Size
+
+C:yumiArenaOwnerResetCount(owner-handle, incarnation) as Size
+
+────────────────────
++ get rewind-count Size
+
+C:yumiArenaOwnerRewindCount(owner-handle, incarnation) as Size
+
+────────────────────
+_ do resize-buffer'Item CPointer'Item @no-gc
+    - source CPointer'Item
+    - size Size
+    - new-size Size
+
+. replacement = allocate'Item(new-size)
+. copy-size = size
+if new-size < copy-size
+    copy-size = new-size
+C:yumiArrayCopySlice(replacement, source, copy-size * Item.size)
+= replacement
+
+━━━━━━━━━━━━━━━━━━━━
++ extend CPointer''Item
+
+────────────────────
++ do store-untraced @no-gc
+    - item Item
+    - index Index
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaMark is Tuple
+
++ value Size
+
+────────────────────
+_ do rewind-from Size @no-gc
+    - arena-handle CPointer'Byte
+    - arena-incarnation Size
+
+= (C:yumiArenaRewind(arena-handle, arena-incarnation, value)) as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBacking
+    is StorageBacking
+
++ Context = Arena
++ Storage'Item = CPointer'Item
+
+────────────────────
++ static allocate'Item CPointer'Item @no-gc
+    - context Arena
+    - capacity Size
+
+context.allocate'Item(capacity)
+
+────────────────────
++ static load'Item Item @no-gc @inline
+    - storage CPointer'Item
+    - index Index
+
+storage[index]
+
+────────────────────
++ static do store'Item Void @inline
+    - storage CPointer'Item
+    - item Item
+    - index Index
+
+storage.store-untraced(item, index)
+
+────────────────────
++ static resize'Item CPointer'Item @no-gc
+    - storage CPointer'Item
+    - context Arena
+    - size Size
+    - new-size Size
+
+context.resize-buffer'Item(storage, size, new-size)

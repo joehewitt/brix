@@ -1,0 +1,217 @@
+./model
+./query
+/data/json
+/probes/console
+/probes/model
+/probes/trace
+
+━━━━━━━━━━━━━━━━━━━━
++ Output
+
++ format = "text"
++ limit Size?
++ offset Size = 0
+
+_ collected [JSON]
+
+────────────────────
++ get is-text
+
+format == "text"
+
+────────────────────
++ do line
+    - text String
+
+if is-text
+    -- text
+
+────────────────────
++ do record
+    - value JSON
+
+if format == "jsonl"
+    -- to-json(value)
+else if format == "json"
+    collected += value
+
+────────────────────
++ do value
+    - value JSON
+
+if format == "json" || format == "jsonl"
+    -- to-json(value)
+
+────────────────────
++ do finish
+
+if format == "json" && collected.length != 0
+    -- to-json(collected as JSON)
+
+────────────────────
++ do page [Size]
+    - count Size
+    - fallback Size
+
+. shown = limit ?? fallback
+. first = if offset < count then offset else count
+. last = if first + shown < count then first + shown else count
+. positions [Size]
+for position in first .. < last
+    positions += position
+= positions
+
+────────────────────
++ do more
+    - count Size
+    - fallback Size
+    - noun String
+
+. shown = limit ?? fallback
+. next = offset + shown
+=? if next >= count || !is-text
+-- "… +${count - next} more $noun (--offset $next, --limit N, or --format jsonl for all)"
+
+━━━━━━━━━━━━━━━━━━━━
++ Table
+
++ headers [String]
++ rights [Bool]
+
+_ rows [[String]]
+
+────────────────────
++ This
+    - headers [String]
+    - rights [Bool] = List'Bool()
+
+────────────────────
++ do add
+    - cells [String]
+
+rows += cells
+
+────────────────────
++ get length Size
+
+rows.length
+
+────────────────────
++ do lines [String]
+
+. widths [Size]
+for header in headers
+    widths += header.length
+for cells in rows
+    for index in 0 .. < cells.length
+        if index < widths.length && cells[index].length > widths[index]
+            widths[index] = cells[index].length
+= List'String
+    * cells-line(headers, widths)
+    ** (cells-line(each, widths) in rows)
+
+────────────────────
+_ cells-line String
+    - cells [String]
+    - widths [Size]
+
+"  ".join(cell-text(cells, widths, each) in 0 .. < cells.length)
+
+────────────────────
+_ cell-text String
+    - cells [String]
+    - widths [Size]
+    - index Index
+
+|? index < rights.length && rights[index]
+    "$gap$cell"
+|? index == cells.length - 1
+    cell
+??
+    "$cell$gap"
+
+.. cell = cells[index]
+.. width = if index < widths.length then widths[index] else cell.length
+.. gap = if width > cell.length then " " * (width - cell.length) else ""
+
+━━━━━━━━━━━━━━━━━━━━
++ kind-name String
+    - kind TraceRowKind
+
+match kind
+    |= .log
+        "log"
+    |= .event
+        "event"
+    |= .begin
+        "begin"
+    |= .end
+        "end"
+    ??
+        "system"
+
+━━━━━━━━━━━━━━━━━━━━
++ row-line String
+    - row TraceRow
+
+"#${row.index}  $padding$stamp  $indent$mark$tag${row.text}$took$place"
+
+.. stamp = duration-text(row.time)
+.. padding = if stamp.length < 8 then " " * (8 - stamp.length) else ""
+.. indent = "  " * row.depth
+.. mark = if row.kind == TraceRowKind.begin then "+ " else if row.kind == TraceRowKind.end then "- " else ""
+.. took = if row.kind == TraceRowKind.end && row.duration then " ${duration-text(row.duration)}" else ""
+.. tag = if row.key != "" && (row.kind == TraceRowKind.log) then "[${row.key}] " else ""
+.. place = if row.location != "" then "  ${row.location}" else ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-json JSON
+    - row TraceRow
+    - types [U16 = String]
+
+. record = Map'String'JSON
+    • "index" (row.index as Int) as JSON
+    • "kind" kind-name(row.kind) as JSON
+    • "time_ns" (row.time as Int) as JSON
+    • "key" row.key as JSON
+    • "label" row.label as JSON
+    • "text" row.text as JSON
+. fields = Map'String'JSON()
+for index in 0 .. < row.fields.length
+    if index < row.values.length
+        fields[row.fields[index]] = value-json(row.values[index], types)
+record["fields"] = fields
+record["location"] = row.location
+record["depth"] = row.depth as Int
+if row.duration
+    record["duration_ns"] = row.duration as Int
+if row.owner != ""
+    record["owner"] = row.owner
+= record
+
+━━━━━━━━━━━━━━━━━━━━
++ do value-json JSON
+    - value TraceValue
+    - types [U16 = String]
+
+do match? value
+    | .truth(truth)
+        = truth
+    | .integer(integer)
+        = integer as Int
+    | .unsigned(unsigned)
+        = unsigned as Int
+    | .real(real)
+        = real
+    | .text(text)
+        = text
+= value-text(value, types)
+
+━━━━━━━━━━━━━━━━━━━━
++ number-json JSON
+    - value F64
+
+|? (value as I64) as F64 == value
+    ((value as I64) as Int) as JSON
+??
+    value as JSON

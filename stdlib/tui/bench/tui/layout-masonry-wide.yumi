@@ -1,0 +1,59 @@
+`benchmark.meta description: Measures a wide vertical Masonry layout with many varied-height children.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,compile-timing
+
+/tui/box
+/tui/layout
+/tui/primitives
+
+<BenchMasonryWideRoot root
+    for index in 0 .. < 640
+        <BenchMasonryWideCard
+            card-height = bench-masonry-wide-height(index)
+
+root.markup-batch-queue.checkpoint()
+root.bounds = Rect(0, 0, 120, 40)
+
+. checksum Size = 0
+for frame in 0 .. < 64
+    root.update-layout()
+    checksum += root.inner-height + root.inner-width + frame
+
+-- "bench-result tui/layout-masonry-wide checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchMasonryWideRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = masonry-col
+    masonry-column-count = 8
+    masonry-column-gap = 1
+    masonry-row-gap = 1
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchMasonryWideCard is Box
+
++ card-height Coord = 1
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(12, card-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-masonry-wide-height Coord
+    - index Int
+
+1 + Coord((index * 7 + index / 3) % 6)

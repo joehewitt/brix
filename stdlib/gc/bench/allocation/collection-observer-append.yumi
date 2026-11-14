@@ -1,0 +1,42 @@
+`benchmark.meta description: Appends to a single-observer list to expose collection observer dispatch allocation.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: allocator
+
+/core
+/core/collection
+/tui/box
+/tui/text
+
+. iterations = 12000
+. gate-items = List'String(["gate"])
+<Box gate-box
+    for item in #gate-items
+        <TextBox = item
+
+. items [Int]
+for i in 0 .. < iterations
+    items += i
+items.clear()
+
+. recorder = Recorder()
+observe-collection(items, recorder.record)
+for i in 0 .. < iterations
+    items += i
+unobserve-collection(items, recorder.record)
+
+-- "bench-result allocation/collection-observer-append checksum=${recorder.index-total + recorder.calls + items.length + recorder.last-index}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Recorder
+
++ calls Size = 0
++ index-total Index = 0
++ last-index Index = 0
+
+────────────────────
++ do record
+    - mutation CollectionMutation
+
+calls += 1
+index-total += mutation.index
+last-index = mutation.index

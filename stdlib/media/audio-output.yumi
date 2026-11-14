@@ -1,0 +1,85 @@
+./mixer
+./ring
+/YuMedia/YuMedia.h
+/time/duration
+
+_ audio-pause Duration = 2ms
+
+━━━━━━━━━━━━━━━━━━━━
++ AudioOutputError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ AudioOutput
+    is Closable
+
++ mixer Mixer
++ ring MediaRing
++ latency I64
++ is-running = true
+_ native Pointer
+_ worker Worker
+_ stopped SyncBufferedChannel'Bool
+
+────────────────────
++ This ?! Error
+    - mixer Mixer
+    - latency I64 = 1024
+
+this.mixer = mixer
+this.latency = latency
+ring = MediaRing(latency * 2, 2)
+fill()
+native = C:yumiAudioOutputOpen(ring.native-pointer, mixer.rate)
+. problem String = C:yumiAudioOutputGetError(native)
+if problem.length > 0
+    C:yumiAudioOutputRelease(native)
+    ring.close()
+    ?! AudioOutputError(problem)
+worker = Worker()
+do (worker) new
+    pump()
+
+────────────────────
++ get frames-played I64
+
+C:yumiAudioOutputGetFramesPlayed(native)
+
+────────────────────
++ get underrun-frames I64
+
+C:yumiAudioOutputGetUnderrunFrames(native)
+
+────────────────────
++ get slice-frames I64
+
+C:yumiAudioOutputGetSliceFrames(native)
+
+────────────────────
+_ do pump
+
+while is-running
+    fill()
+    audio-pause.wait()
+stopped <- true
+
+────────────────────
+_ do fill
+
+while ring.filled < latency
+    . start = ring.written
+    . wanted = latency - ring.filled
+    . count = if wanted < ring.run then wanted else ring.run
+    mixer.render(ring.slot(start), count)
+    ring.publish(start + count)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if !is-running
+is-running = false
+<- stopped
+worker.stop()
+C:yumiAudioOutputRelease(native)
+ring.close()

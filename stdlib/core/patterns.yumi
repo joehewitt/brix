@@ -1,0 +1,94 @@
+
+./array-builder
+./parsing
+
+━━━━━━━━━━━━━━━━━━━━
++ alpha ~ Char
+
+~ [a-zA-Z]
+
+━━━━━━━━━━━━━━━━━━━━
++ alphanumeric ~ Char
+
+~ [a-zA-Z0-9]
+
+━━━━━━━━━━━━━━━━━━━━
++ numeric ~ Char
+
+~ [0-9]
+
+━━━━━━━━━━━━━━━━━━━━
++ cr ~ Char
+
+~ "\r"
+
+━━━━━━━━━━━━━━━━━━━━
++ lf ~ Char
+
+~ "\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ nl ~ Char
+
+~ "\r\n" | "\r" | "\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ ws ~ Char
+
+~ " " | "\t"
+
+━━━━━━━━━━━━━━━━━━━━
++ wsnl ~ Char
+
+~ " " | "\t" | "\r\n" | "\r" | "\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ num'Num ~ Byte
+
+~ bytes .{Num.size}
+    Array'Byte(bytes).read'Num(0)!
+
+━━━━━━━━━━━━━━━━━━━━
++ num'Num ~ Char
+
+~ "0"
+    Num(it)
+~ [1-9] [0-9]*
+    Num(it)
+~ &\{ Num.min < 0 } "-" ("0" | [1-9] [0-9]*)
+    Num(it)
+
+━━━━━━━━━━━━━━━━━━━━
++ dec'Num ~ Char
+
+~ "-"? "." [0-9]+
+    Num(it)
+~ "-"? [0-9]+ ("." [0-9]*)?
+    Num(it)
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-decimal F64?
+    - text String
+
+match? text
+    ~ \ws* ("+" &[0-9.])? value \dec'F64 \ws* !.
+        value
+
+━━━━━━━━━━━━━━━━━━━━
++ hex'T ~ Char
+
+~ [a-fA-F0-9]{1, size}
+    Hex(it) as T
+
+.. size = T.size * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ delimited'Result ~ Char
+    - delimiter
+    - pattern PatternFunc'Char'Result
+
+~ ...items \item (/ $delimiter / ...items \item)*
+    items
+
+.. item Result ~
+    ~ $pattern

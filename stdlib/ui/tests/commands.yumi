@@ -1,0 +1,196 @@
+/test
+/ui
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Command History")
+cases.run(command-history-tests)
+cases = cases.then("Command History Redo", history-redo-tests)
+cases = cases.then("Valued Modes", mode-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do command-history-tests
+    - t TestCase
+
+. history = CommandHistory()
+. target = Counter()
+bump(history, target)
+bump(history, target)
+history.undo()
+t.expect("newest record undoes independently", 1, target.value)
+history.undo()
+t.expect("older record remains independent", 0, target.value)
+
+. grouped-history = CommandHistory()
+. first-target = Counter()
+. second-target = Counter()
+do use grouped-history.group("Both")
+    bump(grouped-history, first-target)
+    do use grouped-history.group("Nested")
+        bump(grouped-history, second-target)
+t.expect("a group records one history entry", 1, grouped-history.undo-count)
+grouped-history.undo()
+t.check("undoing a group undoes every entry", first-target.value == 0 && second-target.value == 0)
+grouped-history.redo()
+t.check("redoing a group redoes every entry", first-target.value == 1 && second-target.value == 1)
+catch failed-history-group(grouped-history)
+t.expect("group scope records completed work on error", 2, grouped-history.undo-count)
+grouped-history.record("After error", PassiveHistoryEntry())
+t.expect("group depth is restored after error", 3, grouped-history.undo-count)
+
+. unreliable-history = CommandHistory()
+. unreliable-target = Counter()
+. unreliable = UnreliableEntry(unreliable-target)
+unreliable-target.value = 1
+unreliable-history.record("Unreliable edit", unreliable)
+expect-undo-failure(t, unreliable-history)
+unreliable.fail-undo = false
+unreliable-history.undo()
+unreliable.fail-redo = true
+expect-redo-failure(t, unreliable-history)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do expect-undo-failure
+    - t TestCase
+    - history CommandHistory
+
+do finally
+    recover()
+    t.expect("failing undo remains available", 1, history.undo-count)
+    t.expect("failing undo does not create redo", 0, history.redo-count)
+history.undo()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do expect-redo-failure
+    - t TestCase
+    - history CommandHistory
+
+do finally
+    recover()
+    t.expect("failing redo remains available", 1, history.redo-count)
+history.redo()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do history-redo-tests
+    - t TestCase
+
+. history = CommandHistory()
+. target = Counter()
+bump(history, target)
+bump(history, target)
+history.undo()
+history.undo()
+bump(history, target)
+history.redo()
+history.redo()
+t.expect("redoing after a new edit does nothing", 1, target.value)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mode-tests
+    - t TestCase
+
+. mode = Mode'Bool(false)
+. first = mode.acquire(true)
+. second = mode.acquire(false)
+mode.set(true)
+t.check("persistent changes stay hidden under a held activation", !mode.effective-value)
+first.close()
+t.check("releasing a non-winning owner keeps the winner", !mode.effective-value)
+second.close()
+t.check("last release reveals the current persistent value", mode.effective-value)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ Counter
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bump
+    - history CommandHistory
+    - target Counter
+
+. prior = target.value
+target.value += 1
+history.record("Increment", CounterEntry(target, prior))
+
+━━━━━━━━━━━━━━━━━━━━
+_ CounterEntry is Tuple
+    is CommandHistoryEntry
+
++ target Counter
++ prior I32
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+target.value = prior
+
+────────────────────
++ do redo
+
+target.value = prior + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ UnreliableEntry
+    is CommandHistoryEntry
+
++ fail-undo = true
++ fail-redo = false
+_ target Counter
+
+────────────────────
+_ This
+    - target
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+if !fail-undo
+    target.value = 0
+    =
+. prior = target.value
+do finally target.value = prior
+target.value = 0
+?! Panic("Expected undo failure")
+
+────────────────────
++ do redo
+
+if !fail-redo
+    target.value = 1
+    =
+. prior = target.value
+do finally target.value = prior
+target.value = 1
+?! Panic("Expected redo failure")
+
+━━━━━━━━━━━━━━━━━━━━
+_ PassiveHistoryEntry
+    is CommandHistoryEntry
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+────────────────────
++ do redo
+
+━━━━━━━━━━━━━━━━━━━━
+_ do failed-history-group
+    - history CommandHistory
+
+use history.group("Failed scope")
+history.record("Completed step", PassiveHistoryEntry())
+?! Error("scope failure")

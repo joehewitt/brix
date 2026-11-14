@@ -1,0 +1,118 @@
+/ai/model
+/ai/tasks
+/data/json
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-tool-title String?
+    - call AIToolCallPart
+
+match call.tool-name
+    |= "Bash"
+        description ?? claude-first-line(ai-argument(arguments, "command"))
+    |= "Read"
+        "Read ${path ?? "a file"}"
+    |= "Write"
+        "Write ${path ?? "a file"}"
+    |? it == "Edit" || it == "MultiEdit" || it == "NotebookEdit"
+        "Edit ${path ?? "a file"}"
+    |= "Glob"
+        "Find ${ai-argument(arguments, "pattern") ?? "files"}"
+    |= "Grep"
+        "Search for “${ai-argument(arguments, "pattern") ?? ""}”"
+    |= "WebFetch"
+        "Fetch ${ai-argument(arguments, "url") ?? "a page"}"
+    |= "WebSearch"
+        "Search the web for “${ai-argument(arguments, "query") ?? ""}”"
+    |? it == "Agent" || it == "Task"
+        description ?? "Run an agent"
+    |= "Skill"
+        "Use the ${ai-argument(arguments, "skill") ?? ""} skill"
+    |= "ToolSearch"
+        "Load tools"
+    ??
+        description ?? claude-mcp-title(call.tool-name)
+
+.. arguments = call.arguments
+.. description = ai-argument(arguments, "description")
+.. path = claude-tool-file(arguments)
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-tool-kind AIToolKind
+    - call AIToolCallPart
+
+match call.tool-name
+    |= "Bash"
+        AIToolKind.command
+    |= "Read"
+        AIToolKind.read
+    |= "Write"
+        AIToolKind.write
+    |? it == "Edit" || it == "MultiEdit" || it == "NotebookEdit"
+        AIToolKind.edit
+    |? it == "Glob" || it == "Grep"
+        AIToolKind.search
+    |= "WebFetch"
+        AIToolKind.fetch
+    |= "WebSearch"
+        AIToolKind.web-search
+    |? it == "Agent" || it == "Task"
+        AIToolKind.agent
+    |= "Skill"
+        AIToolKind.skill
+    |= "ToolSearch"
+        AIToolKind.tool-search
+    ??
+        AIToolKind.other
+
+━━━━━━━━━━━━━━━━━━━━
++ claude-tool-input String?
+    - call AIToolCallPart
+
+match? call.tool-name
+    |= "Bash"
+        ai-argument(arguments, "command")
+    |? it == "Read" || it == "Write" || it == "Edit" || it == "MultiEdit"
+        ai-argument(arguments, "file_path")
+    |= "NotebookEdit"
+        ai-argument(arguments, "notebook_path")
+    |? it == "Glob" || it == "Grep"
+        ai-argument(arguments, "pattern")
+    |= "WebFetch"
+        ai-argument(arguments, "url")
+    |= "WebSearch"
+        ai-argument(arguments, "query")
+    |? it == "Agent" || it == "Task"
+        ai-argument(arguments, "prompt")
+
+.. arguments = call.arguments
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-tool-file String?
+    - arguments JSON
+
+Path(found, 0).name if found
+
+.. found = ai-argument(arguments, "file_path") ?? ai-argument(arguments, "notebook_path")
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-first-line String?
+    - text String?
+
+|? text == null
+    null
+|? text.find("\n") != null
+    "${text[0 .. < text.find("\n")!].trim()} …"
+??
+    text.trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-mcp-title String
+    - name String
+
+|? parts.length >= 3 && parts[0] == "mcp"
+    "${parts[1]}: ${parts[2]}"
+??
+    name
+
+.. parts = List(name.split("__"))

@@ -1,0 +1,618 @@
+/core/markup
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/primitives
+/gui/tests/support/probe-boxes
+/math
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Box Model And Measurement")
+cases.run(gui-box-model-tests)
+cases = cases.then("GUI Flex Flow And Position", gui-layout-position-tests)
+cases = cases.then("GUI Flex And Flow Geometry Parity", gui-layout-geometry-parity-tests)
+cases = cases.then("GUI Layout Incrementality", gui-layout-incrementality-tests)
+cases = cases.then("GUI Fixed Subtree Stability", gui-fixed-subtree-stability-tests)
+cases = cases.then("GUI Hidden Layout Boundary", gui-hidden-layout-boundary-tests)
+cases = cases.then("GUI Display And Transparency", gui-display-transparency-tests)
+cases = cases.then("GUI Flex Constraint Redistribution", gui-flex-constraint-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-box-model-tests
+    - t TestCase
+
+. root = LayoutFixtureRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+. measured = root.%first-child! as MeasuredBox
+. result = measured.measure()
+
+t.expect("fixed style sizes constrain content", Dimensions(40, 20), result.content-size)
+t.expect("padding and border surround content", Dimensions(54, 34), result.border-size)
+t.expect("margin surrounds the border box", Dimensions(58, 38), result.outer-size)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-layout-position-tests
+    - t TestCase
+
+. root = FlexFixtureRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 201, 80))
+
+. fixed = root.%first-child! as FixedLayoutBox
+. first-flex = fixed.%next-sibling! as FlexOneBox
+. second-flex = first-flex.%next-sibling! as FlexTwoBox
+. badge = second-flex.%next-sibling! as BadgeBox
+
+t.check
+    - "flex weights divide the remaining fractional span"
+    - abs(second-flex.width - first-flex.width * 2) < 0.0001
+t.check
+    - "flex allocations consume the content width"
+    - abs(second-flex.bounds.right - root.content-bounds.right) < 0.0001
+t.expect
+    - "absolute child is excluded from flex and pinned top-right"
+    - Rect(186, 5, 10, 8)
+    - badge.bounds
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-layout-geometry-parity-tests
+    - t TestCase
+
+. overflow = GUIFlexTestRoot(Orientation.horizontal)
+. overflow-a = GUIArrangeProbeBox(28, 4)
+. overflow-b = GUIArrangeProbeBox(28, 4)
+. overflow-c = GUIArrangeProbeBox(28, 4)
+markup-append(overflow, overflow-a)
+markup-append(overflow, overflow-b)
+markup-append(overflow, overflow-c)
+markup-mount-root(overflow, overflow)
+overflow.markup-batch-queue.checkpoint()
+overflow.layout(Rect(0, 0, 60, 10))
+
+t.expect("fixed flex children retain natural widths", Rect(28, 0, 28, 10), overflow-b.bounds)
+t.expect("fixed flex overflow records full inner width", 84, overflow.inner-width)
+t.expect("horizontal flex records stretched cross extent", 10, overflow.inner-height)
+
+. underflow = GUIFlexTestRoot(Orientation.horizontal)
+markup-append(underflow, GUIArrangeProbeBox(20, 4))
+markup-append(underflow, GUIArrangeProbeBox(20, 4))
+markup-mount-root(underflow, underflow)
+underflow.markup-batch-queue.checkpoint()
+underflow.layout(Rect(0, 0, 60, 10))
+t.expect("fixed flex underflow leaves unused main space", 40, underflow.inner-width)
+
+. margin-flex = GUIFlexTestRoot(Orientation.horizontal)
+. margin-free = GUIFlexProbe()
+. margined = GUIMarginedFlexProbe()
+markup-append(margin-flex, margin-free)
+markup-append(margin-flex, margined)
+markup-mount-root(margin-flex, margin-flex)
+margin-flex.markup-batch-queue.checkpoint()
+margin-flex.layout(Rect(0, 0, 100, 10))
+t.expect("flex margin preserves equal item widths", margin-free.width, margined.width)
+t.expect("flex margin creates an external gap", 12, margined.x - margin-free.bounds.right)
+t.expect("margined flex items consume the available span", 100, margined.bounds.right)
+
+. vertical-flex = GUIFlexTestRoot(Orientation.vertical)
+. vertical-first = GUIArrangeProbeBox(3, 7)
+. vertical-second = GUIArrangeProbeBox(5, 6)
+markup-append(vertical-flex, vertical-first)
+markup-append(vertical-flex, vertical-second)
+markup-mount-root(vertical-flex, vertical-flex)
+vertical-flex.markup-batch-queue.checkpoint()
+vertical-flex.layout(Rect(2, 3, 40, 30))
+t.expect("vertical flex stretches the cross axis", Rect(2, 10, 40, 6), vertical-second.bounds)
+
+. horizontal-flow = GUIFlowTestRoot(Orientation.horizontal)
+. flow-wide = GUIArrangeProbeBox(10, 8)
+. flow-short = GUIArrangeProbeBox(20, 6)
+markup-append(horizontal-flow, flow-wide)
+markup-append(horizontal-flow, flow-short)
+markup-mount-root(horizontal-flow, horizontal-flow)
+horizontal-flow.markup-batch-queue.checkpoint()
+horizontal-flow.layout(Rect(0, 0, 40, 20))
+t.expect("horizontal flow preserves natural cross size", Rect(10, 0, 20, 6), flow-short.bounds)
+t.expect
+    - "horizontal flow records natural inner extents"
+    - Dimensions(30, 8)
+    - horizontal-flow.inner-size
+
+. vertical-flow = GUIFlowTestRoot(Orientation.vertical)
+. flow-tall = GUIArrangeProbeBox(10, 8)
+. flow-small = GUIArrangeProbeBox(20, 6)
+markup-append(vertical-flow, flow-tall)
+markup-append(vertical-flow, flow-small)
+markup-mount-root(vertical-flow, vertical-flow)
+vertical-flow.markup-batch-queue.checkpoint()
+vertical-flow.layout(Rect(0, 0, 40, 30))
+t.expect("vertical flow stretches child outer width", Rect(0, 8, 40, 6), flow-small.bounds)
+t.expect
+    - "vertical flow records intrinsic cross and main extents"
+    - Dimensions(20, 14)
+    - vertical-flow.inner-size
+
+. spaced = GUIPaddedFlowRoot()
+. spaced-child = GUISpacedArrangeProbeBox(10, 5)
+markup-append(spaced, spaced-child)
+markup-mount-root(spaced, spaced)
+spaced.markup-batch-queue.checkpoint()
+spaced.layout(Rect(0, 0, 40, 30))
+t.expect("flow combines parent padding and child margin", Rect(5, 5, 30, 5), spaced-child.bounds)
+t.expect("flow inner size uses the child outer natural size", Dimensions(14, 9), spaced.inner-size)
+
+. minimums = GUIFlexTestRoot(Orientation.horizontal)
+markup-append(minimums, GUIMinFlexProbe())
+markup-append(minimums, GUIMinFlexProbe())
+markup-mount-root(minimums, minimums)
+minimums.markup-batch-queue.checkpoint()
+minimums.layout(Rect(0, 0, 100, 20))
+t.expect("flex minima may overflow without becoming negative", 140, minimums.inner-width)
+
+. maximums = GUIFlexTestRoot(Orientation.horizontal)
+markup-append(maximums, GUIMaxFlexProbe())
+markup-append(maximums, GUIMaxFlexProbe())
+markup-mount-root(maximums, maximums)
+maximums.markup-batch-queue.checkpoint()
+maximums.layout(Rect(0, 0, 100, 20))
+t.expect("all flex maxima leave stable unused space", 60, maximums.inner-width)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-layout-incrementality-tests
+    - t TestCase
+
+. style-grid = GUIStyleReflowGrid()
+. style-top = GUIStyleReflowRow()
+. style-middle = GUIStyleReflowRow()
+. style-bottom = GUIStyleReflowRow()
+. style-target = GUIStyleReflowCell()
+markup-append(style-grid, style-top)
+markup-append(style-grid, style-middle)
+markup-append(style-grid, style-bottom)
+for index in 0 .. < 3
+    markup-append(style-top, GUIStyleReflowCell())
+markup-append(style-middle, GUIStyleReflowCell())
+markup-append(style-middle, style-target)
+markup-append(style-middle, GUIStyleReflowCell())
+for index in 0 .. < 3
+    markup-append(style-bottom, GUIStyleReflowCell())
+markup-mount-root(style-grid, style-grid)
+style-grid.markup-batch-queue.checkpoint()
+style-grid.layout(Rect(0, 0, 24, 24))
+style-target.is-expanded = true
+style-grid.markup-batch-queue.checkpoint()
+style-grid.update-layout()
+t.expect("style size change grows the containing row", 12, style-middle.height)
+t.expect("style size change moves the following row", 20, style-bottom.y)
+
+. style-middle-first = style-middle.%first-child! as GUIStyleReflowCell
+style-target.is-expanded = false
+style-middle.is-vertical = true
+style-grid.markup-batch-queue.checkpoint()
+style-grid.update-layout()
+t.expect("own style change supersedes child-only invalidation", 24, style-middle-first.width)
+t.expect("own layout change arranges the complete child list", 24, style-middle.inner-height)
+t.expect("simultaneous parent and child styles reflow ancestors", 32, style-bottom.y)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-fixed-subtree-stability-tests
+    - t TestCase
+
+. root = ProbeRoot()
+. host = GUIShiftLayoutHost()
+. first = GUIArrangeProbeBox(10, 8)
+. anchor-host = GUIShiftLayoutHost()
+. anchor-flow = GUIArrangeProbeBox(10, 8)
+. screen = GUIScreenAnchorArrangeProbe()
+markup-append(host, first)
+markup-append(anchor-host, anchor-flow)
+markup-append(anchor-host, screen)
+markup-append(root, host)
+markup-append(root, anchor-host)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 300, 180))
+host.arrange-bounds(Rect(20, 24, 60, 24))
+host.update-layout()
+anchor-host.arrange-bounds(Rect(20, 80, 60, 24))
+anchor-host.update-layout()
+
+. first-before = first.bounds
+
+. delta = Point(46.5, 19.25)
+host.arrange-bounds
+    Rect(host.x + delta.x, host.y + delta.y, host.width, host.height)
+t.expect
+    - "clean move shifts child absolute bounds immediately"
+    - Rect
+        - first-before.x + delta.x
+        - first-before.y + delta.y
+        - first-before.width
+        - first-before.height
+    - first.bounds
+
+. screen-before = screen.bounds
+anchor-host.arrange-bounds
+    Rect(anchor-host.x + 18, anchor-host.y, anchor-host.width, anchor-host.height)
+anchor-host.update-layout()
+t.expect("screen anchor does not inherit parent delta", screen-before, screen.bounds)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-hidden-layout-boundary-tests
+    - t TestCase
+
+. root = GUIFlowTestRoot(Orientation.horizontal)
+. hidden = GUIHiddenLayoutHost()
+. hidden-child = GUIArrangeProbeBox(3, 2)
+. trailing = GUIArrangeProbeBox(4, 2)
+markup-append(hidden, hidden-child)
+markup-append(root, hidden)
+markup-append(root, trailing)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 30, 8))
+t.expect("hidden subtree consumes no flow slot", 0, trailing.x)
+
+hidden-child.measured-width = 8
+root.update-layout()
+
+hidden.is-layout-hidden = false
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+t.expect("revealed subtree uses its latest measurement", 8, hidden.width)
+t.expect("revealed subtree reflows the following sibling", 8, trailing.x)
+t.expect("revealed descendant receives settled bounds", Rect(0, 0, 8, 2), hidden-child.bounds)
+
+hidden.is-layout-hidden = true
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+t.expect("rehiding rebuilds active links without a gap", 0, trailing.x)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-display-transparency-tests
+    - t TestCase
+
+. root = TransparencyFixtureRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 100, 30))
+
+. wrapper = root.%first-child! as TransparentProbe
+. hidden = wrapper.%next-sibling! as Box
+. trailing = hidden.%next-sibling! as Box
+t.expect("hidden child consumes no layout slot", 20, trailing.x)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-flex-constraint-tests
+    - t TestCase
+
+. root = ClampedFlexFixtureRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 200, 30))
+. capped = root.%first-child! as Box
+. remainder = capped.%next-sibling! as Box
+t.expect("flex maximum clamps the first allocation", 40, capped.width)
+t.expect("remaining flex space redistributes", 160, remainder.width)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ MeasuredBox is Box
+
+• This • w:40 h:20 p:3 m:2
+    border-width = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutFixtureRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This • p:5
+    <MeasuredBox
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ FixedLayoutBox is Box
+
+• This • w:40
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexOneBox is Box
+
+• This • flex:1
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexTwoBox is Box
+
+• This • flex:2
+
+━━━━━━━━━━━━━━━━━━━━
++ BadgeBox is Box
+
+• This • absolute w:10 h:8
+    right = PositionOffset.coord(0)
+    top = PositionOffset.coord(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexFixtureRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This • flex-row p:5
+    <FixedLayoutBox
+    <FlexOneBox
+    <FlexTwoBox
+    <BadgeBox
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIArrangeProbeBox is Box
+
++ measured-width Length = 3
++ measured-height Length = 1
+
+. invalidate-content-size < measured-width
+. invalidate-content-size < measured-height
+
+────────────────────
++ This
+    - measured-width = 3
+    - measured-height = 1
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+Dimensions(measured-width, measured-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ GUISpacedArrangeProbeBox is GUIArrangeProbeBox
+
+• This • m:2
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIFlexProbe is Box
+
+• This • flex:1
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIMarginedFlexProbe is GUIFlexProbe
+
+• This • ml:12
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIMinFlexProbe is Box
+
+• This • flex:1
+    min-width = SizeSpec.coord(70)
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIMaxFlexProbe is Box
+
+• This • flex:1
+    max-width = SizeSpec.coord(30)
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIFlexTestRoot is Box
+    is MarkupBatch
+
++ orient Orientation
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+• This
+    layout = FlexLayout(#orient)
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIFlowTestRoot is Box
+    is MarkupBatch
+
++ orient Orientation
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+• This
+    layout = FlowLayout(#orient)
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIPaddedFlowRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This • flow-col p:3
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIStyleReflowGrid is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+• This • flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIStyleReflowRow is Box
+
++ is-vertical = false
+
+• This • flow-row
+
+    when #is-vertical
+        layout = flow-col
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIStyleReflowCell is Box
+
++ is-expanded = false
+
+• This • w:8 h:8
+
+    when #is-expanded
+        • h:12
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIShiftLayoutHost is Box
+
+• This • flow-row
+    overflow-y = ScrollOverflow.clip
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIScreenAnchorArrangeProbe is GUIArrangeProbeBox
+
+• This • absolute w:8 h:8
+    anchor = Anchor.screen
+    left = PositionOffset.coord(250)
+    top = PositionOffset.coord(140)
+
+━━━━━━━━━━━━━━━━━━━━
++ GUIHiddenLayoutHost is Box
+
++ is-layout-hidden = true
+
+• This • flow-row
+    when #is-layout-hidden
+        display = Display.hidden
+
+━━━━━━━━━━━━━━━━━━━━
++ TransparentProbe is Box
+
++ is-markup-shadow => true
+
+━━━━━━━━━━━━━━━━━━━━
++ HiddenProbe is Box
+
+• This
+    display = Display.hidden
+
+━━━━━━━━━━━━━━━━━━━━
++ TransparencyFixtureRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This • flow-row
+    <TransparentProbe
+        <Box • w:20 h:10
+    <HiddenProbe • w:50 h:10
+    <Box • w:15 h:10
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ CappedFlexBox is Box
+
+• This • flex:1
+    max-width = SizeSpec.coord(40)
+
+━━━━━━━━━━━━━━━━━━━━
++ ClampedFlexFixtureRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
+
+────────────────────
+
+<This • flex-row
+    <CappedFlexBox
+    <Box • flex:1
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied

@@ -1,0 +1,17 @@
+`benchmark.meta description: Compiles stream patterns that exercise fallback-heavy lowering paths.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+. expected = "alpha"
+. repeat-count = 3
+. checksum = match stream-fallback-heavy-source()
+    ~ rows ($expected "-" [b]+ "o"{repeat-count} ";" "\n")+
+        rows.length * 43
+    ?! Panic("stream-fallback-heavy did not parse")
+
+-- "bench-result compiler-shape/stream-fallback-heavy checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ stream-fallback-heavy-source
+
+"".join("alpha-${"b" * ((each % 9) + 1)}ooo;\n" in 0 .. < 120)

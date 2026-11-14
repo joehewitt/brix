@@ -1,0 +1,638 @@
+./curve-kernels
+./path
+./point
+./primitives
+./utils
+/math
+/stream/aggregate
+/stream/coincidence
+/stream/filter
+/stream/sort
+
+_ default-resolution = 40
+_ default-size = 5000
+
+━━━━━━━━━━━━━━━━━━━━
++ Polygon
+
++ points [Point]
++ is-closed = false
++ start-point Index?
+
+_ computed-area Length?
+
+────────────────────
++ This
+    - points [Point]
+    - is-closed = false
+
+────────────────────
++ This
+    - path Path
+    - resolution = default-resolution
+
+//graphics.polygon.path-conversions ++
+. t-min = tolerance
+. t-max = if resolution > 1 then 1 - tolerance else -1
+
+. pc = -1
+
+. poly-points [Point]
+. span = path.commands
+. first-x Coord = span.coords[0]
+. first-y Coord = span.coords[1]
+poly-points += Point
+    - first-x
+    - first-y
+
+. subpath-x Coord
+. subpath-y Coord
+. has-current = false
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    . start Index = span.coord-offsets[i]
+    . prev-x Coord
+    . prev-y Coord
+    . has-prev = false
+    if i > 0
+        . prev-index = i - 1
+        . prev-verb = span.verbs[prev-index]
+        . prev-start Index = span.coord-offsets[prev-index]
+        if prev-verb == .path-verb-move || prev-verb == .path-verb-line
+            prev-x = span.coords[prev-start]
+            prev-y = span.coords[prev-start + 1]
+            has-prev = true
+        else if prev-verb == .path-verb-cubic
+            prev-x = span.coords[prev-start + 4]
+            prev-y = span.coords[prev-start + 5]
+            has-prev = true
+        else if prev-verb == .path-verb-close
+            prev-x = first-x
+            prev-y = first-y
+            has-prev = true
+
+    if verb == .path-verb-move
+        subpath-x = span.coords[start]
+        subpath-y = span.coords[start + 1]
+        has-current = true
+    else if verb == .path-verb-line && has-current && has-prev
+        . next-x Coord = span.coords[start]
+        . next-y Coord = span.coords[start + 1]
+        . dx Coord = next-x - prev-x
+        . dy Coord = next-y - prev-y
+        if dx * dx + dy * dy >= tolerance * tolerance
+            poly-points += Point
+                - next-x
+                - next-y
+    else if verb == .path-verb-cubic && has-current && has-prev
+        . a1-x Coord = prev-x
+        . a1-y Coord = prev-y
+        . ho-x Coord = span.coords[start]
+        . ho-y Coord = span.coords[start + 1]
+        . hi-x Coord = span.coords[start + 2]
+        . hi-y Coord = span.coords[start + 3]
+        . a2-x Coord = span.coords[start + 4]
+        . a2-y Coord = span.coords[start + 5]
+        . coeffx = cubic-coefficients-1d(a1-x, ho-x, hi-x, a2-x)
+        . coeffy = cubic-coefficients-1d(a1-y, ho-y, hi-y, a2-y)
+        . prev-x Coord = a1-x
+        . prev-y Coord = a1-y
+        . step Coord = (t-max - t-min) / resolution
+        for t in t-min .. t-max by step
+            //graphics.polygon.path-samples ++
+            . sample-x Coord = cubic-evaluate-1d(coeffx.a, coeffx.b, coeffx.c, a1-x, t)
+            . sample-y Coord = cubic-evaluate-1d(coeffy.a, coeffy.b, coeffy.c, a1-y, t)
+            . dx Coord = sample-x - prev-x
+            . dy Coord = sample-y - prev-y
+            if dx * dx + dy * dy < tolerance * tolerance
+                continue
+
+            poly-points += Point
+                - sample-x
+                - sample-y
+            prev-x = sample-x
+            prev-y = sample-y
+
+        . dx Coord = a2-x - prev-x
+        . dy Coord = a2-y - prev-y
+        if dx * dx + dy * dy >= tolerance * tolerance
+            poly-points += Point
+                - a2-x
+                - a2-y
+    else if verb == .path-verb-close && has-current && has-prev
+        . close-x Coord
+        . close-y Coord
+        . found-close-start = false
+        . seek = i
+        while seek > 0
+            seek -= 1
+            if span.verbs[seek] == .path-verb-move
+                . move-start Index = span.coord-offsets[seek]
+                close-x = span.coords[move-start]
+                close-y = span.coords[move-start + 1]
+                found-close-start = true
+                break
+        if !found-close-start
+            continue
+        if prev-x != close-x || prev-y != close-y
+            . dx Coord = close-x - prev-x
+            . dy Coord = close-y - prev-y
+            if dx * dx + dy * dy >= tolerance * tolerance
+                poly-points += Point
+                    - close-x
+                    - close-y
+
+if path.is-closed && poly-points
+    . last = poly-points[Position.last]
+    . dx Coord = last.x - first-x
+    . dy Coord = last.y - first-y
+    if dx * dx + dy * dy >= tolerance * tolerance
+        poly-points += Point
+            - first-x
+            - first-y
+
+= Polygon(poly-points, path.is-closed)
+
+────────────────────
++ do to Path
+
+. path Path
+if !points
+    = path
+
+path.move-to(points[0])
+for i in 1 .. < points.length
+    path.line-to(points[i])
+
+if is-closed
+    path.close()
+
+= path
+
+────────────────────
++ get area Length
+
+//graphics.polygon.area.calls ++
+total / 2
+
+.. total =
+    ** pairwise(points, is-closed && points.length > 1)
+    *> each.a.x * each.b.y - each.b.x * each.a.y
+    |> sum
+
+────────────────────
++ get is-clockwise
+
+area >= 0
+
+────────────────────
++ do this += point Point
+
+if !points || points[Position.last] != point
+    points += point
+
+────────────────────
++ do close
+
+is-closed = true
+
+────────────────────
++ do reset
+
+points.clear()
+is-closed = false
+computed-area = null
+
+────────────────────
++ get-point-at
+    - i Index
+
+points[i]
+
+────────────────────
++ get-concave-at
+    - i Index
+
+is-concave(angle-in, angle-out)
+
+.. i0 = if i == 0 then points.length - 2 else i - 1
+.. p0 = points[i0]
+.. p1 = points[i]
+.. i2 = if i + 1 == points.length - 1 then 0 else i + 1
+.. p2 = points[i2]
+.. angle-in = p0.angle(p1)
+.. angle-out = p1.angle(p2)
+
+────────────────────
++ do get-winding-at
+    - pt Point
+    - is-clockwise = true
+
+. winding = 0
+. up = if is-clockwise then 1 else -1
+
+for i in 1 .. < points.length
+    . p1 = points[i - 1]
+    . p2 = points[i]
+    if point-on-segment(pt, p1, p2)
+        = up
+
+    if p1.y <= pt.y
+        if p2.y > pt.y
+            . is-left = ((p2.x - p1.x) * (pt.y - p1.y) - (pt.x -  p1.x) * (p2.y - p1.y))
+            if is-left > 0
+                winding += up
+    else if p2.y <= pt.y
+        . is-left = ((p2.x - p1.x) * (pt.y - p1.y) - (pt.x -  p1.x) * (p2.y - p1.y))
+        if is-left < 0
+            winding -= up
+
+if is-closed
+    . p1 = points[Position.last]
+    . p2 = points[0]
+    if point-on-segment(pt, p1, p2)
+        = up
+
+    if p1.y <= pt.y
+        if p2.y > pt.y
+            . is-left = ((p2.x - p1.x) * (pt.y - p1.y) - (pt.x -  p1.x) * (p2.y - p1.y))
+            if is-left > 0
+                winding += up
+    else if p2.y <= pt.y
+        . is-left = ((p2.x - p1.x) * (pt.y - p1.y) - (pt.x -  p1.x) * (p2.y - p1.y))
+        if is-left < 0
+            winding -= up
+
+= winding
+
+────────────────────
++ point-on-segment
+    - pt Point
+    - p1 Point
+    - p2 Point
+
+cross-ok && x-ok && y-ok
+
+.. cross-ok = abs(cross) < tolerance
+.. cross = (p2.x - p1.x) * (pt.y - p1.y) - (pt.x - p1.x) * (p2.y - p1.y)
+.. x-ok = pt.x >= min-x - tolerance && pt.x <= max-x + tolerance
+.. min-x = min(p1.x, p2.x)
+.. max-x = max(p1.x, p2.x)
+.. y-ok = pt.y >= min-y - tolerance && pt.y <= max-y + tolerance
+.. min-y = min(p1.y, p2.y)
+.. max-y = max(p1.y, p2.y)
+
+────────────────────
++ do get-point-inside
+    - out Point
+
+. l = points.length - 1
+
+if l < 4
+    . p1 = points[0]
+    . p2 = points[1]
+    . p3 = points[2]
+    . mid1 = p1.midpoint(p2)
+    . mid2 = mid1.midpoint(p3)
+    = mid2
+
+. clockwise = is-clockwise
+
+. has-min = false
+. pmin Point
+. dmin Length
+
+. ib = points.length - 2
+. a = points[Position.last]
+. v = points[0]
+. b Point
+
+for i in 1 .. < l
+    b = points[i]
+
+    . angle-in = a.angle(v)
+    . angle-out = v.angle(b)
+
+    ` Don't use lines that are too close to being parallel
+    ` XXXjoe This is a crappy heuristic
+    ` var den = abs((by - vy) * (vx - ax) - (bx - vx) * (vy - ay));
+    if abs(angle-out - angle-in) > 0.0001
+        . concave = is-concave(angle-in, angle-out)
+        if !clockwise
+            concave = !concave
+        if !concave
+            . d1 = v.distance(b)
+            if d1 < tolerance
+                continue
+            . d2 = v.distance(a)
+            if d2 < tolerance
+                continue
+            break
+
+    a = v
+    v = b
+
+. i-min = step(ib, -2, l - 1)
+. i-mid = step(ib, -1, l - 1)
+. i-max = ib
+
+for i in 0 .. < l
+    if i != i-min && i != i-mid && i != i-max
+        . q = points[i]
+        if point-in-triangle(q, a, v, b)
+            . d = q.distance(v)
+            if d && (!has-min || d < dmin)
+                has-min = true
+                dmin = d
+                pmin = q
+
+=
+    |? !has-min
+        a.midpoint(b)
+    ??
+        pmin.midpoint(v)
+
+` Based on Chen-McMains algorithm
+` http://www.me.berkeley.edu/~mcmains/pubs/DAC05OffsetPolygon.pdf
+────────────────────
++ do tessellate [Polygon]
+    - is-forward = true
+    - is-clockwise = true
+
+//graphics.polygon.tessellations ++
+. repeated = split-repeated-point()
+if repeated
+    = repeated
+
+. crossing = get-self-intersections()
+if crossing
+    //graphics.polygon.self-crossing-tessellations ++
+    . polygons = cross-polygons(crossing, is-forward)
+    = reduce-polygons(polygons, is-forward, is-clockwise)
+else
+    = [this]
+
+────────────────────
++ do split-repeated-point
+
+for i in 0 .. < points.length
+    for j in i + 2 .. < points.length
+        if j >= points.length
+            continue
+        if i == 0 && j == points.length - 1
+            continue
+
+        if points[i] == points[j]
+            . first [Point]
+            for k in i .. < j + 1
+                if k < points.length
+                    first += points[k]
+
+            . second [Point]
+            for k in j .. < points.length
+                if k < points.length
+                    second += points[k]
+            for k in 0 .. < i + 1
+                if k < points.length
+                    second += points[k]
+
+            if first.length >= 3 && second.length >= 3
+                = [Polygon(first) • is closed, Polygon(second) • is closed]
+
+────────────────────
+_ do cross-polygons
+    - crossing Crossing
+    - is-forward = false
+
+//graphics.polygon.cross-polygons ++
+. polygons [Polygon]
+. i-max = points.length - 1
+. reusable-polygon Polygon?
+
+`  XXXjoe The backwards traversal is no longer necessary - I will get rid of it
+` unless I find another use for it
+is-forward = true
+` ` XXXjoe If so, Convert step to only work in positive direction
+
+while true
+    . poly = if reusable-polygon then reusable-polygon else Polygon()
+
+    . start = crossing
+    if !crossing.visited
+        ` poly += crossing.pt
+        while true
+            crossing.visited = true
+
+            . next = crossing.next
+            if !next
+                break
+
+            . i-next = next.i
+            . i = crossing.i
+            while i != i-next
+                . pt = get-point-at(i)
+                poly += pt
+                if i == i-max
+                    poly.start-point = poly.points.length
+
+                i = step(i, 1, i-max)
+
+            poly += next.pt
+
+            crossing = next.counter!
+            if crossing == start
+                break
+
+    if is-closed
+        poly.close()
+
+    if abs(poly.area) >= 1
+        polygons += poly
+        reusable-polygon = null
+    else
+        poly.reset()
+        reusable-polygon = poly
+
+    . next-crossing = find-next-crossing(crossing)
+    if next-crossing
+        crossing = next-crossing
+    else
+        break
+
+= polygons
+
+────────────────────
+_ do reduce-polygons
+    - polygons [Polygon]
+    - is-forward = false
+    - is-clockwise = true
+
+//graphics.polygon.reductions ++
+. results [(pt Point, poly Polygon)]
+. last-point Point
+for polygon in polygons
+    . pt = polygon.get-point-inside(last-point)
+    . wn = get-winding-at(pt, is-clockwise)
+    if wn >= 1
+        results += (pt, polygon)
+    last-point = pt
+
+if !is-clockwise
+    is-forward = !is-forward
+
+results = filter • stream results • where :: a => do
+    for b in results
+        if a != b
+            if !is-forward && b.poly.get-winding-at(a.pt, is-clockwise)
+                =? if abs(a.poly.area) < abs(b.poly.area)
+            else if is-forward && a.poly.get-winding-at(b.pt, is-clockwise)
+                =? if abs(a.poly.area) > abs(b.poly.area)
+    = true
+
+= result.poly *> result in results
+
+────────────────────
+_ do get-self-intersections
+
+//graphics.polygon.self-intersection-scans ++
+. intersections [Crossing]
+. map [PointOnCurve = Int]
+
+for i in 1 .. < points.length
+    . p1a = points[i - 1]
+    . p2a = points[i]
+    for j in i + 1 .. < points.length
+        if j == i + 1
+            continue
+
+        . p1b = points[j - 1]
+        . p2b = points[j]
+
+        if p1b == p2a || p1a == p2b
+            continue
+
+        if !polygon-segment-bounds-overlap(p1a, p2a, p1b, p2b)
+            continue
+
+        //graphics.polygon.self-intersection-tests ++
+        . pt = intersect-lines(p1a, p2a, p1b, p2b)
+        if pt
+            //graphics.polygon.self-intersection-hits ++
+            . dd1 = p1a.distance(p2a)
+            . d1 = p1a.distance(pt)
+            . raw-t1 = d1 / dd1
+            if raw-t1 == 0 || raw-t1 == 1
+                continue
+            . t1 = raw-t1
+
+            . dd2 = p1b.distance(p2b)
+            . d2 = p1b.distance(pt)
+            . raw-t2 = d2 / dd2
+            if raw-t2 == 0 || raw-t2 == 1
+                continue
+            . t2 = raw-t2
+
+            . key1 = i + t1
+            . key2 = j + t2
+            . key = min(key1, key2)
+            if !map[key]
+                map[key] = 1
+
+                . a = Crossing(i, t1, pt)
+                . b = Crossing(j, t2, pt)
+                a.counter = b
+                b.counter = a
+                intersections[intersections.length] = a
+                intersections[intersections.length] = b
+
+intersections = sort(intersections) • using :: a, b => if (a.i + a.t) < (b.i + b.t) then .lesser else .greater
+
+. prev Crossing?
+for intr in intersections
+    prev?.next = intr
+    intr.previous = prev
+    prev = intr
+
+if intersections
+    . first = intersections[0]
+    first.previous = prev
+    prev?.next = first
+    = first
+
+━━━━━━━━━━━━━━━━━━━━
+_ Crossing
+
++ i Index
++ t PointOnCurve
++ pt Point
++ next Crossing?
++ previous Crossing?
++ counter Crossing?
++ visited = false
+
+────────────────────
++ This
+    - crossing-i Index
+    - crossing-t PointOnCurve
+    - crossing-pt Point
+
+i = crossing-i
+t = crossing-t
+pt = crossing-pt
+
+━━━━━━━━━━━━━━━━━━━━
++ polygon-segment-bounds-overlap
+    - a1 Point
+    - a2 Point
+    - b1 Point
+    - b2 Point
+
+!(a-left-of-b || b-left-of-a || a-above-b || max(b1.y, b2.y) < min(a1.y, a2.y) - tolerance)
+
+.. a-left-of-b = max(a1.x, a2.x) < min(b1.x, b2.x) - tolerance
+.. b-left-of-a = max(b1.x, b2.x) < min(a1.x, a2.x) - tolerance
+.. a-above-b = max(a1.y, a2.y) < min(b1.y, b2.y) - tolerance
+
+━━━━━━━━━━━━━━━━━━━━
+_ do find-next-crossing
+    - first-crossing Crossing
+
+. crossing = first-crossing
+while true
+    if !crossing.visited
+        = crossing
+    else
+        crossing = crossing.next!
+    if crossing == first-crossing
+        break
+
+━━━━━━━━━━━━━━━━━━━━
+_ do step
+    - i Index
+    - incr Index
+    - i-max Index
+
+. result = i + incr
+if result < 0
+    result = i-max + result + 1
+else if result > i-max
+    result = 0
+
+= result
+
+` Credit: http://stackoverflow.com/questions/2049582/how-to-determine-a-point-in-a-triangle
+━━━━━━━━━━━━━━━━━━━━
+_ point-in-triangle
+    - p Point
+    - p0 Point
+    - p1 Point
+    - p2 Point
+
+` XXXjoe This was originally 0 instead of TOLERANCE, but that often failed me
+
+s > tolerance && t > tolerance && (s + t) < 2 * a * sign
+
+.. a = 1 / 2 * (-p1.y * p2.x + p0.y) * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y
+.. sign = if a < 0 then -1 else 1
+.. s = (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y) * sign
+.. t = (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y) * sign

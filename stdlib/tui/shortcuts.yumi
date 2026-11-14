@@ -1,0 +1,172 @@
+
+./box
+./canvas
+./colors
+./events
+./layout
+./markup
+./primitives
+/core/function
+/core/markup
+/stream/aggregate
+/ui/command
+/ui/input
+/ui/key-assignment
+/ui/key-combo
+
+━━━━━━━━━━━━━━━━━━━━
++ Shortcut is Box
+    is KeyAssignment
+
++ title = ""
++ key KeyCombo = KeyCombo()
++ action Doer?
++ command Command?
++ stable-key = ""
++ enabled = true
++ when Getter'Bool?
++ show-in-status = true
++ allow-while-input = false
++ allow-while-modal = false
++ priority = 0
++ is-markup-shadow => true
++ mapping-default := KeyMappingDefault()
++ display-title => command?.title ?? title
++ status-label => shortcut-status-label(key, display-title)
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
++ is-active Bool
+
+|? !is-effectively-enabled || !enabled
+    false
+|? predicate && !predicate()
+    false
+|? target
+    target.is-available
+??
+    true
+
+.. predicate = when
+.. target = command
+
+────────────────────
++ is-routable Bool
+    - focused Box?
+    - modal Box?
+
+is-active() && key-assignment-routable(this, input-owned, outside-modal)
+
+.. input-owned = focused?.$focus-mode == FocusMode.input && key.is-printable-input()
+.. outside-modal = modal != null && !key-scope-contains(modal, this)
+
+────────────────────
++ do set-binding-key
+    - next KeyCombo
+
+key = next
+
+────────────────────
++ do set-binding-enabled
+    - next Bool
+
+enabled = next
+
+────────────────────
++ matches Bool
+    - event KeyPressEvent
+
+key.matches(event)
+
+────────────────────
++ matches Bool
+    - event KeyInputEvent
+
+key.matches(event)
+
+────────────────────
++ do invoke
+
+. target = command
+if target
+    target.run()
+    =
+. callback = action
+if callback
+    callback()
+        catch error Error
+            unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend KeyCombo
+
+────────────────────
++ matches Bool
+    - event KeyPressEvent
+
+matches-key(event.key, "", event.modifiers)
+
+────────────────────
++ matches Bool
+    - event KeyInputEvent
+
+matches-key(input-key, "${event.char}", event.modifiers)
+
+.. input-key = if event.char == ' ' then Key.space else Key.unknown(event.char as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ active-window-shortcuts [Shortcut]
+    - registered-shortcuts [Shortcut]
+    - focused Box?
+    - modal Box?
+
+<* shortcut in active when shortcut.is-routable(focused, modal)
+
+.. active = active-key-assignments(registered-shortcuts, focused, modal)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-shortcut-key-press Bool
+    - shortcuts [Shortcut]
+    - event KeyPressEvent
+
+for shortcut in shortcuts
+    if shortcut.matches(event)
+        shortcut.invoke()
+        event.cancel()
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-shortcut-key-input Bool
+    - shortcuts [Shortcut]
+    - event KeyInputEvent
+
+for shortcut in shortcuts
+    if shortcut.matches(event)
+        shortcut.invoke()
+        event.cancel()
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ shortcut-status-summary String
+    - shortcuts [Shortcut]
+
+match shortcuts.length
+    |= 0
+        "No shortcuts"
+    ??
+        " | ".join(each.status-label in shortcuts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shortcut-status-label String
+    - key KeyCombo
+    - title String
+
+if label then "$label $title" else title
+
+.. label = key.display-label
+

@@ -1,0 +1,158 @@
+/data/fuzzy
+/graphics/primitives
+/gui/box
+/gui/events
+/gui/label
+/gui/placement
+/gui/popup
+/gui/primitives
+/gui/search-palette
+/gui/shorthands
+/gui/styles
+/gui/theme
+/gui/virtual
+/gui/window
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Palette Styles")
+cases.run(style-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-tests
+    - t TestCase
+
+. window = open-palette-window()
+. palette = window.palette
+palette.show()
+settle(window)
+t.expect("the theme sets the panel width", 520, palette.bounds.width)
+t.expect("the theme sets the panel height", 360, palette.bounds.height)
+t.expect("the theme centers the panel", 60, palette.bounds.x)
+t.expect("the theme places the panel below the top", 56, palette.bounds.y)
+t.expect("the theme sets the row height", 25, row-height(palette, 0))
+t.expect("rows stack by the themed height", 25, row-top(palette, 1) - row-top(palette, 0))
+palette.dismiss()
+settle(window)
+
+. berries = window.berries
+berries.show()
+settle(window)
+t.expect("a theme rule resizes a palette", 300, berries.bounds.width)
+t.expect("a theme rule moves a palette", 20, berries.bounds.y)
+t.expect("a theme rule sets a palette's row height", 40, row-height(berries, 0))
+t.expect("rows stack by the rule's height", 40, row-top(berries, 1) - row-top(berries, 0))
+berries.row-height = 30
+settle(window)
+t.expect("a new row height resizes the rows", 30, row-height(berries, 0))
+t.expect("a new row height restacks the rows", 30, row-top(berries, 1) - row-top(berries, 0))
+window.close()
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ Fruit
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
+_ fruits [Fruit]
+    - names [String]
+
+Fruit(each) in names
+
+━━━━━━━━━━━━━━━━━━━━
+_ row-height'Item Length
+    - palette Palette'Item
+    - index Size
+
+palette.row-at-index(index)?.material-parent?.bounds.height ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ row-top'Item Length
+    - palette Palette'Item
+    - index Size
+
+palette.row-at-index(index)?.material-parent?.bounds.y ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ BerryPalette is Palette'Fruit
+
++ stock [Fruit] = fruits(["Blackberry", "Blueberry", "Cranberry", "Raspberry"])
++ results = fuzzy-ranked(stock, #query, :: fruit => fruit.name)
+
+────────────────────
+
+<This
+    <Label (row) - row
+        text = "berry ${row.#item?.name ?? ""}"
+        align-y = Alignment.center
+
+━━━━━━━━━━━━━━━━━━━━
+• PaletteTestTheme
+    using GUIDefaultTheme
+    using GUIPopupStyle
+    using GUIVirtualRowStyle
+
+• BerryPalette • w:278 h:178
+    placement = CenteredPlacement(20)
+    row-height = 40
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-palette-window
+
+. window = PaletteTestWindow()
+window.open()
+settle(window)
+= window
+
+━━━━━━━━━━━━━━━━━━━━
+_ do settle
+    - window Window
+
+. root = window.markup-batch-root
+if root
+    root.markup-batch-queue.checkpoint()
+window.layout()
+if root
+    root.markup-batch-queue.checkpoint()
+window.layout()
+
+━━━━━━━━━━━━━━━━━━━━
+_ PaletteTestWindow is Window
+    using PaletteTestTheme
+
+────────────────────
+
+<This
+    size = Dimensions(640, 480)
+
+    <Palette'Fruit palette
+        results = fruits(["Apple", "Apricot"])
+
+        <Label (row) - row
+            text = row.#item?.name ?? ""
+            align-y = Alignment.center
+
+    <BerryPalette berries
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ render
+
+true
+
+────────────────────
++ do schedule-render

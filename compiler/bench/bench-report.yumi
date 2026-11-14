@@ -1,0 +1,919 @@
+./bench-catalog
+./bench-config
+./bench-metrics
+/data/json
+/math
+/os/file
+/os/path
+/os/process
+/stream/sort
+/string.h
+/time/clock
+/time/datetime
+/time/duration
+/time/timer
+/time/zone
+/unistd.h
+
++ bench-results-path = ".tmp/results/bench"
+_ bench-report-perms = user-read-perm /or/ user-write-perm /or/ group-read-perm /or/ other-read-perm
++ bench-last-run-name = "last-run"
++ bench-last-run-format = 2
++ bench-schema-version = 1
+
+_ bench-lock-poll = 10ms
+_ bench-lock-limit U64 = 30000000000
+_ bench-read-size Size = 0x10000
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchSample is Tuple
+
++ iteration Size
++ duration F64
++ status String
++ exit-code Int?
++ signal String?
++ stdout String
++ stderr String
++ artifact-path String
++ metrics-path String
++ probes-path String
++ data JSON?
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchResult is Tuple
+
++ bench BenchCase
++ status String
++ checksum F64?
++ result-line String?
++ compile-samples [BenchSample]
++ run-samples [BenchSample]
++ values [[F64?]]
++ summaries [BenchSummary]
++ diagnostics [String]
+
+────────────────────
++ get is-passed Bool
+
+status == "passed"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRunInfo is Tuple
+
++ run-id String
++ started String
++ config BenchConfig
++ profile BenchProfile
++ selectors [String]
++ iterations Size
++ warmup Size
++ timeout U64
++ keeps Bool
++ save-name String
++ compare-name String
++ reason String
++ saved-by String
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchDelta is Tuple
+
++ baseline F64?
++ current F64?
++ delta F64?
++ percent F64?
++ direction String
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchMatch is Tuple
+
++ id String
++ baseline-status String
++ current-status String
++ deltas [BenchDelta]
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchComparison is Tuple
+
++ name String
++ path String
++ generated String?
++ matches [BenchMatch]
++ current-only [String]
++ baseline-only [String]
+
+────────────────────
++ do match-of BenchMatch?
+    - id String
+
+for found in matches
+    =? found if found.id == id
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchSavedRun is Tuple
+
++ name String
++ path String
++ profile String
++ reason String
++ saved-by String
++ generated String
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRecord is Tuple
+
++ id String
++ status String
++ summaries [String = BenchSummary]
++ completed String
++ diagnostics [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-normalized-name String ?! Error
+    - name String
+
+?! Error("A saved benchmark run name must not be empty")
+    if bare.trim() == ""
+
+bench-sanitized(bare)
+
+.. trimmed = name.trim()
+.. bare = if trimmed.lowercased.ends-with(".json") then trimmed[0 .. < trimmed.length - 5] else trimmed
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-saved-name String ?! Error
+    - name String
+    - profile String
+
+if normalized.ends-with(suffix) then normalized else "$normalized$suffix"
+
+.. normalized = bench-normalized-name(name)
+.. suffix = "-${bench-normalized-name(profile)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-saved-path String ?! Error
+    - root String
+    - name String
+
+"$root/$bench-results-path/${bench-normalized-name(name)}.json"
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-sanitized String
+    - text String
+
+. result = ""
+. is-gap = false
+for char in text
+    if is-letter || (char >= '0' && char <= '9') || char == '.' || char == '_' || char == '-'
+        result = "$result$char"
+        is-gap = false
+    else if !is-gap
+        result = "${result}-"
+        is-gap = true
+    .. is-letter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do load-bench-baseline JSON ?! Error
+    - root String
+    - name String
+
+. path = bench-saved-path(root, name)
+. text = read-file-text(Path(path, 0))
+    catch failure Error
+        ?! Error("Could not load saved benchmark result '$name' at $path: ${failure.message}")
+. report = parse-json(text)
+    catch failure Error
+        ?! Error("Could not load saved benchmark result '$name' at $path: ${failure.message}")
+?! Error("Could not load saved benchmark result '$name' at $path: saved result does not contain a results array")
+    if bench-items(bench-field("results", report)) == null
+= report
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-comparison BenchComparison ?! Error
+    - root String
+    - name String
+    - baseline JSON
+    - results [BenchResult]
+    - metrics [BenchMetric]
+
+. by-id [String = JSON]
+. baseline-ids [String]
+for item in bench-items(bench-field("results", baseline)) ?? List'JSON()
+    . id = bench-string(bench-field("id", item))
+    if id != ""
+        by-id[id] = item
+        baseline-ids += id
+. matches [BenchMatch]
+. current-only [String]
+. current-ids [String = Bool]
+for result in results
+    . id = result.bench.id
+    current-ids[id] = true
+    . base = by-id[id]
+    if !base
+        current-only += id
+        continue
+    . deltas [BenchDelta]
+    for index in 0 .. < metrics.length
+        . prior = bench-result-median(base, metrics[index].key)
+        . later = result.summaries[index].median
+        deltas += bench-delta(prior, later)
+    matches += BenchMatch(id, bench-string(bench-field("status", base)), result.status, deltas)
+. baseline-only [String]
+for id in baseline-ids
+    if !current-ids[id]
+        baseline-only += id
+. generated = bench-string(bench-field("generatedAt", baseline))
+= BenchComparison
+    - bench-normalized-name(name)
+    - bench-saved-path(root, name)
+    - generated if generated != ""
+    - matches
+    - current-only
+    - baseline-only
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-delta BenchDelta
+    - prior F64?
+    - later F64?
+
+|? !prior || !later
+    BenchDelta(prior, later, null, null, "unknown")
+??
+    BenchDelta(prior, later, delta, percent, direction)
+
+.. delta = bench-rounded(later - prior)
+.. percent F64? = if prior == 0.0 then null else bench-rounded(delta / prior * 100.0)
+.. direction = if delta < 0.0 then "better" else if delta > 0.0 then "worse" else "same"
+
+━━━━━━━━━━━━━━━━━━━━
++ do save-bench-reports String ?! Error
+    - info BenchRunInfo
+    - results [BenchResult]
+    - comparison BenchComparison?
+
+. root = info.config.root
+. generated = bench-iso-time()
+. repo = bench-repo(root)
+. last-name = bench-saved-name(bench-last-run-name, info.profile.name)
+. last-path = bench-saved-path(root, last-name)
+Path("$root/$bench-results-path", 0).make-directories()
+save-bench-last-run
+    - last-path
+    - bench-report(info, results, last-name, last-path, generated, repo, true, null)
+    - info.profile.name
+=? last-path if info.save-name == last-name
+. named-path = bench-saved-path(root, info.save-name)
+. named = bench-report
+    - info
+    - results
+    - info.save-name
+    - named-path
+    - generated
+    - repo
+    - false
+    - comparison
+?! Error("Benchmark report already exists: ${info.save-name}.json")
+    if Path(named-path, 0).exists
+. file = File
+    - named-path
+    - FileFlags.write-mode + FileFlags.create-mode + FileFlags.exclusive-mode
+    - bench-report-perms
+do use file
+    file.write("${to-json(named)}\n")
+= named-path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do save-bench-last-run ?! Error
+    - path String
+    - compact JSON
+    - profile String
+
+. lock-path = "${path}.lock"
+. started = monotonic-time-nanoseconds()
+. lock File?
+while !lock
+    lock = catch? File(lock-path, lock-flags)
+        .. lock-flags = FileFlags.write-mode + FileFlags.create-mode + FileFlags.exclusive-mode
+    if !lock
+        ?! Error("Timed out waiting for the benchmark report lock $lock-path")
+            if monotonic-time-nanoseconds() - started >= bench-lock-limit
+        bench-lock-poll.wait()
+do finally
+    catch lock!.close()
+    catch Path(lock-path, 0).delete()
+. existing = bench-read-json(path)
+write-file-atomically
+    - Path(path, 0)
+    - "${to-json(bench-last-run(compact, profile, existing))}\n"
+    - bench-report-perms
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-saved-runs [BenchSavedRun]
+    - root String
+    - profile String?
+
+. runs [BenchSavedRun]
+. directory = Path("$root/$bench-results-path", 0)
+=? runs if !directory.exists
+. names [String]
+for entry in directory.entries
+    if entry.kind == PathKind.file && entry.name.ends-with(".json")
+        names += entry.name
+for file-name in names
+    . path = "$root/$bench-results-path/$file-name"
+    . report = bench-read-json(path)
+    if !report
+        continue
+    . options = bench-field("options", report)
+    . owner = bench-string(bench-field("profile", options))
+    . name = file-name[0 .. < file-name.length - 5]
+    if owner == "" || !name.ends-with("-$owner") || (profile && owner != profile) || is-last-run
+        continue
+    .. is-last-run = name == "${bench-last-run-name}-$owner"
+    runs += BenchSavedRun
+        - name
+        - path
+        - owner
+        - bench-string(bench-field("reason", report))
+        - bench-string(bench-field("savedBy", report))
+        - bench-string(bench-field("generatedAt", report))
+= sort(runs) • using :: a, b => if a.generated > b.generated then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
++ do load-bench-latest [String = BenchRecord] ?! Error
+    - root String
+    - profile String
+
+= bench-records
+    - bench-read-json(bench-saved-path(root, bench-saved-name(bench-last-run-name, profile)))
+
+━━━━━━━━━━━━━━━━━━━━
++ do load-bench-compared [String = BenchRecord] ?! Error
+    - root String
+    - name String
+    - profile String
+
+= bench-records(load-bench-baseline(root, bench-saved-name(name, profile)))
+
+━━━━━━━━━━━━━━━━━━━━
++ do save-bench-comparison String ?! Error
+    - root String
+    - profile String
+    - reason String
+
+. last-path = bench-saved-path(root, bench-saved-name(bench-last-run-name, profile))
+. report = bench-read-json(last-path)
+?! Error("No last run of $profile to save")
+    if !report
+. fields = bench-fields-of(report)
+. results [JSON]
+for entry in bench-items(fields["retainedResults"]) ?? List'JSON()
+    . result = bench-field("result", entry)
+    if result
+        results += result
+for result in bench-items(fields["results"]) ?? List'JSON()
+    results += result
+. trimmed = reason.trim()
+. base = if trimmed != "" then bench-sanitized(trimmed) else generated-base
+    .. generated-base = "saved-${bench-digits(bench-string(fields["generatedAt"]))}"
+. name = bench-saved-name(base, profile)
+. suffix = 2
+while Path(bench-saved-path(root, name), 0).exists
+    name = bench-saved-name("${base}-$suffix", profile)
+    suffix += 1
+. path = bench-saved-path(root, name)
+. passed = 0
+for result in results
+    if bench-string(bench-field("status", result)) == "passed"
+        passed += 1
+. summary [String = JSON]
+summary["total"] = results.length
+summary["passed"] = passed
+summary["failed"] = results.length - passed
+. options = bench-fields-of(fields["options"] ?? (null as JSON))
+options["saveName"] = name
+options["reason"] = trimmed
+options["savedBy"] = "human"
+-= fields["lastRunReportFormat"]
+-= fields["retainedResults"]
+fields["reason"] = trimmed
+fields["savedBy"] = "human"
+fields["options"] = options
+fields["summary"] = summary
+fields["results"] = results
+fields["savedReportPath"] = path
+. file = File
+    - path
+    - FileFlags.write-mode + FileFlags.create-mode + FileFlags.exclusive-mode
+    - bench-report-perms
+do use file
+    file.write("${to-json(fields as JSON)}\n")
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do archive-bench-run ?! Error
+    - root String
+    - name String
+
+. folder = "$root/$bench-results-path/archive"
+Path(folder, 0).make-directories()
+Path(bench-saved-path(root, name), 0).move(Path("$folder/${bench-normalized-name(name)}.json", 0))
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-unsaved-profiles [String]
+    - root String
+    - runs [BenchSavedRun]
+
+. unsaved [String]
+. directory = Path("$root/$bench-results-path", 0)
+=? unsaved if !directory.exists
+. prefix = "${bench-last-run-name}-"
+for entry in directory.entries
+    if entry.kind != PathKind.file || !entry.name.starts-with(prefix) || !is-json
+        continue
+    .. is-json = entry.name.ends-with(".json")
+    . report = bench-read-json("$root/$bench-results-path/${entry.name}")
+    . profile = bench-string(bench-field("profile", bench-field("options", report)))
+    . generated = bench-string(bench-field("generatedAt", report))
+    if profile == "" || generated == ""
+        continue
+    . copied = false
+    for run in runs
+        copied = copied || (run.profile == profile && run.generated == generated)
+    if !copied
+        unsaved += profile
+= unsaved
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-digits String
+    - text String
+
+. digits = ""
+for char in text
+    if char >= '0' && char <= '9'
+        digits = "$digits$char"
+= if digits.length > 14 then digits[0 .. < 14] else digits
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-records [String = BenchRecord]
+    - report JSON?
+
+. records [String = BenchRecord]
+=? records if !report
+for key in List'String("retainedResults", "results")
+    for item in bench-items(bench-field(key, report)) ?? List'JSON()
+        . id = bench-string(bench-field("id", item))
+        if id != ""
+            records[id] = bench-record(id, item)
+= records
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-result-record BenchRecord
+    - result BenchResult
+    - metrics [BenchMetric]
+    - completed String
+
+. summaries [String = BenchSummary]
+for index in 0 .. < metrics.length
+    if index < result.summaries.length
+        summaries[metrics[index].key] = result.summaries[index]
+= BenchRecord(result.bench.id, result.status, summaries, completed, result.diagnostics)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-iso-time String
+
+. now = clock()
+. time = DateTime(now.s, utc)
+. milliseconds = (now.ns as U64) / 1000000
+. fraction = "$milliseconds"
+while fraction.length < 3
+    fraction = "0$fraction"
+= "${time.year.pad(4)}-${(time.month.number + 1).pad(2)}-${(time.day.number + 1).pad(2)}T${time.hour.pad(2)}:${time.minute.pad(2)}:${time.second.pad(2)}.${fraction}Z"
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-run-id String
+
+. now = clock()
+= "benchmarks-${milliseconds}-${C:getpid()}${monotonic-time-nanoseconds() % 1000000}"
+    .. milliseconds = (now.s as U64) * 1000 + (now.ns as U64) / 1000000
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-sample-json JSON
+    - sample BenchSample
+    - source BenchSource
+    - is-compact Bool
+
+. fields [String = JSON]
+fields["iteration"] = sample.iteration
+fields["durationMs"] = sample.duration
+fields["status"] = sample.status
+fields["exitCode"] = if sample.exit-code then (sample.exit-code as JSON) else (null as JSON)
+fields["signal"] = if sample.signal then (sample.signal as JSON) else (null as JSON)
+if is-compact
+    if sample.status != "passed" && sample.stdout != ""
+        fields["stdout"] = sample.stdout
+    if sample.status != "passed" && sample.stderr != ""
+        fields["stderr"] = sample.stderr
+    = fields
+fields["stdout"] = sample.stdout
+fields["stderr"] = sample.stderr
+fields["artifactPath"] = sample.artifact-path
+if source == BenchSource.compile
+    if sample.probes-path != ""
+        fields["probesPath"] = sample.probes-path
+        fields["compilerMetrics"] = sample.data ?? (null as JSON)
+    = fields
+fields["metricsPath"] = sample.metrics-path
+if sample.probes-path != ""
+    fields["probesPath"] = sample.probes-path
+fields["metrics"] = sample.data ?? (null as JSON)
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-field JSON?
+    - key String
+    - value JSON?
+
+=? null if !value
+do match value
+    | fields [String = JSON]
+        = fields[key]
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-items [JSON]?
+    - value JSON?
+
+=? null if !value
+do match value
+    | items [JSON]
+        = items
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-string String
+    - value JSON?
+
+=? "" if !value
+do match value
+    | text String
+        = text
+    ??
+        = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-result-median F64?
+    - result JSON
+    - key String
+
+bench-json-number(bench-field("median", summary))
+
+.. summary = bench-field(key, bench-field("summaries", result)) ?? bench-field(key, bench-field("profileMetricSummaries", result))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-report JSON
+    - info BenchRunInfo
+    - results [BenchResult]
+    - save-name String
+    - saved-path String
+    - generated String
+    - repo JSON
+    - is-compact Bool
+    - comparison BenchComparison?
+
+. config = info.config
+. profile = info.profile
+. options [String = JSON]
+options["allocator"] = "gc"
+options["iterations"] = info.iterations
+options["warmup"] = info.warmup
+options["timeoutMs"] = info.timeout as JSON
+options["keep"] = info.keeps
+options["configPath"] = config.path
+options["profile"] = profile.name
+options["defaultProfileName"] = config.default-profile
+options["benchmarkMetrics"] = profile.has-benchmark-metrics
+options["setupCommand"] = profile.setup ?? ""
+options["metricColumns"] = bench-metric-columns(profile.metrics)
+options["compilerProbes"] = profile.compiler-probe-selectors
+options["runExecutable"] = profile.runs-executable
+options["runtimeProbes"] = profile.probe-selectors
+options["saveName"] = save-name
+options["compareName"] = info.compare-name
+options["reason"] = info.reason
+options["savedBy"] = info.saved-by
+. passed = 0
+. listed [JSON]
+for result in results
+    if result.is-passed
+        passed += 1
+    listed += bench-result-json(result, profile.metrics, generated, is-compact)
+. summary [String = JSON]
+summary["total"] = results.length
+summary["passed"] = passed
+summary["failed"] = results.length - passed
+. environment [String = JSON]
+environment["runner"] = "brix"
+environment["hostname"] = bench-hostname()
+. report [String = JSON]
+report["schemaVersion"] = bench-schema-version
+report["runId"] = info.run-id
+report["startedAt"] = info.started
+report["generatedAt"] = generated
+report["projectRoot"] = config.root
+report["selectors"] = bench-string-list(info.selectors)
+report["reason"] = info.reason
+report["savedBy"] = info.saved-by
+report["repo"] = repo
+report["environment"] = environment
+report["options"] = options
+report["summary"] = summary
+report["results"] = listed
+if comparison
+    report["comparison"] = bench-comparison-json(comparison, profile.metrics)
+report["savedReportPath"] = saved-path
+= report
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-result-json JSON
+    - result BenchResult
+    - metrics [BenchMetric]
+    - generated String
+    - is-compact Bool
+
+. bench = result.bench
+. fields [String = JSON]
+fields["suite"] = bench.suite.name
+fields["caseName"] = bench.case-name
+fields["id"] = bench.id
+fields["description"] = bench.description
+fields["tags"] = bench-string-list(bench.tags)
+fields["sourcePath"] = bench.source-path
+fields["relativePath"] = bench.relative-path
+fields["allocator"] = "gc"
+fields["status"] = result.status
+fields["checksum"] = bench-checksum-json(result.checksum)
+fields["resultLine"] = if result.result-line then (result.result-line as JSON) else (null as JSON)
+. compile-samples [JSON]
+for sample in result.compile-samples
+    compile-samples += bench-sample-json(sample, BenchSource.compile, is-compact)
+. run-samples [JSON]
+for sample in result.run-samples
+    run-samples += bench-sample-json(sample, BenchSource.run, is-compact)
+fields["compileSamples"] = compile-samples
+fields["runSamples"] = run-samples
+. summaries [String = JSON]
+. samples [String = JSON]
+for index in 0 .. < metrics.length
+    summaries[metrics[index].key] = bench-summary-json(result.summaries[index])
+    . values [JSON]
+    for value in result.values[index]
+        values += bench-number-json(value)
+    samples[metrics[index].key] = values
+if !is-compact
+    fields["metricSamples"] = samples
+fields["summaries"] = summaries
+fields["profileMetricSummaries"] = Map'String'JSON()
+fields["diagnostics"] = bench-string-list(result.diagnostics)
+fields["completedAt"] = generated
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ bench-checksum-json JSON
+    - checksum F64?
+
+|? !checksum
+    null as JSON
+??
+    checksum as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-metric-columns JSON
+    - metrics [BenchMetric]
+
+. columns [JSON]
+for metric in metrics
+    . column [String = JSON]
+    column["key"] = metric.key
+    column["title"] = metric.title
+    column["description"] = metric.description
+    column["format"] = bench-format-name(metric.format)
+    column["source"] = bench-source-name(metric.source)
+    column["sampleDuration"] = metric.is-timing
+    if metric.min-width
+        column["minWidth"] = metric.min-width
+    columns += column
+= columns
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-comparison-json JSON
+    - comparison BenchComparison
+    - metrics [BenchMetric]
+
+. results [JSON]
+for found in comparison.matches
+    . deltas [String = JSON]
+    for index in 0 .. < metrics.length
+        . delta = found.deltas[index]
+        . fields [String = JSON]
+        fields["baseline"] = bench-number-json(delta.baseline)
+        fields["current"] = bench-number-json(delta.current)
+        fields["delta"] = bench-number-json(delta.delta)
+        fields["deltaPct"] = bench-number-json(delta.percent)
+        fields["direction"] = delta.direction
+        deltas[metrics[index].key] = fields
+    . entry [String = JSON]
+    entry["id"] = found.id
+    entry["baselineStatus"] = found.baseline-status
+    entry["currentStatus"] = found.current-status
+    entry["metrics"] = deltas
+    results += entry
+. fields [String = JSON]
+fields["baselineName"] = comparison.name
+fields["baselinePath"] = comparison.path
+fields["baselineGeneratedAt"] = if comparison.generated then (comparison.generated as JSON) else (null as JSON)
+fields["matched"] = comparison.matches.length
+fields["currentOnly"] = bench-string-list(comparison.current-only)
+fields["baselineOnly"] = bench-string-list(comparison.baseline-only)
+fields["results"] = results
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-last-run JSON
+    - current JSON
+    - profile String
+    - existing JSON?
+
+. retained [String = JSON]
+. order [String]
+if existing && bench-number-of(bench-field("lastRunReportFormat", existing)) == bench-last-run-format && bench-string(bench-field("profile", bench-field("options", existing))) == profile
+    for entry in bench-items(bench-field("retainedResults", existing)) ?? List'JSON()
+        . id = bench-string(bench-field("id", bench-field("result", entry)))
+        if id != "" && bench-is-object(bench-field("result", entry)) && has-origin
+            if !retained[id]
+                order += id
+            retained[id] = entry
+        .. has-origin = bench-is-object(bench-field("origin", entry))
+    for result in bench-items(bench-field("results", existing)) ?? List'JSON()
+        . id = bench-string(bench-field("id", result))
+        if id != ""
+            if !retained[id]
+                order += id
+            retained[id] = bench-retained(existing, result)
+. fresh [String = Bool]
+for result in bench-items(bench-field("results", current)) ?? List'JSON()
+    fresh[bench-string(bench-field("id", result))] = true
+. kept [JSON]
+for id in order
+    if !fresh[id]
+        kept += retained[id]!
+. fields = bench-fields-of(current)
+fields["lastRunReportFormat"] = bench-last-run-format
+fields["retainedResults"] = kept
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-retained JSON
+    - report JSON
+    - result JSON
+
+. generated = bench-field("generatedAt", report) ?? (bench-iso-time() as JSON)
+. origin [String = JSON]
+origin["runId"] = bench-string(bench-field("runId", report))
+origin["selectors"] = bench-field("selectors", report) ?? (List'JSON() as JSON)
+origin["startedAt"] = bench-field("startedAt", report) ?? generated
+origin["generatedAt"] = generated
+origin["completedAt"] = bench-field("completedAt", result) ?? generated
+origin["options"] = bench-field("options", report) ?? (Map'String'JSON() as JSON)
+origin["repo"] = bench-field("repo", report) ?? (null as JSON)
+. entry [String = JSON]
+entry["result"] = result
+entry["origin"] = origin
+= entry
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-fields-of [String = JSON]
+    - value JSON
+
+. fields [String = JSON]
+do match value
+    | found [String = JSON]
+        for key, item in found
+            fields[key] = item
+    ??
+        = fields
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-is-object Bool
+    - value JSON?
+
+=? false if !value
+do match value
+    | fields [String = JSON]
+        = true
+    ??
+        = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ bench-number-of Int?
+    - value JSON?
+
+(number as Int) if number
+
+.. number = bench-json-number(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-record BenchRecord
+    - id String
+    - item JSON
+
+. summaries [String = BenchSummary]
+. listed = bench-field("summaries", item)
+if listed
+    do match? listed
+        | fields [String = JSON]
+            for key, value in fields
+                . summary = bench-summary-of(value)
+                if summary
+                    summaries[key] = summary
+. diagnostics [String]
+for entry in bench-items(bench-field("diagnostics", item)) ?? List'JSON()
+    diagnostics += bench-string(entry)
+= BenchRecord
+    - id
+    - bench-string(bench-field("status", item))
+    - summaries
+    - bench-string(bench-field("completedAt", item))
+    - diagnostics
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-string-list JSON
+    - values [String]
+
+. items [JSON]
+for value in values
+    items += value
+= items
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-repo JSON
+    - root String
+
+. fields [String = JSON]
+. branch = bench-git(root, List'String("rev-parse", "--abbrev-ref", "HEAD"))
+. commit = bench-git(root, List'String("rev-parse", "HEAD"))
+. status = bench-git(root, List'String("status", "--short"))
+fields["branch"] = if branch then (branch as JSON) else (null as JSON)
+fields["commit"] = if commit then (commit as JSON) else (null as JSON)
+fields["dirty"] = status != null && status != ""
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-git String?
+    - root String
+    - arguments [String]
+
+. child = catch? Process("git", ProcessStderr.discard, arguments, root)
+=? null if !child
+. chunk = Byte[bench-read-size]
+. output = ""
+while true
+    . count = bench-read-chunk(child, chunk)
+    if count == 0
+        break
+    output = "$output${chunk.slice-string(0 .. < count)}"
+. status = child.wait(null) ?? -1
+catch child.close()
+= output.trim() if status == 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-hostname String
+
+. buffer = Byte[256]
+=? "" if C:gethostname(buffer.data, 255) != 0
+= buffer.slice-string(0 .. < C:strlen(buffer.data))
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-read-json JSON?
+    - path String
+
+. found = Path(path, 0)
+=? null if !found.exists
+. text = catch? read-file-text(found)
+=? null if !text
+= catch? parse-json(text)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-read-chunk Size
+    - source ByteReadable
+    - chunk Byte[]
+
+= source.read(chunk.size, chunk)
+    catch failure Error
+        = 0

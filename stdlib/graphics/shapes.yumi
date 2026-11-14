@@ -1,0 +1,303 @@
+
+./path
+./point
+./primitives
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ do line
+    - p1 Point
+    - p2 Point
+
+. path = Path()
+path.reserve(2, 4)
+path.move-to(p1.x, p1.y)
+path.line-to(p2.x, p2.y)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do square
+    - center Point
+    - size Length
+
+. path = Path()
+path.reserve(5, 8)
+path.move-to(center.x, center.y)
+path.line-to(center.x + size, center.y)
+path.line-to(center.x + size, center.y + size)
+path.line-to(center.x, center.y + size)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do rectangle
+    - rect Rect
+
+. path = Path()
+path.reserve(5, 8)
+path.move-to(rect.x, rect.y)
+path.line-to(rect.x + rect.width, rect.y)
+path.line-to(rect.x + rect.width, rect.y + rect.height)
+path.line-to(rect.x, rect.y + rect.height)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do axis-rect
+    - path Path
+
+=? if !path.is-closed
+=? if path.count != 5
+
+. bbox = path.bounding-box
+. has-top-left = false
+. has-top-right = false
+. has-bottom-right = false
+. has-bottom-left = false
+
+. span = path.commands
+. first-x Coord
+. first-y Coord
+. prev-x Coord
+. prev-y Coord
+. has-prev = false
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    =? if verb == .path-verb-cubic
+    if verb == .path-verb-close
+        if has-prev
+            =? if !axis-rect-segment-xy(prev-x, prev-y, first-x, first-y)
+        continue
+    =? if verb == .path-verb-move && i != 0
+
+    . start = span.coord-offsets[i]
+    . x = span.coords[start]
+    . y = span.coords[start + 1]
+    if has-prev
+        =? if !axis-rect-segment-xy(prev-x, prev-y, x, y)
+    else
+        first-x = x
+        first-y = y
+        has-prev = true
+
+    if near-corner-xy(x, y, bbox.left, bbox.top)
+        has-top-left = true
+    else if near-corner-xy(x, y, bbox.right, bbox.top)
+        has-top-right = true
+    else if near-corner-xy(x, y, bbox.right, bbox.bottom)
+        has-bottom-right = true
+    else if near-corner-xy(x, y, bbox.left, bbox.bottom)
+        has-bottom-left = true
+    else
+        =
+    prev-x = x
+    prev-y = y
+
+=? if !has-top-left
+=? if !has-top-right
+=? if !has-bottom-right
+=? if !has-bottom-left
+
+= bbox
+
+━━━━━━━━━━━━━━━━━━━━
++ near-corner
+    - point Point
+    - corner Point
+
+point.distance(corner) < 0.00001
+
+━━━━━━━━━━━━━━━━━━━━
++ near-corner-xy
+    - x Coord
+    - y Coord
+    - corner-x Coord
+    - corner-y Coord
+
+dx * dx + dy * dy < 0.0000000001
+
+.. dx = x - corner-x
+.. dy = y - corner-y
+
+━━━━━━━━━━━━━━━━━━━━
++ axis-rect-segment-xy
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+
+dx * dx < 0.0000000001 || dy * dy < 0.0000000001
+
+.. dx = x1 - x2
+.. dy = y1 - y2
+
+━━━━━━━━━━━━━━━━━━━━
++ do circle
+    - center Point
+    - radius Length
+
+. x = center.x - radius
+. y = center.y - radius
+. w = radius * 2
+. h = radius * 2
+. kappa = 0.5522848
+. ox = (w / 2) * kappa
+. oy = (h / 2) * kappa
+. xe = x + w
+. ye = y + h
+. xm = x + (w / 2)
+. ym = y + (h / 2)
+
+. path = Path()
+path.reserve(6, 26)
+path.move-to(x, ym)
+path.cubic-curve-to(x, ym - oy, xm - ox, y, xm, y)
+path.cubic-curve-to(xm + ox, y, xe, ym - oy, xe, ym)
+path.cubic-curve-to(xe, ym + oy, xm + ox, ye, xm, ye)
+path.cubic-curve-to(xm - ox, ye, x, ym + oy, x, ym)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do ellipse
+    - center Point
+    - radius Dimensions
+
+. x = center.x - radius.width
+. y = center.y - radius.height
+. w = radius.width * 2
+. h = radius.height * 2
+
+. magic = 0.5522847498
+. ox = radius.width * magic
+. oy = radius.height * magic
+. xe = x + w
+. ye = y + h
+. xm = x + radius.width
+. ym = y + radius.height
+
+. path = Path()
+path.reserve(6, 26)
+path.move-to(x, ym)
+path.cubic-curve-to(x, ym - oy, xm - ox, y, xm, y)
+path.cubic-curve-to(xm + ox, y, xe, ym - oy, xe, ym)
+path.cubic-curve-to(xe, ym + oy, xm + ox, ye, xm, ye)
+path.cubic-curve-to(xm - ox, ye, x, ym + oy, x, ym)
+path.close()
+
+if !path.is-clockwise
+    path = path.reverse()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do polygon
+    - sides U32
+    - width Length
+    - center = Point(0, 0)
+
+. rx Coord = width / 2.0
+. ry Coord = width / 2.0
+
+. step = (π * 2.0) / sides
+. a1 = -π / 2.0
+
+. path = Path()
+path.reserve((sides as Size) + 1, (sides as Size) * 2)
+
+for i in 0rad .. < sides
+    . angle = a1 + step * (-i + 1.0)
+    . px = cos(angle) * rx
+    . py = sin(angle) * ry
+    . point = Point(center.x + px, center.y + py)
+
+    if i == 0
+        path.move-to(point)
+    else
+        path.line-to(point)
+
+path.close()
+
+if !path.is-clockwise
+    path = path.reverse()
+
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do spiral
+    - center Point
+    - radius Length
+    - coils Float
+    - chord Length = 1
+    - rotation Radians = 0
+
+` Geometry algorithm from here:
+` https://stackoverflow.com/questions/13894715/draw-equidistant-points-on-a-spiral
+
+. spiral = Path()
+
+. theta-max = coils * 2 * π
+. away-step = radius / theta-max
+. theta = chord / away-step
+. ys = 0
+
+while theta <= theta-max
+    . away = away-step * theta
+    . around = theta + rotation
+    . x = center.x + cos(around) * away
+    . y = center.y + sin(around) * away + ys
+    spiral.line-to(x, y)
+
+    ` theta += chord / away
+    theta += (-2 * away + sqrt(4 * away * away + 8 * away-step * chord)) / (2 * away-step)
+
+    ` ys += 1
+    radius += 0.3
+    away-step = radius / theta-max
+
+= spiral
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf
+    - center Point
+    - size Dimensions
+
+. path = Path()
+
+path.move-to(center)
+
+. tail = Point(size.width / 18.0, size.height / 8.0)
+. pt = center - (tail.x, size.height - tail.y)
+. ho = pt + (-size.width / 3.0, size.height / 3.0)
+path.cubic-curve-to(center - (size.width * 0.85, 0.0), ho, pt)
+
+. pt1 = center - (0.0, size.height)
+path.cubic-curve-to(pt + (tail.x, -tail.y / 2.0), pt1, pt1)
+
+. m = Path(path)
+m.mirror-x(center.x)
+path += m.reverse()
+
+path.close()
+
+path.translate((0, size.height / 2))
+
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do teardrop
+    - center Point
+    - size Dimensions
+
+. path = Path()
+
+path.move-to(center)
+
+. pt = center - (0, size.height)
+. ho = pt - (size.width, 0)
+path.cubic-curve-to(center, ho, pt)
+
+. m = Path(path)
+m.mirror-x(center.x)
+path += m.reverse()
+
+= path

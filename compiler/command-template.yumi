@@ -1,0 +1,177 @@
+/data/json
+/os/env
+/os/path
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ TargetVariable is Tuple
+
++ name String
++ value String?
+
+━━━━━━━━━━━━━━━━━━━━
++ TargetStep is Tuple
+
++ arguments [String]
++ variables [String = String]
+
+━━━━━━━━━━━━━━━━━━━━
++ do target-arguments [String] ?! Error
+    - reader JSONReader
+
+. arguments [String]
+for item in reader.items()
+    arguments += item.string()
+?! Error("${reader.label} must name a program")
+    if arguments.length == 0
+= arguments
+
+━━━━━━━━━━━━━━━━━━━━
++ do target-variables [TargetVariable] ?! Error
+    - reader JSONReader
+
+. variables [TargetVariable]
+for name, value in reader.object().fields
+    if value is Null
+        variables += TargetVariable(name, null)
+    else
+        variables += TargetVariable(name, JSONReader("${reader.label}.$name", value).string())
+= variables
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply-variables ?! Error
+    - environment [String = String]
+    - variables [TargetVariable]
+    - values [String = String]
+
+for variable in variables
+    . value = variable.value
+    if value
+        environment[variable.name] = resolve-path(expand(value, values), values["root"]!)
+    else
+        -= environment[variable.name]
+
+━━━━━━━━━━━━━━━━━━━━
++ expand-arguments [String] ?! Error
+    - arguments [String]
+    - values [String = String]
+
+resolve-path(expand(each, values), values["root"]!) in arguments
+
+━━━━━━━━━━━━━━━━━━━━
++ expand-path String ?! Error
+    - text String
+    - values [String = String]
+
+resolve-path(expand(text, values), values["root"]!)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do expand String ?! Error
+    - text String
+    - values [String = String]
+
+. result = ""
+. index I32
+while true
+    . start = text.find("\${", index as Int)
+    if start == null
+        break
+    . finish = text.find("}", (start + 2) as Int)
+    ?! Error("Unclosed variable in $text")
+        if finish == null
+    . name = text[start + 2 .. < finish]
+    . value = values[name]
+    ?! Error("Unknown variable $name in $text")
+        if value == null
+    result = "$result${text[index .. < start]}${value}"
+    index = finish + 1
+= "$result${text[index ...]}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ resolve-path String
+    - text String
+    - root String
+
+|? text.starts-with("./")
+    "$root/${text[2 ...]}"
+|? text.starts-with("~/")
+    "${env("HOME") ?? ""}/${text[2 ...]}"
+??
+    text
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedConfig is Tuple
+
++ folder String
++ parent String
++ label String
+
+━━━━━━━━━━━━━━━━━━━━
++ do nested-configs [NestedConfig] ?! Error
+    - root String
+    - name String
+
+. found [NestedConfig]
+collect-nested-configs(root, root, "", name, found)
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-nested-configs ?! Error
+    - directory String
+    - parent String
+    - prefix String
+    - name String
+    - found [NestedConfig]
+
+. names [String] = <* child in Path(directory).contents when is-config-folder(child)
+    child.name
+for base in sort(names)
+    . folder = "$directory/$base"
+    . relative = "$prefix$base"
+    . holds = Path("$folder/$name").is-file
+    if holds
+        found += NestedConfig(folder, parent, "$relative/$name")
+    collect-nested-configs(folder, if holds then folder else parent, "$relative/", name, found)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-config-folder Bool
+    - path Path
+
+path.is-dir && !path.is-link && !path.name.starts-with(".")
+
+━━━━━━━━━━━━━━━━━━━━
++ config-places String
+    - first String?
+    - second String
+
+if first == null || first == second then second else "$first and $second"
+
+━━━━━━━━━━━━━━━━━━━━
++ rebased-path String
+    - text String
+    - folder String?
+
+|? folder == null
+    text
+|? text == "."
+    folder
+|? text.starts-with("./")
+    "$folder/${text[2 ...]}"
+|? text.starts-with("../")
+    "$folder/$text"
+??
+    text
+
+━━━━━━━━━━━━━━━━━━━━
++ rebased-paths [String]
+    - texts [String]
+    - folder String?
+
+rebased-path(each, folder) in texts
+
+━━━━━━━━━━━━━━━━━━━━
++ rebased-variables [TargetVariable]
+    - variables [TargetVariable]
+    - folder String?
+
+TargetVariable(each.name, rebased-path(each.value, folder) if each.value != null) in variables

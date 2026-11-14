@@ -1,0 +1,1466 @@
+/YuCore/YuString.h
+/core/array-builder
+/math
+/stream/aggregate
+
+_ diff-word-limit Size = 65536
+_ diff-indent-limit I64 = 200
+_ diff-blank-limit I64 = 20
+_ diff-slide-limit I64 = 100
+_ diff-pair-limit Size = 4096
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffKind is Union
+
+| equal
+| inserted
+| deleted
+| notice
+| gap
+| file
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffLine is Struct
+
++ start Index
++ end Index
++ hash U32
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffText
+
++ bytes Byte[]
++ lines ImmutableArray'DiffLine
++ maximum-line-bytes Size
++ is-binary Bool
+
+────────────────────
++ This
+    - bytes
+
+. indexed = ArrayBuilder'DiffLine()
+. start Index = 0
+. hash = 2166136261u32
+for index in 0 .. < bytes.length
+    . byte = bytes[index]
+    if byte == 0
+        is-binary = true
+    hash = (hash /xor/ (byte as U32)) * 16777619
+    if byte == 10
+        indexed.append(DiffLine(start, index + 1, hash))
+        if index + 1 - start > maximum-line-bytes
+            maximum-line-bytes = index + 1 - start
+        start = index + 1
+        hash = 2166136261
+if start < bytes.length
+    indexed.append(DiffLine(start, bytes.length, hash))
+    if bytes.length - start > maximum-line-bytes
+        maximum-line-bytes = bytes.length - start
+lines = indexed.finish-immutable()
+if !is-binary && bytes.length > 0
+    is-binary = C:yumiStringValidateUtf8(bytes.data, bytes.length) != 0
+
+────────────────────
++ line-text
+    - index Index
+
+if is-terminated(index) then text else "$text  ⟪no newline⟫"
+
+.. text = bytes.slice-string(lines[index].start .. < content-end(index))
+
+────────────────────
++ is-terminated
+    - index Index
+
+lines[index].end > lines[index].start && bytes[lines[index].end - 1] == 10
+
+────────────────────
++ do content-end
+    - index Index
+
+. line = lines[index]
+. end = line.end
+if end > line.start && bytes[end - 1] == 10
+    end -= 1
+    if end > line.start && bytes[end - 1] == 13
+        end -= 1
+= end
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffRun is Struct
+
++ kind DiffKind
++ old-start I64
++ new-start I64
++ count I64
++ row-end I64
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffRow is Tuple
+
++ kind DiffKind
++ old-line I64
++ new-line I64
++ text String
++ is-collapsed Bool
++ additions I64? = null
++ deletions I64? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffHunk is Struct
+
++ start I64
++ end I64
++ row-end I64
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffLineChangeKind is Union
+
+| inserted
+| modified
+| deleted
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffLineChange is Tuple
+
++ kind DiffLineChangeKind
++ line Size
++ count Size
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffDocument is Tuple
+
++ old-text DiffText
++ new-text DiffText
++ runs ImmutableArray'DiffRun
++ row-count I64
++ additions I64
++ deletions I64
++ first-change I64
++ hunks ImmutableArray'DiffHunk
++ old-pairs ImmutableArray'I64
++ new-pairs ImmutableArray'I64
++ is-identical = false
+
++ maximum-line-bytes => max(old-text.maximum-line-bytes, new-text.maximum-line-bytes)
++ display-row-count => if hunks.length > 0 then hunks[hunks.length - 1].row-end else 1
+
+────────────────────
++ do display-row-at
+    - address I64
+
+?! OutOfBoundsError("Diff display row out of bounds")
+    if address < 0 || address >= display-row-count
+if hunks.length == 0
+    =? row-at(0) if runs[0].kind == DiffKind.notice
+    = DiffRow(.notice, 0, 0, "No textual changes")
+. low Index = 0
+. high = hunks.length
+while low < high
+    . middle = low + (high - low) / 2
+    if address < hunks[middle].row-end
+        high = middle
+    else
+        low = middle + 1
+. hunk = hunks[low]
+. leading I64 = if low > 0 then 1 else 0
+. offset = address - (hunk.row-end - (hunk.end - hunk.start + leading))
+=? row-at(hunk.start + offset - leading) if offset >= leading
+. hidden = hunk.start - hunks[low - 1].end
+= DiffRow(.gap, 0, 0, if hidden == 1 then "1 unchanged line" else "$hidden unchanged lines")
+
+────────────────────
++ do gaps-before I64
+    - address I64
+
+=? 0 if hunks.length < 2 || address <= 0
+=? hunks.length - 1 if address >= display-row-count
+. low Index = 0
+. high = hunks.length
+while low < high
+    . middle = low + (high - low) / 2
+    if address < hunks[middle].row-end
+        high = middle
+    else
+        low = middle + 1
+=? 0 if low == 0
+. hunk = hunks[low]
+. start = hunk.row-end - (hunk.end - hunk.start + 1)
+= if address > start then (low as I64) else (low as I64) - 1
+
+────────────────────
++ last-shown-line
+
+|? hunks.length == 0
+    0
+??
+    max(end.old-index, end.new-index)
+
+.. end = position-at(hunks[hunks.length - 1].end)
+
+────────────────────
++ shown-ranges
+    - is-old Bool
+
+List'(Range'Index)
+    ** hunks
+    ?*> (text.lines[first].start .. < text.lines[last - 1].end) if last > first
+        .. start = position-at(each.start)
+        .. end = position-at(each.end)
+        .. first = (if is-old then start.old-index else start.new-index) as Index
+        .. last = (if is-old then end.old-index else end.new-index) as Index
+
+.. text = if is-old then old-text else new-text
+
+────────────────────
++ do word-changes
+    - is-old Bool
+    - line Index
+
+. none [Range'Index]
+. pair = paired-line(is-old, line)
+=? none if pair == null
+. old-line = if is-old then line else pair
+. new-line = if is-old then pair else line
+= diff-words(old-text, old-line, new-text, new-line, is-old) ?? none
+
+────────────────────
++ do line-changes
+
+. changes [DiffLineChange]
+=? changes if old-text.is-binary || new-text.is-binary
+. index Index = 0
+while index < runs.length
+    . first = runs[index]
+    if !diff-is-change(first.kind)
+        index += 1
+        continue
+    . old-line = first.old-start
+    . old-end = first.old-start
+    . new-end = first.new-start
+    while index < runs.length && diff-is-change(runs[index].kind)
+        . run = runs[index]
+        if run.kind == DiffKind.inserted
+            new-end = run.new-start + run.count
+        else
+            old-end = run.old-start + run.count
+        index += 1
+    for line in first.new-start .. < new-end
+        . pair = paired-line(false, line)
+        if pair != null && (pair as I64) > old-line
+            changes += DiffLineChange(.deleted, line, 0)
+        if pair != null
+            old-line = (pair as I64) + 1
+        . kind = if pair != null then DiffLineChangeKind.modified else DiffLineChangeKind.inserted
+        if changes.length > 0 && diff-change-extends(changes[changes.length - 1], kind, line)
+            . last = changes[changes.length - 1]
+            changes[changes.length - 1] = DiffLineChange(kind, last.line, last.count + 1)
+        else
+            changes += DiffLineChange(kind, line, 1)
+    if old-line < old-end
+        changes += DiffLineChange(.deleted, new-end, 0)
+= changes
+
+────────────────────
++ paired-line
+    - is-old Bool
+    - line Index
+
+if pair < 0 then null else pair as Index
+
+.. pair = if is-old then old-pairs[line] else new-pairs[line]
+
+────────────────────
++ matching-line Index
+    - is-old Bool
+    - line Index
+
+|? found == null
+    (if is-old then new-text else old-text).lines.length
+|? run.kind == DiffKind.equal
+    across + (line as I64) - start
+??
+    paired-line(is-old, line) ?? across as Index
+
+.. found = run-holding(is-old, line)
+.. run = runs[found]
+.. start = if is-old then run.old-start else run.new-start
+.. across = if is-old then run.new-start else run.old-start
+
+────────────────────
++ do display-address
+    - is-old Bool
+    - line Index
+
+=? 0 if hunks.length == 0
+. found = run-holding(is-old, line)
+. row = row-count
+if found != null
+    . run = runs[found]
+    row = run.row-end - run.count + (line as I64) - side-start
+        .. side-start = if is-old then run.old-start else run.new-start
+. low Index = 0
+. high = hunks.length
+while low < high
+    . middle = low + (high - low) / 2
+    if row < hunks[middle].end
+        high = middle
+    else
+        low = middle + 1
+=? display-row-count - 1 if low >= hunks.length
+. hunk = hunks[low]
+. first = hunk.row-end - (hunk.end - hunk.start)
+=? first + row - hunk.start if row >= hunk.start
+= if low > 0 then first - 1 else first
+
+────────────────────
+_ do run-holding Index?
+    - is-old Bool
+    - line Index
+
+. target = line as I64
+. changed = if is-old then DiffKind.deleted else DiffKind.inserted
+for index in 0 .. < runs.length
+    . run = runs[index]
+    . start = if is-old then run.old-start else run.new-start
+    . is-on-side = run.kind == DiffKind.equal || run.kind == changed
+    if is-on-side && target >= start && target < start + run.count
+        = index
+= null
+
+────────────────────
+_ do position-at
+    - address I64
+
+. low Index = 0
+. high = runs.length
+while low < high
+    . middle = low + (high - low) / 2
+    if address < runs[middle].row-end
+        high = middle
+    else
+        low = middle + 1
+. index = if low < runs.length then low else low - 1
+. run = runs[index]
+. offset = address - (run.row-end - run.count)
+. old-index = if run.kind != DiffKind.inserted then run.old-start + offset else run.old-start
+. new-index = if run.kind != DiffKind.deleted then run.new-start + offset else run.new-start
+= DiffSplit(old-index, new-index)
+
+────────────────────
++ do row-at
+    - address I64
+
+?! OutOfBoundsError("Diff row out of bounds")
+    if address < 0 || address >= row-count
+. low Index = 0
+. high = runs.length
+while low < high
+    . middle = low + (high - low) / 2
+    if address < runs[middle].row-end
+        high = middle
+    else
+        low = middle + 1
+. run = runs[low]
+. offset = address - (run.row-end - run.count)
+. old-index = run.old-start + offset
+. new-index = run.new-start + offset
+do match run.kind
+    | .equal
+        = DiffRow(run.kind, old-index + 1, new-index + 1, new-text.line-text(new-index))
+    | .inserted
+        = DiffRow(run.kind, 0, new-index + 1, new-text.line-text(new-index))
+    | .deleted
+        = DiffRow(run.kind, old-index + 1, 0, old-text.line-text(old-index))
+    | .notice
+        . is-binary = old-text.is-binary || new-text.is-binary
+        = DiffRow(run.kind, 0, 0, diff-notice(is-binary, is-identical))
+    | .gap
+        ?! Panic("Hunk gap cannot be a diff run")
+    | .file
+        ?! Panic("File header cannot be a diff run")
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffEntry
+
++ path String
++ old-path String?
++ document DiffDocument?
++ problem String?
+
+────────────────────
++ This
+    - path
+    - old-path String? = null
+
+────────────────────
++ get title
+
+if old-path then "${old-path} → $path" else path
+
+━━━━━━━━━━━━━━━━━━━━
++ DiffOutline
+
++ entries [DiffEntry]
++ display-row-count I64
++ additions I64
++ deletions I64
++ loaded-count Size
+
+_ expanded Bool[]
+_ ends I64[]
+_ gap-ends I64[]
+
+────────────────────
++ This
+    - entries
+    - is-expanded = false
+
+.. expanded = Bool[entries.length]
+.. ends = I64[entries.length]
+.. gap-ends = I64[entries.length]
+for index in 0 .. < entries.length
+    if is-loaded(index)
+        count(entries[index])
+set-all(is-expanded)
+
+────────────────────
++ is-expanded
+    - file Index
+
+expanded[file]
+
+────────────────────
++ is-loaded
+    - file Index
+
+entries[file].document != null || entries[file].problem != null
+
+────────────────────
++ do toggle
+    - file Index
+
+expanded[file] = !expanded[file]
+reindex()
+
+────────────────────
++ do set-expanded
+    - file Index
+    - is-expanded Bool
+
+=? if expanded[file] == is-expanded
+expanded[file] = is-expanded
+reindex()
+
+────────────────────
++ do set-all
+    - is-expanded Bool
+
+for index in 0 .. < expanded.length
+    expanded[index] = is-expanded
+reindex()
+
+────────────────────
++ do resolve
+    - file Index
+    - document DiffDocument
+
+=? if is-loaded(file)
+entries[file].document = document
+count(entries[file])
+
+────────────────────
++ do fail
+    - file Index
+    - problem String
+
+=? if is-loaded(file)
+entries[file].problem = problem
+count(entries[file])
+
+────────────────────
++ do reindex
+
+display-row-count = 0
+. gaps I64
+for index in 0 .. < expanded.length
+    display-row-count += 1 + body-count(index)
+    ends[index] = display-row-count
+    . document = entries[index].document
+    if expanded[index] && document != null
+        gaps += document.gaps-before(document.display-row-count)
+    gap-ends[index] = gaps
+
+────────────────────
++ do widest-expanded-line
+
+. widest Size = 0
+for index in 0 .. < expanded.length
+    . document = entries[index].document
+    if expanded[index] && document != null && document.maximum-line-bytes > widest
+        widest = document.maximum-line-bytes
+= widest
+
+────────────────────
++ file-at
+    - address I64
+
+|? address < 0 || address >= display-row-count
+    null
+|? address == start-of(index)
+    index
+??
+    null
+
+.. index = entry-index(address)
+
+────────────────────
++ display-row-at
+    - address I64
+
+?! OutOfBoundsError("Diff outline row out of bounds")
+    if address < 0 || address >= display-row-count
+|? offset == 0
+    DiffRow(.file, 0, 0, entry.title, !expanded[index], document?.additions, document?.deletions)
+|? document != null
+    document.display-row-at(offset - 1)
+??
+    DiffRow(.notice, 0, 0, entry.problem ?? "Loading…")
+
+.. index = entry-index(address)
+.. entry = entries[index]
+.. offset = address - start-of(index)
+.. document = entry.document
+
+────────────────────
++ headers-before I64
+    - address I64
+
+|? address <= 0 || expanded.length == 0
+    0
+|? address >= display-row-count
+    expanded.length
+|? address > start-of(index)
+    (index as I64) + 1
+??
+    index as I64
+
+.. index = entry-index(address)
+
+────────────────────
++ gaps-before
+    - address I64
+
+|? address <= 0 || expanded.length == 0
+    0
+|? address >= display-row-count
+    gap-ends[expanded.length - 1]
+|? !expanded[index] || document == null || offset <= 0
+    prior
+??
+    prior + document.gaps-before(offset)
+
+.. index = entry-index(address)
+.. prior = if index > 0 then gap-ends[index - 1] else 0
+.. document = entries[index].document
+.. offset = address - start-of(index) - 1
+
+────────────────────
++ line-address
+    - file Index
+    - line Index
+
+|? !expanded[file] || document == null
+    start
+??
+    start + 1 + document.display-address(false, line)
+
+.. start = start-of(file)
+.. document = entries[file].document
+
+────────────────────
+_ do count
+    - entry DiffEntry
+
+loaded-count += 1
+. document = entry.document
+if document != null
+    additions += document.additions
+    deletions += document.deletions
+
+────────────────────
+_ body-count
+    - index Index
+
+|? !expanded[index]
+    0
+??
+    entries[index].document?.display-row-count ?? 1
+
+────────────────────
++ start-of
+    - index Index
+
+ends[index] - body-count(index) - 1
+
+────────────────────
++ do entry-index
+    - address I64
+
+. low Index = 0
+. high = ends.length
+while low < high
+    . middle = low + (high - low) / 2
+    if address < ends[middle]
+        high = middle
+    else
+        low = middle + 1
+= low
+
+━━━━━━━━━━━━━━━━━━━━
++ diff-document
+    - old-bytes Byte[]
+    - new-bytes Byte[]
+
+DiffBuilder(DiffText(old-bytes), DiffText(new-bytes)).build()
+
+━━━━━━━━━━━━━━━━━━━━
++ diff-matching-line
+    - old-bytes Byte[]
+    - new-bytes Byte[]
+    - line Index
+
+|? diff-same-bytes(old-bytes, new-bytes)
+    line
+??
+    diff-document(old-bytes, new-bytes).matching-line(true, line)
+
+━━━━━━━━━━━━━━━━━━━━
++ diff-shifted-changes
+    - changes [DiffLineChange]
+    - last-line Size
+    - delta I64
+
+|? delta == 0
+    changes
+??
+    List'DiffLineChange
+        ** changes
+        *> if each.line > last-line then shifted else each
+            .. shifted = DiffLineChange(each.kind, (each.line as I64) + delta, each.count)
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-is-change
+    - kind DiffKind
+
+kind == DiffKind.inserted || kind == DiffKind.deleted
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-change-extends
+    - change DiffLineChange
+    - kind DiffLineChangeKind
+    - line Size
+
+change.kind == kind && change.line + change.count == line
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-hunks
+    - runs ImmutableArray'DiffRun
+    - row-count I64
+
+. result = ArrayBuilder'DiffHunk()
+. start I64 = -1
+. end I64
+. display-end I64
+for run in runs
+    if !diff-is-change(run.kind)
+        continue
+    . next-start = run.row-end - run.count - 3
+    if next-start < 0
+        next-start = 0
+    . next-end = run.row-end + 3
+    if next-end > row-count
+        next-end = row-count
+    if start < 0
+        start = next-start
+    else if next-start > end + 1
+        display-end += end - start + (if result.length > 0 then 1 else 0)
+        result.append(DiffHunk(start, end, display-end))
+        start = next-start
+    end = next-end
+if start >= 0
+    display-end += end - start + (if result.length > 0 then 1 else 0)
+    result.append(DiffHunk(start, end, display-end))
+= result.finish-immutable()
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-notice
+    - is-binary Bool
+    - is-identical Bool
+
+|? is-binary && is-identical
+    "Binary contents unchanged"
+|? is-binary
+    "Binary contents changed"
+??
+    "No textual changes (empty file or metadata only)"
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-same-bytes
+    - left Byte[]
+    - right Byte[]
+
+left == right
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffToken is Struct
+
++ start Index
++ end Index
++ is-space Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffByteClass is Union
+
+| space
+| word
+| mark
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-words
+    - old-text DiffText
+    - old-line Index
+    - new-text DiffText
+    - new-line Index
+    - is-old Bool
+
+|? changes == null
+    null
+|? is-old
+    diff-word-ranges(old-text.bytes, left, changes.old-changed)
+??
+    diff-word-ranges(new-text.bytes, right, changes.new-changed)
+
+.. left = diff-line-tokens(old-text, old-line)
+.. right = diff-line-tokens(new-text, new-line)
+.. changes = diff-token-changes(old-text.bytes, left, new-text.bytes, right)
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffTokenChanges is (old-changed Bool[], new-changed Bool[])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-token-changes
+    - old-bytes Byte[]
+    - left [DiffToken]
+    - new-bytes Byte[]
+    - right [DiffToken]
+
+. shared = min(left.length, right.length)
+. head Index = 0
+while head < shared && diff-token-same(old-bytes, left[head], new-bytes, right[head])
+    head += 1
+. tail Index = 0
+while tail < shared - head
+    . old-token = left[left.length - tail - 1]
+    . new-token = right[right.length - tail - 1]
+    if !diff-token-same(old-bytes, old-token, new-bytes, new-token)
+        break
+    tail += 1
+. rows = left.length - head - tail
+. columns = right.length - head - tail
+=? null if rows * columns > diff-word-limit
+. width = columns + 1
+. best = I64[(rows + 1) * width]
+for row in 1 .. < rows + 1
+    for column in 1 .. < columns + 1
+        . token = left[head + row - 1]
+        . cell = row * width + column
+        if diff-token-same(old-bytes, token, new-bytes, right[head + column - 1])
+            best[cell] = best[cell - width - 1] + ((token.end - token.start) as I64)
+        else
+            best[cell] = max(best[cell - width], best[cell - 1])
+. old-changed = Bool[left.length]
+. new-changed = Bool[right.length]
+. row = rows
+. column = columns
+while row > 0 || column > 0
+    if row > 0 && column > 0
+        . old-token = left[head + row - 1]
+        . new-token = right[head + column - 1]
+        if diff-token-same(old-bytes, old-token, new-bytes, new-token)
+            row -= 1
+            column -= 1
+            continue
+    . cell = row * width + column
+    if column == 0 || (row > 0 && best[cell - width] >= best[cell - 1])
+        old-changed[head + row - 1] = true
+        row -= 1
+    else
+        new-changed[head + column - 1] = true
+        column -= 1
+. same = diff-unchanged-bytes(left, old-changed) + diff-unchanged-bytes(right, new-changed)
+. total = diff-text-bytes(left) + diff-text-bytes(right)
+=? null if 4 * same < total
+= DiffTokenChanges(old-changed, new-changed)
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-line-tokens
+    - text DiffText
+    - line Index
+
+diff-tokens(text.bytes, text.lines[line].start, text.content-end(line))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-tokens
+    - bytes Byte[]
+    - start Index
+    - end Index
+
+. tokens [DiffToken]
+. position = start
+while position < end
+    . kind = diff-byte-class(bytes[position])
+    . next = position + 1
+    if kind != DiffByteClass.mark
+        while next < end && diff-byte-class(bytes[next]) == kind
+            next += 1
+    tokens += DiffToken(position, next, kind == DiffByteClass.space)
+    position = next
+= tokens
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-byte-class
+    - byte Byte
+
+|? byte == 32 || byte == 9 || byte == 13
+    DiffByteClass.space
+|? byte >= 128 || byte == 95 || (byte >= 48 && byte <= 57)
+    DiffByteClass.word
+|? (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122)
+    DiffByteClass.word
+??
+    DiffByteClass.mark
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-token-same
+    - left-bytes Byte[]
+    - left DiffToken
+    - right-bytes Byte[]
+    - right DiffToken
+
+. count = left.end - left.start
+=? false if count != right.end - right.start
+for offset in 0 .. < count
+    =? false if left-bytes[left.start + offset] != right-bytes[right.start + offset]
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-text-bytes
+    - tokens [DiffToken]
+
+. total Size = 0
+for token in tokens
+    if !token.is-space
+        total += token.end - token.start
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-unchanged-bytes
+    - tokens [DiffToken]
+    - changed Bool[]
+
+. total Size = 0
+for index in 0 .. < tokens.length
+    if !tokens[index].is-space && !changed[index]
+        total += tokens[index].end - tokens[index].start
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-word-ranges
+    - bytes Byte[]
+    - tokens [DiffToken]
+    - changed Bool[]
+
+. ranges [Range'Index]
+. low Index = 0
+. high Index = 0
+. is-open = false
+for index in 0 .. < tokens.length
+    if !changed[index]
+        continue
+    . token = tokens[index]
+    if is-open && diff-all-space(bytes, high, token.start)
+        high = token.end
+    else
+        if is-open
+            ranges += low .. < high
+        low = token.start
+        high = token.end
+        is-open = true
+if is-open
+    ranges += low .. < high
+= ranges
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-all-space
+    - bytes Byte[]
+    - start Index
+    - end Index
+
+all(start .. < end) • where diff-byte-class(bytes[each]) == DiffByteClass.space
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-mark
+    - changed Bool[]
+    - start I64
+    - end I64
+
+for index in start .. < end
+    changed[index] = true
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffGroup
+
++ changed Bool[]
++ count I64
++ start I64
++ end I64
+
+────────────────────
++ This
+    - changed
+
+count = changed.length
+while end < count && changed[end]
+    end += 1
+
+────────────────────
++ get is-empty
+
+end == start
+
+────────────────────
++ do next
+
+=? false if end >= count
+start = end + 1
+end = start
+while end < count && changed[end]
+    end += 1
+= true
+
+────────────────────
++ do previous
+
+=? false if start == 0
+end = start - 1
+start = end
+while start > 0 && changed[start - 1]
+    start -= 1
+= true
+
+────────────────────
++ do slide-down
+    - text DiffText
+
+=? false if end >= count || !diff-lines-same(text, start, end)
+changed[start] = false
+start += 1
+changed[end] = true
+end += 1
+while end < count && changed[end]
+    end += 1
+= true
+
+────────────────────
++ do slide-up
+    - text DiffText
+
+=? false if start == 0 || !diff-lines-same(text, start - 1, end - 1)
+start -= 1
+changed[start] = true
+end -= 1
+changed[end] = false
+while start > 0 && changed[start - 1]
+    start -= 1
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-compact
+    - text DiffText
+    - changed Bool[]
+    - other Bool[]
+
+. group = DiffGroup(changed)
+. paired = DiffGroup(other)
+while true
+    if !group.is-empty
+        . size I64
+        . earliest-end I64
+        . matching I64 = -1
+        . is-growing = true
+        while is-growing
+            size = group.end - group.start
+            matching = -1
+            while group.slide-up(text)
+                diff-step(paired.previous())
+            earliest-end = group.end
+            if !paired.is-empty
+                matching = group.end
+            while group.slide-down(text)
+                diff-step(paired.next())
+                if !paired.is-empty
+                    matching = group.end
+            is-growing = size != group.end - group.start
+        if group.end != earliest-end
+            . target = matching
+            if matching < 0
+                target = diff-best-shift(text, group.end, earliest-end, size)
+            while group.end > target
+                diff-step(group.slide-up(text))
+                diff-step(paired.previous())
+    if !group.next()
+        break
+    diff-step(paired.next())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-step
+    - moved Bool
+
+?! Panic("Diff groups out of sync")
+    if !moved
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffSplitScore is (indent I64, penalty I64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-best-shift
+    - text DiffText
+    - end I64
+    - earliest-end I64
+    - size I64
+
+. shift = max(earliest-end, max(end - size - 1, end - diff-slide-limit))
+. best I64 = -1
+. best-score = DiffSplitScore(0, 0)
+while shift <= end
+    . upper = diff-split-score(text, shift - size)
+    . lower = diff-split-score(text, shift)
+    . score = DiffSplitScore(upper.indent + lower.indent, upper.penalty + lower.penalty)
+    if best < 0 || diff-score-compare(score, best-score) <= 0
+        best = shift
+        best-score = score
+    shift += 1
+= best
+
+━━━━━━━━━━━━━━━━━━━━
+_ diff-score-compare
+    - left DiffSplitScore
+    - right DiffSplitScore
+
+60 * sign + left.penalty - right.penalty
+
+.. sign I64 = if left.indent > right.indent then 1 else if left.indent < right.indent then -1 else 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-split-score
+    - text DiffText
+    - split I64
+
+. count = text.lines.length as I64
+. is-end = split >= count
+. indent = if is-end then -1 else diff-line-indent(text, split)
+. pre-blank I64
+. pre-indent I64 = -1
+. line = split - 1
+while line >= 0
+    pre-indent = diff-line-indent(text, line)
+    if pre-indent != -1
+        break
+    pre-blank += 1
+    if pre-blank == diff-blank-limit
+        pre-indent = 0
+        break
+    line -= 1
+. post-blank I64
+. post-indent I64 = -1
+line = split + 1
+while line < count
+    post-indent = diff-line-indent(text, line)
+    if post-indent != -1
+        break
+    post-blank += 1
+    if post-blank == diff-blank-limit
+        post-indent = 0
+        break
+    line += 1
+. penalty I64
+if pre-indent == -1 && pre-blank == 0
+    penalty += 1
+if is-end
+    penalty += 21
+. trailing = if indent == -1 then 1 + post-blank else 0
+. blanks = pre-blank + trailing
+penalty += -30 * blanks + 6 * trailing
+. effective = if indent != -1 then indent else post-indent
+. any-blanks = blanks != 0
+if effective != -1 && pre-indent != -1
+    if effective > pre-indent
+        penalty += if any-blanks then 10 else -4
+    else if effective < pre-indent
+        if post-indent != -1 && post-indent > effective
+            penalty += if any-blanks then 17 else 24
+        else
+            penalty += if any-blanks then 17 else 23
+= DiffSplitScore(effective, penalty)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-line-indent
+    - text DiffText
+    - line I64
+
+. bounds = text.lines[line]
+. indent I64
+for index in bounds.start .. < bounds.end
+    . byte = text.bytes[index]
+    if byte == 32
+        indent += 1
+    else if byte == 9
+        indent += 8 - indent % 8
+    else if byte != 10 && byte != 13 && byte != 11 && byte != 12
+        = indent
+    if indent >= diff-indent-limit
+        = diff-indent-limit
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do diff-lines-same
+    - text DiffText
+    - left I64
+    - right I64
+
+. first = text.lines[left]
+. second = text.lines[right]
+. count = first.end - first.start
+=? false if first.hash != second.hash || count != second.end - second.start
+for offset in 0 .. < count
+    =? false if text.bytes[first.start + offset] != text.bytes[second.start + offset]
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffWork is Struct
+
++ old-start I64
++ old-end I64
++ new-start I64
++ new-end I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffSplit is (old-index I64, new-index I64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ DiffBuilder
+
++ old-text DiffText
++ new-text DiffText
+
+_ runs := ArrayBuilder'DiffRun()
+_ old-changed Bool[]
+_ new-changed Bool[]
+_ old-pairs I64[]
+_ new-pairs I64[]
+_ forward I64[]
+_ reverse I64[]
+_ row-count I64
+_ additions I64
+_ deletions I64
+_ first-change I64 = -1
+
+────────────────────
++ This
+    - old-text
+    - new-text
+
+.. capacity = old-text.lines.length + new-text.lines.length + 5
+.. forward = I64[capacity]
+.. reverse = I64[capacity]
+.. old-changed = Bool[old-text.lines.length]
+.. new-changed = Bool[new-text.lines.length]
+.. old-pairs = I64[old-text.lines.length]
+.. new-pairs = I64[new-text.lines.length]
+old-pairs[0 .. < old-pairs.length].fill(-1)
+new-pairs[0 .. < new-pairs.length].fill(-1)
+
+────────────────────
++ do build
+
+. is-binary = old-text.is-binary || new-text.is-binary
+if is-binary
+    emit(.notice, 0, 0, 1)
+else
+    mark-changes()
+    diff-compact(old-text, old-changed, new-changed)
+    diff-compact(new-text, new-changed, old-changed)
+    emit-changes()
+if row-count == 0
+    emit(.notice, 0, 0, 1)
+. completed = runs.finish-immutable()
+. is-identical = is-binary && diff-same-bytes(old-text.bytes, new-text.bytes)
+= DiffDocument
+    - old-text
+    - new-text
+    - completed
+    - row-count
+    - additions
+    - deletions
+    - first-change
+    - diff-hunks(completed, row-count)
+    - old-pairs.immutable
+    - new-pairs.immutable
+    - is-identical
+
+────────────────────
+_ do mark-changes
+
+. pending = List'DiffWork()
+pending += DiffWork(0, old-text.lines.length, 0, new-text.lines.length)
+while pending.length > 0
+    . last = pending.length - 1
+    . work = pending[last]
+    pending.remove(last)
+    . a = work.old-start
+    . b = work.new-start
+    while a < work.old-end && b < work.new-end && same-line(a, b)
+        a += 1
+        b += 1
+    . a-end = work.old-end
+    . b-end = work.new-end
+    while a < a-end && b < b-end && same-line(a-end - 1, b-end - 1)
+        a-end -= 1
+        b-end -= 1
+    if a == a-end
+        diff-mark(new-changed, b, b-end)
+    else if b == b-end
+        diff-mark(old-changed, a, a-end)
+    else
+        . split = bisect(a, a-end, b, b-end)
+        if split && split != DiffSplit(a, b) && split != DiffSplit(a-end, b-end)
+            pending += DiffWork(split.old-index, a-end, split.new-index, b-end)
+            pending += DiffWork(a, split.old-index, b, split.new-index)
+        else
+            diff-mark(old-changed, a, a-end)
+            diff-mark(new-changed, b, b-end)
+
+────────────────────
+_ do emit-changes
+
+. old-count = old-text.lines.length as I64
+. new-count = new-text.lines.length as I64
+. a I64
+. b I64
+while a < old-count || b < new-count
+    . old-start = a
+    . new-start = b
+    while a < old-count && old-changed[a]
+        a += 1
+    emit(.deleted, old-start, b, a - old-start)
+    while b < new-count && new-changed[b]
+        b += 1
+    emit(.inserted, a, new-start, b - new-start)
+    if a > old-start && b > new-start
+        pair-lines(old-start, a, new-start, b)
+    . equal-old = a
+    . equal-new = b
+    while a < old-count && b < new-count && !old-changed[a] && !new-changed[b]
+        a += 1
+        b += 1
+    emit(.equal, equal-old, equal-new, a - equal-old)
+    ?! Panic("Diff sides lost alignment")
+        if a == old-start && b == new-start
+
+────────────────────
+_ do pair-lines
+    - old-start Index
+    - old-end Index
+    - new-start Index
+    - new-end Index
+
+if (old-end - old-start) * (new-end - new-start) <= diff-pair-limit
+    pair-similar(old-start, old-end - old-start, new-start, new-end - new-start)
+. a = old-start
+. b = new-start
+while a < old-end || b < new-end
+    while a < old-end && b < new-end && old-pairs[a] < 0 && new-pairs[b] < 0
+        pair(a, b)
+        a += 1
+        b += 1
+    while a < old-end && old-pairs[a] < 0
+        a += 1
+    while b < new-end && new-pairs[b] < 0
+        b += 1
+    if a < old-end
+        a += 1
+        b += 1
+
+────────────────────
+_ do pair-similar
+    - old-start Index
+    - rows Index
+    - new-start Index
+    - columns Index
+
+. left [[DiffToken]]
+for row in 0 .. < rows
+    left += diff-line-tokens(old-text, old-start + row)
+. right [[DiffToken]]
+for column in 0 .. < columns
+    right += diff-line-tokens(new-text, new-start + column)
+. width = columns + 1
+. similar = Bool[rows * columns]
+. best = I64[(rows + 1) * width]
+. row = rows
+while row > 0
+    row -= 1
+    . column = columns
+    while column > 0
+        column -= 1
+        . cell = row * width + column
+        . changes = diff-token-changes(old-text.bytes, left[row], new-text.bytes, right[column])
+        . is-similar = changes != null
+        similar[row * columns + column] = is-similar
+        best[cell] = max(best[cell + width], best[cell + 1])
+        if is-similar && best[cell + width + 1] + 1 > best[cell]
+            best[cell] = best[cell + width + 1] + 1
+. a Index = 0
+. b Index = 0
+while a < rows && b < columns
+    . cell = a * width + b
+    if similar[a * columns + b] && best[cell] == best[cell + width + 1] + 1
+        pair(old-start + a, new-start + b)
+        a += 1
+        b += 1
+    else if best[cell + width] >= best[cell + 1]
+        a += 1
+    else
+        b += 1
+
+────────────────────
+_ do pair
+    - old-line Index
+    - new-line Index
+
+old-pairs[old-line] = new-line
+new-pairs[new-line] = old-line
+
+────────────────────
+_ do emit
+    - kind DiffKind
+    - old-start I64
+    - new-start I64
+    - count I64
+
+=? if count == 0
+if kind != DiffKind.equal && first-change < 0
+    first-change = row-count
+row-count += count
+if kind == DiffKind.inserted
+    additions += count
+if kind == DiffKind.deleted
+    deletions += count
+if runs.length > 0
+    . index = runs.length - 1
+    . previous = runs[index]
+    if previous.kind == kind
+        runs[index] = DiffRun
+            - kind
+            - previous.old-start
+            - previous.new-start
+            - previous.count + count
+            - row-count
+        =
+runs.append(DiffRun(kind, old-start, new-start, count, row-count))
+
+────────────────────
+_ do same-line
+    - a I64
+    - b I64
+
+. old = old-text.lines[a]
+. new = new-text.lines[b]
+. count = old.end - old.start
+=? false if old.hash != new.hash || count != new.end - new.start
+for offset in 0 .. < count
+    =? false if old-text.bytes[old.start + offset] != new-text.bytes[new.start + offset]
+= true
+
+────────────────────
+_ do bisect
+    - a I64
+    - a-end I64
+    - b I64
+    - b-end I64
+
+. n = a-end - a
+. m = b-end - b
+. maximum-depth = (n + m + 1) / 2
+. origin = maximum-depth + 1
+. length = (2 * maximum-depth + 3) as Size
+forward[0 .. < length].fill(-1)
+reverse[0 .. < length].fill(-1)
+forward[origin + 1] = 0
+reverse[origin + 1] = 0
+. delta = n - m
+. odd = delta % 2 != 0
+. forward-start I64
+. forward-end I64
+. reverse-start I64
+. reverse-end I64
+. task = get-active-task()
+for depth in 0 .. maximum-depth
+    check-task-cancelation(task.is-canceled)
+    . diagonal = -depth + forward-start
+    while diagonal <= depth - forward-end
+        . index = (origin + diagonal) as Index
+        . x I64
+        if diagonal == -depth || (diagonal != depth && forward[index - 1] < forward[index + 1])
+            x = forward[index + 1]
+        else
+            x = forward[index - 1] + 1
+        . y = x - diagonal
+        while x < n && y < m && same-line(a + x, b + y)
+            x += 1
+            y += 1
+        forward[index] = x
+        if x > n
+            forward-end += 2
+        else if y > m
+            forward-start += 2
+        else if odd
+            . other = origin + delta - diagonal
+            if other >= 0 && other < length as I64 && reverse[other] >= 0
+                =? DiffSplit(a + x, b + y) if x >= n - reverse[other]
+        diagonal += 2
+    diagonal = -depth + reverse-start
+    while diagonal <= depth - reverse-end
+        . index = (origin + diagonal) as Index
+        . x I64
+        if diagonal == -depth || (diagonal != depth && reverse[index - 1] < reverse[index + 1])
+            x = reverse[index + 1]
+        else
+            x = reverse[index - 1] + 1
+        . y = x - diagonal
+        while x < n && y < m && same-line(a-end - x - 1, b-end - y - 1)
+            x += 1
+            y += 1
+        reverse[index] = x
+        if x > n
+            reverse-end += 2
+        else if y > m
+            reverse-start += 2
+        else if !odd
+            . other = origin + delta - diagonal
+            if other >= 0 && other < length as I64 && forward[other] >= 0
+                . front = forward[other]
+                =? DiffSplit(a + front, b + front - delta + diagonal) if front >= n - x
+        diagonal += 2
+= null

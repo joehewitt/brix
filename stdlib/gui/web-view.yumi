@@ -1,0 +1,542 @@
+./box
+./events
+./primitives
+./window
+/YuAppleGUI/YuAppleGUI.h
+/YuWebKit/YuWebKit.h
+/core/intrinsics
+/data/json
+/graphics/matrix
+/graphics/point
+/graphics/primitives
+/graphics/text
+
+_ web-view-wake-margin Length = 600
+
+━━━━━━━━━━━━━━━━━━━━
++ WebNavigationKind is U32
+
+| link = 0
+| form = 1
+| back-forward = 2
+| reload = 3
+| resubmit = 4
+| other = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ WebNavigationEvent is GUIEvent
+
++ url String
++ kind WebNavigationKind
++ opens-window Bool
+
+────────────────────
++ This
+    - url
+    - kind
+    - opens-window
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ WebLoadEvent is GUIEvent
+
++ url String
++ error String?
+
+────────────────────
++ This
+    - url
+    - error String? = null
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ WebMessageEvent is GUIEvent
+
++ name String
++ body JSON
+
+────────────────────
++ This
+    - name
+    - body
+    - data PointerEventData = PointerEventData()
+
+━━━━━━━━━━━━━━━━━━━━
++ WebScriptError is Error
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebScriptOutcome is (succeeded Bool, text String)
+
+━━━━━━━━━━━━━━━━━━━━
++ WebSession
+    is Closable
+
+_ native Pointer?
+_ viewer WebView?
+
+────────────────────
++ do close
+
+=? if !native
+viewer?.forget-native()
+viewer = null
+C:yumiWebViewRelease(native)
+native = null
+
+────────────────────
+_ do take Pointer?
+    - view WebView
+
+=? null if !native
+. previous = viewer
+if previous && previous as Pointer != view as Pointer
+    previous.forget-native()
+viewer = view
+= native
+
+────────────────────
+_ do keep
+    - made Pointer
+    - view WebView
+
+native = made
+viewer = view
+
+────────────────────
+_ do leave Bool
+    - view WebView
+
+=? false if !viewer || viewer as Pointer != view as Pointer
+viewer = null
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ WebView is Box
+
+• This
+    focus-mode = FocusMode.input
+    window-draggable = false
+
++ url String?
++ html String?
++ base-url = ""
++ title = ""
++ is-loading = false
++ progress F64
++ can-go-back = false
++ can-go-forward = false
++ is-inspectable = false
++ message-names [String]
++ fits-content = false
++ content-height Length?
++ is-transparent = false
++ passes-scroll = #fits-content
++ is-ephemeral = false
++ session WebSession?
++ inherits-style = false
++ user-style = ""
++ user-script = ""
++ native Pointer?
++ native-focus-handle => native
++ event navigating WebNavigationEvent
++ event loaded WebLoadEvent
++ event load-failed WebLoadEvent
++ event message WebMessageEvent
+
+_ is-accepting-native-state = false
+_ held WebSession?
+
+. requested-url-changed < url
+. requested-html-changed < html, base-url
+. native-inspectable-changed < is-inspectable
+. native-message-names-changed < message-names
+. native-fits-content-changed < fits-content
+. native-transparent-changed < is-transparent
+. native-passes-scroll-changed < passes-scroll
+. native-ephemeral-changed < is-ephemeral
+. native-session-changed < session
+. native-style-changed < inherits-style, user-style
+. native-script-changed < user-script
+. invalidate-content-size < content-height
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+create-native()
+
+────────────────────
++ do unmounted
+
+super.unmounted()
+release-native()
+
+────────────────────
++ do markup-style-domains-changed
+    - mask U32
+
+super.markup-style-domains-changed(mask)
+if inherits-style
+    native-style-changed()
+
+────────────────────
++ do sync-native-geometry-self
+    - native-origin Point
+    - visible Bool
+    - native-parent Pointer?
+    - transform Matrix?
+
+=? if !native
+. host = window
+=? if !host
+. content = content-bounds
+. zoom = native-zoom
+C:yumiGuiPeerSetContainer((host as Window).native ?? Pointer(), native!, native-parent ?? Pointer())
+. corner = native-placed-point(content.top-left - native-origin, native-origin, transform)
+. linear = transform ?? Matrix()
+C:yumiGuiPeerSetFrame
+    - native!
+    - corner.x * zoom
+    - corner.y * zoom
+    - content.width * zoom
+    - content.height * zoom
+    - linear.a
+    - linear.c
+    - linear.b
+    - linear.d
+C:yumiWebViewSetPageZoom(native!, zoom)
+. margin = web-view-wake-margin
+. wake = content.outset(Insets(margin, margin, margin, margin))
+C:yumiGuiPeerSetVisible(native!, visible && (is-focused || is-presentation-visible(wake)))
+C:yumiGuiPeerSetOpacity(native!, effective-opacity)
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+if fits-content then Dimensions(width, content-height ?? 150) else Dimensions(300, 150)
+
+.. proposed = query.inline.available ?? query.inline.max ?? 300
+.. width = constrained-axis-size(gui-safe-span(proposed), query.inline, $min-width, $max-width)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do go-back
+
+if native
+    C:yumiWebViewGoBack(native)
+
+────────────────────
++ do go-forward
+
+if native
+    C:yumiWebViewGoForward(native)
+
+────────────────────
++ do reload
+
+if native
+    C:yumiWebViewReload(native)
+
+────────────────────
++ do stop
+
+if native
+    C:yumiWebViewStop(native)
+
+────────────────────
++ do evaluate JSON
+    - script String
+
+?! WebScriptError("The web view is not mounted")
+    if !native
+. completion = Completion'WebScriptOutcome()
+C:yumiWebViewEvaluate
+    - native!
+    - script
+    - gui-web-view-script-result as WebViewScriptCallback
+    - completion as Pointer
+. outcome = completion.await()!
+?! WebScriptError(outcome.text)
+    if !outcome.succeeded
+= JSON(outcome.text)
+
+────────────────────
++ do accept-native-state
+
+=? if !native
+. current = C:yumiWebViewGetURL(native) as String
+is-accepting-native-state = true
+if current.length && current != url
+    url = current
+title = C:yumiWebViewGetTitle(native!) as String
+is-loading = C:yumiWebViewIsLoading(native!)
+progress = C:yumiWebViewGetProgress(native!)
+can-go-back = C:yumiWebViewCanGoBack(native!)
+can-go-forward = C:yumiWebViewCanGoForward(native!)
+if fits-content
+    . height = C:yumiWebViewGetContentHeight(native!)
+    if height >= 0
+        content-height = height
+is-accepting-native-state = false
+
+────────────────────
++ do accept-native-focus
+
+. host = window
+if host
+    (host as Window).accept-native-focus(this)
+
+────────────────────
++ do accept-navigation-request
+    - request-id U64
+    - detail U32
+    - target String
+
+. kind = (detail /and/ 255) as WebNavigationKind
+. event = WebNavigationEvent(target, kind, (detail /and/ 256) != 0)
+navigating <- event
+if native
+    C:yumiWebViewDecideNavigation(native, request-id, !event.is-canceled)
+
+────────────────────
++ do accept-native-load
+    - target String
+    - error String?
+
+if error
+    load-failed <- WebLoadEvent(target, error)
+else
+    loaded <- WebLoadEvent(target)
+
+────────────────────
++ do accept-native-message
+    - name String
+    - body String
+
+message <- WebMessageEvent(name, JSON(body))
+
+────────────────────
+_ do create-native
+
+. host-box = window
+=? if !host-box
+. host-window = host-box as Window
+host-window.ensure-native()
+=? if !host-window.native
+. kept = session?.take(this)
+native = kept ?? C:yumiWebViewCreate(is-ephemeral)
+held = session
+if session && !kept
+    session.keep(native!, this)
+C:yumiGuiWindowAddPeer(host-window.native!, native!, true, true)
+set-native-peer-artifact-required(true)
+C:yumiWebViewSetEventCallback
+    - native!
+    - gui-web-view-event as WebViewEventCallback
+    - this as Pointer
+native-inspectable-changed()
+native-message-names-changed()
+native-transparent-changed()
+native-style-changed()
+native-script-changed()
+native-fits-content-changed()
+native-passes-scroll-changed()
+if kept && (C:yumiWebViewGetURL(native!) as String).length > 0
+    accept-native-state()
+else
+    load-requested-content()
+
+────────────────────
+_ do release-native
+
+=? if !native
+. owner = held
+held = null
+if !owner
+    C:yumiWebViewRelease(native)
+else if owner.leave(this)
+    C:yumiWebViewClearEventCallback(native!)
+    C:yumiGuiPeerDetach(native!)
+native = null
+
+────────────────────
+_ do forget-native
+
+native = null
+held = null
+
+────────────────────
+_ do requested-url-changed
+
+=? if is-accepting-native-state || !native
+html = null
+load-requested-url()
+
+────────────────────
+_ do requested-html-changed
+
+=? if !native || !html
+C:yumiWebViewLoadHTML(native, html, base-url)
+
+────────────────────
+_ do load-requested-content
+
+=? if !native
+if html
+    C:yumiWebViewLoadHTML(native, html, base-url)
+else
+    load-requested-url()
+
+────────────────────
+_ do load-requested-url
+
+=? if !native
+. target = url
+=? if !target
+if !C:yumiWebViewLoadURL(native, target)
+    load-failed <- WebLoadEvent(target, "Invalid URL")
+
+────────────────────
+_ do native-inspectable-changed
+
+if native
+    C:yumiWebViewSetInspectable(native, is-inspectable)
+
+────────────────────
+_ do native-message-names-changed
+
+=? if !native
+C:yumiWebViewClearMessageHandlers(native)
+for name in message-names
+    C:yumiWebViewAddMessageHandler(native!, name)
+
+────────────────────
+_ do native-fits-content-changed
+
+if native
+    C:yumiWebViewSetFitsContent(native, fits-content)
+
+────────────────────
+_ do native-transparent-changed
+
+if native
+    C:yumiWebViewSetTransparent(native, is-transparent)
+
+────────────────────
+_ do native-passes-scroll-changed
+
+if native
+    C:yumiGuiPeerSetPassesScroll(native, passes-scroll)
+
+────────────────────
+_ do native-ephemeral-changed
+
+=? if !native
+. owner = held
+release-native()
+owner?.close()
+create-native()
+invalidate-paint()
+
+────────────────────
+_ do native-session-changed
+
+=? if !native
+release-native()
+create-native()
+invalidate-paint()
+
+────────────────────
+_ do native-style-changed
+
+=? if !native
+. css = if inherits-style then "${inherited-style-css()}$user-style" else user-style
+C:yumiWebViewSetUserStyle(native!, css)
+
+────────────────────
+_ do native-script-changed
+
+if native
+    C:yumiWebViewSetUserScript(native, user-script)
+
+────────────────────
+_ ¶ inherited-style-css
+
+:root {
+    color-scheme: light dark;
+    --yumi-text-color: $text-color;
+    --yumi-font-family: $families;
+    --yumi-font-size: ${size}px;
+    color: $text-color;
+    font: $slant $weight ${size}px $families;
+}
+
+════════════════════
+.. text-color = $color
+.. family = $font-family
+.. families = if family.length then "\"$family\", system-ui" else "system-ui"
+.. weight = "${$font-weight.css-weight}"
+.. slant = if $font-slant == FontSlant.italic then "italic" else "normal"
+.. size = $font-size
+
+━━━━━━━━━━━━━━━━━━━━
++ WebViewEventCallback is (*C) Void
+    - view-pointer Pointer
+    - event-kind U32
+    - request-id U64
+    - detail U32
+    - first CPointer'Char8
+    - second CPointer'Char8
+
+━━━━━━━━━━━━━━━━━━━━
+_ NativeWebViewEventKind is U32
+
+| state = 0
+| focus = 1
+| navigation-request = 2
+| loaded = 3
+| load-failed = 4
+| message = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ WebViewScriptCallback is (*C) Void
+    - request-pointer Pointer
+    - succeeded Bool
+    - text CPointer'Char8
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-web-view-event
+    - view-pointer Pointer
+    - event-kind U32
+    - request-id U64
+    - detail U32
+    - first CPointer'Char8
+    - second CPointer'Char8
+
+. view = gc-object-from-pointer'WebView(view-pointer)
+do match? event-kind as NativeWebViewEventKind
+    |= NativeWebViewEventKind.state
+        view.accept-native-state()
+    |= NativeWebViewEventKind.focus
+        view.accept-native-focus()
+    |= NativeWebViewEventKind.navigation-request
+        view.accept-navigation-request(request-id, detail, first)
+    |= NativeWebViewEventKind.loaded
+        view.accept-native-load(first, null)
+    |= NativeWebViewEventKind.load-failed
+        view.accept-native-load(first, second as String)
+    |= NativeWebViewEventKind.message
+        view.accept-native-message(first, second)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gui-web-view-script-result
+    - request-pointer Pointer
+    - succeeded Bool
+    - text CPointer'Char8
+
+. completion = gc-object-from-pointer'(Completion'WebScriptOutcome)(request-pointer)
+completion.finish(WebScriptOutcome(succeeded, text))

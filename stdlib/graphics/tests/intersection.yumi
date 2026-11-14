@@ -1,0 +1,97 @@
+
+/graphics/curve
+/graphics/intersection
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/tests/support/geometry
+/math
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Curve Line Intersections")
+
+0, intersect-path-line(crossing-curve(), (0, 20), (10, 20)).length
+1, intersect-path-line(crossing-curve(), (0, 7.5), (10, 7.5)).length
+true, near-intersections(intersect-path-line(crossing-curve(), (0, 7.5), (10, 7.5)), [0.5], [0.5])
+2, intersect-path-line(crossing-curve(), (0, 5), (10, 5)).length
+true, expected-crossing-intersections(intersect-path-line(crossing-curve(), (0, 5), (10, 5)))
+true, crossing-line-intersections-sorted()
+
+════════════════════
+test("Curve Curve Intersections")
+
+true, crossing-arcs-meet-once(false)
+true, crossing-arcs-meet-once(true)
+
+════════════════════
+test("Curve Tangency Precision")
+
+true, tangent-curve-precision()
+
+━━━━━━━━━━━━━━━━━━━━
++ do crossing-arcs-meet-once
+    - reversed Bool
+
+. first = Curve()
+    - (136.24613570265703, 127.26086968841116)
+    - (137.1809999188523, 131.95793712812724)
+    - (140.71739975574994, 135.70794896465424)
+    - (145.35163347742176, 136.91637415840148)
+    - .segment-type-cubic
+. second = Curve()
+    - (148.70551487989482, 128.89924335623766)
+    - (142.71946146454377, 125.46030507189589)
+    - (135.0789960742474, 127.52514986154284)
+    - (131.64005778990565, 133.51120327689387)
+    - .segment-type-cubic
+. hits [CurveIntersection]
+if reversed
+    intersect-curves(hits, second, first)
+    = hits.length == 1 && near(0.6455, hits[0].t1, 0.001) && near(0.104, hits[0].t2, 0.001)
+
+intersect-curves(hits, first, second)
+= hits.length == 1 && near(0.104, hits[0].t1, 0.001) && near(0.6455, hits[0].t2, 0.001)
+
+━━━━━━━━━━━━━━━━━━━━
++ crossing-line-intersections-sorted
+
+intersections[0].t1 < intersections[1].t1
+
+.. intersections = intersect-path-line(crossing-curve(), (0, 5), (10, 5))
+
+━━━━━━━━━━━━━━━━━━━━
++ expected-crossing-intersections
+    - intersections [CurveIntersection]
+
+near-intersections(intersections, [0.211325, 0.788675], [0.115100, 0.884900])
+
+━━━━━━━━━━━━━━━━━━━━
++ do crossing-curve
+
+. curve = Path()
+curve.move-to(0, 0)
+curve.cubic-curve-to(0, 10, 10, 10, 10, 0)
+= curve
+
+━━━━━━━━━━━━━━━━━━━━
++ do tangent-curve-precision
+
+. first = circle((50, 50), 30)
+. second = circle((110, 50), 30)
+. hits [CurveIntersection]
+for a in first.curves
+    for b in second.curves
+        hits.clear()
+        intersect-curves(hits, a, b)
+        for hit in hits
+            . pa = a.split-at-range(0, hit.t1).anchor2
+            . pb = b.split-at-range(0, hit.t2).anchor2
+            =? false if pa.distance(pb) > 0.00001
+= true

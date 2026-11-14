@@ -1,0 +1,136 @@
+/stream/aggregate
+
++ SourceRowMode is U8
++ source-row-decoration SourceRowMode = 0
++ source-indent-columns Size = 4
++ source-divider-thick U8 = 1
++ source-divider-thin U8 = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSpanKind is Union
+
+| plain
+| keyword
+| definition
+| identifier
+| type-name
+| rule
+| capture
+| number
+| string
+| operator
+| punctuation
+| decoration
+| comment
+| invalid
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSpan is Tuple
+
++ kind SourceSpanKind
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceOutlineRow is Tuple
+
++ node U32?
++ mode SourceRowMode
++ indent Size
++ is-invalid Bool
++ divider U8
++ owner U32?
++ is-empty Bool
+
+────────────────────
++ get content-start Size
+
+indent * source-indent-columns
+
+────────────────────
++ get is-divider Bool
+
+divider > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceOutlinePart is Tuple
+
++ id U32
++ place U32
++ kind U8
++ mode SourceRowMode
++ first Size
++ count Size
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceOutline
+
++ place U32
++ rows [SourceOutlineRow]
++ plain [SourceOutlineRow]
++ parts [SourceOutlinePart]
++ reused Size
+
+────────────────────
++ This
+    - place
+    - rows
+    - plain
+    - parts
+    - reused
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceRow is Tuple
+
++ node U32?
++ mode SourceRowMode
++ indent Size
++ spans [SourceSpan]
++ is-invalid Bool
++ divider U8
++ owner U32? = null
++ node-id U32
++ owner-id U32
+
+────────────────────
++ get text String
+
+indentation ++ content
+
+.. indentation = " " * (indent * source-indent-columns)
+
+────────────────────
++ get content String
+
+"".join(each.text in spans)
+
+────────────────────
++ get content-start Size
+
+indent * source-indent-columns
+
+────────────────────
++ do get columns Size
+
+. count = content-start
+=? count if divider > 0
+for span in spans
+    count += span.text.length
+= count
+
+────────────────────
++ get is-decoration Bool
+
+node == null
+
+────────────────────
++ get is-divider Bool
+
+divider > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do source-spans-same Bool
+    - left [SourceSpan]
+    - right [SourceSpan]
+
+=? false if left.length != right.length
+= all(0 .. < left.length) • where left[each].kind == right[each].kind && left[each].text == right[each].text

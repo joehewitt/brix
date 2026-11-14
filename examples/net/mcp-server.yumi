@@ -1,0 +1,90 @@
+/ai/mcp
+/data/json
+/net/http-server
+/time/duration
+
+.. notes = NotesTools()
+
+<HTTPServer server
+    port = 8765
+
+    <MCPEndpoint "/mcp"
+        name = "yumi-notes"
+        instructions = "Keeps a list of notes in memory while the server runs."
+
+        <MCPTool "add_note"
+            description = "Add a note to the list."
+            input-schema = add-schema
+            call = notes.add
+
+        <MCPTool "list_notes"
+            description = "List every note, numbered from 1."
+            call = notes.all
+
+        <MCPTool "count_slowly"
+            description = "Count up to a number, one step every 100 ms, reporting progress."
+            input-schema = count-schema
+            call = notes.count
+
+.. add-schema = Map'String'JSON
+    • type "object"
+    • properties add-properties
+    • required add-required
+.. add-properties = Map'String'JSON
+    • text text-property
+.. text-property = Map'String'JSON
+    • type "string"
+    • description "The note text"
+.. add-required [JSON] =
+    * "text"
+
+.. count-schema = Map'String'JSON
+    • type "object"
+    • properties count-properties
+    • required count-required
+.. count-properties = Map'String'JSON
+    • to to-property
+.. to-property = Map'String'JSON
+    • type "integer"
+    • description "The number to count to, from 1 to 50"
+.. count-required [JSON] =
+    * "to"
+
+-- "MCP server on http://${server.host}:${server.port}/mcp (Ctrl-C to stop)"
+server.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ NotesTools
+
++ notes [String]
+
+────────────────────
++ do add MCPToolResult ?! Error
+    - call MCPToolCall
+
+. text = call["text"].string()
+notes += text
+= "Added note ${notes.length}: $text"
+
+────────────────────
++ all MCPToolResult
+    - call MCPToolCall
+
+|? !notes
+    "There are no notes."
+??
+    "\n".join("${each + 1}. ${notes[each]}" in 0 .. < notes.length)
+
+────────────────────
++ do count MCPToolResult ?! Error
+    - call MCPToolCall
+
+. target = call["to"].int()
+?! Error("\"to\" must be between 1 and 50")
+    if target < 1 || target > 50
+for step in 0 .. < target
+    100ms.wait()
+    call.progress((step + 1) as Float, target as Float, "Counted to ${step + 1}")
+. result JSON = Map'String'JSON
+    • counted target
+= result

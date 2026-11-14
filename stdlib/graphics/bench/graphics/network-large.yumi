@@ -1,0 +1,39 @@
+`benchmark.meta description: Traces geometry and picks curves on a 1,200-segment network while moving one vertex through 8 edits.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/network
+/graphics/point
+
+. network = VectorNetwork()
+. ids [Index]
+. column = 0
+. row = 0
+for i in 0 .. < 1200
+    . x = if row % 2 == 0 then column else 39 - column
+    ids += network.add-vertex(Point((x * 10) as Float, (row * 10) as Float))
+    column += 1
+    if column == 40
+        column = 0
+        row += 1
+for i in 0 .. < ids.length
+    . next = ids[(i + 1) % ids.length]
+    if i % 3 == 0
+        network.connect(ids[i], next, (3, -4), (-3, 4))
+    else
+        network.connect(ids[i], next)
+. hub = network.add-vertex((-50, -50))
+for i in 0 .. < ids.length by 150
+    network.connect(hub, ids[i])
+
+. checksum Size
+for frame in 0 .. < 8
+    network.move-vertex(ids[frame * 7], Point((frame * 7 * 10) as Float, -3.0))
+    checksum += network.geometry().count
+    for sample in 0 .. < 4
+        . hit = network.pick
+            - Point((13 + sample * 97 + frame) as Float, (7 + sample * 71) as Float)
+            - 6
+        if hit
+            checksum += hit.segment
+-- "bench-result graphics/network-large checksum=$checksum"

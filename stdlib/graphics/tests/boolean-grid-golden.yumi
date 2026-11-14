@@ -1,0 +1,103 @@
+/test
+/os/file
+/graphics/boolean
+/graphics/canvas
+/graphics/path
+/graphics/primitives
+/os/path
+./support/boolean-grid-cells
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Boolean Grid SVG Goldens")
+cases.run(boolean-grid-svg-golden-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do boolean-grid-svg-golden-tests
+    - t TestCase
+
+for index in 0 .. < 20
+    . name = boolean-grid-cell-name(index)
+    . actual = boolean-grid-cell-svg(index).trim()
+    . expected = boolean-grid-cell-golden-svg(index).trim()
+    . result = boolean-grid-cell-direct-result(index, Rect(0, 0, 266, 200))
+    t.check("cell $name golden svg exists", expected.find("<svg") != null)
+    t.expect("cell $name svg", expected, actual)
+    t.check("cell $name nonzero fill", actual.find("fill-rule=\"evenodd\"") == null)
+    t.check("cell $name closed path", boolean-grid-result-is-closed(result))
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-cell-golden-svg
+    - index
+
+. file = File(boolean-grid-cell-golden-path(index), FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-cell-golden-path
+    - index
+
+. local = "cell-${boolean-grid-cell-name(index)}.svg"
+if Path(local).is-file
+    = local
+
+= "stdlib/graphics/tests/fixtures/boolean-grid-golden/$local"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-grid-cell-svg
+    - index
+
+. path = "/private/tmp/yumi-boolean-grid-cell-${boolean-grid-cell-name(index)}.svg"
+write-boolean-grid-cell-svg(index, path)
+. file = File(path, FileFlags.read-mode)
+. svg = file as String
+file.close()
+= svg
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-boolean-grid-cell-svg
+    - index
+    - path String
+
+. canvas = SVGCanvas(266, 200)
+canvas.fill-color = boolean-grid-cell-result-fill-color(index)
+canvas.stroke-color = null
+. result = boolean-grid-cell-direct-result(index, Rect(0, 0, 266, 200))
+if result
+    result.outline(canvas)
+canvas.write(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-cell-direct-result
+    - index
+    - cell Rect
+
+|? operation == 0
+    union(a, b)
+|? operation == 1
+    intersect(a, b)
+|? operation == 2
+    subtract(a, b)
+??
+    clip(a, b)
+
+.. a = boolean-grid-cell-source-a(index, cell)
+.. b = boolean-grid-cell-source-b(index, cell)
+.. operation = index % 4
+
+━━━━━━━━━━━━━━━━━━━━
+_ boolean-grid-result-is-closed
+    - result Path?
+
+|? result && result.count != 0
+    result.is-closed
+??
+    true

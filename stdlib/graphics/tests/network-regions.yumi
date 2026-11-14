@@ -1,0 +1,146 @@
+/graphics/matrix
+/graphics/network
+/graphics/network-regions
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Network Region Faces")
+cases.run(face-tests)
+cases = cases.then("Network Region Holes", hole-tests)
+cases = cases.then("Network Curved And Degenerate Regions", curved-tests)
+cases = cases.then("Network Region Correspondence", correspondence-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do face-tests
+    - t TestCase
+
+. net = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+. workspace = NetworkRegionWorkspace()
+. faces = workspace.resolve(net)
+t.expect("rectangle has one face", 1, faces.regions.length)
+t.check("interior is pickable", faces.pick((25, 25)) != null)
+. a = net.add-vertex((50, -10))
+. b = net.add-vertex((50, 110))
+net.connect(a, b)
+faces = workspace.resolve(net)
+t.expect("crossing line divides rectangle", 2, faces.regions.length)
+t.check("faces have separate identities", (faces.pick((25, 25))!).id != (faces.pick((75, 25))!).id)
+t.expect("intersections do not edit network vertices", 6, net.vertex-count)
+. c = net.add-vertex((75, 25))
+net.connect(net.add-vertex((50, 50)), c)
+faces = workspace.resolve(net)
+t.expect("dangling branch adds no region", 2, faces.regions.length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do hole-tests
+    - t TestCase
+
+. path = rectangle(Rect(0, 0, 100, 100))
+path.add-path(rectangle(Rect(25, 25, 50, 50)))
+. net = network-from-path(path)
+. workspace = NetworkRegionWorkspace()
+. faces = workspace.resolve(net)
+t.expect("nested loops have two selectable regions", 2, faces.regions.length)
+. outer = faces.pick((10, 10))!
+. inner = faces.pick((50, 50))!
+t.check("outer region excludes hole", !outer.contains((50, 50)))
+t.check("inner region remains paintable", inner.contains((50, 50)))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do correspondence-tests
+    - t TestCase
+
+. net = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+. workspace = NetworkRegionWorkspace()
+. original = workspace.resolve(net).regions[0].id
+net.move-vertex(1, (-10, -10))
+. faces = workspace.resolve(net)
+t.expect("moving boundary retains region identity", original, faces.regions[0].id)
+. a = net.add-vertex((50, -20))
+. b = net.add-vertex((50, 120))
+. divider = net.connect(a, b)
+faces = workspace.resolve(net)
+t.expect("split descendants both reference predecessor", 2, faces.regions.length)
+for face in faces.regions
+    t.expect("split provenance", original, face.predecessors[0])
+net.remove-segment(divider)
+faces = workspace.resolve(net)
+t.expect("merge produces one region", 1, faces.regions.length)
+t.expect("merge exposes both prior regions", 2, faces.regions[0].predecessors.length)
+net.remove-segment(1)
+faces = workspace.resolve(net)
+t.expect("opening boundary removes region", 0, faces.regions.length)
+t.expect("removed region is retired", 1, faces.retired.length)
+
+. halves = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+halves.connect(halves.add-vertex((50, -20)), halves.add-vertex((50, 120)))
+. divided = NetworkRegionWorkspace()
+. left = divided.resolve(halves).pick((25, 50))!.id
+. right = divided.resolve(halves).pick((75, 50))!.id
+halves.reverse()
+. reversed = divided.resolve(halves)
+t.expect("reversing keeps the left region", left, reversed.pick((25, 50))!.id)
+t.expect("reversing keeps the right region", right, reversed.pick((75, 50))!.id)
+. far = network-from-path(rectangle(Rect(0, 0, 100, 100)))
+far.reverse()
+. travelling = NetworkRegionWorkspace()
+. kept = travelling.resolve(far).regions[0].id
+far.transform(matrix-from-translation((500, 0)))
+t.expect
+    - "a reversed region keeps its identity when it moves away"
+    - kept
+    - travelling.resolve(far).regions[0].id
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do curved-tests
+    - t TestCase
+
+. workspace = NetworkRegionWorkspace()
+. path = circle((50, 50), 30)
+path.add-path(circle((80, 50), 30))
+. net = network-from-path(path)
+. regions = workspace.resolve(net)
+t.expect("overlapping circles form three faces", 3, regions.regions.length)
+t.check("lens can be picked", regions.pick((65, 50)) != null)
+t.check("left crescent can be picked", regions.pick((25, 50)) != null)
+path = circle((50, 50), 30)
+path.add-path(circle((110, 50), 30))
+regions = workspace.resolve(network-from-path(path))
+t.expect("tangent circles remain two regions", 2, regions.regions.length)
+path = circle((50, 50), 30)
+path.add-path(Path(path))
+regions = workspace.resolve(network-from-path(path))
+t.expect("coincident circles have one region", 1, regions.regions.length)
+path = rectangle(Rect(0, 0, 50, 50))
+path.add-path(rectangle(Rect(50, 0, 50, 50)))
+regions = workspace.resolve(network-from-path(path))
+t.expect("shared edge bounds two regions", 2, regions.regions.length)
+path = Path()
+path.move-to(0, 0)
+path.line-to(100, 100)
+path.line-to(0, 100)
+path.line-to(100, 0)
+path.close()
+regions = workspace.resolve(network-from-path(path))
+t.expect("self-intersecting outline has two lobes", 2, regions.regions.length)
+net = VectorNetwork()
+. v = net.add-vertex((20, 20))
+net.connect(v, v, (60, -30), (60, 30))
+regions = workspace.resolve(net)
+t.expect("single cubic loop has a region", 1, regions.regions.length)
+net.connect(v, v)
+regions = workspace.resolve(net)
+t.expect("zero-length edge creates no extra face", 1, regions.regions.length)
+= t

@@ -1,0 +1,137 @@
+/YuGC/YuGC.h
+/core/core
+/core/error
+/core/function
++ /core/gc
+/core/intrinsics
+/core/number
+/core/range
+
+━━━━━━━━━━━━━━━━━━━━
++ CleanupFunction'State is () Void
+    - state State
+
+━━━━━━━━━━━━━━━━━━━━
++ CleanupHandle
+
+_ native Size
+
+────────────────────
+_ This
+
+────────────────────
+_ do activate
+    - value Size
+
+native = value
+
+────────────────────
+_ do retire
+
+native = 0
+
+────────────────────
++ get is-valid
+
+native != 0
+
+────────────────────
++ do cancel Bool
+
+=? if !native
+. canceled = C:yumiGCCancelCleanup(native)
+if canceled
+    native = 0
+= canceled
+
+━━━━━━━━━━━━━━━━━━━━
+_ CleanupContext
+
+_ callback Getter'Size
+_ handle CleanupHandle
+
+────────────────────
+_ This
+    - callback
+    - handle
+
+━━━━━━━━━━━━━━━━━━━━
+_ CleanupSuccess
+
+_ marker Size = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do on-reclaim'Target'State CleanupHandle
+    - target Target
+    - state State
+    - cleanup
+
+. handle = CleanupHandle()
+. context = CleanupContext(=> gc-cleanup-succeeded(cleanup, state), handle)
+. target-pointer = target as Pointer
+. context-pointer = context as Pointer
+. callback = gc-cleanup-invoke as GCManagedCleanupCallback
+. native = C:yumiGCRegisterCleanup(target-pointer, context-pointer, callback)
+if !native
+    ?! Error("Cleanup state must not retain its target")
+handle.activate(native as Size)
+= handle
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-register-managed-context-cleanup'Context Size
+    - target-pointer Pointer
+    - context Context
+    - callback GCManagedCleanupCallback
+
+` Internal zero-managed-allocation registration path for stdlib owners that already have a safe
+` managed context object. The runtime roots context and rejects any path from it back to target.
+
+= C:yumiGCRegisterCleanup(target-pointer, context as Pointer, callback)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cancel Bool
+    - handle CleanupHandle
+
+= handle.cancel()
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-garbage
+
+C:yumiGCCollect()
+
+━━━━━━━━━━━━━━━━━━━━
++ do return-free-memory
+
+C:yumiGCScavenge()
+
+━━━━━━━━━━━━━━━━━━━━
++ do drain-reclaim-cleanups Size
+
+= C:yumiGCDrainCleanups() as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gc-cleanup-invoke Size
+    - context-pointer Pointer
+
+. context = gc-object-from-pointer'CleanupContext(context-pointer)
+. callback = context.callback
+context.handle.retire()
+= callback()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gc-cleanup-succeeded'State Size
+    - cleanup
+    - state State
+
+. result = catch? gc-run-cleanup(cleanup, state)
+if !result
+    C:yumiGCReportCleanupException()
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gc-run-cleanup'State CleanupSuccess
+    - cleanup
+    - state State
+
+cleanup(state)
+= CleanupSuccess()

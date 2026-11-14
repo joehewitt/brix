@@ -1,0 +1,781 @@
+./binding
+./facts
+./frame
+./narrowing-key
+./type-relation
+./type-store
+./types
+./typing-scratch
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ is-type-test Bool
+    - op Operator
+
+|? op == .is-op || op == .is-not-op
+    true
+|? op == .is-exactly-op || op == .is-not-exactly-op
+    true
+??
+    op == .is-similar-op || op == .is-not-similar-op
+
+━━━━━━━━━━━━━━━━━━━━
++ Narrowing
+
++ frame Frame
+_ types Types
+_ facts Facts
+_ relations Relations
+_ tree AST
+_ scratch TypingScratch
+
+────────────────────
++ This
+    - frame Frame
+
+.. types = frame.types
+.. relations = frame.relations
+.. scratch = frame.scratch
+.. facts = frame.facts
+.. tree = frame.tree
+
+────────────────────
++ do begin
+
+tree = frame.tree
+
+────────────────────
++ do narrow-condition
+    - condition SyntaxId
+    - edge Bool
+
+if condition == 0
+    =
+do match? tree.nodes[condition]
+    | .node-type-predicate(row)
+        narrow-condition(row.expr, edge)
+    | .node-unary-expression(row)
+        if row.op == .not-op
+            narrow-condition(row.operand, !edge)
+    | .node-binary-expression(row)
+        if row.op == .and-op
+            if edge
+                narrow-condition(row.lhs, true)
+                narrow-condition(row.rhs, true)
+        else if row.op == .or-op
+            if !edge
+                narrow-condition(row.lhs, false)
+                narrow-condition(row.rhs, false)
+        else if row.op == .equals-op || row.op == .not-equals-op
+            narrow-null(row.op, row.lhs, row.rhs, edge)
+            narrow-equality(row.op, row.lhs, row.rhs, edge)
+        else if is-type-test(row.op)
+            narrow-cases(row.op, row.lhs, row.rhs, edge)
+    | .node-identifier
+        if edge
+            narrow-present(condition)
+    | .node-get-expression
+        if edge
+            narrow-present(condition)
+
+────────────────────
+_ do narrow-present
+    - subject SyntaxId
+
+. slot = condition-slot(subject)
+if !slot
+    =
+. current = subject-type(subject, slot)
+if current == no-type || current == invalid-type
+    =
+if !types.is-optional(current)
+    frame.push-narrowing(slot, current, frame.narrowed-cases(slot))
+    =
+. inner = types.optional-inner(current)
+if is-member-key(slot) && !frame.is-stable-path(slot)
+    frame.note-member(slot, current)
+frame.push-narrowing(slot, inner)
+
+────────────────────
+_ do narrow-null
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - edge Bool
+
+. left-null = is-null-syntax(lhs)
+. right-null = is-null-syntax(rhs)
+if left-null == right-null
+    =
+. subject = if left-null then rhs else lhs
+. present = (op == .not-equals-op) == edge
+if present
+    narrow-present(subject)
+
+────────────────────
++ do is-null-syntax Bool
+    - id SyntaxId
+
+` Whether an expression is `null`, the literal of core that no local or member of that name hides.
+do match? tree.nodes[id]
+    | .node-identifier(row)
+        if row.name != types.null-atom!
+            = false
+        . resolution = frame.bindings.resolution-of(frame.binding, id)
+        if resolution.kind != .resolve-global || resolution.module != types.core-module
+            = false
+        do match? frame.program.modules[resolution.module].decls[resolution.decl]
+            | .decl-property(property)
+                = property.name == types.null-atom
+= false
+
+────────────────────
+_ do narrow-cases
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - edge Bool
+
+. slot = condition-slot(lhs)
+if !slot
+    =
+. subject = subject-type(lhs, slot)
+if subject == invalid-type || subject == no-type
+    =
+. completion = types.completion-of(subject)
+. is-not = op == .is-not-op || op == .is-not-exactly-op || op == .is-not-similar-op
+if completion.intrinsic != .union
+    if edge != is-not
+        frame.push-narrowing(slot, subject, frame.narrowed-cases(slot))
+    =
+. cases = completion.cases
+. mark = scratch.words.mark
+. target = tested-type(rhs)
+. partial = matching-cases(op, rhs, target, cases)
+. matching U64
+for position in mark .. < scratch.words.mark
+    if scratch.words[position] < 64
+        matching = matching /or/ (1u64 /lshift/ scratch.words[position])
+scratch.words.rewind(mark)
+. tested = if op == .is-op || op == .is-not-op then target else no-type
+narrow-to(slot, subject, matching, edge != is-not, partial, tested)
+
+────────────────────
+_ do narrow-to
+    - slot NarrowingKey
+    - subject TypeId
+    - matching U64
+    - wanted Bool
+    - partial U64 = 0
+    - tested TypeId = no-type
+
+` Keeps the cases of a union a condition allows, or the others on its false edge, of those the
+` slot could still hold, where the cases it allows only in part (`partial`) stay too. One case
+` left that holds a value reads as that value, and cases left of classes that all derive from the
+` class of one of them read as that class (`common-base`). Where `is` allows them for a class it
+` `tested`, cases left of classes that derive from it or that it derives from hold an object of
+` it, and read as it, or as the class of one of them that derives from it where all the others do.
+. cases = types.completion-of(subject).cases
+if cases.count == 0 || cases.count > 64
+    =
+. all U64 = if cases.count == 64 then U64.max else (1u64 /lshift/ cases.count) - 1
+. held = frame.narrowed-cases(slot)
+. current = if held == 0 then all else held
+. kept = if wanted then matching else all /xor/ (matching /and/ (partial /xor/ U64.max))
+. remaining = current /and/ kept
+. lined = wanted && tested != no-type && line-case(cases, remaining, tested) != U32.max
+if remaining == 0 || (remaining == current && (!lined || (partial /and/ remaining) == 0))
+    =
+if lined
+    . based = common-base(cases, remaining)
+    . read = if based != no-type && in-base-chain(types, based, tested) then based else tested
+    frame.push-narrowing(slot, read, remaining)
+    =
+for offset in 0 .. < cases.count
+    if remaining == (1u64 /lshift/ offset)
+        . fact = types.cases[cases.start + offset]
+        if !fact.is-default && fact.type != no-type
+            frame.push-narrowing(slot, fact.type, remaining)
+            =
+. base = common-base(cases, remaining)
+if base != no-type
+    frame.push-narrowing(slot, base, remaining)
+    =
+frame.push-narrowing(slot, subject, remaining)
+
+────────────────────
++ do common-base TypeId
+    - cases RowRange'TypeId
+    - remaining U64
+
+` The class of one of the `remaining` cases that the classes of all the others derive from, or no
+` type where there is none.
+for offset in 0 .. < cases.count
+    . fact = types.cases[cases.start + offset]
+    . kept = (remaining /and/ (1u64 /lshift/ offset)) != 0
+    . valued = !fact.is-default && fact.type != no-type
+    if kept && valued && intrinsic-is-class(types.intrinsic-of(fact.type))
+        . shared = true
+        for other in 0 .. < cases.count
+            . held = types.cases[cases.start + other]
+            if other != offset && (remaining /and/ (1u64 /lshift/ other)) != 0
+                if held.is-default || held.type == no-type
+                    shared = false
+                else if !intrinsic-is-class(types.intrinsic-of(held.type))
+                    shared = false
+                else if !in-base-chain(types, held.type, fact.type)
+                    shared = false
+        if shared
+            = fact.type
+= no-type
+
+────────────────────
++ do line-case U32
+    - cases RowRange'TypeId
+    - remaining U64
+    - target TypeId
+
+` Where each of the `remaining` cases of a union is of a class that derives from a class or that
+` it derives from, which once a test for the class holds all hold an object of it, the case to
+` read the union through as the class: that of the class itself, or else the first of them. None
+` where any is of another type, or where the target is no class.
+if !intrinsic-is-class(types.intrinsic-of(target))
+    = U32.max
+. first = U32.max
+for offset in 0 .. < cases.count
+    if offset >= 64 || (remaining /and/ (1u64 /lshift/ offset)) == 0
+        continue
+    . fact = types.cases[cases.start + offset]
+    if fact.is-default || fact.type == no-type || !intrinsic-is-class(types.intrinsic-of(fact.type))
+        = U32.max
+    if !in-base-chain(types, fact.type, target) && !in-base-chain(types, target, fact.type)
+        = U32.max
+    if fact.type == target || first == U32.max
+        first = offset
+= first
+
+────────────────────
+_ do narrow-equality
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - edge Bool
+
+` A union compared with a case of it that holds no value keeps that case, or loses it.
+if !narrow-case(op, lhs, rhs, edge)
+    narrow-case(op, rhs, lhs, edge)
+
+────────────────────
+_ do narrow-case Bool
+    - op Operator
+    - subject-syntax SyntaxId
+    - case-syntax SyntaxId
+    - edge Bool
+
+. name Atom? = null
+. owner = 0u32
+do match? tree.nodes[case-syntax]
+    | .node-symbol(row)
+        name = row.name
+    | .node-get-expression(row)
+        do match? tree.nodes[row.object]
+            | .node-type-identifier
+                if !row.is-optional
+                    name = row.name
+                    owner = row.object
+if !name
+    = false
+. slot = condition-slot(subject-syntax)
+if !slot
+    = false
+. subject = subject-type(subject-syntax, slot)
+if subject == invalid-type || subject == no-type
+    = false
+. completion = types.completion-of(subject)
+if completion.intrinsic != .union
+    = false
+if owner != 0 && types.evaluate-type(frame.module, tree, owner, frame.env) != subject
+    = false
+for offset in 0 .. < completion.cases.count
+    . fact = types.cases[completion.cases.start + offset]
+    if fact.is-default && fact.name && fact.name! == name && offset < 64
+        narrow-to(slot, subject, 1u64 /lshift/ offset, (op == .equals-op) == edge)
+        = true
+= false
+
+────────────────────
+_ do tested-type TypeId
+    - rhs SyntaxId
+
+` The type a condition `is rhs` tests for, or none where it names a case.
+do match? tree.nodes[rhs]
+    | .node-symbol
+        = no-type
+    | .node-type-case
+        = no-type
+    | .node-identifier(row)
+        = types.type-named(frame.module, row.name, frame.env)
+= types.evaluate-type(frame.module, tree, rhs, frame.env)
+
+────────────────────
+_ do matching-cases U64
+    - op Operator
+    - rhs SyntaxId
+    - target TypeId
+    - cases RowRange'TypeId
+
+` Pushes the cases of a union the condition `op rhs` tests for, of the type `target` where it
+` names one, and answers those it allows only in part (`holding-cases`).
+do match? tree.nodes[rhs]
+    | .node-symbol(row)
+        add-cases-named(row.name, cases)
+        = 0
+    | .node-type-case(row)
+        add-cases-named(row.name, cases)
+        = 0
+if target == invalid-type || target == no-type
+    = 0
+. kind = Specificity.convertible
+if op == .is-exactly-op || op == .is-not-exactly-op
+    kind = .exact
+else if op == .is-similar-op || op == .is-not-similar-op
+    kind = .similar
+if kind == .convertible
+    = holding-cases(target, cases)
+for offset in 0 .. < cases.count
+    . fact = types.cases[cases.start + offset]
+    if fact.type != no-type && !fact.is-default
+        . relation = relations.compare(fact.type, target)
+        if validate-relation(relation, kind)
+            scratch.words.push(offset)
+= 0
+
+────────────────────
+_ do holding-cases U64
+    - target TypeId
+    - cases RowRange'TypeId
+
+` The cases of a union `is` tests a value for, as TypeScript picks them: the case the type relates
+` to best, by rank and then by how closely it matches, the first of those tied, however it relates,
+` so a base of a case's class picks the case; and where the type is a class, each other case of a
+` class derived from it, and each of a class it derives from. Answers those of a class it derives
+` from, which the test allows only in part: their object must be of the class too, and those of
+` an interface the class declares, which may hold an object of another class.
+. best = U32.max
+. best-rank = 0i32
+. best-match = 0u32
+. declared U64
+for offset in 0 .. < cases.count
+    . fact = types.cases[cases.start + offset]
+    if fact.type != no-type && !fact.is-default
+        . relation = relations.compare(target, fact.type, false, true)
+        . rank = case-selection-rank(types, relation)
+        . match U32 = relation.match
+        if relation-legal(relation)
+            if best == U32.max || rank < best-rank || (rank == best-rank && match > best-match)
+                best = offset
+                best-rank = rank
+                best-match = match
+            if relation.kind == .relation-interface-cast && offset < 64
+                declared = declared /or/ (1u64 /lshift/ offset)
+if best == U32.max
+    = 0
+scratch.words.push(best)
+if !intrinsic-is-class(types.intrinsic-of(target))
+    = 0
+. partial = declared
+for offset in 0 .. < cases.count
+    . fact = types.cases[cases.start + offset]
+    if fact.type == no-type || fact.is-default || !intrinsic-is-class(types.intrinsic-of(fact.type))
+        continue
+    . below = in-base-chain(types, fact.type, target)
+    . above = !below && in-base-chain(types, target, fact.type)
+    if offset != best && (below || above)
+        scratch.words.push(offset)
+    if above && offset < 64
+        partial = partial /or/ (1u64 /lshift/ offset)
+= partial
+
+────────────────────
+_ do add-cases-named
+    - name Atom
+    - cases RowRange'TypeId
+
+for offset in 0 .. < cases.count
+    . fact = types.cases[cases.start + offset]
+    if fact.name && fact.name! == name
+        scratch.words.push(offset)
+
+────────────────────
+_ do word-listed Bool
+    - mark ScratchMark
+    - value U32
+
+. listed = false
+for position in mark .. < scratch.words.mark
+    if scratch.words[position] == value
+        listed = true
+= listed
+
+────────────────────
++ do condition-slot NarrowingKey?
+    - expr SyntaxId
+
+` The key what a condition tests is known by: a local, a stored property of the receiver, or a
+` path of stored properties from one of those, each property read through the path before it.
+` A getter is read by a call, which ends what the reference knows of properties, so nothing a
+` condition tests of one is known where it is read again.
+if expr == 0
+    = null
+do match? tree.nodes[expr]
+    | .node-type-predicate(row)
+        = condition-slot(row.expr)
+    | .node-identifier(named)
+        . resolution = frame.bindings.resolution-of(frame.binding, expr)
+        if resolution.kind == .resolve-slot
+            = slot-key(resolution.slot)
+        if resolution.kind == .resolve-member && !is-getter(frame.self-type, named.name)
+            = member-key(resolution.decl)
+    | .node-get-expression(row)
+        if row.is-optional
+            = null
+        . shared = receiver-member(row.object, row.name)
+        if shared
+            = shared
+        . base = condition-slot(row.object)
+        if !base
+            = null
+        . declared = facts.node-type(frame.instance, expr)
+        if declared == no-type
+            = null
+        . receiver = facts.node-type(frame.instance, row.object)
+        if is-getter(receiver, row.name) || is-row-view(receiver)
+            = null
+        = frame.path-key(base, row.name, declared, is-stable-step(base, receiver, row.name))
+= null
+
+────────────────────
+_ do is-stable-step Bool
+    - base NarrowingKey
+    - receiver TypeId
+    - name Atom
+
+if is-member-key(base)
+    if !frame.is-stable-path(base)
+        = false
+else if frame.bindings.slots[base as SlotId].kind == .slot-this
+    = false
+if receiver == no-type || receiver == invalid-type || types.intrinsic-of(receiver) != .tuple
+    = false
+. found = types.property-named(receiver, name)
+if !found
+    = false
+= types.properties[found].storage-kind == .storage-eager
+
+────────────────────
+_ is-row-view Bool
+    - receiver TypeId
+
+` Whether an object is a view of the row of a table or an array, whose fields the reference
+` reads with no type it knows before the read, so a condition tells it nothing of them.
+|? receiver == no-type || receiver == invalid-type
+    false
+|? kind == .table-row || kind == .immutable-table-row
+    true
+|? kind != .tuple
+    false
+|? types.ancestor-of(receiver, types.array-row-decl) != no-type
+    true
+??
+    types.ancestor-of(receiver, types.array-fields-decl) != no-type
+
+.. kind = types.intrinsic-of(receiver)
+
+────────────────────
+_ do is-getter Bool
+    - receiver TypeId
+    - name Atom
+
+if receiver == no-type || receiver == invalid-type
+    = false
+. owner = receiver
+if types.intrinsic-of(owner) == .optional
+    owner = types.optional-inner(owner)
+. found = types.property-named(owner, name)
+if found
+    = types.properties[found].storage-kind == .storage-getter
+= false
+
+────────────────────
++ do base-key NarrowingKey?
+    - expr SyntaxId
+
+` The key of what an object is read from where something is known of it or of a path from it:
+` a local, a property of the receiver, or a path a condition tested before.
+do match? tree.nodes[expr]
+    | .node-identifier
+        . resolution = frame.bindings.resolution-of(frame.binding, expr)
+        if resolution.kind == .resolve-slot
+            = slot-key(resolution.slot)
+        if resolution.kind == .resolve-member
+            = member-key(resolution.decl)
+    | .node-get-expression(row)
+        if row.is-optional
+            = null
+        . shared = receiver-member(row.object, row.name)
+        if shared
+            = shared
+        . base = base-key(row.object)
+        if base
+            = frame.find-path-key(base, row.name)
+= null
+
+────────────────────
++ do receiver-member NarrowingKey?
+    - object SyntaxId
+    - name Atom
+
+` The key of a property of the receiver that is read through `this`: the key the property
+` has where it is named alone, so that what is known of one is known of the other. No key
+` for any other object, nor for a name that is not a property a class of the receiver's
+` chain declares.
+. is-receiver = false
+do match? tree.nodes[object]
+    | .node-identifier
+        . resolution = frame.bindings.resolution-of(frame.binding, object)
+        if resolution.kind == .resolve-slot
+            is-receiver = frame.bindings.slots[resolution.slot].kind == .slot-this
+if !is-receiver
+    = null
+. current = frame.self-type
+while current != no-type && current != invalid-type
+    . ref = class-ref(types, current)
+    . target = frame.program.modules[ref.module]
+    do match? target.decls[ref.decl]
+        | .decl-class(row)
+            . place = if row.members.count != 0 then first-place else no-member
+                .. first-place = target.first-member(row.members, name)
+            while place != no-member
+                . member = target.member-pool[place]
+                place = target.member-links[place]
+                do match? target.decls[member]
+                    | .decl-property(property)
+                        if property.name && property.name == name
+                            = member-key(member)
+    . base = types.base-of(current)
+    if !base
+        = null
+    current = base
+= null
+
+────────────────────
+_ subject-type TypeId
+    - subject SyntaxId
+    - slot NarrowingKey
+
+|? !is-member-key(slot)
+    frame.slot-type(slot)
+|? narrowed != no-type
+    narrowed
+|? is-path-key(slot)
+    frame.path-declared-type(slot)
+??
+    member-declared(subject)
+
+.. narrowed = if frame.knows-member(slot) then frame.narrowed-member(slot) else no-type
+
+────────────────────
+_ do member-declared TypeId
+    - subject SyntaxId
+
+` The type of a property of the receiver a condition tests: the one written, or, for a property
+` that takes the type of its value, the one the condition read it as, which the property is given
+` only once the program is typed (`settle-properties`), so that what a condition knows of it does
+` not depend on whether the function was typed before that.
+. self = frame.self-type
+if self == no-type || self == invalid-type
+    = invalid-type
+. name Atom? = null
+do match? tree.nodes[subject]
+    | .node-identifier(row)
+        name = row.name
+    | .node-get-expression(row)
+        name = row.name
+if !name
+    = invalid-type
+. found = types.property-named(self, name)
+if !found
+    = invalid-type
+. declared = types.properties[found].type
+if declared != no-type
+    = declared
+. read = facts.node-type(frame.instance, subject)
+= if read != no-type then read else invalid-type
+
+────────────────────
++ do exits Bool
+    - id SyntaxId
+    - directly Bool = false
+    - reaches Bool = false
+    - uses Bool = false
+    - infers Bool = false
+
+` Whether control never runs past a statement. `directly` asks what the reference asks of the
+` body of a match arm: that the statement itself leaves, which a match never does whatever
+` its arms do. `reaches` asks what the end of a function asks, whether control can get
+` there at all:
+` - any statement of a block that leaves keeps it from the rest;
+` - a condition that is the constant true or false is the branch it takes;
+` - a block that binds a name or uses a value is its body;
+` - a match that must match leaves when its arms do, since no arm matching is a panic.
+` `uses` asks what the reference asks of a function's end when it checks that the function
+` returns: as without `reaches`, except that a block that uses a value is its body and a match
+` that must match leaves when its arms do. `infers` asks, beside `uses`, what it asks of the end
+` when it infers what the function returns, where no loop leaves.
+if id == 0
+    = false
+do match? tree.nodes[id]
+    | .node-block(row)
+        . last = 0u32
+        for statement in tree.children[row.body]
+            if !is-lazy-declaration(statement)
+                last = statement
+                if reaches && exits(statement, directly, true, uses, infers)
+                    = true
+        = exits(last, directly, reaches, uses, infers)
+    | .node-return
+        = true
+    | .node-return-if-true(row)
+        = reaches && row.condition != 0 && is-constant(row.condition, true)
+    | .node-break
+        = true
+    | .node-continue
+        = true
+    | .node-assertion-syntax(row)
+        = row.condition == 0 || (reaches && is-constant(row.condition, true))
+    | .node-if-block(row)
+        if row.condition == 0
+            = exits(row.body, directly, reaches, uses, infers)
+        if reaches && is-constant(row.condition, true)
+            = exits(row.body, directly, true, uses, infers)
+        if reaches && is-constant(row.condition, false)
+            = exits(row.next, directly, true, uses, infers)
+        if row.next == 0 || !exits(row.body, directly, reaches, uses, infers)
+            = false
+        = exits(row.next, directly, reaches, uses, infers)
+    | .node-do-block(row)
+        = exits(row.body, directly, reaches, uses, infers)
+    | .node-stack-local-binding-block(row)
+        = reaches && exits(row.body, directly, true, uses, infers)
+    | .node-use-block(row)
+        = (reaches || uses) && exits(row.body, directly, reaches, uses, infers)
+    | .node-while-block(row)
+        = !infers && is-constant(row.condition, true) && !has-break(row.body)
+    | .node-match-expression(row)
+        if (reaches || uses) && !row.is-optional
+            do match? tree.nodes[row.body]
+                | .node-structure-match(arms)
+                    = arms-exit(arms.pattern, reaches, uses, infers)
+        = !directly && exits(row.body, false, reaches, uses, infers)
+    | .node-structure-match(row)
+        = !directly && arms-exit(row.pattern, reaches, uses, infers) && has-else(row.pattern)
+= false
+
+────────────────────
+_ do arms-exit Bool
+    - pattern SyntaxId
+    - reaches Bool
+    - uses Bool
+    - infers Bool
+
+` Whether every arm of a match leaves the function or the loop it is in. An arm written with
+` `?!` raises what it makes.
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        = arms-exit(row.left, reaches, uses, infers) && arms-exit(row.right, reaches, uses, infers)
+    | .node-type-transform(row)
+        = exits(row.expr, false, reaches, uses, infers)
+    | .node-type-panic
+        = true
+= false
+
+────────────────────
+_ do has-else Bool
+    - pattern SyntaxId
+
+do match? tree.nodes[pattern]
+    | .node-type-or(row)
+        = has-else(row.left) || has-else(row.right)
+    | .node-type-transform(row)
+        if row.pattern == 0
+            = true
+        do match? tree.nodes[row.pattern]
+            | .node-type-wildcard
+                = true
+= false
+
+────────────────────
++ is-lazy-declaration Bool
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-declare(row)
+        row.is-lazy
+    ??
+        false
+
+────────────────────
+_ do is-constant Bool
+    - condition SyntaxId
+    - truth Bool
+
+` Whether a condition is written as the constant true, or as the constant false.
+do match? tree.nodes[condition]
+    | .node-integer-syntax(row)
+        = row.value == (if truth then "1" else "0")
+    | .node-identifier(row)
+        . atom = if truth then types.true-atom ?? types.false-atom else types.false-atom
+        = atom && row.name == atom
+    | .node-type-predicate(row)
+        = is-constant(row.expr, truth)
+= false
+
+────────────────────
+_ do has-break Bool
+    - id SyntaxId
+
+if id == 0
+    = false
+do match? tree.nodes[id]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if has-break(statement)
+                = true
+        = false
+    | .node-break
+        = true
+    | .node-if-block(row)
+        = has-break(row.body) || has-break(row.next)
+    | .node-do-block(row)
+        = has-break(row.body)
+    | .node-stack-local-binding-block(row)
+        = has-break(row.body)
+    | .node-use-block(row)
+        = has-break(row.body)
+    | .node-match-expression(row)
+        = has-break(row.body)
+    | .node-structure-match(row)
+        = has-break(row.pattern)
+    | .node-type-or(row)
+        = has-break(row.left) || has-break(row.right)
+    | .node-type-transform(row)
+        = has-break(row.expr)
+= false

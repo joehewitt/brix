@@ -1,0 +1,96 @@
+
+/core/string
+/core/tokenstream
+/data
+
+━━━━━━━━━━━━━━━━━━━━
++ ServerSentEvent
+
++ event String
++ data String
++ id String
++ retry Int
+
+────────────────────
++ This
+    - data String
+    - event = ""
+    - id = ""
+    - retry = 0
+
+────────────────────
++ to String
+
+"".join(lines)
+
+.. lines
+    *? "event: $event\n" if event
+    ** "data: $each\n" in data.split("\n")
+    *? "id: $id\n" if id
+    *? "retry: $retry\n" if retry
+    * "\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ do server-sent-events <ServerSentEvent>
+    - body ReadableData'Byte
+
+. stream = ChunkedTokenStream'Byte(body)
+. event = ""
+. id = ""
+. retry = 0
+. data-lines = List'String()
+
+while true
+    . maybe-line = stream.read("\n")
+    if !maybe-line
+        if data-lines
+            <= ServerSentEvent("\n".join(data-lines), event, id, retry)
+        break
+
+    . line = strip-line-ending(maybe-line)
+    if !line
+        if data-lines
+            <= ServerSentEvent("\n".join(data-lines), event, id, retry)
+        event = ""
+        data-lines = List'String()
+    else if line is ":" ...
+        --
+    else
+        . field, value = sse-field(line)
+        if field == "event"
+            event = value
+        else if field == "data"
+            data-lines += value
+        else if field == "id"
+            id = value
+        else if field == "retry"
+            retry = value as Int
+
+━━━━━━━━━━━━━━━━━━━━
+_ strip-line-ending
+    - line String
+
+match line
+    | ...body "\r"
+        body
+    ??
+        line
+
+━━━━━━━━━━━━━━━━━━━━
+_ sse-field
+    - line String
+
+|? line.find(":")
+    (line[0 .. < it!], sse-field-value(line[it! + 1 ...]))
+??
+    (line, "")
+
+━━━━━━━━━━━━━━━━━━━━
+_ sse-field-value
+    - value String
+
+match value
+    | " " ...tail
+        tail
+    ??
+        value

@@ -1,0 +1,1056 @@
+./box
+./button
+./commands
+./events
+./icons/lucide/check
+./icons/lucide/chevron-down
+./icons/lucide/chevron-right
+./keys
+./label
+./placement
+./popup
+./primitives
+./shorthands
+./styles
+./theme
+./window
+/YuAppleGUI/YuAppleGUI.h
+/core/function
+/core/intrinsics
+/core/list-cursor
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/graphics/style
+/graphics/text
+/stream/aggregate
+/time/duration
+/time/timer
+/ui/command
+/ui/input
+/ui/key-combo
+/ui/type-select
+
+_ submenu-close-delay = 0.3s
+_ submenu-open-delay = 0.2s
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+    using GUIBoxMotion
+    using GUIBoxPaint
+    using GUIBoxCursor
+    using GUIBoxPlacement
+    using GUITextPaint
+    using GUIFontStyle
+    using GUIBoxSpacing
+    using GUIBoxSize
+    using GUIPopupStyle
+    using VectorPaintStyle
+
+• Menu • bg:gui-glass-color text:gui-text-color p:5 min-w:190
+    window-material = gui-glass-material
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = gui-popup-radius
+    shadow = gui-popup-shadow
+    font-family = ""
+    font-size = gui-body-font-size
+    font-weight = FontWeight.regular
+    font-slant = FontSlant.upright
+    cursor = CursorStyle.arrow
+
+    when #is-leaving
+        animation = popup-out
+
+• MenuItem • text:gui-text-color h:24 pl:4 pr:8
+    corner-radius = gui-control-radius
+
+    when #is-highlighted
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+    • menu-item-check • w:12 h:12 mx:3
+        stroke-width = 2
+
+    • menu-item-icon
+        • icon • w:gui-control-icon-size h:gui-control-icon-size mr:6
+            align-y = Alignment.center
+
+    • menu-item-shortcut • text:gui-muted-text-color ml:16
+
+    • menu-item-arrow • text:gui-muted-text-color w:10 h:10 ml:4
+        stroke-width = 2
+
+• MenuSeparator • h:9 px:6
+    • menu-separator-line • bg:gui-border-color h:1 mt:4
+
+• MenuButton • pl:10 pr:8
+    when #is-open
+        background-color = gui-pressed-color.over(gui-field-color)
+
+    when #is-untitled
+        • pr:6
+        • menu-button-arrow • ml:0
+
+    • button-content
+        align-x = null
+
+    • button-title • flex:1
+
+    • menu-button-arrow • text:gui-muted-text-color w:10 h:10 ml:6
+        stroke = Stroke.inherit
+        stroke-width = 2.5
+
+• MenuBar • bg:gui-window-color h:26 px:6 py:2
+    border-color = gui-divider-color
+    border-bottom-width = 1
+
+• MenuBarItem • bg:transparent px:10 h:26
+    shadow = null
+    when #is-hover-within
+        • bg:gui-hover-color
+
+    when #is-press-within
+        • bg:gui-hover-color
+
+    when #is-open
+        • bg:gui-accent-color
+        • text:gui-accent-text-color
+
+    when !#is-effectively-enabled
+        • bg:transparent
+
+━━━━━━━━━━━━━━━━━━━━
++ Menu is Popup
+
++ highlighted MenuItem?
+
+_ type-select = TypeSelect()
+_ native Pointer?
+_ native-entries List'Box
+_ event highlight-moved Bool
+_ event submenu-left Menu
+_ event submenu-hovered Menu
+_ event submenu-kept Menu
+
+• This • transient flex-col
+    focus-mode = FocusMode.keys
+    outside-press-passes = false
+    overflow-y = ScrollOverflow.auto
+
+────────────────────
+
+<This
+    transform-origin = #anchor-origin
+    <KeyShortcut "Previous menu item"
+        key = .arrow-up
+        discoverable = false
+        action = => do move-highlight(-1)
+    <KeyShortcut "Next menu item"
+        key = .arrow-down
+        discoverable = false
+        action = => do move-highlight(1)
+    <KeyShortcut "First menu item"
+        key = .home
+        discoverable = false
+        action = => do highlight-edge(false)
+    <KeyShortcut "Last menu item"
+        key = .end
+        discoverable = false
+        action = => do highlight-edge(true)
+    <KeyShortcut "Choose menu item"
+        key = .enter
+        repeat = false
+        discoverable = false
+        action = => do activate-highlighted()
+    <KeyShortcut "Choose menu item"
+        key = .space
+        repeat = false
+        discoverable = false
+        action = => do activate-highlighted()
+    <KeyShortcut "Open submenu"
+        key = .arrow-right
+        discoverable = false
+        action = => do move-right()
+    <KeyShortcut "Close submenu"
+        key = .arrow-left
+        discoverable = false
+        action = => do move-left()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+~> is-open
+    _ submenu-closing ~>
+        ~> idle
+            then closing(submenu) for submenu on submenu-left
+
+        ~> closing(submenu)
+            then idle on Timer(submenu-close-delay)
+                do close-submenu(submenu)
+            then closing(next) for next on submenu-left
+                do close-submenu(submenu)
+            then idle on submenu-kept when each as Pointer == submenu as Pointer
+            then idle on submenu-kept
+                do close-submenu(submenu)
+
+    _ submenu-opening ~>
+        ~> idle
+
+        ~> waiting(submenu) for submenu on submenu-hovered
+            then idle on Timer(submenu-open-delay)
+                do
+                    if !submenu.is-open
+                        submenu.show()
+            then idle on highlight-moved
+            then idle on submenu-kept
+
+────────────────────
+for popup on opened when arrival
+
+for item in items
+    item.refresh-command-state()
+owner-button?.is-open = true
+
+────────────────────
+for reason on dismissed when arrival
+
+set-highlight(null)
+owner-button?.is-open = false
+
+────────────────────
+for event on key-press
+
+type-select-key(event)
+
+────────────────────
++ get parent-menu Menu?
+
+match? parent-popup
+    | menu Menu
+        menu
+
+────────────────────
++ do get root-menu Menu
+
+. cursor = this
+while cursor.parent-menu
+    cursor = cursor.parent-menu!
+= cursor
+
+────────────────────
++ get owner-item MenuItem?
+
+match? layout-parent
+    | item MenuItem
+        item
+
+────────────────────
++ do get items [MenuItem]
+
+. result [MenuItem]
+collect-menu-items(this, result)
+= result
+
+────────────────────
++ do highlight
+    - item MenuItem?
+    - from-pointer = false
+
+parent-menu?.keep-submenu-open(owner-item)
+=? if item as Pointer? == highlighted as Pointer?
+. previous = highlighted
+set-highlight(item)
+highlight-moved <- true
+. entered = item?.submenu
+if entered && entered.is-open
+    submenu-kept <- entered
+else if entered && from-pointer && item!.is-enabled
+    submenu-hovered <- entered
+. left = previous?.submenu
+if left && left.is-open
+    if from-pointer
+        submenu-left <- left
+    else
+        left.dismiss()
+if item
+    ensure-visible(item)
+
+────────────────────
++ do keep-submenu-open
+    - item MenuItem?
+
+=? if !item
+. kept = item.submenu
+if kept
+    submenu-kept <- kept
+if highlighted as Pointer? != item as Pointer?
+    set-highlight(item)
+parent-menu?.keep-submenu-open(owner-item)
+
+────────────────────
++ do move-highlight
+    - offset Int
+
+. candidates = enabled-items
+=? if candidates.length == 0
+. next = ListCursor(candidates.length, highlighted-index(candidates)).wrapped(offset)
+highlight(candidates[next!])
+
+────────────────────
++ do highlight-edge
+    - last Bool
+
+. candidates = enabled-items
+=? if candidates.length == 0
+highlight(if last then candidates[candidates.length - 1] else candidates[0])
+
+────────────────────
++ do activate-highlighted
+
+highlighted?.activate()
+
+────────────────────
++ do move-right
+
+. item = highlighted
+if item && item.submenu && item.is-enabled
+    open-submenu(item)
+    =
+root-menu.owner-bar-item?.move-bar(1)
+
+────────────────────
++ do move-left
+
+if parent-menu
+    dismiss(DismissReason.escape)
+    =
+root-menu.owner-bar-item?.move-bar(-1)
+
+────────────────────
++ do open-submenu
+    - item MenuItem
+
+. submenu = item.submenu
+=? if !submenu
+submenu-kept <- submenu
+set-highlight(item)
+if !submenu.is-open
+    submenu.show()
+submenu.highlight-edge(false)
+
+────────────────────
++ do choose
+    - item MenuItem
+
+root-menu.dismiss(DismissReason.chosen)
+
+────────────────────
++ get owner-button MenuButton?
+
+match? layout-parent
+    | button MenuButton
+        button
+
+────────────────────
++ get owner-bar-item MenuBarItem?
+
+match? layout-parent
+    | item MenuBarItem
+        item
+
+────────────────────
+_ do type-select-key
+    - event KeyPressEvent
+
+. text = event.typed-text
+=? if !text || (text == " " && !type-select.is-active)
+. candidates = enabled-items
+. found = type-select.find(text, menu-item-titles(candidates), highlighted-index(candidates))
+if found != null
+    highlight(candidates[found])
+event.cancel()
+
+────────────────────
+_ do close-submenu
+    - submenu Menu
+
+if submenu.is-open
+    submenu.dismiss()
+
+────────────────────
+_ do set-highlight
+    - item MenuItem?
+
+highlighted?.is-highlighted = false
+highlighted = item
+item?.is-highlighted = true
+
+────────────────────
+_ get enabled-items
+
+** items
+?> each.is-enabled
+|> List
+
+────────────────────
+_ do highlighted-index Index?
+    - candidates [MenuItem]
+
+=? if !highlighted
+for index in 0 .. < candidates.length
+    =? index if candidates[index] as Pointer == highlighted as Pointer
+
+────────────────────
++ do native-menu Pointer
+
+if !native
+    native = C:yumiGuiMenuCreate("", gui-menu-native-event as GuiMenuCallback, this as Pointer)
+= native!
+
+────────────────────
++ do sync-native
+
+=? if !native
+for item in items
+    item.refresh-command-state()
+. entries = List'Box()
+collect-native-menu-entries(this, entries)
+native-entries = entries
+C:yumiGuiMenuRemoveAllItems(native!)
+for entry in entries
+    if entry is MenuItem
+        add-native-item(entry as MenuItem)
+    else
+        C:yumiGuiMenuAddSeparator(native!)
+
+────────────────────
++ do choose-native
+    - index Index
+
+=? if index >= native-entries.length
+. entry = native-entries[index]
+if entry is MenuItem
+    (entry as MenuItem).activate()
+
+────────────────────
++ do release-native
+
+. menu = native
+native = null
+native-entries = List'Box()
+if menu
+    C:yumiGuiMenuRelease(menu)
+
+────────────────────
+_ do add-native-item
+    - item MenuItem
+
+. key = item.native-key
+. characters = ""
+. key-kind U32
+. modifiers U64
+if key
+    do match? key.trigger
+        | KeyTrigger.characters(text)
+            characters = text
+        | KeyTrigger.key(pressed)
+            key-kind = key-to-native(pressed)
+    modifiers = pointer-modifiers-to-native(key.modifiers)
+. submenu = item.submenu
+C:yumiGuiMenuAddItem
+    - native!
+    - item.display-title
+    - characters
+    - key-kind
+    - modifiers
+    - item.is-enabled
+    - item.is-on
+    - menu-role-code(item.role)
+    - if submenu then submenu.native-menu() else Pointer()
+
+╌╌╌╌╌╌╌╌╌╌ is Popup ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+release-native()
+super.unmounted()
+
+────────────────────
++ get default-placement
+
+match anchor
+    | PopupAnchor.point
+        PointPlacement()
+    | PopupAnchor.pointer
+        PointPlacement()
+    ??
+        if owner-item then submenu-placement else AnchoredPlacement()
+
+.. submenu-placement = AnchoredPlacement(Side.right, AnchorPoint.start, 0, -6)
+
+━━━━━━━━━━━━━━━━━━━━
++ ContextMenu is Menu
+
+• This
+    context-trigger = true
+
+    when #is-leaving
+        animation = null
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuRole is Union
+
+| undo
+| redo
+| cut
+| copy
+| paste
+| paste-and-match-style
+| delete
+| select-all
+| find
+| settings
+| minimize
+| zoom
+| close-window
+| bring-all-to-front
+| toggle-full-screen
+| zoom-in
+| zoom-out
+| actual-size
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuItem is Box
+
++ title = ""
++ key KeyCombo?
++ command Command?
++ action Doer?
++ role MenuRole?
++ is-on = false
++ is-highlighted = false
++ has-submenu = false
+
+_ implied-title = ""
+_ implied-shortcut = ""
+
+. hover-changed < is-hover-within
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This • flex-row
+    <LucideCheck • icon menu-item-check
+        align-y = Alignment.center
+        display = if #is-on then Display.visible else Display.invisible
+    <Box • menu-item-icon icon-host flex-row
+        align-y = Alignment.center
+    + <Box leading • menu-item-leading
+        align-y = Alignment.center
+    <Label title-label
+        align-y = Alignment.center
+        text = if #title then #title else #implied-title
+    <Box • flex:1
+    + <Box trailing • menu-item-trailing flex-row
+        align-y = Alignment.center
+    <Label shortcut-label • menu-item-shortcut
+        align-y = Alignment.center
+        text-alignment = TextAlignment.right
+        text = if #key then #key.symbol-label else #implied-shortcut
+        display = if #key || #implied-shortcut.length > 0 then Display.visible else Display.hidden
+    <LucideChevronRight • icon menu-item-arrow
+        align-y = Alignment.center
+        display = if #has-submenu then Display.visible else Display.hidden
+
+────────────────────
+for event on click
+
+activate()
+event.cancel()
+
+────────────────────
++ do hover-changed
+
+if is-hover-within
+    menu?.highlight(this, true)
+
+────────────────────
++ get display-title String
+
+if title then title else implied-title
+
+────────────────────
++ get menu Menu?
+
+match layout-parent
+    | owner Menu
+        owner
+    ??
+        ancestor'Menu()
+
+────────────────────
++ get submenu
+
+first-child-menu(this)
+
+────────────────────
++ do activate
+
+=? if !is-effectively-enabled
+. owner = menu
+if submenu
+    owner?.open-submenu(this)
+    =
+if role
+    C:yumiGuiMenuPerformRole(menu-role-code(role))
+if command && command.is-available
+    command.run()
+. callback = action
+if callback
+    callback()
+        catch error Error
+            unhandled-error(error)
+owner?.choose(this)
+
+────────────────────
++ get native-key
+
+|? role
+    menu-role-key(role)
+|? key
+    key
+|? !source
+    null
+??
+    menu-command-key(this, source)
+
+.. source = command
+
+────────────────────
++ do refresh-command-state
+
+has-submenu = submenu != null
+. source = command
+if role
+    implied-title = menu-role-title(role)
+    implied-shortcut = menu-role-key(role!)?.symbol-label ?? ""
+else if source
+    implied-title = source.title
+    implied-shortcut = menu-command-shortcut(this, source)
+=? if !source
+is-enabled = source.is-available
+is-on = source.is-on
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuSeparator is Box
+
+────────────────────
+
+<This • flex-col
+    <Box • menu-separator-line
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuButton is Button
+
++ shows-arrow = true
++ is-open = false
+
+• This
+    • menu-button-arrow
+        align-y = Alignment.center
+
+    when #shows-arrow
+        • button-title
+            <LucideChevronDown (after) • menu-button-arrow
+
+────────────────────
++ This
+    - title = ""
+
+────────────────────
+
+<This
+    <KeyShortcut "Open menu"
+        key = .arrow-down
+        discoverable = false
+        action = => do open-menu()
+
+────────────────────
+for event on pointer-down
+
+if is-effectively-enabled
+    menu?.toggle-on-press(event)
+
+────────────────────
+for event on click
+
+if is-effectively-enabled
+    menu?.toggle-on-click(event)
+
+────────────────────
++ get menu
+
+first-child-menu(this)
+
+────────────────────
++ do open-menu
+
+. popup = menu
+=? if !is-effectively-enabled || !popup || popup.is-open
+popup.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuBar is Box
+
++ is-native = true
+
+_ native Pointer?
+
+────────────────────
+
+<This • flex-row
+    display = if #is-native then Display.hidden else Display.visible
+
+────────────────────
++ get bar-items
+
+** rendered-children
+?*> each as MenuBarItem if each is MenuBarItem
+|> List
+
+────────────────────
++ get has-open-menu Bool
+
+some(bar-items) • where each.is-open
+
+────────────────────
++ do move-from
+    - item MenuBarItem
+    - offset Int
+
+. items = bar-items
+=? if items.length == 0
+. index Int
+for candidate in 0 .. < items.length
+    if items[candidate] as Pointer == item as Pointer
+        index = candidate
+. next = (index + offset + items.length) % items.length
+items[next].open-menu()
+items[next].menu?.highlight-edge(false)
+
+────────────────────
++ get host-window
+
+host as Window if host
+
+.. host = window
+
+────────────────────
++ do sync-native
+
+=? if !native
+C:yumiGuiMenuRemoveAllItems(native)
+for item in bar-items
+    . menu = item.menu
+    if menu
+        C:yumiGuiMenuAddItem
+            - native!
+            - item.title
+            - ""
+            - 0
+            - 0
+            - item.is-enabled
+            - false
+            - 0
+            - menu.native-menu()
+
+────────────────────
++ do attach-native
+
+. host = host-window
+=? if !is-native || !host
+if !native
+    native = C:yumiGuiMenuBarCreate()
+sync-native()
+host.native-menu-bar = native
+if host.is-active
+    C:yumiGuiMenuBarInstall(native!)
+
+────────────────────
++ do detach-native
+
+. bar = native
+=? if !bar
+native = null
+. host = host-window
+if host && host.native-menu-bar == bar
+    host.native-menu-bar = null
+C:yumiGuiMenuBarUninstall(bar)
+C:yumiGuiMenuRelease(bar)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+super.mounted()
+attach-native()
+
+────────────────────
++ do unmounted
+
+detach-native()
+super.unmounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ MenuBarItem is MenuButton
+
+────────────────────
++ This
+    - title = ""
+
+shows-arrow = false
+
+────────────────────
+for event on pointer-move
+
+. bar = ancestor'MenuBar()
+if bar && !is-open && bar.has-open-menu
+    open-menu()
+
+────────────────────
++ do move-bar
+    - offset Int
+
+ancestor'MenuBar()?.move-from(this, offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ do first-child-menu Menu?
+    - node GuiNode
+
+. child = node.%first-child
+while child
+    . current = child
+    =? current as Menu if current is Menu
+    if current.is-gui-transparent
+        . nested = first-child-menu(current)
+        =? nested if nested
+    child = current.%next-sibling
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-native-menu-entries
+    - node GuiNode
+    - result List'Box
+
+. child = node.%first-child
+while child
+    . current = child
+    if current is MenuItem || current is MenuSeparator
+        if (current as Box).is-displayed
+            result += current as Box
+    else if current.is-gui-transparent || (current is Box && !(current is Popup))
+        collect-native-menu-entries(current, result)
+    child = current.%next-sibling
+
+━━━━━━━━━━━━━━━━━━━━
++ GuiMenuCallback is (*C) Void
+    - menu-pointer Pointer
+    - event-kind U32
+    - index U64
+
+━━━━━━━━━━━━━━━━━━━━
++ do gui-menu-native-event
+    - menu-pointer Pointer
+    - event-kind U32
+    - index U64
+
+. menu = gc-object-from-pointer'Menu(menu-pointer)
+if event-kind == 0
+    menu.sync-native()
+else
+    menu.choose-native(index as Index)
+
+━━━━━━━━━━━━━━━━━━━━
+_ menu-item-titles
+    - items [MenuItem]
+
+** items
+*> each.display-title
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ do collect-menu-items
+    - node GuiNode
+    - result [MenuItem]
+
+. child = node.%first-child
+while child
+    . current = child
+    if current is MenuItem
+        if (current as MenuItem).is-displayed
+            result += current as MenuItem
+    else if current.is-gui-transparent || (current is Box && !(current is Popup))
+        collect-menu-items(current, result)
+    child = current.%next-sibling
+
+━━━━━━━━━━━━━━━━━━━━
++ menu-command-shortcut
+    - item MenuItem
+    - command Command
+
+match item.window
+    | host Window
+        ", ".join • stream
+            ** host.registered-key-bindings
+            ?*> menu-binding-label(each, command)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do menu-command-key
+    - item MenuItem
+    - command Command
+
+. host = item.window
+=? if !host || !(host is Window)
+for binding in (host as Window).registered-key-bindings
+    . target = binding.command-target
+    if target && target.identity == command.identity && binding.key.trigger != KeyTrigger.none
+        = binding.key
+
+━━━━━━━━━━━━━━━━━━━━
+_ menu-binding-label
+    - binding KeyBinding
+    - command Command
+
+|? !target || target.identity != command.identity
+    null
+|? !label
+    null
+??
+    label
+
+.. target = binding.command-target
+.. label = binding.symbol-label
+
+━━━━━━━━━━━━━━━━━━━━
++ menu-role-title
+    - role MenuRole
+
+match role
+    | MenuRole.undo
+        "Undo"
+    | MenuRole.redo
+        "Redo"
+    | MenuRole.cut
+        "Cut"
+    | MenuRole.copy
+        "Copy"
+    | MenuRole.paste
+        "Paste"
+    | MenuRole.paste-and-match-style
+        "Paste and Match Style"
+    | MenuRole.delete
+        "Delete"
+    | MenuRole.select-all
+        "Select All"
+    | MenuRole.find
+        "Find…"
+    | MenuRole.settings
+        "Settings…"
+    | MenuRole.minimize
+        "Minimize"
+    | MenuRole.zoom
+        "Zoom"
+    | MenuRole.close-window
+        "Close Window"
+    | MenuRole.bring-all-to-front
+        "Bring All to Front"
+    | MenuRole.toggle-full-screen
+        "Enter Full Screen"
+    | MenuRole.zoom-in
+        "Zoom In"
+    | MenuRole.zoom-out
+        "Zoom Out"
+    | MenuRole.actual-size
+        "Actual Size"
+
+━━━━━━━━━━━━━━━━━━━━
++ menu-role-key KeyCombo?
+    - role MenuRole
+
+match? role
+    | MenuRole.undo
+        undo-key
+    | MenuRole.redo
+        redo-key
+    | MenuRole.cut
+        cut-key
+    | MenuRole.copy
+        copy-key
+    | MenuRole.paste
+        paste-key
+    | MenuRole.paste-and-match-style
+        KeyCombo("Option+Shift+Cmd+V")
+    | MenuRole.select-all
+        KeyCombo("Cmd+A")
+    | MenuRole.find
+        KeyCombo("Cmd+F")
+    | MenuRole.settings
+        KeyCombo("Cmd+,")
+    | MenuRole.minimize
+        KeyCombo("Cmd+M")
+    | MenuRole.close-window
+        KeyCombo("Cmd+W")
+    | MenuRole.toggle-full-screen
+        KeyCombo("Ctrl+Cmd+F")
+    | MenuRole.zoom-in
+        KeyModifier.command + "="
+    | MenuRole.zoom-out
+        KeyModifier.command + "-"
+    | MenuRole.actual-size
+        KeyModifier.command + "0"
+
+━━━━━━━━━━━━━━━━━━━━
+_ menu-role-code U32
+    - role MenuRole?
+
+match role
+    | MenuRole.undo
+        1
+    | MenuRole.redo
+        2
+    | MenuRole.cut
+        3
+    | MenuRole.copy
+        4
+    | MenuRole.paste
+        5
+    | MenuRole.select-all
+        6
+    | MenuRole.minimize
+        7
+    | MenuRole.zoom
+        8
+    | MenuRole.close-window
+        9
+    | MenuRole.bring-all-to-front
+        10
+    | MenuRole.toggle-full-screen
+        11
+    | MenuRole.delete
+        12
+    | MenuRole.paste-and-match-style
+        13
+    | MenuRole.zoom-in
+        14
+    | MenuRole.zoom-out
+        15
+    | MenuRole.actual-size
+        16
+    ??
+        0

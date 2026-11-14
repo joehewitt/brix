@@ -1,0 +1,92 @@
+./blobs
+./changes
+./command
+./log
+./status
+./untracked
+/os/file
+
++ git-null-id = "0000000000000000000000000000000000000000"
+
+━━━━━━━━━━━━━━━━━━━━
++ GitChangeSet is Tuple
+
++ directory String
++ changes [GitFileChange]
++ reads-worktree Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-commit-changes ?! Error
+    - directory String
+    - commit GitCommit
+
+= GitChangeSet(directory, git-changed-files(directory, commit.first-parent, commit.id), false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-worktree-changes ?! Error
+    - directory String
+    - since String? = null
+
+. status = git-status(directory)
+. base = since ?? (if status.head.length > 0 then status.head else git-empty-tree)
+= GitChangeSet(directory, git-worktree-file-changes(directory, status, base), true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-worktree-file-changes ?! Error
+    - directory String
+    - status GitStatus
+    - base String
+
+. untracked = Map'String'Bool()
+for entry in status.entries
+    if entry.kind == GitStatusKind.untracked
+        untracked[entry.path] = true
+. index = use GitUntrackedIndex(directory, status)
+. changes = git-changed-files(directory, base, "", index.path)
+= List'GitFileChange
+    ** changes
+    *>
+        |? each.status == "A" && untracked has each.path
+            GitFileChange(each.old-mode, each.new-mode, each.old-id, each.new-id, "?", each.path)
+        ??
+            each
+
+━━━━━━━━━━━━━━━━━━━━
++ GitChangeBytes is Tuple
+
++ old Byte[]
++ new Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-change-bytes GitChangeBytes ?! Error
+    - set GitChangeSet
+    - change GitFileChange
+    - blobs GitBlobReader
+
+. old = git-object-bytes(blobs, change.old-id, change.old-mode)
+. new =
+    |? set.reads-worktree
+        git-worktree-bytes(set.directory, change.path, change.new-mode)
+    ??
+        git-object-bytes(blobs, change.new-id, change.new-mode)
+= GitChangeBytes(old, new)
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-worktree-bytes Byte[] ?! Error
+    - directory String
+    - path String
+    - mode String = "100644"
+
+=? Array'Byte() if !git-is-regular-mode(mode)
+. input = use File'Byte("$directory/$path")
+. bytes Byte[] = input
+= bytes
+
+━━━━━━━━━━━━━━━━━━━━
+_ do git-object-bytes ?! Error
+    - blobs GitBlobReader
+    - id String
+    - mode String
+
+=? Array'Byte() if !git-is-regular-mode(mode) || id == git-null-id
+= blobs.read(id) ?? Array'Byte()

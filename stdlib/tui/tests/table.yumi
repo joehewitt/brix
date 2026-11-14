@@ -1,0 +1,197 @@
+/core/markup
+/math
+/test
+/tui
+/tui/box
+/tui/colors
+/tui/primitives
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("TUI Table")
+cases = table-layout-tests(cases)
+cases = cases.then("TUI Table Sort Selection", table-sort-selection-tests)
+cases = cases.then("TUI Table Selection Replacement", table-selection-replacement-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do table-layout-tests TestCase
+    - t TestCase
+
+. host = mounted-table-test-host()
+
+t = t.expect("metrics width", 24, host.table.metrics-width)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do table-sort-selection-tests TestCase
+    - t TestCase
+
+. host = mounted-table-test-host()
+. before-sort = host.table.ordered-row-boxes()
+. selected-widget = before-sort[0]
+catch host.table.select-row(selected-widget)
+
+. score = host.table.column-for-id("score")
+host.table.toggle-sort(score!)
+host.markup-batch-queue.checkpoint()
+host.markup-batch-queue.checkpoint()
+host.update-layout()
+
+. ascending = host.table.ordered-row-boxes()
+t.check("sort preserves selected row state", ascending[1].is-selected)
+t.expect("sort changes only display index", 1, host.table.selected-index ?? 99)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do table-selection-replacement-tests TestCase
+    - t TestCase
+
+. host = mounted-table-test-host()
+. selected-widget = host.table.ordered-row-boxes()[0]
+catch host.table.select-row(selected-widget)
+. score = host.table.column-for-id("score")
+host.table.toggle-sort(score!)
+host.markup-batch-queue.checkpoint()
+host.markup-batch-queue.checkpoint()
+host.table.toggle-sort(score!)
+host.markup-batch-queue.checkpoint()
+host.markup-batch-queue.checkpoint()
+
+. replacement-rows [DemoRecord]
+    * DemoRecord("b", 7, "Beta", 10)
+    * DemoRecord("d", 12, "Delta", 20)
+    * DemoRecord("c", 300, "Gamma", 30)
+host.table.rows = replacement-rows
+host.markup-batch-queue.checkpoint()
+host.markup-batch-queue.checkpoint()
+host.update-layout()
+
+. replaced = host.table.ordered-row-boxes()
+t.expect("replacement occupies old display index", "d", replaced[1].row-key ?? "")
+t.check("replacement at old display index is unselected", !replaced[1].is-selected)
+t.expect("removed selection clears selected key", "", host.table.selected-key ?? "")
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do mounted-table-test-host TableTestHost
+
+. host = TableTestHost()
+markup-mount-root(host, host)
+host.markup-batch-queue.checkpoint()
+host.markup-batch-queue.checkpoint()
+host.bounds = Rect(0, 0, 24, 4)
+host.update-layout()
+host.table.arrange-outer-bounds(Rect(0, 0, 24, 4))
+host.table.update-layout()
+= host
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-rows [DemoRecord]
+
+* DemoRecord("a", 42, "Alpha", 20)
+* DemoRecord("b", 7, "Beta", 10)
+* DemoRecord("c", 300, "Gamma", 30)
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-columns [TableColumn'DemoRecord]
+
+* table-test-column("pid", "PID", TableWidth.fixed(4), TableAlign.right, table-test-pid)
+* table-test-column("name", "Name", TableWidth.flex(1), TableAlign.left, table-test-name)
+* table-test-sort-column
+    - "score"
+    - "Score"
+    - TableWidth.auto
+    - TableAlign.right
+    - table-test-score
+    - table-test-score-key
+
+━━━━━━━━━━━━━━━━━━━━
++ do table-test-column TableColumn'DemoRecord
+    - id String
+    - title String
+    - width TableWidth
+    - align TableAlign
+    - value TableTextProvider'DemoRecord
+
+. column = TableColumn'DemoRecord(title)
+column.id = id
+column.column-width = width
+column.align = align
+column.value = value
+= column
+
+━━━━━━━━━━━━━━━━━━━━
++ do table-test-sort-column TableColumn'DemoRecord
+    - id String
+    - title String
+    - width TableWidth
+    - align TableAlign
+    - value TableTextProvider'DemoRecord
+    - sort-key TableTextProvider'DemoRecord
+
+. column = table-test-column(id, title, width, align, value)
+column.sort-key = sort-key
+= column
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-key String
+    - row DemoRecord
+
+row.id
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-pid String
+    - row DemoRecord
+
+"${row.pid}"
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-name String
+    - row DemoRecord
+
+row.name
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-score String
+    - row DemoRecord
+
+"${row.score}"
+
+━━━━━━━━━━━━━━━━━━━━
++ table-test-score-key String
+    - row DemoRecord
+
+"${row.score}"
+
+━━━━━━━━━━━━━━━━━━━━
++ TableTestHost is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col
+    <Table'DemoRecord table • flex:1
+        columns = table-test-columns()
+        rows = table-test-rows()
+        key-builder = table-test-key
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoRecord is Tuple
+
++ id String
++ pid Int
++ name String
++ score Int

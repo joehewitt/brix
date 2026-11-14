@@ -1,0 +1,180 @@
+`benchmark.meta description: Incremental retained bytes per mounted Label over a plain Box at 1k/10k/100k with regression slope.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/primitives
+/gui/box
+/gui/label
+
+_ measured-mounted Size = 0
+_ measured-laidout Size = 0
+_ measured-objects Size = 0
+_ measured-boxes Size = 0
+_ measured-lane0 Size = 0
+_ measured-lane1 Size = 0
+_ measured-lane2 Size = 0
+_ measured-lane3 Size = 0
+
+. xs [F64]
+. mounted-ys [F64]
+. laidout-ys [F64]
+. checksum Size = 0
+
+measure-variant("plain", 1000)
+. plain-mounted-1k = measured-mounted
+. plain-laidout-1k = measured-laidout
+. plain-objects-1k = measured-objects
+checksum += measured-boxes
+measure-variant("label", 1000)
+. label-mounted-1k = measured-mounted
+. label-laidout-1k = measured-laidout
+. label-objects-1k = measured-objects
+checksum += measured-boxes
+. diff-mounted-1k = label-mounted-1k - plain-mounted-1k
+. diff-laidout-1k = label-laidout-1k - plain-laidout-1k
+. diff-objects-1k = label-objects-1k - plain-objects-1k
+//gui.bench.memory.mounted-bytes-1k += diff-mounted-1k
+//gui.bench.memory.objects-1k += diff-objects-1k
+xs += 1000.0
+mounted-ys += diff-mounted-1k as F64
+laidout-ys += diff-laidout-1k as F64
+
+measure-variant("plain", 10000)
+. plain-mounted-10k = measured-mounted
+. plain-laidout-10k = measured-laidout
+. plain-objects-10k = measured-objects
+checksum += measured-boxes
+measure-variant("label", 10000)
+. label-mounted-10k = measured-mounted
+. label-laidout-10k = measured-laidout
+. label-objects-10k = measured-objects
+checksum += measured-boxes
+. diff-mounted-10k = label-mounted-10k - plain-mounted-10k
+. diff-laidout-10k = label-laidout-10k - plain-laidout-10k
+. diff-objects-10k = label-objects-10k - plain-objects-10k
+//gui.bench.memory.mounted-bytes-10k += diff-mounted-10k
+//gui.bench.memory.objects-10k += diff-objects-10k
+xs += 10000.0
+mounted-ys += diff-mounted-10k as F64
+laidout-ys += diff-laidout-10k as F64
+
+measure-variant("plain", 100000)
+. plain-mounted-100k = measured-mounted
+. plain-laidout-100k = measured-laidout
+. plain-objects-100k = measured-objects
+checksum += measured-boxes
+measure-variant("label", 100000)
+. label-mounted-100k = measured-mounted
+. label-laidout-100k = measured-laidout
+. label-objects-100k = measured-objects
+checksum += measured-boxes
+. diff-mounted-100k = label-mounted-100k - plain-mounted-100k
+. diff-laidout-100k = label-laidout-100k - plain-laidout-100k
+. diff-objects-100k = label-objects-100k - plain-objects-100k
+//gui.bench.memory.mounted-bytes-100k += diff-mounted-100k
+//gui.bench.memory.objects-100k += diff-objects-100k
+xs += 100000.0
+mounted-ys += diff-mounted-100k as F64
+laidout-ys += diff-laidout-100k as F64
+
+checksum += measured-lane3
+//gui.bench.memory.lane0-delta += measured-lane0
+//gui.bench.memory.lane1-delta += measured-lane1
+//gui.bench.memory.lane2-delta += measured-lane2
+//gui.bench.memory.lane3-delta += measured-lane3
+
+. label-slope = slope-of(xs, mounted-ys)
+. label-slope-bytes = label-slope as Size
+//gui.bench.memory.label-slope-bytes += label-slope-bytes
+
+-- "bench-result gui/memory-slope-label checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle-live Size
+
+C:yumiCollect()
+C:yumiCollect()
+= C:yumiGCLiveByteCount() as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do slope-of F64
+    - xs [F64]
+    - ys [F64]
+
+. n = xs.length as F64
+. sum-x F64
+. sum-y F64
+. sum-xy F64
+. sum-xx F64
+for index in 0 .. < xs.length
+    . x = xs[index]
+    . y = ys[index]
+    sum-x += x
+    sum-y += y
+    sum-xy += x * y
+    sum-xx += x * x
+= (n * sum-xy - sum-x * sum-y) / (n * sum-xx - sum-x * sum-x)
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure-variant
+    - variant String
+    - cell-count Size
+
+. live0 = settle-live()
+. objects0 = C:yumiGCAllocatedObjectCount()
+. lane0-before = C:yumiGCObjectSidePayloadCount(0)
+. lane1-before = C:yumiGCObjectSidePayloadCount(1)
+. lane2-before = C:yumiGCObjectSidePayloadCount(2)
+. lane3-before = C:yumiGCObjectSidePayloadCount(3)
+
+. root = BenchRoot()
+markup-mount-root(root, root)
+. rows = cell-count / 100
+. total-boxes Size = 1
+for row-index in 0 .. < rows
+    if variant == "plain"
+        . row = PlainRow()
+        markup-append(root, row)
+        for cell-index in 0 .. < 100
+            markup-append(row, Box())
+        total-boxes += 101
+    else if variant == "label"
+        . row = PlainRow()
+        markup-append(root, row)
+        for cell-index in 0 .. < 100
+            . label = Label()
+            label.text = "cell $cell-index"
+            markup-append(row, label)
+        total-boxes += 101
+
+root.markup-batch-queue.checkpoint()
+. live-mounted = settle-live()
+root.layout(Rect(0, 0, 1200, 800))
+. live-laid-out = settle-live()
+
+measured-mounted = live-mounted - live0
+measured-laidout = live-laid-out - live0
+measured-objects = (C:yumiGCAllocatedObjectCount() - objects0) as Size
+measured-boxes = total-boxes
+measured-lane0 = (C:yumiGCObjectSidePayloadCount(0) - lane0-before) as Size
+measured-lane1 = (C:yumiGCObjectSidePayloadCount(1) - lane1-before) as Size
+measured-lane2 = (C:yumiGCObjectSidePayloadCount(2) - lane2-before) as Size
+measured-lane3 = (C:yumiGCObjectSidePayloadCount(3) - lane3-before) as Size
+
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ PlainRow is Box

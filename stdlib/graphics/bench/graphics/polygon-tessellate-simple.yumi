@@ -1,0 +1,27 @@
+`benchmark.meta description: Tessellates simple closed polygons without self-intersections.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/point
+/graphics/polygon
+/graphics/shapes
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 700
+    . sides = 5 + (pass % 9)
+    . path = polygon(sides as U32, 80.0 + (pass % 17), Point(100, 100))
+    . poly = Polygon(path, 4)
+    . pieces = poly.tessellate()
+    checksum += pieces.length + numeric-check(poly.area)
+    for piece in pieces
+        checksum += piece.points.length + numeric-check(piece.area)
+
+-- "bench-result graphics/polygon-tessellate-simple checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Float
+
+(abs(value * 1000) as Size) % 1000003

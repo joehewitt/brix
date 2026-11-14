@@ -1,0 +1,3660 @@
+./ast-builder
+./ast-nodes
+./error
+./operator
+./row-range
+/core/arena
+/core/array-builder
+/core/parsing
+/stream/aggregate
+
++ DoBody is (body SyntaxId, annotations ImmutableArray'Atom)
++ DoAnnotationMasks is (effects CompilationEffect, features CompilerFeature)
++ ContainerPartial is (container SyntaxId, is-subscriber Bool)
++ ProbeKeySelector is (object SyntaxId?, key Atom)
++ AssociatedTypeMember is (name Atom, args ImmutableArray'SyntaxId)
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyAssignmentKind is U8
+
+| property-assignment-getter
+| property-assignment-lazy
+| property-assignment-immediate
+
+━━━━━━━━━━━━━━━━━━━━
++ ReturnOperator is U8
+
+| return-operator-return
+| return-operator-yield
+| return-operator-yield-all
+
+━━━━━━━━━━━━━━━━━━━━
++ BlockStringComponent is Union
+
+| syntax(id SyntaxId)
+| literal(text String)
+
+━━━━━━━━━━━━━━━━━━━━
++ ArgumentDeclarationParts is Tuple
+
++ type-id SyntaxId
++ default-value SyntaxId?
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyAssignmentParts is Tuple
+
++ kind PropertyAssignmentKind
++ value SyntaxId
++ imperative Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FunctionKey is Tuple
+
++ names ImmutableArray'Atom
++ type-args ImmutableArray'SyntaxId
++ returns SyntaxId?
++ pattern SyntaxId?
++ args ImmutableArray'SyntaxId?
+
+────────────────────
++ This
+    - names ImmutableArray'Atom
+    - type-args ImmutableArray'SyntaxId
+    - returns SyntaxId?
+    - pattern SyntaxId? = null
+    - args ImmutableArray'SyntaxId? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassHeader is Tuple
+
++ location MatchLocation
++ access Access
++ name Atom
++ type-args ImmutableArray'SyntaxId
++ aliases ImmutableArray'Atom?
++ inherits ImmutableArray'SyntaxId?
++ header ImmutableArray'ArgumentVariant?
+
+━━━━━━━━━━━━━━━━━━━━
++ SheetDerivation is Tuple
+
++ base SyntaxId
++ tags ImmutableArray'Atom?
+
+━━━━━━━━━━━━━━━━━━━━
++ YumiPiece is Tuple
+
++ location MatchLocation
++ items ImmutableArray'SyntaxId
++ header ClassHeader? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do detached-piece YumiPiece
+    - piece YumiPiece
+
+=? YumiPiece(piece.location, detached(piece.items)) if !piece.header
+. header = piece.header
+. aliases = detached(header.aliases) if header.aliases
+. inherits = detached(header.inherits) if header.inherits
+. variants = detached(header.header) if header.header
+. detached-header = ClassHeader
+    - header.location
+    - header.access
+    - header.name
+    - detached(header.type-args)
+    - aliases
+    - inherits
+    - variants
+= YumiPiece(piece.location, detached(piece.items), detached-header)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do detached'Item ImmutableArray'Item
+    - items ImmutableArray'Item
+
+. copy = ArrayBuilder'Item()
+copy.reserve(items.length)
+for item in items
+    copy.append(item)
+= copy.finish-immutable()
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleRuleHeader is Tuple
+
+` The line that names a style rule: where it is written, its name, what it takes, the rules it
+` applies, and whether it is written `• own`, to reach only the content of an element's own
+` class. A rule is located by this line, not by its body.
+
++ location MatchLocation
++ name Atom
++ arg SyntaxId?
++ rules ImmutableArray'SyntaxId?
++ is-own Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ StateMachineHeader is Tuple
+
++ location MatchLocation
++ access Access
++ decorations ImmutableArray'SyntaxId
++ left SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ WheneverTrigger is Tuple
+
++ kind Atom
++ target-type SyntaxId
++ expr SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ArgumentVariant is Union
+
+| param-constraint(value SyntaxId)
+| param-assignment(value SyntaxId)
+| argument-decl(value SyntaxId)
+| implements-declaration(value SyntaxId)
+| using-declaration(value SyntaxId)
+| iterator-header(location MatchLocation, loop SyntaxId)
+
+━━━━━━━━━━━━━━━━━━━━
++ StreamMatchRight is Union
+
+| assignment(value SyntaxId, body SyntaxId?)
+| iterator(loop SyntaxId, body SyntaxId?)
+| expression(body SyntaxId, rollback Bool)
+
+━━━━━━━━━━━━━━━━━━━━
++ AnonymousCaseTraversal is Tuple
+
++ first SyntaxId
++ second SyntaxId
++ third SyntaxId
++ fourth SyntaxId
++ first-range RowRange'SyntaxId
++ second-range RowRange'SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxPartial is Union
+
+| assign-partial(op Operator, is-optional Bool, right SyntaxId)
+| iterator-partial(loop SyntaxId)
+| iterator-stream-partial(loop SyntaxId, body SyntaxId?)
+| range-to-partial(right SyntaxId, increment SyntaxId?)
+| range-partial(op Operator, right SyntaxId, increment SyntaxId?)
+| get-partial(name Atom, is-tracked Bool, is-optional Bool, is-loop Bool)
+| style-read-partial(name Atom, is-optional Bool)
+| markup-read-partial(name Atom, is-optional Bool)
+| index-partial(index SyntaxId, is-optional Bool, stop MatchLocation)
+| force-partial(stop MatchLocation)
+| call-partial(params ImmutableArray'SyntaxId, args ImmutableArray'SyntaxId, is-curried Bool, stop MatchLocation)
+| args-partial(args ImmutableArray'SyntaxId, is-curried Bool)
+| assign-stream-partial(right SyntaxId, body SyntaxId?)
+| expr-partial(body SyntaxId, rollback Bool)
+| structure-partial(pattern SyntaxId)
+| stream-partial(pattern SyntaxId)
+| iterator-structure-expr-partial(loop SyntaxId)
+| iterator-stream-expr-partial(loop SyntaxId)
+| property-partial(kind PropertyAssignmentKind, expr SyntaxId)
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeShorthandSuffix is Union
+
+| type-suffix-optional(name Atom)
+| type-suffix-optional-buffer(optional-name Atom, buffer-name Atom)
+| type-suffix-buffer(name Atom)
+| type-suffix-channel(name Atom)
+
+━━━━━━━━━━━━━━━━━━━━
++ ComposeExpressionTail is Tuple
+
++ loc MatchLocation
++ op Operator
++ right SyntaxId
++ is-optional Bool
++ write-name Atom?
+
+────────────────────
++ This
+    - loc
+    - op Operator
+    - right SyntaxId
+    - is-optional Bool
+    - write-name String?
+
+━━━━━━━━━━━━━━━━━━━━
++ do hex-integer-value String
+    - digits String
+
+` The value of hexadecimal digits in decimal, however many digits there are.
+. places [U32]
+places += 0
+for char in digits
+    . digit = 0u32
+    if char >= '0' && char <= '9'
+        digit = char - '0'
+    else if char >= 'a' && char <= 'f'
+        digit = ((char - 'a') as U32) + 10
+    else if char >= 'A' && char <= 'F'
+        digit = ((char - 'A') as U32) + 10
+    . carry = digit
+    for place in 0 .. < places.length
+        . scaled = places[place] * 16 + carry
+        places[place] = scaled % 10
+        carry = scaled / 10
+    while carry != 0
+        places += carry % 10
+        carry = carry / 10
+. shown = ""
+for offset in 0 .. < places.length
+    shown += "${places[places.length - 1 - offset]}"
+= shown
+
+━━━━━━━━━━━━━━━━━━━━
++ hex-integer-unit Atom
+    - tree ASTBuilder
+    - digits String
+
+|? digits.length <= 2
+    tree.atom("u8")
+|? digits.length <= 4
+    tree.atom("u16")
+|? digits.length <= 8
+    tree.atom("u32")
+??
+    tree.atom("u64")
+
+━━━━━━━━━━━━━━━━━━━━
++ character-literal-value ~ Char String ?! YumiSyntaxError
+    - char Char
+
+~ ""
+    character-literal-string(location, char)
+
+━━━━━━━━━━━━━━━━━━━━
++ negative-number-value ~ Char String?
+    - tree ASTBuilder
+    - operators ImmutableArray'Operator
+    - syntax SyntaxId
+
+~ ""
+    negative-number-string(tree, operators, syntax)
+
+━━━━━━━━━━━━━━━━━━━━
++ compose-write-name ~ Char Atom?
+    - op Operator
+
+~ ""
+    op as String if op == .write-op
+
+━━━━━━━━━━━━━━━━━━━━
++ bool-argument-name ~ Char Atom
+    - ability String
+    - name Atom
+
+~ ""
+    "${ability}-${name.text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ bool-argument-value ~ Char Atom
+    - is-not Bool
+
+~ ""
+    if is-not then "false" else "true"
+
+━━━━━━━━━━━━━━━━━━━━
++ unescape
+    - c
+
+match c
+    |= "t"
+        "\t"
+    |= "n"
+        "\n"
+    |= "r"
+        "\r"
+    |= "b"
+        "\b"
+    |= "f"
+        "\f"
+    |= "v"
+        "\v"
+    |= "/"
+        "/"
+    |= "\\"
+        "\\"
+    |= "$"
+        "$"
+    |= "\""
+        "\""
+    |= "'"
+        "'"
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ character-literal-string String ?! YumiSyntaxError
+    - loc MatchLocation
+    - char Char
+
+?! YumiSyntaxError(loc, "Character literal must contain a valid Unicode scalar")
+    if value >= 55296 && value <= 57343
+"$value"
+
+.. value = char as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ negative-number-string String?
+    - tree ASTBuilder
+    - operators ImmutableArray'Operator
+    - syntax SyntaxId
+
+match? tree.nodes[syntax]
+    | .node-integer-syntax(number)
+        negated-number-text(number.value, count) if count
+    | .node-float-syntax(number)
+        negated-number-text(number.value, count) if count
+
+.. count = trailing-negative-count(operators)
+
+━━━━━━━━━━━━━━━━━━━━
++ negated-number-text String
+    - text String
+    - count Size
+
+` The text of a number under `count` minus signs. A number that already has one loses it to
+` the next, so an even count leaves a number with no sign.
+if total % 2 == 1 then "-" ++ digits else digits
+
+.. signed = text.length != 0 && text[0] == '-'
+.. digits = if signed then text[1 .. < text.length] else text
+.. total = if signed then count + 1 else count
+
+━━━━━━━━━━━━━━━━━━━━
++ do escaped-text String
+    - tree ASTBuilder
+    - chars ImmutableArray'Char
+
+` The text of the characters a literal writes with escapes. A copy an arena makes of
+` characters stops at a NUL, so text that holds one is made whole first and copied after.
+for char in chars
+    if char == 0 as Char
+        = tree.store-string(chars.slice-string())
+= chars.slice-string(tree.text-arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ do concat-string-parts SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - parts ImmutableArray'SyntaxId
+
+. has-expression = false
+. has-text = false
+for part in parts
+    do match? tree.nodes[part]
+        | .node-string-syntax(row)
+            has-text = has-text || row.text.length > 0
+        ??
+            has-expression = true
+. result SyntaxId?
+if has-expression && !has-text
+    result = tree.append(ASTString(loc, tree.store-string("")))
+for part in parts
+    if is-empty-string(tree, part)
+        continue
+    . piece = relocated-string(tree, loc, part)
+    do match result
+        | previous SyntaxId
+            result = tree.append(ASTBinaryExpression(loc, .concat-string-op, previous, piece))
+        ??
+            result = piece
+= result ?? tree.append(ASTString(loc, tree.store-string("")))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-empty-string Bool
+    - tree ASTBuilder
+    - part SyntaxId
+
+` A piece of text with no characters, which a line continuation alone leaves.
+do match? tree.nodes[part]
+    | .node-string-syntax(row)
+        = row.text.length == 0
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do relocated-get SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - expr SyntaxId
+
+do match? tree.nodes[expr]
+    | .node-get-expression
+        tree.nodes.loc[expr] = loc
+= expr
+
+━━━━━━━━━━━━━━━━━━━━
++ do relocated-string SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - part SyntaxId
+
+do match? tree.nodes[part]
+    | .node-string-syntax(row)
+        = tree.append(ASTString(loc, row.text))
+= part
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-block-string SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - parts ImmutableArray'BlockStringComponent
+
+. end = parts.length
+. final-text String?
+while end
+    do match parts[end - 1]
+        | .literal(text)
+            . trimmed = trim-block-string-end(text)
+            if trimmed.length
+                final-text = trimmed
+                break
+            end -= 1
+        ??
+            break
+
+. has-expression = false
+. has-text = false
+for index in 0 .. < end
+    do match parts[index]
+        | .syntax
+            has-expression = true
+        | .literal(text)
+            has-text = has-text || text.length > 0
+
+. result SyntaxId?
+if has-expression && !has-text
+    result = tree.append(ASTString(loc, tree.store-string("")))
+
+for index in 0 .. < end
+    . node = match parts[index]
+        | .syntax(id)
+            id
+        | .literal(value)
+            tree.append(ASTString(loc, tree.store-string(text))) if text.length
+                .. text = if final-text && index == end - 1 then final-text else value
+    if node
+        do match result
+            | previous SyntaxId
+                result = tree.append(ASTBinaryExpression(loc, .concat-string-op, previous, node))
+            ??
+                result = node
+
+= result ?? tree.append(ASTString(loc, tree.store-string("")))
+
+━━━━━━━━━━━━━━━━━━━━
++ do trim-block-string-end String
+    - text String
+
+. end = text.length
+while end && is-block-string-end-whitespace(text[end - 1])
+    end -= 1
+= text[0 .. < end]
+
+━━━━━━━━━━━━━━━━━━━━
++ is-block-string-end-whitespace Bool
+    - char Char
+
+match char as U32
+    |= 9u32
+        true
+    |= 10u32
+        true
+    |= 11u32
+        true
+    |= 12u32
+        true
+    |= 13u32
+        true
+    |= 32u32
+        true
+    |= 160u32
+        true
+    |= 5760u32
+        true
+    |? it >= 8192 && it <= 8202
+        true
+    |= 8232u32
+        true
+    |= 8233u32
+        true
+    |= 8239u32
+        true
+    |= 8287u32
+        true
+    |= 12288u32
+        true
+    |= 65279u32
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do strip-numeric-separators String
+    - text String
+
+. has-separators = false
+for c in text
+    if (c as U32) == 39
+        has-separators = true
+        break
+
+=? text if !has-separators
+
+. stripped = ""
+for c in text
+    if (c as U32) != 39
+        stripped += c
+
+= stripped
+
+━━━━━━━━━━━━━━━━━━━━
++ do auto-call SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - location
+    - expr
+    - params
+    - args
+    - is-curried
+
+=? expr if !args || !args.length
+
+refuse-repeated-labels(tree, args)
+. result = match tree.nodes[expr]
+    | .node-call-expression(call)
+        . callable = call.callable
+        . curried = call.is-curried
+        . existing-params = call.params
+        . existing-args = call.args
+        . merged-params = store-auto-call-children(tree, existing-params, params)
+        . merged-args = store-auto-call-args(tree, existing-args, args)
+        . operands = tree.call-operands(merged-params, merged-args)
+        . merged-call = ASTCallExpression
+            - location
+            - callable
+            - operands
+            - merged-params.count as U8
+            - curried
+        tree.append(merged-call)
+    ??
+        . stored-params = tree.store-optional-children(params)
+        . stored-args = store-auto-call-args(tree, RowRange'SyntaxId(), args)
+        . created = expr
+        if stored-params.count || stored-args.count
+            . operands = tree.call-operands(stored-params, stored-args)
+            . param-count = stored-params.count
+            . call = ASTCallExpression(location, expr, operands, param-count as U8, is-curried)
+            created = tree.append(call)
+        else
+            tree.nodes.loc[expr] = location
+        created
+
+. outer-block = auto-call-outer-block(tree, params, args)
+if outer-block
+    result = auto-call-outer-block-expression(tree, location, result, outer-block)
+
+. catchers = store-auto-call-catchers(tree, args)
+for offset in 0 .. < catchers.count
+    . catcher = tree.children[catchers.start + offset]
+    . joined = tree.auto-join(result, catcher)
+    if !joined
+        ?! Panic("Call catch handler did not join")
+    result = joined
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do refuse-repeated-labels ?! YumiSyntaxError
+    - tree ASTBuilder
+    - args ImmutableArray'SyntaxId
+
+for offset in 0 .. < args.length
+    . arg = args[offset]
+    do match? tree.nodes[arg]
+        | .node-argument(later)
+            . name = later.name
+            if name
+                for earlier-offset in 0 .. < offset
+                    do match? tree.nodes[args[earlier-offset]]
+                        | .node-argument(earlier)
+                            if earlier.name == name
+                                reject-syntax(tree, tree.nodes.loc[arg], "\"${name.text}\" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in \"• where (some(each.kids) • where each > 2)\"")
+
+━━━━━━━━━━━━━━━━━━━━
++ do auto-call-outer-block SyntaxId
+    - tree ASTBuilder
+    - params
+    - args ImmutableArray'SyntaxId
+
+=? 0 if params && params.length
+
+. result SyntaxId = 0
+for arg in args
+    . node = tree.nodes[arg]
+    if node is .node-block
+        . block = match node
+            | .node-block(value)
+                value
+            ??
+                ASTBlock(MatchLocation(), RowRange'SyntaxId())
+        . has-outer-statements = auto-call-block-has-outer-statements(tree, block.body)
+        if has-outer-statements && !auto-call-block-has-body(tree, block.body)
+            result = arg
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do auto-call-block-has-outer-statements Bool
+    - tree ASTBuilder
+    - body RowRange'SyntaxId
+
+for child in tree.nodes[tree.child-ids(body)]
+    do match? child
+        | .node-declare(declaration)
+            =? true if declaration.is-lazy
+        | .node-assertion-syntax
+            = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do auto-call-block-has-body Bool
+    - tree ASTBuilder
+    - body RowRange'SyntaxId
+
+for child in tree.nodes[tree.child-ids(body)]
+    do match child
+        | .node-declare(declaration)
+            =? true if !declaration.is-lazy
+        | .node-list-syntax
+            continue
+        | .node-argument
+            continue
+        | .node-assertion-syntax
+            continue
+        | .node-catcher
+            continue
+        ??
+            = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do store-auto-call-args RowRange'SyntaxId
+    - tree ASTBuilder
+    - existing RowRange'SyntaxId
+    - args ImmutableArray'SyntaxId
+
+. start = tree.children.length
+for offset in 0 .. < existing.count
+    append-auto-call-child(tree, tree.children[existing.start + offset])
+
+for arg in args
+    if tree.nodes[arg] is .node-block
+        . block = match tree.nodes[arg]
+            | .node-block(value)
+                value
+            ??
+                ASTBlock(MatchLocation(), RowRange'SyntaxId())
+        for offset in 0 .. < block.body.count
+            . child = tree.children[block.body.start + offset]
+            if tree.nodes[child] is .node-list-syntax
+                . list = match tree.nodes[child]
+                    | .node-list-syntax(value)
+                        value
+                    ??
+                        ASTList(MatchLocation(), RowRange'SyntaxId())
+                for item-offset in 0 .. < list.items.count
+                    . item = tree.children[list.items.start + item-offset]
+                    . argument = tree.make-argument(tree.location(item), item, null, false)
+                    append-auto-call-child(tree, argument)
+            else if tree.nodes[child] is .node-argument
+                append-auto-call-child(tree, child)
+        if auto-call-block-has-body(tree, block.body)
+            . argument = tree.make-argument(tree.location(arg), arg, null, false)
+            append-auto-call-child(tree, argument)
+    else if tree.nodes[arg] is .node-argument
+        append-auto-call-child(tree, arg)
+    else
+        . argument = tree.make-argument(tree.location(arg), arg, null, false)
+        append-auto-call-child(tree, argument)
+
+=? RowRange'SyntaxId() if tree.children.length == start
+= RowRange'SyntaxId(start as U32, (tree.children.length - start) as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ do auto-call-outer-block-expression SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - expression SyntaxId
+    - block-id SyntaxId
+
+. block = match tree.nodes[block-id]
+    | .node-block(value)
+        value
+    ??
+        ASTBlock(MatchLocation(), RowRange'SyntaxId())
+
+. start = tree.children.length
+for offset in 0 .. < block.body.count
+    . child = tree.children[block.body.start + offset]
+    if tree.nodes[child] is .node-declare
+        . declaration = match tree.nodes[child]
+            | .node-declare(value)
+                value
+            ??
+                ASTDeclare(MatchLocation(), 0, 0, false, false, false)
+        if declaration.is-lazy
+            append-auto-call-child(tree, child)
+for offset in 0 .. < block.body.count
+    . child = tree.children[block.body.start + offset]
+    if tree.nodes[child] is .node-assertion-syntax
+        append-auto-call-child(tree, child)
+. it = tree.append(ASTIdentifier(location, tree.atom("it"), false))
+. capture = tree.append(ASTTypeCapture(location, it, 0))
+. it-declaration = tree.append(ASTDeclare(location, capture, expression, true, false, false, true))
+append-auto-call-child(tree, it-declaration)
+append-auto-call-child(tree, it)
+= tree.append
+    - ASTBlock(location, RowRange'SyntaxId(start as U32, (tree.children.length - start) as U32))
+
+━━━━━━━━━━━━━━━━━━━━
++ do store-auto-call-catchers RowRange'SyntaxId
+    - tree ASTBuilder
+    - args ImmutableArray'SyntaxId
+
+. start = tree.children.length
+for arg in args
+    if tree.nodes[arg] is .node-block
+        . block = match tree.nodes[arg]
+            | .node-block(value)
+                value
+            ??
+                ASTBlock(MatchLocation(), RowRange'SyntaxId())
+        for offset in 0 .. < block.body.count
+            . child = tree.children[block.body.start + offset]
+            if tree.nodes[child] is .node-catcher
+                append-auto-call-child(tree, child)
+
+=? RowRange'SyntaxId() if tree.children.length == start
+= RowRange'SyntaxId(start as U32, (tree.children.length - start) as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ do append-auto-call-child
+    - tree ASTBuilder
+    - child SyntaxId
+
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if tree.children.length >= U32.max
+tree.children.append(child)
+
+━━━━━━━━━━━━━━━━━━━━
++ do store-auto-call-children RowRange'SyntaxId
+    - tree ASTBuilder
+    - existing RowRange'SyntaxId
+    - additions ImmutableArray'SyntaxId?
+
+=? existing if !additions || !additions.length
+
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if tree.children.length > U32.max
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if existing.count > U32.max - tree.children.length
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if additions.length > U32.max - tree.children.length - existing.count
+
+. start = tree.children.length
+for offset in 0 .. < existing.count
+    tree.children.append(tree.children[existing.start + offset])
+for child in additions
+    tree.children.append(child)
+= RowRange'SyntaxId(start as U32, (existing.count + additions.length) as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ tuple-maybe SyntaxId
+    - tree ASTBuilder
+    - loc
+    - list ImmutableArray'SyntaxId
+
+match list
+    | [item]
+        item
+    ??
+        tree.append(ASTTuple(loc, tree.store-children(list)))
+
+━━━━━━━━━━━━━━━━━━━━
++ type-tuple-maybe SyntaxId
+    - tree ASTBuilder
+    - loc
+    - list ImmutableArray'SyntaxId
+
+match list
+    | [item]
+        item
+    ??
+        tree.append(ASTTypeTuple(loc, tree.store-children(list)))
+
+━━━━━━━━━━━━━━━━━━━━
++ scratch-array'Item Array'Item'ArenaBacking
+    - tree ASTBuilder
+    - capacity Size
+
+Array'Item'ArenaBacking(tree.pattern-collector-context, capacity)
+
+━━━━━━━━━━━━━━━━━━━━
++ scratch-items'Item ImmutableArray'Item
+    - items Array'Item'ArenaBacking
+    - size Size
+
+Array'Item(items.data, size).immutable
+
+━━━━━━━━━━━━━━━━━━━━
++ do true-optionals'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - list ImmutableArray'(Item?)
+    - head Item? = null
+
+. items = Array'Item'ArenaBacking
+    - tree.pattern-collector-context
+    - list.length + (if head then 1 else 0)
+. size Size = 0
+if head
+    items[size] = head
+    size += 1
+for item in list
+    if item
+        items[size] = item
+        size += 1
+= Array'Item(items.data, size).immutable
+
+━━━━━━━━━━━━━━━━━━━━
++ do store-stream-call-expressions RowRange'SyntaxId
+    - tree ASTBuilder
+    - variants ImmutableArray'SyntaxId
+
+. children = tree.children
+. start = children.length
+for variant in variants
+    . expression = match? tree.nodes[variant]
+        | .node-stream-call-expression-argument(argument)
+            argument.expression
+    if expression
+        tree.store-child(expression)
+= RowRange'SyntaxId(start as U32, (children.length - start) as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ do store-stream-call-collector-mappings RowRange'SyntaxId
+    - tree ASTBuilder
+    - variants ImmutableArray'SyntaxId
+
+. children = tree.children
+. start = children.length
+for variant in variants
+    if tree.nodes[variant] is .node-stream-collector-mapping
+        tree.store-child(variant)
+= RowRange'SyntaxId(start as U32, (children.length - start) as U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-stream-call SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - name Atom
+    - params ImmutableArray'SyntaxId
+    - arguments ImmutableArray'SyntaxId?
+
+tree.append(ASTStreamCall(loc, name, tree.store-children(params), store-stream-call-expressions(tree, variants), store-stream-call-collector-mappings(tree, variants)))
+    .. variants = arguments ?? ImmutableArray'SyntaxId()
+
+━━━━━━━━━━━━━━━━━━━━
++ markup-head-values (SyntaxId, SyntaxId)
+    - tree ASTBuilder
+    - head SyntaxId?
+
+|? head
+    match tree.nodes[head]
+        | .node-markup-head(row)
+            (row.id, row.slot-binding)
+        ??
+            (0, 0)
+??
+    (0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-property-declaration SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - access Access
+    - decorations ImmutableArray'SyntaxId
+    - left SyntaxId
+    - value PropertyAssignmentParts?
+
+match value
+    | parts PropertyAssignmentParts
+        match parts.kind
+            |= .property-assignment-getter
+                tree.append
+                    - ASTFunction
+                        - loc
+                        - access
+                        - tree.store-atoms(sequence-singleton'Atom(tree, tree.capture-name(left)))
+                        - 0
+                        - RowRange'SyntaxId()
+                        - RowRange'SyntaxId()
+                        - tree.capture-type(left)
+                        - RowRange'SyntaxId()
+                        - RowRange'SyntaxId()
+                        - RowRange'SyntaxId()
+                        - parts.value
+                        - CompilationEffect.none
+                        - parts.imperative
+                        - false
+                        - false
+                        - true
+                        - false
+                        - false
+                        - tree.store-property-decorations(decorations).annotations
+                        - left
+            ??
+                tree.append(ASTProperty(loc, access, left, marked-value, stored.decoration, parts.kind == .property-assignment-lazy, stored.annotations))
+                    .. marked-value = reject-unmarked-state-machine(tree, loc, parts.value)
+                    .. stored = tree.store-property-decorations(decorations)
+    ??
+        tree.append(ASTProperty(loc, access, left, 0, stored.decoration, false, stored.annotations))
+            .. stored = tree.store-property-decorations(decorations)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-c-constant SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - access Access
+    - symbol Atom
+    - value SyntaxId
+
+` A constant a C header defines, declared only by the module of the header and named by the C
+` name a module reads it by.
+make-property-declaration(tree, loc, access, ImmutableArray'SyntaxId(), left, parts)
+
+.. left = tree.append(ASTTypeCapture(loc, tree.append(ASTIdentifier(loc, named[0], false)), 0))
+.. named = c-declaration-name(tree, loc, symbol)
+.. parts = PropertyAssignmentParts(.property-assignment-immediate, value, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-state-machine-property SyntaxId
+    - tree ASTBuilder
+    - header StateMachineHeader
+    - body ImmutableArray'SyntaxId
+
+tree.append(ASTProperty(header.location, header.access, header.left, machine, stored.decoration, false, stored.annotations))
+    .. machine = tree.append(ASTStateMachine(header.location, tree.store-children(body)))
+    .. stored = tree.store-property-decorations(header.decorations)
+
+━━━━━━━━━━━━━━━━━━━━
++ reject-unmarked-state-machine SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - value SyntaxId
+
+if !is-unmarked then value else reject-syntax(tree, exclusive-end-location(loc), message)
+
+.. message = "A state machine declaration needs ~> after its name"
+.. is-unmarked = is-unmarked-state-machine(tree, value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-unmarked-state-machine Bool
+    - tree ASTBuilder
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-block(block) { block.body.count == 1 }
+        match tree.nodes[tree.children[block.body.start]]
+            | .node-state-machine
+                true
+            ??
+                false
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ make-stream-match-block SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - pattern SyntaxId
+    - right StreamMatchRight?
+
+match right
+    | resolved StreamMatchRight
+        match resolved
+            | .assignment(value, body)
+                tree.append(ASTMatchExpression(loc, value, stream-match, false))
+                    .. transformed = if body then tree.append(ASTStreamTransform(loc, pattern, body, false)) else pattern
+                    .. stream-match = tree.append(ASTStreamMatch(loc, transformed, true))
+            | .iterator(loop, body)
+                match tree.nodes[loop]
+                    | .node-loop-syntax(partial-loop)
+                        make-iterator-line(tree, loc, partial-loop.container, partial-loop.is-subscriber, null, stream-match, partial-loop.clause, null, null)
+                            .. transformed = if body then tree.append(ASTStreamTransform(loc, pattern, body, false)) else pattern
+                            .. stream-match = tree.append(ASTStreamMatch(loc, transformed))
+                    ?! Panic("Expected partial loop syntax")
+            | .expression(body, rollback)
+                tree.append(ASTStreamMatch(loc, transformed))
+                    .. transformed = tree.append(ASTStreamTransform(loc, pattern, body, rollback))
+    ??
+        tree.append(ASTStreamMatch(loc, pattern))
+
+━━━━━━━━━━━━━━━━━━━━
++ do syntax-optionals ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - first ImmutableArray'(SyntaxId?)
+    - second ImmutableArray'(SyntaxId?)
+
+. present = scratch-array'SyntaxId(tree, first.length + second.length)
+. size Size = 0
+for item in first
+    if item
+        present[size] = item
+        size += 1
+for item in second
+    if item
+        present[size] = item
+        size += 1
+= scratch-items(present, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sequence-singleton'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - item Item
+
+. sequence = scratch-array'Item(tree, 1)
+sequence[0] = item
+= scratch-items(sequence, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyframeLineKind is Union
+
+| keyframe-setting
+| keyframe-range
+| keyframe-track
+| keyframe-stop
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyframeLine
+
++ kind KeyframeLineKind
++ location MatchLocation
++ name Atom?
++ component Atom?
++ first SyntaxId
++ second SyntaxId
++ bullets ImmutableArray'SyntaxId
++ stops ImmutableArray'KeyframeLine
+
+────────────────────
++ This
+    - kind
+    - location
+    - name
+    - component
+    - first
+    - second
+    - bullets
+    - stops
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-keyframe-declaration SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - name Atom
+    - parameter SyntaxId?
+    - kind Atom
+    - duration SyntaxId
+    - lines ImmutableArray'KeyframeLine?
+
+. given = lines ?? ImmutableArray'KeyframeLine()
+. head-count Size = 1
+for line in given
+    if line.kind == .keyframe-setting
+        head-count += 1
+. head-args = scratch-array'SyntaxId(tree, head-count)
+head-args[0] = tree.make-argument(tree.location(duration), duration, null, false)
+. setting Size = 1
+for line in given
+    if line.kind == .keyframe-setting
+        head-args[setting] = tree.make-argument(line.location, line.first, line.name, false)
+        setting += 1
+. callee = tree.append(ASTIdentifier(location, kind, false))
+. chain = auto-call
+    - tree
+    - location
+    - callee
+    - ImmutableArray'SyntaxId()
+    - scratch-items(head-args, head-count)
+    - false
+for line in given
+    if line.kind == .keyframe-range
+        . property = tree.append
+            - ASTStylePropertyExpression(line.location, line.name!, line.component)
+        chain = keyframe-call(tree, line, chain, "range", [property, keyframe-end(tree, line, line.first), keyframe-end(tree, line, line.second)])
+    else if line.kind == .keyframe-track
+        . property = tree.append
+            - ASTStylePropertyExpression(line.location, line.name!, line.component)
+        chain = keyframe-call(tree, line, chain, "track", [property])
+        for stop in line.stops
+            . stopped = tree.append
+                - ASTStylePropertyExpression(stop.location, line.name!, line.component)
+            chain = keyframe-call(tree, stop, chain, "at", [stopped, stop.first, stop.second])
+    else if line.kind == .keyframe-stop
+        chain = keyframe-call(tree, line, chain, "at", [line.first, line.second])
+if parameter
+    . shape = make-closure(tree, location, false, sequence-singleton(tree, parameter), chain)
+    . shaper = tree.append(ASTIdentifier(location, tree.atom("style-shape"), false))
+    . shaped = sequence-singleton(tree, tree.make-argument(location, shape, null, false))
+    chain = auto-call(tree, location, shaper, ImmutableArray'SyntaxId(), shaped, false)
+. named = tree.append(ASTIdentifier(location, name, false))
+. left = tree.append(ASTTypeCapture(location, named, 0))
+= tree.append(ASTProperty(location, .public-access, left, chain, null, false, RowRange'Atom()))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do keyframe-end SyntaxId
+    - tree ASTBuilder
+    - line KeyframeLine
+    - end SyntaxId
+
+=? end if end != 0
+= tree.append(ASTIdentifier(line.location, tree.atom("null"), false))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do keyframe-call SyntaxId
+    - tree ASTBuilder
+    - line KeyframeLine
+    - chain SyntaxId
+    - member String
+    - values [SyntaxId]
+
+. args = scratch-array'SyntaxId(tree, values.length + line.bullets.length)
+for index in 0 .. < values.length
+    args[index] = tree.make-argument(line.location, values[index], null, false)
+for index in 0 .. < line.bullets.length
+    args[values.length + index] = line.bullets[index]
+. get = tree.append(ASTGetExpression(line.location, chain, tree.atom(member), false, false, false))
+= auto-call
+    - tree
+    - line.location
+    - get
+    - ImmutableArray'SyntaxId()
+    - scratch-items(args, values.length + line.bullets.length)
+    - false
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-shaped SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - shape SyntaxId
+    - arg SyntaxId
+
+. get = tree.append(ASTGetExpression(location, shape, tree.atom("bind"), false, false, false))
+. given = sequence-singleton(tree, tree.make-argument(tree.location(arg), arg, null, false))
+= auto-call(tree, location, get, ImmutableArray'SyntaxId(), given, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-style-rule SyntaxId
+    - tree ASTBuilder
+    - header StyleRuleHeader
+    - body SyntaxId
+
+. args ImmutableArray'SyntaxId? = null
+if header.arg
+    args = sequence-singleton(tree, header.arg)
+= tree.append
+    - ASTRule
+        - header.location
+        - header.name
+        - tree.store-optional-children(args)
+        - body
+        - tree.store-optional-children(header.rules)
+        - header.is-own
+
+━━━━━━━━━━━━━━━━━━━━
++ do sequence-pair'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - first Item
+    - second Item
+
+. sequence = scratch-array'Item(tree, 2)
+sequence[0] = first
+sequence[1] = second
+= scratch-items(sequence, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sequence-appending'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - items ImmutableArray'Item
+    - item Item
+
+. sequence = scratch-array'Item(tree, items.length + 1)
+for index in 0 .. < items.length
+    sequence[index] = items[index]
+sequence[items.length] = item
+= scratch-items(sequence, items.length + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sequence-prepending'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - item Item
+    - items ImmutableArray'Item
+
+. sequence = scratch-array'Item(tree, items.length + 1)
+sequence[0] = item
+for index in 0 .. < items.length
+    sequence[index + 1] = items[index]
+= scratch-items(sequence, items.length + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do arguments-from-expressions ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - loc
+    - expressions ImmutableArray'SyntaxId
+
+. arguments = scratch-array'SyntaxId(tree, expressions.length)
+for index in 0 .. < expressions.length
+    . expression = expressions[index]
+    arguments[index] = tree.make-argument(tree.location(expression), expression, null, false)
+= scratch-items(arguments, expressions.length)
+
+━━━━━━━━━━━━━━━━━━━━
++ reject-syntax SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - location MatchLocation
+    - message String
+
+?! YumiSyntaxError(location, message, tree.source, tree.source-path)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-class-declaration SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - header ClassHeader
+    - body ImmutableArray'SyntaxId?
+
+. inherited-types = header.inherits ?? ImmutableArray'SyntaxId()
+. base SyntaxId = 0
+. or-bases = RowRange'SyntaxId()
+if inherited-types.length == 1
+    base = inherited-types[0]
+else if inherited-types.length > 1
+    base = tree.append(ASTTypeIdentifier(location, tree.atom("Or"), false))
+    or-bases = tree.store-children(inherited-types)
+
+. header-variants = header.header ?? ImmutableArray'ArgumentVariant()
+. body-members = body ?? ImmutableArray'SyntaxId()
+. members = scratch-array'SyntaxId(tree, header-variants.length + body-members.length)
+. member-count Size = 0
+for variant in header-variants
+    if variant is .implements-declaration
+        members[member-count] = variant
+        member-count += 1
+    else if variant is .using-declaration
+        members[member-count] = variant
+        member-count += 1
+for member in body-members
+    members[member-count] = member
+    member-count += 1
+. stored-type-args = tree.store-children(header.type-args)
+. stored-aliases = tree.store-atoms(header.aliases ?? ImmutableArray'Atom())
+. stored-members = tree.store-children(scratch-items(members, member-count))
+. stored-constraints = tree.store-children(parameter-constraints(tree, header-variants))
+. stored-assignments = tree.store-children(parameter-assignments(tree, header-variants))
+= tree.append
+    - ASTClassBlock
+        - declared-at(location)
+        - header.access
+        - header.name
+        - stored-type-args
+        - stored-aliases
+        - base
+        - or-bases
+        - stored-members
+        - stored-constraints
+        - stored-assignments
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-style-sheet-declaration SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - name Atom
+    - derived SheetDerivation?
+    - header ImmutableArray'ArgumentVariant?
+    - body ImmutableArray'SyntaxId?
+
+. base = if derived then derived.base else tree.append(ASTTypeIdentifier(location, tree.atom("StyleSheet"), false))
+. inherits = sequence-singleton(tree, base)
+
+. no-type-args = ImmutableArray'SyntaxId()
+. class-header = ClassHeader(location, .public-access, name, no-type-args, null, inherits, header)
+. declared = make-class-declaration(tree, location, class-header, body)
+tree.mark-style-sheet(declared, tree.store-atoms(derived?.tags ?? ImmutableArray'Atom()))
+= declared
+
+━━━━━━━━━━━━━━━━━━━━
++ make-extension-declaration SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - access Access
+    - receiver SyntaxId
+    - as-types ImmutableArray'SyntaxId?
+    - constraints ImmutableArray'ArgumentVariant?
+    - body ImmutableArray'SyntaxId?
+
+tree.append(ASTExtension(declared-at(location), access, receiver, stored-as-types, stored-constraints, stored-assignments, stored-body))
+    .. variants = constraints ?? ImmutableArray'ArgumentVariant()
+    .. stored-as-types = tree.store-optional-children(as-types)
+    .. stored-constraints = tree.store-optional-children(parameter-constraints(tree, variants))
+    .. stored-assignments = tree.store-optional-children(parameter-assignments(tree, variants))
+    .. stored-body = tree.store-optional-children(body)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-style-sheet-extension-declaration SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - receiver SyntaxId
+    - header ImmutableArray'ArgumentVariant?
+    - body ImmutableArray'SyntaxId?
+
+. header-members = header ?? ImmutableArray'ArgumentVariant()
+. body-members = body ?? ImmutableArray'SyntaxId()
+. members = scratch-array'SyntaxId(tree, header-members.length + body-members.length)
+. member-count Size = 0
+for member in header-members
+    if member is .using-declaration
+        members[member-count] = member
+        member-count += 1
+for member in body-members
+    members[member-count] = member
+    member-count += 1
+. stored-members = tree.store-children(scratch-items(members, member-count))
+= tree.append(ASTStyleSheetExtension(declared-at(location), receiver, stored-members))
+
+━━━━━━━━━━━━━━━━━━━━
++ do argument-declarations ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - variants ImmutableArray'ArgumentVariant
+
+. chosen = scratch-array'SyntaxId(tree, variants.length)
+. size Size = 0
+for variant in variants
+    if variant is .argument-decl
+        chosen[size] = variant
+        size += 1
+= scratch-items(chosen, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do parameter-constraints ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - variants ImmutableArray'ArgumentVariant
+
+. chosen = scratch-array'SyntaxId(tree, variants.length)
+. size Size = 0
+for variant in variants
+    if variant is .param-constraint
+        chosen[size] = variant
+        size += 1
+= scratch-items(chosen, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do parameter-assignments ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - variants ImmutableArray'ArgumentVariant
+
+. chosen = scratch-array'SyntaxId(tree, variants.length)
+. size Size = 0
+for variant in variants
+    if variant is .param-assignment
+        chosen[size] = variant
+        size += 1
+= scratch-items(chosen, size)
+
+━━━━━━━━━━━━━━━━━━━━
++ declared-at MatchLocation
+    - location MatchLocation
+
+MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), location.end)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-getter-function SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - location MatchLocation
+    - access Access
+    - names ImmutableArray'Atom
+    - is-imperative Bool
+    - annotations ImmutableArray'Atom
+    - return-type SyntaxId?
+    - body SyntaxId?
+
+?! YumiSyntaxError(location, "@rollback is only supported on stream-pattern functions")
+    if has-annotation(annotations, "rollback")
+?! YumiSyntaxError(location, "@live is not supported on getters")
+    if has-annotation(annotations, "live")
+
+tree.append(node)
+
+.. node = ASTFunction
+    - declared-at(location)
+    - access
+    - tree.store-atoms(names)
+    - 0
+    - RowRange'SyntaxId()
+    - RowRange'SyntaxId()
+    - tree.syntax-or-invalid(return-type)
+    - RowRange'SyntaxId()
+    - RowRange'SyntaxId()
+    - RowRange'SyntaxId()
+    - tree.syntax-or-invalid(imperative-body(tree, is-imperative, body))
+    - compilation-effects(location, annotations, true)
+    - is-imperative
+    - false
+    - false
+    - true
+    - false
+    - has-annotation(annotations, "inline")
+
+━━━━━━━━━━━━━━━━━━━━
++ c-declaration-name ImmutableArray'Atom ?! YumiSyntaxError
+    - tree ASTBuilder
+    - location MatchLocation
+    - symbol Atom
+
+?! YumiSyntaxError(location, "C symbol names belong to header modules")
+    if !tree.source-path.ends-with(".h")
+
+sequence-singleton(tree, symbol)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-function SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - location MatchLocation
+    - access Access
+    - is-imperative Bool
+    - is-static Bool
+    - key FunctionKey
+    - errors ImmutableArray'SyntaxId
+    - annotations ImmutableArray'Atom
+    - stream-item-name Atom
+    - argument-variants ImmutableArray'ArgumentVariant?
+    - body SyntaxId?
+
+. stream-item = tree.append(ASTTypeIdentifier(location, stream-item-name, false))
+. variants = argument-variants ?? ImmutableArray'ArgumentVariant()
+. has-rollback = has-annotation(annotations, "rollback")
+if has-rollback && !key.pattern
+    ?! YumiSyntaxError(location, "@rollback is only supported on stream-pattern functions")
+if is-imperative && key.pattern
+    ?! YumiSyntaxError(location, "Stream-pattern functions do not support do")
+. is-constructor = key.names.length == 1 && key.names[0].text == "This" && !key.pattern
+. stream-argument SyntaxId?
+if key.pattern
+    . pattern = key.pattern
+    . token-stream = tree.append(ASTTypeIdentifier(location, tree.atom("TokenStream"), false))
+    . stream-type = tree.append(ASTTypeArguments(location, token-stream, tree.store-child(pattern)))
+    . stream-name = tree.append(ASTIdentifier(location, tree.atom("(stream)"), false))
+    . stream-capture = tree.append(ASTTypeCapture(location, stream-name, stream-type))
+    stream-argument = tree.append(ASTArgumentDecl(location, stream-capture, 0, false))
+. children = tree.children
+. arguments-start = children.length
+if stream-argument
+    tree.store-child(stream-argument)
+for variant in variants
+    if variant is .argument-decl
+        tree.store-child(variant)
+if key.args
+    tree.store-children(key.args)
+. arguments = RowRange'SyntaxId(arguments-start as U32, (children.length - arguments-start) as U32)
+
+. type-arguments-start = children.length
+if key.pattern
+    tree.store-child(stream-item)
+tree.store-children(key.type-args)
+. type-arguments = RowRange'SyntaxId
+    - type-arguments-start as U32
+    - (children.length - type-arguments-start) as U32
+
+. stored-errors = tree.store-optional-children(errors)
+. constraints-start = children.length
+for variant in variants
+    if variant is .param-constraint
+        tree.store-child(variant)
+if key.pattern
+    tree.store-child
+        - tree.append(ASTParamConstraint(location, .match-exactly, stream-item, key.pattern))
+. constraints = RowRange'SyntaxId
+    - constraints-start as U32
+    - (children.length - constraints-start) as U32
+
+. assignments-start = children.length
+for variant in variants
+    if variant is .param-assignment
+        tree.store-child(variant)
+. assignments = RowRange'SyntaxId
+    - assignments-start as U32
+    - (children.length - assignments-start) as U32
+
+. name-atoms = tree.store-atoms(key.names)
+. nested-body = argument-body(tree, variants, body)
+. normalized-body = imperative-body(tree, is-imperative && !is-constructor, nested-body)
+. node = ASTFunction
+    - declared-at(location)
+    - access
+    - name-atoms
+    - tree.syntax-or-invalid(key.pattern)
+    - arguments
+    - type-arguments
+    - tree.syntax-or-invalid(key.returns)
+    - stored-errors
+    - constraints
+    - assignments
+    - tree.syntax-or-invalid(normalized-body)
+    - compilation-effects(location, annotations, true)
+    - (is-imperative || is-constructor)
+    - is-static
+    - has-rollback
+    - false
+    - false
+    - has-annotation(annotations, "inline")
+node = node.is-live = has-annotation(annotations, "live")
+= tree.append(node)
+
+━━━━━━━━━━━━━━━━━━━━
++ do argument-body SyntaxId? ?! YumiSyntaxError
+    - tree ASTBuilder
+    - variants ImmutableArray'ArgumentVariant
+    - body SyntaxId?
+
+=? null if !body
+. replacement SyntaxId = body
+for variant in variants
+    do match? variant
+        | .iterator-header(header-location, loop)
+            replacement = make-iterator-from-partial(tree, header-location, replacement, loop)
+= replacement
+
+━━━━━━━━━━━━━━━━━━━━
++ do with-tail'Item ImmutableArray'Item
+    - tree ASTBuilder
+    - head Item
+    - tail ImmutableArray'Item?
+
+. following = tail ?? ImmutableArray'Item()
+. sequence = scratch-array'Item(tree, following.length + 1)
+sequence[0] = head
+for index in 0 .. < following.length
+    sequence[index + 1] = following[index]
+= scratch-items(sequence, following.length + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ type-optional SyntaxId
+    - tree ASTBuilder
+    - type SyntaxId
+    - name Atom
+
+tree.append
+    - ASTTypeArguments
+        - tree.location(type)
+        - tree.append(ASTTypeIdentifier(tree.location(type), name, false))
+        - tree.store-child(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ type-buffer SyntaxId
+    - tree ASTBuilder
+    - type SyntaxId
+    - name Atom
+
+tree.append
+    - ASTTypeArguments
+        - tree.location(type)
+        - tree.append(ASTTypeIdentifier(tree.location(type), name, false))
+        - tree.store-child(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ type-channel SyntaxId
+    - tree ASTBuilder
+    - type SyntaxId
+    - name Atom
+
+tree.append
+    - ASTTypeArguments
+        - tree.location(type)
+        - tree.append(ASTTypeIdentifier(tree.location(type), name, false))
+        - tree.store-child(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ type-iterable SyntaxId
+    - tree ASTBuilder
+    - type SyntaxId
+    - name Atom
+
+tree.append
+    - ASTTypeArguments
+        - tree.location(type)
+        - tree.append(ASTTypeIdentifier(tree.location(type), name, false))
+        - tree.store-child(type)
+
+━━━━━━━━━━━━━━━━━━━━
++ maybe-optional SyntaxId
+    - tree ASTBuilder
+    - location MatchLocation
+    - expr
+    - is-optional Bool
+
+|? is-optional
+    tree.append(ASTOptionalChain(location, expr))
+??
+    expr
+
+━━━━━━━━━━━━━━━━━━━━
++ make-closure SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - is-imperative Bool
+    - args ImmutableArray'SyntaxId?
+    - body SyntaxId?
+
+tree.append
+    - ASTFunction
+        - loc
+        - .private-access
+        - RowRange'Atom()
+        - 0
+        - tree.store-optional-children(args)
+        - RowRange'SyntaxId()
+        - 0
+        - RowRange'SyntaxId()
+        - RowRange'SyntaxId()
+        - RowRange'SyntaxId()
+        - tree.syntax-or-invalid(body)
+        - CompilationEffect.none
+        - is-imperative
+        - false
+        - false
+        - false
+        - false
+
+━━━━━━━━━━━━━━━━━━━━
++ make-closure-argument SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - name SyntaxId
+    - is-variadic Bool
+    - type SyntaxId?
+
+tree.append(ASTArgumentDecl(loc, binding, 0, is-variadic))
+    .. binding = tree.append(ASTTypeCapture(loc, name, tree.syntax-or-invalid(type)))
+
+━━━━━━━━━━━━━━━━━━━━
++ range-position SyntaxId
+    - tree ASTBuilder
+    - name String
+
+tree.append(ASTGetExpression(MatchLocation(), position, tree.atom(name), false, false, false))
+    .. position = tree.append
+        - ASTCoreTypeIdentifier(MatchLocation(), tree.atom("core/range"), tree.atom("Position"))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-decimal-literal SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - integer String
+    - tail String?
+    - unit Atom?
+
+|? tail
+    tree.append(ASTFloat(loc, tree.store-string("$integer$tail"), unit))
+??
+    tree.append(ASTInteger(loc, tree.store-string(integer), unit))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-yield-all SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - expr SyntaxId
+
+tree.append(ASTForBlock(loc, loop, yielder, 0))
+    .. id = tree.append(ASTIdentifier(loc, tree.atom("-"), false))
+    .. capture = tree.append(ASTTypeCapture(loc, id, 0))
+    .. loop = tree.append(ASTLoop(loc, capture, expr, 0, false, false, 0))
+    .. yielder = tree.append(ASTYield(loc, id, false))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-if-match-body SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - body SyntaxId
+
+tree.append(ASTBlock(body-location, tree.store-child(do-body, true-id)))
+    .. body-location = tree.location(body)
+    .. do-body = tree.append
+        - ASTDoBlock(body-location, body, CompilationEffect.none, CompilerFeature.none)
+    .. true-id = tree.append(ASTIdentifier(loc, tree.atom("true"), false))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-match-block SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - subject SyntaxId
+    - body SyntaxId
+    - is-optional Bool
+
+match tree.nodes[body]
+    | .node-block(block)
+        make-match-block-from-body(tree, loc, subject, block.loc, block.body, is-optional)
+    ??
+        tree.append(ASTMatchExpression(loc, subject, rooted-stream-match(tree, body), is-optional))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do rooted-stream-match SyntaxId
+    - tree ASTBuilder
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-stream-match(row)
+        tree.nodes[id] = ASTStreamMatch(row.loc, row.pattern, true)
+= id
+
+━━━━━━━━━━━━━━━━━━━━
+_ do make-match-block-from-body SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - subject SyntaxId
+    - block-loc MatchLocation
+    - block-body RowRange'SyntaxId
+    - is-optional Bool
+
+. helper SyntaxId = 0
+. has-stream-match = false
+for offset in 0 .. < block-body.count
+    . statement = tree.children[block-body.start + offset]
+    if tree.nodes[statement] is .node-pattern-helper-syntax
+        . row = match tree.nodes[statement]
+            | .node-pattern-helper-syntax(value)
+                value
+            ?! Panic("Expected a pattern helper")
+        ?! YumiSyntaxError(loc, "Stream match has more than one helper", source, tree.source-path)
+            if helper
+        .. source = tree.source
+        ?! YumiSyntaxError(exclusive-end-location(row.loc), "with helper must be the first clause of a stream match", tree.source, tree.source-path)
+            if offset != 0
+        helper = row.helper
+    else if tree.nodes[statement] is .node-stream-match
+        has-stream-match = true
+        rooted-stream-match(tree, statement)
+if helper
+    ?! YumiSyntaxError(loc, "with helper requires stream-pattern arms", tree.source, source-path)
+        if !has-stream-match
+    .. source-path = tree.source-path
+. skipped U32 = if helper then 1 else 0
+. body-count = block-body.count - skipped
+. normalized-body SyntaxId = 0
+if body-count == 1
+    normalized-body = tree.children[block-body.start + skipped]
+else if body-count > 1
+    normalized-body = tree.append
+        - ASTBlock(block-loc, RowRange'SyntaxId(block-body.start + skipped, body-count))
+= tree.append(ASTMatchExpression(loc, subject, normalized-body, is-optional, helper, true))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-conditional-match-block SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - pattern SyntaxId
+    - subject SyntaxId
+    - body SyntaxId
+    - is-stream Bool
+    - is-loop Bool
+
+match is-loop
+    |= true
+        tree.append
+            - ASTWhileBlock(loc, condition, tree.append(ASTBlock(loc, RowRange'SyntaxId())), false)
+    ??
+        tree.append(ASTIfBlock(loc, condition, tree.append(ASTNoop(loc)), false, 0))
+    .. transform-body = make-if-match-body(tree, loc, body)
+    .. matched = match is-stream
+        |= true
+            tree.append
+                - ASTStreamMatch
+                    - loc
+                    - tree.append(ASTStreamTransform(loc, pattern, transform-body, false))
+                    - true
+        ??
+            tree.append
+                - ASTStructureMatch
+                    - loc
+                    - tree.append(ASTTypeTransform(loc, transform-body, pattern, false))
+    .. condition = tree.append(ASTMatchExpression(loc, subject, matched, false))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-loop-or SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - id SyntaxId
+
+?! YumiSyntaxError(loop-end, "Illegal loop section", tree.source, tree.source-path)
+    if !legal
+id
+    .. loop-end = exclusive-end-location(tree.location(id))
+    .. legal = match tree.nodes[id]
+        | .node-for-block(block)
+            match tree.nodes[block.loop]
+                | .node-loop-syntax(loop)
+                    !!loop.container
+                ??
+                    false
+        ??
+            false
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-declaration SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - left SyntaxId
+    - right SyntaxId
+    - is-lazy Bool
+    - is-pattern Bool
+    - rollback Bool
+
+. owner = match? tree.nodes[left]
+    | .node-type-capture(capture)
+        match? tree.nodes[capture.id]
+            | .node-identifier(identifier)
+                identifier.name
+. checked = reject-unmarked-state-machine(tree, loc, right)
+. value = match tree.nodes[checked]
+    | .node-block(block) { is-pattern }
+        tree.children[block.body.start]
+    ??
+        checked
+if owner && value
+    assign-anonymous-case-owner-tree(tree, value, owner)
+= tree.append(ASTDeclare(loc, left, value, is-lazy, is-pattern, rollback))
+
+━━━━━━━━━━━━━━━━━━━━
++ do assign-anonymous-case-owner-tree
+    - tree ASTBuilder
+    - id SyntaxId
+    - owner Atom
+
+. pending = ArrayBuilder'SyntaxId(tree.pattern-collector-context)
+pending.append(id)
+. index Size = 0
+while index < pending.length
+    . current SyntaxId = pending[index]
+    index += 1
+    . children = anonymous-case-owner-children(tree, current, owner)
+    if children.first
+        pending.append(children.first)
+    if children.second
+        pending.append(children.second)
+    if children.third
+        pending.append(children.third)
+    if children.fourth
+        pending.append(children.fourth)
+    for offset in 0 .. < children.first-range.count
+        pending.append(tree.children[children.first-range.start + offset])
+    for offset in 0 .. < children.second-range.count
+        pending.append(tree.children[children.second-range.start + offset])
+
+━━━━━━━━━━━━━━━━━━━━
++ anonymous-case-owner-children AnonymousCaseTraversal
+    - tree ASTBuilder
+    - id SyntaxId
+    - owner Atom
+
+match tree.nodes[id]
+    | .node-anonymous-case(row)
+        update-anonymous-case-owner(tree, id, row.loc, row.name, row.args, owner)
+    | .node-block(row)
+        AnonymousCaseTraversal(0, 0, 0, 0, row.body, RowRange'SyntaxId())
+    | .node-match-expression(row)
+        AnonymousCaseTraversal
+            - row.subject
+            - row.body
+            - row.helper
+            - 0
+            - RowRange'SyntaxId()
+            - RowRange'SyntaxId()
+    | .node-structure-match(row)
+        AnonymousCaseTraversal(row.pattern, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-stream-match(row)
+        AnonymousCaseTraversal(row.pattern, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-type-transform(row)
+        AnonymousCaseTraversal
+            - row.pattern
+            - row.expr
+            - 0
+            - 0
+            - RowRange'SyntaxId()
+            - RowRange'SyntaxId()
+    | .node-type-and(row)
+        AnonymousCaseTraversal(row.left, row.right, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-type-or(row)
+        AnonymousCaseTraversal(row.left, row.right, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-type-panic(row)
+        AnonymousCaseTraversal(row.pattern, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-stream-transform(row)
+        AnonymousCaseTraversal
+            - row.pattern
+            - row.right
+            - 0
+            - 0
+            - RowRange'SyntaxId()
+            - RowRange'SyntaxId()
+    | .node-stream-and(row)
+        AnonymousCaseTraversal(row.left, row.right, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-stream-or(row)
+        AnonymousCaseTraversal(row.left, row.right, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-stream-panic(row)
+        AnonymousCaseTraversal(row.pattern, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-iterator-expression(row)
+        AnonymousCaseTraversal
+            - row.loop
+            - row.body
+            - row.next
+            - 0
+            - RowRange'SyntaxId()
+            - RowRange'SyntaxId()
+    | .node-loop-syntax(row)
+        AnonymousCaseTraversal
+            - row.pattern
+            - row.container
+            - row.clause
+            - row.next
+            - RowRange'SyntaxId()
+            - RowRange'SyntaxId()
+    | .node-unary-expression(row)
+        AnonymousCaseTraversal(row.operand, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-binary-expression(row)
+        AnonymousCaseTraversal(row.lhs, row.rhs, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-call-expression(row)
+        AnonymousCaseTraversal(row.callable, 0, 0, 0, row.params, row.args)
+    | .node-get-expression(row)
+        AnonymousCaseTraversal(row.object, 0, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId())
+    | .node-tuple-syntax(row)
+        AnonymousCaseTraversal(0, 0, 0, 0, row.items, RowRange'SyntaxId())
+    | .node-list-syntax(row)
+        AnonymousCaseTraversal(0, 0, 0, 0, row.items, RowRange'SyntaxId())
+    ??
+        AnonymousCaseTraversal()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do update-anonymous-case-owner AnonymousCaseTraversal
+    - tree ASTBuilder
+    - id SyntaxId
+    - loc MatchLocation
+    - name Atom
+    - args RowRange'SyntaxId
+    - owner Atom
+
+tree.nodes[id] = ASTAnonymousCase(loc, name, args, owner)
+= AnonymousCaseTraversal(0, 0, 0, 0, args, RowRange'SyntaxId())
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-assignment SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - op Operator
+    - left SyntaxId
+    - right SyntaxId
+    - is-optional Bool
+
+. rhs = if is-optional then tree.append(ASTOptionalChain(loc, right)) else right
+do match? tree.nodes[left]
+    | .node-structure-match
+        = tree.append(ASTMatchExpression(loc, rhs, left, false))
+    | .node-stream-match
+        = tree.append(ASTMatchExpression(loc, rhs, rooted-stream-match(tree, left), false))
+if op == .write-all-op
+    = make-write-all(tree, loc, left, rhs)
+do match? tree.nodes[left]
+    | .node-identifier(identifier)
+        assign-anonymous-case-owner-tree(tree, rhs, identifier.name)
+= tree.append(ASTAssign(loc, op, left, rhs))
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-iterator-line SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - container SyntaxId
+    - is-subscriber Bool
+    - body SyntaxId?
+    - binding SyntaxId?
+    - clauses SyntaxId?
+    - next-loop SyntaxId?
+    - next-iterator SyntaxId?
+
+. normalized-body SyntaxId = 0
+if body
+    normalized-body = match tree.nodes[body]
+        | .node-block(block) { block.body.count == 1 }
+            tree.children[block.body.start]
+        ??
+            body
+. normalized-binding = if binding then binding else 0
+if normalized-body
+    normalized-binding, normalized-body = match tree.nodes[normalized-body]
+        | .node-binary-expression(binary) { !normalized-binding && binary.op == .map-op }
+            match tree.nodes[binary.rhs]
+                | .node-identifier
+                    (tree.append(ASTTypeCapture(tree.location(binary.rhs), binary.rhs, 0)), binary.lhs)
+                ??
+                    (normalized-binding, normalized-body)
+        | .node-structure-match
+            (normalized-body, 0)
+        | .node-stream-match(stream-match)
+            (stream-match.pattern, 0)
+        ??
+            (normalized-binding, normalized-body)
+
+. final-body = if normalized-body then normalized-body else default-body
+.. default-body = tree.append(ASTIdentifier(loc, tree.atom("each"), false))
+. loop = tree.append
+    - ASTLoop
+        - loc
+        - normalized-binding
+        - container
+        - tree.syntax-or-invalid(clauses)
+        - is-subscriber
+        - true
+        - tree.syntax-or-invalid(next-loop)
+= tree.append(ASTIteratorExpression(loc, loop, final-body, tree.syntax-or-invalid(next-iterator)))
+
+━━━━━━━━━━━━━━━━━━━━
++ make-iterator-from-partial SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - body SyntaxId
+    - partial SyntaxId
+
+match tree.nodes[partial]
+    | .node-loop-syntax(loop)
+        make-iterator-line
+            - tree
+            - loc
+            - loop.container
+            - loop.is-subscriber
+            - body
+            - null
+            - loop.clause
+            - null
+            - null
+    ?! Panic("Expected a partial iterator loop")
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-iterator-block SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - container SyntaxId
+    - args ImmutableArray'SyntaxId
+    - is-subscriber Bool
+    - pattern SyntaxId?
+    - initial-clauses SyntaxId?
+
+. body SyntaxId?
+. clauses = initial-clauses
+. last-clause = initial-clauses
+. loop SyntaxId?
+. last-loop SyntaxId?
+. iterator SyntaxId?
+. last-iterator SyntaxId?
+
+for arg in args
+    match tree.nodes[arg]
+        | .node-loop-syntax
+            if loop
+                tree.set-next(last-loop!, arg)
+            else
+                loop = arg
+            last-loop = arg
+        | .node-iterator-expression
+            if iterator
+                tree.set-next(last-iterator!, arg)
+            else
+                iterator = arg
+            last-iterator = arg
+        | .node-clause
+            if clauses
+                tree.set-next(last-clause!, arg)
+            else
+                clauses = arg
+            last-clause = arg
+        ??
+            ?! YumiSyntaxError(tree.location(arg), "Redundant block")
+                if body
+            body = arg
+
+= make-iterator-line(tree, loc, container, is-subscriber, body, pattern, clauses, loop, iterator)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-write-all SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - left SyntaxId
+    - right SyntaxId
+
+match tree.nodes[right]
+    | .node-iterator-expression(iterator)
+        match tree.nodes[iterator.loop]
+            | .node-loop-syntax(loop) { !loop.is-subscriber && !iterator.next }
+                tree.append(ASTForBlock(loc, iterator.loop, writer, 0))
+                    .. item
+                        |? iterator.body
+                            iterator.body
+                        ??
+                            tree.append(ASTIdentifier(loc, tree.atom("each"), false))
+                    .. writer = tree.append(ASTBinaryExpression(loc, .write-op, left, item))
+            ??
+                make-write-all-loop(tree, loc, left, right)
+    ??
+        make-write-all-loop(tree, loc, left, right)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-write-all-loop SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - left SyntaxId
+    - right SyntaxId
+
+tree.append(ASTForBlock(loc, loop, writer, 0))
+    .. item = tree.append(ASTIdentifier(loc, tree.atom("(item)"), false))
+    .. pattern = tree.append(ASTTypeCapture(loc, item, 0))
+    .. loop = tree.append(ASTLoop(loc, pattern, right, 0, false, false, 0))
+    .. writer = tree.append(ASTBinaryExpression(loc, .write-op, left, item))
+
+━━━━━━━━━━━━━━━━━━━━
++ reduce-user-binary-op SyntaxId
+    - tree ASTBuilder
+    - loc
+    - seed SyntaxId
+    - stream
+
+reduce(seed, stream) • using :: accum, pair =>
+    user-binary-op(tree, loc, pair[0], accum, pair[1])
+
+━━━━━━━━━━━━━━━━━━━━
++ user-binary-op SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - op SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+match tree.identifier-name(op).text
+    |= "and"
+        tree.append(ASTBinaryExpression(loc, .bitwise-and-op, left, right))
+    |= "or"
+        tree.append(ASTBinaryExpression(loc, .bitwise-or-op, left, right))
+    |= "xor"
+        tree.append(ASTBinaryExpression(loc, .bitwise-xor-op, left, right))
+    |= "lshift"
+        tree.append(ASTBinaryExpression(loc, .bitwise-lshift-op, left, right))
+    |= "rshift"
+        tree.append(ASTBinaryExpression(loc, .bitwise-rshift-op, left, right))
+    |= "zrshift"
+        tree.append(ASTBinaryExpression(loc, .bitwise-zrshift-op, left, right))
+    |= "not"
+        tree.append(ASTUnaryExpression(loc, .bitwise-not-op, right))
+    ??
+        tree.append
+            - ASTCallExpression
+                - loc
+                - op
+                - tree.store-child
+                    - tree.make-argument(tree.location(left), left, null, false)
+                    - tree.make-argument(tree.location(right), right, null, false)
+                - 0
+                - false
+
+━━━━━━━━━━━━━━━━━━━━
++ reduce-binary-op SyntaxId
+    - tree ASTBuilder
+    - loc
+    - seed SyntaxId
+    - stream
+    - is-optional = false
+
+reduce(seed, stream) • using :: accum, pair =>
+    binary-op(tree, loc, pair[0], accum, pair[1], is-optional)
+
+━━━━━━━━━━━━━━━━━━━━
++ do reduce-glt-op SyntaxId
+    - tree ASTBuilder
+    - loc
+    - seed SyntaxId
+    - stream
+
+` A chain of orderings: `a < b < c` is `a < b && b < c`, and each further ordering compares
+` with the right side of the one before it. That side is evaluated once: the ordering before
+` holds it, and the next one reads what was held. The orderings are joined from the right,
+` `a < b && (b < c && c < d)`, so each read is in the right side of the `&&` whose left side
+` holds its value.
+. chain = seed
+. last = seed
+. links [SyntaxId]
+for pair in stream
+    . shared = compared-right(tree, last)
+    if shared != 0
+        hold-right(tree, last)
+        . read = tree.append(ASTHeldRead(tree.location(shared)))
+        last = tree.append(ASTBinaryExpression(loc, pair[0], read, pair[1]))
+        links += last
+    else
+        chain = tree.append
+            - ASTBinaryExpression(loc, pair[0], join-orderings(tree, loc, chain, links), pair[1])
+        links.clear()
+        last = chain
+= join-orderings(tree, loc, chain, links)
+
+━━━━━━━━━━━━━━━━━━━━
++ do join-orderings SyntaxId
+    - tree ASTBuilder
+    - loc
+    - first SyntaxId
+    - links [SyntaxId]
+
+` The orderings of a chain joined by `&&` from the right.
+if links.length == 0
+    = first
+. index = links.length - 1
+. joined = links[index]
+while index != 0
+    index -= 1
+    joined = tree.append(ASTBinaryExpression(loc, .and-op, links[index], joined))
+= tree.append(ASTBinaryExpression(loc, .and-op, first, joined))
+
+━━━━━━━━━━━━━━━━━━━━
++ do hold-right
+    - tree ASTBuilder
+    - ordering SyntaxId
+
+` Makes the right side of an ordering a node that holds its value.
+do match? tree.nodes[ordering]
+    | .node-binary-expression(row)
+        . holder = tree.append(ASTHeldExpression(tree.location(row.rhs), row.rhs))
+        tree.nodes[ordering] = ASTBinaryExpression(row.loc, row.op, row.lhs, holder)
+
+━━━━━━━━━━━━━━━━━━━━
++ compared-right SyntaxId
+    - tree ASTBuilder
+    - syntax SyntaxId
+
+` The right side of an ordering, or nothing for any other expression.
+match tree.nodes[syntax]
+    | .node-binary-expression(previous)
+        if is-glt-compare-op(previous.op) then previous.rhs else 0
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ is-glt-compare-op Bool
+    - op Operator
+
+match op
+    | .less-than-op
+        true
+    | .greater-than-op
+        true
+    | .less-than-equals-op
+        true
+    | .greater-than-equals-op
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ reduce-compose-expression SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - seed SyntaxId
+    - stream ImmutableArray'ComposeExpressionTail
+
+reduce(seed, stream) • using :: accum, tail =>
+    binary-op(tree, loc, tail.op, accum, tail.right, tail.is-optional, tail.write-name)
+
+━━━━━━━━━━━━━━━━━━━━
++ binary-op SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - op Operator
+    - left SyntaxId
+    - right SyntaxId
+    - is-optional = false
+    - write-name Atom? = null
+
+match op
+    |= .as-op
+        tree.append(ASTCastExpression(loc, left, right))
+    |= .write-op
+        tree.append(ASTCallExpression(loc, member, tree.store-child(tree.make-argument(loc, right, null, false)), 0, false))
+            .. member = tree.append
+                - ASTGetExpression(loc, left, write-name!, false, is-optional, false)
+    ??
+        tree.append(ASTBinaryExpression(loc, op, left, right))
+
+━━━━━━━━━━━━━━━━━━━━
++ reduce-unary-op SyntaxId @inline
+    - tree ASTBuilder
+    - loc
+    - seed SyntaxId
+    - stream
+
+reduce(seed, stream) • using :: accum, op =>
+    tree.append(ASTUnaryExpression(loc, op, accum))
+
+━━━━━━━━━━━━━━━━━━━━
++ do reduce-prefix-ops SyntaxId
+    - tree ASTBuilder
+    - loc
+    - stream ImmutableArray'Operator
+    - seed SyntaxId
+    - negative-value String?
+
+. accum SyntaxId = seed
+. folded Size = 0
+if negative-value
+    folded = trailing-negative-count(stream)
+    accum = negative-number(tree, loc, seed, negative-value)
+for each in folded .. < stream.length
+    accum = tree.append(ASTUnaryExpression(loc, stream[stream.length - 1 - each], accum))
+= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ negative-number SyntaxId
+    - tree ASTBuilder
+    - loc
+    - num SyntaxId
+    - value String
+
+match tree.nodes[num]
+    | .node-integer-syntax(number)
+        tree.append(ASTInteger(tree.nodes.loc[num], tree.store-string(value), number.unit))
+    | .node-float-syntax(number)
+        tree.append(ASTFloat(tree.nodes.loc[num], tree.store-string(value), number.unit))
+    ??
+        num
+
+━━━━━━━━━━━━━━━━━━━━
++ negated-number SyntaxId
+    - tree ASTBuilder
+    - num SyntaxId
+
+match tree.nodes[num]
+    | .node-integer-syntax(number)
+        negative-number(tree, location, num, negated-number-text(number.value, 1))
+    | .node-float-syntax(number)
+        negative-number(tree, location, num, negated-number-text(number.value, 1))
+    ??
+        num
+
+.. location = tree.nodes.loc[num]
+
+━━━━━━━━━━━━━━━━━━━━
++ do trailing-negative-count Size
+    - stream ImmutableArray'Operator
+
+. count = 0
+if stream.length
+    for op in stream.reversed()
+        if op != .negative-op
+            break
+        count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ optional-get SyntaxId
+    - tree ASTBuilder
+    - left SyntaxId
+    - name Atom
+    - is-tracked Bool
+    - is-optional Bool
+    - is-loop Bool
+
+tree.append(ASTGetExpression(loc, left, name, is-tracked, is-optional, is-loop))
+
+.. loc = tree.location(left)
+
+━━━━━━━━━━━━━━━━━━━━
++ do located-block SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - block SyntaxId
+
+tree.nodes.loc[block] = loc
+= block
+
+━━━━━━━━━━━━━━━━━━━━
++ block-with-statements SyntaxId
+    - tree ASTBuilder
+    - statements ImmutableArray'SyntaxId
+
+tree.append(ASTBlock(MatchLocation(), tree.store-children(linked)))
+    .. linked = link-statements(tree, statements, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-conditional-value SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - test SyntaxId
+    - value SyntaxId
+    - otherwise SyntaxId
+
+= tree.append
+    - ASTBinaryExpression
+        - loc
+        - .else-op
+        - tree.append(ASTBinaryExpression(loc, .if-op, value, test))
+        - otherwise
+
+━━━━━━━━━━━━━━━━━━━━
++ do prepended-statements ImmutableArray'SyntaxId
+    - tree ASTBuilder
+    - statement SyntaxId
+    - body RowRange'SyntaxId
+
+. items = Array'SyntaxId'ArenaBacking(tree.pattern-collector-context, body.count + 1)
+items[0] = statement
+for offset in 0 .. < body.count
+    items[offset + 1] = tree.children[body.start + offset]
+= Array'SyntaxId(items.data, items.length).immutable
+
+━━━━━━━━━━━━━━━━━━━━
++ do probe-with-dependencies SyntaxId
+    - tree ASTBuilder
+    - probe SyntaxId
+    - dependencies SyntaxId?
+
+if dependencies
+    . items = sequence-pair'SyntaxId(tree, probe, dependencies)
+    match? tree.nodes[dependencies]
+        | .node-block(block)
+            items = prepended-statements(tree, probe, block.body)
+    . linked = link-statements(tree, items, false)
+    = tree.append(ASTProbeScope(MatchLocation(), tree.store-children(linked)))
+= probe
+
+━━━━━━━━━━━━━━━━━━━━
++ do link-statements ImmutableArray'SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - statements ImmutableArray'SyntaxId
+    - allow-function-declarations = true
+
+. items = Array'SyntaxId'ArenaBacking(tree.pattern-collector-context, statements.length)
+. size Size = 0
+. previous SyntaxId?
+. passed SyntaxId?
+for node in statements
+    if !allow-function-declarations
+        do match? tree.nodes[node]
+            | .node-function-syntax(row) { row.names.count > 0 }
+                . begin = TokenLocation(row.loc.begin.line - 1, row.loc.begin.column)
+                . end = TokenLocation(begin.line, begin.column + 1)
+                ?! YumiSyntaxError(MatchLocation(begin, end), "$nesting $correction")
+    . is-held = false
+    if passed
+        . rejoined = tree.auto-join(passed, node)
+        if rejoined
+            passed = rejoined
+            is-held = true
+        else
+            items[size] = tree.auto-join-close(passed)
+            size += 1
+            passed = null
+    if !is-held
+        if previous
+            if tree.auto-join-passes-over(previous, node)
+                passed = node
+                is-held = true
+    if !is-held
+        . next-previous SyntaxId?
+        if previous
+            . joined = tree.auto-join(previous, node)
+            if joined
+                next-previous = joined
+            else
+                items[size] = tree.auto-join-close(previous)
+                size += 1
+                next-previous = node
+        else
+            next-previous = node
+        previous = next-previous
+
+if passed
+    items[size] = tree.auto-join-close(passed)
+    size += 1
+if previous
+    items[size] = tree.auto-join-close(previous)
+    size += 1
+
+= Array'SyntaxId(items.data, size).immutable
+
+.. nesting = "A thin-divider function cannot be declared inside another function."
+.. correction = "Use a thick divider (━) for a module-level function."
+
+━━━━━━━━━━━━━━━━━━━━
++ do link-if-block SyntaxId
+    - tree ASTBuilder
+    - head SyntaxId
+    - elseifs <SyntaxId>
+    - els SyntaxId?
+
+. tail = head
+for elseif in elseifs
+    tree.set-next(tail, elseif)
+    tail = elseif
+tree.set-next(tail, els)
+
+= head
+
+━━━━━━━━━━━━━━━━━━━━
++ do linked-list-tail'Node
+    - tree ASTBuilder
+    - head Node
+    - tail <Node>
+    - Node is SyntaxId
+
+. previous = head
+for node in tail
+    tree.set-next(previous, node)
+    previous = node
+
+= head
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-pattern-tuple SyntaxId
+    - tree ASTBuilder
+    - loc
+    - patterns ImmutableArray'SyntaxId
+
+for pattern in patterns
+    if tree.is-type-remainder(pattern)
+        ?! YumiSyntaxError(exclusive-end-location(tree.location(pattern)), "Remainder pattern is only valid inside sequence, map, or text patterns")
+
+= match patterns
+    | [pattern]
+        pattern
+    ??
+        tree.append(ASTTypeTuple(loc, tree.store-children(patterns)))
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-pattern-bracket SyntaxId
+    - tree ASTBuilder
+    - loc
+    - patterns ImmutableArray'SyntaxId
+
+validate-single-remainder(tree, patterns)
+
+. first-kind String?
+. mixed SyntaxId?
+for pattern in patterns
+    . kind = tree.pattern-container-kind(pattern)
+    if kind
+        if !first-kind
+            first-kind = kind
+        else if first-kind != kind
+            mixed = pattern
+            break
+
+if mixed
+    ?! YumiSyntaxError(mixed-end, "Cannot mix sequence and map items in one bracket pattern")
+    .. mixed-end = exclusive-end-location(tree.location(mixed))
+
+. type =
+    |? first-kind == "map"
+        tree.append(ASTTypeMap(loc, tree.store-children(patterns)))
+    ??
+        tree.append(ASTTypeList(loc, tree.store-children(patterns)))
+= type
+
+━━━━━━━━━━━━━━━━━━━━
++ do validate-single-remainder
+    - tree ASTBuilder
+    - patterns ImmutableArray'SyntaxId
+
+. found = false
+for pattern in patterns
+    if tree.is-type-remainder(pattern)
+        if found
+            ?! YumiSyntaxError(pattern-end, "Pattern may contain only one remainder")
+            .. pattern-end = exclusive-end-location(tree.location(pattern))
+        found = true
+
+━━━━━━━━━━━━━━━━━━━━
++ make-pattern-and-chain SyntaxId
+    - tree ASTBuilder
+    - loc
+    - head SyntaxId
+    - tail ImmutableArray'SyntaxId
+
+reduce(head, tail) • using :: left, right =>
+    ?! YumiSyntaxError(exclusive-end-location(tree.location(right)), "Pattern may contain only one remainder")
+        if contains-pattern-remainder(tree, left) && contains-pattern-remainder(tree, right)
+    tree.append(ASTTypeAnd(loc, left, right))
+
+━━━━━━━━━━━━━━━━━━━━
++ contains-pattern-remainder Bool
+    - tree ASTBuilder
+    - pattern SyntaxId
+
+match tree.nodes[pattern]
+    | .node-type-remainder
+        true
+    | .node-type-and(and-pattern)
+        contains-pattern-remainder(tree, and-pattern.left) || has-right-remainder
+        .. has-right-remainder = contains-pattern-remainder(tree, and-pattern.right)
+    | .node-type-or(or-pattern)
+        contains-pattern-remainder(tree, or-pattern.left) || has-alternate-remainder
+        .. has-alternate-remainder = contains-pattern-remainder(tree, or-pattern.right)
+    | .node-type-capture(capture)
+        if capture.type != 0 then contains-pattern-remainder(tree, capture.type) else false
+    | .node-type-match(match-type)
+        contains-pattern-remainder(tree, match-type.type)
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do task-scheduling TaskSchedulingClass
+    - loc MatchLocation
+    - annotations ImmutableArray'Atom
+
+. scheduling TaskSchedulingClass = .task-scheduling-normal
+. found = false
+for name in annotations
+    . requested TaskSchedulingClass = match name.text
+        |= "normal"
+            .task-scheduling-normal
+        |= "priority"
+            .task-scheduling-priority
+        ?! YumiSyntaxError(loc, "Unsupported do task annotation '${name.text}'")
+    ?! YumiSyntaxError(loc, "Conflicting do task scheduling annotation '${name.text}'")
+        if found && scheduling != requested
+    scheduling = requested
+    found = true
+= scheduling
+
+━━━━━━━━━━━━━━━━━━━━
++ unannotated-body SyntaxId
+    - loc MatchLocation
+    - body DoBody
+    - kind String
+
+?! YumiSyntaxError(loc, "Unsupported $kind annotation '${body.annotations[0].text}'")
+    if body.annotations.length > 0
+
+body.body
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-annotation Bool
+    - names ImmutableArray'Atom
+    - text String
+
+for name in names
+    if name.text == text
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ compilation-effect-named CompilationEffect
+    - text String
+
+match text
+    |= "no-heap"
+        CompilationEffect.no-heap
+    |= "no-safepoint"
+        CompilationEffect.no-safepoint
+    |= "no-safepoints"
+        CompilationEffect.no-safepoint
+    |= "no-probe-safepoint"
+        CompilationEffect.no-probe-safepoint
+    |= "no-probe-safepoints"
+        CompilationEffect.no-probe-safepoint
+    |= "no-suspend"
+        CompilationEffect.no-suspend
+    |= "no-gc"
+        CompilationEffect.gc-free /or/ gc-free-parts()
+    |= "gc-leaf"
+        CompilationEffect.gc-leaf
+    |= "gc-polling"
+        CompilationEffect.gc-polling
+    ??
+        CompilationEffect.none
+
+━━━━━━━━━━━━━━━━━━━━
++ gc-free-parts CompilationEffect
+
+CompilationEffect.no-heap /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
+
+━━━━━━━━━━━━━━━━━━━━
++ effects-conflict Bool
+    - mask CompilationEffect
+    - effect CompilationEffect
+
+gc-free-joined || (mask /and/ effect) == effect
+
+.. gc-free = CompilationEffect.gc-free
+.. gc-free-joined = (has(mask, gc-free) && has(effect, gc-free-parts())) || (has(effect, gc-free) && has(mask, gc-free-parts()))
+
+━━━━━━━━━━━━━━━━━━━━
++ has Bool
+    - effects CompilationEffect
+    - effect CompilationEffect
+
+(effects /and/ effect) != CompilationEffect.none
+
+━━━━━━━━━━━━━━━━━━━━
++ do compilation-effects CompilationEffect
+    - loc MatchLocation
+    - names ImmutableArray'Atom
+    - skips-rollback Bool
+
+. mask = CompilationEffect.none
+for name in names
+    if name.text == "inline" || (skips-rollback && (name.text == "rollback" || name.text == "live"))
+        continue
+    . effect = compilation-effect-named(name.text)
+    ?! YumiSyntaxError(loc, "Unknown compilation effect '${name.text}'")
+        if effect == CompilationEffect.none
+    ?! YumiSyntaxError(loc, "Conflicting compilation effect '${name.text}'")
+        if effects-conflict(mask, effect)
+    mask = mask /or/ effect
+= normalize-compilation-effects(mask)
+
+━━━━━━━━━━━━━━━━━━━━
++ do do-annotation-masks DoAnnotationMasks
+    - loc MatchLocation
+    - names ImmutableArray'Atom
+
+. effects = CompilationEffect.none
+. features = CompilerFeature.none
+for name in names
+    if name.text == "feature-collection-observers"
+        features = features /or/ CompilerFeature.collection-observers
+        continue
+    . effect = compilation-effect-named(name.text)
+    ?! YumiSyntaxError(loc, "Unknown do annotation '${name.text}'")
+        if effect == CompilationEffect.none
+    ?! YumiSyntaxError(loc, "Conflicting do annotation '${name.text}'")
+        if effects-conflict(effects, effect)
+    effects = effects /or/ effect
+= DoAnnotationMasks(normalize-compilation-effects(effects), features)
+
+━━━━━━━━━━━━━━━━━━━━
++ normalize-compilation-effects CompilationEffect
+    - effects CompilationEffect
+
+match effects /and/ CompilationEffect.gc-free
+    |= CompilationEffect.none
+        match effects /and/ CompilationEffect.no-safepoint
+            |= CompilationEffect.none
+                effects
+            ??
+                effects /or/ CompilationEffect.no-suspend
+    ??
+        no-heap-effects /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
+        .. no-heap-effects = effects /or/ CompilationEffect.no-heap
+
+━━━━━━━━━━━━━━━━━━━━
++ do imperative-body SyntaxId?
+    - tree ASTBuilder
+    - is-imperative Bool
+    - body SyntaxId?
+
+if is-imperative
+    =? body ?? tree.append(ASTBlock(MatchLocation(), RowRange'SyntaxId()))
+= body
+
+━━━━━━━━━━━━━━━━━━━━
++ declaration-body SyntaxId? ?! YumiSyntaxError
+    - tree ASTBuilder
+    - body SyntaxId?
+    - same-line MatchLocation?
+
+?! YumiSyntaxError(same-line, "$cause $correction", tree.source, tree.source-path)
+    if body && same-line
+body
+
+.. cause = "A divider made this line a function header, and a function body cannot start on its header line."
+.. correction = "Declare values before the first divider, or leave a blank line after a thick divider (━)."
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBuilder
+
+────────────────────
++ location MatchLocation
+    - id SyntaxId
+
+nodes.loc[id]
+
+────────────────────
++ capture-name Atom
+    - id SyntaxId
+
+match nodes[id]
+    | .node-type-capture(capture)
+        match nodes[capture.id]
+            | .node-identifier(identifier)
+                identifier.name
+            ?! Panic("Type capture identifier has the wrong syntax case")
+    ?! Panic("Expected a type capture")
+
+────────────────────
++ capture-type SyntaxId
+    - id SyntaxId
+
+match nodes[id]
+    | .node-type-capture(capture)
+        capture.type
+    ?! Panic("Expected a type capture")
+
+────────────────────
++ identifier-name Atom
+    - id SyntaxId
+
+match nodes[id]
+    | .node-identifier(identifier)
+        identifier.name
+    ?! Panic("Expected an identifier")
+
+────────────────────
++ is-type-remainder Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-type-remainder
+        true
+    ??
+        false
+
+────────────────────
++ pattern-container-kind String?
+    - id SyntaxId
+
+match nodes[id]
+    | .node-type-remainder
+        null
+    | .node-type-map-item
+        "map"
+    ??
+        "sequence"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBuilder
+
+────────────────────
++ do mark-style-sheet
+    - id SyntaxId
+    - tags RowRange'Atom
+
+do match? nodes[id]
+    | .node-class-block(row)
+        row.is-style-sheet = true
+        row.tags = tags
+
+────────────────────
++ set-next
+    - id SyntaxId
+    - next SyntaxId?
+
+match nodes[id]
+    | .node-if-block(row)
+        row.next = next-id
+    | .node-for-block(row)
+        row.next = next-id
+    | .node-loop-syntax(row)
+        row.next = next-id
+    | .node-iterator-expression(row)
+        row.next = next-id
+    | .node-clause(row)
+        row.next = next-id
+    ?! Panic("Syntax node does not support next links")
+
+.. next-id = if next then next else 0
+
+────────────────────
+_ do children-appending ImmutableArray'SyntaxId
+    - range RowRange'SyntaxId
+    - child SyntaxId
+
+. joined = scratch-array'SyntaxId(this, range.count + 1)
+for offset in 0 .. < range.count
+    joined[offset] = children[range.start + offset]
+joined[range.count] = child
+= scratch-items(joined, range.count + 1)
+
+────────────────────
+_ do children-prepending ImmutableArray'SyntaxId
+    - child SyntaxId
+    - range RowRange'SyntaxId
+
+. joined = scratch-array'SyntaxId(this, range.count + 1)
+joined[0] = child
+for offset in 0 .. < range.count
+    joined[offset + 1] = children[range.start + offset]
+= scratch-items(joined, range.count + 1)
+
+────────────────────
+_ do children-concat ImmutableArray'SyntaxId
+    - left RowRange'SyntaxId
+    - right RowRange'SyntaxId
+
+. joined = scratch-array'SyntaxId(this, left.count + right.count)
+for offset in 0 .. < left.count
+    joined[offset] = children[left.start + offset]
+for offset in 0 .. < right.count
+    joined[left.count + offset] = children[right.start + offset]
+= scratch-items(joined, left.count + right.count)
+
+────────────────────
++ auto-join SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+match nodes[left]
+    | .node-declare(declaration)
+        auto-join-declare(left, declaration.right, right)
+    | .node-assertion-syntax
+        auto-join-assertion(left, right)
+    | .node-catch-expression(catch-expression)
+        auto-join-catch-expression(left, catch-expression.body, catch-expression.catchers, right)
+    | .node-header-expression
+        auto-join-header(left, right)
+    | .node-pipeline-expression
+        auto-join-pipeline(left, right)
+    | .node-bullet-expression
+        auto-join-bullet(left, right)
+    | .node-structure-match
+        auto-join-structure-match(left, right)
+    | .node-stream-match
+        auto-join-stream-match(left, right)
+    | .node-state-machine(machine)
+        match? nodes[right]
+            | .node-state-case
+                append(ASTStateMachine(machine.loc, extended-body))
+                    .. extended-body = store-children(children-appending(machine.body, right))
+            | .node-state-fallback
+                append(ASTStateMachine(machine.loc, extended-body))
+                    .. extended-body = store-children(children-appending(machine.body, right))
+            | .node-state-machine(right-machine)
+                append(ASTStateMachine(machine.loc, merged-body))
+                    .. merged-body = store-children(merged-children)
+                    .. merged-children = children-concat(machine.body, right-machine.body)
+    | .node-state-case(state)
+        match? nodes[right]
+            | .node-state-case
+                append(ASTStateMachine(state.loc, joined-body))
+                    .. joined-body = store-child(left, right)
+            | .node-state-fallback
+                append(ASTStateMachine(state.loc, joined-body))
+                    .. joined-body = store-child(left, right)
+            | .node-state-machine(machine)
+                append(ASTStateMachine(state.loc, merged-body))
+                    .. merged-body = store-children(children-prepending(left, machine.body))
+    ??
+        auto-join-expression(left, right)
+
+────────────────────
+_ do auto-join-structure-match SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+. right-pattern = match nodes[right]
+    | .node-structure-match(row)
+        row.pattern
+    | .node-assertion-syntax(assertion)
+        . condition SyntaxId = 0
+        if assertion.condition
+            condition = match nodes[assertion.condition]
+                | .node-type-predicate(predicate)
+                    append(ASTTypePredicate(predicate.loc, predicate.expr, true))
+                ??
+                    append
+                        - ASTTypePredicate
+                            - nodes.loc[assertion.condition]
+                            - assertion.condition
+                            - true
+        append
+            - ASTTypePanic
+                - assertion.loc
+                - append(ASTTypeTransform(assertion.loc, assertion.exception, condition, false))
+    ??
+        0
+=? null if !right-pattern
+
+. left-pattern = match nodes[left]
+    | .node-structure-match(row)
+        row.pattern
+    ?! Panic("Expected a structure match syntax node")
+. joined = append(ASTTypeOr(nodes.loc[right-pattern], left-pattern, right-pattern))
+match nodes[left]
+    | .node-structure-match(row)
+        row.pattern = joined
+    ?! Panic("Expected a structure match syntax node")
+= left
+
+────────────────────
+_ do auto-join-stream-match SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+. right-pattern = match nodes[right]
+    | .node-stream-match(row)
+        row.pattern
+    | .node-structure-match(row)
+        match nodes[row.pattern]
+            | .node-type-transform(transform) { !transform.pattern }
+                append(ASTStreamTransform(transform.loc, 0, transform.expr, false))
+            ??
+                0
+    | .node-assertion-syntax(assertion) { !assertion.condition }
+        append
+            - ASTStreamPanic
+                - assertion.loc
+                - append(ASTStreamTransform(assertion.loc, 0, assertion.exception, false))
+    ??
+        0
+=? null if !right-pattern
+
+. left-pattern = match nodes[left]
+    | .node-stream-match(row)
+        row.pattern
+    ?! Panic("Expected a stream match syntax node")
+. joined = append(ASTStreamOr(nodes.loc[right-pattern], left-pattern, right-pattern))
+match nodes[left]
+    | .node-stream-match(row)
+        row.pattern = joined
+    ?! Panic("Expected a stream match syntax node")
+= left
+
+────────────────────
+_ do auto-join-header SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+=? null if !is-joinable-header-item(right)
+
+` The header is written again after the item it gains, so that a node always follows what it
+` holds.
+= match nodes[left]
+    | .node-header-expression(header)
+        append(ASTHeaderExpression(header.loc, header.expr, items))
+            .. items = store-children(children-appending(header.items, right))
+    ?! Panic("Expected a header syntax node")
+
+────────────────────
+_ auto-join-pipeline SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+match? nodes[right]
+    | .node-bullet-expression
+        append-pipeline-bullet(left, right)
+    | .node-pipeline-expression
+        set-pipeline-left(right, left)
+
+────────────────────
+_ auto-join-bullet SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+match? nodes[right]
+    | .node-bullet-expression
+        append-bullet-join(left, right)
+    | .node-pipeline-expression
+        set-pipeline-left(right, left)
+
+────────────────────
+_ auto-join-expression SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+|? !is-expression(left)
+    null
+??
+    match? nodes[right]
+        | .node-pipeline-expression(pipeline)
+            set-pipeline-left(right, left)
+        | .node-catcher
+            append(ASTCatchExpression(nodes.loc[left], left, false, store-child(right)))
+
+────────────────────
+_ do auto-join-declare SyntaxId?
+    - left SyntaxId
+    - expression SyntaxId
+    - right SyntaxId
+
+=? null if !expression
+=? null if nodes[right] is not .node-catcher
+
+. joined = auto-join(expression, right)
+=? null if !joined || !is-expression(joined)
+
+= match nodes[left]
+    | .node-declare(row)
+        append
+            - ASTDeclare
+                - row.loc
+                - row.left
+                - joined
+                - row.is-lazy
+                - row.is-pattern
+                - row.rollback
+                - row.is-scoped
+    ?! Panic("Expected a declaration syntax node")
+
+────────────────────
+_ auto-join-assertion SyntaxId?
+    - left SyntaxId
+    - right SyntaxId
+
+match? nodes[right]
+    | .node-catcher
+        append(ASTCatchExpression(nodes.loc[left], left, false, store-child(right)))
+
+────────────────────
+_ do auto-join-catch-expression SyntaxId?
+    - left SyntaxId
+    - body SyntaxId
+    - catchers RowRange'SyntaxId
+    - right SyntaxId
+
+. raw = match nodes[left]
+    | .node-catch-expression(row)
+        row.is-raw-result
+    ?! Panic("Expected a catch expression syntax node")
+if nodes[right] is .node-catcher
+    . extended = store-children(children-appending(catchers, right))
+    = append(ASTCatchExpression(nodes.loc[left], body, raw, extended))
+
+=? null if is-error-transformer-declaration(body, catchers)
+. joined = auto-join(body, right)
+=? null if !joined
+= append(ASTCatchExpression(nodes.loc[left], joined, raw, catchers))
+
+────────────────────
+_ is-error-transformer-declaration Bool
+    - body SyntaxId
+    - catchers RowRange'SyntaxId
+
+|? !catchers.count
+    false
+??
+    match nodes[body]
+        | .node-assertion-syntax(assertion)
+            !assertion.condition
+        ??
+            false
+
+────────────────────
+_ append-pipeline-bullet SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+append(ASTBulletExpression(nodes.loc[left], left, right, true, false))
+
+────────────────────
+_ do set-pipeline-left SyntaxId
+    - pipeline-id SyntaxId
+    - left SyntaxId
+
+` A pipeline takes the statement before it as its left side. When that statement was itself
+` joined after the pipeline was written, the pipeline is written again after it.
+do match nodes[pipeline-id]
+    | .node-pipeline-expression(pipeline)
+        if left > pipeline-id
+            = append(ASTPipelineExpression(pipeline.loc, pipeline.op, left, pipeline.right))
+        pipeline.left = left
+    ?! Panic("Expected a pipeline syntax node")
+
+= pipeline-id
+
+────────────────────
+_ do append-bullet-join SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+append-bullet(left, right)
+= left
+
+────────────────────
+_ do append-bullet
+    - head SyntaxId
+    - addition SyntaxId
+
+. current = head
+while current
+    match nodes[current]
+        | .node-bullet-expression(bullet)
+            if bullet.next
+                current = bullet.next
+            else
+                bullet.next = addition
+                current = 0
+        ?! Panic("Expected a bullet syntax node")
+
+────────────────────
++ auto-join-passes-over Bool
+    - left SyntaxId
+    - right SyntaxId
+
+match nodes[left]
+    | .node-header-expression
+        is-lazy-declaration(right)
+    ??
+        false
+
+────────────────────
+_ is-lazy-declaration Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-declare(declaration)
+        declaration.is-lazy
+    ??
+        false
+
+────────────────────
+_ is-joinable-header-item Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-function-syntax(function)
+        true
+    | .node-getter-syntax(function)
+        function.names.count > 0
+    | .node-setter-syntax(function)
+        function.names.count > 0
+    ??
+        is-expression(id)
+
+────────────────────
+_ is-expression Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-noop
+        false
+    | .node-top-level-syntax
+        false
+    | .node-declare
+        false
+    | .node-assertion-syntax
+        false
+    | .node-class-block
+        false
+    | .node-event-declaration
+        false
+    | .node-property-syntax
+        false
+    | .node-state-case
+        false
+    | .node-state-continuation
+        false
+    | .node-state-fallback
+        false
+    | .node-state-trigger
+        false
+    | .node-unit-declaration
+        false
+    | .node-enum-declaration
+        false
+    | .node-delegate-declaration
+        false
+    | .node-implements-declaration
+        false
+    | .node-using-declaration
+        false
+    | .node-style-domain-item
+        false
+    | .node-style-annotation
+        false
+    | .node-dependency-declaration
+        false
+    | .node-content-block
+        false
+    | .node-fromverter-syntax
+        false
+    | .node-converter-syntax
+        false
+    | .node-subscriber-syntax
+        false
+    | .node-when-rule-syntax
+        false
+    | .node-rule-syntax
+        false
+    | .node-decoration
+        false
+    | .node-markup-head
+        false
+    | .node-markup-slot-parameter
+        false
+    | .node-style-rule-application
+        false
+    | .node-if-block
+        false
+    | .node-while-block
+        false
+    | .node-for-block
+        false
+    | .node-do-block
+        false
+    | .node-probe-statement
+        false
+    | .node-do-finally-block
+        false
+    | .node-do-task-block
+        false
+    | .node-use-block
+        false
+    | .node-stack-local-binding-block
+        false
+    | .node-loop-syntax
+        false
+    | .node-return
+        false
+    | .node-return-if-true
+        false
+    | .node-yield
+        false
+    | .node-break
+        false
+    | .node-continue
+        false
+    | .node-catcher
+        false
+    | .node-pattern-helper-syntax
+        false
+    | .node-argument
+        false
+    | .node-argument-decl
+        false
+    | .node-import-syntax
+        false
+    | .node-clause
+        false
+    | .node-stream-call-expression-argument
+        false
+    | .node-stream-collector-mapping
+        false
+    | .node-probe
+        false
+    | .node-probe-scope
+        false
+    | .node-probe-group
+        false
+    | .node-probe-assign
+        false
+    | .node-probe-counter
+        false
+    | .node-param-constraint
+        false
+    | .node-param-assignment
+        false
+    ??
+        true
+
+────────────────────
++ auto-join-close SyntaxId
+    - node SyntaxId
+
+match nodes[node]
+    | .node-state-case(state)
+        append(ASTStateMachine(state.loc, store-child(node)))
+    ??
+        node
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ASTBuilder
+
+────────────────────
++ do make-argument SyntaxId
+    - loc MatchLocation
+    - expr SyntaxId
+    - name Atom?
+    - is-optional Bool = false
+
+. expression = expr
+if name
+    if has-auto-closure-each(expr)
+        expression = make-auto-closure(expr)
+= append(ASTArgument(loc, expression, name, is-optional))
+
+────────────────────
++ do make-pattern-helper SyntaxId
+    - loc MatchLocation
+    - helper SyntaxId
+
+. expression = helper
+if has-auto-closure-each(helper)
+    expression = make-auto-closure(helper)
+= append(ASTPatternHelper(loc, expression))
+
+────────────────────
+_ make-auto-closure SyntaxId
+    - expr SyntaxId
+
+append(auto-closure-data(loc, args, expr))
+    .. loc = nodes.loc[expr]
+    .. each = append(ASTIdentifier(loc, atom("each"), false))
+    .. capture = append(ASTTypeCapture(loc, each, 0))
+    .. argument = append(ASTArgumentDecl(loc, capture, 0, false))
+    .. args = store-child(argument)
+
+────────────────────
+_ auto-closure-data ASTFunction
+    - loc MatchLocation
+    - args RowRange'SyntaxId
+    - expr SyntaxId
+
+ASTFunction
+    - loc
+    - .private-access
+    - RowRange'Atom()
+    - 0
+    - args
+    - RowRange'SyntaxId()
+    - 0
+    - RowRange'SyntaxId()
+    - RowRange'SyntaxId()
+    - RowRange'SyntaxId()
+    - expr
+    - CompilationEffect.none
+    - false
+    - false
+    - false
+    - false
+    - false
+
+────────────────────
+_ has-auto-closure-each Bool
+    - id SyntaxId
+
+|? !id
+    false
+??
+    match nodes[id]
+        | .node-block(row)
+            children-have-auto-closure-each(row.body)
+        | .node-identifier(row)
+            row.name.text == "each"
+        | .node-print(row)
+            has-auto-closure-each(row.body)
+        | .node-use-expression(row)
+            has-auto-closure-each(row.expr)
+        | .node-latest-expression(row)
+            has-auto-closure-each(row.expr)
+        | .node-header-expression(row)
+            has-auto-closure-each(row.expr)
+        | .node-pipeline-expression(row)
+            !binds-each(row.op) && has-each
+            .. has-each = has-auto-closure-each(row.left) || has-auto-closure-each(row.right)
+        | .node-bullet-expression(row)
+            has-auto-closure-each(row.item)
+        | .node-unary-expression(row)
+            has-auto-closure-each(row.operand)
+        | .node-binary-expression(row)
+            !binds-each(row.op) && has-each
+            .. has-each = has-auto-closure-each(row.lhs) || has-auto-closure-each(row.rhs)
+        | .node-cast-expression(row)
+            has-auto-closure-each(row.lhs) || has-auto-closure-each(row.rhs)
+        | .node-call-expression(row)
+            has-callable || has-params || has-args
+            .. has-callable = has-auto-closure-each(row.callable)
+            .. has-params = children-have-auto-closure-each(row.params)
+            .. has-args = children-have-auto-closure-each(row.args)
+        | .node-range-expression(row)
+            has-left || has-right || has-increment
+            .. has-left = has-auto-closure-each(row.left)
+            .. has-right = has-auto-closure-each(row.right)
+            .. has-increment = has-auto-closure-each(row.increment)
+        | .node-get-expression(row)
+            has-auto-closure-each(row.object)
+        | .node-style-read-expression(row)
+            has-auto-closure-each(row.object)
+        | .node-markup-read-expression(row)
+            has-auto-closure-each(row.object)
+        | .node-index-expression(row)
+            has-auto-closure-each(row.object) || has-auto-closure-each(row.index)
+        | .node-match-expression(row)
+            has-auto-closure-each(row.subject) || has-auto-closure-each(row.body)
+        | .node-catch-optional-expression(row)
+            has-auto-closure-each(row.body)
+        | .node-catch-expression(row)
+            has-auto-closure-each(row.body) || children-have-auto-closure-each(row.catchers)
+        | .node-tuple-syntax(row)
+            children-have-auto-closure-each(row.items)
+        | .node-list-syntax(row)
+            children-have-auto-closure-each(row.items)
+        | .node-iterable-expression(row)
+            has-auto-closure-each(row.expr)
+        | .node-optional-chain(row)
+            has-auto-closure-each(row.expr)
+        | .node-argument(row)
+            has-auto-closure-each(row.expr)
+        | .node-assign(row)
+            has-auto-closure-each(row.lhs) || has-auto-closure-each(row.rhs)
+        ??
+            false
+
+────────────────────
+_ do children-have-auto-closure-each Bool
+    - range RowRange'SyntaxId
+
+for offset in 0 .. < range.count
+    if has-auto-closure-each(children[range.start + offset])
+        = true
+= false
+
+────────────────────
+_ binds-each Bool
+    - op Operator
+
+match op
+    | .map-op
+        true
+    | .filter-op
+        true
+    | .map-filter-op
+        true
+    | .pipe-repeat-op
+        true
+    | .pipe-closure-op
+        true
+    ??
+        false
+
+────────────────────
++ do name-closures
+
+. closure-count U32
+for node in nodes[1 .. < nodes.length]
+    match node
+        | .node-function-syntax(function)
+            if !function.names.count
+                closure-count += 1
+                . name = "(closure)"
+                if closure-count > 1
+                    name = "(closure${closure-count})"
+                . start = atoms.length
+                atoms.append(atom(name))
+                function.names = RowRange'Atom(start as U32, 1)
+        ??
+            continue
+
+────────────────────
++ do finalize-syntax ?! YumiSyntaxError
+
+. end = nodes.length
+for node in nodes[1 .. < end]
+    do match node
+        | .node-state-case(row)
+            row.body = normalized-state-body(row.body)
+            validate-state-fallbacks(row.body)
+        | .node-state-continuation(row)
+            row.body = normalized-state-body(row.body)
+            validate-state-fallbacks(row.body)
+        | .node-state-machine(row)
+            validate-state-fallbacks(row.body)
+        | .node-slot-outlet(row)
+            . loc = exclusive-end-location(row.loc)
+            ?! YumiSyntaxError(loc, "Slot type inference is not supported yet", source, source-path)
+                if slot-type-declares-params(row.type-id)
+            ?! YumiSyntaxError(loc, "Slot parameter requires a named slot", source, source-path)
+                if row.slot-parameter && !row.name
+        ??
+            continue
+
+────────────────────
+_ do normalized-state-body RowRange'SyntaxId
+    - body RowRange'SyntaxId
+
+. builder = ArrayBuilder'SyntaxId()
+for offset in 0 .. < body.count
+    . item = children[body.start + offset]
+    . flattened = match nodes[item]
+        | .node-state-machine(machine)
+            do 
+                for child-offset in 0 .. < machine.body.count
+                    builder.append(children[machine.body.start + child-offset])
+            true
+        ??
+            do
+                builder.append(item)
+            false
+= store-children(builder.finish-immutable())
+
+────────────────────
+_ do validate-state-fallbacks ?! YumiSyntaxError
+    - body RowRange'SyntaxId
+
+. found = false
+for item in nodes[child-ids(body)]
+    do match? item
+        | .node-state-fallback(row)
+            . loc = exclusive-end-location(row.loc)
+            . message = "Multiple fallbacks in one state transition group"
+            ?! YumiSyntaxError(loc, message, source, source-path)
+                if found
+            found = true
+
+────────────────────
+_ do slot-type-declares-params Bool
+    - id SyntaxId
+
+do match nodes[id]
+    | .node-type-identifier(row)
+        = row.is-declare
+    | .node-type-arguments(row)
+        =? true if slot-type-declares-params(row.base)
+        
+        for offset in 0 .. < row.args.count
+            . arg = children[row.args.start + offset]
+            =? true if slot-type-declares-params(arg)
+        = false
+    ??
+        = false

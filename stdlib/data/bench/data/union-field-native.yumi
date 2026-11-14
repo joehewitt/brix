@@ -1,0 +1,35 @@
+`benchmark.meta description: Reads a field shared by every union case through native union member dispatch.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+. nodes = union-field-native-nodes()
+. checksum U64
+for iteration in 0 .. < 400000
+    for node in nodes
+        checksum += node.id
+
+-- "bench-result data/union-field-native checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ UnionFieldNativeNode is Union
+
+| atom(id U64, text String)
+| string(id U64, text String)
+| comment(id U64, text String)
+| list(id U64, items [UnionFieldNativeNode])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do union-field-native-nodes [UnionFieldNativeNode]
+
+. nodes [UnionFieldNativeNode]
+for index in 0 .. < 1000
+    . id = index as U64
+    if index % 4 == 0
+        nodes += UnionFieldNativeNode.atom(id, "atom")
+    else if index % 4 == 1
+        nodes += UnionFieldNativeNode.string(id, "string")
+    else if index % 4 == 2
+        nodes += UnionFieldNativeNode.comment(id, "comment")
+    else
+        nodes += UnionFieldNativeNode.list(id, List'UnionFieldNativeNode())
+= nodes

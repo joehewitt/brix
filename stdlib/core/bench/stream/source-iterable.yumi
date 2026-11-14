@@ -1,0 +1,37 @@
+`benchmark.meta description: Parses through an iterable stream source.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+/core/tokenstream
+
+. stream = ChunkedTokenStream'Char(source-iterable-source().codepoints)
+. rows = match stream
+    ~ \source-iterable-document
+    ?! Panic("source-iterable did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row
+
+-- "bench-result stream/source-iterable checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ source-iterable-document ~ Char
+
+~ rows \source-iterable-row+
+    rows
+
+.. source-iterable-row Size ~
+    ~ "src:" name \source-iterable-word ":" value \source-iterable-digits "\n"
+        name.length * 37 + value.length
+
+.. source-iterable-word String ~
+    ~ [a-zA-Z_] [a-zA-Z0-9_]*
+
+.. source-iterable-digits String ~
+    ~ [0-9]+
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-iterable-source
+
+"".join("src:name_$each:${each * 47}\n" in 0 .. < 180)

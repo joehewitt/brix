@@ -1,0 +1,235 @@
+/core/markup
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/primitives
+/gui/text
+/math
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Grid Natural Tracks")
+cases.run(grid-natural-tests)
+cases = cases.then("GUI Grid Gaps", grid-gap-tests)
+cases = cases.then("GUI Grid Shrinking Tracks", grid-shrink-tests)
+cases = cases.then("GUI Grid Fixed And Flex Tracks", grid-track-tests)
+cases = cases.then("GUI Grid Cell Alignment", grid-alignment-tests)
+cases = cases.then("GUI Grid Floored Text", grid-floored-text-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-natural-tests
+    - t TestCase
+
+. empty = mounted-grid(GridLayout(2), List'Dimensions())
+t.expect("an empty grid has no size", Dimensions(0, 0), empty.measure().content-size)
+
+. root = mounted-grid
+    - GridLayout(2)
+    - [Dimensions(10, 3), Dimensions(20, 5), Dimensions(30, 4), Dimensions(5, 8), Dimensions(7, 2)]
+t.expect
+    - "natural size sums the widest cells and tallest rows"
+    - Dimensions(50, 15)
+    - root.measure().content-size
+root.layout(Rect(2, 3, 100, 40))
+t.expect("the first cell fills its track", Rect(2, 3, 30, 5), root.cell(0).bounds)
+t.expect("a column starts after the one before it", Rect(32, 3, 20, 5), root.cell(1).bounds)
+t.expect("a row starts under the one before it", Rect(2, 8, 30, 8), root.cell(2).bounds)
+t.expect("a short cell stretches to its row and column", Rect(32, 8, 20, 8), root.cell(3).bounds)
+t.expect("a partial last row keeps its column", Rect(2, 16, 30, 2), root.cell(4).bounds)
+t.expect("tracks keep their natural width in a wider box", 50, root.inner-width)
+t.expect("rows set the scroll height", 15, root.inner-height)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-gap-tests
+    - t TestCase
+
+. sizes = [Dimensions(10, 3), Dimensions(20, 5), Dimensions(30, 4), Dimensions(5, 8)]
+. root = mounted-grid(GridLayout(2), sizes)
+root.authored-gap = 4
+root.markup-batch-queue.checkpoint()
+t.expect("the box gap separates columns and rows", Dimensions(54, 17), root.measure().content-size)
+root.layout(Rect(0, 0, 100, 40))
+t.expect("the column gap offsets the second column", 34, root.cell(1).bounds.left)
+t.expect("the row gap offsets the second row", 9, root.cell(2).bounds.top)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-shrink-tests
+    - t TestCase
+
+. sizes = [Dimensions(20, 4), Dimensions(100, 4), Dimensions(60, 4)]
+. root = mounted-grid(GridLayout(3), sizes)
+root.layout(Rect(0, 0, 120, 20))
+t.expect("a narrow track keeps its natural width", 20, root.cell(0).bounds.width)
+t.expect("the widest track shrinks first", 50, root.cell(1).bounds.width)
+t.expect("wide tracks share the remaining space", 50, root.cell(2).bounds.width)
+t.expect("shrunk tracks fill the box", 120, root.inner-width)
+
+root.layout(Rect(0, 0, 50, 20))
+t.expect("tracks narrower than their share all shrink", 16, root.cell(0).bounds.width)
+t.expect("shrunk tracks stay inside the box", 48, root.inner-width)
+
+. floored = mounted-grid(GridLayout(3, 30), sizes)
+floored.layout(Rect(0, 0, 50, 20))
+t.expect("the floor never widens a track past its content", 20, floored.cell(0).bounds.width)
+t.expect("the floor stops a wide track shrinking", 30, floored.cell(1).bounds.width)
+t.expect("floored tracks overflow the box", 80, floored.inner-width)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-track-tests
+    - t TestCase
+
+. sizes = [Dimensions(10, 4), Dimensions(30, 4), Dimensions(12, 4)]
+. root = mounted-grid(GridLayout([GridTrack.fixed(40), GridTrack.auto, GridTrack.flex(1)]), sizes)
+root.layout(Rect(0, 0, 200, 20))
+t.expect("a fixed track ignores its content", 40, root.cell(0).bounds.width)
+t.expect("an auto track takes its content width", 30, root.cell(1).bounds.width)
+t.expect("a flex track takes the space left over", 130, root.cell(2).bounds.width)
+t.expect
+    - "unconstrained flex tracks take their content width"
+    - Dimensions(82, 4)
+    - root.measure().content-size
+
+. shared = mounted-grid
+    - GridLayout([GridTrack.flex(1), GridTrack.flex(3)])
+    - [Dimensions(50, 4), Dimensions(50, 4)]
+shared.layout(Rect(0, 0, 200, 20))
+t.expect("flex tracks split space by weight", 50, shared.cell(0).bounds.width)
+t.expect("a heavier flex track takes more", 150, shared.cell(1).bounds.width)
+
+. crowded = mounted-grid
+    - GridLayout([GridTrack.auto, GridTrack.flex(1)], 24)
+    - [Dimensions(90, 4), Dimensions(60, 4)]
+crowded.layout(Rect(0, 0, 100, 20))
+t.expect("a flex track keeps its floor when space runs out", 24, crowded.cell(1).bounds.width)
+t.expect("auto tracks shrink to leave the flex floor", 76, crowded.cell(0).bounds.width)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-alignment-tests
+    - t TestCase
+
+. root = mounted-grid
+    - GridLayout(2)
+    - [Dimensions(40, 20), Dimensions(10, 6), Dimensions(10, 6), Dimensions(30, 6)]
+root.cell(1).align-y = Alignment.center
+root.cell(2).align-x = Alignment.end
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 100, 40))
+t.expect
+    - "vertical alignment keeps natural height in the row"
+    - Rect(40, 7, 30, 6)
+    - root.cell(1).bounds
+t.expect
+    - "horizontal alignment keeps natural width in the column"
+    - Rect(30, 20, 10, 6)
+    - root.cell(2).bounds
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-floored-text-tests
+    - t TestCase
+
+. root = GridTestRoot(GridLayout(2, 120))
+markup-append(root, GridTestCell(Dimensions(40, 4)))
+markup-append
+    - root
+    - grid-text("A description far too long to fit on one line at the floor of its track.")
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 100, 200))
+. prose = grid-child(root, 1) as Text
+. lines = prose.text-layout-snapshot!
+t.expect("a track that cannot fit stops at its floor", 120, prose.bounds.width)
+t.expect("text in a floored track wraps at the floor width", 120, lines.constrained-width)
+t.expect("the row grows to the wrapped height", lines.size.height, prose.bounds.height)
+t.expect
+    - "cells in the floored row share its height"
+    - prose.bounds.height
+    - root.cell(0).bounds.height
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mounted-grid
+    - layout GridLayout
+    - sizes [Dimensions]
+
+. root = GridTestRoot(layout)
+for size in sizes
+    markup-append(root, GridTestCell(size))
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+= root
+
+━━━━━━━━━━━━━━━━━━━━
+_ do grid-child Box
+    - root Box
+    - index Index
+
+. position Index = 0
+for child in root.children
+    =? child as Box if position == index
+    position += 1
+?! Panic("Grid test child $index does not exist")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do grid-text
+    - content String
+
+. text = Text()
+markup-append(text, Span(content))
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ GridTestRoot is Box
+    is MarkupBatch
+
++ grid GridLayout
++ authored-gap Length
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = #grid
+    gap = #authored-gap
+
+────────────────────
++ This
+    - grid
+
+────────────────────
++ do cell GridTestCell
+    - index Index
+
+. position Index = 0
+for child in children
+    =? child as GridTestCell if position == index
+    position += 1
+?! Panic("Grid test cell $index does not exist")
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ GridTestCell is Box
+
++ desired = Dimensions(5, 4)
+
+────────────────────
++ This
+    - desired = Dimensions(5, 4)
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+desired

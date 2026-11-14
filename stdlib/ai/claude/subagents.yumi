@@ -1,0 +1,128 @@
+./history
+./wire
+/ai/model
+/data/json
+/os/file
+/os/path
+/time/datetime
+
+_ claude-handback-tool = "SubagentHandback"
+_ claude-latest-limit Size = 200
+_ claude-quiet-seconds = 120
+
+━━━━━━━━━━━━━━━━━━━━
+_ ClaudeAgentMeta is Tuple
+
++ id String
++ call-id String
++ title String
++ kind String
++ folder Path
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-subagents [AISubagent] ?! Error
+    - parts [AIMessagePart]
+    - directory String?
+
+. found = List'AISubagent()
+. session String?
+. calls = List'String()
+for part in parts
+    session = claude-part-session(part) ?? session
+    if | call AIToolCallPart = part
+        if call.tool-name == "Agent" || call.tool-name == "Task"
+            calls += call.call-id
+=? found if !session || !calls.length
+. metas = Map'String'ClaudeAgentMeta()
+for home in claude-session-folders(session, directory)
+    . folder = home / session / "subagents"
+    if folder.exists
+        for entry in folder.entries
+            if entry.name.ends-with(".meta.json")
+                . meta = catch? claude-read-meta(folder, entry.name)
+                if meta
+                    metas[meta.call-id] = meta
+for call-id in calls
+    . meta = metas[call-id]
+    if meta
+        . agent = catch? claude-read-agent(meta)
+        if agent
+            found += agent
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-read-meta ClaudeAgentMeta ?! Error
+    - folder Path
+    - name String
+
+. fields = JSONReader("agent", parse-json(read-file-text(folder / name))).object()
+. id = name[0 .. < name.length - ".meta.json".length]
+. title = if fields["description"].is-present then fields["description"].string() else "Agent"
+. kind = if fields["agentType"].is-present then fields["agentType"].string() else "agent"
+= ClaudeAgentMeta(id, fields["toolUseId"].string(), title, kind, folder)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-read-agent AISubagent ?! Error
+    - meta ClaudeAgentMeta
+
+. path = meta.folder / "${meta.id}.jsonl"
+. decoder = ClaudeDecoder()
+. reply = AIReply()
+for line in read-file-text(path).split("\n")
+    if line.trim().length > 0
+        catch claude-apply-line(decoder, reply, line)
+. parts = List'AIMessagePart()
+. steps Size = 0
+. latest String?
+. result String?
+for part in reply.parts
+    if part is AIExtensionPart
+        continue
+    parts += part
+    if | call AIToolCallPart = part
+        steps += 1
+        if call.tool-name == claude-handback-tool
+            result = claude-handback-message(call)
+    else if | text AITextPart = part
+        if text.text.trim().length > 0
+            latest = claude-first-line(text.text)
+. is-quiet = now().since-epoch - path.modified.since-epoch > claude-quiet-seconds
+= AISubagent
+    - meta.id
+    - meta.title
+    - meta.kind
+    - meta.call-id
+    - result == null && !is-quiet
+    - steps
+    - latest
+    - result
+    - parts
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-apply-line ?! Error
+    - decoder ClaudeDecoder
+    - reply AIReply
+    - line String
+
+for event in decoder.decode(parse-json(line))
+    reply.apply(event)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do claude-handback-message String?
+    - call AIToolCallPart
+
+if | fields [String = JSON] = call.arguments
+    do match? fields
+        | ["message" = message String]
+            = message
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ claude-first-line String
+    - text String
+
+if line.length <= claude-latest-limit then line else "${line[0 .. < claude-latest-limit].trim()}…"
+
+.. trimmed = text.trim()
+.. ending = trimmed.find("\n")
+.. line = if ending != null then trimmed[0 .. < ending] else trimmed

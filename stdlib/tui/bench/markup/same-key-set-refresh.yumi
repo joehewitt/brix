@@ -1,0 +1,155 @@
+`benchmark.meta description: Refreshes same-key collection rows in place with changed-key and explicit-replace controls.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/core/style
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. row-count Size = 256
+. same-key-passes Size = 40
+
+. root = SameKeyBenchRoot()
+
+root.items = make-same-key-items(row-count, "opening")
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+
+. region = root.%first-child!
+. opening-rows [SameKeyBenchRow]
+for index in 0 .. < row-count
+    opening-rows += (region.child-at(index))! as SameKeyBenchRow
+
+. identity-preserved Size = 0
+. checksum Size = 0
+
+root.phase = 1
+for pass in 0 .. < same-key-passes
+    for index in 0 .. < row-count
+        . id = "row-$index"
+        root.items[index] = SameKeyBenchItem(id, "same-${pass}-$index")
+
+    root.markup-batch-queue.checkpoint()
+
+    for index in 0 .. < row-count
+        . row = (region.child-at(index))! as SameKeyBenchRow
+        ?! Panic("markup/same-key-set-refresh changed same-key row identity")
+            if row != opening-rows[index]
+        ?! Panic("markup/same-key-set-refresh left tracked row content stale")
+            if row.text != "same-${pass}-$index"
+        identity-preserved += 1
+        checksum += row.text.length + index
+
+. changed-before [SameKeyBenchRow]
+root.phase = 2
+for index in 0 .. < row-count
+    changed-before += (region.child-at(index))! as SameKeyBenchRow
+    root.items[index] = SameKeyBenchItem("changed-$index", "changed-$index")
+root.markup-batch-queue.checkpoint()
+
+for index in 0 .. < row-count
+    . row = (region.child-at(index))! as SameKeyBenchRow
+    ?! Panic("markup/same-key-set-refresh reused a changed-key row")
+        if row == changed-before[index]
+    ?! Panic("markup/same-key-set-refresh lost changed-key content")
+        if row.text != "changed-$index"
+    checksum += row.text.length
+
+. forced-before [SameKeyBenchRow]
+root.phase = 3
+for index in 0 .. < row-count
+    forced-before += (region.child-at(index))! as SameKeyBenchRow
+    root.items.replace(index, SameKeyBenchItem("changed-$index", "forced-$index"))
+root.markup-batch-queue.checkpoint()
+
+for index in 0 .. < row-count
+    . row = (region.child-at(index))! as SameKeyBenchRow
+    ?! Panic("markup/same-key-set-refresh reused an explicitly replaced row")
+        if row == forced-before[index]
+    ?! Panic("markup/same-key-set-refresh lost explicit replacement content")
+        if row.text != "forced-$index"
+    checksum += row.text.length
+
+//markup.bench.same-key.identity-preserved += identity-preserved
+
+-- "bench-result markup/same-key-set-refresh checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ SameKeyBenchItem
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ SameKeyBenchRow is Label
+
++ sink SameKeyBenchRoot
+
+────────────────────
++ This
+    - sink
+
+if sink.phase == 1
+    //markup.bench.same-key.builds ++
+else if sink.phase > 1
+    //markup.bench.same-key.control-builds ++
+
+────────────────────
++ do mounted
+
+if sink.phase == 1
+    //markup.bench.same-key.mounts ++
+else if sink.phase > 1
+    //markup.bench.same-key.control-mounts ++
+
+────────────────────
++ do unmounted
+
+if sink.phase == 1
+    //markup.bench.same-key.unmounts ++
+else if sink.phase > 1
+    //markup.bench.same-key.control-unmounts ++
+
+━━━━━━━━━━━━━━━━━━━━
++ SameKeyBenchRoot is Box
+    is MarkupBatch
+
++ items [SameKeyBenchItem]
++ phase Size = 0
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    for item in #items keyed by same-key-bench-key(item)
+        <SameKeyBenchRow
+            sink = this
+            text = item.text
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+_ do same-key-bench-key String
+    - item SameKeyBenchItem
+
+//markup.bench.same-key.key-calls ++
+= item.id
+
+━━━━━━━━━━━━━━━━━━━━
+_ make-same-key-items [SameKeyBenchItem]
+    - count Size
+    - phase String
+
+SameKeyBenchItem("row-$each", "${phase}-$each") in 0 .. < count

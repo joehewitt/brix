@@ -1,0 +1,244 @@
+./motion-kit
+/graphics/color
+/graphics/outline
+/graphics/point
+/graphics/primitives
+/graphics/text
+/gui
+/math
+/math/motion
+/time/duration
+/units
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleMood is U32
+
+| dawn = 0
+| ocean = 1
+| neon = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• StyleTheme
+    using GUIDefaultTheme
+    using GUIMotionTheme
+    using GUIBoxCursor
+    using MotionKitTheme
+
+• lift-card • flex-col bg:gui-field-color w:128 h:146 p:12 mr:16
+    corner-radius = 14
+    shadow = Shadow(RGBA("#00000030"), 3, 0, 1)
+    cursor = CursorStyle.pointing-hand
+    motion = gui-motion-smooth
+    motion.translate = gui-motion-bouncy
+    motion.scale = gui-motion-bouncy
+
+    when #is-hover-within
+        translate = Point(0, -10)
+        scale = 1.04
+        shadow = Shadow(RGBA("#00000090"), 26, 0, 16)
+
+    when #is-press-within
+        translate = Point(0, -3)
+        scale = 0.95
+        shadow = Shadow(RGBA("#00000060"), 8, 0, 4)
+        motion.scale = gui-motion-quick
+
+• lift-art • h:76
+    corner-radius = 10
+
+• lift-title • motion-label mt:10
+
+• mood-tile • w:64 h:64 mr:14
+    motion = gui-motion-smooth
+    motion.rotate = gui-motion-bouncy
+    motion.scale = gui-motion-bouncy
+
+• mood-name
+    font-size = 30
+    font-weight = FontWeight.bold
+    motion = gui-motion-smooth
+
+• ticket • flex-col w:150 h:84 p:14
+    corner-radius = 16
+    shadow = Shadow(RGBA("#00000070"), 18, 0, 10)
+    motion.transform = spring(560ms, 0.42)
+
+• ticket-title • text:RGBA("#ffffff")
+    font-size = 18
+    font-weight = FontWeight.bold
+
+• ticket-note • text:RGBA("#ffffffcc") mt:4
+    font-size = 12
+
+• control-row • flex-row items-center h:34
+
+• disclosure-row • flex-row items-center h:34
+    cursor = CursorStyle.pointing-hand
+
+• disclosure-detail • motion-note pl:22
+    motion = gui-motion-smooth
+
+━━━━━━━━━━━━━━━━━━━━
++ StylePanel is Box
+    using MotionKitTheme
+    using StyleTheme
+
++ mood = StyleMood.dawn
++ is-turned = false
++ is-grown = false
++ is-slid = false
++ shows-advanced = false
+
+────────────────────
+
+<This • motion-page
+    <MotionHeader "Style motion"
+        lede = "Rules say what a state looks like; motion says how to get there. Hover, press and mood changes all animate from the style sheet, with no code stepping values."
+    <Box • motion-row
+        <MotionCard "Hover and press" • flex:1
+            note = "when #is-hover-within lifts the card on a bouncy spring; when #is-press-within dips it at once."
+            <Box • flex-row items-end flex:1 mt:12
+                <Box lift-a • lift-card
+                    <Box • lift-art
+                        background = motion-glow(0)
+                    <Label "Sunrise" • lift-title
+                    <Label "lifts on hover" • motion-tag mt:2
+                <Box lift-b • lift-card
+                    <Box • lift-art
+                        background = motion-glow(3)
+                    <Label "Lagoon" • lift-title
+                    <Label "spring(420ms, 0.3)" • motion-tag mt:2
+                <Box lift-c • lift-card
+                    <Box • lift-art
+                        background = motion-glow(6)
+                    <Label "Orchid" • lift-title
+                    <Label "instant on press" • motion-tag mt:2
+        <MotionCard "One state, many properties" • flex:1
+            note = "The mood changes each tile's color, corner radius, rotation and scale together. Colors blend through OKLab, and each tile's spring is a little slower than the last."
+            <SegmentedControl'StyleMood mood-picker • mt:12
+                selected = #mood
+                for event on selection-changed
+                    mood = event.value
+                <Segment'StyleMood dawn-segment "Dawn"
+                    value = StyleMood.dawn
+                <Segment'StyleMood ocean-segment "Ocean"
+                    value = StyleMood.ocean
+                <Segment'StyleMood neon-segment "Neon"
+                    value = StyleMood.neon
+            <Label • mood-name mt:14
+                text = mood-label(#mood)
+                color = mood-color(#mood, 2)
+                motion.color = spring(700ms)
+            <Box • flex-row items-center flex:1
+                for index in 0 .. < 6
+                    <Box • mood-tile
+                        background-color = mood-color(#mood, index)
+                        corner-radius = mood-radius(#mood)
+                        rotate = mood-rotate(#mood, index)
+                        scale = mood-scale(#mood, index)
+                        motion.background-color = spring(360ms + 110ms * index)
+                        motion.corner-radius = spring(360ms + 110ms * index)
+    <Box • motion-row mt:18
+        <MotionCard "Transforms on a spring" • flex:1
+            note = "translate, scale and rotate share motion.transform = spring(560ms, 0.42). Toggle them in any order, even mid-flight: each one turns around from where it is."
+            <Box • flex-row flex:1 mt:12
+                <Box • motion-well flex-row items-center justify-center flex:1
+                    <Box • ticket
+                        background = motion-glow(4)
+                        rotate = if #is-turned then 0.3rad else 0rad
+                        scale = if #is-grown then 1.2 else 1
+                        translate = Point(if #is-slid then 120 else -60, 0)
+                        <Label "Boarding" • ticket-title
+                        <Label "Gate 12 · Seat 4A" • ticket-note
+                <Box • flex-col w:120 ml:16 justify-center
+                    <Button turn-button "Turn" • mb:10
+                        is-on = #is-turned
+                        action = => do is-turned = !is-turned
+                    <Button grow-button "Grow" • mb:10
+                        is-on = #is-grown
+                        action = => do is-grown = !is-grown
+                    <Button slide-button "Slide"
+                        is-on = #is-slid
+                        action = => do is-slid = !is-slid
+        <MotionCard "Built-in controls" • w:330
+            note = "Stdlib controls declare their motion in the default theme."
+            <Box • flex-col mt:12
+                <Box • control-row
+                    <Switch wifi-switch "Wi-Fi"
+                        is-on = true
+                <Box • control-row
+                    <Switch sync-switch "Sync photos"
+                <Box • control-row
+                    <Switch focus-switch "Focus mode"
+                <Box • disclosure-row
+                    <DisclosureButton disclosure • icon-chevron-right w:20 h:20 mr:6
+                        is-open = #shows-advanced
+                        action = => do shows-advanced = !shows-advanced
+                    <Label "Advanced"
+                <Label • disclosure-detail
+                    text = "The chevron rotates by π/2 with gui-motion-quick."
+                    opacity = if #shows-advanced then 1%% else 0%%
+                    translate = Point(0, if #shows-advanced then 0 else -6)
+
+━━━━━━━━━━━━━━━━━━━━
+_ mood-color RGBA
+    - mood StyleMood
+    - index Index
+
+match mood
+    |= .dawn
+        [RGBA("#fbbf24"), RGBA("#fb923c"), RGBA("#f97316"), RGBA("#f43f5e"), RGBA("#ec4899"), RGBA("#fde047")][index]
+    |= .ocean
+        [RGBA("#22d3ee"), RGBA("#06b6d4"), RGBA("#0ea5e9"), RGBA("#3b82f6"), RGBA("#6366f1"), RGBA("#14b8a6")][index]
+    ??
+        [RGBA("#a3e635"), RGBA("#d946ef"), RGBA("#22c55e"), RGBA("#a855f7"), RGBA("#facc15"), RGBA("#f43f5e")][index]
+
+━━━━━━━━━━━━━━━━━━━━
+_ mood-radius Length
+    - mood StyleMood
+
+match mood
+    |= .dawn
+        32
+    |= .ocean
+        14
+    ??
+        4
+
+━━━━━━━━━━━━━━━━━━━━
+_ mood-rotate Radians
+    - mood StyleMood
+    - index Index
+
+match mood
+    |= .dawn
+        0rad
+    |= .ocean
+        (π / 4) as Radians
+    ??
+        (if index % 2 == 0 then 0.3 else -0.3) as Radians
+
+━━━━━━━━━━━━━━━━━━━━
+_ mood-scale F64
+    - mood StyleMood
+    - index Index
+
+match mood
+    |= .dawn
+        1.0
+    |= .ocean
+        0.82
+    ??
+        if index % 2 == 0 then 1.12 else 0.88
+
+━━━━━━━━━━━━━━━━━━━━
+_ mood-label String
+    - mood StyleMood
+
+match mood
+    |= .dawn
+        "Dawn"
+    |= .ocean
+        "Ocean"
+    ??
+        "Neon"

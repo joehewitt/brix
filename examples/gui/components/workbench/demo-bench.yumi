@@ -1,0 +1,268 @@
+./demo-panels
+/graphics/primitives
+/gui
+/gui/icons/lucide/activity
+/gui/icons/lucide/cloud-upload
+/gui/icons/lucide/file-text
+/gui/icons/lucide/folder
+/gui/icons/lucide/layers
+/gui/icons/lucide/list-checks
+/gui/icons/lucide/list-tree
+/gui/icons/lucide/palette
+/gui/icons/lucide/plus
+/gui/icons/lucide/scan-search
+/gui/icons/lucide/sticky-note
+/gui/workbench
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoBench is Workbench
+    using DemoTheme
+
++ state = DemoState(model)
+
+────────────────────
+
+<This
+    view-revision = #state.#revision
+    <MenuButton (leading) • demo-context ml:4
+        title = demo-context-title(#model, #revision)
+        <Menu
+            for owner in demo-context-list(#model, #revision) keyed by owner.id
+                <MenuItem
+                    title = owner.name
+                    is-on = owner.id == #model.#current
+                    action = => do model.switch-to(owner.id)
+            <MenuSeparator
+            <MenuItem "Give This Context Its Own Layout"
+                is-enabled = demo-is-shared(#model, #revision)
+                action = => do model.fork()
+            <MenuItem "Go Back to the Shared Layout"
+                is-enabled = !demo-is-shared(#model, #revision)
+                action = => do model.revert()
+            <MenuItem "Make This the Shared Layout"
+                is-enabled = !demo-is-shared(#model, #revision)
+                action = => do model.make-shared()
+    <Box (trailing) • flex-row items-center
+        <IconButton • icon-plus mr:6
+            action = => do state.new-note()
+            <Tooltip "New note"
+
+╌╌╌╌╌╌╌╌╌╌ is Workbench ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ make-content Box
+    - view String
+    - context String
+
+|? kind == "note"
+    NotePanel(state, view)
+|? kind == "file"
+    FilePanel(state, view)
+|? view == "projects"
+    ProjectsPanel(state)
+|? view == "files"
+    FilesPanel(state)
+|? view == "outline"
+    OutlinePanel()
+|? view == "activity"
+    ActivityPanel(state)
+|? view == "checklist"
+    ChecklistPanel(state)
+|? view == "palette"
+    PalettePanel(state)
+|? view == "inspector"
+    InspectorPanel(state)
+|? view == "deploy"
+    DeployPanel(state)
+??
+    Label(view)
+
+.. kind = model.instance-kind(view)
+
+────────────────────
++ make-icon Box
+    - view String
+
+DemoIcon(model.instance-kind(view) ?? view)
+
+────────────────────
++ title-for String
+    - view String
+
+match view
+    |? model.instance-kind(view)
+        demo-title(view)
+    |= "projects"
+        "Projects"
+    |= "files"
+        "Files"
+    |= "outline"
+        "Outline"
+    |= "activity"
+        "Activity"
+    |= "checklist"
+        "Checklist"
+    |= "palette"
+        "Palette"
+    |= "inspector"
+        "Inspector"
+    |= "deploy"
+        "Deploy"
+    ??
+        view
+
+────────────────────
++ tab-marks PaneTabMarks
+    - view String
+
+PaneTabMarks() • is-modified (state.clicks[view] ?? 0) > 0
+
+────────────────────
++ tooltip-for String?
+    - view String
+
+"Dropped or opened file: ${demo-title(view)}" if model.instance-kind(view) == "file"
+
+────────────────────
++ make-tab-menu Box?
+    - view String
+
+DemoNoteMenu(state, view) if model.instance-kind(view) == "note"
+
+────────────────────
++ accepts-drop Bool
+    - payload DragPayload
+
+drag-paths(payload) != null
+
+────────────────────
++ do open-drop
+    - payload DragPayload
+    - target PaneTarget
+
+for path in drag-paths(payload) ?? List'Path()
+    model.open-at("${model.context().id}/file/${path.name}", "file", target)
+
+────────────────────
++ empty-text String
+
+"No notes or files are open here. Press + or open a file from Files."
+
+────────────────────
++ boxes-in-sidebar Bool
+    - view String
+
+kind == "note" || kind == "file"
+
+.. kind = model.instance-kind(view)
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoIcon is Box
+
++ name String
+
+────────────────────
++ This
+    - name
+
+────────────────────
+
+<This • flex-col
+    if #name == "note"
+        <LucideStickyNote • icon
+    else if #name == "file"
+        <LucideFileText • icon
+    else if #name == "projects"
+        <LucideLayers • icon
+    else if #name == "files"
+        <LucideFolder • icon
+    else if #name == "outline"
+        <LucideListTree • icon
+    else if #name == "activity"
+        <LucideActivity • icon
+    else if #name == "checklist"
+        <LucideListChecks • icon
+    else if #name == "palette"
+        <LucidePalette • icon
+    else if #name == "inspector"
+        <LucideScanSearch • icon
+    else
+        <LucideCloudUpload • icon
+
+━━━━━━━━━━━━━━━━━━━━
++ do demo-model PaneModel
+
+. model = PaneModel()
+model.register("projects", PaneViewScope.app)
+for view in ["files", "outline", "activity", "checklist", "palette", "inspector", "deploy"]
+    model.register(view, PaneViewScope.context)
+. layout = PaneLayout("default", "Default")
+. projects = pane-stack-node("projects-stack", List'String("projects"))
+. navigation = pane-stack-node("navigation-stack", List'String("files", "outline"))
+layout.left.pages += PanePage
+    - "navigation-page"
+    - pane-split-node
+        - "left-split"
+        - PaneAxis.column
+        - List'PaneNode(projects, navigation)
+        - List'Float(0.7, 2)
+for view in ["inspector", "palette"]
+    layout.right.pages += PanePage
+        - "${view}-page"
+        - pane-stack-node("${view}-stack", List'String(view))
+layout.right.is-collapsed = true
+layout.add-bottom(pane-stack-node("panel-stack", List'String("activity", "checklist", "deploy")))
+layout.menus += "palette"
+layout.homes["note"] = pane-workspace-home
+layout.homes["file"] = pane-workspace-home
+model.add-layout(layout)
+. ignored-alpha = model.add-context("alpha", "Alpha", "default")
+. ignored-beta = model.add-context("beta", "Beta", "default")
+. ignored-gamma = model.add-context("gamma", "Gamma", "default")
+= model
+
+━━━━━━━━━━━━━━━━━━━━
+_ demo-context-title String
+    - model PaneModel
+    - revision U64
+
+name
+
+.. name = model.context().name
+.. ignored = revision
+
+━━━━━━━━━━━━━━━━━━━━
+_ demo-context-list [PaneContext]
+    - model PaneModel
+    - revision U64
+
+List'PaneContext(model.contexts)
+
+.. ignored = revision
+
+━━━━━━━━━━━━━━━━━━━━
+_ demo-is-shared Bool
+    - model PaneModel
+    - revision U64
+
+model.layout().is-shared
+
+.. ignored = revision
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoNoteMenu is Box
+
++ state DemoState
++ view String
+
+────────────────────
++ This
+    - state
+    - view
+
+────────────────────
+
+<This • flex-col
+    <MenuItem "New Note Beside"
+        action = => do state.new-note(view)

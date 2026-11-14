@@ -1,0 +1,110 @@
+/ai
+/graphics/image
+/gui
+/math
+/os/file
+/os/path
+/stream/aggregate
+
++ chat-attachment-limits = ChatImageLimits(1568, 3750000)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatImageLimits is Tuple
+
++ pixels I32
++ bytes Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-attachment AIImage ?! Error
+    - entry ClipboardEntry
+    - store AIImageStore
+    - limits = chat-attachment-limits
+
+. file = entry.path
+=? chat-file-attachment(file, store, limits) if file
+. type = entry.conforming-type(clipboard-image-type)
+. bytes = entry.read-data(type) if type
+?! IOError("The clipboard item holds no image")
+    if !bytes
+= chat-image-attachment(bytes, type!, store, limits)
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-file-attachment AIImage ?! Error
+    - file Path
+    - store AIImageStore
+    - limits = chat-attachment-limits
+
+. type = clipboard-path-type(file) ?? ""
+?! IOError("${file.name} is not an image")
+    if !clipboard-type-conforms(type, clipboard-image-type)
+= chat-image-attachment(read-file-bytes(file), type, store, limits)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-takes-images Bool
+    - payload DragPayload
+
+|? payload is ClipboardDrag
+    some((payload as ClipboardDrag).clipboard.items) • where each.is-image || each.is-promised-image
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-dropped-attachments [AIImage]
+    - drag ClipboardDrag
+    - store AIImageStore
+    - limits = chat-attachment-limits
+
+. items = drag.clipboard.items
+. promised = some(items) • where each.is-promised-image
+. attached = List'AIImage()
+for item in items
+    if item.is-image && item.promised-type == null
+        attached +=? catch? chat-attachment(item, store, limits)
+for file in if promised then drag.receive-promised-files() else List'Path()
+    attached +=? catch? chat-file-attachment(file, store, limits)
+= attached
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-image-attachment AIImage ?! Error
+    - bytes Byte[]
+    - type String
+    - store AIImageStore
+    - limits ChatImageLimits
+
+. decoded = use decode-image(bytes, 1, limits.pixels)
+. width = decoded.pixel-width as Size
+. height = decoded.pixel-height as Size
+. format = chat-attachment-format(type)
+. is-whole = (max(width, height)) < limits.pixels as Size
+=? chat-kept(store, bytes, format, width, height) if format && is-whole && fits-limit
+.. fits-limit = bytes.size <= limits.bytes
+. is-photo = clipboard-type-conforms(type, "public.jpeg") || is-heif
+    .. is-heif = clipboard-type-conforms(type, "public.heif-standard")
+. png = decoded.canvas.encode-png() if !is-photo
+=? chat-kept(store, png, ai-format-png, width, height) if png && png.size <= limits.bytes
+= chat-kept(store, decoded.canvas.encode-jpeg(), ai-format-jpeg, width, height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-kept AIImage ?! Error
+    - store AIImageStore
+    - bytes Byte[]
+    - format String
+    - width Size
+    - height Size
+
+= store.attach(AIImage(AIFile(AIBytesSource(bytes), format), width, height))
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-attachment-format String?
+    - type String
+
+|? clipboard-type-conforms(type, "public.png")
+    ai-format-png
+|? clipboard-type-conforms(type, "public.jpeg")
+    ai-format-jpeg
+|? clipboard-type-conforms(type, "com.compuserve.gif")
+    ai-format-gif
+|? clipboard-type-conforms(type, "org.webmproject.webp")
+    ai-format-webp
+??
+    null

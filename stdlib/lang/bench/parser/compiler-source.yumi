@@ -1,0 +1,24 @@
+`benchmark.meta description: Parses the compiler's Yumi source closure without C headers, declarations, or lowering.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,compile-timing,parser-queue,allocator
+
+/lang/compiler
+/os/env
+
+. yumi YumiCompiler
+yumi.parse-worker-count = 8
+
+. paths = env("YUMIPATH")
+if paths
+    yumi.search-paths ++= paths.split(":")
+
+. source-path = yumi.path-to-module("/../compiler/yumi-cli")
+?! Panic("Unable to resolve /../compiler/yumi-cli")
+    if !source-path
+
+. program = use yumi.source-to-syntax(source-path as String, "__source__")
+. checksum = program.modules.length
+if checksum == 0
+    ?! Panic("The parser did not parse any modules")
+
+-- "bench-result parser/compiler-source checksum=$checksum"

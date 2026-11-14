@@ -1,0 +1,635 @@
+./expression
+./names
+./token
+./value
+/graphics/color
+/graphics/point
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPhrasePart is Tuple
+
++ word = ""
++ slot = ""
++ type = script-any-type
+
+────────────────────
++ get is-slot
+
+slot.length > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPhraseForm is Tuple
+
++ kind String
++ parts [ScriptPhrasePart]
++ result ScriptType
++ is-function = false
+
+────────────────────
++ get starts-with-slot
+
+parts.length > 0 && parts[0].is-slot
+
+────────────────────
++ get ends-with-slot
+
+parts.length > 0 && parts[parts.length - 1].is-slot
+
+────────────────────
++ get slots [ScriptPhrasePart]
+
+List'ScriptPhrasePart(each in parts when each.is-slot)
+
+────────────────────
++ do get template String
+
+=? "${name}(${", ".join(script-part-display(each) in slots)})" if is-function
+. text = ""
+for part in parts
+    . piece = script-part-display(part)
+    if text.length && !piece.starts-with("'")
+        text = "$text "
+    text = "$text$piece"
+= text
+
+────────────────────
++ do get name String
+
+=? "" if parts.length < 2 || parts[0].is-slot
+. word = parts[0].word
+. cut Index? = null
+for index in 0 .. < word.length
+    if word[index] == ' '
+        cut = index
+=? word if cut == null
+= word[0 .. < cut]
+
+────────────────────
++ do slot-type ScriptType
+    - name String
+
+for part in parts
+    =? part.type if part.slot == name
+= script-any-type
+
+────────────────────
++ do next-word Index?
+    - start Index
+
+for index in start + 1 .. < parts.length
+    =? index if !parts[index].is-slot
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ script-part-display
+    - part ScriptPhrasePart
+
+if part.is-slot then "‹${part.slot}›" else part.word
+
+━━━━━━━━━━━━━━━━━━━━
++ script-part-words
+    - part ScriptPhrasePart
+
+|? part.is-slot
+    "".join(" " in 0 .. < script-part-display(part).length)
+??
+    part.word
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-template-parts [ScriptPhrasePart]
+    - template String
+    - node-kinds [String]
+    - part-kinds [String] = List'String()
+
+. parts [ScriptPhrasePart]
+. word = ""
+. index = 0
+while index < template.length
+    if template[index] != '{'
+        word = "$word${template[index]}"
+        index += 1
+        continue
+    . close = index + 1
+    while close < template.length && template[close] != '}'
+        close += 1
+    ?! Panic("Unclosed slot in phrase template '$template'")
+        if close >= template.length
+    . slot = template[index + 1 .. < close]
+    . colon = slot.find(":")
+    . name = if colon then slot[0 .. < colon] else slot
+    . type-name = if colon then slot[colon + 1 .. < slot.length] else slot
+    . type = script-type-named(type-name, node-kinds, part-kinds)
+    ?! Panic("Unknown slot type '$type-name' in phrase template '$template'")
+        if !type
+    if word.trim().length
+        parts += ScriptPhrasePart(word.trim())
+    word = ""
+    parts += ScriptPhrasePart("", name, type)
+    index = close + 1
+if word.trim().length
+    parts += ScriptPhrasePart(word.trim())
+= parts
+
+━━━━━━━━━━━━━━━━━━━━
++ script-short-kind String
+    - kind String
+
+if !dot then kind else kind[dot + 1 .. < kind.length]
+
+.. dot = kind.find(".")
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptConversion is Tuple
+
++ source ScriptType
++ result ScriptType
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPartPhrase is Tuple
+
++ kind String
++ number String
++ node String
++ plural = ""
++ numbers = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptGrammar
+
++ node-kinds [String]
++ part-kinds [String]
+_ part-phrases Map'String'ScriptPartPhrase
+
+_ forms Map'String'ScriptPhraseForm
+_ ordered [ScriptPhraseForm]
+_ families Map'String'([String])
+_ short-counts Map'String'Index
+_ short-kinds Map'String'String
+_ conversions [ScriptConversion]
+
+────────────────────
++ do add-conversion
+    - source ScriptType
+    - result ScriptType
+
+conversions += ScriptConversion(source, result)
+
+────────────────────
++ do conversion Index?
+    - actual ScriptType
+    - wanted ScriptType
+
+=? null if actual.kind == ScriptTypeKind.any || wanted.kind == ScriptTypeKind.any
+for index in 0 .. < conversions.length
+    =? index if conversions[index].source.admits(actual) && wanted.admits(conversions[index].result)
+= null
+
+────────────────────
++ do operand-conversion Index?
+    - actual ScriptType
+
+=? null if actual.kind != ScriptTypeKind.node && actual.kind != ScriptTypeKind.part
+for index in 0 .. < conversions.length
+    . result = conversions[index].result.kind
+    . computes = result == ScriptTypeKind.number || result == ScriptTypeKind.point
+    =? index if computes && conversions[index].source.admits(actual)
+= null
+
+────────────────────
++ converts
+    - actual ScriptType
+    - wanted ScriptType
+
+conversion(actual, wanted) != null
+
+────────────────────
++ operand
+    - actual ScriptType
+
+if index then conversions[index].result else actual
+
+.. index = operand-conversion(actual)
+
+────────────────────
++ do add ScriptPhraseForm
+    - kind String
+    - template String
+    - result ScriptType
+    - is-function = false
+
+. form = ScriptPhraseForm
+    - kind
+    - script-template-parts(template, node-kinds, part-kinds)
+    - result
+    - is-function
+?! Panic("Phrase '$kind' is registered twice")
+    if forms[kind]
+if is-function
+    ?! Panic("Function '$kind' needs a name and a slot")
+        if !form.name.length
+    for other in ordered
+        ?! Panic("Function '${form.name}' is registered twice")
+            if other.is-function && other.name == form.name
+forms[kind] = form
+ordered += form
+. short = script-short-kind(kind)
+short-counts[short] = (short-counts[short] ?? 0) + 1
+short-kinds[short] = kind
+= form
+
+────────────────────
++ do widen
+    - kind String
+    - slot String
+
+. form = forms[kind]
+?! Panic("Widened phrase '$kind' is not registered")
+    if !form
+. parts [ScriptPhrasePart]
+. found = false
+for part in form.parts
+    if part.slot == slot
+        parts += ScriptPhrasePart("", slot, script-any-type)
+        found = true
+    else
+        parts += part
+?! Panic("Phrase '$kind' has no slot '$slot'")
+    if !found
+. widened = ScriptPhraseForm(kind, parts, form.result, form.is-function)
+forms[kind] = widened
+for index in 0 .. < ordered.length
+    if ordered[index].kind == kind
+        ordered[index] = widened
+= widened
+
+────────────────────
++ do add-node-kind
+    - kind String
+
+if !(node-kinds has kind)
+    node-kinds += kind
+
+────────────────────
++ do add-part-kind
+    - kind String
+    - phrase String
+    - number String
+    - node String
+    - plural = ""
+    - numbers = ""
+
+if !(part-kinds has kind)
+    part-kinds += kind
+part-phrases[kind] = ScriptPartPhrase(phrase, number, node, plural, numbers)
+
+────────────────────
++ part-expression ScriptExpression?
+    - part ScriptNodePart
+
+if !phrase || !forms[phrase.kind] then null else ScriptPhraseExpression(phrase.kind, arguments)
+
+.. phrase = part-phrases[part.kind]
+.. literal = ScriptLiteral
+    - ScriptValue.number(part.number as F64)
+    - script-number-text(part.number as F64)
+.. arguments = Map'String'ScriptExpression
+    • (phrase.number) literal
+    • (phrase.node) ScriptReferenceExpression(script-node-reference(part.node.id), "")
+
+────────────────────
++ do parts-expression
+    - parts [ScriptNodePart]
+
+=? null if !parts.length
+=? part-expression(parts[0]) if parts.length == 1
+. phrase = part-phrases[parts[0].kind]
+=? null if !phrase || !forms[phrase.plural]
+. numbers = List'ScriptExpression()
+for part in parts
+    =? null if part.kind != parts[0].kind || part.node.id != parts[0].node.id
+    numbers += ScriptLiteral
+        - ScriptValue.number(part.number as F64)
+        - script-number-text(part.number as F64)
+. arguments = Map'String'ScriptExpression
+    • (phrase.numbers) ScriptListExpression(numbers)
+    • (phrase.node) ScriptReferenceExpression(script-node-reference(parts[0].node.id), "")
+= ScriptPhraseExpression(phrase.plural, arguments)
+
+────────────────────
++ do expression-part ScriptNodePart?
+    - expression ScriptExpression
+    - names ScriptNames
+
+=? null if expression is not ScriptPhraseExpression
+. phrase = expression as ScriptPhraseExpression
+for kind in part-kinds
+    . found = part-phrases[kind]
+    if found && found.kind == phrase.kind
+        . number = phrase.arguments[found.number]
+        . node = phrase.arguments[found.node]
+        =? null if number is not ScriptLiteral || node is not ScriptReferenceExpression
+        . index = (number as ScriptLiteral).value.as-number
+        . reference = (node as ScriptReferenceExpression).reference
+        . name = names.lookup(reference)
+        =? null if !index || index != round(index) || not-node || reference.copy || !name
+        .. not-node = reference.kind != ScriptReferenceKind.node
+        = ScriptNodePart(ScriptNode(reference.id, name.type.node-kind), kind, index as Index)
+= null
+
+────────────────────
++ do add-alternates
+    - kinds [String]
+
+for kind in kinds
+    ?! Panic("Alternate '$kind' is not a registered phrase")
+        if !forms[kind]
+    ?! Panic("Phrase '$kind' already has alternates")
+        if families[kind]
+    families[kind] = kinds
+
+────────────────────
++ form ScriptPhraseForm?
+    - kind String
+
+forms[kind]
+
+────────────────────
++ short-name String
+    - kind String
+
+|? (short-counts[short] ?? 0) != 1 || (short != kind && forms[short] != null)
+    kind
+??
+    short
+
+.. short = script-short-kind(kind)
+
+────────────────────
++ form-named ScriptPhraseForm?
+    - name String
+
+|? found
+    found
+|? (short-counts[name] ?? 0) != 1
+    null
+??
+    forms[short-kinds[name]!]
+
+.. found = forms[name]
+
+────────────────────
++ do alternates [ScriptPhraseForm]
+    - kind String
+
+. found [ScriptPhraseForm]
+. family = families[kind]
+=? found if !family
+for other in family
+    if other != kind
+        found += forms[other]!
+= found
+
+────────────────────
++ get all [ScriptPhraseForm]
+
+ordered
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptArguments is Tuple
+
++ call ScriptPhraseExpression
++ form ScriptPhraseForm
++ values [ScriptValue]
+
+────────────────────
++ do value ScriptValue ?! ScriptError
+    - name String
+
+. index Index = 0
+for part in form.parts when part.is-slot
+    =? values[index] if part.slot == name
+    index += 1
+?! ScriptError(ScriptErrorKind.failed, "Phrase '${call.kind}' has no argument '$name'", call)
+
+────────────────────
++ number F64 ?! ScriptError
+    - name String
+
+?! mismatch(name, "a number")
+    if !found
+found
+
+.. found = value(name).as-number
+
+────────────────────
++ whole Int ?! ScriptError
+    - name String
+
+?! ScriptError(ScriptErrorKind.type-mismatch, "Expected a whole number for '$name'", call)
+    if found != round(found)
+found as Int
+
+.. found = number(name)
+
+────────────────────
++ point Point ?! ScriptError
+    - name String
+
+?! mismatch(name, "a point")
+    if !found
+found
+
+.. found = value(name).as-point
+
+────────────────────
++ color RGBA ?! ScriptError
+    - name String
+
+?! mismatch(name, "a color")
+    if !found
+found
+
+.. found = value(name).as-color
+
+────────────────────
++ text String ?! ScriptError
+    - name String
+
+?! mismatch(name, "text")
+    if !found
+found
+
+.. found = value(name).as-text
+
+────────────────────
++ node ScriptNode ?! ScriptError
+    - name String
+
+?! mismatch(name, "a node")
+    if !found
+found
+
+.. found = value(name).as-node
+
+────────────────────
++ part ScriptNodePart ?! ScriptError
+    - name String
+
+?! mismatch(name, "a part of a shape")
+    if !found
+found
+
+.. found = value(name).as-part
+
+────────────────────
++ parts [ScriptNodePart] ?! ScriptError
+    - name String
+
+?! mismatch(name, "parts of a shape")
+    if !found
+found
+
+.. found = value(name).as-parts
+
+────────────────────
++ nodes [ScriptNode] ?! ScriptError
+    - name String
+
+?! mismatch(name, "nodes")
+    if !found
+found
+
+.. found = value(name).as-nodes
+
+────────────────────
++ loop ScriptLoop ?! ScriptError
+    - name String
+
+?! mismatch(name, "a loop")
+    if !found
+found
+
+.. found = value(name).as-loop
+
+────────────────────
++ range ScriptRange ?! ScriptError
+    - name String
+
+?! mismatch(name, "a range")
+    if !found
+found
+
+.. found = value(name).as-range
+
+────────────────────
+_ mismatch
+    - name String
+    - expected String
+
+ScriptError(ScriptErrorKind.type-mismatch, "Expected $expected for '$name'", call)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptPhraseFunction'Context is () ScriptValue ?! Error
+    - arguments ScriptArguments
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptConversionFunction'Context is () ScriptValue ?! Error
+    - value ScriptValue
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptVocabulary'Context
+
++ grammar = ScriptGrammar()
+
+_ functions Map'String'(ScriptPhraseFunction'Context)
+_ converters [ScriptConversionFunction'Context] = List'(ScriptConversionFunction'Context)()
+
+────────────────────
++ do add-conversion
+    - source ScriptType
+    - result ScriptType
+    - convert ScriptConversionFunction'Context
+
+grammar.add-conversion(source, result)
+converters += convert
+
+────────────────────
++ converter
+    - value ScriptValue
+    - wanted ScriptType
+
+converters[index] if index
+
+.. index = grammar.conversion(script-value-type(value), wanted)
+
+────────────────────
++ operand-converter
+    - value ScriptValue
+
+converters[index] if index
+
+.. index = grammar.operand-conversion(script-value-type(value))
+
+────────────────────
++ do add ScriptPhraseForm
+    - kind String
+    - template String
+    - result ScriptType
+    - evaluate ScriptPhraseFunction'Context
+
+. form = grammar.add(kind, template, result)
+functions[kind] = evaluate
+= form
+
+────────────────────
++ do add-function ScriptPhraseForm
+    - kind String
+    - template String
+    - result ScriptType
+    - evaluate ScriptPhraseFunction'Context
+
+. form = grammar.add(kind, template, result, true)
+functions[kind] = evaluate
+= form
+
+────────────────────
++ do widen
+    - kind String
+    - slot String
+    - evaluate ScriptPhraseFunction'Context
+
+. form = grammar.widen(kind, slot)
+functions[kind] = evaluate
+= form
+
+────────────────────
++ do add-node-kind
+    - kind String
+
+grammar.add-node-kind(kind)
+
+────────────────────
++ do add-part-kind
+    - kind String
+    - phrase String
+    - number String
+    - node String
+    - plural = ""
+    - numbers = ""
+
+grammar.add-part-kind(kind, phrase, number, node, plural, numbers)
+
+────────────────────
++ do add-alternates
+    - kinds [String]
+
+grammar.add-alternates(kinds)
+
+────────────────────
++ function ScriptPhraseFunction'Context?
+    - kind String
+
+functions[kind]

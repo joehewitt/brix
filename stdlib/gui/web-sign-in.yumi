@@ -1,0 +1,60 @@
+./window
+/YuWebKit/YuWebKit.h
+/core/intrinsics
+/core/task
+
+━━━━━━━━━━━━━━━━━━━━
++ WebSignInError is Error
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebSignInStatus is U32
+
+| succeeded = 0
+| canceled = 1
+| failed = 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebSignInResult is Tuple
+
++ status WebSignInStatus
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ do web-sign-in String?
+    - window Window
+    - url String
+    - callback-scheme String
+    - is-ephemeral = false
+
+window.ensure-native()
+?! WebSignInError("The window is not open")
+    if !window.native
+. completion = Completion'WebSignInResult()
+. session = C:yumiWebSignInStart
+    - window.native!
+    - url
+    - callback-scheme
+    - is-ephemeral
+    - web-sign-in-finished as WebSignInCallback
+    - completion as Pointer
+do finally C:yumiWebSignInRelease(session)
+. result = completion.await()!
+=? null if result.status == WebSignInStatus.canceled
+?! WebSignInError(result.text)
+    if result.status == WebSignInStatus.failed
+= result.text
+
+━━━━━━━━━━━━━━━━━━━━
++ WebSignInCallback is (*C) Void
+    - request-pointer Pointer
+    - status U32
+    - text CPointer'Char8
+
+━━━━━━━━━━━━━━━━━━━━
+_ do web-sign-in-finished
+    - request-pointer Pointer
+    - status U32
+    - text CPointer'Char8
+
+. completion = gc-object-from-pointer'(Completion'WebSignInResult)(request-pointer)
+completion.finish(WebSignInResult(status as WebSignInStatus, text))

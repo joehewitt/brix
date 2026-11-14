@@ -1,0 +1,147 @@
+:====
+
+. masked = match Array'Byte([1u8, 129u8, 97u8, 98u8, 99u8, 100u8])
+    ~ packet Packet
+        packet
+    ?! Panic("Expected masked packet")
+-- masked.value
+-- masked.mask-length
+. unmasked = match Array'Byte("\x01\x01")
+    ~ packet Packet
+        packet
+    ?! Panic("Expected unmasked packet")
+-- unmasked.value
+-- unmasked.mask-length
+. longer = match Array'Byte("\x01\x03")
+    ~ packet Packet
+        packet
+    ?! Panic("Expected longer packet")
+-- longer.value
+-- longer.mask-length
+
+━━━━━━━━━━━━━━━━━━━━
++ Packet is Tuple
+
++ is-masked = true
++ value U64
++ mask-length Size
+
+────────────────────
++ This ~ Byte
+
+~ b1 U8 b2 U8 len \length msk \mask
+    This(true, len, msk.length)
+
+    .. is-masked = b2 /zrshift/ 7u8
+    .. length8 = decoded-length
+    .. decoded-length = b2 /and/ 127u8
+    .. length ~
+        ~ value \raw-length
+            value
+
+    .. raw-length ~
+        ~ U8{0}
+            length8 as U64
+
+    .. mask ~
+        ~ Byte{if is-masked then 4 else 0}
+
+:----
+
+1
+4
+1
+0
+3
+0
+;====
+
+:====
+
+. parsed = match Array'Byte("\x01\x03")
+    ~ packet Packet
+        packet
+    ?! Panic("Expected packet")
+-- parsed.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Packet is Tuple
+
++ value U64
+
+────────────────────
++ This ~ Byte
+
+~ b2 U8 len \length
+    This(len)
+
+    .. length ~
+        ~ b2 U8
+            b2 as U64
+
+:----
+
+3
+;====
+
+:====
+
+. parsed = match Array'Byte("\x01")
+    ~ packet Packet
+        packet
+    ?! Panic("Expected packet")
+-- parsed.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Packet is Tuple
+
++ value U64
+
+────────────────────
++ This ~ Byte
+
+~ b2 U8 len \length
+    This(len)
+
+    .. length ~
+        ~ U8{0}
+            b2 as U64
+
+            .. b2 = 5u8
+
+:----
+
+5
+;====
+
+:====
+
+. parsed = match Array'Byte("\x01\x03")
+    ~ packet Packet
+        packet
+    ?! Panic("Expected packet")
+-- parsed.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Packet is Tuple
+
++ value U64
+
+────────────────────
++ This ~ Byte
+
+~ ignored U8 len \length
+    This(len)
+
+    .. length ~
+        ~ b2 U8 value \inner
+            value
+
+            .. inner ~
+                ~ U8{0}
+                    b2 as U64
+
+:----
+
+3
+;====

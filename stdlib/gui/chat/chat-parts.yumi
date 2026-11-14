@@ -1,0 +1,379 @@
+./chat-caches
+./chat-tasks
+./chat-theme
+/ai
+/data/json
+/graphics/image
+/graphics/primitives
+/graphics/thumbnail-cache
+/gui
+/gui/markdown
+/math
+/os/path
+/stream/aggregate
+
+_ chat-image-width Length = 512
+_ chat-image-columns Size = 4
+_ chat-image-gap Length = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPartView is Box
+
++ part AIMessagePart
++ message AIChatMessage
++ messages [AIChatMessage]
++ caches ChatBlockCaches
++ images AIImageStore?
++ shows-tasks = true
++ image-run = chat-image-run(#message.#parts, #part)
+
+────────────────────
+
+<This • flex-col
+    match #part
+        | text AITextPart
+            <MarkdownView
+                text = text.#text
+                cache = caches.cache-for(chat-part-key(message, text))
+        | reasoning AIReasoningPart
+            if reasoning.#text.size > 0
+                <MarkdownView
+                    text = reasoning.#text
+                    cache = caches.cache-for(chat-part-key(message, reasoning))
+        | call AIToolCallPart
+            if ai-call-reply(call) != null
+                <MarkdownView
+                    text = ai-call-reply(call)!
+                    cache = caches.cache-for(chat-part-key(message, call))
+            if ai-is-task-call(call)
+                if #shows-tasks && ai-is-last-task-call(message.#parts, call)
+                    <ChatTaskList • chat-tasks
+                        tasks = ai-tasks(messages, message, message.#parts)
+                        is-live = message.#finish-reason == null
+            else if chat-tool-title(call.#arguments) != null
+                <ChatToolCall • chat-tool
+                    title = chat-tool-title(call.#arguments)!
+            if chat-is-working(call, message.#parts, message.#finish-reason)
+                <Label • chat-waiting h:22 mb:10
+                    text = if ai-is-image-call(call) then "Generating image…" else "Working…"
+        | image AIImagePart
+            if #image-run == null
+                <ChatImage • chat-image mb:10
+                    image = image.#image
+                    images = images
+                    thumbnails = caches.thumbnails
+            else if #image-run!.length > 0
+                <ChatImageGrid • mb:10
+                    pictures = #image-run!
+                    images = images
+                    thumbnails = caches.thumbnails
+        | extension AIExtensionPart
+            if extension.part-type == ai-compaction-part
+                <Label • chat-compaction h:20
+                    text = "Earlier messages were compacted"
+            else if extension.part-type == ai-steer-part
+                <Box • flex-row mt:4 mb:14
+                    <Box • flex:1
+                    <Box • chat-bubble flex-col px:14 pt:9
+                        <MarkdownView • chat-bubble-markdown
+                            text = chat-steer-text(extension)
+                            cache = caches.cache-for(chat-part-key(message, extension))
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatToolCall is Box
+
++ title String
+
+────────────────────
+
+<This • flex-col
+    <Box • chat-tool-line flex-row h:28 px:10 items-center
+        <Label • chat-tool-title flex:1
+            text = #title
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatImageGrid is Box
+
++ pictures [AIImage]
++ images AIImageStore?
++ thumbnails ThumbnailCache
+
+────────────────────
+
+<This • flex-col
+    for row in chat-image-rows(#pictures)
+        <Box • flex-row
+            margin-bottom = chat-image-gap
+            for picture in row
+                <Box • flex-col flex:1
+                    max-width = SizeSpec.coord(chat-image-cell().width)
+                    margin-right = chat-image-gap
+                    if picture != null
+                        <ChatImage • chat-image
+                            image = picture
+                            images = images
+                            thumbnails = thumbnails
+                            limit = chat-image-cell()
+                            is-cell = true
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatImageOpener is Interface
+
+────────────────────
++ do open-image
+    - image AIImage
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatImage is Box
+    is ThumbnailClient
+
++ image AIImage
++ images AIImageStore?
++ thumbnails ThumbnailCache
++ limit = Dimensions(chat-image-width, chat-image-width * 2)
++ is-cell = false
++ shown Image?
++ is-missing = false
++ frame = chat-image-frame(#image, #limit)
+
+_ ticket ThumbnailTicket?
+_ is-mounted = false
+
+. image-changed < image
+
+────────────────────
+
+<This • flex-col
+    align-x = Alignment.start
+    if #shown != null
+        <ImageView • flex:1
+            image = #shown
+    else
+        <Label • chat-waiting flex:1
+            align-x = Alignment.center
+            align-y = Alignment.center
+            text = if #is-missing then "Image unavailable" else "Loading image…"
+
+────────────────────
+for event on click
+
+. opener = ancestor'ChatImageOpener()
+if opener
+    opener.open-image(image)
+    event.cancel()
+
+────────────────────
+_ do image-changed
+
+invalidate-layout()
+release()
+=? if !is-mounted
+. path = chat-image-path(image, images)
+if !path
+    is-missing = true
+    =
+. pixels = (frame.width * 2) as I32
+. requested = thumbnails.request(path, pixels, this)
+if requested.is-settled
+    adopt(requested)
+else
+    ticket = requested
+
+────────────────────
+_ do adopt
+    - settled ThumbnailTicket
+
+ticket = settled
+shown = settled.image
+is-missing = !settled.image
+
+────────────────────
+_ do release
+
+. held = ticket
+ticket = null
+shown = null
+is-missing = false
+if held
+    thumbnails.cancel(held)
+
+╌╌╌╌╌╌╌╌╌╌ is ThumbnailClient ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ thumbnail-priority F64
+    - ticket ThumbnailTicket
+
+0
+
+────────────────────
++ do thumbnail-loaded
+    - loaded ThumbnailTicket
+
+if ticket && ticket as Pointer == loaded as Pointer
+    adopt(loaded)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+chat-image-fitted(frame, limit, is-cell, derived-child-measure-query(query).inline.available)
+
+────────────────────
++ do mounted
+
+super.mounted()
+is-mounted = true
+image-changed()
+
+────────────────────
++ do unmounted
+
+is-mounted = false
+release()
+super.unmounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-is-working
+    - call AIToolCallPart
+    - parts [AIMessagePart]
+    - finish-reason AIFinishReason?
+
+awaits-result && finish-reason == null && chat-tool-result(parts, call) == null
+
+.. awaits-result = ai-is-image-call(call) || ai-call-reply(call) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-image-run [AIImage]?
+    - parts [AIMessagePart]
+    - part AIMessagePart
+
+=? null if part is not AIImagePart
+. wanted = ai-part-id(part)
+. start Index? = null
+for index in 0 .. < parts.length
+    if parts[index] is AIImagePart
+        if start == null
+            start = index
+        if ai-part-id(parts[index]) == wanted
+            . first = start
+            . run = List'AIImage()
+            . end = first
+            while end < parts.length && parts[end] is AIImagePart
+                run += (parts[end] as AIImagePart).image
+                end += 1
+            =? null if run.length < 2
+            = if index == first then run else List'AIImage()
+    else
+        start = null
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chat-image-rows [[AIImage?]]
+    - pictures [AIImage]
+
+. rows = List'[AIImage?]()
+. row = List'(AIImage?)()
+for picture in pictures
+    row += picture
+    if row.length == chat-image-columns
+        rows += row
+        row = List'(AIImage?)()
+if row
+    while row.length < chat-image-columns
+        row += null
+    rows += row
+= rows
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-image-cell Dimensions
+
+Dimensions(side, side)
+
+.. side = images-width / (chat-image-columns as Length)
+.. images-width = chat-image-width - chat-image-gap * ((chat-image-columns - 1) as Length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-image-frame Dimensions
+    - image AIImage
+    - limit Dimensions
+
+|? image.width && image.height
+    Dimensions(wide * scale, tall * scale)
+??
+    Dimensions(limit.width, limit.width)
+
+.. wide = image.width as Length
+.. tall = image.height as Length
+.. fit = min(limit.width / wide, limit.height / tall)
+.. scale = min(fit, 1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-image-fitted Dimensions
+    - frame Dimensions
+    - limit Dimensions
+    - is-cell Bool
+    - available Length?
+
+|? available == null || basis <= 0 || available >= basis
+    frame
+??
+    Dimensions(frame.width * scale, frame.height * scale)
+
+.. basis = if is-cell then limit.width else frame.width
+.. scale = max(available, 0) / basis
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-image-path Path?
+    - image AIImage
+    - images AIImageStore?
+
+if | stored AIPathSource = image.file.source
+    = Path(stored.path, 0)
+. id = images?.id(image)
+= images!.path(id) if id
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-steer-text String
+    - part AIExtensionPart
+
+match part.data
+    | text String
+        text
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-part-key
+    - message AIChatMessage
+    - part AIMessagePart
+
+"${message.id}/${ai-part-id(part)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do chat-tool-result AIToolResultPart?
+    - parts [AIMessagePart]
+    - call AIToolCallPart
+
+for part in parts
+    if | result AIToolResultPart = part
+        =? result if result.call-id == call.call-id
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ chat-tool-title String?
+    - arguments JSON
+
+chat-first-line(description) if description
+
+.. description = ai-argument(arguments, "description")
+
+━━━━━━━━━━━━━━━━━━━━
+_ chat-first-line
+    - text String
+
+if break != null then "${trimmed[0 .. < break].trim()} …" else trimmed
+
+.. trimmed = text.trim()
+.. break = trimmed.find("\n")

@@ -1,0 +1,350 @@
+/graphics/network
+/graphics/network-stroke
+/graphics/offset-kernels
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/stroke
+/graphics/tests/support/geometry
+/math
+/test
+
+tests()
+operation-tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Aligned Stroke Joins")
+cases.run(aligned-join-tests)
+cases = cases.then("Stroke Coverage", coverage-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ operation-tests TestRender
+
+════════════════════
+test("Stroke Operations")
+
+true, line-butt-stroke-bbox()
+true, line-butt-stroke-area()
+true, line-square-stroke-bbox()
+true, line-square-stroke-area()
+true, line-round-stroke-bbox()
+true, acute-miter-limit-fallback()
+true, tiny-segment-stroke()
+true, right-angle-miter-fast-path()
+true, nearly-180-miter-fallback()
+true, collinear-degenerate-cubic-stroke()
+
+════════════════════
+test("Near-Straight Stroke Corner Width")
+
+true, straight-stroke-corner-width()
+
+━━━━━━━━━━━━━━━━━━━━
++ do aligned-join-tests TestCase
+    - t TestCase
+
+. shape = shallow-corner-shape()
+. wedge = Point(443.8, 232)
+. notch = shallow-notch-shape()
+. notch-wedge = Point(200, -30)
+for join in [JoinType.round-join-type, JoinType.miter-join-type, JoinType.bevel-join-type]
+    for reversed in [false, true]
+        . source = if reversed then shape.reverse() else shape
+        . inside = stroke(source, 100, StrokeAlignment.inside, join, LineCap.round, 4)
+        t.check
+            - "an inside stroke covers its shallow inner join (reversed $reversed)"
+            - inside.contains(wedge, FillRule.nonzero)
+        . centered = stroke(source, 100, StrokeAlignment.center, join, LineCap.round, 4)
+        t.check
+            - "a centered stroke covers its shallow inner join (reversed $reversed)"
+            - centered.contains(Point(452, 219), FillRule.nonzero)
+        . notch-source = if reversed then notch.reverse() else notch
+        . outside = stroke(notch-source, 100, StrokeAlignment.outside, join, LineCap.round, 4)
+        t.check
+            - "an outside stroke covers its shallow outer notch (reversed $reversed)"
+            - outside.contains(notch-wedge, FillRule.nonzero)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do coverage-tests TestCase
+    - t TestCase
+
+. corner = shallow-corner-shape()
+. ring = circle(Point(200, 200), 60)
+check-coverage(t, "corner inside", corner, StrokeAlignment.inside, 100)
+check-coverage(t, "reversed corner inside", corner.reverse(), StrokeAlignment.inside, 100)
+check-coverage(t, "corner center", corner, StrokeAlignment.center, 100)
+check-coverage(t, "tight circle inside", ring, StrokeAlignment.inside, 160)
+check-coverage(t, "tight circle center", ring, StrokeAlignment.center, 160)
+check-coverage(t, "notch outside", shallow-notch-shape(), StrokeAlignment.outside, 100)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do shallow-corner-shape Path
+
+. path = Path()
+path.move-to(50.45703125, 208.56640625)
+path.cubic-curve-to(50.45703125, 208.56640625, 149.4689, 121.6640625, 256.8828125, 121.6640625)
+path.cubic-curve-to(373.0677, 121.6640625, 470.66015625, 189.953125, 470.66015625, 189.953125)
+path.cubic-curve-to(545.5232, 233.5035, 493.16015625, 653.46875, 493.16015625, 653.46875)
+path.cubic-curve-to(493.16015625, 653.46875, 50.45703125, 717.6026, 50.45703125, 607.921875)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do shallow-notch-shape Path
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(200, 20)
+path.line-to(400, 0)
+path.line-to(400, 300)
+path.line-to(0, 300)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-coverage
+    - t TestCase
+    - label String
+    - shape Path
+    - alignment StrokeAlignment
+    - width Length
+
+. outline = stroke(shape, width, alignment, JoinType.round-join-type, LineCap.round, 4)
+t.expect
+    - "$label covers exactly its reach"
+    - 0
+    - coverage-mismatches(shape, outline, width, alignment)
+
+━━━━━━━━━━━━━━━━━━━━
++ do coverage-mismatches Size
+    - shape Path
+    - outline Path
+    - width Length
+    - alignment StrokeAlignment
+
+. polyline = flattened(shape)
+. reach = if alignment == StrokeAlignment.center then width / 2 else width
+. box = shape.bounding-box
+. mismatches Size = 0
+. y = box.y - reach - 3.37
+while y < box.y + box.height + reach + 4
+    . x = box.x - reach - 3.61
+    while x < box.x + box.width + reach + 4
+        . point = Point(x, y)
+        . distance = polyline-distance(polyline, point)
+        if distance > 1.5 && abs(distance - reach) > 1.5
+            . in-reach = distance < reach
+            . inside = shape.contains(point, FillRule.nonzero)
+            . on-stroke-side =
+                |? alignment == StrokeAlignment.inside
+                    inside
+                |? alignment == StrokeAlignment.outside
+                    !inside
+                ??
+                    true
+            . covered = outline.contains(point, FillRule.nonzero)
+            if (on-stroke-side || !in-reach) && covered != (in-reach && on-stroke-side)
+                mismatches += 1
+        x += 16
+    y += 16
+= mismatches
+
+━━━━━━━━━━━━━━━━━━━━
++ do flattened [Point]
+    - path Path
+
+. points [Point]
+. span = path.commands
+. current = Point(0, 0)
+. start = Point(0, 0)
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    . offset = span.coord-offsets[i]
+    if verb == .path-verb-move
+        current = Point(span.coords[offset], span.coords[offset + 1])
+        start = current
+        points += current
+    else if verb == .path-verb-line
+        current = Point(span.coords[offset], span.coords[offset + 1])
+        points += current
+    else if verb == .path-verb-cubic
+        . h1 = Point(span.coords[offset], span.coords[offset + 1])
+        . h2 = Point(span.coords[offset + 2], span.coords[offset + 3])
+        . end = Point(span.coords[offset + 4], span.coords[offset + 5])
+        for step in 1 .. < 65
+            points += cubic-point(current, h1, h2, end, (step as Float) / 64)
+        current = end
+    else if verb == .path-verb-close
+        points += start
+        current = start
+= points
+
+━━━━━━━━━━━━━━━━━━━━
++ do polyline-distance Float
+    - points [Point]
+    - point Point
+
+. best = 1e300
+for index in 1 .. < points.length
+    . a = points[index - 1]
+    . b = points[index]
+    . segment = b - a
+    . length-squared = segment.dot(segment)
+    . along = if length-squared <= 0 then 0.0 else min(max(projection, 0), 1)
+        .. projection = (point - a).dot(segment) / length-squared
+    best = min(best, point.distance(a + segment * along))
+= best
+
+━━━━━━━━━━━━━━━━━━━━
++ do bent-line
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(10, 0)
+path.line-to(10, 10)
+= path
+
+━━━━━━━━━━━━━━━━━━━━
++ line-butt-stroke
+
+stroke(line((0, 0), (10, 0)), 4, .center, .bevel-join-type, .butt, 4, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-butt-stroke-bbox
+
+near-rect(Rect(0, -2, 10, 4), line-butt-stroke().bounding-box)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-butt-stroke-area
+
+near(40, path-area(line-butt-stroke()))
+
+━━━━━━━━━━━━━━━━━━━━
++ line-square-stroke
+
+stroke(line((0, 0), (10, 0)), 4, .center, .bevel-join-type, .square, 4, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-square-stroke-bbox
+
+near-rect(Rect(-2, -2, 14, 4), line-square-stroke().bounding-box)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-square-stroke-area
+
+near(56, path-area(line-square-stroke()))
+
+━━━━━━━━━━━━━━━━━━━━
++ line-round-stroke
+
+stroke(line((0, 0), (10, 0)), 4, .center, .bevel-join-type, .round, 4, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ line-round-stroke-bbox
+
+near-rect(Rect(-2, -2, 14, 4), line-round-stroke().bounding-box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do acute-miter-limit-fallback
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(20, 0)
+path.line-to(10, -50)
+path.close()
+. stroked = stroke(path, 2, .center, .miter-join-type, .butt, 1, 0)
+= stroked.bounding-box.top > -51 && stroked.bounding-box.height < 52
+
+━━━━━━━━━━━━━━━━━━━━
++ do tiny-segment-stroke
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(0.000001, 0)
+path.line-to(10, 0)
+. stroked = stroke(path, 4, .center, .bevel-join-type, .butt, 4, 0)
+= near-rect(Rect(0, -2, 10, 4), stroked.bounding-box) && near(40, path-area(stroked))
+
+━━━━━━━━━━━━━━━━━━━━
++ right-angle-miter-fast-path
+
+near-rect(Rect(0, -2, 12, 12), stroked.bounding-box) && stroked.contains((11, -1))
+
+.. path = bent-line()
+.. stroked = stroke(path, 4, .center, .miter-join-type, .butt, 4, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do nearly-180-miter-fallback
+
+. path = Path()
+path.move-to(0, 0)
+path.line-to(10, 0)
+path.line-to(0.01, 0.0001)
+. stroked = stroke(path, 4, .center, .miter-join-type, .butt, 4, 0)
+= stroked.bounding-box.width < 15 && stroked.bounding-box.height < 5
+
+━━━━━━━━━━━━━━━━━━━━
++ do collinear-degenerate-cubic-stroke
+
+. path = Path()
+path.move-to(0, 0)
+path.cubic-curve-to(3, 0, 7, 0, 10, 0)
+. stroked = stroke(path, 4, .center, .round-join-type, .butt, 4, 0)
+= near-rect(Rect(0, -2, 10, 4), stroked.bounding-box) && near(40, path-area(stroked))
+
+━━━━━━━━━━━━━━━━━━━━
++ do straight-stroke-corner-width
+
+. path = Path()
+path.move-to(47, 189)
+path.line-to(347, 25)
+path.line-to(505, 176)
+path.line-to(410, 346)
+path.line-to(213, 314)
+. valid = true
+for representation in 0 .. < 3
+    . source = path
+    if representation > 0
+        source = Path()
+        source.move-to(path.first-point)
+        for curve in path.curves
+            . jitter = if representation == 2 then Point(0.3, -0.3) else Point(0, 0)
+            source.cubic-curve-to(curve.anchor1 + jitter, curve.anchor2 - jitter, curve.anchor2)
+    for reversed in [false, true]
+        . directed = if reversed then source.reverse() else source
+        for join in [.round-join-type, .miter-join-type, .bevel-join-type]
+            . outline = stroke(directed, 4, .center, join, .round, 4)
+            if !straight-stroke-width-covers(path, outline)
+                -- "Bad representation $representation reversed $reversed join $join"
+                valid = false
+            . net-outline = network-stroke(network-from-path(directed), 4, join, .round, 4)
+            if !straight-stroke-width-covers(path, net-outline)
+                -- "Bad network representation $representation reversed $reversed join $join"
+                valid = false
+= valid
+
+━━━━━━━━━━━━━━━━━━━━
++ do straight-stroke-width-covers
+    - path Path
+    - outline Path
+
+. valid = true
+for curve in path.curves
+    . delta = curve.anchor2 - curve.anchor1
+    . normal = Point(-delta.y, delta.x) / delta.length
+    for fraction in [0.05, 0.25, 0.5, 0.75, 0.95]
+        . center = curve.anchor1 + delta * fraction
+        for side in [-1.0, 1.0]
+            if !outline.contains(center + normal * (1.5 * side), FillRule.nonzero)
+                -- "Missing width at $fraction $side: ${curve.anchor1} to ${curve.anchor2}"
+                valid = false
+            if outline.contains(center + normal * (2.5 * side), FillRule.nonzero)
+                -- "Excess stroke width at $fraction on $side: ${curve.anchor1} to ${curve.anchor2}"
+                valid = false
+= valid

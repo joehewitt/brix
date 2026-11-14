@@ -1,0 +1,354 @@
+./type-store
+./types
+/lang/ast/program
+
+━━━━━━━━━━━━━━━━━━━━
++ IntegerLiteral is Tuple
+
++ value U64
++ negative Bool
++ overflow Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse-integer-literal IntegerLiteral
+    - text String
+
+. negative = text.length != 0 && text[0] == '-'
+. start = if negative then 1 else 0
+. base = 10u64
+if text.length >= start + 2 && text[start] == '0'
+    . marker = text[start + 1]
+    if marker == 'x' || marker == 'X'
+        base = 16
+        start += 2
+    else if marker == 'b' || marker == 'B'
+        base = 2
+        start += 2
+    else if marker == 'o' || marker == 'O'
+        base = 8
+        start += 2
+. value = 0u64
+. overflow = false
+for index in start .. < text.length
+    . char = text[index]
+    if char == '_'
+        continue
+    . digit = 0u64
+    if char >= '0' && char <= '9'
+        digit = char - '0'
+    else if char >= 'a' && char <= 'f'
+        digit = ((char - 'a') as U64) + 10
+    else if char >= 'A' && char <= 'F'
+        digit = ((char - 'A') as U64) + 10
+    else
+        break
+    if value > (U64.max - digit) / base
+        overflow = true
+    else
+        value = value * base + digit
+= IntegerLiteral(value, negative, overflow)
+
+━━━━━━━━━━━━━━━━━━━━
++ do decimal-text String
+    - text String
+
+` A decimal integer literal as its value reads: without separators.
+. shown = ""
+for char in text
+    if char != '_'
+        shown += char
+= shown
+
+━━━━━━━━━━━━━━━━━━━━
++ literal-fits Bool
+    - literal IntegerLiteral
+    - bits U32
+    - is-signed Bool
+
+|? literal.overflow
+    false
+|? bits == 1
+    !literal.negative && literal.value <= 1
+|? is-signed
+    (if literal.negative then literal.value <= limit else literal.value < limit)
+        .. limit = 1u64 /lshift/ (bits - 1)
+|? literal.negative
+    literal.value == 0
+|? bits >= 64
+    true
+??
+    literal.value < (1u64 /lshift/ bits)
+
+━━━━━━━━━━━━━━━━━━━━
++ literal-fits-target Bool
+    - types Types
+    - literal IntegerLiteral
+    - target TypeId
+
+|? !intrinsic-is-numeric(kind) || intrinsic-is-float(kind) || kind == .cpointer
+    true
+??
+    literal-fits(literal, completion.bit-size, completion.is-signed)
+
+.. completion = types.completion-of(target)
+.. kind = completion.intrinsic
+
+━━━━━━━━━━━━━━━━━━━━
++ float-literal-fits Bool
+    - types Types
+    - text String
+    - target TypeId
+
+` Whether a float written with no suffix is one a float type holds without overflowing, at the
+` value of that type nearest it.
+|? !intrinsic-is-float(kind)
+    false
+|? kind == .float32
+    value <= limit && value >= -limit
+??
+    true
+
+.. kind = types.completion-of(target).intrinsic
+.. value = text as F64
+.. limit = F32.max as F64
+
+━━━━━━━━━━━━━━━━━━━━
++ magnitude-type TypeId
+    - types Types
+    - literal IntegerLiteral
+
+|? literal.overflow
+    types.type-row(.uint64)
+|? literal.negative || literal.value < limit64
+    types.type-row(.int64)
+??
+    types.type-row(.uint64)
+
+.. limit64 = 1u64 /lshift/ 63
+
+━━━━━━━━━━━━━━━━━━━━
++ is-numeric Bool
+    - types Types
+    - id TypeId
+
+intrinsic-is-numeric(kind) && kind != .cpointer
+
+.. kind = types.intrinsic-of(id)
+
+━━━━━━━━━━━━━━━━━━━━
++ compares-by-machine Bool
+    - types Types
+    - id TypeId
+
+` Whether two values of a type are equal when their bits are: a number, a truth, a
+` character or a C pointer.
+intrinsic-is-numeric(types.intrinsic-of(id))
+
+━━━━━━━━━━━━━━━━━━━━
++ do builtin-number TypeId
+    - types Types
+    - id TypeId
+
+. current = id
+while true
+    if types.type-row(types.completions[current].intrinsic) == current
+        = current
+    . base = types.base-of(current)
+    if !base
+        = current
+    current = base
+
+━━━━━━━━━━━━━━━━━━━━
++ unit-arithmetic-type TypeId
+    - types Types
+    - lhs TypeId
+    - rhs TypeId
+    - commutes = false
+
+|? commutes && is-machine-number(types, lhs) && !is-machine-number(types, rhs)
+    unit-arithmetic-type(types, rhs, lhs)
+|? !is-unit-class(types, lhs)
+    no-type
+|? lhs == rhs || is-machine-number(types, rhs)
+    if types.completions[lhs].has-equalities then lhs else no-type
+??
+    if has-equality-to(types, rhs, lhs, 0) then lhs else no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ is-machine-number Bool
+    - types Types
+    - id TypeId
+
+is-numeric(types, id) && types.type-row(types.intrinsic-of(id)) == id
+
+━━━━━━━━━━━━━━━━━━━━
++ do has-equality-to Bool
+    - types Types
+    - source TypeId
+    - target TypeId
+    - depth U32
+
+if depth > 8 || !types.completions[source].has-equalities
+    = false
+for equality in types.equalities
+    if equality.from == source
+        if equality.to == target || has-equality-to(types, equality.to, target, depth + 1)
+            = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-unit-class Bool
+    - types Types
+    - type TypeId
+
+. program = types.program
+. current = type
+while current != no-type && current != invalid-type
+    do match? types.rows[current]
+        | .type-class(row)
+            do match? program.modules[row.module].decls[row.decl]
+                | .decl-class(cls)
+                    if cls.aliases.count != 0
+                        = true
+    . base = types.base-of(current)
+    if !base
+        = false
+    current = base
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do unit-name Atom?
+    - types Types
+    - type TypeId
+
+` The name a number of a type is written with: the last name its class is also known by, or
+` else that of the class it is derived from.
+. program = types.program
+. current = type
+while current != no-type && current != invalid-type
+    do match? types.rows[current]
+        | .type-class(row)
+            . owner = program.modules[row.module]
+            do match? owner.decls[row.decl]
+                | .decl-class(cls)
+                    if cls.aliases.count != 0
+                        = owner.tree.atoms[cls.aliases.start + cls.aliases.count - 1]
+    . base = types.base-of(current)
+    if !base
+        = null
+    current = base
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do promote TypeId
+    - types Types
+    - lhs TypeId
+    - rhs TypeId
+
+` The type two numbers are brought to for arithmetic: a float where either is one, and otherwise
+` the integer type both are of, or the wider of the two, unsigned where the unsigned one is at
+` least as wide. An integer narrower than a byte is brought to `I32`. It may be a type nothing in
+` the program has named, so every type read or given here is completed first.
+if types.completion-of(lhs).intrinsic == .char
+    = promote(types, types.type-row(.uint32), rhs)
+if types.completion-of(rhs).intrinsic == .char
+    = promote(types, lhs, types.type-row(.uint32))
+. left = types.completion-of(lhs)
+. right = types.completion-of(rhs)
+if intrinsic-is-float(left.intrinsic) || intrinsic-is-float(right.intrinsic)
+    if left.intrinsic == .float64 || right.intrinsic == .float64
+        = types.f64-type
+    = builtin-number(types, if intrinsic-is-float(left.intrinsic) then lhs else rhs)
+if lhs == rhs && left.bit-size >= 8
+    = builtin-number(types, lhs)
+. left-bits = if left.bit-size >= 8 then left.bit-size else 32u32
+. left-signed = if left.bit-size >= 8 then left.is-signed else true
+. right-bits = if right.bit-size >= 8 then right.bit-size else 32u32
+. right-signed = if right.bit-size >= 8 then right.is-signed else true
+. bits = left-bits
+. signed = left-signed
+if left-signed == right-signed
+    bits = if left-bits >= right-bits then left-bits else right-bits
+else if left-signed
+    if right-bits >= left-bits
+        bits = right-bits
+        signed = false
+else
+    if left-bits >= right-bits
+        signed = false
+    else
+        bits = right-bits
+        signed = true
+. tag = if signed then IntrinsicKind.int32 else .uint32
+if bits == 64
+    tag = if signed then .int64 else .uint64
+else if bits == 16
+    tag = if signed then .int16 else .uint16
+else if bits == 8
+    tag = if signed then .int8 else .uint8
+. promoted = types.type-row(tag)
+types.complete(promoted)
+= promoted
+
+━━━━━━━━━━━━━━━━━━━━
++ do integer-comparison-type TypeId
+    - types Types
+    - lhs TypeId
+    - rhs TypeId
+
+. left = types.completions[lhs]
+. right = types.completions[rhs]
+if !is-integer-kind(left.intrinsic) || !is-integer-kind(right.intrinsic)
+    = no-type
+if left.has-equalities && right.has-equalities
+    = no-type
+. bits = if left.bit-size >= right.bit-size then left.bit-size else right.bit-size
+. signed-bits = if left.is-signed then left.bit-size else right.bit-size
+. unsigned-bits = if left.is-signed then right.bit-size else left.bit-size
+. sign-check = left.is-signed != right.is-signed && signed-bits <= unsigned-bits
+. signed = if left.is-signed == right.is-signed then left.is-signed else !sign-check
+. tag = IntrinsicKind.int32
+if bits == 64
+    tag = if signed then .int64 else .uint64
+else if !signed
+    tag = .uint32
+. common = types.type-row(tag)
+types.complete(common)
+= common
+
+━━━━━━━━━━━━━━━━━━━━
++ compares-by-sign Bool
+    - types Types
+    - lhs TypeId
+    - rhs TypeId
+
+` Whether two integers of different signs compare by the sign of the signed one first: when
+` the unsigned one is at least as wide, the type both are compared in cannot hold a negative.
+|? left.is-signed == right.is-signed
+    false
+??
+    signed-bits <= unsigned-bits
+
+.. left = types.completions[lhs]
+.. right = types.completions[rhs]
+.. signed-bits = if left.is-signed then left.bit-size else right.bit-size
+.. unsigned-bits = if left.is-signed then right.bit-size else left.bit-size
+
+━━━━━━━━━━━━━━━━━━━━
++ do integer-limit U64
+    - width U32
+    - is-signed Bool
+    - is-max Bool
+
+` The greatest or the least integer of a width, as 64 bits extended by its sign.
+if !is-signed
+    =? 0 if !is-max
+    = if width == 64 then U64.max else (1u64 /lshift/ width) - 1
+. top = 1u64 /lshift/ (width - 1)
+= if is-max then top - 1 else 0 - top
+
+━━━━━━━━━━━━━━━━━━━━
++ is-integer-kind Bool
+    - kind IntrinsicKind
+
+intrinsic-is-numeric(kind) && !intrinsic-is-float(kind) && kind != .cpointer && kind != .number

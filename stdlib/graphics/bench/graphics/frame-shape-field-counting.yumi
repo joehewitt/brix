@@ -1,0 +1,37 @@
+`benchmark.meta description: Updates and paints a modest multi-frame shape field into CountingCanvas.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/canvas
+/graphics/color
+/graphics/graphic
+/graphics/path
+/graphics/point
+/graphics/shapes
+/graphics/style
+/graphics/vector-group
+
+. canvas = CountingCanvas(480, 360)
+canvas.fill-color = red
+canvas.stroke-color = blue
+canvas.stroke-width = 1
+
+. checksum = 0 as Size
+for frame in 0 .. < 120
+    . paths [Path]
+    for i in 0 .. < 72
+        . f = i as Float
+        . x = 20 + ((f * 11 + frame) % 260)
+        . y = 20 + ((f * 7 + frame * 2) % 180)
+        paths += circle((x, y), 5 + (f % 8))
+        paths += rectangle((x + 8, y + 4, 8 + (f % 5), 6 + (f % 7)))
+
+    . group = VectorGroup(paths)
+    group.fill = red
+    group.stroke = blue
+    group.checkpoint()
+    group.paint-vector(canvas)
+    checksum += canvas.path-count + paths.length + frame
+
+checksum += canvas.checksum + canvas.path-segment-count
+-- "bench-result graphics/frame-shape-field-counting checksum=$checksum"

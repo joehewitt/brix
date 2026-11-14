@@ -1,0 +1,42 @@
+`benchmark.meta description: Reads a plain class field, the reference cost for union shared-field access.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing,allocator
+
+. nodes = union-field-class-nodes()
+. checksum U64
+for iteration in 0 .. < 400000
+    for node in nodes
+        checksum += node.id
+
+-- "bench-result data/union-field-class checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ UnionFieldClassNode
+
++ id U64
++ kind Int
++ text String
++ items [UnionFieldClassNode]
+
+────────────────────
++ This
+    - id
+    - kind
+    - text
+    - items
+
+━━━━━━━━━━━━━━━━━━━━
+_ do union-field-class-nodes [UnionFieldClassNode]
+
+. nodes [UnionFieldClassNode]
+for index in 0 .. < 1000
+    . id = index as U64
+    if index % 4 == 0
+        nodes += UnionFieldClassNode(id, 0, "atom", List'UnionFieldClassNode())
+    else if index % 4 == 1
+        nodes += UnionFieldClassNode(id, 1, "string", List'UnionFieldClassNode())
+    else if index % 4 == 2
+        nodes += UnionFieldClassNode(id, 2, "comment", List'UnionFieldClassNode())
+    else
+        nodes += UnionFieldClassNode(id, 3, "", List'UnionFieldClassNode())
+= nodes

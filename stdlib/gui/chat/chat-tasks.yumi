@@ -1,0 +1,74 @@
+./chat-theme
+/ai
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+/gui/icons/lucide/circle
+/gui/icons/lucide/circle-check
+/gui/icons/lucide/circle-dot
+/gui/icons/lucide/loader-circle
+
+━━━━━━━━━━━━━━━━━━━━
+• extend GUIDefaultTheme
+
+• chat-tasks • bg:transparent px:10 py:6 mb:10
+    border-color = gui-border-color
+    border-width = 1
+    corner-radius = 8
+
+• ChatTaskLine
+    • chat-task-icon • text:gui-muted-text-color
+
+    when #is-done
+        • chat-task-subject • text:gui-muted-text-color
+
+    when #is-off-request
+        • chat-task-subject • text:chat-warn-color
+        • chat-task-glyph • text:chat-warn-color
+
+• chat-task-glyph • text:gui-muted-text-color
+    font-size = gui-body-font-size
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatTaskList is Box
+
++ tasks [AITask]
++ is-live = false
+
+────────────────────
+
+<This • flex-col
+    display = if #tasks.length > 0 then Display.visible else Display.hidden
+    for task in #tasks keyed by task.id
+        <ChatTaskLine
+            task = task
+            is-live = #is-live
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatTaskLine is Box
+
++ task AITask
++ is-live = false
++ is-off-request = false
++ is-done = #task.status == AITaskStatus.done
++ is-active = #task.status == AITaskStatus.active
+
+────────────────────
+
+<This • flex-row
+    if #is-off-request
+        <Label • chat-task-glyph chat-task-icon w:22 h:22
+            text = "↳"
+    else if #is-done
+        <LucideCircleCheck • icon chat-task-icon w:14 h:14 mt:5 mr:8
+    else if #is-active && #is-live
+        <LucideLoaderCircle • icon spinner chat-task-icon w:14 h:14 mt:5 mr:8
+    else if #is-active
+        <LucideCircleDot • icon chat-task-icon w:14 h:14 mt:5 mr:8
+    else
+        <LucideCircle • icon chat-task-icon w:14 h:14 mt:5 mr:8
+    <Label • chat-task-subject flex:1 h:24
+        text = #task.subject
+        align-y = Alignment.center
+        text-overflow = TextOverflow.truncate-tail

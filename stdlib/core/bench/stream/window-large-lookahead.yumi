@@ -1,0 +1,28 @@
+`benchmark.meta description: Exercises large stream lookahead windows.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: stream,compile-timing
+
+. rows = match window-large-lookahead-source()
+    ~ \window-large-lookahead-document
+    ?! Panic("window-large-lookahead did not parse")
+
+. checksum = 0 as Size
+for row in rows
+    checksum += row
+
+-- "bench-result stream/window-large-lookahead checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ window-large-lookahead-document ~ Char
+
+~ rows \window-large-row+
+    rows
+
+.. window-large-row Size ~
+    ~ &("block:" (!"\n" .)* "\n") "block:" text (!"\n" .)* "\n"
+        text.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ window-large-lookahead-source
+
+"".join("block:${"abcdefghijklmnopqrstuvwxyz-" * 24}$each\n" in 0 .. < 70)

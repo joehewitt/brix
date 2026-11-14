@@ -1,0 +1,205 @@
+`benchmark.meta description: Reads and writes canonical scalar Arrays across eligible widths with a noncanonical control.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/array
+
+. item-count = 8192 as Size
+. pass-count = 512 as Size
+. checksum = 0 as Size
+
+. bools = Array'Bool(item-count) • with each % 2 == 0
+. u8s = Array'U8(item-count) • with (each % 251) as U8
+. u16s = Array'U16(item-count) • with (each % 65521) as U16
+. u32s = Array'U32(item-count) • with each as U32
+. u64s = Array'U64(item-count) • with each as U64
+. f64s = Array'F64(item-count) • with (each % 997) as F64
+. fallback = ScalarArrayFallback(u64s)
+
+checksum += read-bools(bools, pass-count)
+checksum += read-u8s(u8s, pass-count)
+checksum += read-u16s(u16s, pass-count)
+checksum += read-u32s(u32s, pass-count)
+checksum += read-u64s(u64s, pass-count)
+checksum += read-f64s(f64s, pass-count)
+checksum += write-bools(bools, pass-count)
+checksum += write-u8s(u8s, pass-count)
+checksum += write-u16s(u16s, pass-count)
+checksum += write-u32s(u32s, pass-count)
+checksum += write-u64s(u64s, pass-count)
+checksum += write-f64s(f64s, pass-count)
+checksum += read-fallback(fallback, pass-count / 8)
+checksum += write-fallback(fallback, pass-count / 8)
+
+-- "bench-result array/scalar-index-access checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-bools Size
+    - values Array'Bool
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += if values[index] then 1 else 0
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-u8s Size
+    - values Array'U8
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index] as Size
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-u16s Size
+    - values Array'U16
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index] as Size
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-u32s Size
+    - values Array'U32
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index] as Size
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-u64s Size
+    - values Array'U64
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index] as Size
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-f64s Size
+    - values Array'F64
+    - passes Size
+
+. checksum = 0.0
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index]
+= checksum as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-bools Size
+    - values Array'Bool
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = (index + pass) % 2 == 0
+= (if values[0] then 1 else 0) + (if values[values.length - 1] then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-u8s Size
+    - values Array'U8
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = ((index + pass) % 251) as U8
+= (values[0] as Size) + (values[values.length - 1] as Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-u16s Size
+    - values Array'U16
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = ((index + pass) % 65521) as U16
+= (values[0] as Size) + (values[values.length - 1] as Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-u32s Size
+    - values Array'U32
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = (index + pass) as U32
+= (values[0] as Size) + (values[values.length - 1] as Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-u64s Size
+    - values Array'U64
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = (index + pass) as U64
+= (values[0] as Size) + (values[values.length - 1] as Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-f64s Size
+    - values Array'F64
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = ((index + pass) % 997) as F64
+= (values[0] + values[values.length - 1]) as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-fallback Size
+    - values ScalarArrayFallback
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        checksum += values[index] as Size
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-fallback Size
+    - values ScalarArrayFallback
+    - passes Size
+
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = (index + pass) as U64
+= (values[0] as Size) + (values[values.length - 1] as Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ScalarArrayFallback
+
+_ values Array'U64
+
+────────────────────
++ This
+    - values
+
+────────────────────
++ get length
+
+values.length
+
+────────────────────
++ this[index Index]
+
+values.data[index]
+
+────────────────────
++ do this[index Index] = value U64
+
+values.data[index] = value

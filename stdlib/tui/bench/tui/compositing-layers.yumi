@@ -1,0 +1,185 @@
+`benchmark.meta description: Moves a retained opacity compositing layer over static TUI content.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/graphics/color
+/tui/box
+/tui/canvas
+/tui/colors
+/tui/primitives
+/tui/painter
+/units
+
+<BenchCompositingApp root
+
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 36)
+root.markup-batch-queue.checkpoint()
+root.arrange-static-content()
+
+. compositor = LayerCompositor()
+. previous-canvas Canvas?
+. checksum Size = 0
+
+for frame in 0 .. < 240
+    root.move-overlay(frame)
+    root.markup-batch-queue.checkpoint()
+
+    . canvas = Canvas(root.bounds.size)
+    compositor.paint(root, canvas)
+
+    . output-size Size = 0
+    if previous-canvas
+        . diff = canvas.dump-diff(previous-canvas)
+        output-size = diff.size
+        //tui.bench.canvas.diff-dumps ++
+        //tui.bench.canvas.diff-bytes += output-size
+        if output-size > 0
+            //tui.bench.canvas.changed-diffs ++
+    else
+        . full = canvas.dump()
+        output-size = full.size
+        //tui.bench.canvas.full-dumps ++
+        //tui.bench.canvas.full-bytes += output-size
+    previous-canvas = canvas
+
+    //tui.bench.frames ++
+    checksum += output-size + weighted-base + weighted-layers + compositor.composite-cell-count
+        .. weighted-base = compositor.base-paint-count * 17
+        .. weighted-layers = compositor.layer-paint-count * 31
+    checksum += root.overlay.bounds.x + root.overlay.bounds.y
+
+-- "bench-result tui/compositing-layers checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchCompositingApp is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<BenchStaticBackdrop base
+<BenchOpacityOverlay overlay • absolute bg:black
+    opacity = 0.5%%
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-static-content
+
+base.bounds = bounds
+overlay.width = 36
+overlay.height = 10
+overlay.arrange-bounds(Rect(18, 8, overlay.width, overlay.height))
+
+────────────────────
++ do move-overlay
+    - frame Size
+
+. panel-width Coord = 36
+. panel-height Coord = 10
+. max-x = bounds.width - panel-width
+. max-y = bounds.height - panel-height
+. x = bounce-coordinate(frame * 2, max-x)
+. y = bounce-coordinate(frame, max-y)
+
+overlay.width = panel-width
+overlay.height = panel-height
+overlay.arrange-bounds(Rect(x, y, panel-width, panel-height))
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchStaticBackdrop is Box
+
++ paint-count = 0
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - canvas Canvas
+
+if !is-paint-visible
+    did-paint()
+    =
+paint-count += 1
+do use canvas
+    for y in bounds.y .. < bounds.bottom
+        for x in bounds.x .. < bounds.right
+            canvas.paint-background-cell(backdrop-color(x, y, bounds), (x, y))
+
+    canvas.text-color = AnsiColor(255)
+    for y in bounds.y + 1 .. < bounds.bottom - 1
+        canvas.move((bounds.x + 2, y))
+        canvas.print(backdrop-line(y))
+
+did-paint()
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchOpacityOverlay is Box
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint
+    - canvas Canvas
+
+if !is-paint-visible
+    did-paint()
+    =
+do use canvas
+    paint-box-background(this, bounds, canvas)
+    canvas.text-color = AnsiColor(250)
+    canvas.clip(content-bounds)
+    canvas.move((bounds.x + 2, bounds.y + 1))
+    canvas.print(" opacity layer 50% ")
+    canvas.move((bounds.x + 2, bounds.y + 3))
+    canvas.print(" retained surface ")
+
+did-paint()
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ backdrop-line
+    - y Coord
+
+row $y  ## markdown-ish static backdrop with **strong**, `code`, links, gradients, and enough text to cover the frame
+
+━━━━━━━━━━━━━━━━━━━━
+_ backdrop-color
+    - x Coord
+    - y Coord
+    - rect Rect
+
+RGBA(red, green, blue)
+
+.. red = 0.04 + 0.44 * x-ratio + 0.18 * y-ratio
+.. green = 0.10 + 0.22 * inverse-x + 0.48 * y-ratio
+.. blue = 0.28 + 0.52 * inverse-y + 0.12 * x-ratio
+.. inverse-x = 1 - x-ratio
+.. inverse-y = 1 - y-ratio
+.. x-ratio = ((x - rect.x) as Float) / ((width - 1) as Float)
+.. y-ratio = ((y - rect.y) as Float) / ((height - 1) as Float)
+.. width = if rect.width > 1 then rect.width else 2
+.. height = if rect.height > 1 then rect.height else 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ bounce-coordinate Coord
+    - value Size
+    - maximum Coord
+
+|? maximum <= 0
+    0
+|? phase <= maximum
+    phase
+??
+    period - phase
+
+.. period = maximum * 2
+.. phase = Coord(value % (period as Size))

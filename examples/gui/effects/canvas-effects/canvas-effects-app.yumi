@@ -1,0 +1,213 @@
+./canvas-effects-panel
+/graphics/shader
+/graphics/shader-filters
+/graphics/text
+/gui
+/math
+
+_ canvas-effects-app App?
+_ canvas-effects-metal = true
+_ canvas-effects-relaunch = false
+
+run-canvas-effects()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-canvas-effects
+
+canvas-effects-relaunch = true
+while canvas-effects-relaunch
+    canvas-effects-relaunch = false
+    . app = App()
+    app += CanvasEffectsWindow(canvas-effects-metal)
+    canvas-effects-app = app
+    app.run()
+canvas-effects-app = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do relaunch-canvas-effects
+    - metal Bool
+
+canvas-effects-metal = metal
+canvas-effects-relaunch = true
+canvas-effects-app?.stop()
+
+━━━━━━━━━━━━━━━━━━━━
+• CanvasEffectsAppTheme
+    using GUIDefaultTheme
+
+• canvas-effects-stats • text:gui-muted-text-color
+    font-family = "Menlo"
+    font-size = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ CanvasEffectsWindow is Window
+    using CanvasEffectsAppTheme
+
++ animating = false
++ filter-name = "None"
+
+_ panel CanvasEffectsPanel
+_ stats-label Label
+_ spin F64
+_ label-frame = false
+_ pending-frame I64 = -1
+_ pending-tries Size
+_ sampled-frames Size
+_ sampled-fallbacks Size
+_ sampled-demotions Size
+_ gpu-text = "—"
+_ stats-tail = ""
+
+────────────────────
++ This
+    - start-metal Bool
+
+use-metal = start-metal
+
+────────────────────
+
+<This • flex-col
+    title = "Yumi GUI: Canvas Effects"
+    size = (1224, 776)
+
+    <Box • flex-col flex:1 bg:gui-window-color
+        filters = canvas-effects-filters(#filter-name)
+
+        <Box • flex-row h:30 px:22 pt:16
+            <Button "Metal" • w:84 h:30
+                action = => do relaunch-canvas-effects(true)
+
+            <Button "Core Graphics" • ml:8 w:128 h:30
+                action = => do relaunch-canvas-effects(false)
+
+            <Switch "Animate" • ml:20 h:30
+                is-on = #animating
+                for event on value-changed
+                    animating = event.value
+
+            <Select'String filter-select • ml:20 w:120
+                options = canvas-effects-filter-names()
+                selected = #filter-name
+                for event on selection-changed
+                    filter-name = event.value
+
+            <Label stats-label • canvas-effects-stats flex:1 ml:20 h:30
+                text = "Waiting for the first frame…"
+                text-wrap = TextWrap.no-wrap
+
+        <CanvasEffectsPanel panel
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do render
+
+if animating
+    spin += 1.5
+    if spin >= 360
+        spin -= 360
+    panel.spin = spin
+    panel.time += 1.0 / 60
+. fallbacks = scene-metal-tile-fallbacks
+. demotions = scene-opaque-demotions
+. did-render = super.render()
+if did-render
+    take-frame-stats
+        - canvas-effects-delta(fallbacks, scene-metal-tile-fallbacks)
+        - canvas-effects-delta(demotions, scene-opaque-demotions)
+resolve-gpu-time()
+if animating || pending-frame >= 0
+    schedule-render()
+= did-render
+
+────────────────────
+_ do take-frame-stats
+    - fallbacks Size
+    - demotions Size
+
+if label-frame
+    label-frame = false
+    =
+sampled-frames += 1
+sampled-fallbacks += fallbacks
+sampled-demotions += demotions
+=? if animating && sampled-frames < 60
+
+. span = if sampled-frames > 1 then " in $sampled-frames frames" else ""
+stats-tail = "".join
+    * "$metal-draw-calls draws · $sampled-fallbacks fallback tiles$span"
+    * " · $sampled-demotions opaque demotions · $metal-skipped-ops skipped ops"
+sampled-frames = 0
+sampled-fallbacks = 0
+sampled-demotions = 0
+if is-metal-rendering
+    pending-frame = last-metal-frame-id
+    pending-tries = 0
+show-stats()
+
+────────────────────
+_ do resolve-gpu-time
+
+=? if pending-frame < 0
+. nanos = metal-frame-gpu-nanos(pending-frame)
+pending-tries += 1
+if nanos >= 0
+    gpu-text = canvas-effects-milliseconds(nanos)
+    pending-frame = -1
+    show-stats()
+else if pending-tries > 30
+    pending-frame = -1
+
+────────────────────
+_ do show-stats
+
+. text =
+    |? is-metal-rendering
+        "Metal · GPU $gpu-text · $stats-tail"
+    |? use-metal
+        "Core Graphics · Metal unavailable: $metal-fallback-reason"
+    ??
+        "Core Graphics · reference renderer"
+=? if text == stats-label.text
+stats-label.text = text
+label-frame = !animating
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-delta Size
+    - before Size
+    - after Size
+
+if after >= before then after - before else after
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-milliseconds
+    - nanoseconds I64
+
+"${tenths / 10}.${tenths % 10}ms"
+
+.. tenths = round((nanoseconds as F64) / 100000) as I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-filter-names
+
+["None", "CRT", "Pixelate", "Wave", "Thermal", "Halftone", "Glitch"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ canvas-effects-filters [ShaderFilter]
+    - name String
+
+match name
+    |= "CRT"
+        [CRT()]
+    |= "Pixelate"
+        [Pixelate()]
+    |= "Wave"
+        [Wave()]
+    |= "Thermal"
+        [Thermal()]
+    |= "Halftone"
+        [Halftone()]
+    |= "Glitch"
+        [Glitch()]
+    ??
+        List'ShaderFilter()

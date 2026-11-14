@@ -1,0 +1,159 @@
+`benchmark.meta description: Paint, sync, and hit-path walk timing over single-child chains of depth 100 and 1000.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/primitives
+/stream/sort
+/time/timer
+
+_ checksum Size = 0
+
+depth-scenario(100)
+depth-scenario(1000)
+
+-- "bench-result gui/depth-chain checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do depth-scenario
+    - depth Size
+
+. root = ChainRoot()
+markup-mount-root(root, root)
+. cursor Box = root
+for level in 0 .. < depth
+    . next = ChainBox()
+    markup-append(cursor, next)
+    cursor = next
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 800, 600))
+
+. canvas = RasterCanvas(800, 600, 2)
+do use canvas
+    root.paint(canvas)
+
+    . reps Size = 30
+    . paint-ns [U64]
+    . sync-ns [U64]
+    . hit-ns [U64]
+    for rep in 0 .. < reps
+        . t0 = monotonic-time-nanoseconds()
+        root.paint(canvas)
+        . t1 = monotonic-time-nanoseconds()
+        paint-ns += t1 - t0
+
+    for rep in 0 .. < reps
+        . t2 = monotonic-time-nanoseconds()
+        root.sync-native-geometry()
+        . t3 = monotonic-time-nanoseconds()
+        sync-ns += t3 - t2
+
+    . path-length Size = 0
+    for rep in 0 .. < reps
+        . t4 = monotonic-time-nanoseconds()
+        . path = root.hit-path(Point(5, 5))
+        . t5 = monotonic-time-nanoseconds()
+        hit-ns += t5 - t4
+        path-length = path!.frames.length
+
+    . paint-p50 = percentile-us(paint-ns, 50)
+    . paint-p95 = percentile-us(paint-ns, 95)
+    . paint-p99 = percentile-us(paint-ns, 99)
+    . paint-min = min-us(paint-ns)
+    . sync-p50 = percentile-us(sync-ns, 50)
+    . sync-p95 = percentile-us(sync-ns, 95)
+    . sync-p99 = percentile-us(sync-ns, 99)
+    . sync-min = min-us(sync-ns)
+    . hit-p50 = percentile-us(hit-ns, 50)
+    . hit-p95 = percentile-us(hit-ns, 95)
+    . hit-p99 = percentile-us(hit-ns, 99)
+    . hit-min = min-us(hit-ns)
+    if depth == 100
+        //gui.bench.depth.hit-frames-100 += path-length
+        //gui.bench.depth.root-walk-steps-100 += 0
+        //gui.bench.depth.paint-p50-us-100 += paint-p50
+        //gui.bench.depth.paint-p95-us-100 += paint-p95
+        //gui.bench.depth.paint-p99-us-100 += paint-p99
+        //gui.bench.depth.paint-min-us-100 += paint-min
+        //gui.bench.depth.sync-p50-us-100 += sync-p50
+        //gui.bench.depth.sync-p95-us-100 += sync-p95
+        //gui.bench.depth.sync-p99-us-100 += sync-p99
+        //gui.bench.depth.sync-min-us-100 += sync-min
+        //gui.bench.depth.hit-p50-us-100 += hit-p50
+        //gui.bench.depth.hit-p95-us-100 += hit-p95
+        //gui.bench.depth.hit-p99-us-100 += hit-p99
+        //gui.bench.depth.hit-min-us-100 += hit-min
+    else
+        //gui.bench.depth.hit-frames-1000 += path-length
+        //gui.bench.depth.root-walk-steps-1000 += 0
+        //gui.bench.depth.paint-p50-us-1000 += paint-p50
+        //gui.bench.depth.paint-p95-us-1000 += paint-p95
+        //gui.bench.depth.paint-p99-us-1000 += paint-p99
+        //gui.bench.depth.paint-min-us-1000 += paint-min
+        //gui.bench.depth.sync-p50-us-1000 += sync-p50
+        //gui.bench.depth.sync-p95-us-1000 += sync-p95
+        //gui.bench.depth.sync-p99-us-1000 += sync-p99
+        //gui.bench.depth.sync-min-us-1000 += sync-min
+        //gui.bench.depth.hit-p50-us-1000 += hit-p50
+        //gui.bench.depth.hit-p95-us-1000 += hit-p95
+        //gui.bench.depth.hit-p99-us-1000 += hit-p99
+        //gui.bench.depth.hit-min-us-1000 += hit-min
+
+    checksum += depth + path-length
+
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ percentile-us
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
++ min-us
+    - values [U64]
+
+|? !values
+    0
+??
+    sorted[0] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+    min-width = SizeSpec.coord(600)
+    min-height = SizeSpec.coord(400)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainBox is Box
+
+• This
+    layout = flow-col
+    min-width = SizeSpec.coord(600)
+    min-height = SizeSpec.coord(400)

@@ -1,0 +1,793 @@
+./border
+./box
+./layout
+./painter
+./primitives
+./styles
+/core/style
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/roundedrect
+/graphics/text
+/math
+/stream/aggregate
+
+_ inline-layout = InlineLayout()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextDecorationLine is Union
+
+| none
+| underline
+| line-through
+
+━━━━━━━━━━━━━━━━━━━━
++ TextDecorationStyle is Union
+
+| solid
+| dotted
+
+━━━━━━━━━━━━━━━━━━━━
++ GUITextDecoration is Style
+
++ text-decoration TextDecorationLine = TextDecorationLine.none
++ text-decoration-style TextDecorationStyle = TextDecorationStyle.solid
++ text-decoration-color RGBA? = null
++ text-decoration-thickness Length = 1
+
+. text-decoration -> paint
+. text-decoration-style -> paint
+. text-decoration-color -> paint
+. text-decoration-thickness -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ SpanFragment is Tuple
+
++ line-bounds Rect
++ glyph-bounds Rect
++ baseline Length
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineLayout is Layout
+
+╌╌╌╌╌╌╌╌╌╌ is Layout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do arrange-box
+    - box Box
+    - hint LayoutArrangeHint = LayoutArrangeHint.full
+
+if box is Text
+    (box as Text).arrange-paragraph()
+
+────────────────────
++ measure-content
+    - box Box
+    - query MeasureQuery
+
+if box is Text then (box as Text).measure-paragraph(query) else Dimensions(0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is Box
+
+• This
+    layout = inline-layout
+    text-wrap = TextWrap.word
+    text-overflow = TextOverflow.clip
+
++ effective-font => Font($font-family, $font-size, $font-weight, $font-slant)
++ text-layout => paragraph
++ text-layout-snapshot => paragraph?.snapshot
+
+_ paragraph TextLayout?
+_ paragraph-segments [TextSegment]
+_ paragraph-tight TightTextLayout?
+_ measured TextLayout?
+_ measured-segments [TextSegment]
+_ segment-scratch [TextSegment]
+_ measured-tight TightTextLayout?
+_ items [Box]
+
+────────────────────
++ markup-content Box
+    - content String
+
+Span(content)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+release-measured()
+if paragraph
+    paragraph.close()
+    paragraph = null
+super.close()
+
+────────────────────
++ do paint-overlay
+    - canvas Canvas
+
+. content = content-bounds
+paint-layout
+    - canvas
+    - ensure-paragraph
+        - collect-segments(child-layout-query())
+        - content.width
+        - arranged-maximum-height(content)
+        - false
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-text
+    - canvas Canvas
+
+. layout = paragraph
+if layout
+    paint-layout(canvas, layout)
+
+────────────────────
+_ do paint-layout
+    - canvas Canvas
+    - layout TextLayout
+
+. content = content-bounds
+do use canvas.saved-state
+    canvas.text-color = $color
+    canvas.text-fill = $text-fill
+    canvas.draw-text
+        - layout
+        - Rect(content.x, content.y, content.width, layout.height)
+        - $text-alignment
+
+────────────────────
++ do caret-rect Rect?
+    - offset Size
+
+. layout = paragraph
+=? null if !layout
+. content = content-bounds
+. local = layout.caret-rect(offset)
+. shift = layout.line-offset(layout.line-at(offset), content.width, $text-alignment)
+= Rect(content.x + shift + local.x, content.y + local.y, 0, local.height)
+
+────────────────────
++ do row-rect Rect?
+    - row Index
+
+. layout = paragraph
+=? null if !layout || row >= layout.line-count
+. content = content-bounds
+. line = layout.snapshot.lines[row].typographic-bounds
+. shift = layout.line-offset(row, content.width, $text-alignment)
+= Rect(content.x + shift, content.y + line.y, line.width, line.height)
+
+────────────────────
++ offset-at Size
+    - point Point
+
+if !layout then 0 else layout.offset-at(Point(point.x - content.x - shift, y))
+
+.. layout = paragraph
+.. content = content-bounds
+.. y = point.y - content.y
+.. row = layout.line-at(layout.offset-at(Point(0, y)))
+.. shift = layout.line-offset(row, content.width, $text-alignment)
+
+────────────────────
++ do measure-paragraph Dimensions
+    - query MeasureQuery
+
+. child-query = derived-child-measure-query(query)
+. maximum-width = measured-maximum-width(query, child-query)
+. maximum-height = resolved-size-spec(query.block, $max-height) if truncates-lines
+. segments = collect-segments(child-query)
+. layout = measured-layout(segments, maximum-width, maximum-height)
+. tight = tight-for(layout)
+. height = gui-device-ceiled(layout.height)
+= match tight
+    |= null
+        Dimensions(if maximum-width == null then natural else min(natural, maximum-width), height)
+
+        .. natural = gui-device-ceiled(layout.natural-width)
+    ??
+        Dimensions(gui-device-ceiled(tight.width), height)
+
+────────────────────
++ do arrange-paragraph
+
+. content = content-bounds
+. layout = ensure-paragraph
+    - collect-segments(child-layout-query())
+    - content.width
+    - arranged-maximum-height(content)
+    - true
+place-items(layout, content)
+inner-width = content.width
+inner-height = layout.height
+
+────────────────────
+_ tight-for
+    - layout TextLayout
+
+|? painted && painted as Pointer == layout as Pointer
+    paragraph-tight
+??
+    measured-tight
+
+.. painted = paragraph
+
+────────────────────
+_ get is-tight
+
+$text-wrap == TextWrap.word && $text-wrap-sizing == TextWrapSizing.tight
+
+────────────────────
+_ get truncates-lines
+
+$text-wrap == TextWrap.word && $text-overflow == TextOverflow.truncate-tail
+
+────────────────────
+_ arranged-maximum-height Length?
+    - content Rect
+
+content.height if truncates-lines
+
+────────────────────
+_ measured-maximum-width
+    - query MeasureQuery
+    - child-query MeasureQuery
+
+|? $text-wrap != TextWrap.word
+    null
+|? !proposed
+    null
+??
+    constrained-axis-size
+        - gui-safe-span(proposed)
+        - query.inline
+        - $min-width
+        - $max-width
+
+.. proposed = child-query.inline.available ?? resolved-size-spec(query.inline, $max-width)
+
+────────────────────
+_ do measured-layout TextLayout
+    - segments [TextSegment]
+    - maximum-width Length?
+    - maximum-height Length?
+
+. painted = paragraph
+=? painted if painted && painted-serves(segments, maximum-width, maximum-height)
+. current = measured
+=? current if current && measured-serves(segments, maximum-width, maximum-height)
+release-measured()
+. owned = List(segments)
+. tight = tight-paragraph(owned, maximum-width, maximum-height) if is-tight
+. created = tight?.layout ?? create-layout(owned, maximum-width, maximum-height)
+measured = created
+measured-segments = owned
+measured-tight = tight
+= created
+
+────────────────────
+_ do ensure-paragraph TextLayout
+    - segments [TextSegment]
+    - maximum-width Length
+    - maximum-height Length?
+    - repaint Bool
+
+. current = paragraph
+=? current if current && painted-serves(segments, maximum-width, maximum-height)
+. replacement = measured
+if replacement && measured-serves(segments, maximum-width, maximum-height)
+    measured = null
+    adopt-paragraph(replacement, measured-segments, repaint, measured-tight)
+    measured-segments = List'TextSegment()
+    measured-tight = null
+    = replacement
+. owned = List(segments)
+. tight = tight-paragraph(owned, maximum-width, maximum-height) if is-tight
+. created = tight?.layout ?? create-layout(owned, maximum-width, maximum-height)
+adopt-paragraph(created, owned, repaint, tight)
+= created
+
+────────────────────
+_ do adopt-paragraph
+    - layout TextLayout
+    - segments [TextSegment]
+    - repaint Bool
+    - tight TightTextLayout?
+
+. previous = paragraph
+paragraph = layout
+paragraph-segments = segments
+paragraph-tight = tight
+if previous
+    previous.close()
+if repaint
+    invalidate-paint()
+
+────────────────────
+_ create-layout
+    - segments [TextSegment]
+    - maximum-width Length?
+    - maximum-height Length?
+
+TextLayout
+    - segments
+    - effective-font
+    - maximum-width
+    - $text-overflow
+    - $text-wrap
+    - gui-safe-span($line-spacing)
+    - maximum-height
+
+────────────────────
+_ tight-paragraph
+    - segments [TextSegment]
+    - maximum-width Length?
+    - maximum-height Length?
+
+tight-text-layout
+    - :: width => create-layout(segments, width, maximum-height)
+    - gui-text-search-precision(this)
+    - gui-packed-span-up
+    - maximum-width
+
+────────────────────
+_ painted-serves
+    - segments [TextSegment]
+    - maximum-width Length?
+    - maximum-height Length?
+
+|? !painted
+    false
+??
+    layout-serves
+        - painted
+        - paragraph-segments
+        - segments
+        - paragraph-tight
+        - maximum-width
+        - maximum-height
+
+.. painted = paragraph
+
+────────────────────
+_ measured-serves
+    - segments [TextSegment]
+    - maximum-width Length?
+    - maximum-height Length?
+
+|? !current
+    false
+??
+    layout-serves
+        - current
+        - measured-segments
+        - segments
+        - measured-tight
+        - maximum-width
+        - maximum-height
+
+.. current = measured
+
+────────────────────
+_ layout-serves
+    - layout TextLayout
+    - layout-segments [TextSegment]
+    - segments [TextSegment]
+    - tight TightTextLayout?
+    - maximum-width Length?
+    - maximum-height Length?
+
+same-setup && width-serves && height-serves && same-segments
+
+.. request = layout.request
+.. same-setup = same-request && same-spacing && is-tight == (tight != null)
+.. same-request = request.font == effective-font && request.wrap == $text-wrap && same-overflow
+.. same-overflow = request.overflow == $text-overflow
+.. same-spacing = layout.line-spacing == gui-safe-span($line-spacing)
+.. width-serves = paragraph-width-serves(layout, tight, maximum-width)
+.. height-serves = text-height-serves(layout, maximum-height)
+.. same-segments = segments.length == layout-segments.length && !segment-changed
+.. segment-changed = some(0 .. < segments.length) • where segments[each] != layout-segments[each]
+
+────────────────────
+_ do release-measured
+
+if measured
+    measured.close()
+    measured = null
+measured-segments = List'TextSegment()
+measured-tight = null
+
+────────────────────
+_ do collect-segments
+    - query MeasureQuery
+
+items.clear()
+. result = segment-scratch
+result.clear()
+for child in RenderedChildCursor(this)
+    collect-node(child, query, effective-font, -1, result)
+= result
+
+────────────────────
+_ do collect-node
+    - node Box
+    - query MeasureQuery
+    - font Font
+    - owner Int
+    - result [TextSegment]
+
+if node.is-markup-shadow
+    for child in RenderedChildCursor(node)
+        collect-node(child, query, font, owner, result)
+    =
+=? if !node.participates-in-parent-layout(this)
+
+if node is Span
+    collect-span(node as Span, query, owner, result)
+    =
+
+. tag = items.length
+items += node
+. outer = node.measure(query).outer-size
+. outset = node.inline-outset
+. size = Dimensions
+    - max(0, outer.width - outset.width * 2)
+    - max(0, outer.height - outset.height * 2)
+. natural-ascent = node.inline-ascent
+. ascent = if natural-ascent then natural-ascent - outset.height else estimated-ascent
+.. estimated-ascent = min(size.height, size.height / 2 + font.size * 0.32)
+result += TextSegment
+    - tag
+    - ""
+    - font
+    - null
+    - TextObjectMetrics(size.width, ascent, size.height - ascent)
+
+────────────────────
+_ do collect-span
+    - span Span
+    - query MeasureQuery
+    - owner Int
+    - result [TextSegment]
+
+. tag = items.length
+items += span
+. font = span.effective-font
+append-spacer(result, owner, font, span.$margin-left, false)
+append-spacer(result, tag, font, span.$padding-left, false)
+if span.text.length
+    result += TextSegment(tag, span.text, font, span.$color)
+for child in RenderedChildCursor(span)
+    collect-node(child, query, font, tag, result)
+append-spacer(result, tag, font, span.$padding-right, true)
+append-spacer(result, owner, font, span.$margin-right, true)
+span.first-tag = tag
+span.end-tag = items.length
+
+────────────────────
+_ do append-spacer
+    - result [TextSegment]
+    - tag Int
+    - font Font
+    - width Length
+    - trailing Bool
+
+=? if !is-finite(width) || width <= 0
+result += TextSegment
+    - tag
+    - ""
+    - font
+    - null
+    - TextObjectMetrics(width, 0, 0)
+    - trailing
+    - !trailing
+
+────────────────────
+_ do place-items
+    - layout TextLayout
+    - content Rect
+
+. alignment = $text-alignment
+. placed =
+    ** layout.fragments
+    *> placed-fragment(layout, each, content, alignment)
+    |> List
+. tags =
+    ** layout.fragments
+    *> each.tag
+    |> List
+for tag in 0 .. < items.length
+    . item = items[tag]
+    if item is Span
+        . span = item as Span
+        span.place(merged-fragments(placed, tags, span.first-tag, span.end-tag), content)
+    else
+        . bounds = attachment-bounds(placed, tags, tag) ?? Rect(content.x, content.y, 0, 0)
+        . outset = item.inline-outset
+        item.arrange-outer-bounds
+            - Rect
+                - bounds.x - outset.width
+                - bounds.y - outset.height
+                - bounds.width + outset.width * 2
+                - bounds.height + outset.height * 2
+
+────────────────────
+_ placed-fragment
+    - layout TextLayout
+    - fragment TextFragment
+    - content Rect
+    - alignment TextAlignment
+
+SpanFragment
+    - Rect(x, top, fragment.width, line.typographic-bounds.height)
+    - Rect(x, baseline - fragment.ascent, fragment.width, fragment.ascent + fragment.descent)
+    - baseline
+
+.. line = layout.snapshot.lines[fragment.line]
+.. x = content.x + layout.line-offset(fragment.line, content.width, alignment) + fragment.x
+.. baseline = content.y + line.baseline
+.. top = content.y + line.typographic-bounds.y
+
+────────────────────
+_ attachment-bounds Rect?
+    - placed [SpanFragment]
+    - tags [Int]
+    - tag Int
+
+first(placed[each].glyph-bounds in 0 .. < placed.length when tags[each] == tag)
+
+────────────────────
+_ do merged-fragments
+    - placed [SpanFragment]
+    - tags [Int]
+    - first Int
+    - end Int
+
+. result [SpanFragment]
+. previous-line Length = -1
+for index in 0 .. < placed.length
+    . tag = tags[index]
+    if tag < first || tag >= end
+        continue
+    . fragment = placed[index]
+    if result.length && fragment.baseline == previous-line
+        . last = result[result.length - 1]
+        result[result.length - 1] = SpanFragment
+            - last.line-bounds + fragment.line-bounds
+            - last.glyph-bounds + fragment.glyph-bounds
+            - last.baseline
+    else
+        result += fragment
+    previous-line = fragment.baseline
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ Span is Box
+    using GUITextDecoration
+
++ text String
++ first-tag Int = -1
++ end-tag Int = -1
++ effective-font => Font($font-family, $font-size, $font-weight, $font-slant)
++ is-layout-placed-by-parent => true
+
+_ local-fragments [SpanFragment]
+
+. invalidate-content-size < text
+. share-hover < is-hovered
+. share-press < is-pressed
+
+────────────────────
++ This
+    - text String = ""
+
+────────────────────
++ markup-content Box
+    - content String
+
+Span(content)
+
+────────────────────
++ do get enclosing-span Span?
+
+. cursor = material-parent
+while cursor && cursor.is-markup-shadow
+    cursor = cursor.material-parent
+= cursor as Span if cursor && cursor is Span
+
+────────────────────
++ do place
+    - placed [SpanFragment]
+    - content Rect
+
+. next-bounds = Rect(content.x, content.y, 0, 0)
+for index in 0 .. < placed.length
+    . fragment = placed[index]
+    . outer = fragment.line-bounds + decoration-bounds(fragment)
+    next-bounds = if index == 0 then outer else next-bounds + outer
+arrange-bounds(next-bounds)
+. origin = Point(-next-bounds.x, -next-bounds.y)
+. local = span-shifted-fragments(placed, origin)
+. changed = local.length != local-fragments.length
+if !changed
+    for index in 0 .. < local.length
+        changed = changed || local[index] != local-fragments[index]
+local-fragments = local
+if changed
+    invalidate-paint()
+
+────────────────────
++ get fragments
+
+span-shifted-fragments(local-fragments, bounds.top-left)
+
+────────────────────
++ decoration-bounds
+    - fragment SpanFragment
+
+Rect
+    - glyph.x
+    - glyph.y - $padding-top
+    - glyph.width
+    - glyph.height + $padding-top + $padding-bottom
+
+.. glyph = fragment.glyph-bounds
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ hit-contains
+    - point Point
+
+some(fragments) • where each.line-bounds.contains(point)
+
+────────────────────
++ do markup-style-domains-changed
+    - mask U32
+
+super.markup-style-domains-changed(mask)
+. paint-domain = style-domain-named("paint")
+=? if paint-domain < 0
+if (mask /and/ (1u32 /lshift/ (paint-domain as Size))) != 0
+    ancestor'Text()?.invalidate-paint()
+
+────────────────────
++ do paint-box-background
+    - canvas Canvas
+
+=? if !$background-color && !$background && !$background-image
+for fragment in fragments
+    . rect = decoration-bounds(fragment)
+    . radius = min(computed-corner-radius, min(rect.width, rect.height) / 2)
+    do use canvas.saved-state
+        if radius > 0
+            RoundedRect(rect, radius, radius, radius, radius).clip(canvas)
+        paint-gui-box-background(this, rect, canvas)
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. decoration = $text-decoration
+=? if decoration == TextDecorationLine.none || !fragments.length
+. thickness = max(0.5, gui-safe-span($text-decoration-thickness))
+. offset = if underlined then $font-size * 0.14 else $font-size * -0.3
+    .. underlined = decoration == TextDecorationLine.underline
+. last = fragments.length - 1
+do use canvas.saved-state
+    canvas.fill-color = $text-decoration-color ?? $color
+    canvas.stroke-color = null
+    for index in 0 .. < fragments.length
+        . glyph = fragments[index].glyph-bounds
+        . start = if index == 0 then glyph.x + $padding-left else glyph.x
+        . finish = if index == last then glyph.right - $padding-right else glyph.right
+        . y = fragments[index].baseline + offset - thickness / 2
+        paint-decoration-line(canvas, start, finish, y, thickness)
+
+────────────────────
++ do paint-box-border
+    - canvas Canvas
+
+=? if computed-border-width <= 0
+for fragment in fragments
+    paint-gui-box-border(this, decoration-bounds(fragment), canvas)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do share-hover
+
+enclosing-span?.is-hovered = is-hovered
+
+────────────────────
+_ do share-press
+
+enclosing-span?.is-pressed = is-pressed
+
+────────────────────
+_ do paint-decoration-line
+    - canvas Canvas
+    - start Length
+    - finish Length
+    - y Length
+    - thickness Length
+
+=? if finish <= start
+if $text-decoration-style == TextDecorationStyle.solid
+    canvas.rect(Rect(start, y, finish - start, thickness))
+    =
+. step = thickness * 3
+. x = start
+while x + thickness <= finish
+    canvas.rect(Rect(x, y, thickness, thickness))
+    x += step
+
+━━━━━━━━━━━━━━━━━━━━
+_ span-shifted-fragments
+    - fragments [SpanFragment]
+    - offset Point
+
+** fragments
+*> SpanFragment
+    - each.line-bounds + offset
+    - each.glyph-bounds + offset
+    - each.baseline + offset.y
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ paragraph-width-serves
+    - layout TextLayout
+    - tight TightTextLayout?
+    - maximum-width Length?
+
+tight?.serves(maximum-width) ?? text-width-serves(layout, maximum-width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-width-serves
+    - layout TextLayout
+    - maximum-width Length?
+
+|? request.maximum-width == maximum-width
+    true
+|? layout.is-truncated
+    false
+|? request.wrap == TextWrap.no-wrap && request.overflow == TextOverflow.clip
+    true
+??
+    text-width-fits(layout, request.maximum-width) && text-width-fits(layout, maximum-width)
+
+.. request = layout.request
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-height-serves
+    - layout TextLayout
+    - maximum-height Length?
+
+|? request.maximum-height == maximum-height
+    true
+|? maximum-height != null && layout.height > maximum-height + 0.01
+    false
+|? layout.is-truncated
+    limit != null && maximum-height != null && maximum-height <= limit + 0.01
+??
+    true
+
+.. request = layout.request
+.. limit = request.maximum-height
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-width-fits
+    - layout TextLayout
+    - width Length?
+
+width == null || layout.natural-width <= width + 0.01

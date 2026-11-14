@@ -1,0 +1,109 @@
+
+/core/tokenstream
+
+━━━━━━━━━━━━━━━━━━━━
++ WritableData is Interface
+    is Writable'String
+    is Writable'(Byte[])
+
+────────────────────
++ do this <- str String
+
+write(str)
+
+────────────────────
++ do this <- data Byte[]
+
+write(data, data.size)
+
+────────────────────
++ do this <- data ''Value
+
+write(data)
+
+────────────────────
++ write Size ?! Error
+    - buffer Byte[]
+    - size Size
+
+────────────────────
++ do write'Num
+    - data Num
+    - endian = .big
+    - Num is Number
+
+. buf = Byte[Num.size]
+buf.write'Num(data, 0, endian)
+= write(buf, Num.size)
+
+────────────────────
++ do write
+    - str String
+
+. data = str as Byte[]
+. remaining = str.size
+while remaining
+    . wrote = write(data, remaining)
+    remaining -= wrote
+    data += wrote
+
+────────────────────
++ do write'Item
+    - data Array'Item
+
+write(data as Byte[])
+
+────────────────────
++ do write
+    - data Byte[]
+
+. remaining = data.size
+while remaining
+    . wrote = write(data, remaining)
+    remaining -= wrote
+    data += wrote
+
+━━━━━━━━━━━━━━━━━━━━
++ ReadableData'Token is Interface
+    `  - Token is Byte | Char
+    is Decodable'Token
+    is ByteReadable
+
+────────────────────
++ to String
+
+ChunkedTokenStream'Token(this).read().slice-string()
+
+────────────────────
++ to Byte[]
+
+ChunkedTokenStream'Token(this).read()
+
+────────────────────
++ to Iterable'String
+
+ChunkedTokenStream'Token(this).split("\n")
+
+────────────────────
++ do to Iterable'(Token[])
+
+. buf = Token[1024]
+. stream = ChunkedTokenStream'Token(this)
+while true
+    . size = stream.read(buf)
+    if size
+        <= buf[0 .. < size]
+    else
+        break
+
+────────────────────
++ to Iterable''Item
+
+ChunkedTokenStream'Item(this as ByteReadable)
+
+────────────────────
++ read'Num Num
+    - endian = .big
+    - Num is Number
+
+ChunkedTokenStream'Token(this).read'Num(endian)

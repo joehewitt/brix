@@ -1,0 +1,519 @@
+./expression
+./names
+./outline
+./parse
+./phrase
+./print
+./range
+./token
+./value
+/graphics/point
+/math
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-replacing ScriptExpression
+    - expression ScriptExpression
+    - target ScriptExpression
+    - replacement ScriptExpression
+
+=? replacement if script-same(expression, target)
+do match expression
+    | negation ScriptNegation
+        = ScriptNegation(script-replacing(negation.operand, target, replacement))
+    | binary ScriptBinary
+        . left = script-replacing(binary.left, target, replacement)
+        = ScriptBinary(binary.operator, left, script-replacing(binary.right, target, replacement))
+    | point ScriptPointExpression
+        . x = script-replacing(point.x, target, replacement)
+        = ScriptPointExpression(x, script-replacing(point.y, target, replacement), point.closed)
+    | group ScriptGroup
+        = ScriptGroup(script-replacing(group.inner, target, replacement), group.closed)
+    | phrase ScriptPhraseExpression
+        . arguments = Map'String'ScriptExpression()
+        for slot, argument in phrase.arguments
+            arguments[slot] = script-replacing(argument, target, replacement)
+        = ScriptPhraseExpression(phrase.kind, arguments)
+    | sequence ScriptSequence
+        = ScriptSequence
+            - List'ScriptExpression(script-replacing(each, target, replacement) in sequence.items)
+    | list ScriptListExpression
+        = ScriptListExpression
+            - List'ScriptExpression(script-replacing(each, target, replacement) in list.items)
+    ??
+        = expression
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-retargeted ScriptExpression
+    - expression ScriptExpression
+    - stale U64
+    - fresh U64
+
+do match expression
+    | reference ScriptReferenceExpression
+        . held = reference.reference
+        =? expression if held.kind != ScriptReferenceKind.node || held.id != stale
+        = ScriptReferenceExpression(ScriptReference(held.kind, fresh, held.copy), reference.name)
+    | negation ScriptNegation
+        = ScriptNegation(script-retargeted(negation.operand, stale, fresh))
+    | binary ScriptBinary
+        . left = script-retargeted(binary.left, stale, fresh)
+        = ScriptBinary(binary.operator, left, script-retargeted(binary.right, stale, fresh))
+    | point ScriptPointExpression
+        . x = script-retargeted(point.x, stale, fresh)
+        = ScriptPointExpression(x, script-retargeted(point.y, stale, fresh), point.closed)
+    | group ScriptGroup
+        = ScriptGroup(script-retargeted(group.inner, stale, fresh), group.closed)
+    | phrase ScriptPhraseExpression
+        . arguments = Map'String'ScriptExpression()
+        for slot, argument in phrase.arguments
+            arguments[slot] = script-retargeted(argument, stale, fresh)
+        = ScriptPhraseExpression(phrase.kind, arguments)
+    | sequence ScriptSequence
+        = ScriptSequence
+            - List'ScriptExpression(script-retargeted(each, stale, fresh) in sequence.items)
+    | list ScriptListExpression
+        = ScriptListExpression
+            - List'ScriptExpression(script-retargeted(each, stale, fresh) in list.items)
+    ??
+        = expression
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-copied ScriptExpression
+    - expression ScriptExpression
+
+do match expression
+    | literal ScriptLiteral
+        = ScriptLiteral(literal.value, literal.text)
+    | reference ScriptReferenceExpression
+        = ScriptReferenceExpression(reference.reference, reference.name)
+    | negation ScriptNegation
+        = ScriptNegation(script-copied(negation.operand))
+    | binary ScriptBinary
+        = ScriptBinary(binary.operator, script-copied(binary.left), script-copied(binary.right))
+    | point ScriptPointExpression
+        = ScriptPointExpression(script-copied(point.x), script-copied(point.y), point.closed)
+    | group ScriptGroup
+        = ScriptGroup(script-copied(group.inner), group.closed)
+    | phrase ScriptPhraseExpression
+        . arguments = Map'String'ScriptExpression()
+        for slot, argument in phrase.arguments
+            arguments[slot] = script-copied(argument)
+        = ScriptPhraseExpression(phrase.kind, arguments)
+    | sequence ScriptSequence
+        = ScriptSequence(List'ScriptExpression(script-copied(each) in sequence.items))
+    | list ScriptListExpression
+        = ScriptListExpression(List'ScriptExpression(script-copied(each) in list.items))
+    | unresolved ScriptUnresolved
+        = ScriptUnresolved(unresolved.token)
+    | hole ScriptHole
+        = ScriptHole()
+    ??
+        = expression
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-alternate ScriptPhraseExpression
+    - phrase ScriptPhraseExpression
+    - grammar ScriptGrammar
+    - kind String
+
+. source = grammar.form(phrase.kind)
+. form = grammar.form(kind)
+?! Panic("Phrase '$kind' is not registered")
+    if !form
+. arguments = Map'String'ScriptExpression()
+for part in form.slots
+    . argument = phrase.arguments[part.slot]
+    . carried = source != null && script-slot-named(source, part.slot) && part.type.admits(source.slot-type(part.slot))
+    arguments[part.slot] = if argument && carried then argument else ScriptHole()
+= ScriptPhraseExpression(kind, arguments)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-slot-named Bool
+    - form ScriptPhraseForm
+    - name String
+
+some(form.slots) • where each.slot == name
+
+━━━━━━━━━━━━━━━━━━━━
++ script-number-literal ScriptExpression
+    - value F64
+    - unit = ScriptUnit.none
+    - exact = false
+
+if value >= 0 || kept == 0 then literal else ScriptNegation(literal)
+
+.. magnitude = abs(value)
+.. shown = if unit == ScriptUnit.percent then magnitude * 100 else magnitude
+.. text = "${script-number-text(shown)}${unit.suffix}"
+.. rounded = script-number-value(text) ?? magnitude
+.. kept = if exact then magnitude else rounded
+.. literal = ScriptLiteral(ScriptValue.number(kept), text)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-point-literal ScriptExpression
+    - point Point
+    - unit = ScriptUnit.none
+    - exact = false
+
+ScriptPointExpression(x, script-number-literal(point.y, unit, exact))
+
+.. x = script-number-literal(point.x, unit, exact)
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-value-literal ScriptExpression?
+    - value ScriptValue
+    - type = script-any-type
+    - exact = false
+
+do match value
+    | .number(number)
+        = script-number-literal(number, type.unit, exact)
+    | .point(point)
+        = script-point-literal(point, type.unit, exact)
+    | .color
+        = ScriptLiteral(value, script-literal-text(value))
+    | .text
+        = ScriptLiteral(value, script-literal-text(value))
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ script-number-constant F64?
+    - expression ScriptExpression
+
+script-literal-value(expression)?.as-number
+
+━━━━━━━━━━━━━━━━━━━━
++ script-point-constant Point?
+    - expression ScriptExpression
+
+script-literal-value(expression)?.as-point
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-ungrouped ScriptExpression
+    - expression ScriptExpression
+
+. current = expression
+while current is ScriptGroup
+    current = (current as ScriptGroup).inner
+= current
+
+━━━━━━━━━━━━━━━━━━━━
++ script-sum ScriptExpression
+    - left ScriptExpression
+    - right ScriptExpression
+
+script-combined(true, left, right)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-difference ScriptExpression
+    - left ScriptExpression
+    - right ScriptExpression
+
+script-combined(false, left, right)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-product ScriptExpression
+    - left ScriptExpression
+    - right ScriptExpression
+
+|? spread
+    spread
+|? left-number && right-number
+    script-number-literal(left-number * right-number, ScriptUnit.none, true)
+|? left-point && right-number
+    script-point-literal(left-point * right-number, ScriptUnit.none, true)
+|? right-point && left-number
+    script-point-literal(right-point * left-number, ScriptUnit.none, true)
+|? right-number == 1
+    left
+|? left-number == 1
+    right
+??
+    ScriptBinary(ScriptOperator.multiply, left, right)
+
+.. spread = script-spread-map
+    - left
+    - :: end => script-product(end, right)
+    - :: size => script-product(size, right)
+.. left-number = script-number-constant(left)
+.. right-number = script-number-constant(right)
+.. left-point = script-point-constant(left)
+.. right-point = script-point-constant(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ script-quotient ScriptExpression
+    - left ScriptExpression
+    - divisor F64
+
+|? spread
+    spread
+|? number
+    script-number-literal(number / divisor, ScriptUnit.none, true)
+|? point
+    script-point-literal(point / divisor, ScriptUnit.none, true)
+|? divisor == 1
+    left
+??
+    ScriptBinary(ScriptOperator.divide, left, script-number-literal(divisor, ScriptUnit.none, true))
+
+.. spread = script-spread-map
+    - left
+    - :: end => script-quotient(end, divisor)
+    - :: size => script-quotient(size, divisor)
+.. number = script-number-constant(left)
+.. point = script-point-constant(left)
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-combined ScriptExpression
+    - adds Bool
+    - left ScriptExpression
+    - right ScriptExpression
+
+|? leading
+    leading
+|? trailing
+    trailing
+|? left-number && right-number
+    script-number-literal(number, ScriptUnit.none, true)
+    .. number = if adds then left-number + right-number else left-number - right-number
+|? left-point && right-point
+    script-point-literal(point, ScriptUnit.none, true)
+    .. point = if adds then left-point + right-point else left-point - right-point
+|? script-is-zero(right-number, right-point)
+    left
+|? adds && script-is-zero(left-number, left-point)
+    right
+|? cancelled
+    cancelled
+|? left-parts && right-parts
+    ScriptPointExpression(x, script-combined(adds, left-parts[1], right-parts[1]))
+    .. x = script-combined(adds, left-parts[0], right-parts[0])
+??
+    ScriptBinary(if adds then ScriptOperator.add else ScriptOperator.subtract, left, right)
+
+.. leading = script-spread-map(left, :: end => script-combined(adds, end, right), :: size => size)
+.. trailing = script-spread-map(right, :: end => script-combined(adds, left, end), :: size => size)
+.. left-number = script-number-constant(left)
+.. right-number = script-number-constant(right)
+.. left-point = script-point-constant(left)
+.. right-point = script-point-constant(right)
+.. cancelled = script-cancelled(adds, script-ungrouped(left), script-ungrouped(right))
+.. left-parts = script-point-parts(left)
+.. right-parts = script-point-parts(right)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptEndMap is () ScriptExpression
+    - end ScriptExpression
+
+━━━━━━━━━━━━━━━━━━━━
+_ do script-spread-map ScriptExpression?
+    - expression ScriptExpression
+    - ends ScriptEndMap
+    - sizes ScriptEndMap
+
+. inner = script-ungrouped(expression)
+if inner is ScriptListExpression
+    . items = List'ScriptExpression()
+    for item in (inner as ScriptListExpression).items
+        items += ends(item)
+    = ScriptListExpression(items)
+=? null if inner is not ScriptPhraseExpression
+. phrase = inner as ScriptPhraseExpression
+. arguments = Map'String'ScriptExpression()
+if phrase.kind == script-range-kind
+    arguments["from"] = ends(phrase.arguments["from"] ?? ScriptHole())
+    arguments["to"] = ends(phrase.arguments["to"] ?? ScriptHole())
+    = ScriptPhraseExpression(phrase.kind, arguments)
+. range = phrase.arguments["range"]
+=? null if !range || (not-range && not-ease-in-or-out && phrase.kind != script-ease-in-out-kind)
+.. not-range = phrase.kind != script-range-step-kind && phrase.kind != script-range-over-kind
+.. not-ease-in-or-out = phrase.kind != script-ease-in-kind && phrase.kind != script-ease-out-kind
+. mapped = script-spread-map(range, ends, sizes)
+=? null if !mapped
+for slot, argument in phrase.arguments
+    arguments[slot] = argument
+arguments["range"] = mapped
+if phrase.kind == script-range-step-kind
+    arguments["step"] = sizes(phrase.arguments["step"] ?? ScriptHole())
+= ScriptPhraseExpression(phrase.kind, arguments)
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-is-zero Bool
+    - number F64?
+    - point Point?
+
+|? number
+    number == 0
+|? point
+    point.is-zero
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do script-cancelled ScriptExpression?
+    - adds Bool
+    - left ScriptExpression
+    - right ScriptExpression
+
+if adds
+    if right is ScriptBinary
+        . inner = right as ScriptBinary
+        =? inner.left if right-subtracts && script-equivalent(inner.right, left)
+        .. right-subtracts = inner.operator == ScriptOperator.subtract
+    if left is ScriptBinary
+        . inner = left as ScriptBinary
+        =? inner.left if left-subtracts && script-equivalent(inner.right, right)
+        .. left-subtracts = inner.operator == ScriptOperator.subtract
+    = null
+=? null if left is not ScriptBinary
+. inner = left as ScriptBinary
+|? inner.operator != ScriptOperator.add
+    = null
+|? script-equivalent(inner.left, right)
+    = inner.right
+|? script-equivalent(inner.right, right)
+    = inner.left
+??
+    = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-point-parts [ScriptExpression]?
+    - expression ScriptExpression
+
+|? inner is ScriptPointExpression
+    List'ScriptExpression(point.x, point.y)
+    .. point = inner as ScriptPointExpression
+|? !constant
+    null
+??
+    List'ScriptExpression(x, script-number-literal(constant.y, ScriptUnit.none, true))
+    .. x = script-number-literal(constant.x, ScriptUnit.none, true)
+
+.. inner = script-ungrouped(expression)
+.. constant = script-point-constant(inner)
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-equivalent Bool
+    - left ScriptExpression
+    - right ScriptExpression
+
+. a = script-ungrouped(left)
+. b = script-ungrouped(right)
+. a-number = script-number-constant(a)
+. b-number = script-number-constant(b)
+=? a-number == b-number if a-number && b-number
+. a-point = script-point-constant(a)
+. b-point = script-point-constant(b)
+=? a-point == b-point if a-point && b-point
+=? false if a-number || b-number || a-point || b-point
+do match a
+    | reference ScriptReferenceExpression
+        =? false if b is not ScriptReferenceExpression
+        . other = (b as ScriptReferenceExpression).reference
+        = reference.reference.kind == other.kind && reference.reference.id == other.id && same-copy
+            .. same-copy = script-copy-equal(reference.reference.copy, other.copy)
+    | negation ScriptNegation
+        =? false if b is not ScriptNegation
+        = script-equivalent(negation.operand, (b as ScriptNegation).operand)
+    | binary ScriptBinary
+        =? false if b is not ScriptBinary
+        . other = b as ScriptBinary
+        =? false if binary.operator != other.operator
+        = script-equivalent(binary.left, other.left) && script-equivalent(binary.right, other.right)
+    | point ScriptPointExpression
+        =? false if b is not ScriptPointExpression
+        . other = b as ScriptPointExpression
+        = script-equivalent(point.x, other.x) && script-equivalent(point.y, other.y)
+    | phrase ScriptPhraseExpression
+        =? false if b is not ScriptPhraseExpression
+        . other = b as ScriptPhraseExpression
+        =? false if phrase.kind != other.kind || phrase.arguments.length != other.arguments.length
+        for slot, argument in phrase.arguments
+            . counterpart = other.arguments[slot]
+            =? false if !counterpart || !script-equivalent(argument, counterpart)
+        = true
+    | literal ScriptLiteral
+        =? false if b is not ScriptLiteral
+        = literal.text == (b as ScriptLiteral).text
+    | list ScriptListExpression
+        =? false if b is not ScriptListExpression
+        . other = b as ScriptListExpression
+        =? false if list.items.length != other.items.length
+        = all(0 .. < list.items.length) • where script-equivalent(list.items[each], other.items[each])
+    ??
+        = false
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-suggested-name String
+    - expression ScriptExpression
+    - grammar ScriptGrammar
+    - names ScriptNames? = null
+    - type = script-any-type
+
+do match expression
+    | phrase ScriptPhraseExpression
+        . form = grammar.form(phrase.kind)
+        =? "value" if !form
+        . index = if form.starts-with-slot then 1 else 0
+        =? "value" if index >= form.parts.length || form.parts[index].is-slot
+        = script-name-from-words(form.parts[index].word)
+    | reference ScriptReferenceExpression
+        . name = names?.lookup(reference.reference)?.name ?? reference.name
+        =? name.lowercased if name.length
+        = "value"
+    | group ScriptGroup
+        = script-suggested-name(group.inner, grammar, names, type)
+    | literal ScriptLiteral
+        . kind = script-value-type(literal.value).kind
+        |? kind == ScriptTypeKind.number && type.unit == ScriptUnit.degrees
+            = "angle"
+        |? kind == ScriptTypeKind.number && type.unit == ScriptUnit.percent
+            = "percentage"
+        |? kind == ScriptTypeKind.number
+            = "value"
+        ??
+            = "${script-value-type(literal.value)}"
+    ??
+        = "value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do script-name-from-words String
+    - words String
+
+. stops = List'String("of", "at", "by", "to", "and", "from", "around", "between", "on", "in")
+. start Index = 0
+if words.starts-with("'s")
+    start = 2
+else if words.starts-with("'")
+    start = 1
+. kept [String]
+for piece in words[start .. < words.length].split(" ")
+    if !piece.length
+        continue
+    if stops has piece
+        break
+    kept += piece
+=? "value" if !kept.length
+= " ".join(each in kept)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScriptTokenTarget is Tuple
+
++ span Index = 0
++ phrase Index? = null
++ reference ScriptReference? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ script-token-target ScriptTokenTarget
+    - outline ScriptOutline
+    - index Index?
+
+if !index || index >= outline.tokens.length then ScriptTokenTarget() else ScriptTokenTarget(span, phrase, reference)
+
+.. span = outline.owners[index]
+.. token = outline.tokens[index]
+.. owned = outline.spans[span].expression is ScriptPhraseExpression
+.. phrase = span if token.kind == ScriptTokenKind.word && owned
+.. reference = token.reference if token.kind == ScriptTokenKind.chip

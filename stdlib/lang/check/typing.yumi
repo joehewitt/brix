@@ -1,0 +1,839 @@
+./checker
+./class-tables
+./facts
+./instances
+./portable
+./session
+./stack-locals
+./type-signature
+./type-store
+./types
+./typing-scratch
+./witnesses
+/lang/ast/ast
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-program
+    - session Session
+
+` Types the program from what it was seeded with, and again from that where a pass must start
+` over (`check-pass`).
+while !check-pass(session)
+    start-over(session)
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-pass Bool
+    - session Session
+
+` Types the program from the worklist, and settles what is known once it is typed. False where
+` a store typed as one that runs nothing turned out to run actions where what was typed after
+` it read what the flow knew of a property (`Panics.typed-late`): nothing is settled, and the
+` pass starts over (`start-over`).
+. instances = session.instances
+. witnesses = WitnessTables(session)
+. tables = ClassTables(session)
+while true
+    while instances.worklist-next < instances.worklist.length
+        . id = instances.worklist[instances.worklist-next]
+        instances.worklist-next += 1
+        demand-instance(session, id)
+    if type-written-in(session) || type-unread(session)
+        continue
+    session.errors.settle-open()
+    . queued = instances.worklist.length
+    expand-tables(session, tables)
+    . grew = expand-witnesses(session, witnesses)
+    if instances.worklist.length == queued && !grew
+        seed-unreached(session)
+        if instances.worklist.length == queued
+            settle-properties(session)
+        if instances.worklist.length == queued
+            seed-panic-report(session)
+            seed-error-report(session)
+            seed-probe-runtime(session)
+        if instances.worklist.length != queued
+            continue
+        session.errors.settle-open()
+    if check-used-classes(session)
+        continue
+    if instances.worklist.length == queued && !grew
+        if session.panics.typed-late()
+            tables.release()
+            = false
+        decline-used-members(session)
+        session.panics.retest-forces()
+        check-forces(session)
+        check-chains(session)
+        number-style-sites(session)
+        number-domains(session)
+        session.panics.gather-unit-calls()
+        . everywhere [Bool]
+        session.facts.fold-initializers(session.bindings, everywhere)
+        session.facts.chain-loose-calls()
+        session.panics.propagate()
+        StackLocals(session).check()
+        seed-startup(session)
+        tables.release()
+        = true
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-forces
+    - session Session
+
+. facts = session.facts
+. instances = session.instances
+. nullable [U64 = Bool]
+for fact in facts.forces
+    . needed = fact.is-tested || fact.operand == invalid-type || optional-operand
+        .. optional-operand = session.types.is-optional(fact.operand)
+    if fact.instance != instances.dead && needed
+        nullable[written-site(instances, fact.instance, fact.syntax)] = true
+for fact in facts.forces
+    if fact.instance != instances.dead
+        . site = written-site(instances, fact.instance, fact.syntax)
+        . module = instances.rows[fact.instance].module
+        if !nullable[site] && is-written-force(session.program.modules[module].tree, fact.syntax)
+            nullable[site] = true
+            . message = session.program.store-atom("Optional force operand is not optional")
+            facts.record-diagnostic
+                - fact.instance
+                - module
+                - fact.syntax
+                - .stated
+                - message
+                - fact.operand
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-chains
+    - session Session
+
+. facts = session.facts
+. instances = session.instances
+. needed [U64 = Bool]
+for fact in facts.chains
+    if fact.instance != instances.dead && fact.needed
+        needed[written-site(instances, fact.instance, fact.syntax)] = true
+for fact in facts.chains
+    if fact.instance != instances.dead
+        . site = written-site(instances, fact.instance, fact.syntax)
+        if !needed[site]
+            needed[site] = true
+            . module = instances.rows[fact.instance].module
+            . message = session.program.store-atom("Optional chaining receiver is not optional")
+            facts.record-diagnostic(fact.instance, module, fact.syntax, .stated, message)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-written-force Bool
+    - tree AST
+    - syntax SyntaxId
+
+do match? tree.nodes[syntax]
+    | .node-unary-expression(row)
+        . written = tree.nodes.loc[syntax].end
+        . operand = tree.nodes.loc[row.operand].end
+        = written.line != operand.line || written.column != operand.column
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ written-site U64
+    - instances Instances
+    - instance InstanceId
+    - syntax SyntaxId
+
+((instances.rows[instance].module as U64) /lshift/ 32) /or/ syntax
+
+━━━━━━━━━━━━━━━━━━━━
++ do number-style-sites
+    - session Session
+
+` Numbers the places that declare styles in source order, as styles are numbered, and those of
+` one place by the stable keys of their instances. An edit typed again in place numbers them
+` again (`retype-edit`).
+. sites = session.facts.style-sites
+if sites.length == 0
+    =
+for position in 1 .. < sites.length
+    . moving = sites[position]
+    . place = position
+    while place > 0 && site-before(session, moving, sites[place - 1])
+        sites[place] = sites[place - 1]
+        place -= 1
+    sites[place] = moving
+for position in 0 .. < sites.length
+    sites[position].number = position as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ site-before Bool
+    - session Session
+    - site StyleSite
+    - other StyleSite
+
+|? site.module != other.module
+    site.module < other.module
+|? begin.line != other-begin.line
+    begin.line < other-begin.line
+|? begin.column != other-begin.column
+    begin.column < other-begin.column
+??
+    keys[site.instance] < keys[other.instance]
+
+.. tree = session.program.modules[site.module].tree
+.. begin = tree.nodes.loc[site.site].begin
+.. other-begin = tree.nodes.loc[other.site].begin
+.. keys = session.instances.stable-keys
+
+━━━━━━━━━━━━━━━━━━━━
++ do number-domains
+    - session Session
+
+` Places each domain of invalidation at the first place an instance names it, by the first line
+` there (`Facts.domain-places`), and orders those some instance names as the style module's init
+` registers them (`Facts.domain-order`), so that the order is the same however typing numbered
+` them (`registers-before`). One no instance names any longer, as after an edit typed again in
+` place, is not registered. The runtime holds 32 (`report-domain-cap`). An edit typed again in
+` place orders them again (`retype-edit`).
+. facts = session.facts
+facts.domain-places.clear()
+facts.domain-order.clear()
+for index in 0 .. < facts.style-domains.length
+    facts.domain-places += DomainUser(no-instance, index as U32, 0, 0, 0, 0)
+for user in facts.domain-users
+    . best = facts.domain-places[user.domain]
+    if best.instance == no-instance || names-first(session, user, best)
+        facts.domain-places[user.domain] = user
+for index in 0 .. < facts.domain-places.length
+    if facts.domain-places[index].instance == no-instance
+        continue
+    facts.domain-order += index as U32
+    . place = facts.domain-order.length - 1
+    while place > 0 && registers-before(session, facts.domain-order[place], facts.domain-order[place - 1])
+        . held = facts.domain-order[place - 1]
+        facts.domain-order[place - 1] = facts.domain-order[place]
+        facts.domain-order[place] = held
+        place -= 1
+if facts.domain-order.length > 32
+    report-domain-cap(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do report-domain-cap
+    - session Session
+
+` Reports the reference's error for the domains of invalidation some instance names past the 32
+` the runtime holds, at the 33rd in the order of the first line that names each, in source order
+` (`place-before`), then of their names, where that line names it (`written-line`).
+. facts = session.facts
+. firsts [DomainUser]
+for index in 0 .. < facts.style-domains.length
+    firsts += DomainUser(no-instance, index as U32, 0, 0, 0, 0)
+for user in facts.domain-users
+    . best = firsts[user.domain]
+    if best.instance == no-instance || earlier
+        firsts[user.domain] = user
+    .. earlier = place-before(session, user.line-module, user.line, best.line-module, best.line)
+. named [DomainUser]
+for first in firsts
+    if first.instance == no-instance
+        continue
+    named += first
+    . place = named.length - 1
+    while place > 0 && named-before(session, named[place], named[place - 1])
+        . held = named[place - 1]
+        named[place - 1] = named[place]
+        named[place] = held
+        place -= 1
+. past = named[32]
+. name = facts.style-domains[past.domain].name.text
+. message = session.program.store-atom
+    - "Too many style invalidation domains (32 maximum); cannot intern \"$name\""
+facts.record-diagnostic
+    - past.instance
+    - past.line-module
+    - written-line(session, past.line-module, past.line)
+    - .stated
+    - message
+
+━━━━━━━━━━━━━━━━━━━━
+_ do written-line SyntaxId
+    - session Session
+    - module ModuleId
+    - named SyntaxId
+
+` The line of a style that names a domain of invalidation at `named`, or, where the read or write
+` of the domain's flag names it, `named` itself: where the reference reports an error about it.
+. tree = session.program.modules[module].tree
+for index in 0 .. < tree.nodes.length
+    do match? tree.nodes[index as SyntaxId]
+        | .node-style-annotation(row)
+            for item in tree.children[row.domains]
+                if item == named
+                    = index as SyntaxId
+= named
+
+━━━━━━━━━━━━━━━━━━━━
+_ named-before Bool
+    - session Session
+    - user DomainUser
+    - other DomainUser
+
+` Whether a domain of invalidation is first named before another: at an earlier line, or at the
+` same line by an earlier name.
+|? place-before(session, user.line-module, user.line, other.line-module, other.line)
+    true
+|? place-before(session, other.line-module, other.line, user.line-module, user.line)
+    false
+??
+    names[user.domain].name.text < names[other.domain].name.text
+
+.. names = session.facts.style-domains
+
+━━━━━━━━━━━━━━━━━━━━
+_ names-first Bool
+    - session Session
+    - user DomainUser
+    - other DomainUser
+
+` Whether an instance names a domain of invalidation before another does: at an earlier place, or
+` at the same place by an earlier line (`place-before`).
+|? place-before(session, user.module, user.site, other.module, other.site)
+    true
+|? place-before(session, other.module, other.site, user.module, user.site)
+    false
+??
+    place-before(session, user.line-module, user.line, other.line-module, other.line)
+
+━━━━━━━━━━━━━━━━━━━━
+_ registers-before Bool
+    - session Session
+    - domain U32
+    - other U32
+
+` Whether the style module's init registers a domain of invalidation before another: by the place
+` each is registered at, then by the line that names each there, as the reference names them as
+` it reaches them, then by name (`place-before`).
+|? place-before(session, one.module, one.site, two.module, two.site)
+    true
+|? place-before(session, two.module, two.site, one.module, one.site)
+    false
+|? place-before(session, one.line-module, one.line, two.line-module, two.line)
+    true
+|? place-before(session, two.line-module, two.line, one.line-module, one.line)
+    false
+??
+    names[domain].name.text < names[other].name.text
+
+.. one = session.facts.domain-places[domain]
+.. two = session.facts.domain-places[other]
+.. names = session.facts.style-domains
+
+━━━━━━━━━━━━━━━━━━━━
+_ place-before Bool
+    - session Session
+    - module ModuleId
+    - site SyntaxId
+    - other-module ModuleId
+    - other SyntaxId
+
+` Whether a place in the program comes before another in source order: in a module loaded first,
+` or earlier in the same module, or, of two that begin together or that are no node, at the
+` earlier syntax.
+|? module != other-module
+    module < other-module
+|? site >= tree.nodes.length || other >= tree.nodes.length
+    site < other
+|? begin.line != other-begin.line
+    begin.line < other-begin.line
+|? begin.column != other-begin.column
+    begin.column < other-begin.column
+??
+    site < other
+
+.. tree = session.program.modules[module].tree
+.. begin = tree.nodes.loc[site].begin
+.. other-begin = tree.nodes.loc[other].begin
+
+━━━━━━━━━━━━━━━━━━━━
+_ do decline-used-members
+    - session Session
+
+` Declines the members no pass models of the classes the program used, by a checker that
+` stands in each module that holds one.
+for position in 0 .. < session.program.modules.length
+    if session.program.modules[position].undeclared.length != 0
+        . checker = checker-for(session, seed-main(session, position as ModuleId))
+        checker.prepare()
+        checker.decline-used-members()
+        checker.close()
+        checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-used-classes Bool
+    - session Session
+
+` Checks what each class the program used declares where no checker of its module's statements
+` checked it, as the reference checks a class where it is first used: by a checker that stands in
+` the class's module. Says whether it checked any.
+. uses = session.types.class-uses
+. checked = false
+. position Size = 0
+while position < uses.length
+    . used = uses[position]
+    position += 1
+    if session.types.checked-classes[used.key] != null
+        continue
+    . checker = checker-for(session, seed-main(session, used.module))
+    checker.prepare()
+    for later in position - 1 .. < uses.length
+        if uses[later].module == used.module
+            checker.initialize-class(uses[later].decl)
+    checker.close()
+    checker.retire()
+    checked = true
+= checked
+
+━━━━━━━━━━━━━━━━━━━━
++ do type-unread Bool
+    - session Session
+
+` Types each value of a property, of a rule a root applies and each rule of a class that the
+` passes of a parallel type pass typed and none is taken from (`Instances.typed-on-read`), which
+` nothing typed here read first. Says whether it typed any.
+. waiting = session.instances.typed-on-read
+. typed = false
+for id in waiting
+    if session.instances.rows[id].state == .instance-unstarted
+        demand-instance(session, id)
+        typed = true
+waiting.clear()
+= typed
+
+━━━━━━━━━━━━━━━━━━━━
+_ do expand-tables
+    - session Session
+    - tables ClassTables
+
+` Lists the methods of classes for their tables, the targets of the program's descendant queries
+` among the classes though no object of one is made. A checker that stands in the entry module
+` types what converting an override's answer to its base's type calls.
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+checker.find-query-targets()
+tables.expand(checker)
+checker.close()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
++ do expand-witnesses Bool
+    - session Session
+    - witnesses WitnessTables
+
+` Finds what answers the functions of interfaces. A checker that stands in the entry module
+` works out the types a type's function takes that are written with none, and the type of a
+` property a class answers an interface through that is written with none, and types the
+` defaults a function of a witness table gives the type's function.
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+. grew = witnesses.expand(checker, checker.conversions)
+checker.close()
+checker.retire()
+= grew
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-startup
+    - session Session
+
+` The functions a program starts in are instances like any other, so the tables built after
+` the seal find them: each module's init, and the entry module's task main, or that of each root
+` of a batch. They come last, when nothing is left to type, and have no body to check.
+. program = session.program
+. instances = session.instances
+for position in 0 .. < program.modules.length
+    . init = program.modules[position].init-decl
+    demand-instance(session, instances.intern(position as ModuleId, init, no-type, 0, no-instance))
+. entry = program.entry-module
+. task-main = program.modules[entry].task-main-decl
+demand-instance(session, instances.intern(entry, task-main, no-type, 0, no-instance))
+for root in program.batch-roots
+    . root-main = program.modules[root].task-main-decl
+    demand-instance(session, instances.intern(root, root-main, no-type, 0, no-instance))
+
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-panic-report
+    - session Session
+
+` Every program can end in an unhandled panic, so what the report of one calls is typed for
+` every program, once, when nothing else is left to type. Emission holds only what a root
+` that may panic reaches.
+if session.instances.report.termination != no-instance
+    =
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+checker.demand-panic-report()
+checker.close()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-error-report
+    - session Session
+
+` The main of a module, the value of a lazy global or the body of a spawned task that lets an
+` error out reports it, so what that report calls is typed once, when the errors of every one
+` are settled. Making the texts of the report may panic, so such a function may.
+. instances = session.instances
+. program = session.program
+. raises = false
+for position in 0 .. < program.modules.length
+    . main = seed-main(session, position as ModuleId)
+    if instances.signatures[main].errors.count != 0
+        instances.mark-may-panic(main)
+        raises = true
+    . owner = program.modules[position]
+    for index in 0 .. < owner.decls.length
+        do match? owner.decls[index]
+            | .decl-property(property)
+                if property.owner == 0 && property.is-lazy && property.decoration == null
+                    . unit = instances.find-initializer
+                        - position as ModuleId
+                        - index as DeclId
+                        - no-type
+                    if unit != no-instance && instances.signatures[unit].errors.count != 0
+                        instances.mark-may-panic(unit)
+                        raises = true
+for body in session.facts.task-bodies
+    if instances.signatures[body].errors.count != 0
+        instances.mark-may-panic(body)
+        raises = true
+if !raises || instances.report.error-text != no-instance
+    =
+. checker = checker-for(session, seed-main(session, program.entry-module))
+checker.prepare()
+checker.conversions.demand-error-report()
+checker.close()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-probe-runtime
+    - session Session
+
+` A program whose probes compile declares them, flushes them and closes their record through the
+` probes module, whether or not it writes any, so what that calls is typed once, when nothing
+` else is left to type.
+if !session.program.probes.is-enabled || session.instances.probe-runtime.demanded
+    =
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+checker.demand-probe-runtime()
+checker.close()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do settle-properties
+    - session Session
+
+` Gives every stored property of every concrete type its type before the seal. A property
+` written without a type takes the type of its value, which the checker works out where the
+` property is first read; one that nothing read is worked out here, so that the type's layout
+` is whole.
+. types = session.types
+. checker = checker-for(session, seed-main(session, session.program.entry-module))
+checker.prepare()
+. id = 0u32
+while id < types.completions.length
+    . completion = types.completions[id]
+    if completion.completion == .completion-done && !completion.has-variables
+        for offset in 0 .. < completion.properties.count
+            . position = completion.properties.start + offset
+            . property = types.properties[position]
+            if property.storage-kind != .storage-getter && property.type == no-type
+                . value = checker.demand-member(property, id, property.name)
+                if value != invalid-type && value != no-type
+                    types.properties[position].type = value
+    id += 1
+checker.close()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
++ do demand-instance
+    - session Session
+    - instance InstanceId
+
+if session.instances.rows[instance].state != .instance-unstarted || adopt(session, instance)
+    =
+. checker = checker-for(session, instance)
+checker.run()
+checker.retire()
+
+━━━━━━━━━━━━━━━━━━━━
++ seed-main InstanceId
+    - session Session
+    - module ModuleId
+
+session.instances.intern(module, main, no-type, 0, no-instance)
+
+.. main = session.program.modules[module].main-decl
+
+━━━━━━━━━━━━━━━━━━━━
++ do seed-mains
+    - session Session
+
+` A program runs the statements of every module it loads, so every module's main is typed,
+` the entry module's first.
+seed-module(session, session.program.entry-module)
+for position in 0 .. < session.program.modules.length
+    seed-module(session, position as ModuleId)
+
+━━━━━━━━━━━━━━━━━━━━
++ do seed-module
+    - session Session
+    - module ModuleId
+
+session.note-seed(module, false)
+seed-main(session, module)
+
+━━━━━━━━━━━━━━━━━━━━
++ do seed-functions
+    - session Session
+    - module ModuleId
+
+session.note-seed(module, true)
+seed-module-functions(session, module)
+
+━━━━━━━━━━━━━━━━━━━━
++ do start-over
+    - session Session
+
+` Starts a type pass over from what it was seeded with, knowing every property the pass so
+` far found tracked.
+//typing.start-over// starts over
+session.restart()
+for position in 0 .. < session.seeded-modules.length
+    if session.seeded-functions[position]
+        seed-module-functions(session, session.seeded-modules[position])
+    else
+        seed-main(session, session.seeded-modules[position])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-module-functions
+    - session Session
+    - module ModuleId
+
+. owner-module = session.program.modules[module]
+. index = 0u32
+for decl in owner-module.decls
+    do match? decl
+        | .decl-function(row)
+            . accessor = row.owner == 0 && (row.kind == .getter-decl || row.kind == .setter-decl)
+            . concrete = !row.is-generated && !row.is-static && row.body != 0
+            . plain = concrete && (row.kind == .function-decl || accessor)
+            if plain && row.type-args.count == 0 && !has-untyped-default(owner-module, row)
+                seed-declaration(session, module, index)
+    index += 1
+
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-unreached
+    - session Session
+
+for module in session.unreached-modules
+    seed-module-functions(session, module)
+    seed-unmade-classes(session, module)
+    seed-sheet-rules(session, module)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-sheet-rules
+    - session Session
+    - module ModuleId
+
+. types = session.types
+. instances = session.instances
+. owner = session.program.modules[module]
+. index = 0u32
+for decl in owner.decls
+    . sheet = no-type
+    . members = RowRange'DeclId()
+    do match? decl
+        | .decl-class(class)
+            if class.type-args.count == 0
+                . env = types.class-env(module, index)
+                sheet = env.this-type
+                types.env-release(env)
+                members = class.members
+        | .decl-sheet-extension(extension)
+            types.clear-fault()
+            sheet = types.evaluate-type(module, owner.tree, extension.receiver, types.env-frame())
+            types.clear-fault()
+            members = extension.members
+    if sheet != no-type && sheet != invalid-type && types.intrinsic-of(sheet) == .style-sheet
+        for member in owner.member-pool[members]
+            do match? owner.decls[member]
+                | .decl-style-rule(rule)
+                    if rule.outer == 0
+                        instances.queue(instances.intern-initializer(module, member, sheet))
+    index += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-unmade-classes
+    - session Session
+    - module ModuleId
+
+. owner = session.program.modules[module]
+. made = made-classes(session, module)
+. index = 0u32
+for decl in owner.decls
+    do match? decl
+        | .decl-class(class)
+            if class.type-args.count == 0 && !made[index]
+                seed-constructors(session, module, index, class)
+    index += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do made-classes [Bool]
+    - session Session
+    - module ModuleId
+
+. types = session.types
+. instances = session.instances
+. made [Bool]
+for _ in 0 .. < session.program.modules[module].decls.length
+    made += false
+for position in 0 .. < instances.length
+    . row = instances.rows[position]
+    if row.self-type != no-type && makes-object(session, row.module, row.decl)
+        . level TypeId? = row.self-type
+        while level
+            . ref = class-ref(types, level)
+            if ref.module == module
+                made[ref.decl] = true
+            level = types.base-of(level)
+= made
+
+━━━━━━━━━━━━━━━━━━━━
+_ makes-object Bool
+    - session Session
+    - module ModuleId
+    - decl DeclId
+
+match session.program.modules[module].decls[decl]
+    | .decl-function(fn)
+        is-constructor-kind(fn.kind)
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do seed-constructors
+    - session Session
+    - module ModuleId
+    - decl DeclId
+    - class ClassDecl
+
+. owner = session.program.modules[module]
+. env = session.types.class-env(module, decl)
+. kind = session.types.intrinsic-of(env.this-type)
+session.types.env-release(env)
+if kind != .class
+    =
+. writes = false
+. generated DeclId = 0
+for member in owner.member-pool[class.members]
+    do match? owner.decls[member]
+        | .decl-function(fn)
+            if fn.kind == .constructor-decl && !fn.is-generated
+                writes = true
+                if !has-untyped-default(owner, fn)
+                    seed-declaration(session, module, member)
+            if fn.kind == .default-constructor-decl
+                generated = member
+if !writes && generated != 0
+    seed-declaration(session, module, generated)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do has-untyped-default Bool
+    - owner-module Module
+    - row FunctionDecl
+
+for shape in owner-module.arg-pool[row.args]
+    if shape.type-syntax == 0 && shape.default-syntax != 0
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-stream-type Bool
+    - types Types
+    - type TypeId
+
+match types.rows[type]
+    | .type-class(row)
+        row.module == types.stream-decl.module && row.decl == types.stream-decl.decl
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ do seed-declaration InstanceId?
+    - session Session
+    - module ModuleId
+    - decl DeclId
+
+. types = session.types
+. program = session.program
+. owner = 0u32
+. effects = 0u32
+do match? program.modules[module].decls[decl]
+    | .decl-function(row)
+        owner = row.owner
+        effects = dispatch-effects(row.effects)
+    | .decl-converter(row)
+        owner = row.owner
+    | .decl-fromverter(row)
+        owner = row.owner
+. receiver = no-type
+
+if owner != 0
+    do match? program.modules[module].decls[owner]
+        | .decl-class(class)
+            if class.type-args.count != 0
+                = null
+            . env = types.class-env(module, owner)
+            receiver = env.this-type
+            types.env-release(env)
+        | .decl-extension
+            = null
+= seed-member(session, module, decl, receiver, effects)
+
+
+━━━━━━━━━━━━━━━━━━━━
++ do seed-member InstanceId?
+    - session Session
+    - module ModuleId
+    - decl DeclId
+    - receiver TypeId
+    - effects EffectMask
+
+. types = session.types
+. scratch = session.scratch
+. names-mark = scratch.names.mark
+. items-mark = scratch.types.mark
+. signature = signature-into(types, module, decl, no-type-arguments(types), receiver, true)
+. usable = signature.params.length == 0
+for arg in signature.args
+    . item = types.optional-inner(arg)
+    if arg == invalid-type || types.completions[arg].has-variables || is-stream-type(types, item)
+        usable = false
+. seeded InstanceId? = null
+if usable
+    . none = scratch.no-types
+    seeded = session.instances.intern
+        - module
+        - decl
+        - receiver
+        - effects
+        - no-instance
+        - none
+        - signature.args
+scratch.types.rewind(items-mark)
+scratch.names.rewind(names-mark)
+= seeded

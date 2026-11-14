@@ -1,0 +1,3660 @@
+./ast-builder
+./ast-nodes
+./error
+./grammar-helpers
+./operator
+./preparse
+./row-range
+./syntax-advice
+/core/arena
+/core/parsing
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse-yumi
+    - source String
+    - source-path = ""
+
+. scratch = use Arena()
+= parse-yumi(source, source-path, scratch)
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-yumi
+    - source String
+    - source-path String
+    - scratch Arena
+
+parse-yumi-preparsed(preparsed, source, source-path, scratch)
+
+.. preparsed = preparse(source, scratch)
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-yumi-preparsed
+    - preparsed Char[]
+    - source String
+    - source-path String
+    - scratch Arena
+
+parse-yumi-preparsed-with(preparsed, source, source-path, scratch, tree, tree)
+
+.. tree = ASTBuilder(source, source-path)
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse-yumi-preparsed-with'Context ASTBuilder
+    - preparsed Char[]
+    - source String
+    - source-path String
+    - scratch Arena
+    - tree ASTBuilder
+    - context Context
+    - Context is PatternRollback'ASTBuilderMark
+
+= parse-tree(preparsed, source, source-path, scratch, tree, context)
+    catch error YumiSyntaxError
+        error.attach-source(source, source-path)
+        ?! error
+
+━━━━━━━━━━━━━━━━━━━━
+_ do parse-tree'Context ASTBuilder
+    - preparsed Char[]
+    - source String
+    - source-path String
+    - scratch Arena
+    - tree ASTBuilder
+    - context Context
+    - Context is PatternRollback'ASTBuilderMark
+
+do finally
+    scratch.reset()
+tree.pattern-collector-context = scratch
+do finally
+    tree.pattern-collector-context = tree.storage-arena
+. succeeded = false
+do finally
+    if !succeeded
+        tree.release()
+
+. piece = match preparsed
+    with context
+    ~ parsed \yumi-grammar(tree)
+        parsed
+    ?! YumiSyntaxError(MatchLocation(location, location), syntax-advice(source, location), source, source-path)
+
+. root = tree.append
+    - ASTTopLevel(piece.location, tree.store-children(link-statements(tree, piece.items)))
+tree.name-closures()
+tree.finalize-syntax()
+succeeded = true
+tree.root = root
+= tree
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse-yumi-piece YumiPiece ?! YumiSyntaxError
+    - buffer Char[]
+    - scratch Arena
+    - tree ASTBuilder
+
+do finally
+    scratch.reset()
+tree.pattern-collector-context = scratch
+do finally
+    tree.pattern-collector-context = tree.storage-arena
+
+. piece = match buffer
+    with tree
+    ~ parsed \yumi-grammar(tree)
+        parsed
+    ?! YumiSyntaxError(MatchLocation(location, location), "Syntax error")
+= detached-piece(piece)
+
+━━━━━━━━━━━━━━━━━━━━
++ yumi-grammar ~ Char YumiPiece ?! YumiSyntaxError
+    - tree ASTBuilder
+
+~ "\ufdd1" \nl \open \nl header \class-line body \class-body?
+    YumiPiece(location, body ?? ImmutableArray'SyntaxId(), header)
+~ "\ufdd2" \nl items \members
+    YumiPiece(location, items)
+~ / v \statements /
+    YumiPiece(location, v)
+
+.. open ~
+    ~ "{"
+    ~ "≤"
+
+.. open-string ~
+    ~ "Æ"
+
+.. open-header ~
+    ~ "═"
+
+.. close ~
+    ~ "}"
+    ~ "≥"
+
+.. statements ImmutableArray'SyntaxId ~
+    ~ \nl* lines \statement-line* / \nl?
+        true-optionals(tree, lines)
+
+.. statement-line SyntaxId? ~
+    ~ / s \statement / (\nl | &\close)
+        s
+    ~ / \nl
+        null
+
+.. block SyntaxId ~
+    ~ \indented-block-expression
+    ~ \inline-block-expression
+
+.. indented-block-expression SyntaxId ~
+    ~ \open s \statements / \close
+        located-block(tree, location, block-with-statements(tree, s))
+
+.. inline-block-expression SyntaxId ~
+    ~ ":" / expr \print-block
+        expr
+    ~ ":" / expr \multi-line-expression
+        expr
+
+.. block-statements SyntaxId ~
+    ~ \nl* lines \statement-line+ / \nl?
+        block-with-statements(tree, true-optionals(tree, lines))
+
+.. block-or-expression SyntaxId ~
+    ~ // expr \multi-line-expression
+        expr
+    ~ / b \block
+        b
+
+.. block-or-expression-no-prep SyntaxId ~
+    ~ // expr \multi-line-expression-no-prep
+        expr
+    ~ / b \block
+        b
+
+.. block-or-inline-expression SyntaxId ~
+    ~ // expr \print-block
+        expr
+    ~ // expr \inline-expression
+        expr
+    ~ / b \block
+        b
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. statement SyntaxId ~
+    ~ \import-statement
+    ~ \string-block
+    ~ \header-block
+    ~ \extension-block
+    ~ \style-sheet-extension-block
+    ~ \style-sheet-block
+    ~ \c-constant-declaration
+    ~ \class-block
+    ~ \function-block
+    ~ \state-machine-declaration
+    ~ \property-declaration
+    ~ \unit-declaration
+    ~ \if-block
+    ~ \while-block
+    ~ \style-when-statement
+    ~ \for-block
+    ~ \do-block
+    ~ \return-statement
+    ~ \pipeline-statement
+    ~ \bullet-statement
+    ~ \pattern-helper-clause
+    ~ \call-argument-line
+    ~ \declaration
+    ~ \assertion
+    ~ \probe
+    ~ \state-case
+    ~ \invalid-state-continuation
+    ~ \attached-catch
+    ~ \print-block
+    ~ \multi-line-expression
+    ~ \noop
+    ~ \return-statement-final
+
+.. state-machine-block SyntaxId ~
+    ~ \open statements \state-machine-statements / \close
+        tree.append(ASTStateMachine(location, tree.store-children(statements)))
+
+.. state-machine-statements ImmutableArray'SyntaxId ~
+    ~ \nl* head \state-machine-first-line tail \state-machine-line* / \nl?
+        true-optionals(tree, tail, head)
+
+.. state-machine-first-line SyntaxId ~
+    ~ / statement \state-case / (\nl | &\close)
+        statement
+
+.. state-machine-line SyntaxId? ~
+    ~ / statement \state-machine-item / (\nl | &\close)
+        statement
+    ~ / \nl
+        null
+
+.. state-machine-item SyntaxId ~
+    ~ \state-case
+    ~ \state-fallback
+
+.. state-body-block ImmutableArray'SyntaxId ~
+    ~ \open statements \state-body-statements / \close
+        statements
+
+.. state-body-statements ImmutableArray'SyntaxId ~
+    ~ \nl* lines \state-body-line+ / \nl?
+        link-statements(tree, true-optionals(tree, lines))
+
+.. state-body-line SyntaxId? ~
+    ~ / statement \state-body-statement / (\nl | &\close)
+        statement
+    ~ / \nl
+        null
+
+.. state-body-statement SyntaxId ~
+    ~ \state-case
+    ~ \state-continuation
+    ~ \state-fallback
+    ~ \statement
+
+.. state-case SyntaxId ~
+    ~ "~>" // n \name values \state-target-values? trigger \state-trigger? body \state-body-block?
+        tree.append(ASTStateCase(location, n, tree.store-children((values ?? ImmutableArray'SyntaxId())), tree.syntax-or-invalid(typed-trigger), tree.store-children((body ?? ImmutableArray'SyntaxId()))))
+            .. typed-trigger = trigger if trigger
+
+.. state-continuation SyntaxId ~
+    ~ "then" // n \name values \state-target-values? trigger \state-trigger? body \state-body-block?
+        tree.append(ASTStateContinuation(location, n, tree.store-children((values ?? ImmutableArray'SyntaxId())), tree.syntax-or-invalid(typed-trigger), tree.store-children((body ?? ImmutableArray'SyntaxId()))))
+            .. typed-trigger = trigger if trigger
+
+.. invalid-state-continuation SyntaxId ~
+    ~ "then"
+        reject-syntax
+            - tree
+            - exclusive-end-location(location)
+            - "State continuation has no owning state"
+
+.. state-fallback SyntaxId ~
+    ~ "??" // n \name values \state-target-values?
+        tree.append
+            - ASTStateFallback
+                - location
+                - n
+                - tree.store-children((values ?? ImmutableArray'SyntaxId()))
+
+.. state-target-values ImmutableArray'SyntaxId ~
+    ~ "(" / values \delimited(",", ~ \inline-expression-no-comma)? / ")"
+        values ?? ImmutableArray'SyntaxId()
+
+.. state-trigger SyntaxId ~
+    ~ // "for" // pattern \structure-pattern // "on" // stream \bulleted-expression guard \state-when-guard?
+        |? guard
+            tree.append(ASTStateTrigger(location, .state-trigger-for-on-when, children))
+                .. pattern-node = tree.append(ASTStructureMatch(location, pattern))
+                .. children = tree.store-child(pattern-node, stream, guard)
+        ??
+            tree.append(ASTStateTrigger(location, .state-trigger-for-on, children))
+                .. pattern-node = tree.append(ASTStructureMatch(location, pattern))
+                .. children = tree.store-child(pattern-node, stream)
+    ~ // "when" // guard \state-guard-expression // "on" // stream \bulleted-expression
+        tree.append
+            - ASTStateTrigger(location, .state-trigger-on-when, tree.store-child(stream, guard))
+    ~ // "on" // stream \bulleted-expression guard \state-when-guard?
+        |? guard
+            tree.append(ASTStateTrigger(location, .state-trigger-on-when, children))
+                .. children = tree.store-child(stream, guard)
+        ??
+            tree.append(ASTStateTrigger(location, .state-trigger-on, tree.store-child(stream)))
+    ~ // "if" // pattern \structure-match // "=" // subject \bulleted-expression
+        tree.append(ASTStateTrigger(location, .state-trigger-if-match, child))
+            .. child = tree.store-child(tree.append(m))
+            .. m = ASTStateMatchExpression(location, subject, tree.append(s))
+            .. s = ASTStructureMatch(location, pattern)
+    ~ // "if" // condition \bulleted-expression
+        tree.append(ASTStateTrigger(location, .state-trigger-if, tree.store-child(condition)))
+    ~ // "when" // stream \bulleted-expression
+        tree.append(ASTStateTrigger(location, .state-trigger-when-stream, tree.store-child(stream)))
+
+.. state-when-guard SyntaxId ~
+    ~ // "when" // guard \state-guard-expression
+        guard
+
+.. state-guard-expression SyntaxId ~
+    ~ \apply-expression
+
+.. multi-line-expression SyntaxId ~
+    ~ \block-construct
+    ~ \call-block
+
+.. multi-line-expression-no-prep SyntaxId ~
+    ~ \block-construct
+    ~ \inline-expression-no-prep
+
+.. block-construct SyntaxId ~
+    ~ \match-block
+    ~ \iterator-block
+    ~ \structure-match-block
+    ~ \stream-match-block
+    ~ \for-block
+    ~ \use-block
+    ~ \closure-block
+    ~ \latest-block
+    ~ \slot-outlet
+    ~ \markup
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. extension-block SyntaxId ~
+    ~ \open \nl acc \access // "extend" // receiver \type as-types \extension-as? constraints \extension-where? body \class-body? / \nl* / \close
+        make-extension-declaration(tree, location, acc, receiver, as-types, constraints, body)
+    ~ acc \access // "extend" // receiver \type as-types \extension-as? constraints \extension-where?
+        make-extension-declaration(tree, location, acc, receiver, as-types, constraints, null)
+
+.. extension-as ImmutableArray'SyntaxId ~
+    ~ // "as" // types \delimited(",", ~ \type)
+        types
+
+.. extension-where ImmutableArray'ArgumentVariant ~
+    ~ // "where" // constraints \delimited(",", ~ \type-constraint-declaration)
+        constraints
+
+.. style-sheet-extension-block SyntaxId ~
+    ~ \open \nl "•" // "extend" // receiver \type header \class-header-block? body \class-body? / \nl* / \close
+        make-style-sheet-extension-declaration(tree, location, receiver, header, body)
+
+.. style-sheet-block SyntaxId ~
+    ~ \open \nl "•" // id \type-name derived \sheet-derivation? header \class-header-block? body \class-body? / \nl* / \close
+        make-style-sheet-declaration(tree, location, id, derived, header, body)
+
+.. sheet-derivation SheetDerivation ~
+    ~ // "is" // base \type tags \sheet-tags?
+        SheetDerivation(base, tags)
+
+.. sheet-tags ImmutableArray'Atom ~
+    ~ // "for" // tags \delimited(",", ~ \name)
+        tags
+
+.. class-block ~
+    ~ \open \nl header \class-line body \class-body? / \nl* / \close
+        make-class-declaration(tree, location, header, body)
+    ~ header \class-line
+        make-class-declaration(tree, header.location, header, null)
+
+.. class-line ClassHeader ~
+    ~ acc \access // id \type-name type-args \type-argument* aliases \class-aliases? inherits \class-inherits? header \class-header-block?
+        ClassHeader(location, acc, id, type-args, aliases, inherits, header)
+
+.. class-aliases ~
+    ~ // "(" / aliases \alias-list / ")"
+        aliases
+
+.. alias-list ~
+    ~ \delimited(",", ~ \alias)
+
+.. alias Atom ~
+    ~ \name
+    ~ \type-name
+    ~ \unit
+
+.. class-inherits ~
+    ~ // "is" // types \class-or-list
+        types
+
+.. class-or-list ~
+    ~ \delimited("||", ~ \class-base)
+
+.. class-base-list ~
+    ~ \delimited(",", ~ \class-base)
+
+.. class-base SyntaxId ~
+    ~ \class-tuple-base
+    ~ \type
+    ~ \numeric-literal
+        tree.append(ASTTypeNumeric(location, it))
+
+.. class-tuple-base SyntaxId ~
+    ~ "(" / id \identifier // ty \type / ")"
+        tree.append(ASTTypeTuple(location, tree.store-child(capture)))
+            .. capture = tree.append(ASTTypeCapture(location, id, ty))
+
+.. class-header-block ~
+    ~ \open lines \class-header-lines / \close
+        lines
+
+.. class-header-lines ImmutableArray'ArgumentVariant ~
+    ~ \nl* head \class-header-declaration-line tail \class-header-line* / \nl*
+        true-optionals(tree, tail, head)
+
+.. class-header-declaration-line ArgumentVariant ~
+    ~ / arg \class-header-declaration / (\nl | &\close)
+        arg
+
+.. class-header-line ArgumentVariant? ~
+    ~ / arg \class-header-declaration / (\nl | &\close)
+        arg
+    ~ / \nl
+        null
+
+.. class-header-declaration ArgumentVariant ~
+    ~ "-" // arg \type-constraint-declaration
+        arg
+    ~ "is" // t \type
+        .implements-declaration(tree.append(ASTImplementsDeclaration(location, t)))
+    ~ "using" // t \type
+        .using-declaration(tree.append(ASTUsingDeclaration(location, t)))
+
+.. class-body ImmutableArray'SyntaxId ~
+    ~ / \nl+ items \members
+        items
+
+.. member SyntaxId ~
+    ~ \event-declaration
+    ~ \invalid-state-machine-member
+    ~ \property-declaration
+    ~ \enum-declaration
+    ~ \implements-declaration
+    ~ \style-annotation-declaration
+    ~ \dependency-declaration
+    ~ \invalid-style-flag-annotation
+    ~ \function-block
+    ~ \content-block
+
+.. event-declaration SyntaxId ~
+    ~ acc \access // "event" // name \name // ty \type (// "keyed" // "by" // keyed \type)?
+        tree.append(ASTEventDeclaration(location, acc, name, ty, tree.syntax-or-invalid(keyed)))
+
+.. invalid-state-machine-member SyntaxId ~
+    ~ \state-machine-declaration
+        reject-syntax
+            - tree
+            - exclusive-end-location(location)
+            - "A class state machine follows a thin divider, with its cases at column zero"
+
+.. invalid-style-flag-annotation SyntaxId ~
+    ~ "." // \identifier // invalid \invalid-style-flag-operator
+        reject-syntax(tree, invalid, "Syntax error")
+
+.. invalid-style-flag-operator MatchLocation ~
+    ~ "is"
+        location
+
+.. members ImmutableArray'SyntaxId ~
+    ~ leading \leading-member-line* divided \divided-member-line* / \nl?
+        syntax-optionals(tree, leading, divided)
+
+.. leading-member-line SyntaxId? ~
+    ~ / mem \keyframe-member / (\nl | &\close | &\style-rule-member-start | &\open)
+        mem
+    ~ / mem \style-rule-member / (\nl | &\close | &\style-rule-member-start | &\open)
+        mem
+    ~ / !(\open) mem \member / (\nl | &\close | &\open)
+        mem
+    ~ / \nl
+        null
+
+.. divided-member-line SyntaxId? ~
+    ~ / &\open mem \member / (\nl | &\close)
+        mem
+    ~ / \nl
+        null
+
+.. style-rule-member-start String ~
+    ~ "•" // \style-rule-name
+
+.. keyframe-member SyntaxId ~
+    ~ "•" // name \style-rule-name parameter \style-rule-inline-argument? // kind \keyframe-kind // duration \inline-expression-no-prep-no-comma lines \keyframe-body?
+        make-keyframe-declaration(tree, location, name, parameter, kind, duration, lines)
+
+.. keyframe-kind Atom ~
+    ~ "animation"
+        tree.atom("animation")
+    ~ "motion"
+        tree.atom("motion")
+
+.. keyframe-body ImmutableArray'KeyframeLine ~
+    ~ / \open lines \keyframe-line+ / \close
+        true-optionals(tree, lines)
+
+.. keyframe-line KeyframeLine? ~
+    ~ / line \keyframe-statement / (\nl | &\close)
+        line
+    ~ / \nl
+        null
+
+.. keyframe-statement KeyframeLine ~
+    ~ \keyframe-stop
+    ~ \keyframe-range
+    ~ \keyframe-track
+    ~ \keyframe-setting
+
+.. keyframe-stop KeyframeLine ~
+    ~ "at" // at \user-binary-expression3 / "=" / value \user-binary-expression3 bullets \bullet-argument-no-comma*
+        KeyframeLine
+            - .keyframe-stop
+            - location
+            - null
+            - null
+            - at
+            - value
+            - bullets
+            - ImmutableArray'KeyframeLine()
+
+.. keyframe-range KeyframeLine ~
+    ~ property \keyframe-property / "=" / from \user-binary-expression3? / ".." !"." (/ to \user-binary-expression3)? bullets \bullet-argument-no-comma*
+        KeyframeLine
+            - .keyframe-range
+            - location
+            - property[0]
+            - property[1]
+            - from ?? 0
+            - to ?? 0
+            - bullets
+            - ImmutableArray'KeyframeLine()
+
+.. keyframe-track KeyframeLine ~
+    ~ property \keyframe-property bullets \bullet-argument-no-comma* / \open stops \keyframe-stop-line+ / \close
+        KeyframeLine
+            - .keyframe-track
+            - location
+            - property[0]
+            - property[1]
+            - 0
+            - 0
+            - bullets
+            - true-optionals(tree, stops)
+
+.. keyframe-stop-line KeyframeLine? ~
+    ~ / stop \keyframe-stop / (\nl | &\close)
+        stop
+    ~ / \nl
+        null
+
+.. keyframe-setting KeyframeLine ~
+    ~ name \name / "=" / value \inline-expression-no-prep-no-comma
+        KeyframeLine
+            - .keyframe-setting
+            - location
+            - name
+            - null
+            - value
+            - 0
+            - ImmutableArray'SyntaxId()
+            - ImmutableArray'KeyframeLine()
+
+.. keyframe-property (Atom, Atom?) ~
+    ~ name \name ("." part \name)?
+        (name, part)
+
+.. style-rule-member SyntaxId ~
+    ~ header \style-rule-header body \style-rule-body?
+        make-style-rule(tree, header, tree.syntax-or-invalid(body))
+
+.. style-rule-header StyleRuleHeader ~
+    ~ "•" // name \style-rule-name arg \style-rule-inline-argument? rules \style-rule-applications?
+        StyleRuleHeader(location, name, arg, rules, false)
+
+.. nested-style-rule-header StyleRuleHeader ~
+    ~ "•" // "own" // name \style-selector-name arg \style-rule-inline-argument? rules \style-rule-applications?
+        StyleRuleHeader(location, name, arg, rules, true)
+    ~ \style-rule-header
+
+.. style-rule-inline-argument SyntaxId ~
+    ~ ":" arg \argument-declaration
+        arg
+
+.. style-rule-body SyntaxId ~
+    ~ / \open statements \style-rule-statements / \close
+        block-with-statements(tree, statements)
+
+.. style-rule-statements ImmutableArray'SyntaxId ~
+    ~ lines \style-rule-statement-line+
+        true-optionals(tree, lines)
+
+.. style-rule-statement-line SyntaxId? ~
+    ~ / header \nested-style-rule-header body \style-rule-body? / (\nl | &\close | &\style-rule-member-start | &\open)
+        make-style-rule(tree, header, tree.syntax-or-invalid(body))
+    ~ / !(\style-rule-container-end) stmt \statement / (\nl | &\close)
+        stmt
+    ~ / \nl
+        null
+
+.. style-when-statement SyntaxId ~
+    ~ "when" // is-negated "!"? "#"? state \name body \style-when-body
+        tree.append(ASTStyleWhen(location, state, body, !!is-negated))
+    ~ state \name ":" property \name // "=" // value \inline-expression-no-prep-no-comma
+        tree.append(ASTStyleWhen(location, state, assignment, false))
+            .. assignment = make-assignment(tree, location, .eq-op, property-node, value, false)
+            .. property-node = tree.append(ASTIdentifier(location, property, false))
+
+.. style-when-body SyntaxId ~
+    ~ \open statements \style-when-statements / \close
+        block-with-statements(tree, statements)
+    ~ \inline-block-expression
+
+.. style-when-statements ImmutableArray'SyntaxId ~
+    ~ lines \style-when-statement-line+
+        true-optionals(tree, lines)
+
+.. style-when-statement-line SyntaxId? ~
+    ~ / header \nested-style-rule-header body \style-rule-body / (\nl | &\close | &\style-rule-member-start | &\open)
+        make-style-rule(tree, header, body)
+    ~ / "•" // "own" // name \style-selector-name arg \style-rule-inline-argument? rules \style-rule-applications body \style-rule-body? / (\nl | &\close | &\style-rule-member-start | &\open)
+        make-style-rule
+            - tree
+            - StyleRuleHeader(location, name, arg, rules, true)
+            - tree.syntax-or-invalid(body)
+    ~ / "•" // name \style-rule-name arg \style-rule-inline-argument? rules \style-rule-applications body \style-rule-body? / (\nl | &\close | &\style-rule-member-start | &\open)
+        tree.append(ASTRule(location, name, tree.store-optional-children(args), tree.syntax-or-invalid(body), tree.store-optional-children(rules), false))
+            .. args
+                |? arg
+                    sequence-singleton(tree, arg)
+                ??
+                    null
+    ~ / "•" // application \style-rule-application / (\nl | &\close)
+        application
+    ~ / stmt \statement / (\nl | &\close)
+        stmt
+    ~ / \nl
+        null
+
+.. style-rule-container-end ~
+    ~ \close
+    ~ \open
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. function-block SyntaxId ~
+    ~ \state-machine-function-block
+    ~ \fromverter-block
+    ~ \converter-block
+    ~ \getter-block
+    ~ \whenever-rule-block
+    ~ \when-rule-block
+    ~ \for-subscriber-block
+    ~ \container-subscriber-block
+    ~ \setter-block
+    ~ \ordinary-function-block
+
+.. state-machine-function-block SyntaxId ~
+    ~ \open \nl header \state-machine-function-header / \nl statements \state-machine-statements / \close
+        make-state-machine-property(tree, header, statements)
+
+.. state-machine-function-header StateMachineHeader ~
+    ~ acc \access decorations \property-decorations // left \type-capture // "~>"
+        StateMachineHeader(location, acc, decorations, left)
+
+.. fromverter-block SyntaxId ~
+    ~ \open \nl acc \access // imperative \function-imperative? "from" // t \structure-pattern / body \function-block-body-tail
+        tree.append
+            - ASTFromverter
+                - declared-at(location)
+                - acc
+                - t
+                - tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, body))
+                - !!imperative
+
+.. converter-block SyntaxId ~
+    ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type annotations \annotation-names? args \arguments-block? / body \function-block-body-tail
+        tree.append(ASTConverter(declared-at(location), acc, ty, tree.store-optional-children(parameter-constraints(tree, variants)), tree.store-optional-children(parameter-assignments(tree, variants)), tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, body)), !!imperative, compilation-effects(location, names, false), has-annotation(names, "inline")))
+            .. variants = args ?? ImmutableArray'ArgumentVariant()
+            .. names = annotations ?? ImmutableArray'Atom()
+
+.. getter-block SyntaxId ~
+    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? annotations \annotation-names? / body \function-block-body-tail
+        make-getter-function(tree, location, acc, names, !!imperative, anns, t, body)
+            .. anns = annotations ?? ImmutableArray'Atom()
+
+.. when-rule-block SyntaxId ~
+    ~ \open \nl "when" // expr \inline-expression / body \function-block-body-tail
+        tree.append(ASTWhenRule(declared-at(location), expr, tree.syntax-or-invalid(body)))
+
+.. whenever-rule-block SyntaxId ~
+    ~ \open \nl "whenever" // trigger \whenever-trigger args \arguments-block? / body \function-block-body-tail
+        tree.append(ASTWheneverRule(declared-at(location), trigger.kind, trigger.target-type, trigger.expr, stored-args, tree.syntax-or-invalid(body)))
+            .. stored-args = tree.store-children
+                - argument-declarations(tree, args ?? ImmutableArray'ArgumentVariant())
+
+.. whenever-trigger WheneverTrigger ~
+    ~ "children" // t \type
+        WheneverTrigger(tree.atom("children"), t, 0)
+    ~ "descendants" // t \type
+        WheneverTrigger(tree.atom("descendants"), t, 0)
+    ~ "ancestor" // t \type
+        WheneverTrigger(tree.atom("ancestor"), t, 0)
+    ~ expr \inline-expression
+        WheneverTrigger(tree.atom("value"), 0, expr)
+
+.. for-subscriber-block SyntaxId ~
+    ~ \open \nl "for" loop \loop-and-list / body \function-block-body-tail
+        tree.append(ASTSubscriber(location, inner-for))
+            .. inner-for = tree.append
+                - ASTForBlock
+                    - location
+                    - tree.syntax-or-invalid(loop)
+                    - tree.syntax-or-invalid(body)
+                    - 0
+
+.. container-subscriber-block SyntaxId ~
+    ~ \open \nl containership \in-on clause \loop-clauses? / body \function-block-body-tail
+        tree.append(ASTSubscriber(location, inner-for))
+            .. inner-for = tree.append
+                - ASTForBlock
+                    - location
+                    - tree.syntax-or-invalid(loop)
+                    - tree.syntax-or-invalid(body)
+                    - 0
+            .. loop = tree.append
+                - ASTLoop
+                    - location
+                    - 0
+                    - tree.syntax-or-invalid(container)
+                    - tree.syntax-or-invalid(clause)
+                    - is-subscriber
+                    - false
+                    - 0
+            .. container, is-subscriber = containership
+
+.. setter-block SyntaxId ~
+    ~ \open \nl acc \access // imperative \function-imperative? names \function-left // "=" // arg \argument-declaration / same-line \same-line-body? body \function-block-body-tail
+        tree.append(ASTFunction(declared-at(location), acc, tree.store-atoms(names), 0, tree.store-child(arg), RowRange'SyntaxId(), 0, RowRange'SyntaxId(), RowRange'SyntaxId(), RowRange'SyntaxId(), tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, checked-body)), CompilationEffect.none, !!imperative, false, false, false, true))
+            .. checked-body = declaration-body(tree, body, same-line)
+
+.. ordinary-function-block SyntaxId ~
+    ~ \open \nl acc \access // static \function-static? imperative \function-imperative? key \function-key errors \function-error-declaration* annotations \annotation-names? throws (// "throws")? args \arguments-block? / same-line \same-line-body? body \function-block-body-tail
+        make-function(tree, location, acc, imp, stat, key, errors, anns, item, args, checked-body)
+            .. checked-body = declaration-body(tree, body, same-line)
+            .. imp = !!imperative
+            .. stat = !!static
+            .. item = tree.atom("StreamItem")
+            .. anns = annotations ?? ImmutableArray'Atom()
+
+.. function-imperative Bool ~
+    ~ "do" //
+        true
+
+.. same-line-body MatchLocation ~
+    ~ &(!(\nl | \open | \close) .)
+        MatchLocation(location.begin, TokenLocation(location.begin.line + 1, 0))
+
+.. function-static Bool ~
+    ~ "static" //
+        true
+
+.. function-block-body-tail ~
+    ~ body \block-statements? / \nl* / \close
+        body
+
+.. function-key FunctionKey ~
+    ~ left \function-left type-args \type-argument* (// taty \type)? // op \materialized-infix-operator // arg \argument-declaration
+        FunctionKey
+            - sequence-appending(tree, left, op)
+            - type-args
+            - taty
+            - null
+            - sequence-singleton(tree, arg)
+    ~ left \function-left type-args \type-argument* "[" index \argument-declaration "]" // "=" // value \argument-declaration op \materialized-index-assign-name
+        FunctionKey
+            - sequence-appending(tree, left, op)
+            - type-args
+            - null
+            - null
+            - sequence-pair(tree, index, value)
+    ~ left \function-left type-args \type-argument* "[" index \argument-declaration "]" (// tty \type)? op \materialized-index-get-name
+        FunctionKey
+            - sequence-appending(tree, left, op)
+            - type-args
+            - tty
+            - null
+            - sequence-singleton(tree, index)
+    ~ "-=" // left \function-left type-args \type-argument* "[" index \argument-declaration "]" op \materialized-index-delete-name
+        FunctionKey
+            - sequence-appending(tree, left, op)
+            - type-args
+            - null
+            - null
+            - sequence-singleton(tree, index)
+    ~ op \materialized-prefix-operator / left \function-left type-args \type-argument* (// tgty \type)?
+        FunctionKey
+            - sequence-appending(tree, left, op)
+            - type-args
+            - tgty
+            - null
+            - ImmutableArray'SyntaxId()
+    ~ left \function-left type-args \type-argument* pattern-type \pattern-item-type? (// ty \type)?
+        FunctionKey
+            - if left.length != 0 then left else sequence-singleton(tree, tree.atom("()"))
+            - type-args
+            - ty
+            - pattern-type
+
+.. function-error-declaration SyntaxId ~
+    ~ // "?!" // error-type \type
+        error-type
+
+.. prefix-overload-operator ~
+    ~ "!"
+        .not-op
+    ~ "-="
+        .delete-op
+    ~ "-"
+        .negative-op
+    ~ "<-"
+        .read-op
+
+.. function-left ImmutableArray'Atom ~
+    ~ "this"
+        ImmutableArray'Atom()
+    ~ value "This"
+        sequence-singleton(tree, value)
+    ~ "C:" symbol \c-symbol
+        c-declaration-name(tree, location, symbol)
+    ~ names \delimited(".", ~ \name)
+        names
+
+.. materialized-infix-operator Atom ~
+    ~ op \infix-operator
+        op as String
+
+.. materialized-prefix-operator Atom ~
+    ~ op \prefix-overload-operator
+        op as String
+
+.. materialized-index-assign-name Atom ~
+    ~ ""
+        "[]="
+
+.. materialized-index-get-name Atom ~
+    ~ ""
+        "[]"
+
+.. materialized-index-delete-name Atom ~
+    ~ ""
+        "-=[]"
+
+.. arguments-block ImmutableArray'ArgumentVariant ~
+    ~ \open body \argument-lines / \close
+        body
+
+.. argument-lines ImmutableArray'ArgumentVariant ~
+    ~ \nl* lines \argument-line+ / \nl*
+        lines
+
+.. argument-line ArgumentVariant ~
+    ~ / arg \argument / (\nl+ | &\close)
+        arg
+
+.. argument ArgumentVariant ~
+    ~ "-" // constraint \type-constraint-declaration
+        constraint
+    ~ "-" // arg \argument-declaration
+        .argument-decl(arg)
+    ~ "..." // parts \argument-declaration-parts
+        .argument-decl(tree.append(ASTArgumentDecl(location, parts.type-id, tree.syntax-or-invalid(parts.default-value), true)))
+    ~ "=" // expr \block-header
+        expr
+
+.. argument-declaration SyntaxId ~
+    ~ parts \argument-declaration-parts
+        tree.append
+            - ASTArgumentDecl
+                - location
+                - parts.type-id
+                - tree.syntax-or-invalid(parts.default-value)
+                - false
+
+.. argument-declaration-parts ArgumentDeclarationParts ~
+    ~ t \type-capture value \argument-default-value?
+        ArgumentDeclarationParts(t, value)
+
+.. type-constraint-declaration ArgumentVariant ~
+    ~ left \type-arguments // "=" is-specificity "~"? // right \inline-expression
+        .param-assignment(tree.append(ASTParamAssignment(location, left, right, !!is-specificity)))
+    ~ left \type-arguments // op \type-is-operator // right \type-arguments
+        .param-constraint(tree.append(ASTParamConstraint(location, op, left, right)))
+
+.. type-is-operator ~
+    ~ "is!"
+        .match-exactly
+    ~ "is~"
+        .match-similar
+    ~ "is"
+        .match-convertible
+
+.. argument-default-value ~
+    ~ / "=" / expr \inline-expression-no-comma
+        expr
+
+.. pattern-item-type ~
+    ~ // "~" // t \type
+        t
+
+.. block-header ArgumentVariant ~
+    ~ \iterator-block-header
+
+.. iterator-block-header ArgumentVariant ~
+    ~ is-subscriber \in-or-on // container \inline-expression
+        .iterator-header(location, tree.append(ASTLoop(location, 0, tree.syntax-or-invalid(container), 0, is-subscriber, false, 0)))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. unit-declaration SyntaxId ~
+    ~ acc \access // left \numeric-literal // "=" right \block-or-expression
+        tree.append(ASTUnitDeclaration(location, acc, left, right))
+
+.. state-machine-declaration SyntaxId ~
+    ~ acc \access decorations \property-decorations // left \type-capture // "~>" / machine \state-machine-block
+        tree.append(ASTProperty(location, acc, left, machine, stored.decoration, false, stored.annotations))
+            .. stored = tree.store-property-decorations(decorations)
+
+.. c-constant-declaration SyntaxId ~
+    ~ acc \access // "C:" symbol \c-symbol // "=" value \block-or-expression
+        make-c-constant(tree, location, acc, symbol, value)
+
+.. property-declaration SyntaxId ~
+    ~ acc \access decorations \property-decorations // left \property-capture value \block-or-property-assignment?
+        make-property-declaration(tree, location, acc, decorations, left, value)
+
+.. property-decorations ImmutableArray'SyntaxId ~
+    ~ decorations \property-decoration*
+        decorations
+
+.. property-decoration SyntaxId ~
+    ~ // deco \decoration
+        deco
+
+.. block-or-property-assignment PropertyAssignmentParts ~
+    ~ // op \getter-declare-operator imperative \getter-imperative? expr \block-or-expression
+        PropertyAssignmentParts(op, expr, !!imperative)
+    ~ // op \non-getter-prop-declare-operator expr \block-or-expression
+        PropertyAssignmentParts(op, expr, false)
+    ~ / body \block
+        PropertyAssignmentParts(.property-assignment-immediate, body, false)
+
+.. decoration SyntaxId ~
+    ~ "@" n \name
+        tree.append(ASTDecoration(location, n))
+
+.. getter-declare-operator PropertyAssignmentKind ~
+    ~ "=>"
+        .property-assignment-getter
+
+.. getter-imperative Bool ~
+    ~ // "do"
+        true
+
+.. non-getter-prop-declare-operator PropertyAssignmentKind ~
+    ~ ":="
+        .property-assignment-lazy
+    ~ "="
+        .property-assignment-immediate
+
+.. enum-declaration SyntaxId ~
+    ~ "|" // t \type
+        tree.append(ASTEnumDeclaration(location, null, tree.syntax-or-invalid(t), 0))
+    ~ "|" // n \name t \tuple-type
+        tree.append(ASTEnumDeclaration(location, n, tree.syntax-or-invalid(t), 0))
+    ~ "|" // n \name (// t \type)? (// "=" v \block-or-expression)?
+        tree.append
+            - ASTEnumDeclaration(location, n, tree.syntax-or-invalid(t), tree.syntax-or-invalid(v))
+
+.. implements-declaration SyntaxId ~
+    ~ "as" // types \class-base-list // "for"
+        tree.append(ASTDelegateDeclaration(location, tree.store-children(types)))
+
+.. style-annotation-declaration SyntaxId ~
+    ~ "." // left \identifier // "->" // domains \style-domain-list
+        tree.append(ASTStyleAnnotation(location, left, tree.store-children(domains)))
+
+.. style-domain-list ImmutableArray'SyntaxId ~
+    ~ \delimited(",", ~ \style-domain-item)
+
+.. style-domain-item SyntaxId ~
+    ~ domain \identifier (// "on" // target \identifier)?
+        tree.append(ASTStyleDomainItem(location, domain, tree.syntax-or-invalid(target)))
+
+.. dependency-declaration SyntaxId ~
+    ~ "." // left \identifier // "<" // right \delimited(",", ~ \identifier)
+        tree.append(ASTDependencyDeclaration(location, left, tree.store-children(right)))
+
+.. content-block SyntaxId ~
+    ~ \open !(\nl &"•") statements \content-statements / \close
+        tree.append(ASTContentBlock(location, block-with-statements(tree, statements)))
+
+.. content-statements ImmutableArray'SyntaxId ~
+    ~ lines \content-statement-line+
+        true-optionals(tree, lines)
+
+.. content-statement-line SyntaxId? ~
+    ~ / !(\content-call-argument-start) stmt \statement / (\nl | &\close)
+        stmt
+    ~ / \nl
+        null
+
+.. content-call-argument-start String ~
+    ~ &"•"
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. if-block SyntaxId ~
+    ~ head \if-head tail \else-if-block* els \else-block?
+        link-if-block(tree, head, tail, els)
+
+.. if-head SyntaxId ~
+    ~ "if" // pattern \structure-match // "=" // subject \inline-expression body \block
+        make-conditional-match-block(tree, location, pattern, subject, body, false, false)
+    ~ "if" // pattern \stream-pattern // "=" // subject \inline-expression body \block
+        make-conditional-match-block(tree, location, pattern, subject, body, true, false)
+    ~ "if" // condition \if-condition body \block
+        tree.append(ASTIfBlock(location, tree.syntax-or-invalid(condition), body, false, 0))
+
+.. else-if-block SyntaxId ~
+    ~ / \nl+ / "else" // head \if-head
+        head
+
+.. else-block SyntaxId ~
+    ~ / \nl+ / "else" body \block
+        tree.append(ASTIfBlock(location, 0, body, false, 0))
+
+.. if-condition SyntaxId ~
+    ~ expr \inline-expression
+        tree.append(ASTTypePredicate(location, expr, false))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. while-block SyntaxId ~
+    ~ "while" // pattern \structure-match // "=" // subject \inline-expression body \block
+        make-conditional-match-block(tree, location, pattern, subject, body, false, true)
+    ~ "while" // pattern \stream-pattern // "=" // subject \inline-expression body \block
+        make-conditional-match-block(tree, location, pattern, subject, body, true, true)
+    ~ "while" // condition \inline-expression body \block
+        tree.append(ASTWhileBlock(location, condition, body, false))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. for-block SyntaxId ~
+    ~ "for" head \for-loop tail \loop-or*
+        linked-list-tail(tree, head, tail)
+
+.. for-loop SyntaxId ~
+    ~ loop \loop-and-list body \block?
+        tree.append
+            - ASTForBlock(location, tree.syntax-or-invalid(loop), tree.syntax-or-invalid(body), 0)
+
+.. loop-and-list SyntaxId ~
+    ~ head \loop-head tail \loop-and*
+        linked-list-tail(tree, head, tail)
+
+.. loop-head SyntaxId ~
+    ~ // in-container \loop-container clause \loop-clauses?
+        tree.append(ASTLoop(location, 0, tree.syntax-or-invalid(container), tree.syntax-or-invalid(clause), is-subscriber, false, 0))
+            .. container, is-subscriber = in-container
+    ~ // pattern \loop-pattern // in-container \loop-container clause \loop-clauses?
+        tree.append(ASTLoop(location, tree.syntax-or-invalid(pattern), tree.syntax-or-invalid(container), tree.syntax-or-invalid(clause), is-subscriber, false, 0))
+            .. container, is-subscriber = in-container
+    ~ // pattern \loop-pattern clause \loop-clauses?
+        tree.append
+            - ASTLoop
+                - location
+                - tree.syntax-or-invalid(pattern)
+                - 0
+                - tree.syntax-or-invalid(clause)
+                - false
+                - false
+                - 0
+
+.. loop-pattern SyntaxId ~
+    ~ pattern \structure-match
+        tree.append(ASTStructureMatch(location, pattern))
+    ~ \stream-pattern
+    ~ \structure-pattern
+
+.. loop-container ~
+    ~ is-subscriber \in-or-on // container \bulleted-expression
+        ContainerPartial(container, is-subscriber)
+
+.. loop-and SyntaxId ~
+    ~ / \nl / \and-operator loop \loop-head
+        loop
+
+.. loop-or SyntaxId ~
+    ~ / \nl / \or-operator loop \for-loop
+        make-loop-or(tree, loop)
+
+.. loop-clauses SyntaxId ~
+    ~ head \loop-clause tail \loop-clause*
+        linked-list-tail(tree, head, tail)
+
+.. loop-clause SyntaxId ~
+    ~ // "keyed" // "by" // expr \inline-expression-no-prep
+        tree.append(ASTClause(location, .keyed-by-clause, expr, 0))
+    ~ // op \clause-operator // expr \inline-expression-no-prep
+        tree.append(ASTClause(location, op, expr, 0))
+
+.. and-operator ~
+    ~ "and"
+        "and"
+
+.. or-operator ~
+    ~ "or"
+        "or"
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. do-block SyntaxId ~
+    ~ "do finally" body \do-block-body
+        tree.append(ASTDoFinallyBlock(location, unannotated-body(location, body, "do finally")))
+    ~ "do with" // name \name / "=" // expr \inline-expression body \do-required-block-body
+        tree.append
+            - ASTStackLocalBindingBlock
+                - location
+                - name
+                - expr
+                - unannotated-body(location, body, "do with")
+    ~ "do use" is-optional "?"? // expr \inline-expression body \do-required-block-body
+        tree.append
+            - ASTUseBlock
+                - location
+                - maybe-optional(tree, location, expr, !!is-optional)
+                - unannotated-body(location, body, "do use")
+    ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body
+        tree.append
+            - ASTDoTaskBlock
+                - location
+                - body.body
+                - tree.syntax-or-invalid(worker)
+                - true
+                - task-scheduling(location, body.annotations)
+    ~ "do" // (worker \paren-expression //)? "new" body \do-block-body
+        tree.append
+            - ASTDoTaskBlock
+                - location
+                - body.body
+                - tree.syntax-or-invalid(worker)
+                - false
+                - task-scheduling(location, body.annotations)
+    ~ "do" body \do-block-body
+        tree.append(ASTDoBlock(location, body.body, masks.effects, masks.features))
+            .. masks = do-annotation-masks(location, body.annotations)
+
+.. do-block-body DoBody ~
+    ~ annotations \annotation-names body \block
+        DoBody(body, annotations)
+    ~ // body \print-block
+        DoBody(body, ImmutableArray'Atom())
+    ~ body \block-or-expression
+        DoBody(body, ImmutableArray'Atom())
+
+.. do-required-block-body DoBody ~
+    ~ annotations \annotation-names body \block
+        DoBody(body, annotations)
+    ~ body \block
+        DoBody(body, ImmutableArray'Atom())
+
+.. annotation-names ImmutableArray'Atom ~
+    ~ names \annotation-name+
+        names
+
+.. annotation-name Atom ~
+    ~ // "@" name \raw-atom-name
+        name
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. catch SyntaxId ~
+    ~ "catch" (// type \type-capture)? previous \catch-previous*
+        tree.append
+            - ASTCatcher(location, 0, tree.syntax-or-invalid(type), tree.store-children(previous))
+
+.. attached-catch SyntaxId ~
+    ~ "catch" (// type \type-capture)? previous \catch-previous* / body \indented-block-expression
+        tree.append
+            - ASTCatcher
+                - location
+                - tree.syntax-or-invalid(body)
+                - tree.syntax-or-invalid(type)
+                - tree.store-children(previous)
+
+.. catch-previous SyntaxId ~
+    ~ // "<-" // type \type-capture
+        type
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. return-statement SyntaxId ~
+    ~ "=?" // expr \return-value-expression condition \return-condition
+        tree.append(ASTReturnIfTrue(location, condition, tree.syntax-or-invalid(expr)))
+    ~ "=?" condition \return-condition
+        tree.append(ASTReturnIfTrue(location, condition, 0))
+    ~ "=?" expr \block-or-expression
+        tree.append
+            - ASTReturn
+                - location
+                - tree.syntax-or-invalid(maybe-optional(tree, location, expr, true))
+    ~ op \return-operator is-optional "?"? expr \block-or-expression
+        match op
+            |= .return-operator-return
+                tree.append
+                    - ASTReturn
+                        - location
+                        - tree.syntax-or-invalid
+                            - maybe-optional(tree, location, expr, !!is-optional)
+            |= .return-operator-yield
+                tree.append
+                    - ASTYield
+                        - location
+                        - tree.syntax-or-invalid
+                            - maybe-optional(tree, location, expr, !!is-optional)
+                        - false
+            |= .return-operator-yield-all
+                make-yield-all
+                    - tree
+                    - location
+                    - tree.syntax-or-invalid(maybe-optional(tree, location, expr, !!is-optional))
+    ~ "break" !([-a-z0-9])
+        tree.append(ASTBreak(location))
+    ~ "continue" !([-a-z0-9])
+        tree.append(ASTContinue(location))
+
+.. return-value-expression SyntaxId ~
+    ~ lhs \bullet-call-expression rhs \return-value-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. return-value-expression-tail ~
+    ~ // op \coalesce-operator // rhs \bullet-call-expression
+        (op, rhs)
+
+.. return-condition SyntaxId ~
+    ~ / \open \nl+ / "if" // condition \inline-expression / \nl* \close
+        condition
+    ~ // "if" // condition \inline-expression
+        condition
+
+.. return-operator ReturnOperator ~
+    ~ "="
+        .return-operator-return
+    ~ "<="
+        .return-operator-yield
+    ~ "<<="
+        .return-operator-yield-all
+
+.. return-statement-final SyntaxId ~
+    ~ "="
+        tree.append(ASTReturn(location, 0))
+
+.. exclamation-optional Bool ~
+    ~ "!"?
+        !!it
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. pipeline-statement SyntaxId ~
+    ~ "~>" // pattern \stream-and helper \pipeline-helper? body \stream-match-body-tail?
+        tree.append(ASTPipelineExpression(location, .stream-pattern-pipe-op, 0, stream-match))
+            .. transformed
+                |? body
+                    tree.append(ASTStreamTransform(location, pattern, body, false))
+                ??
+                    pattern
+            .. stream-match = tree.append(ASTStreamMatch(location, transformed, false, helper ?? 0))
+    ~ op \pipeline-operator expr \block-or-expression
+        tree.append(ASTPipelineExpression(location, op, 0, expr))
+
+.. bullet-statement SyntaxId ~
+    ~ "*" is-multi "*"? is-optional "?"? expr \block-or-expression
+        tree.append(ASTBulletExpression(location, expr, 0, !!is-multi, !!is-optional))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. call-argument-line SyntaxId ~
+    ~ "•" // ab \ability // is-not \exclamation-optional n \name is-name \bool-argument-name(ab, n) value \bool-argument-value(is-not)
+        tree.make-argument
+            - location
+            - tree.append(ASTIdentifier(location, value, false))
+            - is-name
+            - false
+    ~ "•" is-optional "?"? // n \name expr \block-or-expression?
+        tree.make-argument(location, expr-or-name, n, !!is-optional)
+            .. expr-or-name = expr ?? tree.append(ASTIdentifier(location, n, false))
+    ~ "•" is-optional "?"? // "(" key \inline-expression-no-comma ")" value \block-or-expression?
+        tree.make-argument(location, expr, null, !!is-optional)
+            .. expr = tree.append(ASTTuple(location, tree.store-child(key, value)))
+    ~ "•" is-optional "?"? // key \call-argument-key value \block-or-expression?
+        tree.make-argument(location, expr, null, !!is-optional)
+            .. expr = tree.append(ASTTuple(location, tree.store-child(key, value)))
+    ~ "-" expr \block-or-expression
+        tree.make-argument(location, expr, null, false)
+
+.. call-argument-key SyntaxId ~
+    ~ "(" key \inline-expression-no-comma ")"
+        key
+    ~ key \string
+        key
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. declaration SyntaxId ~
+    ~ is-lazy \lazy-or-not // left \structure-pattern // "~>" / right \state-machine-block
+        make-declaration(tree, location, left, right, is-lazy, false, false)
+    ~ is-lazy \lazy-or-not // left \structure-pattern / op \declare-operator right \block-or-expression
+        make-declaration(tree, location, left, tree.syntax-or-invalid(right), is-lazy, false, false)
+    ~ lazy \lazy-or-not // l \structure-pattern pattern \pattern-or-not rb \rollback-mark / r \block
+        make-declaration(tree, location, l, r, lazy, pattern, rb)
+    ~ is-lazy \lazy-or-not // left \structure-pattern
+        make-declaration(tree, location, left, 0, is-lazy, false, false)
+
+.. declare-operator Bool ~
+    ~ "="
+        false
+
+.. pattern-or-not Bool ~
+    ~ (// "~")?
+        !!it
+
+.. pattern-rollback-annotation Bool ~
+    ~ "@rollback"
+        true
+
+.. rollback-mark Bool ~
+    ~ marker (// \pattern-rollback-annotation)?
+        !!marker
+
+.. lazy-or-not Bool ~
+    ~ ".."
+        true
+    ~ "."
+        false
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. structure-match SyntaxId ~
+    ~ "|" // pattern \structure-pattern
+        pattern
+
+.. structure-pattern SyntaxId ~
+    ~ \function-type
+    ~ \pattern-tuple-inline
+
+.. pattern-tuple-inline SyntaxId ~
+    ~ patterns \delimited(",", ~ \pattern-and)
+        make-pattern-tuple(tree, location, real-patterns)
+            .. real-patterns = patterns ?? ImmutableArray'SyntaxId()
+
+.. pattern-and SyntaxId ~
+    ~ head \pattern-or (// !(("then" | "else") !([a-zA-Z0-9-])) tail \pattern-or)*
+        make-pattern-and-chain(tree, location, head, tail)
+
+.. pattern-or SyntaxId ~
+    ~ head \pattern-relations (// "|" // tail \pattern-relations)*
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTTypeOr(location, left, right))
+
+.. pattern-relations SyntaxId ~
+    ~ head \pattern-siblings tail \pattern-relation-tail*
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTTypeRelation(location, right[0], left, right[1]))
+
+.. pattern-relation-tail ~
+    ~ // op \pattern-operator1 // right \pattern-siblings
+        (op, right)
+
+.. pattern-siblings SyntaxId ~
+    ~ head \pattern-binding tail \pattern-sibling-tail*
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTTypeRelation(location, right[0], left, right[1]))
+
+.. pattern-sibling-tail ~
+    ~ // op \pattern-operator2 // right \pattern-binding
+        (op, right)
+
+.. pattern-operator1 Operator ~
+    ~ "*\\"
+        .pattern-ancestor-op
+    ~ "\\"
+        .pattern-parent-op
+    ~ "*/"
+        .pattern-descendant-op
+    ~ "/"
+        .pattern-child-op
+
+.. pattern-operator2 Operator ~
+    ~ "--"
+        .pattern-prev-sibling-op
+    ~ "++"
+        .pattern-next-sibling-op
+
+.. pattern-binding SyntaxId ~
+    ~ id \pattern-identifier type \pattern-binding-right?
+        tree.append(ASTTypeCapture(location, id, tree.syntax-or-invalid(type)))
+    ~ \pattern-primitive-match
+
+.. pattern-identifier SyntaxId ~
+    ~ !(\keyword (// | \open | \nl)) id \identifier
+        id
+
+.. pattern-binding-right SyntaxId ~
+    ~ // pattern \function-type
+        pattern
+    ~ // pattern \pattern-primitive-match
+        pattern
+
+.. pattern-primitive-match SyntaxId ~
+    ~ left \pattern-primitive-qualified match-op \type-match-operator?
+        |? match-op
+            tree.append(ASTTypeMatch(location, left, match-op))
+        ??
+            left
+
+.. pattern-primitive-qualified SyntaxId ~
+    ~ left \pattern-primitive suffix \type-suffix?
+        match suffix
+            | .type-suffix-optional(name)
+                type-optional(tree, left, name)
+            | .type-suffix-optional-buffer(optional-name, buffer-name)
+                type-optional(tree, type-buffer(tree, left, buffer-name), optional-name)
+            | .type-suffix-buffer(name)
+                type-buffer(tree, left, name)
+            | .type-suffix-channel(name)
+                type-channel(tree, left, name)
+            ??
+                left
+
+.. type-match-operator ~
+    ~ "!"
+        .match-exactly
+    ~ "~"
+        .match-similar
+
+.. pattern-primitive SyntaxId ~
+    ~ \pattern-equality
+    ~ \pattern-predicate
+    ~ \pattern-remainder
+    ~ \pattern-wildcard
+    ~ \pattern-tuple
+    ~ \pattern-bracket
+    ~ \pattern-iterable
+    ~ \pattern-case
+    ~ \pattern-property
+    ~ \type-arguments
+
+.. pattern-equality SyntaxId ~
+    ~ "$" expr \pattern-identifier
+        tree.append(ASTTypeEquality(location, expr, false))
+    ~ \character-literal
+        tree.append(ASTTypeEquality(location, it, false))
+    ~ \numeric-literal
+        tree.append(ASTTypeEquality(location, it, false))
+    ~ \string
+        tree.append(ASTTypeEquality(location, it, false))
+
+.. pattern-predicate SyntaxId ~
+    ~ "{" / expr \inline-expression / "}"
+        tree.append(ASTTypePredicate(location, expr, true))
+
+.. pattern-wildcard SyntaxId ~
+    ~ "_"
+        tree.append(ASTTypeWildcard(location))
+
+.. pattern-remainder SyntaxId ~
+    ~ "..." name \identifier?
+        tree.append(ASTTypeRemainder(location, tree.syntax-or-invalid(name)))
+
+.. pattern-tuple SyntaxId ~
+    ~ "(" pattern \pattern-tuple-inline ")"
+        pattern
+
+.. pattern-bracket SyntaxId ~
+    ~ "[" patterns \delimited(",", ~ \pattern-bracket-item)? "]"
+        make-pattern-bracket(tree, location, patterns ?? ImmutableArray'SyntaxId())
+
+.. pattern-bracket-item SyntaxId ~
+    ~ \pattern-map-item
+    ~ \pattern-and
+
+.. pattern-map-item SyntaxId ~
+    ~ left \pattern-and // "=" // right \pattern-and
+        tree.append(ASTTypeMapItem(location, left, right))
+
+.. pattern-iterable SyntaxId ~
+    ~ "<" pattern \pattern-and ">"
+        type-iterable(tree, pattern, tree.atom("Stream"))
+
+.. pattern-case SyntaxId ~
+    ~ t \type-arguments? "." n \name value \pattern-tuple?
+        tree.append
+            - ASTTypeCase(location, n, tree.syntax-or-invalid(t), tree.syntax-or-invalid(value))
+
+.. pattern-property SyntaxId ~
+    ~ ".." n \name
+        tree.append(ASTTypeProperty(location, n))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. stream-match SyntaxId ~
+    ~ \stream-pattern
+        tree.append(ASTStreamMatch(location, it))
+
+.. stream-pattern SyntaxId ~
+    ~ "~" // pattern \stream-and
+        pattern
+
+.. stream-and SyntaxId ~
+    ~ head \stream-or (// tail \stream-or)*
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTStreamAnd(location, left, right))
+
+.. stream-or SyntaxId ~
+    ~ head \stream-unary (// "|" / tail \stream-unary)*
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTStreamOr(location, left, right))
+
+.. stream-unary SyntaxId ~
+    ~ operand \stream-primitive op \stream-operator
+        tree.append(ASTStreamUnary(location, op, operand))
+    ~ operand \stream-primitive "{" / length \inline-expression-no-comma / "}"
+        tree.append(ASTStreamLength(location, operand, length, 0))
+    ~ operand \stream-primitive "{" / min \inline-expression-no-comma / "," / max \inline-expression-no-comma / "}"
+        tree.append(ASTStreamLength(location, operand, min, tree.syntax-or-invalid(max)))
+    ~ op \lookahead-operator operand \stream-primitive
+        tree.append(ASTStreamUnary(location, op, operand))
+    ~ \stream-primitive
+
+.. stream-primitive SyntaxId ~
+    ~ \stream-capture
+    ~ \stream-parentheses
+    ~ \stream-call
+    ~ \stream-type-id
+
+.. stream-capture SyntaxId ~
+    ~ "..." n \pattern-identifier // t \stream-unary
+        tree.append(ASTStreamCapture(location, n, t, true))
+    ~ !("with" //) n \pattern-identifier // t \stream-unary
+        tree.append(ASTStreamCapture(location, n, t, false))
+
+.. stream-parentheses SyntaxId ~
+    ~ "(" / pattern \stream-and / ")"
+        pattern
+    ~ "[" head \stream-char-range tail \stream-char-range* "]"
+        reduce(head, tail) • using :: left, right =>
+            tree.append(ASTStreamOr(location, left, right))
+    ~ "\\{" / expr \inline-expression / "}"
+        tree.append(ASTStreamPredicate(location, expr))
+    ~ "."
+        tree.append(ASTStreamAny(location))
+    ~ char \character-literal
+        tree.append(ASTStreamEquality(location, char))
+    ~ "\"" str \stream-raw-string "\""
+        tree.append(ASTStreamString(location, tree.store-string(str)))
+    ~ num \numeric-literal
+        tree.append(ASTStreamEquality(location, num))
+
+.. stream-call SyntaxId ~
+    ~ "\\" n \name params \type-argument* args \stream-call-arguments?
+        make-stream-call(tree, location, n, params, args)
+    ~ "//"
+        tree.append(ASTStreamUnary(location, .one-or-more-op, call))
+            .. call = tree.append(ASTStreamCall(location, ws, empty, empty, empty))
+            .. ws = tree.atom("ws")
+            .. empty = RowRange'SyntaxId()
+    ~ "/"
+        tree.append(ASTStreamUnary(location, .zero-or-more-op, call))
+            .. call = tree.append(ASTStreamCall(location, ws, empty, empty, empty))
+            .. ws = tree.atom("ws")
+            .. empty = RowRange'SyntaxId()
+    ~ \stream-equality
+
+.. stream-call-arguments ImmutableArray'SyntaxId ~
+    ~ "(" / args \delimited(",", ~ \stream-argument)? / ")"
+        args ?? ImmutableArray'SyntaxId()
+
+.. stream-argument SyntaxId ~
+    ~ mapping \stream-collector-mapping
+        mapping
+    ~ pattern \stream-pattern
+        tree.append
+            - ASTStreamCallExpressionArgument
+                - MatchLocation()
+                - tree.append(ASTStreamMatch(location, pattern))
+    ~ expression \inline-expression-no-comma
+        tree.append(ASTStreamCallExpressionArgument(MatchLocation(), expression))
+
+.. stream-collector-mapping SyntaxId ~
+    ~ "into" // callee \pattern-identifier / ":" / caller \pattern-identifier
+        tree.append(ASTStreamCollectorMapping(location, callee-name, caller-name))
+            .. callee-name = tree.identifier-name(callee)
+            .. caller-name = tree.identifier-name(caller)
+    ~ "into" // caller \pattern-identifier
+        tree.append(ASTStreamCollectorMapping(location, null, tree.identifier-name(caller)))
+
+.. stream-equality SyntaxId ~
+    ~ "$" id \identifier
+        tree.append(ASTStreamEquality(location, id))
+
+.. stream-type-id SyntaxId ~
+    ~ t \type-arguments
+        tree.append(ASTStreamType(location, t))
+
+.. stream-char-range SyntaxId ~
+    ~ first \stream-range-value ("-" last \stream-range-value)?
+        tree.append(ASTStreamCharRange(location, first-node, last-node))
+            .. first-node = tree.append(ASTInteger(first[0], tree.store-string(first[1]), unit))
+            .. last-node
+                |? last
+                    tree.append(ASTInteger(last[0], tree.store-string(last[1]), unit))
+                ??
+                    tree.append(ASTInteger(first[0], tree.store-string(first[1]), unit))
+            .. unit = tree.atom("c")
+
+.. stream-range-value (MatchLocation, String) ~
+    ~ text \stream-range-string
+        (location, character-literal-string(location, text.codepoints[0]))
+
+.. stream-range-string String ~
+    ~ c \stream-range-char
+        c as String
+
+.. stream-range-char Char ~
+    ~ "\\u" digits \hex-digit{4}
+        Hex(digits) as Char
+    ~ c (!"]" .)
+        c[0]
+
+.. stream-raw-string String ~
+    ~ \stream-raw-text &"\""
+    ~ chars \raw-char+
+        chars.slice-string(tree.text-arena)
+    ~ ""
+        ""
+
+.. stream-raw-text String ~
+    ~ (!("\"" | "\\") .)+
+
+.. stream-operator Operator ~
+    ~ "?"
+        .zero-or-one-op
+    ~ "*"
+        .zero-or-more-op
+    ~ "+"
+        .one-or-more-op
+
+.. lookahead-operator Operator ~
+    ~ "&"
+        .positive-lookahead-op
+    ~ "!"
+        .negative-lookahead-op
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. assertion SyntaxId ~
+    ~ "?!" guard \assertion-guard catchers \assertion-catch-block?
+        if catchers then tree.append(ASTCatchExpression(location, assertion, false, tree.store-children(catchers))) else assertion
+            .. assertion = tree.append(ASTAssertion(location, guard[0], predicate))
+                .. predicate
+                    |? guard[1]
+                        tree.append(ASTTypePredicate(location, guard[1], false))
+                    ??
+                        0
+
+.. assertion-guard (SyntaxId, SyntaxId) ~
+    ~ // exc \return-value-expression condition \return-condition
+        (exc, condition)
+    ~ // exc \inline-expression condition \assertion-condition?
+        (exc, condition ?? 0)
+
+.. assertion-condition SyntaxId ~
+    ~ / \open \nl+ / "if" // condition \inline-expression / \nl* \close
+        condition
+
+.. assertion-catch-block ImmutableArray'SyntaxId ~
+    ~ / \open \nl* items \assertion-catch-line+ / \nl* \close
+        items
+
+.. assertion-catch-line SyntaxId ~
+    ~ / item \catch / (\nl | &\close)
+        item
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. in-on ContainerPartial ~
+    ~ is-subscriber \in-or-on // container \inline-expression-no-prep
+        ContainerPartial(container, is-subscriber)
+
+.. in-or-on Bool ~
+    ~ "in"
+        false
+    ~ "on"
+        true
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. import-statement SyntaxId ~
+    ~ is-export ("+" //)? "/" paths \import-path
+        tree.append(ASTImport(location, tree.store-atoms(paths), !!is-export))
+    ~ is-export ("+" //)? dots \relative-import-prefix "/" paths \import-path
+        tree.append
+            - ASTImport
+                - location
+                - tree.store-atoms(sequence-prepending(tree, dots, paths))
+                - !!is-export
+
+.. relative-import-prefix Atom ~
+    ~ ".."
+        tree.atom("..")
+    ~ "."
+        tree.atom(".")
+
+.. import-path ImmutableArray'Atom ~
+    ~ head \import-name ("/" tail \import-name)*
+        with-tail(tree, head, tail)
+
+.. import-name Atom ~
+    ~ (!(":" | "/" | \nl) .)+
+
+.. noop SyntaxId ~
+    ~ "--"
+        tree.append(ASTNoop(location))
+
+.. string-block SyntaxId ~
+    ~ \open-string \nl* parts \block-string-part+ / \close
+        make-block-string(tree, location, parts)
+    ~ \open-string \nl* / \close
+        tree.append(ASTString(location, tree.store-string("")))
+
+.. header-block SyntaxId ~
+    ~ \open-header \nl expr \inline-expression
+        tree.append(ASTHeaderExpression(location, expr, RowRange'SyntaxId()))
+
+.. print-block SyntaxId ~
+    ~ "--" is-optional "?"? expr \block-or-expression
+        tree.append(ASTPrint(location, maybe-optional(tree, location, expr, !!is-optional)))
+
+.. use-block SyntaxId ~
+    ~ "use" is-optional "?"? expr \block-or-expression
+        tree.append(ASTUseExpression(location, maybe-optional(tree, location, expr, !!is-optional)))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. match-block SyntaxId ~
+    ~ "match" is-optional "?"? // subject \inline-expression / body \block
+        make-match-block(tree, location, subject, body, !!is-optional)
+
+.. pattern-helper-clause SyntaxId ~
+    ~ "with" // helper \inline-expression-no-prep !(\open)
+        tree.make-pattern-helper(location, helper)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. structure-match-block SyntaxId ~
+    ~ is-union \match-if-operator // expr \inline-expression (/ body \block)?
+        tree.append(ASTStructureMatch(location, trans))
+            .. trans = tree.append
+                - ASTTypeTransform(location, result, tree.syntax-or-invalid(pattern), is-union)
+            .. pattern = tree.append(ASTTypePredicate(location, expr, false))
+            .. result = body ?? tree.append(ASTUnaryExpression(location, .optional-force-op, expr))
+    ~ is-union \match-equals-operator // expr \inline-expression (/ body \block)?
+        tree.append(ASTStructureMatch(location, trans))
+            .. trans = tree.append
+                - ASTTypeTransform(location, result, tree.syntax-or-invalid(pattern), is-union)
+            .. pattern = tree.append(ASTTypeEquality(location, expr, false))
+            .. result = body ?? expr
+    ~ is-union \match-pattern-operator // pattern \structure-pattern // "=" // subject \inline-expression (/ body \block)?
+        tree.append(ASTMatchExpression(location, subject, tree.append(ASTStructureMatch(location, transformed)), false))
+            .. transformed = if body then tree.append(ASTTypeTransform(location, body, pattern, is-union)) else pattern
+    ~ is-union \match-pattern-operator // pattern \structure-pattern (/ body \block)?
+        tree.append(ASTStructureMatch(location, transformed))
+            .. transformed = if body then tree.append(ASTTypeTransform(location, body, pattern, is-union)) else pattern
+    ~ "??" expr \block-or-inline-expression
+        tree.append(ASTStructureMatch(location, trans))
+            .. trans = tree.append(ASTTypeTransform(location, expr, 0, false))
+    ~ "<*" // pattern \structure-pattern // is-subscriber \in-or-on // container \inline-expression-no-prep clause \loop-clauses? (/ body \block)?
+        make-iterator-line
+            - tree
+            - location
+            - container
+            - is-subscriber
+            - body
+            - tree.append(ASTStructureMatch(location, pattern))
+            - clause
+            - null
+            - null
+
+.. match-if-operator Bool ~
+    ~ "||?"
+        true
+    ~ "|?"
+        false
+
+.. match-equals-operator Bool ~
+    ~ "||="
+        true
+    ~ "|="
+        false
+
+.. match-pattern-operator Bool ~
+    ~ "||"
+        true
+    ~ "|"
+        false
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. stream-match-block SyntaxId ~
+    ~ pattern \stream-pattern right \stream-match-right?
+        make-stream-match-block(tree, location, pattern, right)
+
+.. stream-match-right StreamMatchRight ~
+    ~ \stream-match-body-right
+    ~ \stream-match-assign-right
+    ~ \stream-match-iterator-right
+
+.. stream-match-body-right StreamMatchRight ~
+    ~ rollback-marker (// \pattern-rollback-annotation)? body \stream-match-body-tail
+        .expression(body, !!rollback-marker)
+
+.. stream-match-assign-right StreamMatchRight ~
+    ~ // "=" // right \inline-expression body \stream-match-body-tail?
+        .assignment(right, body)
+
+.. stream-match-iterator-right StreamMatchRight ~
+    ~ // is-subscriber \in-or-on // container \inline-expression clause \loop-clauses? body \stream-match-body-tail?
+        .iterator(tree.append(ASTLoop(location, 0, tree.syntax-or-invalid(container), tree.syntax-or-invalid(clause), is-subscriber, false, 0)), body)
+
+.. stream-match-body-tail ~
+    ~ / body \block
+        body
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. iterator-block SyntaxId ~
+    ~ initial \loop-container clause \loop-clauses? args \iterator-arg+
+        make-iterator-block
+            - tree
+            - location
+            - initial.container
+            - args
+            - initial.is-subscriber
+            - null
+            - clause
+
+.. iterator-loop SyntaxId ~
+    ~ loop \loop-and-list? body \block
+        tree.append
+            - ASTIteratorExpression
+                - location
+                - tree.syntax-or-invalid(loop)
+                - tree.syntax-or-invalid(body)
+                - 0
+    ~ loop \loop-and-list
+        tree.append(ASTIteratorExpression(location, loop, 0, 0))
+
+.. iterator-arg SyntaxId ~
+    ~ / \nl / \and-operator loop \loop-and-list
+        loop
+    ~ / \nl / \or-operator loop \iterator-loop
+        loop
+    ~ // op \clause-operator expr \block-or-expression-no-prep
+        tree.append(ASTClause(location, op, expr, 0))
+    ~ / body \block
+        body
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. closure-block SyntaxId ~
+    ~ "::" // args \closure-args // "=>" body \closure-body
+        make-closure(tree, location, body[1], args ?? ImmutableArray'SyntaxId(), body[0])
+    ~ "=>" body \closure-body
+        make-closure(tree, location, body[1], null, body[0])
+
+.. closure-body (SyntaxId, Bool) ~
+    ~ // "do" // expr \print-block
+        (expr, true)
+    ~ // "do" expr \block-or-expression
+        (expr, true)
+    ~ expr \block-or-expression
+        (expr, false)
+
+.. latest-block SyntaxId ~
+    ~ "##" expr \block-or-expression
+        tree.append(ASTLatestExpression(location, expr))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. markup SyntaxId ~
+    ~ "<+" // "(" name \identifier ")"
+        tree.append(ASTMarkupSlotForward(location, name, outlet))
+            .. outlet = tree.append
+                - ASTSlotOutlet(location, name, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId(), 0)
+    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? body \block?
+        tree.append(ASTMarkup(location, t, markup-id, slot-binding, tree.syntax-or-invalid(param), tree.store-optional-children(args), tree.store-optional-children(rules), tree.syntax-or-invalid(body)))
+            .. markup-id, slot-binding = markup-head-values(tree, head)
+
+.. markup-head SyntaxId ~
+    ~ // id \identifier slot-binding \markup-slot-binding-after-id?
+        tree.append
+            - ASTMarkupHead
+                - location
+                - tree.syntax-or-invalid(id)
+                - tree.syntax-or-invalid(slot-binding)
+    ~ slot-binding \markup-slot-binding-no-id
+        tree.append(ASTMarkupHead(location, 0, tree.syntax-or-invalid(slot-binding)))
+
+.. markup-slot-binding-no-id SyntaxId ~
+    ~ // "(" name \identifier ")"
+        name
+
+.. markup-slot-binding-after-id SyntaxId ~
+    ~ "(" name \identifier ")"
+        name
+
+.. slot-outlet SyntaxId ~
+    ~ "+" // "<" t \type-arguments name \slot-declaration-name? param \markup-slot-outlet-parameter? rules \style-rule-applications? body \block?
+        tree.append
+            - ASTSlotOutlet
+                - location
+                - tree.syntax-or-invalid(name)
+                - tree.syntax-or-invalid(t)
+                - tree.syntax-or-invalid(param)
+                - RowRange'SyntaxId()
+                - tree.store-optional-children(rules)
+                - tree.syntax-or-invalid(body)
+
+.. slot-declaration-name SyntaxId ~
+    ~ // name \identifier !(/ "=")
+        name
+
+.. markup-slot-outlet-parameter SyntaxId ~
+    ~ // "-" // name \identifier // t \type
+        tree.append(ASTMarkupSlotParameter(location, name, tree.syntax-or-invalid(t)))
+
+.. markup-slot-content-parameter SyntaxId ~
+    ~ // "-" // name \identifier
+        tree.append(ASTMarkupSlotParameter(location, name, 0))
+
+.. markup-args ImmutableArray'SyntaxId ~
+    ~ // "=" // outlet \slot-outlet
+        sequence-singleton(tree, outlet)
+    ~ // "=" // expr \inline-expression-no-prep
+        sequence-singleton(tree, expr)
+    ~ // text \string
+        sequence-singleton(tree, text)
+
+.. style-rule-applications ImmutableArray'SyntaxId ~
+    ~ // "•" // head \applied-style-rule (// tail \applied-style-rule)*
+        with-tail(tree, head, tail)
+
+.. applied-style-rule SyntaxId ~
+    ~ reserved \reserved-style-rule-name
+        reject-syntax(tree, reserved, "Syntax error")
+    ~ \style-rule-application
+
+.. reserved-style-rule-name MatchLocation ~
+    ~ "This" !([a-zA-Z0-9-])
+        MatchLocation(location.begin, location.begin)
+
+.. style-rule-application SyntaxId ~
+    ~ name \style-selector-name args \style-rule-args condition \style-rule-condition?
+        tree.append
+            - ASTStyleRuleApplication
+                - location
+                - name
+                - tree.store-children(args)
+                - tree.syntax-or-invalid(condition)
+    ~ name \style-selector-name condition \style-rule-condition
+        tree.append(ASTStyleRuleApplication(location, name, RowRange'SyntaxId(), condition))
+    ~ name \style-selector-name !(":")
+        tree.append(ASTStyleRuleApplication(location, name, RowRange'SyntaxId(), 0))
+
+.. style-rule-condition SyntaxId ~
+    ~ / "=" / condition \inline-expression-no-prep-no-comma
+        condition
+
+.. style-rule-args ImmutableArray'SyntaxId ~
+    ~ ":" arg \prefix-expression
+        sequence-singleton(tree, arg)
+    ~ "(" args \delimited(",", ~ \inline-expression-no-comma)? / ")"
+        args ?? ImmutableArray'SyntaxId()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. call-block SyntaxId ~
+    ~ expr \inline-expression-no-prep call \call-right?
+        match call
+            | .assign-partial(op, is-optional, right)
+                make-assignment(tree, location, op, expr, right, is-optional)
+            | .call-partial(params, args, is-curried, stop)
+                auto-call(tree, location, expr, params, args, is-curried)
+            ??
+                expr
+
+.. call-right SyntaxPartial ~
+    ~ // op \assign-operator is-optional "?"? right \block-or-expression
+        .assign-partial(op, !!is-optional, right)
+    ~ params \type-argument* args \call-tail-arguments
+        .call-partial(params, args, false, location)
+    ~ / body \block
+        .call-partial(ImmutableArray'SyntaxId(), sequence-singleton(tree, body), false, location)
+
+.. call-tail-arguments ImmutableArray'SyntaxId ~
+    ~ (...args \inline-call-argument)* (...args \block-call-argument)?
+        args
+
+.. inline-call-argument SyntaxId ~
+    ~ // "•" is-optional "?"? // n \name // expr \block-construct
+        tree.make-argument(location, expr, n, !!is-optional)
+    ~ \bullet-argument
+
+.. block-call-argument SyntaxId ~
+    ~ // "•" is-optional "?"? // n \name / expr \block
+        tree.make-argument(location, expr, n, !!is-optional)
+    ~ / body \block
+        body
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. inline-expression SyntaxId ~
+    ~ \comma-expression
+
+.. inline-expression-no-prep SyntaxId ~
+    ~ \comma-expression-no-prep
+
+.. inline-expression-no-comma SyntaxId ~
+    ~ \closure-expression
+
+.. inline-expression-no-prep-no-comma SyntaxId ~
+    ~ \closure-expression-no-prep
+
+.. comma-expression SyntaxId ~
+    ~ values \delimited(",", ~ \inline-expression-no-comma)
+        tuple-maybe(tree, location, values)
+
+.. comma-expression-no-prep SyntaxId ~
+    ~ values \delimited(",", ~ \inline-expression-no-prep-no-comma)
+        tuple-maybe(tree, location, values)
+
+.. closure-expression SyntaxId ~
+    ~ "::" // args \closure-args // "=>" body \closure-expression-body
+        make-closure(tree, location, body[1], args ?? ImmutableArray'SyntaxId(), body[0])
+    ~ "=>" body \closure-expression-body
+        make-closure(tree, location, body[1], null, body[0])
+    ~ "if" // test \coalesce-expression // "then" // value \coalesce-expression // "else" // otherwise \closure-expression
+        make-conditional-value(tree, location, test, value, otherwise)
+    ~ \coalesce-expression
+
+.. closure-expression-no-prep SyntaxId ~
+    ~ "::" // args \closure-args // "=>" body \closure-expression-no-prep-body
+        make-closure(tree, location, body[1], args ?? ImmutableArray'SyntaxId(), body[0])
+    ~ "=>" body \closure-expression-no-prep-body
+        make-closure(tree, location, body[1], null, body[0])
+    ~ "if" // test \coalesce-expression-no-prep // "then" // value \coalesce-expression-no-prep // "else" // otherwise \closure-expression-no-prep
+        make-conditional-value(tree, location, test, value, otherwise)
+    ~ \coalesce-expression-no-prep
+
+.. closure-expression-body (SyntaxId?, Bool) ~
+    ~ // "do" // expr \print-block
+        (expr, true)
+    ~ // "do" // expr \closure-expression?
+        (expr, true)
+    ~ // expr \closure-expression?
+        (expr, false)
+
+.. closure-expression-no-prep-body (SyntaxId?, Bool) ~
+    ~ // "do" // expr \print-block
+        (expr, true)
+    ~ // "do" // expr \closure-expression-no-prep?
+        (expr, true)
+    ~ // expr \closure-expression-no-prep?
+        (expr, false)
+
+.. closure-args ImmutableArray'SyntaxId ~
+    ~ \delimited(",", ~ \closure-arg)
+
+.. closure-arg SyntaxId ~
+    ~ is-variadic ("..." //)? name \identifier (// t \type)?
+        make-closure-argument(tree, location, name, !!is-variadic, t)
+
+.. coalesce-expression SyntaxId ~
+    ~ lhs \if-expression rhs \coalesce-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. coalesce-expression-tail ~
+    ~ // op \coalesce-operator // rhs \if-expression
+        (op, rhs)
+
+.. coalesce-expression-no-prep SyntaxId ~
+    ~ lhs \if-expression-no-prep rhs \coalesce-expression-no-prep-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. coalesce-expression-no-prep-tail ~
+    ~ // op \coalesce-operator // rhs \if-expression-no-prep
+        (op, rhs)
+
+.. if-expression SyntaxId ~
+    ~ lhs \bullet-call-expression rhs \if-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. if-expression-tail ~
+    ~ // op \if-operator // rhs \bullet-call-expression
+        (op, rhs)
+
+.. if-expression-no-prep SyntaxId ~
+    ~ lhs \iterator-expression rhs \if-expression-no-prep-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. if-expression-no-prep-tail ~
+    ~ // op \if-operator // rhs \assignment-expression
+        (op, rhs)
+
+.. bullet-call-expression SyntaxId ~
+    ~ expr \assignment-expression params \type-argument* args \bullet-argument-no-comma*
+        |? params.length || args.length
+            auto-call(tree, location, expr, params, args, false)
+        ??
+            expr
+
+.. bulleted-expression SyntaxId ~
+    ~ expr \inline-expression-no-prep args \bullet-argument-no-comma*
+        |? args.length
+            auto-call(tree, location, expr, ImmutableArray'SyntaxId(), args, false)
+        ??
+            expr
+
+.. bullet-argument-no-comma SyntaxId ~
+    ~ // "•" // ab \ability // is-not \exclamation-optional n \name is-name \bool-argument-name(ab, n) value \bool-argument-value(is-not)
+        tree.make-argument
+            - location
+            - tree.append(ASTIdentifier(location, value, false))
+            - is-name
+            - false
+    ~ // "•" is-optional "?"? // n \name // expr \inline-expression-no-prep-no-comma
+        tree.make-argument(location, expr, n, !!is-optional)
+    ~ // "•" is-optional "?"? // n \name !(/ \open)
+        tree.make-argument
+            - location
+            - tree.append(ASTIdentifier(location, n, false))
+            - n
+            - !!is-optional
+    ~ // "•" is-optional "?"? // "(" key \inline-expression-no-comma ")" value \inline-expression-no-prep-no-comma?
+        tree.make-argument(location, tree.append(ASTTuple(location, tree.store-children(items))), null, !!is-optional)
+            .. items = if value then sequence-pair(tree, key, value) else sequence-singleton(tree, key)
+
+.. bullet-argument SyntaxId ~
+    ~ // "•" // ab \ability // is-not \exclamation-optional n \name is-name \bool-argument-name(ab, n) value \bool-argument-value(is-not)
+        tree.make-argument
+            - location
+            - tree.append(ASTIdentifier(location, value, false))
+            - is-name
+            - false
+    ~ // "•" is-optional "?"? // n \name // expr \inline-expression-no-prep
+        tree.make-argument(location, expr, n, !!is-optional)
+    ~ // "•" is-optional "?"? // n \name !(/ \open)
+        tree.make-argument
+            - location
+            - tree.append(ASTIdentifier(location, n, false))
+            - n
+            - !!is-optional
+    ~ // "•" is-optional "?"? // "(" key \inline-expression-no-comma ")" value \inline-expression-no-prep?
+        tree.make-argument(location, tree.append(ASTTuple(location, tree.store-children(items))), null, !!is-optional)
+            .. items = if value then sequence-pair(tree, key, value) else sequence-singleton(tree, key)
+
+.. assignment-expression SyntaxId ~
+    ~ left \apply-expression right \assign-right?
+        match right
+            | .assign-partial(op, is-optional, r)
+                make-assignment(tree, location, op, left, r, is-optional)
+            | .iterator-partial(loop)
+                make-iterator-from-partial(tree, location, left, loop)
+            ??
+                left
+
+.. assign-right SyntaxPartial ~
+    ~ // op \assign-operator is-optional "?"? // expr \apply-expression
+        .assign-partial(op, !!is-optional, expr)
+    ~ // right \iterator-container-right
+        right
+
+.. iterator-expression SyntaxId ~
+    ~ left \apply-expression (// right \iterator-container-right)?
+        match right
+            | .iterator-partial(loop)
+                make-iterator-from-partial(tree, location, left, loop)
+            ??
+                left
+
+.. iterator-container-right SyntaxPartial ~
+    ~ is-subscriber \in-or-on // container \apply-expression clause \loop-clauses?
+        .iterator-partial(tree.append(ASTLoop(location, 0, tree.syntax-or-invalid(container), tree.syntax-or-invalid(clause), is-subscriber, false, 0)))
+
+.. apply-expression SyntaxId ~
+    ~ head \pipeline-expression right \iterator-apply-right?
+        match right
+            | .structure-partial(pattern)
+                tree.append
+                    - ASTStructureMatch
+                        - location
+                        - tree.append(ASTTypeTransform(location, head, pattern, false))
+            | .stream-partial(pattern)
+                tree.append
+                    - ASTStreamMatch
+                        - location
+                        - tree.append(ASTStreamTransform(location, pattern, head, false))
+            ??
+                head
+    ~ right \iterator-expression-pattern
+        match right
+            | .structure-partial(pattern)
+                tree.append(ASTStructureMatch(location, pattern))
+            | .stream-partial(pattern)
+                tree.append(ASTStreamMatch(location, pattern))
+            ?! Panic("Unknown iterator apply pattern")
+
+.. iterator-apply-right SyntaxPartial ~
+    ~ // right \iterator-expression-pattern
+        right
+
+.. iterator-expression-pattern SyntaxPartial ~
+    ~ "<*" // pattern \structure-pattern
+        .structure-partial(pattern)
+    ~ "|" // pattern \structure-pattern
+        .structure-partial(pattern)
+    ~ pattern \stream-pattern
+        .stream-partial(pattern)
+
+.. pipeline-expression SyntaxId ~
+    ~ lhs \logical-or-expression rhs \pipeline-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. pipeline-expression-tail ~
+    ~ // "~>" // pattern \stream-and helper \pipeline-helper?
+        (.stream-pattern-pipe-op, tree.append(ASTStreamMatch(location, pattern, false, helper ?? 0)))
+    ~ // op \pipeline-operator // rhs \logical-or-expression
+        (op, rhs)
+
+.. pipeline-helper SyntaxId ~
+    ~ // "with" // helper \logical-or-expression
+        helper
+
+.. logical-or-expression SyntaxId ~
+    ~ lhs \logical-and-expression rhs \logical-or-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. logical-or-expression-tail ~
+    ~ // op \logical-or-operator // rhs \logical-and-expression
+        (op, rhs)
+
+.. logical-and-expression SyntaxId ~
+    ~ lhs \glt-compare-expression rhs \logical-and-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. logical-and-expression-tail ~
+    ~ // op \logical-and-operator // rhs \glt-compare-expression
+        (op, rhs)
+
+.. glt-compare-expression SyntaxId ~
+    ~ lhs \compare-expression rhs \glt-compare-expression-tail*
+        |? rhs
+            reduce-glt-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. glt-compare-expression-tail ~
+    ~ // op \glt-compare-operator // rhs \compare-expression
+        (op, rhs)
+
+.. compare-expression SyntaxId ~
+    ~ lhs \cast-expression rhs \compare-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. compare-expression-tail ~
+    ~ // op \compare-operator // rhs \cast-expression
+        (op, rhs)
+
+.. cast-expression SyntaxId ~
+    ~ lhs \contain-expression rhs \cast-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. cast-expression-tail ~
+    ~ // op \as-operator // rhs \type
+        (op, rhs)
+
+.. contain-expression SyntaxId ~
+    ~ lhs \compose-expression rhs \contain-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. contain-expression-tail ~
+    ~ // op \contain-operator // rhs \compose-expression
+        (op, rhs)
+    ~ // op \is-operator // rhs \is-operator-right
+        (op, rhs)
+
+.. is-operator-right SyntaxId ~
+    ~ &("[" | "\"" | "_" | "...") pattern \pattern-and
+        pattern
+    ~ \compose-expression
+
+.. compose-expression SyntaxId ~
+    ~ left \range-expression tail \compose-expression-tail*
+        reduce-compose-expression(tree, location, left, tail)
+
+.. compose-expression-tail ComposeExpressionTail ~
+    ~ "?" // op \compose-operator // right \range-expression name \compose-write-name(op)
+        ComposeExpressionTail(location, op, right, true, name)
+    ~ // op \compose-operator // right \range-expression name \compose-write-name(op)
+        ComposeExpressionTail(location, op, right, false, name)
+
+.. range-expression SyntaxId ~
+    ~ left \user-binary-expression3 tail \range-left-tail
+        match tail
+            | .range-to-partial(right, increment)
+                tree.append
+                    - ASTRangeExpression
+                        - location
+                        - .range-to-op
+                        - left
+                        - right
+                        - tree.syntax-or-invalid(increment)
+            | .range-partial(op, expr-right, increment)
+                tree.append
+                    - ASTRangeExpression
+                        - location
+                        - op
+                        - left
+                        - expr-right
+                        - tree.syntax-or-invalid(increment)
+            ??
+                left
+    ~ "..." // right \user-binary-expression3 increment \range-by? left \range-first-position
+        tree.append
+            - ASTRangeExpression
+                - location
+                - .range-to-op
+                - left
+                - right
+                - tree.syntax-or-invalid(increment)
+
+.. range-left-tail ~
+    ~ // "..." increment \range-by? right \range-end-position
+        .range-to-partial(right, increment)
+    ~ \range-right?
+
+.. range-right ~
+    ~ // op \range-operator // right \user-binary-expression3 increment \range-by?
+        .range-partial(op, right, increment)
+
+.. range-first-position SyntaxId ~
+    ~ ""
+        range-position(tree, "first")
+
+.. range-end-position SyntaxId ~
+    ~ ""
+        range-position(tree, "end")
+
+.. range-by ~
+    ~ // "by" // expr \user-binary-expression3
+        expr
+
+.. range-operator ~
+    ~ ".." // "<"
+        .range-to-op
+    ~ ".."
+        .range-through-op
+
+.. user-binary-expression3 SyntaxId ~
+    ~ lhs \user-binary-expression2 rhs \user-binary-expression3-tail*
+        |? rhs
+            reduce-user-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. user-binary-expression3-tail ~
+    ~ // op \user-operator-3 // rhs \user-binary-expression2
+        (op, rhs)
+
+.. user-binary-expression2 SyntaxId ~
+    ~ lhs \user-binary-expression1 rhs \user-binary-expression2-tail*
+        |? rhs
+            reduce-user-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. user-binary-expression2-tail ~
+    ~ // op \user-operator-2 // rhs \user-binary-expression1
+        (op, rhs)
+
+.. user-binary-expression1 SyntaxId ~
+    ~ lhs \add-expression rhs \user-binary-expression1-tail*
+        |? rhs
+            reduce-user-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. user-binary-expression1-tail ~
+    ~ // op \user-operator-1 // rhs \add-expression
+        (op, rhs)
+
+.. add-expression SyntaxId ~
+    ~ lhs \multiply-expression rhs \add-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. add-expression-tail ~
+    ~ // op \add-operator // rhs \multiply-expression
+        (op, rhs)
+
+.. multiply-expression SyntaxId ~
+    ~ lhs \prefix-expression rhs \multiply-expression-tail*
+        |? rhs
+            reduce-binary-op(tree, location, lhs, rhs)
+        ??
+            lhs
+
+.. multiply-expression-tail ~
+    ~ // op \multiply-operator // rhs \prefix-expression
+        (op, rhs)
+
+.. prefix-expression SyntaxId ~
+    ~ ".." n \name args \anonymous-case-arguments?
+        tree.append
+            - ASTAnonymousCase
+                - location
+                - n
+                - tree.store-children(args ?? ImmutableArray'SyntaxId())
+                - null
+    ~ ops \prefix-operator* expr \postfix-expression negative-value \negative-number-value(tree, ops, expr)
+        reduce-prefix-ops(tree, location, ops, expr, negative-value)
+
+.. anonymous-case-arguments ImmutableArray'SyntaxId ~
+    ~ "(" / args \delimited(",", ~ \inline-expression-no-comma)? / ")"
+        args ?? ImmutableArray'SyntaxId()
+
+.. postfix-expression SyntaxId ~
+    ~ head \catch-expression (/ op \postfix-operator)*
+        |? op
+            reduce-unary-op(tree, location, head, op)
+        ??
+            head
+
+.. catch-expression SyntaxId ~
+    ~ "catch" is-optional "?"? // expr \pipeline-expression params \type-argument* args \bullet-argument-no-comma*
+        result
+            .. result SyntaxId
+                |? is-optional
+                    tree.append(ASTCatchOptionalExpression(location, body))
+                ??
+                    tree.append(ASTCatchExpression(location, body, true, RowRange'SyntaxId()))
+            .. body SyntaxId
+                |? params.length || args.length
+                    auto-call(tree, location, expr, params, args, false)
+                ??
+                    expr
+    ~ \get-expression
+
+.. get-expression SyntaxId ~
+    ~ head \primitive tail \get-tail*
+        relocated-get(tree, location, reduced)
+            .. reduced = reduce(head, tail) • using :: left, right => match right
+                | .get-partial(name, is-tracked, is-optional, is-loop)
+                    optional-get(tree, left, name, is-tracked, is-optional, is-loop)
+                | .style-read-partial(name, is-optional)
+                    tree.append
+                        - ASTStyleReadExpression
+                            - location
+                            - tree.syntax-or-invalid(left)
+                            - name
+                            - is-optional
+                | .markup-read-partial(name, is-optional)
+                    tree.append
+                        - ASTMarkupReadExpression
+                            - location
+                            - tree.syntax-or-invalid(left)
+                            - name
+                            - is-optional
+                | .index-partial(index, is-optional, stop)
+                    tree.append
+                        - ASTIndexExpression
+                            - MatchLocation(location.begin, stop.end)
+                            - left
+                            - index
+                            - is-optional
+                | .force-partial(stop)
+                    tree.append
+                        - ASTUnaryExpression
+                            - MatchLocation(location.begin, stop.end)
+                            - .optional-force-op
+                            - left
+                | .call-partial(params, args, is-curried, stop)
+                    tree.make-call
+                        - MatchLocation(location.begin, stop.end)
+                        - left
+                        - params
+                        - args
+                        - is-curried
+                ??
+                    left
+
+.. get-tail ~
+    ~ \get-style-read
+    ~ \get-markup-read
+    ~ \get-member
+    ~ \get-member-loop
+    ~ \get-index
+    ~ \get-force
+    ~ \call-arguments
+
+.. get-style-read SyntaxPartial ~
+    ~ is-optional "?"? "." "$" n \name
+        .style-read-partial(n, !!is-optional)
+
+.. get-markup-read SyntaxPartial ~
+    ~ is-optional "?"? "." "%" n \name
+        .markup-read-partial(n, !!is-optional)
+
+.. get-member SyntaxPartial ~
+    ~ is-optional "?"? "." is-tracked "#"? n \name
+        .get-partial(n, !!is-tracked, !!is-optional, false)
+
+.. get-member-loop SyntaxPartial ~
+    ~ "*." is-tracked "#"? n \name
+        .get-partial(n, !!is-tracked, false, true)
+
+.. get-index ~
+    ~ is-optional "?"? "[" expr \inline-expression "]"
+        .index-partial(expr, !!is-optional, location)
+
+.. get-force SyntaxPartial ~
+    ~ "!" !".." &("." | "[")
+        .force-partial(location)
+
+.. call-arguments ~
+    ~ params \type-argument* "(" args-list \call-argument-list? ")"
+        match args-list
+            | .args-partial(args, is-curried)
+                .call-partial(params, args, is-curried, location)
+            ??
+                .call-partial(params, ImmutableArray'SyntaxId(), false, location)
+    ~ params \type-argument+
+        .call-partial(params, ImmutableArray'SyntaxId(), false, location)
+
+.. call-argument-list ~
+    ~ "..."
+        .args-partial(ImmutableArray'SyntaxId(), true)
+    ~ items \delimited(",", ~ \inline-expression-no-comma) is-curried ("," // "...")?
+        .args-partial(arguments-from-expressions(tree, location, items), !!is-curried)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. primitive SyntaxId ~
+    ~ \paren-expression
+    ~ \list-expression
+    ~ \iterable-expression
+    ~ \identifier-expression
+    ~ \c-identifier
+    ~ \character-literal
+    ~ \type-expression
+    ~ \latest-expression
+    ~ \shaped-style-read-expression
+    ~ \markup-read-expression
+    ~ \track-identifier
+    ~ \ref-identifier
+    ~ \symbol
+    ~ \bool
+    ~ \numeric-literal
+    ~ \string
+
+.. paren-expression SyntaxId ~
+    ~ "(" / pairs \inline-expression / ")"
+        pairs
+
+.. list-expression SyntaxId ~
+    ~ "[]"
+        tree.append(ASTList(location, RowRange'SyntaxId()))
+    ~ "[" pairs \list-items "]"
+        tree.append(ASTList(location, tree.store-children(pairs ?? ImmutableArray'SyntaxId())))
+
+.. list-items ~
+    ~ values \delimited(",", ~ \inline-expression-no-comma)
+        values
+
+.. iterable-expression SyntaxId ~
+    ~ "<" expr \inline-expression ">"
+        tree.append(ASTIterableExpression(location, expr))
+
+.. identifier-expression SyntaxId ~
+    ~ id \shaped-identifier force ("!" !"=")?
+        if force then tree.append(ASTUnaryExpression(location, .optional-force-op, id)) else id
+
+.. shaped-identifier SyntaxId ~
+    ~ id \identifier arg \shape-suffix?
+        |? arg
+            make-shaped(tree, location, id, arg)
+        ??
+            id
+
+.. shaped-style-read-expression SyntaxId ~
+    ~ read \style-read-expression arg \shape-suffix?
+        |? arg
+            make-shaped(tree, location, read, arg)
+        ??
+            read
+
+.. shape-suffix SyntaxId ~
+    ~ ":" arg \shape-argument
+        arg
+
+.. shape-argument SyntaxId ~
+    ~ \numeric-literal
+    ~ "-" value \numeric-literal
+        negated-number(tree, value)
+    ~ \paren-expression
+    ~ \list-expression
+    ~ \string
+
+.. style-read-expression SyntaxId ~
+    ~ "$" n \name
+        tree.append(ASTStyleReadExpression(location, 0, n, false))
+
+.. markup-read-expression SyntaxId ~
+    ~ "%" n \name
+        tree.append(ASTMarkupReadExpression(location, 0, n, false))
+
+.. type-expression SyntaxId ~
+    ~ t \type-arguments members \type-member* suffix \type-suffix?
+        match suffix
+            | .type-suffix-optional(name)
+                type-optional(tree, qualified, name)
+            | .type-suffix-optional-buffer(optional-name, buffer-name)
+                type-optional(tree, type-buffer(tree, qualified, buffer-name), optional-name)
+            | .type-suffix-buffer(name)
+                tree.append
+                    - ASTCallExpression
+                        - location
+                        - type-buffer(tree, qualified, name)
+                        - RowRange'SyntaxId()
+                        - 0
+                        - false
+            | .type-suffix-channel(name)
+                tree.append
+                    - ASTCallExpression
+                        - location
+                        - type-channel(tree, qualified, name)
+                        - RowRange'SyntaxId()
+                        - 0
+                        - false
+            ??
+                qualified
+
+        .. qualified = reduce(t, members) • using :: owner SyntaxId, member =>
+            tree.append
+                - ASTTypeAssociated(location, owner, member.name, tree.store-children(member.args))
+
+.. type-arguments SyntaxId ~
+    ~ id \type-identifier args \type-argument*
+        |? args.length
+            tree.append(ASTTypeArguments(location, id, tree.store-children(args)))
+        ??
+            id
+
+.. type-argument SyntaxId ~
+    ~ "''" nn \type-name
+        tree.append(ASTTypeIdentifier(location, nn, true))
+    ~ "'" tt (\type-identifier | \compound-type)
+        tt
+
+.. type-identifier SyntaxId ~
+    ~ nn \type-name
+        tree.append(ASTTypeIdentifier(location, nn, false))
+    ~ \type-variable
+
+.. type-variable SyntaxId ~
+    ~ "''" nn \type-name
+        tree.append(ASTTypeIdentifier(location, nn, true))
+
+.. type-name Atom ~
+    ~ name ([A-Z] [a-zA-Z0-9]*)
+        name
+
+.. primitive-type SyntaxId ~
+    ~ \c-struct-type
+    ~ \type-arguments
+    ~ \compound-type
+
+.. type SyntaxId ~
+    ~ left \type-qualified op \type-match-operator?
+        |? op
+            tree.append(ASTTypeMatch(location, left, op))
+        ??
+            left
+    ~ \function-type
+
+.. type-qualified SyntaxId ~
+    ~ left \primitive-type members \type-member* suffix \type-suffix?
+        match suffix
+            | .type-suffix-optional(name)
+                type-optional(tree, qualified, name)
+            | .type-suffix-optional-buffer(optional-name, buffer-name)
+                type-optional(tree, type-buffer(tree, qualified, buffer-name), optional-name)
+            | .type-suffix-buffer(name)
+                type-buffer(tree, qualified, name)
+            | .type-suffix-channel(name)
+                type-channel(tree, qualified, name)
+            ??
+                qualified
+
+        .. qualified = reduce(left, members) • using :: owner SyntaxId, member =>
+            tree.append
+                - ASTTypeAssociated(location, owner, member.name, tree.store-children(member.args))
+
+.. type-member AssociatedTypeMember ~
+    ~ "." name \type-name args \type-argument*
+        AssociatedTypeMember(name, args)
+
+.. type-suffix ~
+    ~ "?" name \materialized-optional-type-name
+        .type-suffix-optional(name)
+    ~ "[]?" optional-name \materialized-optional-type-name buffer-name \materialized-array-type-name
+        .type-suffix-optional-buffer(optional-name, buffer-name)
+    ~ "[]" name \materialized-array-type-name
+        .type-suffix-buffer(name)
+    ~ "<>" name \materialized-channel-type-name
+        .type-suffix-channel(name)
+
+.. materialized-optional-type-name Atom ~
+    ~ ""
+        "Optional"
+
+.. materialized-array-type-name Atom ~
+    ~ ""
+        "Array"
+
+.. materialized-channel-type-name Atom ~
+    ~ ""
+        "SyncChannel"
+
+.. compound-type SyntaxId ~
+    ~ \tuple-type
+    ~ \list-type
+    ~ \map-type
+    ~ \iterable-type
+
+.. tuple-type SyntaxId ~
+    ~ "(" / field-types \type-captures / ")"
+        type-tuple-maybe(tree, location, field-types)
+
+.. c-struct-type SyntaxId ~
+    ~ "C:(" / fields \delimited(",", ~ \c-struct-field) / ")"
+        tree.append(ASTTypeTuple(location, tree.store-children(fields), true))
+
+.. c-struct-field SyntaxId ~
+    ~ n \c-symbol // ty \type
+        tree.append(ASTTypeCapture(location, tree.append(ASTIdentifier(location, n, false)), ty))
+
+.. list-type SyntaxId ~
+    ~ "[" / item-type \type / "]"
+        tree.append(ASTTypeArguments(location, list, tree.store-child(item-type)))
+            .. list = tree.append(ASTTypeIdentifier(location, tree.atom("List"), false))
+
+.. map-type SyntaxId ~
+    ~ "[" / key \type // "=" // value \type / "]"
+        tree.append(ASTTypeArguments(location, map, tree.store-child(key, value)))
+            .. map = tree.append(ASTTypeIdentifier(location, tree.atom("Map"), false))
+
+.. iterable-type SyntaxId ~
+    ~ "<" / item-type \type / ">"
+        type-iterable(tree, item-type, tree.atom("Stream"))
+
+.. function-type SyntaxId ~
+    ~ "()" // id \type errors \function-error-declaration* does-throw (// "throws")? args \arguments-block?
+        tree.append
+            - ASTTypeFunction
+                - location
+                - id
+                - tree.store-children
+                    - argument-declarations(tree, args ?? ImmutableArray'ArgumentVariant())
+                - false
+                - tree.store-optional-children(errors)
+    ~ "(*C)" // id \type errors \function-error-declaration* does-throw (// "throws")? args \arguments-block?
+        tree.append
+            - ASTTypeFunction
+                - location
+                - id
+                - tree.store-children
+                    - argument-declarations(tree, args ?? ImmutableArray'ArgumentVariant())
+                - true
+                - tree.store-optional-children(errors)
+
+.. property-capture SyntaxId ~
+    ~ id \keyed-identifier // ty \type
+        tree.append(ASTTypeCapture(location, id, ty))
+    ~ \type-capture
+
+.. keyed-identifier SyntaxId ~
+    ~ n \keyed-name
+        tree.append(ASTIdentifier(location, n, false))
+
+.. keyed-name Atom ~
+    ~ [a-z] [-a-z0-9]* "." [a-z] [-a-z0-9]*
+
+.. type-captures ImmutableArray'SyntaxId ~
+    ~ \delimited(",", ~ \type-capture)
+
+.. type-capture SyntaxId ~
+    ~ id \identifier (// ty \type)?
+        tree.append(ASTTypeCapture(location, id, tree.syntax-or-invalid(ty)))
+    ~ \type
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. identifier SyntaxId ~
+    ~ n \name
+        tree.append(ASTIdentifier(location, n, false))
+
+.. name Atom ~
+    ~ [a-z] [-a-z0-9]*
+    ~ [\u03b1-\u03bf\u03c0-\u03c9\u0391-\u039f\u03a0-\u03a9]
+    ~ "°"
+
+.. raw-name ~
+    ~ [a-z] [-a-z0-9]*
+
+.. raw-atom-name Atom ~
+    ~ name ([a-z] [-a-z0-9]*)
+        name
+
+.. style-rule-name Atom ~
+    ~ \type-name
+    ~ \raw-atom-name
+
+.. style-selector-name Atom ~
+    ~ !("This" !([a-zA-Z0-9-])) \type-name
+    ~ \raw-atom-name
+
+.. latest-expression SyntaxId ~
+    ~ "##" / expr \inline-expression
+        tree.append(ASTLatestExpression(location, expr))
+
+.. ref-identifier ~
+    ~ "&" n \name
+        tree.append(ASTRefIdentifier(location, n))
+
+.. track-identifier ~
+    ~ "#" n \name
+        tree.append(ASTIdentifier(location, n, true))
+
+.. symbol ~
+    ~ "." n \name
+        tree.append(ASTSymbol(location, n))
+
+.. c-identifier SyntaxId ~
+    ~ "C:" symbol \c-symbol
+        tree.append(ASTCIdentifier(location, symbol))
+
+.. c-symbol Atom ~
+    ~ [A-Za-z_] [A-Za-z0-9_]*
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. ability ~
+    ~ "is"
+    ~ "has"
+    ~ "can"
+    ~ "does"
+    ~ "should"
+    ~ "must"
+
+.. keyword ~
+    ~ "in"
+    ~ "on"
+    ~ "and"
+    ~ "or"
+    ~ "do"
+    ~ "for"
+    ~ "while"
+    ~ "if"
+    ~ "else"
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. string ~
+    ~ "\"\""
+        tree.append(ASTString(location, tree.store-string("")))
+    ~ "\"" parts \string-part+ "\""
+        concat-string-parts(tree, location, parts)
+
+.. character-literal SyntaxId ~
+    ~ "'" c \character-literal-char "'" value \character-literal-value(c)
+        tree.append(ASTInteger(location, tree.store-string(value), tree.atom("c")))
+
+.. character-literal-char Char ~
+    ~ \string-escape-sequence
+    ~  !("'" | "\\" | \line-terminator) .
+
+.. raw-char Char ~
+    ~ \string-escape-sequence
+    ~  !("\"") .
+
+.. string-part SyntaxId ~
+    ~ \string-embed
+    ~ text \string-raw-text &(\embed-start | "\"")
+        tree.append(ASTString(location, tree.store-string(text)))
+    ~ text \string-text
+        tree.append(ASTString(location, tree.store-string(text)))
+
+.. string-raw-text String ~
+    ~ \string-raw-char+
+
+.. string-raw-char Char ~
+    ~ !(\embed-start) !("\"" | "\\" | \line-terminator | "\${" | "\ufdd0") .
+
+.. string-text String ~
+    ~ chars \string-text-char+ \line-continuation*
+        escaped-text(tree, chars)
+    ~ \line-continuation+
+        ""
+
+.. string-text-char Char ~
+    ~ \line-continuation* c \literal-close
+        c
+    ~ \line-continuation* c \string-raw-char
+        c[0]
+    ~ \line-continuation* c \string-escape-sequence
+        c
+
+.. block-string-part BlockStringComponent ~
+    ~ expr \string-embed
+        BlockStringComponent.syntax(expr)
+    ~ text \block-string-raw-text &(\embed-start | "≥")
+        BlockStringComponent.literal(text)
+    ~ text \block-string-text
+        BlockStringComponent.literal(text)
+
+.. block-string-raw-text String ~
+    ~ (!(\embed-start) !("≥" | "\\" | "\ufdd0") .)+
+
+.. block-string-text String ~
+    ~ chars \block-string-text-char+ \line-continuation*
+        escaped-text(tree, chars)
+    ~ \line-continuation+
+        ""
+
+.. block-string-text-char Char ~
+    ~ \line-continuation* c \literal-close
+        c
+    ~ \line-continuation* c \block-string-plain-char
+        c[0]
+    ~ \line-continuation* c \string-escape-sequence
+        c
+
+.. block-string-plain-char Char ~
+    ~ !(\embed-start) !("≥" | "\\" | "\${") .
+
+.. literal-close Char ~
+    ~ "\\"? "\ufdd0"
+        '≥'
+
+.. string-escape-sequence Char ~
+    ~ "\\u" digits \hex-digit{4}
+        Hex(digits) as Char
+    ~ "\\x" digits \hex-digit{2}
+        Hex(digits) as Char
+    ~ "\\0" !(\decimal-digit)
+        0 as Char
+    ~ "\\" c \single-escape-character
+        unescape(c)[0]
+    ~ "\\" c \non-escape-character
+        c[0]
+
+.. single-escape-character ~
+    ~ [bfnrtv"'\$]
+
+.. non-escape-character ~
+    ~ !(\escape-character | \line-terminator) .
+
+.. escape-character ~
+    ~ \single-escape-character
+    ~ \decimal-digit
+    ~ "x"
+    ~ "u"
+
+.. embed-start ~
+    ~ "\${"
+    ~ "$" &[a-z\u03b1-\u03bf\u03c0-\u03c9\u0391-\u039f\u03a0-\u03a9°]
+
+.. string-embed SyntaxId ~
+    ~ "\${" expr \string-embed-chain "}"
+        expr
+    ~ "\${" head \type-expression tail \get-member+ "}"
+        reduce(head, tail) • using :: left, right => match right
+            | .get-partial(name, is-tracked, is-optional, is-loop)
+                tree.append
+                    - ASTGetExpression
+                        - tree.location(left)
+                        - left
+                        - name
+                        - is-tracked
+                        - is-optional
+                        - is-loop
+            ??
+                left
+    ~ "\${" expr \inline-expression "}"
+        expr
+    ~ "$" expr \string-name-chain
+        relocated-get(tree, location, expr)
+
+.. string-name-chain SyntaxId ~
+    ~ head \identifier tail \string-get*
+        reduce(head, tail) • using :: left SyntaxId, right => match right
+            | .get-partial(name, is-tracked, is-optional, is-loop)
+                tree.append
+                    - ASTGetExpression
+                        - tree.location(left)
+                        - left
+                        - name
+                        - is-tracked
+                        - is-optional
+                        - is-loop
+            ??
+                tree.append(ASTBlock(MatchLocation(), RowRange'SyntaxId()))
+
+.. string-get SyntaxPartial ~
+    ~ is-optional "?"? "." n \name
+        .get-partial(n, false, !!is-optional, false)
+
+.. string-embed-chain SyntaxId ~
+    ~ head \identifier tail \get-member*
+        reduce(head, tail) • using :: left SyntaxId, right => match right
+            | .get-partial(name, is-tracked, is-optional, is-loop)
+                tree.append
+                    - ASTGetExpression
+                        - tree.location(left)
+                        - left
+                        - name
+                        - is-tracked
+                        - is-optional
+                        - is-loop
+            `   ?! YumiSyntaxError(location, "Invalid syntax")
+            `XXXjoe Working around a bug here
+            ??
+                tree.append(ASTBlock(MatchLocation(), RowRange'SyntaxId()))
+
+.. line-continuation ~
+    ~ "\\" \line-terminator
+        ""
+
+.. line-terminator ~
+    ~ "\n"
+    ~ "\r\n"
+    ~ "\r"
+    ~ "\u2028"
+    ~ "\u2029"
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. probe ~
+    ~ \probe-statement
+    ~ \probe-counter
+    ~ \probe-group
+    ~ \probe-assign
+    ~ \probe-log
+
+.. probe-statement ~
+    ~ "//!" selector \probe-key-selector? // body \statement
+        tree.append
+            - ASTProbeStatement
+                - location
+                - body
+                - tree.syntax-or-invalid(selector?.object)
+                - selector?.key
+
+.. probe-category-key String ~
+    ~ key ([a-z] [-a-z0-9]* ("." [a-z] [-a-z0-9]*)*)
+        key
+
+.. probe-content-key ProbeKeySelector ~
+    ~ selector \probe-key-selector "//"
+        selector
+
+.. probe-counter ~
+    ~ "//" selector \probe-key-selector // "++" deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeCounter
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+                    - 0
+            - deps
+    ~ "//" selector \probe-key-selector // "+=" // delta \inline-expression deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeCounter
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+                    - tree.syntax-or-invalid(delta)
+            - deps
+
+.. probe-group ~
+    ~ "//+-" selector \probe-key-selector // "->" // content \probe-list-items deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - true
+                    - true
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+    ~ "//+-" selector \probe-content-key? // content \probe-string deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - true
+                    - true
+                    - false
+                    - tree.syntax-or-invalid(selector?.object)
+                    - selector?.key
+            - deps
+    ~ "//+-" selector \probe-key-selector deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - RowRange'SyntaxId()
+                    - true
+                    - true
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+    ~ "//+" selector \probe-key-selector // "->" // content \probe-list-items deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - true
+                    - false
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+    ~ "//+" selector \probe-content-key? // content \probe-string deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - true
+                    - false
+                    - false
+                    - tree.syntax-or-invalid(selector?.object)
+                    - selector?.key
+            - deps
+    ~ "//+" selector \probe-key-selector deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - RowRange'SyntaxId()
+                    - true
+                    - false
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+    ~ "//-" selector \probe-key-selector // "->" // content \probe-list-items deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - false
+                    - true
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+    ~ "//-" selector \probe-content-key? // content \probe-string deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - tree.store-children(content)
+                    - false
+                    - true
+                    - false
+                    - tree.syntax-or-invalid(selector?.object)
+                    - selector?.key
+            - deps
+    ~ "//-" selector \probe-key-selector deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeGroup
+                    - location
+                    - RowRange'SyntaxId()
+                    - false
+                    - true
+                    - true
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+            - deps
+
+.. probe-assign ~
+    ~ "//" selector \probe-key-selector // "=" // content \inline-expression deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbeAssign
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+                    - content
+            - deps
+
+.. probe-log ~
+    ~ "//" selector \probe-key-selector // "->" // content \probe-list-items deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbe
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+                    - selector.key
+                    - tree.store-children(content)
+            - deps
+    ~ "//" selector \probe-content-key // content \probe-string deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbe
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - null
+                    - selector.key
+                    - tree.store-children(content)
+            - deps
+    ~ "//" // content \probe-string deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append(ASTProbe(location, 0, null, null, tree.store-children(content)))
+            - deps
+    ~ "//" selector \probe-key-selector deps \block?
+        probe-with-dependencies
+            - tree
+            - tree.append
+                - ASTProbe
+                    - location
+                    - tree.syntax-or-invalid(selector.object)
+                    - selector.key
+                    - selector.key
+                    - RowRange'SyntaxId()
+            - deps
+
+.. probe-key-selector ProbeKeySelector ~
+    ~ object \inline-expression-no-comma ":" key \materialized-probe-key
+        ProbeKeySelector(object, key)
+    ~ key \materialized-probe-key
+        ProbeKeySelector(null, key)
+
+.. materialized-probe-key Atom ~
+    ~ value \probe-category-key
+        value
+
+.. probe-list-items ImmutableArray'SyntaxId ~
+    ~ \delimited(",", ~ \probe-list-item)
+
+.. probe-list-item SyntaxId ~
+    ~ "$?{" expr \inline-expression "}"
+        tree.append(ASTProbePreview(location, expr))
+    ~ "$?" expr \string-embed-chain
+        tree.append(ASTProbePreview(location, expr))
+    ~ \inline-expression-no-comma
+
+.. probe-string ImmutableArray'SyntaxId ~
+    ~ parts \probe-string-part+
+        parts
+    ~ ""
+        sequence-singleton(tree, tree.append(ASTString(location, tree.store-string(""))))
+
+.. probe-string-part SyntaxId ~
+    ~ \probe-string-embed
+    ~ text \probe-string-text
+        tree.append(ASTString(location, tree.store-string(text)))
+
+.. probe-string-text String ~
+    ~ chars \probe-string-text-char+
+        chars.slice-string(tree.text-arena)
+
+.. probe-string-text-char Char ~
+    ~ "\\$"
+        '$'
+    ~ !(\probe-string-embed) !("≤" | "≥" | \line-terminator) .
+
+.. probe-string-embed ~
+    ~ "$!{" expr \inline-expression "}"
+        tree.append(ASTProbeSnapshot(location, expr))
+    ~ "$!" expr \string-embed-chain
+        tree.append(ASTProbeSnapshot(location, expr))
+    ~ "$?{" expr \inline-expression "}"
+        tree.append(ASTProbePreview(location, expr))
+    ~ "$?" expr \string-embed-chain
+        tree.append(ASTProbePreview(location, expr))
+    ~ \string-embed
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. numeric-literal SyntaxId ~
+    ~ \hex-integer-literal
+    ~ \decimal-literal
+
+.. hex-integer-literal SyntaxId ~
+    ~ "0x" digits \hex-digit-sequence
+        tree.append(ASTInteger(location, tree.store-string(value), hex-integer-unit(tree, digits)))
+            .. value = hex-integer-value(digits)
+
+.. decimal-literal SyntaxId ~
+    ~ integer \decimal-integer-literal tail \decimal-float-tail? u \unit?
+        make-decimal-literal(tree, location, integer, tail, u)
+    ~ value \leading-decimal-float-value u \unit?
+        tree.append(ASTFloat(location, tree.store-string(value), u))
+
+.. decimal-float-tail String ~
+    ~ frac \decimal-fraction exp \exponent-part?
+        "$frac${exp ?? ""}"
+    ~ \exponent-part
+
+.. leading-decimal-float-value String ~
+    ~ "." num \decimal-digit-sequence exp \exponent-part?
+        "0.$num${exp ?? ""}"
+
+.. decimal-fraction ~
+    ~ "." digits \decimal-digit-sequence?
+        ".${digits ?? ""}"
+
+.. decimal-integer-literal ~
+    ~ "0"
+    ~ \non-zero-decimal-digit-sequence
+
+.. non-zero-decimal-digit-sequence String ~
+    ~ [1-9] [0-9]* \decimal-digit-separator*
+        strip-numeric-separators(it)
+
+.. decimal-digit-sequence String ~
+    ~ [0-9] [0-9]* \decimal-digit-separator*
+        strip-numeric-separators(it)
+
+.. decimal-digit-separator ~
+    ~ "'" [0-9]+
+
+.. decimal-digit ~
+    ~ [0-9]
+
+.. hex-digit ~
+    ~ [0-9a-fA-F]
+
+.. hex-digit-sequence String ~
+    ~ [0-9a-fA-F] [0-9a-fA-F]* \hex-digit-separator*
+        strip-numeric-separators(it)
+
+.. hex-digit-separator ~
+    ~ "'" [0-9a-fA-F]+
+
+.. exponent-part ~
+    ~ marker [eE] n \signed-integer
+        "$marker$n"
+
+.. signed-integer ~
+    ~ !([+-] "'") sign [+-] digits \decimal-digit-sequence
+        "$sign$digits"
+    ~ \decimal-digit-sequence
+
+.. unit Atom ~
+    ~ [a-z] [a-z0-9]*
+    ~ [$\u20AC\u00A3\u00A5\u00A2\u20B9\u20A8\u20B1\u20A9\u0E3F\u20AB\u20AA]
+    ~ [%\u00B5\u00B0] [%\u00B5a-z-0-9]*
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. bool SyntaxId ~
+    ~ "true"
+        tree.append(ASTIdentifier(location, tree.atom("true"), false))
+    ~ "false"
+        tree.append(ASTIdentifier(location, tree.atom("false"), false))
+
+.. access Access ~
+    ~ "+"
+        .public-access
+    ~ "_"
+        .private-access
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+.. infix-operator ~
+    ~ \increment-operator
+    ~ \add-operator
+    ~ \multiply-operator
+    ~ \write-operator
+    ~ \glt-compare-operator
+    ~ \compare-operator
+    ~ \contain-operator
+
+.. increment-operator ~
+    ~ "+="
+        .add-eq-op
+    ~ "-="
+        .subtract-eq-op
+    ~ "*="
+        .multiply-eq-op
+    ~ "/="
+        .divide-eq-op
+    ~ "%="
+        .mod-eq-op
+    ~ "%%="
+        .pow-eq-op
+    ~ "++="
+        .concat-eq-op
+
+.. user-operator-1 ~
+    ~ "/" id \identifier "/"
+        id
+
+.. user-operator-2 ~
+    ~ "//" id \identifier "//"
+        id
+
+.. user-operator-3 ~
+    ~ "///" id \identifier "///"
+        id
+
+.. add-operator ~
+    ~ "++"
+        .concat-op
+    ~ "+"
+        .add-op
+    ~ "-"
+        .subtract-op
+
+.. multiply-operator ~
+    ~ "*"
+        .multiply-op
+    ~ "/"
+        .divide-op
+    ~ "%%"
+        .pow-op
+    ~ "%"
+        .mod-op
+
+.. prefix-operator ~
+    ~ "!"
+        .not-op
+    ~ "-=" /
+        .delete-op
+    ~ "-"
+        .negative-op
+    ~ "<-" /
+        .read-op
+    ~ "type-of"  //
+        .type-of-op
+    ~ "facts-of"  //
+        .facts-of-op
+
+.. postfix-operator ~
+    ~ "!" !"="
+        .optional-force-op
+
+.. coalesce-operator ~
+    ~ "??"
+        .coalesce-op
+
+.. if-operator ~
+    ~ "if"
+        .if-op
+
+.. assign-operator ~
+    ~ "="
+        .eq-op
+    ~ "<-*"
+        .write-all-op
+    ~ \increment-operator
+
+.. pipeline-operator ~
+    ~ "*>"
+        .map-op
+    ~ "?>"
+        .filter-op
+    ~ "|>"
+        .pipe-forward-op
+    ~ "|=>"
+        .pipe-closure-op
+    ~ "*|>"
+        .pipe-repeat-op
+    ~ "?*>"
+        .map-filter-op
+    ~ "*->"
+        .pipe-write-each-op
+    ~ "->"
+        .pipe-write-all-op
+    ~ "<|"
+        .pipe-backward-op
+
+.. logical-and-operator ~
+    ~ "&&"
+        .and-op
+
+.. logical-or-operator ~
+    ~ "||"
+        .or-op
+
+.. glt-compare-operator ~
+    ~ "<" !"="
+        .less-than-op
+    ~ ">" !"="
+        .greater-than-op
+    ~ "<="
+        .less-than-equals-op
+    ~ ">="
+        .greater-than-equals-op
+
+.. compare-operator ~
+    ~ "=="
+        .equals-op
+    ~ "!="
+        .not-equals-op
+
+.. as-operator ~
+    ~ "as"
+        .as-op
+
+.. is-operator ~
+    ~ \contain-operator
+    ~ "is!" is-not (// "not")?
+        if is-not then .is-not-exactly-op else .is-exactly-op
+    ~ "is~" is-not (// "not")?
+        if is-not then .is-not-similar-op else .is-similar-op
+    ~ "is" is-not (// "not")?
+        if is-not then .is-not-op else .is-op
+
+.. contain-operator ~
+    ~ "is" // "in"
+        .is-in-op
+    ~ "not" // "in"
+        .not-in-op
+    ~ "has" // "not"
+        .has-not-op
+    ~ "has"
+        .has-op
+
+.. compose-operator ~
+    ~ ">>"
+        .compose-forward-op
+    ~ "<<"
+        .compose-backward-op
+    ~ \write-operator
+
+.. write-operator ~
+    ~ "<-"
+        .write-op
+
+.. clause-operator ~
+    ~ "whenever"
+        .whenever-clause
+    ~ "when"
+        .when-clause
+    ~ "while"
+        .while-clause
+    ~ "until"
+        .until-clause
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+.. ws ~
+    ~ " " | "\t"

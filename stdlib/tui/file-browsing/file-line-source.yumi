@@ -1,0 +1,594 @@
+/core/virtual
+/math
+/os/file
+/os/path
+/time/clock
+
+_ file-line-read-chunk Size = 4096
+_ file-line-raw-display-limit Size = 1024
+_ file-line-display-character-limit Size = 240
+_ file-line-normal-page-lines Size = 256
+_ file-line-page-cache-limit Size = 16
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineIdentity is Tuple
+
+_ dev U64
+_ ino U64
+_ size I64
+_ mtime ClockTime
+
+────────────────────
++ This ?! Error
+    - path Path
+
+= This(stat.dev, stat.ino, stat.size, stat.mtime)
+    .. stat = path.stat
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineRecord is Tuple
+
+_ start-offset Index
+_ text String
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLinePage is Tuple
+
+_ first-line VirtualCoord
+_ lines [FileLineRecord]
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineCheckpoint is Tuple
+
+_ line VirtualCoord
+_ offset Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineScan is Tuple
+
+_ start-offset Index
+_ text String
+_ terminated Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileLineSource
+    is VirtualSource'String
+    is VirtualSequenceDomain
+    is Closable
+
++ revision := VirtualRevision()
++ byte-count => file-size
+
+_ path Path
+_ file File'Byte?
+_ identity FileLineIdentity
+_ file-size Index
+_ known-line-count VirtualCoord
+_ known-byte-offset Index
+_ final Bool
+_ final-line-start-offset Index
+_ final-line-unterminated Bool
+_ pages [FileLinePage]
+_ checkpoints [FileLineCheckpoint]
+
+────────────────────
++ This ?! Error
+    - path Path
+
+identity = FileLineIdentity(path)
+
+?! IOError("Unable to open a negative-sized file")
+    if identity.size < 0
+
+file-size = identity.size as Index
+file = File'Byte(path as String)
+
+────────────────────
++ get domain VirtualSequenceDomain
+
+this
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSequenceDomain ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get known-count VirtualCoord
+
+known-line-count
+
+────────────────────
++ get estimated-count VirtualCoord?
+
+estimate-count()
+
+────────────────────
+_ estimate-count VirtualCoord?
+
+|? final
+    known-line-count
+|? known-line-count <= 0vcoord || known-byte-offset == 0
+    null
+??
+    max(known-line-count, (estimate as VirtualCoord))
+
+.. estimate = ((file-size as I64) * (known-line-count as I64)) / (known-byte-offset as I64)
+
+────────────────────
++ get is-final Bool
+
+final
+
+────────────────────
++ address-at I64
+    - index VirtualCoord
+
+index
+
+────────────────────
++ index-of VirtualCoord?
+    - address I64
+
+|? address < 0
+    null
+|? final && (address as VirtualCoord) >= known-line-count
+    null
+??
+    address as VirtualCoord
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSource'String ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do bind
+    - address I64
+    - generation U64
+    - target VirtualBindingTarget'String
+
+if address < 0 || !file
+    target.fail(generation)
+    =
+
+. record = catch? resolve(address)
+if !record
+    target.fail(generation)
+    =
+
+. key = VirtualKey(revision.value, record.start-offset)
+target.commit(key, record.text, generation)
+
+────────────────────
++ do scan-to-end ?! IOError
+
+?! IOError("FileLineSource is closed")
+    if !file
+scan-to-end-impl()
+
+────────────────────
++ do refresh Bool ?! Error
+
+. next = FileLineIdentity(path)
+?! IOError("Unable to refresh a negative-sized file")
+    if next.size < 0
+
+. resets =
+    |? next.dev != identity.dev || next.ino != identity.ino
+        true
+    |? next.size < identity.size
+        true
+    |? next.size == identity.size && next.mtime != identity.mtime
+        true
+    ??
+        false
+
+if resets
+    reset-to(next)
+else
+    if next.size > identity.size
+        if final && final-line-unterminated && known-line-count > 0vcoord
+            rollback-unterminated-final-line()
+        else
+            final = false
+    identity = next
+    file-size = next.size as Index
+
+= resets
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if !file
+file.close()
+file = null
+revision.bump()
+clear-cache-and-domain()
+
+────────────────────
+_ do reset-to ?! IOError
+    - next FileLineIdentity
+
+file?.close()
+file = null
+clear-cache-and-domain()
+revision.bump()
+identity = next
+file-size = next.size as Index
+file = File'Byte(path as String)
+
+────────────────────
+_ do clear-cache-and-domain
+
+pages = List'FileLinePage()
+checkpoints = List'FileLineCheckpoint()
+known-line-count = 0vcoord
+known-byte-offset = 0
+final = false
+final-line-start-offset = 0
+final-line-unterminated = false
+
+────────────────────
+_ do resolve FileLineRecord? ?! IOError
+    - address VirtualCoord
+
+if final && address >= known-line-count
+    = null
+
+. cached = cached-record(address)
+if cached
+    = cached
+
+. extends-prefix = address >= known-line-count
+. scan-start =
+    |? extends-prefix
+        FileLineCheckpoint(known-line-count, known-byte-offset)
+    ??
+        closest-checkpoint(address)
+. scan-line = scan-start.line
+. scan-offset = scan-start.offset
+
+. scanner = FileLineScanner(this, scan-offset)
+while scan-line < address
+    . skipped = scanner.skip-line()
+    if !skipped
+        if extends-prefix
+            publish-prefix(scan-line, scanner.offset, true)
+            note-final-line(scan-line, scanner.last-line-start, scanner.last-line-terminated)
+        = null
+    scan-line += 1vcoord
+    if extends-prefix
+        publish-prefix(scan-line, scanner.offset, scanner.at-eof)
+        if scanner.at-eof
+            note-final-line(scan-line, scanner.last-line-start, scanner.last-line-terminated)
+    retain-checkpoint-if-boundary(scan-line, scanner.offset)
+
+. records [FileLineRecord]
+while records.length < file-line-normal-page-lines
+    . scanned = scanner.next-line()
+    if !scanned
+        if extends-prefix
+            publish-prefix(scan-line, scanner.offset, true)
+            note-final-line(scan-line, scanner.last-line-start, scanner.last-line-terminated)
+        break
+    . record = FileLineRecord(scanned.start-offset, scanned.text)
+    records += record
+    scan-line += 1vcoord
+    if extends-prefix
+        publish-prefix(scan-line, scanner.offset, scanner.at-eof)
+        if scanner.at-eof
+            note-final-line(scan-line, scanned.start-offset, scanned.terminated)
+    retain-checkpoint-if-boundary(scan-line, scanner.offset)
+    if scanner.at-eof
+        break
+
+if !records.length
+    = null
+
+pages += FileLinePage(address, records)
+if pages.length > file-line-page-cache-limit
+    pages.remove(0)
+= records[0]
+
+────────────────────
+_ do cached-record FileLineRecord?
+    - address VirtualCoord
+
+. page-index Index
+while page-index < pages.length
+    . page = pages[page-index]
+    . relative = address - page.first-line
+    if relative >= 0vcoord && relative < (page.lines.length as I64) as VirtualCoord
+        = page.lines[relative]
+    page-index += 1
+= null
+
+────────────────────
+_ do publish-prefix
+    - count VirtualCoord
+    - offset Index
+    - is-eof Bool
+
+known-line-count = count
+known-byte-offset = offset
+if is-eof
+    final = true
+
+────────────────────
+_ do note-final-line
+    - count VirtualCoord
+    - start-offset Index
+    - terminated Bool
+
+if count <= 0vcoord
+    final-line-start-offset = 0
+    final-line-unterminated = false
+else
+    final-line-start-offset = start-offset
+    final-line-unterminated = !terminated
+
+────────────────────
+_ do rollback-unterminated-final-line
+
+. rollback-line = known-line-count - 1vcoord
+. page-index Index
+while page-index < pages.length
+    . page-end = pages[page-index].first-line
+    page-end += (pages[page-index].lines.length as I64) as VirtualCoord
+    if page-end > rollback-line
+        pages.remove(page-index)
+    else
+        page-index += 1
+
+. checkpoint-index Index
+while checkpoint-index < checkpoints.length
+    if checkpoints[checkpoint-index].line > rollback-line
+        checkpoints.remove(checkpoint-index)
+    else
+        checkpoint-index += 1
+
+known-line-count = rollback-line
+known-byte-offset = final-line-start-offset
+final = false
+final-line-unterminated = false
+revision.bump()
+
+────────────────────
+_ do scan-to-end-impl ?! IOError
+
+=? if final
+. scanner = FileLineScanner(this, known-byte-offset)
+. line = known-line-count
+. last-line-start = final-line-start-offset
+. last-line-terminated = !final-line-unterminated
+while true
+    if !scanner.skip-line()
+        break
+    line += 1vcoord
+    last-line-start = scanner.last-line-start
+    last-line-terminated = scanner.last-line-terminated
+    retain-checkpoint-if-boundary(line, scanner.offset)
+publish-prefix(line, scanner.offset, true)
+note-final-line(line, last-line-start, last-line-terminated)
+
+────────────────────
+_ do closest-checkpoint FileLineCheckpoint
+    - address VirtualCoord
+
+. index = checkpoints.length
+while index > 0
+    index -= 1
+    . checkpoint = checkpoints[index]
+    if checkpoint.line <= address
+        = checkpoint
+= FileLineCheckpoint(0vcoord, 0)
+
+────────────────────
+_ do retain-checkpoint-if-boundary
+    - line VirtualCoord
+    - offset Index
+
+if line > 0vcoord && line % (file-line-normal-page-lines as I64) as VirtualCoord == 0vcoord
+    retain-checkpoint(line, offset)
+
+────────────────────
+_ do retain-checkpoint
+    - line VirtualCoord
+    - offset Index
+
+=? if line <= 0vcoord
+if checkpoints.length
+    . last = checkpoints[checkpoints.length - 1]
+    =? if last.line >= line
+
+checkpoints += FileLineCheckpoint(line, offset)
+
+────────────────────
+_ do read-chunk Size ?! IOError
+    - size Size
+    - buffer Byte[]
+    - offset Index
+
+?! IOError("FileLineSource is closed")
+    if !file
+
+= file.read(size, buffer, offset)
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineScanner
+
+_ source FileLineSource
+_ buffer := Byte[file-line-read-chunk]
+_ buffer-size Size
+_ buffer-index Index
+_ offset Index
+_ at-eof Bool
+_ last-line-start Index
+_ last-line-terminated Bool
+
+────────────────────
+_ This
+    - source
+    - offset
+
+────────────────────
+_ do next-line FileLineScan? ?! IOError
+
+=? if at-eof
+. start = offset
+last-line-start = start
+last-line-terminated = false
+. raw = Byte[file-line-raw-display-limit]
+. raw-size Size
+. has-bytes Bool
+
+while true
+    . maybe-byte = next-byte()
+    if !maybe-byte
+        at-eof = true
+        if !has-bytes
+            = null
+        break
+    . byte = maybe-byte
+    if byte == 10
+        last-line-terminated = true
+        break
+    has-bytes = true
+    if raw-size < raw.size
+        raw[raw-size] = byte
+        raw-size += 1
+
+if raw-size && raw[raw-size - 1] == 13
+    raw-size -= 1
+= FileLineScan(start, file-line-display(raw, raw-size), last-line-terminated)
+
+────────────────────
+_ do skip-line Bool ?! IOError
+
+=? if at-eof
+last-line-start = offset
+last-line-terminated = false
+. has-bytes Bool
+while true
+    . maybe-byte = next-byte()
+    if !maybe-byte
+        at-eof = true
+        = has-bytes
+    if maybe-byte == 10
+        last-line-terminated = true
+        = true
+    has-bytes = true
+
+────────────────────
+_ do next-byte Byte? ?! IOError
+
+if buffer-index >= buffer-size
+    if offset >= source.file-size
+        at-eof = true
+        = null
+    . remaining = source.file-size - offset
+    . request = min(file-line-read-chunk, remaining)
+    buffer-size = source.read-chunk(request, buffer, offset)
+    buffer-index = 0
+    if !buffer-size
+        at-eof = true
+        = null
+
+. byte = buffer[buffer-index]
+buffer-index += 1
+offset += 1
+if offset >= source.file-size
+    at-eof = true
+= byte
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-line-display String
+    - raw Byte[]
+    - size Size
+
+. output = Byte[file-line-display-character-limit * 4]
+. read-index Index
+. write-index Index
+. characters Size
+while read-index < size && characters < file-line-display-character-limit
+    . sequence = file-valid-utf8-sequence(raw, size, read-index)
+    if sequence
+        . copy-index Size
+        while copy-index < sequence
+            output[write-index] = raw[read-index + copy-index]
+            write-index += 1
+            copy-index += 1
+        read-index += sequence
+    else
+        output[write-index] = 239
+        output[write-index + 1] = 191
+        output[write-index + 2] = 189
+        write-index += 3
+        read-index += 1
+    characters += 1
+= output.slice-string(0 .. < write-index)
+
+━━━━━━━━━━━━━━━━━━━━
++ file-valid-utf8-sequence Size
+    - bytes Byte[]
+    - size Size
+    - index Index
+
+|? first <= 127
+    1
+|? first >= 194 && first <= 223
+    if index + 1 < size && file-utf8-continuation(bytes[index + 1]) then 2 else 0
+|? first >= 224 && first <= 239
+    file-valid-utf8-three(bytes, size, index)
+|? first >= 240 && first <= 244
+    file-valid-utf8-four(bytes, size, index)
+??
+    0
+
+.. first = bytes[index]
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-valid-utf8-three Size
+    - bytes Byte[]
+    - size Size
+    - index Index
+
+|? index + 2 >= size
+    0
+|? !third-valid
+    0
+|? first == 224
+    if second >= 160 && second <= 191 then 3 else 0
+|? first == 237
+    if second >= 128 && second <= 159 then 3 else 0
+??
+    if file-utf8-continuation(second) then 3 else 0
+
+.. first = bytes[index]
+.. second = bytes[index + 1]
+.. third-valid = file-utf8-continuation(bytes[index + 2])
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-valid-utf8-four Size
+    - bytes Byte[]
+    - size Size
+    - index Index
+
+|? index + 3 >= size
+    0
+|? !third-valid || !fourth-valid
+    0
+|? first == 240
+    if second >= 144 && second <= 191 then 4 else 0
+|? first == 244
+    if second >= 128 && second <= 143 then 4 else 0
+??
+    if file-utf8-continuation(second) then 4 else 0
+
+.. first = bytes[index]
+.. second = bytes[index + 1]
+.. third-valid = file-utf8-continuation(bytes[index + 2])
+.. fourth-valid = file-utf8-continuation(bytes[index + 3])
+
+━━━━━━━━━━━━━━━━━━━━
+_ file-utf8-continuation Bool
+    - byte Byte
+
+byte >= 128 && byte <= 191

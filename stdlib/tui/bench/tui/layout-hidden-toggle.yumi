@@ -1,0 +1,61 @@
+`benchmark.meta description: Toggles large TUI subtrees between hidden and visible display states.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: tui,tui-fps,compile-timing
+
+/core/markup
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
+. root = BenchHiddenToggleRoot()
+markup-mount-root(root, root)
+root.bounds = Rect(0, 0, 120, 44)
+
+for group-index in 0 .. < 36
+    . group = BenchToggleGroup()
+    group.is-hidden = group-index % 2 == 0
+    markup-append(root, group)
+    root.groups += group
+    for item-index in 0 .. < 18
+        markup-append(group, Label("toggle-${group-index}-$item-index"))
+
+root.markup-batch-queue.checkpoint()
+root.update-layout()
+
+. checksum Size = 0
+for frame in 0 .. < 72
+    . group = root.groups[frame % root.groups.length]
+    group.is-hidden = !group.is-hidden
+    root.markup-batch-queue.checkpoint()
+    root.update-layout()
+    //tui.bench.frames ++
+    //tui.bench.mutations ++
+    checksum += root.inner-width + root.inner-height + frame
+
+-- "bench-result tui/layout-hidden-toggle checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchHiddenToggleRoot is Box
+    is MarkupBatch
+
++ groups [BenchToggleGroup]
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchToggleGroup is Box
+
++ is-hidden = true
+
+• This
+    layout = flow-col
+    display = if #is-hidden then Display.hidden else Display.visible

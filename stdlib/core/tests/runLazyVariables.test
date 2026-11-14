@@ -1,0 +1,2988 @@
+:====
+# Unused lazy variables are not evaluated.
+
+-- "start"
+-- kept
+    .. kept = tick("kept", 1)
+    .. unused = tick("unused", 99)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+start
+tick kept
+1
+;====
+:====
+# A module variable demanded while compiling a cross-module virtual override initializes before
+# the module main call that first dispatches to the override.
+
+./lib/base
+
+-- read-through-base(Derived())
+
+_ module-value Int = 37
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ value Int
+
+module-value
+
+:----
+%file: lib/base.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ value Int
+
+0
+
+━━━━━━━━━━━━━━━━━━━━
++ read-through-base Int
+    - item Base
+
+item.value()
+
+:----
+
+37
+;====
+:====
+# A single lazy use may be evaluated directly at the use site.
+
+-- value
+    .. value = tick("single", 42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick single
+42
+;====
+:====
+# Lazy-only dependency chains evaluate each dependency once in demand order.
+
+-- c
+    .. c = tick("c", b + 1)
+        .. b = tick("b", a + 1)
+            .. a = tick("a", 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick a
+tick b
+tick c
+3
+;====
+:====
+# Lazy initializer dependency reads do not materialize dependencies at declaration sites.
+
+_ hits = 0
+
+if false
+    -- a
+
+-- b
+-- hits
+
+.. a = b + b
+.. b = hits += 1
+
+:----
+
+1
+1
+;====
+:====
+# Repeated reads after a dominating first read evaluate the initializer once.
+
+-- value + value
+    .. value = tick("repeat", 21)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick repeat
+42
+;====
+:====
+# A lazy value used only in one branch is not evaluated by the other branch.
+
+choose(false)
+choose(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose
+    - use-value Bool
+
+if use-value
+    -- "used $value"
+else
+    -- "skipped"
+
+.. value = tick("branch", 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+skipped
+tick branch
+used 5
+;====
+:====
+# First evaluation in either branch is visible after the branch joins.
+
+choose(true)
+choose(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose
+    - left Bool
+
+if left
+    -- "left $value"
+else
+    -- "right $value"
+
+-- "after $value"
+
+.. value = tick("join", 8)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick join
+left 8
+after 8
+tick join
+right 8
+after 8
+;====
+:====
+# A single lexical read in a loop is still many dynamic reads, but evaluates once per lazy lifetime.
+
+for i in 0 .. < 3
+    -- "$i:$value"
+
+.. value = tick("loop", 7)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick loop
+0:7
+1:7
+2:7
+;====
+:====
+# A single lexical read in a while loop is still many dynamic reads.
+
+_ i = 0
+
+while i < 3
+    -- "$i:$value"
+    i += 1
+
+.. value = tick("while", 7)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick while
+0:7
+1:7
+2:7
+;====
+:====
+# Lazy locals have a fresh lifetime for each function call.
+
+foo()
+foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+-- value
+-- value
+
+.. value = tick("call", 9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick call
+9
+9
+tick call
+9
+9
+;====
+:====
+# An escaping closure can capture a lazy local and memoize it for that closure instance.
+
+. fn = make()
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> value
+
+.. value = tick("closure", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick closure
+3
+3
+;====
+:====
+# Mutating a captured lazy local initializes it before applying the mutation.
+
+. add = make-counter()
+-- add(2)
+-- add(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-counter
+
+:: n => do
+    total += n
+    = total
+
+.. total = tick("counter", 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick counter
+2
+5
+;====
+:====
+# Mutating a local lazy variable before a plain read initializes it first.
+
+value += 2
+-- value
+
+.. value = tick("mutate", 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick mutate
+12
+;====
+:====
+# Lazy variables with only a type use the type's default value and memoize it.
+
+-- value
+-- value
+
+.. value Int
+
+:----
+
+0
+0
+;====
+:====
+# A recoverable error result from lazy evaluation is memoized, not retried.
+
+_ attempts = 0
+
+-- catch? value ?? -1
+-- catch? value ?? -1
+-- value
+-- attempts
+
+.. value = maybe()
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe Int ?! Error
+
+attempts += 1
+-- "attempt $attempts"
+
+if attempts == 1
+    ?! Error("first")
+
+= 12
+
+:----
+
+attempt 1
+-1
+-1
+first
+1
+;====
+:====
+# Circular lazy references are diagnosed.
+
+-- a
+
+.. a = b
+.. b = a
+
+:----
+%crash
+
+Exception: "a" depends on its own value, directly or through the values it reads; break the cycle
+<no file:4>
+    .. a = b
+       ^
+;====
+:====
+# Lazy tuple destructuring evaluates the shared initializer once for all captures.
+
+foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+-- a
+-- b
+-- a + b
+
+.. a, b = pair()
+
+━━━━━━━━━━━━━━━━━━━━
++ do pair
+
+-- "pair"
+= 1, 2
+
+:----
+
+pair
+1
+2
+3
+;====
+:====
+# Lazy variables in markup scope are visible to nested content and are not reevaluated.
+
+<Foo root
+    .. value = tick("markup", 41)
+    <Foo
+        a = value + 1
+        <Foo
+            a = value + 2
+
+-- root.child?.a
+-- root.child?.child?.a
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 0
++ child Foo?
+
+────────────────────
++ do this += foo
+
+child = foo
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick markup
+42
+43
+;====
+:====
+# Local lazy declaration state machines initialize once per lazy declaration lifetime.
+
+lazy-local("first")
+lazy-local("second")
+
+_ hits = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do lazy-local
+    - label String
+
+.. flow ~>
+    ~> idle
+    ~> ready if mark(label)
+
+-- "before $label $hits"
+-- flow is .ready
+-- "middle $label $hits"
+-- flow is .ready
+-- "after $label $hits"
+
+━━━━━━━━━━━━━━━━━━━━
++ do mark Bool
+    - label String
+
+hits += 1
+-- "mark $label $hits"
+= true
+
+:----
+
+before first 0
+mark first 1
+true
+middle first 1
+true
+after first 1
+before second 1
+mark second 2
+true
+middle second 2
+true
+after second 2
+;====
+:====
+# A lazy local nothing reads is never evaluated.
+
+-- "start"
+
+.. a = noisy()
+.. b = a + 1
+
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+
+-- "noisy"
+= 1
+
+:----
+
+start
+done
+;====
+:====
+# A lazy local of a constructor that is named as a property gives the property its first value at the turn of the property, and a lazy local a property reads is evaluated then, once.
+
+. h = Holder(7)
+-- "made ${h.a} ${h.b} ${h.c} ${h.d} ${h.e}"
+
+━━━━━━━━━━━━━━━━━━━━
++ note Int
+    - text String
+    - n Int
+
+-- text
+n
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ a = note("a default", 1)
++ b Int
++ c = note("c default", 3)
++ d Int
++ e = note("e default", 5)
+
+────────────────────
++ This
+    - seed Int
+
+.. d = note("d lazy", b + seed)
+.. b = note("b lazy", 20)
+.. e = note("e lazy", 50)
+-- "body"
+
+:----
+
+a default
+b lazy
+c default
+d lazy
+e lazy
+body
+made 1 20 3 27 50
+;====
+:====
+# A lazy local that a property of a constructor reads is evaluated once for the properties, and again for the body.
+
+. k = Keeper()
+-- "made ${k.b} ${k.c}"
+. m = Mixed()
+-- "made ${m.b}"
+
+━━━━━━━━━━━━━━━━━━━━
++ note Int
+    - text String
+    - n Int
+
+-- text
+n
+
+━━━━━━━━━━━━━━━━━━━━
++ Keeper
+
++ b Int
++ c Int
+
+────────────────────
++ This
+
+.. b = c + note("b lazy", 1)
+.. c = note("c lazy", 2)
+-- "body"
+
+━━━━━━━━━━━━━━━━━━━━
++ Mixed
+
++ b Int
+
+────────────────────
++ This
+
+.. helper = note("helper", 5)
+.. b = helper + note("b lazy", 1)
+-- "body $helper"
+
+:----
+
+c lazy
+b lazy
+body
+made 3 2
+helper
+b lazy
+helper
+body 5
+made 6
+;====
+:====
+# A struct given before a lazy local is what it was before the local was evaluated
+
++ kept = Vec(1)
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+-- take(kept, later)
+kept = Vec(1)
+-- kept + twice
+
+.. later = change(100)
+.. twice = change(200)
+
+━━━━━━━━━━━━━━━━━━━━
++ take Int
+    - vec Vec
+    - n Int
+
+vec.a + n
+
+━━━━━━━━━━━━━━━━━━━━
++ do change Int
+    - n Int
+
+kept = Vec(n)
+= 5
+
+━━━━━━━━━━━━━━━━━━━━
++ Vec is Struct
+
++ a Int
+
+────────────────────
++ this + n Int = Int
+
+a + n
+
+:----
+
+6
+6
+;====
+:====
+# A struct given before a lazy property is what it was before the property was evaluated
+
+-- Holder().run()
+
+━━━━━━━━━━━━━━━━━━━━
++ take Int
+    - vec Vec
+    - n Int
+
+vec.a + n
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ vec = Vec(1)
++ later := change()
+
+────────────────────
++ run Int
+
+take(vec, later)
+
+────────────────────
++ do change Int
+
+vec = Vec(100)
+= 5
+
+━━━━━━━━━━━━━━━━━━━━
++ Vec is Struct
+
++ a Int
+
+:----
+
+6
+;====
+:====
+# A struct given before a lazy global is what it was before the global was evaluated
+
++ kept = Vec(1)
++ later := change()
+
+-- take(kept, later)
+
+━━━━━━━━━━━━━━━━━━━━
++ take Int
+    - vec Vec
+    - n Int
+
+vec.a + n
+
+━━━━━━━━━━━━━━━━━━━━
++ do change Int
+
+kept = Vec(100)
+= 5
+
+━━━━━━━━━━━━━━━━━━━━
++ Vec is Struct
+
++ a Int
+
+:----
+
+6
+;====
+:====
+# Operand read before a lazy local that changes what it names
+
+
+-- run()
+-- twice()
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do add Int
+    - first Point
+    - second Int
+
+= first.x + first.y + second
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+
+. point = Point(1, 2)
+.. bumped = bump(point)
+. total = add(point, bumped)
+= total + point.x
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Int
+    - point Point
+
+point.x = 100
+= point.x
+
+━━━━━━━━━━━━━━━━━━━━
++ do twice Int
+
+. count = 1
+.. stepped = count += 10
+. first = count + stepped
+. second = count + stepped
+= first * 100 + second
+
+:----
+
+104
+1222
+;====
+:====
+# A lazy local assigned on one path before it is read is not evaluated on that path.
+
+run(true)
+run(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+    - c Bool
+
+if c
+    v = 5
+-- v
+v += 1
+-- v
+
+.. v = tick("v", 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+5
+6
+tick v
+1
+2
+;====
+:====
+# Lazy locals assigned and read in a loop are evaluated once, by the first read that runs.
+
+run(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+    - n Int
+
+. i = 0
+while i < n
+    if i == 1
+        v = 10
+    total += v
+    i += 1
+-- total
+-- v
+
+.. v = tick("v", 1)
+.. total = tick("total", 100)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick total
+tick v
+121
+10
+;====
+:====
+# A lazy local assigned before anything reads it is never evaluated.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+v = 7
+w = "x"
+w += "y"
+-- w
+z = 2.5
+
+.. v = tick("v", 1)
+.. w = name("w")
+.. z Float = tick("z", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do name
+    - label String
+
+-- "name $label"
+= label
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value I32
+
+-- "tick $label"
+= value
+
+:----
+
+xy
+;====
+:====
+# A lazy local assigned on a path that returns, and read and assigned on the other.
+
+-- run(1)
+-- run(20)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - n Int
+
+if n > 10
+    v = n
+    = v
+v += n
+= v
+
+.. v = tick("v", 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick v
+2
+20
+;====
+:====
+# A lazy local assigned from itself is evaluated by the read.
+
+-- run(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - n Int
+
+v = v + n
+= v
+
+.. v = tick("v", 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick v
+2
+;====
+:====
+# Lazy locals declared together are evaluated together, once, by the first read of any.
+
+run(true)
+run(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+    - c Bool
+
+if c
+    -- b
+-- a + b
+-- x
+-- "$y $z"
+
+.. a, b = tick("a", 1), tick("b", 2)
+.. x, y, z = tick("x", 5), "s", 2.5
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick a
+tick b
+2
+3
+tick x
+5
+s 2.5
+tick a
+tick b
+3
+tick x
+5
+s 2.5
+;====
+:====
+# Lazy locals declared together from one value, read in a loop.
+
+-- run(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - n Int
+
+. i = 0
+. sum = 0
+while i < n
+    sum += a
+    if i == 1
+        sum += b
+    i += 1
+= sum
+
+.. a, b = pair(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pair
+    - n Int
+
+-- "pair"
+= n, n * 10
+
+:----
+
+pair
+39
+;====
+:====
+# Lazy locals declared together under an expression are evaluated only where it reads them.
+
+-- run(3)
+-- run(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ run
+    - n Int
+
+if n > 1 then a + b else 0
+    .. a, b = pair(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pair
+    - n Int
+
+-- "pair"
+= n, n * 10
+
+:----
+
+pair
+33
+0
+;====
+:====
+# Lazy locals declared together in a method, from its properties.
+
+. thing = Thing()
+-- thing.sum()
+-- thing.sum()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ size = 4
+
+────────────────────
++ do sum Int
+
+if size > 3
+    = w + h
+= 0
+
+.. w, h = size, size * 2
+
+:----
+
+12
+12
+;====
+:====
+# Lazy locals declared together with types are converted to them.
+
+.. foo Int, bar String, baz Float = (1, "hi", 2.5)
+-- foo
+-- bar
+-- baz
+
+:----
+
+1
+hi
+2.5
+;====
+:====
+# A lazy local with a type and no value is the default of the type.
+
+-- a
+
+.. a Int
+
+:----
+
+0
+;====
+:====
+# A lazy local with no value under an expression.
+
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+a + 0
+    .. a Int
+
+:----
+
+0
+;====
+:====
+# A captured lazy local the function reads first is evaluated once, for it and for the closure.
+
+. fn = make()
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make
+
+-- value
+= => value + 1
+
+.. value = tick("owner first", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick owner first
+3
+4
+4
+;====
+:====
+# A captured lazy local a closure reads first is evaluated once, for it and for the function.
+
+-- make()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+
+. get = => value + 1
+. first = get()
+= first + value
+
+.. value = tick("closure first", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick closure first
+7
+;====
+:====
+# The value of a captured lazy local reads an argument that nothing else captures.
+
+. fn = make(5)
+-- fn()
+-- fn()
+. other = make(7)
+-- other()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+    - n Int
+
+=> value + 1
+
+.. value = tick("argument", n * 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick argument
+11
+11
+tick argument
+15
+;====
+:====
+# A captured lazy local a closure assigns before any read is never evaluated.
+
+. set = make()
+-- set(2)
+-- set(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+:: n => do
+    total = n
+    = total
+
+.. total = tick("assigned", 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+2
+3
+;====
+:====
+# A captured lazy local a closure assigns after a read keeps what was assigned.
+
+. fn = make()
+-- fn(1)
+-- fn(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+:: n => do
+    if n == 2
+        value = 100
+    = value + n
+
+.. value = tick("assigned later", 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick assigned later
+6
+102
+;====
+:====
+# The value of a captured lazy local reads another lazy local.
+
+. fn = make()
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> a + 1
+
+.. a = b * 2
+.. b = tick("chain", 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick chain
+9
+9
+;====
+:====
+# A lazy local read two closures deep is evaluated once in a run of the function that declares it.
+
+. fn = make()
+. inner = fn()
+-- inner()
+-- inner()
+. again = fn()
+-- again()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=>
+    => value + 1
+
+.. value = tick("two deep", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick two deep
+4
+4
+4
+;====
+:====
+# The value of a captured lazy local reads a property of the receiver.
+
+. thing = Thing()
+. fn = thing.make()
+-- fn()
+thing.size = 9
+-- fn()
+. next = thing.make()
+-- next()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ size = 4
+
+────────────────────
++ make
+
+=> value + 1
+
+.. value = tick("member", size * 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick member
+9
+9
+tick member
+19
+;====
+:====
+# The value of a captured lazy local calls a method of the receiver.
+
+. thing = Thing()
+. fn = thing.make()
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ size = 4
+
+────────────────────
++ make
+
+=> value + 1
+
+.. value = helper(2)
+
+────────────────────
++ do helper Int
+    - n Int
+
+-- "helper"
+= size * n
+
+:----
+
+helper
+9
+9
+;====
+:====
+# A closure in a method adds a captured lazy local to a property its value changes.
+
+. counter = Counter()
+. step = counter.stepper()
+-- step()
+-- step()
+-- counter.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+────────────────────
++ stepper
+
+=> do
+    count += base
+    = count
+
+.. base = bump(10)
+
+────────────────────
++ do bump Int
+    - n Int
+
+count += 1
+-- "bump"
+= n
+
+:----
+
+bump
+10
+20
+20
+;====
+:====
+# The value of a captured lazy local reads a local as it is when the value is evaluated.
+
+-- make()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+
+. n = 1
+. get = => value + 1
+n = 5
+= get() + n
+
+.. value = tick("later", n * 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick later
+56
+;====
+:====
+# A captured lazy local whose value reads an optional argument.
+
+-- make(4)
+-- make(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+    - n Int?
+
+if n
+    . get = => value + 1
+    = get()
+= 0
+
+.. value = tick("narrowed", (n ?? 7) * 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick narrowed
+41
+0
+;====
+:====
+# Captured lazy locals of text, a tuple and an object, read after many allocations.
+
+. fn = make("a")
+. junk = [1]
+. i = 0
+while i < 20000
+    junk = [i, i + 1, i + 2]
+    i += 1
+-- fn()
+-- fn()
+-- junk.length
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+    - prefix String
+
+=> "$text/${point.x + point.y}/${thing.size}"
+
+.. text = build(prefix)
+.. point = Point(3, 4)
+.. thing = Thing()
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is (x Int, y Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ size = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ do build String
+    - prefix String
+
+-- "build"
+= "${prefix}-built"
+
+:----
+
+build
+a-built/7/9
+a-built/7/9
+3
+;====
+:====
+# A captured lazy local with no value is the default of its type.
+
+. add = make()
+-- add(2)
+-- add(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+:: n => do
+    total += n
+    = total
+
+.. total Int
+
+:----
+
+2
+5
+;====
+:====
+# A captured lazy local with a type is converted to it.
+
+. get = make()
+-- get()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> value / 2
+
+.. value Float = tick("typed", 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value I32
+
+-- "tick $label"
+= value
+
+:----
+
+tick typed
+1.5
+;====
+:====
+# A captured lazy local that is an optional holding nothing is evaluated once.
+
+. fn = make()
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> value ?? -1
+
+.. value Int? = maybe()
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe Int?
+
+-- "maybe"
+= null
+
+:----
+
+maybe
+-1
+-1
+;====
+:====
+# A closure that reads a captured lazy local, called in a loop.
+
+-- run(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - n Int
+
+. sum = 0
+. i = 0
+. add = => do
+    sum += value
+    = sum
+while i < n
+    add()
+    i += 1
+= sum
+
+.. value = tick("loop", 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick loop
+15
+;====
+:====
+# A captured lazy local the function reads on one path only.
+
+-- make(true)
+-- make(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Int
+    - early Bool
+
+. get = => value + 1
+if early
+    -- value
+= get()
+
+.. value = tick("branch", 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+tick branch
+5
+6
+tick branch
+6
+;====
+:====
+# A captured lazy local of a closure that is never called is never evaluated.
+
+. fn = make()
+-- 1
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> value + 1
+
+.. value = tick("never", 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+
+:----
+
+1
+;====
+:====
+# Captured lazy locals whose values are a list's length and a conditional.
+
+. fn = make(3)
+-- fn()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+    - n Int
+
+=> value + it-total
+
+.. value = [n, n + 1, n + 2].length
+.. it-total = if n > 2 then n * 2 else 0
+
+:----
+
+9
+9
+;====
+:====
+# A panic raised by the value of a captured lazy local, in the closure that reads it.
+
+do finally
+    -- recover()
+. fn = make()
+-- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+
+=> value + 1
+
+.. value = fail("lazy")
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail Int
+    - label String
+
+?! Panic("failed $label")
+
+:----
+
+failed lazy
+;====
+:====
+# A lazy local declared in a loop body has a fresh lifetime for each iteration, also when its
+# first read is inside a branch.
+
+for title in ["a", "b", "c"]
+    .. shown = tick(title)
+    if title == "b"
+        -- shown
+    -- "$shown+"
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick String
+    - text String
+
+-- "tick $text"
+= "$text!"
+
+:----
+
+tick a
+a!+
+tick b
+b!
+b!+
+tick c
+c!+
+;====
+:====
+# Lazy tuple destructuring in a loop body evaluates its initializer once per iteration.
+
+for title in ["a", "b"]
+    .. first, second = pair(title)
+    -- first
+    -- second
+
+━━━━━━━━━━━━━━━━━━━━
++ do pair
+    - text String
+
+-- "pair $text"
+= "${text}1", "${text}2"
+
+:----
+
+pair a
+a1
+a2
+pair b
+b1
+b2
+;====
+:====
+# A lazy local declared in a loop body and read in a nested loop evaluates once per iteration
+# of the loop that declares it.
+
+for title in ["a", "b"]
+    .. shown = tick(title)
+    for index in 0 .. < 2
+        -- "$index $shown"
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick String
+    - text String
+
+-- "tick $text"
+= "$text!"
+
+:----
+
+tick a
+0 a!
+1 a!
+tick b
+0 b!
+1 b!
+;====
+:====
+# A lazy local declared in a while loop body has a fresh lifetime for each iteration.
+
+. index = 0
+while index < 2
+    .. shown = tick("row $index")
+    if index == 1
+        -- shown
+    -- "$shown+"
+    index += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick String
+    - text String
+
+-- "tick $text"
+= "$text!"
+
+:----
+
+tick row 0
+row 0!+
+tick row 1
+row 1!
+row 1!+
+;====
+:====
+# A lazy local declared in a loop body and read both directly and by a closure created in that
+# iteration is evaluated once per iteration and shared between the two.
+
+for title in ["a", "b", "c"]
+    .. shown = tick(title)
+    if title == "b"
+        -- shown
+    . fn = => shown
+    -- fn()
+    -- fn()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick String
+    - text String
+
+-- "tick $text"
+= "$text!"
+
+:----
+
+tick a
+a!
+a!
+tick b
+b!
+b!
+b!
+tick c
+c!
+c!
+;====
+:====
+# A guard written before a function's value reads a lazy local declared under the value.
+
+-- catch pick(1)
+-- catch pick(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String ?! Error
+    - id U32
+
+?! Error("too big")
+    if !legal
+"fine $id"
+    .. legal = match id
+        |= 1
+            true
+        ??
+            false
+
+:----
+
+fine 1
+too big
+;====
+:====
+# A lazy local declared under a function's value, read by a guard before the value and by the
+# value, is computed once.
+
+-- catch scaled(3)
+-- catch scaled(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ scaled Int ?! Error
+    - n Int
+
+?! Error("too small")
+    if !legal
+if legal then n * 10 else 0
+    .. legal = checked(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked Bool
+    - n Int
+
+-- "checking $n"
+= n > 2
+
+:----
+
+checking 3
+30
+checking 1
+too small
+;====
+:====
+# A lazy local beside a stream match, read by two of its arms, is computed by the arm that runs.
+
+-- run("b")
+-- run("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ do run String
+    - text String
+
+= match text
+    ~ "a"
+        "first $label"
+    ~ "b"
+        "second $label"
+    ?? "none"
+
+    .. label = make-label()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-label String
+
+-- "computing"
+= "L"
+
+:----
+
+computing
+second L
+computing
+first L
+;====
+:====
+# A lazy local declared twice in one block is diagnosed.
+
+-- pick(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String
+    - id U32
+
+"fine $a"
+    .. a = id + 1
+    .. a = id + 2
+
+:----
+%crash
+
+Exception: Variable is already defined
+<no file:10>
+        .. a = id + 2
+           ^
+;====
+:====
+# A lazy local read twice may narrow an optional by a test its own value makes.
+
+-- pick("fallback", 1, null)
+-- pick("fallback", 1, "chosen")
+-- pick("fallback", 2, "chosen")
+-- pick("", 1, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick String
+    - value String
+    - index U32
+    - preferred String?
+
+. shown = "<$text>" if text.length
+    .. text = if preferred && index == 1 then preferred else value
+= shown ?? "empty"
+
+:----
+
+<fallback>
+<chosen>
+<fallback>
+empty
+;====
+:====
+# A lazy local read twice may narrow, by its own test, a lazy local it is the first to read.
+
+-- label(3)
+-- label(-1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ find Int?
+    - n Int
+
+n if n > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ label
+    - n Int
+
+|? record
+    "found ${record}"
+??
+    "none"
+
+.. found = find(n)
+.. record = found * 2 if found
+
+:----
+
+found 6
+none
+;====
+:====
+# A lazy attached to a function's result is visible to the statements above the result.
+
+-- checked(5)
+-- catch? checked(0) ?? -1
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ checked Int ?! CheckError
+    - n Int
+
+?! CheckError("illegal")
+    if !legal
+n
+    .. legal = n > 0
+
+:----
+
+5
+-1
+;====
+:====
+# A lazy local whose value raises, first read in a comprehension, is evaluated there, and its error leaves the function that declares it.
+
+-- catch? listed(3) ?? "failed"
+-- catch? listed(-1) ?? "failed"
+
+━━━━━━━━━━━━━━━━━━━━
++ do check Int ?! Error
+    - n Int
+
+-- "check"
+?! Error("negative")
+    if n < 0
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do note Int
+    - n Int
+
+-- "item $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do listed String ?! Error
+    - n Int
+
+-- "before"
+. a = items.length
+-- "after"
+= "$a"
+
+.. checked = check(n)
+.. items =
+    ** [1, 2]
+    *> note(each) * checked
+    |> List
+
+:----
+
+before
+item 1
+check
+item 2
+after
+2
+before
+item 1
+check
+failed
+;====
+:====
+# A lazy local holding a closable value, first read in the content of a markup element, is closed when the element closes.
+
+/core/tests/support/markup-fixtures
+
+. numbers AsyncChannel'Int
+.. source = numbers
+
+<Label shown
+    "closed ${source.is-closed}"
+
+-- shown.text
+shown.close()
+-- numbers.is-closed
+
+:----
+
+closed false
+true
+;====
+:====
+# A lazy local whose value pipes a list through a function, read by a list of bullets, is
+# evaluated where the list reads it, and the function reads the arguments of the one that declares
+# the local.
+
+-- matches(["a", "bb", "c", "b"], "b", true)
+-- matches(["a", "bb", "c", "b"], "b", false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ matches
+    - keys [String]
+    - needle String
+    - more Bool
+
+List'String
+    ** found
+    **? others if more
+
+.. found =
+    ** keys
+    ?> each.starts-with(needle)
+.. others =
+    ** keys
+    ?> !each.starts-with(needle)
+
+:----
+
+bb, b, a, c
+bb, b
+;====
+
+:====
+# The value of a lazy local read under more than one flow, where what a test in the value itself
+# finds of a local holds wherever the value is evaluated.
+
+. finder = Finder()
+-- finder.hit(2)
+-- finder.hit(0)
+-- finder.hit(-1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ size Index
+
+────────────────────
++ This
+    - size
+
+━━━━━━━━━━━━━━━━━━━━
++ Pick is Tuple
+
++ segment Index
++ parameter Index
+
+━━━━━━━━━━━━━━━━━━━━
++ Hit is Tuple
+
++ shape Box? = null
++ segment Index = 0
++ parameter Index = 0
++ leaf Box? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ Doc
+
+────────────────────
++ has Bool
+    - box Box
+
+box.size > 5
+
+────────────────────
++ pick-in Pick?
+    - box Box
+
+Pick(box.size, 2) if box.size > 25
+
+━━━━━━━━━━━━━━━━━━━━
++ Finder
+
++ boxes [Box] = [Box(1), Box(20), Box(30)]
++ document = Doc()
+
+────────────────────
++ do box-at Box?
+    - at I64
+
+=? null if at < 0
+= boxes[at as Index]
+
+────────────────────
++ has Bool
+    - box Box
+
+box.size > 5
+
+────────────────────
++ pick-in Pick?
+    - box Box
+
+Pick(box.size, 2) if box.size > 25
+
+────────────────────
++ do hit String
+    - at I64
+
+. found = node-hit(at)
+= "${found.shape?.size ?? 0} ${found.segment} ${found.parameter} ${found.leaf?.size ?? 0}"
+
+────────────────────
++ node-hit Hit
+    - at I64
+
+|? !leaf
+    Hit()
+|? pick
+    Hit(shape, pick.segment, pick.parameter, leaf)
+??
+    Hit(shape, 0, 0, leaf)
+
+.. leaf = box-at(at)
+.. shape = leaf if leaf && document.has(leaf)
+.. pick = document.pick-in(shape) if shape
+
+:----
+
+30 30 2 30
+0 0 0 1
+0 0 0 0
+;====
+:====
+# Lazy locals nested in the lazy local of an arm are evaluated where the arm reads them.
+
+for item in paths(".abc")
+    -- "${item[0]} ${item[1]}"
+for item in paths(".abcdefg")
+    -- "${item[0]} ${item[1]}"
+for item in paths("plain")
+    -- "${item[0]} ${item[1]}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ paths
+    - name String
+
+|? name.starts-with(".")
+    * full-name, 1
+    * "${full-name}!", 2
+
+    .. full-name = local-name ?? default-name
+        .. local-name = "L$name" if name.length > 5
+        .. default-name = base ++ name
+            .. base = "D"
+??
+    * name, 3
+
+:----
+
+D.abc 1
+D.abc! 2
+L.abcdefg 1
+L.abcdefg! 2
+plain 3
+;====
+:====
+# A caught read of a lazy property of a class converted to an interface but never constructed is
+# emitted, and never runs.
+
+. holder Holder? = null
+. proto Proto? = holder
+-- proto?.bar() ?? -1
+-- holder?.read() ?? -1
+
+━━━━━━━━━━━━━━━━━━━━
++ Proto is Interface
+
+────────────────────
++ bar Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked Int ?! Error
+    - value Int
+
+?! Error("bad")
+    if value < 0
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+    is Proto
+
++ value := checked(3)
+
+────────────────────
++ bar
+
+7
+
+────────────────────
++ do read Int?
+
+= catch? value
+
+:----
+
+-1
+-1
+;====
+:====
+# A lazy local whose value reads a property its own value types holds wherever it is read, so an
+# argument the flow narrows before the read is read narrowed in the value.
+
+. holder = Holder()
+-- holder.note("a")
+-- holder.note("b")
+-- holder.note(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
+_ table = Map'String'String()
+
+────────────────────
++ This
+
+table["a"] = "found a"
+
+────────────────────
++ note
+    - name String?
+
+|? !name
+    "none"
+|? found
+    found
+??
+    name
+
+.. found = table[name]
+
+:----
+
+found a
+b
+none
+;====
+:====
+# A lazy local read again where every way passes an earlier read has its value there, so the
+# later read does not type the value again after a getter the first read called.
+
+-- Holder(Thing()).check()
+-- Holder(null).check()
+
+━━━━━━━━━━━━━━━━━━━━
++ Owner is Interface
+
+────────────────────
++ get level Int?
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Owner
+
+────────────────────
++ get level Int?
+
+7
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ owner Owner?
+
+────────────────────
++ This
+    - owner
+
+────────────────────
++ check Int
+
+|? !owner
+    0
+|? !level
+    1
+??
+    level
+
+.. level = owner.level
+
+:----
+
+7
+0
+;====
+:====
+# A lazy local read in a branch of another lazy local's value, and again outside it, takes
+# what its value tests as its type, which holds at both reads.
+
+-- f(1, 10, 4)
+-- f(0, 10, 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ f Int
+    - side Int
+    - track Int
+    - size Int
+
+x + width
+
+.. align = if side > 0 then side else null
+.. width = if align != null then size else track
+.. x = if align != null then track - width else 0
+
+:----
+
+10
+10
+;====
+:====
+# A lazy local read in an arm a test narrows what its value tests, and again in another arm,
+# takes what its value tests as its type.
+
+-- f(1, 10, 4)
+-- f(0, 10, 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ f Int
+    - side Int
+    - track Int
+    - size Int
+
+|? align != null
+    track - width
+??
+    width
+
+.. align = if side > 0 then side else null
+.. width = if align != null then size else track
+
+:----
+
+6
+10
+;====
+:====
+# A lazy local whose value reads a field a guard narrowed, read in a later guard's call and
+# again after it, is evaluated once, with the field as the guard left it.
+
+-- Holder(Address(3)).check()
+-- Holder(Address(0)).check()
+-- Holder(Address(9)).check()
+-- Holder(null).check()
+
+━━━━━━━━━━━━━━━━━━━━
++ Address
+
++ limit Int
+
+────────────────────
++ This
+    - limit
+
+────────────────────
++ is-live Bool
+    - n Int
+
+n < limit
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ keyed Address?
+
+────────────────────
++ This
+    - keyed
+
+────────────────────
++ check Int
+
+|? !keyed
+    0
+|? !address.is-live(1)
+    1
+|? address.limit > 5
+    2
+??
+    address.limit
+
+.. address = keyed
+
+:----
+
+3
+1
+2
+0
+;====
+:====
+# Forcing a field a guard narrowed is illegal in the value of a lazy local whose later reads
+# each come after an earlier one, which evaluates it there.
+
+-- Holder(Address(3)).check()
+
+━━━━━━━━━━━━━━━━━━━━
++ Address
+
++ limit Int
+
+────────────────────
++ This
+    - limit
+
+────────────────────
++ is-live Bool
+    - n Int
+
+n < limit
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ keyed Address?
+
+────────────────────
++ This
+    - keyed
+
+────────────────────
++ check Int
+
+|? !keyed
+    0
+|? !address.is-live(1)
+    1
+??
+    address.limit
+
+.. address = keyed!
+
+:----
+%compile-error
+
+Exception: "keyed" is Address, which is never null here, so it needs no "!"
+<no file:38>
+    .. address = keyed!
+                 ^^^^^^
+;====
+:====
+# A lazy local read twice in a straight line is typed once, though an assignment between the
+# reads changes what is known of a local its value reads.
+
+-- f(5)
+-- f(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do f Int
+    - given Int?
+
+. c = given
+=? 0 if c == null
+. a = doubled
+c = null
+= a + doubled
+
+.. doubled = c * 2
+
+:----
+
+20
+0
+;====
+:====
+# A lazy local whose value reads a field a guard narrowed is evaluated at its first read, and a
+# read of it in another lazy local's value, after a call, finds it evaluated there: the value is
+# not typed again where the call has ended what is known of the field.
+
+-- Holder(Layout(Request("a"))).serves("a")
+-- Holder(Layout(Request("b"))).serves("a")
+-- Holder(null).serves("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Request
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
++ request Request
+
+────────────────────
++ This
+    - request
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ layout Layout?
++ count = 0
+
+────────────────────
++ This
+    - layout
+
+────────────────────
++ matches Bool
+
+count == 0
+
+────────────────────
++ serves Bool
+    - text String
+
+|? !layout || !matches()
+    false
+??
+    request.text == text && same
+
+.. request = layout.request
+.. same = request.text == text
+
+:----
+
+true
+false
+false
+;====
+:====
+# Forcing that field in the value is illegal, as the value is typed only where the guard left
+# the field known.
+
+-- Holder(Layout(Request("a"))).serves("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Request
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
++ request Request
+
+────────────────────
++ This
+    - request
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ layout Layout?
++ count = 0
+
+────────────────────
++ This
+    - layout
+
+────────────────────
++ matches Bool
+
+count == 0
+
+────────────────────
++ serves Bool
+    - text String
+
+|? !layout || !matches()
+    false
+??
+    request.text == text && same
+
+.. request = layout!.request
+.. same = request.text == text
+
+:----
+%compile-error
+
+Exception: "layout" is Layout, which is never null here, so it needs no "!"
+<no file:46>
+    .. request = layout!.request
+                 ^^^^^^^
+;====
+:====
+# A lazy local first read in an assertion's condition has its value after the assertion, so what
+# the condition found of a property of it holds at a later read.
+
+-- require(Store([Entry(1, 5)]), 0, 1)
+-- require(Store([Entry(1, 5), Entry(2, 7)]), 1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Entry
+
++ generation Int
++ geometry Int?
+
+────────────────────
++ This
+    - generation
+    - geometry
+
+━━━━━━━━━━━━━━━━━━━━
++ Store
+
++ entries [Entry]
+
+────────────────────
++ This
+    - entries
+
+━━━━━━━━━━━━━━━━━━━━
++ require Int
+    - store Store
+    - index Index
+    - generation Int
+
+?! Panic("stale")
+    if entry.generation != generation || !entry.geometry
+
+entry.geometry
+
+.. entry = store.entries[index]
+
+:----
+
+5
+7
+;====
+:====
+# A lazy local whose value reads a field a guard narrowed, first read in another lazy local's
+# value, is typed again at a later read that no evaluation of it comes before, under what is known
+# there: a call between them has ended what is known of the field, so it is read from an optional.
+
+-- Holder(Layout(Request("a"))).serves("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Request
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
++ request Request
+
+────────────────────
++ This
+    - request
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ layout Layout?
++ count = 0
+
+────────────────────
++ This
+    - layout
+
+────────────────────
++ matches Bool
+
+count == 0
+
+────────────────────
++ serves Bool
+    - text String
+
+|? !layout
+    false
+??
+    same && request.text == text
+
+.. request = layout.request
+.. same = request.text.length > 0 && matches()
+
+:----
+%compile-error
+
+Exception: Property "request" is read from Layout?, which may be null; unwrap it first with ! or ?.
+<no file:46>
+    .. request = layout.request
+                 ^^^^^^^^^^^^^^
+;====
+:====
+# Forcing that field in the value is legal, as the value is typed again where the field may hold
+# nothing.
+
+-- Holder(Layout(Request("a"))).serves("a")
+-- Holder(null).serves("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Request
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
++ request Request
+
+────────────────────
++ This
+    - request
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ layout Layout?
++ count = 0
+
+────────────────────
++ This
+    - layout
+
+────────────────────
++ matches Bool
+
+count == 0
+
+────────────────────
++ serves Bool
+    - text String
+
+|? !layout
+    false
+??
+    same && request.text == text
+
+.. request = layout!.request
+.. same = request.text.length > 0 && matches()
+
+:----
+
+true
+false
+;====
+:====
+# A local the value reads, narrowed where the value is first typed and assigned again before a
+# later read that types it again, is read there as its type.
+
+-- Holder(Layout(Request("a"))).serves(Layout(Request("a")), "a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Request
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Layout
+
++ request Request
+
+────────────────────
++ This
+    - request
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ layout Layout?
++ count = 0
+
+────────────────────
++ This
+    - layout
+
+────────────────────
++ matches Bool
+
+count == 0
+
+────────────────────
++ do serves Bool
+    - given Layout?
+    - text String
+
+. found = given
+=? false if !found
+. first = text != "" && same
+found = given
+= first && request.text == text
+
+.. request = found.request
+.. same = request.text.length > 0
+
+:----
+%compile-error
+
+Exception: Property "request" is read from Layout?, which may be null; unwrap it first with ! or ?.
+<no file:48>
+    .. request = found.request
+                 ^^^^^^^^^^^^^
+;====

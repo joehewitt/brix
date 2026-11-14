@@ -1,0 +1,2968 @@
+:====
+
+./base
+
+. value = Derived()
+-- value.result
+value.input = 7
+-- value.result
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+:----
+%file: base.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ input = 2
++ result = transform(#input)
+
+━━━━━━━━━━━━━━━━━━━━
+_ transform
+    - value Int
+
+value * 3
+
+:----
+
+6
+21
+;====
+:====
+
+. f = Foo()
+-- f.foo
+
+f.bar = 50
+-- f.foo
+
+f.bar = 25
+-- f.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo = #bar * 2
++ bar = 42
+
+:----
+
+84
+100
+50
+;====
+:====
+
+. thing = Thing()
+. name = thing.#name
+-- name
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ prefix = ""
+
+────────────────────
++ get name
+
+"bob" + prefix
+
+:----
+%crash
+
+Exception: Tracked getters are not supported; track concrete state instead
+<no file:3>
+    . name = thing.#name
+             ^^^^^^^^^^^
+;====
+:====
+
+. foo = Foo()
+-- foo.foo
+
+foo.bar.count = 2
+
+-- foo.foo
+
+foo.bar = Bar(5)
+
+-- foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo = bar.#count * 10
++ bar = Bar(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ count = 1
+
+────────────────────
++ This
+    - count
+
+:----
+
+10
+20
+50
+;====
+:====
+
++ bb = Bar(1)
+
+. foo = Foo()
+-- foo.foo
+bb.count = 2
+-- foo.foo
+bb.count = 3
+-- foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo = bar.#count * 10
+    .. bar = bb
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ count = 1
+
+────────────────────
++ This
+    - count
+
+:----
+
+10
+20
+30
+;====
+:====
+# Cross-class tracked setter dispatch is finalized after later reader compilation
+
+. writer = Writer()
+writer.set(1)
+. reader = Reader(writer)
+-- reader.mirror
+writer.set(2)
+-- reader.mirror
+
+━━━━━━━━━━━━━━━━━━━━
++ Writer
+
++ value = 0
+
+────────────────────
++ do set
+    - next Int
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ Reader
+
++ writer Writer
++ mirror = writer.#value * 10
+
+────────────────────
++ This
+    - writer
+
+:----
+
+10
+20
+;====
+:====
+
++ bar = 42
+
+. foo = Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo = #bar * 2
+
+:----
+%crash
+
+Exception: Untrackable name
+<no file:9>
+    + foo = #bar * 2
+            ^^^^
+;====
+:====
+
+. foo = Foo()
+-- foo.foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo =
+    . bar = 42
+    #bar * 2
+
+:----
+84
+;====
+:====
+
+. foo = Foo()
+foo.bar = 10
+foo.bar = 5
+foo.bar = 5
+foo.bar = 10
+foo.bar = 10
+foo.bar = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 0
+
+────────────────────
+when #bar < 10
+
+-- "lesser"
+
+────────────────────
+when #bar >= 10
+
+-- "greater"
+
+:----
+
+lesser
+greater
+lesser
+greater
+lesser
+;====
+:====
+# whenever observes every value change without an initial fire
+
+. foo = Foo()
+foo.bar = 1
+foo.bar = 2
+foo.bar = 2
+foo.bar = 0
+foo.bar = 0
+foo.bar = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 0
+
+────────────────────
+whenever #bar
+
+-- "bar $bar"
+
+:----
+
+bar 1
+bar 2
+bar 0
+bar 3
+;====
+:====
+# whenever over an interface-typed property fires when the value switches concrete type
+
+. holder = ShapeHolder()
+. round = RoundShape(1)
+. square = SquareShape(2)
+holder.shape = round
+holder.shape = square
+holder.shape = square
+holder.shape = round
+holder.shape = null
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeKind is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ RoundShape
+    is ShapeKind
+
++ size I64
+
+────────────────────
++ This
+    - size
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"round $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ SquareShape
+    is ShapeKind
+
++ size I64
+
+────────────────────
++ This
+    - size
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"square $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeHolder
+
++ shape ShapeKind?
+
+────────────────────
+whenever #shape
+
+-- shape?.label ?? "none"
+
+:----
+
+round 1
+square 2
+round 1
+none
+;====
+:====
+# whenever over a list of interface values fires when an element switches concrete type, and equality elsewhere still refuses
+
+. holder = ShapeList()
+holder.shapes = shapes-of(RoundShape(1))
+holder.shapes = shapes-of(SquareShape(2))
+holder.shapes = shapes-of(SquareShape(2))
+holder.shapes = shapes-of(SquareShape(3))
+holder.shapes = shapes-of(RoundShape(3))
+mismatch(RoundShape(1), SquareShape(1))
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeKind is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ RoundShape is (size I64)
+    is ShapeKind
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"round $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ SquareShape is (size I64)
+    is ShapeKind
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"square $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ do shapes-of [ShapeKind]
+    - shape ShapeKind
+
+. shapes [ShapeKind]
+shapes += shape
+= shapes
+
+━━━━━━━━━━━━━━━━━━━━
++ do mismatch
+    - left ShapeKind
+    - right ShapeKind
+
+do finally
+    . failure = recover()
+    if failure
+        -- "$failure"
+
+-- left == right
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeList
+
++ shapes [ShapeKind]
+
+────────────────────
+whenever #shapes
+
+-- shapes[0].label
+if shapes[0].label == "round 3"
+    mismatch(RoundShape(1), SquareShape(1))
+
+:----
+
+round 1
+square 2
+square 3
+round 3
+Unsupported interface equality: concrete types differ
+Unsupported interface equality: concrete types differ
+;====
+:====
+# whenever over a value that holds an interface value fires when the held value switches concrete type
+
+. holder = FrameHolder()
+holder.frame = Frame(RoundShape(1), 1)
+holder.frame = Frame(SquareShape(2), 1)
+holder.frame = Frame(SquareShape(2), 1)
+holder.frame = Frame(RoundShape(2), 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeKind is Interface
+
+────────────────────
++ get label String
+
+━━━━━━━━━━━━━━━━━━━━
++ RoundShape is (size I64)
+    is ShapeKind
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"round $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ SquareShape is (size I64)
+    is ShapeKind
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"square $size"
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is (inner ShapeKind, marker I64)
+    is ShapeKind
+
+╌╌╌╌╌╌╌╌╌╌ is ShapeKind ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get label String
+
+"framed ${inner.label}"
+
+━━━━━━━━━━━━━━━━━━━━
++ FrameHolder
+
++ frame ShapeKind?
+
+────────────────────
+whenever #frame
+
+-- frame?.label ?? "none"
+
+:----
+
+framed round 1
+framed square 2
+framed round 2
+;====
+:====
+# whenever value triggers require a tracked read
+
+. foo = Foo()
+foo.bar = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 0
+
+────────────────────
+whenever bar
+
+-- "bar $bar"
+
+:----
+%crash
+
+Exception: whenever value triggers must read at least one tracked property (like #bar)
+<no file:11>
+    whenever bar
+             ^^^
+;====
+====================================================================================================
+Dependencies
+====================================================================================================
+:====
+# Same-value primitive property stores keep the value but do not dispatch to live subscribers
+
+. foo = Foo()
+-- foo.value
+foo.value = 0
+-- foo.value
+foo.value = 1
+-- foo.value
+foo.value = 1
+-- foo.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ value = 0
+
+. changed < value
+
+────────────────────
++ do changed
+
+-- "changed", value
+
+:----
+
+0
+0
+(changed, 1)
+1
+1
+;====
+:====
+# Primitive store gates compare floating-point bits rather than IEEE equality
+
+. foo = Foo()
+foo.value = 0.0
+foo.value = -0.0
+foo.value = -0.0
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ value = 0.0
+
+. changed < value
+
+────────────────────
++ do changed
+
+-- "changed"
+
+:----
+
+changed
+;====
+:====
+# Property stores compare references by identity, not content equality
+
+. first = Thing("same")
+. second = Thing("same")
+. holder = Holder(first)
+holder.thing = first
+-- holder.thing.name
+holder.thing = second
+-- holder.thing.name
+holder.thing = second
+-- holder.thing.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ thing Thing
+
+. changed < thing
+
+────────────────────
++ This
+    - thing
+
+────────────────────
++ do changed
+
+-- "changed", thing.name
+
+:----
+
+same
+(changed, same)
+same
+same
+;====
+:====
+# Same-value primitive stores preserve tracked module-local memoization
+
+.. value = 1
+.. generation = 0
+.. observed = IntSnapshot(#value, generation)
+
+-- observed.generation
+generation = 1
+value = 1
+-- observed.generation
+generation = 2
+value = 2
+-- observed.generation
+generation = 3
+value = 2
+-- observed.generation
+
+━━━━━━━━━━━━━━━━━━━━
+_ IntSnapshot is (value Int, generation Int)
+
+:----
+
+0
+0
+2
+2
+;====
+:====
+# Tracked module-local reference stores use identity rather than content equality
+
+.. first = Thing("same")
+.. second = Thing("same")
+.. value = first
+.. generation = 0
+.. observed = ThingSnapshot(#value, generation)
+
+-- observed.generation
+generation = 1
+value = first
+-- observed.generation
+generation = 2
+value = second
+-- observed.generation
+generation = 3
+value = second
+-- observed.generation
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
+_ ThingSnapshot is (value Thing, generation Int)
+
+:----
+
+0
+0
+2
+2
+;====
+:====
+
+. foo = Foo()
+-- foo.x
+foo.x = 1
+foo.x = 2
+foo.x = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x = 0
+
+. bar < x
+
+────────────────────
++ do bar
+
+-- "bar", x
+
+:----
+
+0
+(bar, 1)
+(bar, 2)
+(bar, 3)
+;====
+:====
+
+. foo = Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x = 0
+
+. bar < x
+
+────────────────────
++ do bar
+    - nd
+
+-- "bar", x
+
+:----
+%crash
+
+Exception: Expected Doer here, but this is function bar, and there is no conversion between them
+<no file:9>
+    . bar < x
+    ^^^^^^^^^
+;====
+:====
+
+. foo = Foo()
+-- foo.x
+foo.x = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x = 0
+
+. bar < x
+
+────────────────────
++ do bar
+    - n = 0
+
+-- "bar", x, n
+
+:----
+
+0
+(bar, 1, 0)
+;====
+:====
+
+. foo = Bar()
+-- foo.x
+foo.x = 1
+foo.x = 2
+foo.x = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x = 0
+
+. bar < x
+
+────────────────────
++ do bar
+
+-- "bar", x
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Foo
+
+:----
+
+0
+(bar, 1)
+(bar, 2)
+(bar, 3)
+;====
+:====
+
+. foo = Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+. bar < x
+
+────────────────────
++ do bar
+
+-- "bar", x
+
+:----
+%crash
+
+Exception: Property "x" does not exist
+<no file:7>
+    . bar < x
+    ^^^^^^^^^
+;====
+:====
+
+. foo = Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x = 0
+
+. bar < x
+
+:----
+%crash
+
+Exception: Function "bar" does not exist
+<no file:9>
+    . bar < x
+    ^^^^^^^^^
+;====
+:====
+
+.. foo = #bar
+.. bar = 1
+-- foo
+bar = 2
+-- foo
+bar = 3
+-- foo
+
+:----
+
+1
+2
+3
+;====
+:====
+
+.. foo = Thing()
+.. bar = Thing()
+
+foo.name = bar.#name
+-- foo.name
+bar.name = "tom"
+-- foo.name
+bar.name = "fred"
+-- foo.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ name = "bob"
+
+:----
+
+bob
+tom
+fred
+;====
+:====
+
+.. foo = Thing()
+.. bar = Thing()
+
+foo.name = bar.#name
+-- foo.echo
+bar.name = "tom"
+-- foo.echo
+bar.name = "fred"
+-- foo.echo
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ name = "bob"
++ echo = ""
+
+────────────────────
+
+echo = #name
+
+────────────────────
++ do this += child Foo
+
+content = child
+
+:----
+
+bob
+tom
+fred
+;====
+:====
+
+/core/tracker
+
+. owner-a = DependencyIdentityOwner()
+. owner-b = DependencyIdentityOwner()
+. first-subscribers [PropertySubscriber]
+. second-subscribers [PropertySubscriber]
+. third-subscribers [PropertySubscriber]
+. previous [Tracker] = List'Tracker()
+. next [Tracker] = List'Tracker()
+
+# Canonical ids, rather than the display name String, retain a stable tracker. Reading one
+# dependency twice in the same evaluation still emits one membership.
+. first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
+. repeated = track-property-dependency(previous, next, "renamed-first", 1, first-subscribers, owner-a as Pointer)
+if first as Pointer != repeated as Pointer || next.length != 1
+    ?! Panic("canonical property identity did not deduplicate a repeated read")
+
+. second = track-property-dependency(previous, next, "second", 2, second-subscribers, owner-a as Pointer)
+previous = next
+next = List'Tracker()
+
+# Reordering preserves both tracker objects and their new observation order.
+. reordered-second = track-property-dependency(previous, next, "second", 2, second-subscribers, owner-a as Pointer)
+. reordered-first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
+if reordered-second as Pointer != second as Pointer || reordered-first as Pointer != first as Pointer
+    ?! Panic("reordered dependencies lost their canonical trackers")
+if next.length != 2 || next[0] as Pointer != second as Pointer || next[1] as Pointer != first as Pointer
+    ?! Panic("reordered dependency set did not preserve observation order")
+
+previous = next
+next = List'Tracker()
+
+# Removing one dependency, adding another, and replacing the owner have exact membership effects.
+. retained-first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
+. added-third = track-property-dependency(previous, next, "third", 3, third-subscribers, owner-a as Pointer)
+if next.length != 2 || retained-first as Pointer != first as Pointer
+    ?! Panic("added/removed dependency set did not retain its unchanged membership")
+if added-third as Pointer == first as Pointer || added-third as Pointer == second as Pointer
+    ?! Panic("new dependency reused an unrelated tracker")
+
+previous = next
+next = List'Tracker()
+. replaced-owner = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-b as Pointer)
+if replaced-owner as Pointer == retained-first as Pointer || next.length != 1
+    ?! Panic("replaced dependency owner retained the old owner's tracker")
+
+# Runtime names retain a String-equality fallback without colliding with compiler ids.
+previous = List'Tracker()
+next = List'Tracker()
+. dynamic-first = track-property-dependency(previous, next, "dynamic", first-subscribers, owner-a as Pointer)
+previous = next
+next = List'Tracker()
+. dynamic-reused = track-property-dependency(previous, next, "dynamic", first-subscribers, owner-a as Pointer)
+. dynamic-other = track-property-dependency(previous, next, "other", first-subscribers, owner-a as Pointer)
+if dynamic-reused as Pointer != dynamic-first as Pointer || next.length != 2
+    ?! Panic("dynamic property-name fallback did not preserve exact membership")
+if dynamic-other as Pointer == dynamic-first as Pointer
+    ?! Panic("different dynamic property names shared one tracker")
+
+-- "property-dependency-identity-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ DependencyIdentityOwner
+
+:----
+
+property-dependency-identity-ok
+;====
+:====
+# Live actions compare heterogeneous tracker implementations by identity.
+
+/core/tracker
+
+. owner = TrackerRefreshOwner()
+. trackers [Tracker] = List'Tracker()
+trackers += FirstRefreshTracker() as Tracker
+. callback SubscriberCallback = => do
+    do owner.#value
+. action = LiveAction(trackers, callback)
+action()
+action.close()
+-- "heterogeneous-tracker-refresh-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ FirstRefreshTracker
+    is Tracker
+
+────────────────────
++ do attach
+    - action LiveAction
+
+do action
+
+────────────────────
++ do detach
+    - action LiveAction
+
+do action
+
+━━━━━━━━━━━━━━━━━━━━
++ TrackerRefreshOwner
+
++ value = 0
+
+:----
+
+heterogeneous-tracker-refresh-ok
+;====
+:====
+
+/YuGC/YuGC.h
+
+# Property subscriptions retain live actions weakly and release their side-payload lane with the
+# observed object.
++ property-change-observer-reclaimed = false
+
+. foo = Foo()
+if C:yumiGCHasObjectSidePayload(foo as Pointer, 0)
+    -- "has"
+C:yumiGCClearObjectSidePayload(foo as Pointer, 0)
+if !C:yumiGCHasObjectSidePayload(foo as Pointer, 0)
+    -- "cleared"
+
+C:yumiCollect()
+do C:yumiGCDrainCleanups()
+. payloads-before = C:yumiGCObjectSidePayloadCount(0)
+
+-- exercise-weak-property-subscription()
+
+for cycle in 0 .. < 3
+    C:yumiCollect()
+    do C:yumiGCDrainCleanups()
+
+-- C:yumiGCObjectSidePayloadCount(0) - payloads-before
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 1
++ doubled = #bar * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do exercise-weak-property-subscription String
+
+. source = WeakPropertySource()
+. live = WeakPropertyObserver(source)
+make-dead-property-observer(source)
+
+C:yumiCollect()
+do C:yumiGCDrainCleanups()
+if !property-change-observer-reclaimed
+    = "dead-observer-retained"
+
+source.value = 9
+if live.mirror != 18
+    = "live-observer-not-updated"
+
+= "weak-property-subscription-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-dead-property-observer
+    - source WeakPropertySource
+
+. observer = WeakPropertyObserver(source)
+?! Panic("Unable to register dead property observer cleanup")
+    if !C:yumiGCRegisterCleanup(observer as Pointer, context as Pointer, callback)
+.. callback = property-observer-did-reclaim as PropertyCleanupCallback
+.. context = PropertyCleanupContext()
+do observer.mirror
+observer.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyCleanupContext
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyCleanupCallback is (*C) Size
+    - context Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ do property-observer-did-reclaim Size
+    - context Pointer
+
+do context
+property-change-observer-reclaimed = true
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ WeakPropertySource
+
++ value = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ WeakPropertyObserver
+
++ source WeakPropertySource
++ mirror = source.#value * 2
+
+────────────────────
++ This
+    - source
+
+────────────────────
++ do close
+
+:----
+
+has
+cleared
+weak-property-subscription-ok
+0
+;====
+:====
+
+. source = Source()
+source.next = 10
+source.refresh()
+
+. observer = Observer()
+observer.source = source
+-- "0:${observer.text}"
+
+source.next = 20
+source.refresh()
+-- "1:${observer.text}"
+
+source.value = 30
+-- "2:${observer.text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ value = 0
++ next = 0
+
+────────────────────
++ do refresh
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ Observer
+
++ source Source?
++ text = "${source?.#value ?? 0}"
+
+:----
+
+0:10
+1:20
+2:30
+;====
+:====
+
+. leaf = NestedOptionalLeaf()
+. middle = NestedOptionalMiddle()
+. root = NestedOptionalRoot()
+. observer = NestedOptionalObserver()
+-- observer.value
+
+observer.root = root
+-- observer.value
+
+root.middle = middle
+-- observer.value
+
+middle.leaf = leaf
+-- observer.value
+
+leaf.value = 7
+-- observer.value
+
+middle.leaf = null
+-- observer.value
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedOptionalLeaf
+
++ value = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedOptionalMiddle
+
++ leaf NestedOptionalLeaf?
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedOptionalRoot
+
++ middle NestedOptionalMiddle?
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedOptionalObserver
+
++ root NestedOptionalRoot?
++ value = #root?.#middle?.#leaf?.#value ?? 0
+
+:----
+
+0
+0
+0
+1
+7
+0
+;====
+====================================================================================================
+Stream changes
+====================================================================================================
+:====
+
+.. a = ##[1, 2, 3]
+. started = a
+yield-once()
+-- a
+
+━━━━━━━━━━━━━━━━━━━━
++ do yield-once
+
+. done = Semaphore()
+do new
+    done.post()
+done.wait()
+
+:----
+
+3
+;====
+:====
+
+.. foo = 42
+. stream = <#foo>
+-- stream
+-- <- stream
+foo = 52
+-- <- stream
+
+:----
+
+[Object core/channel:AsyncBufferedChannel'core/number:I64]
+42
+52
+;====
+:====
+
+.. foo = 10
+. stream = <#foo>
+-- stream
+
+do new
+    for item in stream
+        -- item
+
+yield-once()
+foo = 11
+foo = 12
+stream.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do yield-once
+
+. done = Semaphore()
+do new
+    done.post()
+done.wait()
+
+:----
+
+[Object core/channel:AsyncBufferedChannel'core/number:I64]
+10
+11
+12
+;====
+:====
+
+/YuGC/YuGC.h
+/YuGC/YuGCTest.h
+/core/tracker
+
+C:yumiGCSetHeapGoal(1073741824)
+C:yumiGCInit()
+C:yumiCollect()
+. baseline = C:yumiGCTestOwnerWeakRegistrationCount()
+
+# A live owner retains the scalar entry after its action dies; the target clears and explicit
+# release removes the entry exactly.
+. live-owner = OwnerWeakProbe(1)
+. dead-action-handle = owner-weak-register-dead-action(live-owner)
+C:yumiCollect()
+if C:yumiGCOwnerWeakLoad(dead-action-handle)
+    ?! Panic("dead action survived owner-weak collection")
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1
+    ?! Panic("cleared owner-weak entry count mismatch")
+if live-owner.value != 1
+    ?! Panic("live owner did not survive collection")
+if !C:yumiGCReleaseOwnerWeak(dead-action-handle)
+    ?! Panic("unable to release cleared owner-weak entry")
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+    ?! Panic("cleared owner-weak entry survived release")
+
+# A dead owner removes its entry even while the action remains live.
+. live-action = LiveAction(owner-weak-empty-trackers)
+. dead-owner-handle = owner-weak-register-dead-owner(live-action)
+C:yumiCollect()
+if C:yumiGCOwnerWeakLoad(dead-owner-handle)
+    ?! Panic("owner-reclaimed scalar handle remained loadable")
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+    ?! Panic("owner-reclaimed scalar handle remained registered")
+do live-action.is-closed
+
+# PropertyTracker detach must release the production scalar subscription immediately.
+. detach-owner = OwnerWeakProbe(2)
+. detach-subscribers [PropertySubscriber]
+. detach-tracker = PropertyTracker("value", detach-subscribers)
+detach-tracker.owner = detach-owner as Pointer
+. detach-action = LiveAction(owner-weak-empty-trackers)
+detach-tracker.attach(detach-action)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1
+    ?! Panic("property tracker attach did not register one scalar handle")
+detach-tracker.detach(detach-action)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+    ?! Panic("explicit property tracker detach leaked its scalar handle")
+detach-tracker.detach(detach-action)
+. detach-active = owner-weak-active-subscriber-count(detach-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || detach-active
+    ?! Panic("repeated property tracker detach changed the registry")
+
+# Compiler-generated markup may share one property dependency tracker between actions. Each
+# action needs its own scalar handle and indexed slot, and detaching one must leave the other live.
+. shared-owner = OwnerWeakProbe(9)
+. shared-subscribers [PropertySubscriber]
+. shared-tracker = PropertyTracker("value", shared-subscribers)
+shared-tracker.owner = shared-owner as Pointer
+. shared-first-action = LiveAction(owner-weak-empty-trackers)
+. shared-second-action = LiveAction(owner-weak-empty-trackers)
+shared-tracker.attach(shared-first-action)
+shared-tracker.attach(shared-second-action)
+. shared-active = owner-weak-active-subscriber-count(shared-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 2 || shared-active != 2
+    ?! Panic("shared property tracker did not register both actions")
+shared-tracker.detach(shared-first-action)
+shared-active = owner-weak-active-subscriber-count(shared-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || shared-active != 1
+    ?! Panic("shared property tracker detached the wrong action")
+shared-tracker.detach(shared-second-action)
+shared-active = owner-weak-active-subscriber-count(shared-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || shared-active
+    ?! Panic("shared property tracker leaked its final action")
+
+# Detaching a live peer leaves an unrelated cleared action for dispatch to prune. Detaching the
+# cleared action's tracker after that prune must make the stale scalar release a clean no-op.
+. prune-owner = OwnerWeakProbe(3)
+. prune-subscribers [PropertySubscriber]
+. pruned-tracker = owner-weak-attach-dead-action(prune-owner, prune-subscribers)
+. prune-live-tracker = PropertyTracker("value", prune-subscribers)
+prune-live-tracker.owner = prune-owner as Pointer
+. prune-live-action = LiveAction(owner-weak-empty-trackers)
+prune-live-tracker.attach(prune-live-action)
+C:yumiCollect()
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 2
+    ?! Panic("dead action was removed before the prune fixture")
+prune-live-tracker.detach(prune-live-action)
+. prune-active = owner-weak-active-subscriber-count(prune-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || prune-active != 1
+    ?! Panic("property tracker detach reaped an unrelated cleared action")
+property-dispatch(prune-subscribers, "value")
+prune-active = owner-weak-active-subscriber-count(prune-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+    ?! Panic("first property dispatch did not prune the cleared scalar handle")
+pruned-tracker.detach(prune-live-action)
+prune-active = owner-weak-active-subscriber-count(prune-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+    ?! Panic("detach after dispatch prune changed the empty registry")
+property-dispatch(prune-subscribers, "value")
+prune-active = owner-weak-active-subscriber-count(prune-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+    ?! Panic("repeated property dispatch changed the empty registry")
+
+# Every subscriber present when a property changes is queued before any of them runs, so a later
+# subscriber an earlier one detaches still runs once for that change.
+. reentrant-owner = OwnerWeakProbe(8)
+. reentrant-subscribers [PropertySubscriber]
+. reentrant-probe = OwnerWeakDispatchProbe()
+. reentrant-first-tracker = PropertyTracker("value", reentrant-subscribers)
+reentrant-first-tracker.owner = reentrant-owner as Pointer
+. reentrant-later-tracker = PropertyTracker("value", reentrant-subscribers)
+reentrant-later-tracker.owner = reentrant-owner as Pointer
+. reentrant-first-action = LiveAction(reentrant-probe.detach-later)
+. reentrant-later-action = LiveAction(reentrant-probe.run-later)
+reentrant-probe.later-tracker = reentrant-later-tracker
+reentrant-probe.later-action = reentrant-later-action
+reentrant-first-tracker.attach(reentrant-first-action)
+reentrant-later-tracker.attach(reentrant-later-action)
+property-dispatch(reentrant-subscribers, "value")
+if reentrant-probe.later-runs != 1
+    ?! Panic("a subscriber queued for a change did not run once")
+. reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || reentrant-active != 1
+    ?! Panic("reentrant dispatch left the wrong scalar subscriptions")
+reentrant-first-tracker.detach(reentrant-first-action)
+reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || reentrant-active
+    ?! Panic("reentrant dispatch fixture leaked a scalar subscription")
+
+# A subscriber added during dispatch waits for the next generation, after every subscriber that
+# was present at dispatch start. The second dispatch preserves insertion order exactly.
+. add-owner = OwnerWeakProbe(10)
+. add-subscribers [PropertySubscriber]
+. add-probe = OwnerWeakDispatchProbe()
+. add-first-tracker = PropertyTracker("value", add-subscribers)
+add-first-tracker.owner = add-owner as Pointer
+. add-existing-tracker = PropertyTracker("value", add-subscribers)
+add-existing-tracker.owner = add-owner as Pointer
+. add-late-tracker = PropertyTracker("value", add-subscribers)
+add-late-tracker.owner = add-owner as Pointer
+. add-first-action = LiveAction(add-probe.attach-late)
+. add-existing-action = LiveAction(add-probe.run-existing)
+. add-late-action = LiveAction(add-probe.run-added)
+add-probe.later-tracker = add-late-tracker
+add-probe.later-action = add-late-action
+add-first-tracker.attach(add-first-action)
+add-existing-tracker.attach(add-existing-action)
+property-dispatch(add-subscribers, "value")
+if add-probe.order != "fe"
+    ?! Panic("subscriber added during dispatch ran in the starting generation")
+property-dispatch(add-subscribers, "value")
+if add-probe.order != "fefel"
+    ?! Panic("next-generation subscriber order was not deterministic")
+add-first-tracker.detach(add-first-action)
+add-existing-tracker.detach(add-existing-action)
+add-late-tracker.detach(add-late-action)
+
+# A subscriber can remove itself. A dispatch made while a subscriber runs queues the subscribers
+# it reaches behind those already queued, once each, and a running subscriber runs again last.
+. self-owner = OwnerWeakProbe(11)
+. self-subscribers [PropertySubscriber]
+. self-probe = OwnerWeakDispatchProbe()
+. self-tracker = PropertyTracker("value", self-subscribers)
+self-tracker.owner = self-owner as Pointer
+. self-action = LiveAction(self-probe.remove-self)
+self-probe.self-tracker = self-tracker
+self-probe.self-action = self-action
+self-tracker.attach(self-action)
+property-dispatch(self-subscribers, "value")
+property-dispatch(self-subscribers, "value")
+if self-probe.self-runs != 1
+    ?! Panic("self-removing subscriber ran after detaching itself")
+
+. nested-owner = OwnerWeakProbe(12)
+. nested-subscribers [PropertySubscriber]
+. nested-probe = OwnerWeakDispatchProbe()
+. nested-first-tracker = PropertyTracker("value", nested-subscribers)
+nested-first-tracker.owner = nested-owner as Pointer
+. nested-second-tracker = PropertyTracker("value", nested-subscribers)
+nested-second-tracker.owner = nested-owner as Pointer
+. nested-first-action = LiveAction(nested-probe.run-nested-first)
+. nested-second-action = LiveAction(nested-probe.run-nested-second)
+nested-probe.nested-subscribers = nested-subscribers
+nested-first-tracker.attach(nested-first-action)
+nested-second-tracker.attach(nested-second-action)
+property-dispatch(nested-subscribers, "value")
+if nested-probe.order != "fsf"
+    ?! Panic("nested property dispatch corrupted subscriber order")
+nested-first-tracker.detach(nested-first-action)
+nested-second-tracker.detach(nested-second-action)
+
+# A successful load during concurrent mark shades a target that was otherwise reachable only
+# through the non-marking registry.
+. mark-owner = OwnerWeakProbe(4)
+. mark-target OwnerWeakProbe? = OwnerWeakProbe(5)
+. mark-target-pointer = mark-target! as Pointer
+. mark-handle = C:yumiGCRegisterOwnerWeak(mark-owner as Pointer, mark-target-pointer)
+C:yumiCollect()
+mark-target = null
+C:yumiGCStartConcurrentMark()
+. loaded-target = C:yumiGCOwnerWeakLoad(mark-handle)
+if loaded-target != mark-target-pointer || !C:yumiGCTestObjectMarked(mark-target-pointer)
+    ?! Panic("mark-phase owner-weak load did not shade its target")
+if mark-owner.value != 4
+    ?! Panic("mark-phase owner did not survive collection")
+C:yumiGCFinishConcurrentMark()
+C:yumiGCFinishAutomaticCycle()
+if !C:yumiGCReleaseOwnerWeak(mark-handle)
+    ?! Panic("unable to release mark-phase owner-weak handle")
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+    ?! Panic("mark-phase owner-weak handle survived release")
+
+# Owner and action dying in the same cycle removes the entry without a surviving scalar handle.
+. same-cycle-handle = owner-weak-register-dead-pair()
+C:yumiCollect()
+if C:yumiGCOwnerWeakLoad(same-cycle-handle)
+    ?! Panic("same-cycle owner/action handle remained loadable")
+if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+    ?! Panic("same-cycle owner/action handle remained registered")
+
+-- "owner-weak-property-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ OwnerWeakProbe
+
++ value U64
+
+────────────────────
++ This
+    - value
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-empty-trackers [Tracker]
+
+= List'Tracker()
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-register-dead-action U64
+    - owner OwnerWeakProbe
+
+. action = LiveAction(owner-weak-empty-trackers)
+= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-register-dead-owner U64
+    - action LiveAction
+
+. owner = OwnerWeakProbe(6)
+= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-attach-dead-action PropertyTracker
+    - owner OwnerWeakProbe
+    - subscribers [PropertySubscriber]
+
+. tracker = PropertyTracker("value", subscribers)
+tracker.owner = owner as Pointer
+. action = LiveAction(owner-weak-empty-trackers)
+tracker.attach(action)
+= tracker
+
+━━━━━━━━━━━━━━━━━━━━
++ OwnerWeakDispatchProbe
+
++ later-tracker PropertyTracker?
++ later-action LiveAction?
++ later-runs Size = 0
++ self-tracker PropertyTracker?
++ self-action LiveAction?
++ self-runs Size = 0
++ nested-subscribers [PropertySubscriber]?
++ is-nested = false
++ order = ""
+
+────────────────────
++ do detach-later [Tracker]
+
+if later-tracker && later-action
+    later-tracker.detach(later-action)
+= List'Tracker()
+
+────────────────────
++ do run-later [Tracker]
+
+later-runs += 1
+= List'Tracker()
+
+────────────────────
++ do attach-late
+
+order += "f"
+if later-tracker && later-action && order == "f"
+    later-tracker.attach(later-action)
+
+────────────────────
++ do run-existing
+
+order += "e"
+
+────────────────────
++ do run-added
+
+order += "l"
+
+────────────────────
++ do remove-self
+
+self-runs += 1
+if self-tracker && self-action
+    self-tracker.detach(self-action)
+
+────────────────────
++ do run-nested-first
+
+order += "f"
+if !is-nested && nested-subscribers
+    is-nested = true
+    property-dispatch(nested-subscribers, "value")
+
+────────────────────
++ do run-nested-second
+
+order += "s"
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-register-dead-pair U64
+
+. owner = OwnerWeakProbe(7)
+. action = LiveAction(owner-weak-empty-trackers)
+= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-active-subscriber-count Size
+    - subscribers [PropertySubscriber]
+
+. count Size = 0
+for subscriber in subscribers
+    if subscriber.slot && subscriber.handle
+        count += 1
+= count
+
+:----
+
+owner-weak-property-ok
+;====
+:====
+
+/YuGC/YuGC.h
+/core/tracker
+
+C:yumiGCSetHeapGoal(1073741824)
+C:yumiGCInit()
+. subscribers [PropertySubscriber]
+. action = LiveAction(owner-weak-attach-guard-empty-trackers)
+. tracker = PropertyTracker("value", subscribers)
+tracker.owner = action as Pointer
+tracker.attach(action)
+tracker.attach(action)
+
+━━━━━━━━━━━━━━━━━━━━
++ do owner-weak-attach-guard-empty-trackers [Tracker]
+
+= List'Tracker()
+
+:----
+%crash
+
+;====
+:====
+# Derived properties and property handlers follow writes to the object's own properties, and stop
+# when the object closes
+
+. f = Foo()
+-- f.double
+f.bar = 50
+-- f.double
+-- f.label
+f.bar = 25
+-- f.double
+-- f.label
+-- f.changes
+f.close()
+f.bar = 7
+-- f.double
+-- f.changes
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 42
++ double = #bar * 2
++ label = "bar is ${#bar} and double is ${#double}"
++ changes = 0
+
+. bar-changed < bar
+
+────────────────────
++ do bar-changed
+
+changes += 1
+
+────────────────────
++ do close
+
+:----
+
+84
+100
+bar is 50 and double is 100
+50
+bar is 25 and double is 50
+2
+50
+2
+;====
+:====
+# A derived property declared after the property that reads it still follows its own dependencies,
+# whether the earlier property reads it tracked or untracked
+
+. tracked = Tracked()
+-- "${tracked.double} ${tracked.label}"
+tracked.bar = 5
+-- "${tracked.double} ${tracked.label}"
+
+. plain = Plain()
+-- "${plain.double} ${plain.label}"
+plain.bar = 5
+-- "${plain.double} ${plain.label}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Tracked
+
++ bar = 1
++ label = "double is ${#double}"
++ double = #bar * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain
+
++ bar = 1
++ label = "double is $double"
++ double = #bar * 2
+
+:----
+
+2 double is 2
+10 double is 10
+2 double is 2
+10 double is 2
+;====
+:====
+# A subclass default for an inherited property can read the subclass's own derived properties,
+# and both keep following their dependencies
+
+. item = Scaled()
+-- "${item.double} ${item.total}"
+item.bar = 5
+-- "${item.double} ${item.total}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Totalled
+
++ total = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaled is Totalled
+
++ bar = 1
++ double = #bar * 2
++ total = #double + 1
+
+:----
+
+2 3
+10 11
+;====
+:====
+# A handler of a property reads the derived properties it feeds already updated, on every write,
+# and a derived property no rule reads is evaluated again only when read
+
+. foo = Foo()
+. watcher = Watcher(foo)
+-- "${watcher.seen} ${"|".join(foo.log)}"
+
+foo.bar = 5
+-- "${watcher.seen} ${"|".join(foo.log)}"
+
+foo.bar = 7
+-- "${watcher.seen} ${"|".join(foo.log)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ log [String] = List'String()
++ bar = 42
++ double = #bar * 2
+
+. bar-changed < bar
+
+────────────────────
++ do bar-changed
+
+log += "bar:$bar/$double"
+
+━━━━━━━━━━━━━━━━━━━━
++ Watcher
+
++ source Foo
++ seen = noted(source, source.#bar + source.#double)
+
+────────────────────
++ This
+    - source
+
+━━━━━━━━━━━━━━━━━━━━
++ do noted Int
+    - foo Foo
+    - sum Int
+
+foo.log += "seen:$sum"
+= sum
+
+:----
+
+126 seen:126
+15 seen:126|bar:5/10|seen:15
+21 seen:126|bar:5/10|seen:15|bar:7/14|seen:21
+;====
+:====
+# A lazy property another initializer reads during construction is constructed once: the object
+# keeps the instance its other properties saw, tracked reads through it follow that instance,
+# and a lazy property nothing reads stays unevaluated
+
+. panel = Panel()
+-- "$made ${panel.title}"
+panel.session.current = "one"
+-- "$made ${panel.title} ${panel.first as Pointer == panel.session as Pointer}"
+panel.session.current = "two"
+-- "$made ${panel.title}"
+
+. idle = Idle()
+-- "$made"
+idle.session.current = "used"
+-- "$made ${idle.session.current}"
+
++ made = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Session
+
++ current = "none"
+
+────────────────────
++ This
+
+made += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
++ session := Session()
++ first Session = session
++ title = session.#current
+
+━━━━━━━━━━━━━━━━━━━━
++ Idle
+
++ session := Session()
++ title = "idle"
+
+:----
+
+1 none
+1 one true
+1 two
+1
+2 used
+;====
+:====
+# A lazy property read under a condition, or by another lazy property, is still one instance
+
+. shown = Panel(true)
+shown.session.current = "one"
+-- "$made ${shown.title}"
+
+. quiet = Panel(false)
+-- "${quiet.title}"
+quiet.session.current = "two"
+. count = made
+quiet.uses = true
+-- "${quiet.title} ${made == count}"
+
+. chain = Chain()
+chain.inner.current = "three"
+-- "${chain.seen} ${chain.outer.inner as Pointer == chain.inner as Pointer}"
+
++ made = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Session
+
++ current = "none"
+
+────────────────────
++ This
+
+made += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrapper
+
++ inner Session
+
+────────────────────
++ This
+    - inner
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
++ uses Bool
++ session := Session()
++ title = if #uses then session.#current else "off"
+
+────────────────────
++ This
+    - uses
+
+━━━━━━━━━━━━━━━━━━━━
++ Chain
+
++ inner := Session()
++ outer := Wrapper(inner)
++ seen = outer.inner.#current
+
+:----
+
+1 one
+off
+two true
+three true
+;====
+:====
+
+.. name = "bob"
+. foo = Foo()
+
+foo.title = #name
+-- foo.title
+name = "tom"
+-- foo.title
+foo.close()
+name = "fred"
+-- foo.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ title = ""
+
+────────────────────
++ do close
+
+:----
+
+bob
+tom
+tom
+;====
+:====
+# a when rule stores to a property of its object
+
+. counter = Counter()
+counter.bump(3)
+counter.bump(4)
+-- "count ${counter.count} seen ${counter.seen}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
++ seen = 0
+
+────────────────────
+when #count > 5
+
+seen += 1
+
+────────────────────
++ do bump
+    - value Int
+
+count += value
+
+:----
+
+count 7 seen 1
+;====
+:====
+# A tracked optional local set to nothing and back gives again what reads it.
+
+.. value Int? = 3
+. holder = Holder()
+holder.text = "v=${#value}"
+-- holder.text
+value = null
+-- holder.text
+value = 7
+-- holder.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ text = ""
+
+:----
+
+v=3
+v=unknown
+v=7
+;====
+:====
+# A return in the body of a `whenever` rule of a class leaves only the body, and the rule runs
+# again on the next change.
+
+. foo = Foo()
+foo.bar = "x"
+foo.bar = null
+foo.bar = "y"
+-- foo.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar String? = null
++ count = 0
+
+────────────────────
+whenever #bar
+
+=? if bar == null
+count += 1
+-- "changed ${bar ?? "-"}"
+
+:----
+
+changed x
+changed y
+2
+;====
+:====
+# A return in the body of a `when` rule of a class leaves only the body.
+
+. foo = Foo()
+foo.bar = 3
+foo.bar = 12
+foo.bar = 1
+foo.bar = 20
+-- foo.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 0
++ count = 0
+
+────────────────────
+when #bar >= 10
+
+=? if bar > 15
+count += 1
+-- "greater $bar"
+
+:----
+
+greater 12
+1
+;====
+:====
+# A `whenever` rule of a base class on a property a class below gives a live value runs each time
+# that value changes.
+
+. sub = Sub()
+-- sub.runs
+sub.message = "a"
+-- sub.runs
+sub.message = "b"
+-- sub.runs
+sub.message = "c"
+-- sub.runs
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ text String = ""
++ runs = 0
+
+────────────────────
+whenever #text
+
+runs += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Base
+
++ message = "start"
++ text = "${#message}!"
+
+:----
+
+0
+1
+2
+3
+;====
+:====
+# A `whenever` rule of a class on a property it gives a new value runs where the property is
+# stored through the class above that declares it.
+
+. sub = Sub()
+. base Base = sub
+-- sub.runs
+base.text = "a"
+-- sub.runs
+base.set("b")
+-- sub.runs
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ text String = ""
+
+────────────────────
++ do set
+    - value String
+
+text = value
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Base
+
++ text = "init"
++ runs = 0
+
+────────────────────
+whenever #text
+
+runs += 1
+
+:----
+
+0
+1
+2
+;====
+:====
+# A store to a property a later read tracks, inside a test of another property, where nothing
+# after it reads what the test found.
+
+
+. panel = Panel()
+panel.reveal(1)
+panel.reveal(2)
+-- panel.describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Step
+
++ id U64
++ is-revealed = false
+
+────────────────────
++ This
+    - id
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
+_ revealed Step?
+_ steps = [Step(1), Step(2)]
+
+────────────────────
++ do reveal
+    - id U64
+
+if revealed
+    revealed.is-revealed = false
+revealed = null
+for step in steps
+    if step.id == id
+        step.is-revealed = true
+        revealed = step
+
+────────────────────
++ describe String
+
+"${steps[0].#is-revealed} ${steps[1].#is-revealed}"
+
+:----
+
+false true
+;====
+
+:====
+# A `close` that returns a value closes the live actions the object owns as it returns, at each
+# return.
+
+. source = Source()
+. view = View(source)
+source.count = 2
+-- view.doubled
+-- view.close()
+source.count = 5
+-- view.doubled
+-- view.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ count = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ View
+
++ source Source
++ doubled = #source.#count * 2
++ closings = 0
+
+────────────────────
++ This
+    - source
+
+────────────────────
++ do close Bool
+
+closings += 1
+=? false if closings > 1
+= true
+
+:----
+
+4
+true
+4
+false
+;====
+
+:====
+# A `whenever` rule whose body loops runs again on each change of what it reads.
+
+. bar = Bar()
+bar.preview = Preview(["a", "b"], ["b", "c"])
+-- bar.seen
+bar.preview = Preview(["x"], ["y"])
+-- bar.seen
+
+━━━━━━━━━━━━━━━━━━━━
++ Preview
+
++ active [String]
++ empty [String]
+
+────────────────────
++ This
+    - active
+    - empty
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ preview Preview? = null
++ seen = ""
+
+────────────────────
+whenever #preview
+
+. current = preview
+if current
+    . open = List'String(current.active)
+    for key in current.empty
+        if !(open has key)
+            open += key
+    seen = ",".join(open)
+
+:----
+
+a,b,c
+x,y
+;====
+
+:====
+# A `when` rule whose body loops runs it first as the object is made, and again on each change.
+
+. bar = Bar()
+-- bar.seen
+bar.on = false
+bar.on = true
+-- bar.seen
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ on = true
++ seen = 0
+
+────────────────────
+when #on
+
+for step in 0 .. < 3
+    seen += step
+
+:----
+
+3
+6
+;====
+:====
+# A tracked value that reads a later property on some paths alone gives that property its value there, and both values follow what they read.
+
+. thing = Thing()
+-- thing.shows
+thing.flag = false
+-- thing.shows
+thing.ready = false
+thing.flag = true
+-- thing.shows
+thing.ready = true
+-- thing.shows
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ ready = true
++ shows = #ready && #hovered
++ flag = true
+
+_ hovered = #flag
+
+:----
+
+true
+false
+false
+true
+;====
+:====
+# An error a tracked value raises as it is evaluated again goes to unhandled-error, and the
+# property keeps the value it had.
+
+unhandled-error = :: error => do
+    -- "handled ${error.message}"
+
+. thing = Thing()
+-- thing.ok
+thing.n = 3
+-- thing.ok
+thing.n = 9
+-- thing.ok
+thing.n = 4
+-- thing.ok
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ n I64 = 0
++ ok = #n > 0 && check(#n)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do check Bool
+    - n I64
+
+if n > 5
+    ?! Error("too big $n")
+= n != 3
+
+:----
+
+false
+false
+handled too big 9
+false
+true
+;====
+:====
+# A narrowed read stored after a store to a watched property stores what the narrowed read holds.
+
+. doc = Doc()
+. watcher = Watcher(doc)
+. closed [Closed]
+closed += Closed(1, Jump(4, "x"))
+closed += Closed(2, null)
+reopen(closed, doc)
+-- doc.jump?.text ?? "none"
+reopen(closed, doc)
+-- doc.jump?.text ?? "none"
+-- watcher.seen
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reopen
+    - closed [Closed]
+    - doc Doc
+
+while closed.length > 0
+    . entry = closed.pop()
+    if entry.index > 0
+        if entry.jump
+            doc.wants = true
+            doc.jump = entry.jump
+        =
+
+━━━━━━━━━━━━━━━━━━━━
+_ Closed is (index Int, jump Jump?)
+
+━━━━━━━━━━━━━━━━━━━━
++ Jump is Tuple
+
++ line Size
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Doc
+
++ wants = false
++ jump Jump?
+
+━━━━━━━━━━━━━━━━━━━━
++ Watcher
+
++ doc Doc
++ seen = 0
+
+────────────────────
++ This
+    - doc
+
+────────────────────
+whenever doc.#jump
+
+seen += 1
+
+────────────────────
+whenever doc.#wants
+
+seen += 10
+
+:----
+
+none
+x
+11
+;====
+:====
+# A narrowed read stored after a store to a property its function tracked before stores what the
+# narrowed read holds.
+
+. doc = Doc()
+reopen(Closed(1, Jump(4, "x")), doc)
+-- doc.jump?.text ?? "none"
+-- doc.wants
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reopen
+    - entry Closed
+    - doc Doc
+
+. wanted = doc.#wants
+if entry.jump
+    doc.wants = !wanted
+    doc.jump = entry.jump
+
+━━━━━━━━━━━━━━━━━━━━
+_ Closed is (index Int, jump Jump?)
+
+━━━━━━━━━━━━━━━━━━━━
++ Jump is Tuple
+
++ line Size
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Doc
+
++ wants = false
++ jump Jump?
+
+:----
+
+x
+true
+;====
+:====
+# A property a test found to hold a value, forced after a store to a property a value tracks, is
+# what it holds.
+
+. holder = Holder()
+holder.options = Options()
+holder.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ Options
+
++ name = "x"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ options Options?
++ flag = false
++ shown = "${#flag}"
+
+────────────────────
++ do run
+
+if options
+    flag = true
+    -- options!.name
+
+:----
+
+x
+;====
+:====
+# A store to a tracked property runs the rules that track it before the next statement, so a
+# property a test found to hold a value is tested again where it is forced after the store.
+
+. holder = Holder()
+holder.options = Options()
+holder.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ Options
+
++ name = "x"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ options Options?
++ flag = false
+
+────────────────────
++ do run
+
+if options
+    flag = true
+    -- options!.name
+
+────────────────────
+whenever #flag
+
+options = null
+
+:----
+%crash-stderr
+
+Unhandled panic: Optional'[Object __source__:Options] is null
+<no file:22>
+
+Task 1
+
+Stack trace:
+  0  __source__:Holder:run no file:22:8
+  1  __source__:main no file:4:1
+  2  __source__:init.__source__ no file
+  3  __source__:yumi.main no file
+;====
+:====
+# A store to a tracked property ends what is known of every property, so a property a test found
+# to hold a value is optional again after it.
+
+. holder = Holder()
+holder.options = Options()
+holder.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ Options
+
++ name = "x"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ options Options?
++ flag = false
++ shown = "${#flag}"
+
+────────────────────
++ do run
+
+if options
+    flag = true
+    -- options.name
+
+:----
+%crash
+
+Exception: Property "name" is read from Options?, which may be null; unwrap it first with ! or ?.
+<no file:23>
+        -- options.name
+           ^^^^^^^^^^^^
+;====
+:====
+# A `when` rule of a class runs its body as the object is made and on every change while its test
+# holds.
+
+. meter = Meter()
+meter.level = 5
+meter.level = 0
+meter.level = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Meter
+
++ level = 2
+
+────────────────────
+when #level > 0
+
+-- "level $level"
+
+:----
+
+level 2
+level 5
+level 7
+;====
+:====
+# A tracked lazy local is evaluated, and starts watching what it read, at whichever of its reads
+# runs first, even where a read written before it does not run.
+
+.. foo = #bar * 10
+.. bar = 1
+. flag = true
+if !flag
+    -- "branch one $foo"
+if flag
+    -- "branch two $foo"
+-- "plain $foo"
+bar = 2
+-- "after change $foo"
+
+:----
+
+branch two 10
+plain 10
+after change 20
+;====
+:====
+# A `when` rule that leaves early on its first run, as the object is made, leaves only its body.
+
+. foo = Foo()
+-- "made ${foo.name}"
+foo.bar = 5
+foo.bar = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 0
++ name = "none"
+
+────────────────────
++ This
+
+name = "foo"
+
+────────────────────
+when #bar < 6
+
+=? if bar == 0
+-- "lesser ${bar}"
+
+────────────────────
+when #bar > 6
+
+-- "greater ${bar}"
+
+:----
+
+made foo
+lesser 5
+greater 7
+;====
+:====
+# A rule whose nested function reads the object and a local the rule declares, where the
+# constructor runs it first and where what it tests changes.
+
+. holder = Holder()
+-- ", ".join(holder.first)
+-- ", ".join(holder.later)
+holder.context = "b"
+-- ", ".join(holder.first)
+-- ", ".join(holder.later)
+holder.hidden = "z"
+holder.context = "c"
+-- ", ".join(holder.first)
+-- ", ".join(holder.later)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ context = "a"
++ hidden = "x"
++ first = List'String()
++ later = List'String("none")
+_ names = List'String("x", "y", "z")
+
+────────────────────
+when #context != ""
+
+. suffix = context
+first = List'String("$each$suffix" in names when each != hidden)
+
+────────────────────
+whenever #context
+
+. suffix = context
+later = List'String("$each$suffix" in names when each != hidden)
+
+:----
+
+ya, za
+none
+yb, zb
+yb, zb
+xc, yc
+xc, yc
+;====
+:====
+# A derived property that reads another one never shows a rule a mix of old and new values.
+
+. f = Foo()
+f.a = 2
+-- "|".join(f.seen)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ total = #a + #b
++ b = #a * 10
++ seen [String] = List'String()
+
+────────────────────
+whenever #total
+
+seen += "total:$total"
+
+:----
+
+total:22
+;====
+:====
+# A derived property nothing subscribes to is evaluated again only when read after changes, once,
+# from fresh values.
+
+. f = Foo()
+-- f.d
+f.a = 2
+f.a = 3
+-- f.d
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ b = #a * 10
++ c = #a * 100
++ d = summed(#b, #c)
+
+━━━━━━━━━━━━━━━━━━━━
++ do summed Int
+    - left Int
+    - right Int
+
+-- "run $left $right"
+= left + right
+
+:----
+
+run 10 100
+110
+run 30 300
+330
+;====
+:====
+# A class may give a property of its base a value that reads tracked state, read through the base.
+
+. s = Sub()
+. b Base = s
+-- b.x
+s.y = 5
+-- b.x
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ x = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Base
+
++ y = 2
++ x = #y * 10
+
+:----
+
+20
+50
+;====
+:====
+# A value written to a derived property stays until what it reads changes.
+
+. f = Foo()
+-- f.total
+f.total = 99
+-- f.total
+f.a = 3
+-- f.total
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ total = #a * 10
+
+:----
+
+10
+99
+30
+;====
+:====
+# A stream of a derived value gives nothing when the value is evaluated again to the same value.
+
+. f = Foo()
+. values = <f.#positive>
+-- <- values
+f.a = 2
+f.a = -1
+-- <- values
+values.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ positive = #a > 0
+
+:----
+
+true
+false
+;====
+:====
+# A derived value that makes another one it reads stale before it subscribes still sees later
+# changes.
+
+. f = Foo()
+-- f.d
+f.on = true
+-- f.d
+f.src.a = 7
+-- f.d
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ a = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ src = Source()
++ on = false
++ total = src.#a * 10
++ d = if #on then bumped(src, #total) else 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do bumped Int
+    - source Source
+    - value Int
+
+if source.a == 1
+    source.a = 5
+= value
+
+:----
+
+0
+10
+70
+;====
+:====
+# A rule that reads a list and a derived value of it sees them agree when the list changes.
+
+. f = Foo()
+f.on = true
+-- f.m
+f.items += 7
+-- "|".join(f.seen)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ items = List'Int()
++ on = false
++ m = if #on then #items.length else 0
++ seen [String] = List'String()
+
+────────────────────
+whenever "${#items.length}:${#m}"
+
+seen += "${items.length}:$m"
+
+:----
+
+0
+1:1
+;====
+:====
+# A derived property that settles a stale derived value it reads, and comes out the same, still runs
+# its rules when what it reads changes again.
+
+. source = Source()
+. middle = Middle(source)
+. f = Foo(middle, "a")
+source.pick("b")
+source.pick("c")
+source.pick("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ revision U64
+_ picked = "a"
+
+────────────────────
++ do pick
+    - id String
+
+picked = id
+revision += 1
+
+────────────────────
++ do current String
+
+= picked
+
+━━━━━━━━━━━━━━━━━━━━
++ Middle
+
++ source Source
++ revision = #source.#revision
+
+────────────────────
++ This
+    - source
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ middle Middle
++ id String
++ is-picked = revised(middle.source.current(), middle.#revision) == #id
+
+────────────────────
++ This
+    - middle
+    - id
+
+────────────────────
+whenever #is-picked
+
+-- "$id picked $is-picked"
+
+━━━━━━━━━━━━━━━━━━━━
+_ revised String
+    - value String
+    - revision U64
+
+value
+
+.. ignored = revision
+
+:----
+
+a picked false
+a picked true
+;====

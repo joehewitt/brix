@@ -1,0 +1,160 @@
+
+/graphics/curve-kernels
+/graphics/offset
+/graphics/offset-kernels
+/graphics/path
+/graphics/path-set
+/graphics/point
+/graphics/primitives
+/graphics/stroke
+/math
+
+_ offset-deviation-limit = 0.5
+_ offset-omission-limit = 1.0
+_ offset-validity-margin = 0.5
+
+━━━━━━━━━━━━━━━━━━━━
++ do round-offset
+    - source Path
+    - distance Length
+
+. result = Path()
+for path in offset-path(PathSet([source]), distance, .round-join-type).paths
+    result.add-path(path)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-fidelity
+    - source Path
+    - distance Length
+
+|? deviation > offset-deviation-limit
+    "deviates by $deviation"
+|? omission > offset-omission-limit
+    "omits by $omission"
+??
+    "faithful"
+
+.. result = round-offset(source, distance)
+.. segments = path-segments(source, 48)
+.. deviation = offset-deviation(segments, result, distance)
+.. omission = offset-omission(source, segments, result, distance)
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-deviation
+    - segments [Point]
+    - result Path
+    - distance Length
+
+. worst Length
+. pieces = path-segments(result, 12)
+. index = 0
+while index < pieces.length
+    . middle = (pieces[index] + pieces[index + 1]) * 0.5
+    . deviation = abs(segments-distance(middle, segments) - abs(distance))
+    if deviation > worst
+        worst = deviation
+    index += 2
+= worst
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-omission
+    - source Path
+    - segments [Point]
+    - result Path
+    - distance Length
+
+. sign = if source.is-closed && !source.is-clockwise then -1.0 else 1.0
+. outward = if distance > 0 then plus-margin else distance - offset-validity-margin
+    .. plus-margin = distance + offset-validity-margin
+. pieces = path-segments(result, 12)
+. worst Length
+. reader = source.curve-reader
+while reader.next()
+    . is-line = reader.type == .segment-type-line
+    . p0 = Point(reader.x1, reader.y1)
+    . p3 = Point(reader.x2, reader.y2)
+    . p1 = if is-line then p0 else Point(reader.handle-out-x, reader.handle-out-y)
+    . p2 = if is-line then p3 else Point(reader.handle-in-x, reader.handle-in-y)
+    if p0.distance(p3) < 0.001
+        continue
+
+    for step in 1 .. < 24
+        . t = (step as Float) / 24
+        . point = source-offset-point(p0, p1, p2, p3, t, distance, sign, is-line)
+        if segments-distance(point, segments) < abs(distance) - 0.02
+            continue
+        . beyond = source-offset-point(p0, p1, p2, p3, t, outward, sign, is-line)
+        if segments-distance(beyond, segments) < abs(outward) - 0.02
+            continue
+
+        . omission = segments-distance(point, pieces)
+        if omission > worst
+            worst = omission
+= worst
+
+━━━━━━━━━━━━━━━━━━━━
++ do path-segments
+    - path Path
+    - steps Int
+
+. segments [Point]
+. reader = path.curve-reader
+while reader.next()
+    . previous = Point(reader.x1, reader.y1)
+    if reader.type == .segment-type-line
+        segments += previous
+        segments += Point(reader.x2, reader.y2)
+    else
+        for step in 1 .. < steps + 1
+            . sample = cubic-evaluate-xy()
+                - reader.x1
+                - reader.y1
+                - reader.handle-out-x
+                - reader.handle-out-y
+                - reader.handle-in-x
+                - reader.handle-in-y
+                - reader.x2
+                - reader.y2
+                - (step as Float) / steps
+            . point = Point(sample.x, sample.y)
+            segments += previous
+            segments += point
+            previous = point
+= segments
+
+━━━━━━━━━━━━━━━━━━━━
++ do segments-distance
+    - point Point
+    - segments [Point]
+
+. best Length = 1e100
+. index = 0
+while index < segments.length
+    . start = segments[index]
+    . span = segments[index + 1] - start
+    . length2 = span.x * span.x + span.y * span.y
+    . t = 0.0
+    if length2 > 0
+        t = max(0.0, min(1.0, (point - start).dot(span) / length2))
+    . distance = point.distance(start + span * t)
+    if distance < best
+        best = distance
+    index += 2
+= best
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-offset-point
+    - p0 Point
+    - p1 Point
+    - p2 Point
+    - p3 Point
+    - t PointOnCurve
+    - distance Length
+    - sign Float
+    - is-line Bool
+
+|? is-line
+    p0 + (p3 - p0) * t + offset-unit-normal(unit-vector(p3 - p0), sign) * distance
+??
+    offset-cubic-point(p0, p1, p2, p3, t, distance, sign)

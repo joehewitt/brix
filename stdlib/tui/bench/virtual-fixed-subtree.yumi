@@ -1,0 +1,260 @@
+/core/markup
+/core/virtual
+/core/virtual-layout
+/data/stream
+/tui/bench/virtual-fixed-kernel
+/tui/box
+/tui/canvas
+/tui/colors
+/tui/layout
+/tui/primitives
+/tui/shortcuts
+/tui/text
+/tui/virtual
+/ui/input
+
+_ virtual-subtree-count VirtualCoord = 1000000000vcoord
+_ virtual-subtree-opening-scroll VirtualCoord = 4001vcoord
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-virtual-fixed-subtree Size
+
+. harness = VirtualSubtreeHarness()
+. stats-before = virtual-kernel-stats(harness.root.region)
+
+. address I64 = 1000
+. step Size = 0
+while step < 2048
+    address += 1
+    harness.frame(address, 24, false)
+    step += 1
+
+step = 0
+while step < 256
+    . jump-address I64 = 1000
+    if step % 4 == 1
+        jump-address = 1000000
+    else if step % 4 == 2
+        jump-address = 500000000
+    else if step % 4 == 3
+        jump-address = 999999980
+    harness.frame(jump-address, 24, false)
+    step += 1
+
+step = 0
+while step < 64
+    harness.frame(address, 24, true)
+    step += 1
+
+step = 0
+while step < 64
+    harness.frame(address, 12, false)
+    harness.frame(address, 24, false)
+    step += 1
+
+. stats-after = virtual-kernel-stats(harness.root.region)
+emit-virtual-region-stats(harness.root.region, stats-before, stats-after)
+
+= harness.checksum + harness.root.region.pool-size
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualSubtreeHarness
+
++ root := VirtualSubtreeRoot()
++ previous-canvas Canvas
++ current-canvas Canvas
++ frame-output := DataStream'Byte(8192)
++ checksum Size
+
+────────────────────
++ This
+
+markup-mount-root(root, root)
+root.arrange-bounds(Rect(0, 0, 80, 48))
+root.markup-batch-queue.checkpoint()
+root.region.virtual-scroll = VirtualPoint(0vcoord, virtual-subtree-opening-scroll)
+root.update-layout()
+root.arrange-bounds(Rect(0, 0, 80, 24))
+root.update-layout()
+
+previous-canvas = Canvas(PSize(80, 48))
+current-canvas = Canvas(PSize(80, 48))
+previous-canvas.reset()
+root.paint(previous-canvas)
+. warmup-frame = previous-canvas.dump()
+?! Panic("virtual-fixed-subtree warmup did not render row content")
+    if warmup-frame.find("1001 g") == null
+
+────────────────────
++ do frame
+    - address I64
+    - viewport-height Coord
+    - resets-source Bool
+
+//+tui.bench.input-step
+if resets-source
+    root.source.bump-revision()
+. y = ((address * 4) + 1) as VirtualCoord
+root.region.virtual-scroll = VirtualPoint(0vcoord, y)
+root.region.invalidate-layout()
+root.arrange-bounds(Rect(0, 0, 80, viewport-height))
+
+//+tui.bench.checkpoint
+root.markup-batch-queue.checkpoint()
+//-tui.bench.checkpoint
+
+//+tui.bench.layout
+root.update-layout()
+//-tui.bench.layout
+
+current-canvas.reset()
+//+tui.bench.paint
+root.paint(current-canvas)
+//-tui.bench.paint
+
+frame-output.reset()
+//+tui.bench.canvas-diff
+current-canvas.dump-diff(frame-output, previous-canvas)
+//-tui.bench.canvas-diff
+
+//tui.bench.frames ++
+//tui.bench.mutations ++
+//tui.bench.canvas.diff-dumps ++
+if frame-output.length
+    //tui.bench.canvas.changed-diffs ++
+//tui.bench.canvas.diff-bytes += frame-output.length
+
+checksum += frame-output.length * 17 + (address as Size) % 1000003 + viewport-height
+. recycled-canvas = previous-canvas
+previous-canvas = current-canvas
+current-canvas = recycled-canvas
+//-tui.bench.input-step
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualSubtreeRoot is Box
+    is MarkupBatch
+
+• This
+    focus-mode = FocusMode.keys
+
++ source := VirtualRangeSource(virtual-subtree-count)
++ virtual-layout := VerticalFixedLayout(4vcoord)
++ region VirtualRegion'I64
++ selected-address I64 = 1000
++ status-message = "Row 1,000 of 1,000,000,000"
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col bg:black
+    <VirtualRegion'I64 region • flex:1 bg:black
+        source = #source
+        virtual-layout = #virtual-layout
+        overscan = VirtualInsets(12vcoord, 0vcoord, 12vcoord, 0vcoord)
+        virtual-scroll = VirtualPoint(0vcoord, virtual-subtree-opening-scroll)
+
+        <VirtualComplexRow (row) - slot • flex-row
+            address = slot.#address
+            item = slot.#item
+            generation = slot.#generation
+            is-even = slot.#item % 2 == 0
+            parts = virtual-subtree-parts(slot.#item)
+            read-current = => slot.item
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+────────────────────
++ do move
+    - rows I64
+
+go-to(selected-address + rows)
+
+────────────────────
++ do go-to
+    - requested I64
+
+. address = requested
+if address < 0
+    address = 0
+if address >= (virtual-subtree-count as I64)
+    address = (virtual-subtree-count as I64) - 1
+selected-address = address
+status-message = "Row ${address + 1} of 1,000,000,000"
+region.virtual-scroll = VirtualPoint(0vcoord, (address * 4) + 1)
+region.invalidate-layout()
+region.invalidate-paint()
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualComplexRow is Box
+
++ address I64
++ item I64
++ generation U64
++ is-even Bool
++ parts [String]
++ read-current Getter'I64
+
+• This • flex-row flex:1 text:(if #is-even then white else silver) bg:(if #is-even then navy else black)
+
+────────────────────
+
+<This
+    <Label • text:white bg:(if #is-even then navy else black)
+        text = "${#address} g${#generation}"
+
+    if #is-even
+        <Label " even " • text:aqua
+    else
+        <Label " odd " • text:yellow
+
+    <Box • flex-row
+        for part in #parts
+            <Label • text:(if #is-even then lime else rose)
+                text = part
+
+    <VirtualStatefulChild
+        address = #address
+
+    <VirtualFocusableChild
+        read-current = read-current
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualStatefulChild is Label
+
++ address I64
++ retained-state U64 = 1
+
+• This • text:teal
+    text = " state:${#retained-state}:${#address % 97} "
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualFocusableChild is Box
+
+• This
+    focus-mode = FocusMode.keys
+
++ read-current Getter'I64
++ last-read I64
+
+────────────────────
+
+<This • flex-row
+    <Shortcut "Read current virtual row"
+        key = .enter
+        show-in-status = false
+        action = => do last-read = read-current()
+
+    <Label • text:(if #is-focused then white else gray)
+        text = " current:${#last-read} "
+
+━━━━━━━━━━━━━━━━━━━━
+_ virtual-subtree-parts [String]
+    - item I64
+
+List'String([" [$item]", " [${item % 7}]", " [${item % 13}] "])

@@ -1,0 +1,73 @@
+/YuCore/YuCore.h
+/YuGC/YuGC.h
+
+. worker = Worker(2)
+. ready SyncChannel'Bool
+. start SyncChannel'Bool
+. done SyncChannel'String
+
+do (worker) new iterate-strings(ready, start, done)
+do (worker) new collect-strings(ready, start, done)
+
+<- ready
+<- ready
+start <- true
+start <- true
+
+. first = <- done
+. second = <- done
+worker.stop()
+
+if !((first == "iterator-ok" && second == "collector-ok") || (first == "collector-ok" && second == "iterator-ok"))
+    ?! Panic("String iterator concurrency results were incomplete")
+
+-- "gc-string-iterator-concurrency-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ do iterate-strings
+    - ready SyncChannel'Bool
+    - start SyncChannel'Bool
+    - done SyncChannel'String
+
+ready <- true
+<- start
+
+. source = "Aé漢😀é" * 128
+. expected-count = 768
+. expected-pass-checksum = 158130 * 128
+. checksum = 0 as Size
+for round in 0 .. < 32
+    . count = 0
+    . pass-checksum = 0 as Size
+    for char in source
+        count += 1
+        pass-checksum += char as Size
+        if count % 128 == 0
+            C:yumiCollect()
+    if count != expected-count || pass-checksum != expected-pass-checksum
+        done <- "iterator-corrupt"
+        =
+    checksum += pass-checksum
+
+if checksum != expected-pass-checksum * 32
+    done <- "iterator-checksum"
+else
+    done <- "iterator-ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-strings
+    - ready SyncChannel'Bool
+    - start SyncChannel'Bool
+    - done SyncChannel'String
+
+ready <- true
+<- start
+
+for i in 0 .. < 128
+    . churn = "collector-$i" * 8
+    if churn.length == 0
+        done <- "collector-corrupt"
+        =
+    C:yumiCollect()
+
+done <- "collector-ok"

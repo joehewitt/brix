@@ -1,0 +1,50 @@
+./clipboard
+./icon
+./icon-button
+/gui/icons/lucide/check
+/gui/icons/lucide/copy
+/time/duration
+
+_ copy-button-settle Duration = 1500ms
+
+━━━━━━━━━━━━━━━━━━━━
++ CopyButton is IconButton
+
++ text = ""
++ is-copied = false
+
+_ copies U64
+
+• This
+    when !#is-copied
+        • own icon-host
+            <LucideCopy (first-child) • icon
+
+    when #is-copied
+        • own icon-host
+            <LucideCheck (first-child) • icon
+
+────────────────────
+for event on click
+
+write()
+event.cancel()
+
+────────────────────
++ do write Bool
+
+=? false if !Clipboard().write-text(text)
+copies += 1
+is-copied = true
+. mark = copies
+do new
+    settle(mark)
+= true
+
+────────────────────
+_ do settle
+    - mark U64
+
+copy-button-settle.wait()
+if copies == mark
+    is-copied = false

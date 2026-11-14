@@ -1,0 +1,266 @@
+`benchmark.meta description: CoreGraphics and Metal per-frame time for full-damage, partial-damage, and idle retained-scene modes over a settled 1k-box tree in a real never-shown native window.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gui,gui-metal,compile-timing
+
+/YuAppleGUI/YuAppleGUI.h
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/gui/box
+/gui/layout
+/gui/metal
+/gui/primitives
+/gui/scene
+/stream/sort
+/time/timer
+
+. root = ReuseRoot()
+markup-mount-root(root, root)
+. target ReuseCell?
+for row-index in 0 .. < 10
+    . row = ReuseRow()
+    markup-append(root, row)
+    for cell-index in 0 .. < 100
+        . cell = ReuseCell()
+        if row-index == 5 && cell-index == 50
+            target = cell
+        markup-append(row, cell)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1180, 800))
+
+. native = C:yumiGuiWindowCreate("gui bench surface-modes (offscreen)", 1180, 800)
+. scale = C:yumiGuiWindowGetBackingScaleFactor(native)
+. background = RGBA(1, 1, 1, 1)
+. frames Size = 30
+. surface = RasterCanvas(1180, 800, scale, background)
+. scene = DisplayScene(scale, background)
+
+` warm up
+for warm in 0 .. < 3
+    root.sync-native-geometry()
+    scene.maintain(root, scale, background)
+    scene.add-damage(root.bounds)
+    scene.frame(surface)
+    C:yumiGuiWindowCommitFrame
+        - native
+        - surface.native
+        - scene.last-frame-damage.x
+        - scene.last-frame-damage.y
+        - scene.last-frame-damage.width
+        - scene.last-frame-damage.height
+
+` mode 1: replay the full retained surface
+. full-damage-ns [U64]
+for frame in 0 .. < frames
+    . t0 = monotonic-time-nanoseconds()
+    root.sync-native-geometry()
+    scene.maintain(root, scale, background)
+    scene.add-damage(root.bounds)
+    scene.frame(surface)
+    C:yumiGuiWindowCommitFrame
+        - native
+        - surface.native
+        - scene.last-frame-damage.x
+        - scene.last-frame-damage.y
+        - scene.last-frame-damage.width
+        - scene.last-frame-damage.height
+    . t1 = monotonic-time-nanoseconds()
+    full-damage-ns += t1 - t0
+
+` mode 2: replay only one cell's retained damage
+. partial-damage-ns [U64]
+for frame in 0 .. < frames
+    . t2 = monotonic-time-nanoseconds()
+    root.sync-native-geometry()
+    scene.maintain(root, scale, background)
+    scene.add-damage(target!.bounds)
+    scene.frame(surface)
+    C:yumiGuiWindowCommitFrame
+        - native
+        - surface.native
+        - scene.last-frame-damage.x
+        - scene.last-frame-damage.y
+        - scene.last-frame-damage.width
+        - scene.last-frame-damage.height
+    . t3 = monotonic-time-nanoseconds()
+    partial-damage-ns += t3 - t2
+
+` mode 3: maintain and decline a settled frame with no damage
+. idle-ns [U64]
+for frame in 0 .. < frames
+    . t4 = monotonic-time-nanoseconds()
+    root.sync-native-geometry()
+    scene.maintain(root, scale, background)
+    . replay-count = scene.frames-replayed
+    scene.frame(surface)
+    if scene.frames-replayed != replay-count
+        C:yumiGuiWindowCommitFrame
+            - native
+            - surface.native
+            - scene.last-frame-damage.x
+            - scene.last-frame-damage.y
+            - scene.last-frame-damage.width
+            - scene.last-frame-damage.height
+    . t5 = monotonic-time-nanoseconds()
+    idle-ns += t5 - t4
+
+. full-damage-p50 = percentile-us(full-damage-ns, 50)
+. full-damage-p95 = percentile-us(full-damage-ns, 95)
+. full-damage-p99 = percentile-us(full-damage-ns, 99)
+. full-damage-min = min-us(full-damage-ns)
+//gui.bench.surface.full-damage-p50-us += full-damage-p50
+//gui.bench.surface.full-damage-p95-us += full-damage-p95
+//gui.bench.surface.full-damage-p99-us += full-damage-p99
+//gui.bench.surface.full-damage-min-us += full-damage-min
+
+. partial-damage-p50 = percentile-us(partial-damage-ns, 50)
+. partial-damage-p95 = percentile-us(partial-damage-ns, 95)
+. partial-damage-p99 = percentile-us(partial-damage-ns, 99)
+. partial-damage-min = min-us(partial-damage-ns)
+//gui.bench.surface.partial-damage-p50-us += partial-damage-p50
+//gui.bench.surface.partial-damage-p95-us += partial-damage-p95
+//gui.bench.surface.partial-damage-p99-us += partial-damage-p99
+//gui.bench.surface.partial-damage-min-us += partial-damage-min
+
+. idle-p50 = percentile-us(idle-ns, 50)
+. idle-p95 = percentile-us(idle-ns, 95)
+. idle-p99 = percentile-us(idle-ns, 99)
+. idle-min = min-us(idle-ns)
+//gui.bench.surface.idle-p50-us += idle-p50
+//gui.bench.surface.idle-p95-us += idle-p95
+//gui.bench.surface.idle-p99-us += idle-p99
+//gui.bench.surface.idle-min-us += idle-min
+
+. metal-renderer = MetalOffscreenRenderer(1180, 800, scale, background)
+. metal-scene = DisplayScene(scale, background, metal-renderer)
+. metal-full-damage-ns [U64]
+. metal-partial-damage-ns [U64]
+. metal-idle-ns [U64]
+do use metal-renderer
+    ` warm the Metal consumer and its reusable packet/resource rings
+    for warm in 0 .. < 3
+        root.sync-native-geometry()
+        metal-scene.maintain(root, scale, background)
+        metal-scene.add-damage(root.bounds)
+        metal-scene.frame-metal(metal-renderer)
+
+    ` mode 1: encode and submit the full retained scene
+    for frame in 0 .. < frames
+        . t6 = monotonic-time-nanoseconds()
+        root.sync-native-geometry()
+        metal-scene.maintain(root, scale, background)
+        metal-scene.add-damage(root.bounds)
+        metal-scene.frame-metal(metal-renderer)
+        . t7 = monotonic-time-nanoseconds()
+        metal-full-damage-ns += t7 - t6
+
+    ` mode 2: encode and submit one cell's retained damage
+    for frame in 0 .. < frames
+        . t8 = monotonic-time-nanoseconds()
+        root.sync-native-geometry()
+        metal-scene.maintain(root, scale, background)
+        metal-scene.add-damage(target!.bounds)
+        metal-scene.frame-metal(metal-renderer)
+        . t9 = monotonic-time-nanoseconds()
+        metal-partial-damage-ns += t9 - t8
+
+    ` mode 3: maintain and decline a settled Metal frame with no damage
+    for frame in 0 .. < frames
+        . t10 = monotonic-time-nanoseconds()
+        root.sync-native-geometry()
+        metal-scene.maintain(root, scale, background)
+        metal-scene.frame-metal(metal-renderer)
+        . t11 = monotonic-time-nanoseconds()
+        metal-idle-ns += t11 - t10
+    metal-renderer.finish()
+    metal-scene.close()
+
+. metal-full-damage-p50 = percentile-us(metal-full-damage-ns, 50)
+. metal-full-damage-p95 = percentile-us(metal-full-damage-ns, 95)
+. metal-full-damage-p99 = percentile-us(metal-full-damage-ns, 99)
+. metal-full-damage-min = min-us(metal-full-damage-ns)
+//gui.bench.surface.metal-full-damage-p50-us += metal-full-damage-p50
+//gui.bench.surface.metal-full-damage-p95-us += metal-full-damage-p95
+//gui.bench.surface.metal-full-damage-p99-us += metal-full-damage-p99
+//gui.bench.surface.metal-full-damage-min-us += metal-full-damage-min
+
+. metal-partial-damage-p50 = percentile-us(metal-partial-damage-ns, 50)
+. metal-partial-damage-p95 = percentile-us(metal-partial-damage-ns, 95)
+. metal-partial-damage-p99 = percentile-us(metal-partial-damage-ns, 99)
+. metal-partial-damage-min = min-us(metal-partial-damage-ns)
+//gui.bench.surface.metal-partial-damage-p50-us += metal-partial-damage-p50
+//gui.bench.surface.metal-partial-damage-p95-us += metal-partial-damage-p95
+//gui.bench.surface.metal-partial-damage-p99-us += metal-partial-damage-p99
+//gui.bench.surface.metal-partial-damage-min-us += metal-partial-damage-min
+
+. metal-idle-p50 = percentile-us(metal-idle-ns, 50)
+. metal-idle-p95 = percentile-us(metal-idle-ns, 95)
+. metal-idle-p99 = percentile-us(metal-idle-ns, 99)
+. metal-idle-min = min-us(metal-idle-ns)
+//gui.bench.surface.metal-idle-p50-us += metal-idle-p50
+//gui.bench.surface.metal-idle-p95-us += metal-idle-p95
+//gui.bench.surface.metal-idle-p99-us += metal-idle-p99
+//gui.bench.surface.metal-idle-min-us += metal-idle-min
+
+scene.close()
+surface.close()
+C:yumiGuiWindowClose(native)
+C:yumiGuiWindowRelease(native)
+root.close()
+markup-release(root)
+
+. checksum = frames * 6 + 1000
+-- "bench-result gui/surface-modes checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ percentile-us
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
+
+━━━━━━━━━━━━━━━━━━━━
++ min-us
+    - values [U64]
+
+|? !values
+    0
+??
+    sorted[0] / 1000
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseRow is Box
+
+• This
+    layout = flow-row
+
+━━━━━━━━━━━━━━━━━━━━
++ ReuseCell is Box
+
+• This • bg:"#8080e6"
+    min-width = SizeSpec.coord(11)
+    min-height = SizeSpec.coord(80)
+    max-width = SizeSpec.coord(11)
+    max-height = SizeSpec.coord(80)

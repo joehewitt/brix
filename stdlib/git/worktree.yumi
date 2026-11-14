@@ -1,0 +1,45 @@
+./command
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-add-worktree ?! Error
+    - directory String
+    - path String
+    - branch String
+    - base String
+
+. added = git-output
+    - directory
+    - ["worktree", "add", "--quiet", "-b", branch, "--end-of-options", path, base]
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-prune-worktrees ?! Error
+    - directory String
+
+. pruned = git-output(directory, ["worktree", "prune", "--expire", "now"])
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-delete-branch ?! Error
+    - directory String
+    - branch String
+
+. deleted = git-output(directory, ["branch", "-D", "--end-of-options", branch])
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-has-ref Bool ?! Error
+    - directory String
+    - ref String
+
+. found = catch git-output(directory, ["show-ref", "--verify", "--quiet", ref])
+if found is Error
+    . failure = found as Error
+    =? false if failure is GitError && (failure as GitError).status == 1
+    ?! failure
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ do git-is-branch-name Bool ?! Error
+    - directory String
+    - name String
+
+. checked = catch git-output(directory, ["check-ref-format", "--branch", name])
+= !(checked is Error)

@@ -1,0 +1,78 @@
+/YuMedia/YuMedia.h
+
+━━━━━━━━━━━━━━━━━━━━
++ MediaRing
+    is Closable
+
++ capacity I64
++ width I64
+_ native Pointer
+_ data CPointer'F32
+_ is-closed = false
+
+────────────────────
++ This
+    - capacity I64
+    - width I64
+
+this.capacity = capacity
+this.width = width
+native = C:yumiMediaRingCreate(capacity, width)
+data = C:yumiMediaRingGetData(native)
+
+────────────────────
++ get native-pointer Pointer
+
+native
+
+────────────────────
++ get written I64 @no-gc
+
+C:yumiMediaRingGetWritten(native)
+
+────────────────────
++ get consumed I64 @no-gc
+
+C:yumiMediaRingGetConsumed(native)
+
+────────────────────
++ get filled I64 @no-gc
+
+written - consumed
+
+────────────────────
++ get space I64 @no-gc
+
+capacity - filled
+
+────────────────────
++ get run I64 @no-gc
+
+capacity - written % capacity
+
+────────────────────
++ slot CPointer'F32 @no-gc
+    - count I64
+
+data + (count % capacity) * width
+
+────────────────────
++ do publish @no-gc
+    - count I64
+
+C:yumiMediaRingPublish(native, count)
+
+────────────────────
++ do consume @no-gc
+    - count I64
+
+C:yumiMediaRingConsume(native, count)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+if !is-closed
+    is-closed = true
+    C:yumiMediaRingRelease(native)

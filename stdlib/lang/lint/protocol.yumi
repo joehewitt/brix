@@ -1,0 +1,204 @@
+./config
+./diagnostics
+/data/json
+/os/file
+
++ lint-protocol = "ometer.lint.v1"
++ rules-protocol = "ometer.lint.rules.v1"
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-stderr
+    - text String
+
+stderr <- "$text\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ lint-event [String = JSON]
+    - kind String
+
+Map'String'JSON
+    • protocol lint-protocol
+    • version 1
+    • event kind
+
+━━━━━━━━━━━━━━━━━━━━
++ rules-event [String = JSON]
+    - kind String
+
+Map'String'JSON
+    • protocol rules-protocol
+    • version 1
+    • event kind
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-start
+    - files Int
+    - config-path String?
+    - semantic JSON? = null
+
+. event = lint-event("start")
+event["files"] = files
+if config-path
+    event["configPath"] = config-path
+if semantic
+    event["semantic"] = semantic
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-progress
+    - file String
+    - index Int
+    - total Int
+
+. event = lint-event("progress")
+event["phase"] = "file"
+event["file"] = file
+event["index"] = index
+event["total"] = total
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-semantic-progress
+    - total Int
+    - file String?
+    - index Int?
+    - rule String?
+    - step String? = null
+
+` Reports progress of the semantic phase: of the analysis at a `step`, for a root or for none,
+` or of the semantic rules over a file, with no step.
+. event = lint-event("progress")
+event["phase"] = "semantic"
+if file
+    event["file"] = file
+if index
+    event["index"] = index
+event["total"] = total
+if rule
+    event["rule"] = rule
+if step
+    event["step"] = step
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-diagnostic
+    - diagnostic LintDiagnostic
+
+. event = lint-event("diagnostic")
+event["diagnostic"] = diagnostic-json(diagnostic)
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ diagnostic-json JSON
+    - diagnostic LintDiagnostic
+
+Map'String'JSON
+    • path diagnostic.path
+    • "ruleId" diagnostic.rule-id
+    • status diagnostic.status
+    • message diagnostic.message
+    • line diagnostic.line
+    • column diagnostic.column
+    •? fix fix-json(diagnostic.fix) if diagnostic.fix
+
+━━━━━━━━━━━━━━━━━━━━
++ fix-json JSON
+    - fix LintFix
+
+Map'String'JSON
+    • kind fix.kind
+    • title fix.title
+    • edits edit-json(each) in fix.edits
+
+━━━━━━━━━━━━━━━━━━━━
++ edit-json JSON
+    - edit LintTextEdit
+
+Map'String'JSON
+    • start edit.start
+    • end edit.end
+    • replacement edit.replacement
+    • "expectedText" edit.expected-text
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-semantic
+    - report JSON
+
+. event = lint-event("semantic")
+event["semantic"] = report
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-end
+    - status String
+    - summary [String = JSON]
+    - semantic JSON?
+
+. event = lint-event("end")
+event["status"] = status
+event["summary"] = summary
+if semantic
+    event["semantic"] = semantic
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-error
+    - message String
+
+. event = lint-event("error")
+event["status"] = "error"
+event["message"] = message
+event["error"] = Map'String'JSON
+    • message message
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-rule-catalog
+    - config LintConfig? = null
+
+` Writes each rule of the catalog, and then their count. With a `config`, each rule also says
+` whether the config enables it.
+. catalog = rule-catalog()
+for rule in catalog
+    emit-rule(rule, config)
+emit-rules-end(catalog.length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do emit-rule
+    - rule LintRule
+    - config LintConfig?
+
+. event = rules-event("rule")
+event["rule"] = Map'String'JSON
+    • id rule.id
+    • description rule.description
+    • phase rule.phase
+    • fixable fixable-json(rule)
+    • "defaultOptions" rule.default-options
+    •? enabled config.rules has rule.id if config
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ fixable-json JSON
+    - rule LintRule
+
+|? rule.fixable
+    rule.fixable
+??
+    false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do emit-rules-end
+    - count Int
+
+. event = rules-event("end")
+event["summary"] = Map'String'JSON
+    • rules count
+-- to-json(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-diagnostic String
+    - diagnostic LintDiagnostic
+
+"$place ${diagnostic.rule-id} [${diagnostic.status}] ${diagnostic.message}"
+    .. place = "${diagnostic.path}:${diagnostic.line}:${diagnostic.column}"

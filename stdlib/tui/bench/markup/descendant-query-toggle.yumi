@@ -1,0 +1,131 @@
+`benchmark.meta description: Toggles descendant query targets under a deep synthetic markup tree.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/core/style
+/gc/gc
+/tui/box
+/tui/layout
+/tui/primitives
+/tui/text
+
++ DescendantQueryTarget is Label
+
+. step-count Size = 120
+. markup-attachment-lane = C:yumiGCMarkupAttachmentsSidePayloadLane()
+C:yumiCollect()
+do drain-reclaim-cleanups()
+. opening-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+do opening-markup-attachments
+
+. root = DescendantQueryRoot()
+do root
+
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+. settled-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+do settled-markup-attachments
+. settled-markup-hosts = descendant-query-host-count(root)
+?! Panic("markup/descendant-query-toggle initial attachment tree is inconsistent")
+    if settled-markup-attachments != opening-markup-attachments + settled-markup-hosts
+
+. checksum Size = 0
+for step in 0 .. < step-count
+    root.mode = step
+    root.markup-batch-queue.checkpoint()
+    //markup.bench.steps ++
+    checksum += root.target-count() + step
+
+C:yumiCollect()
+do drain-reclaim-cleanups()
+C:yumiCollect()
+do drain-reclaim-cleanups()
+. final-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+. final-markup-hosts = descendant-query-host-count(root)
+. minimum-final-markup-attachments = opening-markup-attachments + final-markup-hosts
+. maximum-final-markup-attachments = minimum-final-markup-attachments + 1
+. final-below-minimum = final-markup-attachments < minimum-final-markup-attachments
+. final-above-maximum = final-markup-attachments > maximum-final-markup-attachments
+?! Panic("markup/descendant-query-toggle retained reclaimed attachment owners")
+    if final-below-minimum || final-above-maximum
+?! Panic("markup/descendant-query-toggle lost its live attachment tree")
+    if final-markup-attachments <= opening-markup-attachments
+
+-- "bench-result markup/descendant-query-toggle checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ DescendantQueryRoot is Box
+    is MarkupBatch
+
++ mode Size = 0
++ markup-batch-queue := MarkupBatchQueue(this)
+
+_ targets Descendants'DescendantQueryTarget
+
+────────────────────
+
+<This
+    for branch in 0 .. < 12
+        <Box
+            if branch % 3 == 0
+                <Box
+                    <Box
+                        if descendant-query-target-active(#mode, branch)
+                            <DescendantQueryTarget
+                                text = "target-$branch"
+                        else
+                            <Label
+                                text = "plain-$branch"
+            else if branch % 3 == 1
+                <Box
+                    <Box
+                        <Box
+                            if descendant-query-target-active(#mode, branch * 5)
+                                <DescendantQueryTarget
+                                    text = "target-${branch * 5}"
+                            else
+                                <Label
+                                    text = "plain-${branch * 5}"
+            else
+                for leaf in 0 .. < 3
+                    <Box
+                        <Box
+                            if descendant-query-target-active(#mode, branch * 7 + leaf)
+                                <DescendantQueryTarget
+                                    text = "target-${branch * 7 + leaf}"
+                            else
+                                <Label
+                                    text = "plain-${branch * 7 + leaf}"
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ target-count Size
+
+targets.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ descendant-query-target-active Bool
+    - mode Size
+    - seed Size
+
+(mode + seed * 7) % 11 < 5
+
+━━━━━━━━━━━━━━━━━━━━
+_ do descendant-query-host-count Size
+    - root MarkupHost
+
+. count Size = 1
+. cursor = markup-query-first-descendant-host(root)
+while cursor
+    count += 1
+    cursor = markup-query-next-descendant-host(root, cursor)
+= count

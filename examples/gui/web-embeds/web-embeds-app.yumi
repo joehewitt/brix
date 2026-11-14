@@ -1,0 +1,90 @@
+/gui
+/gui/desktop
+/gui/web-view
+
+_ embed-style = "<!doctype html><style>body { margin: 0 } .card { border: 1px solid #8884; border-radius: 10px; padding: 12px 16px } h3 { margin: 0 0 6px } a { color: #4aa3ff }</style>"
+_ card-html = "$embed-style<div class='card'><h3>Injected card</h3>This page draws no background and takes its font and color from Yumi. Links open in your browser: <a href='https://www.apple.com'>same window</a>, <a href='https://webkit.org' target='_blank'>new window</a>.</div>"
+_ details-html = "$embed-style<details class='card'><summary>Show more</summary><p>Opening this section makes the page taller, and the embed grows to fit.</p><p>Closing it shrinks the embed again.</p></details>"
+_ growing-html = "$embed-style<div class='card' id='list'><h3>Growing list</h3></div><script>let count = 0; const timer = setInterval(() => { const row = document.createElement('div'); row.textContent = 'Row ' + (++count); list.appendChild(row); if (count == 8) clearInterval(timer) }, 600)</script>"
+_ full-height-html = "$embed-style<style>html, body { height: 100% } body { display: flex; align-items: center; justify-content: center }</style><div class='card'>A page that asks for the full viewport height still fits its content.</div>"
+_ visibility-html = "$embed-style<div class='card'><h3>Visibility</h3><div id='log'></div></div><script>const note = () => { const row = document.createElement('div'); row.textContent = new Date().toLocaleTimeString() + ' ' + document.visibilityState; log.appendChild(row) }; document.addEventListener('visibilitychange', note); note()</script>"
+_ filler-text = "Scroll with the pointer over an embed: the column keeps scrolling, because embeds that fit their content pass the wheel back to Yumi. Each embed below is a transparent web view sized to its page, with its own private cookie store."
+
+<App
+    <EmbedsWindow
+        title = "Yumi GUI: Web Embeds"
+        size = (720, 820)
+
+━━━━━━━━━━━━━━━━━━━━
+• EmbedsTheme
+    using GUIDefaultTheme
+    using GUIBoxPaint
+    using GUITextPaint
+
+• embeds-column • bg:gui-panel-color
+    overflow-x = ScrollOverflow.clip
+    overflow-y = ScrollOverflow.auto
+
+• embed-title • text:gui-muted-text-color
+
+━━━━━━━━━━━━━━━━━━━━
+_ EmbedsWindow is Window
+    using EmbedsTheme
+
+────────────────────
+
+<This • flex-col
+    <Box • embeds-column flex:1 flex-col p:24
+        <EmbedSection
+            title = "Injected HTML"
+            html = card-html
+        <EmbedSection
+            title = "Height changes from the page"
+            html = details-html
+        <EmbedSection
+            title = "Content that arrives later"
+            html = growing-html
+        <EmbedSection
+            title = "Full-height layout"
+            html = full-height-html
+        <EmbedSection
+            title = "Remote page, background removed by user-style"
+            url = "https://example.com"
+            user-style = "body { background: transparent !important }"
+        <Label • embed-title h:1600
+            text = "Far below, the next embed starts hidden and wakes as it nears the viewport."
+        <EmbedSection
+            title = "Visibility changes seen by the page"
+            html = visibility-html
+
+━━━━━━━━━━━━━━━━━━━━
+_ EmbedSection is Box
+
++ title = ""
++ html String?
++ url String?
++ user-style = ""
+
+────────────────────
+
+<This • flex-col mb:28
+    <Text • mb:10
+        <Span
+            text = filler-text
+    <Label • embed-title mb:8
+        text = #title
+    <WebView frame
+        fits-content = true
+        is-transparent = true
+        is-ephemeral = true
+        inherits-style = true
+        user-style = #user-style
+        html = #html
+        url = #url
+
+────────────────────
+for event on frame.navigating
+
+if event.kind == WebNavigationKind.link
+    event.cancel()
+    open-url(event.url)

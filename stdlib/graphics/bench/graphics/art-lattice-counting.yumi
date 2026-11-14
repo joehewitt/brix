@@ -1,0 +1,58 @@
+`benchmark.meta description: Runs higher-level lattice drawing through a no-raster counting canvas.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/canvas
+/graphics/color
+/graphics/graphic
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/graphics/style
+/graphics/vector-group
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 420
+    . grid = lattice-grid
+        - Rect(0, 0, 180, 140)
+        - Rect(0, 0, 12.0 + (pass % 5), 10.0 + (pass % 7))
+        - 5
+        - 7
+    checksum += grid.length + pass
+    for row in grid
+        checksum += row.length
+
+. group = VectorGroup()
+for i in 0 .. < 80
+    . f = i as Float
+    group += VectorGroup([circle((20 + (f % 16) * 8, 30 + (f / 16) * 10), 4 + (f % 5))])
+
+group.fill = red
+group.checkpoint()
+group.update(Rect(0, 0, 240, 160))
+. canvas = CountingCanvas(240, 160)
+group.paint-vector(canvas)
+
+checksum += canvas.checksum + canvas.path-count + canvas.path-segment-count
+-- "bench-result graphics/art-lattice-counting checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lattice-grid
+    - bounds Rect
+    - stamp Rect
+    - spacing-x Float
+    - spacing-y Float
+
+. rows [[Point]]
+. y = bounds.y
+while y < bounds.bottom
+    . row [Point]
+    . x = bounds.x
+    while x < bounds.right
+        row += Point(x + stamp.width / 2, y + stamp.height / 2)
+        x += stamp.width + spacing-x
+    rows += row
+    y += stamp.height + spacing-y
+= rows

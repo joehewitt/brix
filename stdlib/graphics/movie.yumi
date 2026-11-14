@@ -1,0 +1,83 @@
+./canvas
+/YuMovie/YuMovie.h
+/time/duration
+
+_ movie-writing U32 = 1
+_ movie-saving U32 = 2
+_ movie-saved U32 = 3
+_ movie-pause Duration = 2ms
+
+━━━━━━━━━━━━━━━━━━━━
++ MovieError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ MovieWriter
+    is Closable
+
++ path String
++ width I32
++ height I32
++ frame-rate F64
+_ native Pointer
+_ is-closed = false
+
+────────────────────
++ This ?! Error
+    - path String
+    - width I32
+    - height I32
+    - frame-rate F64
+
+. created = C:yumiMovieCreate(path, width, height, frame-rate)
+if C:yumiMovieGetStatus(created) != movie-writing
+    . problem String = C:yumiMovieGetError(created)
+    C:yumiMovieRelease(created)
+    ?! MovieError(problem)
+this.path = path
+this.width = width
+this.height = height
+this.frame-rate = frame-rate
+native = created
+
+────────────────────
++ get frame-count I64
+
+if is-closed then 0i64 else C:yumiMovieGetFrameCount(native)
+
+────────────────────
++ do add ?! Error
+    - canvas RasterCanvas
+
+?! MovieError("The movie is closed")
+    if is-closed
+while !C:yumiMovieIsReady(native) && C:yumiMovieGetStatus(native) == movie-writing
+    movie-pause.wait()
+if !C:yumiMovieAppendCanvas(native, canvas.native)
+    fail()
+
+────────────────────
++ do finish ?! Error
+
+?! MovieError("The movie is closed")
+    if is-closed
+if !C:yumiMovieFinish(native)
+    fail()
+while C:yumiMovieGetStatus(native) == movie-saving
+    movie-pause.wait()
+if C:yumiMovieGetStatus(native) != movie-saved
+    fail()
+
+────────────────────
+_ do fail ?! Error
+
+. problem String = C:yumiMovieGetError(native)
+?! MovieError(if problem.length then problem else "The movie could not be written")
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+if !is-closed
+    is-closed = true
+    C:yumiMovieRelease(native)

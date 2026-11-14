@@ -1,0 +1,155 @@
+`benchmark.meta description: Retained bytes and build allocations for plain boxes, empty VectorImages, styled VectorImages, one-path VectorImages, and Lucide icons.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui,compile-timing
+
+/YuGC/YuGC.h
+/core/markup
+/graphics/color
+/graphics/point
+/graphics/primitives
+/graphics/style
+/graphics/vector
+/gui/box
+/gui/icons/lucide/activity
+/gui/vector-image
+
+. item-count Size = 1000
+_ measured-live Size
+_ measured-objects Size
+. checksum Size
+
+measure-unmounted("box", item-count)
+//gui.bench.vector-memory.unmounted-box-bytes += measured-live
+//gui.bench.vector-memory.unmounted-box-objects += measured-objects
+checksum += measured-live
+
+measure-unmounted("empty", item-count)
+//gui.bench.vector-memory.unmounted-empty-bytes += measured-live
+//gui.bench.vector-memory.unmounted-empty-objects += measured-objects
+checksum += measured-live
+
+measure-variant("box", item-count)
+//gui.bench.vector-memory.box-bytes += measured-live
+//gui.bench.vector-memory.box-objects += measured-objects
+checksum += measured-live
+
+measure-variant("empty", item-count)
+//gui.bench.vector-memory.empty-bytes += measured-live
+//gui.bench.vector-memory.empty-objects += measured-objects
+checksum += measured-live
+
+measure-variant("styled", item-count)
+//gui.bench.vector-memory.styled-bytes += measured-live
+//gui.bench.vector-memory.styled-objects += measured-objects
+checksum += measured-live
+
+measure-variant("path", item-count)
+//gui.bench.vector-memory.path-bytes += measured-live
+//gui.bench.vector-memory.path-objects += measured-objects
+checksum += measured-live
+
+measure-variant("lucide", item-count)
+//gui.bench.vector-memory.lucide-bytes += measured-live
+//gui.bench.vector-memory.lucide-objects += measured-objects
+checksum += measured-live
+
+-- "bench-result gui/vector-image-memory checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle-live Size
+
+C:yumiCollect()
+C:yumiCollect()
+= C:yumiGCLiveByteCount() as Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure-unmounted
+    - variant String
+    - count Size
+
+. live0 = settle-live()
+. objects0 = C:yumiGCAllocatedObjectCount()
+. values [Box]
+for index in 0 .. < count
+    if variant == "box"
+        values += Box()
+    else
+        values += VectorImage()
+. live1 = settle-live()
+measured-live = (live1 - live0) / count
+measured-objects = ((C:yumiGCAllocatedObjectCount() - objects0) / count) as Size
+measured-live += values.length - count
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure-variant
+    - variant String
+    - count Size
+
+. live0 = settle-live()
+. objects0 = C:yumiGCAllocatedObjectCount()
+. root = BenchRoot()
+markup-mount-root(root, root)
+for index in 0 .. < count
+    if variant == "box"
+        markup-append(root, Box())
+    else if variant == "empty"
+        markup-append(root, VectorImage())
+    else if variant == "styled"
+        markup-append(root, BenchStyledVector())
+    else if variant == "path"
+        markup-append(root, BenchPathVector())
+    else
+        markup-append(root, LucideActivity())
+root.markup-batch-queue.checkpoint()
+. live1 = settle-live()
+measured-live = (live1 - live0) / count
+measured-objects = ((C:yumiGCAllocatedObjectCount() - objects0) / count) as Size
+root.close()
+markup-release(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchStyledVector is VectorImage
+
+────────────────────
++ This
+
+view-box = Rect(0, 0, 24, 24)
+
+────────────────────
+
+<This
+    fill = Fill.none
+    stroke = black
+    stroke-width = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchPathVector is VectorImage
+
+────────────────────
++ This
+
+view-box = Rect(0, 0, 24, 24)
+
+────────────────────
+
+<This
+    fill = Fill.none
+    stroke = black
+    stroke-width = 2
+
+    <VectorPath
+        d =
+            * M(2, 2)
+            * L(22, 22)

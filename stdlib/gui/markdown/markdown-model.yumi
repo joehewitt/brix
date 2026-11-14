@@ -1,0 +1,326 @@
+./markdown-blocks
+./markdown-outline
+./markdown-source
+/code
+/math
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownModelChange is Tuple
+
++ is-rebuilt Bool
++ at Size
++ removed Size
++ added Size
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownModel
+
++ blocks [MarkdownBlock]
++ starts [Size]
++ ends [Size]
++ prefixes [String]
++ sources [String]
+
+_ outline = MarkdownOutline()
+_ damage = CodeTextDamage()
+_ text CodeText?
+_ base = ""
+
+────────────────────
++ do sync MarkdownModelChange?
+    - next CodeText
+    - next-base String
+
+. current = text
+if !current || current as Pointer != next as Pointer || base != next-base
+    if current
+        current.untrack(damage)
+    next.track(damage)
+    text = next
+    base = next-base
+    build(next)
+    = MarkdownModelChange(true, 0, 0, 0)
+=? null if !damage.is-damaged
+= update(next)
+
+────────────────────
++ do detach
+
+. current = text
+if current
+    current.untrack(damage)
+text = null
+
+────────────────────
++ do block-at-offset Size
+    - offset Size
+
+. low Size = 0
+. high = starts.length
+while low < high
+    . middle = low + (high - low) / 2
+    if starts[middle] <= offset
+        low = middle + 1
+    else
+        high = middle
+= if low > 0 then low - 1 else 0
+
+────────────────────
++ is-empty-block Bool
+    - index Size
+
+starts[index] == ends[index] && blocks[index].kind == MarkdownBlockKind.paragraph
+
+────────────────────
+_ do build
+    - next CodeText
+
+damage.clear()
+outline.scan(next)
+. builder = MarkdownModelBuilder(Map'String'MarkdownBlock())
+finish(builder, next, generate(builder, next, 0, outline.starts.length, null, false), null)
+if !builder.blocks.length
+    builder.push-empty(0, 0)
+blocks = builder.blocks
+starts = builder.starts
+ends = builder.ends
+prefixes = builder.prefixes
+sources = builder.sources
+
+────────────────────
+_ do update MarkdownModelChange
+    - next CodeText
+
+. edit = outline.update(next, damage)
+. line-delta = damage.line-delta
+. byte-delta = damage.byte-delta
+damage.clear()
+. first = block-at-line(edit.start-line)
+. old-end-line = edit.old-end-line
+. last = if old-end-line != null then block-at-line(old-end-line) else blocks.length
+. previous Size? = null
+. back = first
+while back > 0 && previous == null
+    back -= 1
+    if !is-empty-block(back)
+        previous = next.line-at(ends[back]) + 1
+. reuse = Map'String'MarkdownBlock()
+. index = first
+while index < last
+    reuse[sources[index]] = blocks[index]
+    index += 1
+. builder = MarkdownModelBuilder(reuse)
+. kept-line = ((blocks[last].line as I64) + line-delta) as Size if last < blocks.length
+finish
+    - builder
+    - next
+    - generate(builder, next, edit.first, edit.first + edit.added, previous, edit.start-line > 0)
+    - kept-line
+if !builder.blocks.length && first == 0 && last == blocks.length
+    builder.push-empty(0, 0)
+index = last
+while index < blocks.length
+    blocks[index].line = ((blocks[index].line as I64) + line-delta) as Size
+    starts[index] = (starts[index] as I64) + byte-delta
+    ends[index] = (ends[index] as I64) + byte-delta
+    index += 1
+= splice(first, last, builder)
+
+────────────────────
+_ do block-at-line Size
+    - line Size
+
+. low Size = 0
+. high = blocks.length
+while low < high
+    . middle = low + (high - low) / 2
+    if blocks[middle].line < line
+        low = middle + 1
+    else
+        high = middle
+= low
+
+────────────────────
+_ do splice MarkdownModelChange
+    - first Size
+    - last Size
+    - builder MarkdownModelBuilder
+
+. added = builder.blocks
+. removed = last - first
+. kept = min(removed, added.length)
+. index Size = 0
+while index < added.length
+    added[index].index = first + index
+    index += 1
+index = 0
+while index < kept
+    if blocks[first + index] as Pointer != added[index] as Pointer
+        blocks[first + index] = added[index]
+    index += 1
+if removed > kept
+    blocks.remove(first + kept, removed - kept)
+else if added.length > kept
+    blocks.insert(added[kept ...], first + kept)
+if removed != added.length
+    index = first + added.length
+    while index < blocks.length
+        blocks[index].index = index
+        index += 1
+if removed > 0
+    starts.remove(first, removed)
+    ends.remove(first, removed)
+    prefixes.remove(first, removed)
+    sources.remove(first, removed)
+if added.length > 0
+    starts.insert(builder.starts, first)
+    ends.insert(builder.ends, first)
+    prefixes.insert(builder.prefixes, first)
+    sources.insert(builder.sources, first)
+= MarkdownModelChange(false, first + kept, removed - kept, added.length - kept)
+
+────────────────────
+_ do generate Size?
+    - builder MarkdownModelBuilder
+    - next CodeText
+    - first Size
+    - last Size
+    - previous Size?
+    - keeps-gap Bool
+
+. after = previous
+. skips-gap = keeps-gap
+. value = first
+while value < last
+    . start = outline.starts[value]
+    . end = outline.ends[value]
+    . parsed = markdown-blocks(next.text-in(next.line-start(start), next.line-end(end - 1)), base)
+    for block in parsed
+        block.line += start
+    for index in 0 .. < parsed.length
+        . block = parsed[index]
+        . span-start = block.line
+        . following = index + 1
+        while following < parsed.length && parsed[following].line <= span-start
+            following += 1
+        . span-end = if following < parsed.length then parsed[following].line else end
+        while span-end > span-start + 1 && markdown-is-blank-line(next.line-text(span-end - 1), block.kind)
+            span-end -= 1
+        if !skips-gap
+            add-gap(builder, next, after ?? 0, span-start, after == null, false)
+        skips-gap = false
+        . from = next.line-start(span-start)
+        . to = next.line-end(span-end - 1)
+        builder.push
+            - block
+            - from
+            - to
+            - markdown-line-prefix(next.line-text(span-start), block.kind)
+            - next.text-in(from, to)
+        after = span-end
+    value += 1
+= after
+
+────────────────────
+_ do finish
+    - builder MarkdownModelBuilder
+    - next CodeText
+    - previous Size?
+    - kept-line Size?
+
+if kept-line != null
+    add-gap(builder, next, previous ?? 0, kept-line, previous == null, false)
+    =
+. limit = if ends-with-newline then next.line-count - 1 else next.line-count
+    .. ends-with-newline = next.length > 0 && next.byte-at(next.length - 1) == code-newline
+add-gap(builder, next, previous ?? 0, max(limit, previous ?? 0), previous == null, true)
+
+────────────────────
+_ do add-gap
+    - builder MarkdownModelBuilder
+    - next CodeText
+    - first Size
+    - end Size
+    - at-start Bool
+    - at-end Bool
+
+=? if end <= first
+for line in first .. < end
+    =? if next.line-text(line).trim().size > 0
+. size = end - first
+. count = if at-start || at-end then size / 2 else if size >= 3 then (size - 1) / 2 else 0
+for index in 0 .. < count
+    . line = if at-start then first + index * 2 else first + 1 + index * 2
+    builder.push-empty(next.line-start(line), line)
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownModelBuilder
+
++ blocks [MarkdownBlock]
++ starts [Size]
++ ends [Size]
++ prefixes [String]
++ sources [String]
+
+_ reuse Map'String'MarkdownBlock
+
+────────────────────
++ This
+    - reuse
+
+────────────────────
++ do push
+    - block MarkdownBlock
+    - start Size
+    - end Size
+    - prefix String
+    - source String
+
+. chosen = block
+. old = reuse[source]
+if old && markdown-block-matches(old, block)
+    -= reuse[source]
+    chosen = old
+chosen.index = blocks.length
+chosen.line = block.line
+blocks += chosen
+starts += start
+ends += end
+prefixes += prefix
+sources += source
+
+────────────────────
++ do push-empty
+    - position Size
+    - line Size
+
+. empty = MarkdownBlock(0, MarkdownBlockKind.paragraph)
+empty.line = line
+push(empty, position, position, "", "")
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-is-blank-line Bool
+    - line String
+    - kind MarkdownBlockKind
+
+trimmed.size == 0 || (kind == MarkdownBlockKind.quote && trimmed == ">")
+
+.. trimmed = line.trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-block-matches Bool
+    - old MarkdownBlock
+    - block MarkdownBlock
+
+=? false if old.kind != block.kind || old.level != block.level || nesting-differs
+.. nesting-differs = old.depth != block.depth || old.marker != block.marker
+=? false if old.anchor != block.anchor || old.code != block.code || old.language != block.language
+=? false if old.columns != block.columns || lengths-differ
+.. lengths-differ = old.cells.length != block.cells.length || old.runs.length != block.runs.length
+for index in 0 .. < old.runs.length
+    . a = old.runs[index]
+    . b = block.runs[index]
+    =? false if a.text != b.text || style-differs
+    .. style-differs = a.is-strong != b.is-strong || a.is-em != b.is-em || a.is-code != b.is-code
+    =? false if a.url != b.url || a.is-break != b.is-break || a.is-image != b.is-image
+= true

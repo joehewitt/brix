@@ -1,0 +1,626 @@
+./ast
+./ast-children
+./ast-nodes
+./row-range
+/core/arena
+/core/array-builder
+/core/atom-pool
+/core/map
+/core/parsing
+/core/table
+/stream/aggregate
+
+━━━━━━━━━━━━━━━━━━━━
++ ASTBuilder
+    is Usable'Void
+    is PatternCollectorStorage'ArenaBacking
+    is PatternMaterializationRoot'SyntaxId
+    is PatternCaptureMaterializer'Char'String
+    is PatternValueMaterializer'String'String
+    is PatternRollback'ASTBuilderMark
+
++ text-arena Arena
++ storage-arena Arena
++ pattern-collector-context Arena
++ source String
++ source-path String
++ nodes Table'Syntax
++ children ArrayBuilder'SyntaxId'ArenaBacking
++ atoms ArrayBuilder'Atom'ArenaBacking
++ stored-atoms ArrayBuilder'Atom'ArenaBacking
++ root SyntaxId = 0
++ atom-state SyntaxAtomState = .local
++ atom-pool AtomPool?
++ is-released Bool
+
+_ local-atoms AtomPool
+_ atom-translation Map'U64'Atom'ArenaBacking?
+_ translation-arena Arena?
+_ atom-miss Bool
+_ atom-lock Mutex?
+
+as PatternCaptureMaterializer'Char'Atom for
+as PatternValueMaterializer'String'Atom for
+_ atom-materializer SyntaxAtomPatternMaterializer
+
+────────────────────
++ This
+    - input-source String
+    - input-source-path String = ""
+    - capacity-length Size = 0
+
+children.reserve(syntax-storage-capacity(input-source.length + capacity-length, 16, 0))
+atoms.reserve(syntax-storage-capacity(input-source.length + capacity-length, 32, 0))
+
+.. pattern-collector-context = storage-arena
+.. source = text-arena.copy-string(input-source)
+.. source-path = text-arena.copy-string(input-source-path)
+.. children = ArrayBuilder'SyntaxId(storage-arena)
+.. atoms = ArrayBuilder'Atom(storage-arena)
+.. stored-atoms = ArrayBuilder'Atom(storage-arena)
+.. local-atoms = AtomPool()
+.. atom-materializer = SyntaxAtomPatternMaterializer(local-atoms)
+.. nodes = new-syntax-table
+    - storage-arena
+    - syntax-storage-capacity(input-source.length + capacity-length, 4, 1)
+
+────────────────────
++ do publish-program-atoms
+    - pool AtomPool
+
+?! Panic("ASTBuilder is stale or released")
+    if is-released
+?! Panic("ASTBuilder Atom promotion is already published")
+    if atom-state != .local
+
+atom-pool = pool
+atom-state = .program
+
+────────────────────
++ materialize-capture String @no-gc
+    - source Char[]
+    - start Index
+    - end Index
+
+text-arena.copy-span(source, start, end)
+
+────────────────────
++ materialize-value String @no-gc
+    - input String
+
+store-string(input)
+
+────────────────────
++ mark ASTBuilderMark
+
+ASTBuilderMark(text-arena.mark, nodes.mark, children.mark)
+
+────────────────────
++ do rewind
+    - mark ASTBuilderMark
+
+text-arena.rewind(mark.text)
+nodes.rewind(mark.nodes)
+children.rewind(mark.children)
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using @no-gc
+
+release()
+
+────────────────────
++ do release @no-gc
+
+if !is-released
+    release-translation()
+    local-atoms.release()
+    text-arena.release()
+    storage-arena.release()
+    is-released = true
+
+────────────────────
++ do finish AST
+    - program-atoms AtomPool
+
+?! Panic("ASTBuilder is stale or released")
+    if is-released
+
+promote-atoms(program-atoms)
+
+. text = text-arena
+. storage = storage-arena
+. path = source-path
+. node-data = nodes.finish()
+. child-data = children.finish-immutable()
+. atom-data = atoms.finish-immutable()
+. stored-data = stored-atoms.finish-immutable()
+. links = link-children(storage, node-data, child-data)
+is-released = true
+= AST
+    - text
+    - storage
+    - local-atoms
+    - source
+    - path
+    - node-data
+    - child-data
+    - atom-data
+    - stored-data
+    - links.ids.finish-immutable()
+    - links.ends
+    - links.starts
+    - root
+
+────────────────────
++ syntax-or-invalid SyntaxId
+    - value SyntaxId?
+
+if value then value else 0
+
+────────────────────
++ do append'Node SyntaxId
+    - node Node
+    - Node is SyntaxNode
+
+?! Panic("ASTBuilder node table exceeds the valid Syntax ID range")
+    if nodes.length >= U32.max
+
+. index = nodes.length
+nodes.append(node)
+= index as SyntaxId
+
+
+────────────────────
++ child-ids IndexSpan'SyntaxId
+    - range RowRange'SyntaxId
+
+IndexSpan'SyntaxId(children, range.start .. < range.end)
+
+────────────────────
++ do store-child RowRange'SyntaxId
+    - first SyntaxId
+    - second SyntaxId? = null
+    - third SyntaxId? = null
+
+. count Size = 1
+if second
+    count += 1
+if third
+    count += 1
+
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if children.length > U32.max - count
+
+. start = children.length
+children.append(first)
+if second
+    children.append(second)
+if third
+    children.append(third)
+= RowRange'SyntaxId(start as U32, count as U32)
+
+────────────────────
++ do store-children'Item RowRange'SyntaxId
+    - items ImmutableArray'Item
+    - Item is SyntaxId
+
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if children.length > U32.max || items.length > U32.max - children.length
+
+. start = children.length
+for item in items
+    children.append(item)
+= RowRange'SyntaxId(start as U32, items.length as U32)
+
+────────────────────
++ store-optional-children'Item RowRange'SyntaxId
+    - items ImmutableArray'Item?
+    - Item is SyntaxId
+
+|? items
+    store-children(items)
+??
+    RowRange'SyntaxId()
+
+────────────────────
++ do call-operands RowRange'SyntaxId
+    - params RowRange'SyntaxId
+    - args RowRange'SyntaxId
+
+?! Panic("Call type arguments exceed the row's count width")
+    if params.count > U8.max
+=? args if params.is-empty
+=? params if args.is-empty
+=? RowRange'SyntaxId(params.start, params.count + args.count) if args.start == params.end
+
+?! Panic("ASTBuilder child pool exceeds U32 capacity")
+    if children.length > U32.max - params.count - args.count
+. start = children.length
+for offset in 0 .. < params.count
+    children.append(children[params.start + offset])
+for offset in 0 .. < args.count
+    children.append(children[args.start + offset])
+= RowRange'SyntaxId(start as U32, params.count + args.count)
+
+────────────────────
++ do make-call SyntaxId
+    - loc MatchLocation
+    - callable SyntaxId
+    - params ImmutableArray'SyntaxId
+    - args ImmutableArray'SyntaxId
+    - is-curried Bool
+
+. stored-params = store-children(params)
+. stored-args = store-children(args)
+. operands = call-operands(stored-params, stored-args)
+= append(ASTCallExpression(loc, callable, operands, stored-params.count as U8, is-curried))
+
+────────────────────
++ do store-atoms RowRange'Atom
+    - items ImmutableArray'Atom
+
+?! Panic("ASTBuilder atom pool exceeds U32 capacity")
+    if atoms.length > U32.max || items.length > U32.max - atoms.length
+
+. start = atoms.length
+atoms.append-all(items)
+= RowRange'Atom(start as U32, items.length as U32)
+
+────────────────────
++ store-optional-atoms RowRange'Atom
+    - items ImmutableArray'Atom?
+
+|? items
+    store-atoms(items)
+??
+    RowRange'Atom()
+
+────────────────────
++ store-string String @no-gc
+    - value String
+
+|? text-arena.owns(value)
+    value
+??
+    text-arena.copy-string(value)
+
+────────────────────
++ do atom Atom
+    - text String
+
+=? local-atoms.store(text) if atom-state == .local
+. lock = atom-lock!
+use lock
+. stored = atom-pool!.store(text)
+stored-atoms.append(stored)
+= stored
+
+────────────────────
++ do atom-bytes Atom
+    - source Byte[]
+    - start Index
+    - end Index
+
+=? local-atoms.store(source, start, end) if atom-state == .local
+= atom(source.slice-string(start .. < end))
+
+────────────────────
++ owns-atom Bool
+    - atom Atom
+
+local-atoms.owns(atom)
+
+────────────────────
++ store-optional-string String?
+    - value String?
+
+store-string(value) if value
+
+────────────────────
++ do store-property-decorations StoredPropertyDecorations
+    - decorations ImmutableArray'SyntaxId
+
+. decoration Atom?
+. annotations = ArrayBuilder'Atom()
+for id in decorations
+    match nodes[id]
+        | .node-decoration(row)
+            if row.name.text == "task" || row.name.text == "thread" || row.name.text == "stack"
+                decoration = row.name
+            else
+                annotations.append(row.name)
+        ?! Panic("Expected a property decoration")
+
+= StoredPropertyDecorations(decoration, store-atoms(annotations.finish-immutable()))
+
+────────────────────
++ do promote-atoms
+    - program-atoms AtomPool
+
+?! Panic("ASTBuilder is stale or released")
+    if is-released
+
+if atom-state == .program
+    ?! Panic("ASTBuilder Atoms belong to another Program")
+        if atom-pool! != program-atoms
+    =
+
+translate-atoms(program-atoms)
+=? if apply-atom-translation(program-atoms)
+. completed = rewrite-atoms(program-atoms, null)
+?! Panic("ASTBuilder atom promotion did not resolve every atom")
+    if !completed
+publish-program-atoms(program-atoms)
+
+────────────────────
++ do share-program-atoms
+    - program-atoms AtomPool
+    - lock Mutex
+
+translate-atoms-holding(program-atoms, lock)
+if !apply-atom-translation(program-atoms)
+    promote-atoms-holding(program-atoms, lock)
+atom-lock = lock
+
+────────────────────
+_ do translate-atoms-holding
+    - program-atoms AtomPool
+    - lock Mutex
+
+use lock
+translate-atoms(program-atoms)
+
+────────────────────
+_ do promote-atoms-holding
+    - program-atoms AtomPool
+    - lock Mutex
+
+use lock
+promote-atoms(program-atoms)
+
+────────────────────
++ do translate-atoms
+    - program-atoms AtomPool
+
+?! Panic("ASTBuilder is stale or released")
+    if is-released
+=? if atom-state == .program
+
+drop-translation()
+. arena = Arena()
+. translation = Map'U64'Atom(arena)
+for index in 0 .. < local-atoms.length
+    . atom = local-atoms[index]
+    . stored = program-atoms.store(atom.text)
+    translation[atom.address] = stored
+    stored-atoms.append(stored)
+translation-arena = arena
+atom-translation = translation
+
+────────────────────
++ do apply-atom-translation Bool
+    - program-atoms AtomPool
+
+?! Panic("ASTBuilder is stale or released")
+    if is-released
+=? true if atom-state == .program
+=? false if !atom-translation
+
+. applied = rewrite-atoms(program-atoms, atom-translation)
+drop-translation()
+if applied
+    publish-program-atoms(program-atoms)
+= applied
+
+────────────────────
+_ do release-translation @no-gc
+
+if translation-arena
+    translation-arena.release()
+
+────────────────────
+_ do drop-translation
+
+release-translation()
+translation-arena = null
+atom-translation = null
+
+────────────────────
+_ do resolve-atom Atom
+    - atom Atom
+    - program-atoms AtomPool
+    - translation Map'U64'Atom'ArenaBacking?
+
+=? program-atoms.store(atom.text) if !translation
+. resolved = translation[atom.address]
+=? resolved if resolved
+atom-miss = true
+= atom
+
+────────────────────
+_ do rewrite-atoms Bool
+    - program-atoms AtomPool
+    - translation Map'U64'Atom'ArenaBacking?
+
+atom-miss = false
+. atom-items = atoms
+for index in 0 .. < atom-items.length
+    atom-items[index] = resolve-atom(atom-items[index], program-atoms, translation)
+
+for syntax-node in nodes
+    do match? syntax-node
+        | .node-class-block(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-event-declaration(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-property-syntax(node)
+            if node.decoration
+                . decoration = node.decoration
+                node.decoration = resolve-atom(decoration, program-atoms, translation)
+        | .node-state-case(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-state-continuation(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-state-fallback(node)
+            node.target = resolve-atom(node.target, program-atoms, translation)
+        | .node-enum-declaration(node)
+            if node.name
+                . name = node.name
+                node.name = resolve-atom(name, program-atoms, translation)
+        | .node-rule-syntax(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-style-when(node)
+            node.state = resolve-atom(node.state, program-atoms, translation)
+        | .node-integer-syntax(node)
+            if node.unit
+                . unit = node.unit
+                node.unit = resolve-atom(unit, program-atoms, translation)
+        | .node-float-syntax(node)
+            if node.unit
+                . unit = node.unit
+                node.unit = resolve-atom(unit, program-atoms, translation)
+        | .node-identifier(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-ref-identifier(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-symbol(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-anonymous-case(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+            if node.owner
+                . owner = node.owner
+                node.owner = resolve-atom(owner, program-atoms, translation)
+        | .node-decoration(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-c-identifier(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-style-rule-application(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-type-identifier(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-type-associated(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-type-case(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-type-property(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-probe-statement(node)
+            if node.key
+                . key = node.key
+                node.key = resolve-atom(key, program-atoms, translation)
+        | .node-stack-local-binding-block(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-get-expression(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-style-read-expression(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-style-property-expression(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+            if node.component
+                node.component = resolve-atom(node.component, program-atoms, translation)
+        | .node-markup-read-expression(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-argument(node)
+            if node.name
+                . name = node.name
+                node.name = resolve-atom(name, program-atoms, translation)
+        | .node-stream-call(node)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+        | .node-stream-collector-mapping(node)
+            if node.callee
+                . callee = node.callee
+                node.callee = resolve-atom(callee, program-atoms, translation)
+            node.caller = resolve-atom(node.caller, program-atoms, translation)
+        | .node-probe(node)
+            if node.name
+                . name = node.name
+                node.name = resolve-atom(name, program-atoms, translation)
+            if node.key
+                . key = node.key
+                node.key = resolve-atom(key, program-atoms, translation)
+        | .node-probe-group(node)
+            if node.key
+                . key = node.key
+                node.key = resolve-atom(key, program-atoms, translation)
+        | .node-probe-assign(node)
+            node.key = resolve-atom(node.key, program-atoms, translation)
+        | .node-probe-counter(node)
+            node.key = resolve-atom(node.key, program-atoms, translation)
+        | .node-whenever-rule-syntax(node)
+            node.kind = resolve-atom(node.kind, program-atoms, translation)
+        | .node-core-type-identifier(node)
+            node.module-name = resolve-atom(node.module-name, program-atoms, translation)
+            node.name = resolve-atom(node.name, program-atoms, translation)
+
+= !atom-miss
+
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxAtomState is U8
+
+| local = 0
+| program = 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ StoredPropertyDecorations is Tuple
+
++ decoration Atom?
++ annotations RowRange'Atom
+
+━━━━━━━━━━━━━━━━━━━━
++ ASTBuilderMark is Tuple
+
++ text ArenaMark
++ nodes TableMark
++ children Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ SyntaxAtomPatternMaterializer is Tuple
+    is PatternCaptureMaterializer'Char'Atom
+    is PatternValueMaterializer'String'Atom
+
+_ pool AtomPool
+
+────────────────────
++ This
+    - pool AtomPool
+
+────────────────────
++ materialize-capture Atom @no-gc
+    - source Char[]
+    - start Index
+    - end Index
+
+pool.store(source, start, end)
+
+────────────────────
++ materialize-value Atom @no-gc
+    - input String
+
+pool.store(input)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do new-syntax-table Table'Syntax
+    - arena Arena
+    - capacity Size
+
+. nodes = Table'Syntax(arena, capacity)
+nodes.append(ASTNoop(MatchLocation()))
+= nodes
+
+━━━━━━━━━━━━━━━━━━━━
+_ do syntax-storage-capacity Size
+    - source-length Size
+    - source-width Size
+    - minimum Size
+
+. capacity = source-length / source-width
+if capacity < minimum
+    capacity = minimum
+if capacity > U32.max
+    capacity = U32.max
+= capacity

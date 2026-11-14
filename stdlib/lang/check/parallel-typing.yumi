@@ -1,0 +1,121 @@
+./class-tables
+./instances
+./portable
+./session
+./session-merge
+./shared-results
+./typing
+./witnesses
+/lang/ast/module
+/lang/ast/program
+/lang/constants
+
+━━━━━━━━━━━━━━━━━━━━
++ do type-program
+    - session Session
+    - workers Int = default-worker-count
+
+` Types the program: on `workers` workers first (`type-in-parallel`), where there are several, and
+` then in `session` whatever they left, from the mains of the modules, or all of it where what the
+` workers typed is not taken. Where the pass starts over (`check-pass`), it is typed so again.
+session.program.note-derived-names()
+seed-mains(session)
+while true
+    if workers > 1
+        //+typing.phase// parallel
+        type-in-parallel(session, workers)
+        //-typing.phase// parallel done
+    //+typing.phase// check-pass
+    . checked = check-pass(session)
+    //-typing.phase// check-pass done
+    if checked
+        =
+    start-over(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do type-in-parallel
+    - session Session
+    - count Int
+
+` Types the program on `count` workers, each in a type pass of its own, and takes what they typed
+` into `session`, which then types whatever is left as it would alone (`merge-sessions`). The
+` workers share out the instances that any pass can intern, starting from the mains of the modules
+` in the order `seed-mains` gives them, and each takes in what the others published of an instance
+` in place of typing it again. Where a pass diverged (`SharedTyping.diverge`), nothing they typed is
+` taken, and `session`, which holds only the mains then, types the program as it would alone.
+. shared = SharedTyping()
+shared.traces-lint = session.facts.traces-lint
+shared.tracked = session.panics.tracked-keys()
+. program = session.program
+. seeded = export-instance(session, seed-main(session, program.entry-module))
+if seeded
+    shared.offer(seeded)
+for position in 0 .. < program.modules.length
+    . item = export-instance(session, seed-main(session, position as ModuleId))
+    if item
+        shared.offer(item)
+. passes SyncBufferedChannel'Session
+. pool = Worker(count)
+for _ in 0 .. < count
+    do (pool) new
+        passes <- type-share(program, shared)
+. peers [Session]
+for _ in 0 .. < count
+    peers += (<- passes)!
+if !shared.has-diverged()
+    //+typing.phase// merge
+    merge-sessions(session, peers, pool)
+    //-typing.phase// merge done
+. released SyncBufferedChannel'Bool
+for peer in peers
+    do (pool) new
+        peer.release()
+        released <- true
+for _ in 0 .. < count
+    <- released
+pool.stop()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do type-share Session
+    - program Program
+    - shared SharedTyping
+
+` One worker's type pass: types each instance it takes from those the passes share out, offering
+` the others what its typing queues as it goes (`offer-queued`), and types itself those only it can
+` intern. One another pass published is left to that pass. One whose errors settle only after its
+` body ended is published once they do (`Instances.keeps-settled`). Where no offered instance
+` waits to be taken, the functions that answer for others in the tables of the classes and the
+` interfaces it has typed are offered too (`ClassTables.find-overrides`,
+` `WitnessTables.finding`), and are checked in `session` after the merge. Once a pass diverged,
+` what the passes typed is not taken, so what is offered after is taken without typing it.
+. session = Session(program)
+session.shared = shared
+session.instances.keeps-settled = true
+session.facts.traces-lint = shared.traces-lint
+session.panics.seed(shared.tracked)
+. instances = session.instances
+. tables = ClassTables(session)
+. witnesses = WitnessTables(session)
+witnesses.finding = true
+. cursor Size = 0
+for item in shared.items
+    shared.take()
+    if !shared.has-diverged() && !shared.has(item.key)
+        . id = import-instance(session, item)
+        if instances.stable-keys[id] == item.key
+            demand-instance(session, id)
+    . drained = shared.has-diverged()
+    while !drained
+        offer-queued(session)
+        while cursor < session.local.length
+            demand-instance(session, session.local[cursor])
+            cursor += 1
+            offer-queued(session)
+        . queued = instances.worklist.length
+        if shared.idle()
+            tables.find-overrides()
+            expand-witnesses(session, witnesses)
+        drained = instances.worklist.length == queued
+    shared.finish()
+tables.release()
+= session

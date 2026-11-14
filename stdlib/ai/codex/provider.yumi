@@ -1,0 +1,673 @@
+./tools
+./wire
+/ai/model
+/core/arena
+/data/json
+/data/jsonl
+/data/jsonrpc
+/os/env
+/os/path
+/os/process
+
++ codex-default-model = "gpt-6.1-sol"
++ codex-default-effort = "xhigh"
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexVariables is () [String = String]?
+
+━━━━━━━━━━━━━━━━━━━━
++ Codex is AIProvider
+
++ executable String?
++ working-directory String?
++ sandbox String?
++ approval-policy String?
++ approvals-reviewer String?
++ effort String?
++ reasoning-summary String?
++ is-persistent Bool
++ variables CodexVariables?
++ toolkits [AIToolkit]
++ running Size
+
+_ links [CodexLink]
+
+────────────────────
++ This
+    - executable String? = null
+    - working-directory String? = null
+    - sandbox String? = null
+    - approval-policy String? = null
+    - approvals-reviewer String? = null
+    - effort String? = null
+    - reasoning-summary String? = null
+    - is-persistent = true
+    - variables CodexVariables? = null
+    - toolkits = List'AIToolkit()
+
+super()
+
+╌╌╌╌╌╌╌╌╌╌ is AIProvider ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do account AIAccount? ?! AIError
+
+?! AIError(AIErrorKind.unknown, "Codex did not report its account: $failure")
+    catch failure Error
+. base = variables() if variables
+. program = executable ?? codex-executable(codex-search-directories(base))
+=? AIAccount(AIAccountStatus.missing) if !program
+. process = Process
+    - program
+    - ProcessStderr.discard
+    - ["app-server"]
+    - working-directory
+    - codex-environment(base)
+do finally codex-ended(process)
+= codex-account(codex-account-answer(process))
+
+────────────────────
++ tool-title String?
+    - call AIToolCallPart
+
+codex-tool-title(call)
+
+────────────────────
++ tool-kind AIToolKind
+    - call AIToolCallPart
+
+codex-tool-kind(call)
+
+────────────────────
++ tool-input String?
+    - call AIToolCallPart
+
+codex-tool-input(call)
+
+────────────────────
++ do stop-work ?! AIError
+    - parts [AIMessagePart]
+
+. link = linked(codex-parts-thread(parts))
+=? if !link
+link.halt()
+
+────────────────────
++ do stream <AIEvent>
+    - request AIRequest
+
+. turn = use begin-turn(request)
+for event in turn.events
+    <= event
+?! turn.failure
+    if turn.failure
+
+────────────────────
++ do steer ?! AIError
+    - parts [AIMessagePart]
+    - prompt String
+
+. link = linked(codex-parts-thread(parts))
+?! AIError(AIErrorKind.invalid-request, "Codex has no running turn to steer")
+    if !link || link.is-closing
+link.steer(prompt)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do begin-turn CodexTurn ?! AIError
+    - request AIRequest
+
+. input = codex-input(if toolkits then ai-toolkit-request(toolkits, request) else request)
+. plan = codex-resume(request)
+?! AIError(AIErrorKind.invalid-request, "Codex can't continue this chat because its branches were rearranged")
+    if plan.is-merged
+. settings = codex-thread-settings
+    - request
+    - working-directory
+    - sandbox
+    - approval-policy
+    - approvals-reviewer
+. key = to-json(settings as JSON)
+. turning = codex-turn-settings(effort, reasoning-summary, request.response-schema)
+. live = reusable(plan, key)
+=? live.ask(input, turning, request) if live
+. base = variables() if variables
+. program = executable ?? codex-executable(codex-search-directories(base))
+?! AIError(AIErrorKind.unknown, "Codex is not installed")
+    if !program
+. process = codex-process(program, working-directory, base)
+. link = CodexLink
+    - this
+    - process
+    - key
+    - codex-open(plan, settings, is-persistent, toolkits)
+    - plan.point
+links += link
+running += 1
+= link.ask(input, turning, request)
+
+────────────────────
+_ do reusable CodexLink?
+    - plan CodexResume
+    - key String
+
+. point = plan.point
+=? null if !point || plan.forks
+for link in links
+    =? link if link.thread == point.thread && link.settings == key && !link.is-closing
+= null
+
+────────────────────
+_ do linked CodexLink?
+    - thread String?
+
+. found CodexLink?
+for link in links
+    if thread != null && link.thread == thread && (!found || !link.is-closing)
+        found = link
+= found
+
+────────────────────
+_ do forget
+    - link CodexLink
+
+. index = links.length
+while index > 0
+    index -= 1
+    if links[index] as Pointer == link as Pointer
+        links.remove(index)
+        running -= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-executable String?
+    - directories [String]
+
+for directory in directories
+    . candidate = "$directory/codex"
+    =? candidate if Path(candidate).is-file
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-search-directories [String]
+    - variables [String = String]? = null
+
+** ((variables ?? environment())["PATH"] ?? "").split(":")
+*? "${home}/.local/bin" if home
+* "/opt/homebrew/bin"
+* "/usr/local/bin"
+|> List
+
+.. home = env("HOME")
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-environment [String = String]
+    - variables [String = String]? = null
+
+** (variables ?? environment())
+?> !codex-scrubs-variable(each[0])
+*> each[0], each[1]
+|> Map
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodexLink
+
++ settings String
++ is-closing = false
+
+_ provider Codex
+_ process Process
+_ opening CodexOpen?
+_ decoder := CodexDecoder()
+_ errors := Semaphore'String()
+_ turn CodexTurn?
+_ queued [CodexTurn]
+_ answers [String = SyncBufferedChannel'JSONRPCOutcome]
+_ requests Size
+_ is-interrupting = false
+_ has-exited = false
+
+────────────────────
++ This
+    - owner Codex
+    - child Process
+    - settings
+    - opening CodexOpen
+    - origin CodexPoint? = null
+
+.. provider = owner
+.. process = child
+this.opening = opening
+decoder.parent = origin
+send(to-json(JSONRPCRequest(request-id(), "initialize", codex-initialize-params(codex-dynamic-tools(owner.toolkits).length > 0)).json))
+send(to-json(JSONRPCNotification("initialized", null).json))
+do new
+    drain()
+do new
+    run()
+
+────────────────────
++ get thread
+
+decoder.thread
+
+────────────────────
++ do ask CodexTurn
+    - input [JSON]
+    - settings [String = JSON]
+    - request AIRequest
+
+. asked = CodexTurn(this, input, settings, request)
+if turn
+    queued += asked
+else
+    start(asked)
+= asked
+
+────────────────────
++ do steer ?! AIError
+    - prompt String
+
+. thread = decoder.thread
+. id = decoder.turn
+?! AIError(AIErrorKind.invalid-request, "Codex has no running turn to steer")
+    if !turn || !thread || !id
+request("turn/steer", codex-steer-params(thread, id, prompt))
+
+────────────────────
++ do halt
+
+for waiting in queued
+    waiting.settle(null)
+queued.clear()
+if turn
+    interrupt()
+else
+    release()
+
+────────────────────
++ do leave
+    - left CodexTurn
+
+if turn && turn as Pointer == left as Pointer
+    interrupt()
+else
+    queued = List(queued ?> each as Pointer != left as Pointer)
+    left.settle(null)
+
+────────────────────
+_ do start
+    - next CodexTurn
+
+turn = next
+is-interrupting = false
+do new
+    begin(next)
+
+────────────────────
+_ do begin
+    - next CodexTurn
+
+open-thread()
+    catch failure AIError
+        fail(next, failure)
+        =
+if is-interrupting
+    end-turn()
+    =
+. params = codex-turn-params(decoder.thread ?? "", next.input, next.settings)
+. result = request("turn/start", params)
+    catch failure AIError
+        fail(next, failure)
+        =
+=? if !turn || turn as Pointer != next as Pointer
+decoder.turn = decoder.turn ?? codex-result-turn(result)
+if is-interrupting
+    interrupt()
+
+────────────────────
+_ do open-thread ?! AIError
+
+. opened = opening
+=? if !opened
+opening = null
+. account = json-object(request("account/read", Map'String'JSON()))
+codex-check-account(json-object(account?["account"]))
+. result = json-object(request(opened.method, opened.params))
+. id = json-string(json-object(result?["thread"])?["id"])
+?! AIError(AIErrorKind.invalid-response, "Codex did not open a thread")
+    if !id
+for event in decoder.open(id, json-string(result?["model"]) ?? "")
+    do turn?.deliver(event)
+
+────────────────────
+_ do request JSON ?! AIError
+    - method String
+    - params JSON
+
+?! AIError(AIErrorKind.unknown, "Codex stopped before it could $method")
+    if has-exited
+. id = request-id()
+. waiting = SyncBufferedChannel'JSONRPCOutcome()
+answers[id] = waiting
+send(to-json(JSONRPCRequest(id, method, params).json))
+. outcome = <- waiting
+-= answers[id]
+?! AIError(AIErrorKind.unknown, "Codex stopped before it answered $method")
+    if !outcome
+do match outcome
+    | .result(value)
+        = value
+    | .error(error)
+        ?! AIError(AIErrorKind.invalid-request, "Codex could not $method: ${error.message}")
+
+────────────────────
+_ do fail
+    - next CodexTurn
+    - failure AIError
+
+next.settle(failure)
+if turn && turn as Pointer == next as Pointer
+    end-turn()
+
+────────────────────
+_ do interrupt
+
+. thread = decoder.thread
+. id = decoder.turn
+if !thread || !id
+    is-interrupting = true
+    =
+send
+    - to-json
+        - JSONRPCRequest(request-id(), "turn/interrupt", codex-interrupt-params(thread, id)).json
+
+────────────────────
+_ do run
+
+. problem String?
+listen()
+    catch failure Error
+        problem = "$failure"
+if problem
+    process.terminate()
+. status = process.wait(null)
+. output = errors.await() ?? ""
+process.close()
+provider.forget(this)
+is-closing = true
+has-exited = true
+for _, waiting in answers
+    waiting.close()
+answers = Map'String'(SyncBufferedChannel'JSONRPCOutcome)()
+. failure = AIError(AIErrorKind.unknown, problem ?? codex-exit-reason(status ?? 0, output.trim()))
+do turn?.settle(failure)
+turn = null
+for waiting in queued
+    waiting.settle(failure)
+queued.clear()
+
+────────────────────
+_ do drain
+
+. text = process.stderr! as String
+errors.post(text)
+
+────────────────────
+_ do listen ?! JSONLineError ?! IOError
+
+. scratch = use Arena()
+for line in process ~> \json-line with JSONParser(scratch)
+    hear(line)
+
+────────────────────
+_ do hear
+    - line JSON
+
+. message = catch? json-rpc-message(line, false)
+=? if !message
+do match message
+    | response JSONRPCResponse
+        answer(response)
+    | asked JSONRPCRequest
+        reply(asked)
+    | notice JSONRPCNotification
+        deliver(notice)
+
+────────────────────
+_ do answer
+    - response JSONRPCResponse
+
+. key = codex-response-key(response)
+. waiting = answers[key] if key
+=? if !waiting
+waiting <- response.outcome
+waiting.close()
+
+────────────────────
+_ do reply
+    - asked JSONRPCRequest
+
+if asked.method == "item/tool/call"
+    do new
+        serve(asked)
+    =
+. answer = codex-server-answer(asked.method)
+. refusal = JSONRPCError(.method-not-found, "Yumi does not answer ${asked.method}")
+. response = if answer != null then asked.response(answer) else asked.error-response(refusal)
+send(to-json(response.json))
+
+────────────────────
+_ do serve
+    - asked JSONRPCRequest
+
+. params = json-object(asked.params)
+. id = json-string(params?["callId"]) ?? ""
+. call = AIToolCallPart
+    - id
+    - id
+    - json-string(params?["tool"]) ?? ""
+    - params?["arguments"] ?? null as JSON
+. reply = catch run-tool(call)
+if | failure Error = reply
+    decoder.host
+        - id
+        - List'AIPartEndEvent([AIPartEndEvent(ai-toolkit-failure(call, failure.message))])
+    send(to-json(asked.response(failure-reply).json))
+        .. failure-reply = codex-tool-reply(List'JSON([codex-output-item(failure.message)]), false)
+    =
+send(to-json(asked.response(reply as JSON).json))
+
+────────────────────
+_ do run-tool JSON ?! Error
+    - call AIToolCallPart
+
+. kit = ai-toolkit-for(provider.toolkits, call.tool-name)
+. current = turn
+?! AIError(AIErrorKind.invalid-request, "Yumi has no tool named ${call.tool-name}")
+    if !kit || !current
+. result = kit.run(current.request, call)
+. content = codex-tool-content(result)
+. events = List'AIPartEndEvent()
+for event in ai-toolkit-parts(call, result)
+    events += event
+decoder.host(call.id, events)
+= codex-tool-reply(content, true)
+
+────────────────────
+_ do deliver
+    - notice JSONRPCNotification
+
+emit(notice)
+    catch failure AIError
+        do turn?.settle(failure)
+if decoder.ends-turn(notice.method, notice.params)
+    end-turn()
+
+────────────────────
+_ do emit ?! AIError
+    - notice JSONRPCNotification
+
+for event in decoder.decode(notice.method, notice.params)
+    do turn?.deliver(event)
+
+────────────────────
+_ do end-turn
+
+. ended = turn
+turn = null
+is-interrupting = false
+do ended?.settle(null)
+decoder.end-turn()
+if queued.length
+    . next = queued[0]
+    queued.remove(0)
+    start(next)
+else
+    release()
+
+────────────────────
+_ do release
+
+=? if is-closing || turn || queued.length
+is-closing = true
+catch process.close-input()
+
+────────────────────
+_ do send
+    - line String
+
+catch process.write("$line\n")
+
+────────────────────
+_ do request-id String
+
+requests += 1
+= "yumi-$requests"
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodexTurn
+
++ events := SyncBufferedChannel'AIEvent()
++ failure AIError?
++ input [JSON]
++ settings [String = JSON]
++ request AIRequest
++ is-settled = false
+
+_ link CodexLink
+_ is-abandoned = false
+
+────────────────────
++ This
+    - link
+    - input
+    - settings
+    - request
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+abandon()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do abandon
+
+=? if is-settled
+is-abandoned = true
+link.leave(this)
+
+────────────────────
++ do deliver
+    - event AIEvent
+
+=? if is-abandoned || is-settled
+events <- event
+
+────────────────────
++ do settle
+    - problem AIError?
+
+=? if is-settled
+is-settled = true
+failure = problem
+if !is-abandoned
+    events.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-process Process ?! AIError
+    - program String
+    - directory String?
+    - base [String = String]?
+
+?! AIError(AIErrorKind.invalid-request, "Codex can't run in $directory because it no longer exists")
+    if directory && !Path(directory, 0).is-dir
+?! AIError(AIErrorKind.unknown, "Codex did not start: $failure")
+    catch failure Error
+= Process(program, ProcessStderr.capture, ["app-server"], directory, codex-environment(base))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-account-answer JSON? ?! Error
+    - process Process
+
+. asked = "yumi-account"
+process.write("${to-json(JSONRPCRequest("yumi-initialize", "initialize", params).json)}\n")
+    .. params = codex-initialize-params()
+process.write("${to-json(JSONRPCNotification("initialized", null).json)}\n")
+process.write("${to-json(JSONRPCRequest(asked, "account/read", Map'String'JSON()).json)}\n")
+. scratch = use Arena()
+for line in process ~> \json-line with JSONParser(scratch)
+    . message = catch? json-rpc-message(line, false)
+    if | response JSONRPCResponse = message
+        if codex-response-key(response) == asked
+            do match response.outcome
+                | .result(value)
+                    = value
+                | .error(error)
+                    ?! error
+?! Error("Codex exited before it reported its account")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-ended
+    - process Process
+
+catch process.close-input()
+. ignored = process.wait(null)
+process.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-result-turn String?
+    - result JSON
+
+match? result
+    | ["turn" = ["id" = id String]]
+        id
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-scrubs-variable
+    - name String
+
+name.starts-with("OPENAI_") || (name.starts-with("CODEX_") && name != "CODEX_HOME")
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-string
+    - value JSON?
+
+match? value
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-object
+    - value JSON?
+
+match? value
+    | [String = JSON]

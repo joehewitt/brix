@@ -1,0 +1,1624 @@
+./binding
+./error-sets
+./facts
+./frame
+./instances
+./numeric
+./signature
+./type-relation
+./type-signature
+./type-store
+./types
+./typing-scratch
+/lang/ast/ast
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+/stream/aggregate
+
+_ deepest-parts U32 = 64
+
+━━━━━━━━━━━━━━━━━━━━
++ Conversions
+
++ frame Frame
++ host Demander? = null
++ fitter CallableFitter? = null
++ unsuffixed SyntaxId
+_ types Types
+_ instances Instances
+_ relations Relations
+_ facts Facts
+_ program Program
+_ scratch TypingScratch
+_ part-depth U32
+_ part-site SyntaxId = 0
+_ part-value SyntaxId = 0
+_ answered TypeId = no-type
+
+────────────────────
++ This
+    - frame Frame
+
+.. types = frame.types
+.. relations = frame.relations
+.. scratch = frame.scratch
+.. instances = frame.instances
+.. facts = frame.facts
+.. program = frame.program
+
+────────────────────
++ do begin
+
+host = null
+fitter = null
+
+────────────────────
++ do attach
+    - demander Demander
+
+host = demander
+
+────────────────────
+_ do note-outgoing
+    - error TypeId
+    - syntax SyntaxId
+
+` An error leaving the function at a node, which the checker attached hears of first.
+if host
+    host.note-outgoing(error, syntax)
+else
+    frame.note-outgoing(error, syntax)
+
+────────────────────
++ do convert TypeId
+    - syntax SyntaxId
+    - value-syntax SyntaxId
+    - source TypeId
+    - target TypeId
+    - reason ConversionReason
+    - located Bool = true
+    - cast Bool = false
+
+` A literal converts unasked to what it fits, where the target names parameters left open, as
+` the target the value completes it to.
+if source == invalid-type || target == invalid-type || source == no-type || target == no-type
+    = invalid-type
+if source == target
+    = target
+if types.completions[source].intrinsic == .closure
+    = convert-closure(syntax, source, target, reason)
+if types.completions[source].intrinsic == .binding
+    types.complete(target)
+    . inner = types.optional-inner(target)
+    types.complete(inner)
+    if inner != target && function-row(types, inner) != no-type
+        if convert(syntax, value-syntax, source, inner, reason, located) == invalid-type
+            = invalid-type
+        = convert(syntax, syntax, inner, target, reason, located)
+    if !binding-fits(syntax, source, target, cast || reason == .reason-explicit)
+        = invalid-type
+. relation = compare-held(source, target)
+. fitted = if types.completions[target].has-variables then relations.complete-from(target, source) ?? target else target
+. asked = requested || reason == .reason-operator || fitting-literal(value-syntax, fitted)
+    .. requested = cast || reason == .reason-explicit || reason == .reason-print
+if !relation-legal(relation) || (!asked && !relations.implicit(relation))
+    if misfits-literal(value-syntax, target)
+        check-literal-fit(value-syntax, target)
+    else
+        report-illegal(syntax, relation, source, target)
+    = invalid-type
+check-literal-fit(value-syntax, target)
+. chooses = types.intrinsic-of(target) == .or
+. answer = answer-of(relation)
+if answer != no-type
+    relation.to = answer
+    relation.unified = answer
+if located
+    record-conversion
+        - syntax
+        - relation
+        - reason
+        - false
+        - if chooses then target else no-type
+        - value-syntax
+else if reason == .reason-return
+    record-conversion(syntax, relation, .reason-literal-return, false, no-type, value-syntax)
+. open = types.completions[target].has-variables || relations.holds-alternatives(target)
+= if chooses || open then relation.to else target
+
+────────────────────
++ converts-value Bool
+    - kind RelationKind
+
+` Whether a relation converts a value by a function, as no endpoint of an event is converted.
+|? kind == .relation-converter || kind == .relation-common-converter
+    true
+??
+    kind == .relation-string-cast || kind == .relation-fromverter
+
+────────────────────
++ do answer-of TypeId
+    - relation Relation
+
+` What a converter declared to give one of several types gives: the alternative its body
+` chooses, as the reference completes the type against the value returned. No type for any
+` other relation, for a converter with parameters of its own, which is bound by the type
+` declared, and for one whose answer is not known yet.
+if relation.kind != .relation-converter || relation.converter-module == U32.max || !host
+    = no-type
+if types.intrinsic-of(relation.to) != .or
+    = no-type
+. mark = scratch.types.mark
+. bound = converter-params(relation)
+scratch.types.rewind(mark)
+if bound != 0
+    = no-type
+. signature = instances.signatures[converter-instance(relation)]
+. returned = signature.returns
+if signature.return-state == .return-pending || returned == no-type || returned == invalid-type
+    = no-type
+if types.intrinsic-of(returned) == .or
+    = no-type
+= returned
+
+────────────────────
++ do convert-into-case
+    - syntax SyntaxId
+    - source TypeId
+    - union TypeId
+    - index U32
+    - reason ConversionReason
+
+` Records the conversion of the value a case of a union is declared with into that union: as
+` the case that declares it, whatever case a value of its type is held as anywhere else.
+. relation = compare-held(source, union)
+if !relation-legal(relation) || relation.kind != .relation-wrap-cast || caseless
+    convert(syntax, syntax, source, union, reason)
+    =
+.. caseless = relation.case-index == U32.max
+if types.cases-of(union)[index].type != types.cases-of(union)[relation.case-index].type
+    convert(syntax, syntax, source, union, reason)
+    =
+relation.case-index = index
+check-literal-fit(syntax, union)
+record-conversion(syntax, relation, reason, false, no-type, syntax)
+
+────────────────────
++ do compare-held Relation
+    - source TypeId
+    - target TypeId
+
+` Relates a value to the type it converts to with the closures it holds, such as a field of a
+` tuple, fitted to the function types they become.
+. previous = relations.callables
+relations.callables = fitter
+. relation = relations.compare(source, target, false, false, null, frame.module)
+relations.callables = previous
+= relation
+
+────────────────────
++ do report-illegal
+    - syntax SyntaxId
+    - relation Relation
+    - source TypeId
+    - target TypeId
+
+` Says why a conversion is illegal: extension converters that collide, or no way to convert.
+if relation.reason == .reason-ambiguous
+    frame.diagnose(syntax, .ambiguous-extension)
+else if relation.reason == .reason-conflict
+    frame.diagnose(syntax, .extension-conflict)
+else if relation-legal(relation)
+    frame.diagnose(syntax, unasked(relation), null, source, target)
+else
+    frame.diagnose(syntax, .illegal-cast, null, source, target)
+
+────────────────────
+_ unasked TypeDiagnosticKind
+    - relation Relation
+
+|? types.completions[relation.from].intrinsic == .optional
+    .unasked-unwrap
+|? types.completions[relation.to].intrinsic == .string
+    .unasked-text
+|? relation.kind == .relation-down-cast || interface-down || relation.kind == .relation-unwrap-cast
+    .unasked-narrowing
+??
+    .unasked-conversion
+
+.. interface-down = relation.kind == .relation-interface-down-cast
+
+────────────────────
++ do demand-converter InstanceId
+    - source TypeId
+    - target TypeId
+
+` The instance of the function a type declares to convert a value of one type to another, or
+` none where no such function converts it.
+. relation = relations.compare(source, target, false, false, null, frame.module)
+if relation.kind == .relation-converter
+    = converter-of(relation)
+= no-instance
+
+────────────────────
++ do converter-of InstanceId
+    - relation Relation
+
+` The instance of the function a type declares that a conversion runs to make the value it
+` converts to, as a converter or as one that makes its own type from another; none for any
+` other conversion.
+if relation.kind != .relation-converter && relation.kind != .relation-fromverter
+    = no-instance
+if relation.converter-module == U32.max
+    = no-instance
+= converter-instance(relation)
+
+────────────────────
++ do record-conversion
+    - syntax SyntaxId
+    - found Relation
+    - reason ConversionReason
+    - at-site Bool = false
+    - requested TypeId = no-type
+    - value SyntaxId = 0
+
+` Records how a value converts where it is used. An optional or a union becomes text as `as-text`
+` says, but a declaration with a type is a pattern, and there it unwraps. `value` is the node of the
+` value where the caller has one. A closure or a binding that becomes a value of a function type is
+` recorded with the instance it runs as one. An event's endpoint a converter would convert is
+` reported instead, as `misused-endpoint` says.
+if host && converts-value(found.kind) && host.misused-endpoint(if value != 0 then value else syntax)
+    =
+. relation = if reason == .reason-declaration then found else as-text(found, as-pattern)
+    .. as-pattern = reason == .reason-pattern
+. callee = no-instance
+if relation.kind == .relation-converter || relation.kind == .relation-fromverter
+    callee = conversion-callee(relation)
+. counted = relation.kind == .relation-fromverter && relation.converter-module == U32.max
+if counted && host && relation.via == relation.to
+    host.note-enum-number(syntax, relation.to)
+if relation.kind == .relation-unwrap-cast && relation.converter-module != U32.max
+    if relation.via != no-type
+        callee = conversion-callee(relation)
+. to-text = types.completions[relation.to].intrinsic == .string
+if types.completions[relation.from].intrinsic == .cpointer && to-text
+    instances.mark-may-panic(frame.instance)
+. tests = reason == .reason-pattern
+if relation.kind == .relation-unwrap-cast && types.is-optional(relation.from) && !tests
+    instances.mark-may-panic(frame.instance)
+note-narrowing(relation, reason)
+if unwraps-case(relation) && host && !tests
+    instances.mark-may-panic(frame.instance)
+    host!.demand-union-error()
+if relation.kind == .relation-side-cast && types.completions[relation.to].intrinsic == .table-span
+    instances.mark-may-panic(frame.instance)
+demand-witness(relation)
+. casts = relation.kind == .relation-final-cast || relation.kind == .relation-side-cast
+if casts && host && types.completions[relation.to].intrinsic == .bool
+    callee = host.truth-callee(relation.from)
+. id = facts.record-conversion(frame.instance, cast-site(syntax, at-site), relation, reason, callee)
+facts.conversions[id].asked = requested
+facts.conversions[id].runs = runs-of(relation.from, relation.to)
+note-adapted
+    - facts.conversions[id].runs
+    - relation.from
+    - relation.to
+    - facts.conversions[id].syntax
+    - reason == .reason-explicit
+if casts-function(relation)
+    facts.conversions[id].casts = true
+    note-cast(relation.from, relation.to, reason == .reason-explicit)
+part-site = facts.conversions[id].syntax
+part-value = if tests then 0 else value
+. parts = record-parts(relation, reason)
+part-value = 0
+if parts != no-fact
+    facts.conversions[id].parts = parts
+. runs-function = relation.kind == .relation-fromverter || relation.kind == .relation-converter
+if runs-function && callee != no-instance && host && !tests
+    facts.conversions[id].raise = settle-raise(callee, value)
+    if reason == .reason-join
+        agree-raise(id)
+
+────────────────────
++ do record-made
+    - instance InstanceId
+    - syntax SyntaxId
+    - source TypeId
+    - target TypeId
+
+` Records that a closure becomes a value of a function type at a node of an instance typed
+` already, that the closure runs, as the function that builds content a style rule generates is
+` made one where the rule is applied to a markup element: `note-adapted` says how.
+. id = facts.record-conversion
+    - instance
+    - syntax
+    - side-cast-relation(source, target)
+    - .reason-markup-slot
+facts.conversions[id].runs = instance
+note-adapted(instance, source, target, syntax)
+
+────────────────────
+_ do note-narrowing
+    - relation Relation
+    - reason ConversionReason
+
+` Outside a pattern, a cast that narrows a value panics where the value is not of the type it
+` is cast to.
+. narrows = relation.kind == .relation-down-cast || relation.kind == .relation-interface-down-cast
+if narrows && reason != .reason-pattern
+    instances.mark-may-panic(frame.instance)
+
+────────────────────
+_ as-text Relation
+    - found Relation
+    - tests Bool = false
+
+` An optional becomes text by the converter it declares, which has text for one that holds
+` nothing, though an optional of text also unwraps to it. So does a union no case of which with
+` no name holds text, but for a pattern that `tests` the union for the case that holds it.
+|? found.kind != .relation-unwrap-cast || found.to != types.string-type
+    found
+|? !from-optional && (tests || types.intrinsic-of(found.from) != .union || unnamed-holds)
+    found
+??
+    if relation-legal(declared) then declared else found
+
+.. declared = relations.converter-relation(found.from, found.to, frame.module)
+.. from-optional = types.is-optional(found.from)
+.. unnamed-holds = relations.unnamed-case-holds(found.from, found.to)
+
+────────────────────
+_ do demand-witness
+    - relation Relation
+
+` A value that becomes a value of an interface needs the witness of its type for that
+` interface. One made so inside an optional is the optional's part.
+if !host
+    =
+if relation.kind == .relation-interface-cast
+    host.record-witness(relation.from, relation.to)
+if relation.kind == .relation-interface-down-cast && types.intrinsic-of(relation.to) == .interface
+    facts.record-dynamic-witness(relation.from, relation.to)
+
+────────────────────
+_ do note-adapted
+    - runs InstanceId
+    - source TypeId
+    - target TypeId
+    - site SyntaxId
+    - explicit Bool = false
+
+` Records how the function a closure or a binding runs as a value of a function type takes
+` the arguments a binding holds and those the type gives, and gives the type its answer,
+` where their types differ. The function made for the value has no syntax of its own, so
+` each is recorded for the function it runs, with no node, and with the function that
+` converts where one is written for the two types. A conversion that may fail, other than
+` an unwrap of an optional, or whose function raises, is left out, and such a value has no
+` shape. A type that carries errors has what a call of its value answers with kept for it,
+` and the function made answers so. An error what runs raises that the type does not carry
+` is reported where the value is made.
+if runs == no-instance
+    =
+. fn = function-row(types, target)
+if fn == no-type
+    =
+note-carries(target)
+host!.demand-errors(runs)
+. raised = instances.signatures[runs].errors
+for offset in 0 .. < raised.count
+    . error = instances.signature-types[raised.start + offset]
+    if !carries-error(target, error)
+        frame.diagnose(site, .error-not-carried, null, error, target)
+        =
+. owner = instances.rows[runs].self-type
+if owner != no-type && types.completions[owner].intrinsic == .interface
+    facts.record-witness-func(owner, instances.rows[runs].module, instances.rows[runs].decl)
+    facts.record-witness-call(owner, instances.rows[runs].module, instances.rows[runs].decl)
+    facts.record-witness-proto(runs)
+. signature = instances.signatures[runs]
+do match? types.rows[fn]
+    | .type-function(shape)
+        if signature.args.count < shape.args.count
+            =
+        . held = signature.args.count - shape.args.count
+        do match? types.rows[source]
+            | .type-binding(bound)
+                for offset in bound.param-count .. < bound.items.count
+                    . place = offset - bound.param-count
+                    if place < held
+                        note-passed
+                            - runs
+                            - types.child-type(bound.items, offset)
+                            - instances.argument-type(runs, place)
+                            - .reason-argument
+                            - no-type
+                            - no-type
+                            - explicit
+        for offset in 0 .. < shape.args.count
+            . taken = instances.argument-type(runs, held + offset)
+            note-passed
+                - runs
+                - types.child-type(shape.args, offset)
+                - taken
+                - .reason-argument
+                - no-type
+                - no-type
+                - explicit
+        . wanted = carried-value(types, shape.return-type)
+        if wanted != no-type && wanted != types.void-type
+            . returned = if answered != no-type then answered else signature.returns
+            note-passed(runs, returned, wanted, .reason-return, no-type, no-type, explicit)
+
+────────────────────
+_ do carries-error Bool
+    - type TypeId
+    - error TypeId
+
+` Whether a function type carries an error: one it declares, or one of what it returns where
+` that is already a value or an error.
+. fn = function-row(types, type)
+if fn == no-type
+    = false
+types.complete(error)
+do match? types.rows[fn]
+    | .type-function(row)
+        for offset in 0 .. < row.errors.count
+            if is-subtype(types, error, types.child-type(row.errors, offset))
+                = true
+        if row.return-type != no-type
+            do match? types.rows[row.return-type]
+                | .type-result(held)
+                    for offset in 0 .. < held.errors.count
+                        if is-subtype(types, error, types.child-type(held.errors, offset))
+                            = true
+= false
+
+────────────────────
+_ do note-carries TypeId
+    - type TypeId
+
+` Keeps, for a function type that carries errors, what a call of its value answers with,
+` and gives it: no type where the type carries none.
+. carried = carried-result(types, type)
+if carried != no-type
+    types.complete(carried)
+    facts.note-carried(function-row(types, type), carried)
+= carried
+
+────────────────────
+_ casts-function Bool
+    - relation Relation
+
+` Whether a conversion makes a value of one function type a value of another, which a
+` function made for the two types does. A C function's type and a generator are not made
+` so.
+hosted-side-cast && holds-function(relation.from) && holds-function(relation.to)
+
+.. hosted-side-cast = relation.kind == .relation-side-cast && host != null
+
+────────────────────
+_ holds-function Bool
+    - type TypeId
+
+|? types.completions[type].intrinsic != .function || is-c-function(types, type)
+    false
+??
+    ref.module != types.generator-decl.module || ref.decl != types.generator-decl.decl
+
+.. ref = class-ref(types, type)
+
+────────────────────
+_ do note-cast
+    - source TypeId
+    - target TypeId
+    - explicit Bool = false
+
+` Records how the function made where a value of one function type becomes a value of
+` another gives the first what the second is given, and gives the second's answer, where
+` their types differ: each for the two types, with no node and no instance. A type that
+` carries errors has what a call of its value answers with kept for it.
+. taken = RowRange'TypeId()
+. given = RowRange'TypeId()
+. answered = no-type
+. returned = no-type
+do match? types.rows[function-row(types, source)]
+    | .type-function(shape)
+        taken = shape.args
+        answered = carried-value(types, shape.return-type)
+do match? types.rows[function-row(types, target)]
+    | .type-function(shape)
+        given = shape.args
+        returned = carried-value(types, shape.return-type)
+note-carries(source)
+note-carries(target)
+if given.count != taken.count
+    =
+for offset in 0 .. < given.count
+    note-passed
+        - no-instance
+        - types.child-type(given, offset)
+        - types.child-type(taken, offset)
+        - .reason-argument
+        - source
+        - target
+        - explicit
+if returned != no-type && returned != types.void-type
+    note-passed(no-instance, answered, returned, .reason-return, source, target, explicit)
+
+────────────────────
+_ do note-passed
+    - runs InstanceId
+    - from TypeId
+    - to TypeId
+    - reason ConversionReason
+    - source TypeId = no-type
+    - target TypeId = no-type
+    - explicit Bool = false
+
+` Records one conversion of a function made with no syntax of its own: for the function it
+` runs, or for the two function types where it runs what a value holds. A tuple or struct
+` made another is recorded with its parts where each converts as plainly. An unwrapped
+` optional panics where it holds no value.
+if from == to || from == no-type || from == invalid-type || to == no-type || to == invalid-type
+    =
+. known = if runs == no-instance then cast-fact else facts.passed-conversion(runs, reason, from, to)
+    .. cast-fact = facts.cast-conversion(source, target, reason, from, to)
+if known != no-fact
+    =
+. implicit = relations.compare(from, to, false, false, null, frame.module)
+. reads = explicit && !relation-legal(implicit) && relations.reads-text-as-number(from, to)
+. relation = if reads then relations.compare-explicit(from, to, frame.module) else implicit
+if !relation-legal(relation) || !host
+    =
+. callee = no-instance
+if relation.converter-module != U32.max
+    if relation.kind != .relation-converter && relation.kind != .relation-fromverter
+        =
+    callee = conversion-callee(relation)
+    host!.demand-errors(callee)
+    if instances.signatures[callee].errors.count != 0
+        =
+else if !is-plain(relation) && !plain-fields(relation) && !unwraps-optional(relation)
+    =
+demand-witness(relation)
+. id = no-fact
+if runs == no-instance
+    id = facts.record-cast(frame.instance, source, target, relation, reason, callee)
+else
+    id = facts.record-passed(runs, relation, reason, callee)
+part-site = 0
+. parts = record-parts(relation, reason)
+if parts != no-fact
+    facts.conversions[id].parts = parts
+
+────────────────────
+_ unwraps-optional Bool
+    - relation Relation
+
+relation.kind == .relation-unwrap-cast && types.is-optional(relation.from)
+
+────────────────────
+_ is-plain Bool
+    - relation Relation
+
+` Whether a conversion with no function written for it calls none, can not fail and
+` converts no part of its value apart: none of a number to an enum or of an object or a
+` text to its truth, none that unwraps, none of a union or of the fields of a tuple or
+` struct, and none of an optional of an interface.
+|? kind == .relation-converter || kind == .relation-fromverter
+    false
+|? kind == .relation-unwrap-cast || kind == .relation-down-cast || interface-down
+    false
+|? source == .cpointer || source == .union || types.completions[relation.to].intrinsic == .union
+    false
+|? (kind == .relation-string-cast || kind == .relation-final-cast) && holds-fields(relation.from)
+    false
+|? casts && to-bool && (source == .class || source == .string)
+    false
+|? kind == .relation-side-cast && to-optional && !types.is-optional(relation.from)
+    types.completions[types.optional-inner(relation.to)].intrinsic != .interface
+??
+    true
+
+.. kind = relation.kind
+.. source = types.completions[relation.from].intrinsic
+.. casts = kind == .relation-final-cast || kind == .relation-side-cast
+.. interface-down = kind == .relation-interface-down-cast
+.. to-bool = types.completions[relation.to].intrinsic == .bool
+.. to-optional = types.is-optional(relation.to)
+
+────────────────────
+_ do plain-fields Bool
+    - relation Relation
+
+` Whether a conversion makes a tuple or struct another by converting each field as `is-plain`
+` says, or a field that is one of them so in turn.
+if relation.kind != .relation-final-cast || part-depth >= deepest-parts
+    = false
+if !holds-fields(relation.from) || !holds-fields(relation.to)
+    = false
+. targets = types.completions[relation.to].properties
+. cursor U32
+for field in types.properties-of(relation.from)
+    if field.slot == U32.max
+        continue
+    while cursor < targets.count && types.properties[targets.start + cursor].slot == U32.max
+        cursor += 1
+    if cursor >= targets.count
+        = false
+    . wanted = types.properties[targets.start + cursor].type
+    cursor += 1
+    if field.type == no-type || wanted == no-type
+        = false
+    if field.type == wanted
+        continue
+    . part = compare-held(field.type, wanted)
+    if !relation-legal(part)
+        = false
+    if part.converter-module == U32.max && is-plain(part)
+        continue
+    part-depth += 1
+    . inner = plain-fields(part)
+    part-depth -= 1
+    if !inner
+        = false
+= true
+
+────────────────────
+_ do settle-raise ConversionRaise
+    - callee InstanceId
+    - value SyntaxId
+
+` Says what becomes of an error given by the function a conversion, or a part of one, calls.
+` Where the value is a text written in source the error is a panic. Of any other value the
+` errors leave the function the conversion is written in. Under `catch`, or where no node is
+` the value, nothing is settled.
+host!.demand-errors(callee)
+. signature = instances.signatures[callee]
+if signature.errors.count == 0 || value == 0
+    = .raise-unsettled
+if is-text-literal(value)
+    instances.mark-may-panic(frame.instance)
+    demand-error-report()
+    = .raise-panics
+if frame.surround.catch-depth != 0
+    = .raise-unsettled
+for offset in 0 .. < signature.errors.count
+    note-outgoing(instances.signature-types[signature.errors.start + offset], value)
+= .raise-leaves
+
+────────────────────
+_ do agree-raise
+    - fact FactId
+
+` The sides of a join that have one type take one conversion, the first recorded for the
+` type. Where two of them settle differently what becomes of an error, none is settled.
+. row = facts.conversions[fact]
+. differs = false
+. other = facts.first-conversion(frame.instance, row.syntax)
+while other != no-fact
+    . held = facts.conversions[other]
+    if held.reason == .reason-join && held.from == row.from && held.raise != row.raise
+        differs = true
+    other = held.next
+if !differs
+    =
+other = facts.first-conversion(frame.instance, row.syntax)
+while other != no-fact
+    . held = facts.conversions[other]
+    if held.reason == .reason-join && held.from == row.from
+        facts.conversions[other].raise = .raise-unsettled
+    other = held.next
+
+────────────────────
++ do is-text-literal Bool
+    - syntax SyntaxId
+
+` Whether a node is a text written in source, itself or as an argument.
+do match? frame.tree.nodes[syntax]
+    | .node-argument(argument)
+        = is-text-literal(argument.expr)
+    | .node-string-syntax
+        = true
+= false
+
+────────────────────
++ do record-pattern
+    - syntax SyntaxId
+    - relation Relation
+    - guard U32
+
+` Records at a type named as a pattern how a value it is given becomes that type, for the
+` case of a union the guard numbers, or for the value itself with no guard.
+. row FactId = facts.conversions.length as FactId
+record-conversion(syntax, relation, .reason-pattern)
+facts.conversions[row].guard = guard
+
+────────────────────
++ do parts-of FactId
+    - relation Relation
+    - reason ConversionReason
+
+` The parts of a conversion recorded for the function the frame began, which no value of the
+` frame's own body is converted for, as `record-parts` makes them.
+part-site = 0
+part-value = 0
+part-depth = 0
+= record-parts(relation, reason)
+
+────────────────────
+_ do record-parts FactId
+    - relation Relation
+    - reason ConversionReason
+
+` What a conversion of a tuple or struct does to each field it stores, in the order they are
+` stored: the conversion of the field to text for one made text, and to the field in the
+` same place for one cast to another tuple or struct. A field that is converted the same
+` way has parts of its own. Text is joined by a function that polls, so the instance may
+` panic. No fact for any other conversion, nor for fields held deeper than any type that
+` can be stored holds them: one that holds itself has no end.
+` A value made a case of a union has one part, its conversion to what the case holds. A union
+` made text, or made another union, has a part for each of its cases in their order: the
+` conversion of what the case holds, which for a case with no value of its own is not used.
+` An optional made a union with a case for null has one part, the conversion of what it holds.
+` A value made an optional of another type, or an optional made one, has one part: the
+` conversion of the value, or of what the optional holds, to what the new one holds.
+if part-depth >= deepest-parts
+    = no-fact
+if relation.kind == .relation-side-cast && types.is-optional(relation.to)
+    . held = types.optional-inner(relation.to)
+    . given = types.optional-inner(relation.from)
+    if given == held || given == types.null-type
+        = no-fact
+    = record-part(given, held, reason)
+if optional-unwrap && types.null-case(relation.to) != U32.max
+    = record-part(types.optional-inner(relation.from), relation.to, reason)
+.. optional-unwrap = relation.kind == .relation-unwrap-cast && types.is-optional(relation.from)
+if relation.kind == .relation-wrap-cast && relation.case-index != U32.max
+    if types.intrinsic-of(relation.to) != .union
+        = no-fact
+    . held = types.cases-of(relation.to)[relation.case-index].type
+    = record-part(relation.from, held, reason)
+if types.intrinsic-of(relation.from) == .union
+    = record-cases(relation, reason)
+. is-text = relation.kind == .relation-string-cast
+if !is-text && relation.kind != .relation-final-cast
+    = no-fact
+if !holds-fields(relation.from) || (!is-text && !holds-fields(relation.to))
+    = no-fact
+if is-text
+    instances.mark-may-panic(frame.instance)
+. head = no-fact
+. last = no-fact
+. targets = types.completions[relation.to].properties
+. cursor U32
+for field in types.properties-of(relation.from)
+    if field.slot == U32.max
+        continue
+    . target = types.string-type
+    if !is-text
+        while cursor < targets.count && types.properties[targets.start + cursor].slot == U32.max
+            cursor += 1
+        if cursor >= targets.count
+            break
+        . wanted = types.properties[targets.start + cursor]
+        target = wanted.type
+        if target == no-type && host
+            target = host.demand-member(wanted, relation.to, wanted.name)
+        cursor += 1
+    . held = field.type
+    if held == no-type && host
+        held = host.demand-member(field, relation.from, field.name)
+    if held == no-type || held == invalid-type || target == no-type || target == invalid-type
+        break
+    . id = record-part(held, target, reason)
+    if last == no-fact
+        head = id
+    else
+        facts.conversion-parts[last].next = id
+    last = id
+= head
+
+────────────────────
+_ do record-part FactId
+    - held TypeId
+    - target TypeId
+    - reason ConversionReason
+
+` Adds the conversion of one value held inside another, with the parts of its own. A
+` closure, a binding or a value of a function type that becomes a value of a function type
+` there is recorded as one converted alone is, at the place of the whole conversion.
+. part = if held == target then same-relation(held) else as-text(compare-held(held, target))
+. callee = no-instance
+if part.kind == .relation-converter || part.kind == .relation-fromverter
+    callee = conversion-callee(part)
+if unwraps-case(part) && host
+    instances.mark-may-panic(frame.instance)
+    host!.demand-union-error()
+note-narrowing(part, reason)
+demand-witness(part)
+. id = facts.record-part(frame.instance, part, reason, callee)
+if callee != no-instance && host && part-value != 0
+    facts.conversion-parts[id].raise = settle-raise(callee, part-value)
+. runs = if held != target then runs-of(part.from, part.to) else no-instance
+if runs != no-instance
+    facts.conversion-parts[id].runs = runs
+    facts.conversion-parts[id].syntax = part-site
+    note-adapted(runs, part.from, part.to, part-site)
+if held != target && casts-function(part)
+    facts.conversion-parts[id].casts = true
+    facts.conversion-parts[id].syntax = part-site
+    note-cast(part.from, part.to)
+part-depth += 1
+. inner = record-parts(part, reason)
+part-depth -= 1
+if inner != no-fact
+    facts.conversion-parts[id].parts = inner
+= id
+
+────────────────────
+_ do record-cases FactId
+    - relation Relation
+    - reason ConversionReason
+
+. to-text = relation.to == types.string-type
+. is-text = to-text && text-cast
+    .. text-cast = relation.kind == .relation-unwrap-cast || relation.kind == .relation-string-cast
+. rewraps = relation.kind == .relation-final-cast && types.intrinsic-of(relation.to) == .union
+if !is-text && !rewraps
+    = no-fact
+. head = no-fact
+. last = no-fact
+for fact in types.cases-of(relation.from)
+    . target = if fact.is-default then fact.type else relation.to
+    . id = record-part(fact.type, target, reason)
+    if last == no-fact
+        head = id
+    else
+        facts.conversion-parts[last].next = id
+    last = id
+= head
+
+────────────────────
+_ unwraps-case Bool
+    - relation Relation
+
+` Whether a conversion takes one case out of a union, and raises where the union holds
+` another.
+unwraps && relation.case-index != U32.max && relation.to != types.string-type
+
+.. unwraps = relation.kind == .relation-unwrap-cast || relation.kind == .relation-down-cast
+
+────────────────────
+_ holds-fields Bool
+    - type TypeId
+
+kind == .tuple || kind == .struct
+
+.. kind = types.intrinsic-of(type)
+
+────────────────────
+_ do cast-site SyntaxId
+    - syntax SyntaxId
+    - at-site Bool
+
+if at-site
+    = syntax
+do match? frame.tree.nodes[syntax]
+    | .node-identifier
+        . resolution = frame.bindings.resolution-of(frame.binding, syntax)
+        if resolution.kind == .resolve-slot
+            . slot = resolution.slot
+            if frame.bindings.lazy-inlines(slot)
+                . row = frame.bindings.slots[slot]
+                do match? frame.tree.nodes[row.group]
+                    | .node-declare(declaration)
+                        if declaration.right != 0
+                            = declaration.right
+= syntax
+
+────────────────────
+_ do conversion-callee InstanceId
+    - relation Relation
+
+if relation.converter-module == U32.max
+    = no-instance
+facts.record-pair(frame.instance, relation.from, relation.from, same-relation(relation.from))
+. callee = converter-instance(relation)
+facts.record-call(frame.instance, 0, callee, .call-converter, scratch.no-fills, false)
+= callee
+
+────────────────────
+_ do converter-instance InstanceId
+    - relation Relation
+
+` The instance of the function a conversion runs, demanded of the host where there is one; one
+` found with no host, where a witness answers, is typed from the queue.
+. self = if relation.kind == .relation-converter then relation.from else relation.to
+. mark = scratch.types.mark
+. params = scratch.no-types
+. args = scratch.no-types
+if relation.kind == .relation-converter
+    converter-params(relation)
+    params = scratch.types.since(mark)
+if relation.kind == .relation-fromverter
+    scratch.types.push(relation.from)
+    args = scratch.types.since(mark)
+if relation.kind == .relation-unwrap-cast
+    scratch.types.push(relation.via)
+    args = scratch.types.since(mark)
+. decl = relation.converter-decl
+. effects = declared-effects(frame.program, relation.converter-module, decl)
+. callee = instances.intern
+    - relation.converter-module
+    - decl
+    - self
+    - effects
+    - no-instance
+    - params
+    - args
+scratch.types.rewind(mark)
+if host
+    host.demand(callee)
+= callee
+
+────────────────────
+_ do converter-params U32
+    - relation Relation
+
+. items-mark = scratch.types.mark
+. module = relation.converter-module
+. decl = relation.converter-decl
+. source = relation.from
+if !relations.bind-converter(source, relation.to, module, decl, frame.module, items-mark)
+    scratch.types.rewind(items-mark)
+    = 0
+. count = (scratch.types.length - items-mark) / 2
+. ordered [TypeId]
+for _ in 0 .. < count
+    ordered += no-type
+for offset in 0 .. < count
+    . index = variable-index(types, scratch.types[items-mark + offset * 2])
+    if index < count
+        ordered[index] = scratch.types[items-mark + offset * 2 + 1]
+scratch.types.rewind(items-mark)
+for actual in ordered
+    if actual == no-type
+        = 0
+. added = 0u32
+for actual in ordered
+    scratch.types.push(actual)
+    added += 1
+= added
+
+────────────────────
+_ do convert-closure TypeId
+    - syntax SyntaxId
+    - source TypeId
+    - target TypeId
+    - reason ConversionReason
+
+` A closure becomes a value of a function type where its body can be typed for the
+` type's arguments and returns what the type does, each argument and what it returns converted
+` unasked as a call converts them, unless the conversion is asked. A filter's condition gives its
+` truth. Into an optional of such a type it becomes that value first, and then what holds it.
+types.complete(target)
+. inner = types.optional-inner(target)
+types.complete(inner)
+if inner != target && function-row(types, inner) != no-type
+    if convert-closure(syntax, source, inner, reason) == invalid-type
+        = invalid-type
+    = convert(syntax, syntax, inner, target, reason)
+. fn = function-row(types, target)
+if fn == no-type
+    frame.diagnose(syntax, .illegal-cast, null, source, target)
+    = invalid-type
+. args = RowRange'TypeId()
+. returns = no-type
+do match? types.rows[fn]
+    | .type-function(row)
+        args = row.args
+        returns = row.return-type
+if !takes-count(source, args.count)
+    frame.diagnose(syntax, .illegal-cast, null, source, target)
+    = invalid-type
+if reason != .reason-explicit
+    for offset in 0 .. < args.count
+        . given = types.child-type(args, offset)
+        . taken = taken-type(source, offset, given)
+        . unasked = taken == given || relations.implicit(relations.compare(given, taken, false, false, null, frame.module))
+        if relations.reads-text-as-number(given, taken) || !unasked
+            frame.diagnose(syntax, .illegal-cast, null, given, taken)
+            = invalid-type
+. args-start = scratch.types.mark
+for offset in 0 .. < args.count
+    scratch.types.push(taken-type(source, offset, types.child-type(args, offset)))
+. diagnosed = frame.facts.diagnostics.length
+. returned = lambda-return(host!, instances, source, scratch.types.since(args-start))
+scratch.types.rewind(args-start)
+if returned == invalid-type
+    if frame.facts.diagnostics.length == diagnosed
+        frame.diagnose(syntax, .illegal-cast, null, source, target)
+    = invalid-type
+. wanted = carried-value(types, returns)
+if wanted != no-type && wanted != types.void-type
+    . relation = relations.compare(returned, wanted, false, false, null, frame.module)
+    . unasked = implied && !(wanted == types.bool-type && is-filter-condition(types, program, source))
+        .. implied = reason != .reason-explicit
+    if !relation-legal(relation) || (unasked && !relations.implicit(relation))
+        frame.diagnose(syntax, .illegal-cast, null, returned, wanted)
+        = invalid-type
+record-conversion(syntax, side-cast-relation(source, target), reason)
+= target
+
+────────────────────
+_ do runs-of InstanceId
+    - source TypeId
+    - target TypeId
+
+` The instance a closure or a binding runs as a value of a function type: the closure's
+` body typed with the arguments it takes, or what the binding calls with the type's. None
+` for any other conversion. `answered` is left as what a binding's call answers, which the
+` function it calls may not have said yet.
+. kind = types.completions[source].intrinsic
+if !host || (kind != .closure && kind != .binding)
+    = no-instance
+. fn = function-row(types, target)
+if fn == no-type
+    = no-instance
+. args = RowRange'TypeId()
+do match? types.rows[fn]
+    | .type-function(row)
+        args = row.args
+. start = scratch.types.mark
+for offset in 0 .. < args.count
+    scratch.types.push(taken-type(source, offset, types.child-type(args, offset)))
+. runs = no-instance
+answered = no-type
+if kind == .closure
+    runs = host!.demand-lambda(source, scratch.types.since(start))
+else
+    . bound = host!.binding-return(source, scratch.types.since(start))
+    answered = bound.type
+    if answered != invalid-type
+        runs = bound.callee
+        if runs != no-instance
+            instances.rows[runs].bound-call = bound-call-of(runs)
+scratch.types.rewind(start)
+= runs
+
+────────────────────
+_ do bound-call-of BoundCall
+    - callee InstanceId
+
+` How a binding calls the instance it runs, read from the instance's declaration: a written
+` constructor of a class, a method of an object where the function is a member that is not
+` static, or a function.
+. row = instances.rows[callee]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        if fn.kind == .constructor-decl && !fn.is-generated && types.is-class-type(row.self-type)
+            = .bound-call-constructor
+        if fn.kind == .function-decl
+            = if fn.owner != 0 && !fn.is-static then .bound-call-method else .bound-call-function
+= .bound-call-none
+
+────────────────────
+_ taken-type TypeId
+    - source TypeId
+    - position U32
+    - given TypeId
+
+` The type a closure made a value of a function type takes for an argument the type gives
+` it: the one it declares, and the type's own where it declares none. A binding takes what
+` the type gives.
+|? types.completions[source].intrinsic != .closure || declared == no-type
+    given
+??
+    declared
+
+.. declared = declared-argument(types, source, position)
+
+────────────────────
+_ do binding-fits Bool
+    - syntax SyntaxId
+    - source TypeId
+    - target TypeId
+    - asked Bool
+
+` A binding becomes a value of a function type only when what it calls takes that type's
+` arguments and gives its return (`binding-takes`), and a C function type holds no call that
+` needs a receiver.
+types.complete(target)
+. fn = function-row(types, target)
+if fn == no-type
+    = true
+. is-c = false
+do match? types.rows[fn]
+    | .type-function(row)
+        is-c = row.is-c
+if !binding-takes(source, target, asked)
+    frame.diagnose(syntax, .illegal-cast, null, source, target)
+    = false
+. bound-method = false
+do match? types.rows[source]
+    | .type-binding(row)
+        bound-method = row.form == .bound-method
+if is-c && bound-method
+    . message = "Illegal to cast this function to CFunction"
+    frame.diagnose(syntax, .stated, program.store-atom(message))
+    = false
+= true
+
+────────────────────
++ do binding-takes Bool
+    - source TypeId
+    - target TypeId
+    - asked Bool = false
+
+` Whether what a binding calls takes the arguments of a function type and gives its return,
+` converted unasked unless the conversion is asked.
+types.complete(target)
+. fn = function-row(types, target)
+if fn == no-type
+    = true
+. args = RowRange'TypeId()
+. returns = no-type
+do match? types.rows[fn]
+    | .type-function(row)
+        args = row.args
+        returns = row.return-type
+. args-start = scratch.types.mark
+for offset in 0 .. < args.count
+    scratch.types.push(types.child-type(args, offset))
+. returned = host!.binding-return(source, scratch.types.since(args-start), asked).type
+scratch.types.rewind(args-start)
+if returned == invalid-type
+    = false
+. wanted = carried-value(types, returns)
+if wanted != no-type && wanted != types.void-type
+    . relation = relations.compare(returned, wanted, false, false, null, frame.module)
+    = relation-legal(relation) && (asked || relations.implicit(relation))
+= true
+
+────────────────────
+_ do takes-count Bool
+    - closure TypeId
+    - count U32
+
+` Whether a closure can be called with this many arguments: no more than it declares, and
+` every one it declares without a default. A loop's subscriber takes the item and the stream,
+` the function that builds an arm of a markup branch region the region, those that build
+` and key a row of a markup loop region the row's item, the one that gives a markup
+` element's name its object the object, and the one that builds what a slot that repeats is
+` given the item.
+do match? types.rows[closure]
+    | .type-closure(row)
+        . owner = program.modules[row.module]
+        do match? owner.decls[row.decl]
+            | .decl-function(fn)
+                if fn.kind == .subscriber-decl
+                    = count == 2
+                if arm-or-row || fn.kind == .key-decl || fn.kind == .binder-decl
+                    = count == 1
+                .. arm-or-row = fn.kind == .branch-arm-decl || fn.kind == .row-decl
+                if fn.kind == .slot-decl
+                    do match? owner.tree.nodes[fn.syntax]
+                        | .node-markup(element)
+                            = count == (if element.slot-parameter != 0 then 1 else 0)
+                    = count == 0
+                if count > fn.args.count && fn.variadic-index == U32.max
+                    = false
+                for offset in count .. < fn.args.count
+                    . shape = owner.arg-pool[fn.args.start + offset]
+                    if !shape.has-default && !shape.is-variadic
+                        = false
+= true
+
+────────────────────
+_ do misfits-literal Bool
+    - syntax SyntaxId
+    - target TypeId
+
+` Whether an expression is an integer written with no suffix that the integer type a place holds
+` it as cannot hold, which is reported as that and not as a conversion.
+match? frame.tree.nodes[syntax]
+    | .node-argument(argument)
+        = misfits-literal(argument.expr, target)
+    | .node-integer-syntax(row)
+        if row.unit
+            = false
+        . literal = parse-integer-literal(row.value)
+        . held = literal-target(literal, target)
+        = is-integer-kind(types.intrinsic-of(builtin-number(types, held))) && overflows
+            .. overflows = !literal-fits-target(types, literal, held)
+= false
+
+────────────────────
++ do check-literal-fit
+    - syntax SyntaxId
+    - target TypeId
+
+do match? frame.tree.nodes[syntax]
+    | .node-argument(argument)
+        check-literal-fit(argument.expr, target)
+    | .node-integer-syntax(row)
+        if row.unit
+            =
+        . literal = parse-integer-literal(row.value)
+        . held = literal-target(literal, target)
+        if !literal-fits-target(types, literal, held)
+            . shown = program.store-atom(row.value)
+            frame.diagnose(syntax, .literal-does-not-fit, shown, no-type, held)
+
+────────────────────
++ do adapted-literal TypeId
+    - literal SyntaxId
+    - given TypeId
+    - other TypeId
+
+` The type an integer written with no suffix takes beside a value of an integer type it fits: the
+` machine type of that value, so `offset + 1` stays in the type of `offset`, and a character's is
+` `U32`, the type its arithmetic is in, and beside a float the machine type of that float, so
+` `width ?? 1` needs no `as`. A constant a C header defines is such an integer. A float
+` written with no suffix beside a value of `F32` it fits takes `F32`, so `scale * 0.5` stays in
+` `F32`. The literal's node takes the type. Any other keeps its own, as does one beside a value of
+` an enum. A choice of two such integers takes the type both take, and a tuple written beside a
+` tuple of as many fields is the tuple of what its items take beside those fields.
+=? given if literal == 0 || given == other || other == invalid-type || other == no-type
+do match? frame.tree.nodes[literal]
+    | .node-tuple-syntax(row)
+        . adapted = adapted-tuple(row.items, given, other)
+        if adapted != given
+            facts.replace-node-type(frame.instance, literal, adapted)
+        = adapted
+    | .node-binary-expression(row)
+        if row.op == .else-op
+            do match? frame.tree.nodes[row.lhs]
+                | .node-binary-expression(chosen)
+                    if chosen.op == .if-op && is-plain-integer(chosen.lhs) && plain-right
+                        . yes = adapted-literal(chosen.lhs, given, other)
+                        . no = adapted-literal(row.rhs, given, other)
+                        if yes != given && yes == no
+                            facts.replace-node-type(frame.instance, literal, yes)
+                            = yes
+                    .. plain-right = is-plain-integer(row.rhs)
+        = given
+=? given if types.completions[other].has-enums
+. target = if types.intrinsic-of(other) == .char then types.type-row(.uint32) else number-type
+    .. number-type = builtin-number(types, other)
+. kind = types.intrinsic-of(target)
+=? given if given == target
+do match? frame.tree.nodes[literal]
+    | .node-integer-syntax(row)
+        . numeric = (is-integer-kind(kind) || intrinsic-is-float(kind)) && kind != .bool
+        if numeric && !row.unit && literal-fits-target(types, parsed, target)
+            facts.replace-node-type(frame.instance, literal, target)
+            = target
+        .. parsed = parse-integer-literal(row.value)
+    | .node-c-identifier
+        . constant = c-constant(literal)
+        . numeric = (is-integer-kind(kind) || intrinsic-is-float(kind)) && kind != .bool
+        if constant && numeric && literal-fits-target(types, parse-integer-literal(constant), target)
+            facts.replace-node-type(frame.instance, literal, target)
+            = target
+    | .node-float-syntax(row)
+        if kind == .float32 && !row.unit && float-literal-fits(types, row.value, target)
+            facts.replace-node-type(frame.instance, literal, target)
+            = target
+= given
+
+────────────────────
+_ do adapted-tuple TypeId
+    - items RowRange'SyntaxId
+    - given TypeId
+    - other TypeId
+
+do match? types.rows[given]
+    | .type-tuple(row)
+        types.complete(other)
+        . mark = types.scratch.types.mark
+        push-fields(types, other)
+        if types.scratch.types.length - mark != row.fields.count || row.fields.count != items.count
+            types.scratch.types.rewind(mark)
+            = given
+        . adapted-mark = types.scratch.types.mark
+        . names-mark = types.scratch.names.mark
+        . changed = false
+        . offset = 0u32
+        for item in frame.tree.children[items]
+            . field = types.child-type(row.fields, offset)
+            . adapted = adapted-literal(item, field, types.scratch.types[mark + offset])
+            changed = changed || adapted != field
+            types.scratch.types.push(adapted)
+            types.scratch.names.push(types.child-name(row.names, offset))
+            offset += 1
+        . result = if changed then types.intern-tuple(adapted-mark, names-mark) else given
+        types.scratch.types.rewind(mark)
+        types.scratch.names.rewind(names-mark)
+        = result
+= given
+
+────────────────────
++ do plain-item Bool
+    - syntax SyntaxId
+    - offset Size
+
+` Whether the item at a place of a tuple written is an integer written with no suffix.
+do match? frame.tree.nodes[syntax]
+    | .node-tuple-syntax(row)
+        . position = 0
+        for item in frame.tree.children[row.items]
+            =? is-plain-integer(item) if position == offset
+            position += 1
+= false
+
+────────────────────
++ do demand-error-report
+
+` Types what the report of an error no caller handles calls and the report of a panic does
+` not: the converter of an error to text. The panic a failed conversion of a text written in
+` source raises takes its message from it too.
+if instances.report.error-text != no-instance
+    =
+instances.report.error-text = demand-converter(types.error-type, types.string-type)
+
+────────────────────
++ is-plain-integer Bool
+    - syntax SyntaxId
+
+` Whether an expression is an integer written with no suffix, or a constant a C header defines,
+` which is one.
+match frame.tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        !row.unit || (unsuffixed != 0 && syntax == unsuffixed)
+    | .node-c-identifier
+        c-constant(syntax) != null
+    ??
+        false
+
+────────────────────
+_ do c-constant String?
+    - syntax SyntaxId
+
+` The number a constant a C header defines is written as, where an expression names one, as in
+` `C:SEEK_END`.
+do match? frame.tree.nodes[syntax]
+    | .node-c-identifier(row)
+        = program.c-constant-text(frame.module, row.name)
+= null
+
+────────────────────
++ do literal-of SyntaxId
+    - syntax SyntaxId
+
+` An argument that is a number written with no suffix or a constant a C header defines, a list
+` of only such integers or such lists, or a choice or a tuple written with one among its sides or
+` items, which a call may take as any type that holds it.
+do match? frame.tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        = if row.unit && (unsuffixed == 0 || syntax != unsuffixed) then 0 else syntax
+    | .node-c-identifier
+        = if c-constant(syntax) != null then syntax else 0
+    | .node-float-syntax(row)
+        = if row.unit && (unsuffixed == 0 || syntax != unsuffixed) then 0 else syntax
+    | .node-binary-expression(row)
+        if row.op == .else-op
+            do match? frame.tree.nodes[row.lhs]
+                | .node-binary-expression(chosen)
+                    if chosen.op == .if-op && (literal-of(chosen.lhs) != 0 || right-literal)
+                        = syntax
+                    .. right-literal = literal-of(row.rhs) != 0
+    | .node-list-syntax(row)
+        if row.items.count == 0
+            = 0
+        for item in frame.tree.children[row.items]
+            =? 0 if !is-plain-integer(item) && literal-of(item) == 0
+        = syntax
+    | .node-tuple-syntax(row)
+        for item in frame.tree.children[row.items]
+            =? syntax if literal-of(item) != 0
+= 0
+
+────────────────────
++ do fitting-literal Bool
+    - syntax SyntaxId
+    - target TypeId
+
+` Whether an expression is an integer written with no suffix that a machine integer type holds
+` unchanged, a float written with none that a float type holds, a list of only such integers that
+` a list of that type holds, such a value an arm `|? value if condition` gives, or a choice or a
+` tuple written whose sides or items are such values or convert unasked. The type may be the
+` optional of one, or a union with a case of one.
+. held = if types.is-optional(target) then types.optional-inner(target) else target
+match? frame.tree.nodes[syntax]
+    | .node-argument(argument)
+        = fitting-literal(argument.expr, target)
+    | .node-binary-expression(row)
+        if row.op != .else-op
+            = false
+        do match? frame.tree.nodes[row.lhs]
+            | .node-binary-expression(chosen)
+                if chosen.op == .if-op
+                    = fits-unasked(chosen.lhs, target) && fits-unasked(row.rhs, target)
+        = false
+    | .node-unary-expression(row)
+        if row.op != .optional-force-op
+            = false
+        do match? frame.tree.nodes[row.operand]
+            | .node-binary-expression(chosen)
+                if chosen.op == .if-op
+                    = fits-unasked(chosen.lhs, target)
+        = false
+    | .node-integer-syntax(row)
+        = (!row.unit || (unsuffixed != 0 && syntax == unsuffixed)) && integer-fits(parsed, held)
+            .. parsed = parse-integer-literal(row.value)
+    | .node-c-identifier
+        . constant = c-constant(syntax)
+        if constant
+            = integer-fits(parse-integer-literal(constant), held)
+        = false
+    | .node-float-syntax(row)
+        = (!row.unit || (unsuffixed != 0 && syntax == unsuffixed)) && float-fits
+            .. float-fits = float-literal-fits(types, row.value, held)
+    | .node-tuple-syntax(row)
+        types.complete(held)
+        . mark = types.scratch.types.mark
+        push-fields(types, held)
+        . count = types.scratch.types.length - mark
+        . fits = count != 0 && count == row.items.count
+        . offset = 0
+        for item in frame.tree.children[row.items]
+            if fits
+                fits = fits-unasked(item, types.scratch.types[mark + offset])
+            offset += 1
+        types.scratch.types.rewind(mark)
+        = fits
+    | .node-list-syntax(row)
+        . list = class-ref(types, held)
+        if empty || list.module != types.list-decl.module || list.decl != types.list-decl.decl
+            = false
+        .. empty = row.items.count == 0
+        . item = class-arg(types, held, 0)
+        for element in frame.tree.children[row.items]
+            if !fitting-literal(element, item)
+                = false
+        = true
+= false
+
+────────────────────
++ fits-unasked Bool
+    - syntax SyntaxId
+    - target TypeId
+
+` Whether an expression is such a literal, or a value that converts to the type unasked.
+fitting-literal(syntax, target) || relations.implicit(compare-held(given, target))
+
+.. given = facts.node-type(frame.instance, syntax)
+
+────────────────────
++ do suffix-type TypeId
+    - syntax SyntaxId
+
+do match frame.tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        =? no-type if !row.unit
+    | .node-float-syntax(row)
+        =? no-type if !row.unit
+    ??
+        = no-type
+. type = facts.node-type(frame.instance, syntax)
+=? no-type if type == no-type || type == invalid-type || !types.completions[type].is-builtin
+. kind = types.intrinsic-of(type)
+=? no-type if kind == .bool || kind == .char || types.completions[type].has-enums
+= if is-integer-kind(kind) || intrinsic-is-float(kind) then type else no-type
+
+────────────────────
++ do unsuffixed-fits Bool
+    - syntax SyntaxId
+    - target TypeId
+
+. saved = unsuffixed
+unsuffixed = syntax
+. fits = fitting-literal(syntax, target)
+unsuffixed = saved
+= fits
+
+────────────────────
++ unsuffixed-type TypeId
+    - syntax SyntaxId
+
+match frame.tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        magnitude-type(types, parse-integer-literal(row.value))
+    | .node-float-syntax
+        types.f64-type
+    ??
+        no-type
+
+────────────────────
++ do unsuffixed-beside TypeId
+    - syntax SyntaxId
+    - other TypeId
+
+. given = unsuffixed-type(syntax)
+=? given if given == no-type || given == other || other == invalid-type || other == no-type
+=? given if types.completions[other].has-enums
+. target = if types.intrinsic-of(other) == .char then types.type-row(.uint32) else number-type
+    .. number-type = builtin-number(types, other)
+. kind = types.intrinsic-of(target)
+=? given if given == target
+do match? frame.tree.nodes[syntax]
+    | .node-integer-syntax(row)
+        . numeric = (is-integer-kind(kind) || intrinsic-is-float(kind)) && kind != .bool
+        if numeric && literal-fits-target(types, parse-integer-literal(row.value), target)
+            = target
+    | .node-float-syntax(row)
+        if kind == .float32 && float-literal-fits(types, row.value, target)
+            = target
+= given
+
+────────────────────
+_ do integer-fits Bool
+    - literal IntegerLiteral
+    - held TypeId
+
+` Whether an integer written with no suffix is a value of a machine integer type, or of a case of
+` a union.
+if types.intrinsic-of(held) == .union
+    = some(types.cases-of(held)) • where holds-literal(literal, each.type)
+= holds-literal(literal, held)
+
+────────────────────
+_ holds-literal Bool
+    - literal IntegerLiteral
+    - type TypeId
+
+` Whether a machine integer type holds an integer written with no suffix, or a float type does, at
+` the value of that type nearest it.
+plain-number && !types.completions[type].has-enums && literal-fits-target(types, literal, type)
+
+.. plain-number = type != no-type && numeric && kind != .bool && kind != .char
+.. numeric = is-integer-kind(kind) || intrinsic-is-float(kind)
+
+.. kind = types.intrinsic-of(type)
+
+────────────────────
+_ literal-target TypeId
+    - literal IntegerLiteral
+    - target TypeId
+
+|? types.intrinsic-of(held) != .union
+    held
+|? !relation-legal(relation) || relation.case-index == U32.max
+    held
+??
+    types.cases-of(held)[relation.case-index].type
+
+.. held = if types.is-optional(target) then types.optional-inner(target) else target
+.. relation = compare-held(magnitude-type(types, literal), held)
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-filter-condition Bool
+    - types Types
+    - program Program
+    - closure TypeId
+
+` Whether a closure is the condition a filter keeps its items by, which answers a truth as a
+` condition does.
+do match? types.rows[closure]
+    | .type-closure(row)
+        . owner = program.modules[row.module]
+        do match? owner.decls[row.decl]
+            | .decl-function(fn)
+                if fn.kind == .pipeline-decl
+                    do match? owner.tree.nodes[fn.syntax]
+                        | .node-pipeline-expression(pipe)
+                            = pipe.op == .filter-op
+                        | .node-binary-expression(pipe)
+                            = pipe.op == .filter-op
+= false

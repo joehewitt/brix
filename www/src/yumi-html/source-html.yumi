@@ -1,0 +1,1311 @@
+./source-tracking
+/core/array-builder
+/core/atom-pool
+/data/json
+/lang/ast/ast
+/lang/ast/ast-builder
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/ast-xml
+/lang/ast/row-range
+/stream/coincidence
+/stream/filter
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceScope is Tuple
+
++ start Index
++ end Index
++ name String
++ specificity U8
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceRun is Tuple
+
++ start Index
++ end Index
++ scopes [String]
++ nodes [U32]
++ divider String?
+
+━━━━━━━━━━━━━━━━━━━━
++ SourcePresentationNode is Tuple
+
++ id U32
++ kind String
++ start Index
++ end Index
++ children [U32]
++ fields [String = String]
+
+━━━━━━━━━━━━━━━━━━━━
++ SourcePresentation is Tuple
+
++ source-path String
++ root U32
++ nodes [SourcePresentationNode]
++ runs [SourceRun]
+
+━━━━━━━━━━━━━━━━━━━━
+_ SyntaxInfo is Tuple
+
++ kind String
++ fields [KeyValuePair'String'String]
+
+━━━━━━━━━━━━━━━━━━━━
+_ NodeCoverage is Tuple
+
++ id U32
++ start Index
++ end Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceLexicalKind is U8
+
+| double-quoted = 0
+| single-quoted = 1
+| word = 2
+| number = 3
+| operator = 4
+| other = 5
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceLexicalToken is Tuple
+
++ start Index
++ end Index
++ kind SourceLexicalKind
++ text String
++ escapes [SourceRange]
+
+━━━━━━━━━━━━━━━━━━━━
++ yumi-source-html String
+    - source String
+    - source-path = ""
+
+render-yumi-source(source, source-path, true)
+
+━━━━━━━━━━━━━━━━━━━━
++ yumi-source-code-html String
+    - source String
+    - source-path = ""
+
+render-yumi-source(source, source-path, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do yumi-source-presentation SourcePresentation
+    - source String
+    - source-path = ""
+
+. parsed = parse-yumi-tracked(source, source-path)
+. builder = parsed.tree
+use builder
+. infos = syntax-infos(builder)
+. atoms = use AtomPool()
+. tree = builder.finish(atoms)
+use tree
+. ranges = source-ranges(tree, infos, parsed.tracking)
+. scopes = syntax-scopes(tree, infos, ranges, source)
+scopes ++= lexical-scopes
+    - source
+    - parsed.tracking.source-line-starts
+    - parsed.tracking.trivia
+    - parsed.grammar-word-ranges
+    - scopes
+. runs = source-runs(source, scopes, ranges, parsed.tracking.trivia)
+. nodes = source-presentation-nodes(tree, infos, ranges)
+= SourcePresentation(source-path, tree.root, nodes, runs)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do render-yumi-source String
+    - source String
+    - source-path String
+    - include-presentation Bool
+
+. presentation = yumi-source-presentation(source, source-path)
+. code = render-source-code-compact(source, presentation.runs)
+if include-presentation
+    code = render-source-code(source, presentation.runs)
+. source-html = source-code-html(code)
+
+=? compact-source-html(source-html) if !include-presentation
+. data = presentation-json(presentation, source)
+. data-html = source-presentation-data-html(script-safe-json(to-json(data)))
+= source-presentation-html(source-html, data-html)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-code-html
+    - code String
+
+<pre class="yumi-source-pre"><code class="source-yumi">$code</code></pre>
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ compact-source-html
+    - source-html String
+
+<div class="yumi-source" data-yumi-source>$source-html</div>
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-presentation-html
+    - source-html String
+    - data-html String
+
+<div class="yumi-source" data-yumi-source>$source-html$data-html</div>
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-presentation-data-html
+    - data String
+
+<script type="application/json" data-yumi-ast>$data</script>
+
+━━━━━━━━━━━━━━━━━━━━
+_ do syntax-infos [SyntaxInfo]
+    - tree ASTBuilder
+
+. infos [SyntaxInfo]
+. total = tree.nodes.length as SyntaxId
+for id in 0 .. < total
+    . xml = tree.view(id)
+    . kind = xml.node-name
+    if !kind
+        kind = if id == tree.root then "TopLevel" else "Noop"
+    infos += SyntaxInfo(kind, xml.attrs)
+= infos
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-ranges [SourceRange?]
+    - tree AST
+    - infos [SyntaxInfo]
+    - tracking TrackedPreparse
+
+. ranges [SourceRange?] = [null]
+for index in 1 .. < tree.nodes.length
+    . location = tree.nodes.loc[index]
+    . range = tracking.source-range(location)
+    if !range
+        ranges += range
+        continue
+    . start = range.start
+    if is-divider-declaration-kind(infos[index].kind)
+        start = declaration-source-start(start, location, infos[index].kind, tracking)
+    ranges += SourceRange(start, range.end)
+= ranges
+
+━━━━━━━━━━━━━━━━━━━━
+_ do declaration-source-start Index
+    - fallback Index
+    - location MatchLocation
+    - kind String
+    - tracking TrackedPreparse
+
+=? fallback if location.begin.line == 0
+. divider-line = location.begin.line - 1
+=? fallback if divider-line >= tracking.source-line-starts.length
+. divider-start = tracking.source-line-starts[divider-line]
+for item in tracking.trivia
+    if item.start == divider-start && divider-belongs-to(item.kind, kind)
+        = item.start
+= fallback
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-divider-declaration-kind Bool
+    - kind String
+
+kind == "Class" || is-function-kind(kind)
+
+━━━━━━━━━━━━━━━━━━━━
+_ divider-belongs-to Bool
+    - divider PreparseTriviaKind
+    - kind String
+
+match kind
+    |= "Class"
+        divider == .divider-class
+    |? is-function-kind(it)
+        divider == .divider-class || divider == .divider-function
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do syntax-scopes [SourceScope]
+    - tree AST
+    - infos [SyntaxInfo]
+    - ranges [SourceRange?]
+    - source String
+
+. scopes [SourceScope]
+for index in 1 .. < tree.nodes.length
+    . range = ranges[index]
+    if !range
+        continue
+    . info = infos[index]
+    . parent-scope = parent-scope-for(info.kind)
+    if parent-scope
+        scopes += SourceScope(range.start, range.end, parent-scope, 4)
+    . leaf-scope = leaf-scope-for(info.kind)
+    if leaf-scope
+        scopes += SourceScope(range.start, range.end, leaf-scope, 24)
+    . property-name = is-property-name(index, infos, ranges)
+    for field in info.fields
+        add-field-scopes
+            - scopes
+            - source
+            - range
+            - info.kind
+            - field.key
+            - field.value
+            - property-name
+    if info.kind == "Declaration"
+        add-declaration-bullet-scope(scopes, source, range)
+    do match? tree.nodes[index]
+        | .node-declare(row)
+            if declaration-bullet-index(source, range)
+                add-left-hand-identifier-scope(scopes, tree, ranges, source, row.left)
+        | .node-assign(row)
+            add-left-hand-identifier-scope(scopes, tree, ranges, source, row.lhs)
+        | .node-class-block(row)
+            add-type-parameter-scopes(scopes, tree, ranges, source, row.type-args)
+        | .node-function-syntax(row)
+            add-type-parameter-scopes(scopes, tree, ranges, source, row.type-args)
+        | .node-getter-syntax(row)
+            add-type-parameter-scopes(scopes, tree, ranges, source, row.type-args)
+        | .node-setter-syntax(row)
+            add-type-parameter-scopes(scopes, tree, ranges, source, row.type-args)
+        | .node-type-arguments(row)
+            add-type-parameter-scopes(scopes, tree, ranges, source, row.args)
+        | .node-probe(row)
+            add-probe-prefix-scope(scopes, source, range)
+            if !row.name
+                scopes += SourceScope(range.start, range.end, "header.probe.yumi", 4)
+                add-probe-content-scopes(scopes, tree, infos, ranges, source, row.content)
+        | .node-probe-group(row)
+            add-probe-prefix-scope(scopes, source, range)
+            if !row.is-data
+                scopes += SourceScope(range.start, range.end, "header.probe.yumi", 4)
+                add-probe-content-scopes(scopes, tree, infos, ranges, source, row.content)
+        | .node-probe-statement
+            add-probe-prefix-scope(scopes, source, range)
+        | .node-probe-assign
+            add-probe-prefix-scope(scopes, source, range)
+        | .node-probe-counter
+            add-probe-prefix-scope(scopes, source, range)
+= scopes
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-probe-prefix-scope
+    - scopes [SourceScope]
+    - source String
+    - range SourceRange
+
+. start = range.start
+while start < range.end && (source[start] == ' ' || source[start] == '\t' || source[start] == '\r')
+    start += 1
+. end = start
+while end < range.end
+    . char = source[end]
+    if char == ' ' || char == '\t' || char == '\r' || char == '\n'
+        break
+    end += 1
+if end > start
+    scopes += SourceScope(start, end, "entity.name.function.probe.yumi", 36)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-probe-content-scopes
+    - scopes [SourceScope]
+    - tree AST
+    - infos [SyntaxInfo]
+    - ranges [SourceRange?]
+    - source String
+    - content RowRange'SyntaxId
+
+for id in tree.children[content]
+    if id == 0 || id >= ranges.length || !ranges[id]
+        continue
+    . kind = infos[id].kind
+    if kind == "String" || kind == "StreamString"
+        continue
+    . scope = "probe.embedded.yumi"
+    if kind == "ProbeSnapshot"
+        scope = "probe.embedded.snapshot.yumi"
+    else if kind == "ProbePreview"
+        scope = "probe.embedded.preview.yumi"
+    add-probe-interpolation-scope(scopes, source, ranges[id]!, scope)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-probe-interpolation-scope
+    - scopes [SourceScope]
+    - source String
+    - range SourceRange
+    - name String
+
+. marker-start = range.start
+. expression-start = range.start
+. braced = false
+if range.start < source.length && source[range.start] == '$'
+    expression-start += 1
+    if expression-start < range.end
+        . marker = source[expression-start]
+        if marker == '!' || marker == '?'
+            expression-start += 1
+    if expression-start < range.end && source[expression-start] == '{'
+        expression-start += 1
+        braced = true
+else if range.start >= 3 && source[range.start - 3] == '$'
+    . marker = source[range.start - 2]
+    if (marker == '!' || marker == '?') && source[range.start - 1] == '{'
+        marker-start = range.start - 3
+        braced = true
+else if range.start >= 2 && source[range.start - 2] == '$' && source[range.start - 1] == '{'
+    marker-start = range.start - 2
+    braced = true
+else if range.start >= 2 && source[range.start - 2] == '$'
+    . marker = source[range.start - 1]
+    if marker == '!' || marker == '?'
+        marker-start = range.start - 2
+else if range.start >= 1 && source[range.start - 1] == '$'
+    marker-start = range.start - 1
+
+. scope-end = range.end
+. closer-start = range.end
+if braced
+    if scope-end > expression-start && source[scope-end - 1] == '}'
+        closer-start = scope-end - 1
+    else if scope-end < source.length && source[scope-end] == '}'
+        scope-end += 1
+    scopes += SourceScope(marker-start, scope-end, name, 18)
+    scopes += SourceScope(marker-start, expression-start, name, 40)
+    if closer-start < scope-end
+        scopes += SourceScope(closer-start, scope-end, name, 40)
+else
+    scopes += SourceScope(marker-start, scope-end, name, 40)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-left-hand-identifier-scope
+    - scopes [SourceScope]
+    - tree AST
+    - ranges [SourceRange?]
+    - source String
+    - id SyntaxId
+
+=? if id == 0 || id >= ranges.length || !ranges[id]
+. range = ranges[id]!
+do match? tree.nodes[id]
+    | .node-type-capture(row)
+        add-left-hand-identifier-scope(scopes, tree, ranges, source, row.id)
+    | .node-identifier(row)
+        add-left-hand-name-scope(scopes, source, range, row.name.text)
+    | .node-ref-identifier(row)
+        add-left-hand-name-scope(scopes, source, range, row.name.text)
+    | .node-get-expression(row)
+        add-left-hand-name-scope(scopes, source, range, row.name.text)
+    | .node-index-expression(row)
+        add-left-hand-identifier-scope(scopes, tree, ranges, source, row.object)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-left-hand-name-scope
+    - scopes [SourceScope]
+    - source String
+    - range SourceRange
+    - name String
+
+=? if !name
+. relative = source[range.start .. < range.end].find-reverse(name)
+if relative
+    . start = range.start + relative
+    scopes += SourceScope(start, start + name.length, "meta.definition.variable.yumi", 40)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-type-parameter-scopes
+    - scopes [SourceScope]
+    - tree AST
+    - ranges [SourceRange?]
+    - source String
+    - type-args RowRange'SyntaxId
+
+for type-arg in tree.children[type-args]
+    . name-id = type-argument-name-id(tree, type-arg)
+    if name-id == 0 || name-id >= ranges.length || !ranges[name-id]
+        continue
+    . range = ranges[name-id]!
+    . start = range.start
+    if start == 0 || source[start - 1] != '\''
+        continue
+    while start > 0 && source[start - 1] == '\''
+        start -= 1
+    scopes += SourceScope(start, range.end, "variable.parameter.type.yumi", 40)
+
+━━━━━━━━━━━━━━━━━━━━
+_ type-argument-name-id SyntaxId
+    - tree AST
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-type-identifier
+        id
+    | .node-type-arguments(row)
+        type-argument-name-id(tree, row.base)
+    | .node-type-associated(row)
+        type-argument-name-id(tree, row.owner)
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ parent-scope-for String?
+    - kind String
+
+|? kind == "Class"
+    "header.class.yumi"
+|? is-function-kind(kind)
+    "solo.function.yumi"
+|? kind == "Import"
+    "meta.import.yumi"
+|? kind == "Markup"
+    "meta.markup.element.yumi"
+|? kind == "StructureMatch"
+    "meta.match.structure.yumi"
+|? kind == "StreamMatch"
+    "section.pattern.stream.yumi"
+|? kind == "StyleRuleApplication"
+    "meta.style.application.yumi"
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ leaf-scope-for String?
+    - kind String
+
+|? kind == "Integer"
+    "constant.numeric.integer.decimal.yumi"
+|? kind == "Float"
+    "constant.numeric.float.yumi"
+|? kind == "String" || kind == "StreamString"
+    "string.quoted.double.yumi"
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-field-scopes
+    - scopes [SourceScope]
+    - source String
+    - range SourceRange
+    - kind String
+    - key String
+    - value String
+    - property-name Bool
+
+. scope = field-scope-for(kind, key)
+=? if !scope || !value
+. scope-name = if property-name then "name.function.solo.yumi" else scope
+if kind == "Import" && key == "path"
+    scopes += SourceScope(range.start, range.end, scope-name, 32)
+    =
+. values = if key == "names" then value.split(", ") else [value]
+for spelling in values
+    . relative = source[range.start .. < range.end].find(spelling)
+    if relative
+        . start = range.start + relative
+        scopes += SourceScope(start, start + spelling.length, scope-name, 32)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-property-name Bool
+    - index Index
+    - infos [SyntaxInfo]
+    - ranges [SourceRange?]
+
+=? false if infos[index].kind != "Id" || !ranges[index]
+. range = ranges[index]!
+for property-index in 1 .. < ranges.length
+    =? false if property-index >= infos.length
+    if infos[property-index].kind != "Property" || !ranges[property-index]
+        continue
+    . property-range = ranges[property-index]!
+    if property-range.start > range.start || property-range.end < range.end
+        continue
+    . first-id-start = Index.max
+    for candidate in 1 .. < ranges.length
+        if candidate >= infos.length || infos[candidate].kind != "Id" || !ranges[candidate]
+            continue
+        . candidate-range = ranges[candidate]!
+        . contained = property-range.start <= candidate-range.start
+        contained = contained && property-range.end >= candidate-range.end
+        if contained
+            if candidate-range.start < first-id-start
+                first-id-start = candidate-range.start
+    = range.start == first-id-start
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-declaration-bullet-scope
+    - scopes [SourceScope]
+    - source String
+    - range SourceRange
+
+. cursor = declaration-bullet-index(source, range)
+if cursor
+    scopes += SourceScope(cursor, cursor + 1, "definition.yumi", 24)
+    scopes += SourceScope(cursor, cursor + 1, "operator.bullet.definition.yumi", 32)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do declaration-bullet-index Index?
+    - source String
+    - range SourceRange
+
+. cursor = range.start
+while cursor < range.end && (source[cursor] == ' ' || source[cursor] == '\t')
+    cursor += 1
+=? cursor if cursor < range.end && source[cursor] == '.'
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ field-scope-for String?
+    - kind String
+    - key String
+
+|? !is-source-field-key(key)
+    null
+|? is-type-kind(kind)
+    "entity.name.type.yumi"
+|? is-function-kind(kind)
+    "name.function.solo.yumi"
+|? kind == "StreamCall"
+    "entity.name.function.stream.yumi"
+|? is-style-kind(kind)
+    "entity.name.style.yumi"
+|? kind == "CId"
+    "entity.name.function.foreign.c.yumi"
+|? kind == "Import"
+    "string.unquoted.import.path.yumi"
+|? is-state-kind(kind)
+    "entity.name.state.yumi"
+??
+    "entity.name.variable.yumi"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-source-field-key Bool
+    - key String
+
+key == "name" || key == "names" || key == "path" || key == "state" || key == "target"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-type-kind Bool
+    - kind String
+
+match kind
+    |= "Class"
+        true
+    |= "TypeId"
+        true
+    |= "AssociatedType"
+        true
+    |= "TypeCase"
+        true
+    |= "TypeProperty"
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-function-kind Bool
+    - kind String
+
+match kind
+    |= "Function"
+        true
+    |= "Getter"
+        true
+    |= "Setter"
+        true
+    |= "Converter"
+        true
+    |= "Fromverter"
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-style-kind Bool
+    - kind String
+
+kind == "StyleRule" || kind == "StyleRuleApplication" || kind == "StyleRead"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-state-kind Bool
+    - kind String
+
+match kind
+    |= "StateCase"
+        true
+    |= "StateContinuation"
+        true
+    |= "StateFallback"
+        true
+    |= "StyleWhen"
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lexical-scopes [SourceScope]
+    - source String
+    - line-starts [Index]
+    - trivia [PreparseTrivia]
+    - grammar-word-ranges [SourceRange]
+    - semantic-scopes [SourceScope]
+
+. scopes [SourceScope]
+for item in trivia
+    scopes += SourceScope(item.start, item.end, trivia-scope(item.kind), 20)
+for range in grammar-word-ranges
+    if !semantic-token-covered(semantic-scopes, range.start, range.end)
+        scopes += SourceScope(range.start, range.end, "keyword.yumi", 12)
+
+for token in source-lexical-tokens(source, line-starts)
+    if trivia-at(trivia, token.start)
+        continue
+    do match token.kind
+        |= .double-quoted
+            if !semantic-token-covered(semantic-scopes, token.start, token.end)
+                scopes += SourceScope(token.start, token.end, "string.quoted.double.yumi", 20)
+            for escape in token.escapes
+                scopes += SourceScope
+                    - escape.start
+                    - escape.end
+                    - "constant.character.escape.yumi"
+                    - 36
+        |= .single-quoted
+            if !semantic-token-covered(semantic-scopes, token.start, token.end)
+                scopes += SourceScope(token.start, token.end, "constant.character.yumi", 20)
+            for escape in token.escapes
+                scopes += SourceScope
+                    - escape.start
+                    - escape.end
+                    - "constant.character.escape.yumi"
+                    - 36
+        |= .word
+            if token.text == "_" && is-line-leading(source, token.start)
+                scopes += SourceScope(token.start, token.end, "operator.bullet.yumi", 12)
+        |= .number
+            . scope = "constant.numeric.integer.decimal.yumi"
+            if token.text.find(".")
+                scope = "constant.numeric.float.yumi"
+            if !semantic-token-covered(semantic-scopes, token.start, token.end)
+                scopes += SourceScope(token.start, token.end, scope, 14)
+        |= .operator
+            if !semantic-token-covered(semantic-scopes, token.start, token.end)
+                scopes += SourceScope
+                    - token.start
+                    - token.end
+                    - operator-scope(source, token.start, token.end)
+                    - 10
+        |= .other
+            continue
+= scopes
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-lexical-tokens ImmutableArray'SourceLexicalToken
+    - source String
+    - line-starts [Index]
+
+match source
+    ~ tokens \source-lexical-token(source, line-starts)* !.
+        tokens
+    ?! Panic("Source lexer did not consume its input")
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-lexical-token ~ Char SourceLexicalToken
+    - source String
+    - line-starts [Index]
+
+~ \source-double-quoted-token(line-starts)
+~ \source-single-quoted-token(line-starts)
+~ \source-word
+    source-lexical-token-at(location, line-starts, .word, source)
+~ \source-number
+    source-lexical-token-at(location, line-starts, .number, source)
+~ \source-operator+
+    source-lexical-token-at(location, line-starts, .operator, source)
+~ .
+    source-lexical-token-at(location, line-starts, .other, source)
+
+.. source-word ~
+    ~ \source-word-start \source-word-part*
+
+.. source-word-start ~
+    ~ [a-zA-Z_]
+    ~ "°"
+
+.. source-word-part ~
+    ~ [a-zA-Z0-9_-]
+    ~ "°"
+
+.. source-number ~
+    ~ [0-9] \source-number-part*
+
+.. source-number-part ~
+    ~ [0-9a-z]
+    ~ [.'%]
+    ~ "µ"
+    ~ "°"
+
+.. source-operator ~
+    ~ [+*/%<>=!?|&:.~\\#@$•-]
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-double-quoted-token ~ Char SourceLexicalToken
+    - line-starts [Index]
+
+~ "\"" escapes \source-double-quoted-piece(line-starts)* "\""?
+    source-quoted-token-at(location, line-starts, .double-quoted, escapes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-double-quoted-piece ~ Char SourceRange?
+    - line-starts [Index]
+
+~ "\\" .
+    source-range-at(location, line-starts)
+~ "\\" !.
+    source-range-at(location, line-starts)
+~ !("\"" | \nl) .
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-single-quoted-token ~ Char SourceLexicalToken
+    - line-starts [Index]
+
+~ "'" escapes \source-single-quoted-piece(line-starts)* "'"?
+    source-quoted-token-at(location, line-starts, .single-quoted, escapes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-single-quoted-piece ~ Char SourceRange?
+    - line-starts [Index]
+
+~ "\\" .
+    source-range-at(location, line-starts)
+~ "\\" !.
+    source-range-at(location, line-starts)
+~ !("'" | \nl) .
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-quoted-token-at SourceLexicalToken
+    - location MatchLocation
+    - line-starts [Index]
+    - kind SourceLexicalKind
+    - optional-escapes ImmutableArray'(SourceRange?)
+
+SourceLexicalToken(range.start, range.end, kind, "", escapes)
+
+.. range = source-range-at(location, line-starts)
+.. escapes [SourceRange] = <* escape in optional-escapes when escape
+    escape
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-lexical-token-at SourceLexicalToken
+    - location MatchLocation
+    - line-starts [Index]
+    - kind SourceLexicalKind
+    - source String
+
+SourceLexicalToken
+    - range.start
+    - range.end
+    - kind
+    - source[range.start .. < range.end]
+    - SourceRange[0]
+
+.. range = source-range-at(location, line-starts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-range-at SourceRange
+    - location MatchLocation
+    - line-starts [Index]
+
+SourceRange(start, end)
+
+.. start = line-starts[location.begin.line] + location.begin.column
+.. end = line-starts[location.end.line] + location.end.column + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do semantic-token-covered Bool
+    - scopes [SourceScope]
+    - start Index
+    - end Index
+
+for scope in scopes
+    if scope.specificity >= 24 && scope.start <= start && scope.end >= end
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do trivia-at PreparseTrivia?
+    - trivia [PreparseTrivia]
+    - offset Index
+
+for item in trivia
+    =? item if item.start <= offset && item.end > offset
+
+━━━━━━━━━━━━━━━━━━━━
+_ trivia-scope String
+    - kind PreparseTriviaKind
+
+match kind
+    |= .comment
+        "comment.yumi"
+    |= .divider-class
+        "divider.class.yumi"
+    |= .divider-function
+        "divider.function.yumi"
+    |= .divider-header
+        "divider.header.yumi"
+    |= .divider-comment
+        "divider.comment.yumi"
+
+━━━━━━━━━━━━━━━━━━━━
+_ operator-scope String
+    - source String
+    - start Index
+    - end Index
+
+|? is-bullet-operator(source, start, op)
+    "operator.bullet.yumi"
+|? op == "--" || op == "--?"
+    "operator.printing.yumi"
+|? is-comparison-operator(op)
+    "operator.compare.yumi"
+|? op == "=" || op.ends-with("=")
+    "operator.assign.yumi"
+|? op == "&&" || op == "||" || op == "??"
+    "operator.logical.yumi"
+|? op == ".." || op == "..."
+    "operator.range.yumi"
+|? is-pipeline-operator(op)
+    "operator.pipeline.yumi"
+|? op == "!" || op == "?"
+    "operator.postfix.yumi"
+??
+    "operator.infix.yumi"
+
+.. op = source[start .. < end]
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-bullet-operator Bool
+    - source String
+    - start Index
+    - op String
+
+|? !is-line-leading(source, start)
+    false
+??
+    op == "+" || op == "_" || op == "-" || op == "." || op == "|" || op == "*"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-comparison-operator Bool
+    - op String
+
+op == "==" || op == "!=" || op == "<=" || op == ">=" || op == "<" || op == ">"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-pipeline-operator Bool
+    - op String
+
+op == "|>" || op == "->" || op == "<|" || op == ">>" || op == "<<"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-line-leading Bool
+    - source String
+    - offset Index
+
+. cursor = offset
+while cursor > 0 && source[cursor - 1] != '\n'
+    cursor -= 1
+while cursor < offset
+    =? false if source[cursor] != ' ' && source[cursor] != '\t'
+    cursor += 1
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-runs [SourceRun]
+    - source String
+    - scopes [SourceScope]
+    - ranges [SourceRange?]
+    - trivia [PreparseTrivia]
+
+sort(source-run-boundaries(source, scopes, ranges))
+|> distinct-until-changed
+|> pairwise
+?> each.b > each.a
+*> source-run(each.a, each.b, scopes, ranges, trivia)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-run-boundaries [Index]
+    - source String
+    - scopes [SourceScope]
+    - ranges [SourceRange?]
+
+* 0
+* source.length
+**
+    scopes
+    *> each.start
+**
+    scopes
+    *> each.end
+**
+    ranges
+    ?*> each
+    *> each.start
+**
+    ranges
+    ?*> each
+    *> each.end
+**
+    0 .. < source.length
+    ?> source[each] == '\n'
+**
+    0 .. < source.length
+    ?> source[each] == '\n'
+    *> each + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-run SourceRun
+    - start Index
+    - end Index
+    - scopes [SourceScope]
+    - ranges [SourceRange?]
+    - trivia [PreparseTrivia]
+
+SourceRun(start, end, scope-names, node-ids, divider)
+
+.. active-scopes [SourceScope] = sort • stream source-scopes-at(scopes, start, end)
+    • using compare-source-scopes
+.. scope-names [String] = distinct(source-run-scope-names(active-scopes))
+.. covering [NodeCoverage] = sort • stream source-node-coverages(ranges, start, end)
+    • using compare-node-coverage
+.. node-ids [U32] = each.id in covering
+.. divider = divider-at(trivia, start, end)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-scopes-at [SourceScope]
+    - scopes [SourceScope]
+    - start Index
+    - end Index
+
+<* scope in scopes when scope.start <= start && scope.end >= end
+    scope
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-run-scope-names [String]
+    - scopes [SourceScope]
+
+* "source.yumi"
+** each.name in scopes
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-node-coverages [NodeCoverage]
+    - ranges [SourceRange?]
+    - start Index
+    - end Index
+
+<* node-index in 1 .. < count when source-range-covers(start, end, ranges[node-index])
+    source-node-coverage(node-index, ranges[node-index]!)
+
+.. count = ranges.length as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-node-coverage NodeCoverage
+    - id U32
+    - range SourceRange
+
+NodeCoverage(id, range.start, range.end)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-range-covers Bool
+    - start Index
+    - end Index
+    - range SourceRange?
+
+range && range.start <= start && range.end >= end
+
+━━━━━━━━━━━━━━━━━━━━
+_ compare-source-scopes Comparison
+    - left SourceScope
+    - right SourceScope
+
+|? left.specificity < right.specificity
+    .lesser
+|? left.specificity > right.specificity
+    .greater
+|? left-width > right-width
+    .lesser
+|? left-width < right-width
+    .greater
+??
+    .equal
+
+.. left-width = left.end - left.start
+.. right-width = right.end - right.start
+
+━━━━━━━━━━━━━━━━━━━━
+_ compare-node-coverage Comparison
+    - left NodeCoverage
+    - right NodeCoverage
+
+|? left-width > right-width
+    .lesser
+|? left-width < right-width
+    .greater
+|? left.id > right.id
+    .lesser
+|? left.id < right.id
+    .greater
+??
+    .equal
+
+.. left-width = left.end - left.start
+.. right-width = right.end - right.start
+
+━━━━━━━━━━━━━━━━━━━━
+_ do divider-at String?
+    - trivia [PreparseTrivia]
+    - start Index
+    - end Index
+
+for item in trivia
+    if item.start <= start && item.end >= end
+        =? "class" if item.kind == .divider-class
+        =? "function" if item.kind == .divider-function
+        =? "header" if item.kind == .divider-header
+        =? "comment" if item.kind == .divider-comment
+
+━━━━━━━━━━━━━━━━━━━━
+_ render-source-code String
+    - source String
+    - runs [SourceRun]
+
+"".join(span-html(source, each) in runs)
+
+━━━━━━━━━━━━━━━━━━━━
+_ render-source-code-compact String
+    - source String
+    - runs [SourceRun]
+
+"".join(compact-span-html(source, each) in runs)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do span-html String
+    - source String
+    - run SourceRun
+
+. classes = "yumi-run"
+if run.divider
+    classes += " yumi-divider"
+. divider-attribute = if run.divider then " data-divider=\"${run.divider}\"" else ""
+. nodes = ",".join("$each" in run.nodes)
+. scopes = " ".join(run.scopes)
+. text = html-escape(source[run.start .. < run.end])
+. attributes = source-run-attributes
+    - run.start
+    - run.end
+    - html-attribute(scopes)
+    - nodes
+    - divider-attribute
+= source-run-html(classes, attributes, text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-run-attributes
+    - start Index
+    - end Index
+    - scopes String
+    - nodes String
+    - divider-attribute String
+
+"$range$metadata$divider-attribute"
+
+.. range = source-run-range-attributes(start, end)
+.. metadata = source-run-metadata-attributes(scopes, nodes)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-run-range-attributes
+    - start Index
+    - end Index
+
+${" "}data-yumi-run data-range="$start:$end"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-run-metadata-attributes
+    - scopes String
+    - nodes String
+
+${" "}data-scopes="$scopes" data-nodes="$nodes"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ source-run-html
+    - classes String
+    - attributes String
+    - text String
+
+<span class="$classes"$attributes>$text</span>
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compact-span-html String
+    - source String
+    - run SourceRun
+
+. classes = "yumi-run"
+. divider-attributes = ""
+if run.divider
+    classes += " yumi-divider"
+    . fill = (source[run.start] as String) * 512
+    . width = run.end - run.start
+    divider-attributes = " data-divider-fill=\"${html-attribute(fill)}\""
+    divider-attributes += " style=\"--divider-source-width:${width}ch\""
+. scopes = " ".join(run.scopes)
+. text = html-escape(source[run.start .. < run.end])
+= compact-source-run-html
+    - classes
+    - html-attribute(scopes)
+    - divider-attributes
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ compact-source-run-html
+    - classes String
+    - scopes String
+    - divider-attributes String
+    - text String
+
+<span class="$classes" data-scopes="$scopes"$divider-attributes>$text</span>
+
+━━━━━━━━━━━━━━━━━━━━
+_ do presentation-json [String = JSON]
+    - presentation SourcePresentation
+    - source String
+
+. nodes [JSON]
+for node in presentation.nodes
+    . children [JSON] = <* child in node.children
+        child as Int as JSON
+    . fields = Map'String'JSON()
+    for key, value in node.fields
+        fields[key] = value
+    . node-data = Map'String'JSON
+        • "id" node.id as Int as JSON
+        • "kind" node.kind as JSON
+        • "range" [node.start as Int as JSON, node.end as Int as JSON] as JSON
+        • "children" children as JSON
+        • "fields" fields as JSON
+    nodes += node-data
+
+. run-data [JSON]
+for run in presentation.runs
+    . scopes [JSON]
+    for scope in run.scopes
+        scopes += scope
+    . node-ids [JSON]
+    for id in run.nodes
+        node-ids += id as Int
+    . item = Map'String'JSON
+        • "range" [run.start as Int as JSON, run.end as Int as JSON] as JSON
+        • "text" source-text-json(run, source) as JSON
+        • "scopes" scopes as JSON
+        • "nodes" node-ids as JSON
+    if run.divider
+        item["divider"] = run.divider
+    run-data += item
+
+= Map'String'JSON
+    • "sourcePath" presentation.source-path as JSON
+    • "root" presentation.root as Int as JSON
+    • "nodes" nodes as JSON
+    • "runs" run-data as JSON
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-presentation-nodes [SourcePresentationNode]
+    - tree AST
+    - infos [SyntaxInfo]
+    - ranges [SourceRange?]
+
+. nodes [SourcePresentationNode]
+. total = tree.nodes.length as SyntaxId
+for index in 1 .. < total
+    . range = ranges[index]
+    if !range
+        continue
+    . children [U32] = <* child in tree.children-of(index)
+        child
+    . fields = Map'String'String()
+    for field in infos[index].fields
+        . key = (field.key as Byte[]).slice-string()
+        fields[key] = (field.value as Byte[]).slice-string()
+    nodes += SourcePresentationNode
+        - index
+        - (infos[index].kind as Byte[]).slice-string()
+        - range.start
+        - range.end
+        - children
+        - fields
+= nodes
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-text-json String
+    - run SourceRun
+    - source String
+
+source[run.start .. < run.end]
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-escape String
+    - text String
+
+"".join(html-escaped(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-attribute String
+    - text String
+
+"".join(html-attribute-escaped(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-escaped String
+    - char Char
+
+|? char == '&'
+    "&amp;"
+|? char == '<'
+    "&lt;"
+|? char == '>'
+    "&gt;"
+??
+    char as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ html-attribute-escaped String
+    - char Char
+
+|? char == '"'
+    "&quot;"
+|? char == '\''
+    "&#39;"
+??
+    html-escaped(char)
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-safe-json String
+    - text String
+
+"".join(script-json-char(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ script-json-char String
+    - char Char
+
+|? char == '<'
+    "\\u003c"
+|? char == '>'
+    "\\u003e"
+|? char == '&'
+    "\\u0026"
+??
+    char as String

@@ -1,0 +1,565 @@
+
+./core
+./markup
+./style
+
+` Diagnostic helpers for the style substrate. Production style lifecycle lives in /core/style;
+` this module imports it for tests and tooling, and is not imported by /core/style.
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-drain-dirty-queue
+    - root MarkupBatch
+
+` Debug drain helper: real settling lands in slice 4. Entries whose attachment was detached or
+` regenerated since they were queued are stale and must not touch released records.
+
+. store = style-store-for(root)
+if !store
+    = "none"
+
+. applied Size = 0
+. stale Size = 0
+while store.dirty-queue
+    . entry = store.dirty-queue.pop-first()
+    . attachment = style-live-attachment(entry.owner-address as Pointer)
+    if attachment && attachment.generation == entry.generation
+        . live = attachment
+        live.dirty-bits = 0
+        . node-record = style-node-record(live)
+        if node-record
+            node-record.dirty-bits = 0
+        applied += 1
+    else
+        stale += 1
+
+store.inherited-dirty-roots.clear()
+= "applied=$applied stale=$stale"
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-debug-touch-node-segment
+    - object-pointer CPointer'Void
+
+` TEMPORARY (slice 2 only): exercises copy-on-write segment allocation for a node segment.
+` Authored writes replace this in slice 3.
+
+. attachment = style-required-attachment(object-pointer)
+. node-record = style-node-record(attachment)
+if !node-record
+    . store = style-attachment-store(attachment)
+    node-record = store.allocate-node-record()
+    style-set-node-record(attachment, node-record)
+style-debug-touch(attachment, node-record)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-attachment-snapshot
+    - object-pointer CPointer'Void
+
+` Inspection helpers return compact snapshot strings; they are diagnostics, not reactive reads.
+
+|? !attachment
+    "none"
+|? !a.is-live
+    "none"
+??
+    "live id=$id root=$root-id parent=$parent-id node=$node-id gen=$gen dirty=$dirty"
+
+.. attachment = style-attachment-for-pointer(object-pointer)
+.. a = attachment
+.. store = style-attachment-store(a)
+.. id = a.attachment-id
+.. root-id = store.store-id
+.. parent-id = attachment-label(style-parent-attachment(a))
+.. node-id = record-label(style-node-record(a))
+.. gen = a.generation
+.. dirty = style-dirty-letters(a.dirty-bits)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-node-snapshot
+    - object-pointer CPointer'Void
+
+|? !attachment
+    "none"
+|? !record
+    "none"
+??
+    "node id=$id seg=$seg gen=$gen mask=$mask"
+
+.. attachment = style-live-attachment(object-pointer)
+.. record = style-node-record(attachment)
+.. store = style-attachment-store(attachment)
+.. live-record = record
+.. segment = style-record-segment(live-record, 0) ?? store.initial-node-segment
+.. id = live-record.record-id
+.. seg = if style-record-owns-segment(live-record, 0) then "owned" else "shared"
+.. gen = segment.generation
+.. mask = segment.changed-mask
+
+━━━━━━━━━━━━━━━━━━━━
++ style-authored-snapshot
+    - object-pointer CPointer'Void
+
+` Renders the authored declarations on the object's node record, one line per declaration in
+` storage order.
+
+|? !attachment
+    "none"
+|? !record
+    "empty"
+??
+    if text.length > 0 then text else "empty"
+
+.. attachment = style-live-attachment(object-pointer)
+.. live = attachment
+.. record = style-node-record(live)
+.. node-record = record
+.. assoc = style-live-site-association(live)
+.. text = "\n".join
+    *? "node disabled-blocks=${node-record.disabled-blocks}" if node-record.disabled-blocks != 0
+    **
+        **? (0 .. < assoc.site-template-count()) if assoc
+        *> template-declaration-labels(assoc!, each)
+        |> flat-map
+    **
+        node-record.authored
+        *> "node " + declaration-label(each)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-read-node-segment
+    - object-pointer CPointer'Void
+    - info StyleInfo
+
+` Info-based segment lookup for debug and manual callers: attachment lookup, then the record's
+` settled segment for the owning style (or the style's shared initial segment). Reads never
+` settle.
+
+?! StyleReadPanic("Style read on an unmounted object")
+    if !attachment
+
+?! StyleReadPanic("Style read on an object with no node record")
+    if !record
+
+|? info.style-index < segments.length
+    segments[info.style-index]
+??
+    store.initial-segment(info)
+
+.. attachment = style-live-attachment(object-pointer)
+.. record = style-node-record(attachment)
+.. store = style-attachment-store(attachment)
+.. segments = record.segments
+
+━━━━━━━━━━━━━━━━━━━━
++ style-segment-bits
+    - segment ComputedSegment
+    - offset Size
+
+segment.value-bits(offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-segment-none
+    - segment ComputedSegment
+    - offset Size
+
+segment.value-none(offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-computed-snapshot
+    - object-pointer CPointer'Void
+
+` Renders settled computed style state, one line per style whose segment diverged from the
+` per-style initial segment. Styles still aliasing the initial segment print nothing: untouched
+` styles cost zero bytes per node and zero lines here.
+
+|? !attachment
+    "none"
+|? !record
+    "initial"
+??
+    if text.length > 0 then text else "initial"
+
+.. attachment = style-live-attachment(object-pointer)
+.. live = attachment
+.. store = style-attachment-store(live)
+.. record = style-node-record(live)
+.. text = "\n".join(style-computed-lines(store, live, record, "node"))
+
+━━━━━━━━━━━━━━━━━━━━
++ style-sheet-snapshot
+    - object-pointer CPointer'Void
+    - sheet-name String
+
+` Renders the object's effective style-sheet record for one registered style-sheet.
+
+|? !attachment
+    "none"
+|? !info
+    "unregistered"
+??
+    "style-sheet $name record=$id version=$version$values"
+
+.. attachment = style-live-attachment(object-pointer)
+.. info = style-sheet-info-named(sheet-name)
+.. live-info = info
+.. record = style-effective-style-sheet(attachment, live-info)
+.. name = live-info.name
+.. id = record.record-id
+.. version = record.version
+.. values = sheet-values-label(live-info, record)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-activation-snapshot
+    - object-pointer CPointer'Void
+
+` Renders the active style names of the object's node record in style-index order.
+
+|? !attachment
+    "none"
+|? !record
+    "unrecorded"
+??
+    "node=" + active-names-label(record)
+
+.. attachment = style-live-attachment(object-pointer)
+.. record = style-node-record(attachment)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-active-styles
+    - record StyleRecord
+
+` The styles raised in the record's settled active list, in style-index order.
+
+** record.active-styles
+?*> style-info-at(each)
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
++ style-store-snapshot
+    - root MarkupBatch
+
+|? !store
+    "none"
+??
+    "store id=$id live=$live attachments=$attachments free-attachments=$free-attachments nodes=$nodes free-nodes=$free-nodes segments=$segments free-segments=$free-segments queue=$queue inherited-roots=$inherited"
+
+.. store = style-store-for(root)
+.. s = store
+.. id = s.store-id
+.. live = s.live-count
+.. attachments = s.attachment-high-water
+.. free-attachments = s.free-attachments.length
+.. nodes = s.node-records.length
+.. free-nodes = s.free-node-records.length
+.. segments = s.segment-pool.length
+.. free-segments = s.free-segments.length
+.. queue = s.dirty-queue.length
+.. inherited = s.inherited-dirty-roots.length
+
+━━━━━━━━━━━━━━━━━━━━
++ style-pending-snapshot
+    - root MarkupBatch
+
+` Pending-domain counts under the root, one `name=count` token per materialized store domain.
+
+|? !store
+    "none"
+??
+    " ".join
+        ** 0 .. < counts.length
+        ?*> "$name=$count" if name.length > 0
+            .. name = style-domain-name-at(each)
+            .. count = counts[each]
+
+.. store = style-store-for(root)
+.. counts = store.pending-domain-counts
+
+━━━━━━━━━━━━━━━━━━━━
++ style-domain-pending-count
+    - root MarkupBatch
+    - name String
+
+` The number of live nodes under the root whose named domain bit is currently raised. Production
+` roots read pending domains through compiler-generated MarkupBatchFlush properties; the named
+` query is diagnostics only.
+
+|? !store
+    0
+|? domain < 0
+    0
+|? domain >= counts.length
+    0
+??
+    counts[domain]
+
+.. store = style-store-for(root)
+.. domain = style-domain-named(name)
+.. counts = store.pending-domain-counts
+
+━━━━━━━━━━━━━━━━━━━━
++ style-domain-pending
+    - root MarkupBatch
+    - name String
+
+style-domain-pending-count(root, name) > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-pending-nodes
+    - root MarkupBatch
+    - name String
+
+` The attachment ids of live nodes under the root whose named domain bit is raised, in mount
+` order.
+
+. store = style-store-for(root)
+if !store
+    = "none"
+
+. domain = style-domain-named(name)
+if domain < 0
+    = ""
+
+. bit U32 = 1u32 /lshift/ domain
+. labels = List'String()
+if store.root-owner-address != 0
+    . root-attachment = style-live-attachment(store.root-owner-address as Pointer)
+    if root-attachment
+        style-debug-collect-pending(root-attachment, bit, labels)
+= " ".join(labels)
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-required-attachment
+    - object-pointer CPointer'Void
+
+?! StyleMountPanic("Object is not mounted in a styled tree")
+    if !attachment
+
+attachment
+
+.. attachment = style-live-attachment(object-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-debug-touch
+    - attachment MarkupAttachment
+    - record StyleRecord
+
+. store = style-attachment-store(attachment)
+if !style-record-owns-segment(record, 0)
+    . source = style-record-segment(record, 0) ?? store.initial-node-segment
+    style-record-place-segment(record, 0, store.allocate-segment(source), true)
+
+. segment = style-record-segment(record, 0)!
+segment.changed-mask = segment.changed-mask /or/ 1
+segment.generation += 1
+
+attachment.dirty-bits = attachment.dirty-bits /or/ style-dirty-bit
+record.dirty-bits = record.dirty-bits /or/ style-dirty-bit
+store.enqueue-dirty(attachment)
+
+━━━━━━━━━━━━━━━━━━━━
+_ attachment-label
+    - attachment MarkupAttachment?
+
+|? attachment
+    "${attachment.attachment-id}"
+??
+    "-"
+
+━━━━━━━━━━━━━━━━━━━━
+_ record-label
+    - record StyleRecord?
+
+|? record
+    "${record.record-id}"
+??
+    "-"
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-dirty-letters
+    - bits U32
+
+"$s$i"
+
+.. s = if (bits /and/ style-dirty-bit) != 0 then "S" else "-"
+.. i = if (bits /and/ inherited-dirty-bit) != 0 then "I" else "-"
+
+━━━━━━━━━━━━━━━━━━━━
+_ template-declaration-labels [String]
+    - assoc StyleSiteAssociation
+    - index Size
+
+** assoc.site-template-at(index).declarations
+*> "node " + declaration-label(each, assoc.block-base-at(index))
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ declaration-label
+    - declaration AuthoredDeclaration
+    - base I64 = 0
+
+$style.$property layer=$layer order=$order kind=$kind bits=$bits$tag$none$sheet$block$gate
+
+════════════════════
+.. style = declaration.style.name
+.. property = property-label(declaration.style, declaration.offset)
+.. layer = declaration.layer
+.. order = declaration.order
+.. kind = kind-label(declaration.kind)
+.. bits = declaration.bits
+.. tag = if declaration.held-shift > 0 then " tag=${declaration.held-tag}" else ""
+.. none = if declaration.is-none then " none" else ""
+.. sheet = sheet-label(declaration)
+.. block = if declaration.block >= 0 then " block=${base + declaration.block}" else ""
+.. gate = if declaration.family then " family=${declaration.family.name}/${declaration.members}" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ sheet-label
+    - declaration AuthoredDeclaration
+
+|? !style-sheet
+    ""
+??
+    " style-sheet=$name@$slot"
+
+.. style-sheet = declaration.style-sheet
+.. name = style-sheet.name
+.. slot = if declaration.kind == StyleValueKind.themed then "value${declaration.themed-site}" else "${declaration.sheet-offset}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ property-label
+    - style StyleInfo
+    - offset Size
+
+style.property-at(offset)?.name ?? "@$offset"
+
+━━━━━━━━━━━━━━━━━━━━
+_ kind-label
+    - kind U32
+
+match kind
+    |= StyleValueKind.static
+        "static"
+    |= StyleValueKind.style-sheet
+        "style-sheet"
+    |= StyleValueKind.style-sheet-projected
+        "style-sheet-projected"
+    |= StyleValueKind.themed
+        "themed"
+    |= StyleValueKind.inherit
+        "inherit"
+    |= StyleValueKind.dynamic
+        "dynamic"
+    |= StyleValueKind.object
+        "object"
+    ??
+        "?"
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-computed-lines @inline
+    - store RootStyleStore
+    - attachment MarkupAttachment
+    - record StyleRecord
+    - prefix String
+
+** 0 .. < record.segments.length
+?*> "$prefix $label" if info
+    .. info = style-info-at(style-segment-key-style(record.segment-keys[each]))
+    .. label = computed-label(store, attachment, info, record, record.segments[each])
+
+━━━━━━━━━━━━━━━━━━━━
+_ computed-label
+    - store RootStyleStore
+    - attachment MarkupAttachment
+    - info StyleInfo
+    - record StyleRecord
+    - segment ComputedSegment
+
+"$name seg=$kind gen=$gen mask=$mask$values"
+
+.. name = info.name
+.. kind = segment-kind(attachment, info, record, segment)
+.. gen = segment.generation
+.. mask = segment.changed-mask
+.. values = values-label(info, segment)
+
+━━━━━━━━━━━━━━━━━━━━
+_ segment-kind
+    - attachment MarkupAttachment
+    - info StyleInfo
+    - record StyleRecord
+    - segment ComputedSegment
+
+|? style-record-owns-segment(record, info.style-index)
+    "owned"
+|? parent-record && is-parent-segment
+    "parent"
+??
+    "shared"
+
+.. parent-attachment = style-parent-attachment(attachment)
+.. parent-record = style-node-record(parent-attachment) if parent-attachment
+.. is-parent-segment = style-record-segment(parent-record, info.style-index) == segment
+
+━━━━━━━━━━━━━━━━━━━━
+_ values-label
+    - info StyleInfo
+    - segment ComputedSegment
+
+if info.properties.length > 0 then " $values" else ""
+
+.. values = " ".join
+    ** info.properties
+    *> value-label(each, segment)
+
+━━━━━━━━━━━━━━━━━━━━
+_ value-label
+    - property StylePropertyInfo
+    - segment ComputedSegment
+
+` Encoded slots (unions, boxed wide values) print as enc(bits) so registry handles and packed
+` case tags are never mistaken for plain numeric values.
+
+"$name=$value$none"
+
+.. bits = segment.value-bits(property.offset)
+.. name = property.name
+.. value = if property.is-encoded then "enc($bits)" else "$bits"
+.. none = if segment.value-none(property.offset) then "?" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ sheet-values-label
+    - info StyleSheetInfo
+    - record StyleSheetRecord
+
+if info.slots.length > 0 then " $values" else ""
+
+.. values = " ".join
+    ** info.slots
+    *> "${each.name}=$value$none"
+        .. bits = record.value-bits(each.offset)
+        .. value = if each.is-encoded then "enc($bits)" else "$bits"
+        .. none = if record.value-none(each.offset) then "?" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ active-names-label
+    - record StyleRecord
+
+if styles.length > 0 then names else "(none)"
+
+.. styles = style-active-styles(record)
+.. names = ",".join
+    ** styles
+    *> each.name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-debug-collect-pending
+    - attachment MarkupAttachment
+    - bit U32
+    - labels [String]
+
+if (attachment.pending-domains /and/ bit) != 0
+    . id = attachment.attachment-id
+    labels += "$id"
+
+. child = style-first-child-attachment(attachment)
+while child
+    style-debug-collect-pending(child, bit, labels)
+    child = style-next-child-attachment(attachment, child)

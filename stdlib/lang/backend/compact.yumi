@@ -1,0 +1,537 @@
+./aarch64-encoder
+./binary-writer
+./bundle
+./mir
+./mir-text
+./relocations
+/core/arena
+/core/table
+/string.h
+
+_ long-conditional-branch-threshold U32 = 200000
+_ long-test-branch-threshold U32 = 8000
+_ root-stack-untyped U32 = 1
+_ root-register U32 = 2
+_ root-stack-address U32 = 3
+_ root-stack-value U32 = 4
+_ relocation-kind-names [String] = ["call26", "jump26", "page21", "add-pageoff12", "load-store8-pageoff12", "load-store16-pageoff12", "load-store32-pageoff12", "load-store64-pageoff12", "load-store128-pageoff12", "unsigned"]
+
+━━━━━━━━━━━━━━━━━━━━
+_ CompactForm is U32
+
+| instruction
+| island-test
+| island-skip
+| island-jump
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactJumpTable is Tuple
+
++ name StringId
++ offset U32
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactLineRecord is Tuple
+
++ pc-offset U32
++ file StringId
++ line I32
++ column I32
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactRootLocation is Tuple
+
++ kind U32
++ register U32
++ offset I32
++ descriptor StringId
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactSafepoint is Tuple
+
++ pc-offset U32
++ first-location U32
++ location-count U32
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactSavedRegister is Tuple
+
++ register U32
++ fp-offset I32
+
+━━━━━━━━━━━━━━━━━━━━
++ CompactFunction is Tuple
+
++ is-encoded Bool
++ order U32
++ symbol StringId
++ is-external Bool
++ code ByteSpan
++ relocations CPointer'Relocation
++ relocation-count U32
++ jump-tables CPointer'CompactJumpTable
++ jump-table-count U32
++ display-name StringId
++ source-file StringId
++ source-line I32
++ source-column I32
++ line-records CPointer'CompactLineRecord
++ line-record-count U32
++ safepoints CPointer'CompactSafepoint
++ safepoint-count U32
++ locations CPointer'CompactRootLocation
++ location-count U32
++ saved-registers CPointer'CompactSavedRegister
++ saved-register-count U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlanEntry is Tuple
+
++ instruction InstructionId
++ form U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlanSafepoint is Tuple
+
++ instruction InstructionId
++ offset U32
+
+━━━━━━━━━━━━━━━━━━━━
++ FunctionEncoder
+
+_ bundle Bundle
+_ function MIRFunction
+_ results Arena
+_ labels TextLabels
+_ encoder AArch64Encoder
+_ plan CPointer'PlanEntry
+_ plan-count U32
+_ safepoints CPointer'PlanSafepoint
+_ safepoint-count U32
+_ lines CPointer'CompactLineRecord
+_ line-count U32
+_ text-size U32
+
+────────────────────
++ This
+    - bundle Bundle
+    - function MIRFunction
+    - results Arena
+
+.. labels = TextLabels(bundle, function)
+.. encoder = AArch64Encoder(bundle, function, labels)
+
+────────────────────
++ do encode CompactFunction
+
+layout()
+. code = results.allocate-raw(text-size, 8)
+. relocations = function.arena.allocate'Relocation(plan-count)
+. relocation-count = encode-text(code, relocations)
+
+. kept-relocations = results.allocate'Relocation(relocation-count)
+for index in 0 .. < relocation-count
+    kept-relocations[index] = relocations[index]
+
+. table-count U32
+for table in function.jump-tables
+    if table.name < function.pool-size
+        table-count += 1
+. tables = results.allocate'CompactJumpTable(table-count)
+. kept U32
+for table in function.jump-tables
+    if table.name < function.pool-size
+        tables[kept] = CompactJumpTable(table.name, labels.symbol-offset(table.name))
+        kept += 1
+
+. kept-lines = results.allocate'CompactLineRecord(line-count)
+for index in 0 .. < line-count
+    kept-lines[index] = lines[index]
+
+. function-roots = function.gc-roots
+. location-total = safepoint-count * function-roots.count
+for index in 0 .. < safepoint-count
+    . row = function.instructions[safepoints[index].instruction]
+    if row.has-gc-roots
+        location-total += row.gc-roots.count
+. kept-safepoints = results.allocate'CompactSafepoint(safepoint-count)
+. locations = results.allocate'CompactRootLocation(location-total)
+. location-count U32
+for index in 0 .. < safepoint-count
+    . safepoint = safepoints[index]
+    . row = function.instructions[safepoint.instruction]
+    . first = location-count
+    for root in function-roots.start .. < function-roots.end
+        locations[location-count] = root-location(root)
+        location-count += 1
+    if row.has-gc-roots
+        for root in row.gc-roots.start .. < row.gc-roots.end
+            locations[location-count] = root-location(root)
+            location-count += 1
+    kept-safepoints[index] = CompactSafepoint(safepoint.offset + 4, first, location-count - first)
+
+. saved = results.allocate'CompactSavedRegister(function.saved-registers.length)
+. saved-count U32
+for entry in function.saved-registers
+    if register-class(entry.register) == .gpr64
+        saved[saved-count] = CompactSavedRegister
+            - gc-register-number(entry.register)
+            - entry.fp-offset
+        saved-count += 1
+
+. display-name = bundle.non-empty(function.display-name)
+if display-name == no-string
+    display-name = function.name
+. source-file = no-string
+. source-line I32
+. source-column I32
+if function.loc != no-loc
+    . loc = function.locs[function.loc]
+    source-file = bundle.non-empty(loc.file)
+    if loc.is-known
+        source-line = loc.line
+        source-column = loc.column
+
+. is-main = bundle.output-mode == 0 && bundle.main-name != no-string && named-main
+    .. named-main = function.name == bundle.main-name
+. is-external = function.is-exported || is-main
+
+= CompactFunction
+    - true
+    - function.order
+    - function.symbol
+    - is-external
+    - ByteSpan(code, text-size)
+    - kept-relocations
+    - relocation-count
+    - tables
+    - table-count
+    - display-name
+    - source-file
+    - source-line
+    - source-column
+    - kept-lines
+    - line-count
+    - kept-safepoints
+    - safepoint-count
+    - locations
+    - location-count
+    - saved
+    - saved-count
+
+────────────────────
+_ do layout
+
+. block-count = function.block-order.length
+. total U32
+for position in 0 .. < block-count
+    total += function.blocks[function.block-order[position]].instructions.length
+. uses-islands = total > long-conditional-branch-threshold
+. uses-test-islands = total > long-test-branch-threshold
+. arena = function.arena
+plan = arena.allocate'PlanEntry(if uses-test-islands then total * 3 else total)
+plan-count = 0
+safepoints = arena.allocate'PlanSafepoint(total)
+safepoint-count = 0
+lines = arena.allocate'CompactLineRecord(total)
+line-count = 0
+. symbol-count U32 = (function.jump-tables.length + 1) as U32
+labels.reset(arena, block-count, symbol-count)
+
+. offset U32
+for position in 0 .. < block-count
+    . block = function.blocks[function.block-order[position]]
+    if position == 0
+        labels.define-symbol(function.symbol, 0)
+    if block.name != bundle.entry-name && (position != 0 || block.name != function.symbol)
+        labels.define-block(block.name, offset)
+    . instructions = block.instructions
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        . row = function.instructions[id]
+        . opcode = row.opcode
+        if opcode == .comment || opcode == .phi
+            continue
+        ?! Panic("Unexpected lowered MIR instruction in final emission: ${opcode-names[opcode]}")
+            if opcode == .call || opcode == .addptr
+        if row.gc-safepoint
+            safepoints[safepoint-count] = PlanSafepoint(id, offset)
+            safepoint-count += 1
+        record-trace-line(offset, row.loc)
+        if (uses-islands && (opcode == .cbz || opcode == .cbnz || opcode == .b-cond)) || test-island
+            plan[plan-count] = PlanEntry(id, CompactForm.island-test)
+            plan[plan-count + 1] = PlanEntry(id, CompactForm.island-skip)
+            plan[plan-count + 2] = PlanEntry(id, CompactForm.island-jump)
+            plan-count += 3
+            offset += 12
+        else
+            plan[plan-count] = PlanEntry(id, CompactForm.instruction)
+            plan-count += 1
+            offset += 4
+        .. test-island = uses-test-islands && (opcode == .tbz || opcode == .tbnz)
+
+if function.jump-tables.length != 0
+    offset = (offset + 7) /and/ 0xfffffff8
+    for table in function.jump-tables
+        labels.define-symbol(table.name, offset)
+        offset += table.labels.count * 4
+text-size = offset
+
+────────────────────
+_ do record-trace-line
+    - offset U32
+    - id LocId
+
+if id == no-loc
+    =
+. loc = function.locs[id]
+if !loc.is-known
+    =
+. file = bundle.non-empty(loc.file)
+if line-count != 0
+    . last = lines[line-count - 1]
+    if last.file == file && last.line == loc.line && last.column == loc.column
+        =
+lines[line-count] = CompactLineRecord(offset, file, loc.line, loc.column)
+line-count += 1
+
+────────────────────
+_ do encode-text U32
+    - code CPointer'Byte
+    - relocations CPointer'Relocation
+
+. words = code as CPointer'U32
+. relocation-count U32
+for index in 0 .. < plan-count
+    . entry = plan[index]
+    . offset = index * 4
+    . word U32
+    if entry.form == CompactForm.instruction
+        word = encoder.encode(entry.instruction, offset)
+    else if entry.form == CompactForm.island-test
+        word = encoder.conditional-branch-to(entry.instruction, offset + 8, offset)
+    else if entry.form == CompactForm.island-skip
+        word = encoder.branch-to(offset + 8, offset)
+    else
+        word = encoder.jump-to(encoder.branch-target(entry.instruction), offset)
+    words[index] = word
+    if encoder.has-relocation
+        relocations[relocation-count] = Relocation
+            - encoder.relocation-offset
+            - encoder.relocation-symbol
+            - encoder.relocation-kind
+        relocation-count += 1
+
+if function.jump-tables.length != 0
+    if plan-count % 2 != 0
+        words[plan-count] = 0
+    for table in function.jump-tables
+        . table-offset = labels.symbol-offset(table.name)
+        . entries = (code + table-offset) as CPointer'I32
+        for index in 0 .. < table.labels.count
+            . name = function.names[table.labels.start + index]
+            . target = labels.label-offset(name)
+            ?! Panic("Missing jump-table target label ${name-string(bundle, function, name)}")
+                if target == no-label
+            entries[index] = (target as I32) - (table-offset as I32)
+= relocation-count
+
+────────────────────
+_ do root-location CompactRootLocation
+    - id U32
+
+do match function.roots[id]
+    | .register-root(root)
+        = CompactRootLocation(root-register, gc-register-number(root.register), 0, no-string)
+    | .stack-root(root)
+        ?! Panic("GC stack root refers to a frame object outside its slot")
+            if root.object == no-frame-object
+        . object = function.frame-objects[root.object]
+        ?! Panic("GC stack root refers to a frame object outside its slot")
+            if object.index < 0
+        . descriptor = bundle.non-empty(root.gc-descriptor)
+        if descriptor == no-string
+            = CompactRootLocation(root-stack-untyped, 0, object.offset, no-string)
+        if root.gc-root-mode == .address-root && is-struct(object.type)
+            = CompactRootLocation(root-stack-address, 0, object.offset, descriptor)
+        = CompactRootLocation(root-stack-value, 0, object.offset, descriptor)
+
+────────────────────
+_ do is-struct Bool
+    - id MIRTypeId
+
+do match? function.types[id]
+    | .struct-type
+        = true
+= false
+
+────────────────────
+_ gc-register-number U32
+    - register RegisterId
+
+?! Panic("GC metadata cannot describe register $register")
+    if register-class(register) != .gpr64 || number < 0 || number > 30
+
+number as U32
+
+.. number = register-number(register)
+
+━━━━━━━━━━━━━━━━━━━━
++ do compact-record-text
+    - out TextBuffer
+    - bundle Bundle
+    - compact CompactFunction
+
+out.text("record ")
+out.span(bundle.string(compact.symbol))
+out.text(" order=")
+out.unsigned(compact.order)
+if compact.is-external
+    out.text(" external")
+out.text("\ndisplay ")
+out.escaped(bundle.string(compact.display-name))
+out.text("\nsource ")
+file-text(out, bundle, compact.source-file)
+out.byte(58)
+out.signed(compact.source-line)
+out.byte(58)
+out.signed(compact.source-column)
+out.byte(10)
+. offset Size = 0
+while offset < compact.code.length
+    . count = compact.code.length - offset
+    if count > 32
+        count = 32
+    out.text("code ")
+    out.unsigned(offset as U64)
+    out.text(": ")
+    out.hex(ByteSpan(compact.code.data + offset, count))
+    out.byte(10)
+    offset += 32
+for index in 0 .. < compact.relocation-count
+    . relocation = compact.relocations[index]
+    out.text("reloc ")
+    out.unsigned(relocation.offset)
+    out.byte(32)
+    out.text(relocation-kind-names[relocation.kind])
+    out.byte(32)
+    out.span(bundle.string(relocation.symbol))
+    out.byte(10)
+for index in 0 .. < compact.jump-table-count
+    . table = compact.jump-tables[index]
+    out.text("jump-table ")
+    out.span(bundle.string(table.name))
+    out.byte(32)
+    out.unsigned(table.offset)
+    out.byte(10)
+for index in 0 .. < compact.line-record-count
+    . line = compact.line-records[index]
+    out.text("line ")
+    out.unsigned(line.pc-offset)
+    out.byte(32)
+    file-text(out, bundle, line.file)
+    out.byte(58)
+    out.signed(line.line)
+    out.byte(58)
+    out.signed(line.column)
+    out.byte(10)
+for index in 0 .. < compact.safepoint-count
+    . safepoint = compact.safepoints[index]
+    out.text("safepoint ")
+    out.unsigned(safepoint.pc-offset)
+    out.byte(32)
+    for position in 0 .. < safepoint.location-count
+        . location = compact.locations[safepoint.first-location + position]
+        if position != 0
+            out.byte(32)
+        out.unsigned(location.kind)
+        out.byte(58)
+        out.unsigned(location.register)
+        out.byte(58)
+        out.signed(location.offset)
+        out.byte(58)
+        file-text(out, bundle, location.descriptor)
+    out.byte(10)
+for index in 0 .. < compact.saved-register-count
+    . saved = compact.saved-registers[index]
+    out.text("saved x")
+    out.unsigned(saved.register)
+    out.byte(64)
+    out.signed(saved.fp-offset)
+    out.byte(10)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-text
+    - out TextBuffer
+    - bundle Bundle
+    - id StringId
+
+if id == no-string
+    out.byte(45)
+else
+    out.span(bundle.string(id))
+
+━━━━━━━━━━━━━━━━━━━━
++ do write-compact-record
+    - writer BinaryWriter
+    - bundle Bundle
+    - compact CompactFunction
+
+writer.u32(compact.order)
+write-string(writer, bundle, compact.symbol)
+writer.u32(if compact.is-external then 1 else 0)
+writer.u32(compact.code.length as U32)
+writer.bytes(compact.code)
+writer.align(4)
+writer.u32(compact.relocation-count)
+for index in 0 .. < compact.relocation-count
+    . relocation = compact.relocations[index]
+    writer.u32(relocation.offset)
+    write-string(writer, bundle, relocation.symbol)
+    writer.u32(relocation.kind)
+writer.u32(compact.jump-table-count)
+for index in 0 .. < compact.jump-table-count
+    . table = compact.jump-tables[index]
+    write-string(writer, bundle, table.name)
+    writer.u32(table.offset)
+write-string(writer, bundle, compact.display-name)
+write-string(writer, bundle, compact.source-file)
+writer.i32(compact.source-line)
+writer.i32(compact.source-column)
+writer.u32(compact.line-record-count)
+for index in 0 .. < compact.line-record-count
+    . line = compact.line-records[index]
+    writer.u32(line.pc-offset)
+    write-string(writer, bundle, line.file)
+    writer.i32(line.line)
+    writer.i32(line.column)
+writer.u32(compact.safepoint-count)
+for index in 0 .. < compact.safepoint-count
+    . safepoint = compact.safepoints[index]
+    writer.u32(safepoint.pc-offset)
+    writer.u32(safepoint.location-count)
+    for position in 0 .. < safepoint.location-count
+        . location = compact.locations[safepoint.first-location + position]
+        writer.u32(location.kind)
+        writer.u32(location.register)
+        writer.i32(location.offset)
+        write-string(writer, bundle, location.descriptor)
+writer.u32(compact.saved-register-count)
+for index in 0 .. < compact.saved-register-count
+    . saved = compact.saved-registers[index]
+    writer.u32(saved.register)
+    writer.i32(saved.fp-offset)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-string
+    - writer BinaryWriter
+    - bundle Bundle
+    - id StringId
+
+if id == no-string
+    writer.u32(0)
+    =
+. span = bundle.string(id)
+writer.u32(span.length as U32)
+writer.bytes(span)
+writer.align(4)

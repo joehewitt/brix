@@ -1,0 +1,1072 @@
+./core
+./virtual
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualPlacement
+
++ placement-id VirtualCoord
++ address I64
++ x VirtualCoord
++ y VirtualCoord
++ width VirtualCoord
++ height VirtualCoord
++ is-sticky Bool
++ is-pinned Bool
++ sticky-depth Index
++ rect => VirtualRect(x, y, width, height)
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualWindow
+
++ scroll-x VirtualCoord
++ scroll-y VirtualCoord
++ viewport-width VirtualCoord
++ viewport-height VirtualCoord
++ frame-width VirtualCoord
++ frame-height VirtualCoord
++ row-height VirtualCoord
++ overscan-top VirtualCoord
++ overscan-right VirtualCoord
++ overscan-bottom VirtualCoord
++ overscan-left VirtualCoord
++ placements [VirtualPlacement]
++ placement-count Size
++ resolved-scroll-x VirtualCoord
++ resolved-scroll-y VirtualCoord
++ known-width VirtualCoord
++ estimated-width VirtualCoord?
++ is-width-final Bool
++ known-height VirtualCoord
++ estimated-height VirtualCoord?
++ is-height-final Bool
++ sticky-line VirtualCoord?
++ viewport => VirtualSize(viewport-width, viewport-height)
++ frame => VirtualSize(frame-width, frame-height)
++ resolved-scroll => VirtualPoint(resolved-scroll-x, resolved-scroll-y)
++ extent-x => VirtualExtent(known-width, estimated-width, is-width-final)
++ extent-y => VirtualExtent(known-height, estimated-height, is-height-final)
+
+────────────────────
++ do set-overscan
+    - overscan VirtualInsets
+
+overscan-top = overscan.top
+overscan-right = overscan.right
+overscan-bottom = overscan.bottom
+overscan-left = overscan.left
+
+────────────────────
++ do clear-placements
+
+placement-count = 0
+
+────────────────────
++ do place
+    - placement-id VirtualCoord
+    - address I64
+    - x VirtualCoord
+    - y VirtualCoord
+    - width VirtualCoord
+    - height VirtualCoord
+
+?! Panic("Virtual placements must have increasing placement ids")
+    if placement-count > 0 && placements[placement-count - 1].placement-id >= placement-id
+if placement-count == placements.length
+    placements += VirtualPlacement()
+. placement = placements[placement-count]
+placement.placement-id = placement-id
+placement.address = address
+placement.x = x
+placement.y = y
+placement.width = width
+placement.height = height
+placement.is-sticky = false
+placement.is-pinned = false
+placement.sticky-depth = 0
+placement-count += 1
+
+────────────────────
++ do insert-placement
+    - position Index
+    - placement-id VirtualCoord
+    - address I64
+    - x VirtualCoord
+    - y VirtualCoord
+    - width VirtualCoord
+    - height VirtualCoord
+
+?! Panic("Virtual placements must have increasing placement ids")
+    if position > placement-count
+?! Panic("Virtual placements must have increasing placement ids")
+    if position > 0 && placements[position - 1].placement-id >= placement-id
+?! Panic("Virtual placements must have increasing placement ids")
+    if position < placement-count && placements[position].placement-id <= placement-id
+if placement-count == placements.length
+    placements += VirtualPlacement()
+. spare = placements[placement-count]
+. index = placement-count
+while index > position
+    placements[index] = placements[index - 1]
+    index -= 1
+placements[position] = spare
+spare.placement-id = placement-id
+spare.address = address
+spare.x = x
+spare.y = y
+spare.width = width
+spare.height = height
+spare.is-sticky = false
+spare.is-pinned = false
+spare.sticky-depth = 0
+placement-count += 1
+
+────────────────────
++ placement-at
+    - index Index
+
+placements[index] if index < placement-count
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualLayout is Interface
+
+────────────────────
++ get revision VirtualRevision?
+
+null
+
+────────────────────
++ fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+────────────────────
++ rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+────────────────────
++ get measures-rows Bool
+
+false
+
+────────────────────
++ do record-row-height Bool
+    - placement VirtualPlacement
+    - height VirtualCoord
+
+= false
+
+────────────────────
++ get has-sticky-rows
+
+false
+
+────────────────────
++ sticky-margin
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+0vcoord
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualStickyRows is Interface
+
+────────────────────
++ do sticky-headers
+    - address I64
+    - headers List'I64
+
+────────────────────
++ do sticky-section-last I64
+    - header I64
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalStickyLayout
+    is VirtualLayout
+
++ inner VirtualLayout
++ rows VirtualStickyRows
+
+_ headers = List'I64()
+_ stuck = List'I64()
+_ stuck-rects = List'VirtualRect()
+_ stuck-pins = List'Bool()
+
+────────────────────
++ This
+    - inner
+    - rows
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get revision VirtualRevision?
+
+inner.revision
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+inner.fill-window(window, domain)
+. line = window.sticky-line
+=? if line == null
+collect-stuck(window, domain, line)
+for index in 0 .. < stuck.length
+    stick(window, domain, index, stuck[index], stuck-rects[index], stuck-pins[index])
+
+────────────────────
++ rect-for-address
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+inner.rect-for-address(address, domain, window)
+
+────────────────────
++ get measures-rows
+
+inner.measures-rows
+
+────────────────────
++ do record-row-height
+    - placement VirtualPlacement
+    - height VirtualCoord
+
+= inner.record-row-height(placement, height)
+
+────────────────────
++ get has-sticky-rows
+
+true
+
+────────────────────
++ do sticky-margin
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+headers.clear()
+rows.sticky-headers(address, headers)
+. margin = 0vcoord
+for header in headers
+    if header != address
+        . rect = inner.rect-for-address(header, domain, window)
+        if rect
+            margin += rect.height
+= margin
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do collect-stuck
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+    - line VirtualCoord
+
+stuck.clear()
+stuck-rects.clear()
+stuck-pins.clear()
+. bottom = line
+. reach = line
+. carries = true
+while true
+    . probe = virtual-window-address-at(window, reach)
+    =? if probe == null
+    headers.clear()
+    rows.sticky-headers(probe, headers)
+    =? if headers.length <= stuck.length || !extends-stuck()
+    . header = headers[stuck.length]
+    . rect = inner.rect-for-address(header, domain, window)
+    =? if !rect
+    . limit = window.known-height
+    . last = inner.rect-for-address(rows.sticky-section-last(header), domain, window)
+    if last
+        limit = last.y + last.height
+    . pushed = limit - rect.height
+    . y = larger-virtual(rect.y, smaller-virtual(bottom, pushed))
+    carries = carries && bottom < pushed && rect.y <= bottom
+    stuck += header
+    stuck-rects += VirtualRect(rect.x, y, rect.width, rect.height)
+    stuck-pins += carries
+    bottom = y + rect.height
+    reach += rect.height
+
+────────────────────
+_ do extends-stuck
+
+for index in 0 .. < stuck.length
+    =? false if headers[index] != stuck[index]
+= true
+
+────────────────────
+_ do stick
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+    - depth Index
+    - header I64
+    - rect VirtualRect
+    - is-pinned Bool
+
+. index = domain.index-of(header)
+=? if index == null
+. position Index = 0
+while position < window.placement-count && window.placements[position].placement-id < index
+    position += 1
+if position == window.placement-count || window.placements[position].placement-id != index
+    window.insert-placement(position, index, header, rect.x, rect.y, rect.width, rect.height)
+. placement = window.placements[position]
+placement.y = rect.y
+placement.is-sticky = true
+placement.is-pinned = is-pinned
+placement.sticky-depth = depth
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-window-address-at
+    - window VirtualWindow
+    - y VirtualCoord
+
+for index in 0 .. < window.placement-count
+    . placement = window.placements[index]
+    =? placement.address if placement.y <= y && y < placement.y + placement.height
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalFixedLayout
+    is VirtualLayout
+
++ row-height VirtualCoord
++ row-width VirtualCoord?
++ gap VirtualCoord?
+
+────────────────────
++ This
+    - row-height
+    - row-width VirtualCoord? = null
+    - gap VirtualCoord? = null
+
+check-fixed-lengths(row-height, row-width)
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+fill-fixed-window(window, domain, true, row-height, row-width, gap)
+
+────────────────────
++ rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+fixed-rect-for-address(address, domain, window.frame, true, row-height, row-width, gap)
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualRowOffsets is Interface
+
+────────────────────
++ get total-height VirtualCoord
+
+────────────────────
++ offset-at VirtualCoord
+    - index VirtualCoord
+
+────────────────────
++ index-at VirtualCoord
+    - offset VirtualCoord
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalOffsetLayout
+    is VirtualLayout
+
++ offsets VirtualRowOffsets
++ row-width VirtualCoord?
+
+────────────────────
++ This
+    - offsets
+    - row-width VirtualCoord? = null
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+window.clear-placements()
+. count = larger-virtual(0vcoord, domain.known-count)
+. total = larger-virtual(0vcoord, offsets.total-height)
+. viewport-height = larger-virtual(0vcoord, window.viewport-height)
+. viewport-width = larger-virtual(0vcoord, window.viewport-width)
+. max-y = larger-virtual(0vcoord, total - viewport-height)
+. resolved-y = smaller-virtual(max-y, larger-virtual(0vcoord, window.scroll-y))
+. width = offset-row-width(window)
+. max-x = larger-virtual(0vcoord, width - viewport-width)
+. resolved-x = smaller-virtual(max-x, larger-virtual(0vcoord, window.scroll-x))
+. window-start = larger-virtual(0vcoord, resolved-y - larger-virtual(0vcoord, window.overscan-top))
+. window-end = resolved-y + viewport-height + larger-virtual(0vcoord, window.overscan-bottom)
+. index = offsets.index-at(window-start)
+while index < count
+    . top = offsets.offset-at(index)
+    if top >= window-end
+        break
+    window.place
+        - index
+        - domain.address-at(index)
+        - 0vcoord
+        - top
+        - width
+        - offsets.offset-at(index + 1vcoord) - top
+    index += 1vcoord
+window.resolved-scroll-x = resolved-x
+window.resolved-scroll-y = resolved-y
+window.known-width = width
+window.estimated-width = width
+window.is-width-final = true
+window.known-height = total
+window.estimated-height = total
+window.is-height-final = domain.is-final
+
+────────────────────
++ do rect-for-address
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+. index = domain.index-of(address)
+=? if index == null
+. top = offsets.offset-at(index)
+= VirtualRect(0vcoord, top, offset-row-width(window), offsets.offset-at(index + 1vcoord) - top)
+
+────────────────────
+_ offset-row-width
+    - window VirtualWindow
+
+if row-width != null then larger-virtual(row-width, frame) else frame
+
+.. frame = larger-virtual(0vcoord, window.frame-width)
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalRowLayout
+    is VirtualLayout
+
++ gap VirtualCoord?
+
+────────────────────
++ This
+    - gap VirtualCoord? = null
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+fill-fixed-window(window, domain, true, hosted-row-height(window), null, gap)
+
+────────────────────
++ rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+fixed-rect-for-address(address, domain, window.frame, true, hosted-row-height(window), null, gap)
+
+━━━━━━━━━━━━━━━━━━━━
++ HorizontalFixedLayout
+    is VirtualLayout
+
++ column-width VirtualCoord
++ column-height VirtualCoord?
+
+────────────────────
++ This
+    - column-width
+    - column-height VirtualCoord? = null
+
+check-fixed-lengths(column-width, column-height)
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+fill-fixed-window(window, domain, false, column-width, column-height)
+
+────────────────────
++ rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+fixed-rect-for-address(address, domain, window.frame, false, column-width, column-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalGridLayout
+    is VirtualLayout
+
++ cell-length VirtualCoord
++ spacing VirtualCoord
+
+────────────────────
++ This
+    - cell-length
+    - spacing = 0vcoord
+
+check-fixed-lengths(cell-length, spacing)
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+window.clear-placements()
+
+. known-count = larger-virtual(0vcoord, domain.known-count)
+. available-count = known-count
+if !domain.is-final
+    ?! Panic("Virtual sequence size overflow")
+        if known-count == VirtualCoord.max
+    available-count += 1vcoord
+
+. width = larger-virtual(0vcoord, window.frame-width)
+. columns = column-count(width)
+. cell = cell-extent(width)
+. pitch = cell + spacing
+. inset = leading-inset(width)
+. viewport-height = larger-virtual(0vcoord, window.viewport-height)
+. leading = larger-virtual(0vcoord, window.overscan-top)
+. trailing = larger-virtual(0vcoord, window.overscan-bottom)
+
+. available-length = grid-length(available-count, columns, pitch, spacing)
+. max-main = larger-virtual(0vcoord, available-length - viewport-height)
+. resolved-main = smaller-virtual(max-main, larger-virtual(0vcoord, window.scroll-y))
+. window-start = larger-virtual(0vcoord, resolved-main - leading)
+. window-end = checked-virtual-sum(checked-virtual-sum(resolved-main, viewport-height), trailing)
+. rows = grid-rows(available-count, columns)
+. row = window-start / pitch
+. last-row = window-end / pitch
+if window-end % pitch != 0vcoord
+    last-row += 1vcoord
+last-row = smaller-virtual(last-row, rows)
+
+while row < last-row
+    . index = checked-virtual-product(row, columns)
+    . end = smaller-virtual(available-count, index + columns)
+    . y = checked-virtual-product(row, pitch)
+    while index < end
+        . x = inset + (index - row * columns) * pitch
+        window.place(index, domain.address-at(index), x, y, cell, cell)
+        index += 1vcoord
+    row += 1vcoord
+
+. estimated-length VirtualCoord?
+if domain.estimated-count
+    . estimated-count = larger-virtual(0vcoord, domain.estimated-count!)
+    estimated-length = grid-length(estimated-count, columns, pitch, spacing)
+
+window.resolved-scroll-x = 0vcoord
+window.resolved-scroll-y = resolved-main
+window.known-width = width
+window.estimated-width = width
+window.is-width-final = true
+window.known-height = grid-length(known-count, columns, pitch, spacing)
+window.estimated-height = estimated-length
+window.is-height-final = domain.is-final
+
+────────────────────
++ do rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+. index = domain.index-of(address)
+=? if !index
+. width = larger-virtual(0vcoord, window.frame-width)
+. columns = column-count(width)
+. cell = cell-extent(width)
+. pitch = cell + spacing
+= VirtualRect
+    - leading-inset(width) + (index % columns) * pitch
+    - (index / columns) * pitch
+    - cell
+    - cell
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ column-count VirtualCoord
+    - width VirtualCoord
+
+larger-virtual(1vcoord, (width + spacing) / (cell-length + spacing))
+
+────────────────────
++ cell-extent VirtualCoord
+    - width VirtualCoord
+
+larger-virtual(1vcoord, smaller-virtual(cell-length, width))
+
+────────────────────
++ leading-inset VirtualCoord
+    - width VirtualCoord
+
+larger-virtual
+    - 0vcoord
+    - (width - column-count(width) * (cell-extent(width) + spacing) + spacing) / 2vcoord
+
+━━━━━━━━━━━━━━━━━━━━
+_ grid-rows VirtualCoord
+    - count VirtualCoord
+    - columns VirtualCoord
+
+(count + columns - 1vcoord) / columns
+
+━━━━━━━━━━━━━━━━━━━━
+_ grid-length VirtualCoord
+    - count VirtualCoord
+    - columns VirtualCoord
+    - pitch VirtualCoord
+    - spacing VirtualCoord
+
+larger-virtual(0vcoord, checked-virtual-product(grid-rows(count, columns), pitch) - spacing)
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualHeightEstimate is () VirtualCoord
+    - address I64
+    - width VirtualCoord
+
+━━━━━━━━━━━━━━━━━━━━
++ VerticalMeasuredLayout
+    is VirtualLayout
+
++ estimated-height VirtualCoord
++ estimate VirtualHeightEstimate?
++ leading VirtualCoord
++ trailing VirtualCoord
++ revision := VirtualRevision()
+
+. parameters-changed < estimated-height, estimate, leading, trailing
+
+_ heights [VirtualCoord]
+_ measured-at [VirtualCoord]
+_ sums [VirtualCoord]
+_ leaf-count Index
+_ row-width VirtualCoord
+
+────────────────────
++ This
+    - estimated-height
+    - estimate VirtualHeightEstimate? = null
+    - leading VirtualCoord = 0vcoord
+    - trailing VirtualCoord = 0vcoord
+
+?! Panic("Virtual estimated height must be positive")
+    if estimated-height <= 0vcoord
+?! Panic("Virtual padding must not be negative")
+    if leading < 0vcoord || trailing < 0vcoord
+rebuild-sums()
+
+────────────────────
++ get row-count
+
+heights.length
+
+────────────────────
++ is-row-measured
+    - index Index
+
+index < measured-at.length && measured-at[index] == row-width
+
+────────────────────
++ do reset
+
+heights.clear()
+measured-at.clear()
+rebuild-sums()
+revision.touch()
+
+────────────────────
++ do splice
+    - domain VirtualSequenceDomain
+    - index Index
+    - removed Size
+    - added Size
+
+=? if index > heights.length
+. available = heights.length - index
+. count = if removed < available then removed else available
+if count > 0
+    heights.remove(index, count)
+    measured-at.remove(index, count)
+. estimates [VirtualCoord]
+. unmeasured [VirtualCoord]
+. offset Index
+while offset < added
+    estimates += estimated-row-height(domain.address-at(index + offset), row-width)
+    unmeasured += -1vcoord
+    offset += 1
+if added > 0
+    heights.insert(estimates, index)
+    measured-at.insert(unmeasured, index)
+rebuild-sums()
+revision.touch()
+
+────────────────────
+_ do parameters-changed
+
+revision.touch()
+
+────────────────────
+_ do rebuild-sums
+
+. capacity Index = 1
+while capacity < heights.length
+    capacity *= 2
+leaf-count = capacity
+sums.clear()
+sums.reserve(capacity * 2)
+. index Index
+while index < capacity * 2
+    sums += 0vcoord
+    index += 1
+index = 0
+while index < heights.length
+    sums[capacity + index] = heights[index]
+    index += 1
+. node = capacity - 1
+while node > 0
+    sums[node] = checked-virtual-sum(sums[node * 2], sums[node * 2 + 1])
+    node -= 1
+
+────────────────────
+_ do set-sum
+    - index Index
+    - height VirtualCoord
+
+if index >= leaf-count
+    rebuild-sums()
+    =
+. node = leaf-count + index
+sums[node] = height
+node /= 2
+while node > 0
+    sums[node] = checked-virtual-sum(sums[node * 2], sums[node * 2 + 1])
+    node /= 2
+
+────────────────────
+_ get total-height VirtualCoord
+
+sums[1]
+
+────────────────────
+_ do offset-at VirtualCoord
+    - index Index
+
+. total = 0vcoord
+. low = leaf-count
+. high = leaf-count + index
+while low < high
+    if low % 2 == 1
+        total += sums[low]
+        low += 1
+    if high % 2 == 1
+        high -= 1
+        total += sums[high]
+    low /= 2
+    high /= 2
+= total
+
+────────────────────
+_ do index-at Index
+    - position VirtualCoord
+
+=? 0 if position < 0vcoord
+=? heights.length if position >= total-height
+. node Index = 1
+. remaining = position
+while node < leaf-count
+    . left = node * 2
+    if sums[left] > remaining
+        node = left
+    else
+        remaining -= sums[left]
+        node = left + 1
+. found = node - leaf-count
+= if found < heights.length then found else heights.length
+
+────────────────────
+_ estimated-row-height VirtualCoord
+    - address I64
+    - width VirtualCoord
+
+if custom then larger-virtual(1vcoord, custom(address, width)) else estimated-height
+
+.. custom = estimate
+
+────────────────────
+_ do sync
+    - domain VirtualSequenceDomain
+    - width VirtualCoord
+
+. count Size = larger-virtual(0vcoord, domain.known-count)
+while heights.length > count
+    heights.pop()
+    measured-at.pop()
+    set-sum(heights.length, 0vcoord)
+if width != row-width
+    row-width = width
+    . index Index
+    while index < heights.length
+        if measured-at[index] < 0vcoord
+            . next = estimated-row-height(domain.address-at(index), width)
+            if next != heights[index]
+                heights[index] = next
+                set-sum(index, next)
+        index += 1
+while heights.length < count
+    . next = estimated-row-height(domain.address-at(heights.length), width)
+    heights += next
+    measured-at += -1vcoord
+    set-sum(heights.length - 1, next)
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get measures-rows Bool
+
+true
+
+────────────────────
++ do record-row-height Bool
+    - placement VirtualPlacement
+    - height VirtualCoord
+
+=? false if placement.placement-id < 0vcoord
+. index Index = placement.placement-id
+=? false if index >= heights.length
+. next = larger-virtual(0vcoord, height)
+. changed = heights[index] != next
+measured-at[index] = row-width
+if changed
+    heights[index] = next
+    set-sum(index, next)
+= changed
+
+────────────────────
++ do fill-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+
+window.clear-placements()
+. width = larger-virtual(0vcoord, window.frame-width)
+. viewport = larger-virtual(0vcoord, window.viewport-height)
+sync(domain, width)
+
+. count = heights.length
+. padded = checked-virtual-sum(leading, total-height)
+. total = checked-virtual-sum(padded, trailing)
+. max-scroll = larger-virtual(0vcoord, total - viewport)
+. resolved = smaller-virtual(max-scroll, larger-virtual(0vcoord, window.scroll-y))
+. lead = larger-virtual(0vcoord, window.overscan-top)
+. trail = larger-virtual(0vcoord, window.overscan-bottom)
+. window-start = larger-virtual(0vcoord, resolved - lead)
+. window-end = checked-virtual-sum(checked-virtual-sum(resolved, viewport), trail)
+
+. index = index-at(window-start - leading)
+. top = leading + offset-at(index)
+while index < count && top < window-end
+    window.place(index, domain.address-at(index), 0vcoord, top, width, heights[index])
+    top += heights[index]
+    index += 1
+
+window.resolved-scroll-x = 0vcoord
+window.resolved-scroll-y = resolved
+window.known-width = width
+window.estimated-width = width
+window.is-width-final = true
+window.known-height = total
+window.estimated-height = total
+window.is-height-final = domain.is-final
+
+────────────────────
++ do rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - window VirtualWindow
+
+. width = larger-virtual(0vcoord, window.frame-width)
+sync(domain, width)
+. found = domain.index-of(address)
+=? if found == null
+. index Index = found
+=? if index >= heights.length
+= VirtualRect(0vcoord, leading + offset-at(index), width, heights[index])
+
+━━━━━━━━━━━━━━━━━━━━
+_ hosted-row-height
+    - window VirtualWindow
+
+larger-virtual(1vcoord, window.row-height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do check-fixed-lengths
+    - item-length VirtualCoord
+    - cross-length VirtualCoord?
+
+?! Panic("Virtual item length must be positive")
+    if item-length <= 0vcoord
+?! Panic("Virtual cross length must not be negative")
+    if cross-length && cross-length < 0vcoord
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fill-fixed-window
+    - window VirtualWindow
+    - domain VirtualSequenceDomain
+    - is-vertical Bool
+    - item-length VirtualCoord
+    - fixed-cross-length VirtualCoord?
+    - gap VirtualCoord? = null
+
+window.clear-placements()
+
+. known-count = larger-virtual(0vcoord, domain.known-count)
+. available-count = known-count
+if !domain.is-final
+    ?! Panic("Virtual sequence size overflow")
+        if known-count == VirtualCoord.max
+    available-count += 1vcoord
+
+. scroll-main = if is-vertical then window.scroll-y else window.scroll-x
+. scroll-cross = if is-vertical then window.scroll-x else window.scroll-y
+. raw-viewport-main = if is-vertical then window.viewport-height else window.viewport-width
+. raw-viewport-cross = if is-vertical then window.viewport-width else window.viewport-height
+. raw-frame-cross = if is-vertical then window.frame-width else window.frame-height
+. raw-leading = if is-vertical then window.overscan-top else window.overscan-left
+. raw-trailing = if is-vertical then window.overscan-bottom else window.overscan-right
+. viewport-main = larger-virtual(0vcoord, raw-viewport-main)
+. viewport-cross = larger-virtual(0vcoord, raw-viewport-cross)
+. leading = larger-virtual(0vcoord, raw-leading)
+. trailing = larger-virtual(0vcoord, raw-trailing)
+
+. spare = if gap != null then 1vcoord else 0vcoord
+. known-length = checked-virtual-product(checked-virtual-sum(known-count, spare), item-length)
+. available-slots = checked-virtual-sum(available-count, spare)
+. available-length = checked-virtual-product(available-slots, item-length)
+. max-main = larger-virtual(0vcoord, available-length - viewport-main)
+. resolved-main = smaller-virtual(max-main, larger-virtual(0vcoord, scroll-main))
+
+. frame-cross = larger-virtual(0vcoord, raw-frame-cross)
+. cross-length = larger-virtual(fixed-cross-length ?? frame-cross, frame-cross)
+. max-cross = larger-virtual(0vcoord, cross-length - viewport-cross)
+. resolved-cross = smaller-virtual(max-cross, larger-virtual(0vcoord, scroll-cross))
+
+. window-start = larger-virtual(0vcoord, resolved-main - leading)
+. window-end = checked-virtual-sum(checked-virtual-sum(resolved-main, viewport-main), trailing)
+. first-index = window-start / item-length
+. last-index = window-end / item-length
+if window-end % item-length != 0vcoord
+    last-index += 1vcoord
+last-index = smaller-virtual(last-index, available-slots)
+
+. slot = first-index
+while slot < last-index
+    if gap == null || slot != gap
+        . index = if gap != null && slot > gap then slot - 1vcoord else slot
+        . main = checked-virtual-product(slot, item-length)
+        . address = domain.address-at(index)
+        if is-vertical
+            window.place(index, address, 0vcoord, main, cross-length, item-length)
+        else
+            window.place(index, address, main, 0vcoord, item-length, cross-length)
+    slot += 1vcoord
+
+. estimated-length VirtualCoord?
+if domain.estimated-count
+    . estimated-count = larger-virtual(0vcoord, domain.estimated-count!)
+    . estimated-slots = checked-virtual-sum(estimated-count, spare)
+    estimated-length = checked-virtual-product(estimated-slots, item-length)
+
+if is-vertical
+    window.resolved-scroll-x = resolved-cross
+    window.resolved-scroll-y = resolved-main
+    window.known-width = cross-length
+    window.estimated-width = cross-length
+    window.is-width-final = true
+    window.known-height = known-length
+    window.estimated-height = estimated-length
+    window.is-height-final = domain.is-final
+else
+    window.resolved-scroll-x = resolved-main
+    window.resolved-scroll-y = resolved-cross
+    window.known-width = known-length
+    window.estimated-width = estimated-length
+    window.is-width-final = domain.is-final
+    window.known-height = cross-length
+    window.estimated-height = cross-length
+    window.is-height-final = true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fixed-rect-for-address VirtualRect?
+    - address I64
+    - domain VirtualSequenceDomain
+    - frame VirtualSize
+    - is-vertical Bool
+    - item-length VirtualCoord
+    - fixed-cross-length VirtualCoord?
+    - gap VirtualCoord? = null
+
+. index = domain.index-of(address)
+=? if !index
+. slot = if gap != null && index >= gap then index + 1vcoord else index
+. main = checked-virtual-product(slot, item-length)
+. raw-frame-cross = if is-vertical then frame.width else frame.height
+. frame-cross = larger-virtual(0vcoord, raw-frame-cross)
+. cross-length = larger-virtual(fixed-cross-length ?? frame-cross, frame-cross)
+=? VirtualRect(0vcoord, main, cross-length, item-length) if is-vertical
+= VirtualRect(main, 0vcoord, item-length, cross-length)
+
+━━━━━━━━━━━━━━━━━━━━
+_ checked-virtual-product VirtualCoord
+    - left VirtualCoord
+    - right VirtualCoord
+
+?! Panic("Virtual extent overflow")
+    if left < 0vcoord || right < 0vcoord || (right != 0vcoord && left > VirtualCoord.max / right)
+
+left * right
+
+━━━━━━━━━━━━━━━━━━━━
+_ checked-virtual-sum VirtualCoord
+    - left VirtualCoord
+    - right VirtualCoord
+
+?! Panic("Virtual extent overflow")
+    if left < 0vcoord || right < 0vcoord || left > VirtualCoord.max - right
+
+left + right
+
+━━━━━━━━━━━━━━━━━━━━
+_ larger-virtual
+    - left VirtualCoord
+    - right VirtualCoord
+
+if left > right then left else right
+
+━━━━━━━━━━━━━━━━━━━━
+_ smaller-virtual
+    - left VirtualCoord
+    - right VirtualCoord
+
+if left < right then left else right

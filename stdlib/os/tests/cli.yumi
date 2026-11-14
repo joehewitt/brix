@@ -1,0 +1,26 @@
+/os/cli
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Command line")
+cases.run(command-line-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do command-line-tests TestCase
+    - t TestCase
+
+. argv = ["yumi", "-c", "-- \"a b\"", "--compile", "my-file.yumi", "--out=x", "-", "--", "-v"]
+. line = RawCommandLine(argv, ["c", "o"])
+t.expect("value option keeps its argument verbatim", "-- \"a b\"", line.options["c"] ?? "")
+t.expect("equals option", "x", line.options["out"] ?? "")
+t.expect("flags", "compile", ", ".join(line.flags))
+t.expect("positional arguments", "my-file.yumi, -, -v", ", ".join(line.args))
+
+. missing = catch RawCommandLine(["yumi", "-o"], ["o"])
+t.check("value option needs a value", missing is Error)
+= t

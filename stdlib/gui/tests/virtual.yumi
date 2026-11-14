@@ -1,0 +1,1004 @@
+/core/markup
+/core/virtual
+/core/virtual-layout
+/graphics/color
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/events
+/gui/primitives
+/gui/virtual
+/gui/window
+/test
+/ui/input
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("GUI Virtual Anchor")
+cases.run(virtual-anchor-tests)
+cases = cases.then("GUI Virtual Two Axis", virtual-two-axis-tests)
+cases = cases.then("GUI Virtual Overscan Focus", virtual-overscan-focus-tests)
+cases = cases.then("GUI Virtual Input Release", virtual-input-release-tests)
+cases = cases.then("GUI Virtual Measured Rows", virtual-measured-row-tests)
+cases = cases.then("GUI Virtual Measured Anchor", virtual-measured-anchor-tests)
+cases = cases.then("GUI Virtual Measured Growth", virtual-measured-growth-tests)
+cases = cases.then("GUI Virtual End Anchor", virtual-end-anchor-tests)
+cases = cases.then("GUI Virtual End Anchor Resize", virtual-end-anchor-resize-tests)
+cases = cases.then("GUI Virtual Growth Reveal", virtual-growth-reveal-tests)
+cases = cases.then("GUI Virtual Scroll Restore", virtual-scroll-restore-tests)
+cases = cases.then("GUI Virtual Natural Limit", virtual-natural-limit-tests)
+cases = cases.then("GUI Virtual Ancestor Clip", virtual-ancestor-clip-tests)
+cases = cases.then("GUI Virtual Nested Clip", virtual-nested-clip-tests)
+cases = cases.then("GUI Virtual Side Clip", virtual-side-clip-tests)
+cases = cases.then("GUI Virtual Measured Side Clip", virtual-measured-side-clip-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-growth-reveal-tests
+    - t TestCase
+
+. window = open-virtual-window()
+. region = window.region
+. content = region.content-bounds
+window.source.count = 100vcoord
+window.layout()
+window.source.count = 200vcoord
+t = t.check
+    - "an address the source has just gained scrolls"
+    - region.scroll-to-address(199, ScrollAlignment.end)
+t = t.expect("the scroll is not held to the extent before the growth", 3800.0, region.scroll-y)
+window.layout()
+t = t.expect("the scroll survives the layout that follows", 3800.0, region.scroll-y)
+. last = root-for-address(region, 199)!
+t = t.expect
+    - "the new last row sits at the bottom"
+    - content.bottom
+    - last.presentation-rect(last.bounds).bottom
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-scroll-restore-tests
+    - t TestCase
+
+<VirtualSwapWindow window
+
+window.open()
+window.layout()
+. region = window.region
+. content = region.content-bounds
+window.source = VirtualRangeSource(1000vcoord)
+region.restore-scroll(Point(0, 4010))
+t = t.expect("the scroll waits for the new source", 0.0, region.scroll-y)
+settle-swap(window)
+t = t.expect("the new source opens at the restored scroll", 4010.0, region.scroll-y)
+. top = root-for-address(region, 200)!
+t = t.expect
+    - "rows are bound at the restored scroll"
+    - content.y - 10
+    - top.presentation-rect(top.bounds).y
+window.source = VirtualRangeSource(100vcoord)
+region.restore-scroll(Point(0, 4010))
+settle-swap(window)
+t = t.expect("a restored scroll past the end is held to the extent", 1800.0, region.scroll-y)
+window.source = VirtualRangeSource(1000vcoord)
+settle-swap(window)
+t = t.expect("a swap without a restored scroll keeps the scroll", 1800.0, region.scroll-y)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do settle-swap
+    - window VirtualSwapWindow
+
+. root = window.markup-batch-root
+if root
+    root.markup-batch-queue.checkpoint()
+window.layout()
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualSwapWindow is Window
+
++ source VirtualRangeSource = VirtualRangeSource(5vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <VirtualRegion'I64 region • h:200
+        source = #source
+        virtual-layout = VerticalFixedLayout(20vcoord)
+
+        <VirtualTestRow (row) - slot
+            address = slot.#address
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-anchor-tests
+    - t TestCase
+
+. window = open-virtual-window()
+. region = window.region
+. content = region.content-bounds
+region.scroll-to-address(500000000)
+window.layout()
+t = t.expect("the far address aligns to the top", 10000000000.0, region.scroll-y)
+. far = root-for-address(region, 500000000)!
+t = t.expect("the far row sits at the content top", content.y, far.bounds.y)
+. hit = window.hit-test(Point(10, content.y + 5))
+t = t.expect("hit testing reaches far rows", 500000000, row-address(hit))
+
+region.scroll-to(Point(0, 10000030000))
+window.layout()
+. drifted = root-for-address(region, 500001500)!
+t = t.expect
+    - "rows present at their logical position"
+    - content.y
+    - drifted.presentation-rect(drifted.bounds).y
+
+region.scroll-to(Point(0, 10000070000.5))
+window.layout()
+. rebased = root-for-address(region, 500003500)!
+t = t.expect
+    - "rebased rows present with the fraction rounded to the pixel grid"
+    - content.y - 1
+    - rebased.presentation-rect(rebased.bounds).y
+
+. below = row-for-address(region, 500003510)!
+window.control-child.invalidate-layout()
+region.ensure-visible(below)
+window.layout()
+t = t.expect("ensure-visible scrolls in logical coordinates", 10000070020.0, region.scroll-y)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-two-axis-tests
+    - t TestCase
+
+. window = open-two-axis-window()
+. wide = window.wide
+wide.scroll-to(Point(300, 40))
+window.layout()
+wide.scroll-to(Point(500, 40))
+window.layout()
+wide.scroll-to-address(50)
+window.layout()
+t = t.expect("wide addresses keep the horizontal scroll", Point(500, 1000), wide.scroll-position)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-overscan-focus-tests
+    - t TestCase
+
+. window = open-virtual-window()
+. region = window.region
+window.focus-adapter = GUIFocusAdapter()
+region.scroll-to(Point(0, 20000))
+window.layout()
+window.move-focus()
+t = t.expect("traversal starts at the first visible row", 1000, row-address(window.focused-box))
+
+region.scroll-to(Point(0, 20040))
+window.layout()
+window.move-focus()
+t = t.expect("traversal skips overscan rows", 1002, row-address(window.focused-box))
+
+. focused = row-for-address(region, 1002)!
+region.scroll-to(Point(0, 30000))
+window.layout()
+t = t.check("recycling a focused row releases focus", !window.focused-box)
+t = t.expect("the recycled row receives one blur", 1, focused.blur-count)
+window.move-focus()
+t = t.expect("traversal resumes at the first visible row", 1500, row-address(window.focused-box))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-input-release-tests
+    - t TestCase
+
+. window = open-virtual-window()
+. region = window.region
+. content = region.content-bounds
+. point = Point(10, content.y + 50)
+window.dispatch-pointer-event(ScrollEvent(PointerEventData(point), 0, 1000))
+
+. press-point = Point(10, content.y + 70)
+window.dispatch-pointer-event
+    - PointerDownEvent(PointerEventData(press-point), PointerButton.primary, 1, 7)
+. pressed = row-for-address(region, 2003)!
+region.scroll-to(Point(0, 80000))
+window.layout()
+t = t.check("recycling a pressed row releases the press", !pressed.is-pressed)
+window.dispatch-pointer-event(PointerUpEvent(PointerEventData(press-point)))
+t = t.expect("a recycled press does not click", 0, pressed.click-count)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do root-for-address VirtualSlotRoot'I64?
+    - region VirtualRegion'I64
+    - address I64
+
+for index in 0 .. < region.pool-size
+    . root = region.root-at(index)
+    =? root if root && root.slot.is-bound && root.slot.address == address
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do row-for-address VirtualTestRow?
+    - region VirtualRegion'I64
+    - address I64
+
+. root = root-for-address(region, address)
+=? if !root
+= root.%first-child as VirtualTestRow
+
+━━━━━━━━━━━━━━━━━━━━
+_ row-address
+    - box Box?
+
+match box
+    | row VirtualTestRow
+        row.address
+    ??
+        -1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-measured-row-tests
+    - t TestCase
+
+. window = open-measured-window()
+. region = window.region
+. content = region.content-bounds
+t = t.expect
+    - "measured rows replace their estimates in the extent"
+    - 3060vcoord
+    - region.virtual-extent-y.known
+. third = measured-root(region, 2)!
+t = t.expect("rows stack by their measured heights", content.y + 60, third.bounds.y)
+t = t.expect("rows take their measured height", 60.0, third.bounds.height)
+t = t.check("rows past the measured window depart", !measured-root(region, 6))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-measured-anchor-tests
+    - t TestCase
+
+. window = open-measured-window()
+. region = window.region
+. content = region.content-bounds
+t = t.check("the region scrolls into unvisited rows", region.scroll-to(Point(0, 1500)))
+window.layout()
+. landed = measured-root(region, 48)!
+t = t.expect("measuring keeps the leading row at the viewport top", 1540.0, region.scroll-y)
+t = t.expect
+    - "the leading row presents at the content top"
+    - content.y
+    - landed.presentation-rect(landed.bounds).y
+t = t.expect("measured rows correct the extent", 3160vcoord, region.virtual-extent-y.known)
+
+t = t.check("the region scrolls above measured rows", region.scroll-to(Point(0, 1400)))
+window.layout()
+t = t.expect("rows measured above shift the scroll position", 1430.0, region.scroll-y)
+t = t.expect
+    - "rows already measured keep their place on screen"
+    - content.y + 140
+    - landed.presentation-rect(landed.bounds).y
+t = t.expect("rows measured above grow the extent", 3190vcoord, region.virtual-extent-y.known)
+
+t = t.check("a measured address scrolls", region.scroll-to-address(48))
+window.layout()
+t = t.expect("measured addresses scroll to their row", 1570.0, region.scroll-y)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-measured-growth-tests
+    - t TestCase
+
+. window = open-measured-window()
+. region = window.region
+. row = measured-row(region, 1)!
+. below = measured-root(region, 2)!
+. start = region.virtual-extent-y.known
+row.grown = 25
+settle-measured(window)
+t = t.expect("a growing row takes its new height", 65.0, measured-root(region, 1)!.bounds.height)
+t = t.expect("rows below a growing row move down", region.content-bounds.y + 85, below.bounds.y)
+t = t.expect("a growing row grows the extent", start + 25vcoord, region.virtual-extent-y.known)
+t = t.expect("growth below the viewport top keeps the scroll position", 0.0, region.scroll-y)
+
+region.scroll-to(Point(0, 100))
+window.layout()
+. visible = measured-root(region, 3)!
+. resting = visible.presentation-rect(visible.bounds).y
+row.grown = 5
+settle-measured(window)
+t = t.expect("a row shrinking above the viewport shifts the scroll", 80.0, region.scroll-y)
+t = t.expect
+    - "visible rows hold still when a row above shrinks"
+    - resting
+    - visible.presentation-rect(visible.bounds).y
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-end-anchor-tests
+    - t TestCase
+
+<VirtualMeasuredWindow window
+    anchors-end = true
+
+window.open()
+window.layout()
+. region = window.region
+. content = region.content-bounds
+t = t.expect("an end-anchored region opens at its end", region.scroll-max.y, region.scroll-y)
+t = t.expect("the end reflects measured rows", 2880.0, region.scroll-y)
+. last = measured-root(region, 99)!
+t = t.expect
+    - "the last row sits at the viewport bottom"
+    - content.bottom
+    - last.presentation-rect(last.bounds).bottom
+
+measured-row(region, 99)!.grown = 30
+settle-measured(window)
+t = t.expect("a growing last row keeps the end in view", 2910.0, region.scroll-y)
+t = t.expect("the region still rests at its end", region.scroll-max.y, region.scroll-y)
+
+window.source.count = 101vcoord
+window.settle-layout()
+t = t.expect("an appended row keeps the end in view", 2950.0, region.scroll-y)
+t = t.check("the appended row is bound", measured-root(region, 100) != null)
+
+. consumed = region.scroll-by(Point(0, -30), ScrollCause.wheel)
+window.layout()
+t = t.check("scrolling away stops following the end", !region.follows-end)
+. away = region.scroll-y
+measured-row(region, 99)!.grown = 60
+settle-measured(window)
+t = t.expect("growth leaves a region that stopped following alone", away, region.scroll-y)
+
+region.follow-end()
+window.layout()
+t = t.expect("following again returns to the end", region.scroll-max.y, region.scroll-y)
+consumed = region.scroll-by(Point(0, -100), ScrollCause.wheel)
+consumed = region.scroll-by(Point(0, 100), ScrollCause.wheel)
+t = t.check("scrolling back to the end follows it again", region.follows-end)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-end-anchor-resize-tests
+    - t TestCase
+
+<VirtualWrappedWindow window
+
+window.open()
+window.layout()
+. region = window.region
+
+window.size = (200, 400)
+window.layout()
+. content = region.content-bounds
+. last = measured-root(region, 99)!
+t = t.expect("a narrower region measures its rows again", 32.0, last.bounds.height)
+t = t.check("rows restack without gaps or overlap", bound-rows-tile(region, 99))
+t = t.expect("a width change keeps the end in view", region.scroll-max.y, region.scroll-y)
+t = t.expect
+    - "the last row still sits at the viewport bottom"
+    - content.bottom
+    - last.presentation-rect(last.bounds).bottom
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do measured-root VirtualSlotRoot'I64?
+    - region VirtualRegion'I64
+    - address I64
+
+for index in 0 .. < region.pool-size
+    . root = region.root-at(index)
+    =? root if root && root.slot.is-bound && root.slot.address == address
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do measured-row VirtualMeasuredRow?
+    - region VirtualRegion'I64
+    - address I64
+
+. root = measured-root(region, address)
+=? if !root
+= root.%first-child as VirtualMeasuredRow
+
+━━━━━━━━━━━━━━━━━━━━
+_ do settle-measured
+    - window VirtualMeasuredWindow
+
+. root = window.markup-batch-root
+if root
+    root.markup-batch-queue.checkpoint()
+window.layout()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-measured-window
+
+<VirtualMeasuredWindow window
+
+window.open()
+window.layout()
+= window
+
+━━━━━━━━━━━━━━━━━━━━
+_ measured-row-height Length
+    - address I64
+
+20.0 + (address % 3) * 20
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualMeasuredRow is Box
+
++ address I64
++ grown Length
+
+• This
+    min-height = SizeSpec.coord(measured-row-height(#address) + #grown)
+    max-height = SizeSpec.coord(measured-row-height(#address) + #grown)
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualMeasuredWindow is Window
+
++ source := VirtualRangeSource(100vcoord)
++ row-layout := VerticalMeasuredLayout(30vcoord)
++ anchors-end = false
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <VirtualRegion'I64 region • h:200
+        source = #source
+        virtual-layout = row-layout
+        overscan = VirtualInsets(40vcoord, 0vcoord, 40vcoord, 0vcoord)
+        anchors-end = #anchors-end
+
+        <VirtualMeasuredRow (row) - slot
+            address = slot.#address
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bound-rows-tile Bool
+    - region VirtualRegion'I64
+    - last I64
+
+. pairs Size
+. address = last
+while address > 0
+    . below = measured-root(region, address)
+    . above = measured-root(region, address - 1)
+    if below && above
+        =? false if below.bounds.y != above.bounds.bottom
+        pairs += 1
+    address -= 1
+= pairs > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ wrapped-row-height Length
+    - address I64
+    - width Length
+
+(1 + address % 3) * 6400 / width
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualWrappedRow is Box
+
++ address I64
+
+────────────────────
++ measured-content-size
+    - query MeasureQuery
+
+Dimensions(width, wrapped-row-height(address, width))
+
+.. width = query.inline.available ?? 320
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualWrappedWindow is Window
+
++ source := VirtualRangeSource(100vcoord)
++ row-layout := VerticalMeasuredLayout(30vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <VirtualRegion'I64 region • h:200
+        source = #source
+        virtual-layout = row-layout
+        overscan = VirtualInsets(40vcoord, 0vcoord, 40vcoord, 0vcoord)
+        anchors-end = true
+
+        <VirtualWrappedRow (row) - slot
+            address = slot.#address
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-virtual-window
+
+<VirtualTestWindow window
+
+window.open()
+window.layout()
+= window
+
+━━━━━━━━━━━━━━━━━━━━
+_ do open-two-axis-window
+
+<VirtualTwoAxisWindow window
+
+window.open()
+window.layout()
+= window
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualTestRow is Box
+
++ address I64
++ blur-count Size
++ click-count Size
+
+• This
+    focus-mode = FocusMode.keys
+    background-color = if #address % 2 == 0 then red else blue
+
+────────────────────
+for event on blur
+
+blur-count += 1
+
+────────────────────
+for event on click
+
+click-count += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualTestWindow is Window
+
++ source := VirtualRangeSource(1000000000vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <Box • flex-col
+        <VirtualRegion'I64 region • h:200
+            source = #source
+            virtual-layout = VerticalFixedLayout(20vcoord)
+            overscan = VirtualInsets(60vcoord, 0vcoord, 60vcoord, 0vcoord)
+
+            <VirtualTestRow (row) - slot
+                address = slot.#address
+
+    <Box • flex-col
+        <Box control-child • h:10
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualTwoAxisWindow is Window
+
++ source := VirtualRangeSource(1000vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <VirtualRegion'I64 wide • h:200
+        source = #source
+        virtual-layout = VerticalFixedLayout(20vcoord, 2000vcoord)
+
+        <VirtualTestRow (row) - slot
+            address = slot.#address
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-natural-limit-tests
+    - t TestCase
+
+<VirtualNaturalWindow window
+    source = VirtualRangeSource(10vcoord)
+
+window.open()
+window.layout()
+. limited = window.limited
+t = t.expect("a region under its maximum height fits its extent", 200.0, limited.bounds.height)
+window.source = VirtualRangeSource(50vcoord)
+checkpoint-natural(window)
+window.layout()
+t = t.expect("a region over its maximum height stops there", 300.0, limited.bounds.height)
+t = t.expect("a limited region scrolls the rest itself", 700.0, limited.scroll-max.y)
+window.source = VirtualRangeSource(40vcoord)
+checkpoint-natural(window)
+window.layout()
+t = t.expect("a change beyond the limit keeps the height", 300.0, limited.bounds.height)
+t = t.expect("a change beyond the limit updates the scroll range", 500.0, limited.scroll-max.y)
+window.source = VirtualRangeSource(5vcoord)
+checkpoint-natural(window)
+window.layout()
+t = t.expect("a source that fits again shrinks the region", 100.0, limited.bounds.height)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-ancestor-clip-tests
+    - t TestCase
+
+<VirtualClipWindow window
+
+window.open()
+window.layout()
+. region = window.region
+. scroller = window.scroller
+t = t.check("the first row is bound", root-for-address(region, 0) != null)
+t = t.check("the last row in view is bound", root-for-address(region, 14) != null)
+t = t.check("rows below the view are not bound", root-for-address(region, 19) == null)
+
+scroller.scroll-to(Point(0, 1000))
+window.layout()
+. top = root-for-address(region, 45)
+t = t.check("rows under the scrolled view are bound", top != null)
+t = t.check("rows scrolled out of view are released", root-for-address(region, 0) == null)
+if top
+    t = t.expect
+        - "a bound row presents where it scrolled to"
+        - 0.0
+        - top.presentation-rect(top.bounds).y
+. hit = window.hit-test(Point(10, 5))
+t = t.expect("hit testing reaches the scrolled rows", 45, row-address(hit))
+
+t = t.check
+    - "an address beyond the view reveals"
+    - region.scroll-to-address(500, ScrollAlignment.nearest)
+window.layout()
+t = t.expect("revealing an address scrolls the enclosing box", 9720.0, scroller.scroll-y)
+t = t.expect("revealing an address leaves the region unscrolled", 0.0, region.scroll-y)
+
+scroller.scroll-to(Point(0, 20200))
+window.layout()
+t = t.check
+    - "a region scrolled out of view keeps its nearest rows"
+    - root-for-address(region, 999) != null
+t = t.check
+    - "a region scrolled out of view releases the rest"
+    - root-for-address(region, 990) == null
+
+scroller.scroll-to(Point(0, 0))
+window.layout()
+window.header-height = 0
+. root = window.markup-batch-root
+if root
+    root.markup-batch-queue.checkpoint()
+window.layout()
+t = t.check("rows a move reveals are bound", root-for-address(region, 19) != null)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-nested-clip-tests
+    - t TestCase
+
+<VirtualNestedClipWindow window
+
+window.open()
+window.layout()
+. region = window.region
+. scroller = window.scroller
+region.scroll-to(Point(0, 2000))
+window.layout()
+t = t.check("its own scroll picks the first row", root-for-address(region, 100) != null)
+t = t.check("its own scroll stops at the enclosing view", root-for-address(region, 105) == null)
+scroller.scroll-to(Point(0, 100))
+window.layout()
+t = t.check("showing more of the region binds more rows", root-for-address(region, 109) != null)
+t = t.check
+    - "showing more of the region stops at the enclosing view"
+    - root-for-address(region, 110) == null
+scroller.scroll-to(Point(0, 500))
+window.layout()
+t = t.check("hiding the top of the region releases its rows", root-for-address(region, 100) == null)
+t = t.check("the part still shown stays bound", root-for-address(region, 110) != null)
+
+scroller.scroll-to(Point(0, 0))
+window.layout()
+region.scroll-to-address(300, ScrollAlignment.nearest)
+window.layout()
+t = t.expect("the region scrolls the address into its own view", 5720.0, region.scroll-y)
+t = t.expect("the enclosing box scrolls the rest of the way", 200.0, scroller.scroll-y)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-side-clip-tests
+    - t TestCase
+
+<VirtualSideClipWindow window
+
+window.open()
+window.layout()
+. region = window.region
+. scroller = window.scroller
+t = t.expect("the region keeps its set width", 200.0, region.bounds.width)
+t = t.expect
+    - "the enclosing box cuts the region off"
+    - 120.0
+    - scroller.content-bounds.right - region.bounds.x
+t = t.expect("a row cut off at the right spans the region", 200.0, side-row-width(region, 0))
+
+scroller.scroll-to(Point(100, 0))
+window.layout()
+t = t.expect("a row scrolled fully into view spans the region", 200.0, side-row-width(region, 0))
+
+scroller.scroll-to(Point(300, 0))
+window.layout()
+t = t.expect("a row cut off at the left spans the region", 200.0, side-row-width(region, 0))
+. cut = root-for-address(region, 0)
+if cut
+    t = t.expect
+        - "a row cut off at the left stays at the region's edge"
+        - region.content-bounds.x
+        - cut.bounds.x
+
+scroller.scroll-to(Point(500, 0))
+window.layout()
+scroller.scroll-to(Point(390, 0))
+window.layout()
+t = t.expect("a row coming back into view spans the region", 200.0, side-row-width(region, 0))
+scroller.scroll-to(Point(0, 0))
+window.layout()
+t = t.expect("a row scrolled back spans the region", 200.0, side-row-width(region, 0))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do virtual-measured-side-clip-tests
+    - t TestCase
+
+<VirtualMeasuredSideClipWindow window
+
+window.open()
+window.layout()
+window.layout()
+. region = window.region
+. root = measured-root(region, 0)
+t = t.check("a measured region cut off at the side binds rows", root != null)
+if root
+    t = t.expect("a measured row cut off at the side spans the region", 200.0, root.bounds.width)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ side-row-width Length
+    - region VirtualRegion'I64
+    - address I64
+
+if root then root.bounds.width else -1
+
+.. root = root-for-address(region, address)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do checkpoint-natural
+    - window VirtualNaturalWindow
+
+. root = window.markup-batch-root
+if root
+    root.markup-batch-queue.checkpoint()
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualClipWindow is Window
+
++ source := VirtualRangeSource(1000vcoord)
++ header-height Length = 100
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <Box scroller • flex-col flex:1
+        overflow-y = ScrollOverflow.auto
+
+        <Box header
+            min-height = SizeSpec.coord(#header-height)
+            max-height = SizeSpec.coord(#header-height)
+        <VirtualRegion'I64 region
+            source = #source
+            virtual-layout = VerticalFixedLayout(20vcoord)
+            overscan = VirtualInsets(40vcoord, 0vcoord, 40vcoord, 0vcoord)
+
+            <VirtualTestRow (row) - slot
+                address = slot.#address
+        <Box footer • h:500
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualNestedClipWindow is Window
+
++ source := VirtualRangeSource(1000vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <Box scroller • flex-col flex:1
+        overflow-y = ScrollOverflow.auto
+
+        <Box • h:300
+        <VirtualRegion'I64 region • h:300
+            source = #source
+            virtual-layout = VerticalFixedLayout(20vcoord)
+
+            <VirtualTestRow (row) - slot
+                address = slot.#address
+        <Box • h:300
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualSideClipWindow is Window
+
++ source := VirtualRangeSource(1000vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <Box scroller • flex-row flex:1
+        overflow-x = ScrollOverflow.auto
+
+        <Box
+            min-width = SizeSpec.coord(200)
+        <VirtualRegion'I64 region
+            min-width = SizeSpec.coord(200)
+            max-width = SizeSpec.coord(200)
+            source = #source
+            virtual-layout = VerticalFixedLayout(20vcoord)
+
+            <VirtualTestRow (row) - slot
+                address = slot.#address
+        <Box
+            min-width = SizeSpec.coord(600)
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualMeasuredSideClipWindow is Window
+
++ source := VirtualRangeSource(100vcoord)
++ row-layout := VerticalMeasuredLayout(30vcoord)
+
+────────────────────
+
+<This • flex-col
+    size = (320, 400)
+
+    <Box scroller • flex-row flex:1
+        overflow-x = ScrollOverflow.auto
+
+        <Box
+            min-width = SizeSpec.coord(200)
+        <VirtualRegion'I64 region
+            min-width = SizeSpec.coord(200)
+            max-width = SizeSpec.coord(200)
+            source = #source
+            virtual-layout = row-layout
+
+            <VirtualMeasuredRow (row) - slot
+                address = slot.#address
+        <Box
+            min-width = SizeSpec.coord(600)
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ VirtualNaturalWindow is Window
+
++ source VirtualRangeSource = VirtualRangeSource(50vcoord)
+
+────────────────────
+
+<This • flex-row
+    size = (640, 400)
+
+    <Box • flex-col flex:1
+        <VirtualRegion'I64 limited
+            source = #source
+            virtual-layout = VerticalFixedLayout(20vcoord)
+            max-height = SizeSpec.coord(300)
+
+            <VirtualTestRow (row) - slot
+                address = slot.#address
+
+╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do ensure-native
+
+────────────────────
++ do render Bool
+
+= false

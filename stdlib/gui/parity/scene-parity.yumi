@@ -1,0 +1,802 @@
+./support
+/core/markup
+/graphics/canvas
+/graphics/color
+/graphics/outline
+/graphics/point
+/graphics/primitives
+/gui/box
+/gui/popup
+/gui/primitives
+/gui/scene
+/stream/aggregate
+/test
+/units
+
+_ conditional-paint-color = RGBA("#e04060")
+_ popup-border-color = RGBA("#f0d080")
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Display Scene Popup Layer Parity")
+cases.run(scene-popup-layer-tests)
+cases = cases.then("Display Scene Configuration Parity", scene-configuration-tests)
+cases = cases.then("Display Scene Empty Chunk Reappearance", scene-empty-chunk-reappearance-tests)
+cases = cases.then("Shadow Damage", shadow-damage-tests)
+cases = cases.then("Display Scene Repeated Invalidation", scene-repeated-invalidation-tests)
+cases = cases.then("Display Scene Invalidation Around Layout", scene-layout-invalidation-tests)
+cases = cases.then("Display Scene Moved Invalidation", scene-moved-invalidation-tests)
+cases = cases.then("Display Scene Nested Scroll Invalidation", scene-nested-scroll-tests)
+cases = cases.then("Display Scene Styled Invalidation", scene-styled-invalidation-tests)
+cases = cases.then("Display Scene Equal Style Values", scene-equal-style-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-popup-layer-tests
+    - t TestCase
+
+. root = SceneParityRoot()
+. content = SceneParityModalContent()
+. popup = SceneParityPopup()
+markup-append(root, content)
+markup-append(root, popup)
+mount-scene-root(root, Rect(0, 0, 900, 700))
+content.arrange-bounds(Rect(220, 160, 120, 80))
+
+. immediate = RasterCanvas(900, 700, 2, white)
+. retained = RasterCanvas(900, 700, 2, white)
+. layer-immediate = RasterCanvas(540, 380, 2, transparent)
+. layer-retained = RasterCanvas(540, 380, 2, transparent)
+. scene = DisplayScene(2, white)
+. layer-scene = DisplayScene(2, transparent)
+do use layer-scene
+    do use immediate
+        do use retained
+            do use layer-immediate
+                do use layer-retained
+                    scene.build(root)
+                    scene.commit()
+                    scene.frame(retained)
+                    immediate.erase(white)
+                    root.paint(immediate)
+
+                    popup.show()
+                    root.markup-batch-queue.checkpoint()
+                    popup.arrange-bounds(Rect(180, 120, 540, 380))
+                    scene.update(root)
+                    scene.commit()
+                    scene.add-damage(root.bounds)
+                    scene.frame(retained)
+                    t.expect
+                        - "open layer stays out of the base scene"
+                        - 0u64
+                        - retained.pixel-difference-count(immediate)
+                    immediate.erase(white)
+                    root.paint(immediate)
+                    t.expect
+                        - "open layer base pixels"
+                        - 0u64
+                        - retained.pixel-difference-count(immediate)
+
+                    layer-scene.origin = popup.bounds.top-left
+                    layer-scene.maintain(popup, 2, transparent)
+                    layer-scene.frame(layer-retained)
+                    layer-immediate.push()
+                    layer-immediate.translate(-180, -120)
+                    popup.paint(layer-immediate)
+                    layer-immediate.pop()
+                    t.expect
+                        - "layer scene pixels"
+                        - 0u64
+                        - layer-retained.pixel-difference-count(layer-immediate)
+
+                    content.color = RGBA("#99cc66")
+                    content.invalidate-paint()
+                    scene.update(root)
+                    scene.commit()
+                    scene.frame(retained)
+                    t.expect
+                        - "base mutation under layer damage"
+                        - 120 * 80 * 4
+                        - scene.last-damaged-pixels
+                    immediate.erase(white)
+                    root.paint(immediate)
+                    t.expect
+                        - "mutation under layer pixels"
+                        - 0u64
+                        - retained.pixel-difference-count(immediate)
+
+                    . idle = scene.frames-idle
+                    popup.color = RGBA("#3050a0")
+                    popup.invalidate-paint()
+                    scene.update(root)
+                    scene.commit()
+                    scene.frame(retained)
+                    t.expect
+                        - "layer mutation leaves the base scene idle"
+                        - idle + 1
+                        - scene.frames-idle
+                    layer-scene.maintain(popup, 2, transparent)
+                    layer-scene.frame(layer-retained)
+                    layer-immediate.erase(transparent)
+                    layer-immediate.push()
+                    layer-immediate.translate(-180, -120)
+                    popup.paint(layer-immediate)
+                    layer-immediate.pop()
+                    t.expect
+                        - "layer mutation pixels"
+                        - 0u64
+                        - layer-retained.pixel-difference-count(layer-immediate)
+
+                    popup.dismiss()
+                    root.markup-batch-queue.checkpoint()
+                    scene.update(root)
+                    scene.commit()
+                    scene.frame(retained)
+                    immediate.erase(white)
+                    root.paint(immediate)
+                    t.expect
+                        - "closed layer pixels"
+                        - 0u64
+                        - retained.pixel-difference-count(immediate)
+scene.close()
+release-scene-root(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-configuration-tests
+    - t TestCase
+
+. root = SceneParityRoot()
+markup-append(root, SceneParityCell())
+mount-scene-root(root, Rect(0, 0, 100, 100))
+. next-background = RGBA("#f0e0d0")
+. immediate = RasterCanvas(100, 100, 2, next-background)
+. retained = RasterCanvas(100, 100, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+        scene.configure(2, next-background)
+        scene.frame(retained)
+        root.paint(immediate)
+        t.expect("background change pixels", 0u64, retained.pixel-difference-count(immediate))
+scene.close()
+
+. scale-immediate = RasterCanvas(100, 100, 1, next-background)
+. scale-retained = RasterCanvas(100, 100, 1, next-background)
+. scale-scene = DisplayScene(2, next-background)
+do use scale-scene
+    do use scale-immediate
+        do use scale-retained
+            scale-scene.build(root)
+            scale-scene.commit()
+            scale-scene.configure(1, next-background)
+            scale-scene.commit()
+            scale-scene.frame(scale-retained)
+            root.paint(scale-immediate)
+            . difference = scale-retained.pixel-difference-count(scale-immediate)
+            t.expect("scale change pixels", 0u64, difference)
+release-scene-root(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-empty-chunk-reappearance-tests
+    - t TestCase
+
+. root = SceneParityRoot()
+. conditional = SceneConditionalPaint()
+markup-append(root, conditional)
+mount-scene-root(root, Rect(0, 0, 100, 100))
+conditional.arrange-bounds(Rect(10, 10, 10, 10))
+
+. immediate = RasterCanvas(100, 100, 2, white)
+. retained = RasterCanvas(100, 100, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+
+        conditional.arrange-bounds(Rect(10, 10, 40, 40))
+        scene.update(root)
+        scene.commit()
+        scene.frame(retained)
+        root.paint(immediate)
+        t.expect
+            - "empty paint chunk reappears after bounds grow"
+            - 0u64
+            - retained.pixel-difference-count(immediate)
+scene.close()
+release-scene-root(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do shadow-damage-tests
+    - t TestCase
+
+. root = ShapeSceneRoot()
+. box = ShapeSceneBox()
+box.drop-shadow = Shadow(RGBA("#00000080"), 8, 0, 6)
+markup-append(root, box)
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.arrange-bounds(Rect(0, 0, 160, 120))
+box.arrange-bounds(Rect(40, 30, 50, 40))
+. immediate = RasterCanvas(160, 120, 2)
+. retained = RasterCanvas(160, 120, 2)
+. scene = DisplayScene(2)
+do use scene
+    do use immediate
+        do use retained
+            scene.build(root)
+            scene.commit()
+            scene.add-damage(root.bounds)
+            scene.frame(retained)
+            box.drop-shadow = Shadow(RGBA("#cc000080"), 8, 0, 6)
+            root.markup-batch-queue.checkpoint()
+            scene.update(root)
+            scene.commit()
+            t.check("shadow change damages below the box", scene.damage.bottom >= 70 + 6 + 8)
+            t.check("shadow change damages beside the box", scene.damage.left <= 40 - 8)
+            scene.frame(retained)
+            root.paint(immediate)
+            t.expect
+                - "retained shadow repaint matches immediate paint"
+                - 0u64
+                - retained.pixel-difference-count(immediate)
+            box.arrange-bounds(Rect(70, 50, 50, 40))
+            scene.update(root)
+            scene.commit()
+            scene.frame(retained)
+            immediate.erase(null)
+            root.paint(immediate)
+            t.expect
+                - "moved shadow leaves no stale pixels"
+                - 0u64
+                - retained.pixel-difference-count(immediate)
+            box.drop-shadow = null
+            root.markup-batch-queue.checkpoint()
+            scene.update(root)
+            scene.commit()
+            scene.frame(retained)
+            immediate.erase(null)
+            root.paint(immediate)
+            t.expect
+                - "removed shadow clears its ink"
+                - 0u64
+                - retained.pixel-difference-count(immediate)
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-repeated-invalidation-tests
+    - t TestCase
+
+. root = mounted-paint-root()
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+        . builds = scene.builds
+        for frame in 0 .. < 4
+            root.a.color = scene-relink-color(frame + 1)
+            root.a.invalidate-paint()
+            root.a.invalidate-paint()
+            root.b.color = scene-relink-color(frame + 2)
+            root.b.invalidate-paint()
+            root.e.color = scene-relink-color(frame + 3)
+            root.e.invalidate-paint()
+            check-scene-paint(t, root, scene, retained, immediate, "frame $frame")
+
+        root.d.color = scene-relink-color(9)
+        root.d.invalidate-paint()
+        check-scene-paint(t, root, scene, retained, immediate, "a lone leaf")
+        root.d.color = scene-relink-color(10)
+        root.d.invalidate-paint()
+        check-scene-paint(t, root, scene, retained, immediate, "the same leaf again")
+        t.expect("repeated invalidation avoids full scene builds", builds, scene.builds)
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-layout-invalidation-tests
+    - t TestCase
+
+. root = mounted-paint-root()
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+
+        root.a.color = scene-relink-color(5)
+        root.a.invalidate-paint()
+        root.c.tall = true
+        root.markup-batch-queue.checkpoint()
+        root.layout(Rect(0, 0, 120, 120))
+        root.b.color = scene-relink-color(6)
+        root.b.invalidate-paint()
+        check-scene-paint
+            - t
+            - root
+            - scene
+            - retained
+            - immediate
+            - "invalidating before and after a layout"
+
+        root.a.color = scene-relink-color(7)
+        root.a.invalidate-paint()
+        root.c.tall = false
+        root.markup-batch-queue.checkpoint()
+        root.layout(Rect(0, 0, 120, 120))
+        root.a.color = scene-relink-color(8)
+        root.a.invalidate-paint()
+        root.b.color = scene-relink-color(9)
+        root.b.invalidate-paint()
+        check-scene-paint
+            - t
+            - root
+            - scene
+            - retained
+            - immediate
+            - "invalidating one leaf on both sides of a layout"
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-moved-invalidation-tests
+    - t TestCase
+
+. root = mounted-paint-root()
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+
+        root.a.color = scene-relink-color(5)
+        root.a.invalidate-paint()
+        markup-remove(root.first, root.inner)
+        markup-append(root.second, root.inner)
+        root.a.color = scene-relink-color(6)
+        root.a.invalidate-paint()
+        root.markup-batch-queue.checkpoint()
+        root.layout(Rect(0, 0, 120, 120))
+        check-scene-paint(t, root, scene, retained, immediate, "moving an invalid subtree")
+
+        root.b.color = scene-relink-color(7)
+        root.b.invalidate-paint()
+        check-scene-paint
+            - t
+            - root
+            - scene
+            - retained
+            - immediate
+            - "invalidating inside a moved subtree"
+
+        markup-remove(root.second, root.inner)
+        root.c.color = scene-relink-color(8)
+        root.c.invalidate-paint()
+        markup-append(root.first, root.inner)
+        root.markup-batch-queue.checkpoint()
+        root.layout(Rect(0, 0, 120, 120))
+        check-scene-paint(t, root, scene, retained, immediate, "invalidating a detached subtree")
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-nested-scroll-tests
+    - t TestCase
+
+. root = SceneScrollRoot()
+markup-mount-root(root, root)
+. outer = ScenePaintGroup()
+markup-append(root, outer)
+. inner = ScenePaintGroup()
+markup-append(outer, inner)
+. first = nested-scroll-list(inner, 0)
+. second = nested-scroll-list(inner, 5)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 120))
+
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+        . builds = scene.builds
+        for frame in 0 .. < 4
+            . offset = 11.5 + (frame as F64) * 23
+            . ignored-first = first.scroll-to(Point(0, offset))
+            . ignored-again = first.scroll-to(Point(0, offset + 3))
+            . ignored-second = second.scroll-to(Point(0, offset / 2))
+            check-scene-paint
+                - t
+                - root
+                - scene
+                - retained
+                - immediate
+                - "scrolling both lists in frame $frame"
+            . ignored-lone = second.scroll-to(Point(0, offset + 40))
+            check-scene-paint
+                - t
+                - root
+                - scene
+                - retained
+                - immediate
+                - "scrolling one list after frame $frame"
+        t.expect("nested scrolling avoids full scene builds", builds, scene.builds)
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-styled-invalidation-tests
+    - t TestCase
+
+. root = SceneStyledRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 120))
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+        . builds = scene.builds
+
+        root.first.lit = true
+        check-scene-style(t, root, scene, retained, immediate, "a styled background")
+        root.first.lit = false
+        root.second.lit = true
+        check-scene-style(t, root, scene, retained, immediate, "a moved styled background")
+
+        root.first.lit = true
+        root.second.lit = false
+        root.a.color = scene-relink-color(3)
+        root.a.invalidate-paint()
+        root.b.color = scene-relink-color(4)
+        root.b.invalidate-paint()
+        check-scene-style
+            - t
+            - root
+            - scene
+            - retained
+            - immediate
+            - "a styled background over repainted content"
+        t.check
+            - "a styled box settles its paint"
+            - !root.first.$is-paint-invalid && !root.second.$is-paint-invalid
+
+        root.first.lit = false
+        root.a.color = scene-relink-color(5)
+        root.a.invalidate-paint()
+        check-scene-style
+            - t
+            - root
+            - scene
+            - retained
+            - immediate
+            - "an unstyled background over repainted content"
+        t.expect("styled invalidation avoids full scene builds", builds, scene.builds)
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do scene-equal-style-tests
+    - t TestCase
+
+. root = SceneStripedRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 120))
+. immediate = RasterCanvas(120, 120, 2, white)
+. retained = RasterCanvas(120, 120, 2, white)
+. scene = DisplayScene(2, white)
+do use immediate
+    do use retained
+        scene.build(root)
+        scene.commit()
+        scene.frame(retained)
+        t.check("a striped box settles its paint", !root.row.$is-paint-invalid)
+
+        scene.reset-frame-counters()
+        root.row.address = 2
+        root.markup-batch-queue.checkpoint()
+        t.check("an equal recomputed style value keeps paint valid", !root.row.$is-paint-invalid)
+        root.layout(Rect(0, 0, 120, 120))
+        check-scene-paint(t, root, scene, retained, immediate, "an equal recomputed style value")
+        t.expect("an equal recomputed style value rebuilds no chunks", 0, scene.chunks-rebuilt)
+
+        root.row.address = 3
+        root.markup-batch-queue.checkpoint()
+        t.check("a changed style value invalidates paint", root.row.$is-paint-invalid)
+        root.layout(Rect(0, 0, 120, 120))
+        check-scene-paint(t, root, scene, retained, immediate, "a changed style value")
+        t.check("a changed style value rebuilds its chunk", scene.chunks-rebuilt > 0)
+
+        scene.reset-frame-counters()
+        root.row.address = 5
+        root.markup-batch-queue.checkpoint()
+        t.check("an equal value after a change keeps paint valid", !root.row.$is-paint-invalid)
+        root.layout(Rect(0, 0, 120, 120))
+        check-scene-paint(t, root, scene, retained, immediate, "an equal value after a change")
+        t.expect("an equal value after a change rebuilds no chunks", 0, scene.chunks-rebuilt)
+scene.close()
+root.close()
+markup-release(root)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do check-scene-style
+    - t TestCase
+    - root SceneStyledRoot
+    - scene DisplayScene
+    - retained RasterCanvas
+    - immediate RasterCanvas
+    - label String
+
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 120))
+check-scene-paint(t, root, scene, retained, immediate, label)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do nested-scroll-list
+    - parent Box
+    - seed I64
+
+. list = SceneNestedScrollList()
+markup-append(parent, list)
+for index in 0 .. < 40
+    . cell = ScenePaintCell()
+    cell.color = scene-relink-color(index + seed)
+    markup-append(list, cell)
+= list
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mounted-paint-root
+
+. root = ScenePaintRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 120, 120))
+= root
+
+━━━━━━━━━━━━━━━━━━━━
++ do check-scene-paint
+    - t TestCase
+    - root Box
+    - scene DisplayScene
+    - retained RasterCanvas
+    - immediate RasterCanvas
+    - label String
+
+scene.update(root)
+scene.commit()
+scene.frame(retained)
+immediate.erase(white)
+root.paint(immediate)
+t.expect("$label matches immediate paint", 0u64, retained.pixel-difference-count(immediate))
+t.check("$label leaves no box invalid", scene-paint-is-settled(root))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do scene-paint-is-settled Bool
+    - box Box
+
+=? false if box.is-retained-paint-invalid || box.is-retained-paint-invalid-below
+= all(box.rendered-children) • where scene-paint-is-settled(each)
+
+━━━━━━━━━━━━━━━━━━━━
+_ scene-relink-color
+    - key I64
+
+RGBA(0.1 + ((key % 4) as F64) * 0.2, 0.3, 0.9 - ((key % 3) as F64) * 0.25, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneParityModalContent is Box
+
++ color = RGBA("#6699dd")
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.fill-color = color
+canvas.stroke-color = null
+canvas.rect(bounds)
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneParityPopup is Popup
+
++ color = RGBA(0.12, 0.08, 0.2, 1)
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+canvas.fill-color = color
+canvas.stroke-color = popup-border-color
+canvas.stroke-width = 4
+canvas.rect(bounds)
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneConditionalPaint is Box
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+=? if bounds.width < 20 || bounds.height < 20
+canvas.fill-color = conditional-paint-color
+canvas.stroke-color = null
+canvas.rect(bounds)
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneRelinkCell is Box
+
++ color = RGBA(0.2, 0.4, 0.9, 1)
++ shown = true
++ faded = false
++ blank = false
+
+. invalidate-paint < blank
+
+• This
+    display = if #shown then Display.visible else Display.hidden
+    opacity = if #faded then 0.5%% else 1%%
+
+────────────────────
++ do paint-background
+    - canvas Canvas
+
+=? if blank
+canvas.push()
+canvas.fill-color = color
+canvas.stroke-color = null
+canvas.rect(bounds)
+canvas.pop()
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneScrollRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This • flow-col
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ScenePaintRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This • flow-col
+
+────────────────────
+
+<This
+    <ScenePaintGroup first
+        <ScenePaintGroup inner
+            <ScenePaintCell a
+            <ScenePaintCell b
+            <ScenePaintCell c
+    <ScenePaintGroup second
+        <ScenePaintCell d
+        <ScenePaintCell e
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneStyledRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This • flow-col
+
+────────────────────
+
+<This
+    <SceneStyledGroup first
+        <ScenePaintCell a
+    <SceneStyledGroup second
+        <ScenePaintCell b
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneStyledGroup is Box
+
++ lit = false
+
+• This • flow-col p:4
+    background-color = scene-relink-color(7) if #lit
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneStripedRoot is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This • flow-col
+
+────────────────────
+
+<This
+    <SceneStripedRow row
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneStripedRow is Box
+
++ address I64
+
+• This • h:20
+    background-color = if #address % 2 == 0 then "#e8eef7" else "#ffffff"
+
+━━━━━━━━━━━━━━━━━━━━
++ ScenePaintGroup is Box
+
+• This • flow-col p:2
+
+━━━━━━━━━━━━━━━━━━━━
++ ScenePaintCell is SceneRelinkCell
+
++ tall = false
+
+• This • w:40
+    min-height = if #tall then SizeSpec.coord(18) else SizeSpec.coord(8)
+    max-height = if #tall then SizeSpec.coord(18) else SizeSpec.coord(8)
+
+━━━━━━━━━━━━━━━━━━━━
++ SceneNestedScrollList is Box
+
+• This • flow-col w:100 h:40
+    overflow-y = ScrollOverflow.auto
+    scroll-indicator-y = ScrollIndicatorVisibility.hidden

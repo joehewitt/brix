@@ -1,0 +1,247 @@
+./builder
+./bundle
+./mir
+./mir-text
+/core/arena
+/core/table
+
+━━━━━━━━━━━━━━━━━━━━
+_ PhiSource is U32
+
+| register
+| int
+| frame-object
+| symbol
+| unsupported
+
+━━━━━━━━━━━━━━━━━━━━
++ MIRPhiElimination
+
+_ builder MIRBuilder
+_ function MIRFunction
+_ copies-by-block CPointer'IdList
+_ copy-successors IdList
+_ copy-destinations IdList
+_ copy-sources IdList
+
+────────────────────
++ This
+    - builder MIRBuilder
+
+.. function = builder.function
+
+────────────────────
++ do run
+
+. arena = function.arena
+. order = function.block-order
+copies-by-block = arena.allocate'IdList(function.blocks.length)
+copy-successors = IdList()
+copy-destinations = IdList()
+copy-sources = IdList()
+for position in 0 .. < order.length
+    . block = order[position]
+    . instructions = function.blocks[block].instructions
+    . kept U32
+    for index in 0 .. < instructions.length
+        . id = instructions[index]
+        if function.instructions[id].opcode == .phi
+            collect-phi-copies(block, id)
+        else
+            instructions.data[kept] = id
+            kept += 1
+    function.blocks[block].instructions = IdList(instructions.data, kept, instructions.capacity)
+
+for position in 0 .. < order.length
+    . pred = order[position]
+    . copies = copies-by-block[pred]
+    . start U32
+    while start < copies.length
+        . succ = copy-successors[copies[start]]
+        . end = start + 1
+        while end < copies.length && copy-successors[copies[end]] == succ
+            end += 1
+        emit-copies-on-edge(pred, succ, copies, start, end)
+        start = end
+
+────────────────────
+_ do collect-phi-copies
+    - block BlockId
+    - phi InstructionId
+
+. arena = function.arena
+. register = no-operand
+. exprs IdList
+. names IdList
+do match? function.instructions[phi]
+    | .phi-instruction(row)
+        register = row.reg
+        exprs = row.exprs
+        names = row.blocks
+for index in 0 .. < names.length
+    . pred = builder.get-block(names[index])
+    ?! Panic("Phi references missing predecessor ${missing-name}")
+        if pred == no-id
+    .. missing-name = name-string(builder.bundle, function, names[index])
+    . expr = exprs[index]
+    if is-placeholder(expr)
+        continue
+    . copy U32 = copy-successors.length
+    copy-successors = copy-successors.appended(arena, block)
+    copy-destinations = copy-destinations.appended(arena, register)
+    copy-sources = copy-sources.appended(arena, expr)
+    copies-by-block[pred] = copies-by-block[pred].appended(arena, copy)
+
+────────────────────
+_ do is-placeholder Bool
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .placeholder-operand
+        = true
+= false
+
+────────────────────
+_ do emit-copies-on-edge
+    - pred BlockId
+    - succ BlockId
+    - copies IdList
+    - start U32
+    - end U32
+
+. arena = function.arena
+. pred-name = function.blocks[pred].name
+. succ-name = function.blocks[succ].name
+. successors = function.blocks[pred].successors
+for index in 1 .. < successors.length
+    ?! Panic("Phi copies for ${pred-text}->${succ-text} need a split edge")
+        if successors[index] != successors[0]
+    .. pred-text = name-string(builder.bundle, function, pred-name)
+    .. succ-text = name-string(builder.bundle, function, succ-name)
+
+. instructions = function.blocks[pred].instructions
+. terminator = terminator-index(instructions)
+. tail-length = instructions.length - terminator
+. tail = arena.allocate'U32(tail-length)
+for index in 0 .. < tail-length
+    tail[index] = instructions[terminator + index]
+function.blocks[pred].instructions = IdList(instructions.data, terminator, instructions.capacity)
+builder.set-insert-block(pred)
+
+. destinations = arena.allocate'U32(end - start)
+. sources = arena.allocate'U32(end - start)
+. count U32
+for index in start .. < end
+    . copy = copies[index]
+    if !is-same-register(copy-destinations[copy], copy-sources[copy])
+        destinations[count] = copy-destinations[copy]
+        sources[count] = copy-sources[copy]
+        count += 1
+
+while count > 0
+    . ready = no-id
+    for index in 0 .. < count
+        . is-read = false
+        for other in 0 .. < count
+            if is-same-register(destinations[index], sources[other])
+                is-read = true
+                break
+        if !is-read
+            ready = index
+            break
+    if ready != no-id
+        . destination = destinations[ready]
+        . source = sources[ready]
+        count -= 1
+        for index in ready .. < count
+            destinations[index] = destinations[index + 1]
+            sources[index] = sources[index + 1]
+        builder.comment
+            - function.add-local-name
+                - .phi-copy-name
+                - pred-name
+                - succ-name
+                - register-id(destination)
+        emit-copy(destination, source)
+        continue
+
+    . saved = destinations[0]
+    . temporary = builder.vreg(builder.operand-reg-class(saved))
+    builder.comment
+        - function.add-local-name(.phi-cycle-name, pred-name, succ-name, register-id(saved))
+    emit-copy(temporary, saved)
+    for index in 0 .. < count
+        if is-same-register(saved, sources[index])
+            sources[index] = temporary
+
+. merged = function.blocks[pred].instructions
+for index in 0 .. < tail-length
+    merged = merged.appended(arena, tail[index])
+function.blocks[pred].instructions = merged
+
+────────────────────
+_ do emit-copy
+    - destination OperandId
+    - source OperandId
+
+. kind = PhiSource.unsupported
+. name = no-string
+. type = no-mir-type
+do match? function.operands[source]
+    | .vreg-operand
+        kind = PhiSource.register
+    | .preg-operand
+        kind = PhiSource.register
+    | .int-operand
+        kind = PhiSource.int
+    | .frame-object-operand(operand)
+        kind = PhiSource.frame-object
+        type = function.frame-objects[operand.object].type
+    | .symbol-operand(operand)
+        kind = PhiSource.symbol
+        name = operand.name
+if kind == PhiSource.register
+    . copy = builder.move(destination, source)
+    do match? function.instructions[copy]
+        | .assembly-instruction(row)
+            row.is-phi-copy = true
+else if kind == PhiSource.int
+    builder.mov(destination, source)
+else if kind == PhiSource.frame-object
+    builder.load(destination, source, type)
+else if kind == PhiSource.symbol
+    builder.adrp(destination, builder.label(name, .page-reloc))
+    builder.add(destination, destination, builder.label(name, .pageoff-reloc))
+else
+    ?! Panic("Unsupported phi expression kind")
+
+────────────────────
+_ do terminator-index U32
+    - instructions IdList
+
+. index = instructions.length
+while index > 0
+    index -= 1
+    . opcode = function.instructions[instructions[index]].opcode
+    if opcode == .b || opcode == .b-cond || compares-zero || opcode == .br || opcode == .ret
+        = index
+    .. compares-zero = opcode == .cbz || opcode == .cbnz
+= instructions.length
+
+────────────────────
+_ do register-id U32
+    - operand OperandId
+
+do match? function.operands[operand]
+    | .vreg-operand(row)
+        = function.vregs[row.vreg].id
+= no-id
+
+────────────────────
+_ is-same-register Bool
+    - register OperandId
+    - operand OperandId
+
+id != no-id && id == register-id(register)
+
+.. id = register-id(operand)

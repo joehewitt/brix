@@ -1,0 +1,965 @@
+:====
+
+a
+b
+c
+
+:----
+%brix
+(main
+  a
+  b
+  c
+)
+:----
+
+<Id name="a"/>
+<Id name="b"/>
+<Id name="c"/>
+;====
+:====
+
+do
+    a()
+
+    b()
+
+:----
+%brix
+(main
+  (do
+    (call a)
+    (blank)
+    (call b)
+  )
+)
+:----
+
+<Do>
+    <Block>
+        <CallExpression>
+            <Id name="a"/>
+        </CallExpression>
+        <CallExpression>
+            <Id name="b"/>
+        </CallExpression>
+    </Block>
+</Do>
+;====
+:====
+
+do @no-safepoint
+    a()
+
+:----
+%brix
+(main
+  (do @no-safepoint
+    (call a)
+  )
+)
+:----
+
+<Do effects="no-safepoint">
+    <Block>
+        <CallExpression>
+            <Id name="a"/>
+        </CallExpression>
+    </Block>
+</Do>
+;====
+:====
+
+do @no-safepoint
+    a()
+
+:----
+%brix
+(main
+  (do @no-safepoint
+    (call a)
+  )
+)
+:----
+
+<Do effects="no-safepoint">
+    <Block>
+        <CallExpression>
+            <Id name="a"/>
+        </CallExpression>
+    </Block>
+</Do>
+;====
+:====
+
+do
+    ` Comment
+    a()
+
+:----
+%brix
+(main
+  (do
+    ; Comment
+    (call a)
+  )
+)
+:----
+
+<Do>
+    <Block>
+        <CallExpression>
+            <Id name="a"/>
+        </CallExpression>
+    </Block>
+</Do>
+;====
+:====
+
+do
+    foo()
+    bar()
+baz()
+
+:----
+%brix
+(main
+  (do
+    (call foo)
+    (call bar)
+  )
+  (call baz)
+)
+:----
+
+<Do>
+    <Block>
+        <CallExpression>
+            <Id name="foo"/>
+        </CallExpression>
+        <CallExpression>
+            <Id name="bar"/>
+        </CallExpression>
+    </Block>
+</Do>
+<CallExpression>
+    <Id name="baz"/>
+</CallExpression>
+;====
+:====
+
+|? y
+    x
+
+
+:----
+%brix
+(main
+  (case? y
+    x
+  )
+)
+:----
+
+<StructureMatch>
+    <TypeTransform>
+        <TypePredicate>
+            <Id name="y"/>
+        </TypePredicate>
+        <Block>
+            <Id name="x"/>
+        </Block>
+    </TypeTransform>
+</StructureMatch>
+;====
+:====
+
+do
+    do use Thing()
+        -- "using"
+
+:----
+%brix
+(main
+  (do
+    (do-use (call Thing)
+      (print "using")
+    )
+  )
+)
+:----
+
+<Do>
+    <Block>
+        <UseBlock>
+            <CallExpression>
+                <TypeId name="Thing"/>
+            </CallExpression>
+            <Block>
+                <Print>
+                    <String text="using"/>
+                </Print>
+            </Block>
+        </UseBlock>
+    </Block>
+</Do>
+;====
+:====
+
+do
+    . a = use Thing()
+
+:----
+%brix
+(main
+  (do
+    (let a (use (call Thing)))
+  )
+)
+:----
+
+<Do>
+    <Block>
+        <Declaration>
+            <TypeCapture>
+                <Id name="a"/>
+            </TypeCapture>
+            <Use>
+                <CallExpression>
+                    <TypeId name="Thing"/>
+                </CallExpression>
+            </Use>
+        </Declaration>
+    </Block>
+</Do>
+;====
+:====
+
++ @stack request Int
+
+do with request = 42
+    -- request
+
+:----
+%brix
+(prop + request Int @stack)
+(blank)
+
+(main
+  (do-with request 42
+    (print request)
+  )
+)
+:----
+
+<Property access="public-access" decoration="stack">
+    <TypeCapture>
+        <Id name="request"/>
+        <TypeId name="Int"/>
+    </TypeCapture>
+</Property>
+<StackLocalBinding name="request">
+    <Integer value="42"/>
+    <Block>
+        <Print>
+            <Id name="request"/>
+        </Print>
+    </Block>
+</StackLocalBinding>
+;====
+:====
+
+. term = use Thing()
+    bar
+
+:----
+%brix
+(main
+  (let term
+    (use
+      (call Thing
+        (block
+          bar
+        )
+      )
+    )
+  )
+)
+:----
+
+<Declaration>
+    <TypeCapture>
+        <Id name="term"/>
+    </TypeCapture>
+    <Use>
+        <CallExpression>
+            <TypeId name="Thing"/>
+            <Argument>
+                <Block>
+                    <Id name="bar"/>
+                </Block>
+            </Argument>
+        </CallExpression>
+    </Use>
+</Declaration>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+foo
+
+bar
+
+baz
+
+
+
+━━━━━━━━━━━━━━━━━━━━
++ other
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    "foo"
+    (blank)
+    "bar"
+    (blank)
+    "baz"
+  )
+)
+
+(fn-expr + other _)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <String text="foo
+
+bar
+
+baz"/>
+    </Block>
+</Function>
+<Function names="other" access="public-access"/>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+
+s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (paragraph
+    "s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>"
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <Block>
+        <String text="s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>"/>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+
+a ≥ b ≤ c \≥ d
+ends ≥
+
+━━━━━━━━━━━━━━━━━━━━
++ other
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (paragraph
+    "a ≥ b ≤ c ≥ d"
+    "ends ≥"
+  )
+)
+
+(fn-expr + other _)
+:----
+
+<Function names="text" access="public-access">
+    <Block>
+        <String text="a ≥ b ≤ c ≥ d
+ends ≥"/>
+    </Block>
+</Function>
+<Function names="other" access="public-access"/>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+$arg
+
+━━━━━━━━━━━━━━━━━━━━
++ other
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    (str arg)
+  )
+)
+
+(fn-expr + other _)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <BinaryExpression operator="++">
+            <String text=""/>
+            <Id name="arg"/>
+        </BinaryExpression>
+    </Block>
+</Function>
+<Function names="other" access="public-access"/>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+$arg ≥ ${"≥"}
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    (str arg " ≥ " (str "≥"))
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <Id name="arg"/>
+                <String text=" ≥ "/>
+            </BinaryExpression>
+            <String text="≥"/>
+        </BinaryExpression>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+
+first
+`kept`
+```
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (paragraph
+    "first"
+    "`kept`"
+    "```"
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <Block>
+        <String text="first
+`kept`
+```"/>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+Foo $bar baz
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    (str "Foo " bar " baz")
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <String text="Foo "/>
+                <Id name="bar"/>
+            </BinaryExpression>
+            <String text=" baz"/>
+        </BinaryExpression>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+# An embed after text may begin with a number or a string.
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+Foo ${1} bar ${"x".length} baz
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    (str "Foo " 1 " bar " (. "x" length) " baz")
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <BinaryExpression operator="++">
+                    <BinaryExpression operator="++">
+                        <String text="Foo "/>
+                        <Integer value="1"/>
+                    </BinaryExpression>
+                    <String text=" bar "/>
+                </BinaryExpression>
+                <Get name="length">
+                    <String text="x"/>
+                </Get>
+            </BinaryExpression>
+            <String text=" baz"/>
+        </BinaryExpression>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text String
+    - content String
+
+$prefix $content
+
+════════════════════
+.. prefix = "hi"
+
+━━━━━━━━━━━━━━━━━━━━
++ other String
+
+"ok"
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text String
+  (param content String)
+  (paragraph
+    (str prefix " " content)
+  )
+  (where
+    (lazy prefix "hi")
+  )
+)
+
+(fn-expr + other String
+  "ok"
+)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="content"/>
+            <TypeId name="String"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <TypeId name="String"/>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <Id name="prefix"/>
+                <String text=" "/>
+            </BinaryExpression>
+            <Id name="content"/>
+        </BinaryExpression>
+        <Declaration lazy="true">
+            <TypeCapture>
+                <Id name="prefix"/>
+            </TypeCapture>
+            <String text="hi"/>
+        </Declaration>
+    </Block>
+</Function>
+<Function names="other" access="public-access">
+    <TypeId name="String"/>
+    <Block>
+        <String text="ok"/>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ tree-box-row-text String
+    - content String
+    - suffix String
+
+$prefix $content $suffix
+
+════════════════════
+.. prefix = "hi"
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr _ tree-box-row-text String
+  (param content String)
+  (param suffix String)
+  (paragraph
+    (str prefix " " content " " suffix)
+  )
+  (where
+    (lazy prefix "hi")
+  )
+)
+:----
+
+<Function names="tree-box-row-text" access="private-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="content"/>
+            <TypeId name="String"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="suffix"/>
+            <TypeId name="String"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <TypeId name="String"/>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <BinaryExpression operator="++">
+                    <BinaryExpression operator="++">
+                        <Id name="prefix"/>
+                        <String text=" "/>
+                    </BinaryExpression>
+                    <Id name="content"/>
+                </BinaryExpression>
+                <String text=" "/>
+            </BinaryExpression>
+            <Id name="suffix"/>
+        </BinaryExpression>
+        <Declaration lazy="true">
+            <TypeCapture>
+                <Id name="prefix"/>
+            </TypeCapture>
+            <String text="hi"/>
+        </Declaration>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text String
+
+Hello $name
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text String
+  (paragraph
+    (str "Hello " name)
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <TypeId name="String"/>
+    <Block>
+        <BinaryExpression operator="++">
+            <String text="Hello "/>
+            <Id name="name"/>
+        </BinaryExpression>
+    </Block>
+</Function>
+
+;====
+:================================================================================================
+# Make sure indented text doesn't trigger the code indentation parser
+
+━━━━━━━━━━━━━━━━━━━━
++ ¶ text
+    - arg
+
+foo
+    bar
+        baz
+
+:------------------------------------------------------------------------------------------------
+%brix
+(fn-expr + text _
+  (param arg _)
+  (paragraph
+    "foo"
+    "    bar"
+    "        baz"
+  )
+)
+:----
+
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="arg"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <String text="foo
+    bar
+        baz"/>
+    </Block>
+</Function>
+
+;====
+:====
+# Parses a blank line between argument lines.
+
+━━━━━━━━━━━━━━━━━━━━
++ do work
+    - a Int
+
+    - b Int = 1
+
+. r = a + b
+
+:----
+%brix
+(fn-do + work _
+  (param a Int)
+  (param b Int (= 1))
+  (blank)
+  (let r (+ a b))
+)
+:----
+
+<Function names="work" access="public-access" imperative="true">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="b"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+        <Integer value="1"/>
+    </ArgumentDecl>
+    <Block>
+        <Declaration>
+            <TypeCapture>
+                <Id name="r"/>
+            </TypeCapture>
+            <BinaryExpression operator="+">
+                <Id name="a"/>
+                <Id name="b"/>
+            </BinaryExpression>
+        </Declaration>
+    </Block>
+</Function>
+;====
+:====
+
+━━━━━━━━━━━━━━━━━━━━
+_ summary
+    - reason Int
+
+match reason
+    |= 1
+        "one"
+    ??
+        "other"
+
+:----
+%brix
+(fn-expr _ summary _
+  (param reason Int)
+  (match reason
+    (case= 1
+      "one"
+    )
+    (default
+      "other"
+    )
+  )
+)
+:----
+
+<Function names="summary" access="private-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="reason"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Match>
+            <Id name="reason"/>
+            <StructureMatch>
+                <TypeOr>
+                    <TypeTransform>
+                        <TypeEquality>
+                            <Integer value="1"/>
+                        </TypeEquality>
+                        <Block>
+                            <String text="one"/>
+                        </Block>
+                    </TypeTransform>
+                    <TypeTransform>
+                        <Block>
+                            <String text="other"/>
+                        </Block>
+                    </TypeTransform>
+                </TypeOr>
+            </StructureMatch>
+        </Match>
+    </Block>
+</Function>
+;====
+:====
+
+━━━━━━━━━━━━━━━━━━━━
++ summary
+    - reason Int
+    = match reason
+
+|= 1
+    "one"
+
+:----
+%crash
+
+Exception: Syntax error
+<no file:5>
+        = match reason
+          ^
+;====
+:====
+
+━━━━━━━━━━━━━━━━━━━━
++ summary
+    - reason Int
+    = match? reason
+
+|= 1
+    "one"
+
+:----
+%crash
+
+Exception: Syntax error
+<no file:5>
+        = match? reason
+          ^
+;====
+:====
+
+do for x in xs
+    x()
+
+:----
+%brix
+(main
+  (do
+    (inline
+      (for (in x xs)
+        (call x)
+      )
+    )
+  )
+)
+:----
+
+<Do>
+    <For>
+        <In>
+            <TypeCapture>
+                <Id name="x"/>
+            </TypeCapture>
+            <Id name="xs"/>
+        </In>
+        <Block>
+            <CallExpression>
+                <Id name="x"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Do>
+;====

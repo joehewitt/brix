@@ -1,0 +1,47 @@
+`benchmark.meta description: Stresses curve-curve fat-line refinement with near-tangent cubic pairs.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/intersection
+/graphics/path
+/graphics/point
+/graphics/primitives
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 160
+    . f = pass as Float
+    . a = hard-curve(0, f % 9)
+    . b = hard-curve(8, (f % 11) - 5)
+    . results = intersect-paths(a, b, false)
+    checksum += results.length + pass
+    for result in results
+        for hit in result.intersections
+            checksum += numeric-check(hit.t1) + numeric-check(hit.t2)
+
+-- "bench-result graphics/intersect-curve-curve-hard checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do hard-curve
+    - x-offset Coord
+    - y-offset Coord
+
+. path = Path()
+path.move-to(0 + x-offset, 80 + y-offset)
+for i in 0 .. < 5
+    . f = i as Float
+    path.cubic-curve-to()
+        - 30 + x-offset + f * 30
+        - 10 + y-offset + f
+        - 55 + x-offset + f * 30
+        - 150 + y-offset - f
+        - 80 + x-offset + f * 30
+        - 80 + y-offset
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Float
+
+(abs(value * 1000) as Size) % 1000003

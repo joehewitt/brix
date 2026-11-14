@@ -1,0 +1,142 @@
+./brix-fix
+./brix-source
+./config
+./diagnostics
+./rule-context
+./source
+/code/structure/document
+/core/table
+/data/sexp
+/data/source-sexp
+/data/source-tree
+/lang/ast/brix
+/lang/ast/brix-catalog
+/lang/brix/brix
+/lang/brix/layout
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixRowShape is Tuple
+
++ line U32
++ column U32
++ shown String
++ columns Size
++ indent Size
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-row-shapes [BrixRowShape] ?! SexpError
+    - text String
+
+. language = BrixLanguage()
+. store = use language.store
+. document = source-document-read(language, text)
+. marked = use SourceStore()
+. marks = SexpMarks(marked.latest-id)
+sexp-read(text, marked, marks)
+. shapes [BrixRowShape]
+. place = BrixCursor(text)
+for index in 0 .. < document.declarations.length
+    for outline in document.rows-of(index)
+        . row = language.render(outline)
+        . node = store.node-at(row.node)
+        if node && !store.is-comment(node)
+            . start = marks.start(node.id)
+            if start > 0
+                place.advance(start)
+            shapes += BrixRowShape
+                - place.line + 1
+                - place.column + 1
+                - shown(store, node)
+                - row.columns
+                - row.indent
+        document.discard()
+= shapes
+
+━━━━━━━━━━━━━━━━━━━━
+_ shown String
+    - store SourceStore
+    - node ImmutableTableRow'SourceNode
+
+if head != null then "($head …)" else "`${store.text(node)}`"
+
+.. head = store.head(node)
+
+━━━━━━━━━━━━━━━━━━━━
++ do lint-brix-width
+    - source LintSource
+    - context RuleContext
+
+. max = option-int(context.options, "max", 100)
+. shapes = catch? brix-row-shapes(source.text)
+=? if !shapes
+for shape in shapes
+    if shape.columns > max
+        . advice = "Name a part of it with (let …) or (lazy …), or write its arguments one to a row in a (block …)."
+        context.report("${shape.shown} makes a row ${shape.columns} columns wide, and the limit is $max. $advice", shape.line, shape.column)
+
+━━━━━━━━━━━━━━━━━━━━
++ do lint-brix-depth
+    - source LintSource
+    - context RuleContext
+
+. max = option-int(context.options, "max", 5)
+. shapes = catch? brix-row-shapes(source.text)
+=? if !shapes
+. is-deep = false
+for shape in shapes
+    if shape.indent > max && !is-deep
+        . advice = "Move the inner rows into a function of their own."
+        context.report
+            - "${shape.shown} is nested ${shape.indent} levels deep, and the limit is $max. $advice"
+            - shape.line
+            - shape.column
+    is-deep = shape.indent > max
+
+━━━━━━━━━━━━━━━━━━━━
++ do lint-brix-parse-errors
+    - source LintSource
+    - context RuleContext
+
+. fix = brix-mend-fix(source)
+. is-first = true
+for report in brix-reports(source.text)
+    context.report
+        - report.text
+        - report.place.line + 1
+        - report.place.column + 1
+        - "actionable"
+        - fix if is-first
+    is-first = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-mend-fix LintFix?
+    - source LintSource
+
+. store = use SourceStore()
+. roots = catch? sexp-read(source.text, store)
+=? null if !roots
+. fixer = BrixFixer(brix-catalog, store)
+. text = fixer.rewritten(roots)
+=? null if fixer.notes.length == 0 || text == source.text
+. edit = LintTextEdit(0, utf16-length(source.text), text, source.text)
+= LintFix("safe", "Mend Brix forms: ${"; ".join(fixer.notes)}", [edit])
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-formatted String ?! SexpError
+    - text String
+
+. store = use SourceStore()
+. roots = sexp-read(text, store)
+. nodes [ImmutableTableRow'SourceNode] = store.node(each) in roots
+= brix-file-text(store, nodes)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-brix-text-rule
+    - rule-id String
+    - source LintSource
+    - context RuleContext
+
+if rule-id == "layout/line-length"
+    lint-brix-width(source, context)
+if rule-id == "layout/depth"
+    lint-brix-depth(source, context)

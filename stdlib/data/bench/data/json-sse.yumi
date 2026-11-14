@@ -1,0 +1,42 @@
+`benchmark.meta description: Parses a deterministic JSON/SSE-style payload.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: gc-runtime,stream,compile-timing
+
+/YuCore/YuCore.h
+/data/json
+/data/stream
+/net/sse
+
+. source = DataStream'Byte(sse-source())
+. checksum = 0 as Size
+. index = 1 as Size
+
+for event in server-sent-events(source)
+    if event.data == "[DONE]"
+        break
+
+    . root = JSON(event.data) as [String = JSON]
+    . choices = root["choices"]! as [JSON]
+    . first = choices[0] as [String = JSON]
+    . delta = first["delta"]! as [String = JSON]
+
+    checksum += to-json(root).length * index
+    checksum += to-json(delta["content"]!).length
+    index += 1
+
+C:yumiBenchCollect()
+
+-- "bench-result data/json-sse checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ sse-source
+
+"".join("${sse-event(each)}\n\n" in 0 .. < 64) ++ "data: [DONE]\n\n"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ sse-event
+    - index Int
+
+event: message
+id: evt-$index
+data: {"id":"chatcmpl-fixed-$index","object":"chat.completion.chunk","created":1700000000,"model":"bench-model","choices":[{"index":0,"delta":{"role":"assistant","content":"chunk-$index alpha beta"},"finish_reason":null}],"usage":null}

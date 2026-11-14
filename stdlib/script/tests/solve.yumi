@@ -1,0 +1,300 @@
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/shapes
+/math
+/script
+/test
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ tests TestRender
+
+════════════════════
+test("Script Solve Arithmetic")
+
+"60 reached", solved(proportion(), 40, List'F64(60, 30))
+"-2.5 reached", solved(scaled(-4), 8, List'F64(10))
+"30 reached", solved(scaled(5), 30, List'F64(150))
+
+════════════════════
+test("Script Solve Curves")
+
+"30 reached", solved(wave(), 20, List'F64(50))
+"40 reached", solved(orbit(), 0, orbit-at(40))
+"0.6 reached", solved(along(square-path()), 0.4, spot-along(square-path(), 0.6)!, 0.0001)
+
+════════════════════
+test("Script Solve Out Of Reach")
+
+"90 short by 20", solved(wave(), 80, List'F64(120))
+"56 short by 8.9443", solved(proportion(), 40, List'F64(60, 20))
+"1 short by 30", solved(along(line((0, 0), (100, 0))), 0.9, List'F64(130, 0))
+"0 short by 30", solved(orbit(), 30, List'F64(130, 50))
+"0 short by 4", solved(along(square-path()), 0.1, spot-along(square-path(), 0.9)!)
+"30.2 short by 10", solved(rounded(), 30.2, List'F64(40))
+"none", solved(along(line((0, 0), (100, 0))), 2, List'F64(50, 0))
+
+════════════════════
+test("Script Solve Nearest Solution")
+
+"2 reached", solved(squared(), 1, List'F64(4))
+"-2 reached", solved(squared(), -1, List'F64(4))
+"150 reached", solved(wave(), 100, List'F64(50))
+"30 reached", solved(wave(), 89, List'F64(50))
+"180 reached", solved(orbit(), 0, orbit-at(180))
+"730 reached", solved(orbit(), 720, orbit-at(10))
+"4 reached", solved(slanted(), 0, List'F64(5))
+"4 reached", solved(cliff(), 1, List'F64(64))
+
+════════════════════
+test("Script Solve Limits")
+
+false, script-solve(wave(), 89, List'F64(50), script-solve-tolerance, 2)!.reached
+"30 reached", solved(scaled(5), 30, List'F64(160.4), 20)
+
+════════════════════
+test("Script Solve Rounding")
+
+"32", rounded(scaled(5), 32.0008, 0.01)
+"32.0007", rounded(scaled(5), 32.0007, 0.001)
+"0.304", rounded(scaled(100), 0.30449, 0.1, 100)
+true, script-solve-rounded(scaled(1000000), 1.23456789, 0.001) == 1.2346
+"0.5004", rounded(open-above(0.5), 0.5004, 0.01)
+
+════════════════════
+test("Script Solve Moves")
+
+"false", moves(rounded(), 30.5)
+"true false", moves(pinned(), 30)
+"true", moves(wave(), 90)
+"true false", moves(along(line((0, 0), (100, 0))), 1)
+"", moves(along(line((0, 0), (100, 0))), 2)
+
+════════════════════
+test("Script Solve Track")
+
+"true true", track-past(proportion(), 40, 5, 60)
+"2.5 to 10", track-gaps(proportion(), 40, 5, 60)
+"160, 50 to 160, 50", track-ends(orbit(), 0, 10, 1000)
+"40, -10 to 160, 110", track-reach(orbit(), 0, 10, 1000)
+"0, 0 to 100, 0", track-ends(along(line((0, 0), (100, 0))), 0.4, 5, 1000)
+"0, 0 to 10, 10", track-reach(along(square-path()), 0.4, 1, 1000)
+"34.2 to 34.2", track-ends(wave(), 20, 10, 1000)
+"-100 to 100", track-reach(wave(), 20, 10, 1000, 25)
+"26 to 34", track-ends(rounded(), 30.2, 1, 3)
+1, track-count(pinned-point(), 30, 5, 100)
+true, track-count(proportion(), 40, 1, 100000, 20) <= 41
+
+━━━━━━━━━━━━━━━━━━━━
+_ scaled ScriptSolveFunction
+    - factor F64
+
+:: value => List'F64(value * factor)
+
+━━━━━━━━━━━━━━━━━━━━
+_ open-above ScriptSolveFunction
+    - least F64
+
+:: value => List'F64(value) if value > least
+
+━━━━━━━━━━━━━━━━━━━━
+_ proportion ScriptSolveFunction
+
+:: value => List'F64(value, value / 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ pinned ScriptSolveFunction
+
+:: value => List'F64(value, 7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ pinned-point ScriptSolveFunction
+
+:: value => List'F64(7, 7)
+
+━━━━━━━━━━━━━━━━━━━━
+_ squared ScriptSolveFunction
+
+:: value => List'F64(value * value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ rounded ScriptSolveFunction
+
+:: value => List'F64(round(value))
+
+━━━━━━━━━━━━━━━━━━━━
+_ cliff ScriptSolveFunction
+
+:: value => List'F64(if value < 5 then value * value * value else 0.0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ slanted ScriptSolveFunction
+
+:: value => List'F64(sqrt(value * value + 9))
+
+━━━━━━━━━━━━━━━━━━━━
+_ wave ScriptSolveFunction
+
+:: value => List'F64(100 * sin(value as Degrees))
+
+━━━━━━━━━━━━━━━━━━━━
+_ orbit ScriptSolveFunction
+
+:: value => orbit-at(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ orbit-at
+    - degrees F64
+
+List'F64(100 + 60 * cos(turn), 50 + 60 * sin(turn))
+
+.. turn = degrees as Degrees as Radians
+
+━━━━━━━━━━━━━━━━━━━━
+_ along ScriptSolveFunction
+    - path Path
+
+:: value => spot-along(path, value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ spot-along
+    - path Path
+    - position F64
+
+|? position < -0.000001 || position > 1.000001
+    null
+??
+    List'F64(point.x as F64, point.y as F64)
+
+.. point = path.get-point-at-distance(max(0.0, min(position, 1.0)) * (path.length as F64))
+
+━━━━━━━━━━━━━━━━━━━━
+_ square-path
+
+rectangle(Rect(0, 0, 10, 10))
+
+━━━━━━━━━━━━━━━━━━━━
+_ solved
+    - measure ScriptSolveFunction
+    - start F64
+    - goal [F64]
+    - tolerance F64 = script-solve-tolerance
+
+|? !solution
+    "none"
+|? solution.reached
+    "${script-number-text(solution.value)} reached"
+??
+    "${script-number-text(solution.value)} short by ${script-number-text(solution.distance)}"
+
+.. solution = script-solve(measure, start, goal, tolerance)
+
+━━━━━━━━━━━━━━━━━━━━
+_ rounded
+    - measure ScriptSolveFunction
+    - value F64
+    - tolerance F64
+    - scale = 1.0
+
+script-number-text(script-solve-rounded(measure, value, tolerance, scale))
+
+━━━━━━━━━━━━━━━━━━━━
+_ moves
+    - measure ScriptSolveFunction
+    - value F64
+
+" ".join("$each" in script-solve-moves(measure, value))
+
+━━━━━━━━━━━━━━━━━━━━
+_ track-text
+    - numbers [F64]
+
+", ".join(script-number-text(round(each * 100) / 100) in numbers)
+
+━━━━━━━━━━━━━━━━━━━━
+_ track-ends
+    - measure ScriptSolveFunction
+    - start F64
+    - stride F64
+    - reach F64
+
+|? samples.length
+    "${track-text(samples[0])} to ${track-text(samples[samples.length - 1])}"
+??
+    "none"
+
+.. samples = script-solve-track(measure, start, stride, reach)
+
+━━━━━━━━━━━━━━━━━━━━
+_ track-count Index
+    - measure ScriptSolveFunction
+    - start F64
+    - stride F64
+    - reach F64
+    - limit Index = 256
+
+script-solve-track(measure, start, stride, reach, limit).length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do track-gaps
+    - measure ScriptSolveFunction
+    - start F64
+    - stride F64
+    - reach F64
+
+. samples = script-solve-track(measure, start, stride, reach)
+. least = 0.0
+. most = 0.0
+for index in 1 .. < samples.length
+    . total = 0.0
+    for place in 0 .. < samples[index].length
+        . gap = samples[index][place] - samples[index - 1][place]
+        total += gap * gap
+    . length = sqrt(total)
+    least = if index == 1 then length else min(least, length)
+    most = max(most, length)
+. low = if least >= stride / 2 then stride / 2 else least
+. high = if most <= stride * 2 then stride * 2 else most
+= "${script-number-text(low)} to ${script-number-text(high)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do track-reach
+    - measure ScriptSolveFunction
+    - start F64
+    - stride F64
+    - reach F64
+    - grain = 1.0
+
+. samples = script-solve-track(measure, start, stride, reach)
+=? "none" if !samples.length
+. least = List'F64(each in samples[0])
+. most = List'F64(each in samples[0])
+for sample in samples
+    for place in 0 .. < sample.length
+        least[place] = min(least[place], sample[place])
+        most[place] = max(most[place], sample[place])
+. low = List'F64(round(each / grain) * grain in least)
+. high = List'F64(round(each / grain) * grain in most)
+= "${track-text(low)} to ${track-text(high)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do track-past
+    - measure ScriptSolveFunction
+    - start F64
+    - stride F64
+    - reach F64
+
+. samples = script-solve-track(measure, start, stride, reach)
+. origin = measure(start)
+=? "none" if !samples.length || !origin
+. ends [String]
+for sample in List'[F64](samples[0], samples[samples.length - 1])
+    . total = 0.0
+    for place in 0 .. < sample.length
+        . gap = sample[place] - origin[place]
+        total += gap * gap
+    . length = sqrt(total)
+    ends += "${length > reach && length <= reach + stride * 2}"
+= " ".join(ends)

@@ -1,0 +1,927 @@
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/row-range
+
++ TypeId is U32
+
++ no-type TypeId = U32.max
++ invalid-type TypeId = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeData is Union
+
+| type-invalid InvalidType
+| type-class ClassType
+| type-variable VariableType
+| type-inference InferenceType
+| type-tuple TupleType
+| type-struct StructType
+| type-union UnionType
+| type-named-union NamedUnionType
+| type-function FunctionType
+| type-result ResultType
+| type-associated AssociatedType
+| type-closure ClosureType
+| type-binding BindingType
+
+━━━━━━━━━━━━━━━━━━━━
++ Runner is Interface
+
+` What is checking an instance right now. The type pass keeps the runners in a stack so a
+` closure called from another function is checked under the function that defines it.
+
+━━━━━━━━━━━━━━━━━━━━
++ IdleKit is Interface
+
+` What a checker is made of that a type pass keeps once the checker is done, for the next
+` (`TypingScratch.idle`).
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeNode is Tuple
+
++ module ModuleId
++ decl DeclId
+
+━━━━━━━━━━━━━━━━━━━━
++ InvalidType is TypeNode
+
++ reason Atom?
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassType is TypeNode
+
++ args RowRange'TypeId
++ errors RowRange'TypeId
+
+━━━━━━━━━━━━━━━━━━━━
++ TupleType is TypeNode
+
++ fields RowRange'TypeId
++ names RowRange'Atom
+
+━━━━━━━━━━━━━━━━━━━━
++ FunctionType is TypeNode
+
++ return-type TypeId
++ args RowRange'TypeId
++ errors RowRange'TypeId
++ is-c Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ VariableType is TypeNode
+
++ index U32
++ name Atom
+
+━━━━━━━━━━━━━━━━━━━━
++ InferenceType is TypeNode
+
++ scope U32
++ ordinal U32
+
+━━━━━━━━━━━━━━━━━━━━
++ StructType is TypeNode
+
++ fields RowRange'TypeId
++ names RowRange'Atom
+
+━━━━━━━━━━━━━━━━━━━━
++ UnionType is TypeNode
+
++ cases RowRange'TypeId
+
+━━━━━━━━━━━━━━━━━━━━
++ NamedUnionType is TypeNode
+
+` A union whose cases are named, for the declaration it is named for. One private to what makes it
+` is told apart by the module that makes it and its place there, which are none for any other: a
+` state machine's number among the machines of the module.
+
++ owner Atom
++ cases RowRange'TypeId
++ names RowRange'Atom
++ made-in U32 = 0
++ made-at U32 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ ResultType is TypeNode
+
++ value TypeId
++ errors RowRange'TypeId
+
+━━━━━━━━━━━━━━━━━━━━
++ ClosureType is TypeNode
+
++ enclosing U32
+
+━━━━━━━━━━━━━━━━━━━━
++ BindingForm is U32
+
+` What a binding calls when it has all its arguments: a function or method by the name of its
+` declaration, a constructor of its object, its object as a closure, or its object as a value
+` of a function type.
+| bound-function = 0
+| bound-method = 1
+| bound-constructor = 2
+| bound-closure = 3
+| bound-c-function = 4
+| bound-value = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ BindingType is TypeNode
+
+` The explicit type arguments come first in the items, then the argument types bound so far.
+` The scope is the module the binding was made in, whose overloads a call of it chooses from.
++ form BindingForm
++ scope ModuleId
++ object TypeId
++ param-count U32
++ items RowRange'TypeId
+
+━━━━━━━━━━━━━━━━━━━━
++ AssociatedType is TypeNode
+
++ owner TypeId
++ name Atom
++ args RowRange'TypeId
+
+
+━━━━━━━━━━━━━━━━━━━━
++ DeclRef is Tuple
+
++ module ModuleId
++ decl DeclId
+
+────────────────────
++ get key Size
+
+((module as Size) /lshift/ 32) /or/ (decl as Size)
+
+────────────────────
++ refers-to Bool
+    - module ModuleId
+    - decl DeclId
+
+` Whether this is the declaration `decl` of `module`.
+this.module == module && this.decl == decl
+
+━━━━━━━━━━━━━━━━━━━━
++ BuiltinClasses is Tuple
+
+` The classes of core with members the compiler answers itself: `Optional`'s `value` and
+` `has-value`, `TypeInfo`'s `name` and `key`, and `Number`'s `unit`.
+
++ optional DeclRef
++ type-info DeclRef
++ number DeclRef
+
+━━━━━━━━━━━━━━━━━━━━
++ CompletionState is U32
+
+| completion-unstarted = 0
+| completion-in-progress = 1
+| completion-done = 2
+| completion-failed = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ storage-name String
+    - storage StorageKind
+
+match storage
+    |= .storage-eager
+        "eager"
+    |= .storage-lazy
+        "lazy"
+    ??
+        "getter"
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeCompletion is Struct
+
++ completion CompletionState
++ base TypeId = no-type
++ intrinsic IntrinsicKind
++ bit-size U32
++ is-signed Bool
++ is-pointer Bool
++ is-struct Bool
++ interfaces RowRange'TypeId
++ properties RowRange'TypeProperty
++ cases RowRange'TypeCase
++ converters RowRange'TypeId
++ fromverters RowRange'TypeId
++ associated RowRange'TypeAssociated
++ alternatives RowRange'TypeId
++ delegates RowRange'TypeId
++ delegate-names RowRange'Atom
++ is-builtin Bool
++ has-variables Bool
++ has-closures Bool
++ has-equalities Bool
++ has-enums Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FactFlag is U32
+
+| flag-builtin = 0
+| flag-variables = 1
+| flag-equalities = 2
+| flag-enums = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ StorageKind is U32
+
+| storage-eager = 0
+| storage-lazy = 1
+| storage-getter = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeProperty is Struct
+
++ name Atom
++ storage-kind StorageKind
++ slot U32
++ type TypeId = no-type
++ owner TypeId = no-type
+
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeCase is Struct
+
++ name Atom?
++ type TypeId = no-type
++ is-default Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeAssociated is Struct
+
++ name Atom
++ type TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ UnitLiteral is Tuple
+
++ unit Atom?
++ ratio F64
+
+━━━━━━━━━━━━━━━━━━━━
++ UnitRatio is Tuple
+
++ multiplier F64
++ divisor F64
+
+────────────────────
++ get is-none Bool @inline
+
+multiplier == 0.0 || divisor == 0.0
+
+━━━━━━━━━━━━━━━━━━━━
++ no-ratio UnitRatio
+
+UnitRatio(0.0, 0.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeEquality is Struct
+
++ from TypeId
++ to TypeId
++ ratio UnitRatio
+
+━━━━━━━━━━━━━━━━━━━━
++ IntrinsicKind is U32
+
+| none = 0
+| class = 1
+| void = 2
+| cpointer = 3
+| cfunction = 4
+| tuple = 5
+| union = 6
+| atom = 7
+| interface = 8
+| or = 9
+| struct = 10
+| optional = 11
+| gc-type-map = 12
+| number = 13
+| int1 = 14
+| int8 = 15
+| uint8 = 16
+| int16 = 17
+| uint16 = 18
+| int32 = 19
+| uint32 = 20
+| int64 = 21
+| uint64 = 22
+| float32 = 23
+| float64 = 24
+| bool = 25
+| char = 26
+| string = 27
+| type-info = 28
+| type-relation = 29
+| table = 30
+| table-row = 31
+| table-span = 32
+| table-selection = 33
+| table-column = 34
+| immutable-table = 35
+| immutable-table-row = 36
+| immutable-table-span = 37
+| immutable-table-selection = 38
+| immutable-table-column = 39
+| index-span = 40
+| table-mark = 41
+| function = 46
+| closure = 47
+| capture = 48
+| binding = 49
+| array-builder = 50
+| style = 51
+| style-sheet = 52
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-name String
+    - type IntrinsicKind
+
+match type
+    |= .class
+        "ClassType"
+    |= .void
+        "VoidType"
+    |= .cpointer
+        "CPointerType"
+    |= .cfunction
+        "CFunctionType"
+    |= .tuple
+        "TupleType"
+    |= .union
+        "UnionType"
+    |= .atom
+        "AtomType"
+    |= .interface
+        "InterfaceType"
+    |= .or
+        "OrType"
+    |= .struct
+        "StructType"
+    |= .optional
+        "OptionalType"
+    |= .gc-type-map
+        "GCTypeMapType"
+    |= .number
+        "NumberType"
+    |= .int1
+        "Int1Type"
+    |= .int8
+        "Int8Type"
+    |= .uint8
+        "UInt8Type"
+    |= .int16
+        "Int16Type"
+    |= .uint16
+        "UInt16Type"
+    |= .int32
+        "Int32Type"
+    |= .uint32
+        "UInt32Type"
+    |= .int64
+        "Int64Type"
+    |= .uint64
+        "UInt64Type"
+    |= .float32
+        "Float32Type"
+    |= .float64
+        "Float64Type"
+    |= .bool
+        "BoolType"
+    |= .char
+        "CharType"
+    |= .string
+        "StringType"
+    |= .type-info
+        "TypeInfoType"
+    |= .type-relation
+        "TypeRelationType"
+    |= .table
+        "TableType"
+    |= .table-row
+        "TableRowType"
+    |= .table-span
+        "TableSpanType"
+    |= .table-selection
+        "TableSelectionType"
+    |= .table-column
+        "TableColumnType"
+    |= .immutable-table
+        "ImmutableTableType"
+    |= .immutable-table-row
+        "ImmutableTableRowType"
+    |= .immutable-table-span
+        "ImmutableTableSpanType"
+    |= .immutable-table-selection
+        "ImmutableTableSelectionType"
+    |= .immutable-table-column
+        "ImmutableTableColumnType"
+    |= .index-span
+        "IndexSpanType"
+    |= .table-mark
+        "TableMarkType"
+    |= .function
+        "FunctionType"
+    |= .closure
+        "ClosureType"
+    |= .capture
+        "CaptureType"
+    |= .binding
+        "BindingType"
+    |= .array-builder
+        "ArrayBuilderType"
+    |= .style
+        "StyleType"
+    |= .style-sheet
+        "StyleSheetType"
+    ??
+        "-"
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-bit-size U32
+    - type IntrinsicKind
+
+match type
+    |= .int1
+        1u32
+    |= .bool
+        1u32
+    |= .int8
+        8u32
+    |= .uint8
+        8u32
+    |= .int16
+        16u32
+    |= .uint16
+        16u32
+    |= .int32
+        32u32
+    |= .uint32
+        32u32
+    |= .float32
+        32u32
+    |= .char
+        32u32
+    |= .int64
+        64u32
+    |= .uint64
+        64u32
+    |= .float64
+        64u32
+    |= .cpointer
+        64u32
+    ??
+        0u32
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-signed Bool
+    - type IntrinsicKind
+
+match type
+    |= .number
+        true
+    |= .int1
+        true
+    |= .int8
+        true
+    |= .int16
+        true
+    |= .int32
+        true
+    |= .int64
+        true
+    |= .float32
+        true
+    |= .float64
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-pointer Bool
+    - type IntrinsicKind
+
+match type
+    |= .class
+        true
+    |= .cpointer
+        true
+    |= .closure
+        true
+    |= .capture
+        true
+    |= .style
+        true
+    |= .style-sheet
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-struct Bool
+    - type IntrinsicKind
+
+match type
+    |= .tuple
+        true
+    |= .struct
+        true
+    |= .union
+        true
+    |= .interface
+        true
+    |= .optional
+        true
+    |= .function
+        true
+    |= .binding
+        true
+    |= .gc-type-map
+        true
+    |= .type-info
+        true
+    |= .table
+        true
+    |= .table-row
+        true
+    |= .table-span
+        true
+    |= .table-selection
+        true
+    |= .table-column
+        true
+    |= .immutable-table
+        true
+    |= .immutable-table-row
+        true
+    |= .immutable-table-span
+        true
+    |= .immutable-table-selection
+        true
+    |= .immutable-table-column
+        true
+    |= .index-span
+        true
+    |= .table-mark
+        true
+    |= .array-builder
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ anonymous-root Bool
+    - type IntrinsicKind
+
+match type
+    |= .tuple
+        true
+    |= .struct
+        true
+    |= .union
+        true
+    |= .function
+        true
+    |= .cfunction
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ RelationRank is I32
+
+━━━━━━━━━━━━━━━━━━━━
++ RelationKind is U32
+
+| relation-illegal = 0
+| relation-same = 1
+| relation-equal = 2
+| relation-side-cast = 3
+| relation-unwrap-cast = 4
+| relation-up-cast = 5
+| relation-down-cast = 6
+| relation-interface-cast = 7
+| relation-or-cast = 8
+| relation-wrap-cast = 9
+| relation-fromverter = 10
+| relation-converter = 11
+| relation-common-equality = 12
+| relation-common-converter = 13
+| relation-common-up-cast = 14
+| relation-common-interface = 15
+| relation-final-cast = 16
+| relation-string-cast = 17
+| relation-interface-down-cast = 18
+
+━━━━━━━━━━━━━━━━━━━━
++ RelationReason is U32
+
+| reason-none = 0
+| reason-illegal-cast = 1
+| reason-unresolved = 2
+| reason-conflict = 3
+| reason-ambiguous = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ Relation is Struct
+
++ kind RelationKind
++ rank RelationRank
++ match Specificity
++ from TypeId = no-type
++ to TypeId = no-type
++ unified TypeId = no-type
++ case-index U32 = U32.max
++ via TypeId = no-type
++ ratio UnitRatio
++ reason RelationReason
++ converter-module ModuleId = U32.max
++ converter-decl DeclId = 0
++ explicit Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ relation-rank RelationRank
+    - kind RelationKind
+
+match kind
+    |= .relation-same
+        0i32
+    |= .relation-equal
+        10i32
+    |= .relation-side-cast
+        20i32
+    |= .relation-unwrap-cast
+        30i32
+    |= .relation-up-cast
+        30i32
+    |= .relation-down-cast
+        40i32
+    |= .relation-interface-cast
+        50i32
+    |= .relation-interface-down-cast
+        55i32
+    |= .relation-or-cast
+        60i32
+    |= .relation-wrap-cast
+        70i32
+    |= .relation-fromverter
+        80i32
+    |= .relation-converter
+        90i32
+    |= .relation-common-equality
+        100i32
+    |= .relation-common-converter
+        110i32
+    |= .relation-common-up-cast
+        120i32
+    |= .relation-common-interface
+        130i32
+    |= .relation-final-cast
+        140i32
+    |= .relation-string-cast
+        150i32
+    ??
+        -1i32
+
+━━━━━━━━━━━━━━━━━━━━
++ same-relation Relation
+    - type TypeId
+
+Relation(.relation-same, 0i32, .exact, type, type, type, U32.max, no-type, ratio, none, U32.max, 0)
+
+.. none = RelationReason.reason-none
+.. ratio = no-ratio()
+
+━━━━━━━━━━━━━━━━━━━━
++ side-cast-relation Relation
+    - source TypeId
+    - target TypeId
+
+Relation
+    - kind
+    - relation-rank(kind)
+    - match
+    - source
+    - target
+    - target
+    - U32.max
+    - no-type
+    - no-ratio()
+    - none
+    - U32.max
+    - 0
+
+.. none = RelationReason.reason-none
+
+.. kind = RelationKind.relation-side-cast
+.. match = relation-match(kind)
+
+━━━━━━━━━━━━━━━━━━━━
++ relation-name String
+    - kind RelationKind
+
+match kind
+    |= .relation-same
+        "Same"
+    |= .relation-equal
+        "Equal"
+    |= .relation-side-cast
+        "SideCast"
+    |= .relation-unwrap-cast
+        "Unwrap"
+    |= .relation-up-cast
+        "UpCast"
+    |= .relation-down-cast
+        "DownCast"
+    |= .relation-interface-down-cast
+        "InterfaceDownCast"
+    |= .relation-interface-cast
+        "InterfaceCast"
+    |= .relation-or-cast
+        "Or"
+    |= .relation-wrap-cast
+        "Wrap"
+    |= .relation-fromverter
+        "Fromverter"
+    |= .relation-converter
+        "Converter"
+    |= .relation-common-equality
+        "CommonEquality"
+    |= .relation-common-converter
+        "CommonConverter"
+    |= .relation-common-up-cast
+        "CommonUpCast"
+    |= .relation-common-interface
+        "CommonInterface"
+    |= .relation-final-cast
+        "FinalCast"
+    |= .relation-string-cast
+        "StringCast"
+    ??
+        "Illegal"
+
+━━━━━━━━━━━━━━━━━━━━
++ relation-match Specificity
+    - kind RelationKind
+
+match kind
+    |= .relation-same
+        .exact
+    |= .relation-equal
+        .exact
+    |= .relation-or-cast
+        .exact
+    |= .relation-common-equality
+        .exact
+    |= .relation-fromverter
+        .convertible
+    |= .relation-converter
+        .convertible
+    |= .relation-common-converter
+        .convertible
+    |= .relation-string-cast
+        .convertible
+    |= .relation-illegal
+        .convertible
+    ??
+        .similar
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-numeric Bool
+    - type IntrinsicKind
+
+match type
+    |= .number
+        true
+    |= .int1
+        true
+    |= .int8
+        true
+    |= .uint8
+        true
+    |= .int16
+        true
+    |= .uint16
+        true
+    |= .int32
+        true
+    |= .uint32
+        true
+    |= .int64
+        true
+    |= .uint64
+        true
+    |= .float32
+        true
+    |= .float64
+        true
+    |= .bool
+        true
+    |= .char
+        true
+    |= .cpointer
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-float Bool
+    - type IntrinsicKind
+
+match type
+    |= .float32
+        true
+    |= .float64
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-class Bool
+    - type IntrinsicKind
+
+match type
+    |= .class
+        true
+    |= .style
+        true
+    |= .style-sheet
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ intrinsic-is-tuple-like Bool
+    - type IntrinsicKind
+
+match type
+    |= .tuple
+        true
+    |= .struct
+        true
+    |= .table
+        true
+    |= .table-row
+        true
+    |= .table-span
+        true
+    |= .table-selection
+        true
+    |= .table-column
+        true
+    |= .immutable-table
+        true
+    |= .immutable-table-row
+        true
+    |= .immutable-table-span
+        true
+    |= .immutable-table-selection
+        true
+    |= .immutable-table-column
+        true
+    |= .index-span
+        true
+    |= .table-mark
+        true
+    |= .array-builder
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ Assigned is Tuple
+
++ type TypeId
++ match Specificity
++ implicit Bool = true
+
+━━━━━━━━━━━━━━━━━━━━
++ MatchScope is Tuple
+
++ start Size
++ end Size
+
+━━━━━━━━━━━━━━━━━━━━
++ TypeParamMatch is Struct
+
++ name Atom
++ type TypeId = no-type
++ is-explicit Bool
++ is-pinned Bool
++ specificity Specificity
++ has-specificity Bool
++ links U64
++ syntax-module ModuleId
++ assign-syntax SyntaxId
++ must-match Bool
++ default-syntax SyntaxId
++ constraint-syntax SyntaxId
++ constraint-op Specificity

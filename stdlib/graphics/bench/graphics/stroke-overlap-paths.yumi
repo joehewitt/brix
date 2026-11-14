@@ -1,0 +1,126 @@
+`benchmark.meta description: Strokes self-overlapping closed paths that need round pen repair patches.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: graphics,compile-timing
+
+/graphics/path
+/graphics/point
+/graphics/primitives
+/graphics/stroke
+/math
+
+. checksum = 0 as Size
+
+for pass in 0 .. < 72
+    . source = overlap-stroke-source(pass)
+    . stroked = stroke()
+        - source
+        - 18.0 + (pass % 10)
+        - .center
+        - .round-join-type
+        - .butt
+        - 5
+        - 0
+    checksum += source.count + path-score(stroked)
+
+-- "bench-result graphics/stroke-overlap-paths checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ overlap-stroke-source
+    - seed Int
+
+|? kind == 0
+    pretzel-loop(center, 64 + ((seed % 5) as Float))
+|? kind == 1
+    petal-loop(center, 70 + ((seed % 6) as Float))
+??
+    rosette-loop(center, 62 + ((seed % 7) as Float), 20 + ((seed % 4) as Float), 9, -18deg)
+
+.. center = Point(120 + ((seed % 7) as Float), 100 + ((seed % 5) as Float))
+.. kind = seed % 3
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pretzel-loop
+    - center Point
+    - radius Length
+
+. path = Path()
+. first = true
+for t in 0.0 .. < π * 2.0 by 0.11
+    . point = Point()
+        - center.x + sin(t * 3.0 + 0.35) * radius
+        - center.y + sin(t * 4.0) * radius * 0.72
+    if first
+        path.move-to(point)
+        first = false
+    else
+        path.line-to(point)
+
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do petal-loop
+    - center Point
+    - radius Length
+
+. path = Path()
+path.move-to(center + (0, -radius * 0.9))
+path.cubic-curve-to()
+    - center + (radius * 1.25, -radius * 0.72)
+    - center + (radius * 0.35, radius * 0.28)
+    - center + (radius * 0.78, radius * 0.72)
+path.cubic-curve-to()
+    - center + (radius * 0.18, radius * 1.08)
+    - center + (-radius * 0.4, radius * 0.34)
+    - center + (-radius * 0.82, radius * 0.66)
+path.cubic-curve-to()
+    - center + (-radius * 1.22, radius * 0.08)
+    - center + (-radius * 0.55, -radius * 0.72)
+    - center + (0, -radius * 0.9)
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ do rosette-loop
+    - center Point
+    - outer-radius Length
+    - inner-radius Length
+    - lobes Int
+    - rotation Radians
+
+. path = Path()
+. count = lobes * 2
+. step = (π * 2) / count
+for i in 0 .. < count
+    . a1 = rotation + step * i
+    . a2 = rotation + step * (i + 1)
+    . r1 = if i % 2 == 0 then outer-radius else inner-radius
+    . r2 = if (i + 1) % 2 == 0 then outer-radius else inner-radius
+    . bulge = outer-radius * (0.52 + ((i % 3) as Float) * 0.08)
+    . p1 = center.translate-at-angle(a1, r1)
+    . p2 = center.translate-at-angle(a2, r2)
+    . h1 = center.translate-at-angle(a1 + step * 0.42, r1 + bulge)
+    . h2 = center.translate-at-angle(a2 - step * 0.42, r2 + bulge)
+
+    if i == 0
+        path.move-to(p1)
+
+    path.cubic-curve-to(h1, h2, p2)
+
+path.close()
+= path
+
+━━━━━━━━━━━━━━━━━━━━
+_ path-score Size
+    - path Path
+
+|? !path.count
+    0
+??
+    path.count + numeric-check(path.last-point.x) + numeric-check(path.last-point.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ numeric-check Size
+    - value Coord
+
+(abs(value * 1000) as Size) % 1000003

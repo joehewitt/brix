@@ -1,0 +1,412 @@
+./binder
+./binding
+./error-sets
+./facts
+./instances
+./panics
+./shared-results
+./type-relation
+./type-store
+./type-text
+./types
+./typing-scratch
+/core/arena
+/lang/ast/ast-nodes
+/lang/ast/module
+/lang/ast/program
+
+━━━━━━━━━━━━━━━━━━━━
++ Session
+    is Usable'Void
+
+` One type pass over a program. A pass of a parallel type pass holds what the passes share
+` (`shared`), has offered them the instances its typing queued before `offered`, and keeps in
+` `local` those of them only it can intern, to type itself. It has published those of
+` `Instances.settled` before `shared-settled`, whose errors settled after their bodies ended. The
+` modules whose mains or whose functions it was seeded with (`seeded-modules`,
+` `seeded-functions`) seed it again where it starts over (`restart`).
+
++ program Program
++ bindings Bindings
++ binder Binder
++ types Types
++ relations Relations
++ scratch TypingScratch
++ instances Instances
++ facts Facts
++ errors ErrorSets
++ panics Panics
++ shared SharedTyping?
++ offered Size
++ shared-settled Size
++ local [InstanceId]
++ seeded-modules [ModuleId]
++ seeded-functions [Bool]
++ unreached-modules [ModuleId]
++ typed-amid-errors [Bool]
+_ arena Arena
+_ facts-arena Arena
+_ typing-released Bool
+_ released Bool
+
+────────────────────
++ This
+    - program Program
+
+.. bindings = Bindings()
+.. scratch = TypingScratch()
+.. types = bound-types(program, scratch)
+.. binder = Binder(bindings, program, types.builtin-classes)
+.. relations = Relations(types)
+.. instances = Instances(arena, types)
+.. facts = Facts(facts-arena, instances)
+.. errors = ErrorSets(facts-arena, types, relations, instances, facts, program)
+.. panics = Panics(types, program, instances, facts)
+
+────────────────────
++ do note-seed
+    - module ModuleId
+    - functions Bool
+
+seeded-modules += module
+seeded-functions += functions
+
+────────────────────
++ do retarget
+    - next Program
+
+program = next
+binder.retarget(next)
+types.program = next
+relations.program = next
+panics.program = next
+errors.retarget(next)
+scratch.idle.clear()
+
+────────────────────
++ do restart
+
+` Drops everything typed so far for a pass that knows from the start every property the
+` pass so far found tracked (`Panics.seed`).
+. tracked = panics.tracked-keys()
+. traces-lint = facts.traces-lint
+release()
+released = false
+typing-released = false
+arena = Arena()
+facts-arena = Arena()
+scratch = TypingScratch()
+bindings = Bindings()
+types = bound-types(program, scratch)
+binder = Binder(bindings, program, types.builtin-classes)
+relations = Relations(types)
+instances = Instances(arena, types)
+facts = Facts(facts-arena, instances)
+facts.traces-lint = traces-lint
+errors = ErrorSets(facts-arena, types, relations, instances, facts, program)
+panics = Panics(types, program, instances, facts)
+panics.seed(tracked)
+offered = 0
+local.clear()
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+────────────────────
++ do seal
+
+` Seals the type store over every type the instances typed and the facts still name, and the
+` instance table with it, so nothing that runs after typing can intern or complete a type or
+` schedule an instance. An instance that raises errors is first given the type it returns, which
+` emission can no longer make, and so is a member a union forwards whose cases let errors out,
+` and a local rule of one, for the function the reference may make of the rule, an action
+` of one the reference runs in a function of its own, and a pattern of one given to a rule
+` that calls a local rule, with the rule it is given to.
+for position in 0 .. < instances.signatures.length
+    . signature = instances.signatures[position]
+    if signature.errors.count == 0 || signature.returns == invalid-type
+        continue
+    . mark = scratch.types.mark
+    for offset in 0 .. < signature.errors.count
+        scratch.types.push(instances.signature-types[signature.errors.start + offset])
+    . value = if signature.returns == no-type then types.void-type else signature.returns
+    instances.set-result(position as InstanceId, result-type(types, value, mark))
+for position in 0 .. < facts.local-rules.length
+    . row = facts.local-rules[position]
+    . signature = instances.signatures[row.instance]
+    if signature.errors.count != 0 && row.answer != no-type && row.answer != invalid-type
+        . mark = scratch.types.mark
+        for offset in 0 .. < signature.errors.count
+            scratch.types.push(instances.signature-types[signature.errors.start + offset])
+        facts.local-rules[position].result = result-type(types, row.answer, mark)
+        if row.adapted != no-type
+            . relayed = scratch.types.mark
+            for offset in 0 .. < signature.errors.count
+                scratch.types.push(instances.signature-types[signature.errors.start + offset])
+            facts.local-rules[position].relayed = result-type(types, row.adapted, relayed)
+for position in 0 .. < facts.outlined.length
+    . row = facts.outlined[position]
+    . signature = instances.signatures[row.instance]
+    . value = facts.node-type(row.instance, row.arm)
+    if signature.errors.count != 0 && value != no-type && value != invalid-type
+        . mark = scratch.types.mark
+        for offset in 0 .. < signature.errors.count
+            scratch.types.push(instances.signature-types[signature.errors.start + offset])
+        facts.outlined[position].result = result-type(types, value, mark)
+. raised = false
+for position in 0 .. < facts.pattern-arguments.length
+    . row = facts.pattern-arguments[position]
+    . signature = instances.signatures[row.instance]
+    if row.local != 0 && signature.errors.count != 0 && answered
+        . mark = scratch.types.mark
+        for offset in 0 .. < signature.errors.count
+            scratch.types.push(instances.signature-types[signature.errors.start + offset])
+        facts.pattern-arguments[position].raised = result-type(types, row.answer, mark)
+        raised = true
+    .. answered = row.answer != no-type && row.answer != invalid-type
+if raised
+    note-raising-rules()
+for position in 0 .. < facts.forwards.length
+    settle-forward(position)
+for position in 0 .. < instances.rows.length
+    . row = instances.rows[position]
+    if row.state == .instance-unstarted
+        continue
+    . signature = instances.signatures[position]
+    types.reach(row.self-type)
+    types.reach(row.yields)
+    types.reach(signature.returns)
+    types.reach(signature.declared-returns)
+    types.reach(signature.result)
+    for offset in signature.args.start - signature.param-count .. < signature.args.start + signature.args.count
+        types.reach(instances.signature-types[offset])
+    for offset in signature.errors.start .. < signature.errors.start + signature.errors.count
+        types.reach(instances.signature-types[offset])
+    for offset in row.step-errors.start .. < row.step-errors.start + row.step-errors.count
+        types.reach(instances.signature-types[offset])
+    if row.slot-start != U32.max
+        for offset in row.slot-start .. < row.slot-start + row.slot-count
+            types.reach(facts.slot-types[offset])
+    if row.node-start != U32.max
+        for offset in row.node-start .. < row.node-start + row.subtree.count
+            types.reach(facts.node-types[offset])
+for held in facts.loose-types
+    types.reach(held.type)
+for held in facts.answer-types
+    types.reach(held.type)
+for row in facts.pattern-arguments
+    types.reach(row.result)
+    types.reach(row.answer)
+    types.reach(row.stream)
+    types.reach(row.buffer)
+    types.reach(row.helper)
+    types.reach(row.raised)
+for row in facts.raising-rules
+    types.reach(row.given)
+    types.reach(row.result)
+for row in facts.local-rules
+    types.reach(row.answer)
+    types.reach(row.result)
+    types.reach(row.stream)
+    types.reach(row.buffer)
+    types.reach(row.adapted)
+    types.reach(row.relayed)
+for row in facts.outlined
+    types.reach(row.result)
+for forward in facts.forwards
+    types.reach(forward.result)
+for fact in facts.conversions
+    types.reach(fact.from)
+    types.reach(fact.to)
+for fact in facts.conversion-parts
+    types.reach(fact.from)
+    types.reach(fact.to)
+for fact in facts.pairs
+    types.reach(fact.from)
+    types.reach(fact.to)
+    types.reach(fact.unified)
+for type in facts.equalities
+    types.reach(type)
+for type in facts.carried
+    types.reach(type)
+for fact in facts.unwrapped
+    types.reach(fact.type)
+for fact in facts.relations
+    types.reach(fact.from)
+    types.reach(fact.to)
+for fact in facts.forces
+    types.reach(fact.operand)
+    types.reach(fact.result)
+for fact in facts.declared-values
+    types.reach(fact.declared)
+    types.reach(fact.found)
+for fact in facts.context-casts
+    types.reach(fact.target)
+for fact in facts.case-owners
+    types.reach(fact.owner)
+for table in facts.witness-tables
+    types.reach(table.value)
+    types.reach(table.interface)
+for table in facts.dynamic-witnesses
+    types.reach(table.value)
+    types.reach(table.interface)
+for func in facts.witness-funcs
+    types.reach(func.interface)
+for call in facts.witness-calls
+    types.reach(call.interface)
+for diagnostic in facts.diagnostics
+    types.reach(diagnostic.from)
+    types.reach(diagnostic.to)
+for type in facts.diagnostic-mentions
+    types.reach(type)
+for material in facts.materials
+    types.reach(material.type)
+    types.reach(material.interface)
+for body in facts.rollback-bodies
+    types.reach(body.held)
+    types.reach(body.kept)
+for body in facts.storage-bodies
+    types.reach(body.context)
+for trigger in facts.markup-triggers
+    types.reach(trigger.target)
+    types.reach(trigger.found)
+    types.reach(trigger.host)
+    types.reach(trigger.changes)
+types.seal()
+instances.seal()
+
+────────────────────
+_ do note-raising-rules
+
+` Records, for each call of a rule that gives it a pattern whose function may raise errors,
+` what the function of the rule made for such a pattern returns: the rule's answer or one of
+` the errors the pattern's function returns. A rule that raises errors of its own has none.
+for fact in facts.calls
+    if fact.callee == no-instance || fact.instance == instances.dead || raises
+        continue
+    .. raises = instances.signatures[fact.callee].errors.count != 0
+    . tree = program.modules[instances.rows[fact.instance].module].tree
+    do match? tree.nodes[fact.syntax]
+        | .node-stream-call(call)
+            for offset in 0 .. < call.args.count
+                . argument = tree.children[call.args.start + offset]
+                . expression = argument
+                do match? tree.nodes[argument]
+                    | .node-argument(named)
+                        expression = named.expr
+                . given = raised-pattern(fact.instance, expression)
+                if given != no-type
+                    note-raising-rule(fact.callee, fact.instance, given)
+
+────────────────────
+_ do raised-pattern TypeId
+    - instance InstanceId
+    - syntax SyntaxId
+
+` What the function made of a pattern an instance gives a rule returns where it may raise
+` errors, or none.
+for row in facts.pattern-arguments
+    if row.instance == instance && row.syntax == syntax
+        = row.raised
+= no-type
+
+────────────────────
+_ do note-raising-rule
+    - callee InstanceId
+    - caller InstanceId
+    - given TypeId
+
+` Records what a rule given a pattern whose function returns `given` returns, once, and
+` what the function of each of its local rules does.
+for row in facts.raising-rules
+    if row.instance == callee && row.given == given
+        =
+. returns = instances.signatures[callee].returns
+if returns == no-type || returns == invalid-type
+    =
+. signature = instances.signatures[caller]
+. mark = scratch.types.mark
+for offset in 0 .. < signature.errors.count
+    scratch.types.push(instances.signature-types[signature.errors.start + offset])
+facts.raising-rules.append(RaisingRule(callee, given, result-type(types, returns, mark)))
+for position in 0 .. < facts.local-rules.length
+    . local = facts.local-rules[position]
+    if local.instance != callee || local.answer == no-type || local.answer == invalid-type
+        continue
+    . held = scratch.types.mark
+    for offset in 0 .. < signature.errors.count
+        scratch.types.push(instances.signature-types[signature.errors.start + offset])
+    facts.raising-rules.append
+        - RaisingRule(callee, given, result-type(types, local.answer, held), local.syntax)
+
+────────────────────
+_ do settle-forward
+    - position Size
+
+` Gives a member a union forwards the type its function answers with, where the call of a
+` case lets errors out: those of every case that does, each once.
+. forward = facts.forwards[position]
+. mark = scratch.types.mark
+. call = facts.first-call(forward.instance, forward.syntax)
+while call != no-fact
+    . fact = facts.calls[call]
+    if fact.propagates && fact.callee != no-instance
+        . signature = instances.signatures[fact.callee]
+        for offset in 0 .. < signature.errors.count
+            . error = instances.signature-types[signature.errors.start + offset]
+            . known = false
+            for held in mark .. < scratch.types.length
+                if scratch.types[held] == error
+                    known = true
+            if !known
+                scratch.types.push(error)
+    call = fact.next
+if scratch.types.length == mark || forward.value == invalid-type
+    scratch.types.rewind(mark)
+    =
+. value = if forward.value == no-type then types.void-type else forward.value
+facts.forwards[position].result = result-type(types, value, mark)
+
+────────────────────
++ do release-typing
+
+` Frees everything the type pass needed only while it ran: the facts, bindings, panic marks,
+` relation memo, and the scratch stacks. Types and instances survive for emission, so
+` the types must be sealed first.
+if typing-released
+    =
+typing-released = true
+panics.release()
+facts.release()
+facts-arena.release()
+bindings.release()
+relations.release()
+scratch.release()
+
+────────────────────
++ do release
+
+if released
+    =
+released = true
+release-typing()
+instances.release()
+types.release()
+arena.release()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bound-types Types
+    - program Program
+    - scratch TypingScratch
+
+. types = Types(program, scratch)
+types.bind-types()
+types.declare-unit-equalities()
+= types

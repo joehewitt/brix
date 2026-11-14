@@ -1,0 +1,693 @@
+
+/core/markup
+/test
+/tui
+/tui/text
+/units
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("TUI Structural Content Invalidation")
+cases.run(tui-structural-content-invalidation-tests)
+cases = cases.then("TUI Transparent Markup Regions", tui-transparent-markup-region-tests)
+cases = cases.then("TUI Flex Inner Size", tui-flex-inner-size-tests)
+cases = cases.then("TUI Masonry Layout", tui-masonry-layout-tests)
+cases = cases.then("TUI Flex Spacing Layout", tui-flex-spacing-layout-tests)
+cases = cases.then("TUI Flow Spacing Layout", tui-flow-spacing-layout-tests)
+cases = cases.then("TUI Box Measurement Protocol", tui-box-measurement-protocol-tests)
+cases = cases.then("TUI Rich Text Measurement", tui-rich-text-measurement-tests)
+cases = cases.then("TUI Absolute Position Layout", tui-absolute-position-layout-tests)
+cases = cases.then("TUI Absolute Anchor Layout", tui-absolute-anchor-layout-tests)
+cases = cases.then("TUI Dynamic Absolute Size Frames", tui-dynamic-absolute-size-frame-tests)
+cases = cases.then("TUI Style Target Generated Content", tui-style-target-generated-content-tests)
+cases = cases.then("TUI Hit Test Paint Order", tui-hit-test-paint-order-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-structural-content-invalidation-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col
+    <Box host • flow-col
+        <TextBox first "a"
+    <TextBox after "z"
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 10, 10)
+demo.update-layout()
+
+. added = TextBox("b")
+markup-append(host, added)
+demo.markup-batch-queue.checkpoint()
+demo.update-layout()
+
+t = t.expect("structural append updates host inner height", 2, host.inner-height)
+t = t.expect("structural append updates parent inner height", 3, demo.inner-height)
+t = expect-bounds(t, "structural append after", after, 0, 2, 10, 1)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-transparent-markup-region-tests TestCase
+    - t TestCase
+
+<TuiTransparentRegionDemo demo • flex-row
+
+markup-mount-root(demo, demo)
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 40, 4)
+demo.invalidate-layout()
+demo.update-layout()
+
+. region = demo.%first-child!
+. first = region.%first-child!
+. second = region.child-at(1)
+. branch = region.%next-sibling!
+. preview = branch.%first-child!
+
+t = expect-bounds(t, "transparent loop first", first, 0, 0, 10, 4)
+t = expect-bounds(t, "transparent loop second", second!, 10, 0, 10, 4)
+t = expect-bounds(t, "transparent branch preview", preview, 20, 0, 20, 4)
+
+demo.insert-item()
+demo.markup-batch-queue.checkpoint()
+demo.update-layout()
+
+. inserted = region.child-at(1)
+. shifted = region.child-at(2)
+t = expect-bounds(t, "transparent loop inserted", inserted!, 8, 0, 8, 4)
+t = expect-bounds(t, "transparent loop shifted", shifted!, 16, 0, 8, 4)
+t = expect-bounds(t, "transparent branch after insert", preview, 24, 0, 16, 4)
+t = t.check("transparent region hit test", demo.hit-test((9, 1)) == inserted!)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-flex-inner-size-tests TestCase
+    - t TestCase
+
+. overflow = FlexInnerTestHost(Orientation.horizontal)
+markup-mount-root(overflow, overflow)
+markup-append(overflow, FixedTextBox("a", 28))
+markup-append(overflow, FixedTextBox("b", 28))
+markup-append(overflow, FixedTextBox("c", 28))
+overflow.markup-batch-queue.checkpoint()
+overflow.bounds = Rect(0, 0, 60, 10)
+overflow.update-layout()
+
+t = t.expect("horizontal overflow inner width", 84, overflow.inner-width)
+
+. underflow = FlexInnerTestHost(Orientation.horizontal)
+markup-mount-root(underflow, underflow)
+markup-append(underflow, FixedTextBox("a", 20))
+markup-append(underflow, FixedTextBox("b", 20))
+underflow.markup-batch-queue.checkpoint()
+underflow.bounds = Rect(0, 0, 60, 10)
+underflow.update-layout()
+
+t = t.expect("horizontal underflow inner width", 40, underflow.inner-width)
+
+. mixed = FlexInnerTestHost(Orientation.horizontal)
+markup-mount-root(mixed, mixed)
+. mixed-fixed = FixedTextBox("a", 10)
+<Box mixed-flex • flex:1
+. mixed-trailing = FixedTextBox("z", 10)
+markup-append(mixed, mixed-fixed)
+markup-append(mixed, mixed-flex)
+markup-append(mixed, mixed-trailing)
+mixed.markup-batch-queue.checkpoint()
+mixed.bounds = Rect(0, 0, 60, 10)
+mixed.update-layout()
+
+t = expect-bounds(t, "mixed fixed", mixed-fixed, 0, 0, 10, 10)
+t = expect-bounds(t, "mixed flex", mixed-flex, 10, 0, 40, 10)
+t = expect-bounds(t, "mixed trailing", mixed-trailing, 50, 0, 10, 10)
+t = t.expect("mixed inner width", 60, mixed.inner-width)
+
+. filtered = FlexInnerTestHost(Orientation.horizontal)
+markup-mount-root(filtered, filtered)
+markup-append(filtered, FixedTextBox("v", 12))
+markup-append(filtered, HiddenFixedTextBox("hidden", 30))
+markup-append(filtered, AbsoluteFixedTextBox("absolute", 30))
+filtered.markup-batch-queue.checkpoint()
+filtered.bounds = Rect(0, 0, 60, 10)
+filtered.update-layout()
+
+t = t.expect("filtered inner width ignores inactive children", 12, filtered.inner-width)
+
+. rounded = FlexInnerTestHost(Orientation.horizontal)
+markup-mount-root(rounded, rounded)
+<Box rounded-a • flex:1
+<Box rounded-b • flex:1
+<Box rounded-c • flex:1
+. rounded-tail = FixedTextBox("z", 1)
+markup-append(rounded, rounded-a)
+markup-append(rounded, rounded-b)
+markup-append(rounded, rounded-c)
+markup-append(rounded, rounded-tail)
+rounded.markup-batch-queue.checkpoint()
+rounded.bounds = Rect(0, 0, 11, 4)
+rounded.update-layout()
+
+t = expect-bounds(t, "rounded first flex", rounded-a, 0, 0, 3, 4)
+t = expect-bounds(t, "rounded second flex", rounded-b, 3, 0, 3, 4)
+t = expect-bounds(t, "rounded remainder flex", rounded-c, 6, 0, 4, 4)
+t = expect-bounds(t, "rounded trailing fixed", rounded-tail, 10, 0, 1, 4)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-masonry-layout-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo vertical • masonry-col masonry-cols:2
+    <MasonryFixedBox va
+        fixed-width = 3
+        fixed-height = 3
+    <MasonryFixedBox vb
+        fixed-width = 3
+        fixed-height = 2
+    <MasonryFixedBox vc
+        fixed-width = 3
+        fixed-height = 2
+    <MasonryFixedBox vd
+        fixed-width = 3
+        fixed-height = 1
+
+vertical.markup-batch-queue.checkpoint()
+vertical.bounds = Rect(0, 0, 10, 10)
+vertical.update-layout()
+
+t = expect-bounds(t, "masonry vertical a", va, 0, 0, 5, 3)
+t = expect-bounds(t, "masonry vertical b", vb, 5, 0, 5, 2)
+t = expect-bounds(t, "masonry vertical c", vc, 5, 2, 5, 2)
+t = expect-bounds(t, "masonry vertical d", vd, 0, 3, 5, 1)
+t = t.expect("masonry vertical inner width", 10, vertical.inner-width)
+t = t.expect("masonry vertical inner height", 4, vertical.inner-height)
+
+<TuiStyleDemo horizontal • masonry-row masonry-rows:2
+    <MasonryFixedBox ha
+        fixed-width = 4
+        fixed-height = 1
+    <MasonryFixedBox hb
+        fixed-width = 2
+        fixed-height = 1
+    <MasonryFixedBox hc
+        fixed-width = 3
+        fixed-height = 1
+    <MasonryFixedBox hd
+        fixed-width = 1
+        fixed-height = 1
+
+horizontal.markup-batch-queue.checkpoint()
+horizontal.bounds = Rect(0, 0, 12, 5)
+horizontal.update-layout()
+
+t = expect-bounds(t, "masonry horizontal a", ha, 0, 0, 4, 3)
+t = expect-bounds(t, "masonry horizontal b", hb, 0, 3, 2, 2)
+t = expect-bounds(t, "masonry horizontal c", hc, 2, 3, 3, 2)
+t = expect-bounds(t, "masonry horizontal d", hd, 4, 0, 1, 3)
+t = t.expect("masonry horizontal inner width", 5, horizontal.inner-width)
+t = t.expect("masonry horizontal inner height", 5, horizontal.inner-height)
+
+<TuiStyleDemo auto-count • masonry-col masonry-min-col:5
+    <MasonryFixedBox auto-a
+        fixed-width = 1
+        fixed-height = 1
+    <MasonryFixedBox auto-b
+        fixed-width = 1
+        fixed-height = 1
+    <MasonryFixedBox auto-c
+        fixed-width = 1
+        fixed-height = 1
+
+auto-count.markup-batch-queue.checkpoint()
+auto-count.bounds = Rect(0, 0, 11, 10)
+auto-count.update-layout()
+t = expect-bounds(t, "masonry auto first resize a", auto-a, 0, 0, 6, 1)
+t = expect-bounds(t, "masonry auto first resize b", auto-b, 6, 0, 5, 1)
+t = expect-bounds(t, "masonry auto first resize c", auto-c, 0, 1, 6, 1)
+
+auto-count.arrange-bounds(Rect(0, 0, 16, 10))
+auto-count.update-layout()
+t = expect-bounds(t, "masonry auto second resize a", auto-a, 0, 0, 6, 1)
+t = expect-bounds(t, "masonry auto second resize b", auto-b, 6, 0, 5, 1)
+t = expect-bounds(t, "masonry auto second resize c", auto-c, 11, 0, 5, 1)
+
+<TuiStyleDemo gaps • masonry-col masonry-cols:2 masonry-col-gap:1 masonry-row-gap:1
+    <MasonryFixedBox ga
+        fixed-width = 1
+        fixed-height = 3
+    <MasonryFixedBox gb
+        fixed-width = 1
+        fixed-height = 1
+    <MasonryFixedBox gc
+        fixed-width = 1
+        fixed-height = 1
+
+gaps.markup-batch-queue.checkpoint()
+gaps.bounds = Rect(0, 0, 9, 10)
+gaps.update-layout()
+
+t = expect-bounds(t, "masonry gap a", ga, 0, 0, 4, 3)
+t = expect-bounds(t, "masonry gap b", gb, 5, 0, 4, 1)
+t = expect-bounds(t, "masonry gap c", gc, 5, 2, 4, 1)
+t = t.expect("masonry gap inner height", 3, gaps.inner-height)
+
+<TuiStyleDemo rich-demo • masonry-col masonry-cols:1
+    <MarkdownText masonry-rich "one two three four"
+    <TextBox masonry-after "after"
+
+rich-demo.markup-batch-queue.checkpoint()
+rich-demo.bounds = Rect(0, 0, 5, 10)
+rich-demo.update-layout()
+
+t = t.expect("masonry rich text contributes wrapped height", 5, rich-demo.inner-height)
+t = expect-bounds(t, "masonry rich following child", masonry-after, 0, 4, 5, 1)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-flex-spacing-layout-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flex-col p:1
+    <TextBox a "aa" • mt:1 mr:1 mb:1 ml:2
+    <Box b • flex:1 mx:1 py:1
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 12, 10)
+demo.update-layout()
+
+t = expect-bounds(t, "flex spaced a", a, 3, 2, 7, 1)
+t = expect-bounds(t, "flex spaced b", b, 2, 4, 8, 5)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-flow-spacing-layout-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col p:1
+    <TextBox a "abc" • mx:2 mb:1
+    <TextBox b "de" • px:1
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 12, 20)
+demo.update-layout()
+
+t = t.expect("flow spaced inner width", 7, demo.inner-width)
+t = t.expect("flow spaced inner height", 3, demo.inner-height)
+t = expect-bounds(t, "flow spaced a", a, 3, 1, 6, 1)
+t = expect-bounds(t, "flow spaced b", b, 1, 3, 10, 1)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-box-measurement-protocol-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col p:1
+    <TextBox padded "abc" • m:1 p:1
+    <TextBox invisible "zz"
+        display = Display.invisible
+    <TextBox hidden "hidden"
+        display = Display.hidden
+
+demo.markup-batch-queue.checkpoint()
+
+. measure = demo.measure()
+t = t.expect("flow measure content width uses child outer width", 7, measure.content-size.width)
+t = t.expect("flow measure content height skips hidden", 6, measure.content-size.height)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-rich-text-measurement-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col
+    <MarkdownText rich "one two three four"
+        max-width = SizeSpec.coord(5)
+
+demo.markup-batch-queue.checkpoint()
+
+. measure = rich.measure()
+t = t.expect("rich text max width measures wrapped width", 5, measure.content-size.width)
+t = t.expect("rich text max width measures wrapped height", 4, measure.content-size.height)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-absolute-position-layout-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col border p:1
+    <TextBox flow-a "a"
+    <TextBox abs-left "absolute" • absolute m:1 p:1
+        left = 2
+        top = 1
+    <TextBox abs-corner "xy" • absolute
+        right = 3
+        bottom = 2
+    <Box abs-stretch • absolute m:1
+        left = 1
+        right = 2
+        top = 0
+        bottom = 3
+    <Box abs-parent • absolute flex-col p:1
+        left = 4
+        right = 4
+        top = 2
+        bottom = 1
+        <TextBox abs-child "z"
+    <TextBox flow-b "bb"
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 20, 10)
+demo.update-layout()
+
+t = expect-bounds(t, "flow a unaffected", flow-a, 2, 2, 16, 1)
+t = expect-bounds(t, "flow b unaffected", flow-b, 2, 3, 16, 1)
+t = t.expect("flow inner width ignores absolutes", 2, demo.inner-width)
+t = t.expect("flow inner height ignores absolutes", 2, demo.inner-height)
+
+t = expect-bounds(t, "absolute left top outer margin", abs-left, 5, 4, 10, 3)
+t = expect-bounds(t, "absolute right bottom", abs-corner, 13, 5, 2, 1)
+t = expect-bounds(t, "absolute stretched margin box", abs-stretch, 4, 3, 11, 1)
+t = expect-bounds(t, "absolute parent", abs-parent, 6, 4, 8, 3)
+t = expect-bounds(t, "absolute child laid out", abs-child, 7, 5, 6, 1)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-absolute-anchor-layout-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col border p:1
+    <Box start-point • absolute
+        left = .anchor-start
+        top = .anchor-start
+        width = 2
+        height = 1
+    <Box center-point • absolute
+        left = .anchor-center
+        top = .anchor-center
+        width = 4
+        height = 2
+    <Box center-with-far-edge • absolute
+        left = .anchor-center
+        right = 0
+        top = .anchor-center
+        bottom = 0
+        width = 4
+        height = 2
+    <Box end-point • absolute
+        right = .anchor-end
+        bottom = .anchor-end
+        width = 3
+        height = 2
+    <Box percent-center • absolute
+        left = 50%
+        top = 50%
+        width = 4
+        height = 2
+    <Box percent-end • absolute
+        right = 100%
+        bottom = 100%
+        width = 2
+        height = 1
+    <Box margin-center • absolute
+        left = .anchor-center
+        top = .anchor-center
+        margin-left = 2
+        margin-top = 2
+        width = 4
+        height = 2
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 20, 10)
+demo.update-layout()
+
+t = expect-bounds(t, "anchor start", start-point, 2, 2, 2, 1)
+t = expect-bounds(t, "anchor center", center-point, 8, 4, 4, 2)
+t = expect-bounds(t, "anchor center beats far edge", center-with-far-edge, 8, 4, 4, 2)
+t = expect-bounds(t, "anchor end", end-point, 15, 6, 3, 2)
+t = expect-bounds(t, "percent center", percent-center, 8, 4, 4, 2)
+t = expect-bounds(t, "percent end", percent-end, 16, 7, 2, 1)
+t = expect-bounds(t, "margin offsets centered anchor", margin-center, 9, 5, 4, 2)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-style-target-generated-content-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo • flow-col
+    <StyleTargetLabel target "row" • generated-chevron
+        background-color = AnsiColor(0)
+    <TextBox after "after"
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 10, 4)
+demo.update-layout()
+
+. generated = target.%next-sibling!
+t = expect-bounds(t, "style target generated chevron", generated, 8, 0, 1, 1)
+t = expect-bounds(t, "style target flow sibling", after, 0, 1, 10, 1)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-dynamic-absolute-size-frame-tests TestCase
+    - t TestCase
+
+<TuiDynamicAbsoluteSizeFrameDemo demo
+
+demo.markup-batch-queue.checkpoint()
+demo.bounds = Rect(0, 0, 80, 24)
+demo.update-layout()
+
+for frame in 1 .. 2
+    demo.advance-frame()
+    demo.markup-batch-queue.checkpoint()
+    demo.update-layout()
+    t = expect-bounds
+        - t
+        - "dynamic absolute size frame $frame"
+        - demo.overlay
+        - demo.left
+        - demo.top
+        - 42
+        - 14
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do tui-hit-test-paint-order-tests TestCase
+    - t TestCase
+
+<TuiStyleDemo demo
+    <Box under
+    <Box over
+
+demo.bounds = Rect(0, 0, 10, 5)
+under.bounds = Rect(1, 1, 5, 3)
+over.bounds = Rect(2, 1, 5, 3)
+
+t = t.check("hit later painted overlapping sibling", demo.hit-test((3, 2)) == over)
+t = t.check("hit earlier sibling outside overlap", demo.hit-test((1, 2)) == under)
+t = t.check("hit parent outside children", demo.hit-test((9, 4)) as Pointer == demo as Pointer)
+
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do expect-bounds TestCase
+    - t TestCase
+    - label String
+    - box Box
+    - x Coord
+    - y Coord
+    - width Coord
+    - height Coord
+
+t = t.expect("$label x", x, box.bounds.x)
+t = t.expect("$label y", y, box.bounds.y)
+t = t.expect("$label width", width, box.bounds.width)
+t = t.expect("$label height", height, box.bounds.height)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleTargetLabel is TextBox
+
++ style-target-fixture = true
+
+• generated-chevron
+    padding-right = 2
+
+    <Label (after) ">"
+        position = absolute
+        anchor = style-target
+        right = 1
+        align-y = center
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiStyleDemo is Box
+    is MarkupBatch
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiDynamicAbsoluteSizeFrameDemo is TuiStyleDemo
+
++ overlay-width Coord = 30
++ overlay-height Coord = 12
++ left Coord = 0
++ top Coord = 0
+
+────────────────────
+
+<Box overlay • absolute flow-col border-double
+    left = #left
+    top = #top
+    min-width = SizeSpec.coord(#overlay-width)
+    max-width = SizeSpec.coord(#overlay-width)
+    min-height = SizeSpec.coord(#overlay-height)
+    max-height = SizeSpec.coord(#overlay-height)
+
+────────────────────
++ do advance-frame
+
+overlay-width = 40
+overlay-height = 12
+left += 1
+top = (top + 1) % 13
+
+━━━━━━━━━━━━━━━━━━━━
++ FlexInnerTestHost is Box
+    is MarkupBatch
+
++ orient Orientation
++ markup-batch-queue := MarkupBatchQueue(this)
+
+• This
+    layout = FlexLayout(#orient)
+
+────────────────────
++ This
+    - orient
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ FixedTextBox is TextBox
+
++ fixed-width Coord
+
+• This
+    min-width = SizeSpec.coord(#fixed-width)
+    max-width = SizeSpec.coord(#fixed-width)
+
+────────────────────
++ This
+    - text String
+    - fixed-width
+
+super(text)
+
+━━━━━━━━━━━━━━━━━━━━
++ MasonryFixedBox is Box
+
++ fixed-width Coord = 0
++ fixed-height Coord = 0
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ measured-content-size PSize
+    - query MeasureQuery
+
+PSize(fixed-width, fixed-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ HiddenFixedTextBox is FixedTextBox
+
+• This
+    display = Display.hidden
+
+────────────────────
++ This
+    - text String
+    - fixed-width Coord
+
+super(text, fixed-width)
+
+━━━━━━━━━━━━━━━━━━━━
++ AbsoluteFixedTextBox is FixedTextBox
+
+• This
+    position = absolute
+    left = 0
+    top = 2
+
+────────────────────
++ This
+    - text String
+    - fixed-width Coord
+
+super(text, fixed-width)
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiRegionItem
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ TuiTransparentRegionDemo is Box
+    is MarkupBatch
+
++ items [TuiRegionItem] = List'TuiRegionItem([TuiRegionItem("a", "A"), TuiRegionItem("b", "B")])
++ show-preview = true
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+for item in #items keyed by item.id
+    <TextBox = item.text
+        flex = 1
+
+if #show-preview
+    <TextBox "P" • flex:2
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do insert-item
+
+items = List'TuiRegionItem
+    - [TuiRegionItem("a", "A"), TuiRegionItem("c", "C"), TuiRegionItem("b", "B")]

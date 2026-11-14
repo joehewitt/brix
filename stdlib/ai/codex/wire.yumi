@@ -1,0 +1,927 @@
+/ai/imaging
+/ai/media
+/ai/model
+/data/json
+/data/jsonrpc
+/stream/aggregate
+
++ codex-provider-id = "codex"
++ codex-command-tool = "commandExecution"
++ codex-patch-tool = "fileChange"
++ codex-agent-tool = "collabAgent"
++ codex-image-tool = "imageView"
+_ codex-thread-part = "thread"
+_ codex-own-tools = ["view_image"]
+_ codex-signed-out-text = "Codex is not signed in. Run \"codex login\" in a terminal, then try again."
+_ codex-api-account-text = "Codex is signed in with an API key, which bills an API account. Run \"codex login\" in a terminal and sign in with ChatGPT."
+_ codex-client-name = "yumi"
+_ codex-client-title = "Yumi"
+_ codex-client-version = "0.1.0"
+_ codex-quiet-methods = ["remoteControl/status/changed", "thread/status/changed", "turn/diff/updated", "item/fileChange/patchUpdated", "item/commandExecution/outputDelta"]
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexPoint is Tuple
+
++ thread String
++ turn String? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexMark is Tuple
+
++ point CodexPoint
++ parent CodexPoint? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexResume is Tuple
+
++ point CodexPoint? = null
++ forks = false
++ is-merged = false
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexOpen is Tuple
+
++ method String
++ params [String = JSON]
+
+━━━━━━━━━━━━━━━━━━━━
++ CodexDecoder
+
++ thread String?
++ turn String?
++ model = ""
++ parent CodexPoint?
+
+_ begun = Map'String'Bool()
+_ sections = Map'String'Index()
+_ hosted = Map'String'[AIPartEndEvent]()
+_ compactions Size
+_ usage AIUsage?
+
+────────────────────
++ do open <AIEvent>
+    - thread String
+    - model String
+
+this.thread = thread
+this.model = model
+<= AIPartEndEvent(mark-part(thread))
+
+────────────────────
++ do decode <AIEvent> ?! AIError
+    - method String
+    - params JSON
+
+. fields = json-object(params)
+. thread = this.thread
+=? if !fields || !thread || json-string(fields["threadId"]) != thread
+do match? method
+    |= "turn/started"
+        turn = json-string(json-object(fields["turn"])?["id"]) ?? turn
+        <= AIPartEndEvent(mark-part(thread))
+    |= "item/started"
+        <<= decode-started(json-object(fields["item"]))
+    |= "item/completed"
+        <<= decode-completed(json-object(fields["item"]))
+    |= "item/agentMessage/delta"
+        <<= decode-text(fields)
+    |= "item/reasoning/summaryTextDelta"
+        <<= decode-reasoning(fields)
+    |= "thread/tokenUsage/updated"
+        . counted = codex-usage(json-object(json-object(fields["tokenUsage"])?["last"]))
+        usage = counted
+        <= AIUsageEvent(counted)
+    |= "turn/completed"
+        <= decode-done(json-object(fields["turn"]))
+
+────────────────────
++ do host
+    - id String
+    - events [AIPartEndEvent]
+
+hosted[id] = events
+
+────────────────────
++ ends-turn Bool
+    - method String
+    - params JSON
+
+is-completed && thread != null && json-string(json-object(params)?["threadId"]) == thread
+
+.. is-completed = method == "turn/completed"
+
+────────────────────
++ do end-turn
+
+turn = null
+parent = null
+usage = null
+begun = Map'String'Bool()
+sections = Map'String'Index()
+hosted = Map'String'[AIPartEndEvent]()
+
+────────────────────
+_ mark-part
+    - thread String
+
+codex-mark-part(CodexMark(CodexPoint(thread, turn), parent), model)
+
+────────────────────
+_ do decode-started <AIEvent>
+    - item [String = JSON]?
+
+. part = codex-begun-part(item)
+=? if !part
+begun[ai-part-id(part)] = true
+<= AIPartBeginEvent(part)
+
+────────────────────
+_ do decode-completed <AIEvent>
+    - item [String = JSON]?
+
+=? if !item
+. id = json-string(item["id"]) ?? ""
+-= begun[id]
+-= sections[id]
+do match? item
+    | ["type" = "agentMessage", "text" = text String]
+        <= AIPartEndEvent(AITextPart(id, text))
+    | ["type" = "plan", "text" = text String]
+        <= AIPartEndEvent(AITextPart(id, text))
+    | ["type" = "reasoning"]
+        <= AIPartEndEvent(AIReasoningPart(id, codex-reasoning-text(item)))
+    | ["type" = "webSearch", "query" = query String]
+        <= AIPartEndEvent(AIWebSearchPart(id, query, AIWebSearchStatus.completed))
+    | ["type" = "contextCompaction"]
+        compactions += 1
+        . part = AIExtensionPart
+            - "${ai-compaction-part}:$compactions"
+            - codex-provider-id
+            - ai-compaction-part
+            - null
+        <= AIPartBeginEvent(part)
+        <= AIPartEndEvent(part)
+    | ["type" = "imageGeneration"]
+        <<= decode-image(id, item)
+    ??
+        . call = codex-tool-call(item)
+        if call
+            <= AIPartEndEvent(call)
+            . served = hosted[id]
+            if served
+                -= hosted[id]
+                for event in served
+                    <= event
+            else
+                . result = codex-tool-result(item, call.call-id)
+                <= AIPartBeginEvent(result)
+                <= AIPartEndEvent(result)
+
+────────────────────
+_ do decode-image <AIEvent>
+    - id String
+    - item [String = JSON]
+
+. call = codex-tool-call(item)
+=? if !call
+<= AIPartEndEvent(call)
+. made = codex-generated-image(item)
+. saved = json-string(item["savedPath"])
+. output = Map'String'JSON
+    •? file saved
+. result = AIToolResultPart
+    - "$id:result"
+    - id
+    - output
+    - if made then null else codex-image-failure(item)
+    - made == null
+<= AIPartBeginEvent(result)
+<= AIPartEndEvent(result)
+if made
+    <= AIPartEndEvent(AIImagePart("$id:image", made))
+
+────────────────────
+_ do decode-text <AIEvent>
+    - fields [String = JSON]
+
+. id = json-string(fields["itemId"])
+. text = json-string(fields["delta"])
+=? if !id || !text || !(begun has id)
+<= AIPartDeltaEvent(id, AITextDelta(text))
+
+────────────────────
+_ do decode-reasoning <AIEvent>
+    - fields [String = JSON]
+
+. id = json-string(fields["itemId"])
+. text = json-string(fields["delta"])
+=? if !id || !text || !(begun has id)
+. section = json-size(fields["summaryIndex"]) ?? 0
+. previous = sections[id]
+sections[id] = section
+. joined = if previous != null && previous != section then "\n\n$text" else text
+<= AIPartDeltaEvent(id, AIReasoningDelta(joined))
+
+────────────────────
+_ do decode-done AIEvent ?! AIError
+    - turn [String = JSON]?
+
+. status = json-string(turn?["status"])
+=? AIDoneEvent(AIFinishReason.stop, usage) if status == "completed"
+=? AIDoneEvent(AIFinishReason.cancellation, usage) if status == "interrupted"
+?! codex-turn-error(json-object(turn?["error"]))
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-resume CodexResume
+    - request AIRequest
+
+|? !marks.length
+    CodexResume()
+|? codex-marks-chain(marks)
+    CodexResume(marks[marks.length - 1].point, request.forks)
+??
+    CodexResume(null, false, true)
+
+.. marks = codex-marks(request.messages)
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-marks [CodexMark]
+    - messages [AIMessage]
+
+. marks = List'CodexMark()
+for message in messages
+    for part in message.parts
+        . mark = codex-part-mark(part)
+        if mark
+            marks += mark
+= marks
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-marks-chain Bool
+    - marks [CodexMark]
+
+for index in 1 .. < marks.length
+    . mark = marks[index]
+    . parent = mark.parent ?? CodexPoint(mark.point.thread)
+    =? false if !codex-same-point(parent, marks[index - 1].point)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-same-point
+    - first CodexPoint
+    - second CodexPoint
+
+same-thread && (first.turn == null || second.turn == null || first.turn == second.turn)
+
+.. same-thread = first.thread == second.thread
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-mark-part AIExtensionPart
+    - mark CodexMark
+    - model String
+
+AIExtensionPart
+    - codex-thread-part
+    - codex-provider-id
+    - codex-thread-part
+    - codex-mark-data(mark, model)
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-mark-data JSON
+    - mark CodexMark
+    - model String
+
+Map'String'JSON
+    • "thread_id" mark.point.thread
+    • model model
+    •? "turn_id" mark.point.turn
+    •? parent codex-parent-data(mark)
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-parent-data JSON?
+    - mark CodexMark
+
+|? mark.parent == null
+    null
+??
+    Map'String'JSON
+        • "thread_id" mark.parent.thread
+        •? "turn_id" mark.parent.turn
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-part-mark CodexMark?
+    - part AIMessagePart
+
+=? if part is not AIExtensionPart
+. extension = part as AIExtensionPart
+=? if extension.provider-id != codex-provider-id || extension.part-type != codex-thread-part
+. fields = json-object(extension.data)
+. id = json-string(fields?["thread_id"])
+=? if !fields || !id
+. point = CodexPoint(id, json-string(fields["turn_id"]))
+. parent = json-object(fields["parent"])
+. parent-id = json-string(parent?["thread_id"])
+=? CodexMark(point) if !parent || !parent-id
+= CodexMark(point, CodexPoint(parent-id, json-string(parent["turn_id"])))
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-part-thread String?
+    - part AIMessagePart
+
+codex-part-mark(part)?.point.thread
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-parts-thread String?
+    - parts [AIMessagePart]
+
+last((parts ?*> codex-part-thread(each)))
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-instructions String?
+    - request AIRequest
+
+text if text.length
+
+.. text = "\n\n".join(ai-parts-text(each.parts) in request.messages when codex-instructs(each))
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-input [JSON] ?! AIError
+    - request AIRequest
+
+?! AIError(AIErrorKind.invalid-request, "Codex runs its own tools")
+    if request.tools.length
+
+. prompts = List'String()
+. images = List'AIImage()
+for message in request.messages
+    if codex-instructs(message)
+        continue
+    if message.role == AIMessageRole.user
+        codex-prompt-images(message, images)
+        . text = ai-parts-text(message.parts)
+        if text.length
+            prompts += text
+    else if codex-parts-thread(message.parts)
+        prompts = List'String()
+        images = List'AIImage()
+    else
+        ?! AIError(AIErrorKind.invalid-request, "Codex can only continue its own replies")
+
+?! AIError(AIErrorKind.invalid-request, "Codex needs a prompt")
+    if !prompts.length && !images.length
+. input = List'JSON()
+. text = "\n\n".join(prompts)
+if text.length
+    input += codex-text-input(text)
+for image in images
+    input += codex-image-input(image)
+= input
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-initialize-params JSON
+    - is-experimental = false
+
+Map'String'JSON
+    • "clientInfo" Map'String'JSON
+        • name codex-client-name
+        • title codex-client-title
+        • version codex-client-version
+    • capabilities Map'String'JSON
+        • "experimentalApi" is-experimental
+        • "requestAttestation" false
+        • "optOutNotificationMethods" List'JSON((each as JSON) in codex-quiet-methods)
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-thread-settings [String = JSON]
+    - request AIRequest
+    - directory String?
+    - sandbox String?
+    - approval-policy String?
+    - approvals-reviewer String?
+
+Map'String'JSON
+    •? model request.model if request.model.length
+    •? cwd directory
+    •? sandbox sandbox
+    •? "approvalPolicy" approval-policy
+    •? "approvalsReviewer" approvals-reviewer
+    •? "developerInstructions" codex-instructions(request)
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-open CodexOpen
+    - plan CodexResume
+    - settings [String = JSON]
+    - is-persistent = true
+    - toolkits = List'AIToolkit()
+
+. params = Map'String'JSON()
+for key, value in settings
+    params[key] = value
+. point = plan.point
+if !point
+    if !is-persistent
+        params["ephemeral"] = true
+    . offered = codex-dynamic-tools(toolkits)
+    if offered
+        params["dynamicTools"] = offered
+    = CodexOpen("thread/start", params)
+params["threadId"] = point.thread
+if !plan.forks
+    params["excludeTurns"] = true
+    = CodexOpen("thread/resume", params)
+if point.turn
+    params["lastTurnId"] = point.turn
+if !is-persistent
+    params["ephemeral"] = true
+= CodexOpen("thread/fork", params)
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-dynamic-tools [JSON]
+    - toolkits [AIToolkit]
+
+. offered = List'JSON()
+for kit in toolkits
+    for tool in kit.tools() ?> !(codex-own-tools has each.name)
+        offered += Map'String'JSON
+            • type "function"
+            • name tool.name
+            • description tool.description
+            • "inputSchema" tool.parameters
+= offered
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-tool-content [JSON] ?! AIError
+    - result AIToolkitResult
+
+. content = List'JSON()
+content += codex-output-item(to-json(result.output))
+for image in result.images
+    if | kept AIPathSource = image.file.source
+        content += codex-output-item
+            - "Image file: ${kept.path}. Call view_image with this path to see it."
+    else
+        content += Map'String'JSON
+            • type "inputImage"
+            • "imageUrl" "data:${image.file.mime-type};base64,${codex-image-data(image.file)}"
+= content
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-tool-reply JSON
+    - content [JSON]
+    - success Bool
+
+Map'String'JSON
+    • "contentItems" content
+    • success success
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-output-item JSON
+    - text String
+
+Map'String'JSON
+    • type "inputText"
+    • text text
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-turn-settings [String = JSON]
+    - effort String?
+    - summary String?
+    - schema JSON?
+
+Map'String'JSON
+    •? effort effort
+    •? summary summary
+    •? "outputSchema" schema
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-turn-params [String = JSON]
+    - thread String
+    - input [JSON]
+    - settings [String = JSON]
+
+. params = Map'String'JSON
+    • "threadId" thread
+    • "input" input as JSON
+for key, value in settings
+    params[key] = value
+= params
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-steer-params [String = JSON]
+    - thread String
+    - turn String
+    - prompt String
+
+Map'String'JSON
+    • "threadId" thread
+    • "expectedTurnId" turn
+    • input List'JSON([codex-text-input(prompt)])
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-interrupt-params [String = JSON]
+    - thread String
+    - turn String
+
+Map'String'JSON
+    • "threadId" thread
+    • "turnId" turn
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-server-answer JSON?
+    - method String
+
+match? method
+    |? it == "item/commandExecution/requestApproval" || it == "item/fileChange/requestApproval"
+        Map'String'JSON
+            • decision "decline"
+    |= "item/permissions/requestApproval"
+        Map'String'JSON
+            • permissions Map'String'JSON()
+            • scope "turn"
+    |= "item/tool/requestUserInput"
+        Map'String'JSON
+            • answers Map'String'JSON()
+    |= "mcpServer/elicitation/request"
+        Map'String'JSON
+            • action "decline"
+            • content null as JSON
+            • "_meta" null as JSON
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-account AIAccount
+    - answer JSON?
+
+match answer
+    | ["account" = account [String = JSON]]
+        AIAccount
+            • status AIAccountStatus.signed-in
+            • billing codex-billing(json-string(account["type"]))
+            • email json-string(account["email"])
+            • plan json-string(account["planType"])
+            • organization json-string(account["workspaceName"])
+    ??
+        AIAccount(AIAccountStatus.signed-out)
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-response-key String?
+    - response JSONRPCResponse
+
+match? response.id
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-billing AIAccountBilling
+    - kind String?
+
+match kind
+    |= null
+        AIAccountBilling.unknown
+    |= "chatgpt"
+        AIAccountBilling.subscription
+    ??
+        AIAccountBilling.api
+
+━━━━━━━━━━━━━━━━━━━━
++ do codex-check-account ?! AIError
+    - account [String = JSON]?
+
+?! AIError(AIErrorKind.authentication, codex-signed-out-text)
+    if !account
+?! AIError(AIErrorKind.authentication, codex-api-account-text)
+    if json-string(account["type"]) != "chatgpt"
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-turn-error AIError
+    - error [String = JSON]?
+
+AIError(kind, message)
+
+.. name = codex-error-name(error?["codexErrorInfo"])
+.. kind = codex-error-kind(name)
+.. message =
+    |? kind == AIErrorKind.authentication
+        codex-signed-out-text
+    ??
+        json-string(error?["message"]) ?? "Codex did not finish the turn"
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-exit-reason
+    - status Int
+    - errors String
+
+|? errors.length > 0
+    errors
+??
+    "Codex exited with status $status"
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-instructs
+    - message AIMessage
+
+message.role == AIMessageRole.system || message.role == AIMessageRole.developer
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-prompt-images ?! AIError
+    - message AIMessage
+    - images [AIImage]
+
+for part in message.parts
+    if | image AIImagePart = part
+        images += image.image
+    else
+        ?! AIError(AIErrorKind.invalid-request, "Codex prompts hold only text and images")
+            if part is not AITextPart
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-text-input JSON
+    - text String
+
+Map'String'JSON
+    • type "text"
+    • text text
+    • "text_elements" List'JSON()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-image-input JSON ?! AIError
+    - image AIImage
+
+. file = image.file
+do match? file.source
+    | stored AIPathSource
+        = Map'String'JSON
+            • type "localImage"
+            • path stored.path
+    | remote AIURLSource
+        = Map'String'JSON
+            • type "image"
+            • url remote.url
+= Map'String'JSON
+    • type "image"
+    • url "data:${file.mime-type};base64,${codex-image-data(file)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-image-data Base64 ?! AIError
+    - file AIFile
+
+do match? file.source
+    | encoded AIBase64Source
+        = encoded.data
+    | held AIBytesSource
+        = held.data as Base64
+?! AIError(AIErrorKind.invalid-request, "Codex cannot read this image")
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-begun-part AIMessagePart?
+    - item [String = JSON]?
+
+match? item
+    | ["type" = "agentMessage", "id" = id String]
+        AITextPart(id, "")
+    | ["type" = "plan", "id" = id String]
+        AITextPart(id, "")
+    | ["type" = "reasoning", "id" = id String]
+        AIReasoningPart(id, "")
+    | ["type" = "webSearch", "id" = id String]
+        AIWebSearchPart(id, "", AIWebSearchStatus.searching)
+    ??
+        codex-tool-call(item)
+
+━━━━━━━━━━━━━━━━━━━━
++ codex-tool-call AIToolCallPart?
+    - item [String = JSON]?
+
+match? item
+    | ["type" = "commandExecution", "id" = id String, "command" = command String]
+        AIToolCallPart(id, id, codex-command-tool, arguments)
+
+        .. arguments = Map'String'JSON
+            • command command
+            • cwd item!["cwd"] ?? null as JSON
+            • actions item!["commandActions"] ?? null as JSON
+    | ["type" = "fileChange", "id" = id String, "changes" = changes]
+        AIToolCallPart(id, id, codex-patch-tool, arguments)
+
+        .. arguments = Map'String'JSON
+            • changes changes
+    | ["type" = "mcpToolCall", "id" = id String, "server" = server String, "tool" = tool String]
+        AIToolCallPart(id, id, "mcp__${server}__$tool", item!["arguments"] ?? null as JSON)
+    | ["type" = "dynamicToolCall", "id" = id String, "tool" = tool String]
+        AIToolCallPart(id, id, tool, item!["arguments"] ?? null as JSON)
+    | ["type" = "imageGeneration", "id" = id String]
+        AIToolCallPart(id, id, ai-image-tool-name, arguments)
+
+        .. arguments = Map'String'JSON
+            •? prompt json-string(item!["revisedPrompt"])
+    | ["type" = "collabAgentToolCall", "id" = id String, "tool" = tool String]
+        AIToolCallPart(id, id, codex-agent-tool, arguments)
+
+        .. arguments = Map'String'JSON
+            • action tool
+            • prompt item!["prompt"] ?? null as JSON
+            • model item!["model"] ?? null as JSON
+            • threads item!["receiverThreadIds"] ?? null as JSON
+    | ["type" = "imageView", "id" = id String, "path" = path String]
+        AIToolCallPart(id, id, codex-image-tool, arguments)
+
+        .. arguments = Map'String'JSON
+            • path path
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-generated-image AIImage?
+    - item [String = JSON]
+
+|? json-string(item["status"]) != "completed"
+    null
+|? saved
+    AIImage(AIFile(AIPathSource(saved), "image/png"), width, height)
+|? !bytes || !bytes.length
+    null
+??
+    AIImage(AIFile(AIBytesSource(bytes), "image/png"), width, height)
+
+.. data = json-string(item["result"]) ?? ""
+.. width = codex-png-side(data, 16)
+.. height = codex-png-side(data, 20)
+.. saved = json-string(item["savedPath"])
+.. bytes = catch? decode-base64(data)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-png-side Size
+    - data String
+    - offset Index
+
+=? 0 if data.length < 32 || !data.starts-with("iVBORw0KGgo")
+. head = catch? decode-base64(data[0 .. < 32])
+=? 0 if !head
+. side Size = 0
+for index in offset .. < offset + 4
+    side = side * 256 + (head[index] as Size)
+= side
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-image-failure String
+    - item [String = JSON]
+
+match item["failure"]
+    | ["type" = "usageLimitExceeded"]
+        "You've reached your ChatGPT plan's image limit for now."
+    ??
+        "Codex could not make the image."
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-tool-result AIToolResultPart
+    - item [String = JSON]
+    - call-id String
+
+AIToolResultPart("$call-id:result", call-id, text, text, codex-is-failure(item))
+
+.. text = codex-result-text(item) ?? ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-result-text String?
+    - item [String = JSON]
+
+match? item
+    | ["type" = "commandExecution", "aggregatedOutput" = output String]
+        output
+    | ["type" = "fileChange", "changes" = changes [JSON]]
+        "\n\n".join(codex-change-text(each) in changes)
+    | ["type" = "mcpToolCall", "error" = ["message" = message String]]
+        message
+    | ["type" = "mcpToolCall", "result" = ["content" = blocks [JSON]]]
+        "".join((codex-block-text(each) ?? "") in blocks)
+    | ["type" = "dynamicToolCall", "contentItems" = blocks [JSON]]
+        "".join((codex-block-text(each) ?? "") in blocks)
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-is-failure Bool
+    - item [String = JSON]
+
+status != "completed" || exit != 0 || has-error || json-bool(item["success"]) == false
+
+.. status = json-string(item["status"]) ?? "completed"
+.. exit = json-int(item["exitCode"]) ?? 0
+.. has-error = item["error"] is [String = JSON]
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-change-text String
+    - change JSON
+
+match change
+    | ["path" = path String, "diff" = diff String]
+        "$path\n$diff"
+    | ["path" = path String]
+        path
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-block-text String?
+    - block JSON
+
+match? block
+    | ["type" = "text", "text" = text String]
+        text
+    | ["type" = "inputText", "text" = text String]
+        text
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-reasoning-text String
+    - item [String = JSON]
+
+if summary.length then summary else content
+
+.. summary = codex-joined(item["summary"])
+.. content = codex-joined(item["content"])
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-joined String
+    - value JSON?
+
+match value
+    | lines [JSON]
+        "\n\n".join((json-string(each) ?? "") in lines)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do codex-error-name String?
+    - info JSON?
+
+do match? info
+    | name String
+        = name
+    | fields [String = JSON]
+        for key, _ in fields
+            = key
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-error-kind AIErrorKind
+    - name String?
+
+match name
+    |= "unauthorized"
+        AIErrorKind.authentication
+    |? it == "usageLimitExceeded" || it == "rateLimitExceeded" || it == "sessionBudgetExceeded"
+        AIErrorKind.rate-limit
+    |= "contextWindowExceeded"
+        AIErrorKind.context-length
+    |? it == "serverOverloaded" || it == "internalServerError" || it == "httpConnectionFailed"
+        AIErrorKind.server
+    |? it == "responseStreamConnectionFailed" || it == "responseStreamDisconnected" || it == "responseTooManyFailedAttempts"
+        AIErrorKind.server
+    |? it == "badRequest" || it == "modelNotFound"
+        AIErrorKind.invalid-request
+    ??
+        AIErrorKind.unknown
+
+━━━━━━━━━━━━━━━━━━━━
+_ codex-usage AIUsage
+    - value [String = JSON]?
+
+|? !value
+    AIUsage()
+??
+    AIUsage
+        • input-tokens json-size(value["inputTokens"])
+        • output-tokens json-size(value["outputTokens"])
+        • total-tokens json-size(value["totalTokens"])
+        • cached-input-tokens json-size(value["cachedInputTokens"])
+        • cache-creation-tokens json-size(value["cacheWriteInputTokens"])
+        • reasoning-tokens json-size(value["reasoningOutputTokens"])
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-string
+    - value JSON?
+
+match? value
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-object
+    - value JSON?
+
+match? value
+    | [String = JSON]
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-int Int?
+    - value JSON?
+
+match? value
+    | Int
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-size Size?
+    - value JSON?
+
+match? value
+    | Int {it >= 0}
+
+━━━━━━━━━━━━━━━━━━━━
+_ json-bool
+    - value JSON?
+
+match? value
+    | Bool

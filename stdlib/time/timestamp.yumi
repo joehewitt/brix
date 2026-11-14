@@ -1,0 +1,166 @@
+
+./_ctime
+./datetime
+./zone
+/math
+
++ Timestamp is String
++ RFC2822 is Timestamp
++ ISO8601 is Timestamp
++ RFC3339 is ISO8601
+
+━━━━━━━━━━━━━━━━━━━━
++ extend DateTime
+
+────────────────────
++ to RFC2822
+
+"$weekday, $day-text $month-text $year-text $clock $offset"
+
+.. weekday = rfc2822-weekday(day-of-week)
+.. day-number = this.day.number + 1
+.. day-text = day-number.pad(2)
+.. month-abbreviation = month as Abbreviation
+.. month-text = "${month-abbreviation[0].uppercase}${month-abbreviation[1 ...]}"
+.. year-text = year.pad(4)
+.. clock = timestamp-clock(this)
+.. offset = timezone-offset-rfc2822(zone)
+
+────────────────────
++ to ISO8601
+
+"${year-text}-${month-text}-${day-text}T${clock}${offset}"
+
+.. year-text = year.pad(4)
+.. month-number = month.number + 1
+.. month-text = month-number.pad(2)
+.. day-number = this.day.number + 1
+.. day-text = day-number.pad(2)
+.. clock = timestamp-clock(this)
+.. offset = timezone-offset-iso8601(zone)
+
+────────────────────
++ to RFC3339
+
+this as ISO8601
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-iso8601 DateTime?
+    - text String
+    - zone = local
+
+|? text.length < 19
+    null
+|? text[4 .. < 5] != "-" || text[7 .. < 8] != "-" || text[10 .. < 11] != "T"
+    null
+|? text[13 .. < 14] != ":" || text[16 .. < 17] != ":"
+    null
+|? year < 1 || month < 1 || month > 12 || day < 1 || day > 31
+    null
+|? hour > 23 || minute > 59 || second > 60
+    null
+|? offset == null
+    null
+??
+    DateTime(utc + (zone.offset as I64), zone)
+
+.. year = text[0 .. < 4] as I64
+.. month = text[5 .. < 7] as I64
+.. day = text[8 .. < 10] as I64
+.. hour = text[11 .. < 13] as I64
+.. minute = text[14 .. < 16] as I64
+.. second = text[17 .. < 19] as I64
+.. offset = iso8601-offset(text[19 ...], zone)
+.. utc = civil-days(year, month, day) * 86400 + hour * 3600 + minute * 60 + second - offset
+
+━━━━━━━━━━━━━━━━━━━━
+_ do iso8601-offset I64?
+    - rest String
+    - zone TimeZone
+
+. index Index = 0
+if rest.starts-with(".")
+    index = 1
+    while index < rest.length && "0123456789".find(rest[index .. < index + 1]) != null
+        index += 1
+. designator = rest[index ...]
+=? zone.offset as I64 if designator.length == 0
+=? 0 if designator == "Z"
+. sign I64 = if designator[0 .. < 1] == "-" then -1 else 1
+=? null if sign > 0 && designator[0 .. < 1] != "+"
+=? null if designator.length < 3
+. hours = designator[1 .. < 3] as I64
+=? sign * hours * 3600 if designator.length == 3
+. minutes-at = if designator.length == 6 && designator[3 .. < 4] == ":" then 4 else 3
+=? null if designator.length != minutes-at + 2
+= sign * (hours * 3600 + (designator[minutes-at .. < minutes-at + 2] as I64) * 60)
+
+━━━━━━━━━━━━━━━━━━━━
+_ civil-days I64
+    - year I64
+    - month I64
+    - day I64
+
+era * 146097 + year-of-era * 365 + year-of-era / 4 - year-of-era / 100 + day-of-year - 719468
+
+.. shifted = if month <= 2 then year - 1 else year
+.. era = shifted / 400
+.. year-of-era = shifted - era * 400
+.. day-of-year = (153 * (if month > 2 then month - 3 else month + 9) + 2) / 5 + day - 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ rfc2822-weekday
+    - day DayOfWeek
+
+match day
+    |= DayOfWeek.sunday
+        "Sun"
+    |= DayOfWeek.monday
+        "Mon"
+    |= DayOfWeek.tuesday
+        "Tue"
+    |= DayOfWeek.wednesday
+        "Wed"
+    |= DayOfWeek.thursday
+        "Thu"
+    |= DayOfWeek.friday
+        "Fri"
+    |= DayOfWeek.saturday
+        "Sat"
+    ?! Panic("Unknown day of week")
+
+━━━━━━━━━━━━━━━━━━━━
+_ timestamp-clock
+    - time DateTime
+
+"$hour:$minute:$second"
+
+.. hour = time.hour.pad(2)
+.. minute = time.minute.pad(2)
+.. second = time.second.pad(2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timezone-offset-rfc2822
+    - time-zone TimeZone
+
+"$sign$hour$minute"
+
+.. sign = if time-zone.offset < 0 then "-" else "+"
+.. absolute = abs(time-zone.offset)
+.. hour-value = absolute / 3600
+.. minute-value = (absolute / 60) % 60
+.. hour = hour-value.pad(2)
+.. minute = minute-value.pad(2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ timezone-offset-iso8601
+    - time-zone TimeZone
+
+"$sign$hour:$minute"
+
+.. sign = if time-zone.offset < 0 then "-" else "+"
+.. absolute = abs(time-zone.offset)
+.. hour-value = absolute / 3600
+.. minute-value = (absolute / 60) % 60
+.. hour = hour-value.pad(2)
+.. minute = minute-value.pad(2)

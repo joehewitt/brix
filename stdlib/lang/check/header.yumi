@@ -1,0 +1,312 @@
+./binding
+./frame
+./instances
+./session
+./type-relation
+./type-signature
+./type-store
+./types
+./typing-scratch
+/lang/ast/ast
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/ast/row-range
+
+━━━━━━━━━━━━━━━━━━━━
++ do settle-header Bool
+    - session Session
+    - instance InstanceId
+
+` Reads from an instance's declaration what a call needs of it: the errors it states, and its
+` return type where the declaration alone gives it. It says whether the return type is given,
+` in which case the caller goes on and the body waits in the queue. A function that fills an object
+` with its class's markup answers nothing and raises nothing (`check-filler`). The return type is
+` not given, and the caller types the body first, when:
+` - the return type is inferred from a value;
+` - the stated type leaves a parameter or an alternative for the body to choose;
+` - the stated type is a stream or an iterable, which a generator's body turns into the
+`   generator or the iterable it returns;
+` - the instance is a closure or takes one, since it reads the frame the closure is written in;
+` - the declaration is a rule, whose function returns an optional of the type it states;
+` - the declaration is a main, or its signature does not evaluate.
+. instances = session.instances
+. known = instances.signatures[instance].header
+if known != .header-unread
+    = known == .header-settled
+instances.signatures[instance].header = .header-open
+. row = instances.rows[instance]
+if row.enclosing != no-instance || row.holds-closure
+    = false
+. described = describe(session.program, row.module, row.decl)
+if !described
+    = false
+. declaration = described
+if declaration.is-main || rule-match(session.program, row.module, row.decl) != 0
+    = false
+if is-startup-kind(declaration.kind) || is-nested-kind(declaration.kind)
+    = false
+if declaration.kind == .termination-panic-decl
+    = false
+. types = session.types
+. scratch = session.scratch
+. names-mark = scratch.names.mark
+. items-mark = scratch.types.mark
+. receiver = logical-receiver(session, row.module, row.decl, row.self-type)
+types.clear-fault()
+. plain = signature-into(types, row.module, row.decl, no-type-arguments(types), receiver, true)
+. param-count = instances.signatures[instance].param-count
+. given = no-type-arguments(types)
+if param-count == plain.params.length
+    . bound-start = scratch.types.mark
+    for position in 0 .. < param-count
+        scratch.types.push(instances.param-type(instance, position))
+    given = TypeArguments(plain.params, scratch.types.since(bound-start))
+. signature = signature-into(types, row.module, row.decl, given, receiver, true)
+. settled = false
+if types.fault
+    types.clear-fault()
+else
+    settled = read-header(session, instance, declaration, signature)
+scratch.types.rewind(items-mark)
+scratch.names.rewind(names-mark)
+if settled
+    instances.signatures[instance].header = .header-settled
+= settled
+
+━━━━━━━━━━━━━━━━━━━━
+_ do read-header Bool
+    - session Session
+    - instance InstanceId
+    - declaration CheckedDecl
+    - signature Signature
+
+. types = session.types
+. instances = session.instances
+. row = instances.rows[instance]
+if declaration.is-content
+    instances.state-errors(instance, session.scratch.no-types)
+    instances.set-returns(instance, types.void-type, types.void-type, .return-declared)
+    = true
+if signature.errors.length != 0
+    instances.state-errors(instance, signature.errors)
+else
+    . owner = interface-default-owner(types, session.program, row.module, row.decl, row.self-type)
+    . self = if owner != no-type then owner else row.self-type
+    inherit-errors(types, instances, instance, self, declaration.kind)
+. stated = stated-return(types, row.module, row.decl, declaration, row.self-type, signature.returns)
+if stated != no-type
+    if stated == invalid-type || types.completions[stated].has-variables
+        = false
+    if types.intrinsic-of(stated) == .or || session.relations.holds-alternatives(stated)
+        = false
+    . ref = class-ref(types, stated)
+    . stream = types.stream-decl
+    . iterable = types.iterable-decl
+    if ref.module == stream.module && ref.decl == stream.decl
+        = false
+    if ref.module == iterable.module && ref.decl == iterable.decl
+        = false
+    instances.set-returns(instance, stated, stated, .return-declared)
+    = true
+if !declaration.is-imperative || declaration.body == 0
+    = false
+if gives-or-yields(session.program.modules[row.module].tree, declaration.subtree)
+    = false
+instances.set-returns(instance, types.void-type, no-type, .return-inferred)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do gives-or-yields Bool
+    - tree AST
+    - subtree SyntaxRange
+
+` Whether any statement in a function's syntax returns a value or yields one. The statements
+` of functions nested in it count too, so this can say yes of a function that gives nothing.
+for offset in 0 .. < subtree.count
+    do match? tree.nodes[subtree.start + offset]
+        | .node-yield
+            = true
+        | .node-return(row)
+            if row.expr != 0
+                = true
+        | .node-return-if-true(row)
+            if row.expr != 0
+                = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do stated-return TypeId
+    - types Types
+    - module ModuleId
+    - decl DeclId
+    - declaration CheckedDecl
+    - self TypeId
+    - returns TypeId
+
+` The return type a declaration states, given the one its signature evaluates to. A constructor
+` that returns no value states its own class, but one that is a rule states nothing, and gives
+` what its arms give; an operator that answers yes or no states Bool whether or not it says so.
+` A function with statements that states a value or an error, as a parameter bound to what a
+` function that raises answers, states the value: each return raises the error in its place.
+. tree = types.program.modules[module].tree
+. constructs = plain-constructor && rule-match(types.program, module, decl) == 0
+    .. plain-constructor = is-constructor-kind(declaration.kind) && returns == no-type
+. stated = returns
+if constructs
+    stated = if returns-own(tree, declaration.body) then no-type else self
+if stated == no-type && answers-bool(types.program, module, decl)
+    stated = types.bool-type
+if declaration.is-imperative && stated != no-type && stated != invalid-type
+    do match? types.rows[stated]
+        | .type-result(held)
+            = held.value
+= stated
+
+━━━━━━━━━━━━━━━━━━━━
++ do answers-bool Bool
+    - program Program
+    - module ModuleId
+    - decl DeclId
+
+` Whether a function overrides an operator that answers yes or no: a comparison, a containment
+` test, or `!`. Such a function returns Bool whether or not it says so.
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        if fn.owner == 0 || !fn.name || fn.kind != .function-decl
+            = false
+        . token = fn.name.text
+        if token == "==" || token == "!=" || token == "<" || token == ">"
+            = true
+        if token == "<=" || token == ">=" || token == "has" || token == "has not"
+            = true
+        = token == "!"
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do logical-receiver TypeId
+    - session Session
+    - module ModuleId
+    - decl DeclId
+    - self TypeId
+
+` An extension member of a union, or of a base its cases share, runs on a table row of that
+` union with the row as its receiver, and binds its declarations against the type it extends.
+. types = session.types
+. relations = session.relations
+. program = session.program
+. union = if self != no-type && self != invalid-type then row-union(types, self) else no-type
+if union == no-type
+    = self
+. owner = 0u32
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        owner = fn.owner
+do match? program.modules[module].decls[owner]
+    | .decl-extension
+        . shared = types.shared-case-base(union)
+        . matched = relations.match-extension(module, owner, union)
+        while !matched && shared != no-type
+            matched = relations.match-extension(module, owner, shared)
+            shared = types.shared-case-base(union, shared)
+        if matched
+            types.env-release(matched.env)
+            = matched.receiver
+= self
+
+━━━━━━━━━━━━━━━━━━━━
++ do inherit-errors
+    - types Types
+    - instances Instances
+    - instance InstanceId
+    - self TypeId
+    - kind DeclKind
+
+` A method that states no errors takes those stated by the method of a base class it has the
+` same name and arguments as. One typed again for a class's table in the place of a base's
+` method whose generator carries errors states those errors.
+. inherited = instances.rows[instance].inherits
+if inherited != no-instance
+    . mark = types.scratch.types.mark
+    for position in 0 .. < instances.rows[inherited].step-errors.count
+        types.scratch.types.push(instances.step-error-type(inherited, position))
+    instances.state-errors(instance, types.scratch.types.since(mark))
+    types.scratch.types.rewind(mark)
+    =
+if self == no-type || is-constructor-kind(kind)
+    =
+. row = instances.rows[instance]
+. name Atom? = null
+. is-static = false
+do match? types.program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        name = fn.name
+        is-static = fn.is-static
+if !name || is-static
+    =
+. own = instances.signatures[instance]
+if own.param-count != 0
+    =
+. base = types.base-of(self)
+while base
+    if inherit-from-base(types, instances, instance, base, name, own)
+        =
+    base = types.base-of(base)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inherit-from-base Bool
+    - types Types
+    - instances Instances
+    - instance InstanceId
+    - base TypeId
+    - name Atom
+    - own InstanceSignature
+
+. ref = class-ref(types, base)
+if ref.module == 0 && ref.decl == 0
+    = false
+. base-module = types.program.modules[ref.module]
+. members = RowRange'DeclId()
+do match? base-module.decls[ref.decl]
+    | .decl-class(row)
+        members = row.members
+. place = base-module.first-member(members, name)
+while place != no-member
+    . member = base-module.member-pool[place]
+    place = base-module.member-links[place]
+    do match? base-module.decls[member]
+        | .decl-function(fn)
+            . plain = !fn.is-generated && !fn.is-static && !is-constructor-kind(fn.kind)
+            if plain && fn.type-args.count == 0 && fn.name && fn.name == name
+                if inherit-from-method(types, instances, instance, ref.module, member, base, own)
+                    = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inherit-from-method Bool
+    - types Types
+    - instances Instances
+    - instance InstanceId
+    - base-module Index
+    - member DeclId
+    - base TypeId
+    - own InstanceSignature
+
+. names-mark = types.scratch.names.mark
+. items-mark = types.scratch.types.mark
+. given = no-type-arguments(types)
+. signature = signature-into(types, base-module as ModuleId, member, given, base, true)
+. matches = signature.params.length == 0 && signature.args.length == own.args.count
+if matches
+    for offset in 0 .. < signature.args.length
+        . position Size = own.args.start
+        if signature.args[offset] != instances.signature-types[position + offset]
+            matches = false
+if matches && signature.errors.length != 0
+    instances.state-errors(instance, signature.errors)
+else
+    matches = false
+types.scratch.types.rewind(items-mark)
+types.scratch.names.rewind(names-mark)
+= matches

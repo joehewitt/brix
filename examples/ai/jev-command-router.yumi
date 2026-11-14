@@ -1,0 +1,66 @@
+/ai
+/ai/jev/jev
+/data/json
+/os/cli
+/os/env
+
+. api-key = env("JEV_API_KEY")
+?! Error("Set JEV_API_KEY before running this example")
+    if !api-key
+
+. command = " ".join(cmdline().args)
+command = if !command then "find every markdown file that mentions retries" else command
+
+. state = Map'String'JSON
+    • command command
+    • environment "A local assistant that can search, edit, delete, or explain"
+
+. questions = Map'String'JevQuestion
+    • action JevChoiceQuestion
+        - "Which action best represents the command?"
+        - Map'String'JSON
+            • search "Read, find, list, inspect, or query without changing anything"
+            • edit "Create or modify content, configuration, or state"
+            • delete "Remove, erase, destroy, cancel, or permanently discard something"
+            • explain "Answer or explain without operating on the environment"
+
+    • ambiguous JevNoulQuestion
+        - "Would a careful assistant need clarification before acting?"
+        - JevNoulCriteria
+            - "The target or scope is missing, or materially different actions are plausible"
+            - "The intended action, target, and scope are sufficiently clear"
+
+    • impact JevScoreQuestion
+        - "How consequential would carrying out this command be?"
+        -
+            * "Read-only; changes nothing"
+            * "Localized and reversible"
+            * "Broad or difficult to reverse"
+            * "Destructive or externally consequential"
+
+. response = Jev(api-key).evaluate(state, questions)
+. action = response.answers["action"]! as JevChoiceAnswer
+. ambiguous = response.answers["ambiguous"]! as JevNoulAnswer
+. impact = response.answers["impact"]! as JevScoreAnswer
+. action-probability = action.probabilities[action.choice] ?? 0.0
+
+-- "Command: $command"
+-- ""
+-- "Action probabilities:"
+for name, probability in action.probabilities
+    -- "  $name: $probability"
+-- "Ambiguity probability: ${ambiguous.yes-probability}"
+-- "Impact score: ${impact.score}"
+-- ""
+
+. decision =
+    |? ambiguous.yes-probability >= 0.35 || action-probability < 0.55
+        "ask a clarifying question"
+    |? action.choice == "delete" || impact.score >= 1.25 || action-probability < 0.75
+        "confirm the ${action.choice} action"
+    ??
+        "execute ${action.choice} automatically"
+
+-- "Decision: $decision"
+
+-- "Actions are simulated; this example never changes the environment."

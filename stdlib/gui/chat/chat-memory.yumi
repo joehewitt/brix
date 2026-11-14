@@ -1,0 +1,98 @@
+/ai
+/graphics/primitives
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatScrollMark is Tuple
+
++ message-id String
++ offset Length
++ is-at-end Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatDraft is Tuple
+
++ text String
++ images [AIImage]
+
+────────────────────
++ get is-empty
+
+!text.trim().length && !images.length
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatBranchDraft is Tuple
+
++ branch-id String
++ text String
++ images [AIImage]
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatToolState
+
++ is-open = false
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatPromptState
+
++ is-expanded = false
+
+━━━━━━━━━━━━━━━━━━━━
++ ChatViewMemory
+
++ event drafted ChatBranchDraft
+
+_ prompts = Map'String'ChatPromptState()
+_ tools = Map'String'ChatToolState()
+_ scrolls = Map'String'ChatScrollMark()
+_ drafts = Map'String'ChatDraft()
+
+────────────────────
++ do prompt-for ChatPromptState
+    - id String
+
+. found = prompts[id]
+=? found if found
+. made = ChatPromptState()
+prompts[id] = made
+= made
+
+────────────────────
++ do tool-for ChatToolState
+    - key String
+
+. found = tools[key]
+=? found if found
+. made = ChatToolState()
+tools[key] = made
+= made
+
+────────────────────
++ scroll-for ChatScrollMark?
+    - branch-id String
+
+scrolls[branch-id]
+
+────────────────────
++ do keep-scroll
+    - branch-id String
+    - mark ChatScrollMark
+
+scrolls[branch-id] = mark
+
+────────────────────
++ draft-for ChatDraft
+    - branch-id String
+
+drafts[branch-id] ?? ChatDraft("")
+
+────────────────────
++ do keep-draft
+    - branch-id String
+    - draft ChatDraft
+
+=? if draft-for(branch-id) == draft
+if draft.text.length > 0 || draft.images.length > 0
+    drafts[branch-id] = draft
+else
+    -= drafts[branch-id]
+drafted <- ChatBranchDraft(branch-id, draft.text, draft.images)

@@ -1,0 +1,104 @@
+./box
+/ui/command
+/ui/command-log
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandNode is Box
+    is Command
+
++ title = ""
++ description = ""
++ enabled = true
++ discoverable = true
++ is-on = false
++ running = false
++ stable-key = ""
++ unavailable-reason = ""
++ id => this as Command
++ is-markup-shadow => true
+
+╌╌╌╌╌╌╌╌╌╌ is Command ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-available
+
+enabled && is-effectively-enabled
+
+────────────────────
++ get identity
+
+this
+
+────────────────────
++ get is-discoverable
+
+discoverable
+
+────────────────────
++ do run
+
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandActionNode is CommandNode
+
+╌╌╌╌╌╌╌╌╌╌ is Command ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do run
+
+=? if !enabled || running
+running = true
+do finally running = false
+execute()
+
+────────────────────
++ do execute
+
+?! Panic("Command action must implement execute")
+
+━━━━━━━━━━━━━━━━━━━━
++ ActionCommand is CommandActionNode
+
++ action Doer?
+
+────────────────────
++ do execute
+
+. callback = action
+if callback
+    callback()
+        catch error Error
+            unhandled-error(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ CommandScope is Box
+
++ is-markup-shadow => true
+
+━━━━━━━━━━━━━━━━━━━━
++ InvocationCommand'Args is CommandActionNode
+
++ command ParameterizedCommand'Args?
++ log InvocationLog?
+
+╌╌╌╌╌╌╌╌╌╌ is Command ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-discoverable
+
+discoverable && command?.defaults != null
+
+╌╌╌╌╌╌╌╌╌╌ is CommandActionNode ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do execute
+
+. active = log
+. source = command
+=? if !active || !source
+. args = source.defaults
+=? if !args
+. result = catch active.perform(source, args!)
+do match? result
+    | error Error
+        unhandled-error(error)

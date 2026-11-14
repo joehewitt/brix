@@ -1,0 +1,363 @@
+./bench-config
+/data/json
+/math
+/stream/sort
+
++ bench-dispersion-limit F64 = 20.0
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchSummary is Tuple
+
++ count Size
++ min F64?
++ mean F64?
++ median F64?
++ max F64?
++ deviation F64?
++ relative-deviation F64?
++ relative-range F64?
++ is-dispersed Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-summary BenchSummary
+    - values [F64?]
+
+. found [F64]
+for value in values
+    if value && bench-is-finite(value)
+        found += value
+=? BenchSummary(0, null, null, null, null, null, null, null, false) if found.length == 0
+. numbers = sort(found) • using :: a, b => if a < b then .lesser else .greater
+. count = numbers.length
+. middle = count / 2
+. median = if count % 2 == 1 then numbers[middle] else (numbers[middle - 1] + numbers[middle]) / 2.0
+. total = 0.0
+for number in numbers
+    total += number
+. mean = total / (count as F64)
+. variance = 0.0
+for number in numbers
+    variance += (number - mean) * (number - mean)
+. deviation = sqrt(variance / (count as F64))
+. low = numbers[0]
+. high = numbers[count - 1]
+. range = high - low
+. relative-deviation F64? = if mean == 0.0 then (0.0 if deviation == 0.0) else deviation-percent
+    .. deviation-percent = abs(deviation / mean) * 100.0
+. relative-range F64? = if median == 0.0 then (0.0 if range == 0.0) else abs(range / median) * 100.0
+. is-dispersed = count > 1 && range > 0.0 && is-wide-range
+    .. is-wide-range = relative-range == null || relative-range >= bench-dispersion-limit
+= BenchSummary
+    - count
+    - bench-rounded(low)
+    - bench-rounded(mean)
+    - bench-rounded(median)
+    - bench-rounded(high)
+    - bench-rounded(deviation)
+    - bench-rounded(relative-deviation) if relative-deviation
+    - bench-rounded(relative-range) if relative-range
+    - is-dispersed
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-summary-json JSON
+    - summary BenchSummary
+
+. fields [String = JSON]
+fields["sampleCount"] = summary.count
+fields["min"] = bench-number-json(summary.min)
+fields["mean"] = bench-number-json(summary.mean)
+fields["median"] = bench-number-json(summary.median)
+fields["max"] = bench-number-json(summary.max)
+fields["standardDeviation"] = bench-number-json(summary.deviation)
+fields["relativeStdDevPct"] = bench-number-json(summary.relative-deviation)
+fields["relativeRangePct"] = bench-number-json(summary.relative-range)
+fields["highDispersion"] = summary.is-dispersed
+= fields
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-summary-of BenchSummary?
+    - value JSON?
+
+=? null if !value
+do match value
+    | fields [String = JSON]
+        = BenchSummary
+            - (bench-json-number(fields["sampleCount"]) ?? 0.0) as Size
+            - bench-json-number(fields["min"])
+            - bench-json-number(fields["mean"])
+            - bench-json-number(fields["median"])
+            - bench-json-number(fields["max"])
+            - bench-json-number(fields["standardDeviation"])
+            - bench-json-number(fields["relativeStdDevPct"])
+            - bench-json-number(fields["relativeRangePct"])
+            - fields["highDispersion"] == (true as JSON)
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-extract F64?
+    - metric BenchMetric
+    - sample JSON
+
+do match metric.extractor
+    | .value(pointer)
+        = bench-json-number(bench-pointer(sample, pointer))
+    | .sum(pointers)
+        = bench-sum(sample, pointers)
+    | .child-sum(pointer, field)
+        = bench-child-sum(sample, pointer, field)
+    | .ratio(numerator, denominator, denominators, scale)
+        . top = bench-json-number(bench-pointer(sample, numerator))
+        . bottom = if denominator != "" then bench-json-number(bench-pointer(sample, denominator)) ?? bench-sum(sample, denominators) else bench-sum(sample, denominators)
+        =? null if !top || !bottom || bottom == 0.0
+        = top / bottom * scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-pointer JSON?
+    - root JSON
+    - pointer String
+
+=? null if !pointer.starts-with("/")
+. value JSON? = root
+for segment in pointer[1 ...].split("/")
+    . key = bench-pointer-segment(segment)
+    do match value!
+        | fields [String = JSON]
+            =? null if fields[key] == null
+            value = fields[key]
+        | items [JSON]
+            . index = bench-index(key)
+            =? null if !index || index >= items.length
+            value = items[index]
+        ??
+            = null
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-json-number F64?
+    - value JSON?
+
+=? null if !value
+do match value
+    | number Float
+        = number
+    | number Int
+        = number as F64
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-number-json JSON
+    - value F64?
+
+if value then (value as JSON) else (null as JSON)
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-rounded F64
+    - value F64
+
+floor(value * 1000.0 + 0.5) / 1000.0
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-is-finite Bool
+    - value F64
+
+value == value && value - value == 0.0
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-value-text String
+    - format BenchFormat
+    - value F64?
+
+=? "n/a" if !value
+. number = value
+do match format
+    | .duration
+        =? "${bench-fixed(number / 1000.0, 2)} s" if number >= 1000.0
+        = "${bench-fixed(number, 0)} ms"
+    | .count
+        |? number >= 1000000.0
+            = "${bench-decimal(number / 1000000.0, 1)}M"
+        |? number >= 1000.0
+            = "${bench-decimal(number / 1000.0, 1)}k"
+        ??
+            = bench-fixed(number, 0)
+    | .rate
+        |? number >= 1000000.0
+            = "${bench-decimal(number / 1000000.0, 1)}M/s"
+        |? number >= 1000.0
+            = "${bench-decimal(number / 1000.0, 1)}k/s"
+        ??
+            = "${bench-decimal(number, 1)}/s"
+    | .percent
+        = "${bench-decimal(number, 1)}%"
+    | .bytes
+        . units = List'String("B", "KiB", "MiB", "GiB")
+        . unit = 0
+        . scaled = number
+        while scaled >= 1024.0 && unit < units.length - 1
+            scaled = scaled / 1024.0
+            unit += 1
+        = "${bench-decimal(scaled, if scaled >= 100.0 || unit == 0 then 0 else 1)} ${units[unit]}"
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-elapsed-text String
+    - nanoseconds U64
+
+|? milliseconds < 1000
+    "${milliseconds}ms"
+|? milliseconds < 60000
+    "${tenths / 10}.${tenths % 10}s"
+??
+    "${seconds / 60}m ${seconds % 60}s"
+
+.. milliseconds = nanoseconds / 1000000
+.. tenths = milliseconds / 100
+.. seconds = milliseconds / 1000
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-delta-text String
+    - percent F64?
+
+|? !percent || !bench-is-finite(percent)
+    "-"
+|? abs(percent) < 0.05
+    "0%"
+??
+    "$sign${bench-fixed(magnitude, if magnitude >= 10.0 then 0 else 1)}%"
+
+.. sign = if percent > 0.0 then "+" else "-"
+.. magnitude = abs(percent)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-fixed String
+    - value F64
+    - digits Size
+
+. scale = 1.0
+for _ in 0 .. < digits
+    scale = scale * 10.0
+. negative = value < 0.0
+. units = floor(abs(value) * scale + 0.5) as U64
+. whole = bench-grouped(units / (scale as U64))
+. sign = if negative && units > 0 then "-" else ""
+=? "$sign$whole" if digits == 0
+. fraction = "${units % (scale as U64)}"
+while fraction.length < digits
+    fraction = "0$fraction"
+= "$sign${whole}.$fraction"
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-decimal String
+    - value F64
+    - digits Size
+
+. text = bench-fixed(value, digits)
+=? text if digits == 0 || !text.find(".")
+. end = text.length
+while text[end - 1] == '0'
+    end -= 1
+if text[end - 1] == '.'
+    end -= 1
+= text[0 .. < end]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-grouped String
+    - value U64
+
+. digits = "$value"
+. result = ""
+. count = 0
+. index = digits.length
+while index > 0
+    if count == 3
+        result = ",$result"
+        count = 0
+    index -= 1
+    result = "${digits[index]}$result"
+    count += 1
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-sum F64?
+    - sample JSON
+    - pointers [String]
+
+. total = 0.0
+. found = false
+for pointer in pointers
+    . value = bench-json-number(bench-pointer(sample, pointer))
+    if value
+        total += value
+        found = true
+= total if found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-child-sum F64?
+    - sample JSON
+    - pointer String
+    - field String
+
+. container = bench-pointer(sample, pointer)
+=? null if !container
+. children [JSON]
+do match container
+    | fields [String = JSON]
+        for _, child in fields
+            children += child
+    | items [JSON]
+        children = items
+    ??
+        = null
+. total = 0.0
+. found = false
+for child in children
+    . value = bench-json-number(bench-child-value(child, field))
+    if value
+        total += value
+        found = true
+= total if found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-child-value JSON?
+    - child JSON
+    - field String
+
+=? child if field == ""
+=? bench-pointer(child, field) if field.starts-with("/")
+do match child
+    | fields [String = JSON]
+        = fields[field]
+    ??
+        = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-pointer-segment String
+    - segment String
+
+. result = ""
+. index = 0
+while index < segment.length
+    if segment[index] == '~' && index + 1 < segment.length
+        if segment[index + 1] == '1'
+            result = "$result/"
+            index += 2
+            continue
+        if segment[index + 1] == '0'
+            result = "$result~"
+            index += 2
+            continue
+    result = "$result${segment[index]}"
+    index += 1
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-index Size?
+    - text String
+
+=? null if text == ""
+. value Size = 0
+for char in text
+    =? null if char < '0' || char > '9'
+    value = value * 10 + ((char as U32) - ('0' as U32))
+= value
