@@ -1,0 +1,190 @@
+(import /net/http)
+(import /net/http-server)
+(blank)
+
+(main
+  (lazy site (call SiteService))
+  (blank)
+  (<> HTTPServer (id: server)
+    (= service site)
+    (= port 8080)
+    (blank)
+    (<> Route (text: "/")
+      (= get (. site home))
+    )
+    (blank)
+    (<> Route (text: "/notes")
+      (= get (. site notes-page))
+      (= post (. site add-note))
+      (blank)
+      (<> Route (text: "{id}")
+        (= get (. site note))
+      )
+    )
+    (blank)
+    (<> Route (text: "/about")
+      (= get (. site about))
+    )
+  )
+  (blank)
+  (print (str "Serving on http://" (. server host) ":" (. server port) " (Ctrl-C to stop)"))
+  (call (. server run))
+)
+
+(type + SiteService (is HTTPService)
+  (prop + notes (list String))
+  (fn-do + This _
+    (+= notes "Buy milk")
+    (+= notes "Water the plants")
+  )
+  (fn-do + respond HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (let response (call (. super respond) request))
+    (print (str (. request method) " " (. request target) " " (. response status)))
+    (return-if response (if (!= (. response status) (. HTTPStatus not-found))))
+    (let content (list String)
+      (block
+        (bullet (str "<p>Nothing lives at <code>" (call html-escape (. request path)) "</code>.</p>"))
+      )
+    )
+    (return (call html-page "Not Found" content (. HTTPStatus not-found)))
+  )
+  (fn-expr + home HTTPResponse
+    (param request HTTPRequest)
+    (call html-page "Yumi HTTP Server" content)
+    (where
+      (lazy content (list String)
+        (block
+          (bullet "<p>A small site served from markup routes.</p>")
+          (bullet "<ul>")
+          (bullet (str "<li><a href=\"/notes\">Browse " (. notes length) " notes</a></li>"))
+          (bullet "<li><a href=\"/about\">About this request</a></li>")
+          (bullet "</ul>")
+        )
+      )
+    )
+  )
+  (fn-expr + notes-page HTTPResponse
+    (param request HTTPRequest)
+    (call html-page "Notes" content)
+    (where
+      (lazy content (list String)
+        (block
+          (bullet "<ul>")
+          (bullet* (in (str "<li><a href=\"/notes/" each "\">" (call html-escape ([] notes each)) "</a></li>") (..< 0 (. notes length))))
+          (bullet "</ul>")
+          (bullet "<p>Add one with <code>curl -L -d 'Call mom' http://localhost:8080/notes</code></p>")
+        )
+      )
+    )
+  )
+  (fn-do + add-note HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (let text (. request text))
+    (return-if (. HTTPStatus bad-request) (if (== (. text length) 0)))
+    (+= notes text)
+    (let location (list HTTPHeader)
+      (block
+        (bullet (tuple "Location" (str "/notes/" (- (. notes length) 1))))
+      )
+    )
+    (return (call HTTPResponse (. HTTPStatus see-other) null location))
+  )
+  (fn-expr + note HTTPResponse
+    (param request HTTPRequest)
+    (case? (or (== index null) (>= index (. notes length)))
+      (. HTTPStatus not-found)
+    )
+    (default
+      (call html-page (str "Note " (+ index 1)) content)
+    )
+    (where
+      (lazy index (call note-index (!! ([] (. request params) "id"))))
+      (lazy content (list String)
+        (block
+          (bullet (str "<p>" (call html-escape ([] notes index)) "</p>"))
+          (bullet "<p><a href=\"/notes\">All notes</a></p>")
+        )
+      )
+    )
+  )
+  (fn-expr + about HTTPResponse
+    (param request HTTPRequest)
+    (call html-page "About" content)
+    (where
+      (lazy content (list String)
+        (block
+          (bullet (str "<p>You asked for <code>" (call html-escape (. request target)) "</code> with these headers:</p>"))
+          (bullet "<dl>")
+          (bullet* (in (str "<dt>" (call html-escape (. each name)) "</dt><dd>" (call html-escape (. each value)) "</dd>") (. request headers)))
+          (bullet "</dl>")
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ html-page HTTPResponse
+  (param title String)
+  (param content (list String))
+  (param status HTTPStatus (= (. HTTPStatus ok)))
+  (call HTTPResponse status (call (. "\n" join) lines) headers)
+  (where
+    (lazy lines (list String)
+      (block
+        (bullet "<!doctype html>")
+        (bullet "<html>")
+        (bullet (str "<head><meta charset=\"utf-8\"><title>" (call html-escape title) "</title></head>"))
+        (bullet "<body>")
+        (bullet "<nav><a href=\"/\">Home</a> · <a href=\"/notes\">Notes</a> · <a href=\"/about\">About</a></nav>")
+        (bullet (str "<h1>" (call html-escape title) "</h1>"))
+        (bullet* content)
+        (bullet "</body>")
+        (bullet "</html>")
+      )
+    )
+    (lazy headers (list HTTPHeader)
+      (block
+        (bullet (tuple "Content-Type" "text/html; charset=utf-8"))
+      )
+    )
+  )
+)
+
+(fn-expr _ note-index (? Index)
+  (param text String)
+  (match? text
+    (~ (seq (: index (of \num Index)) (! .))
+      index
+    )
+  )
+)
+
+(fn-expr _ html-escape _
+  (param text String)
+  (call (. "" join) (in (call html-escaped each) text))
+)
+
+(fn-expr _ html-escaped _
+  (param c Char)
+  (match c
+    (case= '&'
+      "&amp;"
+    )
+    (case= '<'
+      "&lt;"
+    )
+    (case= '>'
+      "&gt;"
+    )
+    (case= (char "\"")
+      "&quot;"
+    )
+    (case= (char "'")
+      "&#39;"
+    )
+    (default
+      (str c)
+    )
+  )
+)

@@ -1,0 +1,43 @@
+(import ./file-browser-panel)
+(import /gui)
+(import /gui/file-browsing)
+(import /os/cli)
+(import /os/env)
+(import /os/path)
+(blank)
+
+(main
+  (let files (use (call FileTree (call file-browser-root (. (call cmdline) args)))))
+  (blank)
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Yumi GUI: File Browser")
+      (= size (tuple 1080 760))
+      (blank)
+      (<> FileBrowserPanel (• flex 1)
+        (= files files)
+      )
+    )
+  )
+)
+
+(fn-expr _ file-browser-root Path
+  (param args (list String))
+  (case? (> (. args length) 0)
+    (call Path ([] args 0) 0)
+  )
+  (default
+    (call Path home 0)
+  )
+  (where
+    (lazy home
+      (call env-required "HOME"
+        (block
+          (on-error (: err Error)
+            (throw (call Panic (str "Could not locate the home directory: " err)))
+          )
+        )
+      )
+    )
+  )
+)

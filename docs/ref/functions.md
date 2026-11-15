@@ -59,8 +59,9 @@ in `(fn-do + name Type body)`{.brix}. The header then holds, in order:
 
 ## Value bodies
 
-A function declared with `fn-expr` has a value body. The body describes one value, and that value
-is what the function gives.
+A function declared with `fn-expr`, an expression function, has a value body. The body describes
+one value, and that value is what the function gives. A value body is the usual way to write a
+function, not a shorthand for small ones.
 
 ```brix
 (main
@@ -90,11 +91,14 @@ being a single expression:
   it gives, and a `(default value)`{.brix} arm for every other case. A `match` is a table over one
   subject. See Control flow.
 - **Bullets**: rows such as `(bullet item)`{.brix}, each adding items to the list the function
-  gives. See Collections.
+  gives. See Streams.
 - **A pipeline**: a value followed by stage rows such as `(pipe ?> condition)`{.brix} and
   `(pipe *> value)`{.brix}, each working on the result of the row above. See Streams.
 - **A text body**: the text the function gives, written as the text itself, as in
   `(fn-expr + greeting _ (paragraph "Hello."))`{.brix}. See Text.
+- **Sections**: a `(header value)` row, then value rows, each passed to the `with` method of what
+  came before: the first to the header's value, and each later one to what the previous `with`
+  gave. The function gives the last answer. In rows a section starts with a `════` divider.
 
 ```brix
 (main
@@ -164,7 +168,8 @@ values written with `=>` follow the same rules; see [Function values](#function-
 
 A lazy binding names a value that is worked out when it is first read. It is written
 `(lazy name value)`{.brix}. In a value body, lazy bindings come after the value, in its `where`
-section.
+section, so a function can give its answer first and define the parts it is built from below it,
+where a reader looks for them next.
 
 ```brix
 (main
@@ -209,12 +214,39 @@ no total
 - **What it reads.** The value reads names as they are when it runs, not as they were where the
   binding is written. A step that changes a name the value reads, run before the first read,
   changes the value.
+- **No updates.** Once worked out, the value stays, though the names it read change later. A
+  value that follows them is a matter for Reactivity.
 - **Assigning.** A lazy binding can be assigned like a local. Assigning before the first read means
   its value never runs. `+=` and other updates read the binding first, which runs its value.
 - **A type.** `(lazy name Type value)`{.brix} converts the value to the type.
   `(lazy name Type)`{.brix}, with no value, is the type's default.
 - **A pattern.** `(lazy (tuple first second) (call pair))`{.brix} takes a value apart into several
   names. The value runs once, at the first read of any of them. See Patterns.
+- **Under one value.** `(scope value rows)` gives a value with the lazy bindings it reads written
+  under it, as in `(print (scope (* width height) (lazy width 3) (lazy height 4)))`{.brix}. In rows
+  the bindings are indented below the value's row. A call takes such rows in its `block`.
+
+```brix
+(main
+  (call reprice)
+)
+
+(fn-do + reprice _
+  (let price 3)
+  (lazy total (* price 2))
+  (= price 4)
+  (print total)
+  (= price 10)
+  (print total)
+)
+```
+
+```output
+8
+8
+```
+
+`total` reads `price` after it changes to 4, and keeps its value after it changes to 10.
 
 A lazy binding that reads itself, directly or through the bindings it reads, is an error. So is a
 second binding of the same name in one body.
@@ -455,7 +487,10 @@ abab
 - **Type parameters.** A row can also name a type parameter of a generic function, to give it a
   default or a constraint. See [Generic functions](#generic-functions).
 - **Names.** A parameter can be named by any word except `in`, `on`, `and`, `or`, `do`, `for`,
-  `while`, `if` and `else`.
+  `while`, `if` and `else`. Prepositions such as `from`, `to`, `at`, `before` and `after` make a
+  call by name read as a phrase, `(call distance (:from origin) (:to corner))`{.brix}, and are
+  called prepositional arguments. They help most where two parameters share a type and swapping
+  them would still compile.
 
 A parameter is a local of the function. Assigning to it changes the function's local, not what the
 caller passed.

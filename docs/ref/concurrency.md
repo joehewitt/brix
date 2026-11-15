@@ -48,6 +48,9 @@ done
 - **One call.** `(do-new (inline (call send-all items)))`{.brix} starts a task that makes one
   call.
 - **Priority.** `@priority` after `do-new` puts the task ahead of tasks without it.
+- **Stack.** A task's stack is smaller than `main`'s, and deep recursion that `main` survives can
+  overflow it: `Stack overflow`. `@large-stack` after `do-new` or `do-new-thread`, or a worker,
+  gives the task a stack as large as `main`'s.
 - **Results.** A task's body cannot return a value, and its handle holds none. A task passes
   results back through a channel, as in the next example, or a caller waits for a function with
   `await`; see [Waiting for a result](#waiting-for-a-result).
@@ -55,6 +58,47 @@ done
   rows at the end of the `do-new` handle it where the task was started; see Errors. A panic that
   none handle crashes the program, and a recoverable error that leaves a task's body ends the
   program with status 1. The report names the task and the task that started it.
+
+### Calls that wait
+
+No call is marked as one that waits: a function that waits on a channel, a file or the network is
+declared and called like any other, with no `async` on it and no `await` where it is called. A
+helper can start or stop waiting, as when a value read locally comes from a server instead,
+without a change to its callers.
+
+```brix
+(main
+  (let replies (channel String))
+  (let log (list String))
+  (do-new
+    (+= log "worker ran")
+    (<- replies "pong")
+  )
+  (print (call ask replies log))
+)
+
+(fn-do + ask String
+  (param replies (channel String))
+  (param log (list String))
+  (let before (. log length))
+  (let reply (call receive replies))
+  (return (str reply "; log had " before " entries before the call and " (. log length) " after"))
+)
+
+(fn-expr + receive String
+  (param replies (channel String))
+  (!! (<- replies))
+)
+```
+
+```output
+pong; log had 0 entries before the call and 1 after
+```
+
+While a call waits anywhere below it, other tasks run, and they can change what the caller read
+before the call, as the task here changes `log`. Read shared state again after a call that may
+wait. `await` is an ordinary function that runs another function in the pool; see [Waiting for a
+result](#waiting-for-a-result).
 
 ### Where a task runs
 
@@ -87,7 +131,7 @@ methods:
 | Method | Effect |
 | --- | --- |
 | `wait` | Waits until the task ends. A task cannot wait for itself. |
-| `cancel` | Cancels the task. It ends the next time it waits: its cleanups run, but not its `on-failure` rows. |
+| `cancel` | Cancels the task. It ends the next time it waits, running up to its first wait if it has not started: its cleanups run, and a wait in one of them ends that cleanup, but its `on-failure` rows do not run. |
 | `suspend` | Makes the task wait until it is resumed, and gives whether it was canceled. |
 | `resume-now`, `resume-later` | Resumes a suspended task. |
 | `when-finished` | Runs a function in a new task when the task ends. |
@@ -196,12 +240,17 @@ A channel carries values from tasks that write them to tasks that read them. `(c
 is a channel of `Int`, the type `SyncChannel'Int`. A declaration with a channel type and no value
 makes the channel.
 
+A `Sync` channel is read by asking it for the next value, and its reads and writes may wait. An
+`Async` channel publishes each value to its subscribers. A `SyncChannel` is a rendezvous: it keeps
+a writer in step with its reader. A buffered channel lets the writer run ahead, at the cost of
+the memory its queue takes.
+
 | Type | Writing | Reading | After `close` |
 | --- | --- | --- | --- |
 | `SyncChannel` | Waits until a reader takes the value. | Waits for a value. | Readers get the values still being written, then `null`. Writing panics: `Can't write to closed channel`. |
 | `SyncBufferedChannel` | Adds the value to a queue with no limit, and never waits. | Waits while the queue is empty. | Readers empty the queue, then get `null`. Writes are dropped. |
 | `AsyncChannel` | Publishes the value to every subscriber, and never waits; a value with no subscribers is lost. | Subscribes; see [Subscriptions](#subscriptions). | Subscribers get what was published, then end. Writing panics: `Can't write to closed broadcaster`. |
-| `AsyncBufferedChannel` | As `AsyncChannel`, but keeps values while there are no subscribers and gives them to the first. | Subscribes, or reads its kept values. | As `AsyncChannel`. |
+| `AsyncBufferedChannel` | As `AsyncChannel`, but keeps values while there are no subscribers and gives them to the first. | Subscribes, or reads its kept values. | Writes are dropped. `<-` reads the kept values, then gives `null`. A new subscription or loop panics: `Illegal to subscribe while closed`. |
 
 ```brix
 (main
@@ -242,6 +291,46 @@ drained
   the reader run first, and the writer goes on after it.
 - **Streams.** A channel is a stream, so a function that takes a stream takes a channel. A stream
   converts to `Broadcastable`, the type of `AsyncChannel`, by a task that publishes its items.
+
+A reader that stops early does not stop the task that writes: that task waits on its next write
+to a `SyncChannel` forever, and the program never exits. A reader that stops before the end
+cancels the writer, or closes a channel the writer watches.
+
+```brix
+(main
+  (let numbers (channel Int))
+  (let producer
+    (do-new
+      (finally
+        (print "producer cleanup")
+      )
+      (for (in n (.. 1 5))
+        (<- numbers n)
+        (print (str "sent " n))
+      )
+      (call (. numbers close))
+    )
+  )
+  (for (in n numbers)
+    (print (str "got " n))
+    (if (== n 2)
+      (break)
+    )
+  )
+  (call (. producer cancel))
+  (call (. producer wait))
+  (print "producer cancelled")
+)
+```
+
+```output
+got 1
+sent 1
+got 2
+sent 2
+producer cleanup
+producer cancelled
+```
 
 ## Subscriptions
 

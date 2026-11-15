@@ -1,0 +1,221 @@
+(import /tui)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> BorderGallery (id: app) (• flex-col) (• flex 1) (• bg black) (• p 1))
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + BorderGallery (is Box)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (content
+    (<> Label (text: " Border Gallery ") (• bg white) (• text black))
+    (blank)
+    (<> Box (• flex-row) (• flex 1) (• bg black)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border-solid) (• border aqua) (• bg navy)
+        (<> Label (text: " single ") (• text aqua))
+        (<> TextBox (text: "Default painter"))
+        (<> TextBox (text: "1-cell inset"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border-rounded) (• border lime) (• bg green)
+        (<> Label (text: " rounded ") (• text lime))
+        (<> TextBox (text: "Soft corners"))
+        (<> TextBox (text: "Same layout math"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border-double) (• border yellow) (• bg olive)
+        (<> Label (text: " double ") (• text yellow))
+        (<> TextBox (text: "Box drawing chars"))
+        (<> TextBox (text: "Still 1 cell"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border-heavy) (• border white) (• bg grey)
+        (<> Label (text: " heavy ") (• text white))
+        (<> TextBox (text: "Bold UTF-8"))
+        (<> TextBox (text: "No width prop"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border-dashed) (• border silver) (• bg maroon)
+        (<> Label (text: " dashed ") (• text silver))
+        (<> TextBox (text: "Thin default"))
+        (<> TextBox (text: "Painter clamps"))
+      )
+    )
+    (blank)
+    (<> Box (• flex-row) (• flex 1) (• bg black)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border (call NeonStackBorder)) (• bg navy)
+        (<> Label (text: " neon stack ") (• text aqua))
+        (<> TextBox (text: "Custom insets: 2"))
+        (<> TextBox (text: "Two nested frames"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border (call DropShadowBorder)) (• bg purple)
+        (<> Label (text: " drop shadow ") (• text white))
+        (<> TextBox (text: "Asymmetric inset"))
+        (<> TextBox (text: "Frame plus shade"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border (call SignalBorder)) (• bg green)
+        (<> Label (text: " signal ") (• text yellow))
+        (<> TextBox (text: "Painter owns style"))
+        (<> TextBox (text: "Animated-looking edge"))
+      )
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• m 1) (• p 1) (• border (call InsetPanelBorder)) (• bg maroon)
+        (<> Label (text: " inset panel ") (• text white))
+        (<> TextBox (text: "Mixed glyphs"))
+        (<> TextBox (text: "Thick top/left"))
+      )
+    )
+    (blank)
+    (<> Shortcut (text: "Quit")
+      (= key .escape)
+      (= action (=> () :do (call (. root close))))
+    )
+  )
+)
+
+(type + NeonStackBorder (is BorderPainter)
+  ; ╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+  (fn-expr + border-insets Insets
+    (param node Box)
+    (call Insets 2 2 2 2)
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (let outer (call BorderChars "╔" "╗" "╚" "╝" "═" "║"))
+    (call paint-border-frame rect outer aqua canvas)
+    (blank)
+    (let inner-chars (call BorderChars "┌" "┐" "└" "┘" "─" "│"))
+    (call paint-border-frame (call (. rect inset) (call Insets 1 1 1 1)) inner-chars fuchsia canvas)
+  )
+)
+
+(type + DropShadowBorder (is BorderPainter)
+  ; ╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+  (fn-expr + border-insets Insets
+    (param node Box)
+    (call Insets 1 2 2 1)
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (let frame (call (. rect inset) (call Insets 0 1 1 0)))
+    (let chars (call BorderChars "┏" "┓" "┗" "┛" "━" "┃"))
+    (call paint-border-frame frame chars white canvas)
+    (blank)
+    (let shadow-x (- (. rect right) 1))
+    (let shadow-y-start (+ (. rect y) 1))
+    (let shadow-y-end (. rect bottom))
+    (for (in y (..< shadow-y-start shadow-y-end))
+      (call paint-cell canvas shadow-x y "▓" black)
+    )
+    (blank)
+    (let shadow-y (- (. rect bottom) 1))
+    (let shadow-x-start (+ (. rect x) 1))
+    (let shadow-x-end (. rect right))
+    (for (in x (..< shadow-x-start shadow-x-end))
+      (call paint-cell canvas x shadow-y "▒" black)
+    )
+  )
+)
+
+(type + SignalBorder (is BorderPainter)
+  ; ╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+  (fn-expr + border-insets Insets
+    (param node Box)
+    (call Insets 1 1 1 1)
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (return-if (if (or (<= (. rect width) 0) (<= (. rect height) 0))))
+    (blank)
+    (for (in x (..< (. rect x) (. rect right)))
+      (let mark (call signal-mark x))
+      (call paint-cell canvas x (. rect y) mark (call signal-color x))
+      (call paint-cell canvas x (- (. rect bottom) 1) mark (call signal-color (+ x 2)))
+    )
+    (for (in y (..< (+ (. rect y) 1) (- (. rect bottom) 1)))
+      (call paint-cell canvas (. rect x) y "╏" (call signal-color y))
+      (call paint-cell canvas (- (. rect right) 1) y "╏" (call signal-color (+ y 2)))
+    )
+  )
+)
+
+(type + InsetPanelBorder (is BorderPainter)
+  ; ╌╌╌╌╌╌╌╌╌╌ is BorderPainter ╌╌╌╌╌╌╌╌╌╌
+  (fn-expr + border-insets Insets
+    (param node Box)
+    (call Insets 2 2 1 2)
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (let outer (call BorderChars "▛" "▜" "▙" "▟" "▀" "▌"))
+    (call paint-border-frame rect outer yellow canvas)
+    (blank)
+    (let inner-chars (call BorderChars "╭" "╮" "╰" "╯" "─" "│"))
+    (call paint-border-frame (call (. rect inset) (call Insets 1 1 0 1)) inner-chars white canvas)
+  )
+)
+
+(fn-do _ paint-cell _
+  (param canvas Canvas)
+  (param x Coord)
+  (param y Coord)
+  (param text String)
+  (param color AnsiColor)
+  (do-use canvas
+    (= (. canvas text-color) color)
+    (call (. canvas move) (tuple x y))
+    (call (. canvas print) text)
+  )
+)
+
+(fn-expr _ signal-mark String
+  (param value Coord)
+  (match (% value 4)
+    (case= 0
+      "▁"
+    )
+    (case= 1
+      "▃"
+    )
+    (case= 2
+      "▅"
+    )
+    (default
+      "▇"
+    )
+  )
+)
+
+(fn-expr _ signal-color AnsiColor
+  (param value Coord)
+  (match (% value 4)
+    (case= 0
+      lime
+    )
+    (case= 1
+      aqua
+    )
+    (case= 2
+      yellow
+    )
+    (default
+      white
+    )
+  )
+)

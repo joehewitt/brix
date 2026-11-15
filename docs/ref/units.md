@@ -168,7 +168,9 @@ true
   `A unit cannot be declared as zero of another, which no number of it would convert from; write a
   number other than zero`.
 - **Agreeing.** Two equalities between the same two units must state the same ratio: `Equalities
-  between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo; keep one of them`.
+  between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo; keep one of them`. Only
+  equalities between the same pair are checked. One that disagrees with a path through other
+  units is not reported, and is not used, so keep every path between two units in agreement.
 - **Across modules.** `/time/flicks` declares `(unit + 705600000flicks 1seconds)`{.brix}, so flicks
   convert to and from every duration.
 - **Only ratios.** An equality states a ratio. Units with an offset between them, such as degrees
@@ -210,6 +212,12 @@ true
   operand's unit, and the result is in the left's unit.
 - **No compound units.** Multiplying or dividing two units does not make a new unit and does not
   cancel them: the right operand converts as for `+`, so `(/ 2hours 30minutes)`{.brix} is `4hours`.
+  Units are not dimensional analysis. A quantity such as a speed is a unit of its own, made by a
+  function that takes the two units, as in `(fn-expr + per Speed (param distance Length) (param
+  time Seconds) body)`.
+- **Two families.** `+`, `-`, `*`, `/` and `%` between units of two families that no equality
+  joins give a plain number: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `120`.
+  Only comparisons between them are errors.
 - **Plain numbers.** A plain number on the right is taken in the left's unit:
   `(+ 90s 30)`{.brix} is `120seconds`. A plain number on the left keeps the unit only for `*`; with
   the other operators the result is a plain number.
@@ -302,6 +310,11 @@ Exception: Dollars cannot be cast to Seconds; there is no conversion between the
 | `/ui/virtual` | `vcoord`, in no family. |
 | `/media/synth` | `hz` and `khz`; `st` and `oct`. |
 
+- **Ratios.** `%%` is a `Ratio`, in which `1%%` is the whole, and `%` is a `Percent`, in which
+  `100%` is the whole: `(as 25% Ratio)`{.brix} is `0.25%%`. Write a fraction with its leading
+  zero: `0.75%%` is three quarters, and `75%%` is seventy-five wholes.
+- **Scales.** A type that implements `Scalable` gives a range, a `Scale`, onto which a ratio
+  converts: `Hour` gives 0 to 23, so `(as 0.75%% Hour)`{.brix} is `18hour`.
 - **Durations** have methods: `(call (. 0.25s wait))`{.brix} waits, and `interval` makes a timer.
   Timeouts, waits and timers in the standard library take durations.
 - **Styles** use durations for motion, as in `200ms`, and percentages for keyframe stops and

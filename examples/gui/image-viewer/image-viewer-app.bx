@@ -1,0 +1,50 @@
+(import ./image-viewer-panel)
+(import /gui)
+(import /gui/file-browsing)
+(import /os/cli)
+(import /os/env)
+(import /os/path)
+(blank)
+
+(main
+  (let start (call image-viewer-start (. (call cmdline) args)))
+  (let files (use (call FileTree (call image-viewer-root start))))
+  (blank)
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Yumi GUI: Image Viewer")
+      (= size (tuple 1180 780))
+      (= use-wide-gamut true)
+      (blank)
+      (<> ImageViewerPanel (• flex 1)
+        (= files files)
+        (= start start)
+      )
+    )
+  )
+)
+
+(fn-do _ image-viewer-start Path
+  (param args (list String))
+  (return-if (. (call Path ([] args 0) 0) resolved) (if (> (. args length) 0)))
+  (let home
+    (call env-required "HOME"
+      (block
+        (on-error (: err Error)
+          (throw (call Panic (str "Could not locate the home directory: " err)))
+        )
+      )
+    )
+  )
+  (return (call Path (str home "/Pictures") 0))
+)
+
+(fn-expr _ image-viewer-root Path
+  (param start Path)
+  (case? (. start is-dir)
+    start
+  )
+  (default
+    (?? (. start parent) start)
+  )
+)

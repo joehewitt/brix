@@ -278,6 +278,12 @@ latest 9
   state, and cannot read the loop's item: `whenever clauses must read at least one tracked property
   (like #is-open)`.
 
+| When the program needs | Read the stream with |
+| --- | --- |
+| Every value, as in processing each log record | A loop or a subscription, which takes each one. |
+| The current state, as in showing a reading | `##`, which may skip values. |
+| A history or a total | A loop that stores or adds up each value. |
+
 ## Events
 
 A class declares an event with the type of the value it carries, and publishes values to it with
@@ -342,7 +348,9 @@ outside: bob
   its subscribers and keeps none to read with "<-"; hear the next one with "for value on d.rang",
   and end the loop with "break"`. Declared with the type `Broadcastable`, as in
   `(let e (of Broadcastable String) (. door rang))`{.brix}, it can be, and its `subscribe` and
-  `unsubscribe` methods take a function.
+  `unsubscribe` methods take a function. It can subscribe but not publish: `Operator "<-" is not
+  defined for Broadcastable'String`. So a type can hand out an event as a `Broadcastable` to let
+  others listen, and keep publishing to itself.
 
 | Subscription | Written |
 | --- | --- |
@@ -358,7 +366,7 @@ outside: bob
   A subscription made during a publication starts with the next one.
 - **Clauses.** `when`, `while` and `until` work as in other loops; see Control flow.
 - **Errors** a subscriber raises go to `unhandled-error`, and the subscribers after it still run.
-  A panic leaves the statement that published.
+  A panic in a subscriber ends the task that published; see Errors.
 - **One source.** A loop subscribes to one event: `A loop on a stream subscribes to one source, so
   it cannot be joined to another; write a loop for each source`.
 
@@ -492,7 +500,10 @@ after the store: total 12
 
 ## Live functions
 
-A function marked `@live` keeps state from one run of the live value that calls it to the next.
+A function marked `@live` keeps state from one run of the live value that calls it to the next. It
+is for a value that changes over time on its own, as an animation does: GUI's `animated` is a live
+function, whose state is the motion that moves the value, and each frame of the motion runs the
+value again.
 
 ```brix
 (main

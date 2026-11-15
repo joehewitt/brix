@@ -178,6 +178,11 @@ inf
 - **Powers.** `(%% a b)`{.brix} has the type of `a`. It is computed as a `Float` and converted
   back, so `(%% 2 0.5)`{.brix} is `1.4142135623730951`, but with `a` an `Int` holding 2 it is `1`.
   An integer power too large for the type gives its largest value.
+- **Updates.** `+=`, `-=`, `*=`, `/=`, `%=` and `%%=` apply their operator to what a local,
+  property or item holds and store the result there, so with `n` holding 30, `(/= n 4)`{.brix}
+  leaves `7`. `+=` and `-=` on a list add and remove items instead; see Collections.
+- **Paths.** A type can give `/` another meaning; `Path` from `/os/path` joins with it:
+  `(/ (call Path "/tmp") "notes.txt")`{.brix} is `/tmp/notes.txt`.
 
 ## Comparison
 
@@ -267,18 +272,24 @@ The bitwise operations are named operators, and take integers:
 ## Named operators
 
 Any function of two parameters can be used as an operator, with its name between slashes:
-`(/clamped-to/ 7 5)`{.brix} calls `(call clamped-to 7 5)`{.brix}. See [Precedence](#precedence)
+`(/clamped-to/ 7 5)`{.brix} calls `(call clamped-to 7 5)`{.brix}. A named operator puts a function
+between its values without a new symbol, and the slashes keep the name from being read as a
+value. See [Precedence](#precedence)
 for the forms with more slashes.
 
 ## Reserved operators
 
-`<<`, `>>` and `<|` are read as operators, but have no meaning yet, and no type can define them:
-`Operator "<<" is not defined for I64 and I64`.
+`<<`, `>>` and `<|` are read as operators, but no built-in type defines them:
+`Operator "<<" is not defined for I64 and I64`. A type can define them as it defines any operator;
+see [Operators a type defines](#operators-a-type-defines). `?<<` and `?>>`, in rows `a? << b`{.rows}
+and `a? >> b`{.rows}, are reserved: `Brix form “(?<< …)” is not supported yet`.
 
 ## Operators a type defines
 
 A type defines an operator for its values with a function whose name is the operator written with
-`this`, as in `(fn-expr + (infix this + (param other Vec)) _ body)`{.brix}.
+`this`, as in `(fn-expr + (infix this + (param other Vec)) _ body)`{.brix}. Define one only where
+it means what the symbol means for numbers, such as adding or combining; otherwise use a function
+whose name says what it does.
 
 ```brix
 (main

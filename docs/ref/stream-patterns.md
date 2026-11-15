@@ -84,8 +84,42 @@ In this table, `\a`, `\b` and `\p` stand for any patterns.
   ends.
 - **Counts** in `{}` may be any expression, such as a number captured earlier.
 - **End of input** is `(! .)`{.brix}: no item follows.
+- **Tests and counts.** `(\{} test)`{.brix} matches one item for which the test holds, while
+  `({} \p n)`{.brix} repeats a pattern. A test written as a count, as in `(+ ({} (> it 0)))`, is
+  refused.
 - **White space.** `/` and `//` call the rule `ws`. A local rule named `ws` changes what they
   match.
+
+A rule's action runs when the rule matches, even inside an alternative that then fails, and runs
+again when the next alternative calls the rule. Nothing it did is undone, so keep actions free of
+effects, and act on the value the match gives:
+
+```brix
+(main
+  (print
+    (match "ab?"
+      (~ (| (seq (: w \word) "!") (seq (: w \word) "?"))
+        (str "matched " w)
+      )
+    )
+  )
+)
+
+(fn-expr + word String (over: Char)
+  (~ (: letters (+ (chars "a-z")))
+    (do
+      (print (str "word action ran on " letters))
+    )
+    letters
+  )
+)
+```
+
+```output
+word action ran on ab
+word action ran on ab
+matched ab
+```
 
 ### Character sets
 
@@ -112,8 +146,8 @@ These rules are always available over characters:
 
 In rows, a sequence is written with spaces between its parts, as in `"v" major \num'Int`{.rows},
 and a choice with `|`. A choice binds more tightly than a sequence, so `"a" "b" | "c" "d"`{.rows}
-is `"a" ("b" | "c") "d"`{.rows}. A set is written in brackets, `[a-z0-9_]`{.rows}, and a count in
-braces, `p{2, 4}`{.rows}.
+is `"a" ("b" | "c") "d"`{.rows}. A set is written in brackets, `[a-z0-9_]`{.rows}, a count in
+braces, `p{2, 4}`{.rows}, and an item test in braces after a backslash, `\{ it > 0 }`{.rows}.
 
 ## Captures
 
@@ -181,6 +215,50 @@ name=x kind=none
 - **Choices.** A name captured in every alternative of a choice has the join of their types. A
   name captured in only some of them cannot be read.
 - **One name, one capture.** A name captured twice in one sequence is an error.
+- **Spans.** A capture that the action only passes to parameters of type `CaptureSpan`, or reads
+  the `length` of, is given as a span of the input rather than made into text. Over characters,
+  such as `(. text codepoints)`{.brix}, it is a `CaptureSpan'Char`. Over a text it is a
+  `CaptureSpan'U8`, a span of the text's UTF-8 bytes, even in a rule over `Char`. A function
+  overloaded for both a span and a `String` is given the span. Any other read of the name makes it
+  text throughout the action.
+
+```brix
+(main
+  (print
+    (match (. "12345!" codepoints)
+      (~ (seq (: digits (+ (chars "0-9"))) "!")
+        (call digit-sum digits)
+      )
+    )
+  )
+  (print
+    (match "12345!"
+      (~ (seq (: digits (+ (chars "0-9"))) "!")
+        (call byte-count digits)
+      )
+    )
+  )
+)
+
+(fn-do + digit-sum Int
+  (param span (of CaptureSpan Char))
+  (let total 0)
+  (for (in i (..< (. span start) (. span end)))
+    (+= total (- (as ([] (. span source) i) Int) 48))
+  )
+  (return total)
+)
+
+(fn-expr + byte-count Size
+  (param span (of CaptureSpan U8))
+  (. span length)
+)
+```
+
+```output
+15
+5
+```
 
 ## Rules
 
@@ -244,6 +322,10 @@ A rule is a function whose body is pattern arms. Its header names the type of it
 - **Calling.** `\name` calls a rule, `(call \name argument)`{.brix} passes it arguments, and
   `(of \name Type)`{.brix} gives it a type argument. Rules declared with `fn-expr` take
   parameters; local rules do not.
+- **Passing captures on.** `(into found outer)` in a rule call adds what the called rule puts in
+  its accumulating capture `...found` to the caller's accumulating capture `...outer`, and
+  `(into letters)` does so for a capture of the same name in both. A rule that calls itself this
+  way keeps one array across its calls, as `items` does below.
 - **Results.** An arm's action gives the rule's value. An arm without an action gives the text it
   matched, converted to the rule's result type. A rule with no result type gives the join of its
   actions' values.
@@ -255,6 +337,46 @@ A rule is a function whose body is pattern arms. Its header names the type of it
 - **Guards.** A rule's arms may sit under `case?` conditions and a `default`, as in a decision
   table. A last arm that is a value, in a `default`, always matches and takes nothing. A last arm
   that is a `throw` raises; see [Failure](#failure).
+
+```brix
+(main
+  (print
+    (match "zza"
+      (~ (seq (+ (: ...outer "z")) (call \append-a (into found outer)))
+        outer
+      )
+    )
+  )
+  (print
+    (match "a,b,c"
+      (~ (: letters \items)
+        letters
+      )
+    )
+  )
+)
+
+(fn-expr + append-a _ (over: Char)
+  (~ (: ...found "a")
+    found
+  )
+)
+
+(fn-expr + items String (over: Char)
+  (~ (seq (: ...letters (chars "a-z")) (? (seq "," (call \items (into letters)))))
+    (str letters)
+  )
+)
+```
+
+```output
+z, z, a
+a, b, c
+```
+
+- **Mistakes.** A called rule without the capture gives `Pattern append-a has no accumulating
+  capture missing`, and a caller's capture that is not accumulating gives `Collector mapping
+  target outer is not an active accumulating capture`.
 
 ### Patterns as arguments and types as patterns
 
@@ -383,6 +505,10 @@ circle 1 then 2 squares
 | `(~ \record (in: source))`{.brix} | A stream of the values of one match after another. |
 | `(~> source \record)`{.brix} | A stream of one match after another; see [Reading records](#reading-records). |
 
+A pattern cannot be matched along the values a subscription is given: `(on: events)` in place of
+`(in: …)` is refused with `A stream pattern matches items it reads with "in", not items a
+subscription with "on" is given; write "in" in place of "on"`.
+
 ```brix
 (main
   (if (= (~ (seq "v" (: major (+ (chars "0-9"))) "." (: minor (+ (chars "0-9"))))) "v12.4")
@@ -429,7 +555,8 @@ not a sequence: `Can't convert to iterable`.
 
 A `TokenStream`, from `/core/tokenstream`, is a source that remembers how far it has been read.
 A pattern matches only as much of it as it needs, and the rest stays for the next match. Over any
-other subject, a `match` arm must take the whole input.
+other subject, a `match` arm must take the whole input. So a `match` over a channel gives its
+value only once the channel closes, since only then is it known that the input has ended.
 
 ### Reading records
 
@@ -469,8 +596,53 @@ stopped at (0, 14)
 left: oops;cy:9;
 ```
 
+Each record is given as soon as its last item is read, without waiting for more input, so one
+grammar can serve a connection that sends a record and waits for a reply. Here the writer waits
+for an answer after each record:
+
+```brix
+(main
+  (let incoming (channel Char))
+  (let acks (channel Int))
+  (do-new
+    (for (in record (list "ada;" "bob;" "cy;"))
+      (for (in c record)
+        (<- incoming c)
+      )
+      (print (str "sent " record " and waiting"))
+      (<- acks)
+    )
+    (call (. incoming close))
+  )
+  (for (in name (~> incoming \person))
+    (print (str "record " name))
+    (<- acks 1)
+  )
+  (print "done")
+)
+
+(fn-expr + person String (over: Char)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
+    name
+  )
+)
+```
+
+```output
+record ada
+sent ada; and waiting
+record bob
+sent bob; and waiting
+record cy
+sent cy; and waiting
+done
+```
+
 - **Stage rows.** In a block, a `pipe` row with `~>` reads records from the value
   above it, and its action gives each record's value; see Streams.
+- **Lookahead.** A record whose pattern ends in a repetition, rather than a closing item such as
+  `;`, needs the next item to see that the repetition has ended, so it is given only once that
+  item arrives.
 - **Progress.** Each record must take at least one item. A pattern that can match nothing is an
   error: `Stream pattern pipeline must consume input`. One that matches nothing at run time panics:
   `Stream pattern pipeline made no input progress`.

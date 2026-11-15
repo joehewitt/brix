@@ -1,0 +1,239 @@
+(import ./canvas-effects-panel)
+(import /graphics/shader)
+(import /graphics/shader-filters)
+(import /graphics/text)
+(import /gui)
+(import /math)
+(blank)
+(prop _ canvas-effects-app (? App))
+(prop _ canvas-effects-metal _ (= true))
+(prop _ canvas-effects-relaunch _ (= false))
+(blank)
+
+(main
+  (call run-canvas-effects)
+)
+
+(fn-do + run-canvas-effects _
+  (= canvas-effects-relaunch true)
+  (while canvas-effects-relaunch
+    (= canvas-effects-relaunch false)
+    (let app (call App))
+    (+= app (call CanvasEffectsWindow canvas-effects-metal))
+    (= canvas-effects-app app)
+    (call (. app run))
+  )
+  (= canvas-effects-app null)
+)
+
+(fn-do + relaunch-canvas-effects _
+  (param metal Bool)
+  (= canvas-effects-metal metal)
+  (= canvas-effects-relaunch true)
+  (call (?. canvas-effects-app stop))
+)
+
+(style CanvasEffectsAppTheme
+  (using GUIDefaultTheme)
+  (rule canvas-effects-stats (• text gui-muted-text-color)
+    (= font-family "Menlo")
+    (= font-size 11)
+  )
+)
+
+(type + CanvasEffectsWindow (is Window)
+  (using CanvasEffectsAppTheme)
+  (prop + animating _ (= false))
+  (prop + filter-name _ (= "None"))
+  (blank)
+  (prop _ panel CanvasEffectsPanel)
+  (prop _ stats-label Label)
+  (prop _ spin F64)
+  (prop _ label-frame _ (= false))
+  (prop _ pending-frame I64 (= -1))
+  (prop _ pending-tries Size)
+  (prop _ sampled-frames Size)
+  (prop _ sampled-fallbacks Size)
+  (prop _ sampled-demotions Size)
+  (prop _ gpu-text _ (= "—"))
+  (prop _ stats-tail _ (= ""))
+  (fn-do + This _
+    (param start-metal Bool)
+    (= use-metal start-metal)
+  )
+  (content
+    (<> This (• flex-col)
+      (= title "Yumi GUI: Canvas Effects")
+      (= size (tuple 1224 776))
+      (blank)
+      (<> Box (• flex-col) (• flex 1) (• bg gui-window-color)
+        (= filters (call canvas-effects-filters #filter-name))
+        (blank)
+        (<> Box (• flex-row) (• h 30) (• px 22) (• pt 16)
+          (<> Button (text: "Metal") (• w 84) (• h 30)
+            (= action (=> () :do (call relaunch-canvas-effects true)))
+          )
+          (blank)
+          (<> Button (text: "Core Graphics") (• ml 8) (• w 128) (• h 30)
+            (= action (=> () :do (call relaunch-canvas-effects false)))
+          )
+          (blank)
+          (<> Switch (text: "Animate") (• ml 20) (• h 30)
+            (= is-on #animating)
+            (for (on event value-changed)
+              (= animating (. event value))
+            )
+          )
+          (blank)
+          (<> (of Select String) (id: filter-select) (• ml 20) (• w 120)
+            (= options (call canvas-effects-filter-names))
+            (= selected #filter-name)
+            (for (on event selection-changed)
+              (= filter-name (. event value))
+            )
+          )
+          (blank)
+          (<> Label (id: stats-label) (• canvas-effects-stats) (• flex 1) (• ml 20) (• h 30)
+            (= text "Waiting for the first frame…")
+            (= text-wrap (. TextWrap no-wrap))
+          )
+        )
+        (blank)
+        (<> CanvasEffectsPanel (id: panel))
+      )
+    )
+  )
+  ; ╌╌╌╌╌╌╌╌╌╌ is Window ╌╌╌╌╌╌╌╌╌╌
+  (fn-do + render _
+    (if animating
+      (+= spin 1.5)
+      (if (>= spin 360)
+        (-= spin 360)
+      )
+      (= (. panel spin) spin)
+      (+= (. panel time) (/ 1.0 60))
+    )
+    (let fallbacks scene-metal-tile-fallbacks)
+    (let demotions scene-opaque-demotions)
+    (let did-render (call (. super render)))
+    (if did-render
+      (call take-frame-stats
+        (block
+          (arg (call canvas-effects-delta fallbacks scene-metal-tile-fallbacks))
+          (arg (call canvas-effects-delta demotions scene-opaque-demotions))
+        )
+      )
+    )
+    (call resolve-gpu-time)
+    (if (or animating (>= pending-frame 0))
+      (call schedule-render)
+    )
+    (return did-render)
+  )
+  (fn-do _ take-frame-stats _
+    (param fallbacks Size)
+    (param demotions Size)
+    (if label-frame
+      (= label-frame false)
+      (return)
+    )
+    (+= sampled-frames 1)
+    (+= sampled-fallbacks fallbacks)
+    (+= sampled-demotions demotions)
+    (return-if (if (and animating (< sampled-frames 60))))
+    (blank)
+    (let span (if-expr (> sampled-frames 1) (str " in " sampled-frames " frames") ""))
+    (= stats-tail
+      (call (. "" join)
+        (block
+          (bullet (str metal-draw-calls " draws · " sampled-fallbacks " fallback tiles" span))
+          (bullet (str " · " sampled-demotions " opaque demotions · " metal-skipped-ops " skipped ops"))
+        )
+      )
+    )
+    (= sampled-frames 0)
+    (= sampled-fallbacks 0)
+    (= sampled-demotions 0)
+    (if is-metal-rendering
+      (= pending-frame last-metal-frame-id)
+      (= pending-tries 0)
+    )
+    (call show-stats)
+  )
+  (fn-do _ resolve-gpu-time _
+    (return-if (if (< pending-frame 0)))
+    (let nanos (call metal-frame-gpu-nanos pending-frame))
+    (+= pending-tries 1)
+    (if (>= nanos 0)
+      (= gpu-text (call canvas-effects-milliseconds nanos))
+      (= pending-frame -1)
+      (call show-stats)
+      (else-if (> pending-tries 30)
+        (= pending-frame -1)
+      )
+    )
+  )
+  (fn-do _ show-stats _
+    (let text
+      (block
+        (case? is-metal-rendering
+          (str "Metal · GPU " gpu-text " · " stats-tail)
+        )
+        (case? use-metal
+          (str "Core Graphics · Metal unavailable: " metal-fallback-reason)
+        )
+        (default
+          "Core Graphics · reference renderer"
+        )
+      )
+    )
+    (return-if (if (== text (. stats-label text))))
+    (= (. stats-label text) text)
+    (= label-frame (not animating))
+  )
+)
+
+(fn-expr _ canvas-effects-delta Size
+  (param before Size)
+  (param after Size)
+  (if-expr (>= after before) (- after before) after)
+)
+
+(fn-expr _ canvas-effects-milliseconds _
+  (param nanoseconds I64)
+  (str (/ tenths 10) "." (% tenths 10) "ms")
+  (where
+    (lazy tenths (as (call round (/ (as nanoseconds F64) 100000)) I64))
+  )
+)
+
+(fn-expr _ canvas-effects-filter-names _
+  (list "None" "CRT" "Pixelate" "Wave" "Thermal" "Halftone" "Glitch")
+)
+
+(fn-expr _ canvas-effects-filters (list ShaderFilter)
+  (param name String)
+  (match name
+    (case= "CRT"
+      (list (call CRT))
+    )
+    (case= "Pixelate"
+      (list (call Pixelate))
+    )
+    (case= "Wave"
+      (list (call Wave))
+    )
+    (case= "Thermal"
+      (list (call Thermal))
+    )
+    (case= "Halftone"
+      (list (call Halftone))
+    )
+    (case= "Glitch"
+      (list (call Glitch))
+    )
+    (default
+      (call (of List ShaderFilter))
+    )
+  )
+)

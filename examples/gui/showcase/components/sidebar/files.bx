@@ -1,0 +1,178 @@
+(import /graphics/primitives)
+(import /gui)
+(import /gui/icons/lucide/file-code)
+(import /gui/icons/lucide/file-text)
+(import /gui/icons/lucide/folder)
+
+(type + FileRow (is Box)
+  (prop + item FileNode)
+  (content
+    (<> This (• flex-row) (• flex 1)
+      (if (!= (. #item children) null)
+        (<> LucideFolder (• icon) (• folder-icon) (• w 15) (• h 15) (• mr 6)
+          (= align-y (. Alignment center))
+        )
+      )
+      (if (and (== (. #item children) null) (call (. #item name ends-with) ".md"))
+        (<> LucideFileText (• icon) (• file-icon) (• w 15) (• h 15) (• mr 6)
+          (= align-y (. Alignment center))
+        )
+      )
+      (if (and (== (. #item children) null) (not (call (. #item name ends-with) ".md")))
+        (<> LucideFileCode (• icon) (• file-icon) (• w 15) (• h 15) (• mr 6)
+          (= align-y (. Alignment center))
+        )
+      )
+      (<> Label (• flex 1)
+        (= text (. #item name))
+        (= align-y (. Alignment center))
+      )
+    )
+  )
+)
+
+(type + FileNode
+  (prop + id String)
+  (prop + name String)
+  (prop + children (? (list FileNode)))
+  (fn-do + This _
+    (param id _)
+    (param name _)
+    (param children (? (list FileNode)) (= null))
+  )
+)
+
+(fn-expr + file-children (? (list FileNode))
+  (param node FileNode)
+  (. node children)
+)
+
+(fn-expr + file-key String
+  (param node FileNode)
+  (. node id)
+)
+
+(fn-expr + file-is-folder Bool
+  (param node FileNode)
+  (!= (. node children) null)
+)
+
+(fn-do + file-path (? String)
+  (param node FileNode)
+  (param id String)
+  (param prefix String (= ""))
+  (let children (. node children))
+  (return-if (if (not children)))
+  (for (in child children)
+    (let path (str prefix (. child name)))
+    (return-if path (if (== (. child id) id)))
+    (let found (call file-path child id (str path "/")))
+    (return-if found (if found))
+  )
+)
+
+(fn-do + detach-file _
+  (param parent FileNode)
+  (param node FileNode)
+  (let children (. parent children))
+  (return-if (if (not children)))
+  (for (in index (..< 0 (. children length)))
+    (if (== (. ([] children index) id) (. node id))
+      (call (. children remove) index)
+      (return)
+    )
+  )
+  (for (in child children)
+    (call detach-file child node)
+  )
+)
+
+(fn-expr _ file FileNode
+  (param path String)
+  (call FileNode path (call file-leaf-name path))
+)
+
+(fn-expr _ folder FileNode
+  (param path String)
+  (param ... children (list FileNode))
+  (call FileNode path (call file-leaf-name path) children)
+)
+
+(fn-expr _ file-leaf-name String
+  (param path String)
+  (if-expr (== slash null) path ([] path (..< (+ (as slash Index) 1) (. path length))))
+  (where
+    (lazy slash (call (. path find-reverse) "/"))
+  )
+)
+
+(fn-do _ notes-folder FileNode
+  (param count Size)
+  (let notes (list FileNode))
+  (for (in index (..< 0 count))
+    (+= notes (call file (str "notes/note-" (+ index 1) ".md")))
+  )
+  (return (call FileNode "notes" "notes" notes))
+)
+
+(fn-expr + file-fixture FileNode
+  (call folder
+    (block
+      (arg "workspace")
+      (arg
+        (call folder
+          (block
+            (arg "docs")
+            (arg (call file "docs/README.md"))
+            (arg (call file "docs/sidebar.md"))
+          )
+        )
+      )
+      (arg
+        (call folder
+          (block
+            (arg "examples")
+            (arg
+              (call folder
+                (block
+                  (arg "examples/gui")
+                  (arg
+                    (call folder
+                      (block
+                        (arg "examples/gui/sidebar")
+                        (arg (call file "examples/gui/sidebar/button.yumi"))
+                        (arg (call file "examples/gui/sidebar/section.yumi"))
+                        (arg (call file "examples/gui/sidebar/showcase.yumi"))
+                        (arg (call file "examples/gui/sidebar/theme.yumi"))
+                      )
+                    )
+                  )
+                  (arg (call file "examples/gui/tree-box-showcase.yumi"))
+                )
+              )
+            )
+          )
+        )
+      )
+      (arg
+        (call folder
+          (block
+            (arg "stdlib")
+            (arg
+              (call folder
+                (block
+                  (arg "stdlib/gui")
+                  (arg (call file "stdlib/gui/button.yumi"))
+                  (arg (call file "stdlib/gui/list-box.yumi"))
+                  (arg (call file "stdlib/gui/tree-box.yumi"))
+                )
+              )
+            )
+          )
+        )
+      )
+      (arg (call notes-folder 120))
+      (arg (call file "README.md"))
+    )
+  )
+)

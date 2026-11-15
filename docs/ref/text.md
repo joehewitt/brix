@@ -148,10 +148,56 @@ In rows, a text with parts is one quoted text. `$` followed by a name inserts th
   the whole name "n-1". Write "${n}-1" to put "-1" after the value`. Punctuation after the name,
   as in `"$name."`{.rows} or `"$name's"`{.rows}, stays text.
 
+## Printing
+
+`(print value)`{.brix} writes a value's text to stdout, followed by a line break. In rows it is a
+row that starts with `--`, as in `-- value`{.rows}.
+
+```brix
+(main
+  (print "plain")
+  (print (list 1 2 3))
+  (print (tuple 1 "a"))
+  (let nobody (? Int) null)
+  (print nobody)
+  (call print 5)
+  (call print-all (list "x" "y"))
+  (print (call Box))
+  (if true
+    (print)
+  )
+  (print 2.50)
+)
+
+(type + Box)
+```
+
+```output
+plain
+1, 2, 3
+(1, a)
+unknown
+5
+x
+y
+[Object __source__:Box]
+2.5
+```
+
+- **The text** is the one `str` makes from the value: its type's `to String`, `unknown` for
+  `null`, and `[Object module:Type]` for an object of a class with none.
+- **No value.** `(print)`{.brix} prints nothing, not even a line break. It stands for an empty
+  body, where a form needs a row and there is nothing to do.
+- **As a function.** `print` is also a function core gives, so `(call print 5)`{.brix} prints, and
+  `print` can be passed as a value. `print-all` prints each item of a stream on a line of its own.
+- **Output, not inspection.** A print is part of what the program does, and what its tests check.
+  To look at a program without changing its output, use a probe; see Probes.
+
 ## Text bodies
 
-A function whose body is a `paragraph` form returns text written as lines. Each line is a text
-or a `str` form, and a `blank` form is an empty line. The lines are joined with line feeds.
+A function whose body is a `paragraph` form returns text written as lines, as a template does in
+other languages. Each line is a text or a `str` form, and a `blank` form is an empty line. The
+lines are joined with line feeds.
 
 ```brix
 (main
@@ -200,17 +246,120 @@ pear × 2
 - **Result.** The function's result type is written `_`, and it returns a `String`.
 - **Lazy bindings** go in a `where` form after the paragraph, and the lines read them. See
   Functions.
-- **White space.** Each line keeps its leading spaces. White space at the very end of the body is
-  trimmed.
+- **White space.** Each line keeps its leading spaces. White space written at the very end of the
+  body is trimmed, but white space an inserted value gives is kept, so a body can end in spaces or
+  a line break on purpose.
 - **Converters.** A type's `to String` may have a paragraph body, as `Item` does here.
 - **Only bodies.** A paragraph is a function body, not a value: ``(paragraph …) cannot be the
-  `value` of (let …), which takes Expr or Block.``
+  `value` of (let …), which takes Expr or Block.`` A line cannot be a bare call either; put it in
+  a `str` form.
+
+A quoted text or a `str` form suits a short message. A text body pays off once the text has
+several lines, indentation or repeated parts. A value that has several text forms can have a text
+body for each, named for what it gives, rather than one `to String`. A document that code will
+read or change is better built as markup (see Markup) or by a library for its format.
+
+### Text bodies inside text bodies
+
+A line can insert the text another text body gives. The inserted text is not reindented: its
+first line follows the text before it, and its other lines start at the start of the line. A
+separator that `join` puts between items is part of the result.
+
+```brix
+(main
+  (print (call shopping-list (list "Apples" "Pears")))
+  (print "--")
+  (print (call nested))
+  (print "--")
+  (print (str "[" (call ending "  ") "]"))
+)
+
+(fn-expr + shopping-list _
+  (param items (list String))
+  (paragraph
+    "Shopping list"
+    (str (call (. "\n" join) (*> items (call shopping-item each))))
+  )
+)
+
+(fn-expr + shopping-item _
+  (param item String)
+  (paragraph
+    (str "- " item)
+  )
+)
+
+(fn-expr + nested _
+  (paragraph
+    "Groups:"
+    (str "    " (call shopping-list (list "Tea" "Milk")))
+  )
+)
+
+(fn-expr + ending _
+  (param pad String)
+  (paragraph
+    (str "kept" pad)
+    "    "
+    (blank)
+  )
+)
+```
+
+```output
+Shopping list
+- Apples
+- Pears
+--
+Groups:
+    Shopping list
+- Tea
+- Milk
+--
+[kept  ]
+```
+
+### No escaping
+
+An inserted value is its text, unchanged. A text body does not know what format it writes, so it
+escapes nothing: text for HTML, JSON or source code needs each value converted as that format
+requires, as `json-quote` does for JSON.
+
+```brix
+(import /data/json)
+
+(main
+  (let title "Tom & \"Jerry\" <b>")
+  (print (call page title))
+  (print (call record title))
+)
+
+(fn-expr + page _
+  (param title String)
+  (paragraph
+    (str "<title>" title "</title>")
+  )
+)
+
+(fn-expr + record _
+  (param title String)
+  (paragraph
+    (str "{\"title\": " (call json-quote title) "}")
+  )
+)
+```
+
+```output
+<title>Tom & "Jerry" <b></title>
+{"title": "Tom & \"Jerry\" <b>"}
+```
 
 ### In rows
 
 In rows, a text body is a function marked `¶`, as in `+ ¶ receipt`{.rows}. After its parameters
 and a blank row, every row up to the next divider is text, written without quotes: quotes need no
-escapes, and `$name` and `${…}` insert values. A `════` divider ends the text and begins the lazy
+escapes, and `$name` and `${…}` insert values. The escapes of a quoted text still apply, so `\$`
+writes a dollar sign and `\\` a backslash. A `════` divider ends the text and begins the lazy
 bindings.
 
 ## Characters
@@ -514,13 +663,15 @@ héllo
 - **To text.** Any value converts with `(as value String)`{.brix} or `(call String value)`{.brix},
   using its type's `to String`. A type declares its own with `(fn-to-expr + String body)`{.brix}; see
   Conversions.
-- **Numbers as text.** `pad` writes a number with at least that many digits, padded with zeros.
-  `places` writes a number with that many digits after the point. `Hex` and `Binary` write an
+- **Numbers as text.** `pad` writes an integer with at least that many digits, padded with zeros,
+  and a float with exactly that many digits after the point. `places` writes a float with at most
+  that many digits after the point, dropping zeros at the end. `Hex` and `Binary` write an
   integer in base 16 and base 2, padded to the width of its type.
 - **Text to numbers.** Text becomes a number only when asked, with `as` or by calling the
   type. White space around the number and a leading `+` are allowed. Text that is not a number of
   that kind panics: `"42x" is not a whole number` for an integer type, and `"2.5x" is not a
-  number` for a floating type.
+  number` for a floating type. A number too large or too small for an integer type gives the
+  type's greatest or least value: `(as "300" U8)` is `255`.
 - **Bytes.** `(as text ([] Byte))`{.brix} gives a copy of the UTF-8 bytes of a text, and
   `slice-string` reads bytes back as text. Bytes that are not UTF-8 panic: `Unable to read UTF8
   content`. See Collections.

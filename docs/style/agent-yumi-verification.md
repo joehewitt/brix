@@ -40,7 +40,7 @@ compare traces. In this repo:
   check that it has probes before asking them to run it:
 
   ```text
-  bin/yumi examples/gui/resonance/resonance-app.bx -o .tmp/build/resonance-probes/resonance-app --compile --probes 'key.one key.two'
+  bin/yumi examples/games/resonance/resonance-app.bx -o .tmp/build/resonance-probes/resonance-app --compile --probes 'key.one key.two'
   bin/yumi probes run --quiet --trace .tmp/build/resonance-probes/resonance-app.trace -- .tmp/build/resonance-probes/Resonance.app/Contents/MacOS/Resonance
   ```
 

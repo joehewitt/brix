@@ -1,0 +1,229 @@
+(import ./provider)
+(import /ai)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /gui)
+(import /gui/chat)
+(import /gui/icons/lucide/panel-left)
+(blank)
+(prop _ chat-demo-title-pad Length (= 16))
+
+(type + ChatWindow (is Window)
+  (prop + store AIChatStore)
+  (prop + images (? AIImageStore))
+  (prop + caches _ (:= (call ChatBlockCaches)))
+  (prop + branchings _ (:= (call ChatBranchings)))
+  (prop + active-branching _ (= (call (. branchings branching) (. #store #active))))
+  (prop + can-stop _ (= (or #is-main-working (?? (?. (. #active-branching #focus) #is-busy) false))))
+  (prop + is-main-working _
+    (=
+      (call chat-is-working
+        (block
+          (arg (. #active-branching #main))
+          (arg (. #active-branching #main #is-busy))
+          (arg (. #active-branching #main tool-tasks #revision))
+        )
+      )
+    )
+  )
+  (prop + has-side-chat _ (= (!= (. #active-branching #focus) null)))
+  (prop + chat-title _ (= (?? (. #store #active document #title) "New chat")))
+  (blank)
+  (rule This
+    (rule chat-demo-title-bar (• flex-row) (• h 40) (• items-center) (• pr chat-demo-title-pad)
+      (= border-color gui-divider-color)
+      (= border-bottom-width 1)
+      (= window-draggable true)
+    )
+    (blank)
+    (rule chat-demo-title (• text gui-muted-text-color)
+      (= text-wrap (. TextWrap no-wrap))
+      (= window-draggable true)
+    )
+  )
+  (content
+    (<> This (• flex-row)
+      (= title "Chat")
+      (= titlebar-visible false)
+      (= stoplight-offset window-stoplight-offset)
+      (= size (call Dimensions 1080 760))
+      (blank)
+      (<> MenuBar
+        (<> MenuBarItem (text: "File")
+          (<> Menu
+            (<> MenuItem
+              (= command new-chat-shortcut)
+            )
+            (<> MenuSeparator)
+            (<> MenuItem
+              (= command close-side-chat-shortcut)
+            )
+            (<> MenuItem
+              (= role (. MenuRole close-window))
+            )
+          )
+        )
+        (<> MenuBarItem (text: "Edit")
+          (<> Menu
+            (<> MenuItem
+              (= role (. MenuRole undo))
+            )
+            (<> MenuItem
+              (= role (. MenuRole redo))
+            )
+            (<> MenuSeparator)
+            (<> MenuItem
+              (= role (. MenuRole cut))
+            )
+            (<> MenuItem
+              (= role (. MenuRole copy))
+            )
+            (<> MenuItem
+              (= role (. MenuRole paste))
+            )
+            (<> MenuItem
+              (= role (. MenuRole select-all))
+            )
+          )
+        )
+        (<> MenuBarItem (text: "View")
+          (<> Menu
+            (<> MenuItem
+              (= command sidebar-shortcut)
+            )
+            (<> MenuSeparator)
+            (<> MenuItem
+              (= role (. MenuRole toggle-full-screen))
+            )
+          )
+        )
+        (<> MenuBarItem (text: "Chat")
+          (<> Menu
+            (<> MenuItem
+              (= command stop-shortcut)
+            )
+          )
+        )
+        (<> MenuBarItem (text: "Window")
+          (<> Menu
+            (<> MenuItem
+              (= role (. MenuRole minimize))
+            )
+            (<> MenuItem
+              (= role (. MenuRole zoom))
+            )
+            (<> MenuSeparator)
+            (<> MenuItem
+              (= role (. MenuRole bring-all-to-front))
+            )
+          )
+        )
+      )
+      (<> KeyShortcut (id: new-chat-shortcut) (text: "New Chat")
+        (= key (call KeyCombo "Cmd+N"))
+        (= action (=> () :do (call (. store new-session))))
+      )
+      (<> KeyShortcut (id: close-side-chat-shortcut) (text: "Close Side Chat")
+        (= key (call KeyCombo "Cmd+Shift+W"))
+        (= enabled #has-side-chat)
+        (= action (=> () :do (call (. active-branching close))))
+      )
+      (<> KeyShortcut (id: sidebar-shortcut) (text: "Toggle Sidebar")
+        (= key (call KeyCombo "Ctrl+Cmd+S"))
+        (= action (=> () :do (call (. sidebar toggle))))
+      )
+      (<> KeyShortcut (id: stop-shortcut) (text: "Stop Response")
+        (= key (call KeyCombo "Cmd+."))
+        (= enabled #can-stop)
+        (= action (=> () :do (call stop-replies)))
+      )
+      (<> ChatSidebar (id: sidebar) (• w 260)
+        (= store #store)
+        (= branching #active-branching)
+        (<> Box (slot: header) (• h 40)
+          (= window-draggable true)
+        )
+      )
+      (<> Box (• flex-col) (• flex 1)
+        (<> Box (• chat-demo-title-bar)
+          (= padding-left (call chat-demo-title-inset (. sidebar #is-collapsed) #is-full-screen))
+          (<> Label (• chat-demo-title) (• flex 1)
+            (= text #chat-title)
+          )
+        )
+        (for (in session (list (. #store #active)) (keyed-by (. session id)))
+          (<> ChatWorkspace (• flex 1)
+            (= branching (call (. branchings branching) session))
+            (= services (. #store #services))
+            (= caches caches)
+            (= images images)
+            (= wording (call chat-demo-wording))
+            (= branch-modifiers (call chat-demo-branch-modifiers))
+          )
+        )
+      )
+      (<> IconButton (• icon-panel-left) (• absolute) (• w 28) (• h 28)
+        (= left
+          (call (. PositionOffset coord)
+            (block
+              (arg (if-expr #is-full-screen window-full-screen-inset window-stoplight-inset))
+            )
+          )
+        )
+        (= top (call (. PositionOffset coord) 8))
+        (= action (=> () :do (call (. sidebar toggle))))
+        (<> Tooltip
+          (= text (if-expr (. sidebar #is-collapsed) "Show Sidebar" "Hide Sidebar"))
+        )
+      )
+    )
+  )
+  (subscribe-for (on node (. sidebar chosen))
+    (call (. store select) (. node session))
+    (if (== (. store active) (. node session))
+      (call (. (call (. branchings branching) (. node session)) open) (. node branch-id))
+    )
+  )
+  (fn-do _ stop-replies _
+    (let branching active-branching)
+    (let side (. branching focus))
+    (if (and side (. side is-busy))
+      (call (. branching request-stop) side)
+      (else
+        (call (. branching request-stop) (. branching main))
+      )
+    )
+  )
+)
+
+(fn-expr _ chat-demo-title-inset Length
+  (param is-collapsed Bool)
+  (param is-full-screen Bool)
+  (case? (not is-collapsed)
+    chat-demo-title-pad
+  )
+  (case? is-full-screen
+    window-full-screen-sidebar-toggle-inset
+  )
+  (default
+    window-sidebar-toggle-inset
+  )
+)
+
+(fn-expr _ chat-demo-wording _
+  (call ChatWording
+    (block
+      (:greeting "What can I help with?")
+      (:branch-placeholder "Ask on the side")
+    )
+  )
+)
+
+(fn-expr _ chat-demo-branch-modifiers _
+  (call PointerModifiers
+    (block
+      (:command true)
+      (:shift true)
+    )
+  )
+)

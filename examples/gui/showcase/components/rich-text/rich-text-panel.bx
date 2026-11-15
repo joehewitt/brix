@@ -1,0 +1,940 @@
+(import /core/markup)
+(import /graphics/color)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /gui)
+(import /gui/icons/lucide/heart)
+(import /gui/icons/lucide/link)
+(import /gui/icons/lucide/sparkles)
+(import /gui/icons/lucide/star)
+(import /math)
+
+(style RichTextTheme
+  (using GUIDefaultTheme)
+  (using GUIBoxLayout)
+  (using GUIBoxScroll)
+  (rule rich-text-viewport
+    (= layout (call FlowLayout (. Orientation vertical)))
+    (= overflow-x (. ScrollOverflow clip))
+    (= overflow-y (. ScrollOverflow auto))
+    (= scroll-indicator-y (. ScrollIndicatorVisibility always))
+  )
+)
+
+(type + RichTextPanel (is Box)
+  (using RichTextTheme)
+  (content
+    (<> This (• flex-col)
+      (<> Box (• flex-row) (• h 44) (• px 24) (• pt 10)
+        (<> Label (• w 170) (• h 28)
+          (= text "Reflow frame width")
+        )
+        (<> Slider (• w 260) (• h 28)
+          (= minimum 120)
+          (= maximum 520)
+          (= value 420)
+          (for (on event value-changed)
+            (= (. gallery reflow-width) (call round (. event value)))
+          )
+        )
+      )
+      (blank)
+      (<> Box (• rich-text-viewport) (• flex 1)
+        (<> TextGallery (id: gallery))
+      )
+    )
+  )
+)
+
+(style TextGalleryTheme
+  (using GUIDefaultTheme)
+  (using GUIBoxPaint)
+  (using GUITextPaint)
+  (using GUIFontStyle)
+  (using GUIParagraphStyle)
+  (using GUITextComposition)
+  (using GUITextDecoration)
+  (using GUIBoxCursor)
+  (using GUIBoxDisplay)
+  (using GUIBoxPlacement)
+  (using GUIBoxSpacing)
+  (using GUIBoxSize)
+  (using GUIBoxLayout)
+  (rule gallery
+    (= font-size 14)
+  )
+  (blank)
+  (rule gallery-title
+    (= font-size 26)
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule gallery-status (• bg gui-well-color)
+    (= corner-radius 8)
+    (= font-size 13)
+  )
+  (blank)
+  (rule card (• bg gui-panel-color)
+    (= border-color gui-border-color)
+    (= border-width 1)
+    (= corner-radius 10)
+  )
+  (blank)
+  (rule card-title (• group-heading))
+  (blank)
+  (rule body
+    (= font-size 15)
+    (= line-spacing 4)
+  )
+  (blank)
+  (rule strong
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule em
+    (= font-slant (. FontSlant italic))
+  )
+  (blank)
+  (rule serif
+    (= font-family "Georgia")
+  )
+  (blank)
+  (rule mono
+    (= font-family "Menlo")
+    (= font-size 13)
+  )
+  (blank)
+  (rule code (• bg gui-well-color) (• text "#fb7185") (• px 4) (• py 1)
+    (= font-family "Menlo")
+    (= font-size 13)
+    (= border-color gui-border-color)
+    (= border-width 1)
+    (= corner-radius 4)
+  )
+  (blank)
+  (rule keycap (• bg gui-field-color) (• px 5) (• pt 2) (• pb 3)
+    (= font-size 12)
+    (= font-weight (. FontWeight bold))
+    (= border-color gui-border-color)
+    (= border-width 1)
+    (= corner-radius 5)
+  )
+  (blank)
+  (rule marker (• bg "#fef08a") (• text "#0f172a"))
+  (blank)
+  (rule tag
+    (= font-size 12)
+    (= font-weight (. FontWeight bold))
+    (= color "#ffffff")
+    (= background-color "#7c3aed")
+    (= corner-radius 9)
+    (= padding-left 7)
+    (= padding-right 7)
+    (= padding-top 2)
+    (= padding-bottom 2)
+    (= margin-right 3)
+  )
+  (blank)
+  (rule underline
+    (= text-decoration (. TextDecorationLine underline))
+  )
+  (blank)
+  (rule wavy-note
+    (= text-decoration (. TextDecorationLine underline))
+    (= text-decoration-style (. TextDecorationStyle dotted))
+    (= text-decoration-color "#dc2626")
+    (= text-decoration-thickness 1.5)
+  )
+  (blank)
+  (rule strike (• text gui-muted-text-color)
+    (= text-decoration (. TextDecorationLine line-through))
+  )
+  (blank)
+  (rule thick-underline
+    (= text-decoration (. TextDecorationLine underline))
+    (= text-decoration-color "#f59e0b")
+    (= text-decoration-thickness 3)
+  )
+  (blank)
+  (rule link (• text gui-accent-bright-color)
+    (= cursor (. CursorStyle pointing-hand))
+    (blank)
+    (when-style #is-hovered
+      (= text-decoration (. TextDecorationLine underline))
+    )
+    (blank)
+    (when-style #is-pressed
+      (• text gui-accent-color)
+    )
+  )
+  (blank)
+  (rule soft-link (• text "#5eead4")
+    (= cursor (. CursorStyle pointing-hand))
+    (= text-decoration (. TextDecorationLine underline))
+    (= text-decoration-style (. TextDecorationStyle dotted))
+    (= text-decoration-color "#5eead4")
+    (blank)
+    (when-style #is-hovered
+      (• bg "#ccfbf1")
+      (• text "#0f766e")
+      (= text-decoration-style (. TextDecorationStyle solid))
+      (= text-decoration-color "#0f766e")
+    )
+  )
+  (blank)
+  (rule hover-chip (• px 2)
+    (= corner-radius 4)
+    (= cursor (. CursorStyle pointing-hand))
+    (blank)
+    (when-style #is-hovered
+      (• bg "#e0e7ff")
+      (• text "#3730a3")
+    )
+  )
+  (blank)
+  (rule script-panel (• bg gui-well-color)
+    (= border-color gui-border-color)
+    (= border-width 1)
+    (= corner-radius 10)
+  )
+  (blank)
+  (rule script-row
+    (= font-size 17)
+    (= line-spacing 5)
+    (= border-bottom-width 1)
+    (= border-color gui-border-color)
+  )
+  (blank)
+  (rule last-row
+    (= border-bottom-width 0)
+  )
+  (blank)
+  (rule script-number
+    (= color "#5fd38d")
+    (= cursor (. CursorStyle resize-horizontal))
+    (blank)
+    (when-style #is-hovered
+      (= text-decoration (. TextDecorationLine underline))
+      (= text-decoration-style (. TextDecorationStyle dotted))
+      (= text-decoration-thickness 1.5)
+    )
+    (blank)
+    (when-style #is-dragging
+      (= background-color "#1f4d33")
+      (= corner-radius 3)
+    )
+  )
+  (blank)
+  (rule script-choice
+    (= color "#f2a65a")
+    (= cursor (. CursorStyle pointing-hand))
+    (blank)
+    (when-style #is-hovered
+      (= text-decoration (. TextDecorationLine underline))
+    )
+  )
+  (blank)
+  (rule script-reference
+    (= color "#8ab4f8")
+    (= cursor (. CursorStyle pointing-hand))
+    (= corner-radius 3)
+    (blank)
+    (when-style #is-linked
+      (= background-color "#2f3f5c")
+    )
+    (blank)
+    (when-style #is-hovered
+      (= text-decoration (. TextDecorationLine underline))
+    )
+  )
+  (blank)
+  (rule script-definition
+    (= color "#f2a65a")
+    (= font-slant (. FontSlant italic))
+    (= corner-radius 3)
+    (blank)
+    (when-style #is-linked
+      (= background-color "#4a3622")
+    )
+  )
+  (blank)
+  (rule script-editor (• text "#5fd38d")
+    (= font-size 15)
+  )
+  (blank)
+  (rule reflow-frame
+    (= border-color "#f59e0b")
+    (= border-width 1)
+    (= corner-radius 6)
+  )
+  (blank)
+  (rule swatch
+    (= corner-radius 3)
+    (= border-color gui-border-color)
+    (= border-width 1)
+  )
+  (blank)
+  (rule inline-button (• px 0)
+    (= font-size 12)
+    (= font-weight (. FontWeight bold))
+    (= cursor (. CursorStyle pointing-hand))
+  )
+  (blank)
+  (rule inline-input
+    (= font-size 13)
+  )
+  (blank)
+  (rule bubble-caption (• text gui-muted-text-color)
+    (= font-size 11)
+  )
+  (blank)
+  (rule bubble (• bg gui-field-color)
+    (= corner-radius 12)
+  )
+  (blank)
+  (rule bubble-mine (• bg gui-accent-color) (• text gui-accent-text-color)
+    (= corner-radius 12)
+  )
+  (blank)
+  (rule bubble-text (• max-w 250)
+    (= font-size 14)
+    (= line-spacing 2)
+  )
+  (blank)
+  (rule tight
+    (= text-wrap-sizing (. TextWrapSizing tight))
+  )
+)
+
+(type + TextGallery (is Box)
+  (implements MarkupRootElement)
+  (using TextGalleryTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + status _ (= "Hover and click the links, drag or click the green numbers, click the orange words."))
+  (prop + reflow-width Length (= 420))
+  (prop + reflow-alignment TextAlignment (= (. TextAlignment left)))
+  (prop + linked-name _ (= ""))
+  (prop + counter _ (= 0))
+  (prop + likes _ (= 3))
+  (content
+    (<> This (• gallery) (• flex-col) (• p 28)
+      (<> Label (• gallery-title) (• h 36)
+        (= text "Text")
+      )
+      (<> Label (• gallery-status) (• h 34) (• px 12) (• mt 6) (• mb 18)
+        (= text #status)
+      )
+      (blank)
+      (<> Box (• flex-row)
+        (<> Box (• flex-col) (• flex 1) (• mr 18)
+          (<> GalleryCard (text: "INLINE STYLES")
+            (<> Text (• body)
+              "Plain, "
+              (<> Span (text: "bold") (• strong))
+              ", "
+              (<> Span (text: "italic") (• em))
+              ", "
+              (<> Span (text: "bold italic") (• strong) (• em))
+              ", "
+              (<> Span (text: "serif") (• serif))
+              " and "
+              (<> Span (text: "monospace") (• mono))
+              " faces. Colors like "
+              (<> Span (text: "crimson")
+                (= color "#dc2626")
+              )
+              ", "
+              (<> Span (text: "emerald")
+                (= color "#059669")
+              )
+              " and "
+              (<> Span (text: "violet")
+                (= color "#7c3aed")
+              )
+              ". Sizes share a baseline: "
+              (<> Span (text: "tiny ")
+                (= font-size 10)
+              )
+              (<> Span (text: "small ")
+                (= font-size 13)
+              )
+              (<> Span (text: "large ")
+                (= font-size 20)
+              )
+              (<> Span (text: "huge")
+                (= font-size 30)
+                (= font-weight (. FontWeight bold))
+              )
+              " back to normal."
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "DECORATIONS")
+            (<> Text (• body)
+              "Text can be "
+              (<> Span (text: "underlined") (• underline))
+              ", "
+              (<> Span (text: "struck through") (• strike))
+              ", marked with a "
+              (<> Span (text: "dotted spelling note") (• wavy-note))
+              ", or given a "
+              (<> Span (text: "thick colored underline") (• thick-underline))
+              " that follows the text as it "
+              (<> Span (• underline)
+                "wraps from one line onto the next without breaking the decoration"
+              )
+              "."
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "BACKGROUNDS, PADDING, BORDERS")
+            (<> Text (• body)
+              "Call "
+              (<> Span (text: "layout.fragments") (• code))
+              " to read span geometry, press "
+              (<> Span (text: "⌘") (• keycap))
+              " "
+              (<> Span (text: "K") (• keycap))
+              " for commands, and "
+              (<> Span (• marker)
+                "highlight the important part of a sentence even when it spans lines"
+              )
+              ". Tags: "
+              (<> Span (text: "design") (• tag))
+              (<> Span (text: "stdlib") (• tag))
+              (<> Span (text: "text") (• tag))
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "NESTED SPANS")
+            (<> Text (• body)
+              "An outer link "
+              (<> GalleryLink (• link)
+                (= target "nested link")
+                "contains "
+                (<> Span (text: "bold") (• strong))
+                ", "
+                (<> Span (text: "code()") (• code))
+                " and "
+                (<> Span (text: "italic") (• em))
+                " children"
+              )
+              ", and hovering anywhere inside underlines the whole run. Nested "
+              (<> Span (• marker)
+                "backgrounds "
+                (<> Span (text: "stack") (• tag))
+                " inside each other"
+              )
+              "."
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "SHRINK WRAP")
+            (<> Label (• bubble-caption) (• h 16) (• mb 4)
+              (= text "Available width: the bubble fills its 250 pt cap")
+            )
+            (<> Box (• flex-row) (• mb 10)
+              (<> Box (• bubble) (• flex-col) (• px 12) (• py 8)
+                (<> Text (• bubble-text)
+                  "Did the "
+                  (<> Span (text: "styled layout") (• strong))
+                  " land? The wrapped lines leave a ragged gap on the right."
+                )
+              )
+            )
+            (<> Label (• bubble-caption) (• h 16) (• mb 4)
+              (= text "Tight: the same lines, hugging the longest one")
+            )
+            (<> Box (• flex-row) (• mb 10)
+              (<> Box (• bubble) (• flex-col) (• px 12) (• py 8)
+                (<> Text (• bubble-text) (• tight)
+                  "Did the "
+                  (<> Span (text: "styled layout") (• strong))
+                  " land? The wrapped lines leave a ragged gap on the right."
+                )
+              )
+            )
+            (<> Box (• flex-row)
+              (<> Box (• flex 1))
+              (<> Box (• bubble-mine) (• flex-col) (• px 12) (• py 8)
+                (<> Text (• bubble-text) (• tight)
+                  "It did, and "
+                  (<> Span (text: "tight") (• em))
+                  " sizing works with "
+                  (<> Span (text: "code()") (• code))
+                  " chips too."
+                )
+              )
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "INLINE BOXES")
+            (<> Text (• body)
+              "Icons "
+              (<> LucideStar (• w 16) (• h 16)
+                (= stroke "#f59e0b")
+              )
+              " "
+              (<> LucideHeart (• w 16) (• h 16)
+                (= stroke "#e11d48")
+              )
+              " "
+              (<> LucideSparkles (• w 16) (• h 16)
+                (= stroke "#7c3aed")
+              )
+              " sit in the text, as do swatches "
+              (<> Box (• swatch) (• w 12) (• h 12) (• bg "#22c55e"))
+              " "
+              (<> Box (• swatch) (• w 12) (• h 12) (• bg "#3b82f6"))
+              " "
+              (<> Box (• swatch) (• w 12) (• h 12) (• bg "#f97316"))
+              ", real controls like "
+              (<> Button (text: "Like") (• inline-button) (• w 44) (• h 20)
+                (= action (=> () :do (+= likes 1)))
+              )
+              " (liked "
+              (<> Span (• strong)
+                (= text (str #likes " times"))
+              )
+              "), and a text field "
+              (<> TextInput (• inline-input) (• w 120) (• h 22)
+                (= placeholder "type here")
+              )
+              " that wraps along with the words around it."
+            )
+          )
+        )
+        (blank)
+        (<> Box (• flex-col) (• flex 1)
+          (<> GalleryCard (text: "LINKS")
+            (<> Text (• body)
+              "Read the "
+              (<> GalleryLink (text: "layout guide") (• link)
+                (= target "layout guide")
+              )
+              ", browse "
+              (<> GalleryLink (text: "the full reference documentation for text spans") (• link)
+                (= target "reference")
+              )
+              ", or open a "
+              (<> GalleryLink (text: "dotted link") (• soft-link)
+                (= target "dotted link")
+              )
+              " "
+              (<> LucideLink (• w 14) (• h 14)
+                (= stroke "#5eead4")
+              )
+              ". Words like "
+              (<> GalleryLink (text: "this") (• hover-chip)
+                (= target "hover chip")
+              )
+              " can light up as chips."
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "SCRIPT SENTENCES")
+            (<> Box (• script-panel) (• flex-col) (• px 14) (• py 4)
+              (<> Text (• script-row) (• py 10)
+                "Draw ellipse with radius "
+                (<> ScriptNumber (value: 7.5)
+                  (= step 0.5)
+                )
+                " wide and "
+                (<> ScriptNumber (value: 7.5)
+                  (= step 0.5)
+                )
+                " high at x= "
+                (<> ScriptNumber (value: -181.5))
+                " and y= "
+                (<> ScriptNumber (value: -67.25))
+                " as "
+                (<> ScriptDefinition (text: "Control Ball"))
+                "."
+              )
+              (<> Text (• script-row) (• py 10)
+                "Draw star with "
+                (<> ScriptNumber (value: 5))
+                " points, radius of "
+                (<> ScriptNumber (value: 0.5)
+                  (= step 0.05)
+                )
+                ", and size "
+                (<> ScriptNumber (value: 128))
+                " wide and "
+                (<> ScriptNumber (value: 128))
+                " high at x= "
+                (<> ScriptNumber (value: -114))
+                " and y= "
+                (<> ScriptNumber (value: -86.25))
+                " as "
+                (<> ScriptDefinition (text: "Control Star"))
+                "."
+              )
+              (<> Text (• script-row) (• py 10)
+                "Scale "
+                (<> ScriptChoice (text: "center"))
+                " of "
+                (<> ScriptReference (text: "Control Star"))
+                " by "
+                (<> ScriptNumber (value: -74.22)
+                  (= suffix "%")
+                )
+                " wide and "
+                (<> ScriptNumber (value: -74.22)
+                  (= suffix "%")
+                )
+                " high."
+              )
+              (<> Text (• script-row) (• py 10)
+                "Scale "
+                (<> ScriptChoice (text: "center"))
+                " of "
+                (<> ScriptReference (text: "Control Ball"))
+                " by "
+                (<> ScriptNumber (value: -16.67)
+                  (= suffix "%")
+                )
+                " wide and "
+                (<> ScriptNumber (value: -16.67)
+                  (= suffix "%")
+                )
+                " high."
+              )
+              (<> Text (• script-row) (• py 10)
+                "Duplicate "
+                (<> ScriptReference (text: "Control Star"))
+                " into "
+                (<> ScriptChoice (text: "scene")
+                  (= options (list "scene" "Guides" "Background"))
+                )
+                " as "
+                (<> ScriptDefinition (text: "Star"))
+                "."
+              )
+              (<> Text (• script-row) (• py 10)
+                "Move "
+                (<> ScriptReference (text: "Star"))
+                " by "
+                (<> ScriptNumber (value: 213))
+                " wide and "
+                (<> ScriptNumber (value: 18))
+                " high."
+              )
+              (<> Text (• script-row) (• last-row) (• py 10)
+                "Make "
+                (<> ScriptReference (text: "Star"))
+                " a guide."
+              )
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "LIVE REFLOW")
+            (<> Text (• body) (• mb 10)
+              "The frame below is "
+              (<> Span (• strong)
+                (= text (str (call round #reflow-width) " pt"))
+              )
+              " wide and "
+              (<> Span (• strong)
+                (= text (call gallery-alignment-name #reflow-alignment))
+              )
+              " aligned. The counter reads "
+              (<> Span (• code)
+                (= text (str #counter))
+              )
+              ". "
+              (<> Button (text: "+1") (• inline-button) (• w 30) (• h 20)
+                (= action (=> () :do (+= counter 1)))
+              )
+              " "
+              (<> Button (text: "Align") (• inline-button) (• w 48) (• h 20)
+                (= action (=> () :do (call cycle-reflow-alignment)))
+              )
+            )
+            (<> Box (• reflow-frame) (• flex-col) (• p 10) (• w #reflow-width)
+              (<> Text (• body)
+                (= text-alignment #reflow-alignment)
+                "Every "
+                (<> Span (text: "span") (• strong))
+                " keeps its "
+                (<> Span (text: "style") (• em))
+                " while the paragraph re-wraps. Counter "
+                (<> Span (• tag)
+                  (= text (str #counter))
+                )
+                " Long words like "
+                (<> Span (text: "supercalifragilisticexpialidocious") (• marker))
+                " break by cluster only when they must."
+              )
+            )
+          )
+          (blank)
+          (<> GalleryCard (text: "WRAPPING, SCRIPTS, OVERFLOW")
+            (<> Text (• body) (• mb 10)
+              "Hard breaks\nstart new lines.\nMixed scripts: "
+              (<> Span (text: "日本語のテキスト") (• strong))
+              ", é · 👩🏽‍💻 · ✨, and a URL "
+              (<> Span (text: "https://example.com/a/very/long/path/that/cannot/break/at/spaces") (• link))
+              "."
+            )
+            (<> Text (• body)
+              (= text-wrap (. TextWrap no-wrap))
+              (= text-overflow (. TextOverflow truncate-tail))
+              "No-wrap with tail truncation: "
+              (<> Span (text: "styled") (• strong))
+              " text keeps its colors "
+              (<> Span (text: "right up to") (• link))
+              " the ellipsis at the edge of the box."
+            )
+          )
+        )
+      )
+      (blank)
+      (<> KeyShortcut (text: "Cancel number edit")
+        (= key .escape)
+        (= repeat false)
+        (= discoverable false)
+        (= allow-while-input true)
+        (= action (=> () :do (call cancel-script-edits)))
+      )
+    )
+  )
+  (whenever-rule #linked-name
+    (call sync-linked-spans this linked-name)
+  )
+  (fn-do + report _
+    (param message String)
+    (= status message)
+  )
+  (fn-do _ cycle-reflow-alignment _
+    (= reflow-alignment
+      (match reflow-alignment
+        (case .left
+          (. TextAlignment center)
+        )
+        (case .center
+          (. TextAlignment right)
+        )
+        (case .right
+          (. TextAlignment left)
+        )
+      )
+    )
+  )
+  (fn-do + cancel-script-edits _
+    (call cancel-script-number-edits this)
+  )
+)
+
+(fn-do + sync-linked-spans _
+  (param node GuiNode)
+  (param name String)
+  (for (in child (. node children))
+    (if (is child ScriptName)
+      (let script-name (as child ScriptName))
+      (= (. script-name is-linked) (and (> (. name length) 0) (== (. script-name text) name)))
+    )
+    (call sync-linked-spans child name)
+  )
+)
+
+(fn-do + cancel-script-number-edits _
+  (param node GuiNode)
+  (for (in child (. node children))
+    (if (is child ScriptNumber)
+      (= (. (as child ScriptNumber) is-editing) false)
+    )
+    (call cancel-script-number-edits child)
+  )
+)
+
+(fn-expr + script-anchor-names (list String)
+  (bullet "center")
+  (bullet "top-left")
+  (bullet "top")
+  (bullet "top-right")
+  (bullet "left")
+  (bullet "right")
+  (bullet "bottom-left")
+  (bullet "bottom")
+  (bullet "bottom-right")
+)
+
+(fn-expr + gallery-alignment-name _
+  (param alignment TextAlignment)
+  (match alignment
+    (case .left
+      "left"
+    )
+    (case .center
+      "center"
+    )
+    (case .right
+      "right"
+    )
+  )
+)
+
+(fn-expr + gallery-number-text _
+  (param value F64)
+  (str sign whole decimals)
+  (where
+    (lazy hundredths (as (call round (* (call abs value) 100)) Int))
+    (lazy fraction (% hundredths 100))
+    (lazy whole (/ (- hundredths fraction) 100))
+    (lazy sign (if-expr (and (< value 0) (> hundredths 0)) "-" ""))
+    (lazy decimals (call gallery-fraction-text fraction))
+  )
+)
+
+(fn-expr + gallery-fraction-text _
+  (param fraction Int)
+  (case? (== fraction 0)
+    ""
+  )
+  (case? (== (% fraction 10) 0)
+    (str "." (/ fraction 10))
+  )
+  (case? (< fraction 10)
+    (str ".0" fraction)
+  )
+  (default
+    (str "." fraction)
+  )
+)
+
+(type + GalleryCard (is Box)
+  (prop + title String)
+  (fn-do + This _
+    (param title _)
+  )
+  (content
+    (<> This (• card) (• flex-col) (• px 16) (• py 12) (• mb 16)
+      (<> Label (• card-title) (• h 20) (• mb 6)
+        (= text title)
+      )
+    )
+  )
+)
+
+(type + GalleryLink (is Span)
+  (prop + target _ (= ""))
+  (subscribe-for (on event click)
+    (call (?. (call (of ancestor TextGallery)) report) (str "Opened link: " target))
+    (call (. event cancel))
+  )
+)
+
+(type + ScriptNumber (is Span)
+  (prop + value F64)
+  (prop + step F64 (= 1))
+  (prop + suffix _ (= ""))
+  (prop + is-editing _ (= false))
+  (prop + is-dragging _ (= false))
+  (prop + number-self _ (=> this))
+  (prop _ drag-origin Length (= 0))
+  (prop _ drag-start-value F64)
+  (prop _ did-drag _ (= false))
+  (fn-do + This _
+    (param value _)
+  )
+  (content
+    (<> This (• script-number)
+      (= text (if-expr #is-editing "" (str (call gallery-number-text #value) suffix)))
+      (if #is-editing
+        (<> ScriptNumberEditor (• script-editor) (• w 72) (• h 22)
+          (= number number-self)
+          (= text (call gallery-number-text value))
+        )
+      )
+    )
+  )
+  (subscribe-for (on event pointer-down)
+    (= drag-origin (. event root-point x))
+    (= drag-start-value value)
+    (= did-drag false)
+  )
+  (subscribe-for (on event pointer-drag)
+    (let distance (- (. event root-point x) drag-origin))
+    (if (or did-drag (>= (call abs distance) 3))
+      (= did-drag true)
+      (= is-dragging true)
+      (= value (+ drag-start-value (* (call round (/ distance 2)) step)))
+      (call (?. (call (of ancestor TextGallery)) report) (str "Dragging number: " (call gallery-number-text value) suffix))
+    )
+  )
+  (subscribe-for (on event pointer-up)
+    (= is-dragging false)
+  )
+  (subscribe-for (on event click)
+    (if (and (not did-drag) (not is-editing))
+      (= is-editing true)
+    )
+    (call (. event cancel))
+  )
+  (fn-do + commit _
+    (param text String)
+    (let parsed (as text F64))
+    (if (and (. text length) (call is-finite parsed))
+      (= value parsed)
+      (call (?. (call (of ancestor TextGallery)) report) (str "Edited number: " (call gallery-number-text value) suffix))
+    )
+    (= is-editing false)
+  )
+)
+
+(type + ScriptNumberEditor (is TextInput)
+  (prop + number (? ScriptNumber))
+  (blank)
+  ; ╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+  (fn-do + mounted _
+    (call (. super mounted))
+    (call request-focus)
+  )
+  ; ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  (subscribe-for (on event change)
+    (call (?. number commit) (. event text))
+  )
+  (subscribe-for (on event submit)
+    (call (?. number commit) (. event text))
+  )
+  (subscribe-for (on event blur)
+    (call (?. number commit) text)
+  )
+)
+
+(type + ScriptChoice (is Span)
+  (prop + options _ (= (call script-anchor-names)))
+  (blank)
+  (rule This (• script-choice))
+  (subscribe-for (on event click)
+    (let next ([] options 0))
+    (for (in index (..< 0 (. options length)))
+      (if (== ([] options index) text)
+        (= next ([] options (% (+ index 1) (. options length))))
+      )
+    )
+    (= text next)
+    (call (?. (call (of ancestor TextGallery)) report) (str "Choice: " text))
+    (call (. event cancel))
+  )
+)
+
+(type + ScriptName (is Span)
+  (prop + is-linked _ (= false))
+  (whenever-rule #is-hovered
+    (= (?. (call (of ancestor TextGallery)) linked-name) (if-expr is-hovered text ""))
+  )
+)
+
+(type + ScriptReference (is ScriptName)
+  (rule This (• script-reference))
+  (subscribe-for (on event click)
+    (call (?. (call (of ancestor TextGallery)) report) (str "Selected " text))
+    (call (. event cancel))
+  )
+)
+
+(type + ScriptDefinition (is ScriptName)
+  (rule This (• script-definition))
+)

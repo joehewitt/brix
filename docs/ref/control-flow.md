@@ -32,6 +32,7 @@ Errors.
 | `(let name Type)`{.brix} | A local of the type, holding its zero. |
 | `(let (tuple a b) value)`{.brix} | A local for each field of a tuple; see Patterns. |
 | `(let (tuple (: a I32) (: b Float)))`{.brix} | Several locals, each holding its type's zero. |
+| `(let name _ value)` | A local of the value's type, for a value that is itself a type. |
 
 - **Zero.** A local declared with no value holds its type's zero: `0`, `false`, `""`, an empty
   collection, or `null` for an optional.
@@ -39,6 +40,9 @@ Errors.
   `(+= ratio 0.5)`{.brix} does above. An argument is a local of its function, and can be assigned
   too. A name nothing declares cannot be assigned: `(= total 5)`{.brix} is an error,
   `Variable "total" is not declared; declare it with ". total = 5"`.
+- **Types as values.** `(let kind I32)`{.brix} declares a local of type `I32`, holding `0`. To hold
+  the type itself, write `_` for the local's type: `(let kind _ I32)`{.brix}, which prints as
+  `[TypeInfo I32]`.
 - **Lazy locals.** `(lazy name value)`{.brix} declares a local whose value is computed where it is
   first read; see Functions.
 - **Order.** A local is known from its declaration on. Reading it before is an error:
@@ -312,7 +316,8 @@ yes
 - **Rows that raise.** A row `(throw error (if condition))`{.brix} raises where no row before it
   held, and a last row `(throw error)`{.brix} can stand in for the default row; see Errors.
 - **As steps.** In a step body, a table can stand as a step, with steps in its rows. When no row
-  holds and there is no default row, the steps after the table run.
+  holds and there is no default row, the steps after the table run. A `match` run as steps is
+  written `(do (inline (match …)))`, and the error for a bare one says so; see Patterns.
 - A table is a `match` with no subject: its rows are arms, and the arms of Patterns can mix with
   them.
 
@@ -475,7 +480,8 @@ for that item.
 A loop can read several sources together, one item of each in each pass. Each header after the
 first follows the one before it, and the last holds the body, as in
 `(for (in item source) (and-for (in other others) body))`{.brix}. The loop ends when any of its
-sources ends.
+sources ends. An `(or-for …)` header, for a source joined as an alternative, is read but not built
+yet: `Not supported by emission: this statement`.
 
 ```brix
 (main

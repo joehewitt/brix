@@ -70,11 +70,19 @@ a unit suffix, and only a number type can have one; see Units.
 | `(type + Name (is Struct))`{.brix} | A [struct](#structs) | Fixed groups of values, copied, changed in place. |
 | `(type + Name (is Interface))`{.brix} | An [interface](#interfaces) | Any value of a type that implements it. |
 | `(type + Name (is Union))`{.brix} | A union; see Unions and enums | One of several cases. |
+| `(type + Name (is Int String))`{.brix} | A [type of alternatives](#types-of-alternatives) | A value of any one of the types, which keeps its own type. |
 | `(type + Name (is Int))`{.brix}, or another number type | A number type; see Units | Numbers of their own type. |
 | `(type + Name (is (fn-type Int)))`{.brix} | A function type; see Functions | Functions. |
 
 `Optional`, `Function`, `CFunction` and `Bool` cannot be a base: a type built on one is an error,
 `Type has illegal base class`.
+
+A tuple suits data that is nothing more than its values, compared and copied whole. A class suits
+a thing with an identity and a lifetime, which everyone who holds it shares. A struct suits values
+changed in place by their one holder. Inheritance suits a family that shares an identity and
+behavior worth sharing, at the cost that each subclass depends on choices its base makes. An
+interface suits a boundary where callers need only a small capability, and a union a fixed set of
+cases each caller should consider.
 
 ### Members
 
@@ -112,6 +120,65 @@ Inside a member, the type's other members are named alone, as `count` and `label
 `summary`, or through `this`, the value the member was called on: `(. this count)`{.brix}. `This`
 names the type that declares the code, so `(call This value)`{.brix} inside a method makes another
 value of that type.
+
+### Using members
+
+```brix
+(main
+  (let line (call Line (call Point 1 2) (call Point 5 7)))
+  (print (. line end x))
+  (= (. line end x) 9)
+  (print (. (. line end) x))
+  (print (call (. line length-squared)))
+  (let measure (. line length-squared))
+  (print (call measure))
+  (print (. (call (. Point origin)) y))
+)
+
+(type + Point
+  (prop + x Int)
+  (prop + y Int)
+  (fn-do + This _
+    (param x _)
+    (param y _)
+  )
+  (fn-expr + origin Point :static
+    (call Point 0 0)
+  )
+)
+
+(type + Line
+  (prop + start Point)
+  (prop + end Point)
+  (fn-do + This _
+    (param start _)
+    (param end _)
+  )
+  (fn-expr + length-squared Int
+    (+ (%% (- (. end x) (. start x)) 2) (%% (- (. end y) (. start y)) 2))
+  )
+)
+```
+
+```output
+5
+9
+89
+89
+0
+```
+
+- **Reading.** `(. line end)`{.brix} reads a property or a getter. Several names read a member of
+  each member in turn, so `(. line end x)`{.brix} is `(. (. line end) x)`. In rows it is
+  `line.end.x`{.rows}.
+- **Assigning.** `(= (. line end x) 9)`{.brix} assigns the last member named. A field of a struct
+  is changed where the struct is held; see [Structs](#structs).
+- **Calling.** `(call (. line length-squared))`{.brix} calls a method. Named without a call, a
+  method is a function value that remembers its object; see [Methods](#methods).
+- **Static functions** are read on the type, as in `(call (. Point origin))`{.brix}; see
+  [Static functions](#static-functions).
+- **Optionals.** `(?. value name)`{.brix} reads a member of a value that may be `null`; see
+  Optionals.
 
 ## Classes and objects
 
@@ -328,6 +395,9 @@ A property written with `=>` computes its value each time it is read, as `total`
 [Stored properties](#stored-properties). It holds nothing, and assigning it is an error:
 `Setter not found`. It is a getter written on one row.
 
+To compute the value with steps, write `:do` and a block that returns it:
+`(prop + summary String (=> :do (block (let rounded (as celsius Int)) (return (str rounded " C")))))`{.brix}.
+
 ### Getters and setters
 
 A getter is a function that is read as a property. A setter is a function that runs when a
@@ -361,7 +431,9 @@ property is assigned.
 ```
 
 - **Getters.** `(fn-expr + fahrenheit Float :get body)`{.brix} declares a getter, or `fn-do` in
-  place of `fn-expr` for a step body. It takes no parameters, and its body runs at each read.
+  place of `fn-expr` for a step body. It takes no parameters, and its body runs at each read. A
+  read looks like reading a stored property, so a getter should cost and do no more than a reader
+  would expect of one.
 - **Setters.** `(fn-do + fahrenheit _ :set (param value Float) body)`{.brix} declares a setter.
   The assigned value is its one parameter, `value` here. A setter has a step body, and gives
   nothing, so its result type is `_`.
@@ -439,7 +511,33 @@ parameters as its first rows: `(fn-do + This _ (param high Int))`{.brix}.
 A lazy binding runs before the object exists, so it cannot call the type's methods:
 `A ".." initializer runs before the object exists, so it cannot call "measure", a method of
 Span; compute the value from the constructor's parameters, or assign it in the constructor's
-body`.
+body`. It runs before the body, too, so it cannot read a property the body assigns:
+
+```brix compile-error
+(main
+  (let log (call Log "build"))
+  (print (. log size))
+)
+
+(type + Log
+  (prop + title String)
+  (prop + size Int)
+  (fn-do + This _
+    (param name String)
+    (= title name)
+    (lazy size (. title length))
+  )
+)
+```
+
+```output
+Exception: Initializer of size reads title before the constructor body assigns it; constructor .. initializers run before the body
+<no file:13>
+        (lazy size (. title length))
+                      ^^^^^
+```
+
+Reading the parameter, `(lazy size (. name length))`{.brix}, gives `5`.
 
 A constructor may take type parameters of its own, written after `This`, and choose the type's
 parameters from them, as in
@@ -733,6 +831,10 @@ grown to (2, 2)
   `(= (. line start x) 7)`{.brix} changes `line`.
 - **Fixed layout.** A struct's fields cannot be added or removed. Lazy properties are not
   allowed: `Property not supported`.
+- **A struct nothing holds.** A field of a struct that no local, parameter or property holds, such
+  as one `as` gives or a call returns, cannot be assigned, since the change would be lost:
+  `(= (. (as size Dimensions) width) 9)`{.brix} is an error, `Assigning width changes a Dimensions
+  struct that nothing holds, so the change is lost; assign width where the struct is held`.
 
 Otherwise a struct is declared, made, compared and converted as a named tuple is.
 
@@ -832,6 +934,7 @@ a test or a conversion:
 
 - **`is`.** `(is pet Dog)`{.brix} is true when the object is a `Dog`, or of a class derived from
   `Dog`. `(is! pet Dog)`{.brix} is true only when the object's class is `Dog` itself.
+  `(is-not pet Dog)`{.brix} and `(is!-not pet Dog)`{.brix} are their opposites.
 - **`as`.** `(as pet Dog)`{.brix} gives the object as a `Dog`. When it is not one, the program
   panics: `Invalid cast to [Object app/main:Dog]`.
 - **Patterns.** A match arm `(case (: dog Dog) value)`{.brix} is taken when the object is a `Dog`,
@@ -898,8 +1001,9 @@ true
 An interface is a type built on `Interface`. Its members are functions, getters, setters,
 static functions and [associated types](#associated-types):
 
-- **Required members.** A member with no body, such as `area`, must be declared by every type that
-  implements the interface.
+- **Required members.** A member with no body that gives a value, such as `area`, must be declared
+  by every type that implements the interface.
+- **Hooks.** A member with no body and no result may be left out; see [Hooks](#hooks).
 - **Members with bodies.** A member with a body, such as `describe`, is given to every type that
   implements the interface, which may declare its own instead. Its body may use the interface's
   other members, and calls them on the value it was called for.
@@ -915,6 +1019,56 @@ static functions and [associated types](#associated-types):
 - **No values of its own.** Calling an interface is an error, `Shape is an interface, so it has no
   constructor; construct a class that is Shape`, and so is declaring a local of an interface type
   with no value.
+
+### Hooks
+
+A member with no body and no result, such as `reset` here, is a hook. A type that implements the
+interface may declare it or leave it out, and calling it on a value whose type leaves it out does
+nothing:
+
+```brix
+(main
+  (let shapes (list Shape) (list (call Square 2) (call Dot)))
+  (for (in shape shapes)
+    (call (. shape reset))
+    (print (call (. shape area)))
+  )
+)
+
+(type + Shape (is Interface)
+  (fn-expr + area Float)
+  (fn-do + reset _)
+)
+
+(type + Square
+  (implements Shape)
+  (prop + side Float)
+  (fn-do + This _
+    (param side _)
+  )
+  (fn-expr + area Float
+    (* side side)
+  )
+  (fn-do + reset _
+    (print "resetting the square")
+  )
+)
+
+(type + Dot
+  (implements Shape)
+  (fn-expr + area Float
+    0.0
+  )
+)
+```
+
+```output
+resetting the square
+4
+0
+```
+
+A member that gives a value has no such default, so leaving one out is an error.
 
 ### Implementing an interface
 
@@ -1023,6 +1177,70 @@ a type, such as `(prop + _ Context)`{.brix}, or a type with parameters, such as
 through the type parameter, as `(. Storage Context)`{.brix}, and can make a value of it with
 `(call (. Storage Context))`{.brix}. A type that implements the interface without binding one of
 its associated types is an error: `Must implement associated type Context in Arena`.
+
+## Types of alternatives
+
+A type built on several types stands for any one of them. In rows it is written with `||`, as
+`+ Choice is Int || String`{.rows}.
+
+```brix
+(main
+  (print (call twice 3))
+  (print (call twice "ab"))
+  (print (call kind 3))
+  (print (call kind "x"))
+  (let held Choice 4)
+  (print (type-of held))
+  (print (type-of (call Choice "y")))
+  (print (call Choice 2.5))
+)
+
+(type + Choice (is Int String))
+
+(fn-expr + twice String
+  (param value Choice)
+  (str value value)
+)
+
+(fn-expr + kind String
+  (param value Choice)
+  (if-expr (is value Int) "number" "text")
+)
+```
+
+```output
+33
+abab
+number
+text
+[TypeInfo I64]
+[TypeInfo String]
+2
+```
+
+- **Not a union.** A type of alternatives has no values of its own. A value of it is a value of one
+  of its types, and keeps that type, as `held` keeps `Int`. A union holds a case, and can tell
+  which at run time; see Unions and enums.
+- **A function for each type.** A parameter of a type of alternatives makes a function generic: the
+  compiler makes one function for each of the types the program passes, as for a type parameter;
+  see Functions. In each, the parameter has that one type, so `is` is decided as the function is
+  made.
+- **Other types.** A value of none of the types is an error: `No function "twice" accepts (F64);
+  it is declared as "twice(value Choice)"`.
+- **Matches.** A `match` over such a parameter is checked in each function made from it, so an arm
+  for one type is an error in the others: `Pattern has no possible matches`. Test with `is`
+  instead, or declare an overload for each type.
+- **Calling the type** with a value converts it as `as` does, to the first type `as` can convert it
+  to: `(call Choice 2.5)`{.brix} is the `Int` `2`. With no value it is an error: `Choice stands for
+  any one of Int and String, so it has no constructor; give it a value of one of them, as in
+  Choice(value)`.
+- **Collections.** A list or other collection of a type of alternatives cannot be built yet.
+- **The stream family.** `(stream Int)`{.brix} is the best-known type of alternatives: `Stream'Item`
+  stands for any one of the stream interfaces; see Streams.
+
+Use a union for a value that can be in one of several states, an interface for behavior many types
+share, and a type of alternatives for a parameter that takes several types and handles each of
+them as it is compiled.
 
 ## Delegation
 
@@ -1146,7 +1364,9 @@ An extension is declared with `extend`, and has members as a type has them, as i
   "shout" for String, so the call is ambiguous; remove or rename all but one of them`.
 
 An `as` clause, as in `(extend + Thing (as Shape))`{.brix}, is reserved for making a type
-implement an interface from outside it. The compiler does not build it yet.
+implement an interface from outside it. The compiler does not build it yet: `Not yet
+implemented`. Such an extension has no body, and is written `(extend-line + Thing (as Shape))`, in
+rows `+ extend Thing as Shape`{.rows}.
 
 ## Type information
 

@@ -1,0 +1,105 @@
+; A style sheet for a drawing. The chart is vector markup made from a list, and
+; it says nothing about color. The sheet holds the palette, and its rules give
+; each shape a fill or a stroke. The result is saved as an SVG file.
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/style)
+(import /graphics/vector)
+(import /graphics/vector-group)
+(import /stream/aggregate)
+(import /units)
+(blank)
+
+(main
+  (let days
+    (call List
+      (block
+        (bullet (call Day 0 "Mon" 120))
+        (bullet (call Day 1 "Tue" 80))
+        (bullet (call Day 2 "Wed" 170))
+        (bullet (call Day 3 "Thu" 60))
+      )
+    )
+  )
+  (let top (call max (in (. each sales) days)))
+  (blank)
+  (<> Chart (id: chart)
+    (<> Rectangle (• backdrop)
+      (= rect (call Rect 0 0 400 240))
+    )
+    ; Each bar sits in a group of its own, which knows whether it is the tallest.
+    (for (in day days)
+      (<> Column
+        (= is-best (== (. day sales) top))
+        (<> Rectangle
+          (= rect (. day bar))
+        )
+      )
+    )
+    (<> Line (• axis)
+      (= start (call Point 30 220))
+      (= end (call Point 370 220))
+    )
+  )
+  (blank)
+  (let path "chart.svg")
+  (let canvas (call SVGCanvas 400 240))
+  (do-use canvas
+    (call (. chart next-frame))
+    (call (. chart paint-vector) canvas null true null (call Rect 0 0 400 240))
+    (call (. canvas write) path)
+  )
+  (print (str "saved " (. days length) " bars to " path))
+)
+
+(type + Day (is Tuple)
+  (prop + index Float)
+  (prop + name String)
+  (prop + sales Float)
+  (fn-expr + bar Rect :get
+    ; A bar is 60 wide, stands on the line at 220, and is as tall as its sales.
+    (call Rect (call Point (+ 45 (* 80 index)) (- 220 sales)) (call Point (+ 105 (* 80 index)) 220))
+  )
+)
+
+(style ChartTheme
+  (using VectorPaintStyle)
+  ; `using` names the style the rules set: the fill, stroke and the like that the
+  ; library's vector shapes take.
+  (blank)
+  ; The palette is written once, as values of the sheet.
+  (prop + paper RGBA (= (call RGBA "#f3ede2")))
+  (prop + ink RGBA (= (call RGBA "#2b2622")))
+  (prop + accent RGBA (= (call RGBA "#c2410c")))
+  (blank)
+  (rule backdrop
+    (= fill paper)
+  )
+  (blank)
+  (rule axis
+    (= stroke ink)
+    (= stroke-width 2px)
+  )
+  (blank)
+  ; A rule named for a type applies to every node of that type. `fill` is
+  ; inherited, so the group's fill is the fill of the bar inside it.
+  (rule Column
+    (= fill ink)
+    (blank)
+    ; These values apply while the group's `is-best` is true.
+    (when-style #is-best
+      (= fill accent)
+    )
+  )
+)
+
+(type + Column (is VectorGroup)
+  (prop + is-best _ (= false))
+)
+
+(type + Chart (is VectorGroup)
+  (using ChartTheme)
+  ; The root of the drawing names the sheet for everything inside it.
+)

@@ -11,7 +11,8 @@ A collection holds many values. Yumi's core library has five kinds:
 | [Bitmap](#bitmaps) | `(of Bitmap U8)`{.brix} | Bits packed into an integer or a buffer. |
 
 Lists, maps and arrays need no import. Ranges, which are values as well as loop headers, are in
-[Ranges as values](#ranges-as-values). There is no set type.
+[Ranges as values](#ranges-as-values). There is no set type: a set of positions, such as the
+selected rows of a table, fits a [bitmap](#bitmaps), and a set of other keys a map.
 
 Streams, which give their items one at a time, are in Streams, and so are the interfaces a type
 implements to be looped over. List patterns are in Patterns.
@@ -450,8 +451,8 @@ hi
 ```
 
 - **`read`** reads a number of the type given after it at a byte offset, as in
-  `(call (of (. bytes read) U16) 0)`{.brix}, and gives `null` past the end. **`write`** writes one. Both take `.little` or `.big` as a third argument;
-  the default is the machine's order.
+  `(call (of (. bytes read) U16) 0)`{.brix}, and gives `null` past the end. **`write`** writes
+  one. Both take `.little` or `.big` as a third argument; the default is `.big`.
 - **Text.** `(as text ([] Byte))`{.brix} gives a copy of the UTF-8 bytes of a text, and
   `slice-string` reads bytes as text. `as Hex` and `as Base64` write the bytes as text, and
   `(as (as text Hex) ([] Byte))`{.brix} reads them back.
@@ -460,7 +461,8 @@ hi
 
 `(. a immutable)`{.brix} is an `ImmutableArray`: a view of the same storage that cannot be
 written, so later writes to `a` show through it. Writing an item through it is an error:
-`ImmutableArray does not support element assignment`.
+`ImmutableArray does not support element assignment`. Only the array cannot be written: objects
+it holds can still be changed through it.
 
 An `ArrayBuilder`, from `/core/array-builder`, collects items and then gives them up as an array.
 That module also lets `Array` and `ImmutableArray` be made from a stream.
@@ -536,7 +538,9 @@ memory.
 ## Tables
 
 A table, from `/core/table`, holds rows of a struct type, and stores each field as its own array.
-Reading one field of every row reads one block of memory.
+Reading one field of every row reads one block of memory. That suits work that reads a few fields
+across many rows; work that reads whole rows one at a time suits an array of structs. A table is a
+choice of layout, not a way to make every operation faster.
 
 ```brix
 (import /core/arena)
@@ -589,6 +593,8 @@ Reading one field of every row reads one block of memory.
   `(as ([] t index) Point)`{.brix} gathers a copy. Assigning a struct to `([] t index)`{.brix}
   writes every field.
 - **Columns.** `(. t x)`{.brix} is the column of field `x`, which reads and writes the table.
+  A tuple pattern takes a table apart into its columns, one for each field in order:
+  `(let (tuple xs ys) points)`{.brix} gives two columns that read and write the table.
 - **Spans.** `([] t range)`{.brix} is a span of rows, indexed from the start of the range.
 - **Finishing.** `finish` gives an `ImmutableTable` with the rows, and leaves the table sealed:
   using it afterwards panics with `Table is sealed`. `view` reads the rows so far without

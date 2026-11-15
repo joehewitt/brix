@@ -125,8 +125,10 @@ Supported options:
   usual.
 - `%file: relative/path`: create an extra file before compiling/running this test.
 - `%probes: selectors`: compile the probes these selectors name into the program, as `--probes`
-  does, and record the run's trace beside it. The case runs alone, outside any batch. Probe
-  records go to the trace, not stdout, so the expected body is still what the program prints.
+  does, and record the run's trace in the case's directory, which is removed after the run. A bare
+  `%probes` compiles the probes `--probes` compiles with no selectors. The case runs alone, outside
+  any batch. Probe records go to the trace, not stdout, so the expected body is still what the
+  program prints.
 
 Options with values use this form:
 

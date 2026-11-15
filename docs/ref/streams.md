@@ -11,8 +11,11 @@ patterns, and channels in Concurrency.
 ## The stream family
 
 `(stream Int)`{.brix} is a stream of `Int` of any kind. A parameter of that type takes a list, a
-range, an array, a generator, a comprehension, or a value of any type that implements one of the
-stream interfaces.
+range, an array, a generator, a comprehension, a channel, or a value of any type that implements
+one of the stream interfaces. A function over a stream is written in terms of the items it reads,
+not where they are kept or when they arrive, so one function serves values stored in a list and
+values that another task sends on a channel. Waiting changes when the answer is ready, not how
+the function is written.
 
 ```brix
 (main
@@ -22,6 +25,12 @@ stream interfaces.
   (print (call total (in (* each 10) (list 1 2))))
   (print (call total (call (of Array Int) (list 5 5))))
   (print (call vowels "streams"))
+  (let incoming (channel Int))
+  (do-new
+    (<- incoming 1 2 3)
+    (call (. incoming close))
+  )
+  (print (call total incoming))
 )
 
 (fn-do + total Int
@@ -57,6 +66,7 @@ stream interfaces.
 30
 10
 2
+6
 ```
 
 `(stream Int)`{.brix} is `Stream'Int`, which is one of these interfaces:
@@ -74,9 +84,63 @@ stream interfaces.
 - **Maps** give their entries as `KeyValuePair`s to a stream parameter; see Collections.
 - **Lists.** A stream converts to a list wherever a list type is wanted, as in
   `(let all (list Int) values)`{.brix}, and `(call List values)`{.brix} makes one. Either reads
-  the whole stream at once.
+  the whole stream at once, so it waits for the stream to end, and takes memory for every item.
+  Over a channel that is never closed it never returns; limit such a stream before collecting it.
 - **Readers alone.** A type that can only be read with `<-` is not a stream, and a loop over it is
   an error: `A for loop cannot iterate over Reader; loop over a list, a range or a stream`.
+
+A function that reads items in order should take `(stream Item)`{.brix}, which takes every kind.
+One that must reach any position asks for `Indexable'Item`, and one that subscribes asks for
+`Broadcastable'Item`.
+
+### Reading a stream again
+
+A function that takes a stream cannot tell which kind it was given, and the kinds differ when read
+a second time:
+
+```brix
+(main
+  (print (call twice-count "ab"))
+  (print (call twice-count (.. 1 3)))
+  (print (call twice-count (in (* each each) (list 1 2 3))))
+  (print (call twice-count (*> (list 1 2 3) (* each 2))))
+  (let queue (of SyncBufferedChannel Int))
+  (<- queue 1 2 3)
+  (call (. queue close))
+  (print (call twice-count queue))
+)
+
+(fn-do + (of twice-count Item) String
+  (param values (stream Item))
+  (let first 0)
+  (for (in _ values)
+    (+= first 1)
+  )
+  (let second 0)
+  (for (in _ values)
+    (+= second 1)
+  )
+  (return (str first " then " second))
+)
+```
+
+```output
+2 then 2
+3 then 3
+3 then 0
+3 then 0
+3 then 0
+```
+
+| Source | A second loop |
+| --- | --- |
+| A list, text, range or array | Gives every item again. |
+| A generator, comprehension or pipeline | Gives nothing more: it gives each item once. |
+| A `SyncChannel` or `SyncBufferedChannel` | Gives nothing more: each read takes an item away. |
+| An `AsyncChannel` | Gives each subscriber only what is published while it listens. |
+
+To read the items twice, collect them into a list once. Calling the function that made them again
+makes them again, with any effects that took.
 
 ## Generators
 
@@ -225,6 +289,10 @@ declares no errors.
 A comprehension describes a stream by the items it is made from. Every comprehension is a
 `Generator`.
 
+A comprehension suits a stream made by one change to the items of a source, with clauses that pick
+among them. A generator suits a stream whose making takes steps of its own, and a pipeline one
+best told as a source and then several stages.
+
 ```brix
 (main
   (print (call List (in (* each 2) (list 1 2 3))))
@@ -272,6 +340,8 @@ a1, b2
 | `(in value source)`{.brix} | `value` for each item of `source`, which `value` reads as `each` or `it`. |
 | `(case-each (in pattern source) body)`{.brix} | `body` for each item that fits `pattern`. Without a body, the items that fit. |
 | `(iterate (in source) (block arms))`{.brix} | The value of the first arm that fits each item. Items that no arm takes are left out. |
+| `(in (<* pattern) source)` | The items that fit `pattern`, as `case-each` gives them with no body. |
+| `(in (select value (| pattern)) source)`{.brix} | `value` for each item that fits `pattern`. |
 
 - **Clauses.** `when`, `while` and `until` work as they do in a loop header: `when` skips items,
   and `while` and `until` end the stream. See Control flow.
@@ -282,6 +352,66 @@ a1, b2
 - **Laziness.** The source is worked out when the comprehension is made. The values are worked
   out as the items are read, and read locals as they are at that moment.
 - **Lists.** A comprehension written where a list type is declared becomes a list at once.
+
+```brix
+(main
+  (let values (list (? Int)) (list 1 null 3))
+  (print (call List (in (<* (: n Int)) values)))
+  (print (call List (in (select (* n 10) (| (: n Int))) values)))
+  (print (call List (in (select (str "big " it) (| ({} (> it 2)))) (list 1 2 3 4))))
+)
+```
+
+```output
+1, 3
+10, 30
+big 3, big 4
+```
+
+- **`select`** puts the value before the pattern it is given for. In rows it is
+  `n * 10 | n Int in values`{.rows}. The pattern may also be `(<* pattern)` or a stream pattern,
+  `(~ pattern)`, which is matched along the source again and again.
+- **`it` in a `select`** is the item only when the pattern is a condition, as in `big` above. With a
+  type or a literal pattern, name the item: `(| (: n Int))`.
+
+### Functions whose body is a comprehension
+
+```brix
+(main
+  (print (call List (call doubled (list 1 2 3))))
+  (print (call List (call sizes (list 1 5 10))))
+)
+
+(fn-expr + doubled _
+  (param items (list Int))
+  (iterates in items)
+  (* each 2)
+)
+
+(fn-expr + sizes _
+  (param items (list Int))
+  (iterates in items)
+  (case? (> it 7) "big")
+  (case? (> it 3) "middle")
+  (default "small")
+)
+```
+
+```output
+2, 4, 6
+small, middle, big
+```
+
+`(iterates in source)` in a function's header makes its value body a comprehension over the
+source: the body is worked out for each item, which it reads as `each` or `it`, and its arms work
+as an `iterate`'s do. In rows the header row is `= in items`{.rows}.
+
+- **The result.** With `_` the function gives a `Generator`. With a list type it gives a list, and
+  with a stream type a stream.
+- **`on`.** `(iterates on channel)` works the body out for each value published to the
+  channel, and the function gives a channel that publishes the results.
+- **Value bodies only.** A `fn-do` with `iterates` is refused:
+  `Function stepped can fall through without returning Stream'I64`.
 
 ## Reading streams
 
@@ -318,7 +448,42 @@ A loop reads a stream from the start; see Control flow. These read it in other w
 - **Resuming.** A loop over a generator that has been read with `<-` starts at its next item.
 
 The `/stream` library has functions over streams, such as `sort`, `sum`, `count`, `min`, `max`,
-`first`, `distinct`, `take`, `skip`, `zip` and `indexed`. See the standard library.
+`first`, `distinct`, `take`, `skip`, `zip` and `indexed`. See the standard library. Several do
+not do what their names suggest elsewhere:
+
+```brix
+(import /stream)
+
+(main
+  (print (call List (call take 2 (list 10 20 30 40))))
+  (print (call List (call scan 0 (list 1 2 3) (:using (=> (total item) (+ total item))))))
+  (print (call reduce (call (of List Int)) (:using (=> (a b) (+ a b)))))
+  (print (call min (call (of List Int))))
+  (print (call max (call (of List Int))))
+  (print (?? (call first (call (of List Int))) -1))
+  (print (call " | " (call buffer 2 (list 1 2 3 4 5))))
+  (print (type-of (call contains 2 (list 1 2 3))))
+)
+```
+
+```output
+30
+1, 3, 6
+0
+0
+0
+-1
+1, 2 | 3, 4
+[TypeInfo Iterable'Bool]
+```
+
+- **`take n`** gives the one item at index `n`, not the first `n` items.
+- **`scan`** with a seed gives each running value after the seed, without the seed itself.
+- **Empty streams.** `reduce` without a seed, `min` and `max` give the item type's zero for an
+  empty stream. `first` gives `null`.
+- **`buffer n`** gives groups of `n` items and drops a last group that is not full.
+- **`contains`** gives a stream of one `Bool`, not a `Bool`.
+- **Memory.** `distinct`, `pairwise`, `sort` and `repeat` keep items as they go.
 
 ## Pipelines
 
@@ -383,6 +548,10 @@ expression on its right.
   it reads as `each`. After a stage, `each` is the item the stage gives. `each` where nothing gives
   an item is an error: `Name "each" not found, as nothing here gives an item; "each" reads the item
   of a stage, a loop, a callback or a trigger`.
+- **Values, not functions.** The right side is worked out for each item even where it does not
+  read `each`: `(*> items (call make))`{.brix} calls `make` once for each item. Unlike `|>`, a
+  stage does not call a function it is given: `(*> items double)`{.brix} gives the function
+  `double` for each item, so write `(*> items (call double each))`{.brix}.
 - **Lazy stages.** `*>`, `?>`, `?*>` and `*|>` make a stream and run nothing until it is read.
   Then each item passes through all the stages before the next item is read. A pipeline of these
   stages that nothing reads never runs.
@@ -397,6 +566,50 @@ expression on its right.
   type to keep the items instead: `(let kept (list Int) (*> items (* each 2)))`{.brix}.
 - **Records.** `(~> text \record)`{.brix} is a stage that reads one match of a stream pattern
   after another; see Stream patterns.
+
+A stage runs only as items are read through it. Making the pipeline here runs no `record`, and a
+loop that stops early never runs it for the rest. A filter after `*|>` may still drop an item the
+step has seen, so put `*|>` after `?>` when its effect is for kept items only.
+
+```brix
+(main
+  (let values (*|> (.. 1 3) (call record each)))
+  (print "created")
+  (for (in value values)
+    (print (str "out " value))
+    (if (== value 2)
+      (break)
+    )
+  )
+  (let kept
+    (block
+      (.. 1 4)
+      (pipe *|> (call record each))
+      (pipe ?> (== (% each 2) 0))
+      (pipe |> List)
+    )
+  )
+  (print kept)
+)
+
+(fn-do + record _
+  (param value Int)
+  (print (str "tap " value))
+)
+```
+
+```output
+created
+tap 1
+out 1
+tap 2
+out 2
+tap 1
+tap 2
+tap 3
+tap 4
+2, 4
+```
 
 ### Pipelines in rows of a block
 
@@ -441,10 +654,36 @@ for each stage, holding the stage's operator and value.
 ```
 
 - **Bullets** start a stream: `(bullet value)`{.brix} gives one item, `(bullet* items)`{.brix}
-  every item of a stream, and `(bullet? value)`{.brix} one item when it is not `null`.
+  every item of a stream, `(bullet? value)`{.brix} one item when it is not `null`, and
+  `(bullet*? items)`{.brix} every item when the collection is not `null`. `bullet*` spreads one
+  level only: given a list of lists, it gives the lists.
 - **Stage bodies.** A stage's value can be a `block` with rows of its own, and lazy bindings
   written under a stage are worked out for each item. To read an outer item inside an inner stage,
   bind it to a name in a lazy binding first, since the inner `each` hides it.
+
+For a short fixed list, a list literal is enough. Bullets pay off where a sequence mixes fixed
+items, items that may be missing, and items taken from elsewhere:
+
+```brix
+(main
+  (let include-debug true)
+  (let extras (list "timing" "memory"))
+  (let menu
+    (block
+      (bullet "status")
+      (bullet? (only-if "debug" (if include-debug)))
+      (bullet* extras)
+      (bullet "done")
+      (pipe |> List)
+    )
+  )
+  (print menu)
+)
+```
+
+```output
+status, debug, timing, memory, done
+```
 
 ### Bullets in calls
 

@@ -94,7 +94,7 @@ Views that should act as one browser share a session as well as a tree:
 folder itself and watches only the one it shows, so it loads nothing into the tree. It can browse
 above the tree's root unless `is-confined` is set, which stops leaving, `..` and a leading `/` at
 the root. It publishes `chosen` with a `FilePaletteItem`; the application decides what
-choosing means. `examples/gui/file-browser/file-browser-panel.yumi` turns a choice under the root
+choosing means. `examples/gui/file-browser/file-browser-panel.bx` turns a choice under the root
 into `session.revealed` and reports the others.
 
 ## Marks

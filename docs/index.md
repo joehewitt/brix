@@ -40,22 +40,30 @@ print?". They are kept short to test one thing each, so take their constructs, n
 
 ## Example Programs
 
-[`examples`](../examples) holds whole programs, which each release builds. Unlike the core tests,
-they show how complete programs are written.
+[`examples`](../examples) holds whole programs, all written in Brix, which each release builds and
+ships. Unlike the core tests, they show how complete programs are written.
 
-- [`examples/net`](../examples/net): an HTTP client and server, a WebSocket client, an MCP server,
-  and an OpenAI chat client. The Python servers beside them are mocks for the clients to talk to.
-- [`examples/tui`](../examples/tui): one terminal program per feature, such as `table.yumi`,
-  `form.yumi`, `dialogs.yumi` and `scrolling.yumi`, and a file explorer app.
-- [`examples/gui`](../examples/gui): macOS apps. Each folder under `components` and `effects` is an
-  app around one panel, and `showcase/showcase-app.yumi` gathers the panels into one app.
-  `motion/motion-app.yumi` is a gallery of the animation system, with a speed control and a reduce
-  motion switch. `quakes/quakes-app.bx` is a live earthquake map written in Brix, which loads the
-  USGS feed and pans and zooms under glass panels.
+- [`examples/programs`](../examples/programs): programs that print, named for what they do, such
+  as `lisp.bx`, `vending.bx`, `json-parser.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
+- [`examples/net`](../examples/net): an HTTP client and server, a WebSocket client and an MCP
+  server. The Python servers beside them are mocks for clients to talk to.
+- [`examples/tui`](../examples/tui): terminal programs, from the small `order.bx`, `timer.bx` and
+  `todo.bx` to `chromatic`, a pixel animation studio, and `pulse`, a system dashboard, plus one
+  program per feature, such as `table.bx`, `dialogs.bx` and `scrolling.bx`.
+- [`examples/gui`](../examples/gui): macOS apps. `basics` holds small apps of one file each.
+  `showcase/showcase-app.bx` gathers panels of components, effects and motion into one app, and
+  opens the panel named after `--`, such as `menus` or `scrolling`.
+  `showcase/motion/motion-app.bx` is a gallery of the animation system, with a speed control and a
+  reduce motion switch. `quakes` is a live earthquake map that loads the USGS feed and pans and
+  zooms under glass panels, and `pattern-designer` edits repeating patterns with undo, files and
+  SVG export.
+- [`examples/games`](../examples/games): two macOS games, `resonance` and `prism-break`.
+- [`examples/graphics`](../examples/graphics): drawings written to image files, which need macOS.
 
-`examples/tui/chromatic` also needs macOS, since it draws with the graphics library.
+`examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does
+`examples/tui/pulse` unless it runs with `--demo`.
 
-To try one from your project, run `yumi <toolchain root>/examples/tui/table.yumi -o .tmp/build/table`.
+To try one from your project, run `yumi <toolchain root>/examples/tui/timer.bx -o .tmp/build/timer`.
 
 ## The Standard Library
 

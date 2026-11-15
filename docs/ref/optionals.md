@@ -5,6 +5,10 @@ A value that may be absent has an optional type. `(? Int)`{.brix} holds an `Int`
 absence is possible by writing `?`, and the compiler checks that absence is dealt with before the
 value is used.
 
+Absence can then pass through an expression without a stand-in such as an empty text or `-1`.
+Absence is not failure: a lookup may well find nothing, and is an optional, while a request that
+could not get an answer raises an error; see Errors.
+
 This chapter covers optional types, how values become optional, the ways to use one, optionals as
 conditions, narrowing, and the steps that skip a null. Optionals in patterns are in Patterns, and
 errors as values in Errors.
@@ -195,6 +199,9 @@ works within a chain, as in `(. (!! (. (!! (call (. holder find) 5)) next)) valu
 a value the compiler knows is not `null` is an error: `"count" is I64, which is never null here, so
 it needs no "!"`.
 
+Forcing suits a value that some rule of the program keeps present, and makes the writer answer for
+that rule. Where absence is ordinary, a fallback, a branch or `match?` says more.
+
 ### Fallbacks
 
 `(?? value fallback)`{.brix} gives the value when it is not `null`, and the fallback otherwise.
@@ -209,6 +216,25 @@ it needs no "!"`.
   condition.
 - **After `if`.** `(?? (only-if value (if condition)) other)`{.brix} is an error, because it reads
   as one value or another: write `(if-expr condition value other)`{.brix}.
+
+So an empty text in an optional is present, and an empty text that is not optional is not:
+
+```brix
+(main
+  (let nickname (? String) "")
+  (print (str "[" (?? nickname "Anonymous") "]"))
+  (let plain "")
+  (print (str "[" (?? plain "Anonymous") "]"))
+  (let missing (? String))
+  (print (str "[" (?? missing "Anonymous") "]"))
+)
+```
+
+```output
+[]
+[Anonymous]
+[Anonymous]
+```
 
 ### Chains
 
@@ -382,11 +408,12 @@ Several steps take an optional and do nothing when it holds nothing:
 | --- | --- |
 | `(print? value)`{.brix} | Print the value, unless it is `null`. |
 | `(=? target value)`{.brix} | Assign the value, unless it is `null`. |
-| `(+=? target value)`{.brix} | Add the value, unless it is `null`. The other assigning operators have steps like it, such as `(-=? target value)`{.brix}. |
+| `(+=? target value)`{.brix} | Add the value, unless it is `null`. `-=?`, `*=?`, `/=?`, `%=?`, `%%=?` and `++=?` do the same for the other updates. |
 | `(return? value)`{.brix} | Return the value, unless it is `null`. |
 | `(yield? value)`{.brix} | Give the value to the stream, unless it is `null`. |
 | `(use? resource)`{.brix} | Use the resource, unless it is `null`. |
 | `(bullet? value)`{.brix} | Give the item, unless it is `null`. |
+| `(bullet*? items)`{.brix} | Give every item of a collection, unless it is `null`. |
 
 ```brix
 (main
@@ -410,4 +437,7 @@ Several steps take an optional and do nothing when it holds nothing:
 start
 ```
 
-The value of an assignment that skips null is what the target then holds.
+- **The target is not optional.** The value is what may be `null`. With an optional target the
+  update is refused, as with `Operator "*=" is not defined for I64? and I64`.
+- **As values.** `(=? target value)` and `(+=? target value)` may be used as values, and give what
+  the target then holds. The other updates are steps only.

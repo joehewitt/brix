@@ -5,6 +5,11 @@ arrive from events, channels and other sources. A case can hold values, run rows
 entered and left, and own locals, subscriptions and other machines that last while it is active.
 Rows in a machine are a description of what moves it; the machine runs on its own.
 
+Use a machine when a value moves through phases, when which values matter depends on the phase,
+or when work should last only as long as a phase. Use a union for a value that only says which of
+several things it is, and a subscription for values each handled the same way whatever came
+before.
+
 ## A first machine
 
 ```brix
@@ -76,6 +81,8 @@ locked
   type is written `_`.
 
 ## Cases
+
+A case is also called a state, as the `state` form and the compiler's messages call it.
 
 - **Payloads.** `(state (call placed item count))`{.brix} declares a case that holds two values;
   see [Payloads](#payloads).
@@ -590,10 +597,143 @@ whistling 90
   last. `(call delayed ticks 2)`{.brix} passes ticks on once they add up to 2, `totaled` gives each
   tick with the total so far, and `driven` passes on the ticks a function accepts. A source is
   worked out each time its case is entered, so entering `heating` again starts its timer again.
-- **Nested machines** start when the case that holds them is entered and stop when it is left.
+  A timer belongs to the case whose transition or handler names it, so a timer on an enclosing
+  case keeps counting while the cases nested in it change. Once `delayed` passes ticks on, its
+  transition's guard is tested on each tick, so a guard that fails holds the move until a later
+  tick passes it.
+- **Nested machines** start when the case that holds them is entered and stop when it is left;
+  see [Machines side by side](#machines-side-by-side).
+- **Tasks** that a case starts are not part of it, and go on after it is left.
 - **Closing.** Calling an object's `close` leaves every machine its properties hold, running their
   exit rows, and no transition moves them after.
 - **Errors** that a case's entry or exit rows raise go to `unhandled-error`.
+
+Here the timer belongs to `baking`, so the move from `top` to `bottom` does not restart it. It
+reaches 4 at the fourth tick, while the door is open, and the move waits for the next tick:
+
+```brix
+(import /stream/timing)
+
+(main
+  (let oven (call Oven))
+  (for (in i (..< 1 7))
+    (= (. oven door-open) (== i 4))
+    (if (== i 2)
+      (<- (. oven flips) true)
+    )
+    (<- (. oven ticks) 1.0)
+    (print (str "tick " i ": " (call (. " > " join) (. oven phase path))))
+  )
+)
+
+(type + Oven
+  (event + ticks F64)
+  (event + flips Bool)
+  (prop + door-open _ (= false))
+  (prop + phase _
+    (machine
+      (state baking
+        (state top
+          (then bottom (trigger on flips))
+        )
+        (state bottom)
+        (then done (trigger on (call delayed ticks 4) (not door-open)))
+      )
+      (state done)
+    )
+  )
+)
+```
+
+```output
+tick 1: baking > top
+tick 2: baking > bottom
+tick 3: baking > bottom
+tick 4: baking > bottom
+tick 5: done
+tick 6: done
+```
+
+### Machines side by side
+
+A case can hold several machines. They move on their own, and all of them stop when the case is
+left. So two things that vary apart, such as who is signed in and whether the network is up, are
+two machines in one case, not a case for each combination.
+
+```brix
+(main
+  (let session (call Session))
+  (<- (. session sign-ins) true)
+  (<- (. session connects) true)
+  (<- (. session drops) true)
+  (<- (. session quits) true)
+  (print (. session phase))
+)
+
+(type + Session
+  (event + sign-ins Bool)
+  (event + connects Bool)
+  (event + drops Bool)
+  (event + quits Bool)
+  (prop + phase _
+    (machine
+      (state running
+        (prop + who _
+          (machine
+            (state guest
+              (do
+                (print "guest")
+              )
+            )
+            (state member (trigger on sign-ins)
+              (do
+                (print "member")
+              )
+              (finally
+                (print "member ends")
+              )
+            )
+          )
+        )
+        (prop + link _
+          (machine
+            (state offline
+              (do
+                (print (str "offline, " who))
+              )
+            )
+            (state online (trigger on connects)
+              (do
+                (print (str "online, " who))
+              )
+              (finally
+                (print "online ends")
+              )
+              (then offline (trigger on drops))
+            )
+          )
+        )
+        (then ended (trigger on quits))
+      )
+      (state ended)
+    )
+  )
+)
+```
+
+```output
+guest
+offline, guest
+member
+online, member
+online ends
+offline, member
+member ends
+ended
+```
+
+- **Reading each other.** The cases of a machine can read a machine declared before it in the same
+  case, as `link`'s cases read `who`. One declared after it is not found: `Name "link" not found`.
 
 ## Timing
 

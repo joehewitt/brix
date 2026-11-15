@@ -1,0 +1,1066 @@
+(import /graphics/color)
+(import /math)
+(import /stream/aggregate)
+(import /stream/combine)
+(import /stream/inspect)
+(import /tui)
+(import /units)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> MeshGradientDemo (id: demo) (• flex-col) (• flex 1))
+    (blank)
+    (<> StatusBar
+      (= message "Self-contained mesh gradient background")
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + MeshGradient
+  (prop + columns Int)
+  (prop + rows Int)
+  (prop + vertices (list MeshGradientVertex))
+  (fn-do + This _
+    (param columns _)
+    (param rows _)
+    (param vertices _)
+  )
+  (fn-expr + is-valid Bool :get
+    (and (>= columns 2) (>= rows 2) (== (. vertices length) (* columns rows)))
+  )
+  (fn-expr + vertex-at MeshGradientVertex
+    (param column Int)
+    (param row Int)
+    ([] vertices (+ (* row columns) column))
+  )
+  (fn-do + move-vertex _
+    (param index Index)
+    (param point MeshGradientPoint)
+    (return-if (if (>= index (. vertices length))))
+    (blank)
+    (let vertex ([] vertices index))
+    (let clamped-point (call edge-clamped-point index point))
+    (= ([] vertices index) (call MeshGradientVertex clamped-point (. vertex color)))
+  )
+  (fn-expr + insert-edge-vertex (? Index)
+    (param hit MeshGradientEdgeHit)
+    (match (. hit direction)
+      (case (. MeshGradientEdgeDirection horizontal)
+        (call insert-column-after (. hit column) (. hit ratio) (. hit row))
+      )
+      (default
+        (call insert-row-after (. hit row) (. hit ratio) (. hit column))
+      )
+    )
+  )
+  (fn-do + insert-column-after (? Index)
+    (param left-column Int)
+    (param ratio Ratio)
+    (param selected-row Int)
+    (return-if (if (or (< left-column 0) (>= left-column (- columns 1)))))
+    (blank)
+    (= vertices
+      (block
+        (bullet* (call product (..< 0 rows) (..< 0 columns)))
+        (pipe *>
+          (block
+            (bullet (call vertex-at column row))
+            (bullet?
+              (scope (only-if interpolated (if (== column left-column)))
+                (lazy interpolated
+                  (call mesh-interpolated-vertex
+                    (block
+                      (arg (call vertex-at column row))
+                      (arg (call vertex-at (+ column 1) row))
+                      (arg ratio)
+                    )
+                  )
+                )
+              )
+            )
+            (lazy (tuple row column) each)
+          )
+        )
+        (pipe |> flat-map)
+      )
+    )
+    (blank)
+    (+= columns 1)
+    (blank)
+    (return (+ (* selected-row columns) (+ left-column 1)))
+  )
+  (fn-do + insert-row-after (? Index)
+    (param top-row Int)
+    (param ratio Ratio)
+    (param selected-column Int)
+    (return-if (if (or (< top-row 0) (>= top-row (- rows 1)))))
+    (blank)
+    (= vertices
+      (block
+        (bullet* (call product (..< 0 rows) (..< 0 columns)))
+        (pipe *>
+          (block
+            (bullet (call vertex-at column row))
+            (bullet?
+              (scope (only-if interpolated (if (== row top-row)))
+                (lazy interpolated
+                  (call mesh-interpolated-vertex
+                    (block
+                      (arg (call vertex-at column row))
+                      (arg (call vertex-at column (+ row 1)))
+                      (arg ratio)
+                    )
+                  )
+                )
+              )
+            )
+            (lazy (tuple row column) each)
+          )
+        )
+        (pipe |> flat-map)
+      )
+    )
+    (blank)
+    (+= rows 1)
+    (blank)
+    (return (+ (* (+ top-row 1) columns) selected-column))
+  )
+  (fn-expr + delete-vertex Bool
+    (param index Index)
+    (case? (or (>= index (. vertices length)) (call is-corner-index index))
+      false
+    )
+    (case? (or (<= row 0) (>= row (- rows 1)))
+      (call delete-column column)
+    )
+    (case? (or (<= column 0) (>= column (- columns 1)))
+      (call delete-row row)
+    )
+    (case? (> columns 2)
+      (call delete-column column)
+    )
+    (case? (> rows 2)
+      (call delete-row row)
+    )
+    (default
+      false
+    )
+    (where
+      (lazy column (% (as index Int) columns))
+      (lazy row (/ (as index Int) columns))
+    )
+  )
+  (fn-do + delete-column Bool
+    (param removed-column Int)
+    (return-if (if (or (<= removed-column 0) (>= removed-column (- columns 1)) (<= columns 2))))
+    (blank)
+    (= vertices
+      (block
+        (bullet*
+          (call product (..< 0 rows) kept-columns
+            (block
+              (lazy kept-columns
+                (block
+                  (bullet* (..< 0 columns))
+                  (pipe ?> (!= each removed-column))
+                )
+              )
+            )
+          )
+        )
+        (pipe *>
+          (call vertex-at column row
+            (block
+              (lazy (tuple row column) each)
+            )
+          )
+        )
+      )
+    )
+    (blank)
+    (-= columns 1)
+    (blank)
+    (return true)
+  )
+  (fn-do + delete-row Bool
+    (param removed-row Int)
+    (return-if (if (or (<= removed-row 0) (>= removed-row (- rows 1)) (<= rows 2))))
+    (blank)
+    (= vertices
+      (block
+        (bullet*
+          (call product kept-rows (..< 0 columns)
+            (block
+              (lazy kept-rows
+                (block
+                  (bullet* (..< 0 rows))
+                  (pipe ?> (!= each removed-row))
+                )
+              )
+            )
+          )
+        )
+        (pipe *>
+          (call vertex-at column row
+            (block
+              (lazy (tuple row column) each)
+            )
+          )
+        )
+      )
+    )
+    (blank)
+    (-= rows 1)
+    (blank)
+    (return true)
+  )
+  (fn-expr + edge-clamped-point MeshGradientPoint
+    (param index Index)
+    (param point MeshGradientPoint)
+    (call MeshGradientPoint (call edge-clamped-x column (. point x)) (call edge-clamped-y row (. point y)))
+    (where
+      (lazy column (% (as index Int) columns))
+      (lazy row (/ (as index Int) columns))
+    )
+  )
+  (fn-expr + edge-clamped-x Ratio
+    (param column Int)
+    (param value Ratio)
+    (case? (<= column 0)
+      0%%
+    )
+    (case? (>= column (- columns 1))
+      1%%
+    )
+    (default
+      (call clamped-ratio value)
+    )
+  )
+  (fn-expr + edge-clamped-y Ratio
+    (param row Int)
+    (param value Ratio)
+    (case? (<= row 0)
+      0%%
+    )
+    (case? (>= row (- rows 1))
+      1%%
+    )
+    (default
+      (call clamped-ratio value)
+    )
+  )
+  (fn-expr + is-corner-index Bool
+    (param index Index)
+    (case? (or (<= columns 0) (<= rows 0))
+      false
+    )
+    (default
+      (and (or (<= column 0) (>= column (- columns 1))) (or (<= row 0) (>= row (- rows 1))))
+    )
+    (where
+      (lazy column (% (as index Int) columns))
+      (lazy row (/ (as index Int) columns))
+    )
+  )
+  (fn-do + color-at RGBA
+    (param point MeshGradientPoint)
+    (return-if (call RGBA 0 0 0) (if (not vertices)))
+    (return-if (call nearest-color point) (if (not is-valid)))
+    (blank)
+    (for (in row (..< 0 (- rows 1)))
+      (for (in column (..< 0 (- columns 1)))
+        (let top-left (call vertex-at column row))
+        (let top-right (call vertex-at (+ column 1) row))
+        (let bottom-left (call vertex-at column (+ row 1)))
+        (let bottom-right (call vertex-at (+ column 1) (+ row 1)))
+        (blank)
+        (return? (call triangle-color point top-left top-right bottom-left))
+        (return? (call triangle-color point top-right bottom-right bottom-left))
+      )
+    )
+    (blank)
+    (return (call nearest-color point))
+  )
+  (fn-expr + nearest-color RGBA
+    (param point MeshGradientPoint)
+    (. ([] best 0) color)
+    (where
+      (lazy best
+        (call reduce (:seed (tuple ([] vertices 0) (call mesh-distance-squared point (. ([] vertices 0) point)))) (:stream candidates)
+          (block
+            (:using
+              (=> (current candidate)
+                (block
+                  (if-expr (< ([] candidate 1) ([] current 1)) candidate current)
+                )
+              )
+            )
+          )
+        )
+      )
+      (lazy candidates
+        (block
+          (bullet* vertices)
+          (pipe *> (tuple each (call mesh-distance-squared point (. each point))))
+        )
+      )
+    )
+  )
+)
+
+(type + MeshGradientDemo (is Box)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (blank)
+  (prop _ mesh _ (= (call demo-mesh-gradient)))
+  (content
+    (<> This (• flex-col) (• flex 1) (• bg black)
+      (<> Label (text: " Mesh Gradient Background ") (• bg white) (• text black))
+      (blank)
+      (<> MeshGradientEditor (id: editor) (• flex 1) (• m 1)
+        (= mesh mesh)
+      )
+    )
+  )
+)
+
+(type + MeshGradientEditor (is Box)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (blank)
+  (prop + mesh MeshGradient (= (call demo-mesh-gradient)))
+  (prop + active-vertex (? Index))
+  (prop + selected-vertex (? Index))
+  (content
+    (<> This
+      (= background (call MeshGradientEditorBackground mesh #selected-vertex))
+    )
+  )
+  (subscribe-for (on event mouse-down)
+    (let point (. event point))
+    (= active-vertex (call handle-index-at point))
+    (if (!= active-vertex null)
+      (call select-vertex active-vertex)
+      (call move-active-handle point)
+      (else
+        (call select-vertex (call add-vertex-at point))
+      )
+    )
+  )
+  (subscribe-for (on event mouse-drag)
+    (if (!= active-vertex null)
+      (call move-active-handle (. event point))
+      (call (. event cancel))
+    )
+  )
+  (subscribe-for (on event mouse-up)
+    (if (!= active-vertex null)
+      (call move-active-handle (. event point))
+    )
+    (blank)
+    (= active-vertex null)
+  )
+  (subscribe-for (on event key-press)
+    (if (or (== (. event key) (. Key delete)) (== (. event key) (. Key backspace)))
+      (if (call delete-selected-vertex)
+        (call (. event cancel))
+      )
+    )
+  )
+  (fn-expr + handle-index-at (? Index)
+    (param point Point)
+    (call mesh-handle-index-at mesh point bounds)
+  )
+  (fn-do + add-vertex-at (? Index)
+    (param point Point)
+    (let hit (call edge-hit-at point))
+    (return-if (if (not hit)))
+    (blank)
+    (let index (call (. mesh insert-edge-vertex) hit))
+    (if (!= index null)
+      (call invalidate-paint)
+    )
+    (blank)
+    (return index)
+  )
+  (fn-expr + edge-hit-at (? MeshGradientEdgeHit)
+    (param point Point)
+    (call mesh-edge-hit-at mesh point bounds)
+  )
+  (fn-do + select-vertex _
+    (param index (? Index))
+    (if (!= selected-vertex index)
+      (= selected-vertex index)
+      (call invalidate-paint)
+    )
+  )
+  (fn-do + move-active-handle _
+    (param point Point)
+    (return-if (if (not active-vertex)))
+    (blank)
+    (call (. mesh move-vertex) active-vertex (call mesh-point-from-canvas point bounds))
+    (call invalidate-paint)
+  )
+  (fn-do + delete-selected-vertex Bool
+    (return-if (if (not selected-vertex)))
+    (blank)
+    (if (call (. mesh delete-vertex) selected-vertex)
+      (= selected-vertex null)
+      (= active-vertex null)
+      (call invalidate-paint)
+      (return true)
+    )
+    (blank)
+    (return false)
+  )
+)
+
+(type + MeshGradientPoint (is Tuple)
+  (prop + x Ratio)
+  (prop + y Ratio)
+)
+
+(type + MeshGradientVertex (is Tuple)
+  (prop + point MeshGradientPoint)
+  (prop + color RGBA)
+)
+
+(type + MeshGradientEdgeDirection (is Union)
+  (variant horizontal)
+  (variant vertical)
+)
+
+(type + MeshGradientEdgeHit (is Tuple)
+  (prop + direction MeshGradientEdgeDirection)
+  (prop + column Int)
+  (prop + row Int)
+  (prop + ratio Ratio)
+  (prop + distance Float)
+)
+
+(type + MeshGradientBackground (is Painter)
+  (prop + mesh MeshGradient)
+  (fn-do + This _
+    (param mesh _)
+  )
+  ; ╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (do-use canvas
+      (for (in y (..< (. rect y) (. rect bottom)))
+        (for (in x (..< (. rect x) (. rect right)))
+          (let mesh-point (call mesh-point-for-cell x y rect))
+          (let cell-color (call (. mesh color-at) mesh-point))
+          (call (. canvas paint-background-cell) cell-color (tuple x y))
+        )
+      )
+    )
+  )
+)
+
+(type + MeshGradientEditorBackground (is Painter)
+  (prop + mesh MeshGradient)
+  (prop + selected-vertex (? Index))
+  (fn-do + This _
+    (param mesh _)
+    (param selected-vertex _ (= null))
+  )
+  ; ╌╌╌╌╌╌╌╌╌╌ is Painter ╌╌╌╌╌╌╌╌╌╌
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (do-use canvas
+      (call paint-mesh-gradient mesh rect canvas)
+      (call paint-mesh-control-lines mesh rect canvas)
+      (call paint-mesh-control-handles mesh rect canvas selected-vertex)
+    )
+  )
+)
+
+(fn-do _ paint-mesh-gradient _
+  (param mesh MeshGradient)
+  (param rect Rect)
+  (param canvas Canvas)
+  (for (in y (..< (. rect y) (. rect bottom)))
+    (for (in x (..< (. rect x) (. rect right)))
+      (let mesh-point (call mesh-point-for-cell x y rect))
+      (let cell-color (call (. mesh color-at) mesh-point))
+      (call (. canvas paint-background-cell) cell-color (tuple x y))
+    )
+  )
+)
+
+(fn-do _ paint-mesh-control-lines _
+  (param mesh MeshGradient)
+  (param rect Rect)
+  (param canvas Canvas)
+  (return-if (if (not (. mesh is-valid))))
+  (blank)
+  (for (in row (..< 0 (. mesh rows)))
+    (for (in column (..< 0 (- (. mesh columns) 1)))
+      (let start (. (call (. mesh vertex-at) column row) point))
+      (let end (. (call (. mesh vertex-at) (+ column 1) row) point))
+      (call draw-mesh-dashed-line start end rect canvas)
+    )
+  )
+  (blank)
+  (for (in column (..< 0 (. mesh columns)))
+    (for (in row (..< 0 (- (. mesh rows) 1)))
+      (let start (. (call (. mesh vertex-at) column row) point))
+      (let end (. (call (. mesh vertex-at) column (+ row 1)) point))
+      (call draw-mesh-dashed-line start end rect canvas)
+    )
+  )
+)
+
+(fn-do _ paint-mesh-control-handles _
+  (param mesh MeshGradient)
+  (param rect Rect)
+  (param canvas Canvas)
+  (param selected-vertex (? Index))
+  (let index Index 0)
+  (for (in vertex (. mesh vertices))
+    (if (not (call (. mesh is-corner-index) index))
+      (call draw-mesh-handle
+        (block
+          (arg vertex)
+          (arg (call mesh-handle-is-selected index selected-vertex))
+          (arg rect)
+          (arg canvas)
+        )
+      )
+    )
+    (+= index 1)
+  )
+)
+
+(fn-do _ draw-mesh-dashed-line _
+  (param a MeshGradientPoint)
+  (param b MeshGradientPoint)
+  (param rect Rect)
+  (param canvas Canvas)
+  (let start (call mesh-point-to-canvas a rect))
+  (let end (call mesh-point-to-canvas b rect))
+  (let dx Int (- (. end x) (. start x)))
+  (let dy Int (- (. end y) (. start y)))
+  (let steps (call max (call abs dx) (call abs dy)))
+  (blank)
+  (if (<= steps 0)
+    (call draw-mesh-line-cell start canvas)
+    (return)
+  )
+  (for (in step (.. 0 steps))
+    (if (== (% step 2) 0)
+      (let ratio (/ (as step Float) (as steps Float)))
+      (let x (as (call round (+ (as (. start x) Float) (* (as dx Float) ratio))) Coord))
+      (let y (as (call round (+ (as (. start y) Float) (* (as dy Float) ratio))) Coord))
+      (let point (call Point x y))
+      (call draw-mesh-line-cell point canvas)
+    )
+  )
+)
+
+(fn-do _ draw-mesh-line-cell _
+  (param point Point)
+  (param canvas Canvas)
+  (= (. canvas background) null)
+  (= (. canvas text-color) lightgray)
+  (call (. canvas move) point)
+  (call (. canvas print) ".")
+)
+
+(fn-do _ draw-mesh-handle _
+  (param vertex MeshGradientVertex)
+  (param is-selected Bool)
+  (param rect Rect)
+  (param canvas Canvas)
+  (let canvas-point (call mesh-point-to-canvas (. vertex point) rect))
+  (= (. canvas background) null)
+  (= (. canvas text-color) (call mesh-handle-color (. vertex color)))
+  (call (. canvas move) canvas-point)
+  (call (. canvas print) (call mesh-handle-glyph is-selected))
+)
+
+(fn-expr _ demo-mesh-gradient MeshGradient
+  (call MeshGradient 4 3 (call demo-mesh-vertices))
+)
+
+(fn-expr _ demo-mesh-vertices (list MeshGradientVertex)
+  (bullet (call mesh-vertex 0% 0% (call RGBA 82% 60% 100%)))
+  (bullet (call mesh-vertex 34% 0% (call RGBA 74% 57% 98%)))
+  (bullet (call mesh-vertex 82% 0% (call RGBA 50% 47% 88%)))
+  (bullet (call mesh-vertex 100% 0% (call RGBA 39% 36% 73%)))
+  (blank)
+  (bullet (call mesh-vertex 0% 34% (call RGBA 42% 39% 76%)))
+  (bullet (call mesh-vertex 30% 41% (call RGBA 43% 42% 79%)))
+  (bullet (call mesh-vertex 69% 58% (call RGBA 36% 42% 73%)))
+  (bullet (call mesh-vertex 100% 24% (call RGBA 25% 26% 52%)))
+  (blank)
+  (bullet (call mesh-vertex 0% 100% (call RGBA 17% 18% 42%)))
+  (bullet (call mesh-vertex 28% 100% (call RGBA 25% 48% 63%)))
+  (bullet (call mesh-vertex 86% 100% (call RGBA 18% 71% 83%)))
+  (bullet (call mesh-vertex 100% 100% (call RGBA 35% 87% 95%)))
+)
+
+(fn-expr _ mesh-vertex MeshGradientVertex
+  (param x Ratio)
+  (param y Ratio)
+  (param color RGBA)
+  (call MeshGradientVertex (call MeshGradientPoint x y) color)
+)
+
+(fn-expr _ mesh-point-for-cell MeshGradientPoint
+  (param x Coord)
+  (param y Coord)
+  (param rect Rect)
+  (call MeshGradientPoint x-ratio y-ratio)
+  (where
+    (lazy x-ratio
+      (scope (/ (+ (as (- x (. rect x)) Float) 0.5) (as width Float))
+        (lazy width (if-expr (> (. rect width) 0) (. rect width) 1))
+      )
+    )
+    (lazy y-ratio
+      (scope (/ (+ (as (- y (. rect y)) Float) 0.5) (as height Float))
+        (lazy height (if-expr (> (. rect height) 0) (. rect height) 1))
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-point-to-canvas Point
+  (param point MeshGradientPoint)
+  (param rect Rect)
+  (call Point x y)
+  (where
+    (lazy x
+      (call min max-x (call max (. rect x) raw-x)
+        (block
+          (lazy max-x (call max (. rect x) (- (. rect right) 1)))
+          (lazy raw-x
+            (scope (+ (. rect x) (as (call round (* (. point x) (as (- width 1) Float))) Coord))
+              (lazy width (if-expr (> (. rect width) 1) (. rect width) 1))
+            )
+          )
+        )
+      )
+    )
+    (lazy y
+      (call min max-y (call max (. rect y) raw-y)
+        (block
+          (lazy max-y (call max (. rect y) (- (. rect bottom) 1)))
+          (lazy raw-y
+            (scope (+ (. rect y) (as (call round (* (. point y) (as (- height 1) Float))) Coord))
+              (lazy height (if-expr (> (. rect height) 1) (. rect height) 1))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-point-from-canvas MeshGradientPoint
+  (param point Point)
+  (param rect Rect)
+  (call MeshGradientPoint (call clamped-ratio x-ratio) (call clamped-ratio y-ratio))
+  (where
+    (lazy x-ratio
+      (scope (/ (as (- (. point x) (. rect x)) Float) (as (- width 1) Float))
+        (lazy width (if-expr (> (. rect width) 1) (. rect width) 2))
+      )
+    )
+    (lazy y-ratio
+      (scope (/ (as (- (. point y) (. rect y)) Float) (as (- height 1) Float))
+        (lazy height (if-expr (> (. rect height) 1) (. rect height) 2))
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-handle-index-at (? Index)
+  (param mesh MeshGradient)
+  (param point Point)
+  (param rect Rect)
+  ([] best 0)
+  (where
+    (lazy best
+      (call reduce (:seed (tuple (as null (? Index)) 2)) (:stream candidates)
+        (block
+          (:using
+            (=> (current candidate)
+              (block
+                (if-expr (< ([] candidate 1) ([] current 1)) candidate current)
+              )
+            )
+          )
+        )
+      )
+    )
+    (lazy candidates
+      (block
+        (bullet* (call indexed (. mesh vertices)))
+        (pipe ?> (not (call (. mesh is-corner-index) ([] each 0))))
+        (pipe ?*>
+          (scope (only-if (tuple (as ([] each 0) (? Index)) distance) (if (<= distance 1)))
+            (lazy handle (call mesh-point-to-canvas (. ([] each 1) point) rect))
+            (lazy dx Int (- (. point x) (. handle x)))
+            (lazy dy Int (- (. point y) (. handle y)))
+            (lazy distance (call max (call abs dx) (call abs dy)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-edge-hit-at (? MeshGradientEdgeHit)
+  (param mesh MeshGradient)
+  (param point Point)
+  (param rect Rect)
+  (call reduce (:seed (as null (? MeshGradientEdgeHit))) (:stream candidates)
+    (block
+      (:using
+        (=> (current candidate)
+          (block
+            (if-expr (or (not current) (< (. candidate distance) (. current distance))) candidate current)
+          )
+        )
+      )
+    )
+  )
+  (where
+    (lazy candidates
+      (block
+        (bullet*
+          (block
+            (call product (..< 0 (. mesh rows)) (..< 0 (- (. mesh columns) 1)))
+            (pipe ?*>
+              (call mesh-edge-hit-candidate .horizontal ([] each 1) ([] each 0) point start end
+                (block
+                  (lazy start (call mesh-point-to-canvas (. (call (. mesh vertex-at) ([] each 1) ([] each 0)) point) rect))
+                  (lazy end (call mesh-point-to-canvas (. (call (. mesh vertex-at) (+ ([] each 1) 1) ([] each 0)) point) rect))
+                )
+              )
+            )
+          )
+        )
+        (bullet*
+          (block
+            (call product (..< 0 (. mesh columns)) (..< 0 (- (. mesh rows) 1)))
+            (pipe ?*>
+              (call mesh-edge-hit-candidate .vertical ([] each 0) ([] each 1) point start end
+                (block
+                  (lazy start (call mesh-point-to-canvas (. (call (. mesh vertex-at) ([] each 0) ([] each 1)) point) rect))
+                  (lazy end (call mesh-point-to-canvas (. (call (. mesh vertex-at) ([] each 0) (+ ([] each 1) 1)) point) rect))
+                )
+              )
+            )
+          )
+        )
+        (pipe ?> (< (. each distance) 2))
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-edge-hit-candidate (? MeshGradientEdgeHit)
+  (param direction MeshGradientEdgeDirection)
+  (param column Int)
+  (param row Int)
+  (param point Point)
+  (param start Point)
+  (param end Point)
+  (case? (not (call mesh-edge-insert-ratio ratio))
+    (call (? MeshGradientEdgeHit))
+  )
+  (case? (> distance 1.0)
+    (call (? MeshGradientEdgeHit))
+  )
+  (default
+    (call MeshGradientEdgeHit direction column row ratio distance)
+  )
+  (where
+    (lazy ratio (call mesh-canvas-segment-ratio point start end))
+    (lazy distance (call mesh-canvas-segment-distance point start end ratio))
+  )
+)
+
+(fn-expr _ mesh-edge-insert-ratio Bool
+  (param ratio Ratio)
+  (and (> ratio 5%) (< ratio 95%))
+)
+
+(fn-expr _ mesh-canvas-segment-ratio Ratio
+  (param point Point)
+  (param start Point)
+  (param end Point)
+  (case? (<= length-squared 0.000001)
+    0%%
+  )
+  (default
+    (call clamped-ratio (/ numerator length-squared))
+  )
+  (where
+    (lazy dx (as (- (. end x) (. start x)) Float))
+    (lazy dy (as (- (. end y) (. start y)) Float))
+    (lazy length-squared (+ (* dx dx) (* dy dy)))
+    (lazy numerator
+      (scope (+ x-component y-component)
+        (lazy x-component
+          (scope (* (- point-x start-x) dx)
+            (lazy point-x (as (. point x) Float))
+            (lazy start-x (as (. start x) Float))
+          )
+        )
+        (lazy y-component
+          (scope (* (- point-y start-y) dy)
+            (lazy point-y (as (. point y) Float))
+            (lazy start-y (as (. start y) Float))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-canvas-segment-distance Float
+  (param point Point)
+  (param start Point)
+  (param end Point)
+  (param ratio Ratio)
+  (call sqrt (+ (* dx dx) (* dy dy)))
+  (where
+    (lazy dx
+      (scope (- point-x nearest-x)
+        (lazy point-x (as (. point x) Float))
+        (lazy nearest-x
+          (scope (+ start-x (* segment-x ratio))
+            (lazy start-x (as (. start x) Float))
+            (lazy segment-x (as (- (. end x) (. start x)) Float))
+          )
+        )
+      )
+    )
+    (lazy dy
+      (scope (- point-y nearest-y)
+        (lazy point-y (as (. point y) Float))
+        (lazy nearest-y
+          (scope (+ start-y (* segment-y ratio))
+            (lazy start-y (as (. start y) Float))
+            (lazy segment-y (as (- (. end y) (. start y)) Float))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-segment-ratio Ratio
+  (param point MeshGradientPoint)
+  (param a MeshGradientPoint)
+  (param b MeshGradientPoint)
+  (case? (<= length-squared 0.000001)
+    0.5%%
+  )
+  (default
+    (call clamped-ratio (/ numerator length-squared))
+  )
+  (where
+    (lazy dx (- (. b x) (. a x)))
+    (lazy dy (- (. b y) (. a y)))
+    (lazy length-squared (+ (* dx dx) (* dy dy)))
+    (lazy numerator
+      (scope (+ x-component y-component)
+        (lazy x-component (* (- (. point x) (. a x)) dx))
+        (lazy y-component (* (- (. point y) (. a y)) dy))
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-interpolated-vertex MeshGradientVertex
+  (param a MeshGradientVertex)
+  (param b MeshGradientVertex)
+  (param ratio Ratio)
+  (call MeshGradientVertex point color)
+  (where
+    (lazy point (call mesh-interpolated-point (. a point) (. b point) ratio))
+    (lazy color (call mesh-interpolated-color (. a color) (. b color) ratio))
+  )
+)
+
+(fn-expr _ mesh-interpolated-point MeshGradientPoint
+  (param a MeshGradientPoint)
+  (param b MeshGradientPoint)
+  (param ratio Ratio)
+  (call MeshGradientPoint x y)
+  (where
+    (lazy x (call mesh-interpolate (. a x) (. b x) ratio))
+    (lazy y (call mesh-interpolate (. a y) (. b y) ratio))
+  )
+)
+
+(fn-expr _ mesh-interpolated-color RGBA
+  (param a RGBA)
+  (param b RGBA)
+  (param ratio Ratio)
+  (call RGBA red green blue alpha)
+  (where
+    (lazy red (call mesh-interpolate (. a red) (. b red) ratio))
+    (lazy green (call mesh-interpolate (. a green) (. b green) ratio))
+    (lazy blue (call mesh-interpolate (. a blue) (. b blue) ratio))
+    (lazy alpha (call mesh-interpolate (. a alpha) (. b alpha) ratio))
+  )
+)
+
+(fn-expr _ mesh-interpolate Ratio
+  (param a Ratio)
+  (param b Ratio)
+  (param ratio Ratio)
+  (+ a (* (- b a) ratio))
+)
+
+(fn-expr _ mesh-handle-is-selected Bool
+  (param index Index)
+  (param selected-vertex (? Index))
+  (case? (== selected-vertex null)
+    false
+  )
+  (default
+    (== selected-vertex index)
+  )
+)
+
+(fn-expr _ mesh-handle-glyph String
+  (param is-selected Bool)
+  (case? is-selected
+    "●"
+  )
+  (default
+    "o"
+  )
+)
+
+(fn-expr _ mesh-handle-color AnsiColor
+  (param color RGBA)
+  (case? (> (call mesh-color-luminance color) 0.58)
+    black
+  )
+  (default
+    white
+  )
+)
+
+(fn-expr _ mesh-color-luminance Ratio
+  (param color RGBA)
+  (+ (* (. color red) 0.299) (* (. color green) 0.587) (* (. color blue) 0.114))
+)
+
+(fn-expr _ clamped-ratio Ratio
+  (param value Ratio)
+  (call min 1%% (call max 0%% value))
+)
+
+(fn-expr _ triangle-color (? RGBA)
+  (param point MeshGradientPoint)
+  (param a MeshGradientVertex)
+  (param b MeshGradientVertex)
+  (param c MeshGradientVertex)
+  (case? (< (call abs denominator) 0.000001)
+    (call (? RGBA))
+  )
+  (case? (or (< a-weight -0.001) (< b-weight -0.001) (< c-weight -0.001))
+    (call (? RGBA))
+  )
+  (default
+    (call mesh-weighted-color colors weights)
+  )
+  (where
+    (lazy colors (tuple (. a color) (. b color) (. c color)))
+    (lazy weights (tuple a-weight b-weight c-weight))
+    (lazy c-weight (- 1 a-weight b-weight))
+    (lazy b-weight
+      (scope (/ b-numerator denominator)
+        (lazy b-numerator (call triangle-barycentric-numerator point (. c point) (. a point)))
+      )
+    )
+    (lazy a-weight
+      (scope (/ a-numerator denominator)
+        (lazy a-numerator (call triangle-barycentric-numerator point (. b point) (. c point)))
+      )
+    )
+    (lazy denominator (call triangle-barycentric-numerator (. a point) (. b point) (. c point)))
+  )
+)
+
+(fn-expr _ triangle-barycentric-numerator Ratio
+  (param point MeshGradientPoint)
+  (param edge-a MeshGradientPoint)
+  (param edge-b MeshGradientPoint)
+  (+ x-component y-component)
+  (where
+    (lazy x-component (* (- (. edge-a y) (. edge-b y)) (- (. point x) (. edge-b x))))
+    (lazy y-component (* (- (. edge-b x) (. edge-a x)) (- (. point y) (. edge-b y))))
+  )
+)
+
+(fn-expr _ mesh-weighted-color RGBA
+  (param colors (tuple (: a RGBA) (: b RGBA) (: c RGBA)))
+  (param weights (tuple (: a Ratio) (: b Ratio) (: c Ratio)))
+  (call RGBA red green blue alpha)
+  (where
+    (lazy red
+      (call mesh-weighted-channel red-values weights
+        (block
+          (lazy red-values (tuple (. colors a red) (. colors b red) (. colors c red)))
+        )
+      )
+    )
+    (lazy green
+      (call mesh-weighted-channel green-values weights
+        (block
+          (lazy green-values (tuple (. colors a green) (. colors b green) (. colors c green)))
+        )
+      )
+    )
+    (lazy blue
+      (call mesh-weighted-channel blue-values weights
+        (block
+          (lazy blue-values (tuple (. colors a blue) (. colors b blue) (. colors c blue)))
+        )
+      )
+    )
+    (lazy alpha
+      (call mesh-weighted-channel alpha-values weights
+        (block
+          (lazy alpha-values (tuple (. colors a alpha) (. colors b alpha) (. colors c alpha)))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ mesh-weighted-channel Ratio
+  (param values (tuple (: a Ratio) (: b Ratio) (: c Ratio)))
+  (param weights (tuple (: a Ratio) (: b Ratio) (: c Ratio)))
+  (+ (* (. values a) (. weights a)) (* (. values b) (. weights b)) (* (. values c) (. weights c)))
+)
+
+(fn-expr _ mesh-distance-squared Float
+  (param a MeshGradientPoint)
+  (param b MeshGradientPoint)
+  (+ (* dx dx) (* dy dy))
+  (where
+    (lazy dx (- (. a x) (. b x)))
+    (lazy dy (- (. a y) (. b y)))
+  )
+)

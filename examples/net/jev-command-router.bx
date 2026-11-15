@@ -1,0 +1,113 @@
+(import /ai)
+(import /ai/jev)
+(import /data/json)
+(import /os/cli)
+(import /os/env)
+(blank)
+
+(main
+  (let api-key (call env "JEV_API_KEY"))
+  (throw (call Error "Set JEV_API_KEY before running this example") (if (not api-key)))
+  (blank)
+  (let command (call (. " " join) (. (call cmdline) args)))
+  (= command (if-expr (not command) "find every markdown file that mentions retries" command))
+  (blank)
+  (let state
+    (call (of Map String JSON)
+      (block
+        (:command command)
+        (:environment "A local assistant that can search, edit, delete, or explain")
+      )
+    )
+  )
+  (blank)
+  (let questions
+    (call (of Map String JevQuestion)
+      (block
+        (:action
+          (call JevChoiceQuestion
+            (block
+              (arg "Which action best represents the command?")
+              (arg
+                (call (of Map String JSON)
+                  (block
+                    (:search "Read, find, list, inspect, or query without changing anything")
+                    (:edit "Create or modify content, configuration, or state")
+                    (:delete "Remove, erase, destroy, cancel, or permanently discard something")
+                    (:explain "Answer or explain without operating on the environment")
+                  )
+                )
+              )
+            )
+          )
+        )
+        (blank)
+        (:ambiguous
+          (call JevNoulQuestion
+            (block
+              (arg "Would a careful assistant need clarification before acting?")
+              (arg
+                (call JevNoulCriteria
+                  (block
+                    (arg "The target or scope is missing, or materially different actions are plausible")
+                    (arg "The intended action, target, and scope are sufficiently clear")
+                  )
+                )
+              )
+            )
+          )
+        )
+        (blank)
+        (:impact
+          (call JevScoreQuestion
+            (block
+              (arg "How consequential would carrying out this command be?")
+              (arg
+                (block
+                  (bullet "Read-only; changes nothing")
+                  (bullet "Localized and reversible")
+                  (bullet "Broad or difficult to reverse")
+                  (bullet "Destructive or externally consequential")
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let response (call (. (call Jev api-key) evaluate) state questions))
+  (let action (as (!! ([] (. response answers) "action")) JevChoiceAnswer))
+  (let ambiguous (as (!! ([] (. response answers) "ambiguous")) JevNoulAnswer))
+  (let impact (as (!! ([] (. response answers) "impact")) JevScoreAnswer))
+  (let action-probability (?? ([] (. action probabilities) (. action choice)) 0.0))
+  (blank)
+  (print (str "Command: " command))
+  (print "")
+  (print "Action probabilities:")
+  (for (in (tuple name probability) (. action probabilities))
+    (print (str "  " name ": " probability))
+  )
+  (print (str "Ambiguity probability: " (. ambiguous yes-probability)))
+  (print (str "Impact score: " (. impact score)))
+  (print "")
+  (blank)
+  (let decision
+    (block
+      (case? (or (>= (. ambiguous yes-probability) 0.35) (< action-probability 0.55))
+        "ask a clarifying question"
+      )
+      (case? (or (== (. action choice) "delete") (>= (. impact score) 1.25) (< action-probability 0.75))
+        (str "confirm the " (. action choice) " action")
+      )
+      (default
+        (str "execute " (. action choice) " automatically")
+      )
+    )
+  )
+  (blank)
+  (print (str "Decision: " decision))
+  (blank)
+  (print "Actions are simulated; this example never changes the environment.")
+)

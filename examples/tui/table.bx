@@ -1,0 +1,168 @@
+(import /tui)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> TableDemo (id: demo) (• flex-col) (• flex 1) (• bg black))
+    (blank)
+    (<> Shortcut (text: "Quit")
+      (= key .escape)
+      (= action (=> () :do (call (. win close))))
+    )
+    (blank)
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    (blank)
+    (<> StatusBar
+      (= message (. demo #status-message))
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + TableDemo (is Box)
+  (prop + status-message _ (= "Arrows select rows. Enter activates. Click headers to sort."))
+  (content
+    (<> This (• flex-col) (• flex 1) (• bg black)
+      (<> Label (text: " Deployments ") (• bg blue) (• text white))
+      (blank)
+      (<> (of Table DeployRow) (id: table) (• flex 1) (• bg black) (• pr 1) (• pl 1)
+        (= columns (call deploy-columns))
+        (= rows (call deploy-rows))
+        (= key-builder deploy-row-key)
+      )
+    )
+  )
+  (subscribe-for (on event (. table selected))
+    (= status-message (call selected-deploy-message (. table selected-item)))
+  )
+  (subscribe-for (on event (. table activated))
+    (= status-message (call activated-deploy-message (. table selected-item)))
+  )
+  (subscribe-for (on event (. table sorted))
+    (= status-message (call sorted-deploy-message (. table sort-column-id) (. table sort-direction)))
+  )
+)
+
+(type + DeployRow (is Tuple)
+  (prop + id String)
+  (prop + service String)
+  (prop + owner String)
+  (prop + status String)
+  (prop + region String)
+  (prop + age String)
+)
+
+(fn-expr + deploy-rows (list DeployRow)
+  (bullet (call DeployRow "1024" "api-gateway" "Mira" "healthy" "iad" "12m"))
+  (bullet (call DeployRow "1025" "billing-worker" "Jon" "queued" "sfo" "4m"))
+  (bullet (call DeployRow "1026" "image-resizer" "Nia" "warning" "ams" "31m"))
+  (bullet (call DeployRow "1027" "search-index" "Ari" "healthy" "fra" "8m"))
+  (bullet (call DeployRow "1028" "web-frontend" "Sol" "deploying" "hnd" "1m"))
+  (bullet (call DeployRow "1029" "report-export" "Bea" "healthy" "gru" "45m"))
+  (bullet (call DeployRow "1030" "edge-cache" "Kai" "warning" "syd" "22m"))
+)
+
+(fn-expr + deploy-columns (list (of TableColumn DeployRow))
+  (bullet (call deploy-column "id" "ID" (call (. TableWidth fixed) 5) (. TableAlign right) deploy-id))
+  (bullet (call deploy-column "service" "Service" (call (. TableWidth flex) 2) (. TableAlign left) deploy-service))
+  (bullet (call deploy-column "owner" "Owner" (call (. TableWidth flex) 1) (. TableAlign left) deploy-owner))
+  (bullet (call deploy-column "status" "Status" (call (. TableWidth fixed) 10) (. TableAlign left) deploy-status))
+  (bullet (call deploy-column "region" "Region" (call (. TableWidth percent) 18%) (. TableAlign left) deploy-region))
+  (bullet (call deploy-column "age" "Age" (. TableWidth auto) (. TableAlign right) deploy-age))
+)
+
+(fn-do + deploy-column (of TableColumn DeployRow)
+  (param id String)
+  (param title String)
+  (param width TableWidth)
+  (param align TableAlign)
+  (param value (of TableTextProvider DeployRow))
+  (let column (call (of TableColumn DeployRow) title))
+  (= (. column id) id)
+  (= (. column column-width) width)
+  (= (. column align) align)
+  (= (. column value) value)
+  (return column)
+)
+
+(fn-expr + deploy-row-key String
+  (param row DeployRow)
+  (. row id)
+)
+
+(fn-expr + deploy-id String
+  (param row DeployRow)
+  (. row id)
+)
+
+(fn-expr + deploy-service String
+  (param row DeployRow)
+  (. row service)
+)
+
+(fn-expr + deploy-owner String
+  (param row DeployRow)
+  (. row owner)
+)
+
+(fn-expr + deploy-status String
+  (param row DeployRow)
+  (. row status)
+)
+
+(fn-expr + deploy-region String
+  (param row DeployRow)
+  (. row region)
+)
+
+(fn-expr + deploy-age String
+  (param row DeployRow)
+  (. row age)
+)
+
+(fn-expr + selected-deploy-message String
+  (param row (? DeployRow))
+  (case? (not row)
+    "No deployment selected."
+  )
+  (default
+    (str "Selected " (. row id) ": " (. row service) " in " (. row region) " (" (. row status) ").")
+  )
+)
+
+(fn-expr + activated-deploy-message String
+  (param row (? DeployRow))
+  (case? (not row)
+    "No deployment to activate."
+  )
+  (default
+    (str "Activated " (. row service) "; owner " (. row owner) ", age " (. row age) ".")
+  )
+)
+
+(fn-expr + sorted-deploy-message String
+  (param column (? String))
+  (param direction TableSortDirection (= (. TableSortDirection none)))
+  (case? (or (not column) (== direction (. TableSortDirection none)))
+    "Sort cleared."
+  )
+  (default
+    (str "Sorted by " column " " (call table-sort-direction-label direction) ".")
+  )
+)
+
+(fn-expr + table-sort-direction-label String
+  (param direction TableSortDirection)
+  (match direction
+    (case (. TableSortDirection descending)
+      "descending"
+    )
+    (default
+      "ascending"
+    )
+  )
+)

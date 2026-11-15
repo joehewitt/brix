@@ -137,7 +137,7 @@ unknown
   `(case (call .progress received total) value)`{.brix}. An arm for a case with no payload is
   `(case .waiting value)`{.brix}. See Patterns for every arm a match can have.
 - **`is`.** `(is done .complete)`{.brix} is true when the union holds that case. After the test, the
-  compiler treats the value as that case; see Optionals for narrowing.
+  compiler treats the value as that case; see [Narrowing](#narrowing).
 - **`case` and `name`.** `(. value case)`{.brix} is the number of the case the union holds,
   counting from 0 in the order the cases are declared. `(. value name)`{.brix} is the case's name,
   and is empty for a case that is a type.
@@ -150,6 +150,61 @@ unknown
 - **Text.** A union becomes the text of its payload, or its case's name when it has none, as
   `done` and `(. Download waiting)`{.brix} print above. A union that declares a conversion to
   `String` becomes that text instead.
+
+### Narrowing
+
+A test that settles which case a union holds lets the code it guards read that case's payload.
+
+```brix
+(main
+  (let event (call (. Event click) 10 20))
+  (if (is event .click)
+    (print (str "click at " (. event x) ", " (. event y)))
+  )
+  (for (in fill (list .inherit .none (call (. Fill color) "blue")))
+    (print (call describe fill))
+  )
+)
+
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key String)
+)
+
+(type + Fill (is Union)
+  (variant inherit)
+  (variant none)
+  (variant color String)
+)
+
+(fn-expr + describe String
+  (param fill Fill)
+  (case? (== fill .inherit)
+    "inherited"
+  )
+  (case? (== fill .none)
+    "no paint"
+  )
+  (default
+    (str "paint " (. fill uppercased))
+  )
+)
+```
+
+```output
+click at 10, 20
+inherited
+no paint
+paint BLUE
+```
+
+- **`is`** narrows to the case it names, so `(. event x)`{.brix} reads the click's field.
+- **`==` and `!=`** against a case with no payload narrow as `is` does, in `if` and `else-if`
+  chains, guards and decision tables, and so does `is-not`.
+- **Ruling cases out.** Where every case but one has been ruled out, the value is narrowed to the
+  last: the default row of `describe` reads the `color` case's text.
+- **Payloads do not narrow.** A comparison with a case that holds a value, as
+  `(== fill (call (. Fill color) "blue"))`{.brix}, is an ordinary comparison and narrows nothing.
 
 ## Unions of types
 
@@ -215,7 +270,39 @@ Class:core/number:I64
   binds it. `(is value Int)`{.brix} tests for it.
 
 Named cases and type cases can be mixed. Named cases tell apart payloads of one type, such as two
-cases that each hold a `String`; type cases need no names when the types differ.
+cases that each hold a `String`; type cases need no names when the types differ:
+
+```brix
+(main
+  (for (in move (list (call (. Move vertical) 12) (call (. Move horizontal) 5)))
+    (print (call describe move))
+  )
+  (print (== (call (. Move vertical) 12) (call (. Move horizontal) 12)))
+)
+
+(type + Move (is Union)
+  (variant horizontal Int)
+  (variant vertical Int)
+)
+
+(fn-expr + describe String
+  (param move Move)
+  (match move
+    (case (call .horizontal distance)
+      (str "across " distance)
+    )
+    (case (call (. Move vertical) distance)
+      (str "down " distance)
+    )
+  )
+)
+```
+
+```output
+down 12
+across 5
+false
+```
 
 ## Members of a union
 
@@ -299,6 +386,10 @@ Exception: This match on Status does not handle .failed; add a case for it, or "
         ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+List every case when a new case should send each `match` back to be reconsidered, and end with a
+`default` arm when the cases left over share one answer on purpose: a `default` also takes any case
+added later, without a word.
+
 With several missing, the message names each: `This match on Result does not handle Config,
 FileNotFound and PermissionDenied; add a case for each, or "??" for the rest`. `match?` need not
 cover every case, and gives `null` when no arm is taken, as `label` does in
@@ -363,6 +454,12 @@ accepted
 
 A type whose body lists cases, but which is built on a number, a tuple or a class rather than on
 `Union`, is an enum. Each case is one value of the type, with a name.
+
+| | Enum | Union |
+| --- | --- | --- |
+| A case is | One value, declared with the type | A kind of value, made by a call |
+| Its data comes from | The declaration: every case has the same fields | The call: each case has its own payload |
+| Use it for | Named values of one shape: priorities, protocol codes, days | Alternatives that need different data, or one type in different roles |
 
 ```brix
 (main

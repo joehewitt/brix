@@ -248,12 +248,41 @@ it is 3 m
 - **Public.** A conversion cannot be private: `Converters must be public`.
 - **Extensions.** An extension can declare conversions for a type declared elsewhere; see Types.
 
+```brix
+(main
+  (let c Celsius (call Fahrenheit 212.0))
+  (print (. c degrees))
+  (print (. (as (call Fahrenheit 50.0) Celsius) degrees))
+)
+
+(type + Fahrenheit (is (tuple (: degrees Float))))
+
+(type + Celsius (is (tuple (: degrees Float)))
+  (fn-from-do + (: f Fahrenheit)
+    (let above (- (. f degrees) 32))
+    (print (str "converting " (. f degrees)))
+    (return (call Celsius (/ (* above 5) 9)))
+  )
+)
+```
+
+```output
+converting 212
+100
+converting 50
+10
+```
+
+`fn-from-do` is a conversion from another type with a step body, which returns with
+`(return value)`{.brix}. In rows it is `+ do from f Fahrenheit`{.rows}, under a thin divider.
+
 ## Parameters that take what converts
 
 A parameter whose type is `(similar Float)`{.brix}, as in `(param value (similar Float))`{.brix},
 takes any value that converts to `Float` with `as`, and converts it. Text is the exception: `as`
 reads a number from text, but `similar` does not take text for a number. `is~` tests the same:
-`(is~ 3 Float)`{.brix} is true, and `(is~ "4" Float)`{.brix} false. A pattern such as
+`(is~ 3 Float)`{.brix} is true, and `(is~ "4" Float)`{.brix} false, and `(is~-not value Type)`{.brix}
+is the opposite. A pattern such as
 `(: amount (similar Float))`{.brix} takes what converts too; see Patterns.
 
 ```brix

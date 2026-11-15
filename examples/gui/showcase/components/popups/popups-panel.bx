@@ -1,0 +1,353 @@
+(import ./anchoring)
+(import ./context)
+(import ./creative)
+(import ./forms)
+(import ./hover)
+(import ./menus)
+(import ./modal)
+(import ./popovers)
+(import /graphics/color)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /gui)
+(import /stream/aggregate)
+
+(style PopupsTheme
+  (using GUIDefaultTheme)
+  (rule shell
+    (= font-family "Helvetica Neue")
+  )
+  (blank)
+  (rule sidebar-title
+    (= font-size 15)
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule sidebar-caption (• text gui-muted-text-color)
+    (= font-size 11)
+    (= text-wrap (. TextWrap word))
+  )
+  (blank)
+  (rule section-title
+    (= font-size 20)
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule section-caption (• text gui-muted-text-color)
+    (= text-wrap (. TextWrap word))
+  )
+  (blank)
+  (rule demo-card (• bg gui-panel-color)
+    (= border-color gui-border-color)
+    (= border-width 1)
+    (= corner-radius 12)
+  )
+  (blank)
+  (rule demo-well (• bg gui-well-color)
+    (= border-color gui-border-color)
+    (= border-width 1)
+  )
+  (blank)
+  (rule card-title
+    (= font-size 14)
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule card-caption (• text gui-muted-text-color)
+    (= font-size 12)
+    (= text-wrap (. TextWrap word))
+  )
+  (blank)
+  (rule status-bar (• bg gui-panel-color)
+    (= border-color gui-divider-color)
+    (= border-top-width 1)
+    (= font-size 12)
+  )
+  (blank)
+  (rule swatch
+    (= corner-radius 6)
+    (= border-color gui-border-color)
+    (= border-width 1)
+  )
+)
+
+(type + PopupsSection (is Tuple)
+  (prop + id String)
+  (prop + title String)
+  (prop + caption String)
+)
+
+(type + PopupsPanel (is Box)
+  (using PopupsTheme)
+  (prop + section _ (= "menus"))
+  (prop + status _ (= (call popups-intro-status)))
+  (prop + current _ (= (call popups-section #section)))
+  (content
+    (<> This (• shell) (• flex-col)
+      (<> Box (• flex-col) (• px 24) (• pt 20) (• pb 12)
+        (<> Label (• section-title) (• h 28)
+          (= text (. #current title))
+        )
+        (<> Label (• section-caption) (• mt 4)
+          (= text (. #current caption))
+        )
+      )
+      (<> Box (• flex-col) (• flex 1) (• px 24) (• pb 16)
+        (if (== #section "context")
+          (<> ContextSection (• flex 1))
+          (else-if (== #section "hover")
+            (<> HoverSection (• flex 1))
+          )
+          (else-if (== #section "forms")
+            (<> FormsSection (• flex 1))
+          )
+          (else-if (== #section "popovers")
+            (<> PopoversSection (• flex 1))
+          )
+          (else-if (== #section "modal")
+            (<> ModalSection (• flex 1))
+          )
+          (else-if (== #section "anchoring")
+            (<> AnchoringSection (• flex 1))
+          )
+          (else-if (== #section "creative")
+            (<> CreativeSection (• flex 1))
+          )
+          (else
+            (<> MenusSection (• flex 1))
+          )
+        )
+      )
+      (<> Box (• status-bar) (• flex-row) (• h 30) (• px 16) (• items-center)
+        (<> Label (• flex 1)
+          (= text #status)
+        )
+        (<> MenuButton (text: "Zoom 100%") (• w 120)
+          (<> Menu
+            (for (in zoom (list "50%" "75%" "100%" "125%" "150%" "200%" "400%"))
+              (<> MenuItem
+                (= title zoom)
+                (= action
+                  (=> () :do
+                    (block
+                      (call report (str "Zoom menu opened below the window edge: chose " zoom))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (<> KeyShortcut (text: "Command Palette")
+        (= key (call KeyCombo "Cmd+K"))
+        (= repeat false)
+        (= action (=> () :do (call (. palette show))))
+      )
+      (<> CommandPalette (id: palette) (• centered 60))
+    )
+  )
+  (fn-do + report _
+    (param text String)
+    (= status text)
+  )
+  (fn-do + open-palette _
+    (call (. palette show))
+  )
+)
+
+(fn-expr + popups-sections _
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "menus")
+        (arg "Menus")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Menu bars, menu buttons, submenus, checkmarks, disabled items, and menus that fit the ")
+                (bullet "screen.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "context")
+        (arg "Context menus")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Right-click or Control-click. The nearest context menu to the pressed element wins; ")
+                (bullet "press, drag, and release chooses.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "hover")
+        (arg "Tooltips and hover cards")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Hover-triggered popups with a warm-up delay, instant switching once warm, and ")
+                (bullet "interactive cards you can move into.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "forms")
+        (arg "Selects and autocomplete")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "A select places its chosen row over the field; autocomplete suggestions never take ")
+                (bullet "focus from the text field.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "popovers")
+        (arg "Popovers")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Anchored panels with arrows that follow the side they land on, nested popups, and ")
+                (bullet "native text fields inside a popup.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "modal")
+        (arg "Dialogs and notifications")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Modal dialogs trap focus and input, toasts stack in a corner, and the command palette ")
+                (bullet "is just another popup.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "anchoring")
+        (arg "Anchoring and placement")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Popups follow anchors through scrolling, close when the anchor scrolls away, and flip ")
+                (bullet "or shift at screen edges.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (bullet
+    (call PopupsSection
+      (block
+        (arg "creative")
+        (arg "Creative")
+        (arg
+          (call join
+            (:stream
+              (block
+                (bullet "Custom placements and layouts: a radial menu, a drag ghost that leaves the window, and ")
+                (bullet "a spotlight tour.")
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + popups-section PopupsSection
+  (param id String)
+  (let sections (list PopupsSection) (call popups-sections))
+  (for (in section sections)
+    (return-if section (if (== (. section id) id)))
+  )
+  (return ([] sections 0))
+)
+
+(fn-expr + popups-has-section Bool
+  (param id String)
+  (call some (call popups-sections) (:where (== (. each id) id)))
+)
+
+(type + DemoCard (is Box)
+  (prop + title _ (= ""))
+  (prop + caption _ (= ""))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (content
+    (<> This (• demo-card) (• flex-col) (• p 16) (• mr 14) (• mb 14)
+      (<> Label (• card-title) (• h 20)
+        (= text #title)
+      )
+      (<> Label (• card-caption) (• mt 4) (• mb 12)
+        (= text #caption)
+      )
+    )
+  )
+)
+
+(fn-do + popups-report _
+  (param box Box)
+  (param text String)
+  (call (?. (call (of (. box ancestor) PopupsPanel)) report) text)
+)
+
+(fn-expr _ popups-intro-status _
+  (call join
+    (:stream
+      (block
+        (bullet "Every popup here is a native child panel: ")
+        (bullet "it can cover native controls and extend past the window.")
+      )
+    )
+  )
+)

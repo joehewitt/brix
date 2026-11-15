@@ -77,4 +77,5 @@ popup opened during a press is chosen by releasing over it after moving.
 
 `stdlib/gui/tests/popups.yumi` states anchored, point and cover placement, snapping above the
 anchor, re-placement when the anchor scrolls, the modal boundary, and the popup stack.
-`examples/gui/components/popups/popups-app.yumi` is the interactive showcase.
+`examples/gui/showcase/showcase-app.bx` is the interactive showcase; run it with `-- menus` to open
+its popups.

@@ -1,0 +1,123 @@
+(import /tui)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> ScrollDemo (id: demo) (• flex-col) (• flex 1) (• bg black))
+    (blank)
+    (<> Shortcut (text: "Quit")
+      (= key .escape)
+      (= action (=> () :do (call (. win close))))
+    )
+    (blank)
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    (blank)
+    (<> StatusBar
+      (= message "Wheel over a pane. Horizontal wheel moves sideways; vertical wheel moves vertically. Q quits.")
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + ScrollDemo (is Box)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (content
+    (<> This (• flex-col) (• flex 1) (• bg black) (• p 1)
+      (<> Label (text: " Scrolling demo ") (• bg white) (• text black))
+      (blank)
+      (<> Box (• flex-row) (• flex 1) (• mt 1) (• bg black)
+        (<> Box (id: vertical-pane) (• flex-col) (• flex 1) (• border-solid) (• border aqua) (• bg black) (• p 1) (• mr 1)
+          (<> Label (text: " vertical ") (• bg aqua) (• text black))
+          (blank)
+          (<> Box (• flex-col) (• flex 1) (• bg black)
+            (for (in row (.. 1 80))
+              (<> Label
+                (= text (call vertical-line row))
+                (= color (call vertical-color row))
+                (= background-color black)
+              )
+            )
+          )
+        )
+        (blank)
+        (<> Box (id: horizontal-pane) (• flex-col) (• flex 1) (• border-solid) (• border yellow) (• bg black) (• p 1) (• mr 1)
+          (<> Label (text: " horizontal ") (• bg yellow) (• text black))
+          (blank)
+          (<> Box (• flex-row) (• flex 1) (• bg black)
+            (for (in column (.. 1 36))
+              (<> Label
+                (= text (call horizontal-cell column))
+                (= color (call horizontal-color column))
+                (= background-color black)
+              )
+            )
+          )
+        )
+        (blank)
+        (<> Box (id: both-pane) (• flex-col) (• flex 1) (• border-solid) (• border lime) (• bg black) (• p 1)
+          (<> Label (text: " both axes ") (• bg lime) (• text black))
+          (blank)
+          (<> Box (• flow-row) (• flex 1) (• bg black)
+            (for (in column (.. 1 18))
+              (<> Box (• flex-col) (• bg black) (• mr 1)
+                (= min-width (call (. SizeSpec coord) 22))
+                (= max-width (call (. SizeSpec coord) 22))
+                (blank)
+                (for (in row (.. 1 48))
+                  (<> Label
+                    (= text (call both-cell column row))
+                    (= color (call both-color column row))
+                    (= background-color black)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + vertical-line String
+  (param row Int)
+  (str " row " (call padded-number row) "  vertical content continues downward")
+)
+
+(fn-expr + horizontal-cell String
+  (param column Int)
+  (str " " (call padded-number column) " horizontal-cell-with-wide-label ")
+)
+
+(fn-expr + both-cell String
+  (param column Int)
+  (param row Int)
+  (str " c" (call padded-number column) " r" (call padded-number row) " both-axis")
+)
+
+(fn-expr + padded-number String
+  (param number Int)
+  (if-expr (< number 10) (str "0" number) (str number))
+)
+
+(fn-expr + vertical-color AnsiColor
+  (param row Int)
+  (if-expr (== (% row 2) 0) white silver)
+)
+
+(fn-expr + horizontal-color AnsiColor
+  (param column Int)
+  (if-expr (== (% column 2) 0) yellow white)
+)
+
+(fn-expr + both-color AnsiColor
+  (param column Int)
+  (param row Int)
+  (if-expr (== (% (+ column row) 2) 0) lime aqua)
+)

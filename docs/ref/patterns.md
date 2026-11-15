@@ -83,6 +83,10 @@ A `match` takes a subject, then arms, each with its value, as in
   `(case ({} (> it 20)))`{.brix}, which gives the subject.
 - **Type.** The match's type is the join of its arms' values; see Conversions. Arms whose types
   have no join give an anonymous union; see Unions and enums. Arms that raise add nothing to it.
+  To keep each arm's type even where a join exists, see
+  [Arms that keep their type](#arms-that-keep-their-type).
+- **Value first.** `(select value (| pattern))`{.brix} is an arm written with its value before
+  its pattern, and is taken as `(case pattern value)`{.brix} is.
 - **Raising arms.** `(throw error)`{.brix} raises for every value no arm before it took. With a
   condition, as in `(throw error (if condition))`{.brix}, it raises only where the condition holds,
   and the arms after it are tried otherwise.
@@ -91,6 +95,57 @@ A `match` takes a subject, then arms, each with its value, as in
 - **No arm taken.** Where no arm fits a value, the program panics: `Pattern match failed`. For a
   subject of a type with a fixed set of values, the compiler requires an arm for each; see
   [Covering every case](#covering-every-case).
+
+### Arms that keep their type
+
+```brix
+(main
+  (for (in sound (list "woof" "meow"))
+    (let pet (call adopt sound))
+    (let kept (call adopt-kept sound))
+    (print (str (type-of pet) " / case " (. kept case) ", a Dog: " (is kept Dog)))
+  )
+)
+
+(type + Animal)
+
+(type + Dog (is Animal))
+
+(type + Cat (is Animal))
+
+(fn-expr + adopt _
+  (param sound String)
+  (match sound
+    (case= "woof" (call Dog))
+    (default (call Cat))
+  )
+)
+
+(fn-expr + adopt-kept _
+  (param sound String)
+  (match sound
+    (case-union= "woof" (call Dog))
+    (default (call Cat))
+  )
+)
+```
+
+```output
+[TypeInfo Animal] / case 0, a Dog: true
+[TypeInfo Animal] / case 1, a Dog: false
+```
+
+`case-union`, `case-union=` and `case-union?` are taken as `case`, `case=` and `case?` are, but
+their values are not joined. From the first such arm on, the match's type is a union with a case
+for each arm, so `adopt` gives an `Animal` and `adopt-kept` gives a `Dog | Cat`. In rows they are
+`||`, `||=` and `||?`.
+
+- **Later arms.** Every arm after the first `case-union` arm adds its case to the union, whatever
+  its kind, as the `default` arm does above.
+- **Earlier arms** are not in the union, so their values must convert to it:
+  `Expected I64 | F64 here, but this is String, and there is no conversion between them`.
+- **A declared type.** Where the match's type is declared, as by a function's result, its values
+  convert to that type and no union is made.
 
 ### `match?`
 
@@ -105,8 +160,9 @@ taken, as steps, and uses no value, so arms may give values of any type or none.
 - An arm can return from the function, raise, or `break` or `continue` an enclosing loop.
 - With `match?`, a match run as steps goes on to the next step where no arm is taken; with
   `match`, it panics there.
-- A `match` written as a step, with arms that give no value, is an error: `This arm gives no value,
-  and a match gives the value of the arm it takes; to run its arms as steps, write "do match"`.
+- A `match` written as a step, with arms that give no value, is an error that names the fix: `This
+  arm gives no value, and a match gives the value of the arm it takes; to run its arms as steps,
+  write "(do (inline (match …)))"`. In rows it says `write "do match"`.
 - A function whose last step is a match run as steps, with an arm for every value, each of which
   returns or raises, needs no return after it.
 
@@ -136,6 +192,10 @@ arm is a tuple pattern, as in
 | `(case (map "key" a) value)`{.brix} | A map holding the key, with a value that fits. |
 | `(all "start" ...rest)`{.brix} | Text that begins and ends as written. |
 | `..name` | A value with a property `name`, which it names. |
+
+- **Tree relations.** `(/ a b)`, `(*/ a b)`, `(\ a b)`, `(*\ a b)`, `(++ a b)` and `(-- a b)` are
+  reserved for patterns over trees: a child, a descendant, a parent, an ancestor, the next sibling
+  and the previous sibling. The compiler reads them and refuses them: `Not supported`.
 
 ### Values and conditions
 
@@ -343,7 +403,8 @@ two: 5 and 6
 - **Rest.** `...` stands for any number of items, none included:
   `(case (list first ...) value)`{.brix}, `(case (list ... last) value)`{.brix} and
   `(case (list first ... last) value)`{.brix}. `...name` names them, as a slice of the list's own
-  type. A pattern holds at most one rest: `Pattern may contain only one remainder`.
+  type, which shares the list's storage as any slice does; see Collections. A pattern holds at
+  most one rest: `Pattern may contain only one remainder`.
 - **Sources.** A list pattern fits lists, arrays, and values of any type that implements
   `Indexable`. It reads the length first, then the items it tests. It never fits text, which has
   patterns of its own.
@@ -389,7 +450,7 @@ A key can be text, a number, or the value of a local, written `$name`, as in
 ### Text
 
 `(all "start" ...rest "end")`{.brix} fits text that begins and ends with the literals written, and
-names the text between them. The literals and one rest may come in any order, as in
+names the text between them, which may be empty. The literals and one rest may come in any order, as in
 `(all ...name ".txt")`{.brix}, and the pattern fits the whole text. A literal can be named too, as
 in `(: f "foo")`{.brix}.
 
@@ -434,6 +495,47 @@ have is an error: `Pattern has no possible matches`.
 - `(let ..length "hello")`{.brix} declares `length`, holding `5`.
 - `(let (: word ..length) "hello")`{.brix} names the whole value `word`, and declares no `length`.
 - In a `match`, a property pattern can only be the only arm.
+
+### Patterns inside patterns
+
+Each part of a list, map or tuple pattern is a pattern, so one pattern can reach through several
+layers of a value, such as decoded JSON, and test each layer on the way. With `match?`, a missing
+key, a list that is too short or a value of the wrong type all give `null`, so a caller can pick
+out the one part it needs without a test for each layer.
+
+```brix
+(import /data/json)
+
+(main
+  (let replies
+    (list
+      "{\"choices\": [{\"message\": \"hi\", \"index\": 0}]}"
+      "{\"choices\": [{\"index\": 0}]}"
+      "{\"choices\": []}"
+      "{\"error\": \"busy\"}"
+    )
+  )
+  (for (in text replies)
+    (print (?? (call first-message (call JSON text)) "no message"))
+  )
+)
+
+(fn-expr + first-message (? String)
+  (param response JSON)
+  (match? response
+    (case (list (= "choices" (list (list (= "message" (: message String))) ...)))
+      message
+    )
+  )
+)
+```
+
+```output
+hi
+no message
+no message
+no message
+```
 
 ## Patterns outside `match`
 
@@ -482,6 +584,7 @@ got 3
 | `(for (in (\| pattern) source) body)`{.brix} | Runs the body for each item that fits. |
 | `(is value pattern)`{.brix} | `true` where the value fits. |
 | `(case (= pattern value))`{.brix} | What the pattern passes on, or `null` where the value does not fit. |
+| `(= (select result (\| pattern)) value)`{.brix} | `result` where the value fits, or `null`. |
 | `(let pattern value)`{.brix} | Declares the pattern's names; see below. |
 
 - **Fit, not truth.** `(if (= (| (: n Int)) count) body)`{.brix} runs its body whenever `count`
@@ -493,10 +596,26 @@ got 3
   declaration whose pattern can never fit its value, is an error: `Pattern has no possible
   matches`.
 
+### Where a value does not fit
+
+| Code | Where no pattern fits |
+| --- | --- |
+| `match` | Panics, `Pattern match failed`, or, on a type with a fixed set of values, is an error unless every value has an arm |
+| `match?` | Gives `null` |
+| `match?` run as steps | Goes on to the next step |
+| `if`, `else-if` with a pattern | Runs the `else`, if any |
+| `while` with a pattern | Ends the loop |
+| `for` with a pattern | Skips the item |
+| `is` | Gives `false` |
+| `(case (= pattern value))`{.brix} and `select` | Give `null` |
+| A declaration with a pattern | Panics, `Pattern match failed` |
+
 ## Taking values apart
 
-A declaration whose name is a pattern takes its value apart, declaring a local for each name the
-pattern gives.
+A declaration whose name is a pattern takes its value apart, which other languages call
+destructuring, declaring a local for each name the pattern gives. The pattern states what the
+value is sure to be. Where a value may not fit as a matter of course, use `match?` or an `if`
+with a pattern instead.
 
 ```brix
 (main

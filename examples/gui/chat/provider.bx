@@ -1,0 +1,63 @@
+(import /ai)
+(import /ai/services)
+(import /os/env)
+(import /os/path)
+(blank)
+(prop + chat-reasoning-effort _ (= "medium"))
+
+(fn-do + chat-store _
+  (param images AIImageStore)
+  (let home (call chat-home))
+  (return (call AIChatStore (call chat-services home images) (call AIChatDatabase home images)))
+)
+
+(fn-expr + chat-images _
+  (call AIImageStore (/ (call chat-home) "images"))
+)
+
+(fn-do _ chat-services (list AIChatService)
+  (param home Path)
+  (param images AIImageStore)
+  (let accounts (call AIChatAccounts (/ home "access.json")))
+  (return
+    (call ai-chat-services accounts
+      (:setup
+        (block
+          (call AIChatSetup
+            (block
+              (:working-directory (?? (call env "CHAT_DIRECTORY") (call chat-workspace home)))
+              (:effort chat-reasoning-effort)
+              (:images images)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ chat-home _
+  (/ (call Path home 0) ".yumi-chat")
+  (where
+    (lazy home
+      (call env-required "HOME"
+        (block
+          (on-error (: failure Error)
+            (throw (call Panic (str "Could not locate the chat directory: " failure)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ chat-workspace String
+  (param home Path)
+  (let directory (/ home "workspace"))
+  (for (in missing (list home directory))
+    (if (not (. missing exists))
+      (catch (call (. missing make-directory)))
+    )
+  )
+  (return (str directory))
+)
