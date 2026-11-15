@@ -779,7 +779,8 @@ do match? target.decls[ref.decl]
 ` The constructor a call of a type names. Where the type's parameters are not known and the
 ` call holds nothing, it is the default constructor, unless the type writes one of its own.
 ` Where the call gives type parameters of the constructor's own, only a constructor written
-` with its own can be named.
+` with its own can be named. A type of alternatives, as `Int || String`, is made only from a
+` value of one of them.
 note-request(.request-constructor, receiver, null)
 request-by-name = by-name
 kind = .rank-constructor
@@ -788,6 +789,7 @@ pattern-self = by-name
 . first = if args.length != 0 then args[0] else no-type
 constructor-candidates(relations, receiver, calls, candidates, caller, first, sole-field(receiver))
 . written = false
+. alternatives = types.completions[receiver].intrinsic == .or
 for candidate in candidates
     do match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-function(fn)
@@ -799,6 +801,8 @@ for candidate in candidates
         | .decl-function(fn)
             . generic = types.completions[receiver].has-variables
             if explicit.length != 0 && fn.kind != .constructor-decl
+                continue
+            if fn.kind == .default-constructor-decl && alternatives
                 continue
             if fn.kind == .default-constructor-decl && !generic
                 accept(constrained(rank-default(candidate.module, candidate.decl, receiver)))
@@ -1789,6 +1793,8 @@ do match? types.rows[receiver]
     - decl DeclId
     - receiver TypeId
 
+` A type called with one value, which converts as `as` does: a type of alternatives gives the
+` value as the alternative it converts to, and any other type casts the value to itself.
 is-partial = false
 if calls.length != 1
     = null
@@ -1827,10 +1833,11 @@ if !ranked
     = null
 . args = scratch.types.since(args-mark)
 . slot-relations = scratch.relations.since(relations-mark)
+. alternative = types.intrinsic-of(receiver) == .or && slot-relations.length == 1
 = Hit
     - module
     - decl
-    - receiver
+    - if alternative then slot-relations[0].to else receiver
     - scratch.no-types
     - args
     - fills

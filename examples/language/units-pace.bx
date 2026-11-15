@@ -1,0 +1,34 @@
+; Units: the library's durations and distances convert at a function's edge, so
+; a caller may think in miles and hours while the function works in km and minutes.
+(import /time/duration)
+(import /units/distance)
+(blank)
+
+(main
+  (let marathon 26.2188miles)
+  (let finish (+ 3hours 30minutes))
+  (blank)
+  (print (str "the course is " (call (. (as marathon Kilometers) places) 1) " km"))
+  ; Miles and hours go in where kilometers and minutes are asked for.
+  (print (str "pace: " (call (. (call pace marathon finish) places) 2) " minutes per km"))
+  (for (in mark (list 10km 21.1km 30km 42.2km))
+    (let reached (call split mark marathon finish))
+    (print (str (as mark UnitString) " after " (call (. reached places) 0) " minutes"))
+  )
+)
+
+(fn-expr + pace Float
+  (param distance Kilometers)
+  (param time Minutes)
+  ; Units do not combine into "minutes per km" on their own. A function says what
+  ; the division means, and gives a plain number.
+  (/ (as time Float) (as distance Float))
+)
+
+(fn-expr + split Minutes
+  (param mark Kilometers)
+  (param distance Kilometers)
+  (param time Minutes)
+  ; Multiplying by a plain number keeps the unit, so this result is in minutes.
+  (* time (/ (as mark Float) (as distance Float)))
+)

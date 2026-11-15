@@ -1945,3 +1945,112 @@ ids += 7
 
 2.5, 7
 ;====
+:====
+# An index below zero is out of range, for a list and for the array under it, as is the last item of an empty list.
+
+. list = [1, 2, 3]
+. below Index = -1
+try-read(list, below)
+try-write(list, below)
+try-last(List'Int())
+try-array(Array'Int(3), below)
+-- list
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-read
+    - list [Int]
+    - index Index
+
+do finally
+    -- "read: ${recover()}"
+-- list[index]
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-write
+    - list [Int]
+    - index Index
+
+do finally
+    -- "write: ${recover()}"
+list[index] = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-last
+    - list [Int]
+
+do finally
+    -- "last: ${recover()}"
+-- list[Position.last]
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-array
+    - array Array'Int
+    - index Index
+
+do finally
+    -- "array: ${recover()}"
+array[index] = 9
+
+:----
+
+read: List index -1 out of range
+write: List index -1 out of range
+last: List index -1 out of range
+array: Set out of bounds (-1 / 3)
+1, 2, 3
+;====
+:====
+# Popping an item off an empty list panics, and leaves the list empty.
+
+. list = [1]
+-- list.pop()
+try-pop(list)
+list += 2
+-- list
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-pop
+    - list [Int]
+
+do finally
+    -- "pop: ${recover()}"
+list.pop()
+
+:----
+
+1
+pop: Can't pop the last item of an empty list
+2
+;====
+:====
+# The head and tail of a list are its first and last items, never items cleared out of it.
+
+. list = [1, 2, 3]
+list.pop()
+-- "${list.head} ${list.tail}"
+list.clear()
+try-head(list)
+try-tail(list)
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-head
+    - list [Int]
+
+do finally
+    -- "head: ${recover()}"
+-- list.head
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-tail
+    - list [Int]
+
+do finally
+    -- "tail: ${recover()}"
+-- list.tail
+
+:----
+
+1 2
+head: List index 0 out of range
+tail: List index -1 out of range
+;====

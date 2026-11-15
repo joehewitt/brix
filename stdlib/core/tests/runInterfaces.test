@@ -8657,6 +8657,113 @@ Interface:
     + get revision U64
 ;====
 :====
+# A class that leaves out a function its interface declares without a body and with a result does
+# not compile once a value of it is made a value of the interface, though nothing calls the function.
+
+. shape Shape = Blob()
+-- "made"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ area Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Blob
+    is Shape
+
+:----
+%compile-error
+
+Exception: Blob does not implement "area", which Shape declares without a body; declare "area" in Blob
+<no file:12>
+    + Blob
+    ^^^^^
+Interface:
+<no file:9>
+    + area Float
+;====
+:====
+# A class may leave a function its interface requires to the classes derived from it, as long as no
+# value known by the class alone is made a value of the interface.
+
+. shape Shape = Square()
+-- shape.area()
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ area Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+    is Shape
+
+━━━━━━━━━━━━━━━━━━━━
++ Square is Base
+
+────────────────────
++ area Float
+
+4.0
+
+:----
+
+4
+;====
+:====
+# An interface stores nothing, so a property it declares is an error that names the getter to
+# declare instead, one that each type that is the interface answers.
+
+. shape Shape = Square()
+-- shape.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
++ name = "square"
+
+:----
+%compile-error
+
+Exception: Shape is an interface, so it cannot store "name"; declare a getter for the types that are Shape to answer, as in "+ get name String"
+<no file:8>
+    + name String
+    ^^^^^^^^^^^^^
+;====
+:====
+# An interface stores nothing, so a property it declares with a value is an error that names the
+# getter to declare, which gives the value to each type that is the interface and has no other.
+
+. shape Shape = Square()
+-- shape.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
++ name = "shape"
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
+:----
+%compile-error
+
+Exception: Shape is an interface, so it cannot store "name"; declare a getter that gives the value, with "=>" in place of "="
+<no file:8>
+    + name = "shape"
+    ^^^^^^^^^^^^^^^^
+;====
+:====
 
 . sub = SubHolder(Named("sub"))
 -- sub.target.name()
@@ -8805,6 +8912,60 @@ null
 
 true
 7
+;====
+:====
+# A step function an interface declares with a result and no steps has no body, so a class made the interface must declare it.
+
+. walker Walker = Thing()
+-- walker.step()
+
+━━━━━━━━━━━━━━━━━━━━
++ Walker is Interface
+
+────────────────────
++ do step Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Walker
+
+:----
+%compile-error
+
+Exception: Thing does not implement "step", which Walker declares without a body; declare "step" in Thing
+<no file:12>
+    + Thing
+    ^^^^^^
+Interface:
+<no file:9>
+    + do step Int
+;====
+:====
+# A missing operator an interface declares is named as the interface writes it.
+
+. source Source = Thing()
+-- "made"
+
+━━━━━━━━━━━━━━━━━━━━
++ Source is Interface
+
+────────────────────
++ <- this Int?
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is Source
+
+:----
+%compile-error
+
+Exception: Thing does not implement "<- this", which Source declares without a body; declare "<- this" in Thing
+<no file:12>
+    + Thing
+    ^^^^^^
+Interface:
+<no file:9>
+    + <- this Int?
 ;====
 :====
 # An assignment to a property of a class that leaves an interface's getter and setter to their

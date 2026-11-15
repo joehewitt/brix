@@ -1,0 +1,55 @@
+; Stream grammars: a pattern over successive characters turns text into typed
+; records. A rule is a declaration like any other, and what it gives is
+; whatever its action builds.
+(import /stream/aggregate)
+(blank)
+
+(main
+  ; Matching the rule along the text gives one record for each line.
+  (let hits List (~ \hit (in: (call access-log))))
+  (for (in each hits)
+    (print (str (. each status) " " (. each method) " " (. each path)))
+  )
+  (blank)
+  ; The records are plain values, so a comprehension can filter and total them.
+  (let served (in (. each bytes) hits (when (== (. each status) 200))))
+  (print (str (. hits length) " requests, " (call sum served) " bytes served"))
+)
+
+(fn-expr + access-log _
+  (paragraph
+    "GET /index.html 200 5120"
+    "GET /missing 404 312"
+    "POST /login 200 88"
+    "GET /logo.png 200 20480"
+  )
+)
+
+(type + Hit (is Tuple)
+  (prop + method String)
+  (prop + path String)
+  (prop + status Int)
+  (prop + bytes Int)
+)
+
+(fn-expr + hit Hit (over: Char)
+  ; `(: name part)` captures what a part matched, and `\name` calls a rule.
+  (~ (seq (: method \word) " " (: path \word) " " (: status \number) " " (: bytes \number) (? "\n"))
+    (call Hit method path status bytes)
+  )
+  (where
+    (lazy word String
+      (pattern
+        (~ (+ (seq (! " ") .)))
+      )
+    )
+    ; This rule's action converts the digits it matched, so `status` and `bytes` are Ints.
+    (lazy number Int
+      (pattern
+        (~ (+ (chars "0-9"))
+          (as it Int)
+        )
+      )
+    )
+  )
+)

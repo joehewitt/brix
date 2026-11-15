@@ -1,0 +1,40 @@
+; Reactive values: `#name` reads a value and watches it. A property, a stream or
+; a lazy built from watched reads follows that value as it changes.
+(import /time/duration)
+(blank)
+
+(main
+  (let cart (call Cart))
+  ; A stream of the total: it sends the total now, and again after every change.
+  (let totals (stream (. cart #total)))
+  ; `(## totals)` is the latest value the stream sent, so `shipping` follows the cart too.
+  (lazy shipping (if-expr (>= (## totals) 20) "free" "4 extra"))
+  (blank)
+  (for (on total totals)
+    (print (str "  total is now " total))
+  )
+  (blank)
+  ; The stream delivers on a later turn of the task queue, so main steps aside each time.
+  (call (. 1ms wait))
+  (print (str "Empty cart: shipping is " shipping))
+  (= (. cart apples) 4)
+  (call (. 1ms wait))
+  (print (str "Four apples: shipping is " shipping))
+  (= (. cart loaves) 6)
+  (call (. 1ms wait))
+  (print (str "Six loaves as well: shipping is " shipping))
+  (blank)
+  ; Two changes send two totals. The subscriber hears both; `shipping` reads only the last.
+  (= (. cart apples) 0)
+  (= (. cart loaves) 2)
+  (call (. 1ms wait))
+  (print (str "Most of it put back: shipping is " shipping))
+  (call (. totals close))
+)
+
+(type + Cart
+  (prop + apples _ (= 0))
+  (prop + loaves _ (= 0))
+  ; Worked out again whenever `apples` or `loaves` changes: apples cost 2, loaves 3.
+  (prop + total _ (= (+ (* #apples 2) (* #loaves 3))))
+)

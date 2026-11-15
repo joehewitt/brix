@@ -1,0 +1,61 @@
+; A pipeline that starts with another program. `ls -la` runs, and a grammar
+; reads what it prints into one record per line, for the stages below it to
+; filter and print.
+(import /core/patterns)
+(import /os/process)
+(blank)
+
+(main
+  ; `use` ends the program when the pipeline has finished with it.
+  (bullet*
+    (use
+      (call Process "ls"
+        (block
+          (arg "-la")
+        )
+      )
+    )
+  )
+  (pipe ~> \entry)
+  ; From here on `each` is an Entry.
+  (pipe ?> (not (. each is-folder)))
+  (pipe *> (str (. each name) ": " (. each size) " bytes"))
+  (pipe |> print-all)
+)
+
+(type + Entry (is Tuple)
+  (prop + name String)
+  (prop + size Int)
+  (prop + is-folder Bool)
+)
+
+(fn-expr + entry Entry (over: Char)
+  ; `//` is the space between columns. A line gives its mode, three words,
+  ; its size, three words for the date, and the name up to the end of the line.
+  (~ (seq (? \total) (: mode \word) \skip // (: size (of \num Int)) \skip // (: name \rest) (? \nl))
+    (call Entry name size (call (. mode starts-with) "d"))
+  )
+  (where
+    ; The first line of a listing is a total, which is read and dropped.
+    (lazy total
+      (pattern
+        (~ (seq "total" // (of \num Int) \nl))
+      )
+    )
+    (lazy skip
+      (pattern
+        (~ (seq // \word // \word // \word))
+      )
+    )
+    (lazy word
+      (pattern
+        (~ (+ (seq (! \ws) .)))
+      )
+    )
+    (lazy rest
+      (pattern
+        (~ (+ (seq (! \nl) .)))
+      )
+    )
+  )
+)

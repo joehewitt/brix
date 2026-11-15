@@ -1,0 +1,79 @@
+; A terminal app whose whole tree is in `main`. The menu is a list, and one loop
+; turns each dish into a line and a key. The order is a tracked list, so the
+; right column and the total follow it with no code to redraw them.
+(import /stream/aggregate)
+(import /tui)
+(blank)
+
+(main
+  (let menu
+    (call List
+      (block
+        (bullet (call Dish 's' "soup" 6))
+        (bullet (call Dish 'c' "curry" 11))
+        (bullet (call Dish 'p' "pie" 5))
+      )
+    )
+  )
+  (let tab (call Tab))
+  (blank)
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> Label (text: " Corner Cafe ") (• bg blue) (• text white))
+    (<> Box (• flex-row) (• flex 1)
+      (<> Box (• flex-col) (• flex 1) (• p 1)
+        (<> Label (text: "Menu") (• text grey))
+        ; A loop can make more than one element. Each dish gets a line and a shortcut.
+        (for (in dish menu)
+          (<> Label (text: (str (. dish key) "  " (. dish name) "  " (. dish price))))
+          (<> Shortcut
+            (= title (. dish name))
+            (= key (. dish key))
+            (= show-in-status false)
+            (= action (=> () :do (+= (. tab dishes) dish)))
+          )
+        )
+      )
+      (<> Box (• flex-col) (• flex 1) (• p 1)
+        (<> Label (text: "Your order") (• text grey))
+        ; `#` makes this a tracked read: the branch and the loop are worked out
+        ; again whenever the list changes.
+        (if (. tab #dishes)
+          (for (in dish (. tab #dishes))
+            (<> Label (text: (str (. dish name) "  " (. dish price))))
+          )
+          (<> Label (text: (str "total  " (. tab #total))) (• text lime))
+          (else
+            (<> Label (text: "Nothing yet. Press a letter."))
+          )
+        )
+      )
+    )
+    (<> Shortcut (text: "Undo")
+      (= key 'u')
+      (= action (=> () :do (call (. tab undo))))
+    )
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    ; The status bar finds the shortcuts in the tree and lists them.
+    (<> StatusBar)
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + Dish (is (tuple (: key Char) (: name String) (: price Int))))
+
+(type + Tab
+  ; The state lives in a plain object. The tree above only reads it.
+  (blank)
+  (prop + dishes (list Dish))
+  ; A property written from a tracked read is worked out again when the list changes.
+  (prop + total _ (= (call sum (*> #dishes (. each price)))))
+  (fn-do + undo _
+    (if dishes
+      (= dishes (call List ([] dishes (..< 0 (- (. dishes length) 1)))))
+    )
+  )
+)

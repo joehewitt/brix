@@ -1,0 +1,101 @@
+; Markup as a way to write data. The tree here is a folder of files with sizes,
+; and once it is built it is ordinary objects: a generator walks it, a pipeline
+; filters what the walk gives, and the sizes are units.
+(import /stream/aggregate)
+(blank)
+(type-line + FileSize (is F64))
+(blank)
+(type-line + Kilobytes (alias kb) (is FileSize))
+(type-line + Megabytes (alias mb) (is 1000kb))
+(blank)
+
+(main
+  (let statements
+    (call List
+      (block
+        (bullet (tuple "jan" 310))
+        (bullet (tuple "feb" 280))
+        (bullet (tuple "mar" 455))
+      )
+    )
+  )
+  (blank)
+  (<> Folder (id: home) (text: "home")
+    (<> Folder (text: "photos")
+      (<> File (text: "beach.jpg")
+        (= size 2.4mb)
+      )
+      (<> File (text: "cat.jpg")
+        (= size 900kb)
+      )
+    )
+    (<> Folder (text: "accounts")
+      ; The loop takes each pair apart, and the size is worked out from the rows.
+      (for (in (tuple month rows) statements)
+        (<> File (text: (str month ".csv"))
+          (= size (* 0.4kb rows))
+        )
+      )
+    )
+    (<> File (text: "notes.txt")
+      (= size 12kb)
+    )
+  )
+  (blank)
+  (call (. home outline) 0)
+  (print (str "total: " (as (. home size) Megabytes UnitString)))
+  ; `files` is a generator over the whole tree, so stages can follow it directly.
+  (let large
+    (block
+      (bullet* (. home files))
+      (pipe ?> (> (. each size) 150kb))
+      (pipe *> (str (. each name) " at " (as (. each size) UnitString)))
+    )
+  )
+  (print (str "over 150kb: " (call (. ", " join) large)))
+)
+
+(type + Entry
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
+
+(type + File (is Entry)
+  (prop + size Kilobytes (= 0kb))
+)
+
+(type + Folder (is Entry)
+  (prop + entries (list Entry))
+  (fn-do + (infix this += (param entry Entry)) _
+    ; Markup hands each child to this operator, whichever kind of entry it is.
+    (+= entries entry)
+  )
+  (fn-do + files (stream File) :get
+    ; A recursive generator: a file is given, and a folder gives every file under it.
+    (for (in entry entries)
+      (if (= (| (: file File)) entry)
+        (yield file)
+        (else-if (= (| (: folder Folder)) entry)
+          (yield-all (. folder files))
+        )
+      )
+    )
+  )
+  (fn-expr + size Kilobytes :get
+    (call sum (in (. each size) files))
+  )
+  (fn-do + outline _
+    (param depth Int)
+    (print (str (* "  " depth) name "/  " (as (as size Megabytes) UnitString)))
+    (for (in entry entries)
+      (if (= (| (: folder Folder)) entry)
+        (call (. folder outline) (+ depth 1))
+        (else
+          (print (str (* "  " (+ depth 1)) (. entry name)))
+        )
+      )
+    )
+  )
+)

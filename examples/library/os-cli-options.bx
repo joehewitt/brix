@@ -1,0 +1,84 @@
+; Command line options: `/os/cli` takes a tool's commands, arguments and options
+; as markup. From that one tree it reads the arguments, checks them, says what
+; is wrong with them and writes the help page.
+(import /os/cli)
+(blank)
+
+(main
+  (<> CommandLine (id: tool)
+    (= name "thumbs")
+    (= about "Make small copies of pictures.")
+    (blank)
+    (<> Subcommand (text: "resize")
+      (= about "write a small copy of each picture")
+      ; The action runs once the arguments are read, and its number is the exit code.
+      (= action
+        (=> () :do
+          (block
+            (let verb (if-expr (. is-trial value) "would write" "wrote"))
+            (let kind (!! (. format value)))
+            (for (in picture (. pictures values))
+              (print (str verb " a " kind " copy of " picture ", " (!! (. width value)) " wide"))
+            )
+            (return 0)
+          )
+        )
+      )
+      (blank)
+      ; Each of these has a name, and the action reads what was typed through it.
+      (<> Arguments (id: pictures) (text: "picture")
+        (= required true)
+      )
+      ; An option names the type of its value, and text that is not a number is refused.
+      (<> (of Option Int) (id: width) (text: "--width")
+        (= short "-w")
+        (= value-name "PIXELS")
+        (= default 320)
+        (= about "how wide each copy is")
+      )
+      (<> Option (id: format) (text: "--format")
+        (= choices (list "jpg" "png" "webp"))
+        (= default "jpg")
+        (= about "the kind of file to write")
+      )
+      (<> Flag (id: is-trial) (text: "--dry-run")
+        (= short "-n")
+        (= about "say what would be written, and write nothing")
+      )
+    )
+    (blank)
+    (<> Subcommand (text: "formats")
+      (= about "list the kinds of file it can write")
+      (= action
+        (=> () :do
+          (block
+            (print (call (. ", " join) (. format choices)))
+            (return 0)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  ; A real tool calls `run` with no arguments, to read its own command line.
+  (for (in line lines)
+    (print (str "\$ thumbs " line))
+    (let code (call (. tool run) (++ (list "thumbs") (call (. line split) " "))))
+    (if (!= code 0)
+      (print (str "(exit code " code ")"))
+    )
+    (print "")
+  )
+  (blank)
+  (lazy lines
+    (block
+      (bullet "resize cat.jpg dog.png -w 200 --format webp")
+      (bullet "resize cat.jpg --dry-run")
+      (bullet "resize cat.jpg --widht 200")
+      (bullet "resize cat.jpg --format gif")
+      (bullet "resize --width wide")
+      (bullet "formats")
+      (bullet "resize --help")
+    )
+  )
+)

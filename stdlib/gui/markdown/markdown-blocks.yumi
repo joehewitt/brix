@@ -1,4 +1,5 @@
 ./markdown-references
+/code/syntax
 /data/markdown
 /graphics/text
 
@@ -17,6 +18,9 @@
 + cells [MarkdownGridCell]
 + line Size
 + anchor = ""
++ shows-source = false
++ rendering [MarkdownCodeLine]? = null
++ render-error String? = null
 
 ────────────────────
 + This
@@ -28,6 +32,94 @@
     - runs [MarkdownRun] = List'MarkdownRun()
     - code = ""
     - language = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownCodeRule is Union
+
+| none
+| thick
+| thin
+| double
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownCodeLine is Tuple
+
++ index Index
++ runs [SyntaxStyledRun]
++ rule MarkdownCodeRule
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownSourceRequest is Tuple
+
++ block MarkdownBlock
++ shows Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownCodeRenderer
+
+────────────────────
++ renders Bool
+    - language String
+
+false
+
+────────────────────
++ rendered-title String
+    - language String
+
+"Rendered"
+
+────────────────────
++ source-title String
+    - language String
+
+"Source"
+
+────────────────────
++ do render [MarkdownCodeLine] ?! Error
+    - code String
+    - language String
+
+?! Error("No rendering for $language")
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-is-rendered Bool
+    - block MarkdownBlock
+
+block.kind == MarkdownBlockKind.code && block.rendering != null && !block.shows-source
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-render-block
+    - renderer MarkdownCodeRenderer?
+    - block MarkdownBlock
+
+=? if !renderer || block.kind != MarkdownBlockKind.code || block.shows-source || block.rendering != null
+=? if !renderer.renders(block.language)
+. lines = catch renderer.render(block.code, block.language)
+if lines is Error
+    block.render-error = "$lines"
+    block.shows-source = true
+    =
+block.rendering = lines as [MarkdownCodeLine]
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-toggle-source
+    - renderer MarkdownCodeRenderer?
+    - block MarkdownBlock
+    - shows Bool
+
+block.render-error = null
+block.shows-source = shows
+if !shows
+    markdown-render-block(renderer, block)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-carry-source
+    - old MarkdownBlock
+    - next MarkdownBlock
+
+if old.shows-source && old.kind == next.kind && old.language == next.language
+    next.shows-source = true
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownBlockKind is Union

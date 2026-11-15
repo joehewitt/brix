@@ -1,0 +1,39 @@
+; Waiting: a function that waits is written and called like any other. `download`
+; has no `async`, and no call to it has an `await`, inside a task or outside one.
+(import /time/clock)
+(import /time/duration)
+(blank)
+
+(main
+  ; Called plainly, the wait holds up the task that called: here, main.
+  (print (call download "index.html" 10ms))
+  (blank)
+  ; Called from three tasks, the three waits overlap.
+  (let started (call clock))
+  (let arrivals (of SyncBufferedChannel String))
+  (do-new
+    (inline (<- arrivals (call download "photo.jpg" 150ms)))
+  )
+  (do-new
+    (inline (<- arrivals (call download "script.js" 100ms)))
+  )
+  (do-new
+    (inline (<- arrivals (call download "style.css" 50ms)))
+  )
+  ; The shortest wait arrives first, whatever order the tasks started in.
+  (for (in i (..< 0 3))
+    (print (?? (<- arrivals) "nothing"))
+  )
+  (blank)
+  ; Together they took about as long as the longest one, not the 300ms they add up to.
+  (let elapsed (call (of (. started elapsed) Milliseconds)))
+  (print (str "all three took less than 300ms: " (< elapsed 300ms)))
+)
+
+(fn-do + download String
+  (param name String)
+  (param delay Milliseconds)
+  ; The sleep stands in for a network read. Either one suspends only the task it is in.
+  (call (. delay wait))
+  (return (str name " arrived after " (as delay UnitString)))
+)

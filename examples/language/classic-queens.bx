@@ -1,0 +1,42 @@
+; Eight queens with a recursive generator. `queens` yields each solution as it
+; finds it, so the search runs only as far as its reader asks.
+(main
+  (let solutions (call queens 8 (call (of List Int))))
+  ; One read runs the search up to the first solution and stops it there.
+  (let first (!! (<- solutions)))
+  (for (in column first)
+    (print (call (. "" join) (in (if-expr (== each column) "Q " ". ") (..< 0 8))))
+  )
+  (blank)
+  ; The loop takes the search up again where the read left it.
+  (let count 1)
+  (for (in solution solutions)
+    (+= count 1)
+  )
+  (print (str count " solutions"))
+)
+
+(fn-do + queens (stream (list Int))
+  (param size Int)
+  (param placed (list Int))
+  (if (== (. placed length) size)
+    (yield placed)
+    (return)
+  )
+  ; `when` skips the columns a queen already attacks.
+  (for (in column (..< 0 size) (when (call is-safe placed column)))
+    ; `yield-all` passes on every solution found below this row.
+    (yield-all (call queens size (+ placed column)))
+  )
+)
+
+(fn-do + is-safe Bool
+  (param placed (list Int))
+  (param column Int)
+  (let row (. placed length))
+  (for (in other (..< 0 row))
+    (let gap (- ([] placed other) column))
+    (return-if false (if (or (== gap 0) (== gap (- row other)) (== gap (- other row)))))
+  )
+  (return true)
+)

@@ -1,0 +1,30 @@
+; The stream library: operations from `/stream` that work on any source. A
+; month of bank entries becomes running balances, labelled rows, the changes
+; between neighbours and a sorted list.
+(import /stream/aggregate)
+(import /stream/coincidence)
+(import /stream/combine)
+(import /stream/sort)
+(blank)
+
+(main
+  (let labels (list "salary" "rent" "groceries" "refund" "bike repair"))
+  (let amounts (list 2400 -1150 -180 60 -340))
+  (blank)
+  ; `scan` starts from 500 and gives the balance after each entry.
+  (let running (call scan 500 amounts (:using (=> (balance amount) (+ balance amount)))))
+  (let balances (call List running))
+  (blank)
+  ; `zip` pairs the items of two sources, and the loop takes each pair apart.
+  (for (in (tuple label balance) (call zip labels balances))
+    (print (str "after " label ": " balance))
+  )
+  (blank)
+  ; `pairwise` gives each balance with the one after it, as `a` and `b`.
+  (let drops (in (- (. each a) (. each b)) (call pairwise balances)))
+  (print (str "largest drop between entries: " (call max drops)))
+  (blank)
+  ; A comprehension is a stream as well, so it can go straight into `sum`.
+  (print (str "money out: " (- (call sum (in each amounts (when (< each 0)))))))
+  (print (str "smallest to largest: " (call (. ", " join) (call sort amounts))))
+)

@@ -1,0 +1,73 @@
+; A state machine behind markup. The order's machine says which phase it is in,
+; and the tree in `main` shows the branch for that phase. Each update prints the
+; frame it leads to, with no window involved.
+(import /tui)
+(blank)
+
+(main
+  (let order (call Order))
+  (blank)
+  ; The terminal library's `Screen` stands in for a window: it paints the tree
+  ; to a string.
+  (<> Screen (id: screen) (• flex-col)
+    ; A property can follow the machine too: the banner turns green on delivery.
+    (<> Label (text: " Order 42 ") (• text white)
+      (= background-color (if-expr (. order #is-delivered) green blue))
+    )
+    ; Each state is a value the markup can read with `#`: true while it is active.
+    (if (. order #is-cooking)
+      (<> Label (text: "The kitchen is making it."))
+    )
+    (if (. order #is-ready)
+      (<> Label (text: "Packed and waiting for a rider."))
+    )
+    ; A state with data reads as that data, or null while the state is not active.
+    (if (. order #on-the-way)
+      (<> Label (text: (str (?? (. order #on-the-way) "Someone") " is riding over.")))
+    )
+    (if (. order #is-delivered)
+      (<> Label (text: "Delivered. Enjoy!"))
+    )
+  )
+  (print (call (. screen frame) 34 3))
+  (blank)
+  (let news
+    (call List
+      (block
+        (bullet (. OrderUpdate cooked))
+        (bullet (call (. OrderUpdate collected) "Ben"))
+        (bullet (. OrderUpdate delivered))
+      )
+    )
+  )
+  ; Nothing here touches the tree. Each update moves the machine, and the tree follows.
+  (for (in update news)
+    (<- (. order updates) update)
+    (print (call (. screen frame) 34 3))
+  )
+)
+
+(type + OrderUpdate (is Union)
+  (variant cooked)
+  (variant collected String)
+  (variant delivered)
+)
+
+(type + Order
+  ; The order knows nothing about how it is shown. Each state names the one update
+  ; it waits for.
+  (blank)
+  (event + updates OrderUpdate)
+  (content
+    (state is-cooking
+      (then is-ready (trigger for .cooked updates))
+    )
+    (state is-ready
+      (then (call on-the-way rider) (trigger for (call .collected rider) updates))
+    )
+    (state (call on-the-way rider)
+      (then is-delivered (trigger for .delivered updates))
+    )
+    (state is-delivered)
+  )
+)

@@ -1,0 +1,60 @@
+; Conway's Game of Life. The whole 8 by 8 board is one `Bitmap` over a U64:
+; sixty-four cells in one integer, and each generation is a new value.
+(import /core/bitmap)
+(blank)
+
+(main
+  (let board (call glider))
+  (for (in generation (.. 0 4))
+    (print (str "generation " generation))
+    (for (in row (..< 0 8))
+      (print (call row-text board row))
+    )
+    ; A Bitmap is a value: `next` reads the old board and gives a new one.
+    (= board (call next board))
+  )
+)
+
+(fn-do + glider (of Bitmap U64)
+  (let board (call (of Bitmap U64)))
+  ; Cell n is bit n of the integer.
+  (for (in cell (list 1 10 16 17 18))
+    (= ([] board cell) true)
+  )
+  (return board)
+)
+
+(fn-expr + row-text String
+  (param board (of Bitmap U64))
+  (param row Int)
+  (call (. "" join) (in (if-expr ([] board (+ (* row 8) each)) "#" ".") (..< 0 8)))
+)
+
+(fn-do + next (of Bitmap U64)
+  (param board (of Bitmap U64))
+  (let result (call (of Bitmap U64)))
+  (for (in cell (..< 0 64))
+    (let count (call neighbors board cell))
+    ; A cell with three neighbors lives, and a living cell with two stays alive.
+    (= ([] result cell) (or (== count 3) (and (== count 2) ([] board cell))))
+  )
+  (return result)
+)
+
+(fn-do + neighbors Int
+  (param board (of Bitmap U64))
+  (param cell Int)
+  (let count 0)
+  (for (in dy (.. -1 1))
+    ; `when` leaves out the cell itself.
+    (for (in dx (.. -1 1) (when (or (!= dx 0) (!= dy 0))))
+      ; Adding 8 before the remainder wraps the board at its edges.
+      (let row (% (+ (/ cell 8) dy 8) 8))
+      (let column (% (+ (% cell 8) dx 8) 8))
+      (if ([] board (+ (* row 8) column))
+        (+= count 1)
+      )
+    )
+  )
+  (return count)
+)

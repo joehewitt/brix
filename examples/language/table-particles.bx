@@ -1,0 +1,38 @@
+; Tables: a Table reads as rows of a struct but stores each field as a column
+; of its own, so one field of every row sits together in memory.
+(import /core/table)
+(import /stream/aggregate)
+(blank)
+
+(main
+  ; Four rows, each built from its index.
+  (let sparks (call (of Table Spark) 4 (:with (call Spark (* each 10) 0 5 (+ each 1)))))
+  (blank)
+  (for (in step (..< 0 3))
+    ; A row from the loop is a live view, so these writes land in the columns.
+    (for (in spark sparks)
+      (+= (. spark x) (. spark speed-x))
+      (+= (. spark y) (. spark speed-y))
+    )
+  )
+  (blank)
+  ; Naming a field on the table gives the whole column, which is a stream like any other.
+  (print (str "x column: " (call (. ", " join) (. sparks x))))
+  (print (str "y column: " (call (. ", " join) (. sparks y))))
+  (print (str "highest: " (call max (. sparks y))))
+  (for (in spark sparks)
+    (print (str "spark at (" (. spark x) ", " (. spark y) ")"))
+  )
+  (blank)
+  ; `as Spark` gathers a row into a value of its own, which later writes do not reach.
+  (let first (as ([] sparks 0) Spark))
+  (= (. ([] sparks 0) x) 100)
+  (print (str "copy kept " (. first x) ", table has " (. ([] sparks 0) x)))
+)
+
+(type + Spark (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+  (prop + speed-x Int)
+  (prop + speed-y Int)
+)

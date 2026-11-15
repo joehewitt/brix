@@ -1,0 +1,86 @@
+; A grammar and a state machine together: the grammar turns each typed line into
+; a command, and the room the player is in decides what that command does.
+(main
+  (let game (call Game))
+  (let typed
+    (call List
+      (block
+        (bullet "go down")
+        (bullet "take lamp")
+        (bullet "dance")
+        (bullet "go down")
+        (bullet "take gold")
+      )
+    )
+  )
+  (for (in line typed)
+    (print (str "> " line))
+    ; A line the grammar does not accept gives null.
+    (let command
+      (match? line
+        (~ \command)
+      )
+    )
+    (if command
+      (<- (. game commands) command)
+      (else
+        (print "You can't do that.")
+      )
+    )
+  )
+)
+
+(type + Command (is Union)
+  (variant go String)
+  (variant take String)
+)
+
+(fn-expr + command Command (over: Char)
+  (~ (seq "go " (: place \word))
+    (call (. Command go) place)
+  )
+  (~ (seq "take " (: item \word))
+    (call (. Command take) item)
+  )
+  (where
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
+
+(type + Game
+  (event + commands Command)
+  (prop + has-lamp _ (= false))
+  (prop + room _
+    (machine
+      (state hall
+        (do (inline (print "A dusty hall. Stairs lead down. A lamp sits on a shelf.")))
+        (blank)
+        ; A handler hears commands only while its room is the active one.
+        (for (on (call .take "lamp") commands)
+          (= has-lamp true)
+          (print "You take the lamp.")
+        )
+        (blank)
+        ; This move is written before the handler below, so with the lamp the player
+        ; has left the hall before `too dark` is reached.
+        (then cellar (trigger for (call .go "down") commands has-lamp))
+        (for (on (call .go "down") commands)
+          (print "It is too dark to go down.")
+        )
+      )
+      (blank)
+      (state cellar
+        (do (inline (print "The lamp shows a cellar and a heap of gold.")))
+        (then rich (trigger for (call .take "gold") commands))
+      )
+      (blank)
+      (state rich
+        (do (inline (print "You are rich. The end.")))
+      )
+    )
+  )
+)

@@ -156,6 +156,26 @@ for i in 1 .. 0 by 0.25
 0.25
 0
 ;===
+:====
+# A range runs from its start toward its end, so a step written with a sign counts by its size.
+
+for n in 10 .. 0 by -5
+    -- n
+. rising = 0 .. 10 by -5
+-- rising.length
+for x in 1.0 .. 0.0 by -0.5
+    -- x
+
+:----
+
+10
+5
+0
+3
+1
+0.5
+0
+;===
 ====================================================================================================
 Forward conversion
 ====================================================================================================
@@ -303,14 +323,14 @@ for i in range.normalize(0 .. < 5)
 . base = 0 .. < 1 by 0.25
 . range = Position.end .. Position.first
 for i in range.normalize(base)
-    -- base[i]
+    -- i
 
 :----
 
+4
+3
+2
 1
-0.75
-0.5
-0.25
 0
 ;===
 :====
@@ -318,14 +338,14 @@ for i in range.normalize(base)
 . base = 0 .. < 1 by 0.25
 . range = Position.end .. < Position.first
 for i in range.normalize(base)
-    -- base[i]
+    -- i
 
 :----
 
+4
+3
+2
 1
-0.75
-0.5
-0.25
 ;===
 :====
 
@@ -835,4 +855,93 @@ hello
 world
 1, 2
 3, 4
+;====
+:====
+# A range made forward holds the same items from the lowest up, whatever its step and direction.
+
+-- List((0 .. 10 by 3).forward())
+-- List((0 .. < 10 by 3).forward())
+-- List((10 .. 0 by 3).forward())
+-- List((10 .. < 0 by 3).forward())
+-- List((0.0 .. 1.0 by 0.25).forward())
+-- List((2 .. < 2).forward())
+
+:----
+
+0, 3, 6, 9
+0, 3, 6, 9
+1, 4, 7, 10
+1, 4, 7, 10
+0, 0.25, 0.5, 0.75, 1
+
+;====
+:====
+# An index into a range is one of its items or out of range, and a slice by index holds the items at those places.
+
+. r = 0 .. 10 by 3
+-- r[3]
+-- List(r[1 .. < 3])
+-- List(r[0 .. 3 by 2])
+-- List((0 .. 10)[2 .. < 4])
+-- List((10 .. 0 by 2)[1 .. 3])
+-- List((0.0 .. 1.0 by 0.25)[1 .. < 3])
+try-index(r, 4)
+try-index(r, -1)
+try-slice(r)
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-index
+    - r Range'Int
+    - i Index
+
+do finally
+    -- "index: ${recover()}"
+-- r[i]
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-slice
+    - r Range'Int
+
+do finally
+    -- "slice: ${recover()}"
+-- List(r[2 .. < 5])
+
+:----
+
+9
+3, 6
+0, 6
+2, 3
+8, 6, 4
+0.25, 0.5
+index: Range index 4 out of range
+index: Range index -1 out of range
+slice: Range out of bounds (4 / 4)
+;====
+:====
+# A range that steps by zero panics where its items are counted.
+
+try-list()
+try-loop()
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-list
+
+do finally
+    -- "list: ${recover()}"
+. r = 0 .. 5 by 0
+-- List(r)
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-loop
+
+do finally
+    -- "loop: ${recover()}"
+for i in 0 .. 5 by 0
+    -- i
+
+:----
+
+list: A range cannot step by 0
+loop: A range cannot step by 0
 ;====

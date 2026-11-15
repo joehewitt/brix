@@ -4,6 +4,7 @@
 ./language
 ./rows
 /code/code-comments
+/code/code-session
 /core/table
 /data/source-sexp
 /data/source-tree
@@ -187,14 +188,11 @@ if column >= current.columns
     move-right()
     =
 . offset = column - current.content-start
-. position Size = 0
 . target = current.columns - current.content-start
-for span in current.spans
-    . end = position + span.text.length
-    if span.kind != SourceSpanKind.plain && end > offset
-        target = end
+for token in source-tokens(current)
+    if token.end > offset
+        target = token.end
         break
-    position = end
 column = current.content-start + target
 goal-column = column
 
@@ -260,16 +258,17 @@ anchor-column = document.row-at(0).content-start
 . current = row-at(row)
 =? if current.is-divider
 . offset = column - current.content-start
-. position Size = 0
-for span in current.spans
-    . end = position + span.text.length
-    if span.kind != SourceSpanKind.plain && offset >= position && offset <= end
-        anchor-row = row
-        anchor-column = current.content-start + position
-        column = current.content-start + end
-        goal-column = column
-        =
-    position = end
+. picked SourceToken? = null
+for token in source-tokens(current)
+    if offset >= token.start && offset <= token.end && (picked == null || offset < token.end)
+        picked = token
+        if offset < token.end
+            break
+=? if !picked
+anchor-row = row
+anchor-column = current.content-start + picked.start
+column = current.content-start + picked.end
+goal-column = column
 
 ────────────────────
 + do select-range
@@ -675,7 +674,7 @@ collapse()
 
 =? if !is-dirty
 . shown = document.row-at(row)
-if document.language.is-unparsed(shown.mode) || stays-invalid(shown)
+if document.language.is-unparsed(shown.mode) || stays-invalid(shown) || rereads(shown)
     splice-text(row, column, row, column, "")
     =
 is-dirty = false
@@ -720,6 +719,14 @@ document.discard()
 . stays = next != null && document.language.is-invalid(next, shown.mode)
 document.discard()
 = stays
+
+────────────────────
+_ do rereads Bool
+    - shown SourceRow
+
+. node = document.store.node-at(shown.node)
+=? false if !node || typed == shown.content
+= document.language.rereads(node, shown.mode, typed)
 
 ────────────────────
 _ do cover
@@ -979,12 +986,10 @@ _ do token-start Size
     - shown SourceRow
     - offset Size
 
-. position Size = 0
 . start Size = 0
-for span in shown.spans
-    if span.kind != SourceSpanKind.plain && position < offset
-        start = position
-    position += span.text.length
+for token in source-tokens(shown)
+    if token.start < offset
+        start = token.start
 = start
 
 ────────────────────
@@ -1462,3 +1467,46 @@ for c in text.codepoints
         break
     count += 1
 = text[count ...]
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceToken is (start Size, end Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-tokens [SourceToken]
+    - shown SourceRow
+
+. tokens [SourceToken]
+. position Size = 0
+for span in shown.spans
+    . end = position + span.text.length
+    if span.kind == SourceSpanKind.string || span.kind == SourceSpanKind.comment
+        tokens ++= source-word-tokens(span.text, position)
+    else if span.kind != SourceSpanKind.plain
+        tokens += SourceToken(position, end)
+    position = end
+= tokens
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-word-tokens [SourceToken]
+    - text String
+    - offset Size
+
+. chars = text.codepoints
+. tokens [SourceToken]
+. index Index = 0
+while index < chars.length
+    . kind = source-char-class(chars[index])
+    if kind == CodeCharClass.space
+        index += 1
+        continue
+    . start = index
+    while index < chars.length && source-char-class(chars[index]) == kind
+        index += 1
+    tokens += SourceToken(offset + start, offset + index)
+= tokens
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-char-class CodeCharClass
+    - c Char
+
+if (c as U32) >= 128 then CodeCharClass.word else code-byte-class(c as Byte)

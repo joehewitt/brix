@@ -1080,6 +1080,42 @@ do match? nodes[left]
 = 0
 
 ────────────────────
++ do listed-bullets SyntaxId
+    - consumer SyntaxId
+
+. written SyntaxId = 0
+. callee SyntaxId = 0
+do match? nodes[consumer]
+    | .node-call-expression(row)
+        if row.param-count == 0 && row.operands.count == 1 && !row.is-curried
+            written = children[row.operands.start]
+            callee = row.callable
+    | .node-pipeline-expression(row)
+        if row.op == .pipe-forward-op
+            written = row.left
+            callee = row.right
+=? 0 if written == 0 || !names-list(callee)
+do match? nodes[written]
+    | .node-argument(row)
+        written = if row.name || row.is-optional then 0 else row.expr
+do match? nodes[written]
+    | .node-block(row)
+        written = if row.body.count == 1 then children[row.body.start] else 0
+=? written if written != 0 && nodes[written] is .node-bullet-expression
+= 0
+
+────────────────────
+_ do names-list Bool
+    - callee SyntaxId
+
+do match? nodes[callee]
+    | .node-type-identifier(row)
+        = row.name.text == "List"
+    | .node-type-arguments(row)
+        = names-list(row.base)
+= false
+
+────────────────────
 + do whenever-clause SyntaxId
     - loop SyntaxId
 

@@ -1,0 +1,62 @@
+; Errors: a function names the errors it can raise, and a caller that does
+; nothing passes them on. A caller can also supply a value in the error's
+; place, or raise an error of its own that keeps the first one as its cause.
+(main
+  (print (str "theme: " (call theme)))
+  (print (str "address: " (catch (call address))))
+  (blank)
+  ; `catch` holds the outcome as one value: the address, or the error raised.
+  (let started (catch (call start-server)))
+  (print
+    (match started
+      (case (: address String)
+        (str "listening on " address)
+      )
+      (case (: error StartupFailed)
+        (str (. error message) ", because: " (. error previous))
+      )
+    )
+  )
+)
+
+(type + MissingSetting (is Error))
+
+(type + StartupFailed (is Error))
+
+(fn-do + setting String (?! MissingSetting)
+  (param name String)
+  (let settings
+    (call (of Map String String)
+      (block
+        (entry "host" "localhost")
+        (entry "accent" "teal")
+      )
+    )
+  )
+  (return? ([] settings name))
+  (throw (call MissingSetting (str "no setting named " name)))
+)
+
+(fn-expr + address String (?! MissingSetting)
+  ; No row here handles the error, so a missing setting leaves through `address`.
+  (str (call setting "host") ":" (call setting "port"))
+)
+
+(fn-expr + theme String
+  ; `on-error` gives the value to use when the call above it raises that error.
+  (call setting "theme"
+    (block
+      (on-error MissingSetting
+        "light"
+      )
+    )
+  )
+)
+
+(fn-do + start-server String (?! StartupFailed)
+  ; This raises nothing now. A MissingSetting that would leave the function
+  ; leaves as a StartupFailed, with the original kept as `previous`.
+  (throw (call StartupFailed "could not start the server") (on-error (: error MissingSetting)))
+  (blank)
+  (return (call address))
+)

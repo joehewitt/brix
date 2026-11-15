@@ -4114,3 +4114,129 @@ Exception: Expected Number here, but this is U64, which becomes Number only when
         • "serial" big
                    ^^^
 ;====
+:====
+# A List given bullets whose items raise: an error leaves the function, and a catch holds it. A
+# global made so takes its items as its module starts.
+
++ labels [String] = List
+    * label("a")
+    * label("b")
+
+-- totals(1)
+. failed = catch totals(-1)
+-- match failed
+    | [Int]
+        "list $it"
+    | IOError
+        "io ${it.message}"
+. held = catch? totals(-3)
+-- held ?? [0]
+-- labels
+
+━━━━━━━━━━━━━━━━━━━━
++ do totals [Int]
+    - start Int
+
+= List
+    * check(start)
+    * check(start + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do check Int
+    - value Int
+
+?! IOError("negative")
+    if value < 0
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do label String
+    - text String
+
+?! IOError("empty")
+    if text.length == 0
+= "<$text>"
+
+:----
+
+2, 3
+io negative
+0
+<a>, <b>
+;====
+:====
+# A List given bullets builds its items where it is written, as one given them as arguments does:
+# the value of a property reads the object's members and what they track, and runs again as they
+# change, as does an assignment that reads something tracked.
+
+.. meter = Meter()
+.. shown = Shown()
+
+shown.flags = List'Int
+    * meter.#value
+    * meter.#other * 10
+-- "${meter.flags} | ${meter.plain} | ${shown.flags}"
+meter.value = 3
+-- "${meter.flags} | ${meter.plain} | ${shown.flags}"
+meter.other = 5
+-- "${meter.flags} | ${meter.plain} | ${shown.flags}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Meter
+
++ value = 1
++ other = 2
++ flags = List'Int
+    * #value
+    * #other * 10
+    * #value + #other
++ maybe Int? = 4
++ plain =
+    * value
+    *? maybe
+    * #other
+    |> List
+
+━━━━━━━━━━━━━━━━━━━━
++ Shown
+
++ flags = List'Int()
+
+:----
+
+1, 20, 3 | 1, 4, 2 | 1, 20
+3, 20, 5 | 1, 4, 2 | 3, 20
+3, 50, 8 | 3, 4, 5 | 3, 50
+;====
+:====
+# A List given bullets in the value of a property gives every item of what a multi bullet writes:
+# as the constructor gives the value, as the value runs again on a change it tracks, and once for
+# a lazy property, which keeps it.
+
+. meter = Meter()
+-- "${meter.first} | ${meter.live} | ${meter.later}"
+meter.others = List'Int(7, 8)
+meter.value = 5
+-- "${meter.first} | ${meter.live} | ${meter.later}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Meter
+
++ value = 1
++ others = List'Int(2, 3)
++ first = List'Int
+    * value
+    ** others
++ live = List'Int
+    * #value
+    ** #others
+    ** 10 .. 11
++ later := List'Int
+    ** others
+    * value
+
+:----
+
+1, 2, 3 | 1, 2, 3, 10, 11 | 2, 3, 1
+1, 2, 3 | 5, 7, 8, 10, 11 | 2, 3, 1
+;====

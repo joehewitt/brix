@@ -1,0 +1,593 @@
+# Patterns
+
+A pattern describes a shape a value can have: a value it equals, a type it has, a condition it
+meets, or parts it is made of. Matching a value against a pattern tells whether the value fits,
+and names the parts the pattern names.
+
+This chapter covers `match`, every kind of pattern, the other places patterns are written, taking
+values apart into locals, and the rule that a `match` covers every case. Unions are covered in
+Unions and enums, and patterns over streams of text and bytes in Stream patterns.
+
+## `match`
+
+```brix
+(main
+  (for (in value (list 0 -4 7 25 12))
+    (print (call size value))
+  )
+  (let count 3)
+  (let word
+    (match count
+      (case= 1
+        "one"
+      )
+      (case? (< it 5)
+        "a few"
+      )
+      (default
+        (inline "many")
+      )
+    )
+  )
+  (print word)
+)
+
+(fn-expr + size String
+  (param value Int)
+  (match value
+    (case= 0
+      "zero"
+    )
+    (case ({} (< it 0))
+      "negative"
+    )
+    (case (| 3 7)
+      "lucky"
+    )
+    (case (: n ({} (> it 20)))
+      (str "large " n)
+    )
+    (case n
+      (str "small " n)
+    )
+  )
+)
+```
+
+```output
+zero
+negative
+lucky
+large 25
+small 12
+a few
+```
+
+A `match` takes a subject, then arms, each with its value, as in
+`(match subject (case pattern value))`{.brix}.
+
+| Arm | Taken when |
+| --- | --- |
+| `(case pattern value)`{.brix} | The subject fits the pattern. |
+| `(case= value result)`{.brix} | The subject equals the value. |
+| `(case? condition value)`{.brix} | The condition holds. |
+| `(default value)`{.brix} | No arm before it was taken. |
+| `(throw error)`{.brix} | No arm before it was taken; it raises the error. See Errors. |
+
+- **Order.** Arms are tried in the order written, and the first that is taken gives the match its
+  value. Later arms are not tried.
+- **`it`** is the subject, in every arm's pattern, condition and value. In an arm whose pattern
+  names a type, `it` has that type.
+- **Values.** An arm's value is its body. A default arm can hold its value inline, on one row:
+  `(default (inline value))`{.brix}. An arm with no value gives what its pattern passed on, as in
+  `(case ({} (> it 20)))`{.brix}, which gives the subject.
+- **Type.** The match's type is the join of its arms' values; see Conversions. Arms whose types
+  have no join give an anonymous union; see Unions and enums. Arms that raise add nothing to it.
+- **Raising arms.** `(throw error)`{.brix} raises for every value no arm before it took. With a
+  condition, as in `(throw error (if condition))`{.brix}, it raises only where the condition holds,
+  and the arms after it are tried otherwise.
+- **Lazy locals.** An arm can declare lazy locals after its value, as a value body can; see
+  Functions.
+- **No arm taken.** Where no arm fits a value, the program panics: `Pattern match failed`. For a
+  subject of a type with a fixed set of values, the compiler requires an arm for each; see
+  [Covering every case](#covering-every-case).
+
+### `match?`
+
+`(match? subject (case pattern value))`{.brix} gives `null` where no arm is taken, so its type is
+an optional, and it needs no arm for every value.
+
+### Matches as steps
+
+In a step body, `(do (inline (match subject (case pattern body))))`{.brix} runs the arm that is
+taken, as steps, and uses no value, so arms may give values of any type or none.
+
+- An arm can return from the function, raise, or `break` or `continue` an enclosing loop.
+- With `match?`, a match run as steps goes on to the next step where no arm is taken; with
+  `match`, it panics there.
+- A `match` written as a step, with arms that give no value, is an error: `This arm gives no value,
+  and a match gives the value of the arm it takes; to run its arms as steps, write "do match"`.
+- A function whose last step is a match run as steps, with an arm for every value, each of which
+  returns or raises, needs no return after it.
+
+### Several subjects
+
+`(match (tuple a b) (case (tuple x y) value))`{.brix} matches the tuple of its subjects, so each
+arm is a tuple pattern, as in
+`(case (tuple (: name String) (: count ({} (> it 20)))) value)`{.brix}. See [Tuples](#tuples).
+
+## Kinds of pattern
+
+| Pattern | Fits |
+| --- | --- |
+| `_` | Any value. It names nothing. |
+| `name` | Any value, and names it. |
+| `42`, `"text"`, `null` | A value equal to it. |
+| `Type` | A value of the type. |
+| `(: name Type)`{.brix} | A value of the type, and names it. |
+| `(exact Type)`{.brix} | A value of exactly the type, not one that converts to it. |
+| `(similar Type)`{.brix} | A value that converts to the type. |
+| `({} condition)`{.brix} | A value for which the condition holds. |
+| `(all a b)`{.brix} | Both patterns, in turn. |
+| `(\| a b)`{.brix} | Either pattern. |
+| `(tuple a b)`{.brix} | A tuple whose fields fit. |
+| `.case`, `(call .case a b)`{.brix} | A union value holding the case. |
+| `(list a b)`{.brix}, `(case (list a ...rest) value)`{.brix} | A list whose items fit. |
+| `(case (map "key" a) value)`{.brix} | A map holding the key, with a value that fits. |
+| `(all "start" ...rest)`{.brix} | Text that begins and ends as written. |
+| `..name` | A value with a property `name`, which it names. |
+
+### Values and conditions
+
+- **Literals.** A number, text, `null` or other literal fits an equal value. A number literal takes
+  the subject's type, so the arm `(case 3 value)`{.brix} matches a `U8`.
+  `(case= value result)`{.brix} compares with any value, not only a literal, as
+  `(case= limit result)`{.brix} does.
+- **Conditions.** `({} condition)`{.brix} fits where the condition holds, with `it` naming the
+  value being matched at that point of the pattern. A condition can read the names given before it
+  in the pattern, as in `(all (: n Int) ({} (> n 10)))`{.brix}.
+- **Alternatives.** `(| a b)`{.brix} tries each pattern in turn, and fits where one does. All of
+  them share the arm's value. A name the alternatives give is one local, which the alternative
+  taken fills, so `(| (call .a n) (call .b n))`{.brix} reads `n` from either case.
+- **Sequences.** The patterns of `(all a b)`{.brix} must all fit, from left to right, and each takes
+  what the one before passed on. A type pattern passes on the value as its type,
+  `(similar Type)`{.brix} passes on the converted value, and a condition passes on what it tested,
+  so in `(all (: n (similar Int)) ({} (> it 7)))`{.brix} the condition tests the converted value.
+
+### Names
+
+- **A name alone** fits any value and names it, so no arm may follow it: `Arm '| n' takes every
+  value, so the arms after it are never reached`. `_` is the same, and names nothing.
+- **A name before a pattern** names what fits the pattern, as in `(: n ({} (> it 20)))`{.brix} and
+  `(: n Int)`{.brix}.
+- **Scope.** A name a pattern gives is known in its arm's value, or the body the pattern guards,
+  and not after it. Two arms may give the same name, but one pattern may not give a name twice:
+  `"a" is bound twice in this pattern; give each place a name of its own`.
+- **Case names.** A name alone is a name even where the subject's union has a case of that name:
+  `Arm '| red' binds a new name, not the case Light.red; match the case with '| Light.red'`.
+
+### Types
+
+```brix
+(main
+  (let pets (list Animal) (list (call Dog) (call Cat) (call Animal)))
+  (for (in pet pets)
+    (print (call describe pet))
+  )
+  (let maybe (? Int) null)
+  (print (call presence maybe))
+  (= maybe 4)
+  (print (call presence maybe))
+  (print (call measure 3))
+  (print (call measure 2.5))
+  (print (call measure "seven"))
+  (print (call read 4.0))
+)
+
+(type + Animal)
+
+(type + Dog (is Animal)
+  (fn-expr + bark String
+    "woof"
+  )
+)
+
+(type + Cat (is Animal)
+  (fn-expr + meow String
+    "meow"
+  )
+)
+
+(type + Value (is Union)
+  (variant Int)
+  (variant Float)
+  (variant String)
+)
+
+(fn-expr + describe String
+  (param pet Animal)
+  (match pet
+    (case (: dog Dog)
+      (str "a dog: " (call (. dog bark)))
+    )
+    (case Cat
+      (str "a cat: " (call (. it meow)))
+    )
+    (default
+      (inline "an animal")
+    )
+  )
+)
+
+(fn-expr + presence String
+  (param value (? Int))
+  (match value
+    (case= null
+      "nothing"
+    )
+    (case (: n Int)
+      (str "holds " n)
+    )
+  )
+)
+
+(fn-expr + measure String
+  (param value Value)
+  (match value
+    (case (: n Int)
+      (str "an Int: " n)
+    )
+    (case (: f Float)
+      (str "a Float: " f)
+    )
+    (case (: s String)
+      (str "text: " s)
+    )
+  )
+)
+
+(fn-expr + read String
+  (param value Float)
+  (match value
+    (case (: n (similar Int))
+      (str "converts to " n)
+    )
+    (default
+      (inline "does not convert")
+    )
+  )
+)
+```
+
+```output
+a dog: woof
+a cat: meow
+an animal
+nothing
+holds 4
+an Int: 3
+a Float: 2.5
+text: seven
+converts to 4
+```
+
+- **Classes.** A class fits an object of the class or of a class derived from it. In the arm, the
+  name, or `it`, has the class, so its members can be read.
+- **Optionals.** A type fits an optional only where it holds a value of the type, so
+  `(: n Int)`{.brix} does not fit `null`. Match `null` with `(case= null value)`{.brix}.
+- **Unions.** A type fits a union value holding a case of that type, and names the case's value.
+- **Generic classes.** A generic class written bare, such as `List`, fits a value of the class
+  with any type arguments.
+- **Exact and converted types.** `(exact Type)`{.brix} fits a value of exactly the type, without
+  converting it, and an object only of exactly the class, not of a class derived from it.
+  `(similar Type)`{.brix} fits a value that converts to the type, as `as` would convert it, and
+  passes on the converted value, so `4.0` fits `(similar Int)`{.brix} as `4`. Text does not convert
+  to a number this way.
+
+### Union cases
+
+`.case` fits a union value holding the case, and `(call .case a b)`{.brix} also matches the case's
+values against patterns. A case of another union can be named in full, as in
+`(. Light green)`{.brix}.
+
+- `.case` passes on the union value. `(call .case pattern)`{.brix} passes on what its pattern
+  passed.
+- Anonymous cases, made with `(call ..case value)`{.brix}, are matched the same way.
+- See Unions and enums for unions, and for matching values of enums.
+
+### Tuples
+
+`(tuple a b)`{.brix} fits a tuple whose fields fit the patterns, by position. In rows, it can be
+written in parentheses, as in `(x, y)`{.rows}. A field pattern can be any pattern:
+`(case (tuple (: name String) (: count ({} (> it 20)))) value)`{.brix},
+`(case (tuple (: x ({} (> it 5))) _) value)`{.brix}, or a literal, as in
+`(case (tuple 1 name) value)`{.brix}.
+
+### Lists
+
+```brix
+(main
+  (for (in items (list (list 1 2 3) (list 4) (call (of List Int)) (list 5 6)))
+    (print (call shape items))
+  )
+)
+
+(fn-expr + shape String
+  (param items (list Int))
+  (match items
+    (case (list)
+      "empty"
+    )
+    (case (list only)
+      (str "just " only)
+    )
+    (case (list first second)
+      (str "two: " first " and " second)
+    )
+    (case (list first ... last)
+      (str "from " first " to " last)
+    )
+  )
+)
+```
+
+```output
+from 1 to 3
+just 4
+empty
+two: 5 and 6
+```
+
+- **Items.** `(list a b)`{.brix} fits a list of exactly as many items as it has patterns, each
+  fitting its pattern. `(list)`{.brix} fits only an empty list.
+- **Rest.** `...` stands for any number of items, none included:
+  `(case (list first ...) value)`{.brix}, `(case (list ... last) value)`{.brix} and
+  `(case (list first ... last) value)`{.brix}. `...name` names them, as a slice of the list's own
+  type. A pattern holds at most one rest: `Pattern may contain only one remainder`.
+- **Sources.** A list pattern fits lists, arrays, and values of any type that implements
+  `Indexable`. It reads the length first, then the items it tests. It never fits text, which has
+  patterns of its own.
+- **One item.** In `(case (list (: only Int)) value)`{.brix}, the pattern is a list of one item.
+  In a type, `(list Int)`{.brix} is a list type.
+
+### Maps
+
+`(list (= "key" pattern) (= "other" pattern))`{.brix} fits a map that holds each key, with a value
+that fits its pattern. The map may hold other keys too. `...name` names a map of the entries the
+pattern did not name.
+
+```brix
+(main
+  (let settings (call (of Map String Int)))
+  (= ([] settings "width") 10)
+  (= ([] settings "height") 4)
+  (do
+    (inline
+      (match settings
+        (case (list (= "width" w) (= "depth" d))
+          (print (str "box " w " by " d))
+        )
+        (case (list (= "width" w) ...others)
+          (print (str "width " w ", and " (. others length) " more"))
+        )
+        (default
+          (print "no width")
+        )
+      )
+    )
+  )
+)
+```
+
+```output
+width 10, and 1 more
+```
+
+A key can be text, a number, or the value of a local, written `$name`, as in
+`(case (map $key value) result)`{.brix}.
+
+### Text
+
+`(all "start" ...rest "end")`{.brix} fits text that begins and ends with the literals written, and
+names the text between them. The literals and one rest may come in any order, as in
+`(all ...name ".txt")`{.brix}, and the pattern fits the whole text. A literal can be named too, as
+in `(: f "foo")`{.brix}.
+
+```brix
+(main
+  (for (in file (list "notes.txt" "photo.png" "README"))
+    (print (call kind file))
+  )
+)
+
+(fn-expr + kind String
+  (param file String)
+  (match file
+    (case (all ...name ".txt")
+      (str "text named " name)
+    )
+    (case (all "photo." ...format)
+      (str "a photo in " format)
+    )
+    (default
+      (inline (str file " is something else"))
+    )
+  )
+)
+```
+
+```output
+text named notes
+a photo in png
+README is something else
+```
+
+Text patterns that read pieces, repeat, or choose between alternatives are stream patterns; see
+Stream patterns.
+
+### Properties
+
+`..name` fits a value with a property `name`, and names a local `name` holding the property's
+value. A test can follow it: `(all ..length ({} (> it 3)))`{.brix}. A property the type does not
+have is an error: `Pattern has no possible matches`.
+
+- `(let ..length "hello")`{.brix} declares `length`, holding `5`.
+- `(let (: word ..length) "hello")`{.brix} names the whole value `word`, and declares no `length`.
+- In a `match`, a property pattern can only be the only arm.
+
+## Patterns outside `match`
+
+```brix
+(main
+  (let pair (tuple 3 "three"))
+  (if (= (| (tuple n word)) pair)
+    (print (str n " is " word))
+  )
+  (let maybe (? Int) 42)
+  (if (= (| (all (: n Int) ({} (> it 40)))) maybe)
+    (print (str "big " n))
+  )
+  (print (is (list 1 2 3) (list 1 ...)))
+  (print (case (= (all Int ({} (> it 40))) maybe)))
+  (print (case (= (all Int ({} (> it 50))) maybe)))
+  (print
+    (match? 7
+      (case ({} (> it 50))
+        "huge"
+      )
+    )
+  )
+  (for (in (| (: n Int)) (list 1 null 3))
+    (print (str "got " n))
+  )
+)
+```
+
+```output
+3 is three
+big 42
+true
+42
+unknown
+unknown
+got 1
+got 3
+```
+
+| Code | Gives |
+| --- | --- |
+| `(if (= (\| pattern) value) body)`{.brix} | Runs the body where the value fits, with the pattern's names. |
+| `(if condition body (else-if (= (\| pattern) value) body))`{.brix} | The same, as a branch of an `if`. |
+| `(while (= (\| pattern) value) body)`{.brix} | Runs the body for as long as the value fits; see Control flow. |
+| `(for (in (\| pattern) source) body)`{.brix} | Runs the body for each item that fits. |
+| `(is value pattern)`{.brix} | `true` where the value fits. |
+| `(case (= pattern value))`{.brix} | What the pattern passes on, or `null` where the value does not fit. |
+| `(let pattern value)`{.brix} | Declares the pattern's names; see below. |
+
+- **Fit, not truth.** `(if (= (| (: n Int)) count) body)`{.brix} runs its body whenever `count`
+  holds an `Int`, even `0`. The test is whether the value fits.
+- **`is`.** The right side of `is` is a type, a tuple type, as in
+  `(is pair (tuple Int String))`{.brix}, or a list, map or text pattern, or `_`.
+  `(is-not value pattern)`{.brix} is its opposite. See Types for `is` with types.
+- **Never fits.** A `match` none of whose arms can ever fit its subject, and an `if`, `while` or
+  declaration whose pattern can never fit its value, is an error: `Pattern has no possible
+  matches`.
+
+## Taking values apart
+
+A declaration whose name is a pattern takes its value apart, declaring a local for each name the
+pattern gives.
+
+```brix
+(main
+  (let pair (tuple 3 "three"))
+  (let (tuple first second) pair)
+  (print (str first ", " second))
+  (let (tuple x (tuple y z)) (tuple 1 (tuple 2 3)))
+  (print (+ x y z))
+  (let (tuple _ label) pair)
+  (print label)
+  (let (list head ...tail) (list 10 20 30))
+  (print (str head " then " tail))
+  (let a 1)
+  (let b 2)
+  (= (tuple a b) (tuple b a))
+  (print (str a " " b))
+)
+```
+
+```output
+3, three
+6
+three
+10 then 20, 30
+2 1
+```
+
+- **Tuples.** `(let (tuple a b) pair)`{.brix} declares a local for each field, by position: names
+  are matched to fields by place, not by the fields' names. Fields can be nested,
+  `(let (tuple x (tuple y z)) value)`{.brix}, skipped with `_`, or given types,
+  `(let (tuple (: a Int) (: b String)) value)`{.brix}, which convert them. Fewer names than fields
+  take the first fields. More names than fields is an error: `Pattern has no possible matches`.
+- **Existing locals.** `(= (tuple a b) pair)`{.brix} assigns the fields to locals that exist, so
+  `(= (tuple a b) (tuple b a))`{.brix} swaps two locals. Only a tuple is assigned this way:
+  `(= (list x y) items)`{.brix} is an error, `Names in brackets can be declared from a list, as in
+  ". [x, y] = items", but not assigned again; assign a tuple to them, as in "x, y = items[0],
+  items[1]"`.
+- **Optionals.** A tuple taken apart from an optional takes apart the tuple it holds, and panics
+  where it holds nothing: `Optional'Pair is null`.
+- **Patterns that can fail.** A declaration with a pattern that does not fit its value panics, at
+  the pattern: `Pattern match failed`.
+- **Lazy declarations.** `(lazy (tuple a b) value)`{.brix} declares lazy locals; the value is
+  computed once, where any of them is first read. See Functions.
+- **Loops.** A loop header takes each item apart the same way:
+  `(for (in (tuple name age) ages) body)`{.brix}. See Control flow.
+
+## Covering every case
+
+A `match` over a value whose type has a fixed set of values must have an arm for each of them, or
+a `(default value)`{.brix} arm, unless it is a `match?`. The fixed sets are:
+
+| Subject | Covered by |
+| --- | --- |
+| `Bool` | `(case= true value)`{.brix} and `(case= false value)`{.brix}. |
+| An optional | An arm for `null`, such as `(case= null value)`{.brix}, and arms that cover the value. |
+| A union | An arm for each case: `.case`, a pattern of the case's type, or `_`. |
+| An enum | `(case= (. Type value) result)`{.brix} for each value. |
+
+```brix compile-error
+(main
+  (print (call describe 4))
+)
+
+(fn-expr + describe String
+  (param value (? Int))
+  (match value
+    (case (: n Int)
+      (str "holds " n)
+    )
+  )
+)
+```
+
+```output
+Exception: This match on I64? does not handle null; add "|= null", or "??" for the rest
+<no file:9>
+        (case (: n Int)
+        ^^^^^^^^^^^^^^
+```
+
+- **Arms that do not count.** An arm with a condition, such as
+  `(case (all (: n Int) ({} (> it 0))) value)`{.brix} or `(case? ready value)`{.brix}, does not
+  cover what it tests.
+- **Lists in cases.** Arms over a union case that holds a list cover it together when one takes
+  some count of items and a rest, and the others take each smaller count:
+  `(case (call .many (list)) value)`{.brix} and
+  `(case (call .many (list first ...rest)) value)`{.brix} cover `.many`, as
+  `(case (call .many (list ...items)) value)`{.brix} does alone.
+- **Other types.** A `match` over numbers, text, lists or classes is not checked: where no arm fits
+  a value, it panics at run time.
+- **Messages.** Each names what is missing and how to add it: `This match on Bool does not handle
+  false; add "|= false", or "??" for the rest`, `This match on Result does not handle .bad; add a
+  case for it, or "??" for the rest`, and `This match on I64? handles only null; add a case for a
+  present value, as in "| value I64", or "??" for the rest`.

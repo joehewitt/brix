@@ -1,0 +1,34 @@
+; The C bridge: importing a C header makes its functions and constants callable
+; through `C:`, with no binding code. Texts, numbers and pointers convert at the
+; call.
+(import /ctype.h)
+(import /limits.h)
+(import /stdlib.h)
+(import /string.h)
+(blank)
+
+(main
+  (let order "flat white")
+  ; A text is given where C takes a `const char *`.
+  (print (str "strlen: " (call C:strlen order) " characters"))
+  ; A `char *` that comes back reads as the text it points to.
+  (print (str "strstr: found \"" (call C:strstr order "white") "\""))
+  (print (str "abs: " (call C:abs -12)))
+  ; A constant the header defines is a number here.
+  (print (str "INT_MAX: " C:INT_MAX))
+  (blank)
+  ; `null` is given where C takes a pointer it may do without.
+  (print (str "strtol: ff in base 16 is " (call C:strtol "ff" null 16)))
+  ; `&rest` gives C the address of a local, and `strtol` writes through it.
+  (let rest (of CPointer Char8))
+  (let amount (call C:strtol "250ml" &rest 10))
+  (print (str "strtol: " amount " with \"" rest "\" left over"))
+  (blank)
+  (print (str "toupper: " (call shout "two sugars")))
+)
+
+(fn-expr + shout String
+  (param text String)
+  ; A C function sits inside ordinary code, here called once for each character.
+  (call (. "" join) (in (as (call C:toupper each) Char) text))
+)

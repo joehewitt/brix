@@ -3,11 +3,13 @@
 ./markdown-references
 ./markdown-selection
 ./markdown-theme
+/code/syntax
 /graphics/canvas
 /graphics/point
 /graphics/primitives
 /graphics/text
 /gui
+/gui/code-editor/code-syntax-style
 /gui/desktop
 /stream/aggregate
 /time/duration
@@ -25,7 +27,8 @@ _ markdown-selection-owner := MarkdownSelectionOwner()
 + base String
 + cache MarkdownBlockCache?
 + is-selectable = true
-+ blocks = markdown-view-blocks(#text, #base, #cache)
++ code-renderer MarkdownCodeRenderer? = null
++ blocks = markdown-view-blocks(#text, #base, #cache, #code-renderer)
 
 _ pending-line Size?
 _ anchor = MarkdownPoint(0, 0, 0)
@@ -46,6 +49,9 @@ _ granularity = MarkdownGranularity.character
     for block in #blocks keyed by block.index
         <MarkdownBlockView
             block = block
+            code-renderer = #code-renderer
+            for request on source-requested
+                markdown-toggle-source(code-renderer, request.block, request.shows)
 
 ────────────────────
 for event on pointer-down
@@ -282,14 +288,32 @@ for child in RenderedChildCursor(box)
         collect-block-views(child, found)
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do markdown-view-blocks [MarkdownBlock]
+    - text String
+    - base String
+    - cache MarkdownBlockCache?
+    - renderer MarkdownCodeRenderer?
+
+. found = if cache then cache.blocks-for(text, base) else markdown-blocks(text, base)
+for block in found
+    markdown-render-block(renderer, block)
+= found
+
+━━━━━━━━━━━━━━━━━━━━
 + MarkdownBlockView is Box
 
 + block MarkdownBlock
 + is-editable = false
++ code-renderer MarkdownCodeRenderer? = null
 + is-heading = #block.kind == MarkdownBlockKind.heading
 + is-title = #block.kind == MarkdownBlockKind.heading && #block.level == 1
 + is-section = #block.kind == MarkdownBlockKind.heading && #block.level == 2
 + is-quote = #block.kind == MarkdownBlockKind.quote
++ is-rendered = #block.kind == MarkdownBlockKind.code && #block.#rendering != null && !#block.#shows-source
++ has-toggle = #block.kind == MarkdownBlockKind.code && (#code-renderer?.renders(#block.language) ?? false)
++ shows-toggle = #has-toggle && (#is-hover-within || (#is-editable && #block.#shows-source))
++ shows-copy = !#is-editable && #is-hover-within
++ event source-requested MarkdownSourceRequest
 
 ────────────────────
 
@@ -297,15 +321,38 @@ for child in RenderedChildCursor(box)
     padding-left = #block.depth * markdown-list-indent
     if #block.kind == MarkdownBlockKind.code
         <Box • markdown-code-block flex-col flex:1 px:14 py:12
-            <Text • markdown-code
-                <Span
-                    text = #block.code
-            if !#is-editable && #is-hover-within
+            if #is-rendered
+                for line in #block.#rendering! keyed by line.index
+                    <MarkdownCodeLineView • flex-col
+                        line = line
+            else
+                <Text • markdown-code
+                    <Span
+                        text = #block.code
+                if #block.#render-error != null
+                    <Label • markdown-code-error mt:8
+                        text = #block.#render-error!
+            if #shows-copy
                 <CopyButton • markdown-code-copy absolute w:26 h:26
                     anchor = Anchor.parent
                     top = PositionOffset.coord(-8)
                     right = PositionOffset.coord(-10)
                     text = #block.code
+            if #shows-toggle
+                <SegmentedControl'Bool • markdown-code-toggle absolute
+                    anchor = Anchor.parent
+                    top = PositionOffset.coord(-9)
+                    right = PositionOffset.coord(if #shows-copy then 22 else -10)
+                    selected = #block.#shows-source
+                    for event on selection-changing
+                        event.cancel()
+                        source-requested <- MarkdownSourceRequest(block, event.value)
+                    <Segment'Bool
+                        title = #code-renderer!.rendered-title(#block.language)
+                        value = false
+                    <Segment'Bool
+                        title = #code-renderer!.source-title(#block.language)
+                        value = true
     else if #block.kind == MarkdownBlockKind.exhibit
         <MarkdownExhibit • flex:1
             block = #block
@@ -330,6 +377,41 @@ for child in RenderedChildCursor(box)
                 for run in #block.runs keyed by run.index
                     <MarkdownRunSpan • markdown-run
                         run = run
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownCodeLineView is Box
+
++ line MarkdownCodeLine
+
+────────────────────
+
+<This
+    if #line.rule == MarkdownCodeRule.none
+        <Text • markdown-code
+            if #line.runs.length == 0
+                <Span
+                    text = " "
+            else
+                for run in #line.runs
+                    <MarkdownCodeSpan
+                        run = run
+    else if #line.rule == MarkdownCodeRule.double
+        <Box • markdown-code-double-rule my:6 h:4
+    else if #line.rule == MarkdownCodeRule.thick
+        <Box • markdown-code-rule my:7 h:2
+    else
+        <Box • markdown-code-rule my:8 h:1
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkdownCodeSpan is Span
+
++ run SyntaxStyledRun
+
+────────────────────
+
+<This
+    text = #run.text
+    color = gui-syntax-role-color(this, #run.role)
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownGridCellView is Text
@@ -460,14 +542,6 @@ owner if owner && owner.has-selection
 _ MarkdownSelectionOwner
 
 + view MarkdownView?
-
-━━━━━━━━━━━━━━━━━━━━
-_ markdown-view-blocks
-    - text String
-    - base String
-    - cache MarkdownBlockCache?
-
-if cache then cache.blocks-for(text, base) else markdown-blocks(text, base)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ markdown-runs-link

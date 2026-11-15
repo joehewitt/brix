@@ -1,0 +1,42 @@
+; `wc` for a file: its lines, words and characters. A stream grammar finds the
+; words and a comprehension keeps the newlines, both over the same text.
+; Give a path after `--` to count that file in place of the sample.
+(import /os/cli)
+(import /os/file)
+(import /os/path)
+(import /stream/aggregate)
+(blank)
+(prop _ sample _ (= "The quick brown fox\njumps over\nthe lazy dog\n"))
+(blank)
+; A list pattern takes the first argument when there is one.
+(main
+  (let text
+    (match (. (call cmdline) args)
+      (case (list path ...)
+        ; A file opened for reading converts to its text.
+        (as (call (. (call Path path) readable)) String)
+      )
+      (default
+        sample
+      )
+    )
+  )
+  (let lines (call count (in each text (when (== each (char "\n"))))))
+  ; Matching `word` along the text gives a stream of words, which `count` reads to its end.
+  (let words (call count (in (~ \word) text)))
+  (print (str lines " lines, " words " words, " (. text length) " characters"))
+)
+
+(fn-expr + word String (over: Char)
+  ; A word is the run of characters up to the next gap, with the gaps around it dropped.
+  (~ (seq (* \gap) (: text (+ (seq (! \gap) .))) (* \gap))
+    text
+  )
+  (where
+    (lazy gap
+      (pattern
+        (~ (| " " "\n" "\t"))
+      )
+    )
+  )
+)

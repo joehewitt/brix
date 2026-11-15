@@ -1,0 +1,74 @@
+; Markup is not tied to windows. Here the tree is a vector drawing: groups and
+; circles written as markup, with loops over a list of rings, saved as an SVG file.
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/style)
+(import /graphics/vector)
+(import /graphics/vector-group)
+(import /math)
+(import /stream/aggregate)
+(import /units)
+(blank)
+(prop _ middle _ (= (call Point 200 200)))
+(blank)
+
+(main
+  ; Each ring is a count of petals, how far out they sit, their size and their color.
+  (let rings
+    (call List
+      (block
+        (bullet (call Ring 16 130 34px (call RGBA 96% 45% 25% 45%)))
+        (bullet (call Ring 10 80 30px (call RGBA 98% 70% 20% 55%)))
+        (bullet (call Ring 6 40 22px (call RGBA 100% 88% 40% 70%)))
+      )
+    )
+  )
+  (blank)
+  (<> VectorGroup (id: flower)
+    ; One group for each ring, and one circle for each petal in it.
+    (for (in ring rings)
+      (<> VectorGroup
+        ; `fill` is inherited, so setting it on the group colors every petal inside.
+        (= fill (. ring color))
+        (for (in index (..< 0 (. ring petals)))
+          (<> Circle
+            (= center (call (. ring petal-center) index))
+            (= radius (. ring size))
+          )
+        )
+      )
+    )
+    (<> Circle
+      (= center middle)
+      (= radius 18px)
+      (= fill (call RGBA 35% 20% 10%))
+    )
+  )
+  (blank)
+  ; The same tree could be painted to a window. Here it goes to a file.
+  (let path "/private/tmp/yumi-vector-flower.svg")
+  (let canvas (call SVGCanvas 400 400))
+  (do-use canvas
+    (call (. flower next-frame))
+    (call (. flower paint-vector) canvas null true null (call Rect 0 0 400 400))
+    (call (. canvas write) path)
+  )
+  (print (str "saved " (call sum (in (. each petals) rings)) " petals to " path))
+)
+
+(type + Ring (is Tuple)
+  (prop + petals Int)
+  (prop + reach Float)
+  (prop + size Length)
+  (prop + color RGBA)
+  (fn-expr + petal-center Point
+    (param index Int)
+    ; Petals sit evenly around a circle, so each one's angle is a share of a full turn.
+    (+ middle (call Point (* reach (call cos angle)) (* reach (call sin angle))))
+    (where
+      (lazy angle (as (/ (* 360deg index) petals) Radians))
+    )
+  )
+)

@@ -1,0 +1,40 @@
+; Rules: a type can say what happens when its own state changes. The rules sit
+; beside the state they watch, and nothing that changes the state has to call them.
+(main
+  (let coffee (call Shelf "coffee" 8))
+  (call (. coffee sell) 2)
+  (call (. coffee sell) 3)
+  (call (. coffee sell) 1)
+  (call (. coffee restock) 10)
+  (call (. coffee sell) 7)
+  (blank)
+  ; A shelf that starts low: its `when-rule` runs as the shelf is made.
+  (let tea (call Shelf "tea" 2))
+  (call (. tea restock) 6)
+)
+
+(type + Shelf
+  (prop + item String)
+  (prop + stock Int)
+  (fn-do + This _
+    (param item _)
+    (param stock _)
+  )
+  ; `#stock` reads the stock and watches it. This rule runs on every change.
+  (whenever-rule #stock
+    (print (str item ": " stock " on the shelf"))
+  )
+  ; This rule runs only when a change leaves its condition true.
+  (when-rule (< #stock 5)
+    (print (str item " is low, order more"))
+  )
+  (fn-do + sell _
+    (param count Int)
+    ; Neither method mentions the rules. Changing `stock` is enough.
+    (-= stock count)
+  )
+  (fn-do + restock _
+    (param count Int)
+    (+= stock count)
+  )
+)

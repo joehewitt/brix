@@ -92,16 +92,18 @@ match granularity
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-is-atomic Bool
-    - kind MarkdownBlockKind
+    - block MarkdownBlock
 
-kind == MarkdownBlockKind.divider || kind == MarkdownBlockKind.exhibit
+kind == MarkdownBlockKind.divider || kind == MarkdownBlockKind.exhibit || markdown-is-rendered(block)
+
+.. kind = block.kind
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-slot-count Size
     - blocks [MarkdownBlock]
     - index Size
 
-|? markdown-is-atomic(block.kind)
+|? markdown-is-atomic(block)
     0
 |? block.kind == MarkdownBlockKind.grid
     block.cells.length
@@ -157,7 +159,7 @@ MarkdownPoint(index, cell, markdown-slot-size(blocks, MarkdownPoint(index, cell,
 
 . at = index
 while at < blocks.length
-    =? at if !markdown-is-atomic(blocks[at].kind) && markdown-slot-count(blocks, at) > 0
+    =? at if !markdown-is-atomic(blocks[at]) && markdown-slot-count(blocks, at) > 0
     =? null if !forward && at == 0
     at = if forward then at + 1 else at - 1
 = null
@@ -170,7 +172,7 @@ while at < blocks.length
 =? MarkdownPoint(0, 0, 0) if !blocks.length
 . index = min(point.block, blocks.length - 1)
 . block = blocks[index]
-if markdown-is-atomic(block.kind)
+if markdown-is-atomic(block)
     . after = markdown-editable-from(blocks, index, true)
     =? MarkdownPoint(after, 0, 0) if after != null
     . before = markdown-editable-from(blocks, index, false)
@@ -219,7 +221,7 @@ for view in views
 =? null if !found
 . index Size = found.block.index
 =? null if index >= blocks.length
-if markdown-is-atomic(blocks[index].kind)
+if markdown-is-atomic(blocks[index])
     . after = markdown-editable-from(blocks, index, true)
     =? MarkdownPoint(after, 0, 0) if after != null
     . before = markdown-editable-from(blocks, index, false)
@@ -286,7 +288,7 @@ if view.block.kind == MarkdownBlockKind.grid
 
 . index Size = shown.block.index
 =? if index < start.block || index > end.block || index >= blocks.length
-if markdown-is-atomic(shown.block.kind)
+if markdown-is-atomic(shown.block)
     canvas.fill-color = object-color
     canvas.rect(shown.bounds)
     =
@@ -375,7 +377,7 @@ for index in start.block .. < end.block + 1
 . draft = markdown-block-draft(block, if prefixes then prefixes[index] else "")
 . kind = block.kind
 if sources
-    if markdown-is-atomic(kind)
+    if markdown-is-atomic(block)
         draft.source = sources[index]
     if kind == MarkdownBlockKind.grid
         . row Size = 0

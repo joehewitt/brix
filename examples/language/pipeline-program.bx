@@ -1,0 +1,36 @@
+; A program that is one pipeline: a source, a grammar that turns its text into
+; records, two stages, and a reader. `main` has no locals and no loop.
+(import /core/patterns)
+(blank)
+
+(main
+  (bullet* (call stock))
+  ; `~>` matches the rule again and again along the text and gives each record it builds.
+  (pipe ~> \item)
+  ; From here on `each` is an Item, not a character.
+  (pipe ?> (< (. each count) 5))
+  (pipe *> (str "reorder " (. each name) ": " (. each count) " left"))
+  ; The reader at the end is what pulls every line through the stages above.
+  (pipe |> print-all)
+)
+
+(type + Item (is Tuple)
+  (prop + name String)
+  (prop + count Int)
+)
+
+(fn-expr + item Item (over: Char)
+  ; `\num` and `\nl` are rules from the library: a number of the type asked for, and a line end.
+  (~ (seq (: name (+ (seq (! ",") .))) "," (: count (of \num Int)) (? \nl))
+    (call Item name count)
+  )
+)
+
+(fn-expr + stock _
+  (paragraph
+    "flour,12"
+    "yeast,3"
+    "butter,7"
+    "vanilla,1"
+  )
+)

@@ -1,0 +1,43 @@
+; Function values: a function can be made by another function, kept in a
+; name, and passed along. Each discount here is a function from a price to a
+; price, and bigger discounts are built out of smaller ones.
+(main
+  (let cart (list 40 25 120))
+  (let sale (call percent-off 10))
+  (let coupon (call amount-off 15))
+  ; `both` takes two rules and gives a third.
+  (let member-deal (call both sale coupon))
+  (blank)
+  (print (str "sale: " (call priced cart sale)))
+  (print (str "coupon: " (call priced cart coupon)))
+  (print (str "sale then coupon: " (call priced cart member-deal)))
+  ; A function value can also be written where it is used.
+  (print (str "half price: " (call priced cart (=> (price) (/ price 2)))))
+)
+
+; A function type: anything that takes a price and gives an Int is a Rule.
+(type + Rule (is (fn-type Int (param price Int))))
+
+(fn-expr + percent-off Rule
+  (param percent Int)
+  ; The function this gives keeps `percent` after `percent-off` has returned.
+  (=> (price) (- price (/ (* price percent) 100)))
+)
+
+(fn-expr + amount-off Rule
+  (param amount Int)
+  (=> (price) (if-expr (> price amount) (- price amount) 0))
+)
+
+(fn-expr + both Rule
+  (param first Rule)
+  (param second Rule)
+  ; A rule held in a name is called like any function.
+  (=> (price) (call second (call first price)))
+)
+
+(fn-expr + priced (list Int)
+  (param prices (list Int))
+  (param rule Rule)
+  (in (call rule each) prices)
+)

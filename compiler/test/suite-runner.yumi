@@ -24,6 +24,8 @@
 + core-suite = "core"
 + diagnostics-suite = "diagnostics"
 + scratch-suite = "scratch"
++ docs-suite = "docs"
+_ suite-names [String] = [parse-suite, core-suite, diagnostics-suite, scratch-suite, docs-suite]
 _ batch-name-rounds Index = 8
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -42,6 +44,7 @@ _ batch-name-rounds Index = 8
 + options [String = String]
 + files [String = String]
 + brix String?
++ title String?
 
 ────────────────────
 + This
@@ -58,6 +61,7 @@ _ batch-name-rounds Index = 8
     - options [String = String]
     - files [String = String]
     - brix String? = null
+    - title String? = null
 
 ────────────────────
 + get id String
@@ -77,7 +81,7 @@ _ batch-name-rounds Index = 8
 ────────────────────
 + get label String
 
-if source.length > 50 then source[0 .. < 50] else source
+title ?? (if source.length > 50 then source[0 .. < 50] else source)
 
 ────────────────────
 + has-option
@@ -115,6 +119,7 @@ options[name] != null
 + options [String = String]
 + files [String = String]
 + brix String?
++ title String? = null
 
 ────────────────────
 + This
@@ -281,6 +286,114 @@ _ without-test-notes String
     ~ !(\nl) .
 
 ━━━━━━━━━━━━━━━━━━━━
+_ DocumentEntry is Union
+
+| example ParsedCase
+| heading String
+| prose
+
+━━━━━━━━━━━━━━━━━━━━
+_ DocumentOutput is (text String, line-no-end Int)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ParsedDocument
+
++ cases [ParsedCase]
+
+────────────────────
++ This
+    - cases [ParsedCase]
+
+────────────────────
++ This ~ Char
+
+~ entries \document-entry* /
+    This(titled-cases(entries))
+
+.. document-entry DocumentEntry ~
+    ~ example \document-example
+        .example(example)
+    ~ title \heading
+        .heading(title)
+    ~ \line-char* \nl
+        .prose
+    ~ \line-char+
+        .prose
+
+.. document-example ParsedCase ~
+    ~ start \opening info \fence-info source \fenced end \closing output \example-output?
+        document-case(start, info, source, end, output)
+
+.. example-output DocumentOutput ~
+    ~ \blank-line* "```output" \fence-info text \fenced end \closing
+        DocumentOutput(text, end)
+
+.. opening Int ~
+    ~ "```brix" &(" " | \nl)
+        (location.begin.line as Int) + 1
+
+.. fence-info String ~
+    ~ chars \line-char*
+        Array'Char(chars).slice-string()
+
+.. fenced String ~
+    ~ chars \fenced-char*
+        Array'Char(chars).slice-string()
+
+.. fenced-char Char ~
+    ~ !(\closing) .
+
+.. closing Int ~
+    ~ \nl "```" \horizontal-space* (\nl | !.)
+        (location.begin.line as Int) + 2
+
+.. heading String ~
+    ~ "#"+ " " chars \line-char* (\nl | !.)
+        Array'Char(chars).slice-string().trim()
+
+.. horizontal-space ~
+    ~ " " | "\t" | "\r" | "\v" | "\f"
+
+.. blank-line ~
+    ~ \horizontal-space* \nl
+
+.. line-char ~
+    ~ !(\nl) .
+
+━━━━━━━━━━━━━━━━━━━━
+_ document-case ParsedCase
+    - start Int
+    - info String
+    - source String
+    - end Int
+    - output DocumentOutput?
+
+ParsedCase(ParsedSource(source, start), tail, false)
+
+.. tail = ParsedTail(output?.text ?? "", output?.line-no-end ?? end, options, files, null)
+.. files = Map'String'String()
+.. options =
+    ** info.split(" ")
+    ?> each.length != 0
+    *> (each, "true")
+    |> Map
+
+━━━━━━━━━━━━━━━━━━━━
+_ do titled-cases [ParsedCase]
+    - entries <DocumentEntry>
+
+. cases [ParsedCase]
+. title String?
+for entry in entries
+    do match? entry
+        | .heading(text)
+            title = text
+        | .example(example)
+            example.title = title
+            cases += example
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
 + TestFile
 
 _ suite String
@@ -304,12 +417,10 @@ file-label = test-file-label(source-path)
 
 . source-file = use File(source-path)
 . text = source-file as String
-. parsed = match text
-    ~ ParsedTestFile
-        it
-    ?! Error("Malformed test file $relative-path")
+. is-document = source-path.ends-with(".md")
+. cases = if is-document then document-cases(text) ++ inline-form-cases(text) else test-file-cases(text)
 
-= <* index, test-case in indexed(parsed.cases)
+= <* index, test-case in indexed(cases)
     TestCase()
         - suite
         - source-path
@@ -317,13 +428,105 @@ file-label = test-file-label(source-path)
         - file-label
         - index + 1
         - test-case.source
-        - without-test-notes(test-case.expected).trim()
+        - case-expected(test-case.expected, is-document)
         - test-case.line-no-start
         - test-case.line-no-end
         - test-case.is-focused
         - test-case.options
         - test-case.files
         - test-case.brix
+        - test-case.title
+
+────────────────────
+_ document-cases [ParsedCase] ?! Error
+    - text String
+
+match text
+    ~ ParsedDocument
+        it.cases
+    ?! Error("Malformed document $relative-path")
+
+────────────────────
+_ test-file-cases [ParsedCase] ?! Error
+    - text String
+
+match text
+    ~ ParsedTestFile
+        it.cases
+    ?! Error("Malformed test file $relative-path")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inline-form-cases [ParsedCase]
+    - text String
+
+. forms = inline-forms(text)
+=? List'ParsedCase() if forms.length == 0
+. checked = " ".join("(tuple ${each[0]} ${brix-quoted(each[1])})" in forms)
+. source = "(import /lang/brix/inline)\n\n(main\n  (for (in (tuple line form) (list $checked))\n    (if (not (call brix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"
+. options = Map'String'String()
+. files = Map'String'String()
+. inline = ParsedCase(ParsedSource(source, 1), ParsedTail("", 1, options, files, null), false)
+inline.title = "Inline forms"
+= [inline]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inline-forms [(Int, String)]
+    - text String
+
+. forms [(Int, String)]
+. prose = "\n".join(unfenced-lines(text))
+. pieces = List'String(prose.split("`{.brix}"))
+. line-no = 1
+. index = 0
+for piece in pieces
+    index += 1
+    if index < pieces.length
+        . parts = List'String(piece.split("`"))
+        . form = parts[parts.length - 1]
+        . start = line-no + line-count(piece) - line-count(form)
+        forms += (start, "|".join(" ".join(each.trim() in form.split("\n")).split("\\|")))
+    line-no += line-count(piece)
+= forms
+
+━━━━━━━━━━━━━━━━━━━━
+_ do unfenced-lines [String]
+    - text String
+
+. lines [String]
+. fenced = false
+for line in text.split("\n")
+    if line.starts-with("```")
+        fenced = !fenced
+        lines += ""
+    else
+        lines += if fenced then "" else line
+= lines
+
+━━━━━━━━━━━━━━━━━━━━
+_ do line-count Int
+    - text String
+
+. count = 0
+for c in text
+    count +=? 1 if c == '\n'
+= count
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-quoted String
+    - text String
+
+. quoted = "\""
+for c in text
+    quoted ++=? "\\" if c == '\\' || c == '"' || c == '$'
+    quoted ++= c
+= quoted ++ "\""
+
+━━━━━━━━━━━━━━━━━━━━
+_ case-expected String
+    - expected String
+    - is-document Bool
+
+if is-document then expected.trim() else without-test-notes(expected).trim()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ parsed-cases
@@ -488,9 +691,9 @@ emit-run(context, project-path, tests-path, selected-test-ids(payload))
     - project-path String
     - tests-path String
 
-if is-not-language-suite && suite != diagnostics-suite && suite != scratch-suite
+if !is-known
     ?! Error("Unknown test suite: $suite")
-.. is-not-language-suite = suite != parse-suite && suite != core-suite
+.. is-known = some(suite-names) • where each == suite
 if tests-path != project-path && !tests-path.starts-with("$project-path/")
     ?! Error("The test root is outside the project: $tests-path")
 =? if suite == scratch-suite && !Path(tests-path).exists
@@ -526,9 +729,10 @@ match id
     - tests-path String
     - start-index Int
 
-. test-paths [String] = sort(find-test-paths(Path(tests-path)))
-. file-case-lists [[TestCase]] = <* test-path in test-paths
+. test-paths [String] = sort(find-test-paths(Path(tests-path), test-file-extension(suite)))
+. parsed-files [[TestCase]] = <* test-path in test-paths
     TestFile(suite, test-path, project-path).parse()
+. file-case-lists [[TestCase]] = <* file-cases in parsed-files when file-cases.length != 0
 . all-cases [TestCase] = <* test-case in all-test-cases(file-case-lists)
 . catalog-tests [JSON] = <* index, test-case in indexed(all-cases)
     test-catalog-json(test-case, start-index + index + 1) as JSON
@@ -616,7 +820,7 @@ for test-case in all-cases
 ` Runs the cases of a suite and reports each. A case of the core suite runs in a batch, as the
 ` batches of `yumitest` run theirs, unless it must run alone; one that expects the compiler to
 ` fail is compiled alone first, and goes to the batch only where the compiler reports nothing.
-if context.suite != core-suite
+if context.suite != core-suite && context.suite != docs-suite
     = <* test-case in cases
         run-and-emit-result(test-case, context)
 . results [CaseResult]
@@ -1397,6 +1601,7 @@ _ shell-quoted String
 ━━━━━━━━━━━━━━━━━━━━
 + do find-test-paths [String]
     - root Path
+    - extension String
 
 . paths [String]
 =? paths if !root.exists
@@ -1406,9 +1611,15 @@ while directories
     for child in directory.contents
         if child.is-dir
             directories += child
-        else if child.is-file && child.ext == "test"
+        else if child.is-file && child.ext == extension
             paths += child as String
 = paths
+
+━━━━━━━━━━━━━━━━━━━━
+_ test-file-extension String
+    - suite String
+
+if suite == docs-suite then "md" else "test"
 
 ━━━━━━━━━━━━━━━━━━━━
 + test-catalog-json [String = JSON]

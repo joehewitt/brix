@@ -1,0 +1,43 @@
+; Unions: a value that is one of several cases, each with its own data. A
+; match over a union must handle every case, so adding a case later points
+; the compiler at each match that needs a new answer.
+(main
+  (let coffee (call (. Payment card) "4242" 450))
+  (let lunch (call (. Payment cash) 2000 1850))
+  (let gift (call (. Payment voucher) "SPRING"))
+  (for (in payment (list coffee lunch gift (. Payment declined)))
+    (print (call receipt payment))
+  )
+  (blank)
+  ; An `is` test narrows the value, so the fields of the cash case can be read inside.
+  (if (is lunch .cash)
+    (print (str "change due: " (- (. lunch tendered) (. lunch owed))))
+  )
+)
+
+(type + Payment (is Union)
+  ; A case holds named fields, a single value, or nothing at all.
+  (variant card (tuple (: last-four String) (: cents Int)))
+  (variant cash (tuple (: tendered Int) (: owed Int)))
+  (variant voucher String)
+  (variant declined)
+)
+
+(fn-expr + receipt String
+  (param payment Payment)
+  ; Each arm picks a case and names its data. Leave an arm out and this stops compiling.
+  (match payment
+    (case (call .card digits cents)
+      (str "card ending " digits " charged " cents)
+    )
+    (case (call .cash tendered owed)
+      (str "cash: " tendered " handed over for " owed)
+    )
+    (case (call .voucher code)
+      (str "voucher " code " redeemed")
+    )
+    (case .declined
+      "payment declined"
+    )
+  )
+)

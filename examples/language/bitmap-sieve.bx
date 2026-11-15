@@ -1,0 +1,37 @@
+; Bitmaps: one bit for each position, for questions with a yes or no answer.
+; A prime sieve keeps "is this number still prime?" for sixty numbers in a
+; single 64-bit word.
+(import /core/bitmap)
+(blank)
+
+(main
+  (let limit 60)
+  (let is-prime (call BitmapBuffer limit))
+  (call (. is-prime fill) true)
+  (= ([] is-prime 0) false)
+  (= ([] is-prime 1) false)
+  (blank)
+  (for (in n (..< 2 limit) (while (< (* n n) limit)))
+    ; A bit reads as a Bool and is written like an item of a list.
+    (if ([] is-prime n)
+      (for (in multiple (..< (* n n) limit (by: n)))
+        (= ([] is-prime multiple) false)
+      )
+    )
+  )
+  (blank)
+  ; The bitmap answers whole-collection questions without a loop in the program.
+  (print (str "primes below " limit ": " (call (. ", " join) (call (. is-prime indices) true))))
+  (print (str (call (. is-prime count) true) " primes, " (call (. is-prime count) false) " others"))
+  (let primes (call (. is-prime indices) true))
+  (let twins List (in (str each " and " (+ each 2)) primes (when (call is-twin is-prime each))))
+  (print (str "twin primes: " (call (. ", " join) twins)))
+  (let gap (?? (call (. is-prime find-consecutive) 5 false) -1))
+  (print (str "first run of five numbers with no prime starts at " gap))
+)
+
+(fn-expr + is-twin Bool
+  (param is-prime BitmapBuffer)
+  (param n Int)
+  (and (< (+ n 2) (. is-prime capacity)) ([] is-prime (+ n 2)))
+)

@@ -1,0 +1,61 @@
+; Diffs: `/data/diff` lines two texts up against each other. The document it
+; gives can be read row by row, as a side-by-side view would, or as a summary
+; of which lines changed.
+(import /data/diff)
+(blank)
+
+(main
+  ; A line ends with its newline, as in a file, so each draft is given its last one.
+  (let before (str (call first-draft) "\n"))
+  (let after (str (call second-draft) "\n"))
+  (let changes (call diff-document before after))
+  (blank)
+  ; Every row is a line from one text or both, with the kind of change it is.
+  (for (in index (..< 0 (. changes row-count)))
+    (let row (call (. changes row-at) index))
+    (print (str (call mark (. row kind)) " " (. row text)))
+  )
+  (blank)
+  (print (str (. changes additions) " added, " (. changes deletions) " removed"))
+  ; A removed line and the added line that replaced it are paired as one change.
+  (for (in change (call (. changes line-changes)))
+    (print (str (. change kind) " at line " (+ (. change line) 1)))
+  )
+)
+
+(fn-expr + mark String
+  (param kind DiffKind)
+  ; The kinds are cases of a union, so a match can name the ones it cares about.
+  (match kind
+    (case .inserted
+      "+"
+    )
+    (case .deleted
+      "-"
+    )
+    (default
+      " "
+    )
+  )
+)
+
+(fn-expr + first-draft _
+  (paragraph
+    "Pancakes"
+    "2 cups flour"
+    "1 cup milk"
+    "1 egg"
+    "Mix and fry."
+  )
+)
+
+(fn-expr + second-draft _
+  (paragraph
+    "Pancakes"
+    "2 cups flour"
+    "1.5 cups milk"
+    "1 egg"
+    "1 tsp vanilla"
+    "Mix and fry."
+  )
+)

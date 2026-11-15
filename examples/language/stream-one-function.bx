@@ -1,0 +1,37 @@
+; Streams: `(stream Int)` takes any source of successive integers. One function
+; adds up a stored list, a range, a generator and a channel that another task
+; is still filling.
+(main
+  (print (str "from a list: " (call total-steps (list 4200 8100 6050))))
+  (print (str "from a range: " (call total-steps (.. 1000 3000 (by: 1000)))))
+  (print (str "from a generator: " (call total-steps (call training-plan))))
+  (blank)
+  ; A new task sends the readings. Closing the channel is what ends the total.
+  (let pedometer (channel Int))
+  (do-new
+    (<- pedometer 300)
+    (<- pedometer 450)
+    (call (. pedometer close))
+  )
+  ; This call waits for the task's readings. It is written like the calls above.
+  (print (str "from a channel: " (call total-steps pedometer)))
+)
+
+(fn-do + total-steps Int
+  (param walks (stream Int))
+  ; Nothing here says whether the steps are stored or still arriving.
+  (let total 0)
+  (for (in steps walks)
+    (+= total steps)
+  )
+  (return total)
+)
+
+(fn-do + training-plan _
+  ; A function that yields is a generator: each `yield` is the next item.
+  (let steps 500)
+  (for (in week (.. 1 4))
+    (yield steps)
+    (*= steps 2)
+  )
+)

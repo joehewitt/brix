@@ -43,6 +43,10 @@ _ lazy-depth U32
 _ guard-depth U32
 _ stream-reach U32
 _ capture-floor U32
+_ pattern-depth U32
+_ pattern-floor U32
+_ alternative-floor U32
+_ alternative-ceiling U32
 _ stream-captures Map'SlotId'Bool
 _ coded-depth U32
 _ closed-matches [SyntaxId]
@@ -289,6 +293,10 @@ lazy-depth = 0
 guard-depth = 0
 stream-reach = 0
 capture-floor = 0
+pattern-depth = 0
+pattern-floor = 0
+alternative-floor = 0
+alternative-ceiling = 0
 stream-captures.clear()
 coded-depth = 0
 closed-matches.clear()
@@ -3604,12 +3612,24 @@ _ do declare-pattern Void
 ` Predicates and equalities inside the pattern are expressions and are walked as such.
 if id == 0
     =
+if pattern-depth == 0
+    pattern-floor = names.length as U32
+pattern-depth += 1
+declare-pattern-node(id, kind, flags, group)
+pattern-depth -= 1
+
+────────────────────
+_ do declare-pattern-node Void
+    - id SyntaxId
+    - kind SlotKind
+    - flags SlotMask
+    - group SyntaxId
 
 do match tree.nodes[id]
     | .node-type-capture(row)
         . name = identifier-name(tree, row.id)
         if name
-            . slot = declare(name, kind, id, flags, group)
+            . slot = declare-bound(name, kind, id, flags, group)
             . declares U32 = ResolutionFlag.resolution-declares
             . declared = Resolution(.resolve-slot, 0, slot, 0, declares)
             bindings.set-resolution(binding, row.id, declared)
@@ -3618,13 +3638,13 @@ do match tree.nodes[id]
         else
             walk-tests(row.type)
     | .node-identifier(row)
-        . slot = declare(row.name, kind, id, flags, group)
+        . slot = declare-bound(row.name, kind, id, flags, group)
         . resolution = Resolution(.resolve-slot, 0, slot, 0, ResolutionFlag.resolution-declares)
         bindings.set-resolution(binding, id, resolution)
     | .node-type-remainder(row)
         declare-pattern(row.name, kind, flags, group)
     | .node-type-property(row)
-        . slot = declare(row.name, kind, id, flags, group)
+        . slot = declare-bound(row.name, kind, id, flags, group)
         . resolution = Resolution(.resolve-slot, 0, slot, 0, ResolutionFlag.resolution-declares)
         bindings.set-resolution(binding, id, resolution)
     | .node-structure-match(row)
@@ -3650,8 +3670,15 @@ do match tree.nodes[id]
         declare-pattern(row.type, kind, flags, group)
         declare-pattern(row.value, kind, flags, group)
     | .node-type-or(row)
+        . start = names.length as U32
         declare-pattern(row.left, kind, flags, group)
+        . floor = alternative-floor
+        . ceiling = alternative-ceiling
+        alternative-floor = if ceiling > floor then floor else start
+        alternative-ceiling = names.length as U32
         declare-pattern(row.right, kind, flags, group)
+        alternative-floor = floor
+        alternative-ceiling = ceiling
     | .node-type-and(row)
         declare-pattern(row.left, kind, flags, group)
         declare-pattern(row.right, kind, flags, group)
@@ -3675,6 +3702,28 @@ do match tree.nodes[id]
         walk(row.value)
     ??
         =
+
+────────────────────
+_ do declare-bound SlotId
+    - name Atom
+    - kind SlotKind
+    - syntax SyntaxId
+    - flags SlotMask
+    - group SyntaxId
+
+` A name an arm's pattern binds. One that an alternative before it binds, as `n` in
+` `| .a(n) | .b(n)`, is the slot that alternative declared, which the one taken fills; one that
+` the same alternative binds again is an error.
+. position = lookup-position(name)
+if position && kind == .slot-pattern
+    . earlier = bindings.slots[name-slots[position]]
+    if earlier.kind == kind && earlier.scope == current-scope
+        if position >= alternative-floor && position < alternative-ceiling
+            = name-slots[position]
+        if position >= pattern-floor
+            . message = "\"${name.text}\" is bound twice in this pattern; give each place a name of its own"
+            bindings.diagnostics.append(Diagnostic(module, syntax, .stated, program.store-atom(message)))
+= declare(name, kind, syntax, flags, group)
 
 ────────────────────
 _ do declare-captured Void

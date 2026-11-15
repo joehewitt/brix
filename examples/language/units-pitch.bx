@@ -1,0 +1,36 @@
+; Units: two small families, one for pitch and one for the distance between
+; pitches, keep a frequency from being mistaken for an interval.
+(type-line + Hertz (alias hz) (is F64))
+(type-line + Kilohertz (alias khz) (is 1000hz))
+(blank)
+(type-line + Semitones (alias st) (is F64))
+(type-line + Octaves (alias oct) (is 12st))
+(blank)
+
+(main
+  (let concert-a 440hz)
+  (let chord
+    (call List
+      (block
+        (bullet (tuple "A" 0st))
+        (bullet (tuple "C#" 4st))
+        (bullet (tuple "E" 7st))
+      )
+    )
+  )
+  (for (in (tuple name step) chord)
+    (let pitch (call raised concert-a step))
+    (print (str name " is " (call (. pitch places) 2) " Hz"))
+  )
+  (blank)
+  ; `raised` asks for semitones, so octaves become twelve semitones each on the way in.
+  (print (str "one octave up: " (as (call raised concert-a 1oct) UnitString)))
+  (print (str "three octaves up: " (as (as (call raised concert-a 3oct) Kilohertz) UnitString)))
+)
+
+(fn-expr + raised Hertz
+  (param pitch Hertz)
+  (param by Semitones)
+  ; Each semitone multiplies the frequency by the twelfth root of two.
+  (* pitch (%% 2.0 (/ (as by Float) 12)))
+)

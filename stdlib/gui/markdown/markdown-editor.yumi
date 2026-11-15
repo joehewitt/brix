@@ -45,6 +45,7 @@ _ markdown-heading-keys :=
 + base String
 + column-width Length? = null
 + column-padding = Insets(0, 0, 0, 0)
++ code-renderer MarkdownCodeRenderer? = null
 + text-input-context => caret-context()
 + undo-target => this
 + event save-requested CodeSession
@@ -89,9 +90,19 @@ _ blink-generation U64
             <MarkdownBlockView
                 block = slot.#item
                 is-editable = true
+                code-renderer = #code-renderer
                 min-width = SizeSpec.percent(100%)
                 max-width = if #column-width != null then SizeSpec.coord(#column-width) else SizeSpec.auto
                 align-x = Alignment.center
+                for request on source-requested
+                    toggle-source(request)
+
+────────────────────
+whenever #code-renderer
+
+render-blocks()
+block-source.revision.bump()
+refresh-view()
 
 ────────────────────
 whenever #column-padding
@@ -571,8 +582,35 @@ if change.is-rebuilt
 else if change.removed > 0 || change.added > 0
     block-layout.splice(block-source, change.at, change.removed, change.added)
     repaint-rows()
+render-blocks()
 block-source.revision.bump()
 reveal-pending-line()
+
+────────────────────
+_ do render-blocks
+
+for block in blocks
+    markdown-render-block(code-renderer, block)
+
+────────────────────
+_ do toggle-source
+    - request MarkdownSourceRequest
+
+. block = request.block
+markdown-toggle-source(code-renderer, block, request.shows)
+. index = block.index
+. active = session
+=? if !active || index >= blocks.length || blocks[index] as Pointer != block as Pointer
+if block.shows-source
+    set-caret(MarkdownPoint(index, 0, 0), false)
+else
+    caret = clamp-point(caret)
+    anchor = clamp-point(anchor)
+sync-session-caret(active)
+goal-x = null
+block-source.revision.bump()
+request-focus()
+refresh-view()
 
 ────────────────────
 _ do commit
@@ -923,7 +961,7 @@ if kind != MarkdownBlockKind.paragraph
 =? if point.block == 0
 . previous = point.block - 1
 . before = blocks[previous]
-if markdown-is-atomic(before.kind) || model.is-empty-block(previous)
+if markdown-is-atomic(before) || model.is-empty-block(previous)
     commit(previous, point.block, [draft-at(point.block)], MarkdownPoint(0, 0, 0))
 else if markdown-is-prose(before.kind)
     . merged = draft-at(previous)
@@ -954,7 +992,7 @@ if point.offset < size
 =? if next >= blocks.length
 . after = blocks[next]
 . here = draft-at(point.block)
-if markdown-is-atomic(after.kind) || model.is-empty-block(next)
+if markdown-is-atomic(after) || model.is-empty-block(next)
     commit(point.block, next, [here], MarkdownPoint(0, point.cell, point.offset))
 else if here.is-empty
     commit(point.block, next, [draft-at(next)], MarkdownPoint(0, 0, 0))
@@ -1480,7 +1518,7 @@ _ do point-at-source MarkdownPoint
 if offset > model.ends[index] && index + 1 < blocks.length
     index += 1
 . block = blocks[index]
-=? clamp-point(MarkdownPoint(index, 0, 0)) if markdown-is-atomic(block.kind)
+=? clamp-point(MarkdownPoint(index, 0, 0)) if markdown-is-atomic(block)
 . start = model.starts[index]
 if block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
     . body = text.line-start(min(text.line-at(start) + 1, text.line-count - 1))
@@ -1533,7 +1571,7 @@ _ do source-at-point Size
 . index = point.block
 . block = blocks[index]
 . start = model.starts[index]
-=? start if model.is-empty-block(index) || markdown-is-atomic(block.kind)
+=? start if model.is-empty-block(index) || markdown-is-atomic(block)
 if block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhibit
     . body = text.line-start(min(text.line-at(start) + 1, text.line-count - 1))
     = min(body + point.offset, model.ends[index])

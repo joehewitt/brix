@@ -1,0 +1,67 @@
+; State machines: a state lists the events that matter while it is active, an
+; event can carry data into the next state, and a timer belongs to the state
+; that names it.
+(import /stream/timing)
+(blank)
+
+(main
+  (let vending (call Vending))
+  (blank)
+  ; 25 does not cover the price, so the first selection fits no move and is ignored.
+  (<- (. vending coins) 25)
+  (<- (. vending selections) "tea")
+  (<- (. vending coins) 50)
+  (<- (. vending selections) "tea")
+  (blank)
+  ; A coin, then thirty seconds with no selection.
+  (<- (. vending coins) 25)
+  (for (in i (..< 0 3))
+    (<- (. vending ticks) 10)
+  )
+  (print (str "idle again: " (is (. vending phase) .idle)))
+)
+
+(type + Vending
+  (event + coins Int)
+  (event + selections String)
+  (event + ticks F64)
+  (prop + price _ (= 75))
+  (prop + phase _
+    (machine
+      ; The first state with no trigger is where the machine starts.
+      (state idle
+        (then (call paying coin) (trigger for coin coins))
+      )
+      (blank)
+      ; `total` is this state's data. Another coin enters the state again with a new total.
+      (state (call paying total)
+        (do
+          (print (str "credit " total))
+        )
+        (blank)
+        (then (call paying (+ total coin)) (trigger for coin coins))
+        ; The guard holds this move back until the credit covers the price.
+        (then (call vending item) (trigger for item selections (>= total price)))
+        ; `delayed` counts ticks only while this state is active, and from zero each time.
+        (then (call refunding total) (trigger on (call delayed ticks 30)))
+      )
+      (blank)
+      (state (call vending item)
+        (do
+          (print (str "dispensing " item))
+        )
+        (blank)
+        ; A move with no trigger is taken at once.
+        (then idle)
+      )
+      (blank)
+      (state (call refunding amount)
+        (do
+          (print (str "refunding " amount))
+        )
+        (blank)
+        (then idle)
+      )
+    )
+  )
+)

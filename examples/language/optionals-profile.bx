@@ -1,0 +1,47 @@
+; Optionals: a type ending in `?` may hold nothing, and the compiler makes
+; every use say what happens then. No empty text or -1 stands in for a
+; missing value.
+(main
+  (let ada (call Profile "Ada Lovelace" "ada" (call Address "London") 36))
+  (let guest (call Profile "Guest 4821" null null null))
+  (blank)
+  (print (call card ada))
+  (print (call card guest))
+  ; `!!` insists the value is there and raises an error when it is not.
+  (print (str "Ada is " (!! (. ada age))))
+)
+
+(type + Address (is Tuple)
+  (prop + city String)
+)
+
+(type + Profile (is Tuple)
+  (prop + name String)
+  (prop + nickname (? String))
+  (prop + address (? Address))
+  (prop + age (? Int))
+)
+
+(fn-do + card String
+  (param profile Profile)
+  ; `??` gives the first value that is present.
+  (let handle (?? (. profile nickname) (. profile name)))
+  ; `?.` reads a member only when its owner is present, and gives null otherwise.
+  (let city (?? (?. (. profile address) city) "somewhere"))
+  ; `only-if` makes an optional: the text when the condition holds, else null.
+  (let badge (only-if "adult" (if (call is-adult profile))))
+  (let line (str handle " from " city))
+  ; Inside an `if` on an optional, the value is known to be present.
+  (if badge
+    (= line (str line " [" badge "]"))
+  )
+  (if (. profile age)
+    (= line (str line ", born around " (- 2026 (. profile age))))
+  )
+  (return line)
+)
+
+(fn-expr + is-adult Bool
+  (param profile Profile)
+  (>= (?? (. profile age) 0) 18)
+)

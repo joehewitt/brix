@@ -1,0 +1,114 @@
+; Fusion: a pipeline read where it is written is compiled into one loop. Its
+; stages leave no objects and no calls behind, so it costs what the loop you
+; would write by hand costs. The times printed vary from run to run.
+(import /stream/aggregate)
+(import /time/clock)
+(import /time/duration)
+(blank)
+(prop _ count _ (= 30000000))
+(blank)
+
+(main
+  (let expected (call timed "a loop written by hand" by-hand))
+  (let same true)
+  ; The four below are fused, and take about as long as the loop above.
+  (= same (and same (== expected (call timed "a pipeline read by a loop" by-pipeline))))
+  (= same (and same (== expected (call timed "stages read by `sum`" by-library))))
+  (= same (and same (== expected (call timed "a comprehension" by-comprehension))))
+  (= same (and same (== expected (call timed "a generator marked @inline" by-inline))))
+  ; These two are not: each has to exist as an object that remembers its place.
+  (= same (and same (== expected (call timed "a generator left unmarked" by-plain))))
+  (= same (and same (== expected (call timed "a pipeline read from two places" by-kept))))
+  (print (str "every total is the same: " same))
+)
+
+(fn-do + timed Int
+  (param label String)
+  (param work (fn-type Int))
+  (let started (call clock))
+  (let total (call work))
+  (let taken (call (of (. started elapsed) Milliseconds)))
+  (print (str (call (. taken places) 0) " ms  " label))
+  (return total)
+)
+
+(fn-do + by-hand Int
+  (let total 0)
+  (for (in n (.. 1 count))
+    (if (== (% n 3) 0)
+      (+= total (* n 2))
+    )
+  )
+  (return total)
+)
+
+(fn-do + by-pipeline Int
+  ; Bullets and stages ask for fusion on their own. This compiles to the loop above.
+  (let doubled
+    (block
+      (bullet* (.. 1 count))
+      (pipe ?> (== (% each 3) 0))
+      (pipe *> (* each 2))
+    )
+  )
+  (let total 0)
+  (for (in each doubled)
+    (+= total each)
+  )
+  (return total)
+)
+
+(fn-expr + by-library Int
+  ; `sum` is a library function marked @inline, so its loop joins the pipeline's.
+  (call sum (*> (?> (.. 1 count) (== (% each 3) 0)) (* each 2)))
+)
+
+(fn-expr + by-comprehension Int
+  (call sum (in (* each 2) (.. 1 count) (when (== (% each 3) 0))))
+)
+
+(fn-do + by-inline Int
+  (let total 0)
+  (for (in n (call threes))
+    (+= total (* n 2))
+  )
+  (return total)
+)
+
+(fn-do + threes _ @inline
+  ; `@inline` asks for a generator of your own to be fused into the loop that reads it.
+  (for (in n (.. 1 count))
+    (yield? (only-if n (if (== (% n 3) 0))))
+  )
+)
+
+(fn-do + by-plain Int
+  (let total 0)
+  (for (in n (call plain-threes))
+    (+= total (* n 2))
+  )
+  (return total)
+)
+
+(fn-do + plain-threes _
+  (for (in n (.. 1 count))
+    (yield? (only-if n (if (== (% n 3) 0))))
+  )
+)
+
+(fn-do + by-kept Int
+  ; One read with `<-` and a loop for the rest: two readers share the pipeline, so
+  ; each stage is kept as a generator that the next one resumes.
+  (let doubled
+    (block
+      (bullet* (.. 1 count))
+      (pipe ?> (== (% each 3) 0))
+      (pipe *> (* each 2))
+    )
+  )
+  (let total (?? (<- doubled) 0))
+  (for (in each doubled)
+    (+= total each)
+  )
+  (return total)
+)

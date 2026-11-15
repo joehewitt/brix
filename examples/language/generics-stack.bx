@@ -1,0 +1,58 @@
+; Generics: a type or function written once for any item type. The compiler
+; keeps track of the type each use chose, so what comes out of a stack of
+; texts is a text and what comes out of a stack of numbers is a number.
+(main
+  (let plates (call (of Stack String)))
+  (call (. plates push) "dinner plate")
+  (call (. plates push) "side plate")
+  (call (. plates push) "saucer")
+  (print (str "top plate: " (?? (call (. plates pop)) "none")))
+  (print (str "plates left: " (. plates count)))
+  (blank)
+  (let undo (call (of Stack Int)))
+  (call (. undo push) 10)
+  (call (. undo push) 25)
+  ; What `pop` gives here is an Int, so it can be added to.
+  (print (str "last change plus one: " (+ (?? (call (. undo pop)) 0) 1)))
+  (print (str "change before it: " (?? (. undo peek) 0)))
+  (blank)
+  ; A generic function takes its item type from its argument.
+  (print (str "largest number: " (call largest (list 3 9 4))))
+  (print (str "largest word: " (call largest (list "pear" "apple" "quince"))))
+)
+
+(type + (of Stack Item)
+  ; `Item` stands for whichever type a stack is made with.
+  (blank)
+  (prop + items (list Item))
+  (fn-expr + count _ :get
+    (. items length)
+  )
+  (fn-expr + peek (? Item) :get
+    ; An empty stack has no top, so the result is an optional item.
+    (only-if ([] items (- (. items length) 1)) (if (> (. items length) 0)))
+  )
+  (fn-do + push _
+    (param item Item)
+    (+= items item)
+  )
+  (fn-do + pop (? Item)
+    (let top peek)
+    (if top
+      (call (. items pop))
+    )
+    (return top)
+  )
+)
+
+(fn-do + (of largest Item) Item
+  (param values (list Item))
+  ; The body compares items with `>`, so it works for any type that can be compared.
+  (let best ([] values 0))
+  (for (in value values)
+    (if (> value best)
+      (= best value)
+    )
+  )
+  (return best)
+)

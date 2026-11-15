@@ -1440,10 +1440,44 @@ items.length > 0
 :----
 %crash
 
-Exception: Illegal types for operation
+Exception: function has-items cannot be tested as a condition; it is a function, so call it first
 <no file:3>
     if box.has-items
        ^^^^^^^^^^^^^
+;====
+:====
+# An object of a class that does not declare `!this` has no truth to test or deny.
+
+. thing = Thing()
+if thing
+    -- "thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%crash
+
+Exception: Thing cannot be tested as a condition, since operator "!" is not defined for it
+<no file:3>
+    if thing
+       ^^^^^
+;====
+:====
+
+. thing = Thing()
+-- !thing
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+:----
+%crash
+
+Exception: Operator "!" is not defined for Thing
+<no file:3>
+    -- !thing
+       ^^^^^^
 ;====
 :====
 # `!` of a function value has no truth to deny.
@@ -1471,4 +1505,57 @@ Exception: Operator "!" is not defined for function has-items; it is a function,
 <no file:3>
     -- "${!box.has-items}"
           ^^^^^^^^^^^^^^
+;====
+:====
+# A range, a tuple, a table or a builder that does not say whether it is empty cannot be tested as a condition.
+
+. r = 0 .. 3
+if r
+    -- "yes"
+
+:----
+%crash
+
+Exception: Range'I64 cannot be tested as a condition, since operator "!" is not defined for it
+<no file:3>
+    if r
+       ^
+;====
+:====
+# A table has no truth of its own either.
+
+/core/table
+
+. t = Table'Point(3)
+-- "made" if t
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+:----
+%crash
+
+Exception: Table'Point cannot be tested as a condition, since operator "!" is not defined for it
+<no file:5>
+    -- "made" if t
+       ^^^^^^^^^^^
+;====
+:====
+# Values ordered by "<" need an operator that orders them; two lists, tuples or atoms have none.
+
+-- "a" < "b"
+. xs = [1, 2]
+. ys = [1, 3]
+-- xs < ys
+
+:----
+%crash
+
+Exception: Operator "<" is not defined for [I64] and [I64]
+<no file:5>
+    -- xs < ys
+       ^^^^^^^
 ;====

@@ -1,0 +1,48 @@
+; The compiler as a library: `/lang` is the compiler's own source, so a program
+; can parse source text into a syntax tree and ask what it declares. This one
+; outlines a small module, then shows what a broken one reports.
+(import /core/atom-pool)
+(import /lang/lint/source)
+(import /lang/lint/symbols)
+(blank)
+
+(main
+  ; The path's extension picks the reader, and nothing is read from disk.
+  (let builder (call parse-lint-text (call garden) "garden.bx"))
+  ; Finishing the builder gives the tree, with its names kept in the pool.
+  (let tree (call (. builder finish) (call AtomPool)))
+  (print "garden.bx declares:")
+  ; The linter's own collector walks the tree's top-level declarations.
+  (for (in symbol (call collect-symbols tree "garden" "garden.bx" false))
+    (print (str "  line " (+ (. symbol line) 1) ": " (. symbol kind) " " (. symbol name)))
+  )
+  (blank)
+  ; A syntax error is an ordinary error, held here in place of the tree.
+  (let failed (catch (call parse-lint-text (call broken) "broken.bx")))
+  (print "broken.bx reports:")
+  (print failed)
+)
+
+(fn-expr + garden _
+  (paragraph
+    "(type + Plant"
+    "  (prop + name String)"
+    "  (prop + days-to-harvest Int)"
+    ")"
+    (blank)
+    "(fn-expr + ready-soon Bool"
+    "  (param plant Plant)"
+    "  (< (. plant days-to-harvest) 14)"
+    ")"
+    (blank)
+    "(prop + bed-count _ (= 4))"
+  )
+)
+
+(fn-expr + broken _
+  (paragraph
+    "(fn-expr + ready-soon Bool"
+    "  (param plant Plant"
+    ")"
+  )
+)

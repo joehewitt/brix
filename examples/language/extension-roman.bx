@@ -1,0 +1,64 @@
+; Extensions: `extend` adds members to a type declared elsewhere, even a
+; built-in one. Here every Int learns to write itself as a Roman numeral, and
+; every String learns to read one.
+(prop + numerals _
+  (=
+    (call List
+      (block
+        (bullet (tuple 1000 "M"))
+        (bullet (tuple 900 "CM"))
+        (bullet (tuple 500 "D"))
+        (bullet (tuple 400 "CD"))
+        (bullet (tuple 100 "C"))
+        (bullet (tuple 90 "XC"))
+        (bullet (tuple 50 "L"))
+        (bullet (tuple 40 "XL"))
+        (bullet (tuple 10 "X"))
+        (bullet (tuple 9 "IX"))
+        (bullet (tuple 5 "V"))
+        (bullet (tuple 4 "IV"))
+        (bullet (tuple 1 "I"))
+      )
+    )
+  )
+)
+(blank)
+
+(main
+  ; `roman` reads like a property Int always had, on a name and on a sum alike.
+  (for (in year (list 4 9 14 40 1994 2024))
+    (print (str year " is " (. year roman)))
+  )
+  (print (str "1000 + 66 is " (. (+ 1000 66) roman)))
+  (print (str "MCMXCIV is " (. "MCMXCIV" from-roman)))
+)
+
+(extend + Int
+  (fn-do + roman String :get
+    ; `:get` makes this a property, read without a call. `this` is the number itself.
+    (let rest this)
+    (let text "")
+    (for (in (tuple value numeral) numerals)
+      (while (>= rest value)
+        (+= text numeral)
+        (-= rest value)
+      )
+    )
+    (return text)
+  )
+)
+
+(extend + String
+  ; The same table read the other way, on another built-in type.
+  (fn-do + from-roman Int :get
+    (let rest this)
+    (let total 0)
+    (for (in (tuple value numeral) numerals)
+      (while (call (. rest starts-with) numeral)
+        (+= total value)
+        (= rest ([] rest (... (. numeral length))))
+      )
+    )
+    (return total)
+  )
+)

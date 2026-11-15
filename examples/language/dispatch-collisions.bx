@@ -1,0 +1,80 @@
+; Multiple dispatch: one function name has several versions, and the types of
+; both arguments choose among them. Neither argument owns the function.
+(main
+  (let ship (call Ship "Kestrel"))
+  (let rock (call Asteroid 40))
+  (let station (call Station))
+  (blank)
+  ; Each call takes the version that fits both of its arguments most closely.
+  (print (str "ship and rock: " (call collide ship rock)))
+  (print (str "rock and ship: " (call collide rock ship)))
+  (print (str "rock and rock: " (call collide rock rock)))
+  (print (str "ship and station: " (call collide ship station)))
+  (blank)
+  (let bodies (call (of List Body) ship rock station))
+  (for (in each bodies)
+    (print (str "held as a Body, meets a rock: " (call meet each rock)))
+  )
+)
+
+(type + Body)
+
+(type + Ship (is Body)
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
+
+(type + Asteroid (is Body)
+  (prop + size Int)
+  (fn-do + This _
+    (param size _)
+  )
+)
+
+(type + Station (is Body))
+
+(fn-expr + collide String
+  (param a Body)
+  (param b Body)
+  ; The general version, taken when no closer one fits.
+  "they drift apart"
+)
+
+(fn-expr + collide String
+  (param ship Ship)
+  (param rock Asteroid)
+  (str (. ship name) " takes " (. rock size) " damage")
+)
+
+(fn-expr + collide String
+  (param rock Asteroid)
+  (param ship Ship)
+  ; The same pair the other way round hands the work to the version above.
+  (call collide ship rock)
+)
+
+(fn-expr + collide String
+  (param a Asteroid)
+  (param b Asteroid)
+  (str "two rocks become " (+ (. a size) (. b size)) " pebbles")
+)
+
+(fn-expr + meet String
+  (param a Body)
+  (param b Body)
+  ; A version is chosen from the types the compiler knows. For a value held only
+  ; as a Body, a match on the pair finds what each is, then calls the version for it.
+  (match (tuple a b)
+    (case (tuple (: ship Ship) (: rock Asteroid))
+      (call collide ship rock)
+    )
+    (case (tuple (: first Asteroid) (: second Asteroid))
+      (call collide first second)
+    )
+    (default
+      (call collide a b)
+    )
+  )
+)

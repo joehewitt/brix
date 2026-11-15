@@ -1,0 +1,169 @@
+; A card run by a state machine. The machine is declared in the component beside
+; its markup. Each state is a property, so markup branches on it, style rules
+; wait on it, and work that belongs to one state stops when that state is left.
+(import /graphics/text)
+(import /gui)
+(import /math)
+(import /time/duration)
+(blank)
+
+(main
+  (<> App
+    (<> Window (• flex-col) (• items-center) (• justify-center)
+      (= title "Download")
+      (= size (tuple 440 280))
+      (blank)
+      (<> DownloadCard)
+    )
+  )
+)
+
+(style DownloadTheme
+  (using GUIDefaultTheme)
+  (using GUIMotionTheme)
+  (rule download-card (• flex-col) (• bg gui-panel-color) (• w 320) (• p 20)
+    (= gap 12)
+    (= corner-radius gui-card-radius)
+    (= border-width 1)
+    (= border-color gui-border-color)
+    (= motion gui-motion-smooth)
+    (blank)
+    ; A rule waits on a state of the machine as it would on `#is-hovered`.
+    (when-style #is-done
+      (= border-color gui-success-color)
+    )
+    (blank)
+    ; Entering the failed state plays the library's shake once, and reddens the status.
+    (when-style #is-failed
+      (= border-color gui-danger-color)
+      (= animation (shape shake 6))
+      (blank)
+      (rule download-status
+        (= color gui-danger-color)
+      )
+    )
+  )
+  (blank)
+  (rule download-name (• text gui-strong-text-color)
+    (= font-size 16)
+    (= font-weight (. FontWeight bold))
+  )
+  (blank)
+  (rule download-status (• text gui-muted-text-color)
+    (= motion gui-motion-smooth)
+  )
+  (blank)
+  (rule download-actions (• flex-row) (• justify-end)
+    (= gap 8)
+  )
+)
+
+(type + DownloadCard (is Box)
+  (using DownloadTheme)
+  (prop + megabytes _ (= 48))
+  (prop + amount F64 (= 0))
+  (prop + received _ (= (as (call round (* #amount megabytes)) Int)))
+  (prop + note _ (= ""))
+  (prop _ tries _ (= 0))
+  ; The buttons and the work below say what happened. The machine decides what it means.
+  (event _ starts Bool)
+  (event _ stops Bool)
+  (event _ ends Bool)
+  (content
+    (<> This (• download-card)
+      (<> Label (• download-name)
+        (= text "atlas-2026.zip")
+      )
+      ; While downloading the line counts. Otherwise it shows the note the state left.
+      (<> Label (• download-status)
+        (= text (if-expr #is-downloading (str #received " of " megabytes " MB") #note))
+      )
+      (<> ProgressBar
+        (= value #amount)
+      )
+      (<> Box (• download-actions)
+        ; One branch for each state. Only the buttons that make sense now exist.
+        (if #is-idle
+          (<> Button (text: "Download")
+            (= role (. ButtonRole default))
+            (= action (=> () :do (<- starts true)))
+          )
+        )
+        (if #is-downloading
+          (<> Button (text: "Cancel")
+            (= action (=> () :do (<- stops true)))
+          )
+        )
+        (if #is-failed
+          (<> Button (text: "Dismiss")
+            (= action (=> () :do (<- stops true)))
+          )
+          (<> Button (text: "Retry")
+            (= role (. ButtonRole default))
+            (= action (=> () :do (<- starts true)))
+          )
+        )
+        (if #is-done
+          (<> Button (text: "Start over")
+            (= action (=> () :do (<- stops true)))
+          )
+        )
+      )
+    )
+    (blank)
+    ; The first state is the one the card starts in. `do` runs each time it is entered.
+    (state is-idle
+      (do
+        (= amount 0)
+        (= note (str megabytes " MB"))
+      )
+      (then is-downloading (trigger on starts))
+    )
+    (blank)
+    (state is-downloading
+      (do
+        (+= tries 1)
+      )
+      (blank)
+      ; This loop is the download. It is subscribed to the frame clock when the
+      ; state is entered and dropped when it is left, so nothing has to stop it.
+      (for (on tick frames)
+        (call receive (. tick delta))
+      )
+      (blank)
+      ; One event, two ways out: the value it carries picks the state.
+      (then is-done (trigger on ends each))
+      (then is-failed (trigger on ends (not each)))
+      (then is-idle (trigger on stops))
+    )
+    (blank)
+    (state is-done
+      (do
+        (= note "Saved to Downloads.")
+      )
+      (then is-idle (trigger on stops))
+    )
+    (blank)
+    ; Retry goes back to downloading and keeps the amount already received.
+    (state is-failed
+      (do
+        (= note "The connection dropped.")
+      )
+      (then is-downloading (trigger on starts))
+      (then is-idle (trigger on stops))
+    )
+  )
+  (fn-do _ receive _
+    (param delta Nanoseconds)
+    (+= amount (* (as (as delta Seconds) F64) 0.25))
+    ; There is no network here. The first try is made to drop at 60%, so that the
+    ; failed state gets its turn.
+    (if (and (== tries 1) (>= amount 0.6))
+      (<- ends false)
+      (else-if (>= amount 1)
+        (= amount 1)
+        (<- ends true)
+      )
+    )
+  )
+)

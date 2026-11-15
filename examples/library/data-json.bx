@@ -1,0 +1,43 @@
+; JSON: `JSON(text)` decodes text into ordinary maps, lists, texts and numbers.
+; `as` says which of those a value is, the maps and lists can be changed in
+; place, and `to-json` gives text again.
+(import /data/json)
+(blank)
+
+(main
+  (let order (call JSON (call order-text)))
+  (let fields (as order (map String JSON)))
+  (print (str "customer: " ([] fields "customer")))
+  (blank)
+  (let total 0.0)
+  (for (in item (as ([] fields "items") (list JSON)))
+    (let line (as item (map String JSON)))
+    (let cost (* (as ([] line "price") Float) (as ([] line "count") Int)))
+    (print (str "  " ([] line "count") " x " ([] line "name") " = " cost))
+    (+= total cost)
+  )
+  (blank)
+  ; The map is the one inside `order`, so the order changes with it.
+  (= ([] fields "total") total)
+  (= ([] fields "status") "packed")
+  (-= ([] fields "gift"))
+  (print (str "encoded: " (call to-json order)))
+  (blank)
+  ; For text from outside, `parse-json` gives an error that can be caught.
+  (let broken (catch (call parse-json "{\"customer\": ")))
+  (print (str "broken text: " broken))
+)
+
+(fn-expr + order-text _
+  (paragraph
+    "{"
+    "  \"customer\": \"Ada\","
+    "  \"status\": \"new\","
+    "  \"gift\": false,"
+    "  \"items\": ["
+    "    {\"name\": \"notebook\", \"price\": 4.75, \"count\": 2},"
+    "    {\"name\": \"pencil\", \"price\": 1.25, \"count\": 4}"
+    "  ]"
+    "}"
+  )
+)

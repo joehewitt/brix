@@ -1,0 +1,46 @@
+; State machines: a state can hold states of its own. A child is active together
+; with its parent, and leaving the parent leaves the child first.
+(main
+  (let player (call Player))
+  (print "> play")
+  (<- (. player commands) "play")
+  ; Both levels are active at once.
+  (print (str "playing: " (is (. player phase) .playing)))
+  (print (str "buffering: " (is (. player phase) .buffering)))
+  (blank)
+  (for (in command (list "ready" "stall" "stop"))
+    (print (str "> " command))
+    (<- (. player commands) command)
+  )
+)
+
+(type + Player
+  (event + commands String)
+  (prop + phase _
+    (machine
+      (state stopped
+        (then playing (trigger on commands (== each "play")))
+      )
+      (blank)
+      ; `do` runs when the state is entered, and `finally` when it is left.
+      (state playing
+        (do (inline (print "open the audio device")))
+        (finally (inline (print "close the audio device")))
+        (blank)
+        ; The first child with no trigger starts when its parent does.
+        (state buffering
+          (do (inline (print "  show the spinner")))
+          (finally (inline (print "  hide the spinner")))
+          (then rendering (trigger on commands (== each "ready")))
+        )
+        (blank)
+        (state rendering
+          (then buffering (trigger on commands (== each "stall")))
+        )
+        (blank)
+        ; This move belongs to the parent, so it applies whichever child is active.
+        (then stopped (trigger on commands (== each "stop")))
+      )
+    )
+  )
+)

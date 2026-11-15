@@ -1,0 +1,61 @@
+; Delegation: a type can provide an interface by passing it to one of its
+; properties. It gains the capability by holding a value that has it, with no
+; forwarding functions and no base class.
+(blank)
+
+(main
+  (let importer (call Importer "import"))
+  (call (. importer run) (list "ada.csv" "" "lin.csv"))
+  (blank)
+  ; An Importer goes wherever a Logger is asked for.
+  (call announce importer "finished")
+  (print (str (. importer journal count) " lines logged"))
+)
+
+(type + Logger (is Interface)
+  (fn-do + log _
+    (param message String)
+  )
+)
+
+(type + Journal
+  (implements Logger)
+  (prop + tag String)
+  (prop + count Int (= 0))
+  (fn-do + This _
+    (param tag _)
+  )
+  (fn-do + log _
+    (param message String)
+    (+= count 1)
+    (print (str "[" tag "] " message))
+  )
+)
+
+(type + Importer
+  ; Importer is a Logger because the property on the next row is one.
+  (delegate Logger)
+  (prop + journal Journal)
+  (fn-do + This _
+    (param tag String)
+    (lazy journal (call Journal tag))
+  )
+  (fn-do + run _
+    (param files (list String))
+    (for (in file files)
+      ; `log` is called as if Importer declared it. The journal does the work.
+      (if (== file "")
+        (call log "skipped a blank name")
+        (else
+          (call log (str "read " file))
+        )
+      )
+    )
+  )
+)
+
+(fn-do + announce _
+  (param logger Logger)
+  (param message String)
+  (call (. logger log) message)
+)

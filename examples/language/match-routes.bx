@@ -1,0 +1,42 @@
+; Text patterns: an arm lists the literal parts a text must have, and `...name`
+; captures the gap between them. Good for small fixed shapes such as paths.
+(main
+  (let paths
+    (call List
+      (block
+        (bullet "/")
+        (bullet "/users/42")
+        (bullet "/users/42/posts")
+        (bullet "/files/notes.txt")
+        (bullet "/about")
+      )
+    )
+  )
+  (for (in path paths)
+    (print (str path " -> " (call route path)))
+  )
+)
+
+(fn-expr + route String
+  (param path String)
+  (match path
+    ; `case=` compares the whole text with one value.
+    (case= "/"
+      "home page"
+    )
+    ; The text must start and end with these parts. `id` is what lies between.
+    (case (all "/users/" ...id "/posts")
+      (str "posts by user " id)
+    )
+    ; Arms are tried in order, so this broader shape comes after the one above.
+    (case (all "/users/" ...id)
+      (str "profile of user " id)
+    )
+    (case (all "/files/" ...name ".txt")
+      (str "text file named " name)
+    )
+    (default
+      "not found"
+    )
+  )
+)

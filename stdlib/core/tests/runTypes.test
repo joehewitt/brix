@@ -190,7 +190,7 @@ got ''
 s = I32(4.5)
 -- "got $s"
 
-s = I32("42x")
+s = I32(" 42 ")
 -- "got $s"
 
 :----
@@ -198,6 +198,26 @@ s = I32("42x")
 got 0
 got 4
 got 42
+;===
+:====
+# A number type called with text that is no number of it panics.
+
+-- I32("42x")
+
+:----
+%crash-stderr
+
+Unhandled panic: "42x" is not a whole number
+<core/number.yumi>
+
+Task 1
+
+Stack trace:
+  0  core/number:read-integer core/number.yumi
+  1  core/number:I32:from String6 core/number.yumi
+  2  __source__:main no file:2:4
+  3  __source__:init.__source__ no file
+  4  __source__:yumi.main no file
 ;===
 ====================================================================================================
 Subclassing builtin types
@@ -723,6 +743,60 @@ Missing()
 :------------------------------------------------------------------------------------------------
 
 (duck, [Interface __source__:IFoo])
+;====
+:====
+# A type of alternatives called with a value gives the value as the alternative it converts to,
+# as `as` does.
+
+. count = Choice(3)
+-- count + 1
+. text = Choice("x")
+-- text ++ "y"
+. duck = Donald(Thing())
+-- duck.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Int || String
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ get name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
++ name = "thing"
+
+:----
+
+4
+xy
+thing
+;====
+:====
+# A type of alternatives has no constructor of its own, so calling it with nothing is an error.
+
+. choice = Choice()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Int || String
+
+:----
+%compile-error
+
+Exception: Choice stands for any one of Int and String, so it has no constructor; give it a value of one of them, as in Choice(value)
+<no file:2>
+    . choice = Choice()
+               ^^^^^^
 ;====
 ====================================================================================================
 Matching types with the same name

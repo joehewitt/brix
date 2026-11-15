@@ -1,0 +1,167 @@
+; A kitchen timer in the terminal, run by a state machine. The states sit beside
+; the markup in the component, and the markup, the style sheet and the shortcuts
+; all read which state is active. The ticking belongs to the running state.
+(import /math)
+(import /time/duration)
+(import /time/timer)
+(import /tui)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> KitchenTimer (id: timer) (• flex-col) (• flex 1))
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    (<> Shortcut (text: "Quit")
+      (= key .escape)
+      (= show-in-status false)
+      (= action (=> () :do (call (. win close))))
+    )
+    (<> StatusBar
+      (= message (. timer #status))
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(style TimerTheme
+  (using BoxPaint)
+  (using TextPaint)
+  ; A rule inside a `when-style` reaches the dial only while the timer is in that state.
+  (blank)
+  (rule timer-face
+    (rule dial
+      (= color silver)
+    )
+    (when-style #is-running
+      (rule dial
+        (= color lime)
+      )
+    )
+    (when-style #is-done
+      (rule dial
+        (= color white)
+        (= background-color red)
+      )
+    )
+  )
+)
+
+(type + Preset (is (tuple (: key Char) (: name String) (: length Seconds))))
+
+(type + KitchenTimer (is Box)
+  (using TimerTheme)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (blank)
+  (prop + presets (list Preset)
+    (=
+      (block
+        (bullet (call Preset 't' "tea" 3minutes))
+        (bullet (call Preset 'e' "eggs" 6minutes))
+        (bullet (call Preset 'd' "demo" 3s))
+      )
+    )
+  )
+  (prop + length Seconds (= 3minutes))
+  (prop + left Seconds (= 3minutes))
+  (prop + status _ (= ""))
+  (event + starts Bool)
+  (event + pauses Bool)
+  (event + resets Bool)
+  (content
+    (<> This (• timer-face) (• flex-col) (• p 1)
+      (<> Label (• dial)
+        (= text (str " " (call clock #left) " "))
+      )
+      (<> ProgressBar
+        (= value (as (as #left Milliseconds) Int))
+        (= total (as (as #length Milliseconds) Int))
+        (= show-percent false)
+      )
+      ; The presets are a list, and the loop gives each one a label and a key of its own.
+      ; Both exist only while the timer is idle.
+      (if #is-idle
+        (for (in preset presets)
+          (<> Label
+            (= text (str " " (. preset key) " " (. preset name) " " (call clock (. preset length))))
+          )
+          (<> Shortcut
+            (= title (. preset name))
+            (= key (. preset key))
+            (= show-in-status false)
+            (= action (=> () :do (call choose preset)))
+          )
+        )
+      )
+      ; Space means pause or start, depending on the state. A shortcut only sends an event.
+      (if #is-running
+        (<> Shortcut (text: "Pause")
+          (= key .space)
+          (= action (=> () :do (<- pauses true)))
+        )
+        (else-if (or #is-idle #is-paused)
+          (<> Shortcut (text: "Start")
+            (= key .space)
+            (= action (=> () :do (<- starts true)))
+          )
+        )
+      )
+      (<> Shortcut (text: "Reset")
+        (= key 'r')
+        (= action (=> () :do (<- resets true)))
+      )
+    )
+    (blank)
+    ; Each state gives the component a value such as `is-running`, true while it is active.
+    (state is-idle
+      (do
+        (= left length)
+        (= status "Pick a time, then start")
+      )
+      (then is-running (trigger on starts))
+    )
+    (blank)
+    ; The ticker is made when this state is entered and stops when it is left, so a
+    ; paused timer has nothing running.
+    (state is-running
+      (lazy ticker (call Timer 100ms))
+      (do (inline (= status "Running")))
+      (for (on elapsed ticker)
+        (= left (call max (- left 100ms) 0s))
+      )
+      (then is-done (trigger on ticker (<= left 0s)))
+      (then is-paused (trigger on pauses))
+      (then is-idle (trigger on resets))
+    )
+    (blank)
+    (state is-paused
+      (do (inline (= status "Paused")))
+      (then is-running (trigger on starts))
+      (then is-idle (trigger on resets))
+    )
+    (blank)
+    (state is-done
+      (do (inline (= status "Ready!")))
+      (then is-idle (trigger on resets))
+    )
+  )
+  (fn-do + choose _
+    (param preset Preset)
+    (= length (. preset length))
+    (= left (. preset length))
+  )
+)
+
+(fn-expr + clock String
+  (param time Seconds)
+  ; Durations are units: three minutes is `3minutes`, and the dial rounds up to whole seconds.
+  (str (/ whole 60) ":" (call (. (% whole 60) pad) 2))
+  (where
+    (lazy whole (as (call ceil (as time Float)) Int))
+  )
+)

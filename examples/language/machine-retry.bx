@@ -1,0 +1,52 @@
+; State machines: a state's data can count attempts, and a timer set from that
+; data waits longer each time. No counter or timer is kept outside the machine.
+(import /stream/timing)
+(blank)
+
+(main
+  (let link (call Link))
+  (<- (. link starts) true)
+  ; The server answers twice with a failure, then accepts. A second passes on each tick.
+  (for (in accepted (list false false true))
+    (<- (. link answers) accepted)
+    (for (in second (..< 0 4))
+      (<- (. link ticks) 1)
+    )
+  )
+)
+
+(type + Link
+  (event + starts Bool)
+  (event + answers Bool)
+  (event + ticks F64)
+  (prop + limit _ (= 3))
+  (prop + phase _
+    (machine
+      (state idle
+        (then (call connecting 1) (trigger on starts))
+      )
+      (blank)
+      (state (call connecting attempt)
+        (do (inline (print (str "attempt " attempt))))
+        ; Moves on one event are tried in order, and the first that fits is taken.
+        (then (call connected attempt) (trigger on answers each))
+        (then (call waiting attempt) (trigger on answers (< attempt limit)))
+        (then failed (trigger on answers))
+      )
+      (blank)
+      (state (call waiting attempt)
+        (do (inline (print (str "  no answer, trying again in " (* attempt 2) "s"))))
+        ; The wait doubles as a count of ticks that runs only while this state is active.
+        (then (call connecting (+ attempt 1)) (trigger on (call delayed ticks (* attempt 2.0))))
+      )
+      (blank)
+      (state (call connected attempts)
+        (do (inline (print (str "connected on attempt " attempts))))
+      )
+      (blank)
+      (state failed
+        (do (inline (print "gave up")))
+      )
+    )
+  )
+)

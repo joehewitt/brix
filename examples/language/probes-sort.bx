@@ -1,0 +1,38 @@
+; Probes: rows that record what a program did, compiled in only when asked for.
+; Run this with `--probes` to see each group with its time and the two counters.
+; Without it the probes are not in the program, and it prints the same result.
+(main
+  (let finish-times (list 72 15 98 41 63 8 55))
+  (call sort-ascending finish-times)
+  (print (str "sorted: " finish-times))
+)
+
+(fn-do + sort-ascending _
+  (param values (list Int))
+  (for (in next (..< 1 (. values length)))
+    ; A group has a beginning and an end, and the trace keeps the time between them.
+    (probe-group + sort.insert (text: "placing " ([] values next)))
+    (let at next)
+    (while (> at 0)
+      ; A counter is one number for the whole run, however often its row runs.
+      (probe-count sort.compares)
+      (if (<= ([] values (- at 1)) ([] values at))
+        (break)
+      )
+      (call swap values at)
+      (probe-count sort.swaps)
+      (-= at 1)
+    )
+    (probe-group - sort.insert (text: "settled at " at))
+  )
+  ; A log is one record, under a key that a run can select or leave out.
+  (probe-log sort.done (text: "sorted " (. values length) " values"))
+)
+
+(fn-do + swap _
+  (param values (list Int))
+  (param at Index)
+  (let moved ([] values at))
+  (= ([] values at) ([] values (- at 1)))
+  (= ([] values (- at 1)) moved)
+)

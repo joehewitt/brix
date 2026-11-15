@@ -1,0 +1,49 @@
+; List patterns: an arm describes the shape of a list, with literals that must
+; be there, names for the items it wants, and `...` for however many remain.
+(main
+  (for (in line (call typed))
+    (print (str "> " line))
+    (print (str "  " (call run (call (. line split) " "))))
+  )
+)
+
+(fn-expr + typed (list String)
+  (bullet "add milk")
+  (bullet "add eggs bread tea")
+  (bullet "remove milk")
+  (bullet "move tea to top")
+  (bullet "list")
+  (bullet "dance wildly")
+  (bullet "")
+)
+
+(fn-expr + run String
+  (param words (list String))
+  (match words
+    ; Without `...` the length is exact: this arm takes two words and no more.
+    (case (list "add" item)
+      (str "add " item)
+    )
+    ; `...rest` names every item after the ones the pattern spelled out.
+    (case (list "add" first ...rest)
+      (str "add " first " and " (. rest length) " more")
+    )
+    (case (list "remove" item)
+      (str "remove " item)
+    )
+    ; Literals can stand anywhere, not only at the front.
+    (case (list "move" item "to" place)
+      (str "move " item " to the " place)
+    )
+    (case (list "list")
+      "show the list"
+    )
+    ; A name can carry a test, and a bare `...` allows more items without naming them.
+    (case (list (: verb ({} (!= it ""))) ...)
+      (str "unknown command: " verb)
+    )
+    (default
+      "nothing to do"
+    )
+  )
+)

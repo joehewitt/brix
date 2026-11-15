@@ -2751,6 +2751,83 @@ for index in 0 .. < chosen
 3:row 0:row 2
 0
 ;====
+:====
+# An unkeyed markup loop over an optional collection follows it as a keyed one does.
+
+/core/tests/support/markup-fixtures
+
+. items [String]? = List'String(["a", "b"])
+
+<Box box
+    for item in #items
+        <TextBox = item
+
+-- dump(box)
+items = null
+-- dump(box)
+items = List'String(["c"])
+-- dump(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. texts [String]
+for child in box.%first-child!.children
+    texts += (child as TextBox).text
+= "${texts.length}:${",".join(texts)}"
+
+:----
+
+2:a,b
+0:
+1:c
+;====
+:====
+# An optional container that converts to the stream a markup loop reads is converted while it
+# holds one, as a container that is never null is.
+
+/core/tests/support/markup-fixtures
+
+. items Iterable'String? = letters()
+
+<Box box
+    for item in #items
+        <TextBox = item
+
+yield-once()
+-- dump(box)
+items = null
+-- dump(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do letters Iterable'String
+
+<= "a"
+<= "b"
+
+━━━━━━━━━━━━━━━━━━━━
++ do yield-once
+
+. done = Semaphore()
+do new
+    done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. texts [String]
+for child in box.%first-child!.children
+    texts += (child as TextBox).text
+= "${texts.length}:${",".join(texts)}"
+
+:----
+
+2:a,b
+0:
+;====
 
 :====
 # A loop over a collection read without tracking is no region, so it has no rows to key.

@@ -1,0 +1,130 @@
+; Slots in the terminal. `Card` leaves three places open for whoever uses it,
+; and `main` fills them four ways: not at all, directly, and through two types
+; that wrap a card and pass a slot of their own caller on to it. The types below
+; exist because a slot is declared by the type that owns the place.
+(import /tui)
+(blank)
+
+(main
+  (let dishes
+    (call List
+      (block
+        (bullet (call Dish "soup" 6))
+        (bullet (call Dish "curry" 11))
+        (bullet (call Dish "pie" 5))
+      )
+    )
+  )
+  (blank)
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> Box (• flex-row) (• flex 1)
+      ; Nothing is given, so every slot shows the content the card declared for it.
+      (<> Card (• flex 1))
+      ; `(slot: name)` sends a child to that slot. The other children go to the unnamed one.
+      (<> Card (• flex 1)
+        (<> Label (slot: title) (text: " Today "))
+        (<> Label (text: " Open from noon. "))
+        (<> Label (text: " Kitchen closes at nine. "))
+        (<> Label (slot: footer) (text: " see the board "))
+      )
+    )
+    (<> Box (• flex-row) (• flex 1)
+      (<> Notice (• flex 1)
+        (= message "The oven is being repaired.")
+        (<> Label (slot: footer) (text: " back on Friday "))
+      )
+      ; This slot is filled once for every item, and `(param: item)` names the item it is given.
+      (<> (of Listing Dish) (• flex 1)
+        (= items dishes)
+        (<> Label (slot: title) (text: " Menu "))
+        (<> Label (slot: row) (param: item)
+          (= text (str " " (. item name) "  " (. item price) " "))
+        )
+      )
+    )
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    (<> StatusBar
+      (= message "One Card component, filled four ways")
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(type + Dish (is (tuple (: name String) (: price Int))))
+
+(style CardTheme
+  (using BoxPaint)
+  (using TextPaint)
+  (rule card
+    (= border-color grey)
+    (= color silver)
+    ; Rules inside a rule reach whatever lands in the card, the caller's content included.
+    (rule card-title
+      (= color white)
+      (= background-color navy)
+    )
+    (rule card-footer
+      (= color grey)
+    )
+  )
+)
+
+(type + Card (is Box)
+  (using CardTheme)
+  ; `+<>` declares a slot. Its children are shown when the caller gives nothing, and its
+  ; style rules are applied to whatever the caller gives.
+  (content
+    (<> This (• card) (• flex-col) (• border-rounded) (• m 1)
+      (+<> Label (id: title) (• card-title)
+        (<> Label (text: " Untitled "))
+      )
+      ; A slot with no name takes the children that ask for no slot.
+      (+<> Box (• flex-col))
+      (+<> Label (id: footer) (• card-footer)
+        (<> Label (text: " nothing more "))
+      )
+    )
+  )
+)
+
+(type + Notice (is Box)
+  ; A notice is a card with its title and body decided. `<+` hands the footer its own
+  ; caller gave on to the card, and the card's default still shows when there is none.
+  (blank)
+  (prop + message _ (= ""))
+  (content
+    (<> This (• flex-col)
+      (<> Card (• flex 1)
+        (<> Label (slot: title) (text: " Notice ") (• text yellow))
+        (<> Label
+          (= text (str " " #message " "))
+        )
+        (<+ footer)
+      )
+    )
+  )
+)
+
+(type + (of Listing Item) (is Box)
+  ; A slot can sit in a loop and pass a value to its filler. `Item` is a type parameter,
+  ; so the same listing serves a list of anything.
+  (blank)
+  (prop + items (list Item))
+  (content
+    (<> This (• flex-col)
+      (<> Card (• flex 1)
+        (<+ title)
+        (for (in item #items)
+          (+<> Box (id: row) (param: item Item))
+        )
+        (<> Label (slot: footer)
+          (= text (str " " (. #items length) " rows "))
+        )
+      )
+    )
+  )
+)

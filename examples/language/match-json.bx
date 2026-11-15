@@ -1,0 +1,44 @@
+; Map and list patterns: one pattern reaches through nested data, checks the
+; parts that must be there, and names the parts wanted. Decoded JSON is a
+; union of maps, lists, texts and numbers, so it is matched like any value.
+(import /data/json)
+(blank)
+
+(main
+  (for (in text (call events))
+    (print (call summary (call parse-json text)))
+  )
+)
+
+(fn-expr + events (list String)
+  (bullet "{\"order\": {\"for\": \"Ada\", \"items\": [\"teapot\", \"cups\", \"tray\"]}}")
+  (bullet "{\"order\": {\"for\": \"Grace\", \"items\": []}}")
+  (bullet "{\"refund\": {\"amount\": 32, \"reason\": \"chipped\"}}")
+  (bullet "{\"status\": \"shipped\", \"tracking\": \"ZX81\"}")
+  (bullet "[1, 2, 3]")
+)
+
+(fn-expr + summary String
+  (param event JSON)
+  (match event
+    ; A map inside a map, then a list: the arm fits only when every layer does.
+    (case (map "order" (list (= "for" (: who String)) (= "items" (list (: first String) ...rest))))
+      (str who " ordered a " first " and " (. rest length) " more")
+    )
+    ; The same keys with an empty list are a different shape.
+    (case (map "order" (list (= "for" (: who String)) (= "items" (list))))
+      (str who " sent an empty order")
+    )
+    ; A map pattern names the keys it needs. Other keys, such as "reason", may be there too.
+    (case (map "refund" (map "amount" (: amount Int)))
+      (str "refund of " amount)
+    )
+    ; A literal as the value means the key must hold exactly that.
+    (case (list (= "status" "shipped") (= "tracking" (: code String)))
+      (str "shipped, tracking " code)
+    )
+    (default
+      "not an event"
+    )
+  )
+)

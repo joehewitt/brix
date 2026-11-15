@@ -1,0 +1,87 @@
+; A style sheet as a pricing policy, on a tree made from scratch. The cart is
+; markup, and the sheet says what discount and tax each line gets. Changing who
+; is buying changes the prices, and no line of the cart is touched.
+(import /stream/aggregate)
+(import /units)
+(blank)
+
+(main
+  (<> Cart (id: cart)
+    (<> Line (text: "kettle")
+      (= price 40)
+    )
+    (<> Line (text: "mug") (• clearance)
+      (= price 12)
+    )
+    (<> Line (text: "tea") (• food)
+      (= price 6)
+    )
+  )
+  (blank)
+  (call (. cart receipt) "A visitor")
+  (blank)
+  ; A rule is waiting on this property.
+  (= (. cart is-member) true)
+  (call (. cart receipt) "A member")
+)
+
+(type + Pricing (is Style)
+  ; The values a policy can set. A line with no discount of its own takes the cart's.
+  (blank)
+  (prop + discount Ratio @inherited (= 0%))
+  (prop + tax Ratio (= 20%))
+)
+
+(style Policy
+  (using Pricing)
+  ; A sheet can hold values of its own for its rules to read.
+  (prop + member-discount Ratio (= 10%))
+  (blank)
+  ; This applies to the cart while its `is-member` is true, and every line inherits it.
+  (rule Cart
+    (when-style #is-member
+      (= discount member-discount)
+    )
+  )
+  (blank)
+  ; A value a line is given by name wins over the one it would inherit.
+  (rule clearance
+    (= discount 50%)
+  )
+  (blank)
+  (rule food
+    (= tax 0%)
+  )
+)
+
+(type + Line (is MarkupNode)
+  (using Pricing)
+  (prop + name String)
+  (prop + price _ (= 0.0))
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-expr + total Float :get
+    ; `$` reads the value the policy worked out for this line.
+    (* price (- 1 $discount) (+ 1 $tax))
+  )
+)
+
+(type + Cart (is MarkupRoot)
+  (using Policy)
+  ; The root of the tree names the policy, and the lines are its children.
+  (blank)
+  (prop + is-member _ (= false))
+  (fn-do + receipt _
+    (param who String)
+    ; `settle` has the policy work out what changed since the cart was built.
+    (call settle)
+    (print (str who " pays:"))
+    (for (in line (of children-of Line))
+      ; A style value can be read from outside the node as well.
+      (let off (as (. line $discount) Percent UnitString))
+      (print (str "  " (. line name) "  " (call (. line total places) 2) "  (" off " off)"))
+    )
+    (print (str "  total  " (call (. (call sum (*> (of children-of Line) (. each total))) places) 2)))
+  )
+)

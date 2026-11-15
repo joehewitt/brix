@@ -1,0 +1,51 @@
+; Three ways to meet a failure: `catch?` turns an error into null, `catch`
+; holds the error as a value to look at, and a panic unwinds until a
+; `finally` recovers it.
+(main
+  (let shelf (list "Dune" "Emma" "Ulysses"))
+  (blank)
+  ; When the reason does not matter, `catch?` and `??` say what to use instead.
+  (print (str "slot 1: " (?? (catch? (call book-at shelf 1)) "nothing there")))
+  (print (str "slot 7: " (?? (catch? (call book-at shelf 7)) "nothing there")))
+  (blank)
+  ; When it does matter, `catch` keeps the error, and a match tells the two apart.
+  (let lookup (catch (call book-at shelf 7)))
+  (print
+    (match lookup
+      (case (: title String)
+        (str "found " title)
+      )
+      (case (: error EmptySlot)
+        (str "the librarian says: " (. error message))
+      )
+    )
+  )
+  (blank)
+  (call audit shelf)
+  (print "the library stays open")
+)
+
+(type + EmptySlot (is Error))
+
+(fn-do + book-at String (?! EmptySlot)
+  (param shelf (list String))
+  (param slot Int)
+  (throw (call EmptySlot (str "slot " slot " is empty")) (if (>= slot (. shelf length))))
+  (return ([] shelf slot))
+)
+
+(fn-do + audit _
+  (param shelf (list String))
+  ; `recover` gives the panic that is unwinding, if there is one, and stops it.
+  (finally
+    (let panic (call recover))
+    (if panic
+      (print (str "audit abandoned: " panic))
+    )
+  )
+  (blank)
+  ; A Panic is not named in the function's errors, and `catch` does not hold one.
+  (let found (. shelf length))
+  (throw (call Panic (str "expected 5 books, found " found)) (if (!= found 5)))
+  (print "audit passed")
+)

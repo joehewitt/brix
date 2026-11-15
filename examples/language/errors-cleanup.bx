@@ -1,0 +1,48 @@
+; Cleanup: `finally` rows run when their body ends, however it ends, and a
+; resource taken with `do-use` is released the same way. The last thing set
+; up is the first put away.
+(main
+  (print "with flour:")
+  (print (str "  result: " (call bake true)))
+  (blank)
+  (print "without flour:")
+  (print (str "  result: " (catch (call bake false))))
+)
+
+(type + OutOfFlour (is Error))
+
+(fn-do + bake String (?! OutOfFlour)
+  (param has-flour Bool)
+  (print "  preheat the oven")
+  ; Written right after what it undoes. It runs when `bake` ends.
+  (finally
+    (print "  switch the oven off")
+  )
+  (blank)
+  (print "  take out the mixing bowl")
+  (finally
+    (print "  wash the mixing bowl")
+  )
+  (blank)
+  ; `do-use` calls the timer's `begin-using` now and its `end-using` after the rows.
+  (do-use (call Timer 12)
+    ; With no flour the error leaves from here. Every cleanup above still runs.
+    (throw (call OutOfFlour "the flour jar is empty") (if (not has-flour)))
+    (print "  mix and bake")
+  )
+  (return "a loaf of bread")
+)
+
+(type + Timer
+  (prop + minutes Int)
+  (fn-do + This _
+    (param minutes Int)
+  )
+  (fn-do + begin-using _
+    (print (str "  timer set for " minutes " minutes"))
+    (return this)
+  )
+  (fn-do + end-using _
+    (print "  timer cleared")
+  )
+)

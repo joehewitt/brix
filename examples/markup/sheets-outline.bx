@@ -1,0 +1,94 @@
+; Markup and style sheets from scratch, with nothing to paint. The tree is made
+; of types declared in this file. A style is a set of named values a node can be
+; given, and a sheet says which nodes get which. Here the values are about
+; lettering, and each line of a packing list prints itself from them.
+(blank)
+
+(main
+  (<> Outline (id: list)
+    (<> Section (text: "Clothes")
+      (<> Item (text: "socks"))
+      (<> Item (text: "rain jacket"))
+    )
+    (<> Section (text: "Papers")
+      (<> Item (text: "passport") (• urgent))
+      (<> Item (text: "tickets"))
+    )
+    (<> Section (text: "Extras") (• optional)
+      (<> Item (text: "camera"))
+      (<> Item (text: "novel"))
+    )
+  )
+  (blank)
+  (call (. list write))
+)
+
+(type + Lettering (is Style)
+  ; A style declares the values. `@inherited` means a node with no value of its
+  ; own takes its parent's.
+  (blank)
+  (prop + lead String (= ""))
+  (prop + shout Bool (= false))
+  (prop + tail String @inherited (= ""))
+)
+
+(style ListSheet
+  (using Lettering)
+  ; A sheet can hold values of its own for its rules to read.
+  (prop + bullet String (= "  - "))
+  (blank)
+  ; A rule named for a type applies to every node of that type.
+  (rule Section
+    (= shout true)
+    (blank)
+    ; A rule inside a rule applies to the matching nodes beneath it.
+    (rule Item
+      (= lead bullet)
+    )
+  )
+  (blank)
+  ; A node asks for these two by name, with `•`.
+  (rule urgent
+    (= lead "  ! ")
+  )
+  (blank)
+  (rule optional
+    (= tail " (if room)")
+  )
+)
+
+(type + Entry (is MarkupNode)
+  (using Lettering)
+  ; Extending `MarkupNode` is all a type needs to be a node of a styled tree,
+  ; and `using` says which values its nodes have.
+  (blank)
+  (prop + title String)
+  (fn-do + This _
+    (param title _)
+  )
+  (fn-do + write _
+    ; `$` reads the value the sheets worked out for this node.
+    (blank)
+    (let text (if-expr $shout (. title uppercased) title))
+    (print (str $lead text $tail))
+    (for (in entry (of children-of Entry))
+      (call (. entry write))
+    )
+  )
+)
+
+(type + Section (is Entry))
+
+(type + Item (is Entry))
+
+(type + Outline (is MarkupRoot)
+  (using ListSheet)
+  ; The root of the tree names the sheet. The sheets work out every value once
+  ; the markup in `main` is built, so `write` can read them right away.
+  (blank)
+  (fn-do + write _
+    (for (in entry (of children-of Entry))
+      (call (. entry write))
+    )
+  )
+)

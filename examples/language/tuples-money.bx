@@ -1,0 +1,47 @@
+; Tuples: a small value type whose meaning is its fields. It can carry
+; methods and a text form like a class, but two tuples with the same fields
+; are equal, and a method gives a new value instead of changing the old one.
+(main
+  (let dinner (call Money 8500 "EUR"))
+  (let tip (call (. dinner percent) 15))
+  (let bill (call (. dinner plus) tip))
+  (blank)
+  ; `str` uses the type's own conversion to text.
+  (print (str "dinner: " dinner))
+  (print (str "tip: " tip))
+  (print (str "bill: " bill))
+  (blank)
+  (let shares (call (. bill split) 3))
+  (print (str "split three ways: " (call (. ", " join) shares)))
+  (blank)
+  ; Equality compares the fields, so a separately made value can be equal.
+  (print (str "bill is 97.75 EUR: " (== bill (call Money 9775 "EUR"))))
+  ; `plus` gave a new value. `dinner` is what it was.
+  (print (str "dinner is still " dinner))
+)
+
+(type + Money (is Tuple)
+  (prop + cents Int)
+  (prop + currency String)
+  (fn-expr + plus Money
+    (param other Money)
+    ; A method reads the fields by name and builds its answer from them.
+    (call Money (+ cents (. other cents)) currency)
+  )
+  (fn-expr + percent Money
+    (param rate Int)
+    (call Money (/ (* cents rate) 100) currency)
+  )
+  (fn-expr + split (list Money)
+    (param ways Int)
+    ; The first shares each take one of the cents left over, so no cent is lost.
+    (in (call Money (+ share (if-expr (< each extra) 1 0)) currency) (..< 0 ways))
+    (where
+      (lazy share (/ cents ways))
+      (lazy extra (% cents ways))
+    )
+  )
+  (fn-to-expr + String
+    (str (/ cents 100) "." (call (. (% cents 100) pad) 2) " " currency)
+  )
+)

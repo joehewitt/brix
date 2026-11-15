@@ -11,6 +11,8 @@
 
 |? line.char(line.indent) == '#'
     "Comments start with a backtick (`), not \"#\""
+|? surrogate
+    "\"$surrogate\" is half of a surrogate pair, which is no character by itself; write the character itself in the text"
 |? lead == "return"
     "Yumi has no \"return\"; in a do function, return a value with \"= value\""
 |? lead == "let" || lead == "var" || lead == "const" || lead == "val"
@@ -55,6 +57,7 @@
     "Syntax error"
 
 .. line = SourceLine(source, spot.line)
+.. surrogate = line.surrogate-escape()
 .. column = spot.column as Index
 .. lead = line.leading-word()
 .. declared = line.declared-name()
@@ -140,6 +143,12 @@ for char in word
 = text
 
 ━━━━━━━━━━━━━━━━━━━━
+_ is-surrogate-digit Bool
+    - char Char
+
+(char >= '8' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')
+
+━━━━━━━━━━━━━━━━━━━━
 _ is-name-char Bool
     - char Char
 
@@ -197,6 +206,16 @@ for spot in start .. < end
     if spot < chars.length
         written += chars[spot]
 = written
+
+────────────────────
++ do surrogate-escape String?
+
+` The first escape on the line that writes half of a surrogate pair, from "\uD800" to "\uDFFF".
+for spot in 0 .. < chars.length
+    if char(spot) == '\\' && char(spot + 1) == 'u' && (char(spot + 2) == 'd' || char(spot + 2) == 'D')
+        if is-surrogate-digit(char(spot + 3)) && (spot == 0 || char(spot - 1) != '\\')
+            = text(spot, spot + 6)
+= null
 
 ────────────────────
 + do word-from String

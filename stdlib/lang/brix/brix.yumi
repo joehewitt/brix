@@ -237,6 +237,17 @@ store.raw-text(node) != null || is-raw-head || is-raw-line
 .. is-raw-line = mode == brix-mode-parameter && has-raw-line(node)
 
 ────────────────────
++ do rereads Bool
+    - node ImmutableTableRow'SourceNode
+    - mode SourceRowMode
+    - text String
+
+=? false if !brix-is-head-mode(mode) || !is-function(node)
+. parsed = brix-parse-declaration(text, store)
+=? false if !parsed || !is-function(parsed)
+= is-text(parsed) != is-text(node)
+
+────────────────────
 + do open-below SourceOpened?
     - declaration ImmutableTableRow'SourceNode
     - row SourceRow
@@ -684,6 +695,12 @@ _ paragraph-of ImmutableTableRow'SourceNode?
 
 .. count = store.count(node)
 .. last = store.item(node, count - 1)
+
+────────────────────
+_ is-text Bool
+    - node ImmutableTableRow'SourceNode
+
+printer.text-body(store.items(node)) != null
 
 ────────────────────
 _ do item-index Index
@@ -1249,7 +1266,7 @@ if store.is-form(node, "before") || store.is-form(node, "where")
 . held = owner.index as U32
 . shown = mode
 if store.is-form(node, "header") && store.count(node) == 2 && is-flow(mode)
-    rows += SourceOutlineRow(null, source-row-decoration, indent, false, 0, held, false)
+    rows += SourceOutlineRow(null, source-row-decoration, indent, false, source-divider-double, held, false)
     shown = brix-mode-titled
 printer.scan-row(node)
 . holder = printer.holder
@@ -1262,7 +1279,7 @@ rows += SourceOutlineRow
     - shown
     - indent
     - store.raw-text(node) != null
-    - 0
+    - if brix-is-label(store, node) then source-divider-label else 0
     - held
     - !printer.has-text
 =? if !holder
@@ -1350,10 +1367,14 @@ _ spans-of [SourceSpan]
 
 |? row.divider == source-divider-thick
     List'SourceSpan(SourceSpan(.decoration, brix-thick-divider))
+|? row.divider == source-divider-double
+    List'SourceSpan(SourceSpan(.decoration, brix-ruler))
 |? row.is-divider
     List'SourceSpan(SourceSpan(.decoration, brix-thin-divider))
 |? !node
-    if row.is-empty then List'SourceSpan() else List'SourceSpan(SourceSpan(.decoration, brix-ruler))
+    List'SourceSpan()
+|? row.divider == source-divider-label
+    brix-label-spans(printer.row(node))
 |? brix-is-head-mode(row.mode)
     brix-highlight-head(printer.heading(node))
 |? row.mode == brix-mode-text
@@ -1525,7 +1546,34 @@ for index in 0 .. < rows.length
 _ brix-is-ruler Bool
     - row SourceOutlineRow
 
-row.node == null && row.mode == source-row-decoration && !row.is-divider && !row.is-empty
+row.divider == source-divider-double
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-label Bool
+    - store SourceStore
+    - node ImmutableTableRow'SourceNode
+
+(store.comment-text(node) ?? "").starts-with("╌")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-label-spans [SourceSpan]
+    - text String
+
+. chars = text.codepoints
+. start Index = 0
+while start < chars.length && (chars[start] == '╌' || chars[start] == ' ')
+    start += 1
+. end = chars.length
+while end > start && (chars[end - 1] == '╌' || chars[end - 1] == ' ')
+    end -= 1
+. spans [SourceSpan]
+if start > 0
+    spans += SourceSpan(.decoration, text[... start])
+if end > start
+    spans += SourceSpan(.comment, text[start .. < end])
+if end < chars.length
+    spans += SourceSpan(.decoration, text[end ...])
+= spans
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-spacer SourceOutlineRow
@@ -1537,7 +1585,7 @@ SourceOutlineRow(null, source-row-decoration, row.indent, false, 0, row.owner, t
 _ brix-ruler-row SourceOutlineRow
     - owner ImmutableTableRow'SourceNode
 
-SourceOutlineRow(null, source-row-decoration, 0, false, 0, owner.index as U32, false)
+SourceOutlineRow(null, source-row-decoration, 0, false, source-divider-double, owner.index as U32, false)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-divider-row SourceOutlineRow

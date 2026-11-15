@@ -1,0 +1,36 @@
+; Deadlines: a `Deadline` is a moment to give up at. Waiting for an answer is a
+; loop that ends when the answer comes or the deadline passes, whichever is first.
+(import /time/deadline)
+(import /time/duration)
+(blank)
+
+(main
+  (print (str "Quick server: " (?? (call answer-within 5ms 50ms) "gave up")))
+  (print (str "Slow server: " (?? (call answer-within 200ms 50ms) "gave up")))
+)
+
+(fn-do + answer-within (? String)
+  (param server-takes Milliseconds)
+  (param patience Milliseconds)
+  ; The result is optional: an answer, or null when patience ran out.
+  (let replies (of SyncBufferedChannel String))
+  (blank)
+  ; The server is a task that answers after a while.
+  (do-new
+    (call (. server-takes wait))
+    (<- replies "42 items in stock")
+  )
+  (blank)
+  ; A deadline takes any duration and remembers the moment it ends.
+  (let deadline (call Deadline patience))
+  (blank)
+  ; Each short wait lets the server's task run.
+  (while (and (. replies is-empty) (not (. deadline has-passed)))
+    (call (. 1ms wait))
+  )
+  (blank)
+  ; Giving up does not stop the server. Its task still finishes, and its answer goes unread.
+  (return-if null (if (. replies is-empty)))
+  (blank)
+  (return (<- replies))
+)

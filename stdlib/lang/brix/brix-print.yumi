@@ -182,10 +182,18 @@ _ is-bare-shape Bool
 match node
     | .string(_, _)
         true
+    ??
+        is-number-atom(node) || store.is-form(node, "list")
+
+────────────────────
+_ is-number-atom Bool
+    - node ImmutableTableRow'SourceNode
+
+match node
     | .atom(_, text)
         brix-is-number(if text.starts-with("-") then text[1 ...] else text)
     ??
-        store.is-form(node, "list")
+        false
 
 ────────────────────
 _ is-attribute Bool
@@ -206,6 +214,16 @@ match node
         text.starts-with("''")
     ??
         false
+
+────────────────────
+_ is-bare-argument Bool
+    - node ImmutableTableRow'SourceNode
+
+match node
+    | .list(_, _, _)
+        ["tuple", "list", "map", "stream"] has (store.head(node) ?? "")
+    ??
+        true
 
 ────────────────────
 _ continues Bool
@@ -303,7 +321,7 @@ _ holds-rows Bool
 _ argument-kind U8
     - node ImmutableTableRow'SourceNode
 
-|? brix-is-keyword-head(head)
+|? is-bullet-argument(head)
     BrixArgument.named
 |? head == "block" || head == "inline"
     BrixArgument.extra
@@ -1420,6 +1438,13 @@ do match fields
     | [.atom(_, {brix-is-keyword-head(it)}), ...]
         put(" ")
         named(item, fields, is-line)
+    | [.atom(_, word {it == "entry" || it == "entry?"}), key, ...]
+        put(if word == "entry" then " • (" else " •? (")
+        expression(key, brix-level-closure, false)
+        put(")")
+        if fields.length >= 3
+            put(" ")
+            guarded(fields[2], if is-line then brix-level-closure else brix-level-print, is-line)
     | [.atom(_, "inline"), body]
         put(": ")
         free(body, 0, is-line)
@@ -1485,9 +1510,7 @@ for index in 1 .. < count
             - is-tail && !is-wrapped && index + 1 == count
         continue
     if index > 1
-        put(" ")
-        put(op)
-        put(" ")
+        put(brix-glued-operator(op) ?? " $op ")
     expression(item, least, is-tail && !is-wrapped && index + 1 == count)
 if is-wrapped
     put(")")
@@ -1512,7 +1535,13 @@ _ do ends-named Bool
 . level = brix-precedence(head)
 =? ends-named(unguarded(items[count - 1])) if level > 0 && level <= brix-level-named && count >= 3
 =? false if level > 0 || head != "call"
-= some(2 .. < count) • where brix-is-keyword-head(store.head(items[each]) ?? "")
+= some(2 .. < count) • where is-bullet-argument(store.head(items[each]) ?? "")
+
+────────────────────
+_ is-bullet-argument Bool
+    - head String
+
+brix-is-keyword-head(head) || head == "entry" || head == "entry?"
 
 ────────────────────
 _ do prefix
@@ -1546,7 +1575,14 @@ if params.length > 0
         if index > 0
             put(", ")
         . param = params[index]
-        expression(param, if store.is-form(param, ":") then 0 else brix-level-primary, false)
+        . spread = spread-name(param)
+        if spread
+            put("... $spread")
+            if store.is-form(param, ":")
+                put(" ")
+                expression(store.items(param)[2], brix-level-primary, false)
+        else
+            expression(param, if store.is-form(param, ":") then 0 else brix-level-primary, false)
     put(" =>")
 else
     put("=>")
@@ -1565,6 +1601,21 @@ if origin < items.length
         put(" {…}")
 if is-wrapped
     put(")")
+
+────────────────────
+_ do spread-name String?
+    - param ImmutableTableRow'SourceNode
+
+. name = if store.is-form(param, ":") then store.items(param)[1] else param
+=? null if !store.is-atom(name)
+. text = store.text(name)
+=? null if !text.starts-with("...") || text.length <= 3
+. rest = ""
+. column = 0
+for c in text
+    rest ++=? c if column >= 3
+    column += 1
+= rest
 
 ────────────────────
 _ do interpolated
@@ -1705,7 +1756,12 @@ do match items
     | [.atom(_, op {it == "." || it == "?." || it == "*."}), target, _, ...]
         if is-tail && tail == null
             tail = node
+        . is-number = is-number-atom(target)
+        if is-number
+            put("(")
         expression(target, brix-level-primary, false)
+        if is-number
+            put(")")
         for index in 2 .. < items.length
             put(op)
             expression(items[index], brix-level-primary, false)
@@ -1734,9 +1790,15 @@ do match items
             tail = node
         expression(target, brix-level-primary, false)
         for index in 2 .. < items.length
-            if !is-ticked(items[index])
+            . argument = items[index]
+            if !is-ticked(argument)
                 put("'")
-            expression(items[index], brix-level-primary, false)
+            if is-bare-argument(argument)
+                expression(argument, brix-level-primary, false)
+            else
+                put("(")
+                expression(argument, brix-level-closure, false)
+                put(")")
     | [.atom(_, op {it == "?" || it == "*" || it == "+"}), target]
         expression(target, brix-level-primary, false)
         put(op)
@@ -2097,7 +2159,9 @@ match head
 .. is-assign = is-update || is-guarded || head == "=" || head == "++=" || head == "<-*"
     .. is-update = head == "+=" || head == "-=" || head == "*=" || head == "/=" || is-modulo
     .. is-modulo = head == "%=" || head == "%%="
-    .. is-guarded = head == "=?" || head == "+=?" || head == "-=?"
+    .. is-guarded = is-guarded-update || head == "=?" || head == "++=?" || head == "<-*?"
+        .. is-guarded-update = head == "+=?" || head == "-=?" || head == "*=?" || head == "/=?" || is-guarded-modulo
+        .. is-guarded-modulo = head == "%=?" || head == "%%=?"
 .. is-pipe = is-stage || is-flow || head == "|>" || head == "|=>" || head == "<|"
     .. is-stage = head == "*>" || head == "?>" || head == "*|>" || head == "?*>"
     .. is-flow = head == "*->" || head == "->" || head == "~>"
@@ -2109,6 +2173,17 @@ match head
 .. is-additive = is-sum || head == "\\" || head == "*\\" || head == "*/"
     .. is-sum = head == "+" || head == "-" || head == "++" || head == "--"
 .. bytes = head as Byte[]
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-glued-operator String?
+    - op String
+
+|? op == "?<-"
+    "? <- "
+|? op == "?>>"
+    "? >> "
+|? op == "?<<"
+    "? << "
 
 ━━━━━━━━━━━━━━━━━━━━
 + do brix-is-name Bool

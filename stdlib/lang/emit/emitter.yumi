@@ -1563,6 +1563,11 @@ _ refined-payload LocalId = no-local
 _ given-pipe SyntaxId = 0
 _ lowered SyntaxId = 0
 _ bullets SyntaxId = 0
+_ spreading SyntaxId = 0
+_ built-list Operand
+_ built-item TypeId = no-type
+_ built-append InstanceId = no-instance
+_ built-reason ConversionReason = ConversionReason.reason-return
 _ piped SyntaxId = 0
 _ piped-site SyntaxId = 0
 _ resumes [IRBlockId]
@@ -13785,10 +13790,12 @@ _ do call-generated Typed
 ` where the properties read a lazy local nested functions capture.
 . nothing = make-operand(.operand-void, 0)
 . callee = no-instance
+. propagates = false
 . fact = facts.first-call(unit.reading, id)
 while fact != no-fact
     if facts.calls[fact].form == .call-closure
         callee = facts.calls[fact].callee
+        propagates = facts.calls[fact].propagates
     fact = facts.calls[fact].next
 . count U32 = if given-site != 0 then 1 else 0
 . outside = unit.reading != unit.instance
@@ -13821,7 +13828,12 @@ hold-stacks(id, instances.rows[callee].decl, written)
 pending += written
 if given-site != 0
     pending += given-value.operand
-= call-instance(callee, id, mark)
+. raising = instances.signatures[callee].errors.count != 0
+takes-result = raising
+. answer = call-instance(callee, id, mark)
+takes-result = false
+=? propagate(id, callee, answer.operand) if raising && propagates
+= answer
 
 ────────────────────
 _ do emit-bullet-list Typed
@@ -13860,6 +13872,131 @@ while bullet != 0
                     refuse(.refused-expression, bullet)
                 yield-item(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
     bullet = next
+
+────────────────────
+_ do emit-built-bullets
+    - declared SyntaxId
+    - first SyntaxId
+
+. list = build-bullets(first, first, returns-type, .reason-return)
+return-value(list.operand, declared)
+
+────────────────────
+_ do emit-listed-bullets Typed
+    - id SyntaxId
+    - first SyntaxId
+
+= build-bullets(id, first, facts.node-type(unit.reading, id), .reason-element)
+
+────────────────────
+_ do build-bullets Typed ?! Refused
+    - home SyntaxId
+    - first SyntaxId
+    - listed TypeId
+    - reason ConversionReason
+
+. appends = call-at(home, .call-list-append)
+if appends == no-fact || first == 0
+    refuse(.refused-expression, home)
+    = Typed(make-operand(.operand-void, 0), no-type)
+. outer-list = built-list
+. outer-item = built-item
+. outer-append = built-append
+. outer-reason = built-reason
+. outer-spreading = spreading
+built-append = facts.calls[appends].callee
+built-item = instances.argument-type(built-append, 0)
+built-reason = reason
+spreading = 0
+. count U32 = 0
+. room U32 = 0
+. leading = true
+. bullet = first
+while bullet != 0
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            leading = leading && !row.is-multi && !row.is-optional
+            if leading
+                count += 1
+            else if !row.is-multi
+                room += 1
+    bullet = next-bullet(bullet)
+. mark = open-cleanups.length
+. own-scoping = scoping
+scoping = scoping.block-base = mark
+. start = given.length
+bullet = first
+for _ in 0 .. < count
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
+            . site = facts.bullet-site(unit.reading, bullet)
+            . converted = built-value(site, value)
+            if converted.type != built-item
+                refuse(.refused-conversion, site)
+            given += Typed(apart(converted, row.item, count > 1), converted.type)
+    bullet = next-bullet(bullet)
+. list = build-list(home, RowRange'SyntaxId(0, count), listed, start, false, first, room)
+drop-given(start)
+built-list = list.operand
+while bullet != 0
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            if row.is-multi
+                spreading = bullet
+                emit-spread(bullet, row.item, row.is-optional)
+                spreading = 0
+            else
+                . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
+                if row.is-optional && !types.is-optional(value.type) && reason == .reason-return
+                    refuse(.refused-expression, bullet)
+                append-built(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
+    bullet = next-bullet(bullet)
+. built = close-value(list, mark, own-scoping, home)
+built-list = outer-list
+built-item = outer-item
+built-append = outer-append
+built-reason = outer-reason
+spreading = outer-spreading
+= built
+
+────────────────────
+_ do built-value Typed
+    - site SyntaxId
+    - value Typed
+
+. converted = value
+if built-reason == .reason-element
+    converted = convert-matched(site, .reason-explicit, converted, built-item)
+= convert-matched(site, built-reason, converted, built-item)
+
+────────────────────
+_ do append-built
+    - site SyntaxId
+    - given-value Typed
+    - optional Bool
+
+. staying = no-block
+. value = given-value
+if optional && types.is-optional(value.type)
+    . held = value.type
+    . tested = present(site, value)
+    . given-block = ir.reserve-block()
+    staying = ir.reserve-block()
+    branch(tested.operand, given-block, staying)
+    ir.start-block(given-block)
+    value = payload(site, Typed(value.operand, held))
+value = built-value(site, value)
+if value.type != built-item
+    refuse(.refused-conversion, site)
+    =
+. mark = pending.length
+pending += built-list
+pending += value.operand
+call-method(built-append, site, mark)
+if staying != no-block
+    jump(staying)
+    ir.start-block(staying)
 
 ────────────────────
 _ do emit-spread
@@ -17177,6 +17314,9 @@ if body == 0
     . made = default-value(unwritten, returns-type, layout-of(returns-type, declared), declared)
     return-value(made.operand, declared)
     =
+if bullets != 0
+    emit-built-bullets(declared, bullets)
+    =
 if imperative
     emit-block(body)
     if row.ends-generator
@@ -18292,6 +18432,9 @@ _ do give-item
 ` the write recorded at the pipe, and the loop of a bullet yields it, converted as recorded at
 ` `site`.
 if writes.length == 0 || writes[writes.length - 1].pipe != loop
+    if spreading != 0 && spreading == loop
+        append-built(site, item, false)
+        =
     yield-item(site, item, false)
     =
 . write = writes[writes.length - 1]
@@ -43256,12 +43399,16 @@ _ do pass-leaf Typed
 ` picked for text, though cast to text it gives the text of any case. A case that holds text
 ` gives its text as it is, and any other case is cast to text. A value of an
 ` interface is of the type it holds. TypeScript never matches a value that is no object cast
-` up. A value already of the type asked for passes as it is.
+` up. A value already of the type asked for passes as it is, but an object tested for its
+` class alone, which may be of a class derived from the one it is known by.
 if row.from != value.type
     refuse(.refused-conversion, pattern)
     = value
 . kind = row.kind
+. exact = facts.plan-of(unit.reading, pattern) == .plan-exact-class
 if kind == .relation-same && row.from == row.to
+    if exact && tables.is-class(row.to)
+        = exact-class-pass(pattern, value, failed)
     = value
 . objects = tables.is-class(row.from) && tables.is-class(row.to)
 if kind == .relation-illegal || (kind == .relation-up-cast && !objects)
@@ -43284,10 +43431,27 @@ if matching.testing && !tests
     = value
 . own-matching = matching
 matching = matching.failing = failed
-matching = matching.exact-class = facts.plan-of(unit.reading, pattern) == .plan-exact-class
+matching = matching.exact-class = exact
 . passed = convert-one(pattern, row, value)
 matching = own-matching
 = passed
+
+────────────────────
+_ do exact-class-pass Typed
+    - pattern SyntaxId
+    - value Typed
+    - failed IRBlockId
+
+` An object tested for the class it is known by alone: it passes as it is where it is of that
+` class, and does not match where it is of one derived from it.
+. own-matching = matching
+matching = matching.exact-class = true
+. passed = ir.reserve-block()
+class-branch(pattern, value.operand, value.type, passed, failed)
+fail-jumps += 1
+matching = own-matching
+ir.start-block(passed)
+= value
 
 ────────────────────
 _ do match-equal Typed
@@ -45431,6 +45595,8 @@ _ do emit-call Typed
 ` at the node, of a function, a static, a constructor, or a method of the value written
 ` before its name. A value piped into the call is its last argument. A write to an event
 ` publishes to it.
+if facts.plan-of(unit.reading, id) == .plan-built-bullets
+    = emit-listed-bullets(id, tree.listed-bullets(id))
 do match? tree.nodes[callable]
     | .node-c-identifier
         if piped == 0 && own-call(id) == no-fact && is-binding(facts.node-type(unit.reading, id))
@@ -46153,6 +46319,7 @@ if op == .pipe-write-each-op
 if op != .pipe-forward-op
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
+=? emit-listed-bullets(id, tree.listed-bullets(id)) if facts.plan-of(unit.reading, id) == .plan-built-bullets
 do match? tree.nodes[left]
     | .node-bullet-expression(row)
         piped-site = if row.next != 0 then row.next else id
@@ -47122,6 +47289,8 @@ _ do build-list Typed
     - list-type TypeId
     - start Size
     - converts Bool
+    - chain SyntaxId = 0
+    - room U32 = 0
 
 ` A list of the items written at `written`, which `given` holds from `start` on, made with the
 ` functions the type pass recorded at the node:
@@ -47156,8 +47325,8 @@ if tables.instance-functions[reserves] == no-function || no-reads-function
 . list = emit-fact-call(id, facts.calls[makes], 0, RowRange'SyntaxId(), 0, 0, list-type)
 if list.type != list-type
     refuse(.refused-conversion, id)
-if count != 0
-    fill-list(id, written, list.operand, list-type, start, reserves, reads, kept, converts)
+if count != 0 || room != 0
+    fill-list(id, written, list.operand, list-type, start, reserves, reads, kept, converts, chain, room)
 if count != 0
     . field = held-field(id, list-type, sized)
     if is-integer(field.layout)
@@ -47404,6 +47573,8 @@ _ do fill-list
     - reads InstanceId
     - kept Index
     - converts Bool
+    - chain SyntaxId = 0
+    - room U32 = 0
 
 ` Reserves room in a list just made for the items evaluated, which `given` holds from
 ` `start` on, converts each where it `converts`, and stores them where the list's array holds
@@ -47419,12 +47590,12 @@ if instances.rows[reserves].self-type != list-type
     =
 . mark = pending.length
 pending += list
-pending += integer(counted as MachineKind, count)
+pending += integer(counted as MachineKind, count + room)
 call-method(reserves, id, mark)
 for position in 0 .. < count
     if !converts
         break
-    . item = tree.children[written.start + position]
+    . item = item-site(written, chain, position)
     . converted = convert(item, .reason-element, given[start + position])
     given[start + position] = converted
 . array = held-field(id, list-type, kept)
@@ -47442,7 +47613,7 @@ if !is-pointer(pointer) || item-type == no-type
 . layout = layout-of(item-type, id)
 . size = tables.layouts.rows[layout].size
 for position in 0 .. < count
-    . item = tree.children[written.start + position]
+    . item = item-site(written, chain, position)
     if given[start + position].type != item-type
         refuse(.refused-conversion, item)
         =
@@ -47451,6 +47622,32 @@ for position in 0 .. < count
         store-struct(data.operand, LayoutField(position * size, layout), value, item)
     else if layout != void-layout
         store(data.operand, position * size, value, is-managed-pointer(layout), item)
+
+────────────────────
+_ do item-site SyntaxId
+    - written RowRange'SyntaxId
+    - chain SyntaxId
+    - position U32
+
+=? tree.children[written.start + position] if chain == 0
+. bullet = chain
+for _ in 0 .. < position
+    bullet = next-bullet(bullet)
+= match tree.nodes[bullet]
+    | .node-bullet-expression(row)
+        row.item
+    ??
+        bullet
+
+────────────────────
+_ next-bullet SyntaxId
+    - bullet SyntaxId
+
+match tree.nodes[bullet]
+    | .node-bullet-expression(row)
+        row.next
+    ??
+        0
 
 ────────────────────
 _ do store-place
@@ -49670,6 +49867,8 @@ for slot in bound.start .. < bound.start + bound.count
     . scoped = bindings.scopes[row.scope].syntax
     . tracked = row.kind == .slot-lazy && (row.flags /and/ SlotFlag.slot-tracked) != 0
     if (row.kind == .slot-local || tracked) && start <= scoped && scoped <= value
+        = true
+    if row.kind == .slot-loop-state && start <= row.syntax && row.syntax <= value
         = true
 = false
 

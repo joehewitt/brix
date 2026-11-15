@@ -1299,6 +1299,167 @@ other
 s true
 ;====
 :====
+# The alternatives of an arm bind the same names, which the arm reads whichever of them matched.
+
+-- show(.a(3))
+-- show(.b(4))
+-- show(.c)
+-- pick((1, 2))
+-- pick((5, 1))
+
+━━━━━━━━━━━━━━━━━━━━
++ show String
+    - shape Shape
+
+match shape
+    | .a(n) | .b(n)
+        "n is $n"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Int
+    - pair (Int, Int)
+
+match pair
+    | (1, x) | (x, 1)
+        x
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| a Int
+| b Int
+| c
+
+:----
+
+n is 3
+n is 4
+none
+2
+5
+;====
+:====
+# A name the alternatives of an arm bind is of one type in each.
+
+-- show(.a(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ show String
+    - shape Shape
+
+match shape
+    | .a(n) | .b(n)
+        "n is $n"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| a Int
+| b String
+
+:----
+%crash
+
+Exception: "n" is I64 in one alternative and String in another; bind it to one type in each
+<no file:9>
+        | .a(n) | .b(n)
+                  ^^^^^
+;====
+:====
+# A name one alternative of an arm binds is bound by the others too.
+
+-- show(.a(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ show String
+    - shape Shape
+
+match shape
+    | .a(n) | .c
+        "n is $n"
+    ??
+        "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| a Int
+| c
+
+:----
+%crash
+
+Exception: "n" is bound by the alternative before this one but not by this one; bind it in each alternative
+<no file:9>
+        | .a(n) | .c
+                  ^^
+;====
+:====
+# A pattern binds a name once; one written twice in it is an error, not a test that the two places are equal.
+
+-- match [1, 2]
+    | [a, a]
+        "same $a"
+    ??
+        "other"
+
+:----
+%crash
+
+Exception: "a" is bound twice in this pattern; give each place a name of its own
+<no file:3>
+        | [a, a]
+              ^
+;====
+:====
+# A match whose arms give values of types that share none gives a union of them all, however many there are and in whatever order.
+
+for n in 1 .. 3
+    -- describe(n)
+    -- weigh(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - n Int
+
+. value = match n
+    |= 1
+        "one"
+    |= 2
+        2
+    ??
+        2.5
+= "$value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do weigh String
+    - n Int
+
+. value = match n
+    |= 1
+        2.5
+    |= 2
+        3
+    ??
+        "many"
+= "$value"
+
+:----
+
+one
+2.5
+2
+3
+2.5
+many
+;====
+:====
 # Captures with types take the cases of a union
 
 -- show(.count(7))

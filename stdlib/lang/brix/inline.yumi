@@ -1,0 +1,142 @@
+./convert
+
+━━━━━━━━━━━━━━━━━━━━
+_ InlinePlace is (name String, before String, after String)
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-inline-view String?
+    - form String
+
+for place in inline-places(inline-head(form))
+    =? inline-view(form, place)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ inline-places [InlinePlace]
+    - head String
+
+|? head == "param"
+    [param]
+|? head == "when" || head == "until" || head == "while"
+    [clause, statement]
+|? head == "exact" || head == "similar" || head == ":" || head == "{}" || head == "all" || head == "|"
+    [pattern]
+|? head == "case" || head == "case=" || head == "case?" || head == "default"
+    [arm, statement]
+|? head == "fn-type"
+    [type, statement]
+|? head.starts-with("fn-") || head == "type" || head == "extend" || head == "import"
+    [module, member]
+|? head == "prop"
+    [member]
+?? [statement, pattern, type]
+
+.. statement = InlinePlace("statement", "(main\n  ", "\n)")
+.. module = InlinePlace("module", "", "\n\n(main\n  (print 0)\n)")
+.. member = InlinePlace("member", "(type + T\n  ", "\n)")
+.. arm = InlinePlace("arm", "(main\n  (match s\n    ", "\n  )\n)")
+.. pattern = InlinePlace("pattern", "(main\n  (match s\n    (case ", " v)\n  )\n)")
+.. type = InlinePlace("type", "(main\n  (let x ", " v)\n)")
+.. param = InlinePlace("param", "(fn-expr + f _\n  ", "\n  v\n)")
+.. clause = InlinePlace("clause", "(main\n  (for (in x xs ", ")\n    v\n  )\n)")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inline-head String
+    - form String
+
+. head = ""
+. started = false
+for c in form
+    if started
+        =? head if c == ' ' || c == ')' || c == '\n'
+        head ++= c
+    else if c == '('
+        started = true
+= head
+
+━━━━━━━━━━━━━━━━━━━━
+_ do inline-view String?
+    - form String
+    - place InlinePlace
+
+. source = place.before ++ form ++ place.after
+. view = catch brix-yumi-text(source)
+=? null if view is Error
+. rows = view as String
+. back = catch brix-convert(rows)
+=? null if back is Error
+=? null if squeezed(back as String) != squeezed(source)
+. placed = placed-rows(rows, place.name)
+=? null if place.name == "statement" && placed.ends-with("...")
+= placed
+
+━━━━━━━━━━━━━━━━━━━━
+_ do placed-rows String
+    - rows String
+    - place String
+
+. kept = List'String()
+. line-no = 0
+. in-body = place != "member" && place != "param"
+for line in rows.split("\n")
+    line-no += 1
+    if line.starts-with("━") || line.starts-with("─")
+        continue
+    if !in-body
+        in-body = line == "+ T" || line == "+ f"
+        continue
+    if place == "param" && !line
+        break
+    if place == "module" && line == "-- 0"
+        break
+    do match place
+        |= "arm"
+            kept +=? indented(line, 4) if line-no > 1
+        |= "pattern"
+            kept +=? indented(line, 6) if line-no == 2
+        |= "type"
+            kept +=? unassigned(indented(line, 4)) if line-no == 1
+        |= "param"
+            kept += indented(line, 4)
+        |= "clause"
+            kept +=? indented(line, 12) if line-no == 1
+        ??
+            kept += line
+while kept.length != 0 && !kept[0]
+    -= kept[0]
+while kept.length != 0 && !kept[kept.length - 1]
+    -= kept[kept.length - 1]
+= "\n".join(kept)
+
+━━━━━━━━━━━━━━━━━━━━
+_ unassigned String
+    - line String
+
+if line.ends-with(" = v") then line.truncate(line.length - 4) else line
+
+━━━━━━━━━━━━━━━━━━━━
+_ do indented String
+    - line String
+    - depth Int
+
+. out = ""
+. column = 0
+for c in line
+    out ++=? c if column >= depth
+    column += 1
+= out
+
+━━━━━━━━━━━━━━━━━━━━
+_ do squeezed String
+    - text String
+
+. out = ""
+. spaced = false
+for c in text
+    if c == ' ' || c == '\n' || c == '\t'
+        spaced = true
+    else
+        out ++=? " " if spaced && out && c != ')' && !out.ends-with("(")
+        spaced = false
+        out ++= c
+= out

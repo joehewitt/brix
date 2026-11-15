@@ -1,0 +1,45 @@
+; A doorbell: `/media/synth` describes a sound as markup, one layer for each
+; wave in it, with pitches in hertz and times in milliseconds. A mixer plays
+; the sound twice through the speakers, the second time a third lower.
+(import /media/audio-output)
+(import /media/mixer)
+(import /media/synth)
+(import /time/duration)
+(import /units)
+(blank)
+
+(main
+  (<> SoundPatch (id: bell) (text: "bell")
+    ; The body of the note is a sine wave that fades over more than a second.
+    (<> SoundLayer (• sine)
+      (= pitch 659hz)
+      (= decay 1200ms)
+      (= level 60%)
+      (= reverb 30%)
+    )
+    ; A short, quiet wave an octave up is the strike of the hammer.
+    (<> SoundLayer (• triangle)
+      (= pitch 1318hz)
+      (= decay 300ms)
+      (= level 15%)
+    )
+  )
+  (blank)
+  (let bank (call SoundBank))
+  (let index (call (. bank add) bell))
+  (call (. bank seal))
+  (let mixer (call Mixer bank))
+  (blank)
+  ; The output keeps the speakers fed from the mixer until `use` closes it.
+  (let speakers (use (call AudioOutput mixer)))
+  (blank)
+  ; Ding, then dong four semitones lower. `st` is the unit for a step in pitch.
+  (for (in step (list 0st -4st))
+    (print (if-expr (== step 0st) "ding" "dong"))
+    (call (. mixer play) index 1 0 (call pitch-ratio step))
+    (call (. 550ms wait))
+  )
+  (blank)
+  ; The last note needs time to fade before the program ends.
+  (call (. 1200ms wait))
+)

@@ -11,22 +11,49 @@
 + fnv-prime U64 = 1099511628211
 
 ━━━━━━━━━━━━━━━━━━━━
-_ read-integer I64
+_ do read-integer I64
     - text String
     - low I64
     - high I64
 
-if value < low then low else if value > high then high else value
-
-.. value = C:strtoll(text, null, 10)
+. end Pointer = null
+. value = C:strtoll(text, &end, 10)
+?! Panic("\"$text\" is not a whole number") if !reads-all(text, end)
+= if value < low then low else if value > high then high else value
 
 ━━━━━━━━━━━━━━━━━━━━
-_ read-unsigned U64
+_ do read-unsigned U64
     - text String
 
-if value != 0 && text.trim().starts-with("-") then 0 else value
+. end Pointer = null
+. value = C:strtoull(text, &end, 10)
+?! Panic("\"$text\" is not a whole number") if !reads-all(text, end)
+= if value != 0 && text.trim().starts-with("-") then 0 else value
 
-.. value = C:strtoull(text, null, 10)
+━━━━━━━━━━━━━━━━━━━━
+_ do read-float F64
+    - text String
+
+. end Pointer = null
+. value = C:strtod(text, &end)
+?! Panic("\"$text\" is not a number") if !reads-all(text, end)
+= value
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reads-all Bool
+    - text String
+    - end Pointer
+
+. start = text as Pointer
+. read = (end.address - start.address) as Size
+if end == null || read == 0
+    = false
+. bytes = start as CPointer'U8
+for offset in read .. < text.size
+    . byte = bytes[offset]
+    if byte != 32 && (byte < 9 || byte > 13)
+        = false
+= true
 
 ━━━━━━━━━━━━━━━━━━━━
 + Number
@@ -233,7 +260,7 @@ C:yumiUintToString(this, n)
 ────────────────────
 + from str String
 
-C:strtoll(str, null, 10)
+read-integer(str, This.min, This.max)
 
 ────────────────────
 + to String
@@ -281,7 +308,7 @@ C:yumiUlonglongToString(this, n)
 ────────────────────
 + from str String
 
-C:strtof(str, null)
+read-float(str) as F32
 
 ────────────────────
 + to String
@@ -306,7 +333,7 @@ C:yumiDoubleToFixedString(this, n, 1)
 ────────────────────
 + from str String
 
-C:strtod(str, null)
+read-float(str)
 
 ────────────────────
 + to String

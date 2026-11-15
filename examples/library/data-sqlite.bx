@@ -1,0 +1,55 @@
+; SQLite: `/data/sqlite` opens a database, binds values to a statement's `?`
+; places, and hands each row of a query to a function that makes a typed value
+; of it.
+(import /data/sqlite)
+(blank)
+
+(main
+  ; `use` closes the database when this body ends. `:memory:` keeps it off the disk.
+  (let shelf (use (call SQLite ":memory:")))
+  (let columns "title text not null, author text not null, year integer not null, rating real")
+  (call (. shelf execute-script) (str "create table books (" columns ")"))
+  (blank)
+  ; Each argument after the statement fills one `?`. A null becomes a SQL null.
+  (let add "insert into books values (?, ?, ?, ?)")
+  (call (. shelf execute) add "Dune" "Frank Herbert" 1965 4.3)
+  (call (. shelf execute) add "Kindred" "Octavia Butler" 1979 4.5)
+  (call (. shelf execute) add "Piranesi" "Susanna Clarke" 2020 null)
+  (blank)
+  ; A query is a stream of whatever its row function builds, here a Book.
+  (let by-year "select title, author, year, rating from books order by year")
+  (for (in book (call (. shelf query) by-year read-book))
+    (print (str (. book year) " " (. book title) " by " (. book author) ", " (call rated book)))
+  )
+  (blank)
+  ; `query-first` gives the first row, or null when there is none.
+  (let older "select count(*) from books where year < ?")
+  (let count (?? (call (. shelf query-first) older (=> (row) (call (. row int) 0)) 2000) 0))
+  (print (str count " published before 2000"))
+)
+
+(type + Book (is Tuple)
+  (prop + title String)
+  (prop + author String)
+  (prop + year I64)
+  (prop + rating (? F64))
+)
+
+(fn-expr + read-book Book (?! SQLiteError)
+  (param row SQLiteRow)
+  ; A row reads each column by position and type, and a column that may be null
+  ; has an `optional-` reader.
+  (call Book
+    (block
+      (arg (call (. row string) 0))
+      (arg (call (. row string) 1))
+      (arg (call (. row int) 2))
+      (arg (call (. row optional-real) 3))
+    )
+  )
+)
+
+(fn-expr + rated String
+  (param book Book)
+  (if-expr (. book rating) (str "rated " (. book rating)) "unrated")
+)

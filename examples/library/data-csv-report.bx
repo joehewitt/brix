@@ -1,0 +1,137 @@
+; A report from a CSV file: `/data/csv` is a grammar, so reading the sheet is a
+; match, and every answer after that is a pipeline over its rows. The stages
+; that count, total, rank and pair up the rows are functions from `/stream`.
+(import /data/csv)
+(import /stream/aggregate)
+(import /stream/combine)
+(import /stream/filter)
+(import /stream/sort)
+(blank)
+
+(main
+  ; The match gives nothing when the text is not CSV.
+  (let sheet
+    (match? (call expenses)
+      (~ \csv-file)
+    )
+  )
+  (if sheet
+    (let (tuple header rows) sheet)
+    (print (str "columns: " (call (. ", " join) header)))
+    (blank)
+    ; A row arrives as a list of text, and this stage gives it names and types.
+    (let spent
+      (call List
+        (block
+          (bullet* rows)
+          (pipe *> (call Expense ([] each 0) ([] each 1) ([] each 2) (as ([] each 3) Float)))
+        )
+      )
+    )
+    ; `|>` hands the stream above it to a library function. `distinct` passes
+    ; each day on once, and `count` reads to the end and gives a number.
+    (let days
+      (block
+        (bullet* spent)
+        (pipe *> (. each day))
+        (pipe |> distinct)
+        (pipe |> count)
+      )
+    )
+    (let in-all (call sum (*> spent (. each cost))))
+    (print (str (. spent length) " rows over " days " days, " in-all " in all"))
+    (print "")
+    (blank)
+    ; There is one total for each category, and `sort` is told how to compare two.
+    (print "by category:")
+    (let ranked
+      (block
+        (bullet* spent)
+        (pipe *> (. each category))
+        (pipe |> distinct)
+        (pipe *> (call Subtotal each (call spent-on each spent)))
+        (pipe |> (call sort (:using by-amount) (:is-reverse true)))
+      )
+    )
+    (for (in subtotal ranked)
+      (print (str "  " (. subtotal category) ": " (. subtotal amount)))
+    )
+    (print "")
+    (blank)
+    ; `scan` gives the total so far after each row, and `zip` puts it beside its row.
+    (print "as the week went:")
+    (let so-far
+      (block
+        (bullet* spent)
+        (pipe *> (. each cost))
+        (pipe |> (call scan 0.0 (:using (=> (sum cost) (+ sum cost)))))
+      )
+    )
+    (for (in (tuple expense sum) (call zip spent so-far))
+      (print (str "  " (. expense day) "  " (. expense item) ": " sum))
+    )
+    (print "")
+    (blank)
+    ; `first` gives nothing when no row reaches it.
+    (let dearest
+      (block
+        (bullet* spent)
+        (pipe |> (call sort (:using by-cost) (:is-reverse true)))
+        (pipe |> first)
+      )
+    )
+    (if dearest
+      (print (str "dearest: " (. dearest item) ", on " (. dearest day)))
+    )
+    (print (str "anything over 15: " (call some spent (:where (> (. each cost) 15)))))
+    (else
+      (print "that text is not a CSV file")
+    )
+  )
+)
+
+(type + Expense (is Tuple)
+  (prop + day String)
+  (prop + category String)
+  (prop + item String)
+  (prop + cost Float)
+)
+
+(type + Subtotal (is Tuple)
+  (prop + category String)
+  (prop + amount Float)
+)
+
+(fn-expr + spent-on Float
+  (param category String)
+  (param spent (list Expense))
+  ; A function's body can be a pipeline, and what the last stage gives is its result.
+  (bullet* spent)
+  (pipe ?> (== (. each category) category))
+  (pipe *> (. each cost))
+  (pipe |> sum)
+)
+
+(fn-expr + by-amount _
+  (param left Subtotal)
+  (param right Subtotal)
+  (call compare-basic (. left amount) (. right amount))
+)
+
+(fn-expr + by-cost _
+  (param left Expense)
+  (param right Expense)
+  (call compare-basic (. left cost) (. right cost))
+)
+
+(fn-expr + expenses _
+  (paragraph
+    "day,category,item,cost"
+    "Mon,food,\"milk, oat\",2.40"
+    "Mon,travel,bus pass,18.00"
+    "Tue,food,bread,3.10"
+    "Wed,home,light bulbs,7.25"
+    "Thu,food,cheese,5.60"
+    "Fri,travel,taxi,12.50"
+  )
+)

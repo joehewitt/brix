@@ -1,0 +1,65 @@
+; Stream grammars: a pattern can run over any stream of items, not only text.
+; Here the items are input events, a type stands for "one item of this type",
+; and each arm names a gesture.
+(main
+  (let events
+    (call (of List Event)
+      (block
+        (arg (call Press))
+        (arg (call Release))
+        (arg (call Press))
+        (arg (call Release))
+        (arg (call Press))
+        (arg (call Move 40))
+        (arg (call Move 95))
+        (arg (call Release))
+        (arg (call Press))
+        (arg (call Release))
+        (arg (call Key 's'))
+        (arg (call Press))
+        (arg (call Release))
+      )
+    )
+  )
+  ; Matching the rule along the events gives one gesture for each run it fits.
+  (for (in gesture (~> events \gesture))
+    (print gesture)
+  )
+)
+
+(type + Event)
+
+(type + Press (is Event))
+
+(type + Release (is Event))
+
+(type + Move (is Event)
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+)
+
+(type + Key (is Event)
+  (prop + letter Char)
+  (fn-do + This _
+    (param letter _)
+  )
+)
+
+(fn-expr + gesture String (over: Event)
+  ; Arms are tried in order, so the longer gestures come before the tap they start with.
+  (~ (seq Press Release Press Release)
+    "double tap"
+  )
+  ; A repeated capture holds every event it took, here as a list of moves.
+  (~ (seq Press (: moves (+ Move)) Release)
+    (str "drag through x = " (call (. ", " join) (in (. each x) moves)))
+  )
+  (~ (seq Press Release (: key Key))
+    (str "tap, then the " (. key letter) " key")
+  )
+  (~ (seq Press Release)
+    "tap"
+  )
+)

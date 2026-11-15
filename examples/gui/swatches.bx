@@ -1,0 +1,182 @@
+; A grid that follows a collection. A pipeline makes the palette, a keyed loop
+; keeps one tile for each swatch, and style rules say how a tile arrives, leaves
+; and travels when the list changes. No code moves or fades anything.
+(import /graphics/color)
+(import /gui)
+(import /math)
+(import /stream/sort)
+(import /time/duration)
+(import /units)
+(blank)
+
+(main
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Swatches")
+      (= size (tuple 560 460))
+      (blank)
+      (<> SwatchPanel (• flex 1))
+    )
+  )
+)
+
+(type + Swatch (is Tuple)
+  (prop + id Index)
+  (prop + hue Float)
+  (fn-expr + color RGBA :get
+    (as (call HSVA hue 0.68 0.94) RGBA)
+  )
+  (fn-expr + label String :get
+    (str "Hue " (as (call round (* hue 360)) Int) "°")
+  )
+)
+
+(fn-expr + wheel (list Swatch)
+  (param count Index)
+  ; Hues spread evenly round the wheel: a range, mapped to swatches, gathered into a list.
+  (bullet* (..< 0 count))
+  (pipe *> (call Swatch each (/ (as each Float) count)))
+  (pipe |> List)
+)
+
+(fn-expr + by-hue _
+  (param a Swatch)
+  (param b Swatch)
+  (call compare-basic (. a hue) (. b hue))
+)
+
+(style SwatchTheme
+  (using GUIDefaultTheme)
+  (using GUIMotionTheme)
+  (using GUIBoxCursor)
+  (rule swatch-page (• flex-col) (• p 20) (• gap 16))
+  (blank)
+  (rule swatch-bar (• flex-row) (• items-center) (• gap 8))
+  (blank)
+  ; Tiles that arrive together come in one after another.
+  (rule swatch-grid (• flow-row) (• flex 1) (• gap 10)
+    (= motion-stagger 30ms)
+  )
+  (blank)
+  (rule swatch-tile (• w 64) (• h 64)
+    (= corner-radius 14)
+    (= cursor (. CursorStyle pointing-hand))
+    (= motion gui-motion-smooth)
+    ; When the order changes, layout gives a tile a new place and this carries it there.
+    (= (. motion position) gui-motion-bouncy)
+    (blank)
+    ; A new tile starts from these values and settles into its own.
+    (when-style #is-entering
+      (= opacity 0%%)
+      (= scale 0.4)
+    )
+    (blank)
+    ; A removed tile stays in the tree until it has reached these.
+    (when-style #is-leaving
+      (= opacity 0%%)
+      (= scale 0.4)
+    )
+    (blank)
+    (when-style #is-hover-within
+      (= scale 1.08)
+    )
+    (blank)
+    (when-style #is-selected
+      (= border-width 3)
+      (= border-color gui-strong-text-color)
+    )
+  )
+  (blank)
+  (rule swatch-detail (• flex-row) (• items-center) (• bg gui-panel-color) (• p 14)
+    (= gap 12)
+    (= corner-radius gui-card-radius)
+  )
+  (blank)
+  (rule swatch-chip (• w 28) (• h 28)
+    (= corner-radius 14)
+    (= motion gui-motion-smooth)
+  )
+)
+
+(type + SwatchPanel (is Box)
+  (using SwatchTheme)
+  (prop + swatches (list Swatch) (= (call wheel 12)))
+  (prop + serial Index (= 12))
+  ; The panel owns the selection. The tiles only show it.
+  (prop + selected (? Swatch) (= null))
+  (content
+    (<> This (• swatch-page)
+      (<> Box (• swatch-bar)
+        (<> Button (text: "Add")
+          (= action (=> () :do (call add)))
+        )
+        (<> Button (text: "Remove")
+          (= is-enabled (!= #selected null))
+          (= action (=> () :do (call remove-selected)))
+        )
+        (<> Button (text: "Shuffle")
+          (= action (=> () :do (call shuffle)))
+        )
+        (<> Button (text: "Sort")
+          (= action (=> () :do (= swatches (call sort swatches (:using by-hue)))))
+        )
+      )
+      (<> Box (• swatch-grid)
+        ; The key ties a tile to its swatch, so a reordered swatch keeps its tile and a
+        ; removed one is the tile that leaves.
+        (for (in swatch #swatches (keyed-by (. swatch id)))
+          (<> SwatchTile
+            (= swatch swatch)
+            (= is-selected (== (?. #selected id) (. swatch id)))
+            (for (on event click)
+              (= selected swatch)
+              (call (. event cancel))
+            )
+          )
+        )
+      )
+      (<> Box (• swatch-detail)
+        (<> Box (• swatch-chip)
+          (= background-color (?. #selected color))
+        )
+        (<> Label
+          (= text (?? (?. #selected label) (str (. #swatches length) " swatches. Click one.")))
+        )
+      )
+    )
+  )
+  (fn-do + add _
+    ; The golden ratio keeps each new hue away from the ones before it.
+    (let added (call Swatch serial (% (* serial 0.618034) 1.0)))
+    (+= serial 1)
+    (+= swatches added)
+    (= selected added)
+  )
+  (fn-do + remove-selected _
+    (let id (?. selected id))
+    ; A comprehension keeps the rest. The tile whose key is gone plays its leaving rule.
+    (= swatches (call List (in each swatches (when (!= (. each id) id)))))
+    (= selected null)
+  )
+  (fn-do + shuffle _
+    (let mixed (call List swatches))
+    (for (in index (..< 0 (. mixed length)))
+      (let other (call random index (. mixed length)))
+      (let held ([] mixed index))
+      (= ([] mixed index) ([] mixed other))
+      (= ([] mixed other) held)
+    )
+    (= swatches mixed)
+  )
+)
+
+(type + SwatchTile (is Box)
+  (using SwatchTheme)
+  (prop + swatch Swatch)
+  (prop + is-selected _ (= false))
+  (content
+    (<> This (• swatch-tile)
+      (= background-color (. swatch color))
+    )
+  )
+)

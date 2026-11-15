@@ -1,0 +1,37 @@
+; Collections: lists, maps and ranges, and the comprehension that builds one
+; collection from another: a value, `in` a source, kept `when` a test holds.
+(import /stream/sort)
+(blank)
+
+(main
+  (let text "the cat saw the dog and the dog saw the bird and the bird flew away")
+  ; `split` gives its words one at a time. Naming the type List keeps them all.
+  (let words List (call (. text split) " "))
+  (blank)
+  (let counts (call (of Map String Int)))
+  (for (in word words)
+    ; A missing key reads as null, so `??` starts each count at zero.
+    (= ([] counts word) (+ (?? ([] counts word) 0) 1))
+  )
+  (blank)
+  ; A loop over a map takes each entry apart into its key and its value.
+  (let top "")
+  (for (in (tuple word count) counts)
+    (if (> count (?? ([] counts top) 0))
+      (= top word)
+    )
+  )
+  (blank)
+  ; Inside a comprehension the item is `each`. A map's items have a key and a value.
+  (let often (in each counts (when (> (. each value) 1))))
+  (let repeated List (in (str (. each key) " x" (. each value)) often))
+  (let long List (in each (. counts keys) (when (> (. each length) 3))))
+  ; A range is a source too.
+  (let squares List (in (* each each) (.. 1 5)))
+  (blank)
+  (print (str (. words length) " words, " (. counts length) " distinct"))
+  (print (str "most common: " top))
+  (print (str "repeated: " (call (. ", " join) (call sort repeated))))
+  (print (str "longer than three letters: " (call (. ", " join) (call sort long))))
+  (print (str "squares of 1 to 5: " (call (. ", " join) squares)))
+)

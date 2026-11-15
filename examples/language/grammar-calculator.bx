@@ -1,0 +1,79 @@
+; Stream grammars: rules call one another, and themselves, so a grammar can
+; follow nested input. Each rule here gives a number, so the answer is worked
+; out as the text is read and no tree is built.
+(import /stream/aggregate)
+(blank)
+
+(main
+  (let sources
+    (call List
+      (block
+        (bullet "1 + 2 * 3")
+        (bullet "(1 + 2) * 3")
+        (bullet "10 - 4 - 3")
+        (bullet "2 * (3 + 4) / 7")
+      )
+    )
+  )
+  (for (in source sources)
+    (print (str source " = " (call answer source)))
+  )
+)
+
+(fn-expr + answer Float
+  (param source String)
+  (match source
+    (~ \total)
+    (default
+      (inline 0.0)
+    )
+  )
+)
+
+(fn-expr + total Float (over: Char)
+  ; A total is made of products, so `*` and `/` bind tighter than `+` and `-`.
+  ; A repeated rule gives a list of what each pass gave.
+  (~ (seq (: first \product) (: rest (* \added)))
+    (+ first (call sum rest))
+  )
+  (where
+    (lazy added Float
+      (pattern
+        (~ (seq "+" (: value \product))
+          value
+        )
+        (~ (seq "-" (: value \product))
+          (- value)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + product Float (over: Char)
+  (~ (seq (: first \factor) (: rest (* \scaled)))
+    (call reduce first rest (:using (=> (so-far each) (* so-far each))))
+  )
+  (where
+    (lazy scaled Float
+      (pattern
+        (~ (seq "*" (: value \factor))
+          value
+        )
+        (~ (seq "/" (: value \factor))
+          (/ 1 value)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + factor Float (over: Char)
+  ; Arms are tried in order. The first calls `total` again for what is in parentheses.
+  (~ (seq (* " ") "(" (: inner \total) ")" (* " "))
+    inner
+  )
+  (~ (seq (* " ") (: digits (+ (chars "0-9"))) (* " "))
+    (as digits Float)
+  )
+)

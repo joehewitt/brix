@@ -1,0 +1,45 @@
+; Operators: a type says what `+`, `-` and `*` mean for its values, so a
+; calculation keeps the shape it has on paper. A relation with no symbol of its
+; own can be a function written between slashes.
+(main
+  (let wind (call Vector 3 4))
+  (let current (call Vector 1 -2))
+  (blank)
+  (print (str "wind + current = " (+ wind current)))
+  (print (str "wind - current = " (- wind current)))
+  (print (str "wind * 2 = " (* wind 2)))
+  (print (str "-wind = " (- wind)))
+  ; `dot` is an ordinary function of two values, called here as an operator.
+  (print (str "wind /dot/ current = " (/dot/ wind current)))
+  ; Tuples are equal when their fields are, with nothing to declare.
+  (print (str "same as (3, 4): " (== wind (call Vector 3 4))))
+)
+
+(type + Vector (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + (infix this + (param other Vector)) _
+    ; `infix` names the two sides of the operator: this value and a parameter.
+    (call Vector (+ x (. other x)) (+ y (. other y)))
+  )
+  (fn-expr + (infix this - (param other Vector)) _
+    (call Vector (- x (. other x)) (- y (. other y)))
+  )
+  (fn-expr + (infix this * (param factor Int)) _
+    ; The right side may be of another type: a vector times a number.
+    (call Vector (* x factor) (* y factor))
+  )
+  (fn-expr + (prefix - this) _
+    ; `prefix` defines the operator written in front of one value.
+    (call Vector (- x) (- y))
+  )
+  (fn-to-expr + String
+    (str "(" x ", " y ")")
+  )
+)
+
+(fn-expr + dot Int
+  (param a Vector)
+  (param b Vector)
+  (+ (* (. a x) (. b x)) (* (. a y) (. b y)))
+)

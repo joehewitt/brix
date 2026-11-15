@@ -146,6 +146,8 @@ _ cleans-up Bool
 _ loops-yields Bool
 _ splits-yields Bool
 _ orders-yields Bool
+_ building-list Bool
+_ built-item TypeId = no-type
 _ yield-literals [SyntaxId]
 _ ordered-yields [TypeId]
 _ ordered-sites [SyntaxId]
@@ -177,6 +179,7 @@ _ foreseen-payloads [TypeId]
 _ unheld-cases [SyntaxId]
 _ bullet-lists [SyntaxId]
 _ bullet-items [TypeId]
+_ bullet-builds [Bool]
 _ probing Bool
 _ deferring Bool
 _ watching-leaves U32
@@ -343,6 +346,7 @@ _ building SlotId = no-slot
 .. unheld-cases = parts.unheld-cases
 .. bullet-lists = parts.bullet-lists
 .. bullet-items = parts.bullet-items
+.. bullet-builds = parts.bullet-builds
 .. coded-rules = parts.coded-rules
 .. coded-typed = parts.coded-typed
 .. coded-streams = parts.coded-streams
@@ -731,10 +735,14 @@ while fact != no-fact
 ` A value made a value of an interface. Where its type carries errors of its own, as a
 ` generator that raises does, a function of the interface that carries none panics with the
 ` error's text where the type's raises one, so the text of each is made. Where an object of a
-` class is made one, the class must use the styles the interface does (`conform-styles`).
+` class is made one, the class must use the styles the interface does (`conform-styles`), and a
+` value of any type made one must answer the functions the interface requires
+` (`conform-members`).
 facts.record-witness-table(from, to)
 if types.intrinsic-of(from) == .class && types.intrinsic-of(to) == .interface
     conform-styles(from, to)
+if types.intrinsic-of(from) != .interface && types.intrinsic-of(to) == .interface
+    conform-members(from, to)
 do match? types.rows[from]
     | .type-class(row)
         if row.errors.count != 0
@@ -1125,6 +1133,7 @@ if symbol && expects
         = owner
 . fitting = if expects then expected-function(expected) else no-type
 =? infer(expr, want.asking(.want-fitting, expected)) if fitting != no-type && is-conditional-value(expr)
+=? infer(expr, want.asking(.want-items, expected)) if expects && tree.nodes[expr] is .node-list-syntax
 =? infer(expr, want) if !expects || !calls-symbol(expr)
 = infer(expr, want.asking(.want-owner, expected))
 
@@ -1638,14 +1647,18 @@ if unwritten != 0 && !refuses-unwritten()
 if declared == no-type && intrinsic == no-type
     settle-symbol-returns()
     value = settle-literal-returns(value)
-    . unified = infer-return(frame, giving, value)
-    if unified != no-type && unified != invalid-type
-        convert-returns(unified, instances.signatures[instance].returns)
+    if building-list
+        settle-built-list()
+    else
+        . unified = infer-return(frame, giving, value)
+        if unified != no-type && unified != invalid-type
+            convert-returns(unified, instances.signatures[instance].returns)
 else if declared != no-type && !giving.yields
     narrow-declared-return(frame, declared, value)
 if default-site != 0 && !giving.yields
     refuse-default(default-site)
-if giving.yields
+. generates = giving.yields && !building-list
+if generates
     instances.mark-generator(instance)
 if is-close-method(declaration) || is-generator-end(declaration)
     instances.mark-may-panic(instance)
@@ -1675,15 +1688,15 @@ if !declaration.is-main && !declaration.is-imperative && declaration.body != 0
 else if lacks-result(declaration, declared, intrinsic)
     frame.diagnose(declaration.syntax, .non-void-return)
 finish-errors(frame, lacks, unbuildable)
-if giving.yields
+if generates
     demand-errors(instance)
-if giving.yields && declared != no-type
+if generates && declared != no-type
     . steps = instances.rows[instance].step-errors
     . returned = generator-return(declared, steps)
     if types.intrinsic-of(returned) == .interface
         record-witness(generator-of(first-arg(returned), steps), returned)
     instances.set-returns(instance, returned, declared, .return-declared)
-if giving.yields
+if generates
     note-generator()
 ?! Panic("A body gave a return type other than the one its header promised")
     if promises && instances.signatures[instance].returns != promised
@@ -6100,6 +6113,150 @@ do match? owner.decls[ref.decl]
             - text
             - no-type
             - no-type
+
+────────────────────
+_ do conform-members
+    - value TypeId
+    - interface TypeId
+
+` A type whose values are made values of an interface must answer each function the interface
+` and those it extends declare without a body and with a result: its table has nothing of the
+` interface's to run for it. The first it does not answer is the error, at the type's
+` declaration, as a call through the interface reports it. Each instance that makes the witness
+` reports it, so that it is reported whichever of them a type pass types.
+. ref = class-ref(types, value)
+if ref.decl == 0
+    =
+. owner = program.modules[ref.module]
+. site = match owner.decls[ref.decl]
+    | .decl-class(declared)
+        declared.syntax
+    ??
+        0u32
+if site == 0
+    =
+. key = ((value as U64) /lshift/ 32) /or/ (interface as U64)
+. known = scratch.missing-members[key]
+. missing = if known then known else missing-member(value, interface)
+scratch.missing-members[key] = missing
+if missing == 0
+    =
+. module = (missing /rshift/ 32) as ModuleId
+. decl = (missing /and/ 0xffffffff) as DeclId
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        . declaring = declaring-interface(interface, DeclRef(module, fn.owner))
+        . text = program.store-atom(unanswered-text(types, value, declaring, fn.name!))
+        facts.record-diagnostic(instance, ref.module, site, .stated, text)
+        facts.relate-diagnostic(program.store-atom("Interface"), module, fn.syntax)
+
+────────────────────
+_ do missing-member U64
+    - value TypeId
+    - interface TypeId
+
+` The first function an interface, then each it extends, declares without a body and with a
+` result that a type does not answer, as its module above its declaration, or 0 where the type
+` answers each. A function with type parameters of its own is left to the calls that give it
+` arguments, which choose what answers it. A step function written with no steps has no body
+` either: it is given an empty block only so that it has one to check.
+. ref = class-ref(types, interface)
+. owner = program.modules[ref.module]
+do match? owner.decls[ref.decl]
+    | .decl-class(declared)
+        for member in owner.member-pool[declared.members]
+            do match? owner.decls[member]
+                | .decl-function(fn)
+                    . own-params = fn.type-args.count != 0
+                    . bodiless = fn.body == 0 || is-module-empty-block(ref.module, fn.body)
+                    if bodiless && fn.return-type != 0 && !fn.is-static && !own-params && fn.name
+                        if !answers-required(value, interface, ref.module, member, fn.kind, fn.name)
+                            = ((ref.module as U64) /lshift/ 32) /or/ (member as U64)
+for extended in types.interfaces-of(interface)
+    . missing = missing-member(value, extended)
+    if missing != 0
+        = missing
+= 0
+
+────────────────────
+_ do answers-required Bool
+    - value TypeId
+    - interface TypeId
+    - module ModuleId
+    - decl DeclId
+    - kind DeclKind
+    - name Atom
+
+` Whether a type answers a function an interface declares without a body, as the table of the
+` type finds it: by a member of its own, of a class it is derived from or of an extension that
+` takes the arguments the interface's function does, by a property it stores or one it
+` delegates the name to for a getter or a setter, and by what it delegates the interface to.
+` The signature is read onto the scratch stacks, and taken off them again.
+. names-mark = scratch.names.mark
+. items-mark = scratch.types.mark
+. signature = signature-into(types, module, decl, no-type-arguments(types), interface, true)
+. answered = answers-signature(value, signature, module, decl, kind, name)
+scratch.types.rewind(items-mark)
+scratch.names.rewind(names-mark)
+= answered
+
+────────────────────
+_ do answers-signature Bool
+    - value TypeId
+    - signature Signature
+    - module ModuleId
+    - decl DeclId
+    - kind DeclKind
+    - name Atom
+
+for arg in signature.args
+    if types.completions[arg].has-variables
+        = true
+if kind != .function-decl && types.property-named(value, name)
+    = true
+. busy = calls.suspend-ranking()
+. ranking = calls.ranking
+. caller = ranking.caller
+ranking.caller = class-ref(types, value).module
+. shapes-start = scratch.call-arguments.mark
+. types-start = scratch.types.mark
+for arg in signature.args
+    scratch.call-arguments.push(CallArgument(null, false, false, false, false))
+    scratch.types.push(arg)
+ranking.begin(scratch.call-arguments.since(shapes-start), scratch.types.since(types-start))
+. hit Hit? = null
+if kind == .getter-decl
+    hit = ranking.dispatch-getter(value, name)
+else if kind == .setter-decl
+    hit = ranking.dispatch-setter(value, name)
+else
+    hit = ranking.dispatch-method(value, name)
+. answered = hit && (hit.module != module || hit.decl != decl || ranking.ambiguity() != null)
+. steps [U32]
+if !answered && kind != .function-decl
+    . holder = ranking.delegated-holder(value, name, steps)
+    answered = holder != no-type && steps.length != 0 && types.property-named(holder, name) != null
+ranking.release()
+scratch.call-arguments.rewind(shapes-start)
+scratch.types.rewind(types-start)
+ranking.caller = caller
+calls.resume-ranking(busy)
+= answered
+
+────────────────────
+_ do declaring-interface TypeId
+    - interface TypeId
+    - declarer DeclRef
+
+` The interface, of one and those it extends, that a declaration declares.
+. ref = class-ref(types, interface)
+if ref.module == declarer.module && ref.decl == declarer.decl
+    = interface
+for extended in types.interfaces-of(interface)
+    . found = declaring-interface(extended, declarer)
+    if found != no-type
+        = found
+= no-type
 
 ────────────────────
 _ do missing-style TypeId
@@ -12967,6 +13124,17 @@ _ bare-value-text String
 "A value cannot stand alone as a step; use it, or remove it"
 
 ────────────────────
+_ is-module-empty-block Bool
+    - module ModuleId
+    - id SyntaxId
+
+match program.modules[module].tree.nodes[id]
+    | .node-block(row)
+        row.body.count == 0
+    ??
+        false
+
+────────────────────
 _ is-empty-block Bool
     - id SyntaxId
 
@@ -13094,20 +13262,7 @@ if same-decl(ref, types.generator-decl) || same-decl(ref, types.iterable-decl)
     item = first-arg(returned)
 if item == no-type || item == invalid-type
     =
-for position in frame.yields-start .. < scratch.yields.length
-    . site = scratch.yields[position]
-    if site.type != item
-        . noted = position - frame.yields-start
-        . literal = if noted < yield-literals.length then yield-literals[noted] else 0
-        if literal != 0 && yield-fits(literal, item)
-            conversions.convert(site.syntax, literal, site.type, item, .reason-return, true, true)
-        else
-            conversions.convert
-                - site.syntax
-                - yielded-syntax(site.syntax)
-                - site.type
-                - item
-                - .reason-return
+convert-yields(item)
 . makes = generator-of(item, instances.rows[instance].step-errors)
 . yields = step-answer(types.optional-around(item))
 types.complete(makes)
@@ -13125,6 +13280,39 @@ if returned != no-type && returned != invalid-type && returned != makes && not-i
     conversions.convert(site, site, makes, returned, .reason-return)
 .. not-interface = types.intrinsic-of(returned) != .interface
 instances.set-generator(instance, makes, yields, loops-yields && splits-yields)
+
+────────────────────
+_ do convert-yields
+    - item TypeId
+
+for position in frame.yields-start .. < scratch.yields.length
+    . site = scratch.yields[position]
+    if site.type != item
+        . noted = position - frame.yields-start
+        . literal = if noted < yield-literals.length then yield-literals[noted] else 0
+        if literal != 0 && yield-fits(literal, item)
+            conversions.convert(site.syntax, literal, site.type, item, .reason-return, true, true)
+        else
+            conversions.convert
+                - site.syntax
+                - yielded-syntax(site.syntax)
+                - site.type
+                - item
+                - .reason-return
+
+────────────────────
+_ do settle-built-list
+
+. item = if built-item != no-type then built-item else giving.yielded
+if item == no-type || item == invalid-type
+    instances.set-returns(instance, invalid-type, no-type, .return-failed)
+    =
+convert-yields(item)
+. list = list-of(item)
+instances.set-returns(instance, list, no-type, .return-inferred)
+. head = frame.declaration.syntax
+calls.note-list(head, list)
+calls.note-append(head, list, item, .call-list-append)
 
 ────────────────────
 _ do generator-of TypeId
@@ -13969,6 +14157,8 @@ if reader.initializer == 0 && reader.module == value.module && reader.decl == va
     =
 if value.may-panic
     instances.mark-may-panic(instance)
+if value.polls
+    instances.mark-polls(instance)
 if value.module != (module)
     =
 facts.replay-calls(unit, instance)
@@ -14807,12 +14997,21 @@ _ do check-interfaces
     - class ClassDecl
 
 ` An interface written that names nothing, as one declared in a module this one does not import,
-` is reported (`missing-type`).
+` is reported (`missing-type`). A row that names a class, a struct or a tuple names no interface:
+` the type it is built on is written in its header, and it has one.
 if class.interfaces.count == 0
     =
 . env = types.class-env(module, decl)
 for interface in program.modules[module].syntax-pool[class.interfaces]
-    . ignored = report-missing-type(interface, env)
+    if !report-missing-type(interface, env)
+        . named = types.evaluate-type(module, tree, interface, env)
+        . kind = if named != invalid-type then types.intrinsic-of(named) else IntrinsicKind.none
+        if kind == .class || kind == .struct || kind == .tuple
+            . shown = type-short-name(types, named)
+            . lead = "${class.name.text} cannot implement $shown, which is not an interface"
+            . base = if class.base != 0 then types.evaluate-type(module, tree, class.base, env) else no-type
+            . text = if base == no-type || base == invalid-type then "$lead; a type is built on one type, written in its header, as in \"+ ${class.name.text} is $shown\"" else "$lead; ${class.name.text} is built on ${type-short-name(types, base)}, and a type is built on one type"
+            frame.diagnose(interface, .stated, program.store-atom(text))
 types.env-release(env)
 
 ────────────────────
@@ -14966,7 +15165,8 @@ _ do check-property
 ` of being stored that the type's layout can hold. A type written for it that names nothing is
 ` reported (`missing-type`). The flag of a case of a machine that refines the machine of its
 ` base's property is the base's, and so is the projection of one that refines a machine of its
-` base's markup.
+` base's markup. An interface stores nothing: what it requires of the types that are it is a
+` getter.
 if property.owner == 0 || !property.name
     =
 . name = property.name
@@ -14987,6 +15187,9 @@ if property.type-syntax != 0
 if owner == invalid-type
     =
 . kind = types.intrinsic-of(owner)
+if kind == .interface
+    frame.diagnose(property.syntax, .stated, program.store-atom(stored-interface-text(property)))
+    =
 if kind == .struct && property.value != 0
     do match? tree.nodes[property.value]
         | .node-state-machine
@@ -14997,6 +15200,29 @@ if !typed && property.value == 0
     . shown = type-short-name(types, owner)
     . message = "Property '${name.text}' of '$shown' needs either a type or a value"
     frame.diagnose(property.syntax, .stated, program.store-atom(message))
+
+────────────────────
+_ do stored-interface-text String
+    - property PropertyDecl
+
+` The error of a property an interface declares to store: one with no value is a getter the
+` types that are the interface answer, and one with a value a getter that gives it.
+. shown = match program.modules[module].decls[property.owner]
+    | .decl-class(class)
+        class.name.text
+    ??
+        "?"
+. name = property.name!.text
+. lead = "$shown is an interface, so it cannot store \"$name\""
+if property.value != 0
+    . written = if property.is-lazy then ":=" else "="
+    = "$lead; declare a getter that gives the value, with \"=>\" in place of \"$written\""
+if property.type-syntax == 0
+    = "$lead; declare a getter for the types that are $shown to answer"
+. env = types.class-env(module, property.owner)
+. stated = types.evaluate-type(module, tree, property.type-syntax, env)
+types.env-release(env)
+= "$lead; declare a getter for the types that are $shown to answer, as in \"+ get $name ${type-source(types, stated)}\""
 
 ────────────────────
 _ do check-union-member
@@ -19878,7 +20104,7 @@ do match tree.nodes[id]
             = invalid-type
         = bound
     | .node-list-syntax(row)
-        = infer-list(id, row.items)
+        = infer-list(id, row.items, want)
     | .node-get-expression
         = found-node(id, want).type
     | .node-print(row)
@@ -23600,7 +23826,7 @@ scratch.types.push(source)
 . create = calls.demand-runtime-call(markup, no-type, program.store-atom(creates), mark, 4)
 scratch.types.rewind(mark)
 . made = if create != no-instance then instances.signatures[create].returns else no-type
-if types.intrinsic-of(made) != .class || !is-markup-host(made) || live.has-actions == no-instance
+if made == no-type || types.intrinsic-of(made) != .class || !is-markup-host(made) || live.has-actions == no-instance
     decline(id)
     = invalid-type
 scratch.types.push(item)
@@ -23684,7 +23910,8 @@ _ do loop-source LoopSource
 ` one that is a `Collection` but no concrete one, and one that supports none of these. One that
 ` converts to a `Collection`, which the reference gives the region unconverted, and an `Iterable`
 ` that is `Closable`, which the reference gives the region to close, have no shape here yet. An
-` optional container is read by the type it holds, and given to the region as it is.
+` optional container is read by the type it holds, and given to the region as it is where that
+` type is the interface or derives from it, and else converted to the interface made optional.
 . none = LoopSource(invalid-type, no-type, "")
 . optional = types.intrinsic-of(read) == .optional
 . shape = if optional then types.optional-inner(read) else read
@@ -23730,15 +23957,20 @@ if item == no-type || item == invalid-type || types.completions[item].has-variab
 if item == no-type || item == invalid-type || types.completions[item].has-variables
     decline(id)
     = none
-if collects || optional
+if collects || (optional && derives)
     = LoopSource(item, read, kind)
+.. derives = derived-interface(shape, if kind == "broadcastable" then types.broadcastable-decl else types.iterable-decl) != no-type
 . given = supports
 if types.completions[given].has-variables
     given = types.well-known-type-of
         - "core/stream"
         - if kind == "broadcastable" then "Broadcastable" else "Iterable"
         - item
-if given == invalid-type || conversions.convert(container, container, read, given, .reason-argument) == invalid-type
+if given == invalid-type
+    = none
+if optional
+    given = types.optional-of(given)
+if conversions.convert(container, container, read, given, .reason-argument) == invalid-type
     = none
 = LoopSource(item, given, kind)
 
@@ -27924,6 +28156,22 @@ _ do expect-bullets
 if target == no-type || target == invalid-type
     =
 . wanted = types.optional-inner(target)
+. bullets = written-bullets(expr)
+if bullets == 0
+    =
+do match? types.rows[wanted]
+    | .type-class(row)
+        . listed = row.module == types.list-decl.module && row.decl == types.list-decl.decl
+        if listed && row.args.count != 0
+            . item = types.child-type(row.args, 0)
+            bullet-lists += bullets
+            bullet-items += item
+            bullet-builds += nested-decl-of(bullets) != 0 && list-of(item) == wanted
+
+────────────────────
+_ do written-bullets SyntaxId
+    - expr SyntaxId
+
 . bullets = expr
 do match? tree.nodes[bullets]
     | .node-argument(row)
@@ -27931,14 +28179,18 @@ do match? tree.nodes[bullets]
 do match? tree.nodes[bullets]
     | .node-block(row)
         bullets = if row.body.count == 1 then tree.children[row.body.start] else 0
-do match? tree.nodes[bullets]
-    | .node-bullet-expression
-        do match? types.rows[wanted]
-            | .type-class(row)
-                . listed = row.module == types.list-decl.module && row.decl == types.list-decl.decl
-                if listed && row.args.count != 0
-                    bullet-lists += bullets
-                    bullet-items += types.child-type(row.args, 0)
+=? bullets if bullets != 0 && tree.nodes[bullets] is .node-bullet-expression
+= 0
+
+────────────────────
+_ do list-of TypeId
+    - item TypeId
+
+. mark = scratch.types.mark
+scratch.types.push(item)
+. list = types.class-with-args(types.list-decl.module, types.list-decl.decl, mark)
+types.complete(list)
+= list
 
 ────────────────────
 _ do bullet-item TypeId
@@ -27948,6 +28200,118 @@ for position in 0 .. < bullet-lists.length
     if bullet-lists[position] == bullets
         = bullet-items[position]
 = no-type
+
+────────────────────
+_ do builds-bullets Bool
+    - bullets SyntaxId
+
+for position in 0 .. < bullet-lists.length
+    if bullet-lists[position] == bullets
+        = bullet-builds[position]
+= false
+
+────────────────────
+_ do infer-listed-bullets TypeId
+    - id SyntaxId
+    - callable SyntaxId
+    - bullets SyntaxId
+
+types.clear-fault()
+. listed = types.evaluate-type(module, tree, callable, frame.env)
+if listed == invalid-type || !same-decl(class-ref(types, listed), types.list-decl)
+    decline(id)
+    = invalid-type
+. open = types.completions[listed].has-variables
+. wanted = if open then no-type else first-arg(listed)
+if !open && list-of(wanted) != listed
+    decline(id)
+    = invalid-type
+instances.mark-may-panic(instance)
+. types-start = scratch.types.mark
+. syntax-start = scratch.syntax.mark
+. sites [SyntaxId]
+. valid = true
+. bullet = bullets
+while bullet != 0
+    . next = 0u32
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            . given = listed-item(bullet, row.item, row.is-multi, row.is-optional, wanted)
+            valid = valid && given != invalid-type
+            scratch.types.push(given)
+            scratch.syntax.push(if row.is-multi || row.is-optional then bullet else row.item)
+            sites += bullet
+            next = row.next
+    bullet = next
+. item = wanted
+. given = types-start
+if valid && item == no-type
+    . peer = literal-peer(types-start, syntax-start, sites.length)
+    given = scratch.types.mark
+    for offset in 0 .. < sites.length
+        . adapted = conversions.adapted-literal
+            - scratch.syntax[syntax-start + offset]
+            - scratch.types[types-start + offset]
+            - peer
+        scratch.types.push(adapted)
+    item = relations.join(given)
+    if item == invalid-type
+        frame.diagnose(id, .stated, program.store-atom("Incompatible types in list"))
+        valid = false
+if valid
+    for offset in 0 .. < sites.length
+        . site = sites[offset]
+        . written = scratch.syntax[syntax-start + offset]
+        . element = scratch.types[given + offset]
+        if element != item && written != site && symbol-of(written) != null
+            element = infer-with-expected(written, item)
+        if element != item
+            conversions.convert(site, written, element, item, .reason-element)
+scratch.syntax.rewind(syntax-start)
+scratch.types.rewind(types-start)
+=? invalid-type if !valid
+. list = list-of(item)
+calls.note-list(id, list)
+calls.note-append(id, list, item, .call-list-append)
+facts.set-plan(instance, id, .plan-built-bullets)
+= list
+
+────────────────────
+_ do listed-item TypeId
+    - bullet SyntaxId
+    - item SyntaxId
+    - multi Bool
+    - optional Bool
+    - wanted TypeId
+
+facts.set-bullet-site(instance, bullet, bullet, false)
+=? listed-spread(bullet, multi-bullet-container(item, wanted)) if multi && !optional
+. plain = !multi && !optional
+. value = if plain && wanted != no-type then infer-with-expected(item, wanted) else infer(item)
+=? invalid-type if value == invalid-type
+if plain
+    =? conversions.convert(bullet, item, value, wanted, .reason-explicit) if wanted != no-type
+    = value
+. inner = types.optional-inner(value)
+=? inner if !multi
+= listed-spread(bullet, LoopContainer(inner, no-type))
+
+────────────────────
+_ do listed-spread TypeId
+    - bullet SyntaxId
+    - container LoopContainer
+
+=? invalid-type if container.type == invalid-type
+if container.item != no-type
+    plan-range-at(bullet, container.item)
+    = container.item
+. mark = facts.calls.length
+. iterated = iteration-container(container.type, bullet)
+. yielded = loop-item-type(iterated, bullet)
+=? invalid-type if yielded == invalid-type
+plan-iteration-at(bullet, bullet, iterated, yielded, true)
+facts.set-protocol-start(instance, bullet, bullet, mark)
+= yielded
 
 ────────────────────
 _ do infer-bullets TypeId
@@ -27992,6 +28356,8 @@ _ do check-bullets
 . bullet = id
 . site = bullet-site(id, consumer-of(id))
 . wanted = if outer then outer.bullet-item(id) else no-type
+building-list = outer && outer.builds-bullets(id)
+built-item = wanted
 . plain [Bool]
 orders-yields = true
 while bullet != 0
@@ -28193,7 +28559,8 @@ _ do note-container-iteration
 ` of an interface or an object of a class of one, begins, reads, and ends iterating. The
 ` instances and the witnesses of their implementors follow. A class that delegates the
 ` interface to a property is iterated by what the property holds, whose items are converted
-` to the interface's at the loop, as the `as` that delegates it asks.
+` to the interface's at the loop, as the `as` that delegates it asks. A type iterated by an
+` interface must answer the functions the interface requires, as where it is made one.
 ` A multi bullet over a table also keeps the index cast of its counter at the bullet. The
 ` loop is planned at `planned`, the header of a loop or the bullet, where the slots of the
 ` loop are.
@@ -28205,6 +28572,9 @@ if container == invalid-type || container == no-type
 if is-bullet && !cursor && !iterable && implements(container, types.indexable-decl)
     conversions.convert(site, site, types.size-type, types.index-type, .reason-argument)
 if cursor && !generated
+    . cursor-interface = interface-of(container, types.cursor-iterable-decl)
+    if types.intrinsic-of(container) != .interface && cursor-interface != no-type
+        conform-members(container, cursor-interface)
     . state = calls.protocol-getter(container, program.store-atom("initial-iterator-state"), site)
     if state != invalid-type
         calls.protocol-call(container, program.store-atom("next-iterator"), site, state, true)
@@ -28216,6 +28586,8 @@ if generated || iterable
     . places [U32]
     . interface = if iterable && !generated then iterable-interface else no-type
         .. iterable-interface = interface-of(container, types.iterable-decl)
+    if interface != no-type && types.intrinsic-of(container) != .interface
+        conform-members(container, interface)
     . holder = if interface != no-type then calls.ranking.interface-holder(container, interface, places) else no-type
     . receiver = if holder != no-type then holder else container
     calls.keep-protocol-through(calls.protocol-call(receiver, program.store-atom("begin-iterating"), site).fact, places)
@@ -28316,6 +28688,8 @@ if op == .pipe-write-each-op
     = infer-write-each(id, left, right)
 if op == .stream-pattern-pipe-op
     = infer-pattern-pipe(id, left, right)
+. listing = tree.listed-bullets(id)
+=? infer-listed-bullets(id, right, listing) if listing != 0
 . source = infer-pipeline-source(left, id)
 if source == invalid-type
     = invalid-type
@@ -28889,7 +29263,8 @@ _ do infer-pipeline-closure TypeId
 ` as `argument-name`, the right operand's closure over `each`, as the reference lowers it. Where
 ` `explicit` asks, the call names its types, the item and what the closure's optional holds;
 ` where the closure answers no optional, the call infers them, as the reference's
-` `inferMapFilterClosureParamTypes` leaves them.
+` `inferMapFilterClosureParamTypes` leaves them. A map-filter whose closure gives a value that
+` is never null drops nothing, and is an error that asks for a map.
 . item = pipeline-item-type(source)
 . decl = nested-decl-of(id)
 if item == invalid-type || decl == 0
@@ -28902,6 +29277,11 @@ if item == invalid-type || decl == 0
 . returned = if explicit then instances.signatures[callee].returns else no-type
 if explicit && returned == no-type
     decline(id)
+    = invalid-type
+if explicit && returned != invalid-type && returned != types.void-type && !types.is-optional(returned)
+    . shown = type-short-name(types, returned)
+    . message = "The body of this \"?*>\" gives $shown, which is never null, so it drops no item; write \"*>\""
+    frame.diagnose(id, .stated, program.store-atom(message))
     = invalid-type
 if explicit && types.is-optional(returned)
     scratch.types.push(item)
@@ -30066,31 +30446,36 @@ _ do note-truthiness
 ` A value tested as a condition. One of a class or a text is asked whether it is empty, and
 ` the call is recorded at the site as the test: of the site's own value, or of an operand of
 ` the site when the condition is another node. `is-right` says the operand is the right one.
-` A tuple or a struct that says whether it is empty, as an array does, is asked too. A function
-` value has no truth, which is reported at the site.
+` A tuple, a struct, a table or a builder that says whether it is empty, as an array does, is
+` asked too. A function value has no truth, nor has an object of a class, or a value of a tuple,
+` a struct, a table or a builder, that does not say whether it is empty, which is reported at
+` the site as `!` not defined for it.
 forget-carried(condition)
 if type == invalid-type || type == no-type
     =
+. negation = program.store-atom("!")
 if type == types.void-type
-    frame.diagnose(site, .illegal-operation)
+    frame.diagnose(site, .illegal-operation, negation, type)
     =
 . completion = types.completion-of(type)
 if completion.intrinsic == .closure || completion.intrinsic == .binding
-    frame.diagnose(site, .illegal-operation)
+    frame.diagnose(site, .illegal-operation, negation, type)
     =
-. valued = completion.intrinsic == .tuple || completion.intrinsic == .struct
+. valued = completion.intrinsic == .tuple || completion.intrinsic == .struct || held
+    .. held = completion.intrinsic == .table || completion.intrinsic == .immutable-table || completion.intrinsic == .array-builder
 if completion.intrinsic != .class && completion.intrinsic != .string && !valued
     =
 if completion.intrinsic == .class && completion.is-builtin
     =
-if valued && calls.demand-method(type, program.store-atom("!")) == no-instance
+if (valued || completion.intrinsic == .class) && calls.demand-method(type, negation) == no-instance
+    frame.diagnose(site, .illegal-operation, negation, type)
     =
 . shapes-start = scratch.call-arguments.mark
 . types-start = scratch.types.mark
 . syntax-start = scratch.syntax.mark
 . arguments = arguments-since(shapes-start, types-start, syntax-start, scratch.no-types)
 . first FactId = facts.calls.length as FactId
-calls.method-call(site, condition, type, program.store-atom("!"), arguments)
+calls.method-call(site, condition, type, negation, arguments)
 facts.mark-truth(instance, site, first, site != condition, is-right)
 scratch.syntax.rewind(syntax-start)
 scratch.types.rewind(types-start)
@@ -35696,6 +36081,8 @@ for param in tree.children[params]
     unresolved = unresolved || written == invalid-type
     scratch.types.push(written)
     param-count += 1
+. listing = tree.listed-bullets(id)
+=? Found(infer-listed-bullets(id, callable, listing)) if listing != 0
 if args.count == 1
     do match? tree.nodes[callable]
         | .node-type-arguments
@@ -37070,8 +37457,8 @@ _ do plan-is
 ` The pattern is planned as the pattern of an arm of a match is: a type named by the
 ` conversions that say what it tests, a case named by its number, of a union, of an optional
 ` one, or of the union a row of a table holds, and a pattern of items as it is planned in a
-` match. One that can not match the value is never true: so a pattern of items against a
-` text, which has none to give, and a case against an optional row, as TypeScript has it. A
+` match. Types in parentheses are the tuple of them. One that can not match the value is never
+` true: so a pattern of items against a text, which has none to give, and a case against an optional row, as TypeScript has it. A
 ` case no type the module can name has is not found. A pattern of texts against a `String` is
 ` planned as one in a match.
 if subject == invalid-type || subject == no-type || types.completions[subject].has-variables
@@ -37116,6 +37503,16 @@ do match tree.nodes[right]
         =
     | .node-identifier(row)
         target = types.type-named(module, row.name, frame.env)
+    | .node-tuple-syntax(row)
+        target = tuple-named(row.items)
+        if target == invalid-type
+            . reported = facts.diagnostics.length
+            for item in tree.children[row.items]
+                report-missing-type(item, frame.env)
+            if facts.diagnostics.length == reported
+                . text = "Only types may be written in parentheses after \"is\"; to test what the fields hold, match the value with an arm, as in \"| (3, name)\""
+                frame.diagnose(right, .stated, program.store-atom(text))
+            =
     ??
         target = types.evaluate-type(module, tree, right, frame.env)
 if target == invalid-type || target == no-type
@@ -37129,6 +37526,30 @@ if target != no-type && could-match(subject, target, kind)
 else
     facts.set-plan(instance, right, .plan-never)
 facts.set-plan(instance, id, .plan-is)
+
+────────────────────
+_ do tuple-named TypeId
+    - items RowRange'SyntaxId
+
+` The tuple of the types written in parentheses after `is`, as in `pair is (Int, String)`, or
+` the invalid type where one of them names no type.
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+. position = 0
+for item in tree.children[items]
+    . field = match tree.nodes[item]
+        | .node-identifier(row)
+            types.type-named(module, row.name, frame.env)
+        ??
+            types.evaluate-type(module, tree, item, frame.env)
+    if field == invalid-type || field == no-type
+        scratch.types.rewind(mark)
+        scratch.names.rewind(names-mark)
+        = invalid-type
+    scratch.names.push(types.index-atom(position))
+    scratch.types.push(field)
+    position += 1
+= types.intern-tuple(mark, names-mark)
 
 ────────────────────
 _ do complete-named TypeId
@@ -37510,7 +37931,7 @@ if is-comparison(op)
         = invalid-type
     . unanswered = unplanned && lhs != types.null-type && rhs != types.null-type
         .. unplanned = facts.plan-of(instance, id) == .plan-none
-    if plain && unanswered && lhs-value != rhs-value
+    if plain && unanswered && (lhs-value != rhs-value || !equates)
         frame.diagnose(id, .illegal-operation, null, lhs, rhs)
         = invalid-type
     = types.bool-type
@@ -38415,6 +38836,9 @@ if op == .not-op
     . completion = types.completion-of(operand)
     . declares = completion.intrinsic == .class && !completion.is-builtin
     . valued = completion.intrinsic == .tuple || completion.intrinsic == .struct
+    if declares && calls.demand-method(operand, program.store-atom("!")) == no-instance
+        frame.diagnose(id, .illegal-operation, null, operand)
+        = invalid-type
     if declares || valued || completion.intrinsic == .string
         . shapes-start = scratch.call-arguments.mark
         . types-start = scratch.types.mark
@@ -38891,7 +39315,10 @@ for item in tree.children[items]
 _ do infer-list TypeId
     - id SyntaxId
     - items RowRange'SyntaxId
+    - want Want = Want()
 
+` The items are joined, unless the list is expected as a list of a type each item converts to on
+` its own (`want-items`), which each is made then, as a declared local of that type would be.
 instances.mark-may-panic(instance)
 . start = scratch.types.mark
 . syntax-start = scratch.syntax.mark
@@ -38914,7 +39341,10 @@ for offset in 0 .. < count
     if scratch.types[typed + offset] == invalid-type
         valid = false
 if valid
+    . expected = expected-item(want)
     joined = if count != 0 then relations.join(typed) else invalid-type
+    if count != 0 && expected != no-type && items-fit(typed, count, expected)
+        joined = expected
     if joined == invalid-type
         frame.diagnose(id, .stated, program.store-atom("Incompatible types in list"))
         valid = false
@@ -38935,6 +39365,35 @@ scratch.types.push(joined)
 . list-type = types.class-named-with-args(module, types.list-atom!, list-mark)
 calls.note-list(id, list-type)
 = list-type
+
+────────────────────
+_ do expected-item TypeId
+    - want Want
+
+` The item of the list type a list is expected as (`want-items`), or no type.
+if !want.asks(.want-items)
+    = no-type
+. expected = types.optional-inner(want.type)
+types.complete(expected)
+do match? types.rows[expected]
+    | .type-class(row)
+        if row.module == types.list-decl.module && row.decl == types.list-decl.decl && row.args.count != 0
+            . item = types.child-type(row.args, 0)
+            types.complete(item)
+            if !types.completions[item].has-variables
+                = item
+= no-type
+
+────────────────────
+_ do items-fit Bool
+    - mark ScratchMark
+    - count Int
+    - expected TypeId
+
+for offset in 0 .. < count
+    if !fits-choice(scratch.types[mark + offset], expected)
+        = false
+= true
 
 ────────────────────
 _ do infer-get Found
@@ -45433,14 +45892,15 @@ _ do arms-peer TypeId
     - values [SyntaxId]
 
 ` The type integers written with no suffix take among the values of a match's arms: that of the
-` first arm that gives a value written with none, what it holds where it is an optional, or where
-` each is written with none, that of the first that gives a float.
+` first arm that gives a value written with none other than a text, what it holds where it is an
+` optional, or where each is written with none, that of the first that gives a float.
 . float = no-type
 for position in 0 .. < arms.length
     . arm = arms[position]
-    if arm != types.null-type && arm != invalid-type && non-literal
+    if arm != types.null-type && arm != invalid-type && non-literal && !text
         = types.optional-inner(arm)
     .. non-literal = conversions.literal-of(values[position]) == 0
+    .. text = types.optional-inner(arm) == types.string-type
     if float == no-type && values[position] != 0 && float-written
         float = arm
     .. float-written = tree.nodes[values[position]] is .node-float-syntax
@@ -45699,7 +46159,7 @@ do match tree.nodes[id]
             frame.keep-members(entered)
         . silent = row.expr != 0 && facts.diagnostics.length == diagnosed
         if silent && !arming.statement && lacks-value(row.expr, value) && !matches-row(subject)
-            frame.diagnose(row.expr, .stated, program.store-atom("Illegal statement"))
+            frame.diagnose(row.expr, .stated, program.store-atom("Match arm gives no value"))
         arm-bodies += row.expr
         arm-present += arming.present-depth != 0
         arm-starts += assigned-start
@@ -45912,7 +46372,15 @@ do match tree.nodes[pattern]
             check-pattern(row.right, pattern-type(row.left, subject))
     | .node-type-or(row)
         check-alternative(row.left, subject)
+        . left-slots [SlotId]
+        . left-types [TypeId]
+        alternative-slots(row.left, left-slots)
+        for slot in left-slots
+            left-types += frame.known(slot)
         check-alternative(row.right, subject)
+        . right-slots [SlotId]
+        alternative-slots(row.right, right-slots)
+        check-alternative-names(row.left, left-slots, left-types, row.right, right-slots)
     | .node-type-panic(row)
         check-pattern(row.pattern, subject)
     | .node-type-arguments
@@ -46118,6 +46586,52 @@ if tree.nodes[pattern] is not .node-type-or && !pattern-possible(pattern, subjec
     facts.set-plan(instance, pattern, .plan-never)
     =
 check-pattern(pattern, subject)
+
+────────────────────
+_ do alternative-slots
+    - pattern SyntaxId
+    - slots [SlotId]
+
+` The locals an alternative of a pattern binds, each once.
+for id in tree.subtree-start(pattern) .. pattern
+    . resolution = bindings.resolution-of(frame.binding, id)
+    . declares = (resolution.flags /and/ ResolutionFlag.resolution-declares) != 0
+    if resolution.kind == .resolve-slot && declares && slots.find(resolution.slot) == null
+        slots += resolution.slot
+
+────────────────────
+_ do check-alternative-names
+    - left SyntaxId
+    - left-slots [SlotId]
+    - left-types [TypeId]
+    - right SyntaxId
+    - right-slots [SlotId]
+
+` The alternatives of `| a | b` bind the same names, each of one type, since the arm reads the
+` names whichever alternative matched.
+for position in 0 .. < left-slots.length
+    . slot = left-slots[position]
+    . name = bindings.slots[slot].name.text
+    if right-slots.find(slot) == null
+        frame.diagnose(right, .stated, program.store-atom("\"$name\" is bound by the alternative before this one but not by this one; bind it in each alternative"))
+        =
+    . before = left-types[position]
+    . after = frame.known(slot)
+    if known-type(before) && known-type(after) && before != after
+        . text = "\"$name\" is ${type-source(types, before)} in one alternative and ${type-source(types, after)} in another; bind it to one type in each"
+        frame.diagnose(right, .stated, program.store-atom(text))
+        =
+for slot in right-slots
+    if left-slots.find(slot) == null
+        . name = bindings.slots[slot].name.text
+        frame.diagnose(left, .stated, program.store-atom("\"$name\" is bound by the alternative after this one but not by this one; bind it in each alternative"))
+        =
+
+────────────────────
+_ known-type Bool
+    - type TypeId
+
+type != no-type && type != invalid-type
 
 ────────────────────
 _ do it-read SlotId
@@ -47031,6 +47545,11 @@ do match? tree.nodes[lhs]
     | .node-tuple-syntax(row)
         if op == .eq-op
             = infer-destructure(lhs, row.items, rhs)
+    | .node-list-syntax
+        infer(rhs)
+        . text = "Names in brackets can be declared from a list, as in \". [x, y] = items\", but not assigned again; assign a tuple to them, as in \"x, y = items[0], items[1]\""
+        frame.diagnose(lhs, .stated, program.store-atom(text))
+        = invalid-type
     | .node-call-expression
         frame.diagnose(id, .stated, program.store-atom("Illegal assignment"))
         = invalid-type
@@ -47716,7 +48235,9 @@ _ do refuses-layout Bool
 ` it loses, and its length changes only to a constant. A struct's layout does not change at all. A `length` the type declares is a
 ` field like any other. As the reference has it, a statement loses the tuple in a `do`
 ` function or a module's main, and in the body of another function only as one of its own
-` statements (`want-quasi`): the value of an arm or a block inside gives the tuple.
+` statements (`want-quasi`): the value of an arm or a block inside gives the tuple. A struct's
+` field is changed in place, which loses the change where nothing holds the struct: a struct
+` cast to its base, which is a copy, or one a call gives.
 . kind = types.intrinsic-of(receiver)
 . plain = is-plain-tuple(receiver) || (kind == .tuple && view-kind(receiver) == 0)
 if name == types.length-atom! && !types.property-named(receiver, name)
@@ -47727,6 +48248,13 @@ if name == types.length-atom! && !types.property-named(receiver, name)
         frame.diagnose(lhs, .stated, program.store-atom("Value has no constant form"))
         = true
     = false
+if kind == .struct && !holds-struct(object-syntax)
+    . stored = types.property-named(receiver, name)
+    if stored && types.properties[stored].storage-kind == .storage-eager
+        . shown = type-display(types, receiver)
+        . message = "Assigning ${name.text} changes a $shown struct that nothing holds, so the change is lost; assign ${name.text} where the struct is held"
+        frame.diagnose(id, .stated, program.store-atom(message), receiver)
+        = true
 if !plain || !want.asks(.want-statement) || is-row-cursor(object-syntax)
     = false
 if !want.asks(.want-quasi) && !frame.declaration.is-imperative && !frame.declaration.is-main
@@ -47740,6 +48268,20 @@ if !field || types.properties[field].storage-kind != .storage-eager
 message ++= "write $owner = $owner.${name.text} = value"
 frame.diagnose(id, .stated, program.store-atom(message), receiver)
 = true
+
+────────────────────
+_ holds-struct Bool
+    - object-syntax SyntaxId
+
+` Whether a struct whose field is assigned is held where the change stays: not one a cast or
+` a call gives.
+match tree.nodes[object-syntax]
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
 
 ────────────────────
 _ is-row-cursor Bool
@@ -48055,6 +48597,8 @@ _ do infer-index-assign TypeId
 ` operator's own name answers it, as the reference compiles it for an object: that function is
 ` called on the item, and nothing is stored (`plan-answer-item`). An item past a pointer is
 ` read and stored by its plan, and the operator is planned at the assignment, as for a field.
+` A text's item assigned gives a new text, stored where the text is held, so one written where
+` nothing holds it, as a literal or what a call gives, is an error.
 . value = stored-value(rhs, infer(rhs))
 . noted = facts.diagnostics.length
 . object-found = infer-found(object-syntax)
@@ -48071,6 +48615,10 @@ if form == .chain-absent || absent-after(object-syntax, object)
 . optional = form == .chain-tested
 object = link-receiver(object-syntax, object, own, optional)
 if refuses-write(id, object, true)
+    = invalid-type
+if object == types.string-type && !holds-text(object-syntax)
+    . message = "Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds"
+    frame.diagnose(id, .stated, program.store-atom(message))
     = invalid-type
 . pointee = cpointer-item(object)
 if pointee == types.void-type
@@ -48189,6 +48737,24 @@ if kind != .table && kind != .table-span
 . row = types.intrinsic-of(row-struct-of(object))
 = given-table && (row == .struct || row == .union) && row-struct-of(given) == row-struct-of(object)
     .. given-table = given-kind == .table-span || given-kind == .table
+
+────────────────────
+_ holds-text Bool
+    - object-syntax SyntaxId
+
+` Whether a text whose item is assigned is held where the new text is stored: not a literal, a
+` text joined from parts, or one a cast or a call gives.
+match tree.nodes[object-syntax]
+    | .node-string-syntax
+        false
+    | .node-binary-expression
+        false
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
 
 ────────────────────
 _ do store-through
@@ -48409,8 +48975,9 @@ _ WantRole is U32
 ` what a property holds where the flow knows it holds a value (`want-forced`), a match written
 ` as a statement, whose arms are one for their own alone (`want-match-statement`), a line of a
 ` markup body (`want-content-line`), the container of a markup loop region, which the region
-` observes itself (`want-observed`), or the name of a pattern a pattern compares with or calls
-` (`want-pattern`).
+` observes itself (`want-observed`), the name of a pattern a pattern compares with or calls
+` (`want-pattern`), or a list written with its items, which are each made the item of the list
+` type it expects where each converts to it (`want-items`).
 
 | want-none = 0
 | want-fitting = 1
@@ -48430,6 +48997,7 @@ _ WantRole is U32
 | want-content-line = 16384
 | want-observed = 32768
 | want-pattern = 65536
+| want-items = 131072
 
 ━━━━━━━━━━━━━━━━━━━━
 _ Want is Tuple
@@ -48866,6 +49434,7 @@ _ CheckerKit
 + unheld-cases [SyntaxId]
 + bullet-lists [SyntaxId]
 + bullet-items [TypeId]
++ bullet-builds [Bool]
 + coded-rules [SyntaxId]
 + coded-typed [SyntaxId]
 + coded-streams [TypeId]
@@ -48986,6 +49555,7 @@ foreseen-payloads.clear()
 unheld-cases.clear()
 bullet-lists.clear()
 bullet-items.clear()
+bullet-builds.clear()
 coded-rules.clear()
 coded-typed.clear()
 coded-streams.clear()

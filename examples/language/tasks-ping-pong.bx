@@ -1,0 +1,36 @@
+; Tasks and channels: `do-new` starts a task, and a rendezvous channel hands a
+; value straight from one task to another. A send waits until a reader takes it.
+(main
+  ; `(channel Int)` is a rendezvous channel. It stores nothing: it only passes the ball.
+  (let table (channel Int))
+  (let over (channel String))
+  (do-new
+    (inline (call player "Ping" table over))
+  )
+  (do-new
+    (inline (call player "Pong" table over))
+  )
+  (blank)
+  ; Both players are waiting to read. The serve wakes the first of them.
+  (print "Serve")
+  (<- table 1)
+  ; Reading `over` parks the main task until a player ends the rally.
+  (print (str (?? (<- over) "Nobody") " plays the last ball"))
+)
+
+(fn-do + player _
+  (param name String)
+  (param table (channel Int))
+  (param over (channel String))
+  ; The loop takes each ball that reaches this player, and ends when the table closes.
+  (for (in hit table)
+    (print (str name " returns ball " hit))
+    (if (== hit 6)
+      (call (. table close))
+      (<- over name)
+      (break)
+    )
+    ; A player never takes its own return: it is still inside this send when the other reads.
+    (<- table (+ hit 1))
+  )
+)

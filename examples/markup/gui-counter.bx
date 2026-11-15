@@ -1,0 +1,92 @@
+; The smallest complete window app, with its whole tree in `main`. The label
+; follows state read with `#`, and a style sheet says how each state of a button
+; looks and how it moves from one to the next.
+(import /graphics/text)
+(import /gui)
+(blank)
+
+(main
+  ; An App runs by itself where main ends.
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Counter")
+      (= size (tuple 360 280))
+      (blank)
+      (<> Counter (id: counter) (• counter-page) (• flex 1)
+        ; `#count` is a tracked read, so the label is set again whenever the count changes.
+        (<> Label (• count-label)
+          (= text (str (. counter #count)))
+        )
+        (<> Box (• step-row)
+          (<> Button (text: "−") (• step-button)
+            (= action (=> () :do (-= (. counter count) 1)))
+          )
+          (<> Button (text: "+") (• step-button)
+            (= action (=> () :do (+= (. counter count) 1)))
+          )
+        )
+        ; A branch of markup: the button exists only while there is something to reset.
+        (if (!= (. counter #count) 0)
+          (<> Button (text: "Reset")
+            (= action (=> () :do (= (. counter count) 0)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + Counter (is Box)
+  (using CounterTheme)
+  ; This type holds the state and brings the sheet to the tree inside it. It
+  ; declares no markup of its own.
+  (blank)
+  (prop + count _ (= 0))
+  ; A property written from a tracked read is worked out again when it changes.
+  (prop + is-negative _ (= (< #count 0)))
+)
+
+(style CounterTheme
+  (using GUIDefaultTheme)
+  (using GUIMotionTheme)
+  ; A sheet names its rules. `using` brings in the library's colors, sizes and motions.
+  (blank)
+  (rule counter-page (• flex-col) (• items-center) (• justify-center)
+    (= gap 18)
+    (blank)
+    ; While the counter is below zero, the rule nested here reaches the label inside it.
+    (when-style #is-negative
+      (rule count-label
+        (= color gui-danger-color)
+      )
+    )
+  )
+  (blank)
+  (rule count-label (• text gui-strong-text-color)
+    (= font-size 72)
+    (= font-weight (. FontWeight bold))
+    (= motion gui-motion-smooth)
+  )
+  (blank)
+  (rule step-row (• flex-row)
+    (= gap 10)
+  )
+  (blank)
+  (rule step-button (• w 56) (• h 40)
+    (= corner-radius 20)
+    (= font-size 20)
+    ; `motion` covers every property the states below change.
+    (= motion gui-motion-bouncy)
+    (blank)
+    ; "Within" means the pointer is over the button or anything inside it.
+    (when-style #is-hover-within
+      (= scale 1.08)
+    )
+    (blank)
+    ; The press takes its own, quicker motion, so the button dips at once.
+    (when-style #is-press-within
+      (= scale 0.92)
+      (= motion gui-motion-quick)
+    )
+  )
+)

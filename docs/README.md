@@ -7,7 +7,14 @@
   this repo. This repo's own rules go in `agent-yumi-tests.md`, `agent-yumi-verification.md` and
   `agent-yumi-enforcement.md`.
 - `ref/` is reserved for official reference documentation approved by the project owner. Do not
-  create or populate it without that approval.
+  create or populate it without that approval. Its examples are test cases: the `docs` suite
+  compiles each `brix` block as a program, runs it, and compares what it prints with the `output`
+  block that follows. Words after `brix` are the case's options, such as `compile-error` or
+  `crash`, as the `%` lines of a `.test` file are. Code in its prose is written as Brix forms,
+  tagged as `` `(let name value)`{.brix} ``, which the website shows as rows; inside a table, a
+  form's `|` is written `\|`. Only text about the rows view itself is written as rows, tagged
+  `{.rows}`. The suite's "Inline forms" case for each document checks that every tagged form
+  prints as rows and reads back the same, through `brix-inline-view` in `/lang/brix/inline`.
 - `agent/` contains unofficial agent notes and working documents. Agents may create material here
   freely, and it may be deleted at any time.
 

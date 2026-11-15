@@ -1,0 +1,71 @@
+; Stream grammars: the grammar only says what fits. What a failed match means
+; is chosen where the match is made: nothing, a fallback, or an error.
+(main
+  (for (in text (list "07:30" "half past seven" "25:00"))
+    (print (str "\"" text "\""))
+    (let found (call minutes-if-any text))
+    (if found
+      (print (str "  if any:  " found))
+      (else
+        (print "  if any:  nothing")
+      )
+    )
+    (print (str "  or noon: " (call minutes-or-noon text)))
+    ; `catch` holds the minutes or the error as one value, so the loop goes on.
+    (print (str "  checked: " (catch (call minutes text))))
+  )
+)
+
+(type + BadTime (is Error))
+
+(fn-expr + minutes-if-any (? Int)
+  (param text String)
+  ; `match?` gives nothing when no arm fits, so the result is an optional.
+  (match? text
+    (~ \time-of-day)
+  )
+)
+
+(fn-expr + minutes-or-noon Int
+  (param text String)
+  ; A `default` arm stands in for every text the rule does not fit.
+  (match text
+    (~ \time-of-day)
+    (default
+      (inline (* 12 60))
+    )
+  )
+)
+
+(fn-expr + minutes Int (?! BadTime)
+  (param text String)
+  ; A `throw` as the last arm raises an error the function declares.
+  (match text
+    (~ \time-of-day)
+    (throw (call BadTime (str "\"" text "\" is not a time of day")))
+  )
+)
+
+(fn-expr + time-of-day Int (over: Char)
+  ; The rule gives minutes past midnight.
+  (~ (seq (: hour \hh) ":" (: minute \mm))
+    (+ (* hour 60) minute)
+  )
+  (where
+    ; The ranges are part of the grammar, so 25:00 fails to match like any other text.
+    (lazy hh Int
+      (pattern
+        (~ (| (seq (chars "01") (chars "0-9")) (seq "2" (chars "0-3")))
+          (as it Int)
+        )
+      )
+    )
+    (lazy mm Int
+      (pattern
+        (~ (seq (chars "0-5") (chars "0-9"))
+          (as it Int)
+        )
+      )
+    )
+  )
+)

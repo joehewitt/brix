@@ -218,6 +218,8 @@ match base
         catch-message(diagnostic, base)
     |= "Incompatible types in list"
         list-message(diagnostic, base)
+    |= "Match arm gives no value"
+        arm-step-message(diagnostic)
     |= "Object is not iterable"
         iteration-message(diagnostic, base)
     |= "Redefinition of property"
@@ -406,8 +408,32 @@ _ written-type String
     "${written-type(tree, tree.children[optional-inner-syntax(tree, id)])}?"
 |? is-brix-tree(tree)
     spelled-type(tree, id)
+|? suffix != ""
+    "${written-type(tree, tree.children[optional-inner-syntax(tree, id)])}$suffix"
 ??
     node-text(tree, id)
+
+.. suffix = type-suffix-text(tree, id)
+
+────────────────────
+_ type-suffix-text String
+    - tree AST
+    - id SyntaxId
+
+` The suffix of a type written `T[]` or `T<>`, whose syntax spans `T` alone.
+|? named == "Array"
+    "[]"
+|? named == "SyncChannel"
+    "<>"
+??
+    ""
+
+.. named = match tree.nodes[id]
+    | .node-type-arguments(row)
+        if row.args.count == 1 && shorthand then written-name(tree, row.base) else null
+            .. shorthand = tree.nodes.loc[row.base].begin == tree.nodes.loc[tree.children[row.args.start]].begin
+    ??
+        null
 
 ────────────────────
 _ do spelled-type String
@@ -614,6 +640,8 @@ _ named-constructor-message String
     "Type \"$name\" not found${missing-note(caller, atom, true, visible-name-texts(caller, true))}"
 |? is-interface(caller, atom)
     "$name is an interface, so it has no constructor; construct a class that is $name"
+|? alternatives.length != 0
+    "$name stands for any one of ${" and ".join(alternatives)}, so it has no constructor; give it a value of one of them, as in $name(value)"
 |? signatures.length != 0
     "$message; its declared constructors are ${" and ".join(signatures)}${private-note(hidden)}"
 |? hidden.length != 0
@@ -623,6 +651,7 @@ _ named-constructor-message String
 
 .. name = atom.text
 .. message = "No constructor of $name${accepting(given)}"
+.. alternatives = alternative-names(caller, atom)
 .. signatures = constructor-signatures(caller, atom, name, false)
 .. hidden = constructor-signatures(caller, atom, name, true)
 
@@ -650,6 +679,23 @@ for candidate in program.lookup(caller, name)
     if class-intrinsic(candidate.module, candidate.decl) == .interface
         = true
 = false
+
+────────────────────
+_ do alternative-names [String]
+    - caller ModuleId
+    - name Atom
+
+` The types a type of alternatives a module names stands for, as its declaration writes them, or
+` none for any other type.
+. names [String]
+for candidate in program.lookup(caller, name)
+    . owner = program.modules[candidate.module]
+    do match? owner.decls[candidate.decl]
+        | .decl-class(class)
+            for alternative in owner.tree.children[class.or-bases]
+                names += node-text(owner.tree, alternative)
+            =? names if names.length != 0
+= names
 
 ────────────────────
 _ do class-intrinsic IntrinsicKind
@@ -830,6 +876,10 @@ _ do operation-message String
 . tree = program.modules[diagnostic.module].tree
 . left = diagnostic.from
 . right = diagnostic.to
+if diagnostic.name?.text == "!" && known(left) && !joins-conditions(tree, diagnostic.syntax)
+    . shown = type-source(types, left)
+    . reason = if shown.starts-with("function ") then "; it is a function, so call it first" else ", since operator \"!\" is not defined for it"
+    = "$shown cannot be tested as a condition$reason"
 do match? tree.nodes[diagnostic.syntax]
     | .node-binary-expression(row)
         . op = "$row.op"
@@ -862,6 +912,18 @@ do match? tree.nodes[diagnostic.syntax]
 if known(left) && known(right)
     = "$base: ${operands-text(left, right)}"
 = base
+
+────────────────────
+_ joins-conditions Bool
+    - tree AST
+    - syntax SyntaxId
+
+` Whether a condition is an operand of "&&" or "||", which is reported as the operator's.
+match tree.nodes[syntax]
+    | .node-binary-expression(row)
+        row.op == .and-op || row.op == .or-op
+    ??
+        false
 
 ────────────────────
 _ operands-text String
@@ -1007,14 +1069,18 @@ _ cast-message String
     base
 |? written
     "$source cannot be cast to $target; there is no conversion between them"
+|? chooses
+    "The two sides of this \"if\" are $target and $source, which have no common type; convert them to one type"
 ??
     "Expected $target here, but this is $source, and there is no conversion between them"
 
 .. source = type-source(types, diagnostic.from)
 .. target = type-source(types, diagnostic.to)
-.. written = match program.modules[diagnostic.module].tree.nodes[diagnostic.syntax]
-    | .node-cast-expression
-        true
+.. node = program.modules[diagnostic.module].tree.nodes[diagnostic.syntax]
+.. written = node is .node-cast-expression
+.. chooses = match node
+    | .node-binary-expression(row)
+        row.op == .else-op
     ??
         false
 
@@ -1342,6 +1408,14 @@ _ catch-message String
 .. tree = program.modules[diagnostic.module].tree
 .. written = node-text(tree, diagnostic.syntax)
 .. fix = "remove the catch, or attach it to a call that can fail"
+
+────────────────────
+_ arm-step-message String
+    - diagnostic TypeDiagnostic
+
+"This arm gives no value, and a match gives the value of the arm it takes; to run its arms as steps, write \"$form\""
+
+.. form = if is-brix-tree(program.modules[diagnostic.module].tree) then "(do (inline (match …)))" else "do match"
 
 ────────────────────
 _ do list-message String

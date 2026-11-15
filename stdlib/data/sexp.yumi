@@ -181,6 +181,8 @@ while cursor < end
                 cursor += 1
                 break
             else if text-class == SexpText.escape
+                ?! SexpError(cursor, "“${data[cursor .. < cursor + 6].slice-string()}” at ${sexp-place(data, cursor)} is half of a surrogate pair, which is no character by itself", "Write the character itself in the text")
+                    if sexp-surrogate-escape(data, cursor, end)
                 escaped = true
                 if cursor + 1 < end && data[cursor + 1] == 10
                     line += 1
@@ -764,6 +766,19 @@ else if bytes[index] == 117
 for offset in 1 .. width
     =? 0 if sexp-hex-value(bytes[index + offset]) < 0
 = width
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-surrogate-escape Bool
+    - bytes Byte[]
+    - index Index
+    - last Index
+
+` Whether the escape at a backslash writes half of a surrogate pair, from "\uD800" to "\uDFFF".
+|? index + 5 >= last || bytes[index + 1] != 117
+    false
+??
+    sexp-hex-width(bytes, index + 1, last) == 4 && high
+    .. high = (bytes[index + 2] == 68 || bytes[index + 2] == 100) && sexp-hex-value(bytes[index + 3]) >= 8
 
 ━━━━━━━━━━━━━━━━━━━━
 _ sexp-hex-value Int

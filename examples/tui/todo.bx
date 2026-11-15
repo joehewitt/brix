@@ -1,0 +1,183 @@
+; A to-do list in the terminal. The markup follows one tracked list: a keyed
+; loop shows the filtered view, an `if` shows the empty state, and the style
+; sheet colours a row by the state it is in. Nothing here draws or repaints.
+(import /stream/aggregate)
+(import /tui)
+(blank)
+
+(main
+  (<> Window (id: win) (• flex-col) (• bg black)
+    (<> TodoList (id: todos) (• flex-col) (• flex 1))
+    (<> Shortcut (text: "Quit")
+      (= key 'q')
+      (= action (=> () :do (call (. win close))))
+    )
+    (<> Shortcut (text: "Quit")
+      (= key .escape)
+      (= show-in-status false)
+      (= action (=> () :do (call (. win close))))
+    )
+    ; The status bar lists the shortcuts in the tree by itself. `#summary` keeps its text current.
+    (<> StatusBar
+      (= message (. todos #summary))
+    )
+  )
+  (blank)
+  (call (. win open))
+)
+
+(style TodoTheme
+  (using BoxPaint)
+  (using TextPaint)
+  ; A style sheet: `todo-row` is a rule, and each `when-style` applies while the row is
+  ; in that state.
+  (blank)
+  (rule todo-row
+    (= color silver)
+    (when-style #is-done
+      (= color grey)
+    )
+    (when-style #is-selected
+      (= background-color navy)
+      (= color white)
+    )
+  )
+)
+
+(type + TodoList (is Box)
+  (using TodoTheme)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (blank)
+  (prop + items _
+    (=
+      (call List
+        (block
+          (bullet (call Todo 1 "Water the tomatoes"))
+          (bullet (call Todo 2 "Sharpen the pencils"))
+          (bullet (call Todo 3 "Call the plumber"))
+        )
+      )
+    )
+  )
+  (prop + selected _ (= 1))
+  (prop + filter _ (= (. Filter all)))
+  (prop + next-id _ (= 4))
+  ; These three are worked out again whenever a `#` value they read changes.
+  (prop + shown _ (= (call visible #items #filter)))
+  (prop + open-count _ (= (call count (in each #items (when (not (. each is-done)))))))
+  (prop + summary _ (= (str #open-count " of " (. #items length) " open, " (. #filter name))))
+  (content
+    (<> This (• flex-col)
+      (<> Label (text: " To do ") (• bg blue) (• text white))
+      ; The key tells the loop which row belongs to which item, so a row is reused, not rebuilt.
+      (if #shown
+        (for (in item #shown (keyed-by (. item id)))
+          (<> TodoRow (• todo-row)
+            (= item item)
+            (= is-selected (== (. item id) #selected))
+          )
+        )
+        (else
+          (<> Label (text: " Nothing here. Press A to add one. ") (• text grey))
+        )
+      )
+      ; The list owns its commands. Each shortcut names a key and what it does.
+      (<> Shortcut (text: "Add")
+        (= key 'a')
+        (= action (=> () :do (call add)))
+      )
+      (<> Shortcut (text: "Done")
+        (= key .space)
+        (= action (=> () :do (call toggle)))
+      )
+      (<> Shortcut (text: "Delete")
+        (= key 'd')
+        (= action (=> () :do (call delete)))
+      )
+      (<> Shortcut (text: "Filter")
+        (= key 'f')
+        (= action (=> () :do (= filter (. filter next))))
+      )
+      (<> Shortcut (text: "Next")
+        (= key .arrow-down)
+        (= show-in-status false)
+        (= action (=> () :do (call move 1)))
+      )
+      (<> Shortcut (text: "Previous")
+        (= key .arrow-up)
+        (= show-in-status false)
+        (= action (=> () :do (call move -1)))
+      )
+    )
+  )
+  (fn-do + add _
+    (+= items (call Todo next-id (str "New task " next-id)))
+    (= selected next-id)
+    (+= next-id 1)
+  )
+  (fn-do + toggle _
+    ; An item is a value, so marking one done makes a new list with that item replaced.
+    (= items (call List (in (if-expr (== (. each id) selected) (. each flipped) each) items)))
+  )
+  (fn-do + delete _
+    (= items (call List (in each items (when (!= (. each id) selected)))))
+    (= selected (?? (call first (in (. each id) shown)) 0))
+  )
+  (fn-do + move _
+    (param step Int)
+    (let ids (call List (in (. each id) shown)))
+    (let next (+ (?? (call (. ids find) selected) 0) step))
+    (if (and (>= next 0) (< next (. ids length)))
+      (= selected ([] ids next))
+    )
+  )
+)
+
+(fn-expr + visible (list Todo)
+  (param items (list Todo))
+  (param filter Filter)
+  (call List (in each items (when (call (. filter keeps) (. each is-done)))))
+)
+
+(type + Filter (is Union)
+  (variant all)
+  (variant open)
+  (variant done)
+  (fn-expr + keeps Bool
+    (param is-done Bool)
+    (or (is this .all) (== is-done (is this .done)))
+  )
+  (fn-expr + next Filter :get
+    (match this
+      (case .all
+        (. Filter open)
+      )
+      (case .open
+        (. Filter done)
+      )
+      (case .done
+        (. Filter all)
+      )
+    )
+  )
+)
+
+(type + Todo (is Tuple)
+  (prop + id Int)
+  (prop + title String)
+  (prop + is-done _ (= false))
+  (fn-expr + flipped Todo :get
+    (call Todo id title (not is-done))
+  )
+)
+
+(type + TodoRow (is Label)
+  ; A row only shows its item. `#item` makes its text and its done state follow the list.
+  (blank)
+  (prop + item Todo)
+  (prop + is-selected _ (= false))
+  (prop + is-done _ (= (. #item is-done)))
+  (prop + text _ (= (str " " (if-expr (. #item is-done) "x" " ") " " (. #item title) " ")))
+)

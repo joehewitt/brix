@@ -1,0 +1,87 @@
+; Pipelines and generators: a function that yields is a source like any list,
+; a function that takes a stream and yields is a stage of your own, and a
+; pipeline is itself a generator that a function can give to its caller.
+(import /stream/combine)
+(blank)
+
+(main
+  (let days (list "Mon" "Tue" "Wed" "Thu" "Fri"))
+  (blank)
+  ; `cooks` never ends. `zip` stops asking when the days run out.
+  (let rota
+    (block
+      (bullet* (call zip days (call cooks)))
+      (pipe *> (str ([] each 0) " " ([] each 1)))
+    )
+  )
+  (print (str "rota: " (call (. ", " join) rota)))
+  (blank)
+  ; A generator between two items. Its `finally` runs when its last dish has been taken.
+  (let menu List
+    (block
+      (bullet "soup")
+      (bullet* (call specials))
+      (bullet "fruit")
+    )
+  )
+  (print (str "menu: " (call (. ", " join) menu)))
+  (blank)
+  ; `in-pairs` is written below and used as a stage, like a library function.
+  (let teams
+    (block
+      (bullet* (call cooks))
+      (pipe |> in-pairs)
+      (pipe *> (str ([] each 0) " with " ([] each 1)))
+    )
+  )
+  ; The loop asks for one team at a time, and `break` leaves the endless source behind.
+  (for (in team teams)
+    (print (str "team: " team))
+    (if (call (. team starts-with) "Cy")
+      (break)
+    )
+  )
+  (blank)
+  ; What `open-days` gives is still a stream, so the caller adds a stage of its own.
+  (let shouted (*> (call open-days (list "Sat" "Sun")) (. each uppercased)))
+  (print (str "open: " (call (. ", " join) shouted)))
+)
+
+(fn-do + cooks _
+  (while true
+    (yield "Ada")
+    (yield "Ben")
+    (yield "Cy")
+  )
+)
+
+(fn-do + specials _
+  (finally
+    (print "  (the specials board is wiped)")
+  )
+  (yield "curry")
+  (yield "pie")
+)
+
+(fn-do + (of in-pairs Item) _
+  (param source (stream Item))
+  ; A stage for any item type: it reads a stream and yields its items two at a time.
+  (let held (? Item) null)
+  (for (in item source)
+    (if held
+      (yield (tuple held item))
+      (= held null)
+      (else
+        (= held item)
+      )
+    )
+  )
+)
+
+(fn-expr + open-days (stream String)
+  (param extra (list String))
+  ; The body is a pipeline, and the result type says it stays a stream.
+  (bullet "Fri")
+  (bullet* extra)
+  (pipe ?> (!= each "Sun"))
+)

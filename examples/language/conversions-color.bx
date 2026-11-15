@@ -1,0 +1,48 @@
+; Conversions: a type says which other types it can be made from and turned
+; into. A value then converts by itself wherever the type is asked for, and
+; `as` asks for a conversion in the middle of an expression.
+(main
+  ; The declared type asks for a Color, so the text converts.
+  (let sunset Color "#ff8800")
+  (print (str "sunset is " sunset))
+  (blank)
+  ; `blend` takes two Colors. Texts and a number convert on the way in.
+  (print (str "red and blue blend to " (call blend "#ff0000" "#0000ff")))
+  (print (str "sunset and mid gray blend to " (call blend sunset 128)))
+  (blank)
+  ; `as` converts where no declaration or parameter names the type.
+  (let leaf (as "#228b22" Color))
+  (print (str "leaf has " (. leaf green) " parts green"))
+  (let label (as leaf String))
+  (print (str "its label is " (. label length) " characters long"))
+)
+
+(type + Color (is Tuple)
+  (prop + red Int)
+  (prop + green Int)
+  (prop + blue Int)
+  ; A conversion from text. The library's own Hex conversion reads the digits.
+  (fn-from-do + (: hex String)
+    (let bytes (as (call Hex ([] hex (.. 1 6))) ([] Byte)))
+    (return (call Color ([] bytes 0) ([] bytes 1) ([] bytes 2)))
+  )
+  ; A second source type. The type of the value picks the conversion.
+  (fn-from-expr + (: gray Int)
+    (call Color gray gray gray)
+  )
+  ; A conversion to text, used by `str`, by `print` and by `as String`.
+  (fn-to-expr + String
+    (str "rgb(" red ", " green ", " blue ")")
+  )
+)
+
+(fn-expr + blend Color
+  (param a Color)
+  (param b Color)
+  (call Color red green blue)
+  (where
+    (lazy red (/ (+ (. a red) (. b red)) 2))
+    (lazy green (/ (+ (. a green) (. b green)) 2))
+    (lazy blue (/ (+ (. a blue) (. b blue)) 2))
+  )
+)

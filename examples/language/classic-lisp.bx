@@ -1,0 +1,120 @@
+; A tiny Lisp. A stream grammar reads text into a union, and one match
+; evaluates it: list patterns tell `if`, `let` and a call apart by their shape.
+(import /stream/aggregate)
+(blank)
+
+(main
+  (call run "(+ 1 2 3)")
+  (call run "(* 2 (- 10 4))")
+  (call run "(if (< 2 3) 10 20)")
+  (call run "(let (x 5) (* x x))")
+  (call run "(let (x 2) (+ (let (x 10) x) x))")
+)
+
+(fn-do + run _
+  (param source String)
+  ; The test holds when the whole text fits the grammar, and names what it read.
+  (if (= (~ (: form \sexp)) source)
+    (print (str source " => " (call evaluate form (call (of Map String Int)))))
+  )
+)
+
+(type + Sexp (is Union)
+  ; The `list` case holds more values of the union it belongs to.
+  (blank)
+  (variant number Int)
+  (variant symbol String)
+  (variant list (list Sexp))
+)
+
+(fn-expr + sexp Sexp (over: Char)
+  (~ (seq (* " ") (: form \form) (* " "))
+    form
+  )
+  (where
+    ; Alternatives are tried in order, and each action builds one case of the union.
+    (lazy form Sexp
+      (pattern
+        (~ (+ (chars "0-9"))
+          (call (. Sexp number) (as it Int))
+        )
+        ; A list holds any number of `sexp`, which makes the grammar recursive.
+        (~ (seq "(" (: items (* \sexp)) ")")
+          (call (. Sexp list) items)
+        )
+        (~ (+ (seq (! (chars " ()")) .))
+          (call (. Sexp symbol) it)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + evaluate Int
+  (param form Sexp)
+  (param scope (map String Int))
+  (match form
+    (case (call .number value)
+      value
+    )
+    (case (call .symbol name)
+      (?? ([] scope name) 0)
+    )
+    ; A pattern reaches several levels down: a list of four whose first item is the symbol `if`.
+    (case (call .list (list (call .symbol "if") test yes no))
+      (call evaluate chosen scope)
+      (lazy chosen (if-expr (!= (call evaluate test scope) 0) yes no))
+    )
+    (case (call .list (list (call .symbol "let") (call .list (list (call .symbol name) init)) body))
+      (call evaluate body (call extended scope name (call evaluate init scope)))
+    )
+    ; `...operands` takes the rest of the list, however long.
+    (case (call .list (list (call .symbol operator) ...operands))
+      (call reduce values (:using (=> (left right) (call combine operator left right))))
+      (lazy values (in (call evaluate each scope) operands))
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr + extended (map String Int)
+  (param scope (map String Int))
+  (param name String)
+  (param value Int)
+  ; Adding two maps makes a third, so the outer scope keeps its own `x`.
+  (+ scope added)
+  (where
+    (lazy added
+      (call Map
+        (block
+          (entry name value)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + combine Int
+  (param operator String)
+  (param left Int)
+  (param right Int)
+  (match operator
+    (case= "+"
+      (+ left right)
+    )
+    (case= "-"
+      (- left right)
+    )
+    (case= "*"
+      (* left right)
+    )
+    (case= "<"
+      (if-expr (< left right) 1 0)
+    )
+    (default
+      0
+    )
+  )
+)

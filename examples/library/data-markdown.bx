@@ -1,0 +1,116 @@
+; Markdown: `/data/markdown` reads a note into a tree, and each node of the
+; tree is one case of a union: a heading, a list, a link and so on. A `match`
+; walks it, here for an outline and the links, and one call gives a web page.
+(import /data/markdown)
+(blank)
+
+(main
+  ; Text becomes Markdown where a Markdown value is asked for.
+  (let note Markdown (call recipe))
+  (let doc (as note MDDocument))
+  (for (in block (. doc content))
+    (do
+      (inline
+        (match block
+          (case (: header MDHeader)
+            (print (str (* "  " (- (. header level) 1)) (call plain (. header content))))
+          )
+          (case (: list MDList)
+            (for (in item (. list children))
+              (print (str "      - " (call text-of item)))
+            )
+          )
+          (case (: code MDFencedCode)
+            (print (str "      run: " (call (. code body trim))))
+          )
+          ; Paragraphs and the rest are left out of the outline.
+          (default
+            (continue)
+          )
+        )
+      )
+    )
+  )
+  (print "")
+  (print (str "links: " (call (. ", " join) (call links (. doc content)))))
+  (print (str "as a page: " (call markdown-to-html "Ready in **twenty minutes**.")))
+)
+
+(fn-expr + plain String
+  (param nodes (list Markdown))
+  (call (. "" join) (in (call text-of each) nodes))
+)
+
+(fn-expr + text-of String
+  (param node Markdown)
+  ; Bold text, a link and a list item each hold more nodes, so their words are
+  ; found by asking again.
+  (match node
+    (case (: text MDText)
+      (. text text)
+    )
+    (case (: strong MDStrong)
+      (call plain (. strong content))
+    )
+    (case (: em MDEm)
+      (call plain (. em content))
+    )
+    (case (: link MDLink)
+      (call plain (. link content))
+    )
+    (case (: code MDInlineCode)
+      (. code code)
+    )
+    (case (: item MDListItem)
+      (call plain (. item content))
+    )
+    (default
+      (inline "")
+    )
+  )
+)
+
+(fn-do + links (stream String)
+  (param nodes (list Markdown))
+  ; A generator walks the tree: `yield` gives one address, and `yield-all`
+  ; gives every address found further down.
+  (for (in node nodes)
+    (do
+      (inline
+        (match node
+          (case (: link MDLink)
+            (yield (. link url))
+          )
+          (case (: paragraph MDParagraph)
+            (yield-all (call links (. paragraph content)))
+          )
+          (case (: list MDList)
+            (yield-all (call links (. list children)))
+          )
+          (case (: item MDListItem)
+            (yield-all (call links (. item content)))
+          )
+          (default
+            (continue)
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + recipe _
+  (paragraph
+    "# Flatbread"
+    "Ready in **twenty minutes**, from [a baker's notes](https://example.com/flatbread)."
+    "## Ingredients"
+    "- 200g flour"
+    "- 120ml *warm* water"
+    "- a pinch of salt"
+    "## Method"
+    "Mix, rest, then fry in a `dry pan`. See [the video](https://example.com/video)."
+    "```sh"
+    "timer 10m"
+    "```"
+  )
+)

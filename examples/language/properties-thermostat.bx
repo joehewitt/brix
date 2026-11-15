@@ -1,0 +1,51 @@
+; Properties: a property can be stored, computed when read, or run code when
+; assigned, and the caller writes all three the same way. A derived type can
+; replace any of them.
+(import /math)
+(blank)
+
+(main
+  (let hall (call Thermostat))
+  ; Assigning `fahrenheit` runs its setter, which stores celsius.
+  (= (. hall fahrenheit) 68)
+  (print (str "hall: " (. hall celsius) " C is " (. hall fahrenheit) " F"))
+  (= (. hall celsius) 25)
+  (print (str "hall: " (. hall celsius) " C is " (. hall fahrenheit) " F"))
+  (blank)
+  (let attic (call EcoThermostat))
+  (= (. attic fahrenheit) 86)
+  (print (str "attic: asked for 86 F, set to " (. attic celsius) " C"))
+  (blank)
+  (print (call report hall))
+  (print (call report attic))
+)
+
+(type + Thermostat
+  ; The only stored value. Fahrenheit is a second view of it.
+  (prop + celsius Float (= 20))
+  (fn-expr + fahrenheit Float :get
+    (+ (/ (* celsius 9) 5) 32)
+  )
+  (fn-do + fahrenheit _ :set (param value Float)
+    (= celsius (/ (* (- value 32) 5) 9))
+  )
+  (fn-expr + label String
+    "standard"
+  )
+)
+
+(type + EcoThermostat (is Thermostat)
+  (fn-do + fahrenheit _ :set (param value Float)
+    ; The eco model declares the setter again and never goes above 22 C.
+    (= celsius (call min (/ (* (- value 32) 5) 9) 22))
+  )
+  (fn-expr + label String
+    "eco"
+  )
+)
+
+(fn-expr + report String
+  (param thermostat Thermostat)
+  ; `report` knows only the base type, yet each thermostat answers with its own label.
+  (str (call (. thermostat label)) " thermostat at " (. thermostat fahrenheit) " F")
+)

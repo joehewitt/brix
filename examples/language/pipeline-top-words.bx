@@ -1,0 +1,55 @@
+; Pipelines: a sequence written as contributions, one to a row, with the
+; stages that refine it underneath. Here it gathers the words of a poem
+; before they are counted.
+(import /stream/combine)
+(import /stream/sort)
+(blank)
+
+(main
+  (let lines (call (. (call poem) split) "\n"))
+  ; `bullet` adds one item and `bullet*` adds every item of a source. Each `pipe`
+  ; stage then works on what the rows above it give, and `List` collects the result.
+  (let words
+    (call List
+      (block
+        (bullet "Rain")
+        (bullet* (call flat-map (in (call (. each split) " ") lines)))
+        (pipe *> (. each lowercased))
+        (pipe ?> (> (. each length) 3))
+      )
+    )
+  )
+  (print (str (. words length) " words longer than three letters"))
+  (blank)
+  (let counts (of Map String Int))
+  (for (in word words)
+    (= ([] counts word) (+ (?? ([] counts word) 0) 1))
+  )
+  (blank)
+  ; A map's items are a stream too, so `sort` can order them by count.
+  (let ranked (call sort (. counts items) (:using by-count) (:is-reverse true)))
+  (for (in place (..< 0 3))
+    (print (str (+ place 1) ". " (call tally ([] ranked place))))
+  )
+)
+
+(fn-expr + tally String
+  (param entry (of KeyValuePair String Int))
+  (str (. entry key) ", " (. entry value) " times")
+)
+
+(fn-expr + by-count _
+  (param left (of KeyValuePair String Int))
+  (param right (of KeyValuePair String Int))
+  (call compare-basic (. left value) (. right value))
+)
+
+(fn-expr + poem _
+  (paragraph
+    "The rain taps on the roof"
+    "and the rain runs down the window"
+    "the kettle hums and the window fogs"
+    "rain on the garden and rain on the window"
+    "the kettle clicks off"
+  )
+)

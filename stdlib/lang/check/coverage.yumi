@@ -42,6 +42,8 @@ _ labels [String]
 _ names [Atom?]
 _ plain [Bool]
 _ covered [Bool]
+_ listed-cases [Size]
+_ listed-patterns [SyntaxId]
 
 ────────────────────
 + This
@@ -66,6 +68,8 @@ if subject == no-type || subject == invalid-type || !close(subject)
 collect(pattern)
 for index in 0 .. < held.length
     if held[index] != no-type && covers(pattern, held[index])
+        covered[index] = true
+    if !covered[index] && lists-cover(index)
         covered[index] = true
 . missing = ""
 for index in 0 .. < labels.length
@@ -269,6 +273,9 @@ do match? tree.nodes[pattern]
         . index = names.find(row.name)
         if index != null && (row.value == 0 || covers(row.value, held[index]))
             covered[index] = true
+        else if index != null && tree.nodes[row.value] is .node-type-list
+            listed-cases += index
+            listed-patterns += row.value
         =
 . name = equality-name(pattern)
 . index = names.find(name) if name
@@ -428,6 +435,52 @@ if target == no-type
 . relation = relations.compare(subject, target, false, false, null, frame.module)
 . kind = relation.kind
 = kind == .relation-same || kind == .relation-equal || kind == .relation-or-cast
+
+────────────────────
+_ do lists-cover Bool
+    - index Size
+
+` Whether the arms that match a case by the items of its list take every list together: one
+` of some count of items and a rest, as `[first, ...rest]`, and one of each smaller count, as
+` `[]`, where each item they name is taken whatever it is.
+. exact [Size]
+. least = Size.max
+for position in 0 .. < listed-cases.length
+    if listed-cases[position] == index
+        do match? tree.nodes[listed-patterns[position]]
+            | .node-type-list(row)
+                . rest = false
+                . open = true
+                for element in tree.children[row.patterns]
+                    if is-remainder(element)
+                        rest = true
+                    else if !takes-any(element)
+                        open = false
+                . count = row.patterns.count as Size
+                if open && rest && count - 1 < least
+                    least = count - 1
+                else if open && !rest
+                    exact += count
+if least == Size.max
+    = false
+for length in 0 .. < least
+    if exact.find(length) == null
+        = false
+= true
+
+────────────────────
+_ takes-any Bool
+    - pattern SyntaxId
+
+match tree.nodes[pattern]
+    | .node-type-wildcard
+        true
+    | .node-identifier
+        true
+    | .node-type-capture(row)
+        row.type == 0
+    ??
+        false
 
 ────────────────────
 _ is-remainder Bool

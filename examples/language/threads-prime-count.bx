@@ -1,0 +1,52 @@
+; Threads: `do-new-thread` runs a task in the shared thread pool, so four slices
+; of one job use four cores. A channel brings the results back to the main task.
+(main
+  (let span 50000)
+  ; Threads share memory with no locking. This channel type is made to be shared.
+  (let counts (of SyncBufferedChannel (tuple Int Int)))
+  (for (in part (..< 0 4))
+    (do-new-thread
+      (inline (call count-into part (* part span) (* (+ part 1) span) counts))
+    )
+  )
+  (blank)
+  ; Results come back in whatever order the threads finish. Each says which part it is.
+  (let found (list 0 0 0 0))
+  (for (in i (..< 0 4))
+    (let (tuple part count) (!! (<- counts)))
+    (= ([] found part) count)
+  )
+  (blank)
+  (let total 0)
+  (for (in part (..< 0 4))
+    (print (str (* part span) " to " (* (+ part 1) span) ": " ([] found part) " primes"))
+    (+= total ([] found part))
+  )
+  (print (str "below " (* 4 span) ": " total " primes"))
+)
+
+(fn-do + count-into _
+  (param part Int)
+  (param first Int)
+  (param last Int)
+  (param counts (of SyncBufferedChannel (tuple Int Int)))
+  ; Runs on a pool thread. It writes only its own locals, then sends one result.
+  (let count 0)
+  (for (in n (..< first last))
+    (if (call is-prime n)
+      (+= count 1)
+    )
+  )
+  (<- counts (tuple part count))
+)
+
+(fn-do + is-prime Bool
+  (param n Int)
+  (return-if false (if (< n 2)))
+  (let d 2)
+  (while (<= (* d d) n)
+    (return-if false (if (== (% n d) 0)))
+    (+= d 1)
+  )
+  (return true)
+)

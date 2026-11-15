@@ -1,0 +1,42 @@
+; Events: a type declares an event, and `(for (on …))` subscribes to it. The
+; loop does not wait: its rows run later, once for each item the event sends.
+(main
+  (let letter (call Newsletter))
+  (blank)
+  ; Ada subscribes. Nothing prints yet, and main carries on to the next row.
+  (for (on issue (. letter issues))
+    (print (str "  Ada reads #" (. issue number) ": " (. issue title)))
+  )
+  (blank)
+  (for (on issue (. letter issues))
+    (print (str "  Ben reads #" (. issue number) ": " (. issue title)))
+    ; `break` ends this subscription only. Ada still hears the next issue.
+    (if (== (. issue number) 2)
+      (print "  Ben unsubscribes")
+      (break)
+    )
+  )
+  (blank)
+  (call (. letter publish) "Spring planting")
+  (call (. letter publish) "Summer pests")
+  (call (. letter publish) "Autumn harvest")
+)
+
+(type + Issue (is Tuple)
+  (prop + number Int)
+  (prop + title String)
+)
+
+(type + Newsletter
+  ; An event is a source that anyone holding the newsletter can subscribe to.
+  (event + issues Issue)
+  (prop + sent _ (= 0))
+  (fn-do + publish _
+    (param title String)
+    (+= sent 1)
+    (print (str "Publishing issue " sent))
+    ; Sending reaches every subscriber, in the order they subscribed, before the next row.
+    (<- issues (call Issue sent title))
+    (print (str "Issue " sent " delivered"))
+  )
+)

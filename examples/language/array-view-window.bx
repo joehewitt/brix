@@ -1,0 +1,36 @@
+; Arrays and views: an Array is one contiguous block, and a slice of it is a
+; view onto the same storage, not a copy. A moving average reads the week
+; through a three-day window that copies nothing.
+(import /stream/aggregate)
+(blank)
+
+(main
+  (let temps (call (of Array Float) (list 12 15 18 24 21 15 12)))
+  (let warmest 0)
+  (for (in start (.. 0 (- (. temps length) 3)))
+    ; Each window is a view of three items already in `temps`.
+    (let window ([] temps (..< start (+ start 3))))
+    (print (str "days " start " to " (+ start 2) " average " (call average window)))
+    (if (> (call sum window) (call sum (call three-from temps warmest)))
+      (= warmest start)
+    )
+  )
+  (print (str "warmest three days start on day " warmest))
+  (blank)
+  ; Writing through a view writes the array it came from.
+  (let weekend ([] temps (..< 5 7)))
+  (= ([] weekend 0) 30)
+  (print (str "saturday through the view: " ([] weekend 0)))
+  (print (str "saturday in the array: " ([] temps 5)))
+  (blank)
+  ; Assigning to a range of the array replaces that stretch in place.
+  (= ([] temps (..< 0 2)) (list 10 11))
+  (print (str "the week is now " (call (. ", " join) temps)))
+)
+
+(fn-expr + three-from _
+  (param temps (of Array Float))
+  (param start Int)
+  ; A function can hand back a view as easily as take one.
+  ([] temps (..< start (+ start 3)))
+)

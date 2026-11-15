@@ -1,0 +1,35 @@
+; Dates and zones: `/time` reads a timestamp into a date in a zone, so one
+; instant has a wall clock for each place, and two dates read into one zone
+; are a duration apart.
+(import /time/datetime)
+(import /time/duration)
+(import /time/timestamp)
+(import /time/zone)
+(blank)
+
+(main
+  ; A zone is a name and its distance from UTC, written as a duration.
+  (let san-francisco (call TimeZone "San Francisco" -7hours))
+  (let tokyo (call TimeZone "Tokyo" 9hours))
+  (blank)
+  ; One instant, read into three zones.
+  (let call-starts "2025-03-14T15:00:00Z")
+  (for (in zone (list san-francisco utc tokyo))
+    (let there (!! (call parse-iso8601 call-starts zone)))
+    (print (str (. zone name) ": " (. there readable) "  " (as there ISO8601)))
+  )
+  (blank)
+  ; A timestamp carries its own offset, and is read into whichever zone is asked for.
+  (let departure "2025-03-14T22:30:00-07:00")
+  (let arrival "2025-03-16T02:10:00+09:00")
+  (let takeoff (!! (call parse-iso8601 departure san-francisco)))
+  (let landing (!! (call parse-iso8601 arrival tokyo)))
+  (print (str "takes off " (. takeoff readable) " in " (. takeoff zone name)))
+  (print (str "lands " (. landing readable) " in " (. landing zone name)))
+  (blank)
+  ; Subtracting compares wall clocks, so both ends are read into one zone first.
+  (let from (!! (call parse-iso8601 departure utc)))
+  (let to (!! (call parse-iso8601 arrival utc)))
+  (let minutes (as (. (- to from) delta) Minutes Int))
+  (print (str "flight time: " (/ minutes 60) " h " (% minutes 60) " min"))
+)

@@ -1,0 +1,34 @@
+; Units: a number's unit is part of its type. A family of units says how its
+; members relate, and a value converts wherever another unit is asked for.
+(type-line + Volume (is F64))
+(blank)
+; Each unit gives its size in terms of a unit declared before it.
+(type-line + Milliliters (alias ml) (is Volume))
+(type-line + Teaspoons (alias tsp) (is 5ml))
+(type-line + Tablespoons (alias tbsp) (is 3tsp))
+(type-line + Cups (alias cups) (is 16tbsp))
+(blank)
+
+(main
+  (let milk 1.5cups)
+  (let vanilla 2tsp)
+  (blank)
+  ; Cups reach milliliters through tablespoons and teaspoons.
+  (print (str (as milk UnitString) " is " (as milk Milliliters UnitString)))
+  (blank)
+  ; Arithmetic converts the right side and keeps the unit of the left.
+  (print (str "1cups + 8tbsp = " (as (+ 1cups 8tbsp) UnitString)))
+  (print (str "8tbsp + 1cups = " (as (+ 8tbsp 1cups) UnitString)))
+  (print (str "a double batch takes " (as (* milk 2) UnitString)))
+  (blank)
+  ; Two units of one family compare as the same quantity.
+  (print (str "250ml fills a cup: " (>= 250ml 1cups)))
+  (blank)
+  ; `poured` takes milliliters, so the teaspoons convert on the way in.
+  (print (call poured vanilla))
+)
+
+(fn-expr + poured String
+  (param amount Milliliters)
+  (str "Pour " (as amount UnitString) " of vanilla")
+)

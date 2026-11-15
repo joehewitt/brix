@@ -1,0 +1,120 @@
+; Stream grammars: a complete parser in one screen. The rules turn JSON text
+; into a union with one case for each kind of value, and the rule for a value
+; is called again for what lists and objects hold.
+(main
+  (let parsed
+    (match (call recipe)
+      (~ \value)
+      (default
+        (inline (. Json null))
+      )
+    )
+  )
+  ; What the rules built is an ordinary value, taken apart like any other union.
+  (if (= (| (call .fields members)) parsed)
+    (for (in each members)
+      (print (str (. each key) " is " (call shown (. each value))))
+    )
+  )
+)
+
+(fn-expr + recipe _
+  (paragraph
+    "{"
+    "  \"title\": \"Pancakes\", \"serves\": 4, \"vegan\": false, \"notes\": null,"
+    "  \"steps\": [\"mix\", \"rest\", \"fry\"],"
+    "  \"author\": {\"name\": \"Ada\", \"born\": 1815}"
+    "}"
+  )
+)
+
+(type + Json (is Union)
+  (variant null)
+  (variant flag Bool)
+  (variant number Float)
+  (variant text String)
+  (variant items (list Json))
+  (variant fields (list Member))
+)
+
+(type + Member (is Tuple)
+  (prop + key String)
+  (prop + value Json)
+)
+
+(fn-expr + value Json (over: Char)
+  (~ (seq \gap (: found \bare) \gap)
+    found
+  )
+)
+
+(fn-expr + bare Json (over: Char)
+  ; Each arm builds the case of the union that its text stands for.
+  (~ "null"
+    (. Json null)
+  )
+  (~ (: word (| "true" "false"))
+    (call (. Json flag) (== word "true"))
+  )
+  (~ (seq (? "-") (+ (chars "0-9")) (? (seq "." (+ (chars "0-9")))))
+    (call (. Json number) (as it Float))
+  )
+  (~ (: text \quoted)
+    (call (. Json text) text)
+  )
+  (~ (seq "[" \gap "]")
+    (call (. Json items) (call (of List Json)))
+  )
+  ; A list holds values, so this arm calls the rule that called it.
+  (~ (seq "[" (: first \value) (: rest (* (seq "," \value))) "]")
+    (call (. Json items) (++ (list first) rest))
+  )
+  (~ (seq "{" \gap "}")
+    (call (. Json fields) (call (of List Member)))
+  )
+  (~ (seq "{" (: first \member) (: rest (* (seq "," \member))) "}")
+    (call (. Json fields) (++ (list first) rest))
+  )
+)
+
+(fn-expr + member Member (over: Char)
+  (~ (seq \gap (: key \quoted) \gap ":" (: found \value))
+    (call Member key found)
+  )
+)
+
+(fn-expr + quoted String (over: Char)
+  ; Escapes inside a text are left out to keep the grammar short.
+  (~ (seq "\"" (: text (* (seq (! "\"") .))) "\"")
+    text
+  )
+)
+
+(fn-expr + gap String (over: Char)
+  (~ (* (| " " "\n")))
+)
+
+(fn-expr + shown String
+  (param json Json)
+  (match json
+    (case .null
+      "nothing"
+    )
+    (case (call .flag flag)
+      (if-expr flag "yes" "no")
+    )
+    (case (call .number number)
+      (str number)
+    )
+    (case (call .text text)
+      (str "\"" text "\"")
+    )
+    ; The printer follows the same shape as the parser and calls itself for a list.
+    (case (call .items items)
+      (str "[" (call (. ", " join) (in (call shown each) items)) "]")
+    )
+    (case (call .fields members)
+      (str "an object with " (call (. ", " join) (in (. each key) members)))
+    )
+  )
+)

@@ -1,0 +1,53 @@
+; Unions as trees: a case can hold a list of the union itself, which makes a
+; tree. Two functions walk it by matching, each calling itself on the parts.
+(import /stream/aggregate)
+(blank)
+
+(main
+  ; A plain number becomes an `Expr` by itself, since `Int` is one of its cases.
+  (let boxes (call (. Expr product) (list 4 30)))
+  (let extras (call (. Expr product) (list 2 (call (. Expr sum) (list 5 8)))))
+  (let order (call (. Expr sum) (list 12 boxes extras)))
+  (for (in expr (list boxes extras order))
+    (print (str (call show expr) " = " (call value expr)))
+  )
+)
+
+(type + Expr (is Union)
+  ; A case can be an existing type, or a name with data of its own.
+  (variant Int)
+  (variant sum (list Expr))
+  (variant product (list Expr))
+)
+
+(fn-expr + value Int
+  (param expr Expr)
+  (match expr
+    ; A case that is a type is matched by that type.
+    (case (: n Int)
+      n
+    )
+    (case (call .sum terms)
+      (call reduce 0 terms (:using (=> (total term) (+ total (call value term)))))
+    )
+    (case (call .product factors)
+      (call reduce 1 factors (:using (=> (total factor) (* total (call value factor)))))
+    )
+  )
+)
+
+(fn-expr + show String
+  (param expr Expr)
+  (match expr
+    (case (: n Int)
+      (str n)
+    )
+    ; `show` runs on each term, and the results are joined into one text.
+    (case (call .sum terms)
+      (++ "(" (call (. " + " join) (in (call show each) terms)) ")")
+    )
+    (case (call .product factors)
+      (call (. " * " join) (in (call show each) factors))
+    )
+  )
+)

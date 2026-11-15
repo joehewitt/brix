@@ -820,3 +820,66 @@ do match result
 found 3
 error
 ;====
+:====
+# Arms of a case that holds a list take the case together when one takes some count of items and a rest and others take each smaller count.
+
+. empty [Int]
+-- count(.many(empty))
+-- count(.many([5, 6]))
+-- count(.none)
+
+━━━━━━━━━━━━━━━━━━━━
++ count Int
+    - bag Bag
+
+match bag
+    | .none
+        0
+    | .many([])
+        -1
+    | .many([first, ...rest])
+        first + rest.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag is Union
+
+| none
+| many [Int]
+
+:----
+
+-1
+6
+0
+;====
+:====
+# Arms of a list that leave out a count of items do not take the case.
+
+-- count(.many([1]))
+
+━━━━━━━━━━━━━━━━━━━━
++ count Int
+    - bag Bag
+
+match bag
+    | .none
+        0
+    | .many([])
+        -1
+    | .many([first, second, ...rest])
+        first
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag is Union
+
+| none
+| many [Int]
+
+:----
+%crash
+
+Exception: This match on Bag does not handle .many; add a case for it, or "??" for the rest
+<no file:9>
+        | .none
+        ^^^^^^
+;====

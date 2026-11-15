@@ -1453,6 +1453,8 @@ for offset in 1 .. < count
 + do join-arms TypeId
     - mark ScratchMark
 
+` The type the values of a match's arms become together: each unified with those before it,
+` or where it does not unify, the union of it and the cases of those before it.
 . count = types.scratch.types.length - mark
 if count == 0
     = no-type
@@ -1464,7 +1466,12 @@ for offset in 1 .. < count
         joined = relation.unified
     else
         . pair = types.scratch.types.mark
-        types.scratch.types.push(joined)
+        do match types.rows[joined]
+            | .type-union(row)
+                for position in 0 .. < row.cases.count
+                    types.scratch.types.push(types.child-type(row.cases, position))
+            ??
+                types.scratch.types.push(joined)
         types.scratch.types.push(next)
         joined = types.intern-union(pair)
 = joined

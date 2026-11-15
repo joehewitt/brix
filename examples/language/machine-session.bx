@@ -1,0 +1,55 @@
+; State machines: two machines declared inside one state change independently,
+; and both end when that state does. Four combinations need no four states.
+(main
+  (let session (call Session))
+  (print "> ada signs in")
+  (<- (. session sign-ins) "ada")
+  (print "> the network comes up")
+  (<- (. session links) true)
+  (print "> the app quits")
+  (<- (. session quits) true)
+)
+
+(type + Session
+  (event + sign-ins String)
+  (event + links Bool)
+  (event + quits Bool)
+  (prop + phase _
+    (machine
+      (state running
+        ; Each machine keeps a state of its own for as long as `running` is active.
+        (prop + identity _
+          (machine
+            (state guest
+              (do (inline (print "identity: guest")))
+            )
+            (state (call member name) (trigger for name sign-ins)
+              (do (inline (print (str "identity: " name))))
+            )
+          )
+        )
+        (blank)
+        (prop + network _
+          (machine
+            (state offline
+              (do (inline (print "network: offline")))
+              (then online (trigger on links each))
+            )
+            (state online
+              (do (inline (print "network: online")))
+              (finally (inline (print "network: closing sockets")))
+              (then offline (trigger on links (not each)))
+            )
+          )
+        )
+        (blank)
+        ; Leaving `running` ends both machines, so the sockets close on the way out.
+        (then ended (trigger on quits))
+      )
+      (blank)
+      (state ended
+        (do (inline (print "session ended")))
+      )
+    )
+  )
+)

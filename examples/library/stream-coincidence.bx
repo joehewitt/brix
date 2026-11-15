@@ -1,0 +1,35 @@
+; Items taken together: `/stream/coincidence` has the functions that hand on
+; more than one item of a stream at a time. Here they seat the guests of a
+; dinner, pick teams, split the menu and fill the cars home.
+(import /stream/coincidence)
+(blank)
+
+(main
+  (let guests (list "Ada" "Ben" "Cleo" "Dev" "Eve" "Finn"))
+  (blank)
+  ; `pairwise` gives each item with the next, and looped, the last with the first.
+  (print "round the table:")
+  (for (in pair (call pairwise guests (:is-looped true)))
+    (print (str "  " (. pair a) " sits next to " (. pair b)))
+  )
+  (print "")
+  (blank)
+  ; `evens` and `odds` take every other item, and `alternate` gives one lot then the other.
+  (let ours (call (. ", " join) (call evens guests)))
+  (let theirs (call (. ", " join) (call odds guests)))
+  (print (str "teams: " ours " against " theirs))
+  (print (str "served in turn: " (call (. ", " join) (call alternate guests))))
+  (blank)
+  ; `partition` gives two streams: the items that pass the test, and the rest.
+  (let vegetarians (list "Cleo" "Finn"))
+  (let (tuple roast chicken) (call partition guests (:where (has vegetarians each))))
+  (print (str "nut roast for " (call (. ", " join) roast)))
+  (print (str "chicken for " (call (. ", " join) chicken)))
+  (print "")
+  (blank)
+  ; `buffer` gives the items in lists of three. A last list that is not full is left out.
+  (print "cars home:")
+  (for (in car (call buffer 3 guests))
+    (print (str "  " (call (. ", " join) car)))
+  )
+)

@@ -1,0 +1,51 @@
+; Stream grammars: a rule reads a stream of characters, and a text and a
+; channel are both such streams. The same rule parses what is already stored
+; and what is still arriving, with no second, asynchronous parser.
+(main
+  (print "from a stored text:")
+  (call report "kitchen 21\nattic 17\n")
+  (blank)
+  ; Another task plays a sensor on a wire, sending one character at a time.
+  (let wire (channel Char))
+  (do-new
+    (for (in line (list "cellar 12\n" "porch 9\n"))
+      (print (str "  (the wire sends " (. line length) " characters)"))
+      (for (in char line)
+        (<- wire char)
+      )
+    )
+    (call (. wire close))
+  )
+  (print "from a wire:")
+  (call report wire)
+)
+
+(fn-do + report _
+  (param source (stream Char))
+  ; `(stream Char)` takes either source. Reading the channel waits for the next
+  ; character, and nothing here is marked as asynchronous.
+  ; Each reading is handed over as soon as its line ends, before the next arrives.
+  (for (in reading (~> source \reading))
+    (print (str "  " (. reading room) " is at " (. reading degrees) " degrees"))
+  )
+)
+
+(type + Reading (is Tuple)
+  (prop + room String)
+  (prop + degrees Int)
+)
+
+(fn-expr + reading Reading (over: Char)
+  (~ (seq (: room (+ (chars "a-z"))) " " (: degrees \number) "\n")
+    (call Reading room degrees)
+  )
+  (where
+    (lazy number Int
+      (pattern
+        (~ (+ (chars "0-9"))
+          (as it Int)
+        )
+      )
+    )
+  )
+)
