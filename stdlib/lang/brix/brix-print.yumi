@@ -423,7 +423,7 @@ do match items
         put("?! ")
         expression(raised, 0, false)
         hold(node, 2)
-    | [.atom(_, "on-error"), handler, ...]
+    | [.atom(_, word {it == "on-error" || it == "on-failure"}), handler, ...]
         put("catch")
         if store.is-form(handler, "caught")
             caught(handler, 1)
@@ -721,12 +721,16 @@ put(brix-do-suffix(head))
 while origin < items.length && is-attribute(items[origin])
     put(" ${store.text(items[origin])}")
     origin += 1
-if items.length == origin + 1 && store.is-form(items[origin], "inline")
-    if attributed
-        hold(items[origin], 1)
-    else
-        put(" ")
-        expression(store.item(items[origin], 1), 0, true)
+. end = brix-arm-start(store, node)
+. inline = end == origin + 1 && store.is-form(items[origin], "inline")
+if inline && !attributed
+    put(" ")
+    expression(store.item(items[origin], 1), 0, true)
+    if end < items.length
+        hold(node, end)
+else if inline
+    hold(items[origin], 1)
+    armed = node
 else
     hold(node, origin)
 

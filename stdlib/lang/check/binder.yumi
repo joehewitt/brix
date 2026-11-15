@@ -2346,7 +2346,7 @@ do match tree.nodes[id]
         pop-scope()
     | .node-do-task-block(row)
         walk(row.worker)
-        walk-nested(id, RowRange'SyntaxId(), row.body)
+        walk-nested(id, RowRange'SyntaxId(), row.body, row.catchers)
     | .node-do-block(row)
         if nested-decl-for(id) != 0
             walk-nested(id, RowRange'SyntaxId(), row.body)
@@ -2514,10 +2514,12 @@ _ do walk-nested Void
     - id SyntaxId
     - args RowRange'SyntaxId
     - body SyntaxId
+    - handlers RowRange'SyntaxId = RowRange'SyntaxId()
 
 ` A lambda, a task body or the body of a `do @no-gc` block: its own scope, argument slots,
 ` and capture pool. Captures gather while the body walks and are rowed when it closes,
-` innermost first.
+` innermost first. A task's handlers run in the task, after its body, so they are bound in
+` its scope as well.
 push-scope(.scope-nested, id)
 function-depth += 1
 open-nested(id)
@@ -2530,6 +2532,8 @@ for arg in tree.children[args]
         | .node-argument-decl(row)
             walk(row.default-value)
 walk(body)
+for handler in tree.children[handlers]
+    walk(handler)
 close-nested()
 function-depth -= 1
 pop-scope()

@@ -108,10 +108,11 @@ that `.release.json` pins (`toolchain/compiler.py`).
     may-panic and generator flags).
 23. IR is append-only tables. A block is a contiguous range ending in a terminator, and one
     emitter owns block creation through a closed set of shapes.
-24. The runtime contracts are exact: object and table layouts; x15 as the panic signal tested
-    after each call that may panic, and x27 as the task context; GC maps, roots and write
-    barriers; the calling convention; the `__yumi_gcmap`, `__yumi_gcroots` and `__yumi_trace`
-    sections.
+24. The runtime contracts are exact: object and table layouts; x15 as the panic signal, and x27
+    as the task context; a function returning a panic calls `yumiPanicReturn`, which sends the
+    return into the caller's landing pad found in `__yumi_pads`, so a call that may panic is not
+    followed by a test; GC maps, roots and write barriers; the calling convention; the
+    `__yumi_gcmap`, `__yumi_gcroots`, `__yumi_trace` and `__yumi_pads` sections.
 25. Facts are the tooling contract. The linter's semantic rules and the analysis service read
     them in process; nothing is emitted for tooling.
 

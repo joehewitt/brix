@@ -10,6 +10,7 @@ extern "C" {
 void* yumiGetGCStackMapPointer(size_t* outSize);
 void* yumiGetGCRootMapPointer(size_t* outSize);
 void* yumiGetTraceMetadataPointer(size_t* outSize);
+void* yumiGetPadTablePointer(size_t* outSize);
 
 #ifdef __cplusplus
 }

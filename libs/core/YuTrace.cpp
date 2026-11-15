@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <vector>
 
 
@@ -265,18 +266,18 @@ yumiFindTraceLine(
 }
 
 static void
-yumiPrintTraceLocation(const char* file, uint32_t line, uint32_t column) {
+yumiPrintTraceLocation(FILE* out, const char* file, uint32_t line, uint32_t column) {
     if (!line) {
-        fprintf(stderr, " no file\n");
+        fprintf(out, " no file\n");
     } else if (file && file[0]) {
-        fprintf(stderr, " %s:%u:%u\n", file, line, column);
+        fprintf(out, " %s:%u:%u\n", file, line, column);
     } else {
-        fprintf(stderr, " no file:%u:%u\n", line, column);
+        fprintf(out, " no file:%u:%u\n", line, column);
     }
 }
 
 static bool
-yumiPrintSymbolizedFrame(uint16_t index, uintptr_t pc) {
+yumiPrintSymbolizedFrame(FILE* out, uint16_t index, uintptr_t pc) {
     YumiTraceFunctionLookup lookup = yumiFindTraceFunction(pc);
     const YumiTraceMetadataChunk* chunk = lookup.chunk;
     const YumiTraceFunctionRecord* record = lookup.function;
@@ -289,15 +290,15 @@ yumiPrintSymbolizedFrame(uint16_t index, uintptr_t pc) {
         name = "<unknown>";
     }
 
-    fprintf(stderr, "  %u  %s", index, name);
+    fprintf(out, "  %u  %s", index, name);
 
     const YumiTraceLineRecord* line = yumiFindTraceLine(chunk, record, pc);
     if (line && line->line) {
         const char* file = yumiTraceMetadataString(chunk, line->fileStringOffset);
-        yumiPrintTraceLocation(file, line->line, line->column);
+        yumiPrintTraceLocation(out, file, line->line, line->column);
     } else {
         const char* file = yumiTraceMetadataString(chunk, record->fileStringOffset);
-        yumiPrintTraceLocation(file, record->declLine, record->declColumn);
+        yumiPrintTraceLocation(out, file, record->declLine, record->declColumn);
     }
 
     return true;
@@ -305,6 +306,7 @@ yumiPrintSymbolizedFrame(uint16_t index, uintptr_t pc) {
 
 static void
 yumiPrintTraceTask(
+    FILE* out,
     uint32_t taskId,
     uint32_t parentTaskId,
     uint32_t taskFlags,
@@ -315,24 +317,24 @@ yumiPrintTraceTask(
         return;
     }
 
-    fprintf(stderr, "\nTask %u", taskId);
+    fprintf(out, "\nTask %u", taskId);
     if (taskFlags & YUMI_TASK_FLAG_WORKER) {
-        fprintf(stderr, " (worker)");
+        fprintf(out, " (worker)");
     } else if (taskFlags & YUMI_TASK_FLAG_SPIN) {
-        fprintf(stderr, " (thread)");
+        fprintf(out, " (thread)");
     }
     if (parentTaskId) {
-        fprintf(stderr, ", spawned by task %u", parentTaskId);
+        fprintf(out, ", spawned by task %u", parentTaskId);
     }
     if (spawnLine) {
         fprintf(
-            stderr,
+            out,
             " from %s:%u:%u",
             spawnFile && spawnFile[0] ? spawnFile : "no file",
             spawnLine,
             spawnColumn);
     }
-    fprintf(stderr, "\n");
+    fprintf(out, "\n");
 }
 
 // *************************************************************************************************
@@ -419,6 +421,9 @@ yumiCaptureStackTraceSkipping(uint16_t skipFrames) {
     trace->spawnLine = spawnLine;
     trace->spawnColumn = spawnColumn;
     trace->taskFlags = taskFlags;
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    trace->secondsSinceEpoch = (double)now.tv_sec + (double)now.tv_nsec / 1e9;
     if (frameCount) {
         memcpy(trace->frames, frames, sizeof(YumiTraceFrame) * frameCount);
     }
@@ -439,14 +444,10 @@ yumiEnsureStackTrace(void** traceSlot) {
     *traceSlot = yumiCaptureStackTraceSkipping(1);
 }
 
-extern "C" void
-yumiPrintStackTrace(void* tracePtr) {
-    if (!tracePtr) {
-        return;
-    }
-
-    YumiStackTrace* trace = (YumiStackTrace*)tracePtr;
+static void
+yumiWriteStackTrace(FILE* out, YumiStackTrace* trace) {
     yumiPrintTraceTask(
+        out,
         trace->taskId,
         trace->parentTaskId,
         trace->taskFlags,
@@ -454,16 +455,16 @@ yumiPrintStackTrace(void* tracePtr) {
         trace->spawnLine,
         trace->spawnColumn);
 
-    fprintf(stderr, "\nStack trace:\n");
+    fprintf(out, "\nStack trace:\n");
     if (!trace->frameCount) {
-        fprintf(stderr, "  <no frames>\n");
+        fprintf(out, "  <no frames>\n");
         return;
     }
 
     bool printedSymbolizedFrame = false;
     for (uint16_t i = 0; i < trace->frameCount; ++i) {
         uintptr_t pc = trace->frames[i].pc;
-        if (yumiPrintSymbolizedFrame(i, pc)) {
+        if (yumiPrintSymbolizedFrame(out, i, pc)) {
             printedSymbolizedFrame = true;
             continue;
         }
@@ -472,12 +473,41 @@ yumiPrintStackTrace(void* tracePtr) {
             break;
         }
 
-        fprintf(stderr, "  %u  unsymbolized frame 0x%016" PRIxPTR "\n", i, pc);
+        fprintf(out, "  %u  unsymbolized frame 0x%016" PRIxPTR "\n", i, pc);
     }
 
     if (trace->flags & YUMI_TRACE_TRUNCATED) {
-        fprintf(stderr, "  ... truncated\n");
+        fprintf(out, "  ... truncated\n");
     }
+}
+
+extern "C" void
+yumiPrintStackTrace(void* tracePtr) {
+    if (!tracePtr) {
+        return;
+    }
+    yumiWriteStackTrace(stderr, (YumiStackTrace*)tracePtr);
+}
+
+extern "C" char*
+yumiFormatStackTrace(void* tracePtr) {
+    if (!tracePtr) {
+        return nullptr;
+    }
+    char* text = nullptr;
+    size_t size = 0;
+    FILE* out = open_memstream(&text, &size);
+    if (!out) {
+        return nullptr;
+    }
+    yumiWriteStackTrace(out, (YumiStackTrace*)tracePtr);
+    fclose(out);
+    return text;
+}
+
+extern "C" double
+yumiStackTraceTime(void* tracePtr) {
+    return tracePtr ? ((YumiStackTrace*)tracePtr)->secondsSinceEpoch : 0;
 }
 
 // *************************************************************************************************
@@ -518,7 +548,7 @@ struct YumiOverflowPrinter {
     bool printedSymbolizedFrame;
 
     bool print(const YumiOverflowFrame& frame) {
-        if (yumiPrintSymbolizedFrame(index, frame.pc)) {
+        if (yumiPrintSymbolizedFrame(stderr, index, frame.pc)) {
             printedSymbolizedFrame = true;
         } else if (printedSymbolizedFrame && !gTraceMetadata.chunks.empty()) {
             return false;
@@ -537,6 +567,7 @@ extern "C" void
 yumiReportTaskHeader(const char* heading, void* task) {
     fprintf(stderr, "\n%s\n", heading);
     yumiPrintTraceTask(
+        stderr,
         yumiGetTaskId(task),
         yumiGetTaskParentId(task),
         yumiGetTaskFlags(task),
@@ -555,6 +586,7 @@ yumiReportTaskStack(const char* heading, void* task, uintptr_t fp, uintptr_t pc)
     }
 
     yumiPrintTraceTask(
+        stderr,
         yumiGetTaskId(task),
         yumiGetTaskParentId(task),
         yumiGetTaskFlags(task),

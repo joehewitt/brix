@@ -2,8 +2,8 @@
 
 Yumi separates recoverable errors from panics. A recoverable error is an alternative to a
 function's successful result. It normally propagates through callers until some code chooses
-to handle it. A panic interrupts execution by unwinding through the active calls and their
-cleanup blocks.
+to handle it. A panic ends the task it happens in, after running that task's cleanup blocks,
+and is handled, if at all, where the task was started.
 
 Both use `?!` to signal failure, but the type of the value determines which mechanism applies.
 An ordinary subtype of `Error` uses the recoverable error path. `Panic` and its subtypes use
@@ -18,7 +18,8 @@ the panic path.
 | A caller can supply a replacement value | Attach a `catch` handler |
 | A caller needs to inspect success and failure | Hold the result with prefix `catch` |
 | Failure should mean absence | Use `catch?` |
-| An invariant is broken and execution must unwind | Raise a `Panic` |
+| An invariant is broken and the task cannot go on | Raise a `Panic` |
+| A failed task should not end the program | Attach a `catch` to its `do new` |
 | Work must happen when a scope exits | Register `do finally` cleanup |
 
 ## Declaring and producing errors
@@ -285,11 +286,11 @@ as ambiguous.
 ## Cleanup with `do finally`
 
 Register cleanup with `do finally`. Its body runs when the enclosing scope exits, including
-normal completion, a return, recoverable error propagation, or panic unwinding:
+normal completion, a return, recoverable error propagation, or a panic ending the task:
 
 :::example-pair
 
-- [Register an exit action](#source-cleanup--register): Run cleanup on normal completion, return, error propagation, or panic unwinding.
+- [Register an exit action](#source-cleanup--register): Run cleanup on normal completion, return, error propagation, or a panic.
 - [Successful exit](#source-cleanup--success): Cleanup runs before the caller receives `7`.
 - [Error exit](#source-cleanup--failure): Cleanup also runs before the caller receives the error.
 
@@ -331,31 +332,38 @@ Place cleanup registration after the resource it protects has been acquired. `do
 provides an exit action; it does not automatically roll back a transaction or restore state
 changed earlier in the function.
 
-## Panics and recovery
+## Panics
 
-Use `?! Panic("...")` for the separate unwinding path. Runtime failures such as out-of-bounds
-access can also use panic subtypes. Although `Panic` inherits from `Error`, it is not a
-recoverable error alternative in a function's result contract.
+Use `?! Panic("...")` for a failure the task should not survive. Runtime failures such as
+out-of-bounds access also raise panic subtypes. Although `Panic` inherits from `Error`, it is
+not a recoverable error alternative in a function's result contract.
 
-A `do finally` block can call `recover()` to obtain and recover the active panic:
+A panic ends the task it happens in. Its `do finally` blocks and `use` cleanups still run,
+innermost first, and nothing between the failure and the start of the task can stop it. A
+`catch` written after a `do new` block handles the failure where the task was started, after
+the task's cleanups have run:
 
 :::example-pair
 
-- [Recover during cleanup](#source-panic--recover): Obtain the active panic, or absence if none is active.
-- [Unwind](#source-panic--raise): Take the separate panic path; ordinary `catch` is not its recovery mechanism.
-- [No resumption here](#source-panic--skip): Recovery finishes the function through cleanup. Its caller can then continue.
+- [Start the work](#source-panic--start): The failure stays inside this task.
+- [Handle it where it started](#source-panic--handle): Runs after the task's cleanups, with the panic itself.
+- [Cleanup still runs](#source-panic--cleanup): `Cleanup ran` is printed first.
+- [Fail](#source-panic--raise): Ends the task; ordinary `catch` is not its handler.
+- [No resumption](#source-panic--skip): Nothing after the failure in the task runs.
 
 ```yumi #panic
-run()
+. worker = ⟦start⟧do new⟦/start⟧
+    run()
+⟦handle⟧catch failure⟦/handle⟧
+    -- "Task failed: $failure"
+worker.wait()
 -- "Caller continued"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do run
 
-do finally
-    ⟦recover⟧. panic = recover()⟦/recover⟧
-    if panic
-        -- "Recovered: $panic"
+⟦cleanup⟧do finally
+    -- "Cleanup ran"⟦/cleanup⟧
 
 ⟦raise⟧?! Panic("Broken invariant")⟦/raise⟧
 ⟦skip⟧-- "This line is not reached"⟦/skip⟧
@@ -363,19 +371,34 @@ do finally
 
 :::
 
-Use recovery at a boundary that can make a meaningful decision about a failed operation.
-Suppressing a panic does not establish that partially modified application state is valid.
-If the boundary cannot continue safely, it can let unwinding continue rather than recover,
-or recover and raise another panic.
+The output is:
 
-An unhandled recoverable error or panic reaching the top-level execution boundary is reported
-as a failure, with diagnostic context such as its message and stack trace. Automatic propagation
-is not automatic success and does not silently discard an unhandled error.
+```text
+Cleanup ran
+Task failed: Broken invariant
+Caller continued
+```
+
+Start the work that may fail in its own task at a boundary that can decide what a failure
+means, such as one connection of a server or one case of a test runner. The task's state is
+gone when the `catch` runs, so state it shared with others is as the failure left it. A narrower
+type, as in `catch failure OutOfBoundsError`, handles only that kind of failure. A cleanup can
+read the panic ending its task with `Task().failure`.
+
+A panic that no `catch` handles, including one in the main task, prints its message and stack
+trace and then crashes the process, which exits with status 134. On macOS the crash leaves a
+report in `~/Library/Logs/DiagnosticReports`, and the message and trace also go to the unified
+log as a fault, where Console shows them for an app whose output goes nowhere. A stack overflow
+crashes the process the same way, and its report shows the overflowing stack. An unhandled
+recoverable error reaching the top-level execution boundary is printed the same way, but ends
+the process with status 1 rather than a crash, since it is an expected failure such as a missing
+file. Automatic propagation is not automatic success and does not silently discard an unhandled
+error.
 
 ## Choosing an error policy
 
 Use a recoverable error when callers should be able to make an ordinary decision about a
-failure. Use a panic for a failure that needs the unwinding mechanism, such as a violated
+failure. Use a panic for a failure the task cannot continue past, such as a violated
 invariant. Choose based on how callers should respond, rather than simply how serious the
 message sounds.
 

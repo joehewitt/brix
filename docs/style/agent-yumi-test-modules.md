@@ -46,8 +46,8 @@ true, Rect(10, 20, 30, 40).contains((20, 30))
 
 Use imperative cases for mutation, loops, early exits, multi-step setup, or assertions interleaved
 with state changes. Put each case in a separate `do` function that takes and returns a `TestCase`,
-then call it through `run` or `then`. This boundary lets the runner recover from a panic and continue
-with the next case.
+then call it through `run` or `then`. The runner runs each case in a task of its own, so a panic
+ends only that case, and the runner continues with the next.
 
 Incorrect:
 
@@ -95,7 +95,7 @@ t.expect("after move", 1, path.count)
 Use `t.expect` for equality and `t.check` for Boolean facts. Pass the actual side as a lazy
 expression when it is expensive or may return a recoverable error, so the assertion can attach its
 label before evaluation. Successful assertions increment `passed`, mismatches increment `failed`,
-and recovered errors or panics increment `caught`.
+and errors a case lets out, or panics that end its task, increment `caught`.
 
 Incorrect:
 

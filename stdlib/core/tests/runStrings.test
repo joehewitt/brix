@@ -418,11 +418,11 @@ a
 :====
 # ASCII indexing preserves signed positive indexes and rejects signed negative indexes.
 
-do finally
-    -- recover()
-
--- read-character("abc", 1)
--- read-character("abc", 0 - 1)
+do new
+    -- read-character("abc", 1)
+    -- read-character("abc", 0 - 1)
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + read-character Char
@@ -438,11 +438,11 @@ Index out of bounds (-1 / 3)
 ;===
 :====
 
-do finally
-    -- recover()
-
-. a = "ABC"
--- a[3] as Int
+do new
+    . a = "ABC"
+    -- a[3] as Int
+catch failure
+    -- failure
 
 :----
 
@@ -450,11 +450,11 @@ Index out of bounds (3 / 3)
 ;===
 :====
 
-do finally
-    -- recover()
-
-. a = "é"
--- a[1] as Int
+do new
+    . a = "é"
+    -- a[1] as Int
+catch failure
+    -- failure
 
 :----
 
@@ -800,10 +800,10 @@ a|b|
 ;====
 :================================================================================================
 
-do finally
-    -- recover()
-
--- ",".join("abc".split(""))
+do new
+    -- ",".join("abc".split(""))
+catch failure
+    -- failure
 
 :------------------------------------------------------------------------------------------------
 
@@ -811,14 +811,14 @@ String split delimiter must not be empty
 ;====
 :================================================================================================
 
-do finally
-    -- recover()
-
-. data = Byte[1]
-data[0] = 195u8
-. output = Char[1]
-. decoded, bytes = decode-utf8-buffer(data, data.size, output)
--- decoded
+do new
+    . data = Byte[1]
+    data[0] = 195u8
+    . output = Char[1]
+    . decoded, bytes = decode-utf8-buffer(data, data.size, output)
+    -- decoded
+catch failure
+    -- failure
 
 :------------------------------------------------------------------------------------------------
 
@@ -954,13 +954,13 @@ for char in source
 ;====
 :================================================================================================
 
-do finally
-    -- recover()
-
-. source = "Aé😀"
-for char in source
-    . seen = char
--- source[3]
+do new
+    . source = "Aé😀"
+    for char in source
+        . seen = char
+    -- source[3]
+catch failure
+    -- failure
 
 :------------------------------------------------------------------------------------------------
 
@@ -1135,10 +1135,12 @@ true
 . arena = Arena(64)
 do finally
     arena.release()
-do finally
-    -- "error: ${recover()}"
-. source = "abc".codepoints
-. invalid = arena.copy-span(source, 2, 1)
+. attempt = do new
+    . source = "abc".codepoints
+    . invalid = arena.copy-span(source, 2, 1)
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -1152,10 +1154,12 @@ error: Arena codepoint span materialization failed
 . arena = Arena(64)
 do finally
     arena.release()
-do finally
-    -- "error: ${recover()}"
-. source = Array'Char([55296 as Char])
-. invalid = arena.copy-span(source, 0, 1)
+. attempt = do new
+    . source = Array'Char([55296 as Char])
+    . invalid = arena.copy-span(source, 0, 1)
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -1499,11 +1503,12 @@ hello
 :====
 # A slice of a text past its end panics, as a slice of a list does.
 
-do finally
-    -- recover()
-
-. text = "héllo"
--- text[2 .. < 9]
+. attempt = do new
+    . text = "héllo"
+    -- text[2 .. < 9]
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -1512,12 +1517,13 @@ Range out of bounds (8 / 5)
 :====
 # A slice of a text that starts below zero panics rather than make a text of any size.
 
-do finally
-    -- recover()
-
-. text = "héllo"
-. start = -1
--- text[start .. < 2]
+. attempt = do new
+    . text = "héllo"
+    . start = -1
+    -- text[start .. < 2]
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -1632,12 +1638,13 @@ XXX
 :====
 # Assigning an item past the end of a text panics, as reading one does.
 
-do finally
-    -- recover()
-
-. a = "abc"
-a[7] = "!"
--- a
+. attempt = do new
+    . a = "abc"
+    a[7] = "!"
+    -- a
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 

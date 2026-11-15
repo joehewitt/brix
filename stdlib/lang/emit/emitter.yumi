@@ -1377,6 +1377,8 @@ _ FunctionEmitter
 ` `branch-trackers` are the trackers of each markup branch or loop region being made, kept until the
 ` element has taken it.
 ` `task-leaving` is where a return in the body of a spawned task goes, to end the task.
+` `task-failing` is where each landing pad of a task body goes when the task has handlers, and
+` `task-handlers` are those handlers; `handling-failure` holds while they are emitted.
 ` `styling` is what the style rules applied at a site keep (`Styling`), and `rule-givens` the values
 ` given to the style rules written on the element `valued` names, as evaluated. `rule-names` are the names a style rule
 ` applied where code is emitted takes its values by. `around-values` are the values the style rules
@@ -1481,6 +1483,9 @@ _ attribute-trackers [LiveMember]
 _ argument-trackers [LiveMember]
 _ branch-trackers [LocalId]
 _ task-leaving IRBlockId = no-block
+_ task-failing IRBlockId = no-block
+_ task-handlers = RowRange'SyntaxId()
+_ handling-failure = false
 _ checking U32
 _ making = Making()
 _ made [U32]
@@ -2953,7 +2958,7 @@ _ do set-panic-aside LocalId
 
 ` Where a cleanup may run while a panic is the task's: the panic, where there is one, is set
 ` aside while the cleanup runs, as TypeScript sets it aside, so that nothing the cleanup calls
-` sees it, though `recover` takes it. The local says whether one was.
+` sees it, though `Task().failure` reads it. The local says whether one was.
 . active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
 . flag = ir.add-local(u8-layout)
 store-local
@@ -3176,7 +3181,7 @@ do match tree.nodes[id]
         emit-stack-binding(id, row.value, row.body)
     | .node-do-task-block(row)
         . worker = if row.is-parallel then 0 else row.worker
-        emit-spawn(id, worker, row.is-parallel, row.scheduling == .task-scheduling-priority)
+        do emit-spawn(id, worker, row.is-parallel, row.scheduling == .task-scheduling-priority, row.large-stack)
     | .node-break
         if breaks-subscription()
             unsubscribe(id)
@@ -17097,9 +17102,6 @@ do match? program.modules[row.module].decls[row.decl]
         if fn.kind == .termination-panic-decl
             emit-termination-check()
             =
-        if fn.is-generated && fn.kind == .function-decl && !fn.is-content
-            emit-recover(declared)
-            =
         if fn.is-generated && fn.kind == .default-constructor-decl
             emit-default-constructor(declared)
             =
@@ -17707,16 +17709,19 @@ _ do emit-task-body
 ` The body of a spawned task: a function the runtime runs with the capture made where the
 ` task was spawned, and that returns to nothing. It runs `taskinit` where the program has
 ` one, then the body, flushes what it wrote of probes where they compile, and ends the task,
-` where the body ends or returns.
+` where the body ends or returns. A task with handlers tries them where a panic ends it
+` (`handle-failure`).
 . row = instances.rows[unit.instance]
 . body SyntaxId = 0
 . declared SyntaxId = 0
+. handlers = RowRange'SyntaxId()
 do match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         declared = fn.syntax
         do match? tree.nodes[fn.syntax]
             | .node-do-task-block(task)
                 body = task.body
+                handlers = task.catchers
 if body == 0 || tables.captures[unit.instance] == unbuilt-environment
     refuse(.refused-function, declared)
     =
@@ -17729,13 +17734,27 @@ if tables.task-init != no-function
 open-environment(declared)
 share-self(declared)
 task-leaving = ir.reserve-block()
+if handlers.count != 0
+    task-failing = ir.reserve-block()
+    task-handlers = handlers
 emit-block(body)
 jump(task-leaving)
 ir.start-block(task-leaving)
+set-task-end(task-end-finished)
 if tables.probe-flush != no-function
     call-function(tables.probe-flush, declared)
 call-runtime(.runtime-terminate-active-task, 0, pending.length)
 return-nothing()
+
+────────────────────
+_ do set-task-end
+    - end U32
+
+` Tells the runtime how the task ends, which the `Task` a `do new` gave reads. The first it is
+` told stands.
+. mark = pending.length
+pending += integer(.machine-u32, end)
+call-runtime(.runtime-set-task-end, 0, mark)
 
 ────────────────────
 _ do make-capture Operand
@@ -17871,21 +17890,57 @@ emit-block(body)
 return-nothing()
 
 ────────────────────
-_ do emit-spawn
+_ do emit-task-value Operand
+    - id SyntaxId
+    - row ASTDoTaskBlock
+
+` The `Task` a `do new` used as a value gives: the task is spawned as one written as a statement
+` is, but the runtime is asked for the record it keeps of how the task ends, which the function
+` the type pass recorded at the node makes the value of.
+. worker = if row.is-parallel then 0 else row.worker
+. priority = row.scheduling == .task-scheduling-priority
+. ending = emit-spawn(id, worker, row.is-parallel, priority, row.large-stack, true)
+. callee = task-value-callee(id)
+if callee == no-instance
+    refuse(.refused-expression, id)
+    = make-operand(.operand-void, 0)
+. mark = pending.length
+pending += ending
+= call-instance(callee, id, mark).operand
+
+────────────────────
+_ do task-value-callee InstanceId
+    - id SyntaxId
+
+` The function that makes the `Task` a `do new` used as a value gives, as the type pass
+` recorded it at the node.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-function
+        = facts.calls[fact].callee
+    fact = facts.calls[fact].next
+= no-instance
+
+────────────────────
+_ do emit-spawn Operand
     - id SyntaxId
     - worker SyntaxId
     - parallel Bool
     - priority Bool
+    - large-stack Bool
+    - valued = false
 
-` Spawns a task, given the capture `make-capture` makes for its body. Then the worker named,
-` where it is not run in parallel, which is given as the queue it holds, and then the runtime
-` queues the task, with the size of the memory a task holds its own globals in, and the place it
-` was spawned at.
+` Spawns a task, given the capture `make-capture` makes for its body. The runtime is given the
+` queue the worker named holds, where there is one, the body and its capture, the size of the
+` memory a task holds its own globals in, the place the task was spawned at and how to run it.
+` A `valued` spawn also asks for the record the runtime keeps of how the task ends, which it
+` answers.
+. nothing = make-operand(.operand-void, 0)
 . callee = task-callee(id)
 . body = if callee != no-instance then tables.instance-functions[callee] else no-function
 if body == no-function
     refuse(.refused-statement, id)
-    =
+    = nothing
 . capture = make-capture(id, callee)
 . mark = pending.length
 if worker != 0
@@ -17896,8 +17951,10 @@ if worker != 0
         held = tables.layouts.field(held, 0).layout
     if held != pointer-layout && held != managed-layout
         refuse(.refused-statement, worker)
-        =
+        = nothing
     pending += queue.operand
+else
+    pending += integer(.machine-pointer, 0)
 ir.depend(.callee-function, body, 0)
 pending += make-operand(.operand-symbol, tables.functions[body].symbol)
 pending += capture
@@ -17909,16 +17966,17 @@ pending += make-operand
 . begin = tree.nodes[id].loc.begin
 pending += integer(.machine-u32, begin.line + 1)
 pending += integer(.machine-u32, begin.column + 1)
-. spawn = RuntimeFunction.runtime-fork-task
+. options U32 = 0
+if priority
+    options = options /or/ task-start-priority
 if parallel
-    spawn = if priority then priority-spin else RuntimeFunction.runtime-spin-task
-        .. priority-spin = RuntimeFunction.runtime-spin-priority-task
-else if worker != 0
-    spawn = if priority then priority-in-worker else RuntimeFunction.runtime-fork-task-in-worker
-        .. priority-in-worker = RuntimeFunction.runtime-fork-priority-task-in-worker
-else if priority
-    spawn = RuntimeFunction.runtime-fork-priority-task
-call-runtime(spawn, id, mark, if worker != 0 then u8-layout else void-layout)
+    options = options /or/ task-start-spin
+if large-stack
+    options = options /or/ task-start-large-stack
+if valued
+    options = options /or/ task-start-handle
+pending += integer(.machine-u32, options)
+= call-runtime(.runtime-start-task, id, mark, pointer-layout)
 
 ────────────────────
 _ do capture-value Typed
@@ -19397,15 +19455,16 @@ refuse(.refused-statement, site)
 ────────────────────
 _ do emit-termination-check
 
-` The check a polling call makes: when the task is being terminated, the termination panic
-` becomes the active one, and the answer is true.
+` The check a polling call makes: the first time it finds the task being terminated, the
+` termination panic becomes the active one, and the answer is true. It raises it once, so the
+` task's cleanups run and can read it.
 returns-type = types.bool-type
 ir.returns = u8-layout
 . report = instances.report
 . raise = ir.reserve-block()
 . quiet = ir.reserve-block()
 . joined = ir.reserve-block()
-. terminating = call-runtime(.runtime-task-is-terminating, 0, pending.length, u8-layout)
+. terminating = call-runtime(.runtime-take-task-termination, 0, pending.length, u8-layout)
 branch(terminating, raise, quiet)
 ir.start-block(quiet)
 jump(joined)
@@ -19418,37 +19477,6 @@ call-runtime(.runtime-panic-set, 0, mark)
 jump(joined)
 ir.start-block(joined)
 return-value(phi(u8-layout, integer(.machine-u8, 1), raised, integer(.machine-u8, 0), quiet), 0)
-
-────────────────────
-_ do emit-recover
-    - declared SyntaxId
-
-` `recover`, the one function the compiler writes by name: the runtime takes the task's
-` active panic from it, and the answer is that panic, or nothing when there was none.
-. signature = instances.signatures[unit.instance]
-returns-type = signature.returns
-ir.returns = layout-of(returns-type, declared)
-. nullable = is-null-form(returns-type)
-. is-ready = types.is-optional(returns-type) && (tables.layouts.is-struct(ir.returns) || nullable)
-if !is-ready || signature.args.count != 0 || types.optional-inner(returns-type) != types.panic-type
-    refuse(.refused-function, declared)
-    =
-if nullable
-    return-value(call-runtime(.runtime-recover, declared, pending.length, ir.returns), declared)
-    =
-. inner = tables.layouts.field(ir.returns, 0)
-. flag = tables.layouts.field(ir.returns, 1)
-. panic = call-runtime(.runtime-recover, declared, pending.length, inner.layout)
-. answer = frame(ir.returns)
-zero(answer, ir.returns)
-store(answer, inner.offset, panic, false, declared)
-. taken = compare
-    - declared
-    - .compare-not-equal
-    - panic
-    - integer(tables.layouts.kind-of(inner.layout), 0)
-store(answer, flag.offset, num-cast(declared, taken, u8-layout, flag.layout), false, declared)
-return-value(answer, declared)
 
 ────────────────────
 _ do emit-default-constructor
@@ -28992,6 +29020,8 @@ do match tree.nodes[id]
                 refuse(.refused-conversion, id)
     | .node-function-syntax
         value = emit-closure(id).operand
+    | .node-do-task-block(row)
+        value = emit-task-value(id, row)
     | .node-c-identifier(row)
         . constant = program.c-constant-text(unit.source-module, row.name)
         if constant
@@ -47869,9 +47899,10 @@ _ do store-place
     - site SyntaxId
 
 ` Stores a value in the storage an expression names, which holds the value's type: a local,
-` an argument that is a struct, a global, a field or a property of the receiver named
-` alone, or a stored field or property of what such an expression names. The object of a
-` property is the one kept when the place was read, where one was kept.
+` an argument that is a struct, a local or an argument nested functions capture, in the
+` environment that holds it, a global, a field or a property of the receiver named alone, or a
+` stored field or property of what such an expression names. The object of a property is the
+` one kept when the place was read, where one was kept.
 . layout = layout-of(type, site)
 do match? tree.nodes[place]
     | .node-identifier(row)
@@ -47891,7 +47922,13 @@ do match? tree.nodes[place]
                 =
             store-global(global, value, site)
             =
-        . slot = local-slot(place, site)
+        . slot = local-slot(place, site, true)
+        if is-captured(slot)
+            if bindings.slots[slot].kind == .slot-lazy
+                refuse(.refused-statement, site)
+                =
+            keep-captured(slot, value, type, site)
+            =
         . offset = slot-offset(slot, site)
         if facts.slot-type(unit.instance, offset) != type
             refuse(.refused-statement, site)
@@ -50750,10 +50787,16 @@ if function.kind == .task-body && open-cleanups.length == 0 then unsourced else 
 _ do finish-landing
 
 ` The landing pads the checks of the function branch to once every cleanup has run, each
-` left as `leave-pad` says.
-for position in 0 .. < pads.length
-    ir.start-block(pads[position].block)
-    leave-pad(pads[position])
+` left as `leave-pad` says, and then the handlers of a task body, with the pads their checks make.
+. position Size = 0
+while true
+    while position < pads.length
+        ir.start-block(pads[position].block)
+        leave-pad(pads[position])
+        position += 1
+    if task-failing == no-block || handling-failure
+        =
+    handle-failure()
 
 ────────────────────
 _ do leave-pad
@@ -50763,7 +50806,8 @@ _ do leave-pad
 ` panic nobody handled at the first check of the pad, in the module of its node, unless the pad
 ` is unsourced (`report-at`); a task's main reports it and ends the task, after forking the end
 ` of its case in a batch. A spawned task's body reports it as a module's main does, and ends the
-` task. `threadinit` reports it and ends the process. The task that closes the record of probes
+` task, unless the task has handlers: it then gives the panic the source of the pad and goes to
+` them (`task-failing`). `threadinit` reports it and ends the process. The task that closes the record of probes
 ` reports it and ends, and the functions that flush and look in on probes report it and return,
 ` as no caller handles it. Any other panic is then returned to the caller.
 abandon-lazy(0)
@@ -50779,6 +50823,10 @@ else if function.kind == .probe-closer
     emit-report(false, 0)
     call-runtime(.runtime-terminate-active-task, 0, pending.length)
 else if function.kind == .task-body
+    if task-failing != no-block && !handling-failure
+        attach-pad-source(pad)
+        jump(task-failing)
+        =
     report-at(pad)
     call-runtime(.runtime-terminate-active-task, 0, pending.length)
 else if function.kind == .task-main
@@ -50786,47 +50834,79 @@ else if function.kind == .task-main
     if program.is-batch
         fork-batch(tables.batch-finishes[function.place])
     call-runtime(.runtime-terminate-active-task, 0, pending.length)
-else if !stepping && !has-zero(returns-type, ir.returns)
-    raise-unrecoverable()
 if in-callback
     call-runtime(callback-exit(), 0, pending.length)
 return-panic()
 
 ────────────────────
-_ do has-zero Bool
-    - type TypeId
-    - layout LayoutId
+_ do attach-pad-source
+    - pad LandingPad
 
-` Whether a value with no bits set is a value of a type, as the zero a function returns where
-` a panic a cleanup recovered ends it. An object, a function or an interface holds an address,
-` so only an optional one has a zero, and so has a struct only where each field has. Text
-` with no bits set is the empty text.
-=? true if type == no-type || type == types.string-type || types.is-optional(type)
-. layouts = tables.layouts
-=? false if layout == managed-layout || layout == layouts.function-layout
-=? false if layout == layouts.interface-layout
-=? true if layout < first-struct-layout || layouts.rows[layout].cases.count != 0
-for index in 0 .. < layouts.rows[layout].fields.count
-    . field = layouts.field(layout, index)
-    =? false if !has-zero(field.type, field.layout)
-= true
+` Gives the active panic, where it has no source, that of the first check of a pad, as
+` `report-at` would, where the pad is not unsourced.
+=? if pad.site == unsourced || pad.site == 0
+. own-unit = unit
+unit = unit.source-module = pad.module
+. attaching = ir.reserve-block()
+. done = ir.reserve-block()
+. active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
+branch(active, attaching, done)
+ir.start-block(attaching)
+. begin = tree.nodes[pad.site].loc.begin
+attach-source(active, begin.line + 1, begin.column + 1, pad.site)
+jump(done)
+ir.start-block(done)
+unit = own-unit
 
 ────────────────────
-_ do raise-unrecoverable
+_ do handle-failure
 
-` Where a panic leaves a function whose result has no zero: a cleanup that recovered it would
-` end the function with nothing to return, so a panic that says so leaves in its place.
+` Where a panic ends a task whose spawn site has handlers, once every cleanup has run: the
+` handlers are tried in order. A terminating task and one canceled try none. The panic is
+` taken from the task, and the first handler whose pattern it matches binds it and
+` runs; the task then ends as where its body ends. Where none matches, the panic is set again
+` and reported as where there are no handlers. A panic raised in a handler lands on a pad of
+` its own, which reports it.
+handling-failure = true
+ir.start-block(task-failing)
+landing = no-block
+. reporting = ir.reserve-block()
+. live = ir.reserve-block()
+. open = ir.reserve-block()
+. taking = ir.reserve-block()
 . active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
-. recovered = ir.reserve-block()
-. leaving = ir.reserve-block()
-branch(active, leaving, recovered)
-ir.start-block(recovered)
-. text = "A function whose result has no zero value can't end by recovering a panic"
-. panic = compiler-panic(0, make-operand(.operand-constant, ir.add-string(text)))
-if panic != make-operand(.operand-void, 0)
-    make-active(panic, 0)
-jump(leaving)
-ir.start-block(leaving)
+branch(active, live, reporting)
+ir.start-block(live)
+. terminating = call-runtime(.runtime-task-is-terminating, 0, pending.length, u8-layout)
+branch(terminating, reporting, open)
+ir.start-block(open)
+. cancelation = types.cancelation-type
+if cancelation != invalid-type && tables.is-class(cancelation)
+    . raised = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
+    class-branch(0, raised, cancelation, reporting, taking)
+else
+    jump(taking)
+ir.start-block(taking)
+. taken = call-runtime(.runtime-recover, 0, pending.length, managed-layout)
+set-task-end(task-end-panicked)
+for handler in tree.children[task-handlers]
+    do match? tree.nodes[handler]
+        | .node-catcher(row)
+            . next = ir.reserve-block()
+            . named = bound.length
+            emit-pattern(row.type, Typed(taken, types.panic-type), next)
+            emit-block(row.body)
+            drop-bound(named)
+            jump(task-leaving)
+            ir.start-block(next)
+. mark = pending.length
+pending += taken
+call-runtime(.runtime-panic-set, 0, mark)
+jump(reporting)
+ir.start-block(reporting)
+emit-report(false, 0)
+call-runtime(.runtime-terminate-active-task, 0, pending.length)
+return-nothing()
 
 ────────────────────
 _ do report-at

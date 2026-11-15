@@ -21,12 +21,10 @@ BENCH_RESULT = '1 benchmark  1 passed'
 GUIDE_INDEX = 'docs/index.md'
 INIT_FILES = (('AGENTS.md', '`yumi --help`'), ('CLAUDE.md', '@AGENTS.md'))
 EXAMPLES = ('net', 'tui')
-MACOS_EXAMPLES = (
-    'examples/net/chatgpt-mock-client.yumi',
-    'examples/tui/chatgpt.yumi',
-    'examples/tui/jev-language-detector.yumi',
-)
+MACOS_EXAMPLES = ('examples/tui/chromatic/chromatic-app.bx',)
+EXAMPLE_SOURCES = ('.yumi', '.bx')
 EXAMPLE_IMPORT = re.compile(r'^\+? ?(\.{1,2}/\S+)$')
+BRIX_EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
 
 
 class GateFailure(Exception):
@@ -119,7 +117,7 @@ def examples(yumi, release, work):
     os.makedirs(room)
 
     def build(entry):
-        output = os.path.join(room, entry[:-len('.yumi')].replace('/', '-'))
+        output = os.path.join(room, os.path.splitext(entry)[0].replace('/', '-'))
         run([yumi, os.path.join(release, entry), '--compile', '-o', output], cwd=room)
 
     with concurrent.futures.ThreadPoolExecutor(max(1, (os.cpu_count() or 2) // 2)) as pool:
@@ -131,14 +129,17 @@ def example_entries(root):
     sources = []
     for name in EXAMPLES:
         for directory, directories, file_names in os.walk(os.path.join(root, 'examples', name)):
-            sources += [os.path.join(directory, file_name) for file_name in file_names if file_name.endswith('.yumi')]
+            sources += [os.path.join(directory, file_name) for file_name in file_names
+                        if file_name.endswith(EXAMPLE_SOURCES)]
     imported = set()
     for source in sources:
+        pattern = BRIX_EXAMPLE_IMPORT if source.endswith('.bx') else EXAMPLE_IMPORT
         with open(source) as file:
             for line in file:
-                match = EXAMPLE_IMPORT.match(line.rstrip())
+                match = pattern.match(line.rstrip())
                 if match:
-                    imported.add(os.path.normpath(os.path.join(os.path.dirname(source), match.group(1) + '.yumi')))
+                    stem = os.path.normpath(os.path.join(os.path.dirname(source), match.group(1)))
+                    imported.update(stem + extension for extension in EXAMPLE_SOURCES)
     return sorted(os.path.relpath(source, root) for source in sources if source not in imported)
 
 

@@ -88,12 +88,13 @@ stream.rewind(outer)
 
 /core/tokenstream
 
-do finally
-    -- recover()
-
-. first = IndexableTokenStream'Char("a")
-. second = IndexableTokenStream'Char("b")
-first.rewind(second.mark())
+. attempt = do new
+    . first = IndexableTokenStream'Char("a")
+    . second = IndexableTokenStream'Char("b")
+    first.rewind(second.mark())
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -121,15 +122,16 @@ stream.rewind(begin)
 
 /core/tokenstream
 
-do finally
-    -- recover()
-
-. stream = IndexableTokenStream'Char("ab")
-. outer = stream.mark()
-. item = <- stream
-. inner = stream.mark()
-stream.rewind(outer)
-stream.rewind(inner)
+. attempt = do new
+    . stream = IndexableTokenStream'Char("ab")
+    . outer = stream.mark()
+    . item = <- stream
+    . inner = stream.mark()
+    stream.rewind(outer)
+    stream.rewind(inner)
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -328,12 +330,12 @@ Error Location
 :====
 # A body with no pattern uses TokenStream.error-location; it should point at the next unread token.
 
-do finally
-    -- recover()
-
-match "ok\nbad"
-    ~ "ok" \nl
-    ?! Panic("extra at $location")
+do new
+    match "ok\nbad"
+        ~ "ok" \nl
+        ?! Panic("extra at $location")
+catch failure
+    -- failure
 
 :----
 
@@ -342,18 +344,18 @@ extra at (1, 0)
 :====
 # A choice that skips every alternative, since none can start with the next item, fails where it began.
 
-do finally
-    -- recover()
+do new
+    match "'+"
+        ~ "'" (\upper | \bracketed) !.
+        ?! Panic("failed at $location")
 
-match "'+"
-    ~ "'" (\upper | \bracketed) !.
-    ?! Panic("failed at $location")
+        .. upper ~
+            ~ [A-Z]
 
-    .. upper ~
-        ~ [A-Z]
-
-    .. bracketed ~
-        ~ "[" [a-z] "]"
+        .. bracketed ~
+            ~ "[" [a-z] "]"
+catch failure
+    -- failure
 
 :----
 

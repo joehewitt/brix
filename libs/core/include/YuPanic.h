@@ -13,7 +13,9 @@ extern "C" YUMI_GC_LEAF void* yumiPanicSuspend();
 extern "C" YUMI_GC_LEAF void yumiPanicResume(void* panic);
 extern "C" YUMI_GC_LEAF void yumiPanicBeginCleanup();
 extern "C" YUMI_GC_LEAF void yumiPanicEndCleanup();
+extern "C" YUMI_GC_LEAF void yumiPanicReturn();
 extern "C" void* yumiRecover();
+extern "C" void* yumiTaskFailure();
 extern "C" void yumiReportUnhandledPanic(
     void* panic,
     const char* message,

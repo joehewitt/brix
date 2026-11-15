@@ -74,11 +74,11 @@ unknown
 ;===
 :====
 
-do finally
-    -- recover()
-
-. a I32?
--- a as I32
+do new
+    . a I32?
+    -- a as I32
+catch failure
+    -- failure
 
 :----
 
@@ -86,13 +86,14 @@ Optional'core/number:I32 is null
 ;===
 :====
 
-do finally
-    -- recover()
-    -- y
-
 . x Int?
 . y = 1
-y = x!
+. attempt = do new
+    y = x!
+catch failure
+    -- failure
+attempt.wait()
+-- y
 
 :----
 
@@ -242,11 +243,12 @@ foo(b)
 :====
 # Optional arguments not required to be passed to call (if at the end)
 
-do finally
-    -- recover()
+. attempt = do new
+    -- foo(1) as I32
+catch failure
+    -- failure
     -- foo(11) as I32
-
--- foo(1) as I32
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
@@ -4435,7 +4437,12 @@ n9 kept true
 -- "n1 ${n1(zero)} ${n1(five)}"
 -- "n2 ${n2(zero)} ${n2(five)}"
 -- "w1 ${w1(zero)} ${w1(five)}"
--- "a1 ${a1(zero)} ${a1(five)}"
+-- "a1 ${a1(zero)}"
+. raising = do new
+    -- "a1 ${a1(five)}"
+catch failure
+    -- "a1 $failure"
+raising.wait()
 -- "t1 ${t1(zero)} ${t1(five)}"
 -- "t2 ${t2(zero)} ${t2(five)}"
 -- "e1 ${e1(zero)} ${e1(five)}"
@@ -4474,8 +4481,6 @@ if first
 + do a1 String
     - first Int?
 
-do finally
-    -- "recovered ${recover()}"
 if first
     ?! Panic("raised")
         if first
@@ -4526,9 +4531,8 @@ if first
 n1 lost held
 n2 lost held
 w1 unwrapped w
-recovered unknown
-recovered raised
-a1 passed 
+a1 passed
+a1 raised
 t1 lost held
 t2 lost held
 e1 lost held

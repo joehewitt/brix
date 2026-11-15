@@ -11,6 +11,9 @@
 _ gc-roots-magic U32 = 0x52594359
 _ trace-magic U32 = 0x43525459
 _ gc-map-magic U32 = 0x4d434759
+_ pads-magic U32 = 0x44415059
+_ pads-header-size U32 = 16
+_ pads-record-size U32 = 16
 _ trace-header-size U32 = 24
 _ trace-record-size U32 = 40
 _ gc-function-record-size U32 = 32
@@ -47,6 +50,7 @@ _ released Bool
 symbol-rows = arena.allocate'U32(bundle.string-count)
 sections += ObjectSection(2, false, arena)
 sections += ObjectSection(0, false, arena)
+sections += ObjectSection(3, false, arena)
 sections += ObjectSection(3, false, arena)
 sections += ObjectSection(3, false, arena)
 sections += ObjectSection(3, false, arena)
@@ -89,6 +93,7 @@ if bundle.stack-trace-metadata
     emit-trace-metadata(functions, ordered)
 if bundle.gc-enabled
     emit-gc-map-metadata(functions, ordered)
+emit-pad-metadata(functions, ordered)
 symbol-order = finalize-symbols()
 string-table = build-string-table(symbol-order)
 
@@ -287,6 +292,51 @@ writer.bytes(records.view)
 writer.bytes(lines.view)
 writer.bytes(strings.strings.view)
 finish-section(SectionId.trace, writer)
+
+────────────────────
+_ do emit-pad-metadata
+    - functions CPointer'CompactFunction
+    - ordered [U32]
+
+` Each function's checked calls, by return address, with the landing pad a panic returned to
+` that address goes to: a header, a record for each function that has any, giving its address,
+` its first entry and how many it has, then the entries as offsets in the function.
+. records = BinaryWriter(arena, 4096)
+. entries = BinaryWriter(arena, 65536)
+. function-symbols = IdList()
+. entry-count U32
+for index in 0 .. < ordered.length
+    . compact = functions[ordered[index]]
+    if compact.code.length == 0 || compact.pad-count == 0
+        continue
+    records.u64(0)
+    records.u32(entry-count)
+    records.u32(compact.pad-count)
+    for position in 0 .. < compact.pad-count
+        . pad = compact.pads[position]
+        entries.u32(pad.return-offset)
+        entries.u32(pad.pad-offset)
+    entry-count += compact.pad-count
+    function-symbols = function-symbols.appended(arena, compact.symbol)
+
+if function-symbols.length == 0
+    =
+
+. writer = BinaryWriter(arena, pads-header-size + records.length + entries.length)
+writer.u32(pads-magic)
+writer.u16(1)
+writer.u16(0)
+writer.u32(function-symbols.length)
+writer.u32(entry-count)
+for index in 0 .. < function-symbols.length
+    add-relocation
+        - SectionId.pads
+        - pads-header-size + index * pads-record-size
+        - function-symbols[index]
+        - .unsigned-relocation
+writer.bytes(records.view)
+writer.bytes(entries.view)
+finish-section(SectionId.pads, writer)
 
 ────────────────────
 _ do emit-gc-map-metadata
@@ -488,6 +538,7 @@ for position in 0 .. < symbols.length
 | trace
 | gc-map
 | gc-roots
+| pads
 | bss
 
 ━━━━━━━━━━━━━━━━━━━━

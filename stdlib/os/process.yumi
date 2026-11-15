@@ -190,6 +190,8 @@ stdin!.write(buffer, size)
 + do wait Int?
     - sem Semaphore?
 
+` Waits for the process to end and gives its exit status. It gives none where the listener `sem`
+` names is cancelled, and ends the waiting task where that task is cancelled.
 =? status if is-reaped
 
 . semaphore-pointer Pointer
@@ -203,13 +205,16 @@ if !cancelled
         status = exit-status(result[0])
         is-reaped = true
     = status
+end-if-canceled()
 
 ────────────────────
 + do wait-usage ProcessUsage? ?! IOError
 
 ?! IOError("Process $pid was already waited for")
     if is-reaped
-=? null if C:yumiSuspendActiveTaskUntilProcExit(pid, null)
+if C:yumiSuspendActiveTaskUntilProcExit(pid, null)
+    end-if-canceled()
+    = null
 . usage = ProcessUsage[1]
 . error = C:yumiReapProcess(pid, usage)
 ?! IOError("Unable to wait for process $pid: ${C:strerror(error)}")
@@ -218,6 +223,16 @@ if !cancelled
 status = if reaped.signal != 0 then signaled-status-base + reaped.signal else reaped.exit-code
 is-reaped = true
 = reaped
+
+────────────────────
+_ do end-if-canceled
+
+` Ends the active task where a wait for the process found it cancelled, after taking the wait off
+` the event loop, which would otherwise resume a task that has ended once the process exits.
+. canceled = Task().is-canceled
+if canceled
+    C:yumiCancelProcExitEventListener(pid, null)
+check-task-cancelation(canceled)
 
 ────────────────────
 + do terminate

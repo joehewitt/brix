@@ -1,6 +1,6 @@
 ; Three ways to meet a failure: `catch?` turns an error into null, `catch`
-; holds the error as a value to look at, and a panic unwinds until a
-; `finally` recovers it.
+; holds the error as a value to look at, and a panic ends its task, whose
+; `on-failure` rows report it where the task was started.
 (main
   (let shelf (list "Dune" "Emma" "Ulysses"))
   (blank)
@@ -21,7 +21,16 @@
     )
   )
   (blank)
-  (call audit shelf)
+  ; A panic ends the task it happens in, after the task's cleanups run.
+  (let auditing
+    (do-new
+      (call audit shelf)
+      (on-failure (: panic Panic)
+        (print (str "audit abandoned: " panic))
+      )
+    )
+  )
+  (call (. auditing wait))
   (print "the library stays open")
 )
 
@@ -36,14 +45,6 @@
 
 (fn-do + audit _
   (param shelf (list String))
-  ; `recover` gives the panic that is unwinding, if there is one, and stops it.
-  (finally
-    (let panic (call recover))
-    (if panic
-      (print (str "audit abandoned: " panic))
-    )
-  )
-  (blank)
   ; A Panic is not named in the function's errors, and `catch` does not hold one.
   (let found (. shelf length))
   (throw (call Panic (str "expected 5 books, found " found)) (if (!= found 5)))

@@ -66,6 +66,63 @@ do new thread @priority
 ;====
 :====
 
+do new @large-stack
+    work()
+
+:----
+%brix
+(main
+  (do-new @large-stack
+    (call work)
+  )
+)
+:----
+
+<DoTask stack="large">
+    <Block>
+        <CallExpression>
+            <Id name="work"/>
+        </CallExpression>
+    </Block>
+</DoTask>
+;====
+:====
+
+do new thread @priority @large-stack
+    work()
+
+:----
+%brix
+(main
+  (do-new-thread @priority @large-stack
+    (call work)
+  )
+)
+:----
+
+<DoTask parallel="true" scheduling="priority" stack="large">
+    <Block>
+        <CallExpression>
+            <Id name="work"/>
+        </CallExpression>
+    </Block>
+</DoTask>
+;====
+:====
+
+do new @large-stack @heap
+    work()
+
+:----
+%crash
+
+Exception: Unsupported do task annotation 'heap'
+<no file:2>
+    do new @large-stack @heap
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+
 do new thread(work)
 
 :----
@@ -110,4 +167,264 @@ do (worker) new @priority
         </CallExpression>
     </Block>
 </DoTask>
+;====
+:====
+
+do new
+    serve(connection)
+catch failure Panic
+    log(failure)
+
+:----
+%brix
+(main
+  (do-new
+    (call serve connection)
+    (on-failure (: failure Panic)
+      (call log failure)
+    )
+  )
+)
+:----
+
+<DoTask>
+    <Block>
+        <CallExpression>
+            <Id name="serve"/>
+            <Argument>
+                <Id name="connection"/>
+            </Argument>
+        </CallExpression>
+    </Block>
+    <Catch>
+        <TypeCapture>
+            <Id name="failure"/>
+            <TypeId name="Panic"/>
+        </TypeCapture>
+        <Block>
+            <CallExpression>
+                <Id name="log"/>
+                <Argument>
+                    <Id name="failure"/>
+                </Argument>
+            </CallExpression>
+        </Block>
+    </Catch>
+</DoTask>
+;====
+:====
+
+do new serve(connection)
+catch failure OutOfBoundsError
+    log(failure)
+
+:----
+%brix
+(main
+  (do-new
+    (inline (call serve connection))
+    (on-failure (: failure OutOfBoundsError)
+      (call log failure)
+    )
+  )
+)
+:----
+
+<DoTask>
+    <CallExpression>
+        <Id name="serve"/>
+        <Argument>
+            <Id name="connection"/>
+        </Argument>
+    </CallExpression>
+    <Catch>
+        <TypeCapture>
+            <Id name="failure"/>
+            <TypeId name="OutOfBoundsError"/>
+        </TypeCapture>
+        <Block>
+            <CallExpression>
+                <Id name="log"/>
+                <Argument>
+                    <Id name="failure"/>
+                </Argument>
+            </CallExpression>
+        </Block>
+    </Catch>
+</DoTask>
+;====
+:====
+
+do (worker) new thread
+    serve(connection)
+
+catch failure
+    log(failure)
+
+:----
+%brix
+(main
+  (do-new-thread (worker: worker)
+    (call serve connection)
+    (on-failure failure
+      (call log failure)
+    )
+  )
+)
+:----
+
+<DoTask parallel="true">
+    <worker>
+        <Id name="worker"/>
+    </worker>
+    <Block>
+        <CallExpression>
+            <Id name="serve"/>
+            <Argument>
+                <Id name="connection"/>
+            </Argument>
+        </CallExpression>
+    </Block>
+    <Catch>
+        <TypeCapture>
+            <Id name="failure"/>
+        </TypeCapture>
+        <Block>
+            <CallExpression>
+                <Id name="log"/>
+                <Argument>
+                    <Id name="failure"/>
+                </Argument>
+            </CallExpression>
+        </Block>
+    </Catch>
+</DoTask>
+;====
+:====
+
+do new
+    serve(connection)
+    catch error
+        log(error)
+
+:----
+%brix
+(main
+  (do-new
+    (call serve connection)
+    (on-error error
+      (call log error)
+    )
+  )
+)
+:----
+
+<DoTask>
+    <Block>
+        <CatchBlock>
+            <CallExpression>
+                <Id name="serve"/>
+                <Argument>
+                    <Id name="connection"/>
+                </Argument>
+            </CallExpression>
+            <Catch>
+                <TypeCapture>
+                    <Id name="error"/>
+                </TypeCapture>
+                <Block>
+                    <CallExpression>
+                        <Id name="log"/>
+                        <Argument>
+                            <Id name="error"/>
+                        </Argument>
+                    </CallExpression>
+                </Block>
+            </Catch>
+        </CatchBlock>
+    </Block>
+</DoTask>
+;====
+:====
+
+. drain = do new @priority
+    work()
+catch failure
+    report(failure)
+drain.wait()
+
+:----
+%brix
+(main
+  (let drain
+    (do-new @priority
+      (call work)
+      (on-failure failure
+        (call report failure)
+      )
+    )
+  )
+  (call (. drain wait))
+)
+:----
+
+<Declaration>
+    <TypeCapture>
+        <Id name="drain"/>
+    </TypeCapture>
+    <DoTask scheduling="priority">
+        <Block>
+            <CallExpression>
+                <Id name="work"/>
+            </CallExpression>
+        </Block>
+        <Catch>
+            <TypeCapture>
+                <Id name="failure"/>
+            </TypeCapture>
+            <Block>
+                <CallExpression>
+                    <Id name="report"/>
+                    <Argument>
+                        <Id name="failure"/>
+                    </Argument>
+                </CallExpression>
+            </Block>
+        </Catch>
+    </DoTask>
+</Declaration>
+<CallExpression>
+    <Get name="wait">
+        <Id name="drain"/>
+    </Get>
+</CallExpression>
+;====
+:====
+
+. pooled = do (worker) new step()
+
+:----
+%brix
+(main
+  (let pooled
+    (do-new (worker: worker)
+      (inline (call step))
+    )
+  )
+)
+:----
+
+<Declaration>
+    <TypeCapture>
+        <Id name="pooled"/>
+    </TypeCapture>
+    <DoTask>
+        <worker>
+            <Id name="worker"/>
+        </worker>
+        <CallExpression>
+            <Id name="step"/>
+        </CallExpression>
+    </DoTask>
+</Declaration>
 ;====

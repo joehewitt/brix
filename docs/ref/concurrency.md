@@ -10,7 +10,8 @@ change rules are in Reactivity.
 
 ## Tasks
 
-A `do-new` form starts a task that runs the rows it holds. It is a step and gives no value.
+A `do-new` form starts a task that runs the rows it holds. It gives the task, which can be kept to
+wait for it or cancel it; see [Task handles](#task-handles).
 
 ```brix
 (main
@@ -47,11 +48,13 @@ done
 - **One call.** `(do-new (inline (call send-all items)))`{.brix} starts a task that makes one
   call.
 - **Priority.** `@priority` after `do-new` puts the task ahead of tasks without it.
-- **Results.** A task gives no value, and its body cannot return one. A task passes results back
-  through a channel, as in the next example, or a caller waits for a function with `await`; see
-  [Waiting for a result](#waiting-for-a-result).
-- **Errors.** An error or a panic that leaves a task's body ends the whole program with status 1,
-  after the task's cleanups run. The report names the task and the task that started it.
+- **Results.** A task's body cannot return a value, and its handle holds none. A task passes
+  results back through a channel, as in the next example, or a caller waits for a function with
+  `await`; see [Waiting for a result](#waiting-for-a-result).
+- **Failures.** A panic ends the task it happens in, after the task's cleanups run. `on-failure`
+  rows at the end of the `do-new` handle it where the task was started; see Errors. A panic that
+  none handle crashes the program, and a recoverable error that leaves a task's body ends the
+  program with status 1. The report names the task and the task that started it.
 
 ### Where a task runs
 
@@ -75,12 +78,16 @@ set order, so a program that needs an order waits on channels.
 
 ### Task handles
 
-`(call Task)`{.brix} gives the handle of the task that calls it. A handle has `id`,
-`is-finished` and `is-canceled`, and these methods:
+A `do-new` form gives the handle of the task it starts, and `(call Task)`{.brix} the handle of the
+task that calls it. A handle has `id`, `is-finished` and `is-canceled`. One that `do-new` gave also
+has `end`, how the task ended: `running`, `finished`, `raised`, `panicked` or `cancelled`. While a
+task's cleanups run, `(. (call Task) failure)`{.brix} gives the panic ending it. These are the
+methods:
 
 | Method | Effect |
 | --- | --- |
-| `cancel` | Cancels the task. The next time it waits, it raises `TaskCancelationError`, a panic, and its cleanups run. |
+| `wait` | Waits until the task ends. A task cannot wait for itself. |
+| `cancel` | Cancels the task. It ends the next time it waits: its cleanups run, but not its `on-failure` rows. |
 | `suspend` | Makes the task wait until it is resumed, and gives whether it was canceled. |
 | `resume-now`, `resume-later` | Resumes a suspended task. |
 | `when-finished` | Runs a function in a new task when the task ends. |

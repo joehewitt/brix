@@ -191,9 +191,11 @@ do finally
 ━━━━━━━━━━━━━━━━━━━━
 + do panic-leaf @inline
 
-do finally
-    -- recover()
-?! Panic("panic")
+. attempt = do new
+    ?! Panic("panic")
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 %warnings
@@ -527,9 +529,19 @@ false
 ./inline-panic
 /core
 
-choose(0)
-choose(1)
-choose(2)
+attempt(0)
+attempt(1)
+attempt(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do attempt
+    - which Int
+
+. task = do new
+    choose(which)
+catch failure
+    -- failure.source?.line
+task.wait()
 
 :----
 %file: inline-panic.yumi
@@ -537,10 +549,6 @@ choose(2)
 ━━━━━━━━━━━━━━━━━━━━
 + do choose @inline
     - which Int
-
-do finally
-    -- err?.source?.line
-        .. err = recover()
 
 if which == 0
     . missing Int?
@@ -554,9 +562,9 @@ else
 :----
 %warnings
 
-12
-15
-17
+8
+11
+13
 ;====
 
 :====
@@ -1913,14 +1921,16 @@ fusion-cleanup-panic()
 ━━━━━━━━━━━━━━━━━━━━
 + do fusion-cleanup-panic
 
-do finally
-    . error = recover()
+. attempt = do new
+    for value in fusion-cleanup-failure()
+        -- value
+        break
+    -- "unexpected"
+catch failure
+    . error Panic? = failure
     if error
         -- "recovered"
-for value in fusion-cleanup-failure()
-    -- value
-    break
--- "unexpected"
+attempt.wait()
 ━━━━━━━━━━━━━━━━━━━━
 + do fusion-cleanup-failure @inline
 

@@ -83,26 +83,13 @@ cleanup
 ;====
 :====
 
-foo()
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
-
-?! Panic("boom")
-
-:----
-recovered boom
-done
-;====
-:====
-
-foo()
+. attempt = do new
+    foo()
+catch failure SpecialPanic
+    -- "special $failure"
+catch failure
+    -- "other $failure"
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -111,81 +98,24 @@ foo()
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
 
-do finally
-    . panic = recover()
-    if panic
-        -- panic is SpecialPanic
-        -- panic
-
 ?! SpecialPanic("typed")
 
 :----
 
-true
-typed
+special typed
 done
 ;====
 :====
 
-foo()
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
-
-?! Panic("boom")
-
-:----
-
-recovered boom
-done
-;====
-:====
-
-foo()
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
-
-bar()
--- "after foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-
--- "before bar"
-?! Panic("bar")
--- "after bar"
-
-:----
-
-before bar
-recovered bar
-done
-;====
-:====
-
-outer()
+. attempt = do new
+    outer()
+catch failure
+    -- "caught $failure"
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do outer
-
-do finally
-    . panic = recover()
-    if panic
-        -- "outer recovered $panic"
 
 inner()
 -- "after outer"
@@ -194,56 +124,25 @@ inner()
 + do inner
 
 do finally
-    . panic = recover()
-    if panic
-        -- "inner recovered $panic"
+    -- "inner cleanup sees ${Task().failure}"
+    ?! Panic("wrapped")
 
 ?! Panic("inner")
 -- "after inner"
 
 :----
 
-inner recovered inner
-after outer
+inner cleanup sees inner
+caught wrapped
 done
 ;====
 :====
 
-outer()
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer
-
-do finally
-    . panic = recover()
-    if panic
-        -- "outer recovered $panic"
-
-inner()
--- "after outer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inner
-
-do finally
-    . panic = recover()
-    if panic
-        -- "inner recovered $panic"
-        ?! Panic("wrapped")
-
-?! Panic("inner")
--- "after inner"
-
-:----
-
-inner recovered inner
-outer recovered wrapped
-done
-;====
-:====
-
-foo()
+. attempt = do new
+    foo()
+catch
+    --
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -253,9 +152,7 @@ do finally
     -- "first cleanup"
 
 do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+    -- "middle cleanup sees ${Task().failure}"
 
 do finally
     -- "last cleanup"
@@ -266,22 +163,21 @@ do finally
 :----
 
 last cleanup
-recovered boom
+middle cleanup sees boom
 first cleanup
 done
 ;====
 :====
 
-outer()
+. attempt = do new
+    outer()
+catch failure
+    -- "caught $failure"
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do outer
-
-do finally
-    . panic = recover()
-    if panic
-        -- "outer recovered $panic"
 
 middle()
 -- "after outer"
@@ -302,21 +198,23 @@ inner()
 :----
 
 before inner
-outer recovered deep
+caught deep
 done
 ;====
 :====
 
-outer()
+. attempt = do new
+    outer()
+catch
+    --
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do outer
 
 do finally
-    . panic = recover()
-    if panic
-        -- "outer recovered $panic"
+    -- "outer cleanup sees ${Task().failure}"
 
 inner()
 
@@ -335,38 +233,20 @@ do finally
 
 inner cleanup 2
 inner cleanup 1
-outer recovered inner
+outer cleanup sees inner
 done
 ;====
 :====
 
-foo()
+. attempt = do new
+    foo()
+catch failure
+    -- "$failure: ${failure.source}"
+attempt.wait()
 -- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
-
-do finally
-    --? recover()
-
-?! Panic("boom")
-
-:----
-
-boom
-done
-;====
-:====
-
-foo()
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    -- "$err: ${err?.source}"
-        .. err = recover()
 
 ?! Panic("manual", ErrorSource("manual.yumi", 99, 7))
 
@@ -405,17 +285,23 @@ value 7
 
 :====
 
-choose(0)
-choose(1)
-choose(2)
+attempt(0)
+attempt(1)
+attempt(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do attempt
+    - which Int
+
+. task = do new
+    choose(which)
+catch failure
+    -- "${failure.message}: ${failure.source?.line}:${failure.source?.column}"
+task.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do choose
     - which Int
-
-do finally
-    -- "${err?.message}: ${err?.source?.line}:${err?.source?.column}"
-        .. err = recover()
 
 if which == 0
     . missing Int?
@@ -428,9 +314,9 @@ else
 
 :----
 
-Optional'core/number:I64 is null: 16:8
-Optional'core/number:I64 is null: 19:8
-existing: 21:5
+Optional'core/number:I64 is null: 22:8
+Optional'core/number:I64 is null: 25:8
+existing: 27:5
 ;====
 :====
 # An unhandled panic is reported with the text its own class converts it to.
@@ -641,19 +527,18 @@ Stack trace:
   3  __source__:yumi.main no file
 ;====
 :====
-# A cleanup runs once at each way out of its scope: an iteration that ends, a panic that recover takes, and a return whose value was made before it.
+# A cleanup runs once at each way out of its scope: an iteration that ends, a panic, and a return whose value was made before it.
 
-foo()
+. attempt = do new
+    foo()
+catch failure
+    -- "caught $failure"
+attempt.wait()
 -- "done"
 -- value()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
-
-do finally
-    . p = recover()
-    if p
-        -- "recovered $p"
 
 for i in 0 .. < 3
     do finally
@@ -681,7 +566,7 @@ if n == 1
 0
 iter 0
 iter 1
-recovered boom
+caught boom
 done
 inner
 cleanup 9
@@ -753,13 +638,11 @@ watch(5)
 + do watch
     - way Int
 
-do finally
-    . caught = recover()
-    if caught
-        -- "way $way: $caught"
-    else
-        -- "way $way: nothing"
--- "left ${leave(way)}"
+. attempt = do new
+    -- "left ${leave(way)}"
+catch failure
+    -- "way $way: $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do leave Int
@@ -805,115 +688,7 @@ cleanup 1
 cleanup 2
 block
 left 2
-way 5: nothing
 end
-;====
-:====
-# A panic raised in a cleanup and recovered by a later cleanup of the same block lets the function go on, and one recovered by a cleanup of a block around ends it with no value.
-
-go()
--- pick(1)
--- pick(2)
--- sum(3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do go
-
-do
-    do finally
-        . caught = recover()
-        if caught
-            -- "recovered $caught"
-    do finally
-        ?! Panic("in cleanup")
-    -- "body"
--- "after the block"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int
-    - n Int
-
-do finally
-    . caught = recover()
-    if caught
-        -- "recovered $caught"
-if n == 1
-    do finally
-        ?! Panic("inner")
-    -- "leaving"
-    = 41
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - n Int
-
-. total = 0
-for i in 0 .. < n
-    do finally
-        . caught = recover()
-        if caught
-            -- "recovered $caught"
-    do finally
-        total += 10
-        if i == 1
-            ?! Panic("at one")
-        total += 100
-    total += 1
-= total
-
-:----
-
-body
-recovered in cleanup
-after the block
-leaving
-recovered inner
-0
-7
-recovered at one
-233
-;====
-:====
-# A panic recovered by a cleanup of a function ends it with the zero of its result, and where the result has none, as an object has none, a panic says so in its place.
-
--- maybe()
-outer()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ n = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer
-
-do finally
-    -- "outer recovered ${recover()}"
--- make().n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Box
-
-do finally
-    -- "recovered ${recover()}"
-?! Panic("no box")
-= Box()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Box?
-
-do finally
-    -- "recovered ${recover()}"
-?! Panic("no box")
-= Box()
-
-:----
-
-recovered no box
-unknown
-recovered no box
-outer recovered A function whose result has no zero value can't end by recovering a panic
 ;====
 :====
 # A panic raised in a cleanup takes the place of one raised before it, and the cleanups of the blocks around still run.
@@ -925,26 +700,26 @@ watch()
 ━━━━━━━━━━━━━━━━━━━━
 + do run
 
-do finally
-    . caught = recover()
-    if caught
-        -- "run sees $caught"
-do
-    do finally
-        ?! Panic("one")
-    do finally
-        ?! Panic("two")
-    -- "body"
--- "not reached"
+. attempt = do new
+    do
+        do finally
+            ?! Panic("one")
+        do finally
+            ?! Panic("two")
+        -- "body"
+    -- "not reached"
+catch failure
+    -- "run sees $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do watch
 
-do finally
-    . caught = recover()
-    if caught
-        -- "watch sees $caught"
--- first(true)
+. attempt = do new
+    -- first(true)
+catch failure
+    -- "watch sees $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do first Int
@@ -1000,20 +775,20 @@ do finally
 ━━━━━━━━━━━━━━━━━━━━
 + do check
 
-do finally
-    . caught = recover()
-    if caught
-        -- "check sees $caught"
--- held()
+. attempt = do new
+    -- held()
+catch failure
+    -- "check sees $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do held Int
 
 . o Int?
 do finally
-    . caught = recover()
-    if caught
-        -- "recovered $caught"
+    . failure = Task().failure
+    if failure
+        -- "cleanup sees $failure"
     else
         -- "no panic"
 = o!
@@ -1043,8 +818,8 @@ from s
 cleanup
 (s!)
 thing 1
-recovered Optional'core/number:I64 is null
-0
+cleanup sees Optional'core/number:I64 is null
+check sees Optional'core/number:I64 is null
 end
 ;====
 :====
@@ -1075,18 +850,22 @@ named()
 ━━━━━━━━━━━━━━━━━━━━
 + do plain
 
-do finally
-    -- recover()
-. t (Int, String)?
--- t!
+. attempt = do new
+    . t (Int, String)?
+    -- t!
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do named
 
-do finally
-    -- recover()
-. t (a Int, b (Float, Bool))?
--- t!
+. attempt = do new
+    . t (a Int, b (Float, Bool))?
+    -- t!
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -1427,17 +1206,4 @@ Stack trace:
   3  __source__:main no file:5:1
   4  __source__:init.__source__ no file
   5  __source__:yumi.main no file
-;====
-:====
-# recover() gives a panic only while a cleanup runs.
-
--- recover()
-
-:----
-%compile-error
-
-Exception: recover() gives a panic only while a cleanup runs; call it in a "do finally" block
-<no file:2>
-    -- recover()
-       ^^^^^^^^^
 ;====

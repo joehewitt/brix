@@ -175,8 +175,9 @@ YuTaskQueue::startTask(
     YuTaskStartFunc func,
     void* closure,
     size_t localSize,
-    const YuTaskProvenance& provenance) {
-    startTaskImpl(func, closure, localSize, provenance, false);
+    const YuTaskProvenance& provenance,
+    YuTaskEnding** ending) {
+    startTaskImpl(func, closure, localSize, provenance, false, ending);
 }
 
 bool
@@ -194,12 +195,16 @@ YuTaskQueue::startTaskImpl(
     void* closure,
     size_t localSize,
     const YuTaskProvenance& provenance,
-    bool requireRunning) {
+    bool requireRunning,
+    YuTaskEnding** ending) {
     if (requireRunning && isFinished.load(std::memory_order_acquire)) {
         return false;
     }
 
     YuTask* task = new YuTask(this, func, closure, localSize, provenance);
+    if (ending) {
+        *ending = task->attachEnding();
+    }
     addLiveTask(task);
     addActivity();
 

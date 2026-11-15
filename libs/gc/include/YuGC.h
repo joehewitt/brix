@@ -127,6 +127,10 @@ YUMI_GC_POLLING size_t yumiGCRegisterCleanup(
     char* target,
     char* context,
     YumiGCCleanupCallback callback);
+YUMI_GC_POLLING size_t yumiGCRegisterNativeCleanup(
+    char* target,
+    void* context,
+    YumiGCCleanupCallback callback);
 YUMI_GC_POLLING bool yumiGCCancelCleanup(size_t handle);
 YUMI_GC_POLLING size_t yumiGCDrainCleanups(void);
 YUMI_GC_LEAF void yumiGCQueueFileDescriptorCleanup(int fd);

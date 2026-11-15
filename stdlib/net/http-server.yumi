@@ -178,6 +178,8 @@ while is-accepting(opened)
             . served = HTTPServerConnection(connection, write-timeout)
             track(served)
             do new serve-connection(served)
+            catch failure
+                stderr <- "HTTP server recovered from a panic: ${failure}\n"
 
 ────────────────────
 _ do is-accepting Bool
@@ -237,12 +239,8 @@ _ do serve-connection
     - connection HTTPServerConnection
 
 do finally
-    if !Task().is-canceled && !Task().is-terminating
-        . panic = recover()
-        if panic
-            stderr <- "HTTP server recovered from a panic: ${panic}\n"
-            if !connection.is-responding
-                catch reject(connection, HTTPStatus.internal-server-error)
+    if !Task().is-canceled && !Task().is-terminating && Task().failure && !connection.is-responding
+        catch reject(connection, HTTPStatus.internal-server-error)
     forget(connection)
     catch connection.socket.close()
     wake-acceptor()

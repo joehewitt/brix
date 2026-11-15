@@ -53,8 +53,7 @@ they show how complete programs are written.
   motion switch. `quakes/quakes-app.bx` is a live earthquake map written in Brix, which loads the
   USGS feed and pans and zooms under glass panels.
 
-The examples that import `/ai`, such as `examples/tui/chatgpt.yumi`, also need macOS, since that
-library draws on the graphics library.
+`examples/tui/chromatic` also needs macOS, since it draws with the graphics library.
 
 To try one from your project, run `yumi <toolchain root>/examples/tui/table.yumi -o .tmp/build/table`.
 

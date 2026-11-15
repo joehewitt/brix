@@ -3950,6 +3950,15 @@ yumiGCRegisterCleanup(
     return registerCleanup(target, context, callback, true);
 }
 
+extern "C" size_t
+yumiGCRegisterNativeCleanup(
+    char* target,
+    void* context,
+    YumiGCCleanupCallback callback
+) {
+    return registerCleanup(target, static_cast<char*>(context), callback, false);
+}
+
 static bool
 cancelCleanup(size_t handle, char** context) {
     if (!handle) {

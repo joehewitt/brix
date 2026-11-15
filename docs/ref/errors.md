@@ -5,7 +5,8 @@ An error is a value a function raises in place of its result. Yumi has two kinds
 - **Recoverable errors** are part of a function's type. A function declares the errors it can
   raise, and a caller handles them or lets them pass on to its own caller.
 - **Panics** are for mistakes, such as an index out of range. They need no declaration, pass
-  through every caller, and end the program unless a cleanup recovers them.
+  through every caller, and end the task they happen in. The `do-new` form that started the task
+  can handle the failure.
 
 This chapter covers error values, declaring and raising errors, how they leave a call, handling
 them, cleanup, and panics. Errors in generators and pipelines are also in Streams, and errors in
@@ -115,8 +116,8 @@ cannot divide 5 by zero
   in its place.
 - **Only errors.** Only `Error` and its derived classes may follow `?!`: `I64 is not a
   recoverable error type; only subclasses of Error may appear after ?!.` A panic is not declared:
-  `Panic cannot be returned as a recoverable error; use ?! Panic(...) to unwind, or convert it
-  explicitly.`
+  `Panic cannot be returned as a recoverable error; use ?! Panic(...) to end the task, or convert
+  it explicitly.`
 - **Classes cover their derived classes.** Declaring `Error` itself allows every recoverable
   error.
 - **Inferred errors.** A function that declares no errors, such as `scaled` above, can raise
@@ -477,13 +478,22 @@ raises one, and needs no declaration. The core library panics for mistakes such 
 | `!` on `null` | `Optional'core/number:I64 is null` |
 | A failed conversion to a class | `Invalid cast to [Object __source__:Dog]` |
 
-A panic passes through `catch` and handlers. It runs every cleanup it passes, and ends the program
-with a report unless a cleanup recovers it.
+A panic passes through `catch` and handlers. It runs every cleanup it passes and ends the task it
+happens in. The `on-failure` rows of the `do-new` form that started the task handle it there, once
+the task's cleanups have run.
 
 ```brix
 (main
-  (call show-ratio 10 2)
-  (call show-ratio 10 0)
+  (let worker
+    (do-new
+      (call show-ratio 10 2)
+      (call show-ratio 10 0)
+      (on-failure failure
+        (print (str "failed: " failure))
+      )
+    )
+  )
+  (call (. worker wait))
   (print "still running")
 )
 
@@ -491,10 +501,7 @@ with a report unless a cleanup recovers it.
   (param top Int)
   (param bottom Int)
   (finally
-    (let panic (call recover))
-    (if panic
-      (print (str "recovered: " panic))
-    )
+    (print "cleanup")
   )
   (print (call ratio top bottom))
 )
@@ -511,14 +518,21 @@ with a report unless a cleanup recovers it.
 
 ```output
 5
-recovered: division by zero
+cleanup
+cleanup
+failed: division by zero
 still running
 ```
 
-- **`recover`.** `(call recover)`{.brix} in a cleanup, or in a function a cleanup calls, takes the
-  panic that is leaving and gives it as a `Panic?`. With no panic leaving, it gives `null`.
-- **After recovering.** A recovered panic stops at the block whose cleanup recovered it, and the
-  code after that block goes on. A function whose own cleanup recovers gives the zero value of its
-  result type, such as `0`, `""` or `null`.
-- **Uncaught.** A panic that leaves `main` prints `Unhandled panic:` and its text, then the same
-  report as an error, and the program exits with status 1.
+- **No going on.** Nothing in the task runs after the panic, and nothing between the panic and the
+  start of the task can stop it.
+- **`on-failure`.** In `(do-new (inline (call work)) (on-failure failure (print failure)))`{.brix}
+  the arm binds the panic and runs its rows in the failed task, after its cleanups. One that binds
+  a type, as `(: failure OutOfBoundsError)`{.brix}, handles only that kind of panic. The `do-new` gives the task, whose `wait` waits for it to end; see
+  Concurrency.
+- **In a cleanup.** `(. (call Task) failure)`{.brix} gives the panic that is ending the task, while
+  its cleanups run.
+- **Uncaught.** A panic that no `on-failure` handles, or one in `main`, prints `Unhandled panic:`
+  and its text, then the same report as an error, and crashes the program, which exits with status
+  134. On macOS the crash leaves a report in `~/Library/Logs/DiagnosticReports`. A stack overflow
+  crashes the program the same way. A recoverable error that leaves `main` exits with status 1.

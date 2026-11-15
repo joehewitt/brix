@@ -3,6 +3,7 @@
 #define YU_TASK_H
 
 #include <YuEvents/YuContext.h>
+#include <YuEvents/YuMutex.h>
 #include <YuEvents/YuGCHandshake.h>
 #include <YuEvents/YuTaskRuntimeContext.h>
 
@@ -16,6 +17,7 @@ const uint32_t YU_TASK_FLAG_SPIN = 1 << 0;
 const uint32_t YU_TASK_FLAG_WORKER = 1 << 1;
 const uint32_t YU_TASK_FLAG_GC_MARK_WORKER = 1 << 2;
 const uint32_t YU_TASK_FLAG_MAIN = 1 << 3;
+const uint32_t YU_TASK_FLAG_LARGE_STACK = 1 << 4;
 
 const uint32_t YU_TASK_SCHEDULING_NORMAL = 0;
 const uint32_t YU_TASK_SCHEDULING_PRIORITY = 1;
@@ -49,6 +51,38 @@ struct YuTaskProvenance {
     uint32_t spawnColumn;
     uint32_t flags;
     uint32_t schedulingClass;
+};
+
+class YuTask;
+
+struct YuTaskEndWaiter {
+    YuTask* task;
+    YuTaskEndWaiter* next;
+};
+
+// How a task ended, kept for as long as the task or a value naming it holds a reference, and the
+// tasks waiting for it to end.
+struct YuTaskEnding {
+    YuTaskEnding(uint64_t handle, uint32_t refs, uint32_t end):
+        refs(refs),
+        end(end),
+        handle(handle),
+        waiters(NULL)
+    {}
+
+    void retain() { refs.fetch_add(1, std::memory_order_relaxed); }
+    void release() {
+        if (refs.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            delete this;
+        }
+    }
+    void finish(uint32_t code);
+
+    std::atomic<uint32_t> refs;
+    std::atomic<uint32_t> end;
+    uint64_t handle;
+    YuMutex lock;
+    YuTaskEndWaiter* waiters;
 };
 
 struct YuTaskFinishHook {
@@ -280,6 +314,13 @@ public:
     bool inGCBlockingContext() const { return gcBlockingDepth != 0; }
 
     void cancel() { canceled.store(true, std::memory_order_release); }
+    bool takeTermination() {
+        if (!getTerminating() || terminationRaised) {
+            return false;
+        }
+        terminationRaised = true;
+        return true;
+    }
     void requestTermination() {
         terminating.store(true, std::memory_order_release);
         canceled.store(true, std::memory_order_release);
@@ -311,6 +352,8 @@ public:
     void releaseHandle();
     static YuTask* pinHandle(uint64_t handle);
     static bool addFinishHook(uint64_t handle, YuTaskStartFunc func, void* closure);
+    YuTaskEnding* attachEnding();
+    static YuTaskEnding* endingForHandle(uint64_t handle);
     void unpinHandle() { handlePins.fetch_sub(1, std::memory_order_release); }
     bool isHandlePinned() const { return handlePins.load(std::memory_order_acquire) != 0; }
 
@@ -329,6 +372,7 @@ private:
     size_t localsSize;
     std::atomic<bool> canceled;
     std::atomic<bool> terminating;
+    bool terminationRaised;
     std::atomic<bool> active;
     std::atomic<uint32_t> runState;
     std::atomic<uint32_t> gcState;
@@ -349,6 +393,7 @@ private:
     uint64_t handle;
     std::atomic<uint32_t> handlePins;
     std::vector<YuTaskFinishHook> finishHooks;
+    YuTaskEnding* ending;
     YuTask* runPrev;
     YuTask* runNext;
     YuTaskRunList* runList;

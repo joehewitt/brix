@@ -6,20 +6,37 @@
 ./intrinsics
 ./list
 ./number
+/YuCore/YuPanic.h
 /YuEvents/YuEvents.h
 
 _ @task main-endings [MainEnding]
 _ @task main-has-ended = false
 
 ━━━━━━━━━━━━━━━━━━━━
++ TaskEnd is U8
+
+| running
+| finished
+| raised
+| panicked
+| cancelled
+
+━━━━━━━━━━━━━━━━━━━━
 + Task is Tuple
 
 _ handle U64
+_ record TaskRecord? = null
 
 ────────────────────
 + This
 
 .. handle = C:yumiGetActiveTaskHandle()
+
+────────────────────
+_ This
+    - record TaskRecord
+
+.. handle = record.handle
 
 ────────────────────
 + get id
@@ -32,6 +49,14 @@ C:yumiGetTaskHandleId(handle)
 C:yumiGetTaskFinished(handle)
 
 ────────────────────
++ get end TaskEnd
+
+` How the task ended: `running` while it runs, then `finished`, `raised` where an error left its
+` body, `panicked` where a panic ended it, or `cancelled`. A `Task` that `do new` gave knows which;
+` one that `Task()` gave says only `finished` once the task has ended.
+if record then record.end else if is-finished then .finished else .running
+
+────────────────────
 + get is-canceled
 
 C:yumiGetTaskCanceled(handle)
@@ -42,6 +67,24 @@ C:yumiGetTaskCanceled(handle)
 C:yumiGetTaskTerminating(handle)
 
 ────────────────────
++ get failure Panic?
+
+` The panic ending this task, read while its cleanups run, or none. Reading it does not stop it.
+` Only the active task can read its own.
+if own && raised != null then gc-object-from-pointer'Panic(raised) else null
+.. own = handle == C:yumiGetActiveTaskHandle()
+.. raised = C:yumiTaskFailure()
+
+────────────────────
++ do wait
+
+` Suspends the active task until this task ends. A task that waits for itself panics, since it
+` could never wake.
+?! Panic("A task cannot wait for itself") if handle == C:yumiGetActiveTaskHandle()
+. canceled = if record then record.wait() else C:yumiWaitForTask(handle)
+check-task-cancelation(canceled)
+
+────────────────────
 + do cancel
 
 C:yumiCancelTask(handle)
@@ -49,11 +92,16 @@ C:yumiCancelTask(handle)
 ────────────────────
 + suspend
 
+` Suspends this task, which must be the active one, until something resumes it, and answers
+` whether it is cancelled. Unlike the library's waits it does not end a cancelled task: a caller
+` that waits this way checks the answer, with `check-task-cancelation` where the task should end.
 C:yumiSuspendTask(handle)
 
 ────────────────────
 + resume-now
 
+` Runs this task now, while the active one waits its turn, and answers whether the active task is
+` cancelled. As with `suspend`, the caller checks the answer.
 C:yumiResumeTaskNow(handle)
 
 ────────────────────
@@ -237,7 +285,17 @@ check-task-cancelation(task.is-canceled)
 ────────────────────
 + do post
 
+. task = Task()
 C:yumiPostSemaphore(native, null, 0)
+check-task-cancelation(task.is-canceled)
+
+━━━━━━━━━━━━━━━━━━━━
++ do task-started Task
+    - ending Pointer
+
+` The `Task` a `do new` whose value is used gives, given the record the runtime keeps of how the
+` task ends.
+= Task(TaskRecord(ending))
 
 ━━━━━━━━━━━━━━━━━━━━
 + do when-main-ends
@@ -287,10 +345,39 @@ C:yumiRequestProcessTermination(exit-code)
 + do check-task-cancelation
     - was-canceled Bool
 
+` Ends the active task where a wait found it cancelled, with the termination panic where the task
+` is terminating and the cancellation panic otherwise. A wait in the library calls it after its
+` own work for a cancelled wait, such as leaving a queue.
 if was-canceled
     if Task().is-terminating
         ?! TaskTerminationError()
     ?! TaskCancelationError()
+
+━━━━━━━━━━━━━━━━━━━━
+_ TaskRecord
+
+_ ending Pointer
+
+────────────────────
++ This
+    - ending
+
+C:yumiTaskEndingAdopt(this as Pointer, ending)
+
+────────────────────
++ get handle U64
+
+C:yumiTaskEndingHandle(ending)
+
+────────────────────
++ get end TaskEnd
+
+C:yumiTaskEndingEnd(ending) as TaskEnd
+
+────────────────────
++ do wait Bool
+
+= C:yumiTaskEndingWait(ending)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MainEnding

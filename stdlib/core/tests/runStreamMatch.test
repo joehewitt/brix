@@ -903,12 +903,13 @@ Exception: Pattern has nothing to match
 :====
 # Failure due to extra trailing characters
 
-do finally
-    -- "error: ${recover()}"
-
--- match "foo."
-    ~ "foo"
-    ?! Panic("Extra characters")
+. attempt = do new
+    -- match "foo."
+        ~ "foo"
+        ?! Panic("Extra characters")
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -3992,13 +3993,14 @@ C:yumiCollect()
 
 /core/tokenstream
 
-do finally
-    -- "error: ${recover()}"
-
-. stream = ChunkedTokenStream'Char(("a" * 1100).codepoints)
--- match stream
-    ~ [a]+ "!"
-    ?! Panic("missing chunked terminator")
+. attempt = do new
+    . stream = ChunkedTokenStream'Char(("a" * 1100).codepoints)
+    -- match stream
+        ~ [a]+ "!"
+        ?! Panic("missing chunked terminator")
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -4598,13 +4600,14 @@ for source in ["", "x", "aa"]
     - source String
     - literal String
 
-do finally
-    -- recover()
-
--- match source
-    ~ $literal
-        "wrong"
-    ?? "miss"
+. attempt = do new
+    -- match source
+        ~ $literal
+            "wrong"
+        ?? "miss"
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 Unable to read UTF8 content
@@ -5394,12 +5397,15 @@ words("xy zz!")
 + do words
     - text String
 
-. found = ""
-do finally
-    -- found
-    --? recover()
-for w in ~ \word in text
-    found += "[$w]"
+. attempt = do new
+    . found = ""
+    do finally
+        -- found
+    for w in ~ \word in text
+        found += "[$w]"
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + word ~ Char String

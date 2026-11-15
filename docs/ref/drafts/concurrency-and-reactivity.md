@@ -74,6 +74,24 @@ Those are separate decisions. Starting a task does not promise one new operating
 per operation, and a loop over a stream does not implicitly parallelize its body. The source
 of a value, its delivery mechanism, and the placement of the work can be chosen independently.
 
+`do new` also gives the task's `Task`, which can cancel the task, wait for it, and tell how it
+ended: still `running`, `finished`, `raised` where an error left its body, `panicked`, or
+`cancelled`. A `Task` holds no result; a task delivers what it makes through a channel or a
+captured local. A `catch` written after the block, at its indentation, handles a panic that
+ends the task, after the task's cleanups have run:
+
+```yumi
+. drain = do new @large-stack
+    read-errors(process)
+catch failure
+    -- "drain failed: $failure.message"
+drain.wait()
+```
+
+A panic no such `catch` handles crashes the process. `@large-stack` gives the task the main
+task's larger stack, and `@priority` schedules it ahead of others. A task's cleanup can read the
+panic ending it with `Task().failure`, and a panic tells its `stack` and when it was `raised-at`.
+
 ## Shared state and lifetimes
 
 Channels give concurrent code a way to communicate values explicitly. Mutexes and other
@@ -86,10 +104,13 @@ around a short update. Moving work to another thread also raises questions that 
 task scheduling alone does not settle. Clear ownership is useful in both cases: who may
 change the state, and what event makes that change visible to another participant?
 
-Tasks can also be canceled. Cancellation, normal completion, and a consumer losing interest
-are related but distinct events. A producer should have a way to finish and release resources,
-and a consumer should not assume that dropping its own result automatically ends every
-independent task behind it.
+Tasks can also be canceled. A cancelled task ends at its next wait, such as a channel read, a
+sleep or a wait for another task: its cleanups run, a wait inside one of them ends that cleanup,
+and its spawn-site `catch` does not run, since cancellation is not a failure. Its `Task` then says
+it ended `cancelled`. Cancellation, normal completion, and a consumer losing interest are related
+but distinct events. A producer should have a way to finish and release resources, and a consumer
+should not assume that dropping its own result automatically ends every independent task behind
+it.
 
 ## State transitions
 

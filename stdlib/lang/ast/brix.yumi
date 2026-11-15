@@ -1831,10 +1831,41 @@ _ do task-block SyntaxId ?! YumiSyntaxError
 if item < close && head(item) == .worker-label-head
     worker = expression(item + 2)
     item = tape.after(item)
+. failures = failure-start(item, close)
 . loc = located(begin, index)
-. body = do-body(item, close, begin, index)
+. body = do-body(item, failures, begin, index)
+. catchers = scratch-array'SyntaxId(tree, count-from(failures, close))
+. filled Size = 0
+. arm = failures
+while arm < close
+    catchers[filled] = catcher(arm)
+    filled += 1
+    arm = tape.after(arm)
 = tree.append
-    - ASTDoTaskBlock(loc, body.body, worker, is-parallel, task-scheduling(loc, body.annotations))
+    - ASTDoTaskBlock
+        - loc
+        - body.body
+        - worker
+        - is-parallel
+        - task-scheduling(loc, body.annotations)
+        - task-large-stack(body.annotations)
+        - tree.store-children(scratch-items(catchers, filled))
+
+────────────────────
+_ do failure-start Index
+    - first Index
+    - close Index
+
+. start = close
+. index = first
+while index < close
+    if head(index) == .on-failure-head
+        if start == close
+            start = index
+    else
+        start = close
+    index = tape.after(index)
+= start
 
 ────────────────────
 _ access-at Access
@@ -2958,6 +2989,10 @@ do match? kind
         = tree.append(ASTUseExpression(loc, maybe-optional(tree, loc, value, is-optional(index))))
     |= .closure-head
         = closure(index, begin, true)
+    |= .do-new-head
+        = task-block(index, begin, false)
+    |= .do-new-thread-head
+        = task-block(index, begin, true)
     |= .for-head
         = for-block(index, begin)
     |= .latest-head

@@ -165,12 +165,12 @@ do match? 7
 ;====
 :====
 
-do finally
-    -- recover()
-
-do match 8
-    |? it > 10
-        -- "unreachable"
+do new
+    do match 8
+        |? it > 10
+            -- "unreachable"
+catch failure
+    -- failure
 
 :----
 
@@ -178,13 +178,13 @@ Pattern match failed
 ;====
 :====
 
-do finally
-    -- recover()
-
-do match 8
-    |? it > 10
-        -- "unreachable"
-    ?! Panic("too much")
+do new
+    do match 8
+        |? it > 10
+            -- "unreachable"
+        ?! Panic("too much")
+catch failure
+    -- failure
 
 :----
 
@@ -714,12 +714,13 @@ store
 ;====
 :====
 
-do finally
-    -- "Error: ${recover()}"
-
--- check(1)
--- check(3)
--- check(2)
+. attempt = do new
+    -- check(1)
+    -- check(3)
+    -- check(2)
+catch failure
+    -- "Error: $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + check
@@ -741,13 +742,13 @@ Error: Failed
 ;====
 :====
 
-do finally
-    -- recover()
-
--- match 8
-    |? it > 10
-        10
-    ?! Panic("too much")
+do new
+    -- match 8
+        |? it > 10
+            10
+        ?! Panic("too much")
+catch failure
+    -- failure
 
 :----
 
@@ -930,14 +931,14 @@ Exception: Pattern has no possible matches
 ;====
 :====
 
-do finally
-    -- recover()
+do new
+    . y (..length {it == 1}) = "f"
+    -- y
 
-. y (..length {it == 1}) = "f"
--- y
-
-. x (..length {it == 3}) = "f"
--- x
+    . x (..length {it == 3}) = "f"
+    -- x
+catch failure
+    -- failure
 
 :----
 
@@ -1068,15 +1069,15 @@ other
 :====
 # A match no arm of which matches panics where its first arm is written
 
-do finally
-    -- recover()
-
-. value = 6
--- match value
-    |= 4
-        "four"
-    |= 5
-        "five"
+do new
+    . value = 6
+    -- match value
+        |= 4
+            "four"
+        |= 5
+            "five"
+catch failure
+    -- failure
 
 :----
 
@@ -1085,23 +1086,23 @@ Pattern match failed
 :====
 # A match statement panics where no arm matches, and one with ? goes on
 
-do finally
-    -- recover()
-
-. value = 6
-do match value
-    |= 6
-        -- "six"
-do match? value
-    |= 4
-        -- "four"
--- "after"
-do match value
-    |= 4
-        -- "four"
-    |= 5
-        -- "five"
--- "unreachable"
+do new
+    . value = 6
+    do match value
+        |= 6
+            -- "six"
+    do match? value
+        |= 4
+            -- "four"
+    -- "after"
+    do match value
+        |= 4
+            -- "four"
+        |= 5
+            -- "five"
+    -- "unreachable"
+catch failure
+    -- failure
 
 :----
 
@@ -1112,11 +1113,11 @@ Pattern match failed
 :====
 # A type with a condition that fails leaves the match unmatched
 
-do finally
-    -- recover()
-
--- size(7)
--- size(1)
+do new
+    -- size(7)
+    -- size(1)
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + size Int
@@ -1751,19 +1752,19 @@ short x x
 :====
 # An arm that raises a panic for whatever no arm before it matched
 
-do finally
-    -- recover()
-
-. value = 8
-. text = match value
-    |= 8
-        "eight"
-    ?! Panic("not eight")
--- text
--- match value
-    |= 9
-        "nine"
-    ?! Panic("not nine")
+do new
+    . value = 8
+    . text = match value
+        |= 8
+            "eight"
+        ?! Panic("not eight")
+    -- text
+    -- match value
+        |= 9
+            "nine"
+        ?! Panic("not nine")
+catch failure
+    -- failure
 
 :----
 
@@ -2908,14 +2909,16 @@ while round < 3
 # Declaration with two tests of the name it reads
 
 
-do finally
-    -- recover()
+. attempt = do new
+    . point = Point(3.5, 4.0)
+    . a (..x {it > 2.5} {it < 4.0}) = point
+    -- a
+    . b (..y {it > 2.5} {it < 4.0}) = point
+    -- b
+catch failure
+    -- failure
     -- "after"
-. point = Point(3.5, 4.0)
-. a (..x {it > 2.5} {it < 4.0}) = point
--- a
-. b (..y {it > 2.5} {it < 4.0}) = point
--- b
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is (x Float, y Float)
@@ -3347,13 +3350,14 @@ scalar
 :====
 # An arm that raises a panic where its condition holds, written among other arms
 
-do finally
-    -- "caught ${recover()}"
-
--- grade(50)
--- grade(10)
--- grade(101)
--- grade(60)
+. attempt = do new
+    -- grade(50)
+    -- grade(10)
+    -- grade(101)
+    -- grade(60)
+catch failure
+    -- "caught $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + grade

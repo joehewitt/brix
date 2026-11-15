@@ -46,6 +46,13 @@ _ relocation-kind-names [String] = ["call26", "jump26", "page21", "add-pageoff12
 + location-count U32
 
 ━━━━━━━━━━━━━━━━━━━━
++ CompactPad is Tuple
+
+` A checked call's return address and the landing pad it fails into, as offsets in the function.
++ return-offset U32
++ pad-offset U32
+
+━━━━━━━━━━━━━━━━━━━━
 + CompactSavedRegister is Tuple
 
 + register U32
@@ -75,6 +82,8 @@ _ relocation-kind-names [String] = ["call26", "jump26", "page21", "add-pageoff12
 + location-count U32
 + saved-registers CPointer'CompactSavedRegister
 + saved-register-count U32
++ pads CPointer'CompactPad
++ pad-count U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + FunctionEncoder
@@ -90,6 +99,9 @@ _ safepoints CPointer'PlanSafepoint
 _ safepoint-count U32
 _ lines CPointer'CompactLineRecord
 _ line-count U32
+_ call-offsets CPointer'U32
+_ call-ends CPointer'U32
+_ pad-checks CPointer'Byte
 _ text-size U32
 
 ────────────────────
@@ -159,6 +171,14 @@ for entry in function.saved-registers
             - entry.fp-offset
         saved-count += 1
 
+. pads = results.allocate'CompactPad(function.pad-sites.length)
+. pad-count U32
+for site in function.pad-sites
+    if call-offsets[site.call] == no-label
+        continue
+    pads[pad-count] = CompactPad(call-offsets[site.call] + 4, pad-offset(site.check))
+    pad-count += 1
+
 . display-name = bundle.non-empty(function.display-name)
 if display-name == no-string
     display-name = function.name
@@ -198,6 +218,8 @@ if function.loc != no-loc
     - location-count
     - saved
     - saved-count
+    - pads
+    - pad-count
 
 ────────────────────
 _ do layout
@@ -215,6 +237,15 @@ safepoints = arena.allocate'PlanSafepoint(total)
 safepoint-count = 0
 lines = arena.allocate'CompactLineRecord(total)
 line-count = 0
+. records-calls = function.pad-sites.length != 0
+if records-calls
+    call-offsets = arena.allocate'U32(function.instructions.length)
+    call-ends = arena.allocate'U32(function.instructions.length)
+    pad-checks = arena.allocate'Byte(function.instructions.length)
+    for index in 0 .. < function.instructions.length
+        call-offsets[index] = no-label
+    for site in function.pad-sites
+        pad-checks[site.check] = 1
 . symbol-count U32 = (function.jump-tables.length + 1) as U32
 labels.reset(arena, block-count, symbol-count)
 
@@ -237,6 +268,15 @@ for position in 0 .. < block-count
         if row.gc-safepoint
             safepoints[safepoint-count] = PlanSafepoint(id, offset)
             safepoint-count += 1
+        if records-calls
+            call-offsets[id] = offset
+        if records-calls && pad-checks[id] != 0
+            if opcode == .cbz
+                plan[plan-count] = PlanEntry(id, CompactForm.island-jump)
+                plan-count += 1
+                offset += 4
+            call-ends[id] = offset
+            continue
         record-trace-line(offset, row.loc)
         if (uses-islands && (opcode == .cbz || opcode == .cbnz || opcode == .b-cond)) || test-island
             plan[plan-count] = PlanEntry(id, CompactForm.island-test)
@@ -248,6 +288,8 @@ for position in 0 .. < block-count
             plan[plan-count] = PlanEntry(id, CompactForm.instruction)
             plan-count += 1
             offset += 4
+        if records-calls
+            call-ends[id] = offset
         .. test-island = uses-test-islands && (opcode == .tbz || opcode == .tbnz)
 
 if function.jump-tables.length != 0
@@ -256,6 +298,26 @@ if function.jump-tables.length != 0
         labels.define-symbol(table.name, offset)
         offset += table.labels.count * 4
 text-size = offset
+
+────────────────────
+_ do pad-offset U32
+    - check InstructionId
+
+` Where the landing pad of a checked call starts: the target of the test after it, or, where the
+` test was inverted to branch past the pad, the code that follows it. The test itself is not
+` encoded, since a callee returning a panic returns into the pad, and an inverted one becomes a
+` branch past the pad.
+if function.instructions[check].opcode == .cbz
+    = call-ends[check]
+. name = no-string
+. operands = function.instructions[check].operands
+do match? function.operands[operands[operands.length - 1]]
+    | .label-operand(operand)
+        name = operand.name
+. offset = labels.block-offset(name)
+?! Panic("Landing pad ${name-string(bundle, function, name)} has no offset")
+    if name == no-string || offset == no-label
+= offset
 
 ────────────────────
 _ do record-trace-line

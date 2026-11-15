@@ -652,7 +652,11 @@ _ do lower-return
 ` returned from its address: copied to the memory the caller gave when it is too large for
 ` registers, unless it was built there, and loaded into the registers it travels in
 ` otherwise; one of no size is not returned. A function that signals writes the panic signal
-` on the way out: nothing, or the active panic.
+` on the way out: nothing, or the active panic. Returning the active panic, it first has the
+` runtime look up its return address, which is how the caller's landing pad is found.
+if ir.signals && row.aux == ReturnKind.return-panic
+    . returning = builder.symbol(tables.runtime-symbol(.runtime-panic-return))
+    builder.call(void-type-id, returning, no-operand, no-loc, IdList(), IdList())
 . is-struct = tables.layouts.is-struct(ir.returns)
 if row.operands.count != 0 && is-struct && !is-empty-struct(ir.returns)
     return-struct(ir, ir.operands[row.operands.start])

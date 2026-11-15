@@ -358,7 +358,7 @@ def build_sources(destination):
     builder.build_runtime(environment)
     environment['YUMIPATH'] = os.path.join(SOURCES, STDLIB)
     source = os.path.join(SOURCES, COMPILER_SOURCE)
-    seed = builder.seed_command(builder.seed_name())
+    seed = builder.seed_command()
     temporary = tempfile.mkdtemp(prefix='.build-', dir=STATE)
     try:
         bootstrap = os.path.join(temporary, 'yumi-bootstrap')

@@ -24,7 +24,8 @@ Immutable parameters become SSA values, including rebinding through branches and
 field-count or managed-reference limits. Tuple field snapshots preserve pass-by-value semantics
 when caller storage can change; field projection removes unnecessary aggregate materialization.
 Mutable struct parameters retain the copies needed to isolate callee mutations. Normal inline
-returns bypass call-ABI panic signalling and polling; actual panic exits retain recovery checks.
+returns bypass call-ABI panic signalling and polling; a panic exit branches to the caller's landing
+pad, as a call's table entry sends it there.
 Existing argument evaluation, defaults, local mutation, loops, error results, cleanup, panic
 signals, GC roots, and surviving calls retain their ordinary semantics.
 

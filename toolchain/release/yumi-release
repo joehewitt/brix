@@ -82,7 +82,9 @@ INIT_FILES = (('AGENTS.md', '`yumi --help`'), ('CLAUDE.md', '@AGENTS.md'))
 LINK_PATTERN = re.compile(r'\]\(([^)\s]+)\)')
 CORE_TESTS = 'stdlib/core/tests'
 EXAMPLES = ('net', 'gui', 'tui')
+EXAMPLE_SOURCES = ('.yumi', '.bx')
 EXAMPLE_IMPORT = re.compile(r'^\+? ?(\.{1,2}/\S+)$')
+BRIX_EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
 EXAMPLE_WORKERS = max(1, (os.cpu_count() or 2) // 2)
 CORE_TESTS_LEFT_OUT = (
     'runFlowFacts.test',
@@ -233,6 +235,7 @@ def assemble(version, source, seed, work, mtime, offline, suites=True):
     say('Checking the fixed point')
     verification['fixedPoint'] = check_fixed_point(built['stages'])
     verification['brix'] = check_brix(built['stages'][2], work, logs)
+    verification['unshippedExamples'] = build_unshipped_examples(built['stages'][2], work, logs)
     if suites:
         verification['suites'] = run_suites(built['stages'][2], built['tools'][BUILD_HOST]['test'], work, logs)
     else:
@@ -732,7 +735,7 @@ def toolchain_files(config, host, binary, tools):
 def add_examples(files):
     for name in EXAMPLES:
         add_tree(files, os.path.join(ROOT, 'examples', name), 'examples/' + name)
-    pending = [name for name in files if name.startswith('examples/') and name.endswith('.yumi')]
+    pending = [name for name in files if name.startswith('examples/') and name.endswith(EXAMPLE_SOURCES)]
     while pending:
         name = pending.pop()
         for target in example_imports(files[name], name):
@@ -940,7 +943,7 @@ def build_examples(yumi, root, environment, logs, room):
     output = os.path.join(room, 'examples')
 
     def build(entry):
-        name = entry[:-len('.yumi')].replace('/', '-')
+        name = example_name(entry)
         run_program(yumi + [os.path.join(root, entry), '--compile', '-o', os.path.join(output, name)],
                     environment, logs, 'cleanroom-' + name, room)
 
@@ -949,21 +952,49 @@ def build_examples(yumi, root, environment, logs, room):
     return entries
 
 
-def example_entries(root):
+def build_unshipped_examples(stage, work, logs):
+    folders = sorted(name for name in os.listdir(os.path.join(ROOT, 'examples'))
+                     if name not in EXAMPLES and not name.startswith('.')
+                     and os.path.isdir(os.path.join(ROOT, 'examples', name)))
+    entries = example_entries(ROOT, folders)
+    say('Building the %d example programs the package leaves out with stage 2' % len(entries))
+    environment = release_environment()
+    output = os.path.join(work, 'examples')
+    os.makedirs(output)
+
+    def build(entry):
+        name = example_name(entry)
+        run([stage, '--compile', '-o', os.path.join(output, name), os.path.join(ROOT, entry)],
+            environment, logs, 'example-' + name)
+
+    with concurrent.futures.ThreadPoolExecutor(EXAMPLE_WORKERS) as pool:
+        list(pool.map(build, entries))
+    return {'folders': folders, 'programs': len(entries)}
+
+
+def example_name(entry):
+    return os.path.splitext(entry)[0].replace('/', '-')
+
+
+def example_entries(root, folders=EXAMPLES):
     sources = []
-    for name in EXAMPLES:
+    for name in folders:
         for directory, directories, file_names in os.walk(os.path.join(root, 'examples', name)):
-            sources += [os.path.join(directory, file_name) for file_name in file_names if file_name.endswith('.yumi')]
+            sources += [os.path.join(directory, file_name) for file_name in file_names
+                        if file_name.endswith(EXAMPLE_SOURCES)]
     imported = {target for source in sources for target in example_imports(source, source)}
     return sorted(os.path.relpath(source, root) for source in sources if source not in imported)
 
 
 def example_imports(source, name):
+    pattern = BRIX_EXAMPLE_IMPORT if source.endswith('.bx') else EXAMPLE_IMPORT
     with open(source) as file:
         for line in file:
-            match = EXAMPLE_IMPORT.match(line.rstrip())
+            match = pattern.match(line.rstrip())
             if match:
-                yield os.path.normpath(os.path.join(os.path.dirname(name), match.group(1) + '.yumi'))
+                stem = os.path.normpath(os.path.join(os.path.dirname(name), match.group(1)))
+                for extension in EXAMPLE_SOURCES:
+                    yield stem + extension
 
 
 def check_tools(yumi, root, sources, environment, logs, room):

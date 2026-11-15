@@ -7221,6 +7221,11 @@ yumiGCRegisterCleanup(char* target, char* context, YumiGCCleanupCallback callbac
     return handle;
 }
 
+extern "C" size_t
+yumiGCRegisterNativeCleanup(char* target, void* context, YumiGCCleanupCallback callback) {
+    return yumiGCRegisterCleanup(target, static_cast<char*>(context), callback);
+}
+
 extern "C" bool
 yumiGCCancelCleanup(size_t handle) {
     std::lock_guard<std::mutex> lock(noGCCleanupMutex);

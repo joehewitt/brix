@@ -59,21 +59,25 @@ _ do expect-undo-failure
     - t TestCase
     - history CommandHistory
 
-do finally
-    recover()
-    t.expect("failing undo remains available", 1, history.undo-count)
-    t.expect("failing undo does not create redo", 0, history.redo-count)
-history.undo()
+. attempt = do new
+    history.undo()
+catch
+    --
+attempt.wait()
+t.expect("failing undo remains available", 1, history.undo-count)
+t.expect("failing undo does not create redo", 0, history.redo-count)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do expect-redo-failure
     - t TestCase
     - history CommandHistory
 
-do finally
-    recover()
-    t.expect("failing redo remains available", 1, history.redo-count)
-history.redo()
+. attempt = do new
+    history.redo()
+catch
+    --
+attempt.wait()
+t.expect("failing redo remains available", 1, history.redo-count)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do history-redo-tests

@@ -30,6 +30,7 @@ sectionData(const char* name, size_t* outSize) {
 YU_DECLARE_SECTION(yumi_trace)
 YU_DECLARE_SECTION(yumi_gcmap)
 YU_DECLARE_SECTION(yumi_gcroots)
+YU_DECLARE_SECTION(yumi_pads)
 
 static void*
 sectionData(uint8_t* start, uint8_t* stop, size_t* outSize) {
@@ -56,4 +57,9 @@ yumiGetGCRootMapPointer(size_t* outSize) {
 extern "C" void*
 yumiGetTraceMetadataPointer(size_t* outSize) {
     return YU_SECTION_DATA(yumi_trace);
+}
+
+extern "C" void*
+yumiGetPadTablePointer(size_t* outSize) {
+    return YU_SECTION_DATA(yumi_pads);
 }

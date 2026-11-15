@@ -21,6 +21,7 @@ struct YumiStackTrace {
     uint32_t spawnLine;
     uint32_t spawnColumn;
     uint32_t taskFlags;
+    double secondsSinceEpoch;
     YumiTraceFrame frames[];
 };
 
@@ -30,6 +31,8 @@ extern "C" void* yumiCaptureStackTrace();
 extern "C" void* yumiCaptureStackTraceSkipping(uint16_t skipFrames);
 extern "C" YUMI_GC_LEAF void yumiEnsureStackTrace(void** traceSlot);
 extern "C" void yumiPrintStackTrace(void* trace);
+extern "C" char* yumiFormatStackTrace(void* trace);
+extern "C" YUMI_GC_LEAF double yumiStackTraceTime(void* trace);
 extern "C" void yumiReportTaskHeader(const char* heading, void* task);
 extern "C" void yumiReportTaskStack(const char* heading, void* task, uintptr_t fp, uintptr_t pc);
 

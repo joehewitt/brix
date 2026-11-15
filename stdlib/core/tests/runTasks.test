@@ -681,9 +681,9 @@ normal pending
 
 do new
     do finally
-        . panic = recover()
-        if panic
-            -- "recover saw termination"
+        . failure = Task().failure
+        if failure
+            -- "cleanup saw $failure.message"
         -- "worker cleanup"
     ready.post()
     Semaphore().wait()
@@ -695,7 +695,7 @@ request-process-termination(130)
 :----
 %crash
 
-recover saw termination
+cleanup saw Task terminated
 worker cleanup
 ;====
 :====
@@ -708,7 +708,7 @@ do new
     box.task = Task()
     ready.post()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "recovered $panic"
         done.post()
@@ -1168,7 +1168,7 @@ hello
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "canceled receiver"
         done.post()
@@ -1202,7 +1202,7 @@ canceled receiver
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "canceled sender"
         done.post()
@@ -1674,7 +1674,7 @@ inner 40
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "recovered $panic"
         done.post()
@@ -1724,7 +1724,7 @@ done
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "outer: recovered $panic"
         done.post()
@@ -1780,7 +1780,7 @@ done
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "canceled reader"
         done.post()
@@ -1814,7 +1814,7 @@ read 7
 do new
     box.task = Task()
     do finally
-        . panic = recover()
+        . panic = Task().failure
         if panic
             -- "canceled writer"
         done.post()
@@ -1858,7 +1858,7 @@ finished.wait()
 for index in 0 .. < 4
     do new
         do finally
-            . panic = recover()
+            . panic = Task().failure
             if panic
                 -- "bystander $index: $panic"
             done <- index
@@ -2276,3 +2276,412 @@ main ended
 closed
 finally
 ;====
+:====
+
+. label = "the task"
+do new
+    do finally
+        -- "cleanup"
+    ?! Panic("boom")
+catch failure Panic
+    -- "caught $failure.message in $label"
+
+:----
+
+cleanup
+caught boom in the task
+;===
+:====
+
+do new
+    . items = [1, 2]
+    -- items[5]
+catch failure OutOfBoundsError
+    -- "out of bounds"
+catch failure
+    -- "other"
+do new
+    ?! Panic("plain")
+catch failure OutOfBoundsError
+    -- "out of bounds"
+catch failure
+    -- "other: $failure.message"
+
+:----
+
+out of bounds
+other: plain
+;===
+:====
+
+do new
+    ?! Panic("nobody")
+catch failure OutOfBoundsError
+    -- "wrong"
+
+:----
+%crash-stderr
+
+Unhandled panic: nobody
+<no file:3>
+
+Task 2, spawned by task 1 from no file:2:1
+
+Stack trace:
+  0  __source__:Fork no file:3:5
+;===
+:====
+
+do new
+    ?! Panic("first")
+catch failure
+    ?! Panic("again after $failure.message")
+
+:----
+%crash-stderr
+
+Unhandled panic: again after first
+<no file:5>
+
+Task 2, spawned by task 1 from no file:2:1
+
+Stack trace:
+  0  __source__:Fork no file:5:5
+;===
+:====
+
+. channel Int<>
+do new
+    -- "started"
+    Task().cancel()
+    . value = <- channel
+    -- "never $value"
+catch failure
+    -- "handler ran"
+-- "main"
+
+:----
+
+main
+started
+;===
+:====
+
+do new fails()
+catch failure
+    -- "caught $failure.message"
+do new thread
+    ?! Panic("on a thread")
+catch failure
+    -- "thread: $failure.message"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fails
+
+?! Panic("from a call")
+
+:----
+
+caught from a call
+thread: on a thread
+;===
+:====
+
++ NotAPanic is Error
+
+do new
+    -- 1
+catch failure NotAPanic
+    -- 2
+
+:----
+%crash
+
+Exception: A task's handler takes a panic
+<no file:6>
+    catch failure NotAPanic
+                  ^^^^^^^^^
+;===
+:====
+
+-- "main: ${ending()}"
+do new
+    -- "before: ${ending()}"
+    do finally
+        -- "cleanup: ${ending()}"
+    ?! Panic("ending")
+catch failure
+    -- "handler: $failure.message, now ${ending()}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ending String
+
+. failure = Task().failure
+= if failure != null then failure.message else "nothing"
+
+:----
+
+main: nothing
+before: nothing
+cleanup: ending
+handler: ending, now nothing
+;===
+:====
+
+. done Int<>
+do new @large-stack
+    done <- deep(100000)
+-- "task ${<- done}"
+do new thread @priority @large-stack
+    done <- deep(100000)
+-- "thread ${<- done}"
+. worker = Worker(1)
+do (worker) new @large-stack
+    done <- deep(100000)
+-- "worker ${<- done}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do deep Int
+    - n Int
+
+= if n == 0 then 0 else deep(n - 1) + 1
+
+:----
+
+task 100000
+thread 100000
+worker 100000
+;===
+:====
+# A `do new` used as a value gives its `Task`, which tells how the task ended and can be
+# waited for.
+
+. go = Semaphore()
+. task = do new
+    go.wait()
+    -- "task ran"
+-- "running: ${task.end == .running}"
+do new
+    go.post()
+task.wait()
+-- "finished: ${task.end == .finished}"
+
+. one = do new -- "one step"
+one.wait()
+-- "one: ${one.end == .finished}"
+
+. failing = do new
+    ?! Panic("broke")
+catch failure
+    -- "caught $failure.message"
+failing.wait()
+-- "panicked: ${failing.end == .panicked}"
+
+. blocked = do new
+    . ch Int<>
+    . value = <- ch
+    -- "never $value"
+do new
+    blocked.cancel()
+blocked.wait()
+-- "cancelled: ${blocked.end == .cancelled}"
+
+. worker = Worker(2)
+. pooled = do (worker) new
+    -- "in worker"
+pooled.wait()
+-- "worker: ${pooled.end == .finished}"
+
+. threaded = do new thread @large-stack
+    -- "on a thread"
+threaded.wait()
+-- "thread: ${threaded.end == .finished}"
+
+:----
+
+running: true
+task ran
+finished: true
+one step
+one: true
+caught broke
+panicked: true
+cancelled: true
+in worker
+worker: true
+on a thread
+thread: true
+;===
+:====
+# A task waits for another through the `Task` that other task gave itself, and a task that
+# waits for itself panics.
+
+. box = TaskBox()
+. ready = Semaphore()
+. go = Semaphore()
+do new
+    box.task = Task()
+    ready.post()
+    go.wait()
+    -- "task done"
+ready.wait()
+. task = box.task!
+-- "running: ${task.end == .running}"
+do new
+    go.post()
+task.wait()
+-- "finished: ${task.end == .finished}"
+task.wait()
+-- "waited again"
+
+do new
+    Task().wait()
+catch failure
+    -- "self: $failure.message"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+
+:----
+
+running: true
+task done
+finished: true
+waited again
+self: A task cannot wait for itself
+;===
+:====
+# A panic a handler takes tells where it was raised, on what stack, and when.
+
+. before = Panic("never raised")
+-- "unraised: ${before.stack == null} ${before.raised-at == null}"
+. task = do new
+    fails()
+catch failure
+    . stack = failure.stack ?? ""
+    -- "stack: ${stack.find("Stack trace:") != null} ${stack.find("__source__:fails") != null}"
+    . at = failure.raised-at ?? 0
+    -- "recent: ${at > 1700000000.0}"
+task.wait()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fails
+
+?! Panic("broke")
+
+:----
+
+unraised: true true
+stack: true true
+recent: true
+;===
+:====
+# Shutdown ends a busy loop at its poll, once: the task's cleanup runs its own loop to the end and
+# reads the termination.
+
+. ready = Semaphore()
+do new thread
+    do finally
+        -- "cleanup counted ${spin(1000)}"
+        -- "cleanup saw ${Task().failure?.message ?? "nothing"}"
+    ready.post()
+    . count = 0
+    while true
+        count += 1
+    -- "unexpected end"
+ready.wait()
+request-process-termination(130)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do spin Int
+    - count Int
+
+. total = 0
+for index in 0 .. < count
+    total += index
+= total
+
+:----
+%crash
+
+cleanup counted 499500
+cleanup saw Task terminated
+;===
+:====
+# A cancelled task ends at its wait, and a wait in one of its cleanups ends that cleanup; the next
+# cleanup still runs, and the task's catch does not.
+
+. ready = Semaphore()
+. parked = do new
+    do finally
+        -- "outer cleanup saw ${Task().failure?.message ?? "nothing"}"
+    do finally
+        -- "inner cleanup begins"
+        Semaphore().wait()
+        -- "inner cleanup goes on"
+    ready.post()
+    Semaphore().wait()
+    -- "parked goes on"
+catch failure
+    -- "catch ran: $failure.message"
+ready.wait()
+parked.cancel()
+parked.wait()
+-- "cancelled: ${parked.end == .cancelled}"
+
+:----
+
+inner cleanup begins
+outer cleanup saw Task cancelled
+cancelled: true
+;===
+:====
+# A cancelled task blocked in a post with no payload ends there.
+
+. ready = Semaphore()
+. poster = do new
+    . gate = Semaphore()
+    do finally
+        -- "poster cleanup saw ${Task().failure?.message ?? "nothing"}"
+    ready.post()
+    gate.post()
+    -- "poster goes on"
+ready.wait()
+poster.cancel()
+poster.wait()
+-- "cancelled: ${poster.end == .cancelled}"
+
+:----
+
+poster cleanup saw Task cancelled
+cancelled: true
+;===
+:====
+# A cancelled task waiting for a process ends there, and takes its wait off the event loop, so the
+# process exiting later resumes nothing.
+
+/os/process
+
+. ready = Semaphore()
+. process = Process("sleep", ["5"])
+. waiter = do new
+    do finally
+        -- "waiter cleanup saw ${Task().failure?.message ?? "nothing"}"
+    ready.post()
+    . status = process.wait(null)
+    -- "waiter goes on with ${status ?? -1}"
+ready.wait()
+waiter.cancel()
+waiter.wait()
+-- "cancelled: ${waiter.end == .cancelled}"
+process.kill()
+-- "reaped: ${process.wait(null) != null}"
+
+:----
+
+waiter cleanup saw Task cancelled
+cancelled: true
+reaped: true
+;===

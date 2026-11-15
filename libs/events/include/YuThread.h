@@ -12,6 +12,7 @@
 
 class YuTaskQueue;
 class YuMutex;
+struct YuTaskEnding;
 struct YuTaskWorker;
 
 const uint32_t YU_THREAD_INTERRUPT_PREEMPT = 1 << 0;
@@ -44,7 +45,8 @@ public:
         YuTaskStartFunc func,
         void* closure,
         size_t localSize,
-        const YuTaskProvenance& provenance = YuTaskProvenance());
+        const YuTaskProvenance& provenance = YuTaskProvenance(),
+        YuTaskEnding** ending = nullptr);
     void suspendTask(
         YuTask* task,
         YuMutex* mutex,

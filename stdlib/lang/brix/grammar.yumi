@@ -307,6 +307,7 @@
     ~ \inline-expression-no-prep
 
 .. block-construct ImmutableTableRow'SourceNode ~
+    ~ \task-block
     ~ \match-block
     ~ \iterator-block
     ~ \structure-match-block
@@ -1100,12 +1101,21 @@
         bx.form(location, "do-with", bx.atom(location, name), expr, body)
     ~ "do use" is-optional "?"? // expr \inline-expression body \do-required-block-body
         bx.form(location, if is-optional then "do-use?" else "do-use", expr, body)
-    ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body
-        bx.form(location, "do-new-thread", bx.wrap(location, "worker:", worker), body)
-    ~ "do" // (worker \paren-expression //)? "new" body \do-block-body
-        bx.form(location, "do-new", bx.wrap(location, "worker:", worker), body)
+    ~ \task-block
     ~ "do" body \do-block-body
         bx.form(location, "do", body)
+
+.. task-block ImmutableTableRow'SourceNode ~
+    ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body arms \task-catch*
+        bx.armed
+            - location
+            - bx.form(location, "do-new-thread", bx.wrap(location, "worker:", worker), body)
+            - bx.many(arms)
+    ~ "do" // (worker \paren-expression //)? "new" body \do-block-body arms \task-catch*
+        bx.armed
+            - location
+            - bx.form(location, "do-new", bx.wrap(location, "worker:", worker), body)
+            - bx.many(arms)
 
 .. do-block-body ImmutableTableRow'SourceNode ~
     ~ annotations \annotation-names body \row-block
@@ -1138,6 +1148,10 @@
 .. attached-catch ImmutableTableRow'SourceNode ~
     ~ "catch" (// type \type-capture)? previous \catch-previous* / body \indented-block-expression
         bx.form(location, "on-error", bx.caught(location, bx.many(previous), type), bx.body(body))
+
+.. task-catch ImmutableTableRow'SourceNode ~
+    ~ / \nl+ / "catch" (// type \type-capture)? / body \indented-block-expression
+        bx.form(location, "on-failure", bx.caught(location, bx.many(null), type), bx.body(body))
 
 .. catch-previous ImmutableTableRow'SourceNode ~
     ~ // "<-" // type \type-capture

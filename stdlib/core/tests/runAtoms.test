@@ -170,11 +170,13 @@ arena-atom
 do finally
     atoms.release()
     others.release()
-do finally
-    -- "error: ${recover()}"
-. alpha = atoms.store("alpha")
-. other-alpha = others.store("alpha")
-. ordinal = atoms.ordinal(other-alpha)
+. attempt = do new
+    . alpha = atoms.store("alpha")
+    . other-alpha = others.store("alpha")
+    . ordinal = atoms.ordinal(other-alpha)
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -187,10 +189,12 @@ error: Atom belongs to another AtomPool or is not live
 . atoms = AtomPool()
 do finally
     atoms.release()
-do finally
-    -- "error: ${recover()}"
-. source = "abc".codepoints
-. invalid = atoms.store(source, 2, 1)
+. attempt = do new
+    . source = "abc".codepoints
+    . invalid = atoms.store(source, 2, 1)
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -202,9 +206,11 @@ error: Atom codepoint span is invalid
 
 . atoms = AtomPool()
 atoms.release()
-do finally
-    -- "error: ${recover()}"
--- atoms.length
+. attempt = do new
+    -- atoms.length
+catch failure
+    -- "error: $failure"
+attempt.wait()
 
 :----
 
@@ -492,9 +498,11 @@ slot.name = null
 -- slot.name == null
 -- chosen(null)
 -- chosen("given" as Atom)
-do finally
-    -- recover()
--- forced(0)
+. attempt = do new
+    -- forced(0)
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Slot

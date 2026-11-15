@@ -603,9 +603,9 @@ spawn()
 . current = child!
 do new
     drain-errors(current)
-do new
+timers += do new
     await-exit(current)
-do new
+timers += do new
     watch(current)
 if is-stopping
     current.kill-tree()
@@ -644,8 +644,7 @@ if is-exited
     current.kill-tree()
     =
 current.terminate-group()
-do new
-    timers += get-active-task()
+timers += do new
     bench-stop-grace.wait()
     if !is-exited
         current.kill-tree()
@@ -712,7 +711,6 @@ drained.close()
 _ do await-exit
     - current Process
 
-timers += get-active-task()
 status = current.wait(null) ?? -1
 is-exited = true
 exited.close()
@@ -724,7 +722,6 @@ current.kill-tree()
 _ do watch
     - current Process
 
-timers += get-active-task()
 . limit = timeout * 1000000
 . started = monotonic-time-nanoseconds()
 while !is-settled && !is-exited

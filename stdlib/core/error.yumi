@@ -4,6 +4,7 @@
 ./string
 /YuCore/YuPanic.h
 /YuCore/YuTrace.h
+/stdlib.h
 
 + unhandled-error UnhandledErrorHandler := print-unhandled-error
 
@@ -43,6 +44,30 @@ _ trace Pointer
 + to String
 
 message
+
+────────────────────
++ get stack String?
+
+` The stack the error was raised on, as text, after the task it ran in, as the report of one no
+` caller handles prints them; or none where it was never raised or stack traces are off.
+stack-text(trace)
+
+────────────────────
++ get raised-at F64?
+
+` When the error was raised, in seconds since 1970 began in UTC; or none where it was never
+` raised or stack traces are off.
+if trace.address != 0 then C:yumiStackTraceTime(trace) else null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stack-text String?
+    - trace Pointer
+
+. text = C:yumiFormatStackTrace(trace)
+=? null if !text
+. stack = text as String
+C:free(text)
+= stack
 
 ━━━━━━━━━━━━━━━━━━━━
 + ErrorSource is (file String, line U64, column U64)

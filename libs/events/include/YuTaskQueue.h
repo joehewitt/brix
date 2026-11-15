@@ -43,6 +43,7 @@ struct YuTaskLiveShard {
 
 // *************************************************************************************************
 
+struct YuTaskEnding;
 class YuTaskQueue {
 public:
     YuTaskQueue(YuTaskQueue* parentQueue, int threadCount);
@@ -71,7 +72,8 @@ public:
         YuTaskStartFunc func,
         void* closure,
         size_t localSize,
-        const YuTaskProvenance& provenance = YuTaskProvenance());
+        const YuTaskProvenance& provenance = YuTaskProvenance(),
+        YuTaskEnding** ending = nullptr);
     bool startTaskIfRunning(
         YuTaskStartFunc func,
         void* closure,
@@ -118,7 +120,8 @@ private:
         void* closure,
         size_t localSize,
         const YuTaskProvenance& provenance,
-        bool requireRunning);
+        bool requireRunning,
+        YuTaskEnding** ending = nullptr);
 
     void pushLocal(YuTaskWorker* worker, YuTask* task);
     bool popLocal(YuTaskWorker* worker, YuTask** task);

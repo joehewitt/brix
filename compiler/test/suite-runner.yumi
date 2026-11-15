@@ -940,19 +940,19 @@ result.duration = clock() - started
     - result CaseResult
     - context RunContext
 
-do finally
-    . panic = recover()
-    if panic
+` Runs the case in a task of its own, with the main task's stack, and waits for it. A panic that
+` ends that task marks the case crashed.
+. running = do new @large-stack
+    if test-case.has-option("runner-panic")
+        ?! Panic("Test runner panic boundary")
+    . execution = catch execute-case-body(test-case, result, context)
+    if execution is Error
         result.status = "crashed"
-        result.errors = "$panic"
-
-if test-case.has-option("runner-panic")
-    ?! Panic("Test runner panic boundary")
-
-. execution = catch execute-case-body(test-case, result, context)
-if execution is Error
+        result.errors = "$execution"
+catch failure
     result.status = "crashed"
-    result.errors = "$execution"
+    result.errors = "$failure"
+running.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do execute-case-body

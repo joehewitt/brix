@@ -5,6 +5,7 @@
 /net/http
 /net/http-server
 /net/sse
+/os/file
 /stream/aggregate
 /stream/filter
 /time/duration
@@ -172,7 +173,9 @@ do finally
     if !is-answered
         runner.task?.cancel()
 
-do new run-call(rpc, headers, updates, runner)
+runner.task = do new run-call(rpc, headers, updates, runner)
+catch failure
+    stderr <- "MCP call ${rpc.method} failed: ${failure}\n"
 for message in updates
     is-answered = message is JSONRPCResponse
     <= ServerSentEvent("$message")
@@ -184,12 +187,10 @@ _ do run-call
     - updates SyncBufferedChannel'JSONRPCMessage
     - runner MCPCallRunner
 
-runner.task = Task()
 do finally
-    if !Task().is-canceled && !Task().is-terminating
-        . panic = recover()
-        if panic
-            updates <- rpc.error-response(JSONRPCError(.internal-error, "${panic}"))
+    . failure = Task().failure
+    if failure && !Task().is-canceled && !Task().is-terminating
+        updates <- rpc.error-response(JSONRPCError(.internal-error, "${failure}"))
     updates.close()
 =? if updates.is-closed
 

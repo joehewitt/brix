@@ -10,6 +10,7 @@
 #include <YuEvents/YuGCHandshake.h>
 #include <YuEvents/YuPoll.h>
 #include <YuCore/YuCore.h>
+#include <YuGC/YuGC.h>
 
 #include <stdlib.h>
 #include <atomic>
@@ -794,6 +795,135 @@ yumiSpinPriorityTaskWithInfo(
             YU_TASK_SCHEDULING_PRIORITY));
 }
 
+static YuTaskEnding*
+unstartedEnding() {
+    return new YuTaskEnding(0, 1, YU_TASK_END_CANCELLED);
+}
+
+extern "C" uint64_t
+yumiStartTask(
+    YuTaskQueue* queue,
+    YuTaskStartFunc func,
+    void* closure,
+    size_t localSize,
+    const char* file,
+    uint32_t line,
+    uint32_t column,
+    uint32_t options) {
+    bool wantsEnding = options & YU_TASK_START_HANDLE;
+    if (yumiProcessTerminationRequested()) {
+        return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
+    }
+
+    uint32_t flags = 0;
+    if (options & YU_TASK_START_SPIN) {
+        flags |= YU_TASK_FLAG_SPIN;
+    }
+    if (options & YU_TASK_START_LARGE_STACK) {
+        flags |= YU_TASK_FLAG_LARGE_STACK;
+    }
+    if (queue) {
+        flags |= YU_TASK_FLAG_WORKER;
+    }
+    uint32_t schedulingClass =
+        options & YU_TASK_START_PRIORITY ? YU_TASK_SCHEDULING_PRIORITY : YU_TASK_SCHEDULING_NORMAL;
+    YuTaskProvenance provenance =
+        yumiCreateTaskProvenance(file, line, column, flags, schedulingClass);
+
+    YuTaskEnding* ending = NULL;
+    YuTaskEnding** wanted = wantsEnding ? &ending : nullptr;
+    YuThread* thread = yumiGetActiveThread();
+    if (queue) {
+        if (queue->isStopped()) {
+            return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
+        }
+        queue->startTask(func, closure, localSize, provenance, wanted);
+    } else if (options & YU_TASK_START_SPIN) {
+        gSpinQueue->startTask(func, closure, localSize, provenance, wanted);
+    } else if (thread) {
+        thread->startTask(func, closure, localSize, provenance, wanted);
+    } else {
+        return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
+    }
+    return wantsEnding ? reinterpret_cast<uint64_t>(ending) : 1;
+}
+
+static size_t
+releaseTaskEnding(void* context) {
+    static_cast<YuTaskEnding*>(context)->release();
+    return 1;
+}
+
+extern "C" void
+yumiTaskEndingAdopt(char* owner, YuTaskEnding* ending) {
+    if (!yumiGCRegisterNativeCleanup(owner, ending, releaseTaskEnding)) {
+        ending->release();
+    }
+}
+
+extern "C" uint64_t
+yumiTaskEndingHandle(YuTaskEnding* ending) {
+    return ending->handle;
+}
+
+extern "C" uint32_t
+yumiTaskEndingEnd(YuTaskEnding* ending) {
+    return ending->end.load(std::memory_order_acquire);
+}
+
+static bool
+waitForTaskEnding(YuTaskEnding* ending) {
+    YuThread* thread = yumiGetActiveThread();
+    YuTask* task = thread->getActiveTask();
+    if (task->getCanceled()) {
+        return true;
+    }
+
+    ending->lock.lock();
+    if (ending->end.load(std::memory_order_acquire) != YU_TASK_END_RUNNING) {
+        ending->lock.unlock();
+        return false;
+    }
+    YuTaskEndWaiter waiter{task, ending->waiters};
+    ending->waiters = &waiter;
+    thread->suspendTask(task, &ending->lock, YuTaskGCStateBlocked);
+
+    ending->lock.lock();
+    for (YuTaskEndWaiter** link = &ending->waiters; *link; link = &(*link)->next) {
+        if (*link == &waiter) {
+            *link = waiter.next;
+            break;
+        }
+    }
+    ending->lock.unlock();
+    return task->getCanceled();
+}
+
+extern "C" bool
+yumiTaskEndingWait(YuTaskEnding* ending) {
+    return waitForTaskEnding(ending);
+}
+
+extern "C" bool
+yumiWaitForTask(uint64_t handle) {
+    YuTaskEnding* ending = YuTask::endingForHandle(handle);
+    if (!ending) {
+        return yumiGetActiveThread()->getActiveTask()->getCanceled();
+    }
+    bool canceled = waitForTaskEnding(ending);
+    ending->release();
+    return canceled;
+}
+
+extern "C" void
+yumiSetActiveTaskEnd(uint32_t end) {
+    YuThread* thread = yumiGetActiveThread();
+    YuTask* task = thread ? thread->getActiveTask() : NULL;
+    if (task && task->getRuntimeContext()->taskEnd == YU_TASK_END_RUNNING) {
+        task->getRuntimeContext()->taskEnd = end;
+    }
+}
+
 extern "C" void
 yumiTerminateActiveTask() {
     YuThread* thread = yumiGetActiveThread();
@@ -924,6 +1054,13 @@ yumiActiveTaskIsTerminating() {
     YuThread* thread = yumiGetActiveThread();
     YuTask* task = thread ? thread->getActiveTask() : NULL;
     return task && task->getTerminating();
+}
+
+extern "C" bool
+yumiTakeActiveTaskTermination() {
+    YuThread* thread = yumiGetActiveThread();
+    YuTask* task = thread ? thread->getActiveTask() : NULL;
+    return task && task->takeTermination();
 }
 
 extern "C" char*

@@ -332,6 +332,7 @@ do finally
     ~ \inline-expression-no-prep
 
 .. block-construct SyntaxId ~
+    ~ \task-block
     ~ \match-block
     ~ \iterator-block
     ~ \structure-match-block
@@ -1157,7 +1158,13 @@ do finally
                 - location
                 - maybe-optional(tree, location, expr, !!is-optional)
                 - unannotated-body(location, body, "do use")
-    ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body
+    ~ \task-block
+    ~ "do" body \do-block-body
+        tree.append(ASTDoBlock(location, body.body, masks.effects, masks.features))
+            .. masks = do-annotation-masks(location, body.annotations)
+
+.. task-block SyntaxId ~
+    ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body catchers \task-catch*
         tree.append
             - ASTDoTaskBlock
                 - location
@@ -1165,7 +1172,9 @@ do finally
                 - tree.syntax-or-invalid(worker)
                 - true
                 - task-scheduling(location, body.annotations)
-    ~ "do" // (worker \paren-expression //)? "new" body \do-block-body
+                - task-large-stack(body.annotations)
+                - tree.store-children(catchers)
+    ~ "do" // (worker \paren-expression //)? "new" body \do-block-body catchers \task-catch*
         tree.append
             - ASTDoTaskBlock
                 - location
@@ -1173,9 +1182,8 @@ do finally
                 - tree.syntax-or-invalid(worker)
                 - false
                 - task-scheduling(location, body.annotations)
-    ~ "do" body \do-block-body
-        tree.append(ASTDoBlock(location, body.body, masks.effects, masks.features))
-            .. masks = do-annotation-masks(location, body.annotations)
+                - task-large-stack(body.annotations)
+                - tree.store-children(catchers)
 
 .. do-block-body DoBody ~
     ~ annotations \annotation-names body \block
@@ -1214,6 +1222,10 @@ do finally
                 - tree.syntax-or-invalid(body)
                 - tree.syntax-or-invalid(type)
                 - tree.store-children(previous)
+
+.. task-catch SyntaxId ~
+    ~ / \nl+ / catcher \attached-catch
+        catcher
 
 .. catch-previous SyntaxId ~
     ~ // "<-" // type \type-capture

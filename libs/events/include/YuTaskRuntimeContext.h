@@ -2,6 +2,7 @@
 #define YU_TASK_RUNTIME_CONTEXT_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <YuGC/YuGCTemporaryRoots.h>
 
@@ -15,6 +16,12 @@ typedef void (*YuParseRegionScanner)(
     YuParseRegionAllocationVisitor visitor,
     void* data);
 typedef void (*YuParseRegionDestroyer)(void* region);
+
+const uint32_t YU_TASK_END_RUNNING = 0;
+const uint32_t YU_TASK_END_FINISHED = 1;
+const uint32_t YU_TASK_END_RAISED = 2;
+const uint32_t YU_TASK_END_PANICKED = 3;
+const uint32_t YU_TASK_END_CANCELLED = 4;
 
 // Kept deliberately small and stable: generated AArch64 code reads activePanic at offset zero
 // through the task-context register, while C runtime code also owns the GC root handle.
@@ -32,6 +39,7 @@ struct YuTaskRuntimeContext {
     YuParseRegionDestroyer parseRegionDestroyer;
     void* pendingPanics;
     void* probeProfileTimers;
+    uint32_t taskEnd;
 };
 
 static_assert(offsetof(YuTaskRuntimeContext, parseRegionLogicalUsed) == 16,

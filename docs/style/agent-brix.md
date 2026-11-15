@@ -104,6 +104,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - **Stage**: A `pipe` stage, which works on the value above it.
 - **Block**: A `block` form.
 - **Arm**: An `else-if` or `else` inside an `if`.
+- **Failure**: Rows a task runs when it fails, after its cleanups.
 - **LoopArm**: An `and-for` or `or-for` inside a `for`.
 - **Clause**: The source of a loop.
 - **Option**: A filter or key on a loop source.
@@ -272,11 +273,12 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(do deco:Deco* body:Inline)` is Step, State, Before. Run one step.
 - `(finally row:Step*)` is Step, State, Before. Rows that run when the enclosing body ends, however it ends.
 - `(finally body:Inline)` is Step, State, Before. One step that runs when the enclosing body ends.
-- `(do-new worker:Worker? deco:Deco* row:Step*)` is Step, Before. Run the rows as a new task.
-- `(do-new worker:Worker? deco:Deco* body:Inline)` is Step, Before. Run one step as a new task.
-- `(do-new-thread worker:Worker? deco:Deco* row:Step*)` is Step, Before. Run the rows as a task in the shared thread pool.
-- `(do-new-thread worker:Worker? deco:Deco* body:Inline)` is Step, Before. Run one step as a task in the shared thread pool.
+- `(do-new worker:Worker? deco:Deco* row:Step* failure:Failure*)` is Expr, Step, Before. Run the rows as a new task.
+- `(do-new worker:Worker? deco:Deco* body:Inline failure:Failure*)` is Expr, Step, Before. Run one step as a new task.
+- `(do-new-thread worker:Worker? deco:Deco* row:Step* failure:Failure*)` is Expr, Step, Before. Run the rows as a task in the shared thread pool.
+- `(do-new-thread worker:Worker? deco:Deco* body:Inline failure:Failure*)` is Expr, Step, Before. Run one step as a task in the shared thread pool.
 - `(worker: value:Expr)` is Worker. The worker that runs the task.
+- `(on-failure error:Binder row:Step*)` is Failure. Rows the task runs when a panic of the named type ends it, after its cleanups, with that panic.
 - `(do-with name:Name value:Expr row:Step*)` is Step, Before. Run the rows with a stack value set for them and for what they call. The value is restored after.
 - `(do-use resource:Expr row:Step*)` is Step, Before. Run the rows with a resource that is released at the end.
 - `(do-use? resource:Expr row:Step*)` is Step, Before. The same, skipped when the resource is null.

@@ -1528,10 +1528,6 @@ if declaration.kind == .slot-decl
 if declaration.kind == .binder-decl
     check-binder(declaration.syntax)
     =
-if declaration.is-generated && declaration.kind == .function-decl
-    . recovered = types.optional-of(types.panic-type)
-    instances.set-returns(instance, recovered, recovered, .return-declared)
-    =
 if declaration.is-generated && !declaration.is-main
     . receiver = instances.rows[instance].self-type
     instances.set-returns(instance, receiver, receiver, .return-declared)
@@ -1629,6 +1625,8 @@ else
             value = no-type
         if discards-result()
             value = no-type
+        if declaration.kind == .task-decl
+            check-task-handlers(declaration.syntax)
     . leaves = narrowing.exits(declaration.body, false, false, true, true)
     giving = giving.falls-through = declaration.is-imperative && !leaves
     check-unreturned(declared)
@@ -17179,16 +17177,6 @@ check-statement(statement)
 finally = saved
 
 ────────────────────
-_ do recovers Bool
-    - callable SyntaxId
-
-` Whether a call is of the `recover` core declares, which gives the panic a cleanup runs for.
-. resolution = bindings.resolution-of(frame.binding, callable)
-if resolution.kind != .resolve-function || name-text(callable) != "recover"
-    = false
-= program.modules[resolution.module].name == "core/error"
-
-────────────────────
 _ is-finally Bool
     - statement SyntaxId
 
@@ -20087,9 +20075,6 @@ do match? tree.nodes[id]
             = tracked.typed(note-collection-read(id, tracked.type, want))
         = infer-identifier(id, row.name, want)
     | .node-call-expression(row)
-        if !finally.cleaning-up && recovers(row.callable)
-            frame.diagnose(id, .stated, program.store-atom("recover() gives a panic only while a cleanup runs; call it in a \"do finally\" block"))
-            = Found(invalid-type)
         = infer-call(id, row.callable, row.params, row.args, row.is-curried, 0, no-type, want)
     | .node-get-expression(row)
         . got = infer-get(id, row.object, row.name, row.is-optional, want)
@@ -20442,6 +20427,12 @@ do match tree.nodes[id]
         = valued
     | .node-function-syntax
         = closure-type(id)
+    | .node-do-task-block(row)
+        if row.worker != 0 && !row.is-parallel
+            check-worker(id, row.worker)
+        frame.doubt-members()
+        check-task(id)
+        = calls.demand-task-value(id)
     | .node-type-identifier
         . named = types.evaluate-type(module, tree, id, frame.env)
         if named == invalid-type && report-missing-type(id, frame.env)
@@ -27401,6 +27392,43 @@ else
     check-body(body)
     loop-depth -= 1
 frame.pop-narrowing(clause-mark)
+
+────────────────────
+_ do check-task-handlers
+    - task SyntaxId
+
+` The handlers written after a task's block run in the task, after its cleanups, when a panic
+` of the type each names ends it, and bind that panic: each names `Panic` or a type derived
+` from it, and takes no errors it replaced.
+do match? tree.nodes[task]
+    | .node-do-task-block(row)
+        if row.catchers.count != 0
+            frame.forget-members()
+        for catcher in tree.children[row.catchers]
+            do match? tree.nodes[catcher]
+                | .node-catcher(handler)
+                    if handler.previous.count != 0
+                        frame.diagnose(catcher, .stated, program.store-atom("A task's handler replaces no errors"))
+                    . named = handled-type(handler.type)
+                    if named != 0
+                        . handled = types.evaluate-type(module, tree, named, frame.env)
+                        if handled != invalid-type && !is-subtype(types, handled, types.panic-type)
+                            frame.diagnose(named, .stated, program.store-atom("A task's handler takes a panic"))
+                    check-pattern(handler.type, types.panic-type)
+                    check-statement(handler.body)
+
+────────────────────
+_ handled-type SyntaxId
+    - pattern SyntaxId
+
+` The type a handler's pattern names, or none for one that names only the panic.
+match tree.nodes[pattern]
+    | .node-type-capture(row)
+        row.type
+    | .node-type-identifier
+        pattern
+    ??
+        0
 
 ────────────────────
 _ do check-body

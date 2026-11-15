@@ -2,7 +2,11 @@
 /YuCore/YuCore.h
 /YuGC/YuGC.h
 
-run-ffi-panic()
+. running = do new run-ffi-panic()
+catch failure
+    C:yumiCollect()
+    -- "ffi-panic-cleanup-ok"
+running.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + TestCallback is (*C) I32
@@ -10,12 +14,6 @@ run-ffi-panic()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do run-ffi-panic
-
-do finally
-    . panic = recover()
-    if panic
-        C:yumiCollect()
-        -- "ffi-panic-cleanup-ok"
 
 C:ctestCallback(panic-callback as TestCallback)
 ?! Panic("FFI callback did not panic")

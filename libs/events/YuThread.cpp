@@ -170,8 +170,12 @@ YuThread::startTask(
     YuTaskStartFunc func,
     void* closure,
     size_t localSize,
-    const YuTaskProvenance& provenance) {
+    const YuTaskProvenance& provenance,
+    YuTaskEnding** ending) {
     YuTask* newTask = queue->createTask(func, closure, localSize, provenance);
+    if (ending) {
+        *ending = newTask->attachEnding();
+    }
     queue->scheduleTask(newTask);
 }
 

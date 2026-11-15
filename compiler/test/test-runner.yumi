@@ -286,9 +286,9 @@ spawn()
 last-activity = monotonic-time-nanoseconds()
 do new
     drain-errors(child)
-do new
+timers += do new
     await-exit(child)
-do new
+timers += do new
     watch(child)
 if is-stopping
     child.kill-tree()
@@ -310,8 +310,7 @@ if is-exited
     catch child.close()
     =
 child.terminate-group()
-do new
-    timers += get-active-task()
+timers += do new
     test-stop-grace.wait()
     if !is-exited
         child.kill-tree()
@@ -461,7 +460,6 @@ drained.close()
 _ do await-exit
     - child Process
 
-timers += get-active-task()
 status = child.wait(null) ?? -1
 is-exited = true
 exited.close()
@@ -474,7 +472,6 @@ catch child.close()
 _ do watch
     - child Process
 
-timers += get-active-task()
 . limit = (batch.suite.idle-timeout as Nanoseconds) as U64
 while !is-settled
     . idle = monotonic-time-nanoseconds() - last-activity

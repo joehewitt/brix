@@ -84,6 +84,19 @@ extern "C" void yumiSpinTaskWithInfo(YuTaskStartFunc func, void* closure, size_t
 extern "C" void yumiSpinPriorityTask(YuTaskStartFunc func, void* closure, size_t localSize);
 extern "C" void yumiSpinPriorityTaskWithInfo(YuTaskStartFunc func, void* closure,
     size_t localSize, const char* file, uint32_t line, uint32_t column);
+const uint32_t YU_TASK_START_PRIORITY = 1 << 0;
+const uint32_t YU_TASK_START_SPIN = 1 << 1;
+const uint32_t YU_TASK_START_LARGE_STACK = 1 << 2;
+const uint32_t YU_TASK_START_HANDLE = 1 << 3;
+extern "C" uint64_t yumiStartTask(YuTaskQueue* queue, YuTaskStartFunc func, void* closure,
+    size_t localSize, const char* file, uint32_t line, uint32_t column, uint32_t options);
+struct YuTaskEnding;
+extern "C" void yumiTaskEndingAdopt(char* owner, YuTaskEnding* ending);
+extern "C" uint64_t yumiTaskEndingHandle(YuTaskEnding* ending);
+extern "C" uint32_t yumiTaskEndingEnd(YuTaskEnding* ending);
+extern "C" bool yumiTaskEndingWait(YuTaskEnding* ending);
+extern "C" bool yumiWaitForTask(uint64_t handle);
+extern "C" YUMI_GC_LEAF void yumiSetActiveTaskEnd(uint32_t end);
 extern "C" void yumiTerminateActiveTask();
 extern "C" YUMI_GC_LEAF YuTask* yumiGetActiveTask();
 extern "C" YUMI_GC_LEAF YuTask* yumiTryGetActiveTask();
@@ -105,6 +118,7 @@ extern "C" YUMI_GC_LEAF bool yumiGetTaskFinished(uint64_t handle);
 extern "C" YUMI_GC_LEAF bool yumiGetTaskCanceled(uint64_t handle);
 extern "C" YUMI_GC_LEAF bool yumiGetTaskTerminating(uint64_t handle);
 extern "C" YUMI_GC_LEAF bool yumiActiveTaskIsTerminating();
+extern "C" YUMI_GC_LEAF bool yumiTakeActiveTaskTermination();
 extern "C" YUMI_GC_LEAF char* yumiGetActiveTaskMemory();
 extern "C" YUMI_GC_LEAF char* yumiGetActiveThreadMemory();
 extern "C" YUMI_GC_LEAF int yumiActiveTaskQueueRemaining();

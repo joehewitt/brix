@@ -8,6 +8,7 @@
 #include <mutex>
 #include <signal.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/ucontext.h>
@@ -58,6 +59,7 @@ static thread_local YuThreadStackCache gThreadStackCache;
 
 static struct sigaction gPreviousBusAction;
 static struct sigaction gPreviousSegvAction;
+static bool gStackOverflowExits = false;
 
 // *************************************************************************************************
 
@@ -222,7 +224,16 @@ yumiStackFaultHandler(int signal, siginfo_t* info, void* data) {
 #endif
         if (yumiInStackGuard(task, address) || yumiInStackGuard(task, sp)) {
             yumiReportTaskStack("Stack overflow", task, fp, pc);
-            _exit(1);
+            if (gStackOverflowExits) {
+                _exit(1);
+            }
+            struct sigaction fallback;
+            memset(&fallback, 0, sizeof(fallback));
+            fallback.sa_handler = SIG_DFL;
+            sigemptyset(&fallback.sa_mask);
+            sigaction(SIGBUS, &fallback, NULL);
+            sigaction(SIGSEGV, &fallback, NULL);
+            return;
         }
     }
 
@@ -233,6 +244,8 @@ void
 yumiInstallStackOverflowHandler() {
     static std::once_flag once;
     std::call_once(once, []() {
+        const char* continues = getenv("YUMITEST_BATCH_CONTINUE_AFTER_PANIC");
+        gStackOverflowExits = continues && continues[0] == '1';
         struct sigaction action;
         memset(&action, 0, sizeof(action));
         action.sa_sigaction = yumiStackFaultHandler;

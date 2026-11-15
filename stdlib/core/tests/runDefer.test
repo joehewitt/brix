@@ -138,10 +138,13 @@ Exception: Thing cannot be used, as it has no "begin-using" and is not Closable;
 ;====
 :====
 
-do finally
-    -- "ok"
-    -- recover()
-?! Panic("bad")
+. attempt = do new
+    do finally
+        -- "ok"
+    ?! Panic("bad")
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -150,11 +153,14 @@ bad
 ;====
 :====
 
-do finally
-    -- "main"
-    -- recover()
-    -- "done"
-foo()
+. attempt = do new
+    do finally
+        -- "main"
+    foo()
+catch failure
+    -- failure
+attempt.wait()
+-- "done"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
@@ -207,17 +213,19 @@ Exception: Thing cannot be used, as it has no "begin-using" and is not Closable;
                ^^^^^^^^^^^
 ;====
 :====
-# Panic-capable calls in do finally can be recovered by earlier cleanup
+# A panic from a call in do finally is seen by earlier cleanup
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "first cleanup sees ${Task().failure}"
 
-do finally
-    -- "before cleanup call"
-    foo()
-    -- "after cleanup call"
+    do finally
+        -- "before cleanup call"
+        foo()
+        -- "after cleanup call"
+catch
+    --
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do foo
@@ -227,86 +235,94 @@ do finally
 :----
 
 before cleanup call
-recovered cleanup call
+first cleanup sees cleanup call
 ;====
 :====
-# Direct panic in do finally can be recovered by earlier cleanup
+# Direct panic in do finally is seen by earlier cleanup
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "first cleanup sees ${Task().failure}"
 
-do finally
-    -- "before direct cleanup panic"
-    ?! Panic("direct cleanup")
-    -- "after direct cleanup panic"
+    do finally
+        -- "before direct cleanup panic"
+        ?! Panic("direct cleanup")
+        -- "after direct cleanup panic"
+catch
+    --
+attempt.wait()
 
 :----
 
 before direct cleanup panic
-recovered direct cleanup
+first cleanup sees direct cleanup
 ;====
 :====
-# Nested panic in do finally can be recovered by earlier cleanup
+# Nested panic in do finally is seen by earlier cleanup
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "first cleanup sees ${Task().failure}"
 
-do finally
-    if true
-        -- "inside cleanup branch"
-        ?! Panic("nested cleanup")
-    -- "after nested cleanup"
+    do finally
+        if true
+            -- "inside cleanup branch"
+            ?! Panic("nested cleanup")
+        -- "after nested cleanup"
+catch
+    --
+attempt.wait()
 
 :----
 
 inside cleanup branch
-recovered nested cleanup
+first cleanup sees nested cleanup
 ;====
 :====
 # Cleanup panic replaces the active panic
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "first cleanup sees ${Task().failure}"
 
-do finally
-    -- "cleanup panic"
-    ?! Panic("cleanup")
-    -- "after cleanup panic"
+    do finally
+        -- "cleanup panic"
+        ?! Panic("cleanup")
+        -- "after cleanup panic"
 
-?! Panic("original")
+    ?! Panic("original")
+catch
+    --
+attempt.wait()
 
 :----
 
 cleanup panic
-recovered cleanup
+first cleanup sees cleanup
 ;====
 :====
 # Remaining finalizers run after a cleanup panic
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "first cleanup sees ${Task().failure}"
 
-do finally
-    -- "older cleanup"
+    do finally
+        -- "older cleanup"
 
-do finally
-    -- "newer cleanup"
-    ?! Panic("newer")
-    -- "after newer cleanup"
+    do finally
+        -- "newer cleanup"
+        ?! Panic("newer")
+        -- "after newer cleanup"
+catch
+    --
+attempt.wait()
 
 :----
 
 newer cleanup
 older cleanup
-recovered newer
+first cleanup sees newer
 ;====
 :====
 # Illegal to return in do finally
@@ -593,14 +609,15 @@ true
 
 . reserved-before = C:yumiArenaRuntimeActiveBytes()
 . arena = Arena()
-do finally
-    . panic = recover()
-    -- panic
+. attempt = do new
+    use arena
+    arena.allocate'Byte(8192)
+    ?! Panic("arena panic")
+catch failure
+    -- failure
     -- arena.state == 2
     -- C:yumiArenaRuntimeActiveBytes() == reserved-before
-use arena
-arena.allocate'Byte(8192)
-?! Panic("arena panic")
+attempt.wait()
 
 :----
 
@@ -709,12 +726,12 @@ guard(=> do nested())
 + do guard
     - body
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
-body()
--- "returned"
+. attempt = do new
+    body()
+    -- "returned"
+catch failure
+    -- "caught $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do finish
@@ -750,33 +767,10 @@ returned
 body
 newer
 older
-recovered newer
+caught newer
 in block
 outer cleanup
-recovered block
-;====
-:====
-# A cleanup panic recovered by an earlier cleanup lets the function return normally.
-
--- finish()
--- "after"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do finish Int
-
-do finally
-    -- "recovered ${recover()}"
-
-do finally
-    ?! Panic("cleanup")
-
-= 3
-
-:----
-
-recovered cleanup
-3
-after
+caught block
 ;====
 :====
 # A use in a method that a subclass also reaches through super compiles in each copy of the method.
@@ -1011,11 +1005,14 @@ end
 bye 8
 ;====
 :====
-# A panic raised by end-using is recovered by a do finally opened before the use.
-do finally
-    . p = recover()
-    -- "recovered $p"
-. t = use Bad()
+# A panic raised by end-using is seen by a do finally opened before the use.
+. attempt = do new
+    do finally
+        -- "cleanup sees ${Task().failure}"
+    . t = use Bad()
+catch
+    --
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Bad
@@ -1036,7 +1033,7 @@ this
 
 begin
 end
-recovered end failed
+cleanup sees end failed
 ;====
 :====
 # A do use in a loop's body ends at each turn, and where continue leaves it.
@@ -1509,66 +1506,34 @@ Stack trace:
 :====
 # Cleanup that allocates runs to completion while a panic unwinds
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        . parts = List'String()
+        for index in 0 .. < 3
+            parts += "part $index"
+        -- "cleanup ${parts.length} ${parts[2]}"
 
-do finally
-    . parts = List'String()
-    for index in 0 .. < 3
-        parts += "part $index"
-    -- "cleanup ${parts.length} ${parts[2]}"
-
-?! Panic("original")
+    ?! Panic("original")
+catch failure
+    -- "caught $failure"
+attempt.wait()
 
 :----
 
 cleanup 3 part 2
-recovered original
-;====
-:====
-# A panic raised and recovered inside cleanup leaves the unwinding panic in place
-
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
-
-do finally
-    settle()
-    -- "cleanup done"
-
-?! Panic("original")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do settle
-
-do finally
-    . panic = recover()
-    if panic
-        -- "settled $panic"
-
-?! Panic("inner")
-
-:----
-
-settled inner
-cleanup done
-recovered original
+caught original
 ;====
 :====
 # Cleanup in a caller still runs to completion after a callee's cleanup allocated
 
-do finally
-    . panic = recover()
-    if panic
-        -- "recovered $panic"
+. attempt = do new
+    do finally
+        -- "outer ${label(2)}"
 
-do finally
-    -- "outer ${label(2)}"
-
-work()
+    work()
+catch failure
+    -- "caught $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do work
@@ -1591,7 +1556,7 @@ for index in 0 .. < count
 
 inner 1:step 0
 outer 2:step 1
-recovered original
+caught original
 ;====
 :====
 # A loop over a stream in a cleanup runs the stream to its end: where the loop ends, where it breaks, where the body panicked, and where the function returns early.
@@ -1637,9 +1602,11 @@ do finally
 ━━━━━━━━━━━━━━━━━━━━
 + do inbody
 
-do finally
-    -- recover()
-thrower()
+. attempt = do new
+    thrower()
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do thrower
@@ -1653,12 +1620,14 @@ do finally
 ━━━━━━━━━━━━━━━━━━━━
 + do outside
 
-do finally
-    -- recover()
-for each in numbers("e")
-    ?! Panic("boom")
-        if each == 2
-    -- "each ${each}"
+. attempt = do new
+    for each in numbers("e")
+        ?! Panic("boom")
+            if each == 2
+        -- "each ${each}"
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do twice
@@ -1820,10 +1789,11 @@ error failed
 ;====
 :====
 # A panic raised converting a returned value runs the cleanups once, after the conversion.
-do finally
-    . p = recover()
-    -- "recovered $p"
--- f()
+. attempt = do new
+    -- f()
+catch failure
+    -- "caught $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Broken
@@ -1855,7 +1825,7 @@ this
 
 converting
 end
-recovered conversion failed
+caught conversion failed
 ;====
 :====
 # A closure written as one expression ends the use it opens as it returns.

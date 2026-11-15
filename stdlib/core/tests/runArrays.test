@@ -26,11 +26,11 @@ buffer[0] = 2.5 as Int
 ;====
 :====
 
-do finally
-    -- recover()
-
-. buffer = Float[1]
--- buffer[1]
+do new
+    . buffer = Float[1]
+    -- buffer[1]
+catch failure
+    -- failure
 
 :----
 
@@ -38,11 +38,11 @@ Index out of bounds (1 / 1)
 ;====
 :====
 
-do finally
-    -- recover()
-
-. buffer = Float[1]
--- buffer[1] = 1
+do new
+    . buffer = Float[1]
+    -- buffer[1] = 1
+catch failure
+    -- failure
 
 :----
 
@@ -64,27 +64,33 @@ _ do try-read
     - buffer Array'String
     - index Index
 
-do finally
-    -- "read: ${recover()}"
--- buffer[index]
+. attempt = do new
+    -- buffer[index]
+catch failure
+    -- "read: $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do try-write
     - buffer Array'String
     - index Index
 
-do finally
-    -- "write: ${recover()}"
-buffer[index] = "z"
+. attempt = do new
+    buffer[index] = "z"
+catch failure
+    -- "write: $failure"
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do try-slice
     - buffer Array'String
     - start Index
 
-do finally
-    -- "slice: ${recover()}"
--- ", ".join(buffer[start .. < 1])
+. attempt = do new
+    -- ", ".join(buffer[start .. < 1])
+catch failure
+    -- "slice: $failure"
+attempt.wait()
 
 :----
 
@@ -111,11 +117,11 @@ buffer[2 .. 4] = 3.5
 ;====
 :====
 
-do finally
-    -- recover()
-
-. buffer = Array'Float(5)
--- buffer[0 .. Position.end]
+do new
+    . buffer = Array'Float(5)
+    -- buffer[0 .. Position.end]
+catch failure
+    -- failure
 
 :----
 
@@ -123,11 +129,11 @@ Range out of bounds (5 / 5)
 ;====
 :====
 
-do finally
-    -- recover()
-
-. buffer = Array'Float(5)
-buffer[0 .. Position.end] = 1
+do new
+    . buffer = Array'Float(5)
+    buffer[0 .. Position.end] = 1
+catch failure
+    -- failure
 
 :----
 
@@ -150,10 +156,11 @@ copy-too-much(buffer, source)
     - buffer Byte[]
     - source Byte[]
 
-do finally
-    --? recover()
-
-buffer[0 .. < 5] = source
+. attempt = do new
+    buffer[0 .. < 5] = source
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -597,20 +604,20 @@ result[2] = 3u32
 :====
 # Byte encoding converters report malformed input.
 
-do finally
-    --? recover()
-
-. bytes = Hex("abc") as Byte[]
+do new
+    . bytes = Hex("abc") as Byte[]
+catch failure
+    -- failure
 
 :----
 
 Hex byte arrays require an even digit count
 ;====
 :====
-do finally
-    --? recover()
-
-. bytes = Base64("abc") as Byte[]
+do new
+    . bytes = Base64("abc") as Byte[]
+catch failure
+    -- failure
 
 :----
 
@@ -708,11 +715,11 @@ values -= 42
 :====
 # Byte slice-string checks the range before reading.
 
-do finally
-    --? recover()
-
-. buffer = Array'Byte("a")
--- buffer.slice-string(0 .. < 5)
+do new
+    . buffer = Array'Byte("a")
+    -- buffer.slice-string(0 .. < 5)
+catch failure
+    -- failure
 
 :----
 
@@ -721,11 +728,11 @@ Range out of bounds (4 / 1)
 :====
 # Char slice-string checks the range before reading.
 
-do finally
-    --? recover()
-
-. buffer = Array'Char("a")
--- buffer.slice-string(0 .. < 5)
+do new
+    . buffer = Array'Char("a")
+    -- buffer.slice-string(0 .. < 5)
+catch failure
+    -- failure
 
 :----
 
@@ -734,12 +741,12 @@ Range out of bounds (4 / 1)
 :====
 # Oversized buffer allocation panics instead of returning null data with a huge size.
 
-do finally
-    --? recover()
-
-. buffer = Array'I64((Size.max / I64.size) + 1)
--- buffer.size
--- buffer.data.address
+do new
+    . buffer = Array'I64((Size.max / I64.size) + 1)
+    -- buffer.size
+    -- buffer.data.address
+catch failure
+    -- failure
 
 :----
 
@@ -748,12 +755,12 @@ Array size overflow
 :====
 # Oversized buffer resize panics before byte-size arithmetic overflows.
 
-do finally
-    --? recover()
-
-. buffer = I64[1]
-buffer = buffer.resize((Size.max / I64.size) + 1)
--- buffer.size
+do new
+    . buffer = I64[1]
+    buffer = buffer.resize((Size.max / I64.size) + 1)
+    -- buffer.size
+catch failure
+    -- failure
 
 :----
 
@@ -762,12 +769,12 @@ Array size overflow
 :====
 # Oversized buffer growth panics before size arithmetic overflows.
 
-do finally
-    --? recover()
-
-. buffer = Byte[1]
-buffer = buffer.grow(Size.max)
--- buffer.size
+do new
+    . buffer = Byte[1]
+    buffer = buffer.grow(Size.max)
+    -- buffer.size
+catch failure
+    -- failure
 
 :----
 
@@ -801,11 +808,11 @@ buffer[0 .. < 2] = "é"
 :====
 # Byte-buffer string range assignment rejects length mismatches.
 
-do finally
-    --? recover()
-
-. buffer = Byte[1]
-buffer[0 .. < 1] = "é"
+do new
+    . buffer = Byte[1]
+    buffer[0 .. < 1] = "é"
+catch failure
+    -- failure
 
 :----
 
@@ -814,12 +821,12 @@ String range length mismatch (2 / 1)
 :====
 # Byte slice-string rejects invalid UTF-8.
 
-do finally
-    --? recover()
-
-. buffer = Byte[1]
-buffer[0] = 255u8
--- buffer.slice-string()
+do new
+    . buffer = Byte[1]
+    buffer[0] = 255u8
+    -- buffer.slice-string()
+catch failure
+    -- failure
 
 :----
 
@@ -1013,11 +1020,11 @@ next-calls += 1
 :====
 # An out-of-bounds indexed Array scalar-field read preserves the accessor panic.
 
-do finally
-    -- recover()
-
-. rows = Array'Row([Row(42)])
--- rows[1].value
+do new
+    . rows = Array'Row([Row(42)])
+    -- rows[1].value
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Row is Struct
@@ -1150,12 +1157,12 @@ receiver>index>
 :====
 # Negative canonical scalar Array indices preserve the accessor panic.
 
-do finally
-    -- recover()
-
-. values = Array'U8([1u8])
-. index = -1i8
--- values[index]
+do new
+    . values = Array'U8([1u8])
+    . index = -1i8
+    -- values[index]
+catch failure
+    -- failure
 
 :----
 
@@ -1290,11 +1297,11 @@ buffer += 1
 :====
 # Pointer math on buffers
 
-do finally
-    -- recover()
-
-. buffer = Float[2]
-buffer += 3
+do new
+    . buffer = Float[2]
+    buffer += 3
+catch failure
+    -- failure
 
 :----
 
@@ -1303,12 +1310,12 @@ Out of bounds 3 / 2
 :====
 # Pointer math on buffers
 
-do finally
-    -- recover()
-
-. buffer = Float[2]
-buffer += 2
--- buffer[0]
+do new
+    . buffer = Float[2]
+    buffer += 2
+    -- buffer[0]
+catch failure
+    -- failure
 
 :----
 
@@ -1436,15 +1443,16 @@ complete.chunk-limit = 4096
 -- text[4094]
 -- text[4095]
 
-do finally
-    --? recover()
-
-. partial = TestByteSource(boundary-bytes(2))
-partial.data[4095] = 226u8
-partial.data[4096] = 148u8
-partial.is-encoded = true
-partial.chunk-limit = 4096
--- ChunkedTokenStream'Char(partial).read().length
+. attempt = do new
+    . partial = TestByteSource(boundary-bytes(2))
+    partial.data[4095] = 226u8
+    partial.data[4096] = 148u8
+    partial.is-encoded = true
+    partial.chunk-limit = 4096
+    -- ChunkedTokenStream'Char(partial).read().length
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do boundary-bytes Byte[]
@@ -1468,12 +1476,13 @@ Unable to read UTF8 content
 /core/tests/support/byte-source
 /core/tokenstream
 
-do finally
-    --? recover()
-
-. buffer-stream = TestByteSource("foo;bar;baz" as Byte[])
-. stream = ChunkedTokenStream'Byte(buffer-stream)
--- ", ".join(stream.split(";"))
+. attempt = do new
+    . buffer-stream = TestByteSource("foo;bar;baz" as Byte[])
+    . stream = ChunkedTokenStream'Byte(buffer-stream)
+    -- ", ".join(stream.split(";"))
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 
@@ -2276,13 +2285,14 @@ C:yumiCollect()
 
 :====
 
-do finally
-    -- recover()
-. items = Array'Point([Point(3, 4), Point(5, 6)])
-. view = items.rows[0]
-. grown = items.resize(4)
--- grown.rows.size
--- view.x
+do new
+    . items = Array'Point([Point(3, 4), Point(5, 6)])
+    . view = items.rows[0]
+    . grown = items.resize(4)
+    -- grown.rows.size
+    -- view.x
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2302,12 +2312,14 @@ Stale array view
 . pool = Arena()
 do finally
     pool.release()
-do finally
-    -- recover()
-. items = Array'Point(pool, [Point(31, 32)])
-. view = items.rows[0]
-pool.reset()
--- view.x
+. attempt = do new
+    . items = Array'Point(pool, [Point(31, 32)])
+    . view = items.rows[0]
+    pool.reset()
+    -- view.x
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2321,60 +2333,15 @@ Stale array view
 
 :====
 
-do finally
-    -- recover()
-. items = Array'Point([Point(3, 4), Point(5, 6)])
-. view = items.rows[0 .. < 1]
-. grown = items.resize(4)
--- grown.rows.size
-for row in view
-    -- "unexpected loop body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
-
-:----
-4
-Stale array view
-;====
-
-:====
-
-/core/arena
-
-. pool = Arena()
-do finally
-    pool.release()
-do finally
-    -- recover()
-. items = Array'Point(pool, [Point(31, 32)])
-. view = items.rows[0 .. < 1]
-pool.reset()
-for row in view
-    -- "unexpected loop body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
-
-:----
-Stale array view
-;====
-
-:====
-
-do finally
-    -- recover()
-. items = Array'Point([Point(3, 4), Point(5, 6)])
-. view = items.fields.x
-. grown = items.resize(4)
--- grown.rows.size
--- view[0]
+do new
+    . items = Array'Point([Point(3, 4), Point(5, 6)])
+    . view = items.rows[0 .. < 1]
+    . grown = items.resize(4)
+    -- grown.rows.size
+    for row in view
+        -- "unexpected loop body"
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2394,12 +2361,15 @@ Stale array view
 . pool = Arena()
 do finally
     pool.release()
-do finally
-    -- recover()
-. items = Array'Point(pool, [Point(31, 32)])
-. view = items.fields.x
-pool.reset()
--- view[0]
+. attempt = do new
+    . items = Array'Point(pool, [Point(31, 32)])
+    . view = items.rows[0 .. < 1]
+    pool.reset()
+    for row in view
+        -- "unexpected loop body"
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2413,10 +2383,59 @@ Stale array view
 
 :====
 
+do new
+    . items = Array'Point([Point(3, 4), Point(5, 6)])
+    . view = items.fields.x
+    . grown = items.resize(4)
+    -- grown.rows.size
+    -- view[0]
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+:----
+4
+Stale array view
+;====
+
+:====
+
+/core/arena
+
+. pool = Arena()
 do finally
-    -- recover()
-. items = Array'Point([Point(3, 4), Point(5, 6)])
--- items.rows[2].x
+    pool.release()
+. attempt = do new
+    . items = Array'Point(pool, [Point(31, 32)])
+    . view = items.fields.x
+    pool.reset()
+    -- view[0]
+catch failure
+    -- failure
+attempt.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+:----
+Stale array view
+;====
+
+:====
+
+do new
+    . items = Array'Point([Point(3, 4), Point(5, 6)])
+    -- items.rows[2].x
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2430,10 +2449,11 @@ Array view index out of bounds
 
 :====
 
-do finally
-    -- recover()
-. items = Array'Point([Point(3, 4), Point(5, 6)])
--- items.rows[0 .. < 3].size
+do new
+    . items = Array'Point([Point(3, 4), Point(5, 6)])
+    -- items.rows[0 .. < 3].size
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2447,13 +2467,14 @@ Array view range out of bounds
 
 :====
 
-do finally
-    -- recover()
-. items = Array'Point([Point(51, 52)])
-. row = items.rows[0]
-items = Array'Point([Point(61, 62)])
--- items.rows[0].x
--- row.x
+do new
+    . items = Array'Point([Point(51, 52)])
+    . row = items.rows[0]
+    items = Array'Point([Point(61, 62)])
+    -- items.rows[0].x
+    -- row.x
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2468,13 +2489,14 @@ Stale array view
 
 :====
 
-do finally
-    -- recover()
-. items = Array'Point([Point(71, 72), Point(73, 74)])
-. field = items.fields.x
-. smaller = items.resize(1)
--- smaller.rows[0].x
--- field[0]
+do new
+    . items = Array'Point([Point(71, 72), Point(73, 74)])
+    . field = items.fields.x
+    . smaller = items.resize(1)
+    -- smaller.rows[0].x
+    -- field[0]
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2489,14 +2511,15 @@ Stale array view
 
 :====
 
-do finally
-    -- recover()
-. items = Array'(Array'Point)(1)
-items[0] = Array'Point([Point(81, 82)])
-. row = items[0].rows[0]
-items[0] = Array'Point([Point(91, 92)])
--- items[0].rows[0].x
--- row.x
+do new
+    . items = Array'(Array'Point)(1)
+    items[0] = Array'Point([Point(81, 82)])
+    . row = items[0].rows[0]
+    items[0] = Array'Point([Point(91, 92)])
+    -- items[0].rows[0].x
+    -- row.x
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2511,13 +2534,14 @@ Stale array view
 
 :====
 
-do finally
-    -- recover()
-. holder = Holder(Array'Point([Point(101, 102)]))
-. row = holder.items.rows[0]
-holder.items = Array'Point([Point(111, 112)])
--- holder.items.rows[0].x
--- row.x
+do new
+    . holder = Holder(Array'Point([Point(101, 102)]))
+    . row = holder.items.rows[0]
+    holder.items = Array'Point([Point(111, 112)])
+    -- holder.items.rows[0].x
+    -- row.x
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2644,14 +2668,16 @@ pool.rewind(boundary)
 . pool = Arena()
 do finally
     pool.release()
-do finally
-    -- recover()
-. kept = Array'Point(pool, [Point(129, 130)])
-. boundary = pool.mark
-. transient = Array'Point(pool, [Point(131, 132)])
-. row = transient.rows[0]
-pool.rewind(boundary)
--- row.x
+. attempt = do new
+    . kept = Array'Point(pool, [Point(129, 130)])
+    . boundary = pool.mark
+    . transient = Array'Point(pool, [Point(131, 132)])
+    . row = transient.rows[0]
+    pool.rewind(boundary)
+    -- row.x
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2667,13 +2693,15 @@ Stale array view
 
 /core/arena
 
-do finally
-    -- recover()
-. pool = Arena()
-. items = Array'Point(pool, [Point(141, 142)])
-. row = items.rows[0]
-pool.release()
--- row.x
+. attempt = do new
+    . pool = Arena()
+    . items = Array'Point(pool, [Point(141, 142)])
+    . row = items.rows[0]
+    pool.release()
+    -- row.x
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2850,12 +2878,14 @@ for row in rows
 . pool = Arena()
 do finally
     pool.release()
-do finally
-    -- recover()
-. values = Array'Point(pool, [Point(8, 9)])
-for row in values.rows
-    pool.reset()
-    -- row.x
+. attempt = do new
+    . values = Array'Point(pool, [Point(8, 9)])
+    for row in values.rows
+        pool.reset()
+        -- row.x
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -2882,12 +2912,14 @@ shrink-during-indexed(values)
 + do shrink-during-indexed
     - values Array'Point
 
-do finally
-    -- recover()
-. rows = values.rows
-for index in 0 .. < rows.length
-    values = values.resize(1)
-    -- rows[index].x
+. attempt = do new
+    . rows = values.rows
+    for index in 0 .. < rows.length
+        values = values.resize(1)
+        -- rows[index].x
+catch failure
+    -- failure
+attempt.wait()
 
 :----
 Stale array view
@@ -2895,16 +2927,17 @@ Stale array view
 
 :====
 
-do finally
-    -- recover()
-. values = Array'Point([Point(1, 2), Point(3, 4)])
-. rows = values.rows
-. resized = values.resize(1)
-. count = 0
-for row in rows
-    count += 1
-    -- row.x
--- count
+do new
+    . values = Array'Point([Point(1, 2), Point(3, 4)])
+    . rows = values.rows
+    . resized = values.resize(1)
+    . count = 0
+    for row in rows
+        count += 1
+        -- row.x
+    -- count
+catch failure
+    -- failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct
@@ -3041,16 +3074,17 @@ items.fields.position[2] = Point(7, 8)
 
 /core/array
 
-do finally
-    -- recover()
-
-. values = Array'InlineRecord(2) • with InlineRecord("kept", each as Int)
-. snapshot = values[0]
-values[0] = InlineRecord("changed", 7)
--- snapshot.text, snapshot.number
--- values[0].text, values[0].number
--- values[1].text, values[1].number
--- values[2].text
+. attempt = do new
+    . values = Array'InlineRecord(2) • with InlineRecord("kept", each as Int)
+    . snapshot = values[0]
+    values[0] = InlineRecord("changed", 7)
+    -- snapshot.text, snapshot.number
+    -- values[0].text, values[0].number
+    -- values[1].text, values[1].number
+    -- values[2].text
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + InlineRecord is Tuple
@@ -3200,12 +3234,13 @@ i
 :====
 # An array cast to one whose struct items are of another size panics, as the count it keeps would reach past its storage.
 
-do finally
-    -- recover()
-
-. points = Point[2]
-. triples = points as Array'Triple
--- triples.length
+. attempt = do new
+    . points = Point[2]
+    . triples = points as Array'Triple
+    -- triples.length
+catch failure
+    -- failure
+attempt.wait()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Point is Struct

@@ -1,6 +1,7 @@
 
 #include <YuEvents/YuTask.h>
 #include <YuEvents/YuThread.h>
+#include <YuEvents/YuTaskQueue.h>
 #include <YuEvents/YuGCHandshake.h>
 #include <YuEvents/YuStack.h>
 #include <YuCore/YuCore.h>
@@ -68,6 +69,7 @@ YuTask::YuTask(
     localsSize(localSize),
     canceled(false),
     terminating(false),
+    terminationRaised(false),
     active(false),
     runState(YuTaskRunIdle),
     gcState(YuTaskGCStateParked),
@@ -82,6 +84,7 @@ YuTask::YuTask(
     gcManagedCallbackKinds(),
     handle(0),
     handlePins(0),
+    ending(NULL),
     runPrev(NULL),
     runNext(NULL),
     runList(NULL),
@@ -102,7 +105,8 @@ YuTask::YuTask(
     }
     runtimeContext.taskLocals = locals;
 
-    size_t stackSize = flags & YU_TASK_FLAG_MAIN ? kYuMainTaskStackSize : kYuTaskStackSize;
+    bool large = flags & (YU_TASK_FLAG_MAIN | YU_TASK_FLAG_LARGE_STACK);
+    size_t stackSize = large ? kYuMainTaskStackSize : kYuTaskStackSize;
     yumiContextNew(&context, func, closure, stackSize);
     context.x27 = reinterpret_cast<uint64_t>(&runtimeContext);
     yumiGCRegisterTask(this);
@@ -160,6 +164,7 @@ YuTask::releaseHandle() {
     }
 
     std::vector<YuTaskFinishHook> hooks;
+    YuTaskEnding* ended = NULL;
     {
         YuTaskHandleTable& table = taskHandleTable();
         YuTaskHandleTableLock lock(table);
@@ -168,10 +173,65 @@ YuTask::releaseHandle() {
         table.freeSlots.push_back(slot);
         handle = 0;
         hooks.swap(finishHooks);
+        ended = ending;
+        ending = NULL;
+    }
+    if (ended) {
+        uint32_t code = runtimeContext.taskEnd;
+        if (code == YU_TASK_END_RUNNING) {
+            code = getCanceled() ? YU_TASK_END_CANCELLED : YU_TASK_END_FINISHED;
+        }
+        ended->finish(code);
+        ended->release();
     }
     for (const YuTaskFinishHook& hook : hooks) {
         hook.func(hook.closure);
     }
+}
+
+YuTaskEnding*
+YuTask::attachEnding() {
+    uint64_t own = ensureHandle();
+    YuTaskHandleTableLock lock(taskHandleTable());
+    if (!ending) {
+        ending = new YuTaskEnding(own, 1, YU_TASK_END_RUNNING);
+    }
+    ending->retain();
+    return ending;
+}
+
+YuTaskEnding*
+YuTask::endingForHandle(uint64_t handle) {
+    YuTaskHandleTable& table = taskHandleTable();
+    uint32_t slot = static_cast<uint32_t>(handle);
+    YuTaskHandleTableLock lock(table);
+    if (slot >= table.slots.size()) {
+        return NULL;
+    }
+    YuTask* task = table.slots[slot];
+    if (!task || task->handle != handle) {
+        return NULL;
+    }
+    if (!task->ending) {
+        task->ending = new YuTaskEnding(handle, 1, YU_TASK_END_RUNNING);
+    }
+    task->ending->retain();
+    return task->ending;
+}
+
+void
+YuTaskEnding::finish(uint32_t code) {
+    lock.lock();
+    end.store(code, std::memory_order_release);
+    YuTaskEndWaiter* waiter = waiters;
+    waiters = NULL;
+    while (waiter) {
+        YuTaskEndWaiter* next = waiter->next;
+        YuTask* task = waiter->task;
+        task->getTaskQueue()->scheduleTask(task, true);
+        waiter = next;
+    }
+    lock.unlock();
 }
 
 bool
