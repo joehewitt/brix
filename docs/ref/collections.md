@@ -81,8 +81,8 @@ false
 | `(call (. xs reversed))`{.brix} | A stream of the items from last to first. |
 | `(== xs ys)`{.brix} | Whether the lists have equal items in the same order. |
 
-- **Out of range.** An index below zero, or at or past the length, panics: `List index 3 out of
-  range`.
+- **Out of range.** An index below zero, or at or past the length, panics, when reading and when
+  assigning: `List index 3 out of range`. A list grows only by adding items.
 - **Index types.** An index may be any signed integer type, or `U8`, `U16` or `U32`.
 - **Equality** compares items with their type's `==`, including one a type declares.
 
@@ -395,6 +395,10 @@ true
   add an item.
 - **Sharing.** Assigning an array shares its storage. `(call (. a copy))`{.brix} makes an array
   with storage of its own.
+- **Casting.** `(as a ([] U32))`{.brix} reads the same storage as items of another type, so
+  writing one writes the other. A cast keeps the count of items, so their sizes must match:
+  `Array'I32 cannot be cast to Array'I64; their items are 4 and 8 bytes, and a cast keeps the
+  count of items`.
 - **Out of range** panics: `Index out of bounds (4 / 4)` when reading, and `Set out of bounds (4 /
   4)` when writing.
 - **Printing** an array writes its type and length, as in `I64[4]`. Join it to print its items,
@@ -448,8 +452,8 @@ hi
 - **`read`** reads a number of the type given after it at a byte offset, as in
   `(call (of (. bytes read) U16) 0)`{.brix}, and gives `null` past the end. **`write`** writes one. Both take `.little` or `.big` as a third argument;
   the default is the machine's order.
-- **Text.** `(as text ([] Byte))`{.brix} gives the UTF-8 bytes of a text, and `slice-string`
-  reads bytes as text. `as Hex` and `as Base64` write the bytes as text, and
+- **Text.** `(as text ([] Byte))`{.brix} gives a copy of the UTF-8 bytes of a text, and
+  `slice-string` reads bytes as text. `as Hex` and `as Base64` write the bytes as text, and
   `(as (as text Hex) ([] Byte))`{.brix} reads them back.
 
 ### Immutable arrays and builders

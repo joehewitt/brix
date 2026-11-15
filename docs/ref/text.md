@@ -323,12 +323,13 @@ foobar
 
 - **Indexes** may be any integer type, or a `Position`: `.first`, `.middle` (half the length),
   `.last`, `.end` (the length) and `(call .index n)`{.brix}.
-- **Out of range** panics with the index and the length: `Index out of bounds (6 / 6)`. A
-  negative index panics too.
+- **Out of range** panics with the index and the length, when reading and when assigning:
+  `Index out of bounds (6 / 6)`. A negative index panics too.
 - **Ranges.** `(.. a b)`{.brix} includes `b`, and `(..< a b)`{.brix} stops before it.
   `([] text (... a))`{.brix} runs from `a` to the end, and `([] text (... _ b))`{.brix} from the
-  start to before `b`. A range that counts down covers the same characters as the one that counts up. A range with
-  a step other than 1 panics: `Only increments of 1 are currently supported`.
+  start to before `b`. A range that counts down covers the same characters as the one that counts
+  up. A range past either end panics: `Range out of bounds (8 / 5)`. A range with a step other
+  than 1 panics: `Only increments of 1 are currently supported`.
 - **Assigning** to an item or a range stores a new text in the variable, property or item that
   held the old one. A copy made before keeps the old text. The new part may be a text of any
   length, or a `Char`. The assignment's value is the new text.
@@ -520,9 +521,9 @@ héllo
   type. White space around the number and a leading `+` are allowed. Text that is not a number of
   that kind panics: `"42x" is not a whole number` for an integer type, and `"2.5x" is not a
   number` for a floating type.
-- **Bytes.** `(as text ([] Byte))`{.brix} gives the UTF-8 bytes of a text, and `slice-string`
-  reads bytes back as text. Bytes that are not UTF-8 panic: `Unable to read UTF8 content`. See
-  Collections.
+- **Bytes.** `(as text ([] Byte))`{.brix} gives a copy of the UTF-8 bytes of a text, and
+  `slice-string` reads bytes back as text. Bytes that are not UTF-8 panic: `Unable to read UTF8
+  content`. See Collections.
 
 ## Kinds of text
 

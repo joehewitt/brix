@@ -54,6 +54,7 @@ public:
     int getThreadCount() const { return threadCount; }
     int activity();
     void requestTermination();
+    void cancelTasks();
 
     void start();
     void stop();
@@ -100,6 +101,7 @@ public:
     uint32_t drainHostedTasks(YuThread* thread, size_t taskBudget, uint64_t deadlineNanos);
 
 private:
+    void wakeLiveTasks(bool terminating);
     bool nextTask(YuTask** task);
     bool nextPoolTask(YuTaskWorker* worker, YuTask** task);
     bool tryNextTask(YuTask** task);

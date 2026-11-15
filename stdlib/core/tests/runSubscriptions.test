@@ -19,6 +19,33 @@ done
 2
 ;===
 :====
+# A subscriber runs on the queue of the task that subscribed, whichever thread publishes.
+
+. worker = Worker(1)
+. numbers AsyncChannel'Int
+. done Int<>
+place = "main"
+for n on numbers
+    -- "$n on $place"
+    done <- n
+do (worker) new
+    place = "worker"
+    numbers <- 1
+-- "read ${<- done}"
+numbers <- 2
+-- "read ${<- done}"
+worker.stop()
+
++ @thread place = "unset"
+
+:----
+
+1 on main
+read 1
+2 on main
+read 2
+;===
+:====
 # Subscriber with condition
 
 + numbers AsyncChannel'Int
@@ -169,8 +196,29 @@ numbers2 <- 2
 :----
 %crash
 
-Exception: Combined subscriptions not supported
-<no file>
+Exception: A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source
+<no file:5>
+    for foo on numbers1
+       ^^^^^^^^^^^^^^^^
+;===
+:====
+# A loop on a stream joined to another by an or arm
+
++ numbers1 AsyncChannel'Int
++ numbers2 AsyncChannel'Int
+
+for foo on numbers1
+    -- "one"
+or bar on numbers2
+    -- "two"
+
+:----
+%compile-error
+
+Exception: A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source
+<no file:5>
+    for foo on numbers1
+       ^^^^^^^^^^^^^^^^
 ;===
 :====
 # Subscribe to tuple stream and deconstruct argument
@@ -3118,6 +3166,16 @@ got first
 got second
 ;====
 :====
+# A lazy declaration whose value is the latest item of a stream compiles where nothing reads it.
+
+. timer = AsyncChannel'Int()
+.. latest = ##timer
+-- "ran"
+
+:----
+ran
+;====
+:====
 # A loop in a section of a class on an event of the object runs each time the event is sent.
 
 . thing = Thing()
@@ -3865,4 +3923,83 @@ done.wait()
 :----
 1
 3
+;====
+:====
+# An event declared by a struct is rejected, as a struct's values are copied and no object keeps its subscribers.
+
+. p = P()
+for v on p.moved
+    -- "moved $v"
+p.moved <- 3
+
+━━━━━━━━━━━━━━━━━━━━
++ P is Struct
+
++ x Int
++ event moved Int
+
+:----
+%crash
+
+Exception: Only a class can declare an event, which belongs to an object, and P is a struct, whose values are copied; declare P as a class
+<no file:11>
+    + event moved Int
+    ^^^^^^^^^^^^^^^^^
+;====
+:====
+# A stream of a value that reads nothing tracked is rejected, as it would never change.
+
+. c = Counter()
+. s = <c.count * 2>
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 1
+
+:----
+%crash
+
+Exception: A stream of a value follows the reads written with "#", and this one has none, so it would never change; write "#" before what it follows, as in "<c.#count>"
+<no file:3>
+    . s = <c.count * 2>
+          ^^^^^^^^^^^^^
+;====
+:====
+# An event that carries Void is rejected, as nothing could be published to it.
+
+. d = Door()
+
+━━━━━━━━━━━━━━━━━━━━
++ Door
+
++ event pinged Void
++ count = 0
+
+:----
+%crash
+
+Exception: An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in "+ event pinged Bool"
+<no file:7>
+    + event pinged Void
+                   ^^^^
+;====
+:====
+# An event read with "<-" is pointed to a loop that hears it, as an event keeps no value to read.
+
+. d = Door()
+. first = <- d.rang
+
+━━━━━━━━━━━━━━━━━━━━
++ Door
+
++ event rang Int
+
+:----
+%crash
+
+Exception: "rang" is an event of Door, which gives each value to its subscribers and keeps none to read with "<-"; hear the next one with "for value on d.rang", and end the loop with "break"
+<no file:3>
+    . first = <- d.rang
+                 ^^^^^^
 ;====

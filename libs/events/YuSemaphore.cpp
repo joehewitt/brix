@@ -1,4 +1,3 @@
-
 #include <YuEvents/YuSemaphore.h>
 
 #include <YuEvents/YuGCHandshake.h>
@@ -13,21 +12,25 @@
 // *************************************************************************************************
 
 YuSemaphore::YuSemaphore() :
-    buf(NULL),
-    capacity(0),
-    received(NULL),
-    thread(NULL),
-    task(NULL)
+    waiters(NULL),
+    lastWaiter(NULL),
+    posters(NULL),
+    lastPoster(NULL)
 {
 }
 
 void
-YuSemaphore::clear() {
-    buf = NULL;
-    capacity = 0;
-    received = NULL;
-    thread = NULL;
-    task = NULL;
+YuSemaphore::deliver(void* buf, size_t capacity, void* data, size_t sizeOfData) {
+    if (capacity != sizeOfData || (data == NULL) != (sizeOfData == 0)) {
+        std::fprintf(stderr, "Semaphore payload mismatch: expected %zu bytes, supplied %zu bytes%s\n",
+            capacity, sizeOfData, (data == NULL) != (sizeOfData == 0) ? " (invalid sender buffer)" : "");
+        std::abort();
+    }
+    if (buf && data) {
+        yumiBulkWriteBarrierFast(static_cast<char*>(buf), static_cast<char*>(data),
+            capacity, yumiGCObjectDescriptor(static_cast<char*>(buf)));
+        memcpy(buf, data, capacity);
+    }
 }
 
 bool
@@ -49,76 +52,115 @@ YuSemaphore::wait(YuThread* aThread, YuTask* aTask, void* aBuf, size_t aCapacity
         mutex->unlock();
     }
 
-    YuThread* previousThread = thread;
-    YuTask* previousTask = task;
-    bool hadData = false;
-    buf = aBuf;
-    capacity = aCapacity;
-    received = &hadData;
-    thread = aThread;
-    task = aTask;
-    if (previousTask) {
-        previousThread->getTaskQueue()->scheduleTask(previousTask, true);
+    if (posters) {
+        YuSemaphorePoster* poster = posters;
+        posters = poster->next;
+        if (!posters) {
+            lastPoster = NULL;
+        }
+        deliver(aBuf, aCapacity, poster->data, poster->size);
+        bool received = aBuf && poster->data;
+        poster->taken = true;
+        poster->takerThread = aThread;
+        poster->takerTask = aTask;
+        poster->thread->getTaskQueue()->scheduleTask(poster->task, true);
+        aThread->suspendTask(aTask, &lock, YuTaskGCStateBlocked);
+        return received;
     }
+
+    YuSemaphoreWaiter waiter = {aThread, aTask, aBuf, aCapacity, false, false, NULL};
+    if (lastWaiter) {
+        lastWaiter->next = &waiter;
+    } else {
+        waiters = &waiter;
+    }
+    lastWaiter = &waiter;
 
     aThread->suspendTask(aTask, &lock, YuTaskGCStateBlocked);
 
     lock.lock();
-    if (task == aTask) {
-        clear();
+    if (!waiter.served) {
+        YuSemaphoreWaiter* previous = NULL;
+        for (YuSemaphoreWaiter* each = waiters; each; previous = each, each = each->next) {
+            if (each == &waiter) {
+                if (previous) {
+                    previous->next = each->next;
+                } else {
+                    waiters = each->next;
+                }
+                if (lastWaiter == each) {
+                    lastWaiter = previous;
+                }
+                break;
+            }
+        }
     }
     lock.unlock();
-    return hadData;
+    return waiter.received;
 }
 
 void
 YuSemaphore::post(void* data, size_t sizeOfData, bool isCancel) {
+    YuThread* postingThread = yumiGetActiveThread();
     lock.lock();
-    if (!task && !isCancel && yumiGetActiveThread()->hasThreadLocalFlush()) {
+    if (!waiters && !isCancel && postingThread->hasThreadLocalFlush()) {
         lock.unlock();
-        yumiGetActiveThread()->flushThreadLocalCallback();
+        postingThread->flushThreadLocalCallback();
         lock.lock();
     }
-    if (!task && !isCancel) {
-        YuThread* postingThread = yumiGetActiveThread();
-        YuTask* postingTask = postingThread->getActiveTask();
-        thread = postingThread;
-        task = postingTask;
-        postingThread->suspendTask(postingTask, &lock, YuTaskGCStateBlocked);
-        lock.lock();
-        if (task == postingTask) {
-            clear();
-            lock.unlock();
-            return;
+
+    if (waiters) {
+        YuSemaphoreWaiter* waiter = waiters;
+        waiters = waiter->next;
+        if (!waiters) {
+            lastWaiter = NULL;
         }
-        if (postingTask->getCanceled()) {
-            YuThread* waitingThread = thread;
-            YuTask* waitingTask = task;
-            clear();
-            lock.unlock();
-            waitingThread->getTaskQueue()->scheduleTask(waitingTask, true);
-            return;
-        }
-    }
-
-    if (task && (capacity != sizeOfData || (data == NULL) != (sizeOfData == 0))) {
-        std::fprintf(stderr, "Semaphore payload mismatch: expected %zu bytes, supplied %zu bytes%s\n",
-            capacity, sizeOfData, (data == NULL) != (sizeOfData == 0) ? " (invalid sender buffer)" : "");
-        std::abort();
-    }
-
-    YuThread* waitingThread = thread;
-    YuTask* waitingTask = task;
-    if (buf && data) {
-        yumiBulkWriteBarrierFast(static_cast<char*>(buf), static_cast<char*>(data),
-            capacity, yumiGCObjectDescriptor(static_cast<char*>(buf)));
-        memcpy(buf, data, capacity);
-        *received = true;
-    }
-    clear();
-    lock.unlock();
-
-    if (waitingTask) {
+        deliver(waiter->buf, waiter->capacity, data, sizeOfData);
+        waiter->received = waiter->buf && data;
+        waiter->served = true;
+        YuThread* waitingThread = waiter->thread;
+        YuTask* waitingTask = waiter->task;
+        lock.unlock();
         waitingThread->getTaskQueue()->scheduleTask(waitingTask, true);
+        return;
+    }
+    if (isCancel) {
+        lock.unlock();
+        return;
+    }
+
+    YuTask* postingTask = postingThread->getActiveTask();
+    YuSemaphorePoster poster = {postingThread, postingTask, data, sizeOfData, false, NULL, NULL, NULL};
+    if (lastPoster) {
+        lastPoster->next = &poster;
+    } else {
+        posters = &poster;
+    }
+    lastPoster = &poster;
+
+    postingThread->suspendTask(postingTask, &lock, YuTaskGCStateBlocked);
+
+    lock.lock();
+    if (!poster.taken) {
+        YuSemaphorePoster* previous = NULL;
+        for (YuSemaphorePoster* each = posters; each; previous = each, each = each->next) {
+            if (each == &poster) {
+                if (previous) {
+                    previous->next = each->next;
+                } else {
+                    posters = each->next;
+                }
+                if (lastPoster == each) {
+                    lastPoster = previous;
+                }
+                break;
+            }
+        }
+    }
+    YuThread* takerThread = poster.takerThread;
+    YuTask* takerTask = poster.takerTask;
+    lock.unlock();
+    if (takerTask) {
+        takerThread->getTaskQueue()->scheduleTask(takerTask, true);
     }
 }

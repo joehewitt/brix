@@ -1,4 +1,5 @@
 ./array
+./bytes
 ./core
 ./error
 ./number
@@ -77,7 +78,7 @@ codepoints
 ────────────────────
 + to Byte[]
 
-Array'Byte(this, size)
+Array'Byte(this)
 
 ╌╌╌╌╌╌╌╌╌╌ is Indexable'Char ╌╌╌╌╌╌╌╌╌╌
 
@@ -125,10 +126,16 @@ this[normal]
 
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
+?! OutOfBoundsError("Range out of bounds ($out-index / $len)")
+    if (start as UInt) > (len as UInt) || end > len || end < start
 
-C:yumiStringSlice(this, normal.start, normal.end) as String
+C:yumiStringSlice(this, start, end) as String
 
 .. normal = range.forward()
+.. start = normal.start
+.. end = normal.end
+.. out-index = if end > 0 then end - 1 else end
+.. len = length
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -221,10 +228,16 @@ C:yumiStringRepeat(this, n)
 ────────────────────
 + this[index Index] = other String
 
+?! OutOfBoundsError("Index out of bounds ($index / $length)")
+    if (index as UInt) >= (length as UInt)
+
 this[... index] ++ other ++ this[index + 1 ...]
 
 ────────────────────
 + this[index Position] = other String
+
+?! OutOfBoundsError("Index out of bounds ($normal / $length)")
+    if (normal as UInt) >= (length as UInt)
 
 this[... normal] ++ other ++ this[normal + 1 ...]
 
@@ -233,10 +246,16 @@ this[... normal] ++ other ++ this[normal + 1 ...]
 ────────────────────
 + this[index Index] = other Char
 
+?! OutOfBoundsError("Index out of bounds ($index / $length)")
+    if (index as UInt) >= (length as UInt)
+
 this[... index] ++ "$other" ++ this[index + 1 ...]
 
 ────────────────────
 + this[index Position] = other Char
+
+?! OutOfBoundsError("Index out of bounds ($normal / $length)")
+    if (normal as UInt) >= (length as UInt)
 
 this[... normal] ++ "$other" ++ this[normal + 1 ...]
 
@@ -338,7 +357,7 @@ while i2 > i1 && is-whitespace(this[i2])
 
 . start Index = 0
 . dl = delim.size
-. buf = this as Byte[]
+. buf = byte-view(this)
 while true
     . index I32
     . found = C:yumiStringFindBytes(this, delim, false, start, &index)
@@ -371,7 +390,7 @@ for item in stream
     . current = buf
     if !current
         . started = Byte[(lead.size + delim-size + str-size) * 2]
-        started[0 .. < lead.size] = lead as Byte[]
+        started[0 .. < lead.size] = byte-view(lead)
         cursor = lead.size
         buf = started
     else if needed > current.size
@@ -379,9 +398,9 @@ for item in stream
         buf = current.resize(if grown < needed then needed else grown)
 
     . target = buf!
-    target[cursor .. < cursor + delim-size] = this as Byte[]
+    target[cursor .. < cursor + delim-size] = byte-view(this)
     cursor += delim-size
-    target[cursor .. < cursor + str-size] = str as Byte[]
+    target[cursor .. < cursor + str-size] = byte-view(str)
     cursor += str-size
 
 . lead = first

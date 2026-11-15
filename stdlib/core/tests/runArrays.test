@@ -3186,13 +3186,43 @@ Exception: No function "accept" accepts (ImmutableArray'I32'GCBacking); it is de
 :====
 # `as` reads an array as one of another item type of the same size.
 
-. bytes = Array'U8([104u8, 105u8])
-. chars = bytes as Array'Char
+. codes = Array'U32([104u32, 105u32])
+. chars = codes as Array'Char
 -- chars.length
+-- chars[1]
 
 :----
 
 2
+i
+;====
+
+:====
+# An array cast to one whose struct items are of another size panics, as the count it keeps would reach past its storage.
+
+do finally
+    -- recover()
+
+. points = Point[2]
+. triples = points as Array'Triple
+-- triples.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Triple is Struct
+
++ a I32
++ b I32
++ c I32
+
+:----
+
+An array of 8-byte items cannot be cast to one of 12-byte items
 ;====
 
 :====
@@ -3716,6 +3746,20 @@ Exception: Expected Size here, but this is U64, which becomes Size only when ask
 
 . text = "hello"
 . bytes = Array'Byte(text)
+bytes[0] = 74
+-- text
+-- bytes.slice-string()
+
+:----
+
+hello
+Jello
+;====
+:====
+# A text cast to bytes gives a copy of its bytes, so writing them leaves the text, a literal here, as it was.
+
+. text = "hello"
+. bytes = text as Byte[]
 bytes[0] = 74
 -- text
 -- bytes.slice-string()

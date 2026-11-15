@@ -78,6 +78,26 @@ Exception: Tracked getters are not supported; track concrete state instead
              ^^^^^^^^^^^
 ;====
 :====
+# A tracked read in a lazy property's value is reported, as the value is worked out once.
+
+. f = Foo()
+-- f.later
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ later := #a * 3
+
+:----
+%crash
+
+Exception: A lazy property is worked out once, when it is first read, so it cannot follow "#a"; write "=" in place of ":=" to keep it live, or read "a" without "#"
+<no file:9>
+    + later := #a * 3
+               ^^
+;====
+:====
 
 . foo = Foo()
 -- foo.foo
@@ -729,10 +749,10 @@ foo.x = 3
 :----
 %crash
 
-Exception: Expected Doer here, but this is function bar, and there is no conversion between them
+Exception: A dependency calls "bar" with nothing, but it takes "nd"; give "nd" a default, or name a method that takes nothing
 <no file:9>
     . bar < x
-    ^^^^^^^^^
+      ^^^
 ;====
 :====
 
@@ -2965,4 +2985,130 @@ value
 
 a picked false
 a picked true
+;====
+:====
+# A dependency on a getter is rejected, as a getter is never stored to run it.
+
+. foo = Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 1
++ twice => a * 2
+
+. shown < twice
+
+────────────────────
++ do shown
+
+-- "shown"
+
+:----
+%crash
+
+Exception: "twice" is a getter, which is never stored, so a dependency on it never runs; depend on the properties it reads
+<no file:10>
+    . shown < twice
+              ^^^^^
+;====
+:====
+# A method called with "#" before its name is rejected, as only a stored property is tracked.
+
+. c = Counter()
+. h = Holder()
+h.text = "${c.#size()}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ text = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 1
+
+────────────────────
++ size Int
+
+count
+
+:----
+%crash
+
+Exception: "size" is a method, so "#" before it tracks nothing; track the properties it reads instead
+<no file:4>
+    h.text = "${c.#size()}"
+                ^
+;====
+:====
+# A rule that returns a value with "=" is rejected, as a rule gives none.
+
+. f = Foo()
+f.a = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ a = 0
+
+────────────────────
+whenever #a
+
+= 5
+
+:----
+%crash
+
+Exception: A rule gives no value, so its body cannot return one with "="; end it early with "= alone"
+<no file:13>
+    = 5
+    ^^^
+;====
+:====
+# A tracked read of a struct's field is rejected, as a struct's values are copied.
+
+. h = Holder()
+-- h.sum
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ p = Point(1, 2)
++ sum = p.#x + 1
+
+:----
+%crash
+
+Exception: "#x" reads a field of Point, whose values are copied, so it cannot be tracked; track a property of a class
+<no file:15>
+    + sum = p.#x + 1
+            ^^^^
+;====
+:====
+# A tracked read of "this" is rejected, as only a property is tracked.
+
+. c = Counter()
+-- c.mirror
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 1
++ mirror = "${#this}"
+
+:----
+%crash
+
+Exception: "#this" tracks nothing, as only a property is tracked; track the properties the value reads, as in "#count"
+<no file:9>
+    + mirror = "${#this}"
+                  ^^^^^
 ;====

@@ -2819,6 +2819,15 @@ match tree.nodes[group]
         0
 
 ────────────────────
+_ holds-latest Bool
+    - instance InstanceId
+    - syntax SyntaxId
+
+` Whether a local is the hidden one that holds the tracker of the latest item of a stream,
+` declared at the `##` that reads it.
+program.modules[instances.rows[instance].module].tree.nodes[syntax] is .node-latest-expression
+
+────────────────────
 _ do lay-environment LayoutId
     - instance InstanceId
     - bound Binding
@@ -2832,7 +2841,8 @@ _ do lay-environment LayoutId
 ` A lazy local is followed by the byte that says whether it has its value, unless it is held
 ` as an eager local is (`settle-held`), and one nothing typed reads holds nothing. So does a list of subscribers no tracked read typed, as where the
 ` only reads are in content an outlet mounts where it is given none, which the function given
-` a builder leaves unbuilt. One that holds anything else, or a value with no layout, is
+` a builder leaves unbuilt, and so does the tracker of a `##` nothing typed, as in the value of a
+` lazy local nothing reads. One that holds anything else, or a value with no layout, is
 ` not built yet. A captured local a loop declares is kept in the environment of the loop's
 ` turn, not here.
 ` The environment of a function that yields holds the step it has reached after the link,
@@ -2869,7 +2879,8 @@ for offset in 0 .. < bound.slots.count
     if slot-homes[slot] != scope || !own
         continue
     . unread = row.kind == .slot-lazy && type == no-type
-    . empty = (stepped || row.kind == .slot-subscribers) && type == no-type && !unread
+    . latest = row.kind == .slot-local && holds-latest(instance, row.syntax)
+    . empty = (stepped || row.kind == .slot-subscribers || latest) && type == no-type && !unread
     if (type == no-type && !unread && !empty) || type == invalid-type
         = unbuilt-environment
     . layout = if unread then u8-layout else if empty then void-layout else layouts.values[type]
@@ -4557,8 +4568,8 @@ for body in facts.region-bodies
 _ do task-name String
     - instance InstanceId
 
-` The name of the function of a spawned task's body: `Spin` where it runs in parallel, and
-` `Fork` otherwise.
+` The name of the function of a spawned task's body: `Thread` where it runs on a thread of its
+` own, and `Fork` otherwise.
 . row = instances.rows[instance]
 . owner-module = program.modules[row.module]
 do match? owner-module.decls[row.decl]
@@ -4566,7 +4577,7 @@ do match? owner-module.decls[row.decl]
         do match? owner-module.tree.nodes[fn.syntax]
             | .node-do-task-block(task)
                 if task.is-parallel
-                    = "Spin"
+                    = "Thread"
 = "Fork"
 
 ────────────────────

@@ -1,5 +1,6 @@
 ./build
 ./layout
+/core/_bytes
 /core/table
 /data/source-sexp
 /data/source-tree
@@ -453,7 +454,10 @@ do match items
     | [.atom(_, word {it == "do-use" || it == "do-use?"}), resource, ...]
         put(if word == "do-use" then "do use " else "do use? ")
         expression(resource, 0, false)
-        hold(node, 2)
+        if items.length == 3 && store.is-form(items[2], "inline")
+            hold(items[2], 1)
+        else
+            hold(node, 2)
     | [.atom(_, "default"), ...]
         put("??")
         inline-body(node, items, 1)
@@ -713,12 +717,16 @@ if origin < items.length && store.is-form(items[origin], "worker:")
     put(")")
     origin += 1
 put(brix-do-suffix(head))
+. attributed = origin < items.length && is-attribute(items[origin])
 while origin < items.length && is-attribute(items[origin])
     put(" ${store.text(items[origin])}")
     origin += 1
 if items.length == origin + 1 && store.is-form(items[origin], "inline")
-    put(" ")
-    expression(store.item(items[origin], 1), 0, true)
+    if attributed
+        hold(items[origin], 1)
+    else
+        put(" ")
+        expression(store.item(items[origin], 1), 0, true)
 else
     hold(node, origin)
 
@@ -2172,7 +2180,7 @@ match head
     .. is-move = head == ">>" || head == "<<" || head == "<-"
 .. is-additive = is-sum || head == "\\" || head == "*\\" || head == "*/"
     .. is-sum = head == "+" || head == "-" || head == "++" || head == "--"
-.. bytes = head as Byte[]
+.. bytes = byte-view(head)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-glued-operator String?
@@ -2189,7 +2197,7 @@ _ brix-glued-operator String?
 + do brix-is-name Bool
     - text String
 
-. bytes = text as Byte[]
+. bytes = byte-view(text)
 =? false if bytes.length == 0 || bytes[0] < 97 || bytes[0] > 122
 = all(bytes) • where each == 45 || (each >= 48 && each <= 57) || (each >= 97 && each <= 122)
 
@@ -2354,7 +2362,7 @@ _ brix-continues-name Bool
 
 bytes.length > 0 && (byte == 45 || byte == 46 || is-digit || is-lower)
 
-.. bytes = text as Byte[]
+.. bytes = byte-view(text)
 .. byte = bytes[0]
 .. is-digit = byte >= 48 && byte <= 57
 .. is-lower = byte >= 97 && byte <= 122

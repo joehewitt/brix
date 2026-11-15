@@ -7,6 +7,7 @@
 ./grammar-helpers
 ./operator
 ./row-range
+/core/_bytes
 /core/arena
 /core/array-builder
 /core/parsing
@@ -82,7 +83,7 @@ _ do brix-tape SexpTape ?! YumiSyntaxError
     - source String
     - scratch Arena
 
-. bytes = source as Byte[]
+. bytes = byte-view(source)
 . tape = sexp-tape(source, scratch, false)
     catch error SexpError
         ?! YumiSyntaxError(brix-place(bytes, error.offset), brix-message(error.message, error.hint))
@@ -670,6 +671,7 @@ if item < close && head(item) == .alias-head
 . inherits ImmutableArray'SyntaxId? = null
 if item < close && head(item) == .is-head
     inherits = class-bases(item + 2, tape.close-of(item))
+    signed-base(access, name, aliases, inherits)
     item = tape.after(item)
 . first-member = item
 . header-count Size = 0
@@ -705,6 +707,37 @@ while item < close
     - inherits
     - scratch-items(variants, header-filled)
 = placed(make-class-declaration(tree, loc, header, scratch-items(members, member-filled)), loc)
+
+────────────────────
+_ do signed-base ?! YumiSyntaxError
+    - access Access
+    - name Atom
+    - aliases ImmutableArray'Atom?
+    - bases ImmutableArray'SyntaxId
+
+` Rejects a unit declared from a signed amount of another, as in `(is -1foo)`, which rows can't
+` write either (`signed-unit-advice`).
+for base in bases
+    do match? tree.nodes[base]
+        | .node-type-numeric(numeric)
+            . amount = signed-amount(numeric.value)
+            if amount
+                . lead = if access == .public-access then "+" else "_"
+                . suffix String? = if aliases && aliases.length != 0 then aliases[0].text else null
+                ?! YumiSyntaxError(tree.nodes.loc[numeric.value], signed-unit-advice(lead, name.text, suffix, amount))
+
+────────────────────
+_ signed-amount String?
+    - id SyntaxId
+
+` A number in a unit written with a sign, as `-1foo` is, or none.
+match tree.nodes[id]
+    | .node-integer-syntax(row)
+        if row.unit && row.value.starts-with("-") then "${row.value}${row.unit.text}" else null
+    | .node-float-syntax(row)
+        if row.unit && row.value.starts-with("-") then "${row.value}${row.unit.text}" else null
+    ??
+        null
 
 ────────────────────
 _ do listed-names ImmutableArray'Atom
@@ -1637,9 +1670,9 @@ while position < chars.length
         high = class-char(chars, position + 1)
         position = class-char-end(chars, position + 1)
     . low-node = tree.append
-        - ASTInteger(loc, tree.store-string(character-literal-string(loc, low)), tree.atom("c"))
+        - ASTInteger(loc, tree.store-string(character-literal-string(loc, low)), tree.atom("(char)"))
     . high-node = tree.append
-        - ASTInteger(loc, tree.store-string(character-literal-string(loc, high)), tree.atom("c"))
+        - ASTInteger(loc, tree.store-string(character-literal-string(loc, high)), tree.atom("(char)"))
     . range = tree.append(ASTStreamCharRange(loc, low-node, high-node))
     result = if result == 0 then range else tree.append(ASTStreamOr(loc, result, range))
 = result
@@ -1833,11 +1866,39 @@ if item < close
 _ do body-start Index
     - first Index
     - close Index
+    - raises Bool = false
 
 . item = first
-while item < close && tape.is-atom(item) && (atom-is(item, ":get") || atom-is(item, ":set") || bytes[tape.start(item)] == 64)
+while item < close && precedes-body(item, raises)
     item = tape.after(item)
 = item
+
+────────────────────
+_ precedes-body Bool
+    - item Index
+    - raises Bool
+
+` Whether an item of a property's form comes before its rows: `:get`, `:set`, an annotation, or
+` where the property `raises`, an error it raises.
+|? tape.is-atom(item)
+    atom-is(item, ":get") || atom-is(item, ":set") || bytes[tape.start(item)] == 64
+??
+    raises && head(item) == .raises-head
+
+────────────────────
+_ do raised-types ImmutableArray'SyntaxId ?! YumiSyntaxError
+    - first Index
+    - end Index
+
+. errors = scratch-array'SyntaxId(tree, count-from(first, end))
+. filled Size = 0
+. item = first
+while item < end
+    if !tape.is-atom(item) && head(item) == .raises-head
+        errors[filled] = reduce-type(item + 2)
+        filled += 1
+    item = tape.after(item)
+= scratch-items(errors, filled)
 
 ────────────────────
 _ do annotation-atoms ImmutableArray'Atom
@@ -1864,11 +1925,12 @@ _ do getter SyntaxId ?! YumiSyntaxError
 . names-index = tape.after(access-index)
 . type-index = tape.after(names-index)
 . flags = tape.after(type-index)
-. rows-first = body-start(flags, close)
+. rows-first = body-start(flags, close, true)
 . returns SyntaxId? = null
 if !atom-is(type-index, "_")
     returns = reduce-type(type-index)
 . names = function-names(names-index, null)
+. errors = raised-types(flags, rows-first)
 . body = function-body(rows-first, close)
 = placed
     - make-getter-function
@@ -1880,6 +1942,7 @@ if !atom-is(type-index, "_")
         - annotation-atoms(flags, rows-first)
         - returns
         - body
+        - errors
     - located(begin, index)
 
 ────────────────────
@@ -3051,7 +3114,7 @@ do match? kind
             - ASTInteger
                 - loc
                 - tree.store-string(character-literal-string(loc, value[0]))
-                - tree.atom("c")
+                - tree.atom("(char)")
     |= .list-head
         =? tree.append(ASTList(located(begin, index), RowRange'SyntaxId())) if first >= close
         . items = expressions(first, close)
@@ -3093,7 +3156,7 @@ do match? kind
     |= .on-head
         = iterator(index, begin, true)
     |= .tilde-head
-        = tree.append(ASTStreamMatch(located(begin, index), stream-pattern(first)))
+        = stream-match-block(index, begin)
     |= .alternative-head
         ?! unsupported-error(index) if tape.after(first) != close
         = tree.append(ASTStructureMatch(located(begin, index), pattern(first)))
@@ -3172,7 +3235,7 @@ if lead == 39
         - ASTInteger
             - loc
             - tree.store-string(character-literal-string(loc, value[0]))
-            - tree.atom("c")
+            - tree.atom("(char)")
 =? tree.append(ASTIdentifier(loc, tree.atom-bytes(bytes, first + 1, last), true)) if lead == 35
 =? tree.append(ASTRefIdentifier(loc, tree.atom-bytes(bytes, first + 1, last))) if lead == 38
 if lead == 46

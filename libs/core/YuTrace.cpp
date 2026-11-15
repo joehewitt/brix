@@ -319,7 +319,7 @@ yumiPrintTraceTask(
     if (taskFlags & YUMI_TASK_FLAG_WORKER) {
         fprintf(stderr, " (worker)");
     } else if (taskFlags & YUMI_TASK_FLAG_SPIN) {
-        fprintf(stderr, " (spin)");
+        fprintf(stderr, " (thread)");
     }
     if (parentTaskId) {
         fprintf(stderr, ", spawned by task %u", parentTaskId);

@@ -1,3 +1,4 @@
+/core/_bytes
 /os/file
 /os/path
 /stream/sort
@@ -59,7 +60,7 @@ parts += "target $target-name"
 parts += "root $c-root"
 for key in sort(headers.keys)
     . records = headers[key]!
-    parts += "header $key ${(records as Byte[]).length}"
+    parts += "header $key ${records.size}"
     parts += records
 write-file-atomically(path, "${"\n".join(parts)}\n")
 
@@ -71,7 +72,7 @@ write-file-atomically(path, "${"\n".join(parts)}\n")
 . text = catch? read-file-text(path)
 ?! Error("Unable to read the C header snapshot $path")
     if !text
-. reader = SnapshotReader(text)
+. reader = SnapshotReader(byte-view(text))
 . target = reader.field("target") if reader.line() == snapshot-format
 . root = reader.field("root")
 ?! Error("$path is not a C header snapshot")

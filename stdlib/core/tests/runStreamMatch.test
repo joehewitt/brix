@@ -1251,6 +1251,105 @@ foo
 a_, bob_, fred_, tom_
 ;====
 :====
+# A stream pattern reads its items in a source; one written on a stream a subscription is given is an error.
+
+. events Int<>
+. pairs = ~ a . b . on events
+    a + b
+
+:----
+%compile-error
+
+Exception: A stream pattern matches items it reads with "in", not items a subscription with "on" is given; write "in" in place of "on"
+<no file:3>
+    . pairs = ~ a . b . on events
+              ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# The local rules of a match cannot call one another in a cycle, which those of a rule a module declares can.
+
+-- match "aaaa"
+    ~ n \even
+        n
+    ?? 0
+
+    .. even Int ~
+        ~ "a" n \odd
+            n + 1
+        ~ ""
+            0
+
+    .. odd Int ~
+        ~ "a" n \even
+            n + 1
+
+:----
+%compile-error
+
+Exception: The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can
+<no file:14>
+            ~ "a" n \even
+                    ^^^^^
+;====
+:====
+# No capture is named it, which names what an arm matched.
+
+-- match "ab"
+    ~ it "a" "b"
+        it
+
+:----
+%compile-error
+
+Exception: A capture cannot be named "it", which names what the arm matched; choose another name
+<no file:3>
+        ~ it "a" "b"
+          ^^
+;====
+:====
+# A rule that calls itself before it reads anything, directly or through a rule it calls first, is an error.
+
+-- match "1+1"
+    ~ \sum
+    ?? "none"
+
+    .. sum String ~
+        ~ \term "+" "1"
+        ~ "1"
+
+    .. term String ~
+        ~ " "* \sum
+
+:----
+%compile-error
+
+Exception: "sum" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with "*"
+<no file:11>
+            ~ " "* \sum
+                   ^^^^
+;====
+:====
+# A rule a module declares that calls itself before it reads anything is an error.
+
+-- match "1+1"
+    ~ \sum
+    ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ sum ~ Char String
+
+~ \sum "+" "1"
+~ "1"
+
+:----
+%compile-error
+
+Exception: "sum" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with "*"
+<no file:9>
+    ~ \sum "+" "1"
+      ^^^^
+;====
+:====
 
 -- match "http://me:pw@foo.com:42"
     ~ "http://" auth Auth? ho Host
@@ -2138,7 +2237,7 @@ Pattern functions as normal functions
 :----
 %crash
 
-Exception: Unable to call function foo
+Exception: "foo" is a function, not a rule; call it outside the pattern
 <no file:2>
     -- ~ \foo = "foo"
          ^^^^
@@ -2773,6 +2872,23 @@ Object streams
 three
 ;====
 :====
+# A capture over items that aren't characters is read only for its length or an item.
+
+. numbers [Int] = [1, 2, 3]
+-- match numbers
+    ~ . rest .*
+        "$rest"
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: A capture over items that aren't characters can only be read for its length or an item
+<no file:5>
+            "$rest"
+              ^^^^
+;====
+:====
 # Character classes need character or integer items.
 
 . words [String] = ["a"]
@@ -2788,6 +2904,58 @@ Exception: Character patterns can only match character or integer items
 <no file:4>
         ~ [a-z]
         ^^^^^^
+;====
+:====
+# Text and character classes test integer items against their code points.
+
+. bytes = Array'Byte("GET /x")
+-- match bytes
+    ~ "GET " rest .*
+        rest.length
+    ?? 0
+. points [Int] = [104, 105, 33]
+-- match points
+    ~ word [a-z]+ "!"
+        word.length
+    ?? 0
+
+:----
+
+2
+2
+;====
+:====
+# Characters in a pattern over bytes are ASCII.
+
+-- match Array'Byte("é")
+    ~ "é"
+        "found"
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Characters in a pattern over bytes must be ASCII; match other bytes by number
+<no file:3>
+        ~ "é"
+          ^^^
+;====
+:====
+# Text needs character or integer items.
+
+. words [String] = ["-o", "a"]
+-- match words
+    ~ "-o" .
+        "flag"
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Text in a pattern can only match character or integer items
+<no file:4>
+        ~ "-o" .
+          ^^^^
 ;====
 :====
 
@@ -5145,6 +5313,37 @@ for item in items
 ab
 ;====
 :====
+# A pipe or a loop over a pattern that ends in an optional part and runs no expression gives the text each match read.
+
+-- List("ab cd" ~> [a-z]+ " "?)
+for w in ~ [a-z]+ " "? in "ab cd"
+    -- "<$w>"
+
+:----
+
+ab , cd
+<ab >
+<cd>
+;====
+:====
+# A pipe over a pattern whose matches give an optional value is an error.
+
+-- List("ab cd" ~> \word)
+
+━━━━━━━━━━━━━━━━━━━━
++ word ~ Char
+
+~ [a-z]+ " "?
+
+:----
+%compile-error
+
+Exception: Stream pattern pipeline can't give an optional value; add an action that gives one
+<no file:2>
+    -- List("ab cd" ~> \word)
+                   ^^^^^^^^^
+;====
+:====
 
 -- List("abc") ~> ""
 
@@ -5155,6 +5354,19 @@ Exception: Stream pattern pipeline must consume input
 <no file:2>
     -- List("abc") ~> ""
                   ^^^^^^
+;====
+:====
+# A pipe over a pattern that only looks ahead is an error, as it never reads.
+
+-- List("ab" ~> &"a")
+
+:----
+%crash
+
+Exception: Stream pattern pipeline must consume input
+<no file:2>
+    -- List("ab" ~> &"a")
+                ^^^^^^^^
 ;====
 :====
 
@@ -5171,6 +5383,48 @@ Exception: Stream pattern pipeline must consume input
 %crash
 
 started
+;====
+:====
+# A loop over the matches of a pattern ends where the stream has no more, and panics where a match did not move the stream on. A pattern that can match nothing is an error, as in a pipe.
+
+words("xy zz")
+words("xy zz!")
+
+━━━━━━━━━━━━━━━━━━━━
++ do words
+    - text String
+
+. found = ""
+do finally
+    -- found
+    --? recover()
+for w in ~ \word in text
+    found += "[$w]"
+
+━━━━━━━━━━━━━━━━━━━━
++ word ~ Char String
+
+~ [a-z]* " "?
+    it
+
+:----
+
+[xy ][zz]
+[xy ][zz]
+Stream pattern loop made no input progress
+;====
+:====
+
+for w in ~ "a"* in "aab"
+    -- w
+
+:----
+%compile-error
+
+Exception: Stream pattern loop must consume input
+<no file:2>
+    for w in ~ "a"* in "aab"
+               ^^^^
 ;====
 
 :====
@@ -6888,6 +7142,47 @@ Exception: Unable to compile pattern action: Name not found
 <no file:22>
     ~ $pattern "!"
     ^^^^^^^^^^^^^
+;====
+:====
+# A match's local rule that captures a name and runs an action can be given to a rule as a pattern.
+
+-- match "[x]"
+    ~ \bracketed(~ \shout)
+    .. shout ~
+        ~ letter [a-z]
+            letter + "!"
+
+━━━━━━━━━━━━━━━━━━━━
++ bracketed ~ Char String
+    - inner PatternFunc'Char'String
+
+~ "[" value $inner "]"
+    value
+
+:----
+
+x!
+;====
+:====
+# A pattern given to a rule as an argument can't capture names.
+
+-- match "[x]"
+    ~ \bracketed(~ letter [a-z])
+
+━━━━━━━━━━━━━━━━━━━━
++ bracketed ~ Char String
+    - inner PatternFunc'Char'String
+
+~ "[" value $inner "]"
+    value
+
+:----
+%compile-error
+
+Exception: A pattern given as an argument can't capture names
+<no file:3>
+        ~ \bracketed(~ letter [a-z])
+                       ^^^^^^^^^^^^
 ;====
 :====
 
@@ -11781,7 +12076,7 @@ for word in "ab" ~> text [a-z]+ \nope
 :----
 %crash
 
-Exception: Unable to call function nope
+Exception: Rule "nope" not found
 <no file:2>
     for word in "ab" ~> text [a-z]+ \nope
                                     ^^^^^
@@ -12452,4 +12747,229 @@ text
 :----
 
 12.5
+;====
+:====
+# An action can't read a name that an alternative it may pass doesn't capture.
+
+-- match "bb"
+    ~ (x "a" | "b") "b"
+        "x $x"
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Capture x holds no value on some ways this arm matches; capture it in every alternative
+<no file:4>
+            "x $x"
+                ^
+;====
+:====
+# A name can't be captured twice on one way through a pattern.
+
+-- match "ab"
+    ~ x "a" x "b"
+        x
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Capture x is captured twice on one way through the pattern
+<no file:3>
+        ~ x "a" x "b"
+                ^^^^^
+;====
+:====
+# A name captured in alternatives holds one type.
+
+-- match "a1"
+    ~ (x "a" | x \digit) .
+        "x"
+    ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ digit ~ Char Int
+
+~ [0-9]
+    Int(it)
+
+:----
+%compile-error
+
+Exception: Capture x holds String in one alternative and I64 in another
+<no file:3>
+        ~ (x "a" | x \digit) .
+                   ^^^^^^^^
+;====
+:====
+# Alternatives under a capture give values of one type.
+
+-- match "a1"
+    ~ x ("a" | \digit) .
+        "x"
+    ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ digit ~ Char Int
+
+~ [0-9]
+    Int(it)
+
+:----
+%compile-error
+
+Exception: Alternatives give String and I64; give each a value of one type
+<no file:3>
+        ~ x ("a" | \digit) .
+             ^^^^^^^^^^^^
+;====
+:====
+# An arm with no pattern has no `it`.
+
+-- match "ab"
+    ~ "x"
+        "x"
+    ?? it.length
+
+:----
+%compile-error
+
+Exception: An arm with no pattern has no "it"; read the subject by its name
+<no file:5>
+        ?? it.length
+        ^^^^^^^^^^^^
+;====
+:====
+# A match's arms are all values or all patterns.
+
+-- match "ab"
+    | "ab"
+        "same"
+    ~ "a" .
+        "pattern"
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: This pattern has no stream to read; outside a rule, write it in a match whose arms are all ~ patterns
+<no file:5>
+        ~ "a" .
+        ^^^^^^
+;====
+:====
+# A rule can't be a method.
+
+-- Words().first("ab")
+
+━━━━━━━━━━━━━━━━━━━━
++ Words
+
+────────────────────
++ first String
+    - text String
+
+match text
+    ~ \word
+    ?? "none"
+
+────────────────────
++ word ~ Char String
+
+~ [a-z]+
+
+:----
+%compile-error
+
+Exception: A rule can't be a method; declare it at module level
+<no file:16>
+    + word ~ Char String
+    ^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A local rule takes no arguments.
+
+-- match "aaaaa"
+    ~ \run(5)
+    ?? "none"
+    .. run ~
+        ~ "a"+
+
+:----
+%compile-error
+
+Exception: A local rule takes no arguments or types; declare it at module level to give it some
+<no file:3>
+        ~ \run(5)
+          ^^^^^^^
+;====
+:====
+# A rule over another type of items says what it was asked to match.
+
+. numbers [Int] = [1, 2]
+-- match numbers
+    ~ \word
+    ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ word ~ Char String
+
+~ [a-z]+
+
+:----
+%compile-error
+
+Exception: No rule "word" matches I64 items with these arguments
+<no file:4>
+        ~ \word
+          ^^^^^
+;====
+:====
+# A rule called as a function says that it is a rule.
+
+-- word("ab")
+
+━━━━━━━━━━━━━━━━━━━━
++ word ~ Char String
+
+~ [a-z]+
+
+:----
+%compile-error
+
+Exception: "word" is a rule, which matches a stream; use it in a pattern, as in ~ \word
+<no file:2>
+    -- word("ab")
+       ^^^^^^^^^^
+;====
+:====
+# A match runs a pattern only over a value it can iterate.
+
+-- match 5
+    ~ .
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Can't convert to iterable
+<no file:3>
+        ~ .
+        ^^^
+;====
+:====
+# A type a pattern names must exist.
+
+-- match "ab"
+    ~ Nope
+    ?? "none"
+
+:----
+%compile-error
+
+Exception: Type "Nope" not found
+<no file:3>
+        ~ Nope
+          ^^^^
 ;====

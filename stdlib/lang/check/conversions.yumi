@@ -8,6 +8,7 @@
 ./type-relation
 ./type-signature
 ./type-store
+./type-text
 ./types
 ./typing-scratch
 /lang/ast/ast
@@ -232,6 +233,39 @@ _ unasked TypeDiagnosticKind
 .. interface-down = relation.kind == .relation-interface-down-cast
 
 ────────────────────
+_ do check-item-size
+    - syntax SyntaxId
+    - from TypeId
+    - to TypeId
+
+=? if !holds-items(from) || !holds-items(to)
+. from-item = class-arg(types, from, 0)
+. to-item = class-arg(types, to, 0)
+=? if from-item == to-item
+. from-size = known-size(from-item)
+. to-size = known-size(to-item)
+if from-size == 0 || to-size == 0
+    instances.mark-may-panic(frame.instance)
+else if from-size != to-size
+    . named = "${type-source(types, from)} cannot be cast to ${type-source(types, to)}"
+    . message = "$named; their items are $from-size and $to-size bytes, and a cast keeps the count of items"
+    frame.diagnose(syntax, .stated, program.store-atom(message), from, to)
+
+────────────────────
+_ holds-items Bool
+    - type TypeId
+
+types.array-decl.refers-to(ref.module, ref.decl) || types.immutable-array-decl.refers-to(ref.module, ref.decl)
+
+.. ref = class-ref(types, type)
+
+────────────────────
+_ known-size U32
+    - type TypeId
+
+(types.completion-of(type).bit-size + 7) / 8
+
+────────────────────
 + do demand-converter InstanceId
     - source TypeId
     - target TypeId
@@ -296,6 +330,8 @@ if unwraps-case(relation) && host && !tests
 if relation.kind == .relation-side-cast && types.completions[relation.to].intrinsic == .table-span
     instances.mark-may-panic(frame.instance)
 demand-witness(relation)
+if relation.kind == .relation-final-cast
+    check-item-size(syntax, relation.from, relation.to)
 . casts = relation.kind == .relation-final-cast || relation.kind == .relation-side-cast
 if casts && host && types.completions[relation.to].intrinsic == .bool
     callee = host.truth-callee(relation.from)
@@ -322,6 +358,24 @@ if runs-function && callee != no-instance && host && !tests
     facts.conversions[id].raise = settle-raise(callee, value)
     if reason == .reason-join
         agree-raise(id)
+if relation.kind == .relation-converter && callee != no-instance && converts-virtually(relation.from)
+    instances.mark-may-panic(frame.instance)
+
+────────────────────
+_ converts-virtually Bool
+    - from TypeId
+
+` Whether a converter of a value of this type is chosen by the class of the object, as a call
+` of a method is: the type is a class written in source that some class is derived from. Such
+` a conversion may panic whatever the converter named does, because the one chosen may.
+|? from == no-type || from == invalid-type
+    false
+|? completion.intrinsic != .class || completion.is-builtin
+    false
+??
+    types.has-subclasses(from)
+
+.. completion = types.completion-of(from)
 
 ────────────────────
 + do record-made

@@ -2,6 +2,7 @@
 ./crypto-error
 ./digest
 ./random
+/core/_bytes
 /openssl/bn.h
 
 + srp-size Size = 384
@@ -47,7 +48,7 @@ C:BN_nnmod(remainder, server-public, numbers.prime, numbers.context)
     if C:BN_is_zero(scrambler) == 1
 . generator-padded = numbers.padded(numbers.generator)
 . multiplier = numbers.hashed(joined-bytes([srp-prime as Byte[], generator-padded]))
-. identity = sha512("$username:$password")
+. identity = sha512(byte-view("$username:$password"))
 . password-exponent = numbers.hashed(joined-bytes([salt, identity]))
 . verifier = numbers.power(numbers.generator, password-exponent)
 . multiplied = numbers.fresh()
@@ -63,7 +64,7 @@ session-key = sha512(numbers.padded(numbers.power(base, exponent)))
 . generator-hash = sha512(srp-generator)
 for index in 0 .. < group-hash.size
     group-hash[index] = group-hash[index] /xor/ generator-hash[index]
-. transcript = [group-hash, sha512(username), salt, public-key, server-padded, session-key]
+. transcript = [group-hash, sha512(byte-view(username)), salt, public-key, server-padded, session-key]
 . proof = sha512(joined-bytes(transcript))
 expected-proof = sha512(joined-bytes([public-key, proof, session-key]))
 = proof

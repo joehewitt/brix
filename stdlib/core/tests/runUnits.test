@@ -685,3 +685,205 @@ distance as F64
 4000
 5000
 ;====
+:====
+# The distance units convert by their metric and imperial factors.
+
+/units/distance
+
+-- 1meters as Millimeters
+-- 1km as Meters
+-- 1µm as Nanometers
+-- 1miles as Meters
+-- 1inches as Millimeters
+
+:----
+
+1000
+1000
+1000
+1609.34
+25.4
+;====
+:====
+# An integer written with a unit that its number type cannot hold is rejected, as a plain one is.
+
++ Tk (tk) is U8
+
+-- 300tk
+
+:----
+%crash
+
+Exception: Integer literal 300 does not fit Tk
+<no file:4>
+    -- 300tk
+       ^^^^^
+;====
+:====
+# A symbol written after a number that names no unit is named in the error.
+
+-- 25%
+
+:----
+%crash
+
+Exception: Unit "%" not found
+<no file:2>
+    -- 25%
+         ^
+;====
+:====
+# A number with a fraction written in a unit that holds whole numbers is rejected.
+
++ M (m) is I32
+
+-- 3.7m
+
+:----
+%crash
+
+Exception: M holds whole numbers, as I32 does, so 3.7m cannot be written; write a whole number
+<no file:4>
+    -- 3.7m
+       ^^^^
+;====
+:====
+# A number written in the unit of a class that is no number and has no constructor is rejected.
+
++ Name (nm) is String
+
+-- 5nm
+
+:----
+%crash
+
+Exception: Name is no number and declares no constructor that takes one, so no number can be written in its unit; declare Name as a number type
+<no file:4>
+    -- 5nm
+       ^^^
+;====
+:====
+# A unit declared as a number of a unit that names nothing is reported at the declaration.
+
+-- 2bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar (bar) is 2zz
+
+:----
+%crash
+
+Exception: Unit "zz" not found
+<no file:5>
+    + Bar (bar) is 2zz
+                    ^^
+;====
+:====
+# A unit declared as zero of another is rejected, as no number of it would convert.
+
+-- 2bar as Foo as UnitString
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Foo (foo) is F64
++ Bar (bar) is 0foo
+
+:----
+%crash
+
+Exception: A unit cannot be declared as zero of another, which no number of it would convert from; write a number other than zero
+<no file:7>
+    + Bar (bar) is 0foo
+                   ^^^^
+;====
+:====
+# An equality with a side in a number type of the language is rejected.
+
+-- 2bar as F64
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Bar (bar) is F64
++ 1bar = 3f
+
+:----
+%crash
+
+Exception: An equality relates units a program declares, and F64 is a number type of the language; write each side in a unit the program declares
+<no file:7>
+    + 1bar = 3f
+    ^^^^^^^^^^^
+;====
+:====
+# A unit suffix a module declares twice is rejected.
+
+-- 2q
+
+━━━━━━━━━━━━━━━━━━━━
+
++ A (q) is F64
++ B (q) is I32
+
+:----
+%crash
+
+Exception: "q" already names A; give B a suffix of its own
+<no file:7>
+    + B (q) is I32
+               ^^^
+;====
+:====
+# A unit suffix that a class of an imported module has is rejected, as it would hide that class's.
+
+-- 'a'
+
+━━━━━━━━━━━━━━━━━━━━
+
++ C (c) is F64
+
+:----
+%crash
+
+Exception: "c" already names Char; give C a suffix of its own
+<no file:6>
+    + C (c) is F64
+               ^^^
+;====
+:====
+# Two equalities between the same units that disagree are rejected.
+
+-- 1bar as Foo as UnitString
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Foo (foo) is F64
++ Bar (bar) is 2foo
++ 1bar = 3foo
+
+:----
+%crash
+
+Exception: Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo; keep one of them
+<no file:8>
+    + 1bar = 3foo
+    ^^^^^^^^^^^^^
+;====
+:====
+# An equality that adds a number with no unit to one in a unit is rejected, as it is no ratio.
+
+-- 1bar as Foo as UnitString
+
+━━━━━━━━━━━━━━━━━━━━
+
++ Foo (foo) is F64
++ Bar (bar) is F64
++ 1bar = 2foo + 5
+
+:----
+%crash
+
+Exception: An equality relates two units by a ratio alone, so a number with no unit cannot be added to or taken from one; write the ratio as one number in the unit
+<no file:8>
+    + 1bar = 2foo + 5
+                    ^
+;====

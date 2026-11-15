@@ -380,8 +380,9 @@ expression on its right.
 | `(*-> items target)`{.brix} | Writes each item to `target`, and gives the target. |
 
 - **`each`.** In `*>`, `?>`, `?*>` and `*|>`, the right side is worked out for each item, which
-  it reads as `each`. After a stage, `each` is the item the stage gives. `each` outside a stage is
-  an error: `Name not found`.
+  it reads as `each`. After a stage, `each` is the item the stage gives. `each` where nothing gives
+  an item is an error: `Name "each" not found, as nothing here gives an item; "each" reads the item
+  of a stage, a loop, a callback or a trigger`.
 - **Lazy stages.** `*>`, `?>`, `?*>` and `*|>` make a stream and run nothing until it is read.
   Then each item passes through all the stages before the next item is read. A pipeline of these
   stages that nothing reads never runs.
@@ -394,6 +395,8 @@ expression on its right.
   Mixed operators nest from the left.
 - **One pass.** A pipeline kept in a local is a `Generator`, so it can be read once. Declare a list
   type to keep the items instead: `(let kept (list Int) (*> items (* each 2)))`{.brix}.
+- **Records.** `(~> text \record)`{.brix} is a stage that reads one match of a stream pattern
+  after another; see Stream patterns.
 
 ### Pipelines in rows of a block
 

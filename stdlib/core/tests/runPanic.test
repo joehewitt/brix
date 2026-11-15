@@ -459,6 +459,23 @@ Stack trace:
   2  __source__:yumi.main no file
 ;====
 :====
+# A core error made with no message has the text of its own class.
+
+-- Panic()
+-- OutOfBoundsError()
+-- TaskCancelationError()
+-- IOError()
+-- TimeoutError()
+
+:----
+
+Panic
+Out of bounds
+Task cancelled
+IO error
+Timed out
+;====
+:====
 # A raise under a condition that does not hold raises nothing.
 
 . x = 3
@@ -856,6 +873,47 @@ recovered inner
 7
 recovered at one
 233
+;====
+:====
+# A panic recovered by a cleanup of a function ends it with the zero of its result, and where the result has none, as an object has none, a panic says so in its place.
+
+-- maybe()
+outer()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ n = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer
+
+do finally
+    -- "outer recovered ${recover()}"
+-- make().n
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Box
+
+do finally
+    -- "recovered ${recover()}"
+?! Panic("no box")
+= Box()
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe Box?
+
+do finally
+    -- "recovered ${recover()}"
+?! Panic("no box")
+= Box()
+
+:----
+
+recovered no box
+unknown
+recovered no box
+outer recovered A function whose result has no zero value can't end by recovering a panic
 ;====
 :====
 # A panic raised in a cleanup takes the place of one raised before it, and the cleanups of the blocks around still run.
@@ -1369,4 +1427,17 @@ Stack trace:
   3  __source__:main no file:5:1
   4  __source__:init.__source__ no file
   5  __source__:yumi.main no file
+;====
+:====
+# recover() gives a panic only while a cleanup runs.
+
+-- recover()
+
+:----
+%compile-error
+
+Exception: recover() gives a panic only while a cleanup runs; call it in a "do finally" block
+<no file:2>
+    -- recover()
+       ^^^^^^^^^
 ;====

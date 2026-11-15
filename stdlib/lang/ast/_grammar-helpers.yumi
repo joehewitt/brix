@@ -1431,6 +1431,7 @@ MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), loc
     - annotations ImmutableArray'Atom
     - return-type SyntaxId?
     - body SyntaxId?
+    - errors ImmutableArray'SyntaxId = ImmutableArray'SyntaxId()
 
 ?! YumiSyntaxError(location, "@rollback is only supported on stream-pattern functions")
     if has-annotation(annotations, "rollback")
@@ -1447,7 +1448,7 @@ tree.append(node)
     - RowRange'SyntaxId()
     - RowRange'SyntaxId()
     - tree.syntax-or-invalid(return-type)
-    - RowRange'SyntaxId()
+    - tree.store-children(errors)
     - RowRange'SyntaxId()
     - RowRange'SyntaxId()
     - tree.syntax-or-invalid(imperative-body(tree, is-imperative, body))
@@ -1867,6 +1868,13 @@ id
             | .node-identifier(identifier)
                 identifier.name
 . checked = reject-unmarked-state-machine(tree, loc, right)
+if is-pattern
+    do match? tree.nodes[checked]
+        | .node-block(block)
+            if block.body.count > 1
+                . beside = tree.children[block.body.start + 1]
+                reject-syntax(tree, tree.nodes.loc[beside], beside-arms)
+.. beside-arms = "A local rule holds only its arms; declare a lazy local it reads below the action of an arm, or beside the match"
 . value = match tree.nodes[checked]
     | .node-block(block) { is-pattern }
         tree.children[block.body.start]

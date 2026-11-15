@@ -1,5 +1,6 @@
 ./diagnostics
 ./source
+/core/_bytes
 /core/table
 /data/sexp
 /data/source-sexp
@@ -24,7 +25,7 @@ _ parents [U32 = ImmutableTableRow'SourceNode]
     - roots
     - marks
 
-. place = BrixCursor(source.text)
+. place = BrixCursor(byte-view(source.text))
 for root in roots
     visit(store.node(root), place)
 
@@ -80,7 +81,7 @@ parents[node.id]
     - first ImmutableTableRow'SourceNode
     - next ImmutableTableRow'SourceNode
 
-. bytes = source.text as Byte[]
+. bytes = byte-view(source.text)
 . end = marks.end(first.id)
 . start = marks.start(next.id)
 =? false if start < end
@@ -91,7 +92,7 @@ parents[node.id]
     - node ImmutableTableRow'SourceNode
 
 . start = marks.start(node.id)
-. bytes = source.text as Byte[]
+. bytes = byte-view(source.text)
 . line-start = start
 while line-start > 0 && bytes[line-start - 1] != 10
     line-start -= 1
@@ -129,7 +130,7 @@ LintTextEdit(start, end, replacement, source.text[source.char-of(start) .. < sou
 _ do utf16-at Index
     - offset Index
 
-. bytes = source.text as Byte[]
+. bytes = byte-view(source.text)
 . units Index = 0
 for index in 0 .. < offset
     . byte = bytes[index]

@@ -24,12 +24,15 @@ types.rows[id].text(types)
     - id TypeId
 
 ` A type by the name of its class and the names of its arguments. An array on the collected
-` heap is named without its backing.
+` heap is named without its backing. A union whose cases are named and that no declaration names,
+` as a state machine's is, is named by its cases (`named-union-name`).
 . program = types.program
 if id == no-type || id == invalid-type
     = "?"
 . text = type-text(types, id)
 do match? types.rows[id]
+    | .type-named-union(row)
+        text = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
         text = class-name(program, row.module, row.decl)
         . count = row.args.count
@@ -38,6 +41,23 @@ do match? types.rows[id]
         for position in 0 .. < count
             text += "'" ++ type-short-name(types, types.child-type(row.args, position))
 = text
+
+━━━━━━━━━━━━━━━━━━━━
+_ do named-union-name String
+    - types Types
+    - cases RowRange'TypeId
+    - names RowRange'Atom
+    - machine Bool
+
+` A union whose cases are named by its cases, each with what it holds, as a state machine's is
+` written: `state machine (.closed | .open(String))`.
+. parts [String]
+for offset in 0 .. < cases.count
+    . payload = types.child-type(cases, offset)
+    . held = if payload == types.void-type then "" else "(${type-short-name(types, payload)})"
+    parts += ".${types.child-name(names, offset).text}$held"
+. list = " | ".join(parts)
+= if machine then "state machine ($list)" else "($list)"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do unanswered-text String
@@ -147,6 +167,8 @@ if id == no-type || id == invalid-type
 . completion = types.completion-of(id)
 . kind = completion.intrinsic
 do match? types.rows[id]
+    | .type-named-union(row)
+        = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
         if kind == .optional
             = "Optional:(${type-display(types, types.child-type(row.args, 0))})"
@@ -198,6 +220,8 @@ if id == no-type || id == invalid-type
 . settled = types.completions[id].completion == .completion-done
 . optional = settled && types.completion-of(id).intrinsic == .optional
 do match? types.rows[id]
+    | .type-named-union(row)
+        = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
         if optional
             = "${type-source(types, types.child-type(row.args, 0))}?"

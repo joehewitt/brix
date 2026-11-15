@@ -1674,8 +1674,12 @@ _ do declare-capture
     - id SyntaxId
 
 ` A name a stream pattern captures. A match keeps one slot for each name, which every place
-` that captures the name fills, as the reference's matchmaker keeps one.
+` that captures the name fills, as the reference's matchmaker keeps one. No capture is named
+` `it`, which an action reads for what its arm matched.
 . name = identifier-name(tree, id)
+if name && name.text == "it"
+    . message = "A capture cannot be named \"it\", which names what the arm matched; choose another name"
+    bindings.diagnostics.append(Diagnostic(module, id, .stated, program.store-atom(message)))
 . position = lookup-position(name) if name
 if position && position >= capture-floor && bindings.slots[name-slots[position]].kind == .slot-pattern
     . declares U32 = ResolutionFlag.resolution-declares

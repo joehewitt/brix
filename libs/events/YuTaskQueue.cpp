@@ -327,10 +327,28 @@ YuTaskQueue::removeActivity() {
 void
 YuTaskQueue::requestTermination() {
     std::vector<YuTaskQueue*> children;
-    std::vector<YuTask*> claimed;
 
     pthread_mutex_lock(&lock);
     children = childQueues;
+    pthread_mutex_unlock(&lock);
+
+    wakeLiveTasks(true);
+
+    for (YuTaskQueue* child : children) {
+        child->requestTermination();
+    }
+}
+
+void
+YuTaskQueue::cancelTasks() {
+    wakeLiveTasks(false);
+}
+
+void
+YuTaskQueue::wakeLiveTasks(bool terminating) {
+    std::vector<YuTask*> claimed;
+
+    pthread_mutex_lock(&lock);
     YuTask* hosted = hostedTask;
     pthread_mutex_unlock(&lock);
 
@@ -342,7 +360,11 @@ YuTaskQueue::requestTermination() {
                 continue;
             }
 
-            task->requestTermination();
+            if (terminating) {
+                task->requestTermination();
+            } else {
+                task->cancel();
+            }
 
             if (task != hosted && task->claimQueued()) {
                 claimed.push_back(task);
@@ -359,10 +381,6 @@ YuTaskQueue::requestTermination() {
     pthread_mutex_unlock(&lock);
     signalWaiters();
     wakeAllWorkers();
-
-    for (YuTaskQueue* child : children) {
-        child->requestTermination();
-    }
 }
 
 void

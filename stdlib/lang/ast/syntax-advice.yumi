@@ -1,3 +1,4 @@
+./error
 /core/parsing
 
 + reserved-words = ["in", "on", "and", "or", "do", "for", "while", "if", "else"]
@@ -41,6 +42,8 @@
     "Names are kebab-case; write \"${kebab(camel)}\", not \"$camel\""
 |? spaced
     "An operator needs a space on each side; write \"${spaced}\""
+|? stacked
+    "A part of a pattern takes one of ?, * or +, not \"$stacked\"; to repeat a repeated part, wrap it in parentheses first"
 |? ending == "(" || ending == "["
     "An expression ends at the end of its line, so this \"${ending!}\" is never closed; write it on one line, or give a call its arguments on indented \"- value\" lines below it"
 |? ending == "{"
@@ -49,6 +52,10 @@
     "An expression ends at the end of its line, so nothing follows this \"${ending}\"; write the whole expression on one line"
 |? line.indent == 0 && line.chars.length != 0 && !line.starts-declaration() && previous.starts-with("━")
     "A divider starts a declaration, so a statement cannot follow it; put module-level statements above the first divider"
+|? untyped
+    "An event names the type of what it carries, as in \"+ event ${untyped} String\""
+|? signed
+    signed
 |? line.starts-declaration() && previous.length != 0 && !previous.starts-with("━") && !previous.starts-with("─")
     "A declaration with a body needs a divider line above it: a thick divider (━) at module level, or a thin divider (─) for a member of a type"
 |? header
@@ -68,7 +75,52 @@
 .. spaced = line.unspaced-operator(column)
 .. previous = previous-code(source, spot.line)
 .. ending = line.dangling-end(column)
+.. stacked = line.stacked-repeat(column)
 .. header = undivided-header(source, spot.line)
+.. untyped = untyped-event(source, spot.line)
+.. signed = signed-unit(source, spot.line)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do signed-unit String?
+    - source String
+    - line U32
+
+` The advice for a unit a line declares from a signed amount of another, as in
+` "+ Bar (bar) is -1foo" (`signed-unit-advice`).
+. lines [String]
+for text in source.split("\n")
+    lines += text
+=? null if line as Index >= lines.length
+. words [String]
+for word in lines[line as Index].trim().split(" ")
+    words += word
+=? null if words.length != 5 || words[3] != "is"
+=? null if words[0] != "+" && words[0] != "_"
+=? null if !words[2].starts-with("(") || !words[2].ends-with(")")
+=? null if !words[4].starts-with("-") && !words[4].starts-with("(-")
+. suffix = words[2][1 .. < words[2].length - 1]
+. amount = ""
+for char in words[4]
+    if char != '(' && char != ')'
+        amount += "$char"
+= signed-unit-advice(words[0], words[1], suffix, amount)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do untyped-event String?
+    - source String
+    - line U32
+
+` The name of an event a line declares with no type, as in "+ event rang".
+. lines [String]
+for text in source.split("\n")
+    lines += text
+=? null if line as Index >= lines.length
+. words [String]
+for word in lines[line as Index].trim().split(" ")
+    words += word
+=? null if words.length != 3 || words[1] != "event"
+=? null if words[0] != "+" && words[0] != "_"
+= words[2]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do undivided-header String?
@@ -428,6 +480,22 @@ while end < chars.length && chars[end] == ' '
 .. left-word = word-ending(spot - 1)
 .. rest-start = spot + op.length
 .. right-word = word-from(rest-start)
+
+────────────────────
++ stacked-repeat String?
+    - spot Index
+
+` Two repeats written together on a pattern's part, ending at a spot, as in "a"+*.
+|? spot == 0 || !repeat(char(spot)) || !repeat(char(spot - 1)) || text(0, chars.length).find("~") == null
+    null
+??
+    "${char(spot - 1)}${char(spot)}"
+
+────────────────────
+_ repeat Bool
+    - c Char
+
+c == '?' || c == '*' || c == '+'
 
 ────────────────────
 + dangling-end String?

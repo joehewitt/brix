@@ -19,23 +19,31 @@ _ inline-places [InlinePlace]
     [param]
 |? head == "when" || head == "until" || head == "while"
     [clause, statement]
+|? head == "seq" || head == "chars" || head == "\\{}"
+    [stream]
 |? head == "exact" || head == "similar" || head == ":" || head == "{}" || head == "all" || head == "|"
-    [pattern]
+    [pattern, stream]
 |? head == "case" || head == "case=" || head == "case?" || head == "default"
     [arm, statement]
+|? head == "then" || head == "else-state"
+    [transition]
 |? head == "fn-type"
     [type, statement]
-|? head.starts-with("fn-") || head == "type" || head == "extend" || head == "import"
+|? head.starts-with("fn-") || head == "type" || head == "type-line" || head == "extend" || head == "extend-line" || head == "import" || head == "unit"
     [module, member]
-|? head == "prop"
+|? head == "prop" || head == "event" || head == "depends" || head == "content"
     [member]
-?? [statement, pattern, type]
+|? head == "when-rule" || head == "whenever-rule" || head == "subscribe-for" || head == "subscribe"
+    [member]
+?? [statement, pattern, type, stream]
 
 .. statement = InlinePlace("statement", "(main\n  ", "\n)")
 .. module = InlinePlace("module", "", "\n\n(main\n  (print 0)\n)")
 .. member = InlinePlace("member", "(type + T\n  ", "\n)")
 .. arm = InlinePlace("arm", "(main\n  (match s\n    ", "\n  )\n)")
+.. transition = InlinePlace("transition", "(main\n  (state s\n    ", "\n  )\n)")
 .. pattern = InlinePlace("pattern", "(main\n  (match s\n    (case ", " v)\n  )\n)")
+.. stream = InlinePlace("stream", "(main\n  (match s\n    (~ ", " v)\n  )\n)")
 .. type = InlinePlace("type", "(main\n  (let x ", " v)\n)")
 .. param = InlinePlace("param", "(fn-expr + f _\n  ", "\n  v\n)")
 .. clause = InlinePlace("clause", "(main\n  (for (in x xs ", ")\n    v\n  )\n)")
@@ -92,7 +100,11 @@ for line in rows.split("\n")
     do match place
         |= "arm"
             kept +=? indented(line, 4) if line-no > 1
+        |= "transition"
+            kept +=? indented(line, 4) if line-no > 1
         |= "pattern"
+            kept +=? indented(line, 6) if line-no == 2
+        |= "stream"
             kept +=? indented(line, 6) if line-no == 2
         |= "type"
             kept +=? unassigned(indented(line, 4)) if line-no == 1
@@ -112,7 +124,7 @@ while kept.length != 0 && !kept[kept.length - 1]
 _ unassigned String
     - line String
 
-if line.ends-with(" = v") then line.truncate(line.length - 4) else line
+if line.ends-with(" = v") then line[0 .. < line.length - 4] else line
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do indented String

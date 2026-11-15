@@ -169,7 +169,8 @@ _ Match is Tuple
 ` The pattern the walker emits. `failing` is the block a test that fails goes to, and
 ` `exact-class` says a class test there passes the class alone, no subclass of it. `testing` says
 ` the pattern only tests its subject, as an `is` does, and binds nothing; `declaring` that the
-` names it binds are locals of a declaration or of the header of a loop. `arm-it` is the slot `it`
+` names it binds are locals of a declaration or of the header of a loop, and `tested` is the
+` expression a test reads its subject from, or none. `arm-it` is the slot `it`
 ` names in the arm being emitted. `case-subject` is the subject of the match whose arms are
 ` emitted: `checks-row` says the type pass checked it as a row of a table, `checked-row` is its
 ` value, and `checked-made` the one among `made-rows` it is, or `U32.max`. `read-in-place` is the
@@ -178,6 +179,7 @@ _ Match is Tuple
 + failing IRBlockId = no-block
 + exact-class Bool = false
 + testing Bool = false
++ tested SyntaxId = 0
 + declaring Bool = false
 + arm-it SlotId = no-slot
 + read-in-place SyntaxId = 0
@@ -3481,6 +3483,7 @@ value = Typed(apart(value, subject, true), value.type)
 . jumps = fail-jumps
 . own-matching = matching
 matching = matching.testing = true
+matching = matching.tested = subject
 do match? tree.nodes[arm]
     | .node-type-transform(row)
         if row.pattern != 0
@@ -3549,6 +3552,7 @@ for arm in tree.region-arms(id)
         . jumps = fail-jumps
         . own-matching = matching
         matching = matching.testing = true
+        matching = matching.tested = subject
         do match? tree.nodes[arm]
             | .node-type-transform(row)
                 if row.pattern != 0
@@ -11611,7 +11615,8 @@ _ do enter-mark
     - node SyntaxId
     - via SyntaxId
 
-` Keeps a case as entered, as the reference expands it where a transition fires: the machine's
+` Keeps a case as entered, as the reference expands it where a transition fires: the case is
+` active first, so that what a store of the machine's value runs finds it so, then the machine's
 ` value is made of what the case is given, by the continuation `via` that led there or else the
 ` case itself, and kept, with what the case holds and the names it keeps; the case is active in
 ` a new generation, and projected so.
@@ -11624,11 +11629,11 @@ if position == null
 . holds = case-type(node) != types.void-type
 . payload = make-payload(activation, case-type(node), position)
 . value = make-union(activation, machining.fact!.union, position, payload)
+keep-active(held, true, activation)
 store-machine(value.operand, activation)
 if holds
     keep(held, "(payload)", payload.operand, activation)
 keep-names(held, activation, position)
-keep-active(held, true, activation)
 . generation = read-kept(held, "(generation)", activation)
 keep(held, "(generation)", add-one(generation.operand, activation), activation)
 project(node, true, payload.operand, activation)
@@ -14545,26 +14550,45 @@ _ do read-step Typed
     - done IRBlockId
 
 ` One pass of a loop whose header is a stream pattern, as the reference makes it: the stream
-` kept for the loop gives its view, and the pattern is matched from where the view starts,
-` as a rule's arms are, without reading the rest, asking the stream for more input where a
-` part reads past the end of its buffer. Where it passes, the stream commits where it ended, and the item is what it
-` gives; where it fails, the stream commits where it started, and the loop ends. The names
-` it captures stay bound for the body.
+` kept for the loop is asked whether it has more, and the loop ends where it has not; it
+` gives its view, and the pattern is matched from where the view starts, as a rule's arms
+` are, without reading the rest, asking the stream for more input where a part reads past
+` the end of its buffer. Where it passes, the stream commits where it ended, and the item is
+` what it gives; where it fails, the stream commits where it started, and the loop ends.
+` Where it passed without moving the stream on, it panics, as a pipe does. The names it
+` captures stay bound for the body.
 . nothing = make-operand(.operand-void, 0)
 . pattern = step-pattern(loop)
 . result = if pattern != 0 then facts.node-type(unit.reading, pattern) else no-type
 . made = stream-maker(loop)
 . viewed = if made != no-fact then next-call(made) else facts.first-call(unit.reading, loop)
 . commits = next-call(viewed)
-if result == no-type || result == invalid-type || commits == no-fact
+. extends = next-call(commits)
+. asks = next-call(extends)
+if result == no-type || result == invalid-type || asks == no-fact
     refuse(.refused-statement, loop)
     = Typed(nothing, no-type)
 . stream = state(slot + 1, loop)
 . stream-type = stream.type
+. more = call-protocol(loop, asks, stream.operand, stream-type, nothing)
+if more.type != types.bool-type
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+. reading = ir.reserve-block()
+branch(compare(loop, .compare-not-equal, more.operand, integer(.machine-u8, 0)), reading, done)
+ir.start-block(reading)
 . refills = made == no-fact || chunked
     .. chunked = same-ref(class-ref(types, stream-type), types.chunked-token-stream-decl)
-. run = view-stream(loop, stream.operand, stream-type, refills, viewed, next-call(commits))
-= attempt-arms(loop, pattern, result, run, false, commits, done, true)
+. run = view-stream(loop, stream.operand, stream-type, refills, viewed, extends)
+. value = attempt-arms(loop, pattern, result, run, false, commits, done, true)
+=? value if value.type == no-type
+. moved = ir.reserve-block()
+. stuck = ir.reserve-block()
+branch(compare(loop, .compare-greater, load-local(attempt-end, loop), run.start), moved, stuck)
+ir.start-block(stuck)
+raise-text(loop, "Stream pattern loop made no input progress")
+ir.start-block(moved)
+= value
 
 ────────────────────
 _ step-pattern SyntaxId
@@ -16839,9 +16863,18 @@ _ do raise
     - panic Operand
     - id SyntaxId
 
-` Makes a panic the task's active one and leaves through the landing pad. The panic is given
-` the place of the node it is raised at when it has no source of its own, then its stack
-` trace. One raised at no node, in a function the compiler makes, is given no place.
+` Makes a panic the task's active one and leaves through the landing pad.
+make-active(panic, id)
+jump(landing-block(0))
+
+────────────────────
+_ do make-active
+    - panic Operand
+    - id SyntaxId
+
+` Makes a panic the task's active one. The panic is given the place of the node it is raised
+` at when it has no source of its own, then its stack trace. One raised at no node, in a
+` function the compiler makes, is given no place.
 . report = instances.report
 . object = tables.layouts.objects[types.panic-type]
 if id != 0
@@ -16853,7 +16886,6 @@ pending += address(panic, trace.offset, managed-layout, id)
 call-runtime(.runtime-ensure-stack-trace, id, mark)
 pending += panic
 call-runtime(.runtime-panic-set, id, mark)
-jump(landing-block(0))
 
 ────────────────────
 _ do raise-text
@@ -16896,8 +16928,21 @@ _ do raise-message
     - message Operand
 
 ` Raises a panic with a message, at a node. Nothing after it in its block is run. A function
-` the collector never sees leaves that zone to make the panic. The panic's constructor is
-` given the message, and nothing for what else it takes.
+` the collector never sees leaves that zone to make the panic.
+. was-free = in-zone
+. panic = compiler-panic(id, message)
+=? if panic == make-operand(.operand-void, 0)
+raise(panic, id)
+in-zone = was-free
+
+────────────────────
+_ do compiler-panic Operand
+    - id SyntaxId
+    - message Operand
+
+` A panic the compiler makes with a message, at a node, or none where the program has no
+` panic to make. Its constructor is given the message, and nothing for what else it takes.
+` A function the collector never sees leaves that zone to make it.
 . nothing = make-operand(.operand-void, 0)
 . report = instances.report
 . object = tables.layouts.objects[types.panic-type]
@@ -16905,26 +16950,22 @@ _ do raise-message
 . made = report.panic
 if !is-ready || made == no-instance || tables.instance-functions[report.source] == no-function
     refuse(.refused-expression, id)
-    =
+    = nothing
 if tables.instance-functions[made] == no-function
     refuse(.refused-expression, id)
-    =
-. was-free = in-zone
+    = nothing
 if in-zone
     cross-zone(id, false)
     in-zone = false
 . signature = instances.signatures[made]
 if signature.args.count == 0 || instances.argument-type(made, 0) != types.string-type
     refuse(.refused-expression, id)
-    =
+    = nothing
 . mark = pending.length
 pending += message
 for position in 1 .. < signature.args.count
     pending += absent-argument(id, instances.argument-type(made, position)).operand
-. panic = nothing
-panic = call-instance(made, id, mark).operand
-raise(panic, id)
-in-zone = was-free
+= call-instance(made, id, mark).operand
 
 ────────────────────
 _ do extends Bool
@@ -28977,8 +29018,10 @@ do match tree.nodes[id]
     | .node-catch-expression(row)
         if row.catchers.count != 0 && is-caught(row.body)
             value = emit-handled(id, row.body, row.catchers).operand
-        else if row.catchers.count != 0 || retyped-body || !is-caught(row.body)
+        else if row.catchers.count != 0 || retyped-body
             refuse(.refused-expression, id)
+        else if !is-caught(row.body)
+            value = emit-expression(row.body).operand
         else
             value = emit-expression(row.body).operand
             settle-result(id, value)
@@ -28989,7 +29032,7 @@ do match tree.nodes[id]
         if is-caught(row.body)
             value = emit-catch-optional(id, row.body).operand
         else
-            refuse(.refused-expression, id)
+            value = emit-uncaught-optional(id, row.body).operand
     | .node-get-expression(row)
         if is-link(id) && !is-pinned(row.object)
             value = emit-chained(id).operand
@@ -29795,6 +29838,21 @@ if !carries-error(raw-type)
         = Typed(raw.operand, raw-type)
     = wrap(id, Typed(raw.operand, raw-type), type)
 = caught(id, Typed(raw.operand, raw-type), type)
+
+────────────────────
+_ do emit-uncaught-optional Typed
+    - id SyntaxId
+    - body SyntaxId
+
+` `catch? value` over what is no call and so raises nothing: the value as an optional.
+. type = facts.node-type(unit.reading, id)
+. raw = emit-expression(body)
+if carries-error(raw.type)
+    refuse(.refused-expression, id)
+    = raw
+if raw.type == type
+    = raw
+= wrap(id, raw, type)
 
 ────────────────────
 _ do catch-held Typed
@@ -31606,6 +31664,7 @@ _ do recast Typed
 if !tables.layouts.is-struct(held) || !tables.layouts.is-struct(layout)
     refuse(.refused-conversion, site)
     = Typed(value, no-type)
+check-item-size(site, row.from, row.to)
 . count = tables.layouts.rows[layout].fields.count
 if tables.layouts.rows[held].fields.count != count
     refuse(.refused-conversion, site)
@@ -31626,6 +31685,33 @@ while part != no-fact && position < count
 if part != no-fact || position != count
     refuse(.refused-conversion, site)
 = Typed(made, row.to)
+
+────────────────────
+_ do check-item-size
+    - site SyntaxId
+    - from TypeId
+    - to TypeId
+
+=? if !holds-items(from) || !holds-items(to)
+. from-item = viewed-item(from)
+. to-item = viewed-item(to)
+=? if from-item == to-item
+. from-size = tables.layouts.rows[layout-of(from-item, site)].size
+. to-size = tables.layouts.rows[layout-of(to-item, site)].size
+=? if from-size == to-size
+if !function.may-panic && !in-landing
+    refuse(.refused-conversion, site)
+    =
+raise-text(site, "An array of ${from-size}-byte items cannot be cast to one of ${to-size}-byte items")
+ir.start-block(ir.reserve-block())
+
+────────────────────
+_ holds-items Bool
+    - type TypeId
+
+same-ref(ref, types.array-decl) || same-ref(ref, types.immutable-array-decl)
+
+.. ref = class-ref(types, type)
 
 ────────────────────
 _ do is-leading Bool
@@ -35934,10 +36020,11 @@ _ do emit-is Typed
 ` pass found can not match is never matched, and the value is evaluated all the same. A case
 ` of a state machine a property of a class holds is tested by the object's flag of the case,
 ` but where the tag is compared (`tests-tag`); one of a machine a module's property is, written
-` on the property's name, by the flag alone, which the machine sets before its cases run.
+` on the property's name, by the flag alone, which the machine sets before its cases run. A value
+` of a machine's union read from elsewhere is tested as `within-case` tests it.
 . nothing = make-operand(.operand-void, 0)
 . member = machine-of-union(facts.node-type(unit.reading, lhs)) if tree.nodes[rhs] is .node-symbol
-if member && member.store == .store-member && !tests-tag()
+if member && member.store == .store-member && !tests-tag() && reads-machine(lhs, member)
     . flag = member-flag(lhs, rhs, member)
     = Typed(if negated then compare(id, .compare-equal, flag.operand, integer(.machine-u8, 0)) else flag.operand, types.bool-type)
 . value = Typed(nothing, no-type)
@@ -35960,6 +36047,7 @@ if !is-case && facts.plan-of(unit.reading, rhs) == .plan-never
 . own-matching = matching
 . named = bound.length
 matching = matching.testing = true
+matching = matching.tested = lhs
 do match tree.nodes[rhs]
     | .node-symbol
         match-case(rhs, 0, value, failed)
@@ -35981,6 +36069,77 @@ ir.start-block(failed)
 jump(joined)
 ir.start-block(joined)
 = Typed(phi(u8-layout, if negated then no else yes, same, if negated then yes else no, failed), types.bool-type)
+
+────────────────────
+_ do reads-machine Bool
+    - id SyntaxId
+    - machine MachineFact
+
+` Whether an expression reads a state machine itself, whose flags say which of its cases are
+` active, rather than a value of its union read from elsewhere, which holds the one case the
+` machine was in when it was read: the name alone of the module's property it is, the name of
+` the local it is kept in or that a named machine written in a case of another declares, or
+` the class's property it is, written after an object or alone.
+if id == 0
+    = false
+if machine.store == .store-global
+    = names-global(id, machine)
+if machine.store == .store-member
+    . property = decl-name(machine.module, machine.decl)
+    do match? tree.nodes[id]
+        | .node-get-expression(row)
+            = property && row.name == property && !is-link(id)
+        | .node-identifier(row)
+            = property && row.name == property && resolves-member(id)
+    = false
+if machine.store != .store-local && machine.store != .store-nested
+    = false
+. row = bindings.machine-slots(machine.module, machine.syntax)
+. binding = instances.rows[unit.reading].binding
+if !row || row.bound == no-slot || binding == no-binding || !(tree.nodes[id] is .node-identifier)
+    = false
+. resolution = bindings.resolution-of(binding, id)
+= resolution.kind == .resolve-slot && resolution.slot == row.bound
+
+────────────────────
+_ do within-cases [U32]
+    - machine MachineFact
+    - index U32
+
+` The numbers of a state machine's case and of each case written in it, at any depth.
+. machine-tree = program.modules[machine.module].tree
+. items = machine-tree.state-items(machine-tree.state-body(machine.syntax))
+. cases = machine-tree.machine-cases(items)
+. found [U32]
+if index >= cases.length as U32
+    found += index
+    = found
+for position in 0 .. < cases.length
+    if machine-tree.path-to(items, cases[position]).find(cases[index]) != null
+        found += position as U32
+= found
+
+────────────────────
+_ do pass-within
+    - site SyntaxId
+    - machine MachineFact
+    - value Operand
+    - index U32
+    - failed IRBlockId
+
+` Goes on where a value of a state machine's union read from elsewhere than the machine holds a
+` case or a case written in it, as a case test of the machine finds the case active then, and
+` leaves to `failed` where it holds another: the value holds the innermost case the machine was
+` in when it was read.
+. tag = load(value, 0, u8-layout, site)
+. passed = ir.reserve-block()
+for position in within-cases(machine, index)
+    . next = ir.reserve-block()
+    branch(compare(site, .compare-equal, tag, integer(.machine-u8, position)), passed, next)
+    ir.start-block(next)
+jump(failed)
+fail-jumps += 1
+ir.start-block(passed)
 
 ────────────────────
 _ names-global Bool
@@ -37926,6 +38085,9 @@ do match? tree.nodes[id]
             - false
             - cursor
             - failed
+        . item = facts.node-type(unit.reading, id)
+        if item != no-type && item != types.string-type
+            = StreamPart(ranged, Typed(stream-item(run, id, cursor), item))
         = bare-part(ranged)
     | .node-stream-predicate(row)
         = stream-predicate(run, id, row.predicate, cursor, failed)
@@ -43525,8 +43687,9 @@ _ do match-case Typed
 ` A pattern that names a case of a union, by the number the type pass recorded. An optional
 ` is tested for a value first. With a pattern written for what the case holds, that is
 ` matched and what it passes is passed; with none, the union is, but where `is` tests a state
-` machine's union it is the case's flag that is tested, as the reference tests it, unless the
-` tag is (`tests-tag`). One pattern in parentheses for a case that holds no tuple is the pattern
+` machine it is the case's flag that is tested, as the reference tests it, unless the tag is
+` (`tests-tag`), and where it tests a value of a machine's union read from elsewhere, the tag of
+` the case or of one written in it (`pass-within`). One pattern in parentheses for a case that holds no tuple is the pattern
 ` of what the case holds. A case its subject is no union of matches nothing. A case a refinement
 ` of the machine adds is tested as `refined-case` reads it, and matches nothing where no object
 ` reaches the test (`unreached-refined`).
@@ -43565,6 +43728,8 @@ if index >= tables.layouts.rows[layout].cases.count
 . machine = machine-of-union(union)
 if switching && value.operand == switched-subject && switched-value == index as U64
     switching = false
+else if machine && inner == 0 && matching.testing && !reads-machine(matching.tested, machine)
+    pass-within(pattern, machine, held.operand, index, failed)
 else if machine && inner == 0 && matching.testing && (machine.store != .store-member || !tests-tag())
     pass-or-fail(machine-flag(pattern, machine, index, failed).operand, failed)
 else
@@ -43952,7 +44117,9 @@ _ do emit-machine-path Typed
 ` where a case test reads them: those of a machine a property of a class holds from the object
 ` written before the property's name, evaluated once, or the one a name alone is read from; any
 ` other's as `machine-flag` reads them. Where the object is of a class whose composite merges the
-` machine with refinements, the composite's cases are listed (`append-composite`).
+` machine with refinements, the composite's cases are listed (`append-composite`). A value of the
+` union read from elsewhere than the machine lists the case it holds after those it is written in,
+` outermost first (`append-held`).
 . nothing = make-operand(.operand-void, 0)
 . list-type = facts.node-type(unit.reading, id)
 . union = facts.node-type(unit.reading, object)
@@ -43971,10 +44138,13 @@ if !machine || makes == no-fact || append == no-instance
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
 . member = machine.store == .store-member
+. live = reads-machine(object, machine)
 . base = nothing
 . owner = no-type
 . property = decl-name(machine.module, machine.decl)
-if member && property
+if !live
+    base = emit-expression(object).operand
+else if member && property
     do match? tree.nodes[object]
         | .node-get-expression(row)
             if row.name == property && !is-link(object)
@@ -44001,6 +44171,10 @@ for node in cases
     if order.find(node) == null
         order += node
 . done = ir.reserve-block()
+if !live
+    append-held(id, list.operand, append, base, machine, done)
+    ir.start-block(done)
+    = Typed(list.operand, list-type)
 if member
     for position in tables.machine-order
         . fact = facts.machines[position]
@@ -44048,12 +44222,49 @@ _ do append-active
 . next = ir.reserve-block()
 branch(compare(id, .compare-not-equal, flag, integer(.machine-u8, 0)), adding, next)
 ir.start-block(adding)
+append-name(id, list, append, name)
+jump(next)
+ir.start-block(next)
+
+────────────────────
+_ do append-name
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - name Atom
+
+` Appends the name of a case to a machine's path.
 . mark = pending.length
 pending += list
 pending += make-operand(.operand-constant, ir.add-string(name.text))
 do call-instance(append, id, mark)
-jump(next)
-ir.start-block(next)
+
+────────────────────
+_ do append-held
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - value Operand
+    - machine MachineFact
+    - done IRBlockId
+
+` Appends to a path read from a value of a state machine's union, read from elsewhere than the
+` machine, the names of the case it holds, the innermost the machine was in when it was read, and
+` of the cases that case is written in, outermost first, and leaves to `done`.
+. machine-tree = program.modules[machine.module].tree
+. items = machine-tree.state-items(machine-tree.state-body(machine.syntax))
+. cases = machine-tree.machine-cases(items)
+. tag = load(value, 0, u8-layout, id)
+for position in 0 .. < cases.length
+    . adding = ir.reserve-block()
+    . next = ir.reserve-block()
+    branch(compare(id, .compare-equal, tag, integer(.machine-u8, position as U64)), adding, next)
+    ir.start-block(adding)
+    for node in machine-tree.path-to(items, cases[position])
+        append-name(id, list, append, machine-tree.state-name(node)!)
+    jump(done)
+    ir.start-block(next)
+jump(done)
 
 ────────────────────
 _ do append-composite
@@ -44124,14 +44335,11 @@ _ do machine-default Typed
     - site SyntaxId
 
 ` What a property that holds a state machine holds until the machine starts: the first case of
-` its union, as the reference gives a union no value is written for. One whose first case holds
-` a value has no shape here.
+` its union, as the reference gives a union no value is written for, holding what a local of its
+` type holds with nothing written (`first-case`).
 . layout = layout-of(machine.union, site)
 if tables.layouts.is-union(layout)
-    do match? types.rows[machine.union]
-        | .type-named-union(row)
-            if types.child-type(row.cases, 0) == types.void-type
-                = make-union(site, machine.union, 0, Typed(integer(.machine-u8, 0), tables.layouts.case-field(layout, 0).type))
+    = first-case(machine.union, layout, site)
 refuse(.refused-expression, site)
 = Typed(make-operand(.operand-void, 0), no-type)
 
@@ -46352,7 +46560,8 @@ _ do emit-get Typed
 ` item of an array an index reads as TypeScript reads one, which has no shape in a link of an
 ` optional chain. An event named on a value is made a `Broadcastable`. The flag of a domain a
 ` `MarkupBatchFlush` reports is its bit of the domains the flush left pending. `path` of a
-` value of a state machine's union lists its active cases (`emit-machine-path`).
+` value of a state machine's union lists its active cases (`emit-machine-path`), and `unit` of
+` a number is the name its type is written with, read after the number is.
 if facts.plan-of(unit.reading, id) == .plan-machine-path
     = emit-machine-path(id, object)
 . escaped = escaped-event(id)
@@ -46393,6 +46602,9 @@ if planned == .plan-case-value
     = emit-case-value(id, object)
 if planned == .plan-forward
     = emit-forward(id, object, RowRange'SyntaxId(), name)
+if planned == .plan-unit-name
+    . held = emit-expression(object)
+    = Typed(unit-text(held.type), facts.node-type(unit.reading, id))
 if planned == .plan-object-uid || planned == .plan-property-subscribers
     = emit-object-member(id, object, planned)
 if facts.plan-of(unit.reading, id) == .plan-constant
@@ -50574,9 +50786,47 @@ else if function.kind == .task-main
     if program.is-batch
         fork-batch(tables.batch-finishes[function.place])
     call-runtime(.runtime-terminate-active-task, 0, pending.length)
+else if !stepping && !has-zero(returns-type, ir.returns)
+    raise-unrecoverable()
 if in-callback
     call-runtime(callback-exit(), 0, pending.length)
 return-panic()
+
+────────────────────
+_ do has-zero Bool
+    - type TypeId
+    - layout LayoutId
+
+` Whether a value with no bits set is a value of a type, as the zero a function returns where
+` a panic a cleanup recovered ends it. An object, a function or an interface holds an address,
+` so only an optional one has a zero, and so has a struct only where each field has. Text
+` with no bits set is the empty text.
+=? true if type == no-type || type == types.string-type || types.is-optional(type)
+. layouts = tables.layouts
+=? false if layout == managed-layout || layout == layouts.function-layout
+=? false if layout == layouts.interface-layout
+=? true if layout < first-struct-layout || layouts.rows[layout].cases.count != 0
+for index in 0 .. < layouts.rows[layout].fields.count
+    . field = layouts.field(layout, index)
+    =? false if !has-zero(field.type, field.layout)
+= true
+
+────────────────────
+_ do raise-unrecoverable
+
+` Where a panic leaves a function whose result has no zero: a cleanup that recovered it would
+` end the function with nothing to return, so a panic that says so leaves in its place.
+. active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
+. recovered = ir.reserve-block()
+. leaving = ir.reserve-block()
+branch(active, leaving, recovered)
+ir.start-block(recovered)
+. text = "A function whose result has no zero value can't end by recovering a panic"
+. panic = compiler-panic(0, make-operand(.operand-constant, ir.add-string(text)))
+if panic != make-operand(.operand-void, 0)
+    make-active(panic, 0)
+jump(leaving)
+ir.start-block(leaving)
 
 ────────────────────
 _ do report-at

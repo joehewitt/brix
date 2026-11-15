@@ -1044,6 +1044,29 @@ Exception: Ambiguous error transformer for IOError; only one transformer may mat
         ^^^^^^^^^^^^^^^^^^^
 ;====
 :====
+# A transformer names the error it replaces: a name alone, or a type that is no error, is an error.
+
+-- f()
+
+━━━━━━━━━━━━━━━━━━━━
++ AppError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do f Int ?! AppError
+
+?! AppError("one")
+    catch err
+= 1
+
+:----
+%compile-error
+
+Exception: Error transformer catch requires an error type
+<no file:11>
+        catch err
+        ^^^^^^^^^
+;====
+:====
 # Inferred errors cannot retroactively change the ABI of a recursive function.
 
 -- recurse(3)
@@ -1412,7 +1435,7 @@ error
 :----
 %crash
 
-Exception: Non-exhaustive match for Result; missing PermissionDenied
+Exception: This catch does not handle PermissionDenied; add a handler for it, or one for Error
 <no file:2>
     . config = catch read-config()
                ^^^^^^^^^^^^^^^^^^
@@ -1731,6 +1754,43 @@ propagated
 :----
 
 replacement propagated
+;====
+:====
+# An optional error becomes text by the converter of its object's class, which may make text of its own.
+
+. made Error? = AppError("x")
+. none Error? = made!.previous
+-- made
+-- "${none}"
+
+━━━━━━━━━━━━━━━━━━━━
++ AppError is Error
+
+────────────────────
++ to String
+
+"AppError: $message"
+
+:----
+
+AppError: x
+unknown
+;====
+:====
+# Prefix catch over a value that raises nothing gives the value, as it does over a call that cannot fail.
+
+. x = 3
+-- catch 5
+-- catch? 5
+-- catch x + 1
+-- catch? x + 1
+
+:----
+
+5
+5
+4
+4
 ;====
 :====
 # Attached handlers reject infallible heads with a direct Result diagnostic.
@@ -5517,4 +5577,34 @@ Exception: Attached catch handler type must be an Error subtype
 <no file:9>
         catch other
               ^^^^^
+;====
+:====
+# A getter can declare an error it raises, which a read of the property handles.
+
+-- Box(-1).size
+    catch error TypeError
+        -1
+-- Box(3).size
+    catch error TypeError
+        -1
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ raw Int
+
+────────────────────
++ This
+    - raw Int
+
+────────────────────
++ do get size Int ?! TypeError
+
+?! TypeError() if raw < 0
+= raw
+
+:----
+
+-1
+3
 ;====

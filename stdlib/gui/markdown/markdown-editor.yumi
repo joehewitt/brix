@@ -4,6 +4,7 @@
 ./markdown-source
 ./markdown-view
 /code
+/core/_bytes
 /core/style
 /graphics/canvas
 /graphics/color
@@ -671,8 +672,8 @@ _ do apply-diff
     - replacement String
     - coalescing Bool
 
-. a = old as Byte[]
-. b = replacement as Byte[]
+. a = byte-view(old)
+. b = byte-view(replacement)
 . prefix Size = 0
 while prefix < a.size && prefix < b.size && a[prefix] == b[prefix]
     prefix += 1
@@ -1395,7 +1396,7 @@ _ row-edge MarkdownPoint
 .. row = layout.line-at(point.offset)
 .. end = layout.line-end-offset(row)
 .. text = slot-text(point)
-.. bytes = text as Byte[]
+.. bytes = byte-view(text)
 .. trimmed = if row + 1 < layout.line-count && end > 0 && ends-in-space then end - 1 else end
 .. ends-in-space = end <= bytes.size && bytes[end - 1] == 32
 
@@ -1691,7 +1692,7 @@ _ do markdown-newline-count Size
     - text String
 
 . count Size = 0
-for byte in text as Byte[]
+for byte in byte-view(text)
     if byte == 10
         count += 1
 = count
@@ -1868,7 +1869,7 @@ _ do markdown-heading-marker Size
     - marker String
 
 =? 0 if marker.size < 1 || marker.size > 6
-for byte in marker as Byte[]
+for byte in byte-view(marker)
     =? 0 if byte != 35
 = marker.size
 
@@ -1876,7 +1877,7 @@ for byte in marker as Byte[]
 _ do markdown-is-ordered-marker Bool
     - marker String
 
-. bytes = marker as Byte[]
+. bytes = byte-view(marker)
 =? false if bytes.size < 2 || bytes[bytes.size - 1] != 46
 = all(0 .. < bytes.size - 1) • where bytes[each] >= 48 && bytes[each] <= 57
 
@@ -1887,7 +1888,7 @@ _ do markdown-header-cells [String]
 . trimmed = text.trim()
 . result [String]
 =? result if !trimmed.starts-with("|") || trimmed.size < 3 || unclosed
-.. unclosed = (trimmed as Byte[])[trimmed.size - 1] != 124
+.. unclosed = byte-view(trimmed)[trimmed.size - 1] != 124
 for part in markdown-slice(trimmed, 1, trimmed.size - 1).split("|")
     result += part.trim()
 = result
@@ -1897,7 +1898,7 @@ _ do markdown-line-indent String
     - code String
     - offset Size
 
-. bytes = code as Byte[]
+. bytes = byte-view(code)
 . start = min(offset, bytes.size)
 while start > 0 && bytes[start - 1] != 10
     start -= 1
@@ -1910,7 +1911,7 @@ while end < bytes.size && end < offset && (bytes[end] == 32 || bytes[end] == 9)
 _ do markdown-leading-spaces Size
     - text String
 
-. bytes = text as Byte[]
+. bytes = byte-view(text)
 . count Size = 0
 while count < bytes.size && bytes[count] == 32
     count += 1
@@ -1923,7 +1924,7 @@ _ markdown-next-char Size
 
 if offset >= bytes.size then bytes.size else min(offset + width, bytes.size)
 
-.. bytes = text as Byte[]
+.. bytes = byte-view(text)
 .. lead = bytes[offset]
 .. width = if lead >= 0xF0 then 4 else if lead >= 0xE0 then 3 else if lead >= 0xC0 then 2 else 1
 
@@ -1932,7 +1933,7 @@ _ do markdown-previous-char Size
     - text String
     - offset Size
 
-. bytes = text as Byte[]
+. bytes = byte-view(text)
 . at = min(offset, bytes.size)
 =? 0 if at == 0
 at -= 1
@@ -1945,7 +1946,7 @@ _ do markdown-word-left Size
     - text String
     - offset Size
 
-. bytes = text as Byte[]
+. bytes = byte-view(text)
 . at = min(offset, bytes.size)
 while at > 0 && markdown-byte-class(bytes[at - 1]) == 0
     at -= 1
@@ -1960,7 +1961,7 @@ _ do markdown-word-right Size
     - text String
     - offset Size
 
-. bytes = text as Byte[]
+. bytes = byte-view(text)
 . at = offset
 while at < bytes.size && markdown-byte-class(bytes[at]) == 0
     at += 1

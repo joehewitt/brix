@@ -701,8 +701,8 @@ do finally
             .. names = annotations ?? ImmutableArray'Atom()
 
 .. getter-block SyntaxId ~
-    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? annotations \annotation-names? / body \function-block-body-tail
-        make-getter-function(tree, location, acc, names, !!imperative, anns, t, body)
+    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? errors \function-error-declaration* annotations \annotation-names? / body \function-block-body-tail
+        make-getter-function(tree, location, acc, names, !!imperative, anns, t, body, errors)
             .. anns = annotations ?? ImmutableArray'Atom()
 
 .. when-rule-block SyntaxId ~
@@ -1646,7 +1646,7 @@ do finally
                     tree.append(ASTInteger(last[0], tree.store-string(last[1]), unit))
                 ??
                     tree.append(ASTInteger(first[0], tree.store-string(first[1]), unit))
-            .. unit = tree.atom("c")
+            .. unit = tree.atom("(char)")
 
 .. stream-range-value (MatchLocation, String) ~
     ~ text \stream-range-string
@@ -1659,7 +1659,7 @@ do finally
 .. stream-range-char Char ~
     ~ "\\u" digits \hex-digit{4}
         Hex(digits) as Char
-    ~ c (!"]" .)
+    ~ c (!("]" | "\n") .)
         c[0]
 
 .. stream-raw-string String ~
@@ -2968,7 +2968,7 @@ do finally
 
 .. character-literal SyntaxId ~
     ~ "'" c \character-literal-char "'" value \character-literal-value(c)
-        tree.append(ASTInteger(location, tree.store-string(value), tree.atom("c")))
+        tree.append(ASTInteger(location, tree.store-string(value), tree.atom("(char)")))
 
 .. character-literal-char Char ~
     ~ \string-escape-sequence

@@ -175,6 +175,7 @@ extern "C" YUMI_GC_POLLING void yumiLockMutex(YuTaskMutex* mutex);
 extern "C" void yumiUnlockMutex(YuTaskMutex* mutex);
 
 extern "C" YuTaskQueue* yumiNewWorker(int threadCount);
+extern "C" YuTaskQueue* yumiActiveTaskQueue();
 extern "C" YUMI_GC_LEAF int yumiUsableCoreCount();
 extern "C" YUMI_GC_POLLING int yumiClaimLazyGlobal(uint8_t* state);
 extern "C" void yumiReleaseLazyGlobal(uint8_t* state);

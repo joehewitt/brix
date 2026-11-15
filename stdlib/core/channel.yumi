@@ -224,6 +224,7 @@ else
 + closed := OneShotChannel()
 
 _ subscriptions [Subscribable'Message]
+_ mutex = Mutex()
 
 ────────────────────
 + This
@@ -236,23 +237,22 @@ _ subscriptions [Subscribable'Message]
 + do subscribe
     - subscriber Subscriber'Message
 
-?! Panic("Illegal to subscribe while closed")
-    if is-closed
-
-subscriptions += Subscription(subscriber)
+subscribe(Subscription(subscriber))
 
 ────────────────────
 + do unsubscribe
     - subscriber Subscriber'Message
 
-//this:channel.subscribe -> $?subscriber
+//this:channel.unsubscribe -> $?subscriber
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] == subscriber
         remove-subscription(index)
         =
     index += 1
+mutex.unlock()
 
 ────────────────────
 + do subscribe
@@ -261,18 +261,22 @@ while index < subscriptions.length
 ?! Panic("Illegal to subscribe while closed")
     if is-closed
 
-subscriptions += subscriber
+mutex.lock()
+subscriptions = subscriptions ++ [subscriber]
+mutex.unlock()
 
 ────────────────────
 + do unsubscribe
     - subscriber Subscribable'Message
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] as Pointer == subscriber as Pointer
         remove-subscription(index)
         =
     index += 1
+mutex.unlock()
 
 ╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
 
@@ -313,17 +317,19 @@ for sub in subscriptions
 ────────────────────
 _ do finish-subscriptions
 
-. index = subscriptions.length
+. finishing = subscriptions
+. index = finishing.length
 while index
     index -= 1
-    subscriptions[index].finish(this)
+    finishing[index].finish(this)
 
 ────────────────────
 _ do remove-subscription
     - index Index
 
 . sub = subscriptions[index]
--= subscriptions[index]
+subscriptions = subscriptions[... index] ++ subscriptions[index + 1 ...]
+mutex.unlock()
 sub.unsubscribe()
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -338,6 +344,7 @@ sub.unsubscribe()
 
 _ subscriptions [Subscribable'Message]
 _ buffer = IOBuffer'Message()
+_ mutex = Mutex()
 
 ╌╌╌╌╌╌╌╌╌╌ is Readable'Message ╌╌╌╌╌╌╌╌╌╌
 
@@ -356,23 +363,20 @@ if buffer.length
 + do subscribe
     - subscriber Subscriber'Message
 
-?! Panic("Illegal to subscribe while closed")
-    if is-closed
-
-subscriptions += Subscription(subscriber)
-if buffer.length
-    flush()
+subscribe(Subscription(subscriber))
 
 ────────────────────
 + do unsubscribe
     - subscriber Subscriber'Message
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] == subscriber
         remove-subscription(index)
         =
     index += 1
+mutex.unlock()
 
 ────────────────────
 + do subscribe
@@ -381,7 +385,9 @@ while index < subscriptions.length
 ?! Panic("Illegal to subscribe while closed")
     if is-closed
 
-subscriptions += subscriber
+mutex.lock()
+subscriptions = subscriptions ++ [subscriber]
+mutex.unlock()
 if buffer.length
     flush()
 
@@ -389,12 +395,14 @@ if buffer.length
 + do unsubscribe
     - subscriber Subscribable'Message
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] as Pointer == subscriber as Pointer
         remove-subscription(index)
         =
     index += 1
+mutex.unlock()
 
 ╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
 
@@ -436,17 +444,19 @@ else
 ────────────────────
 _ do finish-subscriptions
 
-. index = subscriptions.length
+. finishing = subscriptions
+. index = finishing.length
 while index
     index -= 1
-    subscriptions[index].finish(this)
+    finishing[index].finish(this)
 
 ────────────────────
 _ do remove-subscription
     - index Index
 
 . sub = subscriptions[index]
--= subscriptions[index]
+subscriptions = subscriptions[... index] ++ subscriptions[index + 1 ...]
+mutex.unlock()
 sub.unsubscribe()
 
 ────────────────────
@@ -466,6 +476,7 @@ while buffer.length
 
 _ usable Usable'Used
 _ subscriptions [Subscribable'Message]
+_ mutex = Mutex()
 
 ────────────────────
 + This
@@ -483,6 +494,7 @@ subscribe(Subscription(subscriber))
 + do unsubscribe
     - subscriber Subscriber'Message
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] == subscriber
@@ -491,6 +503,7 @@ while index < subscriptions.length
             usable.end-using()
         =
     index += 1
+mutex.unlock()
 
 ────────────────────
 + do subscribe
@@ -499,9 +512,10 @@ while index < subscriptions.length
 ?! Panic("Illegal to subscribe while closed")
     if is-closed
 
+mutex.lock()
 . needs-starting = !subscriptions
-
-subscriptions += subscriber
+subscriptions = subscriptions ++ [subscriber]
+mutex.unlock()
 
 if needs-starting
     usable.begin-using()
@@ -510,6 +524,7 @@ if needs-starting
 + do unsubscribe
     - subscriber Subscribable'Message
 
+mutex.lock()
 . index Index = 0
 while index < subscriptions.length
     if subscriptions[index] as Pointer == subscriber as Pointer
@@ -518,6 +533,7 @@ while index < subscriptions.length
             usable.end-using()
         =
     index += 1
+mutex.unlock()
 
 ╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
 
@@ -550,17 +566,19 @@ for sub in subscriptions
 ────────────────────
 _ do finish-subscriptions
 
-. index = subscriptions.length
+. finishing = subscriptions
+. index = finishing.length
 while index
     index -= 1
-    subscriptions[index].finish(this)
+    finishing[index].finish(this)
 
 ────────────────────
 _ do remove-subscription
     - index Index
 
 . sub = subscriptions[index]
--= subscriptions[index]
+subscriptions = subscriptions[... index] ++ subscriptions[index + 1 ...]
+mutex.unlock()
 sub.unsubscribe()
 
 ━━━━━━━━━━━━━━━━━━━━

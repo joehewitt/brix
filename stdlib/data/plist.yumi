@@ -1,4 +1,5 @@
 ./binary
+/core/_bytes
 /stream/aggregate
 
 _ binary-plist-magic = "bplist00"
@@ -25,7 +26,7 @@ _ binary-plist-depth-limit = 512
 flatten(value, objects)
 . reference-size = byte-count(objects.length as U64)
 . writer = ByteWriter()
-writer.bytes(binary-plist-magic)
+writer.bytes(byte-view(binary-plist-magic))
 . offsets [Size]
 for object in objects
     offsets += writer.size
@@ -50,7 +51,7 @@ writer.u64-be(table-offset as U64)
 ?! SyntaxError("The data is too short to be a binary plist")
     if data.size < binary-plist-magic.size + binary-plist-trailer-size
 ?! SyntaxError("The data does not start with $binary-plist-magic")
-    if data[0 .. < binary-plist-magic.size] != binary-plist-magic as Byte[]
+    if data[0 .. < binary-plist-magic.size] != byte-view(binary-plist-magic)
 . reader = ByteReader(data)
 reader.offset = data.size - binary-plist-trailer-size + 6
 . offset-size = reader.u8() as Size
@@ -147,7 +148,7 @@ _ do write-string
 . codepoints = text.codepoints
 if all(codepoints) • where each as U32 < 0x80
     write-marker(writer, 0x50, codepoints.size)
-    writer.bytes(text)
+    writer.bytes(byte-view(text))
     =
 write-marker(writer, 0x60, sum((if each as U32 >= 0x10000 then 2 else 1) in codepoints))
 for codepoint in codepoints

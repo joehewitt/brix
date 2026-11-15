@@ -131,7 +131,7 @@ b
 :----
 %crash
 
-Exception: begin-using must return a value
+Exception: Thing cannot be used, as it has no "begin-using" and is not Closable; declare "begin-using" and "end-using", or implement Closable
 <no file:11>
         .. b = use Thing()
                ^^^^^^^^^^^
@@ -180,7 +180,7 @@ bad
 done
 ;====
 :====
-# Illegal to throw in deferred dispose
+# A value with no begin-using that is not Closable cannot be used.
 
 foo()
 
@@ -201,7 +201,7 @@ b
 :----
 %crash
 
-Exception: begin-using must return a value
+Exception: Thing cannot be used, as it has no "begin-using" and is not Closable; declare "begin-using" and "end-using", or implement Closable
 <no file:16>
         .. b = use Thing()
                ^^^^^^^^^^^
@@ -321,6 +321,24 @@ Exception: Illegal deferred statement
 <no file:3>
         = 1
         ^^^
+;====
+:====
+# A cleanup cannot break or continue the loop around it, though a loop inside it can.
+
+for i in 0 .. < 2
+    do finally
+        for j in 0 .. < 3
+            if j == 1
+                break
+        continue
+
+:----
+%compile-error
+
+Exception: A cleanup cannot "continue" the loop around it, as it runs however its block is left; write "continue" in the loop's body
+<no file:7>
+            continue
+            ^^^^^^^^
 ;====
 :====
 # Defer with early return
@@ -1968,6 +1986,55 @@ do use Thing()
 body
 closed
 after
+;====
+:====
+# An error raised where a use ends, by end-using or by close, leaves the function as one a cleanup raises does.
+
+-- catch closed()
+-- catch ended()
+
+━━━━━━━━━━━━━━━━━━━━
++ Shut
+    is Closable
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+?! IOError("close failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ Ended
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+?! IOError("end failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do closed Int
+
+. shut = use Shut()
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do ended Int
+
+do use Ended()
+    -- "body"
+= 2
+
+:----
+
+close failed
+body
+end failed
 ;====
 :====
 # A use of a value that has begin-using as well as close ends it with end-using.

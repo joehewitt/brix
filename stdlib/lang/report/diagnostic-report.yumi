@@ -159,10 +159,22 @@ match diagnostic.kind
         redefined-message(diagnostic.module, diagnostic.syntax, name)
     |= .variable-not-declared
         undeclared-message(diagnostic.module, diagnostic.syntax, name)
+    |= .context-not-found
+        context-message(name)
     ??
         base
 
 .. name = diagnostic.name!.text
+
+────────────────────
+_ context-message String
+    - name String
+
+` The error of `it` or `each` read where nothing gives it a value.
+|? name == "it"
+    "Name \"it\" not found, as nothing here gives a subject; \"it\" reads what a match arm, a loop or a pipe is given"
+??
+    "Name \"each\" not found, as nothing here gives an item; \"each\" reads the item of a stage, a loop, a callback or a trigger"
 
 ────────────────────
 _ stated-message String
@@ -260,7 +272,7 @@ _ prefixed-message String
     coverage-message(diagnostic, base)
 |? base.starts-with("Event endpoints provide ")
     endpoint-message(diagnostic)
-|? recursive && base.ends-with(", inspect it with catch, or transform it.")
+|? recursive && base.ends-with(", or catch them here")
     recursive-errors-message(diagnostic, base)
 ??
     base
@@ -509,6 +521,8 @@ _ free-function-message String
     - name Atom
     - given String?
 
+|? signatures.length != 0 && every-rule(caller, name)
+    "\"${name.text}\" is a rule, which matches a stream; use it in a pattern, as in ~ \\${name.text}"
 |? signatures.length != 0
     "No function \"${name.text}\"${accepting(given)}; $declared"
 |? hidden.length != 0
@@ -520,6 +534,24 @@ _ free-function-message String
 .. hidden = visible-signatures(caller, name, .function-decl, true)
 .. declared = "${declared-as(signatures)}${private-note(hidden)}"
 .. nearby = visible-name-texts(caller, false)
+
+────────────────────
+_ do every-rule Bool
+    - caller ModuleId
+    - name Atom
+
+` Whether each function by a name the caller sees is a rule, whose first parameter is the
+` stream it matches.
+. found = false
+for candidate in program.lookup(caller, name)
+    . owner = program.modules[candidate.module]
+    do match? owner.decls[candidate.decl]
+        | .decl-function(fn)
+            if fn.owner == 0 && fn.kind == .function-decl
+                if fn.args.count == 0 || owner.arg-pool[fn.args.start].name?.text != "(stream)"
+                    = false
+                found = true
+= found
 
 ────────────────────
 _ missing-note String
@@ -961,10 +993,10 @@ do match? tree.nodes[diagnostic.syntax]
 . name = type-name-at(tree, diagnostic.syntax)
 if !name
     do match? tree.nodes[diagnostic.syntax]
-        | .node-integer-syntax
-            = unit-message(tree, diagnostic)
-        | .node-float-syntax
-            = unit-message(tree, diagnostic)
+        | .node-integer-syntax(row)
+            = unit-message(diagnostic, row.unit)
+        | .node-float-syntax(row)
+            = unit-message(diagnostic, row.unit)
     = base
 . nearby = visible-name-texts(diagnostic.module, true)
 . note = missing-note(diagnostic.module, program.store-atom(name), true, nearby)
@@ -972,20 +1004,15 @@ if !name
 
 ────────────────────
 _ do unit-message String
-    - tree AST
     - diagnostic TypeDiagnostic
+    - unit Atom?
 
-. loc = tree.nodes.loc[diagnostic.syntax]
-. line = source-line(tree.source, loc.begin.line)
-. start = loc.begin.column + diagnostic.inset
-. end = start
-while is-name-char(char-at(line, end))
-    end += 1
-if end == start
+` That the unit written after a number names nothing, with the module that declares it where
+` the program does.
+if !unit
     = "Unit not found"
-. unit = line[start .. < end]
-. message = "Unit \"$unit\" not found"
-. elsewhere = unimported-hint(diagnostic.module, program.store-atom(unit), true)
+. message = "Unit \"${unit.text}\" not found"
+. elsewhere = unimported-hint(diagnostic.module, unit, true)
 if elsewhere
     = "$message; ${elsewhere}"
 = message
@@ -2104,6 +2131,8 @@ _ coverage-message String
     - diagnostic TypeDiagnostic
     - base String
 
+|? split && on-result && !settled(diagnostic.from)
+    "This catch does not handle ${listed(cases)}; add a handler for $each, or one for Error"
 |? !split || !settled(diagnostic.from)
     base
 |? missing == "present" && known(inner)

@@ -80,7 +80,7 @@ them.
 
 Durations, dates, clocks and timers. `/time` gathers every module except `/time/timer`.
 
-- `/time/duration`: `Duration`, the units from `ns` to `days`, `wait` and `timeout`.
+- `/time/duration`: `Duration`, the units from `ns` to `milleniums`, `wait` and `timeout`.
 - `/time/clock`: `ClockTime` and `measure`.
 - `/time/datetime`: `DateTime`, `Date`, `Time`, `Month`, `now` and `today`.
 - `/time/zone`: `TimeZone`, `utc` and `local`.

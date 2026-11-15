@@ -42,6 +42,22 @@ Stack trace:
 ;===
 :====
 
+do new thread
+    ?! Panic("thread boom")
+
+:----
+%crash-stderr
+
+Unhandled panic: thread boom
+<no file:3>
+
+Task 2 (thread), spawned by task 1 from no file:2:1
+
+Stack trace:
+  0  __source__:Thread no file:3:5
+;===
+:====
+
 do new foo(1)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -521,6 +537,35 @@ Exception: Fork target is not a Worker
     ^^^^^^^^^^
 ;===
 :====
+# A task gives no value: its body ends with = alone, and one that returns a value is an error.
+
+do new
+    = 5
+
+:----
+%compile-error
+
+Exception: A task gives no value, so its body cannot return one with "="; end it with "= alone", or send the value on a channel
+<no file:3>
+        = 5
+        ^^^
+;===
+:====
+# A task runs on a worker or on the pool's threads, not on both.
+
+. worker = Worker(1)
+do (worker) new thread
+    -- 1
+
+:----
+%compile-error
+
+Exception: A task runs on a worker or on the pool's threads, not both; write "do (w) new" or "do new thread"
+<no file:3>
+    do (worker) new thread
+    ^^^^^^^^^^^^^^^^^^^^^
+;===
+:====
 
 . worker = Worker(1)
 -- worker.is-stopped
@@ -535,6 +580,26 @@ do (worker) new
 false
 true
 nada
+;===
+:====
+# Stopping a worker cancels the tasks it still has, which run their cleanups before it stops.
+
+. worker = Worker(1)
+. never Int<>
+. ready Int<>
+do (worker) new
+    do finally
+        -- "cleanup"
+    ready <- 1
+    -- "got ${<- never}"
+<- ready
+worker.stop()
+-- "stopped ${worker.is-stopped}"
+
+:----
+
+cleanup
+stopped true
 ;===
 ====================================================================================================
 Priority Tasks
@@ -916,6 +981,43 @@ do new
 :----
 
 message
+;====
+:====
+# Posts that find no task waiting wait in turn, and so do waits that find no post: each wait takes one post, the first first, and lets that poster go on before it does.
+
+. posts = Semaphore'Int()
+do new
+    posts.post(1)
+    -- "first posted"
+do new
+    posts.post(2)
+    -- "second posted"
+. gate SyncBufferedChannel'Bool
+do new
+    gate <- true
+<- gate
+-- posts.await()
+-- posts.await()
+
+. waits = Semaphore'Int()
+do new
+    -- "first waiter got ${waits.await()}"
+do new
+    -- "second waiter got ${waits.await()}"
+do new
+    gate <- true
+<- gate
+waits.post(3)
+waits.post(4)
+
+:----
+
+first posted
+1
+second posted
+2
+first waiter got 3
+second waiter got 4
 ;====
 
 :====

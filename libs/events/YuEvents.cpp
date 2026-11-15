@@ -1324,6 +1324,11 @@ yumiNewWorker(int threadCount) {
     return queue->createQueue(threadCount);
 }
 
+extern "C" YuTaskQueue*
+yumiActiveTaskQueue() {
+    return yumiGetActiveThread()->getTaskQueue();
+}
+
 extern "C" int
 yumiUsableCoreCount() {
 #if !defined(__APPLE__)
@@ -1618,6 +1623,7 @@ yumiWorkerGetStatus(YuTaskQueue* queue) {
 
 extern "C" void
 yumiWorkerStop(YuTaskQueue* queue) {
+    queue->cancelTasks();
     queue->stop();
     // Joining worker pthreads can overlap a collection initiated by a task already running on
     // that worker. Publish the caller as blocked so the handshake never waits on this join.

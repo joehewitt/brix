@@ -4910,6 +4910,38 @@ Exception: Refinement cannot add top-level state case 'is-marked'
     ^^^^^^^^^^^^
 ;====
 :====
+# A refinement that writes a case's trigger again is rejected, as the case keeps the trigger it has.
+
+. s = Sub()
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ event go Bool
+
+────────────────────
++ body ~>
+
+~> free
+~> busy on go
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Base
+
+────────────────────
++ body ~>
+
+~> busy on go
+
+:----
+%crash
+
+Exception: Refined state case 'busy' cannot change its trigger or payload
+<no file:21>
+    ~> busy on go
+    ^^^^^^^^^^^^^
+;====
+:====
 # An inherited anonymous machine's root transition on an event of its own class fires on an object
 # of a subclass.
 
@@ -5355,4 +5387,294 @@ for turtle in turtles
 :----
 true
 0
+;====
+:====
+# A case test and path on a copy of a machine read the case the copy holds, not the machine's.
+
++ go AsyncChannel'Bool
+
++ m ~>
+    ~> a
+        ~> b
+    ~> c on go
+
+. before = m
+. door = Door()
+. shut = door.phase
+go <- true
+door.open-requests <- "ada"
+do new
+    -- "${before is .a} ${before is .b} ${before is .c} ${before.path}"
+    -- "${shut is .closed} ${shut is .open} ${door.phase is .open}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Door
+
++ event open-requests String
+
+────────────────────
++ phase ~>
+
+~> closed
+    then open(each) on open-requests
+
+~> open(who)
+
+:----
+true true false a, b
+true false true
+;====
+:====
+# Assigning a state machine is rejected, as it moves only by its transitions.
+
++ phase ~>
+    ~> idle
+    ~> busy
+
+phase = .busy
+
+:----
+%crash
+
+Exception: State machine "phase" moves only by its transitions, so it cannot be assigned; add a transition that enters the case
+<no file:6>
+    phase = .busy
+    ^^^^^^^^^^^^^
+;====
+:====
+# Assigning the state machine of an object is rejected before its case is looked for.
+
+. door = Door()
+door.phase = .open
+
+━━━━━━━━━━━━━━━━━━━━
++ Door
+
++ event pushes Bool
+
+────────────────────
++ phase ~>
+
+~> shut
+    then open on pushes
+
+~> open
+
+:----
+%crash
+
+Exception: State machine "phase" moves only by its transitions, so it cannot be assigned; add a transition that enters the case
+<no file:3>
+    door.phase = .open
+    ^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A when rule that tests a case of the machine runs when the machine enters the case.
+
+. door = Door()
+door.toggles <- true
+door.toggles <- true
+door.toggles <- true
+do new
+    -- door.log
+
+━━━━━━━━━━━━━━━━━━━━
++ Door
+
++ event toggles Bool
++ log = ""
+
+────────────────────
+when #phase is .open
+
+log += "[open]"
+
+────────────────────
++ phase ~>
+
+~> closed
+    then open on toggles
+
+~> open
+    then closed on toggles
+
+:----
+[open][open]
+;====
+:====
+# A state machine's handler that returns a value with "=" is rejected, as it gives none.
+
++ a AsyncChannel'Int
+
++ phase ~>
+    ~> idle
+        for x on a
+            = 3
+
+:----
+%crash
+
+Exception: A state machine's handler gives no value, so it cannot return one with "="; end it early with "= alone"
+<no file:7>
+                = 3
+                ^^^
+;====
+:====
+# A transition that gives a case fewer values than the case names is rejected.
+
++ go AsyncChannel'Int
+
++ m ~>
+    ~> idle
+        then held on go
+
+    ~> held(v)
+
+:----
+%crash
+
+Exception: Case "held" holds one value, and this transition gives none; give it one value
+<no file:6>
+            then held on go
+            ^^^^^^^^^^^^^^^
+;====
+:====
+# A transition that gives a case more values than the case names is rejected.
+
++ go AsyncChannel'Int
+
++ m ~>
+    ~> idle
+        then held(each, each) on go
+
+    ~> held(v)
+
+:----
+%crash
+
+Exception: Case "held" holds one value, and this transition gives 2; give it one value
+<no file:6>
+            then held(each, each) on go
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A class's machine whose initial case holds a value starts in it with the value it is given.
+
+. c = Counter(4)
+-- c.phase
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ start Int
+
+────────────────────
++ This
+    - start
+
+────────────────────
++ phase ~>
+
+~> counting(start * 2)
+~> done
+
+:----
+8
+;====
+:====
+# A case of a machine in a class's markup named like a property the class declares is rejected.
+
+. p = P()
+-- p.idle
+
+━━━━━━━━━━━━━━━━━━━━
++ P
+
++ idle = 3
+
+────────────────────
+~> idle
+~> busy
+
+:----
+%crash
+
+Exception: A case of a machine in a class's markup is read as a property of its name, and the class declares "idle" already; rename the case or the property
+<no file:11>
+    ~> idle
+    ^^^^^^^
+;====
+:====
+# A message names a machine's union by its cases.
+
++ phase ~>
+    ~> closed
+    ~> open
+
+-- match phase
+    | .closed
+        1
+
+:----
+%crash
+
+Exception: This match on state machine (.closed | .open) does not handle .open; add a case for it, or "??" for the rest
+<no file:7>
+        | .closed
+        ^^^^^^^^
+;====
+:====
+# A case a match arm names that a machine does not have is reported with the machine's cases.
+
++ phase ~>
+    ~> idle
+    ~> busy
+
+-- match phase
+    | .nope
+        1
+    ??
+        2
+
+:----
+%crash
+
+Exception: Case ".nope" not found in state machine (.idle | .busy)
+<no file:7>
+        | .nope
+          ^^^^^
+;====
+:====
+# A machine compared with one of its cases by "==" is pointed to "is", which counts nested cases.
+
++ phase ~>
+    ~> closed
+    ~> open
+
+-- phase == .closed
+
+:----
+%crash
+
+Exception: A state machine's case is tested with "is" or "is not", which count the cases nested in it; write "is .closed" in place of "== .closed"
+<no file:6>
+    -- phase == .closed
+                ^^^^^^^
+;====
+:====
+# A trigger pattern naming a case its stream's items cannot have is reported.
+
++ nums AsyncChannel'Int
+
++ m ~>
+    ~> idle
+    ~> b for .valid(x) on nums
+
+:----
+%crash
+
+Exception: Case ".valid" not found: I64 has no cases
+<no file:6>
+        ~> b for .valid(x) on nums
+                 ^^^^^^^^^
 ;====

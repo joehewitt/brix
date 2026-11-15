@@ -35,12 +35,13 @@ covered here. The rest of the standard library is surveyed in its own chapter.
 13. [Collections](collections.md): lists, maps, arrays, views, tables, bitmaps and ranges as
     values.
 14. [Streams](streams.md): the stream family, generators, comprehensions, pipelines and targets.
-15. Stream patterns: grammars over text, bytes and other sequences.
-16. Errors: raising, propagation, `catch`, handlers, cleanup and panics.
-17. Concurrency: tasks, workers, channels and subscriptions.
-18. Reactivity: tracked properties, live expressions and change rules.
-19. State machines: states, transitions, payloads and lifetimes.
-20. Units: unit literals, unit families and conversions between them.
+15. [Stream patterns](stream-patterns.md): grammars over text, bytes and other sequences.
+16. [Errors](errors.md): raising, propagation, `catch`, handlers, cleanup and panics.
+17. [Concurrency](concurrency.md): tasks, workers, channels and subscriptions.
+18. [Reactivity](reactivity.md): tracked reads, derived properties, rules, live statements and
+    events.
+19. [State machines](state-machines.md): cases, transitions, payloads and lifetimes.
+20. [Units](units.md): unit literals, unit families and conversions between them.
 21. Markup: elements, attributes, slots, and markup that follows state.
 22. Styles: style sheets, rules, states and motion.
 23. Probes: recording what a program does.

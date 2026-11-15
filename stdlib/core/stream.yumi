@@ -252,6 +252,8 @@ _ broadcaster-queue [Broadcastable'Message]
 _ sub Subscriber'Message
 _ is-dispatching = false
 _ finishing Broadcastable'Message?
+_ home = Worker.current()
+_ mutex = Mutex()
 
 ────────────────────
 + This
@@ -264,30 +266,36 @@ _ finishing Broadcastable'Message?
     - message Message
     - broadcaster Broadcastable'Message
 
-`  // enqueue on ${get-current-task-id()}
+mutex.lock()
 queue += message
 broadcaster-queue += broadcaster
+. starts = !is-dispatching
+is-dispatching = true
+mutex.unlock()
 
-if !is-dispatching
-    is-dispatching = true
-    do new
+if starts
+    do (home) new
         dispatch()
 
 ────────────────────
 + do unsubscribe
 
+mutex.lock()
 queue.clear()
 broadcaster-queue.clear()
-is-dispatching = false
 finishing = null
+mutex.unlock()
 
 ────────────────────
 + do finish
     - broadcaster Broadcastable'Message
 
-if is-dispatching
+mutex.lock()
+. waits = is-dispatching
+if waits
     finishing = broadcaster
-else
+mutex.unlock()
+if !waits
     broadcaster.unsubscribe(this)
         catch error Error
             unhandled-error(error)
@@ -302,25 +310,31 @@ sub == other
 ────────────────────
 + do dispatch
 
+mutex.lock()
 . count = queue.length
 while count && queue
-    `  // dispatch on ${get-current-task-id()}
-    sub(queue.pop-first(), broadcaster-queue.pop-first())
+    . message = queue.pop-first()
+    . broadcaster = broadcaster-queue.pop-first()
+    mutex.unlock()
+    sub(message, broadcaster)
         catch error Error
             unhandled-error(error)
     count -= 1
+    mutex.lock()
 
 if queue
-    do new
+    mutex.unlock()
+    do (home) new
         dispatch()
-else
-    is-dispatching = false
-    . broadcaster = finishing
-    if broadcaster
-        finishing = null
-        broadcaster.unsubscribe(this)
-            catch error Error
-                unhandled-error(error)
+    =
+is-dispatching = false
+. broadcaster = finishing
+finishing = null
+mutex.unlock()
+if broadcaster
+    broadcaster.unsubscribe(this)
+        catch error Error
+            unhandled-error(error)
 
 ━━━━━━━━━━━━━━━━━━━━
 + publisher'Item

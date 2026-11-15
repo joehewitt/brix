@@ -1,4 +1,5 @@
 
+/core/_bytes
 /core/parsing
 /core/tokenstream
 
@@ -26,7 +27,7 @@ if source-line
     this.source-line = line.text
     has-line-break = line.has-line-break
 if path
-    this.path = (path as Byte[]).slice-string()
+    this.path = byte-view(path).slice-string()
 
 ────────────────────
 + do attach-source
@@ -98,3 +99,19 @@ while cursor < source.size && current-line < line
 while cursor < source.size && source[cursor] != 10
     cursor += 1
 = (source.slice-string(start .. < cursor), cursor < source.size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do signed-unit-advice String
+    - lead String
+    - name String
+    - suffix String?
+    - amount String
+
+` The advice for a unit declared from a signed amount of another, as in "+ Bar (bar) is -1foo",
+` which rows and Brix both reject: the amount takes no sign, and an equality relates two units by
+` a negative amount. `lead` is the declaration's `+` or `_`, and `amount` is written with its sign.
+. named = if suffix then " (${suffix})" else ""
+. plain = "A unit is declared from an amount of another unit with no sign, as in \"$lead $name$named is ${amount[1 ...]}\""
+if !suffix
+    = plain
+= "$plain; to relate two units by a negative amount, declare $name from a number type and write an equality, as in \"$lead 1${suffix} = $amount\""

@@ -1,3 +1,4 @@
+/core/_bytes
 /core/arena
 /core/array-builder
 
@@ -61,7 +62,7 @@ _ located-line Size
     - arena
     - keeps-comments
 
-.. bytes = source as Byte[]
+.. bytes = byte-view(source)
 .. kinds = Array'U8(arena, token-capacity)
 .. starts = Array'U32(arena, token-capacity)
 .. ends = Array'U32(arena, token-capacity)
@@ -70,8 +71,8 @@ _ located-line Size
 .. line-starts = Array'U32(arena, line-capacity)
 .. wide-lines = Array'U8(arena, line-capacity)
 
-.. token-capacity = (source as Byte[]).length / 4 + 16
-.. line-capacity = (source as Byte[]).length / 24 + 16
+.. token-capacity = source.size / 4 + 16
+.. line-capacity = source.size / 24 + 16
 
 ────────────────────
 + do scan ?! SexpError
@@ -327,7 +328,7 @@ bytes.slice-string((starts[index] as Index) .. < (ends[index] as Index))
     - index Index
     - text String
 
-atom-matches(index, text)
+atom-matches(index, byte-view(text))
 
 ────────────────────
 + do atom-matches Bool
@@ -549,7 +550,7 @@ while index < last
             . code U32
             for offset in 0 .. < width
                 code = code * 16 + (sexp-hex-value(bytes[index + 2 + offset]) as U32)
-            decoded.append-all(((code as Char) as String) as Byte[])
+            decoded.append-all(byte-view((code as Char) as String))
             index += 2 + width
         else
             decoded.append(sexp-unescaped-byte(bytes[index + 1]))

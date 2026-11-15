@@ -154,6 +154,7 @@ _ ordered-sites [SyntaxId]
 _ ordered-literals [SyntaxId]
 _ lazy-slots [SlotId]
 _ initializing DeclId = 0
+_ handling SyntaxId = 0
 _ class-cursor Size = 0
 _ row-cursors [RowCursor]
 _ cursor-binding = CursorBinding()
@@ -12885,8 +12886,9 @@ _ do check-rule
 ` `ambient-position` finds, under that argument, whatever helper a pattern calls it under, and one
 ` whose helper observes literals or keeps collectors where its storages disagree has no shape here.
 ` A rule marked to roll back, or whose pattern has an arm that is, asks the helper for a mark before
-` each action of its arms, as the reference does. Another rule that belongs to a type, or one whose
-` body holds more than its pattern and the lazy locals declared for it, has no shape here.
+` each action of its arms, as the reference does. Another rule that belongs to a type is an
+` error, and one whose body holds more than its pattern and the lazy locals declared for it has
+` no shape here.
 . pattern SyntaxId = 0
 do match? tree.nodes[matched]
     | .node-stream-match(row)
@@ -12903,7 +12905,10 @@ do match? tree.nodes[declaration.syntax]
     | .node-function-syntax(row)
         marked = row.rollback
 if pattern == 0 || item == no-type || owned || !grows || !lazies-beside(declaration.body, matched)
-    decline(declaration.syntax)
+    if owned
+        frame.diagnose(declaration.syntax, .stated, program.store-atom("A rule can't be a method; declare it at module level"))
+    else
+        decline(declaration.syntax)
     instances.set-returns(instance, invalid-type, no-type, .return-inferred)
     finish-errors(frame)
     close()
@@ -12932,6 +12937,13 @@ else if ambient-position(types, instances, instance) != U32.max
     helping = helping.helper = resolved
     helping = helping.site = matched
     rule-helper-site = matched
+. closing = left-call(pattern, 0, List'SyntaxId())
+if closing != 0
+    report-left-recursion(closing)
+    instances.set-returns(instance, invalid-type, no-type, .return-inferred)
+    finish-errors(frame)
+    close()
+    =
 rule-arming = rule-arming.capture-base = capture-sites.length
 rule-arming = rule-arming.capture-root = pattern
 rule-arming = rule-arming.texts = declared == types.string-type
@@ -13830,6 +13842,41 @@ facts.markup-triggers += trigger
 check-statement(rule.body)
 
 ────────────────────
+_ do required-argument Atom?
+    - receiver TypeId
+    - method Atom
+
+` The first argument a class's method of a name requires, where each method of that name the
+` class declares requires one, which a dependency, calling it with nothing, cannot give; none
+` where one requires none, or the class declares none.
+. ref = class-ref(types, receiver)
+. owner = program.modules[ref.module]
+. required Atom? = null
+do match? owner.decls[ref.decl]
+    | .decl-class(row)
+        for member in owner.member-pool[row.members]
+            do match? owner.decls[member]
+                | .decl-function(fn)
+                    if fn.name && fn.name == method
+                        . first = first-required(owner, fn)
+                        if !first
+                            = null
+                        required = first
+= required
+
+────────────────────
+_ do first-required Atom?
+    - owner Module
+    - fn FunctionDecl
+
+` The name of the first argument a function requires: one with no default that is not variadic.
+for offset in 0 .. < fn.args.count
+    . shape = owner.arg-pool[fn.args.start + offset]
+    if !shape.has-default && !shape.is-variadic
+        = shape.name ?? program.store-atom("_")
+= null
+
+────────────────────
 _ do check-dependency
     - receiver TypeId
     - syntax SyntaxId
@@ -13841,13 +13888,18 @@ _ do check-dependency
 ` once for each property, or for an object of a markup host to the markup runtime's
 ` `markup-property-dependency-subscribe`, given the object as its host too. The conversions are
 ` recorded at the dependency, where the reference places the call the `Doer` makes. The
-` reference reports a property or a method the class does not have.
+` reference reports a property or a method the class does not have. A getter is never stored, so
+` a dependency on it would never run, and is reported.
 for name-syntax in tree.children[right]
     . name = identifier-atom(name-syntax)
     . place = types.property-named(receiver, name) if name
     if !place
         . shown = if name then name.text else ""
         frame.diagnose(syntax, .stated, program.store-atom("Property \"$shown\" does not exist"))
+        =
+    if types.properties[place].storage-kind == .storage-getter
+        . text = "\"${name!.text}\" is a getter, which is never stored, so a dependency on it never runs; depend on the properties it reads"
+        frame.diagnose(name-syntax, .stated, program.store-atom(text))
         =
     . ref = class-ref(types, types.tracked-root(types.properties[place].owner, name!))
     facts.note-tracked(ref.module, ref.decl, name!)
@@ -13858,6 +13910,11 @@ if bound == invalid-type
 if bound == no-type
     . shown = if method then method.text else ""
     frame.diagnose(syntax, .stated, program.store-atom("Function \"$shown\" does not exist"))
+    =
+. required = required-argument(receiver, method!)
+if required
+    . text = "A dependency calls \"${method!.text}\" with nothing, but it takes \"${required.text}\"; give \"${required.text}\" a default, or name a method that takes nothing"
+    frame.diagnose(left, .stated, program.store-atom(text))
     =
 . doer = types.well-known-type("core/function", "Doer")
 if doer == invalid-type
@@ -14389,6 +14446,7 @@ _ do check-top-level
 facts.initializer = this
 . declaring = declaring-type-names()
 . classes = Map'ClassName'Bool()
+. suffixes = Map'Atom'Atom()
 for index in 0 .. < decls.length
     do match? decls[index]
         | .decl-case(row)
@@ -14405,6 +14463,8 @@ for index in 0 .. < decls.length
         | .decl-event(event)
             if event.owner != 0 && !is-class(event.owner)
                 decline(event.syntax)
+            else if event.owner != 0
+                check-event-owner(event)
         | .decl-associated(associated)
             if associated.binding != 0 && !is-type-syntax(tree, associated.binding)
                 . message = program.store-atom("Associated type binding must be a type")
@@ -14423,6 +14483,8 @@ for index in 0 .. < decls.length
                     - program.store-atom("\"This\" is not a valid style sheet name")
             else
                 declare-members(class)
+                check-unit-base(class)
+                check-suffixes(class, suffixes)
                 if is-sheet-decl(module, index as DeclId)
                     check-derived-sheet(index as DeclId, class)
                     check-sheet-domains(index as DeclId, class)
@@ -14626,6 +14688,26 @@ check-annotations(property)
 check-property(decl, property)
 if property.owner != 0 && property.name
     check-union-member(property.owner, property.name, property.syntax, true)
+
+────────────────────
+_ do check-event-owner
+    - event EventDecl
+
+` Reports an event a struct or a tuple declares: an event belongs to an object, whose
+` subscribers it keeps, and a value of a struct or a tuple is copied, so none would hear it.
+do match? program.modules[module].decls[event.owner]
+    | .decl-class(class)
+        if class.base == 0
+            =
+        . base = types.evaluate-type(module, tree, class.base, frame.env)
+        if base == invalid-type || base == no-type
+            =
+        . kind = types.intrinsic-of(base)
+        if kind != .struct && kind != .tuple
+            =
+        . shape = if kind == .struct then "struct" else "tuple"
+        . text = "Only a class can declare an event, which belongs to an object, and ${class.name.text} is a ${shape}, whose values are copied; declare ${class.name.text} as a class"
+        frame.diagnose(event.syntax, .stated, program.store-atom(text))
 
 ────────────────────
 _ is-class Bool
@@ -14894,6 +14976,14 @@ _ do check-equality
 if !is-public(unit.access)
     frame.diagnose(unit.syntax, .stated, program.store-atom("Equalities must be public"))
     =
+if misstates-unit(unit.number) || misstates-unit(unit.value)
+    =
+. offset = offset-of(unit.number)
+. shifted = if offset != 0 then offset else offset-of(unit.value)
+if shifted != 0
+    . message = "An equality relates two units by a ratio alone, so a number with no unit cannot be added to or taken from one; write the ratio as one number in the unit"
+    frame.diagnose(shifted, .stated, program.store-atom(message))
+    =
 . diagnosed = facts.diagnostics.length
 . left = unit-of(unit.number)
 . right = unit-of(unit.value)
@@ -14902,13 +14992,163 @@ if facts.diagnostics.length != diagnosed
 if left == no-type || right == no-type
     frame.diagnose(unit.syntax, .stated, program.store-atom("Ambiguous units"))
     =
+for side in [left, right]
+    if side != invalid-type && types.completions[side].is-builtin
+        . shown = type-short-name(types, side)
+        . message = "An equality relates units a program declares, and $shown is a number type of the language; write each side in a unit the program declares"
+        frame.diagnose(unit.syntax, .stated, program.store-atom(message))
+        =
 for equality in types.equalities
     if equality.from == left && equality.to == right
+        disagrees(unit.syntax, left, right)
         =
 . unevaluated = unevaluated-operation(unit.number)
 . failed = if unevaluated != 0 then unevaluated else unevaluated-operation(unit.value)
 . place = if failed != 0 then failed else unit.syntax
 frame.diagnose(place, .stated, program.store-atom("Invalid constant expression"))
+
+────────────────────
+_ do disagrees
+    - id SyntaxId
+    - left TypeId
+    - right TypeId
+
+` Reports an equality between two units that another written between them disagrees with: a
+` number would convert by whichever is found first.
+. ratios [F64]
+for equality in types.equalities
+    if equality.from == left && equality.to == right
+        ratios += equality.ratio.multiplier / equality.ratio.divisor
+for ratio in ratios
+    . quotient = ratio / ratios[0]
+    if quotient > 1.000000001 || quotient < 0.999999999
+        . from = type-short-name(types, left)
+        . to = type-short-name(types, right)
+        . message = "Equalities between $from and $to disagree: one makes 1 $from ${ratios[0]} $to, another ${ratio} $to; keep one of them"
+        frame.diagnose(id, .stated, program.store-atom(message))
+        =
+
+────────────────────
+_ do check-suffixes
+    - class ClassDecl
+    - suffixes Map'Atom'Atom
+
+` Reports a name written in parentheses after a class's own, as a unit's suffix is, that a class
+` its module declares before it wrote already, which `suffixes` holds, and holds from now on, or
+` that a class of a module it can name writes (`imported-suffix`), which it would hide there. It
+` is reported at the class's base, written on the line of the name.
+for offset in 0 .. < class.aliases.count
+    . alias = tree.atoms[class.aliases.start + offset]
+    . earlier = suffixes[alias] ?? imported-suffix(alias)
+    if earlier
+        . message = "\"${alias.text}\" already names ${earlier.text}; give ${class.name.text} a suffix of its own"
+        frame.diagnose(if class.base != 0 then class.base else class.syntax, .stated, program.store-atom(message))
+    else
+        suffixes[alias] = class.name
+
+────────────────────
+_ do imported-suffix Atom?
+    - alias Atom
+
+` The name of a public class of another module this one can name that writes a name in
+` parentheses after its own, as `Char` writes `c`, or none.
+for candidate in program.lookup(module, alias)
+    if candidate.module == module || program.listed-last(module, candidate.module) == U32.max
+        continue
+    do match? program.modules[candidate.module].decls[candidate.decl]
+        | .decl-class(row)
+            if row.name != alias && row.access == .public-access
+                = row.name
+= null
+
+────────────────────
+_ do offset-of SyntaxId
+    - expr SyntaxId
+
+` The first number with no unit a side of an equality adds to or takes from a number in a unit
+` other than zero, which is no ratio, or none. Zero in a unit adds nothing, as in
+` `(1 / 3) + 0foo`, which writes a third of foo.
+do match? tree.nodes[expr]
+    | .node-binary-expression(row)
+        . inner = offset-of(row.lhs)
+        if inner != 0
+            = inner
+        . right = offset-of(row.rhs)
+        if right != 0
+            = right
+        if row.op != .add-op && row.op != .subtract-op
+            = 0
+        . left-unit = has-unit(row.lhs)
+        . right-unit = has-unit(row.rhs)
+        if left-unit && !right-unit && !zero-amount(row.lhs)
+            = row.rhs
+        if right-unit && !left-unit && !zero-amount(row.rhs)
+            = row.lhs
+= 0
+
+────────────────────
+_ has-unit Bool
+    - expr SyntaxId
+
+` Whether a side of an equality writes a number in a unit.
+match tree.nodes[expr]
+    | .node-integer-syntax(row)
+        row.unit != null
+    | .node-float-syntax(row)
+        row.unit != null
+    | .node-binary-expression(row)
+        has-unit(row.lhs) || has-unit(row.rhs)
+    ??
+        false
+
+────────────────────
+_ zero-amount Bool
+    - expr SyntaxId
+
+` Whether a side of an equality is a number written as zero.
+match tree.nodes[expr]
+    | .node-integer-syntax(row)
+        (row.value as F64) == 0.0
+    | .node-float-syntax(row)
+        (row.value as F64) == 0.0
+    ??
+        false
+
+────────────────────
+_ do check-unit-base
+    - class ClassDecl
+
+` A class declared as a number of a unit, as `Hours` is `60minutes`, is declared in a unit the
+` program has, as `misstates-unit` says.
+if class.base != 0
+    do match? tree.nodes[class.base]
+        | .node-type-numeric(numeric)
+            do misstates-unit(numeric.value)
+
+────────────────────
+_ do misstates-unit Bool
+    - id SyntaxId
+
+` Reports a side of a unit's declaration written as a number in a unit that names nothing, or
+` as zero of a unit, which relates no number of one to the other, and says whether it did.
+. text = ""
+. unit Atom? = null
+do match? tree.nodes[id]
+    | .node-integer-syntax(row)
+        text = row.value
+        unit = row.unit
+    | .node-float-syntax(row)
+        text = row.value
+        unit = row.unit
+if !unit
+    = false
+if literal-unit(id, text, unit) == invalid-type
+    = true
+if (text as F64) != 0.0
+    = false
+. message = "A unit cannot be declared as zero of another, which no number of it would convert from; write a number other than zero"
+frame.diagnose(id, .stated, program.store-atom(message))
+= true
 
 ────────────────────
 _ do unevaluated-operation SyntaxId
@@ -15206,12 +15446,16 @@ _ do stored-interface-text String
     - property PropertyDecl
 
 ` The error of a property an interface declares to store: one with no value is a getter the
-` types that are the interface answer, and one with a value a getter that gives it.
+` types that are the interface answer, and one with a value a getter that gives it. A state
+` machine, or one of its cases, belongs in the types that are the interface.
 . shown = match program.modules[module].decls[property.owner]
     | .decl-class(class)
         class.name.text
     ??
         "?"
+. machine = property.value != 0 && tree.nodes[property.value] is .node-state-machine
+if machine || tree.nodes[property.syntax] is .node-state-case
+    = "$shown is an interface, so it cannot hold a state machine; declare the machine in the classes that are $shown"
 . name = property.name!.text
 . lead = "$shown is an interface, so it cannot store \"$name\""
 if property.value != 0
@@ -15264,7 +15508,8 @@ _ do check-member Bool
 
 ` Checks a property or getter against the others of its name: one the same type declares
 ` before it, which `declare-members` reported, and one the type inherits, which it may restate
-` only stored the same way and without a type of its own. Says whether the member stands.
+` only stored the same way and without a type of its own. A state case that restates an inherited
+` case is a refinement's to check (`refines-shaped`). Says whether the member stands.
 . decls = program.modules[module].decls
 do match decls[owner-decl]
     | .decl-class(class)
@@ -15293,6 +15538,8 @@ if base != no-type && declares-event(base, name)
     frame.diagnose(syntax, .stated, program.store-atom(message))
     = false
 . inherited = types.property-named(base, name) if base != no-type
+if inherited && tree.nodes[syntax] is .node-state-case
+    = true
 if inherited
     if types.properties[inherited].storage-kind != storage
         . message = "Inherited properties must have same assignment type"
@@ -15334,9 +15581,9 @@ _ do check-inherited-event
     - event EventDecl
 
 ` An event may not take the name of a property or an event its class inherits, what it
-` publishes is a type, and the key it is published by, where it has one, is an `EventKey`
-` (see `event-key`). One whose class took its name before is checked no further, as
-` `declare-members` reported it.
+` publishes is a type other than `Void`, and the key it is published by, where it has one, is
+` an `EventKey` (see `event-key`). One whose class took its name before is checked no further,
+` as `declare-members` reported it.
 . decls = program.modules[module].decls
 do match? decls[event.owner]
     | .decl-class(class)
@@ -15377,6 +15624,10 @@ if base != no-type && declares-method(base, event.name)
 if payload == no-type
     if !report-missing-type(event.type-syntax, frame.env)
         decline(event.syntax)
+    =
+if payload == types.void-type
+    . message = "An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in \"+ event ${event.name.text} Bool\""
+    frame.diagnose(event.type-syntax, .stated, program.store-atom(message))
     =
 if event.key-type == 0
     =
@@ -16450,13 +16701,17 @@ do match tree.nodes[id]
     | .node-probe-preview
         = no-type
     | .node-break
-        if loop-marks.length == 0 && is-subscriber-body()
+        if leaves-cleanup()
+            report-cleanup-leave(id, "break")
+        else if loop-marks.length == 0 && is-subscriber-body()
             demand-unsubscribe(id)
         else if loop-marks.length == 0
             frame.diagnose(id, .stated, program.store-atom("`break` outside a loop"))
         = no-type
     | .node-continue
-        if loop-marks.length == 0 && !is-subscriber-body()
+        if leaves-cleanup()
+            report-cleanup-leave(id, "continue")
+        else if loop-marks.length == 0 && !is-subscriber-body()
             frame.diagnose(id, .stated, program.store-atom("`continue` outside a loop"))
         = no-type
     | .node-for-block(row)
@@ -16480,7 +16735,9 @@ do match tree.nodes[id]
         frame.doubt-members()
         = no-type
     | .node-do-task-block(row)
-        if row.worker != 0 && !row.is-parallel
+        if row.worker != 0 && row.is-parallel
+            frame.diagnose(id, .stated, program.store-atom(both-targets-text()))
+        else if row.worker != 0
             check-worker(id, row.worker)
         frame.doubt-members()
         check-task(id)
@@ -16892,17 +17149,44 @@ while position != no-fact && position >= calls-before
 = false
 
 ────────────────────
+_ leaves-cleanup Bool
+
+` Whether a `break` or `continue` here would leave a cleanup for a loop open around it.
+finally.cleaning-up && loop-marks.length != 0 && loop-marks.length == finally.loops
+
+────────────────────
+_ do report-cleanup-leave
+    - id SyntaxId
+    - word String
+
+` Reports a `break` or `continue` that would leave a cleanup, which runs however its block is
+` left, for the loop around it.
+. text = "A cleanup cannot \"$word\" the loop around it, as it runs however its block is left; write \"$word\" in the loop's body"
+frame.diagnose(id, .stated, program.store-atom(text))
+
+────────────────────
 _ do check-finally
     - statement SyntaxId
     - limit SyntaxId
 
 . saved = finally
 finally = finally.limit = limit
+finally = finally.loops = loop-marks.length
 if saved.cleaning-up
     frame.diagnose(statement, .stated, program.store-atom("Illegal deferred statement"))
 finally = finally.cleaning-up = true
 check-statement(statement)
 finally = saved
+
+────────────────────
+_ do recovers Bool
+    - callable SyntaxId
+
+` Whether a call is of the `recover` core declares, which gives the panic a cleanup runs for.
+. resolution = bindings.resolution-of(frame.binding, callable)
+if resolution.kind != .resolve-function || name-text(callable) != "recover"
+    = false
+= program.modules[resolution.module].name == "core/error"
 
 ────────────────────
 _ is-finally Bool
@@ -18660,17 +18944,30 @@ _ do note-explicit-return
     - expr SyntaxId
 
 ` Where an explicit return may be written. A cleanup and the body of `main` or of a loop on a
-` stream have none, and a function that is not imperative states it needs `do`. In the body of
-` a rule of a class one with no value leaves the body; one with a value has no shape here.
+` stream have none, a task's body and a state machine's handler return no value, and a
+` function that is not imperative states it needs `do`. In the body of a rule of a class one
+` with no value leaves the body, and one with a value is reported, as a rule gives none.
 if finally.cleaning-up
     frame.diagnose(id, .stated, program.store-atom("Illegal deferred statement"))
     =
+if handling != 0 && expr != 0
+    . text = "A state machine's handler gives no value, so it cannot return one with \"=\"; end it early with \"= alone\""
+    frame.diagnose(id, .stated, program.store-atom(text))
+    =
 if is-rule-unit()
     if expr != 0
-        decline(id)
+        . text = "A rule gives no value, so its body cannot return one with \"=\"; end it early with \"= alone\""
+        frame.diagnose(id, .stated, program.store-atom(text))
     =
 if is-subscriber-body()
     frame.diagnose(id, .stated, program.store-atom("Illegal return from subscriber"))
+    =
+if frame.declaration.kind == .task-decl && expr != 0
+    . brix = tree.source-path.ends-with(".bx")
+    . returning = if brix then "(return …)" else "="
+    . ending = if brix then "(return)" else "= alone"
+    . text = "A task gives no value, so its body cannot return one with \"$returning\"; end it with \"$ending\", or send the value on a channel"
+    frame.diagnose(id, .stated, program.store-atom(text))
     =
 if frame.declaration.is-main
     frame.diagnose(id, .stated, program.store-atom("Illegal return"))
@@ -19790,6 +20087,9 @@ do match? tree.nodes[id]
             = tracked.typed(note-collection-read(id, tracked.type, want))
         = infer-identifier(id, row.name, want)
     | .node-call-expression(row)
+        if !finally.cleaning-up && recovers(row.callable)
+            frame.diagnose(id, .stated, program.store-atom("recover() gives a panic only while a cleanup runs; call it in a \"do finally\" block"))
+            = Found(invalid-type)
         = infer-call(id, row.callable, row.params, row.args, row.is-curried, 0, no-type, want)
     | .node-get-expression(row)
         . got = infer-get(id, row.object, row.name, row.is-optional, want)
@@ -20059,7 +20359,7 @@ do match tree.nodes[id]
     | .node-integer-syntax(row)
         = infer-integer(id, row.value, row.unit)
     | .node-float-syntax(row)
-        = if row.unit then unit-literal(id, literal-unit(id, row.value, row.unit)) else types.f64-type
+        = if row.unit then infer-unit-float(id, row.value, row.unit) else types.f64-type
     | .node-symbol(row)
         if id == arm-typing.symbol
             = infer-armed-symbol(id, row.name)
@@ -25260,7 +25560,10 @@ if stored-machine && tree.initial-case(items) == 0 && items.length != 0
 if store == .store-content
     for node in tree.machine-cases(items)
         if !flagged(node)
-            decline(node)
+            . name = tree.state-name(node)
+            . shown = if name then name.text else ""
+            . message = "A case of a machine in a class's markup is read as a property of its name, and the class declares \"$shown\" already; rename the case or the property"
+            frame.diagnose(node, .stated, program.store-atom(message))
             = false
 . unbuilt = unbuilt-part(items)
 if unbuilt != 0
@@ -26343,7 +26646,7 @@ _ do type-state-handler
     - item TypeId
 
 ` A handler's loop where an item of its stream arrives, as the reference runs it: its pattern
-` binds the item, its `when` is tested, and then its body runs.
+` binds the item, its `when` is tested, and then its body runs, as the handler `handling` names.
 do match? tree.nodes[head]
     | .node-for-block(row)
         do match? tree.nodes[row.loop]
@@ -26353,7 +26656,10 @@ do match? tree.nodes[head]
                 do match? tree.nodes[loop.clause]
                     | .node-clause(clause)
                         note-truthiness(clause.expr, clause.expr, infer(clause.expr))
+                . outer = handling
+                handling = head
                 do check-statement(row.body)
+                handling = outer
 
 ────────────────────
 _ do type-targets
@@ -26362,9 +26668,12 @@ _ do type-targets
 ` What a transition gives the case it enters, typed where it fires. The source of a case's
 ` payload settles what the case holds where nothing did before (`fixed-payload`), and each
 ` name the case keeps takes what it reads there, which every transition that enters the case
-` where the name is in reach must agree on, as the reference unifies them.
+` where the name is in reach must agree on, as the reference unifies them. A transition into a
+` case that names what it holds gives one value for each name (`gives-names`).
 for target in tree.children[tree.state-targets(transition)]
     do infer(target)
+if !gives-names(transition)
+    =
 machining.typed += transition
 . position = tree.case-position(machining.cases, tree.state-name(transition)!)
 if position == null
@@ -26395,6 +26704,26 @@ for read in bindings.machine-reads
                 - .stated
                 - program.store-atom
                     - "Unable to unify activation capture type for '${read.name.text}'"
+
+────────────────────
+_ do gives-names Bool
+    - transition SyntaxId
+
+` Whether a transition gives a case that names what it holds, written with no trigger of its
+` own, a value for each name, which is reported where it does not.
+. name = tree.state-name(transition)
+. held = if name then tree.find-case(machining.items, name) else 0
+if held == 0 || held == transition || tree.state-trigger(held) != 0
+    = true
+. names = tree.state-targets(held).count
+. given = tree.state-targets(transition).count
+if names == 0 || given == names
+    = true
+. holds = if names == 1 then "one value" else "$names values"
+. gives = if given == 0 then "none" else "$given"
+. message = "Case \"${name!.text}\" holds $holds, and this transition gives $gives; give it $holds"
+frame.diagnose(transition, .stated, program.store-atom(message))
+= false
 
 ────────────────────
 _ do settle-payload
@@ -26663,6 +26992,23 @@ for transition in machining.typed
         offset += 1
 
 ────────────────────
+_ both-targets-text String
+
+` The error of a task forked onto a worker and onto the pool's threads both.
+"A task runs on a worker or on the pool's threads, not both; write $forms"
+.. forms = if tree.source-path.ends-with(".bx") then brix-forms else rows-forms
+.. brix-forms = "\"(do-new (worker: w) …)\" or \"(do-new-thread …)\""
+.. rows-forms = "\"do (w) new\" or \"do new thread\""
+
+────────────────────
+_ do report-pattern-on
+    - pattern SyntaxId
+
+` Reports a stream pattern written on a stream a subscription is given, which no match reads.
+. text = "A stream pattern matches items it reads with \"in\", not items a subscription with \"on\" is given; write \"in\" in place of \"on\""
+frame.diagnose(pattern, .stated, program.store-atom(text))
+
+────────────────────
 _ do check-worker
     - id SyntaxId
     - worker SyntaxId
@@ -26786,7 +27132,8 @@ _ do check-use TypeId
 ` `use`, written as a value or as `do use`: the subject's `begin-using` gives the value, and its
 ` `end-using` is called where the block is left, the two calls recorded at the node in that
 ` order. A subject with no `begin-using` that closes gives itself, and `close`, the one call
-` recorded, is called where the block is left.
+` recorded, is called where the block is left. An error the call that ends the use raises
+` leaves the function, as one a cleanup raises does.
 cleans-up = true
 . chain = optional-chain-expr(expr)
 . subject = if chain != 0 then infer(chain) else infer(expr)
@@ -26800,17 +27147,32 @@ if chain != 0
 types.optional-of(subject)
 . used = protocol-member(subject, "begin-using", id)
 if used == invalid-type
-    if protocol-member(subject, "close", id) == invalid-type
-        frame.diagnose(id, .stated, program.store-atom("begin-using must return a value"))
+    if ending-member(subject, "close", id) == invalid-type
+        . shown = type-short-name(types, subject)
+        . text = "$shown cannot be used, as it has no \"begin-using\" and is not Closable; declare \"begin-using\" and \"end-using\", or implement Closable"
+        frame.diagnose(id, .stated, program.store-atom(text))
         = invalid-type
     used = subject
-else if protocol-member(subject, "end-using", id) == invalid-type
+else if ending-member(subject, "end-using", id) == invalid-type
     decline(id)
     = invalid-type
 . slot = bindings.using-slot(frame.binding, id)
 if slot != no-slot
     frame.assign(slot, types.optional-of(subject))
 = if chain != 0 && !types.is-optional(used) then types.optional-of(used) else used
+
+────────────────────
+_ do ending-member TypeId
+    - receiver TypeId
+    - name String
+    - site SyntaxId
+
+` The method that ends a use, called as `protocol-member` calls one, whose errors leave the
+` function.
+. result = calls.protocol-getter(receiver, program.store-atom(name), site)
+if result != invalid-type
+    = result
+= calls.protocol-call(receiver, program.store-atom(name), site, no-type, true).answer
 
 ────────────────────
 _ do protocol-member TypeId
@@ -26832,15 +27194,16 @@ _ do check-for
     - next SyntaxId
 
 ` A `for` block. One on a stream subscribes where it is written, and its subscriber runs the
-` body; one on a stream with a header chained after it is an error TypeScript states with no
-` place. Any other loop runs its headers and its body.
+` body; one on a stream joined to another source, by a header chained after it or an `or`
+` arm, is an error. Any other loop runs its headers and its body.
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        if row.is-subscriber && row.next != 0
-            frame.diagnose
-                - loop
-                - .stated-unplaced
-                - program.store-atom("Combined subscriptions not supported")
+        if row.is-subscriber && tree.is-stream-pattern(row.pattern)
+            report-pattern-on(row.pattern)
+            =
+        if row.is-subscriber && (row.next != 0 || next != 0)
+            . text = "A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source"
+            frame.diagnose(loop, .stated, program.store-atom(text))
             =
         . subscriber = if row.is-subscriber then nested-decl-of(id) else 0u32
         if subscriber != 0 && frame.declaration.syntax == id
@@ -27073,10 +27436,12 @@ _ do check-pattern-header Bool
 ` A loop's header written as a stream pattern, as the reference runs it: the container is
 ` read through the stream a match would read it through, made once, by the calls recorded at
 ` the header, and each pass matches the pattern from where the last left the stream, as a
-` rule's arms match, without reading the rest. The loop ends where it fails. Its item, `each`
+` rule's arms match, without reading the rest. The loop ends where the stream has no more or
+` the pattern fails, and a pattern that may match without reading, where the reference knows
+` what it reads first, is an error, as it is in a pipe. Its item, `each`
 ` and `it`, is what the pattern gives, and the names it captures are the body's. One whose
-` item is optional has no shape: the reference gives what the optional holds, or a value it
-` can not print. Nor has one whose names are not each what one part gave. A container the
+` item is optional is an error: the reference gives what the optional holds, or a value it
+` can not print. One whose names are not each what one part gave has no shape. A container the
 ` reference finds no iterator for is read through its stream all the same, as the reference's
 ` `StreamSourceIterator` lets it be, and one it makes no stream of is its error at the pattern.
 ` False where the header was declined.
@@ -27089,15 +27454,24 @@ if container == invalid-type || container == no-type
 if !iterates(container) && natural-item(container) == no-type
     frame.diagnose(written, .stated, program.store-atom("Can't convert to iterable"))
     = false
+if first-set(pattern) == 3 || never-reads(pattern)
+    frame.diagnose(written, .stated, program.store-atom("Stream pattern loop must consume input"))
+    = false
 . buffer = stream-view
 . read = record-stream-protocol(loop, container)
 . made = stream-view.type
-. typed = if read then type-stream-arms(pattern, false) else invalid-type
+. typed = if read then type-stream-arms(pattern, true) else invalid-type
 stream-view = buffer
-if !read || (typed != invalid-type && (types.is-optional(typed) || !plain-captures(pattern)))
+if !read || (typed != invalid-type && !plain-captures(pattern))
     decline(loop)
     = false
 if typed == invalid-type
+    = false
+if types.is-optional(typed)
+    frame.diagnose(written, .stated, program.store-atom(optional-match-text("loop")))
+    = false
+if calls.protocol-getter(made, program.store-atom("has-more"), loop) != types.bool-type
+    decline(loop)
     = false
 facts.set-plan(instance, loop, .plan-pattern-loop)
 facts.set-loop-take(instance, loop, .take-whole)
@@ -28076,6 +28450,9 @@ _ do infer-comprehension TypeId
 ` written: see `infer-broadcaster`.
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
+        if row.is-subscriber && tree.is-stream-pattern(row.pattern)
+            report-pattern-on(row.pattern)
+            = invalid-type
         if row.is-subscriber && next == 0
             = infer-broadcaster(id, loop, row.container, row.clause, body)
         if row.is-subscriber || next != 0
@@ -28755,7 +29132,7 @@ if source == invalid-type
 do match? tree.nodes[right]
     | .node-stream-match(row)
         pattern = row.pattern
-if first-set(pattern) == 3
+if first-set(pattern) == 3 || never-reads(pattern)
     frame.diagnose(right, .stated, program.store-atom("Stream pattern pipeline must consume input"))
     = invalid-type
 . decl = nested-decl-of(id)
@@ -29069,6 +29446,34 @@ do match? tree.nodes[id]
 = 0
 
 ────────────────────
+_ do never-reads Bool
+    - id SyntaxId
+
+` Whether a stream pattern matches without ever reading an item: one made only of lookaheads.
+do match? tree.nodes[id]
+    | .node-stream-match(row)
+        = never-reads(row.pattern)
+    | .node-stream-unary(row)
+        = row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
+    | .node-stream-and(row)
+        = never-reads(row.left) && never-reads(row.right)
+    | .node-stream-or(row)
+        = never-reads(row.left) && never-reads(row.right)
+    | .node-stream-capture(row)
+        = never-reads(row.pattern)
+    | .node-stream-transform(row)
+        = row.pattern != 0 && never-reads(row.pattern)
+= false
+
+────────────────────
+_ optional-match-text String
+    - form String
+
+` The error for a stream pattern loop or pipeline whose matches give an optional value, which
+` the values it gives can't hold, since none of them ends it.
+"Stream pattern $form can't give an optional value; add an action that gives one"
+
+────────────────────
 _ do check-pattern-pipe
     - id SyntaxId
     - right SyntaxId
@@ -29084,8 +29489,8 @@ _ do check-pattern-pipe
 ` casts it. A helper the pipe is given with `with` is evaluated once, after the stream is made,
 ` and every match runs under it, as a match given one does. One that marks the records a pipe
 ` matches is asked to begin each record where the stream has more, before the stream is marked,
-` through the property it delegates that to where it does. One whose value is optional has no
-` shape.
+` through the property it delegates that to where it does. A pattern whose value is optional is
+` an error.
 . pattern = right
 . helper SyntaxId = 0
 do match? tree.nodes[right]
@@ -29109,7 +29514,7 @@ helping = helping.explicit = false
 helping = helping.body = if helper != 0 then right else 0
 . helped = helper == 0 || type-helper(helper)
 . helper-type = if helper != 0 && helped then facts.node-type(instance, helper) else no-type
-. typed = if read && helped then type-stream-arms(pattern, false) else invalid-type
+. typed = if read && helped then type-stream-arms(pattern, true) else invalid-type
 if typed != invalid-type && helping.rolls && helping.helper!.rollback == no-type
     frame.diagnose
         - id
@@ -29121,10 +29526,13 @@ helping = saved-helper
 stream-view = buffer
 if !helped
     =
-if !read || (typed != invalid-type && types.is-optional(typed))
+if !read
     decline(id)
     =
 if typed == invalid-type
+    =
+if types.is-optional(typed)
+    frame.diagnose(right, .stated, program.store-atom(optional-match-text("pipeline")))
     =
 if supported(container, types.token-stream-decl) == no-type
     calls.protocol-call(made, program.store-atom("pattern-release"), id)
@@ -30728,6 +31136,9 @@ _ do infer-integer TypeId
     - text String
     - unit Atom?
 
+` An integer written with a builtin number's suffix is the bit pattern of that width, kept to
+` its low bits, while one written with a unit a module declares must fit the unit's number type,
+` as a plain integer given to it must.
 . literal = parse-integer-literal(text)
 . target = if unit then literal-unit(id, text, unit) else types.type-row(.uint64)
 if unit && target != invalid-type && types.completions[target].has-variables
@@ -30735,13 +31146,35 @@ if unit && target != invalid-type && types.completions[target].has-variables
     frame.diagnose(id, .stated, message)
     facts.inset-diagnostic(text.length as U32)
     = invalid-type
-if literal.overflow && target != invalid-type
+if target != invalid-type && (literal.overflow || unfit)
     . shown = program.store-atom(decimal-text(text))
     frame.diagnose(id, .literal-does-not-fit, shown, no-type, target)
     = invalid-type
+.. unfit = unit && declared && !literal-fits-target(types, literal, builtin-number(types, target))
+.. declared = builtin-number(types, target) != target
 if unit
     = unit-literal(id, target)
 = magnitude-type(types, literal)
+
+────────────────────
+_ do infer-unit-float TypeId
+    - id SyntaxId
+    - text String
+    - unit Atom
+
+` A number with a fraction written with a unit, which must hold fractions where it is a number
+` of the unit's own.
+. target = literal-unit(id, text, unit)
+if target == invalid-type || declares-constructor(target)
+    = unit-literal(id, target)
+. number = builtin-number(types, target)
+if is-integer-kind(types.intrinsic-of(number))
+    . shown = type-short-name(types, target)
+    . held = if number == target then "" else ", as ${type-short-name(types, number)} does"
+    . message = "$shown holds whole numbers$held, so $text${unit.text} cannot be written; write a whole number"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+= unit-literal(id, target)
 
 ────────────────────
 _ do unit-literal TypeId
@@ -30749,10 +31182,16 @@ _ do unit-literal TypeId
     - unit-type TypeId
 
 ` A number written with a unit is of the unit's type. A unit that declares a constructor is
-` constructed from the number, and the literal is what the constructor returns.
+` constructed from the number, and the literal is what the constructor returns; one that
+` declares none is a number, or no number can be written in it.
 if unit-type == invalid-type
     = invalid-type
 if is-unit-class(types, unit-type) && !declares-constructor(unit-type)
+    if !intrinsic-is-numeric(types.intrinsic-of(builtin-number(types, unit-type)))
+        . shown = type-short-name(types, unit-type)
+        . message = "$shown is no number and declares no constructor that takes one, so no number can be written in its unit; declare $shown as a number type"
+        frame.diagnose(id, .stated, program.store-atom(message))
+        = invalid-type
     = unit-type
 . shapes-start = scratch.call-arguments.mark
 scratch.call-arguments.push(CallArgument(null, false, false, false, false))
@@ -31255,6 +31694,34 @@ if hidden-member(id, owner, name, "an event")
 frame.diagnose(id, .stated, program.store-atom(message))
 
 ────────────────────
+_ do reads-once Bool
+    - id SyntaxId
+
+` Whether a node is the operand of a `<-` written before it, which reads one item.
+do match? tree.nodes[tree.holder-of(id)]
+    | .node-unary-expression(row)
+        = row.op == .read-op && row.operand == id
+= false
+
+────────────────────
+_ do refuse-event-read
+    - id SyntaxId
+    - owner TypeId
+    - name Atom
+
+` Reports an event read with `<-`, as a channel is: an event gives each value to the
+` subscribers it has as it is published, and keeps none to be read.
+. written = name.text
+do match? tree.nodes[id]
+    | .node-get-expression(row)
+        do match? tree.nodes[row.object]
+            | .node-identifier(object)
+                written = "${object.name.text}.${name.text}"
+. owner-name = type-short-name(types, owner)
+. message = "\"${name.text}\" is an event of $owner-name, which gives each value to its subscribers and keeps none to read with \"<-\"; hear the next one with \"for value on $written\", and end the loop with \"break\""
+frame.diagnose(id, .stated, program.store-atom(message))
+
+────────────────────
 _ do settle-kept-arguments
     - mark Size
     - result TypeId
@@ -31684,11 +32151,16 @@ _ do infer-tracked-name Found
 ` A name alone read as tracked: a member of the receiver, read as any member is and tracked
 ` as `track-read` says, a member of a markup element being built, read as `read-received`
 ` says and tracked so too, or a local, tracked as `track-local` says. A global can not be
-` tracked, as the reference reports. Any other name has no shape here yet.
+` tracked, as the reference reports, nor can `this`, which is no property. Any other name has no
+` shape here yet.
 . resolution = bindings.resolution-of(frame.binding, id)
 . kind = resolution.kind
 if kind == .resolve-global
     frame.diagnose(id, .stated, program.store-atom("Untrackable name"))
+    = Found(invalid-type)
+if name.text == "this"
+    . message = "\"#this\" tracks nothing, as only a property is tracked; track the properties the value reads, as in \"#count\""
+    frame.diagnose(id, .stated, program.store-atom(message))
     = Found(invalid-type)
 if (resolution.flags /and/ ResolutionFlag.resolution-received) != 0
     . received = read-received(id, name, want)
@@ -31917,7 +32389,9 @@ _ do track-read
 ` outside the functions written in it, the value runs in a live action of its own that notes
 ` the read, and so does a rule of a class, and so does the `whenever` clause of a loop on a
 ` stream. So does the value of a declaration of a style rule (`unit-styling.styling`). Any
-` other read a live action sees has no shape here yet, nor has one of an object that is no class.
+` other read a live action sees has no shape here yet. A field of a struct or a tuple is reported,
+` as their values are copied and no object notes what reads them, and so is a read in the value
+` of a lazy property, which is worked out once.
 ` A read through an optional chain reads the object the optional holds.
 if receiver == no-type || receiver == invalid-type
     =
@@ -31935,6 +32409,12 @@ if key
 if place
     . ref = class-ref(types, types.tracked-root(types.properties[place].owner, name))
     facts.note-tracked(ref.module, ref.decl, name)
+if valued
+    . shown = type-short-name(types, receiver)
+    . message = "\"#${name.text}\" reads a field of $shown, whose values are copied, so it cannot be tracked; track a property of a class"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    =
+.. valued = types.intrinsic-of(receiver) == .struct || types.intrinsic-of(receiver) == .tuple
 if types.intrinsic-of(receiver) != .class
     decline(id)
     =
@@ -31946,6 +32426,10 @@ if context == .live-none
     =
 if context == .live-value && is-eager-value()
     instances.mark-live(instance)
+    =
+if context == .live-value && is-lazy-value()
+    . message = "A lazy property is worked out once, when it is first read, so it cannot follow \"#${name.text}\"; write \"=\" in place of \":=\" to keep it live, or read \"${name.text}\" without \"#\""
+    frame.diagnose(id, .stated, program.store-atom(message))
     =
 if context == .live-rule && is-rule-unit()
     instances.mark-live(instance)
@@ -32397,8 +32881,12 @@ _ do infer-stream TypeId
 ` a live action of its own is open, is written by `<-write` to an `AsyncBufferedChannel` of its
 ` type made there, which is kept in the local no name reaches declared at the stream, and the
 ` action writes the value again to the channel through the function written for it as what it
-` read changes. One that reads nothing tracked, or is written where a markup element is being
-` made, has no shape here yet.
+` read changes. One that reads nothing tracked is reported, as it would never change; one written
+` where a markup element is being made has no shape here yet.
+if !tracks-reads(tree, expr)
+    . message = "A stream of a value follows the reads written with \"#\", and this one has none, so it would never change; write \"#\" before what it follows, as in \"<c.#count>\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
 . decl = nested-decl-of(id)
 . resolution = bindings.resolution-of(frame.binding, id)
 if decl == 0 || resolution.kind != .resolve-slot || content-parents.length != 0
@@ -32847,6 +33335,19 @@ if unit.initializer == 0 || frame.self-type == no-type
 do match? program.modules[unit.module].decls[unit.initializer]
     | .decl-property(row)
         = !row.is-lazy
+= false
+
+────────────────────
+_ do is-lazy-value Bool
+
+` Whether the instance types the value written for a lazy property of a class, worked out once
+` when it is first read.
+. unit = instances.rows[instance]
+if unit.initializer == 0 || frame.self-type == no-type
+    = false
+do match? program.modules[unit.module].decls[unit.initializer]
+    | .decl-property(row)
+        = row.is-lazy
 = false
 
 ────────────────────
@@ -34348,9 +34849,9 @@ _ do use-event Found
 ` `Broadcastable`'s type. So has one in an argument of a call of a name nothing declares, which
 ` is reported as no function found (`names-nothing`). One used as a value is reported as
 ` `refuse-event-value` says (`misused-event`), and an argument one converted by a converter as
-` `misused-endpoint` says. The value stored in a property is taken once the property is known
-` (`store-event`). Naming an event anywhere else, a keyed one with no address among them, is
-` not supported.
+` `misused-endpoint` says, and one read with `<-` as `refuse-event-read` says. The value stored
+` in a property is taken once the property is known (`store-event`). Naming an event anywhere
+` else, a keyed one with no address among them, is not supported.
 . broadcastable = endpoint-of(event)
 if broadcastable == invalid-type
     decline(id)
@@ -34375,6 +34876,9 @@ if want.asks(.want-argument) && (event.key == no-type || event.address != 0)
     endpoint-arguments += id
     endpoint-events += event
     = Found(broadcastable)
+if reads-once(id)
+    refuse-event-read(id, event.owner, event.name)
+    = Found(invalid-type)
 frame.diagnose(id, .not-supported)
 = Found(invalid-type)
 
@@ -36119,7 +36623,32 @@ called-object = CalledObject()
 scratch.syntax.rewind(syntax-start)
 scratch.types.rewind(params-start)
 scratch.call-arguments.rewind(shapes-start)
+=? Found(invalid-type) if result.type != invalid-type && tracks-method(id, callable)
 = result
+
+────────────────────
+_ do tracks-method Bool
+    - id SyntaxId
+    - callable SyntaxId
+
+` Reports a method called with "#" before its name, as in `c.#size()`, which tracks nothing, as
+` only a stored property is tracked, and says whether it did.
+. name Atom? = null
+do match? tree.nodes[callable]
+    | .node-get-expression(get)
+        name = get.name if get.is-tracked
+    | .node-identifier(ident)
+        name = ident.name if ident.is-tracked
+if !name
+    = false
+. fact = facts.first-call(instance, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-method
+        . text = "\"${name.text}\" is a method, so \"#\" before it tracks nothing; track the properties it reads instead"
+        frame.diagnose(callable, .stated, program.store-atom(text))
+        = true
+    fact = facts.calls[fact].next
+= false
 
 ────────────────────
 _ do report-missing-params Bool
@@ -37330,7 +37859,8 @@ for catcher in tree.children[catchers]
                 . message = "Error transformers do not support catch bodies"
                 frame.diagnose(catcher, .stated, program.store-atom(message))
                 continue
-            if row.type == 0
+            . source = if row.type == 0 then no-type else typed-catcher(row.type)
+            if source == no-type || (source != invalid-type && !is-subtype(types, source, types.error-type))
                 . message = "Error transformer catch requires an error type"
                 frame.diagnose(catcher, .stated, program.store-atom(message))
                 continue
@@ -37339,7 +37869,6 @@ for catcher in tree.children[catchers]
             for previous in tree.children[row.previous]
                 bind-catcher(previous)
                 chain += caught-type(previous)
-            . source = caught-type(row.type)
             if source != invalid-type && frame.has-transform(source, chain)
                 . shown = type-short-name(types, source)
                 . message = "Ambiguous error transformer for $shown; only one transformer may "
@@ -37376,6 +37905,17 @@ _ do caught-type TypeId
         types.evaluate-type(module, tree, row.type, frame.env)
     ??
         types.evaluate-type(module, tree, pattern, frame.env)
+
+────────────────────
+_ do typed-catcher TypeId
+    - pattern SyntaxId
+
+` The error a catcher names, or none where it names only a local for it.
+= match tree.nodes[pattern]
+    | .node-type-capture(row)
+        if row.type == 0 then no-type else caught-type(pattern)
+    ??
+        caught-type(pattern)
 
 ────────────────────
 _ do bind-catcher
@@ -37481,7 +38021,7 @@ do match tree.nodes[right]
         else if facts.plan-of(instance, right) != .plan-case
             facts.set-plan(instance, right, .plan-never)
             if anonymous-symbol(right, row.name) == no-type && symbol-class(types, module, row.name) == invalid-type
-                frame.diagnose(right, .stated, program.store-atom("Type not found"))
+                missing-case(right, row.name, given)
         facts.set-plan(instance, id, .plan-is)
         =
     | .node-type-case
@@ -37650,14 +38190,38 @@ if equates && (narrowing.is-null-syntax(left) || narrowing.is-null-syntax(right)
 . names-left = symbol-of(left) != null || calls-symbol(left)
 if equates && names-left && symbol-of(right) == null && !calls-symbol(right)
     . named = infer(right)
+    if compares-machine-case(op, left, named)
+        = invalid-type
     = infer-compared(id, op, left, infer-comparand(left, named), right, named)
 if is-arithmetic(op) && !is-bitwise(op) && shared-symbol(left)
     . given = infer(right)
     = infer-binary-values(id, op, left, infer-receiver-symbol(left, op, given), right, given)
 . lhs = infer(left)
+if equates && compares-machine-case(op, right, lhs)
+    = invalid-type
 . rhs = if equates then infer-comparand(right, lhs) else infer(right)
 note-operand-suffixes(op, left, lhs, right, rhs)
 = infer-compared(id, op, left, lhs, right, rhs)
+
+────────────────────
+_ do compares-machine-case Bool
+    - op Operator
+    - symbol SyntaxId
+    - other TypeId
+
+` Reports a case of a state machine that `==` or `!=` compares with the machine's value: a
+` machine's case is tested with `is`, which holds while a case nested in it is active too.
+. name = symbol-of(symbol)
+if !name || other == invalid-type || other == no-type
+    = false
+. machine = types.optional-inner(other)
+if !is-machine-union(machine) || !names-case(machine, name)
+    = false
+. test = if op == .equals-op then "is" else "is not"
+. written = ".${name.text}"
+. message = "A state machine's case is tested with \"is\" or \"is not\", which count the cases nested in it; write \"$test $written\" in place of \"$op $written\""
+frame.diagnose(symbol, .stated, program.store-atom(message))
+= true
 
 ────────────────────
 _ do note-operand-suffixes
@@ -40037,6 +40601,9 @@ if id != rule-streaming.matched
     = infer-scoped-pattern(id, pattern, is-root)
 if matching.subject == invalid-type
     = invalid-type
+if is-root && !iterates(matching.subject) && natural-item(matching.subject) == no-type
+    frame.diagnose(id, .stated, program.store-atom("Can't convert to iterable"))
+    = invalid-type
 if !is-root || !record-stream-protocol(id, matching.subject)
     decline(id)
     = invalid-type
@@ -40072,15 +40639,20 @@ _ do infer-scoped-pattern TypeId
 ` `CaptureResult` of the stream's items and what the arms give, which holds the items the
 ` pattern read beside that, and nothing where no arm passed. One in the code of a local rule
 ` runs on the stream the rule is called on, as `coded-rule-type` says. One in any other
-` function, in the arms of another pattern, or under a helper, has no shape here. Where the
+` function is an error, and one in the arms of another pattern or under a helper has no shape
+` here. Where the
 ` metrics of stream patterns compile, each result it gives is counted, as the reference counts it.
 ` A function or local rule a pattern on a String calls reads the stream's UTF-8 bytes, and its
 ` `CaptureResult` holds those bytes.
 . stream = if rule-streaming.stream != no-type then rule-streaming.stream else scope-stream()
 . texts = if rule-streaming.stream != no-type then rule-streaming.encoded else instances.rows[instance].encoded
 if is-root || stream == no-type || rule-streaming.matched != 0 || helping.helper != null
-    decline(id)
+    if stream == no-type && rule-streaming.matched == 0 && helping.helper == null
+        frame.diagnose(id, .stated, program.store-atom(streamless-text))
+    else
+        decline(id)
     = invalid-type
+    .. streamless-text = "This pattern has no stream to read; outside a rule, write it in a match whose arms are all ~ patterns"
 . saved-rule = rule-streaming
 rule-streaming = rule-streaming.stream = no-type
 rule-streaming = rule-streaming.encoded = false
@@ -40144,8 +40716,9 @@ _ do type-stream-arms TypeId
 
 ` The arms of a stream pattern over the stream in force, typed as the reference declares them
 ` and joined: the names it captures first, then each arm, the text it matched where it gives
-` no other value. Where the pattern `texts`, as a match's arms do, an arm that gives no value
-` gives its text though its last part is optional; elsewhere the reference gives that part.
+` no other value. Where the pattern `texts`, as the arms of a match, a pipe or a loop do, an arm
+` that gives no value gives its text though its last part is optional; elsewhere the reference
+` gives that part.
 ` The arms are converted to the `target` where one is given, and else to the type they join
 ` as; where an arm gives null or an optional and the target `lifts`, to the `target` as an
 ` optional, which null is absent of.
@@ -40535,8 +41108,12 @@ do match? tree.nodes[id]
                 . apart = pattern-arms.scoped && other-arm && unrepeated && repeats == 0
                     .. other-arm = top-arm(capture-sites[position]) != top-arm(row.name)
                     .. unrepeated = capture-repeats[position] == 0
-                if !alternatives(capture-sites[position]) || (known != type && !apart)
-                    decline(id)
+                if !alternatives(capture-sites[position])
+                    frame.diagnose(id, .stated, program.store-atom("Capture ${name-text(row.name)} is captured twice on one way through the pattern"))
+                    = false
+                if known != type && !apart
+                    . shown = "${type-short-name(types, known)} in one alternative and ${type-short-name(types, type)} in another"
+                    frame.diagnose(id, .stated, program.store-atom("Capture ${name-text(row.name)} holds $shown"))
                     = false
         if valued
             facts.set-plan(instance, row.name, .plan-stream-value)
@@ -40860,13 +41437,26 @@ do match? tree.nodes[id]
 = false
 
 ────────────────────
-_ do captures-none Bool
+_ do first-capture SyntaxId
     - id SyntaxId
 
-` Whether a part of a pattern captures no name, declining the first that does.
+` The first name a part of a pattern captures, or none.
 for node in tree.subtree-start(id) .. < id + 1
     if tree.nodes[node] is .node-stream-capture
-        decline(node)
+        = node
+= 0
+
+────────────────────
+_ do captures-none Bool
+    - id SyntaxId
+    - quiet Bool = false
+
+` Whether a part of a pattern captures no name, declining the first that does where it is not
+` `quiet`.
+for node in tree.subtree-start(id) .. < id + 1
+    if tree.nodes[node] is .node-stream-capture
+        if !quiet
+            decline(node)
         = false
 = true
 
@@ -40901,32 +41491,48 @@ do match? tree.nodes[id]
 = false
 
 ────────────────────
-_ do captures-covered Bool
+_ do uncovered-read SyntaxId
     - pattern SyntaxId
     - body SyntaxId
 
-` Whether each name the match captures that an action reads holds a value on every way the
-` action's pattern passes: the reference leaves one that an alternative not taken captures
-` unset. A name that accumulates always holds its list. A function the action makes reads only
-` names that hold one value each, as `reads-captures` says.
+` Where an action reads a name the match captures that may hold no value on some way the
+` action's pattern passes, or none where each holds one: the reference leaves one that an
+` alternative not taken captures unset. A name that accumulates always holds its list. A
+` function the action makes reads only names that hold one value each, as `reads-captures`
+` says, and is where it reads another.
 for node in tree.subtree-start(body) .. < body + 1
     do match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             if slot != no-slot && is-capture(slot) && !accumulates(slot) && !covers(pattern, slot)
-                = false
+                = node
         | .node-function-syntax
             if capture-sites.length != rule-arming.capture-base && reads-captures(node)
-                = false
-= true
+                = node
+= 0
 
 ────────────────────
-_ do slices-read-plainly Bool
+_ uncovered-text String
+    - read SyntaxId
+
+` The error for an action that reads a name some way its pattern passes doesn't capture.
+"Capture ${name-text(read)} holds no value on some ways this arm matches; capture it in every alternative"
+
+────────────────────
+_ slice-read-text String
+
+` The error for a name captured as a slice of a stream that holds no characters, read for more
+` than its length or an item.
+"A capture over items that aren't characters can only be read for its length or an item"
+
+────────────────────
+_ do unplain-slice SyntaxId
     - body SyntaxId
 
-` Whether an action reads each name captured as a slice of a stream that holds no characters
-` only for its length or for an item of it. The reference types the name as an
-` `ImmutableArray` but gives it the `Array` it reads, and the two agree only there.
+` Where an action reads a name captured as a slice of a stream that holds no characters for
+` more than its length or an item of it, or none. The reference types the name as an
+` `ImmutableArray` but gives it the `Array` it reads, which shares the stream's buffer, and the
+` two agree only there.
 . receivers [SyntaxId]
 for node in tree.subtree-start(body) .. < body + 1
     do match? tree.nodes[node]
@@ -40940,9 +41546,9 @@ for node in tree.subtree-start(body) .. < body + 1
     if tree.nodes[node] is .node-identifier
         . slot = capture-slot(node)
         if slot != no-slot && is-capture(slot) && sliced && receivers.find(node) == null
-            = false
+            = node
         .. sliced = facts.plan-of(instance, bindings.slots[slot].syntax) == .plan-stream-slice
-= true
+= 0
 
 ────────────────────
 _ do reads-captures Bool
@@ -41285,7 +41891,8 @@ _ do stream-arm-type TypeId
 ` parts gives the text it matched whatever its last part gives, made as the type the arms
 ` give, where its rule has other arms, where that type is text, which leaves the last part's
 ` value unmade where the arm is alone, where it is optional text and the arm has others or is
-` alone in arms that state no type and give their text, or where the helper makes that type of
+` alone in arms that state no type and give their text, though not where the arms give their
+` text whatever their last part gives, or where the helper makes that type of
 ` the stream's items; one that the reference would make of text as a type nothing makes of it
 ` has no shape here. Where the arms state no type, that type is the one the arm's last part
 ` gives, which `arms-type` holds the other arms to. An arm that only looks ahead gives the
@@ -41352,7 +41959,7 @@ else
         .. text-target = rule-arming.target == no-type || rule-arming.target == types.string-type
     . whole = joined-target && matched == types.optional-of(types.string-type)
         .. joined-target = sequence && pattern-arms.joined && rule-arming.target != no-type
-    . lone = lone-arm && matched == types.optional-of(types.string-type) && lone-spans
+    . lone = !texted && lone-arm && matched == types.optional-of(types.string-type) && lone-spans
         .. lone-arm = sequence && !pattern-arms.joined && rule-arming.target == no-type
         .. lone-spans = returns-span(instance, id)
     . recorded = if literal-arm(id) then sliced-text(id) else record-source-text(id, wanted-text)
@@ -41553,8 +42160,8 @@ _ do stream-action-type TypeId
 ` of items that are no characters is what `slice-string` makes of them. Where the pattern is an
 ` optional part that gives its text, `it` is that text as an optional, which the part makes where
 ` its operand passes, a literal's by the slice and any other as `record-source-text` says. Any other
-` value a pattern has, and an arm with no pattern, which the reference types as the subject but
-` gives empty text, have no shape here. Nothing reads the value of a pattern whose expression does
+` value a pattern has has no shape here, and `it` in an arm with no pattern, which the reference
+` types as the subject but gives empty text, is an error. Nothing reads the value of a pattern whose expression does
 ` not read `it`. It reads as `location` where its pattern began and ended, or where it is tried
 ` where it has none. One the reference runs in a function of its own is recorded, and is planned to
 ` run so where it is not quiet and its own code may panic, which the panic would show; the panic
@@ -41653,7 +42260,7 @@ if pattern != 0
         if slot != no-slot && (text-items() || reads)
             frame.assign(slot, it-type)
 else if mentions(body, "it")
-    decline(id)
+    frame.diagnose(id, .stated, program.store-atom("An arm with no pattern has no \"it\"; read the subject by its name"))
     = invalid-type
 if !type-location(id, pattern != 0, body)
     decline(id)
@@ -41701,8 +42308,16 @@ if helping.helper != null && value != no-type
 if value == no-type || narrowing.exits(body)
     decline(id)
     = invalid-type
-if !captures-covered(pattern, body) || !slices-read-plainly(body)
-    decline(id)
+. uncovered = uncovered-read(pattern, body)
+if uncovered != 0
+    if tree.nodes[uncovered] is .node-identifier
+        frame.diagnose(uncovered, .stated, program.store-atom(uncovered-text(uncovered)))
+    else
+        decline(id)
+    = invalid-type
+. unplain = unplain-slice(body)
+if unplain != 0
+    frame.diagnose(unplain, .stated, program.store-atom(slice-read-text()))
     = invalid-type
 if rule-arming.span
     if value != rule-arming.target || remakes-result || forwards-it
@@ -43374,7 +43989,10 @@ _ do stream-node-type TypeId
 
 ` The type the reference declares for a part of a stream pattern that runs nothing: the text
 ` it matched for a literal, a range of characters or any one, and for a repeat or a count of
-` a part; for a call of a rule, what the rule gives. A sequence has the type of its last part
+` a part; for a call of a rule, what the rule gives. Over integer items, a range of characters
+` gives the item it matched and a literal, where nothing reads it, none; each tests items
+` against code points they hold, and other text is an error, as is any text over items of
+` another type. A sequence has the type of its last part
 ` and a lookahead that of its operand; an optional part is optional, and alternatives join.
 ` An optional part whose operand gives an optional is one of that optional, as the reference
 ` types it, only where nothing reads its value. A repeat or a count of a part gives its text only where the reference reckons the part
@@ -43392,14 +44010,26 @@ _ do stream-node-type TypeId
 ` none, and so do alternatives whose value nothing reads. Another count of a part that gives a
 ` value, other alternatives that call rules, and any other part have no shape here.
 do match? tree.nodes[id]
-    | .node-stream-string
+    | .node-stream-string(row)
         if text-items()
             = types.string-type
+        if valuing.unvalued && is-integer(stream-view.item)
+            if some(row.text.codepoints) • where !item-holds(each as U64)
+                = report-unheld(id)
+            = no-type
+        if stream-view.item != no-type && !is-integer(stream-view.item)
+            frame.diagnose(id, .stated, program.store-atom("Text in a pattern can only match character or integer items"))
+            = invalid-type
     | .node-stream-any
         = if text-items() then types.string-type else stream-view.item
     | .node-stream-char-range(row)
-        if text-items() && char-bound(row.first) && char-bound(row.last)
-            = types.string-type
+        if char-bound(row.first) && char-bound(row.last)
+            if text-items()
+                = types.string-type
+            if is-integer(stream-view.item)
+                if !item-holds(bound(row.first)) || !item-holds(bound(row.last))
+                    = report-unheld(id)
+                = stream-view.item
     | .node-stream-predicate(row)
         = predicate-type(id, row.predicate)
     | .node-stream-equality(row)
@@ -43425,9 +44055,14 @@ do match? tree.nodes[id]
             left = valued-alternatives(row.left, left)
             right = valued-alternatives(row.right, right)
             if left != right || left-unfit || !stream-valued(row.left) || !stream-valued(row.right)
-                decline(id)
+                if left != right && typed(left) && typed(right)
+                    . shown = "${type-short-name(types, left)} and ${type-short-name(types, right)}"
+                    frame.diagnose(id, .stated, program.store-atom("Alternatives give $shown; give each a value of one type"))
+                else
+                    decline(id)
                 = invalid-type
             .. left-unfit = left == invalid-type || left == no-type || types.is-optional(left)
+            .. typed = :: type => type != invalid-type && type != no-type
             facts.set-plan(instance, id, .plan-stream-value)
             facts.set-node-type(instance, id, left)
             = left
@@ -43640,9 +44275,9 @@ _ do pattern-argument-type TypeId
 ` where it is written. It is typed over the items of the stream the call reads, as a rule's
 ` arms are, read as the `TokenStream` of those items the function is given, as a
 ` `PatternFunc` of those items and what it gives, which asks the stream for more input through
-` the calls `record-growth` keeps. One that captures a name or runs an action
-` has no shape here, nor one that reads a name or calls a local rule but as `plain-argument`
-` says, which keeps the names its function is given. Under a helper it is typed for the
+` the calls `record-growth` keeps. One that captures a name is an error, as nothing can read
+` it; one that runs an action has no shape here, nor one that reads a name or calls a local
+` rule but as `plain-argument` says, which keeps the names its function is given. Under a helper it is typed for the
 ` helper as a pattern of its own, which holds a rollback mark where the helper can roll back,
 ` and needs the helper to roll back where its parts do.
 . known = facts.node-type(instance, arg)
@@ -43654,10 +44289,16 @@ do match? tree.nodes[arg]
         pattern = row.pattern
 . reads [SlotId]
 . read-types [TypeId]
-if unpatterned || !captures-none(pattern) || !plain-argument(pattern, reads, read-types)
+if pattern == 0 || stream-view.item == no-type
     decline(arg)
     = invalid-type
-.. unpatterned = pattern == 0 || stream-view.item == no-type
+. capture = first-capture(pattern)
+if capture != 0
+    frame.diagnose(capture, .stated, program.store-atom("A pattern given as an argument can't capture names"))
+    = invalid-type
+if !plain-argument(pattern, reads, read-types)
+    decline(arg)
+    = invalid-type
 . given = class-over(types.token-stream-decl, stream-view.item)
 if !record-growth(given, arg, encoded())
     decline(arg)
@@ -43799,7 +44440,7 @@ for node in tree.subtree-start(pattern) .. < pattern + 1
     if tree.nodes[node] is .node-stream-call
         = false
 . held = reads.length
-if captures-none(pattern) && plain-argument(pattern, reads, read-types, true)
+if captures-none(pattern, true) && plain-argument(pattern, reads, read-types, true)
     = true
 while reads.length > held
     reads.pop()
@@ -44398,8 +45039,8 @@ _ do stream-call-type TypeId
 
 ` A call of a rule: the type of what the rule gives. A local rule given no arguments is typed
 ` where it is first called. A rule a module declares is called as its function is, and a
-` pattern a name holds as `$name` calls it; a local rule given arguments or types has no
-` shape here. A rule given collectors is typed as `mapped-call-type` says, where it can take
+` pattern a name holds as `$name` calls it; a local rule given arguments or types is an
+` error. A rule given collectors is typed as `mapped-call-type` says, where it can take
 ` them, and is TypeScript's error where not; under a helper that makes text, one whose text is
 ` read has no shape here. Under a helper, a local rule the match runs where it is called and a
 ` rule a module declares have a shape here, and no other; one whose pattern gives its text is
@@ -44440,7 +45081,7 @@ do match? tree.nodes[id]
             else
                 result = mapped-call-type(id, rule, row.name, row.collector-mappings)
         else if rule != 0 && !plain
-            decline(id)
+            frame.diagnose(id, .stated, program.store-atom("A local rule takes no arguments or types; declare it at module level to give it some"))
         else if rule != 0
             . recurs = !beside-rule && rules.find(rule) != null
             if !beside-rule && rules.length != 0
@@ -44810,6 +45451,8 @@ if known != no-type
     = known
 . class = types.evaluate-type(module, tree, written, frame.env)
 if class == invalid-type || class == no-type
+    if !report-missing-type(written, frame.env)
+        decline(id)
     = invalid-type
 . made = stream-constructor-type(id, class)
 if made == no-type
@@ -45058,7 +45701,18 @@ deferring = holds
 deferring = false
 . resolved = instances.held.mark
 if result == invalid-type && typed
-    . message = program.store-atom("Unable to call function ${name.text}")
+    . known = false
+    . ruled = false
+    for candidate in program.lookup(module, name)
+        known = true
+        . owner = program.modules[candidate.module]
+        do match? owner.decls[candidate.decl]
+            | .decl-function(fn)
+                ruled = ruled || (fn.args.count != 0 && owner.arg-pool[fn.args.start].name?.text == "(stream)")
+    . missing = "Rule \"${name.text}\" not found"
+    . unruled = "\"${name.text}\" is a function, not a rule; call it outside the pattern"
+    . unmatched = "No rule \"${name.text}\" matches ${type-short-name(types, stream-view.item)} items with these arguments"
+    . message = program.store-atom(if !known then missing else if !ruled then unruled else unmatched)
     facts.restate(diagnosed, instance, id, .function-not-found, .stated, message)
 scratch.syntax.rewind(syntax-start)
 scratch.types.rewind(params-start)
@@ -45363,7 +46017,11 @@ do match? tree.nodes[rule]
         matched = declaration.right
 . pattern = local-rule-pattern(rule)
 if pattern == 0 || rules.length == 0 || rules[rules.length - 1] != rule || helping.helper != null
-    decline(id)
+    if pattern != 0 && rules.find(rule) != null && helping.helper == null
+        . text = "The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can"
+        frame.diagnose(id, .stated, program.store-atom(text))
+    else
+        decline(id)
     = false
 . place = facts.note-local-rule(instance, rule)
 if facts.local-rules[place].stream == no-type
@@ -45495,6 +46153,119 @@ if class-arg(types, held, 0) != buffer-item
 = class-arg(types, held, 1)
 
 ────────────────────
+_ do left-call SyntaxId
+    - id SyntaxId
+    - target SyntaxId
+    - seen [SyntaxId]
+
+` The call by which a part of a stream pattern calls a rule before it reads an item, or none:
+` the local rule `target`, or for none the rule the module declares that is being checked,
+` called directly or through the local rules called first. A call of any other rule is taken
+` to read before it calls anything. Such a rule would call itself forever.
+do match? tree.nodes[id]
+    | .node-stream-call
+        if calls-target(id, target)
+            = id
+        . rule = rule-of(id)
+        if rule == 0 || seen.find(rule) != null
+            = 0
+        seen += rule
+        = left-call(rule-pattern(rule), target, seen)
+    | .node-stream-and(row)
+        . leading = left-call(row.left, target, seen)
+        if leading != 0 || !may-read-none(row.left, List'SyntaxId())
+            = leading
+        = left-call(row.right, target, seen)
+    | .node-stream-or(row)
+        . leading = left-call(row.left, target, seen)
+        = if leading != 0 then leading else left-call(row.right, target, seen)
+    | .node-stream-unary(row)
+        = left-call(row.operand, target, seen)
+    | .node-stream-length(row)
+        = left-call(row.operand, target, seen)
+    | .node-stream-capture(row)
+        = left-call(row.pattern, target, seen)
+    | .node-stream-transform(row)
+        if row.pattern != 0
+            = left-call(row.pattern, target, seen)
+    | .node-stream-panic(row)
+        if row.pattern != 0
+            = left-call(row.pattern, target, seen)
+= 0
+
+────────────────────
+_ do calls-target Bool
+    - call SyntaxId
+    - target SyntaxId
+
+` Whether a call of a rule names the local rule `target`, or for none the rule the module
+` declares that is being checked.
+if target != 0
+    = rule-of(call) == target
+. resolution = bindings.resolution-of(frame.binding, call)
+= resolution.kind == .resolve-function && resolution.decl == frame.decl && resolution.module == module
+
+────────────────────
+_ do may-read-none Bool
+    - id SyntaxId
+    - seen [SyntaxId]
+
+` Whether a part of a stream pattern may match without reading an item, as far as it is
+` known here: a call of a rule other than a local one is taken to read.
+do match? tree.nodes[id]
+    | .node-stream-string(row)
+        = row.text.length == 0
+    | .node-stream-and(row)
+        = may-read-none(row.left, seen) && may-read-none(row.right, seen)
+    | .node-stream-or(row)
+        = may-read-none(row.left, seen) || may-read-none(row.right, seen)
+    | .node-stream-unary(row)
+        = row.op != .one-or-more-op || may-read-none(row.operand, seen)
+    | .node-stream-length(row)
+        do match? tree.nodes[row.min]
+            | .node-integer-syntax(bound)
+                if parse-integer-literal(bound.value).value == 0
+                    = true
+        = may-read-none(row.operand, seen)
+    | .node-stream-capture(row)
+        = may-read-none(row.pattern, seen)
+    | .node-stream-transform(row)
+        = row.pattern != 0 && may-read-none(row.pattern, seen)
+    | .node-stream-panic(row)
+        = row.pattern != 0 && may-read-none(row.pattern, seen)
+    | .node-stream-call
+        . rule = rule-of(id)
+        if rule == 0 || seen.find(rule) != null
+            = false
+        seen += rule
+        = may-read-none(rule-pattern(rule), seen)
+= false
+
+────────────────────
+_ do rule-pattern SyntaxId
+    - rule SyntaxId
+
+` The pattern of a local rule's declaration.
+do match? tree.nodes[rule]
+    | .node-declare(declaration)
+        do match? tree.nodes[declaration.right]
+            | .node-stream-match(row)
+                = row.pattern
+= 0
+
+────────────────────
+_ do report-left-recursion
+    - call SyntaxId
+
+` Reports a call by which a rule calls itself before it reads anything.
+. name = ""
+do match? tree.nodes[call]
+    | .node-stream-call(row)
+        name = row.name.text
+. text = "\"$name\" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with \"*\""
+frame.diagnose(call, .stated, program.store-atom(text))
+
+────────────────────
 _ do rule-type TypeId
     - rule SyntaxId
 
@@ -45546,6 +46317,10 @@ if helping.span-typing
     declared = types.string-type
 . calling = rules.find(rule)
 if calling != null
+    . closing = left-call(pattern, rule, List'SyntaxId())
+    if closing != 0
+        report-left-recursion(closing)
+        = invalid-type
     if declared == no-type
         frame.diagnose(left, .stated, program.store-atom("Can't infer return type after recursion"))
         = invalid-type
@@ -45589,13 +46364,46 @@ facts.local-rules[place].answer = types.optional-around(result)
 = result
 
 ────────────────────
+_ item-holds Bool
+    - point U64
+
+` Whether integer items hold a character a pattern tests them against as its code point: one
+` their type fits, and over items of a byte, which hold the UTF-8 of text, one that is ASCII.
+literal-fits-target(types, IntegerLiteral(point, false, false), stream-view.item) && ascii-or-wide
+.. ascii-or-wide = point < 0x80 || types.completion-of(stream-view.item).bit-size > 8
+
+────────────────────
+_ do report-unheld TypeId
+    - id SyntaxId
+
+` The error for characters in a pattern over integer items that do not hold them as they are.
+. byte = types.completion-of(stream-view.item).bit-size <= 8
+. text = if byte then over-bytes else over-items
+    .. over-bytes = "Characters in a pattern over bytes must be ASCII; match other bytes by number"
+    .. over-items = "Characters in a pattern over ${type-display(types, stream-view.item)} items must fit that type"
+frame.diagnose(id, .stated, program.store-atom(text))
+= invalid-type
+
+────────────────────
+_ bound U64
+    - id SyntaxId
+
+` The code point a bound of a range of characters is written as.
+match tree.nodes[id]
+    | .node-integer-syntax(row)
+        parse-integer-literal(row.value).value
+    ??
+        0
+
+────────────────────
 _ char-bound Bool
     - id SyntaxId
 
-` Whether a bound of a range of characters is a character written, as the reference requires.
+` Whether a bound of a range of characters is a character written, as the reference requires: a
+` character literal, whose unit is `(char)`, or a number with no unit or `Char`'s suffix.
 match tree.nodes[id]
     | .node-integer-syntax(row)
-        !row.unit || row.unit.text == "c"
+        !row.unit || row.unit.text == "(char)" || row.unit.text == "c"
     ??
         false
 
@@ -46473,6 +47281,9 @@ do match tree.nodes[pattern]
             . given-kind = types.intrinsic-of(given)
             if given-kind == .table-row || given-kind == .immutable-table-row
                 note-case(pattern, row-struct-of(given), row.name)
+            else if row.type == 0 && names-nothing-case(pattern, row.name, given)
+                missing-case(pattern, row.name, given)
+                =
         . payload = case-payload(if row.type == 0 then given else case-type, row.name)
         . refined = no-type
         . known = given != no-type && given != invalid-type
@@ -46915,6 +47726,33 @@ for field in tree.children[fields]
 = true
 
 ────────────────────
+_ do missing-case
+    - pattern SyntaxId
+    - name Atom
+    - subject TypeId
+
+` Reports a case a pattern names that no type has, where it tests a value of a union, which is
+` named with its cases, or of a type with none.
+if subject == no-type || subject == invalid-type
+    frame.diagnose(pattern, .stated, program.store-atom("Type not found"))
+    =
+. shown = type-short-name(types, subject)
+. message = if types.intrinsic-of(subject) == .union then "Case \".${name.text}\" not found in $shown" else "Case \".${name.text}\" not found: $shown has no cases"
+frame.diagnose(pattern, .stated, program.store-atom(message))
+
+────────────────────
+_ do names-nothing-case Bool
+    - pattern SyntaxId
+    - name Atom
+    - subject TypeId
+
+` Whether a pattern names a case by its name alone that neither a value of the subject's enum
+` nor any type the pattern could mean has.
+if names-enum-value(pattern, 0, name, subject)
+    = false
+= anonymous-symbol(pattern, name) == no-type && symbol-class(types, module, name) == invalid-type
+
+────────────────────
 _ do case-possible Bool
     - pattern SyntaxId
     - type SyntaxId
@@ -46943,7 +47781,7 @@ else
     if meant == no-type
         meant = symbol-class(types, module, name)
         if meant == invalid-type
-            frame.diagnose(pattern, .stated, program.store-atom("Type not found"))
+            missing-case(pattern, name, given)
 if meant == no-type || meant == invalid-type || !inside
     = false
 if meant == given
@@ -47534,6 +48372,70 @@ for fact in types.cases[completion.cases]
 = no-type
 
 ────────────────────
+_ do refuses-machine-write Bool
+    - id SyntaxId
+    - name Atom
+    - resolution Resolution
+
+` Reports an assignment to a name of a state machine, which moves only by its transitions: the
+` local or the property it is kept in, or the property that says whether one of its cases is
+` active or holds what the case holds, and says whether it did.
+if resolution.kind == .resolve-member
+    = writes-machine(id, frame.self-type, name)
+if resolution.kind == .resolve-global
+    = writes-machine-property(id, resolution.module, resolution.decl, name)
+if resolution.kind != .resolve-slot
+    = false
+if bindings.slots[resolution.slot].kind == .slot-machine
+    = machine-write(id, "\"${name.text}\" is a case of a state machine, which")
+for row in bindings.machines
+    if row.bound != no-slot && row.bound == resolution.slot
+        = machine-write(id, "State machine \"${name.text}\"")
+= false
+
+────────────────────
+_ do writes-machine Bool
+    - id SyntaxId
+    - receiver TypeId
+    - name Atom
+
+` Reports an assignment to a property of a class that is a state machine or one of its cases, as
+` `refuses-machine-write` does, and says whether it did.
+if !intrinsic-is-class(types.intrinsic-of(receiver))
+    = false
+. ref = declaring-class(types, receiver, name)
+= writes-machine-property(id, ref.module, owner-property(program, ref.module, ref.decl, name), name)
+
+────────────────────
+_ do writes-machine-property Bool
+    - id SyntaxId
+    - module ModuleId
+    - decl DeclId
+    - name Atom
+
+` Reports an assignment to a property that is a state machine or one of its cases, as
+` `refuses-machine-write` does, and says whether it did.
+if decl == 0
+    = false
+do match? program.modules[module].decls[decl]
+    | .decl-property(row)
+        if program.modules[module].tree.declared-machine(row.value) != 0
+            = machine-write(id, "State machine \"${name.text}\"")
+        if row.flag != 0 || row.projection != 0
+            = machine-write(id, "\"${name.text}\" is a case of a state machine, which")
+= false
+
+────────────────────
+_ do machine-write Bool
+    - id SyntaxId
+    - subject String
+
+` Reports an assignment to a state machine or to one of its cases.
+. text = "${subject} moves only by its transitions, so it cannot be assigned; add a transition that enters the case"
+frame.diagnose(id, .stated, program.store-atom(text))
+= true
+
+────────────────────
 _ do infer-assign TypeId
     - id SyntaxId
     - op Operator
@@ -47563,6 +48465,8 @@ do match? tree.nodes[lhs]
         = chain-stored(lhs, stored)
     | .node-identifier(row)
         . resolution = bindings.resolution-of(frame.binding, lhs)
+        if refuses-machine-write(id, row.name, resolution)
+            = invalid-type
         if resolution.kind == .resolve-member
             = infer-property-assign(id, lhs, op, 0, row.name, rhs, false, no-type, want)
         if resolution.kind == .resolve-function && module-accessor
@@ -47989,10 +48893,14 @@ _ do infer-property-assign TypeId
 ` (`Panics.typed-late`). A narrowed read stored after such a store is taken as declared where
 ` that is what the place holds (`reads-as-declared`), and one in doubt that is stored any other
 ` way is declined. The object of an assignment that applies an operator is typed before the
-` value, and that of a plain one after it, as the reference evaluates them. An event stored is
-` taken once the property is known, as `store-event` says.
-. compound = op != .eq-op && object-syntax != 0
-. early = if compound then infer-found(object-syntax) else Found(no-type)
+` value, and that of a plain one after it, as the reference evaluates them, but before a case
+` named by its symbol alone, which evaluates nothing, so that a state machine is found before
+` the case is (`writes-machine`). An event stored is taken once the property is known, as
+` `store-event` says.
+. object-first = (op != .eq-op || tree.nodes[rhs] is .node-symbol) && object-syntax != 0
+. early = if object-first then infer-found(object-syntax) else Found(no-type)
+if object-first && op == .eq-op && writes-machine(id, early.type, name)
+    = invalid-type
 . assigned = infer-found(rhs, if op == .eq-op then Want().adding(.want-store) else Want())
 . value = stored-value(rhs, assigned.type)
 . doubted = assigned.doubted
@@ -48000,9 +48908,9 @@ _ do infer-property-assign TypeId
 . kept = assigned.kept
 . own-receiver = if owner != no-type then owner else frame.self-type
 . unqualified = object-syntax == 0
-. late = if unqualified || compound then Found(no-type) else infer-found(object-syntax)
-. receiver = if unqualified then own-receiver else if compound then early.type else late.type
-. own = if compound then early.link else late.link
+. late = if unqualified || object-first then Found(no-type) else infer-found(object-syntax)
+. receiver = if unqualified then own-receiver else if object-first then early.type else late.type
+. own = if object-first then early.link else late.link
 if value == invalid-type || receiver == invalid-type || receiver == no-type
     = invalid-type
 . form = if is-optional then note-chain(lhs, lhs, receiver) else ChainForm.chain-plain
@@ -48015,6 +48923,8 @@ else if object-syntax != 0 && types.is-optional(receiver) && optional-chained(ob
     receiver = link-receiver(object-syntax, receiver, own, false)
     facts.set-node-type(instance, object-syntax, receiver)
 if object-syntax != 0 && refuses-write(lhs, receiver, false)
+    = invalid-type
+if object-syntax != 0 && writes-machine(id, receiver, name)
     = invalid-type
 . sets-length = name == types.length-atom! && !types.property-named(receiver, name)
 if object-syntax != 0 && op == .eq-op && refuses-layout(id, lhs, object-syntax, receiver, name, rhs, want)
@@ -49291,10 +50201,12 @@ _ Preparing is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ Finally is Tuple
 
-` The `finally` block being checked: whether its cleanup runs, and the last node it watches.
+` The `finally` block being checked: whether its cleanup runs, the last node it watches, and
+` how many loops are open around it.
 
 + cleaning-up Bool
 + limit SyntaxId = 0
++ loops Size = 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ CallArgumentsTyping is Tuple
