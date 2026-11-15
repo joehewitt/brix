@@ -1927,12 +1927,12 @@ do finally
         tree.append(ASTMarkupSlotForward(location, name, outlet))
             .. outlet = tree.append
                 - ASTSlotOutlet(location, name, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId(), 0)
-    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? body \block?
-        tree.append(ASTMarkup(location, t, markup-id, slot-binding, tree.syntax-or-invalid(param), tree.store-optional-children(args), tree.store-optional-children(rules), tree.syntax-or-invalid(body)))
+    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? tags \theme-tag-bindings? body \block?
+        tree.append(ASTMarkup(location, t, markup-id, slot-binding, tree.syntax-or-invalid(param), tree.store-optional-children(args), tree.store-optional-children(rules), theme-tag-body(tree, location, t, tags, body)))
             .. markup-id, slot-binding = markup-head-values(tree, head)
 
 .. markup-head SyntaxId ~
-    ~ // id \identifier slot-binding \markup-slot-binding-after-id?
+    ~ // !\theme-tag-keyword id \identifier slot-binding \markup-slot-binding-after-id?
         tree.append
             - ASTMarkupHead
                 - location
@@ -1982,8 +1982,20 @@ do finally
         sequence-singleton(tree, text)
 
 .. style-rule-applications ImmutableArray'SyntaxId ~
-    ~ // "•" // head \applied-style-rule (// tail \applied-style-rule)*
+    ~ // "•" // head \applied-style-rule (// !\theme-tag-keyword tail \applied-style-rule)*
         with-tail(tree, head, tail)
+
+.. theme-tag-keyword MatchLocation ~
+    ~ "for" !([a-zA-Z0-9-])
+        MatchLocation(location.begin, location.begin)
+
+.. theme-tag-bindings ImmutableArray'SyntaxId ~
+    ~ // \theme-tag-keyword // head \theme-tag-binding (/ "," // tail \theme-tag-binding)*
+        with-tail(tree, head, tail)
+
+.. theme-tag-binding SyntaxId ~
+    ~ name \raw-atom-name condition \style-rule-condition?
+        theme-tag-row(tree, location, name, condition)
 
 .. applied-style-rule SyntaxId ~
     ~ reserved \reserved-style-rule-name

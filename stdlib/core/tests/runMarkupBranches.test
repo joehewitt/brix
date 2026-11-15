@@ -139,13 +139,8 @@ for child in node.children
 = count
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkBranchBuilder is () Void ?! Error
-    - parent MarkNode
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkNode
-    is MarkupHost
-    is MarkupTreeHost'MarkNode
+    is MarkupParent'MarkNode
 
 + parent MarkNode?
 + first-child MarkNode?
@@ -223,23 +218,13 @@ while true
 ────────────────────
 + do close Void
 
+markup-close-region(this)
 clear-children()
 
 ────────────────────
-+ markup-branch-region'Content MarkBranchRegion
-    - arm-builders [MarkupBranchBuilder'Content]
-    - active-arm Index?
-    - Content = MarkNode
++ markup-make-region MarkNode?
 
-MarkBranchRegion(arm-builders as [MarkBranchBuilder], active-arm)
-
-────────────────────
-+ do markup-select-branch-region'Content Void
-    - region Content
-    - active-arm Index?
-    - Content = MarkNode
-
-(region as MarkBranchRegion).select-markup-branch(active-arm)
+MarkNode()
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkText is MarkNode
@@ -258,29 +243,6 @@ MarkBranchRegion(arm-builders as [MarkBranchBuilder], active-arm)
 ────────────────────
 + This
     - node
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkBranchRegion is MarkNode
-
-+ arm-builders [MarkBranchBuilder]
-_ active-arm Index?
-
-────────────────────
-+ This
-    - arm-builders
-    - active-arm Index?
-
-select-markup-branch(active-arm)
-
-────────────────────
-+ do select-markup-branch Void
-    - arm Index?
-
-clear-children()
-active-arm = arm
-if arm
-    . index = arm
-    arm-builders[index](this)
 
 :----
 
@@ -399,7 +361,7 @@ for child in box.children
 :----
 %crash
 
-Exception: Dynamic markup branch parent must implement MarkupHost
+Exception: Dynamic markup branch parent must implement MarkupElement
 <no file:5>
         if #flag
         ^^^^^^^
@@ -413,13 +375,8 @@ Exception: Dynamic markup branch parent must implement MarkupHost
         "bad"
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkBranchBuilder is () Void ?! Error
-    - parent MarkNode
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkNode
-    is MarkupHost
-    is MarkupTreeHost'MarkNode
+    is MarkupParent'MarkNode
 
 ────────────────────
 + markup-content MarkNode
@@ -433,40 +390,14 @@ child
     - anchor MarkNode?
 
 ────────────────────
-+ markup-branch-region'Content MarkBranchRegion
-    - arm-builders [MarkupBranchBuilder'Content]
-    - active-arm Index?
-    - Content = MarkNode
++ do close
 
-MarkBranchRegion(arm-builders as [MarkBranchBuilder], active-arm)
+markup-close-region(this)
 
 ────────────────────
-+ do markup-select-branch-region'Content Void
-    - region Content
-    - active-arm Index?
-    - Content = MarkNode
++ markup-make-region MarkNode?
 
-(region as MarkBranchRegion).select-markup-branch(active-arm)
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkBranchRegion is MarkNode
-
-+ arm-builders [MarkBranchBuilder]
-
-────────────────────
-+ This
-    - arm-builders
-    - active-arm Index?
-
-select-markup-branch(active-arm)
-
-────────────────────
-+ do select-markup-branch Void
-    - arm Index?
-
-if arm
-    . index = arm
-    arm-builders[index](this)
+MarkNode()
 
 :----
 %crash
@@ -1564,7 +1495,7 @@ for child in branch.%first-child!.%first-child!.children
 + name = ""
 + is-leaving = false
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-depart Bool
@@ -1638,7 +1569,7 @@ for child in demo.%first-child!.children
 
 log += "build"
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-depart Bool
@@ -1712,7 +1643,7 @@ for child in demo.%first-child!.children
 
 log += "leaver"
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-depart Bool
@@ -1772,16 +1703,16 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + HeldRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
 
 ────────────────────
 + This
 
 markup-mount-root(this, this)
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupRootElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-batch-did-flush
@@ -1805,7 +1736,7 @@ markup-mount-root(this, this)
 
 + is-leaving = false
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-depart Bool
@@ -1936,25 +1867,21 @@ Stack trace:
   2  core/markup:markup-append core/markup.yumi
   3  __source__:markup-branch-arm no file:19:13
   4  __source__:markup-branch-armCasting no file:17:5
-  5  core/list:Casting core/list.yumi
-  6  core/list:Casting core/list.yumi
-  7  core/markup:MarkupBranchController:select-markup-branch core/markup.yumi
-  8  core/tests/support/markup-fixtures:BranchRegion:select-markup-branch core/tests/support/markup-fixtures.yumi
-  9  core/tests/support/markup-fixtures:Box:markup-select-branch-region core/tests/support/markup-fixtures.yumi
-  10  core/markup:markup-select-branch-region core/markup.yumi
-  11  __source__:markup-branch no file:17:5
-  12  __source__:markup-branchCasting no file:17:5
-  13  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
-  14  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
-  15  core/markup:MarkupBatchAction:run-markup-batch-action-now core/markup.yumi
-  16  core/markup:MarkupBatchAction:run-markup-batch-action core/markup.yumi
-  17  core/markup:MarkupBatchAction:refresh-markup-batch-action core/markup.yumi
-  18  core/markup:MarkupBatchAction:run-now core/markup.yumi
-  19  core/tracker:LiveAction:run-queued core/tracker.yumi
-  20  core/tracker:LiveBatch:run core/tracker.yumi
-  21  core/tracker:LiveBatch:leave core/tracker.yumi
-  22  core/tracker:property-dispatch core/tracker.yumi
-  23  __source__:main no file:7:1
-  24  __source__:init.__source__ no file
-  25  __source__:yumi.main no file
+  5  core/markup:MarkupBranchController:select-markup-branch core/markup.yumi
+  6  core/markup:markup-select-branch-region core/markup.yumi
+  7  __source__:markup-branch no file:17:5
+  8  __source__:markup-branchCasting no file:17:5
+  9  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
+  10  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
+  11  core/markup:MarkupBatchAction:run-markup-batch-action-now core/markup.yumi
+  12  core/markup:MarkupBatchAction:run-markup-batch-action core/markup.yumi
+  13  core/markup:MarkupBatchAction:refresh-markup-batch-action core/markup.yumi
+  14  core/markup:MarkupBatchAction:run-now core/markup.yumi
+  15  core/tracker:LiveAction:run-queued core/tracker.yumi
+  16  core/tracker:LiveBatch:run core/tracker.yumi
+  17  core/tracker:LiveBatch:leave core/tracker.yumi
+  18  core/tracker:property-dispatch core/tracker.yumi
+  19  __source__:main no file:7:1
+  20  __source__:init.__source__ no file
+  21  __source__:yumi.main no file
 ;====

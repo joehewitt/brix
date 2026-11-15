@@ -36,7 +36,6 @@
     when #is-focus-within
         focus-ring = gui-focus-ring
         motion.focus-ring = gui-motion-quick
-
     when #is-read-only
         • NumberFieldScrubber
             cursor = CursorStyle.arrow
@@ -64,16 +63,7 @@
         drag-cursor = CursorStyle.resize-horizontal
 
 ━━━━━━━━━━━━━━━━━━━━
-+ NumberFieldScrubHandle is Union
-
-| label
-| unit
-
-━━━━━━━━━━━━━━━━━━━━
 + NumberField is Box
-
-• This
-    focus-mode = FocusMode.inside
 
 + value F64
 + minimum F64?
@@ -90,6 +80,9 @@
 + is-scrubbable = true
 + scrub-handle = NumberFieldScrubHandle.label
 + live-edit-delay = gui-live-edit-delay
+
+• This
+    focus-mode = FocusMode.inside
 + event value-changing ValueChange'F64
 + event value-changed ValueChange'F64
 
@@ -179,6 +172,11 @@ _ edit-origin F64
         action = => do revert-entry()
 
 ────────────────────
++ get is-entry-dirty Bool
+
+is-live-applying || entry.text != number-field-display-text(value, precision, is-mixed)
+
+────────────────────
 + do accept-text
     - text String
 
@@ -252,11 +250,6 @@ if is-live-applying
 entry.replace-text(number-field-display-text(value, precision, is-mixed))
 
 ────────────────────
-+ get is-entry-dirty Bool
-
-is-live-applying || entry.text != number-field-display-text(value, precision, is-mixed)
-
-────────────────────
 + normalized F64
     - candidate F64
 
@@ -273,16 +266,10 @@ _ do displayed-value-changed
 entry.text = number-field-display-text(value, precision, is-mixed)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do number-field-stepped F64
-    - value F64
-    - step F64
-    - base F64
-    - maximum F64?
++ NumberFieldScrubHandle is Union
 
-. snapped = base + round((value - base) / step) * step
-if maximum != null && snapped > maximum
-    snapped = base + floor((maximum - base) / step + 0.000000001) * step
-= snapped
+| label
+| unit
 
 ━━━━━━━━━━━━━━━━━━━━
 + NumberFieldScrubber is Box
@@ -326,6 +313,35 @@ scrub.drag(this, event)
 for event on pointer-up
 
 scrub.end(this, event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do number-field-stepped F64
+    - value F64
+    - step F64
+    - base F64
+    - maximum F64?
+
+. snapped = base + round((value - base) / step) * step
+if maximum != null && snapped > maximum
+    snapped = base + floor((maximum - base) / step + 0.000000001) * step
+= snapped
+
+━━━━━━━━━━━━━━━━━━━━
++ number-field-round F64
+    - value F64
+    - precision Size
+
+round(value * scale) / scale
+
+.. scale = 10.0 %% precision
+
+━━━━━━━━━━━━━━━━━━━━
++ number-field-display-text String
+    - value F64
+    - precision Size
+    - is-mixed Bool
+
+if is-mixed then "" else value.places(precision)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ NumberFieldScrub
@@ -377,20 +393,3 @@ _ is-active
     - pointer-id U64
 
 active-pointer-id != null && active-pointer-id == pointer-id
-
-━━━━━━━━━━━━━━━━━━━━
-+ number-field-round F64
-    - value F64
-    - precision Size
-
-round(value * scale) / scale
-
-.. scale = 10.0 %% precision
-
-━━━━━━━━━━━━━━━━━━━━
-+ number-field-display-text String
-    - value F64
-    - precision Size
-    - is-mixed Bool
-
-if is-mixed then "" else value.places(precision)

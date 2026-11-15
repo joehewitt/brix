@@ -70,55 +70,6 @@
             • file-palette-detail • text:gui-accent-text-color
 
 ━━━━━━━━━━━━━━━━━━━━
-+ FilePaletteItem
-
-+ path Path
-+ name String
-+ sort-name String
-+ kind PathKind
-+ is-directory Bool
-+ detail String
-+ name-hits [MatchSpan]
-+ detail-hits [MatchSpan]
-+ line Size?
-+ column Size?
-+ is-recent Bool
-
-────────────────────
-+ This
-    - path
-    - name
-    - kind
-    - is-directory
-    - detail String = ""
-    - name-hits [MatchSpan] = List'MatchSpan()
-    - detail-hits [MatchSpan] = List'MatchSpan()
-    - line Size? = null
-    - column Size? = null
-    - is-recent = false
-
-sort-name = name.lowercased
-
-────────────────────
-+ get key String
-
-if is-recent then "recent:$path" else "$path"
-
-━━━━━━━━━━━━━━━━━━━━
-+ FilePaletteSpot is Tuple
-
-+ name String
-+ suffix String
-+ line Size?
-+ column Size?
-
-━━━━━━━━━━━━━━━━━━━━
-+ FilePaletteCrumb is Tuple
-
-+ name String
-+ path Path
-
-━━━━━━━━━━━━━━━━━━━━
 + FilePalette is Palette'FilePaletteItem
 
 + files FileTree
@@ -141,9 +92,9 @@ if is-recent then "recent:$path" else "$path"
 
 _ found [FilePaletteItem]?
 _ watch Closable?
-_ schedule-relist := throttled(file-tree-flush-delay, this.relist)
 _ is-searching = false
 _ checkouts [String = FileNameIndex]
+_ schedule-relist := throttled(file-tree-flush-delay, this.relist)
 
 ────────────────────
 
@@ -194,15 +145,6 @@ found = null
 ╌╌╌╌╌╌╌╌╌╌ is Palette'FilePaletteItem ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-+ do show
-    - at PopupAnchor? = null
-
-if !is-open
-    names?.start()
-    open-folder(file-palette-existing(start ?? files.root.path, boundary))
-super.show(at)
-
-────────────────────
 + do refresh
 
 . spot = file-palette-spot(query)
@@ -220,6 +162,24 @@ if spot.name == "" && spot.line != null
     line-chosen <- spot
 else
     super.choose-selected()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ get boundary
+
+files.root.path if is-confined
+
+╌╌╌╌╌╌╌╌╌╌ is Palette'FilePaletteItem ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do show
+    - at PopupAnchor? = null
+
+if !is-open
+    names?.start()
+    open-folder(file-palette-existing(start ?? files.root.path, boundary))
+super.show(at)
 
 ────────────────────
 + do choose
@@ -408,30 +368,59 @@ if location != folder
 rewrite(rest + spot.suffix)
 
 ────────────────────
-_ get boundary
-
-files.root.path if is-confined
-
-────────────────────
 _ is-boundary
     - location Path
 
 is-confined && "$location" == "${files.root.path}"
 
 ━━━━━━━━━━━━━━━━━━━━
-_ FilePaletteTrail is Box
++ FilePaletteItem
 
-_ pinned-width Length?
-
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
++ path Path
++ name String
++ sort-name String
++ kind PathKind
++ is-directory Bool
++ detail String
++ name-hits [MatchSpan]
++ detail-hits [MatchSpan]
++ line Size?
++ column Size?
++ is-recent Bool
 
 ────────────────────
-+ do did-layout
++ This
+    - path
+    - name
+    - kind
+    - is-directory
+    - detail String = ""
+    - name-hits [MatchSpan] = List'MatchSpan()
+    - detail-hits [MatchSpan] = List'MatchSpan()
+    - line Size? = null
+    - column Size? = null
+    - is-recent = false
 
-super.did-layout()
-=? if inner-width == pinned-width
-pinned-width = inner-width
-. ignored = scroll-to-end(Orientation.horizontal)
+sort-name = name.lowercased
+
+────────────────────
++ get key String
+
+if is-recent then "recent:$path" else "$path"
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteSpot is Tuple
+
++ name String
++ suffix String
++ line Size?
++ column Size?
+
+━━━━━━━━━━━━━━━━━━━━
++ FilePaletteCrumb is Tuple
+
++ name String
++ path Path
 
 ━━━━━━━━━━━━━━━━━━━━
 + FilePaletteRow is Box
@@ -455,6 +444,43 @@ pinned-width = inner-width
     if #item?.is-directory ?? false
         <LucideChevronRight • icon file-palette-chevron
             align-y = Alignment.center
+
+━━━━━━━━━━━━━━━━━━━━
++ file-palette-spot FilePaletteSpot
+    - query String
+
+|? colon == null
+    FilePaletteSpot(query, "")
+|? parts.length > 2
+    FilePaletteSpot(query, "")
+|? (parts[0] && line == null) || (parts.length > 1 && parts[1] && column == null)
+    FilePaletteSpot(query, "")
+??
+    FilePaletteSpot
+        - query[0 .. < colon]
+        - query[colon ...]
+        - file-palette-index(line)
+        - file-palette-index(column)
+
+.. colon = query.find(":")
+.. parts = List'String(query[colon + 1 ...].split(":"))
+.. line = file-palette-number(parts[0])
+.. column = file-palette-number(parts[1]) if parts.length > 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ FilePaletteTrail is Box
+
+_ pinned-width Length?
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+=? if inner-width == pinned-width
+pinned-width = inner-width
+. ignored = scroll-to-end(Orientation.horizontal)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ file-palette-glyph FileGlyph
@@ -652,28 +678,6 @@ _ file-palette-empty-text String
     "This folder is empty"
 
 .. spot = file-palette-spot(query)
-
-━━━━━━━━━━━━━━━━━━━━
-+ file-palette-spot FilePaletteSpot
-    - query String
-
-|? colon == null
-    FilePaletteSpot(query, "")
-|? parts.length > 2
-    FilePaletteSpot(query, "")
-|? (parts[0] && line == null) || (parts.length > 1 && parts[1] && column == null)
-    FilePaletteSpot(query, "")
-??
-    FilePaletteSpot
-        - query[0 .. < colon]
-        - query[colon ...]
-        - file-palette-index(line)
-        - file-palette-index(column)
-
-.. colon = query.find(":")
-.. parts = List'String(query[colon + 1 ...].split(":"))
-.. line = file-palette-number(parts[0])
-.. column = file-palette-number(parts[1]) if parts.length > 1
 
 ━━━━━━━━━━━━━━━━━━━━
 _ file-palette-index Size?

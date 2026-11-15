@@ -1688,11 +1688,11 @@
 .. markup ImmutableTableRow'SourceNode ~
     ~ "<+" // "(" name \identifier ")"
         bx.form(location, "<+", name)
-    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? body \block?
-        bx.form(location, "<>", t, head, param, args, rules, bx.body(body))
+    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? tags \theme-tag-bindings? body \block?
+        bx.form(location, "<>", t, head, param, args, tags, rules, bx.body(body))
 
 .. markup-head ImmutableTableRow'SourceNode ~
-    ~ // id \identifier slot-binding \markup-slot-binding-after-id?
+    ~ // !\theme-tag-keyword id \identifier slot-binding \markup-slot-binding-after-id?
         bx.seq(bx.form(location, "id:", id), bx.wrap(location, "slot:", slot-binding))
     ~ slot-binding \markup-slot-binding-no-id
         bx.form(location, "slot:", slot-binding)
@@ -1730,8 +1730,19 @@
         bx.form(location, "text:", text)
 
 .. style-rule-applications ImmutableTableRow'SourceNode ~
-    ~ // "•" // head \style-rule-application (// tail \style-rule-application)*
+    ~ // "•" // head \style-rule-application (// !\theme-tag-keyword tail \style-rule-application)*
         bx.seq(head, bx.many(tail))
+
+.. theme-tag-keyword ~
+    ~ "for" !([a-zA-Z0-9-])
+
+.. theme-tag-bindings ImmutableTableRow'SourceNode ~
+    ~ // \theme-tag-keyword // head \theme-tag-binding (/ "," // tail \theme-tag-binding)*
+        bx.seq(head, bx.many(tail))
+
+.. theme-tag-binding ImmutableTableRow'SourceNode ~
+    ~ name \raw-atom-name condition \style-rule-condition?
+        bx.form(location, "for:", bx.atom(location, name), condition)
 
 .. style-rule-application ImmutableTableRow'SourceNode ~
     ~ name \style-selector-name args \style-rule-args condition \style-rule-condition?

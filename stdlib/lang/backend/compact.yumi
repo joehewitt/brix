@@ -17,14 +17,6 @@ _ root-stack-value U32 = 4
 _ relocation-kind-names [String] = ["call26", "jump26", "page21", "add-pageoff12", "load-store8-pageoff12", "load-store16-pageoff12", "load-store32-pageoff12", "load-store64-pageoff12", "load-store128-pageoff12", "unsigned"]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ CompactForm is U32
-
-| instruction
-| island-test
-| island-skip
-| island-jump
-
-━━━━━━━━━━━━━━━━━━━━
 + CompactJumpTable is Tuple
 
 + name StringId
@@ -83,18 +75,6 @@ _ CompactForm is U32
 + location-count U32
 + saved-registers CPointer'CompactSavedRegister
 + saved-register-count U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ PlanEntry is Tuple
-
-+ instruction InstructionId
-+ form U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ PlanSafepoint is Tuple
-
-+ instruction InstructionId
-+ offset U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + FunctionEncoder
@@ -461,17 +441,6 @@ for index in 0 .. < compact.saved-register-count
     out.byte(10)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do file-text
-    - out TextBuffer
-    - bundle Bundle
-    - id StringId
-
-if id == no-string
-    out.byte(45)
-else
-    out.span(bundle.string(id))
-
-━━━━━━━━━━━━━━━━━━━━
 + do write-compact-record
     - writer BinaryWriter
     - bundle Bundle
@@ -521,6 +490,37 @@ for index in 0 .. < compact.saved-register-count
     . saved = compact.saved-registers[index]
     writer.u32(saved.register)
     writer.i32(saved.fp-offset)
+
+━━━━━━━━━━━━━━━━━━━━
+_ CompactForm is U32
+
+| instruction
+| island-test
+| island-skip
+| island-jump
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlanEntry is Tuple
+
++ instruction InstructionId
++ form U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ PlanSafepoint is Tuple
+
++ instruction InstructionId
++ offset U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-text
+    - out TextBuffer
+    - bundle Bundle
+    - id StringId
+
+if id == no-string
+    out.byte(45)
+else
+    out.span(bundle.string(id))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do write-string

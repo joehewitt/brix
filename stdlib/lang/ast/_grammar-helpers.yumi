@@ -1997,6 +1997,64 @@ tree.nodes[id] = ASTAnonymousCase(loc, name, args, owner)
 = AnonymousCaseTraversal(0, 0, 0, 0, args, RowRange'SyntaxId())
 
 ━━━━━━━━━━━━━━━━━━━━
++ do theme-tag-row SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - name Atom
+    - condition SyntaxId?
+
+. given = scratch-array'SyntaxId(tree, 2)
+given[1] = tree.make-argument(loc, condition ?? tree.append(ASTIdentifier(loc, tree.atom("true"), false)), null)
+given[0] = tree.make-argument(loc, tree.append(ASTString(loc, tree.store-string(name.text))), null)
+. callee = tree.append(ASTTypeIdentifier(loc, tree.atom("ThemeTag"), false))
+. operands = tree.call-operands(RowRange'SyntaxId(), tree.store-children(scratch-items(given, 2)))
+. call = tree.append(ASTCallExpression(loc, callee, operands, 0u8, false))
+. property = tree.append(ASTIdentifier(loc, tree.atom("theme-tag"), false))
+= tree.append(ASTAssign(loc, Operator.eq-op, property, call))
+
+━━━━━━━━━━━━━━━━━━━━
++ do theme-tag-body SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - type SyntaxId
+    - tags ImmutableArray'SyntaxId?
+    - body SyntaxId?
+
+=? tree.syntax-or-invalid(body) if !tags
+. bindings = tags
+do match? tree.nodes[type]
+    | .node-type-identifier(named)
+        if named.name.text == "This" && !named.is-declare
+            . message = "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object"
+            ?! YumiSyntaxError(tree.location(bindings[0]), message, tree.source, tree.source-path)
+. existing = RowRange'SyntaxId()
+. block SyntaxId = 0
+. block-loc = loc
+. lone SyntaxId = 0
+if body
+    do match tree.nodes[body]
+        | .node-block(row)
+            existing = row.body
+            block = body
+            block-loc = row.loc
+        ??
+            lone = body
+. extra = if lone != 0 then 1 else 0
+. count = bindings.length + existing.count + extra
+. rows = scratch-array'SyntaxId(tree, count)
+for index in 0 .. < bindings.length
+    rows[index] = bindings[index]
+for index in 0 .. < existing.count
+    rows[bindings.length + index] = tree.children[existing.start + index]
+if lone != 0
+    rows[count - 1] = lone
+. children = tree.store-children(scratch-items(rows, count))
+if block != 0
+    tree.nodes[block] = ASTBlock(block-loc, children)
+    = block
+= tree.append(ASTBlock(loc, children))
+
+━━━━━━━━━━━━━━━━━━━━
 + do make-assignment SyntaxId
     - tree ASTBuilder
     - loc MatchLocation

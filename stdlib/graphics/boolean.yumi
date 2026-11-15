@@ -26,9 +26,9 @@ _ golden-ratio = 0.6180339887498949
 ━━━━━━━━━━━━━━━━━━━━
 + BooleanEffect is VectorEffect
 
-_ effect-mode BooleanEffectMode = .union-effect
-
 + mode => effect-mode
+
+_ effect-mode BooleanEffectMode = .union-effect
 
 ────────────────────
 + This
@@ -42,15 +42,15 @@ effect-mode = value
 ╌╌╌╌╌╌╌╌╌╌ is VectorEffect ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
++ get combines-geometry
+
+true
+
+────────────────────
 + equals Bool
     - other VectorEffect
 
 other is BooleanEffect && enabled == other.enabled && mode == (other as BooleanEffect).mode
-
-────────────────────
-+ get combines-geometry
-
-true
 
 ────────────────────
 + do apply [Path]
@@ -86,87 +86,6 @@ if result.count
 + copy
 
 BooleanEffect(effect-mode)
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanOperation
-
-| boolean-union-operation
-| boolean-subtract-operation
-| boolean-intersect-operation
-| boolean-clip-operation
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanEdge
-
-+ start Point
-+ end Point
-+ used = false
-
-────────────────────
-+ This
-    - start Point
-    - end Point
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanSpanEdge
-
-+ start-x Coord
-+ start-y Coord
-+ end-x Coord
-+ end-y Coord
-+ source BooleanClassSpan
-+ t1 PointOnCurve
-+ t2 PointOnCurve
-+ path-number Index
-+ curve-index Index
-+ reverse = false
-+ used = false
-+ closes = false
-
-────────────────────
-+ This
-    - start-x Coord
-    - start-y Coord
-    - end-x Coord
-    - end-y Coord
-    - source BooleanClassSpan
-    - t1 PointOnCurve
-    - t2 PointOnCurve
-    - is-reverse = false
-
-reverse = is-reverse
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanOutputSpan is Tuple
-
-+ source BooleanClassSpan
-+ index Index
-+ t1 PointOnCurve
-+ t2 PointOnCurve
-+ sample-x Coord
-+ sample-y Coord
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanRayWinding is Tuple
-
-+ left Int
-+ right Int
-+ touches Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ BooleanClassSpan is Tuple
-
-+ type SegmentType
-+ x1 Coord
-+ y1 Coord
-+ hox Coord
-+ hoy Coord
-+ hix Coord
-+ hiy Coord
-+ x2 Coord
-+ y2 Coord
-+ bounds Rect
-+ contour Index
 
 ━━━━━━━━━━━━━━━━━━━━
 + BooleanWorkspace
@@ -208,6 +127,8 @@ _ rect-subpaths [PathSubpathSpan]
 _ rect-pieces [Rect]
 _ rect-next [Rect]
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + begin-using
 
@@ -217,6 +138,8 @@ this
 + do end-using
 
 release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do get retained-capacity Size
@@ -386,70 +309,6 @@ rect-next.release()
 = boolean-operation-reusing(out, workspace, path1, path2, .boolean-clip-operation)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do boolean-operation-reusing Path?
-    - out Path
-    - workspace BooleanWorkspace
-    - path1 Path
-    - path2 Path
-    - operation BooleanOperation
-
-?! Panic("Boolean workspace is already in use")
-    if workspace.in-use
-
-. capacity-before = workspace.retained-capacity
-workspace.in-use = true
-. completed = false
-do finally
-    if !completed
-        out.clear()
-        workspace.clear()
-    . capacity-after = workspace.retained-capacity
-    if capacity-after > capacity-before
-        workspace.growth-count += 1
-        //graphics.geometry.scratch.growth ++
-    //graphics.geometry.scratch.retained-capacity += capacity-after
-    workspace.in-use = false
-
-out.clear()
-workspace.clear()
-curve-arrangement-boolean-reusing()
-    - out
-    - workspace
-    - filled-outline(path1)
-    - filled-outline(path2)
-    - operation
-workspace.clear()
-completed = true
-= out
-
-━━━━━━━━━━━━━━━━━━━━
-_ do filled-outline
-    - path Path
-
-=? path if path.is-closed
-=? path if path.curve-count < 2 && !has-cubics(path)
-. outline = Path()
-for subpath in path.subpaths
-    . contour = subpath.materialize()
-    if contour.count > 1
-        contour.close()
-        outline.add-path(contour)
-= outline
-
-━━━━━━━━━━━━━━━━━━━━
-_ empty-boolean-class-span
-
-BooleanClassSpan(.segment-type-line, 0, 0, 0, 0, 0, 0, 0, 0, Rect(0, 0, 0, 0), 0)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do clear-boolean-intersections
-    - intersections [CurveIntersection]
-
-for index in 0 .. < intersections.length
-    intersections[index] = CurveIntersection(0, 0, null, null)
-intersections.clear()
-
-━━━━━━━━━━━━━━━━━━━━
 + union
     - path1 Path
     - path2 Path
@@ -527,6 +386,151 @@ path.line-to(overlap.left, a.bottom)
 path.line-to(a.left, a.bottom)
 path.close()
 = path
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanOperation
+
+| boolean-union-operation
+| boolean-subtract-operation
+| boolean-intersect-operation
+| boolean-clip-operation
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanEdge
+
++ start Point
++ end Point
++ used = false
+
+────────────────────
++ This
+    - start Point
+    - end Point
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanSpanEdge
+
++ start-x Coord
++ start-y Coord
++ end-x Coord
++ end-y Coord
++ source BooleanClassSpan
++ t1 PointOnCurve
++ t2 PointOnCurve
++ path-number Index
++ curve-index Index
++ reverse = false
++ used = false
++ closes = false
+
+────────────────────
++ This
+    - start-x Coord
+    - start-y Coord
+    - end-x Coord
+    - end-y Coord
+    - source BooleanClassSpan
+    - t1 PointOnCurve
+    - t2 PointOnCurve
+    - is-reverse = false
+
+reverse = is-reverse
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanOutputSpan is Tuple
+
++ source BooleanClassSpan
++ index Index
++ t1 PointOnCurve
++ t2 PointOnCurve
++ sample-x Coord
++ sample-y Coord
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanRayWinding is Tuple
+
++ left Int
++ right Int
++ touches Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ BooleanClassSpan is Tuple
+
++ type SegmentType
++ x1 Coord
++ y1 Coord
++ hox Coord
++ hoy Coord
++ hix Coord
++ hiy Coord
++ x2 Coord
++ y2 Coord
++ bounds Rect
++ contour Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ do boolean-operation-reusing Path?
+    - out Path
+    - workspace BooleanWorkspace
+    - path1 Path
+    - path2 Path
+    - operation BooleanOperation
+
+?! Panic("Boolean workspace is already in use")
+    if workspace.in-use
+
+. capacity-before = workspace.retained-capacity
+workspace.in-use = true
+. completed = false
+do finally
+    if !completed
+        out.clear()
+        workspace.clear()
+    . capacity-after = workspace.retained-capacity
+    if capacity-after > capacity-before
+        workspace.growth-count += 1
+        //graphics.geometry.scratch.growth ++
+    //graphics.geometry.scratch.retained-capacity += capacity-after
+    workspace.in-use = false
+
+out.clear()
+workspace.clear()
+curve-arrangement-boolean-reusing()
+    - out
+    - workspace
+    - filled-outline(path1)
+    - filled-outline(path2)
+    - operation
+workspace.clear()
+completed = true
+= out
+
+━━━━━━━━━━━━━━━━━━━━
+_ do filled-outline
+    - path Path
+
+=? path if path.is-closed
+=? path if path.curve-count < 2 && !has-cubics(path)
+. outline = Path()
+for subpath in path.subpaths
+    . contour = subpath.materialize()
+    if contour.count > 1
+        contour.close()
+        outline.add-path(contour)
+= outline
+
+━━━━━━━━━━━━━━━━━━━━
+_ empty-boolean-class-span
+
+BooleanClassSpan(.segment-type-line, 0, 0, 0, 0, 0, 0, 0, 0, Rect(0, 0, 0, 0), 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do clear-boolean-intersections
+    - intersections [CurveIntersection]
+
+for index in 0 .. < intersections.length
+    intersections[index] = CurveIntersection(0, 0, null, null)
+intersections.clear()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do append-rect-subtract

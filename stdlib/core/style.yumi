@@ -7,7 +7,7 @@
 
 ` Runtime style state is merged into each object's markup attachment. The historical style
 ` side-payload lane holds only the root-owned record and segment pools, conservative dirty queues,
-` and minimal batch summaries. The MarkupBatch implementor is the style root; only markup mounted
+` and minimal batch summaries. The MarkupRootElement implementor is the style root; only markup mounted
 ` under a batch root participates, and everything else allocates nothing.
 
 + style-dirty-bit U32 = 1
@@ -16,17 +16,16 @@
 ` Style property metadata flags mirrored from the compiler (yumi/Type.ts stylePropertyFlagBits).
 ` Encoded slots hold a union (case tag plus payload) or a boxed wide-value handle; their bits are
 ` not plain numeric scalars.
-+ style-flag-inherited U32 = 1
-+ style-flag-encoded U32 = 2
-+ style-flag-float U32 = 4
-+ style-flag-object U32 = 8
+_ style-flag-inherited U32 = 1
+_ style-flag-encoded U32 = 2
+_ style-flag-float U32 = 4
+_ style-flag-object U32 = 8
 
 ` Gated declaration blocks are per-site; the record's disabled mask is one U64
-+ style-block-cap Size = 64
+_ style-block-cap Size = 64
 
 ` Style property offsets are stored in U64 masks
-+ style-mask-cap Size = 64
-
+_ style-mask-cap Size = 64
 _ next-style-store-id U32
 
 ` Registry of all registered Style types, indexed by style-index
@@ -80,22 +79,26 @@ _ style-empty-projection-remap := StyleProjectionRemap()
 ` Empty-slot filler for the per-settle winner table; compared by identity only, never read.
 _ style-no-winner := AuthoredDeclaration(StyleInfo("", "", 0))
 
-+ StyleRegistryPanic is Panic
-+ StyleDomainPanic is Panic
-+ StyleOptionalBits is (bits I64, none Bool)
-_ StyleDomainMasks is (self-mask U32, parent-mask U32)
 + StyleMountPanic is Panic
-+ StyleTemplatePanic is Panic
-+ StyleSettlePanic is Panic
 + StyleReadPanic is Panic
-+ StyleSheetPanic is Panic
-+ NodeStyleRecord is StyleRecord
-+ StyleDirtyEntry is (owner-address Size, generation U32)
 + StyleValueChange is (info StyleInfo, offset Size, old-bits I64, old-none Bool, bits I64, none Bool)
+_ StyleRegistryPanic is Panic
+_ StyleDomainPanic is Panic
+_ StyleOptionalBits is (bits I64, none Bool)
+_ StyleDomainMasks is (self-mask U32, parent-mask U32)
+_ StyleTemplatePanic is Panic
+_ StyleSettlePanic is Panic
+_ StyleSheetPanic is Panic
+_ NodeStyleRecord is StyleRecord
+_ StyleDirtyEntry is (owner-address Size, generation U32)
 
 set-markup-batch-settle-hook(style-settle)
 set-markup-mount-hook(style-apply-mount)
 set-markup-attachment-reclaim-hook(style-reclaim-markup-attachment)
+set-markup-theme-hooks(style-set-theme-tag, style-use-theme-key)
+
+━━━━━━━━━━━━━━━━━━━━
++ Style
 
 ━━━━━━━━━━━━━━━━━━━━
 + StyleLayer is U32
@@ -111,16 +114,6 @@ set-markup-attachment-reclaim-hook(style-reclaim-markup-attachment)
 | imperative
 
 ━━━━━━━━━━━━━━━━━━━━
-+ StyleContentSlot is U32
-
-` Style-generated content slots mirrored from the compiler.
-
-| before
-| after
-| first-child
-| last-child
-
-━━━━━━━━━━━━━━━━━━━━
 + StyleValueKind is U32
 
 ` Authored declaration value kinds
@@ -134,32 +127,7 @@ set-markup-attachment-reclaim-hook(style-reclaim-markup-attachment)
 | themed
 
 ━━━━━━━━━━━━━━━━━━━━
-+ StyleProjectionKind is U32
-
-` Style-sheet projection descriptors. Converted style-sheet declarations are admitted only when
-` source slot bits can be reused directly, wrapped in a target union case, or union-tag remapped.
-
-| copy
-| union-wrap
-| union-remap
-
-━━━━━━━━━━━━━━━━━━━━
-+ Style
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleStaticMaker is () I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleThemedMaker is () StyleOptionalBits
-    - record StyleSheetRecord
-
-━━━━━━━━━━━━━━━━━━━━
 + StyleSheet
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleProjectionRemap
-
-+ target-tags [U8]
 
 ━━━━━━━━━━━━━━━━━━━━
 + StylePropertyInfo
@@ -258,17 +226,6 @@ true
     - vector [F64]
 
 ━━━━━━━━━━━━━━━━━━━━
-+ StyleValueHolder'Value is StyleObjectHolder
-
-+ held Value?
-
-────────────────────
-+ This
-    - held
-
-identity = style-held-pointer(held)
-
-━━━━━━━━━━━━━━━━━━━━
 + StyleWideHolder'Value is StyleObjectHolder
 
 ` Boxes one wide style value (a value type that does not fit in I64 slot bits) behind the
@@ -283,6 +240,8 @@ identity = style-held-pointer(held)
     - value
 
 identity = this as Pointer
+
+╌╌╌╌╌╌╌╌╌╌ is StyleObjectHolder ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + holds-equal Bool
@@ -318,76 +277,6 @@ if other is StyleWideHolder'Value then style-value-moves-to(value, other-value) 
     - vector [F64]
 
 value = style-value-from-vector(value, vector)
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-motion-vector'Value [F64]?
-    - value Value
-    - Value is Animatable
-
-value.motion-vector
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-motion-vector'Value [F64]?
-    - value Value
-
-null
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-none-vector'Value [F64]?
-    - value Value
-    - Value is Animatable
-
-value.motion-none-vector
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-none-vector'Value [F64]?
-    - value Value
-
-null
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-moves-to'Value Bool
-    - value Value
-    - other Value
-    - Value is Animatable
-
-value.moves-to(other)
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-moves-to'Value Bool
-    - value Value
-    - other Value
-
-true
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-from-vector'Value Value
-    - value Value
-    - vector [F64]
-    - Value is Animatable
-
-value.with-motion-vector(vector)
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-value-from-vector'Value Value
-    - value Value
-    - vector [F64]
-
-value
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleSheetSlotInfo
-
-` Compiler-registered metadata for one style-sheet slot. Slot values use the same I64-bits-plus-
-` none-flag encoding as style properties.
-
-+ offset Size = 0
-+ name String
-+ initial-bits I64
-+ initial-none = false
-+ flags U32
-+ domains U32
-+ is-encoded => (flags /and/ style-flag-encoded) != 0
 
 ━━━━━━━━━━━━━━━━━━━━
 + StyleSheetInfo
@@ -511,32 +400,6 @@ for owner-address in providers
 set-slot(live-slot.offset, bits, is-none)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ StyleSheetChange
-
-` How a theme tag turned on or off changes a family's active member in a subtree: the member
-` before and after, which slots hold other values, and whether any does.
-
-+ info StyleSheetInfo
-+ before StyleSheetRecord
-+ after StyleSheetRecord
-+ slots [Bool]
-+ differs = false
-
-────────────────────
-+ This
-    - info
-    - before
-    - after
-
-. offset Size = 0
-while offset < info.slot-count
-    . changed = bits-differ || before.value-none(offset) != after.value-none(offset)
-        .. bits-differ = before.value-bits(offset) != after.value-bits(offset)
-    slots += changed
-    differs = differs || changed
-    offset += 1
-
-━━━━━━━━━━━━━━━━━━━━
 + AuthoredDeclaration
 
 ` One authored style declaration. Declarations are contextual to the mounted tree: they live on
@@ -618,37 +481,6 @@ other.projection-preserves-none = projection-preserves-none
 ` The registry handle currently composed into bits; what a release must return to the registry.
 
 bits /rshift/ held-shift
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleSiteTemplate
-
-` A shared static declaration template for one compiler-assigned markup construction site.
-` Registrations are idempotent because construction code runs for every instance of the site,
-` while the declarations themselves must allocate once per program site. Shared declarations are
-` value-kind only: object values stay per-instance on the association, so holder ownership remains
-` per-owner state. A gated shared declaration's block counts from the first block the site opens;
-` each association offsets it by the base it recorded for the site.
-
-+ declarations [AuthoredDeclaration]
-+ current-block I64 = -1
-+ current-family StyleSheetInfo? = null
-+ current-members U64
-+ recorded = false
-
-────────────────────
-+ do has-declaration
-    - style StyleInfo
-    - offset Size
-    - layer U32
-    - order U32
-    - block I64
-
-for declaration in declarations
-    . is-style = declaration.style == style && declaration.offset == offset
-    . is-order = declaration.layer == layer && declaration.order == order
-    =? true
-        if is-style && is-order && declaration.block == block
-= false
 
 ━━━━━━━━━━━━━━━━━━━━
 + StyleSiteAssociation
@@ -787,137 +619,6 @@ if extra-site-templates
 = false
 
 ━━━━━━━━━━━━━━━━━━━━
-+ StyleContentRecord
-
-+ target MarkupHost
-+ slot U32
-+ order U32
-+ builder MarkupSlotBuilder'MarkupHost
-+ enabled = true
-+ node MarkupHost?
-
-────────────────────
-+ This
-    - target
-    - slot
-    - order
-    - builder
-
-────────────────────
-+ do detach
-
-. existing = node
-=? if !existing
-
-node = null
-markup-remove-shadow(existing)
-
-────────────────────
-+ do refresh
-    - should-rebuild = false
-
-if !enabled
-    detach()
-    =
-if node
-    =? if !should-rebuild
-    detach()
-
-. parent = style-content-parent(target, slot)
-=? if !parent
-
-. child = builder()
-node = child
-. anchor = style-content-anchor(target, slot, parent)
-markup-insert-shadow(parent, child, target, slot, anchor)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleScopeState
-
-+ is-on = false
-
-━━━━━━━━━━━━━━━━━━━━
-_ style-outlet-states-mark Size
-
-style-outlet-state-keys.length
-
-━━━━━━━━━━━━━━━━━━━━
-_ do style-outlet-state-push
-    - key U32
-    - cell StyleScopeState
-
-style-outlet-state-keys += key
-style-outlet-state-cells += cell
-
-━━━━━━━━━━━━━━━━━━━━
-_ do style-outlet-states-release
-    - mark Size
-
-. count = style-outlet-state-keys.length
-=? if count <= mark
-style-outlet-state-keys.remove(mark, count - mark)
-style-outlet-state-cells.remove(mark, count - mark)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do style-outlet-state StyleScopeState
-    - key U32
-
-. index = style-outlet-state-keys.length
-while index > 0
-    index -= 1
-    =? style-outlet-state-cells[index] if style-outlet-state-keys[index] == key
-= StyleScopeState()
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleDynamicActionBase is MarkupBatchAction
-
-────────────────────
-+ do refresh
-
-` Mount-time re-derivation: evaluates the declaration expression once against the current tree.
-
-refresh-markup-batch-action()
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleDynamicAction'Subject is StyleDynamicActionBase
-
-` A markup batch action for one dynamic authored declaration. The traced subject reference keeps
-` tracker-retained actions from dereferencing a collected object; the batch root is resolved from
-` the subject's current mount when trackers fire, so the action follows the object across remounts.
-` When the subject is unmounted the update is dropped and the mount path re-runs the action instead.
-
-+ subject Subject
-+ accepts-run => style-live-attachment(subject as Pointer) != null
-
-────────────────────
-+ This
-    - subject
-    - initial-trackers [Tracker]
-    - action-callback SubscriberCallback
-
-.. trackers = initial-trackers
-callback = action-callback
-
-for tracker in trackers
-    tracker.attach(this)
-
-────────────────────
-+ do schedule
-
-` Tracker fire: resolve the batch root from the subject's current mount, then enqueue like
-` MarkupBatchAction. Unmounted subjects drop the update; mounting re-runs the action instead.
-
-. attachment = style-live-attachment(subject as Pointer)
-if !attachment
-    //style.dynamic.dropped ++
-=? if !attachment
-
-. live-store = style-attachment-store(attachment)
-batch-root = style-store-batch-queue(live-store).root
-//style.dynamic.enqueues ++
-enqueue-markup-batch-action()
-
-━━━━━━━━━━━━━━━━━━━━
 + ComputedSegment
 
 ` One computed segment per (record, style). values holds encoded slot bits at style-local property
@@ -978,71 +679,8 @@ while values.length > slot-count
 + generation U32 = 0
 + authored [AuthoredDeclaration] = List'AuthoredDeclaration()
 + provided-style-sheets [StyleSheetRecord]?
-+ theme-tags-on U64 = 0
-+ theme-tags-off U64 = 0
 + read-sheets [StyleSheetRecord]?
 + presented StylePresentation?
-
-━━━━━━━━━━━━━━━━━━━━
-+ StylePresentation
-
-+ entries [StylePresentedValue]
-
-────────────────────
-+ do find StylePresentedValue?
-    - style-index Index
-    - offset Size
-
-for entry in entries
-    =? entry if entry.style-index == style-index && entry.offset == offset
-= null
-
-────────────────────
-+ do put
-    - style-index Index
-    - offset Size
-    - bits I64
-    - none Bool
-    - held StyleObjectHolder?
-    - follows Bool
-
-. found = find(style-index, offset)
-if found
-    found.bits = bits
-    found.none = none
-    found.held = held
-    found.follows = follows
-    =
-. entry = StylePresentedValue()
-entry.style-index = style-index
-entry.offset = offset
-entry.bits = bits
-entry.none = none
-entry.held = held
-entry.follows = follows
-entries += entry
-
-────────────────────
-+ do remove Bool
-    - style-index Index
-    - offset Size
-
-for index in 0 .. < entries.length
-    . entry = entries[index]
-    if entry.style-index == style-index && entry.offset == offset
-        entries.remove(index)
-        = true
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ StylePresentedValue
-
-+ style-index Index = 0
-+ offset Size = 0
-+ bits I64
-+ none = false
-+ held StyleObjectHolder? = null
-+ follows = false
 
 ━━━━━━━━━━━━━━━━━━━━
 + StyleMotionHost is Interface
@@ -1055,12 +693,12 @@ U64.max
 
 ────────────────────
 + do style-values-changed
-    - owner MarkupHost
+    - owner MarkupElement
     - changes [StyleValueChange]
 
 ────────────────────
 + do style-node-settled
-    - owner MarkupHost
+    - owner MarkupElement
 
 ━━━━━━━━━━━━━━━━━━━━
 + RootStyleStore
@@ -1129,8 +767,6 @@ record.segments.clear()
 record.segment-keys.clear()
 record.segment-mask = 0
 record.provided-style-sheets = null
-record.theme-tags-on = 0
-record.theme-tags-off = 0
 record.read-sheets = null
 record.presented = null
 = record
@@ -1304,6 +940,85 @@ while index < declarations.length
 declarations.clear()
 
 ━━━━━━━━━━━━━━━━━━━━
++ StyleProperty'Value
+
++ style-index Index
++ offset Size
++ component Index?
+
+────────────────────
++ This
+    - style-index
+    - offset
+    - component
+
+────────────────────
++ get info StyleInfo?
+
+style-info-at(style-index)
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleShape'Arg'Value
+
++ make Mapper'Arg'Value
+
+_ args = List'Arg()
+_ values = List'Value()
+
+────────────────────
++ This
+    - make
+
+────────────────────
++ do bind Value
+    - arg Arg
+
+for index in 0 .. < args.length
+    =? values[index] if args[index] == arg
+. value = make(arg)
+args += arg
+values += value
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ StylePresenter
+
++ property StylePropertyInfo
+
+_ holder StyleObjectHolder?
+
+────────────────────
++ This
+    - property
+    - sample-bits I64
+
+if !property.is-float
+    holder = style-object-holder(sample-bits)?.motion-holder()
+
+────────────────────
++ do adopt
+    - sample StyleObjectHolder
+
+holder = holder ?? sample.motion-holder()
+
+────────────────────
++ do retarget
+    - sample-bits I64
+
+=? if property.is-float
+holder = style-object-holder(sample-bits)?.motion-holder() ?? holder
+
+────────────────────
++ do bits I64
+    - vector [F64]
+
+=? style-float-bits(vector[0]) if property.is-float
+. live = holder
+=? 0 if !live
+live.take-motion-vector(vector)
+= style-acquire-object(live)
+
+━━━━━━━━━━━━━━━━━━━━
 + do style-info-at
     - style-index Index
 
@@ -1371,27 +1086,6 @@ for weak in style-object-holders
     if weak.get
         count += 1
 = count
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-register-projection-remap-site
-    - site Size
-    - target-tags ConstArray'U8
-    - target-count Size
-
-style-projection-remap-registration-attempts += 1
-
-while style-projection-remaps.length <= site
-    style-projection-remaps += style-empty-projection-remap
-    style-projection-remap-registered += false
-
-if !style-projection-remap-registered[site]
-    . remap = StyleProjectionRemap()
-    . index Size = 0
-    while index < target-count
-        remap.target-tags += target-tags[index]
-        index += 1
-    style-projection-remaps[site] = remap
-    style-projection-remap-registered[site] = true
 
 ━━━━━━━━━━━━━━━━━━━━
 + do style-projection-remap-site-count
@@ -1510,45 +1204,6 @@ for info in style-sheet-infos
         = info
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-theme-tag U64
-    - name String
-
-for position in 0 .. < style-theme-tags.length
-    if style-theme-tags[position] == name
-        = 1u64 /lshift/ position
-?! StyleSheetPanic("A program names at most 64 theme tags")
-    if style-theme-tags.length >= 64
-style-theme-tags += name
-= 1u64 /lshift/ (style-theme-tags.length - 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-sheet-info-at
-    - style-sheet-index Index
-
-` Placeholder entries pad the registry when compiler-assigned indexes register out of module-init
-` order; they read as unregistered.
-
-if style-sheet-index < style-sheet-infos.length
-    . info = style-sheet-infos[style-sheet-index]
-    if info.sheet-key.length > 0
-        = info
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-content-set-enabled
-    - record StyleContentRecord
-    - enabled Bool
-
-record.enabled = enabled
-record.refresh()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-content-refresh
-    - record StyleContentRecord
-    - should-rebuild = true
-
-record.refresh(should-rebuild)
-
-━━━━━━━━━━━━━━━━━━━━
 + style-record-owns-segment Bool
     - record StyleRecord
     - style-index Index
@@ -1601,33 +1256,6 @@ while cursor
     if candidate.is-live && candidate.style-store-address == attachment.style-store-address
         = candidate
     cursor = candidate.structural-parent
-
-━━━━━━━━━━━━━━━━━━━━
-_ do style-next-structural-after MarkupAttachment?
-    - root MarkupAttachment
-    - attachment MarkupAttachment
-
-. cursor = attachment
-while cursor != root
-    if cursor.next-sibling
-        = cursor.next-sibling
-    =? if !cursor.structural-parent
-    cursor = cursor.structural-parent
-
-━━━━━━━━━━━━━━━━━━━━
-_ do style-scan-child MarkupAttachment?
-    - parent MarkupAttachment
-    - candidate MarkupAttachment?
-
-. cursor = candidate
-while cursor
-    . live = cursor
-    if live.is-live && live.style-store-address == parent.style-store-address
-        = live
-    if live.first-child
-        cursor = live.first-child
-    else
-        cursor = style-next-structural-after(parent, live)
 
 ━━━━━━━━━━━━━━━━━━━━
 + style-first-child-attachment MarkupAttachment?
@@ -1686,22 +1314,8 @@ live-record.dirty-bits = live-record.dirty-bits /or/ style-dirty-bit
 store.enqueue-dirty(attachment)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-clear-domain
-    - store RootStyleStore
-    - attachment MarkupAttachment
-    - domain Size
-
-. bit U32 = 1u32 /lshift/ domain
-. has-domain = (attachment.pending-domains /and/ bit) != 0
-=? if !has-domain
-
-attachment.pending-domains -= bit
-if domain < store.pending-domain-counts.length && store.pending-domain-counts[domain] > 0
-    store.pending-domain-counts[domain] -= 1
-
-━━━━━━━━━━━━━━━━━━━━
 + style-store-for
-    - root MarkupBatch
+    - root MarkupRootElement
 
 gc-object-side-payload'RootStyleStore(root as Pointer, style-attachments-lane() as Size)
 
@@ -1748,9 +1362,7 @@ style-mark-style-sheet-provider(store, live)
     - object-pointer CPointer'Void
     - theme TypeInfo'Theme
 
-. record = style-theme-record(theme.key)
-if record
-    style-provide-style-sheet(object-pointer, record)
+style-use-theme-key(object-pointer, theme.key)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do style-set-theme-slot'Theme
@@ -1775,6 +1387,839 @@ record.set-slot-named(name, bits, is-none)
 style-mark-style-sheet-provider(style-attachment-store(live), live)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do style-set-theme-tag
+    - node MarkupElement
+    - tag String
+    - active Bool?
+
+. held = markup-attachment-for-write(node)
+. bit = style-theme-tag(tag)
+. turned-on = held.theme-tags-on - (held.theme-tags-on /and/ bit)
+. turned-off = held.theme-tags-off - (held.theme-tags-off /and/ bit)
+if active == true
+    turned-on = turned-on /or/ bit
+else if active == false
+    turned-off = turned-off /or/ bit
+=? if turned-on == held.theme-tags-on && turned-off == held.theme-tags-off
+. attachment = style-live-attachment(node as Pointer)
+if !attachment
+    held.set-theme-tags(turned-on, turned-off)
+    =
+. live = attachment
+. was-on = (style-effective-tags(live) /and/ bit) != 0
+live.set-theme-tags(turned-on, turned-off)
+=? if was-on == ((style-effective-tags(live) /and/ bit) != 0)
+. infos = List'StyleSheetInfo()
+for info in style-sheet-infos
+    if (info.tags /and/ bit) != 0
+        infos += info
+. changes = style-tag-changes(live, infos, bit, was-on)
+if changes
+    style-mark-tag-change(style-attachment-store(live), live, changes, bit, was-on)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-effective-style-sheet
+    - attachment MarkupAttachment
+    - info StyleSheetInfo
+
+. selected StyleSheetRecord? = null
+. tags = 0u64
+. decided = 0u64
+. cursor MarkupAttachment? = attachment
+while cursor
+    . live = cursor
+    . node-record = style-node-record(live)
+    if node-record
+        . held = node-record
+        . provided = held.provided-style-sheets
+        if !selected && provided
+            for record in provided
+                if record.info == info
+                    selected = record
+    tags = tags /or/ (live.theme-tags-on - (live.theme-tags-on /and/ decided))
+    decided = decided /or/ live.theme-tags-on /or/ live.theme-tags-off
+    if selected && info.tags == 0
+        = selected
+    cursor = style-parent-attachment(live)
+
+. base = selected ?? style-sheet-default-record(info)
+=? base if info.tags == 0
+= style-sheet-variant(info, base, tags)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-copy-authored-state
+    - source MarkupElement
+    - target MarkupElement
+
+. target-pointer = target as Pointer
+for info in style-infos
+    . winners = style-authored-winners(source, info)
+    for winner in winners
+        if winner != style-no-winner
+            . copy = winner.copied()
+            copy.layer = StyleLayer.imperative
+            copy.order = 0
+            copy.block = -1
+            style-author-imperative-declaration(target-pointer, copy)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-has-authored-property Bool
+    - source MarkupElement
+    - style-name String
+    - property-name String
+
+. info = style-info-named(style-name)
+=? false if !info
+. winners = style-authored-winners(source, info)
+for property in info.properties
+    if property.name == property-name
+        = winners[property.offset] != style-no-winner
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-live-site-association
+    - attachment MarkupAttachment
+
+. owner-address = attachment.owner-address
+if owner-address
+    = style-association-for(owner-address as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-set-motion-host
+    - host StyleMotionHost?
+
+style-motion-host = host
+
+━━━━━━━━━━━━━━━━━━━━
++ style-read-object'Value Value?
+    - owner MarkupElement
+    - info StyleInfo
+    - offset Size
+
+|? !property || !property.is-object
+    null
+|? read.none
+    null
+|? pointer == Pointer()
+    null
+??
+    gc-object-from-pointer'Value(pointer)
+
+.. property = info.property-at(offset)
+.. read = style-read-attached-optional
+    - owner.markup-attachment-cache
+    - owner as Pointer
+    - info.style-index
+    - offset
+.. pointer = style-object-pointer(read.bits)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-motion-vector [F64]?
+    - property StylePropertyInfo
+    - bits I64
+    - none Bool
+
+|? none
+    null
+|? property.is-float
+    [style-float-from-bits(bits)]
+|? !property.is-encoded || property.wide-shift != 0
+    null
+??
+    style-object-holder(bits)?.motion-vector()
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-motion-vector-into Bool
+    - into [F64]
+    - property StylePropertyInfo
+    - bits I64
+    - none Bool
+
+into.clear()
+=? false if none
+if property.is-float
+    into += style-float-from-bits(bits)
+    = true
+. vector = style-motion-vector(property, bits, none)
+=? false if !vector
+into ++= vector
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ style-motion-moves Bool
+    - property StylePropertyInfo
+    - from-bits I64
+    - to-bits I64
+
+|? property.is-float || !property.is-encoded || property.wide-shift != 0
+    true
+|? !from || !to
+    true
+??
+    from.moves-to(to)
+
+.. from = style-object-holder(from-bits)
+.. to = style-object-holder(to-bits)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-motion-none-vector [F64]?
+    - property StylePropertyInfo
+    - bits I64
+
+|? property.is-float
+    [0.0]
+|? !property.is-encoded || property.wide-shift != 0
+    null
+??
+    style-object-holder(bits)?.motion-none-vector()
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-present Bool
+    - owner MarkupElement
+    - info StyleInfo
+    - offset Size
+    - bits I64
+    - none Bool
+
+. attachment = style-live-attachment(owner as Pointer)
+=? false if !attachment
+. live = attachment
+. record = style-ensure-node-record(live)
+. lane = record.presented ?? StylePresentation()
+record.presented = lane
+. property = info.property-at(offset)
+. held = style-slot-holder(property, bits) if property && !none
+lane.put(info.style-index, offset, bits, none, held, false)
+. store = style-attachment-store(live)
+style-raise-changed-domains(store, live, info, 1u64 /lshift/ offset)
+if (info.inherited-mask /and/ (1u64 /lshift/ offset)) != 0
+    style-present-followers(store, live, record, info, offset, bits, none, held)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-unpresent
+    - owner MarkupElement
+    - info StyleInfo
+    - offset Size
+
+. attachment = style-live-attachment(owner as Pointer)
+=? if !attachment
+. live = attachment
+. record = style-node-record(live)
+=? if !record
+. lane = record.presented
+=? if !lane
+=? if !lane.remove(info.style-index, offset)
+if !lane.entries
+    record.presented = null
+. store = style-attachment-store(live)
+style-raise-changed-domains(store, live, info, 1u64 /lshift/ offset)
+if (info.inherited-mask /and/ (1u64 /lshift/ offset)) != 0
+    style-unpresent-followers(store, live, info, offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-is-within Bool
+    - node MarkupElement
+    - root MarkupElement
+
+. target = style-live-attachment(root as Pointer)
+=? false if !target
+. cursor = style-live-attachment(node as Pointer)
+while cursor
+    . live = cursor
+    =? true if live as Pointer == target as Pointer
+    cursor = style-parent-attachment(live)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-unsettle
+    - owner MarkupElement
+
+. attachment = style-live-attachment(owner as Pointer)
+if attachment
+    style-unsettle-attachment(attachment)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-is-presenting Bool
+    - owner MarkupElement
+
+if attachment then !!style-node-record(attachment)?.presented else false
+
+.. attachment = style-live-attachment(owner as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-is-initial'Host Bool
+    - host Host
+    - info StyleInfo
+    - Host is MarkupElement
+
+|? !attachment || !attachment.is-live
+    false
+|? !record
+    true
+|? record.presented
+    false
+??
+    style-held-segment-position(record, info.style-index) < 0
+
+.. attachment = host.markup-attachment-cache
+.. record = style-node-record(attachment)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-report-next-settle
+    - owner MarkupElement
+
+. attachment = markup-attachment(owner)
+if attachment
+    attachment.style-reports-settle = true
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-report-on-mount
+    - info StyleInfo
+    - offset Size
+
+info.mount-mask = info.mount-mask /or/ (1u64 /lshift/ offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-watch-changes
+    - info StyleInfo
+    - offset Size
+
+info.watch-mask = info.watch-mask /or/ (1u64 /lshift/ offset)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-read-settled StyleOptionalBits
+    - owner MarkupElement
+    - info StyleInfo
+    - offset Size
+
+. attachment = style-live-attachment(owner as Pointer)
+if attachment
+    . live = attachment
+    . record = style-node-record(live)
+    if record
+        . position = style-held-segment-position(record, info.style-index)
+        if position >= 0
+            . segment = record.segments[position]
+            if offset < segment.values.length
+                = (segment.values[offset], segment.value-none(offset))
+    . initial = style-read-initial-segment(live, info.style-index)
+    = (initial.value-bits(offset), initial.value-none(offset))
+. property = style-initial-property(info.style-index, offset)
+= (property.initial-bits, property.initial-none)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-shape'Arg'Value StyleShape'Arg'Value
+    - make Mapper'Arg'Value
+
+StyleShape'Arg'Value(make)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-record-segment ComputedSegment?
+    - record StyleRecord
+    - style-index Index
+
+record.segments[position] if position >= 0
+
+.. position = style-held-segment-position(record, style-index)
+
+━━━━━━━━━━━━━━━━━━━━
++ do style-record-place-segment
+    - record StyleRecord
+    - style-index Index
+    - segment ComputedSegment
+    - owned Bool
+
+. key = style-segment-key(style-index, owned)
+. position = style-held-segment-position(record, style-index)
+if position >= 0
+    record.segments[position] = segment
+    record.segment-keys[position] = key
+    =
+. inserted = style-segment-position(record, style-index)
+record.segments.insert(segment, inserted)
+record.segment-keys.insert(key, inserted)
+record.segment-mask = record.segment-mask /or/ style-segment-bit(style-index)
+
+━━━━━━━━━━━━━━━━━━━━
++ style-segment-key-style Index
+    - key Index
+
+key / 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleContentSlot is U32
+
+` Style-generated content slots mirrored from the compiler.
+
+| before
+| after
+| first-child
+| last-child
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleProjectionKind is U32
+
+` Style-sheet projection descriptors. Converted style-sheet declarations are admitted only when
+` source slot bits can be reused directly, wrapped in a target union case, or union-tag remapped.
+
+| copy
+| union-wrap
+| union-remap
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleStaticMaker is () I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleThemedMaker is () StyleOptionalBits
+    - record StyleSheetRecord
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleProjectionRemap
+
++ target-tags [U8]
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleValueHolder'Value is StyleObjectHolder
+
++ held Value?
+
+────────────────────
++ This
+    - held
+
+identity = style-held-pointer(held)
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleSheetSlotInfo
+
+` Compiler-registered metadata for one style-sheet slot. Slot values use the same I64-bits-plus-
+` none-flag encoding as style properties.
+
++ offset Size = 0
++ name String
++ initial-bits I64
++ initial-none = false
++ flags U32
++ domains U32
++ is-encoded => (flags /and/ style-flag-encoded) != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleSheetChange
+
+` How a theme tag turned on or off changes a family's active member in a subtree: the member
+` before and after, which slots hold other values, and whether any does.
+
++ info StyleSheetInfo
++ before StyleSheetRecord
++ after StyleSheetRecord
++ slots [Bool]
++ differs = false
+
+────────────────────
++ This
+    - info
+    - before
+    - after
+
+. offset Size = 0
+while offset < info.slot-count
+    . changed = bits-differ || before.value-none(offset) != after.value-none(offset)
+        .. bits-differ = before.value-bits(offset) != after.value-bits(offset)
+    slots += changed
+    differs = differs || changed
+    offset += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleSiteTemplate
+
+` A shared static declaration template for one compiler-assigned markup construction site.
+` Registrations are idempotent because construction code runs for every instance of the site,
+` while the declarations themselves must allocate once per program site. Shared declarations are
+` value-kind only: object values stay per-instance on the association, so holder ownership remains
+` per-owner state. A gated shared declaration's block counts from the first block the site opens;
+` each association offsets it by the base it recorded for the site.
+
++ declarations [AuthoredDeclaration]
++ current-block I64 = -1
++ current-family StyleSheetInfo? = null
++ current-members U64
++ recorded = false
+
+────────────────────
++ do has-declaration
+    - style StyleInfo
+    - offset Size
+    - layer U32
+    - order U32
+    - block I64
+
+for declaration in declarations
+    . is-style = declaration.style == style && declaration.offset == offset
+    . is-order = declaration.layer == layer && declaration.order == order
+    =? true
+        if is-style && is-order && declaration.block == block
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleContentRecord
+
++ target MarkupElement
++ slot U32
++ order U32
++ builder MarkupSlotBuilder'MarkupElement
++ enabled = true
++ node MarkupElement?
+
+────────────────────
++ This
+    - target
+    - slot
+    - order
+    - builder
+
+────────────────────
++ do detach
+
+. existing = node
+=? if !existing
+
+node = null
+markup-remove-shadow(existing)
+
+────────────────────
++ do refresh
+    - should-rebuild = false
+
+if !enabled
+    detach()
+    =
+if node
+    =? if !should-rebuild
+    detach()
+
+. parent = style-content-parent(target, slot)
+=? if !parent
+
+. child = builder()
+node = child
+. anchor = style-content-anchor(target, slot, parent)
+markup-insert-shadow(parent, child, target, slot, anchor)
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleScopeState
+
++ is-on = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleDynamicActionBase is MarkupBatchAction
+
+────────────────────
++ do refresh
+
+` Mount-time re-derivation: evaluates the declaration expression once against the current tree.
+
+refresh-markup-batch-action()
+
+━━━━━━━━━━━━━━━━━━━━
+_ StyleDynamicAction'Subject is StyleDynamicActionBase
+
+` A markup batch action for one dynamic authored declaration. The traced subject reference keeps
+` tracker-retained actions from dereferencing a collected object; the batch root is resolved from
+` the subject's current mount when trackers fire, so the action follows the object across remounts.
+` When the subject is unmounted the update is dropped and the mount path re-runs the action instead.
+
++ subject Subject
++ accepts-run => style-live-attachment(subject as Pointer) != null
+
+────────────────────
++ This
+    - subject
+    - initial-trackers [Tracker]
+    - action-callback SubscriberCallback
+
+.. trackers = initial-trackers
+callback = action-callback
+
+for tracker in trackers
+    tracker.attach(this)
+
+────────────────────
++ do schedule
+
+` Tracker fire: resolve the batch root from the subject's current mount, then enqueue like
+` MarkupBatchAction. Unmounted subjects drop the update; mounting re-runs the action instead.
+
+. attachment = style-live-attachment(subject as Pointer)
+if !attachment
+    //style.dynamic.dropped ++
+=? if !attachment
+
+. live-store = style-attachment-store(attachment)
+batch-root = style-store-batch-queue(live-store).root
+//style.dynamic.enqueues ++
+enqueue-markup-batch-action()
+
+━━━━━━━━━━━━━━━━━━━━
+_ StylePresentation
+
++ entries [StylePresentedValue]
+
+────────────────────
++ do find StylePresentedValue?
+    - style-index Index
+    - offset Size
+
+for entry in entries
+    =? entry if entry.style-index == style-index && entry.offset == offset
+= null
+
+────────────────────
++ do put
+    - style-index Index
+    - offset Size
+    - bits I64
+    - none Bool
+    - held StyleObjectHolder?
+    - follows Bool
+
+. found = find(style-index, offset)
+if found
+    found.bits = bits
+    found.none = none
+    found.held = held
+    found.follows = follows
+    =
+. entry = StylePresentedValue()
+entry.style-index = style-index
+entry.offset = offset
+entry.bits = bits
+entry.none = none
+entry.held = held
+entry.follows = follows
+entries += entry
+
+────────────────────
++ do remove Bool
+    - style-index Index
+    - offset Size
+
+for index in 0 .. < entries.length
+    . entry = entries[index]
+    if entry.style-index == style-index && entry.offset == offset
+        entries.remove(index)
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ StylePresentedValue
+
++ style-index Index = 0
++ offset Size = 0
++ bits I64
++ none = false
++ held StyleObjectHolder? = null
++ follows = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-motion-vector'Value [F64]?
+    - value Value
+    - Value is Animatable
+
+value.motion-vector
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-motion-vector'Value [F64]?
+    - value Value
+
+null
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-none-vector'Value [F64]?
+    - value Value
+    - Value is Animatable
+
+value.motion-none-vector
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-none-vector'Value [F64]?
+    - value Value
+
+null
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-moves-to'Value Bool
+    - value Value
+    - other Value
+    - Value is Animatable
+
+value.moves-to(other)
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-moves-to'Value Bool
+    - value Value
+    - other Value
+
+true
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-from-vector'Value Value
+    - value Value
+    - vector [F64]
+    - Value is Animatable
+
+value.with-motion-vector(vector)
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-value-from-vector'Value Value
+    - value Value
+    - vector [F64]
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
+_ style-outlet-states-mark Size
+
+style-outlet-state-keys.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-outlet-state-push
+    - key U32
+    - cell StyleScopeState
+
+style-outlet-state-keys += key
+style-outlet-state-cells += cell
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-outlet-states-release
+    - mark Size
+
+. count = style-outlet-state-keys.length
+=? if count <= mark
+style-outlet-state-keys.remove(mark, count - mark)
+style-outlet-state-cells.remove(mark, count - mark)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-outlet-state StyleScopeState
+    - key U32
+
+. index = style-outlet-state-keys.length
+while index > 0
+    index -= 1
+    =? style-outlet-state-cells[index] if style-outlet-state-keys[index] == key
+= StyleScopeState()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-register-projection-remap-site
+    - site Size
+    - target-tags ConstArray'U8
+    - target-count Size
+
+style-projection-remap-registration-attempts += 1
+
+while style-projection-remaps.length <= site
+    style-projection-remaps += style-empty-projection-remap
+    style-projection-remap-registered += false
+
+if !style-projection-remap-registered[site]
+    . remap = StyleProjectionRemap()
+    . index Size = 0
+    while index < target-count
+        remap.target-tags += target-tags[index]
+        index += 1
+    style-projection-remaps[site] = remap
+    style-projection-remap-registered[site] = true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-theme-tag U64
+    - name String
+
+for position in 0 .. < style-theme-tags.length
+    if style-theme-tags[position] == name
+        = 1u64 /lshift/ position
+?! StyleSheetPanic("A program names at most 64 theme tags")
+    if style-theme-tags.length >= 64
+style-theme-tags += name
+= 1u64 /lshift/ (style-theme-tags.length - 1)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-sheet-info-at
+    - style-sheet-index Index
+
+` Placeholder entries pad the registry when compiler-assigned indexes register out of module-init
+` order; they read as unregistered.
+
+if style-sheet-index < style-sheet-infos.length
+    . info = style-sheet-infos[style-sheet-index]
+    if info.sheet-key.length > 0
+        = info
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-content-set-enabled
+    - record StyleContentRecord
+    - enabled Bool
+
+record.enabled = enabled
+record.refresh()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-content-refresh
+    - record StyleContentRecord
+    - should-rebuild = true
+
+record.refresh(should-rebuild)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-next-structural-after MarkupAttachment?
+    - root MarkupAttachment
+    - attachment MarkupAttachment
+
+. cursor = attachment
+while cursor != root
+    if cursor.next-sibling
+        = cursor.next-sibling
+    =? if !cursor.structural-parent
+    cursor = cursor.structural-parent
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-scan-child MarkupAttachment?
+    - parent MarkupAttachment
+    - candidate MarkupAttachment?
+
+. cursor = candidate
+while cursor
+    . live = cursor
+    if live.is-live && live.style-store-address == parent.style-store-address
+        = live
+    if live.first-child
+        cursor = live.first-child
+    else
+        cursor = style-next-structural-after(parent, live)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-clear-domain
+    - store RootStyleStore
+    - attachment MarkupAttachment
+    - domain Size
+
+. bit U32 = 1u32 /lshift/ domain
+. has-domain = (attachment.pending-domains /and/ bit) != 0
+=? if !has-domain
+
+attachment.pending-domains -= bit
+if domain < store.pending-domain-counts.length && store.pending-domain-counts[domain] > 0
+    store.pending-domain-counts[domain] -= 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do style-use-theme-key
+    - object-pointer CPointer'Void
+    - key String
+
+. record = style-theme-record(key)
+if record
+    style-provide-style-sheet(object-pointer, record)
+
+━━━━━━━━━━━━━━━━━━━━
 _ do style-theme-record StyleSheetRecord?
     - key String
 
@@ -1787,38 +2232,6 @@ for info in style-sheet-infos
 = null
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-set-theme-tag
-    - object-pointer CPointer'Void
-    - tag String
-    - active Bool?
-
-. attachment = style-live-attachment(object-pointer)
-?! StyleSheetPanic("Cannot set a theme tag on an unmounted object")
-    if !attachment
-
-. live = attachment
-. node-record = style-ensure-node-record(live)
-. bit = style-theme-tag(tag)
-. turned-on = node-record.theme-tags-on - (node-record.theme-tags-on /and/ bit)
-. turned-off = node-record.theme-tags-off - (node-record.theme-tags-off /and/ bit)
-if active == true
-    turned-on = turned-on /or/ bit
-else if active == false
-    turned-off = turned-off /or/ bit
-=? if turned-on == node-record.theme-tags-on && turned-off == node-record.theme-tags-off
-. was-on = (style-effective-tags(live) /and/ bit) != 0
-node-record.theme-tags-on = turned-on
-node-record.theme-tags-off = turned-off
-=? if was-on == ((style-effective-tags(live) /and/ bit) != 0)
-. infos = List'StyleSheetInfo()
-for info in style-sheet-infos
-    if (info.tags /and/ bit) != 0
-        infos += info
-. changes = style-tag-changes(live, infos, bit, was-on)
-if changes
-    style-mark-tag-change(style-attachment-store(live), live, changes, bit, was-on)
-
-━━━━━━━━━━━━━━━━━━━━
 _ do style-effective-tags U64
     - attachment MarkupAttachment
 
@@ -1827,11 +2240,8 @@ _ do style-effective-tags U64
 . cursor MarkupAttachment? = attachment
 while cursor
     . live = cursor
-    . node-record = style-node-record(live)
-    if node-record
-        . held = node-record
-        tags = tags /or/ (held.theme-tags-on - (held.theme-tags-on /and/ decided))
-        decided = decided /or/ held.theme-tags-on /or/ held.theme-tags-off
+    tags = tags /or/ (live.theme-tags-on - (live.theme-tags-on /and/ decided))
+    decided = decided /or/ live.theme-tags-on /or/ live.theme-tags-off
     cursor = style-parent-attachment(live)
 = tags
 
@@ -1902,14 +2312,12 @@ _ do style-subtree-changes [StyleSheetChange]?
     - bit U64
     - was-on Bool
 
-. node-record = style-node-record(attachment)
-=? changes if !node-record
-. record = node-record
-. decided = record.theme-tags-on /or/ record.theme-tags-off
+. decided = attachment.theme-tags-on /or/ attachment.theme-tags-off
 =? null if (decided /and/ bit) != 0
+. node-record = style-node-record(attachment)
 . provides = false
-if record.provided-style-sheets
-    for provided in record.provided-style-sheets
+if node-record && node-record.provided-style-sheets
+    for provided in node-record.provided-style-sheets
         for change in changes
             provides = provides || provided.info == change.info
 =? changes if decided == 0 && !provides
@@ -1968,35 +2376,6 @@ for change in changes
         =? true if declaration.kind != StyleValueKind.themed && slot-changed
         .. slot-changed = change.slots[declaration.sheet-offset]
 = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-effective-style-sheet
-    - attachment MarkupAttachment
-    - info StyleSheetInfo
-
-. selected StyleSheetRecord? = null
-. tags = 0u64
-. decided = 0u64
-. cursor MarkupAttachment? = attachment
-while cursor
-    . live = cursor
-    . node-record = style-node-record(live)
-    if node-record
-        . held = node-record
-        . provided = held.provided-style-sheets
-        if !selected && provided
-            for record in provided
-                if record.info == info
-                    selected = record
-        tags = tags /or/ (held.theme-tags-on - (held.theme-tags-on /and/ decided))
-        decided = decided /or/ held.theme-tags-on /or/ held.theme-tags-off
-    if selected && info.tags == 0
-        = selected
-    cursor = style-parent-attachment(live)
-
-. base = selected ?? style-sheet-default-record(info)
-=? base if info.tags == 0
-= style-sheet-variant(info, base, tags)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-sheet-variant StyleSheetRecord
@@ -2616,7 +2995,7 @@ a.style == b.style && a.offset == b.offset && same-priority
 
 ━━━━━━━━━━━━━━━━━━━━
 _ style-content-parent
-    - target MarkupHost
+    - target MarkupElement
     - slot U32
 
 |? slot == StyleContentSlot.before || slot == StyleContentSlot.after
@@ -2626,9 +3005,9 @@ _ style-content-parent
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-content-anchor
-    - target MarkupHost
+    - target MarkupElement
     - slot U32
-    - parent MarkupHost
+    - parent MarkupElement
 
 if slot == StyleContentSlot.before
     = target
@@ -2650,10 +3029,10 @@ if slot == StyleContentSlot.first-child
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-template-content
     - assoc StyleSiteAssociation
-    - target MarkupHost
+    - target MarkupElement
     - slot U32
     - order U32
-    - builder MarkupSlotBuilder'MarkupHost
+    - builder MarkupSlotBuilder'MarkupElement
 
 . record = StyleContentRecord(target, slot, order, builder)
 . list = assoc.content-records
@@ -2862,7 +3241,7 @@ record.dirty-bits = record.dirty-bits /or/ style-dirty-bit
 store.enqueue-dirty(live)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-author-imperative
+_ do style-author-imperative
     - object-pointer CPointer'Void
     - style StyleInfo
     - offset Size
@@ -2878,38 +3257,8 @@ declaration.is-none = is-none
 style-author-imperative-declaration(object-pointer, declaration)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-copy-authored-state
-    - source MarkupHost
-    - target MarkupHost
-
-. target-pointer = target as Pointer
-for info in style-infos
-    . winners = style-authored-winners(source, info)
-    for winner in winners
-        if winner != style-no-winner
-            . copy = winner.copied()
-            copy.layer = StyleLayer.imperative
-            copy.order = 0
-            copy.block = -1
-            style-author-imperative-declaration(target-pointer, copy)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-has-authored-property Bool
-    - source MarkupHost
-    - style-name String
-    - property-name String
-
-. info = style-info-named(style-name)
-=? false if !info
-. winners = style-authored-winners(source, info)
-for property in info.properties
-    if property.name == property-name
-        = winners[property.offset] != style-no-winner
-= false
-
-━━━━━━━━━━━━━━━━━━━━
 _ do style-authored-winners [AuthoredDeclaration]
-    - source MarkupHost
+    - source MarkupElement
     - info StyleInfo
 
 . source-pointer = source as Pointer
@@ -2969,14 +3318,6 @@ declaration.held-shift = value-shift
 declaration.held-tag = value-tag
 declaration.is-none = is-none
 style-author-imperative-declaration(object-pointer, declaration)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-live-site-association
-    - attachment MarkupAttachment
-
-. owner-address = attachment.owner-address
-if owner-address
-    = style-association-for(owner-address as Pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-ensure-node-record
@@ -3429,9 +3770,9 @@ for action in actions
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-apply-mount Bool
-    - node MarkupHost
-    - parent MarkupHost?
-    - root MarkupBatch?
+    - node MarkupElement
+    - parent MarkupElement?
+    - root MarkupRootElement?
 
 ` Single-node mount, unmount, or rehome event from the markup runtime (markup-adopt). Returns
 ` true when this node's own mount state changed, telling the runtime walk to continue into the
@@ -3476,11 +3817,11 @@ if store
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-root-store
-    - batch MarkupBatch
+    - batch MarkupRootElement
     - root-pointer Pointer
     - object-pointer Pointer
 
-` The root style store is created when a MarkupBatch object is set as its own batch root. Objects
+` The root style store is created when a MarkupRootElement object is set as its own batch root. Objects
 ` mounted under a root that never created a store do not participate and allocate nothing.
 
 if root-pointer == object-pointer
@@ -3512,7 +3853,7 @@ node-record.provided-style-sheets = null
 _ do style-mount
     - object-pointer Pointer
     - store RootStyleStore
-    - parent MarkupHost?
+    - parent MarkupElement?
 
 ?! StyleMountPanic("Markup object is already mounted in a styled tree")
     if style-live-attachment(object-pointer)
@@ -3536,7 +3877,7 @@ store.enqueue-dirty(live)
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-mount-parent
     - store RootStyleStore
-    - parent MarkupHost?
+    - parent MarkupElement?
 
 . cursor = parent
 while cursor
@@ -3548,7 +3889,7 @@ while cursor
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-update-parent
     - attachment MarkupAttachment
-    - parent MarkupHost?
+    - parent MarkupElement?
 
 ` Same-root bridge events: repeated propagation is idempotent; objects that received their batch
 ` root before being linked (markup regions) adopt their parent late; unlinking the parent while
@@ -3678,7 +4019,7 @@ if mask != 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-settle
-    - root MarkupBatch
+    - root MarkupRootElement
 
 ` Settles all dirty style subjects under a batch root to a fixed point: authored declarations and
 ` inheritance become computed segment values, and downstream invalidation lands on each node's
@@ -3777,161 +4118,6 @@ while store.dirty-queue || store.inherited-dirty-roots || store.style-sheet-dirt
 = passes != 0
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do style-set-motion-host
-    - host StyleMotionHost?
-
-style-motion-host = host
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-read-object'Value Value?
-    - owner MarkupHost
-    - info StyleInfo
-    - offset Size
-
-|? !property || !property.is-object
-    null
-|? read.none
-    null
-|? pointer == Pointer()
-    null
-??
-    gc-object-from-pointer'Value(pointer)
-
-.. property = info.property-at(offset)
-.. read = style-read-attached-optional
-    - owner.markup-attachment-cache
-    - owner as Pointer
-    - info.style-index
-    - offset
-.. pointer = style-object-pointer(read.bits)
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-motion-vector [F64]?
-    - property StylePropertyInfo
-    - bits I64
-    - none Bool
-
-|? none
-    null
-|? property.is-float
-    [style-float-from-bits(bits)]
-|? !property.is-encoded || property.wide-shift != 0
-    null
-??
-    style-object-holder(bits)?.motion-vector()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-motion-vector-into Bool
-    - into [F64]
-    - property StylePropertyInfo
-    - bits I64
-    - none Bool
-
-into.clear()
-=? false if none
-if property.is-float
-    into += style-float-from-bits(bits)
-    = true
-. vector = style-motion-vector(property, bits, none)
-=? false if !vector
-into ++= vector
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-motion-moves Bool
-    - property StylePropertyInfo
-    - from-bits I64
-    - to-bits I64
-
-|? property.is-float || !property.is-encoded || property.wide-shift != 0
-    true
-|? !from || !to
-    true
-??
-    from.moves-to(to)
-
-.. from = style-object-holder(from-bits)
-.. to = style-object-holder(to-bits)
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-motion-none-vector [F64]?
-    - property StylePropertyInfo
-    - bits I64
-
-|? property.is-float
-    [0.0]
-|? !property.is-encoded || property.wide-shift != 0
-    null
-??
-    style-object-holder(bits)?.motion-none-vector()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-present Bool
-    - owner MarkupHost
-    - info StyleInfo
-    - offset Size
-    - bits I64
-    - none Bool
-
-. attachment = style-live-attachment(owner as Pointer)
-=? false if !attachment
-. live = attachment
-. record = style-ensure-node-record(live)
-. lane = record.presented ?? StylePresentation()
-record.presented = lane
-. property = info.property-at(offset)
-. held = style-slot-holder(property, bits) if property && !none
-lane.put(info.style-index, offset, bits, none, held, false)
-. store = style-attachment-store(live)
-style-raise-changed-domains(store, live, info, 1u64 /lshift/ offset)
-if (info.inherited-mask /and/ (1u64 /lshift/ offset)) != 0
-    style-present-followers(store, live, record, info, offset, bits, none, held)
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-unpresent
-    - owner MarkupHost
-    - info StyleInfo
-    - offset Size
-
-. attachment = style-live-attachment(owner as Pointer)
-=? if !attachment
-. live = attachment
-. record = style-node-record(live)
-=? if !record
-. lane = record.presented
-=? if !lane
-=? if !lane.remove(info.style-index, offset)
-if !lane.entries
-    record.presented = null
-. store = style-attachment-store(live)
-style-raise-changed-domains(store, live, info, 1u64 /lshift/ offset)
-if (info.inherited-mask /and/ (1u64 /lshift/ offset)) != 0
-    style-unpresent-followers(store, live, info, offset)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-is-within Bool
-    - node MarkupHost
-    - root MarkupHost
-
-. target = style-live-attachment(root as Pointer)
-=? false if !target
-. cursor = style-live-attachment(node as Pointer)
-while cursor
-    . live = cursor
-    =? true if live as Pointer == target as Pointer
-    cursor = style-parent-attachment(live)
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-unsettle
-    - owner MarkupHost
-
-. attachment = style-live-attachment(owner as Pointer)
-if attachment
-    style-unsettle-attachment(attachment)
-
-━━━━━━━━━━━━━━━━━━━━
 _ do style-unsettle-attachment
     - attachment MarkupAttachment
 
@@ -3943,54 +4129,6 @@ while child
     child = style-next-child-attachment(attachment, live)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ style-is-presenting Bool
-    - owner MarkupHost
-
-if attachment then !!style-node-record(attachment)?.presented else false
-
-.. attachment = style-live-attachment(owner as Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-is-initial'Host Bool
-    - host Host
-    - info StyleInfo
-    - Host is MarkupHost
-
-|? !attachment || !attachment.is-live
-    false
-|? !record
-    true
-|? record.presented
-    false
-??
-    style-held-segment-position(record, info.style-index) < 0
-
-.. attachment = host.markup-attachment-cache
-.. record = style-node-record(attachment)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-report-next-settle
-    - owner MarkupHost
-
-. attachment = markup-attachment(owner)
-if attachment
-    attachment.style-reports-settle = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-report-on-mount
-    - info StyleInfo
-    - offset Size
-
-info.mount-mask = info.mount-mask /or/ (1u64 /lshift/ offset)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-watch-changes
-    - info StyleInfo
-    - offset Size
-
-info.watch-mask = info.watch-mask /or/ (1u64 /lshift/ offset)
-
-━━━━━━━━━━━━━━━━━━━━
 _ do style-watched-mask U64
     - info StyleInfo
 
@@ -4000,27 +4138,6 @@ if !info.is-watch-known
     info.is-watch-known = true
     info.watch-mask = info.watch-mask /or/ host.watch-mask(info)
 = info.watch-mask
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-read-settled StyleOptionalBits
-    - owner MarkupHost
-    - info StyleInfo
-    - offset Size
-
-. attachment = style-live-attachment(owner as Pointer)
-if attachment
-    . live = attachment
-    . record = style-node-record(live)
-    if record
-        . position = style-held-segment-position(record, info.style-index)
-        if position >= 0
-            . segment = record.segments[position]
-            if offset < segment.values.length
-                = (segment.values[offset], segment.value-none(offset))
-    . initial = style-read-initial-segment(live, info.style-index)
-    = (initial.value-bits(offset), initial.value-none(offset))
-. property = style-initial-property(info.style-index, offset)
-= (property.initial-bits, property.initial-none)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-float-from-bits F64
@@ -4037,104 +4154,19 @@ _ do style-float-bits I64
 = style-bits-cell[0]
 
 ━━━━━━━━━━━━━━━━━━━━
-+ StyleProperty'Value
-
-+ style-index Index
-+ offset Size
-+ component Index?
-
-────────────────────
-+ This
-    - style-index
-    - offset
-    - component
-
-────────────────────
-+ get info StyleInfo?
-
-style-info-at(style-index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-property'Value StyleProperty'Value
+_ style-property'Value StyleProperty'Value
     - style-index Index
     - offset Size
 
 StyleProperty'Value(style-index, offset, null)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ style-property-component'Value StyleProperty'Value
+_ style-property-component'Value StyleProperty'Value
     - style-index Index
     - offset Size
     - component Index
 
 StyleProperty'Value(style-index, offset, component)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleShape'Arg'Value
-
-+ make Mapper'Arg'Value
-
-_ args = List'Arg()
-_ values = List'Value()
-
-────────────────────
-+ This
-    - make
-
-────────────────────
-+ do bind Value
-    - arg Arg
-
-for index in 0 .. < args.length
-    =? values[index] if args[index] == arg
-. value = make(arg)
-args += arg
-values += value
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-shape'Arg'Value StyleShape'Arg'Value
-    - make Mapper'Arg'Value
-
-StyleShape'Arg'Value(make)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StylePresenter
-
-+ property StylePropertyInfo
-
-_ holder StyleObjectHolder?
-
-────────────────────
-+ This
-    - property
-    - sample-bits I64
-
-if !property.is-float
-    holder = style-object-holder(sample-bits)?.motion-holder()
-
-────────────────────
-+ do adopt
-    - sample StyleObjectHolder
-
-holder = holder ?? sample.motion-holder()
-
-────────────────────
-+ do retarget
-    - sample-bits I64
-
-=? if property.is-float
-holder = style-object-holder(sample-bits)?.motion-holder() ?? holder
-
-────────────────────
-+ do bits I64
-    - vector [F64]
-
-=? style-float-bits(vector[0]) if property.is-float
-. live = holder
-=? 0 if !live
-live.take-motion-vector(vector)
-= style-acquire-object(live)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ style-read-bits
@@ -4171,7 +4203,7 @@ _ style-read-host-sheet-bits'Host I64
     - sheet-index Index
     - offset Size
     - tracked Bool
-    - Host is MarkupHost
+    - Host is MarkupElement
 
 style-read-sheet-record(host as Pointer, attachment, sheet-index, tracked).value-bits(offset)
 
@@ -4198,7 +4230,7 @@ _ style-read-host-sheet-optional'Host StyleOptionalBits
     - sheet-index Index
     - offset Size
     - tracked Bool
-    - Host is MarkupHost
+    - Host is MarkupElement
 
 (record.value-bits(offset), record.value-none(offset))
 
@@ -4238,7 +4270,7 @@ _ style-read-host-bits'Host I64
     - host Host
     - style-index Index
     - offset Size
-    - Host is MarkupHost
+    - Host is MarkupElement
 
 style-read-attached-bits(host.markup-attachment-cache, host as Pointer, style-index, offset)
 
@@ -4296,7 +4328,7 @@ _ style-read-host-optional'Host StyleOptionalBits
     - host Host
     - style-index Index
     - offset Size
-    - Host is MarkupHost
+    - Host is MarkupElement
 
 style-read-attached-optional(host.markup-attachment-cache, host as Pointer, style-index, offset)
 
@@ -4668,33 +4700,6 @@ for declaration in record.authored
     declaration.settled-held = null
 
 ━━━━━━━━━━━━━━━━━━━━
-+ style-record-segment ComputedSegment?
-    - record StyleRecord
-    - style-index Index
-
-record.segments[position] if position >= 0
-
-.. position = style-held-segment-position(record, style-index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do style-record-place-segment
-    - record StyleRecord
-    - style-index Index
-    - segment ComputedSegment
-    - owned Bool
-
-. key = style-segment-key(style-index, owned)
-. position = style-held-segment-position(record, style-index)
-if position >= 0
-    record.segments[position] = segment
-    record.segment-keys[position] = key
-    =
-. inserted = style-segment-position(record, style-index)
-record.segments.insert(segment, inserted)
-record.segment-keys.insert(key, inserted)
-record.segment-mask = record.segment-mask /or/ style-segment-bit(style-index)
-
-━━━━━━━━━━━━━━━━━━━━
 _ do style-record-drop-segment
     - record StyleRecord
     - style-index Index
@@ -4711,12 +4716,6 @@ _ style-segment-key Index
     - owned Bool
 
 style-index * 2 + (if owned then 1 else 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ style-segment-key-style Index
-    - key Index
-
-key / 2
 
 ━━━━━━━━━━━━━━━━━━━━
 _ style-segment-key-owned Bool

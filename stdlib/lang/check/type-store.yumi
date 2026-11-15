@@ -17,7 +17,6 @@
 /stream/aggregate
 
 _ property-scan-limit = 8
-
 _ type-bindings List
     * TypeBinding("core", "Void", .void, true)
     * TypeBinding("core", "CPointer", .cpointer)
@@ -78,55 +77,16 @@ _ type-bindings List
     * TypeBinding("core/style", "StyleSheet", .style-sheet)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ TypeTag is U32
-
-| invalid
-| class
-| tuple
-| function
-| variable
-| inference
-| struct
-| union
-| named-union
-| result
-| associated
-| closure
-| binding
-| raising-class
-
-━━━━━━━━━━━━━━━━━━━━
-_ TypeBinding is Tuple
-
-+ module-name String
-+ class-name String
-+ type IntrinsicKind
-+ is-builtin Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + Types
     is Usable'Void
 
 + program Program
-_ arena Arena
 + scratch TypingScratch
-_ sealed Bool
-_ reach-pending [TypeId]
-_ reach-visited [Bool]
-_ making [TypeId]
-_ completing U32
 + rows Table'TypeData
 + completions Table'TypeCompletion
 + stable-keys List'StableKey'ArenaBacking
 + ranked Array'TypeId'ArenaBacking
 + children Scratch'TypeId
-_ atoms List'Atom'ArenaBacking
-_ env-names List'Atom'ArenaBacking
-_ env-types List'TypeId'ArenaBacking
-_ env-constrained List'TypeId'ArenaBacking
-_ env-constraints List'TypeId'ArenaBacking
-_ index-atoms List'Atom'ArenaBacking
-_ resolving List'U32'ArenaBacking
 + circular-module ModuleId = 0
 + circular-binding SyntaxId = 0
 + circular-name Atom? = null
@@ -139,21 +99,8 @@ _ resolving List'U32'ArenaBacking
 + cases Table'TypeCase
 + associated-types Table'TypeAssociated
 + equalities Table'TypeEquality
-_ property-scratch Table'TypeProperty
-_ property-places Map'MemberKey'U32'ArenaBacking
-_ scratch-places Map'MemberKey'U32'ArenaBacking
-_ stored-count U32
-_ case-scratch Table'TypeCase
-_ associated-scratch Table'TypeAssociated
-_ keys IdMap
-_ key-scratch Array'U32'ArenaBacking
-_ types-by-decl Map'Size'U32'ArenaBacking
-_ rows-by-type Map'Size'U32'ArenaBacking
-_ builtin-decls Map'Size'U32'ArenaBacking
 + this-atom Atom?
 + list-atom Atom?
-_ map-atom Atom?
-_ stream-atom Atom?
 + range-atom Atom?
 + concat-atom Atom?
 + and-atom Atom?
@@ -209,13 +156,8 @@ _ stream-atom Atom?
 + char8-type TypeId
 + f64-type TypeId
 + string-type TypeId
-_ subclassed-decls Map'Size'Bool'ArenaBacking
-_ subclass-heads Map'Size'U32'ArenaBacking
-_ subclass-decls [Size]
-_ subclass-links [U32]
 + placed Map'Size'U64'ArenaBacking
 + c-function-decls Map'Size'U64'ArenaBacking
-_ subclass-scan-done Bool
 + generator-decl DeclRef
 + list-decl DeclRef
 + map-decl DeclRef
@@ -284,6 +226,38 @@ _ subclass-scan-done Bool
 + witness-pointer-atom Atom?
 + interface-from-pointer-atom Atom?
 
+_ arena Arena
+_ sealed Bool
+_ reach-pending [TypeId]
+_ reach-visited [Bool]
+_ making [TypeId]
+_ completing U32
+_ atoms List'Atom'ArenaBacking
+_ env-names List'Atom'ArenaBacking
+_ env-types List'TypeId'ArenaBacking
+_ env-constrained List'TypeId'ArenaBacking
+_ env-constraints List'TypeId'ArenaBacking
+_ index-atoms List'Atom'ArenaBacking
+_ resolving List'U32'ArenaBacking
+_ property-scratch Table'TypeProperty
+_ property-places Map'MemberKey'U32'ArenaBacking
+_ scratch-places Map'MemberKey'U32'ArenaBacking
+_ stored-count U32
+_ case-scratch Table'TypeCase
+_ associated-scratch Table'TypeAssociated
+_ keys IdMap
+_ key-scratch Array'U32'ArenaBacking
+_ types-by-decl Map'Size'U32'ArenaBacking
+_ rows-by-type Map'Size'U32'ArenaBacking
+_ builtin-decls Map'Size'U32'ArenaBacking
+_ map-atom Atom?
+_ stream-atom Atom?
+_ subclassed-decls Map'Size'Bool'ArenaBacking
+_ subclass-heads Map'Size'U32'ArenaBacking
+_ subclass-decls [Size]
+_ subclass-links [U32]
+_ subclass-scan-done Bool
+
 ────────────────────
 + This
     - program Program
@@ -331,6 +305,8 @@ list-decl = DeclRef(0, 0)
 .. c-function-decls = Map'Size'U64(arena)
 .. placed = Map'Size'U64(arena)
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + begin-using
 
@@ -340,6 +316,18 @@ this
 + do end-using
 
 release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-sealed Bool
+
+sealed
+
+────────────────────
++ get builtin-classes BuiltinClasses
+
+BuiltinClasses(type-decl(.optional), type-decl(.type-info), type-decl(.number))
 
 ────────────────────
 + do release
@@ -394,114 +382,6 @@ for closure in dropped
 + do unseal
 
 sealed = false
-
-────────────────────
-_ do rank
-
-` Lists the types the seal reached by stable key, an order that does not depend on the order
-` typing interned them. The others are types typing made on the way and no instance names.
-. count Size = 0
-for id in 0 .. < rows.length
-    if is-reached(id as TypeId)
-        count += 1
-ranked = Array'TypeId(arena, count)
-. spare = Array'TypeId(arena, count)
-. filled Size = 0
-for id in 0 .. < rows.length
-    if is-reached(id as TypeId)
-        ranked[filled] = id as TypeId
-        filled += 1
-. width Size = 1
-while width < count
-    . start Size = 0
-    while start < count
-        . middle = if start + width < count then start + width else count
-        . end = if middle + width < count then middle + width else count
-        merge-ranked(spare, start, middle, end)
-        start = end
-    . merged = ranked
-    ranked = spare
-    spare = merged
-    width *= 2
-
-────────────────────
-_ do merge-ranked
-    - into Array'TypeId'ArenaBacking
-    - start Size
-    - middle Size
-    - end Size
-
-. left = start
-. right = middle
-for position in start .. < end
-    if left < middle && (right >= end || !ranks-before(ranked[right], ranked[left]))
-        into[position] = ranked[left]
-        left += 1
-    else
-        into[position] = ranked[right]
-        right += 1
-
-────────────────────
-_ ranks-before Bool
-    - first TypeId
-    - second TypeId
-
-stable-keys[first] < stable-keys[second]
-
-────────────────────
-_ is-reached Bool
-    - id TypeId
-
-id < reach-visited.length && reach-visited[id]
-
-────────────────────
-_ do reach-children
-    - id TypeId
-
-do match? rows[id]
-    | .type-class(row)
-        reach-range(row.args)
-        reach-range(row.errors)
-    | .type-tuple(row)
-        reach-range(row.fields)
-    | .type-struct(row)
-        reach-range(row.fields)
-    | .type-union(row)
-        reach-range(row.cases)
-    | .type-named-union(row)
-        reach-range(row.cases)
-    | .type-function(row)
-        reach(row.return-type)
-        reach-range(row.args)
-        reach-range(row.errors)
-    | .type-result(row)
-        reach(row.value)
-        reach-range(row.errors)
-    | .type-associated(row)
-        reach(row.owner)
-        reach-range(row.args)
-. completion = completions[id]
-reach(completion.base)
-for interface in children[completion.interfaces]
-    reach(interface)
-for property in properties[completion.properties]
-    reach(property.type)
-for case in cases[completion.cases]
-    reach(case.type)
-for associated in associated-types[completion.associated]
-    reach(associated.type)
-
-────────────────────
-_ do reach-range
-    - range RowRange'TypeId
-
-for offset in 0 .. < range.count
-    reach(child-type(range, offset))
-
-────────────────────
-+ get is-sealed Bool
-
-sealed
 
 ────────────────────
 + env-frame TypeEnv
@@ -598,7 +478,6 @@ for position in env.constraint-start .. < env.constraint-end
 
 -= env-names[env.end .. < env-names.length]
 -= env-types[env.end .. < env-types.length]
-
 
 ────────────────────
 + do index-atom Atom
@@ -706,9 +585,9 @@ indexable-token-stream-decl = well-known-decl("core/tokenstream", "IndexableToke
 chunked-token-stream-decl = well-known-decl("core/tokenstream", "ChunkedTokenStream")
 text-token-stream-decl = well-known-decl("core/tokenstream", "TextTokenStream")
 byte-readable-decl = well-known-decl("core/array", "ByteReadable")
-markup-host-decl = well-known-decl("core/markup", "MarkupHost")
-markup-batch-decl = well-known-decl("core/markup", "MarkupBatch")
-markup-tree-host-decl = well-known-decl("core/markup", "MarkupTreeHost")
+markup-host-decl = well-known-decl("core/markup", "MarkupElement")
+markup-batch-decl = well-known-decl("core/markup", "MarkupRootElement")
+markup-tree-host-decl = well-known-decl("core/markup", "MarkupParent")
 broadcastable-decl = well-known-decl("core/stream", "Broadcastable")
 closable-decl = well-known-decl("core/stream", "Closable")
 markup-row-item-decl = well-known-decl("core/markup", "MarkupRowItem")
@@ -791,19 +670,6 @@ if table
 declare-class-equalities()
 
 ────────────────────
-_ well-known-decl DeclRef
-    - module-name String
-    - class-name String
-
-|? module && decl
-    DeclRef(module as ModuleId, decl)
-??
-    DeclRef(0, 0)
-
-.. module = program.module-by-name(module-name)
-.. decl = class-decl-named(module as ModuleId, class-name)
-
-────────────────────
 + do well-known-type TypeId
     - module-name String
     - class-name String
@@ -872,11 +738,6 @@ if ref.module == 0 && ref.decl == 0
 .. found = rows-by-type[type]
 
 ────────────────────
-+ get builtin-classes BuiltinClasses
-
-BuiltinClasses(type-decl(.optional), type-decl(.type-info), type-decl(.number))
-
-────────────────────
 + type-decl DeclRef
     - type IntrinsicKind
 
@@ -925,25 +786,6 @@ match rows[id]
 ??
     id
 
-
-────────────────────
-_ do query-held TypeId
-    - type TypeId
-
-` The type a property holds that is written with a type that queries the markup its object is
-` in, as the reference types it: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`.
-` Any other type is held as it is written.
-do match? rows[type]
-    | .type-class(row)
-        if row.args.count == 1 && ancestor-decl.refers-to(row.module, row.decl)
-            = optional-of(child-type(row.args, 0))
-        if row.args.count == 1 && descendants-decl.refers-to(row.module, row.decl)
-            . item = child-type(row.args, 0)
-            . mark = scratch.types.mark
-            scratch.types.push(item)
-            = class-with-args(list-decl.module, list-decl.decl, mark)
-= type
-
 ────────────────────
 + do optional-of TypeId
     - id TypeId
@@ -978,7 +820,6 @@ scratch.types.push(id)
 . mark = scratch.types.mark
 scratch.types.push(field)
 = intern-class(owner.module, owner.decl, mark)
-
 
 ────────────────────
 + do array-view-of TypeId
@@ -1076,22 +917,6 @@ do match? rows[id]
 = no-type
 
 ────────────────────
-_ do class-decl-named U32?
-    - module ModuleId
-    - name String
-
-. atom = program.store-atom(name)
-. decls = program.modules[module].decls
-. index = 0u32
-for decl in decls
-    do match? decl
-        | .decl-class(row)
-            if row.name == atom
-                = index
-    index += 1
-= null
-
-────────────────────
 + do intern-class TypeId
     - module ModuleId
     - decl DeclId
@@ -1153,7 +978,6 @@ if keys.last-inserted
     note-children(id, errors)
 scratch.types.rewind(mark)
 = id
-
 
 ────────────────────
 + do intern-variable TypeId
@@ -1293,41 +1117,6 @@ intern-fields(TypeTag.tuple, mark, names-mark)
     - names-mark ScratchMark
 
 intern-fields(TypeTag.struct, mark, names-mark)
-
-────────────────────
-_ do intern-fields TypeId
-    - tag U32
-    - mark ScratchMark
-    - names-mark ScratchMark
-
-?! Panic("Types are sealed and cannot intern a type")
-    if sealed
-. count = scratch.types.length - mark
-?! Panic("Types tuple field names and types are misaligned")
-    if scratch.names.length - names-mark != count
-
-ensure-scratch(1 + count * 3)
-key-scratch[0] = tag
-for offset in 0 .. < count
-    . address = scratch.names[names-mark + offset].address
-    key-scratch[1 + offset * 3] = (address /and/ U32.max) as U32
-    key-scratch[2 + offset * 3] = (address /rshift/ 32) as U32
-    key-scratch[3 + offset * 3] = scratch.types[mark + offset]
-
-. id U32 = keys.store(key-scratch.data, 1 + count * 3) as U32
-if keys.last-inserted
-    . owner = type-decl(if tag == TypeTag.tuple then IntrinsicKind.tuple else IntrinsicKind.struct)
-    . fields = store-items(mark)
-    . names = store-names(names-mark)
-    if tag == TypeTag.tuple
-        rows.append(TupleType(owner.module, owner.decl, fields, names))
-    else
-        rows.append(StructType(owner.module, owner.decl, fields, names))
-    add-completion()
-    note-children(id, fields)
-scratch.types.rewind(mark)
-scratch.names.rewind(names-mark)
-= id
 
 ────────────────────
 + do intern-union TypeId
@@ -1485,18 +1274,6 @@ if keys.last-inserted
     note-children(id, args)
     set-flag(id, .flag-variables)
 scratch.types.rewind(mark)
-= id
-
-────────────────────
-_ do intern-invalid TypeId
-
-ensure-scratch(1)
-key-scratch[0] = TypeTag.invalid
-
-. id U32 = keys.store(key-scratch.data, 1) as U32
-if keys.last-inserted
-    rows.append(InvalidType(0, 0, null))
-    add-completion()
 = id
 
 ────────────────────
@@ -1728,30 +1505,6 @@ env-release(local)
 = through-alias(module, decl, intern-class(module, decl, mark))
 
 ────────────────────
-_ do through-alias TypeId
-    - module ModuleId
-    - decl DeclId
-    - id TypeId
-
-do match? program.modules[module].decls[decl]
-    | .decl-class(row)
-        if row.base != 0 && !has-explicit-members(module, row.members)
-            . tree = program.modules[module].tree
-            do match? tree.nodes[row.base]
-                | .node-type-function
-                    . env = env-frame()
-                    . base = evaluate-type(module, tree, row.base, env)
-                    env-release(env)
-                    do match? rows[base]
-                        | .type-function(fn)
-                            if fn.is-c
-                                note-c-function-decl
-                                    - base
-                                    - ((module as U64) /lshift/ 32) /or/ (decl as U64)
-                                = base
-= id
-
-────────────────────
 + do note-c-function-decl
     - type TypeId
     - declared U64
@@ -1773,23 +1526,6 @@ if !known || known > declared
     DeclRef((bits! /rshift/ 32) as ModuleId, (bits! /and/ 4294967295) as DeclId)
 
 .. bits = c-function-decls[type]
-
-────────────────────
-_ do has-explicit-members Bool
-    - module ModuleId
-    - members RowRange'DeclId
-
-. owner-module = program.modules[module]
-for member in owner-module.member-pool[members]
-    . explicit = match owner-module.decls[member]
-        | .decl-function(fn)
-            . implicit = fn.kind == .default-constructor-decl || fn.kind == .cast-constructor-decl
-            !implicit && fn.kind != .tuple-constructor-decl
-        ??
-            true
-    if explicit
-        = true
-= false
 
 ────────────────────
 + do class-env TypeEnv
@@ -1855,22 +1591,6 @@ for constraint in tree.nodes[tree.children[constraints]]
 = current
 
 ────────────────────
-_ do param-assignment-type TypeId?
-    - module ModuleId
-    - tree AST
-    - assignments RowRange'SyntaxId
-    - name Atom
-    - env TypeEnv
-
-for assignment in tree.nodes[tree.children[assignments]]
-    do match? assignment
-        | .node-param-assignment(row)
-            . left = type-syntax-name(tree, row.left)
-            if left && left == name
-                = evaluate-type(module, tree, row.right, env)
-= null
-
-────────────────────
 + type-syntax-name Atom?
     - tree AST
     - id SyntaxId
@@ -1903,6 +1623,595 @@ match program.modules[module].decls[decl]
 type-syntax-name(tree, tree.children[slot])
 
 .. slot = (type-args.start + position)
+
+────────────────────
++ do clear-fault
+
+fault = null
+fault-site = 0
+
+────────────────────
++ do resolve-associated TypeId
+    - owner TypeId
+    - name Atom
+    - mark ScratchMark
+    - env TypeEnv
+    - caller ModuleId? = null
+
+. count U32 = (scratch.types.length - mark) as U32
+do match rows[owner]
+    | .type-variable
+        = associated-by-constraints(owner, name, mark, count, env)
+    | .type-inference
+        = associated-by-constraints(owner, name, mark, count, env)
+    | .type-class
+        ensure-representation(owner)
+        if completions[owner].intrinsic == .interface
+            . declaring = find-requirement(owner, name, count)
+            if declaring
+                = intern-associated(owner, declaring, name, mark)
+            scratch.types.rewind(mark)
+            = invalid-type
+        = resolve-binding(owner, name, mark, count, caller)
+    ??
+        scratch.types.rewind(mark)
+        = invalid-type
+
+────────────────────
++ do declare-into TypeEnv
+    - env TypeEnv
+    - tree AST
+    - id SyntaxId
+    - module ModuleId
+    - owner DeclId
+    - first Size
+
+if id == 0
+    = env
+
+. current = env
+do match? tree.nodes[id]
+    | .node-type-identifier(row)
+        if row.is-declare && !env-lookup-from(current, row.name, first)
+            . variable = intern-variable(module, owner, (current.end - first) as U32, row.name)
+            current = env-bind(current, row.name, variable)
+    | .node-type-arguments(row)
+        current = declare-into(current, tree, row.base, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+    | .node-type-associated(row)
+        current = declare-into(current, tree, row.owner, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+    | .node-type-optional(row)
+        current = declare-children(current, tree, row.field-types, module, owner, first)
+    | .node-type-tuple(row)
+        current = declare-children(current, tree, row.field-types, module, owner, first)
+    | .node-type-capture(row)
+        current = declare-into(current, tree, row.type, module, owner, first)
+    | .node-type-match(row)
+        current = declare-into(current, tree, row.type, module, owner, first)
+    | .node-type-and(row)
+        current = declare-into(current, tree, row.left, module, owner, first)
+        current = declare-into(current, tree, row.right, module, owner, first)
+    | .node-type-or(row)
+        current = declare-into(current, tree, row.left, module, owner, first)
+        current = declare-into(current, tree, row.right, module, owner, first)
+    | .node-type-list(row)
+        current = declare-children(current, tree, row.patterns, module, owner, first)
+    | .node-type-map(row)
+        current = declare-children(current, tree, row.patterns, module, owner, first)
+    | .node-type-map-item(row)
+        current = declare-into(current, tree, row.key, module, owner, first)
+        current = declare-into(current, tree, row.value, module, owner, first)
+    | .node-type-iterable(row)
+        current = declare-into(current, tree, row.pattern, module, owner, first)
+    | .node-type-function(row)
+        current = declare-into(current, tree, row.return-type, module, owner, first)
+        current = declare-children(current, tree, row.args, module, owner, first)
+        current = declare-children(current, tree, row.errors, module, owner, first)
+    | .node-argument-decl(row)
+        current = declare-into(current, tree, row.pattern, module, owner, first)
+= current
+
+────────────────────
++ base-of TypeId?
+    - id TypeId
+
+|? base == no-type
+    null
+??
+    base
+
+.. base = completions[id].base
+
+────────────────────
++ do ensure-representation
+    - id TypeId
+
+if completions[id].completion == .completion-unstarted
+    complete-slow(id)
+
+────────────────────
++ do complete @inline
+    - id TypeId
+
+. state = completions[id].completion
+if state != .completion-done && state != .completion-failed
+    complete-slow(id)
+
+────────────────────
++ do completion-of TableRow'TypeCompletion @inline
+    - id TypeId
+
+complete(id)
+= completions[id]
+
+────────────────────
++ is-literal-global Bool
+    - module ModuleId
+    - decl DeclId
+
+` Whether a global is core's `true`, `false` or `null`: every read of one is a literal, so it
+` is never stored and its value never runs.
+match owner.decls[decl]
+    | .decl-property(row)
+        |? owner.name != "core" || !row.name
+            false
+        ??
+            row.name == true-atom || row.name == false-atom || row.name == null-atom
+    ??
+        false
+
+.. owner = program.modules[module]
+
+────────────────────
++ do intrinsic-of IntrinsicKind @inline
+    - id TypeId
+
+complete(id)
+= completions[id].intrinsic
+
+────────────────────
++ do is-generic Bool @inline
+    - id TypeId
+
+complete(id)
+= completions[id].has-variables
+
+────────────────────
++ do properties-of TableSpan'TypeProperty @inline
+    - id TypeId
+
+complete(id)
+= properties[completions[id].properties]
+
+────────────────────
++ do delegates-of ImmutableArray'TypeId'ArenaBacking @inline
+    - id TypeId
+
+` The interfaces a class answers through a property, as pairs: the interface, then the type of
+` the property that implements it.
+complete(id)
+= children[completions[id].delegates]
+
+────────────────────
++ delegate-name Atom
+    - id TypeId
+    - offset Size
+
+child-name(completions[id].delegate-names, offset as U32)
+
+────────────────────
++ do interfaces-of ImmutableArray'TypeId'ArenaBacking @inline
+    - id TypeId
+
+complete(id)
+= children[completions[id].interfaces]
+
+────────────────────
++ do cases-of TableSpan'TypeCase @inline
+    - id TypeId
+
+complete(id)
+= cases[completions[id].cases]
+
+────────────────────
++ do null-case U32
+    - id TypeId
+
+` The case of a union that holds null and is not its default, or none.
+if intrinsic-of(id) != .union
+    = U32.max
+. held = cases-of(id)
+for index in 0 .. < held.length
+    if !held[index].is-default && held[index].type == null-type
+        = index as U32
+= U32.max
+
+────────────────────
++ do tracked-root TypeId
+    - owner TypeId
+    - name Atom
+
+` The class whose property of a name a tracked read of it is kept by: the topmost of the class
+` that declares it and the classes above that declare it too, whose trackers an override in a
+` class below shares, as the reference keeps them by the object and the name.
+. root = owner
+while true
+    . base = completions[root].base
+    if base == no-type || base == invalid-type
+        = root
+    . place = property-named(base, name)
+    if !place
+        = root
+    root = properties[place].owner
+
+────────────────────
++ do property-named Index? @inline
+    - id TypeId
+    - name Atom
+
+` The place of the property of a type by a name, its own or one it takes from a class above.
+complete(id)
+. range = completions[id].properties
+if range.count > property-scan-limit
+    = placed-property(id, name)
+for offset in 0 .. < range.count
+    . position = (range.start + offset) as Index
+    if properties[position].name == name
+        = position
+= null
+
+────────────────────
++ do implements-type Bool
+    - id TypeId
+    - interface TypeId
+
+. current = id
+while current != no-type
+    if current == interface
+        = true
+    for implemented in interfaces-of(current)
+        if implements-type(implemented, interface)
+            = true
+    current = base-of(current) ?? no-type
+= false
+
+────────────────────
++ do declare-unit-equalities
+
+. module-index = 0u32
+for module in program.modules
+    . tree = module.tree
+    for decl in module.decls
+        do match? decl
+            | .decl-unit(unit)
+                . left = constant-unit(module-index, tree, unit.number)
+                . right = constant-unit(module-index, tree, unit.value)
+                . left-unit = left.unit
+                . right-unit = right.unit
+                if left-unit && right-unit && left.ratio != 0.0 && right.ratio != 0.0
+                    . caller ModuleId = module-index
+                    . env TypeEnv = env-frame()
+                    . left-type = type-named(caller, left-unit, env)
+                    . right-type = type-named(caller, right-unit, env)
+                    if left-type != invalid-type && right-type != invalid-type
+                        . forward = unit-ratio(right.ratio, left.ratio)
+                        . backward = unit-ratio(left.ratio, right.ratio)
+                        equalities.append(TypeEquality(left-type, right-type, forward))
+                        equalities.append(TypeEquality(right-type, left-type, backward))
+                        set-flag(left-type, .flag-equalities)
+                        set-flag(right-type, .flag-equalities)
+    module-index += 1
+
+────────────────────
++ key-of StableKey
+    - type TypeId
+
+|? type == no-type
+    0
+??
+    stable-keys[type]
+
+────────────────────
++ do has-subclasses Bool
+    - id TypeId
+
+scan-subclasses()
+= subclassed-decls[class-decl-key(id)] == true
+
+────────────────────
++ do declares-subclass-interface Bool
+    - id TypeId
+    - interface TypeId
+
+` Whether a class declared below a class, at any depth, declares an interface, or one it
+` may be derived from, as the reference's `declaresSubclassInterface` reads the declarations:
+` a class cast to such an interface is tested for it as the program runs. An interface a
+` class declares that names no type may be any.
+scan-subclasses()
+. target = class-decl-key(interface)
+. keys [Size]
+keys += class-decl-key(id)
+. index = 0
+while index < keys.length
+    . link = subclass-heads[keys[index]] ?? 0
+    index += 1
+    while link != 0
+        . packed = subclass-decls[link - 1]
+        link = subclass-links[link - 1]
+        if keys.find(packed) != null
+            continue
+        keys += packed
+        . module = (packed /rshift/ 32) as ModuleId
+        . decl = (packed /and/ 0xffffffff) as DeclId
+        . written = RowRange'SyntaxId()
+        do match? program.modules[module].decls[decl]
+            | .decl-class(row)
+                written = row.interfaces
+        . env = class-env(module, decl)
+        . tree = program.modules[module].tree
+        for syntax in program.modules[module].syntax-pool[written]
+            . named = evaluate-type(module, tree, syntax, env)
+            if named == invalid-type || class-decl-key(named) == target || reaches
+                env-release(env)
+                = true
+            .. reaches = interface-reaches(named, target)
+        env-release(env)
+= false
+
+────────────────────
+_ do rank
+
+` Lists the types the seal reached by stable key, an order that does not depend on the order
+` typing interned them. The others are types typing made on the way and no instance names.
+. count Size = 0
+for id in 0 .. < rows.length
+    if is-reached(id as TypeId)
+        count += 1
+ranked = Array'TypeId(arena, count)
+. spare = Array'TypeId(arena, count)
+. filled Size = 0
+for id in 0 .. < rows.length
+    if is-reached(id as TypeId)
+        ranked[filled] = id as TypeId
+        filled += 1
+. width Size = 1
+while width < count
+    . start Size = 0
+    while start < count
+        . middle = if start + width < count then start + width else count
+        . end = if middle + width < count then middle + width else count
+        merge-ranked(spare, start, middle, end)
+        start = end
+    . merged = ranked
+    ranked = spare
+    spare = merged
+    width *= 2
+
+────────────────────
+_ do merge-ranked
+    - into Array'TypeId'ArenaBacking
+    - start Size
+    - middle Size
+    - end Size
+
+. left = start
+. right = middle
+for position in start .. < end
+    if left < middle && (right >= end || !ranks-before(ranked[right], ranked[left]))
+        into[position] = ranked[left]
+        left += 1
+    else
+        into[position] = ranked[right]
+        right += 1
+
+────────────────────
+_ ranks-before Bool
+    - first TypeId
+    - second TypeId
+
+stable-keys[first] < stable-keys[second]
+
+────────────────────
+_ is-reached Bool
+    - id TypeId
+
+id < reach-visited.length && reach-visited[id]
+
+────────────────────
+_ do reach-children
+    - id TypeId
+
+do match? rows[id]
+    | .type-class(row)
+        reach-range(row.args)
+        reach-range(row.errors)
+    | .type-tuple(row)
+        reach-range(row.fields)
+    | .type-struct(row)
+        reach-range(row.fields)
+    | .type-union(row)
+        reach-range(row.cases)
+    | .type-named-union(row)
+        reach-range(row.cases)
+    | .type-function(row)
+        reach(row.return-type)
+        reach-range(row.args)
+        reach-range(row.errors)
+    | .type-result(row)
+        reach(row.value)
+        reach-range(row.errors)
+    | .type-associated(row)
+        reach(row.owner)
+        reach-range(row.args)
+. completion = completions[id]
+reach(completion.base)
+for interface in children[completion.interfaces]
+    reach(interface)
+for property in properties[completion.properties]
+    reach(property.type)
+for case in cases[completion.cases]
+    reach(case.type)
+for associated in associated-types[completion.associated]
+    reach(associated.type)
+
+────────────────────
+_ do reach-range
+    - range RowRange'TypeId
+
+for offset in 0 .. < range.count
+    reach(child-type(range, offset))
+
+────────────────────
+_ well-known-decl DeclRef
+    - module-name String
+    - class-name String
+
+|? module && decl
+    DeclRef(module as ModuleId, decl)
+??
+    DeclRef(0, 0)
+
+.. module = program.module-by-name(module-name)
+.. decl = class-decl-named(module as ModuleId, class-name)
+
+────────────────────
+_ do query-held TypeId
+    - type TypeId
+
+` The type a property holds that is written with a type that queries the markup its object is
+` in, as the reference types it: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`.
+` Any other type is held as it is written.
+do match? rows[type]
+    | .type-class(row)
+        if row.args.count == 1 && ancestor-decl.refers-to(row.module, row.decl)
+            = optional-of(child-type(row.args, 0))
+        if row.args.count == 1 && descendants-decl.refers-to(row.module, row.decl)
+            . item = child-type(row.args, 0)
+            . mark = scratch.types.mark
+            scratch.types.push(item)
+            = class-with-args(list-decl.module, list-decl.decl, mark)
+= type
+
+────────────────────
+_ do class-decl-named U32?
+    - module ModuleId
+    - name String
+
+. atom = program.store-atom(name)
+. decls = program.modules[module].decls
+. index = 0u32
+for decl in decls
+    do match? decl
+        | .decl-class(row)
+            if row.name == atom
+                = index
+    index += 1
+= null
+
+────────────────────
+_ do intern-fields TypeId
+    - tag U32
+    - mark ScratchMark
+    - names-mark ScratchMark
+
+?! Panic("Types are sealed and cannot intern a type")
+    if sealed
+. count = scratch.types.length - mark
+?! Panic("Types tuple field names and types are misaligned")
+    if scratch.names.length - names-mark != count
+
+ensure-scratch(1 + count * 3)
+key-scratch[0] = tag
+for offset in 0 .. < count
+    . address = scratch.names[names-mark + offset].address
+    key-scratch[1 + offset * 3] = (address /and/ U32.max) as U32
+    key-scratch[2 + offset * 3] = (address /rshift/ 32) as U32
+    key-scratch[3 + offset * 3] = scratch.types[mark + offset]
+
+. id U32 = keys.store(key-scratch.data, 1 + count * 3) as U32
+if keys.last-inserted
+    . owner = type-decl(if tag == TypeTag.tuple then IntrinsicKind.tuple else IntrinsicKind.struct)
+    . fields = store-items(mark)
+    . names = store-names(names-mark)
+    if tag == TypeTag.tuple
+        rows.append(TupleType(owner.module, owner.decl, fields, names))
+    else
+        rows.append(StructType(owner.module, owner.decl, fields, names))
+    add-completion()
+    note-children(id, fields)
+scratch.types.rewind(mark)
+scratch.names.rewind(names-mark)
+= id
+
+────────────────────
+_ do intern-invalid TypeId
+
+ensure-scratch(1)
+key-scratch[0] = TypeTag.invalid
+
+. id U32 = keys.store(key-scratch.data, 1) as U32
+if keys.last-inserted
+    rows.append(InvalidType(0, 0, null))
+    add-completion()
+= id
+
+────────────────────
+_ do through-alias TypeId
+    - module ModuleId
+    - decl DeclId
+    - id TypeId
+
+do match? program.modules[module].decls[decl]
+    | .decl-class(row)
+        if row.base != 0 && !has-explicit-members(module, row.members)
+            . tree = program.modules[module].tree
+            do match? tree.nodes[row.base]
+                | .node-type-function
+                    . env = env-frame()
+                    . base = evaluate-type(module, tree, row.base, env)
+                    env-release(env)
+                    do match? rows[base]
+                        | .type-function(fn)
+                            if fn.is-c
+                                note-c-function-decl
+                                    - base
+                                    - ((module as U64) /lshift/ 32) /or/ (decl as U64)
+                                = base
+= id
+
+────────────────────
+_ do has-explicit-members Bool
+    - module ModuleId
+    - members RowRange'DeclId
+
+. owner-module = program.modules[module]
+for member in owner-module.member-pool[members]
+    . explicit = match owner-module.decls[member]
+        | .decl-function(fn)
+            . implicit = fn.kind == .default-constructor-decl || fn.kind == .cast-constructor-decl
+            !implicit && fn.kind != .tuple-constructor-decl
+        ??
+            true
+    if explicit
+        = true
+= false
+
+────────────────────
+_ do param-assignment-type TypeId?
+    - module ModuleId
+    - tree AST
+    - assignments RowRange'SyntaxId
+    - name Atom
+    - env TypeEnv
+
+for assignment in tree.nodes[tree.children[assignments]]
+    do match? assignment
+        | .node-param-assignment(row)
+            . left = type-syntax-name(tree, row.left)
+            if left && left == name
+                = evaluate-type(module, tree, row.right, env)
+= null
 
 ────────────────────
 _ class-param-constraints RowRange'SyntaxId
@@ -2128,39 +2437,6 @@ if !fault
     fault-site = 0
 
 ────────────────────
-+ do clear-fault
-
-fault = null
-fault-site = 0
-
-────────────────────
-+ do resolve-associated TypeId
-    - owner TypeId
-    - name Atom
-    - mark ScratchMark
-    - env TypeEnv
-    - caller ModuleId? = null
-
-. count U32 = (scratch.types.length - mark) as U32
-do match rows[owner]
-    | .type-variable
-        = associated-by-constraints(owner, name, mark, count, env)
-    | .type-inference
-        = associated-by-constraints(owner, name, mark, count, env)
-    | .type-class
-        ensure-representation(owner)
-        if completions[owner].intrinsic == .interface
-            . declaring = find-requirement(owner, name, count)
-            if declaring
-                = intern-associated(owner, declaring, name, mark)
-            scratch.types.rewind(mark)
-            = invalid-type
-        = resolve-binding(owner, name, mark, count, caller)
-    ??
-        scratch.types.rewind(mark)
-        = invalid-type
-
-────────────────────
 _ do associated-by-constraints TypeId
     - owner TypeId
     - name Atom
@@ -2365,61 +2641,6 @@ for member in owner-module.member-pool[members]
 = null
 
 ────────────────────
-+ do declare-into TypeEnv
-    - env TypeEnv
-    - tree AST
-    - id SyntaxId
-    - module ModuleId
-    - owner DeclId
-    - first Size
-
-if id == 0
-    = env
-
-. current = env
-do match? tree.nodes[id]
-    | .node-type-identifier(row)
-        if row.is-declare && !env-lookup-from(current, row.name, first)
-            . variable = intern-variable(module, owner, (current.end - first) as U32, row.name)
-            current = env-bind(current, row.name, variable)
-    | .node-type-arguments(row)
-        current = declare-into(current, tree, row.base, module, owner, first)
-        current = declare-children(current, tree, row.args, module, owner, first)
-    | .node-type-associated(row)
-        current = declare-into(current, tree, row.owner, module, owner, first)
-        current = declare-children(current, tree, row.args, module, owner, first)
-    | .node-type-optional(row)
-        current = declare-children(current, tree, row.field-types, module, owner, first)
-    | .node-type-tuple(row)
-        current = declare-children(current, tree, row.field-types, module, owner, first)
-    | .node-type-capture(row)
-        current = declare-into(current, tree, row.type, module, owner, first)
-    | .node-type-match(row)
-        current = declare-into(current, tree, row.type, module, owner, first)
-    | .node-type-and(row)
-        current = declare-into(current, tree, row.left, module, owner, first)
-        current = declare-into(current, tree, row.right, module, owner, first)
-    | .node-type-or(row)
-        current = declare-into(current, tree, row.left, module, owner, first)
-        current = declare-into(current, tree, row.right, module, owner, first)
-    | .node-type-list(row)
-        current = declare-children(current, tree, row.patterns, module, owner, first)
-    | .node-type-map(row)
-        current = declare-children(current, tree, row.patterns, module, owner, first)
-    | .node-type-map-item(row)
-        current = declare-into(current, tree, row.key, module, owner, first)
-        current = declare-into(current, tree, row.value, module, owner, first)
-    | .node-type-iterable(row)
-        current = declare-into(current, tree, row.pattern, module, owner, first)
-    | .node-type-function(row)
-        current = declare-into(current, tree, row.return-type, module, owner, first)
-        current = declare-children(current, tree, row.args, module, owner, first)
-        current = declare-children(current, tree, row.errors, module, owner, first)
-    | .node-argument-decl(row)
-        current = declare-into(current, tree, row.pattern, module, owner, first)
-= current
-
-────────────────────
 _ do declare-children TypeEnv
     - env TypeEnv
     - tree AST
@@ -2432,155 +2653,6 @@ _ do declare-children TypeEnv
 for child in tree.children[range]
     current = declare-into(current, tree, child, module, owner, first)
 = current
-
-────────────────────
-+ base-of TypeId?
-    - id TypeId
-
-|? base == no-type
-    null
-??
-    base
-
-.. base = completions[id].base
-
-────────────────────
-+ do ensure-representation
-    - id TypeId
-
-if completions[id].completion == .completion-unstarted
-    complete-slow(id)
-
-────────────────────
-+ do complete @inline
-    - id TypeId
-
-. state = completions[id].completion
-if state != .completion-done && state != .completion-failed
-    complete-slow(id)
-
-────────────────────
-+ do completion-of TableRow'TypeCompletion @inline
-    - id TypeId
-
-complete(id)
-= completions[id]
-
-────────────────────
-+ is-literal-global Bool
-    - module ModuleId
-    - decl DeclId
-
-` Whether a global is core's `true`, `false` or `null`: every read of one is a literal, so it
-` is never stored and its value never runs.
-match owner.decls[decl]
-    | .decl-property(row)
-        |? owner.name != "core" || !row.name
-            false
-        ??
-            row.name == true-atom || row.name == false-atom || row.name == null-atom
-    ??
-        false
-
-.. owner = program.modules[module]
-
-────────────────────
-+ do intrinsic-of IntrinsicKind @inline
-    - id TypeId
-
-complete(id)
-= completions[id].intrinsic
-
-────────────────────
-+ do is-generic Bool @inline
-    - id TypeId
-
-complete(id)
-= completions[id].has-variables
-
-────────────────────
-+ do properties-of TableSpan'TypeProperty @inline
-    - id TypeId
-
-complete(id)
-= properties[completions[id].properties]
-
-────────────────────
-+ do delegates-of ImmutableArray'TypeId'ArenaBacking @inline
-    - id TypeId
-
-` The interfaces a class answers through a property, as pairs: the interface, then the type of
-` the property that implements it.
-complete(id)
-= children[completions[id].delegates]
-
-────────────────────
-+ delegate-name Atom
-    - id TypeId
-    - offset Size
-
-child-name(completions[id].delegate-names, offset as U32)
-
-────────────────────
-+ do interfaces-of ImmutableArray'TypeId'ArenaBacking @inline
-    - id TypeId
-
-complete(id)
-= children[completions[id].interfaces]
-
-────────────────────
-+ do cases-of TableSpan'TypeCase @inline
-    - id TypeId
-
-complete(id)
-= cases[completions[id].cases]
-
-────────────────────
-+ do null-case U32
-    - id TypeId
-
-` The case of a union that holds null and is not its default, or none.
-if intrinsic-of(id) != .union
-    = U32.max
-. held = cases-of(id)
-for index in 0 .. < held.length
-    if !held[index].is-default && held[index].type == null-type
-        = index as U32
-= U32.max
-
-────────────────────
-+ do tracked-root TypeId
-    - owner TypeId
-    - name Atom
-
-` The class whose property of a name a tracked read of it is kept by: the topmost of the class
-` that declares it and the classes above that declare it too, whose trackers an override in a
-` class below shares, as the reference keeps them by the object and the name.
-. root = owner
-while true
-    . base = completions[root].base
-    if base == no-type || base == invalid-type
-        = root
-    . place = property-named(base, name)
-    if !place
-        = root
-    root = properties[place].owner
-
-────────────────────
-+ do property-named Index? @inline
-    - id TypeId
-    - name Atom
-
-` The place of the property of a type by a name, its own or one it takes from a class above.
-complete(id)
-. range = completions[id].properties
-if range.count > property-scan-limit
-    = placed-property(id, name)
-for offset in 0 .. < range.count
-    . position = (range.start + offset) as Index
-    if properties[position].name == name
-        = position
-= null
 
 ────────────────────
 _ placed-property Index?
@@ -2953,21 +3025,6 @@ for offset in 0 .. < alternatives.count
 = interface
 
 ────────────────────
-+ do implements-type Bool
-    - id TypeId
-    - interface TypeId
-
-. current = id
-while current != no-type
-    if current == interface
-        = true
-    for implemented in interfaces-of(current)
-        if implements-type(implemented, interface)
-            = true
-    current = base-of(current) ?? no-type
-= false
-
-────────────────────
 _ do inherit-properties
     - base TypeId
     - id TypeId
@@ -3142,33 +3199,6 @@ scratch.types.push(target)
 scratch.types.push(module)
 scratch.types.push(member)
 scratch.types.push(id)
-
-────────────────────
-+ do declare-unit-equalities
-
-. module-index = 0u32
-for module in program.modules
-    . tree = module.tree
-    for decl in module.decls
-        do match? decl
-            | .decl-unit(unit)
-                . left = constant-unit(module-index, tree, unit.number)
-                . right = constant-unit(module-index, tree, unit.value)
-                . left-unit = left.unit
-                . right-unit = right.unit
-                if left-unit && right-unit && left.ratio != 0.0 && right.ratio != 0.0
-                    . caller ModuleId = module-index
-                    . env TypeEnv = env-frame()
-                    . left-type = type-named(caller, left-unit, env)
-                    . right-type = type-named(caller, right-unit, env)
-                    if left-type != invalid-type && right-type != invalid-type
-                        . forward = unit-ratio(right.ratio, left.ratio)
-                        . backward = unit-ratio(left.ratio, right.ratio)
-                        equalities.append(TypeEquality(left-type, right-type, forward))
-                        equalities.append(TypeEquality(right-type, left-type, backward))
-                        set-flag(left-type, .flag-equalities)
-                        set-flag(right-type, .flag-equalities)
-    module-index += 1
 
 ────────────────────
 _ do declare-class-equalities
@@ -3443,7 +3473,6 @@ completions[id].is-signed = intrinsic-is-signed(type)
 completions[id].is-pointer = intrinsic-is-pointer(type)
 completions[id].is-struct = intrinsic-is-struct(type)
 
-
 ────────────────────
 _ do add-completion
     - owner-key StableKey = 0
@@ -3524,15 +3553,6 @@ do match? rows[id]
         key = mixed(mixed(key, key-of(row.object)), row.param-count)
         key = keyed-range(key, row.items)
 = key
-
-────────────────────
-+ key-of StableKey
-    - type TypeId
-
-|? type == no-type
-    0
-??
-    stable-keys[type]
 
 ────────────────────
 _ keyed-decl StableKey
@@ -3642,13 +3662,6 @@ _ do check-alignment
     if stable-keys.length != keys.length
 
 ────────────────────
-+ do has-subclasses Bool
-    - id TypeId
-
-scan-subclasses()
-= subclassed-decls[class-decl-key(id)] == true
-
-────────────────────
 _ do scan-subclasses
 
 =? if subclass-scan-done
@@ -3662,46 +3675,6 @@ for owner in program.modules
                 note-bases(module, decl)
         decl += 1
     module += 1
-
-────────────────────
-+ do declares-subclass-interface Bool
-    - id TypeId
-    - interface TypeId
-
-` Whether a class declared below a class, at any depth, declares an interface, or one it
-` may be derived from, as the reference's `declaresSubclassInterface` reads the declarations:
-` a class cast to such an interface is tested for it as the program runs. An interface a
-` class declares that names no type may be any.
-scan-subclasses()
-. target = class-decl-key(interface)
-. keys [Size]
-keys += class-decl-key(id)
-. index = 0
-while index < keys.length
-    . link = subclass-heads[keys[index]] ?? 0
-    index += 1
-    while link != 0
-        . packed = subclass-decls[link - 1]
-        link = subclass-links[link - 1]
-        if keys.find(packed) != null
-            continue
-        keys += packed
-        . module = (packed /rshift/ 32) as ModuleId
-        . decl = (packed /and/ 0xffffffff) as DeclId
-        . written = RowRange'SyntaxId()
-        do match? program.modules[module].decls[decl]
-            | .decl-class(row)
-                written = row.interfaces
-        . env = class-env(module, decl)
-        . tree = program.modules[module].tree
-        for syntax in program.modules[module].syntax-pool[written]
-            . named = evaluate-type(module, tree, syntax, env)
-            if named == invalid-type || class-decl-key(named) == target || reaches
-                env-release(env)
-                = true
-            .. reaches = interface-reaches(named, target)
-        env-release(env)
-= false
 
 ────────────────────
 _ do interface-reaches Bool
@@ -3747,13 +3720,6 @@ if key != Size.max
     subclass-decls += pack-decl(module, decl)
     subclass-links += subclass-heads[key] ?? 0
     subclass-heads[key] = subclass-decls.length as U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ pack-decl Size
-    - module ModuleId
-    - decl DeclId
-
-((module as Size) /lshift/ 32) /or/ (decl as Size)
 
 ━━━━━━━━━━━━━━━━━━━━
 + class-ref DeclRef
@@ -3850,3 +3816,36 @@ match types.rows[id]
 
 .. kind = types.intrinsic-of(receiver)
 .. row = class-arg(types, receiver, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TypeTag is U32
+
+| invalid
+| class
+| tuple
+| function
+| variable
+| inference
+| struct
+| union
+| named-union
+| result
+| associated
+| closure
+| binding
+| raising-class
+
+━━━━━━━━━━━━━━━━━━━━
+_ TypeBinding is Tuple
+
++ module-name String
++ class-name String
++ type IntrinsicKind
++ is-builtin Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ pack-decl Size
+    - module ModuleId
+    - decl DeclId
+
+((module as Size) /lshift/ 32) /or/ (decl as Size)

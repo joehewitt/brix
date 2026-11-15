@@ -14,16 +14,6 @@ _ network-length-samples Size = 64
 + over Bool
 
 ━━━━━━━━━━━━━━━━━━━━
-_ NetworkVisit is Tuple
-
-+ strand Index
-+ order Size
-+ crossing Index
-+ segment Index
-+ parameter Float
-+ distance Float
-
-━━━━━━━━━━━━━━━━━━━━
 + do network-free-end Index?
     - network VectorNetwork
 
@@ -33,22 +23,6 @@ for trace in network.traces(false)
     if ends
         result = ends[1]
 = result
-
-━━━━━━━━━━━━━━━━━━━━
-_ network-free-ends [Index]?
-    - network VectorNetwork
-    - trace NetworkTrace
-
-|? trace.closed
-    null
-|? ends[0] == ends[1]
-    null
-|? network.degree(ends[0]) != 1 || network.degree(ends[1]) != 1
-    null
-??
-    ends
-
-.. ends = network.trace-ends(trace)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do network-join
@@ -93,31 +67,6 @@ while true
 . run = network-run(network, head)
 if run
     network.order-vertices(run)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do network-run-ends [Index]?
-    - network VectorNetwork
-    - vertex Index
-
-for trace in network.traces(false)
-    . ends = network-free-ends(network, trace)
-    =? ends if ends && (ends[0] == vertex || ends[1] == vertex)
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-_ do network-run [Index]?
-    - network VectorNetwork
-    - head Index
-
-for trace in network.traces(false)
-    . ends = network-free-ends(network, trace)
-    if ends && (ends[0] == head || ends[1] == head)
-        . vertices [Index] = List'Index(ends[0])
-        for index in 0 .. < trace.segments.length
-            . edge = network.segment(trace.segments[index])
-            vertices += if trace.reversed[index] then edge.start else edge.end
-        = if ends[1] == head then List'Index(each in vertices.reversed()) else vertices
-= null
 
 ━━━━━━━━━━━━━━━━━━━━
 + do network-split [VectorNetwork]
@@ -276,6 +225,57 @@ for index in 0 .. < pieces.length
 = List'NetworkWovenPiece
     ** lower
     ** upper
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkVisit is Tuple
+
++ strand Index
++ order Size
++ crossing Index
++ segment Index
++ parameter Float
++ distance Float
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-free-ends [Index]?
+    - network VectorNetwork
+    - trace NetworkTrace
+
+|? trace.closed
+    null
+|? ends[0] == ends[1]
+    null
+|? network.degree(ends[0]) != 1 || network.degree(ends[1]) != 1
+    null
+??
+    ends
+
+.. ends = network.trace-ends(trace)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-run-ends [Index]?
+    - network VectorNetwork
+    - vertex Index
+
+for trace in network.traces(false)
+    . ends = network-free-ends(network, trace)
+    =? ends if ends && (ends[0] == vertex || ends[1] == vertex)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-run [Index]?
+    - network VectorNetwork
+    - head Index
+
+for trace in network.traces(false)
+    . ends = network-free-ends(network, trace)
+    if ends && (ends[0] == head || ends[1] == head)
+        . vertices [Index] = List'Index(ends[0])
+        for index in 0 .. < trace.segments.length
+            . edge = network.segment(trace.segments[index])
+            vertices += if trace.reversed[index] then edge.start else edge.end
+        = if ends[1] == head then List'Index(each in vertices.reversed()) else vertices
+= null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do network-add-cut

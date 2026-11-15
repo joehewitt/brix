@@ -182,12 +182,6 @@ next-matched = Int[room]
 next-best = Int[room]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ FuzzyRank is Tuple
-
-+ score Int
-+ order Size
-
-━━━━━━━━━━━━━━━━━━━━
 + FuzzyText'Item is () String
     - item Item
 
@@ -209,6 +203,50 @@ for index in 0 .. < items.length
 for rank in ordered
     found += items[rank.order]
 = found
+
+━━━━━━━━━━━━━━━━━━━━
++ do edit-distance Index
+    - first String
+    - second String
+
+=? second.length if first.length == 0
+=? first.length if second.length == 0
+. row = List'Index(each in 0 .. second.length)
+for i in 1 .. first.length
+    . next = List'Index(i)
+    for j in 1 .. second.length
+        . cost Index = if first[i - 1] == second[j - 1] then 0 else 1
+        next += min(min(row[j] + 1, next[j - 1] + 1), row[j - 1] + cost)
+    row = next
+= row[second.length]
+
+━━━━━━━━━━━━━━━━━━━━
++ do nearest-names [String]
+    - name String
+    - candidates [String]
+    - count Size = 3
+
+. limit = max(2, name.length / 3)
+. found [String]
+. distances [Index]
+for candidate in candidates
+    . distance = edit-distance(name.lowercased, candidate.lowercased)
+    if distance <= limit
+        . position = 0
+        while position < found.length && distances[position] <= distance
+            position += 1
+        found.insert(candidate, position)
+        distances.insert(distance, position)
+. nearest [String]
+for index in 0 .. < min(count, found.length)
+    nearest += found[index]
+= nearest
+
+━━━━━━━━━━━━━━━━━━━━
+_ FuzzyRank is Tuple
+
++ score Int
++ order Size
 
 ━━━━━━━━━━━━━━━━━━━━
 _ fuzzy-rank-compare Comparison
@@ -250,41 +288,3 @@ _ fuzzy-bonus Int
     fuzzy-capital
 ??
     0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do edit-distance Index
-    - first String
-    - second String
-
-=? second.length if first.length == 0
-=? first.length if second.length == 0
-. row = List'Index(each in 0 .. second.length)
-for i in 1 .. first.length
-    . next = List'Index(i)
-    for j in 1 .. second.length
-        . cost Index = if first[i - 1] == second[j - 1] then 0 else 1
-        next += min(min(row[j] + 1, next[j - 1] + 1), row[j - 1] + cost)
-    row = next
-= row[second.length]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nearest-names [String]
-    - name String
-    - candidates [String]
-    - count Size = 3
-
-. limit = max(2, name.length / 3)
-. found [String]
-. distances [Index]
-for candidate in candidates
-    . distance = edit-distance(name.lowercased, candidate.lowercased)
-    if distance <= limit
-        . position = 0
-        while position < found.length && distances[position] <= distance
-            position += 1
-        found.insert(candidate, position)
-        distances.insert(distance, position)
-. nearest [String]
-for index in 0 .. < min(count, found.length)
-    nearest += found[index]
-= nearest

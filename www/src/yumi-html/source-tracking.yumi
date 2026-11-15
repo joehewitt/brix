@@ -31,49 +31,6 @@
 + end Index
 
 ━━━━━━━━━━━━━━━━━━━━
-_ PreparedLiteral is Tuple
-
-+ start Index
-+ end Index
-
-━━━━━━━━━━━━━━━━━━━━
-_ LiteralTrackingParseContext
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'SyntaxId
-    is PatternCaptureMaterializer'Char'String
-    is PatternValueMaterializer'String'String
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternValueMaterializer'String'Atom
-    is PatternRollback'ASTBuilderMark
-    is PatternLiteralObserver
-
-as PatternCollectorStorage'ArenaBacking, PatternMaterializationRoot'SyntaxId for
-as PatternCaptureMaterializer'Char'String, PatternValueMaterializer'String'String for
-as PatternCaptureMaterializer'Char'Atom, PatternValueMaterializer'String'Atom for
-as PatternRollback'ASTBuilderMark for
-_ tree ASTBuilder
-
-+ literals [PreparedLiteral]
-
-────────────────────
-+ This
-    - tree
-
-────────────────────
-+ do record-pattern-literal
-    - start Index
-    - end Index
-
-literals += PreparedLiteral(start, end)
-
-────────────────────
-+ do rewind-pattern-literals
-    - cursor Index
-
-while literals && literals[literals.length - 1].end > cursor
-    literals.pop()
-
-━━━━━━━━━━━━━━━━━━━━
 + PreparseSpan is Tuple
 
 + prepared-start Index
@@ -88,23 +45,6 @@ while literals && literals[literals.length - 1].end > cursor
 + start Index
 + end Index
 + kind PreparseTriviaKind
-
-━━━━━━━━━━━━━━━━━━━━
-_ SourceTriviaLine is Tuple
-
-+ text String
-+ start Index
-+ end Index
-
-━━━━━━━━━━━━━━━━━━━━
-_ SourceTriviaKind is U8
-
-| trivia-none = 0
-| trivia-comment = 1
-| trivia-divider-class = 2
-| trivia-divider-function = 3
-| trivia-divider-header = 4
-| trivia-divider-comment = 5
 
 ━━━━━━━━━━━━━━━━━━━━
 + TrackedPreparse is Tuple
@@ -188,6 +128,66 @@ for literal in context.literals
         grammar-word-ranges += range
 
 = TrackedYumiSyntax(tree, tracking, grammar-word-ranges)
+
+━━━━━━━━━━━━━━━━━━━━
+_ PreparedLiteral is Tuple
+
++ start Index
++ end Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ LiteralTrackingParseContext
+    is PatternCollectorStorage'ArenaBacking
+    is PatternMaterializationRoot'SyntaxId
+    is PatternCaptureMaterializer'Char'String
+    is PatternValueMaterializer'String'String
+    is PatternCaptureMaterializer'Char'Atom
+    is PatternValueMaterializer'String'Atom
+    is PatternRollback'ASTBuilderMark
+    is PatternLiteralObserver
+
++ literals [PreparedLiteral]
+
+as PatternCollectorStorage'ArenaBacking, PatternMaterializationRoot'SyntaxId for
+as PatternCaptureMaterializer'Char'String, PatternValueMaterializer'String'String for
+as PatternCaptureMaterializer'Char'Atom, PatternValueMaterializer'String'Atom for
+as PatternRollback'ASTBuilderMark for
+_ tree ASTBuilder
+
+────────────────────
++ This
+    - tree
+
+────────────────────
++ do record-pattern-literal
+    - start Index
+    - end Index
+
+literals += PreparedLiteral(start, end)
+
+────────────────────
++ do rewind-pattern-literals
+    - cursor Index
+
+while literals && literals[literals.length - 1].end > cursor
+    literals.pop()
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceTriviaLine is Tuple
+
++ text String
++ start Index
++ end Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceTriviaKind is U8
+
+| trivia-none = 0
+| trivia-comment = 1
+| trivia-divider-class = 2
+| trivia-divider-function = 3
+| trivia-divider-header = 4
+| trivia-divider-comment = 5
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do track-preparse TrackedPreparse

@@ -11,8 +11,14 @@
 /lang/ast/program
 /lang/ast/row-range
 
-+ BindingId is U32
 + no-binding BindingId = U32.max
++ no-slot SlotId = U32.max
++ member-chain-limit = 32u32
++ loop-state-count = 4u32
+
+_ forgotten-module ModuleId = U32.max
+
++ BindingId is U32
 + SlotId is U32
 + ScopeId is U32
 + LazyUseId is U32
@@ -21,10 +27,24 @@
 + LazyUseMask is U32
 + ResolutionMask is U32
 
-+ no-slot SlotId = U32.max
-_ forgotten-module ModuleId = U32.max
-+ member-chain-limit = 32u32
-+ loop-state-count = 4u32
+━━━━━━━━━━━━━━━━━━━━
++ Binding is Struct
+
++ module ModuleId
++ decl DeclId
++ subtree SyntaxRange
++ slots RowRange'Slot
++ scopes RowRange'Scope
++ resolution-base U32
++ diagnostics RowRange'Diagnostic
++ nested RowRange'NestedFunction
++ scans RowRange'BodyScan
++ sites RowRange'ScanSite
++ windows RowRange'SlotWindow
++ lazy-uses RowRange'LazyUse
++ captures RowRange'Capture
++ machines RowRange'MachineSlots
++ machine-reads RowRange'MachineRead
 
 ━━━━━━━━━━━━━━━━━━━━
 + SlotKind is U32
@@ -323,36 +343,9 @@ _ forgotten-module ModuleId = U32.max
 + slots RowRange'Slot
 
 ━━━━━━━━━━━━━━━━━━━━
-+ Binding is Struct
-
-+ module ModuleId
-+ decl DeclId
-+ subtree SyntaxRange
-+ slots RowRange'Slot
-+ scopes RowRange'Scope
-+ resolution-base U32
-+ diagnostics RowRange'Diagnostic
-+ nested RowRange'NestedFunction
-+ scans RowRange'BodyScan
-+ sites RowRange'ScanSite
-+ windows RowRange'SlotWindow
-+ lazy-uses RowRange'LazyUse
-+ captures RowRange'Capture
-+ machines RowRange'MachineSlots
-+ machine-reads RowRange'MachineRead
-
-━━━━━━━━━━━━━━━━━━━━
-_ BindingCopy is Tuple
-
-+ other Bindings
-+ id BindingId
-+ taken Binding
-
-━━━━━━━━━━━━━━━━━━━━
 + Bindings
     is Usable'Void
 
-_ arena Arena
 + bindings Table'Binding
 + slots Table'Slot
 + scopes Table'Scope
@@ -366,6 +359,8 @@ _ arena Arena
 + windows Table'SlotWindow
 + machines Table'MachineSlots
 + machine-reads Table'MachineRead
+
+_ arena Arena
 _ by-decl Map'Size'U32'ArenaBacking
 _ copies [BindingCopy]
 _ ends Binding
@@ -390,6 +385,8 @@ _ copied SyncBufferedChannel'Bool?
 .. machine-reads = Table'MachineRead(arena, 4)
 .. by-decl = Map'Size'U32(arena)
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + begin-using
 
@@ -399,6 +396,8 @@ this
 + do end-using
 
 release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do release
@@ -520,26 +519,6 @@ for slot in row.slots.start .. < slots.length
 link-namesakes(row.slots.start)
 
 ────────────────────
-_ do link-namesakes
-    - start U32
-
-` Links each local from `start` on into a ring, through `namesake`, with the others the
-` function or the nested function it lies in declares with its name; one with no other is
-` linked to none.
-. last = Map'MemberKey'U32()
-for slot in start .. < slots.length
-    . home = slots[slot].scope
-    while scopes[home].kind != .scope-function && scopes[home].kind != .scope-nested
-        home = scopes[home].parent
-    . key = MemberKey(home, slots[slot].name)
-    . previous = last[key] ?? no-slot
-    if previous != no-slot
-        slots[slot].namesake = if slots[previous].namesake != no-slot then original else previous
-        .. original = slots[previous].namesake
-        slots[previous].namesake = slot as SlotId
-    last[key] = slot as U32
-
-────────────────────
 + do take BindingId
     - other Bindings
     - id BindingId
@@ -644,80 +623,6 @@ if done
 copied = null
 copies = List'BindingCopy()
 taking = false
-
-────────────────────
-_ do copy-rows
-    - copy BindingCopy
-
-. other = copy.other
-. row = other.bindings[copy.id]
-. taken = copy.taken
-?! Panic("The rows of the bindings taken from other passes are copied out of order")
-    if resolutions.length != taken.resolution-base as Size
-for offset in 0 .. < row.subtree.count
-    . resolution = other.resolutions[row.resolution-base + offset] as Resolution
-    if resolution.slot != no-slot
-        resolution.slot = moved
-            - resolution.slot
-            - row.slots.start
-            - row.slots.count
-            - taken.slots.start
-    resolutions.append(resolution)
-for offset in 0 .. < row.diagnostics.count
-    diagnostics.append(other.diagnostics[row.diagnostics.start + offset])
-for offset in 0 .. < row.nested.count
-    . function = other.nested[row.nested.start + offset] as NestedFunction
-    function.scope = moved(function.scope, row.scopes.start, row.scopes.count, taken.scopes.start)
-    . start = moved
-        - function.captures.start
-        - row.captures.start
-        - row.captures.count + 1
-        - taken.captures.start
-    function.captures = RowRange'Capture(start, function.captures.count)
-    nested.append(function)
-for offset in 0 .. < row.scans.count
-    scans.append(other.scans[row.scans.start + offset])
-for offset in 0 .. < row.sites.count
-    . site = other.scan-sites[row.sites.start + offset] as ScanSite
-    site.scan = moved(site.scan, row.scans.start, row.scans.count, taken.scans.start)
-    scan-sites.append(site)
-for offset in 0 .. < row.windows.count
-    . window = other.windows[row.windows.start + offset] as SlotWindow
-    . start = moved(window.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
-    window.slots = RowRange'Slot(start, window.slots.count)
-    windows.append(window)
-for offset in 0 .. < row.lazy-uses.count
-    . use = other.lazy-uses[row.lazy-uses.start + offset] as LazyUse
-    use.slot = moved(use.slot, row.slots.start, row.slots.count, taken.slots.start)
-    lazy-uses.append(use)
-for offset in 0 .. < row.captures.count
-    . capture = other.captures[row.captures.start + offset] as Capture
-    capture.slot = moved(capture.slot, row.slots.start, row.slots.count, taken.slots.start)
-    captures.append(capture)
-for offset in 0 .. < row.machines.count
-    . machine = other.machines[row.machines.start + offset] as MachineSlots
-    . start = moved(machine.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
-    machine.slots = RowRange'Slot(start, machine.slots.count)
-    if machine.bound != no-slot
-        machine.bound = moved(machine.bound, row.slots.start, row.slots.count, taken.slots.start)
-    machines.append(machine)
-for offset in 0 .. < row.machine-reads.count
-    . read = other.machine-reads[row.machine-reads.start + offset] as MachineRead
-    if read.slot != no-slot
-        read.slot = moved(read.slot, row.slots.start, row.slots.count, taken.slots.start)
-    machine-reads.append(read)
-
-────────────────────
-_ moved U32
-    - id U32
-    - start U32
-    - count U32
-    - base U32
-
-` An id among `count` rows from `start` in another binding's table, numbered from `base` here.
-?! Panic("A binding names a row of another binding")
-    if id < start || id - start >= count
-base + (id - start)
 
 ────────────────────
 + do machine-slots MachineSlots?
@@ -947,6 +852,205 @@ slots[slot].use != U32.max && lazy-uses[slots[slot].use].flagged
 (slots[slot].flags /and/ SlotFlag.slot-together) != 0
 
 ────────────────────
++ do value-tracks Bool
+    - tree AST
+    - group SyntaxId
+
+` Whether the value a declaration writes reads something tracked, which the reference
+` evaluates once, behind a flag (`tracking-initializer`).
+do match? tree.nodes[group]
+    | .node-declare(declaration)
+        if declaration.right == 0
+            = false
+        for node in tree.subtree-start(declaration.right) .. declaration.right
+            do match? tree.nodes[node]
+                | .node-identifier(read)
+                    if read.is-tracked
+                        = true
+                | .node-get-expression(read)
+                    if read.is-tracked
+                        = true
+= false
+
+────────────────────
++ names-several Bool
+    - tree AST
+    - left SyntaxId
+
+` Whether what a declaration writes before its value names several locals together.
+match tree.nodes[left]
+    | .node-tuple-syntax
+        true
+    | .node-type-tuple
+        true
+    ??
+        false
+
+────────────────────
++ begin-scan U32
+    - decl DeclId
+    - syntax SyntaxId
+
+scans.append(BodyScan(decl, syntax, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) as U32
+
+────────────────────
++ do record-scan
+    - scan U32
+    - kind ScanKind
+    - syntax SyntaxId
+
+scan-sites.append(ScanSite(scan, kind, syntax))
+match kind
+    |= .scan-yield
+        scans[scan].yields += 1
+    |= .scan-tracked-read
+        scans[scan].tracked-reads += 1
+    |= .scan-latest
+        scans[scan].latests += 1
+    |= .scan-use-expression
+        scans[scan].use-expressions += 1
+    |= .scan-use-block
+        scans[scan].use-blocks += 1
+    |= .scan-do-finally
+        scans[scan].do-finallys += 1
+    |= .scan-stack-local
+        scans[scan].stack-locals += 1
+    |= .scan-nested-function
+        scans[scan].nested-functions += 1
+    |= .scan-call
+        scans[scan].calls += 1
+    |= .scan-assertion
+        scans[scan].assertions += 1
+    |= .scan-force
+        scans[scan].forces += 1
+    |= .scan-index
+        scans[scan].indexes += 1
+
+────────────────────
++ do record-capture
+    - slot SlotId
+    - flags CaptureMask
+
+captures.append(Capture(slot, flags))
+
+────────────────────
++ captures-from RowRange'Capture
+    - start U32
+
+` The capture rows appended since `start`.
+RowRange'Capture(start, (captures.length - start) as U32)
+
+────────────────────
++ do mark-slot
+    - slot SlotId
+    - flags SlotMask
+
+slots[slot].flags = slots[slot].flags /or/ flags
+
+────────────────────
++ do set-getter
+    - slot SlotId
+    - declaration SyntaxId
+
+` Makes a local one the reference reads as a getter, which evaluates the value the
+` declaration gives it again at each read.
+slots[slot].getter = declaration
+
+────────────────────
+_ do link-namesakes
+    - start U32
+
+` Links each local from `start` on into a ring, through `namesake`, with the others the
+` function or the nested function it lies in declares with its name; one with no other is
+` linked to none.
+. last = Map'MemberKey'U32()
+for slot in start .. < slots.length
+    . home = slots[slot].scope
+    while scopes[home].kind != .scope-function && scopes[home].kind != .scope-nested
+        home = scopes[home].parent
+    . key = MemberKey(home, slots[slot].name)
+    . previous = last[key] ?? no-slot
+    if previous != no-slot
+        slots[slot].namesake = if slots[previous].namesake != no-slot then original else previous
+        .. original = slots[previous].namesake
+        slots[previous].namesake = slot as SlotId
+    last[key] = slot as U32
+
+────────────────────
+_ do copy-rows
+    - copy BindingCopy
+
+. other = copy.other
+. row = other.bindings[copy.id]
+. taken = copy.taken
+?! Panic("The rows of the bindings taken from other passes are copied out of order")
+    if resolutions.length != taken.resolution-base as Size
+for offset in 0 .. < row.subtree.count
+    . resolution = other.resolutions[row.resolution-base + offset] as Resolution
+    if resolution.slot != no-slot
+        resolution.slot = moved
+            - resolution.slot
+            - row.slots.start
+            - row.slots.count
+            - taken.slots.start
+    resolutions.append(resolution)
+for offset in 0 .. < row.diagnostics.count
+    diagnostics.append(other.diagnostics[row.diagnostics.start + offset])
+for offset in 0 .. < row.nested.count
+    . function = other.nested[row.nested.start + offset] as NestedFunction
+    function.scope = moved(function.scope, row.scopes.start, row.scopes.count, taken.scopes.start)
+    . start = moved
+        - function.captures.start
+        - row.captures.start
+        - row.captures.count + 1
+        - taken.captures.start
+    function.captures = RowRange'Capture(start, function.captures.count)
+    nested.append(function)
+for offset in 0 .. < row.scans.count
+    scans.append(other.scans[row.scans.start + offset])
+for offset in 0 .. < row.sites.count
+    . site = other.scan-sites[row.sites.start + offset] as ScanSite
+    site.scan = moved(site.scan, row.scans.start, row.scans.count, taken.scans.start)
+    scan-sites.append(site)
+for offset in 0 .. < row.windows.count
+    . window = other.windows[row.windows.start + offset] as SlotWindow
+    . start = moved(window.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
+    window.slots = RowRange'Slot(start, window.slots.count)
+    windows.append(window)
+for offset in 0 .. < row.lazy-uses.count
+    . use = other.lazy-uses[row.lazy-uses.start + offset] as LazyUse
+    use.slot = moved(use.slot, row.slots.start, row.slots.count, taken.slots.start)
+    lazy-uses.append(use)
+for offset in 0 .. < row.captures.count
+    . capture = other.captures[row.captures.start + offset] as Capture
+    capture.slot = moved(capture.slot, row.slots.start, row.slots.count, taken.slots.start)
+    captures.append(capture)
+for offset in 0 .. < row.machines.count
+    . machine = other.machines[row.machines.start + offset] as MachineSlots
+    . start = moved(machine.slots.start, row.slots.start, row.slots.count + 1, taken.slots.start)
+    machine.slots = RowRange'Slot(start, machine.slots.count)
+    if machine.bound != no-slot
+        machine.bound = moved(machine.bound, row.slots.start, row.slots.count, taken.slots.start)
+    machines.append(machine)
+for offset in 0 .. < row.machine-reads.count
+    . read = other.machine-reads[row.machine-reads.start + offset] as MachineRead
+    if read.slot != no-slot
+        read.slot = moved(read.slot, row.slots.start, row.slots.count, taken.slots.start)
+    machine-reads.append(read)
+
+────────────────────
+_ moved U32
+    - id U32
+    - start U32
+    - count U32
+    - base U32
+
+` An id among `count` rows from `start` in another binding's table, numbered from `base` here.
+?! Panic("A binding names a row of another binding")
+    if id < start || id - start >= count
+base + (id - start)
+
+────────────────────
 _ do inlines-of Bool
     - tree AST
     - slot SlotId
@@ -1015,27 +1119,6 @@ if (use.flags /and/ (LazyUseFlag.declared-in-loop)) != 0
 if (use.flags /and/ scattered) != 0 || value-tracks(tree, row.group)
     = true
 = use.reads == 0
-
-────────────────────
-+ do value-tracks Bool
-    - tree AST
-    - group SyntaxId
-
-` Whether the value a declaration writes reads something tracked, which the reference
-` evaluates once, behind a flag (`tracking-initializer`).
-do match? tree.nodes[group]
-    | .node-declare(declaration)
-        if declaration.right == 0
-            = false
-        for node in tree.subtree-start(declaration.right) .. declaration.right
-            do match? tree.nodes[node]
-                | .node-identifier(read)
-                    if read.is-tracked
-                        = true
-                | .node-get-expression(read)
-                    if read.is-tracked
-                        = true
-= false
 
 ────────────────────
 _ do reads-once-of Bool
@@ -1121,20 +1204,6 @@ do match? tree.nodes[row.group]
 = plain && use.refs == 0
 
 ────────────────────
-+ names-several Bool
-    - tree AST
-    - left SyntaxId
-
-` Whether what a declaration writes before its value names several locals together.
-match tree.nodes[left]
-    | .node-tuple-syntax
-        true
-    | .node-type-tuple
-        true
-    ??
-        false
-
-────────────────────
 _ do settles-together Bool
     - slot SlotId
 
@@ -1163,77 +1232,6 @@ while position < slots.length && slots[position].group == group
         = false
     position += 1
 = true
-
-────────────────────
-+ begin-scan U32
-    - decl DeclId
-    - syntax SyntaxId
-
-scans.append(BodyScan(decl, syntax, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) as U32
-
-────────────────────
-+ do record-scan
-    - scan U32
-    - kind ScanKind
-    - syntax SyntaxId
-
-scan-sites.append(ScanSite(scan, kind, syntax))
-match kind
-    |= .scan-yield
-        scans[scan].yields += 1
-    |= .scan-tracked-read
-        scans[scan].tracked-reads += 1
-    |= .scan-latest
-        scans[scan].latests += 1
-    |= .scan-use-expression
-        scans[scan].use-expressions += 1
-    |= .scan-use-block
-        scans[scan].use-blocks += 1
-    |= .scan-do-finally
-        scans[scan].do-finallys += 1
-    |= .scan-stack-local
-        scans[scan].stack-locals += 1
-    |= .scan-nested-function
-        scans[scan].nested-functions += 1
-    |= .scan-call
-        scans[scan].calls += 1
-    |= .scan-assertion
-        scans[scan].assertions += 1
-    |= .scan-force
-        scans[scan].forces += 1
-    |= .scan-index
-        scans[scan].indexes += 1
-
-────────────────────
-+ do record-capture
-    - slot SlotId
-    - flags CaptureMask
-
-captures.append(Capture(slot, flags))
-
-────────────────────
-+ captures-from RowRange'Capture
-    - start U32
-
-` The capture rows appended since `start`.
-RowRange'Capture(start, (captures.length - start) as U32)
-
-────────────────────
-+ do mark-slot
-    - slot SlotId
-    - flags SlotMask
-
-slots[slot].flags = slots[slot].flags /or/ flags
-
-────────────────────
-+ do set-getter
-    - slot SlotId
-    - declaration SyntaxId
-
-` Makes a local one the reference reads as a getter, which evaluates the value the
-` declaration gives it again at each read.
-slots[slot].getter = declaration
-
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-public Bool
@@ -1315,6 +1313,13 @@ do match? tree.nodes[id]
 ` makes nothing of its class. One that may run past its end makes an object of its class first,
 ` which it gives where the body ends.
 returns-value(tree, body) && leaves(tree, body)
+
+━━━━━━━━━━━━━━━━━━━━
+_ BindingCopy is Tuple
+
++ other Bindings
++ id BindingId
++ taken Binding
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do leaves Bool

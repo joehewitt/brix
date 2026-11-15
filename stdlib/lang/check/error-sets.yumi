@@ -18,120 +18,6 @@
 /lang/ast/row-range
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ErrorTransform is Tuple
-
-` A transformer a function declares: the error it takes, what it raises, the raise it is
-` written with, its fact, and whether it tests a chain of earlier errors.
-
-+ source TypeId
-+ raised TypeId
-+ site SyntaxId
-+ fact U32
-+ conditional Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ ErrorReport is Tuple
-
-+ instance InstanceId
-+ syntax SyntaxId
-+ kind TypeDiagnosticKind
-+ name Atom?
-+ source TypeId
-
-━━━━━━━━━━━━━━━━━━━━
-+ HeldErrors is Struct
-
-` What the end of a body leaves when a callee's errors were not known: the entries on their way
-` out, the function's transformers, and the two reports that wait on whether anything leaves.
-+ instance InstanceId
-+ syntax SyntaxId
-+ entries RowRange'Outgoing
-+ transforms RowRange'ErrorTransform
-+ lacks-result Bool
-+ unbuildable Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ do note-previous
-    - facts Facts
-    - types Types
-    - instance InstanceId
-    - site SyntaxId
-    - error TypeId
-
-` An error a transformer takes becomes the `previous` of the error raised in its place, which
-` holds any error or none. That is a conversion at the transformer.
-if error == invalid-type || error == no-type
-    =
-. held = types.optional-of(types.error-type)
-facts.record-conversion(instance, site, side-cast-relation(error, held), .reason-assignment)
-
-━━━━━━━━━━━━━━━━━━━━
-+ caught-rank RelationRank?
-    - relations Relations
-    - error TypeId
-    - source TypeId
-
-` The rank at which a transformer declared for a source takes an error, or null when it does
-` not take it.
-relation.rank if relation.kind == .relation-same || relation.kind == .relation-up-cast
-
-.. relation = relations.compare(error, source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do order-transforms
-    - relations Relations
-    - error TypeId
-    - declared [ErrorTransform]
-    - tried [U32]
-
-` The transformers an error leaving a function is tried with, as TypeScript tries them: those
-` whose source takes it, nearest first and then in the order declared, up to the first that
-` tests no chain of earlier errors, which takes it whatever came before. Their places among
-` `declared` are added to `tried`.
-. ranks [RelationRank]
-for index in 0 .. < declared.length
-    . rank = caught-rank(relations, error, declared[index].source)
-    if rank == null
-        continue
-    . place = tried.length
-    while place > 0 && ranks[place - 1] > rank
-        place -= 1
-    tried.insert(index as U32, place)
-    ranks.insert(rank, place)
-for position in 0 .. < tried.length
-    if !declared[tried[position]].conditional
-        while tried.length > position + 1
-            tried.pop()
-        =
-
-━━━━━━━━━━━━━━━━━━━━
-+ do transform-leaving
-    - facts Facts
-    - types Types
-    - instance InstanceId
-    - syntax SyntaxId
-    - error TypeId
-    - declared [ErrorTransform]
-    - tried [U32]
-    - leaving [TypeId]
-    - noting Bool
-
-` What an error leaving at a node leaves as through the transformers it is tried with: what
-` each raises, and the error itself where each tests a chain of earlier errors. With `noting`
-` each converts the error to the `previous` of what it raises, and the node keeps them.
-. facts-tried [U32]
-for place in tried
-    . transform = declared[place]
-    if noting
-        note-previous(facts, types, instance, transform.site, error)
-    leaving += transform.raised
-    facts-tried += transform.fact
-if tried.length == 0 || declared[tried[tried.length - 1]].conditional
-    leaving += error
-if noting && tried.length != 0
-    facts.note-leave(instance, syntax, error, facts-tried)
-
-━━━━━━━━━━━━━━━━━━━━
 + ErrorSets
 
 ` The errors a function raises are those its body raises and those of the calls in it that let
@@ -143,6 +29,7 @@ if noting && tried.length != 0
 + held Table'HeldErrors
 + open List'InstanceId'ArenaBacking
 + unready Scratch'U32
+
 _ entries Scratch'Outgoing
 _ transforms Scratch'ErrorTransform
 _ expanded Scratch'TypedSite
@@ -314,23 +201,6 @@ reach(node)
 = base
 
 ────────────────────
-_ do reach
-    - node U32
-
-seen[node] = round
-. row = held[node]
-for offset in 0 .. < row.entries.count
-    . entry = entries[row.entries.start + offset]
-    if entry.callee == U32.max || instances.errors-known(entry.callee)
-        continue
-    . next = instances.signatures[entry.callee].pending
-    if next != U32.max
-        if seen[next] != round
-            reach(next)
-    else if instances.rows[entry.callee].state == .instance-unstarted
-        unready.push(entry.callee)
-
-────────────────────
 + do settle
     - root InstanceId
 
@@ -346,6 +216,31 @@ round += 1
 counter = 0
 visit(node)
 flush-reports()
+
+────────────────────
++ do settle-open
+
+` Finishes every error set still held, once no body is left to type.
+for position in settled-through .. < open.length
+    settle(open[position])
+settled-through = open.length
+
+────────────────────
+_ do reach
+    - node U32
+
+seen[node] = round
+. row = held[node]
+for offset in 0 .. < row.entries.count
+    . entry = entries[row.entries.start + offset]
+    if entry.callee == U32.max || instances.errors-known(entry.callee)
+        continue
+    . next = instances.signatures[entry.callee].pending
+    if next != U32.max
+        if seen[next] != round
+            reach(next)
+    else if instances.rows[entry.callee].state == .instance-unstarted
+        unready.push(entry.callee)
 
 ────────────────────
 _ do report
@@ -370,14 +265,6 @@ while reported < reports.length
     facts.record-diagnostic(row.instance, module, row.syntax, row.kind, row.name, row.source)
 reports.rewind(0)
 reported = 0
-
-────────────────────
-+ do settle-open
-
-` Finishes every error set still held, once no body is left to type.
-for position in settled-through .. < open.length
-    settle(open[position])
-settled-through = open.length
 
 ────────────────────
 _ do visit
@@ -706,9 +593,123 @@ for position in mark .. < expanded.length
         report(instance, expanded[position].syntax, kind, name, error)
 
 ━━━━━━━━━━━━━━━━━━━━
++ ErrorTransform is Tuple
+
+` A transformer a function declares: the error it takes, what it raises, the raise it is
+` written with, its fact, and whether it tests a chain of earlier errors.
+
++ source TypeId
++ raised TypeId
++ site SyntaxId
++ fact U32
++ conditional Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ HeldErrors is Struct
+
+` What the end of a body leaves when a callee's errors were not known: the entries on their way
+` out, the function's transformers, and the two reports that wait on whether anything leaves.
++ instance InstanceId
++ syntax SyntaxId
++ entries RowRange'Outgoing
++ transforms RowRange'ErrorTransform
++ lacks-result Bool
++ unbuildable Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do note-previous
+    - facts Facts
+    - types Types
+    - instance InstanceId
+    - site SyntaxId
+    - error TypeId
+
+` An error a transformer takes becomes the `previous` of the error raised in its place, which
+` holds any error or none. That is a conversion at the transformer.
+if error == invalid-type || error == no-type
+    =
+. held = types.optional-of(types.error-type)
+facts.record-conversion(instance, site, side-cast-relation(error, held), .reason-assignment)
+
+━━━━━━━━━━━━━━━━━━━━
++ caught-rank RelationRank?
+    - relations Relations
+    - error TypeId
+    - source TypeId
+
+` The rank at which a transformer declared for a source takes an error, or null when it does
+` not take it.
+relation.rank if relation.kind == .relation-same || relation.kind == .relation-up-cast
+
+.. relation = relations.compare(error, source)
+
+━━━━━━━━━━━━━━━━━━━━
++ do order-transforms
+    - relations Relations
+    - error TypeId
+    - declared [ErrorTransform]
+    - tried [U32]
+
+` The transformers an error leaving a function is tried with, as TypeScript tries them: those
+` whose source takes it, nearest first and then in the order declared, up to the first that
+` tests no chain of earlier errors, which takes it whatever came before. Their places among
+` `declared` are added to `tried`.
+. ranks [RelationRank]
+for index in 0 .. < declared.length
+    . rank = caught-rank(relations, error, declared[index].source)
+    if rank == null
+        continue
+    . place = tried.length
+    while place > 0 && ranks[place - 1] > rank
+        place -= 1
+    tried.insert(index as U32, place)
+    ranks.insert(rank, place)
+for position in 0 .. < tried.length
+    if !declared[tried[position]].conditional
+        while tried.length > position + 1
+            tried.pop()
+        =
+
+━━━━━━━━━━━━━━━━━━━━
++ do transform-leaving
+    - facts Facts
+    - types Types
+    - instance InstanceId
+    - syntax SyntaxId
+    - error TypeId
+    - declared [ErrorTransform]
+    - tried [U32]
+    - leaving [TypeId]
+    - noting Bool
+
+` What an error leaving at a node leaves as through the transformers it is tried with: what
+` each raises, and the error itself where each tests a chain of earlier errors. With `noting`
+` each converts the error to the `previous` of what it raises, and the node keeps them.
+. facts-tried [U32]
+for place in tried
+    . transform = declared[place]
+    if noting
+        note-previous(facts, types, instance, transform.site, error)
+    leaving += transform.raised
+    facts-tried += transform.fact
+if tried.length == 0 || declared[tried[tried.length - 1]].conditional
+    leaving += error
+if noting && tried.length != 0
+    facts.note-leave(instance, syntax, error, facts-tried)
+
+━━━━━━━━━━━━━━━━━━━━
 + is-subtype Bool
     - types Types
     - from TypeId
     - to TypeId
 
 to != invalid-type && from != invalid-type && in-base-chain(types, from, to)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ErrorReport is Tuple
+
++ instance InstanceId
++ syntax SyntaxId
++ kind TypeDiagnosticKind
++ name Atom?
++ source TypeId

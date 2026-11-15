@@ -238,12 +238,6 @@ match this
 ** each in path.split("/") when each.length > 0
 
 ────────────────────
-+ header String?
-    - name String
-
-http-header(headers, name)
-
-────────────────────
 + do get text String
 
 = http-body-text(body)
@@ -252,6 +246,12 @@ http-header(headers, name)
 + do get reader ReadableData'Byte
 
 = http-body-reader(body)
+
+────────────────────
++ header String?
+    - name String
+
+http-header(headers, name)
 
 ━━━━━━━━━━━━━━━━━━━━
 + HTTPResponse
@@ -303,16 +303,21 @@ This(HTTPStatus.ok, to-json(json), headers)
 .. headers [HTTPHeader]
     * "Content-Type", "application/json"
 
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close ?! Error
+
+do match? body
+    | reader HTTPBodyReader
+        reader.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + get start-line
 
 "$version $status ${status.reason}"
-
-────────────────────
-+ header String?
-    - name String
-
-http-header(headers, name)
 
 ────────────────────
 + do get text String
@@ -325,11 +330,10 @@ http-header(headers, name)
 = http-body-reader(body)
 
 ────────────────────
-+ do close ?! Error
++ header String?
+    - name String
 
-do match? body
-    | reader HTTPBodyReader
-        reader.close()
+http-header(headers, name)
 
 ━━━━━━━━━━━━━━━━━━━━
 + HTTPStatusLine is (version String, status HTTPStatus, reason String)
@@ -348,28 +352,6 @@ do match? body
 
 ~ method (!" " .)+ // target (!" " .)+ // version (!\nl .)+
     This(http-method(method), target, version)
-
-━━━━━━━━━━━━━━━━━━━━
-_ HTTPResponseHead is (line HTTPStatusLine, headers [HTTPHeader])
-
-────────────────────
-+ This ~ Char
-
-~ line HTTPStatusLine \nl headers \delimited(~ \nl, ~ HTTPHeader)
-    This(line, headers)
-~ line HTTPStatusLine
-    This(line, List'HTTPHeader())
-
-━━━━━━━━━━━━━━━━━━━━
-_ HTTPRequestHead is (line HTTPRequestLine, headers [HTTPHeader])
-
-────────────────────
-+ This ~ Char
-
-~ line HTTPRequestLine \nl headers \delimited(~ \nl, ~ HTTPHeader)
-    This(line, headers)
-~ line HTTPRequestLine
-    This(line, List'HTTPHeader())
 
 ━━━━━━━━━━━━━━━━━━━━
 + HTTPFraming is Union
@@ -405,6 +387,16 @@ do match? framing
         remaining = size
         is-done = size == 0
 
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close ?! Error
+
+is-done = true
+owner?.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + get is-complete
 
@@ -436,12 +428,6 @@ while !is-done
     . count = read(buffer.size, buffer)
     if count == 0
         break
-
-────────────────────
-+ do close ?! Error
-
-is-done = true
-owner?.close()
 
 ────────────────────
 _ do read-framed Size
@@ -710,6 +696,28 @@ match? body
         text
     ??
         http-body-bytes(body).slice-string()
+
+━━━━━━━━━━━━━━━━━━━━
+_ HTTPResponseHead is (line HTTPStatusLine, headers [HTTPHeader])
+
+────────────────────
++ This ~ Char
+
+~ line HTTPStatusLine \nl headers \delimited(~ \nl, ~ HTTPHeader)
+    This(line, headers)
+~ line HTTPStatusLine
+    This(line, List'HTTPHeader())
+
+━━━━━━━━━━━━━━━━━━━━
+_ HTTPRequestHead is (line HTTPRequestLine, headers [HTTPHeader])
+
+────────────────────
++ This ~ Char
+
+~ line HTTPRequestLine \nl headers \delimited(~ \nl, ~ HTTPHeader)
+    This(line, headers)
+~ line HTTPRequestLine
+    This(line, List'HTTPHeader())
 
 ━━━━━━━━━━━━━━━━━━━━
 _ http-head-text

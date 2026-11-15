@@ -1189,6 +1189,7 @@ _ do markup SyntaxId ?! YumiSyntaxError
 
 . close = tape.close-of(index)
 . type-index = index + 2
+. type = reduce-type(type-index)
 . item = tape.after(type-index)
 . markup-id SyntaxId = 0
 if item < close && head(item) == .id-label-head
@@ -1206,20 +1207,45 @@ if item < close && head(item) == .param-label-head
 if item < close && (head(item) == .value-label-head || head(item) == .text-label-head)
     args = sequence-singleton(tree, multi(item + 2))
     item = tape.after(item)
+. tag-start = item
+. tag-count Size = 0
+while item < close && head(item) == .for-label-head
+    tag-count += 1
+    item = tape.after(item)
 . rules-end = style-applications-end(item, close)
 . rules = style-applications(item, rules-end)
+. tags = theme-tag-bindings(tag-start, tag-count)
 . body = optional-block(begin, index, rules-end, close)
 . loc = located(begin, index)
 = tree.append
     - ASTMarkup
         - loc
-        - reduce-type(type-index)
+        - type
         - markup-id
         - slot-binding
         - parameter-id
         - tree.store-optional-children(args)
         - tree.store-optional-children(rules)
-        - tree.syntax-or-invalid(body)
+        - theme-tag-body(tree, loc, type, tags, body)
+
+────────────────────
+_ do theme-tag-bindings ImmutableArray'SyntaxId? ?! YumiSyntaxError
+    - first Index
+    - count Size
+
+=? null if count == 0
+. bindings = scratch-array'SyntaxId(tree, count)
+. cursor = first
+for position in 0 .. < count
+    . close = tape.close-of(cursor)
+    . named = cursor + 2
+    . value = tape.after(named)
+    . condition SyntaxId? = null
+    if value < close
+        condition = expression(value)
+    bindings[position] = theme-tag-row(tree, located(begin-at(cursor), cursor), atom-at(named, 0), condition)
+    cursor = tape.after(cursor)
+= scratch-items(bindings, count)
 
 ────────────────────
 _ do slot-outlet SyntaxId ?! YumiSyntaxError

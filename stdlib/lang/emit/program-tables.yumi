@@ -34,16 +34,18 @@
 /stream/aggregate
 /stream/sort
 
-+ FunctionId is U32
 + no-function FunctionId = U32.max
 + no-scope ScopeId = U32.max
 + unbuilt-environment LayoutId = U32.max - 1
++ no-slot-index U32 = U32.max
++ no-storage U32 = U32.max
++ table-header-size U32 = 16
++ table-slot-size U32 = 8
++ witness-header-slots U32 = 3
++ refusal-texts [String] = ["", "this statement", "this expression", "printing a value that is not a String", "a global whose value runs code", "a probe", "a value of this type", "this function", "this conversion", "a C call that may block", "a C call that suspends the task", "a task or thread local whose value runs code, in a module some cases of a batch do not reach"]
 
 _ max-symbol-bytes Size = 200
 _ observer-activation-name = "yumiCollectionObserverActivate"
-
-+ no-slot-index U32 = U32.max
-+ no-storage U32 = U32.max
 _ has-constants Byte = 1
 _ has-globals Byte = 2
 _ has-statics Byte = 4
@@ -53,480 +55,11 @@ _ locals-raise Byte = 32
 _ has-locals Byte = 64
 _ lazy-proto U32 = 2147483648
 _ pending-function FunctionId = U32.max - 1
-+ table-header-size U32 = 16
-+ table-slot-size U32 = 8
-+ witness-header-slots U32 = 3
 _ witness-proto U32 = 1073741824
 _ own-function U32 = U32.max - 1
 _ event-count-names [String] = ["publish.attempts", "publish.sites-erased", "publish.interest-misses", "payload.builds", "sidecars.created", "endpoint.entries", "subscriptions.sidecar", "subscriptions.lowered", "adapters.created", "handlers.sync", "handlers.machine-enqueued", "descriptor.visits", "route.frames", "key-index.updates"]
 
-+ refusal-texts [String] = ["", "this statement", "this expression", "printing a value that is not a String", "a global whose value runs code", "a probe", "a value of this type", "this function", "this conversion", "a C call that may block", "a C call that suspends the task", "a task or thread local whose value runs code, in a module some cases of a batch do not reach"]
-
-━━━━━━━━━━━━━━━━━━━━
-_ Reach is U32
-
-| none
-| main
-| init
-| task
-| body = 5
-| in-frame = 6
-| initializer = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ FunctionKind is U32
-
-| module-main = 0
-| module-init = 1
-| task-main = 2
-| process-main = 3
-| instance-body = 4
-| instance-initializer = 5
-| lazy-property = 6
-| module-constants = 7
-| module-globals = 8
-| lazy-global = 9
-| module-statics = 10
-| adapter = 11
-| witness = 12
-| viewed-body = 13
-| generator-body = 14
-| class-adapter = 15
-| union-dispatch = 16
-| interface-equality = 17
-| task-local-init = 18
-| task-body = 19
-| task-init = 20
-| thread-local-init = 21
-| thread-init = 22
-| stack-local-init = 23
-| argument-default = 24
-| stream-action = 25
-| pattern-helper = 26
-| pattern-cast = 27
-| lazy-rule = 28
-| mapped-rule = 29
-| raising-rule = 30
-| storage-growth = 31
-| rule-adapter = 32
-| property-updater = 33
-| live-adapter = 34
-| class-rule-updater = 35
-| idle-action = 36
-| event-handler = 37
-| event-matcher = 38
-| event-registrations = 39
-| style-registration = 40
-| style-gate = 41
-| markup-query = 42
-| markup-query-add = 43
-| markup-query-remove = 44
-| style-author = 45
-| style-static-value = 46
-| style-rule = 47
-| style-sheet-registration = 48
-| style-scope-state = 49
-| slot-forward = 50
-| constructor-body = 51
-| markup-trigger-add = 52
-| markup-trigger-remove = 53
-| markup-trigger-ancestor = 54
-| machine-handler = 55
-| machine-cast = 56
-| machine-activation = 57
-| machine-descriptor = 58
-| machine-deferral = 59
-| batch-main = 60
-| batch-finish = 61
-| source-attach = 62
-| machine-part = 63
-| probe-setup = 64
-| probe-teardown = 65
-| probe-closer = 66
-| probe-flush = 67
-| probe-safepoint = 68
-| machine-stop = 69
-| style-themed-value = 70
-| style-given-author = 71
-
-━━━━━━━━━━━━━━━━━━━━
-+ GlobalKind is U8
-
-` How a module keeps a global. A constant's value is a literal, stored before any module
-` starts. An eager one takes its value when its module starts, and a lazy one when it is
-` first read. One each task holds its own of is `global-task`, kept in the memory of each
-` task, and one each thread holds its own of `global-thread`, in the memory of each thread.
-` One `do with` binds is `global-stack`, a slot in the memory of each task that says whether
-` it is bound and holds its value. A value of an enum is made
-` when its module starts, before the module's eager globals, where an emitted function reads
-` it; one nothing emitted reads is `global-enum-unread`, and is not made.
-
-| global-none = 0
-| global-constant = 1
-| global-eager = 2
-| global-lazy = 3
-| global-other = 4
-| global-enum = 5
-| global-enum-unread = 6
-| global-task = 7
-| global-thread = 8
-| global-stack = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ RefusedConstruct is U32
-
-| refused-nothing = 0
-| refused-statement = 1
-| refused-expression = 2
-| refused-print-conversion = 3
-| refused-global-initializer = 4
-| refused-probe = 5
-| refused-type = 6
-| refused-function = 7
-| refused-conversion = 8
-| refused-blocking-call = 9
-| refused-suspending-call = 10
-| refused-batch-local = 11
-
-━━━━━━━━━━━━━━━━━━━━
-+ Refusal is Struct
-
-` A construct emission does not compile yet, and where it is written. A program with one is
-` not compiled at all.
-
-+ construct RefusedConstruct
-+ module ModuleId
-+ syntax SyntaxId
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProbeRow is Struct
-
-` A probe an emitted instance compiles, which the record of probes knows by its place among them,
-` counted from one. One written as a group that begins and ends, or as a log that ends a group,
-` is a probe for each record it writes, its `part`s in order. A counter is one probe wherever its
-` key is written, and a count the compiler keeps of its own accord, of what the collector did or
-` what events do, has no instance, its `part` saying which (see `compiler-count-key`). `types` are
-` the probe data types of the values a probe writes, among `probe-types`, with the class of each
-` among `probe-type-classes`. A metric of the profile is a row of its own among `profile-metrics`,
-` with its `part` saying whether it counts or times.
-
-+ instance InstanceId
-+ syntax SyntaxId
-+ part U32
-+ types Span
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProbeSiteKind is U8
-
-| log = 1
-| event = 2
-| counter = 3
-| timer = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProbeSite
-
-+ kind = ProbeSiteKind.counter
-+ key = ""
-+ name = ""
-+ template = ""
-+ module-name = ""
-+ path = ""
-+ line U32
-+ fields [String]
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventCount is U32
-
-` A count the compiler keeps of what events do, under the counter `event-counts` numbers at its
-` place, as the reference keeps one wherever an event is published, made a stream or handled by a
-` machine: the compiler adds to the publishes, the publish sites never reached, the publishes
-` nothing listens to and the payloads made, and the event runtime's own counters to the rest.
-
-| publish-attempts = 0
-| publish-sites-erased = 1
-| publish-interest-misses = 2
-| payload-builds = 3
-| sidecars-created = 4
-| endpoint-entries = 5
-| subscriptions-sidecar = 6
-| subscriptions-lowered = 7
-| adapters-created = 8
-| handlers-sync = 9
-| handlers-machine-enqueued = 10
-| descriptor-visits = 11
-| route-frames = 12
-| key-index-updates = 13
-
-━━━━━━━━━━━━━━━━━━━━
-+ EmittedFunction is Struct
-
-` A function the object holds. `name` is its key text, `symbol` the linker's name for it, and
-` `display` the name a stack trace prints. `calls` are the functions a generated body calls,
-` in order. `may-panic` says a call of it is followed by a check, and `carries` that it
-` writes the panic signal because a class table holds it. `polls` says its body has a loop
-` that polls, or a rule it runs first does: it returns the panic a poll can raise, and no call
-` of it is checked for that.
-` `unplaced` says a stack trace through it may not be the reference's, by more than a number
-` in a name: one that may panic is refused. `placeless` says a stack trace names no place for
-` its code. `site-module` is the module whose file a stack trace names for its code, where that
-` is not the module it is made in.
-` The function of a lazy property has no instance: `type` is the class that writes the
-` property's value and `place` the property's place among all properties. The functions
-` that give a module's globals their values have none either, and `place` is the storage of
-` the global a lazy one's function evaluates. The function of a default a call evaluates has
-` the default's storage as its `place`. The function that grows a table's storage has none:
-` `type` is the type of the table's rows, and `place` is 0 for the rows and 1 for the outside
-` bytes of a union's. `bridge-display` is the name a stack trace prints for
-` the function of a member that runs on a row's case where it is built as a bridge to the
-` member's instance on the case. One made for a row of style facts that typing fills in the
-` order it reaches instances, a value written once, a gate, a state cell, a slot forward, an
-` author or a shared rule, is named by its `number`, its place among those of its kind in an
-` order that does not depend on that one.
-
-+ kind FunctionKind
-+ instance InstanceId
-+ module ModuleId
-+ name StringId
-+ symbol StringId
-+ display StringId
-+ calls Span
-+ weight U32
-+ may-panic Bool
-+ carries Bool
-+ polls Bool
-+ type TypeId = no-type
-+ place U32
-+ number U32
-+ unplaced Bool
-+ placeless Bool
-+ bridge-display StringId = no-string
-+ site-module ModuleId = U32.max
-
-━━━━━━━━━━━━━━━━━━━━
-+ ClassTable is Struct
-
-` The table of a class the program constructs: its header, then the functions of each class
-` of its chain, base first. `entries` lists those functions.
-
-+ type TypeId
-+ symbol StringId
-+ base U32
-+ entries Span
-
-━━━━━━━━━━━━━━━━━━━━
-+ RuleMapping is Struct
-
-` A set of collectors calls of a rule give it, for which the reference compiles a function of
-` the rule of its own: the instance whose rule or local rule it is, the local rule's
-` declaration or none for the rule a module declares, the rule's names the collectors are
-` given for in the order written, joined by commas, and the function made for them. No call
-` that runs such a function reads what the rule gives, so it makes no text of what its arms
-` matched. Calls of a rule a module declares that give no collectors and read nothing it gives
-` have one too, whose names are none.
-
-+ instance InstanceId
-+ rule SyntaxId
-+ names StringId
-+ function FunctionId
-
-━━━━━━━━━━━━━━━━━━━━
-+ ClassRule is Struct
-
-` A rule of a class, typed for the class that writes it as `level`: the instance that types it,
-` the layout of what it keeps for each object it runs on, which is the object and then whether
-` a `when` rule's test held when it last ran or the value a `whenever` rule had then, and the
-` function a live action runs it again with. A `whenever` rule on the markup an object is in
-` keeps what `class-rule-kept` says, and the markup runtime calls `add` and `remove` as its
-` children or descendants change, or `add` as its ancestors might have.
-
-+ level TypeId
-+ module ModuleId
-+ decl DeclId
-+ syntax SyntaxId
-+ unit InstanceId
-+ kept LayoutId
-+ updater FunctionId
-+ add FunctionId
-+ remove FunctionId
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventHandler is Struct
-
-` A section of a class that the event runtime runs from the table of a class the program
-` constructs: the instance that types the section, the section, the subscriber of its loop,
-` whose body the function for it runs, the class that writes it, the event's name, and the
-` number that tells the function apart from others of the class and the event.
-
-+ unit InstanceId
-+ syntax SyntaxId
-+ callback InstanceId
-+ level TypeId
-+ name Atom
-+ number U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ MachineDescriptor is Struct
-
-` A group of a state machine's event transitions that the event runtime runs from the table of
-` a class the program constructs: the group's place among the facts' groups, the class, the
-` function the table runs, which gives the group's activation to the event runtime's queue, and
-` the function that says whether an object is of the class.
-
-+ group U32
-+ type TypeId
-+ descriptor FunctionId
-+ matcher FunctionId
-
-━━━━━━━━━━━━━━━━━━━━
-+ Adapter is Struct
-
-` The function a closure or a binding runs as a value of a function type. It is given the
-` data the value holds and the type's arguments, and calls `runs`, the instance the type
-` pass found for them. `instance` and `site` are where the first conversion that makes such
-` a value is written, which a stack trace names for the call, or the place the type pass
-` noted for a closure, with `below` where that is the line under it. `fixed` says the type
-` pass noted the place. Any other, made at several places, is placed at the first written. One
-` made at several places is `shared`, and a stack trace names no place for it: one the type
-` pass placed where it says so, and any other where `made-instance` and `made-site`, where
-` the first conversion is written, differ from a later one's.
-
-+ from TypeId
-+ to TypeId
-+ runs InstanceId
-+ instance InstanceId
-+ site SyntaxId
-+ function FunctionId = no-function
-+ fixed Bool
-+ below Bool
-+ shared Bool
-+ made-instance InstanceId = no-instance
-+ made-site SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ VisitFact is U32
-
-` The tables of facts a visit of an instance reads its own rows of, in the order it reads them.
-
-| visit-live-statement = 0
-| visit-markup-read = 1
-| visit-style-read = 2
-| visit-style-flag = 3
-| visit-style-site = 4
-| visit-style-content = 5
-| visit-style-application = 6
-| visit-content-link = 7
-| visit-element-root = 8
-| visit-branch-region = 9
-| visit-loop-region = 10
-| visit-region-root = 11
-| visit-self-action = 12
-| visit-query-registration = 13
-| visit-event-use = 14
-| visit-address-claim = 15
-| visit-event-closer = 16
-| visit-machine-group = 17
-| visit-machine-refinement = 18
-| visit-machine-stop = 19
-
-━━━━━━━━━━━━━━━━━━━━
-+ Witness is Struct
-
-` The witness table of a type for an interface. `symbol` names the constant, and `slot` is
-` the place the table of a class holds its address in, for a type that is a class.
-
-+ value TypeId
-+ interface TypeId
-+ symbol StringId
-+ slot U32 = no-slot-index
-
-━━━━━━━━━━━━━━━━━━━━
-+ WitnessFunction is Struct
-
-` The function a slot of a witness table holds for a type that declares its own answer to
-` a function of the interface: it is given the interface value and calls `callee` with
-` what the value holds, or with no callee reads the property at `property` of it. Where
-` the type answers through a property it delegates to, `through` names the properties
-` read from what the value holds to what `callee` takes. `converts` says `callee` takes an
-` argument as another type than the interface's gives, as the type pass recorded. A `shared`
-` one fills the slot in the table of each class that answers with `callee` itself, and
-` `value` is the first of them.
-
-+ value TypeId
-+ proto InstanceId
-+ callee InstanceId
-+ property U32
-+ through RowRange'U32
-+ function FunctionId = no-function
-+ converts Bool = false
-+ shared = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ ClassAdapter is Struct
-
-` The function a slot of a class's table holds for an override that answers another type
-` than `proto`, the function the slot was made for: it calls `override` and converts what
-` that answers to what `proto` answers.
-
-+ proto InstanceId
-+ override InstanceId
-+ function FunctionId = no-function
-
-━━━━━━━━━━━━━━━━━━━━
-+ GlobalStorage is Struct
-
-` Where the program keeps a global, or the value of a parameter's default that runs code.
-` `symbol` names its memory, which `layout` holds a value of `type` in. `state` names a byte
-` beside a global that is not a constant: 0 while it has no value, 1 once it has, and 2 while
-` a lazy one is being evaluated. `function` evaluates a lazy global that some emitted
-` function reads. A default is kept for `owner`, the instance whose parameter it is: `syntax`
-` is the default written, and `next` the default its module evaluates after it. A default a
-` call evaluates has no memory: `function` evaluates it, and no module's list holds it. A
-` global each task holds its own of is kept at `offset` in the memory of the task running,
-` which has no symbol: `function` stores its value there, and `next` is the one of its module
-` stored after it. One each thread holds its own of is `per-thread`, kept in the memory of
-` the thread.
-
-+ module ModuleId
-+ decl DeclId
-+ syntax SyntaxId
-+ owner InstanceId
-+ symbol StringId
-+ state StringId
-+ type TypeId
-+ layout LayoutId
-+ function FunctionId
-+ next U32
-+ offset U32 = U32.max
-+ per-thread Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ PropertyDefault is Struct
-
-` The value a class gives a property its constructor is given none for: the module it is
-` written in, the value, the declaration its conversion is recorded at, and that declaration
-` among its module's. A property no class gives a value has value 0.
-
-+ module ModuleId
-+ value SyntaxId
-+ site SyntaxId
-+ decl DeclId
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlacedStyle is Struct
-
-` A style or a style sheet some instance uses, numbered by its place among them, as the program
-` registers it: `type`, `singleton` and the `count` rows from `first` are its `StyleUse`'s or its
-` `StyleSheetUse`'s. `registered` says a function the program reaches uses it, and `module` and
-` `site` are then where its registration is placed (`keep-reached-styles`).
-
-+ type TypeId
-+ module ModuleId
-+ site SyntaxId
-+ singleton InstanceId
-+ first U32
-+ count U32
-+ registered Bool
++ FunctionId is U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + ProgramTables
@@ -616,7 +149,6 @@ _ VisitFact is U32
 + c-described CPointer'U32
 + table-symbols CPointer'U32
 + rtti-symbols CPointer'U32
-_ property-tables CPointer'U32
 + slots CPointer'U32
 + lazy-slots CPointer'U32
 + slot-functions CPointer'U32
@@ -624,7 +156,6 @@ _ property-tables CPointer'U32
 + slot-fields CPointer'U32
 + slot-copied CPointer'U8
 + lazy-held CPointer'U8
-_ unneeded CPointer'U8
 + scope-captures CPointer'U32
 + scope-links CPointer'U32
 + scope-steps CPointer'U8
@@ -632,16 +163,10 @@ _ unneeded CPointer'U8
 + environments CPointer'U32
 + captures CPointer'U32
 + capture-rows CPointer'U32
-_ task-bodies CPointer'U8
 + place-owners [InstanceId]
-_ event-owners [TypeId]
-_ event-names [Atom]
-_ event-numbers [U32]
 + place-decls [DeclId]
 + place-rows [U32]
 + place-children [U32]
-_ task-count U32
-_ suspends Bool
 + adapters Table'Adapter
 + rule-mappings Table'RuleMapping
 + witnesses Table'Witness
@@ -676,8 +201,6 @@ _ suspends Bool
 + event-site SyntaxId = 0
 + erased-publishes U64
 + profile-metrics [ProbeRow]
-_ probe-rows Map'Size'U32'ArenaBacking
-_ probe-module U32 = U32.max
 + batch-main FunctionId = no-function
 + batch-starts CPointer'U32
 + batch-finishes CPointer'U32
@@ -695,14 +218,7 @@ _ probe-module U32 = U32.max
 + lowered-matchers [FunctionId]
 + lowered-order [U32]
 + machine-descriptors [MachineDescriptor]
-_ handler-functions [FunctionId]
-_ matcher-types [TypeId]
-_ matcher-functions [FunctionId]
-_ registration-functions [FunctionId]
 + style-functions [FunctionId]
-_ domain-numbers [U32]
-_ state-key-numbers [U32]
-_ target-numbers [U32]
 + sheet-functions [FunctionId]
 + gate-functions [FunctionId]
 + gate-layouts [LayoutId]
@@ -722,6 +238,27 @@ _ target-numbers [U32]
 + themed-value-functions [FunctionId]
 + rule-applications [U32]
 + rule-functions [FunctionId]
++ machine-record LayoutId = no-layout
++ machine-order [U32]
++ equality-functions CPointer'U32
+
+_ property-tables CPointer'U32
+_ unneeded CPointer'U8
+_ task-bodies CPointer'U8
+_ event-owners [TypeId]
+_ event-names [Atom]
+_ event-numbers [U32]
+_ task-count U32
+_ suspends Bool
+_ probe-rows Map'Size'U32'ArenaBacking
+_ probe-module U32 = U32.max
+_ handler-functions [FunctionId]
+_ matcher-types [TypeId]
+_ matcher-functions [FunctionId]
+_ registration-functions [FunctionId]
+_ domain-numbers [U32]
+_ state-key-numbers [U32]
+_ target-numbers [U32]
 _ registered-modules [ModuleId]
 _ registered-constructors [InstanceId]
 _ first-constructors Map'Size'U32'ArenaBacking
@@ -740,8 +277,6 @@ _ stream-action-rows Map'Size'U32'ArenaBacking
 _ machine-handler-rows Map'Size'U32'ArenaBacking
 _ machine-part-rows Map'Size'U32'ArenaBacking
 _ machine-stop-rows Map'Size'U32'ArenaBacking
-+ machine-record LayoutId = no-layout
-+ machine-order [U32]
 _ made-numbers Map'Size'U32'ArenaBacking
 _ pattern-argument-rows Map'Size'U32'ArenaBacking
 _ raising-functions [FunctionId]
@@ -765,7 +300,6 @@ _ remap-symbols [StringId]
 _ remap-numbers [U32]
 _ sheet-numbers [U32]
 _ forward-functions CPointer'U32
-+ equality-functions CPointer'U32
 _ forward-needs CPointer'Byte
 _ forward-numbers CPointer'U32
 _ turn-scopes Map'Size'U32'ArenaBacking
@@ -941,6 +475,8 @@ _ released Bool
 .. first-constructors = Map'Size'U32(arena)
 .. probe-rows = Map'Size'U32(arena)
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + begin-using
 
@@ -950,6 +486,8 @@ this
 + do end-using
 
 release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do release
@@ -1011,6 +549,1562 @@ for position in 0 .. < default-count
 choose-functions()
 order-prototypes()
 build-class-tables()
+
+────────────────────
++ do fill-of FactId
+    - instance InstanceId
+    - name Atom
+
+` The fact that says a constructor fills the property of this name itself, or none.
+. fact = fill-heads[instance]
+while fact != no-fact
+    if facts.fills[fact].name == name
+        = fact
+    fact = fill-links[fact]
+= no-fact
+
+────────────────────
++ do loose-conversion FactId
+    - instance InstanceId
+    - site SyntaxId
+    - from TypeId
+    - reason ConversionReason = .reason-assignment
+    - to TypeId = no-type
+
+` The conversion of a value of one type that an instance recorded for one reason at a node
+` outside its body, or none. A constructor's are at the properties its arguments fill, and
+` at those it constructs with no value written, for the defaults that construction takes,
+` which may convert values of one type to several: `to` names the one wanted, where given.
+. loose = loose-conversion-heads[instance]
+while loose != no-fact
+    . id = facts.loose-conversions[loose].fact
+    . fact = facts.conversions[id]
+    if fact.syntax == site && fact.reason == reason && fact.from == from && wanted
+        = id
+    .. wanted = to == no-type || fact.to == to
+    loose = loose-conversion-links[loose]
+= no-fact
+
+────────────────────
++ holds-environment Bool
+    - scope ScopeId
+
+` Whether a run of the function of a scope makes an environment: for the locals it declares
+` that nested functions capture, or for the link alone where a nested function written in
+` it captures a local from further out. Each run of such a function is then told apart by
+` the functions it writes, as the reference tells them apart.
+scope-captures[scope] != 0 || scope-links[scope] != 0
+
+────────────────────
++ is-turn-scope Bool
+    - scope ScopeId
+
+` Whether a scope runs anew each time and has a turn where nested functions capture its names:
+` a loop's body, or the activation of a case or continuation of a state machine.
+bindings.scopes[scope].kind == .scope-loop || bindings.scopes[scope].kind == .scope-activation
+
+────────────────────
++ holds-lazy Bool
+    - slot SlotId
+
+` Whether a lazy local nested functions capture is held as an eager local is (`settle-held`).
+lazy-held[slot] != 0
+
+────────────────────
++ do stack-place U32
+    - owner InstanceId
+    - decl DeclId
+    - row U32
+
+` The place in a function's environment of the state of a global `do with` binds that a
+` lambda written there holds, or none.
+for position in 0 .. < place-owners.length
+    if place-owners[position] == owner && place-decls[position] == decl && same-row
+        = place-children[position]
+    .. same-row = place-rows[position] == row
+= U32.max
+
+────────────────────
++ do holds-stacks Bool
+    - instance InstanceId
+
+` Whether a function's environment holds the state of a global `do with` binds for a lambda
+` written there.
+for owner in place-owners
+    if owner == instance
+        = true
+= false
+
+────────────────────
++ copies Bool
+    - instance InstanceId
+    - slot SlotId
+
+` Whether the body of a spawned task copies a name it captures where it is spawned. As
+` TypeScript's, it copies what the function that spawns it declares, where the value of a
+` lazy local is evaluated, and its receiver, and shares any other name with the functions
+` around it through the link its capture holds, a lazy local too, and a state machine's
+` projection, which it reads as the machine is when the body reads it. It copies the flags of a
+` machine the function keeps in a local, as it copies the local.
+|? bindings.slots[slot].kind == .slot-machine && bindings.slots[slot].name.text != "(active)"
+    false
+|? enclosing != no-instance && instance-scopes[enclosing] == slot-functions[slot]
+    true
+??
+    bindings.slots[slot].kind == .slot-this
+
+.. enclosing = instances.rows[instance].enclosing
+
+────────────────────
++ refers Bool
+    - instance InstanceId
+    - slot SlotId
+
+` Whether the body of a `do @no-gc` block reaches a local or an argument its capture holds
+` (`copies`) through its address, where the function that runs the block keeps it: the block
+` runs there, before anything after it, so what it assigns is that function's own.
+is-region(instance) && copies(instance, slot) && (kind == .slot-local || kind == .slot-argument)
+
+.. kind = bindings.slots[slot].kind
+
+────────────────────
++ do links-capture Bool
+    - instance InstanceId
+
+` Whether the capture of a spawned task's body holds a link to the environment in force where
+` it was spawned: where the body shares a name it captures.
+if capture-rows[instance] == U32.max
+    = false
+. captured = bindings.nested[capture-rows[instance]].captures
+for index in 0 .. < captured.count
+    if !copies(instance, bindings.captures[captured.start + index].slot)
+        = true
+= false
+
+────────────────────
++ do capture-field U32
+    - instance InstanceId
+    - slot SlotId
+
+` The field of the capture of a spawned task's body that holds a name it copies, or none.
+if capture-rows[instance] == U32.max
+    = U32.max
+. captured = bindings.nested[capture-rows[instance]].captures
+. field U32 = if links-capture(instance) then 1 else 0
+for index in 0 .. < captured.count
+    . other = bindings.captures[captured.start + index].slot
+    if copies(instance, other)
+        if other == slot
+            = field
+        field += 1
+= U32.max
+
+────────────────────
++ do capture-stacks U32
+    - instance InstanceId
+
+` The first field of the capture of a spawned task's body that holds the state of a global
+` `do with` binds, after the link and what the body copies.
+if capture-rows[instance] == U32.max
+    = 0
+. captured = bindings.nested[capture-rows[instance]].captures
+. field U32 = if links-capture(instance) then 1 else 0
+for index in 0 .. < captured.count
+    if copies(instance, bindings.captures[captured.start + index].slot)
+        field += 1
+= field
+
+────────────────────
++ do holds-unmade Bool
+    - instance InstanceId
+
+` Whether a nested function holds the state of a global `do with` binds where nothing writes
+` it: one that is neither a lambda, a comprehension nor a spawned task's body, a list of
+` bullets or the right side of a pipe, which has no shape for it. The body of a `do @no-gc`
+` block holding one is not built (`lay-capture`).
+if facts.stack-holds.length == 0 || copies-in(instance)
+    = false
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        if !is-nested-kind(fn.kind) || fn.kind == .closure-decl
+            = false
+        if fn.kind == .iterator-decl
+            do match? program.modules[row.module].tree.nodes[fn.syntax]
+                | .node-iterator-expression
+                    = false
+        = stack-holds(instance).length != 0
+= false
+
+────────────────────
++ do stack-holds [U32]
+    - instance InstanceId
+
+` The storage of each global `do with` binds whose state a nested function holds, in the
+` order the type pass recorded them; none where one is not kept.
+. rows [U32]
+for hold in facts.stack-holds
+    if hold.instance == instance
+        . row = storage-of(hold.module, hold.decl)
+        rows += if global-kind(hold.module, hold.decl) == .global-stack then row else no-storage
+= rows
+
+────────────────────
++ do stack-needs [U32]
+    - instance InstanceId
+
+` The storage of each global `do with` binds that an instance reads outside its own bindings
+` of it, itself or through what it calls, in the order the type pass recorded them; none
+` where one is not kept.
+. rows [U32]
+for need in facts.stack-needs
+    if need.instance == instance
+        . row = storage-of(need.module, need.decl)
+        rows += if global-kind(need.module, need.decl) == .global-stack then row else no-storage
+= rows
+
+────────────────────
++ turn-scope ScopeId
+    - module ModuleId
+    - loop SyntaxId
+
+` The scope of a loop written at a node whose turns each have an environment, or none.
+turn-scopes[pair-key(module, loop)] ?? no-scope
+
+────────────────────
++ turn-environment LayoutId
+    - instance InstanceId
+    - scope ScopeId
+
+` The layout an instance has for the environment of a turn of a loop of its own.
+turn-layouts[pair-key(instance, scope)] ?? no-layout
+
+────────────────────
++ turn-place U32
+    - instance InstanceId
+    - scope ScopeId
+
+` The field of the environment of an instance that yields which keeps the environment of
+` the turn being run of a loop of its own, or `U32.max` where it keeps none.
+turn-places[pair-key(instance, scope)] ?? U32.max
+
+────────────────────
++ runtime-symbol StringId
+    - function RuntimeFunction
+
+runtime-symbols[function]
+
+────────────────────
++ do declared-at MIRLoc?
+    - function FunctionId
+
+` Where the declaration whose body a function holds is written, which a stack trace names for
+` a place in the function's code no line stands behind, as its prologue. None for a function
+` that holds no declaration's body.
+. row = functions[function]
+if row.instance == no-instance
+    = null
+if row.kind != .instance-body && row.kind != .viewed-body && not-generator && not-constructor
+    = null
+.. not-generator = row.kind != .generator-body
+.. not-constructor = row.kind != .constructor-body
+. declared = instances.rows[row.instance]
+. syntax SyntaxId = 0
+do match? program.modules[declared.module].decls[declared.decl]
+    | .decl-function(fn)
+        syntax = fn.syntax
+    | .decl-converter(converter)
+        syntax = converter.syntax
+    | .decl-fromverter(fromverter)
+        syntax = fromverter.syntax
+if syntax == 0
+    = null
+. begin = program.modules[declared.module].tree.nodes.loc[syntax].begin
+= MIRLoc
+    - module-paths[declared.module]
+    - true
+    - (begin.line + 1) as I32
+    - (begin.column + 1) as I32
+    - 0
+    - 0
+
+────────────────────
++ do delegates Bool
+    - type TypeId
+
+` Whether a type, or one it is derived from, answers some interface through a property.
+. current = type
+while current != no-type && current != invalid-type
+    if types.delegates-of(current).length != 0
+        = true
+    current = types.completions[current].base
+= false
+
+────────────────────
++ do derives Bool
+    - type TypeId
+    - base TypeId
+
+` Whether a class is derived from another, and is not that class.
+. current = types.completions[type].base
+while current != no-type && current != invalid-type
+    if current == base
+        = true
+    current = types.completions[current].base
+= false
+
+────────────────────
++ do section-offset U32
+    - interface TypeId
+    - owner TypeId
+
+` Where the section of an interface starts in a witness table for one derived from it,
+` counted in slots, or no slot where the one is not derived from the other.
+. order [TypeId]
+gather-sections(interface, order)
+. offset U32
+for section in order
+    if section == owner
+        = offset
+    offset += witness-header-slots + slot-counts[section]
+= no-slot-index
+
+────────────────────
++ do witness-slot-function FunctionId
+    - symbol StringId
+    - offset U32
+
+if offset % table-slot-size != 0 || offset / table-slot-size < witness-header-slots
+    = no-function
+. slot = offset / table-slot-size - witness-header-slots
+for row in witnesses
+    if row.symbol != symbol
+        continue
+    for position in 0 .. < prototypes.length
+        . proto = prototypes[position]
+        if instances.rows[proto].self-type == row.interface && slots[proto] == slot
+            . made = witness-made[pair-key(row.value, proto)] ?? own-function
+            = if made == own-function then instance-functions[proto] else witness-function
+                .. witness-function = witness-functions[made].function
+    = no-function
+= no-function
+
+────────────────────
++ receiver-view TypeId
+    - instance InstanceId
+
+` The interface an instance's receiver is seen as, where the instance is a function of an
+` interface run for a value of a type that is none: the type pass gave its receiver the
+` interface's type. No type for any other instance.
+interface-default-owner(types, program, row.module, row.decl, row.self-type)
+
+.. row = instances.rows[instance]
+
+────────────────────
++ witness-of U32
+    - value TypeId
+    - interface TypeId
+
+` The witness table of a type for an interface, or none.
+witness-rows[pair-key(value, interface)] ?? no-slot-index
+
+────────────────────
++ is-prototype Bool
+    - callee InstanceId
+
+` Whether a call of an instance is made through the slot it has in a witness table.
+callee != no-instance && slots[callee] != no-slot-index && called-through[callee] != 0
+
+────────────────────
++ const-array-row U32
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The ConstArray made at a node with a constant table, as its row of the type pass's facts,
+` or none where it has none.
+if found then found else U32.max
+
+.. found = const-array-rows[pair-key(instance, syntax)]
+
+────────────────────
++ const-array-symbol StringId
+    - row U32
+
+const-array-symbols[row]
+
+────────────────────
++ remap-symbol StringId
+    - projection U32
+
+` The constant table of the case numbers a style-sheet projection gives a union's cases.
+remap-symbols[projection]
+
+────────────────────
++ remap-number U32
+    - projection U32
+
+remap-numbers[projection]
+
+────────────────────
++ forward-function FunctionId
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The function made for a member a union forwards at a node, or none where it is made in
+` place.
+if found then forward-functions[found] else no-function
+
+.. found = forward-rows[pair-key(instance, syntax)]
+
+────────────────────
++ forward-unbuilt Bool
+    - instance InstanceId
+    - syntax SyntaxId
+
+` Whether a member a union forwards at a node needs a function of its own and has none.
+|? !found
+    false
+??
+    forward-needs[found] != 0 && forward-functions[found] == no-function
+
+.. found = forward-rows[pair-key(instance, syntax)]
+
+────────────────────
++ forward-of ForwardFact
+    - function FunctionId
+
+` The member a union forwards that a function was made for, placed where it is forwarded first.
+facts.forwards[functions[function].place]
+
+────────────────────
++ do forward-get SyntaxId
+    - forward ForwardFact
+
+` The member a union forwards as written: the name read from the union.
+. tree = program.modules[instances.rows[forward.instance].module].tree
+do match? tree.nodes[forward.syntax]
+    | .node-call-expression(call)
+        = call.callable
+    | .node-get-expression
+        = forward.syntax
+= 0
+
+────────────────────
++ do forward-arguments RowRange'SyntaxId
+    - forward ForwardFact
+
+` The arguments written for a member a union forwards, none for one read.
+. tree = program.modules[instances.rows[forward.instance].module].tree
+do match? tree.nodes[forward.syntax]
+    | .node-call-expression(call)
+        = call.operands
+= RowRange'SyntaxId()
+
+────────────────────
++ argument-expression SyntaxId
+    - tree AST
+    - argument SyntaxId
+
+` The expression of an argument written: what follows its name, when it has one.
+match tree.nodes[argument]
+    | .node-argument(named)
+        named.expr
+    ??
+        argument
+
+────────────────────
++ is-region Bool
+    - instance InstanceId
+
+` Whether an instance is the body of a `do @no-gc` block.
+instance < task-count && task-bodies[instance] == 2
+
+────────────────────
++ growth-of FunctionId
+    - row TypeId
+    - part U32
+
+` The function that grows the storage of tables of a type of row: their rows where `part` is
+` 0, and the outside bytes of a union's where it is 1. None where the tables declared none.
+growth-rows[(row as Size) * 2 + (part as Size)] ?? no-function
+
+────────────────────
++ do raising-rule-of FunctionId
+    - instance InstanceId
+    - rule SyntaxId
+    - given TypeId
+
+` The function of a rule, or of a local rule of one, for calls that give the rule a pattern
+` whose function returns `given`, its answer or one of several errors, or none.
+for position in 0 .. < facts.raising-rules.length
+    . row = facts.raising-rules[position]
+    if row.instance == instance && row.rule == rule && row.given == given
+        = raising-functions[position]
+= no-function
+
+────────────────────
++ pattern-raises TypeId
+    - instance InstanceId
+    - syntax SyntaxId
+
+` What the function made of a pattern an instance gives a rule returns where it may raise
+` errors, its answer or one of them: one that runs a local rule of a rule that raises errors
+` as a function of its own. None for any other pattern.
+|? id == no-function || functions[id].kind != .pattern-helper
+    no-type
+|? raises-nothing || row.local == 0 || lazy-rule-rows[pair-key(row.instance, row.local)] == null
+    no-type
+??
+    row.raised
+
+.. id = pattern-argument-rows[pair-key(instance, syntax)] ?? no-function
+.. row = facts.pattern-arguments[functions[id].place]
+.. raises-nothing = row.raised == no-type
+
+────────────────────
++ do mapping-names StringId
+    - tree AST
+    - mappings RowRange'SyntaxId
+
+` The names of a rule's that a call gives collectors for, in the order written, joined by
+` commas, or none where it gives none.
+if mappings.count == 0
+    = no-string
+. joined = ""
+for mapping in tree.children[mappings]
+    do match? tree.nodes[mapping]
+        | .node-stream-collector-mapping(row)
+            . name = if row.callee then row.callee.text else row.caller.text
+            joined = if joined.length == 0 then name else "$joined,$name"
+= bundle.intern(joined)
+
+────────────────────
++ do mapped-rule-of FunctionId
+    - instance InstanceId
+    - rule SyntaxId
+    - names StringId
+
+` The function of a rule, or of a local rule of one, for a set of collectors calls give it.
+for mapping in rule-mappings
+    if mapping.instance == instance && mapping.rule == rule && mapping.names == names
+        = mapping.function
+= no-function
+
+────────────────────
++ lazy-rule-of FunctionId
+    - instance InstanceId
+    - rule SyntaxId
+
+` The function a local rule of a rule runs in, or none where it runs where it is called.
+lazy-rule-rows[pair-key(instance, rule)] ?? no-function
+
+────────────────────
++ rule-adapter-of FunctionId
+    - instance InstanceId
+    - rule SyntaxId
+
+` The function a call of a local rule beside a match from the rule's own arms calls, given
+` the stream, which runs the rule's own function on the stream's view; or none.
+rule-adapter-rows[pair-key(instance, rule)] ?? no-function
+
+────────────────────
++ reads-rule Bool
+    - instance InstanceId
+    - rule SyntaxId
+
+` Whether a call of a local rule that runs as a function of its own reads what the function
+` gives. Where none does, each call takes only whether it passed and where it ended.
+read-rule-rows[pair-key(instance, rule)] != null
+
+────────────────────
++ lazy-rule-decl SyntaxId
+    - function EmittedFunction
+
+` The declaration of the local rule a function runs, or none where it runs none.
+|? function.kind == .lazy-rule || function.kind == .rule-adapter
+    function.place
+|? function.kind == .mapped-rule
+    rule-mappings[function.place].rule
+|? function.kind == .raising-rule
+    facts.raising-rules[function.place].rule
+??
+    0
+
+────────────────────
++ pattern-environment LayoutId
+    - place U32
+
+` The layout of the memory the function made of a pattern reads what it is given from, or
+` none.
+pattern-environments[place] ?? no-layout
+
+────────────────────
++ pattern-argument-of FunctionId
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The function a pattern given to a rule is passed as, or none.
+pattern-argument-rows[pair-key(instance, syntax)] ?? no-function
+
+────────────────────
++ machine-handler-of FunctionId
+    - group U32
+
+` The handler a state machine's subscriber runs for a group of its event transitions, which the
+` cast of it and the activation that runs the cast follow, or none.
+machine-handler-rows[group] ?? no-function
+
+────────────────────
++ machine-part-of FunctionId
+    - instance InstanceId
+
+` The part of a machine merged with others, the function they call (`emit-machine-part`), by the
+` instance of its own function, or none.
+machine-part-rows[instance] ?? no-function
+
+────────────────────
++ machine-stop-of FunctionId
+    - instance InstanceId
+
+` The function that stops a machine a class's property holds (`stops-at-close`), by the
+` instance of its own function, or none.
+machine-stop-rows[instance] ?? no-function
+
+────────────────────
++ stops-at-close Bool
+    - machine MachineFact
+
+` Whether a machine is one a class's property holds, and none it refines, which gives the event
+` runtime what stops it as it starts, for the object's `close` to run (`event-stop-machines`).
+has-stop && machine.store == .store-member && machine.outer == 0 && machine.refined == no-instance
+
+.. has-stop = facts.machine-stop != no-instance
+
+────────────────────
++ stream-action-of FunctionId
+    - instance InstanceId
+    - arm SyntaxId
+
+` The function an action of a stream pattern runs in, or none.
+stream-action-rows[pair-key(instance, arm)] ?? no-function
+
+────────────────────
++ adapter-of FunctionId
+    - from TypeId
+    - to TypeId
+
+` The function a binding of a type runs as a value of a function type, or none.
+if found then adapters[found].function else no-function
+
+.. found = adapter-rows[pair-key(from, to)]
+
+────────────────────
++ query-function-of FunctionId
+    - query U32
+    - removes Bool = false
+
+` A function made for a markup query, by its row of `markup-queries`: the one that finds an
+` ancestor or adds a descendant, or with `removes` the one that takes a descendant away.
+query-functions[query * 2 + (if removes then 1 else 0)]
+
+────────────────────
++ do is-rerun Bool
+    - instance InstanceId
+
+` Whether an instance is the function a live action runs a live statement again with, tests
+` a `whenever` clause again with, selects the arm of a markup branch region again with, or
+` reads the container of a markup loop region again with.
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = live || fn.kind == .whenever-decl || fn.kind == .branch-decl || fn.kind == .source-decl
+            .. live = fn.kind == .live-decl
+= false
+
+────────────────────
++ live-adapter-of FunctionId
+    - target FunctionId
+
+` The adapter a live action calls a function through, which follows it.
+target + 1
+
+────────────────────
++ sheet-number U32
+    - sheet U32
+
+sheet-numbers[sheet]
+
+────────────────────
++ cell-type TypeId
+
+` The class of the state cells of `scope-cells`, `StyleScopeState`, as its constructor makes it,
+` or none where no cell is made.
+if made != no-instance then instances.rows[made].self-type else no-type
+
+.. made = facts.style-runtime.scope-state
+
+────────────────────
++ kept-layout-of LayoutId
+    - instance InstanceId
+
+` The environment a function that builds markup is given where it keeps state cells, or none.
+if position then kept-layouts[position] else no-layout
+
+.. position = kept-instances.find(instance)
+
+────────────────────
++ do given-row-items [RowItemRead]
+    - index U32
+
+. top = facts.style-applications[index]
+while top.outer != U32.max
+    top = facts.style-applications[top.outer]
+. result [RowItemRead]
+. slots [SlotId]
+. written = program.modules[top.module].tree
+. binding = instances.rows[top.instance].binding
+do match? written.nodes[top.written]
+    | .node-style-rule-application(applied)
+        for value in written.children[applied.args]
+            for node in written.subtree-start(value) .. value
+                . held = facts.row-item-of(top.instance, node)
+                if held == no-type
+                    continue
+                . resolution = bindings.resolution-of(binding, node)
+                if resolution.kind == .resolve-slot && slots.find(resolution.slot) == null
+                    slots += resolution.slot
+                    result += RowItemRead(top.instance, node, held)
+= result
+
+────────────────────
++ do given-receiver TypeId
+    - index U32
+
+` The receiver where the values of the application a site applies, around an application of
+` `style-applications`, are written: that of the instance that types them, or, where that one is
+` written in another and reads its receiver, such as an arm of a markup region, that of the one
+` it is written in.
+. top = facts.style-applications[index]
+while top.outer != U32.max
+    top = facts.style-applications[top.outer]
+. typing = if top.values != no-instance then top.values else top.instance
+while instances.rows[typing].self-type == no-type && instances.rows[typing].enclosing != no-instance
+    typing = instances.rows[typing].enclosing
+= instances.rows[typing].self-type
+
+────────────────────
++ do given-author U32
+    - application U32
+    - site SyntaxId
+
+` The place among `given-functions` of the function that declares again the line `site` of the
+` rule an application applies, or `U32.max`.
+for place in 0 .. < given-applications.length
+    if given-applications[place] == application && given-sites[place] == site
+        = place as U32
+= U32.max
+
+────────────────────
++ rule-function-of FunctionId
+    - index U32
+
+` The function a `shared` application of a style rule calls, or none.
+if found then found as FunctionId else no-function
+
+.. found = rule-function-rows[index]
+
+────────────────────
++ domain-number U32
+    - domain U32
+
+` The number the style runtime knows a domain of invalidation by: its place in the order the
+` style module's init registers the domains in (`Facts.domain-order`), which does not depend on
+` the order typing first named them in, as their places among `style-domains` do.
+domain-numbers[domain]
+
+────────────────────
++ do property-mask U32
+    - property U32
+    - parent Bool
+
+` The mask of the domains of invalidation a change to a property of `style-properties` raises on
+` the node, or on its parent, a bit for each domain's number (`domain-number`), from the
+` property's rows of `property-domains`. A domain no instance names any longer has no number and
+` no bit.
+. mask = 0u32
+for row in facts.property-domains
+    if row.property == property && row.parent == parent && domain-numbers[row.domain] != U32.max
+        mask = mask /or/ (1u32 /lshift/ domain-numbers[row.domain])
+= mask
+
+────────────────────
++ target-number U32
+    - target-id U32
+
+` The number the markup runtime knows the target of descendant queries by, as the type pass
+` numbers them from 1 (`Facts.query-targets`), or 0 for none: its place among them in the order
+` of the stable keys of their classes, which does not depend on the order typing found them in.
+if target-id != 0 then target-numbers[target-id - 1] else 0
+
+────────────────────
++ do target-ids-of [U32]
+    - level TypeId
+
+` The targets of descendant queries a constructor registers an object of the class `level` for
+` (`QueryRegistration`): each the class is or is below, as the type pass numbers them from 1
+` (`Facts.query-targets`), from all it numbered.
+. found [U32]
+for index in 0 .. < facts.query-targets.length
+    . target = facts.query-targets[index]
+    . held TypeId? = level
+    while held && types.intrinsic-of(held) == .class
+        if held == target
+            found += (index + 1) as U32
+            break
+        held = types.base-of(held)
+= found
+
+────────────────────
++ state-key-number U32
+    - key U32
+
+` The number the style runtime knows where a state cell is made by: the place of the key among
+` the `Instances.state-keys` of the cells `number-keys` numbers, in the order `state-key-order`
+` gives them, which does not depend on the order typing interned them in.
+state-key-numbers[key]
+
+────────────────────
++ style-module ModuleId
+
+` The module of the style runtime.
+class-ref(types, types.type-row(.style)).module
+
+────────────────────
++ do style-registrations [FunctionId]
+    - module ModuleId
+
+` The functions that register the styles a module declares, in the order of the places they
+` are registered at and then of the styles' declarations, so the order is the same however the
+` styles were numbered.
+. found [FunctionId]
+. keys [U64]
+for id in style-functions
+    if functions[id].module == module
+        . use = style-uses[functions[id].place]
+        add-registration(found, keys, id, use.module, use.site, use.type)
+= found
+
+────────────────────
++ do sheet-registrations [FunctionId]
+    - module ModuleId
+
+` The functions that register the style sheets a module declares, in the order of the places
+` they are registered at and then of the sheets' declarations.
+. found [FunctionId]
+. keys [U64]
+for id in sheet-functions
+    if functions[id].module == module
+        . use = style-sheet-uses[functions[id].place]
+        add-registration(found, keys, id, use.module, use.site, use.type)
+= found
+
+────────────────────
++ machine-receiver TypeId
+    - machine MachineFact
+
+` The class whose object a machine a property holds, or the class's content writes, is
+` written for: that of the receiver of the instance it is written in.
+if unit != no-instance then instances.rows[unit].self-type else no-type
+
+.. unit = instances.rows[machine.instance].enclosing
+
+────────────────────
++ do machine-classes [TypeId]
+    - machine MachineFact
+
+` The classes the program constructs whose objects run a machine, by rank: the class it is
+` written for, and where a property of that class holds it, each class below, which starts the
+` same machine (`find-unit`) or one that refines it, as each does where the class's markup
+` writes it, whose filler the filler of each class below runs.
+. type = machine-receiver(machine)
+. found [TypeId]
+if type == no-type
+    = found
+if machine.store != .store-member && machine.store != .store-content
+    if constructed[type] != 0
+        found += type
+    = found
+for class in types.ranked
+    if constructed[class] != 0 && is-class(class) && (class == type || derives(class, type))
+        found += class
+= found
+
+────────────────────
++ do constructs-from Bool
+    - type TypeId
+
+` Whether the program constructs a class that is a type or derives from it.
+for class in types.ranked
+    if constructed[class] != 0 && is-class(class) && (class == type || derives(class, type))
+        = true
+= false
+
+────────────────────
++ do refining-classes [TypeId]
+    - machine MachineFact
+
+` The classes the program constructs whose objects run a machine that refines a machine written
+` as a line of a class's markup, directly or through others, by rank: the class each refining
+` machine is written for and each class below it. Their objects start the machine with the one
+` that refines it, and not where the markup of the machine's class runs.
+. found [TypeId]
+if machine.store != .store-content || machine.outer != 0
+    = found
+. receivers [TypeId]
+for fact in facts.machines
+    if fact.store != .store-content || fact.outer != 0 || fact.refined == no-instance
+        continue
+    . current MachineFact? = facts.machine-of(fact.refined)
+    while current && current.instance != machine.instance
+        current = facts.machine-of(current.refined) if current.refined != no-instance
+    . type = machine-receiver(fact)
+    if current && type != no-type && receivers.find(type) == null
+        receivers += type
+if receivers.length == 0
+    = found
+for class in types.ranked
+    if constructed[class] == 0 || !is-class(class)
+        continue
+    for type in receivers
+        if class == type || derives(class, type)
+            found += class
+            break
+= found
+
+────────────────────
++ do leaf-classes [TypeId]
+    - machine MachineFact
+
+` The classes the program constructs whose objects start a machine a property of a class holds,
+` by rank: the class it is written for and each class below that declares the property no value
+` of its own (`find-unit`).
+. type = machine-receiver(machine)
+. found [TypeId]
+. name Atom? = null
+do match? program.modules[machine.module].decls[machine.decl]
+    | .decl-property(row)
+        name = row.name
+if type == no-type || machine.store != .store-member || !name
+    = found
+for class in types.ranked
+    if constructed[class] != 0 && is-class(class) && declaring(class, name) == type
+        found += class
+= found
+
+────────────────────
++ do init-constructor InstanceId
+    - module ModuleId
+
+` The constructor of the class whose sections the init of a module puts last in the event
+` runtime's tables, or none.
+for place in 0 .. < registered-modules.length
+    if registered-modules[place] == module
+        = registered-constructors[place]
+= no-instance
+
+────────────────────
++ class-rules-of [U32]
+    - type TypeId
+
+` The rules a constructor of a class runs once its body has run, in order, as rows of
+` `class-rules`.
+rules-from(class-rule-heads[type])
+
+────────────────────
++ first-application U32
+    - instance InstanceId
+
+` The place in `Facts.style-applications` of the first application of a style rule an instance
+` makes, or `U32.max`.
+application-heads[instance] ?? U32.max
+
+────────────────────
++ next-application U32
+    - place U32
+
+` The place of the application of a style rule the instance of one makes after it, or `U32.max`.
+application-links[place]
+
+────────────────────
++ markup-rules-of [U32]
+    - type TypeId
+
+` The rules the function that fills an object with the markup of a class runs once that markup
+` has, in order, as rows of `class-rules`.
+rules-from(markup-rule-heads[type])
+
+────────────────────
++ updater-of FunctionId
+    - place U32
+
+` The function that evaluates again the value of a property that reads something tracked, by
+` the property's place among all of them, or none.
+if place < default-count then updater-functions[place] else no-function
+
+────────────────────
++ default-runs-code Bool
+    - instance InstanceId
+    - syntax SyntaxId
+
+` Whether the default of a parameter of an instance runs code: any but a constant, and a
+` constant too where the type pass recorded a call for it, as it does for a number written
+` with a unit whose class declares a constructor.
+!is-literal-value(types, owner.tree, syntax) || facts.first-call(instance, syntax) != no-fact
+
+.. owner = program.modules[instances.rows[instance].module]
+
+────────────────────
++ is-called-default Bool
+    - instance InstanceId
+    - syntax SyntaxId
+
+` Whether a call that leaves a parameter out evaluates its default there, by a function of
+` the default's own, as TypeScript does for a default that runs code and is no constant.
+default-runs-code(instance, syntax) && !is-constant-default(instance, owner.tree, syntax)
+
+.. owner = program.modules[instances.rows[instance].module]
+
+────────────────────
++ storage-of U32
+    - module ModuleId
+    - decl DeclId
+
+` The storage of a global, or none for one the type pass typed no value of.
+storage-rows[storage-starts[module] + decl]
+
+────────────────────
++ global-kind GlobalKind
+    - module ModuleId
+    - decl DeclId
+
+global-kinds[storage-starts[module] + decl] as GlobalKind
+
+────────────────────
++ do default-storage U32
+    - callee InstanceId
+    - syntax SyntaxId
+
+` The storage of a default that runs code, by the instance whose parameter it is and the
+` default written, or none.
+. row = default-starts[callee]
+while row != no-storage && row < storage.length && storage[row].owner == callee
+    if storage[row].syntax == syntax
+        = row
+    row += 1
+= no-storage
+
+────────────────────
++ first-default U32
+    - module ModuleId
+
+` The first default a module evaluates as it starts, or none.
+module-defaults[module]
+
+────────────────────
++ do global-name String
+    - row GlobalStorage
+
+` The name a global is written with.
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-property(property)
+        if property.name
+            = property.name.text
+= ""
+
+────────────────────
++ lazy-function-result TypeId
+    - place U32
+
+` What the function of a lazy property, by the place it has, answers where the value it
+` evaluates lets out errors: the value or one of them. No type where the value lets out none.
+|? unit == no-instance || instances.signatures[unit].errors.count == 0
+    no-type
+??
+    instances.signatures[unit].result
+
+.. unit = value-units[place]
+
+────────────────────
++ lazy-result TypeId
+    - place U32
+
+` What a read of a lazy property through its slot answers where the value some class writes
+` for it lets out errors (see `note-lazy-result`), or no type where none does.
+|? lazy-roots[place] == U32.max || lazy-results[lazy-roots[place]] == U32.max
+    no-type
+??
+    lazy-results[lazy-roots[place]]
+
+────────────────────
++ lazy-raises Bool
+    - place U32
+
+` Whether a read of a lazy property through its slot may panic: the value some class writes
+` for it may.
+lazy-roots[place] != U32.max && lazy-raising[lazy-roots[place]] != 0
+
+────────────────────
++ lazy-runs Bool
+    - place U32
+
+` Whether a read of a lazy property through its slot may run: the slot holds a function in
+` some table, as some class the program constructs an object of has the property.
+lazy-roots[place] != U32.max && lazy-written[lazy-roots[place]] != 0
+
+────────────────────
++ event-number U32
+    - owner TypeId
+    - name Atom
+
+` The number the event runtime knows a live event by, or `U32.max` for one that is not live.
+if index != U32.max then event-numbers[index] else U32.max
+
+.. index = event-index(owner, name)
+
+────────────────────
++ do metric-key String
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The key a metric of the profile is declared under: the one its probe is written with, or for a
+` stream pattern the counter the reference names for its results.
+do match? program.modules[instances.rows[instance].module].tree.nodes[syntax]
+    | .node-probe-counter(row)
+        = row.key.text
+    | .node-probe-group(row)
+        = if row.key then row.key.text else ""
+= "stream-pattern.capture-results"
+
+────────────────────
++ do probe-site ProbeSite?
+    - probe ProbeRow
+
+. site = ProbeSite()
+if probe.instance == no-instance
+    site.key = compiler-count-key(probe.part)
+    if (probe.part as Size) >= collector-counts.length && event-site-instance != no-instance
+        . counted = program.modules[instances.rows[event-site-instance].module]
+        site.module-name = counted.name
+        site.path = counted.path
+        site.line = (counted.tree.nodes.loc[event-site].begin.line + 1) as U32
+    = site
+. owner = program.modules[instances.rows[probe.instance].module]
+. tree = owner.tree
+site.module-name = owner.name
+site.path = owner.path
+site.line = (tree.nodes.loc[probe.syntax].begin.line + 1) as U32
+. slots = probe.types.count as Size
+do match? tree.nodes[probe.syntax]
+    | .node-probe(row)
+        site.key = if row.key then row.key.text else ""
+        if row.name
+            . named = row.name.text
+            site.kind = .event
+            site.name = named
+            site.fields = slot-names(probe-field-names(tree, row.content, false), slots, false)
+        else
+            site.kind = .log
+            site.template = probe-template(tree, row.content)
+            site.fields = slot-names(probe-field-names(tree, row.content, true), slots, false)
+        = site
+    | .node-probe-assign(row)
+        site.kind = .event
+        site.key = row.key.text
+        site.name = "set-property"
+        site.fields = slot-names(["property", "value"], slots, false)
+        = site
+    | .node-probe-counter(row)
+        site.key = row.key.text
+        = site
+    | .node-probe-group(row)
+        site.key = if row.key then row.key.text else ""
+        . opens = row.is-begin && probe.part == 0
+        . named = probe-field-names(tree, row.content, true)
+        . held = !ends-in-log(probe.instance, probe.syntax, probe.part)
+        site.kind = .log
+        if row.is-data
+            site.kind = .event
+            site.name = if opens then "groupBegin" else "groupEnd"
+        else if !held
+            site.template = probe-template(tree, row.content)
+        else
+            site.name = if opens then "groupBegin" else "groupEnd"
+            site.template = if opens then probe-template(tree, row.content) else ""
+        site.fields = slot-names(named, slots, held)
+        = site
+= null
+
+────────────────────
++ do selects-any Bool
+    - selection ProbeSelection
+
+for probe in probes
+    if probe.instance == no-instance
+        =? true if selection.compiles-metrics(compiler-count-key(probe.part))
+        continue
+    . owner = program.modules[instances.rows[probe.instance].module]
+    =? true if selection.compiles-node(owner.name, owner.tree, probe.syntax)
+for metric in profile-metrics
+    . owner = program.modules[instances.rows[metric.instance].module]
+    =? true if selection.compiles-node(owner.name, owner.tree, metric.syntax)
+    =? true if selection.compiles-metrics(metric-key(metric.instance, metric.syntax))
+= false
+
+────────────────────
++ do metric-site ProbeSite
+    - metric ProbeRow
+
+. owner = program.modules[instances.rows[metric.instance].module]
+. site = ProbeSite()
+site.kind = if metric.part == 2 then .timer else ProbeSiteKind.counter
+site.key = metric-key(metric.instance, metric.syntax)
+site.module-name = owner.name
+site.path = owner.path
+site.line = (owner.tree.nodes.loc[metric.syntax].begin.line + 1) as U32
+= site
+
+────────────────────
++ compiler-count-key String
+    - count U32
+
+` The key of a count the compiler keeps of its own accord: of what the collector did, the cycles it
+` collected, the pauses it made and the time it spent assisting, and then of what events do, in the
+` order of `EventCount`.
+match count
+    |= 0
+        "gc.cycles"
+    |= 1
+        "gc.pauses"
+    |= 2
+        "gc.assist.nanos"
+    ??
+        "event.${event-count-names[count - 3]}"
+
+────────────────────
++ probe-class-id U16
+    - type TypeId
+
+` The id the probes module knows the class of an object or an array by, numbered after the probe
+` data types in the order the classes are kept, or none.
+if found then (17 + found) as U16 else 0
+
+.. found = probe-classes.find(probe-class-name(types, type))
+
+────────────────────
++ probe-number U32
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The place of a probe an instance compiles among those the record of probes declares, counted
+` from one, or none.
+probe-rows[pair-key(instance, syntax)] ?? 0
+
+────────────────────
++ compiles-features Bool
+    - features CompilerFeature
+
+observes || (features /and/ CompilerFeature.collection-observers) == 0
+
+────────────────────
++ event-use-of EventUse?
+    - instance InstanceId
+    - site SyntaxId
+
+facts.event-uses[place] if place
+
+.. place = event-use-places[site-key(instance, site)]
+
+────────────────────
++ owned-subscription-of OwnedSubscription?
+    - instance InstanceId
+    - site SyntaxId
+
+facts.owned-subscriptions[place] if place
+
+.. place = subscription-places[site-key(instance, site)]
+
+────────────────────
++ live-statement-of LiveStatement?
+    - instance InstanceId
+    - site SyntaxId
+
+facts.live-statements[place] if place
+
+.. place = live-statement-places[site-key(instance, site)]
+
+────────────────────
++ do has-initializer Bool
+    - callee InstanceId
+
+` Whether a constructor is one written in source for a class, which `super(…)` runs on the
+` object being made. One the compiler generates stores nothing then and runs nothing, and
+` one that returns a value of its own has no object to run on.
+if callee == no-instance
+    = false
+. row = instances.rows[callee]
+if !is-class(row.self-type) || returns-own(callee)
+    = false
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = !fn.is-generated && fn.kind == .constructor-decl
+= false
+
+────────────────────
++ do fills-apart Bool
+    - instance InstanceId
+
+` Whether a constructor runs its body in a function of its own, as the reference shares the body
+` among the styles the constructor is made for: one that fills its object with its class's
+` markup and raises no error. Its own function calls that one, then fills the object, so a
+` panic in the body shows both.
+if facts.filler-of(instance) == no-fact || instances.signatures[instance].errors.count != 0
+    = false
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.kind == .default-constructor-decl || fn.kind == .constructor-decl
+= false
+
+────────────────────
++ returns-own Bool
+    - callee InstanceId
+
+` Whether a constructor written in source returns a value of its own, as the type pass said
+` of it where it typed its body. It constructs what it returns, and makes nothing of its
+` class.
+callee != no-instance && instances.rows[callee].returns-own
+
+────────────────────
++ do writes-constructor Bool
+    - type TypeId
+
+` Whether a type, or one it is derived from, declares a constructor written in source. With
+` no value written for it, a tuple or struct of such a type is what the constructor the type
+` pass chose makes, which the first values of its fields do not say.
+. current = type
+while current != no-type && current != invalid-type
+    . module ModuleId = 0
+    . decl DeclId = 0
+    . declared = false
+    do match? types.rows[current]
+        | .type-class(row)
+            module = row.module
+            decl = row.decl
+            declared = true
+        | .type-tuple(row)
+            module = row.module
+            decl = row.decl
+            declared = true
+        | .type-struct(row)
+            module = row.module
+            decl = row.decl
+            declared = true
+    if declared && writes-own-constructor(module, decl)
+        = true
+    current = types.completions[current].base
+= false
+
+────────────────────
++ do builds-in-frame Bool
+    - callee InstanceId
+
+` Whether a callee is a constructor the compiler generates for a tuple or struct: one that
+` gives each field an argument or its first value. A call of it builds the value where the
+` call is, so it is visited for what the first values call, and is no function.
+. row = instances.rows[callee]
+if row.self-type == no-type || row.self-type == invalid-type
+    = false
+. kind = types.completions[row.self-type].intrinsic
+if kind != .tuple && kind != .struct && kind != .array-builder
+    = false
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        . fills = fn.kind == .tuple-constructor-decl || fn.kind == .default-constructor-decl
+        = fn.is-generated && fills
+= false
+
+────────────────────
++ do loose-call FactId
+    - instance InstanceId
+    - syntax SyntaxId
+
+` The call recorded for an instance at a node outside its body, or no fact when none is
+` recorded there, or more than one.
+. found = no-fact
+. loose = loose-call-heads[instance]
+while loose != no-fact
+    . fact = facts.loose-calls[loose].fact
+    if facts.calls[fact].syntax == syntax
+        if found != no-fact
+            = no-fact
+        found = fact
+    loose = loose-call-links[loose]
+= found
+
+────────────────────
++ default-of PropertyDefault
+    - type TypeId
+    - property U32
+
+` The value written for a property of a type, by the property's place among all of them.
+` It is kept for each property of a class the program constructs, so a worker that builds
+` one reads no class.
+|? property < default-count && default-rows[property] != U32.max
+    defaults[default-rows[property]]
+|? found.site != 0 || row.owner == no-type
+    found
+??
+    tuple-default(type, row.owner, row.name)
+
+.. row = types.properties[property]
+.. found = property-default(if row.owner != no-type then row.owner else type, row.name)
+
+────────────────────
++ value-unit InstanceId
+    - place U32
+
+` The instance whose facts the value written for a property has, by the property's place
+` among all of them, or no instance: the type pass typed none, or the program makes no value
+` of the property's type. It is kept for each property, so a worker reads no table of
+` instances.
+if place < default-count then value-units[place] else no-instance
+
+────────────────────
++ first-read FactId
+    - unit InstanceId
+
+` The first of the properties the value an instance types reads of its receiver, or no fact.
+read-heads[unit]
+
+────────────────────
++ next-read FactId
+    - read FactId
+
+read-links[read]
+
+────────────────────
++ do dynamic-slot U32
+    - type TypeId
+    - interface TypeId
+
+` Where the table of a class keeps the table of an interface that classes below it declare
+` (`record-dynamic-witness`): the slot holds the table of the object's class, or nothing where
+` its class declares none. None where the class has no table.
+. index = table-indexes[type]
+if index == U32.max
+    = no-slot-index
+. entries = class-tables[index].entries
+for position in entries.start .. < entries.start + entries.count
+    if table-protos[position] == witness-proto + interface
+        = position - entries.start
+= no-slot-index
+
+────────────────────
++ is-recursive Bool
+    - instance InstanceId
+
+instance < instances.length && recursive[instance] != 0
+
+────────────────────
++ is-bounded Bool
+    - instance InstanceId
+
+` Whether a function that runs where the collector never sees it reaches no safepoint and
+` cannot panic, so that a call of it from outside that zone need not enter the zone.
+instance < instances.length && bounded[instance] != 0
+
+────────────────────
++ do mark-bounded
+    - instance InstanceId
+
+bounded[instance] = 1
+
+────────────────────
++ finish-of U32
+    - function FunctionId
+
+if instance < instances.length then finishes[instance] else U32.max
+
+.. instance = functions[function].instance
+
+────────────────────
++ do asks-inline Bool
+    - instance InstanceId
+
+. row = instances.rows[instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        do match? program.modules[row.module].tree.nodes[fn.syntax]
+            | .node-function-syntax(syntax)
+                = syntax.is-inline
+    | .decl-converter(converter)
+        do match? program.modules[row.module].tree.nodes[converter.syntax]
+            | .node-converter-syntax(syntax)
+                = syntax.is-inline
+= false
+
+────────────────────
++ is-overridden Bool
+    - callee InstanceId
+
+` Whether some subclass declares a method or a converter again, so that a call of it must
+` choose by the object's class.
+overridden[callee] != 0
+
+────────────────────
++ raises-through Bool
+    - callee InstanceId
+
+` Whether a call through the slot of an instance may panic: some function a table holds in
+` that slot may.
+raising[callee] != 0
+
+────────────────────
++ is-class Bool
+    - type TypeId
+
+types.is-class-type(type)
+
+────────────────────
++ do want-type-constant
+    - type TypeId
+
+` Notes that emitted code names a type's constant.
+if rtti-states[type] == 0
+    rtti-states[type] = 1
+
+────────────────────
++ do add-type-constants
+
+` Adds the constant of each type emitted code named, in the order of the types: the type's
+` name, its key, and its property table or zero.
+for type in types.ranked
+    if rtti-states[type] == 1
+        add-type-constant(type)
+
+────────────────────
++ runs-statement Bool
+    - module ModuleId
+    - decl DeclId
+    - tree AST
+    - statement SyntaxId
+
+` Whether a statement of a function of a module runs where it is written: one that neither
+` declares something nor is a comment, or a line written as a comment that is a log whose probe
+` compiles.
+is-executable-statement(tree, statement) || (is-comment-syntax(tree, statement) && probe-compiles)
+
+.. probe-compiles = program.compiles-probe(module, decl, statement)
 
 ────────────────────
 _ do mark-memo-places
@@ -1076,7 +2170,7 @@ overridden = arena.allocate'Byte(count)
 for position in 0 .. < count
     overridden[position] = 0
 for fact in facts.overrides
-    if instances.rows[fact.override].may-panic
+    if fact.override != no-instance && instances.rows[fact.override].may-panic
         overridden[fact.base] = 2
     else if overridden[fact.base] == 0
         overridden[fact.base] = 1
@@ -1193,41 +2287,6 @@ for offset in 0 .. < fill-count
     . owner = facts.fills[id].instance
     fill-links[id] = fill-heads[owner]
     fill-heads[owner] = id
-
-────────────────────
-+ do fill-of FactId
-    - instance InstanceId
-    - name Atom
-
-` The fact that says a constructor fills the property of this name itself, or none.
-. fact = fill-heads[instance]
-while fact != no-fact
-    if facts.fills[fact].name == name
-        = fact
-    fact = fill-links[fact]
-= no-fact
-
-────────────────────
-+ do loose-conversion FactId
-    - instance InstanceId
-    - site SyntaxId
-    - from TypeId
-    - reason ConversionReason = .reason-assignment
-    - to TypeId = no-type
-
-` The conversion of a value of one type that an instance recorded for one reason at a node
-` outside its body, or none. A constructor's are at the properties its arguments fill, and
-` at those it constructs with no value written, for the defaults that construction takes,
-` which may convert values of one type to several: `to` names the one wanted, where given.
-. loose = loose-conversion-heads[instance]
-while loose != no-fact
-    . id = facts.loose-conversions[loose].fact
-    . fact = facts.conversions[id]
-    if fact.syntax == site && fact.reason == reason && fact.from == from && wanted
-        = id
-    .. wanted = to == no-type || fact.to == to
-    loose = loose-conversion-links[loose]
-= no-fact
 
 ────────────────────
 _ do lay-environments
@@ -1400,24 +2459,6 @@ do match? program.modules[row.module].decls[row.initializer]
 = false
 
 ────────────────────
-+ holds-environment Bool
-    - scope ScopeId
-
-` Whether a run of the function of a scope makes an environment: for the locals it declares
-` that nested functions capture, or for the link alone where a nested function written in
-` it captures a local from further out. Each run of such a function is then told apart by
-` the functions it writes, as the reference tells them apart.
-scope-captures[scope] != 0 || scope-links[scope] != 0
-
-────────────────────
-+ is-turn-scope Bool
-    - scope ScopeId
-
-` Whether a scope runs anew each time and has a turn where nested functions capture its names:
-` a loop's body, or the activation of a case or continuation of a state machine.
-bindings.scopes[scope].kind == .scope-loop || bindings.scopes[scope].kind == .scope-activation
-
-────────────────────
 _ do function-scope ScopeId
     - scope ScopeId
 
@@ -1588,13 +2629,6 @@ for offset in 0 .. < bound.slots.count
     . plain = row.kind == .slot-argument || row.kind == .slot-local
     if plain && needed[offset] == 0 && (row.flags /and/ SlotFlag.slot-shared-read) != 0
         unneeded[slot] = 1
-
-────────────────────
-+ holds-lazy Bool
-    - slot SlotId
-
-` Whether a lazy local nested functions capture is held as an eager local is (`settle-held`).
-lazy-held[slot] != 0
 
 ────────────────────
 _ do may-hold Bool
@@ -1885,31 +2919,6 @@ for hold in facts.stack-holds
 = false
 
 ────────────────────
-+ do stack-place U32
-    - owner InstanceId
-    - decl DeclId
-    - row U32
-
-` The place in a function's environment of the state of a global `do with` binds that a
-` lambda written there holds, or none.
-for position in 0 .. < place-owners.length
-    if place-owners[position] == owner && place-decls[position] == decl && same-row
-        = place-children[position]
-    .. same-row = place-rows[position] == row
-= U32.max
-
-────────────────────
-+ do holds-stacks Bool
-    - instance InstanceId
-
-` Whether a function's environment holds the state of a global `do with` binds for a lambda
-` written there.
-for owner in place-owners
-    if owner == instance
-        = true
-= false
-
-────────────────────
 _ do lay-captures
 
 ` Lays out the capture of the body of each spawned task emitted, and of each `do @no-gc`
@@ -1981,134 +2990,6 @@ for row in stacks
     children += storage[row].layout
     held += no-type
 = layouts.environment(children, held, "capture.${hex-text(instances.stable-keys[instance])}")
-
-────────────────────
-+ copies Bool
-    - instance InstanceId
-    - slot SlotId
-
-` Whether the body of a spawned task copies a name it captures where it is spawned. As
-` TypeScript's, it copies what the function that spawns it declares, where the value of a
-` lazy local is evaluated, and its receiver, and shares any other name with the functions
-` around it through the link its capture holds, a lazy local too, and a state machine's
-` projection, which it reads as the machine is when the body reads it. It copies the flags of a
-` machine the function keeps in a local, as it copies the local.
-|? bindings.slots[slot].kind == .slot-machine && bindings.slots[slot].name.text != "(active)"
-    false
-|? enclosing != no-instance && instance-scopes[enclosing] == slot-functions[slot]
-    true
-??
-    bindings.slots[slot].kind == .slot-this
-
-.. enclosing = instances.rows[instance].enclosing
-
-────────────────────
-+ refers Bool
-    - instance InstanceId
-    - slot SlotId
-
-` Whether the body of a `do @no-gc` block reaches a local or an argument its capture holds
-` (`copies`) through its address, where the function that runs the block keeps it: the block
-` runs there, before anything after it, so what it assigns is that function's own.
-is-region(instance) && copies(instance, slot) && (kind == .slot-local || kind == .slot-argument)
-
-.. kind = bindings.slots[slot].kind
-
-────────────────────
-+ do links-capture Bool
-    - instance InstanceId
-
-` Whether the capture of a spawned task's body holds a link to the environment in force where
-` it was spawned: where the body shares a name it captures.
-if capture-rows[instance] == U32.max
-    = false
-. captured = bindings.nested[capture-rows[instance]].captures
-for index in 0 .. < captured.count
-    if !copies(instance, bindings.captures[captured.start + index].slot)
-        = true
-= false
-
-────────────────────
-+ do capture-field U32
-    - instance InstanceId
-    - slot SlotId
-
-` The field of the capture of a spawned task's body that holds a name it copies, or none.
-if capture-rows[instance] == U32.max
-    = U32.max
-. captured = bindings.nested[capture-rows[instance]].captures
-. field U32 = if links-capture(instance) then 1 else 0
-for index in 0 .. < captured.count
-    . other = bindings.captures[captured.start + index].slot
-    if copies(instance, other)
-        if other == slot
-            = field
-        field += 1
-= U32.max
-
-────────────────────
-+ do capture-stacks U32
-    - instance InstanceId
-
-` The first field of the capture of a spawned task's body that holds the state of a global
-` `do with` binds, after the link and what the body copies.
-if capture-rows[instance] == U32.max
-    = 0
-. captured = bindings.nested[capture-rows[instance]].captures
-. field U32 = if links-capture(instance) then 1 else 0
-for index in 0 .. < captured.count
-    if copies(instance, bindings.captures[captured.start + index].slot)
-        field += 1
-= field
-
-────────────────────
-+ do holds-unmade Bool
-    - instance InstanceId
-
-` Whether a nested function holds the state of a global `do with` binds where nothing writes
-` it: one that is neither a lambda, a comprehension nor a spawned task's body, a list of
-` bullets or the right side of a pipe, which has no shape for it. The body of a `do @no-gc`
-` block holding one is not built (`lay-capture`).
-if facts.stack-holds.length == 0 || copies-in(instance)
-    = false
-. row = instances.rows[instance]
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        if !is-nested-kind(fn.kind) || fn.kind == .closure-decl
-            = false
-        if fn.kind == .iterator-decl
-            do match? program.modules[row.module].tree.nodes[fn.syntax]
-                | .node-iterator-expression
-                    = false
-        = stack-holds(instance).length != 0
-= false
-
-────────────────────
-+ do stack-holds [U32]
-    - instance InstanceId
-
-` The storage of each global `do with` binds whose state a nested function holds, in the
-` order the type pass recorded them; none where one is not kept.
-. rows [U32]
-for hold in facts.stack-holds
-    if hold.instance == instance
-        . row = storage-of(hold.module, hold.decl)
-        rows += if global-kind(hold.module, hold.decl) == .global-stack then row else no-storage
-= rows
-
-────────────────────
-+ do stack-needs [U32]
-    - instance InstanceId
-
-` The storage of each global `do with` binds that an instance reads outside its own bindings
-` of it, itself or through what it calls, in the order the type pass recorded them; none
-` where one is not kept.
-. rows [U32]
-for need in facts.stack-needs
-    if need.instance == instance
-        . row = storage-of(need.module, need.decl)
-        rows += if global-kind(need.module, need.decl) == .global-stack then row else no-storage
-= rows
 
 ────────────────────
 _ do captured-type TypeId
@@ -2192,31 +3073,6 @@ for offset in 0 .. < bound.scopes.count
     turn-layouts[pair-key(instance, loop)] = if built then layouts.environment(children, held, name) else unbuilt-environment
 
 ────────────────────
-+ turn-scope ScopeId
-    - module ModuleId
-    - loop SyntaxId
-
-` The scope of a loop written at a node whose turns each have an environment, or none.
-turn-scopes[pair-key(module, loop)] ?? no-scope
-
-────────────────────
-+ turn-environment LayoutId
-    - instance InstanceId
-    - scope ScopeId
-
-` The layout an instance has for the environment of a turn of a loop of its own.
-turn-layouts[pair-key(instance, scope)] ?? no-layout
-
-────────────────────
-+ turn-place U32
-    - instance InstanceId
-    - scope ScopeId
-
-` The field of the environment of an instance that yields which keeps the environment of
-` the turn being run of a loop of its own, or `U32.max` where it keeps none.
-turn-places[pair-key(instance, scope)] ?? U32.max
-
-────────────────────
 _ describing U32
     - name Atom
 
@@ -2269,46 +3125,6 @@ for name in memory-copy-runtime-names
 for name in safe-struct-runtime-names
     bundle.mark-safe-struct-callee(bundle.intern(name))
     bundle.mark-safe-struct-callee(bundle.intern(target.symbol(name)))
-
-────────────────────
-+ runtime-symbol StringId
-    - function RuntimeFunction
-
-runtime-symbols[function]
-
-────────────────────
-+ do declared-at MIRLoc?
-    - function FunctionId
-
-` Where the declaration whose body a function holds is written, which a stack trace names for
-` a place in the function's code no line stands behind, as its prologue. None for a function
-` that holds no declaration's body.
-. row = functions[function]
-if row.instance == no-instance
-    = null
-if row.kind != .instance-body && row.kind != .viewed-body && not-generator && not-constructor
-    = null
-.. not-generator = row.kind != .generator-body
-.. not-constructor = row.kind != .constructor-body
-. declared = instances.rows[row.instance]
-. syntax SyntaxId = 0
-do match? program.modules[declared.module].decls[declared.decl]
-    | .decl-function(fn)
-        syntax = fn.syntax
-    | .decl-converter(converter)
-        syntax = converter.syntax
-    | .decl-fromverter(fromverter)
-        syntax = fromverter.syntax
-if syntax == 0
-    = null
-. begin = program.modules[declared.module].tree.nodes.loc[syntax].begin
-= MIRLoc
-    - module-paths[declared.module]
-    - true
-    - (begin.line + 1) as I32
-    - (begin.column + 1) as I32
-    - 0
-    - 0
 
 ────────────────────
 _ do choose-functions
@@ -2715,6 +3531,8 @@ for id in 0 .. < functions.length
         functions[id].may-panic = forward-panics(facts.forwards[function.place])
     else if function.kind == .interface-equality
         functions[id].may-panic = instances.rows[function.instance].may-panic
+    else if function.kind == .class-adapter && class-adapters[function.place].override == no-instance
+        functions[id].may-panic = false
     else if function.kind == .class-adapter
         . adapter = class-adapters[function.place]
         functions[id].may-panic = instances.rows[adapter.override].may-panic
@@ -3018,31 +3836,6 @@ section-rows[interface] = row
 = row
 
 ────────────────────
-+ do delegates Bool
-    - type TypeId
-
-` Whether a type, or one it is derived from, answers some interface through a property.
-. current = type
-while current != no-type && current != invalid-type
-    if types.delegates-of(current).length != 0
-        = true
-    current = types.completions[current].base
-= false
-
-────────────────────
-+ do derives Bool
-    - type TypeId
-    - base TypeId
-
-` Whether a class is derived from another, and is not that class.
-. current = types.completions[type].base
-while current != no-type && current != invalid-type
-    if current == base
-        = true
-    current = types.completions[current].base
-= false
-
-────────────────────
 _ do gather-sections
     - interface TypeId
     - order [TypeId]
@@ -3085,68 +3878,6 @@ do match? types.rows[interface]
                 refusals.append(Refusal(.refused-type, row.module, class.syntax))
 
 ────────────────────
-+ do section-offset U32
-    - interface TypeId
-    - owner TypeId
-
-` Where the section of an interface starts in a witness table for one derived from it,
-` counted in slots, or no slot where the one is not derived from the other.
-. order [TypeId]
-gather-sections(interface, order)
-. offset U32
-for section in order
-    if section == owner
-        = offset
-    offset += witness-header-slots + slot-counts[section]
-= no-slot-index
-
-────────────────────
-+ do witness-slot-function FunctionId
-    - symbol StringId
-    - offset U32
-
-if offset % table-slot-size != 0 || offset / table-slot-size < witness-header-slots
-    = no-function
-. slot = offset / table-slot-size - witness-header-slots
-for row in witnesses
-    if row.symbol != symbol
-        continue
-    for position in 0 .. < prototypes.length
-        . proto = prototypes[position]
-        if instances.rows[proto].self-type == row.interface && slots[proto] == slot
-            . made = witness-made[pair-key(row.value, proto)] ?? own-function
-            = if made == own-function then instance-functions[proto] else witness-function
-                .. witness-function = witness-functions[made].function
-    = no-function
-= no-function
-
-────────────────────
-+ receiver-view TypeId
-    - instance InstanceId
-
-` The interface an instance's receiver is seen as, where the instance is a function of an
-` interface run for a value of a type that is none: the type pass gave its receiver the
-` interface's type. No type for any other instance.
-interface-default-owner(types, program, row.module, row.decl, row.self-type)
-
-.. row = instances.rows[instance]
-
-────────────────────
-+ witness-of U32
-    - value TypeId
-    - interface TypeId
-
-` The witness table of a type for an interface, or none.
-witness-rows[pair-key(value, interface)] ?? no-slot-index
-
-────────────────────
-+ is-prototype Bool
-    - callee InstanceId
-
-` Whether a call of an instance is made through the slot it has in a witness table.
-callee != no-instance && slots[callee] != no-slot-index && called-through[callee] != 0
-
-────────────────────
 _ do declare-witnesses
 
 ` A function for each slot of a witness table that a type fills with a function of its
@@ -3187,11 +3918,17 @@ override-adapters = arena.allocate'U32(fact-count + 1)
 for position in 0 .. < fact-count
     override-adapters[position] = no-function
     . row = facts.overrides[position]
-    keys += rank-key(row.override, instances.rank-of(row.base))
+    if row.override == no-instance
+        keys += rank-key(row.base, U32.max)
+    else
+        keys += rank-key(row.override, instances.rank-of(row.base))
 for position in ranked-order(keys)
     . base = facts.overrides[position].base
     . override = facts.overrides[position].override
-    if instance-functions[base] == no-function || instance-functions[override] == no-function
+    if override == no-instance && instance-functions[base] != no-function
+        override-adapters[position] = declare-class-accessor(facts.overrides[position])
+        continue
+    if override == no-instance || instance-functions[base] == no-function || instance-functions[override] == no-function
         continue
     if answers[base] == answers[override] && results[base] == results[override]
         continue
@@ -3208,6 +3945,19 @@ for position in ranked-order(keys)
     class-adapter-rows[key] = class-adapters.length as U32
     class-adapters.append(ClassAdapter(base, override, id))
     override-adapters[position] = id
+
+────────────────────
+_ do declare-class-accessor FunctionId
+    - fact OverrideFact
+
+` The function a class's table holds in the slot of a getter or a setter of an interface for
+` objects of a class that store the property in its place (`OverrideFact.property`).
+. id FunctionId = functions.length as FunctionId
+functions.append(unnamed-function(.class-adapter, no-instance, instances.rows[fact.base].module, 8))
+functions[id].place = class-adapters.length as U32
+functions[id].carries = true
+class-adapters.append(ClassAdapter(fact.base, no-instance, id, fact.receiver, fact.property))
+= id
 
 ────────────────────
 _ do declare-forwards
@@ -3353,23 +4103,6 @@ match tree.nodes[syntax]
         ""
 
 ────────────────────
-+ const-array-row U32
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The ConstArray made at a node with a constant table, as its row of the type pass's facts,
-` or none where it has none.
-if found then found else U32.max
-
-.. found = const-array-rows[pair-key(instance, syntax)]
-
-────────────────────
-+ const-array-symbol StringId
-    - row U32
-
-const-array-symbols[row]
-
-────────────────────
 _ do declare-projection-remaps
 
 ` A constant table of bytes for each style-sheet projection that gives a union's cases new
@@ -3430,19 +4163,6 @@ remap-numbers[index] = number
 = number + 1
 
 ────────────────────
-+ remap-symbol StringId
-    - projection U32
-
-` The constant table of the case numbers a style-sheet projection gives a union's cases.
-remap-symbols[projection]
-
-────────────────────
-+ remap-number U32
-    - projection U32
-
-remap-numbers[projection]
-
-────────────────────
 _ do declare-equalities
 
 ` A function for each witness table whose interface, or one it is derived from, has its
@@ -3461,37 +4181,6 @@ for index in 0 .. < witnesses.length
     functions[id].place = index as U32
     functions[id].carries = true
     equality-functions[index] = id
-
-────────────────────
-+ forward-function FunctionId
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The function made for a member a union forwards at a node, or none where it is made in
-` place.
-if found then forward-functions[found] else no-function
-
-.. found = forward-rows[pair-key(instance, syntax)]
-
-────────────────────
-+ forward-unbuilt Bool
-    - instance InstanceId
-    - syntax SyntaxId
-
-` Whether a member a union forwards at a node needs a function of its own and has none.
-|? !found
-    false
-??
-    forward-needs[found] != 0 && forward-functions[found] == no-function
-
-.. found = forward-rows[pair-key(instance, syntax)]
-
-────────────────────
-+ forward-of ForwardFact
-    - function FunctionId
-
-` The member a union forwards that a function was made for, placed where it is forwarded first.
-facts.forwards[functions[function].place]
 
 ────────────────────
 _ do forward-panics Bool
@@ -3556,42 +4245,6 @@ while one != no-fact && other != no-fact
     one = facts.calls[one].next
     other = facts.calls[other].next
 = one == no-fact && other == no-fact
-
-────────────────────
-+ do forward-get SyntaxId
-    - forward ForwardFact
-
-` The member a union forwards as written: the name read from the union.
-. tree = program.modules[instances.rows[forward.instance].module].tree
-do match? tree.nodes[forward.syntax]
-    | .node-call-expression(call)
-        = call.callable
-    | .node-get-expression
-        = forward.syntax
-= 0
-
-────────────────────
-+ do forward-arguments RowRange'SyntaxId
-    - forward ForwardFact
-
-` The arguments written for a member a union forwards, none for one read.
-. tree = program.modules[instances.rows[forward.instance].module].tree
-do match? tree.nodes[forward.syntax]
-    | .node-call-expression(call)
-        = call.operands
-= RowRange'SyntaxId()
-
-────────────────────
-+ argument-expression SyntaxId
-    - tree AST
-    - argument SyntaxId
-
-` The expression of an argument written: what follows its name, when it has one.
-match tree.nodes[argument]
-    | .node-argument(named)
-        named.expr
-    ??
-        argument
 
 ────────────────────
 _ do forward-name Atom?
@@ -3877,13 +4530,6 @@ _ is-task Bool
 instance < task-count && task-bodies[instance] == 1
 
 ────────────────────
-+ is-region Bool
-    - instance InstanceId
-
-` Whether an instance is the body of a `do @no-gc` block.
-instance < task-count && task-bodies[instance] == 2
-
-────────────────────
 _ copies-in Bool
     - instance InstanceId
 
@@ -4092,15 +4738,6 @@ source-attacher = functions.length as FunctionId
 functions.append(unnamed-function(.source-attach, no-instance, instances.rows[source].module, 1))
 
 ────────────────────
-+ growth-of FunctionId
-    - row TypeId
-    - part U32
-
-` The function that grows the storage of tables of a type of row: their rows where `part` is
-` 0, and the outside bytes of a union's where it is 1. None where the tables declared none.
-growth-rows[(row as Size) * 2 + (part as Size)] ?? no-function
-
-────────────────────
 _ do declare-lazy-rules
 
 ` Declares the function a local rule of a rule a module declares runs in: one for each local
@@ -4280,39 +4917,6 @@ for position in ranked-order(keys)
     raising-functions[position] = id
 
 ────────────────────
-+ do raising-rule-of FunctionId
-    - instance InstanceId
-    - rule SyntaxId
-    - given TypeId
-
-` The function of a rule, or of a local rule of one, for calls that give the rule a pattern
-` whose function returns `given`, its answer or one of several errors, or none.
-for position in 0 .. < facts.raising-rules.length
-    . row = facts.raising-rules[position]
-    if row.instance == instance && row.rule == rule && row.given == given
-        = raising-functions[position]
-= no-function
-
-────────────────────
-+ pattern-raises TypeId
-    - instance InstanceId
-    - syntax SyntaxId
-
-` What the function made of a pattern an instance gives a rule returns where it may raise
-` errors, its answer or one of them: one that runs a local rule of a rule that raises errors
-` as a function of its own. None for any other pattern.
-|? id == no-function || functions[id].kind != .pattern-helper
-    no-type
-|? raises-nothing || row.local == 0 || lazy-rule-rows[pair-key(row.instance, row.local)] == null
-    no-type
-??
-    row.raised
-
-.. id = pattern-argument-rows[pair-key(instance, syntax)] ?? no-function
-.. row = facts.pattern-arguments[functions[id].place]
-.. raises-nothing = row.raised == no-type
-
-────────────────────
 _ do map-rule
     - instance InstanceId
     - rule SyntaxId
@@ -4328,23 +4932,6 @@ functions.append(unnamed-function(.mapped-rule, instance, instances.rows[instanc
 functions[id].place = rule-mappings.length as U32
 functions[id].may-panic = may-panic
 rule-mappings.append(RuleMapping(instance, rule, names, id))
-
-────────────────────
-+ do mapping-names StringId
-    - tree AST
-    - mappings RowRange'SyntaxId
-
-` The names of a rule's that a call gives collectors for, in the order written, joined by
-` commas, or none where it gives none.
-if mappings.count == 0
-    = no-string
-. joined = ""
-for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
-        | .node-stream-collector-mapping(row)
-            . name = if row.callee then row.callee.text else row.caller.text
-            joined = if joined.length == 0 then name else "$joined,$name"
-= bundle.intern(joined)
 
 ────────────────────
 _ local-rule-called SyntaxId
@@ -4374,44 +4961,6 @@ _ mapping-key String
 if names == no-string then ".unread" else ".into.${bundle.text(names)}"
 
 ────────────────────
-+ do mapped-rule-of FunctionId
-    - instance InstanceId
-    - rule SyntaxId
-    - names StringId
-
-` The function of a rule, or of a local rule of one, for a set of collectors calls give it.
-for mapping in rule-mappings
-    if mapping.instance == instance && mapping.rule == rule && mapping.names == names
-        = mapping.function
-= no-function
-
-────────────────────
-+ lazy-rule-of FunctionId
-    - instance InstanceId
-    - rule SyntaxId
-
-` The function a local rule of a rule runs in, or none where it runs where it is called.
-lazy-rule-rows[pair-key(instance, rule)] ?? no-function
-
-────────────────────
-+ rule-adapter-of FunctionId
-    - instance InstanceId
-    - rule SyntaxId
-
-` The function a call of a local rule beside a match from the rule's own arms calls, given
-` the stream, which runs the rule's own function on the stream's view; or none.
-rule-adapter-rows[pair-key(instance, rule)] ?? no-function
-
-────────────────────
-+ reads-rule Bool
-    - instance InstanceId
-    - rule SyntaxId
-
-` Whether a call of a local rule that runs as a function of its own reads what the function
-` gives. Where none does, each call takes only whether it passed and where it ended.
-read-rule-rows[pair-key(instance, rule)] != null
-
-────────────────────
 _ do lazy-rule-text String
     - function EmittedFunction
 
@@ -4423,20 +4972,6 @@ do match? tree.nodes[lazy-rule-decl(function)]
         if name
             = name.text
 = ""
-
-────────────────────
-+ lazy-rule-decl SyntaxId
-    - function EmittedFunction
-
-` The declaration of the local rule a function runs, or none where it runs none.
-|? function.kind == .lazy-rule || function.kind == .rule-adapter
-    function.place
-|? function.kind == .mapped-rule
-    rule-mappings[function.place].rule
-|? function.kind == .raising-rule
-    facts.raising-rules[function.place].rule
-??
-    0
 
 ────────────────────
 _ do lay-pattern-environment
@@ -4460,14 +4995,6 @@ pattern-environments[place] = layouts.environment
     - "pattern.${hex-text(instances.stable-keys[row.instance])}.${row.syntax}"
 
 ────────────────────
-+ pattern-environment LayoutId
-    - place U32
-
-` The layout of the memory the function made of a pattern reads what it is given from, or
-` none.
-pattern-environments[place] ?? no-layout
-
-────────────────────
 _ do helper-may-panic Bool
     - row PatternArgument
 
@@ -4488,54 +5015,12 @@ for node in tree.subtree-start(row.syntax) .. < row.syntax + 1
 = false
 
 ────────────────────
-+ pattern-argument-of FunctionId
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The function a pattern given to a rule is passed as, or none.
-pattern-argument-rows[pair-key(instance, syntax)] ?? no-function
-
-────────────────────
-+ machine-handler-of FunctionId
-    - group U32
-
-` The handler a state machine's subscriber runs for a group of its event transitions, which the
-` cast of it and the activation that runs the cast follow, or none.
-machine-handler-rows[group] ?? no-function
-
-────────────────────
 _ is-machine-group-kind Bool
     - kind FunctionKind
 
 ` Whether a function is one of those a group of a machine's event transitions has.
 handled || kind == .machine-activation || kind == .machine-deferral
     .. handled = kind == .machine-handler || kind == .machine-cast
-
-────────────────────
-+ machine-part-of FunctionId
-    - instance InstanceId
-
-` The part of a machine merged with others, the function they call (`emit-machine-part`), by the
-` instance of its own function, or none.
-machine-part-rows[instance] ?? no-function
-
-────────────────────
-+ machine-stop-of FunctionId
-    - instance InstanceId
-
-` The function that stops a machine a class's property holds (`stops-at-close`), by the
-` instance of its own function, or none.
-machine-stop-rows[instance] ?? no-function
-
-────────────────────
-+ stops-at-close Bool
-    - machine MachineFact
-
-` Whether a machine is one a class's property holds, and none it refines, which gives the event
-` runtime what stops it as it starts, for the object's `close` to run (`event-stop-machines`).
-has-stop && machine.store == .store-member && machine.outer == 0 && machine.refined == no-instance
-
-.. has-stop = facts.machine-stop != no-instance
 
 ────────────────────
 _ do is-refined Bool
@@ -4546,25 +5031,6 @@ for machine in facts.machines
     if machine.refined == instance && machine.outer == 0
         = true
 = false
-
-
-────────────────────
-+ stream-action-of FunctionId
-    - instance InstanceId
-    - arm SyntaxId
-
-` The function an action of a stream pattern runs in, or none.
-stream-action-rows[pair-key(instance, arm)] ?? no-function
-
-────────────────────
-+ adapter-of FunctionId
-    - from TypeId
-    - to TypeId
-
-` The function a binding of a type runs as a value of a function type, or none.
-if found then adapters[found].function else no-function
-
-.. found = adapter-rows[pair-key(from, to)]
 
 ────────────────────
 _ do name-function
@@ -4844,6 +5310,11 @@ else if function.kind == .union-dispatch
     display = "${program.modules[union.module].name}:union-dispatch-${forward-number}"
     .. forward-number = forward-numbers[function.place]
     key = "${instance-display(forward.instance)}.union-dispatch.${forward.syntax}"
+else if function.kind == .class-adapter && class-adapters[function.place].override == no-instance
+    . row = class-adapters[function.place]
+    display = "$module-name:${callee-name(row.proto)}(class-accessor)"
+    . written = hex-text(instances.stable-keys[row.proto])
+    key = "${instance-display(row.proto)}.${written}.class-accessor.${type-key(types, row.receiver)}"
 else if function.kind == .class-adapter
     . row = class-adapters[function.place]
     display = "$module-name:${callee-name(row.override)}(class-adapter)"
@@ -4971,15 +5442,6 @@ for index in 0 .. < facts.markup-queries.length
         query-functions[index * 2 + position] = id
 
 ────────────────────
-+ query-function-of FunctionId
-    - query U32
-    - removes Bool = false
-
-` A function made for a markup query, by its row of `markup-queries`: the one that finds an
-` ancestor or adds a descendant, or with `removes` the one that takes a descendant away.
-query-functions[query * 2 + (if removes then 1 else 0)]
-
-────────────────────
 _ do declare-live-adapter
     - target FunctionId
 
@@ -4990,27 +5452,6 @@ _ do declare-live-adapter
 functions.append(unnamed-function(.live-adapter, no-instance, functions[target].module, 4))
 functions[id].place = target
 functions[id].may-panic = true
-
-────────────────────
-+ do is-rerun Bool
-    - instance InstanceId
-
-` Whether an instance is the function a live action runs a live statement again with, tests
-` a `whenever` clause again with, selects the arm of a markup branch region again with, or
-` reads the container of a markup loop region again with.
-. row = instances.rows[instance]
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        = live || fn.kind == .whenever-decl || fn.kind == .branch-decl || fn.kind == .source-decl
-            .. live = fn.kind == .live-decl
-= false
-
-────────────────────
-+ live-adapter-of FunctionId
-    - target FunctionId
-
-` The adapter a live action calls a function through, which follows it.
-target + 1
 
 ────────────────────
 _ do declare-class-rules
@@ -5254,12 +5695,6 @@ _ sheet-order Comparison
     Comparison.greater
 ??
     Comparison.equal
-
-────────────────────
-+ sheet-number U32
-    - sheet U32
-
-sheet-numbers[sheet]
 
 ────────────────────
 _ style-before Bool
@@ -5541,15 +5976,6 @@ if gate.content != against.content
 = ordered(types.key-of(gate.type), types.key-of(against.type))
 
 ────────────────────
-+ cell-type TypeId
-
-` The class of the state cells of `scope-cells`, `StyleScopeState`, as its constructor makes it,
-` or none where no cell is made.
-if made != no-instance then instances.rows[made].self-type else no-type
-
-.. made = facts.style-runtime.scope-state
-
-────────────────────
 _ do declare-scope-cells
 
 ` A function for each row of `scope-cells` made where it is bound, which evaluates the state of
@@ -5685,15 +6111,6 @@ for number in 0 .. < ordered-rows.length
     slot-forward-layouts[index] = layouts.environment(children, held, "slot-forward.$number")
 
 ────────────────────
-+ kept-layout-of LayoutId
-    - instance InstanceId
-
-` The environment a function that builds markup is given where it keeps state cells, or none.
-if position then kept-layouts[position] else no-layout
-
-.. position = kept-instances.find(instance)
-
-────────────────────
 _ do declare-style-authors
 
 ` A function for each row of `style-authors` but those an edit retired (`is-retired`), which
@@ -5790,58 +6207,6 @@ for index in ordered-rows
             children += managed-layout
             held += item.held
         given-layouts += layouts.environment(children, held, "style-given.$place")
-
-────────────────────
-+ do given-row-items [RowItemRead]
-    - index U32
-
-. top = facts.style-applications[index]
-while top.outer != U32.max
-    top = facts.style-applications[top.outer]
-. result [RowItemRead]
-. slots [SlotId]
-. written = program.modules[top.module].tree
-. binding = instances.rows[top.instance].binding
-do match? written.nodes[top.written]
-    | .node-style-rule-application(applied)
-        for value in written.children[applied.args]
-            for node in written.subtree-start(value) .. value
-                . held = facts.row-item-of(top.instance, node)
-                if held == no-type
-                    continue
-                . resolution = bindings.resolution-of(binding, node)
-                if resolution.kind == .resolve-slot && slots.find(resolution.slot) == null
-                    slots += resolution.slot
-                    result += RowItemRead(top.instance, node, held)
-= result
-
-────────────────────
-+ do given-receiver TypeId
-    - index U32
-
-` The receiver where the values of the application a site applies, around an application of
-` `style-applications`, are written: that of the instance that types them, or, where that one is
-` written in another and reads its receiver, such as an arm of a markup region, that of the one
-` it is written in.
-. top = facts.style-applications[index]
-while top.outer != U32.max
-    top = facts.style-applications[top.outer]
-. typing = if top.values != no-instance then top.values else top.instance
-while instances.rows[typing].self-type == no-type && instances.rows[typing].enclosing != no-instance
-    typing = instances.rows[typing].enclosing
-= instances.rows[typing].self-type
-
-────────────────────
-+ do given-author U32
-    - application U32
-    - site SyntaxId
-
-` The place among `given-functions` of the function that declares again the line `site` of the
-` rule an application applies, or `U32.max`.
-for place in 0 .. < given-applications.length
-    if given-applications[place] == application && given-sites[place] == site
-        = place as U32
-= U32.max
 
 ────────────────────
 _ do declare-shared-rules
@@ -5981,15 +6346,6 @@ for position in 0 .. < themed-left.length
     if one.site != two.site || one.themed != two.themed
         = false
 = true
-
-────────────────────
-+ rule-function-of FunctionId
-    - index U32
-
-` The function a `shared` application of a style rule calls, or none.
-if found then found as FunctionId else no-function
-
-.. found = rule-function-rows[index]
 
 ────────────────────
 _ do declare-static-values
@@ -6157,66 +6513,6 @@ for position in 0 .. < ordered-targets.length
     target-numbers[ordered-targets[position]] = (position + 1) as U32
 
 ────────────────────
-+ domain-number U32
-    - domain U32
-
-` The number the style runtime knows a domain of invalidation by: its place in the order the
-` style module's init registers the domains in (`Facts.domain-order`), which does not depend on
-` the order typing first named them in, as their places among `style-domains` do.
-domain-numbers[domain]
-
-────────────────────
-+ do property-mask U32
-    - property U32
-    - parent Bool
-
-` The mask of the domains of invalidation a change to a property of `style-properties` raises on
-` the node, or on its parent, a bit for each domain's number (`domain-number`), from the
-` property's rows of `property-domains`. A domain no instance names any longer has no number and
-` no bit.
-. mask = 0u32
-for row in facts.property-domains
-    if row.property == property && row.parent == parent && domain-numbers[row.domain] != U32.max
-        mask = mask /or/ (1u32 /lshift/ domain-numbers[row.domain])
-= mask
-
-────────────────────
-+ target-number U32
-    - target-id U32
-
-` The number the markup runtime knows the target of descendant queries by, as the type pass
-` numbers them from 1 (`Facts.query-targets`), or 0 for none: its place among them in the order
-` of the stable keys of their classes, which does not depend on the order typing found them in.
-if target-id != 0 then target-numbers[target-id - 1] else 0
-
-────────────────────
-+ do target-ids-of [U32]
-    - level TypeId
-
-` The targets of descendant queries a constructor registers an object of the class `level` for
-` (`QueryRegistration`): each the class is or is below, as the type pass numbers them from 1
-` (`Facts.query-targets`), from all it numbered.
-. found [U32]
-for index in 0 .. < facts.query-targets.length
-    . target = facts.query-targets[index]
-    . held TypeId? = level
-    while held && types.intrinsic-of(held) == .class
-        if held == target
-            found += (index + 1) as U32
-            break
-        held = types.base-of(held)
-= found
-
-────────────────────
-+ state-key-number U32
-    - key U32
-
-` The number the style runtime knows where a state cell is made by: the place of the key among
-` the `Instances.state-keys` of the cells `number-keys` numbers, in the order `state-key-order`
-` gives them, which does not depend on the order typing interned them in.
-state-key-numbers[key]
-
-────────────────────
 _ state-key-order Comparison
     - key U32
     - other U32
@@ -6254,41 +6550,6 @@ for use in style-sheet-uses
     if use.registered && class-ref(types, use.type).module == module
         = true
 = false
-
-────────────────────
-+ style-module ModuleId
-
-` The module of the style runtime.
-class-ref(types, types.type-row(.style)).module
-
-────────────────────
-+ do style-registrations [FunctionId]
-    - module ModuleId
-
-` The functions that register the styles a module declares, in the order of the places they
-` are registered at and then of the styles' declarations, so the order is the same however the
-` styles were numbered.
-. found [FunctionId]
-. keys [U64]
-for id in style-functions
-    if functions[id].module == module
-        . use = style-uses[functions[id].place]
-        add-registration(found, keys, id, use.module, use.site, use.type)
-= found
-
-────────────────────
-+ do sheet-registrations [FunctionId]
-    - module ModuleId
-
-` The functions that register the style sheets a module declares, in the order of the places
-` they are registered at and then of the sheets' declarations.
-. found [FunctionId]
-. keys [U64]
-for id in sheet-functions
-    if functions[id].module == module
-        . use = style-sheet-uses[functions[id].place]
-        add-registration(found, keys, id, use.module, use.site, use.type)
-= found
 
 ────────────────────
 _ do add-registration
@@ -6457,99 +6718,6 @@ for key in sorted-pairs(keys)
             register-module(type)
 
 ────────────────────
-+ machine-receiver TypeId
-    - machine MachineFact
-
-` The class whose object a machine a property holds, or the class's content writes, is
-` written for: that of the receiver of the instance it is written in.
-if unit != no-instance then instances.rows[unit].self-type else no-type
-
-.. unit = instances.rows[machine.instance].enclosing
-
-────────────────────
-+ do machine-classes [TypeId]
-    - machine MachineFact
-
-` The classes the program constructs whose objects run a machine, by rank: the class it is
-` written for, and where a property of that class holds it, each class below, which starts the
-` same machine (`find-unit`) or one that refines it, as each does where the class's markup
-` writes it, whose filler the filler of each class below runs.
-. type = machine-receiver(machine)
-. found [TypeId]
-if type == no-type
-    = found
-if machine.store != .store-member && machine.store != .store-content
-    if constructed[type] != 0
-        found += type
-    = found
-for class in types.ranked
-    if constructed[class] != 0 && is-class(class) && (class == type || derives(class, type))
-        found += class
-= found
-
-────────────────────
-+ do constructs-from Bool
-    - type TypeId
-
-` Whether the program constructs a class that is a type or derives from it.
-for class in types.ranked
-    if constructed[class] != 0 && is-class(class) && (class == type || derives(class, type))
-        = true
-= false
-
-────────────────────
-+ do refining-classes [TypeId]
-    - machine MachineFact
-
-` The classes the program constructs whose objects run a machine that refines a machine written
-` as a line of a class's markup, directly or through others, by rank: the class each refining
-` machine is written for and each class below it. Their objects start the machine with the one
-` that refines it, and not where the markup of the machine's class runs.
-. found [TypeId]
-if machine.store != .store-content || machine.outer != 0
-    = found
-. receivers [TypeId]
-for fact in facts.machines
-    if fact.store != .store-content || fact.outer != 0 || fact.refined == no-instance
-        continue
-    . current MachineFact? = facts.machine-of(fact.refined)
-    while current && current.instance != machine.instance
-        current = facts.machine-of(current.refined) if current.refined != no-instance
-    . type = machine-receiver(fact)
-    if current && type != no-type && receivers.find(type) == null
-        receivers += type
-if receivers.length == 0
-    = found
-for class in types.ranked
-    if constructed[class] == 0 || !is-class(class)
-        continue
-    for type in receivers
-        if class == type || derives(class, type)
-            found += class
-            break
-= found
-
-────────────────────
-+ do leaf-classes [TypeId]
-    - machine MachineFact
-
-` The classes the program constructs whose objects start a machine a property of a class holds,
-` by rank: the class it is written for and each class below that declares the property no value
-` of its own (`find-unit`).
-. type = machine-receiver(machine)
-. found [TypeId]
-. name Atom? = null
-do match? program.modules[machine.module].decls[machine.decl]
-    | .decl-property(row)
-        name = row.name
-if type == no-type || machine.store != .store-member || !name
-    = found
-for class in types.ranked
-    if constructed[class] != 0 && is-class(class) && declaring(class, name) == type
-        found += class
-= found
-
-────────────────────
 _ do first-constructor InstanceId
     - type TypeId
 
@@ -6567,17 +6735,6 @@ if !constructors-found
                     first-constructors[row.self-type] = instance
 . found = first-constructors[type]
 = if found then found as InstanceId else no-instance
-
-────────────────────
-+ do init-constructor InstanceId
-    - module ModuleId
-
-` The constructor of the class whose sections the init of a module puts last in the event
-` runtime's tables, or none.
-for place in 0 .. < registered-modules.length
-    if registered-modules[place] == module
-        = registered-constructors[place]
-= no-instance
 
 ────────────────────
 _ do declare-idle-action
@@ -6740,37 +6897,6 @@ do match? program.modules[module].tree.nodes[syntax]
 = layouts.environment(children, held, "rule.${hex-text(instances.stable-keys[unit])}")
 
 ────────────────────
-+ class-rules-of [U32]
-    - type TypeId
-
-` The rules a constructor of a class runs once its body has run, in order, as rows of
-` `class-rules`.
-rules-from(class-rule-heads[type])
-
-────────────────────
-+ first-application U32
-    - instance InstanceId
-
-` The place in `Facts.style-applications` of the first application of a style rule an instance
-` makes, or `U32.max`.
-application-heads[instance] ?? U32.max
-
-────────────────────
-+ next-application U32
-    - place U32
-
-` The place of the application of a style rule the instance of one makes after it, or `U32.max`.
-application-links[place]
-
-────────────────────
-+ markup-rules-of [U32]
-    - type TypeId
-
-` The rules the function that fills an object with the markup of a class runs once that markup
-` has, in order, as rows of `class-rules`.
-rules-from(markup-rule-heads[type])
-
-────────────────────
 _ do rules-from [U32]
     - head U32?
 
@@ -6783,14 +6909,6 @@ while class-rule-order[cursor] != U32.max
     order += class-rule-order[cursor]
     cursor += 1
 = order
-
-────────────────────
-+ updater-of FunctionId
-    - place U32
-
-` The function that evaluates again the value of a property that reads something tracked, by
-` the property's place among all of them, or none.
-if place < default-count then updater-functions[place] else no-function
 
 ────────────────────
 _ do declare-globals
@@ -7244,29 +7362,6 @@ do match? owner.decls[row.decl]
 = no-storage
 
 ────────────────────
-+ default-runs-code Bool
-    - instance InstanceId
-    - syntax SyntaxId
-
-` Whether the default of a parameter of an instance runs code: any but a constant, and a
-` constant too where the type pass recorded a call for it, as it does for a number written
-` with a unit whose class declares a constructor.
-!is-literal-value(types, owner.tree, syntax) || facts.first-call(instance, syntax) != no-fact
-
-.. owner = program.modules[instances.rows[instance].module]
-
-────────────────────
-+ is-called-default Bool
-    - instance InstanceId
-    - syntax SyntaxId
-
-` Whether a call that leaves a parameter out evaluates its default there, by a function of
-` the default's own, as TypeScript does for a default that runs code and is no constant.
-default-runs-code(instance, syntax) && !is-constant-default(instance, owner.tree, syntax)
-
-.. owner = program.modules[instances.rows[instance].module]
-
-────────────────────
 _ do is-constant-default Bool
     - instance InstanceId
     - source AST
@@ -7383,42 +7478,6 @@ if row.may-panic
     module-flags[row.module] = module-flags[row.module] /or/ statics-panic
 
 ────────────────────
-+ storage-of U32
-    - module ModuleId
-    - decl DeclId
-
-` The storage of a global, or none for one the type pass typed no value of.
-storage-rows[storage-starts[module] + decl]
-
-────────────────────
-+ global-kind GlobalKind
-    - module ModuleId
-    - decl DeclId
-
-global-kinds[storage-starts[module] + decl] as GlobalKind
-
-────────────────────
-+ do default-storage U32
-    - callee InstanceId
-    - syntax SyntaxId
-
-` The storage of a default that runs code, by the instance whose parameter it is and the
-` default written, or none.
-. row = default-starts[callee]
-while row != no-storage && row < storage.length && storage[row].owner == callee
-    if storage[row].syntax == syntax
-        = row
-    row += 1
-= no-storage
-
-────────────────────
-+ first-default U32
-    - module ModuleId
-
-` The first default a module evaluates as it starts, or none.
-module-defaults[module]
-
-────────────────────
 _ do default-name String
     - row GlobalStorage
 
@@ -7432,17 +7491,6 @@ do match? module.decls[owner.decl]
             if shape.default-syntax == row.syntax
                 . name = shape.name
                 = if name then name.text else ""
-= ""
-
-────────────────────
-+ do global-name String
-    - row GlobalStorage
-
-` The name a global is written with.
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-property(property)
-        if property.name
-            = property.name.text
 = ""
 
 ────────────────────
@@ -7514,46 +7562,6 @@ if lazy-results[root] == U32.max
     lazy-results[root] = given
 else if lazy-results[root] != given
     lazy-results[root] = invalid-type
-
-────────────────────
-+ lazy-function-result TypeId
-    - place U32
-
-` What the function of a lazy property, by the place it has, answers where the value it
-` evaluates lets out errors: the value or one of them. No type where the value lets out none.
-|? unit == no-instance || instances.signatures[unit].errors.count == 0
-    no-type
-??
-    instances.signatures[unit].result
-
-.. unit = value-units[place]
-
-────────────────────
-+ lazy-result TypeId
-    - place U32
-
-` What a read of a lazy property through its slot answers where the value some class writes
-` for it lets out errors (see `note-lazy-result`), or no type where none does.
-|? lazy-roots[place] == U32.max || lazy-results[lazy-roots[place]] == U32.max
-    no-type
-??
-    lazy-results[lazy-roots[place]]
-
-────────────────────
-+ lazy-raises Bool
-    - place U32
-
-` Whether a read of a lazy property through its slot may panic: the value some class writes
-` for it may.
-lazy-roots[place] != U32.max && lazy-raising[lazy-roots[place]] != 0
-
-────────────────────
-+ lazy-runs Bool
-    - place U32
-
-` Whether a read of a lazy property through its slot may run: the slot holds a function in
-` some table, as some class the program constructs an object of has the property.
-lazy-roots[place] != U32.max && lazy-written[lazy-roots[place]] != 0
 
 ────────────────────
 _ do reach
@@ -7684,16 +7692,6 @@ for index in 0 .. < event-owners.length
     if event-owners[index] == owner && event-names[index] == name
         = index as U32
 = U32.max
-
-────────────────────
-+ event-number U32
-    - owner TypeId
-    - name Atom
-
-` The number the event runtime knows a live event by, or `U32.max` for one that is not live.
-if index != U32.max then event-numbers[index] else U32.max
-
-.. index = event-index(owner, name)
 
 ────────────────────
 _ do reach-globals
@@ -7928,108 +7926,6 @@ if !number
 probe-rows[pair-key(instance, syntax)] = number
 
 ────────────────────
-+ do metric-key String
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The key a metric of the profile is declared under: the one its probe is written with, or for a
-` stream pattern the counter the reference names for its results.
-do match? program.modules[instances.rows[instance].module].tree.nodes[syntax]
-    | .node-probe-counter(row)
-        = row.key.text
-    | .node-probe-group(row)
-        = if row.key then row.key.text else ""
-= "stream-pattern.capture-results"
-
-────────────────────
-+ do probe-site ProbeSite?
-    - probe ProbeRow
-
-. site = ProbeSite()
-if probe.instance == no-instance
-    site.key = compiler-count-key(probe.part)
-    if (probe.part as Size) >= collector-counts.length && event-site-instance != no-instance
-        . counted = program.modules[instances.rows[event-site-instance].module]
-        site.module-name = counted.name
-        site.path = counted.path
-        site.line = (counted.tree.nodes.loc[event-site].begin.line + 1) as U32
-    = site
-. owner = program.modules[instances.rows[probe.instance].module]
-. tree = owner.tree
-site.module-name = owner.name
-site.path = owner.path
-site.line = (tree.nodes.loc[probe.syntax].begin.line + 1) as U32
-. slots = probe.types.count as Size
-do match? tree.nodes[probe.syntax]
-    | .node-probe(row)
-        site.key = if row.key then row.key.text else ""
-        if row.name
-            . named = row.name.text
-            site.kind = .event
-            site.name = named
-            site.fields = slot-names(probe-field-names(tree, row.content, false), slots, false)
-        else
-            site.kind = .log
-            site.template = probe-template(tree, row.content)
-            site.fields = slot-names(probe-field-names(tree, row.content, true), slots, false)
-        = site
-    | .node-probe-assign(row)
-        site.kind = .event
-        site.key = row.key.text
-        site.name = "set-property"
-        site.fields = slot-names(["property", "value"], slots, false)
-        = site
-    | .node-probe-counter(row)
-        site.key = row.key.text
-        = site
-    | .node-probe-group(row)
-        site.key = if row.key then row.key.text else ""
-        . opens = row.is-begin && probe.part == 0
-        . named = probe-field-names(tree, row.content, true)
-        . held = !ends-in-log(probe.instance, probe.syntax, probe.part)
-        site.kind = .log
-        if row.is-data
-            site.kind = .event
-            site.name = if opens then "groupBegin" else "groupEnd"
-        else if !held
-            site.template = probe-template(tree, row.content)
-        else
-            site.name = if opens then "groupBegin" else "groupEnd"
-            site.template = if opens then probe-template(tree, row.content) else ""
-        site.fields = slot-names(named, slots, held)
-        = site
-= null
-
-────────────────────
-+ do selects-any Bool
-    - selection ProbeSelection
-
-for probe in probes
-    if probe.instance == no-instance
-        =? true if selection.compiles-metrics(compiler-count-key(probe.part))
-        continue
-    . owner = program.modules[instances.rows[probe.instance].module]
-    =? true if selection.compiles-node(owner.name, owner.tree, probe.syntax)
-for metric in profile-metrics
-    . owner = program.modules[instances.rows[metric.instance].module]
-    =? true if selection.compiles-node(owner.name, owner.tree, metric.syntax)
-    =? true if selection.compiles-metrics(metric-key(metric.instance, metric.syntax))
-= false
-
-────────────────────
-+ do metric-site ProbeSite
-    - metric ProbeRow
-
-. owner = program.modules[instances.rows[metric.instance].module]
-. site = ProbeSite()
-site.kind = if metric.part == 2 then .timer else ProbeSiteKind.counter
-site.key = metric-key(metric.instance, metric.syntax)
-site.module-name = owner.name
-site.path = owner.path
-site.line = (owner.tree.nodes.loc[metric.syntax].begin.line + 1) as U32
-= site
-
-────────────────────
 _ do declare-event-counts
     - counters Map'String'U32
 
@@ -8164,23 +8060,6 @@ while fields.length < slots
 = fields
 
 ────────────────────
-+ compiler-count-key String
-    - count U32
-
-` The key of a count the compiler keeps of its own accord: of what the collector did, the cycles it
-` collected, the pauses it made and the time it spent assisting, and then of what events do, in the
-` order of `EventCount`.
-match count
-    |= 0
-        "gc.cycles"
-    |= 1
-        "gc.pauses"
-    |= 2
-        "gc.assist.nanos"
-    ??
-        "event.${event-count-names[count - 3]}"
-
-────────────────────
 _ do keep-probe-classes
     - instance InstanceId
     - syntax SyntaxId
@@ -8229,16 +8108,6 @@ if cast == .probe-object || cast == .probe-array
         probe-classes += name
 
 ────────────────────
-+ probe-class-id U16
-    - type TypeId
-
-` The id the probes module knows the class of an object or an array by, numbered after the probe
-` data types in the order the classes are kept, or none.
-if found then (17 + found) as U16 else 0
-
-.. found = probe-classes.find(probe-class-name(types, type))
-
-────────────────────
 _ do keep-probe-keys
     - module ModuleId
     - subtree SyntaxRange
@@ -8256,15 +8125,6 @@ for offset in 0 .. < subtree.count
                 key = row.key.text
     if key && probe-keys.find(key) == null
         probe-keys += key
-
-────────────────────
-+ probe-number U32
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The place of a probe an instance compiles among those the record of probes declares, counted
-` from one, or none.
-probe-rows[pair-key(instance, syntax)] ?? 0
 
 ────────────────────
 _ do reach-error-report
@@ -8381,7 +8241,7 @@ for entry in visit-starts[instance] .. < visit-starts[instance + 1]
 . replaced = base-override-heads[instance]
 while replaced != no-fact
     . override = facts.overrides[replaced]
-    if constructed[override.receiver] != 0
+    if constructed[override.receiver] != 0 && override.override != no-instance
         mark(kinds, override.override)
     replaced = base-override-links[replaced]
 if row.node-start != U32.max
@@ -8724,12 +8584,6 @@ while deferred-next < deferred-instances.length
         visit-node(kinds, instance, row, id - row.subtree.start)
 
 ────────────────────
-+ compiles-features Bool
-    - features CompilerFeature
-
-observes || (features /and/ CompilerFeature.collection-observers) == 0
-
-────────────────────
 _ do reach-node
     - kinds CPointer'U32
     - instance InstanceId
@@ -8783,7 +8637,7 @@ do match? program.modules[row.module].decls[row.decl]
             . made = class-override-heads[type]
             while made != no-fact
                 . override = facts.overrides[made]
-                if kinds[override.base] != Reach.none
+                if kinds[override.base] != Reach.none && override.override != no-instance
                     mark(kinds, override.override)
                 made = class-override-links[made]
 
@@ -8955,33 +8809,6 @@ for machine in facts.machines
     . key = ((machine.module as Size) /lshift/ 32) /or/ (machine.decl as Size)
     if machine.store == .store-member && member-machines[key] == null
         member-machines[key] = machine.syntax
-
-────────────────────
-+ event-use-of EventUse?
-    - instance InstanceId
-    - site SyntaxId
-
-facts.event-uses[place] if place
-
-.. place = event-use-places[site-key(instance, site)]
-
-────────────────────
-+ owned-subscription-of OwnedSubscription?
-    - instance InstanceId
-    - site SyntaxId
-
-facts.owned-subscriptions[place] if place
-
-.. place = subscription-places[site-key(instance, site)]
-
-────────────────────
-+ live-statement-of LiveStatement?
-    - instance InstanceId
-    - site SyntaxId
-
-facts.live-statements[place] if place
-
-.. place = live-statement-places[site-key(instance, site)]
 
 ────────────────────
 _ site-key Size
@@ -9172,48 +8999,6 @@ do match? tree.nodes[fact.syntax]
 = false
 
 ────────────────────
-+ do has-initializer Bool
-    - callee InstanceId
-
-` Whether a constructor is one written in source for a class, which `super(…)` runs on the
-` object being made. One the compiler generates stores nothing then and runs nothing, and
-` one that returns a value of its own has no object to run on.
-if callee == no-instance
-    = false
-. row = instances.rows[callee]
-if !is-class(row.self-type) || returns-own(callee)
-    = false
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        = !fn.is-generated && fn.kind == .constructor-decl
-= false
-
-────────────────────
-+ do fills-apart Bool
-    - instance InstanceId
-
-` Whether a constructor runs its body in a function of its own, as the reference shares the body
-` among the styles the constructor is made for: one that fills its object with its class's
-` markup and raises no error. Its own function calls that one, then fills the object, so a
-` panic in the body shows both.
-if facts.filler-of(instance) == no-fact || instances.signatures[instance].errors.count != 0
-    = false
-. row = instances.rows[instance]
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        = fn.kind == .default-constructor-decl || fn.kind == .constructor-decl
-= false
-
-────────────────────
-+ returns-own Bool
-    - callee InstanceId
-
-` Whether a constructor written in source returns a value of its own, as the type pass said
-` of it where it typed its body. It constructs what it returns, and makes nothing of its
-` class.
-callee != no-instance && instances.rows[callee].returns-own
-
-────────────────────
 _ do reach-callee
     - kinds CPointer'U32
     - callee InstanceId
@@ -9238,36 +9023,6 @@ if callee != no-instance && called-through[callee] != 0
 mark(kinds, callee)
 
 ────────────────────
-+ do writes-constructor Bool
-    - type TypeId
-
-` Whether a type, or one it is derived from, declares a constructor written in source. With
-` no value written for it, a tuple or struct of such a type is what the constructor the type
-` pass chose makes, which the first values of its fields do not say.
-. current = type
-while current != no-type && current != invalid-type
-    . module ModuleId = 0
-    . decl DeclId = 0
-    . declared = false
-    do match? types.rows[current]
-        | .type-class(row)
-            module = row.module
-            decl = row.decl
-            declared = true
-        | .type-tuple(row)
-            module = row.module
-            decl = row.decl
-            declared = true
-        | .type-struct(row)
-            module = row.module
-            decl = row.decl
-            declared = true
-    if declared && writes-own-constructor(module, decl)
-        = true
-    current = types.completions[current].base
-= false
-
-────────────────────
 _ do writes-own-constructor Bool
     - module ModuleId
     - decl DeclId
@@ -9282,25 +9037,6 @@ do match? owner.decls[decl]
                 | .decl-function(fn)
                     if !fn.is-generated && fn.kind == .constructor-decl
                         = true
-= false
-
-────────────────────
-+ do builds-in-frame Bool
-    - callee InstanceId
-
-` Whether a callee is a constructor the compiler generates for a tuple or struct: one that
-` gives each field an argument or its first value. A call of it builds the value where the
-` call is, so it is visited for what the first values call, and is no function.
-. row = instances.rows[callee]
-if row.self-type == no-type || row.self-type == invalid-type
-    = false
-. kind = types.completions[row.self-type].intrinsic
-if kind != .tuple && kind != .struct && kind != .array-builder
-    = false
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        . fills = fn.kind == .tuple-constructor-decl || fn.kind == .default-constructor-decl
-        = fn.is-generated && fills
 = false
 
 ────────────────────
@@ -9653,65 +9389,6 @@ do match? program.modules[row.module].decls[row.decl]
 = false
 
 ────────────────────
-+ do loose-call FactId
-    - instance InstanceId
-    - syntax SyntaxId
-
-` The call recorded for an instance at a node outside its body, or no fact when none is
-` recorded there, or more than one.
-. found = no-fact
-. loose = loose-call-heads[instance]
-while loose != no-fact
-    . fact = facts.loose-calls[loose].fact
-    if facts.calls[fact].syntax == syntax
-        if found != no-fact
-            = no-fact
-        found = fact
-    loose = loose-call-links[loose]
-= found
-
-────────────────────
-+ default-of PropertyDefault
-    - type TypeId
-    - property U32
-
-` The value written for a property of a type, by the property's place among all of them.
-` It is kept for each property of a class the program constructs, so a worker that builds
-` one reads no class.
-|? property < default-count && default-rows[property] != U32.max
-    defaults[default-rows[property]]
-|? found.site != 0 || row.owner == no-type
-    found
-??
-    tuple-default(type, row.owner, row.name)
-
-.. row = types.properties[property]
-.. found = property-default(if row.owner != no-type then row.owner else type, row.name)
-
-────────────────────
-+ value-unit InstanceId
-    - place U32
-
-` The instance whose facts the value written for a property has, by the property's place
-` among all of them, or no instance: the type pass typed none, or the program makes no value
-` of the property's type. It is kept for each property, so a worker reads no table of
-` instances.
-if place < default-count then value-units[place] else no-instance
-
-────────────────────
-+ first-read FactId
-    - unit InstanceId
-
-` The first of the properties the value an instance types reads of its receiver, or no fact.
-read-heads[unit]
-
-────────────────────
-+ next-read FactId
-    - read FactId
-
-read-links[read]
-
-────────────────────
 _ do find-unit InstanceId
     - type TypeId
     - place U32
@@ -9893,23 +9570,6 @@ for position in start .. < table-entries.length
 = no-slot-index
 
 ────────────────────
-+ do dynamic-slot U32
-    - type TypeId
-    - interface TypeId
-
-` Where the table of a class keeps the table of an interface that classes below it declare
-` (`record-dynamic-witness`): the slot holds the table of the object's class, or nothing where
-` its class declares none. None where the class has no table.
-. index = table-indexes[type]
-if index == U32.max
-    = no-slot-index
-. entries = class-tables[index].entries
-for position in entries.start .. < entries.start + entries.count
-    if table-protos[position] == witness-proto + interface
-        = position - entries.start
-= no-slot-index
-
-────────────────────
 _ do holds-slot Bool
     - instance InstanceId
 
@@ -9935,7 +9595,8 @@ _ do replace-for
 . made = class-override-heads[type]
 while made != no-fact
     . fact = facts.overrides[made]
-    replacing[fact.base] = if placed then instance-functions[fact.override] else no-function
+    . own = if fact.override != no-instance then instance-functions[fact.override] else override-adapters[made]
+    replacing[fact.base] = if placed then own else no-function
     adapting[fact.base] = if placed then override-adapters[made] else no-function
     made = class-override-links[made]
 
@@ -9958,66 +9619,6 @@ for position in 0 .. < mine.args.count
     if held != layouts.values[instances.argument-type(other, position)]
         = false
 = true
-
-────────────────────
-+ is-recursive Bool
-    - instance InstanceId
-
-instance < instances.length && recursive[instance] != 0
-
-────────────────────
-+ is-bounded Bool
-    - instance InstanceId
-
-` Whether a function that runs where the collector never sees it reaches no safepoint and
-` cannot panic, so that a call of it from outside that zone need not enter the zone.
-instance < instances.length && bounded[instance] != 0
-
-────────────────────
-+ do mark-bounded
-    - instance InstanceId
-
-bounded[instance] = 1
-
-────────────────────
-+ finish-of U32
-    - function FunctionId
-
-if instance < instances.length then finishes[instance] else U32.max
-
-.. instance = functions[function].instance
-
-────────────────────
-+ do asks-inline Bool
-    - instance InstanceId
-
-. row = instances.rows[instance]
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        do match? program.modules[row.module].tree.nodes[fn.syntax]
-            | .node-function-syntax(syntax)
-                = syntax.is-inline
-    | .decl-converter(converter)
-        do match? program.modules[row.module].tree.nodes[converter.syntax]
-            | .node-converter-syntax(syntax)
-                = syntax.is-inline
-= false
-
-────────────────────
-+ is-overridden Bool
-    - callee InstanceId
-
-` Whether some subclass declares a method or a converter again, so that a call of it must
-` choose by the object's class.
-overridden[callee] != 0
-
-────────────────────
-+ raises-through Bool
-    - callee InstanceId
-
-` Whether a call through the slot of an instance may panic: some function a table holds in
-` that slot may.
-raising[callee] != 0
 
 ────────────────────
 _ do runs-polling-rule Bool
@@ -10047,12 +9648,6 @@ _ constructs Bool
     - kind DeclKind
 
 kind == .constructor-decl || kind == .default-constructor-decl || kind == .cast-constructor-decl
-
-────────────────────
-+ is-class Bool
-    - type TypeId
-
-types.is-class-type(type)
 
 ────────────────────
 _ do table-for U32
@@ -10412,23 +10007,6 @@ if rtti-symbols[type] == no-string
 = rtti-symbols[type]
 
 ────────────────────
-+ do want-type-constant
-    - type TypeId
-
-` Notes that emitted code names a type's constant.
-if rtti-states[type] == 0
-    rtti-states[type] = 1
-
-────────────────────
-+ do add-type-constants
-
-` Adds the constant of each type emitted code named, in the order of the types: the type's
-` name, its key, and its property table or zero.
-for type in types.ranked
-    if rtti-states[type] == 1
-        add-type-constant(type)
-
-────────────────────
 _ do add-type-constant
     - type TypeId
 
@@ -10659,20 +10237,6 @@ do match? tree.nodes[tree.root]
 = false
 
 ────────────────────
-+ runs-statement Bool
-    - module ModuleId
-    - decl DeclId
-    - tree AST
-    - statement SyntaxId
-
-` Whether a statement of a function of a module runs where it is written: one that neither
-` declares something nor is a comment, or a line written as a comment that is a log whose probe
-` compiles.
-is-executable-statement(tree, statement) || (is-comment-syntax(tree, statement) && probe-compiles)
-
-.. probe-compiles = program.compiles-probe(module, decl, statement)
-
-────────────────────
 _ do refuse-global-initializers
     - module ModuleId
     - main InstanceId
@@ -10782,6 +10346,439 @@ _ is-numeric-node Bool
 .. kind = types.completions[type].intrinsic
 
 ━━━━━━━━━━━━━━━━━━━━
++ FunctionKind is U32
+
+| module-main = 0
+| module-init = 1
+| task-main = 2
+| process-main = 3
+| instance-body = 4
+| instance-initializer = 5
+| lazy-property = 6
+| module-constants = 7
+| module-globals = 8
+| lazy-global = 9
+| module-statics = 10
+| adapter = 11
+| witness = 12
+| viewed-body = 13
+| generator-body = 14
+| class-adapter = 15
+| union-dispatch = 16
+| interface-equality = 17
+| task-local-init = 18
+| task-body = 19
+| task-init = 20
+| thread-local-init = 21
+| thread-init = 22
+| stack-local-init = 23
+| argument-default = 24
+| stream-action = 25
+| pattern-helper = 26
+| pattern-cast = 27
+| lazy-rule = 28
+| mapped-rule = 29
+| raising-rule = 30
+| storage-growth = 31
+| rule-adapter = 32
+| property-updater = 33
+| live-adapter = 34
+| class-rule-updater = 35
+| idle-action = 36
+| event-handler = 37
+| event-matcher = 38
+| event-registrations = 39
+| style-registration = 40
+| style-gate = 41
+| markup-query = 42
+| markup-query-add = 43
+| markup-query-remove = 44
+| style-author = 45
+| style-static-value = 46
+| style-rule = 47
+| style-sheet-registration = 48
+| style-scope-state = 49
+| slot-forward = 50
+| constructor-body = 51
+| markup-trigger-add = 52
+| markup-trigger-remove = 53
+| markup-trigger-ancestor = 54
+| machine-handler = 55
+| machine-cast = 56
+| machine-activation = 57
+| machine-descriptor = 58
+| machine-deferral = 59
+| batch-main = 60
+| batch-finish = 61
+| source-attach = 62
+| machine-part = 63
+| probe-setup = 64
+| probe-teardown = 65
+| probe-closer = 66
+| probe-flush = 67
+| probe-safepoint = 68
+| machine-stop = 69
+| style-themed-value = 70
+| style-given-author = 71
+
+━━━━━━━━━━━━━━━━━━━━
++ GlobalKind is U8
+
+` How a module keeps a global. A constant's value is a literal, stored before any module
+` starts. An eager one takes its value when its module starts, and a lazy one when it is
+` first read. One each task holds its own of is `global-task`, kept in the memory of each
+` task, and one each thread holds its own of `global-thread`, in the memory of each thread.
+` One `do with` binds is `global-stack`, a slot in the memory of each task that says whether
+` it is bound and holds its value. A value of an enum is made
+` when its module starts, before the module's eager globals, where an emitted function reads
+` it; one nothing emitted reads is `global-enum-unread`, and is not made.
+
+| global-none = 0
+| global-constant = 1
+| global-eager = 2
+| global-lazy = 3
+| global-other = 4
+| global-enum = 5
+| global-enum-unread = 6
+| global-task = 7
+| global-thread = 8
+| global-stack = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ RefusedConstruct is U32
+
+| refused-nothing = 0
+| refused-statement = 1
+| refused-expression = 2
+| refused-print-conversion = 3
+| refused-global-initializer = 4
+| refused-probe = 5
+| refused-type = 6
+| refused-function = 7
+| refused-conversion = 8
+| refused-blocking-call = 9
+| refused-suspending-call = 10
+| refused-batch-local = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Refusal is Struct
+
+` A construct emission does not compile yet, and where it is written. A program with one is
+` not compiled at all.
+
++ construct RefusedConstruct
++ module ModuleId
++ syntax SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeRow is Struct
+
+` A probe an emitted instance compiles, which the record of probes knows by its place among them,
+` counted from one. One written as a group that begins and ends, or as a log that ends a group,
+` is a probe for each record it writes, its `part`s in order. A counter is one probe wherever its
+` key is written, and a count the compiler keeps of its own accord, of what the collector did or
+` what events do, has no instance, its `part` saying which (see `compiler-count-key`). `types` are
+` the probe data types of the values a probe writes, among `probe-types`, with the class of each
+` among `probe-type-classes`. A metric of the profile is a row of its own among `profile-metrics`,
+` with its `part` saying whether it counts or times.
+
++ instance InstanceId
++ syntax SyntaxId
++ part U32
++ types Span
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeSiteKind is U8
+
+| log = 1
+| event = 2
+| counter = 3
+| timer = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeSite
+
++ kind = ProbeSiteKind.counter
++ key = ""
++ name = ""
++ template = ""
++ module-name = ""
++ path = ""
++ line U32
++ fields [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ EventCount is U32
+
+` A count the compiler keeps of what events do, under the counter `event-counts` numbers at its
+` place, as the reference keeps one wherever an event is published, made a stream or handled by a
+` machine: the compiler adds to the publishes, the publish sites never reached, the publishes
+` nothing listens to and the payloads made, and the event runtime's own counters to the rest.
+
+| publish-attempts = 0
+| publish-sites-erased = 1
+| publish-interest-misses = 2
+| payload-builds = 3
+| sidecars-created = 4
+| endpoint-entries = 5
+| subscriptions-sidecar = 6
+| subscriptions-lowered = 7
+| adapters-created = 8
+| handlers-sync = 9
+| handlers-machine-enqueued = 10
+| descriptor-visits = 11
+| route-frames = 12
+| key-index-updates = 13
+
+━━━━━━━━━━━━━━━━━━━━
++ EmittedFunction is Struct
+
+` A function the object holds. `name` is its key text, `symbol` the linker's name for it, and
+` `display` the name a stack trace prints. `calls` are the functions a generated body calls,
+` in order. `may-panic` says a call of it is followed by a check, and `carries` that it
+` writes the panic signal because a class table holds it. `polls` says its body has a loop
+` that polls, or a rule it runs first does: it returns the panic a poll can raise, and no call
+` of it is checked for that.
+` `unplaced` says a stack trace through it may not be the reference's, by more than a number
+` in a name: one that may panic is refused. `placeless` says a stack trace names no place for
+` its code. `site-module` is the module whose file a stack trace names for its code, where that
+` is not the module it is made in.
+` The function of a lazy property has no instance: `type` is the class that writes the
+` property's value and `place` the property's place among all properties. The functions
+` that give a module's globals their values have none either, and `place` is the storage of
+` the global a lazy one's function evaluates. The function of a default a call evaluates has
+` the default's storage as its `place`. The function that grows a table's storage has none:
+` `type` is the type of the table's rows, and `place` is 0 for the rows and 1 for the outside
+` bytes of a union's. `bridge-display` is the name a stack trace prints for
+` the function of a member that runs on a row's case where it is built as a bridge to the
+` member's instance on the case. One made for a row of style facts that typing fills in the
+` order it reaches instances, a value written once, a gate, a state cell, a slot forward, an
+` author or a shared rule, is named by its `number`, its place among those of its kind in an
+` order that does not depend on that one.
+
++ kind FunctionKind
++ instance InstanceId
++ module ModuleId
++ name StringId
++ symbol StringId
++ display StringId
++ calls Span
++ weight U32
++ may-panic Bool
++ carries Bool
++ polls Bool
++ type TypeId = no-type
++ place U32
++ number U32
++ unplaced Bool
++ placeless Bool
++ bridge-display StringId = no-string
++ site-module ModuleId = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassTable is Struct
+
+` The table of a class the program constructs: its header, then the functions of each class
+` of its chain, base first. `entries` lists those functions.
+
++ type TypeId
++ symbol StringId
++ base U32
++ entries Span
+
+━━━━━━━━━━━━━━━━━━━━
++ RuleMapping is Struct
+
+` A set of collectors calls of a rule give it, for which the reference compiles a function of
+` the rule of its own: the instance whose rule or local rule it is, the local rule's
+` declaration or none for the rule a module declares, the rule's names the collectors are
+` given for in the order written, joined by commas, and the function made for them. No call
+` that runs such a function reads what the rule gives, so it makes no text of what its arms
+` matched. Calls of a rule a module declares that give no collectors and read nothing it gives
+` have one too, whose names are none.
+
++ instance InstanceId
++ rule SyntaxId
++ names StringId
++ function FunctionId
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassRule is Struct
+
+` A rule of a class, typed for the class that writes it as `level`: the instance that types it,
+` the layout of what it keeps for each object it runs on, which is the object and then whether
+` a `when` rule's test held when it last ran or the value a `whenever` rule had then, and the
+` function a live action runs it again with. A `whenever` rule on the markup an object is in
+` keeps what `class-rule-kept` says, and the markup runtime calls `add` and `remove` as its
+` children or descendants change, or `add` as its ancestors might have.
+
++ level TypeId
++ module ModuleId
++ decl DeclId
++ syntax SyntaxId
++ unit InstanceId
++ kept LayoutId
++ updater FunctionId
++ add FunctionId
++ remove FunctionId
+
+━━━━━━━━━━━━━━━━━━━━
++ EventHandler is Struct
+
+` A section of a class that the event runtime runs from the table of a class the program
+` constructs: the instance that types the section, the section, the subscriber of its loop,
+` whose body the function for it runs, the class that writes it, the event's name, and the
+` number that tells the function apart from others of the class and the event.
+
++ unit InstanceId
++ syntax SyntaxId
++ callback InstanceId
++ level TypeId
++ name Atom
++ number U32
+
+━━━━━━━━━━━━━━━━━━━━
++ MachineDescriptor is Struct
+
+` A group of a state machine's event transitions that the event runtime runs from the table of
+` a class the program constructs: the group's place among the facts' groups, the class, the
+` function the table runs, which gives the group's activation to the event runtime's queue, and
+` the function that says whether an object is of the class.
+
++ group U32
++ type TypeId
++ descriptor FunctionId
++ matcher FunctionId
+
+━━━━━━━━━━━━━━━━━━━━
++ Adapter is Struct
+
+` The function a closure or a binding runs as a value of a function type. It is given the
+` data the value holds and the type's arguments, and calls `runs`, the instance the type
+` pass found for them. `instance` and `site` are where the first conversion that makes such
+` a value is written, which a stack trace names for the call, or the place the type pass
+` noted for a closure, with `below` where that is the line under it. `fixed` says the type
+` pass noted the place. Any other, made at several places, is placed at the first written. One
+` made at several places is `shared`, and a stack trace names no place for it: one the type
+` pass placed where it says so, and any other where `made-instance` and `made-site`, where
+` the first conversion is written, differ from a later one's.
+
++ from TypeId
++ to TypeId
++ runs InstanceId
++ instance InstanceId
++ site SyntaxId
++ function FunctionId = no-function
++ fixed Bool
++ below Bool
++ shared Bool
++ made-instance InstanceId = no-instance
++ made-site SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Witness is Struct
+
+` The witness table of a type for an interface. `symbol` names the constant, and `slot` is
+` the place the table of a class holds its address in, for a type that is a class.
+
++ value TypeId
++ interface TypeId
++ symbol StringId
++ slot U32 = no-slot-index
+
+━━━━━━━━━━━━━━━━━━━━
++ WitnessFunction is Struct
+
+` The function a slot of a witness table holds for a type that declares its own answer to
+` a function of the interface: it is given the interface value and calls `callee` with
+` what the value holds, or with no callee reads the property at `property` of it. Where
+` the type answers through a property it delegates to, `through` names the properties
+` read from what the value holds to what `callee` takes. `converts` says `callee` takes an
+` argument as another type than the interface's gives, as the type pass recorded. A `shared`
+` one fills the slot in the table of each class that answers with `callee` itself, and
+` `value` is the first of them.
+
++ value TypeId
++ proto InstanceId
++ callee InstanceId
++ property U32
++ through RowRange'U32
++ function FunctionId = no-function
++ converts Bool = false
++ shared = false
+
+━━━━━━━━━━━━━━━━━━━━
++ ClassAdapter is Struct
+
+` The function a slot of a class's table holds for an override that answers another type
+` than `proto`, the function the slot was made for: it calls `override` and converts what
+` that answers to what `proto` answers. For a getter or a setter that objects of `receiver`
+` answer with a `property` they store, there is no override: it reads the property or stores
+` its argument there.
+
++ proto InstanceId
++ override InstanceId
++ function FunctionId = no-function
++ receiver TypeId = no-type
++ property U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ GlobalStorage is Struct
+
+` Where the program keeps a global, or the value of a parameter's default that runs code.
+` `symbol` names its memory, which `layout` holds a value of `type` in. `state` names a byte
+` beside a global that is not a constant: 0 while it has no value, 1 once it has, and 2 while
+` a lazy one is being evaluated. `function` evaluates a lazy global that some emitted
+` function reads. A default is kept for `owner`, the instance whose parameter it is: `syntax`
+` is the default written, and `next` the default its module evaluates after it. A default a
+` call evaluates has no memory: `function` evaluates it, and no module's list holds it. A
+` global each task holds its own of is kept at `offset` in the memory of the task running,
+` which has no symbol: `function` stores its value there, and `next` is the one of its module
+` stored after it. One each thread holds its own of is `per-thread`, kept in the memory of
+` the thread.
+
++ module ModuleId
++ decl DeclId
++ syntax SyntaxId
++ owner InstanceId
++ symbol StringId
++ state StringId
++ type TypeId
++ layout LayoutId
++ function FunctionId
++ next U32
++ offset U32 = U32.max
++ per-thread Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ PropertyDefault is Struct
+
+` The value a class gives a property its constructor is given none for: the module it is
+` written in, the value, the declaration its conversion is recorded at, and that declaration
+` among its module's. A property no class gives a value has value 0.
+
++ module ModuleId
++ value SyntaxId
++ site SyntaxId
++ decl DeclId
+
+━━━━━━━━━━━━━━━━━━━━
++ PlacedStyle is Struct
+
+` A style or a style sheet some instance uses, numbered by its place among them, as the program
+` registers it: `type`, `singleton` and the `count` rows from `first` are its `StyleUse`'s or its
+` `StyleSheetUse`'s. `registered` says a function the program reaches uses it, and `module` and
+` `site` are then where its registration is placed (`keep-reached-styles`).
+
++ type TypeId
++ module ModuleId
++ site SyntaxId
++ singleton InstanceId
++ first U32
++ count U32
++ registered Bool
+
+━━━━━━━━━━━━━━━━━━━━
 + is-executable-statement Bool
     - tree AST
     - statement SyntaxId
@@ -10789,6 +10786,60 @@ _ is-numeric-node Bool
 ` Whether a module's statement runs when the module starts: one that neither declares
 ` something nor is a comment.
 !is-declaration-syntax(tree, statement) && !is-comment-syntax(tree, statement)
+
+━━━━━━━━━━━━━━━━━━━━
++ do symbol-name String
+    - target Target
+    - key String
+
+` The linker's name on a target for a function: its key, or a hash of the key when the key is too
+` long for a symbol.
+if key.size <= max-symbol-bytes
+    = target.symbol(key)
+. hash = fnv-hash(key, key.size)
+. text = Byte[17]
+text[0] = 121
+for position in 0 .. < 16
+    . digit = ((hash /zrshift/ (60 - position * 4)) /and/ 15) as U32
+    text[1 + position] = (if digit < 10 then digit + 48 else digit + 87) as Byte
+= target.symbol(text.slice-string(0 .. < 17))
+
+━━━━━━━━━━━━━━━━━━━━
+_ Reach is U32
+
+| none
+| main
+| init
+| task
+| body = 5
+| in-frame = 6
+| initializer = 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ VisitFact is U32
+
+` The tables of facts a visit of an instance reads its own rows of, in the order it reads them.
+
+| visit-live-statement = 0
+| visit-markup-read = 1
+| visit-style-read = 2
+| visit-style-flag = 3
+| visit-style-site = 4
+| visit-style-content = 5
+| visit-style-application = 6
+| visit-content-link = 7
+| visit-element-root = 8
+| visit-branch-region = 9
+| visit-loop-region = 10
+| visit-region-root = 11
+| visit-self-action = 12
+| visit-query-registration = 13
+| visit-event-use = 14
+| visit-address-claim = 15
+| visit-event-closer = 16
+| visit-machine-group = 17
+| visit-machine-refinement = 18
+| visit-machine-stop = 19
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do is-literal-value Bool
@@ -10828,20 +10879,3 @@ EmittedFunction
     - weight
     - false
     - false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do symbol-name String
-    - target Target
-    - key String
-
-` The linker's name on a target for a function: its key, or a hash of the key when the key is too
-` long for a symbol.
-if key.size <= max-symbol-bytes
-    = target.symbol(key)
-. hash = fnv-hash(key, key.size)
-. text = Byte[17]
-text[0] = 121
-for position in 0 .. < 16
-    . digit = ((hash /zrshift/ (60 - position * 4)) /and/ 15) as U32
-    text[1 + position] = (if digit < 10 then digit + 48 else digit + 87) as Byte
-= target.symbol(text.slice-string(0 .. < 17))

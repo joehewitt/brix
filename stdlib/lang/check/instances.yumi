@@ -11,70 +11,11 @@
 /lang/ast/module
 /lang/ast/row-range
 
-+ InstanceId is U32
 + no-instance InstanceId = U32.max
 + dispatch-effect-bits U32 = 94
 + binder-slot = "(binder)"
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dispatch-effects U32
-    - effects EffectMask
-
-. normalized = effects
-if (normalized /and/ CompilationEffect.gc-free) != 0
-    normalized = normalized /or/ (CompilationEffect.no-heap)
-    normalized = normalized /or/ (CompilationEffect.no-safepoint)
-if (normalized /and/ CompilationEffect.no-safepoint) != 0
-    normalized = normalized /or/ (CompilationEffect.no-suspend)
-= normalized /and/ dispatch-effect-bits
-
-━━━━━━━━━━━━━━━━━━━━
-+ InstanceState is U32
-
-| instance-unstarted = 0
-| instance-in-progress = 1
-| instance-done = 2
-| instance-failed = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReturnState is U32
-
-| return-declared = 0
-| return-pending = 1
-| return-inferred = 2
-| return-failed = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ HeaderState is U32
-
-` What a call reads of a callee before the callee's body is typed. An open header leaves the
-` return type to the body, so a call types the body first. A settled one gives the return type
-` itself, and the body waits in the queue.
-| header-unread = 0
-| header-open = 1
-| header-settled = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ ErrorState is U32
-
-` Whether the errors an instance raises are known. They are stated when the declaration lists
-` them or inherits a list. Otherwise they are those its body lets out, and they stay unsettled
-` until the body and every callee whose errors pass through it are typed.
-| errors-unsettled = 0
-| errors-stated = 1
-| errors-settled = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoundCall is U8
-
-` How a binding made a value of a function type calls the instance it runs, as the
-` instance's declaration says: as a function of no object, as a method of the object the
-` binding holds, as a constructor written for a class, or as none of these.
-
-| bound-call-none = 0
-| bound-call-function = 1
-| bound-call-method = 2
-| bound-call-constructor = 3
++ InstanceId is U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + Instance is Struct
@@ -185,258 +126,6 @@ if (normalized /and/ CompilationEffect.no-safepoint) != 0
 + with-enclosing Bool
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ZoneEntry is Struct
-
-` Where a GC-free zone is entered: the `do` block that enters it, or the declaration of the
-` function that makes it, in its module. A site of 0 is no zone.
-
-+ module ModuleId = 0
-+ site SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleContext is Struct
-
-` The styles and style sheets markup sees where it makes an object of a class whose markup is
-` its content, as the reference's `MarkupStyleContext` holds them: `styles` styles from `first`
-` among `context-types`, the one that answers a name first first, then `sheets` style sheets,
-` each with its group among `context-levels`, numbered from 0, lowest first; the style rules
-` written in rules it sees, `scopes` of them from `scope-first` among `context-scopes`, each
-` with how many state cells of the `when`s around it are given with it (`context-cells`); and
-` for the content of a class above the object's, the object's class (`made`), or no type. The
-` context of the function that builds content a style rule generates holds the `layer` the
-` declarations of the markup it makes take, which no other does, and its `context-cells` say
-` which rules are seen under the state cell of a `when`, which it is not given. The values of the
-` rules around rules written in rules that it gives follow the cells, `values` of them of the
-` types from `value-first` among `context-value-types`; `context-valued` holds, for each rule,
-` the place among what the context gives of the first value of the rule around it that takes
-` some, or `U32.max`.
-
-+ first U32
-+ styles U32
-+ sheets U32
-+ scope-first U32
-+ scopes U32
-+ made TypeId
-+ layer U32 = 0
-+ value-first U32 = 0
-+ values U32 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ StateKey is Struct
-
-` Where the state cell of a `when` is made, which tells apart the cells a markup element and the
-` function that builds content its outlet mounts agree on, as the reference's `stateKey` numbers
-` one for a `when` at a site: the site, in `module`, a markup element, a root `<This`, or a class
-` for its rules `• This`, and the `when`, in `when-module`.
-
-+ module ModuleId
-+ site SyntaxId
-+ when-module ModuleId
-+ when SyntaxId
-
-━━━━━━━━━━━━━━━━━━━━
-_ InitializerKey is Tuple
-    is Hashable
-
-` What the typing of one property's value is found by: the module that declares the property,
-` the property, the receiver it is typed for, and the class of the element a style rule a style
-` sheet writes is typed for, or no type.
-
-+ module ModuleId
-+ property DeclId
-+ receiver TypeId
-+ element TypeId
-
-────────────────────
-+ this == other This
-
-same-property && receiver == other.receiver && element == other.element
-
-.. same-property = module == other.module && property == other.property
-
-────────────────────
-+ get hash Hash
-
-mixed(mixed(mixed(mixed(stable-key-seed, module), property), receiver), element) as Hash
-
-━━━━━━━━━━━━━━━━━━━━
-+ ScopeOwn is U8
-
-` Whether a rule written in a rule reaches only the markup of an element's own class, as one
-` written `• own` does, and where it is, as the reference's `MarkupStyleRuleScope.own` says:
-` - `scope-plain`: it reaches all the markup under the element.
-` - `scope-pending`: it was brought into view at the element and matches nothing until the function
-`   that fills the element's object takes it.
-` - `scope-entered`: it matches in the markup of the class being filled, and the function that fills
-`   the object of an element there does not take it.
-
-| scope-plain = 0
-| scope-pending = 1
-| scope-entered = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ RuleScope is Struct
-
-` A style rule written in another, which markup under an element the other is applied to sees,
-` as the reference's `MarkupStyleRuleScope` holds one: the rule; the class or style sheet that
-` holds it as the rule around it was matched (`owner`), which is a sheet for a rule of a sheet
-` and else the class whose element the rule around it was applied to, or the class that writes
-` it; the rules applied around it, the innermost among `frames`, or `U32.max` for none; and
-` whether it reaches only the markup of the element's own class (`own`).
-
-+ module ModuleId
-+ decl DeclId
-+ owner TypeId
-+ frames U32
-+ own ScopeOwn = .scope-plain
-
-━━━━━━━━━━━━━━━━━━━━
-+ ScopeUse is Struct
-
-` A rule written in a rule as markup being typed sees it: the scope, and the state cell that
-` holds whether the innermost `when` around it holds, among `Facts.scope-cells`, or `U32.max`
-` where no `when` is around it; the values of the rule around it that takes some, among
-` `Facts.scope-values`, or `U32.max` where none does, or `U32.max - 1` where they are not here;
-` and the state cells of the `when`s further out (`Facts.scope-links`), or `U32.max`.
-
-+ scope RuleScope
-+ cell U32 = U32.max
-+ values U32 = U32.max
-+ outer-cells U32 = U32.max
-
-━━━━━━━━━━━━━━━━━━━━
-+ RuleFrame is Struct
-
-` One style rule applied around a rule written in a rule, as the reference's
-` `MarkupStyleRuleFrame` holds one: the rule, the class or style sheet it was matched for, the
-` `when` of it the inner rule is written in, or none, and the frames around it (`outer`), or
-` `U32.max`.
-
-+ outer U32
-+ module ModuleId
-+ decl DeclId
-+ owner TypeId
-+ gate SyntaxId
-
-━━━━━━━━━━━━━━━━━━━━
-+ InstanceSignature is Struct
-
-+ args RowRange'TypeId
-+ returns TypeId = no-type
-+ declared-returns TypeId = no-type
-+ return-state ReturnState
-+ param-count U32 = 0
-+ read-in-progress Bool
-+ read-by InstanceId = no-instance
-+ errors RowRange'TypeId
-+ unreturned SyntaxId = 0
-+ header HeaderState
-+ error-state ErrorState
-+ errors-read-early Bool
-+ pending U32 = U32.max
-+ result TypeId = no-type
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProbeRuntime is Struct
-
-` The functions of the probes module that a program whose probes compile calls of its own
-` accord, each `no-instance` until the type pass demands them: those that open the record of
-` probes, make room for counters and for profile metrics, declare a key, a class, a log, an event,
-` a counter, the type of one of their values, which `argument-type` is the type of, and a metric of
-` the profile, and say the declarations are done; then the one that adds to a counter, which the
-` counts the compiler keeps of events publish through, the one that counts what the collector did,
-` the one that closes the record, the one that flushes what a thread has written, and the one a
-` loop and a call that suspends the task look in at, which flushes when it is time and answers the
-` controller.
-
-+ begin InstanceId = no-instance
-+ counter-setup InstanceId = no-instance
-+ profile-setup InstanceId = no-instance
-+ declare-key InstanceId = no-instance
-+ declare-type InstanceId = no-instance
-+ declare-log InstanceId = no-instance
-+ declare-event InstanceId = no-instance
-+ declare-counter InstanceId = no-instance
-+ declare-argument InstanceId = no-instance
-+ declare-profile-metric InstanceId = no-instance
-+ counter-add InstanceId = no-instance
-+ ready InstanceId = no-instance
-+ collector-counts InstanceId = no-instance
-+ end InstanceId = no-instance
-+ task-flush InstanceId = no-instance
-+ safepoint InstanceId = no-instance
-+ argument-type TypeId = no-type
-+ demanded Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ PanicReport is Struct
-
-` The instances the report of an unhandled panic is built from, the same for every root. Each
-` is `no-instance` until the type pass demands the report.
-` `message` and `source-text` convert the panic and its source to text. `source` constructs
-` a source. `termination` is the check a polling call makes for a terminating task, and
-` `termination-error` constructs the panic it raises. `panic` constructs a panic from a
-` message, for the panics the compiler raises itself. `source-slot`, `trace-slot` and
-` `previous-slot` are the slots of the panic's properties that hold its source, its stack
-` trace, and the error a transformer raised it in place of. `union-error`
-` constructs the error of a union that holds another case than the one asked for, and
-` `union-text` converts it to the message of the panic raised for it; both are demanded where
-` a union is first unwrapped. `error-text` converts to text an error that no caller handles,
-` and is demanded where the main of some module lets an error out, or where a text written in
-` source is converted by a function that raises.
-
-+ message InstanceId = no-instance
-+ source-text InstanceId = no-instance
-+ source InstanceId = no-instance
-+ termination InstanceId = no-instance
-+ termination-error InstanceId = no-instance
-+ panic InstanceId = no-instance
-+ source-slot U32 = U32.max
-+ trace-slot U32 = U32.max
-+ previous-slot U32 = U32.max
-+ union-error InstanceId = no-instance
-+ union-text InstanceId = no-instance
-+ error-text InstanceId = no-instance
-
-━━━━━━━━━━━━━━━━━━━━
-+ LiveRuntime is Struct
-
-` The instances a tracked value runs through, the same for every root, each `no-instance`
-` until the type pass first types a tracked read. `trackers`, `subscribers` and `actions` make
-` the empty lists of trackers, of subscribers and of live actions, `action` makes a live
-` action of trackers and a callback, and `add-action` adds one to a list of them, as
-` `add-tracker` adds a tracker to a list of trackers. `track` notes
-` a read in the trackers of the action that runs, and `track-collection` the read of a
-` collection, whose changes it then follows; `dispatch` runs the actions that read a
-` property, and `previous` and `next` answer the trackers of the action that runs. `pop` and
-` `close` take the actions an object owns off their list and close each, and `has-actions`
-` says whether the list holds none. `callback` is the type of an action's callback, and
-` `callback-result` what the callback answers with its errors. `demanded` says the type pass
-` has begun typing them.
-
-+ trackers InstanceId = no-instance
-+ subscribers InstanceId = no-instance
-+ actions InstanceId = no-instance
-+ action InstanceId = no-instance
-+ add-action InstanceId = no-instance
-+ add-tracker InstanceId = no-instance
-+ track InstanceId = no-instance
-+ track-collection InstanceId = no-instance
-+ dispatch InstanceId = no-instance
-+ memo-action InstanceId = no-instance
-+ memo-settle InstanceId = no-instance
-+ previous InstanceId = no-instance
-+ next InstanceId = no-instance
-+ enter InstanceId = no-instance
-+ leave InstanceId = no-instance
-+ pop InstanceId = no-instance
-+ close InstanceId = no-instance
-+ has-actions InstanceId = no-instance
-+ callback TypeId = no-type
-+ callback-result TypeId = no-type
-+ demanded Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + Instances
 
 + rows Table'Instance
@@ -473,9 +162,10 @@ mixed(mixed(mixed(mixed(stable-key-seed, module), property), receiver), element)
 + sealed Bool
 + probes U32
 + arena Arena
-_ types Types
 + wide-defaults List'U64'ArenaBacking
 + dead InstanceId = no-instance
+
+_ types Types
 _ keys IdMap
 _ key-scratch Array'U32'ArenaBacking
 _ initializers Map'InitializerKey'InstanceId'ArenaBacking
@@ -702,40 +392,6 @@ dead = id
 
 ` Where an instance stands in `ordered`, or `U32.max` for none.
 if instance < ranks.length then ranks[instance] else U32.max
-
-────────────────────
-_ do merge-ranked
-    - into Array'InstanceId'ArenaBacking
-    - start Size
-    - middle Size
-    - end Size
-
-. left = start
-. right = middle
-for position in start .. < end
-    if left < middle && (right >= end || !ranks-before(ordered[right], ordered[left]))
-        into[position] = ordered[left]
-        left += 1
-    else
-        into[position] = ordered[right]
-        right += 1
-
-────────────────────
-_ ranks-before Bool
-    - first InstanceId
-    - second InstanceId
-
-|? (left.initializer == 0) != (right.initializer == 0)
-    left.initializer == 0
-|? left.module != right.module
-    left.module < right.module
-|? left.decl != right.decl
-    left.decl < right.decl
-??
-    stable-keys[first] < stable-keys[second]
-
-.. left = rows[first]
-.. right = rows[second]
 
 ────────────────────
 + do intern InstanceId
@@ -1142,47 +798,6 @@ same-decl && first.owner == second.owner && first.frames == second.frames && fir
 .. same-decl = first.module == second.module && first.decl == second.decl
 
 ────────────────────
-_ do mixed-context StableKey
-    - key StableKey
-    - context U32
-
-` Mixes a style context into a stable key by what it holds rather than by its number, which
-` another type pass gives another context.
-. held = contexts[context]
-. mixed-key = mixed(mixed(mixed(mixed(key, U32.max - 5), held.styles), held.sheets), held.layer)
-if held.made != no-type
-    mixed-key = mixed(mixed-key, types.key-of(held.made))
-for position in held.first .. < held.first + held.styles + held.sheets
-    mixed-key = mixed
-        - mixed(mixed-key, types.key-of(context-types[position]))
-        - context-levels[position]
-for position in held.scope-first .. < held.scope-first + held.scopes
-    . scoped = mixed-scope(mixed-key, context-scopes[position])
-    mixed-key = mixed(mixed(scoped, context-cells[position]), context-valued[position])
-for position in held.value-first .. < held.value-first + held.values
-    mixed-key = mixed(mixed-key, types.key-of(context-value-types[position]))
-= mixed-key
-
-────────────────────
-_ do mixed-scope StableKey
-    - key StableKey
-    - scope RuleScope
-
-` Mixes a rule written in a rule into a stable key by what it is: the rule, its owner, whether it
-` reaches only its element's own markup, and each frame around it, innermost first.
-. mixed-key = mixed
-    - mixed(mixed(mixed(key, scope.module), scope.decl), types.key-of(scope.owner))
-    - scope.own as U32
-. frame = scope.frames
-while frame != U32.max
-    . held = frames[frame]
-    mixed-key = mixed
-        - mixed(mixed(mixed(mixed-key, held.module), held.decl), types.key-of(held.owner))
-        - held.gate
-    frame = held.outer
-= mixed-key
-
-────────────────────
 + do intern-initializer InstanceId
     - module ModuleId
     - property DeclId
@@ -1317,20 +932,6 @@ if last-inserted
 fill-equality-key(module, value)
 . found = keys.find(key-scratch.data, 7)
 = if found then (found as InstanceId) else no-instance
-
-────────────────────
-_ do fill-equality-key
-    - module ModuleId
-    - value TypeId
-
-ensure-scratch(7)
-key-scratch[0] = module
-key-scratch[1] = types.program.modules[module].main-decl
-key-scratch[2] = value
-key-scratch[3] = 0
-key-scratch[4] = no-instance
-key-scratch[5] = U32.max - 1
-key-scratch[6] = 0
 
 ────────────────────
 + is-initializer Bool
@@ -1704,6 +1305,95 @@ rows[instance].ends-generator = true
 rows[instance].yields = yields
 
 ────────────────────
+_ do merge-ranked
+    - into Array'InstanceId'ArenaBacking
+    - start Size
+    - middle Size
+    - end Size
+
+. left = start
+. right = middle
+for position in start .. < end
+    if left < middle && (right >= end || !ranks-before(ordered[right], ordered[left]))
+        into[position] = ordered[left]
+        left += 1
+    else
+        into[position] = ordered[right]
+        right += 1
+
+────────────────────
+_ ranks-before Bool
+    - first InstanceId
+    - second InstanceId
+
+|? (left.initializer == 0) != (right.initializer == 0)
+    left.initializer == 0
+|? left.module != right.module
+    left.module < right.module
+|? left.decl != right.decl
+    left.decl < right.decl
+??
+    stable-keys[first] < stable-keys[second]
+
+.. left = rows[first]
+.. right = rows[second]
+
+────────────────────
+_ do mixed-context StableKey
+    - key StableKey
+    - context U32
+
+` Mixes a style context into a stable key by what it holds rather than by its number, which
+` another type pass gives another context.
+. held = contexts[context]
+. mixed-key = mixed(mixed(mixed(mixed(key, U32.max - 5), held.styles), held.sheets), held.layer)
+if held.made != no-type
+    mixed-key = mixed(mixed-key, types.key-of(held.made))
+for position in held.first .. < held.first + held.styles + held.sheets
+    mixed-key = mixed
+        - mixed(mixed-key, types.key-of(context-types[position]))
+        - context-levels[position]
+for position in held.scope-first .. < held.scope-first + held.scopes
+    . scoped = mixed-scope(mixed-key, context-scopes[position])
+    mixed-key = mixed(mixed(scoped, context-cells[position]), context-valued[position])
+for position in held.value-first .. < held.value-first + held.values
+    mixed-key = mixed(mixed-key, types.key-of(context-value-types[position]))
+= mixed-key
+
+────────────────────
+_ do mixed-scope StableKey
+    - key StableKey
+    - scope RuleScope
+
+` Mixes a rule written in a rule into a stable key by what it is: the rule, its owner, whether it
+` reaches only its element's own markup, and each frame around it, innermost first.
+. mixed-key = mixed
+    - mixed(mixed(mixed(key, scope.module), scope.decl), types.key-of(scope.owner))
+    - scope.own as U32
+. frame = scope.frames
+while frame != U32.max
+    . held = frames[frame]
+    mixed-key = mixed
+        - mixed(mixed(mixed(mixed-key, held.module), held.decl), types.key-of(held.owner))
+        - held.gate
+    frame = held.outer
+= mixed-key
+
+────────────────────
+_ do fill-equality-key
+    - module ModuleId
+    - value TypeId
+
+ensure-scratch(7)
+key-scratch[0] = module
+key-scratch[1] = types.program.modules[module].main-decl
+key-scratch[2] = value
+key-scratch[3] = 0
+key-scratch[4] = no-instance
+key-scratch[5] = U32.max - 1
+key-scratch[6] = 0
+
+────────────────────
 _ do ensure-scratch
     - count Size
 
@@ -1712,6 +1402,293 @@ if count > key-scratch.length
     while capacity < count
         capacity *= 2
     key-scratch = key-scratch.resize(capacity, arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ InstanceState is U32
+
+| instance-unstarted = 0
+| instance-in-progress = 1
+| instance-done = 2
+| instance-failed = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ ReturnState is U32
+
+| return-declared = 0
+| return-pending = 1
+| return-inferred = 2
+| return-failed = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ HeaderState is U32
+
+` What a call reads of a callee before the callee's body is typed. An open header leaves the
+` return type to the body, so a call types the body first. A settled one gives the return type
+` itself, and the body waits in the queue.
+| header-unread = 0
+| header-open = 1
+| header-settled = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ ErrorState is U32
+
+` Whether the errors an instance raises are known. They are stated when the declaration lists
+` them or inherits a list. Otherwise they are those its body lets out, and they stay unsettled
+` until the body and every callee whose errors pass through it are typed.
+| errors-unsettled = 0
+| errors-stated = 1
+| errors-settled = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ BoundCall is U8
+
+` How a binding made a value of a function type calls the instance it runs, as the
+` instance's declaration says: as a function of no object, as a method of the object the
+` binding holds, as a constructor written for a class, or as none of these.
+
+| bound-call-none = 0
+| bound-call-function = 1
+| bound-call-method = 2
+| bound-call-constructor = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ ZoneEntry is Struct
+
+` Where a GC-free zone is entered: the `do` block that enters it, or the declaration of the
+` function that makes it, in its module. A site of 0 is no zone.
+
++ module ModuleId = 0
++ site SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ StyleContext is Struct
+
+` The styles and style sheets markup sees where it makes an object of a class whose markup is
+` its content, as the reference's `MarkupStyleContext` holds them: `styles` styles from `first`
+` among `context-types`, the one that answers a name first first, then `sheets` style sheets,
+` each with its group among `context-levels`, numbered from 0, lowest first; the style rules
+` written in rules it sees, `scopes` of them from `scope-first` among `context-scopes`, each
+` with how many state cells of the `when`s around it are given with it (`context-cells`); and
+` for the content of a class above the object's, the object's class (`made`), or no type. The
+` context of the function that builds content a style rule generates holds the `layer` the
+` declarations of the markup it makes take, which no other does, and its `context-cells` say
+` which rules are seen under the state cell of a `when`, which it is not given. The values of the
+` rules around rules written in rules that it gives follow the cells, `values` of them of the
+` types from `value-first` among `context-value-types`; `context-valued` holds, for each rule,
+` the place among what the context gives of the first value of the rule around it that takes
+` some, or `U32.max`.
+
++ first U32
++ styles U32
++ sheets U32
++ scope-first U32
++ scopes U32
++ made TypeId
++ layer U32 = 0
++ value-first U32 = 0
++ values U32 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ StateKey is Struct
+
+` Where the state cell of a `when` is made, which tells apart the cells a markup element and the
+` function that builds content its outlet mounts agree on, as the reference's `stateKey` numbers
+` one for a `when` at a site: the site, in `module`, a markup element, a root `<This`, or a class
+` for its rules `• This`, and the `when`, in `when-module`.
+
++ module ModuleId
++ site SyntaxId
++ when-module ModuleId
++ when SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ScopeOwn is U8
+
+` Whether a rule written in a rule reaches only the markup of an element's own class, as one
+` written `• own` does, and where it is, as the reference's `MarkupStyleRuleScope.own` says:
+` - `scope-plain`: it reaches all the markup under the element.
+` - `scope-pending`: it was brought into view at the element and matches nothing until the function
+`   that fills the element's object takes it.
+` - `scope-entered`: it matches in the markup of the class being filled, and the function that fills
+`   the object of an element there does not take it.
+
+| scope-plain = 0
+| scope-pending = 1
+| scope-entered = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ RuleScope is Struct
+
+` A style rule written in another, which markup under an element the other is applied to sees,
+` as the reference's `MarkupStyleRuleScope` holds one: the rule; the class or style sheet that
+` holds it as the rule around it was matched (`owner`), which is a sheet for a rule of a sheet
+` and else the class whose element the rule around it was applied to, or the class that writes
+` it; the rules applied around it, the innermost among `frames`, or `U32.max` for none; and
+` whether it reaches only the markup of the element's own class (`own`).
+
++ module ModuleId
++ decl DeclId
++ owner TypeId
++ frames U32
++ own ScopeOwn = .scope-plain
+
+━━━━━━━━━━━━━━━━━━━━
++ ScopeUse is Struct
+
+` A rule written in a rule as markup being typed sees it: the scope, and the state cell that
+` holds whether the innermost `when` around it holds, among `Facts.scope-cells`, or `U32.max`
+` where no `when` is around it; the values of the rule around it that takes some, among
+` `Facts.scope-values`, or `U32.max` where none does, or `U32.max - 1` where they are not here;
+` and the state cells of the `when`s further out (`Facts.scope-links`), or `U32.max`.
+
++ scope RuleScope
++ cell U32 = U32.max
++ values U32 = U32.max
++ outer-cells U32 = U32.max
+
+━━━━━━━━━━━━━━━━━━━━
++ RuleFrame is Struct
+
+` One style rule applied around a rule written in a rule, as the reference's
+` `MarkupStyleRuleFrame` holds one: the rule, the class or style sheet it was matched for, the
+` `when` of it the inner rule is written in, or none, and the frames around it (`outer`), or
+` `U32.max`.
+
++ outer U32
++ module ModuleId
++ decl DeclId
++ owner TypeId
++ gate SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ InstanceSignature is Struct
+
++ args RowRange'TypeId
++ returns TypeId = no-type
++ declared-returns TypeId = no-type
++ return-state ReturnState
++ param-count U32 = 0
++ read-in-progress Bool
++ read-by InstanceId = no-instance
++ errors RowRange'TypeId
++ unreturned SyntaxId = 0
++ header HeaderState
++ error-state ErrorState
++ errors-read-early Bool
++ pending U32 = U32.max
++ result TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeRuntime is Struct
+
+` The functions of the probes module that a program whose probes compile calls of its own
+` accord, each `no-instance` until the type pass demands them: those that open the record of
+` probes, make room for counters and for profile metrics, declare a key, a class, a log, an event,
+` a counter, the type of one of their values, which `argument-type` is the type of, and a metric of
+` the profile, and say the declarations are done; then the one that adds to a counter, which the
+` counts the compiler keeps of events publish through, the one that counts what the collector did,
+` the one that closes the record, the one that flushes what a thread has written, and the one a
+` loop and a call that suspends the task look in at, which flushes when it is time and answers the
+` controller.
+
++ begin InstanceId = no-instance
++ counter-setup InstanceId = no-instance
++ profile-setup InstanceId = no-instance
++ declare-key InstanceId = no-instance
++ declare-type InstanceId = no-instance
++ declare-log InstanceId = no-instance
++ declare-event InstanceId = no-instance
++ declare-counter InstanceId = no-instance
++ declare-argument InstanceId = no-instance
++ declare-profile-metric InstanceId = no-instance
++ counter-add InstanceId = no-instance
++ ready InstanceId = no-instance
++ collector-counts InstanceId = no-instance
++ end InstanceId = no-instance
++ task-flush InstanceId = no-instance
++ safepoint InstanceId = no-instance
++ argument-type TypeId = no-type
++ demanded Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ PanicReport is Struct
+
+` The instances the report of an unhandled panic is built from, the same for every root. Each
+` is `no-instance` until the type pass demands the report.
+` `message` and `source-text` convert the panic and its source to text. `source` constructs
+` a source. `termination` is the check a polling call makes for a terminating task, and
+` `termination-error` constructs the panic it raises. `panic` constructs a panic from a
+` message, for the panics the compiler raises itself. `source-slot`, `trace-slot` and
+` `previous-slot` are the slots of the panic's properties that hold its source, its stack
+` trace, and the error a transformer raised it in place of. `union-error`
+` constructs the error of a union that holds another case than the one asked for, and
+` `union-text` converts it to the message of the panic raised for it; both are demanded where
+` a union is first unwrapped. `error-text` converts to text an error that no caller handles,
+` and is demanded where the main of some module lets an error out, or where a text written in
+` source is converted by a function that raises.
+
++ message InstanceId = no-instance
++ source-text InstanceId = no-instance
++ source InstanceId = no-instance
++ termination InstanceId = no-instance
++ termination-error InstanceId = no-instance
++ panic InstanceId = no-instance
++ source-slot U32 = U32.max
++ trace-slot U32 = U32.max
++ previous-slot U32 = U32.max
++ union-error InstanceId = no-instance
++ union-text InstanceId = no-instance
++ error-text InstanceId = no-instance
+
+━━━━━━━━━━━━━━━━━━━━
++ LiveRuntime is Struct
+
+` The instances a tracked value runs through, the same for every root, each `no-instance`
+` until the type pass first types a tracked read. `trackers`, `subscribers` and `actions` make
+` the empty lists of trackers, of subscribers and of live actions, `action` makes a live
+` action of trackers and a callback, and `add-action` adds one to a list of them, as
+` `add-tracker` adds a tracker to a list of trackers. `track` notes
+` a read in the trackers of the action that runs, and `track-collection` the read of a
+` collection, whose changes it then follows; `dispatch` runs the actions that read a
+` property, and `previous` and `next` answer the trackers of the action that runs. `pop` and
+` `close` take the actions an object owns off their list and close each, and `has-actions`
+` says whether the list holds none. `callback` is the type of an action's callback, and
+` `callback-result` what the callback answers with its errors. `demanded` says the type pass
+` has begun typing them.
+
++ trackers InstanceId = no-instance
++ subscribers InstanceId = no-instance
++ actions InstanceId = no-instance
++ action InstanceId = no-instance
++ add-action InstanceId = no-instance
++ add-tracker InstanceId = no-instance
++ track InstanceId = no-instance
++ track-collection InstanceId = no-instance
++ dispatch InstanceId = no-instance
++ memo-action InstanceId = no-instance
++ memo-settle InstanceId = no-instance
++ previous InstanceId = no-instance
++ next InstanceId = no-instance
++ enter InstanceId = no-instance
++ leave InstanceId = no-instance
++ pop InstanceId = no-instance
++ close InstanceId = no-instance
++ has-actions InstanceId = no-instance
++ callback TypeId = no-type
++ callback-result TypeId = no-type
++ demanded Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ do dispatch-effects U32
+    - effects EffectMask
+
+. normalized = effects
+if (normalized /and/ CompilationEffect.gc-free) != 0
+    normalized = normalized /or/ (CompilationEffect.no-heap)
+    normalized = normalized /or/ (CompilationEffect.no-safepoint)
+if (normalized /and/ CompilationEffect.no-safepoint) != 0
+    normalized = normalized /or/ (CompilationEffect.no-suspend)
+= normalized /and/ dispatch-effect-bits
 
 ━━━━━━━━━━━━━━━━━━━━
 + runs-inline Bool
@@ -1738,3 +1715,32 @@ if (syntax as Size) < moved.length && moved[syntax] != 0 then moved[syntax] else
 ` Whether a node of the module an edit edits is in a body the edit changes, so has nowhere it moves
 ` to (`Instances.move-syntax`).
 (syntax as Size) < moved.length && syntax != 0 && moved[syntax] == 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ InitializerKey is Tuple
+    is Hashable
+
+` What the typing of one property's value is found by: the module that declares the property,
+` the property, the receiver it is typed for, and the class of the element a style rule a style
+` sheet writes is typed for, or no type.
+
++ module ModuleId
++ property DeclId
++ receiver TypeId
++ element TypeId
+
+╌╌╌╌╌╌╌╌╌╌ is Hashable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get hash Hash
+
+mixed(mixed(mixed(mixed(stable-key-seed, module), property), receiver), element) as Hash
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other This
+
+same-property && receiver == other.receiver && element == other.element
+
+.. same-property = module == other.module && property == other.property

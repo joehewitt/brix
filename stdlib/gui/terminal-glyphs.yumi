@@ -12,8 +12,33 @@ _ terminal-box-lines [U8]
     ** List'U8(0x33, 0xCC, 0x34, 0x1C, 0x3C, 0x07, 0x0D, 0x0F, 0x70, 0xD0, 0xF0, 0x43, 0xC1, 0xC3, 0x74, 0xDC)
     ** List'U8(0xFC, 0x47, 0xCD, 0xCF, 0x37, 0x1D, 0x3F, 0x73, 0xD1, 0xF3, 0x77, 0xDD, 0xFF, 0x00, 0x00, 0x00)
     ** List'U8(0x00, 0x00, 0x00, 0x00, 0x01, 0x40, 0x10, 0x04, 0x02, 0x80, 0x20, 0x08, 0x21, 0x48, 0x12, 0x84)
-
 _ terminal-block-quadrants = List'U8(4, 8, 1, 13, 9, 7, 11, 2, 6, 14)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-terminal-glyph Bool
+    - code U32
+
+code >= 0x2500 && code <= 0x259F
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-terminal-glyph
+    - canvas Canvas
+    - code U32
+    - cell Rect
+    - stroke Length
+    - scale F64
+
+=? if !is-terminal-glyph(code) || scale <= 0
+. left = round(cell.x * scale) as Int
+. top = round(cell.y * scale) as Int
+. width = (round(cell.right * scale) as Int) - left
+. height = (round(cell.bottom * scale) as Int) - top
+=? if width <= 0 || height <= 0
+. grid = GlyphGrid(canvas, left, top, width, height, max(1, round(stroke * scale) as Int), scale)
+if code >= 0x2580
+    paint-block(grid, (code - 0x2580) as Int)
+else
+    paint-box(grid, (code - 0x2500) as Int)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ BoxWeight is U8
@@ -247,32 +272,6 @@ if (mask /and/ 4) != 0
     fill(0, middle-y, middle-x, height)
 if (mask /and/ 8) != 0
     fill(middle-x, middle-y, width, height)
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-terminal-glyph Bool
-    - code U32
-
-code >= 0x2500 && code <= 0x259F
-
-━━━━━━━━━━━━━━━━━━━━
-+ do paint-terminal-glyph
-    - canvas Canvas
-    - code U32
-    - cell Rect
-    - stroke Length
-    - scale F64
-
-=? if !is-terminal-glyph(code) || scale <= 0
-. left = round(cell.x * scale) as Int
-. top = round(cell.y * scale) as Int
-. width = (round(cell.right * scale) as Int) - left
-. height = (round(cell.bottom * scale) as Int) - top
-=? if width <= 0 || height <= 0
-. grid = GlyphGrid(canvas, left, top, width, height, max(1, round(stroke * scale) as Int), scale)
-if code >= 0x2580
-    paint-block(grid, (code - 0x2580) as Int)
-else
-    paint-box(grid, (code - 0x2500) as Int)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do paint-box

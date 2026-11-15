@@ -37,33 +37,67 @@
 /unistd.h
 
 _ tool-names [String] = ["probes", "test", "bench", "lint"]
-
 _ guide-index Path := toolchain-root / "docs/index.md"
 
 request-process-termination
     - run-tool(cmdline-args()) ?? run-init(cmdline-args()) ?? CompilerCommand().run()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do run-tool Int?
-    - argv [String]
++ BatchManifest
 
-. name = if argv.length > 1 then argv[1] else ""
-=? null if !(some(tool-names) • where each == name)
-. tool = (toolchain-root / "bin" / "yumi-$name") as String
-. arguments = String[argv.length]
-arguments[0] = tool
-for index in 2 .. < argv.length
-    arguments[index - 1] = argv[index]
-C:execv(tool, arguments)
-stderr <- "yumi $name is not in this toolchain: $tool does not run\n"
-= 1
+` The cases of a batch as a test runner lists them: the file the runtime marks each case in as it
+` starts and finishes, the files the cases print to, and for each case its id, the directory it
+` runs in, and its source with the name of its module.
+
++ control = ""
++ output = ""
++ errors = ""
++ ids [String]
++ directories [String]
++ roots [(String, String)]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do run-init Int?
-    - argv [String]
++ do read-batch-manifest BatchManifest ?! Error
+    - path String?
 
-=? null if argv.length < 2 || argv[1] != "init"
-= InitCommand().run(argv[1 ...])
+` Reads a manifest of a batch: a first line of its control, output and error files, then a line
+` for each case of its id, its directory and the path of its source, each split by tabs. The
+` module of a case is named by its place in the batch. Without a manifest there is no batch.
+if !path
+    = BatchManifest()
+. file = use File(path)
+. lines [String] = (file as String).split("\n")
+. files [String] = lines[0].split("\t")
+?! Error("A batch manifest begins with its control, output and error files")
+    if files.length != 3
+. manifest = BatchManifest()
+manifest.control = files[0]
+manifest.output = files[1]
+manifest.errors = files[2]
+for position in 1 .. < lines.length
+    if lines[position].length == 0
+        continue
+    . fields [String] = lines[position].split("\t")
+    ?! Error("A case of a batch manifest names its id, its directory and its source")
+        if fields.length != 3
+    manifest.ids += fields[0]
+    manifest.directories += fields[1]
+    manifest.roots += (fields[2], "__test__/t${(manifest.roots.length as Int).pad(6)}/__source__")
+?! Error("A batch manifest names no case")
+    if !manifest.roots
+= manifest
+
+━━━━━━━━━━━━━━━━━━━━
++ do load-program Program
+    - yumi YumiCompiler
+    - manifest BatchManifest
+    - source-path String?
+    - code String?
+
+` The program a command names: the cases of a batch, or one source, read from its path or given
+` as `code`.
+=? yumi.batch-to-ast(manifest.roots) if manifest.roots
+= yumi.source-to-ast(source-path ?? "", "__source__", code)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ CompilerCommand is CommandLine
@@ -228,17 +262,7 @@ _ CompilerCommand is CommandLine
 =? run-built-program(built.value, program-arguments, chosen-device) if built.value
 = check()
 
-────────────────────
-_ do introduce Int
-
-stdout <- "$usage\n\n$about\n\nrun `yumi --help` for its options\n"
-= 0
-
-────────────────────
-_ do show-version Int
-
--- version-text()
-= 0
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 _ get source-path String?
@@ -265,6 +289,25 @@ built.value || (!stops-early && (executable.value || probes.is-given))
 _ get chosen-device String?
 
 device.value if device.value != ""
+
+────────────────────
+_ get types-unreached Bool
+
+is-check-only && inspection.value == null && !batch-path.value && !reached-only.value
+
+.. is-check-only = !executable.value && !probes.is-given
+
+────────────────────
+_ do introduce Int
+
+stdout <- "$usage\n\n$about\n\nrun `yumi --help` for its options\n"
+= 0
+
+────────────────────
+_ do show-version Int
+
+-- version-text()
+= 0
 
 ────────────────────
 _ do list-devices Int ?! Error
@@ -488,13 +531,6 @@ _ typing-key String
 "${source-path ?? ""}|${target-name.value ?? ""}|${code.value ?? ""}|${batch-path.value ?? ""}|${probes.is-given} ${" ".join(probes.values)}|${env("YUMIPATH") ?? ""}|$types-unreached"
 
 ────────────────────
-_ get types-unreached Bool
-
-is-check-only && inspection.value == null && !batch-path.value && !reached-only.value
-
-.. is-check-only = !executable.value && !probes.is-given
-
-────────────────────
 _ do output-path String? ?! Error
     - inspects Bool
 
@@ -571,6 +607,28 @@ return-free-memory()
 = BuildResult(ran, output, command.executable.value)
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do run-tool Int?
+    - argv [String]
+
+. name = if argv.length > 1 then argv[1] else ""
+=? null if !(some(tool-names) • where each == name)
+. tool = (toolchain-root / "bin" / "yumi-$name") as String
+. arguments = String[argv.length]
+arguments[0] = tool
+for index in 2 .. < argv.length
+    arguments[index - 1] = argv[index]
+C:execv(tool, arguments)
+stderr <- "yumi $name is not in this toolchain: $tool does not run\n"
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run-init Int?
+    - argv [String]
+
+=? null if argv.length < 2 || argv[1] != "init"
+= InitCommand().run(argv[1 ...])
+
+━━━━━━━━━━━━━━━━━━━━
 _ do is-selector-list Bool
     - text String
 
@@ -633,60 +691,3 @@ do match? tree.nodes[id]
     | .node-probe-statement(row)
         = if row.key then row.key.text else ""
 = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchManifest
-
-` The cases of a batch as a test runner lists them: the file the runtime marks each case in as it
-` starts and finishes, the files the cases print to, and for each case its id, the directory it
-` runs in, and its source with the name of its module.
-
-+ control = ""
-+ output = ""
-+ errors = ""
-+ ids [String]
-+ directories [String]
-+ roots [(String, String)]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-batch-manifest BatchManifest ?! Error
-    - path String?
-
-` Reads a manifest of a batch: a first line of its control, output and error files, then a line
-` for each case of its id, its directory and the path of its source, each split by tabs. The
-` module of a case is named by its place in the batch. Without a manifest there is no batch.
-if !path
-    = BatchManifest()
-. file = use File(path)
-. lines [String] = (file as String).split("\n")
-. files [String] = lines[0].split("\t")
-?! Error("A batch manifest begins with its control, output and error files")
-    if files.length != 3
-. manifest = BatchManifest()
-manifest.control = files[0]
-manifest.output = files[1]
-manifest.errors = files[2]
-for position in 1 .. < lines.length
-    if lines[position].length == 0
-        continue
-    . fields [String] = lines[position].split("\t")
-    ?! Error("A case of a batch manifest names its id, its directory and its source")
-        if fields.length != 3
-    manifest.ids += fields[0]
-    manifest.directories += fields[1]
-    manifest.roots += (fields[2], "__test__/t${(manifest.roots.length as Int).pad(6)}/__source__")
-?! Error("A batch manifest names no case")
-    if !manifest.roots
-= manifest
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load-program Program
-    - yumi YumiCompiler
-    - manifest BatchManifest
-    - source-path String?
-    - code String?
-
-` The program a command names: the cases of a batch, or one source, read from its path or given
-` as `code`.
-=? yumi.batch-to-ast(manifest.roots) if manifest.roots
-= yumi.source-to-ast(source-path ?? "", "__source__", code)

@@ -40,6 +40,282 @@ _ no-job U32 = U32.max
 _ object-file-perms = user-read-perm + user-write-perm + group-read-perm + other-read-perm
 
 ━━━━━━━━━━━━━━━━━━━━
++ EmissionOptions
+
+` How a program is emitted. Unless it `optimizes`, no call is inlined and
+` every GC-free zone keeps its brackets. A batch names the files its runtime writes: the marks of its cases, and
+` what they print; and for each root the id of its case and the directory it runs in.
+
++ object-path String
++ writes-object = true
++ worker-count Int
++ optimizes = true
++ warns Bool
++ dumps-ir Bool
++ dumps-stages Bool
++ batch-control = ""
++ batch-output = ""
++ batch-errors = ""
++ batch-ids [String]
++ batch-directories [String]
++ catalog-path = ""
++ unmatched-probes [String]
++ backend-cache BackendCache?
++ memory EmissionMemory?
++ verifies-reuse Bool
++ tables-time Microseconds
++ round-time Microseconds
++ merge-time Microseconds
++ object-time Microseconds
+
+━━━━━━━━━━━━━━━━━━━━
++ do emit-program ?! Error
+    - program Program
+    - instances Instances
+    - facts Facts
+    - types Types
+    - bindings Bindings
+    - options EmissionOptions
+
+` Compiles a sealed program to an object file: program tables, one round of emission over
+` the worker pool, the merge of the round's literals and of the GC descriptors its code
+` names, and the object. A program holding a construct emission has no shape for is refused
+` whole, before anything is written; a batch is refused with each such construct of its cases.
+. started = clock()
+//+compiler.phase.tables
+. tables = use ProgramTables(program, instances, facts, types, bindings)
+?! Error("A batch names a case for each of its roots")
+    if options.batch-ids.length != program.batch-roots.length || unmatched-directories
+.. unmatched-directories = options.batch-directories.length != program.batch-roots.length
+tables.batch-control = options.batch-control
+tables.batch-output = options.batch-output
+tables.batch-errors = options.batch-errors
+tables.batch-ids = options.batch-ids
+tables.batch-directories = options.batch-directories
+tables.build()
+//-compiler.phase.tables
+options.tables-time = started.elapsed'Microseconds()
+if tables.refusals.length != 0
+    . lines [String]
+    for position in 0 .. < tables.refusals.length
+        if lines.length == 0 || program.is-batch
+            lines += refusal-line(program, tables.refusals[position])
+    ?! Error("\n".join(lines))
+if program.probes.is-enabled
+    options.unmatched-probes = unmatched-probe-selectors(program, tables)
+    if options.catalog-path != ""
+        write-probe-catalog(options.catalog-path, program, tables, options.unmatched-probes)
+if options.optimizes
+    bound-free(tables, program, instances, facts, types, bindings)
+tables.bundle.note-alignments()
+
+. function-count U32 = tables.functions.length as U32
+. count = if options.worker-count > 0 then options.worker-count else default-worker-count
+if count > function-count
+    count = function-count
+. arena = use Arena()
+. records = arena.allocate'CompactFunction(function-count)
+. literals = arena.allocate'KeptLiterals(function-count)
+. refusals = arena.allocate'Refusal(function-count)
+. ir-texts = arena.allocate'ByteSpan(function-count)
+. warnings = arena.allocate'ByteSpan(function-count)
+. counts = arena.allocate'FunctionCounts(function-count)
+. round-started = clock()
+//+compiler.phase.emission
+//!emit.gc-objects . gc-objects-before = C:yumiGCAllocatedObjectCount()
+. queue = WorkQueue(tables)
+. verdicts = InlineVerdicts
+    - arena.allocate'Byte(function-count)
+    - arena.allocate'Byte(function-count)
+    - arena.allocate'Byte(function-count)
+. cache = options.backend-cache
+. seed = bundle-seed(tables.bundle)
+if cache
+    cache.begin-round(count)
+. memory = options.memory if cache && !options.dumps-ir && !options.warns
+. reusing ReuseRound?
+if memory
+    memory.begin-round(count)
+    . context = IRDigester(tables, program, instances, facts, types, arena).round-context
+        - seed
+        - options.optimizes
+    reusing = ReuseRound(memory, context, function-count, tables.layouts.count, arena)
+. workers [EmissionWorker]
+for index in 0 .. < count
+    workers += EmissionWorker
+        - tables
+        - program
+        - instances
+        - facts
+        - types
+        - bindings
+        - queue
+        - verdicts
+        - records
+        - literals
+        - refusals
+        - ir-texts
+        - warnings
+        - counts
+        - seed
+        - options.optimizes
+        - options.dumps-ir
+        - options.dumps-stages
+        - options.warns
+        - options.verifies-reuse
+        - cache.store-for(index) if cache && !options.dumps-ir
+        - reusing
+        - memory.store-for(index) if memory
+do finally
+    for worker in workers
+        worker.release()
+
+. pool = Worker(count)
+. finished SyncBufferedChannel'Bool
+for worker in workers
+    do (pool) new
+        worker.emit-all()
+        finished <- true
+for _ in 0 .. < count
+    <- finished
+if reusing
+    . digesters [IRDigester]
+    for worker in workers
+        digesters += worker.ir-digester
+    //+emit.round.index
+    reusing.index(digesters, function-count, tables.layouts.count)
+    //-emit.round.index
+    //+emit.round.second
+    for worker in workers
+        do (pool) new
+            worker.decide-all()
+            finished <- true
+    for _ in 0 .. < count
+        <- finished
+    //-emit.round.second
+    . mismatches [String]
+    for worker in workers
+        memory!.verified += worker.verified as U64
+        mismatches ++= worker.mismatches
+    if mismatches
+        pool.stop()
+        ?! Error("Reuse differs from emitting again:\n${"\n".join(mismatches)}")
+//emit.gc-objects += C:yumiGCAllocatedObjectCount() - gc-objects-before
+//-compiler.phase.emission
+options.round-time = round-started.elapsed'Microseconds()
+
+if options.dumps-ir
+    for position in 0 .. < function-count
+        . text = ir-texts[position]
+        if text.length != 0
+            stderr <- Array'Byte(text.data, text.length).slice-string(0 .. < text.length)
+. warned [U32]
+for position in 0 .. < function-count
+    if warnings[position].length != 0
+        . finish = tables.finish-of(position as U32)
+        . place = warned.length
+        while place > 0 && tables.finish-of(warned[place - 1]) > finish
+            place -= 1
+        warned.insert(position, place)
+for position in warned
+    . text = warnings[position]
+    stderr <- "${Array'Byte(text.data, text.length).slice-string(0 .. < text.length)}\n"
+. lines [String]
+for position in 0 .. < function-count
+    if refusals[position].construct != .refused-nothing && (lines.length == 0 || program.is-batch)
+        lines += refusal-line(program, refusals[position])
+if lines
+    pool.stop()
+    ?! Error("\n".join(lines))
+if !options.writes-object
+    pool.stop()
+    =
+
+. merge-started = clock()
+//+compiler.phase.merge
+. ordered = reached(tables.bundle, records, symbol-order(tables.bundle, records, function-count))
+for position in ordered
+    //compiler.mir.functions += counts[position].functions
+    //compiler.mir.blocks += counts[position].blocks
+    //compiler.mir.instructions += counts[position].instructions
+    //compiler.mir.frame-bytes += counts[position].frame-bytes
+. bases = arena.allocate'U32(function-count)
+. total U32
+for position in 0 .. < function-count
+    bases[position] = total
+    total += literals[position].count
+. names = arena.allocate'U32(total)
+name-literals(tables.bundle, arena, literals, ordered, bases, names)
+. layouts = tables.layouts
+. described [LayoutId]
+. buffered [LayoutId]
+for layout in 0 .. < layouts.count
+    for worker in workers
+        if worker.lowering.used[layout] != 0
+            described += layouts.shared(layout)
+            break
+    for worker in workers
+        if worker.lowering.buffers[layout] != 0
+            buffered += layouts.shared(layout)
+            break
+. descriptors = sort(described) • using :: a, b => layouts.descriptor-order(a, b)
+for layout in descriptors
+    layouts.add-descriptor(layout)
+. buffers = sort(buffered) • using :: a, b => layouts.descriptor-order(a, b)
+for layout in buffers
+    layouts.add-buffer-descriptor(layout)
+. allocated [LayoutId]
+for layout in 0 .. < layouts.count
+    for worker in workers
+        if worker.lowering.allocated[layout] != 0
+            allocated += layouts.shared(layout)
+            break
+. sites = sort(allocated) • using :: a, b => layouts.descriptor-order(a, b)
+. next U32 = 1
+. previous = no-layout
+for layout in sites
+    if layout == previous
+        continue
+    previous = layout
+    layouts.add-site-key(layout, if next <= compiler-buffer-count then next else 0u32)
+    next += 1
+for slot in 0 .. < plain-site-count
+    for worker in workers
+        if worker.lowering.plain-allocated[slot] != 0
+            layouts.add-plain-site-key
+                - (slot as U64) * 8
+                - if next <= compiler-buffer-count then next else 0u32
+            next += 1
+            break
+for worker in workers
+    worker.want-type-constants()
+tables.add-type-constants()
+
+queue.rewind()
+for worker in workers
+    do (pool) new
+        worker.patch-all(names, bases)
+        finished <- true
+for _ in 0 .. < count
+    <- finished
+pool.stop()
+//-compiler.phase.merge
+options.merge-time = merge-started.elapsed'Microseconds()
+
+. object-started = clock()
+//+compiler.phase.object
+order-data(tables.bundle)
+. builder = use ObjectBuilder(tables.bundle)
+builder.build(records, ordered)
+write-object(options.object-path, object-file(builder, program.target))
+cache?.finish-round()
+//+emit.round.remember
+memory?.finish-round(tables.bundle)
+//-emit.round.remember
+//-compiler.phase.object
+options.object-time = object-started.elapsed'Microseconds()
+
+━━━━━━━━━━━━━━━━━━━━
 _ KeptLiterals is Tuple
 
 ` The string literals one function's code addresses, kept beside its record until the merge
@@ -99,6 +375,7 @@ _ EmissionWorker
 + ir-digester IRDigester
 + mismatches [String]
 + verified U32
+
 _ tables ProgramTables
 _ queue WorkQueue
 _ records CPointer'CompactFunction
@@ -203,6 +480,25 @@ if reuses
     //+emit.round.settle
     reuses!.settle(shared.names, shared.contexts, shared.layout-keys)
     //-emit.round.settle
+
+────────────────────
++ do patch-all
+    - names CPointer'U32
+    - bases CPointer'U32
+
+` Points each literal relocation of the round's records at the name the merge gave the
+` literal.
+. pool = pipeline.function.pool-size
+while true
+    . position = queue.take()
+    if position == no-job
+        break
+    . compact = records[position]
+    for index in 0 .. < compact.relocation-count
+        . relocation = compact.relocations[index]
+        if relocation.symbol >= pool
+            . name = names[bases[position] + relocation.symbol - pool]
+            compact.relocations[index] = Relocation(relocation.offset, name, relocation.kind)
 
 ────────────────────
 _ do compile
@@ -522,25 +818,6 @@ for index in 0 .. < compact.relocation-count
         . literal = pool + name.index
         compact.relocations[index] = Relocation(relocation.offset, literal, relocation.kind)
 
-────────────────────
-+ do patch-all
-    - names CPointer'U32
-    - bases CPointer'U32
-
-` Points each literal relocation of the round's records at the name the merge gave the
-` literal.
-. pool = pipeline.function.pool-size
-while true
-    . position = queue.take()
-    if position == no-job
-        break
-    . compact = records[position]
-    for index in 0 .. < compact.relocation-count
-        . relocation = compact.relocations[index]
-        if relocation.symbol >= pool
-            . name = names[bases[position] + relocation.symbol - pool]
-            compact.relocations[index] = Relocation(relocation.offset, name, relocation.kind)
-
 ━━━━━━━━━━━━━━━━━━━━
 _ LiteralIndex
 
@@ -607,282 +884,6 @@ _ hash U32
 ((wide /xor/ (wide /zrshift/ 32)) /and/ 0xffffffff) as U32
 
 .. wide = fnv-hash(bytes.data, bytes.length)
-
-━━━━━━━━━━━━━━━━━━━━
-+ EmissionOptions
-
-` How a program is emitted. Unless it `optimizes`, no call is inlined and
-` every GC-free zone keeps its brackets. A batch names the files its runtime writes: the marks of its cases, and
-` what they print; and for each root the id of its case and the directory it runs in.
-
-+ object-path String
-+ writes-object = true
-+ worker-count Int
-+ optimizes = true
-+ warns Bool
-+ dumps-ir Bool
-+ dumps-stages Bool
-+ batch-control = ""
-+ batch-output = ""
-+ batch-errors = ""
-+ batch-ids [String]
-+ batch-directories [String]
-+ catalog-path = ""
-+ unmatched-probes [String]
-+ backend-cache BackendCache?
-+ memory EmissionMemory?
-+ verifies-reuse Bool
-+ tables-time Microseconds
-+ round-time Microseconds
-+ merge-time Microseconds
-+ object-time Microseconds
-
-━━━━━━━━━━━━━━━━━━━━
-+ do emit-program ?! Error
-    - program Program
-    - instances Instances
-    - facts Facts
-    - types Types
-    - bindings Bindings
-    - options EmissionOptions
-
-` Compiles a sealed program to an object file: program tables, one round of emission over
-` the worker pool, the merge of the round's literals and of the GC descriptors its code
-` names, and the object. A program holding a construct emission has no shape for is refused
-` whole, before anything is written; a batch is refused with each such construct of its cases.
-. started = clock()
-//+compiler.phase.tables
-. tables = use ProgramTables(program, instances, facts, types, bindings)
-?! Error("A batch names a case for each of its roots")
-    if options.batch-ids.length != program.batch-roots.length || unmatched-directories
-.. unmatched-directories = options.batch-directories.length != program.batch-roots.length
-tables.batch-control = options.batch-control
-tables.batch-output = options.batch-output
-tables.batch-errors = options.batch-errors
-tables.batch-ids = options.batch-ids
-tables.batch-directories = options.batch-directories
-tables.build()
-//-compiler.phase.tables
-options.tables-time = started.elapsed'Microseconds()
-if tables.refusals.length != 0
-    . lines [String]
-    for position in 0 .. < tables.refusals.length
-        if lines.length == 0 || program.is-batch
-            lines += refusal-line(program, tables.refusals[position])
-    ?! Error("\n".join(lines))
-if program.probes.is-enabled
-    options.unmatched-probes = unmatched-probe-selectors(program, tables)
-    if options.catalog-path != ""
-        write-probe-catalog(options.catalog-path, program, tables, options.unmatched-probes)
-if options.optimizes
-    bound-free(tables, program, instances, facts, types, bindings)
-tables.bundle.note-alignments()
-
-. function-count U32 = tables.functions.length as U32
-. count = if options.worker-count > 0 then options.worker-count else default-worker-count
-if count > function-count
-    count = function-count
-. arena = use Arena()
-. records = arena.allocate'CompactFunction(function-count)
-. literals = arena.allocate'KeptLiterals(function-count)
-. refusals = arena.allocate'Refusal(function-count)
-. ir-texts = arena.allocate'ByteSpan(function-count)
-. warnings = arena.allocate'ByteSpan(function-count)
-. counts = arena.allocate'FunctionCounts(function-count)
-. round-started = clock()
-//+compiler.phase.emission
-//!emit.gc-objects . gc-objects-before = C:yumiGCAllocatedObjectCount()
-. queue = WorkQueue(tables)
-. verdicts = InlineVerdicts
-    - arena.allocate'Byte(function-count)
-    - arena.allocate'Byte(function-count)
-    - arena.allocate'Byte(function-count)
-. cache = options.backend-cache
-. seed = bundle-seed(tables.bundle)
-if cache
-    cache.begin-round(count)
-. memory = options.memory if cache && !options.dumps-ir && !options.warns
-. reusing ReuseRound?
-if memory
-    memory.begin-round(count)
-    . context = IRDigester(tables, program, instances, facts, types, arena).round-context
-        - seed
-        - options.optimizes
-    reusing = ReuseRound(memory, context, function-count, tables.layouts.count, arena)
-. workers [EmissionWorker]
-for index in 0 .. < count
-    workers += EmissionWorker
-        - tables
-        - program
-        - instances
-        - facts
-        - types
-        - bindings
-        - queue
-        - verdicts
-        - records
-        - literals
-        - refusals
-        - ir-texts
-        - warnings
-        - counts
-        - seed
-        - options.optimizes
-        - options.dumps-ir
-        - options.dumps-stages
-        - options.warns
-        - options.verifies-reuse
-        - cache.store-for(index) if cache && !options.dumps-ir
-        - reusing
-        - memory.store-for(index) if memory
-do finally
-    for worker in workers
-        worker.release()
-
-. pool = Worker(count)
-. finished SyncBufferedChannel'Bool
-for worker in workers
-    do (pool) new
-        worker.emit-all()
-        finished <- true
-for _ in 0 .. < count
-    <- finished
-if reusing
-    . digesters [IRDigester]
-    for worker in workers
-        digesters += worker.ir-digester
-    //+emit.round.index
-    reusing.index(digesters, function-count, tables.layouts.count)
-    //-emit.round.index
-    //+emit.round.second
-    for worker in workers
-        do (pool) new
-            worker.decide-all()
-            finished <- true
-    for _ in 0 .. < count
-        <- finished
-    //-emit.round.second
-    . mismatches [String]
-    for worker in workers
-        memory!.verified += worker.verified as U64
-        mismatches ++= worker.mismatches
-    if mismatches
-        pool.stop()
-        ?! Error("Reuse differs from emitting again:\n${"\n".join(mismatches)}")
-//emit.gc-objects += C:yumiGCAllocatedObjectCount() - gc-objects-before
-//-compiler.phase.emission
-options.round-time = round-started.elapsed'Microseconds()
-
-if options.dumps-ir
-    for position in 0 .. < function-count
-        . text = ir-texts[position]
-        if text.length != 0
-            stderr <- Array'Byte(text.data, text.length).slice-string(0 .. < text.length)
-. warned [U32]
-for position in 0 .. < function-count
-    if warnings[position].length != 0
-        . finish = tables.finish-of(position as U32)
-        . place = warned.length
-        while place > 0 && tables.finish-of(warned[place - 1]) > finish
-            place -= 1
-        warned.insert(position, place)
-for position in warned
-    . text = warnings[position]
-    stderr <- "${Array'Byte(text.data, text.length).slice-string(0 .. < text.length)}\n"
-. lines [String]
-for position in 0 .. < function-count
-    if refusals[position].construct != .refused-nothing && (lines.length == 0 || program.is-batch)
-        lines += refusal-line(program, refusals[position])
-if lines
-    pool.stop()
-    ?! Error("\n".join(lines))
-if !options.writes-object
-    pool.stop()
-    =
-
-. merge-started = clock()
-//+compiler.phase.merge
-. ordered = reached(tables.bundle, records, symbol-order(tables.bundle, records, function-count))
-for position in ordered
-    //compiler.mir.functions += counts[position].functions
-    //compiler.mir.blocks += counts[position].blocks
-    //compiler.mir.instructions += counts[position].instructions
-    //compiler.mir.frame-bytes += counts[position].frame-bytes
-. bases = arena.allocate'U32(function-count)
-. total U32
-for position in 0 .. < function-count
-    bases[position] = total
-    total += literals[position].count
-. names = arena.allocate'U32(total)
-name-literals(tables.bundle, arena, literals, ordered, bases, names)
-. layouts = tables.layouts
-. described [LayoutId]
-. buffered [LayoutId]
-for layout in 0 .. < layouts.count
-    for worker in workers
-        if worker.lowering.used[layout] != 0
-            described += layouts.shared(layout)
-            break
-    for worker in workers
-        if worker.lowering.buffers[layout] != 0
-            buffered += layouts.shared(layout)
-            break
-. descriptors = sort(described) • using :: a, b => layouts.descriptor-order(a, b)
-for layout in descriptors
-    layouts.add-descriptor(layout)
-. buffers = sort(buffered) • using :: a, b => layouts.descriptor-order(a, b)
-for layout in buffers
-    layouts.add-buffer-descriptor(layout)
-. allocated [LayoutId]
-for layout in 0 .. < layouts.count
-    for worker in workers
-        if worker.lowering.allocated[layout] != 0
-            allocated += layouts.shared(layout)
-            break
-. sites = sort(allocated) • using :: a, b => layouts.descriptor-order(a, b)
-. next U32 = 1
-. previous = no-layout
-for layout in sites
-    if layout == previous
-        continue
-    previous = layout
-    layouts.add-site-key(layout, if next <= compiler-buffer-count then next else 0u32)
-    next += 1
-for slot in 0 .. < plain-site-count
-    for worker in workers
-        if worker.lowering.plain-allocated[slot] != 0
-            layouts.add-plain-site-key
-                - (slot as U64) * 8
-                - if next <= compiler-buffer-count then next else 0u32
-            next += 1
-            break
-for worker in workers
-    worker.want-type-constants()
-tables.add-type-constants()
-
-queue.rewind()
-for worker in workers
-    do (pool) new
-        worker.patch-all(names, bases)
-        finished <- true
-for _ in 0 .. < count
-    <- finished
-pool.stop()
-//-compiler.phase.merge
-options.merge-time = merge-started.elapsed'Microseconds()
-
-. object-started = clock()
-//+compiler.phase.object
-order-data(tables.bundle)
-. builder = use ObjectBuilder(tables.bundle)
-builder.build(records, ordered)
-write-object(options.object-path, object-file(builder, program.target))
-cache?.finish-round()
-//+emit.round.remember
-memory?.finish-round(tables.bundle)
-//-emit.round.remember
-//-compiler.phase.object
-options.object-time = object-started.elapsed'Microseconds()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do bound-free

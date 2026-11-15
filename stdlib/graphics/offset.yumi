@@ -23,13 +23,13 @@ _ offset-trim-flatness = 0.01
 ━━━━━━━━━━━━━━━━━━━━
 + OffsetEffect is VectorEffect
 
-_ effect-distance Length
-_ effect-join-type JoinType = .square-join-type
-_ effect-miter-limit Length = 1
-
 + distance => effect-distance
 + join-type => effect-join-type
 + miter-limit => effect-miter-limit
+
+_ effect-distance Length
+_ effect-join-type JoinType = .square-join-type
+_ effect-miter-limit Length = 1
 
 ────────────────────
 + This
@@ -197,6 +197,186 @@ while reader.next()
         - max-x
         - max-y
         - is-line-like
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan
+    - path Path
+
+OffsetPlan(path)
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan-path
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+offset-subpath-plan(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
++ offset-plan-layer
+    - plan OffsetPlan
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+if path.count then PathSet(path) else PathSet()
+
+.. path = offset-plan-path(plan, distance, join-type, miter-limit)
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-path
+    - layer PathSet
+    - distance Length
+    - join-type JoinType = .square-join-type
+    - miter-limit Length = 1
+
+if distance == 0
+    = layer
+
+. result Path
+for source in layer.paths
+    if offset-path-is-single-subpath(source)
+        . offset = offset-subpath-plan(OffsetPlan(source), distance, join-type, miter-limit)
+        if offset.count
+            if result.count
+                result.add-path(offset)
+            else
+                result = offset
+    else
+        for span in source.subpaths
+            . subpath = span.materialize()
+            . offset = offset-subpath-plan(OffsetPlan(subpath), distance, join-type, miter-limit)
+            if offset.count
+                if result.count
+                    result.add-path(offset)
+                else
+                    result = offset
+
+if result.count
+    = PathSet(result)
+
+= PathSet()
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-path-is-single-subpath
+    - path Path
+
+. moves Size
+. span = path.commands
+for i in 0 .. < span.command-count
+    if span.verbs[i] == .path-verb-move
+        moves += 1
+        =? if moves > 1
+
+= moves == 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do offset-special-path
+    - path Path
+    - distance Float
+
+if path.is-closed
+    . rect = axis-rect(path)
+    if rect
+        . expanded = rect.inflate(distance * 2, distance * 2)
+        if expanded.width <= 0 || expanded.height <= 0
+            = Path()
+        = rectangle(expanded)
+else
+    = straight-line-offset(path, distance)
+
+━━━━━━━━━━━━━━━━━━━━
++ do straight-line-offset
+    - path Path
+    - distance Float
+
+=? if path.is-closed
+=? if path.count < 2
+
+. span = path.commands
+for i in 0 .. < span.command-count
+    =? if span.verbs[i] == .path-verb-cubic
+
+. first-x = span.coords[0]
+. first-y = span.coords[1]
+. last-x = first-x
+. last-y = first-y
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    if verb == .path-verb-line || verb == .path-verb-move
+        . start = span.coord-offsets[i]
+        last-x = span.coords[start]
+        last-y = span.coords[start + 1]
+
+. line-dx = last-x - first-x
+. line-dy = last-y - first-y
+. line-length2 = line-dx * line-dx + line-dy * line-dy
+=? if line-length2 < 0.0000000001
+
+for i in 0 .. < span.command-count
+    . verb = span.verbs[i]
+    if verb == .path-verb-close
+        continue
+    . start = span.coord-offsets[i]
+    . x = span.coords[start]
+    . y = span.coords[start + 1]
+    =? if !point-on-line-xy(x, y, first-x, first-y, last-x, last-y)
+
+. normal = line-normal-xy(first-x, first-y, last-x, last-y)
+. normal-x = normal.x
+. normal-y = normal.y
+. offset-x = normal-x * distance
+. offset-y = normal-y * distance
+. result = Path()
+result.move-to(first-x + offset-x, first-y + offset-y)
+result.line-to(last-x + offset-x, last-y + offset-y)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ point-on-line
+    - point Point
+    - first Point
+    - last Point
+
+near-line && within-x && within-y
+
+.. near-line = abs(cross) < 0.00001
+.. cross = dx * py - dy * px
+.. dx = last.x - first.x
+.. dy = last.y - first.y
+.. px = point.x - first.x
+.. py = point.y - first.y
+.. within-x = point.x >= min-x && point.x <= max-x
+.. min-x = min(first.x, last.x) - 0.00001
+.. max-x = max(first.x, last.x) + 0.00001
+.. within-y = point.y >= min-y && point.y <= max-y
+.. min-y = min(first.y, last.y) - 0.00001
+.. max-y = max(first.y, last.y) + 0.00001
+
+━━━━━━━━━━━━━━━━━━━━
++ point-on-line-xy
+    - x Coord
+    - y Coord
+    - first-x Coord
+    - first-y Coord
+    - last-x Coord
+    - last-y Coord
+
+near-line && within-x && within-y
+
+.. near-line = abs(cross) < 0.00001
+.. cross = dx * py - dy * px
+.. dx = last-x - first-x
+.. dy = last-y - first-y
+.. px = x - first-x
+.. py = y - first-y
+.. within-x = x >= min-x && x <= max-x
+.. min-x = min(first-x, last-x) - 0.00001
+.. max-x = max(first-x, last-x) + 0.00001
+.. within-y = y >= min-y && y <= max-y
+.. min-y = min(first-y, last-y) - 0.00001
+.. max-y = max(first-y, last-y) + 0.00001
 
 ━━━━━━━━━━━━━━━━━━━━
 _ OffsetCrossing
@@ -486,184 +666,35 @@ else
     writer.arc(center, radius, from.angle(center), to.angle(center), distance * normal-sign < 0)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ offset-plan
-    - path Path
+_ OffsetCut is Tuple
 
-OffsetPlan(path)
-
-━━━━━━━━━━━━━━━━━━━━
-+ offset-plan-path
-    - plan OffsetPlan
-    - distance Length
-    - join-type JoinType = .square-join-type
-    - miter-limit Length = 1
-
-offset-subpath-plan(plan, distance, join-type, miter-limit)
++ t PointOnCurve
++ point Point
++ is-crossing Bool
 
 ━━━━━━━━━━━━━━━━━━━━
-+ offset-plan-layer
-    - plan OffsetPlan
-    - distance Length
-    - join-type JoinType = .square-join-type
-    - miter-limit Length = 1
+_ OffsetSample is Tuple
 
-if path.count then PathSet(path) else PathSet()
-
-.. path = offset-plan-path(plan, distance, join-type, miter-limit)
++ t PointOnCurve
++ is-valid Bool
++ cut Index
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do offset-path
-    - layer PathSet
-    - distance Length
-    - join-type JoinType = .square-join-type
-    - miter-limit Length = 1
+_ OffsetRun
 
-if distance == 0
-    = layer
++ start OffsetCut
++ end OffsetCut
++ next OffsetRun?
++ has-previous = false
++ visited = false
 
-. result Path
-for source in layer.paths
-    if offset-path-is-single-subpath(source)
-        . offset = offset-subpath-plan(OffsetPlan(source), distance, join-type, miter-limit)
-        if offset.count
-            if result.count
-                result.add-path(offset)
-            else
-                result = offset
-    else
-        for span in source.subpaths
-            . subpath = span.materialize()
-            . offset = offset-subpath-plan(OffsetPlan(subpath), distance, join-type, miter-limit)
-            if offset.count
-                if result.count
-                    result.add-path(offset)
-                else
-                    result = offset
+────────────────────
++ This
+    - run-start OffsetCut
+    - run-end OffsetCut
 
-if result.count
-    = PathSet(result)
-
-= PathSet()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do offset-path-is-single-subpath
-    - path Path
-
-. moves Size
-. span = path.commands
-for i in 0 .. < span.command-count
-    if span.verbs[i] == .path-verb-move
-        moves += 1
-        =? if moves > 1
-
-= moves == 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do offset-special-path
-    - path Path
-    - distance Float
-
-if path.is-closed
-    . rect = axis-rect(path)
-    if rect
-        . expanded = rect.inflate(distance * 2, distance * 2)
-        if expanded.width <= 0 || expanded.height <= 0
-            = Path()
-        = rectangle(expanded)
-else
-    = straight-line-offset(path, distance)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do straight-line-offset
-    - path Path
-    - distance Float
-
-=? if path.is-closed
-=? if path.count < 2
-
-. span = path.commands
-for i in 0 .. < span.command-count
-    =? if span.verbs[i] == .path-verb-cubic
-
-. first-x = span.coords[0]
-. first-y = span.coords[1]
-. last-x = first-x
-. last-y = first-y
-for i in 0 .. < span.command-count
-    . verb = span.verbs[i]
-    if verb == .path-verb-line || verb == .path-verb-move
-        . start = span.coord-offsets[i]
-        last-x = span.coords[start]
-        last-y = span.coords[start + 1]
-
-. line-dx = last-x - first-x
-. line-dy = last-y - first-y
-. line-length2 = line-dx * line-dx + line-dy * line-dy
-=? if line-length2 < 0.0000000001
-
-for i in 0 .. < span.command-count
-    . verb = span.verbs[i]
-    if verb == .path-verb-close
-        continue
-    . start = span.coord-offsets[i]
-    . x = span.coords[start]
-    . y = span.coords[start + 1]
-    =? if !point-on-line-xy(x, y, first-x, first-y, last-x, last-y)
-
-. normal = line-normal-xy(first-x, first-y, last-x, last-y)
-. normal-x = normal.x
-. normal-y = normal.y
-. offset-x = normal-x * distance
-. offset-y = normal-y * distance
-. result = Path()
-result.move-to(first-x + offset-x, first-y + offset-y)
-result.line-to(last-x + offset-x, last-y + offset-y)
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ point-on-line
-    - point Point
-    - first Point
-    - last Point
-
-near-line && within-x && within-y
-
-.. near-line = abs(cross) < 0.00001
-.. cross = dx * py - dy * px
-.. dx = last.x - first.x
-.. dy = last.y - first.y
-.. px = point.x - first.x
-.. py = point.y - first.y
-.. within-x = point.x >= min-x && point.x <= max-x
-.. min-x = min(first.x, last.x) - 0.00001
-.. max-x = max(first.x, last.x) + 0.00001
-.. within-y = point.y >= min-y && point.y <= max-y
-.. min-y = min(first.y, last.y) - 0.00001
-.. max-y = max(first.y, last.y) + 0.00001
-
-━━━━━━━━━━━━━━━━━━━━
-+ point-on-line-xy
-    - x Coord
-    - y Coord
-    - first-x Coord
-    - first-y Coord
-    - last-x Coord
-    - last-y Coord
-
-near-line && within-x && within-y
-
-.. near-line = abs(cross) < 0.00001
-.. cross = dx * py - dy * px
-.. dx = last-x - first-x
-.. dy = last-y - first-y
-.. px = x - first-x
-.. py = y - first-y
-.. within-x = x >= min-x && x <= max-x
-.. min-x = min(first-x, last-x) - 0.00001
-.. max-x = max(first-x, last-x) + 0.00001
-.. within-y = y >= min-y && y <= max-y
-.. min-y = min(first-y, last-y) - 0.00001
-.. max-y = max(first-y, last-y) + 0.00001
+start = run-start
+end = run-end
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do offset-plan-is-convex
@@ -1001,37 +1032,6 @@ _ offset-plan-normal-sign Float
     -1
 ??
     1
-
-━━━━━━━━━━━━━━━━━━━━
-_ OffsetCut is Tuple
-
-+ t PointOnCurve
-+ point Point
-+ is-crossing Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ OffsetSample is Tuple
-
-+ t PointOnCurve
-+ is-valid Bool
-+ cut Index
-
-━━━━━━━━━━━━━━━━━━━━
-_ OffsetRun
-
-+ start OffsetCut
-+ end OffsetCut
-+ next OffsetRun?
-+ has-previous = false
-+ visited = false
-
-────────────────────
-+ This
-    - run-start OffsetCut
-    - run-end OffsetCut
-
-start = run-start
-end = run-end
 
 ━━━━━━━━━━━━━━━━━━━━
 _ offset-origin-line

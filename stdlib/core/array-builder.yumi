@@ -37,6 +37,23 @@ _ context Backing.Context
 = This(Backing.allocate'ArrayBuilderHeader(context, 1) as CPointer'Byte, context)
 
 ────────────────────
++ to String
+
+", ".join(this as <Item>)
+
+╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get length Size
+
+current-size
+
+────────────────────
++ get mark Size
+
+current-size
+
+────────────────────
 _ get current-items Array'Item'Backing
 
 Array'Item'Backing((header as CPointer'(CPointer'Item))[0], ((header + 8) as CPointer'Size)[0])
@@ -57,48 +74,10 @@ _ get storage-identity CPointer'Byte
 header
 
 ────────────────────
-_ do store-items
-    - next-items Array'Item'Backing
-
-Backing.store'(CPointer'Byte)
-    - header as CPointer'(CPointer'Byte)
-    - next-items.data as CPointer'Byte
-    - 0
-((header + 8) as CPointer'Size)[0] = next-items.length
-
-────────────────────
-_ do store-size
-    - next-size Size
-
-((header + 16) as CPointer'Size)[0] = next-size
-
-────────────────────
-_ do replace-state
-    - next-items Array'Item'Backing
-    - next-size Size
-    - next-mutation-generation Size
-
-store-items(next-items)
-store-size(next-size)
-((header + 24) as CPointer'Size)[0] = next-mutation-generation
-
-────────────────────
-+ to String
-
-", ".join(this as <Item>)
-
-╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ get length Size
-
-current-size
-
-────────────────────
 + this[index Index]
 
 ?! OutOfBoundsError("ArrayBuilder index $index out of range")
-    if index >= active-size
+    if (index as UInt) >= (active-size as UInt)
 
 active-items[index]
 
@@ -116,7 +95,7 @@ this[position.normalize(this)]
 . active-items = current-items
 . active-size = current-size
 ?! OutOfBoundsError("ArrayBuilder index $index out of range")
-    if index >= active-size
+    if (index as UInt) >= (active-size as UInt)
 active-items[index] = item
 
 ────────────────────
@@ -148,11 +127,6 @@ for item in appended
 . active-items = current-items
 if capacity > active-items.length
     store-items(active-items.resize(capacity, context))
-
-────────────────────
-+ get mark Size
-
-current-size
 
 ────────────────────
 + do rewind
@@ -299,6 +273,32 @@ replace-state(checkpoint.items, checkpoint.size, checkpoint.storage-mutation-gen
 for item in this
     //this:array-builder.item -> item
 
+────────────────────
+_ do store-items
+    - next-items Array'Item'Backing
+
+Backing.store'(CPointer'Byte)
+    - header as CPointer'(CPointer'Byte)
+    - next-items.data as CPointer'Byte
+    - 0
+((header + 8) as CPointer'Size)[0] = next-items.length
+
+────────────────────
+_ do store-size
+    - next-size Size
+
+((header + 16) as CPointer'Size)[0] = next-size
+
+────────────────────
+_ do replace-state
+    - next-items Array'Item'Backing
+    - next-size Size
+    - next-mutation-generation Size
+
+store-items(next-items)
+store-size(next-size)
+((header + 24) as CPointer'Size)[0] = next-mutation-generation
+
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -343,16 +343,6 @@ _ storage-mutation-generation Size
 _ arena-generation Size
 _ arena-mark Size
 _ arena-active-bytes Size
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-━━━━━━━━━━━━━━━━━━━━
-_ ArrayBuilderHeader is Tuple
-
-_ data CPointer'Byte
-_ capacity Size
-_ size Size
-_ mutation-generation Size
 
 ━━━━━━━━━━━━━━━━━━━━
 + extend ImmutableArray''Item''Backing
@@ -421,3 +411,11 @@ for item in items
     = builder.finish-mutable()
 ??
     = This(0 as CPointer'Value, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ArrayBuilderHeader is Tuple
+
+_ data CPointer'Byte
+_ capacity Size
+_ size Size
+_ mutation-generation Size

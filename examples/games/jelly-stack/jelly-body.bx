@@ -3,6 +3,7 @@
 (import /math)
 (blank)
 (prop + jelly-node-count _ (= 9))
+(blank)
 (prop _ grid-columns _ (= 3))
 (prop _ node-pull _ (= 24.0))
 (prop _ node-damping _ (= 2.3))
@@ -12,28 +13,6 @@
 (prop _ area-relaxation _ (= 0.4))
 (prop _ relaxation-passes _ (= 3))
 (prop _ node-speed-limit _ (= (call Point 400 400)))
-
-(type _ JellyNode
-  (prop + place _ (= (call Point 0 0)))
-  (prop + previous _ (= (call Point 0 0)))
-  (prop + velocity _ (= (call Point 0 0)))
-  (prop + force _ (= (call Point 0 0)))
-)
-
-(type + JellySupport (is Tuple)
-  (prop + left Point)
-  (prop + middle Point)
-  (prop + right Point)
-  (fn-expr + height-at (? Float)
-    (param x Float)
-    (only-if (+ (. a y) (* (- (. b y) (. a y)) t)) (if (and (>= x (. left x)) (<= x (. right x)))))
-    (where
-      (lazy a (if-expr (<= x (. middle x)) left middle))
-      (lazy b (if-expr (<= x (. middle x)) middle right))
-      (lazy t (call clamp (/ (- x (. a x)) (call max 0.001 (- (. b x) (. a x)))) 0.0 1.0))
-    )
-  )
-)
 
 (type + JellyBody
   (prop _ nodes _ (= (call (of List JellyNode) (in (call JellyNode) (..< 0 jelly-node-count)))))
@@ -199,6 +178,21 @@
   )
 )
 
+(type + JellySupport (is Tuple)
+  (prop + left Point)
+  (prop + middle Point)
+  (prop + right Point)
+  (fn-expr + height-at (? Float)
+    (param x Float)
+    (only-if (+ (. a y) (* (- (. b y) (. a y)) t)) (if (and (>= x (. left x)) (<= x (. right x)))))
+    (where
+      (lazy a (if-expr (<= x (. middle x)) left middle))
+      (lazy b (if-expr (<= x (. middle x)) middle right))
+      (lazy t (call clamp (/ (- x (. a x)) (call max 0.001 (- (. b x) (. a x)))) 0.0 1.0))
+    )
+  )
+)
+
 (fn-expr + row-of Int
   (param index Int)
   (/ index grid-columns)
@@ -207,6 +201,13 @@
 (fn-expr + column-of Int
   (param index Int)
   (% index grid-columns)
+)
+
+(type _ JellyNode
+  (prop + place _ (= (call Point 0 0)))
+  (prop + previous _ (= (call Point 0 0)))
+  (prop + velocity _ (= (call Point 0 0)))
+  (prop + force _ (= (call Point 0 0)))
 )
 
 (fn-expr _ clamp-point Point

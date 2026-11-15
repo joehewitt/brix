@@ -4,11 +4,100 @@
 /probes/trace
 /stream/aggregate
 
+_ Clause is (field String, operator String, value String)
+
 ━━━━━━━━━━━━━━━━━━━━
 + Datum is Union
 
 | number F64
 | text String
+
+━━━━━━━━━━━━━━━━━━━━
++ RowFilter
+
++ keys [String]
++ texts [String]
++ sources [String]
++ kinds [TraceRowKind]
++ earliest U64?
++ latest U64?
++ is-open-only = false
+
+_ clauses [Clause]
+
+────────────────────
++ do add-where ?! Error
+    - text String
+
+for clause in parse-clauses(text)
+    clauses += clause
+
+────────────────────
++ do add-kinds ?! Error
+    - text String
+
+for name in text.split(",")
+    do match name.trim()
+        |= "log"
+            kinds += TraceRowKind.log
+        |= "event"
+            kinds += TraceRowKind.event
+        |= "group"
+            kinds += TraceRowKind.begin
+            kinds += TraceRowKind.end
+        |= "begin"
+            kinds += TraceRowKind.begin
+        |= "end"
+            kinds += TraceRowKind.end
+        |= "open"
+            kinds += TraceRowKind.begin
+            is-open-only = true
+        |= "system"
+            kinds += TraceRowKind.system
+        ?! Error("Unknown --kind ${name.trim()} (use log, event, group, begin, end, open or system)")
+
+────────────────────
++ do accepts Bool
+    - row TraceRow
+
+=? false if kinds.length != 0 && !(kinds has row.kind)
+=? false if is-open-only && (row.kind != TraceRowKind.begin || row.duration != null)
+=? false if earliest && row.time < earliest
+=? false if latest && row.time > latest
+=? false if keys.length != 0 && !matches-key(row)
+=? false if sources.length != 0 && !matches-source(row)
+for text in texts
+    =? false if row.text.find(text) == null
+= all(clauses) • where clause-holds(each, row)
+
+────────────────────
+_ do matches-key Bool
+    - row TraceRow
+
+. name = if row.key != "" then row.key else row.label
+for pattern in keys
+    =? true if glob-matches(pattern, name)
+    =? true if !pattern.find("*") && !pattern.find("?") && name.starts-with("$pattern.")
+= false
+
+────────────────────
+_ do matches-source Bool
+    - row TraceRow
+
+for wanted in sources
+    . colon = wanted.find-reverse(":")
+    . file = wanted
+    . line U32? = null
+    if colon
+        . number = parse-number(wanted[colon + 1 ...])
+        if number
+            file = wanted[0 .. < colon]
+            line = number as U32
+    . place = if row.path != "" then row.path else row.location
+    . named = place == file || place.ends-with("/$file") || row.location.starts-with("$file:")
+    if named && (!line || line == row.line)
+        = true
+= false
 
 ━━━━━━━━━━━━━━━━━━━━
 + parse-duration U64? ?! Error
@@ -114,12 +203,6 @@ while cursor < wanted.length && wanted[cursor] == '*'
 = cursor == wanted.length
 
 ━━━━━━━━━━━━━━━━━━━━
-_ chars [Char]
-    - text String
-
-each in text
-
-━━━━━━━━━━━━━━━━━━━━
 + do field-datum Datum?
     - row TraceRow
     - name String
@@ -207,7 +290,22 @@ while digits.ends-with("0")
 = "$sign$whole.$digits"
 
 ━━━━━━━━━━━━━━━━━━━━
-_ Clause is (field String, operator String, value String)
++ do split-list [String]
+    - text String?
+
+. items [String]
+=? items if !text
+for part in text.split(",")
+    . trimmed = part.trim()
+    if trimmed != ""
+        items += trimmed
+= items
+
+━━━━━━━━━━━━━━━━━━━━
+_ chars [Char]
+    - text String
+
+each in text
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do parse-clauses [Clause] ?! Error
@@ -288,102 +386,3 @@ do match? clause.operator
     |= ">="
         = text >= clause.value
 = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowFilter
-
-+ keys [String]
-+ texts [String]
-+ sources [String]
-+ kinds [TraceRowKind]
-+ earliest U64?
-+ latest U64?
-+ is-open-only = false
-
-_ clauses [Clause]
-
-────────────────────
-+ do add-where ?! Error
-    - text String
-
-for clause in parse-clauses(text)
-    clauses += clause
-
-────────────────────
-+ do add-kinds ?! Error
-    - text String
-
-for name in text.split(",")
-    do match name.trim()
-        |= "log"
-            kinds += TraceRowKind.log
-        |= "event"
-            kinds += TraceRowKind.event
-        |= "group"
-            kinds += TraceRowKind.begin
-            kinds += TraceRowKind.end
-        |= "begin"
-            kinds += TraceRowKind.begin
-        |= "end"
-            kinds += TraceRowKind.end
-        |= "open"
-            kinds += TraceRowKind.begin
-            is-open-only = true
-        |= "system"
-            kinds += TraceRowKind.system
-        ?! Error("Unknown --kind ${name.trim()} (use log, event, group, begin, end, open or system)")
-
-────────────────────
-+ do accepts Bool
-    - row TraceRow
-
-=? false if kinds.length != 0 && !(kinds has row.kind)
-=? false if is-open-only && (row.kind != TraceRowKind.begin || row.duration != null)
-=? false if earliest && row.time < earliest
-=? false if latest && row.time > latest
-=? false if keys.length != 0 && !matches-key(row)
-=? false if sources.length != 0 && !matches-source(row)
-for text in texts
-    =? false if row.text.find(text) == null
-= all(clauses) • where clause-holds(each, row)
-
-────────────────────
-_ do matches-key Bool
-    - row TraceRow
-
-. name = if row.key != "" then row.key else row.label
-for pattern in keys
-    =? true if glob-matches(pattern, name)
-    =? true if !pattern.find("*") && !pattern.find("?") && name.starts-with("$pattern.")
-= false
-
-────────────────────
-_ do matches-source Bool
-    - row TraceRow
-
-for wanted in sources
-    . colon = wanted.find-reverse(":")
-    . file = wanted
-    . line U32? = null
-    if colon
-        . number = parse-number(wanted[colon + 1 ...])
-        if number
-            file = wanted[0 .. < colon]
-            line = number as U32
-    . place = if row.path != "" then row.path else row.location
-    . named = place == file || place.ends-with("/$file") || row.location.starts-with("$file:")
-    if named && (!line || line == row.line)
-        = true
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do split-list [String]
-    - text String?
-
-. items [String]
-=? items if !text
-for part in text.split(",")
-    . trimmed = part.trim()
-    if trimmed != ""
-        items += trimmed
-= items

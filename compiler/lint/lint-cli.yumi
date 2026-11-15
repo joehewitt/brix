@@ -15,188 +15,6 @@
 request-process-termination(Yumilint().run())
 
 ━━━━━━━━━━━━━━━━━━━━
-_ Yumilint is CommandLine
-
-────────────────────
-
-<This
-    name = "yumi lint"
-    about = "Lint Yumi files, or apply the fixes their rules make safely."
-
-    <Arguments target-paths "target"
-        about = "a file or folder to lint; the project root by default"
-    <Option project "--project"
-        value-name = "ROOT"
-        about = "the project root; the current folder by default"
-    <Option config-file "--config"
-        value-name = "PATH"
-        about = "the lint config; the project's .yumi/lint.json by default"
-    <Option module-paths "--search-path"
-        value-name = "PATHS"
-        about = "folders to find modules in, joined by colons; the config's, or the compiler's by default"
-    <Options rules "--rule"
-        value-name = "ID"
-        about = "run only this rule, configured or not"
-    <Option format "--format"
-        choices = ["text", "json-lines"]
-        default = "text"
-        about = "how to write diagnostics"
-    <Flag lists-rules "--list-rules"
-        about = "list the rules as JSON lines, and lint nothing"
-
-    <OptionGroup "semantic rules"
-        <Flag semantic-rules "--semantic-rules"
-            about = "also run the rules that type the program"
-        <Flag coverage-plan "--coverage-plan"
-            about = "run the semantic rules and report which targets their roots cover"
-        <Options semantic-roots "--semantic-root"
-            value-name = "PATH"
-            about = "a program to type, in place of the config's semantic roots"
-
-    <OptionGroup "fixes"
-        <Flag fixes "--fix"
-            about = "apply the safe fixes and write the files they change"
-        <Flag dry-run "--fix-dry-run"
-            about = "report the safe fixes without writing them"
-        <Options fix-rules "--fix-rule"
-            value-name = "ID"
-            about = "apply the fixes of only this rule"
-
-╌╌╌╌╌╌╌╌╌╌ is CommandLine ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do main Int ?! Error
-
-. outcome = catch lint()
-if outcome is Error
-    emit-error(error-text(outcome))
-    = 1
-= 0
-
-────────────────────
-_ do lint ?! Error
-
-if lists-rules.value
-    . listed-root = normalized-root(project.value ?? cwd())
-    emit-rule-catalog(load-lint-config(listed-root, rule-catalog(), config-file.value))
-    =
-
-. catalog = rule-catalog()
-. is-fixing = fixes.value || dry-run.value
-. is-semantic = semantic-rules.value || coverage-plan.value
-?! Error("--coverage-plan cannot be combined with --fix or --fix-dry-run")
-    if coverage-plan.value && is-fixing
-?! Error("--fix-rule needs --fix or --fix-dry-run")
-    if fix-rules.values.length != 0 && !is-fixing
-. selected = if is-fixing then fix-rules.values else rules.values
-. project-root = normalized-root(project.value ?? cwd())
-. config = load-lint-config(project-root, catalog, config-file.value)
-. search-path = module-paths.value ?? config.search-path ?? default-search-path()
-for id in selected
-    . rule = find-rule(catalog, id)
-    ?! Error("Unknown lint rule: $id")
-        if !rule
-    if !config.rules[id]
-        config.rules[id] = copy-options(rule.default-options)
-
-. targets = target-paths.values
-if targets.length == 0
-    targets += "."
-. files = discover-lint-files(project-root, targets)
-. linter = Linter(project-root, search-path, config, catalog, selected, is-semantic)
-
-. json-lines = format.value == "json-lines"
-if is-fixing
-    . roots [String] = resolve-target(project-root, each) in semantic-roots.values
-    fix(linter, files, fix-rules.values, dry-run.value, roots, json-lines)
-    =
-if json-lines
-    emit-start(files.length, config.path)
-
-. tally = LintTally(json-lines)
-if linter.has-file-rules()
-    . index = 0
-    for file in files
-        index += 1
-        if json-lines
-            emit-progress(relative-report-path(project-root, file), index, files.length)
-        tally.report(linter.lint-file(file))
-
-if !linter.needs-phase("semantic")
-    tally.finish(files.length, null)
-    =
-
-. semantic-ids [String] = each.id in linter.active-rules when each.phase == "semantic"
-. label = if semantic-ids.length == 1 then semantic-ids[0] else "${semantic-ids.length} rules"
-if json-lines
-    emit-semantic-progress(files.length, null, null, label, "analyze")
-. search-paths [Path] = Path(each) in search-path.split(":")
-. analysis = SemanticAnalysis(project-root, search-paths, json-lines, label)
-. roots [String] = resolve-target(project-root, each) in semantic-roots.values
-analysis.analyze(files, roots, config.semantic-roots)
-. report = analysis.report()
-if json-lines
-    emit-semantic(report)
-if analysis.failed()
-    if json-lines
-        emit-error(analysis.failure-message())
-        emit-end("error", tally.summary(files.length, analysis), report)
-    else
-        write-stderr("yumi lint: ${analysis.failure-message()}")
-    C:exit(1)
-
-. index = 0
-for file in files
-    index += 1
-    if json-lines
-        emit-semantic-progress(files.length, relative-report-path(project-root, file), index, label)
-    if analysis.compiled[file]
-        tally.report(linter.lint-file(file, analysis.facts[file]))
-tally.finish(files.length, analysis)
-
-━━━━━━━━━━━━━━━━━━━━
-+ error-text
-    - error Error
-
-match error
-    | syntax-error YumiSyntaxError
-        "$syntax-error"
-    ??
-        error.message
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fix
-    - linter Linter
-    - files [String]
-    - fix-rules [String]
-    - is-dry-run Bool
-    - roots [String]
-    - json-lines Bool
-
-` Lints the files in passes that apply their safe fixes, and reports the diagnostics of the last
-` pass with the fixes applied, writing the files they changed unless it `is-dry-run`.
-. run = LintFixRun(linter, files, fix-rules, is-dry-run, roots)
-. tally = LintTally(json-lines)
-. outcome = catch run.run()
-if outcome is Error
-    . failed = run.analysis && run.analysis.failed()
-    if json-lines && failed
-        emit-error((outcome as Error).message)
-        emit-end("error", tally.summary(files.length, run.analysis), run.analysis!.report())
-        C:exit(1)
-    ?! outcome as Error
-. report = run.analysis.report() if run.analysis
-if json-lines
-    emit-start(files.length, linter.config.path, report)
-    if report
-        emit-semantic(report)
-tally.fixes = run.fixes
-tally.fixed-files = run.changed.length as Int
-tally.is-dry-run = is-dry-run
-tally.report(run.diagnostics)
-tally.finish(files.length, run.analysis)
-
-━━━━━━━━━━━━━━━━━━━━
 + LintTally
 
 ` Counts the diagnostics of a run as they are reported, and writes each in the run's format.
@@ -283,6 +101,48 @@ else
     -- "No lint diagnostics in $files files"
 
 ━━━━━━━━━━━━━━━━━━━━
++ error-text
+    - error Error
+
+match error
+    | syntax-error YumiSyntaxError
+        "$syntax-error"
+    ??
+        error.message
+
+━━━━━━━━━━━━━━━━━━━━
++ do fix
+    - linter Linter
+    - files [String]
+    - fix-rules [String]
+    - is-dry-run Bool
+    - roots [String]
+    - json-lines Bool
+
+` Lints the files in passes that apply their safe fixes, and reports the diagnostics of the last
+` pass with the fixes applied, writing the files they changed unless it `is-dry-run`.
+. run = LintFixRun(linter, files, fix-rules, is-dry-run, roots)
+. tally = LintTally(json-lines)
+. outcome = catch run.run()
+if outcome is Error
+    . failed = run.analysis && run.analysis.failed()
+    if json-lines && failed
+        emit-error((outcome as Error).message)
+        emit-end("error", tally.summary(files.length, run.analysis), run.analysis!.report())
+        C:exit(1)
+    ?! outcome as Error
+. report = run.analysis.report() if run.analysis
+if json-lines
+    emit-start(files.length, linter.config.path, report)
+    if report
+        emit-semantic(report)
+tally.fixes = run.fixes
+tally.fixed-files = run.changed.length as Int
+tally.is-dry-run = is-dry-run
+tally.report(run.diagnostics)
+tally.finish(files.length, run.analysis)
+
+━━━━━━━━━━━━━━━━━━━━
 + normalized-root
     - root String
 
@@ -297,3 +157,145 @@ else
 + default-search-path String
 
 ":".join(((each as String) in module-search-paths()))
+
+━━━━━━━━━━━━━━━━━━━━
+_ Yumilint is CommandLine
+
+────────────────────
+
+<This
+    name = "yumi lint"
+    about = "Lint Yumi files, or apply the fixes their rules make safely."
+
+    <Arguments target-paths "target"
+        about = "a file or folder to lint; the project root by default"
+    <Option project "--project"
+        value-name = "ROOT"
+        about = "the project root; the current folder by default"
+    <Option config-file "--config"
+        value-name = "PATH"
+        about = "the lint config; the project's .yumi/lint.json by default"
+    <Option module-paths "--search-path"
+        value-name = "PATHS"
+        about = "folders to find modules in, joined by colons; the config's, or the compiler's by default"
+    <Options rules "--rule"
+        value-name = "ID"
+        about = "run only this rule, configured or not"
+    <Option format "--format"
+        choices = ["text", "json-lines"]
+        default = "text"
+        about = "how to write diagnostics"
+    <Flag lists-rules "--list-rules"
+        about = "list the rules as JSON lines, and lint nothing"
+
+    <OptionGroup "semantic rules"
+        <Flag semantic-rules "--semantic-rules"
+            about = "also run the rules that type the program"
+        <Flag coverage-plan "--coverage-plan"
+            about = "run the semantic rules and report which targets their roots cover"
+        <Options semantic-roots "--semantic-root"
+            value-name = "PATH"
+            about = "a program to type, in place of the config's semantic roots"
+
+    <OptionGroup "fixes"
+        <Flag fixes "--fix"
+            about = "apply the safe fixes and write the files they change"
+        <Flag dry-run "--fix-dry-run"
+            about = "report the safe fixes without writing them"
+        <Options fix-rules "--fix-rule"
+            value-name = "ID"
+            about = "apply the fixes of only this rule"
+
+╌╌╌╌╌╌╌╌╌╌ is CommandLine ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do main Int ?! Error
+
+. outcome = catch lint()
+if outcome is Error
+    emit-error(error-text(outcome))
+    = 1
+= 0
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do lint ?! Error
+
+if lists-rules.value
+    . listed-root = normalized-root(project.value ?? cwd())
+    emit-rule-catalog(load-lint-config(listed-root, rule-catalog(), config-file.value))
+    =
+
+. catalog = rule-catalog()
+. is-fixing = fixes.value || dry-run.value
+. is-semantic = semantic-rules.value || coverage-plan.value
+?! Error("--coverage-plan cannot be combined with --fix or --fix-dry-run")
+    if coverage-plan.value && is-fixing
+?! Error("--fix-rule needs --fix or --fix-dry-run")
+    if fix-rules.values.length != 0 && !is-fixing
+. selected = if is-fixing then fix-rules.values else rules.values
+. project-root = normalized-root(project.value ?? cwd())
+. config = load-lint-config(project-root, catalog, config-file.value)
+. search-path = module-paths.value ?? config.search-path ?? default-search-path()
+for id in selected
+    . rule = find-rule(catalog, id)
+    ?! Error("Unknown lint rule: $id")
+        if !rule
+    if !config.rules[id]
+        config.rules[id] = copy-options(rule.default-options)
+
+. targets = target-paths.values
+if targets.length == 0
+    targets += "."
+. files = discover-lint-files(project-root, targets)
+. linter = Linter(project-root, search-path, config, catalog, selected, is-semantic)
+
+. json-lines = format.value == "json-lines"
+if is-fixing
+    . roots [String] = resolve-target(project-root, each) in semantic-roots.values
+    fix(linter, files, fix-rules.values, dry-run.value, roots, json-lines)
+    =
+if json-lines
+    emit-start(files.length, config.path)
+
+. tally = LintTally(json-lines)
+if linter.has-file-rules()
+    . index = 0
+    for file in files
+        index += 1
+        if json-lines
+            emit-progress(relative-report-path(project-root, file), index, files.length)
+        tally.report(linter.lint-file(file))
+
+if !linter.needs-phase("semantic")
+    tally.finish(files.length, null)
+    =
+
+. semantic-ids [String] = each.id in linter.active-rules when each.phase == "semantic"
+. label = if semantic-ids.length == 1 then semantic-ids[0] else "${semantic-ids.length} rules"
+if json-lines
+    emit-semantic-progress(files.length, null, null, label, "analyze")
+. search-paths [Path] = Path(each) in search-path.split(":")
+. analysis = SemanticAnalysis(project-root, search-paths, json-lines, label)
+. roots [String] = resolve-target(project-root, each) in semantic-roots.values
+analysis.analyze(files, roots, config.semantic-roots)
+. report = analysis.report()
+if json-lines
+    emit-semantic(report)
+if analysis.failed()
+    if json-lines
+        emit-error(analysis.failure-message())
+        emit-end("error", tally.summary(files.length, analysis), report)
+    else
+        write-stderr("yumi lint: ${analysis.failure-message()}")
+    C:exit(1)
+
+. index = 0
+for file in files
+    index += 1
+    if json-lines
+        emit-semantic-progress(files.length, relative-report-path(project-root, file), index, label)
+    if analysis.compiled[file]
+        tally.report(linter.lint-file(file, analysis.facts[file]))
+tally.finish(files.length, analysis)

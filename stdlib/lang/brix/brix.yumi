@@ -50,17 +50,6 @@ _ brix-read-repairs Size = 32
 _ brix-repair-mark = "brix-unread-"
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do brix-document-read SourceDocument ?! SexpError
-    - text String
-
-. language = BrixLanguage()
-. document = source-document-read(language, text)
-    catch failure SexpError
-        language.store.release()
-        ?! failure
-= document
-
-━━━━━━━━━━━━━━━━━━━━
 + BrixLanguage
     is SourceLanguage
 
@@ -502,12 +491,6 @@ is-main(node)
 = grouping(declaration, false)
 
 ────────────────────
-+ do converted ImmutableTableRow'SourceNode
-    - declaration ImmutableTableRow'SourceNode
-
-= grouping(declaration, true)
-
-────────────────────
 + do ungrouped ImmutableTableRow'SourceNode
     - owner ImmutableTableRow'SourceNode
 
@@ -531,6 +514,14 @@ for item in store.items(owner)
 SourceRow(null, source-row-decoration, 0, spans, false, source-divider-thick)
 
 .. spans = List'SourceSpan(SourceSpan(.decoration, brix-thick-divider))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do converted ImmutableTableRow'SourceNode
+    - declaration ImmutableTableRow'SourceNode
+
+= grouping(declaration, true)
 
 ╌╌╌╌╌╌╌╌╌╌ is SexpLayout ╌╌╌╌╌╌╌╌╌╌
 
@@ -1373,6 +1364,50 @@ _ spans-of [SourceSpan]
     highlight(printer.row(node), row.mode)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do brix-document-read SourceDocument ?! SexpError
+    - text String
+
+. language = BrixLanguage()
+. document = source-document-read(language, text)
+    catch failure SexpError
+        language.store.release()
+        ?! failure
+= document
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-read [ImmutableTableRow'SourceNode]
+    - language BrixLanguage
+    - text String
+
+. forms [ImmutableTableRow'SourceNode]
+. lines [String]
+for line in text.split("\n")
+    if lines.length > 0 && line.starts-with("━")
+        forms ++= brix-read-chunk(language, lines)
+        lines = List'String()
+    lines += line
+forms ++= brix-read-chunk(language, lines)
+= forms
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-woven [ImmutableTableRow'SourceNode] ?! BrixSyntaxError
+    - language BrixLanguage
+    - source String
+
+. store = language.store
+. spans = BrixSpans(store)
+. root = brix-build(source, BrixBuilder(store, spans))
+. woven = BrixTrivia(store, spans, source).weave(root)
+. nodes [ImmutableTableRow'SourceNode]
+for node in store.listed(woven, 1)
+    if store.is-form(node, "content")
+        for item in store.listed(node, 1)
+            nodes += language.converted(item)
+    else
+        nodes += language.converted(node)
+= nodes
+
+━━━━━━━━━━━━━━━━━━━━
 _ BrixOutlineBuild
 
 + place U32
@@ -1517,39 +1552,6 @@ _ brix-gap SourceOutlineRow
     - owner ImmutableTableRow'SourceNode
 
 SourceOutlineRow(null, mode, 0, false, 0, owner.index as U32, true)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do brix-read [ImmutableTableRow'SourceNode]
-    - language BrixLanguage
-    - text String
-
-. forms [ImmutableTableRow'SourceNode]
-. lines [String]
-for line in text.split("\n")
-    if lines.length > 0 && line.starts-with("━")
-        forms ++= brix-read-chunk(language, lines)
-        lines = List'String()
-    lines += line
-forms ++= brix-read-chunk(language, lines)
-= forms
-
-━━━━━━━━━━━━━━━━━━━━
-+ do brix-woven [ImmutableTableRow'SourceNode] ?! BrixSyntaxError
-    - language BrixLanguage
-    - source String
-
-. store = language.store
-. spans = BrixSpans(store)
-. root = brix-build(source, BrixBuilder(store, spans))
-. woven = BrixTrivia(store, spans, source).weave(root)
-. nodes [ImmutableTableRow'SourceNode]
-for node in store.listed(woven, 1)
-    if store.is-form(node, "content")
-        for item in store.listed(node, 1)
-            nodes += language.converted(item)
-    else
-        nodes += language.converted(node)
-= nodes
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do brix-read-chunk [ImmutableTableRow'SourceNode]

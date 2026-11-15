@@ -11,6 +11,8 @@ _ stroke-teeny = 0.000001
 _ stroke-inversion-samples = 32
 _ stroke-patch-tolerance = 0.25
 
+_ StrokeZone is (start PointOnCurve, end PointOnCurve)
+
 ━━━━━━━━━━━━━━━━━━━━
 + JoinType
 
@@ -22,15 +24,15 @@ _ stroke-patch-tolerance = 0.25
 ━━━━━━━━━━━━━━━━━━━━
 + StrokeEffect is VectorEffect
 
-_ effect-width Length
-_ effect-join-type JoinType = .round-join-type
-_ effect-cap LineCap = .round
-_ effect-miter-limit Length = 4
-
 + width => effect-width
 + join-type => effect-join-type
 + cap => effect-cap
 + miter-limit => effect-miter-limit
+
+_ effect-width Length
+_ effect-join-type JoinType = .round-join-type
+_ effect-cap LineCap = .round
+_ effect-miter-limit Length = 4
 
 ────────────────────
 + This
@@ -75,7 +77,74 @@ for path in source
 StrokeEffect(effect-width, effect-join-type, effect-cap, effect-miter-limit)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ StrokeZone is (start PointOnCurve, end PointOnCurve)
++ do stroke
+    - path Path
+    - width Length
+    - alignment StrokeAlignment = .center
+    - join-type JoinType = .bevel-join-type
+    - cap LineCap = .butt
+    - miter-limit Length = 1
+    - offset Length = 0
+
+if width <= 0 || path.count < 2
+    = Path()
+
+. outer-distance =
+    |? alignment == .center
+        offset + width / 2
+    |? alignment == .outside
+        offset + width
+    ??
+        offset
+. inner-distance =
+    |? alignment == .center
+        offset - width / 2
+    |? alignment == .outside
+        offset
+    ??
+        offset - width
+
+. result = Path()
+for subpath in path.subpaths
+    . stroked = stroke-subpath()
+        - subpath.materialize()
+        - width
+        - outer-distance
+        - inner-distance
+        - join-type
+        - cap
+        - miter-limit
+    if stroked.count
+        result.add-path(stroked)
+
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ do stroke-join Path
+    - pivot Point
+    - incoming Point
+    - outgoing Point
+    - width Length
+    - join-type JoinType = .round-join-type
+    - miter-limit Length = 4
+
+=? Path() if width <= 0 || incoming.length <= stroke-teeny || outgoing.length <= stroke-teeny
+. first = incoming / incoming.length
+. second = outgoing / outgoing.length
+. radius = width / 2
+. contour = StrokeContour(width, radius, -radius, join-type, .butt, miter-limit, 1)
+. first-normal = stroke-unit-normal(first, 1)
+. second-normal = stroke-unit-normal(second, 1)
+contour.outer.line-to(pivot)
+contour.outer.line-to(pivot + first-normal * radius)
+contour.inner.line-to(pivot)
+contour.inner.line-to(pivot - first-normal * radius)
+contour.add-contour-join(pivot, first-normal, second-normal, first, second) • is !line
+contour.outer.line-to(pivot)
+contour.inner.line-to(pivot)
+contour.outer.close()
+contour.inner.close()
+= if first.cross(second) < 0 then Path(contour.inner.path) else Path(contour.outer.path)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ StrokeContour
@@ -522,49 +591,6 @@ if !is-line
     writer.line-to(pivot + after-normal * distance)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do stroke
-    - path Path
-    - width Length
-    - alignment StrokeAlignment = .center
-    - join-type JoinType = .bevel-join-type
-    - cap LineCap = .butt
-    - miter-limit Length = 1
-    - offset Length = 0
-
-if width <= 0 || path.count < 2
-    = Path()
-
-. outer-distance =
-    |? alignment == .center
-        offset + width / 2
-    |? alignment == .outside
-        offset + width
-    ??
-        offset
-. inner-distance =
-    |? alignment == .center
-        offset - width / 2
-    |? alignment == .outside
-        offset
-    ??
-        offset - width
-
-. result = Path()
-for subpath in path.subpaths
-    . stroked = stroke-subpath()
-        - subpath.materialize()
-        - width
-        - outer-distance
-        - inner-distance
-        - join-type
-        - cap
-        - miter-limit
-    if stroked.count
-        result.add-path(stroked)
-
-= result
-
-━━━━━━━━━━━━━━━━━━━━
 _ do stroke-subpath
     - path Path
     - width Length
@@ -716,33 +742,6 @@ for i in 0 .. < span.command-count
             - span.coords[start + 3]
             - span.coords[start + 4]
             - span.coords[start + 5]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stroke-join Path
-    - pivot Point
-    - incoming Point
-    - outgoing Point
-    - width Length
-    - join-type JoinType = .round-join-type
-    - miter-limit Length = 4
-
-=? Path() if width <= 0 || incoming.length <= stroke-teeny || outgoing.length <= stroke-teeny
-. first = incoming / incoming.length
-. second = outgoing / outgoing.length
-. radius = width / 2
-. contour = StrokeContour(width, radius, -radius, join-type, .butt, miter-limit, 1)
-. first-normal = stroke-unit-normal(first, 1)
-. second-normal = stroke-unit-normal(second, 1)
-contour.outer.line-to(pivot)
-contour.outer.line-to(pivot + first-normal * radius)
-contour.inner.line-to(pivot)
-contour.inner.line-to(pivot - first-normal * radius)
-contour.add-contour-join(pivot, first-normal, second-normal, first, second) • is !line
-contour.outer.line-to(pivot)
-contour.inner.line-to(pivot)
-contour.outer.close()
-contour.inner.close()
-= if first.cross(second) < 0 then Path(contour.inner.path) else Path(contour.outer.path)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do inverted-stroke-zones [StrokeZone]

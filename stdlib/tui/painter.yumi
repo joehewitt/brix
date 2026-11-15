@@ -107,7 +107,7 @@ _ do collect-layers
     - root Box
     - canvas Canvas
 
-for child in root.children
+for child in root.structural-children
     collect-layer-subtree(child, canvas)
 
 ────────────────────
@@ -137,7 +137,7 @@ else
 _ do collect-hidden-paint-damage
     - box Box
 
-for child in box.children
+for child in box.structural-children
     if child.is-display-visible
         collect-hidden-paint-damage(child)
     else
@@ -209,7 +209,7 @@ while index < layers.length
 _ needs-base-paint
     - root Box
 
-some(root.children) • where base-subtree-paint-invalid(each)
+some(root.structural-children) • where base-subtree-paint-invalid(each)
 
 ────────────────────
 _ do base-subtree-paint-invalid Bool
@@ -220,7 +220,7 @@ _ do base-subtree-paint-invalid Bool
 =? true
     if box.$is-paint-invalid
 
-= some(box.children) • where base-subtree-paint-invalid(each)
+= some(box.structural-children) • where base-subtree-paint-invalid(each)
 
 ────────────────────
 _ do repaint-base
@@ -230,7 +230,7 @@ _ do repaint-base
 base.reset()
 do use base
     base.offset((root.scroll-x, root.scroll-y))
-    for child in root.children
+    for child in root.structural-children
         if !child.requires-compositing-layer
             paint-with-compositing-layers-skipped(child, base)
 
@@ -304,7 +304,7 @@ _ do compose-ordered-children Bool
     - canvas Canvas
 
 . saw-layer = false
-for child in parent.children
+for child in parent.structural-children
     if !child.is-display-visible
         continue
     if !child.is-markup-shadow && !canvas.is-rect-visible(child.bounds)
@@ -388,24 +388,7 @@ _ layer-subtree-paint-invalid Bool
 _ layer-descendant-paint-invalid Bool
     - box Box
 
-some(box.children) • where layer-subtree-paint-invalid(each)
-
-━━━━━━━━━━━━━━━━━━━━
-_ CompositingLayer
-
-+ owner Box
-+ bounds Rect
-+ previous-bounds Rect
-+ opacity Ratio = 1%%
-+ surface Canvas?
-+ has-bounds = false
-+ was-seen = false
-+ needs-content-paint = true
-+ needs-geometry-cleanup = false
-
-────────────────────
-+ This
-    - owner
+some(box.structural-children) • where layer-subtree-paint-invalid(each)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do paint-box-background
@@ -454,6 +437,23 @@ Rect(left, top, right - left, bottom - top)
 .. top = min(a.y, b.y)
 .. right = max(a.right, b.right)
 .. bottom = max(a.bottom, b.bottom)
+
+━━━━━━━━━━━━━━━━━━━━
+_ CompositingLayer
+
++ owner Box
++ bounds Rect
++ previous-bounds Rect
++ opacity Ratio = 1%%
++ surface Canvas?
++ has-bounds = false
++ was-seen = false
++ needs-content-paint = true
++ needs-geometry-cleanup = false
+
+────────────────────
++ This
+    - owner
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do paint-background-painter

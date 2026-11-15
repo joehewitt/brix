@@ -19,65 +19,7 @@ _ test-note-limit Size = 2000
 _ test-newline Byte = 10
 _ test-lifeline = "(read line <&3; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec \"\$@\" 3<&-"
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestStatus is Union
-
-| idle
-| queued
-| running
-| passed
-| failed
-| crashed
-| timed-out
-| stopped
-| not-run
-| skipped
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestResult is Tuple
-
-+ run Int
-+ node Index
-+ status TestStatus
-+ duration U64
-+ expected String
-+ actual String
-+ errors String
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestEvent is Union
-
-| discovered(catalog TestCatalog)
-| started(node Index, at U64)
-| reported(result TestResult)
-| phase(name String)
-| noted(text String)
-| completed(stuck [Int])
-
-━━━━━━━━━━━━━━━━━━━━
 + TestFrame is (run Int, event TestEvent)
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestBatch is Tuple
-
-+ suite TestSuiteConfig
-+ arguments [String]
-+ ids [String]
-+ nodes [String = Index]
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestOrder is Tuple
-
-+ run Int
-+ config TestConfig
-+ batches [TestBatch]
-
-━━━━━━━━━━━━━━━━━━━━
-_ TestCommand is Union
-
-| discover(config TestConfig)
-| start(order TestOrder)
-| stop(run Int)
 
 ━━━━━━━━━━━━━━━━━━━━
 + TestRunner
@@ -94,6 +36,19 @@ _ worker := Worker()
 
 do (worker) new
     serve()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if commands.is-closed
+commands.close()
+<- served
+worker.stop()
+frames.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do discover
@@ -112,17 +67,6 @@ commands <- TestCommand.start(order)
     - run Int
 
 commands <- TestCommand.stop(run)
-
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-=? if commands.is-closed
-commands.close()
-<- served
-worker.stop()
-frames.close()
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -160,6 +104,74 @@ for discovery in discoveries
     discovery.await()
 current?.await()
 served.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ TestStatus is Union
+
+| idle
+| queued
+| running
+| passed
+| failed
+| crashed
+| timed-out
+| stopped
+| not-run
+| skipped
+
+━━━━━━━━━━━━━━━━━━━━
++ TestResult is Tuple
+
++ run Int
++ node Index
++ status TestStatus
++ duration U64
++ expected String
++ actual String
++ errors String
+
+━━━━━━━━━━━━━━━━━━━━
++ TestEvent is Union
+
+| discovered(catalog TestCatalog)
+| started(node Index, at U64)
+| reported(result TestResult)
+| phase(name String)
+| noted(text String)
+| completed(stuck [Int])
+
+━━━━━━━━━━━━━━━━━━━━
++ TestBatch is Tuple
+
++ suite TestSuiteConfig
++ arguments [String]
++ ids [String]
++ nodes [String = Index]
+
+━━━━━━━━━━━━━━━━━━━━
++ TestOrder is Tuple
+
++ run Int
++ config TestConfig
++ batches [TestBatch]
+
+━━━━━━━━━━━━━━━━━━━━
++ do test-byte-text String
+    - bytes Byte[]
+    - count Size
+
+=? bytes.slice-string(0 .. < count) if C:yumiStringValidateUtf8(bytes.data, count) == 0
+. cleaned = Byte[count]
+for index in 0 .. < count
+    cleaned[index] = if bytes[index] < 128 then bytes[index] else 63
+= cleaned.slice-string(0 .. < count)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TestCommand is Union
+
+| discover(config TestConfig)
+| start(order TestOrder)
+| stop(run Int)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ TestExecution
@@ -554,17 +566,6 @@ _ do read-chunk Size
 = source.read(chunk.size, chunk)
     catch failure Error
         = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do test-byte-text String
-    - bytes Byte[]
-    - count Size
-
-=? bytes.slice-string(0 .. < count) if C:yumiStringValidateUtf8(bytes.data, count) == 0
-. cleaned = Byte[count]
-for index in 0 .. < count
-    cleaned[index] = if bytes[index] < 128 then bytes[index] else 63
-= cleaned.slice-string(0 .. < count)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ event-number F64?

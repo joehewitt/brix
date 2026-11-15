@@ -8,12 +8,10 @@
 /lang/check/type-store
 /lang/check/types
 
-+ LayoutId is U32
 + no-layout LayoutId = U32.max
 + first-struct-layout LayoutId = 14
 + object-header-fields U32 = 2
 + large-struct-size U32 = 16
-
 + void-layout LayoutId = 0
 + pointer-layout LayoutId = 1
 + managed-layout LayoutId = 2
@@ -27,6 +25,8 @@
 + i64-layout LayoutId = 10
 + f32-layout LayoutId = 11
 + f64-layout LayoutId = 12
++ compiler-buffer-count U32 = 512
++ plain-site-count U32 = 129
 
 _ empty-vector-name = "gcvec.empty"
 _ pointer-descriptor-name = "gcdesc.pointer"
@@ -35,31 +35,12 @@ _ function-descriptor-name = "gcdesc.function"
 _ function-buffer-name = "gcbufdesc.function"
 _ interface-descriptor-name = "gcdesc.interface"
 _ interface-buffer-name = "gcbufdesc.interface"
-
-+ compiler-buffer-count U32 = 512
-+ plain-site-count U32 = 129
 _ inline-allocation-limit U64 = 1024
 _ site-key-size U64 = 48
 _ thread-cache-compiler-buffers-offset U64 = 104
 _ runtime-buffer-size U64 = 80
 
-━━━━━━━━━━━━━━━━━━━━
-+ MachineKind is U32
-
-| machine-void = 0
-| machine-pointer = 1
-| machine-managed-pointer = 2
-| machine-u8 = 3
-| machine-i8 = 4
-| machine-u16 = 5
-| machine-i16 = 6
-| machine-u32 = 7
-| machine-i32 = 8
-| machine-u64 = 9
-| machine-i64 = 10
-| machine-f32 = 11
-| machine-f64 = 12
-| machine-struct = 13
++ LayoutId is U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + Layout is Struct
@@ -85,27 +66,6 @@ _ runtime-buffer-size U64 = 80
 + shape LayoutId = no-layout
 
 ━━━━━━━━━━━━━━━━━━━━
-+ LayoutField is Struct
-
-` Where a struct holds a field, how the field is held, and the type of the property it
-` holds, when it holds one.
-
-+ offset U32
-+ layout LayoutId
-+ type TypeId = no-type
-
-━━━━━━━━━━━━━━━━━━━━
-_ TaggedRange is Tuple
-
-` Where an optional or a union that holds managed pointers lies in a layout: its flag or tag,
-` what it holds, and the layout of the optional's value or of the union.
-
-+ flag U32
-+ payload U32
-+ layout LayoutId
-+ is-union Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + Layouts
 
 ` The machine layout of every type of the sealed store that has one, built once before
@@ -122,6 +82,8 @@ _ TaggedRange is Tuple
 + objects CPointer'U32
 + function-layout LayoutId = no-layout
 + interface-layout LayoutId = no-layout
++ memo-places CPointer'Byte?
+
 _ types Types
 _ bundle Bundle
 _ arena Arena
@@ -132,7 +94,6 @@ _ buffered [Byte]
 _ plain-sites [StringId]
 _ empty-slot StringId = no-string
 _ shapes Map'Size'U32'ArenaBacking
-+ memo-places CPointer'Byte?
 _ memo-flags = Map'Size'U32()
 
 ────────────────────
@@ -144,6 +105,11 @@ _ memo-flags = Map'Size'U32()
 .. rows = Table'Layout(arena, 64)
 .. fields = Table'LayoutField(arena, 64)
 .. shapes = Map'Size'U32(arena)
+
+────────────────────
++ get count U32
+
+rows.length as U32
 
 ────────────────────
 + do build
@@ -217,19 +183,6 @@ for id in 0 .. < total
         rows[id].buffer = bundle.intern("gcbufdesc.$key")
 
 ────────────────────
-_ do add-scalar
-    - kind MachineKind
-    - size U32
-
-. alignment = if size != 0 then size else 1u32
-rows.append(Layout(kind, size, alignment, Span(), kind == .machine-managed-pointer))
-
-────────────────────
-+ get count U32
-
-rows.length as U32
-
-────────────────────
 + kind-of MachineKind @inline
     - layout LayoutId
 
@@ -272,6 +225,236 @@ memo-flags[rows[layout].fields.start + index] ?? U32.max
 if layout < first-struct-layout || !rows[layout].is-managed then no-string else struct-descriptor
 
 .. struct-descriptor = rows[layout].descriptor
+
+────────────────────
++ do pointee-size U32
+    - type TypeId
+
+` The size of what a C pointer points at, which a count added to the pointer steps by. A
+` pointer to nothing steps by the size of a pointer, and one whose type does not say by one
+` byte.
+. owner = types.type-decl(.cpointer)
+. current = type
+while current != no-type
+    do match? types.rows[current]
+        | .type-class(row)
+            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+                . pointee = types.child-type(row.args, 0)
+                if pointee == no-type || pointee == invalid-type
+                    = 1
+                . layout = values[pointee]
+                if layout == void-layout
+                    = rows[pointer-layout].size
+                if layout == no-layout || rows[layout].size == 0
+                    = 1
+                = rows[layout].size
+    current = types.completions[current].base
+= 1
+
+────────────────────
++ do pointee-type TypeId
+    - type TypeId
+
+` What a C pointer points at, or no type for a type that is not a C pointer or does not say.
+. owner = types.type-decl(.cpointer)
+. current = type
+while current != no-type
+    do match? types.rows[current]
+        | .type-class(row)
+            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
+                = types.child-type(row.args, 0)
+    current = types.completions[current].base
+= no-type
+
+────────────────────
++ do environment LayoutId
+    - children [LayoutId]
+    - held [TypeId]
+    - name String
+
+` The layout of an environment, which holds the locals of one run of a scope that nested
+` functions capture: the fields given, the first of them the link to the environment around
+` it. The capture of a spawned task's body is laid out so too, with no link, and the memory
+` of a task's locals. No type has any of them, so each is named for what describes it to the
+` collector.
+. id = placed-fields(children, held, false, no-type)
+described += 0
+buffered += 0
+if rows[id].is-managed
+    . shape = share(id)
+    if shape != id
+        rows[id].descriptor = rows[shape].descriptor
+        rows[id].site = rows[shape].site
+        = id
+rows[id].descriptor = bundle.intern("gcdesc.$name")
+rows[id].site = bundle.intern("gcsite.$name")
+= id
+
+────────────────────
++ is-union Bool
+    - layout LayoutId
+
+layout >= first-struct-layout && rows[layout].cases.count != 0
+
+────────────────────
++ case-field LayoutField
+    - layout LayoutId
+    - index U32
+
+fields[rows[layout].cases.start + index]
+
+────────────────────
++ shared LayoutId
+    - layout LayoutId
+
+if rows[layout].shape != no-layout then rows[layout].shape else layout
+
+────────────────────
++ do add-descriptor
+    - layout LayoutId
+
+` Adds a layout's GC descriptor to the object, and the descriptors it names, each once: the
+` layout's size, the offsets of its managed pointers, and a range for each optional or union
+` that holds them. A range names what describes each case by the number the tag gives it,
+` and nothing for a case that holds no pointers.
+if layout == no-layout
+    =
+. own = shared(layout)
+if described[own] != 0
+    =
+described[own] = 1
+. row = rows[own]
+if !row.is-managed
+    =
+. pointers [U32]
+. ranges [TaggedRange]
+collect(own, 0, pointers, ranges)
+for range in ranges
+    if range.is-union
+        . held = rows[range.layout].cases
+        for position in held.start .. < held.end
+            add-descriptor(fields[position].layout)
+    else
+        add-descriptor(range.layout)
+. name = bundle.text(row.descriptor)
+. pointer-items [ConstantItem]
+for offset in pointers
+    pointer-items += quad(offset)
+. pointer-slot = vector("${name}.ptrs", pointer-items)
+. range-items [ConstantItem]
+. index = 0
+for range in ranges
+    . case-items [ConstantItem]
+    for described-case in case-descriptors(range)
+        case-items += if described-case != no-string then label(described-case) else quad(0)
+    . cases = vector("${name}.range${index}.cases", case-items)
+    . range-name = bundle.intern("${name}.range$index")
+    . entry [ConstantItem]
+    entry += quad(range.flag)
+    entry += quad(range.payload)
+    entry += label(cases)
+    add-table(range-name, entry)
+    range-items += label(range-name)
+    index += 1
+. range-slot = vector("${name}.unions", range-items)
+. none [ConstantItem]
+. nothing = vector("", none)
+. items [ConstantItem]
+items += quad(row.size)
+items += label(pointer-slot)
+items += label(nothing)
+items += quad(0)
+items += label(nothing)
+items += quad(0)
+items += label(range-slot)
+items += ConstantItem(.byte-constant, 0, no-string)
+items += ConstantItem(.byte-constant, 0, no-string)
+add-table(row.descriptor, items)
+
+────────────────────
++ do add-buffer-descriptor
+    - layout LayoutId
+
+` Adds to the object the GC descriptor of a buffer of items of a layout, once, and the
+` descriptor of an item, which it names: no object, the size of an item, and what describes
+` one.
+. own = shared(layout)
+. row = rows[own]
+if row.buffer == no-string || buffered[own] != 0
+    =
+buffered[own] = 1
+add-descriptor(own)
+. none [ConstantItem]
+. nothing = vector("", none)
+. items [ConstantItem]
+items += quad(0)
+items += label(nothing)
+items += label(nothing)
+items += quad(row.size)
+items += label(nothing)
+items += label(row.descriptor)
+items += label(nothing)
+items += ConstantItem(.byte-constant, 1, no-string)
+items += ConstantItem(.byte-constant, 0, no-string)
+add-table(row.buffer, items)
+
+────────────────────
++ descriptor-order Comparison
+    - layout LayoutId
+    - other LayoutId
+
+` Orders two layouts as their GC descriptors go in the object: by the stable keys of their types,
+` then by the names of their descriptors, which tell apart those of no type, and then by number,
+` an order that does not depend on the order typing interned the types or the program tables
+` laid them out.
+|? key < held
+    Comparison.lesser
+|? key > held
+    Comparison.greater
+|? name < other-name
+    Comparison.lesser
+|? name > other-name
+    Comparison.greater
+|? layout < other
+    Comparison.lesser
+|? layout > other
+    Comparison.greater
+??
+    Comparison.equal
+
+.. key = if rows[layout].type != no-type then (types.stable-keys[rows[layout].type] as U64) else 0u64
+.. held = if rows[other].type != no-type then (types.stable-keys[rows[other].type] as U64) else 0u64
+.. name = if rows[layout].descriptor != no-string then bundle.text(rows[layout].descriptor) else ""
+.. other-name = if rows[other].descriptor != no-string then bundle.text(rows[other].descriptor) else ""
+
+────────────────────
++ do add-site-key
+    - layout LayoutId
+    - index U32
+
+. row = rows[layout]
+add-table(row.site, site-items(row.size, label(row.descriptor), 1, index))
+
+────────────────────
++ plain-site StringId
+    - requested U64
+
+plain-sites[(allocated-size(requested) / 8) as U32]
+
+────────────────────
++ do add-plain-site-key
+    - allocated U64
+    - index U32
+
+add-table(plain-site(allocated), site-items(allocated, quad(0), 0, index))
+
+────────────────────
+_ do add-scalar
+    - kind MachineKind
+    - size U32
+
+. alignment = if size != 0 then size else 1u32
+rows.append(Layout(kind, size, alignment, Span(), kind == .machine-managed-pointer))
 
 ────────────────────
 _ do value-layout LayoutId
@@ -391,46 +574,6 @@ do match completion.intrinsic
     ??
         = no-layout
 = no-layout
-
-────────────────────
-+ do pointee-size U32
-    - type TypeId
-
-` The size of what a C pointer points at, which a count added to the pointer steps by. A
-` pointer to nothing steps by the size of a pointer, and one whose type does not say by one
-` byte.
-. owner = types.type-decl(.cpointer)
-. current = type
-while current != no-type
-    do match? types.rows[current]
-        | .type-class(row)
-            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
-                . pointee = types.child-type(row.args, 0)
-                if pointee == no-type || pointee == invalid-type
-                    = 1
-                . layout = values[pointee]
-                if layout == void-layout
-                    = rows[pointer-layout].size
-                if layout == no-layout || rows[layout].size == 0
-                    = 1
-                = rows[layout].size
-    current = types.completions[current].base
-= 1
-
-────────────────────
-+ do pointee-type TypeId
-    - type TypeId
-
-` What a C pointer points at, or no type for a type that is not a C pointer or does not say.
-. owner = types.type-decl(.cpointer)
-. current = type
-while current != no-type
-    do match? types.rows[current]
-        | .type-class(row)
-            if row.module == owner.module && row.decl == owner.decl && row.args.count == 1
-                = types.child-type(row.args, 0)
-    current = types.completions[current].base
-= no-type
 
 ────────────────────
 _ do traces-pointer Bool
@@ -626,30 +769,6 @@ rows[id].format = format-of(id)
 = id
 
 ────────────────────
-+ do environment LayoutId
-    - children [LayoutId]
-    - held [TypeId]
-    - name String
-
-` The layout of an environment, which holds the locals of one run of a scope that nested
-` functions capture: the fields given, the first of them the link to the environment around
-` it. The capture of a spawned task's body is laid out so too, with no link, and the memory
-` of a task's locals. No type has any of them, so each is named for what describes it to the
-` collector.
-. id = placed-fields(children, held, false, no-type)
-described += 0
-buffered += 0
-if rows[id].is-managed
-    . shape = share(id)
-    if shape != id
-        rows[id].descriptor = rows[shape].descriptor
-        rows[id].site = rows[shape].site
-        = id
-rows[id].descriptor = bundle.intern("gcdesc.$name")
-rows[id].site = bundle.intern("gcsite.$name")
-= id
-
-────────────────────
 _ do flagged-layout LayoutId
     - child LayoutId
     - inner TypeId
@@ -732,19 +851,6 @@ rows[id].format = format-of(id)
 = id
 
 ────────────────────
-+ is-union Bool
-    - layout LayoutId
-
-layout >= first-struct-layout && rows[layout].cases.count != 0
-
-────────────────────
-+ case-field LayoutField
-    - layout LayoutId
-    - index U32
-
-fields[rows[layout].cases.start + index]
-
-────────────────────
 _ format-of StructFormat
     - layout LayoutId
 
@@ -789,12 +895,6 @@ for position in row.fields.start .. < row.fields.end
     if count > 4
         = 5
 = count
-
-────────────────────
-+ shared LayoutId
-    - layout LayoutId
-
-if rows[layout].shape != no-layout then rows[layout].shape else layout
 
 ────────────────────
 _ do share LayoutId
@@ -851,124 +951,6 @@ for position in held.start .. < held.end
     . child = rows[fields[position].layout]
     cases += if child.is-managed then child.descriptor else no-string
 = cases
-
-────────────────────
-+ do add-descriptor
-    - layout LayoutId
-
-` Adds a layout's GC descriptor to the object, and the descriptors it names, each once: the
-` layout's size, the offsets of its managed pointers, and a range for each optional or union
-` that holds them. A range names what describes each case by the number the tag gives it,
-` and nothing for a case that holds no pointers.
-if layout == no-layout
-    =
-. own = shared(layout)
-if described[own] != 0
-    =
-described[own] = 1
-. row = rows[own]
-if !row.is-managed
-    =
-. pointers [U32]
-. ranges [TaggedRange]
-collect(own, 0, pointers, ranges)
-for range in ranges
-    if range.is-union
-        . held = rows[range.layout].cases
-        for position in held.start .. < held.end
-            add-descriptor(fields[position].layout)
-    else
-        add-descriptor(range.layout)
-. name = bundle.text(row.descriptor)
-. pointer-items [ConstantItem]
-for offset in pointers
-    pointer-items += quad(offset)
-. pointer-slot = vector("${name}.ptrs", pointer-items)
-. range-items [ConstantItem]
-. index = 0
-for range in ranges
-    . case-items [ConstantItem]
-    for described-case in case-descriptors(range)
-        case-items += if described-case != no-string then label(described-case) else quad(0)
-    . cases = vector("${name}.range${index}.cases", case-items)
-    . range-name = bundle.intern("${name}.range$index")
-    . entry [ConstantItem]
-    entry += quad(range.flag)
-    entry += quad(range.payload)
-    entry += label(cases)
-    add-table(range-name, entry)
-    range-items += label(range-name)
-    index += 1
-. range-slot = vector("${name}.unions", range-items)
-. none [ConstantItem]
-. nothing = vector("", none)
-. items [ConstantItem]
-items += quad(row.size)
-items += label(pointer-slot)
-items += label(nothing)
-items += quad(0)
-items += label(nothing)
-items += quad(0)
-items += label(range-slot)
-items += ConstantItem(.byte-constant, 0, no-string)
-items += ConstantItem(.byte-constant, 0, no-string)
-add-table(row.descriptor, items)
-
-────────────────────
-+ do add-buffer-descriptor
-    - layout LayoutId
-
-` Adds to the object the GC descriptor of a buffer of items of a layout, once, and the
-` descriptor of an item, which it names: no object, the size of an item, and what describes
-` one.
-. own = shared(layout)
-. row = rows[own]
-if row.buffer == no-string || buffered[own] != 0
-    =
-buffered[own] = 1
-add-descriptor(own)
-. none [ConstantItem]
-. nothing = vector("", none)
-. items [ConstantItem]
-items += quad(0)
-items += label(nothing)
-items += label(nothing)
-items += quad(row.size)
-items += label(nothing)
-items += label(row.descriptor)
-items += label(nothing)
-items += ConstantItem(.byte-constant, 1, no-string)
-items += ConstantItem(.byte-constant, 0, no-string)
-add-table(row.buffer, items)
-
-────────────────────
-+ descriptor-order Comparison
-    - layout LayoutId
-    - other LayoutId
-
-` Orders two layouts as their GC descriptors go in the object: by the stable keys of their types,
-` then by the names of their descriptors, which tell apart those of no type, and then by number,
-` an order that does not depend on the order typing interned the types or the program tables
-` laid them out.
-|? key < held
-    Comparison.lesser
-|? key > held
-    Comparison.greater
-|? name < other-name
-    Comparison.lesser
-|? name > other-name
-    Comparison.greater
-|? layout < other
-    Comparison.lesser
-|? layout > other
-    Comparison.greater
-??
-    Comparison.equal
-
-.. key = if rows[layout].type != no-type then (types.stable-keys[rows[layout].type] as U64) else 0u64
-.. held = if rows[other].type != no-type then (types.stable-keys[rows[other].type] as U64) else 0u64
-.. name = if rows[layout].descriptor != no-string then bundle.text(rows[layout].descriptor) else ""
-.. other-name = if rows[other].descriptor != no-string then bundle.text(rows[other].descriptor) else ""
 
 ────────────────────
 _ do collect
@@ -1052,27 +1034,6 @@ for item in items
 bundle.constant-tables.append(ConstantTable(name, 8, Span(start, items.length as U32)))
 
 ────────────────────
-+ do add-site-key
-    - layout LayoutId
-    - index U32
-
-. row = rows[layout]
-add-table(row.site, site-items(row.size, label(row.descriptor), 1, index))
-
-────────────────────
-+ plain-site StringId
-    - requested U64
-
-plain-sites[(allocated-size(requested) / 8) as U32]
-
-────────────────────
-+ do add-plain-site-key
-    - allocated U64
-    - index U32
-
-add-table(plain-site(allocated), site-items(allocated, quad(0), 0, index))
-
-────────────────────
 _ do site-items [ConstantItem]
     - requested U64
     - descriptor ConstantItem
@@ -1094,6 +1055,34 @@ items += quad(offset)
 = items
 
 ━━━━━━━━━━━━━━━━━━━━
++ MachineKind is U32
+
+| machine-void = 0
+| machine-pointer = 1
+| machine-managed-pointer = 2
+| machine-u8 = 3
+| machine-i8 = 4
+| machine-u16 = 5
+| machine-i16 = 6
+| machine-u32 = 7
+| machine-i32 = 8
+| machine-u64 = 9
+| machine-i64 = 10
+| machine-f32 = 11
+| machine-f64 = 12
+| machine-struct = 13
+
+━━━━━━━━━━━━━━━━━━━━
++ LayoutField is Struct
+
+` Where a struct holds a field, how the field is held, and the type of the property it
+` holds, when it holds one.
+
++ offset U32
++ layout LayoutId
++ type TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
 + allocated-size U64
     - requested U64
 
@@ -1106,6 +1095,27 @@ items += quad(offset)
     - requested U64
 
 requested != 0 && allocated-size(requested) <= inline-allocation-limit
+
+━━━━━━━━━━━━━━━━━━━━
++ do hex-text String
+    - value U64
+
+. text = Byte[16]
+for position in 0 .. < 16
+    . digit = ((value /zrshift/ (60 - position * 4)) /and/ 15) as U32
+    text[position] = (if digit < 10 then digit + 48 else digit + 87) as Byte
+= text.slice-string(0 .. < 16)
+
+━━━━━━━━━━━━━━━━━━━━
+_ TaggedRange is Tuple
+
+` Where an optional or a union that holds managed pointers lies in a layout: its flag or tag,
+` what it holds, and the layout of the optional's value or of the union.
+
++ flag U32
++ payload U32
++ layout LayoutId
++ is-union Bool
 
 ━━━━━━━━━━━━━━━━━━━━
 _ quad ConstantItem
@@ -1125,13 +1135,3 @@ _ aligned U32
     - alignment U32
 
 ((offset + alignment - 1) / alignment) * alignment
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hex-text String
-    - value U64
-
-. text = Byte[16]
-for position in 0 .. < 16
-    . digit = ((value /zrshift/ (60 - position * 4)) /and/ 15) as U32
-    text[position] = (if digit < 10 then digit + 48 else digit + 87) as Byte
-= text.slice-string(0 .. < 16)

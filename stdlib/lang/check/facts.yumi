@@ -363,18 +363,18 @@ form != .call-truth && form != .call-operand-truth && !made && !listed
 `   that is kept at the pipe itself, apart from the pipe's own value: a list of one bullet,
 `   whose facts land where the reference shifts its bullet.
 ` - `reason-markup-host`: the object of a markup element, at the element's type, into the
-`   `MarkupHost` the markup runtime takes as it puts the element under a batch.
-` - `reason-markup-root`: the batch in force, a `MarkupBatch`, into the `MarkupBatch?` the
+`   `MarkupElement` the markup runtime takes as it puts the element under a batch.
+` - `reason-markup-root`: the batch in force, a `MarkupRootElement`, into the `MarkupRootElement?` the
 `   markup runtime takes as the root of what it batches: at a markup element's type, at the
 `   `if` or `for` of a region, and at the body of an arm.
 ` - `reason-markup-batch`: an object that is a batch, the object of a markup element at the
-`   element's type or the host of a region at the `if` or `for`, into the `MarkupBatch` that
+`   element's type or the host of a region at the `if` or `for`, into the `MarkupRootElement` that
 `   what is made under it is put under and makes its actions with.
 ` - `reason-markup-region`: the region a markup branch or loop region makes, at the `if` or
-`   `for`, into the `MarkupHost` the markup runtime puts under a batch.
+`   `for`, into the `MarkupElement` the markup runtime puts under a batch.
 ` - `reason-markup-structural`: the host that owns the action of a markup region, the parent of
-`   a branch or the region of a loop, at the `if` or `for`, from the `MarkupHost` it is into the
-`   `MarkupHost?` the markup runtime orders structural actions by.
+`   a branch or the region of a loop, at the `if` or `for`, from the `MarkupElement` it is into the
+`   `MarkupElement?` the markup runtime orders structural actions by.
 ` - `reason-markup-arm`: the function that builds an arm of a markup branch region, at the
 `   arm, into the `MarkupBranchBuilder` the region takes.
 ` - `reason-markup-row`: the function that builds a row of a markup loop region, at the `for`,
@@ -1479,12 +1479,12 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 ` and `source` the type of the container, which `create` makes the region of with the host and
 ` the builder. The action that reads the container again is made by `action` with the region as
 ` its owner and marked structural by `structural`; its function is `updater`, which gives the
-` region what the container gives by the call of `replace-source` it records at the `for`.
+` region what the container gives by `replace`, the runtime's replacer for the source.
 ` Where a batch is found for the host, the host itself where `hosted` says so and else the
 ` one in force, `ensure` puts the region under it. `rooted` says a batch is in force where
 ` the region is written: the rows are built under it, and the action is made with it. A `source`
-` that is optional is made a region by the runtime's optional variant of `create`, with no rows
-` while it holds none, and `replace` gives the region what the container gives instead.
+` that is optional is made a region by the runtime's optional variants of `create` and
+` `replace`, with no rows while it holds none.
 
 + instance InstanceId
 + site SyntaxId
@@ -1603,7 +1603,7 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 + MarkupRead is Struct
 
 ` A read of a markup link at a node of an instance: `reader` is the markup runtime's function
-` that answers the linked host, given the subject as a `MarkupHost`, and `target` the class the
+` that answers the linked host, given the subject as a `MarkupElement`, and `target` the class the
 ` read gives the host as, or none where it gives the host itself.
 
 + instance InstanceId
@@ -2673,11 +2673,14 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 + OverrideFact is Struct
 
 ` A method or a converter a subclass declares again: `override` answers for objects of
-` `receiver` where `base`, that of a class it is derived from, would be called.
+` `receiver` where `base`, that of a class it is derived from, would be called. A getter or a
+` setter of an interface that a class below the one it is called for stores as a property is
+` answered by the `property` the class stores, with no override.
 
 + base InstanceId
 + receiver TypeId
 + override InstanceId
++ property U32 = U32.max
 
 ━━━━━━━━━━━━━━━━━━━━
 + ClassInitializer is Interface

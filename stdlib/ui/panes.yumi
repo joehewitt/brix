@@ -6,7 +6,11 @@
 + pane-bottom-home = "bottom"
 + pane-side-dock-size Float = 250
 + pane-bottom-share Float = 0.3
+
 _ pane-json-version = 3
+
++ PaneVisit is (context String, view String)
+_ PaneClosed is (view String, kind String, stack String, index Index?, origin PaneTarget?)
 
 ━━━━━━━━━━━━━━━━━━━━
 + PaneAxis is U8
@@ -64,14 +68,6 @@ _ pane-json-version = 3
 | workspace
 
 ━━━━━━━━━━━━━━━━━━━━
-_ PaneFound is Tuple
-
-+ node PaneNode
-+ parent PaneNode?
-+ index Index
-+ page PanePage?
-
-━━━━━━━━━━━━━━━━━━━━
 + PaneNode
 
 + kind PaneNodeKind
@@ -95,14 +91,41 @@ _ PaneFound is Tuple
     - is-dock = false
 
 ────────────────────
++ get is-split
+
+kind == PaneNodeKind.split
+
+────────────────────
++ get json JSON
+
+Map'String'JSON
+    • kind kind as Int
+    • id id
+    • views views
+    • axis axis as Int
+    • kids List'JSON(each.json in kids)
+    • sizes sizes
+    • collapsed is-collapsed
+    • dock is-dock
+
+────────────────────
 _ get is-stack
 
 kind == PaneNodeKind.stack
 
 ────────────────────
-+ get is-split
++ do stacks <PaneNode>
 
-kind == PaneNodeKind.split
+if is-stack
+    <= this
+for kid in kids
+    <<= kid.stacks()
+
+────────────────────
++ size-at Float
+    - index Index
+
+if index < sizes.length then sizes[index] else 1
 
 ────────────────────
 _ has-workspace Bool
@@ -142,99 +165,9 @@ for kid in kids
 = false
 
 ────────────────────
-+ do stacks <PaneNode>
-
-if is-stack
-    <= this
-for kid in kids
-    <<= kid.stacks()
-
-────────────────────
 _ first-stack PaneNode?
 
 first(stacks())
-
-────────────────────
-+ size-at Float
-    - index Index
-
-if index < sizes.length then sizes[index] else 1
-
-────────────────────
-+ get json JSON
-
-Map'String'JSON
-    • kind kind as Int
-    • id id
-    • views views
-    • axis axis as Int
-    • kids List'JSON(each.json in kids)
-    • sizes sizes
-    • collapsed is-collapsed
-    • dock is-dock
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-stack-node PaneNode
-    - id String
-    - views [String]
-
-PaneNode(PaneNodeKind.stack, id) • views views
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-split-node PaneNode
-    - id String
-    - axis PaneAxis
-    - kids [PaneNode]
-    - sizes [Float]
-
-PaneNode(PaneNodeKind.split, id) • axis axis • kids kids • sizes sizes
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-workspace-node PaneNode
-
-PaneNode(PaneNodeKind.workspace, pane-workspace-home)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pane-with-bottom PaneNode
-    - root PaneNode?
-    - node PaneNode
-    - id String
-
-node.is-dock = true
-= pane-split-node
-    - id
-    - PaneAxis.column
-    - List'PaneNode(root ?? pane-workspace-node(), node)
-    - List'Float(1 - pane-bottom-share, pane-bottom-share)
-
-━━━━━━━━━━━━━━━━━━━━
-_ pane-node-from PaneNode ?! Error
-    - reader JSONReader
-
-PaneNode(fields["kind"].int() as PaneNodeKind, fields["id"].string())
-    • views List'String(each.string() in fields["views"].items())
-    • axis fields["axis"].int() as PaneAxis
-    • kids List'PaneNode(pane-node-from(each) in fields["kids"].items())
-    • sizes List'Float(each.number() in fields["sizes"].items())
-    • is-collapsed fields["collapsed"].bool()
-    • is-dock fields["dock"].bool()
-
-.. fields = reader.object()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pane-origin-from PaneTarget? ?! Error
-    - reader JSONReader
-
-=? null if !reader.is-present
-. fields = reader.object()
-=? PaneTarget.bottom if fields["bottom"].is-present
-. slot = fields["slot"]
-if slot.is-present
-    . before String? = null
-    before = fields["before"].string() if fields["before"].is-present
-    = pane-slot-target(slot.int() as PaneSide, before)
-. zone = fields["zone"].int() as PaneZone
-= pane-stack-target(fields["scope"].int() as PaneScope, fields["stack"].string(), zone)
 
 ━━━━━━━━━━━━━━━━━━━━
 + PanePage
@@ -255,14 +188,6 @@ Map'String'JSON
     • root root.json
 
 ━━━━━━━━━━━━━━━━━━━━
-_ pane-page-from PanePage ?! Error
-    - reader JSONReader
-
-PanePage(fields["id"].string(), pane-node-from(fields["root"]))
-
-.. fields = reader.object()
-
-━━━━━━━━━━━━━━━━━━━━
 + PaneRegion
 
 + kind PaneRegionKind
@@ -277,6 +202,7 @@ PanePage(fields["id"].string(), pane-node-from(fields["root"]))
 + y Float
 + width Float = 380
 + height Float = 280
+
 _ origin PaneTarget?
 
 ────────────────────
@@ -285,39 +211,6 @@ _ origin PaneTarget?
     - id
     - side = PaneSide.left
     - size Float = 240
-
-────────────────────
-+ do stacks <PaneNode>
-
-if root
-    <<= root.stacks()
-for page in pages
-    <<= page.root.stacks()
-
-────────────────────
-_ do find PaneFound?
-    - target String
-
-. found = root?.find(target)
-=? found if found
-for page in pages
-    . inner = page.root.find(target)
-    =? PaneFound(inner.node, inner.parent, inner.index, page) if inner
-= null
-
-────────────────────
-+ page-named PanePage?
-    - page-id String?
-
-first(each in pages when each.id == (page-id ?? ""))
-
-────────────────────
-+ do page-index Index?
-    - page-id String?
-
-for index in 0 .. < pages.length
-    =? index if pages[index].id == (page-id ?? "")
-= null
 
 ────────────────────
 + get json JSON
@@ -337,25 +230,38 @@ Map'String'JSON
     • height height
     • origin origin?.json as JSON
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pane-region-from PaneRegion ?! Error
-    - reader JSONReader
+────────────────────
++ do stacks <PaneNode>
 
-. fields = reader.object()
-. root = fields["root"]
-. region = PaneRegion((fields["kind"].int()) as PaneRegionKind, fields["id"].string())
-region.side = (fields["side"].int()) as PaneSide
-region.root = pane-node-from(root) if root.is-present
-region.pages = List'PanePage(pane-page-from(each) in fields["pages"].items())
-region.strip = fields["strip"].int() as PaneStripMode
-region.size = fields["size"].number()
-region.is-collapsed = fields["collapsed"].bool()
-region.x = fields["x"].number()
-region.y = fields["y"].number()
-region.width = fields["width"].number()
-region.height = fields["height"].number()
-region.origin = pane-origin-from(fields["origin"])
-= region
+if root
+    <<= root.stacks()
+for page in pages
+    <<= page.root.stacks()
+
+────────────────────
++ page-named PanePage?
+    - page-id String?
+
+first(each in pages when each.id == (page-id ?? ""))
+
+────────────────────
++ do page-index Index?
+    - page-id String?
+
+for index in 0 .. < pages.length
+    =? index if pages[index].id == (page-id ?? "")
+= null
+
+────────────────────
+_ do find PaneFound?
+    - target String
+
+. found = root?.find(target)
+=? found if found
+for page in pages
+    . inner = page.root.find(target)
+    =? PaneFound(inner.node, inner.parent, inner.index, page) if inner
+= null
 
 ━━━━━━━━━━━━━━━━━━━━
 + PaneLayout
@@ -363,17 +269,18 @@ region.origin = pane-origin-from(fields["origin"])
 + id String
 + name String
 + is-shared = true
-_ base String?
 + left = PaneRegion(PaneRegionKind.dock, "left", PaneSide.left, pane-side-dock-size)
 + right = PaneRegion(PaneRegionKind.dock, "right", PaneSide.right, pane-side-dock-size)
 + center = PaneRegion(PaneRegionKind.center, "center")
 + floats [PaneRegion]
 + workspace = PaneRegion(PaneRegionKind.workspace, pane-workspace-home)
 + homes [String = String]
-_ placed [String = String]
 + closed [String = String]
 + menus [String]
 + inlines [String]
+
+_ base String?
+_ placed [String = String]
 
 ────────────────────
 + This
@@ -381,6 +288,25 @@ _ placed [String = String]
     - name
 
 center.root = pane-workspace-node()
+
+────────────────────
++ get json JSON
+
+Map'String'JSON
+    • id id
+    • name name
+    • shared is-shared
+    • base base as JSON
+    • left left.json
+    • right right.json
+    • center center.json
+    • workspace workspace.json
+    • floats List'JSON(each.json in floats)
+    • homes pane-map-json(homes)
+    • placed pane-map-json(placed)
+    • closed pane-map-json(closed)
+    • menus menus
+    • inlines inlines
 
 ────────────────────
 + dock PaneRegion
@@ -404,55 +330,16 @@ List'PaneRegion(left, right, center) ++ floats
 center.root = pane-with-bottom(center.root, node, "${node.id}-row")
 
 ────────────────────
-_ region-of PaneRegion?
-    - node-id String
-
-first(each in regions() when each.find(node-id))
-
-────────────────────
 + find-float PaneRegion?
     - float-id String
 
 first(each in floats when each.id == float-id)
 
 ────────────────────
-+ get json JSON
+_ region-of PaneRegion?
+    - node-id String
 
-Map'String'JSON
-    • id id
-    • name name
-    • shared is-shared
-    • base base as JSON
-    • left left.json
-    • right right.json
-    • center center.json
-    • workspace workspace.json
-    • floats List'JSON(each.json in floats)
-    • homes pane-map-json(homes)
-    • placed pane-map-json(placed)
-    • closed pane-map-json(closed)
-    • menus menus
-    • inlines inlines
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pane-layout-from PaneLayout ?! Error
-    - reader JSONReader
-
-. fields = reader.object()
-. layout = PaneLayout(fields["id"].string(), fields["name"].string())
-layout.is-shared = fields["shared"].bool()
-layout.base = fields["base"].string() if fields["base"].is-present
-layout.left = pane-region-from(fields["left"])
-layout.right = pane-region-from(fields["right"])
-layout.center = pane-region-from(fields["center"])
-layout.workspace = pane-region-from(fields["workspace"])
-layout.floats = List'PaneRegion(pane-region-from(each) in fields["floats"].items())
-layout.homes = pane-string-map-from(fields["homes"])
-layout.placed = pane-string-map-from(fields["placed"])
-layout.closed = pane-string-map-from(fields["closed"])
-layout.menus = List'String(each.string() in fields["menus"].items())
-layout.inlines = List'String(each.string() in fields["inlines"].items())
-= layout
+first(each in regions() when each.find(node-id))
 
 ━━━━━━━━━━━━━━━━━━━━
 + PaneSession
@@ -460,6 +347,7 @@ layout.inlines = List'String(each.string() in fields["inlines"].items())
 + active [String = String]
 + pages [String = String]
 + instances [String = String]
+
 _ closed [PaneClosed]
 _ last-focus [String = String]
 _ workspace-focus String?
@@ -475,53 +363,6 @@ Map'String'JSON
     • instances pane-map-json(instances)
     • "lastFocus" pane-map-json(last-focus)
     • "workspaceFocus" workspace-focus as JSON
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pane-session-from PaneSession ?! Error
-    - reader JSONReader
-
-. fields = reader.object()
-. session = PaneSession()
-session.active = pane-string-map-from(fields["active"])
-session.pages = pane-string-map-from(fields["pages"])
-session.instances = pane-string-map-from(fields["instances"])
-session.last-focus = pane-string-map-from(fields["lastFocus"])
-. focus = fields["workspaceFocus"]
-session.workspace-focus = focus.string() if focus.is-present
-= session
-
-━━━━━━━━━━━━━━━━━━━━
-_ pane-visit-json JSON
-    - visit PaneVisit
-
-Map'String'JSON
-    • context visit.context
-    • view visit.view
-
-━━━━━━━━━━━━━━━━━━━━
-_ pane-visit-from PaneVisit
-    - fields JSONObjectReader
-
-PaneVisit(fields["context"].string(), fields["view"].string())
-
-━━━━━━━━━━━━━━━━━━━━
-_ same-visit Bool
-    - left PaneVisit
-    - right PaneVisit
-
-left.context == right.context && left.view == right.view
-
-━━━━━━━━━━━━━━━━━━━━
-_ pane-renamed-visit PaneVisit
-    - visit PaneVisit
-    - context String
-    - old String
-    - view String
-
-if visit.context == context && visit.view == old then PaneVisit(context, view) else visit
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaneVisit is (context String, view String)
 
 ━━━━━━━━━━━━━━━━━━━━
 + PaneContext
@@ -545,9 +386,6 @@ Map'String'JSON
     • layout layout
 
 ━━━━━━━━━━━━━━━━━━━━
-_ PaneClosed is (view String, kind String, stack String, index Index?, origin PaneTarget?)
-
-━━━━━━━━━━━━━━━━━━━━
 + PaneLocation is Tuple
 
 + scope PaneScope
@@ -561,27 +399,6 @@ _ PaneClosed is (view String, kind String, stack String, index Index?, origin Pa
 + view String?
 + scope PaneScope
 + stack String
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-view-drag PaneDrag
-    - view String
-    - scope PaneScope
-    - stack String
-
-PaneDrag(view, scope, stack)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-node-drag PaneDrag
-    - node String
-    - scope PaneScope
-
-PaneDrag(null, scope, node)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-arrival-drag PaneDrag
-    - view String
-
-PaneDrag(view, PaneScope.workspace, "")
 
 ━━━━━━━━━━━━━━━━━━━━
 + PaneTarget is Union
@@ -605,40 +422,16 @@ match this
         null as JSON
 
 ━━━━━━━━━━━━━━━━━━━━
-+ pane-stack-target PaneTarget
-    - scope PaneScope
-    - stack String
-    - zone PaneZone
-    - index Index? = null
-
-PaneTarget.stack(scope, stack, zone, index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-slot-target PaneTarget
-    - side PaneSide
-    - before String? = null
-
-PaneTarget.slot(side, before)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pane-float-target PaneTarget
-    - x Float
-    - y Float
-    - width Float
-    - height Float
-
-PaneTarget.float(x, y, width, height)
-
-━━━━━━━━━━━━━━━━━━━━
 + PaneModel
 
-_ roles [String = PaneViewScope]
 + layouts [String = PaneLayout]
 + contexts [PaneContext]
-_ sessions [String = PaneSession]
 + current = ""
 + revision U64
 + focus-revision U64
+
+_ roles [String = PaneViewScope]
+_ sessions [String = PaneSession]
 + event focus-changed String
 + event menu-requested String
 
@@ -648,6 +441,18 @@ _ visits [PaneVisit]
 _ next-id U64
 _ heir String?
 _ blank = PaneContext("", "", "")
+
+────────────────────
++ get json JSON
+
+Map'String'JSON
+    • version pane-json-version
+    • current current
+    • "nextId" next-id as Int
+    • layouts List'JSON(each.json in layouts.values)
+    • contexts List'JSON(each.json in contexts)
+    • sessions Map'String'JSON((each.id, session-of(each).json) in contexts)
+    • visits List'JSON(pane-visit-json(each) in visits)
 
 ────────────────────
 + do register
@@ -710,27 +515,9 @@ revision += 1
 context-named(current) ?? first(contexts) ?? blank
 
 ────────────────────
-_ context-named PaneContext?
-    - id String
-
-first(each in contexts when each.id == id)
-
-────────────────────
 + layout PaneLayout
 
 layout-of(context())
-
-────────────────────
-_ layout-of PaneLayout
-    - owner PaneContext
-
-layout-for(owner)!
-
-────────────────────
-_ layout-for PaneLayout?
-    - owner PaneContext
-
-layouts[owner.layout] ?? first(layouts.values)
 
 ────────────────────
 + session PaneSession
@@ -738,23 +525,11 @@ layouts[owner.layout] ?? first(layouts.values)
 session-of(context())
 
 ────────────────────
-_ session-of PaneSession
-    - owner PaneContext
-
-sessions.get-or-init(owner.id)
-
-────────────────────
 + do make-id String
     - prefix String
 
 next-id += 1
 = "${prefix}-${next-id}"
-
-────────────────────
-_ is-role Bool
-    - view String
-
-roles has view
 
 ────────────────────
 + instance-kind String?
@@ -809,45 +584,11 @@ node if node && node.is-stack
 .. node = node-in(scope, stack-id)
 
 ────────────────────
-_ node-in PaneNode?
-    - scope PaneScope
-    - node-id String
-
-region-in(scope, node-id)?.find(node-id)?.node
-
-────────────────────
-_ region-in PaneRegion?
-    - scope PaneScope
-    - node-id String
-
-match scope
-    |= PaneScope.workspace
-        layout().workspace
-    |= PaneScope.layout
-        layout().region-of(node-id)
-
-────────────────────
 + do top-stacks [String]
 
 . found = List'String()
 collect-top(layout().center.root, found)
 = found
-
-────────────────────
-_ do collect-top
-    - node PaneNode?
-    - into [String]
-
-=? if !node
-do match node.kind
-    |= PaneNodeKind.workspace
-        collect-top(layout().workspace.root, into)
-    |= PaneNodeKind.stack
-        into += node.id
-    |= PaneNodeKind.split
-        for kid in node.kids
-            collect-top(kid, into)
-            =? if node.axis == PaneAxis.column
 
 ────────────────────
 + pages-in [PanePage]
@@ -1086,17 +827,6 @@ for stack in node.stacks()
 revision += 1
 
 ────────────────────
-_ do unfold
-    - stack PaneNode
-
-. bottom = bottom-node()
-if bottom && bottom.find(stack.id) && is-folded-node(bottom)
-    for member in bottom.stacks()
-        member.is-collapsed = false
-else
-    stack.is-collapsed = false
-
-────────────────────
 + is-folded-node Bool
     - node PaneNode
 
@@ -1221,19 +951,6 @@ focused()?.stack
 view-at(main-focused())
 
 ────────────────────
-_ view-at String?
-    - place PaneLocation?
-
-|? !place
-    null
-|? !stack
-    null
-??
-    active-view(stack)
-
-.. stack = stack-in(place.scope, place.stack)
-
-────────────────────
 + can-collapse Bool
     - scope PaneScope
     - stack-id String
@@ -1301,72 +1018,6 @@ state.closed.remove(position)
 place-closed(record)
 reveal(view)
 = true
-
-────────────────────
-_ do place-closed
-    - record PaneClosed
-
-. target = closed-target(record)
-. place = locate(record.view)
-=? if !target || !place
-. drag = pane-view-drag(record.view, place.scope, place.stack)
-=? if !validate(drag, target)
-commit • edit => do
-    apply-drop(drag, target)
-
-────────────────────
-_ do closed-target PaneTarget?
-    - record PaneClosed
-
-for scope in [PaneScope.workspace, PaneScope.layout]
-    . stack = stack-in(scope, record.stack)
-    if stack
-        . count = tab-views(stack).length
-        = pane-stack-target(scope, record.stack, PaneZone.center, min(record.index ?? count, count))
-. origin = record.origin
-|? !origin
-    = null
-|? origin is .stack && !stack-in(origin.scope, origin.stack)
-    = null
-??
-    = origin
-
-────────────────────
-_ focused PaneLocation?
-
-locate-stack(session().focus) ?? main-focused()
-
-────────────────────
-_ do main-focused PaneLocation?
-
-. state = session()
-for id in [state.main-focus, state.workspace-focus, layout().workspace.root?.first-stack()?.id]
-    . place = locate-stack(id)
-    =? place if place && place.region.kind != PaneRegionKind.dock
-= null
-
-────────────────────
-_ do locate-stack PaneLocation?
-    - id String?
-
-=? null if !id
-for scope in [PaneScope.workspace, PaneScope.layout]
-    . region = region-in(scope, id)
-    =? PaneLocation(scope, id, region, region.find(id)?.page) if region && stack-in(scope, id)
-= null
-
-────────────────────
-_ do take-focus
-    - stack-id String
-
-. state = session()
-. main = if docked then state.main-focus else stack-id
-    .. docked = layout().region-of(stack-id)?.kind == PaneRegionKind.dock
-=? if state.focus == stack-id && state.main-focus == main
-state.focus = stack-id
-state.main-focus = main
-focus-revision += 1
-
 
 ────────────────────
 + do toggle-dock
@@ -1487,20 +1138,6 @@ if layout().inlines has view
 reveal(view)
 
 ────────────────────
-_ is-folded Bool
-    - place PaneLocation
-
-|? region.kind != PaneRegionKind.dock
-    false
-|? region.is-collapsed
-    true
-??
-    page != null && current-page(region.side)?.id != page.id
-
-.. region = place.region
-.. page = place.page
-
-────────────────────
 + do rename
     - old String
     - view String
@@ -1584,41 +1221,6 @@ if filled && page && opens(page)
     show-page(filled, page.id)
 
 ────────────────────
-_ do pin-pages [String = String]
-
-. showing = Map'String'String()
-. state = session()
-for side in [PaneSide.left, PaneSide.right]
-    . region = layout().dock(side)
-    . page = current-page(side)
-    if page
-        state.pages[region.id] = page.id
-        if !region.is-collapsed
-            showing[region.id] = page.id
-= showing
-
-────────────────────
-_ do settle-pages
-    - showing [String = String]
-    - moved [String]
-
-. state = session()
-. changed = false
-for side in [PaneSide.left, PaneSide.right]
-    . region = layout().dock(side)
-    . was = showing[region.id]
-    if was && current-page(side)?.id != was
-        . place = locate(first(moved) ?? "")
-        . landed = place?.page
-        if place && landed && place.region == region && opens(landed)
-            state.pages[region.id] = landed.id
-        else
-            region.is-collapsed = true
-        changed = true
-if changed
-    revision += 1
-
-────────────────────
 + do float-node
     - scope PaneScope
     - node-id String
@@ -1679,15 +1281,6 @@ current = context-id
 revision += 1
 
 ────────────────────
-_ do holds-role Bool
-    - node PaneNode
-
-for stack in node.stacks()
-    for view in stack.views
-        =? true if is-role(view)
-= false
-
-────────────────────
 + do fork
 
 commit • edit => do
@@ -1719,14 +1312,6 @@ commit • edit => do
     =? if !copy-layout(owned, base-id, layouts[base-id]?.name ?? owned.name, null)
     owner.layout = base-id
     -= layouts[owned.id]
-
-────────────────────
-_ do commit
-    - edit () Void
-
-edit()
-normalize-all()
-revision += 1
 
 ────────────────────
 + do validate Bool
@@ -1811,18 +1396,6 @@ copy.drop(drag, target)
 = copy
 
 ────────────────────
-+ get json JSON
-
-Map'String'JSON
-    • version pane-json-version
-    • current current
-    • "nextId" next-id as Int
-    • layouts List'JSON(each.json in layouts.values)
-    • contexts List'JSON(each.json in contexts)
-    • sessions Map'String'JSON((each.id, session-of(each).json) in contexts)
-    • visits List'JSON(pane-visit-json(each) in visits)
-
-────────────────────
 + do load Bool
     - value JSON
 
@@ -1831,6 +1404,225 @@ Map'String'JSON
 normalize-all()
 revision += 1
 = true
+
+────────────────────
+_ context-named PaneContext?
+    - id String
+
+first(each in contexts when each.id == id)
+
+────────────────────
+_ layout-of PaneLayout
+    - owner PaneContext
+
+layout-for(owner)!
+
+────────────────────
+_ layout-for PaneLayout?
+    - owner PaneContext
+
+layouts[owner.layout] ?? first(layouts.values)
+
+────────────────────
+_ session-of PaneSession
+    - owner PaneContext
+
+sessions.get-or-init(owner.id)
+
+────────────────────
+_ is-role Bool
+    - view String
+
+roles has view
+
+────────────────────
+_ node-in PaneNode?
+    - scope PaneScope
+    - node-id String
+
+region-in(scope, node-id)?.find(node-id)?.node
+
+────────────────────
+_ region-in PaneRegion?
+    - scope PaneScope
+    - node-id String
+
+match scope
+    |= PaneScope.workspace
+        layout().workspace
+    |= PaneScope.layout
+        layout().region-of(node-id)
+
+────────────────────
+_ do collect-top
+    - node PaneNode?
+    - into [String]
+
+=? if !node
+do match node.kind
+    |= PaneNodeKind.workspace
+        collect-top(layout().workspace.root, into)
+    |= PaneNodeKind.stack
+        into += node.id
+    |= PaneNodeKind.split
+        for kid in node.kids
+            collect-top(kid, into)
+            =? if node.axis == PaneAxis.column
+
+────────────────────
+_ do unfold
+    - stack PaneNode
+
+. bottom = bottom-node()
+if bottom && bottom.find(stack.id) && is-folded-node(bottom)
+    for member in bottom.stacks()
+        member.is-collapsed = false
+else
+    stack.is-collapsed = false
+
+────────────────────
+_ view-at String?
+    - place PaneLocation?
+
+|? !place
+    null
+|? !stack
+    null
+??
+    active-view(stack)
+
+.. stack = stack-in(place.scope, place.stack)
+
+────────────────────
+_ do place-closed
+    - record PaneClosed
+
+. target = closed-target(record)
+. place = locate(record.view)
+=? if !target || !place
+. drag = pane-view-drag(record.view, place.scope, place.stack)
+=? if !validate(drag, target)
+commit • edit => do
+    apply-drop(drag, target)
+
+────────────────────
+_ do closed-target PaneTarget?
+    - record PaneClosed
+
+for scope in [PaneScope.workspace, PaneScope.layout]
+    . stack = stack-in(scope, record.stack)
+    if stack
+        . count = tab-views(stack).length
+        = pane-stack-target(scope, record.stack, PaneZone.center, min(record.index ?? count, count))
+. origin = record.origin
+|? !origin
+    = null
+|? origin is .stack && !stack-in(origin.scope, origin.stack)
+    = null
+??
+    = origin
+
+────────────────────
+_ focused PaneLocation?
+
+locate-stack(session().focus) ?? main-focused()
+
+────────────────────
+_ do main-focused PaneLocation?
+
+. state = session()
+for id in [state.main-focus, state.workspace-focus, layout().workspace.root?.first-stack()?.id]
+    . place = locate-stack(id)
+    =? place if place && place.region.kind != PaneRegionKind.dock
+= null
+
+────────────────────
+_ do locate-stack PaneLocation?
+    - id String?
+
+=? null if !id
+for scope in [PaneScope.workspace, PaneScope.layout]
+    . region = region-in(scope, id)
+    =? PaneLocation(scope, id, region, region.find(id)?.page) if region && stack-in(scope, id)
+= null
+
+────────────────────
+_ do take-focus
+    - stack-id String
+
+. state = session()
+. main = if docked then state.main-focus else stack-id
+    .. docked = layout().region-of(stack-id)?.kind == PaneRegionKind.dock
+=? if state.focus == stack-id && state.main-focus == main
+state.focus = stack-id
+state.main-focus = main
+focus-revision += 1
+
+────────────────────
+_ is-folded Bool
+    - place PaneLocation
+
+|? region.kind != PaneRegionKind.dock
+    false
+|? region.is-collapsed
+    true
+??
+    page != null && current-page(region.side)?.id != page.id
+
+.. region = place.region
+.. page = place.page
+
+────────────────────
+_ do pin-pages [String = String]
+
+. showing = Map'String'String()
+. state = session()
+for side in [PaneSide.left, PaneSide.right]
+    . region = layout().dock(side)
+    . page = current-page(side)
+    if page
+        state.pages[region.id] = page.id
+        if !region.is-collapsed
+            showing[region.id] = page.id
+= showing
+
+────────────────────
+_ do settle-pages
+    - showing [String = String]
+    - moved [String]
+
+. state = session()
+. changed = false
+for side in [PaneSide.left, PaneSide.right]
+    . region = layout().dock(side)
+    . was = showing[region.id]
+    if was && current-page(side)?.id != was
+        . place = locate(first(moved) ?? "")
+        . landed = place?.page
+        if place && landed && place.region == region && opens(landed)
+            state.pages[region.id] = landed.id
+        else
+            region.is-collapsed = true
+        changed = true
+if changed
+    revision += 1
+
+────────────────────
+_ do holds-role Bool
+    - node PaneNode
+
+for stack in node.stacks()
+    for view in stack.views
+        =? true if is-role(view)
+= false
+
+────────────────────
+_ do commit
+    - edit () Void
+
+edit()
+normalize-all()
+revision += 1
 
 ────────────────────
 _ do restore-json ?! Error
@@ -2336,6 +2128,215 @@ current = owner.id
 for view in lost
     place-instance(view, true)
 current = saved
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-stack-node PaneNode
+    - id String
+    - views [String]
+
+PaneNode(PaneNodeKind.stack, id) • views views
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-split-node PaneNode
+    - id String
+    - axis PaneAxis
+    - kids [PaneNode]
+    - sizes [Float]
+
+PaneNode(PaneNodeKind.split, id) • axis axis • kids kids • sizes sizes
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-workspace-node PaneNode
+
+PaneNode(PaneNodeKind.workspace, pane-workspace-home)
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-view-drag PaneDrag
+    - view String
+    - scope PaneScope
+    - stack String
+
+PaneDrag(view, scope, stack)
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-node-drag PaneDrag
+    - node String
+    - scope PaneScope
+
+PaneDrag(null, scope, node)
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-arrival-drag PaneDrag
+    - view String
+
+PaneDrag(view, PaneScope.workspace, "")
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-stack-target PaneTarget
+    - scope PaneScope
+    - stack String
+    - zone PaneZone
+    - index Index? = null
+
+PaneTarget.stack(scope, stack, zone, index)
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-slot-target PaneTarget
+    - side PaneSide
+    - before String? = null
+
+PaneTarget.slot(side, before)
+
+━━━━━━━━━━━━━━━━━━━━
++ pane-float-target PaneTarget
+    - x Float
+    - y Float
+    - width Float
+    - height Float
+
+PaneTarget.float(x, y, width, height)
+
+━━━━━━━━━━━━━━━━━━━━
+_ PaneFound is Tuple
+
++ node PaneNode
++ parent PaneNode?
++ index Index
++ page PanePage?
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pane-with-bottom PaneNode
+    - root PaneNode?
+    - node PaneNode
+    - id String
+
+node.is-dock = true
+= pane-split-node
+    - id
+    - PaneAxis.column
+    - List'PaneNode(root ?? pane-workspace-node(), node)
+    - List'Float(1 - pane-bottom-share, pane-bottom-share)
+
+━━━━━━━━━━━━━━━━━━━━
+_ pane-node-from PaneNode ?! Error
+    - reader JSONReader
+
+PaneNode(fields["kind"].int() as PaneNodeKind, fields["id"].string())
+    • views List'String(each.string() in fields["views"].items())
+    • axis fields["axis"].int() as PaneAxis
+    • kids List'PaneNode(pane-node-from(each) in fields["kids"].items())
+    • sizes List'Float(each.number() in fields["sizes"].items())
+    • is-collapsed fields["collapsed"].bool()
+    • is-dock fields["dock"].bool()
+
+.. fields = reader.object()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pane-origin-from PaneTarget? ?! Error
+    - reader JSONReader
+
+=? null if !reader.is-present
+. fields = reader.object()
+=? PaneTarget.bottom if fields["bottom"].is-present
+. slot = fields["slot"]
+if slot.is-present
+    . before String? = null
+    before = fields["before"].string() if fields["before"].is-present
+    = pane-slot-target(slot.int() as PaneSide, before)
+. zone = fields["zone"].int() as PaneZone
+= pane-stack-target(fields["scope"].int() as PaneScope, fields["stack"].string(), zone)
+
+━━━━━━━━━━━━━━━━━━━━
+_ pane-page-from PanePage ?! Error
+    - reader JSONReader
+
+PanePage(fields["id"].string(), pane-node-from(fields["root"]))
+
+.. fields = reader.object()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pane-region-from PaneRegion ?! Error
+    - reader JSONReader
+
+. fields = reader.object()
+. root = fields["root"]
+. region = PaneRegion((fields["kind"].int()) as PaneRegionKind, fields["id"].string())
+region.side = (fields["side"].int()) as PaneSide
+region.root = pane-node-from(root) if root.is-present
+region.pages = List'PanePage(pane-page-from(each) in fields["pages"].items())
+region.strip = fields["strip"].int() as PaneStripMode
+region.size = fields["size"].number()
+region.is-collapsed = fields["collapsed"].bool()
+region.x = fields["x"].number()
+region.y = fields["y"].number()
+region.width = fields["width"].number()
+region.height = fields["height"].number()
+region.origin = pane-origin-from(fields["origin"])
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pane-layout-from PaneLayout ?! Error
+    - reader JSONReader
+
+. fields = reader.object()
+. layout = PaneLayout(fields["id"].string(), fields["name"].string())
+layout.is-shared = fields["shared"].bool()
+layout.base = fields["base"].string() if fields["base"].is-present
+layout.left = pane-region-from(fields["left"])
+layout.right = pane-region-from(fields["right"])
+layout.center = pane-region-from(fields["center"])
+layout.workspace = pane-region-from(fields["workspace"])
+layout.floats = List'PaneRegion(pane-region-from(each) in fields["floats"].items())
+layout.homes = pane-string-map-from(fields["homes"])
+layout.placed = pane-string-map-from(fields["placed"])
+layout.closed = pane-string-map-from(fields["closed"])
+layout.menus = List'String(each.string() in fields["menus"].items())
+layout.inlines = List'String(each.string() in fields["inlines"].items())
+= layout
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pane-session-from PaneSession ?! Error
+    - reader JSONReader
+
+. fields = reader.object()
+. session = PaneSession()
+session.active = pane-string-map-from(fields["active"])
+session.pages = pane-string-map-from(fields["pages"])
+session.instances = pane-string-map-from(fields["instances"])
+session.last-focus = pane-string-map-from(fields["lastFocus"])
+. focus = fields["workspaceFocus"]
+session.workspace-focus = focus.string() if focus.is-present
+= session
+
+━━━━━━━━━━━━━━━━━━━━
+_ pane-visit-json JSON
+    - visit PaneVisit
+
+Map'String'JSON
+    • context visit.context
+    • view visit.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ pane-visit-from PaneVisit
+    - fields JSONObjectReader
+
+PaneVisit(fields["context"].string(), fields["view"].string())
+
+━━━━━━━━━━━━━━━━━━━━
+_ same-visit Bool
+    - left PaneVisit
+    - right PaneVisit
+
+left.context == right.context && left.view == right.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ pane-renamed-visit PaneVisit
+    - visit PaneVisit
+    - context String
+    - old String
+    - view String
+
+if visit.context == context && visit.view == old then PaneVisit(context, view) else visit
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do pane-string-map-from [String = String] ?! Error

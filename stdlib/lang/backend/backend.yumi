@@ -56,86 +56,6 @@ for index in 0 .. < stage-names.length
 dump-directory.size != 0 && (dump-all-text || dump-text has order)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ JobQueue
-
-_ lock Mutex
-_ positions [U32]
-_ cursor Size
-
-────────────────────
-+ This
-    - bundle Bundle
-
-. keys [U64]
-for position in 0 .. < bundle.functions.length
-    . words U64 = bundle.functions[position].word-count
-    keys += (words /lshift/ 32) /or/ (position as U64)
-. sorted = sort(keys)
-for index in 0 .. < sorted.length
-    positions += (sorted[sorted.length - 1 - index] /and/ 0xffffffff) as U32
-
-────────────────────
-+ do take U32
-
-use lock
-if cursor == positions.length
-    = no-job
-. position = positions[cursor]
-cursor += 1
-= position
-
-━━━━━━━━━━━━━━━━━━━━
-_ BackendWorker
-
-_ bundle Bundle
-_ options BackendOptions
-_ queue JobQueue
-_ dumps Array'FunctionDump
-_ records CPointer'CompactFunction
-_ decoder JobDecoder
-+ pipeline FunctionPipeline
-
-────────────────────
-+ This
-    - bundle Bundle
-    - options BackendOptions
-    - queue JobQueue
-    - dumps Array'FunctionDump
-    - records CPointer'CompactFunction
-
-.. pipeline = FunctionPipeline
-    - bundle
-    - options.through
-    - options.dump-directory.size != 0
-    - options.reference
-.. decoder = JobDecoder(pipeline.function)
-
-────────────────────
-+ do release
-
-pipeline.release()
-
-────────────────────
-+ do run
-
-while true
-    . position = queue.take()
-    if position == no-job
-        break
-    compile(position)
-
-────────────────────
-_ do compile
-    - position U32
-
-. record = bundle.functions[position]
-pipeline.begin(options.dumps-text(record.order))
-decoder.decode(record)
-if pipeline.lower()
-    records[position] = pipeline.encode()
-dumps[position] = pipeline.finished-dump()
-
-━━━━━━━━━━━━━━━━━━━━
 + do run-backend ?! Error
     - options BackendOptions
 
@@ -183,6 +103,87 @@ if options.object-path.size != 0
     . builder = use ObjectBuilder(bundle)
     builder.build(records, ordered)
     write-file(options.object-path, object-file(builder, options.target))
+
+━━━━━━━━━━━━━━━━━━━━
+_ JobQueue
+
+_ lock Mutex
+_ positions [U32]
+_ cursor Size
+
+────────────────────
++ This
+    - bundle Bundle
+
+. keys [U64]
+for position in 0 .. < bundle.functions.length
+    . words U64 = bundle.functions[position].word-count
+    keys += (words /lshift/ 32) /or/ (position as U64)
+. sorted = sort(keys)
+for index in 0 .. < sorted.length
+    positions += (sorted[sorted.length - 1 - index] /and/ 0xffffffff) as U32
+
+────────────────────
++ do take U32
+
+use lock
+if cursor == positions.length
+    = no-job
+. position = positions[cursor]
+cursor += 1
+= position
+
+━━━━━━━━━━━━━━━━━━━━
+_ BackendWorker
+
++ pipeline FunctionPipeline
+
+_ bundle Bundle
+_ options BackendOptions
+_ queue JobQueue
+_ dumps Array'FunctionDump
+_ records CPointer'CompactFunction
+_ decoder JobDecoder
+
+────────────────────
++ This
+    - bundle Bundle
+    - options BackendOptions
+    - queue JobQueue
+    - dumps Array'FunctionDump
+    - records CPointer'CompactFunction
+
+.. pipeline = FunctionPipeline
+    - bundle
+    - options.through
+    - options.dump-directory.size != 0
+    - options.reference
+.. decoder = JobDecoder(pipeline.function)
+
+────────────────────
++ do release
+
+pipeline.release()
+
+────────────────────
++ do run
+
+while true
+    . position = queue.take()
+    if position == no-job
+        break
+    compile(position)
+
+────────────────────
+_ do compile
+    - position U32
+
+. record = bundle.functions[position]
+pipeline.begin(options.dumps-text(record.order))
+decoder.decode(record)
+if pipeline.lower()
+    records[position] = pipeline.encode()
+dumps[position] = pipeline.finished-dump()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do ordered-positions [U32]

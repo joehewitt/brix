@@ -3,7 +3,7 @@
 This document is the authoritative guide to Yumi's markup batching runtime
 (`stdlib/core/markup.yumi`) for library and framework authors. It covers the batch lifecycle, the
 contracts each tier of client must uphold, the `checkpoint()` boundary, and the compiler-driven
-mutation protocol that hosts implement.
+mutation protocol that parents implement.
 
 Application code never needs anything in this document. Declarative markup, region loops and
 branches, and styled property writes are fully driven by compiler-generated code; there are no
@@ -11,7 +11,7 @@ lifecycle calls on the app-facing surface.
 
 ## The batch lifecycle
 
-Every markup tree hangs under a *batch root*: an object implementing `MarkupBatch`, which owns a
+Every markup tree hangs under a *batch root*: an object implementing `MarkupRootElement`, which owns a
 `MarkupBatchQueue`. Reactive work flows through the queue in one direction:
 
 ```
@@ -48,51 +48,76 @@ down is rarer and carries a slightly larger contract.
 | Tier | Who | Contract |
 |---|---|---|
 | 1. App / component authors | Anyone writing markup, styles, regions | **None.** No lifecycle calls; everything is compiler-generated. |
-| 2. Markup host implementors | Box-like classes that store markup children | Implement the mutation protocol hooks (below). No adopt/release, root, or settle calls. |
-| 3. Batch root implementors | Window-like phase controllers | Implement `MarkupBatch` (witness-enforced), translate `did-flush` into phase scheduling, and call `checkpoint()` at phase boundaries. |
+| 2. Markup parent implementors | Box-like classes that store markup children | Implement the mutation protocol hooks (below). No adopt/release, root, or settle calls. |
+| 3. Batch root implementors | Window-like phase controllers | Implement `MarkupRootElement` (witness-enforced), translate `did-flush` into phase scheduling, and call `checkpoint()` at phase boundaries. |
+
+A tree that needs no layout or paint, only styles and live markup, uses core's ready-made node
+and root instead of joining tiers 2 and 3: its nodes extend `MarkupNode`, which makes the regions
+of live loops and branches, and its outermost node extends `MarkupRoot`, which owns the batch,
+checkpoints it once its markup has been built, and checkpoints again on `settle()`. The terminal
+library's `Screen` is the same kind of root for boxes painted off screen: `frame(width, height)`
+checkpoints, lays out, paints and returns the frame as text.
 
 ### Tier 2: the mutation protocol
 
-`MarkupHost` is the interface between markup and domain-specific tree storage. It mirrors the
-collection interface from the opposite direction: where `Collection` describes how *data* binds
-into markup (regions iterate it and build rows), `MarkupHost` describes how *markup* binds into a
-domain's tree representation (Box sibling links today; a DOM or scene graph tomorrow). The domain
-keeps full control of its data structures; the core keeps full control of the lifecycle.
+Every object in a live tree implements `MarkupElement`: it mounts and unmounts, reads styles and
+themes, and closes. An element that holds children implements `MarkupParent'Child`, which extends
+`MarkupElement` and is the interface between markup and domain-specific tree storage. It mirrors
+the collection interface from the opposite direction: where `Collection` describes how *data*
+binds into markup (regions iterate it and build rows), `MarkupParent'Child` describes how *markup*
+binds into a domain's tree representation (Box sibling links today; a DOM or scene graph tomorrow).
+The domain keeps full control of its data structures; the core keeps full control of the
+lifecycle.
 
-Hosts declare four kinds of hooks **with their own concrete types**. The compiler and the generic
-core entry points dispatch them statically on the parent, so a missing hook or an unaccepted child
-type is a *compile error at the mutation site* — never a silent no-op or a runtime panic:
+Parents declare five kinds of hooks **with their own concrete types**. The compiler and the generic
+core entry points dispatch them statically on the parent, so an unaccepted child type is a
+*compile error at the mutation site* — never a silent no-op or a runtime panic. `MarkupParent'Child`
+gives a default for each hook a parent with nothing of its own to do would write: an identity
+`markup-content` for a `Child`, empty attach and detach hooks, and a `children` generator over the
+structural links that gives a region's rows in place of the region. A parent declares only the hooks
+that do something.
 
-- `markup-content` overloads — acceptance and coercion. Declare which child values the host
+`children` means those rows for every parent, the terminal and graphical boxes included, so code
+that asks a node for its children gets the same answer from any library. A walk that must visit
+the region nodes themselves, such as layout, paint or close, uses `structural-children`, which
+those boxes declare over their raw sibling links.
+
+The hooks:
+
+- `markup-content` overloads — acceptance and coercion. Declare which child values the parent
   accepts and return the node that actually links, e.g. Box declares `(child Box) Box` identity
   and `(content String) Box` returning a `TextBox`. The returned node feeds markup `id` bindings
   and live replacers.
-- `markup-absorb` overloads — consumption without linking. Content the host folds into its own
+- `markup-absorb` overloads — consumption without linking. Content the parent folds into its own
   state instead of linking a child, e.g. `TextBox` assigns string content to its `text` property.
   Absorb wins over `markup-content` when both match, and re-dispatches on dynamic content updates.
 - `markup-attach-child(child, anchor)` — link `child` immediately before `anchor` (null
-  means link as last child). Pure link bookkeeping plus host-side invalidation.
+  means link as last child). Pure link bookkeeping plus parent-side invalidation.
 - `markup-detach-child(child)` — unlink `child`. Same scope.
+- `markup-make-region()` — return an empty node of the child class to hold the rows of a live loop
+  or the arm of a live branch. Core links it among the parent's children and gives it the controller
+  that builds, reconciles and closes the rows, so a parent writes no loop or branch logic of its own.
+  The region's `close` calls `markup-close-region(this)` before closing as any other node does. The
+  checker reports a live loop or branch under a parent that doesn't declare this hook.
 
-The structural hooks are members of the generic `MarkupTreeHost'Child` interface, and a host
+The structural hooks are members of the generic `MarkupParent'Child` interface, and a class
 with linked children **must declare conformance** with its own child type:
 
 ```yumi
 + Box
-    is MarkupHost
-    is MarkupTreeHost'Box
+    is MarkupParent'Box
 ```
 
-The declaration is the host's compliance witness: the core entry points require their parent to
+The declaration is the parent's compliance witness: the core entry points require their parent to
 conform, so a type that merely happens to define hook-shaped methods is rejected rather than
 duck-typed, and conformance is queryable wherever the type system needs it. The interface does
-not introduce dynamic dispatch — the entry points are generic over the concrete host, so the
-hooks still compile to direct, statically dispatched calls with the host's own child types, and
+not introduce dynamic dispatch — the entry points are generic over the concrete parent, so the
+hooks still compile to direct, statically dispatched calls with the parent's own child types, and
 no witness tables or boxing are involved. (Content/absorb hooks remain overload sets rather than
-interface members because they are heterogeneous: one host commonly accepts several unrelated
+interface members because they are heterogeneous: one parent commonly accepts several unrelated
 content types.)
 
-Traversal reads the markup sidecar's structural links directly, so hosts do not own parent,
+Traversal reads the markup sidecar's structural links directly, so parents do not own parent,
 child, or sibling storage.
 
 The structural hooks run **only inside the core entry points** — `markup-append`,
@@ -108,7 +133,7 @@ never perform themselves:
 - Replace composes the two: link and mount the replacement, detach and release the old child, then
   run the replacement's `mounted` callbacks against the final structure.
 
-Hosts therefore contain **zero** `markup-adopt`/`markup-release` calls. If you find yourself
+Parents therefore contain **zero** `markup-adopt`/`markup-release` calls. If you find yourself
 wanting one, you are either mutating a tree outside the entry points (use them instead) or
 presenting out-of-tree structure (see the portal API below).
 
@@ -118,17 +143,17 @@ mount walk still makes appends into unmounted subtrees and same-root rehomes O(1
 
 ### The portal API: `markup-adopt` / `markup-release`
 
-Some hosts present structure that lives *beside* their child list rather than in it. `VectorImage`
+Some elements present structure that lives *beside* their child list rather than in it. `VectorImage`
 (`stdlib/gui/vector-image.yumi`) mounts its vector group, a separate graphics tree, when it mounts
 and releases it when it unmounts, and `VectorGroup` (`stdlib/graphics/vector-group.yumi`) does the
-same for its vector nodes. Such structure never flows through attach/detach, so the host mounts it
+same for its vector nodes. Such structure never flows through attach/detach, so the element mounts it
 explicitly:
 
 - `markup-adopt(node, parent, root)` mounts, unmounts, or rehomes a node and its subtree without
-  changing any host links.
+  changing any parent links.
 - `markup-release(node)` unmounts the subtree; the counterpart on teardown.
 
-This is a narrow API for hosts of out-of-tree structure. Ordinary tree mutation must never call
+This is a narrow API for elements with out-of-tree structure. Ordinary tree mutation must never call
 it — the entry points own that lifecycle.
 
 ### Tier 3: batch root implementors
@@ -136,9 +161,9 @@ it — the entry points own that lifecycle.
 A batch root is the object that owns a tree's queue and converts batch completion into externally
 scheduled phase work (layout, paint, commit — whatever the domain's phases are). The contract:
 
-1. **Implement `MarkupBatch`** — provide `markup-batch-queue` (typically
-   `:= MarkupBatchQueue(this)`) and `markup-batch-did-flush`. This half is
-   witness-enforced: forgetting it is a compile error.
+1. **Implement `MarkupRootElement`** — provide `markup-batch-queue` (typically
+   `:= MarkupBatchQueue(this)`). This half is witness-enforced: forgetting it is a compile
+   error. `markup-batch-did-flush` is optional; a root with no phases to schedule leaves it out.
 2. **Translate did-flush into phase scheduling.** The flush summary carries pending-domain
    accessors; the root schedules exactly the phases whose domains raised:
 
@@ -180,7 +205,7 @@ optimization layered on top. This asymmetry is intentional.
 
 Batching is an ownership property, not a global change to `LiveAction`. Compiler-generated
 rules, tracked initializers, markup bindings, and property-dependency callbacks whose owner
-implements `MarkupHost` use `MarkupBatchAction`; ordinary actions keep their synchronous dispatch
+implements `MarkupElement` use `MarkupBatchAction`; ordinary actions keep their synchronous dispatch
 semantics. An unmounted markup owner also runs synchronously because it has no batch root.
 
 Direct property-dependency callbacks are slightly narrower. They run synchronously for ordinary
@@ -236,7 +261,7 @@ a production root is three small pieces:
 
 ```yumi
 + Window is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markup-batch-queue := MarkupBatchQueue(this)
 ```
@@ -286,8 +311,11 @@ scheduled the queue and the paint checkpoints it.
 | `markup-insert(parent, child, anchor)` | core entry point | Link child before anchor (null = last) |
 | `markup-remove(parent, child)` | core entry point | Unlink child; owns release-after-unlink |
 | `markup-replace(parent, old, new)` | core entry point | Swap: link replacement, release old, then run replacement `mounted` |
-| `markup-content` / `markup-absorb` | host hook | Typed acceptance / coercion / consumption |
-| `markup-attach-child` / `markup-detach-child` | `MarkupTreeHost'Child` hook | Pure link bookkeeping + invalidation; conformance required |
+| `markup-content` / `markup-absorb` | parent hook | Typed acceptance / coercion / consumption |
+| `markup-attach-child` / `markup-detach-child` | `MarkupParent'Child` hook | Pure link bookkeeping + invalidation; conformance required, empty by default |
+| `markup-make-region` | `MarkupParent'Child` hook | An empty child node to hold a live loop's rows or a branch's arm; core owns its controller |
+| `markup-close-region(node)` | region `close` | Closes the controller a region holds |
+| `MarkupNode` / `MarkupRoot` | core classes | A ready-made node with live regions, and a root that settles when built and on `settle()` |
 | `markup-mount-root(node, root)` | root / codegen | Mount a node (and subtree) under a batch root |
 | `markup-adopt` / `markup-release` | portal | Out-of-tree structure only (such as a vector image's graphics tree) |
 | `markup-root-of(node)` | query | The batch root a node is mounted under (sidecar state) |

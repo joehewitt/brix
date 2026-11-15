@@ -551,7 +551,8 @@ _ do redispatch
 ` choose it. What a class answers for a name, a kind, the type parameters and the types of
 ` the arguments is asked once, and kept for the other methods that ask the same. A method it
 ` may answer with whose parameters write a type that names nothing stops the class's table
-` there, as TypeScript's does, and the base's does not answer in its place.
+` there, as TypeScript's does, and the base's does not answer in its place. A getter or a
+` setter the class stores as a property is answered by the property (`stored-place`).
 . row = instances.rows[method]
 . kind = DeclKind.function-decl
 . name Atom? = null
@@ -560,6 +561,10 @@ do match? program.modules[row.module].decls[row.decl]
         kind = fn.kind
         name = fn.name
 if !name
+    =
+. place = stored-place(row.self-type, receiver, kind, name)
+if place != U32.max
+    session.facts.overrides.append(OverrideFact(method, receiver, no-instance, place))
     =
 . signature = instances.signatures[method]
 . given = signature.param-count - implicit-argument-count(types, row.module, row.decl)
@@ -624,6 +629,23 @@ ranking.release()
 scratch.call-arguments.rewind(shapes-start)
 scratch.types.rewind(types-start)
 scratch.names.rewind(names-mark)
+
+────────────────────
+_ do stored-place U32
+    - base TypeId
+    - receiver TypeId
+    - kind DeclKind
+    - name Atom
+
+` The property a class stores in place of a getter or a setter it inherits from an interface
+` through a base class, which declares the accessor nowhere, as a class that declares the
+` interface itself answers it with a property it stores. No property for any other member.
+if kind != .getter-decl && kind != .setter-decl
+    = U32.max
+. place = types.property-named(receiver, name)
+if !place || types.properties[place].storage-kind == .storage-getter || types.property-named(base, name)
+    = U32.max
+= place as U32
 
 ────────────────────
 _ do note-override

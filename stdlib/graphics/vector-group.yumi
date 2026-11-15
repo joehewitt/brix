@@ -19,8 +19,8 @@
 
 ━━━━━━━━━━━━━━━━━━━━
 + VectorGroupHost is Interface
-    is MarkupHost
-    is MarkupBatch
+    is MarkupElement
+    is MarkupRootElement
     using VectorPaintStyle
 
 ────────────────────
@@ -214,7 +214,8 @@ _ This
 + VectorGroup
     is VectorNode
     is GraphicContainer
-    is MarkupBatch
+    is MarkupRootElement
+    is MarkupParent'VectorNode
     using VectorPaintStyle
     using VectorCompositeStyle
 
@@ -429,26 +430,14 @@ remove-group(child)
 . old-parent = child.parent
 if old-parent
     old-parent.graphic-remove(child)
-. index = if anchor then vector-item-index(anchor) else vector-items.length
-child.parent = this
-vector-items.insert(child, index)
-adopt-node(child)
-vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
+markup-insert(this, child, anchor)
 
 ────────────────────
 + do remove-graphic
     - child GraphicNode
 
 =? if !child.parent || child.parent as Pointer != this as Pointer
-for i in 0 .. < vector-items.length
-    if vector-items[i] as Pointer == child as Pointer
-        release-node(child)
-        vector-items.remove(i)
-        child.parent = null
-        child.previous = null
-        child.next = null
-        vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
-        =
+markup-remove(this, child)
 
 ────────────────────
 + do insert-group
@@ -459,26 +448,20 @@ for i in 0 .. < vector-items.length
 . old-parent = child.vector-parent-node
 if old-parent
     old-parent.remove-group(child)
-. index = if anchor then vector-item-index(anchor) else vector-items.length
-child.vector-parent-node = this
-vector-items.insert(child, index)
-if !child.host
-    adopt-node(child)
-vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
+if child.host
+    attach-item(child, anchor)
+else
+    markup-insert(this, child, anchor)
 
 ────────────────────
 + do remove-group
     - child VectorGroup
 
 =? if !child.vector-parent-node || child.vector-parent-node as Pointer != this as Pointer
-for i in 0 .. < vector-items.length
-    if vector-items[i] as Pointer == child as Pointer
-        if !child.host
-            release-node(child)
-        vector-items.remove(i)
-        child.vector-parent-node = null
-        vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
-        =
+if child.host
+    detach-item(child)
+else
+    markup-remove(this, child)
 
 ────────────────────
 + do clear
@@ -544,19 +527,16 @@ if kinds
     vector-content-changed(kinds)
 
 ────────────────────
-+ do mounted
-
-connect-nodes()
-
-────────────────────
-+ do unmounted
-
-disconnect-nodes(false)
-
-────────────────────
 + do close
 
-disconnect-nodes(true)
+for item in vector-items
+    do match? item
+        | graphic GraphicNode
+            release-node(graphic)
+        | group VectorGroup
+            if !group.host
+                release-node(group)
+release-vector-geometry()
 
 ────────────────────
 + do update
@@ -695,11 +675,26 @@ _ member-effects-within VectorEffects?
 
 .. own = $effects
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupRootElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-batch-did-flush
     - flush MarkupBatchFlush
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupParent ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-attach-child
+    - child VectorNode
+    - anchor VectorNode?
+
+attach-item(child, anchor)
+
+────────────────────
++ do markup-detach-child
+    - child VectorNode
+
+detach-item(child)
 
 ╌╌╌╌╌╌╌╌╌╌ is GraphicContainer ╌╌╌╌╌╌╌╌╌╌
 
@@ -952,46 +947,41 @@ _ last-evaluation-bounds Rect
 if computed-stamp then computed-stamp.bounds else Rect()
 
 ────────────────────
-_ do adopt-node
-    - child MarkupHost
-
-. root = markup-batch-root
-=? if !root
-. current = child.markup-batch-root
-=? if current && current as Pointer == root as Pointer
-markup-adopt(child, this, root)
-
-────────────────────
 _ do release-node
-    - child MarkupHost
+    - child MarkupElement
 
 if child.markup-batch-root
     markup-release(child)
 
 ────────────────────
-_ do connect-nodes
+_ do attach-item
+    - child VectorNode
+    - anchor VectorNode?
 
-for item in vector-items
-    do match? item
-        | graphic GraphicNode
-            adopt-node(graphic)
-        | group VectorGroup
-            if !group.host
-                adopt-node(group)
+. index = if anchor then vector-item-index(anchor) else vector-items.length
+do match? child
+    | graphic GraphicNode
+        graphic.parent = this
+    | group VectorGroup
+        group.vector-parent-node = this
+vector-items.insert(child, index)
+vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
 
 ────────────────────
-_ do disconnect-nodes
-    - release-geometry Bool
+_ do detach-item
+    - child VectorNode
 
-for item in vector-items
-    do match? item
-        | graphic GraphicNode
-            release-node(graphic)
-        | group VectorGroup
-            if !group.host
-                release-node(group)
-if release-geometry
-    release-vector-geometry()
+. index = vector-item-index(child)
+=? if index == vector-items.length
+vector-items.remove(index)
+do match? child
+    | graphic GraphicNode
+        graphic.parent = null
+        graphic.previous = null
+        graphic.next = null
+    | group VectorGroup
+        group.vector-parent-node = null
+vector-content-changed(graphic-change-structure /or/ graphic-change-geometry)
 
 ────────────────────
 _ do resolve-vector-geometry

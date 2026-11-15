@@ -11,15 +11,6 @@ _ claude-latest-limit Size = 200
 _ claude-quiet-seconds = 120
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ClaudeAgentMeta is Tuple
-
-+ id String
-+ call-id String
-+ title String
-+ kind String
-+ folder Path
-
-━━━━━━━━━━━━━━━━━━━━
 + do claude-subagents [AISubagent] ?! Error
     - parts [AIMessagePart]
     - directory String?
@@ -49,6 +40,24 @@ for call-id in calls
         if agent
             found += agent
 = found
+
+━━━━━━━━━━━━━━━━━━━━
++ do claude-apply-line ?! Error
+    - decoder ClaudeDecoder
+    - reply AIReply
+    - line String
+
+for event in decoder.decode(parse-json(line))
+    reply.apply(event)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ClaudeAgentMeta is Tuple
+
++ id String
++ call-id String
++ title String
++ kind String
++ folder Path
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do claude-read-meta ClaudeAgentMeta ?! Error
@@ -97,15 +106,6 @@ for part in reply.parts
     - latest
     - result
     - parts
-
-━━━━━━━━━━━━━━━━━━━━
-+ do claude-apply-line ?! Error
-    - decoder ClaudeDecoder
-    - reply AIReply
-    - line String
-
-for event in decoder.decode(parse-json(line))
-    reply.apply(event)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do claude-handback-message String?

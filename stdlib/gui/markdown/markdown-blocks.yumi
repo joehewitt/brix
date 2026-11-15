@@ -3,6 +3,33 @@
 /graphics/text
 
 ━━━━━━━━━━━━━━━━━━━━
++ MarkdownBlock
+
++ index Index
++ kind MarkdownBlockKind
++ level Size
++ depth Size
++ marker String
++ runs [MarkdownRun]
++ code String
++ language String
++ columns Size
++ cells [MarkdownGridCell]
++ line Size
++ anchor = ""
+
+────────────────────
++ This
+    - index
+    - kind
+    - level = 0
+    - depth = 0
+    - marker = ""
+    - runs [MarkdownRun] = List'MarkdownRun()
+    - code = ""
+    - language = ""
+
+━━━━━━━━━━━━━━━━━━━━
 + MarkdownBlockKind is Union
 
 | paragraph
@@ -37,31 +64,27 @@
 + is-final-row Bool
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkdownBlock
++ MarkdownBlockCache
 
-+ index Index
-+ kind MarkdownBlockKind
-+ level Size
-+ depth Size
-+ marker String
-+ runs [MarkdownRun]
-+ code String
-+ language String
-+ columns Size
-+ cells [MarkdownGridCell]
-+ line Size
-+ anchor = ""
+_ source String?
+_ based String?
+_ blocks [MarkdownBlock]
 
 ────────────────────
-+ This
-    - index
-    - kind
-    - level = 0
-    - depth = 0
-    - marker = ""
-    - runs [MarkdownRun] = List'MarkdownRun()
-    - code = ""
-    - language = ""
++ get is-filled
+
+source != null
+
+────────────────────
++ do blocks-for [MarkdownBlock]
+    - text String
+    - base = ""
+
+if source == null || source != text || based != base
+    blocks = markdown-blocks(text, base)
+    source = text
+    based = base
+= blocks
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-blocks [MarkdownBlock]
@@ -71,6 +94,12 @@
 . builder = MarkdownBlockBuilder(base)
 builder.add(Markdown(source), 0)
 = builder.blocks
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-is-exhibit
+    - language String
+
+language == "stat"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkdownBlockBuilder
@@ -321,6 +350,15 @@ result += MarkdownRun
     - style.is-image
 
 ━━━━━━━━━━━━━━━━━━━━
+_ MarkdownRunStyle is Tuple
+
++ is-strong Bool
++ is-em Bool
++ is-code Bool
++ url String? = null
++ is-image = false
+
+━━━━━━━━━━━━━━━━━━━━
 _ do markdown-referenced-runs [MarkdownRun]
     - runs [MarkdownRun]
     - base String
@@ -367,15 +405,6 @@ MarkdownRun
     - run.is-image
 
 ━━━━━━━━━━━━━━━━━━━━
-_ MarkdownRunStyle is Tuple
-
-+ is-strong Bool
-+ is-em Bool
-+ is-code Bool
-+ url String? = null
-+ is-image = false
-
-━━━━━━━━━━━━━━━━━━━━
 _ markdown-run-style
     - run MarkdownRun
 
@@ -401,32 +430,3 @@ _ markdown-code-body
     body[0 .. < body.length - 1]
 ??
     body
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-is-exhibit
-    - language String
-
-language == "stat"
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkdownBlockCache
-
-_ source String?
-_ based String?
-_ blocks [MarkdownBlock]
-
-────────────────────
-+ get is-filled
-
-source != null
-
-────────────────────
-+ do blocks-for [MarkdownBlock]
-    - text String
-    - base = ""
-
-if source == null || source != text || based != base
-    blocks = markdown-blocks(text, base)
-    source = text
-    based = base
-= blocks

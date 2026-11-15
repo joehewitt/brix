@@ -29,6 +29,9 @@ _ escape-sgr-suffix-bytes = "m" as Byte[]
 ━━━━━━━━━━━━━━━━━━━━
 + Canvas
 
++ width Coord = 0
++ height Coord = 0
+
 _ state = State()
 _ spare-state State?
 _ text-buffer = Char[0]
@@ -38,8 +41,6 @@ _ fg-buffer = AnsiColor[0]
 _ bg-buffer = TerminalBackground[0]
 _ coverage-buffer = U8[0]
 _ has-transparent-cells = false
-+ width Coord = 0
-+ height Coord = 0
 
 ────────────────────
 + This
@@ -387,65 +388,12 @@ for y in min-y .. < max-y
 ────────────────────
 + do dump
 
-. frame = ""
+= dump-rows(false)
 
-//+-tui.canvas// dump
+────────────────────
++ do dump-lines
 
-for y in 0 .. < height
-    . start = 0
-    . current-fg = default-text-color
-    . current-bg = default-background
-    . text-ptr = get-pointer(text-buffer, 0, y)!
-    . display-width-ptr = get-pointer(display-width-buffer, 0, y)!
-    . has-non-single-display-cells = row-non-single-display-counts[y] != 0
-    . fg-ptr = get-pointer(fg-buffer, 0, y)!
-    . bg-ptr = get-pointer(bg-buffer, 0, y)!
-    frame += "\x1b[0m\x1b[${y + 1};1H"
-    frame += escape-fg(default-text-color)
-
-    //+-tui.canvas// row $y
-    for x in 0 .. < width
-        . cell-fg = fg-ptr[x]
-        if cell-fg != current-fg
-            //tui.canvas.fg-run -> start, x, text-ptr[start .. < x]
-            frame += display-text-run
-                - text-ptr
-                - display-width-ptr
-                - start as Coord
-                - x
-                - has-non-single-display-cells
-            start = x
-
-            //tui.canvas.fg// cell-fg
-            frame += escape-fg(cell-fg)
-            current-fg = cell-fg
-
-        . cell-bg = bg-ptr[x]
-        if cell-bg != current-bg
-            //tui.canvas.bg-run -> y, start, x, text-ptr[start .. < x]
-            frame += display-text-run
-                - text-ptr
-                - display-width-ptr
-                - start as Coord
-                - x
-                - has-non-single-display-cells
-            start = x
-
-            //tui.canvas.bg// cell-bg
-            frame += escape-bg(cell-bg)
-            current-bg = cell-bg
-
-    . line = display-text-run
-        - text-ptr
-        - display-width-ptr
-        - start as Coord
-        - width
-        - has-non-single-display-cells
-    //tui.canvas.text -> y, line.length, start, width, text-ptr[start .. < width]
-    frame += line
-
-frame += "\x1b[0m"
-= frame
+= dump-rows(true)
 
 ────────────────────
 + dump
@@ -498,6 +446,75 @@ push()
 + do end-using
 
 pop()
+
+────────────────────
+_ do dump-rows String
+    - as-lines Bool
+
+. frame = ""
+
+//+-tui.canvas// dump
+
+for y in 0 .. < height
+    . start = 0
+    . current-fg = default-text-color
+    . current-bg = default-background
+    . text-ptr = get-pointer(text-buffer, 0, y)!
+    . display-width-ptr = get-pointer(display-width-buffer, 0, y)!
+    . has-non-single-display-cells = row-non-single-display-counts[y] != 0
+    . fg-ptr = get-pointer(fg-buffer, 0, y)!
+    . bg-ptr = get-pointer(bg-buffer, 0, y)!
+    if !as-lines
+        frame += "\x1b[0m\x1b[${y + 1};1H"
+    else if y == 0
+        frame += "\x1b[0m"
+    else
+        frame += "\x1b[0m\n"
+    frame += escape-fg(default-text-color)
+
+    //+-tui.canvas// row $y
+    for x in 0 .. < width
+        . cell-fg = fg-ptr[x]
+        if cell-fg != current-fg
+            //tui.canvas.fg-run -> start, x, text-ptr[start .. < x]
+            frame += display-text-run
+                - text-ptr
+                - display-width-ptr
+                - start as Coord
+                - x
+                - has-non-single-display-cells
+            start = x
+
+            //tui.canvas.fg// cell-fg
+            frame += escape-fg(cell-fg)
+            current-fg = cell-fg
+
+        . cell-bg = bg-ptr[x]
+        if cell-bg != current-bg
+            //tui.canvas.bg-run -> y, start, x, text-ptr[start .. < x]
+            frame += display-text-run
+                - text-ptr
+                - display-width-ptr
+                - start as Coord
+                - x
+                - has-non-single-display-cells
+            start = x
+
+            //tui.canvas.bg// cell-bg
+            frame += escape-bg(cell-bg)
+            current-bg = cell-bg
+
+    . line = display-text-run
+        - text-ptr
+        - display-width-ptr
+        - start as Coord
+        - width
+        - has-non-single-display-cells
+    //tui.canvas.text -> y, line.length, start, width, text-ptr[start .. < width]
+    frame += line
+
+frame += "\x1b[0m"
+= frame
 
 ────────────────────
 _ do print-single-width-text
@@ -939,6 +956,24 @@ min-x, min-y, max-x, max-y
 | hsva(color HSVA)
 
 ━━━━━━━━━━━━━━━━━━━━
++ clip
+    - left-edge Coord
+    - right-edge Coord
+    - min-edge Coord
+    - max-edge Coord
+
+left, right
+
+.. left = max(clipped-min-edge, min-edge)
+    .. clipped-min-edge = min(left-edge, max-edge)
+.. right = max(clipped-min-edge, min-edge)
+    .. clipped-min-edge = min(right-edge, max-edge)
+` .. left = min of clipped-min-edge and max-edge
+`     .. clipped-min-edge = max of left-edge and min-edge
+` .. right = min of clipped-min-edge and max-edge
+`     .. clipped-min-edge = max of right-edge and min-edge
+
+━━━━━━━━━━━━━━━━━━━━
 _ State
 
 + text-color = default-text-color
@@ -961,24 +996,6 @@ cursor-y = other.cursor-y
 offset-x = other.offset-x
 offset-y = other.offset-y
 clip = other.clip
-
-━━━━━━━━━━━━━━━━━━━━
-+ clip
-    - left-edge Coord
-    - right-edge Coord
-    - min-edge Coord
-    - max-edge Coord
-
-left, right
-
-.. left = max(clipped-min-edge, min-edge)
-    .. clipped-min-edge = min(left-edge, max-edge)
-.. right = max(clipped-min-edge, min-edge)
-    .. clipped-min-edge = min(right-edge, max-edge)
-` .. left = min of clipped-min-edge and max-edge
-`     .. clipped-min-edge = max of left-edge and min-edge
-` .. right = min of clipped-min-edge and max-edge
-`     .. clipped-min-edge = max of right-edge and min-edge
 
 ━━━━━━━━━━━━━━━━━━━━
 _ escape-fg

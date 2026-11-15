@@ -16,6 +16,7 @@
 + ai-reply-argument = "reply"
 + ai-image-default = "default"
 + ai-image-unstyled = "none"
+
 _ ai-image-owner = "chat-images"
 _ ai-image-round-limit Size = 6
 _ ai-image-quick-limit Size = 16
@@ -24,6 +25,9 @@ _ ai-image-key-patience Duration = 10minutes
 _ ai-stash-note = "You can't see attached images unless you call view_image with an ID. To build on one with generate_image, pass its ID in images; you don't need to view it first."
 _ ai-image-shapes = [ai-image-default, "auto", "square", "landscape", "portrait"]
 _ ai-image-backgrounds = ["auto", "transparent", "opaque"]
+
+_ AIEnlarged is (draft String, image AIImage, style AIImageStyle?)
+_ AIDraftOrigin is (prompt String, direction String?, sources [String], ratio AIAspectRatio, backdrop AIImageBackground?, style AIImageStyle?)
 
 ━━━━━━━━━━━━━━━━━━━━
 + AIImageStore
@@ -393,15 +397,6 @@ _ do chosen-style AIImageStyle? ?! AIError
 = AIImageStyle(named, look)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do ai-image-unlock ?! AIError
-    - access AIAccess?
-
-. needed = access
-=? if !needed || needed.is-granted
-?! AIError(AIErrorKind.cancellation, "No image was made, because the user did not provide an ${needed.name} API key.")
-    if !needed.ask("Generating images needs an ${needed.name} API key.", ai-image-key-patience)
-
-━━━━━━━━━━━━━━━━━━━━
 + AIImagingProvider is AIProvider
 
 + chat AIProvider
@@ -518,73 +513,6 @@ if | failure Error = ran
     - id String
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ai-written-prompt String
-    - prompt String
-    - style AIImageStyle?
-    - brief String?
-
-"$prompt$styled$briefed"
-
-.. styled = if style then "\n\nStyle: ${style.prompt}" else ""
-.. briefed = if brief then "\n\n$brief" else ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ ai-image-level AIImageLevel?
-    - levels [AIImageLevel]
-    - value JSON?
-    - defaults AIImageDefaults?
-
-|? !levels
-    null
-??
-    ai-named-level(levels, asked) ?? ai-named-level(levels, defaults?.default-level()) ?? levels[0]
-
-.. asked = match? value
-    | text String
-        text
-
-━━━━━━━━━━━━━━━━━━━━
-_ do ai-named-level AIImageLevel?
-    - levels [AIImageLevel]
-    - name String?
-
-=? null if !name
-for level in levels
-    =? level if level.name == name
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-_ ai-chosen-shape AIAspectRatio
-    - value JSON?
-    - is-edit Bool
-    - defaults AIImageDefaults?
-
-|? named && named != ai-image-default
-    ai-image-shape(value)
-|? is-edit
-    AIAspectRatio.automatic
-??
-    defaults?.default-shape() ?? AIAspectRatio.automatic
-
-.. named = match? value
-    | text String
-        text
-
-━━━━━━━━━━━━━━━━━━━━
-+ ai-shape-name String
-    - shape AIAspectRatio
-
-match shape
-    | AIAspectRatio.square
-        "square"
-    | AIAspectRatio.landscape
-        "landscape"
-    | AIAspectRatio.portrait
-        "portrait"
-    | AIAspectRatio.automatic
-        "auto"
-
-━━━━━━━━━━━━━━━━━━━━
 + AIDrawing
 
 + images [AIImage]
@@ -602,10 +530,42 @@ match shape
     - style = null
 
 ━━━━━━━━━━━━━━━━━━━━
-_ AIEnlarged is (draft String, image AIImage, style AIImageStyle?)
++ do ai-image-unlock ?! AIError
+    - access AIAccess?
+
+. needed = access
+=? if !needed || needed.is-granted
+?! AIError(AIErrorKind.cancellation, "No image was made, because the user did not provide an ${needed.name} API key.")
+    if !needed.ask("Generating images needs an ${needed.name} API key.", ai-image-key-patience)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ AIDraftOrigin is (prompt String, direction String?, sources [String], ratio AIAspectRatio, backdrop AIImageBackground?, style AIImageStyle?)
++ ai-image-level AIImageLevel?
+    - levels [AIImageLevel]
+    - value JSON?
+    - defaults AIImageDefaults?
+
+|? !levels
+    null
+??
+    ai-named-level(levels, asked) ?? ai-named-level(levels, defaults?.default-level()) ?? levels[0]
+
+.. asked = match? value
+    | text String
+        text
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-shape-name String
+    - shape AIAspectRatio
+
+match shape
+    | AIAspectRatio.square
+        "square"
+    | AIAspectRatio.landscape
+        "landscape"
+    | AIAspectRatio.portrait
+        "portrait"
+    | AIAspectRatio.automatic
+        "auto"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do ai-image-tool AITool
@@ -634,49 +594,6 @@ if has-styles
 = AITool(ai-image-tool-name, ai-image-tool-description(), parameters)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ai-image-tool-description String
-
-"".join
-    * "Creates images and shows them to the user. You cannot see the images it creates. "
-    * "Each result gives the new images' IDs, and images the user attaches are listed with their IDs instead of shown to you. "
-    * "To change an earlier or attached image or build on it, pass its ID in images and describe the change in prompt. "
-    * "Set count above 1 to offer the user variations to choose from. "
-    * "Making images takes a while, so the user sees reply while they wait."
-
-━━━━━━━━━━━━━━━━━━━━
-_ ai-image-properties [String = JSON]
-
-Map'String'JSON
-    • reply ai-reply-schema()
-    • prompt Map'String'JSON
-        • type "string"
-        • description "What the image should show, or how to change the given images"
-    • images Map'String'JSON
-        • type "array"
-        • items Map'String'JSON
-            • type "string"
-        • description "IDs of earlier or attached images to edit or draw from, or an empty list"
-    • count Map'String'JSON
-        • type "integer"
-        • description "How many variations to make, or 1 for a single image. Up to $ai-image-quick-limit when quick, else up to $ai-image-full-limit."
-    • quick Map'String'JSON
-        • type "boolean"
-        • description "Draw every variation as a small draft on one sheet in a single request: much cheaper and faster, at lower resolution. The user can ask for any draft at full size later. Use it for many variations or rough options to choose from; leave it false for a few finished images."
-    • directions Map'String'JSON
-        • type "array"
-        • items Map'String'JSON
-            • type "string"
-        • description "One short note per variation on how it differs, such as “at dusk” or “seen from above”, or an empty list to let them vary freely"
-    • shape Map'String'JSON
-        • type "string"
-        • enum List'JSON(each in ai-image-shapes)
-        • description "The image's shape. default follows the user's setting for new images and keeps the shape of images you change; use another value only when the user asks for one. auto lets the image model decide."
-    • background Map'String'JSON
-        • type "string"
-        • enum List'JSON(each in ai-image-backgrounds)
-        • description "transparent for artwork meant to sit on other things, such as logos, icons, stickers, and cutouts, and when changing a transparent image; opaque for a full scene; auto lets the image model decide. Only transparent makes a real transparent background; asking for one in prompt alone gets a painted checkerboard."
-
-━━━━━━━━━━━━━━━━━━━━
 + ai-image-quality-schema JSON
     - levels [AIImageLevel]
 
@@ -686,18 +603,6 @@ Map'String'JSON
     • description "How much care, time, and cost go into the images, from the cheapest to the best. default follows the user's setting; use another value only when the user asks for a different quality."
 
 .. names = List'JSON(each in [ai-image-default] ++ List'String(each.name in levels))
-
-━━━━━━━━━━━━━━━━━━━━
-_ ai-image-required [JSON]
-
-* ai-reply-argument
-* "prompt"
-* "images"
-* "count"
-* "quick"
-* "directions"
-* "shape"
-* "background"
 
 ━━━━━━━━━━━━━━━━━━━━
 + ai-reply-schema JSON
@@ -781,6 +686,179 @@ for message in messages
 = null
 
 ━━━━━━━━━━━━━━━━━━━━
++ ¶ ai-variations-prompt
+    - sheet AISheet
+    - prompt String
+    - directions [String]
+    - has-sources Bool
+    - is-clear Bool
+
+The first image is a blank sheet with a $grid of cells outlined by light blue guides. Draw a separate picture inside each of the $count outlined cells, $fill, so the sheet holds $count variations of this:
+
+$prompt
+$sources$cells
+Make each variation clearly different from the others. Keep the light blue guides where they are, $between, and draw nothing outside the cells. Draw no text, labels, or numbers unless a picture itself calls for them.
+
+════════════════════
+.. grid = sheet.grid-name
+.. count = sheet.count
+.. fill = if is-clear then "each centered in its cell with a clear margin inside the guides, on a fully transparent background" else "filling each cell edge to edge"
+.. between = if is-clear then "leave everything around the pictures fully transparent, with no white or tinted fill, haze, glow, or shadow behind them" else "keep the space between the cells plain white"
+.. sources = if has-sources then "\nThe other images are the images to work from.\n" else ""
+.. cells = if directions then "\nHow each cell differs:\n${"\n".join(ai-variation-line(sheet, directions, each) in 0 .. < min(directions.length, sheet.count))}\n" else ""
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-output-style AIImageStyle?
+    - output JSON
+
+|? !fields
+    null
+|? !style
+    null
+|? !name.length || !description.length
+    null
+??
+    AIImageStyle(name, description, id if id.length)
+
+.. fields = match? output
+    | [String = JSON]
+.. style = match? fields["style"]
+    | [String = JSON]
+.. name = ai-image-text(style["name"])
+.. description = ai-image-text(style["description"])
+.. id = ai-image-text(style["id"])
+
+━━━━━━━━━━━━━━━━━━━━
++ do ai-recorded-style AIImageStyle?
+    - messages [AIMessage]
+    - id String
+
+for message in messages
+    for part in message.parts
+        if | result AIToolResultPart = part
+            if ai-output-has-image(result.output, id)
+                = ai-output-style(result.output)
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-is-image-call
+    - call AIToolCallPart
+
+call.tool-name == ai-image-tool-name || call.tool-name == ai-full-size-tool-name
+
+━━━━━━━━━━━━━━━━━━━━
++ ai-image-prompt String?
+    - call AIToolCallPart?
+    - index Index
+
+|? !call || call.tool-name != ai-image-tool-name
+    null
+|? !fields
+    null
+|? !prompt
+    null
+??
+    ai-image-direction(prompt, ai-image-directions(fields["directions"]), index)
+
+.. fields = match? call.arguments
+    | [String = JSON]
+.. prompt = match? fields["prompt"]
+    | String
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-written-prompt String
+    - prompt String
+    - style AIImageStyle?
+    - brief String?
+
+"$prompt$styled$briefed"
+
+.. styled = if style then "\n\nStyle: ${style.prompt}" else ""
+.. briefed = if brief then "\n\n$brief" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ai-named-level AIImageLevel?
+    - levels [AIImageLevel]
+    - name String?
+
+=? null if !name
+for level in levels
+    =? level if level.name == name
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-chosen-shape AIAspectRatio
+    - value JSON?
+    - is-edit Bool
+    - defaults AIImageDefaults?
+
+|? named && named != ai-image-default
+    ai-image-shape(value)
+|? is-edit
+    AIAspectRatio.automatic
+??
+    defaults?.default-shape() ?? AIAspectRatio.automatic
+
+.. named = match? value
+    | text String
+        text
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-image-tool-description String
+
+"".join
+    * "Creates images and shows them to the user. You cannot see the images it creates. "
+    * "Each result gives the new images' IDs, and images the user attaches are listed with their IDs instead of shown to you. "
+    * "To change an earlier or attached image or build on it, pass its ID in images and describe the change in prompt. "
+    * "Set count above 1 to offer the user variations to choose from. "
+    * "Making images takes a while, so the user sees reply while they wait."
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-image-properties [String = JSON]
+
+Map'String'JSON
+    • reply ai-reply-schema()
+    • prompt Map'String'JSON
+        • type "string"
+        • description "What the image should show, or how to change the given images"
+    • images Map'String'JSON
+        • type "array"
+        • items Map'String'JSON
+            • type "string"
+        • description "IDs of earlier or attached images to edit or draw from, or an empty list"
+    • count Map'String'JSON
+        • type "integer"
+        • description "How many variations to make, or 1 for a single image. Up to $ai-image-quick-limit when quick, else up to $ai-image-full-limit."
+    • quick Map'String'JSON
+        • type "boolean"
+        • description "Draw every variation as a small draft on one sheet in a single request: much cheaper and faster, at lower resolution. The user can ask for any draft at full size later. Use it for many variations or rough options to choose from; leave it false for a few finished images."
+    • directions Map'String'JSON
+        • type "array"
+        • items Map'String'JSON
+            • type "string"
+        • description "One short note per variation on how it differs, such as “at dusk” or “seen from above”, or an empty list to let them vary freely"
+    • shape Map'String'JSON
+        • type "string"
+        • enum List'JSON(each in ai-image-shapes)
+        • description "The image's shape. default follows the user's setting for new images and keeps the shape of images you change; use another value only when the user asks for one. auto lets the image model decide."
+    • background Map'String'JSON
+        • type "string"
+        • enum List'JSON(each in ai-image-backgrounds)
+        • description "transparent for artwork meant to sit on other things, such as logos, icons, stickers, and cutouts, and when changing a transparent image; opaque for a full scene; auto lets the image model decide. Only transparent makes a real transparent background; asking for one in prompt alone gets a painted checkerboard."
+
+━━━━━━━━━━━━━━━━━━━━
+_ ai-image-required [JSON]
+
+* ai-reply-argument
+* "prompt"
+* "images"
+* "count"
+* "quick"
+* "directions"
+* "shape"
+* "background"
+
+━━━━━━━━━━━━━━━━━━━━
 _ do ai-draft-index Index?
     - output JSON
     - id String
@@ -827,28 +905,6 @@ for value in listed ?? List'JSON()
     - ai-output-style(output)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ ai-variations-prompt
-    - sheet AISheet
-    - prompt String
-    - directions [String]
-    - has-sources Bool
-    - is-clear Bool
-
-The first image is a blank sheet with a $grid of cells outlined by light blue guides. Draw a separate picture inside each of the $count outlined cells, $fill, so the sheet holds $count variations of this:
-
-$prompt
-$sources$cells
-Make each variation clearly different from the others. Keep the light blue guides where they are, $between, and draw nothing outside the cells. Draw no text, labels, or numbers unless a picture itself calls for them.
-
-════════════════════
-.. grid = sheet.grid-name
-.. count = sheet.count
-.. fill = if is-clear then "each centered in its cell with a clear margin inside the guides, on a fully transparent background" else "filling each cell edge to edge"
-.. between = if is-clear then "leave everything around the pictures fully transparent, with no white or tinted fill, haze, glow, or shadow behind them" else "keep the space between the cells plain white"
-.. sources = if has-sources then "\nThe other images are the images to work from.\n" else ""
-.. cells = if directions then "\nHow each cell differs:\n${"\n".join(ai-variation-line(sheet, directions, each) in 0 .. < min(directions.length, sheet.count))}\n" else ""
-
-━━━━━━━━━━━━━━━━━━━━
 _ ai-variation-line String
     - sheet AISheet
     - directions [String]
@@ -893,39 +949,6 @@ Map'String'JSON
     • name style.name
     • description style.prompt
     •? id style.id
-
-━━━━━━━━━━━━━━━━━━━━
-+ ai-output-style AIImageStyle?
-    - output JSON
-
-|? !fields
-    null
-|? !style
-    null
-|? !name.length || !description.length
-    null
-??
-    AIImageStyle(name, description, id if id.length)
-
-.. fields = match? output
-    | [String = JSON]
-.. style = match? fields["style"]
-    | [String = JSON]
-.. name = ai-image-text(style["name"])
-.. description = ai-image-text(style["description"])
-.. id = ai-image-text(style["id"])
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ai-recorded-style AIImageStyle?
-    - messages [AIMessage]
-    - id String
-
-for message in messages
-    for part in message.parts
-        if | result AIToolResultPart = part
-            if ai-output-has-image(result.output, id)
-                = ai-output-style(result.output)
-= null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do ai-output-has-image Bool
@@ -1018,31 +1041,6 @@ match name
 .. name = match? value
     | text String
         text
-
-━━━━━━━━━━━━━━━━━━━━
-+ ai-is-image-call
-    - call AIToolCallPart
-
-call.tool-name == ai-image-tool-name || call.tool-name == ai-full-size-tool-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ ai-image-prompt String?
-    - call AIToolCallPart?
-    - index Index
-
-|? !call || call.tool-name != ai-image-tool-name
-    null
-|? !fields
-    null
-|? !prompt
-    null
-??
-    ai-image-direction(prompt, ai-image-directions(fields["directions"]), index)
-
-.. fields = match? call.arguments
-    | [String = JSON]
-.. prompt = match? fields["prompt"]
-    | String
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do ai-image-transcript [AIMessage]

@@ -19,13 +19,6 @@ _ brix-level-postfix = 24
 _ brix-level-primary = 26
 
 ━━━━━━━━━━━━━━━━━━━━
-_ BrixArgument is U8
-
-| positional
-| named
-| extra
-
-━━━━━━━━━━━━━━━━━━━━
 + BrixPrinter
 
 + holder ImmutableTableRow'SourceNode?
@@ -1279,9 +1272,12 @@ put(if head == "<>" then "<" else "+ <")
 expression(items[1], brix-level-primary, false)
 . origin Size = 2
 . has-id = false
+. tags [ImmutableTableRow'SourceNode]
 while origin < items.length
     . fields = store.items(items[origin])
     do match fields
+        | [.atom(_, "for:"), ...]
+            tags += items[origin]
         | [.atom(_, "id:"), name, ...]
             put(" ${store.text(name)}")
             has-id = true
@@ -1302,6 +1298,13 @@ while origin < items.length
             break
     origin += 1
 origin = rules(items, origin)
+for position in 0 .. < tags.length
+    . binding = store.items(tags[position])
+    put(if position == 0 then " for " else ", ")
+    put(if binding.length > 1 then store.text(binding[1]) else "")
+    if binding.length > 2
+        put(" = ")
+        expression(binding[2], brix-level-assign, false)
 if is-tail
     hold(node, origin)
 else if origin < items.length
@@ -2013,39 +2016,6 @@ if shown < count
     put(" {…}")
 
 ━━━━━━━━━━━━━━━━━━━━
-_ brix-do-suffix String
-    - head String
-
-match head
-    |= "do-new"
-        " new"
-    |= "do-new-thread"
-        " new thread"
-    ??
-        ""
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-parameter-mark String?
-    - text String
-
-|? text == "..."
-    "... "
-??
-    null
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-word-prefix Bool
-    - head String
-
-head == "-=" || head == "<-" || head == "type-of" || head == "facts-of"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-clause-head Bool
-    - head String
-
-head == "when" || head == "whenever" || head == "while" || head == "until"
-
-━━━━━━━━━━━━━━━━━━━━
 + brix-is-keyword-head Bool
     - head String
 
@@ -2058,84 +2028,6 @@ head.length > 1 && head.starts-with(":") && !head.ends-with(":")
 head == "case" || head == "case?" || head == "case=" || is-union
 
 .. is-union = head == "case-union" || head == "case-union?" || head == "case-union="
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-inline-statement Bool
-    - head String
-
-brix-is-case(head) || head == "case-each" || head == "default" || is-plain
-
-.. is-plain = head == "throw" || head == "return" || head == "let" || head == "lazy" || head == "for"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-yield Bool
-    - head String
-
-head == "return?" || head == "yield" || head == "yield?" || is-yield-all
-
-.. is-yield-all = head == "yield-all" || head == "yield-all?"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-do-head Bool
-    - head String
-
-head == "do" || head == "do-new" || head == "do-new-thread" || head == "finally"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-bullet Bool
-    - head String
-
-head == "bullet" || head == "bullet*" || head == "bullet?" || head == "bullet*?"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-header-head Bool
-    - head String
-
-head == "param" || head == "constraint" || head == "iterates" || is-binding
-
-.. is-binding = head == "implements" || head == "using"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-is-probe Bool
-    - head String
-
-head == "probe" || head == "probe-count" || head == "probe-group" || is-probe-write
-
-.. is-probe-write = head == "probe-assign" || head == "probe-log"
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-case-mark String
-    - head String
-
-match head
-    |= "case"
-        "|"
-    |= "case?"
-        "|?"
-    |= "case="
-        "|="
-    |= "case-union"
-        "||"
-    |= "case-union?"
-        "||?"
-    ??
-        "||="
-
-━━━━━━━━━━━━━━━━━━━━
-_ brix-return-mark String
-    - head String
-
-match head
-    |= "return?"
-        "=?"
-    |= "yield"
-        "<="
-    |= "yield?"
-        "<=?"
-    |= "yield-all"
-        "<<="
-    ??
-        "<<=?"
 
 ━━━━━━━━━━━━━━━━━━━━
 + brix-operator-text String
@@ -2227,6 +2119,152 @@ match head
 = all(bytes) • where each == 45 || (each >= 48 && each <= 57) || (each >= 97 && each <= 122)
 
 ━━━━━━━━━━━━━━━━━━━━
++ brix-quoted String
+    - value String
+
+"\"${brix-escaped(value, true)}\""
+
+━━━━━━━━━━━━━━━━━━━━
++ brix-escaped String
+    - value String
+    - is-quoted Bool
+
+"".join(brix-escaped-char(each, is-quoted) in value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-line-escaped String
+    - value String
+
+. chars = value.codepoints
+. parts [String]
+for index in 0 .. < chars.length
+    . c = chars[index]
+    . next = if index + 1 < chars.length then chars[index + 1] else ' '
+    if c == '\\' || (c == '$' && brix-leads-embed(next))
+        parts += "\\$c"
+    else
+        parts += "$c"
+= "".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
+_ BrixArgument is U8
+
+| positional
+| named
+| extra
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-do-suffix String
+    - head String
+
+match head
+    |= "do-new"
+        " new"
+    |= "do-new-thread"
+        " new thread"
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-parameter-mark String?
+    - text String
+
+|? text == "..."
+    "... "
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-word-prefix Bool
+    - head String
+
+head == "-=" || head == "<-" || head == "type-of" || head == "facts-of"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-clause-head Bool
+    - head String
+
+head == "when" || head == "whenever" || head == "while" || head == "until"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-inline-statement Bool
+    - head String
+
+brix-is-case(head) || head == "case-each" || head == "default" || is-plain
+
+.. is-plain = head == "throw" || head == "return" || head == "let" || head == "lazy" || head == "for"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-yield Bool
+    - head String
+
+head == "return?" || head == "yield" || head == "yield?" || is-yield-all
+
+.. is-yield-all = head == "yield-all" || head == "yield-all?"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-do-head Bool
+    - head String
+
+head == "do" || head == "do-new" || head == "do-new-thread" || head == "finally"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-bullet Bool
+    - head String
+
+head == "bullet" || head == "bullet*" || head == "bullet?" || head == "bullet*?"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-header-head Bool
+    - head String
+
+head == "param" || head == "constraint" || head == "iterates" || is-binding
+
+.. is-binding = head == "implements" || head == "using"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-probe Bool
+    - head String
+
+head == "probe" || head == "probe-count" || head == "probe-group" || is-probe-write
+
+.. is-probe-write = head == "probe-assign" || head == "probe-log"
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-case-mark String
+    - head String
+
+match head
+    |= "case"
+        "|"
+    |= "case?"
+        "|?"
+    |= "case="
+        "|="
+    |= "case-union"
+        "||"
+    |= "case-union?"
+        "||?"
+    ??
+        "||="
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-return-mark String
+    - head String
+
+match head
+    |= "return?"
+        "=?"
+    |= "yield"
+        "<="
+    |= "yield?"
+        "<=?"
+    |= "yield-all"
+        "<<="
+    ??
+        "<<=?"
+
+━━━━━━━━━━━━━━━━━━━━
 _ brix-starts-divider Bool
     - text String
 
@@ -2245,19 +2283,6 @@ bytes.length > 0 && (byte == 45 || byte == 46 || is-digit || is-lower)
 .. byte = bytes[0]
 .. is-digit = byte >= 48 && byte <= 57
 .. is-lower = byte >= 97 && byte <= 122
-
-━━━━━━━━━━━━━━━━━━━━
-+ brix-quoted String
-    - value String
-
-"\"${brix-escaped(value, true)}\""
-
-━━━━━━━━━━━━━━━━━━━━
-+ brix-escaped String
-    - value String
-    - is-quoted Bool
-
-"".join(brix-escaped-char(each, is-quoted) in value)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-escaped-char String
@@ -2280,21 +2305,6 @@ _ brix-escaped-char String
     c as String
 
 .. short = brix-short-escape(c)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do brix-line-escaped String
-    - value String
-
-. chars = value.codepoints
-. parts [String]
-for index in 0 .. < chars.length
-    . c = chars[index]
-    . next = if index + 1 < chars.length then chars[index + 1] else ' '
-    if c == '\\' || (c == '$' && brix-leads-embed(next))
-        parts += "\\$c"
-    else
-        parts += "$c"
-= "".join(parts)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-leads-embed Bool

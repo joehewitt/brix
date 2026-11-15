@@ -55,37 +55,6 @@
 + This
 
 ━━━━━━━━━━━━━━━━━━━━
-_ SemanticGraphNode
-
-+ path String
-+ imports [String]
-+ discovered Bool
-+ executable Bool
-+ error String?
-
-────────────────────
-+ This
-    - path String
-    - discovered Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ CandidateRoot
-
-+ path String
-+ reason String
-+ priority I64
-+ reachable [String = Bool]
-+ error String?
-
-────────────────────
-+ This
-    - path String
-    - reason String
-    - priority I64
-    - reachable [String = Bool]
-    - error String?
-
-━━━━━━━━━━━━━━━━━━━━
 + SemanticPlanner
 
 ` Chooses the programs the semantic rules type, as the reference's `planSemanticCoverage` does:
@@ -98,6 +67,7 @@ _ CandidateRoot
 + search-paths [Path]
 + resolver ModuleResolver
 + sources [String = String]
+
 _ atoms AtomPool
 _ graph [String = SemanticGraphNode]
 _ order [String]
@@ -306,6 +276,75 @@ while queue.length != 0
 = reachable
 
 ━━━━━━━━━━━━━━━━━━━━
++ do semantic-root-batches [[SemanticRootPlan]]
+    - roots [SemanticRootPlan]
+
+` The roots typed together, in order, as the reference batches them: a root joins the batch
+` before it unless the files the batch and it reach would pass `semantic-batch-file-limit`.
+. batches [[SemanticRootPlan]]
+. batch [SemanticRootPlan]
+. reachable [String = Bool]
+for root in roots
+    . combined [String = Bool]
+    for path, _ in reachable
+        combined[path] = true
+    for path in root.reachable
+        combined[path] = true
+    if batch.length != 0 && combined.length > semantic-batch-file-limit
+        batches += batch
+        . fresh [SemanticRootPlan]
+        batch = fresh
+        reachable.clear()
+        for path in root.reachable
+            reachable[path] = true
+    else
+        reachable = combined
+    batch += root
+if batch.length != 0
+    batches += batch
+= batches
+
+━━━━━━━━━━━━━━━━━━━━
++ do sorted-keys [String]
+    - map [String = Bool]
+
+. keys [String]
+for key, _ in map
+    keys += key
+= sort(keys)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SemanticGraphNode
+
++ path String
++ imports [String]
++ discovered Bool
++ executable Bool
++ error String?
+
+────────────────────
++ This
+    - path String
+    - discovered Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ CandidateRoot
+
++ path String
++ reason String
++ priority I64
++ reachable [String = Bool]
++ error String?
+
+────────────────────
++ This
+    - path String
+    - reason String
+    - priority I64
+    - reachable [String = Bool]
+    - error String?
+
+━━━━━━━━━━━━━━━━━━━━
 _ do greedy-coverage [CandidateRoot]
     - candidates [CandidateRoot]
     - targets [String]
@@ -347,35 +386,6 @@ for path, _ in targets
     if reachable[path]
         count += 1
 = count
-
-━━━━━━━━━━━━━━━━━━━━
-+ do semantic-root-batches [[SemanticRootPlan]]
-    - roots [SemanticRootPlan]
-
-` The roots typed together, in order, as the reference batches them: a root joins the batch
-` before it unless the files the batch and it reach would pass `semantic-batch-file-limit`.
-. batches [[SemanticRootPlan]]
-. batch [SemanticRootPlan]
-. reachable [String = Bool]
-for root in roots
-    . combined [String = Bool]
-    for path, _ in reachable
-        combined[path] = true
-    for path in root.reachable
-        combined[path] = true
-    if batch.length != 0 && combined.length > semantic-batch-file-limit
-        batches += batch
-        . fresh [SemanticRootPlan]
-        batch = fresh
-        reachable.clear()
-        for path in root.reachable
-            reachable[path] = true
-    else
-        reachable = combined
-    batch += root
-if batch.length != 0
-    batches += batch
-= batches
 
 ━━━━━━━━━━━━━━━━━━━━
 _ root-kind (String, I64)
@@ -451,15 +461,6 @@ _ do unique-paths [String]
 for path in paths
     seen[path] = true
 = sorted-keys(seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sorted-keys [String]
-    - map [String = Bool]
-
-. keys [String]
-for key, _ in map
-    keys += key
-= sort(keys)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ strip-extension String

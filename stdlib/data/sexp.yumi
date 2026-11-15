@@ -5,26 +5,11 @@ _ sexp-classes = Array'U8(256) • with sexp-byte-class(each)
 _ sexp-text-classes = Array'U8(256) • with sexp-text-class(each)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ SexpClass is U8
++ Sexp is Union
 
-| atom
-| wide
-| space
-| newline
-| open
-| close
-| quote
-| semicolon
-
-━━━━━━━━━━━━━━━━━━━━
-_ SexpText is U8
-
-| plain
-| wide
-| escape
-| dollar
-| newline
-| quote
+| atom String
+| text String
+| list [Sexp]
 
 ━━━━━━━━━━━━━━━━━━━━
 + SexpKind is U8
@@ -35,13 +20,6 @@ _ SexpText is U8
 | text = 3
 | escaped-text = 4
 | comment = 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sexp is Union
-
-| atom String
-| text String
-| list [Sexp]
 
 ━━━━━━━━━━━━━━━━━━━━
 + SexpError is Error
@@ -56,89 +34,6 @@ _ SexpText is U8
     - hint String? = null
 
 message = text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sexp-tape SexpTape ?! SexpError
-    - source String
-    - arena Arena
-    - keeps-comments = true
-
-. tape = SexpTape(source, arena, keeps-comments)
-tape.scan()
-= tape
-
-━━━━━━━━━━━━━━━━━━━━
-+ sexp-parse [Sexp] ?! SexpError
-    - source String
-
-List(sexp-tree(tape, each) in tape.forms())
-
-.. scratch = use Arena()
-.. tape = sexp-tape(source, scratch, false)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sexp-tree Sexp
-    - tape SexpTape
-    - index Index
-
-match tape.kind(index)
-    |= .open
-        = Sexp.list(List(sexp-tree(tape, each) in tape.children(index) when !tape.is-comment(each)))
-    |= .atom
-        = Sexp.atom(tape.atom-text(index))
-    ??
-        = Sexp.text(tape.text-value(index))
-
-━━━━━━━━━━━━━━━━━━━━
-+ sexp-written String
-    - sexp Sexp
-
-match sexp
-    | .atom(name)
-        name
-    | .text(value)
-        sexp-quoted(value)
-    | .list(items)
-        "(${" ".join(sexp-written(each) in items)})"
-
-━━━━━━━━━━━━━━━━━━━━
-+ sexp-quoted String
-    - value String
-
-"\"${"".join(sexp-escaped(each) in value)}\""
-
-━━━━━━━━━━━━━━━━━━━━
-_ sexp-escaped String
-    - c Char
-
-|? c == '"' || c == '\\' || c == '$'
-    "\\$c"
-|? c == '\n'
-    "\\n"
-|? c == '\t'
-    "\\t"
-|? c == '\r'
-    "\\r"
-|? sexp-is-control(c as U32)
-    sexp-hex-escape(c as U32)
-??
-    c as String
-
-━━━━━━━━━━━━━━━━━━━━
-_ sexp-is-control Bool
-    - code U32
-
-code < 32 || (code >= 127 && code < 160) || code == 8232 || code == 8233 || code == 64976
-
-━━━━━━━━━━━━━━━━━━━━
-_ sexp-hex-escape String
-    - code U32
-
-if code >= 256 then "\\u$high$low" else "\\x$low"
-
-.. digits = "0123456789abcdef".codepoints
-.. high = "${digits[(code / 4096) % 16]}${digits[(code / 256) % 16]}"
-.. low = "${digits[(code / 16) % 16]}${digits[code % 16]}"
 
 ━━━━━━━━━━━━━━━━━━━━
 + SexpTape
@@ -342,61 +237,6 @@ length = count
 line-count = line + 1
 
 ────────────────────
-_ do grow-tokens
-    - count Size
-
-. capacity = kinds.length * 2
-. next-kinds = Array'U8(arena, capacity)
-. next-starts = Array'U32(arena, capacity)
-. next-ends = Array'U32(arena, capacity)
-. next-lines = Array'U32(arena, capacity)
-. kind-data = kinds.data
-. start-data = starts.data
-. end-data = ends.data
-. line-data = token-lines.data
-. next-kind-data = next-kinds.data
-. next-start-data = next-starts.data
-. next-end-data = next-ends.data
-. next-line-data = next-lines.data
-for index in 0 .. < count
-    next-kind-data[index] = kind-data[index]
-    next-start-data[index] = start-data[index]
-    next-end-data[index] = end-data[index]
-    next-line-data[index] = line-data[index]
-kinds = next-kinds
-starts = next-starts
-ends = next-ends
-token-lines = next-lines
-
-────────────────────
-_ do grow-lines
-    - count Size
-
-. capacity = line-starts.length * 2
-. next-starts = Array'U32(arena, capacity)
-. next-wide = Array'U8(arena, capacity)
-. start-data = line-starts.data
-. wide-data = wide-lines.data
-. next-start-data = next-starts.data
-. next-wide-data = next-wide.data
-for index in 0 .. < count
-    next-start-data[index] = start-data[index]
-    next-wide-data[index] = wide-data[index]
-line-starts = next-starts
-wide-lines = next-wide
-
-────────────────────
-_ do grow-opens
-    - count Size
-
-. next-opens = Array'U32(arena, opens.length * 2)
-. open-data = opens.data
-. next-open-data = next-opens.data
-for index in 0 .. < count
-    next-open-data[index] = open-data[index]
-opens = next-opens
-
-────────────────────
 + kind SexpKind @inline
     - index Index
 
@@ -545,6 +385,61 @@ column-location(starts[index], token-lines[index])
 .. last = ends[index] as Index
 
 ────────────────────
+_ do grow-tokens
+    - count Size
+
+. capacity = kinds.length * 2
+. next-kinds = Array'U8(arena, capacity)
+. next-starts = Array'U32(arena, capacity)
+. next-ends = Array'U32(arena, capacity)
+. next-lines = Array'U32(arena, capacity)
+. kind-data = kinds.data
+. start-data = starts.data
+. end-data = ends.data
+. line-data = token-lines.data
+. next-kind-data = next-kinds.data
+. next-start-data = next-starts.data
+. next-end-data = next-ends.data
+. next-line-data = next-lines.data
+for index in 0 .. < count
+    next-kind-data[index] = kind-data[index]
+    next-start-data[index] = start-data[index]
+    next-end-data[index] = end-data[index]
+    next-line-data[index] = line-data[index]
+kinds = next-kinds
+starts = next-starts
+ends = next-ends
+token-lines = next-lines
+
+────────────────────
+_ do grow-lines
+    - count Size
+
+. capacity = line-starts.length * 2
+. next-starts = Array'U32(arena, capacity)
+. next-wide = Array'U8(arena, capacity)
+. start-data = line-starts.data
+. wide-data = wide-lines.data
+. next-start-data = next-starts.data
+. next-wide-data = next-wide.data
+for index in 0 .. < count
+    next-start-data[index] = start-data[index]
+    next-wide-data[index] = wide-data[index]
+line-starts = next-starts
+wide-lines = next-wide
+
+────────────────────
+_ do grow-opens
+    - count Size
+
+. next-opens = Array'U32(arena, opens.length * 2)
+. open-data = opens.data
+. next-open-data = next-opens.data
+for index in 0 .. < count
+    next-open-data[index] = open-data[index]
+opens = next-opens
+
+────────────────────
 _ do line-at Size
     - offset Index
     - hint Size
@@ -586,42 +481,54 @@ while high - low > 1
 = low
 
 ━━━━━━━━━━━━━━━━━━━━
-_ sexp-byte-class U8
-    - code Size
++ do sexp-tape SexpTape ?! SexpError
+    - source String
+    - arena Arena
+    - keeps-comments = true
 
-|? code == 32 || code == 9 || code == 13
-    SexpClass.space
-|? code == 10
-    SexpClass.newline
-|? code == 40
-    SexpClass.open
-|? code == 41
-    SexpClass.close
-|? code == 34
-    SexpClass.quote
-|? code == 59
-    SexpClass.semicolon
-|? code >= 128
-    SexpClass.wide
-??
-    SexpClass.atom
+. tape = SexpTape(source, arena, keeps-comments)
+tape.scan()
+= tape
 
 ━━━━━━━━━━━━━━━━━━━━
-_ sexp-text-class U8
-    - code Size
++ sexp-parse [Sexp] ?! SexpError
+    - source String
 
-|? code == 34
-    SexpText.quote
-|? code == 92
-    SexpText.escape
-|? code == 36
-    SexpText.dollar
-|? code == 10
-    SexpText.newline
-|? code >= 128
-    SexpText.wide
-??
-    SexpText.plain
+List(sexp-tree(tape, each) in tape.forms())
+
+.. scratch = use Arena()
+.. tape = sexp-tape(source, scratch, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sexp-tree Sexp
+    - tape SexpTape
+    - index Index
+
+match tape.kind(index)
+    |= .open
+        = Sexp.list(List(sexp-tree(tape, each) in tape.children(index) when !tape.is-comment(each)))
+    |= .atom
+        = Sexp.atom(tape.atom-text(index))
+    ??
+        = Sexp.text(tape.text-value(index))
+
+━━━━━━━━━━━━━━━━━━━━
++ sexp-written String
+    - sexp Sexp
+
+match sexp
+    | .atom(name)
+        name
+    | .text(value)
+        sexp-quoted(value)
+    | .list(items)
+        "(${" ".join(sexp-written(each) in items)})"
+
+━━━━━━━━━━━━━━━━━━━━
++ sexp-quoted String
+    - value String
+
+"\"${"".join(sexp-escaped(each) in value)}\""
 
 ━━━━━━━━━━━━━━━━━━━━
 + do sexp-unescaped-text String
@@ -652,49 +559,6 @@ decoded.append-all(bytes[run .. < last])
 = decoded.finish-mutable().slice-string()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ sexp-unescaped-byte Byte
-    - byte Byte
-
-match byte
-    |= 110
-        10
-    |= 116
-        9
-    |= 114
-        13
-    ??
-        byte
-
-━━━━━━━━━━━━━━━━━━━━
-_ do sexp-hex-width Size
-    - bytes Byte[]
-    - index Index
-    - last Index
-
-. width Size = 0
-if bytes[index] == 120
-    width = 2
-else if bytes[index] == 117
-    width = 4
-=? 0 if width == 0 || index + width >= last
-for offset in 1 .. width
-    =? 0 if sexp-hex-value(bytes[index + offset]) < 0
-= width
-
-━━━━━━━━━━━━━━━━━━━━
-_ sexp-hex-value Int
-    - byte Byte
-
-|? byte >= 48 && byte <= 57
-    (byte as Int) - 48
-|? byte >= 97 && byte <= 102
-    (byte as Int) - 87
-|? byte >= 65 && byte <= 70
-    (byte as Int) - 55
-??
-    -1
-
-━━━━━━━━━━━━━━━━━━━━
 + sexp-place String
     - bytes Byte[]
     - offset Index
@@ -718,13 +582,6 @@ for index in 0 .. < offset
     else if byte < 128 || byte >= 192
         column += 1
 = TokenLocation(line, column)
-
-━━━━━━━━━━━━━━━━━━━━
-_ SexpOpen is Tuple
-
-+ line Size
-+ indent Size
-+ offset Index
 
 ━━━━━━━━━━━━━━━━━━━━
 + do sexp-paren-hint String?
@@ -777,6 +634,149 @@ while index < bytes.length
 =? null if open.length == 0
 . last = open[open.length - 1]
 = "At the end of the file ${open.length} forms are still open. The innermost is the ${sexp-open-name(bytes, last)} opened on line ${last.line}."
+
+━━━━━━━━━━━━━━━━━━━━
+_ SexpClass is U8
+
+| atom
+| wide
+| space
+| newline
+| open
+| close
+| quote
+| semicolon
+
+━━━━━━━━━━━━━━━━━━━━
+_ SexpText is U8
+
+| plain
+| wide
+| escape
+| dollar
+| newline
+| quote
+
+━━━━━━━━━━━━━━━━━━━━
+_ SexpOpen is Tuple
+
++ line Size
++ indent Size
++ offset Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-escaped String
+    - c Char
+
+|? c == '"' || c == '\\' || c == '$'
+    "\\$c"
+|? c == '\n'
+    "\\n"
+|? c == '\t'
+    "\\t"
+|? c == '\r'
+    "\\r"
+|? sexp-is-control(c as U32)
+    sexp-hex-escape(c as U32)
+??
+    c as String
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-is-control Bool
+    - code U32
+
+code < 32 || (code >= 127 && code < 160) || code == 8232 || code == 8233 || code == 64976
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-hex-escape String
+    - code U32
+
+if code >= 256 then "\\u$high$low" else "\\x$low"
+
+.. digits = "0123456789abcdef".codepoints
+.. high = "${digits[(code / 4096) % 16]}${digits[(code / 256) % 16]}"
+.. low = "${digits[(code / 16) % 16]}${digits[code % 16]}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-byte-class U8
+    - code Size
+
+|? code == 32 || code == 9 || code == 13
+    SexpClass.space
+|? code == 10
+    SexpClass.newline
+|? code == 40
+    SexpClass.open
+|? code == 41
+    SexpClass.close
+|? code == 34
+    SexpClass.quote
+|? code == 59
+    SexpClass.semicolon
+|? code >= 128
+    SexpClass.wide
+??
+    SexpClass.atom
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-text-class U8
+    - code Size
+
+|? code == 34
+    SexpText.quote
+|? code == 92
+    SexpText.escape
+|? code == 36
+    SexpText.dollar
+|? code == 10
+    SexpText.newline
+|? code >= 128
+    SexpText.wide
+??
+    SexpText.plain
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-unescaped-byte Byte
+    - byte Byte
+
+match byte
+    |= 110
+        10
+    |= 116
+        9
+    |= 114
+        13
+    ??
+        byte
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sexp-hex-width Size
+    - bytes Byte[]
+    - index Index
+    - last Index
+
+. width Size = 0
+if bytes[index] == 120
+    width = 2
+else if bytes[index] == 117
+    width = 4
+=? 0 if width == 0 || index + width >= last
+for offset in 1 .. width
+    =? 0 if sexp-hex-value(bytes[index + offset]) < 0
+= width
+
+━━━━━━━━━━━━━━━━━━━━
+_ sexp-hex-value Int
+    - byte Byte
+
+|? byte >= 48 && byte <= 57
+    (byte as Int) - 48
+|? byte >= 97 && byte <= 102
+    (byte as Int) - 87
+|? byte >= 65 && byte <= 70
+    (byte as Int) - 55
+??
+    -1
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do sexp-stale-open SexpOpen?

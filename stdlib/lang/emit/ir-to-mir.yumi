@@ -18,29 +18,6 @@ _ mark-shift U32 = 28
 _ mark-mask U32 = 0x0fffffff
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ArmCondition is U32
-
-| equal
-| not-equal
-| higher-same
-| lower
-| minus
-| higher = 8
-| lower-same = 9
-| greater-equal = 10
-| less = 11
-| greater = 12
-| less-equal = 13
-
-━━━━━━━━━━━━━━━━━━━━
-+ LoweringMark is U32
-
-| used-mark = 0
-| buffer-mark = 1
-| allocated-mark = 2
-| plain-mark = 3
-
-━━━━━━━━━━━━━━━━━━━━
 + IRToMIR
 
 ` Builds a function's MIR from its IR through the backend's builder, walking the blocks in
@@ -58,6 +35,7 @@ _ ArmCondition is U32
 + buffers CPointer'Byte
 + allocated CPointer'Byte
 + plain-allocated CPointer'Byte
+
 _ tables ProgramTables
 _ builder MIRBuilder
 _ values CPointer'U32
@@ -160,6 +138,82 @@ for position in 0 .. < ir.order.length
     . rows = ir.blocks[block].instructions
     for id in rows.start .. < rows.end
         lower-instruction(ir, id)
+
+────────────────────
++ do mark
+    - kind LoweringMark
+    - value U32
+
+` Marks a layout or a plain site for the merge, as lowering the current function does.
+do match kind
+    |= .used-mark
+        used[value] = 1
+    |= .buffer-mark
+        buffers[value] = 1
+    |= .allocated-mark
+        allocated[value] = 1
+    |= .plain-mark
+        plain-allocated[value] = 1
+marks += packed-mark(kind, value)
+
+────────────────────
++ do build-process-main
+    - id FunctionId
+
+` The C `main` the linker enters, built as machine code that needs no lowering: it saves the
+` arguments, runs the task main on the event loop, which runs `threadinit` as each thread
+` starts and `taskinit` as each task that native code starts begins, and exits with the process's
+` exit code. Where probes compile, the event loop runs the task that closes their record once
+` the others are done, and flushes what each thread wrote of them as it stops.
+. function = builder.function
+. row = tables.functions[id]
+. task-main = tables.functions[tables.calls[row.calls.start]].symbol
+function.is-lowered = true
+builder.set-insert-block(builder.add-block(tables.bundle.entry-name))
+builder.bl(builder.symbol(tables.runtime-symbol(.runtime-save-args)))
+builder.bl(builder.symbol(tables.runtime-symbol(.runtime-validate-allocation-abi)))
+. entry = builder.preg(10)
+builder.adrp(entry, builder.label(task-main, .page-reloc))
+builder.add(entry, entry, builder.label(task-main, .pageoff-reloc))
+. closer = builder.preg(11)
+if tables.probe-closer == no-function
+    builder.mov(closer, builder.small-int(0))
+else
+    . closer-symbol = tables.functions[tables.probe-closer].symbol
+    builder.adrp(closer, builder.label(closer-symbol, .page-reloc))
+    builder.add(closer, closer, builder.label(closer-symbol, .pageoff-reloc))
+. thread-init = builder.preg(12)
+if tables.thread-init == no-function
+    builder.mov(thread-init, builder.small-int(0))
+else
+    . init-symbol = tables.functions[tables.thread-init].symbol
+    builder.adrp(thread-init, builder.label(init-symbol, .page-reloc))
+    builder.add(thread-init, thread-init, builder.label(init-symbol, .pageoff-reloc))
+. thread-flush = builder.preg(13)
+if tables.probe-flush == no-function
+    builder.mov(thread-flush, builder.small-int(0))
+else
+    . flush-symbol = tables.functions[tables.probe-flush].symbol
+    builder.adrp(thread-flush, builder.label(flush-symbol, .page-reloc))
+    builder.add(thread-flush, thread-flush, builder.label(flush-symbol, .pageoff-reloc))
+. task-init = builder.preg(14)
+if tables.task-init == no-function
+    builder.mov(task-init, builder.small-int(0))
+else
+    . init-symbol = tables.functions[tables.task-init].symbol
+    builder.adrp(task-init, builder.label(init-symbol, .page-reloc))
+    builder.add(task-init, task-init, builder.label(init-symbol, .pageoff-reloc))
+builder.mov(builder.preg(0), entry)
+builder.mov(builder.preg(1), closer)
+builder.mov(builder.preg(2), builder.small-int(0))
+builder.mov(builder.preg(3), builder.small-int(tables.task-local-size))
+builder.mov(builder.preg(4), thread-init)
+builder.mov(builder.preg(5), thread-flush)
+builder.mov(builder.preg(6), builder.small-int(tables.thread-local-size))
+builder.mov(builder.preg(7), task-init)
+builder.bl(builder.symbol(tables.runtime-symbol(.runtime-run-event-loop)))
+builder.bl(builder.symbol(tables.runtime-symbol(.runtime-process-exit-code)))
+builder.bl(builder.symbol(tables.runtime-symbol(.runtime-exit)))
 
 ────────────────────
 _ do keep-locals
@@ -2180,23 +2234,6 @@ mark(.used-mark, layout)
 = tables.layouts.rows[layout].descriptor
 
 ────────────────────
-+ do mark
-    - kind LoweringMark
-    - value U32
-
-` Marks a layout or a plain site for the merge, as lowering the current function does.
-do match kind
-    |= .used-mark
-        used[value] = 1
-    |= .buffer-mark
-        buffers[value] = 1
-    |= .allocated-mark
-        allocated[value] = 1
-    |= .plain-mark
-        plain-allocated[value] = 1
-marks += packed-mark(kind, value)
-
-────────────────────
 _ do mir-type MIRTypeId
     - layout LayoutId
 
@@ -2298,75 +2335,13 @@ if row.line == 0 || owner.placeless
 . file = tables.module-paths[if row.module == U32.max then module else row.module]
 = builder.add-loc(MIRLoc(file, true, row.line as I32, row.column as I32, 0, 0))
 
-────────────────────
-+ do build-process-main
-    - id FunctionId
-
-` The C `main` the linker enters, built as machine code that needs no lowering: it saves the
-` arguments, runs the task main on the event loop, which runs `threadinit` as each thread
-` starts and `taskinit` as each task that native code starts begins, and exits with the process's
-` exit code. Where probes compile, the event loop runs the task that closes their record once
-` the others are done, and flushes what each thread wrote of them as it stops.
-. function = builder.function
-. row = tables.functions[id]
-. task-main = tables.functions[tables.calls[row.calls.start]].symbol
-function.is-lowered = true
-builder.set-insert-block(builder.add-block(tables.bundle.entry-name))
-builder.bl(builder.symbol(tables.runtime-symbol(.runtime-save-args)))
-builder.bl(builder.symbol(tables.runtime-symbol(.runtime-validate-allocation-abi)))
-. entry = builder.preg(10)
-builder.adrp(entry, builder.label(task-main, .page-reloc))
-builder.add(entry, entry, builder.label(task-main, .pageoff-reloc))
-. closer = builder.preg(11)
-if tables.probe-closer == no-function
-    builder.mov(closer, builder.small-int(0))
-else
-    . closer-symbol = tables.functions[tables.probe-closer].symbol
-    builder.adrp(closer, builder.label(closer-symbol, .page-reloc))
-    builder.add(closer, closer, builder.label(closer-symbol, .pageoff-reloc))
-. thread-init = builder.preg(12)
-if tables.thread-init == no-function
-    builder.mov(thread-init, builder.small-int(0))
-else
-    . init-symbol = tables.functions[tables.thread-init].symbol
-    builder.adrp(thread-init, builder.label(init-symbol, .page-reloc))
-    builder.add(thread-init, thread-init, builder.label(init-symbol, .pageoff-reloc))
-. thread-flush = builder.preg(13)
-if tables.probe-flush == no-function
-    builder.mov(thread-flush, builder.small-int(0))
-else
-    . flush-symbol = tables.functions[tables.probe-flush].symbol
-    builder.adrp(thread-flush, builder.label(flush-symbol, .page-reloc))
-    builder.add(thread-flush, thread-flush, builder.label(flush-symbol, .pageoff-reloc))
-. task-init = builder.preg(14)
-if tables.task-init == no-function
-    builder.mov(task-init, builder.small-int(0))
-else
-    . init-symbol = tables.functions[tables.task-init].symbol
-    builder.adrp(task-init, builder.label(init-symbol, .page-reloc))
-    builder.add(task-init, task-init, builder.label(init-symbol, .pageoff-reloc))
-builder.mov(builder.preg(0), entry)
-builder.mov(builder.preg(1), closer)
-builder.mov(builder.preg(2), builder.small-int(0))
-builder.mov(builder.preg(3), builder.small-int(tables.task-local-size))
-builder.mov(builder.preg(4), thread-init)
-builder.mov(builder.preg(5), thread-flush)
-builder.mov(builder.preg(6), builder.small-int(tables.thread-local-size))
-builder.mov(builder.preg(7), task-init)
-builder.bl(builder.symbol(tables.runtime-symbol(.runtime-run-event-loop)))
-builder.bl(builder.symbol(tables.runtime-symbol(.runtime-process-exit-code)))
-builder.bl(builder.symbol(tables.runtime-symbol(.runtime-exit)))
-
 ━━━━━━━━━━━━━━━━━━━━
-_ do bit-length U64
-    - value U64
++ LoweringMark is U32
 
-. width U64
-. rest = value
-while rest != 0
-    rest = rest /zrshift/ 1
-    width += 1
-= width
+| used-mark = 0
+| buffer-mark = 1
+| allocated-mark = 2
+| plain-mark = 3
 
 ━━━━━━━━━━━━━━━━━━━━
 + mark-kind LoweringMark
@@ -2386,3 +2361,29 @@ packed /and/ mark-mask
     - value U32
 
 ((kind as U32) /lshift/ mark-shift) /or/ value
+
+━━━━━━━━━━━━━━━━━━━━
+_ ArmCondition is U32
+
+| equal
+| not-equal
+| higher-same
+| lower
+| minus
+| higher = 8
+| lower-same = 9
+| greater-equal = 10
+| less = 11
+| greater = 12
+| less-equal = 13
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bit-length U64
+    - value U64
+
+. width U64
+. rest = value
+while rest != 0
+    rest = rest /zrshift/ 1
+    width += 1
+= width

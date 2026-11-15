@@ -23,23 +23,19 @@
 
 _ display-damage-area-limit Size = 4
 _ display-backdrop-pixel-reach F64 = 1
-
 _ display-gradient-linear U32 = 1
 _ display-gradient-radial U32 = 2
 _ display-gradient-conic U32 = 3
 _ display-gradient-shader U32 = 4
 _ display-gradient-paint U32 = 5
 _ display-gradient-brush U32 = 6
-
 _ display-frame-magic U64 = 3550328824200053849u64
 _ display-frame-table-count Size = (DisplayFrameTable.args as Size) + 1
 _ display-frame-header-bytes Size = 32 + display-frame-table-count * 16
-
 _ display-culling-item-count Size = 32
 _ display-texture-image-threshold I32 = 512
 _ display-pattern-texture-limit I32 = 2048
 _ display-unknown-ink = Rect(0, 0, -1, -1)
-
 _ display-item-has-clip U8 = 1
 _ display-item-has-glyph-handle U8 = 2
 _ display-item-has-tint U8 = 4
@@ -48,7 +44,6 @@ _ display-item-has-inherited-stroke U8 = 16
 _ display-item-template-alpha U8 = 32
 _ display-item-has-shape U8 = 64
 _ display-item-has-transform U8 = 128
-
 _ display-no-rect = Rect(0, 0, 0, 0)
 _ display-no-anchor = DisplayAnchor(null, true)
 _ display-unknown-anchor = DisplayAnchor(null, false)
@@ -56,108 +51,22 @@ _ display-scene-generation U32
 _ display-record-generation U32
 _ metal-tile-canvas-limit Size = 4
 _ raster-tile-pixels I32 = 512
+_ display-sprite-serial U64
+_ display-sprite-step F64 = 0.17328679513998632
 _ display-frame-replay := DisplayFrameReplay()
 _ display-sprite-recorder := DisplayRecorder()
 _ display-sprite-owner := Box()
-_ display-sprite-serial U64
-_ display-sprite-step F64 = 0.17328679513998632
+
 + LiveFillState is (is-visible Bool, frame-rate F64?, wake-at F64?)
 _ RasterView is (offset Point, clip Rect?)
 _ RasterSpan is (left I32, top I32, right I32, bottom I32)
 _ RasterTile is (chunk DisplayChunk, column I32, row I32, generation U32)
 _ DisplaySpriteWant is (sprite DisplaySprite, key U64, generation U32, pixel-scale F64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayItemKind is U8
-
-| quad
-| border
-| glyph
-| vector
-| image
-| opaque
-| shadow = 7
-| styled = 8
-| canvas-image = 9
-| backdrop = 10
-| canvas-pattern = 11
-| sprite = 12
-| backdrop-shader = 13
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayStyledShape is U8
-
-| rect
-| oval
-| path
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayStateKind is U8
-
-| root
-| transform
-| content
-| clip
-| clip-outline
-| clip-path
-| layer
-| clip-mask
-| mask-layer
-| clip-layer-mask
-| blend
-| blur
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayPathVerb is U8
-
-| move
-| line
-| curve
-| enclose
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayPhase is U8
-
-| pre
-| post
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayAxis is U8
-
-| none
-| vertical
-| horizontal
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayCommandKind is U8
-
-| push
-| pop
-| clip
-| transform
-| rect
-| oval
-| text
-| image
-| vector
-| erase
-| item = 16
-| clip-path = 17
-| clip-outline = 19
-| gradient = 20
-| begin-opacity = 21
-| end-opacity = 22
-| clip-mask = 23
-| begin-mask = 24
-| end-mask = 25
-| blend = 26
-| begin-blur = 27
-| end-blur = 28
-| shader = 29
-| begin-filter = 30
-| end-filter = 31
-| image-pattern = 32
-| frame = 33
+_ DisplayEntry is (chunk DisplayChunk?, group DisplayGroup?)
+_ DisplayAnchor is (entry DisplayEntry?, known Bool)
+_ DisplayOrder is (axis U8, start-lag F64, end-lag F64)
+_ DisplayRefill is (nodes [DisplayBoxNode], members [DisplayEntry])
+_ SavedDisplayClip is (rect Rect, has Bool, shape Outline?, state U32)
 
 ━━━━━━━━━━━━━━━━━━━━
 + DisplayItem is Tuple
@@ -188,947 +97,11 @@ _ DisplayCommandKind is U8
 + spread F32
 
 ━━━━━━━━━━━━━━━━━━━━
-_ DisplayState is Tuple
-
-+ parent U32
-+ kind U8
-+ matrix Matrix = Matrix()
-+ rect Rect = display-no-rect
-+ radius F64
-+ side F64
-+ offset F64
-+ size F64
-+ path-start U32
-+ path-count U32
-+ coord-start U32
-+ fill-rule FillRule = FillRule.nonzero
-+ opacity F64 = 1
-+ full Matrix = Matrix()
-+ clip-bounds Rect = display-no-rect
-+ has-clip-bounds = false
-+ local-ink Rect = display-no-rect
-+ has-local-ink = false
-+ image U32
-+ serial U64
-+ source U32
-+ blend = BlendMode.normal
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayStateWire is Tuple
-
-+ parent U32
-+ kind U32
-+ matrix Matrix
-+ rect Rect
-+ opacity F64
-+ radius F64
-+ side F64
-+ offset F64
-+ size F64
-+ path-start U32
-+ path-count U32
-+ coord-start U32
-+ fill-rule U32
-+ serial U64
-+ source U32
-+ blend I32
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayPathStyleWire is Tuple
-
-+ fill RGBA
-+ stroke RGBA
-+ stroke-width Length
-+ dash Length
-+ shadow-x Coord
-+ shadow-y Coord
-+ shadow-blur Length
-+ paint U32
-+ stroke-style U32
-+ gradient U32
-+ brush U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayGradientWire is Tuple
-
-+ start Point
-+ end Point
-+ start-radius F64
-+ end-radius F64
-+ kind U32
-+ stop-start U32
-+ stop-count U32
-+ shader U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayPathStyle is Tuple
-
-+ fill RGBA?
-+ stroke RGBA?
-+ stroke-width Length
-+ stroke-cap LineCap
-+ stroke-join LineJoin
-+ stroke-dash Length
-+ fill-rule FillRule
-+ closed Bool
-+ gradient Gradient? = null
-+ shadow Shadow? = null
-+ shader Shader? = null
-+ shader-args [F64]? = null
-+ paint Paint? = null
-+ brush Brush? = null
-+ shape-fill ShaderFill? = null
-
-━━━━━━━━━━━━━━━━━━━━
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayCommand is Tuple
-
-+ kind U8
-+ rect Rect = display-no-rect
-+ point1 Point = Point(0, 0)
-+ point2 Point = Point(0, 0)
-+ point3 Point = Point(0, 0)
-+ matrix Matrix = Matrix()
-+ fill RGBA? = null
-+ stroke RGBA? = null
-+ stroke-width Length = 0
-+ stroke-cap LineCap = LineCap.butt
-+ stroke-join LineJoin = LineJoin.miter
-+ layout TextLayout? = null
-+ image RasterCanvas? = null
-+ alignment TextAlignment = TextAlignment.left
-+ flag = false
-+ fill-rule FillRule = FillRule.nonzero
-+ item-index U32
-+ gradient Gradient? = null
-+ stroke-dash Length = 0
-+ blend = BlendMode.normal
-+ shader Shader? = null
-+ shader-args [F64]? = null
-+ shader-images [Image]? = null
-+ sampling = ImageSampling.smooth
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayChunk
-
-+ owner Box
-+ phase U8
-+ parent DisplayGroup?
-+ items [DisplayItem]
-+ glyph-layouts [TextLayout]?
-+ glyph-fills [ShaderFill?]?
-+ item-glyph-layouts [U32]
-+ glyph-handles [DisplayGlyphHandle]?
-+ clips [Rect]
-+ shapes [DisplayShape]
-+ vector-palette [U32]
-+ side DisplayChunkSide?
-+ exacts DisplayChunkExacts?
-+ commands [DisplayCommand]?
-+ bounds Rect
-+ has-bounds = false
-+ is-opaque = false
-+ needs-tile = false
-+ indicator-start Size
-+ indicator-count Size
-+ record-generation U32 = 1
-+ path-generation U32 = 1
-+ refill-mark U32
-+ refill-index Size
-+ linked-mark U32
-+ metal-resource-renderer Pointer?
-+ metal-resource-epoch I64 = -1
-+ raster-generation U32
-+ is-raster-content = false
-+ sprites [DisplaySprite]?
-+ sprite-items [U32]?
-+ sprite-mark U32
-+ is-live = false
-+ live-rate F64?
-+ live-epoch F64?
-+ live-slot = -1.0
-+ live-cycle FrameCycle?
-+ is-live-settled = false
-
-────────────────────
-_ This
-    - chunk-owner Box
-    - chunk-phase U8
-
-.. owner = chunk-owner
-phase = chunk-phase
-
-────────────────────
-_ do reset
-
-record-generation = next-display-record-generation()
-path-generation = record-generation
-items.clear()
-glyph-layouts?.clear()
-glyph-fills?.clear()
-item-glyph-layouts.clear()
-glyph-handles?.clear()
-clips.clear()
-shapes.clear()
-vector-palette.clear()
-. current = side
-if current
-    current.clear()
-. known-exacts = exacts
-if known-exacts
-    known-exacts.clear()
-commands?.clear()
-sprites?.clear()
-sprite-items?.clear()
-bounds = display-no-rect
-has-bounds = false
-is-opaque = false
-needs-tile = false
-is-live = false
-live-rate = null
-indicator-start = 0
-indicator-count = 0
-metal-resource-renderer = null
-metal-resource-epoch = -1
-
-────────────────────
-+ get sprite-count Size
-
-sprites?.length ?? 0
-
-────────────────────
-_ do add-glyph-layout U32
-    - layout TextLayout
-    - fill ShaderFill?
-
-. layouts = glyph-layouts ?? List'TextLayout()
-. fills = glyph-fills ?? List'(ShaderFill?)()
-glyph-layouts = layouts
-glyph-fills = fills
-. index = layouts.length as U32
-layouts += layout
-fills += fill
-= index
-
-────────────────────
-_ do bump-record-generation
-
-record-generation = next-display-record-generation()
-
-────────────────────
-_ do refresh-bounds
-
-bounds = display-no-rect
-has-bounds = false
-. table = side!
-if table.has-prefix-bounds
-    add-ink(table.prefix-bounds)
-. index Size
-while index < items.length
-    . ink = table.item-inks[index]
-    . state = table.item-states[index]
-    if ink.width >= 0 && ink.height >= 0
-        if state == 0
-            add-ink(ink)
-        else
-            . placed = table.state-ink-bounds(state, ink)
-            if placed
-                add-ink(placed)
-    index += 1
-
-────────────────────
-_ do add-ink
-    - rect Rect
-
-=? if rect.width <= 0 || rect.height <= 0
-if has-bounds
-    bounds = bounds + rect
-else
-    bounds = rect
-    has-bounds = true
-
-────────────────────
-_ do add-item
-    - item DisplayItem
-    - ink Rect
-    - state U32 = 0
-
-. index = items.length as U32
-items += item
-item-glyph-layouts += 4294967295
-. existing = side
-if state != 0 || (!existing && items.length >= display-culling-item-count)
-    ensure-side()
-. current = side
-if current
-    current.item-colors += 4294967295
-    current.item-transforms += 4294967295
-    current.item-states += state
-    current.item-inks += ink
-    current.item-styles += 4294967295
-    current.item-strokes += 0
-    current.item-dashes += 0
-. known-exacts = exacts
-if known-exacts
-    known-exacts.item-slots += 4294967295
-if state == 0
-    add-ink(ink)
-else
-    . table = side!
-    table.include-state-ink(state, ink)
-    . placed = table.state-ink-bounds(state, ink)
-    if placed
-        add-ink(placed)
-= index
-
-────────────────────
-_ do ensure-side
-
-. existing = side
-=? existing if existing
-. created = DisplayChunkSide()
-created.states += DisplayState(0, DisplayStateKind.root)
-created.prefix-bounds = bounds
-created.has-prefix-bounds = has-bounds
-for index in 0 .. < items.length
-    created.item-colors += 4294967295
-    created.item-transforms += 4294967295
-    created.item-states += 0
-    created.item-inks += display-unknown-ink
-    created.item-styles += 4294967295
-    created.item-strokes += 0
-    created.item-dashes += 0
-for packed in vector-palette
-    created.vector-colors += rgba8(packed)
-side = created
-= created
-
-────────────────────
-_ do set-item-color
-    - item-index U32
-    - color RGBA
-
-if rgba8(pack-rgba8(color)) == color
-    . current = side
-    if current
-        current.item-colors[item-index] = 4294967295
-    =
-. table = ensure-side()
-. slot = table.item-colors[item-index]
-if slot != 4294967295
-    table.colors[slot] = color
-    =
-table.item-colors[item-index] = table.colors.length as U32
-table.colors += color
-
-────────────────────
-_ item-color
-    - item-index Size
-    - packed U32
-
-match current
-    |= null
-        rgba8(packed)
-    ??
-        match current.item-colors[item-index]
-            |= 4294967295u32
-                rgba8(packed)
-            ??
-                current.colors[it]
-
-.. current = side
-
-────────────────────
-_ do set-item-exact
-    - item-index U32
-    - rect Rect
-    - value F64
-
-. item = items[item-index]
-. rect-exact = display-item-rect(item) == rect
-. value-exact = (item.value as F64) == value
-=? if rect-exact && value-exact
-. table = ensure-exacts()
-table.item-slots[item-index] = table.rects.length as U32
-table.rects += rect
-table.values += value
-
-────────────────────
-_ do ensure-exacts DisplayChunkExacts
-
-. existing = exacts
-=? existing if existing
-. created = DisplayChunkExacts()
-for index in 0 .. < items.length
-    created.item-slots += 4294967295
-exacts = created
-= created
-
-────────────────────
-_ item-rect
-    - item-index Size
-    - item DisplayItem
-
-match current
-    |= null
-        display-item-rect(item)
-    ??
-        match current.item-slots[item-index]
-            |= 4294967295u32
-                display-item-rect(item)
-            ??
-                current.rects[it]
-
-.. current = exacts
-
-────────────────────
-_ item-value
-    - item-index Size
-    - item DisplayItem
-
-match current
-    |= null
-        item.value
-    ??
-        match current.item-slots[item-index]
-            |= 4294967295u32
-                item.value
-            ??
-                current.values[it]
-
-.. current = exacts
-
-────────────────────
-_ do set-item-transform
-    - item-index U32
-    - transform Matrix
-
-. table = ensure-side()
-table.item-transforms[item-index] = table.transforms.length as U32
-table.transforms += transform
-
-────────────────────
-_ item-transform
-    - item-index Size
-
-match current
-    |= null
-        null
-    ??
-        match current.item-transforms[item-index]
-            |= 4294967295u32
-                null
-            ??
-                current.transforms[it]
-
-.. current = side
-
-────────────────────
-_ do add-vector-color
-    - color RGBA
-
-. table = ensure-side()
-vector-palette += pack-rgba8(color)
-table.vector-colors += color
-
-────────────────────
-_ do demote-to-opaque
-
-is-opaque = true
-. owner-bounds = owner.bounds.pad(-owner.focus-ring-reach)
-bounds = if has-bounds then owner-bounds + bounds else owner-bounds
-has-bounds = bounds.width > 0 && bounds.height > 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayChunkExacts
-
-+ item-slots [U32]
-+ rects [Rect]
-+ values [F64]
-
-────────────────────
-_ do clear
-
-item-slots.clear()
-rects.clear()
-values.clear()
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayChunkSide
-
-+ vector-colors [RGBA]
-+ colors [RGBA]
-+ item-colors [U32]
-+ transforms [Matrix]
-+ item-transforms [U32]
-+ states [DisplayState]
-+ wire-states [DisplayStateWire]
-+ wire-dirty = true
-+ item-states [U32]
-+ item-inks [Rect]
-+ item-styles [U32]
-+ item-strokes [U32]
-+ item-dashes [F32]
-+ path-verbs [U8]
-+ path-coords [F64]
-+ path-styles [DisplayPathStyle]
-+ styled-wires [DisplayPathStyleWire]
-+ gradient-wires [DisplayGradientWire]
-+ gradient-stops [GradientStop]
-+ shader-args [F64]
-+ images [RasterCanvas]
-+ image-identities [U64]
-+ backdrop-shaders [ShaderFilter]
-+ shape-clips Size
-+ mask-layers Size
-+ blur-layers Size
-+ has-backdrop = false
-+ content-state U32
-+ has-antialiased = false
-+ has-shaded-fill = false
-+ prefix-bounds Rect
-+ has-prefix-bounds = false
-
-────────────────────
-_ do clear
-
-vector-colors.clear()
-colors.clear()
-item-colors.clear()
-transforms.clear()
-item-transforms.clear()
-states.clear()
-states += DisplayState(0, DisplayStateKind.root)
-wire-dirty = true
-item-states.clear()
-item-inks.clear()
-item-styles.clear()
-item-strokes.clear()
-item-dashes.clear()
-path-verbs.clear()
-path-coords.clear()
-path-styles.clear()
-styled-wires.clear()
-gradient-wires.clear()
-gradient-stops.clear()
-shader-args.clear()
-images.clear()
-image-identities.clear()
-backdrop-shaders.clear()
-shape-clips = 0
-mask-layers = 0
-blur-layers = 0
-has-backdrop = false
-content-state = 0
-has-antialiased = false
-has-shaded-fill = false
-prefix-bounds = display-no-rect
-has-prefix-bounds = false
-
-────────────────────
-_ do add-gradient
-    - gradient Gradient
-
-. stops = gradient.stops
-. stop-start = gradient-stops.length as U32
-. stop-count = stops.length as U32
-for stop in stops
-    gradient-stops += stop
-do match gradient
-    | linear LinearGradient
-        gradient-wires += DisplayGradientWire
-            - linear.start
-            - linear.end
-            - 0
-            - 0
-            - display-gradient-linear
-            - stop-start
-            - stop-count
-    | radial RadialGradient
-        gradient-wires += DisplayGradientWire
-            - radial.start-center
-            - radial.end-center
-            - radial.start-radius
-            - radial.end-radius
-            - display-gradient-radial
-            - stop-start
-            - stop-count
-    | conic ConicGradient
-        gradient-wires += DisplayGradientWire
-            - conic.center
-            - conic.center
-            - conic.angle
-            - 0
-            - display-gradient-conic
-            - stop-start
-            - stop-count
-= gradient-wires.length as U32
-
-────────────────────
-_ do add-shader
-    - rect Rect
-    - shader Shader
-    - args [F64]
-    - epoch F64 = -1
-
-. arg-start = shader-args.length as U32
-for arg in args
-    shader-args += arg
-gradient-wires += DisplayGradientWire
-    - rect.top-left
-    - Point(rect.width, rect.height)
-    - 0
-    - epoch
-    - display-gradient-shader
-    - arg-start
-    - args.length as U32
-    - shader.id
-= gradient-wires.length as U32
-
-────────────────────
-_ do add-paint
-    - paint Paint
-    - color RGBA
-
-. arg-start = shader-args.length as U32
-for arg in paint.args
-    shader-args += arg
-gradient-wires += DisplayGradientWire
-    - Point(color.red, color.green)
-    - Point(color.blue, color.alpha)
-    - 0
-    - 0
-    - display-gradient-paint
-    - arg-start
-    - paint.args.length as U32
-    - paint.shader.id
-= gradient-wires.length as U32
-
-────────────────────
-_ do add-brush
-    - brush Brush
-    - color RGBA
-
-. arg-start = shader-args.length as U32
-append-brush-arguments(brush, shader-args)
-gradient-wires += DisplayGradientWire
-    - Point(color.red, color.green)
-    - Point(color.blue, color.alpha)
-    - 0
-    - 0
-    - display-gradient-brush
-    - arg-start
-    - (shader-args.length as U32) - arg-start
-    - brush.shader.id
-= gradient-wires.length as U32
-
-────────────────────
-_ do mask-owner
-    - state U32
-
-. cursor = state
-while cursor != 0 && states[cursor].kind != DisplayStateKind.mask-layer
-    cursor = states[cursor].parent
-= cursor
-
-────────────────────
-_ do translates-at
-    - state U32
-
-. cursor = state
-while cursor != 0
-    . entry = states[cursor]
-    . kind = entry.kind
-    =? false if kind == DisplayStateKind.content
-    =? false if kind == DisplayStateKind.transform && !entry.matrix.is-translation
-    cursor = entry.parent
-= true
-
-────────────────────
-_ do blend-at
-    - state U32
-
-. cursor = state
-while cursor != 0
-    . kind = states[cursor].kind
-    =? states[cursor].blend if kind == DisplayStateKind.blend
-    =? BlendMode.normal if kind == DisplayStateKind.layer || kind == DisplayStateKind.mask-layer
-    =? BlendMode.normal if kind == DisplayStateKind.blur
-    cursor = states[cursor].parent
-= BlendMode.normal
-
-────────────────────
-_ do add-state
-    - state DisplayState
-
-. parent = states[state.parent]
-. placed = state
-placed = placed.full = parent.full
-placed = placed.clip-bounds = parent.clip-bounds
-placed = placed.has-clip-bounds = parent.has-clip-bounds
-placed = placed.local-ink = display-no-rect
-placed = placed.has-local-ink = false
-placed = resolve-state(placed, parent)
-. index = states.length as U32
-states += placed
-if state.kind == DisplayStateKind.clip-outline || state.kind == DisplayStateKind.clip-path
-    shape-clips += 1
-if state.kind == DisplayStateKind.mask-layer
-    mask-layers += 1
-if state.kind == DisplayStateKind.blur
-    blur-layers += 1
-wire-dirty = true
-= index
-
-────────────────────
-_ do resolve-state
-    - state DisplayState
-    - parent DisplayState
-
-. placed = state
-. kind = state.kind
-if kind == DisplayStateKind.transform || kind == DisplayStateKind.content
-    placed = placed.full = parent.full.concatenate(state.matrix)
-    placed = placed.clip-bounds = parent.clip-bounds
-    placed = placed.has-clip-bounds = parent.has-clip-bounds
-    = placed
-placed = placed.full = parent.full
-. clip Rect? = null
-if kind == DisplayStateKind.clip || kind == DisplayStateKind.clip-outline
-    clip = parent.full.transform(state.rect)
-else if kind == DisplayStateKind.clip-path || kind == DisplayStateKind.clip-mask
-    clip = parent.full.transform(state.rect)
-if clip
-    . bounded = clip
-    if parent.has-clip-bounds
-        bounded = parent.clip-bounds.intersection(bounded)
-    placed = placed.clip-bounds = bounded
-    placed = placed.has-clip-bounds = true
-else
-    placed = placed.clip-bounds = parent.clip-bounds
-    placed = placed.has-clip-bounds = parent.has-clip-bounds
-= placed
-
-────────────────────
-_ do refresh-states
-
-. index Size = 1
-while index < states.length
-    . state = states[index]
-    states[index] = resolve-state(state, states[state.parent])
-    index += 1
-wire-dirty = true
-
-────────────────────
-_ do refresh-wire-states
-
-=? if !wire-dirty
-wire-states.clear()
-for state in states
-    wire-states += DisplayStateWire
-        - state.parent
-        - state.kind
-        - state.matrix
-        - state.rect
-        - state.opacity
-        - state.radius
-        - state.side
-        - state.offset
-        - state.size
-        - state.path-start
-        - state.path-count
-        - state.coord-start
-        - if state.fill-rule == FillRule.even-odd then 1u32 else 0u32
-        - state.serial
-        - state.source
-        - state.blend
-wire-dirty = false
-
-────────────────────
-_ do include-state-ink
-    - state U32
-    - ink Rect
-
-=? if ink.width < 0 || ink.height < 0
-. current = states[state]
-if current.has-local-ink
-    states[state] = current.local-ink = current.local-ink + ink
-else
-    . updated = current.local-ink = ink
-    states[state] = updated.has-local-ink = true
-
-────────────────────
-_ do state-ink-bounds
-    - state U32
-    - ink Rect
-
-=? null if ink.width < 0 || ink.height < 0
-. current = states[state]
-. placed = current.full.transform(ink)
-. bounds = current
-if blur-layers > 0
-    . cursor = state
-    while cursor != 0
-        . entry = states[cursor]
-        if entry.kind == DisplayStateKind.blur
-            . matrix = entry.full
-            . scale = sqrt(abs(matrix.a * matrix.d - matrix.b * matrix.c))
-            placed = placed.pad(-(entry.radius * scale + 1))
-            bounds = entry
-        cursor = entry.parent
-if bounds.has-clip-bounds
-    placed = placed.intersection(bounds.clip-bounds)
-=? null if placed.width <= 0 || placed.height <= 0
-= placed
-
-────────────────────
-_ do state-path-bounds
-    - start U32
-    - coord-start U32
-    - count U32
-
-. coord = coord-start as Index
-. min-x F64
-. min-y F64
-. max-x F64
-. max-y F64
-. found = false
-for verb-index in 0 .. < (count as Size)
-    . verb = path-verbs[(start as Index) + verb-index]
-    . pairs Size = 0
-    if verb == DisplayPathVerb.move || verb == DisplayPathVerb.line
-        pairs = 1
-    else if verb == DisplayPathVerb.curve
-        pairs = 3
-    for pair in 0 .. < pairs
-        . x = path-coords[coord]
-        . y = path-coords[coord + 1]
-        coord += 2
-        if found
-            min-x = min(min-x, x)
-            min-y = min(min-y, y)
-            max-x = max(max-x, x)
-            max-y = max(max-y, y)
-        else
-            min-x = x
-            min-y = y
-            max-x = x
-            max-y = y
-            found = true
-= Rect(min-x, min-y, max-x - min-x, max-y - min-y)
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayGroup
-
-+ owner Box
-+ parent DisplayGroup?
-+ members [DisplayEntry]
-+ clip Rect
-+ rounded-clip RoundedRect
-+ has-clip = false
-+ shape-clip DisplayChunk?
-+ shape-clip-state U32
-+ shape-clip-coords [F64]
-+ shape-clip-revision U32
-+ translation Point
-+ order DisplayOrder
-+ outer Rect
-+ has-outer = false
-+ refresh-pending = false
-+ is-layer = false
-+ opacity Ratio = 1%%
-+ filters [ShaderFilter]
-+ is-live = false
-+ live-rate F64?
-+ live-epoch F64?
-+ live-slot = -1.0
-+ live-cycle FrameCycle?
-+ is-live-settled = false
-+ region Rect
-+ transform Matrix?
-+ inner Rect
-+ has-inner = false
-+ record-generation U32
-+ nodes [DisplayBoxNode]
-+ spare-members [DisplayEntry]?
-+ spare-nodes [DisplayBoxNode]?
-+ refill-stamp U32
-+ refill-mark U32
-+ refill-index Size
-+ linked-mark U32
-
-────────────────────
-_ This
-    - group-owner Box
-    - group-parent DisplayGroup?
-
-.. owner = group-owner
-parent = group-parent
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayEntry is (chunk DisplayChunk?, group DisplayGroup?)
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayAnchor is (entry DisplayEntry?, known Bool)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-chunk-anchor
-    - chunk DisplayChunk?
-
-DisplayAnchor(DisplayEntry(chunk, null) if chunk, true)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-group-anchor
-    - group DisplayGroup
-
-DisplayAnchor(DisplayEntry(null, group) if group.members.length > 0, true)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do display-entry-index Index?
-    - members [DisplayEntry]
-    - target DisplayEntry
-
-. index Size
-while index < members.length
-    . entry = members[index]
-    . same-chunk = entry.chunk as Pointer? == target.chunk as Pointer?
-    =? index if same-chunk && entry.group as Pointer? == target.group as Pointer?
-    index += 1
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayOrder is (axis U8, start-lag F64, end-lag F64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayRefill is (nodes [DisplayBoxNode], members [DisplayEntry])
-
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayBoxNode
-
-+ owner Box
-+ pre DisplayChunk?
-+ post DisplayChunk?
-+ group DisplayGroup?
-+ layer-group DisplayGroup?
-+ child-list-generation U32
-+ recorded-origin Point
-+ container DisplayGroup?
-+ link-stamp U32
-+ composite-relink = false
-
-────────────────────
-_ This
-    - node-owner Box
-
-.. owner = node-owner
-child-list-generation = owner.retained-child-list-generation
-recorded-origin = owner.bounds.top-left
-
-━━━━━━━━━━━━━━━━━━━━
-_ SavedDisplayClip is (rect Rect, has Bool, shape Outline?, state U32)
-
-━━━━━━━━━━━━━━━━━━━━
 + DisplayRecorder is Canvas
+
++ unsupported-calls Size
++ sprite-chunks [DisplayChunk]
++ live-time F64
 
 _ chunk DisplayChunk?
 _ recorded-commands [DisplayCommand]
@@ -1143,77 +116,18 @@ _ path-coord-start U32
 _ recording-scale F64 = 1
 _ glyph-registrar DisplayGlyphRegistrar?
 _ resource-table VectorGeometryTable?
-+ unsupported-calls Size
-+ sprite-chunks [DisplayChunk]
-+ live-time F64
 
 ────────────────────
 + This
 
 super(0, 0)
 
-────────────────────
-+ do configure
-    - scale F64
-    - registrar DisplayGlyphRegistrar?
-    - resources VectorGeometryTable? = null
-
-recording-scale = scale
-glyph-registrar = registrar
-resource-table = resources
+╌╌╌╌╌╌╌╌╌╌ is Canvas ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-_ do begin-chunk
-    - next DisplayChunk
++ get blend-mode
 
-chunk = next
-recorded-commands.clear()
-has-clip-rect = false
-clip-shape = null
-clip-stack.clear()
-current-state = 0
-path-open = false
-
-────────────────────
-_ do end-chunk
-
-. current = chunk
-if current && current.needs-tile
-    keep-commands(current)
-chunk = null
-
-────────────────────
-_ do keep-commands
-    - target DisplayChunk
-
-. kept = target.commands ?? List'DisplayCommand()
-target.commands = kept
-kept.clear()
-kept ++= recorded-commands
-
-────────────────────
-_ do has-paint-since
-    - start Size
-
-. index = start
-while index < recorded-commands.length
-    . command = recorded-commands[index]
-    . kind = command.kind
-    do match? kind
-        |? it == DisplayCommandKind.rect || it == DisplayCommandKind.oval
-            =? true if command.fill || command.stroke
-        |? it == DisplayCommandKind.text || it == DisplayCommandKind.image || it == DisplayCommandKind.item
-            = true
-        |? it == DisplayCommandKind.frame
-            = true
-        |? it == DisplayCommandKind.image-pattern
-            = true
-        |? it == DisplayCommandKind.erase
-            = true
-        |? it == DisplayCommandKind.gradient || it == DisplayCommandKind.shader
-            = true
-    index += 1
-= false
+chunk?.side?.blend-at(current-state) ?? BlendMode.normal
 
 ────────────────────
 + get scale
@@ -1221,53 +135,13 @@ while index < recorded-commands.length
 recording-scale
 
 ────────────────────
-_ get root-clip-active
++ do blend-mode = mode BlendMode
 
-current-state == 0 && has-clip-rect
-
-────────────────────
-_ get root-clip-shape
-
-clip-shape if current-state == 0
-
-────────────────────
-_ root-ink
-    - rect Rect
-
-display-clipped-ink(rect, clip-rect, root-clip-active)
-
-────────────────────
-_ do enter-state
-    - state DisplayState
-
-materialize-root-clip()
-current-state = chunk!.ensure-side().add-state(state.parent = current-state)
-
-────────────────────
-_ do materialize-root-clip
-
-=? if current-state != 0
-. table = chunk!.ensure-side()
-if has-clip-rect
-    . clip-state = DisplayState(0, DisplayStateKind.clip)
-    current-state = table.add-state(clip-state.rect = clip-rect)
-. shape = clip-shape
-if shape
-    . outline = display-outline-state(current-state, DisplayStateKind.clip-outline, shape)
-    current-state = table.add-state(outline)
-
-────────────────────
-_ do promote-root-clip
-
-=? if !root-clip-shape
-materialize-root-clip()
-
-────────────────────
-_ do contain-root-clip
-    - extent Rect
-
-if root-clip-active && !clip-rect.contains(extent, 0.01)
-    materialize-root-clip()
+=? if !chunk || blend-mode == mode
+. command = DisplayCommand(DisplayCommandKind.blend)
+recorded-commands += command.blend = mode
+. state = DisplayState(0, DisplayStateKind.blend)
+enter-state(state.blend = mode)
 
 ────────────────────
 + do push
@@ -1289,6 +163,337 @@ if clip-stack.length > 0
     clip-shape = saved.shape
     current-state = saved.state
 super.pop()
+
+────────────────────
++ do erase
+    - color RGBA?
+
+=? if !chunk
+unsupported-calls += 1
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.erase
+    - display-no-rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - color
+
+────────────────────
++ do fill-gradient
+    - rect Rect
+    - gradient Gradient
+
+=? if !chunk
+. current = chunk
+gradient.validate()
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.gradient
+    - rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - null
+    - null
+    - 0
+    - LineCap.butt
+    - LineJoin.miter
+    - null
+    - null
+    - TextAlignment.left
+    - false
+    - FillRule.nonzero
+    - 0
+    - gradient
+promote-root-clip()
+record-styled(DisplayStyledShape.rect, rect, rect, 0, 0, 0, true, FillRule.nonzero, gradient)
+
+────────────────────
++ do fill-shader
+    - rect Rect
+    - shader Shader
+    - args [F64] = List'F64()
+
+=? if !chunk
+. copied = List'F64(args)
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.shader
+    - rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - null
+    - null
+    - 0
+    - LineCap.butt
+    - LineJoin.miter
+    - null
+    - null
+    - TextAlignment.left
+    - false
+    - FillRule.nonzero
+    - 0
+    - null
+    - 0
+    - BlendMode.normal
+    - shader
+    - copied
+promote-root-clip()
+record-styled
+    - DisplayStyledShape.rect
+    - rect
+    - rect
+    - 0
+    - 0
+    - 0
+    - true
+    - FillRule.nonzero
+    - null
+    - null
+    - shader
+    - copied
+
+────────────────────
++ do begin-filter
+    - rect Rect
+    - filter ShaderFilter
+
+=? if !chunk
+unsupported-calls += 1
+. copied = List'F64(filter.args)
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.begin-filter
+    - rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - null
+    - null
+    - 0
+    - LineCap.butt
+    - LineJoin.miter
+    - null
+    - null
+    - TextAlignment.left
+    - false
+    - FillRule.nonzero
+    - 0
+    - null
+    - 0
+    - BlendMode.normal
+    - filter.shader
+    - copied
+    - List'Image(filter.images)
+
+────────────────────
++ do end-filter
+
+=? if !chunk
+unsupported-calls += 1
+recorded-commands += DisplayCommand(DisplayCommandKind.end-filter)
+
+────────────────────
++ do rect
+    - rect Rect
+
+if shape-fill
+    begin()
+    rect-path(rect)
+    end(true)
+    =
+=? if !chunk
+. current = chunk
+. shape = root-clip-shape
+if shape
+    if fill-color && !fill-paint && !stroke-color && rect.contains(shape.extent, 0.01)
+        record-outline-fill(shape)
+        =
+    promote-root-clip()
+recorded-commands += display-shape-command(DisplayCommandKind.rect, rect, this)
+. styled = stroke-color && (stroke-dash > 0 || stroke-join != LineJoin.miter || stroke-brush)
+. painted = fill-color && fill-paint
+if styled || painted || ((fill-color || stroke-color) && !translates)
+    record-styled
+        - DisplayStyledShape.rect
+        - rect
+        - display-stroke-ink(rect, this)
+        - 0
+        - 0
+        - 0
+        - false
+        - FillRule.nonzero
+        - null
+        - null
+        - null
+        - null
+        - fill-paint
+        - stroke-brush
+    =
+contain-root-clip(if stroke-color then rect.inflate(stroke-width) else rect)
+if fill-color
+    . quad = current.add-item
+        - display-item(DisplayItemKind.quad, rect, 0, pack-rgba8(fill-color!))
+        - if current-state == 0 then root-ink(rect) else rect
+        - current-state
+    current.set-item-color(quad, fill-color!)
+    current.set-item-exact(quad, rect, 0)
+if stroke-color
+    . ink = rect.inflate(stroke-width)
+    if root-clip-active
+        ink = ink.intersection(clip-rect)
+    . border = current.add-item
+        - display-item(DisplayItemKind.border, rect, stroke-width, pack-rgba8(stroke-color!))
+        - ink
+        - current-state
+    current.set-item-color(border, stroke-color!)
+    current.set-item-exact(border, rect, stroke-width)
+
+────────────────────
++ do square
+    - x Coord
+    - y Coord
+    - width Length
+
+rect(Rect(x, y, width, width))
+
+────────────────────
++ do oval
+    - rect Rect
+
+if shape-fill
+    begin()
+    oval-path(rect)
+    end(true)
+    =
+=? if !chunk
+recorded-commands += display-shape-command(DisplayCommandKind.oval, rect, this)
+=? if !fill-color && !stroke-color
+promote-root-clip()
+record-styled
+    - DisplayStyledShape.oval
+    - rect
+    - display-stroke-ink(rect, this)
+    - 0
+    - 0
+    - 0
+    - false
+    - FillRule.nonzero
+    - null
+    - null
+    - null
+    - null
+    - fill-paint
+    - stroke-brush
+
+────────────────────
++ do circle
+    - cx Coord
+    - cy Coord
+    - radius Length
+
+. diameter = radius * 2
+oval(Rect(cx - radius, cy - radius, diameter, diameter))
+
+────────────────────
++ do move
+    - x Coord
+    - y Coord
+
+=? if !chunk
+append-path-verb(DisplayPathVerb.move)
+append-path-point(x, y)
+
+────────────────────
++ do line
+    - x Coord
+    - y Coord
+
+=? if !chunk
+append-path-verb(DisplayPathVerb.line)
+append-path-point(x, y)
+
+────────────────────
++ do curve
+    - x1 Coord
+    - y1 Coord
+    - x2 Coord
+    - y2 Coord
+    - x3 Coord
+    - y3 Coord
+
+=? if !chunk
+append-path-verb(DisplayPathVerb.curve)
+append-path-point(x1, y1)
+append-path-point(x2, y2)
+append-path-point(x3, y3)
+
+────────────────────
++ do translate
+    - x Coord
+    - y Coord
+
+transform(matrix-from-translation(Point(x, y)))
+
+────────────────────
++ do transform
+    - matrix Matrix
+
+=? if !chunk
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.transform
+    - display-no-rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - matrix
+=? if matrix.is-identity
+. state = DisplayState(0, DisplayStateKind.transform)
+enter-state(state.matrix = matrix)
+
+────────────────────
++ do transform-content
+    - matrix Matrix
+
+=? if !chunk
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.transform
+    - display-no-rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - matrix
+. table = chunk!.ensure-side()
+. kind = if table.content-state == 0 then DisplayStateKind.content else DisplayStateKind.transform
+. state = DisplayState(0, kind)
+enter-state(state.matrix = matrix)
+if kind == DisplayStateKind.content
+    table.content-state = current-state
+
+────────────────────
++ do outline
+    - shape Outline
+
+if shape-fill
+    begin()
+    outline-path(shape)
+    end(true)
+    =
+=? if !chunk
+if shape.is-rectangular && !root-clip-shape
+    rect(shape.bounds)
+    =
+if (stroke-color && (stroke-dash > 0 || stroke-join != LineJoin.miter)) || !translates
+    begin()
+    outline-path(shape)
+    end()
+    =
+if fill-color
+    fill-outline(shape)
+if stroke-color
+    stroke-outline(shape)
 
 ────────────────────
 + do clip
@@ -1406,572 +611,6 @@ super.pop()
 enter-state(state.source = source)
 
 ────────────────────
-+ do rect
-    - rect Rect
-
-if shape-fill
-    begin()
-    rect-path(rect)
-    end(true)
-    =
-=? if !chunk
-. current = chunk
-. shape = root-clip-shape
-if shape
-    if fill-color && !fill-paint && !stroke-color && rect.contains(shape.extent, 0.01)
-        record-outline-fill(shape)
-        =
-    promote-root-clip()
-recorded-commands += display-shape-command(DisplayCommandKind.rect, rect, this)
-. styled = stroke-color && (stroke-dash > 0 || stroke-join != LineJoin.miter || stroke-brush)
-. painted = fill-color && fill-paint
-if styled || painted || ((fill-color || stroke-color) && !translates)
-    record-styled
-        - DisplayStyledShape.rect
-        - rect
-        - display-stroke-ink(rect, this)
-        - 0
-        - 0
-        - 0
-        - false
-        - FillRule.nonzero
-        - null
-        - null
-        - null
-        - null
-        - fill-paint
-        - stroke-brush
-    =
-contain-root-clip(if stroke-color then rect.inflate(stroke-width) else rect)
-if fill-color
-    . quad = current.add-item
-        - display-item(DisplayItemKind.quad, rect, 0, pack-rgba8(fill-color!))
-        - if current-state == 0 then root-ink(rect) else rect
-        - current-state
-    current.set-item-color(quad, fill-color!)
-    current.set-item-exact(quad, rect, 0)
-if stroke-color
-    . ink = rect.inflate(stroke-width)
-    if root-clip-active
-        ink = ink.intersection(clip-rect)
-    . border = current.add-item
-        - display-item(DisplayItemKind.border, rect, stroke-width, pack-rgba8(stroke-color!))
-        - ink
-        - current-state
-    current.set-item-color(border, stroke-color!)
-    current.set-item-exact(border, rect, stroke-width)
-
-────────────────────
-+ do square
-    - x Coord
-    - y Coord
-    - width Length
-
-rect(Rect(x, y, width, width))
-
-────────────────────
-+ do outline
-    - shape Outline
-
-if shape-fill
-    begin()
-    outline-path(shape)
-    end(true)
-    =
-=? if !chunk
-if shape.is-rectangular && !root-clip-shape
-    rect(shape.bounds)
-    =
-if (stroke-color && (stroke-dash > 0 || stroke-join != LineJoin.miter)) || !translates
-    begin()
-    outline-path(shape)
-    end()
-    =
-if fill-color
-    fill-outline(shape)
-if stroke-color
-    stroke-outline(shape)
-
-────────────────────
-_ do fill-outline
-    - shape Outline
-
-. clipping = root-clip-shape
-if clipping
-    . covers = shape.is-rectangular && shape.bounds.contains(clipping.extent, 0.01)
-    if covers || shape == clipping
-        record-outline-fill(clipping)
-        =
-    if !display-outline-within(shape, clipping)
-        promote-root-clip()
-contain-root-clip(shape.extent)
-record-outline-fill(shape)
-
-────────────────────
-_ do stroke-outline
-    - shape Outline
-
-. inset = stroke-width / 2
-. outer = shape.grow(inset)
-. clipping = root-clip-shape
-if clipping
-    if display-outline-inset(shape, clipping, inset)
-        record-outline-border(clipping, true)
-        =
-    if !display-outline-within(outer, clipping)
-        promote-root-clip()
-contain-root-clip(outer.extent)
-if outer.arrow
-    unsupported-calls += 1
-record-outline-border(outer, false)
-
-────────────────────
-_ do record-outline-fill
-    - shape Outline
-
-. current = chunk!
-. shape-index = current.shapes.length as U32
-current.shapes += display-shape(shape, null)
-. item = DisplayItem
-    - DisplayItemKind.quad
-    - display-item-has-shape
-    - 0
-    - shape.bounds.x as F32
-    - shape.bounds.y as F32
-    - shape.bounds.width as F32
-    - shape.bounds.height as F32
-    - shape.effective-radius as F32
-    - pack-rgba8(fill-color!)
-    - shape-index
-    - 0
-    - 0
-. item-index = current.add-item(item, root-ink(shape.extent), current-state)
-current.set-item-color(item-index, fill-color!)
-current.set-item-exact(item-index, shape.bounds, shape.effective-radius)
-record-item-command(item-index)
-
-────────────────────
-_ do record-outline-border
-    - outer Outline
-    - clipped Bool
-
-. current = chunk!
-. shape-index = current.shapes.length as U32
-current.shapes += display-shape(outer, null)
-. item = DisplayItem
-    - DisplayItemKind.border
-    - display-item-has-shape
-    - if clipped then 1 else 0
-    - outer.bounds.x as F32
-    - outer.bounds.y as F32
-    - outer.bounds.width as F32
-    - outer.bounds.height as F32
-    - stroke-width as F32
-    - pack-rgba8(stroke-color!)
-    - shape-index
-    - 0
-    - 0
-. item-index = current.add-item(item, root-ink(outer.extent), current-state)
-current.set-item-color(item-index, stroke-color!)
-current.set-item-exact(item-index, outer.bounds, stroke-width)
-record-item-command(item-index)
-
-────────────────────
-+ do shadow
-    - shape Outline
-    - shadow Shadow
-
-=? if !chunk
-. current = chunk
-=? if shadow.color.alpha <= 0 || shape.bounds.width <= 0 || shape.bounds.height <= 0
-promote-root-clip()
-if root-clip-active
-    materialize-root-clip()
-. shape-index = current.shapes.length as U32
-current.shapes += display-shape(shape, shadow)
-. item = DisplayItem
-    - DisplayItemKind.shadow
-    - display-item-has-shape
-    - 0
-    - shape.bounds.x as F32
-    - shape.bounds.y as F32
-    - shape.bounds.width as F32
-    - shape.bounds.height as F32
-    - shape.effective-radius as F32
-    - pack-rgba8(shadow.color)
-    - shape-index
-    - 0
-    - 0
-. item-index = current.add-item(item, root-ink(shadow.extent(shape.extent)), current-state)
-current.set-item-color(item-index, shadow.color)
-current.set-item-exact(item-index, shape.bounds, shape.effective-radius)
-record-item-command(item-index)
-
-────────────────────
-+ do shadow-path
-    - shadow Shadow
-
-=? if !chunk
-. was-open = path-open
-path-open = false
-if !was-open
-    unsupported-calls += 1
-    =
-=? if shadow.color.alpha <= 0
-promote-root-clip()
-. table = chunk!.side!
-. count = (table.path-verbs.length as U32) - path-start
-=? if count == 0
-. bounds = table.state-path-bounds(path-start, path-coord-start, count)
-record-styled
-    - DisplayStyledShape.path
-    - bounds
-    - shadow.extent(bounds).pad(-1)
-    - count
-    - path-start
-    - path-coord-start
-    - false
-    - FillRule.nonzero
-    - null
-    - shadow
-record-item-command((chunk!.items.length - 1) as U32)
-
-────────────────────
-_ do record-item-command
-    - item-index U32
-
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.item
-    - display-no-rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - null
-    - null
-    - 0
-    - LineCap.butt
-    - LineJoin.miter
-    - null
-    - null
-    - TextAlignment.left
-    - false
-    - FillRule.nonzero
-    - item-index
-
-────────────────────
-_ do record-styled
-    - op U8
-    - rect Rect
-    - ink Rect
-    - path-count U32
-    - verb-start U32
-    - coord-start U32
-    - closed = false
-    - fill-rule FillRule = FillRule.nonzero
-    - gradient Gradient? = null
-    - shadow Shadow? = null
-    - shader Shader? = null
-    - shader-args [F64]? = null
-    - paint Paint? = null
-    - brush Brush? = null
-    - shading ShaderFill? = null
-    - fills = true
-
-. current = chunk!
-. table = current.ensure-side()
-. style-index = table.path-styles.length as U32
-. fill = fill-color if fills
-. stroke = stroke-color
-. gradient-index U32
-. brush-index U32
-. painted = paint != null && fill != null
-. brushed = brush != null && stroke != null
-if painted
-    gradient-index = table.add-paint(paint!, fill!)
-if brushed
-    brush-index = table.add-brush(brush!, stroke!)
-if gradient
-    fill = null
-    stroke = null
-    gradient-index = table.add-gradient(gradient)
-if shader
-    fill = null
-    stroke = null
-    gradient-index = table.add-shader(rect, shader, shader-args!)
-if shading
-    fill = null
-    stroke = null
-    gradient-index = table.add-shader
-        - rect
-        - shading.shader
-        - shading.args
-        - live-fill-epoch
-            - current
-            - shading.is-live
-            - shading.frame-rate
-            - shader-cycle(shading.args, shading.arg-kinds)?.at-width(rect.width)
-if shadow
-    fill = shadow.color
-    stroke = null
-table.path-styles += DisplayPathStyle
-    - fill
-    - stroke
-    - stroke-width
-    - stroke-cap
-    - stroke-join
-    - stroke-dash
-    - fill-rule
-    - closed
-    - gradient
-    - shadow
-    - shading?.shader ?? shader
-    - shading?.args ?? shader-args
-    - paint if painted
-    - brush if brushed
-    - shading
-. flags U8
-. aux U16
-if root-clip-active
-    flags = flags /or/ display-item-has-clip
-    aux = current.clips.length as U16
-    current.clips += clip-rect
-. item = DisplayItem
-    - DisplayItemKind.styled
-    - flags
-    - aux
-    - rect.x as F32
-    - rect.y as F32
-    - rect.width as F32
-    - rect.height as F32
-    - op
-    - verb-start
-    - path-count
-    - coord-start
-    - style-index
-. local-ink = if current-state == 0 then root-ink(ink) else ink
-. item-index = current.add-item(item, local-ink, current-state)
-current.set-item-exact(item-index, rect, op)
-table.styled-wires += DisplayPathStyleWire
-    - if gradient || shader || shading || painted then white else fill ?? transparent
-    - if brushed then transparent else stroke ?? transparent
-    - stroke-width
-    - stroke-dash
-    - shadow?.x ?? 0
-    - shadow?.y ?? 0
-    - shadow?.blur ?? 0
-    - display-path-paint
-        - fill != null || gradient != null || shader != null || shading != null
-        - stroke != null && !brushed
-        - closed
-        - fill-rule
-        - shadow != null
-    - display-stroke-style(stroke-cap, stroke-join)
-    - gradient-index
-    - brush-index
-if gradient || shader || shading
-    table.has-shaded-fill = true
-else
-    table.has-antialiased = true
-
-────────────────────
-+ do fill-gradient
-    - rect Rect
-    - gradient Gradient
-
-=? if !chunk
-. current = chunk
-gradient.validate()
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.gradient
-    - rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - null
-    - null
-    - 0
-    - LineCap.butt
-    - LineJoin.miter
-    - null
-    - null
-    - TextAlignment.left
-    - false
-    - FillRule.nonzero
-    - 0
-    - gradient
-promote-root-clip()
-record-styled(DisplayStyledShape.rect, rect, rect, 0, 0, 0, true, FillRule.nonzero, gradient)
-
-────────────────────
-+ do fill-shader
-    - rect Rect
-    - shader Shader
-    - args [F64] = List'F64()
-
-=? if !chunk
-. copied = List'F64(args)
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.shader
-    - rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - null
-    - null
-    - 0
-    - LineCap.butt
-    - LineJoin.miter
-    - null
-    - null
-    - TextAlignment.left
-    - false
-    - FillRule.nonzero
-    - 0
-    - null
-    - 0
-    - BlendMode.normal
-    - shader
-    - copied
-promote-root-clip()
-record-styled
-    - DisplayStyledShape.rect
-    - rect
-    - rect
-    - 0
-    - 0
-    - 0
-    - true
-    - FillRule.nonzero
-    - null
-    - null
-    - shader
-    - copied
-
-────────────────────
-+ do oval
-    - rect Rect
-
-if shape-fill
-    begin()
-    oval-path(rect)
-    end(true)
-    =
-=? if !chunk
-recorded-commands += display-shape-command(DisplayCommandKind.oval, rect, this)
-=? if !fill-color && !stroke-color
-promote-root-clip()
-record-styled
-    - DisplayStyledShape.oval
-    - rect
-    - display-stroke-ink(rect, this)
-    - 0
-    - 0
-    - 0
-    - false
-    - FillRule.nonzero
-    - null
-    - null
-    - null
-    - null
-    - fill-paint
-    - stroke-brush
-
-────────────────────
-+ do circle
-    - cx Coord
-    - cy Coord
-    - radius Length
-
-. diameter = radius * 2
-oval(Rect(cx - radius, cy - radius, diameter, diameter))
-
-────────────────────
-+ do draw-sprite Bool
-    - sprite DisplaySprite
-    - pixel-scale F64? = null
-    - sampling = ImageSampling.smooth
-
-=? false if !chunk
-. rect = sprite.bounds
-=? true if rect.width <= 0 || rect.height <= 0
-materialize-root-clip()
-. current = chunk!
-. full = current.ensure-side().states[current-state].full
-. step = display-sprite-scale-step
-    - pixel-scale ?? recording-scale * sqrt(abs(full.a * full.d - full.b * full.c))
-. key = (1u64 /lshift/ 62) /or/ (sprite.serial /lshift/ 8) /or/ (((step + 128) as U64) /and/ 255)
-. resolution = pixel-scale ?? exp((step as F64) * display-sprite-step)
-. item = DisplayItem
-    - DisplayItemKind.sprite
-    - 0
-    - if sampling == ImageSampling.pixelated then 1 else 0
-    - rect.x as F32
-    - rect.y as F32
-    - rect.width as F32
-    - rect.height as F32
-    - resolution as F32
-    - (key /and/ 4294967295) as U32
-    - (key /rshift/ 32) as U32
-    - sprite.version
-    - 0
-. sprites = current.sprites ?? List'DisplaySprite()
-. placed = current.sprite-items ?? List'U32()
-current.sprites = sprites
-current.sprite-items = placed
-if sprites.length == 0
-    sprite-chunks += current
-placed += current.add-item
-    - item
-    - if current-state == 0 then root-ink(rect) else rect
-    - current-state
-sprites += sprite
-= true
-
-────────────────────
-+ do erase
-    - color RGBA?
-
-=? if !chunk
-unsupported-calls += 1
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.erase
-    - display-no-rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - color
-
-────────────────────
-+ do begin-opacity
-    - opacity Ratio
-
-=? if !chunk
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.begin-opacity
-    - display-no-rect
-    - Point(opacity, 0)
-. state = DisplayState(0, DisplayStateKind.layer)
-enter-state(state.opacity = opacity)
-
-────────────────────
-+ do end-opacity
-
-=? if !chunk
-recorded-commands += DisplayCommand(DisplayCommandKind.end-opacity)
-. table = chunk!.ensure-side()
-. cursor = current-state
-while cursor != 0 && table.states[cursor].kind != DisplayStateKind.layer
-    cursor = table.states[cursor].parent
-if cursor == 0
-    unsupported-calls += 1
-    =
-current-state = table.states[cursor].parent
-
-────────────────────
 + do begin-blur
     - radius Length
 
@@ -1996,309 +635,6 @@ if cursor == 0
     unsupported-calls += 1
     =
 current-state = table.states[cursor].parent
-
-────────────────────
-+ do begin-filter
-    - rect Rect
-    - filter ShaderFilter
-
-=? if !chunk
-unsupported-calls += 1
-. copied = List'F64(filter.args)
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.begin-filter
-    - rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - null
-    - null
-    - 0
-    - LineCap.butt
-    - LineJoin.miter
-    - null
-    - null
-    - TextAlignment.left
-    - false
-    - FillRule.nonzero
-    - 0
-    - null
-    - 0
-    - BlendMode.normal
-    - filter.shader
-    - copied
-    - List'Image(filter.images)
-
-────────────────────
-+ do end-filter
-
-=? if !chunk
-unsupported-calls += 1
-recorded-commands += DisplayCommand(DisplayCommandKind.end-filter)
-
-────────────────────
-+ do backdrop-blur
-    - shape Outline
-    - radius Length
-
-=? if !chunk
-. current = chunk
-. b = shape.bounds
-=? if b.width <= 0 || b.height <= 0
-push()
-clip-outline(shape)
-materialize-root-clip()
-current.ensure-side().has-backdrop = true
-. item = DisplayItem
-    - DisplayItemKind.backdrop
-    - 0
-    - 0
-    - b.x as F32
-    - b.y as F32
-    - b.width as F32
-    - b.height as F32
-    - radius as F32
-    - 0
-    - 0
-    - 0
-    - 0
-. item-index = current.add-item(item, b, current-state)
-record-item-command(item-index)
-pop()
-
-────────────────────
-+ do backdrop-shader
-    - shape Outline
-    - backdrop ShaderFilter
-    - blur Length = 0
-
-=? if !chunk
-. current = chunk
-. b = shape.bounds
-=? if b.width <= 0 || b.height <= 0
-push()
-clip-outline(shape)
-materialize-root-clip()
-. side = current.ensure-side()
-side.has-backdrop = true
-. live = backdrop.is-live && current.owner.$animates-fills
-. gradient = side.add-shader
-    - b
-    - backdrop.shader
-    - backdrop.args
-    - live-fill-epoch(current, live, backdrop.frame-rate, display-layer-cycle(backdrop))
-side.backdrop-shaders += backdrop
-. slot = (side.backdrop-shaders.length - 1) as U32
-. item = DisplayItem
-    - DisplayItemKind.backdrop-shader
-    - 0
-    - 0
-    - b.x as F32
-    - b.y as F32
-    - b.width as F32
-    - b.height as F32
-    - blur as F32
-    - slot
-    - gradient
-    - 0
-    - 0
-. item-index = current.add-item(item, b, current-state)
-record-item-command(item-index)
-pop()
-
-────────────────────
-_ get translates
-
-chunk?.side?.translates-at(current-state) ?? true
-
-────────────────────
-+ get blend-mode
-
-chunk?.side?.blend-at(current-state) ?? BlendMode.normal
-
-────────────────────
-+ do blend-mode = mode BlendMode
-
-=? if !chunk || blend-mode == mode
-. command = DisplayCommand(DisplayCommandKind.blend)
-recorded-commands += command.blend = mode
-. state = DisplayState(0, DisplayStateKind.blend)
-enter-state(state.blend = mode)
-
-────────────────────
-+ do translate
-    - x Coord
-    - y Coord
-
-transform(matrix-from-translation(Point(x, y)))
-
-────────────────────
-+ do transform
-    - matrix Matrix
-
-=? if !chunk
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.transform
-    - display-no-rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - matrix
-=? if matrix.is-identity
-. state = DisplayState(0, DisplayStateKind.transform)
-enter-state(state.matrix = matrix)
-
-────────────────────
-+ do transform-content
-    - matrix Matrix
-
-=? if !chunk
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.transform
-    - display-no-rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - matrix
-. table = chunk!.ensure-side()
-. kind = if table.content-state == 0 then DisplayStateKind.content else DisplayStateKind.transform
-. state = DisplayState(0, kind)
-enter-state(state.matrix = matrix)
-if kind == DisplayStateKind.content
-    table.content-state = current-state
-
-────────────────────
-+ do draw-text
-    - layout TextLayout
-    - rect Rect
-    - alignment TextAlignment = TextAlignment.left
-
-=? if !chunk
-. current = chunk
-. fill = recorded-fill(current, text-fill)
-promote-root-clip()
-recorded-commands += DisplayCommand
-    - DisplayCommandKind.text
-    - rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - text-color
-    - null
-    - 0
-    - LineCap.butt
-    - LineJoin.miter
-    - layout
-    - null
-    - alignment
-    - false
-    - FillRule.nonzero
-    - 0
-    - null
-    - 0
-    - BlendMode.normal
-    - fill?.shader
-    - fill?.args
-
-. flags U8
-. layout-index = current.add-glyph-layout(layout, fill)
-. paint = if fill then record-text-fill(current, fill, layout, rect, alignment) else 0
-if root-clip-active
-    flags = flags /or/ display-item-has-clip
-. item = display-item(DisplayItemKind.glyph, rect, paint, layout-index, 0, pack-rgba8(text-color))
-item = DisplayItem
-    - item.kind
-    - flags
-    - display-alignment-code(alignment)
-    - item.x
-    - item.y
-    - item.width
-    - item.height
-    - item.value
-    - item.data0
-    - item.data1
-    - item.data2
-    - 0
-if root-clip-active
-    . clip-index = current.clips.length as U32
-    current.clips += clip-rect
-    item = DisplayItem
-        - item.kind
-        - item.flags
-        - item.aux
-        - item.x
-        - item.y
-        - item.width
-        - item.height
-        - item.value
-        - item.data0
-        - item.data1
-        - item.data2
-        - clip-index
-. item-index = current.add-item(item, root-ink(rect), current-state)
-current.item-glyph-layouts[item-index] = layout-index
-current.set-item-color(item-index, text-color)
-current.set-item-exact(item-index, rect, 0)
-
-────────────────────
-_ do record-text-fill U32
-    - current DisplayChunk
-    - fill ShaderFill
-    - layout TextLayout
-    - rect Rect
-    - alignment TextAlignment
-
-. code = display-alignment-code(alignment)
-. width = layout.width
-. height = layout.height
-. x = if code == 1 then centered-x else if code == 2 then rect.right - width else rect.x
-    .. centered-x = rect.x + (rect.width - width) / 2
-. frame = Rect(x, rect.y + (rect.height - height) / 2, width, height)
-= current.ensure-side().add-shader
-    - frame
-    - fill.shader
-    - fill.args
-    - live-fill-epoch
-        - current
-        - fill.is-live
-        - fill.frame-rate
-        - shader-cycle(fill.args, fill.arg-kinds)?.at-width(frame.width)
-
-────────────────────
-_ recorded-fill ShaderFill?
-    - current DisplayChunk
-    - fill ShaderFill?
-
-|? !fill
-    null
-|? !fill.is-live || current.owner.$animates-fills
-    fill
-??
-    ShaderFill(fill.shader, fill.args)
-
-────────────────────
-_ do live-fill-epoch F64
-    - current DisplayChunk
-    - is-live Bool
-    - rate F64?
-    - cycle FrameCycle?
-
-=? -1.0 if !is-live
-. kept = current.live-rate
-if !current.is-live
-    current.live-rate = rate
-    current.live-cycle = cycle
-    current.is-live-settled = false
-else
-    current.live-rate = max(kept, rate) if kept != null && rate != null
-    if current.live-cycle != cycle
-        current.live-cycle = null
-current.is-live = true
-. epoch = current.live-epoch ?? live-time
-current.live-epoch = epoch
-= epoch
 
 ────────────────────
 + do draw-image
@@ -2417,6 +753,80 @@ current.clips += tile
     - tile-index
     - clip-index
 . item-index = current.add-item(item, root-ink(rect), current-state)
+current.set-item-exact(item-index, rect, 0)
+
+────────────────────
++ do draw-text
+    - layout TextLayout
+    - rect Rect
+    - alignment TextAlignment = TextAlignment.left
+
+=? if !chunk
+. current = chunk
+. fill = recorded-fill(current, text-fill)
+promote-root-clip()
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.text
+    - rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - text-color
+    - null
+    - 0
+    - LineCap.butt
+    - LineJoin.miter
+    - layout
+    - null
+    - alignment
+    - false
+    - FillRule.nonzero
+    - 0
+    - null
+    - 0
+    - BlendMode.normal
+    - fill?.shader
+    - fill?.args
+
+. flags U8
+. layout-index = current.add-glyph-layout(layout, fill)
+. paint = if fill then record-text-fill(current, fill, layout, rect, alignment) else 0
+if root-clip-active
+    flags = flags /or/ display-item-has-clip
+. item = display-item(DisplayItemKind.glyph, rect, paint, layout-index, 0, pack-rgba8(text-color))
+item = DisplayItem
+    - item.kind
+    - flags
+    - display-alignment-code(alignment)
+    - item.x
+    - item.y
+    - item.width
+    - item.height
+    - item.value
+    - item.data0
+    - item.data1
+    - item.data2
+    - 0
+if root-clip-active
+    . clip-index = current.clips.length as U32
+    current.clips += clip-rect
+    item = DisplayItem
+        - item.kind
+        - item.flags
+        - item.aux
+        - item.x
+        - item.y
+        - item.width
+        - item.height
+        - item.value
+        - item.data0
+        - item.data1
+        - item.data2
+        - clip-index
+. item-index = current.add-item(item, root-ink(rect), current-state)
+current.item-glyph-layouts[item-index] = layout-index
+current.set-item-color(item-index, text-color)
 current.set-item-exact(item-index, rect, 0)
 
 ────────────────────
@@ -2568,6 +978,162 @@ record-item-command(item-index)
 = true
 
 ────────────────────
++ do shadow
+    - shape Outline
+    - shadow Shadow
+
+=? if !chunk
+. current = chunk
+=? if shadow.color.alpha <= 0 || shape.bounds.width <= 0 || shape.bounds.height <= 0
+promote-root-clip()
+if root-clip-active
+    materialize-root-clip()
+. shape-index = current.shapes.length as U32
+current.shapes += display-shape(shape, shadow)
+. item = DisplayItem
+    - DisplayItemKind.shadow
+    - display-item-has-shape
+    - 0
+    - shape.bounds.x as F32
+    - shape.bounds.y as F32
+    - shape.bounds.width as F32
+    - shape.bounds.height as F32
+    - shape.effective-radius as F32
+    - pack-rgba8(shadow.color)
+    - shape-index
+    - 0
+    - 0
+. item-index = current.add-item(item, root-ink(shadow.extent(shape.extent)), current-state)
+current.set-item-color(item-index, shadow.color)
+current.set-item-exact(item-index, shape.bounds, shape.effective-radius)
+record-item-command(item-index)
+
+────────────────────
++ do shadow-path
+    - shadow Shadow
+
+=? if !chunk
+. was-open = path-open
+path-open = false
+if !was-open
+    unsupported-calls += 1
+    =
+=? if shadow.color.alpha <= 0
+promote-root-clip()
+. table = chunk!.side!
+. count = (table.path-verbs.length as U32) - path-start
+=? if count == 0
+. bounds = table.state-path-bounds(path-start, path-coord-start, count)
+record-styled
+    - DisplayStyledShape.path
+    - bounds
+    - shadow.extent(bounds).pad(-1)
+    - count
+    - path-start
+    - path-coord-start
+    - false
+    - FillRule.nonzero
+    - null
+    - shadow
+record-item-command((chunk!.items.length - 1) as U32)
+
+────────────────────
++ do backdrop-blur
+    - shape Outline
+    - radius Length
+
+=? if !chunk
+. current = chunk
+. b = shape.bounds
+=? if b.width <= 0 || b.height <= 0
+push()
+clip-outline(shape)
+materialize-root-clip()
+current.ensure-side().has-backdrop = true
+. item = DisplayItem
+    - DisplayItemKind.backdrop
+    - 0
+    - 0
+    - b.x as F32
+    - b.y as F32
+    - b.width as F32
+    - b.height as F32
+    - radius as F32
+    - 0
+    - 0
+    - 0
+    - 0
+. item-index = current.add-item(item, b, current-state)
+record-item-command(item-index)
+pop()
+
+────────────────────
++ do backdrop-shader
+    - shape Outline
+    - backdrop ShaderFilter
+    - blur Length = 0
+
+=? if !chunk
+. current = chunk
+. b = shape.bounds
+=? if b.width <= 0 || b.height <= 0
+push()
+clip-outline(shape)
+materialize-root-clip()
+. side = current.ensure-side()
+side.has-backdrop = true
+. live = backdrop.is-live && current.owner.$animates-fills
+. gradient = side.add-shader
+    - b
+    - backdrop.shader
+    - backdrop.args
+    - live-fill-epoch(current, live, backdrop.frame-rate, display-layer-cycle(backdrop))
+side.backdrop-shaders += backdrop
+. slot = (side.backdrop-shaders.length - 1) as U32
+. item = DisplayItem
+    - DisplayItemKind.backdrop-shader
+    - 0
+    - 0
+    - b.x as F32
+    - b.y as F32
+    - b.width as F32
+    - b.height as F32
+    - blur as F32
+    - slot
+    - gradient
+    - 0
+    - 0
+. item-index = current.add-item(item, b, current-state)
+record-item-command(item-index)
+pop()
+
+────────────────────
++ do begin-opacity
+    - opacity Ratio
+
+=? if !chunk
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.begin-opacity
+    - display-no-rect
+    - Point(opacity, 0)
+. state = DisplayState(0, DisplayStateKind.layer)
+enter-state(state.opacity = opacity)
+
+────────────────────
++ do end-opacity
+
+=? if !chunk
+recorded-commands += DisplayCommand(DisplayCommandKind.end-opacity)
+. table = chunk!.ensure-side()
+. cursor = current-state
+while cursor != 0 && table.states[cursor].kind != DisplayStateKind.layer
+    cursor = table.states[cursor].parent
+if cursor == 0
+    unsupported-calls += 1
+    =
+current-state = table.states[cursor].parent
+
+────────────────────
 + do begin
 
 =? if !chunk
@@ -2577,70 +1143,10 @@ path-start = table.path-verbs.length as U32
 path-coord-start = table.path-coords.length as U32
 
 ────────────────────
-+ do move
-    - x Coord
-    - y Coord
-
-=? if !chunk
-append-path-verb(DisplayPathVerb.move)
-append-path-point(x, y)
-
-────────────────────
-+ do line
-    - x Coord
-    - y Coord
-
-=? if !chunk
-append-path-verb(DisplayPathVerb.line)
-append-path-point(x, y)
-
-────────────────────
-+ do curve
-    - x1 Coord
-    - y1 Coord
-    - x2 Coord
-    - y2 Coord
-    - x3 Coord
-    - y3 Coord
-
-=? if !chunk
-append-path-verb(DisplayPathVerb.curve)
-append-path-point(x1, y1)
-append-path-point(x2, y2)
-append-path-point(x3, y3)
-
-────────────────────
 + do enclose
 
 =? if !chunk
 append-path-verb(DisplayPathVerb.enclose)
-
-────────────────────
-+ do trace-path
-    - verbs Array'PathVerb
-    - coords Array'Coord
-    - count Size
-
-trace-canvas-path(this, verbs, coords, count)
-
-────────────────────
-_ do append-path-verb
-    - verb U8
-
-if !path-open
-    unsupported-calls += 1
-    =
-chunk!.side!.path-verbs += verb
-
-────────────────────
-_ do append-path-point
-    - x Coord
-    - y Coord
-
-=? if !path-open
-. table = chunk!.side!
-table.path-coords += x
-table.path-coords += y
 
 ────────────────────
 + do end
@@ -2690,6 +1196,83 @@ record-styled
     - stroke-brush
     • fills !shading
 record-item-command((chunk!.items.length - 1) as U32)
+
+────────────────────
++ do trace-path
+    - verbs Array'PathVerb
+    - coords Array'Coord
+    - count Size
+
+trace-canvas-path(this, verbs, coords, count)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ get root-clip-active
+
+current-state == 0 && has-clip-rect
+
+────────────────────
+_ get root-clip-shape
+
+clip-shape if current-state == 0
+
+────────────────────
+_ get translates
+
+chunk?.side?.translates-at(current-state) ?? true
+
+────────────────────
++ do configure
+    - scale F64
+    - registrar DisplayGlyphRegistrar?
+    - resources VectorGeometryTable? = null
+
+recording-scale = scale
+glyph-registrar = registrar
+resource-table = resources
+
+────────────────────
++ do draw-sprite Bool
+    - sprite DisplaySprite
+    - pixel-scale F64? = null
+    - sampling = ImageSampling.smooth
+
+=? false if !chunk
+. rect = sprite.bounds
+=? true if rect.width <= 0 || rect.height <= 0
+materialize-root-clip()
+. current = chunk!
+. full = current.ensure-side().states[current-state].full
+. step = display-sprite-scale-step
+    - pixel-scale ?? recording-scale * sqrt(abs(full.a * full.d - full.b * full.c))
+. key = (1u64 /lshift/ 62) /or/ (sprite.serial /lshift/ 8) /or/ (((step + 128) as U64) /and/ 255)
+. resolution = pixel-scale ?? exp((step as F64) * display-sprite-step)
+. item = DisplayItem
+    - DisplayItemKind.sprite
+    - 0
+    - if sampling == ImageSampling.pixelated then 1 else 0
+    - rect.x as F32
+    - rect.y as F32
+    - rect.width as F32
+    - rect.height as F32
+    - resolution as F32
+    - (key /and/ 4294967295) as U32
+    - (key /rshift/ 32) as U32
+    - sprite.version
+    - 0
+. sprites = current.sprites ?? List'DisplaySprite()
+. placed = current.sprite-items ?? List'U32()
+current.sprites = sprites
+current.sprite-items = placed
+if sprites.length == 0
+    sprite-chunks += current
+placed += current.add-item
+    - item
+    - if current-state == 0 then root-ink(rect) else rect
+    - current-state
+sprites += sprite
+= true
 
 ────────────────────
 + do draw-frame Bool
@@ -2826,6 +1409,397 @@ if count > 0
         - Point(count as F64, saved as F64)
     recorded-commands += replayed.item-index = first as U32
 = true
+
+────────────────────
+_ do begin-chunk
+    - next DisplayChunk
+
+chunk = next
+recorded-commands.clear()
+has-clip-rect = false
+clip-shape = null
+clip-stack.clear()
+current-state = 0
+path-open = false
+
+────────────────────
+_ do end-chunk
+
+. current = chunk
+if current && current.needs-tile
+    keep-commands(current)
+chunk = null
+
+────────────────────
+_ do keep-commands
+    - target DisplayChunk
+
+. kept = target.commands ?? List'DisplayCommand()
+target.commands = kept
+kept.clear()
+kept ++= recorded-commands
+
+────────────────────
+_ do has-paint-since
+    - start Size
+
+. index = start
+while index < recorded-commands.length
+    . command = recorded-commands[index]
+    . kind = command.kind
+    do match? kind
+        |? it == DisplayCommandKind.rect || it == DisplayCommandKind.oval
+            =? true if command.fill || command.stroke
+        |? it == DisplayCommandKind.text || it == DisplayCommandKind.image || it == DisplayCommandKind.item
+            = true
+        |? it == DisplayCommandKind.frame
+            = true
+        |? it == DisplayCommandKind.image-pattern
+            = true
+        |? it == DisplayCommandKind.erase
+            = true
+        |? it == DisplayCommandKind.gradient || it == DisplayCommandKind.shader
+            = true
+    index += 1
+= false
+
+────────────────────
+_ root-ink
+    - rect Rect
+
+display-clipped-ink(rect, clip-rect, root-clip-active)
+
+────────────────────
+_ do enter-state
+    - state DisplayState
+
+materialize-root-clip()
+current-state = chunk!.ensure-side().add-state(state.parent = current-state)
+
+────────────────────
+_ do materialize-root-clip
+
+=? if current-state != 0
+. table = chunk!.ensure-side()
+if has-clip-rect
+    . clip-state = DisplayState(0, DisplayStateKind.clip)
+    current-state = table.add-state(clip-state.rect = clip-rect)
+. shape = clip-shape
+if shape
+    . outline = display-outline-state(current-state, DisplayStateKind.clip-outline, shape)
+    current-state = table.add-state(outline)
+
+────────────────────
+_ do promote-root-clip
+
+=? if !root-clip-shape
+materialize-root-clip()
+
+────────────────────
+_ do contain-root-clip
+    - extent Rect
+
+if root-clip-active && !clip-rect.contains(extent, 0.01)
+    materialize-root-clip()
+
+────────────────────
+_ do fill-outline
+    - shape Outline
+
+. clipping = root-clip-shape
+if clipping
+    . covers = shape.is-rectangular && shape.bounds.contains(clipping.extent, 0.01)
+    if covers || shape == clipping
+        record-outline-fill(clipping)
+        =
+    if !display-outline-within(shape, clipping)
+        promote-root-clip()
+contain-root-clip(shape.extent)
+record-outline-fill(shape)
+
+────────────────────
+_ do stroke-outline
+    - shape Outline
+
+. inset = stroke-width / 2
+. outer = shape.grow(inset)
+. clipping = root-clip-shape
+if clipping
+    if display-outline-inset(shape, clipping, inset)
+        record-outline-border(clipping, true)
+        =
+    if !display-outline-within(outer, clipping)
+        promote-root-clip()
+contain-root-clip(outer.extent)
+if outer.arrow
+    unsupported-calls += 1
+record-outline-border(outer, false)
+
+────────────────────
+_ do record-outline-fill
+    - shape Outline
+
+. current = chunk!
+. shape-index = current.shapes.length as U32
+current.shapes += display-shape(shape, null)
+. item = DisplayItem
+    - DisplayItemKind.quad
+    - display-item-has-shape
+    - 0
+    - shape.bounds.x as F32
+    - shape.bounds.y as F32
+    - shape.bounds.width as F32
+    - shape.bounds.height as F32
+    - shape.effective-radius as F32
+    - pack-rgba8(fill-color!)
+    - shape-index
+    - 0
+    - 0
+. item-index = current.add-item(item, root-ink(shape.extent), current-state)
+current.set-item-color(item-index, fill-color!)
+current.set-item-exact(item-index, shape.bounds, shape.effective-radius)
+record-item-command(item-index)
+
+────────────────────
+_ do record-outline-border
+    - outer Outline
+    - clipped Bool
+
+. current = chunk!
+. shape-index = current.shapes.length as U32
+current.shapes += display-shape(outer, null)
+. item = DisplayItem
+    - DisplayItemKind.border
+    - display-item-has-shape
+    - if clipped then 1 else 0
+    - outer.bounds.x as F32
+    - outer.bounds.y as F32
+    - outer.bounds.width as F32
+    - outer.bounds.height as F32
+    - stroke-width as F32
+    - pack-rgba8(stroke-color!)
+    - shape-index
+    - 0
+    - 0
+. item-index = current.add-item(item, root-ink(outer.extent), current-state)
+current.set-item-color(item-index, stroke-color!)
+current.set-item-exact(item-index, outer.bounds, stroke-width)
+record-item-command(item-index)
+
+────────────────────
+_ do record-item-command
+    - item-index U32
+
+recorded-commands += DisplayCommand
+    - DisplayCommandKind.item
+    - display-no-rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - null
+    - null
+    - 0
+    - LineCap.butt
+    - LineJoin.miter
+    - null
+    - null
+    - TextAlignment.left
+    - false
+    - FillRule.nonzero
+    - item-index
+
+────────────────────
+_ do record-styled
+    - op U8
+    - rect Rect
+    - ink Rect
+    - path-count U32
+    - verb-start U32
+    - coord-start U32
+    - closed = false
+    - fill-rule FillRule = FillRule.nonzero
+    - gradient Gradient? = null
+    - shadow Shadow? = null
+    - shader Shader? = null
+    - shader-args [F64]? = null
+    - paint Paint? = null
+    - brush Brush? = null
+    - shading ShaderFill? = null
+    - fills = true
+
+. current = chunk!
+. table = current.ensure-side()
+. style-index = table.path-styles.length as U32
+. fill = fill-color if fills
+. stroke = stroke-color
+. gradient-index U32
+. brush-index U32
+. painted = paint != null && fill != null
+. brushed = brush != null && stroke != null
+if painted
+    gradient-index = table.add-paint(paint!, fill!)
+if brushed
+    brush-index = table.add-brush(brush!, stroke!)
+if gradient
+    fill = null
+    stroke = null
+    gradient-index = table.add-gradient(gradient)
+if shader
+    fill = null
+    stroke = null
+    gradient-index = table.add-shader(rect, shader, shader-args!)
+if shading
+    fill = null
+    stroke = null
+    gradient-index = table.add-shader
+        - rect
+        - shading.shader
+        - shading.args
+        - live-fill-epoch
+            - current
+            - shading.is-live
+            - shading.frame-rate
+            - shader-cycle(shading.args, shading.arg-kinds)?.at-width(rect.width)
+if shadow
+    fill = shadow.color
+    stroke = null
+table.path-styles += DisplayPathStyle
+    - fill
+    - stroke
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - stroke-dash
+    - fill-rule
+    - closed
+    - gradient
+    - shadow
+    - shading?.shader ?? shader
+    - shading?.args ?? shader-args
+    - paint if painted
+    - brush if brushed
+    - shading
+. flags U8
+. aux U16
+if root-clip-active
+    flags = flags /or/ display-item-has-clip
+    aux = current.clips.length as U16
+    current.clips += clip-rect
+. item = DisplayItem
+    - DisplayItemKind.styled
+    - flags
+    - aux
+    - rect.x as F32
+    - rect.y as F32
+    - rect.width as F32
+    - rect.height as F32
+    - op
+    - verb-start
+    - path-count
+    - coord-start
+    - style-index
+. local-ink = if current-state == 0 then root-ink(ink) else ink
+. item-index = current.add-item(item, local-ink, current-state)
+current.set-item-exact(item-index, rect, op)
+table.styled-wires += DisplayPathStyleWire
+    - if gradient || shader || shading || painted then white else fill ?? transparent
+    - if brushed then transparent else stroke ?? transparent
+    - stroke-width
+    - stroke-dash
+    - shadow?.x ?? 0
+    - shadow?.y ?? 0
+    - shadow?.blur ?? 0
+    - display-path-paint
+        - fill != null || gradient != null || shader != null || shading != null
+        - stroke != null && !brushed
+        - closed
+        - fill-rule
+        - shadow != null
+    - display-stroke-style(stroke-cap, stroke-join)
+    - gradient-index
+    - brush-index
+if gradient || shader || shading
+    table.has-shaded-fill = true
+else
+    table.has-antialiased = true
+
+────────────────────
+_ do record-text-fill U32
+    - current DisplayChunk
+    - fill ShaderFill
+    - layout TextLayout
+    - rect Rect
+    - alignment TextAlignment
+
+. code = display-alignment-code(alignment)
+. width = layout.width
+. height = layout.height
+. x = if code == 1 then centered-x else if code == 2 then rect.right - width else rect.x
+    .. centered-x = rect.x + (rect.width - width) / 2
+. frame = Rect(x, rect.y + (rect.height - height) / 2, width, height)
+= current.ensure-side().add-shader
+    - frame
+    - fill.shader
+    - fill.args
+    - live-fill-epoch
+        - current
+        - fill.is-live
+        - fill.frame-rate
+        - shader-cycle(fill.args, fill.arg-kinds)?.at-width(frame.width)
+
+────────────────────
+_ recorded-fill ShaderFill?
+    - current DisplayChunk
+    - fill ShaderFill?
+
+|? !fill
+    null
+|? !fill.is-live || current.owner.$animates-fills
+    fill
+??
+    ShaderFill(fill.shader, fill.args)
+
+────────────────────
+_ do live-fill-epoch F64
+    - current DisplayChunk
+    - is-live Bool
+    - rate F64?
+    - cycle FrameCycle?
+
+=? -1.0 if !is-live
+. kept = current.live-rate
+if !current.is-live
+    current.live-rate = rate
+    current.live-cycle = cycle
+    current.is-live-settled = false
+else
+    current.live-rate = max(kept, rate) if kept != null && rate != null
+    if current.live-cycle != cycle
+        current.live-cycle = null
+current.is-live = true
+. epoch = current.live-epoch ?? live-time
+current.live-epoch = epoch
+= epoch
+
+────────────────────
+_ do append-path-verb
+    - verb U8
+
+if !path-open
+    unsupported-calls += 1
+    =
+chunk!.side!.path-verbs += verb
+
+────────────────────
+_ do append-path-point
+    - x Coord
+    - y Coord
+
+=? if !path-open
+. table = chunk!.side!
+table.path-coords += x
+table.path-coords += y
 
 ────────────────────
 _ do restyle-frame-item
@@ -2974,42 +1948,6 @@ for index in 1 .. < count
 = mapped
 
 ━━━━━━━━━━━━━━━━━━━━
-_ DisplayFrameTable is U8
-
-| items
-| clips
-| shapes
-| colors
-| item-colors
-| states
-| item-states
-| item-inks
-| item-exacts
-| exact-rects
-| exact-values
-| path-verbs
-| path-coords
-| styles
-| gradients
-| stops
-| args
-
-────────────────────
-+ get width Size
-
-|? DisplayItem.size if this == .items
-|? DisplayShape.size if this == .shapes
-|? RGBA.size if this == .colors
-|? DisplayStateWire.size if this == .states
-|? U8.size if this == .path-verbs
-|? DisplayPathStyleWire.size if this == .styles
-|? DisplayGradientWire.size if this == .gradients
-|? GradientStop.size if this == .stops
-|? Rect.size if this == .clips || this == .item-inks || this == .exact-rects
-|? U32.size if this == .item-colors || this == .item-states || this == .item-exacts
-?? F64.size
-
-━━━━━━━━━━━━━━━━━━━━
 + DisplayFrame is Tuple
 
 + data Pointer
@@ -3042,16 +1980,11 @@ _ count Size
 (data as CPointer'U64)[5 + (kind as Size) * 2] as Size
 
 ━━━━━━━━━━━━━━━━━━━━
-_ DisplayFrameSpan is Tuple
-
-+ data Pointer
-+ count Size
-
-━━━━━━━━━━━━━━━━━━━━
 + DisplayFrameRecorder
 
 + unsupported Size
 + shaders [Shader]
+
 _ recorder = DisplayRecorder()
 _ chunk = DisplayChunk(Box(), DisplayPhase.pre)
 _ spans [DisplayFrameSpan]
@@ -3065,6 +1998,14 @@ chunk.items.length
 + get ink-bounds Rect?
 
 chunk.bounds if chunk.has-bounds
+
+────────────────────
++ do get byte-size Size
+
+. total = display-frame-header-bytes
+for index in 0 .. < spans.length
+    total = display-frame-align(total + spans[index].count * (index as DisplayFrameTable).width)
+= total
 
 ────────────────────
 + do begin Canvas
@@ -3109,24 +2050,6 @@ spans += DisplayFrameSpan(side.gradient-stops.buffer-pointer as Pointer, side.gr
 spans += DisplayFrameSpan(side.shader-args.buffer-pointer as Pointer, side.shader-args.length)
 
 ────────────────────
-_ do collect-shader
-    - shader Shader?
-
-. found = shader
-=? if !found
-for known in shaders
-    =? if known.id == found.id
-shaders += found
-
-────────────────────
-+ do get byte-size Size
-
-. total = display-frame-header-bytes
-for index in 0 .. < spans.length
-    total = display-frame-align(total + spans[index].count * (index as DisplayFrameTable).width)
-= total
-
-────────────────────
 + do write
     - target Pointer
 
@@ -3145,44 +2068,22 @@ for index in 0 .. < spans.length
     offset = display-frame-align(offset + bytes)
 words[2] = offset as U64
 
-━━━━━━━━━━━━━━━━━━━━
-_ DisplayFrameReplay
+────────────────────
+_ do collect-shader
+    - shader Shader?
 
-+ scene = DisplayScene()
-+ chunk = DisplayChunk(Box(), DisplayPhase.pre)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do draw-display-frame Bool
-    - canvas Canvas
-    - frame DisplayFrame
-    - shaders [U32 = Shader]
-    - placement Matrix
-    - bounds Rect
-
-do match? canvas
-    | recorder DisplayRecorder
-        = recorder.draw-frame(frame, shaders, placement, bounds)
-    | raster RasterCanvas
-        . replay = display-frame-replay
-        . chunk = replay.chunk
-        chunk.reset()
-        . recorder = replay.scene.recorder
-        recorder.begin-chunk(chunk)
-        . drawn = recorder.draw-frame(frame, shaders, placement, bounds)
-        recorder.end-chunk()
-        if drawn
-            replay.scene.draw-chunk
-                - chunk
-                - raster
-                - Rect(-1000000000, -1000000000, 2000000000, 2000000000)
-        = drawn
-= false
+. found = shader
+=? if !found
+for known in shaders
+    =? if known.id == found.id
+shaders += found
 
 ━━━━━━━━━━━━━━━━━━━━
 + DisplayFrameRaster
     is Closable
 
 + canvas RasterCanvas
+
 _ background RGBA
 _ renderer MetalOffscreenRenderer?
 _ scene DisplayScene?
@@ -3204,6 +2105,25 @@ if candidate.is-available
     chunk = DisplayChunk(Box(), DisplayPhase.pre)
 else
     candidate.close()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+. target = scene
+if target
+    target.release-chunk-glyph-handles(chunk!)
+    target.close()
+. gpu = renderer
+if gpu
+    gpu.close()
+scene = null
+chunk = null
+renderer = null
+canvas.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get uses-gpu Bool
@@ -3233,28 +2153,12 @@ target.recorder.end-chunk()
 =? false if !target.frame-metal-chunk(current, renderer!)
 = renderer!.read-into(canvas)
 
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-. target = scene
-if target
-    target.release-chunk-glyph-handles(chunk!)
-    target.close()
-. gpu = renderer
-if gpu
-    gpu.close()
-scene = null
-chunk = null
-renderer = null
-canvas.close()
-
 ━━━━━━━━━━━━━━━━━━━━
 + DisplaySprite
 
 + bounds = display-no-rect
 + version U32
+
 _ serial U64
 _ chunk = DisplayChunk(display-sprite-owner, DisplayPhase.pre)
 
@@ -3282,471 +2186,6 @@ bounds = frame ?? ink
 version += 1
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do draw-display-sprite Bool
-    - canvas Canvas
-    - sprite DisplaySprite
-    - pixel-scale F64? = null
-    - sampling = ImageSampling.smooth
-
-do match? canvas
-    | recorder DisplayRecorder
-        = recorder.draw-sprite(sprite, pixel-scale, sampling)
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-sprite-scale-step I64
-    - scale F64
-
-ceil(log(max(scale, 0.0625)) / display-sprite-step) as I64
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-frame-align Size
-    - offset Size
-
-((offset + 15) / 16) * 16
-
-━━━━━━━━━━━━━━━━━━━━
-+ do display-frame-format U64
-
-. hash = display-frame-magic
-for index in 0 .. < display-frame-table-count
-    hash = (hash /xor/ ((index as DisplayFrameTable).width as U64)) * 11400714819323198485
-    hash = hash /xor/ (hash /rshift/ 29)
-= hash
-
-━━━━━━━━━━━━━━━━━━━━
-_ do frame-path-fits Bool
-    - verbs CPointer'U8
-    - verb-count Size
-    - coord-count Size
-    - start U32
-    - count U32
-    - coord-start U32
-
-. first = start as Size
-. length = count as Size
-=? false if first > verb-count || length > verb-count - first
-. needed Size
-for index in first .. < first + length
-    . verb = verbs[index]
-    if verb == DisplayPathVerb.move || verb == DisplayPathVerb.line
-        needed += 2
-    else if verb == DisplayPathVerb.curve
-        needed += 6
-    else if verb != DisplayPathVerb.enclose
-        = false
-. coord = coord-start as Size
-= coord <= coord-count && needed <= coord-count - coord
-
-━━━━━━━━━━━━━━━━━━━━
-_ do frame-style-usable Bool
-    - wire DisplayPathStyleWire
-    - usable [Bool]
-    - gradients CPointer'DisplayGradientWire
-
-if wire.gradient != 0
-    . slot = (wire.gradient - 1) as Size
-    =? false if slot >= usable.length || !usable[slot]
-    =? false if gradients[slot].kind == display-gradient-brush
-if wire.brush != 0
-    . slot = (wire.brush - 1) as Size
-    =? false if slot >= usable.length || !usable[slot]
-    =? false if gradients[slot].kind != display-gradient-brush
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-_ do frame-arguments [F64]
-    - frame DisplayFrame
-    - start U32
-    - count U32
-
-. source = frame.table(.args) as CPointer'F64
-. values [F64]
-for index in 0 .. < (count as Size)
-    values += source[(start as Size) + index]
-= values
-
-━━━━━━━━━━━━━━━━━━━━
-_ do frame-gradient Gradient
-    - frame DisplayFrame
-    - wire DisplayGradientWire
-
-. source = frame.table(.stops) as CPointer'GradientStop
-. stops [GradientStop]
-for index in 0 .. < (wire.stop-count as Size)
-    stops += source[(wire.stop-start as Size) + index]
-= match wire.kind
-    |= display-gradient-radial
-        RadialGradient(wire.start, wire.start-radius, wire.end, wire.end-radius, stops)
-    |= display-gradient-conic
-        ConicGradient(wire.start, wire.start-radius, stops)
-    ??
-        LinearGradient(wire.start, wire.end, stops)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do display-frame-style DisplayPathStyle
-    - wire DisplayPathStyleWire
-    - frame DisplayFrame
-    - shaders [U32 = Shader]
-
-. flags = wire.paint
-. fill RGBA? = wire.fill if (flags /and/ 1) != 0
-. stroke RGBA? = wire.stroke if (flags /and/ 2) != 0
-. gradient Gradient?
-. shadow Shadow?
-. shader Shader?
-. shader-args [F64]?
-. paint Paint?
-. brush Brush?
-. gradients = frame.table(.gradients) as CPointer'DisplayGradientWire
-if wire.gradient != 0
-    . source = gradients[(wire.gradient - 1) as Size]
-    if source.kind == display-gradient-paint
-        paint = Paint
-            - shaders[source.shader]!
-            - frame-arguments(frame, source.stop-start, source.stop-count)
-        fill = RGBA(source.start.x, source.start.y, source.end.x, source.end.y)
-    else if source.kind == display-gradient-shader
-        shader = shaders[source.shader]
-        shader-args = frame-arguments(frame, source.stop-start, source.stop-count)
-        fill = null
-        stroke = null
-    else
-        gradient = frame-gradient(frame, source)
-        fill = null
-        stroke = null
-if wire.brush != 0
-    . source = gradients[(wire.brush - 1) as Size]
-    . values = frame-arguments(frame, source.stop-start, source.stop-count)
-    . extra [F64]
-    for index in 12 .. < values.length
-        extra += values[index]
-    stroke = RGBA(source.start.x, source.start.y, source.end.x, source.end.y)
-    brush = Brush
-        - shaders[source.shader]!
-        - extra
-        - values[0]
-        - values[1]
-        - values[2]
-        - values[3]
-        - values[4]
-        - values[5] if values[6] != 0
-        - values[7]
-        - values[8]
-        - values[9]
-        - values[10]
-        - values[11]
-if (flags /and/ 16) != 0
-    shadow = Shadow(wire.fill, wire.shadow-blur, wire.shadow-x, wire.shadow-y)
-= DisplayPathStyle
-    - fill
-    - stroke
-    - wire.stroke-width
-    - display-frame-cap(wire.stroke-style /and/ 15)
-    - display-frame-join((wire.stroke-style /rshift/ 4) /and/ 15)
-    - wire.dash
-    - if (flags /and/ 8) != 0 then FillRule.even-odd else FillRule.nonzero
-    - (flags /and/ 4) != 0
-    - gradient
-    - shadow
-    - shader
-    - shader-args
-    - paint
-    - brush
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-frame-cap LineCap
-    - code U32
-
-|? LineCap.round if code == 1
-|? LineCap.square if code == 2
-?? LineCap.butt
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-frame-join LineJoin
-    - code U32
-
-|? LineJoin.round if code == 1
-|? LineJoin.bevel if code == 2
-?? LineJoin.miter
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-item
-    - kind U8
-    - rect Rect
-    - value F64
-    - data0 U32
-    - data1 U32 = 0
-    - data2 U32 = 0
-    - data3 U32 = 0
-
-DisplayItem
-    - kind
-    - 0
-    - 0
-    - rect.x as F32
-    - rect.y as F32
-    - rect.width as F32
-    - rect.height as F32
-    - value as F32
-    - data0
-    - data1
-    - data2
-    - data3
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-shape
-    - shape Outline
-    - shadow Shadow?
-
-DisplayShape
-    - shape.effective-radius as F32
-    - outline-side-code(shape.arrow) as F32
-    - (shape.arrow?.offset ?? 0) as F32
-    - (shape.arrow?.size ?? 0) as F32
-    - (shadow?.blur ?? 0) as F32
-    - (shadow?.x ?? 0) as F32
-    - (shadow?.y ?? 0) as F32
-    - (shadow?.spread ?? 0) as F32
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-shape-outline
-    - rect Rect
-    - shape DisplayShape
-
-Outline(rect, shape.radius, arrow)
-
-.. arrow = OutlineArrow(side, shape.offset, shape.size) if side
-.. side = display-shape-side(shape.side)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-command-outline
-    - command DisplayCommand
-
-Outline(command.rect, command.point1.x, arrow)
-
-.. arrow = OutlineArrow(side, command.point2.x, command.point2.y) if side
-.. side = display-shape-side(command.point1.y)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-outline-within
-    - inner Outline
-    - outer Outline
-
-outer.bounds.contains(inner.bounds, 0.01) && arrows && corners
-
-.. arrows = display-points-near(display-arrow-tip(inner), display-arrow-tip(outer))
-.. corners = rounded || straight.contains(inner.bounds, 0.01)
-.. straight = outer.bounds.pad(outer.effective-radius)
-.. rounded = inner.effective-radius >= outer.effective-radius - 0.01
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-outline-inset
-    - inner Outline
-    - outer Outline
-    - amount Length
-
-bounds && radius && arrows
-
-.. bounds = display-rects-near(inner.bounds.pad(-amount), outer.bounds)
-.. radius = abs(inner.effective-radius - max(0, outer.effective-radius - amount)) < 0.01
-.. arrows = inner.arrow?.side == outer.arrow?.side && abs(inner-offset - outer-offset) < 0.01
-.. inner-offset = (inner.arrow?.offset ?? 0) + (if inner.arrow then amount else 0)
-.. outer-offset = outer.arrow?.offset ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-rects-near
-    - a Rect
-    - b Rect
-
-abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 && sizes
-
-.. sizes = abs(a.width - b.width) < 0.01 && abs(a.height - b.height) < 0.01
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-points-near
-    - a Point?
-    - b Point?
-
-(!a && !b) || (a != null && b != null && abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-arrow-tip
-    - shape Outline
-
-match? shape.arrow?.side
-    |= Side.top
-        Point(shape.bounds.x + shape.arrow-tip, shape.bounds.y - size)
-    |= Side.bottom
-        Point(shape.bounds.x + shape.arrow-tip, shape.bounds.bottom + size)
-    |= Side.left
-        Point(shape.bounds.x - size, shape.bounds.y + shape.arrow-tip)
-    |= Side.right
-        Point(shape.bounds.right + size, shape.bounds.y + shape.arrow-tip)
-
-.. size = shape.arrow?.size ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-shape-side
-    - code F64
-
-match? code
-    |= 0
-        Side.top
-    |= 1
-        Side.bottom
-    |= 2
-        Side.left
-    |= 3
-        Side.right
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-item-rect
-    - item DisplayItem
-
-Rect(item.x as F64, item.y as F64, item.width as F64, item.height as F64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-path-paint
-    - has-fill Bool
-    - has-stroke Bool
-    - closed Bool
-    - fill-rule FillRule
-    - has-shadow Bool = false
-
-fill /or/ stroke /or/ enclosed /or/ even-odd /or/ shadowed
-
-.. fill = if has-fill then 1u32 else 0u32
-.. stroke = if has-stroke then 2u32 else 0u32
-.. enclosed = if closed then 4u32 else 0u32
-.. even-odd = if fill-rule == FillRule.even-odd then 8u32 else 0u32
-.. shadowed = if has-shadow then 16u32 else 0u32
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-stroke-style
-    - cap LineCap
-    - join LineJoin
-
-cap-code /or/ (join-code /lshift/ 4)
-
-.. cap-code = line-cap-code(cap) as U32
-.. join-code = line-join-code(join) as U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ do display-shape-command DisplayCommand
-    - kind U8
-    - rect Rect
-    - canvas Canvas
-
-. command = DisplayCommand
-    - kind
-    - rect
-    - Point(0, 0)
-    - Point(0, 0)
-    - Point(0, 0)
-    - Matrix()
-    - canvas.fill-color
-    - canvas.stroke-color
-    - canvas.stroke-width
-    - canvas.stroke-cap
-    - canvas.stroke-join
-command = command.stroke-dash = canvas.stroke-dash
-= command
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-stroke-ink
-    - rect Rect
-    - canvas Canvas
-
-|? !canvas.stroke-color
-    rect
-??
-    rect.inflate(max(reach, scattered))
-
-.. reach = if mitered then canvas.stroke-width * 5 else canvas.stroke-width
-.. mitered = canvas.stroke-join == LineJoin.miter
-.. brush = canvas.stroke-brush
-.. scattered =
-    |? brush
-        canvas.stroke-width * (0.5 * (1 + abs(brush.size-jitter)) + 1.2 * abs(brush.scatter)) + 1
-    ??
-        0.0
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-outline-state
-    - parent U32
-    - kind U8
-    - shape Outline
-
-DisplayState
-    - parent
-    - kind
-    - Matrix()
-    - shape.bounds
-    - shape.radius
-    - outline-side-code(shape.arrow) as F64
-    - shape.arrow?.offset ?? 0
-    - shape.arrow?.size ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-outline-clip-command
-    - shape Outline
-
-DisplayCommand
-    - DisplayCommandKind.clip-outline
-    - shape.bounds
-    - Point(shape.radius, outline-side-code(shape.arrow) as Coord)
-    - Point(shape.arrow?.offset ?? 0, shape.arrow?.size ?? 0)
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-clipped-ink
-    - rect Rect
-    - clip Rect
-    - has-clip Bool
-
-if has-clip then rect.intersection(clip) else rect
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-alignment-code U16
-    - alignment TextAlignment
-
-match alignment
-    |= TextAlignment.center
-        1
-    |= TextAlignment.right
-        2
-    ??
-        0
-
-━━━━━━━━━━━━━━━━━━━━
-_ display-alignment
-    - code U16
-
-match code
-    |= 1
-        TextAlignment.center
-    |= 2
-        TextAlignment.right
-    ??
-        TextAlignment.left
-
-━━━━━━━━━━━━━━━━━━━━
-_ do next-display-record-generation
-
-display-record-generation += 1
-if !display-record-generation
-    display-record-generation = 1
-= display-record-generation
-
-━━━━━━━━━━━━━━━━━━━━
-_ do next-display-scene-generation
-
-display-scene-generation += 1
-if !display-scene-generation
-    display-scene-generation = 1
-= display-scene-generation
-
-━━━━━━━━━━━━━━━━━━━━
 + DisplayScene
     is Closable
 
@@ -3772,6 +2211,7 @@ if !display-scene-generation
 + items-built Size
 + opaque-demotions Size
 + metal-tile-fallbacks Size
++ origin Point
 + has-pending-textures => pending-texture-chunks.length > 0 || pending-tile-damage != null
 
 _ roots [DisplayEntry]
@@ -3788,7 +2228,6 @@ _ resource-table VectorGeometryTable = default-vector-geometry-table()
 _ structure-generation U64
 _ generation U32 = 1
 _ metal-frames-encoded Size
-+ origin Point
 _ is-built = false
 _ is-maintaining = false
 _ is-replaying = false
@@ -3830,6 +2269,8 @@ glyph-registrar = registrar
 .. recorder = DisplayRecorder()
 recorder.configure(scale, glyph-registrar, resource-table)
 
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + do close
 
@@ -3839,6 +2280,8 @@ for canvas in metal-tile-canvases
     canvas.close()
 metal-tile-canvases.clear()
 metal-tile-canvas-frames.clear()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do configure
@@ -3893,76 +2336,6 @@ damage-revision += 1
 absorb-damage-area(rect)
 while damage-areas.length > display-damage-area-limit
     merge-closest-damage-areas()
-
-────────────────────
-_ do absorb-damage-area
-    - rect Rect
-
-. merged = rect
-. index Size = 0
-while index < damage-areas.length
-    . area = damage-areas[index]
-    if display-damage-areas-join(area, merged)
-        merged = merged + area
-        damage-areas.remove(index, 1)
-        index = 0
-    else
-        index += 1
-damage-areas += merged
-
-────────────────────
-_ do merge-closest-damage-areas
-
-. best-first Size = 0
-. best-second Size = 1
-. best-growth = -1.0
-for first in 0 .. < damage-areas.length
-    for second in first + 1 .. < damage-areas.length
-        . growth = display-damage-join-growth(damage-areas[first], damage-areas[second])
-        if best-growth < 0 || growth < best-growth
-            best-first = first
-            best-second = second
-            best-growth = growth
-. merged = damage-areas[best-first] + damage-areas[best-second]
-damage-areas.remove(best-second, 1)
-damage-areas.remove(best-first, 1)
-absorb-damage-area(merged)
-
-────────────────────
-_ do local-damage-areas [F64]
-
-. values = List'F64()
-for area in damage-areas
-    . aligned = align-damage-to-device(area)
-    values ++= [aligned.x - origin.x, aligned.y - origin.y, aligned.width, aligned.height]
-= values
-
-────────────────────
-_ do split-damaged-pixels Size
-
-. total Size = 0
-for area in damage-areas
-    total += device-pixels(align-damage-to-device(area))
-= total
-
-────────────────────
-_ device-pixels Size
-    - rect Rect
-
-(ceil(rect.width * scale) as Size) * (ceil(rect.height * scale) as Size)
-
-────────────────────
-_ do clear-damage
-
-has-damage = false
-damage = display-no-rect
-damage-areas.clear()
-
-────────────────────
-_ damage-touches Bool
-    - visible Rect
-
-some(damage-areas) • where display-rects-overlap(visible, each) && !each.contains(visible, 0.01)
 
 ────────────────────
 + do set-live-time
@@ -4030,125 +2403,6 @@ live-groups.remove(kept-groups, live-groups.length - kept-groups)
 = LiveFillState(visible, rate if is-capped && rate > 0, wake)
 
 ────────────────────
-_ live-resting Bool
-    - cycle FrameCycle?
-    - epoch F64?
-
-if !cycle || epoch == null then false else cycle.is-resting(recorder.live-time - epoch)
-
-────────────────────
-_ live-wake F64
-    - cycle FrameCycle
-    - epoch F64
-
-epoch + cycle.next-start(recorder.live-time - epoch)
-
-────────────────────
-_ earliest-wake F64
-    - wake F64?
-    - at F64
-
-if wake != null then min(wake, at) else at
-
-────────────────────
-_ do damage-live-chunk Bool
-    - chunk DisplayChunk
-    - bounds Rect
-    - rate F64?
-
-. slot = due-live-slot(chunk.live-slot, rate)
-=? false if !slot
-chunk.live-slot = slot
-add-damage(bounds)
-= true
-
-────────────────────
-_ do damage-live-group Bool
-    - group DisplayGroup
-    - bounds Rect
-    - rate F64?
-
-. slot = due-live-slot(group.live-slot, rate)
-=? false if !slot
-group.live-slot = slot
-add-damage(bounds)
-= true
-
-────────────────────
-_ due-live-slot F64?
-    - last F64
-    - rate F64?
-
-|? !rate || rate <= 0
-    last
-|? slot <= last
-    null
-??
-    slot
-
-.. interval = 1 / rate
-.. slot = floor((recorder.live-time + interval / 8) / interval)
-
-────────────────────
-_ do refresh-group-liveness
-    - group DisplayGroup
-
-. live = group.owner.$animates-fills && (some(group.filters) • where each.is-live)
-if !live
-    group.is-live = false
-    group.live-epoch = null
-    group.live-cycle = null
-    =
-. top = 0.0
-. is-capped = true
-. cycle FrameCycle? = null
-. is-cycled = true
-for filter in group.filters
-    if filter.is-live
-        . wanted = filter.frame-rate
-        if wanted
-            top = max(top, wanted)
-        else
-            is-capped = false
-        . found = display-layer-cycle(filter)
-        if !found || (cycle && cycle != found)
-            is-cycled = false
-        cycle = found
-group.live-rate = top if is-capped && top > 0
-. group-cycle = cycle if is-cycled
-if group.live-cycle != group-cycle
-    group.live-cycle = group-cycle
-    group.is-live-settled = false
-group.live-epoch = group.live-epoch ?? recorder.live-time
-=? if group.is-live
-group.is-live = true
-. known = some(live-groups) • where each as Pointer == group as Pointer
-if !known
-    live-groups += group
-
-────────────────────
-_ do group-filters [ShaderFilter]
-    - group DisplayGroup
-
-. epoch = group.live-epoch
-=? group.filters if !epoch
-. time = max(0, recorder.live-time - epoch)
-. timed = List'ShaderFilter()
-for filter in group.filters
-    if filter.is-live
-        timed += ShaderFilter
-            - filter.shader
-            - filter.args
-            - filter.images
-            - true
-            - filter.frame-rate
-            - time
-            - filter.arg-kinds
-    else
-        timed += filter
-= timed
-
-────────────────────
 + do build
     - tree-root Box
 
@@ -4185,18 +2439,6 @@ structure-generation = gui-retained-tree-structure-generation()
 is-built = true
 has-uncommitted = true
 add-damage(tree-root.bounds)
-
-────────────────────
-_ do keep-live-epochs
-
-kept-group-epochs.clear()
-kept-chunk-epochs.clear()
-for group in live-groups
-    if group.is-live && group.live-epoch != null
-        kept-group-epochs[display-live-key(group.owner, 0)] = group.live-epoch
-for chunk in live-chunks
-    if chunk.is-live && chunk.live-epoch != null
-        kept-chunk-epochs[display-live-key(chunk.owner, chunk.phase)] = chunk.live-epoch
 
 ────────────────────
 + do update
@@ -4366,6 +2608,213 @@ metal-frames-encoded += 1
 = true
 
 ────────────────────
++ layer-group-for DisplayGroup?
+    - box Box
+
+node-for(box)?.layer-group
+
+────────────────────
+_ do absorb-damage-area
+    - rect Rect
+
+. merged = rect
+. index Size = 0
+while index < damage-areas.length
+    . area = damage-areas[index]
+    if display-damage-areas-join(area, merged)
+        merged = merged + area
+        damage-areas.remove(index, 1)
+        index = 0
+    else
+        index += 1
+damage-areas += merged
+
+────────────────────
+_ do merge-closest-damage-areas
+
+. best-first Size = 0
+. best-second Size = 1
+. best-growth = -1.0
+for first in 0 .. < damage-areas.length
+    for second in first + 1 .. < damage-areas.length
+        . growth = display-damage-join-growth(damage-areas[first], damage-areas[second])
+        if best-growth < 0 || growth < best-growth
+            best-first = first
+            best-second = second
+            best-growth = growth
+. merged = damage-areas[best-first] + damage-areas[best-second]
+damage-areas.remove(best-second, 1)
+damage-areas.remove(best-first, 1)
+absorb-damage-area(merged)
+
+────────────────────
+_ do local-damage-areas [F64]
+
+. values = List'F64()
+for area in damage-areas
+    . aligned = align-damage-to-device(area)
+    values ++= [aligned.x - origin.x, aligned.y - origin.y, aligned.width, aligned.height]
+= values
+
+────────────────────
+_ do split-damaged-pixels Size
+
+. total Size = 0
+for area in damage-areas
+    total += device-pixels(align-damage-to-device(area))
+= total
+
+────────────────────
+_ device-pixels Size
+    - rect Rect
+
+(ceil(rect.width * scale) as Size) * (ceil(rect.height * scale) as Size)
+
+────────────────────
+_ do clear-damage
+
+has-damage = false
+damage = display-no-rect
+damage-areas.clear()
+
+────────────────────
+_ damage-touches Bool
+    - visible Rect
+
+some(damage-areas) • where display-rects-overlap(visible, each) && !each.contains(visible, 0.01)
+
+────────────────────
+_ live-resting Bool
+    - cycle FrameCycle?
+    - epoch F64?
+
+if !cycle || epoch == null then false else cycle.is-resting(recorder.live-time - epoch)
+
+────────────────────
+_ live-wake F64
+    - cycle FrameCycle
+    - epoch F64
+
+epoch + cycle.next-start(recorder.live-time - epoch)
+
+────────────────────
+_ earliest-wake F64
+    - wake F64?
+    - at F64
+
+if wake != null then min(wake, at) else at
+
+────────────────────
+_ do damage-live-chunk Bool
+    - chunk DisplayChunk
+    - bounds Rect
+    - rate F64?
+
+. slot = due-live-slot(chunk.live-slot, rate)
+=? false if !slot
+chunk.live-slot = slot
+add-damage(bounds)
+= true
+
+────────────────────
+_ do damage-live-group Bool
+    - group DisplayGroup
+    - bounds Rect
+    - rate F64?
+
+. slot = due-live-slot(group.live-slot, rate)
+=? false if !slot
+group.live-slot = slot
+add-damage(bounds)
+= true
+
+────────────────────
+_ due-live-slot F64?
+    - last F64
+    - rate F64?
+
+|? !rate || rate <= 0
+    last
+|? slot <= last
+    null
+??
+    slot
+
+.. interval = 1 / rate
+.. slot = floor((recorder.live-time + interval / 8) / interval)
+
+────────────────────
+_ do refresh-group-liveness
+    - group DisplayGroup
+
+. live = group.owner.$animates-fills && (some(group.filters) • where each.is-live)
+if !live
+    group.is-live = false
+    group.live-epoch = null
+    group.live-cycle = null
+    =
+. top = 0.0
+. is-capped = true
+. cycle FrameCycle? = null
+. is-cycled = true
+for filter in group.filters
+    if filter.is-live
+        . wanted = filter.frame-rate
+        if wanted
+            top = max(top, wanted)
+        else
+            is-capped = false
+        . found = display-layer-cycle(filter)
+        if !found || (cycle && cycle != found)
+            is-cycled = false
+        cycle = found
+group.live-rate = top if is-capped && top > 0
+. group-cycle = cycle if is-cycled
+if group.live-cycle != group-cycle
+    group.live-cycle = group-cycle
+    group.is-live-settled = false
+group.live-epoch = group.live-epoch ?? recorder.live-time
+=? if group.is-live
+group.is-live = true
+. known = some(live-groups) • where each as Pointer == group as Pointer
+if !known
+    live-groups += group
+
+────────────────────
+_ do group-filters [ShaderFilter]
+    - group DisplayGroup
+
+. epoch = group.live-epoch
+=? group.filters if !epoch
+. time = max(0, recorder.live-time - epoch)
+. timed = List'ShaderFilter()
+for filter in group.filters
+    if filter.is-live
+        timed += ShaderFilter
+            - filter.shader
+            - filter.args
+            - filter.images
+            - true
+            - filter.frame-rate
+            - time
+            - filter.arg-kinds
+    else
+        timed += filter
+= timed
+
+────────────────────
+_ do keep-live-epochs
+
+kept-group-epochs.clear()
+kept-chunk-epochs.clear()
+for group in live-groups
+    if group.is-live && group.live-epoch != null
+        kept-group-epochs[display-live-key(group.owner, 0)] = group.live-epoch
+for chunk in live-chunks
+    if chunk.is-live && chunk.live-epoch != null
+        kept-chunk-epochs[display-live-key(chunk.owner, chunk.phase)] = chunk.live-epoch
+
+────────────────────
 _ do frame-metal-chunk Bool
     - chunk DisplayChunk
     - renderer MetalOffscreenRenderer
@@ -4381,12 +2830,6 @@ encode-metal-chunk(chunk, renderer)
 trim-metal-tile-canvases()
 metal-frames-encoded += 1
 = frame >= 0
-
-────────────────────
-+ layer-group-for DisplayGroup?
-    - box Box
-
-node-for(box)?.layer-group
 
 ────────────────────
 _ node-for
@@ -7138,6 +5581,1579 @@ Rect(left, top, right - left, bottom - top)
 .. bottom = ceil(rect.bottom * scale) / scale
 
 ━━━━━━━━━━━━━━━━━━━━
++ do draw-display-frame Bool
+    - canvas Canvas
+    - frame DisplayFrame
+    - shaders [U32 = Shader]
+    - placement Matrix
+    - bounds Rect
+
+do match? canvas
+    | recorder DisplayRecorder
+        = recorder.draw-frame(frame, shaders, placement, bounds)
+    | raster RasterCanvas
+        . replay = display-frame-replay
+        . chunk = replay.chunk
+        chunk.reset()
+        . recorder = replay.scene.recorder
+        recorder.begin-chunk(chunk)
+        . drawn = recorder.draw-frame(frame, shaders, placement, bounds)
+        recorder.end-chunk()
+        if drawn
+            replay.scene.draw-chunk
+                - chunk
+                - raster
+                - Rect(-1000000000, -1000000000, 2000000000, 2000000000)
+        = drawn
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do draw-display-sprite Bool
+    - canvas Canvas
+    - sprite DisplaySprite
+    - pixel-scale F64? = null
+    - sampling = ImageSampling.smooth
+
+do match? canvas
+    | recorder DisplayRecorder
+        = recorder.draw-sprite(sprite, pixel-scale, sampling)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do display-frame-format U64
+
+. hash = display-frame-magic
+for index in 0 .. < display-frame-table-count
+    hash = (hash /xor/ ((index as DisplayFrameTable).width as U64)) * 11400714819323198485
+    hash = hash /xor/ (hash /rshift/ 29)
+= hash
+
+━━━━━━━━━━━━━━━━━━━━
++ merged-live-fills LiveFillState
+    - first LiveFillState
+    - second LiveFillState
+
+|? !second.is-visible
+    LiveFillState(first.is-visible, first.frame-rate, wake)
+|? !first.is-visible
+    LiveFillState(true, second.frame-rate, wake)
+??
+    LiveFillState(true, rate, wake)
+
+.. wake = if first.wake-at != null && second.wake-at != null then earlier-wake else any-wake
+.. earlier-wake = min(first.wake-at, second.wake-at)
+.. any-wake = first.wake-at ?? second.wake-at
+.. rate = higher-rate if first.frame-rate != null && second.frame-rate != null
+.. higher-rate = max(first.frame-rate, second.frame-rate)
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayItemKind is U8
+
+| quad
+| border
+| glyph
+| vector
+| image
+| opaque
+| shadow = 7
+| styled = 8
+| canvas-image = 9
+| backdrop = 10
+| canvas-pattern = 11
+| sprite = 12
+| backdrop-shader = 13
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayStyledShape is U8
+
+| rect
+| oval
+| path
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayStateKind is U8
+
+| root
+| transform
+| content
+| clip
+| clip-outline
+| clip-path
+| layer
+| clip-mask
+| mask-layer
+| clip-layer-mask
+| blend
+| blur
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayPathVerb is U8
+
+| move
+| line
+| curve
+| enclose
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayPhase is U8
+
+| pre
+| post
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayAxis is U8
+
+| none
+| vertical
+| horizontal
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayCommandKind is U8
+
+| push
+| pop
+| clip
+| transform
+| rect
+| oval
+| text
+| image
+| vector
+| erase
+| item = 16
+| clip-path = 17
+| clip-outline = 19
+| gradient = 20
+| begin-opacity = 21
+| end-opacity = 22
+| clip-mask = 23
+| begin-mask = 24
+| end-mask = 25
+| blend = 26
+| begin-blur = 27
+| end-blur = 28
+| shader = 29
+| begin-filter = 30
+| end-filter = 31
+| image-pattern = 32
+| frame = 33
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayState is Tuple
+
++ parent U32
++ kind U8
++ matrix Matrix = Matrix()
++ rect Rect = display-no-rect
++ radius F64
++ side F64
++ offset F64
++ size F64
++ path-start U32
++ path-count U32
++ coord-start U32
++ fill-rule FillRule = FillRule.nonzero
++ opacity F64 = 1
++ full Matrix = Matrix()
++ clip-bounds Rect = display-no-rect
++ has-clip-bounds = false
++ local-ink Rect = display-no-rect
++ has-local-ink = false
++ image U32
++ serial U64
++ source U32
++ blend = BlendMode.normal
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayStateWire is Tuple
+
++ parent U32
++ kind U32
++ matrix Matrix
++ rect Rect
++ opacity F64
++ radius F64
++ side F64
++ offset F64
++ size F64
++ path-start U32
++ path-count U32
++ coord-start U32
++ fill-rule U32
++ serial U64
++ source U32
++ blend I32
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayPathStyleWire is Tuple
+
++ fill RGBA
++ stroke RGBA
++ stroke-width Length
++ dash Length
++ shadow-x Coord
++ shadow-y Coord
++ shadow-blur Length
++ paint U32
++ stroke-style U32
++ gradient U32
++ brush U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayGradientWire is Tuple
+
++ start Point
++ end Point
++ start-radius F64
++ end-radius F64
++ kind U32
++ stop-start U32
++ stop-count U32
++ shader U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayPathStyle is Tuple
+
++ fill RGBA?
++ stroke RGBA?
++ stroke-width Length
++ stroke-cap LineCap
++ stroke-join LineJoin
++ stroke-dash Length
++ fill-rule FillRule
++ closed Bool
++ gradient Gradient? = null
++ shadow Shadow? = null
++ shader Shader? = null
++ shader-args [F64]? = null
++ paint Paint? = null
++ brush Brush? = null
++ shape-fill ShaderFill? = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayCommand is Tuple
+
++ kind U8
++ rect Rect = display-no-rect
++ point1 Point = Point(0, 0)
++ point2 Point = Point(0, 0)
++ point3 Point = Point(0, 0)
++ matrix Matrix = Matrix()
++ fill RGBA? = null
++ stroke RGBA? = null
++ stroke-width Length = 0
++ stroke-cap LineCap = LineCap.butt
++ stroke-join LineJoin = LineJoin.miter
++ layout TextLayout? = null
++ image RasterCanvas? = null
++ alignment TextAlignment = TextAlignment.left
++ flag = false
++ fill-rule FillRule = FillRule.nonzero
++ item-index U32
++ gradient Gradient? = null
++ stroke-dash Length = 0
++ blend = BlendMode.normal
++ shader Shader? = null
++ shader-args [F64]? = null
++ shader-images [Image]? = null
++ sampling = ImageSampling.smooth
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayChunk
+
++ owner Box
++ phase U8
++ parent DisplayGroup?
++ items [DisplayItem]
++ glyph-layouts [TextLayout]?
++ glyph-fills [ShaderFill?]?
++ item-glyph-layouts [U32]
++ glyph-handles [DisplayGlyphHandle]?
++ clips [Rect]
++ shapes [DisplayShape]
++ vector-palette [U32]
++ side DisplayChunkSide?
++ exacts DisplayChunkExacts?
++ commands [DisplayCommand]?
++ bounds Rect
++ has-bounds = false
++ is-opaque = false
++ needs-tile = false
++ indicator-start Size
++ indicator-count Size
++ record-generation U32 = 1
++ path-generation U32 = 1
++ refill-mark U32
++ refill-index Size
++ linked-mark U32
++ metal-resource-renderer Pointer?
++ metal-resource-epoch I64 = -1
++ raster-generation U32
++ is-raster-content = false
++ sprites [DisplaySprite]?
++ sprite-items [U32]?
++ sprite-mark U32
++ is-live = false
++ live-rate F64?
++ live-epoch F64?
++ live-slot = -1.0
++ live-cycle FrameCycle?
++ is-live-settled = false
+
+────────────────────
+_ This
+    - chunk-owner Box
+    - chunk-phase U8
+
+.. owner = chunk-owner
+phase = chunk-phase
+
+────────────────────
++ get sprite-count Size
+
+sprites?.length ?? 0
+
+────────────────────
+_ do reset
+
+record-generation = next-display-record-generation()
+path-generation = record-generation
+items.clear()
+glyph-layouts?.clear()
+glyph-fills?.clear()
+item-glyph-layouts.clear()
+glyph-handles?.clear()
+clips.clear()
+shapes.clear()
+vector-palette.clear()
+. current = side
+if current
+    current.clear()
+. known-exacts = exacts
+if known-exacts
+    known-exacts.clear()
+commands?.clear()
+sprites?.clear()
+sprite-items?.clear()
+bounds = display-no-rect
+has-bounds = false
+is-opaque = false
+needs-tile = false
+is-live = false
+live-rate = null
+indicator-start = 0
+indicator-count = 0
+metal-resource-renderer = null
+metal-resource-epoch = -1
+
+────────────────────
+_ do add-glyph-layout U32
+    - layout TextLayout
+    - fill ShaderFill?
+
+. layouts = glyph-layouts ?? List'TextLayout()
+. fills = glyph-fills ?? List'(ShaderFill?)()
+glyph-layouts = layouts
+glyph-fills = fills
+. index = layouts.length as U32
+layouts += layout
+fills += fill
+= index
+
+────────────────────
+_ do bump-record-generation
+
+record-generation = next-display-record-generation()
+
+────────────────────
+_ do refresh-bounds
+
+bounds = display-no-rect
+has-bounds = false
+. table = side!
+if table.has-prefix-bounds
+    add-ink(table.prefix-bounds)
+. index Size
+while index < items.length
+    . ink = table.item-inks[index]
+    . state = table.item-states[index]
+    if ink.width >= 0 && ink.height >= 0
+        if state == 0
+            add-ink(ink)
+        else
+            . placed = table.state-ink-bounds(state, ink)
+            if placed
+                add-ink(placed)
+    index += 1
+
+────────────────────
+_ do add-ink
+    - rect Rect
+
+=? if rect.width <= 0 || rect.height <= 0
+if has-bounds
+    bounds = bounds + rect
+else
+    bounds = rect
+    has-bounds = true
+
+────────────────────
+_ do add-item
+    - item DisplayItem
+    - ink Rect
+    - state U32 = 0
+
+. index = items.length as U32
+items += item
+item-glyph-layouts += 4294967295
+. existing = side
+if state != 0 || (!existing && items.length >= display-culling-item-count)
+    ensure-side()
+. current = side
+if current
+    current.item-colors += 4294967295
+    current.item-transforms += 4294967295
+    current.item-states += state
+    current.item-inks += ink
+    current.item-styles += 4294967295
+    current.item-strokes += 0
+    current.item-dashes += 0
+. known-exacts = exacts
+if known-exacts
+    known-exacts.item-slots += 4294967295
+if state == 0
+    add-ink(ink)
+else
+    . table = side!
+    table.include-state-ink(state, ink)
+    . placed = table.state-ink-bounds(state, ink)
+    if placed
+        add-ink(placed)
+= index
+
+────────────────────
+_ do ensure-side
+
+. existing = side
+=? existing if existing
+. created = DisplayChunkSide()
+created.states += DisplayState(0, DisplayStateKind.root)
+created.prefix-bounds = bounds
+created.has-prefix-bounds = has-bounds
+for index in 0 .. < items.length
+    created.item-colors += 4294967295
+    created.item-transforms += 4294967295
+    created.item-states += 0
+    created.item-inks += display-unknown-ink
+    created.item-styles += 4294967295
+    created.item-strokes += 0
+    created.item-dashes += 0
+for packed in vector-palette
+    created.vector-colors += rgba8(packed)
+side = created
+= created
+
+────────────────────
+_ do set-item-color
+    - item-index U32
+    - color RGBA
+
+if rgba8(pack-rgba8(color)) == color
+    . current = side
+    if current
+        current.item-colors[item-index] = 4294967295
+    =
+. table = ensure-side()
+. slot = table.item-colors[item-index]
+if slot != 4294967295
+    table.colors[slot] = color
+    =
+table.item-colors[item-index] = table.colors.length as U32
+table.colors += color
+
+────────────────────
+_ item-color
+    - item-index Size
+    - packed U32
+
+match current
+    |= null
+        rgba8(packed)
+    ??
+        match current.item-colors[item-index]
+            |= 4294967295u32
+                rgba8(packed)
+            ??
+                current.colors[it]
+
+.. current = side
+
+────────────────────
+_ do set-item-exact
+    - item-index U32
+    - rect Rect
+    - value F64
+
+. item = items[item-index]
+. rect-exact = display-item-rect(item) == rect
+. value-exact = (item.value as F64) == value
+=? if rect-exact && value-exact
+. table = ensure-exacts()
+table.item-slots[item-index] = table.rects.length as U32
+table.rects += rect
+table.values += value
+
+────────────────────
+_ do ensure-exacts DisplayChunkExacts
+
+. existing = exacts
+=? existing if existing
+. created = DisplayChunkExacts()
+for index in 0 .. < items.length
+    created.item-slots += 4294967295
+exacts = created
+= created
+
+────────────────────
+_ item-rect
+    - item-index Size
+    - item DisplayItem
+
+match current
+    |= null
+        display-item-rect(item)
+    ??
+        match current.item-slots[item-index]
+            |= 4294967295u32
+                display-item-rect(item)
+            ??
+                current.rects[it]
+
+.. current = exacts
+
+────────────────────
+_ item-value
+    - item-index Size
+    - item DisplayItem
+
+match current
+    |= null
+        item.value
+    ??
+        match current.item-slots[item-index]
+            |= 4294967295u32
+                item.value
+            ??
+                current.values[it]
+
+.. current = exacts
+
+────────────────────
+_ do set-item-transform
+    - item-index U32
+    - transform Matrix
+
+. table = ensure-side()
+table.item-transforms[item-index] = table.transforms.length as U32
+table.transforms += transform
+
+────────────────────
+_ item-transform
+    - item-index Size
+
+match current
+    |= null
+        null
+    ??
+        match current.item-transforms[item-index]
+            |= 4294967295u32
+                null
+            ??
+                current.transforms[it]
+
+.. current = side
+
+────────────────────
+_ do add-vector-color
+    - color RGBA
+
+. table = ensure-side()
+vector-palette += pack-rgba8(color)
+table.vector-colors += color
+
+────────────────────
+_ do demote-to-opaque
+
+is-opaque = true
+. owner-bounds = owner.bounds.pad(-owner.focus-ring-reach)
+bounds = if has-bounds then owner-bounds + bounds else owner-bounds
+has-bounds = bounds.width > 0 && bounds.height > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayChunkExacts
+
++ item-slots [U32]
++ rects [Rect]
++ values [F64]
+
+────────────────────
+_ do clear
+
+item-slots.clear()
+rects.clear()
+values.clear()
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayChunkSide
+
++ vector-colors [RGBA]
++ colors [RGBA]
++ item-colors [U32]
++ transforms [Matrix]
++ item-transforms [U32]
++ states [DisplayState]
++ wire-states [DisplayStateWire]
++ wire-dirty = true
++ item-states [U32]
++ item-inks [Rect]
++ item-styles [U32]
++ item-strokes [U32]
++ item-dashes [F32]
++ path-verbs [U8]
++ path-coords [F64]
++ path-styles [DisplayPathStyle]
++ styled-wires [DisplayPathStyleWire]
++ gradient-wires [DisplayGradientWire]
++ gradient-stops [GradientStop]
++ shader-args [F64]
++ images [RasterCanvas]
++ image-identities [U64]
++ backdrop-shaders [ShaderFilter]
++ shape-clips Size
++ mask-layers Size
++ blur-layers Size
++ has-backdrop = false
++ content-state U32
++ has-antialiased = false
++ has-shaded-fill = false
++ prefix-bounds Rect
++ has-prefix-bounds = false
+
+────────────────────
+_ do clear
+
+vector-colors.clear()
+colors.clear()
+item-colors.clear()
+transforms.clear()
+item-transforms.clear()
+states.clear()
+states += DisplayState(0, DisplayStateKind.root)
+wire-dirty = true
+item-states.clear()
+item-inks.clear()
+item-styles.clear()
+item-strokes.clear()
+item-dashes.clear()
+path-verbs.clear()
+path-coords.clear()
+path-styles.clear()
+styled-wires.clear()
+gradient-wires.clear()
+gradient-stops.clear()
+shader-args.clear()
+images.clear()
+image-identities.clear()
+backdrop-shaders.clear()
+shape-clips = 0
+mask-layers = 0
+blur-layers = 0
+has-backdrop = false
+content-state = 0
+has-antialiased = false
+has-shaded-fill = false
+prefix-bounds = display-no-rect
+has-prefix-bounds = false
+
+────────────────────
+_ do add-gradient
+    - gradient Gradient
+
+. stops = gradient.stops
+. stop-start = gradient-stops.length as U32
+. stop-count = stops.length as U32
+for stop in stops
+    gradient-stops += stop
+do match gradient
+    | linear LinearGradient
+        gradient-wires += DisplayGradientWire
+            - linear.start
+            - linear.end
+            - 0
+            - 0
+            - display-gradient-linear
+            - stop-start
+            - stop-count
+    | radial RadialGradient
+        gradient-wires += DisplayGradientWire
+            - radial.start-center
+            - radial.end-center
+            - radial.start-radius
+            - radial.end-radius
+            - display-gradient-radial
+            - stop-start
+            - stop-count
+    | conic ConicGradient
+        gradient-wires += DisplayGradientWire
+            - conic.center
+            - conic.center
+            - conic.angle
+            - 0
+            - display-gradient-conic
+            - stop-start
+            - stop-count
+= gradient-wires.length as U32
+
+────────────────────
+_ do add-shader
+    - rect Rect
+    - shader Shader
+    - args [F64]
+    - epoch F64 = -1
+
+. arg-start = shader-args.length as U32
+for arg in args
+    shader-args += arg
+gradient-wires += DisplayGradientWire
+    - rect.top-left
+    - Point(rect.width, rect.height)
+    - 0
+    - epoch
+    - display-gradient-shader
+    - arg-start
+    - args.length as U32
+    - shader.id
+= gradient-wires.length as U32
+
+────────────────────
+_ do add-paint
+    - paint Paint
+    - color RGBA
+
+. arg-start = shader-args.length as U32
+for arg in paint.args
+    shader-args += arg
+gradient-wires += DisplayGradientWire
+    - Point(color.red, color.green)
+    - Point(color.blue, color.alpha)
+    - 0
+    - 0
+    - display-gradient-paint
+    - arg-start
+    - paint.args.length as U32
+    - paint.shader.id
+= gradient-wires.length as U32
+
+────────────────────
+_ do add-brush
+    - brush Brush
+    - color RGBA
+
+. arg-start = shader-args.length as U32
+append-brush-arguments(brush, shader-args)
+gradient-wires += DisplayGradientWire
+    - Point(color.red, color.green)
+    - Point(color.blue, color.alpha)
+    - 0
+    - 0
+    - display-gradient-brush
+    - arg-start
+    - (shader-args.length as U32) - arg-start
+    - brush.shader.id
+= gradient-wires.length as U32
+
+────────────────────
+_ do mask-owner
+    - state U32
+
+. cursor = state
+while cursor != 0 && states[cursor].kind != DisplayStateKind.mask-layer
+    cursor = states[cursor].parent
+= cursor
+
+────────────────────
+_ do translates-at
+    - state U32
+
+. cursor = state
+while cursor != 0
+    . entry = states[cursor]
+    . kind = entry.kind
+    =? false if kind == DisplayStateKind.content
+    =? false if kind == DisplayStateKind.transform && !entry.matrix.is-translation
+    cursor = entry.parent
+= true
+
+────────────────────
+_ do blend-at
+    - state U32
+
+. cursor = state
+while cursor != 0
+    . kind = states[cursor].kind
+    =? states[cursor].blend if kind == DisplayStateKind.blend
+    =? BlendMode.normal if kind == DisplayStateKind.layer || kind == DisplayStateKind.mask-layer
+    =? BlendMode.normal if kind == DisplayStateKind.blur
+    cursor = states[cursor].parent
+= BlendMode.normal
+
+────────────────────
+_ do add-state
+    - state DisplayState
+
+. parent = states[state.parent]
+. placed = state
+placed = placed.full = parent.full
+placed = placed.clip-bounds = parent.clip-bounds
+placed = placed.has-clip-bounds = parent.has-clip-bounds
+placed = placed.local-ink = display-no-rect
+placed = placed.has-local-ink = false
+placed = resolve-state(placed, parent)
+. index = states.length as U32
+states += placed
+if state.kind == DisplayStateKind.clip-outline || state.kind == DisplayStateKind.clip-path
+    shape-clips += 1
+if state.kind == DisplayStateKind.mask-layer
+    mask-layers += 1
+if state.kind == DisplayStateKind.blur
+    blur-layers += 1
+wire-dirty = true
+= index
+
+────────────────────
+_ do resolve-state
+    - state DisplayState
+    - parent DisplayState
+
+. placed = state
+. kind = state.kind
+if kind == DisplayStateKind.transform || kind == DisplayStateKind.content
+    placed = placed.full = parent.full.concatenate(state.matrix)
+    placed = placed.clip-bounds = parent.clip-bounds
+    placed = placed.has-clip-bounds = parent.has-clip-bounds
+    = placed
+placed = placed.full = parent.full
+. clip Rect? = null
+if kind == DisplayStateKind.clip || kind == DisplayStateKind.clip-outline
+    clip = parent.full.transform(state.rect)
+else if kind == DisplayStateKind.clip-path || kind == DisplayStateKind.clip-mask
+    clip = parent.full.transform(state.rect)
+if clip
+    . bounded = clip
+    if parent.has-clip-bounds
+        bounded = parent.clip-bounds.intersection(bounded)
+    placed = placed.clip-bounds = bounded
+    placed = placed.has-clip-bounds = true
+else
+    placed = placed.clip-bounds = parent.clip-bounds
+    placed = placed.has-clip-bounds = parent.has-clip-bounds
+= placed
+
+────────────────────
+_ do refresh-states
+
+. index Size = 1
+while index < states.length
+    . state = states[index]
+    states[index] = resolve-state(state, states[state.parent])
+    index += 1
+wire-dirty = true
+
+────────────────────
+_ do refresh-wire-states
+
+=? if !wire-dirty
+wire-states.clear()
+for state in states
+    wire-states += DisplayStateWire
+        - state.parent
+        - state.kind
+        - state.matrix
+        - state.rect
+        - state.opacity
+        - state.radius
+        - state.side
+        - state.offset
+        - state.size
+        - state.path-start
+        - state.path-count
+        - state.coord-start
+        - if state.fill-rule == FillRule.even-odd then 1u32 else 0u32
+        - state.serial
+        - state.source
+        - state.blend
+wire-dirty = false
+
+────────────────────
+_ do include-state-ink
+    - state U32
+    - ink Rect
+
+=? if ink.width < 0 || ink.height < 0
+. current = states[state]
+if current.has-local-ink
+    states[state] = current.local-ink = current.local-ink + ink
+else
+    . updated = current.local-ink = ink
+    states[state] = updated.has-local-ink = true
+
+────────────────────
+_ do state-ink-bounds
+    - state U32
+    - ink Rect
+
+=? null if ink.width < 0 || ink.height < 0
+. current = states[state]
+. placed = current.full.transform(ink)
+. bounds = current
+if blur-layers > 0
+    . cursor = state
+    while cursor != 0
+        . entry = states[cursor]
+        if entry.kind == DisplayStateKind.blur
+            . matrix = entry.full
+            . scale = sqrt(abs(matrix.a * matrix.d - matrix.b * matrix.c))
+            placed = placed.pad(-(entry.radius * scale + 1))
+            bounds = entry
+        cursor = entry.parent
+if bounds.has-clip-bounds
+    placed = placed.intersection(bounds.clip-bounds)
+=? null if placed.width <= 0 || placed.height <= 0
+= placed
+
+────────────────────
+_ do state-path-bounds
+    - start U32
+    - coord-start U32
+    - count U32
+
+. coord = coord-start as Index
+. min-x F64
+. min-y F64
+. max-x F64
+. max-y F64
+. found = false
+for verb-index in 0 .. < (count as Size)
+    . verb = path-verbs[(start as Index) + verb-index]
+    . pairs Size = 0
+    if verb == DisplayPathVerb.move || verb == DisplayPathVerb.line
+        pairs = 1
+    else if verb == DisplayPathVerb.curve
+        pairs = 3
+    for pair in 0 .. < pairs
+        . x = path-coords[coord]
+        . y = path-coords[coord + 1]
+        coord += 2
+        if found
+            min-x = min(min-x, x)
+            min-y = min(min-y, y)
+            max-x = max(max-x, x)
+            max-y = max(max-y, y)
+        else
+            min-x = x
+            min-y = y
+            max-x = x
+            max-y = y
+            found = true
+= Rect(min-x, min-y, max-x - min-x, max-y - min-y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayGroup
+
++ owner Box
++ parent DisplayGroup?
++ members [DisplayEntry]
++ clip Rect
++ rounded-clip RoundedRect
++ has-clip = false
++ shape-clip DisplayChunk?
++ shape-clip-state U32
++ shape-clip-coords [F64]
++ shape-clip-revision U32
++ translation Point
++ order DisplayOrder
++ outer Rect
++ has-outer = false
++ refresh-pending = false
++ is-layer = false
++ opacity Ratio = 1%%
++ filters [ShaderFilter]
++ is-live = false
++ live-rate F64?
++ live-epoch F64?
++ live-slot = -1.0
++ live-cycle FrameCycle?
++ is-live-settled = false
++ region Rect
++ transform Matrix?
++ inner Rect
++ has-inner = false
++ record-generation U32
++ nodes [DisplayBoxNode]
++ spare-members [DisplayEntry]?
++ spare-nodes [DisplayBoxNode]?
++ refill-stamp U32
++ refill-mark U32
++ refill-index Size
++ linked-mark U32
+
+────────────────────
+_ This
+    - group-owner Box
+    - group-parent DisplayGroup?
+
+.. owner = group-owner
+parent = group-parent
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayBoxNode
+
++ owner Box
++ pre DisplayChunk?
++ post DisplayChunk?
++ group DisplayGroup?
++ layer-group DisplayGroup?
++ child-list-generation U32
++ recorded-origin Point
++ container DisplayGroup?
++ link-stamp U32
++ composite-relink = false
+
+────────────────────
+_ This
+    - node-owner Box
+
+.. owner = node-owner
+child-list-generation = owner.retained-child-list-generation
+recorded-origin = owner.bounds.top-left
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayFrameTable is U8
+
+| items
+| clips
+| shapes
+| colors
+| item-colors
+| states
+| item-states
+| item-inks
+| item-exacts
+| exact-rects
+| exact-values
+| path-verbs
+| path-coords
+| styles
+| gradients
+| stops
+| args
+
+────────────────────
++ get width Size
+
+|? DisplayItem.size if this == .items
+|? DisplayShape.size if this == .shapes
+|? RGBA.size if this == .colors
+|? DisplayStateWire.size if this == .states
+|? U8.size if this == .path-verbs
+|? DisplayPathStyleWire.size if this == .styles
+|? DisplayGradientWire.size if this == .gradients
+|? GradientStop.size if this == .stops
+|? Rect.size if this == .clips || this == .item-inks || this == .exact-rects
+|? U32.size if this == .item-colors || this == .item-states || this == .item-exacts
+?? F64.size
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayFrameSpan is Tuple
+
++ data Pointer
++ count Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ DisplayFrameReplay
+
++ scene = DisplayScene()
++ chunk = DisplayChunk(Box(), DisplayPhase.pre)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-chunk-anchor
+    - chunk DisplayChunk?
+
+DisplayAnchor(DisplayEntry(chunk, null) if chunk, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-group-anchor
+    - group DisplayGroup
+
+DisplayAnchor(DisplayEntry(null, group) if group.members.length > 0, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do display-entry-index Index?
+    - members [DisplayEntry]
+    - target DisplayEntry
+
+. index Size
+while index < members.length
+    . entry = members[index]
+    . same-chunk = entry.chunk as Pointer? == target.chunk as Pointer?
+    =? index if same-chunk && entry.group as Pointer? == target.group as Pointer?
+    index += 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-sprite-scale-step I64
+    - scale F64
+
+ceil(log(max(scale, 0.0625)) / display-sprite-step) as I64
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-frame-align Size
+    - offset Size
+
+((offset + 15) / 16) * 16
+
+━━━━━━━━━━━━━━━━━━━━
+_ do frame-path-fits Bool
+    - verbs CPointer'U8
+    - verb-count Size
+    - coord-count Size
+    - start U32
+    - count U32
+    - coord-start U32
+
+. first = start as Size
+. length = count as Size
+=? false if first > verb-count || length > verb-count - first
+. needed Size
+for index in first .. < first + length
+    . verb = verbs[index]
+    if verb == DisplayPathVerb.move || verb == DisplayPathVerb.line
+        needed += 2
+    else if verb == DisplayPathVerb.curve
+        needed += 6
+    else if verb != DisplayPathVerb.enclose
+        = false
+. coord = coord-start as Size
+= coord <= coord-count && needed <= coord-count - coord
+
+━━━━━━━━━━━━━━━━━━━━
+_ do frame-style-usable Bool
+    - wire DisplayPathStyleWire
+    - usable [Bool]
+    - gradients CPointer'DisplayGradientWire
+
+if wire.gradient != 0
+    . slot = (wire.gradient - 1) as Size
+    =? false if slot >= usable.length || !usable[slot]
+    =? false if gradients[slot].kind == display-gradient-brush
+if wire.brush != 0
+    . slot = (wire.brush - 1) as Size
+    =? false if slot >= usable.length || !usable[slot]
+    =? false if gradients[slot].kind != display-gradient-brush
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do frame-arguments [F64]
+    - frame DisplayFrame
+    - start U32
+    - count U32
+
+. source = frame.table(.args) as CPointer'F64
+. values [F64]
+for index in 0 .. < (count as Size)
+    values += source[(start as Size) + index]
+= values
+
+━━━━━━━━━━━━━━━━━━━━
+_ do frame-gradient Gradient
+    - frame DisplayFrame
+    - wire DisplayGradientWire
+
+. source = frame.table(.stops) as CPointer'GradientStop
+. stops [GradientStop]
+for index in 0 .. < (wire.stop-count as Size)
+    stops += source[(wire.stop-start as Size) + index]
+= match wire.kind
+    |= display-gradient-radial
+        RadialGradient(wire.start, wire.start-radius, wire.end, wire.end-radius, stops)
+    |= display-gradient-conic
+        ConicGradient(wire.start, wire.start-radius, stops)
+    ??
+        LinearGradient(wire.start, wire.end, stops)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do display-frame-style DisplayPathStyle
+    - wire DisplayPathStyleWire
+    - frame DisplayFrame
+    - shaders [U32 = Shader]
+
+. flags = wire.paint
+. fill RGBA? = wire.fill if (flags /and/ 1) != 0
+. stroke RGBA? = wire.stroke if (flags /and/ 2) != 0
+. gradient Gradient?
+. shadow Shadow?
+. shader Shader?
+. shader-args [F64]?
+. paint Paint?
+. brush Brush?
+. gradients = frame.table(.gradients) as CPointer'DisplayGradientWire
+if wire.gradient != 0
+    . source = gradients[(wire.gradient - 1) as Size]
+    if source.kind == display-gradient-paint
+        paint = Paint
+            - shaders[source.shader]!
+            - frame-arguments(frame, source.stop-start, source.stop-count)
+        fill = RGBA(source.start.x, source.start.y, source.end.x, source.end.y)
+    else if source.kind == display-gradient-shader
+        shader = shaders[source.shader]
+        shader-args = frame-arguments(frame, source.stop-start, source.stop-count)
+        fill = null
+        stroke = null
+    else
+        gradient = frame-gradient(frame, source)
+        fill = null
+        stroke = null
+if wire.brush != 0
+    . source = gradients[(wire.brush - 1) as Size]
+    . values = frame-arguments(frame, source.stop-start, source.stop-count)
+    . extra [F64]
+    for index in 12 .. < values.length
+        extra += values[index]
+    stroke = RGBA(source.start.x, source.start.y, source.end.x, source.end.y)
+    brush = Brush
+        - shaders[source.shader]!
+        - extra
+        - values[0]
+        - values[1]
+        - values[2]
+        - values[3]
+        - values[4]
+        - values[5] if values[6] != 0
+        - values[7]
+        - values[8]
+        - values[9]
+        - values[10]
+        - values[11]
+if (flags /and/ 16) != 0
+    shadow = Shadow(wire.fill, wire.shadow-blur, wire.shadow-x, wire.shadow-y)
+= DisplayPathStyle
+    - fill
+    - stroke
+    - wire.stroke-width
+    - display-frame-cap(wire.stroke-style /and/ 15)
+    - display-frame-join((wire.stroke-style /rshift/ 4) /and/ 15)
+    - wire.dash
+    - if (flags /and/ 8) != 0 then FillRule.even-odd else FillRule.nonzero
+    - (flags /and/ 4) != 0
+    - gradient
+    - shadow
+    - shader
+    - shader-args
+    - paint
+    - brush
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-frame-cap LineCap
+    - code U32
+
+|? LineCap.round if code == 1
+|? LineCap.square if code == 2
+?? LineCap.butt
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-frame-join LineJoin
+    - code U32
+
+|? LineJoin.round if code == 1
+|? LineJoin.bevel if code == 2
+?? LineJoin.miter
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-item
+    - kind U8
+    - rect Rect
+    - value F64
+    - data0 U32
+    - data1 U32 = 0
+    - data2 U32 = 0
+    - data3 U32 = 0
+
+DisplayItem
+    - kind
+    - 0
+    - 0
+    - rect.x as F32
+    - rect.y as F32
+    - rect.width as F32
+    - rect.height as F32
+    - value as F32
+    - data0
+    - data1
+    - data2
+    - data3
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-shape
+    - shape Outline
+    - shadow Shadow?
+
+DisplayShape
+    - shape.effective-radius as F32
+    - outline-side-code(shape.arrow) as F32
+    - (shape.arrow?.offset ?? 0) as F32
+    - (shape.arrow?.size ?? 0) as F32
+    - (shadow?.blur ?? 0) as F32
+    - (shadow?.x ?? 0) as F32
+    - (shadow?.y ?? 0) as F32
+    - (shadow?.spread ?? 0) as F32
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-shape-outline
+    - rect Rect
+    - shape DisplayShape
+
+Outline(rect, shape.radius, arrow)
+
+.. arrow = OutlineArrow(side, shape.offset, shape.size) if side
+.. side = display-shape-side(shape.side)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-command-outline
+    - command DisplayCommand
+
+Outline(command.rect, command.point1.x, arrow)
+
+.. arrow = OutlineArrow(side, command.point2.x, command.point2.y) if side
+.. side = display-shape-side(command.point1.y)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-outline-within
+    - inner Outline
+    - outer Outline
+
+outer.bounds.contains(inner.bounds, 0.01) && arrows && corners
+
+.. arrows = display-points-near(display-arrow-tip(inner), display-arrow-tip(outer))
+.. corners = rounded || straight.contains(inner.bounds, 0.01)
+.. straight = outer.bounds.pad(outer.effective-radius)
+.. rounded = inner.effective-radius >= outer.effective-radius - 0.01
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-outline-inset
+    - inner Outline
+    - outer Outline
+    - amount Length
+
+bounds && radius && arrows
+
+.. bounds = display-rects-near(inner.bounds.pad(-amount), outer.bounds)
+.. radius = abs(inner.effective-radius - max(0, outer.effective-radius - amount)) < 0.01
+.. arrows = inner.arrow?.side == outer.arrow?.side && abs(inner-offset - outer-offset) < 0.01
+.. inner-offset = (inner.arrow?.offset ?? 0) + (if inner.arrow then amount else 0)
+.. outer-offset = outer.arrow?.offset ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-rects-near
+    - a Rect
+    - b Rect
+
+abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 && sizes
+
+.. sizes = abs(a.width - b.width) < 0.01 && abs(a.height - b.height) < 0.01
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-points-near
+    - a Point?
+    - b Point?
+
+(!a && !b) || (a != null && b != null && abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-arrow-tip
+    - shape Outline
+
+match? shape.arrow?.side
+    |= Side.top
+        Point(shape.bounds.x + shape.arrow-tip, shape.bounds.y - size)
+    |= Side.bottom
+        Point(shape.bounds.x + shape.arrow-tip, shape.bounds.bottom + size)
+    |= Side.left
+        Point(shape.bounds.x - size, shape.bounds.y + shape.arrow-tip)
+    |= Side.right
+        Point(shape.bounds.right + size, shape.bounds.y + shape.arrow-tip)
+
+.. size = shape.arrow?.size ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-shape-side
+    - code F64
+
+match? code
+    |= 0
+        Side.top
+    |= 1
+        Side.bottom
+    |= 2
+        Side.left
+    |= 3
+        Side.right
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-item-rect
+    - item DisplayItem
+
+Rect(item.x as F64, item.y as F64, item.width as F64, item.height as F64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-path-paint
+    - has-fill Bool
+    - has-stroke Bool
+    - closed Bool
+    - fill-rule FillRule
+    - has-shadow Bool = false
+
+fill /or/ stroke /or/ enclosed /or/ even-odd /or/ shadowed
+
+.. fill = if has-fill then 1u32 else 0u32
+.. stroke = if has-stroke then 2u32 else 0u32
+.. enclosed = if closed then 4u32 else 0u32
+.. even-odd = if fill-rule == FillRule.even-odd then 8u32 else 0u32
+.. shadowed = if has-shadow then 16u32 else 0u32
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-stroke-style
+    - cap LineCap
+    - join LineJoin
+
+cap-code /or/ (join-code /lshift/ 4)
+
+.. cap-code = line-cap-code(cap) as U32
+.. join-code = line-join-code(join) as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ do display-shape-command DisplayCommand
+    - kind U8
+    - rect Rect
+    - canvas Canvas
+
+. command = DisplayCommand
+    - kind
+    - rect
+    - Point(0, 0)
+    - Point(0, 0)
+    - Point(0, 0)
+    - Matrix()
+    - canvas.fill-color
+    - canvas.stroke-color
+    - canvas.stroke-width
+    - canvas.stroke-cap
+    - canvas.stroke-join
+command = command.stroke-dash = canvas.stroke-dash
+= command
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-stroke-ink
+    - rect Rect
+    - canvas Canvas
+
+|? !canvas.stroke-color
+    rect
+??
+    rect.inflate(max(reach, scattered))
+
+.. reach = if mitered then canvas.stroke-width * 5 else canvas.stroke-width
+.. mitered = canvas.stroke-join == LineJoin.miter
+.. brush = canvas.stroke-brush
+.. scattered =
+    |? brush
+        canvas.stroke-width * (0.5 * (1 + abs(brush.size-jitter)) + 1.2 * abs(brush.scatter)) + 1
+    ??
+        0.0
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-outline-state
+    - parent U32
+    - kind U8
+    - shape Outline
+
+DisplayState
+    - parent
+    - kind
+    - Matrix()
+    - shape.bounds
+    - shape.radius
+    - outline-side-code(shape.arrow) as F64
+    - shape.arrow?.offset ?? 0
+    - shape.arrow?.size ?? 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-outline-clip-command
+    - shape Outline
+
+DisplayCommand
+    - DisplayCommandKind.clip-outline
+    - shape.bounds
+    - Point(shape.radius, outline-side-code(shape.arrow) as Coord)
+    - Point(shape.arrow?.offset ?? 0, shape.arrow?.size ?? 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-clipped-ink
+    - rect Rect
+    - clip Rect
+    - has-clip Bool
+
+if has-clip then rect.intersection(clip) else rect
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-alignment-code U16
+    - alignment TextAlignment
+
+match alignment
+    |= TextAlignment.center
+        1
+    |= TextAlignment.right
+        2
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ display-alignment
+    - code U16
+
+match code
+    |= 1
+        TextAlignment.center
+    |= 2
+        TextAlignment.right
+    ??
+        TextAlignment.left
+
+━━━━━━━━━━━━━━━━━━━━
+_ do next-display-record-generation
+
+display-record-generation += 1
+if !display-record-generation
+    display-record-generation = 1
+= display-record-generation
+
+━━━━━━━━━━━━━━━━━━━━
+_ do next-display-scene-generation
+
+display-scene-generation += 1
+if !display-scene-generation
+    display-scene-generation = 1
+= display-scene-generation
+
+━━━━━━━━━━━━━━━━━━━━
 _ display-damage-areas-join Bool
     - first Rect
     - second Rect
@@ -7439,21 +7455,3 @@ for index in 0 .. < a.length
     =? false if left.shader.id != right.shader.id || left.args != right.args || images-differ
     .. images-differ = left.images != right.images
 = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ merged-live-fills LiveFillState
-    - first LiveFillState
-    - second LiveFillState
-
-|? !second.is-visible
-    LiveFillState(first.is-visible, first.frame-rate, wake)
-|? !first.is-visible
-    LiveFillState(true, second.frame-rate, wake)
-??
-    LiveFillState(true, rate, wake)
-
-.. wake = if first.wake-at != null && second.wake-at != null then earlier-wake else any-wake
-.. earlier-wake = min(first.wake-at, second.wake-at)
-.. any-wake = first.wake-at ?? second.wake-at
-.. rate = higher-rate if first.frame-rate != null && second.frame-rate != null
-.. higher-rate = max(first.frame-rate, second.frame-rate)

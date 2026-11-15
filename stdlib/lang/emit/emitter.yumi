@@ -3631,16 +3631,12 @@ do match? tree.nodes[id]
         . built = convert(id, .reason-markup-row, emit-closure(row.body))
         . keyed = tree.keyed-clause(row.loop)
         . keyer = if keyed != 0 then convert(keyed, .reason-markup-key, emit-closure(keyed)).operand else nothing
-        . optional = region.replace != no-instance
         . mark = pending.length
         pending += content-hosts[top - 1].operand
-        if !optional
-            pending += source.operand
         pending += built.operand
         if keyed != 0
             pending += keyer
-        if optional
-            pending += source.operand
+        pending += source.operand
         . made = raising-call(id, region.create, mark)
         put-under-batch
             - id
@@ -3784,14 +3780,13 @@ _ do emit-resource
 ` The function the action of a markup loop region runs, given the environment the region was
 ` made in: the container is read again with the trackers of the action noting what it reads,
 ` the members of the region's host read by their names alone, and given to the region, read
-` from where it was kept, by the call of its `replace-source` the type pass recorded at the
-` `for`, as the reference's `collection-source` function does.
+` from where it was kept, by the markup runtime's replacer the type pass recorded at the `for`,
+` as the reference's `collection-source` function does.
 . live = instances.live
 . region = facts.loop-region-of(instances.rows[unit.instance].enclosing, id)
 . slot = channel-slot(id)
-. fact = own-call(id)
 . container = region-container(id)
-if !region || slot == no-slot || (fact == no-fact && region.replace == no-instance) || unanchored
+if !region || slot == no-slot || region.replace == no-instance || unanchored
     refuse(.refused-function, declared)
     =
 .. unanchored = container == 0 || live.previous == no-instance || live.next == no-instance
@@ -3814,13 +3809,10 @@ if source.type != region.source
 if source.type != region.source
     refuse(.refused-conversion, container)
     =
-if region.replace != no-instance
-    . mark = pending.length
-    pending += made.operand
-    pending += source.operand
-    do raising-call(id, region.replace, mark)
-else
-    do call-protocol(id, fact, made.operand, made-type, source.operand, source.type, false)
+. mark = pending.length
+pending += made.operand
+pending += source.operand
+do raising-call(id, region.replace, mark)
 emit-end(declared)
 
 ────────────────────
@@ -3887,7 +3879,6 @@ else
         branch(load-local(kept, id), asking-block, selecting)
         ir.start-block(asking-block)
     . asking = pending.length
-    pending += host.operand
     pending += given.operand
     pending += selected.operand
     . keeps = raising-call(id, region.keeps, asking)
@@ -3895,7 +3886,6 @@ else
 ir.start-block(selecting)
 close-actions(id, made.operand)
 . choosing = pending.length
-pending += host.operand
 pending += given.operand
 pending += selected.operand
 do raising-call(id, region.select, choosing)
@@ -4079,9 +4069,9 @@ _ do batch-root Operand
     - type-id SyntaxId
     - made Typed
 
-` The batch of markup in force in the body of a markup element, a `MarkupBatch`: the element
+` The batch of markup in force in the body of a markup element, a `MarkupRootElement`: the element
 ` itself where its class is a batch, else the one in force where the element is written, if
-` any. An element of a markup host is put under it first, given as the `MarkupBatch?` the
+` any. An element of a markup host is put under it first, given as the `MarkupRootElement?` the
 ` markup runtime takes.
 . nothing = make-operand(.operand-void, 0)
 . inherited = if content-roots.length != 0 then content-roots[content-roots.length - 1] else nothing
@@ -4529,7 +4519,7 @@ _ do generate-content Operand
 
 ` The content the lines given of a style rule applied at a site by the application `index`
 ` generate, in the order written, as the reference's `compileGuardedContent` makes it: the
-` object made a `MarkupHost` once, the function of each line made a `MarkupSlotBuilder` of it, and
+` object made a `MarkupElement` once, the function of each line made a `MarkupSlotBuilder` of it, and
 ` the record of the line's content made for the association at the next order. Under conditions,
 ` the record is enabled as they hold (`enable-content`). A line the type pass generated nothing for
 ` is passed over. Answers the association, as `declare-style` does.
@@ -4581,7 +4571,7 @@ _ do content-target Typed
     - made Operand
     - type TypeId
 
-` The object generated content is made for, as the `MarkupHost` the style runtime takes it as,
+` The object generated content is made for, as the `MarkupElement` the style runtime takes it as,
 ` converted as the type pass recorded at its markup element.
 . fact = facts.first-conversion(unit.instance, site)
 while fact != no-fact
@@ -7178,10 +7168,17 @@ do match? tree.nodes[id]
                                 continue
                             . setter = own-call(attribute.lhs)
                             if setter != no-fact && facts.calls[setter].form == .call-setter
+                                . tracked = tables.live-statement-of(unit.reading, statement)
+                                . watching = if tracked then open-trackers(statement) else no-local
+                                if tracked
+                                    live-actions += LiveTrackers(watching, watching)
                                 . given = convert
                                     - attribute.rhs
                                     - .reason-argument
                                     - emit-expression(attribute.rhs)
+                                if tracked
+                                    live-actions.pop()
+                                    attribute-trackers += LiveMember(statement, watching)
                                 setter-given += Typed(apart(given, attribute.rhs, true), given.type)
                                 continue
                             . name = identifier-name(tree, attribute.lhs)
@@ -20046,7 +20043,10 @@ else
                 author-again(statement, row.rhs, styled)
             else if tree.attribute-element(statement) != 0 || rule-update
                 . name = identifier-name(tree, row.lhs)
-                if name
+                . setter = own-call(row.lhs)
+                if setter != no-fact && facts.calls[setter].form == .call-setter
+                    set-again(statement, row.lhs, row.rhs, facts.calls[setter].callee)
+                else if name
                     store-again(statement, statement, name, row.rhs)
                 else
                     refuse(.refused-statement, statement)
@@ -20164,6 +20164,33 @@ put-property
     - U32.max
     - false
     - memo-flag-of(type, property)
+
+────────────────────
+_ do set-again
+    - statement SyntaxId
+    - target SyntaxId
+    - rhs SyntaxId
+    - callee InstanceId
+
+. slot = channel-slot(statement)
+if slot == no-slot || callee == no-instance || !is-callable(callee) || other-arity
+    refuse(.refused-statement, statement)
+    =
+.. other-arity = instances.signatures[callee].args.count != 1
+. type = find-captured(slot, statement).type
+. given = convert(rhs, .reason-argument, emit-expression(rhs))
+if given.type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, statement)
+    =
+. object = read-captured(slot, statement, type)
+. receiver = convert(target, .reason-receiver, Typed(object.operand, type))
+if receiver.type != instances.rows[callee].self-type
+    refuse(.refused-conversion, statement)
+    =
+. mark = pending.length
+pending += receiver.operand
+pending += given.operand
+call-method(callee, target, mark)
 
 ────────────────────
 _ do keep-taken
@@ -29855,7 +29882,7 @@ _ is-applied Bool
     - reason ConversionReason
 
 ` Whether some shape here applies the conversions recorded for a reason. Generated content
-` applies the object of its markup element made a `MarkupHost`, and the function that builds
+` applies the object of its markup element made a `MarkupElement`, and the function that builds
 ` it made a `MarkupSlotBuilder`, at the line that builds it (`generate-content`). A write to an
 ` event that bubbles applies its object made an `EventNode` (`emit-publish`, `emit-route`).
 |? reason == .reason-argument || reason == .reason-print || reason == .reason-operand
@@ -45019,7 +45046,7 @@ _ do emit-markup-read Typed
     - object SyntaxId
 
 ` A read of a markup link: the subject, given to the markup runtime's function as a
-` `MarkupHost`, and the host it answers, taken where it is one as the class the read gives,
+` `MarkupElement`, and the host it answers, taken where it is one as the class the read gives,
 ` unchecked, as the reference takes it.
 . nothing = make-operand(.operand-void, 0)
 . read = facts.markup-read-of(unit.reading, id)
@@ -50878,8 +50905,13 @@ _ do emit-class-adapter
 ` with no error where the base's raises errors and the override raises none. Where the
 ` override answers nothing, it answers what a return written with no value gives, the
 ` default of the base's type, as the reference does. An override that raises errors the
-` base's answers otherwise, or that takes an argument as another type, has no shape here.
+` base's answers otherwise, or that takes an argument as another type, has no shape here. A
+` property a class stores in place of a getter or a setter is read or stored as
+` `emit-class-accessor` says.
 . row = tables.class-adapters[function.place]
+if row.override == no-instance
+    emit-class-accessor(row)
+    =
 . theirs = instances.signatures[row.proto]
 . mine = instances.signatures[row.override]
 . written = instances.rows[row.override]
@@ -50916,6 +50948,49 @@ else if returns-type == types.void-type && result-type == no-type
     return-nothing()
 else
     return-value(answer.operand, 0)
+
+────────────────────
+_ do emit-class-accessor
+    - row ClassAdapter
+
+` The function a class's table holds in the slot of a getter or a setter of an interface for
+` objects of a class that store the property in its place: it reads the property of the
+` object, wrapped in the optional the getter answers where it holds what that holds, or stores
+` its argument there as an assignment does. A property stored any other way, one some read
+` tracks, and one of another type than the getter answers or the setter is given have no
+` shape here.
+. theirs = instances.signatures[row.proto]
+. place = row.property
+if theirs.args.count > 1 || theirs.errors.count != 0 || place >= types.properties.length
+    refuse-class(row.receiver)
+    =
+. property = types.properties[place]
+. held = tables.layouts.objects[row.receiver]
+if property.storage-kind != .storage-eager || tracks(property) || held == no-layout
+    refuse-class(row.receiver)
+    =
+ir.add-argument(layout-of(instances.rows[row.proto].self-type, 0))
+. object = make-operand(.operand-argument, 0)
+if theirs.args.count == 1
+    . given = instances.argument-type(row.proto, 0)
+    ir.add-argument(layout-of(given, 0))
+    if theirs.returns != types.void-type || given != property.type
+        refuse-class(row.receiver)
+        =
+    . field = tables.layouts.field(held, object-header-fields + property.slot)
+    put-property(object, field, property, make-operand(.operand-argument, 1), 0, U32.max, false, memo-flag-of(row.receiver, property))
+    return-nothing()
+    =
+returns-type = theirs.returns
+ir.returns = layout-of(returns-type, 0)
+. answer = load-property(0, object, row.receiver, property.name, true, returns-type)
+if answer.type != returns-type && wraps-value
+    answer = wrap(0, answer, returns-type)
+.. wraps-value = types.is-optional(returns-type) && types.optional-inner(returns-type) == answer.type
+if answer.type != returns-type
+    refuse-class(row.receiver)
+    =
+return-value(answer.operand, 0)
 
 ────────────────────
 _ is-derived Bool

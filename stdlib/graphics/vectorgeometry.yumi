@@ -21,134 +21,18 @@
 + vector-raster-promotion-draws U32 = 4
 + vector-raster-phase-steps I32 = 256
 + vector-raster-hot-draws U64 = 8192
-_ vector-raster-epsilon = 1e-6
 + vector-raster-cache-budget Size = 8 * 1024 * 1024
-_ vector-geometry-keyed-seed U64 = 7640891576956012809u64
 + vector-raster-max-entry-bytes Size = 1024 * 1024
 
+_ vector-raster-epsilon = 1e-6
+_ vector-geometry-keyed-seed U64 = 7640891576956012809u64
 _ fallback-vector-geometry-table := VectorGeometryTable()
 _ vector-geometry-renderer-tables := Map'Pointer'VectorGeometryTable()
 
-━━━━━━━━━━━━━━━━━━━━
-+ default-vector-geometry-table VectorGeometryTable
-
-fallback-vector-geometry-table
-
-━━━━━━━━━━━━━━━━━━━━
 + VectorGeometryHandle is (index U32, generation U32)
-
-━━━━━━━━━━━━━━━━━━━━
 + ImageHandle is (index U32, generation U32)
-
-━━━━━━━━━━━━━━━━━━━━
 + VectorGeometryAcquisition is (handle VectorGeometryHandle, palette [RGBA])
-
-━━━━━━━━━━━━━━━━━━━━
-+ VectorGeometryBuilder is () VectorGeometry
-
-━━━━━━━━━━━━━━━━━━━━
-+ ImageResource
-
-_ canvas RasterCanvas
-+ pixel-width I32
-+ pixel-height I32
-+ intended-scale F64
-+ template-alpha Bool
-
-────────────────────
-+ This
-    - canvas
-    - intended-scale
-    - template-alpha Bool = false
-
-pixel-width = canvas.pixel-width
-pixel-height = canvas.pixel-height
-
-────────────────────
-+ get byte-count Size
-
-(pixel-width as Size) * (pixel-height as Size) * 4
-
-────────────────────
-+ get native
-
-canvas.native
-
-────────────────────
-+ do draw
-    - destination Canvas
-    - rect Rect
-    - tint RGBA?
-
-if template-alpha
-    destination.fill-color = tint
-destination.draw-image(canvas, rect, template-alpha)
-
-────────────────────
-_ do close
-
-canvas.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ vector-geometry-table-for VectorGeometryTable
-    - root MarkupBatch?
-
-|? !root
-    fallback-vector-geometry-table
-|? existing
-    existing
-??
-    fallback-vector-geometry-table
-
-.. key = root as Pointer
-.. existing = vector-geometry-renderer-tables[key]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do register-vector-geometry-renderer
-    - root MarkupBatch
-    - table VectorGeometryTable
-
-vector-geometry-renderer-tables[root as Pointer] = table
-
-━━━━━━━━━━━━━━━━━━━━
-+ do unregister-vector-geometry-renderer
-    - root MarkupBatch
-
--= vector-geometry-renderer-tables[root as Pointer]
-
-━━━━━━━━━━━━━━━━━━━━
-+ VectorGeometryPaintRole is Union
-
-| inherit
-| inherited-stroke
-| none
-| color
-
-━━━━━━━━━━━━━━━━━━━━
 + VectorGeometryPaint is (role VectorGeometryPaintRole, index U32)
-
-━━━━━━━━━━━━━━━━━━━━
-+ VectorGeometrySpan
-
-+ path Path
-+ fill VectorGeometryPaint
-+ stroke VectorGeometryPaint
-+ stroke-width Length?
-+ stroke-cap LineCap?
-+ stroke-join LineJoin?
-+ fill-rule FillRule
-+ stroke-alignment StrokeAlignment
-
-────────────────────
-+ This
-    - path
-    - fill
-    - stroke
-    - stroke-width
-    - stroke-cap
-    - stroke-join
-    - fill-rule
-    - stroke-alignment = StrokeAlignment.center
 
 ━━━━━━━━━━━━━━━━━━━━
 + VectorGeometry
@@ -156,6 +40,7 @@ vector-geometry-renderer-tables[root as Pointer] = table
 + view-box Rect
 + ink-bounds Rect
 + spans [VectorGeometrySpan]
+
 _ inherits-fill Bool
 _ inherits-stroke Bool
 
@@ -166,6 +51,11 @@ _ inherits-stroke Bool
     - spans
     - inherits-fill
     - inherits-stroke
+
+────────────────────
++ get supports-raster-cache Bool
+
+!inherits-fill && !inherits-stroke
 
 ────────────────────
 + do paint
@@ -221,11 +111,6 @@ for span in spans
         paint-aligned-stroke(canvas, span.path, span.fill-rule, span.stroke-alignment, stroke-width)
 
 ────────────────────
-+ get supports-raster-cache Bool
-
-!inherits-fill && !inherits-stroke
-
-────────────────────
 + do template-tint (compatible Bool, tint RGBA)
     - palette [RGBA]
     - offset U32
@@ -265,125 +150,82 @@ for span in spans
 = (found && has-inherited, tint)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ vector-view-transform Matrix
-    - view Rect
-    - destination Rect
-
-matrix-from-translation(destination.top-left).scale(size).translate(Point(-view.x, -view.y))
-
-.. size = Dimensions(destination.width / view.width, destination.height / view.height)
++ VectorGeometryBuilder is () VectorGeometry
 
 ━━━━━━━━━━━━━━━━━━━━
-+ vector-matrix-is-axis-aligned
-    - matrix Matrix
++ ImageResource
 
-matrix.b == 0 && matrix.c == 0 && matrix.a > 0 && matrix.d > 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ vector-raster-phase-offset
-    - phase I32
-
-(phase as F64) / (vector-raster-phase-steps as F64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ vector-raster-pixel-extent
-    - phase I32
-    - extent F64
-
-ceil(vector-raster-phase-offset(phase) + extent - vector-raster-epsilon) as I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do vector-geometry-fingerprint U64
-    - source VectorGeometrySource
-    - view-box Rect
-
-. fingerprint = fnv-offset-basis
-fingerprint = vector-geometry-mix-rect(fingerprint, view-box)
-= vector-geometry-mix-source(fingerprint, source)
-
-━━━━━━━━━━━━━━━━━━━━
-_ VectorGeometryEntry
-
-+ fingerprint U64
-+ generation U32 = 1
-+ references U32
-+ geometry VectorGeometry?
-
-────────────────────
-_ This
-    - fingerprint
-    - geometry
-    - references
-
-━━━━━━━━━━━━━━━━━━━━
-_ ImageResourceEntry
-
-+ generation U32 = 1
-+ references U32
-+ resource ImageResource?
-
-────────────────────
-_ This
-    - resource
-    - references
-
-━━━━━━━━━━━━━━━━━━━━
-_ VectorRasterEntry
-
-+ geometry-handle VectorGeometryHandle
 + pixel-width I32
 + pixel-height I32
-+ scale-x F64
-+ scale-y F64
-+ phase-x I32
-+ phase-y I32
-+ stroke-width Length
-+ stroke-cap LineCap
-+ stroke-join LineJoin
-+ stroke-dash Length
++ intended-scale F64
 + template-alpha Bool
-+ palette-key U64
-+ key U64
-+ last-use U64
-+ image-handle = ImageHandle(0, 0)
-+ image-bytes Size
-+ slot Size
+
+_ canvas RasterCanvas
 
 ────────────────────
-_ This
-    - geometry-handle
-    - pixel-width
-    - pixel-height
-    - scale-x
-    - scale-y
-    - phase-x
-    - phase-y
++ This
+    - canvas
+    - intended-scale
+    - template-alpha Bool = false
+
+pixel-width = canvas.pixel-width
+pixel-height = canvas.pixel-height
+
+────────────────────
++ get byte-count Size
+
+(pixel-width as Size) * (pixel-height as Size) * 4
+
+────────────────────
++ get native
+
+canvas.native
+
+────────────────────
++ do draw
+    - destination Canvas
+    - rect Rect
+    - tint RGBA?
+
+if template-alpha
+    destination.fill-color = tint
+destination.draw-image(canvas, rect, template-alpha)
+
+────────────────────
+_ do close
+
+canvas.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometryPaintRole is Union
+
+| inherit
+| inherited-stroke
+| none
+| color
+
+━━━━━━━━━━━━━━━━━━━━
++ VectorGeometrySpan
+
++ path Path
++ fill VectorGeometryPaint
++ stroke VectorGeometryPaint
++ stroke-width Length?
++ stroke-cap LineCap?
++ stroke-join LineJoin?
++ fill-rule FillRule
++ stroke-alignment StrokeAlignment
+
+────────────────────
++ This
+    - path
+    - fill
+    - stroke
     - stroke-width
     - stroke-cap
     - stroke-join
-    - stroke-dash
-    - template-alpha
-    - palette-key
-    - key
-
-────────────────────
-+ matches
-    - other VectorRasterEntry
-
-|? geometry-handle != other.geometry-handle
-    false
-|? pixel-width != other.pixel-width || pixel-height != other.pixel-height
-    false
-|? scale-x != other.scale-x || scale-y != other.scale-y
-    false
-|? phase-x != other.phase-x || phase-y != other.phase-y
-    false
-|? stroke-width != other.stroke-width || stroke-cap != other.stroke-cap
-    false
-|? stroke-join != other.stroke-join || stroke-dash != other.stroke-dash
-    false
-??
-    template-alpha == other.template-alpha && palette-key == other.palette-key
+    - fill-rule
+    - stroke-alignment = StrokeAlignment.center
 
 ━━━━━━━━━━━━━━━━━━━━
 + VectorGeometryTable
@@ -400,6 +242,38 @@ _ raster-sighting-keys = U64[vector-raster-sighting-count]
 _ raster-sighting-draws = U32[vector-raster-sighting-count]
 _ raster-clock U64
 _ raster-byte-count Size
+
+────────────────────
++ do get image-live-count Size
+
+. count Size
+for entry in image-entries
+    if entry.resource
+        count += 1
+= count
+
+────────────────────
++ do get atlas-entry-count Size
+
+. count Size
+for entry in raster-entries
+    if is-image-valid(entry.image-handle)
+        count += 1
+= count
+
+────────────────────
++ get atlas-bytes Size
+
+raster-byte-count
+
+────────────────────
++ do get live-count Size
+
+. count Size
+for entry in entries
+    if entry.geometry
+        count += 1
+= count
 
 ────────────────────
 + do intern VectorGeometryAcquisition
@@ -422,40 +296,6 @@ source.prepare-vector-geometry-source()
 . existing = retain-fingerprint(fingerprint)
 =? existing if existing
 = store(fingerprint, build())
-
-────────────────────
-_ do retain-fingerprint VectorGeometryHandle?
-    - fingerprint U64
-
-. existing-index = lookup[fingerprint]
-=? if !existing-index
-. entry = entries[existing-index]
-=? if !entry.geometry
-entry.references += 1
-remove-from-grace(existing-index)
-= VectorGeometryHandle(existing-index, entry.generation)
-
-────────────────────
-_ do store VectorGeometryHandle
-    - fingerprint U64
-    - geometry VectorGeometry
-
-. index U32
-. entry VectorGeometryEntry
-if free-indices
-    index = free-indices[free-indices.length - 1]
-    free-indices.remove(free-indices.length - 1)
-    entry = entries[index]
-    entry.fingerprint = fingerprint
-    entry.geometry = geometry
-    entry.references = 1
-else
-    index = entries.length as U32
-    entry = VectorGeometryEntry(fingerprint, geometry, 1)
-    entries += entry
-
-lookup[fingerprint] = index
-= VectorGeometryHandle(index, entry.generation)
 
 ────────────────────
 + do insert-image ImageHandle
@@ -551,15 +391,6 @@ image-free-indices += handle.index
 .. entry = image-entries[handle.index as Index]
 
 ────────────────────
-+ do get image-live-count Size
-
-. count Size
-for entry in image-entries
-    if entry.resource
-        count += 1
-= count
-
-────────────────────
 + do paint-vector
     - handle VectorGeometryHandle
     - canvas Canvas
@@ -613,6 +444,118 @@ do use canvas.saved-state
     - current.concatenate(transform)
 //-graphics.vector.raster-cache
 = painted
+
+────────────────────
++ do resolve VectorGeometry?
+    - handle VectorGeometryHandle
+
+=? if handle.index >= entries.length
+. entry = entries[handle.index]
+=? if entry.generation != handle.generation
+= entry.geometry
+
+────────────────────
++ require VectorGeometry
+    - handle VectorGeometryHandle
+
+?! Panic("Stale VectorGeometry handle")
+    if handle.index >= entries.length
+
+?! Panic("Stale VectorGeometry handle")
+    if entry.generation != handle.generation || !entry.geometry
+
+entry.geometry
+
+.. entry = entries[handle.index]
+
+────────────────────
++ do retain Bool
+    - handle VectorGeometryHandle
+
+=? false if handle.index >= entries.length
+. entry = entries[handle.index as Index]
+=? false if entry.generation != handle.generation || !entry.geometry
+entry.references += 1
+remove-from-grace(handle.index)
+= true
+
+────────────────────
++ do release
+    - handle VectorGeometryHandle
+
+=? if handle.index >= entries.length
+. entry = entries[handle.index]
+=? if entry.generation != handle.generation || !entry.geometry || !entry.references
+entry.references -= 1
+=? if entry.references
+
+grace += handle.index
+while grace.length > vector-geometry-grace-capacity
+    evict(grace[0])
+
+────────────────────
++ do evict-unused
+
+while grace
+    evict(grace[0])
+
+────────────────────
++ is-valid Bool
+    - handle VectorGeometryHandle
+
+|? handle.index >= entries.length
+    false
+??
+    entry.generation == handle.generation && entry.geometry != null
+
+.. entry = entries[handle.index as Index]
+
+────────────────────
++ reference-count U32
+    - handle VectorGeometryHandle
+
+|? handle.index >= entries.length
+    0
+|? entry.generation != handle.generation || !entry.geometry
+    0
+??
+    entry.references
+
+.. entry = entries[handle.index as Index]
+
+────────────────────
+_ do retain-fingerprint VectorGeometryHandle?
+    - fingerprint U64
+
+. existing-index = lookup[fingerprint]
+=? if !existing-index
+. entry = entries[existing-index]
+=? if !entry.geometry
+entry.references += 1
+remove-from-grace(existing-index)
+= VectorGeometryHandle(existing-index, entry.generation)
+
+────────────────────
+_ do store VectorGeometryHandle
+    - fingerprint U64
+    - geometry VectorGeometry
+
+. index U32
+. entry VectorGeometryEntry
+if free-indices
+    index = free-indices[free-indices.length - 1]
+    free-indices.remove(free-indices.length - 1)
+    entry = entries[index]
+    entry.fingerprint = fingerprint
+    entry.geometry = geometry
+    entry.references = 1
+else
+    index = entries.length as U32
+    entry = VectorGeometryEntry(fingerprint, geometry, 1)
+    entries += entry
+
+lookup[fingerprint] = index
+= VectorGeometryHandle(index, entry.generation)
 
 ────────────────────
 _ do paint-cached-vector-raster
@@ -733,107 +676,6 @@ _ do draw-vector-raster
 image.draw • destination canvas
     - rect
     - tint
-
-────────────────────
-+ do get atlas-entry-count Size
-
-. count Size
-for entry in raster-entries
-    if is-image-valid(entry.image-handle)
-        count += 1
-= count
-
-────────────────────
-+ get atlas-bytes Size
-
-raster-byte-count
-
-────────────────────
-+ do resolve VectorGeometry?
-    - handle VectorGeometryHandle
-
-=? if handle.index >= entries.length
-. entry = entries[handle.index]
-=? if entry.generation != handle.generation
-= entry.geometry
-
-────────────────────
-+ require VectorGeometry
-    - handle VectorGeometryHandle
-
-?! Panic("Stale VectorGeometry handle")
-    if handle.index >= entries.length
-
-?! Panic("Stale VectorGeometry handle")
-    if entry.generation != handle.generation || !entry.geometry
-
-entry.geometry
-
-.. entry = entries[handle.index]
-
-────────────────────
-+ do retain Bool
-    - handle VectorGeometryHandle
-
-=? false if handle.index >= entries.length
-. entry = entries[handle.index as Index]
-=? false if entry.generation != handle.generation || !entry.geometry
-entry.references += 1
-remove-from-grace(handle.index)
-= true
-
-────────────────────
-+ do release
-    - handle VectorGeometryHandle
-
-=? if handle.index >= entries.length
-. entry = entries[handle.index]
-=? if entry.generation != handle.generation || !entry.geometry || !entry.references
-entry.references -= 1
-=? if entry.references
-
-grace += handle.index
-while grace.length > vector-geometry-grace-capacity
-    evict(grace[0])
-
-────────────────────
-+ do evict-unused
-
-while grace
-    evict(grace[0])
-
-────────────────────
-+ is-valid Bool
-    - handle VectorGeometryHandle
-
-|? handle.index >= entries.length
-    false
-??
-    entry.generation == handle.generation && entry.geometry != null
-
-.. entry = entries[handle.index as Index]
-
-────────────────────
-+ do get live-count Size
-
-. count Size
-for entry in entries
-    if entry.geometry
-        count += 1
-= count
-
-────────────────────
-+ reference-count U32
-    - handle VectorGeometryHandle
-
-|? handle.index >= entries.length
-    0
-|? entry.generation != handle.generation || !entry.geometry
-    0
-??
-    entry.references
-
-.. entry = entries[handle.index as Index]
 
 ────────────────────
 _ do remove-from-grace
@@ -991,30 +833,60 @@ while index < raster-entries.length
         index += 1
 
 ━━━━━━━━━━━━━━━━━━━━
-_ VectorGeometryStyle
++ default-vector-geometry-table VectorGeometryTable
 
-+ fill VectorGeometryPaint
-+ stroke VectorGeometryPaint
-+ stroke-width Length?
-+ stroke-cap LineCap?
-+ stroke-join LineJoin?
-+ fill-rule FillRule
-+ transform Matrix
-
-────────────────────
-_ This
-    - fill
-    - stroke
-    - stroke-width
-    - stroke-cap
-    - stroke-join
-    - fill-rule
-    - transform
+fallback-vector-geometry-table
 
 ━━━━━━━━━━━━━━━━━━━━
-_ VectorGeometryRoleCursor
++ vector-geometry-table-for VectorGeometryTable
+    - root MarkupRootElement?
 
-+ next U32
+|? !root
+    fallback-vector-geometry-table
+|? existing
+    existing
+??
+    fallback-vector-geometry-table
+
+.. key = root as Pointer
+.. existing = vector-geometry-renderer-tables[key]
+
+━━━━━━━━━━━━━━━━━━━━
++ do register-vector-geometry-renderer
+    - root MarkupRootElement
+    - table VectorGeometryTable
+
+vector-geometry-renderer-tables[root as Pointer] = table
+
+━━━━━━━━━━━━━━━━━━━━
++ do unregister-vector-geometry-renderer
+    - root MarkupRootElement
+
+-= vector-geometry-renderer-tables[root as Pointer]
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-view-transform Matrix
+    - view Rect
+    - destination Rect
+
+matrix-from-translation(destination.top-left).scale(size).translate(Point(-view.x, -view.y))
+
+.. size = Dimensions(destination.width / view.width, destination.height / view.height)
+
+━━━━━━━━━━━━━━━━━━━━
++ vector-matrix-is-axis-aligned
+    - matrix Matrix
+
+matrix.b == 0 && matrix.c == 0 && matrix.a > 0 && matrix.d > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do vector-geometry-fingerprint U64
+    - source VectorGeometrySource
+    - view-box Rect
+
+. fingerprint = fnv-offset-basis
+fingerprint = vector-geometry-mix-rect(fingerprint, view-box)
+= vector-geometry-mix-source(fingerprint, source)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do build-vector-geometry VectorGeometry
@@ -1054,6 +926,137 @@ if source.vector-geometry-source-kind == vector-geometry-source-graphic
     . node = gc-object-from-pointer'GraphicNode(source.vector-geometry-source-pointer)
     = node is VectorPath || node is PathGraphic || node is Circle || node is Ellipse || node is Rectangle || node is Line || node is Square || node is Polygon || node is Spiral || node is SineWave || node is Leaf
 = all(0 .. < source.vector-geometry-source-child-count) • where vector-geometry-supports-source(source.vector-geometry-source-child(each))
+
+━━━━━━━━━━━━━━━━━━━━
++ do vector-geometry-palette [RGBA]
+    - source VectorGeometrySource
+
+. palette [RGBA]
+append-vector-geometry-palette(source, palette)
+= palette
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryEntry
+
++ fingerprint U64
++ generation U32 = 1
++ references U32
++ geometry VectorGeometry?
+
+────────────────────
+_ This
+    - fingerprint
+    - geometry
+    - references
+
+━━━━━━━━━━━━━━━━━━━━
+_ ImageResourceEntry
+
++ generation U32 = 1
++ references U32
++ resource ImageResource?
+
+────────────────────
+_ This
+    - resource
+    - references
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorRasterEntry
+
++ geometry-handle VectorGeometryHandle
++ pixel-width I32
++ pixel-height I32
++ scale-x F64
++ scale-y F64
++ phase-x I32
++ phase-y I32
++ stroke-width Length
++ stroke-cap LineCap
++ stroke-join LineJoin
++ stroke-dash Length
++ template-alpha Bool
++ palette-key U64
++ key U64
++ last-use U64
++ image-handle = ImageHandle(0, 0)
++ image-bytes Size
++ slot Size
+
+────────────────────
+_ This
+    - geometry-handle
+    - pixel-width
+    - pixel-height
+    - scale-x
+    - scale-y
+    - phase-x
+    - phase-y
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - stroke-dash
+    - template-alpha
+    - palette-key
+    - key
+
+────────────────────
++ matches
+    - other VectorRasterEntry
+
+|? geometry-handle != other.geometry-handle
+    false
+|? pixel-width != other.pixel-width || pixel-height != other.pixel-height
+    false
+|? scale-x != other.scale-x || scale-y != other.scale-y
+    false
+|? phase-x != other.phase-x || phase-y != other.phase-y
+    false
+|? stroke-width != other.stroke-width || stroke-cap != other.stroke-cap
+    false
+|? stroke-join != other.stroke-join || stroke-dash != other.stroke-dash
+    false
+??
+    template-alpha == other.template-alpha && palette-key == other.palette-key
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryStyle
+
++ fill VectorGeometryPaint
++ stroke VectorGeometryPaint
++ stroke-width Length?
++ stroke-cap LineCap?
++ stroke-join LineJoin?
++ fill-rule FillRule
++ transform Matrix
+
+────────────────────
+_ This
+    - fill
+    - stroke
+    - stroke-width
+    - stroke-cap
+    - stroke-join
+    - fill-rule
+    - transform
+
+━━━━━━━━━━━━━━━━━━━━
+_ VectorGeometryRoleCursor
+
++ next U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-raster-phase-offset
+    - phase I32
+
+(phase as F64) / (vector-raster-phase-steps as F64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ vector-raster-pixel-extent
+    - phase I32
+    - extent F64
+
+ceil(vector-raster-phase-offset(phase) + extent - vector-raster-epsilon) as I32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do append-vector-geometry (has-ink Bool, ink-bounds Rect)
@@ -1206,14 +1209,6 @@ _ vector-geometry-node-path Path?
 .. node = gc-object-from-pointer'GraphicNode(node-pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do vector-geometry-palette [RGBA]
-    - source VectorGeometrySource
-
-. palette [RGBA]
-append-vector-geometry-palette(source, palette)
-= palette
-
-━━━━━━━━━━━━━━━━━━━━
 _ do append-vector-geometry-palette
     - source VectorGeometrySource
     - palette [RGBA]
@@ -1225,8 +1220,6 @@ if source.vector-geometry-source-stroke is RGBA
 for index in 0 .. < source.vector-geometry-source-child-count
     . child = source.vector-geometry-source-child(index)
     append-vector-geometry-palette(child, palette)
-
-━━━━━━━━━━━━━━━━━━━━
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do vector-geometry-mix-source U64

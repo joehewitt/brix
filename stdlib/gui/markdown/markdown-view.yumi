@@ -19,18 +19,6 @@ _ markdown-select-all-key := KeyCombo("Cmd+A")
 _ markdown-selection-owner := MarkdownSelectionOwner()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ MarkdownSelectionOwner
-
-+ view MarkdownView?
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-selected-view MarkdownView?
-
-owner if owner && owner.has-selection
-
-.. owner = markdown-selection-owner.view
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkdownView is Box
 
 + text String = ""
@@ -103,6 +91,48 @@ for _ on blur
 
 invalidate-paint()
 
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do unmounted
+
+if markdown-selection-owner.view as Pointer? == this as Pointer
+    markdown-selection-owner.view = null
+super.unmounted()
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+. line = pending-line
+=? if line == null
+pending-line = null
+. found MarkdownBlockView? = null
+for view in block-views()
+    if view.block.line > line
+        break
+    found = view
+if found
+    . ignored = reveal(found)
+
+────────────────────
++ do paint-overlay
+    - canvas Canvas
+
+super.paint-overlay(canvas)
+=? if !has-selection || !blocks.length
+. start = markdown-clamp-point
+    - blocks
+    - if markdown-point-before(caret, anchor) then caret else anchor
+. end = markdown-clamp-point(blocks, if markdown-point-before(caret, anchor) then anchor else caret)
+. color = if is-focused then $gui-markdown-selection-color else $gui-markdown-idle-selection-color
+. object-color = if is-focused then $gui-markdown-object-selection-color else idle-object-color
+    .. idle-object-color = $gui-markdown-idle-object-selection-color
+for view in block-views()
+    markdown-paint-selection(canvas, blocks, view, start, end, color, object-color)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + get has-selection
 
@@ -170,46 +200,6 @@ for view in block-views()
 . found [MarkdownBlockView]
 collect-block-views(this, found)
 = found
-
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do unmounted
-
-if markdown-selection-owner.view as Pointer? == this as Pointer
-    markdown-selection-owner.view = null
-super.unmounted()
-
-────────────────────
-+ do did-layout
-
-super.did-layout()
-. line = pending-line
-=? if line == null
-pending-line = null
-. found MarkdownBlockView? = null
-for view in block-views()
-    if view.block.line > line
-        break
-    found = view
-if found
-    . ignored = reveal(found)
-
-────────────────────
-+ do paint-overlay
-    - canvas Canvas
-
-super.paint-overlay(canvas)
-=? if !has-selection || !blocks.length
-. start = markdown-clamp-point
-    - blocks
-    - if markdown-point-before(caret, anchor) then caret else anchor
-. end = markdown-clamp-point(blocks, if markdown-point-before(caret, anchor) then anchor else caret)
-. color = if is-focused then $gui-markdown-selection-color else $gui-markdown-idle-selection-color
-. object-color = if is-focused then $gui-markdown-object-selection-color else idle-object-color
-    .. idle-object-color = $gui-markdown-idle-object-selection-color
-for view in block-views()
-    markdown-paint-selection(canvas, blocks, view, start, end, color, object-color)
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -290,14 +280,6 @@ for child in RenderedChildCursor(box)
         found += child as MarkdownBlockView
     else if child.is-markup-shadow
         collect-block-views(child, found)
-
-━━━━━━━━━━━━━━━━━━━━
-_ markdown-view-blocks
-    - text String
-    - base String
-    - cache MarkdownBlockCache?
-
-if cache then cache.blocks-for(text, base) else markdown-blocks(text, base)
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownBlockView is Box
@@ -416,12 +398,6 @@ _ hover-scope MarkdownReferenceScope?
             detail = #detail!
 
 ────────────────────
-whenever #is-hovered-link
-
-hover-scope = scope ?? hover-scope
-hover-scope?.hover-link(this, (run.url ?? detail?.path) if is-hovered-link)
-
-────────────────────
 for event on click
 
 . reference = run.reference
@@ -437,6 +413,12 @@ else if follows && anchor && view
     . ignored = view.reveal-anchor(anchor)
     event.cancel()
 
+────────────────────
+whenever #is-hovered-link
+
+hover-scope = scope ?? hover-scope
+hover-scope?.hover-link(this, (run.url ?? detail?.path) if is-hovered-link)
+
 ╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -444,24 +426,6 @@ else if follows && anchor && view
 
 hover-scope?.hover-link(this, null)
 super.unmounted()
-
-━━━━━━━━━━━━━━━━━━━━
-_ markdown-runs-link
-    - runs [MarkdownRun]
-
-some(runs) • where each.url != null || each.reference != null
-
-━━━━━━━━━━━━━━━━━━━━
-_ markdown-web-url String?
-    - url String?
-
-url if url && (url.starts-with("https://") || url.starts-with("http://"))
-
-━━━━━━━━━━━━━━━━━━━━
-_ markdown-anchor String?
-    - url String?
-
-url[1 ...] if url && url.starts-with("#") && url.length > 1
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownLinkTooltip is Popup
@@ -484,3 +448,41 @@ url[1 ...] if url && url.starts-with("#") && url.length > 1
                 text = "  +${#detail.additions ?? 0}"
             <Span • markdown-removed
                 text = " −${#detail.deletions ?? 0}"
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-selected-view MarkdownView?
+
+owner if owner && owner.has-selection
+
+.. owner = markdown-selection-owner.view
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownSelectionOwner
+
++ view MarkdownView?
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-view-blocks
+    - text String
+    - base String
+    - cache MarkdownBlockCache?
+
+if cache then cache.blocks-for(text, base) else markdown-blocks(text, base)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-runs-link
+    - runs [MarkdownRun]
+
+some(runs) • where each.url != null || each.reference != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-web-url String?
+    - url String?
+
+url if url && (url.starts-with("https://") || url.starts-with("http://"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-anchor String?
+    - url String?
+
+url[1 ...] if url && url.starts-with("#") && url.length > 1

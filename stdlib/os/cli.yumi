@@ -8,6 +8,9 @@
 _ cli-term-width Size = 24
 _ cli-suggestion-distance Index = 2
 
+_ HelpRow is (term String, about String)
+_ HelpSection is (title String, rows [HelpRow])
+
 ━━━━━━━━━━━━━━━━━━━━
 + CommandAction is () Int ?! Error
 
@@ -86,12 +89,6 @@ null
 .. dots = if repeats then "..." else ""
 
 ────────────────────
-+ is-spelled Bool
-    - text String
-
-spelling == text || short == text || aliases has text
-
-────────────────────
 + get description String
 
 " ".join(parts)
@@ -100,6 +97,12 @@ spelling == text || short == text || aliases has text
     *? about if about != ""
     *? "(default ${default-label!})" if default-label != null
     *? "(env ${env})" if env != null
+
+────────────────────
++ is-spelled Bool
+    - text String
+
+spelling == text || short == text || aliases has text
 
 ────────────────────
 + do accept
@@ -173,26 +176,6 @@ is-given = false
 
 super(spelling)
 
-────────────────────
-+ parse-value T?
-    - text String
-
-match text
-    ~ parsed T
-        parsed
-    ?? null
-
-────────────────────
-_ read-value T?
-    - text String
-
-|? !parser
-    parse-value(text)
-??
-    parse(text)
-
-.. parse = parser
-
 ╌╌╌╌╌╌╌╌╌╌ is CommandOption ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -232,47 +215,7 @@ is-given = false
 if value == null
     value = default
 
-━━━━━━━━━━━━━━━━━━━━
-+ Option is Option'String
-
-+ choices [String]
-
-────────────────────
-+ This
-    - spelling String
-
-super(spelling)
-
-╌╌╌╌╌╌╌╌╌╌ is Option'String ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ parse-value String?
-    - text String
-
-text if choices.length == 0 || choices has text
-
-────────────────────
-+ get value-label
-
-value-name ?? (if choices.length > 0 then "|".join(choices) else "VALUE")
-
-────────────────────
-+ get expected
-
-"one of ${", ".join(choices)}" if choices.length > 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Options'T is CommandOption
-
-+ values [T]
-+ value-name String?
-+ parser ValueParser'T?
-
-────────────────────
-+ This
-    - spelling String
-
-super(spelling)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + parse-value T?
@@ -293,6 +236,52 @@ _ read-value T?
     parse(text)
 
 .. parse = parser
+
+━━━━━━━━━━━━━━━━━━━━
++ Option is Option'String
+
++ choices [String]
+
+────────────────────
++ This
+    - spelling String
+
+super(spelling)
+
+╌╌╌╌╌╌╌╌╌╌ is CommandOption ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get expected
+
+"one of ${", ".join(choices)}" if choices.length > 0
+
+╌╌╌╌╌╌╌╌╌╌ is Option'String ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ parse-value String?
+    - text String
+
+text if choices.length == 0 || choices has text
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get value-label
+
+value-name ?? (if choices.length > 0 then "|".join(choices) else "VALUE")
+
+━━━━━━━━━━━━━━━━━━━━
++ Options'T is CommandOption
+
++ values [T]
++ value-name String?
++ parser ValueParser'T?
+
+────────────────────
++ This
+    - spelling String
+
+super(spelling)
 
 ╌╌╌╌╌╌╌╌╌╌ is CommandOption ╌╌╌╌╌╌╌╌╌╌
 
@@ -326,6 +315,28 @@ is-given = true
 
 values = List'T()
 is-given = false
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ parse-value T?
+    - text String
+
+match text
+    ~ parsed T
+        parsed
+    ?? null
+
+────────────────────
+_ read-value T?
+    - text String
+
+|? !parser
+    parse-value(text)
+??
+    parse(text)
+
+.. parse = parser
 
 ━━━━━━━━━━━━━━━━━━━━
 + Options is Options'String
@@ -426,15 +437,6 @@ false
 
 super(name)
 
-────────────────────
-+ parse-value T?
-    - text String
-
-match text
-    ~ parsed T
-        parsed
-    ?? null
-
 ╌╌╌╌╌╌╌╌╌╌ is CommandArgument ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -467,6 +469,17 @@ value = null
 if value == null
     value = default
 
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ parse-value T?
+    - text String
+
+match text
+    ~ parsed T
+        parsed
+    ?? null
+
 ━━━━━━━━━━━━━━━━━━━━
 + Argument is Argument'String
 
@@ -495,15 +508,6 @@ text
 
 super(name)
 
-────────────────────
-+ parse-value T?
-    - text String
-
-match text
-    ~ parsed T
-        parsed
-    ?? null
-
 ╌╌╌╌╌╌╌╌╌╌ is CommandArgument ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -529,6 +533,17 @@ values += parsed
 + do reset
 
 values = List'T()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ parse-value T?
+    - text String
+
+match text
+    ~ parsed T
+        parsed
+    ?? null
 
 ━━━━━━━━━━━━━━━━━━━━
 + Arguments is Arguments'String
@@ -558,15 +573,15 @@ text
     - title String
 
 ────────────────────
+_ get rows [HelpRow]
+
+HelpRow(each.term, each.about) in entries
+
+────────────────────
 + do this += entry HelpEntry
 
 entries += entry
 = entry
-
-────────────────────
-_ get rows [HelpRow]
-
-HelpRow(each.term, each.about) in entries
 
 ━━━━━━━━━━━━━━━━━━━━
 + HelpEntry
@@ -595,37 +610,6 @@ HelpRow(each.term, each.about) in entries
 ────────────────────
 + This
     - name String = ""
-
-────────────────────
-+ do this += option CommandOption
-
-options += option
-= option
-
-────────────────────
-+ do this += group OptionGroup
-
-groups += group
-= group
-
-────────────────────
-+ do this += positional CommandArgument
-
-positionals += positional
-= positional
-
-────────────────────
-+ do this += command Subcommand
-
-command.parent = this
-commands += command
-= command
-
-────────────────────
-+ do this += topic HelpTopic
-
-topics += topic
-= topic
 
 ────────────────────
 + get path String
@@ -687,6 +671,66 @@ while scope
 = found
 
 ────────────────────
++ get help-text String
+
+"${"\n".join(lines)}\n"
+
+.. lines [String]
+    * usage
+    ** about-lines
+    ** help-section("commands", command-rows, width)
+    ** help-section("arguments", argument-rows, width)
+    ** help-sections-lines(sections, width)
+.. about-lines [String] = if about != "" then ["", about] else List'String()
+.. command-rows [HelpRow] = HelpRow(each.synopsis, each.about) in commands when !each.hidden
+.. argument-rows [HelpRow] = HelpRow(each.synopsis, each.description) in positionals when each.description != ""
+.. loose-rows [HelpRow]
+    ** option-rows(loose-options)
+    * HelpRow("-h, --help", "show this help")
+.. sections [HelpSection]
+    *? HelpSection("options", loose-rows) if has-loose
+    ** HelpSection(each.title, option-rows(each.options)) in option-groups
+    *? HelpSection("options", loose-rows) if !has-loose
+    ** HelpSection(each.title, each.rows) in topics
+.. has-loose = loose-rows.length > 1
+.. width = help-width(row-groups)
+.. row-groups [[HelpRow]]
+    * command-rows
+    * argument-rows
+    ** each.rows in sections
+
+────────────────────
++ do this += option CommandOption
+
+options += option
+= option
+
+────────────────────
++ do this += group OptionGroup
+
+groups += group
+= group
+
+────────────────────
++ do this += positional CommandArgument
+
+positionals += positional
+= positional
+
+────────────────────
++ do this += command Subcommand
+
+command.parent = this
+commands += command
+= command
+
+────────────────────
++ do this += topic HelpTopic
+
+topics += topic
+= topic
+
+────────────────────
 + do find-option CommandOption?
     - spelling String
 
@@ -718,35 +762,6 @@ for positional in positionals
     positional.reset()
 for command in commands
     command.reset-tree()
-
-────────────────────
-+ get help-text String
-
-"${"\n".join(lines)}\n"
-
-.. lines [String]
-    * usage
-    ** about-lines
-    ** help-section("commands", command-rows, width)
-    ** help-section("arguments", argument-rows, width)
-    ** help-sections-lines(sections, width)
-.. about-lines [String] = if about != "" then ["", about] else List'String()
-.. command-rows [HelpRow] = HelpRow(each.synopsis, each.about) in commands when !each.hidden
-.. argument-rows [HelpRow] = HelpRow(each.synopsis, each.description) in positionals when each.description != ""
-.. loose-rows [HelpRow]
-    ** option-rows(loose-options)
-    * HelpRow("-h, --help", "show this help")
-.. sections [HelpSection]
-    *? HelpSection("options", loose-rows) if has-loose
-    ** HelpSection(each.title, option-rows(each.options)) in option-groups
-    *? HelpSection("options", loose-rows) if !has-loose
-    ** HelpSection(each.title, each.rows) in topics
-.. has-loose = loose-rows.length > 1
-.. width = help-width(row-groups)
-.. row-groups [[HelpRow]]
-    * command-rows
-    * argument-rows
-    ** each.rows in sections
 
 ━━━━━━━━━━━━━━━━━━━━
 + CommandLine is Subcommand
@@ -802,29 +817,67 @@ _ do report
 stderr <- "${error.message}\nrun `${command.path} --help` for usage\n"
 
 ━━━━━━━━━━━━━━━━━━━━
++ RawCommandLine
+
++ command String
++ args [String]
++ flags [String]
++ options [String = String]
+
+────────────────────
++ This ?! Error
+    - argv [String]
+    - value-options [String] = List'String()
+
+. head, tail = headtail(argv)
+. parts = command-line-parts(tail, value-options)
+command = head ?? ""
+args =
+    ** parts
+    ?*> match? each
+        | .argument(value)
+            value
+    |> List
+flags =
+    ** parts
+    ?*> match? each
+        | .flag(name)
+            name
+    |> List
+options =
+    ** parts
+    ?*> match? each
+        | .option(name, value)
+            name, value
+    |> Map
+
+────────────────────
++ has-flag Bool
+    - name String
+
+flags has name
+
+━━━━━━━━━━━━━━━━━━━━
++ cmdline-args [String]
+
+<* index in 0 .. < C:yumiGetArgC()
+    argv[index]
+
+.. argv = C:yumiGetArgV()
+
+━━━━━━━━━━━━━━━━━━━━
++ cmdline RawCommandLine ?! Error
+    - value-options [String] = List'String()
+
+RawCommandLine(cmdline-args(), value-options)
+
+━━━━━━━━━━━━━━━━━━━━
 _ CommandToken is Union
 
 | separator
 | long(name String, value String?)
 | short(letters String)
 | word(text String)
-
-━━━━━━━━━━━━━━━━━━━━
-_ command-token CommandToken
-    - text String
-
-match text
-    ~ "--"
-        .separator
-    ~ "--" name (!"=" .)+ "=" value .*
-        .long(name, value)
-    ~ "--" name .+
-        .long(name, null)
-    ~ "-" [0-9.] .*
-        .word(text)
-    ~ "-" letters .+
-        .short(letters)
-    ?? .word(text)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ CommandLineParse
@@ -990,7 +1043,28 @@ UsageError("unknown command $word${suggestion(word, candidates)}", command)
     ** each.name in command.commands when !each.hidden
 
 ━━━━━━━━━━━━━━━━━━━━
-_ HelpRow is (term String, about String)
+_ Part is Union
+
+| argument(value String)
+| option(name String, value String)
+| flag(name String)
+
+━━━━━━━━━━━━━━━━━━━━
+_ command-token CommandToken
+    - text String
+
+match text
+    ~ "--"
+        .separator
+    ~ "--" name (!"=" .)+ "=" value .*
+        .long(name, value)
+    ~ "--" name .+
+        .long(name, null)
+    ~ "-" [0-9.] .*
+        .word(text)
+    ~ "-" letters .+
+        .short(letters)
+    ?? .word(text)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ help-section [String]
@@ -1004,9 +1078,6 @@ if rows.length > 0 then lines else List'String()
     * ""
     * title
     ** help-row-text(each, width) in rows
-
-━━━━━━━━━━━━━━━━━━━━
-_ HelpSection is (title String, rows [HelpRow])
 
 ━━━━━━━━━━━━━━━━━━━━
 _ option-rows [HelpRow]
@@ -1072,54 +1143,6 @@ match text
     ?? text
 
 ━━━━━━━━━━━━━━━━━━━━
-+ RawCommandLine
-
-+ command String
-+ args [String]
-+ flags [String]
-+ options [String = String]
-
-────────────────────
-+ This ?! Error
-    - argv [String]
-    - value-options [String] = List'String()
-
-. head, tail = headtail(argv)
-. parts = command-line-parts(tail, value-options)
-command = head ?? ""
-args =
-    ** parts
-    ?*> match? each
-        | .argument(value)
-            value
-    |> List
-flags =
-    ** parts
-    ?*> match? each
-        | .flag(name)
-            name
-    |> List
-options =
-    ** parts
-    ?*> match? each
-        | .option(name, value)
-            name, value
-    |> Map
-
-────────────────────
-+ has-flag Bool
-    - name String
-
-flags has name
-
-━━━━━━━━━━━━━━━━━━━━
-_ Part is Union
-
-| argument(value String)
-| option(name String, value String)
-| flag(name String)
-
-━━━━━━━━━━━━━━━━━━━━
 _ command-line-parts [Part] ?! Error
     - arguments <String>
     - value-options [String]
@@ -1173,17 +1196,3 @@ _ do missing-value Part ?! Error
     - name String
 
 ?! Error("Missing value for option $name")
-
-━━━━━━━━━━━━━━━━━━━━
-+ cmdline-args [String]
-
-<* index in 0 .. < C:yumiGetArgC()
-    argv[index]
-
-.. argv = C:yumiGetArgV()
-
-━━━━━━━━━━━━━━━━━━━━
-+ cmdline RawCommandLine ?! Error
-    - value-options [String] = List'String()
-
-RawCommandLine(cmdline-args(), value-options)

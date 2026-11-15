@@ -73,27 +73,6 @@ _ network-slot-threshold Size = 16
 + last NetworkTraceStep
 
 ━━━━━━━━━━━━━━━━━━━━
-_ NetworkOutline is Tuple
-
-+ ends NetworkOutlineEnds?
-+ chain Bool
-+ fresh Index
-
-━━━━━━━━━━━━━━━━━━━━
-_ NetworkTraceLookup
-
-+ starts [Index]
-+ ends [Index]
-+ degrees [Index]
-+ offsets [Index]
-+ incident [Index]
-+ used [Bool]
-+ counts [Index]
-+ first-edges [Index]
-+ second-edges [Index]
-+ paired = false
-
-━━━━━━━━━━━━━━━━━━━━
 + NetworkMutationObserver
 
 ────────────────────
@@ -170,56 +149,9 @@ mutation-pending = false
 version
 
 ────────────────────
-+ do subscribe
-    - observer NetworkMutationObserver
-
-. index = mutation-observers.length
-while index > 0
-    index -= 1
-    . existing = mutation-observers[index].get
-    if !existing
-        mutation-observers.remove(index)
-    else if existing as Pointer == observer as Pointer
-        =
-. weak = catch? Weak(observer)
-?! Panic("Unable to subscribe to vector network mutations")
-    if !weak
-mutation-observers += weak
-
-────────────────────
-+ do unsubscribe
-    - observer NetworkMutationObserver
-
-. index = mutation-observers.length
-while index > 0
-    index -= 1
-    . existing = mutation-observers[index].get
-    if !existing || existing as Pointer == observer as Pointer
-        mutation-observers.remove(index)
-
-────────────────────
 + get updating
 
 NetworkUpdateScope(this)
-
-────────────────────
-+ do begin-update
-
-mutation-depth += 1
-
-────────────────────
-+ do checkpoint
-
-if !mutation-depth
-    publish-mutation()
-
-────────────────────
-+ do end-update
-
-if mutation-depth
-    mutation-depth -= 1
-if !mutation-depth
-    publish-mutation()
 
 ────────────────────
 + get next-vertex-id
@@ -230,14 +162,6 @@ next-vertex
 + get next-segment-id
 
 next-segment
-
-────────────────────
-+ do reserve-ids
-    - vertex Index
-    - segment Index
-
-next-vertex = max(next-vertex, vertex)
-next-segment = max(next-segment, segment)
 
 ────────────────────
 + get vertex-count
@@ -271,6 +195,61 @@ for item in segment-list
 
 for item in pair-list
     <= item
+
+────────────────────
++ do subscribe
+    - observer NetworkMutationObserver
+
+. index = mutation-observers.length
+while index > 0
+    index -= 1
+    . existing = mutation-observers[index].get
+    if !existing
+        mutation-observers.remove(index)
+    else if existing as Pointer == observer as Pointer
+        =
+. weak = catch? Weak(observer)
+?! Panic("Unable to subscribe to vector network mutations")
+    if !weak
+mutation-observers += weak
+
+────────────────────
++ do unsubscribe
+    - observer NetworkMutationObserver
+
+. index = mutation-observers.length
+while index > 0
+    index -= 1
+    . existing = mutation-observers[index].get
+    if !existing || existing as Pointer == observer as Pointer
+        mutation-observers.remove(index)
+
+────────────────────
++ do begin-update
+
+mutation-depth += 1
+
+────────────────────
++ do checkpoint
+
+if !mutation-depth
+    publish-mutation()
+
+────────────────────
++ do end-update
+
+if mutation-depth
+    mutation-depth -= 1
+if !mutation-depth
+    publish-mutation()
+
+────────────────────
++ do reserve-ids
+    - vertex Index
+    - segment Index
+
+next-vertex = max(next-vertex, vertex)
+next-segment = max(next-segment, segment)
 
 ────────────────────
 + vertex
@@ -445,16 +424,6 @@ pair-list += NetworkPair(first, second, mirror-length)
 record-mutation()
 
 ────────────────────
-_ do validate-pair
-    - first NetworkEnd
-    - second NetworkEnd
-
-if end-vertex(first) != end-vertex(second)
-    ?! Panic("Handles must share a vertex")
-if first == second
-    ?! Panic("Cannot pair a handle with itself")
-
-────────────────────
 + do unpair
     - endpoint NetworkEnd
 
@@ -488,33 +457,6 @@ if !independent
                 opposite = value * (if pair.mirror-length then -1 else ratio)
                     .. ratio = -tangent(other).length / length
             set-end-tangent(other, opposite)
-
-────────────────────
-_ do validate-handle
-    - endpoint NetworkEnd
-    - value Point
-    - independent Bool
-
-network-valid-point(value)
-if !independent
-    for pair in pair-list
-        if pair.first == endpoint || pair.second == endpoint
-            . other = if pair.first == endpoint then pair.second else pair.first
-            . length = value.length
-            if length > 0
-                network-valid-point
-                    - value * (if pair.mirror-length then -1 else -tangent(other).length / length)
-
-────────────────────
-_ do set-end-tangent
-    - endpoint NetworkEnd
-    - value Point
-
-. edge = segment(endpoint.segment)
-if endpoint.at-end
-    set-tangents(edge.id, edge.tangent-start, value)
-else
-    set-tangents(edge.id, value, edge.tangent-end)
 
 ────────────────────
 + do remove-segment
@@ -905,6 +847,98 @@ set-handle(NetworkEnd(id, false), start, !preserve-pairs)
 set-handle(NetworkEnd(id, true), end, !preserve-pairs)
 
 ────────────────────
++ traces
+    - paths = true
+
+collect-traces(paths, null)
+
+────────────────────
++ do outline-ends NetworkOutlineEnds?
+
+=? known-outline.ends if known-outline
+. found = trace-outline()
+known-outline = found
+= found.ends
+
+────────────────────
++ do geometry Path
+
+. result = Path()
+collect-traces(false, result)
+= result
+
+────────────────────
++ do geometry-bounds Rect
+
+. left = 0.0
+. top = 0.0
+. right = 0.0
+. bottom = 0.0
+. found = false
+for trace in traces(false)
+    for index in 0 .. < trace.segments.length
+        . c = edge-curve(segment(trace.segments[index]))
+        . reversed = trace.reversed[index]
+        . head = if reversed then c.anchor2 else c.anchor1
+        . tail = if reversed then c.anchor1 else c.anchor2
+        . outgoing = if reversed then c.handle-in else c.handle-out
+        . incoming = if reversed then c.handle-out else c.handle-in
+        . line = network-is-monotone-line(c)
+        . xs = if line then line-bounds-1d(head.x, tail.x) else cubic-xs
+            .. cubic-xs = cubic-bounds-1d(head.x, outgoing.x, incoming.x, tail.x, tolerance)
+        . ys = if line then line-bounds-1d(head.y, tail.y) else cubic-ys
+            .. cubic-ys = cubic-bounds-1d(head.y, outgoing.y, incoming.y, tail.y, tolerance)
+        if !found
+            left = xs.min
+            top = ys.min
+            right = xs.max
+            bottom = ys.max
+            found = true
+        else
+            left = min(left, xs.min)
+            top = min(top, ys.min)
+            right = max(right, xs.max)
+            bottom = max(bottom, ys.max)
+= Rect(left, top, right - left, bottom - top)
+
+────────────────────
+_ do validate-pair
+    - first NetworkEnd
+    - second NetworkEnd
+
+if end-vertex(first) != end-vertex(second)
+    ?! Panic("Handles must share a vertex")
+if first == second
+    ?! Panic("Cannot pair a handle with itself")
+
+────────────────────
+_ do validate-handle
+    - endpoint NetworkEnd
+    - value Point
+    - independent Bool
+
+network-valid-point(value)
+if !independent
+    for pair in pair-list
+        if pair.first == endpoint || pair.second == endpoint
+            . other = if pair.first == endpoint then pair.second else pair.first
+            . length = value.length
+            if length > 0
+                network-valid-point
+                    - value * (if pair.mirror-length then -1 else -tangent(other).length / length)
+
+────────────────────
+_ do set-end-tangent
+    - endpoint NetworkEnd
+    - value Point
+
+. edge = segment(endpoint.segment)
+if endpoint.at-end
+    set-tangents(edge.id, edge.tangent-start, value)
+else
+    set-tangents(edge.id, value, edge.tangent-end)
+
+────────────────────
 _ do record-mutation
 
 version += 1
@@ -925,20 +959,6 @@ while index > 0
         observer.network-mutated(this, version)
     else
         mutation-observers.remove(index)
-
-────────────────────
-+ traces
-    - paths = true
-
-collect-traces(paths, null)
-
-────────────────────
-+ do outline-ends NetworkOutlineEnds?
-
-=? known-outline.ends if known-outline
-. found = trace-outline()
-known-outline = found
-= found.ends
 
 ────────────────────
 _ do trace-outline NetworkOutline
@@ -1313,46 +1333,27 @@ if segment-slots
     segment-slots![item.id] = segment-list.length
 segment-list += item
 
+━━━━━━━━━━━━━━━━━━━━
++ NetworkUpdateScope is Tuple
+    is Usable'Void
+
+_ network VectorNetwork
+
 ────────────────────
-+ do geometry Path
++ This
+    - network
 
-. result = Path()
-collect-traces(false, result)
-= result
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-+ do geometry-bounds Rect
++ do begin-using
 
-. left = 0.0
-. top = 0.0
-. right = 0.0
-. bottom = 0.0
-. found = false
-for trace in traces(false)
-    for index in 0 .. < trace.segments.length
-        . c = edge-curve(segment(trace.segments[index]))
-        . reversed = trace.reversed[index]
-        . head = if reversed then c.anchor2 else c.anchor1
-        . tail = if reversed then c.anchor1 else c.anchor2
-        . outgoing = if reversed then c.handle-in else c.handle-out
-        . incoming = if reversed then c.handle-out else c.handle-in
-        . line = network-is-monotone-line(c)
-        . xs = if line then line-bounds-1d(head.x, tail.x) else cubic-xs
-            .. cubic-xs = cubic-bounds-1d(head.x, outgoing.x, incoming.x, tail.x, tolerance)
-        . ys = if line then line-bounds-1d(head.y, tail.y) else cubic-ys
-            .. cubic-ys = cubic-bounds-1d(head.y, outgoing.y, incoming.y, tail.y, tolerance)
-        if !found
-            left = xs.min
-            top = ys.min
-            right = xs.max
-            bottom = ys.max
-            found = true
-        else
-            left = min(left, xs.min)
-            top = min(top, ys.min)
-            right = max(right, xs.max)
-            bottom = max(bottom, ys.max)
-= Rect(left, top, right - left, bottom - top)
+network.begin-update()
+
+────────────────────
++ do end-using
+
+network.end-update()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do network-from-path
@@ -1386,35 +1387,11 @@ for subpath in path.subpaths
 some(ids) • where each == id
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do network-mapped-id Index
-    - sources [Index]
-    - destinations [Index]
-    - id Index
-
-for i in 0 .. < sources.length
-    =? destinations[i] if sources[i] == id
-= id
-
-━━━━━━━━━━━━━━━━━━━━
-_ network-end-key Index
-    - endpoint NetworkEnd
-
-endpoint.segment * 2 + (if endpoint.at-end then 1 else 0)
-
-━━━━━━━━━━━━━━━━━━━━
 + do network-valid-point
     - point Point
 
 if !is-finite(point.x) || !is-finite(point.y)
     ?! Panic("Network coordinates must be finite")
-
-━━━━━━━━━━━━━━━━━━━━
-_ network-edge-curve
-    - edge NetworkSegment
-    - start Point
-    - end Point
-
-Curve(start, start + edge.tangent-start, end + edge.tangent-end, end)
 
 ━━━━━━━━━━━━━━━━━━━━
 + network-curve-point Point
@@ -1465,6 +1442,51 @@ if curve.handle-out == curve.anchor1 && curve.handle-in == curve.anchor2
 if last-distance < best.distance
     best = NetworkHit(id, 1, curve.anchor2, last-distance)
 = network-pick-range(curve, curve, point, 0, 1, best, 0, limit)
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkOutline is Tuple
+
++ ends NetworkOutlineEnds?
++ chain Bool
++ fresh Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ NetworkTraceLookup
+
++ starts [Index]
++ ends [Index]
++ degrees [Index]
++ offsets [Index]
++ incident [Index]
++ used [Bool]
++ counts [Index]
++ first-edges [Index]
++ second-edges [Index]
++ paired = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do network-mapped-id Index
+    - sources [Index]
+    - destinations [Index]
+    - id Index
+
+for i in 0 .. < sources.length
+    =? destinations[i] if sources[i] == id
+= id
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-end-key Index
+    - endpoint NetworkEnd
+
+endpoint.segment * 2 + (if endpoint.at-end then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ network-edge-curve
+    - edge NetworkSegment
+    - start Point
+    - end Point
+
+Curve(start, start + edge.tangent-start, end + edge.tangent-end, end)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do network-pick-range NetworkHit
@@ -1564,23 +1586,3 @@ start + middle + end
 .. start = (curve.handle-out - curve.anchor1) * (3 * u * u)
 .. middle = (curve.handle-in - curve.handle-out) * (6 * u * t)
 .. end = (curve.anchor2 - curve.handle-in) * (3 * t * t)
-
-━━━━━━━━━━━━━━━━━━━━
-+ NetworkUpdateScope is Tuple
-    is Usable'Void
-
-_ network VectorNetwork
-
-────────────────────
-+ This
-    - network
-
-────────────────────
-+ do begin-using
-
-network.begin-update()
-
-────────────────────
-+ do end-using
-
-network.end-update()

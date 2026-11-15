@@ -14,31 +14,6 @@ _ source-far-column Size = 1000000
 _ source-undo-cells Size = 320000
 
 ━━━━━━━━━━━━━━━━━━━━
-_ SourceUndo
-
-+ index Index
-+ old [U32]
-+ count Size
-+ row Size
-+ column Size
-+ cells Size
-
-────────────────────
-+ This
-    - index
-    - old
-    - count
-    - row
-    - column
-
-────────────────────
-+ do move
-    - moves SourceMoves
-
-for position in 0 .. < old.length
-    old[position] = moves.place(old[position])
-
-━━━━━━━━━━━━━━━━━━━━
 + SourceRewrite is Tuple
 
 + changed Size
@@ -686,11 +661,6 @@ document.line-ids = written.ids
 revision += 1
 
 ────────────────────
-_ is-saved Bool
-
-document.declarations == saved
-
-────────────────────
 + do revert
 
 =? if !is-dirty
@@ -727,6 +697,11 @@ if typed != shown.content
                     row = document.first-row(index) + position
 column = clamped(column)
 anchor-column = clamped-at(anchor-row, anchor-column)
+
+────────────────────
+_ is-saved Bool
+
+document.declarations == saved
 
 ────────────────────
 _ is-line-start Bool
@@ -1389,6 +1364,46 @@ if next
 = store.with-id(store.raw(text, body), old.id)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do source-write-text
+    - session SourceSession
+    - file-path String
+
+. written = session.saved-written()
+. flags = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
+. file = catch? File(file-path, flags)
+=? false if !file
+. wrote = catch? file.write(written.text)
+catch file.close()
+=? false if wrote == null
+session.mark-saved(written)
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceUndo
+
++ index Index
++ old [U32]
++ count Size
++ row Size
++ column Size
++ cells Size
+
+────────────────────
++ This
+    - index
+    - old
+    - count
+    - row
+    - column
+
+────────────────────
++ do move
+    - moves SourceMoves
+
+for position in 0 .. < old.length
+    old[position] = moves.place(old[position])
+
+━━━━━━━━━━━━━━━━━━━━
 _ do source-placed String
     - lines [String]
     - left String
@@ -1447,18 +1462,3 @@ for c in text.codepoints
         break
     count += 1
 = text[count ...]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do source-write-text
-    - session SourceSession
-    - file-path String
-
-. written = session.saved-written()
-. flags = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
-. file = catch? File(file-path, flags)
-=? false if !file
-. wrote = catch? file.write(written.text)
-catch file.close()
-=? false if wrote == null
-session.mark-saved(written)
-= true

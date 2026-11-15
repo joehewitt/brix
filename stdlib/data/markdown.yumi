@@ -173,101 +173,6 @@ match text
         MDDocument([MDParagraph([MDText(text)])])
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markdown-closed-fence-body ~ Char String
-    - width Size
-
-~ lines \markdown-non-closing-code-line(width)* \markdown-fence-close(width)
-    "".join(lines)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-open-fence-body ~ Char String
-    - width Size
-
-~ body .*
-    body
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-non-closing-code-line ~ Char String
-    - width Size
-
-~ !\markdown-fence-close(width) text (!\nl .)* \nl
-    "$text\n"
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-fence-close ~ Char
-    - width Size
-
-~ "`"{width} "`"* / &(\nl | !.)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-inline ~ Char Markdown
-
-~ \strong
-~ "**"
-    MDText("**")
-~ \em
-~ \image
-~ \link
-~ \inline-code
-~ \escaped-text
-~ \text
-~ \special-text
-
-.. strong Markdown ~
-    ~ "**" (!"**" ...contents \markdown-inline)+ "**"
-        MDStrong(contents)
-
-.. em Markdown ~
-    ~ "*" (!"*" ...contents \markdown-inline)+ "*"
-        MDEm(contents)
-
-.. link Markdown ~
-    ~ "[" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
-        MDLink(url, contents)
-
-.. image Markdown ~
-    ~ "![" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
-        MDImage(url, contents)
-
-.. inline-code Markdown ~
-    ~ "`" code (!"`" !\nl .)* "`"
-        MDInlineCode(code)
-
-.. escaped-text Markdown ~
-    ~ "\\" text \escaped-char
-        MDText(text)
-
-.. special-text Markdown ~
-    ~ text \reserved-char
-        MDText(text)
-
-.. text Markdown ~
-    ~ text \chars
-        MDText(text)
-
-.. chars String ~
-    ~ chars \char+
-        chars
-
-.. char ~
-    ~ !(\reserved-char | \nl) .
-
-.. reserved-char ~
-    ~ "\\" | "*" | "[" | "]" | "!" | "`"
-
-.. escaped-char ~
-    ~ \reserved-char | "|" | "#" | ">" | "-" | "+" | "." | "_" | "(" | ")" | "~" | "<"
-
-.. url-text String ~
-    ~ chars \url-char+
-        Array(chars).slice-string()
-
-.. url-char Char ~
-    ~ "\\)"
-        ')'
-    ~ !(")" | \nl) .
-
-━━━━━━━━━━━━━━━━━━━━
 + MDDocument is Tuple
 
 + content [Markdown]
@@ -466,6 +371,101 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
     - link MDLink
 
 ━━━━━━━━━━━━━━━━━━━━
++ markdown-closed-fence-body ~ Char String
+    - width Size
+
+~ lines \markdown-non-closing-code-line(width)* \markdown-fence-close(width)
+    "".join(lines)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-open-fence-body ~ Char String
+    - width Size
+
+~ body .*
+    body
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-non-closing-code-line ~ Char String
+    - width Size
+
+~ !\markdown-fence-close(width) text (!\nl .)* \nl
+    "$text\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-fence-close ~ Char
+    - width Size
+
+~ "`"{width} "`"* / &(\nl | !.)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-inline ~ Char Markdown
+
+~ \strong
+~ "**"
+    MDText("**")
+~ \em
+~ \image
+~ \link
+~ \inline-code
+~ \escaped-text
+~ \text
+~ \special-text
+
+.. strong Markdown ~
+    ~ "**" (!"**" ...contents \markdown-inline)+ "**"
+        MDStrong(contents)
+
+.. em Markdown ~
+    ~ "*" (!"*" ...contents \markdown-inline)+ "*"
+        MDEm(contents)
+
+.. link Markdown ~
+    ~ "[" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
+        MDLink(url, contents)
+
+.. image Markdown ~
+    ~ "![" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
+        MDImage(url, contents)
+
+.. inline-code Markdown ~
+    ~ "`" code (!"`" !\nl .)* "`"
+        MDInlineCode(code)
+
+.. escaped-text Markdown ~
+    ~ "\\" text \escaped-char
+        MDText(text)
+
+.. special-text Markdown ~
+    ~ text \reserved-char
+        MDText(text)
+
+.. text Markdown ~
+    ~ text \chars
+        MDText(text)
+
+.. chars String ~
+    ~ chars \char+
+        chars
+
+.. char ~
+    ~ !(\reserved-char | \nl) .
+
+.. reserved-char ~
+    ~ "\\" | "*" | "[" | "]" | "!" | "`"
+
+.. escaped-char ~
+    ~ \reserved-char | "|" | "#" | ">" | "-" | "+" | "." | "_" | "(" | ")" | "~" | "<"
+
+.. url-text String ~
+    ~ chars \url-char+
+        Array(chars).slice-string()
+
+.. url-char Char ~
+    ~ "\\)"
+        ')'
+    ~ !(")" | \nl) .
+
+━━━━━━━━━━━━━━━━━━━━
 + markdown-to-html String
     - doc Markdown
     - fenced-code-renderer MarkdownFencedCodeRenderer? = null
@@ -473,6 +473,39 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
     - link-renderer MarkdownLinkRenderer? = null
 
 MarkdownHTMLRenderer(fenced-code-renderer, heading-id-renderer, link-renderer).render(doc)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-visible-text String
+    - nodes [Markdown]
+
+"".join(markdown-visible-node-text(each) in nodes)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-heading-slug String
+    - text String
+
+match text.lowercased
+    ~ \ws* (...words \markdown-slug-word \ws*)* !.
+        "-".join(each in words when each.length > 0)
+    ??
+        ""
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slug-word ~ Char String
+
+~ pieces \markdown-slug-piece+
+    "".join(pieces)
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slug-piece ~ Char String
+
+~ c \markdown-slug-codepoint
+    if is-markdown-slug-character(c) then "$c" else ""
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-slug-codepoint ~ Char Char
+
+~ !\ws .
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkdownHTMLRenderer
@@ -632,6 +665,50 @@ match alignment
         ""
 
 .. alignment = if column < alignments.length then alignments[column] else MDTableAlignment.none
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkdownLines
+
+_ source String
+_ starts [Index]
+_ length Index
+_ is-indexed = false
+
+────────────────────
++ This
+    - source
+
+────────────────────
++ do offset Index
+    - target TokenLocation
+
+. start = line-offset(target.line)
+=? length if target.line >= starts.length
+. next = target.line + 1
+. line-end = if next < starts.length then starts[next] - 1 else length
+=? length if start + target.column > line-end
+= start + target.column
+
+────────────────────
++ do line-offset Index
+    - line U32
+
+index-lines()
+=? length if line >= starts.length
+= starts[line]
+
+────────────────────
+_ do index-lines
+
+=? if is-indexed
+is-indexed = true
+starts += 0
+. position Index = 0
+for c in source
+    position += 1
+    if c == '\n'
+        starts += position
+length = position
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ¶ html-paragraph
@@ -854,50 +931,6 @@ _ finish-markdown-document
 MDDocument(finalize-markdown(MarkdownLines(source), nodes))
 
 ━━━━━━━━━━━━━━━━━━━━
-_ MarkdownLines
-
-_ source String
-_ starts [Index]
-_ length Index
-_ is-indexed = false
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-+ do offset Index
-    - target TokenLocation
-
-. start = line-offset(target.line)
-=? length if target.line >= starts.length
-. next = target.line + 1
-. line-end = if next < starts.length then starts[next] - 1 else length
-=? length if start + target.column > line-end
-= start + target.column
-
-────────────────────
-+ do line-offset Index
-    - line U32
-
-index-lines()
-=? length if line >= starts.length
-= starts[line]
-
-────────────────────
-_ do index-lines
-
-=? if is-indexed
-is-indexed = true
-starts += 0
-. position Index = 0
-for c in source
-    position += 1
-    if c == '\n'
-        starts += position
-length = position
-
-━━━━━━━━━━━━━━━━━━━━
 _ normalized-table-cells
     - cells [String]
 
@@ -961,12 +994,6 @@ _ do markdown-inlines [Markdown]
 = [MDText(source)]
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markdown-visible-text String
-    - nodes [Markdown]
-
-"".join(markdown-visible-node-text(each) in nodes)
-
-━━━━━━━━━━━━━━━━━━━━
 _ markdown-visible-node-text String
     - node Markdown
 
@@ -1015,33 +1042,6 @@ match c
         "&#39;"
     ??
         "$c"
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-heading-slug String
-    - text String
-
-match text.lowercased
-    ~ \ws* (...words \markdown-slug-word \ws*)* !.
-        "-".join(each in words when each.length > 0)
-    ??
-        ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-slug-word ~ Char String
-
-~ pieces \markdown-slug-piece+
-    "".join(pieces)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-slug-piece ~ Char String
-
-~ c \markdown-slug-codepoint
-    if is-markdown-slug-character(c) then "$c" else ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ markdown-slug-codepoint ~ Char Char
-
-~ !\ws .
 
 ━━━━━━━━━━━━━━━━━━━━
 _ is-markdown-slug-character Bool

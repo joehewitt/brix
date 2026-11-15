@@ -44,12 +44,13 @@
 + window-stoplight-offset = Point(8, 7)
 + window-stoplight-center Length = 14
 + window-stoplight-inset Length = 80
-_ window-stoplight-gap Length = 11
 + window-full-screen-inset Length = 8
 + window-sidebar-toggle-width Length = 34
 + window-sidebar-toggle-inset Length = window-stoplight-inset + window-sidebar-toggle-width
 + window-full-screen-sidebar-toggle-inset Length = window-full-screen-inset + window-sidebar-toggle-width
 + window-zoom-levels [F64] = [0.5, 2.0 / 3.0, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0]
+
+_ window-stoplight-gap Length = 11
 _ window-zoom-tolerance F64 = 0.001
 _ window-zoom-in-keys = [KeyModifier.command + "=", KeyModifier.command + "+"]
 _ window-zoom-out-keys = [KeyModifier.command + "-"]
@@ -59,21 +60,6 @@ _ PointerCapture is (path PointerHitPath, pointer-id U64, button PointerButton, 
 _ TouchCapture is (path PointerHitPath, point Point)
 _ ScrollIndicatorHit is (owner Box, axis Orientation)
 _ IndicatorCapture is (route PointerHitPath, owner Box, axis Orientation, id U64, offset Length)
-
-━━━━━━━━━━━━━━━━━━━━
-+ GUIFocusAdapter
-
-+ accepts = true
-+ requested-box Box?
-+ request-count Size = 0
-
-────────────────────
-+ do request
-    - box Box?
-
-requested-box = box
-request-count += 1
-= accepts
 
 ━━━━━━━━━━━━━━━━━━━━
 + Window is Box
@@ -104,39 +90,37 @@ request-count += 1
 + metal-fallback-reason = ""
 + native Pointer?
 + native-menu-bar Pointer?
-+ native-window-handle => native
 + last-frame-target-time Nanoseconds = 0ns
 + last-frame-refresh-interval Nanoseconds = 0ns
-+ window-clock := FrameClock(this)
 + previous-window Window?
 + next-window Window?
-+ is-window-root => true
 + is-active = false
 + has-opened = false
-+ admits-entering => has-opened && entering-hush == 0 && !scope-stills(current-markup-cause())
-+ admits-leaving => has-opened && !scope-stills(current-markup-cause())
-_ entering-hush Size = 0
-_ is-layout-hushed = false
-_ shows-inactive = false
 + focused-box Box?
-_ focus-home Box?
 + remembered-focus-box Box?
 + popups [Popup]
 + modal-popup Popup?
 + focus-adapter GUIFocusAdapter?
-+ current-cursor-style => resolved-cursor-style
-+ current-hovered-box Box? => hovered-box
 + drag-session DragSession?
 + key-bindings [KeyBinding] = active-bindings(#key-binding-nodes, #focused-box, #modal-popup)
 + key-binding-conflicts [KeyBindingConflict] = find-key-binding-conflicts(#key-bindings)
 + registered-key-bindings [KeyBinding] = #key-binding-nodes
 + commands [Command] = window-commands(#command-nodes, #key-shortcut-nodes)
++ window-clock := FrameClock(this)
++ native-window-handle => native
++ is-window-root => true
++ admits-entering => has-opened && entering-hush == 0 && !scope-stills(current-markup-cause())
++ admits-leaving => has-opened && !scope-stills(current-markup-cause())
++ current-cursor-style => resolved-cursor-style
++ current-hovered-box Box? => hovered-box
 
+_ entering-hush Size = 0
+_ is-layout-hushed = false
+_ shows-inactive = false
+_ focus-home Box?
 _ key-binding-nodes Descendants'KeyBinding
 _ command-nodes Descendants'CommandNode
 _ key-shortcut-nodes Descendants'KeyShortcut
-_ markup-root := WindowMarkupRoot(this)
-_ frame-scope := WindowFrame(this)
 _ is-closed = true
 _ is-closing = false
 _ is-finished = false
@@ -145,7 +129,6 @@ _ is-fill-pending = false
 _ is-frame-scheduled = false
 _ frame-not-before Nanoseconds = 0ns
 _ is-rendering = false
-_ live-fills := LiveFillDriver(this)
 _ live-fill-rate F64?
 _ live-fill-rest-at U64?
 _ live-fill-wake-at F64?
@@ -178,9 +161,14 @@ _ is-hover-refresh-pending = false
 _ scroll-hover-owner Box?
 _ scroll-hover-deadline Deadline?
 _ is-scroll-hover-settling = false
+_ markup-root := WindowMarkupRoot(this)
+_ frame-scope := WindowFrame(this)
+_ live-fills := LiveFillDriver(this)
 _ event hover-entered Popup
 _ event hover-exited Bool
 _ event hover-popup-removed Popup
++ pointer-location Point
+
 _ is-requesting-native-focus = false
 _ requested-native-focus-box Box?
 _ key-press-handled = false
@@ -189,8 +177,6 @@ _ native-text-input-active = false
 _ native-undo-title String?
 _ native-redo-title String?
 _ ensure-visible-queue EnsureVisibleQueue?
-_ scroll-resampler := ScrollResampler()
-_ fallback-vector-geometry-table := VectorGeometryTable()
 _ retained-scene DisplayScene?
 _ retained-surface RasterCanvas?
 _ retained-surface-size Dimensions
@@ -208,13 +194,14 @@ _ native-transparent = false
 _ native-clear = false
 _ native-transparency-known = false
 _ has-pointer-location = false
-+ pointer-location Point
 _ cursor-resolution-invalid = true
 _ resolved-cursor-style = CursorStyle.automatic
 _ resolved-cursor-captured = false
 _ has-root-layers = false
 _ applied-zoom F64 = 1
 _ native-stoplight-edge Length = 0
+_ scroll-resampler := ScrollResampler()
+_ fallback-vector-geometry-table := VectorGeometryTable()
 
 . window-size-changed < size
 . window-zoom-changed < zoom
@@ -224,14 +211,47 @@ _ native-stoplight-edge Length = 0
 . window-title-changed < title
 
 ────────────────────
-+ get vector-geometry-table
+_ hover-tip ~>
 
-app?.vector-geometry-table ?? fallback-vector-geometry-table
+~> hidden
+    then waiting(popup) for popup on hover-entered
+
+~> waiting(popup)
+    then shown(popup) on Timer(popup.$hover-delay) when !is-closed
+        do show-hover-popup(popup)
+    then waiting(next) for next on hover-entered
+    then hidden on hover-exited
+
+~> shown(popup)
+    then lingering(popup) on hover-exited
+    then shown(next) for next on hover-entered
+        do switch-hover-popup(popup, next)
+    then cooling(popup.$hover-warmth) on hover-popup-removed when each as Pointer == popup as Pointer
+
+~> lingering(popup)
+    then cooling(popup.$hover-warmth) on Timer(popup.$hover-linger)
+        do popup.dismiss(DismissReason.hover-end)
+    then shown(popup) on hover-entered when each as Pointer == popup as Pointer
+    then shown(next) for next on hover-entered
+        do switch-hover-popup(popup, next)
+    then cooling(popup.$hover-warmth) on hover-popup-removed when each as Pointer == popup as Pointer
+
+~> cooling(warmth)
+    then hidden on Timer(warmth)
+    then shown(next) for next on hover-entered
+        do show-hover-popup(next)
 
 ────────────────────
-+ get is-open
+whenever #position
 
-!is-closed
+save-frame()
+
+────────────────────
+whenever #size
+
+save-frame()
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do get composite-layers
@@ -242,103 +262,41 @@ if !has-root-layers
 = declared-layer-list
 
 ────────────────────
-+ do register-native-artifact
++ do hit-path
+    - point Point
+
+. index = popups.length
+while index > 0
+    index -= 1
+    . popup = popups[index]
+    if popup.is-input-visible
+        . is-hit = !popup.$pointer-transparent && popup.hit-contains(point)
+        =? hit-path-within(popup, point) if is-hit || popup.$modal
+=? if !bounds.contains(point)
+= super.hit-path(point)
+
+────────────────────
++ admits-focus
     - box Box
 
-. identity = box as Pointer
-for existing in native-artifacts
-    =? if existing == identity
-native-artifacts += identity
-native-artifact-registry-changed = true
-//gui.native.registry-additions ++
+!home || box as Pointer? == home as Pointer? || box.$claims-focus
+
+.. home = attached-focus-home
 
 ────────────────────
-+ do register-focus-home
-    - box Box
++ do schedule-layout
 
-focus-home = box
-
-────────────────────
-+ do unregister-focus-home
-    - box Box
-
-if focus-home as Pointer? == box as Pointer?
-    focus-home = null
-
-────────────────────
-+ do unregister-native-artifact
-    - box Box
-
-. identity = box as Pointer
-for index in 0 .. < native-artifacts.length
-    if native-artifacts[index] == identity
-        native-artifacts.remove(index)
-        native-artifact-registry-changed = true
-        //gui.native.registry-removals ++
-        =
-
-────────────────────
-+ do invalidate-native-artifacts
-
-native-artifact-registry-changed = true
-
-────────────────────
-+ get native-artifact-count
-
-native-artifacts.length
-
-────────────────────
-+ do sync-native-cursors
-
-for identity in native-artifacts
-    . artifact = gc-object-from-pointer'Box(identity)
-    artifact.sync-native-cursor()
-
-────────────────────
-+ do accept-cursor-style-changes
-
-markup-root.clear-cursor-invalidations()
-sync-native-cursors()
+needs-layout = true
 cursor-resolution-invalid = true
-if !needs-layout
-    settle-cursor-resolution()
+schedule-render()
 
 ────────────────────
-+ do sync-native-artifact-registry
-    - native-origin Point
-    - native-parent Pointer?
++ do schedule-render
 
-native-artifact-registry-changed = false
-native-geometry-dirty = false
-window-material-count = 0
-=? if native-artifacts.length == 0
-//gui.native.registered-artifacts += native-artifacts.length as U64
-. native-window = native-window-handle ?? Pointer()
-native-sync-pass += 1
-for identity in native-artifacts
-    . artifact = gc-object-from-pointer'Box(identity)
-    artifact.sync-native-artifact(native-origin, native-window, native-parent, native-sync-pass)
-    if artifact.has-native-material && !artifact.presentation-layer
-        window-material-count += 1
+=? if is-closed
 
-────────────────────
-_ do sync-native-geometry-if-registry-changed
-
-=? if !native-artifact-registry-changed
-sync-native-geometry()
-
-────────────────────
-_ do sync-native-geometry-if-changed
-
-=? if !native-geometry-dirty && !native-artifact-registry-changed
-sync-native-geometry()
-
-────────────────────
-+ do invalidate-visited-native-geometry
-    - pass U64
-
-if pass == native-sync-pass
-    native-geometry-dirty = true
+is-render-invalid = true
+request-render-frame()
 
 ────────────────────
 + do queue-ensure-visible-request
@@ -366,14 +324,1414 @@ if ensure-visible-queue
     settle-ensure-visible-queue(ensure-visible-queue)
 
 ────────────────────
-whenever #position
++ do paint
+    - canvas Canvas
 
-save-frame()
+if !retained-scene
+    retained-scene = DisplayScene(canvas.scale, window-background)
+retained-scene!.maintain(this, canvas.scale, window-background)
+super.paint(canvas)
 
 ────────────────────
-whenever #size
++ do paint-overlay
+    - canvas Canvas
 
-save-frame()
+for popup in popups
+    if popup.is-paint-visible
+        popup.paint(canvas)
+. ghost = drag-session?.ghost
+if ghost
+    canvas.draw-image(ghost.image, ghost.frame)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if is-finished
+is-finished = true
+=? if is-closed
+settle-pointer-dispatch()
+if native
+    C:yumiGuiWindowClose(native)
+finish-close()
+super.close()
+markup-root.close()
+
+╌╌╌╌╌╌╌╌╌╌ is WindowHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get backing-scale
+
+display-scale * effective-zoom
+
+────────────────────
++ get effective-zoom F64
+
+if zoom > 0 then zoom else 1
+
+────────────────────
++ do hush-entering
+    - hushed Bool
+
+if hushed
+    entering-hush += 1
+else if entering-hush
+    entering-hush -= 1
+
+────────────────────
++ do hush-until-layout
+
+=? if is-layout-hushed
+is-layout-hushed = true
+hush-entering(true)
+schedule-layout()
+
+────────────────────
++ do accept-focus-request
+    - box Box?
+
+=? false if is-closed
+if !box
+    pending-focus-box = null
+    = apply-focus(null, true)
+
+. target = box
+=? false if !is-in-focus-scope(target)
+if !target.can-focus
+    pending-focus-box = target
+    = true
+
+pending-focus-box = null
+= apply-focus(target, true)
+
+────────────────────
++ do accept-text-input-change
+    - box Box
+
+if box as Pointer? == focused-box as Pointer?
+    sync-text-input()
+
+────────────────────
++ do invalidate-popup-placement
+
+=? if popups.length == 0 || is-closed
+is-popup-placement-invalid = true
+schedule-render()
+
+────────────────────
++ do watch-clip
+    - watcher ClipWatcher
+
+=? if clip-watcher-index(watcher) != null
+clip-watchers += watcher
+
+────────────────────
++ do unwatch-clip
+    - watcher ClipWatcher
+
+. index = clip-watcher-index(watcher)
+if index != null
+    clip-watchers.remove(index)
+
+────────────────────
++ do notify-clip-watchers
+    - scrolled Box?
+
+=? if is-closed
+. index Index
+while index < clip-watchers.length
+    . watcher = clip-watchers[index]
+    watcher.clip-changed(scrolled)
+    if index < clip-watchers.length && clip-watchers[index] as Pointer == watcher as Pointer
+        index += 1
+
+────────────────────
++ holds-scroll-indicator
+    - owner Box
+
+is-captured || (has-pointer-location && holds-hover && has-axis)
+
+.. capture = scroll-indicator-capture
+.. holds-hover = hover-path-holds(owner as Pointer, hovered-path)
+.. is-captured = capture && capture.owner as Pointer == owner as Pointer
+.. has-axis = owner.scroll-indicator-axis-at(pointer-location) != null
+
+────────────────────
++ do release-input-inside
+    - subtree Box
+
+=? if is-closed
+if focused-box && focused-box.is-within(subtree)
+    request-native-focus(null)
+    clear-focus-state(false)
+if pending-focus-box && pending-focus-box.is-within(subtree)
+    pending-focus-box = null
+if remembered-focus-box && remembered-focus-box.is-within(subtree)
+    remembered-focus-box = null
+if requested-native-focus-box && requested-native-focus-box.is-within(subtree)
+    requested-native-focus-box = null
+. queue = ensure-visible-queue
+if queue && queue.pending && queue.pending.is-within(subtree)
+    queue.pending = null
+for popup in popups
+    . restore = popup.take-return-focus()
+    if restore && !restore.is-within(subtree)
+        popup.remember-return-focus(restore)
+for popup in List'Popup(popups)
+    . anchor = popup.anchor-box
+    if popup.is-within(subtree) || (anchor != null && anchor.is-within(subtree))
+        popup.dismiss(DismissReason.anchor-hidden)
+if hovered-box && hovered-box.is-within(subtree)
+    clear-hover()
+    is-hover-refresh-pending = true
+if pointer-capture && pointer-capture.path.target.is-within(subtree)
+    clear-pointer-capture()
+if scroll-indicator-capture && scroll-indicator-capture.owner.is-within(subtree)
+    clear-pointer-capture()
+if scroll-gesture-path && scroll-gesture-path.target.is-within(subtree)
+    clear-scroll-gesture()
+if scroll-hover-owner && scroll-hover-owner.is-within(subtree)
+    release-scroll-hover-hold()
+cursor-resolution-invalid = true
+
+────────────────────
++ do register-native-artifact
+    - box Box
+
+. identity = box as Pointer
+for existing in native-artifacts
+    =? if existing == identity
+native-artifacts += identity
+native-artifact-registry-changed = true
+//gui.native.registry-additions ++
+
+────────────────────
++ do unregister-native-artifact
+    - box Box
+
+. identity = box as Pointer
+for index in 0 .. < native-artifacts.length
+    if native-artifacts[index] == identity
+        native-artifacts.remove(index)
+        native-artifact-registry-changed = true
+        //gui.native.registry-removals ++
+        =
+
+────────────────────
++ do register-focus-home
+    - box Box
+
+focus-home = box
+
+────────────────────
++ do unregister-focus-home
+    - box Box
+
+if focus-home as Pointer? == box as Pointer?
+    focus-home = null
+
+────────────────────
++ do invalidate-native-artifacts
+
+native-artifact-registry-changed = true
+
+────────────────────
++ do invalidate-visited-native-geometry
+    - pass U64
+
+if pass == native-sync-pass
+    native-geometry-dirty = true
+
+────────────────────
++ do sync-native-artifact-registry
+    - native-origin Point
+    - native-parent Pointer?
+
+native-artifact-registry-changed = false
+native-geometry-dirty = false
+window-material-count = 0
+=? if native-artifacts.length == 0
+//gui.native.registered-artifacts += native-artifacts.length as U64
+. native-window = native-window-handle ?? Pointer()
+native-sync-pass += 1
+for identity in native-artifacts
+    . artifact = gc-object-from-pointer'Box(identity)
+    artifact.sync-native-artifact(native-origin, native-window, native-parent, native-sync-pass)
+    if artifact.has-native-material && !artifact.presentation-layer
+        window-material-count += 1
+
+╌╌╌╌╌╌╌╌╌╌ is FrameClockHost ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do request-clock-frame
+
+request-render-frame()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get vector-geometry-table
+
+app?.vector-geometry-table ?? fallback-vector-geometry-table
+
+────────────────────
++ get is-open
+
+!is-closed
+
+────────────────────
++ get native-artifact-count
+
+native-artifacts.length
+
+────────────────────
++ get popup-boundary
+
+|? native
+    screen.inset(Insets(4, 4, 4, 4))
+??
+    bounds
+
+.. screen = Rect
+    - C:yumiGuiWindowGetScreenBound(native, 0) / zoom
+    - C:yumiGuiWindowGetScreenBound(native!, 1) / zoom
+    - C:yumiGuiWindowGetScreenBound(native!, 2) / zoom
+    - C:yumiGuiWindowGetScreenBound(native!, 3) / zoom
+.. zoom = effective-zoom
+
+────────────────────
++ get display-scale F64
+
+if native then C:yumiGuiWindowGetBackingScaleFactor(native) else 1
+
+────────────────────
++ get viewport Dimensions
+
+Dimensions(size.width / zoom-factor, size.height / zoom-factor)
+
+.. zoom-factor = effective-zoom
+
+────────────────────
++ get is-metal-rendering
+
+selected-metal && metal-renderer && metal-renderer.is-available
+
+────────────────────
++ get metal-present-count
+
+metal-renderer?.presents ?? 0
+
+────────────────────
++ get metal-maximum-frames-per-second I64
+
+metal-renderer?.maximum-frames-per-second ?? 0
+
+────────────────────
++ get last-metal-frame-id
+
+(metal-renderer?.commits ?? 0) - 1
+
+────────────────────
++ get metal-renderer-allocations
+
+metal-renderer?.renderer-allocations ?? -1
+
+────────────────────
++ get metal-draw-calls
+
+metal-renderer?.draw-calls ?? -1
+
+────────────────────
++ get metal-skipped-ops
+
+metal-renderer?.skipped-ops ?? -1
+
+────────────────────
++ get scene-opaque-demotions
+
+retained-scene?.opaque-demotions ?? 0
+
+────────────────────
++ get scene-metal-tile-fallbacks
+
+retained-scene?.metal-tile-fallbacks ?? 0
+
+────────────────────
++ get scene-items-built
+
+retained-scene?.items-built ?? 0
+
+────────────────────
++ get completed-metal-frame-id I64
+
+metal-renderer?.completed-frame ?? -1
+
+────────────────────
+_ get has-transparent-background Bool
+
+window-material-count > 0 || has-clear-background
+
+────────────────────
+_ get has-clear-background Bool
+
+window-background.alpha < 1
+
+────────────────────
+_ get window-background RGBA
+
+background ?? $gui-window-color
+
+────────────────────
+_ get attached-focus-home Box?
+
+|? home && home.window as Pointer? == this as Pointer?
+    home
+??
+    null
+
+.. home = focus-home
+
+────────────────────
++ do sync-native-cursors
+
+for identity in native-artifacts
+    . artifact = gc-object-from-pointer'Box(identity)
+    artifact.sync-native-cursor()
+
+────────────────────
++ do accept-cursor-style-changes
+
+markup-root.clear-cursor-invalidations()
+sync-native-cursors()
+cursor-resolution-invalid = true
+if !needs-layout
+    settle-cursor-resolution()
+
+────────────────────
++ do open
+
+?! Panic("A closed window cannot be opened again")
+    if is-finished
+is-closed = false
+restore-frame()
+ensure-native()
+app?.ensure-accents()
+render-opening-frame()
+if native
+    C:yumiGuiWindowShow(native)
+has-opened = true
+
+────────────────────
++ do bring-to-front
+
+if native && !is-closed
+    C:yumiGuiWindowShow(native)
+
+────────────────────
++ do request-close
+
+=? true if is-closed
+=? false if is-closing || !confirm-close()
+close()
+= true
+
+────────────────────
++ do accept-native-close-request
+
+=? if request-close()
+if native
+    C:yumiGuiWindowRejectDeferredClose(native)
+
+────────────────────
++ do render
+
+=? false if is-closed
+ensure-native()
+=? false if !native
+
+. output-color-space = C:yumiGuiWindowGetDisplayColorSpace(native)
+for popup in popups
+    popup.ensure-presentation(native!)
+catch-up-live-fills()
+. popup-fills = render-popups(output-color-space)
+. rendered = render-main(output-color-space, popup-fills)
+sync-native-transparency()
+= rendered
+
+────────────────────
++ do prepare-frame
+
+=? if is-closed || !native
+catch markup-root.markup-batch-queue.checkpoint()
+if needs-layout
+    needs-layout = false
+    layout()
+. renderer = metal-renderer
+. scene = retained-scene
+=? if !renderer || !scene
+scene.maintain(this, renderer.scale, window-background)
+
+────────────────────
++ do system-changed
+    - restyles Bool
+
+=? if is-closed
+sync-appearance-tags()
+if restyles
+    restyle-themes()
+schedule-layout()
+
+────────────────────
++ do layout
+
+native-geometry-dirty = true
+gui-pixel-scale = backing-scale
+. frame = Rect(viewport)
+super.layout(frame)
+. deferred = needs-layout
+needs-layout = false
+notify-clip-watchers(null)
+if needs-layout
+    needs-layout = false
+    super.layout(frame)
+needs-layout = needs-layout || deferred
+layout-popups()
+gui-box-matches.resolve(this)
+resolve-landings()
+if is-layout-hushed
+    is-layout-hushed = false
+    hush-entering(false)
+
+────────────────────
++ do mark-painted
+
+$is-paint-invalid = false
+$is-paint-invalid-below = false
+markup-root.$is-paint-invalid = false
+markup-root.$is-paint-invalid-below = false
+
+────────────────────
++ do settle-layout
+
+catch markup-root.markup-batch-queue.checkpoint()
+needs-layout = false
+layout()
+
+────────────────────
++ do ensure-native
+
+=? if is-closed
+
+if !native
+    native = C:yumiGuiWindowCreate(title, size.width, size.height)
+    native-transparency-known = false
+    requested-native-position = null
+    sync-native-transparency()
+    sync-native-chrome()
+    selected-metal = use-metal
+    C:yumiGuiWindowSetBackingScaleChangedCallback
+        - native!
+        - gui-window-backing-scale-changed as GuiWindowFrameCallback
+        - this as Pointer
+    C:yumiGuiWindowSetContentSizeChangedCallback
+        - native!
+        - gui-window-content-size-changed as GuiWindowSizeCallback
+        - this as Pointer
+    C:yumiGuiWindowSetMovedCallback
+        - native!
+        - gui-window-moved as GuiWindowFrameCallback
+        - this as Pointer
+    C:yumiGuiWindowSetPointerCallback
+        - native!
+        - gui-window-pointer-event as GuiWindowPointerCallback
+        - this as Pointer
+    C:yumiGuiWindowSetTouchCallback
+        - native!
+        - gui-window-touch-event as GuiWindowTouchCallback
+        - this as Pointer
+    C:yumiGuiWindowSetEventCallback
+        - native!
+        - gui-window-native-event as GuiWindowEventCallback
+        - this as Pointer
+    C:yumiGuiWindowSetTextActionCallback
+        - native!
+        - gui-window-text-action as GuiWindowTextActionCallback
+        - this as Pointer
+    C:yumiGuiWindowSetCursorStyle
+        - native!
+        - cursor-style-native-value(resolved-cursor-style)
+        - cursor-style-native-image(resolved-cursor-style)
+        - resolved-cursor-captured
+    . accepted = Dimensions
+        - C:yumiGuiWindowGetContentWidth(native!)
+        - C:yumiGuiWindowGetContentHeight(native!)
+    requested-native-size = accepted
+    if accepted != size
+        size = accepted
+
+if requested-native-size != size
+    requested-native-size = size
+    C:yumiGuiWindowSetContentSize(native!, size.width, size.height)
+. requested-position = position
+if requested-position && requested-native-position != requested-position
+    apply-native-position(requested-position)
+
+────────────────────
++ do accept-native-focus
+    - box Box?
+
+=? if is-closed
+=? if is-requesting-native-focus && !box && !requested-native-focus-box
+if is-requesting-native-focus && box && requested-native-focus-box
+    =? if box as Pointer == requested-native-focus-box as Pointer
+settle-pointer-dispatch()
+pending-focus-box = null
+if box && !is-valid-focus-box(box)
+    clear-focus-state(false)
+else
+    apply-focus(box, false)
+settle-pointer-dispatch()
+
+────────────────────
++ do move-focus
+    - going-backward = false
+
+=? false if is-closed
+settle-pointer-dispatch()
+. boundary Box = this
+if modal-popup
+    boundary = modal-popup
+
+. next Box?
+if focused-box
+    . current = focused-box
+    . is-current = current.is-within(boundary) && current.can-focus
+    is-current = is-current && current.is-focus-traversal-reachable()
+    if is-current
+        next = boundary.focus-candidate-after(current, going-backward)
+if !next
+    next = boundary.focus-candidate-at-edge(going-backward)
+=? false if !next
+
+. accepted = accept-focus-request(next)
+settle-pointer-dispatch()
+= accepted
+
+────────────────────
++ do settle-pending-focus
+
+. target = pending-focus-box
+if !target
+    settle-held-group()
+    =
+if !is-in-focus-scope(target)
+    pending-focus-box = null
+    =
+. resolved = if target.delegates-focus then group-focus-target(target) else target
+=? if !resolved || !resolved.can-hold-focus
+pending-focus-box = null
+apply-focus(resolved, true)
+
+────────────────────
++ do dispatch-key-press
+    - event KeyPressEvent
+
+key-press-handled = true
+=? if !prepare-pointer-dispatch()
+if is-focus-key(event)
+    set-key-focus(true)
+if drag-session && event.key == Key.escape
+    finish-drag(false)
+    event.cancel()
+    settle-pointer-dispatch()
+    =
+. target = focused-box
+if target
+    target.event-path().publish(event)
+
+if !event.is-canceled
+    if event.key == Key.escape && dismiss-top-popup(DismissReason.escape)
+        event.cancel()
+    else if event.key == Key.tab
+        move-focus(event.modifiers.shift)
+        event.cancel()
+    else if event.key == Key.space
+        activate-pressed(event, target)
+    else if publish-clipboard-key(event, (target ?? this).event-path())
+        event.cancel()
+
+if !event.is-canceled && perform-undo-key(event)
+    event.cancel()
+if !event.is-canceled
+    dispatch-key-binding-key-press(active-key-bindings(), event)
+if !event.is-canceled && allows-zoom && perform-zoom-key(event)
+    event.cancel()
+if !event.is-canceled && event.key == Key.enter
+    activate-pressed(event, target)
+key-press-handled = event.is-canceled
+settle-pointer-dispatch()
+
+────────────────────
++ do undo-target-for UndoTarget?
+    - redoes = false
+
+. cursor Box? = focused-box ?? this
+while cursor
+    . box = cursor
+    . target = box.undo-target
+    if target && (if redoes then target.can-redo else target.can-undo)
+        = target
+    cursor = box.material-parent
+= null
+
+────────────────────
++ do perform-undo Bool
+    - redoes = false
+
+. target = undo-target-for(redoes)
+=? false if !target
+if redoes
+    target.redo()
+else
+    target.undo()
+= true
+
+────────────────────
++ do zoom-in
+
+for level in window-zoom-levels
+    if level > effective-zoom + window-zoom-tolerance
+        zoom = level
+        =
+
+────────────────────
++ do zoom-out
+
+. index = window-zoom-levels.length
+while index > 0
+    index -= 1
+    . level = window-zoom-levels[index]
+    if level < effective-zoom - window-zoom-tolerance
+        zoom = level
+        =
+
+────────────────────
++ do zoom-to-actual-size
+
+zoom = 1
+
+────────────────────
++ do dispatch-key-release
+    - event KeyReleaseEvent
+
+=? if !prepare-pointer-dispatch()
+if event.key == Key.enter || event.key == Key.space
+    release-key-press()
+. target = focused-box
+if target
+    target.event-path().publish(event)
+dispatch-key-binding-key-release(key-binding-nodes, event)
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-key-input
+    - event KeyInputEvent
+
+=? if !prepare-pointer-dispatch()
+if focused-box && focused-box.$focus-mode == FocusMode.input
+    focused-box.event-path().publish(event)
+sync-text-input()
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-text-command
+    - event TextCommandEvent
+
+=? if !prepare-pointer-dispatch()
+if focused-box && focused-box.$focus-mode == FocusMode.input
+    focused-box.event-path().publish(event)
+sync-text-input()
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-text-composition
+    - event TextCompositionEvent
+
+=? if !prepare-pointer-dispatch()
+if focused-box && focused-box.$focus-mode == FocusMode.input
+    focused-box.event-path().publish(event)
+sync-text-input()
+settle-pointer-dispatch()
+
+────────────────────
++ do accept-text-action
+    - kind NativeTextActionKind
+    - text String
+    - start U32
+    - length U32
+    - keyed Bool
+
+=? if keyed && key-press-handled
+do match kind
+    |= NativeTextActionKind.input
+        dispatch-key-input(KeyInputEvent(text, start))
+    |= NativeTextActionKind.command
+        dispatch-text-command(text-command-event(text))
+    |= NativeTextActionKind.composition
+        dispatch-text-composition(TextCompositionEvent(text, start, length))
+
+────────────────────
++ do discard-text-composition
+
+if native
+    C:yumiGuiWindowDiscardTextComposition(native)
+
+────────────────────
++ active-key-bindings
+
+active-bindings(key-binding-nodes, focused-box, modal-popup)
+
+────────────────────
++ do dispatch-modifiers-changed
+    - modifiers PointerModifiers
+
+=? if !prepare-pointer-dispatch()
+. active = active-key-bindings()
+update-key-binding-modifiers(key-binding-nodes, active, modifiers)
+if drag-session
+    advance-drag(drag-session.point, modifiers)
+    settle-pointer-dispatch()
+    =
+. data = PointerEventData(pointer-location, 0, PointerDeviceKind.mouse, modifiers)
+. event = ModifiersChangedEvent(data)
+if pointer-capture && pointer-capture.path.is-current()
+    pointer-capture.path.at-point(pointer-location).publish(event)
+else if has-pointer-location
+    . hit = pointer-hit-path(pointer-location)
+    if hit
+        hit.publish(event)
+    else
+        event-path().publish(event)
+else
+    event-path().publish(event)
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-pointer-event
+    - event PointerMoveEvent
+
+=? if !prepare-pointer-dispatch()
+
+if scroll-hover-owner && !drag-session && event.root-point == pointer-location
+    settle-pointer-dispatch()
+    =
+accept-pointer-location(event.root-point)
+invalidate-pointer-placement()
+release-scroll-hover-hold()
+. session = drag-session
+if session && !session.source
+    settle-pointer-dispatch()
+    =
+if session
+    if (event.buttons /and/ 1) != 0
+        advance-drag(event.root-point, event.modifiers)
+        settle-pointer-dispatch()
+        =
+    finish-drag(false)
+. hit = pointer-hit-path(event.root-point)
+update-hover(hit)
+hit?.publish(event)
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-pointer-event
+    - event PointerDownEvent
+
+=? if !prepare-pointer-dispatch()
+
+set-key-focus(false)
+finish-drag(false)
+is-drag-offered = false
+dispatch-key-binding-pointer-press(key-binding-nodes)
+accept-pointer-location(event.root-point)
+. hit = pointer-hit-path(event.root-point)
+if dismiss-popups-for-press(event.root-point, hit)
+    clear-hover()
+    settle-pointer-dispatch()
+    =
+hit = pointer-hit-path(event.root-point)
+if begin-scroll-indicator-capture(event, hit)
+    settle-pointer-dispatch()
+    =
+update-hover(hit)
+. holder = focused-box
+. pending = pending-focus-box
+hit?.publish(event)
+if !event.is-canceled && hit && hit.is-current()
+    if event.button == PointerButton.primary
+        if hit.target.$window-draggable && press-window-chrome(event)
+            clear-pointer-capture()
+            clear-scroll-gesture()
+            clear-hover()
+            settle-pointer-dispatch()
+            =
+        . is-focus-moved = focused-box as Pointer? != holder as Pointer? || pending-moved
+            .. pending-moved = pending-focus-box as Pointer? != pending as Pointer?
+        . focus-owner = press-focus-owner(hit.target)
+        if !is-focus-moved && (focus-owner || !press-keeps-focus(hit.target, holder))
+            . group = if focus-owner then null else hit.target.nearest-focus-group()
+            pending-focus-box = group
+            if !group
+                apply-focus(focus-owner, press-syncs-native-focus(hit.target, holder), false)
+    clear-pointer-capture()
+    pointer-capture = PointerCapture(hit, event.pointer-id, event.button, event.click-count)
+    press-origin = event.root-point
+    . is-secondary = event.button == PointerButton.secondary
+    if is-secondary || (event.button == PointerButton.primary && event.modifiers.control)
+        open-context-popup(hit.target, event.root-point)
+    else
+        hit.target.is-pressed = hit.target.is-effectively-enabled
+        set-press-path(true, hit)
+settle-pointer-dispatch()
+
+────────────────────
++ do begin-window-drag
+    - event PointerDownEvent
+
+=? false if !native || event.window-drag-token == 0
+= C:yumiGuiWindowRequestDrag(native, event.window-drag-token)
+
+────────────────────
++ do dispatch-pointer-event
+    - event PointerUpEvent
+
+=? if !prepare-pointer-dispatch()
+
+accept-pointer-location(event.root-point)
+. dragging = drag-session
+if dragging && dragging.pointer-id == event.pointer-id && event.button == PointerButton.primary
+    dragging.sample(event.root-point, event.ordering-time)
+    advance-drag(event.root-point, event.modifiers)
+    finish-drag(!event.is-interrupted)
+    settle-pointer-dispatch()
+    =
+. indicator-capture = scroll-indicator-capture
+. matches-indicator = indicator-capture != null
+matches-indicator = matches-indicator && indicator-capture!.id == event.pointer-id
+if matches-indicator
+    update-hover(indicator-capture!.route.at-point(event.root-point))
+    clear-pointer-capture()
+    settle-pointer-dispatch()
+    =
+
+. hit = pointer-hit-path(event.root-point)
+update-hover(hit)
+. capture = pointer-capture
+. is-matching-pointer = capture != null && capture.pointer-id == event.pointer-id
+. is-matching-capture = is-matching-pointer && capture!.button == event.button
+. release-path = if is-matching-capture then capture!.path.at-point(event.root-point) else hit
+release-path?.publish(event)
+
+settle-pointer-dispatch()
+. live-capture = pointer-capture
+. is-live-pointer = live-capture != null && live-capture.pointer-id == event.pointer-id
+. is-primary = is-live-pointer && live-capture!.button == PointerButton.primary
+. is-release-target = hit != null && is-live-pointer && hit.target == live-capture!.path.target
+. is-current-target = is-release-target && live-capture!.path.is-current()
+. is-completed = !event.is-canceled && !event.is-interrupted
+. should-click = is-completed && is-primary && is-current-target
+if should-click
+    . click = ClickEvent(event.data, live-capture!.button, live-capture!.click-count)
+    live-capture!.path.at-point(event.root-point).publish(click)
+else if is-live-pointer && hit && is-completed
+    release-into-press-popup(hit, event)
+if is-live-pointer
+    for popup in popups
+        popup.opened-by-press = false
+
+if is-matching-capture
+    clear-pointer-capture()
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-pointer-event
+    - event PointerDragEvent
+
+=? if !prepare-pointer-dispatch()
+
+accept-pointer-location(event.root-point)
+invalidate-pointer-placement()
+. dragging = drag-session
+if dragging
+    dragging.sample(event.root-point, event.ordering-time)
+    advance-drag(event.root-point, event.modifiers)
+    settle-pointer-dispatch()
+    =
+. indicator-capture = scroll-indicator-capture
+. matches-indicator = indicator-capture != null
+matches-indicator = matches-indicator && indicator-capture!.id == event.pointer-id
+if matches-indicator && indicator-capture!.route.is-current()
+    update-hover(indicator-capture!.route.at-point(event.root-point))
+    indicator-capture!.owner.scroll-indicator-scroll-to-point
+        - indicator-capture!.axis
+        - event.root-point
+        - indicator-capture!.offset
+    settle-pointer-dispatch()
+    =
+else if matches-indicator
+    clear-pointer-capture()
+
+. capture = pointer-capture
+. is-matching-pointer = capture != null && capture.pointer-id == event.pointer-id
+. is-matching-capture = is-matching-pointer && capture!.button == event.button
+if is-matching-capture && offer-drag(capture!, event)
+    settle-pointer-dispatch()
+    =
+. hit = pointer-hit-path(event.root-point)
+update-hover(hit)
+. drag-path = if is-matching-capture then capture!.path.at-point(event.root-point) else hit
+drag-path?.publish(event)
+settle-pointer-dispatch()
+
+────────────────────
++ do cancel-drag
+
+=? if !prepare-pointer-dispatch()
+finish-drag(false)
+settle-pointer-dispatch()
+
+────────────────────
++ do step-drag-scroll
+
+. session = drag-session
+=? false if !session
+. delta = drag-scroll-delta(session)
+. scroller = session.scroller
+=? false if delta == 0 || !scroller
+. resting = scroller.scroll-y
+scroller.scroll-by(Point(0, delta))
+=? false if scroller.scroll-y == resting
+advance-drag(session.point, session.modifiers)
+settle-pointer-dispatch()
+= true
+
+────────────────────
++ do dispatch-external-drag
+    - payload ClipboardDrag
+    - data PointerEventData
+
+=? if !prepare-pointer-dispatch()
+. session = drag-session
+if session && session.source
+    settle-pointer-dispatch()
+    =
+. current = session.payload as ClipboardDrag if session && session.payload is ClipboardDrag
+if current && current.sequence == payload.sequence
+    advance-drag(data.root-point, data.modifiers)
+else
+    //gui.drop// begin external ${payload.sequence} at ${data.root-point}
+    if session
+        finish-drag(false)
+    begin-drag
+        - DragSession
+            - payload
+            - null
+            - data.root-point
+            - data.root-point
+            - data.modifiers
+            - payload.sequence
+settle-pointer-dispatch()
+
+────────────────────
++ do finish-external-drag
+    - data PointerEventData
+    - dropped Bool
+
+=? if !prepare-pointer-dispatch()
+. session = drag-session
+//gui.drop// finish external dropped $dropped session ${session != null} at ${data.root-point}
+if session && !session.source
+    if dropped
+        advance-drag(data.root-point, data.modifiers)
+    finish-drag(dropped)
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-pointer-event
+    - event ScrollEvent
+
+=? false if !prepare-pointer-dispatch()
+
+if !has-pointer-location || event.root-point != pointer-location
+    release-scroll-hover-hold()
+accept-pointer-location(event.root-point)
+. path = scroll-event-path(event)
+path?.at-point(event.root-point).publish(event)
+. did-handle = event.is-canceled
+if !event.is-canceled && path && path.is-current()
+    did-handle = consume-default-scroll(path, event)
+    is-hover-refresh-pending = true
+if scroll-hover-owner
+    extend-scroll-hover-hold()
+finish-scroll-event(event)
+if drag-session
+    advance-drag(drag-session.point, drag-session.modifiers)
+settle-pointer-dispatch()
+= did-handle
+
+────────────────────
++ do accept-native-scroll
+    - event ScrollEvent
+
+if scroll-resampler.accept(event)
+    request-render-frame()
+    =
+. ignored = dispatch-pointer-event(event)
+
+────────────────────
++ do dispatch-pointer-event
+    - event MagnifyEvent
+
+=? if !prepare-pointer-dispatch()
+accept-pointer-location(event.root-point)
+. held = magnify-gesture-path
+. continues = event.phase != ScrollPhase.began && event.phase != ScrollPhase.none
+. path = if continues && held && held.is-current() then held else pointer-hit-path(event.root-point)
+magnify-gesture-path = path
+path?.at-point(event.root-point).publish(event)
+if event.phase == ScrollPhase.ended || event.phase == ScrollPhase.cancelled
+    magnify-gesture-path = null
+settle-pointer-dispatch()
+
+────────────────────
++ do accept-pointer-record
+    - native-record PointerRecord
+
+. record = unzoomed(native-record)
+. data = record.data
+. button = record.pointer-button
+do match? record.kind
+    |= PointerRecordKind.move
+        dispatch-pointer-event(PointerMoveEvent(data, record.delta))
+    |= PointerRecordKind.down
+        dispatch-pointer-event
+            - PointerDownEvent(data, button, record.click-count, record.window-drag-token)
+    |= PointerRecordKind.up
+        dispatch-pointer-event(PointerUpEvent(data, button))
+    |= PointerRecordKind.cancel
+        dispatch-pointer-event(PointerUpEvent(data, button, true))
+    |= PointerRecordKind.drag
+        dispatch-pointer-event(PointerDragEvent(data, button, record.delta))
+    |= PointerRecordKind.scroll
+        . phase = record.phase as ScrollPhase
+        . momentum = record.momentum-phase as ScrollPhase
+        accept-native-scroll
+            - ScrollEvent(data, record.delta.x, record.delta.y, record.is-precise, phase, momentum)
+    |= PointerRecordKind.exit
+        dispatch-pointer-exit()
+    |= PointerRecordKind.deactivate
+        dispatch-window-deactivated()
+    |= PointerRecordKind.magnify
+        dispatch-pointer-event(MagnifyEvent(data, record.delta.x, record.phase as ScrollPhase))
+    |= PointerRecordKind.drop-enter
+        accept-external-drag(data)
+    |= PointerRecordKind.drop-over
+        accept-external-drag(data)
+    |= PointerRecordKind.drop-exit
+        finish-external-drag(data, false)
+    |= PointerRecordKind.drop
+        finish-external-drag(data, true)
+    |= PointerRecordKind.peer-press
+        dispatch-peer-press(data.root-point)
+
+────────────────────
++ do accept-touch
+    - native-data PointerEventData
+    - phase TouchPhase
+    - tap-count U32
+    - native-radius F64
+
+=? if !prepare-pointer-dispatch()
+. zoom = effective-zoom
+. point = Point(native-data.root-point.x / zoom, native-data.root-point.y / zoom)
+. data = native-data.root-point = point
+. radius = native-radius / zoom
+. id = data.pointer-id
+if phase == TouchPhase.began
+    . hit = pointer-hit-path(point)
+    if hit
+        touch-captures[id] = TouchCapture(hit, point)
+        hit.publish(TouchEvent(data, phase, Point(0, 0), tap-count, radius))
+    settle-pointer-dispatch()
+    =
+. capture = touch-captures[id]
+if !capture
+    settle-pointer-dispatch()
+    =
+if phase == TouchPhase.moved
+    touch-captures[id] = TouchCapture(capture.path, point)
+else
+    -= touch-captures[id]
+. delta = Point(point.x - capture.point.x, point.y - capture.point.y)
+capture.path.at-point(point).publish(TouchEvent(data, phase, delta, tap-count, radius))
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-pointer-exit
+
+=? if !prepare-pointer-dispatch()
+has-pointer-location = false
+cursor-resolution-invalid = true
+clear-hover()
+settle-pointer-dispatch()
+
+────────────────────
++ do dispatch-window-deactivated
+
+accept-window-deactivated()
+
+────────────────────
++ do accept-window-activated
+
+=? if is-closed || is-active
+settle-pointer-dispatch()
+is-active = true
+show-activity(true)
+if native-menu-bar
+    C:yumiGuiMenuBarInstall(native-menu-bar)
+activated <- WindowActivatedEvent()
+. remembered = remembered-focus-box
+if remembered && is-valid-focus-box(remembered)
+    apply-focus(remembered, true)
+is-focus-suspended = false
+settle-pointer-dispatch()
+
+────────────────────
++ do accept-window-unoccluded
+
+=? if is-closed || !is-metal-rendering
+schedule-render()
+
+────────────────────
++ do accept-window-deactivated
+
+=? if is-closed
+settle-pointer-dispatch()
+release-key-bindings(key-binding-nodes)
+dismiss-popups-for-deactivation()
+. was-active = is-active
+if drag-session?.source
+    finish-drag(false)
+clear-pointer-capture()
+touch-captures.clear()
+clear-scroll-gesture()
+is-focus-suspended = true
+clear-focus-state(true)
+is-active = false
+show-activity(false)
+if was-active
+    deactivated <- WindowDeactivatedEvent()
+settle-pointer-dispatch()
+
+────────────────────
++ do present-popup
+    - popup Popup
+
+for open in popups
+    =? if open as Pointer == popup as Pointer
+. stacking = popup.$popup-stacking
+if stacking != PopupStacking.manual
+    for other in List'Popup(popups)
+        if popup-supersedes(popup, other) && !supersedes-parent(popup, other)
+            other.dismiss(DismissReason.superseded)
+popup.remember-return-focus(focused-box)
+if pointer-capture
+    popup.opened-by-press = true
+popups += popup
+refresh-modal-popup()
+refresh-popup-holds()
+if popup.$popup-focus == PopupFocus.first
+    pending-popup-focus = popup
+if native
+    popup.ensure-presentation(native)
+schedule-layout()
+
+────────────────────
++ do withdraw-popup
+    - popup Popup
+    - reason = DismissReason.programmatic
+
+. index = popup-index(popup)
+=? if !index
+for other in List'Popup(popups)
+    if other as Pointer != popup as Pointer && other.is-within(popup)
+        other.dismiss(DismissReason.ancestor-closed)
+. live-index = popup-index(popup)
+if live-index
+    popups.remove(live-index)
+popup.holds-popup = false
+refresh-popup-holds()
+if pending-popup-focus && pending-popup-focus as Pointer == popup as Pointer
+    pending-popup-focus = null
+. restore = popup.take-return-focus()
+. focus-inside = focused-box != null && focused-box.is-within(popup)
+. restores-empty-focus = !focused-box && popup-dismissal-restores-focus(reason)
+refresh-modal-popup()
+if hovered-box && hovered-box.is-within(popup)
+    clear-hover()
+    is-hover-refresh-pending = true
+hover-popup-removed <- popup
+if (focus-inside || restores-empty-focus) && restore && is-valid-focus-box(restore)
+    apply-focus(restore, true)
+schedule-layout()
+
+────────────────────
++ do settle-popup-focus
+
+. popup = pending-popup-focus
+=? if !popup
+if !popup.is-open || popup.root as Pointer != this as Pointer
+    pending-popup-focus = null
+    =
+. first = popup.focus-candidate-at-edge()
+=? if !first
+pending-popup-focus = null
+if focused-box && !focused-box.is-within(popup)
+    popup.remember-return-focus-if-empty(focused-box)
+accept-focus-request(first)
+
+────────────────────
++ do dismiss-top-popup Bool
+    - reason DismissReason
+
+. index = popups.length
+while index > 0
+    index -= 1
+    . popup = popups[index]
+    if popup.$escape-dismiss
+        popup.dismiss(reason)
+        = true
+    =? false if popup.$modal
+= false
+
+────────────────────
++ do layout-popups
+
+native-geometry-dirty = true
+is-popup-placement-invalid = false
+=? if popups.length == 0
+. boundary = popup-boundary
+for popup in List'Popup(popups)
+    if popup.is-open
+        if !popup.is-anchor-visible && popup.$anchor-hidden-dismiss
+            popup.dismiss(DismissReason.anchor-hidden)
+        else
+            place-popup(popup, boundary)
+
+────────────────────
++ do accept-native-position
+
+=? if !native
+. actual = Point(C:yumiGuiWindowGetPosition(native, 0), C:yumiGuiWindowGetPosition(native!, 1))
+requested-native-position = actual
+if position != actual
+    position = actual
+
+────────────────────
++ do finish-metal-rendering
+
+metal-renderer?.finish()
+
+────────────────────
++ do mark-metal-renderer-allocations
+
+metal-renderer?.mark-renderer-allocations()
+
+────────────────────
++ metal-frame-gpu-nanos
+    - frame I64
+
+metal-renderer?.frame-stat(frame, 0) ?? -1
+
+────────────────────
++ metal-frame-drawable-wait-nanos I64
+    - frame I64
+
+metal-renderer?.frame-stat(frame, 1) ?? -1
+
+────────────────────
++ metal-frame-presented-time-nanoseconds I64
+    - frame I64
+
+metal-renderer?.frame-stat(frame, 2) ?? -1
+
+────────────────────
++ do begin-frame
+
+is-rendering = true
+if native
+    C:yumiGuiWindowBeginFrame(native)
+
+────────────────────
++ do end-frame
+    - committed Bool
+
+if native && !committed
+    C:yumiGuiWindowAbortFrame(native)
+is-rendering = false
+if is-render-invalid || needs-layout || !scroll-resampler.is-idle
+    request-render-frame()
+else if window-clock.is-running
+    request-render-frame(window-clock.next-due())
+else if is-fill-pending
+    request-render-frame()
+
+────────────────────
++ do update-frame Bool
+
+//+gui.frame.phase.markup
+catch markup-root.markup-batch-queue.checkpoint()
+//-gui.frame.phase.markup
+settle-popup-focus()
+settle-pending-focus()
+. render-owners-changed = validate-pointer-owners()
+. render-focus-changed = validate-focus-owner()
+if render-owners-changed || render-focus-changed
+    catch markup-root.markup-batch-queue.checkpoint()
+    settle-pending-focus()
+if is-fill-pending && !is-render-invalid
+    is-fill-pending = metal-renderer?.has-pending-fill-frames ?? false
+    is-render-invalid = !is-fill-pending
+if !is-render-invalid && !needs-layout
+    settle-cursor-resolution()
+    = false
+
+. should-layout = needs-layout
+needs-layout = false
+is-render-invalid = false
+
+if should-layout
+    //+gui.frame.phase.layout
+    layout()
+    //-gui.frame.phase.layout
+else if is-popup-placement-invalid
+    layout-popups()
+
+settle-cursor-resolution()
+= render()
+
+────────────────────
+_ do sync-native-geometry-if-registry-changed
+
+=? if !native-artifact-registry-changed
+sync-native-geometry()
+
+────────────────────
+_ do sync-native-geometry-if-changed
+
+=? if !native-geometry-dirty && !native-artifact-registry-changed
+sync-native-geometry()
 
 ────────────────────
 _ do restore-frame
@@ -416,20 +1774,6 @@ if !position
 store.write("window:${key}", 1, frame)
 
 ────────────────────
-+ do open
-
-?! Panic("A closed window cannot be opened again")
-    if is-finished
-is-closed = false
-restore-frame()
-ensure-native()
-app?.ensure-accents()
-render-opening-frame()
-if native
-    C:yumiGuiWindowShow(native)
-has-opened = true
-
-────────────────────
 _ do render-opening-frame
 
 . frame = use frame-scope
@@ -449,40 +1793,6 @@ while needs-layout && passes < 8
     passes += 1
 is-render-invalid = false
 frame.committed = render()
-
-────────────────────
-+ do bring-to-front
-
-if native && !is-closed
-    C:yumiGuiWindowShow(native)
-
-────────────────────
-+ do close
-
-=? if is-finished
-is-finished = true
-=? if is-closed
-settle-pointer-dispatch()
-if native
-    C:yumiGuiWindowClose(native)
-finish-close()
-super.close()
-markup-root.close()
-
-────────────────────
-+ do request-close
-
-=? true if is-closed
-=? false if is-closing || !confirm-close()
-close()
-= true
-
-────────────────────
-+ do accept-native-close-request
-
-=? if request-close()
-if native
-    C:yumiGuiWindowRejectDeferredClose(native)
 
 ────────────────────
 _ do confirm-close
@@ -542,50 +1852,6 @@ if native
     C:yumiGuiWindowRelease(closing-native)
 
 closed <- ClosedEvent()
-
-────────────────────
-+ do render
-
-=? false if is-closed
-ensure-native()
-=? false if !native
-
-. output-color-space = C:yumiGuiWindowGetDisplayColorSpace(native)
-for popup in popups
-    popup.ensure-presentation(native!)
-catch-up-live-fills()
-. popup-fills = render-popups(output-color-space)
-. rendered = render-main(output-color-space, popup-fills)
-sync-native-transparency()
-= rendered
-
-────────────────────
-+ do prepare-frame
-
-=? if is-closed || !native
-catch markup-root.markup-batch-queue.checkpoint()
-if needs-layout
-    needs-layout = false
-    layout()
-. renderer = metal-renderer
-. scene = retained-scene
-=? if !renderer || !scene
-scene.maintain(this, renderer.scale, window-background)
-
-────────────────────
-_ get has-transparent-background Bool
-
-window-material-count > 0 || has-clear-background
-
-────────────────────
-_ get has-clear-background Bool
-
-window-background.alpha < 1
-
-────────────────────
-_ get window-background RGBA
-
-background ?? $gui-window-color
 
 ────────────────────
 _ do sync-native-transparency
@@ -815,15 +2081,6 @@ retained-surface-color-space = output-color-space
 = true
 
 ────────────────────
-+ do paint
-    - canvas Canvas
-
-if !retained-scene
-    retained-scene = DisplayScene(canvas.scale, window-background)
-retained-scene!.maintain(this, canvas.scale, window-background)
-super.paint(canvas)
-
-────────────────────
 _ do window-background-changed
 
 schedule-render()
@@ -833,16 +2090,6 @@ _ do window-chrome-changed
 
 sync-native-chrome()
 sync-appearance-tags()
-schedule-layout()
-
-────────────────────
-+ do system-changed
-    - restyles Bool
-
-=? if is-closed
-sync-appearance-tags()
-if restyles
-    restyle-themes()
 schedule-layout()
 
 ────────────────────
@@ -885,14 +2132,6 @@ C:yumiGuiWindowSetChrome
 native-stoplight-edge = C:yumiGuiWindowGetStoplightEdge(native!)
 C:yumiGuiWindowSetAllowsZoom(native!, allows-zoom)
 C:yumiGuiWindowSetAppearance(native!, appearance)
-
-────────────────────
-+ do schedule-render
-
-=? if is-closed
-
-is-render-invalid = true
-request-render-frame()
 
 ────────────────────
 _ do sync-live-fills
@@ -941,34 +2180,6 @@ live-fills.seconds += elapsed * window-clock.time-scale
 live-fill-rest-at = now
 
 ────────────────────
-+ do schedule-layout
-
-needs-layout = true
-cursor-resolution-invalid = true
-schedule-render()
-
-────────────────────
-+ do layout
-
-native-geometry-dirty = true
-gui-pixel-scale = backing-scale
-. frame = Rect(viewport)
-super.layout(frame)
-. deferred = needs-layout
-needs-layout = false
-notify-clip-watchers(null)
-if needs-layout
-    needs-layout = false
-    super.layout(frame)
-needs-layout = needs-layout || deferred
-layout-popups()
-gui-box-matches.resolve(this)
-resolve-landings()
-if is-layout-hushed
-    is-layout-hushed = false
-    hush-entering(false)
-
-────────────────────
 _ do resolve-landings
 
 =? if landings.length == 0
@@ -976,157 +2187,6 @@ _ do resolve-landings
 landings = List'BoxLanding()
 for landing in ready
     landing.box.fly-from(landing.frame, null, markup-cause-write, landing.speed)
-
-────────────────────
-+ do mark-painted
-
-$is-paint-invalid = false
-$is-paint-invalid-below = false
-markup-root.$is-paint-invalid = false
-markup-root.$is-paint-invalid-below = false
-
-────────────────────
-+ do settle-layout
-
-catch markup-root.markup-batch-queue.checkpoint()
-needs-layout = false
-layout()
-
-────────────────────
-+ do ensure-native
-
-=? if is-closed
-
-if !native
-    native = C:yumiGuiWindowCreate(title, size.width, size.height)
-    native-transparency-known = false
-    requested-native-position = null
-    sync-native-transparency()
-    sync-native-chrome()
-    selected-metal = use-metal
-    C:yumiGuiWindowSetBackingScaleChangedCallback
-        - native!
-        - gui-window-backing-scale-changed as GuiWindowFrameCallback
-        - this as Pointer
-    C:yumiGuiWindowSetContentSizeChangedCallback
-        - native!
-        - gui-window-content-size-changed as GuiWindowSizeCallback
-        - this as Pointer
-    C:yumiGuiWindowSetMovedCallback
-        - native!
-        - gui-window-moved as GuiWindowFrameCallback
-        - this as Pointer
-    C:yumiGuiWindowSetPointerCallback
-        - native!
-        - gui-window-pointer-event as GuiWindowPointerCallback
-        - this as Pointer
-    C:yumiGuiWindowSetTouchCallback
-        - native!
-        - gui-window-touch-event as GuiWindowTouchCallback
-        - this as Pointer
-    C:yumiGuiWindowSetEventCallback
-        - native!
-        - gui-window-native-event as GuiWindowEventCallback
-        - this as Pointer
-    C:yumiGuiWindowSetTextActionCallback
-        - native!
-        - gui-window-text-action as GuiWindowTextActionCallback
-        - this as Pointer
-    C:yumiGuiWindowSetCursorStyle
-        - native!
-        - cursor-style-native-value(resolved-cursor-style)
-        - cursor-style-native-image(resolved-cursor-style)
-        - resolved-cursor-captured
-    . accepted = Dimensions
-        - C:yumiGuiWindowGetContentWidth(native!)
-        - C:yumiGuiWindowGetContentHeight(native!)
-    requested-native-size = accepted
-    if accepted != size
-        size = accepted
-
-if requested-native-size != size
-    requested-native-size = size
-    C:yumiGuiWindowSetContentSize(native!, size.width, size.height)
-. requested-position = position
-if requested-position && requested-native-position != requested-position
-    apply-native-position(requested-position)
-
-────────────────────
-+ do accept-focus-request
-    - box Box?
-
-=? false if is-closed
-if !box
-    pending-focus-box = null
-    = apply-focus(null, true)
-
-. target = box
-=? false if !is-in-focus-scope(target)
-if !target.can-focus
-    pending-focus-box = target
-    = true
-
-pending-focus-box = null
-= apply-focus(target, true)
-
-────────────────────
-+ do accept-native-focus
-    - box Box?
-
-=? if is-closed
-=? if is-requesting-native-focus && !box && !requested-native-focus-box
-if is-requesting-native-focus && box && requested-native-focus-box
-    =? if box as Pointer == requested-native-focus-box as Pointer
-settle-pointer-dispatch()
-pending-focus-box = null
-if box && !is-valid-focus-box(box)
-    clear-focus-state(false)
-else
-    apply-focus(box, false)
-settle-pointer-dispatch()
-
-────────────────────
-+ do move-focus
-    - going-backward = false
-
-=? false if is-closed
-settle-pointer-dispatch()
-. boundary Box = this
-if modal-popup
-    boundary = modal-popup
-
-. next Box?
-if focused-box
-    . current = focused-box
-    . is-current = current.is-within(boundary) && current.can-focus
-    is-current = is-current && current.is-focus-traversal-reachable()
-    if is-current
-        next = boundary.focus-candidate-after(current, going-backward)
-if !next
-    next = boundary.focus-candidate-at-edge(going-backward)
-=? false if !next
-
-. accepted = accept-focus-request(next)
-settle-pointer-dispatch()
-= accepted
-
-────────────────────
-+ admits-focus
-    - box Box
-
-!home || box as Pointer? == home as Pointer? || box.$claims-focus
-
-.. home = attached-focus-home
-
-────────────────────
-_ get attached-focus-home Box?
-
-|? home && home.window as Pointer? == this as Pointer?
-    home
-??
-    null
-
-.. home = focus-home
 
 ────────────────────
 _ do settle-focus-home
@@ -1303,21 +2363,6 @@ _ is-valid-focus-box
 .. candidate = box
 
 ────────────────────
-+ do settle-pending-focus
-
-. target = pending-focus-box
-if !target
-    settle-held-group()
-    =
-if !is-in-focus-scope(target)
-    pending-focus-box = null
-    =
-. resolved = if target.delegates-focus then group-focus-target(target) else target
-=? if !resolved || !resolved.can-hold-focus
-pending-focus-box = null
-apply-focus(resolved, true)
-
-────────────────────
 _ group-focus-target Box?
     - group Box
 
@@ -1354,70 +2399,6 @@ if !is-valid-focus-box(remembered-focus-box)
     remembered-focus-box = null
     changed = true
 = changed
-
-────────────────────
-+ do dispatch-key-press
-    - event KeyPressEvent
-
-key-press-handled = true
-=? if !prepare-pointer-dispatch()
-if is-focus-key(event)
-    set-key-focus(true)
-if drag-session && event.key == Key.escape
-    finish-drag(false)
-    event.cancel()
-    settle-pointer-dispatch()
-    =
-. target = focused-box
-if target
-    target.event-path().publish(event)
-
-if !event.is-canceled
-    if event.key == Key.escape && dismiss-top-popup(DismissReason.escape)
-        event.cancel()
-    else if event.key == Key.tab
-        move-focus(event.modifiers.shift)
-        event.cancel()
-    else if event.key == Key.space
-        activate-pressed(event, target)
-    else if publish-clipboard-key(event, (target ?? this).event-path())
-        event.cancel()
-
-if !event.is-canceled && perform-undo-key(event)
-    event.cancel()
-if !event.is-canceled
-    dispatch-key-binding-key-press(active-key-bindings(), event)
-if !event.is-canceled && allows-zoom && perform-zoom-key(event)
-    event.cancel()
-if !event.is-canceled && event.key == Key.enter
-    activate-pressed(event, target)
-key-press-handled = event.is-canceled
-settle-pointer-dispatch()
-
-────────────────────
-+ do undo-target-for UndoTarget?
-    - redoes = false
-
-. cursor Box? = focused-box ?? this
-while cursor
-    . box = cursor
-    . target = box.undo-target
-    if target && (if redoes then target.can-redo else target.can-undo)
-        = target
-    cursor = box.material-parent
-= null
-
-────────────────────
-+ do perform-undo Bool
-    - redoes = false
-
-. target = undo-target-for(redoes)
-=? false if !target
-if redoes
-    target.redo()
-else
-    target.undo()
-= true
 
 ────────────────────
 _ do perform-undo-key Bool
@@ -1459,35 +2440,6 @@ if some(window-actual-size-keys) • where each.matches(event)
     zoom-to-actual-size()
     = true
 = false
-
-────────────────────
-+ get effective-zoom F64
-
-if zoom > 0 then zoom else 1
-
-────────────────────
-+ do zoom-in
-
-for level in window-zoom-levels
-    if level > effective-zoom + window-zoom-tolerance
-        zoom = level
-        =
-
-────────────────────
-+ do zoom-out
-
-. index = window-zoom-levels.length
-while index > 0
-    index -= 1
-    . level = window-zoom-levels[index]
-    if level < effective-zoom - window-zoom-tolerance
-        zoom = level
-        =
-
-────────────────────
-+ do zoom-to-actual-size
-
-zoom = 1
 
 ────────────────────
 _ do window-zoom-changed
@@ -1537,79 +2489,6 @@ _ publish-clipboard-key Bool
     false
 
 ────────────────────
-+ do dispatch-key-release
-    - event KeyReleaseEvent
-
-=? if !prepare-pointer-dispatch()
-if event.key == Key.enter || event.key == Key.space
-    release-key-press()
-. target = focused-box
-if target
-    target.event-path().publish(event)
-dispatch-key-binding-key-release(key-binding-nodes, event)
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-key-input
-    - event KeyInputEvent
-
-=? if !prepare-pointer-dispatch()
-if focused-box && focused-box.$focus-mode == FocusMode.input
-    focused-box.event-path().publish(event)
-sync-text-input()
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-text-command
-    - event TextCommandEvent
-
-=? if !prepare-pointer-dispatch()
-if focused-box && focused-box.$focus-mode == FocusMode.input
-    focused-box.event-path().publish(event)
-sync-text-input()
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-text-composition
-    - event TextCompositionEvent
-
-=? if !prepare-pointer-dispatch()
-if focused-box && focused-box.$focus-mode == FocusMode.input
-    focused-box.event-path().publish(event)
-sync-text-input()
-settle-pointer-dispatch()
-
-────────────────────
-+ do accept-text-action
-    - kind NativeTextActionKind
-    - text String
-    - start U32
-    - length U32
-    - keyed Bool
-
-=? if keyed && key-press-handled
-do match kind
-    |= NativeTextActionKind.input
-        dispatch-key-input(KeyInputEvent(text, start))
-    |= NativeTextActionKind.command
-        dispatch-text-command(text-command-event(text))
-    |= NativeTextActionKind.composition
-        dispatch-text-composition(TextCompositionEvent(text, start, length))
-
-────────────────────
-+ do accept-text-input-change
-    - box Box
-
-if box as Pointer? == focused-box as Pointer?
-    sync-text-input()
-
-────────────────────
-+ do discard-text-composition
-
-if native
-    C:yumiGuiWindowDiscardTextComposition(native)
-
-────────────────────
 _ do sync-text-input
 
 =? if !native
@@ -1633,78 +2512,6 @@ C:yumiGuiWindowSetTextInputContext
     - caret.height * zoom
 
 ────────────────────
-+ active-key-bindings
-
-active-bindings(key-binding-nodes, focused-box, modal-popup)
-
-────────────────────
-+ do dispatch-modifiers-changed
-    - modifiers PointerModifiers
-
-=? if !prepare-pointer-dispatch()
-. active = active-key-bindings()
-update-key-binding-modifiers(key-binding-nodes, active, modifiers)
-if drag-session
-    advance-drag(drag-session.point, modifiers)
-    settle-pointer-dispatch()
-    =
-. data = PointerEventData(pointer-location, 0, PointerDeviceKind.mouse, modifiers)
-. event = ModifiersChangedEvent(data)
-if pointer-capture && pointer-capture.path.is-current()
-    pointer-capture.path.at-point(pointer-location).publish(event)
-else if has-pointer-location
-    . hit = pointer-hit-path(pointer-location)
-    if hit
-        hit.publish(event)
-    else
-        event-path().publish(event)
-else
-    event-path().publish(event)
-settle-pointer-dispatch()
-
-
-────────────────────
-+ do dispatch-pointer-event
-    - event PointerMoveEvent
-
-=? if !prepare-pointer-dispatch()
-
-if scroll-hover-owner && !drag-session && event.root-point == pointer-location
-    settle-pointer-dispatch()
-    =
-accept-pointer-location(event.root-point)
-invalidate-pointer-placement()
-release-scroll-hover-hold()
-. session = drag-session
-if session && !session.source
-    settle-pointer-dispatch()
-    =
-if session
-    if (event.buttons /and/ 1) != 0
-        advance-drag(event.root-point, event.modifiers)
-        settle-pointer-dispatch()
-        =
-    finish-drag(false)
-. hit = pointer-hit-path(event.root-point)
-update-hover(hit)
-hit?.publish(event)
-settle-pointer-dispatch()
-
-────────────────────
-+ do hit-path
-    - point Point
-
-. index = popups.length
-while index > 0
-    index -= 1
-    . popup = popups[index]
-    if popup.is-input-visible
-        . is-hit = !popup.$pointer-transparent && popup.hit-contains(point)
-        =? hit-path-within(popup, point) if is-hit || popup.$modal
-=? if !bounds.contains(point)
-= super.hit-path(point)
-
-────────────────────
 _ do dispatch-peer-press
     - point Point
 
@@ -1715,184 +2522,12 @@ if dismiss-popups-for-press(point, pointer-hit-path(point))
 settle-pointer-dispatch()
 
 ────────────────────
-+ do dispatch-pointer-event
-    - event PointerDownEvent
-
-=? if !prepare-pointer-dispatch()
-
-set-key-focus(false)
-finish-drag(false)
-is-drag-offered = false
-dispatch-key-binding-pointer-press(key-binding-nodes)
-accept-pointer-location(event.root-point)
-. hit = pointer-hit-path(event.root-point)
-if dismiss-popups-for-press(event.root-point, hit)
-    clear-hover()
-    settle-pointer-dispatch()
-    =
-hit = pointer-hit-path(event.root-point)
-if begin-scroll-indicator-capture(event, hit)
-    settle-pointer-dispatch()
-    =
-update-hover(hit)
-. holder = focused-box
-. pending = pending-focus-box
-hit?.publish(event)
-if !event.is-canceled && hit && hit.is-current()
-    if event.button == PointerButton.primary
-        if hit.target.$window-draggable && press-window-chrome(event)
-            clear-pointer-capture()
-            clear-scroll-gesture()
-            clear-hover()
-            settle-pointer-dispatch()
-            =
-        . is-focus-moved = focused-box as Pointer? != holder as Pointer? || pending-moved
-            .. pending-moved = pending-focus-box as Pointer? != pending as Pointer?
-        . focus-owner = press-focus-owner(hit.target)
-        if !is-focus-moved && (focus-owner || !press-keeps-focus(hit.target, holder))
-            . group = if focus-owner then null else hit.target.nearest-focus-group()
-            pending-focus-box = group
-            if !group
-                apply-focus(focus-owner, press-syncs-native-focus(hit.target, holder), false)
-    clear-pointer-capture()
-    pointer-capture = PointerCapture(hit, event.pointer-id, event.button, event.click-count)
-    press-origin = event.root-point
-    . is-secondary = event.button == PointerButton.secondary
-    if is-secondary || (event.button == PointerButton.primary && event.modifiers.control)
-        open-context-popup(hit.target, event.root-point)
-    else
-        hit.target.is-pressed = hit.target.is-effectively-enabled
-        set-press-path(true, hit)
-settle-pointer-dispatch()
-
-────────────────────
 _ do press-window-chrome Bool
     - event PointerDownEvent
 
 =? begin-window-drag(event) if event.click-count != 2
 =? false if !native
 C:yumiGuiWindowPerformTitlebarDoubleClick(native)
-= true
-
-────────────────────
-+ do begin-window-drag
-    - event PointerDownEvent
-
-=? false if !native || event.window-drag-token == 0
-= C:yumiGuiWindowRequestDrag(native, event.window-drag-token)
-
-────────────────────
-+ do dispatch-pointer-event
-    - event PointerUpEvent
-
-=? if !prepare-pointer-dispatch()
-
-accept-pointer-location(event.root-point)
-. dragging = drag-session
-if dragging && dragging.pointer-id == event.pointer-id && event.button == PointerButton.primary
-    dragging.sample(event.root-point, event.ordering-time)
-    advance-drag(event.root-point, event.modifiers)
-    finish-drag(!event.is-interrupted)
-    settle-pointer-dispatch()
-    =
-. indicator-capture = scroll-indicator-capture
-. matches-indicator = indicator-capture != null
-matches-indicator = matches-indicator && indicator-capture!.id == event.pointer-id
-if matches-indicator
-    update-hover(indicator-capture!.route.at-point(event.root-point))
-    clear-pointer-capture()
-    settle-pointer-dispatch()
-    =
-
-. hit = pointer-hit-path(event.root-point)
-update-hover(hit)
-. capture = pointer-capture
-. is-matching-pointer = capture != null && capture.pointer-id == event.pointer-id
-. is-matching-capture = is-matching-pointer && capture!.button == event.button
-. release-path = if is-matching-capture then capture!.path.at-point(event.root-point) else hit
-release-path?.publish(event)
-
-settle-pointer-dispatch()
-. live-capture = pointer-capture
-. is-live-pointer = live-capture != null && live-capture.pointer-id == event.pointer-id
-. is-primary = is-live-pointer && live-capture!.button == PointerButton.primary
-. is-release-target = hit != null && is-live-pointer && hit.target == live-capture!.path.target
-. is-current-target = is-release-target && live-capture!.path.is-current()
-. is-completed = !event.is-canceled && !event.is-interrupted
-. should-click = is-completed && is-primary && is-current-target
-if should-click
-    . click = ClickEvent(event.data, live-capture!.button, live-capture!.click-count)
-    live-capture!.path.at-point(event.root-point).publish(click)
-else if is-live-pointer && hit && is-completed
-    release-into-press-popup(hit, event)
-if is-live-pointer
-    for popup in popups
-        popup.opened-by-press = false
-
-if is-matching-capture
-    clear-pointer-capture()
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-pointer-event
-    - event PointerDragEvent
-
-=? if !prepare-pointer-dispatch()
-
-accept-pointer-location(event.root-point)
-invalidate-pointer-placement()
-. dragging = drag-session
-if dragging
-    dragging.sample(event.root-point, event.ordering-time)
-    advance-drag(event.root-point, event.modifiers)
-    settle-pointer-dispatch()
-    =
-. indicator-capture = scroll-indicator-capture
-. matches-indicator = indicator-capture != null
-matches-indicator = matches-indicator && indicator-capture!.id == event.pointer-id
-if matches-indicator && indicator-capture!.route.is-current()
-    update-hover(indicator-capture!.route.at-point(event.root-point))
-    indicator-capture!.owner.scroll-indicator-scroll-to-point
-        - indicator-capture!.axis
-        - event.root-point
-        - indicator-capture!.offset
-    settle-pointer-dispatch()
-    =
-else if matches-indicator
-    clear-pointer-capture()
-
-. capture = pointer-capture
-. is-matching-pointer = capture != null && capture.pointer-id == event.pointer-id
-. is-matching-capture = is-matching-pointer && capture!.button == event.button
-if is-matching-capture && offer-drag(capture!, event)
-    settle-pointer-dispatch()
-    =
-. hit = pointer-hit-path(event.root-point)
-update-hover(hit)
-. drag-path = if is-matching-capture then capture!.path.at-point(event.root-point) else hit
-drag-path?.publish(event)
-settle-pointer-dispatch()
-
-────────────────────
-+ do cancel-drag
-
-=? if !prepare-pointer-dispatch()
-finish-drag(false)
-settle-pointer-dispatch()
-
-────────────────────
-+ do step-drag-scroll
-
-. session = drag-session
-=? false if !session
-. delta = drag-scroll-delta(session)
-. scroller = session.scroller
-=? false if delta == 0 || !scroller
-. resting = scroller.scroll-y
-scroller.scroll-by(Point(0, delta))
-=? false if scroller.scroll-y == resting
-advance-drag(session.point, session.modifiers)
-settle-pointer-dispatch()
 = true
 
 ────────────────────
@@ -1942,53 +2577,12 @@ clear-hover()
 = true
 
 ────────────────────
-+ do dispatch-external-drag
-    - payload ClipboardDrag
-    - data PointerEventData
-
-=? if !prepare-pointer-dispatch()
-. session = drag-session
-if session && session.source
-    settle-pointer-dispatch()
-    =
-. current = session.payload as ClipboardDrag if session && session.payload is ClipboardDrag
-if current && current.sequence == payload.sequence
-    advance-drag(data.root-point, data.modifiers)
-else
-    //gui.drop// begin external ${payload.sequence} at ${data.root-point}
-    if session
-        finish-drag(false)
-    begin-drag
-        - DragSession
-            - payload
-            - null
-            - data.root-point
-            - data.root-point
-            - data.modifiers
-            - payload.sequence
-settle-pointer-dispatch()
-
-────────────────────
 _ do accept-external-drag
     - data PointerEventData
 
 . name = C:yumiGuiWindowDropPasteboardName(native) if native
 =? if !name
 dispatch-external-drag(ClipboardDrag(Clipboard(name), data.pointer-id), data)
-
-────────────────────
-+ do finish-external-drag
-    - data PointerEventData
-    - dropped Bool
-
-=? if !prepare-pointer-dispatch()
-. session = drag-session
-//gui.drop// finish external dropped $dropped session ${session != null} at ${data.root-point}
-if session && !session.source
-    if dropped
-        advance-drag(data.root-point, data.modifiers)
-    finish-drag(dropped)
-settle-pointer-dispatch()
 
 ────────────────────
 _ do begin-drag
@@ -2178,38 +2772,6 @@ do new
     is-drag-scrolling = false
 
 ────────────────────
-+ do dispatch-pointer-event
-    - event ScrollEvent
-
-=? false if !prepare-pointer-dispatch()
-
-if !has-pointer-location || event.root-point != pointer-location
-    release-scroll-hover-hold()
-accept-pointer-location(event.root-point)
-. path = scroll-event-path(event)
-path?.at-point(event.root-point).publish(event)
-. did-handle = event.is-canceled
-if !event.is-canceled && path && path.is-current()
-    did-handle = consume-default-scroll(path, event)
-    is-hover-refresh-pending = true
-if scroll-hover-owner
-    extend-scroll-hover-hold()
-finish-scroll-event(event)
-if drag-session
-    advance-drag(drag-session.point, drag-session.modifiers)
-settle-pointer-dispatch()
-= did-handle
-
-────────────────────
-+ do accept-native-scroll
-    - event ScrollEvent
-
-if scroll-resampler.accept(event)
-    request-render-frame()
-    =
-. ignored = dispatch-pointer-event(event)
-
-────────────────────
 _ do dispatch-scroll-samples
 
 =? if scroll-resampler.is-idle || !native
@@ -2217,151 +2779,6 @@ for event in scroll-resampler.take(C:yumiGuiWindowGetLastFrameEventTime(native!)
     . ignored = dispatch-pointer-event(event)
 if !scroll-resampler.is-idle
     request-render-frame()
-
-────────────────────
-+ do dispatch-pointer-event
-    - event MagnifyEvent
-
-=? if !prepare-pointer-dispatch()
-accept-pointer-location(event.root-point)
-. held = magnify-gesture-path
-. continues = event.phase != ScrollPhase.began && event.phase != ScrollPhase.none
-. path = if continues && held && held.is-current() then held else pointer-hit-path(event.root-point)
-magnify-gesture-path = path
-path?.at-point(event.root-point).publish(event)
-if event.phase == ScrollPhase.ended || event.phase == ScrollPhase.cancelled
-    magnify-gesture-path = null
-settle-pointer-dispatch()
-
-────────────────────
-+ do accept-pointer-record
-    - native-record PointerRecord
-
-. record = unzoomed(native-record)
-. data = record.data
-. button = record.pointer-button
-do match? record.kind
-    |= PointerRecordKind.move
-        dispatch-pointer-event(PointerMoveEvent(data, record.delta))
-    |= PointerRecordKind.down
-        dispatch-pointer-event
-            - PointerDownEvent(data, button, record.click-count, record.window-drag-token)
-    |= PointerRecordKind.up
-        dispatch-pointer-event(PointerUpEvent(data, button))
-    |= PointerRecordKind.cancel
-        dispatch-pointer-event(PointerUpEvent(data, button, true))
-    |= PointerRecordKind.drag
-        dispatch-pointer-event(PointerDragEvent(data, button, record.delta))
-    |= PointerRecordKind.scroll
-        . phase = record.phase as ScrollPhase
-        . momentum = record.momentum-phase as ScrollPhase
-        accept-native-scroll
-            - ScrollEvent(data, record.delta.x, record.delta.y, record.is-precise, phase, momentum)
-    |= PointerRecordKind.exit
-        dispatch-pointer-exit()
-    |= PointerRecordKind.deactivate
-        dispatch-window-deactivated()
-    |= PointerRecordKind.magnify
-        dispatch-pointer-event(MagnifyEvent(data, record.delta.x, record.phase as ScrollPhase))
-    |= PointerRecordKind.drop-enter
-        accept-external-drag(data)
-    |= PointerRecordKind.drop-over
-        accept-external-drag(data)
-    |= PointerRecordKind.drop-exit
-        finish-external-drag(data, false)
-    |= PointerRecordKind.drop
-        finish-external-drag(data, true)
-    |= PointerRecordKind.peer-press
-        dispatch-peer-press(data.root-point)
-
-────────────────────
-+ do accept-touch
-    - native-data PointerEventData
-    - phase TouchPhase
-    - tap-count U32
-    - native-radius F64
-
-=? if !prepare-pointer-dispatch()
-. zoom = effective-zoom
-. point = Point(native-data.root-point.x / zoom, native-data.root-point.y / zoom)
-. data = native-data.root-point = point
-. radius = native-radius / zoom
-. id = data.pointer-id
-if phase == TouchPhase.began
-    . hit = pointer-hit-path(point)
-    if hit
-        touch-captures[id] = TouchCapture(hit, point)
-        hit.publish(TouchEvent(data, phase, Point(0, 0), tap-count, radius))
-    settle-pointer-dispatch()
-    =
-. capture = touch-captures[id]
-if !capture
-    settle-pointer-dispatch()
-    =
-if phase == TouchPhase.moved
-    touch-captures[id] = TouchCapture(capture.path, point)
-else
-    -= touch-captures[id]
-. delta = Point(point.x - capture.point.x, point.y - capture.point.y)
-capture.path.at-point(point).publish(TouchEvent(data, phase, delta, tap-count, radius))
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-pointer-exit
-
-=? if !prepare-pointer-dispatch()
-has-pointer-location = false
-cursor-resolution-invalid = true
-clear-hover()
-settle-pointer-dispatch()
-
-────────────────────
-+ do dispatch-window-deactivated
-
-accept-window-deactivated()
-
-────────────────────
-+ do accept-window-activated
-
-=? if is-closed || is-active
-settle-pointer-dispatch()
-is-active = true
-show-activity(true)
-if native-menu-bar
-    C:yumiGuiMenuBarInstall(native-menu-bar)
-activated <- WindowActivatedEvent()
-. remembered = remembered-focus-box
-if remembered && is-valid-focus-box(remembered)
-    apply-focus(remembered, true)
-is-focus-suspended = false
-settle-pointer-dispatch()
-
-────────────────────
-+ do accept-window-unoccluded
-
-=? if is-closed || !is-metal-rendering
-schedule-render()
-
-────────────────────
-+ do accept-window-deactivated
-
-=? if is-closed
-settle-pointer-dispatch()
-release-key-bindings(key-binding-nodes)
-dismiss-popups-for-deactivation()
-. was-active = is-active
-if drag-session?.source
-    finish-drag(false)
-clear-pointer-capture()
-touch-captures.clear()
-clear-scroll-gesture()
-is-focus-suspended = true
-clear-focus-state(true)
-is-active = false
-show-activity(false)
-if was-active
-    deactivated <- WindowDeactivatedEvent()
-settle-pointer-dispatch()
 
 ────────────────────
 _ do show-activity
@@ -2509,17 +2926,6 @@ _ hover-path-holds
     - path PointerHitPath?
 
 path && (some(path.frames) • where each.owner == owner)
-
-────────────────────
-+ holds-scroll-indicator
-    - owner Box
-
-is-captured || (has-pointer-location && holds-hover && has-axis)
-
-.. capture = scroll-indicator-capture
-.. holds-hover = hover-path-holds(owner as Pointer, hovered-path)
-.. is-captured = capture && capture.owner as Pointer == owner as Pointer
-.. has-axis = owner.scroll-indicator-axis-at(pointer-location) != null
 
 ────────────────────
 _ do scroll-indicator-hit
@@ -2742,169 +3148,11 @@ settle-cursor-resolution()
 sync-undo-state()
 
 ────────────────────
-+ do present-popup
-    - popup Popup
-
-for open in popups
-    =? if open as Pointer == popup as Pointer
-. stacking = popup.$popup-stacking
-if stacking != PopupStacking.manual
-    for other in List'Popup(popups)
-        if popup-supersedes(popup, other) && !supersedes-parent(popup, other)
-            other.dismiss(DismissReason.superseded)
-popup.remember-return-focus(focused-box)
-if pointer-capture
-    popup.opened-by-press = true
-popups += popup
-refresh-modal-popup()
-refresh-popup-holds()
-if popup.$popup-focus == PopupFocus.first
-    pending-popup-focus = popup
-if native
-    popup.ensure-presentation(native)
-schedule-layout()
-
-────────────────────
-+ do withdraw-popup
-    - popup Popup
-    - reason = DismissReason.programmatic
-
-. index = popup-index(popup)
-=? if !index
-for other in List'Popup(popups)
-    if other as Pointer != popup as Pointer && other.is-within(popup)
-        other.dismiss(DismissReason.ancestor-closed)
-. live-index = popup-index(popup)
-if live-index
-    popups.remove(live-index)
-popup.holds-popup = false
-refresh-popup-holds()
-if pending-popup-focus && pending-popup-focus as Pointer == popup as Pointer
-    pending-popup-focus = null
-. restore = popup.take-return-focus()
-. focus-inside = focused-box != null && focused-box.is-within(popup)
-. restores-empty-focus = !focused-box && popup-dismissal-restores-focus(reason)
-refresh-modal-popup()
-if hovered-box && hovered-box.is-within(popup)
-    clear-hover()
-    is-hover-refresh-pending = true
-hover-popup-removed <- popup
-if (focus-inside || restores-empty-focus) && restore && is-valid-focus-box(restore)
-    apply-focus(restore, true)
-schedule-layout()
-
-────────────────────
-+ do settle-popup-focus
-
-. popup = pending-popup-focus
-=? if !popup
-if !popup.is-open || popup.root as Pointer != this as Pointer
-    pending-popup-focus = null
-    =
-. first = popup.focus-candidate-at-edge()
-=? if !first
-pending-popup-focus = null
-if focused-box && !focused-box.is-within(popup)
-    popup.remember-return-focus-if-empty(focused-box)
-accept-focus-request(first)
-
-────────────────────
-+ do dismiss-top-popup Bool
-    - reason DismissReason
-
-. index = popups.length
-while index > 0
-    index -= 1
-    . popup = popups[index]
-    if popup.$escape-dismiss
-        popup.dismiss(reason)
-        = true
-    =? false if popup.$modal
-= false
-
-────────────────────
-+ do invalidate-popup-placement
-
-=? if popups.length == 0 || is-closed
-is-popup-placement-invalid = true
-schedule-render()
-
-────────────────────
-+ do watch-clip
-    - watcher ClipWatcher
-
-=? if clip-watcher-index(watcher) != null
-clip-watchers += watcher
-
-────────────────────
-+ do unwatch-clip
-    - watcher ClipWatcher
-
-. index = clip-watcher-index(watcher)
-if index != null
-    clip-watchers.remove(index)
-
-────────────────────
-+ do request-clock-frame
-
-request-render-frame()
-
-────────────────────
-+ do notify-clip-watchers
-    - scrolled Box?
-
-=? if is-closed
-. index Index
-while index < clip-watchers.length
-    . watcher = clip-watchers[index]
-    watcher.clip-changed(scrolled)
-    if index < clip-watchers.length && clip-watchers[index] as Pointer == watcher as Pointer
-        index += 1
-
-────────────────────
 _ do clip-watcher-index Index?
     - watcher ClipWatcher
 
 for index in 0 .. < clip-watchers.length
     =? index if clip-watchers[index] as Pointer == watcher as Pointer
-
-────────────────────
-+ do release-input-inside
-    - subtree Box
-
-=? if is-closed
-if focused-box && focused-box.is-within(subtree)
-    request-native-focus(null)
-    clear-focus-state(false)
-if pending-focus-box && pending-focus-box.is-within(subtree)
-    pending-focus-box = null
-if remembered-focus-box && remembered-focus-box.is-within(subtree)
-    remembered-focus-box = null
-if requested-native-focus-box && requested-native-focus-box.is-within(subtree)
-    requested-native-focus-box = null
-. queue = ensure-visible-queue
-if queue && queue.pending && queue.pending.is-within(subtree)
-    queue.pending = null
-for popup in popups
-    . restore = popup.take-return-focus()
-    if restore && !restore.is-within(subtree)
-        popup.remember-return-focus(restore)
-for popup in List'Popup(popups)
-    . anchor = popup.anchor-box
-    if popup.is-within(subtree) || (anchor != null && anchor.is-within(subtree))
-        popup.dismiss(DismissReason.anchor-hidden)
-if hovered-box && hovered-box.is-within(subtree)
-    clear-hover()
-    is-hover-refresh-pending = true
-if pointer-capture && pointer-capture.path.target.is-within(subtree)
-    clear-pointer-capture()
-if scroll-indicator-capture && scroll-indicator-capture.owner.is-within(subtree)
-    clear-pointer-capture()
-if scroll-gesture-path && scroll-gesture-path.target.is-within(subtree)
-    clear-scroll-gesture()
-if scroll-hover-owner && scroll-hover-owner.is-within(subtree)
-    release-scroll-hover-hold()
-cursor-resolution-invalid = true
 
 ────────────────────
 _ popup-dismissal-restores-focus
@@ -3008,37 +3256,6 @@ while cursor
         =? null if is-hint-blocked(box)
         = box
     cursor = box.material-parent
-
-────────────────────
-_ hover-tip ~>
-
-~> hidden
-    then waiting(popup) for popup on hover-entered
-
-~> waiting(popup)
-    then shown(popup) on Timer(popup.$hover-delay) when !is-closed
-        do show-hover-popup(popup)
-    then waiting(next) for next on hover-entered
-    then hidden on hover-exited
-
-~> shown(popup)
-    then lingering(popup) on hover-exited
-    then shown(next) for next on hover-entered
-        do switch-hover-popup(popup, next)
-    then cooling(popup.$hover-warmth) on hover-popup-removed when each as Pointer == popup as Pointer
-
-~> lingering(popup)
-    then cooling(popup.$hover-warmth) on Timer(popup.$hover-linger)
-        do popup.dismiss(DismissReason.hover-end)
-    then shown(popup) on hover-entered when each as Pointer == popup as Pointer
-    then shown(next) for next on hover-entered
-        do switch-hover-popup(popup, next)
-    then cooling(popup.$hover-warmth) on hover-popup-removed when each as Pointer == popup as Pointer
-
-~> cooling(warmth)
-    then hidden on Timer(warmth)
-    then shown(next) for next on hover-entered
-        do show-hover-popup(next)
 
 ────────────────────
 _ do settle-hover-popup
@@ -3202,52 +3419,6 @@ for popup in popups
         =
 
 ────────────────────
-+ get popup-boundary
-
-|? native
-    screen.inset(Insets(4, 4, 4, 4))
-??
-    bounds
-
-.. screen = Rect
-    - C:yumiGuiWindowGetScreenBound(native, 0) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 1) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 2) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 3) / zoom
-.. zoom = effective-zoom
-
-────────────────────
-+ do layout-popups
-
-native-geometry-dirty = true
-is-popup-placement-invalid = false
-=? if popups.length == 0
-. boundary = popup-boundary
-for popup in List'Popup(popups)
-    if popup.is-open
-        if !popup.is-anchor-visible && popup.$anchor-hidden-dismiss
-            popup.dismiss(DismissReason.anchor-hidden)
-        else
-            place-popup(popup, boundary)
-
-────────────────────
-+ do hush-entering
-    - hushed Bool
-
-if hushed
-    entering-hush += 1
-else if entering-hush
-    entering-hush -= 1
-
-────────────────────
-+ do hush-until-layout
-
-=? if is-layout-hushed
-is-layout-hushed = true
-hush-entering(true)
-schedule-layout()
-
-────────────────────
 _ do place-popup
     - popup Popup
     - boundary Rect
@@ -3317,15 +3488,6 @@ C:yumiGuiWindowSetPosition(native, requested.x, requested.y)
 accept-native-position()
 
 ────────────────────
-+ do accept-native-position
-
-=? if !native
-. actual = Point(C:yumiGuiWindowGetPosition(native, 0), C:yumiGuiWindowGetPosition(native!, 1))
-requested-native-position = actual
-if position != actual
-    position = actual
-
-────────────────────
 _ do accept-native-content-size
     - accepted Dimensions
 
@@ -3357,106 +3519,6 @@ if native-size != size
     //gui.adapter.resize.obsolete-sizes-rendered ++
 
 ────────────────────
-+ get display-scale F64
-
-if native then C:yumiGuiWindowGetBackingScaleFactor(native) else 1
-
-────────────────────
-+ get backing-scale
-
-display-scale * effective-zoom
-
-────────────────────
-+ get viewport Dimensions
-
-Dimensions(size.width / zoom-factor, size.height / zoom-factor)
-
-.. zoom-factor = effective-zoom
-
-────────────────────
-+ get is-metal-rendering
-
-selected-metal && metal-renderer && metal-renderer.is-available
-
-────────────────────
-+ get metal-present-count
-
-metal-renderer?.presents ?? 0
-
-────────────────────
-+ get metal-maximum-frames-per-second I64
-
-metal-renderer?.maximum-frames-per-second ?? 0
-
-────────────────────
-+ get last-metal-frame-id
-
-(metal-renderer?.commits ?? 0) - 1
-
-────────────────────
-+ do finish-metal-rendering
-
-metal-renderer?.finish()
-
-────────────────────
-+ do mark-metal-renderer-allocations
-
-metal-renderer?.mark-renderer-allocations()
-
-────────────────────
-+ get metal-renderer-allocations
-
-metal-renderer?.renderer-allocations ?? -1
-
-────────────────────
-+ get metal-draw-calls
-
-metal-renderer?.draw-calls ?? -1
-
-────────────────────
-+ get metal-skipped-ops
-
-metal-renderer?.skipped-ops ?? -1
-
-────────────────────
-+ get scene-opaque-demotions
-
-retained-scene?.opaque-demotions ?? 0
-
-────────────────────
-+ get scene-metal-tile-fallbacks
-
-retained-scene?.metal-tile-fallbacks ?? 0
-
-────────────────────
-+ get scene-items-built
-
-retained-scene?.items-built ?? 0
-
-────────────────────
-+ metal-frame-gpu-nanos
-    - frame I64
-
-metal-renderer?.frame-stat(frame, 0) ?? -1
-
-────────────────────
-+ metal-frame-drawable-wait-nanos I64
-    - frame I64
-
-metal-renderer?.frame-stat(frame, 1) ?? -1
-
-────────────────────
-+ metal-frame-presented-time-nanoseconds I64
-    - frame I64
-
-metal-renderer?.frame-stat(frame, 2) ?? -1
-
-────────────────────
-+ get completed-metal-frame-id I64
-
-metal-renderer?.completed-frame ?? -1
-
-────────────────────
 _ do request-render-frame
     - not-before Nanoseconds = 0ns
 
@@ -3475,27 +3537,6 @@ C:yumiGuiWindowRequestFrame
     - callback
     - this as Pointer
     - not-before
-
-────────────────────
-+ do begin-frame
-
-is-rendering = true
-if native
-    C:yumiGuiWindowBeginFrame(native)
-
-────────────────────
-+ do end-frame
-    - committed Bool
-
-if native && !committed
-    C:yumiGuiWindowAbortFrame(native)
-is-rendering = false
-if is-render-invalid || needs-layout || !scroll-resampler.is-idle
-    request-render-frame()
-else if window-clock.is-running
-    request-render-frame(window-clock.next-due())
-else if is-fill-pending
-    request-render-frame()
 
 ────────────────────
 _ do render-frame
@@ -3517,132 +3558,20 @@ frame.committed = update-frame()
 //-gui.frame.update// committed ${frame.committed}
 sync-undo-state()
 
-────────────────────
-+ do update-frame Bool
-
-//+gui.frame.phase.markup
-catch markup-root.markup-batch-queue.checkpoint()
-//-gui.frame.phase.markup
-settle-popup-focus()
-settle-pending-focus()
-. render-owners-changed = validate-pointer-owners()
-. render-focus-changed = validate-focus-owner()
-if render-owners-changed || render-focus-changed
-    catch markup-root.markup-batch-queue.checkpoint()
-    settle-pending-focus()
-if is-fill-pending && !is-render-invalid
-    is-fill-pending = metal-renderer?.has-pending-fill-frames ?? false
-    is-render-invalid = !is-fill-pending
-if !is-render-invalid && !needs-layout
-    settle-cursor-resolution()
-    = false
-
-. should-layout = needs-layout
-needs-layout = false
-is-render-invalid = false
-
-if should-layout
-    //+gui.frame.phase.layout
-    layout()
-    //-gui.frame.phase.layout
-else if is-popup-placement-invalid
-    layout-popups()
-
-settle-cursor-resolution()
-= render()
-
-────────────────────
-+ do paint-overlay
-    - canvas Canvas
-
-for popup in popups
-    if popup.is-paint-visible
-        popup.paint(canvas)
-. ghost = drag-session?.ghost
-if ghost
-    canvas.draw-image(ghost.image, ghost.frame)
-
 ━━━━━━━━━━━━━━━━━━━━
-_ LiveFillDriver
-    is FrameAnimation
++ GUIFocusAdapter
 
-+ owner Window
-+ seconds F64
-+ is-pending = false
-
-────────────────────
-+ This
-    - owner
-
-╌╌╌╌╌╌╌╌╌╌ is FrameAnimation ╌╌╌╌╌╌╌╌╌╌
++ accepts = true
++ requested-box Box?
++ request-count Size = 0
 
 ────────────────────
-+ do advance Bool
-    - tick FrameTick
++ do request
+    - box Box?
 
-seconds += (tick.delta as Seconds) as F64
-is-pending = true
-owner.schedule-render()
-//gui.live-fill.frames ++
-= true
-
-────────────────────
-+ do finish
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-━━━━━━━━━━━━━━━━━━━━
-_ WindowMarkupRoot is Box
-    is MarkupBatch
-
-+ owner-window Window
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
-
-────────────────────
-+ This
-    - owner-window
-
-register-vector-geometry-renderer(this, owner-window.vector-geometry-table)
-
-────────────────────
-+ do close
-
-unregister-vector-geometry-renderer(this)
-super.close()
-
-╌╌╌╌╌╌╌╌╌╌ is MarkupBatch ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-if flush.is-layout-invalid
-    owner-window.schedule-layout()
-else if flush.is-paint-invalid
-    owner-window.schedule-render()
-if flush.is-cursor-invalid
-    owner-window.accept-cursor-style-changes()
-owner-window.settle-pending-focus()
-
-━━━━━━━━━━━━━━━━━━━━
-_ window-commands
-    - command-nodes [CommandNode]
-    - shortcuts [KeyShortcut]
-
-** command-nodes
-*> each as Command
-**
-    ** shortcuts
-    ?> each.title && each.discoverable
-    *> each as Command
-|> List
-
-━━━━━━━━━━━━━━━━━━━━
-_ window-stoplight-room Length
-    - edge Length
-    - offset Point?
-
-if edge > 0 then edge + (offset?.x ?? 0) + window-stoplight-gap else window-stoplight-inset
+requested-box = box
+request-count += 1
+= accepts
 
 ━━━━━━━━━━━━━━━━━━━━
 + GuiWindowFrameCallback is (*C) Void
@@ -3727,6 +3656,32 @@ if edge > 0 then edge + (offset?.x ?? 0) + window-stoplight-gap else window-stop
     - start U32
     - length U32
     - keyed Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ WindowFrame
+    is Usable'Void
+
++ committed = false
+
+_ window Window
+
+────────────────────
++ This
+    - window
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do begin-using
+
+committed = false
+window.begin-frame()
+= this
+
+────────────────────
++ do end-using
+
+window.end-frame(committed)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do gui-window-render-frame
@@ -3891,24 +3846,85 @@ do match? event-kind as NativeWindowEventKind
 window.accept-text-action(action-kind as NativeTextActionKind, text-pointer, start, length, keyed)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ WindowFrame
-    is Usable'Void
+_ LiveFillDriver
+    is FrameAnimation
 
-_ window Window
-+ committed = false
++ owner Window
++ seconds F64
++ is-pending = false
 
 ────────────────────
 + This
-    - window
+    - owner
+
+╌╌╌╌╌╌╌╌╌╌ is FrameAnimation ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-+ do begin-using
++ do advance Bool
+    - tick FrameTick
 
-committed = false
-window.begin-frame()
-= this
+seconds += (tick.delta as Seconds) as F64
+is-pending = true
+owner.schedule-render()
+//gui.live-fill.frames ++
+= true
 
 ────────────────────
-+ do end-using
++ do finish
 
-window.end-frame(committed)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+━━━━━━━━━━━━━━━━━━━━
+_ WindowMarkupRoot is Box
+    is MarkupRootElement
+
++ owner-window Window
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
+
+────────────────────
++ This
+    - owner-window
+
+register-vector-geometry-renderer(this, owner-window.vector-geometry-table)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupRootElement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+if flush.is-layout-invalid
+    owner-window.schedule-layout()
+else if flush.is-paint-invalid
+    owner-window.schedule-render()
+if flush.is-cursor-invalid
+    owner-window.accept-cursor-style-changes()
+owner-window.settle-pending-focus()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+unregister-vector-geometry-renderer(this)
+super.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ window-commands
+    - command-nodes [CommandNode]
+    - shortcuts [KeyShortcut]
+
+** command-nodes
+*> each as Command
+**
+    ** shortcuts
+    ?> each.title && each.discoverable
+    *> each as Command
+|> List
+
+━━━━━━━━━━━━━━━━━━━━
+_ window-stoplight-room Length
+    - edge Length
+    - offset Point?
+
+if edge > 0 then edge + (offset?.x ?? 0) + window-stoplight-gap else window-stoplight-inset

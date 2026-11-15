@@ -24,11 +24,7 @@ _ probe-segment-size Size = 67108864
 _ probe-flush-interval-ns U64 = 16000000u64
 _ @task probe-latest-time-ns U64
 _ probe-inspecting = false
-_ probe-live-objects := Map'ProbeUID'ProbeLiveEntry()
-_ probe-live-object-ids := ArrayBuilder'ProbeUID()
 _ probe-live-object-limit Size = 1024
-_ probe-live-arrays := Map'ProbeArrayKey'ProbeLiveEntry()
-_ probe-live-array-keys := ArrayBuilder'ProbeArrayKey()
 _ probe-live-array-limit Size = 1024
 _ probe-live-floor Size = 1024
 _ @task stack = ArrayBuilder'ProbeFrame()
@@ -60,6 +56,10 @@ _ probe-control-status-unavailable U32 = 4
 _ probe-control-status-canceled U32 = 5
 _ probe-control-status-budgeted U32 = 6
 _ probe-control-status-error U32 = 7
+_ probe-live-objects := Map'ProbeUID'ProbeLiveEntry()
+_ probe-live-object-ids := ArrayBuilder'ProbeUID()
+_ probe-live-arrays := Map'ProbeArrayKey'ProbeLiveEntry()
+_ probe-live-array-keys := ArrayBuilder'ProbeArrayKey()
 
 + ProbeId is U16
 + ProbeUID is U32
@@ -68,6 +68,22 @@ _ probe-control-status-error U32 = 7
 _ ProbeControlInspect is (request-id U32, object-id ProbeUID, type-id ProbeClassId, facet String, depth U32, offset U32, limit U32, flags U32)
 _ ProbeLiveEntry is (uid ProbeUID, class-type ProbeClassId, live ProbeLive)
 _ ProbeFrame is (uid U32, class-type U16)
+
+━━━━━━━━━━━━━━━━━━━━
++ do probe-log @no-probe-safepoints
+    - text String
+
+probe-buffer-write(ProbeType.system-log)
+probe-buffer-write'U32(text.size as U32)
+probe-buffer-write(text)
+
+probe-flush()
+
+━━━━━━━━━━━━━━━━━━━━
++ do probe-task-flush @no-probe-safepoints
+
+probe-control-poll()
+probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ProbeType is U8
@@ -110,20 +126,110 @@ _ ProbeDataType is U8
 | group = 16
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do probe-log @no-probe-safepoints
-    - text String
+_ ProbeArrayKey is Tuple
+    is Hashable
 
-probe-buffer-write(ProbeType.system-log)
-probe-buffer-write'U32(text.size as U32)
-probe-buffer-write(text)
++ address U64
++ length Size
++ class-type ProbeClassId
 
-probe-flush()
+╌╌╌╌╌╌╌╌╌╌ is Hashable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get hash Hash
+
+hash-for(address /xor/ ((length as U64) /lshift/ 40) /xor/ ((class-type as U64) /lshift/ 24))
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other This
+
+address == other.address && length == other.length && class-type == other.class-type
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do probe-task-flush @no-probe-safepoints
+_ ProbeLive is Interface
 
-probe-control-poll()
-probe-flush()
+────────────────────
++ do is-alive Bool
+
+────────────────────
++ do is-kept Bool
+
+────────────────────
++ do target Inspectable?
+
+━━━━━━━━━━━━━━━━━━━━
+_ ProbeLiveObject'T
+    - T is Inspectable
+    is ProbeLive
+
+_ token U64 = 0
+
+────────────────────
++ This
+    - object T
+
+token = C:yumiGCRegisterOwnerWeak(this as Pointer, object as Pointer)
+
+╌╌╌╌╌╌╌╌╌╌ is ProbeLive ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ is-alive Bool
+
+pointer != null
+
+.. pointer = C:yumiGCOwnerWeakLoad(token)
+
+────────────────────
++ is-kept Bool
+
+is-alive()
+
+────────────────────
++ do target Inspectable?
+
+. pointer = C:yumiGCOwnerWeakLoad(token)
+=? if !pointer
+= gc-object-from-pointer'T(pointer)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+━━━━━━━━━━━━━━━━━━━━
+_ ProbeLiveArray'T
+    is ProbeLive
+
+_ token U64 = 0
+_ address U64
+_ length Size
+
+────────────────────
++ This
+    - array Array'T
+
+address = array.data.address
+length = array.length
+token = C:yumiGCRegisterOwnerWeak(this as Pointer, array.data as Pointer)
+
+╌╌╌╌╌╌╌╌╌╌ is ProbeLive ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ is-alive Bool
+
+!token || pointer != null
+
+.. pointer = C:yumiGCOwnerWeakLoad(token)
+
+────────────────────
++ is-kept Bool
+
+token != 0 && is-alive()
+
+────────────────────
++ do target Inspectable?
+
+=? if token && !C:yumiGCOwnerWeakLoad(token)
+= Array'T(address as CPointer'T, length)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-env-size @no-probe-safepoints
@@ -729,108 +835,6 @@ if (probe-live-objects.length as Size) >= probe-live-object-limit
             -= probe-live-objects[uid]
     probe-live-object-ids = kept-ids
     probe-live-object-limit = if kept-ids.length * 2 < probe-live-floor then probe-live-floor else kept-ids.length * 2
-
-━━━━━━━━━━━━━━━━━━━━
-_ ProbeArrayKey is Tuple
-    is Hashable
-
-+ address U64
-+ length Size
-+ class-type ProbeClassId
-
-────────────────────
-+ this == other This
-
-address == other.address && length == other.length && class-type == other.class-type
-
-────────────────────
-+ get hash Hash
-
-hash-for(address /xor/ ((length as U64) /lshift/ 40) /xor/ ((class-type as U64) /lshift/ 24))
-
-━━━━━━━━━━━━━━━━━━━━
-_ ProbeLive is Interface
-
-────────────────────
-+ do is-alive Bool
-
-────────────────────
-+ do is-kept Bool
-
-────────────────────
-+ do target Inspectable?
-
-━━━━━━━━━━━━━━━━━━━━
-_ ProbeLiveObject'T
-    - T is Inspectable
-    is ProbeLive
-
-_ token U64 = 0
-
-────────────────────
-+ This
-    - object T
-
-token = C:yumiGCRegisterOwnerWeak(this as Pointer, object as Pointer)
-
-╌╌╌╌╌╌╌╌╌╌ is ProbeLive ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ is-alive Bool
-
-pointer != null
-
-.. pointer = C:yumiGCOwnerWeakLoad(token)
-
-────────────────────
-+ is-kept Bool
-
-is-alive()
-
-────────────────────
-+ do target Inspectable?
-
-. pointer = C:yumiGCOwnerWeakLoad(token)
-=? if !pointer
-= gc-object-from-pointer'T(pointer)
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-━━━━━━━━━━━━━━━━━━━━
-_ ProbeLiveArray'T
-    is ProbeLive
-
-_ token U64 = 0
-_ address U64
-_ length Size
-
-────────────────────
-+ This
-    - array Array'T
-
-address = array.data.address
-length = array.length
-token = C:yumiGCRegisterOwnerWeak(this as Pointer, array.data as Pointer)
-
-╌╌╌╌╌╌╌╌╌╌ is ProbeLive ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ is-alive Bool
-
-!token || pointer != null
-
-.. pointer = C:yumiGCOwnerWeakLoad(token)
-
-────────────────────
-+ is-kept Bool
-
-token != 0 && is-alive()
-
-────────────────────
-+ do target Inspectable?
-
-=? if token && !C:yumiGCOwnerWeakLoad(token)
-= Array'T(address as CPointer'T, length)
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 

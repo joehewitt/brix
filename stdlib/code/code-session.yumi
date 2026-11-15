@@ -14,70 +14,6 @@ _ code-open-parse-budget U32 = 40000
 _ code-edit-parse-budget U32 = 4000
 
 ━━━━━━━━━━━━━━━━━━━━
-_ CodeEdit
-    is CommandHistoryEntry
-
-_ session CodeSession
-_ start Size
-_ removed String
-_ inserted String
-_ caret-before Size
-_ anchor-before Size
-_ caret-after Size
-
-────────────────────
-_ This
-    - session
-    - start
-    - removed
-    - inserted
-    - caret-before
-    - anchor-before
-    - caret-after
-
-╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do undo
-
-session.restore(start, start + inserted.size, removed, caret-before, anchor-before)
-
-────────────────────
-+ do redo
-
-session.restore(start, start + removed.size, inserted, caret-after, caret-after)
-
-────────────────────
-+ do coalesce Bool
-    - next CommandHistoryEntry
-
-do match? next
-    | CodeEdit
-        if !removed.size && !it.removed.size && start + inserted.size == it.start
-            inserted += it.inserted
-            caret-after = it.caret-after
-            = true
-        =? false if inserted.size || it.inserted.size || !removed.size || !it.removed.size
-        if it.start + it.removed.size == start
-            start = it.start
-            removed = "${it.removed}$removed"
-            caret-after = it.caret-after
-            = true
-        if it.start == start
-            removed += it.removed
-            caret-after = it.caret-after
-            = true
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ CodeCharClass is Union
-
-| space
-| word
-| punctuation
-| newline
-
-━━━━━━━━━━━━━━━━━━━━
 + CodeSession
     is Closable
 
@@ -125,6 +61,19 @@ if language
     reparse(code-open-parse-budget)
 for line in 0 .. < text.line-count
     widest-columns = max(widest-columns, line-columns(line))
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+baseline = null
+. active = document
+if active
+    active.close()
+    document = null
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get line-count Size
@@ -275,20 +224,6 @@ while index < end
     index = text.next-char(index)
 = end
 
-────────────────────
-_ advance-column Size
-    - index Size
-    - column Size
-
-|? byte == code-tab
-    (column / tab-width + 1) * tab-width
-|? byte < 0x80
-    column + 1
-??
-    column + (text.codepoint-at(index) as Char).display-width
-
-.. byte = text.byte-at(index)
-
 ╌╌╌╌╌╌╌╌╌╌ Highlighting ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -308,187 +243,6 @@ expanded-tabs(runs, start)
 .. start = text.line-start(line)
 .. roles = language?.roles ?? List'SyntaxRole()
 .. runs = syntax-styled-runs(text.bytes, start, text.line-end(line), line-spans(line), roles)
-
-────────────────────
-_ do expanded-tabs [SyntaxStyledRun]
-    - runs [SyntaxStyledRun]
-    - start Size
-
-. expanded [SyntaxStyledRun]
-. offset = start
-. column Size = 0
-for run in runs
-    . end = offset + run.text.size
-    . pieces [String]
-    . piece-start = offset
-    . index = offset
-    while index < end
-        if text.byte-at(index) == code-tab
-            if index > piece-start
-                pieces += text.text-in(piece-start, index)
-            . next = (column / tab-width + 1) * tab-width
-            pieces += " " * (next - column)
-            column = next
-            index += 1
-            piece-start = index
-        else
-            column = advance-column(index, column)
-            index = text.next-char(index)
-    if end > piece-start
-        pieces += text.text-in(piece-start, end)
-    expanded += SyntaxStyledRun("".join(pieces), run.role, run.is-marked)
-    offset = end
-= expanded
-
-────────────────────
-_ do load-window
-    - line Size
-
-. first = if line > code-window-before then line - code-window-before else 0
-. last = min(text.line-count, line + code-window-after)
-. lines [[SyntaxSpan]]
-for index in first .. < last
-    lines += List'SyntaxSpan()
-. active = document
-if active && last > first
-    . spans = active.highlight
-        - text.bytes
-        - text.length
-        - text.line-start(first)
-        - text.line-end(last - 1)
-    . current = first
-    for span in spans
-        . position = span.start
-        while position < span.end && current < last
-            . line-end = text.line-end(current)
-            if position > line-end
-                current += 1
-            else
-                . piece-end = min(span.end, line-end)
-                if piece-end > position
-                    . bucket = lines[current - first]
-                    bucket += SyntaxSpan(position, piece-end, span.capture)
-                if span.end <= line-end
-                    position = span.end
-                else
-                    position = line-end + 1
-                    current += 1
-window-first = first
-window-spans = lines
-window-revision = revision
-
-╌╌╌╌╌╌╌╌╌╌ Editing ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-_ do reparse
-    - budget = code-edit-parse-budget
-
-. active = document
-=? if !active || active.is-parsing
-if active.parse(text.bytes, text.length, budget)
-    has-parse-error = active.has-error
-else if active.is-parsing
-    do new finish-background-parse(active)
-
-────────────────────
-_ do finish-background-parse
-    - active SyntaxDocument
-
-. done = Semaphore'Bool()
-do new thread
-    done.post(active.continue-parse())
-done.await()
-. edited = active.finish-parse()
-=? if !document
-has-parse-error = active.has-error
-revision += 1
-if edited
-    reparse()
-updated <- revision
-
-────────────────────
-_ do mark-changes
-
-=? if is-marking
-is-marking = true
-while baseline != null && marked-stamp != edit-stamp
-    . stamp = edit-stamp
-    . source = baseline
-    . current = code-text-bytes(text)
-    . done = Semaphore'[DiffLineChange]()
-    do new thread
-        done.post(diff-document(source, current).line-changes())
-    . found = done.await()
-    if found == null
-        break
-    if stamp == edit-stamp && baseline != null
-        line-changes = found
-        marked-stamp = stamp
-        updated <- revision
-is-marking = false
-
-────────────────────
-_ do apply CodeTextChange
-    - start Size
-    - end Size
-    - inserted String
-
-. change = text.replace(start, end, inserted)
-. active = document
-if active
-    active.edit
-        - change.start
-        - change.old-end
-        - change.new-end
-        - change.start-point
-        - change.old-end-point
-        - change.new-end-point
-    reparse()
-folds.shift(change.start-point, change.old-end-point, change.new-end-point)
-for line in change.start-point.row .. change.new-end-point.row
-    widest-columns = max(widest-columns, line-columns(line))
-revision += 1
-if baseline != null
-    edit-stamp += 1
-    . delta = (change.new-end-point.row as I64) - (change.old-end-point.row as I64)
-    line-changes = diff-shifted-changes(line-changes, change.old-end-point.row, delta)
-    do new mark-changes()
-= change
-
-────────────────────
-_ do edit
-    - start Size
-    - end Size
-    - inserted String
-    - title String
-    - coalescing = false
-
-. old-caret = caret
-. old-anchor = anchor
-. change = apply(start, end, inserted)
-caret = change.new-end
-anchor = caret
-goal-column = null
-if !coalescing
-    history.seal()
-history.record(title, CodeEdit(this, start, change.removed, inserted, old-caret, old-anchor, caret))
-if !coalescing
-    history.seal()
-updated <- revision
-
-────────────────────
-_ do restore
-    - start Size
-    - end Size
-    - inserted String
-    - caret-to Size
-    - anchor-to Size
-
-. ignored = apply(start, end, inserted)
-caret = caret-to
-anchor = anchor-to
-goal-column = null
-updated <- revision
 
 ────────────────────
 + do undo Bool
@@ -1006,6 +760,201 @@ updated <- revision
 = folds.reveal(text.line-at(anchor))
 
 ────────────────────
+_ advance-column Size
+    - index Size
+    - column Size
+
+|? byte == code-tab
+    (column / tab-width + 1) * tab-width
+|? byte < 0x80
+    column + 1
+??
+    column + (text.codepoint-at(index) as Char).display-width
+
+.. byte = text.byte-at(index)
+
+────────────────────
+_ do expanded-tabs [SyntaxStyledRun]
+    - runs [SyntaxStyledRun]
+    - start Size
+
+. expanded [SyntaxStyledRun]
+. offset = start
+. column Size = 0
+for run in runs
+    . end = offset + run.text.size
+    . pieces [String]
+    . piece-start = offset
+    . index = offset
+    while index < end
+        if text.byte-at(index) == code-tab
+            if index > piece-start
+                pieces += text.text-in(piece-start, index)
+            . next = (column / tab-width + 1) * tab-width
+            pieces += " " * (next - column)
+            column = next
+            index += 1
+            piece-start = index
+        else
+            column = advance-column(index, column)
+            index = text.next-char(index)
+    if end > piece-start
+        pieces += text.text-in(piece-start, end)
+    expanded += SyntaxStyledRun("".join(pieces), run.role, run.is-marked)
+    offset = end
+= expanded
+
+────────────────────
+_ do load-window
+    - line Size
+
+. first = if line > code-window-before then line - code-window-before else 0
+. last = min(text.line-count, line + code-window-after)
+. lines [[SyntaxSpan]]
+for index in first .. < last
+    lines += List'SyntaxSpan()
+. active = document
+if active && last > first
+    . spans = active.highlight
+        - text.bytes
+        - text.length
+        - text.line-start(first)
+        - text.line-end(last - 1)
+    . current = first
+    for span in spans
+        . position = span.start
+        while position < span.end && current < last
+            . line-end = text.line-end(current)
+            if position > line-end
+                current += 1
+            else
+                . piece-end = min(span.end, line-end)
+                if piece-end > position
+                    . bucket = lines[current - first]
+                    bucket += SyntaxSpan(position, piece-end, span.capture)
+                if span.end <= line-end
+                    position = span.end
+                else
+                    position = line-end + 1
+                    current += 1
+window-first = first
+window-spans = lines
+window-revision = revision
+
+╌╌╌╌╌╌╌╌╌╌ Editing ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do reparse
+    - budget = code-edit-parse-budget
+
+. active = document
+=? if !active || active.is-parsing
+if active.parse(text.bytes, text.length, budget)
+    has-parse-error = active.has-error
+else if active.is-parsing
+    do new finish-background-parse(active)
+
+────────────────────
+_ do finish-background-parse
+    - active SyntaxDocument
+
+. done = Semaphore'Bool()
+do new thread
+    done.post(active.continue-parse())
+done.await()
+. edited = active.finish-parse()
+=? if !document
+has-parse-error = active.has-error
+revision += 1
+if edited
+    reparse()
+updated <- revision
+
+────────────────────
+_ do mark-changes
+
+=? if is-marking
+is-marking = true
+while baseline != null && marked-stamp != edit-stamp
+    . stamp = edit-stamp
+    . source = baseline
+    . current = code-text-bytes(text)
+    . done = Semaphore'[DiffLineChange]()
+    do new thread
+        done.post(diff-document(source, current).line-changes())
+    . found = done.await()
+    if found == null
+        break
+    if stamp == edit-stamp && baseline != null
+        line-changes = found
+        marked-stamp = stamp
+        updated <- revision
+is-marking = false
+
+────────────────────
+_ do apply CodeTextChange
+    - start Size
+    - end Size
+    - inserted String
+
+. change = text.replace(start, end, inserted)
+. active = document
+if active
+    active.edit
+        - change.start
+        - change.old-end
+        - change.new-end
+        - change.start-point
+        - change.old-end-point
+        - change.new-end-point
+    reparse()
+folds.shift(change.start-point, change.old-end-point, change.new-end-point)
+for line in change.start-point.row .. change.new-end-point.row
+    widest-columns = max(widest-columns, line-columns(line))
+revision += 1
+if baseline != null
+    edit-stamp += 1
+    . delta = (change.new-end-point.row as I64) - (change.old-end-point.row as I64)
+    line-changes = diff-shifted-changes(line-changes, change.old-end-point.row, delta)
+    do new mark-changes()
+= change
+
+────────────────────
+_ do edit
+    - start Size
+    - end Size
+    - inserted String
+    - title String
+    - coalescing = false
+
+. old-caret = caret
+. old-anchor = anchor
+. change = apply(start, end, inserted)
+caret = change.new-end
+anchor = caret
+goal-column = null
+if !coalescing
+    history.seal()
+history.record(title, CodeEdit(this, start, change.removed, inserted, old-caret, old-anchor, caret))
+if !coalescing
+    history.seal()
+updated <- revision
+
+────────────────────
+_ do restore
+    - start Size
+    - end Size
+    - inserted String
+    - caret-to Size
+    - anchor-to Size
+
+. ignored = apply(start, end, inserted)
+caret = caret-to
+anchor = anchor-to
+goal-column = null
+updated <- revision
+
+────────────────────
 _ do cover
 
 . line = text.line-at(caret)
@@ -1104,16 +1053,13 @@ for line in 0 .. < min(text.line-count, code-indent-sample-lines)
 ??
     = "    "
 
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+━━━━━━━━━━━━━━━━━━━━
++ CodeCharClass is Union
 
-────────────────────
-+ do close
-
-baseline = null
-. active = document
-if active
-    active.close()
-    document = null
+| space
+| word
+| punctuation
+| newline
 
 ━━━━━━━━━━━━━━━━━━━━
 + code-byte-class CodeCharClass
@@ -1129,6 +1075,70 @@ if active
     CodeCharClass.punctuation
 
 .. is-letter = (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122)
+
+━━━━━━━━━━━━━━━━━━━━
++ code-matching-line Size
+    - from String
+    - to String
+    - line Size
+
+diff-matching-line(code-text-bytes(CodeText(from)), code-text-bytes(CodeText(to)), line)
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodeEdit
+    is CommandHistoryEntry
+
+_ session CodeSession
+_ start Size
+_ removed String
+_ inserted String
+_ caret-before Size
+_ anchor-before Size
+_ caret-after Size
+
+────────────────────
+_ This
+    - session
+    - start
+    - removed
+    - inserted
+    - caret-before
+    - anchor-before
+    - caret-after
+
+╌╌╌╌╌╌╌╌╌╌ is CommandHistoryEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do undo
+
+session.restore(start, start + inserted.size, removed, caret-before, anchor-before)
+
+────────────────────
++ do redo
+
+session.restore(start, start + removed.size, inserted, caret-after, caret-after)
+
+────────────────────
++ do coalesce Bool
+    - next CommandHistoryEntry
+
+do match? next
+    | CodeEdit
+        if !removed.size && !it.removed.size && start + inserted.size == it.start
+            inserted += it.inserted
+            caret-after = it.caret-after
+            = true
+        =? false if inserted.size || it.inserted.size || !removed.size || !it.removed.size
+        if it.start + it.removed.size == start
+            start = it.start
+            removed = "${it.removed}$removed"
+            caret-after = it.caret-after
+            = true
+        if it.start == start
+            removed += it.removed
+            caret-after = it.caret-after
+            = true
+= false
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do leading-whitespace String
@@ -1170,14 +1180,6 @@ _ is-all-spaces Bool
     - text String
 
 all(text) • where each == ' '
-
-━━━━━━━━━━━━━━━━━━━━
-+ code-matching-line Size
-    - from String
-    - to String
-    - line Size
-
-diff-matching-line(code-text-bytes(CodeText(from)), code-text-bytes(CodeText(to)), line)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do code-text-bytes

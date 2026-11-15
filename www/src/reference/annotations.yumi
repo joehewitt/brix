@@ -14,13 +14,6 @@
 + end Index
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ReferenceAnnotationOpen is Tuple
-
-+ id String
-+ kind String?
-+ start Index
-
-━━━━━━━━━━━━━━━━━━━━
 + ReferenceFeatureSpec is Tuple
 
 + id String
@@ -61,12 +54,6 @@ _ ReferenceAnnotationOpen is Tuple
 + features [ReferenceFeatureSpec]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ StrippedReferenceSource is Tuple
-
-+ source String
-+ selections [ReferenceAnnotationSelection]
-
-━━━━━━━━━━━━━━━━━━━━
 + do reference-examples [ReferenceExample]
     - document MarkdownSiteDocument
 
@@ -102,22 +89,6 @@ for code in reference-fenced-codes(document.markdown)
         - stripped.selections
         - features
 = examples
-
-━━━━━━━━━━━━━━━━━━━━
-_ compare-reference-selection Comparison
-    - left ReferenceAnnotationSelection
-    - right ReferenceAnnotationSelection
-
-|? left.start < right.start
-    .lesser
-|? left.start > right.start
-    .greater
-|? left.end > right.end
-    .lesser
-|? left.end < right.end
-    .greater
-??
-    .equal
 
 ━━━━━━━━━━━━━━━━━━━━
 + render-reference-code String
@@ -199,18 +170,6 @@ for run in presentation.runs
 = reference-example-html(example, code, reference-feature-json(example, features))
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ¶ reference-example-html
-    - example ReferenceExample
-    - code String
-    - data String
-
-<section class="code-example" data-code-example="${example.document-id}--${example.id}" \
-id="${example.document-id}--source-${example.id}" aria-label="Annotated Yumi example">\
-<div class="yumi-source" data-yumi-source>\
-<pre class="yumi-source-pre"><code class="source-yumi">$code</code></pre></div>\
-<script type="application/json" data-code-features>$data</script></section>
-
-━━━━━━━━━━━━━━━━━━━━
 + do render-reference-example-pairs String
     - html String
     - document-name String
@@ -250,6 +209,59 @@ while cursor < html.length
     output += "<div class=\"example-source\">$source</div></div>"
     cursor = end + closing.length
 = output
+
+━━━━━━━━━━━━━━━━━━━━
++ reference-html String
+    - text String
+
+"".join(reference-html-character(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
++ reference-html-attribute String
+    - text String
+
+"".join(reference-html-attribute-character(each) in text)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ReferenceAnnotationOpen is Tuple
+
++ id String
++ kind String?
++ start Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ StrippedReferenceSource is Tuple
+
++ source String
++ selections [ReferenceAnnotationSelection]
+
+━━━━━━━━━━━━━━━━━━━━
+_ compare-reference-selection Comparison
+    - left ReferenceAnnotationSelection
+    - right ReferenceAnnotationSelection
+
+|? left.start < right.start
+    .lesser
+|? left.start > right.start
+    .greater
+|? left.end > right.end
+    .lesser
+|? left.end < right.end
+    .greater
+??
+    .equal
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ reference-example-html
+    - example ReferenceExample
+    - code String
+    - data String
+
+<section class="code-example" data-code-example="${example.document-id}--${example.id}" \
+id="${example.document-id}--source-${example.id}" aria-label="Annotated Yumi example">\
+<div class="yumi-source" data-yumi-source>\
+<pre class="yumi-source-pre"><code class="source-yumi">$code</code></pre></div>\
+<script type="application/json" data-code-features>$data</script></section>
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do strip-reference-annotations StrippedReferenceSource
@@ -515,18 +527,6 @@ for char in value[1 ...]
     . number = char >= '0' && char <= '9'
     =? false if !letter && !number
 = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ reference-html String
-    - text String
-
-"".join(reference-html-character(each) in text)
-
-━━━━━━━━━━━━━━━━━━━━
-+ reference-html-attribute String
-    - text String
-
-"".join(reference-html-attribute-character(each) in text)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ reference-html-character String

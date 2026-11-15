@@ -21,35 +21,14 @@
 ./text
 
 _ layout-position = LayoutPosition()
-_ MeasureCacheEntry is (query MeasureQuery, result MeasureResult, generation U32)
+
 + HitResult is (target Box, offset Point)
-
-━━━━━━━━━━━━━━━━━━━━
-_ TuiLayout is U8
-
-| clean
-| children-only
-| self
-
-━━━━━━━━━━━━━━━━━━━━
-+ HitFrame is Tuple
-
-+ box Box
-+ point Point
-+ generation U64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ InputHost is Interface
-
-────────────────────
-+ do release-input-inside
-    - subtree Box
+_ MeasureCacheEntry is (query MeasureQuery, result MeasureResult, generation U32)
 
 ━━━━━━━━━━━━━━━━━━━━
 + Box
     is Inspectable
-    is MarkupHost
-    is MarkupTreeHost'Box
+    is MarkupParent'Box
     is KeyScopeNode
     is EventNode
     using TUIDefaultTheme
@@ -121,12 +100,31 @@ _ active-list-child-list-generation U32
 
 . own-enabled-changed < is-enabled
 
-╌╌╌╌╌╌╌╌╌╌ is EventNode ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is Inspectable ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-+ get event-parent EventNode?
++ do inspectable-inspect
+    - facet String
+    - depth U32 = 1
+    - offset U32 = 0
+    - limit U32 = 100
 
-%parent
+do match facet
+    |= "children"
+        emit-tui-box-children(offset, limit)
+    |= "tree"
+        emit-tui-box-tree(depth, offset, limit)
+    |= "snapshot"
+        inspectable-snapshot()
+    ??
+        emit-tui-box-node()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupParent'Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ markup-make-region Box?
+
+BoxRegion()
 
 ╌╌╌╌╌╌╌╌╌╌ is KeyScopeNode ╌╌╌╌╌╌╌╌╌╌
 
@@ -140,7 +138,16 @@ _ active-list-child-list-generation U32
 
 focus-mode-contributes-shortcuts($focus-mode)
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is EventNode ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get event-parent EventNode?
+
+%parent
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get markup-batch-root
@@ -148,122 +155,14 @@ focus-mode-contributes-shortcuts($focus-mode)
 markup-root-of(this)
 
 ────────────────────
-+ get markup-first-child MarkupHost?
++ get markup-first-child MarkupElement?
 
 markup-structural-first-child-host(this)
 
 ────────────────────
-+ get markup-next-sibling MarkupHost?
++ get markup-next-sibling MarkupElement?
 
 markup-structural-next-sibling-host(this)
-
-────────────────────
-+ do mounted
-
-inherit-enabled(%parent?.is-effectively-enabled ?? true)
-
-────────────────────
-+ do unmounted
-
-────────────────────
-+ do close ?! Error
-
-close-box()
-
-────────────────────
-+ do inherit-enabled
-    - inherited Bool
-
-. next = inherited && is-enabled
-=? if next == is-effectively-enabled
-is-effectively-enabled = next
-for child in children
-    child.inherit-enabled(next)
-
-────────────────────
-_ do own-enabled-changed
-
-inherit-enabled(%parent?.is-effectively-enabled ?? true)
-
-────────────────────
-+ do markup-attach-shadow-child
-    - child MarkupHost
-    - anchor MarkupHost?
-
-child-list-generation += 1
-$is-active-list-invalid = true
-invalidate-child-list()
-
-────────────────────
-+ do markup-detach-shadow-child
-    - child MarkupHost
-
-child-list-generation += 1
-$is-active-list-invalid = true
-invalidate-child-list()
-
-────────────────────
-+ markup-collection-region'Item'Content'Source CollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - Content = Box
-    - Source is Collection'Item
-
-CollectionRegion'Item(source, row-builder)
-
-────────────────────
-+ markup-collection-region'Item'Content'Source CollectionRegion'Item
-    - source Source
-    - row-builder MarkupCollectionRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Content = Box
-    - Source is Collection'Item
-
-CollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-broadcastable-region'Item'Content'Source BroadcastCollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Content = Box
-    - Source is Broadcastable'Item
-
-BroadcastCollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-iterable-region'Item'Content'Source IterableCollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Content = Box
-    - Source is Iterable'Item
-
-IterableCollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-branch-region'Content BranchRegion
-    - arm-builders [MarkupBranchBuilder'Content]
-    - active-arm Index?
-    - Content = Box
-
-BranchRegion(arm-builders as [MarkupBranchBuilder'Box], active-arm)
-
-────────────────────
-+ do markup-select-branch-region'Content
-    - region Content
-    - active-arm Index?
-    - Content = Box
-
-(region as BranchRegion).select-markup-branch(active-arm)
-
-────────────────────
-+ markup-branch-region-keeps-arm'Content Bool
-    - region Content
-    - arm Index?
-    - Content = Box
-
-(region as BranchRegion).controller.selected-arm == arm
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -361,33 +260,13 @@ while next
     <= ancestor
 
 ────────────────────
-+ do get children @inline
++ do get structural-children @inline
 
 . next = %first-child
 while next
     . child = next
     next = child.%next-sibling
     <= child
-
-────────────────────
-+ get structural-children @inline
-
-children
-
-────────────────────
-+ do get rendered-children [Box]
-
-. maybe-child = %first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        if child.is-markup-shadow
-            <<= child.rendered-children
-        else
-            <= child
-        if !child.%next-sibling
-            break
-        child = child.%next-sibling!
 
 ────────────────────
 + do get active-children @inline
@@ -442,13 +321,53 @@ _ size = size Size
 invalidate-content-size()
 
 ────────────────────
++ do mounted
+
+inherit-enabled(%parent?.is-effectively-enabled ?? true)
+
+────────────────────
++ do unmounted
+
+────────────────────
++ do close ?! Error
+
+close-box()
+
+────────────────────
++ do inherit-enabled
+    - inherited Bool
+
+. next = inherited && is-enabled
+=? if next == is-effectively-enabled
+is-effectively-enabled = next
+for child in structural-children
+    child.inherit-enabled(next)
+
+────────────────────
++ do markup-attach-shadow-child
+    - child MarkupElement
+    - anchor MarkupElement?
+
+child-list-generation += 1
+$is-active-list-invalid = true
+invalidate-child-list()
+
+────────────────────
++ do markup-detach-shadow-child
+    - child MarkupElement
+
+child-list-generation += 1
+$is-active-list-invalid = true
+invalidate-child-list()
+
+────────────────────
 + do active-modal-root Box?
 
 . modal Box?
 if is-modal-root && is-interactive-visible
     modal = this
 
-for child in children
+for child in structural-children
     . child-modal = child.active-modal-root()
     if child-modal
         modal = child-modal
@@ -554,33 +473,6 @@ measure-cache = MeasureCacheEntry(query, result, measure-generation)
 
 if measure-cache && measure-cache.query == query
     = measure-cache.result
-
-────────────────────
-_ do mark-measure-inputs-changed
-
-measure-generation += 1
-if measure-generation == 0
-    measure-cache = null
-
-────────────────────
-_ do classify-pending-layout-invalidation
-
-if $is-layout-invalid && layout-invalidation-kind == TuiLayout.clean
-    layout-invalidation-kind = TuiLayout.self
-    mark-measure-inputs-changed()
-
-────────────────────
-_ do mark-self-layout-invalid
-
-layout-invalidation-kind = TuiLayout.self
-$is-layout-invalid = true
-
-────────────────────
-_ do mark-child-only-layout-invalid
-
-if layout-invalidation-kind != TuiLayout.self
-    layout-invalidation-kind = TuiLayout.children-only
-$is-layout-invalid = true
 
 ────────────────────
 + do mark-layout-arranged
@@ -695,23 +587,6 @@ $is-active-list-invalid = false
 "${(type-of this).concrete-name} #${this.uid}"
 
 ────────────────────
-+ do inspectable-inspect
-    - facet String
-    - depth U32 = 1
-    - offset U32 = 0
-    - limit U32 = 100
-
-do match facet
-    |= "children"
-        emit-tui-box-children(offset, limit)
-    |= "tree"
-        emit-tui-box-tree(depth, offset, limit)
-    |= "snapshot"
-        inspectable-snapshot()
-    ??
-        emit-tui-box-node()
-
-────────────────────
 + do emit-tui-box-node
 
 //this:tui.box.node -> (type-of this).concrete-name, inspectable-summary(), bounds.x, bounds.y, bounds.width, bounds.height, inner-width, inner-height, scroll-x, scroll-y, $is-layout-invalid, $is-paint-invalid, is-hovered, is-pressed, is-focused, is-effectively-enabled
@@ -723,7 +598,7 @@ do match facet
 
 . index U32 = 0
 . emitted U32 = 0
-for child in children
+for child in structural-children
     if index >= offset && emitted < limit
         //this:tui.box.child -> index, child, (type-of child).concrete-name, child.inspectable-summary()
         emitted += 1
@@ -742,7 +617,7 @@ emit-tui-box-node()
 
 . index U32 = 0
 . emitted U32 = 0
-for child in children
+for child in structural-children
     if index >= offset && emitted < limit
         //this:tui.box.child -> index, child, (type-of child).concrete-name, child.inspectable-summary()
         if depth > 1
@@ -769,56 +644,6 @@ invalidate-paint()
 + do invalidate-content-size
 
 invalidate-content-size-climb(true)
-
-────────────────────
-_ do invalidate-child-list
-
-invalidate-content-size-climb(true)
-if is-markup-shadow && layout-parent
-    layout-parent!.invalidate-layout()
-
-────────────────────
-_ do invalidate-content-size-climb Bool
-    - is-origin Bool
-
-//tui.layout.invalidation.visits ++
-if !is-displayed
-    //tui.layout.invalidation.hidden-stops ++
-    park-hidden-dirty()
-    = false
-
-mark-measure-inputs-changed()
-if layout-invalidation-kind != TuiLayout.clean
-    //tui.layout.invalidation.frontier-stops ++
-    = true
-
-. parent = %parent
-if parent
-    =? false
-        if !parent.invalidate-content-size-climb(false)
-
-. root-was-paint-invalid = false
-if !parent
-    root-was-paint-invalid = $is-paint-invalid
-
-if !parent
-    if is-origin
-        mark-self-layout-invalid()
-    else
-        mark-child-only-layout-invalid()
-    $is-paint-invalid = true
-    if !root-was-paint-invalid
-        //tui.layout.invalidation.root-schedules ++
-        schedule-paint()
-else if is-origin
-    mark-self-layout-invalid()
-    if !$is-paint-invalid
-        $is-paint-invalid = true
-else if !is-markup-shadow
-    mark-child-only-layout-invalid()
-    $is-paint-invalid = true
-
-= true
 
 ────────────────────
 + do arrange-bounds
@@ -857,27 +682,13 @@ if is-paint-visible && !is-markup-shadow && bounds.width > 0 && bounds.height > 
     has-retained-paint-bounds = true
 
 ────────────────────
-_ do root-paint-bounds Rect
-
-. dx Coord = 0
-. dy Coord = 0
-. current Box? = %parent
-while current
-    . ancestor = current
-    if !ancestor.is-markup-shadow
-        dx += ancestor.scroll-x
-        dy += ancestor.scroll-y
-    current = ancestor.%parent
-= Rect(bounds.x + dx, bounds.y + dy, bounds.width, bounds.height)
-
-────────────────────
 + do retained-paint-footprint Rect?
 
 . footprint Rect?
 if has-retained-paint-bounds
     footprint = retained-paint-bounds
 
-for child in children
+for child in structural-children
     . child-footprint = child.retained-paint-footprint()
     if child-footprint
         if footprint
@@ -891,7 +702,7 @@ for child in children
 + do clear-retained-paint-footprint
 
 has-retained-paint-bounds = false
-for child in children
+for child in structural-children
     child.clear-retained-paint-footprint()
 
 ────────────────────
@@ -944,7 +755,7 @@ if !is-markup-shadow && !canvas.is-rect-visible(bounds)
     =
 //tui.frame.paint.boxes ++
 if is-markup-shadow
-    for box in children
+    for box in structural-children
         if paint-skip-compositing-layers && box.requires-compositing-layer
             continue
         box.paint(canvas)
@@ -956,7 +767,7 @@ do use canvas
     canvas.clip(content-bounds)
     canvas.offset((scroll-x, scroll-y))
 
-    for box in children
+    for box in structural-children
         if paint-skip-compositing-layers && box.requires-compositing-layer
             continue
         box.paint(canvas)
@@ -966,7 +777,7 @@ did-paint()
 ────────────────────
 + do arrange-positioned-children
 
-for child in children
+for child in structural-children
     arrange-positioned-child(child)
 
 ────────────────────
@@ -1059,7 +870,7 @@ if this is Target
     if where(target)
         = target
 
-for child in children
+for child in structural-children
     =? child.descendant'Target • where where
 
 ────────────────────
@@ -1151,7 +962,7 @@ if !already-scheduled
     - scheduler Doer?
 
 paint-scheduler = scheduler
-for child in children
+for child in structural-children
     child.set-paint-scheduler(scheduler)
 
 ────────────────────
@@ -1370,7 +1181,7 @@ while cursor
 ────────────────────
 + do close-box ?! Error
 
-for child in children
+for child in structural-children
     child.close()
 
 ────────────────────
@@ -1387,6 +1198,102 @@ callback()
 schedule-paint()
 
 ────────────────────
+_ do own-enabled-changed
+
+inherit-enabled(%parent?.is-effectively-enabled ?? true)
+
+────────────────────
+_ do mark-measure-inputs-changed
+
+measure-generation += 1
+if measure-generation == 0
+    measure-cache = null
+
+────────────────────
+_ do classify-pending-layout-invalidation
+
+if $is-layout-invalid && layout-invalidation-kind == TuiLayout.clean
+    layout-invalidation-kind = TuiLayout.self
+    mark-measure-inputs-changed()
+
+────────────────────
+_ do mark-self-layout-invalid
+
+layout-invalidation-kind = TuiLayout.self
+$is-layout-invalid = true
+
+────────────────────
+_ do mark-child-only-layout-invalid
+
+if layout-invalidation-kind != TuiLayout.self
+    layout-invalidation-kind = TuiLayout.children-only
+$is-layout-invalid = true
+
+────────────────────
+_ do invalidate-child-list
+
+invalidate-content-size-climb(true)
+if is-markup-shadow && layout-parent
+    layout-parent!.invalidate-layout()
+
+────────────────────
+_ do invalidate-content-size-climb Bool
+    - is-origin Bool
+
+//tui.layout.invalidation.visits ++
+if !is-displayed
+    //tui.layout.invalidation.hidden-stops ++
+    park-hidden-dirty()
+    = false
+
+mark-measure-inputs-changed()
+if layout-invalidation-kind != TuiLayout.clean
+    //tui.layout.invalidation.frontier-stops ++
+    = true
+
+. parent = %parent
+if parent
+    =? false
+        if !parent.invalidate-content-size-climb(false)
+
+. root-was-paint-invalid = false
+if !parent
+    root-was-paint-invalid = $is-paint-invalid
+
+if !parent
+    if is-origin
+        mark-self-layout-invalid()
+    else
+        mark-child-only-layout-invalid()
+    $is-paint-invalid = true
+    if !root-was-paint-invalid
+        //tui.layout.invalidation.root-schedules ++
+        schedule-paint()
+else if is-origin
+    mark-self-layout-invalid()
+    if !$is-paint-invalid
+        $is-paint-invalid = true
+else if !is-markup-shadow
+    mark-child-only-layout-invalid()
+    $is-paint-invalid = true
+
+= true
+
+────────────────────
+_ do root-paint-bounds Rect
+
+. dx Coord = 0
+. dy Coord = 0
+. current Box? = %parent
+while current
+    . ancestor = current
+    if !ancestor.is-markup-shadow
+        dx += ancestor.scroll-x
+        dy += ancestor.scroll-y
+    current = ancestor.%parent
+= Rect(bounds.x + dx, bounds.y + dy, bounds.width, bounds.height)
+
+────────────────────
 _ do append-active-child Box?
     - child Box
     - active-tail Box?
@@ -1395,7 +1302,7 @@ child.active-next = null
 
 if child.is-markup-shadow
     . tail = active-tail
-    for grandchild in child.children
+    for grandchild in child.structural-children
         tail = append-active-child(grandchild, tail)
     child.mark-shadow-active-list-clean()
     = tail
@@ -1412,7 +1319,7 @@ if child.participates-in-parent-layout(this)
 ────────────────────
 _ do has-shadow-active-list-invalid Bool
 
-for child in children when child.is-markup-shadow
+for child in structural-children when child.is-markup-shadow
     . is-invalid = child.$is-active-list-invalid
     . list-invalid = child.active-list-child-list-generation != child.child-list-generation
     . shadow-invalid = child.has-shadow-active-list-invalid()
@@ -1426,7 +1333,7 @@ _ do mark-shadow-active-list-clean
 active-first-child = null
 active-list-child-list-generation = child-list-generation
 $is-active-list-invalid = false
-for child in children when child.is-markup-shadow
+for child in structural-children when child.is-markup-shadow
     child.mark-shadow-active-list-clean()
 
 ────────────────────
@@ -1443,7 +1350,7 @@ if !is-displayed
 if hidden-dirty-below
     hidden-dirty-below = false
     //tui.layout.hidden.reveals ++
-    for child in children
+    for child in structural-children
         child.invalidate-revealed-layout()
 
 . visit-below = $is-layout-invalid-below
@@ -1466,7 +1373,7 @@ if needs-layout
 
 if visit-below
     $is-layout-invalid-below = false
-    for child in children
+    for child in structural-children
         child.update-layout-pass()
 
 if did-work
@@ -1480,7 +1387,7 @@ if !is-displayed
     =
 mark-measure-inputs-changed()
 mark-self-layout-invalid()
-for child in children
+for child in structural-children
     child.invalidate-revealed-layout()
 
 ────────────────────
@@ -1489,7 +1396,7 @@ _ do arrange-positioned-child
 
 //tui.layout.arrange.children-considered ++
 if child.is-markup-shadow
-    for grandchild in child.children
+    for grandchild in child.structural-children
         arrange-positioned-child(grandchild)
     =
 if child.is-displayed && !child.participates-in-parent-layout(this)
@@ -1504,7 +1411,7 @@ if focus-mode-can-focus($focus-mode)
     if is-effectively-enabled
         candidates += this
     =
-for child in children
+for child in structural-children
     if child.is-display-visible && child.is-focus-traversal-reachable
         child.collect-interactive-focus-candidates(candidates)
 
@@ -1516,7 +1423,7 @@ if focus-mode-can-focus($focus-mode)
     if is-effectively-enabled
         search.add(this)
     =
-for child in children
+for child in structural-children
     if child.is-display-visible && child.is-focus-traversal-reachable
         child.collect-interactive-focus-candidate-search(search)
 
@@ -1532,42 +1439,26 @@ while true
     child.close()
 
 ━━━━━━━━━━━━━━━━━━━━
++ HitFrame is Tuple
+
++ box Box
++ point Point
++ generation U64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ InputHost is Interface
+
+────────────────────
++ do release-input-inside
+    - subtree Box
+
+━━━━━━━━━━━━━━━━━━━━
 + FocusMode is Union
 
 | none
 | keys
 | inside
 | input
-
-━━━━━━━━━━━━━━━━━━━━
-+ do publish-focused-input'Event Bool
-    - root Box
-    - target Box
-    - event Event
-    - Event is FocusedInputEvent
-
-= match event
-    | KeyPressEvent
-        . key-event = event as KeyPressEvent
-        . saved = key-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
-        do finally key-event.end-route(saved)
-        target.key-press <- key-event
-        key-event.is-canceled
-    | KeyInputEvent
-        . input-event = event as KeyInputEvent
-        . saved = input-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
-        do finally input-event.end-route(saved)
-        target.key-input <- input-event
-        input-event.is-canceled
-    | PasteEvent
-        . paste-event = event as PasteEvent
-        . saved = paste-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
-        do finally paste-event.end-route(saved)
-        target.paste <- paste-event
-        paste-event.is-canceled
-
-.. root-pointer = root as Pointer
-.. origin = Point(0, 0)
 
 ━━━━━━━━━━━━━━━━━━━━
 + HitPath is Tuple
@@ -1578,23 +1469,6 @@ while true
 + root-point Point
 + boundary Box?
 + frames [HitFrame]
-
-────────────────────
-_ do live-offset Point
-
-. current Box? = target
-. current-offset = Point(0, 0)
-. offset-root = boundary ?? root
-while current
-    if current as Pointer == offset-root as Pointer
-        = current-offset
-    . parent = current.%parent
-    if !parent
-        = offset
-    current-offset =
-        Point(current-offset.x + parent.scroll-x, current-offset.y + parent.scroll-y)
-    current = parent
-= offset
 
 ────────────────────
 + do point-for Point?
@@ -1622,30 +1496,11 @@ while current
 HitPath(target, root, offset, point, boundary, frames)
 
 ────────────────────
-_ boundary-pointer
-
-|? boundary
-    boundary as Pointer
-??
-    null
-
-────────────────────
 + do is-current Bool
 
 for frame in frames
     =? if frame.generation != frame.box.input-generation
 = true
-
-────────────────────
-_ do begin-pointer-route
-    - event MouseEvent
-    - point Point
-
-= event.begin-route(box-event-route-next, root-pointer, point, route-offset, route-boundary)
-
-.. root-pointer = root as Pointer
-.. route-offset = live-offset()
-.. route-boundary = boundary-pointer()
 
 ────────────────────
 + do publish-pointer'Event Bool
@@ -1702,6 +1557,72 @@ target.click <- event
 .. offset = live-offset()
 .. route-boundary = boundary-pointer()
 
+────────────────────
+_ do live-offset Point
+
+. current Box? = target
+. current-offset = Point(0, 0)
+. offset-root = boundary ?? root
+while current
+    if current as Pointer == offset-root as Pointer
+        = current-offset
+    . parent = current.%parent
+    if !parent
+        = offset
+    current-offset =
+        Point(current-offset.x + parent.scroll-x, current-offset.y + parent.scroll-y)
+    current = parent
+= offset
+
+────────────────────
+_ boundary-pointer
+
+|? boundary
+    boundary as Pointer
+??
+    null
+
+────────────────────
+_ do begin-pointer-route
+    - event MouseEvent
+    - point Point
+
+= event.begin-route(box-event-route-next, root-pointer, point, route-offset, route-boundary)
+
+.. root-pointer = root as Pointer
+.. route-offset = live-offset()
+.. route-boundary = boundary-pointer()
+
+━━━━━━━━━━━━━━━━━━━━
++ do publish-focused-input'Event Bool
+    - root Box
+    - target Box
+    - event Event
+    - Event is FocusedInputEvent
+
+= match event
+    | KeyPressEvent
+        . key-event = event as KeyPressEvent
+        . saved = key-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
+        do finally key-event.end-route(saved)
+        target.key-press <- key-event
+        key-event.is-canceled
+    | KeyInputEvent
+        . input-event = event as KeyInputEvent
+        . saved = input-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
+        do finally input-event.end-route(saved)
+        target.key-input <- input-event
+        input-event.is-canceled
+    | PasteEvent
+        . paste-event = event as PasteEvent
+        . saved = paste-event.begin-route(box-event-route-next, root-pointer, origin, origin, null)
+        do finally paste-event.end-route(saved)
+        target.paste <- paste-event
+        paste-event.is-canceled
+
+.. root-pointer = root as Pointer
+.. origin = Point(0, 0)
+
 ━━━━━━━━━━━━━━━━━━━━
 + do box-event-route-next Pointer?
     - raw-event Pointer
@@ -1718,6 +1639,25 @@ if event.route-boundary == raw-current
 . offset = Point(event.route-offset.x - parent.scroll-x, event.route-offset.y - parent.scroll-y)
 event.advance-route(offset)
 = parent as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ focus-mode-can-focus
+    - mode FocusMode
+
+mode == FocusMode.keys || mode == FocusMode.input
+
+━━━━━━━━━━━━━━━━━━━━
++ focus-mode-contributes-shortcuts
+    - mode FocusMode
+
+mode == FocusMode.keys || mode == FocusMode.inside
+
+━━━━━━━━━━━━━━━━━━━━
+_ TuiLayout is U8
+
+| clean
+| children-only
+| self
 
 ━━━━━━━━━━━━━━━━━━━━
 _ FocusCandidateSearch
@@ -1769,15 +1709,3 @@ if going-backward
     = before-current ?? last
 
 = after-current ?? first
-
-━━━━━━━━━━━━━━━━━━━━
-+ focus-mode-can-focus
-    - mode FocusMode
-
-mode == FocusMode.keys || mode == FocusMode.input
-
-━━━━━━━━━━━━━━━━━━━━
-+ focus-mode-contributes-shortcuts
-    - mode FocusMode
-
-mode == FocusMode.keys || mode == FocusMode.inside

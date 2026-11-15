@@ -10,6 +10,8 @@ _ text-layout-high-water Size = 0
 _ text-layout-created Size = 0
 _ text-layout-released Size = 0
 
++ TextLayoutRequestPanic is Panic
+
 ━━━━━━━━━━━━━━━━━━━━
 + FontWeight is Union
 
@@ -138,13 +140,6 @@ match this
 + descent Length
 
 ━━━━━━━━━━━━━━━━━━━━
-+ system-font Font
-    - size Length = 13
-    - weight FontWeight = FontWeight.regular
-
-Font("", size, weight)
-
-━━━━━━━━━━━━━━━━━━━━
 + TextLayoutRequest is Tuple
 
 + text String
@@ -164,33 +159,6 @@ Font("", size, weight)
     - wrap TextWrap = TextWrap.no-wrap
     - line-spacing Length = 0
     - maximum-height Length? = null
-
-━━━━━━━━━━━━━━━━━━━━
-_ text-truncation
-    - overflow TextOverflow
-
-match overflow
-    | .truncate-tail
-        1
-    | .truncate-head
-        2
-    ??
-        0
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-layout-request-is-valid Bool
-    - request TextLayoutRequest
-
-text-span-is-valid(request.maximum-width) && text-span-is-valid(request.maximum-height)
-
-━━━━━━━━━━━━━━━━━━━━
-_ text-span-is-valid
-    - span Length?
-
-|? span != null
-    is-finite(span) && span >= 0
-??
-    true
 
 ━━━━━━━━━━━━━━━━━━━━
 + TextLineSnapshot is Tuple
@@ -226,9 +194,6 @@ _ text-span-is-valid
     * "last-baseline=${text-scalar(last-baseline)};"
     * "is-truncated=$is-truncated;"
     * "lines=[${",".join(normalized-text-line(each) in lines)}]"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextLayoutRequestPanic is Panic
 
 ━━━━━━━━━━━━━━━━━━━━
 + TextLayout
@@ -283,53 +248,6 @@ else
     shape()
 
 ────────────────────
-_ get may-truncate Bool
-
-bounded-overflow && request.wrap == TextWrap.no-wrap
-
-.. bounded-overflow = request.maximum-width != null && request.overflow != TextOverflow.clip
-
-────────────────────
-+ do get native Pointer?
-
-=? native-value if native-value || is-closed
-shape()
-= native-value
-
-────────────────────
-_ do shape
-
-. maximum-width = request.maximum-width ?? 0
-. created = C:yumiGraphicsTextLayoutCreate
-    - request.text
-    - request.font.family
-    - request.font.size
-    - request.font.weight.trait
-    - request.font.slant == FontSlant.italic
-    - request.maximum-width != null
-    - maximum-width
-    - request.maximum-height != null
-    - request.maximum-height ?? 0
-    - text-truncation(request.overflow)
-    - request.wrap == TextWrap.word
-    - request.line-spacing
-//graphics.text.fonts-created += C:yumiGraphicsTextLayoutGetLastFontCreateMissCount() as U64
-?! TextLayoutRequestPanic("Unable to create text layout")
-    if !created
-native-value = created
-adopt-native()
-
-────────────────────
-_ do get shaped TextLayoutSnapshot
-
-. head = snapshot-value
-=? head if head
-shape()
-if is-closed
-    release-native()
-= snapshot-value!
-
-────────────────────
 + This
     - segments [TextSegment]
     - font Font
@@ -380,22 +298,6 @@ native-value = created
 adopt-native()
 
 ────────────────────
-_ do adopt-native
-
-. head = native-text-layout-head(native-value!)
-snapshot-value = head
-text-layout-live += 1
-text-layout-created += 1
-//graphics.text.layouts-created ++
-if head.is-truncated
-    //graphics.text.truncated-layouts ++
-else
-    //graphics.text.natural-layouts ++
-if text-layout-live > text-layout-high-water
-    //graphics.text.layouts-high-water += (text-layout-live - text-layout-high-water) as U64
-    text-layout-high-water = text-layout-live
-
-────────────────────
 + This
     - text String
     - font Font
@@ -406,6 +308,68 @@ if text-layout-live > text-layout-high-water
     - maximum-height Length? = null
 
 = This(TextLayoutRequest(text, font, maximum-width, overflow, wrap, line-spacing, maximum-height))
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+release-native()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do get native Pointer?
+
+=? native-value if native-value || is-closed
+shape()
+= native-value
+
+────────────────────
++ do get fragments [TextFragment]
+
+. cached = fragments-value
+=? cached if cached
+. handle = native
+. loaded = if handle then native-text-layout-fragments(handle) else List'TextFragment()
+fragments-value = loaded
+= loaded
+
+────────────────────
++ do get snapshot TextLayoutSnapshot
+
+//graphics.text.metric-queries ++
+. head = shaped
+=? head if head.lines.length > 0 || head.line-count == 0
+. loaded = TextLayoutSnapshot
+    - head.size
+    - head.natural-width
+    - head.constrained-width
+    - head.line-count
+    - head.first-baseline
+    - head.last-baseline
+    - head.is-truncated
+    - native-text-layout-lines(native!, head.line-count)
+snapshot-value = loaded
+= loaded
+
+────────────────────
+_ get may-truncate Bool
+
+bounded-overflow && request.wrap == TextWrap.no-wrap
+
+.. bounded-overflow = request.maximum-width != null && request.overflow != TextOverflow.clip
+
+────────────────────
+_ do get shaped TextLayoutSnapshot
+
+. head = snapshot-value
+=? head if head
+shape()
+if is-closed
+    release-native()
+= snapshot-value!
 
 ────────────────────
 + do to-path Path
@@ -442,16 +406,6 @@ for index in 0 .. < count
         |= C:YuGraphicsTextPathClose
             path.close()
 = path
-
-────────────────────
-+ do get fragments [TextFragment]
-
-. cached = fragments-value
-=? cached if cached
-. handle = native
-. loaded = if handle then native-text-layout-fragments(handle) else List'TextFragment()
-fragments-value = loaded
-= loaded
 
 ────────────────────
 + line-offset Length
@@ -514,6 +468,45 @@ if !handle then 0 else text-offset(C:yumiGraphicsTextLayoutGetLineEnd(handle, li
 = Rect(C:yumiGraphicsTextLayoutGetXForIndex(handle, index), bounds.y, 0, bounds.height)
 
 ────────────────────
+_ do shape
+
+. maximum-width = request.maximum-width ?? 0
+. created = C:yumiGraphicsTextLayoutCreate
+    - request.text
+    - request.font.family
+    - request.font.size
+    - request.font.weight.trait
+    - request.font.slant == FontSlant.italic
+    - request.maximum-width != null
+    - maximum-width
+    - request.maximum-height != null
+    - request.maximum-height ?? 0
+    - text-truncation(request.overflow)
+    - request.wrap == TextWrap.word
+    - request.line-spacing
+//graphics.text.fonts-created += C:yumiGraphicsTextLayoutGetLastFontCreateMissCount() as U64
+?! TextLayoutRequestPanic("Unable to create text layout")
+    if !created
+native-value = created
+adopt-native()
+
+────────────────────
+_ do adopt-native
+
+. head = native-text-layout-head(native-value!)
+snapshot-value = head
+text-layout-live += 1
+text-layout-created += 1
+//graphics.text.layouts-created ++
+if head.is-truncated
+    //graphics.text.truncated-layouts ++
+else
+    //graphics.text.natural-layouts ++
+if text-layout-live > text-layout-high-water
+    //graphics.text.layouts-high-water += (text-layout-live - text-layout-high-water) as U64
+    text-layout-high-water = text-layout-live
+
+────────────────────
 _ do native-index I64
     - offset Size
 
@@ -556,32 +549,6 @@ while seen < units
 = index
 
 ────────────────────
-+ do get snapshot TextLayoutSnapshot
-
-//graphics.text.metric-queries ++
-. head = shaped
-=? head if head.lines.length > 0 || head.line-count == 0
-. loaded = TextLayoutSnapshot
-    - head.size
-    - head.natural-width
-    - head.constrained-width
-    - head.line-count
-    - head.first-baseline
-    - head.last-baseline
-    - head.is-truncated
-    - native-text-layout-lines(native!, head.line-count)
-snapshot-value = loaded
-= loaded
-
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-is-closed = true
-release-native()
-
-────────────────────
 _ do release-native
 
 . handle = native-value
@@ -593,50 +560,8 @@ text-layout-released += 1
 //graphics.text.layouts-released ++
 
 ━━━━━━━━━━━━━━━━━━━━
-+ text-path Path
-    - text String
-    - font Font = system-font()
-
-layout.to-path()
-    .. layout = use TextLayout(text, font)
-
-━━━━━━━━━━━━━━━━━━━━
-_ TextSimpleLine is Tuple
-
-+ ascent Length
-+ descent Length
-+ leading Length
-+ height Length
-
-━━━━━━━━━━━━━━━━━━━━
 + TextLayoutBuilder is () TextLayout
     - maximum-width Length?
-
-━━━━━━━━━━━━━━━━━━━━
-_ TextLayoutObject is Tuple
-
-+ offset Size
-+ units Size
-+ is-trailing Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ text-object-units Size
-    - segment TextSegment
-
-1 + (if segment.join-before then 1 else 0) + (if segment.join-after then 1 else 0)
-
-━━━━━━━━━━━━━━━━━━━━
-_ text-utf8-width Size
-    - lead Byte
-
-|? lead >= 0xF0
-    4
-|? lead >= 0xE0
-    3
-|? lead >= 0xC0
-    2
-??
-    1
 
 ━━━━━━━━━━━━━━━━━━━━
 + TightTextLayout is Tuple
@@ -653,6 +578,73 @@ _ text-utf8-width Size
     cap == null
 ??
     tight-text-width-serves(width, maximum-width, cap)
+
+━━━━━━━━━━━━━━━━━━━━
++ FontRegistrationError is Error
+
+╌╌╌╌╌╌╌╌╌╌ is Error ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ to String
+
+message ?? "Unable to register font"
+
+━━━━━━━━━━━━━━━━━━━━
++ FontRegistration
+    is Closable
+
++ family String
+
+_ native Pointer?
+
+────────────────────
++ This ?! FontRegistrationError
+    - path String
+
+. candidate = C:yumiGraphicsFontRegister(path)
+?! FontRegistrationError("Unable to register font '$path'")
+    if !C:yumiGraphicsFontRegistrationIsValid(candidate)
+native = candidate
+family = C:yumiGraphicsFontRegistrationGetFamily(candidate)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+if native
+    C:yumiGraphicsFontRegistrationRelease(native)
+    native = null
+
+━━━━━━━━━━━━━━━━━━━━
++ FontCatalog
+
+────────────────────
++ register FontRegistration ?! FontRegistrationError
+    - path String
+
+FontRegistration(path)
+
+━━━━━━━━━━━━━━━━━━━━
++ system-font Font
+    - size Length = 13
+    - weight FontWeight = FontWeight.regular
+
+Font("", size, weight)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-request-is-valid Bool
+    - request TextLayoutRequest
+
+text-span-is-valid(request.maximum-width) && text-span-is-valid(request.maximum-height)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-path Path
+    - text String
+    - font Font = system-font()
+
+layout.to-path()
+    .. layout = use TextLayout(text, font)
 
 ━━━━━━━━━━━━━━━━━━━━
 + tight-text-width-serves
@@ -686,6 +678,86 @@ if stable-width <= cap && stable-width != width
     else
         stable.close()
 = TightTextLayout(winner, width, cap)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-live-count Size
+
+text-layout-live
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-high-water-count Size
+
+text-layout-high-water
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-created-count Size
+
+text-layout-created
+
+━━━━━━━━━━━━━━━━━━━━
++ text-layout-released-count Size
+
+text-layout-released
+
+━━━━━━━━━━━━━━━━━━━━
++ text-font-created-count Size
+
+C:yumiGraphicsTextFontCreatedCount()
+
+━━━━━━━━━━━━━━━━━━━━
+_ TextSimpleLine is Tuple
+
++ ascent Length
++ descent Length
++ leading Length
++ height Length
+
+━━━━━━━━━━━━━━━━━━━━
+_ TextLayoutObject is Tuple
+
++ offset Size
++ units Size
++ is-trailing Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-truncation
+    - overflow TextOverflow
+
+match overflow
+    | .truncate-tail
+        1
+    | .truncate-head
+        2
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-span-is-valid
+    - span Length?
+
+|? span != null
+    is-finite(span) && span >= 0
+??
+    true
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-object-units Size
+    - segment TextSegment
+
+1 + (if segment.join-before then 1 else 0) + (if segment.join-after then 1 else 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ text-utf8-width Size
+    - lead Byte
+
+|? lead >= 0xF0
+    4
+|? lead >= 0xE0
+    3
+|? lead >= 0xC0
+    2
+??
+    1
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do narrowest-text-layout
@@ -732,76 +804,6 @@ _ text-safe-span
     - value Length
 
 if is-finite(value) then max(0, value) else 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-layout-live-count Size
-
-text-layout-live
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-layout-high-water-count Size
-
-text-layout-high-water
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-layout-created-count Size
-
-text-layout-created
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-layout-released-count Size
-
-text-layout-released
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-font-created-count Size
-
-C:yumiGraphicsTextFontCreatedCount()
-
-━━━━━━━━━━━━━━━━━━━━
-+ FontRegistrationError is Error
-
-╌╌╌╌╌╌╌╌╌╌ is Error ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ to String
-
-message ?? "Unable to register font"
-
-━━━━━━━━━━━━━━━━━━━━
-+ FontRegistration
-    is Closable
-
-+ family String
-_ native Pointer?
-
-────────────────────
-+ This ?! FontRegistrationError
-    - path String
-
-. candidate = C:yumiGraphicsFontRegister(path)
-?! FontRegistrationError("Unable to register font '$path'")
-    if !C:yumiGraphicsFontRegistrationIsValid(candidate)
-native = candidate
-family = C:yumiGraphicsFontRegistrationGetFamily(candidate)
-
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-if native
-    C:yumiGraphicsFontRegistrationRelease(native)
-    native = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ FontCatalog
-
-────────────────────
-+ register FontRegistration ?! FontRegistrationError
-    - path String
-
-FontRegistration(path)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do native-text-layout-head TextLayoutSnapshot

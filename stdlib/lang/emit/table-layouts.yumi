@@ -67,16 +67,6 @@
 + columns U32 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
-_ Region is Tuple
-
-` Fields laid out in turn, each at the next offset its alignment allows: where each lies, and
-` the size and alignment of the whole.
-
-+ offsets [U32]
-+ size U32
-+ alignment U32
-
-━━━━━━━━━━━━━━━━━━━━
 + UnionTables
 
 ` The layout of each union the rows of a table hold, built once before emission and read by
@@ -88,6 +78,7 @@ _ Region is Tuple
 + fields Table'UnionField
 + fixed-texts [String]
 + growing-texts [String]
+
 _ rows Map'Size'U32'ArenaBacking
 _ types Types
 _ values Layouts
@@ -613,20 +604,30 @@ for property in types.properties-of(type)
 .. row = class-arg(types, type, 0)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ completed Bool
-    - types Types
-    - type TypeId
-
-` Whether a type was completed before the store was sealed, which emission may read.
-type != no-type && type != invalid-type && types.completions[type].completion == .completion-done
-
-━━━━━━━━━━━━━━━━━━━━
 + align-to U32
     - offset U32
     - alignment U32
 
 ` An offset moved up to the next multiple of an alignment.
 if alignment <= 1 then offset else (offset + alignment - 1) / alignment * alignment
+
+━━━━━━━━━━━━━━━━━━━━
+_ Region is Tuple
+
+` Fields laid out in turn, each at the next offset its alignment allows: where each lies, and
+` the size and alignment of the whole.
+
++ offsets [U32]
++ size U32
++ alignment U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ completed Bool
+    - types Types
+    - type TypeId
+
+` Whether a type was completed before the store was sealed, which emission may read.
+type != no-type && type != invalid-type && types.completions[type].completion == .completion-done
 
 ━━━━━━━━━━━━━━━━━━━━
 _ larger U32

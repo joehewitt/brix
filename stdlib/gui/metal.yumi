@@ -16,50 +16,6 @@
 
 _ metal-stroke-inherit U8 = 255
 
-━━━━━━━━━━━━━━━━━━━━
-_ MetalStat is I32
-
-| encode-nanos = 0
-| walk-nanos = 1
-| gpu-nanos = 2
-| draw-calls = 3
-| pipeline-switches = 4
-| packet-bytes = 5
-| skipped-ops = 6
-| renderer-allocations = 7
-| instances = 8
-| commits = 9
-| presents = 10
-| packet-capacity = 11
-| glyph-atlas-bytes = 12
-| glyph-atlas-uploads = 13
-| glyph-atlas-upload-bytes = 14
-| glyph-atlas-evictions = 15
-| image-atlas-bytes = 16
-| run-count = 17
-| fallback-runs = 18
-| image-atlas-evictions = 19
-| drawable-wait-nanos = 20
-| maximum-frames-per-second = 21
-| fill-draws = 22
-| fill-segments = 23
-| fill-tiles = 24
-| fill-pieces = 25
-| fill-lines = 26
-| fill-opaque-tiles = 27
-| fill-overflows = 28
-| fill-frames-pending = 30
-| layer-passes = 31
-| coverage-clips = 32
-| image-texture-bytes = 33
-| image-texture-evictions = 34
-| image-texture-upload-bytes = 35
-| image-tile-source-bytes = 36
-| image-tile-count = 37
-| tile-gpu-nanos = 38
-| tiles-rendered = 39
-
-━━━━━━━━━━━━━━━━━━━━
 + DisplayGlyphHandle is (index U32, generation U32)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -84,11 +40,6 @@ null
     - destination Rect
 
 false
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-metal-renderer-available Bool
-
-C:yumiGuiMetalRendererIsAvailable()
 
 ━━━━━━━━━━━━━━━━━━━━
 + TextureResidency is I32
@@ -147,6 +98,8 @@ renderer = C:yumiGuiMetalRendererCreate
 ?! Panic("Unable to create the offscreen Metal renderer")
     if !renderer && !allow-failure
 
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + do close
 
@@ -156,10 +109,281 @@ if !is-closed
         renderer = Pointer()
     is-closed = true
 
+╌╌╌╌╌╌╌╌╌╌ is DisplayGlyphRegistrar ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do register-display-glyph
+    - layout TextLayout
+
+=? null if !layout.native
+. packed = C:yumiGuiMetalRunRegister(renderer, layout.native)
+=? null if packed < 0
+. bits = packed as U64
+= DisplayGlyphHandle
+    - (bits /and/ 4294967295) as U32
+    - (bits /rshift/ 32) as U32
+
+────────────────────
++ do release-display-glyph
+    - handle DisplayGlyphHandle
+
+C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
+
+────────────────────
++ do register-display-image
+    - table VectorGeometryTable
+    - handle ImageHandle
+    - destination Rect
+
+. pixel-width = round(destination.width * scale) as I32
+. pixel-height = round(destination.height * scale) as I32
+=? false if pixel-width <= 0 || pixel-height <= 0
+. resource = table.resolve-image(handle)
+=? false if !resource
+. found = C:yumiGuiMetalImageLookup
+    - renderer
+    - handle.index
+    - handle.generation
+    - pixel-width
+    - pixel-height
+    - resource.template-alpha
+=? true if found
+. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
+= C:yumiGuiMetalImageUpsert
+    - renderer
+    - handle.index
+    - handle.generation
+    - pixel-width
+    - pixel-height
+    - resource.template-alpha
+    - image
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + get is-available Bool
 
 renderer as Bool
+
+────────────────────
++ get completed-frame I64
+
+if renderer then C:yumiGuiMetalRendererCompletedFrame(renderer) else -1
+
+────────────────────
++ get attach-status
+
+C:yumiGuiMetalRendererAttachStatus(renderer)
+
+────────────────────
++ get is-wide-gamut Bool
+
+C:yumiGuiMetalRendererIsWideGamut(renderer)
+
+────────────────────
++ get native
+
+renderer
+
+────────────────────
++ get encode-nanos I64
+
+stat(MetalStat.encode-nanos)
+
+────────────────────
++ get walk-nanos I64
+
+stat(MetalStat.walk-nanos)
+
+────────────────────
++ get gpu-nanos
+
+stat(MetalStat.gpu-nanos)
+
+────────────────────
++ get draw-calls
+
+stat(MetalStat.draw-calls)
+
+────────────────────
++ get pipeline-switches I64
+
+stat(MetalStat.pipeline-switches)
+
+────────────────────
++ get packet-bytes
+
+stat(MetalStat.packet-bytes)
+
+────────────────────
++ get skipped-ops
+
+stat(MetalStat.skipped-ops)
+
+────────────────────
++ get renderer-allocations
+
+stat(MetalStat.renderer-allocations)
+
+────────────────────
++ get instance-count
+
+stat(MetalStat.instances)
+
+────────────────────
++ get commits
+
+stat(MetalStat.commits)
+
+────────────────────
++ get presents
+
+stat(MetalStat.presents)
+
+────────────────────
++ get pooled-capacity-bytes I64
+
+stat(MetalStat.packet-capacity)
+
+────────────────────
++ get glyph-atlas-bytes I64
+
+stat(MetalStat.glyph-atlas-bytes)
+
+────────────────────
++ get glyph-atlas-uploads
+
+stat(MetalStat.glyph-atlas-uploads)
+
+────────────────────
++ get glyph-atlas-upload-bytes I64
+
+stat(MetalStat.glyph-atlas-upload-bytes)
+
+────────────────────
++ get glyph-atlas-evictions
+
+stat(MetalStat.glyph-atlas-evictions)
+
+────────────────────
++ get image-atlas-bytes
+
+stat(MetalStat.image-atlas-bytes)
+
+────────────────────
++ get image-atlas-evictions
+
+stat(MetalStat.image-atlas-evictions)
+
+────────────────────
++ get image-texture-bytes
+
+stat(MetalStat.image-texture-bytes)
+
+────────────────────
++ get image-texture-evictions
+
+stat(MetalStat.image-texture-evictions)
+
+────────────────────
++ get image-texture-upload-bytes
+
+stat(MetalStat.image-texture-upload-bytes)
+
+────────────────────
++ get image-tile-source-bytes
+
+stat(MetalStat.image-tile-source-bytes)
+
+────────────────────
++ get image-tile-count
+
+stat(MetalStat.image-tile-count)
+
+────────────────────
++ get tile-gpu-nanos I64
+
+stat(MetalStat.tile-gpu-nanos)
+
+────────────────────
++ get tiles-rendered I64
+
+stat(MetalStat.tiles-rendered)
+
+────────────────────
++ get run-count
+
+stat(MetalStat.run-count)
+
+────────────────────
++ get fallback-runs
+
+stat(MetalStat.fallback-runs)
+
+────────────────────
++ get drawable-wait-nanos I64
+
+stat(MetalStat.drawable-wait-nanos)
+
+────────────────────
++ get maximum-frames-per-second I64
+
+stat(MetalStat.maximum-frames-per-second)
+
+────────────────────
++ get fill-draws
+
+stat(MetalStat.fill-draws)
+
+────────────────────
++ get fill-segments
+
+stat(MetalStat.fill-segments)
+
+────────────────────
++ get fill-tiles
+
+stat(MetalStat.fill-tiles)
+
+────────────────────
++ get fill-pieces
+
+stat(MetalStat.fill-pieces)
+
+────────────────────
++ get fill-lines
+
+stat(MetalStat.fill-lines)
+
+────────────────────
++ get fill-opaque-tiles
+
+stat(MetalStat.fill-opaque-tiles)
+
+────────────────────
++ get fill-overflows
+
+stat(MetalStat.fill-overflows)
+
+────────────────────
++ get layer-passes
+
+stat(MetalStat.layer-passes)
+
+────────────────────
++ get coverage-clips
+
+stat(MetalStat.coverage-clips)
+
+────────────────────
++ get has-pending-fill-frames
+
+stat(MetalStat.fill-frames-pending) > 0
+
+────────────────────
++ get maximum-run-width-delta
+
+C:yumiGuiMetalRunMaximumWidthDelta(renderer)
 
 ────────────────────
 + do resize
@@ -193,11 +417,6 @@ background = clear-background
 = C:yumiGuiMetalRendererSetOutputSurface(renderer, surface?.native ?? Pointer())
 
 ────────────────────
-+ get completed-frame I64
-
-if renderer then C:yumiGuiMetalRendererCompletedFrame(renderer) else -1
-
-────────────────────
 + do attach-window
     - window Pointer
 
@@ -210,16 +429,6 @@ if renderer then C:yumiGuiMetalRendererCompletedFrame(renderer) else -1
 
 =? false if !renderer
 = C:yumiGuiMetalRendererAttachPopup(renderer, popup) == 1
-
-────────────────────
-+ get attach-status
-
-C:yumiGuiMetalRendererAttachStatus(renderer)
-
-────────────────────
-+ get is-wide-gamut Bool
-
-C:yumiGuiMetalRendererIsWideGamut(renderer)
 
 ────────────────────
 + do set-output-gamut Bool
@@ -281,11 +490,6 @@ C:yumiGuiMetalRendererDiffWithCanvas(renderer, canvas.native, tolerance)
     - canvas RasterCanvas
 
 = C:yumiGuiMetalRendererReadIntoCanvas(renderer, canvas.native)
-
-────────────────────
-+ get native
-
-renderer
 
 ────────────────────
 + do set-fill-time
@@ -606,24 +810,6 @@ C:yumiGuiMetalChunkRelease(renderer, retained-key)
 C:yumiGuiMetalChunkReleaseAll(renderer)
 
 ────────────────────
-+ do register-display-glyph
-    - layout TextLayout
-
-=? null if !layout.native
-. packed = C:yumiGuiMetalRunRegister(renderer, layout.native)
-=? null if packed < 0
-. bits = packed as U64
-= DisplayGlyphHandle
-    - (bits /and/ 4294967295) as U32
-    - (bits /rshift/ 32) as U32
-
-────────────────────
-+ do release-display-glyph
-    - handle DisplayGlyphHandle
-
-C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
-
-────────────────────
 + do register-display-vector
     - table VectorGeometryTable
     - handle VectorGeometryHandle
@@ -636,96 +822,6 @@ C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
         true
     ??
         register-display-path(handle, geometry)
-
-────────────────────
-_ do register-display-path
-    - handle VectorGeometryHandle
-    - geometry VectorGeometry
-
-. capture = path-capture ?? MetalPathCapture(renderer)
-path-capture = capture
-C:yumiGuiMetalPathBegin(renderer, handle.index, handle.generation)
-. captured [Path]
-for span in geometry.spans
-    . path-index U32 = captured.length as U32
-    for index in 0 .. < captured.length
-        if captured[index] as Pointer == span.path as Pointer
-            path-index = index as U32
-    if path-index == captured.length as U32
-        span.path.outline(capture)
-        path-index = C:yumiGuiMetalPathEndPath(renderer)
-        captured += span.path
-    . fill-role U8 = match span.fill.role
-        |= .inherit
-            0
-        |= .inherited-stroke
-            1
-        |= .none
-            2
-        ??
-            3
-    . stroke-role U8 = match span.stroke.role
-        |= .inherit
-            0
-        |= .none
-            2
-        ??
-            3
-    . rule U8 = if span.fill-rule == FillRule.nonzero then 0 else 1
-    . width = span.stroke-width ?? -1
-    . cap U8 = if span.stroke-cap then cap-code else metal-stroke-inherit
-        .. cap-code = line-cap-code(span.stroke-cap) as U8
-    . join U8 = if span.stroke-join then join-code else metal-stroke-inherit
-        .. join-code = line-join-code(span.stroke-join) as U8
-    . alignment U8 = match span.stroke-alignment
-        |= .inside
-            1
-        |= .outside
-            2
-        ??
-            0
-    C:yumiGuiMetalPathAddSpan
-        - renderer
-        - path-index
-        - fill-role
-        - span.fill.index
-        - rule
-        - stroke-role
-        - span.stroke.index
-        - width
-        - cap
-        - join
-        - alignment
-= C:yumiGuiMetalPathEnd(renderer)
-
-────────────────────
-+ do register-display-image
-    - table VectorGeometryTable
-    - handle ImageHandle
-    - destination Rect
-
-. pixel-width = round(destination.width * scale) as I32
-. pixel-height = round(destination.height * scale) as I32
-=? false if pixel-width <= 0 || pixel-height <= 0
-. resource = table.resolve-image(handle)
-=? false if !resource
-. found = C:yumiGuiMetalImageLookup
-    - renderer
-    - handle.index
-    - handle.generation
-    - pixel-width
-    - pixel-height
-    - resource.template-alpha
-=? true if found
-. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
-= C:yumiGuiMetalImageUpsert
-    - renderer
-    - handle.index
-    - handle.generation
-    - pixel-width
-    - pixel-height
-    - resource.template-alpha
-    - image
 
 ────────────────────
 + do register-display-image-source
@@ -802,137 +898,6 @@ for span in geometry.spans
 = C:yumiGuiMetalCanvasTextureUpsert(renderer, image.native) as TextureResidency
 
 ────────────────────
-_ stat I64
-    - kind MetalStat
-
-C:yumiGuiMetalRendererStatValue(renderer, kind)
-
-────────────────────
-+ get encode-nanos I64
-
-stat(MetalStat.encode-nanos)
-
-────────────────────
-+ get walk-nanos I64
-
-stat(MetalStat.walk-nanos)
-
-────────────────────
-+ get gpu-nanos
-
-stat(MetalStat.gpu-nanos)
-
-────────────────────
-+ get draw-calls
-
-stat(MetalStat.draw-calls)
-
-────────────────────
-+ get pipeline-switches I64
-
-stat(MetalStat.pipeline-switches)
-
-────────────────────
-+ get packet-bytes
-
-stat(MetalStat.packet-bytes)
-
-────────────────────
-+ get skipped-ops
-
-stat(MetalStat.skipped-ops)
-
-────────────────────
-+ get renderer-allocations
-
-stat(MetalStat.renderer-allocations)
-
-────────────────────
-+ get instance-count
-
-stat(MetalStat.instances)
-
-────────────────────
-+ get commits
-
-stat(MetalStat.commits)
-
-────────────────────
-+ get presents
-
-stat(MetalStat.presents)
-
-────────────────────
-+ get pooled-capacity-bytes I64
-
-stat(MetalStat.packet-capacity)
-
-────────────────────
-+ get glyph-atlas-bytes I64
-
-stat(MetalStat.glyph-atlas-bytes)
-
-────────────────────
-+ get glyph-atlas-uploads
-
-stat(MetalStat.glyph-atlas-uploads)
-
-────────────────────
-+ get glyph-atlas-upload-bytes I64
-
-stat(MetalStat.glyph-atlas-upload-bytes)
-
-────────────────────
-+ get glyph-atlas-evictions
-
-stat(MetalStat.glyph-atlas-evictions)
-
-────────────────────
-+ get image-atlas-bytes
-
-stat(MetalStat.image-atlas-bytes)
-
-────────────────────
-+ get image-atlas-evictions
-
-stat(MetalStat.image-atlas-evictions)
-
-────────────────────
-+ get image-texture-bytes
-
-stat(MetalStat.image-texture-bytes)
-
-────────────────────
-+ get image-texture-evictions
-
-stat(MetalStat.image-texture-evictions)
-
-────────────────────
-+ get image-texture-upload-bytes
-
-stat(MetalStat.image-texture-upload-bytes)
-
-────────────────────
-+ get image-tile-source-bytes
-
-stat(MetalStat.image-tile-source-bytes)
-
-────────────────────
-+ get image-tile-count
-
-stat(MetalStat.image-tile-count)
-
-────────────────────
-+ get tile-gpu-nanos I64
-
-stat(MetalStat.tile-gpu-nanos)
-
-────────────────────
-+ get tiles-rendered I64
-
-stat(MetalStat.tiles-rendered)
-
-────────────────────
 + do take-tile-damage Rect?
 
 =? null if !C:yumiGuiMetalRendererTakeTileDamage(renderer)
@@ -941,76 +906,6 @@ stat(MetalStat.tiles-rendered)
     - C:yumiGuiMetalRendererTileDamageValue(renderer, 1)
     - C:yumiGuiMetalRendererTileDamageValue(renderer, 2)
     - C:yumiGuiMetalRendererTileDamageValue(renderer, 3)
-
-────────────────────
-+ get run-count
-
-stat(MetalStat.run-count)
-
-────────────────────
-+ get fallback-runs
-
-stat(MetalStat.fallback-runs)
-
-────────────────────
-+ get drawable-wait-nanos I64
-
-stat(MetalStat.drawable-wait-nanos)
-
-────────────────────
-+ get maximum-frames-per-second I64
-
-stat(MetalStat.maximum-frames-per-second)
-
-────────────────────
-+ get fill-draws
-
-stat(MetalStat.fill-draws)
-
-────────────────────
-+ get fill-segments
-
-stat(MetalStat.fill-segments)
-
-────────────────────
-+ get fill-tiles
-
-stat(MetalStat.fill-tiles)
-
-────────────────────
-+ get fill-pieces
-
-stat(MetalStat.fill-pieces)
-
-────────────────────
-+ get fill-lines
-
-stat(MetalStat.fill-lines)
-
-────────────────────
-+ get fill-opaque-tiles
-
-stat(MetalStat.fill-opaque-tiles)
-
-────────────────────
-+ get fill-overflows
-
-stat(MetalStat.fill-overflows)
-
-────────────────────
-+ get layer-passes
-
-stat(MetalStat.layer-passes)
-
-────────────────────
-+ get coverage-clips
-
-stat(MetalStat.coverage-clips)
-
-────────────────────
-+ get has-pending-fill-frames
-
-stat(MetalStat.fill-frames-pending) > 0
 
 ────────────────────
 + do take-fill-redraw
@@ -1030,9 +925,119 @@ stat(MetalStat.fill-frames-pending) > 0
 C:yumiGuiMetalRendererFrameStatValue(renderer, frame, field)
 
 ────────────────────
-+ get maximum-run-width-delta
+_ do register-display-path
+    - handle VectorGeometryHandle
+    - geometry VectorGeometry
 
-C:yumiGuiMetalRunMaximumWidthDelta(renderer)
+. capture = path-capture ?? MetalPathCapture(renderer)
+path-capture = capture
+C:yumiGuiMetalPathBegin(renderer, handle.index, handle.generation)
+. captured [Path]
+for span in geometry.spans
+    . path-index U32 = captured.length as U32
+    for index in 0 .. < captured.length
+        if captured[index] as Pointer == span.path as Pointer
+            path-index = index as U32
+    if path-index == captured.length as U32
+        span.path.outline(capture)
+        path-index = C:yumiGuiMetalPathEndPath(renderer)
+        captured += span.path
+    . fill-role U8 = match span.fill.role
+        |= .inherit
+            0
+        |= .inherited-stroke
+            1
+        |= .none
+            2
+        ??
+            3
+    . stroke-role U8 = match span.stroke.role
+        |= .inherit
+            0
+        |= .none
+            2
+        ??
+            3
+    . rule U8 = if span.fill-rule == FillRule.nonzero then 0 else 1
+    . width = span.stroke-width ?? -1
+    . cap U8 = if span.stroke-cap then cap-code else metal-stroke-inherit
+        .. cap-code = line-cap-code(span.stroke-cap) as U8
+    . join U8 = if span.stroke-join then join-code else metal-stroke-inherit
+        .. join-code = line-join-code(span.stroke-join) as U8
+    . alignment U8 = match span.stroke-alignment
+        |= .inside
+            1
+        |= .outside
+            2
+        ??
+            0
+    C:yumiGuiMetalPathAddSpan
+        - renderer
+        - path-index
+        - fill-role
+        - span.fill.index
+        - rule
+        - stroke-role
+        - span.stroke.index
+        - width
+        - cap
+        - join
+        - alignment
+= C:yumiGuiMetalPathEnd(renderer)
+
+────────────────────
+_ stat I64
+    - kind MetalStat
+
+C:yumiGuiMetalRendererStatValue(renderer, kind)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-metal-renderer-available Bool
+
+C:yumiGuiMetalRendererIsAvailable()
+
+━━━━━━━━━━━━━━━━━━━━
+_ MetalStat is I32
+
+| encode-nanos = 0
+| walk-nanos = 1
+| gpu-nanos = 2
+| draw-calls = 3
+| pipeline-switches = 4
+| packet-bytes = 5
+| skipped-ops = 6
+| renderer-allocations = 7
+| instances = 8
+| commits = 9
+| presents = 10
+| packet-capacity = 11
+| glyph-atlas-bytes = 12
+| glyph-atlas-uploads = 13
+| glyph-atlas-upload-bytes = 14
+| glyph-atlas-evictions = 15
+| image-atlas-bytes = 16
+| run-count = 17
+| fallback-runs = 18
+| image-atlas-evictions = 19
+| drawable-wait-nanos = 20
+| maximum-frames-per-second = 21
+| fill-draws = 22
+| fill-segments = 23
+| fill-tiles = 24
+| fill-pieces = 25
+| fill-lines = 26
+| fill-opaque-tiles = 27
+| fill-overflows = 28
+| fill-frames-pending = 30
+| layer-passes = 31
+| coverage-clips = 32
+| image-texture-bytes = 33
+| image-texture-evictions = 34
+| image-texture-upload-bytes = 35
+| image-tile-source-bytes = 36
+| image-tile-count = 37
+| tile-gpu-nanos = 38
+| tiles-rendered = 39
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MetalPathCapture is Canvas

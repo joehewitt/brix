@@ -75,6 +75,21 @@ if record-path
     write-file-atomically(Path(record-path), to-json(link-record(plan.arguments)))
 
 ━━━━━━━━━━━━━━━━━━━━
++ do run-executable Int
+    - path String
+    - arguments [String]
+
+` Replaces this process with the program, so its output, input and exit status are the
+` program's own. Returns only when the program could not be started.
+. argv = String[arguments.length + 2]
+argv[0] = path
+for index in 0 .. < arguments.length
+    argv[index + 1] = arguments[index]
+C:execv(path, argv)
+stderr <- "Unable to run $path\n"
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
 _ LinkInputs is Tuple
 
 ` What a link reads from the runtime build config: the config, the target's entry in it, where the
@@ -321,21 +336,6 @@ _ json-strings [JSON]
 
 <* value in values
     value as JSON
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run-executable Int
-    - path String
-    - arguments [String]
-
-` Replaces this process with the program, so its output, input and exit status are the
-` program's own. Returns only when the program could not be started.
-. argv = String[arguments.length + 2]
-argv[0] = path
-for index in 0 .. < arguments.length
-    argv[index + 1] = arguments[index]
-C:execv(path, argv)
-stderr <- "Unable to run $path\n"
-= 1
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do link-components [JSON] ?! Error

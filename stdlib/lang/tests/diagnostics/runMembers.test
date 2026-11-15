@@ -311,3 +311,67 @@ Exception: A property's value is computed before the object exists, so it cannot
     + first = add-step("Check")
               ^^^^^^^^^^^^^^^^^
 ;====
+
+:====
+# a live markup loop under a host that makes no region for it
+
+<Shelf shelf
+    for title in #titles
+        <Book = title
+
+━━━━━━━━━━━━━━━━━━━━
++ Book
+    is MarkupParent'Book
+
++ title String
+
+────────────────────
++ This
+    - title
+
+━━━━━━━━━━━━━━━━━━━━
++ Shelf
+    is MarkupParent'Book
+
++ titles [String]
+
+:----
+%compile-error
+
+Exception: Markup loop host Shelf must declare markup-make-region, or extend MarkupNode
+<no file:3>
+        for title in #titles
+           ^^^^^^^^^^^^^^^^
+;====
+
+:====
+# a live markup branch under a host that makes no region for it
+
+<Shelf shelf
+    if #open
+        <Book = "Dune"
+
+━━━━━━━━━━━━━━━━━━━━
++ Book
+    is MarkupParent'Book
+
++ title String
+
+────────────────────
++ This
+    - title
+
+━━━━━━━━━━━━━━━━━━━━
++ Shelf
+    is MarkupParent'Book
+
++ open = true
+
+:----
+%compile-error
+
+Exception: Markup branch host Shelf must declare markup-make-region, or extend MarkupNode
+<no file:3>
+        if #open
+        ^^^^^^^
+;====

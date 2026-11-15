@@ -210,6 +210,71 @@ a second, disconnected description of the interface.
 
 Markup composition, reactive ownership, and resource cleanup belong to the same component design.
 
+## Markup for your own classes
+
+Markup isn't only for the UI libraries. Any class whose objects take children with `+=` can be
+written as markup, and each child is handed to that operator.
+
+A tree whose nodes take styles is built from `MarkupNode`, which core supplies. A node's class
+extends it and names the styles it reads with `using`. The node the tree is built from extends
+`MarkupRoot`, which works the tree's styles out once its markup has been built, so `$` values are
+right as soon as the tree exists. `children` gives a node's children, and `children-of'Kind` only
+those of one class, including the rows a live loop builds:
+
+```yumi
+<Cart cart
+    <Line = "kettle"
+    <Line = "tea" • food
+
+cart.receipt()
+cart.is-member = true
+cart.settle()
+cart.receipt()
+
+━━━━━━━━━━━━━━━━━━━━
++ Pricing is Style
+
++ @inherited discount I64 = 0
++ tax I64 = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• Policy
+    using Pricing
+
+• Cart
+    when #is-member
+        discount = 10
+
+• food
+    tax = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Line is MarkupNode
+    using Pricing
+
++ name String
+
+────────────────────
++ This
+    - name
+
+━━━━━━━━━━━━━━━━━━━━
++ Cart is MarkupRoot
+    using Policy
+
++ is-member = false
+
+────────────────────
++ do receipt
+
+for line in children-of'Line()
+    -- "${line.name}: ${line.$discount}% off, ${line.$tax}% tax"
+```
+
+A rule that reads tracked state, such as the one waiting on `#is-member`, is worked out again in
+the next batch, which runs when the program next waits. A program that reads `$` values before
+then calls `settle()` on the root, as this one does after setting `is-member`.
+
 ## Terminal and graphical applications
 
 Yumi's terminal and graphical libraries share these language ideas while supplying different

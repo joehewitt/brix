@@ -47,792 +47,6 @@
 _ style-defaults-band U32 = 65536
 
 ━━━━━━━━━━━━━━━━━━━━
-_ LoopContainer is Tuple
-
-+ type TypeId
-+ item TypeId
-
-━━━━━━━━━━━━━━━━━━━━
-_ ThemeScope is Tuple
-
-+ made TypeId
-+ sheet TypeId
-+ statement SyntaxId
-+ number U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ ClassName is Tuple
-    is Hashable
-
-` What tells a class apart from the others of its module: its name and the number of type
-` parameters it takes.
-
-+ name Atom
-+ arity U32
-
-────────────────────
-+ this == other This
-
-name == other.name && arity == other.arity
-
-────────────────────
-+ get hash Hash
-
-hash-for(name) /xor/ hash-for(arity)
-
-━━━━━━━━━━━━━━━━━━━━
-_ RowCursor is Tuple
-
-` A slot a pattern bound to the case of a row of a table of unions, and what it stands for.
-
-+ slot SlotId
-+ capture RowCapture
-
-━━━━━━━━━━━━━━━━━━━━
-_ AssumedResult is Tuple
-
-` What an action under a helper took for the type its pattern's arms give where they declare
-` none, the type of its own value, and what its choices rest on: whether a name it reads
-` selected a materializer, whether it is `it` alone, and where it is a captured name alone,
-` what that name holds and whether it holds text; the action, the pattern it follows and its
-` expression; and the value materializer taken to make its value again, which is called only
-` once the arms are known to give that type.
-
-+ value TypeId
-+ selects Bool
-+ forwards-it Bool
-+ forwarded TypeId
-+ backed Bool
-+ site SyntaxId
-+ pattern SyntaxId
-+ body SyntaxId
-+ interface TypeId
-
-━━━━━━━━━━━━━━━━━━━━
-_ NamedEvent is Tuple
-
-` An event a node names: the class that declares it, as the object's type has it, its name,
-` what it publishes, and the type of its key where it is published by key, with the node that
-` indexes it with a key where one does. A private event does not bubble.
-
-+ owner TypeId
-+ name Atom
-+ payload TypeId
-+ key TypeId = no-type
-+ address SyntaxId = 0
-+ is-private Bool = false
-
-━━━━━━━━━━━━━━━━━━━━
-_ CalledObject is Tuple
-
-` The object a method is called on, typed before the arguments of the call as the reference
-` evaluates it (`type-called-object`): its node, its type, what it links an optional chain to,
-` and the event it names where it names one.
-
-+ object SyntaxId = 0
-+ type TypeId = no-type
-+ link TypeId = no-type
-+ event NamedEvent? = null
-
-━━━━━━━━━━━━━━━━━━━━
-_ FoldedNumber is Tuple
-
-` The bits a constant number folds to, where it `folds`.
-
-+ bits U64
-+ folds Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ WantRole is U32
-
-` What the context of a node asks of it. Of the type it expects: a function given as a value
-` chosen by a condition is of that type (`want-fitting`), the sides of `if condition then value
-` else other` are joined at it (`want-choice`), a case a call names by its symbol alone is one of
-` it (`want-owner`), and a value that leaves the node there is of it, so that an event the node
-` names gives its endpoint where the type is the event's `Broadcastable`, reported at the place
-` asked (`want-escape`). Of an event the node names: it is an argument of a call
-` (`want-argument`), the container of a loop that adapts it (`want-adapt`), asked for itself
-` (`want-event`), or the value of a property stored to (`want-store`). And of the node itself: it
-` is the object a member is read from or called on, which `super` may be (`want-receiver`), a
-` statement whose value nothing uses (`want-unused`), one of the statements a function gives its
-` value from (`want-quasi`), a statement (`want-statement`), the operand of `!`, which reads
-` what a property holds where the flow knows it holds a value (`want-forced`), a match written
-` as a statement, whose arms are one for their own alone (`want-match-statement`), a line of a
-` markup body (`want-content-line`), the container of a markup loop region, which the region
-` observes itself (`want-observed`), or the name of a pattern a pattern compares with or calls
-` (`want-pattern`).
-
-| want-none = 0
-| want-fitting = 1
-| want-choice = 2
-| want-owner = 4
-| want-escape = 8
-| want-argument = 16
-| want-adapt = 32
-| want-event = 64
-| want-store = 128
-| want-receiver = 256
-| want-unused = 512
-| want-quasi = 1024
-| want-statement = 2048
-| want-forced = 4096
-| want-match-statement = 8192
-| want-content-line = 16384
-| want-observed = 32768
-| want-pattern = 65536
-
-━━━━━━━━━━━━━━━━━━━━
-_ Want is Tuple
-
-` What the context of a node asks of it where its syntax does not say: the type it expects of the
-` node, what that type is for there and the roles the node has (`WantRole`), and where a value
-` that escapes it is reported. `infer` gives it to that node alone, and a node gives the one inside
-` it that stands for it what it was asked.
-
-+ type TypeId = no-type
-+ roles U32 = 0
-+ place SyntaxId = 0
-
-────────────────────
-+ asks Bool
-    - role WantRole
-
-(roles /and/ (role as U32)) != 0
-
-────────────────────
-+ asking Want
-    - role WantRole
-    - type TypeId
-
-Want(type, roles /or/ (role as U32), place)
-
-────────────────────
-+ adding Want
-    - role WantRole
-
-Want(type, roles /or/ (role as U32), place)
-
-────────────────────
-+ escaping Want
-    - type TypeId
-    - place SyntaxId
-
-Want(type, roles /or/ (WantRole.want-escape as U32), place)
-
-━━━━━━━━━━━━━━━━━━━━
-_ Found is Tuple
-
-` What typing a node found beside its type: what a link of an optional chain gives by itself,
-` which the chain holds in no optional between its links (`link`); the event it names where it was
-` asked for one or stored, kept in `found-events` (`event`), and whether a member a markup element
-` receives names it (`kept`); whether a property read where it is stored is in doubt (`doubted`);
-` and whether the property `!` reads holds a value the flow knows of (`held`).
-
-+ type TypeId
-+ link TypeId = no-type
-+ event U32 = U32.max
-+ kept Bool = false
-+ doubted Bool = false
-+ held Bool = false
-
-────────────────────
-+ typed Found
-    - type TypeId
-
-Found(type, link, event, kept, doubted, held)
-
-────────────────────
-+ linking Found
-    - link TypeId
-
-Found(type, link, event, kept, doubted, held)
-
-────────────────────
-+ doubting Found
-    - doubted Bool
-
-Found(type, link, event, kept, doubted, held)
-
-────────────────────
-+ holding Found
-    - held Bool
-
-Found(type, link, event, kept, doubted, held)
-
-━━━━━━━━━━━━━━━━━━━━
-_ LiveContext is U8
-
-` The live action of the reference open where a node is compiled: none, the one the value of
-` a property runs in, another, the one a rule of a class runs in, the one the value of an
-` assignment or a lazy declaration runs in that a function of its own runs again, the one
-` the `whenever` clause of a loop on a stream is tested in, which a function of its own tests
-` again, the one the conditions of a markup branch region or the container of a markup loop
-` region are read in, which a function of its own reads again, or the one the condition a style
-` rule written on a markup element is applied under is tested in as a gate is made, which a
-` function of its own tests again.
-
-| live-none = 0
-| live-value = 1
-| live-other = 2
-| live-rule = 3
-| live-statement = 4
-| live-whenever = 5
-| live-region = 6
-| live-gate = 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ LoopSource is Tuple
-
-` What the container of a markup loop region is to the region, as the reference's
-` `markupLoopSource` finds it: the item of its rows, the type the region is given it as, and its
-` kind, which names the markup runtime's function that makes the region of it: `collection`,
-` `broadcastable` or `iterable`. The invalid type for the item where there is none.
-
-+ item TypeId
-+ given TypeId
-+ kind String
-
-━━━━━━━━━━━━━━━━━━━━
-_ FirstItems is U8
-
-` What the reference knows of the item a part of a stream pattern starts with: it may start
-` with anything, or it may match nothing; it starts with any item; it must start with one of
-` certain characters; or it is shaped so that what the reference knows is not known here.
-
-| first-open = 0
-| first-any = 1
-| first-ranges = 2
-| first-unsure = 3
-
-━━━━━━━━━━━━━━━━━━━━
-_ SelectionEffects
-
-` What the body of a loop over a selection of a table's rows may change, as TypeScript's loop
-` over rows notes it: a table's storage, the indices, or a table that grows; or that what it
-` changes is not known.
-
-+ table Bool
-+ indices Bool
-+ selected-table Bool
-+ unknown Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checker-for Checker
-    - session Session
-    - instance InstanceId
-    - around Checker? = null
-    - probe Bool = false
-    - nested Bool = false
-    - trial SyntaxRange = SyntaxRange(0, 0)
-
-` A checker for an instance, with the settings `Checker` takes. The kit of a checker that has
-` finished is kept and used again, because making one allocates its frame, its calls, and every
-` list they hold. The first checker a session makes lists its declarations before it types
-` anything (`Checker.list-declarations`).
-. idle = session.scratch.idle
-if idle.length == 0
-    . made = Checker(session, instance, CheckerKit(session), around, probe, nested, trial)
-    made.list-declarations()
-    = made
-. parts = idle[idle.length - 1] as CheckerKit
-idle.pop()
-= Checker(session, instance, parts, around, probe, nested, trial)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do type-written-in Bool
-    - session Session
-
-` Types each instance written in another that the passes of a parallel type pass typed and none is
-` taken from (`Instances.written-in`), once the one it was written in is typed and did not type it
-` in its run, as a closure called after that one finished is typed (`Checker.run-after-enclosing`).
-` Says whether it typed any.
-. instances = session.instances
-. waiting = instances.written-in
-. typed = false
-. kept = 0
-for position in 0 .. < waiting.length
-    . id = waiting[position]
-    . row = instances.rows[id]
-    if row.state != .instance-unstarted
-        continue
-    . around = instances.rows[row.enclosing].state
-    if around != .instance-done && around != .instance-failed
-        waiting[kept] = id
-        kept += 1
-        continue
-    . checker = checker-for(session, id)
-    checker.run-after-enclosing()
-    checker.retire()
-    typed = true
-while waiting.length > kept
-    waiting.pop()
-= typed
-
-━━━━━━━━━━━━━━━━━━━━
-_ Machining is Tuple
-
-` The machine being typed (`type-machine`): its syntax and where it is stored, the instance of the
-` machine above that it refines, the name of a machine nested in a case and whether its parts
-` start with the machine around it; its parts (`items`), its cases and the names each keeps, the
-` payload each case is given and the types of what each keeps, the cases it starts in, those
-` typed and those waiting to be, and the groups found. A nested machine is typed in a frame of its
-` own (`type-nested-machine`).
-
-+ syntax SyntaxId
-+ store MachineStore
-+ refined InstanceId
-+ named Atom?
-+ outer-starts Bool
-+ items [SyntaxId]
-+ cases [SyntaxId]
-+ kept [[Atom]]
-+ payloads [TypeId]
-+ kept-types [[TypeId]]
-+ starts [SyntaxId]
-+ typed [SyntaxId]
-+ waiting [SyntaxId]
-+ groups-found [MachineGroup]
-
-━━━━━━━━━━━━━━━━━━━━
-_ Matching is Tuple
-
-` The match being typed (`infer-match`): whether it gives an optional, the block of a match that
-` covers its subject and of one whose arms are blocks (`closed` and `arms`), whether `if` or
-` `while` tests it (`open`), whether its subject reads a row of a table, the subject a case
-` written alone is a case of, and the type of the subject.
-
-+ optional Bool
-+ closed SyntaxId = 0
-+ arms SyntaxId = 0
-+ open Bool
-+ rows Bool
-+ case SyntaxId = 0
-+ subject TypeId = no-type
-
-━━━━━━━━━━━━━━━━━━━━
-_ Arming is Tuple
-
-` The arms being typed (`infer-arms`): whether they stand as a statement, where their values
-` start on the typing scratch, the type expected of them, whether they unite and where the types
-` they unite start, how many may run and whether several do, the slot of the subject's `it`, and
-` how deep the arms that test for a present value are.
-
-+ statement Bool
-+ start ScratchMark = 0
-+ expected TypeId = no-type
-+ unite Bool
-+ union ScratchMark = 0
-+ possible U32
-+ several Bool
-+ it SlotId = no-slot
-+ present-depth U32
-
-━━━━━━━━━━━━━━━━━━━━
-_ ArmTyping is Tuple
-
-` The arm being collected (`collect-arms`): the slot of its `it`, the symbol a choice in it
-` names, and the force its value reads through.
-
-+ it SlotId = no-slot
-+ symbol SyntaxId = 0
-+ forced SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ RuleStream is Tuple
-
-` The stream a pattern written in code runs on: the stream match being typed, and the stream a
-` local rule is called on, with whether its pattern reads a String's UTF-8 bytes.
-
-+ matched SyntaxId = 0
-+ stream TypeId = no-type
-+ encoded Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ Valuing is Tuple
-
-` What the part of a stream pattern being typed gives: whether it gives no value of its own, and
-` the arm whose action is being typed.
-
-+ unvalued Bool
-+ action-arm SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ PatternArms is Tuple
-
-` The arms of a stream pattern being typed (`arms-type`): whether an arm selects what it
-` materializes, whether they are scoped, whether an action's type cannot be inferred, whether
-` they join as alternatives, and the arm being typed (`enter-arm`).
-
-+ selects Bool
-+ scoped Bool
-+ uninferred Bool
-+ joined Bool
-+ arm SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ RuleArms is Tuple
-
-` The arms of a stream pattern and what they are converted to (`type-stream-arms`): the type
-` given them, whether they give a span of the source, whether they are a rule's, whether they
-` give their text, the pattern whose names they capture and where its captures start, and the
-` call a pattern argument casts.
-
-+ target TypeId = no-type
-+ span Bool
-+ rule Bool
-+ texts Bool
-+ capture-root SyntaxId = 0
-+ capture-base Size = 0
-+ casting SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ StreamView is Tuple
-
-` The stream a pattern reads (`record-stream-view`): the buffer that holds its items, the type of
-` an item, and the type of the stream.
-
-+ buffer TypeId = no-type
-+ item TypeId = no-type
-+ type TypeId = no-type
-
-━━━━━━━━━━━━━━━━━━━━
-_ Helping is Tuple
-
-` The helper a stream pattern runs under and how it rolls back: the helper and where it is given,
-` whether anything in the pattern rolls back through it, whether the pattern is marked to roll
-` back, the body a mark is taken around, and whether it types a span of the source.
-
-+ helper PatternHelper? = null
-+ site SyntaxId = 0
-+ rolls Bool
-+ explicit Bool
-+ body SyntaxId = 0
-+ span-typing Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ Preparing is Tuple
-
-` How the element being made is given its values and content: the element whose rules are
-` applied, whether their values are taken once, whether content they generate is off or refused,
-` and whether an outlet's content overlays what it holds.
-
-+ site SyntaxId = 0
-+ values-once Bool
-+ content-off Bool
-+ content-refused Bool
-+ overlaying Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ Finally is Tuple
-
-` The `finally` block being checked: whether its cleanup runs, and the last node it watches.
-
-+ cleaning-up Bool
-+ limit SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ CallArgumentsTyping is Tuple
-
-` The arguments of the call being typed (`infer-call`): whether what each gives is kept for the
-` call to settle, and whether the call names a function nothing declares.
-
-+ keeps Bool
-+ unknown-callee Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ UnitStyling is Tuple
-
-` The line of a unit's style being declared, and the property of a unit being updated.
-
-+ styling SyntaxId = 0
-+ updating SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ Reading is Tuple
-
-` What is being read for a value: the getter a row local reads, the lazy local, and whether an
-` eager value is typed in its context.
-
-+ getter SyntaxId = 0
-+ lazy SyntaxId = 0
-+ eager Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ Region is Tuple
-
-` The markup region being typed (`check-branch`, `check-loop-region`): the type of its content,
-` the functions that keep, select and replace what it shows and the source it shows, whether it
-` runs in a batch, and the slot of its root.
-
-+ content TypeId = no-type
-+ keeps InstanceId = no-instance
-+ select InstanceId = no-instance
-+ source TypeId = no-type
-+ replace InstanceId = no-instance
-+ batch Bool
-+ root SlotId = no-slot
-
-━━━━━━━━━━━━━━━━━━━━
-_ CursorBinding is Tuple
-
-` The row cursor a pattern binds (`check-pattern`): whether it binds one, and the row it captures.
-
-+ binds Bool
-+ capture RowCapture = RowCapture(no-type, U32.max, false)
-
-━━━━━━━━━━━━━━━━━━━━
-_ Keying is Tuple
-
-` Where the state cells of the `when`s that style scopes are gathered under are made: whether the
-` way to a slot outlet is followed (`outlet-scopes`), the class whose sheets that way adds, and the
-` root `<This`, class, or element of markup the cells are keyed at, in its module.
-
-+ discovering Bool
-+ sheet-self TypeId = no-type
-+ module ModuleId = 0
-+ site SyntaxId = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ CheckerKit
-    is IdleKit
-
-` What a checker is made of that its worker keeps from one instance to the next: its frame, its
-` helpers and its lists. A checker made from a kit takes each as its own and empties the lists
-` (`empty`), so that making one allocates none of them and each list keeps the room it grew to.
-
-+ frame Frame
-+ narrowing Narrowing
-+ conversions Conversions
-+ calls Calls
-+ endpoint-arguments [SyntaxId]
-+ found-events [NamedEvent]
-+ endpoint-events [NamedEvent]
-+ kept-arguments [SyntaxId]
-+ materialized [SlotId]
-+ unsure-stores [U32]
-+ unsure-reads [U32]
-+ unsure-forces [SyntaxId]
-+ unsure-operands [SyntaxId]
-+ unsure-declared [TypeId]
-+ unsure-forced [U32]
-+ lazy-marks [ScratchMark]
-+ raised-arms [SyntaxId]
-+ loop-marks [ScratchMark]
-+ machine-items [SyntaxId]
-+ machine-cases [SyntaxId]
-+ machine-kept [[Atom]]
-+ machine-payloads [TypeId]
-+ machine-kept-types [[TypeId]]
-+ machine-starts [SyntaxId]
-+ machine-typed [SyntaxId]
-+ machine-waiting [SyntaxId]
-+ machine-groups-found [MachineGroup]
-+ carried-slots [SlotId]
-+ raising-lazies [SlotId]
-+ raising-starts [Size]
-+ typing-lazies [SlotId]
-+ forcing-lazies [SlotId]
-+ forcing-facts [FactId]
-+ forcing-declared [TypeId]
-+ forgetting-lazies [SlotId]
-+ retyped-reads [SyntaxId]
-+ raising-entries [Outgoing]
-+ getter-reads [SlotId]
-+ lazy-transforms [Size]
-+ entered-lazies [SlotId]
-+ entered-starts [Size]
-+ entered-slots [SlotId]
-+ entered-types [TypeId]
-+ carried-loops [Size]
-+ carried-sites [SyntaxId]
-+ whole-returns [SyntaxId]
-+ yield-literals [SyntaxId]
-+ ordered-yields [TypeId]
-+ ordered-sites [SyntaxId]
-+ ordered-literals [SyntaxId]
-+ lazy-slots [SlotId]
-+ row-cursors [RowCursor]
-+ checked-rows [SlotId]
-+ arm-bodies [SyntaxId]
-+ arm-present [Bool]
-+ arm-values [SyntaxId]
-+ arm-starts [Size]
-+ arm-ends [Size]
-+ arm-settled [Narrowed]
-+ region-left [Narrowed]
-+ owner-names [Atom]
-+ owner-unions [TypeId]
-+ owner-declared [Bool]
-+ foreseen-sites [SyntaxId]
-+ foreseen-payloads [TypeId]
-+ unheld-cases [SyntaxId]
-+ bullet-lists [SyntaxId]
-+ bullet-items [TypeId]
-+ coded-rules [SyntaxId]
-+ coded-typed [SyntaxId]
-+ coded-streams [TypeId]
-+ typed-rules [SyntaxId]
-+ typed-helpers [SyntaxId]
-+ remade-positions [U32]
-+ remade-types [TypeId]
-+ assumed-results [AssumedResult]
-+ assumed-sources [TypeId]
-+ capture-sites [SyntaxId]
-+ capture-slots [SlotId]
-+ capture-accumulating [Bool]
-+ capture-patterns [SyntaxId]
-+ capture-repeats [U32]
-+ right-arms [SyntaxId]
-+ rules [SyntaxId]
-+ spanning [U64]
-+ content-blocks [SyntaxId]
-+ content-parents [TypeId]
-+ content-names [Bool]
-+ element-bodies [SyntaxId]
-+ batched [Bool]
-+ markup-styles [TypeId]
-+ style-marks [U32]
-+ markup-sheets [TypeId]
-+ sheet-levels [U32]
-+ rule-scopes [ScopeUse]
-+ element-scopes [ScopeUse]
-+ collected [ScopeUse]
-+ scoped-sites [SyntaxId]
-+ scoped-starts [U32]
-+ scoped-ends [U32]
-+ scoped-rows [ScopeUse]
-+ pretyped [SyntaxId]
-+ discoveries [U64]
-+ slot-scopes [ScopeUse]
-+ slot-sheets [TypeId]
-+ slot-levels [U32]
-+ slot-styles [TypeId]
-+ outlet-classes [TypeId]
-+ unbuilt [SlotId]
-+ awaited [SyntaxId]
-+ held [SlotId]
-
-────────────────────
-+ This
-    - session Session
-
-.. frame = Frame(session)
-.. narrowing = Narrowing(frame)
-.. conversions = Conversions(frame)
-.. calls = Calls(frame, conversions)
-
-────────────────────
-+ do empty
-
-endpoint-arguments.clear()
-found-events.clear()
-endpoint-events.clear()
-kept-arguments.clear()
-materialized.clear()
-unsure-stores.clear()
-unsure-reads.clear()
-unsure-forces.clear()
-unsure-operands.clear()
-unsure-declared.clear()
-unsure-forced.clear()
-lazy-marks.clear()
-raised-arms.clear()
-loop-marks.clear()
-machine-items.clear()
-machine-cases.clear()
-machine-kept.clear()
-machine-payloads.clear()
-machine-kept-types.clear()
-machine-starts.clear()
-machine-typed.clear()
-machine-waiting.clear()
-machine-groups-found.clear()
-carried-slots.clear()
-raising-lazies.clear()
-raising-starts.clear()
-typing-lazies.clear()
-forcing-lazies.clear()
-forcing-facts.clear()
-forcing-declared.clear()
-forgetting-lazies.clear()
-retyped-reads.clear()
-raising-entries.clear()
-getter-reads.clear()
-lazy-transforms.clear()
-entered-lazies.clear()
-entered-starts.clear()
-entered-slots.clear()
-entered-types.clear()
-carried-loops.clear()
-carried-sites.clear()
-whole-returns.clear()
-yield-literals.clear()
-ordered-yields.clear()
-ordered-sites.clear()
-ordered-literals.clear()
-lazy-slots.clear()
-row-cursors.clear()
-checked-rows.clear()
-arm-bodies.clear()
-arm-present.clear()
-arm-values.clear()
-arm-starts.clear()
-arm-ends.clear()
-arm-settled.clear()
-region-left.clear()
-owner-names.clear()
-owner-unions.clear()
-owner-declared.clear()
-foreseen-sites.clear()
-foreseen-payloads.clear()
-unheld-cases.clear()
-bullet-lists.clear()
-bullet-items.clear()
-coded-rules.clear()
-coded-typed.clear()
-coded-streams.clear()
-typed-rules.clear()
-typed-helpers.clear()
-remade-positions.clear()
-remade-types.clear()
-assumed-results.clear()
-assumed-sources.clear()
-capture-sites.clear()
-capture-slots.clear()
-capture-accumulating.clear()
-capture-patterns.clear()
-capture-repeats.clear()
-right-arms.clear()
-rules.clear()
-spanning.clear()
-content-blocks.clear()
-content-parents.clear()
-content-names.clear()
-element-bodies.clear()
-batched.clear()
-markup-styles.clear()
-style-marks.clear()
-markup-sheets.clear()
-sheet-levels.clear()
-rule-scopes.clear()
-element-scopes.clear()
-collected.clear()
-scoped-sites.clear()
-scoped-starts.clear()
-scoped-ends.clear()
-scoped-rows.clear()
-pretyped.clear()
-discoveries.clear()
-slot-scopes.clear()
-slot-sheets.clear()
-slot-levels.clear()
-slot-styles.clear()
-outlet-classes.clear()
-unbuilt.clear()
-awaited.clear()
-held.clear()
-
-━━━━━━━━━━━━━━━━━━━━
 + Checker
     is Demander
     is Runner
@@ -847,6 +61,8 @@ held.clear()
 + facts Facts
 + instance InstanceId
 + frame Frame
++ conversions Conversions
+
 _ kit CheckerKit
 _ panics Panics
 _ scratch TypingScratch
@@ -854,7 +70,6 @@ _ module ModuleId
 _ tree AST
 _ described CheckedDecl?
 _ narrowing Narrowing
-+ conversions Conversions
 _ calls Calls
 _ outer Checker? = null
 _ in-place Bool
@@ -1181,6 +396,428 @@ narrowing.begin()
 conversions.begin()
 calls.begin()
 
+╌╌╌╌╌╌╌╌╌╌ is Demander ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do demand
+    - callee InstanceId
+
+` Readies what a call reads of a callee. A header that gives the return type is enough, and
+` the body stays in the queue. Otherwise the body is typed now, as it is for a statement that a
+` finally block watches. A call of a rule under a helper, which may run the rule typed for the
+` helper in its place, queues a rule that states its type too, as `promise` says. A callee that
+` may not use the heap is typed now, as TypeScript compiles it where it is called, so that what
+` allocates there is found in the order TypeScript finds it. One another pass of a parallel type
+` pass published is taken in from it (`adopt`).
+if instances.rows[callee].state != .instance-unstarted || adopt(session, callee)
+    =
+. heapless = (instances.rows[callee].effects /and/ CompilationEffect.no-heap) != 0
+if watching-leaves == 0 && !heapless && settle-header(session, callee)
+    instances.queue(callee)
+    =
+if deferring && promise(callee)
+    instances.queue(callee)
+    =
+demand-body(callee)
+
+────────────────────
++ do demand-errors
+    - callee InstanceId
+
+` Settles a callee's errors for a call that reads them now. Every body they pass through is
+` typed first, here when nothing has typed it yet.
+if instances.errors-known(callee)
+    =
+. errors = session.errors
+while true
+    . base = errors.gather(callee)
+    if errors.unready.length == base
+        break
+    while errors.unready.length > base
+        . last = errors.unready.length - 1
+        . next = errors.unready[last] as InstanceId
+        errors.unready.rewind(last)
+        demand-body(next)
+errors.settle(callee)
+
+────────────────────
++ do note-live-call
+    - id SyntaxId
+    - name Atom
+
+demand-live-runtime()
+. live = instances.live
+if live.enter == no-instance || live.leave == no-instance
+    decline(id)
+    =
+if frame.declaration.kind != .live-decl
+    . context = live-context(read-site(id))
+    if context == .live-value && is-eager-value()
+        instances.mark-live(instance)
+    else if context == .live-rule && is-rule-unit()
+        instances.mark-live(instance)
+    else if context == .live-statement
+        note-live-statement(read-site(id))
+    else if context != .live-region && context != .live-gate
+        frame.diagnose
+            - id
+            - .stated
+            - program.store-atom
+                - "The live function \"${name.text}\" is called only where a value is read live"
+        =
+facts.set-plan(instance, id, .plan-live-call)
+
+────────────────────
++ do type-default
+    - callee InstanceId
+    - position U32
+
+` Types the default of a parameter of a callee where a call first takes it, as the reference
+` compiles a default only for a call that takes it: what the default calls is typed then, and
+` what it gets wrong is reported then. For a tuple's constructor it is the value its type writes
+` for the field the call leaves out (`check-field-default`). The default of a nested function
+` is typed nowhere, as no call of it has a shape.
+if callee == no-instance || instances.rows[callee].enclosing != no-instance
+    =
+if !instances.type-default(callee, position)
+    =
+. checker = checker-for(session, callee, null, true)
+if checker.described && checker.described.kind == .tuple-constructor-decl
+    checker.check-field-default(position)
+else if checker.described
+    checker.prepare()
+    checker.check-default(position)
+    checker.close()
+checker.retire()
+
+────────────────────
++ do demand-lambda InstanceId
+    - closure TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+
+. owner = 0u32
+. nested-decl = 0u32
+. enclosing = instance
+do match? types.rows[closure]
+    | .type-closure(row)
+        owner = row.module
+        nested-decl = row.decl
+        enclosing = row.enclosing
+if nested-decl == 0
+    = no-instance
+. effects = callee-effects(frame, owner, nested-decl)
+. callee = instances.intern(owner, nested-decl, no-type, effects, enclosing, scratch.no-types, args)
+if instances.rows[callee].state != .instance-unstarted
+    = callee
+. live = if enclosing == instance then this else definer(enclosing)
+. writer = live ?? settled(enclosing)
+writer.share-captures(nested-decl)
+run-within(callee, writer)
+if !live
+    writer.dismiss()
+= callee
+
+────────────────────
++ do lambda-fit TypeId
+    - closure TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+
+` The type a closure returns for the arguments a candidate of a call would pass it, or the
+` invalid type when its body does not type with them: that candidate is not the one, and what
+` the body got wrong under it is not reported. A body that was refused says nothing of the
+` candidate, so the function being typed is refused with it.
+. diagnosed = facts.diagnostics.length
+. callee = demand-lambda(closure, args)
+if callee == no-instance
+    = invalid-type
+demand-errors(callee)
+. declined = facts.declined-since(diagnosed, callee)
+if facts.drop-diagnostics(diagnosed, callee)
+    instances.set-returns(callee, invalid-type, no-type, .return-failed)
+    if declined
+        decline(frame.declaration.syntax)
+    = invalid-type
+. signature = instances.signatures[callee]
+if signature.return-state == .return-pending
+    = invalid-type
+= signature.returns
+
+────────────────────
++ do binding-return BoundReturn
+    - binding TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+    - asked Bool = false
+
+= calls.bound-return(binding, args, asked)
+
+────────────────────
++ do whole-answer TypeId
+    - callable TypeId
+    - returned TypeId
+    - args ImmutableArray'TypeId'ArenaBacking
+    - declared RowRange'TypeId
+    - bound InstanceId
+
+` What a closure or a binding answers a function type whose return nothing has bound yet:
+` what it returns, or its value or one of its errors where it raises. A parameter of the
+` type bound so is how an error crosses a value of the type. A binding's is asked after
+` `binding-return`, which found what the binding calls (`bound`).
+. binds = types.completions[callable].intrinsic == .binding
+. callee = if binds then bound else demand-lambda(callable, args)
+if callee == no-instance
+    = returned
+demand-errors(callee)
+. signature = instances.signatures[callee]
+if signature.errors.count == 0
+    = returned
+. mark = scratch.types.mark
+for offset in 0 .. < signature.errors.count
+    . error = instances.signature-types[signature.errors.start + offset]
+    if !declares-error(declared, error)
+        scratch.types.push(error)
+=? returned if scratch.types.length == mark
+= result-type(types, if returned == no-type then types.void-type else returned, mark)
+
+────────────────────
++ do misused-endpoint Bool
+    - syntax SyntaxId
+
+` Whether a node that names an event, given to a call as its endpoint, is converted by a
+` converter, as the reference converts no endpoint: reported as `refuse-event-value` says.
+. place = syntax
+do match? tree.nodes[syntax]
+    | .node-argument(row)
+        place = row.expr
+. position = endpoint-arguments.find(place)
+if position == null
+    = false
+. event = endpoint-events[position]
+refuse-event-value(place, event.owner, event.name)
+. kept = kept-arguments.find(place)
+if kept != null
+    kept-arguments[kept] = 0
+= true
+
+────────────────────
++ do truth-callee InstanceId
+    - type TypeId
+
+` The function that says whether a value of a class or a text is empty, which a conversion
+` of the value to a Bool calls. No instance for a value of any other type.
+. completion = types.completion-of(type)
+if completion.intrinsic != .class && completion.intrinsic != .string
+    = no-instance
+if completion.intrinsic == .class && completion.is-builtin
+    = no-instance
+= calls.demand-method(type, program.store-atom("!"))
+
+────────────────────
++ do tuple-arity U32
+    - value TypeId
+
+if is-column-receiver(types.intrinsic-of(value))
+    = column-count(value)
+do match? types.rows[value]
+    | .type-tuple(row)
+        = row.fields.count
+    | .type-class
+        = struct-arity(value)
+= U32.max
+
+────────────────────
++ do field-of TypeId
+    - value TypeId
+    - position U32
+
+. kind = types.intrinsic-of(value)
+if is-column-receiver(kind)
+    . column = column-at(value, position)
+    if column == no-type
+        = invalid-type
+    = types.column-view-of(column, kind == .immutable-table || kind == .immutable-table-span)
+do match? types.rows[value]
+    | .type-tuple(row)
+        = if position < row.fields.count then field-type else invalid-type
+            .. field-type = types.child-type(row.fields, position)
+    | .type-class
+        = struct-field-of(value, position)
+= invalid-type
+
+────────────────────
++ has-items Bool
+    - type TypeId
+
+` Whether a type has items a list pattern reads: one that is `Indexable` and no text.
+type != types.string-type && implements(type, types.indexable-decl)
+
+────────────────────
++ do note-enum-case
+    - about TypeId
+    - name Atom
+    - site SyntaxId
+    - settles Bool = true
+
+` Notes the case a site names as one of `about`, which `settles` where something expected of it
+` is a type with the case (`leave-unfound`).
+if settles
+    calls.settle-unfound(site)
+if calls-symbol(site)
+    . busy = calls.suspend-ranking()
+    infer-with-expected(site, about)
+    calls.resume-ranking(busy)
+    =
+note-case(site, about, name)
+. is-union = types.intrinsic-of(about) == .union
+if is-union && (enum-case-value(about, name) ?? 0) == 0
+    =
+if !is-union && !types.completion-of(about).has-enums
+    =
+. member = enum-case-decl(types, program, about, name)
+if !member
+    =
+. home = class-ref(types, about).module
+demand-body(instances.intern-initializer(home, member, about))
+. place = (home as U64) * 4294967296 + (member as U64)
+facts.set-constant(instance, site, ConstantFact(place, 0.0, null, false), .plan-enum-value)
+
+────────────────────
++ do note-symbol-choice
+    - about TypeId
+    - expr SyntaxId
+
+. chosen = symbol-choice(expr)
+if chosen == 0
+    =
+note-symbol-arm(about, chosen)
+note-symbol-arm(about, other-side(expr))
+facts.replace-node-type(instance, expr, about)
+
+────────────────────
++ do note-enum-number
+    - site SyntaxId
+    - about TypeId
+
+` Types what a number converted to an enum by its place needs, at the node the conversion is
+` recorded at: every value the enum declares is made, and the enum is constructed with
+` nothing given for a number that is no value's place. The construction is recorded only at
+` a node no call is recorded at.
+. ref = class-ref(types, about)
+if ref.module == U32.max || site == 0
+    =
+. home = program.modules[ref.module]
+for member in 0 .. < home.decls.length
+    do match? home.decls[member]
+        | .decl-case(row)
+            if row.owner == ref.decl
+                demand-body(instances.intern-initializer(ref.module, member as DeclId, about))
+if facts.first-call(instance, site) != no-fact
+    =
+. shapes-start = scratch.call-arguments.mark
+. types-start = scratch.types.mark
+. syntax-start = scratch.syntax.mark
+. arguments = arguments-since(shapes-start, types-start, syntax-start, scratch.no-types)
+calls.construction-on(site, about, arguments)
+. fact = facts.first-call(instance, site)
+while fact != no-fact
+    if facts.calls[fact].form == .call-constructor
+        facts.calls[fact].form = .call-enum-default
+    fact = facts.calls[fact].next
+
+────────────────────
++ do record-witness
+    - from TypeId
+    - to TypeId
+
+` A value made a value of an interface. Where its type carries errors of its own, as a
+` generator that raises does, a function of the interface that carries none panics with the
+` error's text where the type's raises one, so the text of each is made. Where an object of a
+` class is made one, the class must use the styles the interface does (`conform-styles`).
+facts.record-witness-table(from, to)
+if types.intrinsic-of(from) == .class && types.intrinsic-of(to) == .interface
+    conform-styles(from, to)
+do match? types.rows[from]
+    | .type-class(row)
+        if row.errors.count != 0
+            for offset in 0 .. < row.errors.count
+                conversions.demand-converter
+                    - types.child-type(row.errors, offset)
+                    - types.string-type
+            conversions.demand-error-report()
+
+────────────────────
++ do demand-union-error
+
+` Types what an unwrapped union that holds another case raises: the error's constructor and
+` the converter that gives the panic its message, with the report they are raised through.
+if instances.report.union-error != no-instance
+    =
+. error = types.union-error-type
+. made = calls.demand-constructor(error, scratch.types.mark)
+. text = conversions.demand-converter(error, types.string-type)
+instances.report.union-error = made
+instances.report.union-text = text
+
+────────────────────
++ do note-outgoing
+    - error TypeId
+    - syntax SyntaxId
+
+` An error leaving the function at a node.
+hold-transforms(error, syntax)
+frame.note-outgoing(error, syntax)
+
+────────────────────
++ do defer-outgoing
+    - callee InstanceId
+    - syntax SyntaxId
+
+` The errors of a callee not yet known leaving the function at a call.
+hold-transforms(no-type, syntax)
+frame.defer-outgoing(callee, syntax)
+
+╌╌╌╌╌╌╌╌╌╌ is ClassInitializer ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do initialize-classes
+
+` Checks the declarations of this module's types that have come into use since the last time.
+while class-cursor < types.class-uses.length
+    . used = types.class-uses[class-cursor]
+    class-cursor += 1
+    if used.module == (module)
+        initialize-class(used.decl)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ get in-zone-body Bool
+
+` Whether the instance is the body of a `do @no-gc` block.
+frame.declaration.kind == .region-decl
+
+────────────────────
+_ get buffer-item TypeId
+
+` The type of the items the buffer of the stream a pattern reads holds: the stream's items, or
+` bytes where it is `encoded`.
+if stream-view.buffer != no-type then class-arg(types, stream-view.buffer, 0) else stream-view.item
+
+────────────────────
+_ get beside-rule Bool
+
+` Whether the local rules being typed are those of a rule a module declares, beside its own
+` pattern, rather than those of a match.
+rule-streaming.matched == 0 && own-match != 0
+
+.. own-match = rule-match(program, instances.rows[instance].module, instances.rows[instance].decl)
+
+────────────────────
+_ get own-helper Bool
+
+` Whether the helper in force is the rule's own: the one this instance is typed for, or the one
+` the rule is given as an argument.
+rule-helper-site != 0 && helping.site == rule-helper-site
+
 ────────────────────
 + do retire
 
@@ -1239,6 +876,540 @@ if session.shared && signature.read-in-progress && signature.return-state == .re
     session.shared.diverge()
 share(session, instance)
 offer-queued(session)
+
+────────────────────
++ do find-query-targets
+
+` Numbers the targets of descendant queries once for the program, from 1, as the reference
+` collects them before it compiles a class: the class `T` of each property a class with no
+` type parameters declares as `Descendants'T`, then of each of its rules `whenever children T`
+` and `whenever descendants T`, in the order of the modules and of what they declare, each
+` once. Those a class with type parameters may add are noted (`note-open-targets`). Each target
+` is completed, as the reference makes the class it collects, so the class's table holds its
+` methods though no object of it is made.
+if facts.query-targets-found
+    =
+facts.query-targets-found = true
+for position in 0 .. < program.modules.length
+    . owner = program.modules[position]
+    . index = 0u32
+    for decl in owner.decls
+        do match? decl
+            | .decl-class(class)
+                if class.type-args.count == 0
+                    . ref = DeclRef(position as ModuleId, index)
+                    for member in owner.member-pool[class.members]
+                        do match? owner.decls[member]
+                            | .decl-property(property)
+                                . query = if property.type-syntax != 0 then query-type(ref, property.type-syntax) else no-type
+                                if query != no-type && !is-ancestor-query(query)
+                                    . target = query-target(query)
+                                    if facts.query-targets.find(target) == null
+                                        facts.query-targets += target
+                    for member in owner.member-pool[class.members]
+                        do match? owner.decls[member]
+                            | .decl-rule(rule)
+                                . target = trigger-target(ref, rule.syntax)
+                                if target != no-type && facts.query-targets.find(target) == null
+                                    facts.query-targets += target
+                else
+                    note-open-targets(DeclRef(position as ModuleId, index), class.members)
+        index += 1
+for target in facts.query-targets
+    types.complete(target)
+
+────────────────────
++ do list-declarations
+
+` Lists what typing reads of the program's declarations as a whole, once for the session and
+` before it types any instance, so that no instance's typing changes it: the style rules
+` (`list-style-rules`) and the extensions of style sheets (`list-sheet-extensions`). An edit
+` retyped in place keeps both, as it changes no declaration (`retype-edit`).
+list-style-rules()
+list-sheet-extensions()
+
+────────────────────
++ do open-class-env Bool
+    - receiver TypeId
+
+do match? types.rows[receiver]
+    | .type-class(row)
+        frame.open-env(types.class-env-for(row.module, row.decl, row.args, receiver))
+        = true
+= false
+
+────────────────────
++ do prepare
+
+if prepared
+    =
+prepared = true
+conversions.attach(this)
+calls.attach(this)
+frame.declaration = described!
+if outer
+    frame.adopt(outer.frame)
+else
+    frame.binding = session.binder.bind(module, frame.decl)
+frame.open(frame.binding, bullets-consumer())
+. receiver = logical-receiver(session, module, frame.decl, frame.self-type)
+. names-mark = scratch.names.mark
+. items-mark = scratch.types.mark
+types.clear-fault()
+. plain = signature-into(types, module, frame.decl, no-type-arguments(types), receiver, true)
+. faulted = report-fault(frame.declaration.syntax, true)
+. param-count = instances.signatures[instance].param-count
+. given = no-type-arguments(types)
+if param-count == plain.params.length
+    . bound-start = scratch.types.mark
+    for position in 0 .. < param-count
+        scratch.types.push(instances.param-type(instance, position))
+    given = TypeArguments(plain.params, scratch.types.since(bound-start))
+. around TypeEnv? = null
+if outer
+    around = outer.frame.env
+frame.open-env(function-env(types, module, frame.decl, given, receiver, true, around).env)
+. signature = signature-into(types, module, frame.decl, given, receiver, true)
+if !faulted
+    report-missing-signature(signature)
+. is-constructor = is-constructor-kind(frame.declaration.kind)
+. self = frame.self-type
+. returns = signature.returns
+declared-return = stated-return(types, module, frame.decl, frame.declaration, self, returns)
+if declared-return == no-type
+    declared-return = inherited-getter-type(self)
+if signature.errors.length != 0 && !instances.errors-known(instance)
+    instances.state-errors(instance, signature.errors)
+else if frame.declaration.is-content && !instances.errors-known(instance)
+    instances.state-errors(instance, scratch.no-types)
+. default-owner = interface-default-owner(types, program, module, frame.decl, frame.self-type)
+if default-owner != no-type
+    facts.record-witness-table(frame.self-type, default-owner)
+    frame.self-type = default-owner
+
+. position = 0u32
+. from-signature = instances.signatures[instance].args.count != signature.args.length
+for offset in 0 .. < frame.slots.count
+    . slot = frame.slots.start + offset
+    . row = bindings.slots[slot]
+    if outer && row.scope != frame.nested-scope
+        continue
+    if row.kind == .slot-argument
+        if position < signature.args.length
+            . declared = signature.args[position]
+            . actual = if from-signature then declared else given-type
+                .. given-type = instances.argument-type(instance, position)
+            . provided = position < instances.signatures[instance].args.count
+            if provided && types.completions[declared].intrinsic == .or
+                actual = instances.argument-type(instance, position)
+            else if outer && provided && retyped && states-type(signature, position)
+                decline(row.syntax)
+            .. retyped = !from-signature && declared != actual
+            frame.assign(slot, actual)
+        position += 1
+    else if row.kind == .slot-this
+        frame.assign(slot, frame.self-type)
+    else if row.kind == .slot-super
+        frame.assign(slot, super-type())
+    else if row.kind == .slot-each || row.kind == .slot-it
+        if frame.declaration.kind == .pipeline-decl && row.syntax == frame.declaration.syntax
+            frame.assign(slot, instances.argument-type(instance, 0))
+scratch.types.rewind(items-mark)
+scratch.names.rewind(names-mark)
+if outer || probing
+    =
+
+type-written-defaults()
+if is-constructor
+    . base = types.base-of(frame.self-type)
+    . site = frame.declaration.syntax
+    while base && types.completions[base].intrinsic == .class
+        conversions.record-conversion
+            - site
+            - up-cast-relation(frame.self-type, base)
+            - .reason-receiver
+        base = types.base-of(base)
+
+────────────────────
++ do close
+
+` Ends typing the instance. A store typed as one that runs nothing is relied on where what was
+` typed after it read what the flow knew of a property (`member-reads`), and a force after it
+` of a property the flow knew to hold a value tests the property again should the store run
+` actions (`note-forced`).
+for position in 0 .. < unsure-stores.length
+    if frame.member-reads > unsure-reads[position]
+        panics.rely-on-store(unsure-stores[position])
+for position in 0 .. < unsure-forces.length
+    for store in 0 .. < unsure-forced[position]
+        panics.note-forced
+            - unsure-stores[store]
+            - unsure-forces[position]
+            - unsure-operands[position]
+            - unsure-declared[position]
+unsure-stores.clear()
+unsure-reads.clear()
+unsure-forces.clear()
+unsure-operands.clear()
+unsure-declared.clear()
+unsure-forced.clear()
+frame.close()
+
+────────────────────
++ do demand-body
+    - callee InstanceId
+
+if instances.rows[callee].state != .instance-unstarted || adopt(session, callee)
+    =
+. checker = checker-for(session, callee)
+checker.run()
+checker.retire()
+
+────────────────────
++ do initialize-class
+    - decl DeclId
+
+` What a type declares is checked once, where the reference checks it: when the type is first
+` used, by the checker of its module's statements where they use it and otherwise after the
+` program is typed (`check-used-classes`). A type nothing uses is not checked. Its base and
+` associated types come first, then its properties, getters and events in the order it declares
+` them.
+. key = DeclRef(module, decl).key
+if types.checked-classes[key] != null
+    =
+types.checked-classes[key] = instance
+. decls = program.modules[module].decls
+do match? decls[decl]
+    | .decl-class(class)
+        check-base(decl, class)
+        check-interfaces(decl, class)
+        check-content(decl, class)
+        check-associated(decl, class)
+        check-default-cycles(decl, class)
+        for member in program.modules[module].member-pool[class.members]
+            do match? decls[member]
+                | .decl-function(fn)
+                    if !fn.is-generated && fn.kind == .getter-decl && fn.name
+                        . getter-name = fn.name
+                        . getter = StorageKind.storage-getter
+                        check-member
+                            - member
+                            - decl
+                            - getter-name
+                            - fn.syntax
+                            - getter
+                            - fn.return-type != 0
+                        check-union-member(decl, getter-name, fn.syntax, false)
+                    if !fn.is-generated && !fn.is-static && fn.kind == .function-decl && fn.name
+                        check-inherited-method(decl, fn.name, fn.syntax)
+                | .decl-event(event)
+                    check-inherited-event(event)
+                | .decl-property(property)
+                    if !property.defaults-root && property.element == 0
+                        check-member-property(member, property)
+
+────────────────────
++ do infer-with-expected TypeId
+    - expr SyntaxId
+    - expected TypeId
+    - want Want = Want()
+
+. symbol = symbol-of(expr)
+. expects = expected != no-type && expected != invalid-type
+if symbol && expects
+    . owner = contextual-symbol(types, relations, expected, symbol, module)
+    if owner != invalid-type
+        facts.replace-node-type(instance, expr, owner)
+        note-enum-case(owner, symbol, expr)
+        note-unsettled(expr, expected)
+        = owner
+. fitting = if expects then expected-function(expected) else no-type
+=? infer(expr, want.asking(.want-fitting, expected)) if fitting != no-type && is-conditional-value(expr)
+=? infer(expr, want) if !expects || !calls-symbol(expr)
+= infer(expr, want.asking(.want-owner, expected))
+
+────────────────────
++ do infer TypeId
+    - id SyntaxId
+    - want Want = Want()
+
+if id == 0
+    = no-type
+= settle-typed(id, infer-node(id, want))
+
+────────────────────
++ do decline-used-members
+
+` Declines each member of a class of the module that no pass models, once nothing is left to
+` type and the program runs code of the class. The reference compiles nothing a class holds
+` until the class is used, so a class whose code never runs changes nothing a program makes.
+. undeclared = program.modules[module].undeclared
+for position in 0 .. < undeclared.length
+    . owner = program.modules[module].undeclared-owners[position]
+    if owner != 0 && runs-class(owner)
+        decline(undeclared[position])
+
+────────────────────
++ do demand-panic-report
+
+` Types what the report of an unhandled panic calls, and notes the instances for emission:
+` the converters of the panic and of its source to text, the source's constructor, the
+` check for a terminating task with the panic it raises, and the constructor of a panic from
+` a message.
+. report = instances.report
+. panic = types.panic-type
+report.message = conversions.demand-converter(panic, types.string-type)
+. message-mark = scratch.types.mark
+scratch.types.push(types.string-type)
+report.panic = calls.demand-constructor(panic, message-mark)
+scratch.types.rewind(message-mark)
+. termination = types.termination-type
+report.termination-error = calls.demand-constructor(termination, scratch.types.mark)
+. error-module = class-ref(types, termination).module
+. decls = program.modules[error-module].decls
+for position in 0 .. < decls.length
+    do match? decls[position]
+        | .decl-function(fn)
+            if fn.kind == .termination-panic-decl
+                . check = position as DeclId
+                report.termination = instances.intern(error-module, check, no-type, 0, no-instance)
+. found = types.property-named(panic, program.store-atom("source"))
+if found
+    . property = types.properties[found]
+    . declared = property.type
+    . source = if undeclared then demand-member(property, panic, property.name) else declared
+        .. undeclared = declared == no-type
+    report.source-slot = property.slot
+    if types.is-optional(source)
+        . inner = types.optional-inner(source)
+        report.source-text = conversions.demand-converter(inner, types.string-type)
+        . mark = scratch.types.mark
+        for field in types.properties-of(inner)
+            if field.storage-kind != .storage-getter
+                scratch.types.push(field.type)
+        report.source = calls.demand-constructor(inner, mark)
+        scratch.types.rewind(mark)
+. traced = types.property-named(panic, program.store-atom("trace"))
+if traced
+    report.trace-slot = types.properties[traced].slot
+. linked = types.property-named(panic, program.store-atom("previous"))
+if linked
+    report.previous-slot = types.properties[linked].slot
+instances.report = report
+
+────────────────────
++ do demand-probe-runtime
+
+` Types what a program whose probes compile calls of the probes module of its own accord, and
+` notes the instances for emission (see `ProbeRuntime`), with what the report of an error calls,
+` since an error that leaves a function of the module is reported where it is called.
+. runtime = instances.probe-runtime
+runtime.demanded = true
+. found = program.module-by-name(probes-module-name)
+if !found
+    instances.probe-runtime = runtime
+    =
+. probes = found as ModuleId
+. size = types.size-type
+. text = types.string-type
+. short = types.type-row(.uint16)
+. long = types.type-row(.uint32)
+. none [TypeId]
+runtime.argument-type = types.well-known-type(probes-module-name, "ProbeType")
+runtime.begin = probe-runtime-call(probes, "probes-begin", none)
+runtime.counter-setup = probe-runtime-call(probes, "probe-counter-setup", [size])
+runtime.profile-setup = probe-runtime-call(probes, "probe-profile-setup", [size])
+runtime.declare-key = probe-runtime-call(probes, "probe-declare-key", [text])
+runtime.declare-type = probe-runtime-call(probes, "probe-declare-type", [short, text])
+runtime.declare-log = probe-runtime-call
+    - probes
+    - "probe-declare-log2"
+    - [short, text, text, text, text, text, long, long]
+runtime.declare-event = probe-runtime-call
+    - probes
+    - "probe-declare-event"
+    - [short, text, text, text, long]
+runtime.declare-counter = probe-runtime-call
+    - probes
+    - "probe-declare-counter"
+    - [short, text, text, text, long]
+runtime.declare-argument = probe-runtime-call
+    - probes
+    - "probe-declare-argument"
+    - [runtime.argument-type, short]
+runtime.declare-profile-metric = probe-runtime-call
+    - probes
+    - "probe-declare-profile-metric"
+    - [short, text, types.type-row(.uint8), text, text, long, short]
+runtime.counter-add = probe-runtime-call
+    - probes
+    - "probe-counter-add"
+    - [short, types.type-row(.uint64)]
+runtime.ready = probe-runtime-call(probes, "probes-ready", none)
+runtime.collector-counts = probe-runtime-call
+    - probes
+    - "probe-gc-counter-flush"
+    - [short, short, short]
+runtime.end = probe-runtime-call(probes, "probes-end", none)
+runtime.task-flush = probe-runtime-call(probes, "probe-task-flush", none)
+runtime.safepoint = probe-runtime-call(probes, "probe-safepoint-flush-if-needed", none)
+instances.probe-runtime = runtime
+for callee in [runtime.begin, runtime.counter-setup, runtime.profile-setup, runtime.declare-key, runtime.declare-type, runtime.declare-log, runtime.declare-event, runtime.declare-counter, runtime.declare-argument, runtime.declare-profile-metric, runtime.counter-add, runtime.ready, runtime.collector-counts, runtime.end, runtime.task-flush, runtime.safepoint]
+    if callee != no-instance
+        demand-errors(callee)
+conversions.demand-error-report()
+
+────────────────────
++ do default-type TypeId
+    - owner ModuleId
+    - decl DeclId
+    - receiver TypeId
+    - syntax SyntaxId
+    - params ImmutableArray'TypeId'ArenaBacking
+
+` Types the default of an argument that declares no type on an instance that is never checked,
+` for a call to take the argument's type from.
+. none = scratch.no-types
+. probe = instances.intern(owner, decl, receiver, 0, no-instance, params, none, false)
+. checker = checker-for(session, probe, null, true)
+checker.prepare()
+. value = checker.infer(syntax)
+checker.close()
+checker.retire()
+= value
+
+────────────────────
++ do run-after-enclosing
+
+` Types the instance, written in another that has finished, with a checker that holds each local
+` as that one left it (`settled`), as a closure called after it finished is (`demand-lambda`).
+. writer = settled(instances.rows[instance].enclosing)
+writer.share-captures(instances.rows[instance].decl)
+outer = writer
+run()
+writer.dismiss()
+
+────────────────────
++ in-eager Bool
+
+` Whether this is the initializer of an eager property, or a closure written in one: neither
+` the object under construction nor its getters can be read there. A state machine a property
+` holds runs on the object, which the reference gives it, and is neither. Nor is a lambda
+` written in a line of a root `<This`, which reads the object as one the class's markup writes
+` for a child does.
+|? reading.eager
+    true
+|? frame.declaration.kind == .machine-decl
+    false
+|? frame.declaration.kind == .closure-decl && outer != null && outer.root-value() != 0
+    false
+??
+    outer != null && outer.in-eager()
+
+────────────────────
++ do demand-property TypeId
+    - owner U32
+    - property DeclId
+
+. literal = core-literal-type(owner, property)
+if literal != no-type
+    = literal
+. written = 0u32
+do match? program.modules[owner].decls[property]
+    | .decl-property(row)
+        written = row.syntax
+= demand-initializer(instances.intern-initializer(owner, property, no-type), written)
+
+────────────────────
++ do demand-member TypeId
+    - fact TypeProperty
+    - receiver TypeId
+    - name Atom
+    - replay Bool = false
+    - for-below Bool = false
+
+` `for-below` asks for the type on behalf of a class below that declares the property again.
+` A value that is being typed has no type to give such a class, and is not a circle: the
+` class below takes its own value's type. A stored property's value is evaluated by the
+` constructor of each class that holds it, and is typed for that class. A lazy property of a
+` class is evaluated by one function, which the classes below share: its value is typed
+` once, for the class that declares it, as the reference types it. So is a state machine a
+` property of a class holds: the classes below that declare it no value of their own start
+` the one typed for the class that declares it, and share its functions, and those that refine
+` it share it as a piece of theirs (`MachineComposite`). A class that declares a property with
+` no value and gives it one in a root `<This` writes its type in one and its value in the
+` other. One a line of a class's markup declares has the type of the value the line gives it
+` (`content-property-type`), and one that projects a case of a machine of the markup the
+` optional of what the case holds (`projection-type`). A state machine that refines one a class
+` above declares, read while that one is typed, has the type it has from above and is typed
+` later (`refines-in-progress`).
+. ref = declaring-class(types, fact.owner, name)
+if ref.module == 0 && ref.decl == 0
+    = invalid-type
+. owner-module = program.modules[ref.module]
+. target = 0u32
+. initializer = 0u32
+. annotation = 0u32
+. written = 0u32
+. members = RowRange'DeclId()
+do match? owner-module.decls[ref.decl]
+    | .decl-class(row)
+        members = row.members
+. place = owner-module.first-member(members, name)
+while place != no-member
+    . member = owner-module.member-pool[place]
+    place = owner-module.member-links[place]
+    do match? owner-module.decls[member]
+        | .decl-property(row)
+            if row.name && row.name == name
+                if target == 0 || (initializer == 0 && row.value != 0)
+                    target = member
+                    written = row.syntax
+                    initializer = row.value
+                if row.type-syntax != 0
+                    annotation = row.syntax
+if target == 0 && fact.type == no-type && fact.storage-kind == .storage-getter
+    = calls.protocol-getter(receiver, name)
+if target != 0
+    do match? owner-module.decls[target]
+        | .decl-property(row)
+            if row.line != 0
+                = content-property-type(ref, row.line)
+            if row.projection != 0
+                = projection-type(ref, row.projection, receiver)
+if target == 0 || initializer == 0
+    = if fact.type != no-type then fact.type else invalid-type
+. machine = owner-module.tree.declared-machine(initializer) != 0
+. shared = lazily-held && intrinsic-is-class(types.intrinsic-of(receiver))
+    .. lazily-held = fact.storage-kind == .storage-lazy || machine
+. holder = if shared then holding-type(receiver, ref) else receiver
+. unit = instances.intern-initializer(ref.module, target, holder)
+if for-below && instances.rows[unit].state == .instance-in-progress
+    = no-type
+if instances.rows[unit].state == .instance-unstarted
+    . declared = if annotation != 0 then fact.type else first-type(fact, name)
+    if declared != no-type && instances.rows[unit].state == .instance-unstarted
+        instances.signatures[unit].declared-returns = declared
+    if declared != no-type && machine && refines-in-progress(ref, name, holder)
+        = declared
+last-unit = unit
+. value = demand-initializer(unit, written)
+last-unit = unit
+if replay && instances.rows[unit].state == .instance-done
+    replay-member(unit)
+. stated = instances.signatures[unit].declared-returns
+= if stated != no-type && value != invalid-type then stated else value
+
+────────────────────
++ do bind-this
+    - receiver TypeId
+
+` An initializer of a class's property is typed in the module's own frame, where `this` is
+` the object the property belongs to.
+for offset in 0 .. < frame.slots.count
+    . slot = frame.slots.start + offset
+    if bindings.slots[slot].kind == .slot-this
+        frame.assign(slot, receiver)
 
 ────────────────────
 _ unshared-weight I64
@@ -1585,10 +1756,15 @@ if tree.attribute-element(statement) != 0
     . styled = facts.style-declaration-of(instances.rows[instance].enclosing, statement)
     do match? tree.nodes[statement]
         | .node-assign(row)
+            . name = style-name(tree, row.lhs)
             if styled
                 if made == no-type || !style-again(statement, row.rhs, styled)
                     decline(statement)
-            else if made == no-type || attribute-type(statement, row.op, row.lhs, row.rhs, made) == invalid-type
+            else if made == no-type
+                decline(statement)
+            else if name && attribute-accessor(made, name)
+                do setter-attribute(statement, row.op, row.lhs, row.rhs, made)
+            else if attribute-type(statement, row.op, row.lhs, row.rhs, made) == invalid-type
                 decline(statement)
     hand-off-outgoing(statement)
     finish-errors(frame)
@@ -3206,47 +3382,6 @@ do match? types.rows[query]
 = false
 
 ────────────────────
-+ do find-query-targets
-
-` Numbers the targets of descendant queries once for the program, from 1, as the reference
-` collects them before it compiles a class: the class `T` of each property a class with no
-` type parameters declares as `Descendants'T`, then of each of its rules `whenever children T`
-` and `whenever descendants T`, in the order of the modules and of what they declare, each
-` once. Those a class with type parameters may add are noted (`note-open-targets`). Each target
-` is completed, as the reference makes the class it collects, so the class's table holds its
-` methods though no object of it is made.
-if facts.query-targets-found
-    =
-facts.query-targets-found = true
-for position in 0 .. < program.modules.length
-    . owner = program.modules[position]
-    . index = 0u32
-    for decl in owner.decls
-        do match? decl
-            | .decl-class(class)
-                if class.type-args.count == 0
-                    . ref = DeclRef(position as ModuleId, index)
-                    for member in owner.member-pool[class.members]
-                        do match? owner.decls[member]
-                            | .decl-property(property)
-                                . query = if property.type-syntax != 0 then query-type(ref, property.type-syntax) else no-type
-                                if query != no-type && !is-ancestor-query(query)
-                                    . target = query-target(query)
-                                    if facts.query-targets.find(target) == null
-                                        facts.query-targets += target
-                    for member in owner.member-pool[class.members]
-                        do match? owner.decls[member]
-                            | .decl-rule(rule)
-                                . target = trigger-target(ref, rule.syntax)
-                                if target != no-type && facts.query-targets.find(target) == null
-                                    facts.query-targets += target
-                else
-                    note-open-targets(DeclRef(position as ModuleId, index), class.members)
-        index += 1
-for target in facts.query-targets
-    types.complete(target)
-
-────────────────────
 _ do note-open-targets
     - ref DeclRef
     - members RowRange'DeclId
@@ -3749,7 +3884,6 @@ _ scopes-known Bool
     instances.rows[instance].enclosing == no-instance && (kind == .main-decl || kind == .function-decl || kind == .getter-decl || kind == .setter-decl || is-constructor-kind(kind))
 
 .. kind = frame.declaration.kind
-
 
 ────────────────────
 _ do seen-sheets
@@ -5803,7 +5937,7 @@ _ styles-attribute Bool
 |? !name || op != .eq-op || types.intrinsic-of(class) != .class || generic
     false
 ??
-    !types.property-named(class, name) && program.module-by-name("core/style") != null
+    !types.property-named(class, name) && !interface-accessor(class, name) && program.module-by-name("core/style") != null
 
 .. generic = types.completions[class].has-variables
 
@@ -7573,7 +7707,7 @@ _ do generate-content U32
 ` markup element `id`, by the application `index` of `style-applications`, under the `when`s
 ` `gates`, as the reference's `compileGuardedContent` makes it: each line is built by a function
 ` of its own, typed in the rule's module for what the element sees (`demand-content`), which a
-` record of the style runtime holds for the element's object as a `MarkupHost`; under `when`s,
+` record of the style runtime holds for the element's object as a `MarkupElement`; under `when`s,
 ` an action of its own enables the record as they hold (`demand-style-content`), first where the
 ` element is made, where what enabling it raises leaves the function. None is
 ` generated where the reference generates none: by the rule `• This` (`content-off`), and by the
@@ -7596,12 +7730,12 @@ if !is-markup-host(made)
     frame.diagnose
         - id
         - .stated
-        - program.store-atom("Generated style content requires a MarkupHost target")
+        - program.store-atom("Generated style content requires a MarkupElement target")
     = U32.max
 . carried [U32]
 . cells [U32]
 . context = content-view(id, carried, cells)
-. host = types.well-known-type("core/markup", "MarkupHost")
+. host = types.well-known-type("core/markup", "MarkupElement")
 if context == U32.max || host == invalid-type || !demand-style-content(made, gates)
     decline(id)
     = U32.max
@@ -7801,7 +7935,7 @@ if !demand-style-sites()
 . module-id = class-ref(types, types.type-row(.style)).module
 if runtime.template-content == no-instance
     . association = types.well-known-type("core/style", "StyleSiteAssociation")
-    . host = types.well-known-type("core/markup", "MarkupHost")
+    . host = types.well-known-type("core/markup", "MarkupElement")
     . builder = if host != invalid-type then builder-type(host, no-type) else invalid-type
     if association == invalid-type || builder == invalid-type
         = false
@@ -10281,16 +10415,6 @@ while position != U32.max
             if rule.owner == 0
                 = true
 = false
-
-────────────────────
-+ do list-declarations
-
-` Lists what typing reads of the program's declarations as a whole, once for the session and
-` before it types any instance, so that no instance's typing changes it: the style rules
-` (`list-style-rules`) and the extensions of style sheets (`list-sheet-extensions`). An edit
-` retyped in place keeps both, as it changes no declaration (`retype-edit`).
-list-style-rules()
-list-sheet-extensions()
 
 ────────────────────
 _ do list-style-rules
@@ -13046,16 +13170,6 @@ scratch.types.push(item)
 = types.class-with-args(decl.module, decl.decl, mark)
 
 ────────────────────
-+ do open-class-env Bool
-    - receiver TypeId
-
-do match? types.rows[receiver]
-    | .type-class(row)
-        frame.open-env(types.class-env-for(row.module, row.decl, row.args, receiver))
-        = true
-= false
-
-────────────────────
 _ do super-type TypeId
 
 . self = frame.self-type
@@ -13095,145 +13209,6 @@ do match? program.modules[module].decls[frame.decl]
 = false
 
 ────────────────────
-+ do prepare
-
-if prepared
-    =
-prepared = true
-conversions.attach(this)
-calls.attach(this)
-frame.declaration = described!
-if outer
-    frame.adopt(outer.frame)
-else
-    frame.binding = session.binder.bind(module, frame.decl)
-frame.open(frame.binding, bullets-consumer())
-. receiver = logical-receiver(session, module, frame.decl, frame.self-type)
-. names-mark = scratch.names.mark
-. items-mark = scratch.types.mark
-types.clear-fault()
-. plain = signature-into(types, module, frame.decl, no-type-arguments(types), receiver, true)
-. faulted = report-fault(frame.declaration.syntax, true)
-. param-count = instances.signatures[instance].param-count
-. given = no-type-arguments(types)
-if param-count == plain.params.length
-    . bound-start = scratch.types.mark
-    for position in 0 .. < param-count
-        scratch.types.push(instances.param-type(instance, position))
-    given = TypeArguments(plain.params, scratch.types.since(bound-start))
-. around TypeEnv? = null
-if outer
-    around = outer.frame.env
-frame.open-env(function-env(types, module, frame.decl, given, receiver, true, around).env)
-. signature = signature-into(types, module, frame.decl, given, receiver, true)
-if !faulted
-    report-missing-signature(signature)
-. is-constructor = is-constructor-kind(frame.declaration.kind)
-. self = frame.self-type
-. returns = signature.returns
-declared-return = stated-return(types, module, frame.decl, frame.declaration, self, returns)
-if declared-return == no-type
-    declared-return = inherited-getter-type(self)
-if signature.errors.length != 0 && !instances.errors-known(instance)
-    instances.state-errors(instance, signature.errors)
-else if frame.declaration.is-content && !instances.errors-known(instance)
-    instances.state-errors(instance, scratch.no-types)
-. default-owner = interface-default-owner(types, program, module, frame.decl, frame.self-type)
-if default-owner != no-type
-    facts.record-witness-table(frame.self-type, default-owner)
-    frame.self-type = default-owner
-
-. position = 0u32
-. from-signature = instances.signatures[instance].args.count != signature.args.length
-for offset in 0 .. < frame.slots.count
-    . slot = frame.slots.start + offset
-    . row = bindings.slots[slot]
-    if outer && row.scope != frame.nested-scope
-        continue
-    if row.kind == .slot-argument
-        if position < signature.args.length
-            . declared = signature.args[position]
-            . actual = if from-signature then declared else given-type
-                .. given-type = instances.argument-type(instance, position)
-            . provided = position < instances.signatures[instance].args.count
-            if provided && types.completions[declared].intrinsic == .or
-                actual = instances.argument-type(instance, position)
-            else if outer && provided && retyped && states-type(signature, position)
-                decline(row.syntax)
-            .. retyped = !from-signature && declared != actual
-            frame.assign(slot, actual)
-        position += 1
-    else if row.kind == .slot-this
-        frame.assign(slot, frame.self-type)
-    else if row.kind == .slot-super
-        frame.assign(slot, super-type())
-    else if row.kind == .slot-each || row.kind == .slot-it
-        if frame.declaration.kind == .pipeline-decl && row.syntax == frame.declaration.syntax
-            frame.assign(slot, instances.argument-type(instance, 0))
-scratch.types.rewind(items-mark)
-scratch.names.rewind(names-mark)
-if outer || probing
-    =
-
-type-written-defaults()
-if is-constructor
-    . base = types.base-of(frame.self-type)
-    . site = frame.declaration.syntax
-    while base && types.completions[base].intrinsic == .class
-        conversions.record-conversion
-            - site
-            - up-cast-relation(frame.self-type, base)
-            - .reason-receiver
-        base = types.base-of(base)
-
-────────────────────
-+ do close
-
-` Ends typing the instance. A store typed as one that runs nothing is relied on where what was
-` typed after it read what the flow knew of a property (`member-reads`), and a force after it
-` of a property the flow knew to hold a value tests the property again should the store run
-` actions (`note-forced`).
-for position in 0 .. < unsure-stores.length
-    if frame.member-reads > unsure-reads[position]
-        panics.rely-on-store(unsure-stores[position])
-for position in 0 .. < unsure-forces.length
-    for store in 0 .. < unsure-forced[position]
-        panics.note-forced
-            - unsure-stores[store]
-            - unsure-forces[position]
-            - unsure-operands[position]
-            - unsure-declared[position]
-unsure-stores.clear()
-unsure-reads.clear()
-unsure-forces.clear()
-unsure-operands.clear()
-unsure-declared.clear()
-unsure-forced.clear()
-frame.close()
-
-────────────────────
-+ do demand
-    - callee InstanceId
-
-` Readies what a call reads of a callee. A header that gives the return type is enough, and
-` the body stays in the queue. Otherwise the body is typed now, as it is for a statement that a
-` finally block watches. A call of a rule under a helper, which may run the rule typed for the
-` helper in its place, queues a rule that states its type too, as `promise` says. A callee that
-` may not use the heap is typed now, as TypeScript compiles it where it is called, so that what
-` allocates there is found in the order TypeScript finds it. One another pass of a parallel type
-` pass published is taken in from it (`adopt`).
-if instances.rows[callee].state != .instance-unstarted || adopt(session, callee)
-    =
-. heapless = (instances.rows[callee].effects /and/ CompilationEffect.no-heap) != 0
-if watching-leaves == 0 && !heapless && settle-header(session, callee)
-    instances.queue(callee)
-    =
-if deferring && promise(callee)
-    instances.queue(callee)
-    =
-demand-body(callee)
-
-────────────────────
 _ do promise Bool
     - callee InstanceId
 
@@ -13260,16 +13235,6 @@ instances.set-returns(callee, stated, stated, .return-declared)
 = true
 
 ────────────────────
-+ do demand-body
-    - callee InstanceId
-
-if instances.rows[callee].state != .instance-unstarted || adopt(session, callee)
-    =
-. checker = checker-for(session, callee)
-checker.run()
-checker.retire()
-
-────────────────────
 _ do demand-own-body
     - callee InstanceId
 
@@ -13283,26 +13248,6 @@ if instances.rows[callee].state == .instance-unstarted
     checker.retire()
 else if instances.rows[callee].imported && session.shared
     session.shared.diverge()
-
-────────────────────
-+ do demand-errors
-    - callee InstanceId
-
-` Settles a callee's errors for a call that reads them now. Every body they pass through is
-` typed first, here when nothing has typed it yet.
-if instances.errors-known(callee)
-    =
-. errors = session.errors
-while true
-    . base = errors.gather(callee)
-    if errors.unready.length == base
-        break
-    while errors.unready.length > base
-        . last = errors.unready.length - 1
-        . next = errors.unready[last] as InstanceId
-        errors.unready.rewind(last)
-        demand-body(next)
-errors.settle(callee)
 
 ────────────────────
 _ do check-initializer
@@ -14029,56 +13974,6 @@ if value.module != (module)
 facts.replay-calls(unit, instance)
 
 ────────────────────
-+ do note-live-call
-    - id SyntaxId
-    - name Atom
-
-demand-live-runtime()
-. live = instances.live
-if live.enter == no-instance || live.leave == no-instance
-    decline(id)
-    =
-if frame.declaration.kind != .live-decl
-    . context = live-context(read-site(id))
-    if context == .live-value && is-eager-value()
-        instances.mark-live(instance)
-    else if context == .live-rule && is-rule-unit()
-        instances.mark-live(instance)
-    else if context == .live-statement
-        note-live-statement(read-site(id))
-    else if context != .live-region && context != .live-gate
-        frame.diagnose
-            - id
-            - .stated
-            - program.store-atom
-                - "The live function \"${name.text}\" is called only where a value is read live"
-        =
-facts.set-plan(instance, id, .plan-live-call)
-
-────────────────────
-+ do type-default
-    - callee InstanceId
-    - position U32
-
-` Types the default of a parameter of a callee where a call first takes it, as the reference
-` compiles a default only for a call that takes it: what the default calls is typed then, and
-` what it gets wrong is reported then. For a tuple's constructor it is the value its type writes
-` for the field the call leaves out (`check-field-default`). The default of a nested function
-` is typed nowhere, as no call of it has a shape.
-if callee == no-instance || instances.rows[callee].enclosing != no-instance
-    =
-if !instances.type-default(callee, position)
-    =
-. checker = checker-for(session, callee, null, true)
-if checker.described && checker.described.kind == .tuple-constructor-decl
-    checker.check-field-default(position)
-else if checker.described
-    checker.prepare()
-    checker.check-default(position)
-    checker.close()
-checker.retire()
-
-────────────────────
 _ do check-field-default
     - position U32
 
@@ -14530,59 +14425,6 @@ do match? tree.nodes[rule]
                     if !tree.rule-part(statement)
                         = true
 = false
-
-────────────────────
-+ do initialize-classes
-
-` Checks the declarations of this module's types that have come into use since the last time.
-while class-cursor < types.class-uses.length
-    . used = types.class-uses[class-cursor]
-    class-cursor += 1
-    if used.module == (module)
-        initialize-class(used.decl)
-
-────────────────────
-+ do initialize-class
-    - decl DeclId
-
-` What a type declares is checked once, where the reference checks it: when the type is first
-` used, by the checker of its module's statements where they use it and otherwise after the
-` program is typed (`check-used-classes`). A type nothing uses is not checked. Its base and
-` associated types come first, then its properties, getters and events in the order it declares
-` them.
-. key = DeclRef(module, decl).key
-if types.checked-classes[key] != null
-    =
-types.checked-classes[key] = instance
-. decls = program.modules[module].decls
-do match? decls[decl]
-    | .decl-class(class)
-        check-base(decl, class)
-        check-interfaces(decl, class)
-        check-content(decl, class)
-        check-associated(decl, class)
-        check-default-cycles(decl, class)
-        for member in program.modules[module].member-pool[class.members]
-            do match? decls[member]
-                | .decl-function(fn)
-                    if !fn.is-generated && fn.kind == .getter-decl && fn.name
-                        . getter-name = fn.name
-                        . getter = StorageKind.storage-getter
-                        check-member
-                            - member
-                            - decl
-                            - getter-name
-                            - fn.syntax
-                            - getter
-                            - fn.return-type != 0
-                        check-union-member(decl, getter-name, fn.syntax, false)
-                    if !fn.is-generated && !fn.is-static && fn.kind == .function-decl && fn.name
-                        check-inherited-method(decl, fn.name, fn.syntax)
-                | .decl-event(event)
-                    check-inherited-event(event)
-                | .decl-property(property)
-                    if !property.defaults-root && property.element == 0
-                        check-member-property(member, property)
 
 ────────────────────
 _ do check-member-property
@@ -17438,26 +17280,6 @@ match types.rows[type]
         false
 
 ────────────────────
-+ do infer-with-expected TypeId
-    - expr SyntaxId
-    - expected TypeId
-    - want Want = Want()
-
-. symbol = symbol-of(expr)
-. expects = expected != no-type && expected != invalid-type
-if symbol && expects
-    . owner = contextual-symbol(types, relations, expected, symbol, module)
-    if owner != invalid-type
-        facts.replace-node-type(instance, expr, owner)
-        note-enum-case(owner, symbol, expr)
-        note-unsettled(expr, expected)
-        = owner
-. fitting = if expects then expected-function(expected) else no-type
-=? infer(expr, want.asking(.want-fitting, expected)) if fitting != no-type && is-conditional-value(expr)
-=? infer(expr, want) if !expects || !calls-symbol(expr)
-= infer(expr, want.asking(.want-owner, expected))
-
-────────────────────
 _ do fitting-of TypeId
     - want Want
 
@@ -17779,19 +17601,6 @@ _ destructures Bool
 .. arity = tuple-arity(value)
 
 ────────────────────
-+ do tuple-arity U32
-    - value TypeId
-
-if is-column-receiver(types.intrinsic-of(value))
-    = column-count(value)
-do match? types.rows[value]
-    | .type-tuple(row)
-        = row.fields.count
-    | .type-class
-        = struct-arity(value)
-= U32.max
-
-────────────────────
 _ do struct-arity U32
     - value TypeId
 
@@ -17817,25 +17626,6 @@ if position >= properties.count
 if field.type == no-type
     = demand-member(field, value, field.name)
 = field.type
-
-────────────────────
-+ do field-of TypeId
-    - value TypeId
-    - position U32
-
-. kind = types.intrinsic-of(value)
-if is-column-receiver(kind)
-    . column = column-at(value, position)
-    if column == no-type
-        = invalid-type
-    = types.column-view-of(column, kind == .immutable-table || kind == .immutable-table-span)
-do match? types.rows[value]
-    | .type-tuple(row)
-        = if position < row.fields.count then field-type else invalid-type
-            .. field-type = types.child-type(row.fields, position)
-    | .type-class
-        = struct-field-of(value, position)
-= invalid-type
 
 ────────────────────
 _ slot-known TypeId
@@ -18233,24 +18023,6 @@ for position in 0 .. < raising-lazies.length
 = true
 
 ────────────────────
-+ do note-outgoing
-    - error TypeId
-    - syntax SyntaxId
-
-` An error leaving the function at a node.
-hold-transforms(error, syntax)
-frame.note-outgoing(error, syntax)
-
-────────────────────
-+ do defer-outgoing
-    - callee InstanceId
-    - syntax SyntaxId
-
-` The errors of a callee not yet known leaving the function at a call.
-hold-transforms(no-type, syntax)
-frame.defer-outgoing(callee, syntax)
-
-────────────────────
 _ do hold-transforms
     - error TypeId
     - site SyntaxId
@@ -18424,12 +18196,6 @@ if frame.wavers(slot)
 . shared = SlotFlag.slot-captured /or/ SlotFlag.slot-assigned
 = loop-marks.length != 0 && shared-flags && frame.is-narrowed(slot) && closes-over(slot)
     .. shared-flags = (bindings.slots[slot].flags /and/ shared) == shared
-
-────────────────────
-_ get in-zone-body Bool
-
-` Whether the instance is the body of a `do @no-gc` block.
-frame.declaration.kind == .region-decl
 
 ────────────────────
 _ do closes-over Bool
@@ -19758,15 +19524,6 @@ for position in 0 .. < carried-sites.length
 loop-marks.pop()
 
 ────────────────────
-+ do infer TypeId
-    - id SyntaxId
-    - want Want = Want()
-
-if id == 0
-    = no-type
-= settle-typed(id, infer-node(id, want))
-
-────────────────────
 _ do infer-found Found
     - id SyntaxId
     - want Want = Want()
@@ -20416,7 +20173,7 @@ _ do batch-element Bool
 ` line of another element is mounted as a root of the batch by `markup-mount-root` once it is
 ` made, as the reference does, but for one the function that builds a row of a markup loop
 ` region or what a line gives a slot makes, which the reference builds with both put off. An
-` element that is a batch is converted to the `MarkupBatch` what is made under it is put under.
+` element that is a batch is converted to the `MarkupRootElement` what is made under it is put under.
 . owns = is-batch(made)
 . rooted = owns || in-batch()
 if !rooted
@@ -20481,8 +20238,8 @@ batched.length != 0 && batched[batched.length - 1]
 ────────────────────
 _ batch-type TypeId
 
-` The `MarkupBatch` of the markup runtime.
-types.well-known-type("core/markup", "MarkupBatch")
+` The `MarkupRootElement` of the markup runtime.
+types.well-known-type("core/markup", "MarkupRootElement")
 
 ────────────────────
 _ do make-element TypeId
@@ -21102,7 +20859,7 @@ do match? tree.nodes[body]
                     . name = style-name(tree, attribute.lhs)
                     if styles-attribute(attribute.op, class, name)
                         continue
-                    if name && is-accessor(class, name)
+                    if name && attribute-accessor(class, name)
                         if !setter-attribute(statement, attribute.op, attribute.lhs, attribute.rhs, class)
                             given = false
                         continue
@@ -21131,12 +20888,11 @@ _ do setter-attribute Bool
 ` An attribute of a markup element that a setter answers, which the reference gives the object
 ` once it is made, as it updates any property the constructor does not fill: the value is typed
 ` by itself and the setter chosen for it as an assignment to the property chooses one, the
-` reference's error where none answers. One of a setter private to another module, one whose
-` value reads something tracked, one written with an assigning operator, and one of a class
-` with type variables are declined.
+` reference's error where none answers. One of a setter private to another module, one written
+` with an assigning operator, and one of a class with type variables are declined.
 . name = identifier-name(tree, target)
-. found = types.property-named(class, name!)
-if op != .eq-op || !found || types.completions[class].has-variables || is-hidden(types.properties[found], name!, .setter-decl) || reads-tracked(value)
+. found = attribute-accessor(class, name!)
+if op != .eq-op || !found || types.completions[class].has-variables || is-hidden(types.properties[found], name!, .setter-decl)
     decline(statement)
     = false
 . given = stored-value(value, infer(value))
@@ -21153,6 +20909,34 @@ if calls.setter-call(target, target, class, name!, value, given) == invalid-type
         - program.store-atom("Setter not found")
     = false
 = true
+
+────────────────────
+_ do attribute-accessor Index?
+    - class TypeId
+    - name Atom
+
+. found = types.property-named(class, name)
+if found
+    =? found if types.properties[found].storage-kind == .storage-getter
+    = null
+= interface-accessor(class, name)
+
+────────────────────
+_ do interface-accessor Index?
+    - type TypeId
+    - name Atom
+
+types.complete(type)
+. base = types.base-of(type)
+if base
+    . inherited = interface-accessor(base, name)
+    =? inherited if inherited
+for interface in types.interfaces-of(type)
+    . place = types.property-named(interface, name)
+    =? place if place && types.properties[place].storage-kind == .storage-getter
+    . deeper = interface-accessor(interface, name)
+    =? deeper if deeper
+= null
 
 ────────────────────
 _ do attribute-type TypeId
@@ -21231,7 +21015,7 @@ do match? tree.nodes[body]
                     do match? tree.nodes[statement]
                         | .node-assign(attribute)
                             . name = identifier-name(tree, attribute.lhs)
-                            . place = types.property-named(made, name) if name
+                            . place = (types.property-named(made, name) ?? interface-accessor(made, name)) if name
                             if !place && facts.style-declaration-of(instance, statement)
                                 continue
                             if !place
@@ -21726,14 +21510,14 @@ _ do check-content
 
 ` The function that builds what a line of a style rule generates where the rule is applied to a
 ` markup element, as the reference's `styleContentBuilderFunc` builds it: the element made with
-` its content, as it would be anywhere, as a `MarkupHost`, under the styles, the style sheets and
+` its content, as it would be anywhere, as a `MarkupElement`, under the styles, the style sheets and
 ` the rules written in rules its context holds, at the layer it holds, with no content generated
 ` by the rules the markup it makes applies (`generating`). A rule seen under the state cells of
 ` `when`s is seen under those it keeps (`content-cell`), and the values of the rule around one are
 ` kept (`content-values`), as the reference's closure captures its frames. It answers that type,
 ` and lets out what making the element raises. An element written with a name is declined.
 prepare()
-. host = types.well-known-type("core/markup", "MarkupHost")
+. host = types.well-known-type("core/markup", "MarkupElement")
 . held = instances.contexts[instances.rows[instance].context]
 . named = false
 do match? tree.nodes[element]
@@ -23164,7 +22948,7 @@ _ do check-branch TypeId
     - parent TypeId
 
 ` A markup branch region, as the reference compiles one:
-` the host the `if` is content of must be a `MarkupHost`, whose `MarkupTreeHost`
+` the host the `if` is content of must be a `MarkupElement`, whose `MarkupParent`
 ` gives the type of its content. Each arm is built by a function of its own given the
 ` region, made a `MarkupBranchBuilder` at the arm, and the builders are made a list at the
 ` `if`. The conditions are read in a live action of the region's own, and the index of the
@@ -23176,7 +22960,8 @@ _ do check-branch TypeId
 ` `region-batch-of` says, the region is put under it by `ensure-markup-root` once made, and the
 ` action is made with it by `make-markup-action`. The batch in force where the region is
 ` written is kept in a third such local, which the arms are built under. A region whose
-` content is no class or is a batch is declined. A region of a class with events, which the
+` content is no class or is a batch is declined, and one whose host makes no branch region, as
+` `makes-region` says, is an error at the `if`. A region of a class with events, which the
 ` markup runtime makes, is kept as any other: the reference closes only its live actions. A
 ` match region selects the first arm whose pattern its subject matches (`read-patterns`), and
 ` its function selects again whatever arm the region holds, asking nothing of the region first,
@@ -23186,7 +22971,7 @@ if !is-markup-host(parent)
     frame.diagnose
         - id
         - .stated
-        - program.store-atom("Dynamic markup branch parent must implement MarkupHost")
+        - program.store-atom("Dynamic markup branch parent must implement MarkupElement")
     = invalid-type
 . tree-host = derived-interface(parent, types.markup-tree-host-decl)
 . content = if tree-host != no-type then first-arg(tree-host) else no-type
@@ -23199,6 +22984,10 @@ if content == no-type || content == invalid-type
 . resolution = bindings.resolution-of(frame.binding, id)
 if types.intrinsic-of(content) != .class || resolution.kind != .resolve-slot || is-batch(content)
     decline(id)
+    = invalid-type
+if !makes-region(parent)
+    frame.diagnose(id, .stated, program.store-atom(message))
+    .. message = "Markup branch host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
     = invalid-type
 . builder = types.well-known-type-of("core/markup", "MarkupBranchBuilder", content)
 . list = types.well-known-type-of("core/list", "List", builder)
@@ -23245,19 +23034,17 @@ scratch.types.push(selected)
     - 2
 scratch.types.rewind(mark)
 scratch.types.push(content)
-scratch.types.push(parent)
-scratch.types.push(parent)
 scratch.types.push(content)
 scratch.types.push(selected)
 . matched = tree.nodes[id] is .node-match-expression || slot-parameter
     .. slot-parameter = tree.nodes[id] is .node-markup-slot-parameter
-. keeps = if matched then no-instance else calls.demand-runtime-call(markup, no-type, program.store-atom("markup-branch-region-keeps-arm"), mark, 2)
+. keeps = if matched then no-instance else calls.demand-runtime-call(markup, no-type, program.store-atom("markup-branch-region-keeps-arm"), mark, 1)
 . select = calls.demand-runtime-call
     - markup
     - no-type
     - program.store-atom("markup-select-branch-region")
     - mark
-    - 2
+    - 1
 scratch.types.rewind(mark)
 . batched = rooted || hosted
 . trackers = if live.trackers != no-instance then trackers-type else no-type
@@ -23335,10 +23122,10 @@ _ do mark-structural InstanceId
 ` The call that marks the action of a markup region structural, given the host that owns the
 ` action as the reference's `markupLiveAction` does: the parent of a branch or the region of a
 ` loop, where that is a markup host, so a batch runs the actions of outer regions before those
-` of inner ones. The host, converted at the `if` or `for` to the `MarkupHost` it is, is converted
+` of inner ones. The host, converted at the `if` or `for` to the `MarkupElement` it is, is converted
 ` there again to the optional the call takes. Where the owner is no markup host the call is
 ` given none.
-. host = types.well-known-type("core/markup", "MarkupHost")
+. host = types.well-known-type("core/markup", "MarkupElement")
 . optional = types.optional-of(host)
 . mark = scratch.types.mark
 scratch.types.push(types.live-action-type)
@@ -23647,6 +23434,17 @@ finish-errors(frame)
 close()
 
 ────────────────────
+_ do makes-region Bool
+    - host TypeId
+
+` Whether a markup host makes the regions of live loops and branches: a class declares
+` `markup-make-region`, itself or in a base class, which the markup runtime calls for an empty
+` region of the host's content to hold the region's controller. A host that is no class is left
+` to the runtime.
+=? true if types.intrinsic-of(host) != .class
+= declares-method(host, program.store-atom("markup-make-region"))
+
+────────────────────
 _ do check-loop-region TypeId
     - id SyntaxId
     - parent TypeId
@@ -23657,13 +23455,14 @@ _ do check-loop-region TypeId
 ` Its container is read in a live action of the region's own, where its read of a collection
 ` is no change the action follows, since the region observes the collection itself, and is the
 ` region's source as `loop-source` says. The host the `for` is content of must be a
-` `MarkupHost`, whose `MarkupTreeHost` gives the type of its content. Each row is built by a
+` `MarkupElement`, whose `MarkupParent` gives the type of its content. Each row is built by a
 ` function of its own given the item, which gives one element as the host's content, made a
 ` `MarkupRowBuilder` at the `for`; that of a keyed loop over a collection is given a
 ` `MarkupRowItem` that holds the item, and made a `MarkupCollectionRowBuilder`. The key's
 ` function is made a `MarkupKeyBuilder` at its clause. The markup runtime makes the region of
-` the host, the source and the builders, as `loop-source` says, keyed where the loop is; the
-` region is the line's value, which the host takes. The host and the region are kept, in the
+` the host, the builders and the source, given last, as `loop-source` says, keyed where the loop
+` is, and gives the region a source again by a replacer of its own; the region is the line's
+` value, which the host takes. The host and the region are kept, in the
 ` two locals no name reaches declared at the `for`, for the function that reads the container
 ` again, which the action runs: made by
 ` `make-owner-markup-action`, owned by the region and marked structural. Where a batch is found
@@ -23671,7 +23470,8 @@ _ do check-loop-region TypeId
 ` put under it by `ensure-markup-root` once made; where one is in force it is kept in a third
 ` local no name reaches, which the rows are built under, and the action is made with it by
 ` `make-markup-action`. One whose region is no class is declined; one of a class with events
-` is kept as any other, as the reference keeps it.
+` is kept as any other, as the reference keeps it. One whose content is a class and whose host
+` makes no regions, as `makes-region` says, is an error at the `for`.
 . loop SyntaxId = 0
 . body SyntaxId = 0
 do match? tree.nodes[id]
@@ -23727,7 +23527,7 @@ if !is-markup-host(parent)
     frame.diagnose
         - id
         - .stated
-        - program.store-atom("Dynamic markup loop parent must implement MarkupHost")
+        - program.store-atom("Dynamic markup loop parent must implement MarkupElement")
     = invalid-type
 . tree-host = derived-interface(parent, types.markup-tree-host-decl)
 . content = if tree-host != no-type then first-arg(tree-host) else no-type
@@ -23736,6 +23536,10 @@ if content == no-type || content == invalid-type || types.completions[content].h
         - id
         - .stated
         - program.store-atom("Dynamic markup loop host content type could not be resolved")
+    = invalid-type
+if types.intrinsic-of(content) == .class && !makes-region(parent)
+    frame.diagnose(id, .stated, program.store-atom(message))
+    .. message = "Markup loop host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
     = invalid-type
 if !one-element(body)
     = invalid-type
@@ -23788,13 +23592,10 @@ scratch.types.push(content)
 scratch.types.push(parent)
 scratch.types.push(held)
 scratch.types.push(parent)
-if !optional
-    scratch.types.push(source)
 scratch.types.push(builder)
 if keyer != no-type
     scratch.types.push(keyer)
-if optional
-    scratch.types.push(source)
+scratch.types.push(source)
 . creates = "markup-create-${if optional then "optional-" else ""}${if keyed != 0 then "keyed-" else ""}${found.kind}-region"
 . create = calls.demand-runtime-call(markup, no-type, program.store-atom(creates), mark, 4)
 scratch.types.rewind(mark)
@@ -23802,23 +23603,17 @@ scratch.types.rewind(mark)
 if types.intrinsic-of(made) != .class || !is-markup-host(made) || live.has-actions == no-instance
     decline(id)
     = invalid-type
-. replace = no-instance
-if optional
-    scratch.types.push(item)
-    scratch.types.push(made)
-    scratch.types.push(held)
-    scratch.types.push(made)
-    scratch.types.push(source)
-    replace = calls.demand-runtime-call
-        - markup
-        - no-type
-        - program.store-atom("markup-replace-optional-${found.kind}-source")
-        - mark
-        - 3
-    scratch.types.rewind(mark)
-    if replace == no-instance
-        decline(id)
-        = invalid-type
+scratch.types.push(item)
+scratch.types.push(made)
+scratch.types.push(held)
+scratch.types.push(made)
+scratch.types.push(source)
+. replaces = "markup-replace-${if optional then "optional-" else ""}${found.kind}-source"
+. replace = calls.demand-runtime-call(markup, no-type, program.store-atom(replaces), mark, 3)
+scratch.types.rewind(mark)
+if replace == no-instance
+    decline(id)
+    = invalid-type
 . host = derived-interface(made, types.markup-host-decl)
 scratch.types.push
     - if live.trackers != no-instance then instances.signatures[live.trackers].returns else no-type
@@ -24172,8 +23967,9 @@ _ do check-source-update
 ` The function the action of a markup loop region runs: it reads the container again, where its
 ` read of a collection is no change the action follows and a member of the region's host read by
 ` its name alone is read from the host, kept where the region was made, and gives what it gives
-` to the region, kept there too, by the region's `replace-source`. What that raises leaves the
-` function, and the callback that runs it, as the reference's does.
+` to the region, kept there too, by the markup runtime's replacer for the region's source, which
+` hands it to the region's controller. What that raises leaves the function, and the callback that
+` runs it, as the reference's does.
 prepare()
 instances.set-returns(instance, types.void-type, types.void-type, .return-declared)
 . resolution = bindings.resolution-of(frame.binding, id)
@@ -24198,23 +23994,8 @@ content-parents.pop()
 content-names.pop()
 . source = if read != invalid-type then loop-source(id, container, read).given else no-type
 . replace = if outer then outer.region.replace else no-instance
-if source != expected
+if source != expected || replace == no-instance || !raises-out(id, replace)
     decline(id)
-else if replace != no-instance
-    if !raises-out(id, replace)
-        decline(id)
-else
-    . replaced = calls.protocol-call
-        - frame.slot-type(resolution.slot + 1)
-        - program.store-atom("replace-source")
-        - id
-        - source
-        - true
-        - no-type
-        - no-type
-        - true
-    if replaced.answer == invalid-type || replaced.fact == no-fact
-        decline(id)
 finish-errors(frame)
 close()
 
@@ -26668,18 +26449,6 @@ if !named
     frame.diagnose(id, .stated, program.store-atom("Fork target is not a Worker"))
 
 ────────────────────
-+ do decline-used-members
-
-` Declines each member of a class of the module that no pass models, once nothing is left to
-` type and the program runs code of the class. The reference compiles nothing a class holds
-` until the class is used, so a class whose code never runs changes nothing a program makes.
-. undeclared = program.modules[module].undeclared
-for position in 0 .. < undeclared.length
-    . owner = program.modules[module].undeclared-owners[position]
-    if owner != 0 && runs-class(owner)
-        decline(undeclared[position])
-
-────────────────────
 _ do runs-class Bool
     - owner DeclId
 
@@ -26702,116 +26471,6 @@ for instance in 0 .. < instances.length
 = false
 
 ────────────────────
-+ do demand-panic-report
-
-` Types what the report of an unhandled panic calls, and notes the instances for emission:
-` the converters of the panic and of its source to text, the source's constructor, the
-` check for a terminating task with the panic it raises, and the constructor of a panic from
-` a message.
-. report = instances.report
-. panic = types.panic-type
-report.message = conversions.demand-converter(panic, types.string-type)
-. message-mark = scratch.types.mark
-scratch.types.push(types.string-type)
-report.panic = calls.demand-constructor(panic, message-mark)
-scratch.types.rewind(message-mark)
-. termination = types.termination-type
-report.termination-error = calls.demand-constructor(termination, scratch.types.mark)
-. error-module = class-ref(types, termination).module
-. decls = program.modules[error-module].decls
-for position in 0 .. < decls.length
-    do match? decls[position]
-        | .decl-function(fn)
-            if fn.kind == .termination-panic-decl
-                . check = position as DeclId
-                report.termination = instances.intern(error-module, check, no-type, 0, no-instance)
-. found = types.property-named(panic, program.store-atom("source"))
-if found
-    . property = types.properties[found]
-    . declared = property.type
-    . source = if undeclared then demand-member(property, panic, property.name) else declared
-        .. undeclared = declared == no-type
-    report.source-slot = property.slot
-    if types.is-optional(source)
-        . inner = types.optional-inner(source)
-        report.source-text = conversions.demand-converter(inner, types.string-type)
-        . mark = scratch.types.mark
-        for field in types.properties-of(inner)
-            if field.storage-kind != .storage-getter
-                scratch.types.push(field.type)
-        report.source = calls.demand-constructor(inner, mark)
-        scratch.types.rewind(mark)
-. traced = types.property-named(panic, program.store-atom("trace"))
-if traced
-    report.trace-slot = types.properties[traced].slot
-. linked = types.property-named(panic, program.store-atom("previous"))
-if linked
-    report.previous-slot = types.properties[linked].slot
-instances.report = report
-
-────────────────────
-+ do demand-probe-runtime
-
-` Types what a program whose probes compile calls of the probes module of its own accord, and
-` notes the instances for emission (see `ProbeRuntime`), with what the report of an error calls,
-` since an error that leaves a function of the module is reported where it is called.
-. runtime = instances.probe-runtime
-runtime.demanded = true
-. found = program.module-by-name(probes-module-name)
-if !found
-    instances.probe-runtime = runtime
-    =
-. probes = found as ModuleId
-. size = types.size-type
-. text = types.string-type
-. short = types.type-row(.uint16)
-. long = types.type-row(.uint32)
-. none [TypeId]
-runtime.argument-type = types.well-known-type(probes-module-name, "ProbeType")
-runtime.begin = probe-runtime-call(probes, "probes-begin", none)
-runtime.counter-setup = probe-runtime-call(probes, "probe-counter-setup", [size])
-runtime.profile-setup = probe-runtime-call(probes, "probe-profile-setup", [size])
-runtime.declare-key = probe-runtime-call(probes, "probe-declare-key", [text])
-runtime.declare-type = probe-runtime-call(probes, "probe-declare-type", [short, text])
-runtime.declare-log = probe-runtime-call
-    - probes
-    - "probe-declare-log2"
-    - [short, text, text, text, text, text, long, long]
-runtime.declare-event = probe-runtime-call
-    - probes
-    - "probe-declare-event"
-    - [short, text, text, text, long]
-runtime.declare-counter = probe-runtime-call
-    - probes
-    - "probe-declare-counter"
-    - [short, text, text, text, long]
-runtime.declare-argument = probe-runtime-call
-    - probes
-    - "probe-declare-argument"
-    - [runtime.argument-type, short]
-runtime.declare-profile-metric = probe-runtime-call
-    - probes
-    - "probe-declare-profile-metric"
-    - [short, text, types.type-row(.uint8), text, text, long, short]
-runtime.counter-add = probe-runtime-call
-    - probes
-    - "probe-counter-add"
-    - [short, types.type-row(.uint64)]
-runtime.ready = probe-runtime-call(probes, "probes-ready", none)
-runtime.collector-counts = probe-runtime-call
-    - probes
-    - "probe-gc-counter-flush"
-    - [short, short, short]
-runtime.end = probe-runtime-call(probes, "probes-end", none)
-runtime.task-flush = probe-runtime-call(probes, "probe-task-flush", none)
-runtime.safepoint = probe-runtime-call(probes, "probe-safepoint-flush-if-needed", none)
-instances.probe-runtime = runtime
-for callee in [runtime.begin, runtime.counter-setup, runtime.profile-setup, runtime.declare-key, runtime.declare-type, runtime.declare-log, runtime.declare-event, runtime.declare-counter, runtime.declare-argument, runtime.declare-profile-metric, runtime.counter-add, runtime.ready, runtime.collector-counts, runtime.end, runtime.task-flush, runtime.safepoint]
-    if callee != no-instance
-        demand-errors(callee)
-conversions.demand-error-report()
-
-────────────────────
 _ do probe-runtime-call InstanceId
     - probes ModuleId
     - name String
@@ -26823,19 +26482,6 @@ for argument in arguments
 . callee = calls.demand-runtime-call(probes, no-type, program.store-atom(name), mark)
 scratch.types.rewind(mark)
 = callee
-
-────────────────────
-+ do demand-union-error
-
-` Types what an unwrapped union that holds another case raises: the error's constructor and
-` the converter that gives the panic its message, with the report they are raised through.
-if instances.report.union-error != no-instance
-    =
-. error = types.union-error-type
-. made = calls.demand-constructor(error, scratch.types.mark)
-. text = conversions.demand-converter(error, types.string-type)
-instances.report.union-error = made
-instances.report.union-text = text
 
 ────────────────────
 _ optional-chained Bool
@@ -30320,36 +29966,6 @@ decline(id)
 = invalid-type
 
 ────────────────────
-+ do note-enum-case
-    - about TypeId
-    - name Atom
-    - site SyntaxId
-    - settles Bool = true
-
-` Notes the case a site names as one of `about`, which `settles` where something expected of it
-` is a type with the case (`leave-unfound`).
-if settles
-    calls.settle-unfound(site)
-if calls-symbol(site)
-    . busy = calls.suspend-ranking()
-    infer-with-expected(site, about)
-    calls.resume-ranking(busy)
-    =
-note-case(site, about, name)
-. is-union = types.intrinsic-of(about) == .union
-if is-union && (enum-case-value(about, name) ?? 0) == 0
-    =
-if !is-union && !types.completion-of(about).has-enums
-    =
-. member = enum-case-decl(types, program, about, name)
-if !member
-    =
-. home = class-ref(types, about).module
-demand-body(instances.intern-initializer(home, member, about))
-. place = (home as U64) * 4294967296 + (member as U64)
-facts.set-constant(instance, site, ConstantFact(place, 0.0, null, false), .plan-enum-value)
-
-────────────────────
 _ do note-case
     - site SyntaxId
     - about TypeId
@@ -30407,37 +30023,6 @@ if types.intrinsic-of(about) == .union
             =
         position += 1
 conversions.convert(site, site, literal, about, .reason-assignment, true, true)
-
-────────────────────
-+ do note-enum-number
-    - site SyntaxId
-    - about TypeId
-
-` Types what a number converted to an enum by its place needs, at the node the conversion is
-` recorded at: every value the enum declares is made, and the enum is constructed with
-` nothing given for a number that is no value's place. The construction is recorded only at
-` a node no call is recorded at.
-. ref = class-ref(types, about)
-if ref.module == U32.max || site == 0
-    =
-. home = program.modules[ref.module]
-for member in 0 .. < home.decls.length
-    do match? home.decls[member]
-        | .decl-case(row)
-            if row.owner == ref.decl
-                demand-body(instances.intern-initializer(ref.module, member as DeclId, about))
-if facts.first-call(instance, site) != no-fact
-    =
-. shapes-start = scratch.call-arguments.mark
-. types-start = scratch.types.mark
-. syntax-start = scratch.syntax.mark
-. arguments = arguments-since(shapes-start, types-start, syntax-start, scratch.no-types)
-calls.construction-on(site, about, arguments)
-. fact = facts.first-call(instance, site)
-while fact != no-fact
-    if facts.calls[fact].form == .call-constructor
-        facts.calls[fact].form = .call-enum-default
-    fact = facts.calls[fact].next
 
 ────────────────────
 _ do make-case
@@ -30675,18 +30260,6 @@ match tree.nodes[expr]
         0
 
 ────────────────────
-+ do note-symbol-choice
-    - about TypeId
-    - expr SyntaxId
-
-. chosen = symbol-choice(expr)
-if chosen == 0
-    =
-note-symbol-arm(about, chosen)
-note-symbol-arm(about, other-side(expr))
-facts.replace-node-type(instance, expr, about)
-
-────────────────────
 _ do note-symbol-arm
     - about TypeId
     - arm SyntaxId
@@ -30711,118 +30284,11 @@ frame.surround = caught
 = type
 
 ────────────────────
-+ do lambda-fit TypeId
-    - closure TypeId
-    - args ImmutableArray'TypeId'ArenaBacking
-
-` The type a closure returns for the arguments a candidate of a call would pass it, or the
-` invalid type when its body does not type with them: that candidate is not the one, and what
-` the body got wrong under it is not reported. A body that was refused says nothing of the
-` candidate, so the function being typed is refused with it.
-. diagnosed = facts.diagnostics.length
-. callee = demand-lambda(closure, args)
-if callee == no-instance
-    = invalid-type
-demand-errors(callee)
-. declined = facts.declined-since(diagnosed, callee)
-if facts.drop-diagnostics(diagnosed, callee)
-    instances.set-returns(callee, invalid-type, no-type, .return-failed)
-    if declined
-        decline(frame.declaration.syntax)
-    = invalid-type
-. signature = instances.signatures[callee]
-if signature.return-state == .return-pending
-    = invalid-type
-= signature.returns
-
-────────────────────
-+ do binding-return BoundReturn
-    - binding TypeId
-    - args ImmutableArray'TypeId'ArenaBacking
-    - asked Bool = false
-
-= calls.bound-return(binding, args, asked)
-
-────────────────────
-+ do whole-answer TypeId
-    - callable TypeId
-    - returned TypeId
-    - args ImmutableArray'TypeId'ArenaBacking
-    - declared RowRange'TypeId
-    - bound InstanceId
-
-` What a closure or a binding answers a function type whose return nothing has bound yet:
-` what it returns, or its value or one of its errors where it raises. A parameter of the
-` type bound so is how an error crosses a value of the type. A binding's is asked after
-` `binding-return`, which found what the binding calls (`bound`).
-. binds = types.completions[callable].intrinsic == .binding
-. callee = if binds then bound else demand-lambda(callable, args)
-if callee == no-instance
-    = returned
-demand-errors(callee)
-. signature = instances.signatures[callee]
-if signature.errors.count == 0
-    = returned
-. mark = scratch.types.mark
-for offset in 0 .. < signature.errors.count
-    . error = instances.signature-types[signature.errors.start + offset]
-    if !declares-error(declared, error)
-        scratch.types.push(error)
-=? returned if scratch.types.length == mark
-= result-type(types, if returned == no-type then types.void-type else returned, mark)
-
-────────────────────
 _ declares-error Bool
     - declared RowRange'TypeId
     - error TypeId
 
 some(0 .. < declared.count) • where is-subtype(types, error, types.child-type(declared, each))
-
-────────────────────
-+ do default-type TypeId
-    - owner ModuleId
-    - decl DeclId
-    - receiver TypeId
-    - syntax SyntaxId
-    - params ImmutableArray'TypeId'ArenaBacking
-
-` Types the default of an argument that declares no type on an instance that is never checked,
-` for a call to take the argument's type from.
-. none = scratch.no-types
-. probe = instances.intern(owner, decl, receiver, 0, no-instance, params, none, false)
-. checker = checker-for(session, probe, null, true)
-checker.prepare()
-. value = checker.infer(syntax)
-checker.close()
-checker.retire()
-= value
-
-────────────────────
-+ do demand-lambda InstanceId
-    - closure TypeId
-    - args ImmutableArray'TypeId'ArenaBacking
-
-. owner = 0u32
-. nested-decl = 0u32
-. enclosing = instance
-do match? types.rows[closure]
-    | .type-closure(row)
-        owner = row.module
-        nested-decl = row.decl
-        enclosing = row.enclosing
-if nested-decl == 0
-    = no-instance
-. effects = callee-effects(frame, owner, nested-decl)
-. callee = instances.intern(owner, nested-decl, no-type, effects, enclosing, scratch.no-types, args)
-if instances.rows[callee].state != .instance-unstarted
-    = callee
-. live = if enclosing == instance then this else definer(enclosing)
-. writer = live ?? settled(enclosing)
-writer.share-captures(nested-decl)
-run-within(callee, writer)
-if !live
-    writer.dismiss()
-= callee
 
 ────────────────────
 _ do run-within [Narrowed]
@@ -30837,17 +30303,6 @@ _ do run-within [Narrowed]
 checker.run()
 checker.retire()
 = checker.region-left
-
-────────────────────
-+ do run-after-enclosing
-
-` Types the instance, written in another that has finished, with a checker that holds each local
-` as that one left it (`settled`), as a closure called after it finished is (`demand-lambda`).
-. writer = settled(instances.rows[instance].enclosing)
-writer.share-captures(instances.rows[instance].decl)
-outer = writer
-run()
-writer.dismiss()
 
 ────────────────────
 _ do settled Checker
@@ -31413,26 +30868,6 @@ if hidden-member(id, owner, name, "an event")
 . message = "\"${name.text}\" is an event of ${owner-name}; it cannot be used as a value"
     .. owner-name = type-short-name(types, owner)
 frame.diagnose(id, .stated, program.store-atom(message))
-
-────────────────────
-+ do misused-endpoint Bool
-    - syntax SyntaxId
-
-` Whether a node that names an event, given to a call as its endpoint, is converted by a
-` converter, as the reference converts no endpoint: reported as `refuse-event-value` says.
-. place = syntax
-do match? tree.nodes[syntax]
-    | .node-argument(row)
-        place = row.expr
-. position = endpoint-arguments.find(place)
-if position == null
-    = false
-. event = endpoint-events[position]
-refuse-event-value(place, event.owner, event.name)
-. kept = kept-arguments.find(place)
-if kept != null
-    kept-arguments[kept] = 0
-= true
 
 ────────────────────
 _ do settle-kept-arguments
@@ -33145,23 +32580,6 @@ _ slot-frame Frame
 if outer && frame.is-captured(slot) then outer.slot-frame(slot) else frame
 
 ────────────────────
-+ in-eager Bool
-
-` Whether this is the initializer of an eager property, or a closure written in one: neither
-` the object under construction nor its getters can be read there. A state machine a property
-` holds runs on the object, which the reference gives it, and is neither. Nor is a lambda
-` written in a line of a root `<This`, which reads the object as one the class's markup writes
-` for a child does.
-|? reading.eager
-    true
-|? frame.declaration.kind == .machine-decl
-    false
-|? frame.declaration.kind == .closure-decl && outer != null && outer.root-value() != 0
-    false
-??
-    outer != null && outer.in-eager()
-
-────────────────────
 _ do pointer-to TypeId
     - target TypeId
 
@@ -33485,20 +32903,6 @@ types.complete(receiver)
 if types.completions[receiver].intrinsic != .cpointer
     = no-type
 = pointee-of(types, receiver)
-
-────────────────────
-+ do demand-property TypeId
-    - owner U32
-    - property DeclId
-
-. literal = core-literal-type(owner, property)
-if literal != no-type
-    = literal
-. written = 0u32
-do match? program.modules[owner].decls[property]
-    | .decl-property(row)
-        written = row.syntax
-= demand-initializer(instances.intern-initializer(owner, property, no-type), written)
 
 ────────────────────
 _ core-literal-type TypeId
@@ -36073,121 +35477,6 @@ do match? owner-module.decls[frame.decl]
             position += 1
 = U32.max
 
-
-────────────────────
-+ do truth-callee InstanceId
-    - type TypeId
-
-` The function that says whether a value of a class or a text is empty, which a conversion
-` of the value to a Bool calls. No instance for a value of any other type.
-. completion = types.completion-of(type)
-if completion.intrinsic != .class && completion.intrinsic != .string
-    = no-instance
-if completion.intrinsic == .class && completion.is-builtin
-    = no-instance
-= calls.demand-method(type, program.store-atom("!"))
-
-────────────────────
-+ do record-witness
-    - from TypeId
-    - to TypeId
-
-` A value made a value of an interface. Where its type carries errors of its own, as a
-` generator that raises does, a function of the interface that carries none panics with the
-` error's text where the type's raises one, so the text of each is made. Where an object of a
-` class is made one, the class must use the styles the interface does (`conform-styles`).
-facts.record-witness-table(from, to)
-if types.intrinsic-of(from) == .class && types.intrinsic-of(to) == .interface
-    conform-styles(from, to)
-do match? types.rows[from]
-    | .type-class(row)
-        if row.errors.count != 0
-            for offset in 0 .. < row.errors.count
-                conversions.demand-converter
-                    - types.child-type(row.errors, offset)
-                    - types.string-type
-            conversions.demand-error-report()
-
-────────────────────
-+ do demand-member TypeId
-    - fact TypeProperty
-    - receiver TypeId
-    - name Atom
-    - replay Bool = false
-    - for-below Bool = false
-
-` `for-below` asks for the type on behalf of a class below that declares the property again.
-` A value that is being typed has no type to give such a class, and is not a circle: the
-` class below takes its own value's type. A stored property's value is evaluated by the
-` constructor of each class that holds it, and is typed for that class. A lazy property of a
-` class is evaluated by one function, which the classes below share: its value is typed
-` once, for the class that declares it, as the reference types it. So is a state machine a
-` property of a class holds: the classes below that declare it no value of their own start
-` the one typed for the class that declares it, and share its functions, and those that refine
-` it share it as a piece of theirs (`MachineComposite`). A class that declares a property with
-` no value and gives it one in a root `<This` writes its type in one and its value in the
-` other. One a line of a class's markup declares has the type of the value the line gives it
-` (`content-property-type`), and one that projects a case of a machine of the markup the
-` optional of what the case holds (`projection-type`). A state machine that refines one a class
-` above declares, read while that one is typed, has the type it has from above and is typed
-` later (`refines-in-progress`).
-. ref = declaring-class(types, fact.owner, name)
-if ref.module == 0 && ref.decl == 0
-    = invalid-type
-. owner-module = program.modules[ref.module]
-. target = 0u32
-. initializer = 0u32
-. annotation = 0u32
-. written = 0u32
-. members = RowRange'DeclId()
-do match? owner-module.decls[ref.decl]
-    | .decl-class(row)
-        members = row.members
-. place = owner-module.first-member(members, name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
-    do match? owner-module.decls[member]
-        | .decl-property(row)
-            if row.name && row.name == name
-                if target == 0 || (initializer == 0 && row.value != 0)
-                    target = member
-                    written = row.syntax
-                    initializer = row.value
-                if row.type-syntax != 0
-                    annotation = row.syntax
-if target == 0 && fact.type == no-type && fact.storage-kind == .storage-getter
-    = calls.protocol-getter(receiver, name)
-if target != 0
-    do match? owner-module.decls[target]
-        | .decl-property(row)
-            if row.line != 0
-                = content-property-type(ref, row.line)
-            if row.projection != 0
-                = projection-type(ref, row.projection, receiver)
-if target == 0 || initializer == 0
-    = if fact.type != no-type then fact.type else invalid-type
-. machine = owner-module.tree.declared-machine(initializer) != 0
-. shared = lazily-held && intrinsic-is-class(types.intrinsic-of(receiver))
-    .. lazily-held = fact.storage-kind == .storage-lazy || machine
-. holder = if shared then holding-type(receiver, ref) else receiver
-. unit = instances.intern-initializer(ref.module, target, holder)
-if for-below && instances.rows[unit].state == .instance-in-progress
-    = no-type
-if instances.rows[unit].state == .instance-unstarted
-    . declared = if annotation != 0 then fact.type else first-type(fact, name)
-    if declared != no-type && instances.rows[unit].state == .instance-unstarted
-        instances.signatures[unit].declared-returns = declared
-    if declared != no-type && machine && refines-in-progress(ref, name, holder)
-        = declared
-last-unit = unit
-. value = demand-initializer(unit, written)
-last-unit = unit
-if replay && instances.rows[unit].state == .instance-done
-    replay-member(unit)
-. stated = instances.signatures[unit].declared-returns
-= if stated != no-type && value != invalid-type then stated else value
-
 ────────────────────
 _ do refines-in-progress Bool
     - ref DeclRef
@@ -36370,24 +35659,14 @@ if given == no-type
 = if given == invalid-type then no-type else given
 
 ────────────────────
-+ do bind-this
-    - receiver TypeId
-
-` An initializer of a class's property is typed in the module's own frame, where `this` is
-` the object the property belongs to.
-for offset in 0 .. < frame.slots.count
-    . slot = frame.slots.start + offset
-    if bindings.slots[slot].kind == .slot-this
-        frame.assign(slot, receiver)
-
-────────────────────
 _ is-accessor Bool
     - receiver TypeId
     - name Atom
 
-if found then types.properties[found].storage-kind == .storage-getter else false
+if found then types.properties[found].storage-kind == .storage-getter else inherited
 
 .. found = types.property-named(receiver, name)
+.. inherited = types.intrinsic-of(receiver) == .class && interface-accessor(receiver, name) != null
 
 ────────────────────
 _ do infer-call Found
@@ -43095,7 +42374,6 @@ _ do sliced-text TypeId
 ` The type of the text a part of a stream pattern gives as `record-stream-text` records it.
 = if record-stream-text(id) then types.string-type else invalid-type
 
-
 ────────────────────
 _ do source-candidates [TypeId]
     - result TypeId
@@ -43884,13 +43162,6 @@ _ encoded Bool
 ` Whether the buffer of the stream a pattern reads holds the UTF-8 bytes of the characters the
 ` stream gives, as a `TextTokenStream`'s text view does, rather than the characters.
 stream-view.buffer != no-type && class-arg(types, stream-view.buffer, 0) != stream-view.item
-
-────────────────────
-_ get buffer-item TypeId
-
-` The type of the items the buffer of the stream a pattern reads holds: the stream's items, or
-` bytes where it is `encoded`.
-if stream-view.buffer != no-type then class-arg(types, stream-view.buffer, 0) else stream-view.item
 
 ────────────────────
 _ do view-name Atom
@@ -44809,15 +44080,6 @@ decline(id)
 = invalid-type
 
 ────────────────────
-_ get beside-rule Bool
-
-` Whether the local rules being typed are those of a rule a module declares, beside its own
-` pattern, rather than those of a match.
-rule-streaming.matched == 0 && own-match != 0
-
-.. own-match = rule-match(program, instances.rows[instance].module, instances.rows[instance].decl)
-
-────────────────────
 _ do local-rule-declared TypeId
     - rule SyntaxId
 
@@ -45419,13 +44681,6 @@ if action-selects
     pattern-arms = pattern-arms.selects = true
 action-selects = false
 = planned
-
-────────────────────
-_ get own-helper Bool
-
-` Whether the helper in force is the rule's own: the one this instance is typed for, or the one
-` the rule is given as an argument.
-rule-helper-site != 0 && helping.site == rule-helper-site
 
 ────────────────────
 _ do helped-callee InstanceId
@@ -47513,13 +46768,6 @@ for fact in types.cases-of(held)
 = found
 
 ────────────────────
-+ has-items Bool
-    - type TypeId
-
-` Whether a type has items a list pattern reads: one that is `Indexable` and no text.
-type != types.string-type && implements(type, types.indexable-decl)
-
-────────────────────
 _ do structured-case TypeId
     - subject TypeId
     - wanted DeclRef
@@ -48991,6 +48239,796 @@ do match? tree.nodes[lhs]
             ??
                 = invalid-type
 = infer(lhs)
+
+━━━━━━━━━━━━━━━━━━━━
++ do checker-for Checker
+    - session Session
+    - instance InstanceId
+    - around Checker? = null
+    - probe Bool = false
+    - nested Bool = false
+    - trial SyntaxRange = SyntaxRange(0, 0)
+
+` A checker for an instance, with the settings `Checker` takes. The kit of a checker that has
+` finished is kept and used again, because making one allocates its frame, its calls, and every
+` list they hold. The first checker a session makes lists its declarations before it types
+` anything (`Checker.list-declarations`).
+. idle = session.scratch.idle
+if idle.length == 0
+    . made = Checker(session, instance, CheckerKit(session), around, probe, nested, trial)
+    made.list-declarations()
+    = made
+. parts = idle[idle.length - 1] as CheckerKit
+idle.pop()
+= Checker(session, instance, parts, around, probe, nested, trial)
+
+━━━━━━━━━━━━━━━━━━━━
++ do type-written-in Bool
+    - session Session
+
+` Types each instance written in another that the passes of a parallel type pass typed and none is
+` taken from (`Instances.written-in`), once the one it was written in is typed and did not type it
+` in its run, as a closure called after that one finished is typed (`Checker.run-after-enclosing`).
+` Says whether it typed any.
+. instances = session.instances
+. waiting = instances.written-in
+. typed = false
+. kept = 0
+for position in 0 .. < waiting.length
+    . id = waiting[position]
+    . row = instances.rows[id]
+    if row.state != .instance-unstarted
+        continue
+    . around = instances.rows[row.enclosing].state
+    if around != .instance-done && around != .instance-failed
+        waiting[kept] = id
+        kept += 1
+        continue
+    . checker = checker-for(session, id)
+    checker.run-after-enclosing()
+    checker.retire()
+    typed = true
+while waiting.length > kept
+    waiting.pop()
+= typed
+
+━━━━━━━━━━━━━━━━━━━━
+_ LoopContainer is Tuple
+
++ type TypeId
++ item TypeId
+
+━━━━━━━━━━━━━━━━━━━━
+_ ThemeScope is Tuple
+
++ made TypeId
++ sheet TypeId
++ statement SyntaxId
++ number U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ ClassName is Tuple
+    is Hashable
+
+` What tells a class apart from the others of its module: its name and the number of type
+` parameters it takes.
+
++ name Atom
++ arity U32
+
+╌╌╌╌╌╌╌╌╌╌ is Hashable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get hash Hash
+
+hash-for(name) /xor/ hash-for(arity)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ this == other This
+
+name == other.name && arity == other.arity
+
+━━━━━━━━━━━━━━━━━━━━
+_ RowCursor is Tuple
+
+` A slot a pattern bound to the case of a row of a table of unions, and what it stands for.
+
++ slot SlotId
++ capture RowCapture
+
+━━━━━━━━━━━━━━━━━━━━
+_ AssumedResult is Tuple
+
+` What an action under a helper took for the type its pattern's arms give where they declare
+` none, the type of its own value, and what its choices rest on: whether a name it reads
+` selected a materializer, whether it is `it` alone, and where it is a captured name alone,
+` what that name holds and whether it holds text; the action, the pattern it follows and its
+` expression; and the value materializer taken to make its value again, which is called only
+` once the arms are known to give that type.
+
++ value TypeId
++ selects Bool
++ forwards-it Bool
++ forwarded TypeId
++ backed Bool
++ site SyntaxId
++ pattern SyntaxId
++ body SyntaxId
++ interface TypeId
+
+━━━━━━━━━━━━━━━━━━━━
+_ NamedEvent is Tuple
+
+` An event a node names: the class that declares it, as the object's type has it, its name,
+` what it publishes, and the type of its key where it is published by key, with the node that
+` indexes it with a key where one does. A private event does not bubble.
+
++ owner TypeId
++ name Atom
++ payload TypeId
++ key TypeId = no-type
++ address SyntaxId = 0
++ is-private Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ CalledObject is Tuple
+
+` The object a method is called on, typed before the arguments of the call as the reference
+` evaluates it (`type-called-object`): its node, its type, what it links an optional chain to,
+` and the event it names where it names one.
+
++ object SyntaxId = 0
++ type TypeId = no-type
++ link TypeId = no-type
++ event NamedEvent? = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ FoldedNumber is Tuple
+
+` The bits a constant number folds to, where it `folds`.
+
++ bits U64
++ folds Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ WantRole is U32
+
+` What the context of a node asks of it. Of the type it expects: a function given as a value
+` chosen by a condition is of that type (`want-fitting`), the sides of `if condition then value
+` else other` are joined at it (`want-choice`), a case a call names by its symbol alone is one of
+` it (`want-owner`), and a value that leaves the node there is of it, so that an event the node
+` names gives its endpoint where the type is the event's `Broadcastable`, reported at the place
+` asked (`want-escape`). Of an event the node names: it is an argument of a call
+` (`want-argument`), the container of a loop that adapts it (`want-adapt`), asked for itself
+` (`want-event`), or the value of a property stored to (`want-store`). And of the node itself: it
+` is the object a member is read from or called on, which `super` may be (`want-receiver`), a
+` statement whose value nothing uses (`want-unused`), one of the statements a function gives its
+` value from (`want-quasi`), a statement (`want-statement`), the operand of `!`, which reads
+` what a property holds where the flow knows it holds a value (`want-forced`), a match written
+` as a statement, whose arms are one for their own alone (`want-match-statement`), a line of a
+` markup body (`want-content-line`), the container of a markup loop region, which the region
+` observes itself (`want-observed`), or the name of a pattern a pattern compares with or calls
+` (`want-pattern`).
+
+| want-none = 0
+| want-fitting = 1
+| want-choice = 2
+| want-owner = 4
+| want-escape = 8
+| want-argument = 16
+| want-adapt = 32
+| want-event = 64
+| want-store = 128
+| want-receiver = 256
+| want-unused = 512
+| want-quasi = 1024
+| want-statement = 2048
+| want-forced = 4096
+| want-match-statement = 8192
+| want-content-line = 16384
+| want-observed = 32768
+| want-pattern = 65536
+
+━━━━━━━━━━━━━━━━━━━━
+_ Want is Tuple
+
+` What the context of a node asks of it where its syntax does not say: the type it expects of the
+` node, what that type is for there and the roles the node has (`WantRole`), and where a value
+` that escapes it is reported. `infer` gives it to that node alone, and a node gives the one inside
+` it that stands for it what it was asked.
+
++ type TypeId = no-type
++ roles U32 = 0
++ place SyntaxId = 0
+
+────────────────────
++ asks Bool
+    - role WantRole
+
+(roles /and/ (role as U32)) != 0
+
+────────────────────
++ asking Want
+    - role WantRole
+    - type TypeId
+
+Want(type, roles /or/ (role as U32), place)
+
+────────────────────
++ adding Want
+    - role WantRole
+
+Want(type, roles /or/ (role as U32), place)
+
+────────────────────
++ escaping Want
+    - type TypeId
+    - place SyntaxId
+
+Want(type, roles /or/ (WantRole.want-escape as U32), place)
+
+━━━━━━━━━━━━━━━━━━━━
+_ Found is Tuple
+
+` What typing a node found beside its type: what a link of an optional chain gives by itself,
+` which the chain holds in no optional between its links (`link`); the event it names where it was
+` asked for one or stored, kept in `found-events` (`event`), and whether a member a markup element
+` receives names it (`kept`); whether a property read where it is stored is in doubt (`doubted`);
+` and whether the property `!` reads holds a value the flow knows of (`held`).
+
++ type TypeId
++ link TypeId = no-type
++ event U32 = U32.max
++ kept Bool = false
++ doubted Bool = false
++ held Bool = false
+
+────────────────────
++ typed Found
+    - type TypeId
+
+Found(type, link, event, kept, doubted, held)
+
+────────────────────
++ linking Found
+    - link TypeId
+
+Found(type, link, event, kept, doubted, held)
+
+────────────────────
++ doubting Found
+    - doubted Bool
+
+Found(type, link, event, kept, doubted, held)
+
+────────────────────
++ holding Found
+    - held Bool
+
+Found(type, link, event, kept, doubted, held)
+
+━━━━━━━━━━━━━━━━━━━━
+_ LiveContext is U8
+
+` The live action of the reference open where a node is compiled: none, the one the value of
+` a property runs in, another, the one a rule of a class runs in, the one the value of an
+` assignment or a lazy declaration runs in that a function of its own runs again, the one
+` the `whenever` clause of a loop on a stream is tested in, which a function of its own tests
+` again, the one the conditions of a markup branch region or the container of a markup loop
+` region are read in, which a function of its own reads again, or the one the condition a style
+` rule written on a markup element is applied under is tested in as a gate is made, which a
+` function of its own tests again.
+
+| live-none = 0
+| live-value = 1
+| live-other = 2
+| live-rule = 3
+| live-statement = 4
+| live-whenever = 5
+| live-region = 6
+| live-gate = 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ LoopSource is Tuple
+
+` What the container of a markup loop region is to the region, as the reference's
+` `markupLoopSource` finds it: the item of its rows, the type the region is given it as, and its
+` kind, which names the markup runtime's function that makes the region of it: `collection`,
+` `broadcastable` or `iterable`. The invalid type for the item where there is none.
+
++ item TypeId
++ given TypeId
++ kind String
+
+━━━━━━━━━━━━━━━━━━━━
+_ FirstItems is U8
+
+` What the reference knows of the item a part of a stream pattern starts with: it may start
+` with anything, or it may match nothing; it starts with any item; it must start with one of
+` certain characters; or it is shaped so that what the reference knows is not known here.
+
+| first-open = 0
+| first-any = 1
+| first-ranges = 2
+| first-unsure = 3
+
+━━━━━━━━━━━━━━━━━━━━
+_ SelectionEffects
+
+` What the body of a loop over a selection of a table's rows may change, as TypeScript's loop
+` over rows notes it: a table's storage, the indices, or a table that grows; or that what it
+` changes is not known.
+
++ table Bool
++ indices Bool
++ selected-table Bool
++ unknown Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ Machining is Tuple
+
+` The machine being typed (`type-machine`): its syntax and where it is stored, the instance of the
+` machine above that it refines, the name of a machine nested in a case and whether its parts
+` start with the machine around it; its parts (`items`), its cases and the names each keeps, the
+` payload each case is given and the types of what each keeps, the cases it starts in, those
+` typed and those waiting to be, and the groups found. A nested machine is typed in a frame of its
+` own (`type-nested-machine`).
+
++ syntax SyntaxId
++ store MachineStore
++ refined InstanceId
++ named Atom?
++ outer-starts Bool
++ items [SyntaxId]
++ cases [SyntaxId]
++ kept [[Atom]]
++ payloads [TypeId]
++ kept-types [[TypeId]]
++ starts [SyntaxId]
++ typed [SyntaxId]
++ waiting [SyntaxId]
++ groups-found [MachineGroup]
+
+━━━━━━━━━━━━━━━━━━━━
+_ Matching is Tuple
+
+` The match being typed (`infer-match`): whether it gives an optional, the block of a match that
+` covers its subject and of one whose arms are blocks (`closed` and `arms`), whether `if` or
+` `while` tests it (`open`), whether its subject reads a row of a table, the subject a case
+` written alone is a case of, and the type of the subject.
+
++ optional Bool
++ closed SyntaxId = 0
++ arms SyntaxId = 0
++ open Bool
++ rows Bool
++ case SyntaxId = 0
++ subject TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
+_ Arming is Tuple
+
+` The arms being typed (`infer-arms`): whether they stand as a statement, where their values
+` start on the typing scratch, the type expected of them, whether they unite and where the types
+` they unite start, how many may run and whether several do, the slot of the subject's `it`, and
+` how deep the arms that test for a present value are.
+
++ statement Bool
++ start ScratchMark = 0
++ expected TypeId = no-type
++ unite Bool
++ union ScratchMark = 0
++ possible U32
++ several Bool
++ it SlotId = no-slot
++ present-depth U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ ArmTyping is Tuple
+
+` The arm being collected (`collect-arms`): the slot of its `it`, the symbol a choice in it
+` names, and the force its value reads through.
+
++ it SlotId = no-slot
++ symbol SyntaxId = 0
++ forced SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ RuleStream is Tuple
+
+` The stream a pattern written in code runs on: the stream match being typed, and the stream a
+` local rule is called on, with whether its pattern reads a String's UTF-8 bytes.
+
++ matched SyntaxId = 0
++ stream TypeId = no-type
++ encoded Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ Valuing is Tuple
+
+` What the part of a stream pattern being typed gives: whether it gives no value of its own, and
+` the arm whose action is being typed.
+
++ unvalued Bool
++ action-arm SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ PatternArms is Tuple
+
+` The arms of a stream pattern being typed (`arms-type`): whether an arm selects what it
+` materializes, whether they are scoped, whether an action's type cannot be inferred, whether
+` they join as alternatives, and the arm being typed (`enter-arm`).
+
++ selects Bool
++ scoped Bool
++ uninferred Bool
++ joined Bool
++ arm SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ RuleArms is Tuple
+
+` The arms of a stream pattern and what they are converted to (`type-stream-arms`): the type
+` given them, whether they give a span of the source, whether they are a rule's, whether they
+` give their text, the pattern whose names they capture and where its captures start, and the
+` call a pattern argument casts.
+
++ target TypeId = no-type
++ span Bool
++ rule Bool
++ texts Bool
++ capture-root SyntaxId = 0
++ capture-base Size = 0
++ casting SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ StreamView is Tuple
+
+` The stream a pattern reads (`record-stream-view`): the buffer that holds its items, the type of
+` an item, and the type of the stream.
+
++ buffer TypeId = no-type
++ item TypeId = no-type
++ type TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
+_ Helping is Tuple
+
+` The helper a stream pattern runs under and how it rolls back: the helper and where it is given,
+` whether anything in the pattern rolls back through it, whether the pattern is marked to roll
+` back, the body a mark is taken around, and whether it types a span of the source.
+
++ helper PatternHelper? = null
++ site SyntaxId = 0
++ rolls Bool
++ explicit Bool
++ body SyntaxId = 0
++ span-typing Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ Preparing is Tuple
+
+` How the element being made is given its values and content: the element whose rules are
+` applied, whether their values are taken once, whether content they generate is off or refused,
+` and whether an outlet's content overlays what it holds.
+
++ site SyntaxId = 0
++ values-once Bool
++ content-off Bool
++ content-refused Bool
++ overlaying Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ Finally is Tuple
+
+` The `finally` block being checked: whether its cleanup runs, and the last node it watches.
+
++ cleaning-up Bool
++ limit SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ CallArgumentsTyping is Tuple
+
+` The arguments of the call being typed (`infer-call`): whether what each gives is kept for the
+` call to settle, and whether the call names a function nothing declares.
+
++ keeps Bool
++ unknown-callee Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ UnitStyling is Tuple
+
+` The line of a unit's style being declared, and the property of a unit being updated.
+
++ styling SyntaxId = 0
++ updating SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ Reading is Tuple
+
+` What is being read for a value: the getter a row local reads, the lazy local, and whether an
+` eager value is typed in its context.
+
++ getter SyntaxId = 0
++ lazy SyntaxId = 0
++ eager Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ Region is Tuple
+
+` The markup region being typed (`check-branch`, `check-loop-region`): the type of its content,
+` the functions that keep, select and replace what it shows and the source it shows, whether it
+` runs in a batch, and the slot of its root.
+
++ content TypeId = no-type
++ keeps InstanceId = no-instance
++ select InstanceId = no-instance
++ source TypeId = no-type
++ replace InstanceId = no-instance
++ batch Bool
++ root SlotId = no-slot
+
+━━━━━━━━━━━━━━━━━━━━
+_ CursorBinding is Tuple
+
+` The row cursor a pattern binds (`check-pattern`): whether it binds one, and the row it captures.
+
++ binds Bool
++ capture RowCapture = RowCapture(no-type, U32.max, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ Keying is Tuple
+
+` Where the state cells of the `when`s that style scopes are gathered under are made: whether the
+` way to a slot outlet is followed (`outlet-scopes`), the class whose sheets that way adds, and the
+` root `<This`, class, or element of markup the cells are keyed at, in its module.
+
++ discovering Bool
++ sheet-self TypeId = no-type
++ module ModuleId = 0
++ site SyntaxId = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ CheckerKit
+    is IdleKit
+
+` What a checker is made of that its worker keeps from one instance to the next: its frame, its
+` helpers and its lists. A checker made from a kit takes each as its own and empties the lists
+` (`empty`), so that making one allocates none of them and each list keeps the room it grew to.
+
++ frame Frame
++ narrowing Narrowing
++ conversions Conversions
++ calls Calls
++ endpoint-arguments [SyntaxId]
++ found-events [NamedEvent]
++ endpoint-events [NamedEvent]
++ kept-arguments [SyntaxId]
++ materialized [SlotId]
++ unsure-stores [U32]
++ unsure-reads [U32]
++ unsure-forces [SyntaxId]
++ unsure-operands [SyntaxId]
++ unsure-declared [TypeId]
++ unsure-forced [U32]
++ lazy-marks [ScratchMark]
++ raised-arms [SyntaxId]
++ loop-marks [ScratchMark]
++ machine-items [SyntaxId]
++ machine-cases [SyntaxId]
++ machine-kept [[Atom]]
++ machine-payloads [TypeId]
++ machine-kept-types [[TypeId]]
++ machine-starts [SyntaxId]
++ machine-typed [SyntaxId]
++ machine-waiting [SyntaxId]
++ machine-groups-found [MachineGroup]
++ carried-slots [SlotId]
++ raising-lazies [SlotId]
++ raising-starts [Size]
++ typing-lazies [SlotId]
++ forcing-lazies [SlotId]
++ forcing-facts [FactId]
++ forcing-declared [TypeId]
++ forgetting-lazies [SlotId]
++ retyped-reads [SyntaxId]
++ raising-entries [Outgoing]
++ getter-reads [SlotId]
++ lazy-transforms [Size]
++ entered-lazies [SlotId]
++ entered-starts [Size]
++ entered-slots [SlotId]
++ entered-types [TypeId]
++ carried-loops [Size]
++ carried-sites [SyntaxId]
++ whole-returns [SyntaxId]
++ yield-literals [SyntaxId]
++ ordered-yields [TypeId]
++ ordered-sites [SyntaxId]
++ ordered-literals [SyntaxId]
++ lazy-slots [SlotId]
++ row-cursors [RowCursor]
++ checked-rows [SlotId]
++ arm-bodies [SyntaxId]
++ arm-present [Bool]
++ arm-values [SyntaxId]
++ arm-starts [Size]
++ arm-ends [Size]
++ arm-settled [Narrowed]
++ region-left [Narrowed]
++ owner-names [Atom]
++ owner-unions [TypeId]
++ owner-declared [Bool]
++ foreseen-sites [SyntaxId]
++ foreseen-payloads [TypeId]
++ unheld-cases [SyntaxId]
++ bullet-lists [SyntaxId]
++ bullet-items [TypeId]
++ coded-rules [SyntaxId]
++ coded-typed [SyntaxId]
++ coded-streams [TypeId]
++ typed-rules [SyntaxId]
++ typed-helpers [SyntaxId]
++ remade-positions [U32]
++ remade-types [TypeId]
++ assumed-results [AssumedResult]
++ assumed-sources [TypeId]
++ capture-sites [SyntaxId]
++ capture-slots [SlotId]
++ capture-accumulating [Bool]
++ capture-patterns [SyntaxId]
++ capture-repeats [U32]
++ right-arms [SyntaxId]
++ rules [SyntaxId]
++ spanning [U64]
++ content-blocks [SyntaxId]
++ content-parents [TypeId]
++ content-names [Bool]
++ element-bodies [SyntaxId]
++ batched [Bool]
++ markup-styles [TypeId]
++ style-marks [U32]
++ markup-sheets [TypeId]
++ sheet-levels [U32]
++ rule-scopes [ScopeUse]
++ element-scopes [ScopeUse]
++ collected [ScopeUse]
++ scoped-sites [SyntaxId]
++ scoped-starts [U32]
++ scoped-ends [U32]
++ scoped-rows [ScopeUse]
++ pretyped [SyntaxId]
++ discoveries [U64]
++ slot-scopes [ScopeUse]
++ slot-sheets [TypeId]
++ slot-levels [U32]
++ slot-styles [TypeId]
++ outlet-classes [TypeId]
++ unbuilt [SlotId]
++ awaited [SyntaxId]
++ held [SlotId]
+
+────────────────────
++ This
+    - session Session
+
+.. frame = Frame(session)
+.. narrowing = Narrowing(frame)
+.. conversions = Conversions(frame)
+.. calls = Calls(frame, conversions)
+
+────────────────────
++ do empty
+
+endpoint-arguments.clear()
+found-events.clear()
+endpoint-events.clear()
+kept-arguments.clear()
+materialized.clear()
+unsure-stores.clear()
+unsure-reads.clear()
+unsure-forces.clear()
+unsure-operands.clear()
+unsure-declared.clear()
+unsure-forced.clear()
+lazy-marks.clear()
+raised-arms.clear()
+loop-marks.clear()
+machine-items.clear()
+machine-cases.clear()
+machine-kept.clear()
+machine-payloads.clear()
+machine-kept-types.clear()
+machine-starts.clear()
+machine-typed.clear()
+machine-waiting.clear()
+machine-groups-found.clear()
+carried-slots.clear()
+raising-lazies.clear()
+raising-starts.clear()
+typing-lazies.clear()
+forcing-lazies.clear()
+forcing-facts.clear()
+forcing-declared.clear()
+forgetting-lazies.clear()
+retyped-reads.clear()
+raising-entries.clear()
+getter-reads.clear()
+lazy-transforms.clear()
+entered-lazies.clear()
+entered-starts.clear()
+entered-slots.clear()
+entered-types.clear()
+carried-loops.clear()
+carried-sites.clear()
+whole-returns.clear()
+yield-literals.clear()
+ordered-yields.clear()
+ordered-sites.clear()
+ordered-literals.clear()
+lazy-slots.clear()
+row-cursors.clear()
+checked-rows.clear()
+arm-bodies.clear()
+arm-present.clear()
+arm-values.clear()
+arm-starts.clear()
+arm-ends.clear()
+arm-settled.clear()
+region-left.clear()
+owner-names.clear()
+owner-unions.clear()
+owner-declared.clear()
+foreseen-sites.clear()
+foreseen-payloads.clear()
+unheld-cases.clear()
+bullet-lists.clear()
+bullet-items.clear()
+coded-rules.clear()
+coded-typed.clear()
+coded-streams.clear()
+typed-rules.clear()
+typed-helpers.clear()
+remade-positions.clear()
+remade-types.clear()
+assumed-results.clear()
+assumed-sources.clear()
+capture-sites.clear()
+capture-slots.clear()
+capture-accumulating.clear()
+capture-patterns.clear()
+capture-repeats.clear()
+right-arms.clear()
+rules.clear()
+spanning.clear()
+content-blocks.clear()
+content-parents.clear()
+content-names.clear()
+element-bodies.clear()
+batched.clear()
+markup-styles.clear()
+style-marks.clear()
+markup-sheets.clear()
+sheet-levels.clear()
+rule-scopes.clear()
+element-scopes.clear()
+collected.clear()
+scoped-sites.clear()
+scoped-starts.clear()
+scoped-ends.clear()
+scoped-rows.clear()
+pretyped.clear()
+discoveries.clear()
+slot-scopes.clear()
+slot-sheets.clear()
+slot-levels.clear()
+slot-styles.clear()
+outlet-classes.clear()
+unbuilt.clear()
+awaited.clear()
+held.clear()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ is-comparison Bool

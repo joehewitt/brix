@@ -8,6 +8,8 @@
 ./stream
 /YuGC/YuGC.h
 
+_ event-machine-publishing Size = 0
+_ event-machine-is-draining = false
 _ event-descriptor-heads := List'(EventLoweredDescriptor?)()
 _ event-bubbling-heads := List'(EventLoweredDescriptor?)()
 _ event-bubbling-counts := List'Size()
@@ -15,453 +17,10 @@ _ event-machine-lanes := List'EventMachineLane()
 _ event-machine-deferrals := EventMachineDeferrals()
 _ event-machine-dispatches := EventMachineDispatches()
 _ event-no-route := EventNoRoute()
-_ event-machine-publishing Size = 0
-_ event-machine-is-draining = false
 
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-drain
-
-event-machine-is-draining = true
-. index Index = 0
-while index < event-machine-lanes.length
-    . lane = event-machine-lanes[index]
-    index += 1
-    lane.run-next()
-        catch error Error
-            unhandled-error(error)
-event-machine-lanes.clear()
-event-machine-is-draining = false
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-schedule
-    - lane EventMachineLane
-
-if event-machine-dispatches.is-resolving
-    event-machine-dispatches.resolved += lane
-else
-    event-machine-lanes += lane
-    if !event-machine-publishing && !event-machine-is-draining
-        event-machine-drain()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-defer
-    - dispatch Doer
-
-event-machine-dispatches.dispatches += dispatch
-event-machine-schedule(event-machine-dispatches)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-hold Pointer
-    - owner Pointer
-
-= C:yumiGCAddRoot(owner)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-release
-    - root Pointer
-
-C:yumiGCRemoveRoot(root)
-
-━━━━━━━━━━━━━━━━━━━━
-_ event-dispatch-reaches Bool
-    - is-machine Bool
-    - handlers Bool
-    - machines Bool
-
-if is-machine then machines else handlers
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-enqueue'Payload
-    - subscriber Subscriber'Payload
-    - payload Payload
-    - broadcaster Broadcastable'Payload
-
-. transition Doer = => do
-    subscriber(payload, broadcaster)
-event-machine-deferrals.doers += transition
-event-machine-schedule(event-machine-deferrals)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-settle-route
-
-=? if event-machine-publishing != 1 || event-machine-is-draining || !event-machine-lanes
-event-machine-drain()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-finish-publish
-
-event-machine-publishing -= 1
-if !event-machine-publishing && !event-machine-is-draining && event-machine-lanes
-    event-machine-drain()
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventMachineLane is Interface
-
-────────────────────
-+ do run-next ?! Error
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventMachineDeferrals
-    is EventMachineLane
-
-+ doers [Doer]
-_ next Index = 0
-
-╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do run-next ?! Error
-
-. transition = doers[next]
-next += 1
-if next == doers.length
-    doers.clear()
-    next = 0
-transition()
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventMachineDispatches
-    is EventMachineLane
-
-+ dispatches [Doer]
-+ resolved [EventMachineLane]
-+ is-resolving = false
-_ next Index = 0
-
-╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do run-next ?! Error
-
-. dispatch = dispatches[next]
-next += 1
-if next == dispatches.length
-    dispatches.clear()
-    next = 0
-is-resolving = true
-dispatch()
-    catch error Error
-        unhandled-error(error)
-is-resolving = false
-for lane in resolved
-    lane.run-next()
-        catch error Error
-            unhandled-error(error)
-resolved.clear()
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventSubscription'Payload
-    is Subscribable'Payload
-
-_ subscriber Subscriber'Payload
-_ arrival-only Bool
-
-────────────────────
-_ This
-    - subscriber
-    - arrival-only = false
-
-╌╌╌╌╌╌╌╌╌╌ is Subscribable'Payload ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do this
-    - payload Payload
-    - broadcaster Broadcastable'Payload
-
-//event.handlers.sync ++
-subscriber(payload, broadcaster)
-    catch error Error
-        unhandled-error(error)
-
-────────────────────
-+ do unsubscribe
-
-────────────────────
-+ get event-arrival-only Bool
-
-arrival-only
-
-────────────────────
-+ this == other Subscriber'Payload
-
-subscriber == other
-
-━━━━━━━━━━━━━━━━━━━━
-_ event-subscription'Payload Subscribable'Payload
-    - subscriber Subscriber'Payload
-    - arrival-only = false
-
-EventSubscription'Payload(subscriber, arrival-only)
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventMachinePort'Payload
-    is Subscribable'Payload
-    is EventMachineLane
-
-_ handler Subscriber'Payload
-_ broadcaster Broadcastable'Payload
-_ payloads [Payload]
-_ next Index = 0
-_ stale Size = 0
-_ is-subscribed = false
-_ address KeyedEventAddress?
-_ address-generation U64
-
-────────────────────
-_ This
-    - handler
-    - broadcaster
-
-────────────────────
-_ do post
-    - payload Payload
-
-//event.handlers.machine-enqueued ++
-payloads += payload
-event-machine-schedule(this)
-
-────────────────────
-_ do drop-pending
-
-=? if !payloads
-stale += payloads.length - next
-payloads.clear()
-next = 0
-
-────────────────────
-_ do attach
-    - source Broadcastable'Payload
-
-detach()
-broadcaster = source
-source.subscribe(this as Subscribable'Payload)
-    catch error Error
-        unhandled-error(error)
-        =
-is-subscribed = true
-
-────────────────────
-_ do detach
-
-if is-subscribed
-    broadcaster.unsubscribe(this as Subscribable'Payload)
-        catch error Error
-            unhandled-error(error)
-    is-subscribed = false
-address = null
-drop-pending()
-
-╌╌╌╌╌╌╌╌╌╌ is Subscribable'Payload ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do this
-    - payload Payload
-    - broadcaster Broadcastable'Payload
-
-post(payload)
-
-────────────────────
-+ get event-is-machine Bool
-
-true
-
-────────────────────
-+ do unsubscribe
-
-is-subscribed = false
-
-────────────────────
-+ do event-bind-address
-    - raw-address Pointer
-    - generation U64
-
-. bound = gc-object-from-pointer'KeyedEventAddress(raw-address)
-if address && (address as Pointer != bound as Pointer || address-generation != generation)
-    drop-pending()
-address = bound
-address-generation = generation
-
-╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do run-next ?! Error
-
-if stale
-    stale -= 1
-    =
-. payload = payloads[next]
-next += 1
-if next == payloads.length
-    payloads.clear()
-    next = 0
-=? if address && !address.is-generation-live(address-generation)
-handler(payload, broadcaster)
-
-━━━━━━━━━━━━━━━━━━━━
-_ event-machine-port'Payload EventMachinePort'Payload
-    - handler Subscriber'Payload
-    - broadcaster Broadcastable'Payload
-
-EventMachinePort'Payload(handler, broadcaster)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-attach'Payload EventMachinePort'Payload
-    - port EventMachinePort'Payload?
-    - handler Subscriber'Payload
-    - broadcaster Broadcastable'Payload
-
-. attached = port ?? EventMachinePort'Payload(handler, broadcaster)
-attached.attach(broadcaster)
-= attached
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-detach'Payload
-    - port EventMachinePort'Payload?
-
-port?.detach()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-machine-post'Payload
-    - port EventMachinePort'Payload
-    - payload Payload
-
-port.post(payload)
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventLoweredOwnerMatcher is (*C) Bool
-    - owner Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventLoweredDescriptor
-
-+ matcher EventLoweredOwnerMatcher
-+ callback Pointer
-+ order Size
-+ is-machine Bool
-+ next EventLoweredDescriptor?
-
-────────────────────
-_ This
-    - matcher
-    - callback
-    - order
-    - is-machine
-    - next = null
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-register-lowered
-    - event-id Size
-    - matcher EventLoweredOwnerMatcher
-    - callback Pointer
-    - order Size
-    - is-machine Bool
-
-event-register-descriptor(event-id, matcher, callback, order, is-machine, false)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-register-lowered-arrival
-    - event-id Size
-    - matcher EventLoweredOwnerMatcher
-    - callback Pointer
-    - order Size
-    - is-machine Bool
-
-event-register-descriptor(event-id, matcher, callback, order, is-machine, true)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-register-descriptor
-    - event-id Size
-    - matcher EventLoweredOwnerMatcher
-    - callback Pointer
-    - order Size
-    - is-machine Bool
-    - arrival-only Bool
-
-=? if !event-insert-descriptor(event-descriptor-heads, event-id, matcher, callback, order, is-machine)
-if !arrival-only
-    . ignored = event-insert-descriptor
-        - event-bubbling-heads
-        - event-id
-        - matcher
-        - callback
-        - order
-        - is-machine
-    event-bubbling-adjust(event-id, 1)
-//event.subscriptions.lowered ++
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-insert-descriptor Bool
-    - heads [EventLoweredDescriptor?]
-    - event-id Size
-    - matcher EventLoweredOwnerMatcher
-    - callback Pointer
-    - order Size
-    - is-machine Bool
-
-if heads.length <= event-id
-    heads[event-id] = null
-. current = heads[event-id]
-. tail EventLoweredDescriptor?
-while current
-    . descriptor = current
-    if descriptor.matcher as Pointer == matcher as Pointer
-        if descriptor.order == order
-            = false
-    tail = descriptor
-    current = descriptor.next
-
-. descriptor = EventLoweredDescriptor(matcher, callback, order, is-machine)
-if tail
-    tail.next = descriptor
-else
-    heads[event-id] = descriptor
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-bubbling-adjust
-    - event-id Size
-    - delta Size
-
-=? if !delta
-if event-bubbling-counts.length <= event-id
-    event-bubbling-counts[event-id] = 0
-event-bubbling-counts[event-id] += delta
-
-━━━━━━━━━━━━━━━━━━━━
-_ event-has-bubbling-interest Bool @inline
-    - event-id Size
-
-event-id < event-bubbling-counts.length && event-bubbling-counts[event-id] > 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-has-lowered-owner Bool
-    - owner Pointer
-
-for head in event-descriptor-heads
-    . current = head
-    while current
-        . descriptor = current
-        . matcher = descriptor.matcher
-        if matcher(owner)
-            = true
-        current = descriptor.next
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-has-lowered-interest Bool
-    - owner Pointer
-    - event-id Size
-
-if event-id >= event-descriptor-heads.length
-    = false
-. current = event-descriptor-heads[event-id]
-while current
-    . descriptor = current
-    . matcher = descriptor.matcher
-    if matcher(owner)
-        = true
-    current = descriptor.next
-= false
++ EventGenerationKey is (index Index, generation U64)
+_ EventSlot'Payload is (sub Subscribable'Payload?, g U64, prev Index, next Index, free Index)
+_ EventRouteFrame is (owner Pointer, root Pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + RoutedEvent is Interface
@@ -479,507 +38,10 @@ true
     - current Pointer
 
 ━━━━━━━━━━━━━━━━━━━━
-_ EventNoRoute
-    is RoutedEvent
-
-╌╌╌╌╌╌╌╌╌╌ is RoutedEvent ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ get is-canceled Bool
-
-false
-
-────────────────────
-+ do next-event-owner Pointer?
-    - current Pointer
-
-= null
-
-━━━━━━━━━━━━━━━━━━━━
 + EventNode is Interface
 
 ────────────────────
 + get event-parent EventNode?
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventEntry
-
-+ event-id Size
-+ live-count Size = 0
-+ bubbling-live-count Size = 0
-+ is-closed = false
-_ adapter-created = false
-
-────────────────────
-_ This
-    - event-id
-
-────────────────────
-+ get has-interest Bool
-
-live-count > 0 && !is-closed
-
-────────────────────
-+ get has-bubbling-interest Bool
-
-bubbling-live-count > 0 && !is-closed
-
-────────────────────
-+ do close
-
-is-closed = true
-live-count = 0
-event-bubbling-adjust(event-id, -bubbling-live-count)
-bubbling-live-count = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventGenerationKey is (index Index, generation U64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ KeyedEventAddress
-
-+ key-low U64
-+ key-high U64
-+ receiver-identity U64
-+ generation U64
-+ live Bool = true
-+ endpoint EventEntry
-+ index KeyedEventIndex
-
-────────────────────
-_ This
-    - key-low
-    - key-high
-    - receiver-identity
-    - generation
-    - endpoint
-    - index
-
-────────────────────
-_ is-generation-live Bool
-    - expected U64
-
-live && generation == expected
-
-━━━━━━━━━━━━━━━━━━━━
-_ KeyedEventIndex is EventEntry
-
-_ addresses [KeyedEventAddress]
-_ buckets [KeyedEventAddress?]
-_ bucket-entry-count Size
-_ live-address-count Size
-_ next-address-generation U64
-
-────────────────────
-_ This
-    - event-id
-
-────────────────────
-_ do allocate-generation U64
-
-next-address-generation += 1
-?! Panic("Event address generation overflow")
-    if !next-address-generation
-= next-address-generation
-
-────────────────────
-_ do find-live KeyedEventAddress?
-    - key-low U64
-    - key-high U64
-
-=? if !buckets
-. capacity = buckets.length
-. slot = keyed-event-bucket(key-low, key-high, capacity)
-for attempt in 0 .. < capacity
-    . address = buckets[slot]
-    =? if !address
-    if address.live && address.key-low == key-low && address.key-high == key-high
-        = address
-    slot = (slot + 1) % capacity
-
-────────────────────
-_ do prepare-bucket-insert
-
-if !buckets
-    rebuild-buckets(256)
-else if (bucket-entry-count + 1) * 4 >= buckets.length * 3
-    . capacity = buckets.length
-    if (live-address-count + 1) * 4 >= capacity * 3
-        capacity *= 2
-    rebuild-buckets(capacity)
-
-────────────────────
-_ do insert-bucket
-    - address KeyedEventAddress
-
-. capacity = buckets.length
-. slot = keyed-event-bucket(address.key-low, address.key-high, capacity)
-for attempt in 0 .. < capacity
-    if !buckets[slot]
-        buckets[slot] = address
-        bucket-entry-count += 1
-        =
-    slot = (slot + 1) % capacity
-?! Panic("Keyed event index is full")
-
-────────────────────
-_ do rebuild-buckets
-    - capacity Size
-
-. next [KeyedEventAddress?]
-next[capacity - 1] = null
-buckets = next
-bucket-entry-count = 0
-. live-addresses [KeyedEventAddress]
-for address in addresses
-    if address.live
-        insert-bucket(address)
-        live-addresses += address
-addresses = live-addresses
-
-────────────────────
-_ do release
-    - address KeyedEventAddress
-
-=? if !address.live
-address.live = false
-address.generation = allocate-generation()
-live-address-count -= 1
-//event.key-index.updates ++
-
-────────────────────
-_ do close
-
-=? if is-closed
-is-closed = true
-for address in addresses
-    if address.live
-        address.live = false
-        address.generation = allocate-generation()
-        address.endpoint.close()
-addresses.clear()
-if buckets
-    buckets.clear()
-live-count = 0
-event-bubbling-adjust(event-id, -bubbling-live-count)
-bubbling-live-count = 0
-bucket-entry-count = 0
-live-address-count = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ keyed-event-bucket Index
-    - key-low U64
-    - key-high U64
-    - capacity Size
-
-((low * 131 + high) % capacity) as Index
-
-.. low = key-low % capacity
-.. high = key-high % capacity
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventSlot'Payload is (sub Subscribable'Payload?, g U64, prev Index, next Index, free Index)
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventEndpoint'Payload is EventEntry
-    is Broadcastable'Payload
-    is Closable
-
-_ slots [EventSlot'Payload]
-_ active-slots [Index]
-_ keyed-address KeyedEventAddress?
-_ keyed-generation U64
-
-────────────────────
-_ This
-    - event-id
-
-────────────────────
-_ do bind-keyed-address
-    - address KeyedEventAddress
-    - generation U64
-
-keyed-address = address
-keyed-generation = generation
-
-────────────────────
-_ do update-keyed-generation
-    - generation U64
-
-keyed-generation = generation
-if keyed-address
-    for entry in slots
-        if entry.sub
-            . subscription = entry.sub
-            subscription.event-bind-address(keyed-address! as Pointer, generation)
-
-────────────────────
-_ event-address-generation U64
-
-|? !keyed-address
-    0
-|? !address.is-generation-live(keyed-generation)
-    0
-|? address.endpoint as Pointer != this as Pointer
-    0
-??
-    keyed-generation
-
-.. address = keyed-address
-
-────────────────────
-_ do release-keyed-address
-
-=? if !keyed-address
-. address = keyed-address
-if address.is-generation-live(keyed-generation)
-    address.index.release(address)
-
-╌╌╌╌╌╌╌╌╌╌ is Broadcastable'Payload ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do subscribe
-    - subscriber Subscriber'Payload
-
-link(EventSubscription'Payload(subscriber))
-
-────────────────────
-+ do unsubscribe
-    - subscriber Subscriber'Payload
-
-=? if !slots
-
-if active-slots
-    . active-slot = active-slots[active-slots.length - 1]
-    . active-subscription = slots[active-slot].sub
-    if active-subscription && active-subscription == subscriber
-        unlink(active-slot, active-subscription)
-        =
-
-. slot = slots[0].next
-while slot
-    . entry = slots[slot]
-    if entry.sub && entry.sub == subscriber
-        unlink(slot, entry.sub)
-        =
-    slot = entry.next
-
-────────────────────
-+ do subscribe
-    - subscriber Subscribable'Payload
-
-link(subscriber)
-
-────────────────────
-+ do unsubscribe
-    - subscriber Subscribable'Payload
-
-=? if !slots
-
-. slot = slots[0].next
-while slot
-    . entry = slots[slot]
-    if entry.sub && entry.sub as Pointer == subscriber as Pointer
-        unlink(slot, subscriber)
-        =
-    slot = entry.next
-
-────────────────────
-_ do link
-    - subscription Subscribable'Payload
-
-?! Panic("Illegal to subscribe to a closed event")
-    if is-closed
-
-if keyed-address
-    subscription.event-bind-address(keyed-address as Pointer, keyed-generation)
-
-if !slots
-    slots += (null, 0, 0, 0, 0)
-
-. sentinel = slots[0]
-. head = sentinel.next
-. tail = sentinel.prev
-. next-free = sentinel.free
-. generation = sentinel.g + 1
-?! Panic("Event subscription generation overflow")
-    if !generation
-
-. slot Index = 0
-if sentinel.free && !active-slots
-    slot = sentinel.free
-    next-free = slots[slot].free
-else
-    slot = slots.length
-    slots += (null, 0, 0, 0, 0)
-
-slots[slot] = (subscription, generation, tail, 0, 0)
-if tail
-    . tail-entry = slots[tail]
-    slots[tail] =
-        (tail-entry.sub, tail-entry.g, tail-entry.prev, slot, tail-entry.free)
-else
-    head = slot
-
-slots[0] = (null, generation, slot, head, next-free)
-live-count += 1
-if !subscription.event-arrival-only
-    bubbling-live-count += 1
-    event-bubbling-adjust(event-id, 1)
-//event.subscriptions.sidecar ++
-
-────────────────────
-_ do unlink
-    - slot Index
-    - subscription Subscribable'Payload
-
-=? if !slots || !slot || slot >= slots.length
-
-. entry = slots[slot]
-=? if !entry.sub || entry.sub as Pointer != subscription as Pointer
-
-. sentinel = slots[0]
-. head = sentinel.next
-. tail = sentinel.prev
-if entry.prev
-    . previous = slots[entry.prev]
-    slots[entry.prev] =
-        (previous.sub, previous.g, previous.prev, entry.next, previous.free)
-else
-    head = entry.next
-
-if entry.next
-    . next = slots[entry.next]
-    slots[entry.next] =
-        (next.sub, next.g, entry.prev, next.next, next.free)
-else
-    tail = entry.prev
-
-slots[slot] = (null, 0, entry.prev, entry.next, sentinel.free)
-slots[0] = (null, sentinel.g, tail, head, slot)
-live-count -= 1
-if !subscription.event-arrival-only
-    bubbling-live-count -= 1
-    event-bubbling-adjust(event-id, -1)
-subscription.unsubscribe()
-
-────────────────────
-+ do dispatch
-    - payload Payload
-    - handlers = true
-    - machines = true
-
-=? if is-closed || !slots || !live-count
-
-. boundary = slots[0].g
-. address-boundary = event-address-generation()
-. reaches-all = handlers && machines
-. slot = slots[0].next
-while slot
-    if is-closed || (address-boundary && event-address-generation() != address-boundary)
-        break
-
-    . entry = slots[slot]
-    if entry.sub
-        if entry.g > boundary
-            break
-        . subscription = entry.sub
-        if reaches-all || event-dispatch-reaches(subscription.event-is-machine, handlers, machines)
-            active-slots += slot
-            subscription(payload, this)
-            if active-slots
-                active-slots.pop()
-    slot = entry.next
-
-────────────────────
-+ do dispatch-routed'Route
-    - payload Payload
-    - routed Route
-    - is-target Bool
-    - handlers = true
-    - machines = true
-    - Route is RoutedEvent
-
-=? if is-closed || !slots || !live-count
-
-. boundary = slots[0].g
-. reaches-all = handlers && machines
-. slot = slots[0].next
-while slot
-    if is-closed || (handlers && routed.is-canceled)
-        break
-
-    . entry = slots[slot]
-    if entry.sub
-        if entry.g > boundary
-            break
-        . subscription = entry.sub
-        . reaches =
-            reaches-all || event-dispatch-reaches(subscription.event-is-machine, handlers, machines)
-        if reaches && (is-target || !subscription.event-arrival-only)
-            active-slots += slot
-            subscription(payload, this)
-            if active-slots
-                active-slots.pop()
-    slot = entry.next
-
-────────────────────
-+ do close
-
-=? if is-closed
-release-keyed-address()
-is-closed = true
-
-for entry in slots
-    if entry.sub
-        . subscription = entry.sub
-        subscription.unsubscribe()
-slots.clear()
-active-slots.clear()
-live-count = 0
-event-bubbling-adjust(event-id, -bubbling-live-count)
-bubbling-live-count = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventSidecar
-
-_ entries [EventEntry]
-_ machine-stops List'EventMachineStop?
-_ is-closed = false
-
-────────────────────
-_ do find EventEntry?
-    - event-id Size
-
-for entry in entries
-    if entry.event-id == event-id
-        = entry
-
-────────────────────
-_ do close
-
-=? if is-closed
-is-closed = true
-for entry in entries
-    entry.close()
-
-━━━━━━━━━━━━━━━━━━━━
-_ events-lane Size
-
-C:yumiGCEventsSidePayloadLane() as Size
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-sidecar EventSidecar
-    - owner Pointer
-
-. existing = gc-object-side-payload'EventSidecar(owner, events-lane())
-if existing
-    = existing
-
-. created = EventSidecar()
-//event.sidecars.created ++
-gc-publish-object-side-payload(owner, events-lane(), created)
-= created
 
 ━━━━━━━━━━━━━━━━━━━━
 + do event-endpoint'Payload EventEndpoint'Payload
@@ -1008,23 +70,6 @@ if !endpoint.adapter-created
     endpoint.adapter-created = true
     //event.adapters.created ++
 = endpoint
-
-━━━━━━━━━━━━━━━━━━━━
-_ do event-keyed-index KeyedEventIndex
-    - owner Pointer
-    - event-id Size
-
-. sidecar = event-sidecar(owner)
-?! Panic("Illegal to access a closed event")
-    if sidecar.is-closed
-. existing = sidecar.find(event-id)
-if existing
-    = existing as KeyedEventIndex
-
-. index = KeyedEventIndex(event-id)
-sidecar.entries += index
-//event.endpoint.entries ++
-= index
 
 ━━━━━━━━━━━━━━━━━━━━
 + do event-keyed-endpoint'Payload EventEndpoint'Payload ?! Error
@@ -1172,28 +217,6 @@ else
 event-machine-finish-publish()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do event-dispatch-keyed'Payload
-    - owner Pointer
-    - event-id Size
-    - key-low U64
-    - key-high U64
-    - expected-generation U64
-    - payload Payload
-    - handlers = true
-    - machines = true
-
-. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
-=? if !sidecar || sidecar.is-closed
-. entry = sidecar.find(event-id)
-=? if !entry
-. index = entry as KeyedEventIndex
-. address = index.find-live(key-low, key-high)
-=? if !address || !address.is-generation-live(expected-generation)
-. endpoint = address.endpoint as EventEndpoint'Payload
-=? if endpoint.event-address-generation() != expected-generation
-endpoint.dispatch(payload, handlers, machines)
-
-━━━━━━━━━━━━━━━━━━━━
 + event-has-interest Bool
     - owner Pointer
     - event-id Size
@@ -1223,6 +246,1051 @@ endpoint.dispatch(payload, handlers, machines)
     event-has-interest(owner, event-id)
 
 .. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
+
+━━━━━━━━━━━━━━━━━━━━
++ do event-publish'Payload
+    - owner Pointer
+    - event-id Size
+    - payload Payload
+
+event-machine-publishing += 1
+if event-machine-is-draining
+    . root = event-machine-hold(owner)
+    . dispatch Doer = => do
+        event-dispatch(owner, event-id, payload) • handlers false
+        event-machine-release(root)
+    event-machine-defer(dispatch)
+    event-dispatch(owner, event-id, payload) • machines false
+else
+    event-dispatch(owner, event-id, payload)
+event-machine-finish-publish()
+
+━━━━━━━━━━━━━━━━━━━━
++ do event-close-owner
+    - owner Pointer
+
+. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
+if sidecar
+    sidecar.close()
+else if event-has-lowered-owner(owner)
+    event-sidecar(owner).close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do event-own-machine
+    - owner Pointer
+    - stop EventMachineStop
+
+` Keeps what stops a machine a property of an object holds, which the object's `close` runs
+` (`event-stop-machines`).
+. sidecar = event-sidecar(owner)
+if !sidecar.machine-stops
+    sidecar.machine-stops = List'EventMachineStop()
+sidecar.machine-stops! += stop
+
+━━━━━━━━━━━━━━━━━━━━
++ do event-stop-machines
+    - owner Pointer
+
+` Stops each machine the properties of an object hold, the last started first, and once: each
+` exits its active cases, running their `do finally`, and drops what it subscribed. Then the
+` object's events close, so that no transition on them, which the class's table may run, fires
+` after.
+. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
+=? if !sidecar
+. stops = sidecar.machine-stops
+=? if !stops
+sidecar.machine-stops = null
+while stops.length != 0
+    . stop = stops.pop()
+    stop()
+sidecar.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventMachineLane is Interface
+
+────────────────────
++ do run-next ?! Error
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventMachineDeferrals
+    is EventMachineLane
+
++ doers [Doer]
+
+_ next Index = 0
+
+╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do run-next ?! Error
+
+. transition = doers[next]
+next += 1
+if next == doers.length
+    doers.clear()
+    next = 0
+transition()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventMachineDispatches
+    is EventMachineLane
+
++ dispatches [Doer]
++ resolved [EventMachineLane]
++ is-resolving = false
+
+_ next Index = 0
+
+╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do run-next ?! Error
+
+. dispatch = dispatches[next]
+next += 1
+if next == dispatches.length
+    dispatches.clear()
+    next = 0
+is-resolving = true
+dispatch()
+    catch error Error
+        unhandled-error(error)
+is-resolving = false
+for lane in resolved
+    lane.run-next()
+        catch error Error
+            unhandled-error(error)
+resolved.clear()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventSubscription'Payload
+    is Subscribable'Payload
+
+_ subscriber Subscriber'Payload
+_ arrival-only Bool
+
+────────────────────
+_ This
+    - subscriber
+    - arrival-only = false
+
+────────────────────
++ get event-arrival-only Bool
+
+arrival-only
+
+────────────────────
++ this == other Subscriber'Payload
+
+subscriber == other
+
+╌╌╌╌╌╌╌╌╌╌ is Subscribable'Payload ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - payload Payload
+    - broadcaster Broadcastable'Payload
+
+//event.handlers.sync ++
+subscriber(payload, broadcaster)
+    catch error Error
+        unhandled-error(error)
+
+────────────────────
++ do unsubscribe
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventMachinePort'Payload
+    is Subscribable'Payload
+    is EventMachineLane
+
+_ handler Subscriber'Payload
+_ broadcaster Broadcastable'Payload
+_ payloads [Payload]
+_ next Index = 0
+_ stale Size = 0
+_ is-subscribed = false
+_ address KeyedEventAddress?
+_ address-generation U64
+
+────────────────────
+_ This
+    - handler
+    - broadcaster
+
+╌╌╌╌╌╌╌╌╌╌ is EventMachineLane ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do run-next ?! Error
+
+if stale
+    stale -= 1
+    =
+. payload = payloads[next]
+next += 1
+if next == payloads.length
+    payloads.clear()
+    next = 0
+=? if address && !address.is-generation-live(address-generation)
+handler(payload, broadcaster)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get event-is-machine Bool
+
+true
+
+╌╌╌╌╌╌╌╌╌╌ is Subscribable'Payload ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this
+    - payload Payload
+    - broadcaster Broadcastable'Payload
+
+post(payload)
+
+────────────────────
++ do unsubscribe
+
+is-subscribed = false
+
+────────────────────
++ do event-bind-address
+    - raw-address Pointer
+    - generation U64
+
+. bound = gc-object-from-pointer'KeyedEventAddress(raw-address)
+if address && (address as Pointer != bound as Pointer || address-generation != generation)
+    drop-pending()
+address = bound
+address-generation = generation
+
+────────────────────
+_ do post
+    - payload Payload
+
+//event.handlers.machine-enqueued ++
+payloads += payload
+event-machine-schedule(this)
+
+────────────────────
+_ do drop-pending
+
+=? if !payloads
+stale += payloads.length - next
+payloads.clear()
+next = 0
+
+────────────────────
+_ do attach
+    - source Broadcastable'Payload
+
+detach()
+broadcaster = source
+source.subscribe(this as Subscribable'Payload)
+    catch error Error
+        unhandled-error(error)
+        =
+is-subscribed = true
+
+────────────────────
+_ do detach
+
+if is-subscribed
+    broadcaster.unsubscribe(this as Subscribable'Payload)
+        catch error Error
+            unhandled-error(error)
+    is-subscribed = false
+address = null
+drop-pending()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventLoweredOwnerMatcher is (*C) Bool
+    - owner Pointer
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventLoweredDescriptor
+
++ matcher EventLoweredOwnerMatcher
++ callback Pointer
++ order Size
++ is-machine Bool
++ next EventLoweredDescriptor?
+
+────────────────────
+_ This
+    - matcher
+    - callback
+    - order
+    - is-machine
+    - next = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventNoRoute
+    is RoutedEvent
+
+╌╌╌╌╌╌╌╌╌╌ is RoutedEvent ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-canceled Bool
+
+false
+
+────────────────────
++ do next-event-owner Pointer?
+    - current Pointer
+
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventEntry
+
++ event-id Size
++ live-count Size = 0
++ bubbling-live-count Size = 0
++ is-closed = false
+
+_ adapter-created = false
+
+────────────────────
+_ This
+    - event-id
+
+────────────────────
++ get has-interest Bool
+
+live-count > 0 && !is-closed
+
+────────────────────
++ get has-bubbling-interest Bool
+
+bubbling-live-count > 0 && !is-closed
+
+────────────────────
++ do close
+
+is-closed = true
+live-count = 0
+event-bubbling-adjust(event-id, -bubbling-live-count)
+bubbling-live-count = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ KeyedEventAddress
+
++ key-low U64
++ key-high U64
++ receiver-identity U64
++ generation U64
++ live Bool = true
++ endpoint EventEntry
++ index KeyedEventIndex
+
+────────────────────
+_ This
+    - key-low
+    - key-high
+    - receiver-identity
+    - generation
+    - endpoint
+    - index
+
+────────────────────
+_ is-generation-live Bool
+    - expected U64
+
+live && generation == expected
+
+━━━━━━━━━━━━━━━━━━━━
+_ KeyedEventIndex is EventEntry
+
+_ addresses [KeyedEventAddress]
+_ buckets [KeyedEventAddress?]
+_ bucket-entry-count Size
+_ live-address-count Size
+_ next-address-generation U64
+
+────────────────────
+_ This
+    - event-id
+
+────────────────────
+_ do allocate-generation U64
+
+next-address-generation += 1
+?! Panic("Event address generation overflow")
+    if !next-address-generation
+= next-address-generation
+
+────────────────────
+_ do find-live KeyedEventAddress?
+    - key-low U64
+    - key-high U64
+
+=? if !buckets
+. capacity = buckets.length
+. slot = keyed-event-bucket(key-low, key-high, capacity)
+for attempt in 0 .. < capacity
+    . address = buckets[slot]
+    =? if !address
+    if address.live && address.key-low == key-low && address.key-high == key-high
+        = address
+    slot = (slot + 1) % capacity
+
+────────────────────
+_ do prepare-bucket-insert
+
+if !buckets
+    rebuild-buckets(256)
+else if (bucket-entry-count + 1) * 4 >= buckets.length * 3
+    . capacity = buckets.length
+    if (live-address-count + 1) * 4 >= capacity * 3
+        capacity *= 2
+    rebuild-buckets(capacity)
+
+────────────────────
+_ do insert-bucket
+    - address KeyedEventAddress
+
+. capacity = buckets.length
+. slot = keyed-event-bucket(address.key-low, address.key-high, capacity)
+for attempt in 0 .. < capacity
+    if !buckets[slot]
+        buckets[slot] = address
+        bucket-entry-count += 1
+        =
+    slot = (slot + 1) % capacity
+?! Panic("Keyed event index is full")
+
+────────────────────
+_ do rebuild-buckets
+    - capacity Size
+
+. next [KeyedEventAddress?]
+next[capacity - 1] = null
+buckets = next
+bucket-entry-count = 0
+. live-addresses [KeyedEventAddress]
+for address in addresses
+    if address.live
+        insert-bucket(address)
+        live-addresses += address
+addresses = live-addresses
+
+────────────────────
+_ do release
+    - address KeyedEventAddress
+
+=? if !address.live
+address.live = false
+address.generation = allocate-generation()
+live-address-count -= 1
+//event.key-index.updates ++
+
+────────────────────
+_ do close
+
+=? if is-closed
+is-closed = true
+for address in addresses
+    if address.live
+        address.live = false
+        address.generation = allocate-generation()
+        address.endpoint.close()
+addresses.clear()
+if buckets
+    buckets.clear()
+live-count = 0
+event-bubbling-adjust(event-id, -bubbling-live-count)
+bubbling-live-count = 0
+bucket-entry-count = 0
+live-address-count = 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventEndpoint'Payload is EventEntry
+    is Broadcastable'Payload
+    is Closable
+
+_ slots [EventSlot'Payload]
+_ active-slots [Index]
+_ keyed-address KeyedEventAddress?
+_ keyed-generation U64
+
+────────────────────
+_ This
+    - event-id
+
+╌╌╌╌╌╌╌╌╌╌ is EventEntry ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if is-closed
+release-keyed-address()
+is-closed = true
+
+for entry in slots
+    if entry.sub
+        . subscription = entry.sub
+        subscription.unsubscribe()
+slots.clear()
+active-slots.clear()
+live-count = 0
+event-bubbling-adjust(event-id, -bubbling-live-count)
+bubbling-live-count = 0
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+╌╌╌╌╌╌╌╌╌╌ is Broadcastable'Payload ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do subscribe
+    - subscriber Subscriber'Payload
+
+link(EventSubscription'Payload(subscriber))
+
+────────────────────
++ do unsubscribe
+    - subscriber Subscriber'Payload
+
+=? if !slots
+
+if active-slots
+    . active-slot = active-slots[active-slots.length - 1]
+    . active-subscription = slots[active-slot].sub
+    if active-subscription && active-subscription == subscriber
+        unlink(active-slot, active-subscription)
+        =
+
+. slot = slots[0].next
+while slot
+    . entry = slots[slot]
+    if entry.sub && entry.sub == subscriber
+        unlink(slot, entry.sub)
+        =
+    slot = entry.next
+
+────────────────────
++ do subscribe
+    - subscriber Subscribable'Payload
+
+link(subscriber)
+
+────────────────────
++ do unsubscribe
+    - subscriber Subscribable'Payload
+
+=? if !slots
+
+. slot = slots[0].next
+while slot
+    . entry = slots[slot]
+    if entry.sub && entry.sub as Pointer == subscriber as Pointer
+        unlink(slot, subscriber)
+        =
+    slot = entry.next
+
+────────────────────
++ do dispatch
+    - payload Payload
+    - handlers = true
+    - machines = true
+
+=? if is-closed || !slots || !live-count
+
+. boundary = slots[0].g
+. address-boundary = event-address-generation()
+. reaches-all = handlers && machines
+. slot = slots[0].next
+while slot
+    if is-closed || (address-boundary && event-address-generation() != address-boundary)
+        break
+
+    . entry = slots[slot]
+    if entry.sub
+        if entry.g > boundary
+            break
+        . subscription = entry.sub
+        if reaches-all || event-dispatch-reaches(subscription.event-is-machine, handlers, machines)
+            active-slots += slot
+            subscription(payload, this)
+            if active-slots
+                active-slots.pop()
+    slot = entry.next
+
+────────────────────
++ do dispatch-routed'Route
+    - payload Payload
+    - routed Route
+    - is-target Bool
+    - handlers = true
+    - machines = true
+    - Route is RoutedEvent
+
+=? if is-closed || !slots || !live-count
+
+. boundary = slots[0].g
+. reaches-all = handlers && machines
+. slot = slots[0].next
+while slot
+    if is-closed || (handlers && routed.is-canceled)
+        break
+
+    . entry = slots[slot]
+    if entry.sub
+        if entry.g > boundary
+            break
+        . subscription = entry.sub
+        . reaches =
+            reaches-all || event-dispatch-reaches(subscription.event-is-machine, handlers, machines)
+        if reaches && (is-target || !subscription.event-arrival-only)
+            active-slots += slot
+            subscription(payload, this)
+            if active-slots
+                active-slots.pop()
+    slot = entry.next
+
+────────────────────
+_ do bind-keyed-address
+    - address KeyedEventAddress
+    - generation U64
+
+keyed-address = address
+keyed-generation = generation
+
+────────────────────
+_ do update-keyed-generation
+    - generation U64
+
+keyed-generation = generation
+if keyed-address
+    for entry in slots
+        if entry.sub
+            . subscription = entry.sub
+            subscription.event-bind-address(keyed-address! as Pointer, generation)
+
+────────────────────
+_ event-address-generation U64
+
+|? !keyed-address
+    0
+|? !address.is-generation-live(keyed-generation)
+    0
+|? address.endpoint as Pointer != this as Pointer
+    0
+??
+    keyed-generation
+
+.. address = keyed-address
+
+────────────────────
+_ do release-keyed-address
+
+=? if !keyed-address
+. address = keyed-address
+if address.is-generation-live(keyed-generation)
+    address.index.release(address)
+
+────────────────────
+_ do link
+    - subscription Subscribable'Payload
+
+?! Panic("Illegal to subscribe to a closed event")
+    if is-closed
+
+if keyed-address
+    subscription.event-bind-address(keyed-address as Pointer, keyed-generation)
+
+if !slots
+    slots += (null, 0, 0, 0, 0)
+
+. sentinel = slots[0]
+. head = sentinel.next
+. tail = sentinel.prev
+. next-free = sentinel.free
+. generation = sentinel.g + 1
+?! Panic("Event subscription generation overflow")
+    if !generation
+
+. slot Index = 0
+if sentinel.free && !active-slots
+    slot = sentinel.free
+    next-free = slots[slot].free
+else
+    slot = slots.length
+    slots += (null, 0, 0, 0, 0)
+
+slots[slot] = (subscription, generation, tail, 0, 0)
+if tail
+    . tail-entry = slots[tail]
+    slots[tail] =
+        (tail-entry.sub, tail-entry.g, tail-entry.prev, slot, tail-entry.free)
+else
+    head = slot
+
+slots[0] = (null, generation, slot, head, next-free)
+live-count += 1
+if !subscription.event-arrival-only
+    bubbling-live-count += 1
+    event-bubbling-adjust(event-id, 1)
+//event.subscriptions.sidecar ++
+
+────────────────────
+_ do unlink
+    - slot Index
+    - subscription Subscribable'Payload
+
+=? if !slots || !slot || slot >= slots.length
+
+. entry = slots[slot]
+=? if !entry.sub || entry.sub as Pointer != subscription as Pointer
+
+. sentinel = slots[0]
+. head = sentinel.next
+. tail = sentinel.prev
+if entry.prev
+    . previous = slots[entry.prev]
+    slots[entry.prev] =
+        (previous.sub, previous.g, previous.prev, entry.next, previous.free)
+else
+    head = entry.next
+
+if entry.next
+    . next = slots[entry.next]
+    slots[entry.next] =
+        (next.sub, next.g, entry.prev, next.next, next.free)
+else
+    tail = entry.prev
+
+slots[slot] = (null, 0, entry.prev, entry.next, sentinel.free)
+slots[0] = (null, sentinel.g, tail, head, slot)
+live-count -= 1
+if !subscription.event-arrival-only
+    bubbling-live-count -= 1
+    event-bubbling-adjust(event-id, -1)
+subscription.unsubscribe()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventSidecar
+
+_ entries [EventEntry]
+_ machine-stops List'EventMachineStop?
+_ is-closed = false
+
+────────────────────
+_ do find EventEntry?
+    - event-id Size
+
+for entry in entries
+    if entry.event-id == event-id
+        = entry
+
+────────────────────
+_ do close
+
+=? if is-closed
+is-closed = true
+for entry in entries
+    entry.close()
+
+━━━━━━━━━━━━━━━━━━━━
+_ EventMachineStop is () Void
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-drain
+
+event-machine-is-draining = true
+. index Index = 0
+while index < event-machine-lanes.length
+    . lane = event-machine-lanes[index]
+    index += 1
+    lane.run-next()
+        catch error Error
+            unhandled-error(error)
+event-machine-lanes.clear()
+event-machine-is-draining = false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-schedule
+    - lane EventMachineLane
+
+if event-machine-dispatches.is-resolving
+    event-machine-dispatches.resolved += lane
+else
+    event-machine-lanes += lane
+    if !event-machine-publishing && !event-machine-is-draining
+        event-machine-drain()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-defer
+    - dispatch Doer
+
+event-machine-dispatches.dispatches += dispatch
+event-machine-schedule(event-machine-dispatches)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-hold Pointer
+    - owner Pointer
+
+= C:yumiGCAddRoot(owner)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-release
+    - root Pointer
+
+C:yumiGCRemoveRoot(root)
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-dispatch-reaches Bool
+    - is-machine Bool
+    - handlers Bool
+    - machines Bool
+
+if is-machine then machines else handlers
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-enqueue'Payload
+    - subscriber Subscriber'Payload
+    - payload Payload
+    - broadcaster Broadcastable'Payload
+
+. transition Doer = => do
+    subscriber(payload, broadcaster)
+event-machine-deferrals.doers += transition
+event-machine-schedule(event-machine-deferrals)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-settle-route
+
+=? if event-machine-publishing != 1 || event-machine-is-draining || !event-machine-lanes
+event-machine-drain()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-finish-publish
+
+event-machine-publishing -= 1
+if !event-machine-publishing && !event-machine-is-draining && event-machine-lanes
+    event-machine-drain()
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-subscription'Payload Subscribable'Payload
+    - subscriber Subscriber'Payload
+    - arrival-only = false
+
+EventSubscription'Payload(subscriber, arrival-only)
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-machine-port'Payload EventMachinePort'Payload
+    - handler Subscriber'Payload
+    - broadcaster Broadcastable'Payload
+
+EventMachinePort'Payload(handler, broadcaster)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-attach'Payload EventMachinePort'Payload
+    - port EventMachinePort'Payload?
+    - handler Subscriber'Payload
+    - broadcaster Broadcastable'Payload
+
+. attached = port ?? EventMachinePort'Payload(handler, broadcaster)
+attached.attach(broadcaster)
+= attached
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-detach'Payload
+    - port EventMachinePort'Payload?
+
+port?.detach()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-machine-post'Payload
+    - port EventMachinePort'Payload
+    - payload Payload
+
+port.post(payload)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-register-lowered
+    - event-id Size
+    - matcher EventLoweredOwnerMatcher
+    - callback Pointer
+    - order Size
+    - is-machine Bool
+
+event-register-descriptor(event-id, matcher, callback, order, is-machine, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-register-lowered-arrival
+    - event-id Size
+    - matcher EventLoweredOwnerMatcher
+    - callback Pointer
+    - order Size
+    - is-machine Bool
+
+event-register-descriptor(event-id, matcher, callback, order, is-machine, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-register-descriptor
+    - event-id Size
+    - matcher EventLoweredOwnerMatcher
+    - callback Pointer
+    - order Size
+    - is-machine Bool
+    - arrival-only Bool
+
+=? if !event-insert-descriptor(event-descriptor-heads, event-id, matcher, callback, order, is-machine)
+if !arrival-only
+    . ignored = event-insert-descriptor
+        - event-bubbling-heads
+        - event-id
+        - matcher
+        - callback
+        - order
+        - is-machine
+    event-bubbling-adjust(event-id, 1)
+//event.subscriptions.lowered ++
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-insert-descriptor Bool
+    - heads [EventLoweredDescriptor?]
+    - event-id Size
+    - matcher EventLoweredOwnerMatcher
+    - callback Pointer
+    - order Size
+    - is-machine Bool
+
+if heads.length <= event-id
+    heads[event-id] = null
+. current = heads[event-id]
+. tail EventLoweredDescriptor?
+while current
+    . descriptor = current
+    if descriptor.matcher as Pointer == matcher as Pointer
+        if descriptor.order == order
+            = false
+    tail = descriptor
+    current = descriptor.next
+
+. descriptor = EventLoweredDescriptor(matcher, callback, order, is-machine)
+if tail
+    tail.next = descriptor
+else
+    heads[event-id] = descriptor
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-bubbling-adjust
+    - event-id Size
+    - delta Size
+
+=? if !delta
+if event-bubbling-counts.length <= event-id
+    event-bubbling-counts[event-id] = 0
+event-bubbling-counts[event-id] += delta
+
+━━━━━━━━━━━━━━━━━━━━
+_ event-has-bubbling-interest Bool @inline
+    - event-id Size
+
+event-id < event-bubbling-counts.length && event-bubbling-counts[event-id] > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-has-lowered-owner Bool
+    - owner Pointer
+
+for head in event-descriptor-heads
+    . current = head
+    while current
+        . descriptor = current
+        . matcher = descriptor.matcher
+        if matcher(owner)
+            = true
+        current = descriptor.next
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-has-lowered-interest Bool
+    - owner Pointer
+    - event-id Size
+
+if event-id >= event-descriptor-heads.length
+    = false
+. current = event-descriptor-heads[event-id]
+while current
+    . descriptor = current
+    . matcher = descriptor.matcher
+    if matcher(owner)
+        = true
+    current = descriptor.next
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ keyed-event-bucket Index
+    - key-low U64
+    - key-high U64
+    - capacity Size
+
+((low * 131 + high) % capacity) as Index
+
+.. low = key-low % capacity
+.. high = key-high % capacity
+
+━━━━━━━━━━━━━━━━━━━━
+_ events-lane Size
+
+C:yumiGCEventsSidePayloadLane() as Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-sidecar EventSidecar
+    - owner Pointer
+
+. existing = gc-object-side-payload'EventSidecar(owner, events-lane())
+if existing
+    = existing
+
+. created = EventSidecar()
+//event.sidecars.created ++
+gc-publish-object-side-payload(owner, events-lane(), created)
+= created
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-keyed-index KeyedEventIndex
+    - owner Pointer
+    - event-id Size
+
+. sidecar = event-sidecar(owner)
+?! Panic("Illegal to access a closed event")
+    if sidecar.is-closed
+. existing = sidecar.find(event-id)
+if existing
+    = existing as KeyedEventIndex
+
+. index = KeyedEventIndex(event-id)
+sidecar.entries += index
+//event.endpoint.entries ++
+= index
+
+━━━━━━━━━━━━━━━━━━━━
+_ do event-dispatch-keyed'Payload
+    - owner Pointer
+    - event-id Size
+    - key-low U64
+    - key-high U64
+    - expected-generation U64
+    - payload Payload
+    - handlers = true
+    - machines = true
+
+. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
+=? if !sidecar || sidecar.is-closed
+. entry = sidecar.find(event-id)
+=? if !entry
+. index = entry as KeyedEventIndex
+. address = index.find-live(key-low, key-high)
+=? if !address || !address.is-generation-live(expected-generation)
+. endpoint = address.endpoint as EventEndpoint'Payload
+=? if endpoint.event-address-generation() != expected-generation
+endpoint.dispatch(payload, handlers, machines)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do event-publish-owner'Payload'Route Bool
@@ -1322,9 +1390,6 @@ event-machine-finish-publish()
 = routed.is-canceled
 
 ━━━━━━━━━━━━━━━━━━━━
-_ EventRouteFrame is (owner Pointer, root Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
 _ do event-dispatch-routed'Payload'Route
     - event-id Size
     - target Pointer
@@ -1378,24 +1443,6 @@ for frame in reached
     is-target = false
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do event-publish'Payload
-    - owner Pointer
-    - event-id Size
-    - payload Payload
-
-event-machine-publishing += 1
-if event-machine-is-draining
-    . root = event-machine-hold(owner)
-    . dispatch Doer = => do
-        event-dispatch(owner, event-id, payload) • handlers false
-        event-machine-release(root)
-    event-machine-defer(dispatch)
-    event-dispatch(owner, event-id, payload) • machines false
-else
-    event-dispatch(owner, event-id, payload)
-event-machine-finish-publish()
-
-━━━━━━━━━━━━━━━━━━━━
 _ do event-dispatch'Payload
     - owner Pointer
     - event-id Size
@@ -1427,46 +1474,3 @@ if event-id < event-descriptor-heads.length
 =? if !entry || !entry.has-interest
 
 (entry as EventEndpoint'Payload).dispatch(payload, handlers, machines)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-close-owner
-    - owner Pointer
-
-. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
-if sidecar
-    sidecar.close()
-else if event-has-lowered-owner(owner)
-    event-sidecar(owner).close()
-
-━━━━━━━━━━━━━━━━━━━━
-_ EventMachineStop is () Void
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-own-machine
-    - owner Pointer
-    - stop EventMachineStop
-
-` Keeps what stops a machine a property of an object holds, which the object's `close` runs
-` (`event-stop-machines`).
-. sidecar = event-sidecar(owner)
-if !sidecar.machine-stops
-    sidecar.machine-stops = List'EventMachineStop()
-sidecar.machine-stops! += stop
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-stop-machines
-    - owner Pointer
-
-` Stops each machine the properties of an object hold, the last started first, and once: each
-` exits its active cases, running their `do finally`, and drops what it subscribed. Then the
-` object's events close, so that no transition on them, which the class's table may run, fires
-` after.
-. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
-=? if !sidecar
-. stops = sidecar.machine-stops
-=? if !stops
-sidecar.machine-stops = null
-while stops.length != 0
-    . stop = stops.pop()
-    stop()
-sidecar.close()

@@ -21,21 +21,17 @@
     is Hashable
 
 + mode => stat.mode
-
 + exists => error == 0
     .. error = C:yumiStat(normalized, &result)
     .. result FileStat
-
 + is-dir => do
     . result FileStat
     . error = C:yumiStat(normalized, &result)
     = error == 0 && result.mode /and/ (C:S_IFMT as U32) == C:S_IFDIR
-
 + is-file => do
     . result FileStat
     . error = C:yumiStat(normalized, &result)
     = error == 0 && result.mode /and/ (C:S_IFMT as U32) == C:S_IFREG
-
 + is-link => do
     . result FileStat
     . error = C:yumiLinkStat(normalized, &result)
@@ -82,14 +78,18 @@ This(str, 0)
 path
 
 ────────────────────
++ to Iterable'Path
+
+contents
+
+╌╌╌╌╌╌╌╌╌╌ is Hashable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
 + get hash Hash
 
 hash-for(path)
 
-────────────────────
-+ to Iterable'Path
-
-contents
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get name String
@@ -262,6 +262,13 @@ buf[0]
 .. error = C:yumiStat(path, buf)
 
 ────────────────────
++ get components [String]
+
+List'String
+    ** path.split(separator)
+    ?> each.length > 0
+
+────────────────────
 _ get lstat
 
 ?! current-file-error()
@@ -291,13 +298,6 @@ buf[0]
 + split
 
 path.split(separator)
-
-────────────────────
-+ get components [String]
-
-List'String
-    ** path.split(separator)
-    ?> each.length > 0
 
 ────────────────────
 + relative-to Path?
@@ -463,13 +463,6 @@ FileChangeStream(this, change-type)
 + inode U64
 
 ━━━━━━━━━━━━━━━━━━━━
-_ YuDirEntry is Tuple
-
-+ inode U64
-+ name-length U32
-+ kind U32
-
-━━━━━━━━━━━━━━━━━━━━
 + PathWatchFlags is U64
 
 | none = 0
@@ -498,15 +491,15 @@ _ YuDirEntry is Tuple
 | cloned = 0x00400000
 
 ────────────────────
++ get must-rescan Bool
+
+contains(PathWatchFlags.must-scan-subdirectories)
+
+────────────────────
 + contains
     - flag PathWatchFlags
 
 this /and/ flag != 0
-
-────────────────────
-+ get must-rescan Bool
-
-contains(PathWatchFlags.must-scan-subdirectories)
 
 ━━━━━━━━━━━━━━━━━━━━
 + PathWatchEvent is Tuple
@@ -525,6 +518,91 @@ contains(PathWatchFlags.must-scan-subdirectories)
     - is-recursive Bool
 
 .. must-rescan = flags.must-rescan
+
+━━━━━━━━━━━━━━━━━━━━
++ PathWatchHandler is () Void
+    - event PathWatchEvent
+
+━━━━━━━━━━━━━━━━━━━━
++ PathWatchListener
+    is Closable
+
++ source Broadcastable'PathWatchEvent
++ handler PathWatchHandler
+
+_ subscription Subscription'PathWatchEvent?
+
+────────────────────
++ This
+    - source
+    - handler
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+. made = subscription
+subscription = null
+if made
+    catch? source.unsubscribe(made)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do listen ?! Error
+
+. made = Subscription'PathWatchEvent(this.dispatch)
+subscription = made
+source.subscribe(made)
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do dispatch
+    - event PathWatchEvent
+    - from Broadcastable'PathWatchEvent
+
+handler(event)
+
+━━━━━━━━━━━━━━━━━━━━
++ do listen-for-changes PathWatchListener ?! Error
+    - source Broadcastable'PathWatchEvent
+    - handler PathWatchHandler
+
+. listener = PathWatchListener(source, handler)
+listener.listen()
+= listener
+
+━━━━━━━━━━━━━━━━━━━━
++ do temporary-directory ?! Error
+    - prefix String = "yumi"
+    - parent String? = null
+
+. root = parent ?? env("TMPDIR") ?? "/tmp"
+. folder = if root.ends-with("/") then root[0 .. < root.length - 1] else root
+. template = "$folder/$prefix.XXXXXX" as Byte[]
+. buffer = Byte[template.length + 1]
+buffer[0 .. < template.length] = template
+buffer[template.length] = 0
+?! current-file-error()
+    if !C:mkdtemp(buffer)
+= Path(buffer.slice-string(0 .. < template.length), 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do executable-path Path ?! Error
+
+. buffer = Byte[4096]
+?! Error("This program's path is longer than ${buffer.size} bytes")
+    if C:yumiExecutablePath(buffer, buffer.size) != 0
+= Path(buffer.slice-string(0 .. < C:strlen(buffer)), 0).resolved
+
+━━━━━━━━━━━━━━━━━━━━
+_ YuDirEntry is Tuple
+
++ inode U64
++ name-length U32
++ kind U32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ YuPathWatchNativeEvent is Tuple
@@ -550,6 +628,8 @@ _ channel := AsyncOnDemandChannel'PathWatchEvent(this)
 + This
     - root Path
     - is-recursive Bool
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do begin-using
@@ -588,59 +668,6 @@ if watcher
 channel.close()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ PathWatchHandler is () Void
-    - event PathWatchEvent
-
-━━━━━━━━━━━━━━━━━━━━
-+ PathWatchListener
-    is Closable
-
-+ source Broadcastable'PathWatchEvent
-+ handler PathWatchHandler
-
-_ subscription Subscription'PathWatchEvent?
-
-────────────────────
-+ This
-    - source
-    - handler
-
-────────────────────
-+ do listen ?! Error
-
-. made = Subscription'PathWatchEvent(this.dispatch)
-subscription = made
-source.subscribe(made)
-
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-. made = subscription
-subscription = null
-if made
-    catch? source.unsubscribe(made)
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-_ do dispatch
-    - event PathWatchEvent
-    - from Broadcastable'PathWatchEvent
-
-handler(event)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do listen-for-changes PathWatchListener ?! Error
-    - source Broadcastable'PathWatchEvent
-    - handler PathWatchHandler
-
-. listener = PathWatchListener(source, handler)
-listener.listen()
-= listener
-
-━━━━━━━━━━━━━━━━━━━━
 _ FileChangeStream
     is Usable'Void
 
@@ -660,6 +687,8 @@ _ channel := AsyncOnDemandChannel'Path(this)
 
 .. file = File(path, FileFlags.event-only-mode)
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + do begin-using
 
@@ -675,26 +704,3 @@ do new
 
 C:yumiCancelFileChangeEventListener(file, change-type, lock.native-pointer)
 file.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do temporary-directory ?! Error
-    - prefix String = "yumi"
-    - parent String? = null
-
-. root = parent ?? env("TMPDIR") ?? "/tmp"
-. folder = if root.ends-with("/") then root[0 .. < root.length - 1] else root
-. template = "$folder/$prefix.XXXXXX" as Byte[]
-. buffer = Byte[template.length + 1]
-buffer[0 .. < template.length] = template
-buffer[template.length] = 0
-?! current-file-error()
-    if !C:mkdtemp(buffer)
-= Path(buffer.slice-string(0 .. < template.length), 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do executable-path Path ?! Error
-
-. buffer = Byte[4096]
-?! Error("This program's path is longer than ${buffer.size} bytes")
-    if C:yumiExecutablePath(buffer, buffer.size) != 0
-= Path(buffer.slice-string(0 .. < C:strlen(buffer)), 0).resolved

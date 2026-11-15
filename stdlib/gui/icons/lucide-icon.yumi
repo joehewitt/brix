@@ -10,25 +10,6 @@
 /math
 
 ━━━━━━━━━━━━━━━━━━━━
-_ LucideGlyphShape is U32
-
-| path = 0
-| circle = 1
-| ellipse = 2
-| line = 3
-| rectangle = 4
-
-━━━━━━━━━━━━━━━━━━━━
-_ LucideGlyphOp is U32
-
-| move-to = 0
-| line-to = 1
-| cubic-to = 2
-| quadratic-to = 3
-| arc-to = 4
-| close = 5
-
-━━━━━━━━━━━━━━━━━━━━
 + LucideIcon is VectorImage
 
 • This
@@ -47,12 +28,6 @@ for part in lucide-glyph-parts(program)
     if part.is-filled
         part.shape.fill = Fill.stroke
     group += part.shape
-
-━━━━━━━━━━━━━━━━━━━━
-_ LucideGlyphPart is Tuple
-
-+ shape GraphicNode
-+ is-filled Bool
 
 ━━━━━━━━━━━━━━━━━━━━
 + do paint-lucide-glyph
@@ -76,87 +51,6 @@ do use canvas.saved-state
         canvas.fill-color = color if part.is-filled
         for path in part.shape.draw()
             path.outline(canvas)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do lucide-glyph-parts [LucideGlyphPart]
-    - program [Coord]
-
-. parts = List'LucideGlyphPart()
-. cursor Index = 0
-while cursor < program.length
-    . kind = program[cursor] as U32 as LucideGlyphShape
-    . is-filled = program[cursor + 1] != 0
-    cursor += 2
-    do match kind
-        |= LucideGlyphShape.path
-            . limit = cursor + 2 + (program[cursor + 1] as Index)
-            parts += LucideGlyphPart(VectorPath(lucide-glyph-ops(program, cursor + 2, limit, program[cursor] as Size)), is-filled)
-            cursor = limit
-        |= LucideGlyphShape.circle
-            parts += LucideGlyphPart(Circle(Point(program[cursor], program[cursor + 1]), program[cursor + 2]), is-filled)
-            cursor += 3
-        |= LucideGlyphShape.ellipse
-            . center = Point(program[cursor], program[cursor + 1])
-            parts += LucideGlyphPart(Ellipse(center, Dimensions(program[cursor + 2], program[cursor + 3])), is-filled)
-            cursor += 4
-        |= LucideGlyphShape.line
-            . from = Point(program[cursor], program[cursor + 1])
-            parts += LucideGlyphPart(Line(from, Point(program[cursor + 2], program[cursor + 3])), is-filled)
-            cursor += 4
-        |= LucideGlyphShape.rectangle
-            . bounds = Rect(program[cursor], program[cursor + 1], program[cursor + 2], program[cursor + 3])
-            parts += LucideGlyphPart(Rectangle(bounds), is-filled)
-            cursor += 4
-= parts
-
-━━━━━━━━━━━━━━━━━━━━
-_ do lucide-glyph-ops [PathOp]
-    - program [Coord]
-    - start Index
-    - limit Index
-    - count Size
-
-. ops [PathOp]
-ops.reserve(count)
-. cursor = start
-while cursor < limit
-    do match program[cursor] as U32 as LucideGlyphOp
-        |= LucideGlyphOp.move-to
-            ops += M(program[cursor + 1], program[cursor + 2])
-            cursor += 3
-        |= LucideGlyphOp.line-to
-            ops += L(program[cursor + 1], program[cursor + 2])
-            cursor += 3
-        |= LucideGlyphOp.cubic-to
-            ops += C
-                - program[cursor + 1]
-                - program[cursor + 2]
-                - program[cursor + 3]
-                - program[cursor + 4]
-                - program[cursor + 5]
-                - program[cursor + 6]
-            cursor += 7
-        |= LucideGlyphOp.quadratic-to
-            ops += Q
-                - program[cursor + 1]
-                - program[cursor + 2]
-                - program[cursor + 3]
-                - program[cursor + 4]
-            cursor += 5
-        |= LucideGlyphOp.arc-to
-            ops += A
-                - program[cursor + 1]
-                - program[cursor + 2]
-                - program[cursor + 3]
-                - program[cursor + 4] != 0
-                - program[cursor + 5] != 0
-                - program[cursor + 6]
-                - program[cursor + 7]
-            cursor += 8
-        |= LucideGlyphOp.close
-            ops += Z()
-            cursor += 1
-= ops
 
 ━━━━━━━━━━━━━━━━━━━━
 + do lucide-glyph-path [Coord]
@@ -285,6 +179,112 @@ lines += "[$values]"
 if rounded == 0 then "0" else "$rounded"
 
 .. rounded = round(value * 1000) / 1000
+
+━━━━━━━━━━━━━━━━━━━━
+_ LucideGlyphShape is U32
+
+| path = 0
+| circle = 1
+| ellipse = 2
+| line = 3
+| rectangle = 4
+
+━━━━━━━━━━━━━━━━━━━━
+_ LucideGlyphOp is U32
+
+| move-to = 0
+| line-to = 1
+| cubic-to = 2
+| quadratic-to = 3
+| arc-to = 4
+| close = 5
+
+━━━━━━━━━━━━━━━━━━━━
+_ LucideGlyphPart is Tuple
+
++ shape GraphicNode
++ is-filled Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lucide-glyph-parts [LucideGlyphPart]
+    - program [Coord]
+
+. parts = List'LucideGlyphPart()
+. cursor Index = 0
+while cursor < program.length
+    . kind = program[cursor] as U32 as LucideGlyphShape
+    . is-filled = program[cursor + 1] != 0
+    cursor += 2
+    do match kind
+        |= LucideGlyphShape.path
+            . limit = cursor + 2 + (program[cursor + 1] as Index)
+            parts += LucideGlyphPart(VectorPath(lucide-glyph-ops(program, cursor + 2, limit, program[cursor] as Size)), is-filled)
+            cursor = limit
+        |= LucideGlyphShape.circle
+            parts += LucideGlyphPart(Circle(Point(program[cursor], program[cursor + 1]), program[cursor + 2]), is-filled)
+            cursor += 3
+        |= LucideGlyphShape.ellipse
+            . center = Point(program[cursor], program[cursor + 1])
+            parts += LucideGlyphPart(Ellipse(center, Dimensions(program[cursor + 2], program[cursor + 3])), is-filled)
+            cursor += 4
+        |= LucideGlyphShape.line
+            . from = Point(program[cursor], program[cursor + 1])
+            parts += LucideGlyphPart(Line(from, Point(program[cursor + 2], program[cursor + 3])), is-filled)
+            cursor += 4
+        |= LucideGlyphShape.rectangle
+            . bounds = Rect(program[cursor], program[cursor + 1], program[cursor + 2], program[cursor + 3])
+            parts += LucideGlyphPart(Rectangle(bounds), is-filled)
+            cursor += 4
+= parts
+
+━━━━━━━━━━━━━━━━━━━━
+_ do lucide-glyph-ops [PathOp]
+    - program [Coord]
+    - start Index
+    - limit Index
+    - count Size
+
+. ops [PathOp]
+ops.reserve(count)
+. cursor = start
+while cursor < limit
+    do match program[cursor] as U32 as LucideGlyphOp
+        |= LucideGlyphOp.move-to
+            ops += M(program[cursor + 1], program[cursor + 2])
+            cursor += 3
+        |= LucideGlyphOp.line-to
+            ops += L(program[cursor + 1], program[cursor + 2])
+            cursor += 3
+        |= LucideGlyphOp.cubic-to
+            ops += C
+                - program[cursor + 1]
+                - program[cursor + 2]
+                - program[cursor + 3]
+                - program[cursor + 4]
+                - program[cursor + 5]
+                - program[cursor + 6]
+            cursor += 7
+        |= LucideGlyphOp.quadratic-to
+            ops += Q
+                - program[cursor + 1]
+                - program[cursor + 2]
+                - program[cursor + 3]
+                - program[cursor + 4]
+            cursor += 5
+        |= LucideGlyphOp.arc-to
+            ops += A
+                - program[cursor + 1]
+                - program[cursor + 2]
+                - program[cursor + 3]
+                - program[cursor + 4] != 0
+                - program[cursor + 5] != 0
+                - program[cursor + 6]
+                - program[cursor + 7]
+            cursor += 8
+        |= LucideGlyphOp.close
+            ops += Z()
+            cursor += 1
+= ops
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do lucide-glyph-path-data String

@@ -19,6 +19,65 @@ _ bench-default-extensions [String] = [".yumi", ".bx"]
 _ bench-compile-command = "compile"
 _ bench-launch-command = "launch"
 
++ BenchUnconfiguredError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchConfig is Tuple
+
++ root String
++ path String
++ variables [TargetVariable]
++ suites [BenchSuite]
++ metrics [BenchMetric]
++ profiles [BenchProfile]
++ commands [String = BenchCommand]
++ default-profile String
+
+────────────────────
++ do profile BenchProfile ?! Error
+    - name String
+
+. wanted = name.trim().lowercased
+for profile in profiles
+    =? profile if profile.name.lowercased == wanted
+. names [String]
+for profile in profiles
+    names += profile.name
+?! Error("Unknown benchmark profile $name; the profiles are ${", ".join(names)}")
+
+────────────────────
++ do suite BenchSuite?
+    - name String
+
+for suite in suites
+    =? suite if suite.name == name
+= null
+
+────────────────────
++ do step TargetStep ?! Error
+    - name String
+    - profile BenchProfile
+    - values [String = String]
+
+. command = commands[name]
+?! Error("No command $name in $bench-config-path")
+    if !command
+await-login-shell-environment()
+. settings = Map'String'String()
+for key, value in environment()
+    settings[key] = value
+apply-variables(settings, variables, values)
+. local = Map'String'String()
+for key, value in values
+    local[key] = value
+local["root"] = command.folder
+local["build"] = bench-build(command.folder, profile)
+apply-variables(settings, command.variables, local)
+. arguments = expand-arguments(command.run, local)
+if profile.probes.length > 0
+    arguments ++= expand-arguments(command.probes, local)
+= TargetStep(arguments, settings)
+
 ━━━━━━━━━━━━━━━━━━━━
 + BenchFormat is Union
 
@@ -103,86 +162,11 @@ some(metrics) • where each.is-timing
 + folder String
 
 ━━━━━━━━━━━━━━━━━━━━
-+ BenchConfig is Tuple
-
-+ root String
-+ path String
-+ variables [TargetVariable]
-+ suites [BenchSuite]
-+ metrics [BenchMetric]
-+ profiles [BenchProfile]
-+ commands [String = BenchCommand]
-+ default-profile String
-
-────────────────────
-+ do profile BenchProfile ?! Error
-    - name String
-
-. wanted = name.trim().lowercased
-for profile in profiles
-    =? profile if profile.name.lowercased == wanted
-. names [String]
-for profile in profiles
-    names += profile.name
-?! Error("Unknown benchmark profile $name; the profiles are ${", ".join(names)}")
-
-────────────────────
-+ do suite BenchSuite?
-    - name String
-
-for suite in suites
-    =? suite if suite.name == name
-= null
-
-────────────────────
-+ do step TargetStep ?! Error
-    - name String
-    - profile BenchProfile
-    - values [String = String]
-
-. command = commands[name]
-?! Error("No command $name in $bench-config-path")
-    if !command
-await-login-shell-environment()
-. settings = Map'String'String()
-for key, value in environment()
-    settings[key] = value
-apply-variables(settings, variables, values)
-. local = Map'String'String()
-for key, value in values
-    local[key] = value
-local["root"] = command.folder
-local["build"] = bench-build(command.folder, profile)
-apply-variables(settings, command.variables, local)
-. arguments = expand-arguments(command.run, local)
-if profile.probes.length > 0
-    arguments ++= expand-arguments(command.probes, local)
-= TargetStep(arguments, settings)
-
-━━━━━━━━━━━━━━━━━━━━
 + bench-build String
     - folder String
     - profile BenchProfile
 
 if profile.has-benchmark-metrics then "$folder/$bench-build-path" else "$folder/.tmp/build"
-
-━━━━━━━━━━━━━━━━━━━━
-+ BenchUnconfiguredError is Error
-
-━━━━━━━━━━━━━━━━━━━━
-_ BenchFile is Tuple
-
-+ file JSONObjectReader
-+ label String
-+ folder String
-+ is-nested Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ BenchExtension is Tuple
-
-+ name String
-+ label String
-+ metrics [BenchMetric]
 
 ━━━━━━━━━━━━━━━━━━━━
 + do load-bench-config BenchConfig ?! Error
@@ -245,6 +229,83 @@ for profile in profiles
     - profiles
     - commands
     - default-profile
+
+━━━━━━━━━━━━━━━━━━━━
++ do ordered-bench-profiles [BenchProfile]
+    - config BenchConfig
+
+. ordered [BenchProfile]
+for profile in config.profiles
+    if profile.is-default
+        ordered += profile
+for profile in config.profiles
+    if !profile.is-default
+        ordered += profile
+= ordered
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-normalized-path String
+    - text String
+
+. parts [String]
+for part in text.split("/")
+    if part == "" || part == "."
+        continue
+    if part == ".." && parts.length > 0 && parts[parts.length - 1] != ".."
+        parts.pop()
+    else
+        parts += part
+. joined = "/".join(parts)
+= if text.starts-with("/") then "/$joined" else joined
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-format-name String
+    - format BenchFormat
+
+match format
+    | .duration
+        "duration"
+    | .count
+        "count"
+    | .bytes
+        "bytes"
+    | .percent
+        "percent"
+    | .rate
+        "rate"
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-source-name String
+    - source BenchSource
+
+if source == BenchSource.compile then "compile" else "run"
+
+━━━━━━━━━━━━━━━━━━━━
++ do bench-commas [String]
+    - text String
+
+. values [String]
+=? values if text.trim() == ""
+for part in text.split(",")
+    . trimmed = part.trim()
+    if trimmed != ""
+        values += trimmed
+= values
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchFile is Tuple
+
++ file JSONObjectReader
++ label String
++ folder String
++ is-nested Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchExtension is Tuple
+
++ name String
++ label String
++ metrics [BenchMetric]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do bench-file JSONObjectReader ?! Error
@@ -543,68 +604,6 @@ for child in directory.contents
         folders += child as String
     else
         collect-bench-folders(child, folders)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ordered-bench-profiles [BenchProfile]
-    - config BenchConfig
-
-. ordered [BenchProfile]
-for profile in config.profiles
-    if profile.is-default
-        ordered += profile
-for profile in config.profiles
-    if !profile.is-default
-        ordered += profile
-= ordered
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bench-normalized-path String
-    - text String
-
-. parts [String]
-for part in text.split("/")
-    if part == "" || part == "."
-        continue
-    if part == ".." && parts.length > 0 && parts[parts.length - 1] != ".."
-        parts.pop()
-    else
-        parts += part
-. joined = "/".join(parts)
-= if text.starts-with("/") then "/$joined" else joined
-
-━━━━━━━━━━━━━━━━━━━━
-+ bench-format-name String
-    - format BenchFormat
-
-match format
-    | .duration
-        "duration"
-    | .count
-        "count"
-    | .bytes
-        "bytes"
-    | .percent
-        "percent"
-    | .rate
-        "rate"
-
-━━━━━━━━━━━━━━━━━━━━
-+ bench-source-name String
-    - source BenchSource
-
-if source == BenchSource.compile then "compile" else "run"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bench-commas [String]
-    - text String
-
-. values [String]
-=? values if text.trim() == ""
-for part in text.split(",")
-    . trimmed = part.trim()
-    if trimmed != ""
-        values += trimmed
-= values
 
 ━━━━━━━━━━━━━━━━━━━━
 _ bench-command BenchCommand ?! Error

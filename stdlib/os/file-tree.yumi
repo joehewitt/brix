@@ -5,73 +5,11 @@
 /time/duration
 
 + file-tree-flush-delay = 16ms
+
 _ file-tree-new-file-perms =
     user-read-perm /or/ user-write-perm /or/ group-read-perm /or/ other-read-perm
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNameFilter is () Bool
-    - name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ FileEntry is Tuple
-
-+ name String
-+ kind PathKind
-+ inode U64
-+ is-directory Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + FileRelocation is (from String, to String?)
-
-━━━━━━━━━━━━━━━━━━━━
-+ FileNode
-
-+ key String
-+ name String
-+ sort-name String
-+ kind PathKind
-+ inode U64
-+ is-directory Bool
-+ parent FileNode?
-+ children [FileNode]?
-+ listed-path String?
-+ retain-count Size = 0
-+ observe-count Size = 0
-+ is-unreadable = false
-+ is-detached = false
-
-────────────────────
-+ This
-    - key
-    - name
-    - kind
-    - inode
-    - is-directory
-    - parent FileNode? = null
-
-sort-name = name.lowercased
-
-────────────────────
-+ get path Path
-
-|? owner
-    owner.path / name
-??
-    Path(name, 0)
-
-.. owner = parent
-
-────────────────────
-+ get relative-path String
-
-|? !owner
-    ""
-|? !owner.parent
-    name
-??
-    "${owner.relative-path}/$name"
-
-.. owner = parent
 
 ━━━━━━━━━━━━━━━━━━━━
 + FileTree
@@ -104,6 +42,20 @@ _ stale Map'String'FileNode
 root = FileNode(take-key(), "$resolved", PathKind.directory, 0, true)
 root.retain-count = 1
 schedule-flush = throttled(file-tree-flush-delay, this.flush)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+is-watching = false
+. stream = watch
+watch = null
+if stream
+    stream.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get loaded-count Size
@@ -294,18 +246,6 @@ flush-directories()
 for node in touched
     if !node.is-detached
         modified <- node
-
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-is-closed = true
-is-watching = false
-. stream = watch
-watch = null
-if stream
-    stream.close()
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -587,13 +527,66 @@ node.is-detached = true
 unload(node)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ FileTreeScan is Tuple
++ FileNameFilter is () Bool
+    - name String
 
-+ node FileNode
-+ entries [PathEntry]
-+ kept Map'String'FileNode
-+ is-readable Bool
-+ lost Size
+━━━━━━━━━━━━━━━━━━━━
++ FileEntry is Tuple
+
++ name String
++ kind PathKind
++ inode U64
++ is-directory Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ FileNode
+
++ key String
++ name String
++ sort-name String
++ kind PathKind
++ inode U64
++ is-directory Bool
++ parent FileNode?
++ children [FileNode]?
++ listed-path String?
++ retain-count Size = 0
++ observe-count Size = 0
++ is-unreadable = false
++ is-detached = false
+
+────────────────────
++ This
+    - key
+    - name
+    - kind
+    - inode
+    - is-directory
+    - parent FileNode? = null
+
+sort-name = name.lowercased
+
+────────────────────
++ get path Path
+
+|? owner
+    owner.path / name
+??
+    Path(name, 0)
+
+.. owner = parent
+
+────────────────────
++ get relative-path String
+
+|? !owner
+    ""
+|? !owner.parent
+    name
+??
+    "${owner.relative-path}/$name"
+
+.. owner = parent
 
 ━━━━━━━━━━━━━━━━━━━━
 + do file-node-is-within Bool
@@ -605,6 +598,70 @@ while cursor
     =? true if cursor.key == ancestor.key
     cursor = cursor.parent
 = false
+
+━━━━━━━━━━━━━━━━━━━━
++ file-tree-hides-name Bool
+    - name String
+
+name == ".DS_Store"
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-entries [FileEntry]?
+    - location Path
+    - hides FileNameFilter
+
+. listed = catch? List'PathEntry(location.entries)
+= match listed
+    |= null
+        null
+    ??
+        List'FileEntry
+            ** listed
+            ?*>
+                FileEntry(each.name, each.kind, each.inode, is-directory) if !hides(each.name)
+                .. is-directory = file-tree-entry-is-directory(location, each)
+
+━━━━━━━━━━━━━━━━━━━━
++ file-tree-entry-is-directory Bool
+    - location Path
+    - entry PathEntry
+
+match entry.kind
+    |= PathKind.directory
+        true
+    |= PathKind.link
+        catch? (location / entry.name).is-dir ?? false
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
++ file-order Comparison
+    - left
+    - right
+
+|? left.is-directory && !right.is-directory
+    Comparison.lesser
+|? right.is-directory && !left.is-directory
+    Comparison.greater
+|? left.sort-name < right.sort-name
+    Comparison.lesser
+|? left.sort-name > right.sort-name
+    Comparison.greater
+|? left.name < right.name
+    Comparison.lesser
+|? left.name > right.name
+    Comparison.greater
+??
+    Comparison.equal
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileTreeScan is Tuple
+
++ node FileNode
++ entries [PathEntry]
++ kept Map'String'FileNode
++ is-readable Bool
++ lost Size
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do file-tree-copy ?! Error
@@ -664,12 +721,6 @@ while (location / name).exists
 = name
 
 ━━━━━━━━━━━━━━━━━━━━
-+ file-tree-hides-name Bool
-    - name String
-
-name == ".DS_Store"
-
-━━━━━━━━━━━━━━━━━━━━
 _ file-tree-changes-names Bool
     - flags PathWatchFlags
 
@@ -685,35 +736,6 @@ _ file-tree-is-at Bool
     - text String
 
 !node.is-detached && text.ends-with(node.name) && text == "${node.path}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do file-entries [FileEntry]?
-    - location Path
-    - hides FileNameFilter
-
-. listed = catch? List'PathEntry(location.entries)
-= match listed
-    |= null
-        null
-    ??
-        List'FileEntry
-            ** listed
-            ?*>
-                FileEntry(each.name, each.kind, each.inode, is-directory) if !hides(each.name)
-                .. is-directory = file-tree-entry-is-directory(location, each)
-
-━━━━━━━━━━━━━━━━━━━━
-+ file-tree-entry-is-directory Bool
-    - location Path
-    - entry PathEntry
-
-match entry.kind
-    |= PathKind.directory
-        true
-    |= PathKind.link
-        catch? (location / entry.name).is-dir ?? false
-    ??
-        false
 
 ━━━━━━━━━━━━━━━━━━━━
 _ file-tree-is-same-item Bool
@@ -735,23 +757,3 @@ _ file-tree-sorted [FileNode]
     - nodes [FileNode]
 
 sort(nodes) • using file-order
-
-━━━━━━━━━━━━━━━━━━━━
-+ file-order Comparison
-    - left
-    - right
-
-|? left.is-directory && !right.is-directory
-    Comparison.lesser
-|? right.is-directory && !left.is-directory
-    Comparison.greater
-|? left.sort-name < right.sort-name
-    Comparison.lesser
-|? left.sort-name > right.sort-name
-    Comparison.greater
-|? left.name < right.name
-    Comparison.lesser
-|? left.name > right.name
-    Comparison.greater
-??
-    Comparison.equal

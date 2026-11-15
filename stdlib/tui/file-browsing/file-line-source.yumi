@@ -11,46 +11,6 @@ _ file-line-normal-page-lines Size = 256
 _ file-line-page-cache-limit Size = 16
 
 ━━━━━━━━━━━━━━━━━━━━
-_ FileLineIdentity is Tuple
-
-_ dev U64
-_ ino U64
-_ size I64
-_ mtime ClockTime
-
-────────────────────
-+ This ?! Error
-    - path Path
-
-= This(stat.dev, stat.ino, stat.size, stat.mtime)
-    .. stat = path.stat
-
-━━━━━━━━━━━━━━━━━━━━
-_ FileLineRecord is Tuple
-
-_ start-offset Index
-_ text String
-
-━━━━━━━━━━━━━━━━━━━━
-_ FileLinePage is Tuple
-
-_ first-line VirtualCoord
-_ lines [FileLineRecord]
-
-━━━━━━━━━━━━━━━━━━━━
-_ FileLineCheckpoint is Tuple
-
-_ line VirtualCoord
-_ offset Index
-
-━━━━━━━━━━━━━━━━━━━━
-_ FileLineScan is Tuple
-
-_ start-offset Index
-_ text String
-_ terminated Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + FileLineSource
     is VirtualSource'String
     is VirtualSequenceDomain
@@ -83,6 +43,8 @@ identity = FileLineIdentity(path)
 file-size = identity.size as Index
 file = File'Byte(path as String)
 
+╌╌╌╌╌╌╌╌╌╌ is VirtualSource'String ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + get domain VirtualSequenceDomain
 
@@ -99,18 +61,6 @@ known-line-count
 + get estimated-count VirtualCoord?
 
 estimate-count()
-
-────────────────────
-_ estimate-count VirtualCoord?
-
-|? final
-    known-line-count
-|? known-line-count <= 0vcoord || known-byte-offset == 0
-    null
-??
-    max(known-line-count, (estimate as VirtualCoord))
-
-.. estimate = ((file-size as I64) * (known-line-count as I64)) / (known-byte-offset as I64)
 
 ────────────────────
 + get is-final Bool
@@ -133,6 +83,19 @@ index
     null
 ??
     address as VirtualCoord
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if !file
+file.close()
+file = null
+revision.bump()
+clear-cache-and-domain()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ╌╌╌╌╌╌╌╌╌╌ is VirtualSource'String ╌╌╌╌╌╌╌╌╌╌
 
@@ -191,16 +154,17 @@ else
 
 = resets
 
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
-+ do close
+_ estimate-count VirtualCoord?
 
-=? if !file
-file.close()
-file = null
-revision.bump()
-clear-cache-and-domain()
+|? final
+    known-line-count
+|? known-line-count <= 0vcoord || known-byte-offset == 0
+    null
+??
+    max(known-line-count, (estimate as VirtualCoord))
+
+.. estimate = ((file-size as I64) * (known-line-count as I64)) / (known-byte-offset as I64)
 
 ────────────────────
 _ do reset-to ?! IOError
@@ -412,16 +376,75 @@ _ do read-chunk Size ?! IOError
 = file.read(size, buffer, offset)
 
 ━━━━━━━━━━━━━━━━━━━━
++ file-valid-utf8-sequence Size
+    - bytes Byte[]
+    - size Size
+    - index Index
+
+|? first <= 127
+    1
+|? first >= 194 && first <= 223
+    if index + 1 < size && file-utf8-continuation(bytes[index + 1]) then 2 else 0
+|? first >= 224 && first <= 239
+    file-valid-utf8-three(bytes, size, index)
+|? first >= 240 && first <= 244
+    file-valid-utf8-four(bytes, size, index)
+??
+    0
+
+.. first = bytes[index]
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineIdentity is Tuple
+
+_ dev U64
+_ ino U64
+_ size I64
+_ mtime ClockTime
+
+────────────────────
++ This ?! Error
+    - path Path
+
+= This(stat.dev, stat.ino, stat.size, stat.mtime)
+    .. stat = path.stat
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineRecord is Tuple
+
+_ start-offset Index
+_ text String
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLinePage is Tuple
+
+_ first-line VirtualCoord
+_ lines [FileLineRecord]
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineCheckpoint is Tuple
+
+_ line VirtualCoord
+_ offset Index
+
+━━━━━━━━━━━━━━━━━━━━
+_ FileLineScan is Tuple
+
+_ start-offset Index
+_ text String
+_ terminated Bool
+
+━━━━━━━━━━━━━━━━━━━━
 _ FileLineScanner
 
 _ source FileLineSource
-_ buffer := Byte[file-line-read-chunk]
 _ buffer-size Size
 _ buffer-index Index
 _ offset Index
 _ at-eof Bool
 _ last-line-start Index
 _ last-line-terminated Bool
+_ buffer := Byte[file-line-read-chunk]
 
 ────────────────────
 _ This
@@ -524,25 +547,6 @@ while read-index < size && characters < file-line-display-character-limit
         read-index += 1
     characters += 1
 = output.slice-string(0 .. < write-index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ file-valid-utf8-sequence Size
-    - bytes Byte[]
-    - size Size
-    - index Index
-
-|? first <= 127
-    1
-|? first >= 194 && first <= 223
-    if index + 1 < size && file-utf8-continuation(bytes[index + 1]) then 2 else 0
-|? first >= 224 && first <= 239
-    file-valid-utf8-three(bytes, size, index)
-|? first >= 240 && first <= 244
-    file-valid-utf8-four(bytes, size, index)
-??
-    0
-
-.. first = bytes[index]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ file-valid-utf8-three Size

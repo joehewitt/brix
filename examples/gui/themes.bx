@@ -1,0 +1,157 @@
+; Style sheets as the subject. A sheet's slots are named values that its rules
+; read. A derived sheet restates some of them for a tag, and turning the tag on
+; for a node restyles everything beneath it. The markup never changes.
+(import /graphics/color)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /gui)
+(import /math/easing)
+(import /time/duration)
+(import /units)
+(blank)
+
+(main
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Themes")
+      (= size (tuple 520 320))
+      (blank)
+      (<> ThemePanel (• flex 1))
+    )
+  )
+)
+
+(type + Notice (is Tuple)
+  (prop + id Index)
+  (prop + title String)
+  (prop + detail String)
+  (prop + is-urgent Bool)
+)
+
+(fn-expr + sample-notices (list Notice)
+  (bullet (call Notice 1 "Backup finished" "All 2,418 files are safe." false))
+  (bullet (call Notice 2 "Disk almost full" "3 GB are left on this Mac." true))
+  (bullet (call Notice 3 "Update ready" "Version 4.2 installs on restart." false))
+)
+
+(style PaperShape
+  ; One family of sheets holds the shapes.
+  (blank)
+  (prop + corner Length (= 4))
+  (prop + mark-size Length (= 8))
+)
+
+(style PaperRoundShape (is PaperShape) (for round)
+  ; A derived sheet can only restate slots of the sheet it derives from.
+  (blank)
+  (prop + corner _ (= 20))
+  (prop + mark-size _ (= 14))
+)
+
+(style PaperTheme
+  (using GUIDefaultTheme)
+  (using GUIMotionTheme)
+  (using GUIBoxTransform)
+  (using PaperShape)
+  ; A second family holds the colors. Each family picks its own variant from the
+  ; tags that are on, so two tags give four looks from these four small sheets.
+  (blank)
+  (prop + paper-color RGBA (= (call RGBA "#f3ede2")))
+  (prop + card-color RGBA (= (call RGBA "#fffdf8")))
+  (prop + ink-color RGBA (= (call RGBA "#2b2622")))
+  (prop + accent-color RGBA (= (call RGBA "#c2410c")))
+  (blank)
+  ; An animation is a value of the sheet too. Each track names a property it moves.
+  (keyframes beat animation 900ms
+    (= repeat (. Repeat forever))
+    (track scale
+      (at 0% 1)
+      (at 50% 1.6 (:easing (. Easing ease-in-out)))
+      (at 100% 1 (:easing (. Easing ease-in-out)))
+    )
+  )
+  (blank)
+  (rule theme-bar (• flex-row) (• items-center) (• p 12)
+    (= gap 20)
+  )
+  (blank)
+  (rule paper-page (• flex-col) (• flex 1) (• bg paper-color) (• p 20)
+    (= gap 10)
+  )
+  (blank)
+  (rule notice-card (• flex-row) (• items-center) (• bg card-color) (• p 14)
+    (= gap 12)
+    (= corner-radius corner)
+    (blank)
+    ; A nested rule reaches every match beneath the card, a label the caller puts
+    ; in the card's body included.
+    (rule notice-line (• text ink-color))
+    (blank)
+    ; An own rule reaches only the markup NoticeCard itself declares: its title.
+    (own-rule notice-line
+      (= font-weight (. FontWeight bold))
+    )
+    (blank)
+    (rule notice-mark (• bg ink-color) (• w mark-size) (• h mark-size)
+      (= corner-radius (/ mark-size 2))
+      (= opacity 30%%)
+    )
+    (blank)
+    ; A rule plays the animation by naming it, here on the mark of an urgent notice.
+    (when-style #is-urgent
+      (rule notice-mark (• bg accent-color)
+        (= opacity 100%%)
+        (= animation beat)
+      )
+    )
+  )
+)
+
+(style PaperNightTheme (is PaperTheme) (for night)
+  (prop + paper-color _ (= (call RGBA "#1c1917")))
+  (prop + card-color _ (= (call RGBA "#292524")))
+  (prop + ink-color _ (= (call RGBA "#f5f5f4")))
+  (prop + accent-color _ (= (call RGBA "#fb923c")))
+)
+
+(type + ThemePanel (is Box)
+  (using PaperTheme)
+  (prop + notices (list Notice) (= (call sample-notices)))
+  (content
+    (<> This (• flex-col)
+      (<> Box (• theme-bar)
+        (<> Switch (id: night) (text: "Night"))
+        (<> Switch (id: round) (text: "Round"))
+      )
+      ; Each tag follows its switch. A tag bound on one node holds for that node
+      ; and all beneath it.
+      (<> Box (for: night (. #night #is-on)) (for: round (. #round #is-on)) (• paper-page)
+        (for (in notice #notices (keyed-by (. notice id)))
+          (<> NoticeCard
+            (= title (. notice title))
+            (= is-urgent (. notice is-urgent))
+            (blank)
+            ; This label is the panel's, so the card's own rule passes it by.
+            (<> Label (• notice-line)
+              (= text (. notice detail))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + NoticeCard (is Box)
+  (using PaperTheme)
+  (prop + title _ (= ""))
+  (prop + is-urgent _ (= false))
+  (content
+    (<> This (• notice-card)
+      (<> Box (• notice-mark))
+      (<> Label (• notice-line)
+        (= text #title)
+      )
+    )
+  )
+)

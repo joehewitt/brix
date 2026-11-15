@@ -5,6 +5,8 @@
 
 + bench-metadata-marker = "benchmark.meta"
 
+_ BenchMetadataLine is (key String, value String)
+
 ━━━━━━━━━━━━━━━━━━━━
 + BenchCase is Tuple
 
@@ -17,9 +19,6 @@
 + profiles [String]?
 + source-path String
 + relative-path String
-
-━━━━━━━━━━━━━━━━━━━━
-_ BenchMetadataLine is (key String, value String)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do discover-bench-cases [BenchCase] ?! Error
@@ -113,6 +112,23 @@ while rest.starts-with("./")
 = if normalized != "" then normalized else "."
 
 ━━━━━━━━━━━━━━━━━━━━
++ bench-file-name String
+    - path String
+
+if slash then path[slash + 1 ...] else path
+
+.. slash = path.find("/", 0, true)
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-extension String
+    - path String
+
+if dot && dot > 0 then name[dot ...] else ""
+
+.. name = bench-file-name(path)
+.. dot = name.find(".", 0, true)
+
+━━━━━━━━━━━━━━━━━━━━
 _ do bench-files [String] ?! Error
     - suite BenchSuite
 
@@ -176,23 +192,6 @@ _ do bench-without-extension String
 for extension in extensions
     =? path[0 .. < path.length - extension.length] if path.ends-with(extension)
 = path
-
-━━━━━━━━━━━━━━━━━━━━
-+ bench-file-name String
-    - path String
-
-if slash then path[slash + 1 ...] else path
-
-.. slash = path.find("/", 0, true)
-
-━━━━━━━━━━━━━━━━━━━━
-+ bench-extension String
-    - path String
-
-if dot && dot > 0 then name[dot ...] else ""
-
-.. name = bench-file-name(path)
-.. dot = name.find(".", 0, true)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do bench-unique [String]

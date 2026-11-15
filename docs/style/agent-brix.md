@@ -486,6 +486,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(param: name:Name type:Type?)` is Attr. A value the slot passes in.
 - `(value: value:Expr)` is Attr. The element's main value.
 - `(text: part:Any+)` is Attr, Arg. The element's text.
+- `(for: tag:Name value:Expr?)` is Attr. A theme tag the element sets for itself and what is beneath it: on, or as the value says, which may read tracked state. A null value inherits the tag.
 - `(• name:Name argument:Expr* guard:UseIf?)` is Use, Style, Child. Use a style rule.
 - `(if: condition:Expr)` is UseIf. Use the rule only when the condition holds.
 - `(:label value:Expr/Block?)` is Child. A property set by name.

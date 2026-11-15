@@ -133,7 +133,7 @@ true
 
 ━━━━━━━━━━━━━━━━━━━━
 + IdentityQueryRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markup-batch-queue := MarkupBatchQueue(this)
 
@@ -193,7 +193,7 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkerRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markers Descendants'Marker
 + markup-batch-queue := MarkupBatchQueue(this)
@@ -266,7 +266,7 @@ root.markup-batch-queue.checkpoint()
 + show-extra Bool = false
 + markers Descendants'BoundaryMarker
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get markup-query-boundary Bool
@@ -282,7 +282,7 @@ true
 
 ━━━━━━━━━━━━━━━━━━━━
 + BoundaryQueryRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + boundary BoundaryQueryHost
 + markers Descendants'BoundaryMarker
@@ -364,7 +364,7 @@ child = null
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkupCleanupRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markup-batch-queue := MarkupBatchQueue(this)
 
@@ -1892,7 +1892,7 @@ hi 99 false 3
 
 ;====
 :====
-# Structural % reads are sidecar-backed and infer concrete MarkupTreeHost child types.
+# Structural % reads are sidecar-backed and infer concrete MarkupParent child types.
 
 /core/markup
 
@@ -1922,8 +1922,7 @@ markup-remove(root, a)
 
 ━━━━━━━━━━━━━━━━━━━━
 + Node
-    is MarkupHost
-    is MarkupTreeHost'Node
+    is MarkupParent'Node
 
 + name String
 
@@ -2025,9 +2024,8 @@ text += line
 
 ━━━━━━━━━━━━━━━━━━━━
 + MountNode
-    is MarkupHost
-    is MarkupTreeHost'MountNode
-    is MarkupBatch
+    is MarkupParent'MountNode
+    is MarkupRootElement
 
 + name String
 + log MountLog
@@ -2103,7 +2101,7 @@ contents += child
 Hey there
 ;====
 :====
-# A host with hook-shaped methods but no MarkupTreeHost conformance is rejected at the mutation
+# A host with hook-shaped methods but no MarkupParent conformance is rejected at the mutation
 # site; the structural hooks are an interface contract, not duck typing.
 
 /core/markup
@@ -2113,7 +2111,7 @@ markup-append(host, DuckNode())
 
 ━━━━━━━━━━━━━━━━━━━━
 + DuckNode
-    is MarkupHost
+    is MarkupElement
 
 ────────────────────
 + do markup-attach-child
@@ -2626,8 +2624,7 @@ markup-attach-new-child(root, child, null)
 
 ━━━━━━━━━━━━━━━━━━━━
 + Node
-    is MarkupHost
-    is MarkupTreeHost'Node
+    is MarkupParent'Node
 
 ────────────────────
 + markup-content Node
@@ -2669,8 +2666,7 @@ markup-attach-new-child(root, child, null)
 
 ━━━━━━━━━━━━━━━━━━━━
 + Node
-    is MarkupHost
-    is MarkupTreeHost'Node
+    is MarkupParent'Node
 
 ────────────────────
 + markup-content Node
@@ -2779,7 +2775,7 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + QueryRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + show-first = true
 + show-extra = false
@@ -2843,7 +2839,7 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + QueryRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + title = "root"
 + suffix = ""
@@ -2887,7 +2883,7 @@ markup-mount-root(root, root)
 
 ━━━━━━━━━━━━━━━━━━━━
 + ProbeRoot is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markup-batch-queue := MarkupBatchQueue(this)
 
@@ -3257,7 +3253,7 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkerRoot'T is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + markers Descendants'(Marker'T)
 + markup-batch-queue := MarkupBatchQueue(this)
@@ -3303,7 +3299,7 @@ root.markup-batch-queue.checkpoint()
 
 ━━━━━━━━━━━━━━━━━━━━
 + Finder'T is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + found Descendants'T
 + markup-batch-queue := MarkupBatchQueue(this)
@@ -3381,6 +3377,50 @@ seen = text
 count 1
 count 4
 count 6
+;====
+:====
+# An attribute a setter answers is given again when the tracked state its value reads changes.
+
+/core/tests/support/markup-fixtures
+
+. panel = Panel()
+. item = panel.%first-child! as Item
+-- "${item.calls} ${item.last}"
+panel.count = 4
+-- "${item.calls} ${item.last}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ calls = 0
++ last = 0
+
+────────────────────
++ get shown Int
+
+last
+
+────────────────────
++ do shown = value Int
+
+calls += 1
+last = value
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ count = 1
+
+────────────────────
+
+<This
+    <Item
+        shown = #count * 10
+
+:----
+
+1 10
+2 40
 ;====
 :====
 # The body of a `whenever` rule on a value runs only once the value changes, after the markup has

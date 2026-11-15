@@ -24,343 +24,8 @@ _ @task live-batch LiveBatch?
 ` active tail/head, and free starts the free list. Active slots store their generation in free;
 ` tombstones preserve prev/next for in-flight walkers and use free as their free-list link.
 + PropertySubscriber is (name String, handle U64, slot Index, prev Index, next Index, free Index)
-
 + PropertyTrackerSubscription is (action U64, handle U64, slot Index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do register-property-subscriber-cleanup
-    - object
-    - subscribers [PropertySubscriber]
-
-` Compiler-generated property subscriber lists live in the owner's side-payload lane. Native lane
-` teardown releases the list with the owner, so this hook intentionally registers no second cleanup.
-
-do object
-do subscribers.length
-
-━━━━━━━━━━━━━━━━━━━━
-_ do property-subscriber-register U64
-    - owner Pointer
-    - action LiveAction
-
-= C:yumiGCRegisterOwnerWeak(owner, action as Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do property-subscriber-load LiveAction?
-    - handle U64
-
-//markup.property.weak-loads ++
-. pointer = C:yumiGCOwnerWeakLoad(handle)
-=? if !pointer
-= gc-object-from-pointer'LiveAction(pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do property-subscriber-release Bool
-    - handle U64
-
-= C:yumiGCReleaseOwnerWeak(handle)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do property-subscriber-link Index
-    - subscribers [PropertySubscriber]
-    - name String
-    - subscription U64
-    - leads = false
-
-if !subscribers
-    subscribers += ("", 0, 0, 0, 0, 0)
-
-. sentinel = subscribers[0]
-. head = sentinel.next
-. tail = sentinel.prev
-. next-free = sentinel.free
-. generation = sentinel.handle + 1
-?! Panic("Property subscriber generation overflow")
-    if !generation
-. slot Index = 0
-if sentinel.free && !sentinel.slot
-    slot = sentinel.free
-    next-free = subscribers[slot].free
-    //markup.property.slot-reuses ++
-else
-    slot = subscribers.length
-    subscribers += ("", 0, slot, 0, 0, 0)
-
-if leads
-    subscribers[slot] = (name, subscription, slot, 0, head, generation as Index)
-    if head
-        . h = subscribers[head]
-        subscribers[head] = (h.name, h.handle, h.slot, slot, h.next, h.free)
-    else
-        tail = slot
-    subscribers[0] = ("", generation, sentinel.slot, tail, slot, next-free)
-    = slot
-
-subscribers[slot] = (name, subscription, slot, tail, 0, generation as Index)
-if tail
-    . tail-entry = subscribers[tail]
-    . t = tail-entry
-    . linked-tail = (t.name, t.handle, t.slot, t.prev, slot, t.free)
-    subscribers[tail] = linked-tail
-else
-    head = slot
-subscribers[0] = ("", generation, sentinel.slot, slot, head, next-free)
-= slot
-
-━━━━━━━━━━━━━━━━━━━━
-+ do property-observed Bool
-    - owner Pointer
-    - name String
-
-. found = gc-object-side-payload'(List'PropertySubscriber)(owner, property-subscribers-lane)
-=? if !found
-. subscribers = found
-=? if !subscribers.length
-. slot = subscribers[0].next
-while slot
-    . subscriber = subscribers[slot]
-    =? true
-        if subscriber.handle && subscriber.name == name
-    slot = subscriber.next
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-_ do property-subscriber-unlink Bool
-    - subscribers [PropertySubscriber]
-    - slot Index
-    - subscription U64
-
-if !subscribers || !slot || slot >= subscribers.length
-    = false
-
-. subscriber = subscribers[slot]
-if subscriber.handle != subscription
-    = false
-
-. sentinel = subscribers[0]
-. head = sentinel.next
-. tail = sentinel.prev
-if subscriber.prev
-    . prev-slot = subscriber.prev
-    . prev-entry = subscribers[prev-slot]
-    . prev-next = subscriber.next
-    . p = prev-entry
-    . linked-prev = (p.name, p.handle, p.slot, p.prev, prev-next, p.free)
-    subscribers[prev-slot] = linked-prev
-else
-    head = subscriber.next
-
-if subscriber.next
-    . next-slot = subscriber.next
-    . next-entry = subscribers[next-slot]
-    . n = next-entry
-    . linked-next = (n.name, n.handle, n.slot, subscriber.prev, n.next, n.free)
-    subscribers[next-slot] = linked-next
-else
-    tail = subscriber.prev
-
-subscribers[slot] = ("", 0, slot, subscriber.prev, subscriber.next, sentinel.free)
-subscribers[0] = ("", sentinel.handle, sentinel.slot, tail, head, slot)
-//markup.property.slot-unlinks ++
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-_ property-dependency-matches Bool
-    - tracker Tracker
-    - owner Pointer
-    - property-id Size
-    - name String
-    - is-dynamic-name Bool
-
-tracker.matches-property-dependency(owner, property-id, name, is-dynamic-name)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do track-property-dependency Tracker
-    - previous [Tracker]
-    - next [Tracker]
-    - name String
-    - property-id Size
-    - subscribers [PropertySubscriber]
-    - owner Pointer
-
-. tracker = track-property-key(previous, next, name, property-id, subscribers, owner, false)
-= tracker
-
-━━━━━━━━━━━━━━━━━━━━
-+ do track-property-dependency Tracker
-    - previous [Tracker]
-    - next [Tracker]
-    - name String
-    - subscribers [PropertySubscriber]
-    - owner Pointer
-
-. tracker = track-property-key(previous, next, name, 0, subscribers, owner, true)
-= tracker
-
-━━━━━━━━━━━━━━━━━━━━
-+ do adopt-constructed-trackers
-    - trackers [Tracker]
-    - subscribers [PropertySubscriber]
-    - owner Pointer
-
-. list = subscribers as Pointer
-for tracker in trackers
-    tracker.adopt-constructed-owner(list, owner)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do track-property-key Tracker
-    - previous [Tracker]
-    - next [Tracker]
-    - name String
-    - property-id Size
-    - subscribers [PropertySubscriber]
-    - owner Pointer
-    - is-dynamic-name Bool
-
-` Repeated reads in one evaluation are one dependency membership. This also avoids attaching the
-` same retained tracker twice when an authored expression reads one property more than once.
-for tracker in next
-    //markup.action.tracker-scans ++
-    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
-        //markup.action.tracker-reused ++
-        = tracker
-
-` Stable dependency order is the common path, so try the corresponding old slot before the
-` fallback scan. The fallback preserves reuse for reordered and conditionally inserted reads.
-. expected = next.length
-if expected < previous.length
-    //markup.action.tracker-scans ++
-    . tracker = previous[expected]
-    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
-        next += tracker
-        //markup.action.tracker-reused ++
-        = tracker
-
-for tracker in previous
-    //markup.action.tracker-scans ++
-    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
-        next += tracker
-        //markup.action.tracker-reused ++
-        = tracker
-
-. property = PropertyTracker(name, property-id, subscribers)
-property.owner = owner
-property.is-dynamic-name = is-dynamic-name
-next += property
-//markup.action.tracker-added ++
-= property
-
-━━━━━━━━━━━━━━━━━━━━
-+ do track-collection-dependency
-    - previous [Tracker]
-    - next [Tracker]
-    - collection Pointer
-
-for tracker in next
-    =? if tracker.matches-collection-dependency(collection)
-
-. expected = next.length
-if expected < previous.length
-    . tracker = previous[expected]
-    if tracker.matches-collection-dependency(collection)
-        next += tracker
-        =
-
-for tracker in previous
-    if tracker.matches-collection-dependency(collection)
-        next += tracker
-        =
-
-next += CollectionTracker(collection)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do track-active-dependency
-    - target Pointer
-
-=? if !tracker-action-next
-track-collection-dependency(tracker-action-previous!, tracker-action-next!, target)
-
-━━━━━━━━━━━━━━━━━━━━
 _ LiveScope is (previous [Tracker]?, next [Tracker]?)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do live-enter
-    - previous [Tracker]
-    - next [Tracker]
-
-if !live-scopes
-    live-scopes = List'LiveScope()
-live-scopes! += LiveScope(tracker-action-previous, tracker-action-next)
-tracker-action-previous = previous
-tracker-action-next = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ do live-leave
-
-. saved = live-scopes!.pop()
-tracker-action-previous = saved.previous
-tracker-action-next = saved.next
-
-━━━━━━━━━━━━━━━━━━━━
-+ do live-state'State State?
-    - State is Tracker
-
-=? null if !tracker-action-previous || !tracker-action-next
-. previous = tracker-action-previous!
-. next = tracker-action-next!
-for tracker in previous
-    if tracker is State && !tracker-list-has(next, tracker)
-        next += tracker
-        = tracker as State
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keep-live-state
-    - state Tracker
-
-?! Panic("Only a live function keeps a live state")
-    if !tracker-action-next
-tracker-action-next! += state
-
-━━━━━━━━━━━━━━━━━━━━
-_ do tracker-list-has Bool
-    - trackers [Tracker]
-    - expected Tracker
-
-. expected-pointer = expected as Pointer
-for tracker in trackers
-    if tracker as Pointer == expected-pointer
-        = true
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ get active-previous-trackers [Tracker]
-
-?! Panic("No active previous tracker buffer")
-    if !tracker-action-previous
-tracker-action-previous!
-
-━━━━━━━━━━━━━━━━━━━━
-+ get active-next-trackers [Tracker]
-
-?! Panic("No active next tracker buffer")
-    if !tracker-action-next
-tracker-action-next!
-
-━━━━━━━━━━━━━━━━━━━━
-+ get is-comparing-for-change
-
-change-comparison-depth > 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do value-changed'Value Bool
-    - prior Value
-    - latest Value
-
-change-comparison-depth += 1
-do finally
-    change-comparison-depth -= 1
-= prior != latest
 
 ━━━━━━━━━━━━━━━━━━━━
 + Tracker is Interface
@@ -516,44 +181,6 @@ if additional-subscriptions
             do property-subscriber-release(attached.handle)
             =
         index += 1
-
-━━━━━━━━━━━━━━━━━━━━
-_ CollectionSubscription
-
-+ collection Pointer
-+ action-id U64
-+ handle U64
-
-_ observer CollectionObserver?
-
-────────────────────
-+ This
-    - collection
-    - action-id
-    - handle
-
-. new-observer = this.notify as CollectionObserver
-observer = new-observer
-observe-collection-pointer(collection, new-observer)
-
-────────────────────
-+ do notify
-    - mutation CollectionMutation
-
-do mutation
-. action = property-subscriber-load(handle)
-if action
-    action()
-else
-    close()
-
-────────────────────
-+ do close
-
-=? if !observer
-unobserve-collection-pointer(collection, observer)
-observer = null
-do property-subscriber-release(handle)
 
 ━━━━━━━━━━━━━━━━━━━━
 + CollectionTracker
@@ -806,17 +433,6 @@ if runs
 = settles-changed()
 
 ────────────────────
-_ do settles-changed Bool
-
-. found = maybe-from
-=? false if !found
-. memos = found
-for memo in memos
-    memo.settle()
-    =? true if is-definite
-= false
-
-────────────────────
 + do reset-notice
 
 is-definite = false
@@ -835,6 +451,34 @@ refresh-trackers()
 . buffer = next-trackers ?? List'Tracker()
 next-trackers = buffer
 refresh-trackers-into(buffer, true)
+
+────────────────────
++ do detach-trackers
+
+=? if is-detached
+is-detached = true
+for tracker in trackers
+    tracker.detach(this)
+
+────────────────────
++ do close
+
+if !is-closed
+    is-closed = true
+    detach-trackers()
+    trackers.clear()
+    next-trackers?.clear()
+
+────────────────────
+_ do settles-changed Bool
+
+. found = maybe-from
+=? false if !found
+. memos = found
+for memo in memos
+    memo.settle()
+    =? true if is-definite
+= false
 
 ────────────────────
 _ do refresh-trackers-into
@@ -901,29 +545,13 @@ if recycle
     next-trackers = old-trackers
 completed = true
 
-────────────────────
-+ do detach-trackers
-
-=? if is-detached
-is-detached = true
-for tracker in trackers
-    tracker.detach(this)
-
-────────────────────
-+ do close
-
-if !is-closed
-    is-closed = true
-    detach-trackers()
-    trackers.clear()
-    next-trackers?.clear()
-
 ━━━━━━━━━━━━━━━━━━━━
 + MemoAction is LiveAction
 
 + owner Pointer
 + flag-offset Size
 + name String
+
 _ linked-at U64
 
 ────────────────────
@@ -940,6 +568,13 @@ callback = action-callback
 for tracker in trackers
     tracker.attach(this)
 
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get is-dirty Bool
+
+owner[flag-offset] != 0
+
 ╌╌╌╌╌╌╌╌╌╌ is LiveAction ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -953,13 +588,6 @@ mark()
 
 do memo
 mark()
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ get is-dirty Bool
-
-owner[flag-offset] != 0
 
 ────────────────────
 + do mark
@@ -986,31 +614,10 @@ owner[flag-offset] = 0
 refresh-trackers()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ linked-generation U64
-    - subscribers [PropertySubscriber]?
-
-if subscribers && subscribers.length != 0 then subscribers[0].handle else 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do memo-settle-at
-    - owner Pointer
-    - flag-offset Size
-
-. found = gc-object-side-payload'(List'LiveAction)(owner, live-actions-lane)
-if found
-    . actions = found
-    for action in actions
-        if action is MemoAction
-            . memo = action as MemoAction
-            if memo.flag-offset == flag-offset
-                memo.settle()
-                =
-owner[flag-offset] = 0
-
-━━━━━━━━━━━━━━━━━━━━
 + LiveBatch
 
 + depth Size = 0
+
 _ queue [LiveAction?]
 
 ────────────────────
@@ -1045,11 +652,441 @@ while index < queue.length
         action.run-queued()
 
 ━━━━━━━━━━━━━━━━━━━━
++ do register-property-subscriber-cleanup
+    - object
+    - subscribers [PropertySubscriber]
+
+` Compiler-generated property subscriber lists live in the owner's side-payload lane. Native lane
+` teardown releases the list with the owner, so this hook intentionally registers no second cleanup.
+
+do object
+do subscribers.length
+
+━━━━━━━━━━━━━━━━━━━━
++ do property-observed Bool
+    - owner Pointer
+    - name String
+
+. found = gc-object-side-payload'(List'PropertySubscriber)(owner, property-subscribers-lane)
+=? if !found
+. subscribers = found
+=? if !subscribers.length
+. slot = subscribers[0].next
+while slot
+    . subscriber = subscribers[slot]
+    =? true
+        if subscriber.handle && subscriber.name == name
+    slot = subscriber.next
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-property-dependency Tracker
+    - previous [Tracker]
+    - next [Tracker]
+    - name String
+    - property-id Size
+    - subscribers [PropertySubscriber]
+    - owner Pointer
+
+. tracker = track-property-key(previous, next, name, property-id, subscribers, owner, false)
+= tracker
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-property-dependency Tracker
+    - previous [Tracker]
+    - next [Tracker]
+    - name String
+    - subscribers [PropertySubscriber]
+    - owner Pointer
+
+. tracker = track-property-key(previous, next, name, 0, subscribers, owner, true)
+= tracker
+
+━━━━━━━━━━━━━━━━━━━━
++ do adopt-constructed-trackers
+    - trackers [Tracker]
+    - subscribers [PropertySubscriber]
+    - owner Pointer
+
+. list = subscribers as Pointer
+for tracker in trackers
+    tracker.adopt-constructed-owner(list, owner)
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-collection-dependency
+    - previous [Tracker]
+    - next [Tracker]
+    - collection Pointer
+
+for tracker in next
+    =? if tracker.matches-collection-dependency(collection)
+
+. expected = next.length
+if expected < previous.length
+    . tracker = previous[expected]
+    if tracker.matches-collection-dependency(collection)
+        next += tracker
+        =
+
+for tracker in previous
+    if tracker.matches-collection-dependency(collection)
+        next += tracker
+        =
+
+next += CollectionTracker(collection)
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-active-dependency
+    - target Pointer
+
+=? if !tracker-action-next
+track-collection-dependency(tracker-action-previous!, tracker-action-next!, target)
+
+━━━━━━━━━━━━━━━━━━━━
++ do live-enter
+    - previous [Tracker]
+    - next [Tracker]
+
+if !live-scopes
+    live-scopes = List'LiveScope()
+live-scopes! += LiveScope(tracker-action-previous, tracker-action-next)
+tracker-action-previous = previous
+tracker-action-next = next
+
+━━━━━━━━━━━━━━━━━━━━
++ do live-leave
+
+. saved = live-scopes!.pop()
+tracker-action-previous = saved.previous
+tracker-action-next = saved.next
+
+━━━━━━━━━━━━━━━━━━━━
++ do live-state'State State?
+    - State is Tracker
+
+=? null if !tracker-action-previous || !tracker-action-next
+. previous = tracker-action-previous!
+. next = tracker-action-next!
+for tracker in previous
+    if tracker is State && !tracker-list-has(next, tracker)
+        next += tracker
+        = tracker as State
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do keep-live-state
+    - state Tracker
+
+?! Panic("Only a live function keeps a live state")
+    if !tracker-action-next
+tracker-action-next! += state
+
+━━━━━━━━━━━━━━━━━━━━
++ get active-previous-trackers [Tracker]
+
+?! Panic("No active previous tracker buffer")
+    if !tracker-action-previous
+tracker-action-previous!
+
+━━━━━━━━━━━━━━━━━━━━
++ get active-next-trackers [Tracker]
+
+?! Panic("No active next tracker buffer")
+    if !tracker-action-next
+tracker-action-next!
+
+━━━━━━━━━━━━━━━━━━━━
++ get is-comparing-for-change
+
+change-comparison-depth > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do value-changed'Value Bool
+    - prior Value
+    - latest Value
+
+change-comparison-depth += 1
+do finally
+    change-comparison-depth -= 1
+= prior != latest
+
+━━━━━━━━━━━━━━━━━━━━
++ do memo-settle-at
+    - owner Pointer
+    - flag-offset Size
+
+. found = gc-object-side-payload'(List'LiveAction)(owner, live-actions-lane)
+if found
+    . actions = found
+    for action in actions
+        if action is MemoAction
+            . memo = action as MemoAction
+            if memo.flag-offset == flag-offset
+                memo.settle()
+                =
+owner[flag-offset] = 0
+
+━━━━━━━━━━━━━━━━━━━━
 + do live-batch-enter LiveBatch @inline
 
 . batch = task-live-batch()
 batch.depth += 1
 = batch
+
+━━━━━━━━━━━━━━━━━━━━
++ do property-dispatch
+    - subscribers [PropertySubscriber]
+    - name String
+
+//markup.property.dispatches ++
+//markup.property.snapshot-allocations += 0
+=? if !subscribers
+. batch = live-batch-enter()
+do finally
+    batch.leave()
+property-notify(subscribers, name, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do property-dependency-subscribe LiveAction
+    - object
+    - name String
+    - callback Doer
+
+. sub-trackers = List'Tracker()
+. sub-callback SubscriberCallback = => do
+    callback()
+. sub = LiveAction(sub-trackers, sub-callback)
+
+do link-property-dependency(object, name, sub)
+= sub
+
+━━━━━━━━━━━━━━━━━━━━
++ do link-property-dependency'Object
+    - object Object
+    - name String
+    - action LiveAction
+
+. subscription = property-subscriber-register(object as Pointer, action)
+?! Panic("Unable to register weak property dependency subscription")
+    if !subscription
+do property-subscriber-link(object.property-subscribers, name, subscription)
+
+━━━━━━━━━━━━━━━━━━━━
+_ CollectionSubscription
+
++ collection Pointer
++ action-id U64
++ handle U64
+
+_ observer CollectionObserver?
+
+────────────────────
++ This
+    - collection
+    - action-id
+    - handle
+
+. new-observer = this.notify as CollectionObserver
+observer = new-observer
+observe-collection-pointer(collection, new-observer)
+
+────────────────────
++ do notify
+    - mutation CollectionMutation
+
+do mutation
+. action = property-subscriber-load(handle)
+if action
+    action()
+else
+    close()
+
+────────────────────
++ do close
+
+=? if !observer
+unobserve-collection-pointer(collection, observer)
+observer = null
+do property-subscriber-release(handle)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do property-subscriber-register U64
+    - owner Pointer
+    - action LiveAction
+
+= C:yumiGCRegisterOwnerWeak(owner, action as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do property-subscriber-load LiveAction?
+    - handle U64
+
+//markup.property.weak-loads ++
+. pointer = C:yumiGCOwnerWeakLoad(handle)
+=? if !pointer
+= gc-object-from-pointer'LiveAction(pointer)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do property-subscriber-release Bool
+    - handle U64
+
+= C:yumiGCReleaseOwnerWeak(handle)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do property-subscriber-link Index
+    - subscribers [PropertySubscriber]
+    - name String
+    - subscription U64
+    - leads = false
+
+if !subscribers
+    subscribers += ("", 0, 0, 0, 0, 0)
+
+. sentinel = subscribers[0]
+. head = sentinel.next
+. tail = sentinel.prev
+. next-free = sentinel.free
+. generation = sentinel.handle + 1
+?! Panic("Property subscriber generation overflow")
+    if !generation
+. slot Index = 0
+if sentinel.free && !sentinel.slot
+    slot = sentinel.free
+    next-free = subscribers[slot].free
+    //markup.property.slot-reuses ++
+else
+    slot = subscribers.length
+    subscribers += ("", 0, slot, 0, 0, 0)
+
+if leads
+    subscribers[slot] = (name, subscription, slot, 0, head, generation as Index)
+    if head
+        . h = subscribers[head]
+        subscribers[head] = (h.name, h.handle, h.slot, slot, h.next, h.free)
+    else
+        tail = slot
+    subscribers[0] = ("", generation, sentinel.slot, tail, slot, next-free)
+    = slot
+
+subscribers[slot] = (name, subscription, slot, tail, 0, generation as Index)
+if tail
+    . tail-entry = subscribers[tail]
+    . t = tail-entry
+    . linked-tail = (t.name, t.handle, t.slot, t.prev, slot, t.free)
+    subscribers[tail] = linked-tail
+else
+    head = slot
+subscribers[0] = ("", generation, sentinel.slot, slot, head, next-free)
+= slot
+
+━━━━━━━━━━━━━━━━━━━━
+_ do property-subscriber-unlink Bool
+    - subscribers [PropertySubscriber]
+    - slot Index
+    - subscription U64
+
+if !subscribers || !slot || slot >= subscribers.length
+    = false
+
+. subscriber = subscribers[slot]
+if subscriber.handle != subscription
+    = false
+
+. sentinel = subscribers[0]
+. head = sentinel.next
+. tail = sentinel.prev
+if subscriber.prev
+    . prev-slot = subscriber.prev
+    . prev-entry = subscribers[prev-slot]
+    . prev-next = subscriber.next
+    . p = prev-entry
+    . linked-prev = (p.name, p.handle, p.slot, p.prev, prev-next, p.free)
+    subscribers[prev-slot] = linked-prev
+else
+    head = subscriber.next
+
+if subscriber.next
+    . next-slot = subscriber.next
+    . next-entry = subscribers[next-slot]
+    . n = next-entry
+    . linked-next = (n.name, n.handle, n.slot, subscriber.prev, n.next, n.free)
+    subscribers[next-slot] = linked-next
+else
+    tail = subscriber.prev
+
+subscribers[slot] = ("", 0, slot, subscriber.prev, subscriber.next, sentinel.free)
+subscribers[0] = ("", sentinel.handle, sentinel.slot, tail, head, slot)
+//markup.property.slot-unlinks ++
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ property-dependency-matches Bool
+    - tracker Tracker
+    - owner Pointer
+    - property-id Size
+    - name String
+    - is-dynamic-name Bool
+
+tracker.matches-property-dependency(owner, property-id, name, is-dynamic-name)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do track-property-key Tracker
+    - previous [Tracker]
+    - next [Tracker]
+    - name String
+    - property-id Size
+    - subscribers [PropertySubscriber]
+    - owner Pointer
+    - is-dynamic-name Bool
+
+` Repeated reads in one evaluation are one dependency membership. This also avoids attaching the
+` same retained tracker twice when an authored expression reads one property more than once.
+for tracker in next
+    //markup.action.tracker-scans ++
+    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
+        //markup.action.tracker-reused ++
+        = tracker
+
+` Stable dependency order is the common path, so try the corresponding old slot before the
+` fallback scan. The fallback preserves reuse for reordered and conditionally inserted reads.
+. expected = next.length
+if expected < previous.length
+    //markup.action.tracker-scans ++
+    . tracker = previous[expected]
+    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
+        next += tracker
+        //markup.action.tracker-reused ++
+        = tracker
+
+for tracker in previous
+    //markup.action.tracker-scans ++
+    if property-dependency-matches(tracker, owner, property-id, name, is-dynamic-name)
+        next += tracker
+        //markup.action.tracker-reused ++
+        = tracker
+
+. property = PropertyTracker(name, property-id, subscribers)
+property.owner = owner
+property.is-dynamic-name = is-dynamic-name
+next += property
+//markup.action.tracker-added ++
+= property
+
+━━━━━━━━━━━━━━━━━━━━
+_ do tracker-list-has Bool
+    - trackers [Tracker]
+    - expected Tracker
+
+. expected-pointer = expected as Pointer
+for tracker in trackers
+    if tracker as Pointer == expected-pointer
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ linked-generation U64
+    - subscribers [PropertySubscriber]?
+
+if subscribers && subscribers.length != 0 then subscribers[0].handle else 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do task-live-batch LiveBatch @inline
@@ -1064,19 +1101,6 @@ _ do first-live-batch LiveBatch
 . made = LiveBatch()
 live-batch = made
 = made
-
-━━━━━━━━━━━━━━━━━━━━
-+ do property-dispatch
-    - subscribers [PropertySubscriber]
-    - name String
-
-//markup.property.dispatches ++
-//markup.property.snapshot-allocations += 0
-=? if !subscribers
-. batch = live-batch-enter()
-do finally
-    batch.leave()
-property-notify(subscribers, name, null)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do property-notify
@@ -1111,28 +1135,3 @@ while slot
 sentinel = subscribers[0]
 . exited = ("", sentinel.handle, sentinel.slot - 1, sentinel.prev, sentinel.next, sentinel.free)
 subscribers[0] = exited
-
-━━━━━━━━━━━━━━━━━━━━
-+ do property-dependency-subscribe LiveAction
-    - object
-    - name String
-    - callback Doer
-
-. sub-trackers = List'Tracker()
-. sub-callback SubscriberCallback = => do
-    callback()
-. sub = LiveAction(sub-trackers, sub-callback)
-
-do link-property-dependency(object, name, sub)
-= sub
-
-━━━━━━━━━━━━━━━━━━━━
-+ do link-property-dependency'Object
-    - object Object
-    - name String
-    - action LiveAction
-
-. subscription = property-subscriber-register(object as Pointer, action)
-?! Panic("Unable to register weak property dependency subscription")
-    if !subscription
-do property-subscriber-link(object.property-subscribers, name, subscription)

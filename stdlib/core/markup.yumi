@@ -9,16 +9,18 @@
 /YuGC/YuGC.h
 /core/gc
 
-+ markup-keyed-linear-scan-limit Size = 32
++ markup-cause-none = MarkupCause()
++ markup-cause-write = MarkupCause()
 
+_ markup-keyed-linear-scan-limit Size = 32
 _ markup-batch-settle-hooks [MarkupBatchSettleHook]
 _ markup-mount-hooks [MarkupMountHook]
 _ markup-attachment-reclaim-hooks [MarkupAttachmentReclaimHook]
+_ markup-theme-tag-hook MarkupThemeTagHook?
+_ markup-theme-hook MarkupThemeHook?
 _ markup-ancestor-query-active = false
 _ markup-descendants-query-active = false
 _ markup-departures Size = 0
-+ markup-cause-none = MarkupCause()
-+ markup-cause-write = MarkupCause()
 _ markup-cause-current = markup-cause-write
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -33,27 +35,7 @@ _ markup-cause-current = markup-cause-write
 + MarkupCause
 
 ━━━━━━━━━━━━━━━━━━━━
-+ current-markup-cause MarkupCause
-
-markup-cause-current
-
-━━━━━━━━━━━━━━━━━━━━
-+ do swap-markup-cause MarkupCause
-    - cause MarkupCause
-
-. previous = markup-cause-current
-markup-cause-current = cause
-= previous
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupAncestorQueryRefresher is () Bool
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkupSlotBuilder'Content is () Content ?! Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupIdBinder'Host is () Void
-    - host Host
 
 ━━━━━━━━━━━━━━━━━━━━
 + Ancestor'Target
@@ -78,10 +60,6 @@ added.clear()
 removed.clear()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupDescendantsQueryApplier is () Bool
-    - candidate MarkupHost
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkupBatchSettleResult is Tuple
 
 + settled Bool
@@ -96,23 +74,13 @@ _ pending-domain-mask U32
 _ pending-domain-mask U32
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupBatchSettleHook is () MarkupBatchSettleResult
-    - root MarkupBatch
++ ThemeTag is Tuple
+
++ name String
++ active Bool?
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupMountHook is () Bool
-    - node MarkupHost
-    - parent MarkupHost?
-    - root MarkupBatch?
-
-` True continues the adopt walk into children.
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupAttachmentReclaimHook is () Void
-    - attachment MarkupAttachment
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupBatch is Interface
++ MarkupRootElement is Interface
 
 ────────────────────
 + get markup-batch-queue MarkupBatchQueue
@@ -124,7 +92,7 @@ _ pending-domain-mask U32
 ━━━━━━━━━━━━━━━━━━━━
 + MarkupBatchQueue
 
-+ root MarkupBatch?
++ root MarkupRootElement?
 + actions [MarkupBatchAction]
 + max-actions-per-checkpoint Size = 4096
 + max-passes-per-checkpoint Size = 16
@@ -138,6 +106,11 @@ _ probed-max-depth Size = 0
 ────────────────────
 + This
     - root
+
+────────────────────
++ get is-active
+
+is-flushing
 
 ────────────────────
 + do enqueue
@@ -171,11 +144,6 @@ do new @priority
 + do checkpoint
 
 flush()
-
-────────────────────
-+ get is-active
-
-is-flushing
 
 ────────────────────
 _ do flush
@@ -293,21 +261,21 @@ actions = structural
 ━━━━━━━━━━━━━━━━━━━━
 + MarkupBatchAction is LiveAction
 
-+ batch-root MarkupBatch?
-+ batch-owner MarkupHost?
++ batch-root MarkupRootElement?
++ batch-owner MarkupElement?
 + is-structural = false
-+ structural-owner MarkupHost?
++ structural-owner MarkupElement?
 + cause = markup-cause-write
 + accepts-run => true
 
 ` 0 idle, 1 enqueued, 2 running, 3 closed
 _ state = 0
-_ queued-root MarkupBatch?
+_ queued-root MarkupRootElement?
 _ is-held = false
 
 ────────────────────
 + This
-    - root MarkupBatch
+    - root MarkupRootElement
     - initial-trackers [Tracker]
     - action-callback SubscriberCallback
 
@@ -320,7 +288,7 @@ for tracker in trackers
 
 ────────────────────
 + This
-    - owner MarkupHost
+    - owner MarkupElement
     - initial-trackers [Tracker]
     - action-callback SubscriberCallback
 
@@ -395,7 +363,7 @@ run-markup-batch-action(null)
 
 ────────────────────
 _ do run-markup-batch-action
-    - queued-for MarkupBatch?
+    - queued-for MarkupRootElement?
 
 if queued-for
     =? if !markup-batch-roots-match(queued-root, queued-for)
@@ -438,44 +406,6 @@ if state == 2
 = true
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupPropertyDependencyAction is MarkupBatchAction
-
-────────────────────
-+ This
-    - owner MarkupHost
-    - initial-trackers [Tracker]
-    - action-callback SubscriberCallback
-
-batch-owner = owner
-.. trackers = initial-trackers
-callback = action-callback
-
-for tracker in trackers
-    tracker.attach(this)
-
-╌╌╌╌╌╌╌╌╌╌ is LiveAction ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do schedule
-
-. owner = batch-owner
-if owner
-    batch-root = owner.markup-batch-root
-
-if batch-root
-    if batch-root.markup-batch-queue.is-active
-        enqueue-markup-batch-action()
-        =
-schedule-live()
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupRowBuilder'Item'Content is () Content ?! Error
-    - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupRow
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkupRowItem'Item is MarkupRow
 
 + item Item
@@ -499,88 +429,10 @@ schedule-live()
     - item Item
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupBranchBuilder'Content is () Void ?! Error
-    - parent Content
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupItemAppender'Item is () Void ?! Error
-    - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupPendingItems'Item
-
-+ appender MarkupItemAppender'Item
-
-_ items [Item] = List'Item()
-_ action MarkupBatchAction?
-
-────────────────────
-+ This
-    - appender
-
-────────────────────
-+ do queue
-    - item Item
-    - root MarkupBatch
-
-items += item
-. next-action = ensure-markup-batch-action(root, this.flush-action, action)
-action = next-action
-next-action()
-
-────────────────────
-+ do flush-action [Tracker]
-
-flush()
-= List'Tracker()
-
-────────────────────
-+ do flush
-
-. pending = items
-items = List'Item()
-for item in pending
-    appender(item)
-
-────────────────────
-+ do clear
-
-items.clear()
-if action
-    action.close()
-    action = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupCollectionItems'Content is Interface
-
-────────────────────
-+ get item-count Size
-
-────────────────────
-+ do item-key String
-    - index Index
-
-────────────────────
-+ do item-row MarkupRow
-    - index Index
-
-────────────────────
-+ do rebind-row
-    - row MarkupRow
-    - index Index
-
-────────────────────
-+ do build-row Content ?! Error
-    - row MarkupRow
-
-────────────────────
-+ do build-item Content ?! Error
-    - index Index
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkupCollectionController'Item'Content
     is MarkupCollectionItems'Content
-    - Content is MarkupTreeHost'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
 
 _ indexable-source Indexable'Item?
 _ row-builder MarkupCollectionRowBuilder'Item'Content?
@@ -610,18 +462,6 @@ row-builder = builder
 indexable-source = source as Indexable'Item
 reconciler = MarkupCollectionReconciler'Content(region, this, true)
 reconciler!.observe-source(source as Pointer)
-
-────────────────────
-+ do replace-source
-    - new-source Collection'Item
-
-indexable-source = new-source as Indexable'Item
-reconciler!.replace-source(new-source as Pointer)
-
-────────────────────
-+ do close
-
-reconciler!.close()
 
 ╌╌╌╌╌╌╌╌╌╌ is MarkupCollectionItems'Content ╌╌╌╌╌╌╌╌╌╌
 
@@ -662,9 +502,899 @@ row-builder!(row as MarkupRowItem'Item)
 
 unkeyed-row-builder!(indexable-source![index])
 
+╌╌╌╌╌╌╌╌╌╌ is MarkupRegionController ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+reconciler!.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do replace-source
+    - new-source Collection'Item
+
+indexable-source = new-source as Indexable'Item
+reconciler!.replace-source(new-source as Pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupBranchController'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
+
++ region Content
++ arm-builders [MarkupBranchBuilder'Content]
+
+_ active-arm Index?
+_ departed-arm Index?
+_ departed [Content] = List'Content()
+
+────────────────────
++ This
+    - region
+    - arm-builders
+    - active-arm Index?
+
+select-markup-branch(active-arm)
+
+────────────────────
++ get selected-arm
+
+active-arm
+
+────────────────────
++ do select-markup-branch
+    - arm Index?
+
+if arm != active-arm
+    region.markup-branch-changing()
+. leaving = List'Content()
+for child in markup-region-children(region)
+    leaving += child
+. revived = arm != null && departed-arm == arm && revive-departed()
+. departing = List'Content()
+. is-whole = true
+for child in leaving
+    if markup-depart-child(region, child)
+        departing += child
+    else
+        is-whole = false
+departed = if is-whole then departing else List'Content()
+departed-arm = active-arm if departed
+active-arm = arm
+if arm && !revived
+    . index = arm
+    arm-builders[index](region)
+
+────────────────────
+_ do revive-departed Bool
+
+=? if !departed
+for child in departed
+    =? if !markup-is-departing(child)
+. revived = true
+for child in departed
+    if !markup-revive-child(child)
+        revived = false
+= revived
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupElement is Interface
+
+────────────────────
++ get markup-batch-root
+
+markup-root-of(this)
+
+────────────────────
++ get markup-first-child MarkupElement?
+
+markup-structural-first-child-host(this)
+
+────────────────────
++ get markup-next-sibling MarkupElement?
+
+markup-structural-next-sibling-host(this)
+
+────────────────────
++ get markup-is-transparent-region
+
+false
+
+────────────────────
++ get markup-query-boundary
+
+false
+
+────────────────────
++ get markup-attachment-cache MarkupAttachment?
+
+markup-attachment(this)
+
+────────────────────
++ get theme-tag ThemeTag?
+
+null
+
+────────────────────
++ do markup-attachment-cache = attachment MarkupAttachment?
+
+────────────────────
++ do theme-tag = binding ThemeTag
+
+set-theme-tag(binding.name, binding.active)
+
+────────────────────
++ do markup-parent-style-domains-changed
+    - mask U32
+
+────────────────────
++ do markup-style-domains-changed
+    - mask U32
+
+────────────────────
++ do mounted
+
+────────────────────
++ do unmounted
+
+────────────────────
++ do markup-depart Bool
+
+= false
+
+────────────────────
++ do markup-revive
+
+────────────────────
++ do markup-branch-changing
+
+────────────────────
++ close
+
+────────────────────
++ do markup-attach-shadow-child
+    - child MarkupElement
+    - anchor MarkupElement?
+
+────────────────────
++ do markup-detach-shadow-child
+    - child MarkupElement
+
+────────────────────
++ do use-theme'Theme
+    - theme TypeInfo'Theme
+
+. hook = markup-theme-hook
+if hook
+    hook(this, theme.key)
+
+────────────────────
++ do set-theme-tag
+    - tag String
+    - active Bool?
+
+. hook = markup-theme-tag-hook
+if hook
+    hook(this, tag, active)
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupParent'Child is Interface
+    is MarkupElement
+
+────────────────────
++ do get children
+
+. next = %first-child
+while next
+    . child = next
+    next = child.%next-sibling
+    if markup-region-controller(child)
+        <<= markup-region-rows'Child(child)
+    else
+        <= child
+
+────────────────────
++ markup-content
+    - child Child
+
+child
+
+────────────────────
++ markup-make-region Child?
+
+null
+
+────────────────────
++ do markup-attach-child
+    - child Child
+    - anchor Child?
+
+────────────────────
++ do markup-detach-child
+    - child Child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupNode
+    is MarkupParent'MarkupNode
+
++ markup-attachment-cache MarkupAttachment?
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupParent'MarkupNode ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ markup-make-region MarkupNode?
+
+MarkupNodeRegion()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do children-of'Kind
+    - Kind is MarkupNode
+
+for child in children
+    if child is Kind
+        <= child as Kind
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+. child = %first-child
+while child
+    . current = child
+    current.close()
+    child = current.%next-sibling
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupRoot is MarkupNode
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do settle
+
+markup-batch-queue.checkpoint()
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do mounted
+
+settle()
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkupAttachment
+
+` Linked nodes retain their owner through retained-host so the attachment tree is the structural
+` ownership tree. A publicly adopted parentless non-root leaf instead uses the same attachment as
+` a cleanup payload: retained-host is cleared, and the scalar object/witness pair reconstructs the
+` interface only while client code still holds the owner. Adding its first structural child moves
+` it back to ordinary ownership. Generated regions mount parentless only transiently and remain
+` ordinary payloads until their builder links them.
+
++ object-address Size = 0
++ host-witness-address Size = 0
++ retained-host MarkupElement?
++ is-cleanup-payload = false
++ store-address Size = 0
++ store-witness-address Size = 0
++ retained-store MarkupRootElement?
++ mounted-parent MarkupAttachment?
++ mounted-callback-fired = false
++ is-released = false
++ is-closed = false
++ structural-parent MarkupAttachment?
++ first-child MarkupAttachment?
++ last-child MarkupAttachment?
++ previous-sibling MarkupAttachment?
++ next-sibling MarkupAttachment?
++ is-style-shadow = false
++ attachment-id Index = 0
++ style-store-address Size = 0
++ style-node-record-address Size = 0
++ dirty-bits U32
++ pending-domains U32
++ descendant-domains U32
++ generation U32
++ style-settled = false
++ style-reports-settle = false
++ cause = markup-cause-none
++ object-pointer => object-address as Pointer
++ is-live => style-store-address != 0
++ owner-address => object-address
+
+_ overflow MarkupAttachmentOverflow?
+
+────────────────────
++ get host
+
+|? retained-host
+    retained-host
+??
+    gc-interface-from-pointer'MarkupElement(object-pointer, host-witness-address as Pointer)
+
+────────────────────
++ do get store MarkupRootElement?
+
+if retained-store
+    = retained-store
+=? if store-address == 0
+= gc-interface-from-pointer'MarkupRootElement(store-address as Pointer, store-witness-address as Pointer)
+
+────────────────────
++ get theme-tags-on U64
+
+overflow?.theme-tags-on ?? 0
+
+────────────────────
++ get theme-tags-off U64
+
+overflow?.theme-tags-off ?? 0
+
+────────────────────
+_ get departure MarkupDeparture?
+
+overflow?.departure
+
+────────────────────
+_ get departing-within Size
+
+overflow?.departing-within ?? 0
+
+────────────────────
+_ get region-controller MarkupRegionController?
+
+overflow?.region-controller
+
+────────────────────
+_ do region-controller = controller MarkupRegionController?
+
+=? if !overflow && !controller
+overflow-for-write().region-controller = controller
+
+────────────────────
++ do set-theme-tags
+    - on U64
+    - off U64
+
+=? if !overflow && on == 0 && off == 0
+. held = overflow-for-write()
+held.theme-tags-on = on
+held.theme-tags-off = off
+
+────────────────────
+_ do set-store
+    - store MarkupRootElement
+
+if is-cleanup-payload
+    retained-store = null
+else
+    retained-store = store
+store-address = (store as Pointer).address as Size
+store-witness-address = interface-witness-pointer(store).address as Size
+
+────────────────────
+_ do clear-store
+
+retained-store = null
+store-address = 0
+store-witness-address = 0
+
+────────────────────
+_ do overflow-for-write
+
+if !overflow
+    overflow = MarkupAttachmentOverflow()
+= overflow!
+
+━━━━━━━━━━━━━━━━━━━━
++ current-markup-cause MarkupCause
+
+markup-cause-current
+
+━━━━━━━━━━━━━━━━━━━━
++ do swap-markup-cause MarkupCause
+    - cause MarkupCause
+
+. previous = markup-cause-current
+markup-cause-current = cause
+= previous
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-markup-batch-settle-hook
+    - hook MarkupBatchSettleHook
+
+markup-batch-settle-hooks += hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-markup-mount-hook
+    - hook MarkupMountHook
+
+markup-mount-hooks += hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-markup-attachment-reclaim-hook
+    - hook MarkupAttachmentReclaimHook
+
+markup-attachment-reclaim-hooks += hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-markup-theme-hooks
+    - tag-hook MarkupThemeTagHook
+    - theme-hook MarkupThemeHook
+
+markup-theme-tag-hook = tag-hook
+markup-theme-hook = theme-hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-structural-parent-host
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+=? attachment.structural-parent?.host
+    if attachment
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-structural-first-child-host
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+=? attachment.first-child?.host
+    if attachment
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-structural-next-sibling-host
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+=? attachment.next-sibling?.host
+    if attachment
+
+━━━━━━━━━━━━━━━━━━━━
++ markup-is-style-shadow
+    - node MarkupElement
+
+|? attachment
+    attachment.is-style-shadow
+??
+    false
+
+.. attachment = markup-attachment(node)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-style-parent-host
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+if attachment && attachment.overflow
+    . overflow = attachment.overflow
+    = overflow.style-parent
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-style-slot
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+if attachment && attachment.overflow
+    . overflow = attachment.overflow
+    = overflow.style-slot
+
+━━━━━━━━━━━━━━━━━━━━
++ markup-query-first-descendant-host
+    - owner MarkupElement
+
+markup-structural-first-child-host(owner)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-query-next-descendant-host
+    - owner MarkupElement
+    - current MarkupElement
+
+=? markup-structural-first-child-host(current)
+
+. cursor MarkupElement? = current
+while cursor
+    . live = cursor
+    =? if live as Pointer == owner as Pointer
+
+    . next = markup-structural-next-sibling-host(live)
+    if next
+        = next
+
+    cursor = markup-structural-parent-host(live)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-root-of
+    - node MarkupElement
+
+. attachment = markup-attachment(node)
+if attachment
+    . live = attachment
+    . store = live.store
+    if store
+        = store
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-adopt
+    - node MarkupElement
+    - parent MarkupElement?
+    - root MarkupRootElement?
+
+` For out-of-tree hosts; linked children use the core mutation entry points.
+
+. commit = MarkupMountCommit()
+markup-query-publish-subtree(node, false)
+markup-adopt-core(node, commit, true, parent, root)
+if root
+    markup-query-publish-subtree(node, true)
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-release
+    - node MarkupElement
+
+. commit = MarkupMountCommit()
+markup-query-publish-subtree(node, false)
+markup-adopt-core(node, commit, true, null, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-mount-root
+    - node MarkupElement
+    - root MarkupRootElement?
+
+. commit = MarkupMountCommit()
+markup-adopt-core(node, commit, true, null, root)
+if root
+    markup-query-publish-subtree(node, true)
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-append'Host'Child
+    - parent Host
+    - child Child
+    - Host is MarkupParent
+    - Child is MarkupElement
+
+. commit = markup-attach-new-child(parent, child, null)
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-insert'Host'Child'Anchor
+    - parent Host
+    - child Child
+    - anchor Anchor?
+    - Host is MarkupParent
+    - Child is MarkupElement
+    - Anchor is MarkupElement
+
+. commit = markup-attach-new-child(parent, child, anchor)
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-remove'Host'Child
+    - parent Host
+    - child Child
+    - Host is MarkupParent
+    - Child is MarkupElement
+
+. weight = markup-departure-weight(child)
+markup-unlink-structural-child(parent, child)
+parent.markup-detach-child(child)
+markup-release(child)
+if weight
+    markup-settle-departures(markup-attachment(parent as MarkupElement))
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-insert-shadow
+    - parent MarkupElement
+    - child MarkupElement
+    - style-parent MarkupElement
+    - slot U32
+    - anchor MarkupElement?
+
+. root = markup-root-of(parent)
+. commit = MarkupMountCommit()
+. linked = false
+. committed = false
+
+markup-assert-structural-child-linkable(parent, child, anchor)
+do finally
+    if !committed
+        catch markup-release(child)
+        if linked
+            markup-unlink-structural-child(parent, child)
+        markup-clear-style-shadow(child)
+
+markup-mark-style-shadow(child, style-parent, slot)
+markup-link-structural-child(parent, child, anchor)
+linked = true
+parent.markup-attach-shadow-child(child, anchor)
+markup-adopt-core(child, commit, true, parent, root)
+committed = true
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-remove-shadow
+    - child MarkupElement
+
+. attachment = markup-attachment(child)
+=? if !attachment
+=? if !attachment.is-style-shadow
+
+. weight = markup-departure-weight(child)
+. parent-attachment = attachment.structural-parent
+if parent-attachment
+    . parent = parent-attachment.host
+    parent.markup-detach-shadow-child(child)
+    markup-unlink-structural-child(parent, child)
+
+markup-release(child)
+markup-clear-style-shadow(child)
+if weight
+    markup-settle-departures(parent-attachment)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-replace'Host'Child'Replacement
+    - parent Host
+    - child Child
+    - replacement Replacement
+    - Host is MarkupParent
+    - Child is MarkupElement
+    - Replacement is MarkupElement
+
+. parent-host = parent as MarkupElement
+. commit = markup-attach-new-child(parent, replacement, child)
+markup-unlink-structural-child(parent-host, child)
+parent.markup-detach-child(child)
+markup-release(child)
+commit.publish-mounted()
+
+━━━━━━━━━━━━━━━━━━━━
++ do ensure-markup-batch-action
+    - root MarkupRootElement
+    - callback SubscriberCallback
+    - action MarkupBatchAction?
+
+if action
+    . live = action
+    . action-root = live.batch-root
+    if action-root
+        . action-queue = action-root.markup-batch-queue as Pointer
+        . root-queue = root.markup-batch-queue as Pointer
+        if action-queue == root-queue
+            = live
+    live.close()
+
+= MarkupBatchAction(root, List'Tracker(), callback)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-select-branch-region'Content
+    - region Content
+    - active-arm Index?
+    - Content is MarkupParent'Content
+
+(markup-region-controller(region)! as MarkupBranchController'Content).select-markup-branch(active-arm)
+
+━━━━━━━━━━━━━━━━━━━━
++ markup-attachment
+    - object-pointer CPointer'Void
+
+gc-object-side-payload'MarkupAttachment(object-pointer, markup-attachment-lane() as Size)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-attachment-for-write MarkupAttachment
+    - object MarkupElement
+
+= markup-ensure-attachment(object)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-close-region'Node
+    - node Node
+    - Node is MarkupElement
+
+. attachment = node.markup-attachment-cache
+. controller = attachment?.region-controller
+if controller
+    attachment!.region-controller = null
+    controller.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-departed
+    - host MarkupElement
+
+. attachment = markup-attachment(host)
+=? if !attachment
+. departure = attachment.departure
+=? if !departure
+departure.is-host-leaving = false
+=? if attachment.departing-within
+markup-end-departure(attachment)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-holds-departures Bool
+    - host MarkupElement
+
+. attachment = markup-attachment(host)
+=? if !attachment
+= attachment.departing-within > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do markup-is-departing Bool
+    - host MarkupElement
+
+. attachment = markup-attachment(host)
+=? if !attachment
+= attachment.departure != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupAncestorQueryRefresher is () Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupIdBinder'Host is () Void
+    - host Host
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupDescendantsQueryApplier is () Bool
+    - candidate MarkupElement
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupBatchSettleHook is () MarkupBatchSettleResult
+    - root MarkupRootElement
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupMountHook is () Bool
+    - node MarkupElement
+    - parent MarkupElement?
+    - root MarkupRootElement?
+
+` True continues the adopt walk into children.
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupAttachmentReclaimHook is () Void
+    - attachment MarkupAttachment
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupThemeTagHook is () Void
+    - node MarkupElement
+    - tag String
+    - active Bool?
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupThemeHook is () Void
+    - node MarkupElement
+    - key String
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupRegionController is Interface
+
+────────────────────
++ do close
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupPropertyDependencyAction is MarkupBatchAction
+
+────────────────────
++ This
+    - owner MarkupElement
+    - initial-trackers [Tracker]
+    - action-callback SubscriberCallback
+
+batch-owner = owner
+.. trackers = initial-trackers
+callback = action-callback
+
+for tracker in trackers
+    tracker.attach(this)
+
+╌╌╌╌╌╌╌╌╌╌ is LiveAction ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do schedule
+
+. owner = batch-owner
+if owner
+    batch-root = owner.markup-batch-root
+
+if batch-root
+    if batch-root.markup-batch-queue.is-active
+        enqueue-markup-batch-action()
+        =
+schedule-live()
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupRowBuilder'Item'Content is () Content ?! Error
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupRow
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupBranchBuilder'Content is () Void ?! Error
+    - parent Content
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupItemAppender'Item is () Void ?! Error
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupPendingItems'Item
+
++ appender MarkupItemAppender'Item
+
+_ items [Item] = List'Item()
+_ action MarkupBatchAction?
+
+────────────────────
++ This
+    - appender
+
+────────────────────
++ do queue
+    - item Item
+    - root MarkupRootElement
+
+items += item
+. next-action = ensure-markup-batch-action(root, this.flush-action, action)
+action = next-action
+next-action()
+
+────────────────────
++ do flush-action [Tracker]
+
+flush()
+= List'Tracker()
+
+────────────────────
++ do flush
+
+. pending = items
+items = List'Item()
+for item in pending
+    appender(item)
+
+────────────────────
++ do clear
+
+items.clear()
+if action
+    action.close()
+    action = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupCollectionItems'Content is Interface
+
+────────────────────
++ get item-count Size
+
+────────────────────
++ do item-key String
+    - index Index
+
+────────────────────
++ do item-row MarkupRow
+    - index Index
+
+────────────────────
++ do rebind-row
+    - row MarkupRow
+    - index Index
+
+────────────────────
++ do build-row Content ?! Error
+    - row MarkupRow
+
+────────────────────
++ do build-item Content ?! Error
+    - index Index
+
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkupDepartedRow'Content
-    - Content is MarkupHost
+    - Content is MarkupElement
 
 + key String
 + row MarkupRow
@@ -677,8 +1407,8 @@ _ MarkupDepartedRow'Content
     - child
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupCollectionReconciler'Content
-    - Content is MarkupTreeHost'Content
+_ MarkupCollectionReconciler'Content
+    - Content is MarkupParent'Content
 
 + region Content
 + items MarkupCollectionItems'Content
@@ -732,101 +1462,6 @@ for item-index in 0 .. < items.item-count
     . child = items.build-item(item-index)
     unkeyed-row-hosts += child
     markup-append(region, child)
-
-────────────────────
-_ do mount-all
-    - count Size
-
-keys = List'String()
-rows = List'MarkupRow()
-for item-index in 0 .. < count
-    //keyed.collection.key-builds ++
-    . key = items.item-key(item-index)
-    rows += mount-keyed-row(key, item-index, null)
-    keys += key
-
-────────────────────
-_ do mount-keyed-row MarkupRow
-    - key String
-    - item-index Index
-    - anchor Content?
-
-. departed-row = reclaim(key, item-index)
-if departed-row
-    markup-move(region, departed-row.child, anchor)
-    = departed-row.row
-. row = items.item-row(item-index)
-markup-insert(region, items.build-row(row), anchor)
-//keyed.collection.mounts ++
-= row
-
-────────────────────
-_ do depart-row
-    - child Content
-    - key String
-    - row MarkupRow
-
-. forget Doer = => do
-    forget-departed(child)
-if markup-depart-child(region, child, forget)
-    departed += MarkupDepartedRow'Content(key, row, child)
-//keyed.collection.unmounts ++
-
-────────────────────
-_ do forget-departed
-    - child Content
-
-. index Index = 0
-while index < departed.length
-    if departed[index].child as Pointer == child as Pointer
-        departed.remove(index)
-        =
-    index += 1
-
-────────────────────
-_ do depart-rows
-    - children [Content]
-    - row-keys [String]
-    - row-list [MarkupRow]
-
-. index Index = 0
-for child in children
-    depart-row(child, row-keys[index], row-list[index])
-    index += 1
-
-────────────────────
-_ do reclaim MarkupDepartedRow'Content?
-    - key String
-    - item-index Index
-
-. index Index = 0
-while index < departed.length
-    . entry = departed[index]
-    if entry.key == key || !markup-is-departing(entry.child)
-        departed.remove(index, 1)
-        if entry.key == key && markup-revive-child(entry.child)
-            items.rebind-row(entry.row, item-index)
-            = entry
-    else
-        index += 1
-
-────────────────────
-_ do place
-    - children [Content]
-    - reused [Bool]
-
-. anchor Content?
-. cursor = children.length
-while cursor > 0
-    cursor -= 1
-    . child = children[cursor]
-    if reused[cursor]
-        if !markup-region-follows(child, anchor)
-            markup-move(region, child, anchor)
-            //keyed.collection.moves ++
-    else
-        markup-insert(region, child, anchor)
-    anchor = child
 
 ────────────────────
 + do rebuild-keyed
@@ -960,25 +1595,6 @@ for old-head in old-heads.values
         depart-row(old-children[unused-index], old-keys[unused-index], old-rows[unused-index])
         unused-index = old-next[unused-index]
 place(next-children, next-reused)
-
-────────────────────
-_ do build-or-reclaim
-    - key String
-    - item-index Index
-    - next-children [Content]
-    - next-reused [Bool]
-
-. departed-row = reclaim(key, item-index)
-if departed-row
-    rows += departed-row.row
-    next-children += departed-row.child
-    next-reused += true
-    =
-. row = items.item-row(item-index)
-rows += row
-next-children += items.build-row(row)
-next-reused += false
-//keyed.collection.mounts ++
 
 ────────────────────
 + do insert-range
@@ -1122,7 +1738,7 @@ apply-mutation(mutation)
 ────────────────────
 + do queue-mutation
     - mutation CollectionMutation
-    - root MarkupBatch
+    - root MarkupRootElement
 
 //markup.collection.queued ++
 if mutation.kind == CollectionMutationKind.set
@@ -1308,9 +1924,124 @@ if observer
     unobserve-collection-pointer(source-pointer, observer)
     observer = null
 
+────────────────────
+_ do mount-all
+    - count Size
+
+keys = List'String()
+rows = List'MarkupRow()
+for item-index in 0 .. < count
+    //keyed.collection.key-builds ++
+    . key = items.item-key(item-index)
+    rows += mount-keyed-row(key, item-index, null)
+    keys += key
+
+────────────────────
+_ do mount-keyed-row MarkupRow
+    - key String
+    - item-index Index
+    - anchor Content?
+
+. departed-row = reclaim(key, item-index)
+if departed-row
+    markup-move(region, departed-row.child, anchor)
+    = departed-row.row
+. row = items.item-row(item-index)
+markup-insert(region, items.build-row(row), anchor)
+//keyed.collection.mounts ++
+= row
+
+────────────────────
+_ do depart-row
+    - child Content
+    - key String
+    - row MarkupRow
+
+. forget Doer = => do
+    forget-departed(child)
+if markup-depart-child(region, child, forget)
+    departed += MarkupDepartedRow'Content(key, row, child)
+//keyed.collection.unmounts ++
+
+────────────────────
+_ do forget-departed
+    - child Content
+
+. index Index = 0
+while index < departed.length
+    if departed[index].child as Pointer == child as Pointer
+        departed.remove(index)
+        =
+    index += 1
+
+────────────────────
+_ do depart-rows
+    - children [Content]
+    - row-keys [String]
+    - row-list [MarkupRow]
+
+. index Index = 0
+for child in children
+    depart-row(child, row-keys[index], row-list[index])
+    index += 1
+
+────────────────────
+_ do reclaim MarkupDepartedRow'Content?
+    - key String
+    - item-index Index
+
+. index Index = 0
+while index < departed.length
+    . entry = departed[index]
+    if entry.key == key || !markup-is-departing(entry.child)
+        departed.remove(index, 1)
+        if entry.key == key && markup-revive-child(entry.child)
+            items.rebind-row(entry.row, item-index)
+            = entry
+    else
+        index += 1
+
+────────────────────
+_ do place
+    - children [Content]
+    - reused [Bool]
+
+. anchor Content?
+. cursor = children.length
+while cursor > 0
+    cursor -= 1
+    . child = children[cursor]
+    if reused[cursor]
+        if !markup-region-follows(child, anchor)
+            markup-move(region, child, anchor)
+            //keyed.collection.moves ++
+    else
+        markup-insert(region, child, anchor)
+    anchor = child
+
+────────────────────
+_ do build-or-reclaim
+    - key String
+    - item-index Index
+    - next-children [Content]
+    - next-reused [Bool]
+
+. departed-row = reclaim(key, item-index)
+if departed-row
+    rows += departed-row.row
+    next-children += departed-row.child
+    next-reused += true
+    =
+. row = items.item-row(item-index)
+rows += row
+next-children += items.build-row(row)
+next-reused += false
+//keyed.collection.mounts ++
+
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupBroadcastCollectionController'Item'Content
-    - Content is MarkupTreeHost'Content
+_ MarkupBroadcastCollectionController'Item'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
 
 + region Content
 + row-builder MarkupRowBuilder'Item'Content
@@ -1328,6 +2059,16 @@ _ pending-items MarkupPendingItems'Item
 
 pending-items = MarkupPendingItems'Item(this.append-item)
 start-source(source)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupRegionController ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+clear-pending-items()
+unsubscribe-source()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do replace-source'Source
@@ -1389,15 +2130,10 @@ pending-items.clear()
 
 markup-append(region, row-builder(item))
 
-────────────────────
-+ do close
-
-clear-pending-items()
-unsubscribe-source()
-
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkupIterableCollectionController'Item'Content
-    - Content is MarkupTreeHost'Content
+_ MarkupIterableCollectionController'Item'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
 
 + region Content
 + row-builder MarkupRowBuilder'Item'Content
@@ -1417,6 +2153,20 @@ _ pending-items MarkupPendingItems'Item
 
 pending-items = MarkupPendingItems'Item(this.append-item)
 start-source(source)
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupRegionController ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+generation += 1
+cancel-producer()
+clear-pending-items()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do replace-source
@@ -1491,208 +2241,30 @@ pending-items.clear()
 
 markup-append(region, row-builder(item))
 
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupNodeRegion is MarkupNode
+
+╌╌╌╌╌╌╌╌╌╌ is MarkupNode ╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + do close
 
-is-closed = true
-generation += 1
-cancel-producer()
-clear-pending-items()
+markup-close-region(this)
+super.close()
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupBranchController'Content
-    - Content is MarkupTreeHost'Content
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
-+ region Content
-+ arm-builders [MarkupBranchBuilder'Content]
-
-_ active-arm Index?
-_ departed-arm Index?
-_ departed [Content] = List'Content()
-
-────────────────────
-+ This
-    - region
-    - arm-builders
-    - active-arm Index?
-
-select-markup-branch(active-arm)
-
-────────────────────
-+ get selected-arm
-
-active-arm
-
-────────────────────
-+ do select-markup-branch
-    - arm Index?
-
-if arm != active-arm
-    region.markup-branch-changing()
-. leaving = List'Content()
-for child in markup-region-children(region)
-    leaving += child
-. revived = arm != null && departed-arm == arm && revive-departed()
-. departing = List'Content()
-. is-whole = true
-for child in leaving
-    if markup-depart-child(region, child)
-        departing += child
-    else
-        is-whole = false
-departed = if is-whole then departing else List'Content()
-departed-arm = active-arm if departed
-active-arm = arm
-if arm && !revived
-    . index = arm
-    arm-builders[index](region)
-
-────────────────────
-_ do revive-departed Bool
-
-=? if !departed
-for child in departed
-    =? if !markup-is-departing(child)
-. revived = true
-for child in departed
-    if !markup-revive-child(child)
-        revived = false
-= revived
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupHost is Interface
-
-────────────────────
-+ get markup-batch-root
-
-markup-root-of(this)
-
-────────────────────
-+ get markup-first-child MarkupHost?
-
-markup-structural-first-child-host(this)
-
-────────────────────
-+ get markup-next-sibling MarkupHost?
-
-markup-structural-next-sibling-host(this)
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get markup-is-transparent-region
 
-false
-
-────────────────────
-+ get markup-query-boundary
-
-false
-
-────────────────────
-+ get markup-attachment-cache MarkupAttachment?
-
-markup-attachment(this)
-
-────────────────────
-+ do markup-attachment-cache = attachment MarkupAttachment?
-
-────────────────────
-+ do markup-parent-style-domains-changed
-    - mask U32
-
-────────────────────
-+ do markup-style-domains-changed
-    - mask U32
-
-────────────────────
-+ do mounted
-
-────────────────────
-+ do unmounted
-
-────────────────────
-+ do markup-depart Bool
-
-= false
-
-────────────────────
-+ do markup-revive
-
-────────────────────
-+ do markup-branch-changing
-
-────────────────────
-+ close
-
-────────────────────
-+ do markup-attach-shadow-child
-    - child MarkupHost
-    - anchor MarkupHost?
-
-────────────────────
-+ do markup-detach-shadow-child
-    - child MarkupHost
-
-────────────────────
-+ markup-collection-region'Item'Content'Source Content
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - Source is Collection'Item
-
-────────────────────
-+ markup-collection-region'Item'Content'Source Content
-    - source Source
-    - row-builder MarkupCollectionRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Source is Collection'Item
-
-────────────────────
-+ markup-broadcastable-region'Item'Content'Source Content
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Source is Broadcastable'Item
-
-────────────────────
-+ markup-iterable-region'Item'Content'Source Content
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Source is Iterable'Item
-
-────────────────────
-+ markup-branch-region'Content Content
-    - arm-builders [MarkupBranchBuilder'Content]
-    - active-arm Index?
-
-────────────────────
-+ markup-select-branch-region'Content
-    - region Content
-    - active-arm Index?
-
-────────────────────
-+ markup-branch-region-keeps-arm'Content Bool
-    - region Content
-    - arm Index?
-
-false
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupTreeHost'Child is Interface
-    is MarkupHost
-
-────────────────────
-+ markup-attach-child
-    - child Child
-    - anchor Child?
-
-────────────────────
-+ markup-detach-child
-    - child Child
+true
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkupDescendantsQueryBinding
 
-+ owner MarkupHost
++ owner MarkupElement
 + target-id Size
 + add MarkupDescendantsQueryApplier
 + remove MarkupDescendantsQueryApplier
@@ -1707,7 +2279,7 @@ _ MarkupDescendantsQueryBinding
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkupAttachmentOverflow
 
-_ style-parent MarkupHost?
+_ style-parent MarkupElement?
 _ style-slot U32?
 _ ancestor-queries [MarkupAncestorQueryRefresher]?
 _ descendants-queries [MarkupDescendantsQueryBinding]?
@@ -1715,108 +2287,18 @@ _ descendant-target-ids [Size]?
 _ departure MarkupDeparture?
 _ departing-within Size = 0
 _ held-actions [MarkupBatchAction]?
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupAttachment
-
-` Linked nodes retain their owner through retained-host so the attachment tree is the structural
-` ownership tree. A publicly adopted parentless non-root leaf instead uses the same attachment as
-` a cleanup payload: retained-host is cleared, and the scalar object/witness pair reconstructs the
-` interface only while client code still holds the owner. Adding its first structural child moves
-` it back to ordinary ownership. Generated regions mount parentless only transiently and remain
-` ordinary payloads until their builder links them.
-
-+ object-address Size = 0
-+ host-witness-address Size = 0
-+ object-pointer => object-address as Pointer
-+ retained-host MarkupHost?
-+ is-cleanup-payload = false
-+ store-address Size = 0
-+ store-witness-address Size = 0
-+ retained-store MarkupBatch?
-+ mounted-parent MarkupAttachment?
-+ mounted-callback-fired = false
-+ is-released = false
-+ is-closed = false
-+ structural-parent MarkupAttachment?
-+ first-child MarkupAttachment?
-+ last-child MarkupAttachment?
-+ previous-sibling MarkupAttachment?
-+ next-sibling MarkupAttachment?
-+ is-style-shadow = false
-+ attachment-id Index = 0
-+ style-store-address Size = 0
-+ style-node-record-address Size = 0
-+ dirty-bits U32
-+ pending-domains U32
-+ descendant-domains U32
-+ generation U32
-+ style-settled = false
-+ style-reports-settle = false
-+ cause = markup-cause-none
-+ is-live => style-store-address != 0
-+ owner-address => object-address
-_ overflow MarkupAttachmentOverflow?
-
-────────────────────
-+ get host
-
-|? retained-host
-    retained-host
-??
-    gc-interface-from-pointer'MarkupHost(object-pointer, host-witness-address as Pointer)
-
-────────────────────
-+ do get store MarkupBatch?
-
-if retained-store
-    = retained-store
-=? if store-address == 0
-= gc-interface-from-pointer'MarkupBatch(store-address as Pointer, store-witness-address as Pointer)
-
-────────────────────
-_ do set-store
-    - store MarkupBatch
-
-if is-cleanup-payload
-    retained-store = null
-else
-    retained-store = store
-store-address = (store as Pointer).address as Size
-store-witness-address = interface-witness-pointer(store).address as Size
-
-────────────────────
-_ do clear-store
-
-retained-store = null
-store-address = 0
-store-witness-address = 0
-
-────────────────────
-_ get departure MarkupDeparture?
-
-overflow?.departure
-
-────────────────────
-_ get departing-within Size
-
-overflow?.departing-within ?? 0
-
-────────────────────
-_ do overflow-for-write
-
-if !overflow
-    overflow = MarkupAttachmentOverflow()
-= overflow!
+_ region-controller MarkupRegionController?
+_ theme-tags-on U64 = 0
+_ theme-tags-off U64 = 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkupMountCommit
 
-_ mounted-hosts [MarkupHost]
+_ mounted-hosts [MarkupElement]
 
 ────────────────────
 + do record-mounted
-    - host MarkupHost
+    - host MarkupElement
 
 mounted-hosts += host
 
@@ -1824,7 +2306,7 @@ mounted-hosts += host
 + do publish-mounted
 
 . hosts = mounted-hosts
-mounted-hosts = List'MarkupHost()
+mounted-hosts = List'MarkupElement()
 
 for host in hosts
     host.mounted()
@@ -1839,96 +2321,49 @@ _ MarkupKeyedRowHead
     - index Index
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do set-markup-batch-settle-hook
-    - hook MarkupBatchSettleHook
+_ MarkupDeparture
 
-markup-batch-settle-hooks += hook
++ finish Doer
++ is-host-leaving Bool
 
-━━━━━━━━━━━━━━━━━━━━
-+ do set-markup-mount-hook
-    - hook MarkupMountHook
-
-markup-mount-hooks += hook
-
-━━━━━━━━━━━━━━━━━━━━
-+ do set-markup-attachment-reclaim-hook
-    - hook MarkupAttachmentReclaimHook
-
-markup-attachment-reclaim-hooks += hook
+────────────────────
++ This
+    - finish
+    - is-host-leaving
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-structural-parent-host
-    - node MarkupHost
+_ do markup-region-rows'Child [Child]
+    - region MarkupElement
 
-. attachment = markup-attachment(node)
-=? attachment.structural-parent?.host
-    if attachment
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-structural-first-child-host
-    - node MarkupHost
-
-. attachment = markup-attachment(node)
-=? attachment.first-child?.host
-    if attachment
+. next = markup-structural-first-child-host(region)
+while next
+    . child = next
+    next = markup-structural-next-sibling-host(child)
+    if markup-region-controller(child)
+        <<= markup-region-rows'Child(child)
+    else
+        <= child as Child
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-structural-last-child-host
-    - node MarkupHost
+_ do markup-structural-last-child-host
+    - node MarkupElement
 
 . attachment = markup-attachment(node)
 =? attachment.last-child?.host
     if attachment
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-structural-previous-sibling-host
-    - node MarkupHost
+_ do markup-structural-previous-sibling-host
+    - node MarkupElement
 
 . attachment = markup-attachment(node)
 =? attachment.previous-sibling?.host
     if attachment
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-structural-next-sibling-host
-    - node MarkupHost
-
-. attachment = markup-attachment(node)
-=? attachment.next-sibling?.host
-    if attachment
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-is-style-shadow
-    - node MarkupHost
-
-|? attachment
-    attachment.is-style-shadow
-??
-    false
-
-.. attachment = markup-attachment(node)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-style-parent-host
-    - node MarkupHost
-
-. attachment = markup-attachment(node)
-if attachment && attachment.overflow
-    . overflow = attachment.overflow
-    = overflow.style-parent
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-style-slot
-    - node MarkupHost
-
-. attachment = markup-attachment(node)
-if attachment && attachment.overflow
-    . overflow = attachment.overflow
-    = overflow.style-slot
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-mark-style-shadow
-    - node MarkupHost
-    - style-parent MarkupHost
+_ do markup-mark-style-shadow
+    - node MarkupElement
+    - style-parent MarkupElement
     - slot U32
 
 . attachment = markup-ensure-attachment(node)
@@ -1938,8 +2373,8 @@ overflow.style-parent = style-parent
 overflow.style-slot = slot
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-clear-style-shadow
-    - node MarkupHost
+_ do markup-clear-style-shadow
+    - node MarkupElement
 
 . attachment = markup-attachment(node)
 =? if !attachment
@@ -1951,8 +2386,8 @@ if attachment.overflow
     overflow.style-slot = null
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do register-markup-ancestor-query
-    - owner MarkupHost
+_ do register-markup-ancestor-query
+    - owner MarkupElement
     - refresh MarkupAncestorQueryRefresher
 
 . attachment = markup-ensure-attachment(owner)
@@ -1967,8 +2402,8 @@ if attachment.store
     refresh()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do register-markup-descendants-query
-    - owner MarkupHost
+_ do register-markup-descendants-query
+    - owner MarkupElement
     - target-id Size
     - add MarkupDescendantsQueryApplier
     - remove MarkupDescendantsQueryApplier
@@ -1986,8 +2421,8 @@ if attachment.store
     markup-query-seed-descendants-binding(attachment, binding)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do register-markup-descendant-target
-    - target MarkupHost
+_ do register-markup-descendant-target
+    - target MarkupElement
     - target-id Size
 
 . attachment = markup-ensure-attachment(target)
@@ -2005,13 +2440,13 @@ if attachment.store && attachment.mounted-parent
     markup-query-publish-target-id(attachment, target-id, true)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-query-add-descendant'Target Bool
+_ do markup-query-add-descendant'Target Bool
     - list [Target]
-    - owner MarkupHost
+    - owner MarkupElement
     - item Target
-    - Target is MarkupHost
+    - Target is MarkupElement
 
-. item-host = item as MarkupHost
+. item-host = item as MarkupElement
 if !list.length
     list += item
     = true
@@ -2019,7 +2454,7 @@ if !list.length
 . last-item = list[Position.last]
 =? if last-item == item
 
-. last-host = last-item as MarkupHost
+. last-host = last-item as MarkupElement
 if markup-query-host-precedes(owner, last-host, item-host)
     list += item
     = true
@@ -2029,7 +2464,7 @@ if markup-query-host-precedes(owner, last-host, item-host)
 . index Index = 0
 while index < list.length
     //markup.query.ordered-insert-scans ++
-    . existing-host = list[index] as MarkupHost
+    . existing-host = list[index] as MarkupElement
     if markup-query-host-precedes(owner, item-host, existing-host)
         list.insert(item, index)
         = true
@@ -2039,11 +2474,11 @@ list += item
 = true
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-query-remove-descendant'Target Bool
+_ do markup-query-remove-descendant'Target Bool
     - list [Target]
-    - owner MarkupHost
+    - owner MarkupElement
     - item Target
-    - Target is MarkupHost
+    - Target is MarkupElement
 
 . found = list -= item
 =? true
@@ -2051,40 +2486,16 @@ list += item
 = false
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-query-parent-host
-    - owner MarkupHost
+_ do markup-query-parent-host
+    - owner MarkupElement
 
 . parent = markup-attachment(owner)?.mounted-parent?.host
-while parent && parent.markup-is-transparent-region
+while parent && (parent.markup-is-transparent-region || markup-region-controller(parent) != null)
     parent = markup-attachment(parent)?.mounted-parent?.host
 = parent
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-query-first-descendant-host
-    - owner MarkupHost
-
-markup-structural-first-child-host(owner)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-query-next-descendant-host
-    - owner MarkupHost
-    - current MarkupHost
-
-=? markup-structural-first-child-host(current)
-
-. cursor MarkupHost? = current
-while cursor
-    . live = cursor
-    =? if live as Pointer == owner as Pointer
-
-    . next = markup-structural-next-sibling-host(live)
-    if next
-        = next
-
-    cursor = markup-structural-parent-host(live)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-query-lists-match'Item Bool
+_ do markup-query-lists-match'Item Bool
     - left [Item]
     - right [Item]
 
@@ -2098,145 +2509,15 @@ while index < left.length
 = true
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-root-of
-    - node MarkupHost
-
-. attachment = markup-attachment(node)
-if attachment
-    . live = attachment
-    . store = live.store
-    if store
-        = store
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-adopt
-    - node MarkupHost
-    - parent MarkupHost?
-    - root MarkupBatch?
-
-` For out-of-tree hosts; linked children use the core mutation entry points.
-
-. commit = MarkupMountCommit()
-markup-query-publish-subtree(node, false)
-markup-adopt-core(node, commit, true, parent, root)
-if root
-    markup-query-publish-subtree(node, true)
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-release
-    - node MarkupHost
-
-. commit = MarkupMountCommit()
-markup-query-publish-subtree(node, false)
-markup-adopt-core(node, commit, true, null, null)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-mount-root
-    - node MarkupHost
-    - root MarkupBatch?
-
-. commit = MarkupMountCommit()
-markup-adopt-core(node, commit, true, null, root)
-if root
-    markup-query-publish-subtree(node, true)
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-append'Host'Child
-    - parent Host
-    - child Child
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
-
-. commit = markup-attach-new-child(parent, child, null)
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-insert'Host'Child'Anchor
+_ do markup-move'Host'Child'Anchor
     - parent Host
     - child Child
     - anchor Anchor?
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
-    - Anchor is MarkupHost
+    - Host is MarkupParent
+    - Child is MarkupElement
+    - Anchor is MarkupElement
 
-. commit = markup-attach-new-child(parent, child, anchor)
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-remove'Host'Child
-    - parent Host
-    - child Child
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
-
-. weight = markup-departure-weight(child)
-markup-unlink-structural-child(parent, child)
-parent.markup-detach-child(child)
-markup-release(child)
-if weight
-    markup-settle-departures(markup-attachment(parent as MarkupHost))
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-insert-shadow
-    - parent MarkupHost
-    - child MarkupHost
-    - style-parent MarkupHost
-    - slot U32
-    - anchor MarkupHost?
-
-. root = markup-root-of(parent)
-. commit = MarkupMountCommit()
-. linked = false
-. committed = false
-
-markup-assert-structural-child-linkable(parent, child, anchor)
-do finally
-    if !committed
-        catch markup-release(child)
-        if linked
-            markup-unlink-structural-child(parent, child)
-        markup-clear-style-shadow(child)
-
-markup-mark-style-shadow(child, style-parent, slot)
-markup-link-structural-child(parent, child, anchor)
-linked = true
-parent.markup-attach-shadow-child(child, anchor)
-markup-adopt-core(child, commit, true, parent, root)
-committed = true
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-remove-shadow
-    - child MarkupHost
-
-. attachment = markup-attachment(child)
-=? if !attachment
-=? if !attachment.is-style-shadow
-
-. weight = markup-departure-weight(child)
-. parent-attachment = attachment.structural-parent
-if parent-attachment
-    . parent = parent-attachment.host
-    parent.markup-detach-shadow-child(child)
-    markup-unlink-structural-child(parent, child)
-
-markup-release(child)
-markup-clear-style-shadow(child)
-if weight
-    markup-settle-departures(parent-attachment)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-move'Host'Child'Anchor
-    - parent Host
-    - child Child
-    - anchor Anchor?
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
-    - Anchor is MarkupHost
-
-. parent-host = parent as MarkupHost
+. parent-host = parent as MarkupElement
 . parent-attachment = markup-attachment(parent-host)
 . child-attachment = markup-attachment(child)
 ?! Panic("Markup child is not linked under parent")
@@ -2259,25 +2540,9 @@ parent.markup-attach-child(child, anchor)
 markup-query-publish-subtree(child, true)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-replace'Host'Child'Replacement
-    - parent Host
-    - child Child
-    - replacement Replacement
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
-    - Replacement is MarkupHost
-
-. parent-host = parent as MarkupHost
-. commit = markup-attach-new-child(parent, replacement, child)
-markup-unlink-structural-child(parent-host, child)
-parent.markup-detach-child(child)
-markup-release(child)
-commit.publish-mounted()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mark-structural-markup-action
+_ do mark-structural-markup-action
     - action LiveAction
-    - owner MarkupHost? = null
+    - owner MarkupElement? = null
 
 if action is MarkupBatchAction
     . batch-action = action as MarkupBatchAction
@@ -2287,7 +2552,7 @@ action.dispatch-first()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-host-depth Size
-    - host MarkupHost?
+    - host MarkupElement?
 
 . depth Size = 0
 . attachment = markup-attachment(host) if host
@@ -2316,25 +2581,25 @@ while attachment
 = false
 
 ━━━━━━━━━━━━━━━━━━━━
-+ make-markup-action LiveAction
+_ make-markup-action LiveAction
     - trackers [Tracker]
     - callback SubscriberCallback
-    - root MarkupBatch
+    - root MarkupRootElement
 
 MarkupBatchAction(root, trackers, callback)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ make-owner-markup-action LiveAction
+_ make-owner-markup-action LiveAction
     - trackers [Tracker]
     - callback SubscriberCallback
-    - owner MarkupHost
+    - owner MarkupElement
 
 MarkupBatchAction(owner, trackers, callback)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-property-dependency-subscribe'Object LiveAction
+_ do markup-property-dependency-subscribe'Object LiveAction
     - object Object
-    - owner MarkupHost
+    - owner MarkupElement
     - name String
     - callback Doer
 
@@ -2343,208 +2608,270 @@ do link-property-dependency(object, name, action)
 = action
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do ensure-markup-batch-action
-    - root MarkupBatch
-    - callback SubscriberCallback
-    - action MarkupBatchAction?
-
-if action
-    . live = action
-    . action-root = live.batch-root
-    if action-root
-        . action-queue = action-root.markup-batch-queue as Pointer
-        . root-queue = root.markup-batch-queue as Pointer
-        if action-queue == root-queue
-            = live
-    live.close()
-
-= MarkupBatchAction(root, List'Tracker(), callback)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-collection-region'Item'Content'Host'Source
+_ do markup-create-collection-region'Item'Content'Host'Source Content
     - parent Host
-    - source Source
     - row-builder MarkupRowBuilder'Item'Content
-    - Host is MarkupHost
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
     - Source is Collection'Item
 
-parent.markup-collection-region(source, row-builder)
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, source, row-builder))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-keyed-collection-region'Item'Content'Host'Source
-    - parent Host
-    - source Source
-    - row-builder MarkupCollectionRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Host is MarkupHost
-    - Source is Collection'Item
-
-parent.markup-collection-region(source, row-builder, key-builder)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-broadcastable-region'Item'Content'Host'Source
-    - parent Host
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - Host is MarkupHost
-    - Source is Broadcastable'Item
-
-parent.markup-broadcastable-region(source, row-builder, null)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-keyed-broadcastable-region'Item'Content'Host'Source
-    - parent Host
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Host is MarkupHost
-    - Source is Broadcastable'Item
-
-parent.markup-broadcastable-region(source, row-builder, key-builder)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-iterable-region'Item'Content'Host'Source
-    - parent Host
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - Host is MarkupHost
-    - Source is Iterable'Item
-
-parent.markup-iterable-region(source, row-builder, null)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-keyed-iterable-region'Item'Content'Host'Source
-    - parent Host
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Host is MarkupHost
-    - Source is Iterable'Item
-
-parent.markup-iterable-region(source, row-builder, key-builder)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-collection-region'Item'Content'Host'Source
-    - parent Host
-    - row-builder MarkupRowBuilder'Item'Content
-    - source Source?
-    - Host is MarkupHost
-    - Source is Collection'Item
-
-if source then parent.markup-collection-region(source!, row-builder) else parent.markup-collection-region(List'Item(), row-builder)
-
-━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-keyed-collection-region'Item'Content'Host'Source
+_ do markup-create-keyed-collection-region'Item'Content'Host'Source Content
     - parent Host
     - row-builder MarkupCollectionRowBuilder'Item'Content
     - key-builder MarkupKeyBuilder'Item
-    - source Source?
-    - Host is MarkupHost
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
     - Source is Collection'Item
 
-if source then parent.markup-collection-region(source, row-builder, key-builder) else parent.markup-collection-region(List'Item(), row-builder, key-builder)
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, source, row-builder, key-builder))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-broadcastable-region'Item'Content'Host'Source
+_ do markup-create-broadcastable-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupRowBuilder'Item'Content
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Broadcastable'Item
+
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, source, row-builder, null))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-keyed-broadcastable-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupRowBuilder'Item'Content
+    - key-builder MarkupKeyBuilder'Item
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Broadcastable'Item
+
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, source, row-builder, key-builder))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-iterable-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupRowBuilder'Item'Content
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Iterable'Item
+
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, source, row-builder, null))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-keyed-iterable-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupRowBuilder'Item'Content
+    - key-builder MarkupKeyBuilder'Item
+    - source Source
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Iterable'Item
+
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, source, row-builder, key-builder))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-optional-collection-region'Item'Content'Host'Source Content
     - parent Host
     - row-builder MarkupRowBuilder'Item'Content
     - source Source?
-    - Host is MarkupHost
-    - Source is Broadcastable'Item
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Collection'Item
 
-if source then parent.markup-broadcastable-region(source!, row-builder, null) else parent.markup-broadcastable-region(AsyncChannel'Item(), row-builder, null)
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, source, row-builder))
+else
+    markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, List'Item(), row-builder))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-keyed-broadcastable-region'Item'Content'Host'Source
+_ do markup-create-optional-keyed-collection-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupCollectionRowBuilder'Item'Content
+    - key-builder MarkupKeyBuilder'Item
+    - source Source?
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Collection'Item
+
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, source, row-builder, key-builder))
+else
+    markup-set-region-controller(region, MarkupCollectionController'Item'Content(region, List'Item(), row-builder, key-builder))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-optional-broadcastable-region'Item'Content'Host'Source Content
+    - parent Host
+    - row-builder MarkupRowBuilder'Item'Content
+    - source Source?
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+    - Source is Broadcastable'Item
+
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, source, row-builder, null))
+else
+    markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, AsyncChannel'Item(), row-builder, null))
+= region
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-optional-keyed-broadcastable-region'Item'Content'Host'Source Content
     - parent Host
     - row-builder MarkupRowBuilder'Item'Content
     - key-builder MarkupKeyBuilder'Item
     - source Source?
-    - Host is MarkupHost
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
     - Source is Broadcastable'Item
 
-if source then parent.markup-broadcastable-region(source!, row-builder, key-builder) else parent.markup-broadcastable-region(AsyncChannel'Item(), row-builder, key-builder)
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, source, row-builder, key-builder))
+else
+    markup-set-region-controller(region, MarkupBroadcastCollectionController'Item'Content(region, AsyncChannel'Item(), row-builder, key-builder))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-iterable-region'Item'Content'Host'Source
+_ do markup-create-optional-iterable-region'Item'Content'Host'Source Content
     - parent Host
     - row-builder MarkupRowBuilder'Item'Content
     - source Source?
-    - Host is MarkupHost
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
     - Source is Iterable'Item
 
-if source then parent.markup-iterable-region(source!, row-builder, null) else parent.markup-iterable-region(List'Item(), row-builder, null)
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, source, row-builder, null))
+else
+    markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, List'Item(), row-builder, null))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-optional-keyed-iterable-region'Item'Content'Host'Source
+_ do markup-create-optional-keyed-iterable-region'Item'Content'Host'Source Content
     - parent Host
     - row-builder MarkupRowBuilder'Item'Content
     - key-builder MarkupKeyBuilder'Item
     - source Source?
-    - Host is MarkupHost
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
     - Source is Iterable'Item
 
-if source then parent.markup-iterable-region(source!, row-builder, key-builder) else parent.markup-iterable-region(List'Item(), row-builder, key-builder)
+. region = parent.markup-make-region()!
+if source
+    markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, source, row-builder, key-builder))
+else
+    markup-set-region-controller(region, MarkupIterableCollectionController'Item'Content(region, List'Item(), row-builder, key-builder))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-replace-optional-collection-source'Item'Region'Source
+_ do markup-replace-collection-source'Item'Region'Source
     - region Region
-    - source Source?
+    - source Source
+    - Region is MarkupParent'Region
     - Source is Collection'Item
 
-if source
-    region.replace-source(source)
-else
-    region.replace-source(List'Item())
+(markup-region-controller(region)! as MarkupCollectionController'Item'Region).replace-source(source)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-replace-optional-broadcastable-source'Item'Region'Source
+_ do markup-replace-broadcastable-source'Item'Region'Source
     - region Region
-    - source Source?
+    - source Source
+    - Region is MarkupParent'Region
     - Source is Broadcastable'Item
 
-if source
-    region.replace-source(source!)
-else
-    region.replace-source(AsyncChannel'Item())
+(markup-region-controller(region)! as MarkupBroadcastCollectionController'Item'Region).replace-source(source)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-replace-optional-iterable-source'Item'Region'Source
+_ do markup-replace-iterable-source'Item'Region'Source
     - region Region
-    - source Source?
+    - source Source
+    - Region is MarkupParent'Region
     - Source is Iterable'Item
 
-if source
-    region.replace-source(source!)
-else
-    region.replace-source(List'Item())
+(markup-region-controller(region)! as MarkupIterableCollectionController'Item'Region).replace-source(source)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-create-branch-region'Content'Host
+_ do markup-replace-optional-collection-source'Item'Region'Source
+    - region Region
+    - source Source?
+    - Region is MarkupParent'Region
+    - Source is Collection'Item
+
+. controller = markup-region-controller(region)! as MarkupCollectionController'Item'Region
+if source
+    controller.replace-source(source)
+else
+    controller.replace-source(List'Item())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-replace-optional-broadcastable-source'Item'Region'Source
+    - region Region
+    - source Source?
+    - Region is MarkupParent'Region
+    - Source is Broadcastable'Item
+
+. controller = markup-region-controller(region)! as MarkupBroadcastCollectionController'Item'Region
+if source
+    controller.replace-source(source)
+else
+    controller.replace-source(AsyncChannel'Item())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-replace-optional-iterable-source'Item'Region'Source
+    - region Region
+    - source Source?
+    - Region is MarkupParent'Region
+    - Source is Iterable'Item
+
+. controller = markup-region-controller(region)! as MarkupIterableCollectionController'Item'Region
+if source
+    controller.replace-source(source)
+else
+    controller.replace-source(List'Item())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-create-branch-region'Content'Host Content
     - parent Host
     - arm-builders [MarkupBranchBuilder'Content]
     - active-arm Index?
-    - Host is MarkupHost
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
 
-parent.markup-branch-region(arm-builders, active-arm)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-select-branch-region'Content'Host
-    - parent Host
-    - region Content
-    - active-arm Index?
-    - Host is MarkupHost
-
-parent.markup-select-branch-region(region, active-arm)
+. region = parent.markup-make-region()!
+markup-set-region-controller(region, MarkupBranchController'Content(region, arm-builders, active-arm))
+= region
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-branch-region-keeps-arm'Content'Host Bool
-    - parent Host
+_ markup-branch-region-keeps-arm'Content Bool
     - region Content
     - arm Index?
-    - Host is MarkupHost
+    - Content is MarkupParent'Content
 
-parent.markup-branch-region-keeps-arm(region, arm)
+(markup-region-controller(region)! as MarkupBranchController'Content).selected-arm == arm
 
 ━━━━━━━━━━━━━━━━━━━━
 _ markup-attachment-lane
@@ -2561,14 +2888,23 @@ _ markup-detached-overflow-lane
 C:yumiGCStyleAttachmentsSidePayloadLane()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markup-attachment
-    - object-pointer CPointer'Void
+_ markup-region-controller'Node MarkupRegionController?
+    - node Node
+    - Node is MarkupElement
 
-gc-object-side-payload'MarkupAttachment(object-pointer, markup-attachment-lane() as Size)
+node.markup-attachment-cache?.region-controller
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-set-region-controller'Node
+    - node Node
+    - controller MarkupRegionController
+    - Node is MarkupElement
+
+markup-ensure-attachment(node).region-controller = controller
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-ensure-attachment
-    - object MarkupHost
+    - object MarkupElement
 
 . object-pointer = object as Pointer
 
@@ -2622,7 +2958,7 @@ attachment.is-cleanup-payload = true
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-use-ordinary-payload
     - attachment MarkupAttachment
-    - owner MarkupHost
+    - owner MarkupElement
 
 if attachment.is-cleanup-payload
     . cleanup-cleared = C:yumiGCClearCleanupObjectSidePayload
@@ -2638,7 +2974,7 @@ if attachment.is-cleanup-payload
         C:yumiGCClearObjectSidePayload(attachment.object-pointer, markup-detached-overflow-lane())
         attachment.overflow = overflow
     if attachment.store-address != 0
-        attachment.retained-store = gc-interface-from-pointer'MarkupBatch
+        attachment.retained-store = gc-interface-from-pointer'MarkupRootElement
             - attachment.store-address as Pointer
             - attachment.store-witness-address as Pointer
     attachment.retained-host = owner
@@ -2663,7 +2999,7 @@ for hook in markup-attachment-reclaim-hooks
 
 ━━━━━━━━━━━━━━━━━━━━
 _ markup-root-store
-    - root MarkupBatch
+    - root MarkupRootElement
     - object-pointer Pointer
 
 |? root-pointer == object-pointer
@@ -2675,8 +3011,8 @@ _ markup-root-store
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-parent-attachment
-    - store MarkupBatch
-    - parent MarkupHost?
+    - store MarkupRootElement
+    - parent MarkupElement?
 
 if parent
     . candidate = markup-attachment(parent)
@@ -2685,9 +3021,9 @@ if parent
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-assert-structural-child-linkable
-    - parent MarkupHost
-    - child MarkupHost
-    - anchor MarkupHost?
+    - parent MarkupElement
+    - child MarkupElement
+    - anchor MarkupElement?
 
 . child-attachment = markup-attachment(child)
 ?! Panic("Markup child was closed by the markup that embedded it and cannot be embedded again")
@@ -2713,9 +3049,9 @@ while cursor
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-link-structural-child
-    - parent MarkupHost
-    - child MarkupHost
-    - anchor MarkupHost?
+    - parent MarkupElement
+    - child MarkupElement
+    - anchor MarkupElement?
 
 . parent-attachment = markup-ensure-attachment(parent)
 markup-use-ordinary-payload(parent-attachment, parent)
@@ -2754,8 +3090,8 @@ markup-shift-departing(parent-attachment, markup-departure-weight(child), true)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-unlink-structural-child
-    - parent MarkupHost
-    - child MarkupHost
+    - parent MarkupElement
+    - child MarkupElement
 
 . parent-attachment = markup-attachment(parent)
 . child-attachment = markup-attachment(child)
@@ -2789,11 +3125,11 @@ if !parent-attachment.first-child && !parent-attachment.mounted-parent
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-mount-attachment
-    - node MarkupHost
+    - node MarkupElement
     - commit MarkupMountCommit
     - should-record-mounted Bool
-    - root MarkupBatch
-    - parent MarkupHost?
+    - root MarkupRootElement
+    - parent MarkupElement?
 
 . node-pointer = node as Pointer
 . attachment = markup-ensure-attachment(node)
@@ -2821,7 +3157,7 @@ markup-resume-actions(attachment)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-record-mounted-callback
-    - node MarkupHost
+    - node MarkupElement
     - attachment MarkupAttachment
     - commit MarkupMountCommit
     - should-record-mounted Bool
@@ -2837,7 +3173,7 @@ _ do markup-update-parent
     - attachment MarkupAttachment
     - commit MarkupMountCommit
     - should-record-mounted Bool
-    - parent MarkupHost?
+    - parent MarkupElement?
 
 . store = attachment.store!
 . previous-parent = attachment.mounted-parent
@@ -2887,11 +3223,11 @@ attachment.mounted-parent = null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-apply-mount
-    - node MarkupHost
+    - node MarkupElement
     - commit MarkupMountCommit
     - should-record-mounted Bool
-    - parent MarkupHost?
-    - root MarkupBatch?
+    - parent MarkupElement?
+    - root MarkupRootElement?
 
 . node-pointer = node as Pointer
 . existing = markup-attachment(node-pointer)
@@ -2933,7 +3269,7 @@ if overflow && overflow.ancestor-queries
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-refresh-ancestor-queries-in-subtree Bool
-    - node MarkupHost
+    - node MarkupElement
 
 . changed = false
 if !markup-ancestor-query-active
@@ -2952,7 +3288,7 @@ while child
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-settle-external-hooks
-    - root MarkupBatch
+    - root MarkupRootElement
 
 . settled = false
 . pending-domain-mask U32
@@ -2997,7 +3333,7 @@ while cursor
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-query-publish-subtree
-    - node MarkupHost
+    - node MarkupElement
     - is-added Bool
 
 . attachment = markup-attachment(node)
@@ -3011,7 +3347,7 @@ markup-query-apply-subtree-targets(node, is-added)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-query-apply-subtree-targets
-    - node MarkupHost
+    - node MarkupElement
     - is-added Bool
     - binding MarkupDescendantsQueryBinding? = null
 
@@ -3066,9 +3402,9 @@ while child
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-query-host-precedes
-    - owner MarkupHost
-    - left MarkupHost
-    - right MarkupHost
+    - owner MarkupElement
+    - left MarkupElement
+    - right MarkupElement
 
 . owner-attachment = markup-attachment(owner)
 . left-attachment = markup-attachment(left)
@@ -3130,11 +3466,11 @@ while cursor
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-adopt-core
-    - node MarkupHost
+    - node MarkupElement
     - commit MarkupMountCommit
     - should-record-mounted Bool
-    - parent MarkupHost?
-    - root MarkupBatch?
+    - parent MarkupElement?
+    - root MarkupRootElement?
 
 . should-walk = markup-apply-mount(node, commit, should-record-mounted, parent, root)
 for hook in markup-mount-hooks
@@ -3154,8 +3490,8 @@ if !root && should-walk
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do ensure-markup-root
-    - node MarkupHost
-    - root MarkupBatch?
+    - node MarkupElement
+    - root MarkupRootElement?
 
 ` Install root context for generated builders before child links are committed.
 
@@ -3178,10 +3514,10 @@ _ do markup-attach-new-child'Host'Child
     - parent Host
     - child Child
     - anchor Child?
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
+    - Host is MarkupParent
+    - Child is MarkupElement
 
-. parent-host = parent as MarkupHost
+. parent-host = parent as MarkupElement
 . root = markup-root-of(parent-host)
 . commit = MarkupMountCommit()
 . linked = false
@@ -3204,8 +3540,8 @@ committed = true
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-batch-roots-match
-    - left MarkupBatch?
-    - right MarkupBatch?
+    - left MarkupRootElement?
+    - right MarkupRootElement?
 
 if !left
     =? if right
@@ -3220,7 +3556,7 @@ if !left
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-region-children'Content [Content]
     - region Content
-    - Content is MarkupTreeHost'Content
+    - Content is MarkupParent'Content
 
 . skips = (markup-attachment(region)?.departing-within ?? 1) > 0
 . maybe-child = region.%first-child
@@ -3237,7 +3573,7 @@ if maybe-child
 _ do markup-region-child-at'Content Content?
     - region Content
     - index Index
-    - Content is MarkupTreeHost'Content
+    - Content is MarkupParent'Content
 
 . skips = (markup-attachment(region)?.departing-within ?? 1) > 0
 . cursor = region.%first-child
@@ -3253,7 +3589,7 @@ while cursor
 _ do markup-region-follows'Content Bool
     - child Content
     - anchor Content?
-    - Content is MarkupTreeHost'Content
+    - Content is MarkupParent'Content
 
 . cursor = child.%next-sibling
 while cursor && markup-is-departing(cursor)
@@ -3266,7 +3602,7 @@ while cursor && markup-is-departing(cursor)
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-region-clear-children'Content
     - region Content
-    - Content is MarkupTreeHost'Content
+    - Content is MarkupParent'Content
 
 ` Departs each child a region shows. A child closes its events when it closes, so that what
 ` subscribes to an element a region no longer shows hears nothing more of it, whether or not the
@@ -3278,23 +3614,12 @@ for child in children
     markup-depart-child(region, child)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ MarkupDeparture
-
-+ finish Doer
-+ is-host-leaving Bool
-
-────────────────────
-+ This
-    - finish
-    - is-host-leaving
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-depart-child'Host'Child Bool
+_ do markup-depart-child'Host'Child Bool
     - parent Host
     - child Child
     - finished Doer? = null
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
+    - Host is MarkupParent
+    - Child is MarkupElement
 
 . leaves = child.markup-depart()
 . attachment = markup-attachment(child)
@@ -3312,20 +3637,8 @@ markup-finish-child(parent, child)
 = false
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do markup-departed
-    - host MarkupHost
-
-. attachment = markup-attachment(host)
-=? if !attachment
-. departure = attachment.departure
-=? if !departure
-departure.is-host-leaving = false
-=? if attachment.departing-within
-markup-end-departure(attachment)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-revive-child Bool
-    - child MarkupHost
+_ do markup-revive-child Bool
+    - child MarkupElement
 
 . attachment = markup-attachment(child)
 =? if !attachment || !attachment.departure
@@ -3339,22 +3652,6 @@ markup-shift-departing(attachment.structural-parent, 1, false)
 child.markup-revive()
 markup-resume-actions(attachment)
 = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-holds-departures Bool
-    - host MarkupHost
-
-. attachment = markup-attachment(host)
-=? if !attachment
-= attachment.departing-within > 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do markup-is-departing Bool
-    - host MarkupHost
-
-. attachment = markup-attachment(host)
-=? if !attachment
-= attachment.departure != null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-hold-action Bool
@@ -3403,8 +3700,8 @@ for action in held
 _ do markup-finish-child'Host'Child
     - parent Host
     - child Child
-    - Host is MarkupTreeHost
-    - Child is MarkupHost
+    - Host is MarkupParent
+    - Child is MarkupElement
 
 . weight = markup-departure-weight(child)
 markup-unlink-structural-child(parent, child)
@@ -3413,12 +3710,12 @@ markup-release(child)
 markup-close-child(child)
 event-close-owner(child as Pointer)
 if weight
-    markup-settle-departures(markup-attachment(parent as MarkupHost))
+    markup-settle-departures(markup-attachment(parent as MarkupElement))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-close-child'Child
     - child Child
-    - Child is MarkupHost
+    - Child is MarkupElement
 
 . attachment = markup-attachment(child)
 if attachment
@@ -3427,8 +3724,8 @@ child.close()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-links Bool
-    - parent MarkupHost
-    - child MarkupHost
+    - parent MarkupElement
+    - child MarkupElement
 
 . parent-attachment = markup-attachment(parent)
 . child-attachment = markup-attachment(child)
@@ -3450,7 +3747,7 @@ markup-resume-actions(attachment)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-departure-weight Size
-    - host MarkupHost
+    - host MarkupElement
 
 . attachment = markup-attachment(host)
 =? 0

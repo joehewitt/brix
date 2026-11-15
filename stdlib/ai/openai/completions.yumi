@@ -23,13 +23,6 @@
 
 super()
 
-────────────────────
-_ get headers [HTTPHeader]
-
-* "Authorization", "Bearer $api-key"
-* "Content-Type", "application/json"
-* "Accept", "text/event-stream"
-
 ╌╌╌╌╌╌╌╌╌╌ is AIProvider ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -39,67 +32,14 @@ _ get headers [HTTPHeader]
 for event in openai-provider-events(this, request)
     <= event
 
-━━━━━━━━━━━━━━━━━━━━
-_ do openai-provider-events <AIEvent>
-    - provider OpenAICompletions
-    - request AIRequest
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
-. response = openai-provider-response(provider, request)
-    catch canceled TaskCancelationError
-        ?! AIError(AIErrorKind.cancellation, "$canceled")
-    catch terminated TaskTerminationError
-        ?! AIError(AIErrorKind.cancellation, "$terminated")
-if response.status != HTTPStatus.ok
-    . error-body = response.text
-    . error = openai-response-error(response, error-body)
-    do response.close()
-    ?! error
+────────────────────
+_ get headers [HTTPHeader]
 
-for event in openai-response-events(OpenAIResponseLease(response))
-    <= event
-
-━━━━━━━━━━━━━━━━━━━━
-_ do openai-provider-response HTTPResponse ?! AIError
-    - provider OpenAICompletions
-    - request AIRequest
-
-. body = openai-request-json(request)
-. endpoint = provider.base-url / "chat/completions"
-
-?! AIError(AIErrorKind.unknown, "$transport-error")
-    catch transport-error Error
-
-= http-send(HTTPRequest(HTTPMethod.post, endpoint, provider.headers, body))
-
-━━━━━━━━━━━━━━━━━━━━
-+ parse-openai-json JSON ?! AIError
-    - text String
-    - service-message String
-
-match text
-    ~ \json-text
-    ?! AIError(AIErrorKind.invalid-response, service-message)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do openai-path-bytes Byte[] ?! AIError
-    - path String
-
-?! AIError(AIErrorKind.invalid-request, "Unable to read AI media path")
-    catch Error
-
-. source = File'Byte(path)
-do finally catch source.close()
-. reader ByteReadable = source
-. bytes = Byte[0]
-while true
-    . chunk = Byte[4096]
-    . count = reader.read(chunk.size, chunk)
-    if count == 0
-        break
-    . old-size = bytes.size
-    bytes = bytes.resize(old-size + count)
-    bytes[old-size ...] = chunk[0 .. < count]
-= bytes
+* "Authorization", "Bearer $api-key"
+* "Content-Type", "application/json"
+* "Accept", "text/event-stream"
 
 ━━━━━━━━━━━━━━━━━━━━
 + OpenAIResponseLease
@@ -120,6 +60,15 @@ while true
 is-closed = true
 close-count += 1
 response.close()
+
+━━━━━━━━━━━━━━━━━━━━
++ parse-openai-json JSON ?! AIError
+    - text String
+    - service-message String
+
+match text
+    ~ \json-text
+    ?! AIError(AIErrorKind.invalid-response, service-message)
 
 ━━━━━━━━━━━━━━━━━━━━
 + openai-request-json String ?! AIError
@@ -169,6 +118,178 @@ if request.audio-output
 if request.provider-json
     merge-openai-object(root, request.provider-json, "AIRequest.provider-json")
 = root
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-file-url ?! AIError
+    - file AIFile
+
+if file.source is AIURLSource
+    = (file.source as AIURLSource).url
+if file.source is AIBase64Source
+    = "data:${file.mime-type};base64,${(file.source as AIBase64Source).data}"
+if file.source is AIBytesSource
+    = "data:${file.mime-type};base64,${(file.source as AIBytesSource).data as Base64}"
+if file.source is AIPathSource
+    . bytes = openai-path-bytes((file.source as AIPathSource).path)
+    = "data:${file.mime-type};base64,${bytes as Base64}"
+
+?! AIError(AIErrorKind.invalid-request, "OpenAI cannot use a remote provider file as a media URL")
+
+━━━━━━━━━━━━━━━━━━━━
++ do merge-openai-object ?! AIError
+    - target [String = JSON]
+    - value JSON
+    - label String
+
+?! AIError(AIErrorKind.invalid-request, "$label must be a JSON object")
+    if value is not [String = JSON]
+
+for key, item in value as [String = JSON]
+    target[key] = item
+
+━━━━━━━━━━━━━━━━━━━━
++ openai-search-context
+    - context AIWebSearchContext
+
+match context
+    | AIWebSearchContext.low
+        "low"
+    | AIWebSearchContext.medium
+        "medium"
+    | AIWebSearchContext.high
+        "high"
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-stream-events <AIEvent>
+    - body ReadableData'Byte
+
+. state = OpenAIStreamState()
+for event in server-sent-events(body)
+    if event.data == "[DONE]"
+        for final-event in finish-openai-stream(state)
+            <= final-event
+        =
+
+    . decoded = parse-openai-json(event.data, "OpenAI returned invalid stream JSON")
+    for ai-event in consume-openai-chunk(state, decoded)
+        <= ai-event
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-response-events <AIEvent>
+    - lease OpenAIResponseLease
+
+do finally lease.close()
+for event in openai-stream-events(lease.response.reader)
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
++ do openai-response-error
+    - response HTTPResponse
+    - body String
+
+. decoded = catch? JSON(body)
+. service-message = body
+if decoded
+    . root = json-object(decoded)
+    if root
+        . error = json-object(root["error"])
+        if error && json-string(error["message"])
+            service-message = json-string(error["message"])!
+
+. status = response.status as Int
+. kind = openai-error-kind(status, decoded)
+. retryable = status == 408 || status == 409 || status == 429 || status >= 500
+= AIError(kind, service-message, status, retryable, response.header("Retry-After"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenAIStreamState
+
++ completion-id String = "openai"
++ text = ""
++ text-started = false
++ citations [AICitation]
++ reasoning = ""
++ reasoning-started = false
++ refusal = ""
++ refusal-started = false
++ audio-id = ""
++ audio-data Byte[] = Byte[0]
++ audio-transcript = ""
++ audio-started = false
++ tools [OpenAIToolState]
++ usage AIUsage
++ finish-reason AIFinishReason?
++ next-search-id Size
+
+━━━━━━━━━━━━━━━━━━━━
+_ OpenAIToolState
+
++ index Index
++ part-id String
++ call-id String
++ name String
++ arguments String
+
+────────────────────
+_ This
+    - index
+    - part-id
+    - call-id = ""
+    - name = ""
+    - arguments = ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-provider-events <AIEvent>
+    - provider OpenAICompletions
+    - request AIRequest
+
+. response = openai-provider-response(provider, request)
+    catch canceled TaskCancelationError
+        ?! AIError(AIErrorKind.cancellation, "$canceled")
+    catch terminated TaskTerminationError
+        ?! AIError(AIErrorKind.cancellation, "$terminated")
+if response.status != HTTPStatus.ok
+    . error-body = response.text
+    . error = openai-response-error(response, error-body)
+    do response.close()
+    ?! error
+
+for event in openai-response-events(OpenAIResponseLease(response))
+    <= event
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-provider-response HTTPResponse ?! AIError
+    - provider OpenAICompletions
+    - request AIRequest
+
+. body = openai-request-json(request)
+. endpoint = provider.base-url / "chat/completions"
+
+?! AIError(AIErrorKind.unknown, "$transport-error")
+    catch transport-error Error
+
+= http-send(HTTPRequest(HTTPMethod.post, endpoint, provider.headers, body))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do openai-path-bytes Byte[] ?! AIError
+    - path String
+
+?! AIError(AIErrorKind.invalid-request, "Unable to read AI media path")
+    catch Error
+
+. source = File'Byte(path)
+do finally catch source.close()
+. reader ByteReadable = source
+. bytes = Byte[0]
+while true
+    . chunk = Byte[4096]
+    . count = reader.read(chunk.size, chunk)
+    if count == 0
+        break
+    . old-size = bytes.size
+    bytes = bytes.resize(old-size + count)
+    bytes[old-size ...] = chunk[0 .. < count]
+= bytes
 
 ━━━━━━━━━━━━━━━━━━━━
 _ openai-messages-value JSON ?! AIError
@@ -362,22 +483,6 @@ _ openai-file-content-value JSON ?! AIError
             •? filename file.filename
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do openai-file-url ?! AIError
-    - file AIFile
-
-if file.source is AIURLSource
-    = (file.source as AIURLSource).url
-if file.source is AIBase64Source
-    = "data:${file.mime-type};base64,${(file.source as AIBase64Source).data}"
-if file.source is AIBytesSource
-    = "data:${file.mime-type};base64,${(file.source as AIBytesSource).data as Base64}"
-if file.source is AIPathSource
-    . bytes = openai-path-bytes((file.source as AIPathSource).path)
-    = "data:${file.mime-type};base64,${bytes as Base64}"
-
-?! AIError(AIErrorKind.invalid-request, "OpenAI cannot use a remote provider file as a media URL")
-
-━━━━━━━━━━━━━━━━━━━━
 _ do openai-file-base64 String ?! AIError
     - file AIFile
 
@@ -422,18 +527,6 @@ _ openai-has-result
     - call-id String
 
 some(parts) • where each is AIToolResultPart && (each as AIToolResultPart).call-id == call-id
-
-━━━━━━━━━━━━━━━━━━━━
-+ do merge-openai-object ?! AIError
-    - target [String = JSON]
-    - value JSON
-    - label String
-
-?! AIError(AIErrorKind.invalid-request, "$label must be a JSON object")
-    if value is not [String = JSON]
-
-for key, item in value as [String = JSON]
-    target[key] = item
 
 ━━━━━━━━━━━━━━━━━━━━
 _ openai-tools-value JSON
@@ -493,18 +586,6 @@ if options.provider-json
 = root
 
 ━━━━━━━━━━━━━━━━━━━━
-+ openai-search-context
-    - context AIWebSearchContext
-
-match context
-    | AIWebSearchContext.low
-        "low"
-    | AIWebSearchContext.medium
-        "medium"
-    | AIWebSearchContext.high
-        "high"
-
-━━━━━━━━━━━━━━━━━━━━
 _ openai-audio-output-value JSON ?! AIError
     - options AIAudioOptions
 
@@ -532,66 +613,6 @@ match role
         "assistant"
     | AIMessageRole.tool
         "tool"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do openai-stream-events <AIEvent>
-    - body ReadableData'Byte
-
-. state = OpenAIStreamState()
-for event in server-sent-events(body)
-    if event.data == "[DONE]"
-        for final-event in finish-openai-stream(state)
-            <= final-event
-        =
-
-    . decoded = parse-openai-json(event.data, "OpenAI returned invalid stream JSON")
-    for ai-event in consume-openai-chunk(state, decoded)
-        <= ai-event
-
-━━━━━━━━━━━━━━━━━━━━
-+ do openai-response-events <AIEvent>
-    - lease OpenAIResponseLease
-
-do finally lease.close()
-for event in openai-stream-events(lease.response.reader)
-    <= event
-
-━━━━━━━━━━━━━━━━━━━━
-_ OpenAIStreamState
-
-+ completion-id String = "openai"
-+ text = ""
-+ text-started = false
-+ citations [AICitation]
-+ reasoning = ""
-+ reasoning-started = false
-+ refusal = ""
-+ refusal-started = false
-+ audio-id = ""
-+ audio-data Byte[] = Byte[0]
-+ audio-transcript = ""
-+ audio-started = false
-+ tools [OpenAIToolState]
-+ usage AIUsage
-+ finish-reason AIFinishReason?
-+ next-search-id Size
-
-━━━━━━━━━━━━━━━━━━━━
-_ OpenAIToolState
-
-+ index Index
-+ part-id String
-+ call-id String
-+ name String
-+ arguments String
-
-────────────────────
-_ This
-    - index
-    - part-id
-    - call-id = ""
-    - name = ""
-    - arguments = ""
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do consume-openai-chunk <AIEvent>
@@ -842,25 +863,6 @@ match reason
         AIFinishReason.content-filter
     ??
         AIProviderFinishReason("openai", reason)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do openai-response-error
-    - response HTTPResponse
-    - body String
-
-. decoded = catch? JSON(body)
-. service-message = body
-if decoded
-    . root = json-object(decoded)
-    if root
-        . error = json-object(root["error"])
-        if error && json-string(error["message"])
-            service-message = json-string(error["message"])!
-
-. status = response.status as Int
-. kind = openai-error-kind(status, decoded)
-. retryable = status == 408 || status == 409 || status == 429 || status >= 500
-= AIError(kind, service-message, status, retryable, response.header("Retry-After"))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ openai-error-kind

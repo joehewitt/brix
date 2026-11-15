@@ -23,65 +23,7 @@ _ bench-output-lines Size = 12
 _ bench-setup-lines Size = 20
 _ bench-lifeline = "(read line <&3; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec \"\$@\" 3<&-"
 
-━━━━━━━━━━━━━━━━━━━━
-+ BenchPhase is Union
-
-| warmup-compile
-| warmup-compile-done
-| warmup-run
-| warmup-run-done
-| compile
-| compile-done
-| run
-| run-done
-
-━━━━━━━━━━━━━━━━━━━━
-+ BenchEvent is Union
-
-| setup(state String)
-| progress(bench Index, phase BenchPhase, iteration Size, at U64, values [F64?])
-| finished(bench Index, result BenchResult)
-| saved(path String)
-| failed(message String)
-| completed(is-stopped Bool)
-| discovered(config BenchConfig, cases [BenchCase])
-| loaded(state BenchLoad)
-| unavailable(message String)
-| unconfigured
-| changed
-
-━━━━━━━━━━━━━━━━━━━━
 + BenchFrame is (run Int, event BenchEvent)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BenchLoad is Tuple
-
-+ profile String
-+ compare String
-+ latest [String = BenchRecord]
-+ baseline [String = BenchRecord]
-+ runs [BenchSavedRun]
-+ unsaved [String]
-+ problem String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BenchOrder is Tuple
-
-+ run Int
-+ info BenchRunInfo
-+ cases [BenchCase]
-
-━━━━━━━━━━━━━━━━━━━━
-_ BenchRequest is Union
-
-| start(order BenchOrder)
-| stop(run Int)
-| discover(request Int, root String)
-| load(request Int, root String, profile String, compare String)
-| save(request Int, root String, profiles [String], reason String)
-| archive(request Int, root String, name String)
-
-━━━━━━━━━━━━━━━━━━━━
 _ BenchStopped is Error
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -99,6 +41,19 @@ _ worker := Worker()
 
 do (worker) new
     serve()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+=? if requests.is-closed
+requests.close()
+<- served
+worker.stop()
+frames.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do start
@@ -145,17 +100,6 @@ requests <- BenchRequest.save(request, root, profiles, reason)
 
 requests <- BenchRequest.archive(request, root, name)
 
-╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-=? if requests.is-closed
-requests.close()
-<- served
-worker.stop()
-frames.close()
-
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
@@ -200,72 +144,67 @@ last?.await()
 served.close()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do bench-discovery BenchEvent
-    - root String
++ BenchPhase is Union
 
-. config = load-bench-config(root)
-    catch failure Error
-        =? BenchEvent.unconfigured if failure is BenchUnconfiguredError
-        = BenchEvent.unavailable(failure.message)
-. cases = discover-bench-cases(config)
-    catch failure Error
-        = BenchEvent.unavailable(failure.message)
-= BenchEvent.discovered(config, cases)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do bench-loading BenchEvent
-    - root String
-    - profile String
-    - compare String
-
-. problem = ""
-. latest = Map'String'BenchRecord()
-. loaded = catch load-bench-latest(root, profile)
-if loaded is Error
-    problem = loaded.message
-else
-    latest = loaded
-. baseline = Map'String'BenchRecord()
-if compare != ""
-    . compared = catch load-bench-compared(root, compare, profile)
-    if compared is Error
-        problem = compared.message
-    else
-        baseline = compared
-. listed = bench-saved-runs(root, null)
-. runs [BenchSavedRun]
-for run in listed
-    if run.profile == profile
-        runs += run
-= BenchEvent.loaded
-    - BenchLoad
-        - profile
-        - compare
-        - latest
-        - baseline
-        - runs
-        - bench-unsaved-profiles(root, listed)
-        - problem
+| warmup-compile
+| warmup-compile-done
+| warmup-run
+| warmup-run-done
+| compile
+| compile-done
+| run
+| run-done
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do bench-saving BenchEvent
-    - root String
-    - profiles [String]
-    - reason String
++ BenchEvent is Union
 
-for profile in profiles
-    . failure = catch save-bench-comparison(root, profile, reason)
-    =? BenchEvent.failed((failure as Error).message) if failure is Error
-= BenchEvent.changed
+| setup(state String)
+| progress(bench Index, phase BenchPhase, iteration Size, at U64, values [F64?])
+| finished(bench Index, result BenchResult)
+| saved(path String)
+| failed(message String)
+| completed(is-stopped Bool)
+| discovered(config BenchConfig, cases [BenchCase])
+| loaded(state BenchLoad)
+| unavailable(message String)
+| unconfigured
+| changed
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do bench-archiving BenchEvent
-    - root String
-    - name String
++ BenchLoad is Tuple
 
-. failure = catch archive-bench-run(root, name)
-=? BenchEvent.failed((failure as Error).message) if failure is Error
-= BenchEvent.changed
++ profile String
++ compare String
++ latest [String = BenchRecord]
++ baseline [String = BenchRecord]
++ runs [BenchSavedRun]
++ unsaved [String]
++ problem String
+
+━━━━━━━━━━━━━━━━━━━━
++ BenchOrder is Tuple
+
++ run Int
++ info BenchRunInfo
++ cases [BenchCase]
+
+━━━━━━━━━━━━━━━━━━━━
++ bench-exit-label String
+    - sample BenchSample
+
+if sample.signal then " signal=${sample.signal}" else exit-text
+
+.. exit-text = if sample.exit-code && sample.exit-code != 0 then " exit=${sample.exit-code}" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ BenchRequest is Union
+
+| start(order BenchOrder)
+| stop(run Int)
+| discover(request Int, root String)
+| load(request Int, root String, profile String, compare String)
+| save(request Int, root String, profiles [String], reason String)
+| archive(request Int, root String, name String)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ BenchAttempt is Tuple
@@ -287,10 +226,9 @@ _ BenchValidation is Tuple
 _ BenchExecution
 
 + order BenchOrder
-
-_ frames SyncBufferedChannel'BenchFrame
 + is-finished = false
 
+_ frames SyncBufferedChannel'BenchFrame
 _ process BenchProcess?
 _ is-stopping = false
 _ done := SyncBufferedChannel'Bool()
@@ -813,6 +751,74 @@ while current.group-members.length > 0 && polls < bench-settle-polls
     polls += 1
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do bench-discovery BenchEvent
+    - root String
+
+. config = load-bench-config(root)
+    catch failure Error
+        =? BenchEvent.unconfigured if failure is BenchUnconfiguredError
+        = BenchEvent.unavailable(failure.message)
+. cases = discover-bench-cases(config)
+    catch failure Error
+        = BenchEvent.unavailable(failure.message)
+= BenchEvent.discovered(config, cases)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-loading BenchEvent
+    - root String
+    - profile String
+    - compare String
+
+. problem = ""
+. latest = Map'String'BenchRecord()
+. loaded = catch load-bench-latest(root, profile)
+if loaded is Error
+    problem = loaded.message
+else
+    latest = loaded
+. baseline = Map'String'BenchRecord()
+if compare != ""
+    . compared = catch load-bench-compared(root, compare, profile)
+    if compared is Error
+        problem = compared.message
+    else
+        baseline = compared
+. listed = bench-saved-runs(root, null)
+. runs [BenchSavedRun]
+for run in listed
+    if run.profile == profile
+        runs += run
+= BenchEvent.loaded
+    - BenchLoad
+        - profile
+        - compare
+        - latest
+        - baseline
+        - runs
+        - bench-unsaved-profiles(root, listed)
+        - problem
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-saving BenchEvent
+    - root String
+    - profiles [String]
+    - reason String
+
+for profile in profiles
+    . failure = catch save-bench-comparison(root, profile, reason)
+    =? BenchEvent.failed((failure as Error).message) if failure is Error
+= BenchEvent.changed
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bench-archiving BenchEvent
+    - root String
+    - name String
+
+. failure = catch archive-bench-run(root, name)
+=? BenchEvent.failed((failure as Error).message) if failure is Error
+= BenchEvent.changed
+
+━━━━━━━━━━━━━━━━━━━━
 _ do bench-status String
     - compile-samples [BenchSample]
     - run-samples [BenchSample]
@@ -865,14 +871,6 @@ if sample.stdout != ""
 if sample.stderr != ""
     diagnostics += "$label stderr:\n${bench-tail(sample.stderr, bench-output-lines)}"
 = diagnostics
-
-━━━━━━━━━━━━━━━━━━━━
-+ bench-exit-label String
-    - sample BenchSample
-
-if sample.signal then " signal=${sample.signal}" else exit-text
-
-.. exit-text = if sample.exit-code && sample.exit-code != 0 then " exit=${sample.exit-code}" else ""
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do bench-tail String

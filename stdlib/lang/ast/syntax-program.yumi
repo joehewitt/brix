@@ -32,7 +32,6 @@ _ kept-module-rounds U64 = 4
 
 + source-path String
 + root-paths [String]
-_ source-text String?
 + modules [SyntaxModule]
 + edges [ImportEdge]
 + builtin-paths [String]
@@ -43,6 +42,8 @@ _ source-text String?
 + target Target?
 + absent-imports [AbsentImport]
 + failures [String = String]
+
+_ source-text String?
 _ cached ModuleView?
 _ module-cache [String = ModuleSource]
 _ builtin-modules [String = ModuleSource]
@@ -68,6 +69,35 @@ _ chose-c-headers Bool
 
 .. resolver = ModuleResolver(configured-search-paths, configured-c-module-paths)
 
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get view ModuleView?
+
+cached
+
+────────────────────
++ get shares-atoms Bool
+
+atoms-shared
+
+────────────────────
++ get atom-lock Mutex?
+
+shared-lock
+
 ────────────────────
 + do use-c-headers
     - headers CHeaders
@@ -87,21 +117,6 @@ atoms = view.cache.atoms
 atoms-shared = true
 shared-lock = view.cache.atom-lock
 cached = view
-
-────────────────────
-+ get view ModuleView?
-
-cached
-
-────────────────────
-+ get shares-atoms Bool
-
-atoms-shared
-
-────────────────────
-+ get atom-lock Mutex?
-
-shared-lock
 
 ────────────────────
 + do parse
@@ -127,8 +142,9 @@ do finally
 admit-root(path)
 parse-queue.start(atoms, parse-worker-count, shared-lock)
 import-builtin-modules()
-root-names[module-name] = true
-import-yumi-module(path, module-name, source)
+. name = resolver.module-name-of(path) ?? module-name
+root-names[name] = true
+import-yumi-module(path, name, source)
 parse-pending()
 order-modules()
 parsed = true
@@ -148,6 +164,60 @@ parse-roots(roots, parse-worker-count, true)
     - parse-worker-count = default-worker-count
 
 parse-roots(roots, parse-worker-count, false)
+
+────────────────────
++ has-module Bool
+    - path String
+
+some(modules) • where each.path == path
+
+────────────────────
++ do materialize-c-headers
+
+?! Panic("SyntaxProgram is stale or not parsed")
+    if released || !parsed || atoms-transferred
+if materialized
+    =
+
+. scanned Size
+while pending-c-modules.length != 0
+    while scanned < modules.length
+        collect-c-names(modules[scanned].tree)
+        scanned += 1
+    parse-queue = ParseQueue()
+    parse-queue.start(atoms, parse-worker-count, shared-lock)
+    queue-c-modules()
+    parse-pending()
+order-modules()
+materialized = true
+
+────────────────────
++ path-to-module Path?
+    - name String
+
+resolver.path-to-module(name)
+
+────────────────────
++ do take-atoms AtomPool
+
+?! Panic("SyntaxProgram is stale or not materialized")
+    if released || !materialized || atoms-transferred
+atoms-transferred = true
+= atoms
+
+────────────────────
++ do release
+
+if !released
+    parse-queue.close()
+    parse-queue.settle()
+    for module in modules
+        module.release()
+    if !atoms-transferred && !atoms-shared
+        atoms.release()
+    module-cache.clear()
+    builtin-modules.clear()
+    released = true
 
 ────────────────────
 _ do parse-roots
@@ -185,32 +255,6 @@ if !batch
             this.source-path = root[0]
             break
 parsed = true
-
-────────────────────
-+ has-module Bool
-    - path String
-
-some(modules) • where each.path == path
-
-────────────────────
-+ do materialize-c-headers
-
-?! Panic("SyntaxProgram is stale or not parsed")
-    if released || !parsed || atoms-transferred
-if materialized
-    =
-
-. scanned Size
-while pending-c-modules.length != 0
-    while scanned < modules.length
-        collect-c-names(modules[scanned].tree)
-        scanned += 1
-    parse-queue = ParseQueue()
-    parse-queue.start(atoms, parse-worker-count, shared-lock)
-    queue-c-modules()
-    parse-pending()
-order-modules()
-materialized = true
 
 ────────────────────
 _ do parse-pending
@@ -411,7 +455,6 @@ _ do import-module ModuleSource ?! Error
 
 ?! YumiSyntaxError(loc, "Module \"$name\" not found", source-of(source-path), source-path)
 
-
 ────────────────────
 _ do source-of String?
     - source-path String?
@@ -425,12 +468,6 @@ _ file-name String
     - path String
 
 last(path.split("/")) ?? path
-
-────────────────────
-+ path-to-module Path?
-    - name String
-
-resolver.path-to-module(name)
 
 ────────────────────
 _ do import-builtin-modules
@@ -513,13 +550,24 @@ for module in queued
     queue-parse(module.path, source)
 = true
 
-────────────────────
-+ do take-atoms AtomPool
+━━━━━━━━━━━━━━━━━━━━
++ SyntaxModule
+    is Usable'Void
 
-?! Panic("SyntaxProgram is stale or not materialized")
-    if released || !materialized || atoms-transferred
-atoms-transferred = true
-= atoms
++ name String
++ relative-path String
++ tree AST
+
+_ transferred Bool
+_ released Bool
+
+────────────────────
++ This
+    - name String
+    - relative-path String
+    - tree AST
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + begin-using
@@ -531,35 +579,7 @@ this
 
 release()
 
-────────────────────
-+ do release
-
-if !released
-    parse-queue.close()
-    parse-queue.settle()
-    for module in modules
-        module.release()
-    if !atoms-transferred && !atoms-shared
-        atoms.release()
-    module-cache.clear()
-    builtin-modules.clear()
-    released = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ SyntaxModule
-    is Usable'Void
-
-+ name String
-+ relative-path String
-+ tree AST
-_ transferred Bool
-_ released Bool
-
-────────────────────
-+ This
-    - name String
-    - relative-path String
-    - tree AST
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + get path String
@@ -575,6 +595,39 @@ transferred = true
 = tree
 
 ────────────────────
++ do release
+
+if !released
+    if !transferred
+        tree.release()
+    released = true
+
+━━━━━━━━━━━━━━━━━━━━
++ ImportEdge is Tuple
+
+` An import of one module by another. One that `follows` is declared after what the importing
+` module declares, as the stream modules are for a module that uses stream syntax.
+
++ from String
++ to String
++ is-export Bool
++ follows Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ ModuleCache
+    is Usable'Void
+
++ atoms AtomPool
++ atom-lock = Mutex()
+
+_ versions [String = [CachedModule]]
+_ next-id = 0
+_ lock = Mutex()
+_ released Bool
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
 + begin-using
 
 this
@@ -584,13 +637,422 @@ this
 
 release()
 
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do release
+
+use lock
+if !released
+    for _, held in versions
+        for entry in held
+            entry.release()
+    versions.clear()
+    atoms.release()
+    released = true
+
+────────────────────
++ view ModuleView
+
+ModuleView(this)
+
+────────────────────
++ do claim CachedModule?
+    - path String
+    - stamp ParseStamp
+
+use lock
+. held = versions[path]
+=? null if !held
+for entry in held
+    if entry.stamp.matches(stamp)
+        entry.holders += 1
+        = entry
+= null
+
+────────────────────
++ do add CachedModule
+    - stamp ParseStamp
+    - result ParseResult
+
+use lock
+next-id += 1
+. entry = CachedModule
+    - next-id
+    - result.source-path
+    - stamp
+    - result.tree!
+    - result.imports
+    - result.uses-streams
+    - result.uses-markup
+    - result.uses-style-sheets
+    - result.uses-probes
+entry.holders = 1
+. held = versions[entry.path] ?? List'CachedModule()
+held += entry
+versions[entry.path] = held
+= entry
+
+────────────────────
++ do drop
+    - entry CachedModule
+
+use lock
+entry.holders -= 1
+=? if entry.holders != 0
+. held = versions[entry.path]
+if held
+    . kept [CachedModule]
+    for each in held
+        if each.id != entry.id
+            kept += each
+    if kept.length == 0
+        -= versions[entry.path]
+    else
+        versions[entry.path] = kept
+entry.release()
+
+────────────────────
++ do claim-build BuiltModule?
+    - entry CachedModule
+    - name String
+    - relative-path String
+    - hosts [String]
+
+use lock
+for build in entry.builds
+    if build.module.name == name && build.module.relative-path == relative-path && serves-hosts
+        build.holders += 1
+        = build
+    .. serves-hosts = build.serves(hosts)
+= null
+
+────────────────────
++ do add-build BuiltModule
+    - entry CachedModule
+    - module Module
+    - consulted [String]
+    - defaulted [String]
+
+use lock
+next-id += 1
+. build = BuiltModule(next-id, module, consulted, defaulted)
+build.holders = 1
+entry.builds += build
+= build
+
+────────────────────
++ do drop-build
+    - entry CachedModule
+    - build BuiltModule
+
+use lock
+build.holders -= 1
+=? if build.holders != 0
+. kept [BuiltModule]
+for each in entry.builds
+    if each.id != build.id
+        kept += each
+entry.builds = kept
+build.module.release()
+
+────────────────────
+_ do retain
+    - entry CachedModule
+
+use lock
+entry.holders += 1
+
+────────────────────
+_ do retain-build
+    - build BuiltModule
+
+use lock
+build.holders += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ ModuleView
+    is Usable'Void
+
++ cache ModuleCache
+
+_ current [String = CachedModule]
+_ builds [String = BuiltModule]
+_ expected [String = ParseStamp]
+_ inputs [String = ParseStamp]
+_ used [String = U64]
+_ round U64
+_ letting-go [CachedModule]
+_ letting-go-builds [HeldBuild]
+_ released Bool
+
+────────────────────
++ This
+    - cache ModuleCache
+
+╌╌╌╌╌╌╌╌╌╌ is Usable'Void ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+release()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
 ────────────────────
 + do release
 
 if !released
-    if !transferred
-        tree.release()
+    for path, build in builds
+        letting-go-builds += HeldBuild(current[path]!, build)
+    builds.clear()
+    for _, entry in current
+        letting-go += entry
+    current.clear()
+    settle()
     released = true
+
+────────────────────
++ do settle
+
+for held in letting-go-builds
+    cache.drop-build(held.entry, held.build)
+letting-go-builds.clear()
+for entry in letting-go
+    cache.drop(entry)
+letting-go.clear()
+
+────────────────────
++ do finish-round
+
+. stale [String]
+for path, last in used
+    if last + kept-module-rounds <= round
+        stale += path
+for path in stale
+    -= used[path]
+    release-build(path)
+    . entry = current[path]
+    if entry
+        -= current[path]
+        letting-go += entry
+round += 1
+
+────────────────────
++ do take-inputs [String = ParseStamp]
+
+. taken = inputs
+inputs = Map'String'ParseStamp()
+= taken
+
+────────────────────
++ do note-files
+    - paths [String]
+
+for path in paths
+    . stamp = parse-stamp(path, null)
+    if stamp
+        note-input(path, stamp)
+
+────────────────────
++ do pin ModulePins
+    - paths [String]
+
+. pins = ModulePins(cache)
+for path in paths
+    . entry = current[path]
+    if entry
+        pins.hold(entry, builds[path])
+= pins
+
+────────────────────
++ do found ParseResult?
+    - path String
+    - source String?
+
+. stamp = parse-stamp(path, source)
+=? null if !stamp
+note-input(path, stamp)
+. entry = cache.claim(path, stamp)
+=? null if !entry
+hold(entry)
+. held = entry
+= ParseResult
+    - path
+    - held.tree.lend()
+    - null
+    - held.imports
+    - held.uses-streams
+    - false
+    - held.uses-markup
+    - held.uses-style-sheets
+    - held.uses-probes
+
+────────────────────
++ do expect
+    - path String
+    - source String?
+
+. stamp = parse-stamp(path, source)
+if stamp
+    expected[path] = stamp
+    note-input(path, stamp)
+else
+    -= expected[path]
+    note-absent(path)
+
+────────────────────
++ do keep AST
+    - result ParseResult
+
+. tree = result.tree!
+. path = result.source-path
+. stamp = expected[path] ?? ParseStamp(tree.source, 0, 0, 0, false)
+-= expected[path]
+. entry = cache.add(stamp, result)
+hold(entry)
+= tree.lend()
+
+────────────────────
++ do built Module?
+    - path String
+    - name String
+    - relative-path String
+    - hosts [String]
+
+. entry = current[path]
+=? null if !entry
+. build = cache.claim-build(entry, name, relative-path, hosts)
+=? null if !build
+hold-build(entry, build)
+= build.module
+
+────────────────────
++ do keep-module Bool
+    - path String
+    - module Module
+    - consulted [String]
+    - hosts [String]
+
+. entry = current[path]
+=? false if !entry
+. defaulted [String]
+for name in consulted
+    if hosts.find(name) != null
+        defaulted += name
+hold-build(entry, cache.add-build(entry, module, consulted, defaulted))
+= true
+
+────────────────────
++ do note-absent
+    - path String
+
+if !inputs[path]
+    inputs[path] = ParseStamp("", 0, 0, 0, false)
+
+────────────────────
+_ do note-input
+    - path String
+    - stamp ParseStamp
+
+if stamp.is-file
+    inputs[path] = stamp
+
+────────────────────
+_ do hold
+    - entry CachedModule
+
+used[entry.path] = round
+. previous = current[entry.path]
+if previous && previous.id == entry.id
+    cache.drop(entry)
+    =
+release-build(entry.path)
+current[entry.path] = entry
+if previous
+    letting-go += previous
+
+────────────────────
+_ do hold-build
+    - entry CachedModule
+    - build BuiltModule
+
+. previous = builds[entry.path]
+if previous && previous.id == build.id
+    cache.drop-build(entry, build)
+    =
+release-build(entry.path)
+builds[entry.path] = build
+
+────────────────────
+_ do release-build
+    - path String
+
+. previous = builds[path]
+=? if !previous
+-= builds[path]
+letting-go-builds += HeldBuild(current[path]!, previous)
+
+━━━━━━━━━━━━━━━━━━━━
++ ModulePins
+
++ cache ModuleCache
+
+_ entries [CachedModule]
+_ builds [HeldBuild]
+
+────────────────────
++ This
+    - cache
+
+────────────────────
++ do release
+
+for held in builds
+    cache.drop-build(held.entry, held.build)
+builds.clear()
+for entry in entries
+    cache.drop(entry)
+entries.clear()
+
+────────────────────
+_ do hold
+    - entry CachedModule
+    - build BuiltModule?
+
+cache.retain(entry)
+entries += entry
+if build
+    cache.retain-build(build)
+    builds += HeldBuild(entry, build)
+
+━━━━━━━━━━━━━━━━━━━━
++ ParseStamp is Tuple
+
++ text String
++ size I64
++ seconds I64
++ nanoseconds I64
++ is-file Bool
+
+────────────────────
++ matches Bool
+    - other ParseStamp
+
+same-coarse-stat && nanoseconds == other.nanoseconds && text == other.text
+
+.. same-coarse-stat = is-file == other.is-file && size == other.size && seconds == other.seconds
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-stamp ParseStamp?
+    - path String
+
+= parse-stamp(path, null)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ModuleSource
@@ -611,14 +1073,19 @@ _ ParseQueue
 
 + input-queue SyncBufferedChannel'ParseJob
 + output-queue SyncBufferedChannel'ParseResult
+
 _ worker Worker?
 _ scratch-pool SyncBufferedChannel'Arena?
 _ atom-lock Mutex
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do close
 
 input-queue.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do start
@@ -680,6 +1147,95 @@ for result in output-queue
 
 for result in output-queue
     <= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ ParseJob is Tuple
+
++ source-path String
++ source String?
+
+━━━━━━━━━━━━━━━━━━━━
+_ ParsedImport is Tuple
+
++ loc MatchLocation?
++ path String
++ is-export Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ ParseResult is Tuple
+
++ source-path String
++ tree AST?
++ error Error?
++ imports [ParsedImport]
++ uses-streams Bool
++ is-partial Bool
++ uses-markup Bool
++ uses-style-sheets Bool
++ uses-probes Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ HeldBuild is Tuple
+
++ entry CachedModule
++ build BuiltModule
+
+━━━━━━━━━━━━━━━━━━━━
+_ CachedModule
+
++ id Int
++ path String
++ stamp ParseStamp
++ tree AST
++ imports [ParsedImport]
++ uses-streams Bool
++ uses-markup Bool
++ uses-style-sheets Bool
++ uses-probes Bool
++ builds [BuiltModule]
++ holders = 0
+
+────────────────────
++ This
+    - id
+    - path
+    - stamp
+    - tree
+    - imports
+    - uses-streams
+    - uses-markup
+    - uses-style-sheets
+    - uses-probes
+
+────────────────────
++ do release
+
+for build in builds
+    build.module.release()
+builds.clear()
+tree.release()
+
+━━━━━━━━━━━━━━━━━━━━
+_ BuiltModule
+
++ id Int
++ module Module
++ consulted [String]
++ defaulted [String]
++ holders = 0
+
+────────────────────
++ This
+    - id
+    - module
+    - consulted
+    - defaulted
+
+────────────────────
++ serves Bool
+    - hosts [String]
+
+all(consulted) • where (hosts.find(each) != null) == (defaulted.find(each) != null)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do parse-job ParseResult ?! Error
@@ -944,536 +1500,6 @@ _ is-core-module Bool
     - name String
 
 name == "core" || name.starts-with("core/")
-
-━━━━━━━━━━━━━━━━━━━━
-+ ImportEdge is Tuple
-
-` An import of one module by another. One that `follows` is declared after what the importing
-` module declares, as the stream modules are for a module that uses stream syntax.
-
-+ from String
-+ to String
-+ is-export Bool
-+ follows Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ ParseJob is Tuple
-
-+ source-path String
-+ source String?
-
-━━━━━━━━━━━━━━━━━━━━
-_ ParsedImport is Tuple
-
-+ loc MatchLocation?
-+ path String
-+ is-export Bool
-
-━━━━━━━━━━━━━━━━━━━━
-_ ParseResult is Tuple
-
-+ source-path String
-+ tree AST?
-+ error Error?
-+ imports [ParsedImport]
-+ uses-streams Bool
-+ is-partial Bool
-+ uses-markup Bool
-+ uses-style-sheets Bool
-+ uses-probes Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ ModuleCache
-    is Usable'Void
-
-+ atoms AtomPool
-+ atom-lock = Mutex()
-_ versions [String = [CachedModule]]
-_ next-id = 0
-_ lock = Mutex()
-_ released Bool
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
-release()
-
-────────────────────
-+ do release
-
-use lock
-if !released
-    for _, held in versions
-        for entry in held
-            entry.release()
-    versions.clear()
-    atoms.release()
-    released = true
-
-────────────────────
-+ view ModuleView
-
-ModuleView(this)
-
-────────────────────
-+ do claim CachedModule?
-    - path String
-    - stamp ParseStamp
-
-use lock
-. held = versions[path]
-=? null if !held
-for entry in held
-    if entry.stamp.matches(stamp)
-        entry.holders += 1
-        = entry
-= null
-
-────────────────────
-+ do add CachedModule
-    - stamp ParseStamp
-    - result ParseResult
-
-use lock
-next-id += 1
-. entry = CachedModule
-    - next-id
-    - result.source-path
-    - stamp
-    - result.tree!
-    - result.imports
-    - result.uses-streams
-    - result.uses-markup
-    - result.uses-style-sheets
-    - result.uses-probes
-entry.holders = 1
-. held = versions[entry.path] ?? List'CachedModule()
-held += entry
-versions[entry.path] = held
-= entry
-
-────────────────────
-_ do retain
-    - entry CachedModule
-
-use lock
-entry.holders += 1
-
-────────────────────
-_ do retain-build
-    - build BuiltModule
-
-use lock
-build.holders += 1
-
-────────────────────
-+ do drop
-    - entry CachedModule
-
-use lock
-entry.holders -= 1
-=? if entry.holders != 0
-. held = versions[entry.path]
-if held
-    . kept [CachedModule]
-    for each in held
-        if each.id != entry.id
-            kept += each
-    if kept.length == 0
-        -= versions[entry.path]
-    else
-        versions[entry.path] = kept
-entry.release()
-
-────────────────────
-+ do claim-build BuiltModule?
-    - entry CachedModule
-    - name String
-    - relative-path String
-    - hosts [String]
-
-use lock
-for build in entry.builds
-    if build.module.name == name && build.module.relative-path == relative-path && serves-hosts
-        build.holders += 1
-        = build
-    .. serves-hosts = build.serves(hosts)
-= null
-
-────────────────────
-+ do add-build BuiltModule
-    - entry CachedModule
-    - module Module
-    - consulted [String]
-    - defaulted [String]
-
-use lock
-next-id += 1
-. build = BuiltModule(next-id, module, consulted, defaulted)
-build.holders = 1
-entry.builds += build
-= build
-
-────────────────────
-+ do drop-build
-    - entry CachedModule
-    - build BuiltModule
-
-use lock
-build.holders -= 1
-=? if build.holders != 0
-. kept [BuiltModule]
-for each in entry.builds
-    if each.id != build.id
-        kept += each
-entry.builds = kept
-build.module.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ModuleView
-    is Usable'Void
-
-+ cache ModuleCache
-_ current [String = CachedModule]
-_ builds [String = BuiltModule]
-_ expected [String = ParseStamp]
-_ inputs [String = ParseStamp]
-_ used [String = U64]
-_ round U64
-_ letting-go [CachedModule]
-_ letting-go-builds [HeldBuild]
-_ released Bool
-
-────────────────────
-+ This
-    - cache ModuleCache
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
-release()
-
-────────────────────
-+ do release
-
-if !released
-    for path, build in builds
-        letting-go-builds += HeldBuild(current[path]!, build)
-    builds.clear()
-    for _, entry in current
-        letting-go += entry
-    current.clear()
-    settle()
-    released = true
-
-────────────────────
-+ do settle
-
-for held in letting-go-builds
-    cache.drop-build(held.entry, held.build)
-letting-go-builds.clear()
-for entry in letting-go
-    cache.drop(entry)
-letting-go.clear()
-
-────────────────────
-+ do finish-round
-
-. stale [String]
-for path, last in used
-    if last + kept-module-rounds <= round
-        stale += path
-for path in stale
-    -= used[path]
-    release-build(path)
-    . entry = current[path]
-    if entry
-        -= current[path]
-        letting-go += entry
-round += 1
-
-────────────────────
-+ do take-inputs [String = ParseStamp]
-
-. taken = inputs
-inputs = Map'String'ParseStamp()
-= taken
-
-────────────────────
-+ do note-files
-    - paths [String]
-
-for path in paths
-    . stamp = parse-stamp(path, null)
-    if stamp
-        note-input(path, stamp)
-
-────────────────────
-+ do pin ModulePins
-    - paths [String]
-
-. pins = ModulePins(cache)
-for path in paths
-    . entry = current[path]
-    if entry
-        pins.hold(entry, builds[path])
-= pins
-
-────────────────────
-+ do found ParseResult?
-    - path String
-    - source String?
-
-. stamp = parse-stamp(path, source)
-=? null if !stamp
-note-input(path, stamp)
-. entry = cache.claim(path, stamp)
-=? null if !entry
-hold(entry)
-. held = entry
-= ParseResult
-    - path
-    - held.tree.lend()
-    - null
-    - held.imports
-    - held.uses-streams
-    - false
-    - held.uses-markup
-    - held.uses-style-sheets
-    - held.uses-probes
-
-────────────────────
-+ do expect
-    - path String
-    - source String?
-
-. stamp = parse-stamp(path, source)
-if stamp
-    expected[path] = stamp
-    note-input(path, stamp)
-else
-    -= expected[path]
-    note-absent(path)
-
-────────────────────
-+ do keep AST
-    - result ParseResult
-
-. tree = result.tree!
-. path = result.source-path
-. stamp = expected[path] ?? ParseStamp(tree.source, 0, 0, 0, false)
--= expected[path]
-. entry = cache.add(stamp, result)
-hold(entry)
-= tree.lend()
-
-────────────────────
-+ do built Module?
-    - path String
-    - name String
-    - relative-path String
-    - hosts [String]
-
-. entry = current[path]
-=? null if !entry
-. build = cache.claim-build(entry, name, relative-path, hosts)
-=? null if !build
-hold-build(entry, build)
-= build.module
-
-────────────────────
-+ do keep-module Bool
-    - path String
-    - module Module
-    - consulted [String]
-    - hosts [String]
-
-. entry = current[path]
-=? false if !entry
-. defaulted [String]
-for name in consulted
-    if hosts.find(name) != null
-        defaulted += name
-hold-build(entry, cache.add-build(entry, module, consulted, defaulted))
-= true
-
-────────────────────
-+ do note-absent
-    - path String
-
-if !inputs[path]
-    inputs[path] = ParseStamp("", 0, 0, 0, false)
-
-────────────────────
-_ do note-input
-    - path String
-    - stamp ParseStamp
-
-if stamp.is-file
-    inputs[path] = stamp
-
-────────────────────
-_ do hold
-    - entry CachedModule
-
-used[entry.path] = round
-. previous = current[entry.path]
-if previous && previous.id == entry.id
-    cache.drop(entry)
-    =
-release-build(entry.path)
-current[entry.path] = entry
-if previous
-    letting-go += previous
-
-────────────────────
-_ do hold-build
-    - entry CachedModule
-    - build BuiltModule
-
-. previous = builds[entry.path]
-if previous && previous.id == build.id
-    cache.drop-build(entry, build)
-    =
-release-build(entry.path)
-builds[entry.path] = build
-
-────────────────────
-_ do release-build
-    - path String
-
-. previous = builds[path]
-=? if !previous
--= builds[path]
-letting-go-builds += HeldBuild(current[path]!, previous)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ModulePins
-
-+ cache ModuleCache
-_ entries [CachedModule]
-_ builds [HeldBuild]
-
-────────────────────
-+ This
-    - cache
-
-────────────────────
-_ do hold
-    - entry CachedModule
-    - build BuiltModule?
-
-cache.retain(entry)
-entries += entry
-if build
-    cache.retain-build(build)
-    builds += HeldBuild(entry, build)
-
-────────────────────
-+ do release
-
-for held in builds
-    cache.drop-build(held.entry, held.build)
-builds.clear()
-for entry in entries
-    cache.drop(entry)
-entries.clear()
-
-━━━━━━━━━━━━━━━━━━━━
-_ HeldBuild is Tuple
-
-+ entry CachedModule
-+ build BuiltModule
-
-━━━━━━━━━━━━━━━━━━━━
-_ CachedModule
-
-+ id Int
-+ path String
-+ stamp ParseStamp
-+ tree AST
-+ imports [ParsedImport]
-+ uses-streams Bool
-+ uses-markup Bool
-+ uses-style-sheets Bool
-+ uses-probes Bool
-+ builds [BuiltModule]
-+ holders = 0
-
-────────────────────
-+ This
-    - id
-    - path
-    - stamp
-    - tree
-    - imports
-    - uses-streams
-    - uses-markup
-    - uses-style-sheets
-    - uses-probes
-
-────────────────────
-+ do release
-
-for build in builds
-    build.module.release()
-builds.clear()
-tree.release()
-
-━━━━━━━━━━━━━━━━━━━━
-_ BuiltModule
-
-+ id Int
-+ module Module
-+ consulted [String]
-+ defaulted [String]
-+ holders = 0
-
-────────────────────
-+ This
-    - id
-    - module
-    - consulted
-    - defaulted
-
-────────────────────
-+ serves Bool
-    - hosts [String]
-
-all(consulted) • where (hosts.find(each) != null) == (defaulted.find(each) != null)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParseStamp is Tuple
-
-+ text String
-+ size I64
-+ seconds I64
-+ nanoseconds I64
-+ is-file Bool
-
-────────────────────
-+ matches Bool
-    - other ParseStamp
-
-same-coarse-stat && nanoseconds == other.nanoseconds && text == other.text
-
-.. same-coarse-stat = is-file == other.is-file && size == other.size && seconds == other.seconds
-
-━━━━━━━━━━━━━━━━━━━━
-+ do file-stamp ParseStamp?
-    - path String
-
-= parse-stamp(path, null)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do parse-stamp ParseStamp?

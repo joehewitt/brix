@@ -13,234 +13,6 @@
 + Decodable'Result is Interface
 
 ━━━━━━━━━━━━━━━━━━━━
-_ ReadableArray'Item'Backing is Tuple
-    - Backing = GCBacking
-    - Backing is StorageBacking
-    is Indexable'Item
-    is Inspectable
-
-_ storage Backing.Storage'Item
-_ storage-size Size
-
-────────────────────
-_ This
-    - Backing = GCBacking
-
-storage = Backing.allocate'Item(Void(), 0)
-storage-size = 0
-
-────────────────────
-_ This
-    - data CPointer'Item
-    - size Size
-
-storage = data as Backing.Storage'Item
-storage-size = size
-
-────────────────────
-+ to String
-
-", ".join(this as <Item>)
-
-────────────────────
-+ do to [''T]
-    - T =~ Item as T
-
-. list = List'T()
-list.reserve(size)
-for index in 0 .. < size
-    list += Backing.load'Item(storage, index) as T
-= list
-
-────────────────────
-+ do to Iterable'Item
-
-for index in 0 .. < size
-    <= Backing.load'Item(storage, index)
-
-╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ get size Size @inline
-
-storage-size
-
-────────────────────
-+ get length Size
-
-size
-
-────────────────────
-+ this[index Index] @inline
-
-|? index < size
-    Backing.load'Item(storage, index)
-??
-    absent(index)
-
-────────────────────
-_ do absent Item
-    - index Index
-
-?! OutOfBoundsError("Index out of bounds ($index / $size)")
-
-────────────────────
-+ this[position Position]
-
-this[position.normalize(this)]
-
-────────────────────
-+ this[range Range'Position]
-
-this[range.normalize(this)]
-
-────────────────────
-+ this[range Range'Index]
-
-?! Panic("Only increments of 1 are currently supported")
-    if normal.increment != 1
-?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
-
-This((storage as CPointer'Item) + start, end - start)
-
-.. normal = range.forward()
-.. start = normal.start
-.. end = normal.end
-.. out-index = if end > 0 then end - 1 else end
-
-────────────────────
-+ do reversed
-
-for offset in 0 .. < length
-    <= this[length - 1 - offset]
-
-────────────────────
-+ get byte-size
-
-?! Panic("ImmutableArray size overflow")
-    if size != 0 && size > Size.max / item-size
-
-size * item-size
-
-.. item-size = Item.size
-
-────────────────────
-+ get item-size
-
-Item.size
-
-╌╌╌╌╌╌╌╌╌╌ Comparison ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do this == other ReadableArray'Item''OtherBacking
-    - OtherBacking is StorageBacking
-
-=? if length != other.length
-for index in 0 .. < length
-    =? if this[index] != other[index]
-= true
-
-────────────────────
-+ do this has item Item
-
-for index in 0 .. < size
-    . candidate = Backing.load'Item(storage, index)
-    =? true if candidate == item
-= false
-
-────────────────────
-+ !this
-
-length == 0
-
-────────────────────
-+ this + other-size Size
-
-?! OutOfBoundsError("Out of bounds $other-size / $size")
-    if other-size > size
-
-this[other-size .. < size]
-
-────────────────────
-+ slice-string
-
-slice-string(0 .. < size)
-
-────────────────────
-+ slice-string
-    - range Range'Position
-
-slice-string(range.normalize(this))
-
-────────────────────
-+ do slice-string String
-    - range Range'Index
-
-?! Panic("Only increments of 1 are currently supported")
-    if normal.increment != 1
-?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
-
-if len == 0
-    = ""
-else if Item == Char
-    = C:yumiStringFromUtf8Codepoints(data, start, end)
-else if Item == Byte
-    . made = C:yumiStringSliceUtf8(data, start, end)
-    ?! Panic("Unable to read UTF8 content")
-        if (made as Pointer).address == 0
-    = made as String
-else
-    ?! Panic("Array does not contain characters")
-
-.. data = storage as CPointer'Item
-.. normal = range.forward()
-.. start = normal.start
-.. end = normal.end
-.. out-index = if end > 0 then end - 1 else end
-.. len = end - start
-
-────────────────────
-+ do slice-string'Context String @no-gc
-    - context Context
-    - Context is ArrayStorageProvider
-
-?! Panic("Array does not contain characters")
-    if Item != Char
-
-= context.copy-span(Array'Char(storage as CPointer'Char, size), 0, size, true)
-
-╌╌╌╌╌╌╌╌╌╌ is Inspectable ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do inspectable-snapshot
-
-//this:sequence.length = length
-for item in this
-    //this:sequence.item -> item
-
-━━━━━━━━━━━━━━━━━━━━
-+ ImmutableArray'Item'Backing is ReadableArray'Item'Backing
-    - Backing = GCBacking
-    - Backing is StorageBacking
-
-────────────────────
-+ This
-    - Backing = GCBacking
-
-storage = Backing.allocate'Item(Void(), 0)
-storage-size = 0
-
-────────────────────
-_ This
-    - data CPointer'Item
-    - size Size
-
-storage = data as Backing.Storage'Item
-storage-size = size
-
-━━━━━━━━━━━━━━━━━━━━
 + Array'Value'Backing is ReadableArray'Value'Backing
     - Backing = GCBacking
     - Backing is StorageBacking
@@ -251,16 +23,6 @@ storage-size = size
 
 storage = Backing.allocate'Value(Void(), 0)
 storage-size = 0
-
-────────────────────
-+ get immutable ImmutableArray'Value'Backing
-
-ImmutableArray'Value'Backing(data, size)
-
-────────────────────
-+ get data CPointer'Value @inline
-
-storage as CPointer'Value
 
 ────────────────────
 + This
@@ -422,6 +184,23 @@ data as CPointer'T
 
 "${Value.name}[$size]"
 
+╌╌╌╌╌╌╌╌╌╌ Slicing ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ to Array'Byte'Backing
+
+Array'Byte'Backing(this.data as CPointer'Byte, this.byte-size)
+
+────────────────────
++ get immutable ImmutableArray'Value'Backing
+
+ImmutableArray'Value'Backing(data, size)
+
+────────────────────
++ get data CPointer'Value @inline
+
+storage as CPointer'Value
+
 ────────────────────
 + do this == other [Value]
 
@@ -459,24 +238,15 @@ this[pos.normalize(this)] = item
 + do this[index Index] = item Value @inline
 
 ?! OutOfBoundsError("Set out of bounds ($index / $size)")
-    if index >= size
+    if (index as UInt) >= (size as UInt)
 
 Backing.store'Value(storage, item, index)
-
-────────────────────
-+ do zero
-    - index Index
-
-?! OutOfBoundsError("Set out of bounds ($index / $size)")
-    if index >= size
-
-C:memset(data + index, 0, Value.size)
 
 ────────────────────
 + do this[range Range'Index] = item Value
 
 ?! OutOfBoundsError("Set out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 
 for index in normal
     Backing.store'Value(storage, item, index)
@@ -499,7 +269,7 @@ this[normal] = other
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 ?! Panic("Array size overflow")
     if len != 0 && len > Size.max / item-size
 ?! OutOfBoundsError("Source array too short ($other.size / $len)")
@@ -520,7 +290,7 @@ C:yumiArrayCopySlice(data + start, other.data, len * item-size)
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 ?! OutOfBoundsError("Source array too short ($other.length / $len)")
     if other.length < len
 
@@ -539,7 +309,7 @@ for i in 0 .. < len
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 
 if Value == Char
     . codepoints = other.codepoints
@@ -576,7 +346,7 @@ this[normal] = item
 + -= this[index Index]
 
 ?! OutOfBoundsError("Delete out of bounds ($index / $size)")
-    if index >= size
+    if (index as UInt) >= (size as UInt)
 
 replace(index .. < index + 1, This(data, 0))
 
@@ -589,6 +359,15 @@ replace(index .. < index + 1, This(data, 0))
 + -= this[range Range'Index]
 
 replace(range, This(data, 0))
+
+────────────────────
++ do zero
+    - index Index
+
+?! OutOfBoundsError("Set out of bounds ($index / $size)")
+    if (index as UInt) >= (size as UInt)
+
+C:memset(data + index, 0, Value.size)
 
 ────────────────────
 + do map
@@ -740,7 +519,7 @@ replace(range, Void(), item)
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 ?! Panic("Array size overflow")
     if len == 0 && size == Size.max
 
@@ -793,7 +572,7 @@ replace(range, Void(), other)
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 ?! Panic("Array size overflow")
     if other.size > len && other.size - len > Size.max - size
 
@@ -827,7 +606,7 @@ replace(range, Void(), other)
 ?! Panic("Only increments of 1 are currently supported")
     if normal.increment != 1
 ?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
-    if start > size || end > size || end < start
+    if (start as UInt) > (size as UInt) || end > size || end < start
 ?! Panic("Array size overflow")
     if other-size > len && other-size - len > Size.max - size
 
@@ -902,12 +681,25 @@ if new-size < size || (replacement as Pointer).address != data.address
 C:yumiArrayCopySlice(clone.data, data, byte-size)
 = clone
 
-╌╌╌╌╌╌╌╌╌╌ Slicing ╌╌╌╌╌╌╌╌╌╌
+━━━━━━━━━━━━━━━━━━━━
++ ImmutableArray'Item'Backing is ReadableArray'Item'Backing
+    - Backing = GCBacking
+    - Backing is StorageBacking
 
 ────────────────────
-+ to Array'Byte'Backing
++ This
+    - Backing = GCBacking
 
-Array'Byte'Backing(this.data as CPointer'Byte, this.byte-size)
+storage = Backing.allocate'Item(Void(), 0)
+storage-size = 0
+
+────────────────────
+_ This
+    - data CPointer'Item
+    - size Size
+
+storage = data as Backing.Storage'Item
+storage-size = size
 
 ━━━━━━━━━━━━━━━━━━━━
 + ByteReadable is Interface
@@ -931,121 +723,6 @@ true
     - size Size
 
 ━━━━━━━━━━━━━━━━━━━━
-+ extend Array'Byte
-
-────────────────────
-+ do to Hex
-
-?! Panic("Array size overflow")
-    if this.size > Size.max / 2
-
-. output = Byte[this.size * 2]
-for i in 0 .. < this.size
-    . byte = this.data[i]
-    output.data[i * 2] = byte-array-hex-char(byte /rshift/ 4)
-    output.data[i * 2 + 1] = byte-array-hex-char(byte /and/ 0x0f)
-= output.slice-string()
-
-────────────────────
-+ do to Base64
-
-?! Panic("Array size overflow")
-    if this.size > (Size.max - 2) / 3
-
-. output = Byte[((this.size + 2) / 3) * 4]
-. read-index = 0
-. write-index = 0
-while read-index < this.size
-    . b0 = this.data[read-index] as U32
-    . b1 = if read-index + 1 < this.size then this.data[read-index + 1] as U32 else 0
-    . b2 = if read-index + 2 < this.size then this.data[read-index + 2] as U32 else 0
-    . b01 = ((b0 /and/ 0x03) /lshift/ 4) /or/ ((b1 /rshift/ 4) /and/ 0x0f)
-
-    output.data[write-index] = byte-array-base64-char((b0 /rshift/ 2) /and/ 0x3f)
-    output.data[write-index + 1] = byte-array-base64-char(b01)
-    output.data[write-index + 2] =
-        |? read-index + 1 < this.size
-            byte-array-base64-char(((b1 /and/ 0x0f) /lshift/ 2) /or/ ((b2 /rshift/ 6) /and/ 0x03))
-        ??
-            61
-    output.data[write-index + 3] =
-        |? read-index + 2 < this.size
-            byte-array-base64-char(b2 /and/ 0x3f)
-        ??
-            61
-
-    read-index += 3
-    write-index += 4
-
-= output.slice-string()
-
-────────────────────
-+ do read'Num Num?
-    - offset Index
-    - endian = .big
-    - Num is Number
-
-=? if offset > this.size
-=? if Num.size > this.size - offset
-
-. source = (this.data + offset) as CPointer'Num
-=? source[0] if Num.size == 1 || endian == host-endian()
-. cell = Num[1]
-. bytes = cell as Byte[]
-for i in 0 .. < Num.size
-    bytes[i] = this.data[offset + (Num.size - 1) - i]
-= cell[0]
-
-────────────────────
-+ do write'Num
-    - value Num
-    - offset Index
-    - endian = .big
-    - Num is Number
-
-?! OutOfBoundsError("Write out of bounds ($offset / $this.size)")
-    if offset > this.size || Num.size > this.size - offset
-
-. target = (this.data + offset) as CPointer'Num
-target[0] = value
-if Num.size > 1 && endian != host-endian()
-    . bytes = this.data + offset
-    for i in 0 .. < Num.size / 2
-        . swapped = bytes[i]
-        bytes[i] = bytes[Num.size - 1 - i]
-        bytes[Num.size - 1 - i] = swapped
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ host-endian Endian
-
-if C:yumiHostIsLittleEndian() then .little else .big
-
-━━━━━━━━━━━━━━━━━━━━
-_ byte-array-hex-char Byte
-    - value Byte
-
-|? value < 10
-     value + 48
-??
-    value - 10 + 97
-
-━━━━━━━━━━━━━━━━━━━━
-_ byte-array-base64-char Byte
-    - value U32
-
-|? value < 26
-    (value + 65) as Byte
-|? value < 52
-    (value - 26 + 97) as Byte
-|? value < 62
-    (value - 52 + 48) as Byte
-|? value == 62
-    43
-??
-    47
-
-━━━━━━━━━━━━━━━━━━━━
 + ArrayReadAccess
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1062,6 +739,12 @@ _ storage-size Size
 _ owner CPointer'Byte
 
 ────────────────────
++ do to Iterable'(ArrayRow'Item'Access)
+
+for index in 0 .. < size
+    <= this[index]
+
+────────────────────
 + get size Size
 
 ?! Panic("Stale array view")
@@ -1073,12 +756,6 @@ storage-size
 + get length Size
 
 size
-
-────────────────────
-+ do to Iterable'(ArrayRow'Item'Access)
-
-for index in 0 .. < size
-    <= this[index]
 
 ────────────────────
 + this[index Index] (ArrayRow'Item'Access)
@@ -1125,6 +802,12 @@ _ storage-size Size
 _ owner CPointer'Byte
 
 ────────────────────
++ do to Iterable'Item
+
+for index in 0 .. < size
+    <= this[index]
+
+────────────────────
 + get size Size
 
 ?! Panic("Stale array view")
@@ -1136,12 +819,6 @@ storage-size
 + get length Size
 
 size
-
-────────────────────
-+ do to Iterable'Item
-
-for index in 0 .. < size
-    <= this[index]
 
 ────────────────────
 + this[index Index] Item
@@ -1198,3 +875,326 @@ _ bytes CPointer'Byte
 _ byte-stride Size
 _ storage-size Size
 _ owner CPointer'Byte
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Array'Byte
+
+────────────────────
++ do to Hex
+
+?! Panic("Array size overflow")
+    if this.size > Size.max / 2
+
+. output = Byte[this.size * 2]
+for i in 0 .. < this.size
+    . byte = this.data[i]
+    output.data[i * 2] = byte-array-hex-char(byte /rshift/ 4)
+    output.data[i * 2 + 1] = byte-array-hex-char(byte /and/ 0x0f)
+= output.slice-string()
+
+────────────────────
++ do to Base64
+
+?! Panic("Array size overflow")
+    if this.size > (Size.max - 2) / 3
+
+. output = Byte[((this.size + 2) / 3) * 4]
+. read-index = 0
+. write-index = 0
+while read-index < this.size
+    . b0 = this.data[read-index] as U32
+    . b1 = if read-index + 1 < this.size then this.data[read-index + 1] as U32 else 0
+    . b2 = if read-index + 2 < this.size then this.data[read-index + 2] as U32 else 0
+    . b01 = ((b0 /and/ 0x03) /lshift/ 4) /or/ ((b1 /rshift/ 4) /and/ 0x0f)
+
+    output.data[write-index] = byte-array-base64-char((b0 /rshift/ 2) /and/ 0x3f)
+    output.data[write-index + 1] = byte-array-base64-char(b01)
+    output.data[write-index + 2] =
+        |? read-index + 1 < this.size
+            byte-array-base64-char(((b1 /and/ 0x0f) /lshift/ 2) /or/ ((b2 /rshift/ 6) /and/ 0x03))
+        ??
+            61
+    output.data[write-index + 3] =
+        |? read-index + 2 < this.size
+            byte-array-base64-char(b2 /and/ 0x3f)
+        ??
+            61
+
+    read-index += 3
+    write-index += 4
+
+= output.slice-string()
+
+────────────────────
++ do read'Num Num?
+    - offset Index
+    - endian = .big
+    - Num is Number
+
+=? if (offset as UInt) > (this.size as UInt)
+=? if Num.size > this.size - offset
+
+. source = (this.data + offset) as CPointer'Num
+=? source[0] if Num.size == 1 || endian == host-endian()
+. cell = Num[1]
+. bytes = cell as Byte[]
+for i in 0 .. < Num.size
+    bytes[i] = this.data[offset + (Num.size - 1) - i]
+= cell[0]
+
+────────────────────
++ do write'Num
+    - value Num
+    - offset Index
+    - endian = .big
+    - Num is Number
+
+?! OutOfBoundsError("Write out of bounds ($offset / $this.size)")
+    if (offset as UInt) > (this.size as UInt) || Num.size > this.size - offset
+
+. target = (this.data + offset) as CPointer'Num
+target[0] = value
+if Num.size > 1 && endian != host-endian()
+    . bytes = this.data + offset
+    for i in 0 .. < Num.size / 2
+        . swapped = bytes[i]
+        bytes[i] = bytes[Num.size - 1 - i]
+        bytes[Num.size - 1 - i] = swapped
+= value
+
+━━━━━━━━━━━━━━━━━━━━
+_ ReadableArray'Item'Backing is Tuple
+    - Backing = GCBacking
+    - Backing is StorageBacking
+    is Indexable'Item
+    is Inspectable
+
+_ storage Backing.Storage'Item
+_ storage-size Size
+
+────────────────────
+_ This
+    - Backing = GCBacking
+
+storage = Backing.allocate'Item(Void(), 0)
+storage-size = 0
+
+────────────────────
+_ This
+    - data CPointer'Item
+    - size Size
+
+storage = data as Backing.Storage'Item
+storage-size = size
+
+────────────────────
++ to String
+
+", ".join(this as <Item>)
+
+────────────────────
++ do to [''T]
+    - T =~ Item as T
+
+. list = List'T()
+list.reserve(size)
+for index in 0 .. < size
+    list += Backing.load'Item(storage, index) as T
+= list
+
+────────────────────
++ do to Iterable'Item
+
+for index in 0 .. < size
+    <= Backing.load'Item(storage, index)
+
+╌╌╌╌╌╌╌╌╌╌ is Indexable'Item ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get size Size @inline
+
+storage-size
+
+────────────────────
++ get length Size
+
+size
+
+────────────────────
++ get byte-size
+
+?! Panic("ImmutableArray size overflow")
+    if size != 0 && size > Size.max / item-size
+
+size * item-size
+
+.. item-size = Item.size
+
+────────────────────
++ get item-size
+
+Item.size
+
+╌╌╌╌╌╌╌╌╌╌ Comparison ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do this == other ReadableArray'Item''OtherBacking
+    - OtherBacking is StorageBacking
+
+=? if length != other.length
+for index in 0 .. < length
+    =? if this[index] != other[index]
+= true
+
+────────────────────
++ do this has item Item
+
+for index in 0 .. < size
+    . candidate = Backing.load'Item(storage, index)
+    =? true if candidate == item
+= false
+
+────────────────────
++ this + other-size Size
+
+?! OutOfBoundsError("Out of bounds $other-size / $size")
+    if (other-size as UInt) > (size as UInt)
+
+this[other-size .. < size]
+
+────────────────────
++ this[index Index] @inline
+
+|? (index as UInt) < (size as UInt)
+    Backing.load'Item(storage, index)
+??
+    absent(index)
+
+────────────────────
++ this[position Position]
+
+this[position.normalize(this)]
+
+────────────────────
++ this[range Range'Position]
+
+this[range.normalize(this)]
+
+────────────────────
++ this[range Range'Index]
+
+?! Panic("Only increments of 1 are currently supported")
+    if normal.increment != 1
+?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
+    if (start as UInt) > (size as UInt) || end > size || end < start
+
+This((storage as CPointer'Item) + start, end - start)
+
+.. normal = range.forward()
+.. start = normal.start
+.. end = normal.end
+.. out-index = if end > 0 then end - 1 else end
+
+────────────────────
++ !this
+
+length == 0
+
+────────────────────
++ do reversed
+
+for offset in 0 .. < length
+    <= this[length - 1 - offset]
+
+────────────────────
++ slice-string
+
+slice-string(0 .. < size)
+
+────────────────────
++ slice-string
+    - range Range'Position
+
+slice-string(range.normalize(this))
+
+────────────────────
++ do slice-string String
+    - range Range'Index
+
+?! Panic("Only increments of 1 are currently supported")
+    if normal.increment != 1
+?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
+    if (start as UInt) > (size as UInt) || end > size || end < start
+
+if len == 0
+    = ""
+else if Item == Char
+    = C:yumiStringFromUtf8Codepoints(data, start, end)
+else if Item == Byte
+    . made = C:yumiStringSliceUtf8(data, start, end)
+    ?! Panic("Unable to read UTF8 content")
+        if (made as Pointer).address == 0
+    = made as String
+else
+    ?! Panic("Array does not contain characters")
+
+.. data = storage as CPointer'Item
+.. normal = range.forward()
+.. start = normal.start
+.. end = normal.end
+.. out-index = if end > 0 then end - 1 else end
+.. len = end - start
+
+────────────────────
++ do slice-string'Context String @no-gc
+    - context Context
+    - Context is ArrayStorageProvider
+
+?! Panic("Array does not contain characters")
+    if Item != Char
+
+= context.copy-span(Array'Char(storage as CPointer'Char, size), 0, size, true)
+
+╌╌╌╌╌╌╌╌╌╌ is Inspectable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do inspectable-snapshot
+
+//this:sequence.length = length
+for item in this
+    //this:sequence.item -> item
+
+────────────────────
+_ do absent Item
+    - index Index
+
+?! OutOfBoundsError("Index out of bounds ($index / $size)")
+
+━━━━━━━━━━━━━━━━━━━━
+_ host-endian Endian
+
+if C:yumiHostIsLittleEndian() then .little else .big
+
+━━━━━━━━━━━━━━━━━━━━
+_ byte-array-hex-char Byte
+    - value Byte
+
+|? value < 10
+     value + 48
+??
+    value - 10 + 97
+
+━━━━━━━━━━━━━━━━━━━━
+_ byte-array-base64-char Byte
+    - value U32
+
+|? value < 26
+    (value + 65) as Byte
+|? value < 52
+    (value - 26 + 97) as Byte
+|? value < 62
+    (value - 52 + 48) as Byte
+|? value == 62
+    43
+??
+    47

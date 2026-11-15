@@ -62,6 +62,26 @@ match? find-module(name, null, null)
         module-path
 
 ────────────────────
++ do module-name-of String?
+    - path String
+
+` The name an import finds the module at `path` by: its place in a search path, without its
+` extension, named as `search-module` names what it finds. Nothing where no search path holds it,
+` or where that name finds another file first.
+=? null if !path
+. whole = resolved-path(path, "")
+. file Path = whole
+for root in search-paths
+    . base = root as String
+    if whole.starts-with("$base$separator")
+        . place = whole[base.length + 1 ...]
+        . stem = place[0 .. < place.length - file.name.length + file.base-name.length]
+        do match? find-module(folder-name(stem, file), null, null)
+            | module-name, module-path
+                =? module-name if (module-path as String) == whole
+= null
+
+────────────────────
 + do relative-path String
     - path String
     - root-paths [String]

@@ -88,8 +88,7 @@
 
 ━━━━━━━━━━━━━━━━━━━━
 + Box
-    is MarkupHost
-    is MarkupTreeHost'Box
+    is MarkupParent'Box
     using BoxPaint
     using TextPaint
     using BoxPlacement
@@ -102,20 +101,20 @@
 • flex:amount Flex
     flex = amount
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
-+ get markup-batch-root MarkupBatch?
++ get markup-batch-root MarkupRootElement?
 
 markup-root-of(this)
 
 ────────────────────
-+ get markup-first-child MarkupHost?
++ get markup-first-child MarkupElement?
 
 markup-structural-first-child-host(this)
 
 ────────────────────
-+ get markup-next-sibling MarkupHost?
++ get markup-next-sibling MarkupElement?
 
 markup-structural-next-sibling-host(this)
 
@@ -125,67 +124,9 @@ markup-structural-next-sibling-host(this)
 close-box()
 
 ────────────────────
-+ markup-collection-region'Item'Content'Source CollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - Content = Box
-    - Source is Collection'Item
++ markup-make-region Box?
 
-CollectionRegion'Item(source, row-builder as CollectionRowBuilder'Item)
-
-────────────────────
-+ markup-collection-region'Item'Content'Source CollectionRegion'Item
-    - source Source
-    - row-builder MarkupCollectionRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item
-    - Content = Box
-    - Source is Collection'Item
-
-CollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-broadcastable-region'Item'Content'Source BroadcastCollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Content = Box
-    - Source is Broadcastable'Item
-
-BroadcastCollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-iterable-region'Item'Content'Source IterableCollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item?
-    - Content = Box
-    - Source is Iterable'Item
-
-IterableCollectionRegion'Item(source, row-builder, key-builder)
-
-────────────────────
-+ markup-branch-region'Content BranchRegion
-    - arm-builders [MarkupBranchBuilder'Content]
-    - active-arm Index?
-    - Content = Box
-
-BranchRegion(arm-builders as [BranchBuilder], active-arm)
-
-────────────────────
-+ do markup-select-branch-region'Content
-    - region Content
-    - active-arm Index?
-    - Content = Box
-
-(region as BranchRegion).select-markup-branch(active-arm)
-
-────────────────────
-+ markup-branch-region-keeps-arm'Content Bool
-    - region Content
-    - arm Index?
-    - Content = Box
-
-(region as BranchRegion).selected-arm == arm
+BoxRegion()
 
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 
@@ -385,9 +326,9 @@ text = content
 
 ━━━━━━━━━━━━━━━━━━━━
 + RebindPanel'Item is Box
-    is MarkupBatch
+    is MarkupRootElement
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
 + flush-count Size = 0
 _ scopes [RebindRowScope'Item] = List'(RebindRowScope'Item)()
 
@@ -431,140 +372,12 @@ flush-count += 1
         + <Box row - scope RebindRowScope'Item
 
 ━━━━━━━━━━━━━━━━━━━━
-+ CollectionRowBuilder'Item is MarkupRowBuilder'Item'Box
++ BoxRegion is Box
 
-━━━━━━━━━━━━━━━━━━━━
-+ CollectionKeyBuilder'Item is MarkupKeyBuilder'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ BranchBuilder is MarkupBranchBuilder'Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ CollectionRegion'Item is Box
-
-_ controller MarkupCollectionController'Item'Box?
-
-────────────────────
-+ This
-    - source
-    - row-builder CollectionRowBuilder'Item
-    - Source is Collection'Item
-
-controller = MarkupCollectionController'Item'Box(this, source, row-builder)
-
-────────────────────
-+ This
-    - source
-    - row-builder MarkupCollectionRowBuilder'Item'Box
-    - key-builder CollectionKeyBuilder'Item
-    - Source is Collection'Item
-
-controller = MarkupCollectionController'Item'Box(this, source, row-builder, key-builder)
-
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do close
 
-controller?.close()
-controller = null
+markup-close-region(this)
 super.close()
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do replace-source'Source
-    - new-source Source
-    - Source is Collection'Item
-
-controller!.replace-source(new-source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BroadcastCollectionRegion'Item is Box
-
-_ controller MarkupBroadcastCollectionController'Item'Box?
-
-────────────────────
-+ This
-    - source Broadcastable'Item
-    - row-builder CollectionRowBuilder'Item
-    - key-builder CollectionKeyBuilder'Item?
-
-controller = MarkupBroadcastCollectionController'Item'Box(this, source, row-builder, key-builder)
-
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-controller?.close()
-controller = null
-super.close()
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do replace-source'Source
-    - new-source Source
-    - Source is Broadcastable'Item
-
-controller!.replace-source(new-source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ IterableCollectionRegion'Item is Box
-
-_ controller MarkupIterableCollectionController'Item'Box?
-
-────────────────────
-+ This
-    - source Iterable'Item
-    - row-builder CollectionRowBuilder'Item
-    - key-builder CollectionKeyBuilder'Item?
-
-controller = MarkupIterableCollectionController'Item'Box(this, source, row-builder, key-builder)
-
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do close
-
-controller?.close()
-controller = null
-super.close()
-
-╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
-
-────────────────────
-+ do replace-source
-    - new-source
-
-controller!.replace-source(new-source)
-
-────────────────────
-+ do set-close-source
-    - action Doer
-
-controller!.set-close-source(action)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BranchRegion is Box
-
-+ controller MarkupBranchController'Box
-
-────────────────────
-+ This
-    - arm-builders
-    - active-arm Index?
-
-controller = MarkupBranchController'Box(this, arm-builders, active-arm)
-
-────────────────────
-+ get selected-arm Index?
-
-controller.selected-arm
-
-────────────────────
-+ do select-markup-branch
-    - arm Index?
-
-controller.select-markup-branch(arm)

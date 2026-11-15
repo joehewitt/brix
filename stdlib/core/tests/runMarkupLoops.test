@@ -66,7 +66,7 @@ made
 :----
 %crash
 
-Exception: Dynamic markup loop parent must implement MarkupHost
+Exception: Dynamic markup loop parent must implement MarkupElement
 <no file:5>
         for item in #items
            ^^^^^^^^^^^^^^
@@ -854,13 +854,8 @@ for child in node.children
 = count
 
 ━━━━━━━━━━━━━━━━━━━━
-+ MarkRowBuilder'Item is () MarkNode ?! Error
-    - item Item
-
-━━━━━━━━━━━━━━━━━━━━
 + MarkNode
-    is MarkupHost
-    is MarkupTreeHost'MarkNode
+    is MarkupParent'MarkNode
 
 + parent MarkNode?
 + first-child MarkNode?
@@ -938,17 +933,13 @@ while true
 ────────────────────
 + do close Void
 
+markup-close-region(this)
 clear-children()
 
 ────────────────────
-+ markup-collection-region'Item'Content'Source MarkCollectionRegion'Item
-    - source Source
-    - row-builder MarkupRowBuilder'Item'Content
-    - key-builder MarkupKeyBuilder'Item? = null
-    - Content = MarkNode
-    - Source is Collection'Item
++ markup-make-region MarkNode?
 
-MarkCollectionRegion'Item(source, row-builder as MarkRowBuilder'Item)
+MarkNode()
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkText is MarkNode
@@ -959,61 +950,6 @@ MarkCollectionRegion'Item(source, row-builder as MarkRowBuilder'Item)
 + This
     - text String
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkCollectionRegion'Item is MarkNode
-
-+ row-builder MarkRowBuilder'Item
-_ source-pointer Pointer = Pointer()
-_ indexable-source Indexable'Item?
-_ observer CollectionObserver?
-
-────────────────────
-+ This
-    - source
-    - row-builder
-    - Source is Collection'Item
-
-source-pointer = source as Pointer
-indexable-source = source as Indexable'Item
-. new-observer = this.notify as CollectionObserver
-observer = new-observer
-observe-collection-pointer(source-pointer, new-observer)
-rebuild()
-
-────────────────────
-+ do replace-source'Source Void
-    - new-source Source
-    - Source is Collection'Item
-
-if observer
-    unobserve-collection-pointer(source-pointer, observer)
-source-pointer = new-source as Pointer
-indexable-source = new-source as Indexable'Item
-. new-observer = this.notify as CollectionObserver
-observer = new-observer
-observe-collection-pointer(source-pointer, new-observer)
-rebuild()
-
-────────────────────
-+ do notify Void
-    - mutation CollectionMutation
-
-rebuild()
-
-────────────────────
-+ do rebuild Void
-
-clear-children()
-for item in indexable-source!
-    markup-append(this, row-builder(item))
-
-────────────────────
-+ do close Void
-
-if observer
-    unobserve-collection-pointer(source-pointer, observer)
-    observer = null
-super.close()
 
 :----
 
@@ -1274,10 +1210,10 @@ for child in panel.%first-child!.children
 
 ━━━━━━━━━━━━━━━━━━━━
 + LoopPanel is Box
-    is MarkupBatch
+    is MarkupRootElement
 
 + items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupBatch)
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
 
 ────────────────────
 + do markup-batch-did-flush
@@ -2917,7 +2853,7 @@ for child in demo.%first-child!.children
 
 log += "build"
 
-╌╌╌╌╌╌╌╌╌╌ is MarkupHost ╌╌╌╌╌╌╌╌╌╌
+╌╌╌╌╌╌╌╌╌╌ is MarkupElement ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do markup-depart Bool

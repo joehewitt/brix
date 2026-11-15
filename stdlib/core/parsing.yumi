@@ -12,9 +12,9 @@
 
 + MatchLocation is (begin TokenLocation, end TokenLocation)
 + TokenLocation is (line U32, column U32)
-
-━━━━━━━━━━━━━━━━━━━━
 + StreamMark is (owner Pointer, cursor Index)
++ PatternMaterializationRoot'Primary is Interface
+_ PatternCaptureRange is (start Index, end Index)
 
 ━━━━━━━━━━━━━━━━━━━━
 + PatternRollback'Mark is Interface
@@ -55,9 +55,6 @@
     - input Input
 
 ━━━━━━━━━━━━━━━━━━━━
-+ PatternMaterializationRoot'Primary is Interface
-
-━━━━━━━━━━━━━━━━━━━━
 + PatternCollectorStorage'Backing is Interface
     - Backing is StorageBacking
 
@@ -71,94 +68,11 @@
 + do begin-pattern-record
 
 ━━━━━━━━━━━━━━━━━━━━
-_ PatternCollector'Item'Backing is Tuple
-    - Backing is StorageBacking
-
-+ items Array'Item'Backing
-+ size Size
-+ context Backing.Context
-
-────────────────────
-+ do grow Array'Item'Backing
-
-?! Panic("Pattern collector size overflow")
-    if size == Size.max
-. capacity Size
-if items.length == 0
-    capacity = initial-capacity
-else if items.length < 1024
-    capacity = items.length * 2
-else
-    . half = items.length / 2
-    ?! Panic("Pattern collector size overflow")
-        if items.length > Size.max - half
-    capacity = items.length + half
-if capacity < size + 1
-    capacity = size + 1
-= items.resize(capacity, context)
-
-.. initial-capacity =
-    |? Item.size <= 16: 8
-    |? Item.size <= 1024: 4
-    ??: 1
-
-━━━━━━━━━━━━━━━━━━━━
-_ PatternCaptureRange is (start Index, end Index)
-
-━━━━━━━━━━━━━━━━━━━━
 + CaptureSpan'Token is Tuple
 
 + source Token[]
 + start Index
 + end Index
-
-────────────────────
-+ get length Size
-
-end - start
-
-────────────────────
-+ get array Token[]
-
-//stream-pattern.capture-materializations ++
-//stream-pattern.capture-materializations.rollback-buffer ++
-//stream-pattern.capture-materialization-tokens += length
-source[start .. < end]
-
-────────────────────
-+ do this == other CaptureSpan'Token
-
-if length != other.length
-    = false
-
-for i in 0 .. < length
-    if source[start + i] != other.source[other.start + i]
-        = false
-= true
-
-────────────────────
-+ do this == other String
-
-if Token == Byte
-    =? false if length != other.size
-    = C:memcmp(source.data + start, other as CPointer'Byte, length) == 0
-
-if Token != Char || length != other.length
-    = false
-
-if other.size == length
-    . bytes = other as CPointer'Byte
-    for offset in 0 .. < length
-        if ((source[start + offset] as Char) as U32) != (bytes[offset] as U32)
-            = false
-    = true
-
-. index Index
-for char in other
-    if (source[start + index] as Char) != char
-        = false
-    index += 1
-= true
 
 ────────────────────
 + do to String
@@ -240,6 +154,54 @@ for _ in 0 .. < (if scale < 0 then -scale else scale)
 //stream-pattern.capture-materialization-tokens += length
 = source[start .. < end].copy()
 
+────────────────────
++ get length Size
+
+end - start
+
+────────────────────
++ get array Token[]
+
+//stream-pattern.capture-materializations ++
+//stream-pattern.capture-materializations.rollback-buffer ++
+//stream-pattern.capture-materialization-tokens += length
+source[start .. < end]
+
+────────────────────
++ do this == other CaptureSpan'Token
+
+if length != other.length
+    = false
+
+for i in 0 .. < length
+    if source[start + i] != other.source[other.start + i]
+        = false
+= true
+
+────────────────────
++ do this == other String
+
+if Token == Byte
+    =? false if length != other.size
+    = C:memcmp(source.data + start, other as CPointer'Byte, length) == 0
+
+if Token != Char || length != other.length
+    = false
+
+if other.size == length
+    . bytes = other as CPointer'Byte
+    for offset in 0 .. < length
+        if ((source[start + offset] as Char) as U32) != (bytes[offset] as U32)
+            = false
+    = true
+
+. index Index
+for char in other
+    if (source[start + index] as Char) != char
+        = false
+    index += 1
+= true
+
 ━━━━━━━━━━━━━━━━━━━━
 + CaptureCount
 
@@ -268,6 +230,12 @@ null
 null
 
 ────────────────────
++ get location TokenLocation
+
+────────────────────
++ get error-location TokenLocation
+
+────────────────────
 + do pattern-extend Bool
 
 = false
@@ -282,12 +250,6 @@ null
     - target Index
 
 (0, 0)
-
-────────────────────
-+ get location TokenLocation
-
-────────────────────
-+ get error-location TokenLocation
 
 ────────────────────
 + get-match-location MatchLocation
@@ -348,3 +310,35 @@ buffer.slice-string()
 
 //stream-pattern.strings ++
 //stream-pattern.string-tokens += length
+
+━━━━━━━━━━━━━━━━━━━━
+_ PatternCollector'Item'Backing is Tuple
+    - Backing is StorageBacking
+
++ items Array'Item'Backing
++ size Size
++ context Backing.Context
+
+────────────────────
++ do grow Array'Item'Backing
+
+?! Panic("Pattern collector size overflow")
+    if size == Size.max
+. capacity Size
+if items.length == 0
+    capacity = initial-capacity
+else if items.length < 1024
+    capacity = items.length * 2
+else
+    . half = items.length / 2
+    ?! Panic("Pattern collector size overflow")
+        if items.length > Size.max - half
+    capacity = items.length + half
+if capacity < size + 1
+    capacity = size + 1
+= items.resize(capacity, context)
+
+.. initial-capacity =
+    |? Item.size <= 16: 8
+    |? Item.size <= 1024: 4
+    ??: 1
