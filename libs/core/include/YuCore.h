@@ -226,6 +226,7 @@ enum : YumiGCCollectResult {
 // Non-zero results encode a stalled task as task-id + 1, so zero is unambiguously completed.
 extern "C" YUMI_GC_POLLING YumiGCCollectResult yumiCollect();
 extern "C" YUMI_GC_POLLING void yumiGCFrameBudget(uint64_t remainingNanos);
+extern "C" YUMI_GC_POLLING bool yumiGCRuntimeIdleCollect(uint64_t budgetNanos);
 // Internal scalar weak subscriptions used by core property tracking. These live in the GC
 // runtime, but the narrow declarations here keep core modules from importing the broad GC API.
 extern "C" YUMI_GC_POLLING size_t yumiGCRegisterOwnerWeak(char* owner, char* target);
@@ -287,6 +288,7 @@ extern "C" YUMI_GC_LEAF void yumiBenchRecordAllocationSite(
 extern "C" YUMI_GC_LEAF void yumiBenchMutatorPhaseStart(const char* name);
 extern "C" YUMI_GC_LEAF void yumiBenchMutatorPhaseEnd(const char* name);
 extern "C" void yumiBenchMaybeWriteMetrics();
+extern "C" void yumiBenchRecordProcessMemory(void);
 extern "C" YUMI_GC_POLLING size_t yumiBenchTemporaryRootShim(
     char* pointer, size_t rootCount, size_t iterations);
 extern "C" YUMI_GC_LEAF void yumiBenchResetTemporaryRootMetrics(void);

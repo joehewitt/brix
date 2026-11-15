@@ -13,6 +13,11 @@
 #include <time.h>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <malloc/malloc.h>
+#endif
+
 static constexpr size_t kBenchSmallSizeBinCount = 128;
 static constexpr size_t kBenchLargeSizeBinSize = 1024;
 static constexpr size_t kBenchLargeSizeBinCount = 64;
@@ -548,6 +553,93 @@ yumiBenchWriteAllocationSites(FILE* file, size_t runtimeNanos) {
     return summary;
 }
 
+struct YumiBenchProcessMemory {
+    size_t footprintBytes = 0;
+    size_t footprintPeakBytes = 0;
+    size_t gpuBytes = 0;
+    size_t surfaceBytes = 0;
+    size_t mallocInUseBytes = 0;
+    size_t mallocAllocatedBytes = 0;
+};
+
+static YumiBenchProcessMemory
+yumiBenchProcessMemory() {
+    YumiBenchProcessMemory memory;
+#if defined(__APPLE__)
+    task_vm_info_data_t info {};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(
+            mach_task_self(),
+            TASK_VM_INFO,
+            reinterpret_cast<task_info_t>(&info),
+            &count) == KERN_SUCCESS) {
+        memory.footprintBytes = static_cast<size_t>(info.phys_footprint);
+        if (count >= TASK_VM_INFO_REV3_COUNT) {
+            memory.footprintPeakBytes = static_cast<size_t>(info.ledger_phys_footprint_peak);
+        }
+    }
+    vm_address_t address = 0;
+    natural_t depth = 0;
+    while (true) {
+        vm_size_t size = 0;
+        vm_region_submap_info_data_64_t region {};
+        mach_msg_type_number_t regionCount = VM_REGION_SUBMAP_INFO_COUNT_64;
+        if (vm_region_recurse_64(
+                mach_task_self(),
+                &address,
+                &size,
+                &depth,
+                reinterpret_cast<vm_region_recurse_info_64_t>(&region),
+                &regionCount) != KERN_SUCCESS) {
+            break;
+        }
+        if (region.is_submap) {
+            ++depth;
+            continue;
+        }
+        if (region.user_tag == VM_MEMORY_IOACCELERATOR ||
+                region.user_tag == VM_MEMORY_IOSURFACE) {
+            int state = 0;
+            bool reclaimable = vm_purgable_control(
+                    mach_task_self(),
+                    address,
+                    VM_PURGABLE_GET_STATE,
+                    &state) == KERN_SUCCESS &&
+                ((state & VM_PURGABLE_STATE_MASK) == VM_PURGABLE_VOLATILE ||
+                    (state & VM_PURGABLE_STATE_MASK) == VM_PURGABLE_EMPTY);
+            size_t resident = static_cast<size_t>(
+                region.pages_resident + region.pages_swapped_out) *
+                static_cast<size_t>(vm_page_size);
+            if (!resident && region.user_tag == VM_MEMORY_IOACCELERATOR) {
+                resident = static_cast<size_t>(size);
+            }
+            if (!reclaimable) {
+                if (region.user_tag == VM_MEMORY_IOACCELERATOR) {
+                    memory.gpuBytes += resident;
+                } else {
+                    memory.surfaceBytes += resident;
+                }
+            }
+        }
+        address += size;
+    }
+    malloc_statistics_t stats {};
+    malloc_zone_statistics(nullptr, &stats);
+    memory.mallocInUseBytes = stats.size_in_use;
+    memory.mallocAllocatedBytes = stats.size_allocated;
+#endif
+    return memory;
+}
+
+static YumiBenchProcessMemory recordedProcessMemory;
+static bool hasRecordedProcessMemory = false;
+
+extern "C" void
+yumiBenchRecordProcessMemory(void) {
+    recordedProcessMemory = yumiBenchProcessMemory();
+    hasRecordedProcessMemory = true;
+}
+
 static size_t
 yumiBenchPeakRSSBytes() {
     struct rusage usage {};
@@ -833,6 +925,10 @@ yumiBenchMaybeWriteMetrics() {
     }
     const size_t rssPeakBytes = yumiBenchPeakRSSBytes();
     const size_t rssEndBytes = yumiBenchCounter("yumiGCRssBytes");
+    const YumiBenchProcessMemory processMemory = hasRecordedProcessMemory
+        ? recordedProcessMemory
+        : yumiBenchProcessMemory();
+    const size_t scavengeDebtBytes = yumiBenchCounter("yumiGCScavengeDebtBytes");
     YumiBenchCounterFn gcAllocatedObjectCount =
         yumiBenchFunction<YumiBenchCounterFn>("yumiGCRuntimeAllocatedObjectCount");
     YumiBenchCounterFn gcAllocatedByteCount =
@@ -1192,6 +1288,10 @@ yumiBenchMaybeWriteMetrics() {
         "\"bufferedBarrierSharedRMWCount\":%zu,"
         "\"heapOverheadBytes\":%zu,\"heapOverheadPct\":%.6f,"
         "\"memoryReturnLatencyUs\":%.3f,\"gcCycleCount\":%zu,"
+        "\"footprintBytes\":%zu,\"footprintPeakBytes\":%zu,"
+        "\"gpuBytes\":%zu,\"surfaceBytes\":%zu,"
+        "\"mallocInUseBytes\":%zu,\"mallocAllocatedBytes\":%zu,"
+        "\"scavengeDebtBytes\":%zu,"
         "\"metricsInvariantValid\":%s}\n",
         pauseTrace.totalEvents,
         pauseTrace.storedEvents,
@@ -1271,6 +1371,13 @@ yumiBenchMaybeWriteMetrics() {
         heapOverheadPct,
         static_cast<double>(memoryReturnNanos) / 1000.0,
         gcCycleCount,
+        processMemory.footprintBytes,
+        processMemory.footprintPeakBytes,
+        processMemory.gpuBytes,
+        processMemory.surfaceBytes,
+        processMemory.mallocInUseBytes,
+        processMemory.mallocAllocatedBytes,
+        scavengeDebtBytes,
         (histogramCount == allocationCount &&
             sizeClassesComplete &&
             allocationSitesComplete &&

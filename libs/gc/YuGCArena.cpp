@@ -155,7 +155,7 @@ GCArena::allocPages(size_t pageCount, bool bestFit, bool* zeroed) {
     size_t offset = 0;
     bool found = bestFit
         ? pageBitmap.findBestFitConsecutive(pageCount, false, offset)
-        : pageBitmap.findConsecutiveFrom(pageCount, false, nextPageSearch, offset);
+        : pageBitmap.findFirstConsecutive(pageCount, false, firstFreePage, offset);
     if (!found) {
         return nullptr;
     }
@@ -166,9 +166,8 @@ GCArena::allocPages(size_t pageCount, bool bestFit, bool* zeroed) {
     }
     emptySinceCycle = 0;
 
-    nextPageSearch = offset + pageCount;
-    if (nextPageSearch >= pageCapacity) {
-        nextPageSearch = 0;
+    if (offset == firstFreePage) {
+        firstFreePage = offset + pageCount;
     }
 
     char* pointer = memory + offset * kPageSize;
@@ -197,7 +196,7 @@ GCArena::allocPages(size_t pageCount, bool bestFit, bool* zeroed) {
             for (size_t index = offset; index < offset + pageCount; ++index) {
                 pageBitmap.clear(index);
             }
-            nextPageSearch = offset;
+            firstFreePage = std::min(firstFreePage, offset);
             std::fprintf(stderr, "Yumi GC arena recommit failed; allocation will return null\n");
             return nullptr;
         }
@@ -255,7 +254,7 @@ GCArena::freePages(char* pointer, size_t pageCount) {
     allocatedPageCount -= cleared;
     dirtyPages += dirtyPagesInRange(offset, offset + pageCount);
     dirtyPages -= dirtyBefore;
-    nextPageSearch = offset;
+    firstFreePage = std::min(firstFreePage, offset);
 }
 
 size_t

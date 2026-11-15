@@ -184,7 +184,8 @@ extern "C" const char* yumiGraphicsShaderArgsType();
 extern "C" const char* yumiGraphicsShaderInputTypes();
 extern "C" const char* yumiGraphicsShaderDabSource();
 extern "C" void* yumiGraphicsMetalDevice();
-extern "C" void* yumiGraphicsMetalQueue();
+extern "C" void* yumiGraphicsMetalCommandBuffer();
+extern "C" bool yumiGraphicsMetalReleaseIdleQueue();
 extern "C" void* yumiGraphicsCanvasGPUTexture(void* canvas, bool mipmaps);
 extern "C" bool yumiGraphicsCanvasIsGPUResident(void* canvas);
 extern "C" bool yumiGraphicsCanvasRender(

@@ -23,7 +23,7 @@ struct GCBitmap {
 
     bool findFrom(bool value, size_t start, size_t& result) const;
 
-    bool findConsecutiveFrom(size_t count, bool value, size_t start, size_t& result) const;
+    bool findFirstConsecutive(size_t count, bool value, size_t start, size_t& result) const;
 
     bool findBestFitConsecutive(size_t count, bool value, size_t& result) const;
 };

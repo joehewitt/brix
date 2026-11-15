@@ -1,5 +1,6 @@
 #include "YuAppleGUI/YuAppleGUI.h"
 #include "YuAppleGUI/YuGuiInputCoalescer.h"
+#include "YuAppleGUI/YuMetalRenderer.h"
 #include "YuCore/YuCore.h"
 #include "YuEvents/YuEvents.h"
 
@@ -967,6 +968,10 @@ guiScheduleSizeCallback(YuGuiWindowHost* guiWindow) {
 
 static const size_t kGuiMainQueueTaskBudget = 64;
 static const uint64_t kGuiMainQueueNanosecondBudget = 2000000ull;
+static const uint64_t kGuiIdleCollectNanoseconds = 1000000ull;
+static const uint64_t kGuiIdleCollectQuietNanoseconds = 100000000ull;
+static const uint64_t kGuiIdleCollectIntervalNanoseconds = 20000000ull;
+static const uint64_t kGuiIdleReleaseQuietNanoseconds = 5000000000ull;
 static std::mutex guiMainQueueSourceMutex;
 static CFRunLoopSourceRef guiMainQueueSource = nullptr;
 static CFRunLoopRef guiMainQueueRunLoop = nullptr;
@@ -1003,13 +1008,80 @@ guiMainQueueRequestStop(void) {
     guiMainQueueWake(nullptr);
 }
 
+static uint64_t guiMainActivityCount = 0;
+static uint64_t guiMainActivityNanoseconds = 0;
+static uint64_t guiIdleCollectArmedCount = 0;
+static bool guiIdleCollectScheduled = false;
+static bool guiIdleReleaseScheduled = false;
+
+static void
+guiMainNoteActivity(void) {
+    ++guiMainActivityCount;
+    guiMainActivityNanoseconds = yumiMonotonicTimeNanoseconds();
+}
+
+static void
+guiMainQueueScheduleIdleRelease(uint64_t delayNanoseconds) {
+    if (guiIdleReleaseScheduled) {
+        return;
+    }
+    guiIdleReleaseScheduled = true;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(delayNanoseconds)),
+        dispatch_get_main_queue(),
+        ^{
+            guiIdleReleaseScheduled = false;
+            if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
+                    yumiProcessTerminationRequested()) {
+                return;
+            }
+            uint64_t quiet = yumiMonotonicTimeNanoseconds() - guiMainActivityNanoseconds;
+            if (quiet < kGuiIdleReleaseQuietNanoseconds) {
+                guiMainQueueScheduleIdleRelease(kGuiIdleReleaseQuietNanoseconds - quiet);
+                return;
+            }
+            yumiGuiMetalReleaseIdle();
+        });
+}
+
+static void
+guiMainQueueScheduleIdleCollect(uint64_t delayNanoseconds) {
+    if (guiIdleCollectScheduled) {
+        return;
+    }
+    guiIdleCollectScheduled = true;
+    guiIdleCollectArmedCount = guiMainActivityCount;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(delayNanoseconds)),
+        dispatch_get_main_queue(),
+        ^{
+            guiIdleCollectScheduled = false;
+            if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
+                    yumiProcessTerminationRequested()) {
+                return;
+            }
+            if (guiMainActivityCount != guiIdleCollectArmedCount) {
+                guiMainQueueScheduleIdleCollect(kGuiIdleCollectQuietNanoseconds);
+                return;
+            }
+            if (yumiGCRuntimeIdleCollect(kGuiIdleCollectNanoseconds)) {
+                guiMainQueueScheduleIdleCollect(kGuiIdleCollectIntervalNanoseconds);
+            }
+            guiMainQueueScheduleIdleRelease(kGuiIdleReleaseQuietNanoseconds);
+        });
+}
+
 static void
 guiMainQueueSourcePerform(void*) {
+    guiMainNoteActivity();
     uint64_t now = yumiMonotonicTimeNanoseconds();
     uint32_t result = yumiDrainMainTaskQueue(kGuiMainQueueTaskBudget, now + kGuiMainQueueNanosecondBudget);
     if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
         yumiProcessTerminationRequested()) {
         std::exit(yumiGetProcessExitCode());
+    }
+    if (result == 0) {
+        guiMainQueueScheduleIdleCollect(kGuiIdleCollectQuietNanoseconds);
     }
     if (result == 1) {
         guiMainQueueWake(nullptr);
@@ -1065,6 +1137,7 @@ guiMediaTimeToContinuousNanoseconds(CFTimeInterval seconds) {
 @implementation YuGuiDisplayLinkTarget
 
 - (void)tick:(CADisplayLink*)link {
+    guiMainNoteActivity();
     if (guiAppVisibility.load() == YuGuiPresentationHidden) {
         link.paused = YES;
         return;

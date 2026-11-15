@@ -425,6 +425,10 @@ static uint64_t imageTextureBudgetBytes() {
     return budget;
 }
 
+static id<MTLCommandBuffer> rendererCommandBuffer() {
+    return (__bridge id<MTLCommandBuffer>)yumiGraphicsMetalCommandBuffer();
+}
+
 static std::atomic<uint64_t> memoryPressureCount {0};
 
 static void noteMemoryPressure(void*) {
@@ -1077,7 +1081,6 @@ struct SharedPipelines {
 
 struct MetalRenderer {
     id<MTLDevice> device = nil;
-    id<MTLCommandQueue> queue = nil;
     SharedPipelines* shared = nullptr;
     MTLPixelFormat outputFormat = MTLPixelFormatBGRA8Unorm;
     MTLPixelFormat layerFormat = MTLPixelFormatBGRA8Unorm;
@@ -1180,6 +1183,7 @@ struct MetalRenderer {
     FrameStats frames[3];
     int64_t frameCount = 0;
     uint64_t memoryPressureSeen = 0;
+    bool targetVolatile = false;
 
     uint64_t rendererAllocations = 0;
     uint64_t markedRendererAllocations = 0;
@@ -1254,6 +1258,14 @@ struct MetalRenderer {
 
 static void countAllocation(MetalRenderer* renderer) {
     ++renderer->rendererAllocations;
+}
+
+static bool restoreTarget(MetalRenderer* renderer) {
+    if (!renderer->targetVolatile) {
+        return false;
+    }
+    renderer->targetVolatile = false;
+    return [renderer->target setPurgeableState:MTLPurgeableStateNonVolatile] == MTLPurgeableStateEmpty;
 }
 
 template <typename Value>
@@ -9394,13 +9406,14 @@ static bool readTargetColors(
     std::vector<float>& colors
 ) {
     yumiGuiMetalRendererFinish(renderer);
+    restoreTarget(renderer);
     id<MTLBuffer> buffer = [renderer->device newBufferWithLength:static_cast<NSUInteger>(width) * height * 4 * sizeof(float)
                                                          options:MTLResourceStorageModeShared];
     if (!buffer) {
         return false;
     }
     const uint32_t region[4] = {left, top, width, height};
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     [encoder setComputePipelineState:renderer->shared->readbackKernel];
     [encoder setTexture:renderer->target atIndex:0];
@@ -9434,6 +9447,7 @@ static bool readTarget(MetalRenderer* renderer, std::vector<uint8_t>& pixels) {
         return true;
     }
     yumiGuiMetalRendererFinish(renderer);
+    restoreTarget(renderer);
     pixels.resize(static_cast<size_t>(renderer->pixelWidth) * renderer->pixelHeight * 4);
     MTLTextureDescriptor* descriptor = [MTLTextureDescriptor
         texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
@@ -9442,7 +9456,7 @@ static bool readTarget(MetalRenderer* renderer, std::vector<uint8_t>& pixels) {
                                  mipmapped:NO];
     descriptor.storageMode = MTLStorageModeShared;
     id<MTLTexture> staging = [renderer->device newTextureWithDescriptor:descriptor];
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
     [blit copyFromTexture:renderer->target
               sourceSlice:0
@@ -10278,7 +10292,6 @@ static void enqueuePresent(MetalRenderer* renderer, int64_t frameId, int64_t ser
     std::shared_ptr<PresentationState> state = renderer->presentationState;
     std::shared_ptr<PresentDamage> damage = renderer->presentDamage;
     CAMetalLayer* layer = renderer->presentationLayer;
-    id<MTLCommandQueue> queue = renderer->queue;
     id<MTLTexture> source = renderer->target;
     if (++gate->outstanding == 1 && gate->window && gate->setPending) {
         gate->setPending(gate->window, true);
@@ -10300,7 +10313,7 @@ static void enqueuePresent(MetalRenderer* renderer, int64_t frameId, int64_t ser
             id<MTLTexture> texture = drawable.texture;
             if (texture && texture.width == source.width && texture.height == source.height &&
                     texture.pixelFormat == source.pixelFormat) {
-                id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
+                id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
                 copyPresentAreas(
                     commandBuffer,
                     source,
@@ -10392,8 +10405,7 @@ extern "C" void yumiGuiMetalWarmUp(void) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             @autoreleasepool {
                 id<MTLDevice> device = (__bridge id<MTLDevice>)yumiGraphicsMetalDevice();
-                id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)yumiGraphicsMetalQueue();
-                if (!device || !queue) {
+                if (!device) {
                     return;
                 }
                 MTLTextureDescriptor* descriptor = [MTLTextureDescriptor
@@ -10407,13 +10419,30 @@ extern "C" void yumiGuiMetalWarmUp(void) {
                 pass.colorAttachments[0].texture = [device newTextureWithDescriptor:descriptor];
                 pass.colorAttachments[0].loadAction = MTLLoadActionClear;
                 pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-                id<MTLCommandBuffer> buffer = [queue commandBuffer];
+                id<MTLCommandBuffer> buffer = rendererCommandBuffer();
                 [[buffer renderCommandEncoderWithDescriptor:pass] endEncoding];
                 [buffer commit];
                 sharedPipelines();
             }
         });
     });
+}
+
+static std::mutex gRenderersMutex;
+static std::vector<MetalRenderer*> gRenderers;
+
+extern "C" void yumiGuiMetalReleaseIdle(void) {
+    if (!yumiGraphicsMetalReleaseIdleQueue()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(gRenderersMutex);
+    for (MetalRenderer* renderer : gRenderers) {
+        if (renderer->presentationLayer && renderer->target && !renderer->targetVolatile &&
+                (!renderer->presentGate || renderer->presentGate->outstanding == 0)) {
+            [renderer->target setPurgeableState:MTLPurgeableStateVolatile];
+            renderer->targetVolatile = true;
+        }
+    }
 }
 
 extern "C" void* yumiGuiMetalRendererCreate(
@@ -10437,7 +10466,6 @@ extern "C" void* yumiGuiMetalRendererCreate(
         delete renderer;
         return nullptr;
     }
-    renderer->queue = (__bridge id<MTLCommandQueue>)yumiGraphicsMetalQueue();
     renderer->emptyBuffer = [renderer->device newBufferWithLength:256
                                                           options:MTLResourceStorageModeShared];
     MTLTextureDescriptor* blank = [MTLTextureDescriptor
@@ -10447,7 +10475,7 @@ extern "C" void* yumiGuiMetalRendererCreate(
                                  mipmapped:NO];
     renderer->blankTexture = [renderer->device newTextureWithDescriptor:blank];
     renderer->shared = sharedPipelines();
-    if (!renderer->queue || !renderer->emptyBuffer || !renderer->blankTexture || !renderer->shared) {
+    if (!renderer->emptyBuffer || !renderer->blankTexture || !renderer->shared) {
         releaseRendererResources(renderer);
         delete renderer;
         return nullptr;
@@ -10480,6 +10508,10 @@ extern "C" void* yumiGuiMetalRendererCreate(
     renderer->presentationState = std::make_shared<PresentationState>();
     renderer->presentationState->records.resize(2048);
     watchCanvasReleases(renderer);
+    {
+        std::lock_guard<std::mutex> lock(gRenderersMutex);
+        gRenderers.push_back(renderer);
+    }
     return renderer;
 }
 
@@ -10498,11 +10530,11 @@ static bool encodeFrame(
 
 extern "C" void yumiGuiMetalRendererFinish(void* pointer) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
-    if (!renderer || !renderer->queue) {
+    if (!renderer) {
         return;
     }
     waitForPresenter(renderer);
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     [commandBuffer commit];
     [commandBuffer waitUntilCompleted];
     noteCompletedFrame(renderer, renderer->frameCount - 1);
@@ -10531,7 +10563,7 @@ extern "C" void yumiGuiMetalRendererFinish(void* pointer) {
             renderer->canReencode = false;
             break;
         }
-        id<MTLCommandBuffer> fence = [renderer->queue commandBuffer];
+        id<MTLCommandBuffer> fence = rendererCommandBuffer();
         [fence commit];
         [fence waitUntilCompleted];
         noteCompletedFrame(renderer, frameId);
@@ -10579,6 +10611,7 @@ extern "C" bool yumiGuiMetalRendererResize(
 
     if (targetChanged) {
         renderer->target = replacement;
+        renderer->targetVolatile = false;
         forgetPresentBuffers(*renderer->presentDamage);
         releaseLayerTargets(renderer);
         countAllocation(renderer);
@@ -10600,6 +10633,10 @@ extern "C" void yumiGuiMetalRendererRelease(void* pointer) {
         dispatch_semaphore_signal(renderer->inflight);
     }
     unwatchCanvasReleases(renderer);
+    {
+        std::lock_guard<std::mutex> lock(gRenderersMutex);
+        gRenderers.erase(std::remove(gRenderers.begin(), gRenderers.end(), renderer), gRenderers.end());
+    }
     yumiGuiMetalRendererFinish(renderer);
     releaseRendererResources(renderer);
     delete renderer;
@@ -10748,6 +10785,7 @@ extern "C" bool yumiGuiMetalRendererSetOutputGamut(void* pointer, bool wide, boo
         return false;
     }
     renderer->target = target;
+    renderer->targetVolatile = false;
     forgetPresentBuffers(*renderer->presentDamage);
     releaseLayerTargets(renderer);
     countAllocation(renderer);
@@ -11368,7 +11406,7 @@ static void generateImageMipmaps(MetalRenderer* renderer, ImageTextureTile& surf
         return;
     }
     std::vector<ImageTileRegion> regions = {{&surface, {0, 0, surface.width, surface.height}}};
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     encodeImageMips(renderer, commandBuffer, regions);
     [commandBuffer commit];
 }
@@ -11377,7 +11415,7 @@ static void flushImageTileJobs(MetalRenderer* renderer) {
     if (renderer->imageTileJobs.empty()) {
         return;
     }
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     [encoder setComputePipelineState:renderer->shared->imageTileKernel];
     std::vector<ImageTileRegion> regions;
@@ -11691,7 +11729,7 @@ static void uploadImageTextureUpdate(
             rowBytes
         );
     }
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
     [blit copyFromBuffer:staging
              sourceOffset:0
@@ -11921,6 +11959,9 @@ extern "C" void yumiGuiMetalPacketBegin(void* pointer) {
     }
     waitForPresenter(renderer);
     dispatch_semaphore_wait(renderer->inflight, DISPATCH_TIME_FOREVER);
+    if (restoreTarget(renderer)) {
+        renderer->fillRedraw.store(true);
+    }
     uint64_t pressure = memoryPressureCount.load(std::memory_order_acquire);
     if (pressure != renderer->memoryPressureSeen) {
         renderer->memoryPressureSeen = pressure;
@@ -13080,7 +13121,7 @@ static bool encodeFrame(
         destination[mainCount + index] = background;
     }
 
-    id<MTLCommandBuffer> commandBuffer = [renderer->queue commandBuffer];
+    id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
     uint32_t drawCalls = 0;
     uint32_t pipelineSwitches = 0;
     id<CAMetalDrawable> drawable = nil;
@@ -14726,5 +14767,6 @@ extern "C" bool yumiGuiMetalRendererTakeFillRedraw(void* pointer) {
         return false;
     }
     bool landed = renderer->shaderCompiles->landed.exchange(false);
-    return renderer->fillRedraw.exchange(false) || landed;
+    bool lost = restoreTarget(renderer);
+    return renderer->fillRedraw.exchange(false) || landed || lost;
 }

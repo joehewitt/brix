@@ -103,7 +103,7 @@ public:
 private:
     void wakeLiveTasks(bool terminating);
     bool nextTask(YuTask** task);
-    bool nextPoolTask(YuTaskWorker* worker, YuTask** task);
+    bool nextPoolTask(YuTaskWorker* worker, YuTask** task, bool searching);
     bool tryNextTask(YuTask** task);
     bool takeNextTaskLocked(YuTask** task);
     bool hasRunnableTasksLocked();
@@ -126,6 +126,7 @@ private:
     bool steal(YuTaskWorker* worker, YuTask** task);
     bool hasPoolWork();
     void wakeWorker();
+    void startWorker();
     void wakeAllWorkers();
 
 private:
@@ -151,6 +152,7 @@ private:
     bool hostDrainActive;
 
     YuTaskWorker* workers;
+    std::atomic<int> startedCount;
     std::atomic<int> nextWorkerIndex;
     std::atomic<int> injectedCount;
     std::atomic<int> idleWorkerCount;

@@ -231,16 +231,12 @@ GCHeap::allocPages(size_t pageCount, bool bestFit, bool* zeroed) {
         }
         return page;
     }
-    size_t arenaCount = arenas.size();
-    size_t start = nextArenaSearch < arenaCount ? nextArenaSearch : 0;
-    for (size_t step = 0; step < arenaCount; ++step) {
-        size_t index = (start + step) % arenaCount;
-        if (arenas[index] == reserveArena || arenas[index]->dedicated) {
+    for (GCArena* candidate : arenas) {
+        if (candidate == reserveArena || candidate->dedicated) {
             continue;
         }
-        char* page = arenas[index]->allocPages(pageCount, bestFit, zeroed);
+        char* page = candidate->allocPages(pageCount, bestFit, zeroed);
         if (page) {
-            nextArenaSearch = index;
             recordPageDemandLocked();
             return page;
         }
@@ -924,6 +920,45 @@ GCHeap::scavengeDebtPageCount(bool respectRetentionTarget) {
     size_t excess = committed > retention ? committed - retention : 0;
     size_t debt = std::min(reclaimable, excess);
     return debt - debt % scavengeUnitPages();
+}
+
+GCPageStats
+GCHeap::pageStats() {
+    GCPageHeapLockGuard lock(pageHeapMutex);
+    GCPageStats stats;
+    for (GCArena* arena : arenas) {
+        if (!arena) {
+            continue;
+        }
+        stats.committedPages += arena->committedPageCount;
+        stats.allocatedPages += arena->allocatedPageCount;
+        stats.freeCommittedPages += arena->dirtyPageCount();
+        size_t run = 0;
+        for (size_t page = 0; page <= arena->pageCapacity; ++page) {
+            if (page < arena->pageCapacity &&
+                    arena->committedBitmap.get(page) &&
+                    !arena->pageBitmap.get(page) &&
+                    !arena->spanForPage(page)) {
+                ++run;
+                continue;
+            }
+            if (run) {
+                ++stats.freeCommittedRuns;
+                stats.largestFreeCommittedRun = std::max(stats.largestFreeCommittedRun, run);
+                run = 0;
+            }
+        }
+    }
+    stats.peakDemandPages = std::max(
+        peakDemandPagesEWMA.load(std::memory_order_acquire),
+        demandHighWaterPages.load(std::memory_order_acquire));
+    stats.retentionPages = retentionTargetPagesLocked();
+    size_t excess = stats.committedPages > stats.retentionPages
+        ? stats.committedPages - stats.retentionPages
+        : 0;
+    stats.debtPages = std::min(stats.freeCommittedPages, excess);
+    stats.debtPages -= stats.debtPages % scavengeUnitPages();
+    return stats;
 }
 
 size_t

@@ -26,6 +26,7 @@
 
 _ markdown-caret-width Length = 2
 _ markdown-blink-interval = 530ms
+_ markdown-blink-timeout = 10s
 _ markdown-overscan VirtualCoord = 1000vcoord
 _ markdown-estimated-line VirtualCoord = 32vcoord
 _ markdown-edit-roles :=
@@ -1636,10 +1637,12 @@ is-caret-lit = true
 blink-generation += 1
 . generation = blink-generation
 do new
-    while generation == blink-generation
+    . blinked = 0ms
+    while generation == blink-generation && (blinked < markdown-blink-timeout || !is-caret-lit)
         markdown-blink-interval.wait()
         if generation == blink-generation
             is-caret-lit = !is-caret-lit
+            blinked += markdown-blink-interval
             repaint()
 
 ────────────────────

@@ -328,6 +328,7 @@ GCSpan* constructGCSpan(
     size_t pageCount,
     SizeClass sizeClass);
 void destroyGCSpan(GCSpan* span);
+size_t releaseSpareSpanMetadata();
 
 struct GCSpanList {
     void* head = nullptr;

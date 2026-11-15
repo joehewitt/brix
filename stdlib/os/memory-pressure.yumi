@@ -1,0 +1,46 @@
+./file
+/YuCore/YuSystem.h
+/YuEvents/YuEvents.h
+/unistd.h
+
++ memory-pressure = MemoryPressureStream()
+
+━━━━━━━━━━━━━━━━━━━━
++ MemoryPressure is Union
+
+| warning
+| critical
+
+━━━━━━━━━━━━━━━━━━━━
+_ MemoryPressureStream
+    is Usable'Void
+
+_ fd I32 = -1
+
+as Broadcastable'MemoryPressure for
+_ channel := AsyncOnDemandChannel'MemoryPressure(this)
+
+────────────────────
++ do begin-using
+
+. watched = C:yumiWatchMemoryPressure()
+=? if watched < 0
+fd = watched
+do new
+    while true
+        wait-until-readable(watched)
+        . level = C:yumiTakeMemoryPressure(watched)
+        if level < 0
+            break
+        if level > 1
+            channel <- MemoryPressure.critical
+        else if level > 0
+            channel <- MemoryPressure.warning
+    C:yumiReleaseEventDescriptor(watched)
+    C:close(watched)
+
+────────────────────
++ do end-using
+
+C:yumiUnwatchMemoryPressure(fd)
+fd = -1

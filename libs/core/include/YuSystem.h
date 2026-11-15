@@ -101,4 +101,9 @@ extern "C" int32_t yumiProcessDirectory(int32_t pid, char* buffer, uint32_t size
 
 extern "C" int yumiSetSignalIgnored(int number, int ignored);
 
+extern "C" int32_t yumiWatchMemoryPressure();
+extern "C" void yumiUnwatchMemoryPressure(int32_t fd);
+extern "C" int32_t yumiTakeMemoryPressure(int32_t fd);
+extern "C" void yumiNoteMemoryPressure(int32_t level);
+
 #endif

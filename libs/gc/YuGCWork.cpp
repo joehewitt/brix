@@ -175,16 +175,24 @@ GCMarkWork::provisionOneBufferLocked() {
     return true;
 }
 
-bool
-GCMarkWork::provisionRequiredBuffersLocked() {
+size_t
+GCMarkWork::requiredBufferCountLocked() const {
     size_t slotBuffers = activeSlotCapacity / kGCMarkWorkBufferSlots +
         (activeSlotCapacity % kGCMarkWorkBufferSlots != 0 ? 1 : 0);
     if (ownedParticipants.size() >
             (std::numeric_limits<size_t>::max() - slotBuffers - 1) / 2) {
+        return std::numeric_limits<size_t>::max();
+    }
+    return slotBuffers + ownedParticipants.size() * 2 + 1;
+}
+
+bool
+GCMarkWork::provisionRequiredBuffersLocked() {
+    size_t required = requiredBufferCountLocked();
+    if (required == std::numeric_limits<size_t>::max()) {
         std::fprintf(stderr, "Yumi GC WorkBuf participant reserve overflow\n");
         return false;
     }
-    size_t required = slotBuffers + ownedParticipants.size() * 2 + 1;
     while (ownedBuffers.size() < required) {
         if (!provisionOneBufferLocked()) {
             return false;
@@ -211,6 +219,42 @@ GCMarkWork::registerSpanCapacity(size_t slots) {
         return false;
     }
     return true;
+}
+
+size_t
+GCMarkWork::trimSurplusBuffers() {
+    std::lock_guard<std::mutex> lock(provisionMutex);
+    size_t required = requiredBufferCountLocked();
+    if (ownedBuffers.size() <= required) {
+        return 0;
+    }
+    size_t surplus = ownedBuffers.size() - required;
+    std::vector<GCMarkWorkBuffer*> released;
+    try {
+        released.reserve(surplus);
+    } catch (...) {
+        return 0;
+    }
+    lockQueue();
+    while (released.size() < surplus && emptyHead) {
+        released.push_back(takeEmptyLocked());
+    }
+    unlockQueue();
+    std::sort(released.begin(), released.end());
+    ownedBuffers.erase(
+        std::remove_if(
+            ownedBuffers.begin(),
+            ownedBuffers.end(),
+            [&](GCMarkWorkBuffer* buffer) {
+                return std::binary_search(released.begin(), released.end(), buffer);
+            }),
+        ownedBuffers.end());
+    for (GCMarkWorkBuffer* buffer : released) {
+        delete buffer;
+    }
+    retainedQueueBytes -= released.size() * sizeof(GCMarkWorkBuffer);
+    gRetainedMarkWorkQueueBytes.store(retainedQueueBytes, std::memory_order_release);
+    return released.size() * sizeof(GCMarkWorkBuffer);
 }
 
 void

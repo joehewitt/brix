@@ -1269,6 +1269,10 @@ static YuGuiAppDelegate* appDelegate = nil;
 
 static const size_t kGuiMainQueueTaskBudget = 64;
 static const uint64_t kGuiMainQueueNanosecondBudget = 2000000ull;
+static const uint64_t kGuiIdleCollectNanoseconds = 1000000ull;
+static const uint64_t kGuiIdleCollectQuietNanoseconds = 100000000ull;
+static const uint64_t kGuiIdleCollectIntervalNanoseconds = 20000000ull;
+static const uint64_t kGuiIdleReleaseQuietNanoseconds = 5000000000ull;
 static std::mutex guiMainQueueSourceMutex;
 static CFRunLoopSourceRef guiMainQueueSource = nullptr;
 static CFRunLoopRef guiMainQueueRunLoop = nullptr;
@@ -1313,15 +1317,84 @@ guiMainQueueRequestStop(void) {
     guiMainQueueWake(nullptr);
 }
 
+static uint64_t guiMainActivityCount = 0;
+static uint64_t guiMainActivityNanoseconds = 0;
+static uint64_t guiIdleCollectArmedCount = 0;
+static bool guiIdleCollectScheduled = false;
+static bool guiIdleReleaseScheduled = false;
+
+static void
+guiMainNoteActivity(void) {
+    ++guiMainActivityCount;
+    guiMainActivityNanoseconds = yumiMonotonicTimeNanoseconds();
+}
+
+static void
+guiMainQueueScheduleIdleRelease(uint64_t delayNanoseconds) {
+    if (guiIdleReleaseScheduled) {
+        return;
+    }
+    guiIdleReleaseScheduled = true;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(delayNanoseconds)),
+        dispatch_get_main_queue(),
+        ^{
+            guiIdleReleaseScheduled = false;
+            if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
+                    yumiProcessTerminationRequested()) {
+                return;
+            }
+            uint64_t quiet = yumiMonotonicTimeNanoseconds() - guiMainActivityNanoseconds;
+            if (quiet < kGuiIdleReleaseQuietNanoseconds) {
+                guiMainQueueScheduleIdleRelease(kGuiIdleReleaseQuietNanoseconds - quiet);
+                return;
+            }
+            yumiGuiMetalReleaseIdle();
+        });
+}
+
+static void
+guiMainQueueScheduleIdleCollect(uint64_t delayNanoseconds) {
+    if (guiIdleCollectScheduled) {
+        return;
+    }
+    guiIdleCollectScheduled = true;
+    guiIdleCollectArmedCount = guiMainActivityCount;
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(delayNanoseconds)),
+        dispatch_get_main_queue(),
+        ^{
+            guiIdleCollectScheduled = false;
+            if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
+                    yumiProcessTerminationRequested()) {
+                return;
+            }
+            if (guiMainActivityCount != guiIdleCollectArmedCount) {
+                guiMainQueueScheduleIdleCollect(kGuiIdleCollectQuietNanoseconds);
+                return;
+            }
+            if (yumiGCRuntimeIdleCollect(kGuiIdleCollectNanoseconds)) {
+                guiMainQueueScheduleIdleCollect(kGuiIdleCollectIntervalNanoseconds);
+            }
+            guiMainQueueScheduleIdleRelease(kGuiIdleReleaseQuietNanoseconds);
+        });
+}
+
 static void
 guiMainQueueSourcePerform(void*) {
     guiMainQueueWakePending.store(false, std::memory_order_release);
+    guiMainNoteActivity();
 
     uint64_t now = yumiMonotonicTimeNanoseconds();
     uint64_t deadline = now > UINT64_MAX - kGuiMainQueueNanosecondBudget
         ? UINT64_MAX
         : now + kGuiMainQueueNanosecondBudget;
     uint32_t result = yumiDrainMainTaskQueue(kGuiMainQueueTaskBudget, deadline);
+    if (result == 0 &&
+            !guiMainQueueStopRequested.load(std::memory_order_acquire) &&
+            !yumiProcessTerminationRequested()) {
+        guiMainQueueScheduleIdleCollect(kGuiIdleCollectQuietNanoseconds);
+    }
 
     if (guiMainQueueStopRequested.load(std::memory_order_acquire) ||
         yumiProcessTerminationRequested()) {
@@ -2740,6 +2813,7 @@ guiFrameSchedulerScheduleWindowDrain(YuGuiWindowHost* guiWindow) {
 
 static void
 guiFrameSchedulerDrain(YuGuiDisplayLink* entry) {
+    guiMainNoteActivity();
     bool linked = false;
     {
         std::lock_guard<std::mutex> lock(guiDisplayLinkControlMutex);
@@ -2801,6 +2875,7 @@ guiNativeFlushObserve(CFRunLoopObserverRef observer, CFRunLoopActivity activity,
     if (guiNativeFlushWindows.empty()) {
         return;
     }
+    guiMainNoteActivity();
     uint32_t drained =
         yumiDrainMainTaskQueue(kGuiMainQueueTaskBudget, guiDeadlineAfter(kGuiMainQueueNanosecondBudget));
     if (drained == 1) {
@@ -4954,7 +5029,6 @@ guiSetViewGeometry(NSView* view, NSRect frame, double a, double b, double c, dou
 
 extern "C" void*
 yumiGuiAppCreate(void) {
-    yumiGuiMetalWarmUp();
     YuGuiAppHost* app = [[YuGuiAppHost alloc] init];
     app->scheduledStopGeneration.store(0, std::memory_order_relaxed);
     return (__bridge_retained void*)app;
@@ -5850,6 +5924,7 @@ yumiGuiStatusItemGetScreenBound(void* ptr, uint32_t component) {
 extern "C" void*
 yumiGuiWindowCreate(const char* title, double width, double height) {
     ensureApplication();
+    yumiGuiMetalWarmUp();
 
     NSRect frame = NSMakeRect(100, 100, width, height);
     NSWindowStyleMask style =

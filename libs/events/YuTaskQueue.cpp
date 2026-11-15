@@ -15,17 +15,27 @@
 
 // *************************************************************************************************
 
-extern "C" void yumiGCRuntimeIdleCollect(uint64_t deadlineNanos) __attribute__((weak));
+extern "C" bool yumiGCRuntimeIdleCollect(uint64_t budgetNanos) __attribute__((weak));
 
-extern "C" void
+extern "C" bool
 yumiGCRuntimeIdleCollect(uint64_t) {
+    return false;
 }
 
 static const int kPriorityFairnessLimit = 8;
 static const uint32_t kInjectedCheckInterval = 61;
 static const int kTaskBatchLimit = 32;
+static const long kIdleGCRetryNanos = 20000000L;
 
 // *************************************************************************************************
+
+static void
+workerSignals(sigset_t* set) {
+    sigfillset(set);
+    sigdelset(set, SIGSEGV);
+    sigdelset(set, SIGBUS);
+    sigdelset(set, SIGQUIT);
+}
 
 static void*
 YuTaskQueueThread(void* input) {
@@ -61,6 +71,7 @@ YuTaskQueue::YuTaskQueue(YuTaskQueue* aParentQueue, int count):
     hostPending(false),
     hostDrainActive(false),
     workers(NULL),
+    startedCount(0),
     nextWorkerIndex(0),
     injectedCount(0),
     idleWorkerCount(0),
@@ -80,10 +91,7 @@ YuTaskQueue::YuTaskQueue(YuTaskQueue* aParentQueue, int count):
     }
 
     sigset_t set;
-    sigfillset(&set);
-    sigdelset(&set, SIGSEGV);
-    sigdelset(&set, SIGBUS);
-    sigdelset(&set, SIGQUIT);
+    workerSignals(&set);
 
     if (pthread_sigmask(SIG_BLOCK, &set, NULL) != 0) {
         perror("pthread_sigmask");
@@ -107,6 +115,9 @@ YuTaskQueue::~YuTaskQueue() {
 void
 YuTaskQueue::start() {
     threads = new pthread_t[threadCount];
+    if (workers) {
+        return;
+    }
 
     for (int i = 0; i < threadCount; ++i) {
         int err = pthread_create(threads+i, 0, YuTaskQueueThread, (void*)this);
@@ -115,6 +126,7 @@ YuTaskQueue::start() {
             exit(-1);
         }
     }
+    startedCount.store(threadCount, std::memory_order_release);
 }
 
 void
@@ -129,7 +141,8 @@ YuTaskQueue::stop() {
 
 void
 YuTaskQueue::join() {
-    for (int i = 0; i < threadCount; ++i) {
+    int started = startedCount.load(std::memory_order_acquire);
+    for (int i = 0; i < started; ++i) {
         pthread_t thread = threads[i];
         pthread_join(thread, NULL);
     }
@@ -410,7 +423,9 @@ YuTaskQueue::runEventLoop() {
     thread.initializeThreadLocals();
 
     YuTask* task = NULL;
-    while (worker ? nextPoolTask(worker, &task) : nextTask(&task)) {
+    bool searching = worker != NULL;
+    while (worker ? nextPoolTask(worker, &task, searching) : nextTask(&task)) {
+        searching = false;
         thread.runTask(task);
         thread.deleteTerminatedTasks();
         runPendingHost();
@@ -607,6 +622,7 @@ YuTaskQueue::nextTask(YuTask** outTask) {
     pthread_mutex_lock(&lock);
 
     bool checkedIdleGC = false;
+    bool retriesIdleGC = false;
     while (true) {
         if (takeNextTaskLocked(outTask)) {
             pthread_mutex_unlock(&lock);
@@ -622,6 +638,7 @@ YuTaskQueue::nextTask(YuTask** outTask) {
         if (!checkedIdleGC && !parentQueue) {
             checkedIdleGC = true;
             pthread_mutex_unlock(&lock);
+            bool pending = false;
             if (yumiGCRuntimeIdleCollect) {
                 uint64_t now = yumiMonotonicTimeNanoseconds();
                 uint64_t idleDeadline = now >
@@ -634,14 +651,33 @@ YuTaskQueue::nextTask(YuTask** outTask) {
                     idleDeadline = scheduledDeadline;
                 }
                 if (idleDeadline > now) {
-                    yumiGCRuntimeIdleCollect(idleDeadline);
+                    pending = yumiGCRuntimeIdleCollect(idleDeadline - now);
                 }
             }
             pthread_mutex_lock(&lock);
+            retriesIdleGC = pending;
             continue;
         }
         ++sleepingThreads;
-        pthread_cond_wait(&cond, &lock);
+        if (retriesIdleGC) {
+            retriesIdleGC = false;
+            checkedIdleGC = false;
+#if defined(__APPLE__)
+            struct timespec retry = { 0, kIdleGCRetryNanos };
+            pthread_cond_timedwait_relative_np(&cond, &lock, &retry);
+#else
+            struct timespec retry;
+            clock_gettime(CLOCK_MONOTONIC, &retry);
+            retry.tv_nsec += kIdleGCRetryNanos;
+            if (retry.tv_nsec >= 1000000000L) {
+                retry.tv_sec += 1;
+                retry.tv_nsec -= 1000000000L;
+            }
+            pthread_cond_clockwait(&cond, &lock, CLOCK_MONOTONIC, &retry);
+#endif
+        } else {
+            pthread_cond_wait(&cond, &lock);
+        }
         --sleepingThreads;
     }
 }
@@ -693,8 +729,7 @@ YuTaskQueue::takeNextTaskLocked(YuTask** outTask) {
 // -------------------------------------------------------------------------------------------------
 
 bool
-YuTaskQueue::nextPoolTask(YuTaskWorker* worker, YuTask** outTask) {
-    bool searching = false;
+YuTaskQueue::nextPoolTask(YuTaskWorker* worker, YuTask** outTask, bool searching) {
     while (true) {
         bool found = false;
         if (++worker->ticks % kInjectedCheckInterval == 0) {
@@ -899,6 +934,7 @@ YuTaskQueue::hasPoolWork() {
 void
 YuTaskQueue::wakeWorker() {
     if (!idleWorkerCount.load(std::memory_order_seq_cst)) {
+        startWorker();
         return;
     }
     int expected = 0;
@@ -920,6 +956,39 @@ YuTaskQueue::wakeWorker() {
 
     if (worker) {
         pthread_cond_signal(&worker->cond);
+    }
+}
+
+void
+YuTaskQueue::startWorker() {
+    if (startedCount.load(std::memory_order_acquire) >= threadCount) {
+        return;
+    }
+    int expected = 0;
+    if (!searchingWorkerCount.compare_exchange_strong(expected, 1, std::memory_order_seq_cst)) {
+        return;
+    }
+
+    pthread_mutex_lock(&lock);
+    int index = startedCount.load(std::memory_order_relaxed);
+    bool starts = index < threadCount && !isFinished.load(std::memory_order_acquire);
+    if (starts) {
+        sigset_t blocked;
+        sigset_t previous;
+        workerSignals(&blocked);
+        pthread_sigmask(SIG_BLOCK, &blocked, &previous);
+        int err = pthread_create(threads+index, 0, YuTaskQueueThread, (void*)this);
+        pthread_sigmask(SIG_SETMASK, &previous, NULL);
+        if (err) {
+            printf("Unable to create thread (%d)\n", err);
+            exit(-1);
+        }
+        startedCount.store(index + 1, std::memory_order_release);
+    }
+    pthread_mutex_unlock(&lock);
+
+    if (!starts) {
+        searchingWorkerCount.fetch_sub(1, std::memory_order_seq_cst);
     }
 }
 

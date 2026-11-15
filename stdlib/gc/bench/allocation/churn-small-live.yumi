@@ -1,0 +1,18 @@
+`benchmark.meta description: Keeps about 15 MB of strings live while making about 1 GB of short-lived strings, then idles in the event loop for one second so the memory profile records how much the collector keeps for a small live set.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: memory,gc-runtime
+
+/time/duration
+
+. keep [String]
+for index in 0 .. < 50000
+    keep += "kept item $index with some padding text to make it longer than a word"
+. checksum = 0 as Size
+for round in 0 .. < 3000
+    . junk [String]
+    for index in 0 .. < 1000
+        junk += "garbage $round $index padding padding padding padding padding"
+    checksum += junk[round % junk.length].length
+1s.wait()
+checksum += keep.length
+-- "bench-result allocation/churn-small-live checksum=$checksum"

@@ -475,6 +475,29 @@ releaseFlatSpanMetadata(void* allocation, size_t allocationSize) {
     munmap(surplus, kFlatMetadataChunkBytes);
 }
 
+size_t
+releaseSpareSpanMetadata() {
+    GCSpanFlatMetadataChunk* spares = nullptr;
+    {
+        GCSpanMetadataAllocatorState& state = spanMetadataAllocatorState();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        spares = state.spareFlatMetadataChunks;
+        state.spareFlatMetadataChunks = nullptr;
+        state.spareFlatMetadataBytes = 0;
+        for (GCSpanFlatMetadataChunk* chunk = spares; chunk; chunk = chunk->next) {
+            gCachedFlatSpanMetadataBytes.fetch_sub(chunk->dirtyBytes, std::memory_order_relaxed);
+        }
+    }
+    size_t released = 0;
+    while (spares) {
+        GCSpanFlatMetadataChunk* next = spares->next;
+        munmap(spares, kFlatMetadataChunkBytes);
+        released += kFlatMetadataChunkBytes;
+        spares = next;
+    }
+    return released;
+}
+
 static size_t
 spanMetadataSlotStride() {
     return alignMetadataOffset(sizeof(GCSpan), alignof(GCSpan));

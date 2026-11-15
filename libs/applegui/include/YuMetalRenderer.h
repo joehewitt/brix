@@ -131,6 +131,7 @@ enum YuGuiMetalStatField {
 
 extern "C" bool yumiGuiMetalRendererIsAvailable(void);
 extern "C" void yumiGuiMetalWarmUp(void);
+extern "C" void yumiGuiMetalReleaseIdle(void);
 // Returns a retained CGImage for a YuGraphics canvas. This narrow bridge keeps Yumi callers from
 // importing both native headers into one module.
 extern "C" void* yumiGuiMetalCanvasCreateCGImage(void* canvas);

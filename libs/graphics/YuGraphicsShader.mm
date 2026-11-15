@@ -2,9 +2,11 @@
 #include "YuGraphicsColor.h"
 
 #import <Metal/Metal.h>
+#import <objc/runtime.h>
 #include <CoreGraphics/CoreGraphics.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -108,8 +110,21 @@ static std::vector<YuGraphicsShaderEntry*> yuGraphicsShaders;
 static std::unordered_map<std::string, uint32_t> yuGraphicsShaderIds;
 static std::once_flag yuGraphicsShaderDeviceOnce;
 static id<MTLDevice> yuGraphicsShaderDevice = nil;
+static std::mutex yuGraphicsShaderQueueMutex;
 static id<MTLCommandQueue> yuGraphicsShaderQueue = nil;
+static std::atomic<size_t> yuGraphicsShaderCommandsAlive {0};
+static char yuGraphicsShaderCommandTokenKey;
 static id<MTLTexture> yuGraphicsShaderBlank = nil;
+
+@interface YuGraphicsShaderCommandToken : NSObject
+@end
+
+@implementation YuGraphicsShaderCommandToken
+- (void)dealloc {
+    yuGraphicsShaderCommandsAlive.fetch_sub(1, std::memory_order_release);
+    [super dealloc];
+}
+@end
 
 static const char* yuGraphicsShaderIncludes = R"METAL(
 #include <metal_stdlib>
@@ -663,7 +678,6 @@ yuGraphicsShaderDeviceReady() {
         if (!yuGraphicsShaderDevice) {
             return;
         }
-        yuGraphicsShaderQueue = [yuGraphicsShaderDevice newCommandQueue];
         MTLTextureDescriptor* descriptor = [MTLTextureDescriptor
             texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                          width:1
@@ -677,7 +691,26 @@ yuGraphicsShaderDeviceReady() {
                                    withBytes:&clear
                                  bytesPerRow:4];
     });
-    return yuGraphicsShaderDevice && yuGraphicsShaderQueue && yuGraphicsShaderBlank;
+    return yuGraphicsShaderDevice && yuGraphicsShaderBlank;
+}
+
+static id<MTLCommandBuffer>
+yuGraphicsShaderCommandBuffer() {
+    if (!yuGraphicsShaderDeviceReady()) {
+        return nil;
+    }
+    std::lock_guard<std::mutex> lock(yuGraphicsShaderQueueMutex);
+    if (!yuGraphicsShaderQueue) {
+        yuGraphicsShaderQueue = [yuGraphicsShaderDevice newCommandQueue];
+    }
+    id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+    if (commands) {
+        YuGraphicsShaderCommandToken* token = [YuGraphicsShaderCommandToken new];
+        yuGraphicsShaderCommandsAlive.fetch_add(1, std::memory_order_relaxed);
+        objc_setAssociatedObject(commands, &yuGraphicsShaderCommandTokenKey, token, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [token release];
+    }
+    return commands;
 }
 
 extern "C" void*
@@ -686,8 +719,19 @@ yumiGraphicsMetalDevice() {
 }
 
 extern "C" void*
-yumiGraphicsMetalQueue() {
-    return yuGraphicsShaderDeviceReady() ? (void*)yuGraphicsShaderQueue : nullptr;
+yumiGraphicsMetalCommandBuffer() {
+    return (void*)yuGraphicsShaderCommandBuffer();
+}
+
+extern "C" bool
+yumiGraphicsMetalReleaseIdleQueue() {
+    std::lock_guard<std::mutex> lock(yuGraphicsShaderQueueMutex);
+    if (yuGraphicsShaderCommandsAlive.load(std::memory_order_acquire) != 0) {
+        return false;
+    }
+    [yuGraphicsShaderQueue release];
+    yuGraphicsShaderQueue = nil;
+    return true;
 }
 
 static id<MTLLibrary>
@@ -929,7 +973,7 @@ yuGraphicsShaderRaster(
             format == YuGraphicsFormatRGBA16Float ? 0u : 1u,
             static_cast<float>(time),
         };
-        id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+        id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
         id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
         [encoder setComputePipelineState:pipeline];
         [encoder setBuffer:pixels offset:0 atIndex:0];
@@ -1004,7 +1048,7 @@ yuGraphicsShaderBatchEndCompute(YuGraphicsShaderBatch* batch) {
 static id<MTLCommandBuffer>
 yuGraphicsShaderBatchCommands(YuGraphicsShaderBatch* batch) {
     if (!batch->commands) {
-        batch->commands = [[yuGraphicsShaderQueue commandBuffer] retain];
+        batch->commands = [yuGraphicsShaderCommandBuffer() retain];
     }
     return batch->commands;
 }
@@ -1408,7 +1452,7 @@ yuGraphicsShaderFilter(
                 format == YuGraphicsFormatRGBA16Float ? 0u : 1u,
                 static_cast<float>(time),
             };
-            id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+            id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
             id<MTLComputeCommandEncoder> encoder = [commands computeCommandEncoder];
             [encoder setComputePipelineState:pipeline];
             [encoder setTexture:source atIndex:0];
@@ -1502,7 +1546,7 @@ yuGraphicsGPUTexture(void* pointer, bool mipmaps) {
     }
     if (mipmaps && store->mipsStale && store->texture.mipmapLevelCount > 1) {
         @autoreleasepool {
-            id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+            id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
             id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
             [blit generateMipmapsForTexture:store->texture];
             [blit endEncoding];
@@ -1534,7 +1578,7 @@ yuGraphicsGPUUpload(void* pointer, const uint8_t* pixels, size_t bytesPerRow, co
         for (int32_t row = 0; row < height; ++row) {
             memcpy(bytes + static_cast<size_t>(row) * rowBytes, source + static_cast<size_t>(row) * bytesPerRow, rowBytes);
         }
-        id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+        id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
         [blit copyFromBuffer:staging
                  sourceOffset:0
@@ -1569,7 +1613,7 @@ yuGraphicsGPUReadback(void* pointer, uint8_t* pixels, size_t bytesPerRow, const 
         if (!staging) {
             return false;
         }
-        id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+        id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
         id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
         [blit copyFromTexture:store->texture
                       sourceSlice:0
@@ -1625,7 +1669,7 @@ yuGraphicsGPURender(
         return false;
     }
     @autoreleasepool {
-        id<MTLCommandBuffer> commands = [yuGraphicsShaderQueue commandBuffer];
+        id<MTLCommandBuffer> commands = yuGraphicsShaderCommandBuffer();
         void* inputs[kShaderImageLimit] = {};
         id<MTLTexture> copy = nil;
         for (int32_t slot = 0; slot < imageCount; ++slot) {

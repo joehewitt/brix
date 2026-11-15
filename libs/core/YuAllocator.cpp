@@ -64,6 +64,7 @@ extern "C" size_t yumiGCStepConcurrentMark(void);
 extern "C" void yumiGCFinishAutomaticCycle(void);
 extern "C" void yumiGCStepIncrementalSweep(size_t workLimit);
 extern "C" void yumiGCStepScavenge(size_t pageBudget);
+extern "C" size_t yumiGCTrimMetadataCaches(void);
 extern "C" size_t yumiGCScavengeMinimumStepPages(void);
 extern "C" size_t yumiGCMutatorAssist(size_t workLimit);
 extern "C" bool yumiGCActiveTaskCanUseFastAllocation(void) __attribute__((weak));
@@ -186,6 +187,9 @@ static std::atomic<size_t> gcAllocatedSpans {0};
 static std::atomic<size_t> gcAllocatedArenas {0};
 static std::atomic<size_t> gcLiveObjects {0};
 static std::atomic<size_t> gcLiveBytes {0};
+static std::atomic<size_t> gcIdleSettledLiveBytes {0};
+static std::atomic<size_t> gcIdleSettleSeenLiveBytes {0};
+static std::atomic<uint64_t> gcIdleSettleSeenNanos {0};
 static std::atomic<size_t> gcHeapGoal {0};
 static std::atomic<size_t> gcCollectionCount {0};
 static std::atomic<size_t> gcMarkTimeNanos {0};
@@ -348,8 +352,11 @@ static constexpr size_t kYumiGCSubphaseCount = YumiGCObservationStackMapLookup +
 static constexpr size_t kYumiGCPauseEventCapacity = 8192;
 static constexpr size_t kYumiGCCycleSummaryCapacity = 1024;
 static constexpr size_t kYumiGCSubphaseSampleCapacity = 8192;
-static constexpr size_t kYumiGCDefaultHeapGoal = 256ull * 1024ull * 1024ull;
-static constexpr size_t kYumiGCDefaultHeapMinGrowth = 64ull * 1024ull * 1024ull;
+static constexpr size_t kYumiGCDefaultHeapGoal = 32ull * 1024ull * 1024ull;
+static constexpr size_t kYumiGCDefaultHeapMinGrowth = 16ull * 1024ull * 1024ull;
+static constexpr size_t kYumiGCHeapTaperStart = 128ull * 1024ull * 1024ull;
+static constexpr size_t kYumiGCIdleSettleMinimumBytes = 4ull * 1024ull * 1024ull;
+static constexpr uint64_t kYumiGCIdleSettleQuietNanos = 250000000ull;
 static constexpr size_t kYumiGCDefaultHeapGrowthPercent = 100;
 static constexpr size_t kYumiGCDefaultHeapHardCap = 0;
 static constexpr size_t kYumiGCDefaultThreadBatchCacheBytes = 8ull * 1024ull * 1024ull;
@@ -366,6 +373,7 @@ static constexpr size_t kYumiGCAutomaticHardAssistWork = 128;
 static constexpr size_t kYumiGCAutomaticStepWork = 64;
 static constexpr size_t kYumiGCAutomaticIdleWork = 256;
 static constexpr size_t kYumiGCAutomaticIdleScavengePages = 64;
+static constexpr size_t kYumiGCIdleScavengeMaximumPages = 16384;
 static constexpr size_t kYumiGCAutomaticTerminationQueueBudget = 64;
 static constexpr size_t kYumiGCAutomaticMaxActiveCycleNanos = 250ull * 1000ull * 1000ull;
 static constexpr size_t kYumiGCMaxAssistSliceNanos = 50ull * 1000ull;
@@ -2246,14 +2254,16 @@ yumiGCApplyHeapHardCap(size_t goal) {
     return hardCap ? std::min(goal, hardCap) : goal;
 }
 
+static std::atomic<size_t> gcProgramMinimumHeapGoal {0};
+
 static size_t
 yumiGCMinimumHeapGoal() {
     if (yumiGCCollectionDisabled()) {
         return std::numeric_limits<size_t>::max();
     }
-    static const size_t minimumHeapGoal = yumiGCApplyHeapHardCap(
-        yumiGCEnvSize("YUMI_GC_MIN_HEAP_GOAL", kYumiGCDefaultHeapGoal));
-    return minimumHeapGoal;
+    static const size_t configuredGoal = yumiGCEnvSize("YUMI_GC_MIN_HEAP_GOAL", 0);
+    size_t goal = configuredGoal ? configuredGoal : gcProgramMinimumHeapGoal.load(std::memory_order_acquire);
+    return yumiGCApplyHeapHardCap(goal ? goal : kYumiGCDefaultHeapGoal);
 }
 
 static size_t
@@ -2464,9 +2474,29 @@ yumiGCAutomaticIdleWork() {
     return kYumiGCAutomaticIdleWork;
 }
 
+static std::atomic<size_t> gcScavengedPageTotal {0};
+static std::atomic<bool> gcMetadataTrimPending {false};
+static std::atomic<uint64_t> gcIdleScavengePicosPerPage {0};
+
 static size_t
-yumiGCAutomaticIdleScavengePages() {
-    return kYumiGCAutomaticIdleScavengePages;
+yumiGCIdleScavengePageLimit(uint64_t budgetNanos, size_t debt, size_t minimum) {
+    size_t limit = kYumiGCAutomaticIdleScavengePages;
+    uint64_t picosPerPage = gcIdleScavengePicosPerPage.load(std::memory_order_relaxed);
+    if (picosPerPage) {
+        limit = static_cast<size_t>(std::min<uint64_t>(
+            budgetNanos * 1000ull / picosPerPage,
+            kYumiGCIdleScavengeMaximumPages));
+    }
+    return std::min(debt, std::max(limit, minimum));
+}
+
+static void
+yumiGCRecordIdleScavengeCost(uint64_t elapsedNanos, size_t released) {
+    uint64_t sample = std::max<uint64_t>(elapsedNanos * 1000ull / released, 1);
+    uint64_t previous = gcIdleScavengePicosPerPage.load(std::memory_order_relaxed);
+    gcIdleScavengePicosPerPage.store(
+        previous ? previous - previous / 4 + sample / 4 : sample,
+        std::memory_order_relaxed);
 }
 
 static size_t
@@ -3259,16 +3289,39 @@ yumiGCBudgetHasTime(uint64_t deadlineNanos) {
     return now < deadlineNanos && deadlineNanos - now > kYumiGCBudgetGuardNanos;
 }
 
+enum YumiGCIdleSettle {
+    YumiGCIdleSettleNone,
+    YumiGCIdleSettleWaiting,
+    YumiGCIdleSettleDue
+};
+
+static YumiGCIdleSettle
+yumiGCIdleSettleState(uint64_t nowNanos) {
+    size_t live = gcLiveBytes.load(std::memory_order_relaxed);
+    size_t settled = gcIdleSettledLiveBytes.load(std::memory_order_acquire);
+    size_t slack = std::max(settled / 4, kYumiGCIdleSettleMinimumBytes);
+    if (live <= settled || live - settled < slack) {
+        return YumiGCIdleSettleNone;
+    }
+    if (gcIdleSettleSeenLiveBytes.exchange(live, std::memory_order_acq_rel) != live) {
+        gcIdleSettleSeenNanos.store(nowNanos, std::memory_order_release);
+        return YumiGCIdleSettleWaiting;
+    }
+    uint64_t seen = gcIdleSettleSeenNanos.load(std::memory_order_acquire);
+    return nowNanos - seen < kYumiGCIdleSettleQuietNanos
+        ? YumiGCIdleSettleWaiting
+        : YumiGCIdleSettleDue;
+}
+
 static bool
-yumiGCIdleScavengeIfNeeded(uint64_t deadlineNanos) {
-    size_t budget = yumiGCAutomaticIdleScavengePages();
+yumiGCIdleScavengeIfNeeded(uint64_t deadlineNanos, bool trimsMetadata, bool* pending = nullptr) {
     if (!gcInitialized.load(std::memory_order_acquire) ||
-            budget == 0 ||
             yumiGCLoadPublicPhase() != kYumiGCPhaseIdle ||
             !yumiGCBudgetHasTime(deadlineNanos)) {
         return false;
     }
-    if (yumiGCScavengeDebt() == 0) {
+    bool wantsTrim = trimsMetadata && gcMetadataTrimPending.load(std::memory_order_acquire);
+    if (yumiGCScavengeDebt() == 0 && !wantsTrim) {
         return false;
     }
     if (!yumiGCTryBeginCollectionWork()) {
@@ -3276,16 +3329,40 @@ yumiGCIdleScavengeIfNeeded(uint64_t deadlineNanos) {
     }
 
     yumiFlushGCAllocationBatches();
+    bool remains = false;
     yumiCallGCIgnoringPanic([&]() {
         size_t debt = yumiGCScavengeDebt();
-        uint64_t remainingNanos = deadlineNanos - yumiGCMonotonicNanos();
+        if (!debt) {
+            if (trimsMetadata && gcMetadataTrimPending.exchange(false, std::memory_order_acq_rel)) {
+                yumiGCTrimMetadataCaches();
+            }
+            return;
+        }
+        uint64_t startNanos = yumiGCMonotonicNanos();
+        uint64_t remainingNanos = deadlineNanos > startNanos ? deadlineNanos - startNanos : 0;
         size_t minimum = yumiGCScavengeMinimumStepPages();
         size_t pageLimit = remainingNanos <= kYumiGCBudgetGuardNanos * 4
             ? minimum
-            : std::min(debt, std::max(budget, minimum));
+            : yumiGCIdleScavengePageLimit(
+                remainingNanos - kYumiGCBudgetGuardNanos,
+                debt,
+                minimum);
+        size_t releasedBefore = gcScavengedPageTotal.load(std::memory_order_relaxed);
         yumiGCStepScavenge(pageLimit);
+        size_t released = gcScavengedPageTotal.load(std::memory_order_relaxed) - releasedBefore;
+        if (released) {
+            yumiGCRecordIdleScavengeCost(yumiGCMonotonicNanos() - startNanos, released);
+            remains = yumiGCScavengeDebt() != 0;
+        }
+        if (!remains && trimsMetadata &&
+                gcMetadataTrimPending.exchange(false, std::memory_order_acq_rel)) {
+            yumiGCTrimMetadataCaches();
+        }
     });
     yumiGCEndCollection();
+    if (pending) {
+        *pending = remains;
+    }
     return true;
 }
 
@@ -3773,45 +3850,56 @@ yumiGCCollectForAllocationIfNeeded(size_t upcomingSize) {
     }
 }
 
-extern "C" void
-yumiGCRuntimeIdleCollect(uint64_t deadlineNanos) {
-    if (yumiGCCollectionDisabled()) {
-        return;
+extern "C" bool
+yumiGCRuntimeIdleCollect(uint64_t budgetNanos) {
+    if (yumiGCCollectionDisabled() || !budgetNanos) {
+        return false;
     }
+    uint64_t startNanos = yumiGCMonotonicNanos();
+    uint64_t deadlineNanos = budgetNanos > std::numeric_limits<uint64_t>::max() - startNanos
+        ? std::numeric_limits<uint64_t>::max()
+        : startNanos + budgetNanos;
     if (yumiGCIdleProgressDisabled()) {
-        return;
+        return false;
     }
     if (!yumiGCBudgetHasTime(deadlineNanos)) {
-        return;
+        return false;
     }
 
     unsigned char phase = yumiGCLoadPublicPhase();
     if (phase != kYumiGCPhaseIdle) {
-        if (gcAutomaticCycleActive.load(std::memory_order_acquire)) {
-            yumiGCProgressWithinDeadline(deadlineNanos, yumiGCAutomaticIdleWork());
+        if (!gcAutomaticCycleActive.load(std::memory_order_acquire)) {
+            return false;
         }
-        return;
+        yumiGCProgressWithinDeadline(deadlineNanos, yumiGCAutomaticIdleWork());
+        return gcAutomaticCycleActive.load(std::memory_order_acquire);
     }
 
+    bool pending = false;
+    YumiGCIdleSettle settle = YumiGCIdleSettleNone;
     if (!yumiGCShouldStartAutomaticCycle(0)) {
-        yumiGCIdleScavengeIfNeeded(deadlineNanos);
-        return;
+        settle = yumiGCIdleSettleState(startNanos);
+        if (settle != YumiGCIdleSettleDue) {
+            yumiGCIdleScavengeIfNeeded(deadlineNanos, true, &pending);
+            return pending || settle == YumiGCIdleSettleWaiting;
+        }
     }
 
     yumiFlushGCAllocationBatches();
     if (!yumiGCBudgetHasTime(deadlineNanos)) {
-        return;
+        return false;
     }
-    if (!yumiGCShouldStartAutomaticCycle(0)) {
-        yumiGCIdleScavengeIfNeeded(deadlineNanos);
-        return;
+    if (!yumiGCShouldStartAutomaticCycle(0) && settle != YumiGCIdleSettleDue) {
+        yumiGCIdleScavengeIfNeeded(deadlineNanos, true, &pending);
+        return pending;
     }
 
     if (yumiGCStartAutomaticCycle(false, YumiGCPacerTriggerIdle)) {
         yumiGCProgressWithinDeadline(deadlineNanos, yumiGCAutomaticIdleWork());
-    } else {
-        yumiGCIdleScavengeIfNeeded(deadlineNanos);
+        return gcAutomaticCycleActive.load(std::memory_order_acquire);
     }
+    yumiGCIdleScavengeIfNeeded(deadlineNanos, true, &pending);
+    return pending;
 }
 
 extern "C" void
@@ -3839,7 +3927,7 @@ yumiGCFrameBudget(uint64_t remainingNanos) {
     if (yumiGCLoadPublicPhase() != kYumiGCPhaseIdle) {
         worked = yumiGCProgressWithinDeadline(deadline, kYumiGCAutomaticStepWork) || worked;
     } else {
-        worked = yumiGCIdleScavengeIfNeeded(deadline) || worked;
+        worked = yumiGCIdleScavengeIfNeeded(deadline, false) || worked;
     }
 
     if (!worked) {
@@ -4578,6 +4666,7 @@ yumiGCRuntimeRecordScavengePages(size_t pages) {
     if (!pages) {
         return;
     }
+    gcScavengedPageTotal.fetch_add(pages, std::memory_order_relaxed);
     size_t cycleId = gcCurrentCycleId.load(std::memory_order_acquire);
     std::lock_guard<std::mutex> lock(gcObservabilityMutex);
     for (size_t offset = 0; offset < gcCycleSummaryStored; ++offset) {
@@ -4656,6 +4745,37 @@ yumiGCRuntimeSetHeapGoal(size_t goal) {
     yumiGCPacerInvalidateGoalCache();
 }
 
+extern "C" void
+yumiGCRuntimeSetMinimumHeapGoal(size_t goal) {
+    gcProgramMinimumHeapGoal.store(goal, std::memory_order_release);
+    if (yumiGCCollectionDisabled() || gcRequestedHeapGoal.load(std::memory_order_acquire)) {
+        return;
+    }
+    size_t minimum = yumiGCMinimumHeapGoal();
+    size_t current = gcHeapGoal.load(std::memory_order_acquire);
+    while (current < minimum &&
+            !gcHeapGoal.compare_exchange_weak(
+                current,
+                minimum,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+    }
+    yumiGCPacerInvalidateGoalCache();
+}
+
+static size_t
+yumiGCTaperedGrowth(size_t live) {
+    size_t percent = yumiGCHeapGrowthPercent();
+    if (live <= kYumiGCHeapTaperStart) {
+        return yumiGCMultiplyDivideSaturating(live, percent, 100);
+    }
+    size_t full = yumiGCMultiplyDivideSaturating(kYumiGCHeapTaperStart, percent, 100);
+    size_t half = yumiGCMultiplyDivideSaturating(live - kYumiGCHeapTaperStart, percent, 200);
+    return full > std::numeric_limits<size_t>::max() - half
+        ? std::numeric_limits<size_t>::max()
+        : full + half;
+}
+
 static size_t
 yumiGCLimitGrowthToAvailableMemory(size_t growth) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
@@ -4670,7 +4790,11 @@ yumiGCLimitGrowthToAvailableMemory(size_t growth) {
 
 extern "C" void
 yumiGCRuntimeFinishCollection() {
+    gcMetadataTrimPending.store(true, std::memory_order_release);
     size_t live = gcLiveBytes.load(std::memory_order_relaxed);
+    if (gcCurrentCycleTriggerReason.load(std::memory_order_acquire) == YumiGCPacerTriggerIdle) {
+        gcIdleSettledLiveBytes.store(live, std::memory_order_release);
+    }
     size_t requestedGoal = gcRequestedHeapGoal.load(std::memory_order_acquire);
     if (requestedGoal && !gcCollectionMayGrowRequestedGoal.load(std::memory_order_acquire)) {
         yumiGCPacerPublishCycleStats(live, gcHeapGoal.load(std::memory_order_acquire));
@@ -4685,7 +4809,7 @@ yumiGCRuntimeFinishCollection() {
         : yumiGCHeapMinGrowth();
     size_t growth = yumiGCLimitGrowthToAvailableMemory(std::max(
         minimumGrowth,
-        yumiGCMultiplyDivideSaturating(live, yumiGCHeapGrowthPercent(), 100)));
+        yumiGCTaperedGrowth(live)));
     size_t goal = live > std::numeric_limits<size_t>::max() - growth
         ? std::numeric_limits<size_t>::max()
         : live + growth;
@@ -6749,8 +6873,9 @@ extern "C" void
 yumiGCRuntimeRevokeActiveAllocationBuffer() {
 }
 
-extern "C" void
+extern "C" bool
 yumiGCRuntimeIdleCollect(uint64_t) {
+    return false;
 }
 
 extern "C" void
@@ -7052,6 +7177,10 @@ yumiGCBulkWriteBarrier(char*, char*, size_t, void*) {
 
 extern "C" void
 yumiGCSetHeapGoal(size_t) {
+}
+
+extern "C" void
+yumiGCSetMinimumHeapGoal(size_t) {
 }
 
 extern "C" size_t

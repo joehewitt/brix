@@ -6,6 +6,17 @@
 
 namespace YuGC {
 
+struct GCPageStats {
+    size_t committedPages = 0;
+    size_t allocatedPages = 0;
+    size_t freeCommittedPages = 0;
+    size_t freeCommittedRuns = 0;
+    size_t largestFreeCommittedRun = 0;
+    size_t peakDemandPages = 0;
+    size_t retentionPages = 0;
+    size_t debtPages = 0;
+};
+
 struct GCHeap {
     std::vector<GCArena*> arenas;
     GCArena* reserveArena = nullptr;
@@ -126,6 +137,8 @@ struct GCHeap {
         bool respectRetentionTarget = true);
 
     size_t scavengeDebtPageCount(bool respectRetentionTarget = true);
+
+    GCPageStats pageStats();
 
     size_t releaseEmptyArenas(size_t budget);
 

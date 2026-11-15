@@ -39,6 +39,7 @@
 _ tool-names [String] = ["probes", "test", "bench", "lint"]
 _ guide-index Path := toolchain-root / "docs/index.md"
 
+set-minimum-heap-goal(256 * 1048576)
 request-process-termination
     - run-tool(cmdline-args()) ?? run-init(cmdline-args()) ?? CompilerCommand().run()
 
@@ -523,7 +524,9 @@ _ do serve Int ?! Error
 . emissions = use EmissionMemory()
 . typings = use KeptTyping(view)
 . builds = ServedBuilds(name, view, lowerings, emissions, typings)
-= BuildDaemon(AnalysisService(store), view, search-paths, builds.run).serve()
+. daemon = BuildDaemon(AnalysisService(store), view, search-paths, builds.run)
+daemon.rest = builds.rest
+= daemon.serve()
 
 ────────────────────
 _ typing-key String
@@ -567,6 +570,13 @@ _ ServedBuilds
 . result = catch captured(arguments)
 =? BuildResult(1, "${(result as Error).message}\n", null) if result is Error
 = result
+
+────────────────────
++ do rest
+
+typings.release()
+collect-garbage()
+return-free-memory()
 
 ────────────────────
 _ do captured BuildResult ?! Error

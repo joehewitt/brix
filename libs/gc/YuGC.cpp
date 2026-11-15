@@ -3219,6 +3219,15 @@ yumiGCScavenge(void) {
     scavengeStep(std::numeric_limits<size_t>::max(), true, false);
 }
 
+extern "C" size_t
+yumiGCTrimMetadataCaches(void) {
+    if (yumiGCCollectionDisabled() || publicCollectorPhase() != kPhaseIdle) {
+        return 0;
+    }
+    ensureInitialized();
+    return markWork().trimSurplusBuffers() + releaseSpareSpanMetadata();
+}
+
 extern "C" void
 yumiGCStepScavenge(size_t pageBudget) {
     if (yumiGCCollectionDisabled()) {
@@ -4684,6 +4693,15 @@ yumiGCSetHeapGoal(size_t goal) {
     yumiGCRuntimeSetHeapGoal(goal);
 }
 
+extern "C" void
+yumiGCSetMinimumHeapGoal(size_t goal) {
+    if (yumiGCCollectionDisabled()) {
+        return;
+    }
+    ensureInitialized();
+    yumiGCRuntimeSetMinimumHeapGoal(goal);
+}
+
 #define YU_GC_RUNTIME_COUNTER(name, runtimeName) \
     extern "C" size_t name(void) { return runtimeName(); }
 
@@ -4952,6 +4970,41 @@ yumiGCIncrementalSweepHasDebt(void) {
 extern "C" size_t
 yumiGCScavengeDebt(void) {
     return heap().scavengeDebtPageCount(true);
+}
+
+extern "C" size_t
+yumiGCScavengeDebtBytes(void) {
+    return heap().pageStats().debtPages * kPageSize;
+}
+
+extern "C" size_t
+yumiGCFreeCommittedBytes(void) {
+    return heap().pageStats().freeCommittedPages * kPageSize;
+}
+
+extern "C" size_t
+yumiGCFreeCommittedRunCount(void) {
+    return heap().pageStats().freeCommittedRuns;
+}
+
+extern "C" size_t
+yumiGCLargestFreeCommittedRunBytes(void) {
+    return heap().pageStats().largestFreeCommittedRun * kPageSize;
+}
+
+extern "C" size_t
+yumiGCAllocatedPageBytes(void) {
+    return heap().pageStats().allocatedPages * kPageSize;
+}
+
+extern "C" size_t
+yumiGCPeakDemandBytes(void) {
+    return heap().pageStats().peakDemandPages * kPageSize;
+}
+
+extern "C" size_t
+yumiGCRetentionTargetBytes(void) {
+    return heap().pageStats().retentionPages * kPageSize;
 }
 
 extern "C" size_t

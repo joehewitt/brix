@@ -59,32 +59,48 @@ GCBitmap::findFrom(bool value, size_t start, size_t& result) const {
 }
 
 bool
-GCBitmap::findConsecutiveFrom(size_t count, bool value, size_t start, size_t& result) const {
+GCBitmap::findFirstConsecutive(size_t count, bool value, size_t start, size_t& result) const {
     if (count == 0 || count > bitCount) {
         return false;
     }
-    if (start >= bitCount) {
-        start = 0;
-    }
-    for (size_t scanned = 0; scanned < bitCount; ++scanned) {
-        size_t index = start + scanned;
-        if (index >= bitCount) {
-            index -= bitCount;
-        }
-        if (index + count > bitCount) {
-            continue;
-        }
-        bool found = true;
-        for (size_t offset = 0; offset < count; ++offset) {
-            if (get(index + offset) != value) {
-                found = false;
-                break;
+    unsigned char matching = value ? 0xFF : 0x00;
+    unsigned char missing = value ? 0x00 : 0xFF;
+    size_t runStart = 0;
+    size_t run = 0;
+    size_t index = start;
+    while (index < bitCount) {
+        if (index % 8 == 0 && index + 8 <= bitCount) {
+            unsigned char byte = bytes[index / 8];
+            if (byte == missing) {
+                run = 0;
+                index += 8;
+                continue;
+            }
+            if (byte == matching) {
+                if (!run) {
+                    runStart = index;
+                }
+                run += 8;
+                if (run >= count) {
+                    result = runStart;
+                    return true;
+                }
+                index += 8;
+                continue;
             }
         }
-        if (found) {
-            result = index;
-            return true;
+        if (get(index) == value) {
+            if (!run) {
+                runStart = index;
+            }
+            if (++run >= count) {
+                result = runStart;
+                return true;
+            }
+        } else {
+            run = 0;
         }
+        ++index;
     }
     return false;
 }

@@ -21,7 +21,7 @@ struct GCArena {
     size_t allocatedPageCount = 0;
     size_t committedPageCount = 0;
     size_t decommittedPageCount;
-    size_t nextPageSearch = 0;
+    size_t firstFreePage = 0;
     size_t emptySinceCycle = 0;
     size_t dirtyPages = 0;
 

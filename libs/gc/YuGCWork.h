@@ -54,6 +54,7 @@ public:
     // Span construction grows a persistent high-water WorkBuf pool outside the mark edge.
     bool registerSpanCapacity(size_t slots);
     void unregisterSpanCapacity(size_t slots);
+    size_t trimSurplusBuffers();
 
     // Called during mark setup after the previous queue and every participant are quiescent.
     // The reset is O(1); drained buffers are already on the empty list.
@@ -116,6 +117,7 @@ private:
 
     void lockQueue() const;
     void unlockQueue() const;
+    size_t requiredBufferCountLocked() const;
     bool provisionRequiredBuffersLocked();
     bool provisionOneBufferLocked();
     GCMarkParticipant* participantFor(YumiGCThreadCache* cache);

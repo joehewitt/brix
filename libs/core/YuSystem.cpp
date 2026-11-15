@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <vector>
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -20,6 +22,7 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #include <crt_externs.h>
+#include <dispatch/dispatch.h>
 #include <mach-o/dyld.h>
 #include <sys/clonefile.h>
 #if TARGET_OS_OSX
@@ -473,4 +476,98 @@ yumiSetSignalIgnored(int number, int ignored) {
     action.sa_handler = ignored ? SIG_IGN : SIG_DFL;
     sigemptyset(&action.sa_mask);
     return sigaction(number, &action, NULL);
+}
+
+struct YuMemoryPressureWatcher {
+    int readFd;
+    int writeFd;
+};
+
+static std::mutex gMemoryPressureLock;
+static std::vector<YuMemoryPressureWatcher> gMemoryPressureWatchers;
+
+extern "C" void
+yumiNoteMemoryPressure(int32_t level) {
+    uint8_t byte = static_cast<uint8_t>(level);
+    std::lock_guard<std::mutex> guard(gMemoryPressureLock);
+    for (const YuMemoryPressureWatcher& watcher : gMemoryPressureWatchers) {
+        ssize_t written = write(watcher.writeFd, &byte, 1);
+        (void)written;
+    }
+}
+
+#if defined(__APPLE__)
+static void
+yumiMemoryPressureEvent(void* context) {
+    unsigned long flags = dispatch_source_get_data(static_cast<dispatch_source_t>(context));
+    yumiNoteMemoryPressure(flags & DISPATCH_MEMORYPRESSURE_CRITICAL ? 2 : 1);
+}
+#endif
+
+static void
+yumiStartMemoryPressureSource() {
+#if defined(__APPLE__)
+    static std::once_flag once;
+    std::call_once(once, []() {
+        dispatch_source_t source = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_MEMORYPRESSURE,
+            0,
+            DISPATCH_MEMORYPRESSURE_WARN | DISPATCH_MEMORYPRESSURE_CRITICAL,
+            dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        if (!source) {
+            return;
+        }
+        dispatch_set_context(source, source);
+        dispatch_source_set_event_handler_f(source, yumiMemoryPressureEvent);
+        dispatch_resume(source);
+    });
+#endif
+}
+
+extern "C" int32_t
+yumiWatchMemoryPressure() {
+    int ends[2];
+    if (pipe(ends) != 0) {
+        return -1;
+    }
+    for (int end : ends) {
+        fcntl(end, F_SETFD, FD_CLOEXEC);
+        fcntl(end, F_SETFL, fcntl(end, F_GETFL) | O_NONBLOCK);
+    }
+    {
+        std::lock_guard<std::mutex> guard(gMemoryPressureLock);
+        gMemoryPressureWatchers.push_back({ends[0], ends[1]});
+    }
+    yumiStartMemoryPressureSource();
+    return ends[0];
+}
+
+extern "C" void
+yumiUnwatchMemoryPressure(int32_t fd) {
+    std::lock_guard<std::mutex> guard(gMemoryPressureLock);
+    for (auto watcher = gMemoryPressureWatchers.begin(); watcher != gMemoryPressureWatchers.end(); ++watcher) {
+        if (watcher->readFd == fd) {
+            close(watcher->writeFd);
+            gMemoryPressureWatchers.erase(watcher);
+            return;
+        }
+    }
+}
+
+extern "C" int32_t
+yumiTakeMemoryPressure(int32_t fd) {
+    uint8_t bytes[64];
+    int32_t level = 0;
+    while (true) {
+        ssize_t count = read(fd, bytes, sizeof(bytes));
+        if (count > 0) {
+            for (ssize_t index = 0; index < count; ++index) {
+                level = bytes[index] > level ? bytes[index] : level;
+            }
+        } else if (count == 0) {
+            return level ? level : -1;
+        } else if (errno != EINTR) {
+            return level;
+        }
+    }
 }

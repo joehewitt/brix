@@ -72,7 +72,12 @@ Operations on streams. `/stream` gathers all but one of its modules.
 Control over the garbage collector. `/gc` passes on `Weak` from `/core/gc`, and adds `on-reclaim`,
 which runs a cleanup after an object is collected, as well as `collect-garbage` and
 `return-free-memory`. Modules that hold native resources, such as open files, use it to release
-them.
+them. `gc-memory` reports the collector's memory: live bytes, the heap goal, committed bytes and how
+much of them spans hold, free committed bytes and how scattered they are, peak demand, the retention
+target, the free bytes not yet returned, footprint and the collection count. `set-minimum-heap-goal`
+sets the smallest heap goal, the size the heap may reach before a collection starts, which is 32 MB
+by default. A program that would rather spend memory than run more collections, such as the
+compiler, sets a larger one.
 
 ## Values and data
 
@@ -150,8 +155,9 @@ Files, processes and the environment. There is no `/os` module; import each one.
   login shell's environment), `/os/bundle` and `/os/app-support` (an app's bundle and its
   application support folder).
 - **Processes:** `/os/process` (`Process`, and pipes to and from processes), `/os/pty`,
-  `/os/signal`, `/os/tty`, `/os/shared-memory`, `/os/message-channel`, `/os/outbox` and
-  `/os/mach-port`.
+  `/os/signal`, `/os/memory-pressure` (`memory-pressure`, which sends a warning or critical level
+  when macOS or iOS runs short of memory), `/os/tty`, `/os/shared-memory`, `/os/message-channel`,
+  `/os/outbox` and `/os/mach-port`.
 - **Terminals:** `/os/terminal` gathers a terminal emulator, a shell session in a pseudo-terminal,
   and terminal paths.
 
