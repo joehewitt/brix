@@ -2958,3 +2958,79 @@ a b c*
 a b
 build build build close:c
 ;====
+:====
+# Making the rows of a loop is not tracked by the loop's action. A row that reads a style-sheet
+# slot while it is made does not run the loop again when that read settles after mounting.
+
+/core/markup
+/core/style
+/core/tests/support/markup-fixtures
+
++ builds = 0
+
+<Demo demo
+
+demo.markup-batch-queue.checkpoint()
+demo.items = List'I64([1, 2])
+demo.markup-batch-queue.checkpoint()
+-- "builds=$builds pending=${demo.markup-batch-queue.actions.length}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
++ items = List'I64([1])
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
+
+<This
+    for item in #items
+        <Row
+            value = item
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ row-ink I64
+    - row Row
+
+row.$bright
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Box
+    using AppTheme
+    using TextStyle
+
++ value I64
++ bright-at-build I64
+
+────────────────────
++ This
+
+builds += 1
+bright-at-build = $bright
+
+────────────────────
+
+<This
+    ink = row-ink(this) + #value
+
+:----
+builds=3 pending=0
+;====

@@ -1885,3 +1885,84 @@ Stack trace:
   20  __source__:init.__source__ no file
   21  __source__:yumi.main no file
 ;====
+:====
+# Making the arm a match selects is not tracked by the match's action. An element that reads a
+# style-sheet slot while it is made does not run the match again when that read settles after
+# mounting.
+
+/core/markup
+/core/style
+/core/tests/support/markup-fixtures
+
++ builds = 0
+
+<Demo demo
+
+demo.markup-batch-queue.checkpoint()
+demo.kind = 2
+demo.markup-batch-queue.checkpoint()
+-- "builds=$builds pending=${demo.markup-batch-queue.actions.length}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
++ kind = 1
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
+
+<This
+    match #kind
+        | 1
+            <Row
+                value = 1
+        | _
+            <Row
+                value = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ row-ink I64
+    - row Row
+
+row.$bright
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Box
+    using AppTheme
+    using TextStyle
+
++ value I64
++ bright-at-build I64
+
+────────────────────
++ This
+
+builds += 1
+bright-at-build = $bright
+
+────────────────────
+
+<This
+    ink = row-ink(this) + #value
+
+:----
+builds=2 pending=0
+;====
