@@ -10,6 +10,7 @@
 /lang/ast/c-header
 /lang/ast/c-header-snapshot
 /lang/ast/error
+/lang/ast/module
 /lang/ast/probe-selection
 /lang/ast/program
 /lang/ast/syntax-program
@@ -24,6 +25,7 @@
 /lang/emit/link
 /lang/emit/products
 /lang/product/run-report
+/lang/report/explain
 /lang/report/facts-text
 /lang/target
 /os/cli
@@ -203,6 +205,9 @@ _ CompilerCommand is CommandLine
             about = "print the IR to stderr without building; ir adds each backend stage, emitted does not"
         <Flag lists-sources "--list-sources"
             about = "list the modules the program loads"
+        <Option explained "--explain"
+            value-name = "FUNCTION"
+            about = "print what the compiler inferred about a function: a name, Type.method, path:name, or file:line"
         <Flag lists-probes "--list-probes"
             about = "list each probe the program writes, as a JSON line of its key, kind, path and line"
         <Flag timings "--timings"
@@ -283,7 +288,7 @@ _ get runs-program Bool
 
 built.value || (!stops-early && (executable.value || probes.is-given))
 
-.. stops-early = compiles.value || stops-at-object.value || batch-path.value || inspection.value || is-listing
+.. stops-early = compiles.value || stops-at-object.value || batch-path.value || inspection.value || is-listing || explained.value
 .. is-listing = lists-sources.value || lists-probes.value || lists-devices.value
 
 ────────────────────
@@ -308,6 +313,22 @@ stdout <- "$usage\n\n$about\n\nrun `yumi --help` for its options\n"
 _ do show-version Int
 
 -- version-text()
+= 0
+
+────────────────────
+_ do explain Int
+    - program Program
+    - session Session
+    - asked String
+
+. root = source-module(program)
+. ref = explained-function(program, root, asked)
+    catch error ExplainError
+        stderr <- "${error.message}\n"
+        = 1
+. holder = program.modules[ref.module]
+. read = catch? source-text(holder.path)
+-- explain-function(session, root, ref, read ?? "")
 = 0
 
 ────────────────────
@@ -383,6 +404,9 @@ do finally
 if reported.length != 0
     -- "\n\n".join(reported)
     = diagnostic-status
+. asked = explained.value
+if asked
+    = explain(program, session, asked)
 . product = read-product(program, session.types, target)
     catch error ProductError
         -- error.message
@@ -701,3 +725,18 @@ do match? tree.nodes[id]
     | .node-probe-statement(row)
         = if row.key then row.key.text else ""
 = ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-module ModuleId
+    - program Program
+
+for position in 0 .. < program.modules.length
+    =? position as ModuleId if program.modules[position].name == "__source__"
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-text String ?! Error
+    - path String
+
+. file = use File(path)
+= file as String

@@ -5,6 +5,7 @@
 /test
 
 _ thick = "━━━━━━━━━━━━━━━━━━━━"
+_ thin = "────────────────────"
 
 tests()
 
@@ -19,6 +20,7 @@ cases = cases.then("Brix Paste Indentation", indentation-tests)
 cases = cases.then("Brix Line Deletion", deletion-tests)
 cases = cases.then("Brix Unparsed Text", unparsed-tests)
 cases = cases.then("Brix Conversion", conversion-tests)
+cases = cases.then("Brix Folds", fold-tests)
 = cases
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -152,6 +154,16 @@ t.check("the fixed declaration has no invalid rows", invalid-rows(header).length
 . source = nested-arguments().trim()
 t.expect("nested type arguments are written in parentheses", nested-text().trim(), => brix-yumi-text(source))
 t.expect("nested type arguments read back nested", source, => brix-convert(brix-yumi-text(source)).trim())
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do fold-tests TestCase ?! Error
+    - t TestCase
+
+. session = opened(text-member-source().trim())
+. head = row-of(session, "+ ¶ metal")
+t.check("a text member folds", session.folds.can-fold(head))
+t.expect("a text member folds through its text", row-of(session, "}") + 1, session.folds.section-end(head))
 = t
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -604,3 +616,23 @@ _ ¶ nested-text
 . readers = List'(Getter'Int)()
 
 $thick
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ text-member-source
+
+$thick
++ Shader
+
++ size Int
+
+$thin
++ ¶ metal
+
+float hash() {
+    return 1.0;
+}
+
+$thin
++ area Int
+
+size * size

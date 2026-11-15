@@ -84,11 +84,13 @@ _ spare ImmutableTableRow'SourceNode?
 . result = build.rows
 if is-main(declaration) || store.is-form(declaration, "content")
     . items = store.items(declaration)
+    . is-content = store.is-form(declaration, "content")
+    . zone = if is-content then SourceRowZone.body else SourceRowZone.loose
     if !store.is-form(declaration, brix-main-head)
-        result += brix-divider-row(source-divider-thick, declaration)
+        result += brix-divider-row(source-divider-thick, declaration, if is-content then .leaf else .none)
         result += brix-gap(brix-mode-separator, declaration)
     for index in 1 .. < items.length
-        part(build, items[index], brix-part-statement, brix-mode-main, declaration)
+        part(build, items[index], brix-part-statement, brix-mode-main, declaration, zone)
     result += brix-gap(brix-mode-tail, declaration)
 else if is-function(declaration)
     function-rows(declaration, source-divider-thick, result, build)
@@ -104,8 +106,9 @@ else if store.is-form(declaration, brix-unparsed-head)
             - 0
             - declaration.index as U32
             - false
+            - SourceRowZone.loose
 else
-    statement-rows(declaration, 0, declaration, brix-mode-note, result)
+    statement-rows(declaration, 0, declaration, brix-mode-note, SourceRowZone.loose, result)
 = SourceOutline(build.place, brix-spaced(result), result, build.parts, build.reused)
 
 ────────────────────
@@ -122,6 +125,8 @@ SourceRow
     - row.owner
     - store.id-at(row.node)
     - store.id-at(row.owner)
+    - row.zone
+    - row.block
 
 .. spans = spans-of(row, store.node-at(row.node))
 
@@ -193,8 +198,8 @@ is-code || is-prose || is-nested
     brix-highlight-head(text)
 |? mode == brix-mode-text
     brix-highlight-line(text)
-|? mode == brix-mode-main && brix-is-import(text)
-    List'SourceSpan(SourceSpan(.string, text))
+|? mode == brix-mode-main && brix-is-import(if text.starts-with("+ ") then text[2 ...] else text)
+    brix-import-spans(text)
 ??
     brix-highlight(text)
 
@@ -470,7 +475,7 @@ is-function(node) || is-type(node) || store.is-form(node, "content") || is-unpar
 
 . held = List'(ImmutableTableRow'SourceNode)(store.atom(brix-main-head))
 held ++= items
-= store.list(held)
+= imports-spaced(store.list(held))
 
 ────────────────────
 + do section ImmutableTableRow'SourceNode
@@ -727,6 +732,7 @@ _ do grouping ImmutableTableRow'SourceNode
     - is-trimmed Bool
 
 =? regrouped(declaration, is-trimmed) if is-function(declaration)
+=? imports-spaced(declaration) if store.is-form(declaration, brix-main-head)
 =? declaration if !is-type(declaration)
 . items = store.listed(declaration)
 . is-changed = false
@@ -737,6 +743,30 @@ for index in 1 .. < items.length
             items[index] = next
             is-changed = true
 = if is-changed then store.with-items(declaration, items) else declaration
+
+────────────────────
+_ do imports-spaced ImmutableTableRow'SourceNode
+    - node ImmutableTableRow'SourceNode
+
+. items = store.listed(node)
+. index Index = 1
+while index < items.length && is-loose(items[index])
+    index += 1
+=? node if index >= items.length || !is-import(items[index])
+. last = index
+while index < items.length && (is-import(items[index]) || is-loose(items[index]))
+    if is-import(items[index])
+        last = index
+    index += 1
+=? node if last + 1 >= items.length || store.is-blank(items[last + 1])
+items.insert(store.blank(), last + 1)
+= store.with-items(node, items)
+
+────────────────────
+_ is-import Bool
+    - node ImmutableTableRow'SourceNode
+
+store.is-form(node, "import") || store.is-form(node, "export")
 
 ────────────────────
 _ do regrouped ImmutableTableRow'SourceNode
@@ -1083,7 +1113,7 @@ _ do function-rows
 . mode = brix-mode-function
 if is-open
     mode = if divider == source-divider-thick then brix-mode-head else brix-mode-method
-rows += brix-divider-row(divider, node)
+rows += brix-divider-row(divider, node, .leaf)
 rows += head-row(node, mode)
 . index = header-rows(node, rows)
 rows += brix-gap(brix-mode-separator, node)
@@ -1092,9 +1122,9 @@ for position in index .. < items.length
         rows += brix-gap(source-row-decoration, node)
         rows += brix-ruler-row(node)
     if build
-        part(build, items[position], brix-part-statement, brix-mode-statement, node)
+        part(build, items[position], brix-part-statement, brix-mode-statement, node, SourceRowZone.body)
     else
-        statement-rows(items[position], 0, node, brix-mode-statement, rows)
+        statement-rows(items[position], 0, node, brix-mode-statement, SourceRowZone.body, rows)
 rows += brix-gap(brix-mode-tail, node)
 
 ────────────────────
@@ -1104,7 +1134,7 @@ _ do type-rows
 
 . rows = build.rows
 . items = store.items(node)
-rows += brix-divider-row(source-divider-thick, node)
+rows += brix-divider-row(source-divider-thick, node, .holder)
 rows += head-row(node, brix-mode-type)
 . index = header-rows(node, rows)
 rows += brix-gap(brix-mode-separator, node)
@@ -1112,20 +1142,20 @@ rows += brix-gap(brix-mode-separator, node)
 . is-style = store.is-form(node, "style") || store.is-form(node, "style-extend")
 . mode = if is-style then brix-mode-style else brix-mode-member
 while index < items.length && !is-divided(items[index])
-    part(build, items[index], brix-part-statement, mode, node)
+    part(build, items[index], brix-part-statement, mode, node, SourceRowZone.body)
     index += 1
 if rows.length > first
     rows += brix-gap(brix-mode-tail, node)
 for position in index .. < items.length
     . item = items[position]
     if is-function(item)
-        part(build, item, brix-part-method, brix-mode-function, item)
+        part(build, item, brix-part-method, brix-mode-function, item, SourceRowZone.body)
     else if is-machine(item)
-        part(build, item, brix-part-machine, brix-mode-state, item)
+        part(build, item, brix-part-machine, brix-mode-state, item, SourceRowZone.body)
     else if store.is-form(item, "content")
-        part(build, item, brix-part-content, brix-mode-statement, item)
+        part(build, item, brix-part-content, brix-mode-statement, item, SourceRowZone.body)
     else
-        part(build, item, brix-part-note, brix-mode-note, item)
+        part(build, item, brix-part-note, brix-mode-note, item, SourceRowZone.body)
 
 ────────────────────
 _ do part
@@ -1134,10 +1164,11 @@ _ do part
     - kind U8
     - mode SourceRowMode
     - owner ImmutableTableRow'SourceNode
+    - zone SourceRowZone
 
 . rows = build.rows
 . first = rows.length
-if !build.reuse(store, item, kind, mode)
+if !build.reuse(store, item, kind, mode, zone)
     do match kind
         |= brix-part-method
             function-rows(item, source-divider-thin, rows)
@@ -1145,19 +1176,20 @@ if !build.reuse(store, item, kind, mode)
             machine-rows(item, rows)
         |= brix-part-content
             . inner = store.items(item)
-            rows += brix-divider-row(source-divider-thin, item)
+            rows += brix-divider-row(source-divider-thin, item, .leaf)
             rows += brix-gap(brix-mode-separator, item)
             for slot in 1 .. < inner.length
-                statement-rows(inner[slot], 0, item, brix-mode-statement, rows)
+                statement-rows(inner[slot], 0, item, brix-mode-statement, SourceRowZone.body, rows)
             rows += brix-gap(brix-mode-tail, item)
         ??
-            statement-rows(item, 0, owner, mode, rows)
+            statement-rows(item, 0, owner, mode, zone, rows)
 if store.is-list(item)
     build.parts += SourceOutlinePart
         - item.id
         - item.index as U32
         - kind
         - mode
+        - zone
         - first
         - rows.length - first
 
@@ -1167,11 +1199,11 @@ _ do machine-rows
     - rows [SourceOutlineRow]
 
 . cases = store.items(store.item(node, store.count(node) - 1))
-rows += brix-divider-row(source-divider-thin, node)
+rows += brix-divider-row(source-divider-thin, node, .leaf)
 rows += head-row(node, brix-mode-method)
 rows += brix-gap(brix-mode-separator, node)
 for index in 1 .. < cases.length
-    statement-rows(cases[index], 0, node, brix-mode-state, rows)
+    statement-rows(cases[index], 0, node, brix-mode-state, SourceRowZone.body, rows)
 rows += brix-gap(brix-mode-tail, node)
 
 ────────────────────
@@ -1188,6 +1220,7 @@ printer.scan-heading(node)
     - 0
     - node.index as U32
     - !printer.has-text
+    - SourceRowZone.header
 
 ────────────────────
 _ do header-rows Index
@@ -1201,12 +1234,12 @@ signature-rows(node, 1, owner, rows)
 for index in printer.header-count(node) .. < last
     . item = items[index]
     if is-armed(node, item)
-        statement-rows(item, 0, node, brix-mode-statement, rows)
+        statement-rows(item, 0, node, brix-mode-statement, SourceRowZone.header, rows)
         continue
     printer.scan-row(item)
     . is-empty = !printer.has-text
     if !is-header-line(item)
-        rows += SourceOutlineRow(item.index as U32, brix-mode-note, 1, false, 0, owner, is-empty)
+        rows += SourceOutlineRow(item.index as U32, brix-mode-note, 1, false, 0, owner, is-empty, SourceRowZone.header)
         continue
     rows += SourceOutlineRow
         - item.index as U32
@@ -1216,6 +1249,7 @@ for index in printer.header-count(node) .. < last
         - 0
         - owner
         - is-empty
+        - SourceRowZone.header
     signature-rows(item, 2, owner, rows)
 = last
 
@@ -1247,6 +1281,7 @@ for index in 0 .. < lines.length
             - 0
             - owner
             - !printer.has-text
+            - SourceRowZone.header
         signature-rows(inner, indent + 1, owner, rows)
 
 ────────────────────
@@ -1255,13 +1290,14 @@ _ do statement-rows
     - indent Size
     - owner ImmutableTableRow'SourceNode
     - mode SourceRowMode
+    - zone SourceRowZone
     - rows [SourceOutlineRow]
 
 if store.is-form(node, "paragraph")
-    line-rows(node, indent, rows)
+    line-rows(node, indent, zone, rows)
     =
 if store.is-form(node, "before") || store.is-form(node, "where")
-    section-rows(node, indent, owner, mode, rows)
+    section-rows(node, indent, owner, mode, zone, rows)
     =
 . held = owner.index as U32
 . shown = mode
@@ -1274,6 +1310,7 @@ printer.scan-row(node)
 . armed = printer.armed
 if mode == brix-mode-styled && holder != null && start < store.count(holder)
     shown = brix-mode-rule
+. is-preamble = zone == SourceRowZone.loose && is-import(node)
 rows += SourceOutlineRow
     - node.index as U32
     - shown
@@ -1282,23 +1319,24 @@ rows += SourceOutlineRow
     - if brix-is-label(store, node) then source-divider-label else 0
     - held
     - !printer.has-text
+    - if is-preamble then SourceRowZone.preamble else zone
 =? if !holder
 . inner = nested-mode(node, holder, mode)
 if armed
     for item in store.listed(armed, 1)
         if item.index == holder.index
             for child in store.listed(holder, start)
-                statement-rows(child, indent + 1, owner, inner, rows)
+                statement-rows(child, indent + 1, owner, inner, zone, rows)
         else if is-armed(armed, item)
-            statement-rows(item, indent, owner, mode, rows)
+            statement-rows(item, indent, owner, mode, zone, rows)
     =
 . items = store.items(holder)
 for index in start .. < items.length
     . item = items[index]
     if holder.index == node.index && is-armed(node, item)
-        statement-rows(item, indent, owner, mode, rows)
+        statement-rows(item, indent, owner, mode, zone, rows)
     else
-        statement-rows(item, indent + 1, owner, inner, rows)
+        statement-rows(item, indent + 1, owner, inner, zone, rows)
 
 ────────────────────
 _ do section-rows
@@ -1306,13 +1344,14 @@ _ do section-rows
     - indent Size
     - owner ImmutableTableRow'SourceNode
     - mode SourceRowMode
+    - zone SourceRowZone
     - rows [SourceOutlineRow]
 
 . is-foot = store.is-form(node, "where")
 if is-foot
     rows += brix-gap(source-row-decoration, owner)
 for item in store.listed(node, 1)
-    statement-rows(item, indent, owner, mode, rows)
+    statement-rows(item, indent, owner, mode, zone, rows)
 if !is-foot
     rows += brix-gap(source-row-decoration, owner)
 
@@ -1344,6 +1383,7 @@ _ nested-mode SourceRowMode
 _ do line-rows
     - node ImmutableTableRow'SourceNode
     - indent Size
+    - zone SourceRowZone
     - rows [SourceOutlineRow]
 
 . items = store.items(node)
@@ -1359,6 +1399,7 @@ for index in 1 .. < items.length
         - 0
         - owner
         - !printer.has-text
+        - zone
 
 ────────────────────
 _ spans-of [SourceSpan]
@@ -1453,6 +1494,7 @@ budget = (previous?.parts.length ?? 0) * brix-part-scans
     - item ImmutableTableRow'SourceNode
     - kind U8
     - mode SourceRowMode
+    - zone SourceRowZone
 
 . old = previous
 =? false if !old
@@ -1466,7 +1508,7 @@ for step in 0 .. < known.length
     if part.id != id
         continue
     cursor = position + 1
-    =? false if part.kind != kind || part.mode != mode || !store.shares(item, part-node)
+    =? false if part.kind != kind || part.mode != mode || part.zone != zone || !store.shares(item, part-node)
     .. part-node = store.node(part.place)
     . now = item.index as U32
     for index in part.first .. < part.first + part.count
@@ -1479,6 +1521,8 @@ for step in 0 .. < known.length
             - row.divider
             - moved(part.place, now, old.place, row.owner)
             - row.is-empty
+            - row.zone
+            - row.block
     reused += part.count
     = true
 = false
@@ -1549,6 +1593,17 @@ _ brix-is-ruler Bool
 row.divider == source-divider-double
 
 ━━━━━━━━━━━━━━━━━━━━
+_ brix-import-spans [SourceSpan]
+    - text String
+
+|? cut == null || cut + 1 >= text.length
+    List'SourceSpan(SourceSpan(.string, text))
+??
+    List'SourceSpan(SourceSpan(.string, text[... cut + 1]), SourceSpan(.definition, text[cut + 1 ...]))
+
+.. cut = text.find-reverse("/")
+
+━━━━━━━━━━━━━━━━━━━━
 _ brix-is-label Bool
     - store SourceStore
     - node ImmutableTableRow'SourceNode
@@ -1591,8 +1646,9 @@ SourceOutlineRow(null, source-row-decoration, 0, false, source-divider-double, o
 _ brix-divider-row SourceOutlineRow
     - divider U8
     - owner ImmutableTableRow'SourceNode
+    - block SourceRowBlock
 
-SourceOutlineRow(null, source-row-decoration, 0, false, divider, owner.index as U32, false)
+SourceOutlineRow(null, source-row-decoration, 0, false, divider, owner.index as U32, false, .none, block)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-gap SourceOutlineRow

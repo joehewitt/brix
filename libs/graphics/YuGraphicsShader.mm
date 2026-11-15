@@ -105,9 +105,12 @@ struct YuGraphicsGPUStore {
     bool mipsStale = true;
 };
 
+typedef void (*YuGraphicsShaderRegisterHook)(uint32_t shader, const char* source);
+
 static std::mutex yuGraphicsShaderMutex;
 static std::vector<YuGraphicsShaderEntry*> yuGraphicsShaders;
 static std::unordered_map<std::string, uint32_t> yuGraphicsShaderIds;
+static YuGraphicsShaderRegisterHook yuGraphicsShaderHook = nullptr;
 static std::once_flag yuGraphicsShaderDeviceOnce;
 static id<MTLDevice> yuGraphicsShaderDevice = nil;
 static std::mutex yuGraphicsShaderQueueMutex;
@@ -797,18 +800,44 @@ yuGraphicsShaderKernelFor(YuGraphicsShaderEntry* entry, YuGraphicsShaderKernel& 
 
 extern "C" uint32_t
 yumiGraphicsShaderRegister(const char* source) {
-    std::lock_guard<std::mutex> lock(yuGraphicsShaderMutex);
     std::string text = source ? source : "";
-    auto found = yuGraphicsShaderIds.find(text);
-    if (found != yuGraphicsShaderIds.end()) {
-        return found->second;
+    uint32_t shader = 0;
+    YuGraphicsShaderRegisterHook hook = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(yuGraphicsShaderMutex);
+        auto found = yuGraphicsShaderIds.find(text);
+        if (found != yuGraphicsShaderIds.end()) {
+            return found->second;
+        }
+        YuGraphicsShaderEntry* entry = new YuGraphicsShaderEntry();
+        entry->source = text;
+        yuGraphicsShaders.push_back(entry);
+        shader = static_cast<uint32_t>(yuGraphicsShaders.size());
+        yuGraphicsShaderIds[text] = shader;
+        hook = yuGraphicsShaderHook;
     }
-    YuGraphicsShaderEntry* entry = new YuGraphicsShaderEntry();
-    entry->source = text;
-    yuGraphicsShaders.push_back(entry);
-    uint32_t shader = static_cast<uint32_t>(yuGraphicsShaders.size());
-    yuGraphicsShaderIds[text] = shader;
+    if (hook) {
+        hook(shader, text.c_str());
+    }
     return shader;
+}
+
+extern "C" void
+yumiGraphicsShaderSetRegisterHook(YuGraphicsShaderRegisterHook hook) {
+    std::vector<std::string> registered;
+    {
+        std::lock_guard<std::mutex> lock(yuGraphicsShaderMutex);
+        yuGraphicsShaderHook = hook;
+        for (YuGraphicsShaderEntry* entry : yuGraphicsShaders) {
+            registered.push_back(entry->source);
+        }
+    }
+    if (!hook) {
+        return;
+    }
+    for (size_t index = 0; index < registered.size(); ++index) {
+        hook(static_cast<uint32_t>(index + 1), registered[index].c_str());
+    }
 }
 
 static YuGraphicsShaderEntry*

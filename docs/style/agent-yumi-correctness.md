@@ -204,6 +204,15 @@ When syntax, grammar, or type behavior is surprising, inspect nearby working cod
 grammar or tests before inventing alternate syntax or compiler permissiveness. A successful compile
 proves that syntax is accepted, not that the source expresses the intended model.
 
+## Ask What Was Inferred
+
+Before guessing why a function raises an error, needs a `@stack` global bound, or was compiled
+again under a restriction, ask the compiler. `bin/yumi <program> --explain <function>` prints the
+function's header with its inferred parameter types, result and errors filled in, then a line for
+each error it raises, each `@stack` global it needs or holds, and each copy made under a caller's
+restriction, with one call path that shows why. Name the function as `name`, `Type.method`,
+`path:name` where names repeat, or `file:line`.
+
 ## Documentation Examples
 
 Compile-check complete fenced `yumi` examples. Mark incomplete or illustrative fragments as

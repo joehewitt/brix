@@ -17,12 +17,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <condition_variable>
 #include <dispatch/dispatch.h>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+extern "C" void yumiGraphicsShaderSetRegisterHook(void (*hook)(uint32_t shader, const char* source));
 
 static_assert(sizeof(YuGuiMetalDisplayItem) == 40, "DisplayItem wire layout must stay 40 bytes");
 static_assert(sizeof(YuGuiMetalState) == 160, "DisplayStateWire layout must stay 160 bytes");
@@ -1195,6 +1198,7 @@ struct MetalRenderer {
     std::unordered_map<uint32_t, ShaderPipelines> filterShaders;
     std::vector<ShaderRequest> shaderRequests;
     std::shared_ptr<ShaderCompiles> shaderCompiles = std::make_shared<ShaderCompiles>();
+    bool skippedPendingShader = false;
     double fillTime = 0;
     id<MTLTexture> depthTexture = nil;
     std::vector<FillGeometryRecord> fillGeometries;
@@ -6051,6 +6055,50 @@ static id<MTLLibrary> newShaderLibrary(id<MTLDevice> device, const std::string& 
     return library;
 }
 
+struct SharedShaderLibrary {
+    bool done = false;
+    id<MTLLibrary> library = nil;
+};
+
+struct SharedShaderLibraries {
+    std::mutex mutex;
+    std::condition_variable built;
+    std::unordered_map<std::string, SharedShaderLibrary> entries;
+};
+
+static SharedShaderLibraries& sharedShaderLibraries() {
+    static SharedShaderLibraries* libraries = new SharedShaderLibraries();
+    return *libraries;
+}
+
+static id<MTLLibrary> sharedShaderLibrary(id<MTLDevice> device, const std::string& source, const char* kind, uint32_t shader) {
+    SharedShaderLibraries& libraries = sharedShaderLibraries();
+    SharedShaderLibrary* entry = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(libraries.mutex);
+        auto found = libraries.entries.find(source);
+        if (found == libraries.entries.end()) {
+            entry = &libraries.entries[source];
+        } else {
+            entry = &found->second;
+            libraries.built.wait(lock, [entry] { return entry->done; });
+            if (!entry->library || entry->library.device == device) {
+                return entry->library;
+            }
+            lock.unlock();
+            return newShaderLibrary(device, source, kind, shader);
+        }
+    }
+    id<MTLLibrary> library = newShaderLibrary(device, source, kind, shader);
+    {
+        std::lock_guard<std::mutex> lock(libraries.mutex);
+        entry->library = library;
+        entry->done = true;
+    }
+    libraries.built.notify_all();
+    return library;
+}
+
 static const FormatPipeline* shaderVariant(
     id<MTLDevice> device,
     ShaderPipelines& pipelines,
@@ -6226,7 +6274,7 @@ static void buildShaderPipelines(
     if (source.empty()) {
         return;
     }
-    pipelines.library = newShaderLibrary(device, source, shaderRoleName(role), shader);
+    pipelines.library = sharedShaderLibrary(device, source, shaderRoleName(role), shader);
     if (!pipelines.library) {
         return;
     }
@@ -6256,6 +6304,41 @@ static ShaderJob shaderJob(ShaderRole role, uint32_t shader, MTLPixelFormat form
     };
 }
 
+static bool warmShaderRole(const char* source, ShaderRole& role) {
+    if (std::strstr(source, "paint(PaintInput") || std::strstr(source, "shade(float2 position, float2 size")) {
+        role = ShaderRoleFill;
+        return true;
+    }
+    if (std::strstr(source, "dab(DabInput")) {
+        role = ShaderRoleDab;
+        return true;
+    }
+    if (std::strstr(source, "ShaderLayer layer")) {
+        role = ShaderRoleFilter;
+        return true;
+    }
+    return false;
+}
+
+static void warmUserShader(uint32_t shader, const char* source) {
+    ShaderRole role = ShaderRoleFill;
+    if (!source || !warmShaderRole(source, role)) {
+        return;
+    }
+    std::string composed = shaderLibrarySource(role, source);
+    if (composed.empty()) {
+        return;
+    }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+            id<MTLDevice> device = (__bridge id<MTLDevice>)yumiGraphicsMetalDevice();
+            if (device) {
+                sharedShaderLibrary(device, composed, shaderRoleName(role), shader);
+            }
+        }
+    });
+}
+
 static void startShaderJobs(MetalRenderer* renderer, std::vector<ShaderJob>& jobs) {
     id<MTLDevice> device = renderer->device;
     if (renderer->presentationLayer) {
@@ -6269,9 +6352,12 @@ static void startShaderJobs(MetalRenderer* renderer, std::vector<ShaderJob>& job
                 @autoreleasepool {
                     buildShaderPipelines(device, work->format, work->role, work->shader, work->source, work->pipelines);
                 }
-                std::lock_guard<std::mutex> lock(compiles->mutex);
-                compiles->finished.push_back(std::move(*work));
-                compiles->landed.store(true);
+                {
+                    std::lock_guard<std::mutex> lock(compiles->mutex);
+                    compiles->finished.push_back(std::move(*work));
+                    compiles->landed.store(true);
+                }
+                compiles->pending.fetch_sub(1);
             });
         }
         return;
@@ -6297,7 +6383,6 @@ static void installCompiledShaders(MetalRenderer* renderer) {
     for (ShaderJob& job : finished) {
         shaderCache(renderer, job.role)[job.shader] = std::move(job.pipelines);
     }
-    renderer->shaderCompiles->pending.fetch_sub(static_cast<int64_t>(finished.size()));
 }
 
 static ShaderPipelines* ensureShader(MetalRenderer* renderer, ShaderRole role, uint32_t shader, MTLPixelFormat format) {
@@ -6308,7 +6393,11 @@ static ShaderPipelines* ensureShader(MetalRenderer* renderer, ShaderRole role, u
         startShaderJobs(renderer, jobs);
         found = cache.find(shader);
     }
-    return found->second.failed || found->second.pending ? nullptr : &found->second;
+    if (found->second.pending) {
+        renderer->skippedPendingShader = true;
+        return nullptr;
+    }
+    return found->second.failed ? nullptr : &found->second;
 }
 
 static ShaderPipelines* ensureShader(MetalRenderer* renderer, ShaderRole role, uint32_t shader) {
@@ -10402,6 +10491,7 @@ static int32_t rendererPixelSpan(double extent, double scale) {
 extern "C" void yumiGuiMetalWarmUp(void) {
     static std::once_flag once;
     std::call_once(once, [] {
+        yumiGraphicsShaderSetRegisterHook(warmUserShader);
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             @autoreleasepool {
                 id<MTLDevice> device = (__bridge id<MTLDevice>)yumiGraphicsMetalDevice();
@@ -13505,6 +13595,7 @@ static int64_t commitPacket(
         renderer->encodeDamageAreas.clear();
     }
     bool encoded = false;
+    renderer->skippedPendingShader = false;
     @autoreleasepool {
         fillCompactSegments(renderer);
         compileRequestedShaders(renderer);
@@ -13573,6 +13664,10 @@ extern "C" int64_t yumiGuiMetalPacketCommitTiles(void* pointer) {
     if (frameId < 0) {
         abandonTileCopies(renderer);
         return -1;
+    }
+    if (renderer->skippedPendingShader) {
+        abandonTileCopies(renderer);
+        return frameId;
     }
     renderer->tilesRendered += static_cast<int64_t>(renderer->tileCopies.size());
     renderer->tileCopies.clear();
@@ -13668,7 +13763,7 @@ extern "C" int64_t yumiGuiMetalRendererStatValue(void* pointer, int32_t field) {
         return static_cast<int64_t>(renderer->fillOverflows.load());
     }
     if (field == YuGuiMetalStatFillRedrawPending) {
-        return renderer->fillRedraw.load() ? 1 : 0;
+        return renderer->fillRedraw.load() || renderer->shaderCompiles->landed.load() ? 1 : 0;
     }
     if (field == YuGuiMetalStatFillFramesPending) {
         return renderer->fillFramesPending.load() + renderer->shaderCompiles->pending.load();

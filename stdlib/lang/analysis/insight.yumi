@@ -1,0 +1,385 @@
+./program-store
+/core/parsing
+/core/table
+/lang/ast/ast
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+/lang/check/facts
+/lang/check/instances
+/lang/check/session
+/lang/check/type-text
+/lang/check/types
+/lang/report/facts-text
+/lang/report/explain
+/lang/report/header
+
+━━━━━━━━━━━━━━━━━━━━
++ InsightKind is Union
+
+| raise
+| convert
+
+━━━━━━━━━━━━━━━━━━━━
++ InsightMark is Tuple
+
++ line U32
++ start U32
++ end U32
++ kind InsightKind
++ detail String
++ caption String?
++ errors [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ InsightFill is Tuple
+
++ line U32
++ type String
++ errors [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ InsightNote is Tuple
+
++ line U32
++ kind String
++ label String
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ FileInsight is Tuple
+
++ marks [InsightMark]
++ unknown [U32]
++ fills [InsightFill]
++ notes [InsightNote]
+
+━━━━━━━━━━━━━━━━━━━━
++ do file-insight FileInsight?
+    - store ProgramStore
+    - path String
+    - target String? = null
+
+if target
+    store.open(target)
+store.open(path)
+=? null if !store.has(path)
+. program = store.program()!
+. found = program.module-by-path(path)
+=? null if !found
+. module = found as ModuleId
+. targeted = program.module-by-path(target) if target
+. root = if targeted then targeted as ModuleId else module
+. session = store.session()
+. text = store.text-of(path) ?? ""
+= InsightScan(session, module, root, text.split("\n")).scan()
+
+━━━━━━━━━━━━━━━━━━━━
+_ InsightScan
+
++ session Session
++ module ModuleId
++ root ModuleId
++ lines [String]
+
+_ reached [Bool]
+_ marks [InsightMark]
+_ fills [InsightFill]
+_ notes [InsightNote]
+_ seen [String = Bool]
+
+────────────────────
++ This
+    - session
+    - module
+    - root
+    - lines
+
+────────────────────
++ do scan FileInsight
+
+reach()
+. instances = session.instances
+. decls = session.program.modules[module].decls
+. tree = session.program.modules[module].tree
+. copies [[InstanceId]]
+for _ in 0 .. < decls.length
+    copies += List'InstanceId()
+for position in 0 .. < instances.length
+    . row = instances.rows[position]
+    . id = position as InstanceId
+    if row.module == module && reached[position] && id != instances.dead
+        copies[row.decl] += id
+        mark-calls(id)
+        mark-conversions(id)
+. unknown [U32]
+for index in 0 .. < decls.length
+    . syntax = function-syntax(decls[index])
+    if syntax != 0 && !is-unlocated(tree.nodes.loc[syntax])
+        if copies[index].length == 0
+            unknown += tree.nodes.loc[syntax].begin.line
+        else if is-headed(decls[index])
+            fill(index as DeclId, syntax, copies[index])
+= FileInsight(marks, unknown, fills, notes)
+
+────────────────────
+_ do fill
+    - decl DeclId
+    - syntax SyntaxId
+    - found [InstanceId]
+
+. tree = session.program.modules[module].tree
+. head = tree.nodes.loc[syntax].begin.line
+for note in explain-notes(session, root, DeclRef(module, decl), found)
+    notes += InsightNote(head, note.kind, note.label, note.text)
+. header = inferred-header(session, module, decl, found)
+=? if !header || header.is-empty
+if header.returns || header.errors.length != 0
+    fills += InsightFill(head, header.returns ?? "", header.errors)
+for param in header.params
+    . loc = tree.nodes.loc[param.syntax]
+    if !is-unlocated(loc)
+        fills += InsightFill(loc.begin.line, param.type, List'String())
+
+────────────────────
+_ do reach
+
+. instances = session.instances
+. facts = session.facts
+. program = session.program
+. runs = loaded-modules()
+. enclosed [InstanceId = [InstanceId]]
+. queue [InstanceId]
+for position in 0 .. < instances.length
+    reached += false
+    . row = instances.rows[position]
+    . id = position as InstanceId
+    if row.enclosing != no-instance
+        link(enclosed, row.enclosing, id)
+    else if runs[row.module] && row.decl == program.modules[row.module].main-decl
+        queue += id
+. answered [InstanceId = [InstanceId]]
+for fact in facts.overrides
+    if fact.override != no-instance
+        link(answered, fact.base, fact.override)
+for slot in facts.witness-slots
+    if slot.proto != no-instance && slot.callee != no-instance
+        link(answered, slot.proto, slot.callee)
+for id in queue
+    reached[id] = true
+. next Size = 0
+while next < queue.length
+    . id = queue[next]
+    next += 1
+    . targets [InstanceId]
+    for call in facts.instance-calls(id)
+        targets += facts.calls[call].callee
+    for conversion in facts.instance-conversions(id)
+        converted(facts.conversions[conversion], targets)
+    targets ++= enclosed[id] ?? List'InstanceId()
+    targets ++= answered[id] ?? List'InstanceId()
+    for target in targets
+        if target != no-instance && !reached[target]
+            reached[target] = true
+            queue += target
+
+────────────────────
+_ do loaded-modules [Bool]
+
+. program = session.program
+. count = program.modules.length
+. loaded [Bool]
+for _ in 0 .. < count
+    loaded += false
+loaded[root] = true
+. queue [ModuleId]
+queue += root
+. next Size = 0
+while next < queue.length
+    . from = queue[next]
+    next += 1
+    for position in 0 .. < count
+        . other = position as ModuleId
+        if !loaded[other] && program.sees(from, other)
+            loaded[other] = true
+            queue += other
+= loaded
+
+────────────────────
+_ do link
+    - edges [InstanceId = [InstanceId]]
+    - from InstanceId
+    - to InstanceId
+
+. found = edges[from] ?? List'InstanceId()
+found += to
+edges[from] = found
+
+────────────────────
+_ do converted
+    - fact ConversionFact
+    - targets [InstanceId]
+
+targets += fact.callee
+targets += fact.runs
+. part = fact.parts
+while part != no-fact
+    . inner = session.facts.conversion-parts[part]
+    converted(inner, targets)
+    part = inner.next
+
+────────────────────
+_ do mark-calls
+    - instance InstanceId
+
+. instances = session.instances
+. facts = session.facts
+for id in facts.instance-calls(instance)
+    . fact = facts.calls[id]
+    . callee = fact.callee
+    if callee != no-instance && !fact.is-partial && fact.form != .call-converter && is-written-form(fact.form)
+        . count = instances.signatures[callee].errors.count
+        if count != 0
+            . fate = if fact.propagates then "which leave this function" else "which this function handles"
+            . given = if fact.propagates then error-names(callee) else List'String()
+            add(fact.syntax, InsightKind.raise, "${callee-name(callee)} can raise ${errors-text(callee)}, $fate", null, given)
+
+────────────────────
+_ do mark-conversions
+    - instance InstanceId
+
+. facts = session.facts
+for id in facts.instance-conversions(instance)
+    . fact = facts.conversions[id]
+    if is-marked(fact)
+        . source = type-source(session.types, fact.from)
+        . target = type-source(session.types, if fact.asked == no-type then fact.to else fact.asked)
+        . by = if fact.callee != no-instance then " with ${callee-name(fact.callee)}" else ""
+        . detail = "Converts $source to $target$by"
+        . caption String? = null
+        . given [String]
+        if fact.raise == .raise-leaves
+            . errors = errors-text(fact.callee)
+            detail = "$detail, and its errors $errors leave this function"
+            caption = "can raise $errors"
+            given = error-names(fact.callee)
+        else if fact.raise == .raise-panics
+            detail = "$detail, and panics if the text does not convert"
+            caption = "panics if the text does not convert"
+        add(fact.syntax, InsightKind.convert, detail, caption, given)
+
+────────────────────
+_ is-marked Bool
+    - fact ConversionFact
+
+shown && !texts && (runs || scales || fact.raise != .raise-unsettled)
+
+.. texts = (if fact.asked == no-type then fact.to else fact.asked) == session.types.string-type
+.. reason = fact.reason
+.. shown = written || reason == .reason-operand || reason == .reason-receiver || reason == .reason-default || reason == .reason-piped || reason == .reason-operator || reason == .reason-result
+.. written = reason == .reason-argument || reason == .reason-assignment || reason == .reason-declaration || reason == .reason-return || reason == .reason-join || reason == .reason-element
+.. runs = fact.kind == .relation-converter || fact.kind == .relation-fromverter || fact.kind == .relation-common-converter
+.. scales = !fact.ratio.is-none && fact.ratio.multiplier != fact.ratio.divisor
+
+────────────────────
+_ do add
+    - syntax SyntaxId
+    - kind InsightKind
+    - detail String
+    - caption String?
+    - errors [String]
+
+=? if syntax == 0
+. loc = session.program.modules[module].tree.nodes.loc[syntax]
+=? if is-unlocated(loc)
+. line = loc.begin.line
+. start = loc.begin.column
+. end = if loc.end.line == line then loc.end.column + 1 else line-end(line)
+. key = "$line:$start:$end:${if kind == InsightKind.raise then "raise" else "convert"}"
+=? if seen[key] != null
+seen[key] = true
+marks += InsightMark(line, start, end, kind, detail, caption, errors)
+
+────────────────────
+_ line-end U32
+    - line U32
+
+if line < lines.length then lines[line].length as U32 else 0
+
+────────────────────
+_ do errors-text String
+    - callee InstanceId
+
+= " | ".join(error-names(callee))
+
+────────────────────
+_ do error-names [String]
+    - callee InstanceId
+
+. instances = session.instances
+. names [String]
+=? names if callee == no-instance
+for position in 0 .. < instances.signatures[callee].errors.count
+    names += type-source(session.types, instances.error-type(callee, position))
+= names
+
+────────────────────
+_ do callee-name String
+    - callee InstanceId
+
+. row = session.instances.rows[callee]
+. decls = session.program.modules[row.module].decls
+do match? decls[row.decl]
+    | .decl-function(fn)
+        . name = fn.name
+        =? name.text if name
+        =? "the constructor of ${class-name(decls, fn.owner)}" if fn.kind == .constructor-decl
+    | .decl-converter(converter)
+        = "the converter of ${class-name(decls, converter.owner)}"
+    | .decl-fromverter(fromverter)
+        = "the fromverter of ${class-name(decls, fromverter.owner)}"
+= "the call"
+
+━━━━━━━━━━━━━━━━━━━━
+_ class-name String
+    - decls ImmutableTable'Decl
+    - owner DeclId
+
+match decls[owner]
+    | .decl-class(owned)
+        owned.name.text
+    ??
+        "its class"
+
+━━━━━━━━━━━━━━━━━━━━
+_ function-syntax SyntaxId
+    - decl Decl
+
+match decl
+    | .decl-function(fn)
+        if is-boxed(fn) then fn.syntax else 0
+    | .decl-converter(converter)
+        converter.syntax
+    | .decl-fromverter(fromverter)
+        fromverter.syntax
+    ??
+        0
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-headed Bool
+    - decl Decl
+
+match decl
+    | .decl-function(fn)
+        fn.name != null || fn.kind == .constructor-decl
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-boxed Bool
+    - fn FunctionDecl
+
+!fn.is-generated && (kind == .function-decl || kind == .getter-decl || kind == .setter-decl || kind == .constructor-decl || kind == .iterator-decl)
+
+.. kind = fn.kind
