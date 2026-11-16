@@ -1,0 +1,221 @@
+; Delve: a turn-based dungeon crawl in the terminal. Carry a torch down five
+; depths, take the Ember from the deepest room, and live. Every creature's mind
+; is a state machine that hears what it sees, so it sleeps, hunts, loses the
+; trail and flees on its own. A seed carves each dungeon, and the same seed
+; carves the same depths. Run it with `yumi delve-app.bx -o delve`, adding
+; `-- --seed 1234` to delve a dungeon again; it needs only a terminal, 80 by 24
+; or larger.
+(import /math)
+(import /os/cli)
+(import /tui)
+(import ./delve-world)
+(import ./delve-creatures)
+(import ./delve-expedition)
+(import ./delve-paint)
+(blank)
+(prop + moves (list Move)
+  (=
+    (call List
+      (block
+        (bullet (call Move (call KeyCombo .arrow-left) (call Spot -1 0)))
+        (bullet (call Move (call KeyCombo .arrow-right) (call Spot 1 0)))
+        (bullet (call Move (call KeyCombo .arrow-up) (call Spot 0 -1)))
+        (bullet (call Move (call KeyCombo .arrow-down) (call Spot 0 1)))
+        (bullet (call Move 'h' (call Spot -1 0)))
+        (bullet (call Move 'l' (call Spot 1 0)))
+        (bullet (call Move 'k' (call Spot 0 -1)))
+        (bullet (call Move 'j' (call Spot 0 1)))
+        (bullet (call Move 'y' (call Spot -1 -1)))
+        (bullet (call Move 'u' (call Spot 1 -1)))
+        (bullet (call Move 'b' (call Spot -1 1)))
+        (bullet (call Move 'n' (call Spot 1 1)))
+      )
+    )
+  )
+)
+(blank)
+
+(main
+  (<> CommandLine (id: tool)
+    (= name "delve")
+    (= about "Carry a torch down five depths and bring back the Ember.")
+    (<> (of Option U64) (id: seed) (text: "--seed")
+      (= value-name "NUMBER")
+      (= about "the seed that carves the dungeon")
+    )
+  )
+  (blank)
+  (= (. tool action)
+    (=> () :do
+      (block
+        (call explore (?? (. seed value) (call fresh-seed)))
+        (return 0)
+      )
+    )
+  )
+  (call (. tool run))
+)
+
+(fn-do + explore _
+  (param seed U64)
+  (<> App
+    (<> Window (id: win) (• flex-col) (• bg black)
+      (<> Delve (• flex-col) (• flex 1)
+        (= game (call Expedition seed))
+      )
+      (<> Shortcut (text: "Quit")
+        (= key 'q')
+        (= action (=> () :do (call (. win close))))
+      )
+      (<> Shortcut (text: "Quit")
+        (= key .escape)
+        (= show-in-status false)
+        (= action (=> () :do (call (. win close))))
+      )
+      (<> StatusBar
+        (= message "Arrows or hjkl yubn move. Bump to fight.")
+      )
+    )
+  )
+)
+
+(type + Move (is (tuple (: key KeyCombo) (: heading Spot))))
+
+(style DelveTheme
+  (using BoxPaint)
+  (using TextPaint)
+  (rule ledger
+    (= background-color ledger-ground)
+    (= color (call AnsiColor 250))
+  )
+  (rule title
+    (= color (call AnsiColor 215))
+  )
+  (rule heading
+    (= color (call AnsiColor 244))
+  )
+  (rule journal
+    (= background-color journal-ground)
+    (= color (call AnsiColor 246))
+  )
+  (rule epitaph
+    (= color (call AnsiColor 215))
+  )
+)
+
+(type + Delve (is Box)
+  (using DelveTheme)
+  (rule This
+    (= focus-mode (. FocusMode keys))
+  )
+  (blank)
+  (prop + game Expedition)
+  (content
+    (<> This (• flex-col)
+      (<> Box (• flex-row) (• flex 1)
+        (<> DungeonView (• flex 1)
+          (= game #game)
+        )
+        (<> Ledger (• w 24)
+          (= game #game)
+        )
+      )
+      (<> Journal (• h 4)
+        (= game #game)
+      )
+      (if (is (. #game #fate) .delving)
+        (for (in move moves)
+          (<> Shortcut
+            (= title "Move")
+            (= key (. move key))
+            (= show-in-status false)
+            (= action (=> () :do (call (. game act) (call (. Action step) (. move heading)))))
+          )
+        )
+        (<> Shortcut (text: "Rest")
+          (= key '.')
+          (= action (=> () :do (call (. game act) .rest)))
+        )
+        (<> Shortcut (text: "Descend")
+          (= key '>')
+          (= action (=> () :do (call (. game act) .descend)))
+        )
+        (else
+          (<> Shortcut (text: "New dungeon")
+            (= key .enter)
+            (= action (=> () :do (= game (call Expedition (call fresh-seed)))))
+          )
+          (<> Shortcut (text: "Retry")
+            (= key 'r')
+            (= action (=> () :do (= game (call Expedition (. game seed)))))
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + Ledger (is Box)
+  (prop + game Expedition)
+  (content
+    (<> This (• flex-col) (• ledger) (• px 1)
+      (<> Label (text: "D E L V E") (• title))
+      (<> Label (• heading)
+        (= text (str "Seed " (. #game #seed)))
+      )
+      (<> Label (• mt 1)
+        (= text (str "Depth " (. #game #depth) " of " deepest))
+      )
+      (<> Label (• mt 1)
+        (= text (str "Health " (. #game #health) "/" (. #game #max-health)))
+      )
+      (<> ProgressBar
+        (= value (. #game #health))
+        (= total (. #game #max-health))
+        (= show-percent false)
+      )
+      (<> Label
+        (= text (str "Blade +" (. #game #blade)))
+      )
+      (<> Label
+        (= text (str "Gold " (. #game #gold)))
+      )
+      (<> Label (text: "In sight") (• heading) (• mt 1))
+      (for (in creature (. #game #in-sight))
+        (<> Label (• text (call breed-ink (. creature breed)))
+          (= text (str (. creature breed glyph) " " (. creature name) ", " (. creature #mind name)))
+        )
+      )
+    )
+  )
+)
+
+(type + Journal (is Box)
+  (prop + game Expedition)
+  (content
+    (<> This (• flex-col) (• journal) (• px 1)
+      (if (is (. #game #fate) .delving)
+        (for (in line (call recent (. #game #log)))
+          (<> Label
+            (= text line)
+          )
+        )
+        (else
+          (<> Label (• epitaph)
+            (= text (call epitaph (. #game #fate) (. #game #depth) (. #game #gold)))
+          )
+          (<> Label (text: "Enter for a new dungeon, R to retry this one, Q to quit."))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + recent (list String)
+  (param log (list String))
+  ([] log (..< (call max 0 (- (. log length) 3)) (. log length)))
+)
+
+(fn-do + fresh-seed U64
+  (return (call random 1u 1000000u))
+)

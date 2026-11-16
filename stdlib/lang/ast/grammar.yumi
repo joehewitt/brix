@@ -1564,6 +1564,8 @@ do finally
             tree.append(ASTStreamOr(location, left, right))
     ~ "\\{" / expr \inline-expression / "}"
         tree.append(ASTStreamPredicate(location, expr))
+    ~ named \symbol
+        tree.append(ASTStreamEquality(location, named))
     ~ "."
         tree.append(ASTStreamAny(location))
     ~ char \character-literal
@@ -3358,6 +3360,8 @@ do finally
     ~ \decimal-literal
 
 .. hex-integer-literal SyntaxId ~
+    ~ "0x" \hex-digit-sequence \unit
+        reject-syntax(tree, exclusive-end-location(location), "A hex number takes no suffix: its digits give its type, two a U8, four a U16, eight a U32 and more a U64, so write leading zeros to widen it")
     ~ "0x" digits \hex-digit-sequence
         tree.append(ASTInteger(location, tree.store-string(value), hex-integer-unit(tree, digits)))
             .. value = hex-integer-value(digits)

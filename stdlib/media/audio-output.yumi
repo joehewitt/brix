@@ -55,6 +55,30 @@ C:yumiAudioOutputGetUnderrunFrames(native)
 C:yumiAudioOutputGetSliceFrames(native)
 
 ────────────────────
++ get frames-heard I64
+
+ring.consumed
+
+────────────────────
++ do listen
+    - samples F64[]
+
+. count = samples.length as I64
+. reach = if count < latency then count else latency
+. last = frames-heard
+for index in 0 .. < samples.length
+    . at = last - count + (index as I64)
+    samples[index] = if at >= 0 && at >= last - reach then heard(at) else 0.0
+
+────────────────────
+_ heard F64
+    - at I64
+
+(frame[0] + frame[1]) * 0.5
+
+.. frame = ring.slot(at)
+
+────────────────────
 _ do pump
 
 while is-running

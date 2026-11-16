@@ -1,4 +1,5 @@
 
+./app
 ./box
 ./canvas
 ./colors
@@ -22,6 +23,8 @@
     is MarkupRootElement
     is InputHost
 
++ app App?
++ is-closed = false
 + hovered-box Box?
 + pressed-box Box?
 + pressed-hit HitPath?
@@ -272,11 +275,14 @@ else
 ────────────────────
 + do close
 
+=? if is-closed
+is-closed = true
 close-box()
 
 . maybe-terminal = catch? terminal
 if maybe-terminal
     catch maybe-terminal.close()
+app?.window-closed()
 
 ────────────────────
 + do paint
@@ -344,9 +350,13 @@ invalidate-layout()
 //this:tui.box.root -> (type-of this).concrete-name, inspectable-summary()
 
 for sig on sig-int
-    catch close()
-    request-process-termination(130)
-    break
+    . interrupt = KeyInputEvent('c', PointerModifiers(false, true))
+    dispatch-key-input(interrupt)
+    if !interrupt.is-canceled
+        catch close()
+        request-process-termination(130)
+    if is-closed
+        break
 
 ────────────────────
 + do focus

@@ -1,0 +1,80 @@
+(import /math)
+(import /stream/timing)
+(import ./delve-world)
+(blank)
+
+(type + Breed (is (tuple (: name String) (: glyph String) (: health Int) (: bite Int) (: courage Int) (: depth Int)))
+  (variant rat (= (tuple "cave rat" "r" 3 2 1 1)))
+  (variant bat (= (tuple "gloom bat" "b" 4 2 2 1)))
+  (variant slug (= (tuple "mire slug" "s" 7 3 0 2)))
+  (variant warden (= (tuple "bone warden" "W" 10 3 0 3)))
+  (variant wraith (= (tuple "pale wraith" "w" 12 4 3 4)))
+)
+
+(prop + bestiary (list Breed) (= (list .rat .bat .slug .warden .wraith)))
+
+(type + Creature
+  (prop + breed Breed)
+  (prop + at Spot)
+  (prop + health Int)
+  (event + sightings Spot)
+  (event + blows Spot)
+  (event + turns F64)
+  (fn-do + This _
+    (param breed _)
+    (param at _)
+    (= health (. breed health))
+  )
+  (prop + mind _
+    (machine
+      (state asleep
+        (then (call hunting each) (trigger for spot sightings (<= (call (. at steps) spot) 4)))
+        (then (call hunting each) (trigger on blows))
+      )
+      (state (call hunting target)
+        (then (call fleeing each) (trigger on blows (<= health (. breed courage))))
+        (then (call hunting each) (trigger on sightings))
+        (then wandering (trigger on (call delayed turns 8)))
+      )
+      (state wandering
+        (then (call hunting each) (trigger for spot sightings (<= (call (. at steps) spot) 6)))
+        (then (call hunting each) (trigger on blows))
+      )
+      (state (call fleeing threat)
+        (then (call fleeing each) (trigger on sightings))
+        (then (call fleeing each) (trigger on blows))
+        (then wandering (trigger on (call delayed turns 6)))
+      )
+    )
+  )
+  (fn-expr + name String :get
+    (. breed name)
+  )
+  (fn-expr + is-alive Bool :get
+    (> health 0)
+  )
+  (fn-do + suffer _
+    (param damage Int)
+    (param from Spot)
+    (-= health damage)
+    (<- blows from)
+  )
+  (fn-do + bite Int
+    (param dice Random)
+    (return (call (. dice random) 1 (+ (. breed bite) 1)))
+  )
+)
+
+(type + Item (is Union)
+  (variant tonic)
+  (variant gold Int)
+  (variant blade)
+  (variant ember)
+)
+
+(type + Loot (is (tuple (: at Spot) (: item Item))))
+
+(fn-expr + breeds-for (list Breed)
+  (param depth Int)
+  (call List (in each bestiary (when (<= (. each depth) depth))))
+)

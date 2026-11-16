@@ -2194,6 +2194,8 @@ do match tree.nodes[id]
             walk-pipeline-body(id, row.rhs, row.op == .pipe-closure-op)
         else if row.op == .pipe-forward-op
             resolve-callable(row.rhs)
+        else if is-type-test(row.op)
+            walk-tested(id, row.rhs)
         else
             walk(row.rhs)
         if streams
@@ -3765,12 +3767,51 @@ do match? tree.nodes[id]
     | .node-type-and(row)
         walk-tests(row.left)
         walk-tests(row.right)
+    | .node-type-or(row)
+        walk-tests(row.left)
+        walk-tests(row.right)
     | .node-type-predicate(row)
         if !lookup-slot(it-name)
             declare(it-name, .slot-it, id, SlotFlag.slot-constant, 0)
         walk(row.expr)
     | .node-type-equality(row)
         walk(row.expr)
+    | .node-type-numeric(row)
+        walk(row.value)
+    | .node-type-capture(row)
+        walk-tests(row.type)
+    | .node-type-match(row)
+        walk-tests(row.type)
+    | .node-type-case(row)
+        walk-tests(row.value)
+    | .node-type-list(row)
+        for pattern in tree.children[row.patterns]
+            walk-tests(pattern)
+    | .node-type-map(row)
+        for pattern in tree.children[row.patterns]
+            walk-tests(pattern)
+    | .node-type-map-item(row)
+        walk-tests(row.value)
+    | .node-type-tuple(row)
+        for field in tree.children[row.field-types]
+            walk-tests(field)
+
+────────────────────
+_ do walk-tested
+    - id SyntaxId
+    - pattern SyntaxId
+
+push-scope(.scope-arm, id)
+do match tree.nodes[pattern]
+    | .node-type-list
+        walk-tests(pattern)
+    | .node-type-map
+        walk-tests(pattern)
+    | .node-type-case
+        walk-tests(pattern)
+    ??
+        walk(pattern)
+pop-scope()
 
 ────────────────────
 _ do walk-held
@@ -3952,7 +3993,8 @@ _ do use-slot
     - flags ResolutionMask
 
 ` What a read of a local does: a function the read is in, inside the one that declares the
-` local, captures it, and a tracked read the list of subscribers of that function too.
+` local, captures it, and a tracked read the list of subscribers of that function too, as does
+` a store from such a function where the one that declares the local reads it tracked.
 . slot-flags = use-flags(flags, depth < function-depth)
 if depth < function-depth
     record-capture(slot, depth, bindings.slots[slot].kind == .slot-this, flags)
@@ -3960,7 +4002,9 @@ if slot-flags != 0
     bindings.mark-slot(slot, slot-flags)
 if bindings.slots[slot].kind == .slot-lazy
     note-lazy-use(slot, flags)
-if (flags /and/ (ResolutionFlag.resolution-tracked)) != 0 && is-trackable(slot)
+. tracked = (flags /and/ (ResolutionFlag.resolution-tracked)) != 0
+. stored = (flags /and/ (ResolutionFlag.resolution-write)) != 0 && depth < function-depth
+if is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
     . subscribers = subscribers-of(slot)
     if depth < function-depth
         bindings.mark-slot(subscribers, SlotFlag.slot-captured)
@@ -4574,9 +4618,13 @@ _ do note-slot
     - slots [SlotId]
     - flags ResolutionMask
 
+` Adds a slot to `slots` once, with the list of subscribers where it is read tracked, or
+` stored to where the function that declares it reads it tracked.
 if slots.find(slot) == null
     slots += slot
-if (flags /and/ (ResolutionFlag.resolution-tracked)) != 0 && is-trackable(slot)
+. tracked = (flags /and/ (ResolutionFlag.resolution-tracked)) != 0
+. stored = (flags /and/ (ResolutionFlag.resolution-write)) != 0
+if is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
     . subscribers = subscribers-of(slot)
     if slots.find(subscribers) == null
         slots += subscribers

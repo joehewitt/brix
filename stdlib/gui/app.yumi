@@ -1,4 +1,5 @@
 
+./box
 ./primitives
 ./status-item
 ./theme
@@ -12,7 +13,7 @@
 /ui/app-state
 
 ━━━━━━━━━━━━━━━━━━━━
-+ App
++ App is GuiNode
 
 + title = main-bundle-name ?? ""
 + keeps-display-awake = false
@@ -128,6 +129,49 @@ status-items += status-item
 = status-item
 
 ────────────────────
++ markup-make-region GuiNode?
+
+AppRegion(this)
+
+────────────────────
++ do markup-attach-child
+    - child GuiNode
+    - anchor GuiNode?
+
+do match? child
+    | window Window
+        this += window
+    | status-item StatusItem
+        this += status-item
+=? if !has-run
+do new
+    open-joined(child)
+
+────────────────────
++ do markup-detach-child
+    - child GuiNode
+
+do match? child
+    | window Window
+        remove-window(window)
+        window.app = null
+    | status-item StatusItem
+        status-items -= status-item
+        status-item.app = null
+
+────────────────────
+_ do open-joined
+    - child GuiNode
+
+do match? child
+    | window Window
+        if window.app == this && !window.has-opened
+            window.open()
+    | status-item StatusItem
+        if status-item.app == this
+            status-item.open()
+
+────────────────────
 + do run
 
 has-run = true
@@ -174,6 +218,9 @@ for window in windows
     window.close()
 for status-item in status-items
     status-item.close()
+super.close()
+    catch error Error
+        unhandled-error(error)
 . store = state
 if store
     store.flush()
@@ -181,6 +228,33 @@ if store
 if native
     C:yumiGuiAppRelease(native)
     native = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ AppRegion is GuiRegion
+
++ app App
+
+────────────────────
++ This
+    - app
+
+────────────────────
++ markup-make-region GuiNode?
+
+AppRegion(app)
+
+────────────────────
++ do markup-attach-child
+    - child GuiNode
+    - anchor GuiNode?
+
+app.markup-attach-child(child, anchor)
+
+────────────────────
++ do markup-detach-child
+    - child GuiNode
+
+app.markup-detach-child(child)
 
 ━━━━━━━━━━━━━━━━━━━━
 + gui-system-appearance WindowAppearance

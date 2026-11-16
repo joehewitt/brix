@@ -1,0 +1,457 @@
+; ChatGPT in the terminal. Type a message and press Enter, and the reply streams in as Markdown.
+; It needs an OpenAI API key in OPENAI_API_KEY, and reads the model from OPENAI_MODEL. To try it
+; without a key, start chatgpt-mock-server in this folder, then set MOCK_CHATGPT_BASE_URL to
+; http://localhost:8787/v1 and MOCK_CHATGPT_API_KEY to any text.
+(import /ai)
+(import /ai/openai/completions)
+(import /net/url)
+(import /os/env)
+(import /os/exit)
+(import /os/file)
+(import /tui)
+(import /tui/colors)
+(import /tui/text)
+(blank)
+
+(main
+  (let api-key (?? (call setting "OPENAI_API_KEY") (call setting "MOCK_CHATGPT_API_KEY")))
+  (if (not api-key)
+    (<- stderr (str (call missing-api-key-message) "\n"))
+    (call exit 1)
+  )
+  (blank)
+  (let model (?? (call setting "OPENAI_MODEL") (call setting "MOCK_CHATGPT_MODEL") "gpt-6.1-sol"))
+  (blank)
+  (<> App
+    (<> Window (id: win) (• flex-col)
+      (<> Box (• flex-row) (• flex 1)
+        (<> Box (• flex 1))
+        (<> ChatShell
+          (= client (call chat-client api-key))
+          (= model model)
+        )
+        (<> Box (• flex 1))
+      )
+      (<> Shortcut (text: "Quit")
+        (= key "Ctrl+C")
+        (= action (=> () :do (call (. win close))))
+      )
+      (<> Shortcut (text: "Quit")
+        (= key .escape)
+        (= show-in-status false)
+        (= action (=> () :do (call (. win close))))
+      )
+      (<> StatusBar
+        (= message model)
+      )
+    )
+  )
+)
+
+(type + ChatShell (is Form)
+  (prop + client AIProvider)
+  (prop + model String)
+  (prop + messages (list ChatMessage)
+    (block
+      (bullet (call ChatMessage "message-0" (. Speaker notice) "Welcome to ChatGPT"))
+    )
+  )
+  (prop + next-message-id _ (= 1))
+  (prop + pending-chunks (list ChatStreamChunk))
+  (prop + is-flush-pending _ (= false))
+  (prop + should-auto-scroll-transcript _ (= true))
+  (blank)
+  (rule This (• flex-col)
+    (= color lightgray)
+    (= min-width (call (. SizeSpec coord) 80))
+    (= max-width (call (. SizeSpec coord) 80))
+    (blank)
+    (rule transcript
+      (= color lightgray)
+      (= padding-top 1)
+      (= padding-bottom 1)
+    )
+    (blank)
+    (rule prompt-shell
+      (= border-style (. BorderStyle rounded))
+      (= border-color midgray)
+      (= padding-left 1)
+      (= padding-right 1)
+    )
+    (blank)
+    (rule composer
+      (= color lightgray)
+      (= background-color null)
+      (blank)
+      (when-style #is-focused
+        (= background-color null)
+      )
+      (when-style (not #is-effectively-enabled)
+        (= background-color null)
+      )
+    )
+  )
+  (content
+    (<> This
+      (<> Box (id: transcript) (• flow-col) (• flex 1)
+        (for (in chat-message #messages (keyed-by (. chat-message id)))
+          (<> ChatMessageRow
+            (= message chat-message)
+          )
+        )
+      )
+      (blank)
+      (<> Box (id: prompt-shell) (• flex-row) (• mb 1)
+        (<> TextEditor (id: composer) (• flex 1)
+          (= placeholder "Message ChatGPT")
+          (= multiline true)
+          (= max-height 6)
+        )
+      )
+      (blank)
+      (<> Shortcut (text: "Scroll up")
+        (= key .arrow-up)
+        (= show-in-status false)
+        (= action (=> () :do (call scroll-transcript (. Direction up))))
+      )
+      (<> Shortcut (text: "Scroll down")
+        (= key .arrow-down)
+        (= show-in-status false)
+        (= action (=> () :do (call scroll-transcript (. Direction down))))
+      )
+    )
+  )
+  (subscribe-for (on event scrolled)
+    (call scroll-transcript (. event direction))
+    (call (. event cancel))
+  )
+  (subscribe-for (on event submitted)
+    (let prompt (call (. composer text trim)))
+    (if prompt
+      (= (. composer text) "")
+      (= should-auto-scroll-transcript true)
+      (+= messages (call next-message (. Speaker you) prompt))
+      (let request (call chat-request messages))
+      (let reply-index (. messages length))
+      (+= messages (call next-message (. Speaker assistant) "" true))
+      (call refresh-transcript transcript should-auto-scroll-transcript)
+      (blank)
+      (do-new
+        (inline (call stream-reply request reply-index))
+      )
+    )
+  )
+  (fn-do + next-message ChatMessage
+    (param speaker Speaker)
+    (param body String)
+    (param is-pending Bool (= false))
+    (let id (str "message-" next-message-id))
+    (+= next-message-id 1)
+    (return (call ChatMessage id speaker body is-pending))
+  )
+  (fn-do + stream-reply _
+    (param request (list AIMessage))
+    (param index Index)
+    (call receive-reply request index
+      (block
+        (on-error (: error Error)
+          (call replace-message index (. Speaker notice) (str "API error: " error))
+          (call refresh-transcript transcript should-auto-scroll-transcript)
+        )
+      )
+    )
+  )
+  (fn-do + receive-reply _
+    (param request (list AIMessage))
+    (param index Index)
+    (let has-content false)
+    (for (in event (call (. client stream) (call AIRequest model request)))
+      (if (and (is event AIPartDeltaEvent) (is (. (as event AIPartDeltaEvent) delta) AITextDelta))
+        (call queue-chunk index (. (as (. (as event AIPartDeltaEvent) delta) AITextDelta) text))
+        (= has-content true)
+      )
+    )
+    (blank)
+    (if (not has-content)
+      (call replace-message index (. Speaker assistant) "")
+      (call refresh-transcript transcript should-auto-scroll-transcript)
+    )
+  )
+  (fn-do + queue-chunk _
+    (param index Index)
+    (param text String)
+    (+= pending-chunks (call ChatStreamChunk index text))
+    (if (not is-flush-pending)
+      (= is-flush-pending true)
+      (call request-animation-frame (. this flush-transcript))
+    )
+  )
+  (fn-do + flush-transcript _
+    (return-if (if (not is-flush-pending)))
+    (blank)
+    (let chunks pending-chunks)
+    (= pending-chunks (call (of List ChatStreamChunk)))
+    (= is-flush-pending false)
+    (blank)
+    (for (in chunk chunks)
+      (call append-to-message (. chunk index) (. chunk text))
+    )
+    (blank)
+    (if chunks
+      (call refresh-transcript transcript should-auto-scroll-transcript)
+    )
+  )
+  (fn-do + append-to-message _
+    (param index Index)
+    (param text String)
+    (return-if (if (>= index (. messages length))))
+    (blank)
+    (let current ([] messages index))
+    (call replace-message index (. current speaker) (++ (. current body) text))
+  )
+  (fn-do + replace-message _
+    (param index Index)
+    (param speaker Speaker)
+    (param body String)
+    (return-if (if (>= index (. messages length))))
+    (blank)
+    (= ([] messages index) (call ChatMessage (. ([] messages index) id) speaker body))
+  )
+  (fn-do + scroll-transcript _
+    (param direction Direction)
+    (call (. transcript update-layout))
+    (call (. transcript scroll) 3 direction)
+    (= should-auto-scroll-transcript
+      (block
+        (case? (== direction (. Direction up))
+          false
+        )
+        (case? (call is-transcript-at-bottom transcript)
+          true
+        )
+        (default
+          should-auto-scroll-transcript
+        )
+      )
+    )
+  )
+)
+
+(type + ChatMessageRow (is Box)
+  (prop + message ChatMessage)
+  (prop + speaker _ (= (. #message speaker)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+    (= margin-bottom 1)
+  )
+  (content
+    (<> This
+      (<> Box (• flex-row)
+        (<> Box
+          (= flex (. #speaker leading-flex))
+        )
+        (blank)
+        (<> Box (• flex-col)
+          (= background-color (. #speaker background))
+          (= color (. #speaker foreground))
+          (= padding-left (. #speaker padding))
+          (= padding-right (. #speaker padding))
+          (= min-width (. #speaker width))
+          (= max-width (. #speaker width))
+          (blank)
+          (if (. #message is-pending)
+            (<> Spinner
+              (= frames (. SpinnerFrames braille))
+            )
+            (else-if (is #speaker .assistant)
+              (<> MarkdownText
+                (= text (. #message body))
+                (= color lightgray)
+                (= header-color (call ansi-cyan))
+                (= strong-color white)
+                (= em-color gold)
+                (= link-color sky)
+                (= image-color pink)
+                (= quote-color mutedgray)
+                (= code-color chartreuse)
+                (= divider-color mutedgray)
+                (= bullet-color gold)
+                (= max-width (. #speaker width))
+              )
+            )
+            (else
+              (for (in line (call wrapped-message-lines (. #message body) (. #speaker text-width)))
+                (<> Label
+                  (= text line)
+                  (= background-color (. #speaker background))
+                  (= color (. #speaker foreground))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + ChatMessage (is Tuple)
+  (prop + id String)
+  (prop + speaker Speaker)
+  (prop + body String)
+  (prop + is-pending _ (= false))
+)
+
+(type + ChatStreamChunk (is Tuple)
+  (prop + index Index)
+  (prop + text String)
+)
+
+(type + Speaker (is Union)
+  (variant you)
+  (variant assistant)
+  (variant notice)
+  (fn-expr + leading-flex Flex :get
+    (if-expr (is this .you) 1 0)
+  )
+  (fn-expr + foreground AnsiColor :get
+    (if-expr (is this .notice) mutedgray lightgray)
+  )
+  (fn-expr + background (? BackgroundColor) :get
+    (only-if dimgray (if (is this .you)))
+  )
+  (fn-expr + padding Coord :get
+    (if-expr (is this .you) 1 0)
+  )
+  (fn-expr + text-width Coord :get
+    (if-expr (is this .you) 55 80)
+  )
+  (fn-expr + width SizeSpec :get
+    (call (. SizeSpec coord) text-width)
+  )
+)
+
+(fn-expr + setting (? String)
+  (param name String)
+  (only-if value (if (!= value "")))
+  (where
+    (lazy value (call env name))
+  )
+)
+
+(fn-expr + missing-api-key-message _
+  (paragraph
+    "chatgpt needs an OpenAI API key, and OPENAI_API_KEY is not set."
+    "Set it to your key and run chatgpt again:"
+    ""
+    "    export OPENAI_API_KEY=sk-..."
+    ""
+    "To try it without a key, start chatgpt-mock-server, then set MOCK_CHATGPT_BASE_URL"
+    "to http://localhost:8787/v1 and MOCK_CHATGPT_API_KEY to any text."
+  )
+)
+
+(fn-expr + chat-client OpenAICompletions
+  (param api-key String)
+  (call OpenAICompletions api-key (if-expr base-url (call URL base-url) openai-api-base))
+  (where
+    (lazy base-url (?? (call setting "OPENAI_BASE_URL") (call setting "MOCK_CHATGPT_BASE_URL")))
+  )
+)
+
+(fn-expr + chat-request _
+  (param chat-messages (list ChatMessage))
+  (bullet (call AIMessage (. AIMessageRole system) system-prompt))
+  (bullet*
+    (block
+      (bullet* chat-messages)
+      (pipe ?> (> (. each body length) 0))
+      (pipe ?*>
+        (match? (. each speaker)
+          (case .you
+            (call AIMessage (. AIMessageRole user) (. each body))
+          )
+          (case .assistant
+            (call AIMessage (. AIMessageRole assistant) (. each body))
+          )
+        )
+      )
+    )
+  )
+  (pipe |> List)
+  (where
+    (lazy system-prompt
+      (call (. "" join)
+        (block
+          (bullet "You are ChatGPT inside Yumi's terminal chat UI. ")
+          (bullet "Answer in clear, concise Markdown.")
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + wrapped-message-lines _
+  (param text String)
+  (param width Coord)
+  (if-expr (> (. result length) 0) result (list ""))
+  (where
+    (lazy result
+      (block
+        (bullet* (call (. text split) "\n"))
+        (pipe *> (call wrap-message-line each safe-width))
+        (pipe |> flat-map)
+        (pipe |> List)
+      )
+    )
+    (lazy safe-width (as (if-expr (> width 0) width 1) Size))
+  )
+)
+
+(fn-expr + wrap-message-line _ @inline
+  (param source-line String)
+  (param width Size)
+  (bullet? (only-if "" (if (not source-line))))
+  (bullet*
+    (block
+      (..< 0 (. source-line length) (by: width))
+      (pipe *>
+        (scope ([] source-line (..< each end))
+          (lazy proposed-end (+ each width))
+          (lazy end (if-expr (< proposed-end (. source-line length)) proposed-end (. source-line length)))
+        )
+      )
+    )
+  )
+)
+
+(fn-do + refresh-transcript _
+  (param transcript Box)
+  (param should-scroll-to-bottom _ (= true))
+  (let batch-root (. transcript markup-batch-root))
+  (if batch-root
+    (call (. batch-root markup-batch-queue checkpoint))
+  )
+  (blank)
+  (call (. transcript update-layout))
+  (if (and should-scroll-to-bottom (. transcript has-overflow))
+    (call (. transcript scroll) 1000 (. Direction down))
+    (else-if (not (. transcript has-overflow))
+      (call (. transcript scroll) (tuple 0 0))
+    )
+  )
+)
+
+(fn-expr + is-transcript-at-bottom _
+  (param transcript Box)
+  (<= (. transcript scroll-y) (call transcript-bottom-scroll-y transcript))
+)
+
+(fn-expr + transcript-bottom-scroll-y Coord
+  (param transcript Box)
+  (if-expr (< bottom 0) bottom 0)
+  (where
+    (lazy bottom (- (. transcript content-bounds height) (. transcript inner-height)))
+  )
+)

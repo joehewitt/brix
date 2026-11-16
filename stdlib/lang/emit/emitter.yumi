@@ -16479,7 +16479,8 @@ _ do leave-as
 ` where a program goes on after an unhandled error. What follows is never run. A
 ` constructor that raises leaves what it was making behind. A function the event runtime
 ` calls for a section of a class, and the function that fills an object with the markup of
-` its class, the handler of a state machine's group of event transitions, and the function a
+` its class, the handler of a state machine's group of event transitions, the function that
+` stops a machine as its object closes, and the function a
 ` live action runs a rule of a class, a live statement or the value of a property again with,
 ` give the error to the global `unhandled-error` and return nothing, as the reference's live
 ` action does with the error such a function gives it. An error of a class above every error
@@ -16495,7 +16496,8 @@ if fusing
     =
 . stops = function.kind == .task-body || function.kind == .module-globals
 . reports = function.kind == .module-main || function.kind == .lazy-global || stops
-. hands = function.kind == .event-handler || function.kind == .machine-handler || function.kind == .class-rule-updater || function.kind == .property-updater || function.kind == .style-author || function.kind == .style-given-author || fills-content || reruns-statement
+. hands = function.kind == .event-handler || machine-hands || function.kind == .class-rule-updater || function.kind == .property-updater || function.kind == .style-author || function.kind == .style-given-author || fills-content || reruns-statement
+    .. machine-hands = function.kind == .machine-handler || function.kind == .machine-stop
 . index = if reports || hands then U32.max else error-case(type)
 . casts = !reports && !hands && index == U32.max
 if casts && (narrower-error-case(type, 0) == U32.max || !function.may-panic)
@@ -17382,6 +17384,8 @@ bind-arguments(declared)
 make-subscribers(declared)
 if adapted != no-type && unit.takes-self && !unit.received
     bind-row-receiver(declared, columns-at)
+if closes-actions()
+    stop-owned(declared)
 if rerun
     emit-rerun(declared, body)
     =
@@ -20196,7 +20200,8 @@ _ do emit-live-statement
 ` the value reads. Then the action is made with those trackers and a callback that runs the
 ` statement again through the function written for it, given the environment in force here,
 ` and the object named alone whose property is assigned, read again, owns the action where it
-` is of a class.
+` is of a class. Where that class is a markup host or batch, the action is made as the type
+` pass chose for it (`LiveStatement`), given the object as its host or its batch.
 . code = if row.rerun != no-instance then tables.instance-functions[row.rerun] else no-function
 if code == no-function || is-chained(rhs) || is-link(lhs)
     refuse(.refused-statement, id)
@@ -20206,17 +20211,32 @@ live-actions += LiveTrackers(trackers, trackers)
 emit-assign(id, .eq-op, lhs, rhs)
 live-actions.pop()
 . owner = make-operand(.operand-void, 0)
+. held = no-type
 . owned = false
 do match? tree.nodes[lhs]
     | .node-get-expression(get)
         . emitted = emit-expression(get.object)
         owner = emitted.operand
+        held = emitted.type
         owned = tables.is-class(emitted.type)
-. action = make-action
-    - load-local(trackers, id)
-    - tables.live-adapter-of(code)
-    - written-environment(id)
-    - id
+. adapter = tables.live-adapter-of(code)
+if row.owned != no-instance
+    if !owned || held != row.holder
+        refuse(.refused-statement, id)
+        =
+    . callback = make-callback(adapter, written-environment(id), id)
+    . given = convert
+        - id
+        - if row.rooted then .reason-markup-batch else .reason-markup-host
+        - Typed(owner, held)
+    . mark = pending.length
+    pending += load-local(trackers, id)
+    pending += callback
+    pending += given.operand
+    . made = raising-call(id, row.owned, mark)
+    attach-action(owner, made.operand, id)
+    =
+. action = make-action(load-local(trackers, id), adapter, written-environment(id), id)
 if owned
     attach-action(owner, action.operand, id)
 
@@ -22834,19 +22854,32 @@ _ watches Bool
 ` Whether a store to a local runs the actions that read it: some read tracks it, and the
 ` function that declares it has made its list of subscribers by then, as the reference makes
 ` it at the first tracked read of one of its locals that it compiles. The function that runs a
-` live statement again stores after that.
+` live statement again stores after that, and so does any other function written in the one
+` that declares the local, where that one reads one of its locals tracked.
 |? (bindings.slots[slot].flags /and/ SlotFlag.slot-tracked) == 0 || undispatched
     false
 |? kind != .slot-local && kind != .slot-lazy && kind != .slot-argument
     false
 |? tables.is-rerun(unit.instance)
     facts.tracked-locals-from(instances.rows[unit.instance].enclosing) != 0
+|? !owns(slot)
+    declarer(slot) != no-instance && facts.tracked-locals-from(declarer(slot)) != 0
 ??
     first != 0 && first < id
 
 .. undispatched = instances.live.dispatch == no-instance
 .. kind = bindings.slots[slot].kind
 .. first = facts.tracked-locals-from(unit.instance)
+
+────────────────────
+_ do declarer InstanceId
+    - slot SlotId
+
+` The function the emitted one is written in that declares a slot, or none.
+. owner = unit.instance
+while owner != no-instance && tables.instance-scopes[owner] != tables.slot-functions[slot]
+    owner = instances.rows[owner].enclosing
+= owner
 
 ────────────────────
 _ do dispatch-local
@@ -23127,10 +23160,10 @@ store(held, 0, value, false, site)
 ────────────────────
 _ do closes-actions Bool
 
-` Whether the function is a class's `close` that takes no arguments, which stops the machines
-` the object's properties hold as it leaves, where the program starts any, closes the live
-` actions the object owns, where the program makes any, and the object's events, where its class
-` has any.
+` Whether the function is a class's `close` that takes no arguments, which closes the live
+` actions the object owns, where the program makes any, and stops the machines its properties hold
+` and its markup writes, where the program starts any, as it starts, and closes the live actions
+` made since and the object's events, where its class has any, as it leaves.
 if unit.instance == no-instance || !unit.has-self || function.kind != .instance-body
     = false
 if instances.live.has-actions == no-instance && !closes-events() && !stops-machines()
@@ -23146,30 +23179,49 @@ do match? program.modules[row.module].decls[row.decl]
 = false
 
 ────────────────────
-_ do close-owned
+_ do stop-owned
     - site SyntaxId
 
-` Stops each machine the receiver's properties hold, as the event runtime keeps them
-` (`event-stop-machines`); then closes each live action the receiver owns, taking it off the
-` list the receiver keeps in lane 1, and then clears the lane, as the reference's `close` does as
-` it leaves; then closes the receiver's events, where its class has any.
+` Closes each live action the receiver owns, then stops each machine its properties hold and its
+` markup writes, as the event runtime keeps them (`event-stop-machines`), before the body of
+` `close` runs: nothing the object does again on its own runs while the body closes what it owns,
+` and the machines' exit rows see the object as it was.
+if instances.live.has-actions != no-instance
+    close-actions(site, unit.self)
 if stops-machines()
     . stopping = pending.length
     pending += num-cast(site, unit.self, managed-layout, pointer-layout)
     do call-instance(facts.machine-stop, site, stopping)
+
+────────────────────
+_ do close-owned
+    - site SyntaxId
+
+` Closes each live action the receiver owns, taking it off the list the receiver keeps in lane 1,
+` and then clears the lane, as the reference's `close` does as it leaves; then closes the
+` receiver's events, where its class has any, or where `stop-owned` stopped its machines.
 if instances.live.has-actions != no-instance
     close-actions(site, unit.self)
 if closes-events()
     . mark = pending.length
     pending += num-cast(site, unit.self, managed-layout, pointer-layout)
     do call-instance(facts.event-close, site, mark)
+else if closes-stopped()
+    . mark = pending.length
+    pending += num-cast(site, unit.self, managed-layout, pointer-layout)
+    do call-instance(facts.machine-close, site, mark)
 
 ────────────────────
 _ stops-machines Bool
 
-` Whether the program starts a machine a class's property holds, which each class's `close`
-` stops (`own-machine`).
+` Whether the program starts a machine a class's property holds or its markup writes, which each
+` class's `close` stops (`own-machine`).
 facts.machine-stop != no-instance && tables.instance-functions[facts.machine-stop] != no-function
+
+────────────────────
+_ closes-stopped Bool
+
+stops-machines() && facts.machine-close != no-instance && tables.instance-functions[facts.machine-close] != no-function
 
 ────────────────────
 _ do closes-events Bool
@@ -38099,9 +38151,9 @@ _ gives-value Bool
     - id SyntaxId
 
 ` Whether a part of a stream pattern gives what a rule or a pattern it calls gives rather than
-` the text it matched: so does a call planned to give its text that the type pass recorded
-` the helper to make another type of.
-plan == .plan-stream-value || plan == .plan-pattern-call || (plan == .plan-span-call && stated != types.string-type && stated != no-type && material-at(id, .material-text) != U32.max)
+` the text it matched: so do a test of an item for a case of a union, which gives the item, and
+` a call planned to give its text that the type pass recorded the helper to make another type of.
+plan == .plan-stream-value || plan == .plan-pattern-call || plan == .plan-case || (plan == .plan-span-call && stated != types.string-type && stated != no-type && material-at(id, .material-text) != U32.max)
 
 .. plan = facts.plan-of(unit.reading, id)
 .. stated = facts.node-type(unit.reading, id)
@@ -38220,6 +38272,8 @@ do match? tree.nodes[id]
     | .node-stream-equality(row)
         if facts.plan-of(unit.reading, id) == .plan-pattern-call
             = pattern-call(run, id, row.value, cursor, failed)
+        if facts.plan-of(unit.reading, id) == .plan-case
+            = stream-case-item(run, id, cursor, failed)
         if facts.node-type(unit.reading, id) != types.string-type
             = stream-dynamic-item(run, id, row.value, cursor, failed)
         = bare-part(stream-dynamic-text(run, id, row.value, cursor, failed))
@@ -38257,6 +38311,9 @@ do match? tree.nodes[id]
                 - cursor
                 - failure-of(run, id, cursor, failed)
                 - is-scanned(tree, row.operand)
+        if facts.plan-of(unit.reading, id) == .plan-stream-guard
+            . missed = failure-of(run, id, cursor, failed)
+            = bare-part(stream-guard(id, row.operand, row.op == .positive-lookahead-op, cursor, missed))
         if row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
             . looked = stream-lookahead
                 - run
@@ -40900,6 +40957,48 @@ ir.start-block(passed)
 = StreamPart(char-next(run, id, cursor), Typed(expected.operand, type))
 
 ────────────────────
+_ do stream-case-item StreamPart
+    - run StreamRun
+    - id SyntaxId
+    - cursor Operand
+    - failed IRBlockId
+
+` One item of a union a pattern tests for a case named by its symbol, by the number the type
+` pass recorded: where the item holds the case, the part gives what the case holds, or the item
+` where the type pass typed the part as the items. It reads as far as the item, there or not.
+. type = facts.node-type(unit.reading, id)
+. constant = facts.constant-of(unit.reading, id)
+. layout = read-layout(run, id)
+if constant == no-fact || encodes(run) || !tables.layouts.is-union(layout)
+    refuse(.refused-type, id)
+    = bare-part(cursor)
+. index = facts.constants[constant].bits as U32
+if index >= tables.layouts.rows[layout].cases.count
+    refuse(.refused-type, id)
+    = bare-part(cursor)
+. field = tables.layouts.case-field(layout, index)
+. whole = type == class-arg(types, run.buffer-type, 0)
+if !whole && field.type != type
+    refuse(.refused-type, id)
+    = bare-part(cursor)
+. missed = failure-of(run, id, cursor, failed)
+. next = stream-advance(run, id, cursor, 1)
+. present = ir.reserve-block()
+. ended = ir.reserve-block()
+branch-present(run, id, cursor, present, ended)
+ir.start-block(ended)
+record-extent(run, id, next)
+jump(missed)
+ir.start-block(present)
+. item = char-at(run, id, cursor)
+record-extent(run, id, next)
+. passed = ir.reserve-block()
+branch(case-test(id, item, index), passed, missed)
+ir.start-block(passed)
+. given = if whole then item else take(item, field, id)
+= StreamPart(char-next(run, id, cursor), Typed(given, type))
+
+────────────────────
 _ do stream-type-part StreamPart
     - run StreamRun
     - id SyntaxId
@@ -40910,8 +41009,9 @@ _ do stream-type-part StreamPart
 ` A type named as a part of a pattern: a call of the rule the type pass recorded at it, which is
 ` the type's constructor that takes the stream or the rule that reads a number of the type, or
 ` of a function that reads the number and is no rule, as `boundary-call` says; or else a test
-` of one item for the type, which gives the item: an item of a class the type derives from is
-` tested as the type named as a pattern tests a value, and given as the type. An item that is
+` of one item for the type, which gives the item: an item of a class the type derives from, or
+` of a union that has the type as a case, is read as the items are, tested as the type named as
+` a pattern tests a value, and given as the type. An item that is
 ` a number of another type is never of it, and fails once it is there. Before the test the
 ` stream is told the pattern stands at the item, as the reference tells it before it looks for
 ` such a function. The test reads as far as the item, there or not. Where the buffer is UTF-8
@@ -40928,7 +41028,7 @@ if first != no-fact && !commits
     = rule-call(run, id, type, cursor, failed)
 . item-type = if encodes(run) then types.type-row(.char) else class-arg(types, run.buffer-type, 0)
 . never = item-type != type && intrinsic-is-numeric(types.intrinsic-of(item-type))
-if !commits || calls-next || (!never && layout-of(type, id) != read-layout(run, id))
+if !commits || calls-next || (!never && layout-of(item-type, id) != read-layout(run, id))
     refuse(.refused-type, id)
     = bare-part(cursor)
 .. calls-next = next-call(first) != no-fact
@@ -42249,6 +42349,31 @@ ir.start-block(missed)
 rewind-levels(marks, id)
 fail-marks(entered, id)
 jump(if positive then failed else passed)
+ir.start-block(passed)
+= cursor
+
+────────────────────
+_ do stream-guard Operand
+    - id SyntaxId
+    - operand SyntaxId
+    - positive Bool
+    - cursor Operand
+    - failed IRBlockId
+
+` A lookahead of a test that does not read the item, which the type pass planned as a guard: its
+` condition is tested alone, reading no item, and a positive one passes where it holds and a
+` negative one where it does not. Either way the cursor stays where it was.
+. predicate SyntaxId = match tree.nodes[operand]
+    | .node-stream-predicate(row)
+        row.predicate
+    ??
+        0
+if predicate == 0
+    refuse(.refused-expression, id)
+    = cursor
+. holds = test(predicate, emit-expression(predicate)).operand
+. passed = ir.reserve-block()
+branch(holds, if positive then passed else failed, if positive then failed else passed)
 ir.start-block(passed)
 = cursor
 

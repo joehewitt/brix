@@ -2400,7 +2400,7 @@ struct YuGuiDisplayLink {
 
 static const uint64_t kGuiDisplayLinkIdleGraceNanoseconds = 250000000;
 
-static std::mutex guiFrameSchedulerMutex;
+[[clang::no_destroy]] static std::mutex guiFrameSchedulerMutex;
 static std::vector<YuGuiDisplayLink*> guiDisplayLinks;
 
 // `CVDisplayLinkStop` waits for the in-flight display-link callback to unwind, and that callback

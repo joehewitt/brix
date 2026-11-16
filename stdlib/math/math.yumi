@@ -176,25 +176,87 @@ C:getentropy(seed, 8)
 _ do next-random U64
 
 random-state += random-increment
-. first = (random-state /xor/ (random-state /zrshift/ 30)) * random-first-multiplier
-. second = (first /xor/ (first /zrshift/ 27)) * random-second-multiplier
-= second /xor/ (second /zrshift/ 31)
+= random-mix(random-state)
+
+━━━━━━━━━━━━━━━━━━━━
+_ random-mix U64
+    - state U64
+
+second /xor/ (second /zrshift/ 31)
+
+.. first = (state /xor/ (state /zrshift/ 30)) * random-first-multiplier
+.. second = (first /xor/ (first /zrshift/ 27)) * random-second-multiplier
+
+━━━━━━━━━━━━━━━━━━━━
+_ random-fraction F64
+    - bits U64
+
+((bits /zrshift/ 11) as F64) / 9007199254740992.0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do random-between'Num Num
+    - bits U64
+    - min Num
+    - max Num
+
+if Num.is-integer
+    . width = ((max as I64) - (min as I64)) as U64
+    = ((min as I64) + ((bits % width) as I64)) as Num
+. value = (min + random-fraction(bits) * (max - min)) as Num
+= if value != max then value else min
 
 ━━━━━━━━━━━━━━━━━━━━
 + do random F64
 
-= ((next-random() /zrshift/ 11) as F64) / 9007199254740992.0
+= random-fraction(next-random())
 
 ━━━━━━━━━━━━━━━━━━━━
 + do random'Num Num
     - min Num
     - max Num
 
-if Num.is-integer
-    . width = ((max as I64) - (min as I64)) as U64
-    = ((min as I64) + ((next-random() % width) as I64)) as Num
-. value = (min + random() * (max - min)) as Num
-= if value != max then value else min
+= random-between(next-random(), min, max)
+
+━━━━━━━━━━━━━━━━━━━━
++ Random
+
++ seed U64
+_ state U64
+
+────────────────────
++ This
+
+seed = random-seed()
+state = seed
+
+────────────────────
++ This
+    - seed U64
+
+state = seed
+
+────────────────────
++ do random F64
+
+= random-fraction(draw())
+
+────────────────────
++ do random'Num Num
+    - min Num
+    - max Num
+
+= random-between(draw(), min, max)
+
+────────────────────
++ do split Random
+
+= Random(draw())
+
+────────────────────
+_ do draw U64
+
+state += random-increment
+= random-mix(state)
 
 ━━━━━━━━━━━━━━━━━━━━
 + not'Num

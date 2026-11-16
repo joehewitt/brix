@@ -1,0 +1,139 @@
+(import /graphics/color)
+(import /math)
+(import /media/synth)
+(import /units)
+(blank)
+(prop + step-count _ (= 16))
+(prop + steps-per-beat _ (= 4))
+(prop + top-level _ (= 7))
+(prop + default-level _ (= 4))
+(prop + slowest-tempo BeatsPerMinute (= 60bpm))
+(prop + fastest-tempo BeatsPerMinute (= 180bpm))
+(prop + widest-swing Ratio (= 50%))
+(prop _ note-names _ (= (list "A" "A♯" "B" "C" "C♯" "D" "D♯" "E" "F" "F♯" "G" "G♯")))
+(blank)
+(type-line + BeatsPerMinute (alias bpm) (is F64))
+(unit + 60bpm 1hz)
+
+(type + Scale (is (tuple (: title String) (: tones (list Semitones))))
+  (variant minor (= (tuple "Minor" (list 0st 2st 3st 5st 7st 8st 10st))))
+  (variant dorian (= (tuple "Dorian" (list 0st 2st 3st 5st 7st 9st 10st))))
+  (variant major (= (tuple "Major" (list 0st 2st 4st 5st 7st 9st 11st))))
+  (variant pentatonic (= (tuple "Pentatonic" (list 0st 3st 5st 7st 10st))))
+)
+
+(type + Note (is (tuple (: voice Size) (: level F64) (: pitch F64))))
+
+(type + Step
+  (prop + is-on Bool)
+  (prop + level Int)
+  (fn-do + This _
+    (param is-on _)
+    (param level _)
+  )
+)
+
+(type + Track
+  (prop + name String)
+  (prop + color RGBA)
+  (prop + is-tonal _ (= false))
+  (prop + pulse _ (= 4))
+  (prop + anchor _ (= 0))
+  (prop + patch SoundPatch)
+  (prop + steps (list Step))
+  (prop + is-muted _ (= false))
+  (prop + voice Size)
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-expr + note (? Note)
+    (param at Index)
+    (param scale Scale)
+    (only-if (call Note voice loudness pitch) (if (and (. step is-on) (not is-muted))))
+    (where
+      (lazy step ([] steps at))
+      (lazy loudness (if-expr is-tonal 0.8 (+ 0.25 (* 0.75 (/ (as (. step level) F64) top-level)))))
+      (lazy pitch (if-expr is-tonal (call pitch-ratio (call interval scale (. step level))) 1.0))
+    )
+  )
+  (fn-do + spark _
+    (let pattern (call euclid (call max 1 (+ pulse (call random -1 2))) (if-expr is-tonal (call random 0 step-count) anchor)))
+    (let degree (call random 0 3))
+    (for (in at (..< 0 step-count))
+      (= degree (call clamp (+ degree (call random -2 3)) 0 top-level))
+      (= (. ([] steps at) is-on) ([] pattern at))
+      (= (. ([] steps at) level) (if-expr is-tonal degree (call random 3 (+ top-level 1))))
+    )
+  )
+)
+
+(type + Groove
+  (prop + tracks (list Track))
+  (prop + tempo BeatsPerMinute (= 112bpm))
+  (prop + swing Ratio (= 14%))
+  (prop + scale _ (= (. Scale minor)))
+  (fn-do + (infix this += (param track Track)) _
+    (+= tracks track)
+  )
+  (fn-expr + notes (list Note)
+    (param at Index)
+    tracks
+    (pipe ?*> (call (. each note) at scale))
+  )
+  (fn-expr + step-frames F64
+    (param rate F64)
+    (/ rate (as (as (* tempo steps-per-beat) Hertz) F64))
+  )
+  (fn-expr + offset F64
+    (param at Index)
+    (param rate F64)
+    (if-expr (== (% at 2) 1) (* (as swing F64) (call step-frames rate)) 0.0)
+  )
+  (fn-do + spark _
+    (for (in track tracks)
+      (call (. track spark))
+    )
+  )
+  (fn-do + clear _
+    (for (in track tracks)
+      (for (in step (. track steps))
+        (= (. step is-on) false)
+      )
+    )
+  )
+)
+
+(fn-expr + interval Semitones
+  (param scale Scale)
+  (param degree Int)
+  (+ ([] tones (% degree count)) (* 12st (/ degree count)))
+  (where
+    (lazy tones (. scale tones))
+    (lazy count (. tones length))
+  )
+)
+
+(fn-expr + note-name String
+  (param scale Scale)
+  (param degree Int)
+  ([] note-names (% (as (call interval scale degree) Int) 12))
+)
+
+(fn-expr + steps-from (list Step)
+  (param marks String)
+  (call List (in (call Step (!= each rest) (call level-of each)) marks))
+  (where
+    (lazy rest (char "."))
+  )
+)
+
+(fn-expr + level-of Int
+  (param mark Char)
+  (if-expr (== mark (char ".")) default-level (- (as mark Int) (as (char "0") Int)))
+)
+
+(fn-expr + euclid (list Bool)
+  (param hits Int)
+  (param rotation Int)
+  (call List (in (< (% (* (+ each rotation) hits) step-count) hits) (..< 0 step-count)))
+)

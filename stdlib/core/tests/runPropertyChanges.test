@@ -3099,3 +3099,69 @@ Exception: "#this" tracks nothing, as only a property is tracked; track the prop
     + mirror = "${#this}"
                   ^^^^^
 ;====
+:====
+# A function written where a local is declared stores to it, and what reads the local tracked
+# follows.
+
+. count = 0
+. holder = Holder()
+holder.text = "count ${#count}"
+. bump = => do count += 1
+bump()
+-- holder.text
+bump()
+-- holder.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ text = ""
+
+:----
+
+count 1
+count 2
+;====
+:====
+# A function written in another, written where a local is declared, stores to the local.
+
+. word = "a"
+. holder = Holder()
+holder.text = "word ${#word}"
+. outer = => do
+    . inner = => do word = "b"
+    inner()
+outer()
+-- holder.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ text = ""
+
+:----
+
+word b
+;====
+:====
+# A function written before the read that tracks a local stores to it before the read and after.
+
+. count = 0
+. bump = => do count += 1
+bump()
+. holder = Holder()
+holder.text = "count ${#count}"
+-- holder.text
+bump()
+-- holder.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ text = ""
+
+:----
+
+count 1
+count 2
+;====

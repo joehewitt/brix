@@ -1,0 +1,216 @@
+(import /graphics/color)
+(import /math)
+(import /tui)
+(import ./delve-world)
+(import ./delve-creatures)
+(import ./delve-expedition)
+(blank)
+
+(prop + void _ (= (call RGBA "#05060a")))
+(prop + floor-stone _ (= (call RGBA "#15110d")))
+(prop + wall-stone _ (= (call RGBA "#2b2219")))
+(prop + flame _ (= (call RGBA "#f0a050")))
+(prop + remembered-floor _ (= (call RGBA "#0b0e16")))
+(prop + remembered-wall _ (= (call RGBA "#1a2030")))
+(prop + ledger-ground _ (= (call RGBA "#0d1018")))
+(prop + journal-ground _ (= (call RGBA "#090b11")))
+
+(type + Look (is (tuple (: glyph String) (: ink AnsiColor) (: ground RGBA))))
+
+(type + DungeonView (is Box)
+  (prop + game Expedition)
+  (content
+    (<> This
+      (= background (call DungeonPainter #game (. #game #turn)))
+    )
+  )
+)
+
+(type + DungeonPainter (is Painter)
+  (prop + game Expedition)
+  (prop + turn Int)
+  (fn-do + This _
+    (param game _)
+    (param turn _)
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (let level (. game level))
+    (let left (+ (. rect x) (call frame-offset (. rect width) (. level width) (. game at x))))
+    (let top (+ (. rect y) (call frame-offset (. rect height) (. level height) (. game at y))))
+    (do-use canvas
+      (call (. canvas clip) rect)
+      (call (. canvas paint-background) void rect)
+      (for (in spot (call (. level spots)))
+        (let look (call look-at game spot))
+        (= (. canvas text-color) (. look ink))
+        (= (. canvas background) (. look ground))
+        (call (. canvas move) (call Point (as (+ left (. spot x)) Coord) (as (+ top (. spot y)) Coord)))
+        (call (. canvas print) (. look glyph))
+      )
+    )
+  )
+)
+
+(fn-expr + frame-offset Int
+  (param room Int)
+  (param span Int)
+  (param focus Int)
+  (if-expr (>= room span) (/ (- room span) 2) (- (call clamp (- focus (/ room 2)) 0 (- span room))))
+)
+
+(fn-expr + look-at Look
+  (param game Expedition)
+  (param spot Spot)
+  (case? (> glow 0.0)
+    (call lit-look game spot tile glow)
+  )
+  (case? (call (. level was-seen) spot)
+    (call remembered-look tile)
+  )
+  (default
+    (call Look " " black void)
+  )
+  (where
+    (lazy level (. game level))
+    (lazy tile ([] level spot))
+    (lazy glow (call (. level light-at) spot))
+  )
+)
+
+(fn-expr + lit-look Look
+  (param game Expedition)
+  (param spot Spot)
+  (param tile Tile)
+  (param glow Float)
+  (case? (== spot (. game at))
+    (call Look "@" (call AnsiColor 231) ground)
+  )
+  (case? creature
+    (call Look (. creature breed glyph) (call breed-ink (. creature breed)) ground)
+  )
+  (case? found
+    (call Look (call item-glyph (. found item)) (call item-ink (. found item)) ground)
+  )
+  (default
+    (call Look (call tile-glyph tile) (call tile-ink tile glow) ground)
+  )
+  (where
+    (lazy creature (call (. game creature-at) spot))
+    (lazy found (call (. game loot-at) spot))
+    (lazy ground (call torchlit tile glow))
+  )
+)
+
+(fn-expr + remembered-look Look
+  (param tile Tile)
+  (match tile
+    (case .wall
+      (call Look " " black remembered-wall)
+    )
+    (case .stairs
+      (call Look ">" (call AnsiColor 60) remembered-floor)
+    )
+    (default
+      (call Look "·" (call AnsiColor 237) remembered-floor)
+    )
+  )
+)
+
+(fn-expr + torchlit RGBA
+  (param tile Tile)
+  (param glow Float)
+  (call (. (call (. flame with-alpha) (* glow strength)) over) stone)
+  (where
+    (lazy stone (if-expr (is tile .wall) wall-stone floor-stone))
+    (lazy strength (if-expr (is tile .wall) 0.7 0.35))
+  )
+)
+
+(fn-expr + tile-glyph String
+  (param tile Tile)
+  (match tile
+    (case .stairs
+      ">"
+    )
+    (case .floor
+      "·"
+    )
+    (default
+      " "
+    )
+  )
+)
+
+(fn-expr + tile-ink AnsiColor
+  (param tile Tile)
+  (param glow Float)
+  (case? (is tile .stairs)
+    (call AnsiColor 220)
+  )
+  (case? (> glow 0.5)
+    (call AnsiColor 137)
+  )
+  (default
+    (call AnsiColor 95)
+  )
+)
+
+(fn-expr + breed-ink AnsiColor
+  (param breed Breed)
+  (match breed
+    (case= .rat
+      (call AnsiColor 180)
+    )
+    (case= .bat
+      (call AnsiColor 141)
+    )
+    (case= .slug
+      (call AnsiColor 113)
+    )
+    (case= .warden
+      (call AnsiColor 230)
+    )
+    (case= .wraith
+      (call AnsiColor 159)
+    )
+  )
+)
+
+(fn-expr + item-glyph String
+  (param item Item)
+  (match item
+    (case .tonic
+      "!"
+    )
+    (case (call .gold _)
+      "\$"
+    )
+    (case .blade
+      "/"
+    )
+    (case .ember
+      "*"
+    )
+  )
+)
+
+(fn-expr + item-ink AnsiColor
+  (param item Item)
+  (match item
+    (case .tonic
+      (call AnsiColor 205)
+    )
+    (case (call .gold _)
+      (call AnsiColor 220)
+    )
+    (case .blade
+      (call AnsiColor 117)
+    )
+    (case .ember
+      (call AnsiColor 202)
+    )
+  )
+)

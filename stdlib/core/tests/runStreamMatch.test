@@ -3394,6 +3394,47 @@ foooo
 
 oooo
 ;====
+:====
+# A count written inline may compare and add what the match reads, a rule's parameters among
+# them, since each gives the same number every time the count is read.
+
+for size in Array'Byte([3u8, 7u8, 8u8, 9u8, 2u8, 5u8]) ~> \kept(4)
+    -- size
+
+━━━━━━━━━━━━━━━━━━━━
++ kept ~ Byte Size
+    - limit Size
+
+~ size U8 data Byte{if size <= (limit as U8) then size - 1 else 0}
+    data.size
+
+:----
+
+2
+0
+1
+;====
+:====
+# A count that may give another number each time it is read is an error that says to name it.
+
+-- match Array'Byte([2u8, 7u8])
+    ~ size U8 data Byte{half(size)}
+        data.size
+
+━━━━━━━━━━━━━━━━━━━━
++ half U8
+    - n U8
+
+n / 2
+
+:----
+%compile-error
+
+Exception: A count in a pattern is read each time the part repeats, and this one may change between reads; compute it in a lazy local with ".." and count by its name
+<no file:3>
+        ~ size U8 data Byte{half(size)}
+                            ^^^^^^^^^^
+;====
 ====================================================================================================
 Type inference
 ====================================================================================================
@@ -10868,6 +10909,51 @@ Nine
 0
 ;====
 :====
+# An arm's action gives the arm's value, so a raise as the action is an error that names where to
+# raise instead.
+
+-- catch "x" ~> \letter
+
+━━━━━━━━━━━━━━━━━━━━
++ letter ~ Char String ?! SyntaxError
+
+~ [a-z]
+    ?! SyntaxError("letter")
+
+:----
+%compile-error
+
+Exception: An arm's action gives the arm's value, so it cannot be a raise; call a function that raises it, or write "?! error" as the rule's last arm, which raises where no arm before it matches
+<no file:8>
+        ?! SyntaxError("letter")
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A rule another pattern calls may raise only where its body is `~` arms: one of a `?!` arm alone
+# is an error that says so.
+
+-- catch "x" ~> \letter
+
+━━━━━━━━━━━━━━━━━━━━
++ letter ~ Char String ?! SyntaxError
+
+~ [a-z] \refused
+    "letter"
+
+━━━━━━━━━━━━━━━━━━━━
++ refused ~ Char String ?! SyntaxError
+
+?! SyntaxError("refused")
+
+:----
+%compile-error
+
+Exception: "refused" raises, and a rule a pattern calls may raise only where its body is "~" arms, the last of which may be "?!"; give it a "~" arm before its "?!" arm with any "|?" condition in its pattern, or raise from a function an action calls
+<no file:7>
+    ~ [a-z] \refused
+            ^^^^^^^^
+;====
+:====
 # A pattern given to a rule calls a local rule of a rule that states an error it does not raise.
 
 -- catch parse("ab,cd")
@@ -11175,8 +11261,9 @@ end
 after
 ;====
 :====
-# A test of an item over characters sees the character as `it` and gives it, and one that
-# reads only what the rule was given tests the next character, ahead of it or as a part.
+# A test of an item over characters sees the character as `it` and gives it. A lookahead of a
+# test that reads only what the rule was given is a guard, which tests its condition alone and
+# needs no character, so it passes over empty text.
 
 -- shape("ab", true)
 -- shape("ab", false)
@@ -11217,9 +11304,125 @@ match text
 
 flagged
 plain
-plain
+flagged
 a then bc
 no a
+;====
+:====
+# A guard, a lookahead of a test that reads no item, needs no input of its own: a record that
+# ends in a part that takes nothing is given as soon as its last item is read, a guard passes at
+# the end of the input, a negative guard passes where its condition does not hold, and a
+# lookahead of a test that reads `it` still needs the item.
+
+/core/tokenstream
+
+for size in ChunkedTokenStream'Byte(Trickle(Array'Byte([0u8, 0u8, 2u8, 7u8, 8u8]))) ~> \guarded(4)
+    -- "record $size"
+-- match Array'Byte([0u8])
+    ~ size U8 &\{ size <= 4 } data Byte{size}
+        "kept ${data.size}"
+    ?? "refused"
+-- match Array'Byte([9u8])
+    ~ size U8 !\{ size <= 4 }
+        "too big"
+    ?? "fits"
+-- match Array'Byte([3u8])
+    ~ size U8 &\{ it == 5 }
+        "next is 5"
+    ?? "no next"
+
+━━━━━━━━━━━━━━━━━━━━
++ guarded ~ Byte Size
+    - limit Size
+
+~ size U8 &\{ size <= limit } data Byte{size}
+    data.size
+
+━━━━━━━━━━━━━━━━━━━━
++ Trickle
+    is ByteReadable
+
++ data Byte[]
++ cursor Index
+
+────────────────────
++ This
+    - data
+
+────────────────────
++ do read Size
+    - size Size
+    - buffer Byte[]
+
+if cursor >= data.size || size == 0
+    = 0
+-- "read ${data[cursor]}"
+buffer[0] = data[cursor]
+cursor += 1
+= 1
+
+:----
+
+read 0
+record 0
+read 0
+record 0
+read 2
+read 7
+read 8
+record 2
+kept 0
+too big
+no next
+;====
+:====
+# A rule's own failure raises its error, not a rule it called that passed: a guard in the called
+# rule passes at the end of the input, so the data that is missing there raises the caller's.
+
+-- catch total(Array'Byte([1u8]))
+-- catch total(Array'Byte([9u8, 1u8]))
+
+━━━━━━━━━━━━━━━━━━━━
++ do total Size ?! Oops
+    - bytes Byte[]
+
+. sum Size = 0
+for size in bytes ~> \record(4)
+    sum += size
+= sum
+
+━━━━━━━━━━━━━━━━━━━━
++ Oops is Error
+
++ code Int
+
+────────────────────
++ This
+    - code
+
+message = "oops $code"
+
+━━━━━━━━━━━━━━━━━━━━
++ record ~ Byte Size ?! Oops
+    - limit Size
+
+~ size U8 \limited(size, limit) data Byte{size}
+    data.size
+?! Oops(1002)
+
+━━━━━━━━━━━━━━━━━━━━
++ limited ~ Byte Bool ?! Oops
+    - size Size
+    - limit Size
+
+~ &\{ size <= limit }
+    true
+?! Oops(1009)
+
+:----
+
+oops 1002
+oops 1009
 ;====
 :====
 # A rule that states no type and ends in an optional part gives the text it matched.
@@ -12122,6 +12325,49 @@ Exception: Rule "nope" not found
 item (1, 2)
 points
 tokens
+;====
+:====
+# Over items of a union, a case named by its symbol matches one item that holds the case and
+# gives what the case holds, or the item where it holds nothing, and a type the union has as a
+# case matches one item that holds it and gives what it holds.
+
+. events List'Event = [.press, Event.move(40), Event.move(95), .release, .press, .release, .typed("hi"), Spot(3, 4), .release]
+for gesture in events ~> \gesture
+    -- gesture
+
+━━━━━━━━━━━━━━━━━━━━
++ gesture ~ Event String
+
+~ .press xs .move+ .release
+    "drag ${xs.length}, last at ${xs[xs.length - 1]}"
+~ .press .release
+    "tap"
+~ text .typed
+    "typed $text"
+~ spot Spot
+    "spot ${spot.x + spot.y}"
+~ event (.press | .release)
+    "lone $event"
+
+━━━━━━━━━━━━━━━━━━━━
++ Event is Union
+
+| press
+| release
+| move(Int)
+| typed(String)
+| Spot
+
+━━━━━━━━━━━━━━━━━━━━
++ Spot is (x Int, y Int)
+
+:----
+
+drag 2, last at 95
+tap
+typed hi
+spot 7
+lone release
 ;====
 :====
 # A value pattern may name a local of the rule that is declared after the arm using it.

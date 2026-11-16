@@ -87,6 +87,11 @@ In this table, `\a`, `\b` and `\p` stand for any patterns.
 - **Tests and counts.** `(\{} test)`{.brix} matches one item for which the test holds, while
   `({} \p n)`{.brix} repeats a pattern. A test written as a count, as in `(+ ({} (> it 0)))`, is
   refused.
+- **Guards.** A lookahead of a test that does not read `it`, as in
+  `(& (\{} (<= size limit)))`{.brix}, is a guard: it tests its condition alone and needs no item.
+  It passes at the end of the input where the condition holds, and `~>` reads no item to test it,
+  so a record is not held back for one. `(! (\{} test))`{.brix} passes where the condition
+  does not hold. A lookahead of a test that reads `it` still needs the item.
 - **White space.** `/` and `//` call the rule `ws`. A local rule named `ws` changes what they
   match.
 
@@ -494,6 +499,9 @@ circle 1 then 2 squares
   Text and sets do not match bytes.
 - **Other values.** `.` is one item, `(\{} (> it 0))`{.brix} tests one, a number matches one equal item,
   and a type name matches one item of that type.
+- **Unions.** Over items of a union, a case named by its symbol, such as `.press`, matches one item
+  that holds that case. It gives what the case holds, or the item itself where the case holds
+  nothing. A type the union has as a case matches one item that holds it, and gives that value.
 
 ## Running patterns
 

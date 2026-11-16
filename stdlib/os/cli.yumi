@@ -745,7 +745,24 @@ reset-tree()
 
 ────────────────────
 + do run Int
-    - argv [String] = cmdline-args()
+
+. argv = cmdline-args()
+. parsed = parse(if argv.length > 0 then argv[1 ...] else argv)
+    catch error UsageError
+        report(error, this)
+        request-process-termination(2)
+        ?! TaskTerminationError()
+do match parsed
+    | .help(command)
+        stdout <- command.help-text
+        request-process-termination(0)
+        ?! TaskTerminationError()
+    | .run(command)
+        = perform(command)
+
+────────────────────
++ do respond Int
+    - argv [String]
 
 . parsed = parse(if argv.length > 0 then argv[1 ...] else argv)
     catch error UsageError
@@ -757,21 +774,30 @@ do match parsed
         = 0
     | .run(command)
         = perform(command)
-            catch error UsageError
-                report(error, command)
-                = 2
-            catch error Error
-                stderr <- "${error.message}\n"
-                = 1
 
 ────────────────────
 + do main Int ?! Error
 
-stdout <- help-text
+if commands.length > 0
+    stdout <- help-text
 = 0
 
 ────────────────────
-_ do perform Int ?! Error
+_ do perform Int
+    - command Subcommand
+
+= act(command)
+    catch error TaskTerminationError
+        ?! error
+    catch error UsageError
+        report(error, command)
+        = 2
+    catch error Error
+        stderr <- "${error.message}\n"
+        = 1
+
+────────────────────
+_ do act Int ?! Error
     - command Subcommand
 
 =? main() if !command.action

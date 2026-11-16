@@ -209,3 +209,62 @@ Exception: Arm '| b' binds a new name, not the value Kind.b; match the value wit
         | b
           ^
 ;====
+:====
+# An arm written `|=` compares the subject with one value, so values listed there for an enum are
+# an error that names a condition, which takes any of several.
+
+-- describe(Kind.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+| c
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - kind Kind
+
+match kind
+    |= .a, .b
+        "a or b"
+    ??
+        "c"
+
+:----
+%compile-error
+
+Exception: An arm written '|=' compares the subject with one value, and this lists several; to take any of several, write a condition, as in '|? it == .a || it == .b'
+<no file:16>
+        |= .a, .b
+           ^^^^^^
+;====
+:====
+# A condition arm takes any of several enum values.
+
+-- describe(Kind.b)
+-- describe(Kind.c)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| a
+| b
+| c
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - kind Kind
+
+match kind
+    |? it == .a || it == .b
+        "a or b"
+    ??
+        "c"
+
+:----
+
+a or b
+c
+;====

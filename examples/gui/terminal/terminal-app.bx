@@ -1,0 +1,43 @@
+; A tabbed terminal for macOS. Each tab runs your login shell in a
+; pseudo-terminal. ⌘T opens a tab in the current directory, ⌘N opens a window,
+; ⌘W closes a tab, and typing `exit` closes it too. ⌘-click a file path to open
+; it. Run it with `yumi terminal-app.bx -o terminal`.
+(import ./terminal-window)
+(import /gui)
+(import /lang/product/mac-app)
+(import /os/env)
+(blank)
+
+(main
+  (<> MacApp (id: product)
+    (= id "com.brix-lang.terminal")
+    (= name "Terminal")
+  )
+  (blank)
+  (<> App (id: terminal-app)
+    (let places (list (call TerminalPlace (?? (call env "HOME") "/"))))
+    (for (in place #places (keyed-by place))
+      (<> TerminalWindow
+        (= directory (. place directory))
+        (blank)
+        (for (on directory window-requested)
+          (+= places (call TerminalPlace directory))
+        )
+        (blank)
+        (for (on closed)
+          (-= places place)
+          (if (and (== (. places length) 0) (not (. terminal-app is-quitting)))
+            (call (. terminal-app stop))
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + TerminalPlace
+  (prop + directory String)
+  (fn-do + This _
+    (param directory _)
+  )
+)

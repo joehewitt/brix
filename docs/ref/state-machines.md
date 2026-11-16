@@ -604,8 +604,10 @@ whistling 90
 - **Nested machines** start when the case that holds them is entered and stop when it is left;
   see [Machines side by side](#machines-side-by-side).
 - **Tasks** that a case starts are not part of it, and go on after it is left.
-- **Closing.** Calling an object's `close` leaves every machine its properties hold, running their
-  exit rows, and no transition moves them after.
+- **Closing.** Calling an object's `close` leaves every machine its properties hold, and the one its
+  class's `content` writes, before the body of `close` runs, so their exit rows see the object as
+  it was. The object's events and the live actions it owns close with them, and no transition
+  moves them after.
 - **Errors** that a case's entry or exit rows raise go to `unhandled-error`.
 
 Here the timer belongs to `baking`, so the move from `top` to `bottom` does not restart it. It

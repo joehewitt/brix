@@ -1,0 +1,116 @@
+; A chat room for browsers. Run it, open http://localhost:8080 in two windows, give each a name,
+; and talk; "/me waves" sends an action. Each browser holds a WebSocket, and the room is a
+; channel every socket listens to.
+(import /net/http)
+(import /net/http-server)
+(import /net/websocket)
+(blank)
+(prop _ recent-limit _ (= 100))
+(blank)
+
+(main
+  (<> HTTPServer (id: server)
+    (= port 8080)
+    (blank)
+    (<> Route (text: "/")
+      (= get (. room page))
+    )
+    (blank)
+    (<> Route (text: "/chat/{name}")
+      (= websocket (. room join))
+    )
+  )
+  (blank)
+  (lazy room (call Room))
+  (blank)
+  (print (str "Chatting on http://" (. server host) ":" (. server port) " (Ctrl-C to stop)"))
+  (call (. server run))
+)
+
+(type + Room
+  (prop + lines (of AsyncChannel String))
+  (prop + recent (list String))
+  (fn-do + join _ (?! Error)
+    (param socket WebSocket)
+    (let name (?? ([] (. socket request params) "name") "guest"))
+    (<-* socket recent)
+    (for (on line lines (while (. socket is-open)))
+      (<- socket line)
+    )
+    (call say (str "* " name " joined"))
+    (for (in text socket)
+      (call say (call spoken name text))
+    )
+    (call say (str "* " name " left"))
+  )
+  (fn-do + say _
+    (param line String)
+    (+= recent line)
+    (if (> (. recent length) recent-limit)
+      (-= ([] recent 0))
+    )
+    (<- lines line)
+  )
+  (fn-expr + page HTTPResponse
+    (param request HTTPRequest)
+    (call HTTPResponse (. HTTPStatus ok) (call chat-page) headers)
+    (where
+      (lazy headers (list HTTPHeader)
+        (block
+          (bullet (tuple "Content-Type" "text/html; charset=utf-8"))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ spoken String
+  (param name String)
+  (param text String)
+  (match text
+    (~ (seq "/me " (: action (+ .)))
+      (str "* " name " " action)
+    )
+    (default
+      (inline (str name ": " text))
+    )
+  )
+)
+
+(fn-expr _ chat-page String
+  (paragraph
+    "<!doctype html>"
+    "<html><head><meta charset='utf-8'><title>Yumi Chat</title><style>"
+    ":root { color-scheme: light dark; font: 15px system-ui, sans-serif; }"
+    "body { margin: 0; height: 100vh; display: flex; flex-direction: column; }"
+    "ul { flex: 1; overflow-y: auto; margin: 0; padding: 16px; list-style: none; }"
+    "li { padding: 2px 0; } li.note { opacity: 0.6; font-style: italic; }"
+    "form { display: flex; padding: 12px 16px; border-top: 1px solid #8884; }"
+    "input { flex: 1; font: inherit; padding: 8px; border: 1px solid #8886; border-radius: 6px; }"
+    "</style></head><body>"
+    "<ul id='log'></ul>"
+    "<form id='form'><input id='text' placeholder='Your name' autocomplete='off' autofocus></form>"
+    "<script>"
+    "const log = document.getElementById('log'), input = document.getElementById('text');"
+    "let socket = null;"
+    "function show(line) {"
+    "  const item = log.appendChild(document.createElement('li'));"
+    "  item.textContent = line;"
+    "  item.className = line.startsWith('* ') ? 'note' : '';"
+    "  log.scrollTop = log.scrollHeight;"
+    "}"
+    "document.getElementById('form').onsubmit = event => {"
+    "  event.preventDefault();"
+    "  const text = input.value.trim();"
+    "  input.value = '';"
+    "  if (!text) return;"
+    "  if (socket) return socket.send(text);"
+    "  const name = text.replace(/[^\\w-]/g, '') || 'guest';"
+    "  socket = new WebSocket('ws://' + location.host + '/chat/' + name);"
+    "  socket.onmessage = event => show(event.data);"
+    "  socket.onclose = () => show('* disconnected');"
+    "  input.placeholder = 'Say something, or /me waves';"
+    "};"
+    "</script></body></html>"
+  )
+)

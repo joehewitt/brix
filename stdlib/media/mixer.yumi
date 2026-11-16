@@ -11,6 +11,7 @@ _ mixer-control-count Size = 16
 _ mixer-trigger-width I64 = 8
 _ mixer-silence F64 = 0.0004
 _ mixer-tau = 2 * π
+_ cue-frame-split I64 = 16777216
 
 _ cue-play = 1
 _ cue-control = 2
@@ -190,6 +191,7 @@ _ next-handle F64 = 1
     - bank SoundBank
 
 this.bank = bank
+bank.seal()
 rate = bank.rate
 . made [SoundVoice]
 for _ in 0 .. < mixer-voice-count
@@ -210,10 +212,11 @@ limit-release = C:exp(-1 / (0.25 * rate))
     - level F64 = 1
     - pan F64 = 0
     - pitch F64 = 1
+    - at I64 = 0
 
 . handle = next-handle
 next-handle += 1
-send(cue-play, patch as F64, level, pan, pitch, handle)
+send(cue-play, patch as F64, level, pan, pitch, handle, (at / cue-frame-split) as F64, (at % cue-frame-split) as F64)
 = handle
 
 ────────────────────
@@ -248,6 +251,8 @@ _ do send
     - c F64
     - d F64
     - e F64
+    - f F64 = 0
+    - g F64 = 0
 
 if cues.space < 1
     dropped += 1
@@ -260,6 +265,8 @@ record[2] = b as F32
 record[3] = c as F32
 record[4] = d as F32
 record[5] = e as F32
+record[6] = f as F32
+record[7] = g as F32
 cues.publish(next + 1)
 
 ────────────────────
@@ -350,7 +357,8 @@ while read < written
     . record = cues.slot(read)
     . kind = record[0] as I64
     if kind == cue-play
-        start-patch(record[1] as Size, record[2], record[3], record[4], record[5])
+        . at = (record[6] as I64) * cue-frame-split + (record[7] as I64)
+        start-patch(record[1] as Size, record[2], record[3], record[4], record[5], at)
     else if kind == cue-control
         . index = record[1] as Size
         if index < controls.length
@@ -415,6 +423,7 @@ _ do start-patch @no-gc
     - pan F64
     - pitch F64
     - handle F64
+    - at I64
 
 =? if index >= bank.patch-table.length
 . patch = bank.patch-table[index]
@@ -431,9 +440,10 @@ if playing >= patch.polyphony && oldest
     release-handle-fast(oldest.handle)
 . bend = pitch * C:pow(2.0, (random() * 2 - 1) * patch.pitch-spread / 12)
 . loud = level * (1 + (random() * 2 - 1) * patch.level-spread)
+. wait = if at > frames then at - frames else 0
 for layer-index in patch.first .. < patch.first + patch.count
     . voice = take-voice()
-    begin-voice(voice, layer-index, index, loud, pan, bend, handle)
+    begin-voice(voice, layer-index, index, loud, pan, bend, handle, wait)
 
 ────────────────────
 _ do release-handle-fast @no-gc
@@ -452,7 +462,7 @@ _ do take-voice SoundVoice @no-gc
 for slot in 0 .. < voices.length
     . voice = voices[slot]
     =? voice if !voice.is-active
-    . level = if voice.stage != VoiceState.sustain then voice.loudness else 1000
+    . level = if voice.stage != VoiceState.sustain && voice.stage != VoiceState.waiting then voice.loudness else 1000
     if level < quietest-level
         quietest = voice
         quietest-level = level
@@ -468,6 +478,7 @@ _ do begin-voice @no-gc
     - pan F64
     - pitch F64
     - handle F64
+    - wait I64
 
 . layer = bank.layer-table[layer-index]
 voice.layer = layer-index
@@ -504,9 +515,10 @@ voice.echoes = layer.echoes
 voice.echo-level = 1
 voice.gain = 0
 voice.envelope = 0
-if layer.delay > 0
+. delay = wait + (if layer.delay > 0 then frames-of(layer.delay) else 0)
+if delay > 0
     voice.stage = VoiceState.waiting
-    voice.left = frames-of(layer.delay)
+    voice.left = delay
 else
     enter-attack(voice, layer)
 

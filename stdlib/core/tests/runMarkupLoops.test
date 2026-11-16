@@ -3032,3 +3032,153 @@ bright-at-build = $bright
 :----
 builds=3 pending=0
 ;====
+:====
+# A function written where a list is declared adds to it and takes from it, and a loop over the
+# list follows.
+
+/core/tests/support/markup-fixtures
+
+. items = ["a", "b"]
+<Box box
+    for item in #items
+        <TextBox = item
+. add = => do items += "c"
+. take = => do items -= "a"
+add()
+-- texts(box)
+take()
+-- texts(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - box Box
+
+. seen [String]
+for child in box.%first-child!.children
+    seen += (child as TextBox).text
+= ", ".join(seen)
+
+:----
+
+a, b, c
+b, c
+;====
+:====
+# A handler in the row of a keyed loop stores to the list the loop reads, declared where the loop
+# is written, with the row's item in what it stores, and the loop follows.
+
+/core/tests/support/markup-fixtures
+
+. items = ["a", "b", "c"]
+<Box box
+    for item in #items keyed by item
+        <Pinger
+            text = item
+            for n on pings
+                items = [item, "${item}${n}"]
+(box.%first-child!.%last-child! as Pinger).pings <- 2
+-- texts(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is TextBox
+
++ event pings Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - box Box
+
+. seen [String]
+for child in box.%first-child!.children
+    seen += (child as TextBox).text
+= ", ".join(seen)
+
+:----
+
+c, c2
+;====
+:====
+# A handler in the row of a keyed loop reads the row's item in the value of an assignment written
+# with an operator other than `=` when it runs, the item the row holds then, and the assignment
+# does not run again as the item changes.
+
+/core/tests/support/markup-fixtures
+
+. items = [Entry("a", "A"), Entry("b", "B")]
+. seen [String]
+<Box box
+    for item in #items keyed by item.id
+        <Pinger
+            for n on pings
+                seen += item.text
+. first = box.%first-child!.%first-child! as Pinger
+first.pings <- 1
+items[0] = Entry("a", "Z")
+. again = box.%first-child!.%first-child! as Pinger
+-- if again == first then "kept" else "replaced"
+-- ", ".join(seen)
+again.pings <- 1
+-- ", ".join(seen)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ event pings Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Entry
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id String
+    - text String
+
+:----
+
+kept
+A
+A, Z
+;====
+:====
+# A closure an attribute of a row of a keyed loop gives takes the row's item from the list the loop
+# reads, and the loop follows.
+
+/core/tests/support/markup-fixtures
+
+. items = ["a", "b", "c"]
+<Box box
+    for item in #items keyed by item
+        <Item
+            text = item
+            run = => do items -= item
+(box.%first-child!.%first-child!.%next-sibling! as Item).fire()
+-- texts(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is TextBox
+
++ run Doer?
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - box Box
+
+. seen [String]
+for child in box.%first-child!.children
+    seen += (child as TextBox).text
+= ", ".join(seen)
+
+:----
+
+a, c
+;====

@@ -1,0 +1,143 @@
+(import /git/log)
+(import /math)
+(import /stream/aggregate)
+(blank)
+
+(type + LaneMark (is Union)
+  (variant empty)
+  (variant line)
+  (variant commit)
+  (variant join)
+  (variant fork)
+  (variant meet)
+)
+
+(type + GraphCell (is Tuple)
+  (prop + glyph String)
+  (prop + glyph-tone Int)
+  (prop + link String)
+  (prop + link-tone Int)
+)
+
+(type + HistoryGraph
+  (prop _ lanes (list (? String)))
+  (prop _ tones (list Int))
+  (prop _ next-tone Int)
+  (blank)
+  (fn-do + place (list GraphCell)
+    (param commit GitCommit)
+    (let column (call lane-for (. commit id)))
+    (let marks (call List (in (if-expr (== each null) (. LaneMark empty) (. LaneMark line)) lanes)))
+    (= ([] marks column) (. LaneMark commit))
+    (for (in index (..< 0 (. lanes length)) (when (and (!= index column) (== ([] lanes index) (. commit id)))))
+      (= ([] marks index) (. LaneMark join))
+      (= ([] lanes index) null)
+    )
+    (= ([] lanes column) (only-if (. commit first-parent) (if (> (. commit parents length) 0))))
+    (for (in parent (. commit parents) (when (!= parent (. commit first-parent))))
+      (let existing (call (. lanes find) parent))
+      (if existing
+        (= ([] marks existing) (. LaneMark meet))
+        (else
+          (let opened (call open-lane parent (+ column 1) marks))
+          (while (<= (. marks length) opened)
+            (+= marks (. LaneMark empty))
+          )
+          (= ([] marks opened) (. LaneMark fork))
+        )
+      )
+    )
+    (let cells (call graph-cells marks column tones))
+    (while (and (> (. lanes length) 0) (== ([] lanes (- (. lanes length) 1)) null))
+      (call (. lanes pop))
+      (call (. tones pop))
+    )
+    (return cells)
+  )
+  (fn-do _ lane-for Index
+    (param id String)
+    (return? (call (. lanes find) id))
+    (return (call open-lane id 0 (call (of List LaneMark))))
+  )
+  (fn-do _ open-lane Index
+    (param id String)
+    (param start Index)
+    (param marks (list LaneMark))
+    (let free
+      (call first
+        (in each (..< start (. lanes length))
+          (when (and (== ([] lanes each) null) (or (>= each (. marks length)) (is ([] marks each) .empty))))
+        )
+      )
+    )
+    (let index (?? free (. lanes length)))
+    (if (== index (. lanes length))
+      (+= lanes null)
+      (+= tones 0)
+    )
+    (= ([] lanes index) id)
+    (= ([] tones index) next-tone)
+    (+= next-tone 1)
+    (return index)
+  )
+)
+
+(fn-expr + graph-cells (list GraphCell)
+  (param marks (list LaneMark))
+  (param column Index)
+  (param tones (list Int))
+  (call List
+    (in (call graph-cell ([] marks each) each column low high tones)
+      (..< 0 (. marks length))
+    )
+  )
+  (where
+    (lazy reaches (call List (in each (..< 0 (. marks length)) (when (call is-reach ([] marks each))))))
+    (lazy low (call min column (?? (call first reaches) column)))
+    (lazy high (call max column (?? (call last reaches) column)))
+  )
+)
+
+(fn-expr _ is-reach Bool
+  (param mark LaneMark)
+  (or (is mark .join) (is mark .fork) (is mark .meet))
+)
+
+(fn-expr _ graph-cell GraphCell
+  (param mark LaneMark)
+  (param index Index)
+  (param column Index)
+  (param low Index)
+  (param high Index)
+  (param tones (list Int))
+  (call GraphCell glyph (if-expr (and (is mark .empty) is-crossed) link-tone ([] tones index)) link link-tone)
+  (where
+    (lazy is-crossed (and (> index low) (< index high)))
+    (lazy is-right (> index column))
+    (lazy is-end (or (== index low) (== index high)))
+    (lazy glyph
+      (match mark
+        (case .empty
+          (if-expr is-crossed "─" " ")
+        )
+        (case .line
+          (if-expr is-crossed "┼" "│")
+        )
+        (case .commit
+          "●"
+        )
+        (case .join
+          (if-expr is-end (if-expr is-right "╯" "╰") "┴")
+        )
+        (case .fork
+          (if-expr is-end (if-expr is-right "╮" "╭") "┬")
+        )
+        (case .meet
+          (if-expr is-right "┤" "├")
+        )
+      )
+    )
+    (lazy link (if-expr (and (>= index low) (< index high)) "─" " "))
+    (lazy link-tone ([] tones (if-expr (>= index column) high low)))
+  )
+)

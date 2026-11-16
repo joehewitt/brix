@@ -1,0 +1,31 @@
+(import /os/path)
+(import /os/terminal)
+(blank)
+
+(type + TerminalTab
+  (implements Closable)
+  (prop + id Int)
+  (prop + session TerminalSession)
+  (prop + title _ (= (call tab-title (. session #title) (. session shell))))
+  (prop + has-rung _ (= false))
+  (fn-do + This _
+    (param id _)
+    (param directory String)
+    (= session (call TerminalSession directory))
+  )
+  (fn-do + start _
+    (let failure (catch (call (. session start))))
+    (if (is failure Error)
+      (call (. session echo-line) (str "Could not start " (. session shell) ": " failure))
+    )
+  )
+  (fn-do + close _
+    (call (. session close))
+  )
+)
+
+(fn-expr _ tab-title String
+  (param title String)
+  (param shell String)
+  (if-expr (== title "") (. (as shell Path) name) title)
+)

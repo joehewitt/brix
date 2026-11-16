@@ -1,0 +1,379 @@
+(import /data/diff)
+(import /git/blobs)
+(import /git/changes)
+(import /git/diffs)
+(import /graphics/color)
+(import /math)
+(import /stream/aggregate)
+(import /tui)
+(import /tui/virtual)
+(import /ui/virtual)
+(import /ui/virtual-layout)
+(import ./githistory-theme)
+(blank)
+
+(type + DiffRequest (is Tuple)
+  (prop + set GitChangeSet)
+  (prop + path String)
+)
+
+(type + DiffFile (is Tuple)
+  (prop + change GitFileChange)
+  (prop + additions I64)
+  (prop + deletions I64)
+  (prop + address I64)
+  (prop + number Int)
+)
+
+(type + DiffEntry (is Union)
+  (variant file DiffFile)
+  (variant line DiffRow)
+)
+
+(type + DiffView (is Box)
+  (using HistoryTheme)
+  (prop + request (? DiffRequest))
+  (prop + total _ (= (?? (?. #request set changes length) 0)))
+  (prop + files (list DiffFile))
+  (prop + top I64)
+  (prop + problem String)
+  (prop _ source _ (:= (call (of VirtualListSource DiffEntry))))
+  (prop _ landing (? I64))
+  (prop _ loading (? Task))
+  (prop _ window (of Ancestor Window))
+  (blank)
+  (rule This (• absolute) (• cover .parent) (• flex-col) (• bg history-night)
+    (= focus-mode (. FocusMode keys))
+  )
+  (content
+    (<> (of VirtualRegion DiffEntry) (id: region) (• flex 1)
+      (= source source)
+      (= virtual-layout (call VerticalFixedLayout 1vcoord))
+      (blank)
+      (<> DiffEntryLine (slot: row) (param: slot)
+        (= entry (. slot #item))
+        (= total #total)
+      )
+    )
+    (<> FileHeading (• absolute)
+      (= anchor .parent)
+      (= left 0)
+      (= top 0)
+      (= right 0)
+      (= file (call file-at #files (call top-index #files #top)))
+      (= total #total)
+    )
+    (if (> (. #problem length) 0)
+      (<> Label (• text history-removed) (• px 1)
+        (= text #problem)
+      )
+    )
+    (<> Shortcut (text: "Scroll down")
+      (= key .arrow-down)
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-by 1 (. Direction down))))
+    )
+    (<> Shortcut (text: "Scroll up")
+      (= key .arrow-up)
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-by 1 (. Direction up))))
+    )
+    (<> Shortcut (text: "Page down")
+      (= key .space)
+      (= action (=> () :do (call scroll-by (call page-height) (. Direction down))))
+    )
+    (<> Shortcut (text: "Page down")
+      (= key (call KeyCombo (. Key page-down)))
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-by (call page-height) (. Direction down))))
+    )
+    (<> Shortcut (text: "Page up")
+      (= key (call KeyCombo (. Key page-up)))
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-by (call page-height) (. Direction up))))
+    )
+    (<> Shortcut (text: "Next file")
+      (= key 'n')
+      (= action (=> () :do (call jump 1)))
+    )
+    (<> Shortcut (text: "Previous file")
+      (= key 'p')
+      (= action (=> () :do (call jump -1)))
+    )
+    (<> Shortcut (text: "Top")
+      (= key (call KeyCombo (. Key home)))
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-to 0)))
+    )
+    (<> Shortcut (text: "Bottom")
+      (= key (call KeyCombo (. Key end)))
+      (= show-in-status false)
+      (= action (=> () :do (call scroll-to (- (as (. source count) I64) 1))))
+    )
+  )
+  (when-rule #window
+    (call (?. window focus) this)
+  )
+  (whenever-rule (. region #virtual-scroll)
+    (= top (as (. region virtual-scroll y) I64))
+  )
+  (whenever-rule (. region #virtual-extent-y)
+    (let address landing)
+    (if address
+      (call reveal address)
+      (if (== top address)
+        (= landing null)
+      )
+    )
+  )
+  (when-rule #request
+    (let wanted request)
+    (call (?. loading cancel))
+    (if wanted
+      (= loading
+        (do-new
+          (call load wanted
+            (block
+              (on-error (: failure Error)
+                (= problem (. failure message))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + unmounted _
+    (call (?. loading cancel))
+    (call (. super unmounted))
+  )
+  (fn-do _ load _ (?! Error)
+    (param wanted DiffRequest)
+    (let blobs (use (call GitBlobReader (. wanted set directory))))
+    (let entries (call (of List DiffEntry)))
+    (for (in change (. wanted set changes))
+      (let bytes (call git-change-bytes (. wanted set) change blobs))
+      (let document (call diff-document (. bytes old) (. bytes new)))
+      (let file (call DiffFile change (. document additions) (. document deletions) (. entries length) (+ (. files length) 1)))
+      (+= entries (call (. DiffEntry file) file))
+      (for (in index (..< 0 (. document display-row-count)))
+        (+= entries (call (. DiffEntry line) (call (. document display-row-at) index)))
+      )
+      (+= files file)
+      (call (. source replace) entries)
+      (if (== (. change path) (. wanted path))
+        (= landing (. file address))
+      )
+    )
+  )
+  (fn-do + jump _
+    (param step I64)
+    (let current (call top-index files top))
+    (let starts-file (== (?. (call file-at files current) address) top))
+    (let target (if-expr (or (> step 0) starts-file) (+ current step) current))
+    (if (and (>= target 0) (< target (. files length)))
+      (= landing null)
+      (call reveal (. ([] files target) address))
+    )
+  )
+  (fn-do + reveal _
+    (param address I64)
+    (let ignored (call (. region scroll-to-address) address (. ScrollAlignment start)))
+  )
+  (fn-do + scroll-to _
+    (param address I64)
+    (= landing null)
+    (let ignored (call (. region scroll-to-address) address (. ScrollAlignment nearest)))
+  )
+  (fn-do + scroll-by _
+    (param rows Coord)
+    (param direction Direction)
+    (= landing null)
+    (let ignored (call (. region scroll) rows direction))
+  )
+  (fn-expr _ page-height Coord
+    (call max 1 (- (. region content-bounds height) 1))
+  )
+)
+
+(type + DiffEntryLine (is Box)
+  (prop + entry DiffEntry)
+  (prop + total Int)
+  (blank)
+  (rule This (• flex-row) (• flex 1))
+  (content
+    (if (= (| (call .file file)) #entry)
+      (<> FileHeading (• flex 1)
+        (= file file)
+        (= total #total)
+      )
+      (else-if (= (| (call .line row)) #entry)
+        (<> DiffLine (• flex 1)
+          (= row row)
+        )
+      )
+    )
+  )
+)
+
+(type + FileHeading (is Box)
+  (using HistoryTheme)
+  (prop + file (? DiffFile))
+  (prop + total Int)
+  (blank)
+  (rule This (• flex-row) (• bg history-raised) (• px 1))
+  (content
+    (<> Label (• w 2)
+      (= text (?? (?. #file change status) ""))
+      (= color (call status-color (?? (?. #file change status) "")))
+    )
+    (<> Label (• flex 1) (• text history-ink)
+      (= text (call change-title (?. #file change)))
+    )
+    (if #file
+      (<> Label (• text history-added)
+        (= text (str "+" (?? (?. #file additions) 0) " "))
+      )
+      (<> Label (• text history-removed)
+        (= text (str "−" (?? (?. #file deletions) 0)))
+      )
+    )
+    (<> Label (• text history-muted)
+      (= text (if-expr #file (str "  " (. #file number) "/" #total) ""))
+    )
+  )
+)
+
+(type + DiffLine (is Box)
+  (prop + row DiffRow)
+  (blank)
+  (rule This (• flex-row)
+    (= background-color (call diff-wash (. #row kind)))
+  )
+  (content
+    (<> Label (• w 6) (• text history-faint)
+      (= text (call line-number (. #row old-line)))
+    )
+    (<> Label (• w 6) (• text history-faint)
+      (= text (call line-number (. #row new-line)))
+    )
+    (<> Label (• w 2)
+      (= text (call diff-sign (. #row kind)))
+      (= color (call diff-ink (. #row kind)))
+    )
+    (<> Label (• flex 1)
+      (= text (call expand-tabs (. #row text)))
+      (= color (call diff-ink (. #row kind)))
+    )
+  )
+)
+
+(fn-expr _ top-index I64
+  (param files (list DiffFile))
+  (param top I64)
+  (?? (call last (in each (..< 0 (. files length)) (when (<= (. ([] files each) address) top)))) 0)
+)
+
+(fn-expr _ file-at (? DiffFile)
+  (param files (list DiffFile))
+  (param index I64)
+  (only-if ([] files index) (if (and (>= index 0) (< index (. files length)))))
+)
+
+(fn-expr + change-title String
+  (param change (? GitFileChange))
+  (case? (not change)
+    ""
+  )
+  (case? (. change old-path)
+    (str (. change old-path) " → " (. change path))
+  )
+  (default
+    (. change path)
+  )
+)
+
+(fn-expr + status-color AnsiColor
+  (param status String)
+  (match status
+    (case= "A"
+      history-added
+    )
+    (case= "D"
+      history-removed
+    )
+    (case= "R"
+      history-accent
+    )
+    (default
+      history-gold
+    )
+  )
+)
+
+(fn-expr _ line-number String
+  (param line I64)
+  (if-expr (> line 0) (str (* " " (- 5 (. digits length))) digits) "")
+  (where
+    (lazy digits (str line))
+  )
+)
+
+(fn-expr _ expand-tabs String
+  (param text String)
+  (call (. "    " join) (call (. text split) "\t"))
+)
+
+(fn-expr _ diff-sign String
+  (param kind DiffKind)
+  (match kind
+    (case .inserted
+      "+"
+    )
+    (case .deleted
+      "−"
+    )
+    (case .gap
+      "⋯"
+    )
+    (default
+      " "
+    )
+  )
+)
+
+(fn-expr _ diff-ink AnsiColor
+  (param kind DiffKind)
+  (match kind
+    (case .inserted
+      history-added
+    )
+    (case .deleted
+      history-removed
+    )
+    (case .equal
+      history-ink
+    )
+    (default
+      history-muted
+    )
+  )
+)
+
+(fn-expr _ diff-wash RGBA
+  (param kind DiffKind)
+  (match kind
+    (case .inserted
+      history-added-wash
+    )
+    (case .deleted
+      history-removed-wash
+    )
+    (case .gap
+      history-raised
+    )
+    (default
+      history-night
+    )
+  )
+)

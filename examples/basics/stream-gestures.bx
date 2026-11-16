@@ -1,0 +1,53 @@
+; Stream grammars: a pattern can run over any stream of items, not only text.
+; Here the items are input events, a case stands for "one item that is this case",
+; and each arm names a gesture.
+(main
+  (let events
+    (call (of List Event)
+      (block
+        (bullet .press)
+        (bullet .release)
+        (bullet .press)
+        (bullet .release)
+        (bullet .press)
+        (bullet (call .move 40))
+        (bullet (call .move 95))
+        (bullet .release)
+        (bullet .press)
+        (bullet .release)
+        (bullet (call .key 's'))
+        (bullet .press)
+        (bullet .release)
+      )
+    )
+  )
+  (blank)
+  ; Matching the rule along the events gives one gesture for each run it fits.
+  (for (in gesture (~> events \gesture))
+    (print gesture)
+  )
+)
+
+(fn-expr + gesture String (over: Event)
+  ; Arms are tried in order, so the longer gestures come before the tap they start with.
+  (~ (seq .press .release .press .release)
+    "double tap"
+  )
+  ; A case gives what it holds, so a repeated capture of moves holds each x.
+  (~ (seq .press (: xs (+ .move)) .release)
+    (str "drag through x = " (call (. ", " join) xs))
+  )
+  (~ (seq .press .release (: letter .key))
+    (str "tap, then the " letter " key")
+  )
+  (~ (seq .press .release)
+    "tap"
+  )
+)
+
+(type + Event (is Union)
+  (variant press)
+  (variant release)
+  (variant move Int)
+  (variant key Char)
+)

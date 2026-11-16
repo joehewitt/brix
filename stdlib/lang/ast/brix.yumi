@@ -1608,6 +1608,7 @@ if atom-is(index, "//") || atom-is(index, "/")
 =? stream-call(index, index, index, loc, false) if lead == 92
 =? tree.append(ASTStreamEquality(loc, tree.append(ASTIdentifier(loc, atom-at(index, 1), false)))) if lead == 36
 =? tree.append(ASTStreamEquality(loc, number(index, loc))) if is-number(first, last)
+=? tree.append(ASTStreamEquality(loc, atom-expression(index))) if lead == 46
 =? tree.append(ASTStreamEquality(loc, atom-expression(index))) if lead == 39 && !is-doubled-quote
 .. is-doubled-quote = last - first > 2 && bytes[first + 1] == 39
 = tree.append(ASTStreamType(loc, reduce-type(index)))
@@ -2987,7 +2988,7 @@ do match? kind
         . loc = located(begin, index)
         = tree.append(ASTUseExpression(loc, maybe-optional(tree, loc, value, is-optional(index))))
     |= .closure-head
-        = closure(index, begin, true)
+        = closure(index, begin)
     |= .do-new-head
         = task-block(index, begin, false)
     |= .do-new-thread-head
@@ -3172,7 +3173,7 @@ do match? kind
     |= .range-open-head
         = open-range(index, begin)
     |= .closure-head
-        = closure(index, begin, false)
+        = closure(index, begin)
     |= .print-word-head
         . value = expression(first)
         . loc = located(begin, index)
@@ -3496,8 +3497,13 @@ _ do member SyntaxId ?! YumiSyntaxError
     - is-optional Bool
     - is-loop Bool
 
-. object = expression(index + 2)
-= placed(get(object, tape.after(index + 2), begin, is-optional, is-loop), located(begin, index))
+. close = tape.close-of(index)
+. left = expression(index + 2)
+. name = tape.after(index + 2)
+while name < close
+    left = get(left, name, begin, is-optional, is-loop)
+    name = tape.after(name)
+= placed(left, located(begin, index))
 
 ────────────────────
 _ do get SyntaxId
@@ -3600,7 +3606,6 @@ if next < close
 _ do closure SyntaxId ?! YumiSyntaxError
     - index Index
     - begin TokenLocation
-    - is-block Bool
 
 . close = tape.close-of(index)
 . group = index + 1 + 1
@@ -3618,7 +3623,7 @@ if is-imperative
     value = tape.after(value)
 . body SyntaxId? = null
 if value < close
-    body = if is-block then multi(value) else expression(value)
+    body = multi(value)
 = make-closure(tree, located(begin, index), is-imperative, scratch-items(args, filled), body)
 
 ────────────────────

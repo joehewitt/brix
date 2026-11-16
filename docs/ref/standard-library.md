@@ -99,7 +99,8 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 ### math
 
 - `/math`: `π`, angles in radians and degrees (`rad`, `deg`, `°`), `abs`, `round`, `floor`,
-  `sqrt`, trigonometry, `random`, `min`, `max` and `clamp`.
+  `sqrt`, trigonometry, `random`, `min`, `max` and `clamp`. `Random` is a generator of its own:
+  `(call Random 42u)` gives the same numbers on every run, and `split` makes another from it.
 - `/math/easing`: `Easing` and `CubicBezier`.
 - `/math/motion`: motions that move a value over time: `spring`, `ease-in-out`, `linear`, `steps`,
   `decay` and `keyframes`.
@@ -138,8 +139,8 @@ format is its own module.
 
 ### crypto
 
-`/crypto` gathers `ChaCha20Poly1305` encryption, SHA-512 digests, HMAC and HKDF, `random-bytes`,
-and an SRP client for password logins.
+`/crypto` gathers `ChaCha20Poly1305` encryption, SHA-1 and SHA-512 digests, HMAC and HKDF,
+`random-bytes`, and an SRP client for password logins.
 
 ## The system
 
@@ -171,9 +172,9 @@ Networking. There is no `/net` module; import each one.
 | `/net/dns` | Addresses, ports and name resolution. |
 | `/net/socket` | TCP and TLS connections and listeners. |
 | `/net/http` | `http-get`, `http-post`, `http-fetch`, requests and responses. |
-| `/net/http-server` | `HTTPServer` and its routes. |
+| `/net/http-server` | `HTTPServer` and its routes, which may answer WebSocket upgrades. |
 | `/net/sse` | Server-sent events. |
-| `/net/websocket` | `WebSocket`. |
+| `/net/websocket` | `WebSocket`, either end of a WebSocket connection. |
 | `/net/dns-sd` | Finding services on the local network. |
 
 ### git
@@ -215,7 +216,7 @@ larger component. Icons from the Lucide set are each a module of their own, such
 
 ### tui
 
-Terminal apps, written as markup with the same model as `gui`. `/tui` gathers boxes, windows,
+Terminal apps, written as markup with the same model as `gui`. `/tui` gathers apps, boxes, windows,
 layouts, canvases, borders, styles, themes, colors, events and shortcuts, text and a text editor,
 tables, buttons, dialogs, forms, panels, progress bars, spinners and status bars, as well as
 `/ui/input`, `/ui/key-combo` and `/units`. Import `/tui/listbox`, `/tui/treebox`,

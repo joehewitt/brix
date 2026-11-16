@@ -4044,3 +4044,47 @@ reader.holder = Holder()
 none
 inner
 ;====
+:====
+# A live statement that sets a property of a markup element follows what its value reads: the
+# element's action runs at once where the element has no batch root, and with its root's batch
+# where it has one.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. counter = Counter()
+. loose = Label()
+loose.text = "loose ${counter.#count}"
+
+<Demo demo
+    <Label label
+
+label.text = "held ${counter.#count}"
+demo.markup-batch-queue.checkpoint()
+counter.count = 3
+-- loose.text
+-- label.text
+demo.markup-batch-queue.checkpoint()
+-- label.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+:----
+
+loose 3
+held 0
+held 3
+;====

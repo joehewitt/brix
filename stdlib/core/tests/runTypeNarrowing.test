@@ -3221,3 +3221,49 @@ action = => 7
 
 7
 ;====
+:====
+# A guard whose body calls a function marked `@no-return` leaves, so what it tested is narrowed after it.
+
+. name = lookup("a")
+if !name
+    stop("no name")
+-- name.length
+
+━━━━━━━━━━━━━━━━━━━━
++ do lookup String?
+    - key String
+
+=? "Ada" if key == "a"
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do stop @no-return
+    - reason String
+
+?! Error(reason)
+
+:----
+
+3
+;====
+:====
+# A getter always returns, so it cannot be marked `@no-return`.
+
+-- Box().size
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+────────────────────
++ get size Int @no-return
+
+1
+
+:----
+%compile-error
+
+Exception: @no-return is not supported on getters
+<no file:7>
+    ────────────────────
+    ^^^^^^^^^^^^^^^^^^^
+;====

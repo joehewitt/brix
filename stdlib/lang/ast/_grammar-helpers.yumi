@@ -1437,6 +1437,8 @@ MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), loc
     if has-annotation(annotations, "rollback")
 ?! YumiSyntaxError(location, "@live is not supported on getters")
     if has-annotation(annotations, "live")
+?! YumiSyntaxError(location, "@no-return is not supported on getters")
+    if has-annotation(annotations, "no-return")
 
 tree.append(node)
 
@@ -1563,6 +1565,7 @@ for variant in variants
     - false
     - has-annotation(annotations, "inline")
 node = node.is-live = has-annotation(annotations, "live")
+node = node.is-no-return = has-annotation(annotations, "no-return")
 = tree.append(node)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2832,7 +2835,7 @@ gc-free-joined || (mask /and/ effect) == effect
 
 . mask = CompilationEffect.none
 for name in names
-    if name.text == "inline" || (skips-rollback && (name.text == "rollback" || name.text == "live"))
+    if name.text == "inline" || (skips-rollback && (name.text == "rollback" || name.text == "live" || name.text == "no-return"))
         continue
     . effect = compilation-effect-named(name.text)
     ?! YumiSyntaxError(loc, "Unknown compilation effect '${name.text}'")

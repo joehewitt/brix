@@ -292,9 +292,9 @@ sidecar.machine-stops! += stop
     - owner Pointer
 
 ` Stops each machine the properties of an object hold, the last started first, and once: each
-` exits its active cases, running their `do finally`, and drops what it subscribed. Then the
-` object's events close, so that no transition on them, which the class's table may run, fires
-` after.
+` exits its active cases, running their `do finally`, and drops what it subscribed. Then no
+` transition on the object's events, which the class's table may run, fires again, while the
+` events stay open for the body of `close` to publish (`event-close-stopped`).
 . sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
 =? if !sidecar
 . stops = sidecar.machine-stops
@@ -303,6 +303,14 @@ sidecar.machine-stops = null
 while stops.length != 0
     . stop = stops.pop()
     stop()
+sidecar.machines-stopped = true
+
+━━━━━━━━━━━━━━━━━━━━
++ do event-close-stopped
+    - owner Pointer
+
+. sidecar = gc-object-side-payload'EventSidecar(owner, events-lane())
+=? if !sidecar || !sidecar.machines-stopped
 sidecar.close()
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -957,6 +965,7 @@ _ EventSidecar
 
 _ entries [EventEntry]
 _ machine-stops List'EventMachineStop?
+_ machines-stopped = false
 _ is-closed = false
 
 ────────────────────
@@ -1272,7 +1281,7 @@ _ do event-dispatch-keyed'Payload
 =? if !address || !address.is-generation-live(expected-generation)
 . endpoint = address.endpoint as EventEndpoint'Payload
 =? if endpoint.event-address-generation() != expected-generation
-endpoint.dispatch(payload, handlers, machines)
+endpoint.dispatch(payload, handlers, machines && !sidecar.machines-stopped)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do event-publish-owner'Payload'Route Bool
@@ -1299,7 +1308,8 @@ if event-id < heads.length
         . matcher = descriptor.matcher
         if matcher(owner)
             interested = true
-            if event-dispatch-reaches(descriptor.is-machine, handlers, machines)
+            . reaches-machines = machines && !(sidecar?.machines-stopped ?? false)
+            if event-dispatch-reaches(descriptor.is-machine, handlers, reaches-machines)
                 if !descriptor.is-machine
                     //event.handlers.sync ++
                 event-invoke-lowered(descriptor.callback, owner, payload)
@@ -1318,7 +1328,7 @@ if !entry || !entry.has-interest
 if !is-target && !entry.has-bubbling-interest
     = interested
 interested = true
-(entry as EventEndpoint'Payload).dispatch-routed(payload, routed, is-target, handlers, machines)
+(entry as EventEndpoint'Payload).dispatch-routed(payload, routed, is-target, handlers, machines && !sidecar.machines-stopped)
 = interested
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1441,7 +1451,8 @@ if event-id < event-descriptor-heads.length
         . descriptor = current
         //event.descriptor.visits ++
         . matcher = descriptor.matcher
-        if event-dispatch-reaches(descriptor.is-machine, handlers, machines) && matcher(owner)
+        . reaches-machines = machines && !(sidecar?.machines-stopped ?? false)
+        if event-dispatch-reaches(descriptor.is-machine, handlers, reaches-machines) && matcher(owner)
             if !descriptor.is-machine
                 //event.handlers.sync ++
             event-invoke-lowered(descriptor.callback, owner, payload)
@@ -1455,4 +1466,4 @@ if event-id < event-descriptor-heads.length
 . entry = sidecar.find(event-id)
 =? if !entry || !entry.has-interest
 
-(entry as EventEndpoint'Payload).dispatch(payload, handlers, machines)
+(entry as EventEndpoint'Payload).dispatch(payload, handlers, machines && !sidecar.machines-stopped)

@@ -45,18 +45,20 @@ ships. Unlike the core tests, they show how complete programs are written.
 
 - [`examples/programs`](../examples/programs): programs that print, named for what they do, such
   as `lisp.bx`, `vending.bx`, `json-parser.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
-- [`examples/net`](../examples/net): an HTTP client and server, a WebSocket client and an MCP
-  server. The Python servers beside them are mocks for clients to talk to.
+- [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
+  browsers with a client that joins it, and an MCP server. `chatgpt-mock-server.bx` stands in for
+  the OpenAI API that `chatgpt.bx` talks to.
 - [`examples/tui`](../examples/tui): terminal programs, from the small `order.bx`, `timer.bx` and
-  `todo.bx` to `chromatic`, a pixel animation studio, and `pulse`, a system dashboard, plus one
-  program per feature, such as `table.bx`, `dialogs.bx` and `scrolling.bx`.
+  `todo.bx` to `chromatic`, a pixel animation studio, `pulse`, a system dashboard, and
+  `githistory`, a Git history browser with a commit graph, diffs and live updates, plus one program
+  per feature, such as `table.bx`, `dialogs.bx` and `scrolling.bx`.
 - [`examples/gui`](../examples/gui): macOS apps. `basics` holds small apps of one file each.
   `showcase/showcase-app.bx` gathers panels of components, effects and motion into one app, and
   opens the panel named after `--`, such as `menus` or `scrolling`.
   `showcase/motion/motion-app.bx` is a gallery of the animation system, with a speed control and a
   reduce motion switch. `quakes` is a live earthquake map that loads the USGS feed and pans and
   zooms under glass panels, and `pattern-designer` edits repeating patterns with undo, files and
-  SVG export.
+  SVG export. `terminal` runs your shell in tabs and windows, with menus and key shortcuts.
 - [`examples/games`](../examples/games): two macOS games, `resonance` and `prism-break`.
 - [`examples/graphics`](../examples/graphics): drawings written to image files, which need macOS.
 

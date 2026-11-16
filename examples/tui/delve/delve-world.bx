@@ -1,0 +1,223 @@
+(import /math)
+(import /stream/aggregate)
+(import /stream/sort)
+(blank)
+
+(prop + torch-reach _ (= 8))
+(prop + compass (list Spot)
+  (=
+    (list
+      (call Spot -1 -1) (call Spot 0 -1) (call Spot 1 -1)
+      (call Spot -1 0) (call Spot 1 0)
+      (call Spot -1 1) (call Spot 0 1) (call Spot 1 1)
+    )
+  )
+)
+
+(type + Spot (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + (infix this + (param other Spot)) _
+    (call Spot (+ x (. other x)) (+ y (. other y)))
+  )
+  (fn-expr + steps Int
+    (param other Spot)
+    (call max (call abs (- x (. other x))) (call abs (- y (. other y))))
+  )
+  (fn-expr + distance Float
+    (param other Spot)
+    (call sqrt (as (+ (* dx dx) (* dy dy)) Float))
+    (where
+      (lazy dx (- x (. other x)))
+      (lazy dy (- y (. other y)))
+    )
+  )
+  (fn-expr + neighbors (list Spot) :get
+    (call List (in (+ this each) compass))
+  )
+)
+
+(type + Tile (is Union)
+  (variant rock)
+  (variant wall)
+  (variant floor)
+  (variant stairs)
+  (fn-expr + is-open Bool :get
+    (or (is this .floor) (is this .stairs))
+  )
+)
+
+(type + Room (is Tuple)
+  (prop + left Int)
+  (prop + top Int)
+  (prop + width Int)
+  (prop + height Int)
+  (fn-expr + center Spot :get
+    (call Spot (+ left (/ width 2)) (+ top (/ height 2)))
+  )
+  (fn-expr + overlaps Bool
+    (param other Room)
+    (and
+      (<= left (+ (. other left) (. other width)))
+      (<= (. other left) (+ left width))
+      (<= top (+ (. other top) (. other height)))
+      (<= (. other top) (+ top height))
+    )
+  )
+  (fn-do + spots _
+    (for (in y (..< top (+ top height)))
+      (for (in x (..< left (+ left width)))
+        (yield (call Spot x y))
+      )
+    )
+  )
+  (fn-do + random-spot Spot
+    (param dice Random)
+    (return (call Spot (call (. dice random) left (+ left width)) (call (. dice random) top (+ top height))))
+  )
+)
+
+(type + Level
+  (prop + width Int)
+  (prop + height Int)
+  (prop + tiles (list Tile))
+  (prop + light (list Float))
+  (prop + seen (list Bool))
+  (prop + rooms (list Room))
+  (fn-do + This _
+    (param width _)
+    (param height _)
+    (= tiles (call List (in (. Tile rock) (..< 0 (* width height)))))
+    (= light (call List (in 0.0 (..< 0 (* width height)))))
+    (= seen (call List (in false (..< 0 (* width height)))))
+  )
+  (fn-expr + (index-get this (param at Spot)) Tile
+    (if-expr (call holds at) ([] tiles (call slot at)) (. Tile rock))
+  )
+  (fn-do + (index-set this (param at Spot) (param tile Tile)) _
+    (= ([] tiles (call slot at)) tile)
+  )
+  (fn-expr + holds Bool
+    (param at Spot)
+    (and (>= (. at x) 0) (< (. at x) width) (>= (. at y) 0) (< (. at y) height))
+  )
+  (fn-expr + slot Int
+    (param at Spot)
+    (+ (* (. at y) width) (. at x))
+  )
+  (fn-expr + light-at Float
+    (param at Spot)
+    (if-expr (call holds at) ([] light (call slot at)) 0.0)
+  )
+  (fn-expr + was-seen Bool
+    (param at Spot)
+    (and (call holds at) ([] seen (call slot at)))
+  )
+  (fn-do + spots _
+    (for (in y (..< 0 height))
+      (for (in x (..< 0 width))
+        (yield (call Spot x y))
+      )
+    )
+  )
+  (fn-expr + can-see Bool
+    (param eye Spot)
+    (param spot Spot)
+    (call all (call between eye spot) (:where (. ([] this each) is-open)))
+  )
+  (fn-do + illuminate _
+    (param eye Spot)
+    (call snuff)
+    (for (in y (.. (- (. eye y) torch-reach) (+ (. eye y) torch-reach)))
+      (for (in x (.. (- (. eye x) torch-reach) (+ (. eye x) torch-reach)))
+        (let spot (call Spot x y))
+        (if (and (call holds spot) (<= (call (. eye distance) spot) torch-reach) (call can-see eye spot))
+          (for (in lit (call line eye spot))
+            (call glow eye lit)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + glow _
+    (param eye Spot)
+    (param spot Spot)
+    (= ([] light (call slot spot)) (- 1.0 (/ (call (. eye distance) spot) (+ torch-reach 1))))
+    (= ([] seen (call slot spot)) true)
+  )
+  (fn-do + snuff _
+    (for (in index (..< 0 (. light length)))
+      (= ([] light index) 0.0)
+    )
+  )
+  (fn-do + dig _
+    (param room Room)
+    (for (in spot (call (. room spots)))
+      (= ([] this spot) (. Tile floor))
+    )
+    (+= rooms room)
+  )
+  (fn-do + tunnel _
+    (param from Spot)
+    (param to Spot)
+    (param dice Random)
+    (let bend (if-expr (== (call (. dice random) 0 2) 0) (call Spot (. to x) (. from y)) (call Spot (. from x) (. to y))))
+    (for (in spot (call line from bend) (when (is ([] this spot) .rock)))
+      (= ([] this spot) (. Tile floor))
+    )
+    (for (in spot (call line bend to) (when (is ([] this spot) .rock)))
+      (= ([] this spot) (. Tile floor))
+    )
+  )
+  (fn-do + raise-walls _
+    (for (in spot (call spots) (when (is ([] this spot) .rock)))
+      (if (call some (. spot neighbors) (:where (. ([] this each) is-open)))
+        (= ([] this spot) (. Tile wall))
+      )
+    )
+  )
+)
+
+(fn-do + carve Level
+  (param width Int)
+  (param height Int)
+  (param dice Random)
+  (let level (call Level width height))
+  (for (in attempt (..< 0 120) (while (< (. level rooms length) 9)))
+    (let room
+      (call Room (call (. dice random) 1 (- width 12)) (call (. dice random) 1 (- height 7)) (call (. dice random) 4 12) (call (. dice random) 3 6))
+    )
+    (if (not (call some (. level rooms) (:where (call (. room overlaps) each))))
+      (call (. level dig) room)
+    )
+  )
+  (= (. level rooms) (call sort (. level rooms) (:using (=> (a b) (call compare-basic (. a center x) (. b center x))))))
+  (for (in index (..< 1 (. level rooms length)))
+    (call (. level tunnel) (. ([] (. level rooms) (- index 1)) center) (. ([] (. level rooms) index) center) dice)
+  )
+  (call (. level raise-walls))
+  (return level)
+)
+
+(fn-do + line _
+  (param from Spot)
+  (param to Spot)
+  (let count (call (. from steps) to))
+  (for (in step (.. 0 count))
+    (yield (call Spot (call along (. from x) (. to x) step count) (call along (. from y) (. to y) step count)))
+  )
+)
+
+(fn-expr + between _
+  (param from Spot)
+  (param to Spot)
+  (in each (call line from to) (when (and (!= each from) (!= each to))))
+)
+
+(fn-expr + along Int
+  (param from Int)
+  (param to Int)
+  (param step Int)
+  (param count Int)
+  (if-expr (== count 0) from (+ from (as (call round (/ (* (as (- to from) Float) step) count)) Int)))
+)

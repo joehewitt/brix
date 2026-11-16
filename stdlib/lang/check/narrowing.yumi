@@ -1,6 +1,7 @@
 ./binding
 ./facts
 ./frame
+./instances
 ./narrowing-key
 ./type-relation
 ./type-store
@@ -15,17 +16,6 @@
 /lang/ast/operator
 /lang/ast/program
 /lang/ast/row-range
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-type-test Bool
-    - op Operator
-
-|? op == .is-op || op == .is-not-op
-    true
-|? op == .is-exactly-op || op == .is-not-exactly-op
-    true
-??
-    op == .is-similar-op || op == .is-not-similar-op
 
 ━━━━━━━━━━━━━━━━━━━━
 + Narrowing
@@ -639,7 +629,8 @@ if declared != no-type
 ` `uses` asks what the reference asks of a function's end when it checks that the function
 ` returns: as without `reaches`, except that a block that uses a value is its body and a match
 ` that must match leaves when its arms do. `infers` asks, beside `uses`, what it asks of the end
-` when it infers what the function returns, where no loop leaves.
+` when it infers what the function returns, where no loop leaves. Asked none of these, a call of
+` a function marked `@no-return` leaves too.
 if id == 0
     = false
 do match? tree.nodes[id]
@@ -687,6 +678,25 @@ do match? tree.nodes[id]
         = !directly && exits(row.body, false, reaches, uses, infers)
     | .node-structure-match(row)
         = !directly && arms-exit(row.pattern, reaches, uses, infers) && has-else(row.pattern)
+= !directly && !reaches && !uses && !infers && calls-no-return(id)
+
+────────────────────
+_ do calls-no-return Bool
+    - id SyntaxId
+
+. cursor = facts.first-call(frame.instance, id)
+while cursor != no-fact
+    . call = facts.calls[cursor]
+    cursor = call.next
+    . named = call.form == .call-function || call.form == .call-method || call.form == .call-static
+    if named && call.callee != no-instance
+        . row = frame.instances.rows[call.callee]
+        . module = frame.program.modules[row.module]
+        do match? module.decls[row.decl]
+            | .decl-function(fn)
+                do match? module.tree.nodes[fn.syntax]
+                    | .node-function-syntax(syntax)
+                        =? true if syntax.is-no-return
 = false
 
 ────────────────────

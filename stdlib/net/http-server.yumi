@@ -2,6 +2,7 @@
 ./http
 ./socket
 ./sse
+./websocket
 /core/tokenstream
 /data
 /os/file
@@ -26,6 +27,8 @@ _ http-accept-retry-limit Milliseconds = 1000ms
 + put HTTPHandler?
 + patch HTTPHandler?
 + delete HTTPHandler?
++ websocket WebSocketHandler?
++ protocols [String]
 + routes [Route]
 
 ────────────────────
@@ -59,7 +62,7 @@ match? method
 ────────────────────
 + get has-handlers
 
-get || post || put || patch || delete
+get || post || put || patch || delete || websocket
 
 ────────────────────
 + get allowed-methods String
@@ -83,11 +86,21 @@ get || post || put || patch || delete
 . route = request.route
 =? HTTPResponse(HTTPStatus.not-found) if !route
 . handler = route.handler(request.method)
-if !handler
-    . allow [HTTPHeader] =
-        * "Allow", route.allowed-methods
-    = HTTPResponse(HTTPStatus.method-not-allowed, null, allow)
-= handler(request)
+= if handler then handler(request) else unhandled(route)
+
+────────────────────
+_ unhandled HTTPResponse
+    - route Route
+
+|? route.websocket
+    HTTPResponse(HTTPStatus.upgrade-required, null, upgrade)
+??
+    HTTPResponse(HTTPStatus.method-not-allowed, null, allow)
+
+.. upgrade [HTTPHeader]
+    * "Upgrade", "websocket"
+.. allow [HTTPHeader]
+    * "Allow", route.allowed-methods
 
 ━━━━━━━━━━━━━━━━━━━━
 + HTTPServer
@@ -102,6 +115,7 @@ if !handler
 + max-connections Size = 10000
 + max-header-size Size = 0x10000
 + max-body-size Size = 0x100000
++ websocket-ping-interval Seconds = 30s
 + worker Worker?
 
 _ listener TCPListener?
@@ -282,6 +296,11 @@ while true
     socket.read-deadline = Deadline(read-timeout)
     . keeps-alive = http-keeps-alive(request)
     route-map?.resolve(request)
+    . websocket = request.route?.websocket
+    if websocket && is-websocket-request(request)
+        serve-websocket(connection, stream, request, websocket)
+        =
+
     . response = service.respond(request)
         catch SizeLimitError
             do
@@ -295,6 +314,25 @@ while true
         | reader HTTPBodyReader
             reader.drain()
     =? if !keeps-alive
+
+────────────────────
+_ do serve-websocket ?! Error
+    - connection HTTPServerConnection
+    - stream ChunkedTokenStream'Byte
+    - request HTTPRequest
+    - handler WebSocketHandler
+
+. protocol = websocket-protocol(request, request.route!.protocols)
+. response = websocket-handshake(request, protocol)
+. is-accepted = response.status == HTTPStatus.switching-protocols
+connection.is-responding = true
+write-http-response(connection, response, false, is-accepted)
+=? if !is-accepted
+
+connection.socket.read-deadline = null
+. socket = WebSocket(request, protocol, stream, connection.socket, connection, websocket-ping-interval)
+. failure = catch handler(socket)
+socket.close(if failure is Error then WebSocketClose.internal-error else WebSocketClose.normal)
 
 ────────────────────
 _ do reject ?! Error

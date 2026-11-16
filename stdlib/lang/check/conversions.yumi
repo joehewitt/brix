@@ -207,15 +207,43 @@ relations.callables = previous
     - source TypeId
     - target TypeId
 
-` Says why a conversion is illegal: extension converters that collide, or no way to convert.
+` Says why a conversion is illegal: extension converters that collide, a value with no truth
+` asked to be a `Bool`, or no way to convert.
 if relation.reason == .reason-ambiguous
     frame.diagnose(syntax, .ambiguous-extension)
 else if relation.reason == .reason-conflict
     frame.diagnose(syntax, .extension-conflict)
+else if relation-legal(relation) && truthless(relation)
+    report-truthless(syntax, relation)
 else if relation-legal(relation)
     frame.diagnose(syntax, unasked(relation), null, source, target)
 else
     frame.diagnose(syntax, .illegal-cast, null, source, target)
+
+────────────────────
+_ do truthless Bool
+    - relation Relation
+
+` Whether a cast makes a `Bool` of a value with no truth to test: an interface, or an object of
+` a class written in source that does not say whether it is empty with `!`.
+. casts = relation.kind == .relation-final-cast || relation.kind == .relation-side-cast
+if !casts || types.intrinsic-of(relation.to) != .bool || !host
+    = false
+. completion = types.completion-of(relation.from)
+if completion.intrinsic == .interface
+    = true
+= completion.intrinsic == .class && !completion.is-builtin && host!.truth-callee(relation.from) == no-instance
+
+────────────────────
+_ do report-truthless
+    - syntax SyntaxId
+    - relation Relation
+
+` The error for a value with no truth asked to be a `Bool`, which says that `as` does not read
+` the values it gives.
+. shown = type-source(types, relation.from)
+. reason = "it has no truth to test, and \"as\" does not read the values it gives"
+frame.diagnose(syntax, .stated, program.store-atom("$shown cannot become Bool: $reason; read them instead"), relation.from, relation.to)
 
 ────────────────────
 _ unasked TypeDiagnosticKind
@@ -335,6 +363,9 @@ if relation.kind == .relation-final-cast
 . casts = relation.kind == .relation-final-cast || relation.kind == .relation-side-cast
 if casts && host && types.completions[relation.to].intrinsic == .bool
     callee = host.truth-callee(relation.from)
+    if truthless(relation)
+        report-truthless(syntax, relation)
+        =
 . id = facts.record-conversion(frame.instance, cast-site(syntax, at-site), relation, reason, callee)
 facts.conversions[id].asked = requested
 facts.conversions[id].runs = runs-of(relation.from, relation.to)

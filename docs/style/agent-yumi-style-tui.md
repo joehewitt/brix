@@ -6,9 +6,9 @@ justified exceptions are allowed when the rule's tradeoff does not fit the code.
 
 ## YT-01: Keep TUI Structure Declarative
 
-Build TUI applications from markup nodes, style properties, tracked reads, and reactive streams.
-Do not replace rows, styles, DOM nodes, or compositing behavior with direct terminal drawing or
-custom paint loops unless the renderer itself is the subject.
+Build TUI applications from `<App>`, `<Window>`, markup nodes, style properties, tracked reads,
+and reactive streams. Do not replace rows, styles, DOM nodes, or compositing behavior with direct
+terminal drawing or custom paint loops unless the renderer itself is the subject.
 
 Incorrect:
 
@@ -21,10 +21,19 @@ terminal.clear-to-end()
 Correct:
 
 ```text
-<Window • flex-col bg:black
-    <StatusBar
-        message = #status-message
+<App
+    <Window • flex-col bg:black
+        <StatusBar
+            message = #status-message
 ```
+
+An `App` runs by itself where the main program's statements end, before the values main uses are
+closed, so a resource the window reads is opened with `use` in main. It runs until its windows
+close, by `window.close()` or `app.quit()`, and the program ends once main's cleanups have run,
+without waiting for tasks still pending. Call `app.run()` only where code has to wait for the app
+to quit, such as in a function whose own `use` closes what the window reads when the function
+returns. Inside a window's body, `app` is the window's own app, so give an element there another
+name.
 
 ## YT-02: Use Shortcut Nodes For Commands
 

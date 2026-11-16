@@ -4764,6 +4764,172 @@ before true
 after false false false [left waiting]
 ;====
 :====
+# An object's `close`, its class's own or one it inherits, stops the machine its class's markup
+# writes: the active case exits, running its `do finally`, and no handler or transition fires after.
+
+. ticks AsyncChannel'Int
+. holder = Holder(ticks)
+holder.started <- true
+-- "before $holder.waiting"
+holder.close()
+holder.started <- true
+ticks <- 1
+do new
+    -- "after $holder.idle $holder.waiting $holder.done $holder.log"
+
+━━━━━━━━━━━━━━━━━━━━
++ Closer
+
+────────────────────
++ do close
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Closer
+
++ event started Bool
++ log = ""
+_ ticks AsyncChannel'Int
+
+────────────────────
++ This
+    - ticks
+
+────────────────────
+~> idle
+
+~> waiting on started
+    do finally
+        log += "[left waiting]"
+    for tick on ticks
+        log += "[tick $tick]"
+    then done on ticks
+
+~> done
+    do log += "[done]"
+
+:----
+before true
+after false false false [left waiting]
+;====
+:====
+# An error a case's `do finally` raises as an object's `close` stops its machine goes to
+# unhandled-error, and the close goes on.
+
+unhandled-error = :: error => do
+    -- "handled ${error.message}"
+
+. holder = Holder()
+holder.opens <- true
+holder.close()
+-- "after $holder.is-open $holder.log"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ event opens Bool
++ log = ""
+
+────────────────────
+~> is-closed
+
+~> is-open on opens
+    do finally
+        unload()
+
+────────────────────
++ do unload ?! Error
+
+log += "[unload]"
+?! Error("unload failed")
+
+────────────────────
++ do close
+
+:----
+handled unload failed
+after false [unload]
+;====
+:====
+# An object's `close` stops its machines before its body runs, so their exit rows see what the
+# body then closes.
+
+. holder = Holder()
+holder.opens <- true
+holder.close()
+-- holder.log
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ event opens Bool
++ resource String? = "file"
++ log = ""
+
+────────────────────
++ phase ~>
+
+~> idle
+
+~> open on opens
+    do finally
+        log += "[left open with ${resource ?? "nothing"}]"
+
+────────────────────
++ do close
+
+log += "[close]"
+resource = null
+
+:----
+[left open with file][close]
+;====
+:====
+# An object's `close` stops its machines before its body runs, and the body still publishes the
+# object's events to its own handlers and to outside subscribers, but not to the stopped machines.
+
+. holder = Holder()
+for value on holder.ended
+    holder.log += "[outside heard]"
+holder.opens <- true
+holder.close()
+-- holder.log
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ event opens Bool
++ event ended Bool
++ log = ""
+
+────────────────────
++ phase ~>
+
+~> idle
+
+~> open on opens
+    do log += "[open]"
+    do finally
+        log += "[left open]"
+
+~> shut on ended
+    do log += "[shut]"
+
+────────────────────
+for value on ended
+
+log += "[heard ended]"
+
+────────────────────
++ do close
+
+log += "[close]"
+opens <- true
+ended <- true
+
+:----
+[open][left open][close][heard ended][outside heard]
+;====
+:====
 # A named machine a subclass's refinement writes in a case the base writes starts as the case is
 # entered, its transitions fire while the case is active, and it stops as the case exits.
 

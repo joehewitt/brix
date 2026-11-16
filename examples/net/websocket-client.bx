@@ -1,16 +1,19 @@
+; A WebSocket client that joins the room chat-server.bx serves under a name of its own, says
+; hello, and prints what the room says until it hears itself. Start chat-server.bx first.
+(import /math)
 (import /net/url)
 (import /net/websocket)
 (blank)
 
 (main
-  (let socket (call WebSocket (call URL "ws://localhost:8765")))
-  (blank)
+  (let name (str "yumi-" (call random 100 1000)))
+  (let socket (use (call WebSocket (call URL (str "ws://localhost:8080/chat/" name)))))
   (call (. socket send) "hello from yumi")
   (blank)
-  (for (in message socket)
-    (print (str "client received: " message))
-    (break)
+  (for (in line socket)
+    (print line)
+    (if (== line (str name ": hello from yumi"))
+      (break)
+    )
   )
-  (blank)
-  (call (. socket close))
 )
