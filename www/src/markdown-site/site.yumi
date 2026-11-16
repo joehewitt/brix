@@ -33,6 +33,11 @@ _ MarkdownSiteTarget is (path String, fragment String?)
     - code MDFencedCode
 
 ━━━━━━━━━━━━━━━━━━━━
++ MarkdownSiteInlineCodeRenderer is () String ?! Error
+    - document MarkdownSiteDocument
+    - code MDInlineCode
+
+━━━━━━━━━━━━━━━━━━━━
 + MarkdownSiteLinkRenderer is () MarkdownHTMLLink ?! Error
     - document MarkdownSiteDocument
     - url String
@@ -42,8 +47,10 @@ _ MarkdownSiteTarget is (path String, fragment String?)
     - root Path
     - entry-name = "README.md"
     - document-id MarkdownSiteDocumentId = markdown-site-document-id
+    - unlisted [String] = []
 
-. available = markdown-source-names(root)
+. available [String] = <* name in markdown-source-names(root) when !unlisted.find(name)
+    name
 . entry-path = root / entry-name
 ?! Error("Markdown site entry does not exist: $entry-path")
     if !entry-path.is-file
@@ -86,24 +93,25 @@ for source-name in ordered
 = MarkdownSite(root, entry-name, documents)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ render-markdown-site-document String
++ do render-markdown-site-document String
     - site MarkdownSite
     - document MarkdownSiteDocument
     - fenced-code-renderer MarkdownSiteFencedCodeRenderer? = null
     - link-renderer MarkdownSiteLinkRenderer? = null
+    - inline-code-renderer MarkdownSiteInlineCodeRenderer? = null
 
-|? fenced-code-renderer
-    markdown-to-html
-        - document.markdown
-        - :: code => fenced-code-renderer(document, code)
-        - :: heading, default-id => markdown-site-heading-id(document, default-id)
-        - :: link => render-markdown-site-link(site, document, link, link-renderer)
-??
-    markdown-to-html
-        - document.markdown
-        - null
-        - :: heading, default-id => markdown-site-heading-id(document, default-id)
-        - :: link => render-markdown-site-link(site, document, link, link-renderer)
+. fenced MarkdownFencedCodeRenderer? = null
+if fenced-code-renderer
+    fenced = :: code => fenced-code-renderer(document, code)
+. inline MarkdownInlineCodeRenderer? = null
+if inline-code-renderer
+    inline = :: code => inline-code-renderer(document, code)
+= markdown-to-html
+    - document.markdown
+    - fenced
+    - :: heading, default-id => markdown-site-heading-id(document, default-id)
+    - :: link => render-markdown-site-link(site, document, link, link-renderer)
+    - inline
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-site-link MarkdownHTMLLink
@@ -236,7 +244,7 @@ do match? node
     | MDListItem
         for child in it.content
             collect-markdown-links(child, links)
-        for child in it.child
+        for child in it.blocks
             collect-markdown-links(child, links)
     | MDTable
         collect-markdown-links(it.header, links)

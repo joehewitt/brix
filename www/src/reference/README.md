@@ -1,22 +1,36 @@
-# Rendering the guide and annotating examples
+# Rendering the reference
 
-The guide is authored in `docs/ref/drafts`. Its `README.md` sets chapter order; every Markdown chapter in that directory must appear in the index.
+The language reference is authored in `docs/ref`. Its `README.md` is the introduction and sets the
+order: the 27 numbered chapters, then the symbol index and the form index. Every other Markdown
+file in that directory must appear in that list, except `syntax.md`, which holds notes and is left
+out of the site.
 
-## Building the book
+## Building the reference
 
-Run `bin/yumi www/src/reference/build.yumi -o .tmp/build/build-reference` from the repository root to generate `www/dist/ref`. Add `--watch` to keep the Yumi builder running and rebuild after any Markdown change below the source directory. The whole guide renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are no longer generated.
+Run `bin/yumi www/src/reference/build.yumi -o .tmp/build/build-reference` from the repository root to generate `www/dist/ref`. Add `--watch` to keep the Yumi builder running and rebuild after any Markdown change below the source directory. The whole reference renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are not generated.
 
-`reference/build.yumi` uses the reusable `www/src/markdown-site/site.yumi` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/annotations.yumi` adds the guide's annotated Yumi examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Yumi paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
+`reference/build.yumi` uses the reusable `www/src/markdown-site/site.yumi` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/forms.yumi` shows Brix code as rows, and `reference/annotations.yumi` adds annotated Yumi examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Yumi paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
+
+## Rows and forms
+
+The reference writes code as Brix forms: ` ```brix ` fences and inline code marked `{.brix}`. The site shows each as rows, the text the Brix editor shows for the same forms, and keeps the forms beside them. A Forms button on each Brix block switches every block and inline span on the page between rows and forms, and the browser remembers the choice. Without JavaScript the page shows rows.
+
+- A fence's rows are syntax-colored as Yumi. Inline rows are plain text; rows of more than one line are shown as a small block in the line.
+- Code marked `{.rows}` and ` ```rows ` fences are already rows and are shown as written, as are ` ```output ` and ` ```text ` fences.
+- A fence's info string may name how its example ends, as in ` ```brix compile-error `. Rows of a `compile-error` example may not be readable Yumi, so when they cannot be colored they are shown as plain text. Any other example whose rows cannot be colored is shown the same way, and the build prints a warning naming it.
+- Forms that cannot be converted to rows fail the build, with the chapter and line.
 
 ## Reading layout and chapter navigation
 
 The document is centered in the space to the right of the chapter rail, with at least 48px between the rail and the content on desktop and a matching outer margin on the right. Ordinary prose has a maximum width of 720px; paired examples can use the full 1,240px guide width. Narrow screens use smaller gutters and stack paired examples.
 
-The fixed left rail has one tick per chapter, including the guide introduction. Hovering the rail opens a table of contents to its right, spanning the viewport height. Keyboard focus also opens it; tapping the tick rail opens it on touch screens. Escape, the close button, an outside click, or choosing a chapter closes the overlay. Chapter links jump instantly. Scrolling highlights the current chapter in both the rail and the contents, without changing the URL or browser history.
+The fixed left rail has one tick per chapter, including the introduction. Hovering the rail opens a table of contents to its right, spanning the viewport height. Keyboard focus also opens it; tapping the tick rail opens it on touch screens. Escape, the close button, an outside click, or choosing a chapter closes the overlay. Chapter links jump instantly. Scrolling highlights the current chapter in both the rail and the contents, without changing the URL or browser history.
 
 Continue authoring chapter links as `streams.md` or `streams.md#heading`. The build converts these to anchors in the combined page. Chapter roots use `#chapter-streams`, with `#guide` for the introduction. Headings, example IDs, and source anchors receive a chapter prefix so chapters can reuse local names safely. Duplicate final IDs and broken internal links fail the build.
 
 ## Linking prose to source
+
+Annotations apply to ` ```yumi ` fences. The reference in `docs/ref` writes its examples as Brix and does not use them yet.
 
 Give the code fence a stable name, wrap source ranges with markers, then link ordinary prose to them:
 
@@ -44,8 +58,6 @@ There is no separate label list or caption. The explanation belongs in the prose
 - The build rejects duplicate example names, malformed annotations, and unknown local `#source-...` links. That fragment prefix is reserved for annotations.
 - Links from another chapter use `chapter-name.md#source-EXAMPLE--RANGE`. They also support highlighting because all chapters render into the same page. Author local range links without the generated chapter prefix.
 
-[Structural pattern matching](../../docs/ref/drafts/structural-pattern-matching.md) contains worked examples, including nested annotations and multiline selections.
-
 ## Side-by-side prose and source
 
 Wrap explanatory Markdown and one annotated example in `:::example-pair`:
@@ -66,21 +78,7 @@ The prose appears on the left and the source on the right, with a 24px gap. The 
 
 Long code lines soft-wrap within the source column. This is visual wrapping only: copying the code preserves its original text and line breaks, and annotations still follow the wrapped ranges. Line numbers are hidden in this layout so wrapped lines do not misalign the gutter. Prefer short examples for comfortable reading beside prose.
 
-The prose can include paragraphs, lists, tables, and annotation links. It can be authored before or after the source fence; the rendered order is always prose then source. Each pair needs nonempty prose and exactly one named, annotated example. Pairs cannot nest. Omit the wrapper to keep the ordinary full-width presentation.
-
-Paired examples appear throughout the guide. Structural pattern matching demonstrates nested ranges; String templates links document text to its supporting calculations; the design essays pair syntax with concise explanations. Only explicitly wrapped examples use the split layout.
-
-## Chapter presentation
-
-Use the Structural pattern matching chapter as the presentation model:
-
-- Open with a short statement of the capability and an at-a-glance table where it helps readers choose among forms.
-- Let examples carry the explanation. Link meaningful syntax or expressions from ordinary prose and bullet lists rather than introducing a separate feature legend.
-- Use paired layouts for compact walkthroughs. Keep longer programs and reference-like tables in the normal flow when that reads better.
-- Give each callout a short label and a concrete explanation of behavior. Include the example's result when it clarifies the point.
-- Use tables for alternatives, contracts, and costs; lists for independent considerations. Retain prose where reasoning needs a connected explanation.
-- In the design essays, distinguish the author's rationale from the tradeoffs using short, clearly labeled lists.
-- Cross-link the chapter that owns a topic instead of repeating its full explanation.
+The prose can include paragraphs, lists, tables, and annotation links. It can be authored before or after the source fence; the rendered order is always prose then source. Each pair needs nonempty prose and exactly one named, annotated example. Pairs cannot nest. Omit the wrapper to keep the ordinary full-width presentation. Only explicitly wrapped examples use the split layout.
 
 ## Selecting syntax nodes
 
@@ -105,4 +103,10 @@ The build verifies that parser runs reproduce the cleaned source exactly. The br
 
 ## Verification
 
-The configured selector is `file:www/tests/source_annotations.py`. It covers how highlight boxes join the rectangles of syntax fragments on each line. Run configured verification through Ometer's MCP tools.
+Build into a scratch folder to check a change without touching `www/dist/ref`:
+
+```sh
+bin/yumi www/src/reference/build.yumi -o .tmp/build/build-reference -- --output .tmp/reference
+```
+
+Serve that folder over HTTP and switch a block between rows and forms to check the toggle.

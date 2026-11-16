@@ -1,5 +1,6 @@
 ./../markdown-site/site
 ./annotations
+./forms
 /YuCore/YuCore.h
 /data/markdown
 /os/cli
@@ -56,14 +57,14 @@ build-reference(options)
 _ do build-reference
     - options ReferenceBuildOptions
 
-. site = load-markdown-site(options.source, "README.md", reference-chapter-id)
+. site = load-markdown-site(options.source, "README.md", reference-chapter-id, ["syntax.md"])
 . chapters [ReferenceChapter]
 for document in site.documents
     chapters += ReferenceChapter(document, reference-examples(document))
 . content = ""
 for chapter in chapters
     . code-renderer = :: document, code =>
-        render-reference-code(document, chapter.examples, code)
+        reference-code(document, chapter.examples, code)
     . link-renderer = :: document, url =>
         reference-link(site, chapters, document, url)
     . rendered = render-markdown-site-document
@@ -71,6 +72,7 @@ for chapter in chapters
         - chapter.document
         - code-renderer
         - link-renderer
+        - render-reference-inline-code
     rendered = render-reference-example-pairs(rendered, chapter.document.source-name)
     . heading = reference-first-heading-id(rendered, chapter.document.source-name)
     content += "<section class=\"chapter\" id=\"${chapter.document.id}\" data-chapter"
@@ -96,7 +98,7 @@ write-reference-file(options.output / "index.html", html)
 _ do reference-build-options ReferenceBuildOptions
     - command [String]
 
-. source = Path("docs/ref/drafts")
+. source = Path("docs/ref")
 . output = Path("www/dist/ref")
 . watch = false
 . index Index = 1
@@ -127,6 +129,17 @@ _ reference-chapter-id String
     - source-name String
 
 if source-name == "README.md" then "guide" else "chapter-${markdown-site-document-id(source-name)}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-code String ?! Error
+    - document MarkdownSiteDocument
+    - examples [ReferenceExample]
+    - code MDFencedCode
+
+|? code.language == "brix"
+    render-reference-forms(document, code)
+??
+    render-reference-code(document, examples, code)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do reference-link MarkdownHTMLLink
@@ -181,7 +194,7 @@ _ do reference-repository-link String
 . hash = target.find("#")
 . path = if hash then target[... hash] else target
 . fragment = if hash then target[hash ...] else ""
-. parts [String] = ["docs", "ref", "drafts"]
+. parts [String] = ["docs", "ref"]
 for part in path.split("/")
     if !part || part == "."
         continue
@@ -282,9 +295,9 @@ _ ¶ reference-page
 <body>
 <a class="skip-link" href="#content">Skip to content</a>
 <header class="site-header">
-<p>Language guide</p>
+<p>Language reference</p>
 </header>
-<nav class="chapter-navigation" data-chapter-navigation aria-label="Guide chapters">
+<nav class="chapter-navigation" data-chapter-navigation aria-label="Reference chapters">
 <div class="chapter-rail" data-chapter-rail>
 <div class="chapter-ticks">$ticks</div>
 </div>

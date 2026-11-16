@@ -221,8 +221,45 @@ export function initializeChapterNavigation(document) {
     update();
 }
 
+export function initializeCodeView(document) {
+    const root = document.documentElement;
+    const view = document.defaultView;
+    const key = 'reference-code-view';
+    const buttons = [...document.querySelectorAll('[data-brix-code]')].map((block) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'code-view-toggle';
+        button.textContent = 'Forms';
+        button.title = 'Show code as Brix forms';
+        block.append(button);
+        return button;
+    });
+    const apply = (mode) => {
+        root.dataset.codeView = mode;
+        for (const button of buttons) button.setAttribute('aria-pressed', String(mode === 'forms'));
+    };
+    let stored = null;
+    try {
+        stored = view.localStorage.getItem(key);
+    } catch {}
+    apply(stored === 'forms' ? 'forms' : 'rows');
+    for (const button of buttons) {
+        button.addEventListener('click', () => {
+            const before = button.parentElement.getBoundingClientRect().top;
+            const mode = root.dataset.codeView === 'forms' ? 'rows' : 'forms';
+            apply(mode);
+            try {
+                view.localStorage.setItem(key, mode);
+            } catch {}
+            const shift = button.parentElement.getBoundingClientRect().top - before;
+            view.scrollBy({ top: shift, behavior: 'instant' });
+        });
+    }
+}
+
 export function initializeReference(document) {
     initializeChapterNavigation(document);
+    initializeCodeView(document);
     for (const sourceRoot of document.querySelectorAll('[data-yumi-source]')) {
         const code = sourceRoot.querySelector('.source-yumi');
         const lineNumbers = document.createElement('span');

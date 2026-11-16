@@ -1,4 +1,4 @@
-_ IndentedItem is (indent I32, ordered Bool, start U32, contents [Markdown], line U32)
+_ ListEntry is (indent I32, width I32, ordered Bool, start U32, contents [Markdown], line U32, block Markdown?)
 _ MarkdownSourceRange is (start Index, end Index)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -42,16 +42,12 @@ _ MarkdownSourceRange is (start Index, end Index)
         MDHeader(level.length as U8, contents, location.begin.line)
 
 .. paragraph Markdown ~
-    ~ first \paragraph-line rest \paragraph-continuation*
-        MDParagraph(join-paragraph-lines(first, rest), location.begin.line)
+    ~ first (!\nl .)+ rest \paragraph-continuation*
+        MDParagraph(markdown-paragraph-inlines(first, rest), location.begin.line)
 
-.. paragraph-line [Markdown] ~
-    ~ values \inline+
-        values
-
-.. paragraph-continuation [Markdown] ~
-    ~ \nl !\block-start values \paragraph-line
-        values
+.. paragraph-continuation String ~
+    ~ \nl !\block-start / text (!\nl .)+
+        text
 
 .. block-start ~
     ~ &\fence-start
@@ -81,18 +77,32 @@ _ MarkdownSourceRange is (start Index, end Index)
     ~ ">"
 
 .. list Markdown ~
-    ~ items \list-item+
-        group-items(items)
+    ~ entries \list-entry+
+        group-items(entries)
 
-.. list-item IndentedItem ~
-    ~ \nl* item \list-item-line
-        item
+.. list-entry ListEntry ~
+    ~ \nl* entry \list-item-line
+        entry
+    ~ \nl (/ \nl)+ entry \list-block
+        entry
 
-.. list-item-line IndentedItem ~
-    ~ indent / [*+-] // contents \inline*
-        IndentedItem(indent.length as I32, false, 1, contents, location.begin.line)
-    ~ indent / start \num'U32 "." // contents \inline*
-        IndentedItem(indent.length as I32, true, start, contents, location.begin.line)
+.. list-item-line ListEntry ~
+    ~ indent / [*+-] gap // first (!\nl .)* rest \paragraph-continuation*
+        . contents = markdown-paragraph-inlines(first, rest)
+        . width = (1 + gap.length) as I32
+        ListEntry(indent.length as I32, width, false, 1, contents, location.begin.line, null)
+    ~ indent / start \num'U32 "." gap // first (!\nl .)* rest \paragraph-continuation*
+        . contents = markdown-paragraph-inlines(first, rest)
+        . width = ("$start".length + 1 + gap.length) as I32
+        ListEntry(indent.length as I32, width, true, start, contents, location.begin.line, null)
+
+.. list-block ListEntry ~
+    ~ indent // fence \fence-mark language \fence-opening body \markdown-item-fence(fence, indent)
+        . code = make-fenced-code(language, body, location)
+        ListEntry(indent.length as I32, 0, false, 1, List'Markdown(), location.begin.line, code)
+    ~ indent // first (!\nl .)+ rest \paragraph-continuation*
+        . prose = MDParagraph(markdown-paragraph-inlines(first, rest), location.begin.line)
+        ListEntry(indent.length as I32, 0, false, 1, List'Markdown(), location.begin.line, prose)
 
 .. divider Markdown ~
     ~ ("-" /){3} ("-" /)* &(\nl | !.)
@@ -140,12 +150,15 @@ _ MarkdownSourceRange is (start Index, end Index)
         normalized-table-cells(cells)
 
 .. table-cell-source String ~
-    ~ \table-cell-part*
+    ~ parts \table-cell-part*
+        "".join(parts)
 
-.. table-cell-part ~
+.. table-cell-part String ~
     ~ "\\|"
-    ~ "`" (!"`" !\nl .)* "`"
-    ~ !("|" | \nl) .
+        "\\|"
+    ~ \markdown-code-source
+    ~ !("|" | \nl) char .
+        char as String
 
 .. table-delimiter-row [MDTableAlignment] ~
     ~ "|"? ...cells \table-delimiter-cell ("|" ...cells \table-delimiter-cell)+ "|"? &(\nl | !.)
@@ -162,7 +175,7 @@ _ MarkdownSourceRange is (start Index, end Index)
         MDTableAlignment.none
 
 .. inline Markdown ~
-    ~ \markdown-inline
+    ~ \markdown-inline(false)
 
 ────────────────────
 + from text String
@@ -290,7 +303,7 @@ ${"".join(children)}
 + MDListItem is Tuple
 
 + content [Markdown]
-+ child [MDList]
++ blocks [Markdown]
 + line U32
 
 ────────────────────
@@ -357,6 +370,10 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
     - code MDFencedCode
 
 ━━━━━━━━━━━━━━━━━━━━
++ MarkdownInlineCodeRenderer is () String ?! Error
+    - code MDInlineCode
+
+━━━━━━━━━━━━━━━━━━━━
 + MarkdownHeadingIdRenderer is () String
     - heading MDHeader
     - default-id String
@@ -399,42 +416,55 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
 ~ "`"{width} "`"* / &(\nl | !.)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ markdown-inline ~ Char Markdown
+_ markdown-item-fence ~ Char String
+    - fence String
+    - indent String
 
+~ lines \markdown-item-code-line(fence.length, indent.length)* / \markdown-fence-close(fence.length)
+    "".join(lines)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-item-code-line ~ Char String
+    - width Size
+    - indent Size
+
+~ !(/ \markdown-fence-close(width)) " "{0, indent} text (!\nl .)* \nl
+    "$text\n"
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-inline ~ Char Markdown
+    - wraps Bool
+
+~ &\{ wraps } \nl /
+    MDText(" ", true)
 ~ \strong
 ~ "**"
     MDText("**")
 ~ \em
 ~ \image
 ~ \link
-~ \inline-code
+~ \markdown-code-span(wraps)
+~ ticks "`"+
+    MDText(ticks)
 ~ \escaped-text
 ~ \text
 ~ \special-text
 
 .. strong Markdown ~
-    ~ "**" (!"**" ...contents \markdown-inline)+ "**"
+    ~ "**" (!"**" ...contents \markdown-inline(wraps))+ "**"
         MDStrong(contents)
 
 .. em Markdown ~
-    ~ "*" (!"*" ...contents \markdown-inline)+ "*"
+    ~ "*" (!"*" ...contents \markdown-inline(wraps))+ "*"
         MDEm(contents)
 
 .. link Markdown ~
-    ~ "[" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
+    ~ "[" (!"]" ...contents \markdown-inline(wraps))+ "](" url \url-text ")"
         MDLink(url, contents)
 
 .. image Markdown ~
-    ~ "![" (!"]" ...contents \markdown-inline)+ "](" url \url-text ")"
+    ~ "![" (!"]" ...contents \markdown-inline(wraps))+ "](" url \url-text ")"
         MDImage(url, contents)
-
-.. inline-code Markdown ~
-    ~ "`" code (!"`" !\nl .)* "`" language \code-class?
-        MDInlineCode(code, language ?? "")
-
-.. code-class String ~
-    ~ "{." name [a-zA-Z0-9_-]+ "}"
-        name
 
 .. escaped-text Markdown ~
     ~ "\\" text \escaped-char
@@ -471,13 +501,67 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
     ~ !(")" | \nl) .
 
 ━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-span ~ Char Markdown
+    - wraps Bool
+
+~ code \markdown-code-body(wraps) language \markdown-code-class?
+    MDInlineCode(code, language ?? "")
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-body ~ Char String
+    - wraps Bool
+
+~ ticks "`"+ pieces \markdown-code-piece(ticks.length, wraps)* \markdown-code-close(ticks.length)
+    markdown-code-text("".join(pieces))
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-source ~ Char String
+
+~ ticks "`"+ pieces \markdown-code-piece(ticks.length, false)* \markdown-code-close(ticks.length)
+    "$ticks${"".join(pieces)}$ticks"
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-piece ~ Char String
+    - width Size
+    - wraps Bool
+
+~ &\{ wraps } \nl /
+    " "
+~ !\markdown-code-close(width) text "`"+
+    text
+~ text (!"`" !\nl .)+
+    text
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-close ~ Char
+    - width Size
+
+~ "`"{width} !"`"
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-text String
+    - text String
+
+|? text.length > 1 && text.starts-with(" ") && text.ends-with(" ") && text.trim()
+    text[1 .. < text.length - 1]
+??
+    text
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-code-class ~ Char String
+
+~ "{." name [a-zA-Z0-9_-]+ "}"
+    name
+
+━━━━━━━━━━━━━━━━━━━━
 + markdown-to-html String
     - doc Markdown
     - fenced-code-renderer MarkdownFencedCodeRenderer? = null
     - heading-id-renderer MarkdownHeadingIdRenderer? = null
     - link-renderer MarkdownLinkRenderer? = null
+    - inline-code-renderer MarkdownInlineCodeRenderer? = null
 
-MarkdownHTMLRenderer(fenced-code-renderer, heading-id-renderer, link-renderer).render(doc)
+MarkdownHTMLRenderer(fenced-code-renderer, heading-id-renderer, link-renderer, inline-code-renderer).render(doc)
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-visible-text String
@@ -518,6 +602,7 @@ _ MarkdownHTMLRenderer
 _ fenced-code-renderer MarkdownFencedCodeRenderer?
 _ heading-id-renderer MarkdownHeadingIdRenderer?
 _ link-renderer MarkdownLinkRenderer?
+_ inline-code-renderer MarkdownInlineCodeRenderer?
 _ heading-counts Map'String'U32
 
 ────────────────────
@@ -525,6 +610,7 @@ _ heading-counts Map'String'U32
     - fenced-code-renderer MarkdownFencedCodeRenderer?
     - heading-id-renderer MarkdownHeadingIdRenderer?
     - link-renderer MarkdownLinkRenderer?
+    - inline-code-renderer MarkdownInlineCodeRenderer?
 
 ────────────────────
 + render String ?! Error
@@ -560,7 +646,7 @@ match node
     | MDList
         render-list(it)
     | MDListItem
-        html-list-item(render-inlines(it.content), render-blocks(it.child))
+        html-list-item(render-inlines(it.content), render-blocks(it.blocks))
     | MDTable
         render-table(it)
     | MDTableRow
@@ -606,6 +692,8 @@ html-link(html-escape(rendered.target), rendered.attributes, render-inlines(link
 _ render-inline-code
     - code MDInlineCode
 
+|? inline-code-renderer
+    inline-code-renderer(code)
 |? code.language
     html-language-inline-code(html-escape(code.language), html-escape(code.code))
 ??
@@ -865,51 +953,44 @@ _ ¶ html-table-cell
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do group-items Markdown
-    - items [IndentedItem]
+    - entries [ListEntry]
 
-. first = items[0]
+. first = entries[0]
 . indent = first.indent
 . stack = [MDList(first.ordered, first.start)]
 . indents = [indent]
+. columns = [first.indent + first.width]
 
-for item in items
-    if item.indent == indent
-        stack.tail.children += MDListItem(item.contents, List'MDList(), item.line)
-    else if item.indent > indent
-        if | [..., last-item MDListItem] = stack.tail.children
-            . new-list = MDList(item.ordered, item.start)
-            new-list.children += MDListItem(item.contents, List'MDList(), item.line)
-            last-item.child += new-list
-            indent = item.indent
-            stack += new-list
-            indents += indent
-    else
-        while item.indent < indent && stack.length > 1
+for entry in entries
+    . block = entry.block
+    if block
+        while stack.length > 1 && columns.tail > entry.indent
             stack.pop()
             indents.pop()
+            columns.pop()
+        indent = indents.tail
+        if | [..., last-item MDListItem] = stack.tail.children
+            last-item.blocks += block
+    else if entry.indent > indent
+        if | [..., last-item MDListItem] = stack.tail.children
+            . new-list = MDList(entry.ordered, entry.start)
+            new-list.children += MDListItem(entry.contents, List'Markdown(), entry.line)
+            last-item.blocks += new-list
+            indent = entry.indent
+            stack += new-list
+            indents += indent
+            columns += entry.indent + entry.width
+    else
+        while entry.indent < indent && stack.length > 1
+            stack.pop()
+            indents.pop()
+            columns.pop()
             indent = indents.tail
-        stack.tail.children += MDListItem(item.contents, List'MDList(), item.line)
+        stack.tail.children += MDListItem(entry.contents, List'Markdown(), entry.line)
+        columns.pop()
+        columns += entry.indent + entry.width
 
 = stack[0]
-
-━━━━━━━━━━━━━━━━━━━━
-_ join-paragraph-lines
-    - first [Markdown]
-    - rest [[Markdown]]
-
-** first
-**
-    rest
-    *> paragraph-line-with-separator(each)
-    |> flat-map
-|> List
-
-━━━━━━━━━━━━━━━━━━━━
-_ paragraph-line-with-separator
-    - line [Markdown]
-
-* MDText(" ", true)
-** line
 
 ━━━━━━━━━━━━━━━━━━━━
 _ make-fenced-code
@@ -940,6 +1021,13 @@ for node in nodes
         result += finished
     else if | quote MDBlockQuote = node
         result += MDBlockQuote(finalize-markdown(lines, quote.content), quote.line)
+    else if | list MDList = node
+        for child in list.children
+            if | item MDListItem = child
+                . finished = finalize-markdown(lines, item.blocks)
+                item.blocks.clear()
+                item.blocks ++= finished
+        result += node
     else
         result += node
 = result
@@ -992,30 +1080,30 @@ for index in 0 .. < lines.length
             first = line + (index as U32)
         paragraph += lines[index]
     else if paragraph
-        blocks += MDParagraph(quote-paragraph-content(paragraph), first)
+        blocks += MDParagraph(markdown-paragraph-inlines(paragraph[0], paragraph[1 ...]), first)
         paragraph.clear()
 if paragraph
-    blocks += MDParagraph(quote-paragraph-content(paragraph), first)
+    blocks += MDParagraph(markdown-paragraph-inlines(paragraph[0], paragraph[1 ...]), first)
 = MDBlockQuote(blocks, line)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do quote-paragraph-content [Markdown]
-    - lines [String]
-
-. result List'Markdown
-for index in 0 .. < lines.length
-    if index > 0
-        result += MDText(" ", true)
-    for node in markdown-inlines(lines[index])
-        result += node
-= result
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markdown-inlines [Markdown]
     - source String
 
 =? match? source
-    ~ values \markdown-inline* !.
+    ~ values \markdown-inline(false)* !.
+        values
+
+= [MDText(source)]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-paragraph-inlines [Markdown]
+    - first String
+    - rest [String]
+
+. source = "\n".join([first] ++ rest)
+=? match? source
+    ~ values \markdown-inline(true)* !.
         values
 
 = [MDText(source)]
