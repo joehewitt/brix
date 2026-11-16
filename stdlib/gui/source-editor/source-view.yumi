@@ -39,8 +39,6 @@ _ source-marker-width Length = 3
 + source-divider-height Length = 2
 + source-thin-divider-height Length = 1
 + source-double-divider-height Length = 4
-_ source-dash Length = 6
-_ source-dash-gap Length = 4
 _ source-gutter-inset Length = 16
 _ source-gutter-gap Length = 8
 _ source-control-reach Length = 8
@@ -1330,8 +1328,6 @@ if active.is-dirty
 widest-columns = widest
 row-width = width
 
-╌╌╌╌╌╌╌╌╌╌ is CodeFindTarget ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + find-stamp U64
 
@@ -1434,8 +1430,6 @@ invalidate-paint()
 
 request-focus()
 
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + do close
 
@@ -1530,8 +1524,6 @@ do use canvas.saved-state
             canvas.fill-color = $source-thin-divider-color
             canvas.rect(Rect(start, rule-y, width, source-thin-divider-height))
             canvas.rect(Rect(start, rule-y + source-double-divider-height - source-thin-divider-height, width, source-thin-divider-height))
-        else if shown.divider == source-divider-label
-            paint-label-rule(canvas, shown, left, max(content.x, left), rule-end, y)
         while next-hit < hits.length && hits[next-hit].row < row
             next-hit += 1
         while next-hit < hits.length && hits[next-hit].row == row
@@ -1855,49 +1847,6 @@ _ found-rect Rect
 Rect(left + hit.start * cell-width, y, (hit.end - hit.start) * cell-width, source-row-length)
 
 ────────────────────
-_ do paint-label-rule
-    - canvas Canvas
-    - shown SourceRow
-    - left Length
-    - start Length
-    - end Length
-    - y Length
-
-. rule-y = y + floor((source-row-length - source-thin-divider-height) / 2)
-. column = shown.content-start
-. first Size? = null
-. last = column
-for span in shown.spans
-    if span.kind != SourceSpanKind.decoration
-        if first == null
-            first = column
-        last = column + span.text.length
-    column += span.text.length
-canvas.fill-color = $source-thin-divider-color
-if first == null
-    paint-dashes(canvas, left, start, end, rule-y)
-    =
-paint-dashes(canvas, left, start, left + (first - 1) * cell-width, rule-y)
-paint-dashes(canvas, left, left + (last + 1) * cell-width, end, rule-y)
-
-────────────────────
-_ do paint-dashes
-    - canvas Canvas
-    - left Length
-    - start Length
-    - end Length
-    - y Length
-
-. period = source-dash + source-dash-gap
-. x = left + floor((start - left) / period) * period
-while x < end
-    . from = max(x, start)
-    . to = min(x + source-dash, end)
-    if to > from
-        canvas.rect(Rect(from, y, to - from, source-thin-divider-height))
-    x += period
-
-────────────────────
 + do paint-overlay
     - canvas Canvas
 
@@ -2150,8 +2099,6 @@ _ has-adder Bool
 session != null && row + 1 == session.row-count
 
 
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + do close
 
@@ -2239,13 +2186,12 @@ if cached
 . segments [TextSegment]
 if row.indent > 0
     segments += TextSegment(0, " " * (row.indent * source-indent-columns), font)
-. is-ruled = row.divider == source-divider-label
 for span in row.spans
     . is-bold = bolds && source-is-bold(span.kind)
     . is-slanted = italics && span.is-optional
     . shown = if is-bold then (if is-slanted then bold-italic else bold) else (if is-slanted then italic else font)
     . color = if is-preamble then preamble-color(span.kind) else span-color(span.kind)
-    segments += TextSegment(0, span.text, shown, if is-ruled && span.kind == .decoration then transparent else color)
+    segments += TextSegment(0, span.text, shown, color)
 . layout = TextLayout(segments, font, null, TextOverflow.clip, TextWrap.no-wrap)
 text-layout = layout
 shown-spans = row.spans
@@ -2355,8 +2301,6 @@ if text-layout
     text-layout.close()
     text-layout = null
 
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + do close
 
@@ -2402,8 +2346,6 @@ range.count = session.folds.row-count() as VirtualCoord
 
 .. range = VirtualRangeSource(session.folds.row-count())
 
-╌╌╌╌╌╌╌╌╌╌ is VirtualSource ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + get domain VirtualSequenceDomain
 
@@ -2432,8 +2374,6 @@ else
 ────────────────────
 + This
     - session
-
-╌╌╌╌╌╌╌╌╌╌ is VirtualStickyRows ╌╌╌╌╌╌╌╌╌╌
 
 ────────────────────
 + do sticky-headers

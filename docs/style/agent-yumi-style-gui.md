@@ -311,8 +311,6 @@ Correct:
 ━━━━━━━━━━━━━━━━━━━━
 + ColorSwatch is Box
 
-╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
-
 ────────────────────
 + do paint-self
     to canvas Canvas

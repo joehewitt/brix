@@ -225,7 +225,6 @@ while position < ids.length
             - property
             - bucket
             - anchors.length
-            - ""
             - sort-priority(property, bucket, kind)
             - false
             - first
@@ -238,7 +237,6 @@ while position < ids.length
         - id
         - bucket
         - anchors.length
-        - semantic-header(id, bucket, kind)
         - sort-priority(id, bucket, kind)
         - false
         - first
@@ -283,7 +281,6 @@ for position in 0 .. < anchors.length
         - end
         - anchor.bucket
         - anchor.original-index
-        - anchor.semantic-header
         - anchor.sort-priority
         - false
         - ""
@@ -301,14 +298,6 @@ _ do attached-start Index
 . start = first
 while start > floor && store.is-comment(members[start - 1])
     start -= 1
-. above = start
-while above > floor && store.is-blank(members[above - 1])
-    above -= 1
-if above < start && above > floor && is-dashed-comment(members[above - 1])
-    start = above - 1
-if start - 1 > floor && store.is-blank(members[start - 1]) && is-generated-above
-    start -= 2
-.. is-generated-above = is-generated-comment(members[start - 2])
 = start
 
 ────────────────────
@@ -319,16 +308,10 @@ _ do region [ImmutableTableRow'SourceNode]
 
 . sorted = sort(chunks) • using compare-chunks
 . made [ImmutableTableRow'SourceNode]
-. previous-header = ""
 for position in 0 .. < sorted.length
     . chunk = sorted[position]
     . core = core-end(members, chunk)
     . start = lead(members, chunk, core)
-    . is-footed = start < core && is-footer(members[start])
-    if previous-header.length != 0 && chunk.semantic-header.length == 0 && !is-footed
-        made += store.comment(generated-semantic-footer)
-    if chunk.semantic-header.length != 0 && chunk.semantic-header != previous-header
-        made += store.comment(chunk.semantic-header)
     for slot in start .. < core
         made += shown(rebuilt[slot], chunk.bucket)
     if position + 1 == sorted.length
@@ -337,7 +320,6 @@ for position in 0 .. < sorted.length
             made += rebuilt[slot]
     else if is-spaced(members, chunk, sorted[position + 1])
         made += store.blank()
-    previous-header = chunk.semantic-header
 = made
 
 ────────────────────
@@ -350,8 +332,6 @@ _ is-spaced Bool
     true
 |? is-divided(last, left.bucket)
     false
-|? left.semantic-header != right.semantic-header
-    true
 |? store.is-comment(first)
     true
 |? is-divided(first, right.bucket)
@@ -389,21 +369,9 @@ _ do lead Index
     - chunk Chunk
     - end Index
 
-=? unheaded(members, chunk.start, end) if chunk.semantic-header.length != 0
 =? chunk.start if !is-one-line-type-bucket(chunk.bucket)
 . position = chunk.start
-while position < end && (store.is-blank(members[position]) || is-dashed-comment(members[position]))
-    position += 1
-= position
-
-────────────────────
-_ do unheaded Index
-    - members [ImmutableTableRow'SourceNode]
-    - start Index
-    - end Index
-
-. position = start
-while position < end && (store.is-blank(members[position]) || is-generated-comment(members[position]))
+while position < end && store.is-blank(members[position])
     position += 1
 = position
 
@@ -433,24 +401,6 @@ _ is-same-item Bool
 left.index == right.index || (store.is-blank(left) && store.is-blank(right)) || is-same-comment
 
 .. is-same-comment = store.is-comment(left) && store.is-comment(right) && store.comment-text(left) == store.comment-text(right)
-
-────────────────────
-_ is-generated-comment Bool
-    - node ImmutableTableRow'SourceNode
-
-store.is-comment(node) && is-generated-semantic-header-anchor(store.comment-text(node) ?? "")
-
-────────────────────
-_ is-footer Bool
-    - node ImmutableTableRow'SourceNode
-
-store.is-comment(node) && store.comment-text(node) == generated-semantic-footer
-
-────────────────────
-_ is-dashed-comment Bool
-    - node ImmutableTableRow'SourceNode
-
-store.is-comment(node) && (store.comment-text(node) ?? "").starts-with("╌")
 
 ────────────────────
 _ is-sortable Bool
@@ -739,21 +689,6 @@ if kind == .sequence-module
 =? 0 if kind != .sequence-type || !is-semantic-callable(id, bucket)
 . found = index?.metadata[id]
 = if found then found.priority else 0
-
-────────────────────
-_ semantic-header String
-    - id SyntaxId
-    - bucket String
-    - kind SequenceKind
-
-|? kind != .sequence-type || !is-semantic-callable(id, bucket)
-    ""
-|? found
-    found.header
-??
-    ""
-
-.. found = index?.metadata[id]
 
 ────────────────────
 _ is-semantic-callable Bool

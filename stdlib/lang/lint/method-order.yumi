@@ -307,7 +307,6 @@ if alias && (alias.is-public || is-access)
 ` A type a class names as its base, where `is-inherited`, or as an interface it implements, with
 ` the name and type parameter count it refers to a class by, if it refers to one that way.
 + is-inherited Bool
-+ type-name String
 + reference String?
 + reference-params Int
 
@@ -332,20 +331,13 @@ if alias && (alias.is-public || is-access)
 + node SyntaxId
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ResolvedClass is Tuple
-
-+ declared DeclaredClass
-+ header-name String
-
-━━━━━━━━━━━━━━━━━━━━
 + Requirement is Tuple
 
 ` A public function a base type or interface declares, which a class's function with the same
-` signature implements, under the section named for that type.
+` signature implements.
 + signature String
 + bucket String
 + order Int
-+ header-name String
 + group Int
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -714,15 +706,14 @@ match tree.nodes[id]
     - type SyntaxId
     - is-inherited Bool
 
-. name = declared-type-name(tree, type)
 do match? tree.nodes[type]
     | .node-type-identifier(row)
-        = DeclaredBase(is-inherited, name, row.name.text, 0)
+        = DeclaredBase(is-inherited, row.name.text, 0)
     | .node-type-arguments(row)
         do match? tree.nodes[row.base]
             | .node-type-identifier(base)
-                = DeclaredBase(is-inherited, name, base.name.text, row.args.count)
-= DeclaredBase(is-inherited, name, null, 0)
+                = DeclaredBase(is-inherited, base.name.text, row.args.count)
+= DeclaredBase(is-inherited, null, 0)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do declare-class ?! Error
@@ -790,42 +781,41 @@ for declared in module.classes
     - index MethodOrderIndex
 
 ` Places each public function of a class that overrides a function of a base type, and then each
-` that implements a function of an interface, under a section for that type.
+` that implements a function of an interface.
 . current = unique-callables(declared.callables)
 if current.length == 0
     =
 . chain = base-chain(declared)
 if !chain
     =
-. lineage [DeclaredClass]
-for resolved in chain
-    lineage += resolved.declared
-lineage += declared
+. lineage = List'DeclaredClass
+    ** chain
+    * declared
 . interfaces = interface-order(lineage)
 . required [String = Bool]
 . ordered [Requirement]
 . seen [String = Bool]
 for group in 0 .. < interfaces.length
     . iface = interfaces[group]
-    . counts = signature-counts(iface.declared.callables)
-    for callable in iface.declared.callables
+    . counts = signature-counts(iface.callables)
+    for callable in iface.callables
         required[callable.signature] = true
         if !seen[callable.signature]
             seen[callable.signature] = true
             if counts[callable.signature] == 1
-                ordered += requirement(callable, iface.header-name, group)
+                ordered += requirement(callable, group)
 
 . base-counts [String = Int]
 for resolved in chain
-    for callable in resolved.declared.callables
+    for callable in resolved.callables
         base-counts[callable.signature] = (base-counts[callable.signature] ?? 0) + 1
 for group in 0 .. < chain.length
     . resolved = chain[group]
-    for callable in resolved.declared.callables
+    for callable in resolved.callables
         if base-counts[callable.signature] == 1 && !required[callable.signature]
             . found = current[callable.signature]
             if found
-                . item = requirement(callable, resolved.header-name, group)
+                . item = requirement(callable, group)
                 add-method(found, override-priority-base, item, index)
 for item in ordered
     . found = current[item.signature]
@@ -835,10 +825,9 @@ for item in ordered
 ━━━━━━━━━━━━━━━━━━━━
 + requirement Requirement
     - callable DeclaredCallable
-    - header-name String
     - group Int
 
-Requirement(callable.signature, callable.bucket, callable.order, header-name, group)
+Requirement(callable.signature, callable.bucket, callable.order, group)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do add-method
@@ -850,17 +839,15 @@ Requirement(callable.signature, callable.bucket, callable.order, header-name, gr
 if index.metadata[callable.node]
     =
 . placement = bucket-order-index(item.bucket) * bucket-stride + item.order
-. priority = base + item.group * group-stride + placement
-. header = labeled-divider("is ${item.header-name}")
-index.metadata[callable.node] = MethodOrderMetadata(priority, header)
+index.metadata[callable.node] = MethodOrderMetadata(base + item.group * group-stride + placement)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do base-chain [ResolvedClass]?
++ do base-chain [DeclaredClass]?
     - declared DeclaredClass
 
 ` The base types a class inherits from, its root first, or none where a class inherits from more
 ` than one or from one that is not found once.
-. chain [ResolvedClass]
+. chain [DeclaredClass]
 . seen [DeclaredClass]
 seen += declared
 . current = declared
@@ -876,25 +863,25 @@ while true
     . parent = resolve-class(current, inherited[0])
     if !parent || contains-class(seen, parent)
         = null
-    chain += ResolvedClass(parent, inherited[0].type-name)
+    chain += parent
     seen += parent
     current = parent
-. reversed [ResolvedClass]
+. reversed [DeclaredClass]
 for offset in 0 .. < chain.length
     reversed += chain[chain.length - 1 - offset]
 = reversed
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do interface-order [ResolvedClass]
++ do interface-order [DeclaredClass]
     - lineage [DeclaredClass]
 
-. interfaces [ResolvedClass]
+. interfaces [DeclaredClass]
 for declared in lineage
     for base in declared.bases
         if !base.is-inherited
             . found = resolve-class(declared, base)
             if found
-                interfaces += ResolvedClass(found, base.type-name)
+                interfaces += found
 = interfaces
 
 ━━━━━━━━━━━━━━━━━━━━

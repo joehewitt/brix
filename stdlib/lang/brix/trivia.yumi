@@ -134,8 +134,6 @@ for index in 0 .. < items.length
                 break
         if is-followed || end > spans.end(item)
             spans.extend(item, end)
-        if !is-followed && spans.start(node) > 0
-            spans.extend(item, group-end(spans.end(item), spans.start(node)))
 for item in items
     if store.is-list(item)
         extend(item)
@@ -146,48 +144,13 @@ _ do leading-start Size
     - floor Size
 
 . first = line
-while first - 1 > floor && kinds[first - 2] == TriviaKind.comment && !closes-group(first - 2, floor)
+while first - 1 > floor && kinds[first - 2] == TriviaKind.comment
     first -= 1
-if follows-rule && first - 2 > floor && is-skipped(first - 2) && is-section-comment(first - 3)
+if first == line && first - 2 > floor && is-skipped(first - 2) && is-section-comment(first - 3)
     first -= 2
     while first - 1 > floor && is-section-comment(first - 2)
         first -= 1
-.. follows-rule = first == line || is-dashed-rule(first - 1)
-. above = first
-while above - 1 > floor && is-skipped(above - 2)
-    above -= 1
-if above < first && above - 1 > floor && is-dashed-rule(above - 2) && !closes-group(above - 2, floor)
-    first = above - 1
-if first - 2 > floor && is-skipped(first - 2) && is-generated-rule(first - 3) && !closes-group(first - 3, floor)
-    first -= 2
 = first
-
-────────────────────
-_ do group-end Size
-    - end Size
-    - floor Size
-
-. line = if end < kinds.length then end else kinds.length
-while line > floor && (is-skipped(line - 1) || kinds[line - 1] == TriviaKind.divider)
-    line -= 1
-=? end if line <= floor || !closes-group(line - 1, floor)
-drop-above(line, floor)
-= line - 1
-
-────────────────────
-_ do closes-group Bool
-    - index Size
-    - floor Size
-
-=? false if !is-dashed-rule(index) || rule-label(index).length > 0
-. line = index
-while line > floor
-    line -= 1
-    if is-dashed-rule(line)
-        . label = rule-label(line)
-        =? false if label.length == 0
-        =? true if label.starts-with("is ") || label.starts-with("as ")
-= false
 
 ────────────────────
 _ do drop-above
@@ -211,33 +174,10 @@ while line - 1 > floor && (is-skipped(line - 2) || kinds[line - 2] == TriviaKind
 = null
 
 ────────────────────
-_ is-dashed-rule Bool
-    - index Size
-
-kinds[index] == TriviaKind.comment && texts[index].starts-with("╌")
-
-────────────────────
 _ is-section-comment Bool
     - index Size
 
 kinds[index] == TriviaKind.comment && texts[index].starts-with("`")
-
-────────────────────
-_ is-generated-rule Bool
-    - index Size
-
-|? !is-dashed-rule(index)
-    false
-??
-    label.length == 0 || label.starts-with("is ") || label.starts-with("as ")
-
-.. label = rule-label(index)
-
-────────────────────
-_ rule-label String
-    - index Size
-
-"".join(each as String in texts[index] when each != '╌').trim()
 
 ────────────────────
 _ do gather ImmutableTableRow'SourceNode

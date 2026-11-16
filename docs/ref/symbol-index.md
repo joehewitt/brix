@@ -107,7 +107,7 @@ are given.
 | `• name` on an element | `(• name)` | A style rule the element uses. | [Which rules apply](styles.md#which-rules-apply) |
 | `//`, `//key//`, `//key ->`, `//key =`, `//key ++`, `//+key`, `//-key`, `//+-key`, `//!key` | `(probe-log …)` and the other probe forms | A probe. | [Kinds of probe](probes.md#kinds-of-probe) |
 | `` ` text `` | `; text` | A comment. | [Comments](source-text.md#comments) |
-| `━━━━`, `────`, `╌╌ Name ╌╌` | | Dividers between declarations, and a section. | [Dividers](source-text.md#dividers) |
+| `━━━━`, `────` | | Dividers between declarations. | [Dividers](source-text.md#dividers) |
 | A blank line | `(blank)` | An empty row. | [Comments](source-text.md#comments) |
 | `:` after a header | `(inline …)` | A body of one step on the same line. | [Lines](source-text.md#lines) |
 

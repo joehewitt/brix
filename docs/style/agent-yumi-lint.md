@@ -86,8 +86,7 @@ the inner rows into a function of their own.
 
 ### `layout/divider-length`
 
-Yumi only. Normalize plain dividers to 20 identical glyphs. Normalize labeled comment dividers to ten `╌`
-glyphs, one space, the label, one space, and ten more glyphs. Mixed-glyph dividers require a manual
+Yumi only. Normalize dividers to 20 identical glyphs. Mixed-glyph dividers require a manual
 choice of the correct nesting level. Ignore only in parser or linter fixtures intentionally
 containing malformed dividers.
 

@@ -29,7 +29,6 @@ const themes = [
             { scope: ['bullet.probe.yumi', 'entity.name.function.probe.yumi'], settings: { foreground: '#a37bae', fontStyle: 'bold' } },
             { scope: 'header.probe.yumi', settings: { foreground: '#a37bae', fontStyle: 'italic' } },
             { scope: ['probe.embedded.yumi', 'probe.embedded.snapshot.yumi', 'probe.embedded.preview.yumi'], settings: { foreground: '#5b9cda', fontStyle: 'bold' } },
-            { scope: 'divider.comment.yumi', settings: { foreground: '#635093' } },
             { scope: 'divider.header.yumi', settings: { foreground: '#476ebd' } },
             { scope: 'name.class.yumi', settings: { foreground: '#c4c371', fontStyle: 'bold' } },
             { scope: 'name.function.solo.yumi', settings: { foreground: '#d2d2d2', fontStyle: 'bold' } },
@@ -48,7 +47,7 @@ const themes = [
         type: 'dark',
         colors: { editorBackground: '#111312', editorForeground: '#e7ebe8', lineNumberForeground: '#748078' },
         tokenColors: [
-            { scope: ['comment.yumi', 'divider.comment.yumi'], settings: { foreground: '#748078', fontStyle: 'italic' } },
+            { scope: 'comment.yumi', settings: { foreground: '#748078', fontStyle: 'italic' } },
             { scope: ['divider.class.yumi', 'divider.function.yumi', 'divider.header.yumi'], settings: { foreground: '#70877a' } },
             { scope: 'keyword', settings: { foreground: '#ff9b73' } },
             { scope: 'variable.parameter.type.yumi', settings: { foreground: '#ff9b73' } },
@@ -64,7 +63,7 @@ const themes = [
         type: 'light',
         colors: { editorBackground: '#fbfcfa', editorForeground: '#202522', lineNumberForeground: '#7f8983' },
         tokenColors: [
-            { scope: ['comment.yumi', 'divider.comment.yumi'], settings: { foreground: '#68726c', fontStyle: 'italic' } },
+            { scope: 'comment.yumi', settings: { foreground: '#68726c', fontStyle: 'italic' } },
             { scope: ['divider.class.yumi', 'divider.function.yumi', 'divider.header.yumi'], settings: { foreground: '#9a5b38' } },
             { scope: 'keyword', settings: { foreground: '#a13c2f' } },
             { scope: 'variable.parameter.type.yumi', settings: { foreground: '#a13c2f' } },
@@ -80,7 +79,7 @@ const themes = [
         type: 'dark',
         colors: { editorBackground: '#090909', editorForeground: '#ffffff', lineNumberForeground: '#858585' },
         tokenColors: [
-            { scope: ['comment.yumi', 'divider.comment.yumi'], settings: { foreground: '#a8a8a8' } },
+            { scope: 'comment.yumi', settings: { foreground: '#a8a8a8' } },
             { scope: ['divider.class.yumi', 'divider.function.yumi', 'divider.header.yumi'], settings: { foreground: '#ffcf40' } },
             { scope: 'keyword', settings: { foreground: '#ff745f', fontStyle: 'bold' } },
             { scope: 'variable.parameter.type.yumi', settings: { foreground: '#ffcf40' } },

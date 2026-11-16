@@ -42,8 +42,7 @@ for line in source.lines
         continue
 
     . trimmed = line.trim()
-    . label = comment-divider-label(trimmed)
-    . replacement = normalized-divider(trimmed, label)
+    . replacement = "${trimmed[0]}" * 20
     if trimmed == replacement
         continue
 
@@ -55,56 +54,21 @@ for line in source.lines
     . start = source.utf16-line-starts[row] + indent
     . edit = LintTextEdit(start, start + utf16-length(trimmed), replacement, trimmed)
     . fix = LintFix("safe", "Normalize divider width", [edit]) if !mixed-divider(trimmed)
-    context.report(divider-message(label), index, (indent + 1) as U32, "actionable", fix)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do comment-divider-label String
-    - line String
-
-if !line.starts-with("╌╌╌╌")
-    = ""
-. start Index = 0
-. end = line.length
-for char in line
-    if char != '╌'
-        break
-    start += 1
-while end > start && is-space-char(line[end - 1])
-    end -= 1
-while end > start && line[end - 1] == '╌'
-    end -= 1
-. label = if end > start then line[start .. < end].trim() else ""
-for char in label
-    if is-label-char(char)
-        = label
-= ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ normalized-divider String
-    - line String
-    - label String
-
-if label.length != 0 then "╌╌╌╌╌╌╌╌╌╌ $label ╌╌╌╌╌╌╌╌╌╌" else "${line[0]}" * 20
+    context.report
+        - "Divider must contain exactly 20 identical divider characters."
+        - index
+        - (indent + 1) as U32
+        - "actionable"
+        - fix
 
 ━━━━━━━━━━━━━━━━━━━━
 + do mixed-divider Bool
     - line String
 
-if line.starts-with("╌╌╌╌")
-    = false
 for char in line
     if char != line[0]
         = true
 = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ divider-message String
-    - label String
-
-|? label.length != 0
-    "Comment divider must have 10 dashes, one space, its label, one space, and 10 dashes."
-??
-    "Divider must contain exactly 20 identical divider characters."
 
 ━━━━━━━━━━━━━━━━━━━━
 + do run-ast-rule

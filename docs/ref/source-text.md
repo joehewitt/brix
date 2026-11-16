@@ -187,7 +187,7 @@ sqrt(a * a + b * b)
 - **Write whole levels.** The level is the number of spaces divided by four, rounded down, and a
   tab counts for nothing. So a body indented with two spaces or a tab is not a body. A row may go
   one level deeper than the row above, not two.
-- **Comment and divider lines** may be indented any way.
+- **Comment lines** may be indented any way.
 - **Blank lines** do not end a block; only a row less indented does.
 
 ### Dividers
@@ -201,7 +201,6 @@ method has the same shape as a function of the module.
 | `━━━━` | A declaration at the top level with a body: a function, a type with members, an extension or a style sheet. |
 | `────` | A function inside a type: a method, getter, setter, constructor or converter. |
 | `════` | A section of a value body. |
-| `╌╌╌╌` | Nothing. It is a comment; see [Comments](#comments). |
 
 - **Before the first divider** come the file's imports, its module values, and the statements it
   runs.
@@ -347,8 +346,6 @@ two
   but the usual layout gives it a row of its own. A `;` inside a text is part of the text.
 - **In rows**, a comment is a line whose first character, after any spaces, is a backtick, as in
   `` ` A comment``. It has a line to itself; there is no comment after code on the same line.
-- **Rules.** A line of `╌` is a comment too, and a label between two runs of ten `╌` names a
-  section of a file.
 - **Not comments.** In rows, `#` is refused with `Comments start with a backtick`, and `//` starts
   a probe; see Probes.
 - **Doc comments.** By convention, comment rows right under a declaration's header describe it.

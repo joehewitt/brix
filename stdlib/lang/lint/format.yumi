@@ -9,10 +9,7 @@
 /stream/sort
 
 _ divider-length = 20
-_ comment-divider-side = "╌╌╌╌╌╌╌╌╌╌"
 _ type-divider = "━━━━━━━━━━━━━━━━━━━━"
-+ generated-semantic-footer = "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
-_ old-generated-semantic-footer = "` ---------------------------------"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do line-format-candidates [FormatCandidate]
@@ -88,13 +85,11 @@ candidate.start < other.start || (candidate.start == other.start && candidate.en
 + FormatLine is Tuple
 
 ` A source line as the formatter sees it, and where it is a divider, the glyph it repeats, how
-` many characters it has once trimmed, whether it mixes glyphs, and whether it carries a label.
+` many characters it has once trimmed, and whether it mixes glyphs.
 + kind FormatLineKind
 + glyph Char = ' '
 + length Size = 0
 + is-mixed Bool
-+ is-labeled Bool
-+ label String
 
 ━━━━━━━━━━━━━━━━━━━━
 + FormatCandidate is Tuple
@@ -144,20 +139,7 @@ format-line(line).kind
 + do divider-line FormatLine?
     - trimmed String
 
-` The divider a trimmed line forms: a run of four or more `╌` and anything after it on the
-` line, or a run of the divider glyphs alone.
-. run Index = 0
-for char in trimmed
-    if char != '╌'
-        break
-    run += 1
-if run >= 4
-    . rest = if run < trimmed.length then trimmed[run ...] else ""
-    if !has-line-terminator(rest)
-        . labeled = has-label-char(rest)
-        . label = if labeled then divider-label(rest) else ""
-        = FormatLine(.format-divider, '╌', trimmed.length, false, labeled, label)
-
+` The divider a trimmed line forms: a run of the divider glyphs alone.
 . glyph = trimmed[0]
 . mixed = false
 for char in trimmed
@@ -166,36 +148,6 @@ for char in trimmed
     if char != glyph
         mixed = true
 = FormatLine(.format-divider, glyph, trimmed.length, mixed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do has-label-char Bool
-    - text String
-
-for char in text
-    if !is-js-space(char) && char != '╌'
-        = true
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do divider-label String
-    - text String
-
-` The label of a labeled divider, without the run of `╌` and spaces that closes it.
-. end = text.length
-while end > 0 && is-js-space(text[end - 1])
-    end -= 1
-. glyphs = end
-while glyphs > 0 && text[glyphs - 1] == '╌'
-    glyphs -= 1
-if glyphs < end
-    end = glyphs
-= js-trim(if end > 0 then text[0 .. < end] else "")
-
-━━━━━━━━━━━━━━━━━━━━
-+ labeled-divider String
-    - label String
-
-"$comment-divider-side $label $comment-divider-side"
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-header-prefix Bool
@@ -278,15 +230,6 @@ if start == 0 && end == text.length
     - char Char
 
 char == '\n' || char == '\r' || (char as U32) == 8232 || (char as U32) == 8233
-
-━━━━━━━━━━━━━━━━━━━━
-+ do has-line-terminator Bool
-    - text String
-
-for char in text
-    if is-line-terminator(char)
-        = true
-= false
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-ascii-letter Bool
@@ -566,8 +509,6 @@ for index in 0 .. < line-count
 
 |? line.kind != .format-divider
     null
-|? line.is-labeled
-    labeled-divider(line.label)
 |? line.is-mixed || line.length != expected as Size
     "${line.glyph}" * expected
 ??
@@ -953,82 +894,6 @@ trimmed.starts-with("``") && (trimmed.length == 2 || is-js-space(trimmed[2]))
 .. trimmed = js-trim(line)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ is-semantic-divider-line Bool
-    - line String
-
-classified.kind == .format-divider && classified.glyph == '╌'
-
-.. classified = format-line(line)
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-generated-semantic-header-line Bool
-    - line String
-    - header String = ""
-    - footer Bool = true
-
-` Whether a line is a section header the formatter wrote, in its current or an older form, or
-` where `footer`, the divider that closes such a section.
-|? header.length != 0 && trimmed == header
-    true
-|? trimmed == old-generated-semantic-footer || (footer && trimmed == generated-semantic-footer)
-    true
-|? trimmed.length == 0 || trimmed[0] != '`'
-    false
-|? start == 1
-    false
-|? is-relation-word(trimmed, start)
-    !has-line-terminator(trimmed[skip-spaces(trimmed, start + 2) ...])
-|? start + 10 >= trimmed.length || trimmed[start .. < start + 10] != "----------"
-    false
-|? relation == start + 10 || !is-relation-word(trimmed, relation)
-    false
-|? trimmed.length < 11
-    false
-|? tail <= word-end || !is-js-space(trimmed[tail])
-    false
-|? trimmed[tail + 1 ...] != "----------"
-    false
-??
-    !has-line-terminator(trimmed[word-end .. < tail])
-
-.. trimmed = js-trim(line)
-.. start = skip-spaces(trimmed, 1)
-.. relation = skip-spaces(trimmed, start + 10)
-.. word-end = skip-spaces(trimmed, relation + 2)
-.. tail = trimmed.length - 11
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-relation-word Bool
-    - text String
-    - start Index
-
-` Whether `is` or `as` starts at a place, followed by whitespace and then a non-space.
-|? start + 2 > text.length
-    false
-|? word != "is" && word != "as"
-    false
-??
-    next > start + 2 && next < text.length
-
-.. word = text[start .. < start + 2]
-.. next = skip-spaces(text, start + 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-generated-semantic-header-anchor Bool
-    - line String
-
-|? is-generated-semantic-header-line(line)
-    true
-|? classified.kind != .format-divider || classified.glyph != '╌' || !classified.is-labeled
-    false
-|? js-trim(line) != labeled-divider(classified.label)
-    false
-??
-    is-relation-word(classified.label, 0)
-
-.. classified = format-line(line)
-
-━━━━━━━━━━━━━━━━━━━━
 + OrderInfo is Tuple
 
 + index Int
@@ -1056,7 +921,6 @@ classified.kind == .format-divider && classified.glyph == '╌'
 + node SyntaxId
 + bucket String
 + original-index Int
-+ semantic-header String
 + sort-priority Int
 + requires-type-divider Bool
 + start-line Index
@@ -1067,7 +931,6 @@ classified.kind == .format-divider && classified.glyph == '╌'
     - node SyntaxId
     - bucket String
     - original-index Int
-    - semantic-header String
     - sort-priority Int
     - requires-type-divider Bool
     - start-line Index
@@ -1082,7 +945,6 @@ classified.kind == .format-divider && classified.glyph == '╌'
 + end Index
 + bucket String
 + original-index Int
-+ semantic-header String
 + sort-priority Int
 + requires-type-divider Bool
 + text String
@@ -1094,13 +956,12 @@ classified.kind == .format-divider && classified.glyph == '╌'
 + MethodOrderMetadata is Tuple
 
 + priority Int
-+ header String
 
 ━━━━━━━━━━━━━━━━━━━━
 + MethodOrderIndex
 
 ` The places of the public functions of a module's types that implement an interface or a base
-` type, by the functions' syntax, and the section headers they go under.
+` type, by the functions' syntax.
 + metadata [SyntaxId = MethodOrderMetadata]
 
 ────────────────────
@@ -1438,7 +1299,6 @@ while index < ids.length
         - id
         - bucket
         - anchors.length
-        - semantic-header(id, bucket, kind)
         - sort-priority(id, bucket, kind)
         - requires-type-divider(id, bucket)
         - anchor-start-line(bucket, attached, end)
@@ -1471,7 +1331,6 @@ if !first || !last || first.start-line > last.end-line
     - property
     - bucket
     - anchors.length
-    - ""
     - sort-priority(property, bucket, .sequence-type)
     - false
     - attached-start-line(first.start-line, anchor-minimum-line(anchors))
@@ -1523,7 +1382,7 @@ for position in 0 .. < anchors.length
     . start = lines.line-start(anchor.start-line)
     . end = lines.line-end-including-break(end-line)
     . text = without-trailing-line-break(lines.source.slice(start, end))
-    . shaped = chunk-text(anchor.bucket, text, anchor.semantic-header)
+    . shaped = chunk-text(anchor.bucket, text)
     . info = order[anchor.bucket] if anchor.bucket.length != 0
     . order-index = if info then info.index else -1
     . section = if info then info.section else -1
@@ -1533,7 +1392,6 @@ for position in 0 .. < anchors.length
         - end
         - anchor.bucket
         - anchor.original-index
-        - anchor.semantic-header
         - anchor.sort-priority
         - anchor.requires-type-divider
         - shaped
@@ -1622,10 +1480,7 @@ while pending.length != 0
 . line = start
 while line > floor && is-attached-leading-line(line - 1)
     line -= 1
-line = attached-section-comment-start(line, floor)
-line = attached-separated-semantic-divider-start(line, floor)
-. generated = generated-semantic-header-start(line, floor)
-= generated ?? line
+= attached-section-comment-start(line, floor)
 
 ────────────────────
 + is-attached-leading-line Bool
@@ -1648,33 +1503,6 @@ if lines.kind-at(start - 1) != .format-blank || !is-section-comment-line(lines.t
 while line > floor && is-section-comment-line(lines.text-at(line - 1))
     line -= 1
 = line
-
-────────────────────
-+ do attached-separated-semantic-divider-start Index
-    - start Index
-    - floor Index
-
-. line = start
-while line > floor && lines.kind-at(line - 1) == .format-blank
-    line -= 1
-if line == start || line == floor
-    = start
-. divider = line - 1
-= if is-semantic-divider-line(lines.text-at(divider)) then divider else start
-
-────────────────────
-+ generated-semantic-header-start Index?
-    - start Index
-    - floor Index
-
-|? start < floor + 2
-    null
-|? lines.kind-at(start - 1) != .format-blank
-    null
-|? !is-generated-semantic-header-anchor(lines.text-at(start - 2))
-    null
-??
-    start - 2
 
 ────────────────────
 + is-block Bool
@@ -1827,17 +1655,6 @@ if kind != .sequence-type || !index || !is-semantic-callable(id, bucket)
     = 0
 . found = index.metadata[id]
 = if found then found.priority else 0
-
-────────────────────
-+ do semantic-header String
-    - id SyntaxId
-    - bucket String
-    - kind SequenceKind
-
-if kind != .sequence-type || !index || !is-semantic-callable(id, bucket)
-    = ""
-. found = index.metadata[id]
-= if found then found.header else ""
 
 ────────────────────
 + is-semantic-callable Bool
@@ -2235,21 +2052,12 @@ if replacement != old
 . line-break = lines.line-break
 . parts [String]
 . previous Chunk? = null
-. previous-header = ""
 for chunk in sorted
     . text = render-chunk-text(chunk)
-    . closes = previous-header.length != 0 && chunk.semantic-header.length == 0
-    . footer = closes && !starts-with-generated-semantic-footer(text)
-    . header = chunk.semantic-header.length != 0 && chunk.semantic-header != previous-header
     if previous
-        parts += separator-between(previous, chunk, order, footer || header, text)
-    if footer
-        parts += "$generated-semantic-footer$line-break$line-break"
-    if header
-        parts += "${chunk.semantic-header}$line-break$line-break"
+        parts += separator-between(previous, chunk, order, text)
     parts += text
     previous = chunk
-    previous-header = chunk.semantic-header
 = "".join(parts)
 
 ────────────────────
@@ -2265,10 +2073,9 @@ if !chunk.requires-type-divider || starts-with-divider(chunk.text) then chunk.te
     - left Chunk
     - right Chunk
     - order [String = OrderInfo]
-    - forced Bool
     - right-text String
 
-|? forced || right.section != left.section
+|? right.section != left.section
     double
 |? is-style-rule-bucket(left.bucket) && is-style-rule-bucket(right.bucket)
     double
@@ -2283,13 +2090,8 @@ if !chunk.requires-type-divider || starts-with-divider(chunk.text) then chunk.te
 + do chunk-text String
     - bucket String
     - text String
-    - header String
 
-. stripped = text
-if is-member-function-bucket(bucket)
-    stripped = strip-generated-semantic-headers(text, header)
-. undivided = if is-one-line-type-bucket(bucket) then strip-divider-lines(stripped) else stripped
-= normalize-leading-semantic-divider-spacing(undivided)
+= if is-one-line-type-bucket(bucket) then strip-divider-lines(text) else text
 
 ────────────────────
 + do strip-divider-lines String
@@ -2300,58 +2102,6 @@ for line in split-break-lines(text)
     if format-kind(line) != .format-divider
         kept += line
 = trim-outer-blank-lines(lines.line-break.join(kept))
-
-────────────────────
-+ do strip-generated-semantic-headers String
-    - text String
-    - header String
-
-` The text of a type function without the section headers the formatter wrote above it: their old
-` forms and its own section's header, and where it goes in a section, which `header` names, every
-` header and footer the formatter wrote, with the blank lines between them, since that section's
-` header takes their place.
-. split = split-break-lines(text)
-. index Index = 0
-if header.length != 0
-    . end Index = 0
-    while index < split.length
-        if format-kind(split[index]) == .format-blank
-            index += 1
-        else if is-generated-semantic-header-anchor(split[index])
-            index += 1
-            end = index
-        else
-            break
-    index = end
-else
-    while index < split.length && is-generated-semantic-header-line(split[index], header, false)
-        index += 1
-if index > 0 && index < split.length && format-kind(split[index]) == .format-blank
-    index += 1
-if index == 0
-    = text
-= lines.line-break.join(split[index ...])
-
-────────────────────
-+ do normalize-leading-semantic-divider-spacing String
-    - text String
-
-. split = split-break-lines(text)
-. index Index = 0
-while index < split.length && is-semantic-divider-line(split[index])
-    index += 1
-if index == 0 || index >= split.length
-    = text
-. content = index
-while content < split.length && format-kind(split[content]) == .format-blank
-    content += 1
-if content >= split.length
-    = text
-. kept = List'String
-    ** split[... index]
-    * ""
-    ** split[content ...]
-= lines.line-break.join(kept)
 
 ━━━━━━━━━━━━━━━━━━━━
 + compare-chunks Comparison
@@ -2402,12 +2152,6 @@ while index < split.length && is-section-comment-line(split[index])
 if index > 0 && index < split.length && format-kind(split[index]) == .format-blank
     index += 1
 = index < split.length && format-kind(split[index]) == .format-divider
-
-━━━━━━━━━━━━━━━━━━━━
-+ starts-with-generated-semantic-footer Bool
-    - text String
-
-js-trim(first-break-line(text)) == generated-semantic-footer
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-style-rule-bucket Bool
