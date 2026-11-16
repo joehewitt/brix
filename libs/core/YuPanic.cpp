@@ -255,22 +255,25 @@ yumiLogPanicFault(const char* message, const char* source, void* trace) {
 extern "C" void
 yumiPanicSet(void* panic) {
     // A panic edge bypasses the normal compiler-emitted allocation-scope epilogue. Stop routing
-    // unrelated recovery work into the parser region; the region itself remains intact until the
-    // panic value has been observed and promoted.
+    // the cleanups and handlers that run next into the parser region; the region itself remains
+    // intact until the panic value has been observed and promoted.
     yumiParseRegionCancelAllocationScopes();
     yumiPublishActivePanicRoot(panic);
     yumiActivePanicContext()->activePanic = panic;
-}
-
-extern "C" void*
-yumiPanicGet() {
-    return yumiActivePanicContext()->activePanic;
 }
 
 extern "C" void
 yumiPanicClear() {
     yumiActivePanicContext()->activePanic = nullptr;
     yumiUpdateActivePanicRoot(nullptr);
+}
+
+extern "C" __attribute__((noinline)) void
+yumiRaisePanic(void* panic, void** traceSlot) {
+    if (traceSlot && !*traceSlot) {
+        *traceSlot = yumiCaptureStackTraceSkipping(2);
+    }
+    yumiPanicSet(panic);
 }
 
 extern "C" void*
@@ -323,17 +326,9 @@ yumiPanicEndCleanup() {
 }
 
 extern "C" void*
-yumiRecover() {
+yumiTakePanic() {
     YuTaskRuntimeContext* context = yumiActivePanicContext();
-    YuPendingPanic* pending = context->activePanic ? nullptr : yumiPendingCleanupPanic(context);
-    void* panic = pending ? pending->panic : context->activePanic;
-    if (panic && yumiActiveTaskIsTerminating()) {
-        return panic;
-    }
-
-    if (pending) {
-        pending->panic = nullptr;
-    }
+    void* panic = context->activePanic;
     context->activePanic = nullptr;
     void* promoted = yumiParseRegionPromote(static_cast<char*>(panic));
     yumiUpdateActivePanicRoot(promoted);
@@ -342,9 +337,14 @@ yumiRecover() {
 }
 
 extern "C" void*
+yumiRecover() {
+    return yumiTakePanic();
+}
+
+extern "C" void*
 yumiTaskFailure() {
     // The panic ending the active task, without taking it: the active one, or the one set aside
-    // while a cleanup runs. It is moved out of the parse region first, as yumiRecover moves it,
+    // while a cleanup runs. It is moved out of the parse region first, as yumiTakePanic moves it,
     // since whoever reads it may keep it.
     YuTaskRuntimeContext* context = yumiActivePanicContext();
     YuPendingPanic* pending = context->activePanic ? nullptr : yumiPendingCleanupPanic(context);

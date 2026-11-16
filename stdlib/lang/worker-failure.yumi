@@ -1,0 +1,36 @@
+━━━━━━━━━━━━━━━━━━━━
++ WorkerFailure
+
+` The first panic that ended one of the tasks a phase of the compiler starts on its workers. Each
+` task's `catch` keeps it and still signals that the task ended, and once every task has ended
+` the phase raises it again, so that a crash in a worker fails the build that started it rather
+` than ending the process.
+
+_ lock = Mutex()
+_ first Panic? = null
+
+────────────────────
++ do keep
+    - failure Panic
+
+use lock
+if !first
+    first = failure
+
+────────────────────
++ do raise-kept
+    - pool Worker? = null
+
+` Raises again the panic a task ended with, if one did, after stopping the workers' pool where one
+` is given.
+. kept = taken()
+=? if !kept
+if pool
+    pool.stop()
+?! kept
+
+────────────────────
+_ do taken Panic?
+
+use lock
+= first

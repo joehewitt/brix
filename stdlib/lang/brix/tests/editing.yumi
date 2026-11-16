@@ -19,6 +19,7 @@ cases = cases.then("Brix Paste Indentation", indentation-tests)
 cases = cases.then("Brix Line Deletion", deletion-tests)
 cases = cases.then("Brix Unparsed Text", unparsed-tests)
 cases = cases.then("Brix Conversion", conversion-tests)
+cases = cases.then("Brix Task Arms", arm-tests)
 = cases
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -153,6 +154,42 @@ t.check("the fixed declaration has no invalid rows", invalid-rows(header).length
 t.expect("nested type arguments are written in parentheses", nested-text().trim(), => brix-yumi-text(source))
 t.expect("nested type arguments read back nested", source, => brix-convert(brix-yumi-text(source)).trim())
 = t
+
+━━━━━━━━━━━━━━━━━━━━
++ do arm-tests TestCase ?! Error
+    - t TestCase
+
+t.expect
+    - "a catch typed after a task's rows is the task's on-failure arm"
+    - brix-convert(caught-task()).trim()
+    - => typed-catch("do new\n    work()\n", true)
+t.expect
+    - "a catch typed after the rows of a task kept in a local is that task's arm"
+    - brix-convert(caught-kept-task()).trim()
+    - => typed-catch(". t = do new\n    work()\n", true)
+t.expect
+    - "a catch typed after a call handles the call's errors"
+    - brix-convert(caught-call()).trim()
+    - => typed-catch("work()\n", false)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ do typed-catch String ?! Error
+    - rows String
+    - nested Bool
+
+. session = opened("$thick\n+ do walk Int\n\n. a = 1\n${rows}. c = 3\n= a\n")
+. last = row-of(session, "work()")
+session.place(last, session.row-at(last).text.length)
+session.split()
+if nested
+    session.outdent()
+session.insert("catch failed")
+session.split()
+session.indent()
+session.insert("print(failed)")
+session.commit()
+= session.document.written().text.trim()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ opened SourceSession ?! Error
@@ -604,3 +641,44 @@ _ ¶ nested-text
 . readers = List'(Getter'Int)()
 
 $thick
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ caught-task
+
+$thick
++ do walk Int
+
+. a = 1
+do new
+    work()
+catch failed
+    print(failed)
+. c = 3
+= a
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ caught-kept-task
+
+$thick
++ do walk Int
+
+. a = 1
+. t = do new
+    work()
+catch failed
+    print(failed)
+. c = 3
+= a
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ caught-call
+
+$thick
++ do walk Int
+
+. a = 1
+work()
+catch failed
+    print(failed)
+. c = 3
+= a

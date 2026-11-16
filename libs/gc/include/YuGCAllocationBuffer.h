@@ -84,10 +84,11 @@ enum {
     YumiGCControlPhaseBits = 3,
     YumiGCControlPhaseMask = (1u << YumiGCControlPhaseBits) - 1u,
     YumiGCControlHandshakeRequestedBit = 1u << YumiGCControlPhaseBits,
-    YumiGCControlHandshakeReasonShift = 4,
+    YumiGCControlTerminationRequestedBit = 1u << (YumiGCControlPhaseBits + 1),
+    YumiGCControlHandshakeReasonShift = 5,
     YumiGCControlHandshakeReasonMask = 0xfu << YumiGCControlHandshakeReasonShift,
-    YumiGCControlHandshakeEpochShift = 8,
-    YumiGCControlHandshakeEpochMask = 0xffffffull << YumiGCControlHandshakeEpochShift,
+    YumiGCControlHandshakeEpochShift = 9,
+    YumiGCControlHandshakeEpochMask = 0x7fffffull << YumiGCControlHandshakeEpochShift,
     YumiGCControlSweepGenerationShift = 32
 };
 

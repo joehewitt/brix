@@ -453,10 +453,10 @@ else if store.count(holder) > held-start
 while index < children.length
     . holder = holder-of(current)
     . owner = arm-owner
-    . armed = owner ?? current
+    . armed = arm-holder(current, holder)
     if is-armed(armed, children[index])
         current = store.swapped(current, armed, armed-joined(armed, holder, child)) ?? current
-            .. child = children[index]
+            .. child = task-arm(children[index])
         index += 1
         continue
     . signature = signature-of(current)
@@ -505,15 +505,14 @@ while index < children.length
 + is-arm Bool
     - node ImmutableTableRow'SourceNode
 
-brix-is-arm(store, node)
+brix-is-arm(store, task-arm(node))
 
 ────────────────────
 + do takes-arm Bool
     - node ImmutableTableRow'SourceNode
     - arm ImmutableTableRow'SourceNode
 
-holder-of(node)
-= brix-takes-arm(store, arm-owner ?? node, arm)
+= brix-takes-arm(store, arm-holder(node, holder-of(node)), task-arm(arm))
 
 ────────────────────
 + keeps-blanks Bool
@@ -674,7 +673,38 @@ _ is-armed Bool
     - node ImmutableTableRow'SourceNode
     - child ImmutableTableRow'SourceNode
 
-brix-is-arm(store, child) && brix-takes-arm(store, node, child)
+brix-is-arm(store, arm) && brix-takes-arm(store, node, arm)
+
+.. arm = task-arm(child)
+
+────────────────────
+_ arm-holder ImmutableTableRow'SourceNode
+    - node ImmutableTableRow'SourceNode
+    - holder ImmutableTableRow'SourceNode?
+
+` What takes the arms that follow a row: the one the printer says, the task the row keeps where it
+` keeps one, as in `. task = do new`, or the row.
+|? arm-owner != null
+    arm-owner
+|? holder != null && holder.index != node.index && is-task
+    holder
+??
+    node
+
+.. is-task = store.is-form(holder, "do-new") || store.is-form(holder, "do-new-thread")
+
+────────────────────
+_ do task-arm ImmutableTableRow'SourceNode
+    - node ImmutableTableRow'SourceNode
+
+` A `catch` row reads as an `on-error` row on its own; after a task's rows it is the `on-failure`
+` arm of the task, which one that names earlier calls (`caught`) cannot be.
+=? node if !store.is-form(node, "on-error") || store.count(node) < 2
+=? node if store.is-form(store.item(node, 1), "caught")
+. items = store.items(node)
+. arm = List'(ImmutableTableRow'SourceNode)(store.atom("on-failure"))
+arm ++= items[1 ...]
+= store.with-items(node, arm)
 
 ────────────────────
 _ do disarmed ImmutableTableRow'SourceNode

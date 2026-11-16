@@ -127,6 +127,7 @@ ByteSpan(bytes + starts[id], starts[id + 1] - starts[id])
 + allocate-object-symbol StringId = no-string
 + safepoint-free IdList
 + inferred-safepoint-free IdList
++ cold-callees IdList
 + literals Table'StringLiteral
 + numbers Table'NumberConstant
 + constant-tables Table'ConstantTable
@@ -404,6 +405,23 @@ symbol-flags[symbol] = (symbol-flags[symbol] /and/ known-flags) /or/ alignment-b
     1u32 /lshift/ (code - 1)
 
 .. code = (symbol-flags[symbol] /zrshift/ alignment-shift) as U32
+
+────────────────────
++ do mark-cold-callee
+    - symbol StringId
+
+` Names a callee that a block calls only on its way to a panic, so that block layout places the
+` block after the code that runs. A bundle read from a file names none.
+cold-callees = cold-callees.appended(arena, symbol)
+
+────────────────────
++ do is-cold-callee Bool
+    - symbol StringId
+
+for index in 0 .. < cold-callees.length
+    if cold-callees[index] == symbol
+        = true
+= false
 
 ────────────────────
 + do mark-memory-copy-callee

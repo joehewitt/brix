@@ -10,6 +10,7 @@
 /lang/ast/operator
 /lang/ast/program
 /lang/ast/row-range
+/lang/worker-failure
 
 + no-binding BindingId = U32.max
 + no-slot SlotId = U32.max
@@ -366,6 +367,7 @@ _ copies [BindingCopy]
 _ ends Binding
 _ taking Bool
 _ copied SyncBufferedChannel'Bool?
+_ copy-failure WorkerFailure?
 
 ────────────────────
 + This
@@ -608,10 +610,15 @@ machines.reserve(ends.machines.end)
 machine-reads.reserve(ends.machine-reads.end)
 . pending = copies
 . done SyncBufferedChannel'Bool
+. failure = WorkerFailure()
 copied = done
+copy-failure = failure
 do (pool) new
     for copy in pending
         copy-rows(copy)
+    done <- true
+catch failed
+    failure.keep(failed)
     done <- true
 
 ────────────────────
@@ -620,9 +627,13 @@ do (pool) new
 . done = copied
 if done
     <- done
+. failure = copy-failure
 copied = null
+copy-failure = null
 copies = List'BindingCopy()
 taking = false
+if failure
+    failure.raise-kept()
 
 ────────────────────
 + do machine-slots MachineSlots?

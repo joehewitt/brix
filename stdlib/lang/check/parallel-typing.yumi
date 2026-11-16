@@ -9,6 +9,7 @@
 /lang/ast/module
 /lang/ast/program
 /lang/constants
+/lang/worker-failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + do type-program
@@ -55,13 +56,23 @@ for position in 0 .. < program.modules.length
     if item
         shared.offer(item)
 . passes SyncBufferedChannel'Session
+. ended SyncBufferedChannel'Bool
+. failure = WorkerFailure()
 . pool = Worker(count)
 for _ in 0 .. < count
     do (pool) new
         passes <- type-share(program, shared)
-. peers [Session]
+        ended <- true
+    catch failed
+        failure.keep(failed)
+        shared.abandon()
+        ended <- true
 for _ in 0 .. < count
-    peers += (<- passes)!
+    <- ended
+passes.close()
+. peers [Session]
+for peer in passes
+    peers += peer
 if !shared.has-diverged()
     //+typing.phase// merge
     merge-sessions(session, peers, pool)
@@ -71,9 +82,13 @@ for peer in peers
     do (pool) new
         peer.release()
         released <- true
-for _ in 0 .. < count
+    catch failed
+        failure.keep(failed)
+        released <- true
+for _ in 0 .. < peers.length
     <- released
 pool.stop()
+failure.raise-kept()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do type-share Session

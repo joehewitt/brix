@@ -32,6 +32,7 @@
 
 _ terminate-interrupt U64 = 2
 _ handshake-requested-control U64 = 8
+_ termination-requested-control U64 = 16
 _ poll-period U64 = 64
 _ probe-look-period U64 = 0x100
 _ finished-step U64 = U64.max
@@ -1801,6 +1802,10 @@ else if function.kind == .storage-growth
     emit-storage-growth()
 else if function.kind == .source-attach
     emit-source-attach()
+else if function.kind == .raise-panic
+    emit-raise-panic()
+else if function.kind == .raise-message
+    emit-raise-message()
 else if function.kind == .event-handler
     emit-event-handler()
 else if function.kind == .event-matcher
@@ -2901,9 +2906,8 @@ _ do run-cleanups ?! Refused
 ` is on a way out. Each is emitted again here. A panic raised in one ends that one and the
 ` rest still run: its checks land on what follows it. With `unwinding` a panic made the way
 ` out, and one raised here takes its place. On any other way out a panic raised here goes
-` on once the cleanups of the block that opened them have run, unless one of them
-` recovered it: it leaves through the landing pad of the cleanups still open, as a panic
-` raised after the block would.
+` on once the cleanups of the block that opened them have run: it leaves through the landing
+` pad of the cleanups still open, as a panic raised after the block would.
 ` A cleanup that may run while a panic is the task's, on a way out a panic made or after one
 ` of the block raised one, runs with that panic set aside. While one runs, `cleaning-open`
 ` counts the cleanups open around it, which an error it raises runs on its way out, and
@@ -2957,8 +2961,8 @@ landing = saved
 _ do set-panic-aside LocalId
 
 ` Where a cleanup may run while a panic is the task's: the panic, where there is one, is set
-` aside while the cleanup runs, as TypeScript sets it aside, so that nothing the cleanup calls
-` sees it, though `Task().failure` reads it. The local says whether one was.
+` aside while the cleanup runs, so that nothing the cleanup calls sees it, though
+` `Task().failure` reads it. The local says whether one was.
 . active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
 . flag = ir.add-local(u8-layout)
 store-local
@@ -2979,7 +2983,7 @@ _ do take-panic-back
     - flag LocalId
 
 ` Where a cleanup that set a panic aside ends: the panic is the task's again, unless the
-` cleanup raised another, which takes its place, or recovered it.
+` cleanup raised another, which takes its place.
 . back = ir.reserve-block()
 . done = ir.reserve-block()
 branch(load-local(flag, 0), back, done)
@@ -2993,14 +2997,12 @@ _ do resume-panic
     - open Size
 
 ` Where the cleanups of a block have run on a way out no panic made: a panic one of them
-` raised that is still the task's leaves through the landing pad of the cleanups still
-` `open`.
+` raised leaves through the landing pad of the cleanups still `open`.
 . flagged = ir.reserve-block()
 . resumed = ir.reserve-block()
 branch(load-local(cleanup-raised, 0), flagged, resumed)
 ir.start-block(flagged)
-. active = make-operand(.operand-value, append(.op-load-task-panic, 0, Span(), 0, managed-layout))
-branch(active, pad-at(open, unsourced), resumed)
+jump(pad-at(open, unsourced))
 ir.start-block(resumed)
 
 ────────────────────
@@ -16868,29 +16870,42 @@ _ do raise
     - panic Operand
     - id SyntaxId
 
-` Makes a panic the task's active one and leaves through the landing pad.
-make-active(panic, id)
+` Makes a panic the task's active one, by the function each place that raises one calls
+` (`emit-raise-panic`), and leaves through the landing pad. A function the collector never sees
+` leaves that zone for the call.
+. crosses = in-zone
+if crosses
+    cross-zone(id, false)
+call-raiser(tables.panic-raiser, panic, id)
+if crosses
+    cross-zone(id, true)
 jump(landing-block(0))
 
 ────────────────────
-_ do make-active
-    - panic Operand
+_ do call-raiser
+    - raiser FunctionId
+    - value Operand
     - id SyntaxId
 
-` Makes a panic the task's active one. The panic is given the place of the node it is raised
-` at when it has no source of its own, then its stack trace. One raised at no node, in a
-` function the compiler makes, is given no place.
-. report = instances.report
-. object = tables.layouts.objects[types.panic-type]
+` Calls a function that raises a panic, given the panic or its message, the path of the module,
+` and the line and the column of the node it is raised at. One raised at no node, in a function
+` the compiler makes, is given no place.
+?! Panic("A panic is raised where no function raises it")
+    if raiser == no-function
+. path = program.modules[unit.source-module].relative-path
+. line U64 = 0
+. column U64 = 0
 if id != 0
     . begin = tree.nodes[id].loc.begin
-    attach-source(panic, begin.line + 1, begin.column + 1, id)
-. trace = tables.layouts.field(object, object-header-fields + report.trace-slot)
+    line = begin.line + 1
+    column = begin.column + 1
 . mark = pending.length
-pending += address(panic, trace.offset, managed-layout, id)
-call-runtime(.runtime-ensure-stack-trace, id, mark)
-pending += panic
-call-runtime(.runtime-panic-set, id, mark)
+pending += value
+pending += make-operand(.operand-constant, ir.add-string(if path.length != 0 then path else "no file"))
+pending += integer(.machine-u64, line)
+pending += integer(.machine-u64, column)
+ir.depend(.callee-function, raiser, 0)
+call(make-operand(.operand-symbol, tables.functions[raiser].symbol), id, mark, .callee-function, void-layout)
 
 ────────────────────
 _ do raise-text
@@ -16932,12 +16947,21 @@ _ do raise-message
     - id SyntaxId
     - message Operand
 
-` Raises a panic with a message, at a node. Nothing after it in its block is run. A function
-` the collector never sees leaves that zone to make the panic.
+` Raises a panic with a message, at a node, by the function each place that raises one calls
+` (`emit-raise-message`). Nothing after it in its block is run. A function the collector never
+` sees leaves that zone to make the panic.
 . was-free = in-zone
-. panic = compiler-panic(id, message)
-=? if panic == make-operand(.operand-void, 0)
-raise(panic, id)
+if tables.message-raiser == no-function
+    . panic = compiler-panic(id, message)
+    =? if panic == make-operand(.operand-void, 0)
+    raise(panic, id)
+    in-zone = was-free
+    =
+if in-zone
+    cross-zone(id, false)
+    in-zone = false
+call-raiser(tables.message-raiser, message, id)
+jump(landing-block(0))
 in-zone = was-free
 
 ────────────────────
@@ -17018,6 +17042,67 @@ call
     - void-layout
 if crosses
     cross-zone(syntax, true)
+
+────────────────────
+_ do emit-raise-panic
+
+` The function each place that raises a panic calls, given the panic, the path of the module, a
+` line and a column (`raise-at`).
+add-raiser-arguments()
+raise-at(make-operand(.operand-argument, 0))
+
+────────────────────
+_ do emit-raise-message
+
+` The function each place that raises a panic the compiler writes calls, given its message, the
+` path of the module, a line and a column. It makes the panic (`compiler-panic`) and raises it
+` there (`raise-at`).
+add-raiser-arguments()
+. panic = compiler-panic(0, make-operand(.operand-argument, 0))
+if panic == make-operand(.operand-void, 0)
+    return-nothing()
+    =
+raise-at(panic)
+
+────────────────────
+_ do add-raiser-arguments
+
+ir.add-argument(managed-layout)
+ir.add-argument(managed-layout)
+ir.add-argument(u64-layout)
+ir.add-argument(u64-layout)
+
+────────────────────
+_ do raise-at
+    - panic Operand
+
+` Makes a panic the task's active one where a function that raises one was called with a path, a
+` line and a column. A panic with no source of its own is given that place where the line is not
+` 0 (`emit-source-attach`). Its stack trace starts at the caller, as the runtime takes it
+` (`yumiRaisePanic`).
+. line = make-operand(.operand-argument, 2)
+. attach = ir.reserve-block()
+. raising = ir.reserve-block()
+branch(line, attach, raising)
+ir.start-block(attach)
+. helper = tables.source-attacher
+. given = pending.length
+pending += panic
+pending += make-operand(.operand-argument, 1)
+pending += line
+pending += make-operand(.operand-argument, 3)
+ir.depend(.callee-function, helper, 0)
+call(make-operand(.operand-symbol, tables.functions[helper].symbol), 0, given, .callee-function, void-layout)
+jump(raising)
+ir.start-block(raising)
+. report = instances.report
+. object = tables.layouts.objects[types.panic-type]
+. trace = tables.layouts.field(object, object-header-fields + report.trace-slot)
+. mark = pending.length
+pending += panic
+pending += address(panic, trace.offset, managed-layout, 0)
+call-runtime(.runtime-raise-panic, 0, mark)
+return-nothing()
 
 ────────────────────
 _ do emit-source-attach
@@ -50671,23 +50756,32 @@ _ do poll
     - syntax SyntaxId
 
 ` A safepoint the collector can stop the task at, taken when the collector has asked for one,
-` then the check that the task is not being terminated.
+` and the check that the task is not being terminated. The collector's control word says when
+` either may be needed, so the poll reads that one word on its way through.
 . control-address = make-operand(.operand-symbol, tables.bundle.gc-public-control-word-symbol)
 . control = load(control-address, 0, u8-layout, syntax)
-. asked = bitwise
+. watched = handshake-requested-control /or/ termination-requested-control
+. asked = bitwise(syntax, .bitwise-and, control, integer(.machine-u8, watched), u8-layout)
+. slow = ir.reserve-block()
+. stop = ir.reserve-block()
+. checking = ir.reserve-block()
+. polled = ir.reserve-block()
+branch(asked, slow, polled)
+ir.start-block(slow)
+. collecting = bitwise
     - syntax
     - .bitwise-and
     - control
     - integer(.machine-u8, handshake-requested-control)
     - u8-layout
-. stop = ir.reserve-block()
-. polled = ir.reserve-block()
-branch(asked, stop, polled)
+branch(collecting, stop, checking)
 ir.start-block(stop)
 call-runtime(.runtime-safepoint, syntax, pending.length)
+jump(checking)
+ir.start-block(checking)
+check-interrupt(syntax)
 jump(polled)
 ir.start-block(polled)
-check-interrupt(syntax)
 
 ────────────────────
 _ do check-interrupt
@@ -50930,7 +51024,7 @@ if cancelation != invalid-type && tables.is-class(cancelation)
 else
     jump(taking)
 ir.start-block(taking)
-. taken = call-runtime(.runtime-recover, 0, pending.length, managed-layout)
+. taken = call-runtime(.runtime-take-panic, 0, pending.length, managed-layout)
 set-task-end(task-end-panicked)
 for handler in tree.children[task-handlers]
     do match? tree.nodes[handler]

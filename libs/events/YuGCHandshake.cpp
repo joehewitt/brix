@@ -46,7 +46,8 @@ yumiGCPublishHandshakeRequest(size_t reason, size_t epoch, bool requested) {
             yumiGCControlWordSweepGeneration(current),
             requested,
             requested ? reason : 0,
-            requested ? epoch : 0);
+            requested ? epoch : 0) |
+            (current & YumiGCControlTerminationRequestedBit);
         if (__atomic_compare_exchange_n(
                 &yumiGCPublicControlWord,
                 &current,

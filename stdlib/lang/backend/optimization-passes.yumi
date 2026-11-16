@@ -2752,7 +2752,9 @@ if value-class != target-class
 
 ` Numbers the values of a function in SSA form, walking its blocks down the dominator tree, so
 ` that values computed the same way from the same numbers share one, as do loads of one place
-` while memory is unchanged. An instruction whose value a dominating instruction already computed
+` while memory is unchanged. So do values made from a pointer the collector sees, held where it
+` does not see them, since a call between two of them may collect what that pointer holds. An
+` instruction whose value a dominating instruction already computed
 ` becomes a copy of it, unless it only gives the truth of a condition, which costs less to give
 ` again than to keep. A branch's condition is a fact in the blocks only one of its edges
 ` reaches, and a branch a fact settles jumps straight to its side. The facts one side of a
@@ -3382,8 +3384,8 @@ _ do build-key Bool
     - class U64
 
 ` Sets the key of an instruction's value from its opcode, the class it defines and what it
-` reads; a load also keys on the generation of memory, and a reader of the flags on their
-` number.
+` reads; a load, and a value made from a pointer the collector sees (`derives-pointer`), also key
+` on the generation of memory, and a reader of the flags on their number.
 . operands = function.instructions[id].operands
 . count = operands.length
 if count < 2 || count > 4
@@ -3415,13 +3417,32 @@ for position in 1 .. < count
         = false
     set-slot(slot, encoded-tag, encoded-value)
     slot += 1
-if is-load-opcode(opcode)
+. derives = derives-pointer(operands)
+if derives && reads-flags(opcode)
+    = false
+if is-load-opcode(opcode) || derives
     key-head = key-head /or/ ((generation as U64) /lshift/ 32)
 if reads-flags(opcode)
     if flags == 0
         = false
     key-head = key-head /or/ ((flags as U64) /lshift/ 32)
 = true
+
+────────────────────
+_ do derives-pointer Bool
+    - operands IdList
+
+` Whether an instruction makes a value the collector does not see from a register it does, such
+` as the address of an item of an array. The collector keeps what that pointer holds only while
+` the pointer is live, so the value is not shared across a call.
+. dest-row = vreg-row(function, operands[0])
+if dest-row == no-id || function.vregs[dest-row].gc-root
+    = false
+for position in 1 .. < operands.length
+    . row = vreg-row(function, operands[position])
+    if row != no-id && function.vregs[row].gc-root
+        = true
+= false
 
 ────────────────────
 _ do set-slot
@@ -3573,10 +3594,13 @@ _ do copies Bool
     - opcode Opcode
 
 ` Whether an instruction gives `dest` the very value of `source`: a copy within one class whose
-` value fills it, or an extension of a value that is zero or one.
+` value fills it, or an extension of a value that is zero or one. A copy of a pointer the
+` collector sees into a register it does not is a value of its own (`derives-pointer`).
 . source-row = vreg-row(function, source)
 . dest-row = vreg-row(function, dest)
 if source-row == no-id || dest-row == no-id
+    = false
+if function.vregs[source-row].gc-root && !function.vregs[dest-row].gc-root
     = false
 . vreg = function.vregs[source-row].id
 if vreg >= vreg-limit || definitions[vreg] > 1
@@ -7582,16 +7606,15 @@ is-placed = arena.allocate'Byte(block-count)
 successor-marks = arena.allocate'U32(block-count)
 successor-mark = 0
 . ordered = new-id-list(arena, original.length)
-. start U32
-while start <= original.length
-    . block = original[0]
-    if start != 0
-        block = original[start - 1]
-    start += 1
-    while block != no-id && is-placed[block] == 0
-        is-placed[block] = 1
-        ordered = ordered.appended(arena, block)
-        block = preferred-successor(block)
+for pass in 0 .. < 2
+    for index in 0 .. < original.length
+        . block = original[index]
+        if is-placed[block] != 0 || (pass == 0 && index != 0 && is-cold[block] != 0)
+            continue
+        while block != no-id && is-placed[block] == 0
+            is-placed[block] = 1
+            ordered = ordered.appended(arena, block)
+            block = preferred-successor(block)
 
 . moved = false
 for index in 0 .. < original.length
@@ -7668,21 +7691,56 @@ while index > 0
 ────────────────────
 _ do collect-cold-targets
 
+` Marks the blocks that run only on the way to a panic: the landing pads of calls, the blocks that
+` call a function that raises one (`Bundle.is-cold-callee`), and the blocks only those lead to.
 is-cold = function.arena.allocate'Byte(function.blocks.length)
 . order = function.block-order
 for position in 0 .. < order.length
-    . instructions = function.blocks[order[position]].instructions
+    . block = order[position]
+    . instructions = function.blocks[block].instructions
     for index in 0 .. < instructions.length
+        . id = instructions[index]
         . panic-target = no-operand
-        do match? function.instructions[instructions[index]]
+        do match? function.instructions[id]
             | .call-instruction(call)
                 panic-target = call.panic-target
+                if raises(first-operand(function, id))
+                    is-cold[block] = 1
         . name = label-name(function, panic-target)
         if name == no-string
             continue
         . target = builder.get-block(name)
         if target != no-id
             is-cold[target] = 1
+. changed = true
+while changed
+    changed = false
+    for position in 1 .. < order.length
+        . block = order[position]
+        if is-cold[block] == 0 && is-cold-only(block)
+            is-cold[block] = 1
+            changed = true
+
+────────────────────
+_ do raises Bool
+    - callee OperandId
+
+=? false if callee == no-operand
+do match? function.operands[callee]
+    | .symbol-operand(operand)
+        = builder.bundle.is-cold-callee(operand.name)
+= false
+
+────────────────────
+_ do is-cold-only Bool
+    - block BlockId
+
+` Whether every block that leads to a block is cold, where any does.
+. predecessors = function.blocks[block].predecessors
+=? false if predecessors.length == 0
+for index in 0 .. < predecessors.length
+    =? false if is-cold[predecessors[index]] == 0
+= true
 
 ────────────────────
 _ do preferred-successor BlockId
@@ -7711,7 +7769,7 @@ for index in 0 .. < successors.length
 if first-unplaced == no-id
     = no-id
 if unique-count == 1
-    = first-unplaced
+    = if is-cold[first-unplaced] != 0 && is-cold[block] == 0 then no-id else first-unplaced
 if loop-count == 1
     = loop-successor
 

@@ -264,10 +264,11 @@ if active == 0
     =
 . failure Error?
 for result in parse-queue.results()
-    if result.error && keeps-going
+    if result.error && keeps-going && result.error is not Panic
         failures[result.source-path] = result.error.message
     else if result.error
-        failure = result.error
+        if failure is not Panic
+            failure = result.error
         parse-queue.close()
     if result.is-partial
         if !failure
@@ -293,6 +294,8 @@ for result in parse-queue.results()
 if view
     for path in absent
         view.note-absent(path)
+?! failure as Panic
+    if failure is Panic
 if failure
     ?! failure
 
@@ -1129,6 +1132,8 @@ do new
                 catch failure Error
                     ParseResult(job.source-path, null, failure, List'ParsedImport(), false, false)
             output-queue <- result
+        catch failed
+            output-queue <- ParseResult(job.source-path, null, failed, List'ParsedImport(), false, false)
 
 ────────────────────
 + do reuse

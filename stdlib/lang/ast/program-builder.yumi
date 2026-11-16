@@ -13,6 +13,7 @@
 /core/list
 /core/map
 /lang/constants
+/lang/worker-failure
 
 ━━━━━━━━━━━━━━━━━━━━
 + ProgramBuilder
@@ -118,13 +119,18 @@ _ do finish-modules
 
 . pool = Worker(default-worker-count)
 . done SyncBufferedChannel'Bool
+. failure = WorkerFailure()
 for job in jobs
     do (pool) new
         job.finish(atoms, atom-lock)
         done <- true
+    catch failed
+        failure.keep(failed)
+        done <- true
 for _ in 0 .. < jobs.length
     <- done
 pool.stop()
+failure.raise-kept()
 
 ────────────────────
 _ do link Program

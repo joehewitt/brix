@@ -682,9 +682,17 @@ _ sets-panic Bool
     - ir IRFunction
     - row IRInstruction
 
-row.op == .op-call-void && ir.operands[row.operands.start] == panic-set
+row.op == .op-call-void && (callee == panic-set || calls(callee, tables.message-raiser) || calls(callee, tables.panic-raiser))
 
+.. callee = ir.operands[row.operands.start]
 .. panic-set = make-operand(.operand-symbol, tables.runtime-symbol(.runtime-panic-set))
+
+────────────────────
+_ calls Bool
+    - callee Operand
+    - raiser FunctionId
+
+raiser != no-function && callee == make-operand(.operand-symbol, tables.functions[raiser].symbol)
 
 ────────────────────
 _ do function-of FunctionId
@@ -2087,44 +2095,11 @@ if row.aux == ReturnKind.return-error
     jump(fused.after-read)
     =
 if splice.closing
-    if !panicked
-        jump(splice.exit)
-        =
-    . raised = make-operand
-        - .operand-value
-        - output.append
-            - IRInstruction
-                - .op-load-task-panic
-                - output.current
-                - managed-layout
-                - no-type
-                - 0
-                - 0
-                - 0
-                - Span()
-                - 0
-    branch(raised, splice.failed, splice.exit)
+    jump(if panicked then splice.failed else splice.exit)
     =
 if fused.state != no-local
     store-local(fused.state, number(.machine-u32, 0))
-if panicked
-    . raised = make-operand
-        - .operand-value
-        - output.append
-            - IRInstruction
-                - .op-load-task-panic
-                - output.current
-                - managed-layout
-                - no-type
-                - 0
-                - 0
-                - 0
-                - Span()
-                - 0
-    . recovered = output.reserve-block()
-    branch(raised, fused.read-landing, recovered)
-    output.start-block(recovered)
-jump(fused.exhausted)
+jump(if panicked then fused.read-landing else fused.exhausted)
 
 ────────────────────
 _ do copy-row
@@ -2397,29 +2372,7 @@ _ do leave
     - row IRInstruction
 
 if row.aux == ReturnKind.return-panic
-    . raised = make-operand
-        - .operand-value
-        - output.append
-            - IRInstruction
-                - .op-load-task-panic
-                - output.current
-                - managed-layout
-                - no-type
-                - 0
-                - 0
-                - 0
-                - Span()
-                - 0
-    . recovered = output.reserve-block()
-    branch(raised, splice.landing, recovered)
-    output.start-block(recovered)
-    . returns = splice.source.returns
-    if returns != void-layout && !tables.layouts.is-struct(returns)
-        splice.returned += make-operand
-            - .operand-number
-            - output.add-number(returns as MachineKind, 0)
-        splice.arrived += output.current
-    jump(splice.continuation)
+    jump(splice.landing)
     =
 if row.operands.count != 0
     . value = remap(splice, splice.source.operands[row.operands.start])
@@ -2504,6 +2457,8 @@ output.start-block(made.continuation)
 if row.op == .op-call
     if structured
         splice.values[id] = if returned == U32.max then made.result else made.values[returned]
+    else if made.returned.length == 0
+        splice.values[id] = blank(row.layout)
     else if made.returned.length == 1
         splice.values[id] = made.returned[0]
     else

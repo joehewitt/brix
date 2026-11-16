@@ -357,6 +357,10 @@ yumiRunEventLoop(
         &yumiInterruptRequestedFlags,
         static_cast<unsigned char>(~YumiInterruptTerminationRequested),
         __ATOMIC_RELEASE);
+    __atomic_fetch_and(
+        &yumiGCPublicControlWord,
+        ~static_cast<uint64_t>(YumiGCControlTerminationRequestedBit),
+        __ATOMIC_RELEASE);
     gThreadLocalSize = threadLocalSize;
     gTaskLocalSize = localSize;
     gTaskLocalInit = taskLocalInit;
@@ -451,6 +455,10 @@ yumiRequestProcessTermination(int exitCode) {
     __atomic_fetch_or(
         &yumiInterruptRequestedFlags,
         YumiInterruptTerminationRequested,
+        __ATOMIC_RELEASE);
+    __atomic_fetch_or(
+        &yumiGCPublicControlWord,
+        static_cast<uint64_t>(YumiGCControlTerminationRequestedBit),
         __ATOMIC_RELEASE);
     if (gMainQueue) {
         gMainQueue->requestTermination();
@@ -668,131 +676,6 @@ yumiForkMainTask(YuTaskStartFunc func, void* closure, size_t localSize) {
     if (thread) {
         thread->startTask(func, closure, localSize, YuTaskProvenance(0, NULL, 0, 0, YU_TASK_FLAG_MAIN));
     }
-}
-
-extern "C" void
-yumiForkTaskWithInfo(
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    YuThread* thread = yumiGetActiveThread();
-    if (thread) {
-        thread->startTask(
-            func,
-            closure,
-            localSize,
-            yumiCreateTaskProvenance(file, line, column, 0));
-    }
-}
-
-extern "C" void
-yumiForkPriorityTask(YuTaskStartFunc func, void* closure, size_t localSize) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    YuThread* thread = yumiGetActiveThread();
-    if (thread) {
-        thread->startTask(
-            func,
-            closure,
-            localSize,
-            YuTaskProvenance(0, NULL, 0, 0, 0, YU_TASK_SCHEDULING_PRIORITY));
-    }
-}
-
-extern "C" void
-yumiForkPriorityTaskWithInfo(
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    YuThread* thread = yumiGetActiveThread();
-    if (thread) {
-        thread->startTask(
-            func,
-            closure,
-            localSize,
-            yumiCreateTaskProvenance(file, line, column, 0, YU_TASK_SCHEDULING_PRIORITY));
-    }
-}
-
-extern "C" void
-yumiSpinTask(YuTaskStartFunc func, void* closure, size_t localSize) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    gSpinQueue->startTask(func, closure, localSize);
-}
-
-extern "C" void
-yumiSpinTaskWithInfo(
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    gSpinQueue->startTask(
-        func,
-        closure,
-        localSize,
-        yumiCreateTaskProvenance(file, line, column, YU_TASK_FLAG_SPIN));
-}
-
-extern "C" void
-yumiSpinPriorityTask(YuTaskStartFunc func, void* closure, size_t localSize) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    gSpinQueue->startTask(
-        func,
-        closure,
-        localSize,
-        YuTaskProvenance(0, NULL, 0, 0, YU_TASK_FLAG_SPIN, YU_TASK_SCHEDULING_PRIORITY));
-}
-
-extern "C" void
-yumiSpinPriorityTaskWithInfo(
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (yumiProcessTerminationRequested()) {
-        return;
-    }
-
-    gSpinQueue->startTask(
-        func,
-        closure,
-        localSize,
-        yumiCreateTaskProvenance(
-            file,
-            line,
-            column,
-            YU_TASK_FLAG_SPIN,
-            YU_TASK_SCHEDULING_PRIORITY));
 }
 
 static YuTaskEnding*
@@ -1629,87 +1512,6 @@ yumiGCBackgroundTaskQueue() {
 }
 
 extern "C" bool
-yumiForkTaskInWorker(YuTaskQueue* queue, YuTaskStartFunc func, void* closure, size_t localSize) {
-    if (!yumiProcessTerminationRequested() && !queue->isStopped()) {
-        queue->startTask(func, closure, localSize);
-        return true;
-    } else {
-        return false;
-    }
-}
-
-extern "C" bool
-yumiForkPriorityTaskInWorker(
-    YuTaskQueue* queue,
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize) {
-    if (!yumiProcessTerminationRequested() && !queue->isStopped()) {
-        queue->startTask(
-            func,
-            closure,
-            localSize,
-            YuTaskProvenance(
-                0,
-                NULL,
-                0,
-                0,
-                YU_TASK_FLAG_WORKER,
-                YU_TASK_SCHEDULING_PRIORITY));
-        return true;
-    } else {
-        return false;
-    }
-}
-
-extern "C" bool
-yumiForkTaskInWorkerWithInfo(
-    YuTaskQueue* queue,
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (!yumiProcessTerminationRequested() && !queue->isStopped()) {
-        queue->startTask(
-            func,
-            closure,
-            localSize,
-            yumiCreateTaskProvenance(file, line, column, YU_TASK_FLAG_WORKER));
-        return true;
-    } else {
-        return false;
-    }
-}
-
-extern "C" bool
-yumiForkPriorityTaskInWorkerWithInfo(
-    YuTaskQueue* queue,
-    YuTaskStartFunc func,
-    void* closure,
-    size_t localSize,
-    const char* file,
-    uint32_t line,
-    uint32_t column) {
-    if (!yumiProcessTerminationRequested() && !queue->isStopped()) {
-        queue->startTask(
-            func,
-            closure,
-            localSize,
-            yumiCreateTaskProvenance(
-                file,
-                line,
-                column,
-                YU_TASK_FLAG_WORKER,
-                YU_TASK_SCHEDULING_PRIORITY));
-        return true;
-    } else {
-        return false;
-    }
-}
-
-extern "C" bool
 yumiForkGCMarkTaskInWorker(
     YuTaskQueue* queue,
     YuTaskStartFunc func,
@@ -1738,7 +1540,7 @@ yumiForkGCCleanupTask(YuTaskStartFunc func, void* closure) {
         return false;
     }
     // Cleanup is a safety-net workload, never scheduler-priority work. It receives its own
-    // ordinary worker task so callback suspension and panic recovery use the normal task ABI.
+    // ordinary worker task so callback suspension and panics use the normal task ABI.
     gSpinQueue->startTask(
         func,
         closure,

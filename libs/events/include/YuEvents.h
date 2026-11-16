@@ -73,17 +73,6 @@ extern "C" YUMI_GC_LEAF uint32_t yumiDrainMainTaskQueue(
     size_t taskBudget, uint64_t deadlineNanos);
 extern "C" void yumiForkTask(YuTaskStartFunc func, void* closure, size_t localSize);
 extern "C" void yumiForkMainTask(YuTaskStartFunc func, void* closure, size_t localSize);
-extern "C" void yumiForkTaskWithInfo(YuTaskStartFunc func, void* closure, size_t localSize,
-    const char* file, uint32_t line, uint32_t column);
-extern "C" void yumiForkPriorityTask(YuTaskStartFunc func, void* closure, size_t localSize);
-extern "C" void yumiForkPriorityTaskWithInfo(YuTaskStartFunc func, void* closure,
-    size_t localSize, const char* file, uint32_t line, uint32_t column);
-extern "C" void yumiSpinTask(YuTaskStartFunc func, void* closure, size_t localSize);
-extern "C" void yumiSpinTaskWithInfo(YuTaskStartFunc func, void* closure, size_t localSize,
-    const char* file, uint32_t line, uint32_t column);
-extern "C" void yumiSpinPriorityTask(YuTaskStartFunc func, void* closure, size_t localSize);
-extern "C" void yumiSpinPriorityTaskWithInfo(YuTaskStartFunc func, void* closure,
-    size_t localSize, const char* file, uint32_t line, uint32_t column);
 const uint32_t YU_TASK_START_PRIORITY = 1 << 0;
 const uint32_t YU_TASK_START_SPIN = 1 << 1;
 const uint32_t YU_TASK_START_LARGE_STACK = 1 << 2;
@@ -194,14 +183,6 @@ extern "C" YUMI_GC_LEAF int yumiUsableCoreCount();
 extern "C" YUMI_GC_POLLING int yumiClaimLazyGlobal(uint8_t* state);
 extern "C" void yumiReleaseLazyGlobal(uint8_t* state);
 extern "C" void yumiAbandonLazyGlobal(uint8_t* state);
-extern "C" bool yumiForkTaskInWorker(YuTaskQueue* queue, YuTaskStartFunc func, void* closure,
-    size_t localSize);
-extern "C" bool yumiForkTaskInWorkerWithInfo(YuTaskQueue* queue, YuTaskStartFunc func,
-    void* closure, size_t localSize, const char* file, uint32_t line, uint32_t column);
-extern "C" bool yumiForkPriorityTaskInWorker(YuTaskQueue* queue, YuTaskStartFunc func,
-    void* closure, size_t localSize);
-extern "C" bool yumiForkPriorityTaskInWorkerWithInfo(YuTaskQueue* queue, YuTaskStartFunc func,
-    void* closure, size_t localSize, const char* file, uint32_t line, uint32_t column);
 extern "C" bool yumiForkGCMarkTaskInWorker(
     YuTaskQueue* queue, YuTaskStartFunc func, void* closure);
 extern "C" bool yumiForkGCCleanupTask(

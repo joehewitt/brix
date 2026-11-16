@@ -10,6 +10,7 @@
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/row-range
+/lang/worker-failure
 /stream/sort
 
 + FactId is U32
@@ -2730,6 +2731,7 @@ _ node-conversion-tails List'FactId'ArenaBacking
 + node-constants List'FactId'ArenaBacking
 _ node-copies SyncBufferedChannel'NodeCopy?
 _ nodes-copied SyncBufferedChannel'Bool?
+_ node-copy-failure WorkerFailure?
 + calls Table'CallFact
 + call-fills List'ArgumentFill'ArenaBacking
 + steps List'U32'ArenaBacking
@@ -7775,11 +7777,16 @@ node-chains.reserve(room)
 node-constants.reserve(room)
 . queue SyncBufferedChannel'NodeCopy
 . done SyncBufferedChannel'Bool
+. failure = WorkerFailure()
 node-copies = queue
 nodes-copied = done
+node-copy-failure = failure
 do (pool) new
     for copy in queue
         copy-nodes(copy)
+    done <- true
+catch failed
+    failure.keep(failed)
     done <- true
 
 ────────────────────
@@ -7789,8 +7796,12 @@ do (pool) new
 if queue
     queue.close()
     <- nodes-copied!
+. failure = node-copy-failure
 node-copies = null
 nodes-copied = null
+node-copy-failure = null
+if failure
+    failure.raise-kept()
 
 ────────────────────
 _ do copy-nodes

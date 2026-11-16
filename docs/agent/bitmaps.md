@@ -25,7 +25,7 @@ Both types expose `capacity`, boolean indexing, `find(truth)`, `find-consecutive
 length. Searches return the lowest matching index or absence. A zero-bit run and a run larger
 than capacity return absence. Runs can cross word boundaries but never wrap around the end.
 Padding is excluded from searches, counts, and iteration. Out-of-range reads and writes raise
-OutOfBoundsError, which uses Yumi's panic recovery.
+OutOfBoundsError, a panic, which ends the task.
 
 Inline iterators capture a value snapshot. Buffer iterators retain shared storage and observe
 writes to positions they have not read yet. Iterate an explicit `copy()` for a buffer snapshot.

@@ -213,6 +213,8 @@ _ event-count-names [String] = ["publish.attempts", "publish.sites-erased", "pub
 + idle-instance InstanceId = no-instance
 + idle-site SyntaxId = 0
 + source-attacher FunctionId = no-function
++ message-raiser FunctionId = no-function
++ panic-raiser FunctionId = no-function
 + event-handlers Table'EventHandler
 + lowered-functions [FunctionId]
 + lowered-matchers [FunctionId]
@@ -3486,6 +3488,9 @@ for id in 0 .. < functions.length
             calls = calls.appended(arena, storage[row].function)
     functions[id].calls = Span(start, calls.length - start)
     name-function(id as FunctionId)
+for raiser in [message-raiser, panic-raiser]
+    if raiser != no-function
+        bundle.mark-cold-callee(functions[raiser].symbol)
 . instance-total = instances.length
 . suspending = arena.allocate'U8(if suspends then instance-total + 1 else 1)
 if suspends
@@ -4741,12 +4746,20 @@ growth-rows[(row as Size) * 2 + (part as Size)] = id
 _ do declare-source-attacher
 
 ` Declares the function that gives a panic with no source of its own the place it is raised at,
-` which each place that raises one calls, where the program can raise any.
+` which each place that raises one calls, where the program can raise any, and the functions
+` those places call to raise one: one given the panic, and one given the message of a panic the
+` compiler writes, where the program has one to make.
 . source = instances.report.source
 if source == no-instance || instance-functions[source] == no-function
     =
 source-attacher = functions.length as FunctionId
 functions.append(unnamed-function(.source-attach, no-instance, instances.rows[source].module, 1))
+panic-raiser = functions.length as FunctionId
+functions.append(unnamed-function(.raise-panic, no-instance, instances.rows[source].module, 1))
+. made = instances.report.panic
+=? if made == no-instance || instance-functions[made] == no-function
+message-raiser = functions.length as FunctionId
+functions.append(unnamed-function(.raise-message, no-instance, instances.rows[source].module, 1))
 
 ────────────────────
 _ do declare-lazy-rules
@@ -5339,6 +5352,12 @@ else if function.kind == .interface-equality
 else if function.kind == .source-attach
     key = "SourceAttach"
     display = "$module-name:attach-source"
+else if function.kind == .raise-panic
+    key = "RaisePanic"
+    display = "$module-name:raise-panic"
+else if function.kind == .raise-message
+    key = "RaiseMessage"
+    display = "$module-name:raise-message"
 else if function.kind == .storage-growth
     . grown = if function.place == 0 then "rows" else "spill"
     key = "ColdStorageGrowth:$grown:${type-key(types, function.type)}"
@@ -10434,6 +10453,8 @@ _ is-numeric-node Bool
 | machine-stop = 69
 | style-themed-value = 70
 | style-given-author = 71
+| raise-message = 72
+| raise-panic = 73
 
 ━━━━━━━━━━━━━━━━━━━━
 + GlobalKind is U8
@@ -10549,10 +10570,10 @@ _ is-numeric-node Bool
 
 ` A function the object holds. `name` is its key text, `symbol` the linker's name for it, and
 ` `display` the name a stack trace prints. `calls` are the functions a generated body calls,
-` in order. `may-panic` says a call of it is followed by a check, and `carries` that it
-` writes the panic signal because a class table holds it. `polls` says its body has a loop
-` that polls, or a rule it runs first does: it returns the panic a poll can raise, and no call
-` of it is checked for that.
+` in order. `may-panic` says a call of it has a landing pad, and `carries` that it is made as
+` one that may return a panic although it raises none, because a class table holds it or it
+` suspends. `polls` says its body has a loop that polls, or a rule it runs first does: it
+` returns the panic a poll can raise, and no call of it has a landing pad for that.
 ` `unplaced` says a stack trace through it may not be the reference's, by more than a number
 ` in a name: one that may panic is refused. `placeless` says a stack trace names no place for
 ` its code. `site-module` is the module whose file a stack trace names for its code, where that

@@ -10,6 +10,7 @@
 /core/array-builder
 /core/atom-pool
 /core/parsing
+/lang/worker-failure
 
 _ default-piece-length Size = 65536
 
@@ -200,10 +201,14 @@ _ do parse-pieces ASTBuilder?
 
 . count = plan.pieces.length
 . results SyncBufferedChannel'ParsedPiece
+. failure = WorkerFailure()
 for index in 0 .. < count
     . span = plan.pieces[index]
     do (pool) new
         results <- parse-piece(preparsed, source, source-path, span, index, atoms, atom-lock)
+    catch failed
+        failure.keep(failed)
+        results <- ParsedPiece(index, null, null)
 . slots [ParsedPiece?]
 for _ in 0 .. < count
     slots += null
@@ -222,6 +227,7 @@ if failed
     for slot in slots
         if slot && slot.tree
             slot.tree.release()
+    failure.raise-kept()
     = null
 . merged = catch merge.finish()
 =? null if merged is Error
