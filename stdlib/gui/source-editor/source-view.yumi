@@ -50,6 +50,8 @@ _ source-blink-interval = 530ms
 _ source-add-size Length = 14
 _ source-add-arm Length = 8
 _ source-add-stroke Length = 2
+_ source-add-dot Length = 2.5
+_ source-add-dot-gap Length = 5
 _ source-chevron-reach Length = 3
 _ source-chevron-stroke Length = 1.5
 _ source-add-caret-gap Length = 3
@@ -556,7 +558,7 @@ _ do copy-selection Bool
 
 . active = session
 =? false if !active || !active.has-selection
-= clipboard.write-text(active.selected-text())
+= clipboard.write-text(active.clipboard-text())
 
 ────────────────────
 for event on pointer-down
@@ -1052,7 +1054,7 @@ Rect(x - source-caret-width / 2, y + 1, source-caret-width, source-row-length - 
 
 .. content = text-bounds
 .. left = content.x + source-text-inset - region.scroll-x
-.. x = if active.ends-tray(active.row) then adder-left(left) + source-add-size + source-add-caret-gap else if is-open-row(active, active.row) then left else left + active.column * cell-width
+.. x = if active.is-open-end(active.row) then adder-left(left) + source-add-size + source-add-caret-gap else if is-open-row(active, active.row) then left else left + active.column * cell-width
 .. y = content.y + active.folds.shown(active.row) * source-row-length - shown-top
 
 ────────────────────
@@ -1196,11 +1198,12 @@ _ do paint-add-button
     - x Length
     - y Length
     - is-lit Bool
+    - is-lazy = false
 
 if is-lit
-    paint-source-add(canvas, x, y, $source-add-lit-color, null, $source-add-lit-mark-color)
+    paint-source-add(canvas, x, y, $source-add-lit-color, null, $source-add-lit-mark-color, is-lazy)
 else
-    paint-source-add(canvas, x, y, $source-add-color, $source-add-border-color, $source-add-mark-color)
+    paint-source-add(canvas, x, y, $source-add-color, $source-add-border-color, $source-add-mark-color, is-lazy)
 
 ────────────────────
 _ do paint-fold-button
@@ -1216,7 +1219,7 @@ _ is-open-row Bool
     - active SourceSession
     - row Size
 
-row + 1 == active.row-count || active.ends-tray(row) || active.is-blank-line(row)
+row + 1 == active.row-count || active.is-open-end(row) || active.is-blank-line(row)
 
 ────────────────────
 _ chip-at Size?
@@ -1515,8 +1518,8 @@ do use canvas.saved-state
                 - source-row-length
                 - $gui-editor-fold-chip-color
                 - $gui-editor-line-number-color
-        if active.ends-tray(row)
-            paint-add-button(canvas, adder-left(left), y, row == active.row && !selects)
+        if active.is-open-end(row)
+            paint-add-button(canvas, adder-left(left), y, row == active.row && !selects, slices[index - first].kind == SourceRowBlock.text)
         else if shown.divider == source-divider-double
             . start = max(content.x, left)
             . width = rule-end - start
@@ -2012,13 +2015,27 @@ _ do paint-source-add
     - fill RGBA
     - border RGBA?
     - mark RGBA
+    - is-lazy = false
 
 . middle-x = x + source-add-size / 2
 . middle-y = y + source-row-length / 2
 paint-source-circle(canvas, x, y, fill, border)
 canvas.fill-color = mark
+if is-lazy
+    canvas.stroke-color = null
+    paint-source-dot(canvas, middle-x - source-add-dot-gap / 2, middle-y)
+    paint-source-dot(canvas, middle-x + source-add-dot-gap / 2, middle-y)
+    =
 canvas.rect(Rect(middle-x - source-add-arm / 2, middle-y - source-add-stroke / 2, source-add-arm, source-add-stroke))
 canvas.rect(Rect(middle-x - source-add-stroke / 2, middle-y - source-add-arm / 2, source-add-stroke, source-add-arm))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-source-dot
+    - canvas Canvas
+    - x Length
+    - y Length
+
+canvas.outline(Outline(Rect(x - source-add-dot / 2, y - source-add-dot / 2, source-add-dot, source-add-dot), source-add-dot / 2))
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceGutter is CodeChangeBox

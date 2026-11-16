@@ -4,7 +4,7 @@
 (import /stream/combine)
 (import /tui)
 (import ./pulse-data)
-
+(blank)
 (prop + pulse-night _ (= (call RGBA "#080d19")))
 (prop + pulse-panel _ (= (call RGBA "#101929")))
 (prop + pulse-raised _ (= (call RGBA "#19263b")))
@@ -26,11 +26,14 @@
   (rule GroupPanel
     (rule group-panel-frame (• border pulse-line) (• border-rounded) (• bg pulse-panel))
     (rule group-panel-body (• flex-col) (• px 1) (• py 0))
-    (rule group-panel-header (= display (. Display hidden)))
+    (rule group-panel-header
+      (= display (. Display hidden))
+    )
   )
-  (rule TableRow
-    (• bg pulse-panel)
-    (when-style #is-selected (• bg pulse-selection))
+  (rule TableRow (• bg pulse-panel)
+    (when-style #is-selected
+      (• bg pulse-selection)
+    )
   )
   (rule pulse-caption (• text pulse-muted))
   (rule pulse-heading (• text pulse-ink) (• h 1))
@@ -78,12 +81,7 @@
           (let glyph (as ([] " ▁▂▃▄▅▆▇█" (as (call ceil (* portion 8)) Int)) String))
           (let lower (call pulse-interpolate secondary position))
           (let in-secondary (< (- (. rect height) y 1) (* (/ lower (call max 1 ceiling)) (. rect height))))
-          (= (. canvas text-color)
-            (if-expr (or violet in-secondary)
-              (call ansi-rgb (if-expr (< y (/ (. rect height) 2)) 4 2) 2 5)
-              (call ansi-rgb 0 (if-expr (< y (/ (. rect height) 2)) 5 3) 5)
-            )
-          )
+          (= (. canvas text-color) (if-expr (or violet in-secondary) (call ansi-rgb (if-expr (< y (/ (. rect height) 2)) 4 2) 2 5) (call ansi-rgb 0 (if-expr (< y (/ (. rect height) 2)) 5 3) 5)))
           (if (and (== portion 0) (== (% x 8) 0) (== (% y 2) 0))
             (= glyph "·")
             (= (. canvas text-color) pulse-line)
@@ -139,12 +137,7 @@
       (call (. canvas clip) rect)
       (for (in x (..< 0 (. rect width)))
         (let filled (< (as x Float) (* level (. rect width))))
-        (= (. canvas text-color)
-          (if-expr filled
-            (if-expr violet (call ansi-rgb (+ 2 (/ (* x 3) (call max 1 (. rect width)))) 2 5) (call ansi-rgb 0 (+ 2 (/ (* x 3) (call max 1 (. rect width)))) 5))
-            pulse-line
-          )
-        )
+        (= (. canvas text-color) (if-expr filled (if-expr violet (call ansi-rgb (+ 2 (/ (* x 3) (call max 1 (. rect width)))) 2 5) (call ansi-rgb 0 (+ 2 (/ (* x 3) (call max 1 (. rect width)))) 5)) pulse-line))
         (call (. canvas move) (tuple (+ (. rect x) x) (. rect y)))
         (call (. canvas print) (if-expr filled "━" "╌"))
       )

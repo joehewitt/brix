@@ -42,6 +42,7 @@ _ source-private-dash Length = 3
 + kind = SourceRowBlock.none
 + is-private = false
 + is-member-private = false
++ is-ruled = false
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceSurfacePalette is Tuple
@@ -121,7 +122,7 @@ else if opens && local + 1 < rows.length && rows[local + 1].zone == SourceRowZon
 else if is-gap && local > 0 && rows[local - 1].zone == SourceRowZone.header
     wash = SourceReach(null, min(source-wash-trail, bottom ?? source-wash-trail))
 . kind = if in-member then rows[member-start].block else rows[0].block
-= SourceSlice(surface, outer, member, wash, kind, rows[0].is-private, in-member && rows[member-start].is-private)
+= SourceSlice(surface, outer, member, wash, kind, rows[0].is-private, in-member && rows[member-start].is-private, current.divider == source-divider-dashed)
 
 ────────────────────
 _ do is-member-row Bool
@@ -199,12 +200,20 @@ do use canvas.saved-state
             canvas.fill-color = washed
             canvas.outline(Outline(inner, source-box-radius))
     . border = source-surface-border(slice.surface, palette)
+    . rule RGBA? = null
     if border
         . shown = if slice.surface == SourceSurface.box then source-kind-border(slice.kind, border, palette) else border
-        stroke-source-edge(canvas, box, band, shown.over(fill), slice.is-private)
+        . edge = shown.over(fill)
+        stroke-source-edge(canvas, box, band, edge, slice.is-private)
+        rule = edge
     if member
         . edge = source-kind-border(slice.kind, palette.member-border, palette).over(member-fill)
         stroke-source-edge(canvas, inner, band, edge, slice.is-member-private)
+        rule = edge
+    if slice.is-ruled && rule
+        canvas.stroke-color = null
+        canvas.fill-color = rule
+        paint-source-rule(canvas, inner.x, inner.right, band.y + floor((band.height - source-border-width) / 2))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do stroke-source-edge
@@ -278,6 +287,19 @@ _ do paint-source-dashes
 while x < right
     canvas.rect(Rect(x, y, min(source-private-dash, right - x), source-border-width))
     x += source-private-dash * 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-source-rule
+    - canvas Canvas
+    - left Length
+    - right Length
+    - y Length
+
+. count = max(round((right - left + source-private-dash) / (source-private-dash * 2)), 2)
+. period = (right - left - source-private-dash) / (count - 1)
+. dashes = count as Size
+for index in 0 .. < dashes
+    canvas.rect(Rect(round(left + period * (index as F64)), y, source-private-dash, source-border-width))
 
 ━━━━━━━━━━━━━━━━━━━━
 + source-slice-shape Outline?

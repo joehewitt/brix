@@ -497,6 +497,24 @@ yumiStringFindBytes(const char* self, const char* findStr, bool reverse, int sta
 }
 
 extern "C" const YumiStringData*
+yumiStringCopy(const char* value) {
+    char* output = _allocBytesKeeping(_stringHeader(value)->byteLength + 1, value);
+    _recordAllocationSite(
+        0xC0DE000B, "libs/core/YuString.cpp", 500, 0,
+        "yumiStringCopy", "String", "string-copy-whole", "supplemental");
+    const YumiStringHeader* header = _stringHeader(value);
+    memcpy(output, value, header->byteLength);
+    output[header->byteLength] = 0;
+    _setKnownMetadata(
+        output,
+        header->byteLength,
+        header->characterLength,
+        header->flags & YUMI_STRING_FLAG_ASCII,
+        header->flags & YUMI_STRING_FLAG_VALID_UTF8);
+    return _stringValue(output);
+}
+
+extern "C" const YumiStringData*
 yumiStringSlice(char* self, size_t begin, size_t end) {
     const YumiStringHeader* header = _stringHeader(self);
     bool isASCII = header->flags & YUMI_STRING_FLAG_ASCII;

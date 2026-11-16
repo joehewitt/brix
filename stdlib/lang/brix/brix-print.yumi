@@ -449,7 +449,7 @@ do match items
                 put(" ")
                 expression(items[1], brix-level-named, false)
             put(" if ")
-            expression(unguarded(test), 0, true)
+            expression(unguarded(test), 0, false)
     | [.atom(_, word {it == "break" || it == "continue"}), ...]
         tagged(word, .exit)
     | [.atom(_, "print")]
@@ -1578,7 +1578,10 @@ for index in 1 .. < count
         continue
     if index > 1
         put(brix-glued-operator(op) ?? " $op ")
-    expression(item, least, is-tail && !is-wrapped && index + 1 == count)
+    . is-last = is-tail && !is-wrapped && index + 1 == count
+    if is-last && level == brix-level-assign && tail == null
+        tail = item
+    expression(item, least, is-last)
 if is-wrapped
     put(")")
 
@@ -1617,10 +1620,13 @@ _ do prefix
     - level Int
     - minimum Int
     - is-tail Bool
+    - whole ImmutableTableRow'SourceNode? = null
 
 . is-wrapped = level < minimum
 if is-wrapped
     put("(")
+else if is-tail && tail == null && whole != null
+    tail = whole
 put(text)
 expression(node, level, is-tail && !is-wrapped)
 if is-wrapped
@@ -1700,7 +1706,8 @@ for index in origin .. < items.length
             put(if is-quoted then brix-escaped(text, true) else brix-line-escaped(text))
         | .atom(_, name)
             if brix-is-name(name) && !is-joined
-                put("\$$name")
+                put("\$")
+                tagged(name, .name)
             else
                 braced(part)
         | .list(_, start, count)
@@ -1882,9 +1889,9 @@ do match items
         expression(target, brix-level-primary, false)
         put(if op == "exact" then "!" else "~")
     | [.atom(_, op {it == "!" || it == "-" || it == "&"}), operand]
-        prefix(op, operand, brix-level-prefix, minimum, is-tail)
+        prefix(op, operand, brix-level-prefix, minimum, is-tail, node)
     | [.atom(_, "not"), operand]
-        prefix("!", operand, brix-level-prefix, minimum, is-tail)
+        prefix("!", operand, brix-level-prefix, minimum, is-tail, node)
     | [.atom(_, op {brix-is-word-prefix(it)}), operand]
         prefix("$op ", operand, brix-level-prefix, minimum, is-tail)
     | [.atom(_, "~"), operand]
@@ -1971,6 +1978,8 @@ do match items
         . is-wrapped = minimum > brix-level-closure
         if is-wrapped
             put("(")
+        else if is-tail && tail == null
+            tail = node
         put("if ")
         expression(test, choice-level(test), false)
         put(" then ")
@@ -1987,6 +1996,8 @@ do match items
         . is-wrapped = minimum > brix-level-pipe
         if is-wrapped
             put("(")
+        else if is-tail && tail == null
+            tail = node
         put("$op ")
         expression(operand, brix-level-named, is-tail && !is-wrapped)
         if is-wrapped

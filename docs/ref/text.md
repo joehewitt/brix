@@ -616,6 +616,7 @@ a/b/
 | `(. s lowercased)`{.brix} | `s` with each letter lowercase. |
 | `(. s normalized)`{.brix} | `s` in Unicode normal form C, with characters composed. |
 | `(. s decomposed)`{.brix} | `s` in Unicode normal form D, with characters decomposed. |
+| `(. s copied)`{.brix} | A new text with the same characters, in memory the collector owns. |
 | `(. s codepoints)`{.brix} | An array of its characters; see Collections. |
 
 - **`find`** returns an `I32?` index counted in characters. An empty `part` is found at the

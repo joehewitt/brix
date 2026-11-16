@@ -10,6 +10,7 @@
 /data/source-tree
 /math
 /os/file
+/stream/aggregate
 
 _ source-far-column Size = 1000000
 _ source-undo-cells Size = 320000
@@ -304,7 +305,7 @@ index + 1 < document.row-count && shown.node == null && !shown.is-divider && (sh
 
 .. shown = row-at(index)
 .. next = folds.below(index)
-.. is-gap = shown.zone != SourceRowZone.body && next != index && !ends-tray(index) && (row-at(next).is-divider || ends-tray(next) || is-blank-line(next))
+.. is-gap = shown.zone != SourceRowZone.body && next != index && !is-open-end(index) && (row-at(next).is-divider || is-open-end(next) || is-blank-line(next))
 
 ────────────────────
 + is-blank-line Bool
@@ -326,20 +327,15 @@ index > 0 && index < document.row-count && (divider == source-divider-thick || d
 + is-skipped Bool
     - index Size
 
-is-padding(index) || (index + 1 < document.row-count && (divider == source-divider-thick || divider == source-divider-thin))
+is-padding(index) || (index + 1 < document.row-count && (divider == source-divider-thick || divider == source-divider-thin || divider == source-divider-dashed))
 
 .. divider = row-at(index).divider
 
 ────────────────────
-+ do ends-tray Bool
++ is-open-end Bool
     - index Size
 
-=? false if index + 1 >= document.row-count
-. home = document.declaration-at(index)
-=? false if home >= document.declarations.length || index + 1 != document.first-row(home + 1)
-. shown = row-at(index)
-=? false if shown.node != null || shown.is-divider
-= row-at(document.first-row(home)).block == SourceRowBlock.holder
+index + 1 < document.row-count && row-at(index).is-open-end
 
 ────────────────────
 + do stop-at Size
@@ -457,8 +453,38 @@ else
 ────────────────────
 + do selected-text String
 
-=? "" if !has-selection
+= "\n".join(selected-lines())
+
+────────────────────
++ do clipboard-text String
+
+. lines = selected-lines()
+. first = first-selected-row
+. last = last-selected-row
+=? "\n".join(lines) if lines.length < 2 || selection-start > row-at(first).content-start || !is-block-head(first)
+. is-ended = selection-end <= row-at(last).content-start
+if is-ended && is-block-head(last)
+    lines.remove(lines.length - 2)
+else if !is-ended && selection-end >= row-at(last).columns && ends-block(last)
+    lines += ""
+lines.insert(row-at(first - 1).text, 0)
+= "\n".join(lines)
+
+────────────────────
+_ do ends-block Bool
+    - index Size
+
+for below in index + 1 .. < document.row-count
+    . shown = row-at(below)
+    =? true if shown.divider == source-divider-thick || shown.divider == source-divider-thin
+    =? false if shown.node != null
+= true
+
+────────────────────
+_ do selected-lines [String]
+
 . parts [String]
+=? parts if !has-selection
 . first = first-selected-row
 . last = last-selected-row
 . is-whole = last > first && selection-start <= row-at(first).content-start
@@ -472,7 +498,7 @@ for index in first .. < last + 1
     if low > high
         low = high
     parts += text[low .. < high]
-= "\n".join(parts)
+= parts
 
 ────────────────────
 + do insert Bool
@@ -511,11 +537,49 @@ for line in text.split("\n")
 . last = if has-selection then last-selected-row else row
 . start = if has-selection then selection-start else column
 . end = if has-selection then selection-end else column
+. lead Size = 0
+while lead < lines.length && lines[lead].trim().length == 0
+    lead += 1
+. divider = if lead < lines.length then document.language.divider-line(lines[lead]) else 0
+. is-blocks = divider != 0
+. is-verbatim = some(lines) • where document.language.divider-line(each) != 0
+for _ in 0 .. < (if is-blocks then lead else 0)
+    lines.remove(0)
+if is-blocks
+    if !has-selection && row-at(first).zone == SourceRowZone.header
+        while first > 0 && !is-block-head(first)
+            first -= 1
+        last = first
+        start = 0
+        end = 0
+    else if !has-selection && !is-line-start(first, start) && first + 1 < document.row-count
+        first += 1
+        last = first
+        start = 0
+        end = 0
+    if is-line-start(first, start) && is-block-head(first)
+        first -= 1
+        start = 0
+        if !has-selection
+            last = first
+            end = 0
+    if has-selection && last > first + 1 && is-line-start(last, end) && is-block-head(last)
+        last -= 1
+        end = 0
+    . outside = if divider == source-divider-thick && !has-selection then members-end(first) else null
+    if outside
+        first = outside
+        last = first
 . shown = row-at(first)
 . is-ruled = !has-selection && !is-editable(shown) && shown.content.length > 0
-. is-closing = is-ruled && row + 1 == document.row-count
+. is-closing = is-ruled && first + 1 == document.row-count
+if is-blocks
+    if is-ruled && lines[lines.length - 1].length == 0
+        lines.remove(lines.length - 1)
+    else if !is-ruled && lines[lines.length - 1].length > 0 && (!has-selection || is-line-start(last, end) || end < row-at(last).text.length)
+        lines += ""
 if is-closing
-    first = row - 1
+    first -= 1
     last = first
     start = row-at(first).text.length
     end = start
@@ -524,13 +588,26 @@ else if is-ruled
     end = 0
 . opening = row-at(first).text
 . reach = if start < opening.length then start else opening.length
-. left = if is-ruled then "" else opening[... reach]
-. placed = source-placed(lines, left)
+. left = if is-ruled || is-verbatim then "" else opening[... reach]
+. placed = if is-verbatim then "\n".join(lines) else source-placed(lines, left)
 . is-lines = whole-lines && (!has-selection || is-line-start(last, end))
     .. whole-lines = !is-ruled && lines[lines.length - 1].length == 0 && is-line-start(first, start)
 =? splice-text(first, 0, last, 0, left ++ placed) if is-lines
-. written = if is-closing then "\n" ++ placed else if is-ruled then placed ++ "\n" else placed
+. written = if is-closing || (is-blocks && !is-line-start(first, start)) then "\n" ++ placed else if is-ruled then placed ++ "\n" else placed
 = splice-text(first, start, last, end, written)
+
+────────────────────
+_ do members-end Size?
+    - index Size
+
+. is-member = false
+for below in index .. < document.row-count
+    . shown = row-at(below)
+    =? null if shown.divider == source-divider-thick && !is-member
+    =? below if shown.divider == source-divider-thick
+    is-member = is-member || shown.divider == source-divider-thin
+=? null if !is-member
+= document.row-count - 1
 
 ────────────────────
 + do delete-backward Bool
@@ -677,7 +754,7 @@ if offset == 0 && content.length > 0
     if was-typed
         current.node = header-as(home, content, shown.mode, holds)
     flow.insert(SourceFlowRow(document.store.blank(), current.indent), position)
-    apply(index, owner, ids, flow)
+    document.replace(index, lodge(index, owner, ids, flow, position, false, true, was-typed))
     seek(index, home, 0)
     finish()
     =
@@ -685,12 +762,13 @@ if was-typed || right.length > 0
     current.node = header-as(home, left, shown.mode, holds)
 . added = header-for(right, shown.mode, false)
 . opened = added.id
-. is-open = has-header && document.store.raw-text(current.node) == null
-    .. has-header = language.header-count(current.node) != null
+. header = language.header-count(current.node)
+. is-filled = header != null && document.store.count(language.detach(current.node)) > (header as Size)
+. is-open = header != null && document.store.raw-text(current.node) == null && !is-filled
 . indent = if holds || is-open || language.opens(current.node) then current.indent + 1 else current.indent
 . slot = position + 1
 flow.insert(SourceFlowRow(added, indent), slot)
-apply(index, owner, ids, flow)
+document.replace(index, lodge(index, owner, ids, flow, slot, true, right.length == 0, was-typed))
 if shown.zone == SourceRowZone.preamble || preamble-rows has home
     preamble-rows[opened] = true
 seek(index, opened, 0)
@@ -775,7 +853,11 @@ if typed != shown.content
         . index = document.declaration-at(row)
         . count = document.row-count
         begin(index)
-        document.replace-row-node(row, next)
+        . joined = rejoined(index, shown, next)
+        if joined
+            document.replace(index, joined)
+        else
+            document.replace-row-node(row, next)
         finish()
         if document.row-count != count
             . rows = document.rows-of(index)
@@ -784,6 +866,69 @@ if typed != shown.content
                     row = document.first-row(index) + position
 column = clamped(column)
 anchor-column = clamped-at(anchor-row, anchor-column)
+
+────────────────────
+_ do rejoined ImmutableTableRow'SourceNode?
+    - index Index
+    - shown SourceRow
+    - next ImmutableTableRow'SourceNode
+
+. language = document.language
+. store = document.store
+. old = store.node(shown.node!)
+=? null if !language.is-flow(shown.mode)
+. declaration = document.declaration(index)
+if language.is-arm(old) && language.is-arm(next)
+    . parent = parent-in(declaration, old)
+    if parent && language.takes-arm(parent, next)
+        = store.swapped(declaration, old, language.as-arm(next))
+. owner = owner-of(index, shown)
+. flow = flow-of(index, owner)
+. position = source-flow-position(flow, shown.node-id)
+=? null if position >= flow.length
+. before = source-flow-heads(language, flow)
+flow[position].node = next
+. after = source-flow-heads(language, flow)
+. is-moved = before[position] != null || after[position] != null
+for spot in 0 .. < flow.length
+    if before[spot] != after[spot]
+        is-moved = true
+    if after[spot] == null && is-swallowed(flow, spot)
+        . node = flow[spot].node
+        . text = if spot == position then typed else flow-content(index, owner.id, node.id)
+        flow[spot].node = store.with-id(store.raw(text, List'(ImmutableTableRow'SourceNode)()), node.id)
+        is-moved = true
+=? null if !is-moved
+. lifted [Index]
+. grown = rebuilt(index, owner, source-flow-ids(flow), flow, lifted)
+=? null if lifted.length > 0
+= grown
+
+────────────────────
+_ do is-swallowed Bool
+    - flow [SourceFlowRow]
+    - spot Index
+
+. language = document.language
+. node = flow[spot].node
+=? false if document.store.raw-text(node) != null || !language.is-arm(node)
+=? false if language.as-arm(node).index != node.index
+. cursor = spot
+while cursor > 0
+    cursor -= 1
+    =? language.takes-arm(flow[cursor].node, node) if flow[cursor].indent < flow[spot].indent
+= false
+
+────────────────────
+_ do parent-in ImmutableTableRow'SourceNode?
+    - root ImmutableTableRow'SourceNode
+    - target ImmutableTableRow'SourceNode
+
+for item in document.store.items(root)
+    =? root if item.index == target.index
+    . found = parent-in(item, target)
+    =? found if found
+= null
 
 ────────────────────
 _ is-saved Bool
@@ -1063,11 +1208,102 @@ _ do apply
     - ids [U32]
     - flow [SourceFlowRow]
 
-. next = source-flow-rebuild(document.language, owner, ids, flow)
-. grown = document.store.swapped(document.declaration(index), owner, next)
+document.replace(index, rebuilt(index, owner, ids, flow, List'Index()))
+
+────────────────────
+_ do lodge ImmutableTableRow'SourceNode
+    - index Index
+    - owner ImmutableTableRow'SourceNode
+    - ids [U32]
+    - flow [SourceFlowRow]
+    - slot Size
+    - is-after Bool
+    - is-blank Bool
+    - was-typed Bool
+
+. language = document.language
+. expected ImmutableTableRow'SourceNode? = null
+. refused Size? = null
+. at = slot
+while true
+    . lifted [Index]
+    . grown = rebuilt(index, owner, ids, flow, lifted)
+    if refused == null && (lifted.length > 0 || (is-blank && was-typed))
+        . apart [Index]
+        expected = language.grouped(without(index, owner, ids, flow, at, apart))
+        refused = apart.length
+    . is-kept = lifted.length <= (refused ?? 0)
+    . base = expected ?? document.declaration(index)
+    =? grown if is-kept && (!is-blank || source-same-unblanked(document.store, language.grouped(grown), base))
+    . next = moved(flow, at, is-after)
+    =? grown if next == null
+    at = next
+
+────────────────────
+_ do without ImmutableTableRow'SourceNode
+    - index Index
+    - owner ImmutableTableRow'SourceNode
+    - ids [U32]
+    - flow [SourceFlowRow]
+    - at Size
+    - lifted [Index]
+
+. row = flow[at]
+flow.remove(at)
+. tree = rebuilt(index, owner, ids, flow, lifted)
+flow.insert(row, at)
+= tree
+
+────────────────────
+_ do moved Size?
+    - flow [SourceFlowRow]
+    - at Size
+    - is-after Bool
+
+. language = document.language
+. row = flow[at]
+. level = row.indent
+flow.remove(at)
+. heads = source-flow-heads(language, flow)
+if is-after
+    . sibling = at
+    while sibling > 0 && flow[sibling - 1].indent > level
+        sibling -= 1
+    if sibling > 0 && flow[sibling - 1].indent == level
+        . end = source-flow-span(language, flow, heads, sibling - 1)[1]
+        if end > at
+            flow.insert(row, end)
+            = end
+else if at < flow.length && flow[at].indent == level && heads[at] != null
+    . start = source-flow-span(language, flow, heads, at)[0]
+    flow.insert(row, start)
+    = start
+. parent = at
+while parent > 0 && flow[parent - 1].indent >= level
+    parent -= 1
+if parent == 0
+    flow.insert(row, at)
+    = null
+. span = source-flow-span(language, flow, heads, parent - 1)
+. next = if is-after then span[1] else span[0]
+row.indent = flow[parent - 1].indent
+flow.insert(row, next)
+= next
+
+────────────────────
+_ do rebuilt ImmutableTableRow'SourceNode
+    - index Index
+    - owner ImmutableTableRow'SourceNode
+    - ids [U32]
+    - flow [SourceFlowRow]
+    - lifted [Index]
+
+. holder = document.language.flow-holder(owner)
+. next = source-flow-assembled(document.language, holder, ids, flow, lifted)
+. grown = document.store.swapped(document.declaration(index), holder, next)
 ?! Panic("A flow owner is not in its declaration")
     if !grown
-document.replace(index, grown)
+= grown
 
 ────────────────────
 _ do seek
@@ -1331,7 +1567,7 @@ _ do opened-at SourceOpened?
     - at Size
 
 . declaration = document.declaration(index)
-=? document.language.open-end(declaration) if ends-tray(at)
+=? document.language.open-end(declaration, document.row-at(at)) if is-open-end(at)
 = document.language.open-below(declaration, document.row-at(at))
 
 ────────────────────
@@ -1362,23 +1598,32 @@ commit()
 . flow = flow-of(index, owner)
 . ids = source-flow-ids(flow)
 . position = source-flow-position(flow, home)
-. current = flow[position]
-. level = current.indent
+. heads = source-flow-heads(language, flow)
+. span = source-flow-span(language, flow, heads, position)
+. first = span[0]
+. level = flow[first].indent
+. above = first
+while above > 0 && flow[above - 1].indent > level
+    above -= 1
 if deeper
-    =? false if position == 0
-    . upper = flow[position - 1]
-    =? false if upper.indent < level || (upper.indent == level && !language.can-hold(upper.node))
+    =? false if above == 0 || flow[above - 1].indent < level || !language.can-hold(flow[above - 1].node)
 else
     =? false if level == 0
 . offset = column - shown.content-start
-begin(index)
-current.indent = if deeper then level + 1 else level - 1
-for later in position + 1 .. < flow.length
-    . lower = flow[later]
-    if lower.indent <= level
-        break
+for moved in first .. < span[1]
+    . lower = flow[moved]
     lower.indent = if deeper then lower.indent + 1 else lower.indent - 1
-apply(index, owner, ids, flow)
+. moved-heads = source-flow-heads(language, flow)
+for spot in 0 .. < flow.length
+    =? false if moved-heads[spot] != heads[spot] && (spot != first || heads[spot] != null)
+. store = document.store
+. grown = rebuilt(index, owner, ids, flow, List'Index())
+=? false if store.same(language.grouped(grown), document.declaration(index))
+if deeper
+    . parent = store.find(grown, flow[above - 1].node.id)
+    =? false if !parent || !store.find(parent, home)
+begin(index)
+document.replace(index, grown)
 seek(index, home, offset)
 finish()
 = true
@@ -1524,11 +1769,13 @@ _ do remade ImmutableTableRow'SourceNode?
 . language = document.language
 . store = document.store
 . body = language.children(old)
-. parsed = language.parse(text, mode)
+. read = language.parse(text, mode)
+. parsed = if read then language.recast(old, read) else null
 . next = parsed if parsed != null && (body.length == 0 || language.can-hold(parsed))
-if next
-    =? null if store.same(next, language.detach(old))
-    = store.with-id(language.attach(next, body).parent, old.id)
+. held = if next then language.attach(language.detach(next), body) else null
+if held && held.refused.length == 0
+    =? null if store.same(held.parent, old)
+    = store.with-id(held.parent, old.id)
 = store.with-id(store.raw(text, body), old.id)
 
 ━━━━━━━━━━━━━━━━━━━━

@@ -6,6 +6,7 @@
 
 (type + PulseProcessTable (is (of Table PulseProcess))
   (prop + wide Bool)
+  (depends refresh-columns wide)
   (content
     (<> This
       (= column-gap 1)
@@ -33,7 +34,6 @@
       )
     )
   )
-  (depends refresh-columns wide)
   (fn-do + This _
     (call refresh-columns)
   )
@@ -63,10 +63,18 @@
   (param column String)
   (param process PulseProcess)
   (param selected Bool)
-  (case? (== column "pid") (if-expr selected pulse-cyan pulse-muted))
-  (case? (== column "cpu") (if-expr (> (. process cpu) 75) pulse-gold pulse-cyan))
-  (case? (== column "memory") pulse-purple)
-  (default pulse-ink)
+  (case? (== column "pid")
+    (if-expr selected pulse-cyan pulse-muted)
+  )
+  (case? (== column "cpu")
+    (if-expr (> (. process cpu) 75) pulse-gold pulse-cyan)
+  )
+  (case? (== column "memory")
+    pulse-purple
+  )
+  (default
+    pulse-ink
+  )
 )
 
 (fn-do _ pulse-process-columns (list (of TableColumn PulseProcess))

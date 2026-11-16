@@ -72,6 +72,7 @@ extern "C" YUMI_GC_LEAF bool yumiStringFind(
     const char* self, const char* findStr, bool reverse, int start, int* outIndex);
 extern "C" YUMI_GC_LEAF bool yumiStringFindBytes(
     const char* self, const char* findStr, bool reverse, int start, int* outIndex);
+extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringCopy(const char* value);
 extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringSlice(
     char* self, size_t begin, size_t end);
 extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringSliceUtf8(

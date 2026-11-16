@@ -92,7 +92,7 @@ while index > 0
     index -= 1
     . sigil = result[index].text
     . next = result[index + 1]
-    if brix-sigils has sigil && (is-joined[index + 1] || brix-starts-name(next.text)) && brix-is-prefix(result, index)
+    if result[index].kind != SourceSpanKind.string && brix-sigils has sigil && (is-joined[index + 1] || brix-starts-name(next.text)) && brix-is-prefix(result, index)
         . kind = if sigil == "#" then SourceSpanKind.tracked else next.kind
         result[index] = SourceSpan(kind, sigil)
         result[index + 1] = SourceSpan(kind, next.text, next.is-optional)
@@ -137,7 +137,7 @@ _ do brix-is-prefix Bool
     - spans [SourceSpan]
     - index Index
 
-=? true if index == 0
+=? true if index == 0 || spans[index].text == "$"
 . before = spans[index - 1].text
 =? true if before.length == 0
 . last = before[before.length - 1]
@@ -171,7 +171,7 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
     spans
 
 .. text-name Bool ~
-    ~ &("$" [a-z]) ...spans \text-mark ...spans \text-word
+    ~ &("$" [a-z]) ...spans \text-mark ...spans \text-word (&("?"? "." [a-zA-Z_]) (&"?" ...spans \loose)? ...spans \loose ...spans \text-word)*
         true
 
 .. text-code Bool ~
@@ -185,7 +185,13 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
         true
     ~ ...spans \opener (\pattern(into spans))? (\code-item(into spans))* (\stray(into spans))?
         true
+    ~ \quoted(into spans)
+        true
     ~ ...spans \loose
+        true
+
+.. quoted Bool ~
+    ~ ...spans \quote (...spans \quoted-run | \text-name(into spans) | \text-code(into spans))* (...spans \quote)?
         true
 
 .. stray Bool ~
@@ -214,6 +220,8 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
     ~ &"(" ...spans \opener (\pattern-item(into spans))* (\stray(into spans))?
         true
     ~ \pattern-code(into spans)
+        true
+    ~ \quoted(into spans)
         true
     ~ ...spans \pattern-leaf
         true
@@ -259,8 +267,6 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
 .. loose SourceSpan ~
     ~ \comment
         brix-span(source, location, .comment)
-    ~ \quoted
-        brix-span(source, location, .string)
     ~ \character
         brix-span(source, location, .string)
     ~ "," | "." | ":" | "'"
@@ -277,8 +283,6 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
         brix-span(source, location, .rule)
 
 .. pattern-leaf SourceSpan ~
-    ~ \quoted
-        brix-span(source, location, .string)
     ~ \character
         brix-span(source, location, .string)
     ~ \class
@@ -296,6 +300,14 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
     ~ (("\\" .) | (!("\${" | ("$" [a-z])) .))+
         brix-span(source, location, .string)
 
+.. quoted-run SourceSpan ~
+    ~ (("\\" .) | (!("\"" | "\${" | ("$" [a-z])) .))+
+        brix-span(source, location, .string)
+
+.. quote SourceSpan ~
+    ~ "\""
+        brix-span(source, location, .string)
+
 .. text-mark SourceSpan ~
     ~ "\${" | "$" | "}"
         brix-span(source, location, .operator)
@@ -306,14 +318,6 @@ _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan
 
 .. comment ~
     ~ "`" .*
-
-.. quoted Bool ~
-    ~ "\"" (("\\" .) | \embedded | (!"\"" .))* "\""?
-        true
-
-.. embedded Bool ~
-    ~ "\${" (("\\" .) | \embedded | \quoted | (!"}" .))* "}"?
-        true
 
 .. character ~
     ~ "'" "\\" . (!("'" | " ") .){0, 8} "'"
@@ -460,5 +464,6 @@ if !(store.is-form(last, "block") && store.count(last) == 1)
 =? store.trimmed(node, 2) if is-binding && count == 3
 =? store.trimmed(node, count - 1) if brix-takes-block(store, node)
 =? node if !store.is-form(node, "call")
-=? store.with-id(store.item(node, 1), node.id) if count == 3 && is-bare
+. target = store.item(node, 1)
+=? store.with-id(target, node.id) if count == 3 && is-bare && target.id == 0
 = store.trimmed(node, count - 1)

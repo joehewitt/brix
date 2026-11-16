@@ -487,7 +487,7 @@ yumiArenaReserveDescribed(
     bool zeroInitialize,
     void* descriptor) {
     ArenaSlot* arena = slot(opaque, incarnation);
-    if (!arena || !byteCount || !descriptor) {
+    if (!arena || !descriptor) {
         return nullptr;
     }
     char* result = yumiArenaReserve(
@@ -496,7 +496,10 @@ yumiArenaReserveDescribed(
         byteCount,
         alignment,
         zeroInitialize);
-    if (!result || !appendTraced(arena, result, byteCount, descriptor)) {
+    if (!result || !byteCount) {
+        return result;
+    }
+    if (!appendTraced(arena, result, byteCount, descriptor)) {
         return nullptr;
     }
     gArenaManagedAllocationCount.fetch_add(1, std::memory_order_relaxed);

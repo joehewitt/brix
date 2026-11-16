@@ -438,7 +438,11 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
   allocating after it. A view of an arena's array after a `reset` or `rewind` panics with `Stale
   array view`.
 - **Mistakes that are not.** Reading an arena's storage after `release`, `reset` or `rewind` is not
-  checked, and reads whatever the memory holds.
+  checked, and reads whatever the memory holds. That includes a text the arena holds, and a text
+  made from one by an operation that gives back what it was given, such as a slice of the whole
+  text, an interpolation of it alone, or a join of it alone.
+- **Keeping a text.** `(. text copied)`{.brix} gives a copy the collector owns, which outlives the
+  arena.
 
 ### Constant data
 

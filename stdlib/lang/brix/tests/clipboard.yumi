@@ -1,0 +1,292 @@
+/code/structure/document
+/code/structure/session
+/lang/brix/brix
+/lang/brix/convert
+/test
+
+_ thick = "━━━━━━━━━━━━━━━━━━━━"
+_ thin = "────────────────────"
+
+tests()
+
+━━━━━━━━━━━━━━━━━━━━
++ do tests TestRender
+
+. cases = TestCase("Brix Block Copy")
+cases.run(copy-tests)
+cases = cases.then("Brix Block Paste", paste-tests)
+cases = cases.then("Brix Block Round Trip", round-trip-tests)
+= cases
+
+━━━━━━━━━━━━━━━━━━━━
++ do copy-tests TestCase
+    - t TestCase
+
+t.expect
+    - "a copy from a header starts with the rule above it"
+    - "$thick\n+ total Int\n    - n Int\n\nif n > 0\n    . m = n\nn + 1\n"
+    - => copied("+ total Int", 0, "n + 1", 1000)
+t.expect
+    - "a copy up to the next header leaves out that header's rule"
+    - "$thick\n+ total Int\n    - n Int\n\nif n > 0\n    . m = n\nn + 1\n\n"
+    - => copied("+ total Int", 0, "+ Greeter", 0)
+t.expect("a copy from mid-line is the text selected", "n > 0\n    . m = n", => copied("if n > 0", 3, ". m = n", 1000))
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do paste-tests TestCase ?! Error
+    - t TestCase
+
+. total = total-block()
+. greeter = greeter-block()
+. greeting = greeting-block()
+. last = last-block()
+t.expect
+    - "a block pasted on the last row goes after the last block"
+    - written-as([total, greeter, greeting, last, total])
+    - => pasted-at-end(total)
+t.expect
+    - "a block pasted at a header goes above it"
+    - written-as([total, greeter, greeting, total, last])
+    - => pasted("+ last Int", 0, total)
+t.expect
+    - "a block pasted mid-line on a header goes above it"
+    - written-as([total, greeter, greeting, total, last])
+    - => pasted("+ last Int", 3, total)
+t.expect
+    - "a block pasted at the start of a parameter goes above its function"
+    - written-as([total, total, greeter, greeting, last])
+    - => pasted("- n Int", 0, total)
+t.expect
+    - "a block pasted mid-line on a parameter goes above its function"
+    - written-as([total, total, greeter, greeting, last])
+    - => pasted("- n Int", 7, total)
+t.expect
+    - "a block pasted mid-line on the last line of a body goes after it"
+    - written-as([total, total, greeter, greeting, last])
+    - => pasted("n + 1", 2, total)
+t.expect
+    - "a block pasted on a type's add button goes after the type"
+    - written-as([total, greeter, total, greeting, last])
+    - => pasted-on-add(total)
+t.expect
+    - "a function pasted at a method's header goes after its type"
+    - written-as([total, greeter, total, greeting, last])
+    - => pasted("+ hello String", 0, total)
+t.expect
+    - "a function pasted mid-line on a field goes after its type"
+    - written-as([total, greeter, total, greeting, last])
+    - => pasted("+ name String", 4, total)
+t.expect
+    - "blank lines before a block do not change where it goes"
+    - written-as([total, greeter, greeting, greeter, last])
+    - => pasted("+ last Int", 3, "\n\n" ++ greeter)
+t.expect
+    - "a block pasted over part of a line starts a line of its own"
+    - written-as([split-line(), greeter, greeting, last])
+    - => replaced("n + 1", 2, "n + 1", 3, total)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do round-trip-tests TestCase ?! Error
+    - t TestCase
+
+. source = written-as(blocks())
+t.expect("a cut block pasted back restores the document", source, => cut-back("+ Greeter", "+ ¶ greeting"))
+t.expect("a copy to the next header pasted over itself", source, => pasted-over("+ total Int", 0, "+ Greeter", 0))
+t.expect("a copy to a block's end pasted over itself", source, => pasted-over("+ total Int", 0, "n + 1", 1000))
+t.expect("a copy into a body pasted over itself", source, => pasted-over("+ total Int", 0, "if n > 0", 1000))
+t.expect("a copy that starts at a line's end pasted over itself", source, => pasted-over("n + 1", 1000, "\"hi\"", 1000))
+t.expect("Select All pasted into an empty document", source, => pasted-into-empty())
+= t
+
+━━━━━━━━━━━━━━━━━━━━
+_ opened SourceSession ?! Error
+    - source String
+
+SourceSession(source-document-read(BrixLanguage(), brix-convert(source)))
+
+━━━━━━━━━━━━━━━━━━━━
+_ blocks [String]
+
+List'String(total-block(), greeter-block(), greeting-block(), last-block())
+
+━━━━━━━━━━━━━━━━━━━━
+_ do written-as String ?! Error
+    - parts [String]
+
+. session = opened("\n\n".join(parts))
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do written String
+    - session SourceSession
+
+session.commit()
+= session.document.written().text.trim()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do row-of Size
+    - session SourceSession
+    - content String
+
+for index in 0 .. < session.document.row-count
+    =? index if session.row-at(index).content == content
+?! Panic("No row reads $content")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do selected SourceSession ?! Error
+    - first String
+    - start Size
+    - last String
+    - end Size
+
+. session = opened("\n\n".join(blocks()))
+session.place(row-of(session, first), start)
+session.place(row-of(session, last), end, true)
+= session
+
+━━━━━━━━━━━━━━━━━━━━
+_ copied String ?! Error
+    - first String
+    - start Size
+    - last String
+    - end Size
+
+selected(first, start, last, end).clipboard-text()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pasted String ?! Error
+    - row String
+    - column Size
+    - text String
+
+. session = opened("\n\n".join(blocks()))
+session.place(row-of(session, row), column)
+session.paste(text)
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pasted-at-end String ?! Error
+    - text String
+
+. session = opened("\n\n".join(blocks()))
+session.place(session.document.row-count - 1, 0)
+session.paste(text)
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pasted-on-add String ?! Error
+    - text String
+
+. session = opened("\n\n".join(blocks()))
+for index in 0 .. < session.document.row-count
+    if session.row-at(index).is-open-end
+        session.place(index, 0)
+        session.paste(text)
+        = written(session)
+?! Panic("No add button")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do replaced String ?! Error
+    - first String
+    - start Size
+    - last String
+    - end Size
+    - text String
+
+. session = selected(first, start, last, end)
+session.paste(text)
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pasted-over String ?! Error
+    - first String
+    - start Size
+    - last String
+    - end Size
+
+. session = selected(first, start, last, end)
+session.paste(session.clipboard-text())
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do cut-back String ?! Error
+    - first String
+    - last String
+
+. session = selected(first, 0, last, 0)
+. text = session.clipboard-text()
+session.delete-selection()
+session.paste(text)
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pasted-into-empty String ?! Error
+
+. copy = opened("\n\n".join(blocks()))
+copy.select-all()
+. session = SourceSession(brix-document-read(""))
+session.place(0, 0)
+session.paste(copy.clipboard-text())
+= written(session)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ total-block
+
+$thick
++ total Int
+    - n Int
+
+if n > 0
+    . m = n
+n + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ greeter-block
+
+$thick
++ Greeter
+
++ name String
+
+$thin
++ hello String
+
+"hi"
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ greeting-block
+
+$thick
++ ¶ greeting
+
+Hello
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ last-block
+
+$thick
++ last Int
+
+2
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ split-line
+
+$thick
++ total Int
+    - n Int
+
+if n > 0
+    . m = n
+n
+
+$thick
++ total Int
+    - n Int
+
+if n > 0
+    . m = n
+n + 1
+1

@@ -64,6 +64,8 @@
 .. member-row ImmutableTableRow'SourceNode ~
     ~ v \keyframe-member \row-end
         v
+    ~ v \own-rule-row \row-end
+        v
     ~ v \style-rule-member \row-end
         v
     ~ v \member \row-end
@@ -71,12 +73,18 @@
     ~ \statement-row
 
 .. rule-row ImmutableTableRow'SourceNode ~
+    ~ v \own-rule-row \row-end
+        v
     ~ v \style-rule-member \row-end
         v
     ~ \statement-row
 
+.. own-rule-row ImmutableTableRow'SourceNode ~
+    ~ "•" // "own" // name \style-selector-name arg \style-rule-inline-argument? rules \style-rule-applications?
+        bx.form(location, "own-rule", bx.atom(location, name), arg, rules)
+
 .. use-row ImmutableTableRow'SourceNode ~
-    ~ "•" // v \style-rule-application \row-end
+    ~ "•" // !("own" //) v \style-rule-application \row-end
         v
     ~ \rule-row
 
@@ -1209,17 +1217,14 @@
         bx.declared(location, word, left, right)
     ~ word \lazy-or-not // left \structure-pattern / "=" right \block-or-expression
         bx.declared(location, word, left, right)
-    ~ word \lazy-or-not // left \structure-pattern is-pattern \pattern-or-not rb \rollback-mark / right \row-block
-        bx.declared(location, word, left, if is-pattern then wrapped else right)
+    ~ word \lazy-or-not // left \structure-pattern // "~" rb \rollback-mark / right \row-block
+        bx.declared(location, word, left, bx.form(location, "pattern", rollback-flag, bx.body(right)))
 
-        .. wrapped = bx.form(location, "pattern", rollback-flag, bx.body(right))
         .. rollback-flag = bx.flag(location, "@rollback", rb)
+    ~ word \lazy-or-not // left \structure-pattern \rollback-mark / right \block
+        bx.declared(location, word, left, right)
     ~ word \lazy-or-not // left \structure-pattern
         bx.declared(location, word, left)
-
-.. pattern-or-not Bool ~
-    ~ (// "~")?
-        !!it
 
 .. pattern-rollback-annotation Bool ~
     ~ "@rollback"
@@ -2168,7 +2173,7 @@
         bx.form(location, "stream", expr)
 
 .. identifier-expression ImmutableTableRow'SourceNode ~
-    ~ id \shaped-identifier force ("!" !"=")?
+    ~ !("else" !([a-zA-Z0-9-])) id \shaped-identifier force ("!" !"=")?
         if force then bx.form(location, "!!", id) else id
 
 .. shaped-identifier ImmutableTableRow'SourceNode ~
