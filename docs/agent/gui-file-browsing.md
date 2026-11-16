@@ -11,6 +11,7 @@ it with `/gui/file-browsing`; `/gui` does not re-export it.
 | Tree view | `file-tree-box.yumi` | `FileTreeBox`, a `TreeBox` of the model |
 | Column view | `file-column-tree.yumi` | `FileColumnTree`, a `ColumnTree` with a detail pane |
 | Palette | `file-palette.yumi` | `FilePalette`, a `Palette` that browses one folder at a time |
+| Find in files | `file-text-palette.yumi` | `FileTextPalette`, a `Palette` of the lines under `folder` that match its query, found by `FileTextSearch` |
 | Shared behavior | `file-view.yumi` | `FileView`: rename, create, trash, move, context menu, shortcuts |
 | Coordination | `file-session.yumi` | `FileSession`: the current item and the events views publish |
 | Rows and icons | `file-row.yumi`, `file-icon.yumi` | `FileRow`, `FileRenameInput`, `FileIcon`, `FileGlyph` |

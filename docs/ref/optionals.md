@@ -251,6 +251,9 @@ So an empty text in an optional is present, and an empty text that is not option
 - **Assignment.** `(= (?. object name) value)`{.brix} assigns when the object is not `null`, and
   does nothing otherwise. Assigning operators such as `+=` work the same way. The value on the right
   is evaluated either way.
+- **Events.** `(<- (?. object event) value)`{.brix} publishes to the event when the object is not
+  `null`, and does nothing otherwise. Unlike an assignment, the value is not evaluated when the
+  object is `null`.
 - **A further optional.** A member that is itself optional needs its own `?.`, as in
   `(?. (?. user manager) name)`{.brix}. Reading through it with `.` is an error: `Property "name" is
   read from User?, which may be null; unwrap it first with ! or ?.`.

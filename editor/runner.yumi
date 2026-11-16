@@ -1,0 +1,335 @@
+/lang/build-service
+/os/env
+/os/file
+/os/path
+/os/pty
+/os/shell
+/os/terminal
+/probes/feed
+/probes/model
+
+_ runner-note-style = "\x1b[2m"
+_ runner-error-style = "\x1b[31m"
+_ runner-style-reset = "\x1b[0m"
+
+━━━━━━━━━━━━━━━━━━━━
++ RunState is Union
+
+| idle
+| compiling
+| running
+| stopping
+| stopped
+| exited
+| failed
+
+━━━━━━━━━━━━━━━━━━━━
++ RunToolchain is Tuple
+
++ root String
++ compiler String
++ command BuildServiceCommand
+
+━━━━━━━━━━━━━━━━━━━━
++ Runner
+    is Closable
+
++ session TerminalSession
++ state = RunState.idle
++ exit-code Int?
++ source Path?
++ feed ProbeFeed?
+
+_ service BuildService?
+_ is-stop-requested = false
+_ is-serving = false
+_ is-closed = false
+
+────────────────────
++ This
+
+session = TerminalSession(env("HOME") ?? "/")
+
+────────────────────
++ get is-busy Bool
+
+state == RunState.compiling || state == RunState.running || state == RunState.stopping
+
+────────────────────
++ do start
+    - path Path
+    - directory Path
+
+=? if is-busy || is-closed
+source = path
+feed = null
+exit-code = null
+is-stop-requested = false
+session.directory = "$directory"
+session.clear()
+state = RunState.compiling
+do new
+    perform(path)
+
+────────────────────
++ do stop
+
+=? if !is-busy || state == RunState.stopping
+is-stop-requested = true
+state = RunState.stopping
+if is-serving
+    service?.cancel()
+session.interrupt()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+is-closed = true
+is-stop-requested = true
+service?.close()
+session.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do perform
+    - path Path
+
+execute(path)
+    catch error Error
+        fail(error.message)
+
+────────────────────
+_ do execute ?! Error
+    - path Path
+
+await-login-shell-environment()
+if runner-runs-brix(path)
+    execute-brix(path)
+    =
+. command = script-command(path)
+?! Error("Brix Editor does not know how to run ${path.name}") if !command
+state = RunState.running
+note("Running ${path.name}")
+finish(session.execute(command[0], command[1 ...], terminal-environment()))
+
+────────────────────
+_ do execute-brix ?! Error
+    - path Path
+
+. toolchain = find-toolchain(path)
+. artifact = runner-artifact(path)
+. folder = artifact.parent
+if folder
+    folder.make-directories()
+. trace = Path("${artifact}.trace", 0)
+if trace.exists
+    trace.delete()
+if is-stop-requested
+    halt()
+    =
+note("Compiling ${path.name}")
+. compiled = compile(toolchain, path, artifact)
+if compiled == null || is-stop-requested
+    halt()
+    =
+if compiled != 0
+    exit-code = compiled
+    fail("Compiling ${path.name} failed")
+    =
+. origin = TraceSource()
+origin.trace = "$trace"
+origin.catalog = "${artifact}.probes.json"
+origin.program = "$path"
+. recorder = ProbeFeed(origin)
+feed = recorder
+state = RunState.running
+note("Running ${path.name}")
+do new recorder.follow()
+. variables = terminal-environment()
+variables["PROBES_ENABLED"] = "1"
+variables["PROBES_PATH"] = "$trace"
+. code = session.execute(toolchain.compiler, ["--run", "$artifact", "--"], variables)
+recorder.finish(code)
+finish(code)
+
+────────────────────
+_ do compile Int? ?! Error
+    - toolchain RunToolchain
+    - path Path
+    - artifact Path
+
+. arguments = ["$path", "--compile", "-o", "$artifact", "--probes"]
+. built = service-for(toolchain)
+is-serving = true
+. outcome = built.build(toolchain.command, arguments)
+is-serving = false
+if outcome
+    if outcome.output.length > 0
+        session.echo("\r\n".join(outcome.output.split("\n")))
+    = outcome.status
+=? null if is-stop-requested
+= session.execute(toolchain.compiler, arguments, toolchain.command.variables)
+
+────────────────────
+_ do service-for BuildService
+    - toolchain RunToolchain
+
+. current = service
+=? current if current && current.root == toolchain.root
+current?.close()
+. made = BuildService(toolchain.root)
+service = made
+= made
+
+────────────────────
+_ do find-toolchain RunToolchain ?! Error
+    - path Path
+
+. checkout = find-yumi-checkout(path.parent ?? path)
+if checkout
+    note("Updating the compiler in $checkout")
+    . command = checkout-service-command(checkout, [checkout / "stdlib"])
+    = RunToolchain("$checkout", command.arguments[0], command)
+. variables = terminal-environment()
+. compiler = installed-compiler(variables)
+?! Error("Running a Brix program needs the Yumi toolchain, and none was found. Install it, then run again.")
+    if !compiler
+= RunToolchain(variables["HOME"] ?? "/", compiler, BuildServiceCommand([compiler, "--serve"], variables))
+
+────────────────────
+_ do halt
+
+state = RunState.stopped
+note("Stopped")
+
+────────────────────
+_ do finish
+    - code Int?
+
+if code == null || is-stop-requested
+    halt()
+    =
+exit-code = code
+state = RunState.exited
+note("Exited with code $code")
+
+────────────────────
+_ do fail
+    - text String
+
+state = RunState.failed
+=? if is-closed
+session.echo-line("$runner-error-style$text$runner-style-reset")
+
+────────────────────
+_ do note
+    - text String
+
+=? if is-closed
+session.echo-line("$runner-note-style$text$runner-style-reset")
+
+━━━━━━━━━━━━━━━━━━━━
++ runner-runs-brix Bool
+    - path Path
+
+path.extension == "bx" || path.extension == "yumi"
+
+━━━━━━━━━━━━━━━━━━━━
++ runner-can-run Bool
+    - path Path
+    - text String
+
+runner-runs-brix(path) || text.starts-with("#!") || runner-interpreter(path.extension, "") != null
+
+━━━━━━━━━━━━━━━━━━━━
++ runner-is-busy Bool
+    - state RunState
+
+state == RunState.compiling || state == RunState.running || state == RunState.stopping
+
+━━━━━━━━━━━━━━━━━━━━
++ runner-status String
+    - state RunState
+    - exit-code Int?
+
+match state
+    | .idle
+        ""
+    | .compiling
+        "Compiling…"
+    | .running
+        "Running"
+    | .stopping
+        "Stopping…"
+    | .stopped
+        "Stopped"
+    | .exited
+        "Exited (${exit-code ?? 0})"
+    | .failed
+        "Failed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ runner-interpreter [String]?
+    - extension String
+    - source String
+
+|? extension == "py"
+    ["python3", source]
+|? extension == "js" || extension == "mjs" || extension == "cjs"
+    ["node", source]
+|? extension == "sh"
+    ["/bin/sh", source]
+|? extension == "bash" || extension == "zsh"
+    [extension, source]
+|? extension == "go"
+    ["go", "run", source]
+|? extension == "rb"
+    ["ruby", source]
+??
+    null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do script-command [String]? ?! Error
+    - path Path
+
+. text = read-file-text(path)
+. ending = text.find("\n")
+. first = if ending then text[... ending] else text
+if first.starts-with("#!")
+    . parts = List'String(each in first[2 ...].split(" ") when each.length > 0)
+    if parts.length > 0
+        parts += "$path"
+        = parts
+= runner-interpreter(path.extension, "$path")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do runner-artifact Path
+    - source Path
+
+. caches = Path(env("HOME") ?? "/tmp", 0) / "Library" / "Caches" / "com.brix-lang.editor" / "builds"
+. folder = source.parent
+= Path("$caches${folder ?? Path("/", 0)}", 0) / source.base-name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do installed-compiler String?
+    - variables [String = String]
+
+. bundled = bundled-compiler()
+=? bundled if bundled
+. home = variables["YUMI_HOME"] ?? "${variables["HOME"] ?? ""}/.yumi"
+. installed = "$home/bin/yumi"
+=? installed if Path(installed, 0).is-file
+= find-executable("yumi", variables)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bundled-compiler String?
+
+. executable = catch? executable-path()
+=? null if !executable
+. contents = executable.parent?.parent
+=? null if !contents
+. found = contents / "Resources" / "toolchain" / "bin" / "yumi"
+= if found.is-file then "$found" else null

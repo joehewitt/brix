@@ -125,6 +125,41 @@ c-header-functions(c-headers, c-include-paths(), header)
     - base-name String?
     - base-path String?
 
+=? null if refused-folder(written, base-name, base-path) != null
+= locate-module(written, base-name, base-path)
+
+────────────────────
++ do refused-folder String?
+    - written String
+    - base-name String?
+    - base-path String?
+
+=? null if !base-path
+= match? locate-module(written, base-name, base-path)
+    | module-name, module-path
+        private-folder-outside(module-name, module-path, base-path)
+
+────────────────────
+_ private-folder-outside String?
+    - module-name String
+    - module-path Path
+    - base-path String
+
+|? !module-path.name.starts-with(private-prefix) || inside
+    null
+??
+    Path(module-name).dir as String
+
+.. inside = importer == folder || importer.starts-with("$folder$separator")
+.. folder = resolved-path(module-path.dir, "")
+.. importer = resolved-path(Path(base-path).dir, "")
+
+────────────────────
+_ do locate-module
+    - written String
+    - base-name String?
+    - base-path String?
+
 . name = if written.starts-with("../") then "./$written" else written
 . key =
     |? name.starts-with("./")

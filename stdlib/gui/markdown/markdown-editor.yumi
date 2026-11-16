@@ -4,7 +4,6 @@
 ./markdown-source
 ./markdown-view
 /code
-/core/_bytes
 /core/style
 /graphics/canvas
 /graphics/color
@@ -696,11 +695,13 @@ is-applying = false
 
 ────────────────────
 _ do edit-range
-    - start MarkdownPoint
-    - end MarkdownPoint
+    - from MarkdownPoint
+    - to MarkdownPoint
     - typed String
     - coalescing Bool
 
+. start = markdown-snap-point(blocks, from, from == to)
+. end = markdown-snap-point(blocks, to, true)
 if start.block == end.block
     . draft = draft-at(start.block)
     delete-in-draft(draft, start, end)
@@ -1089,7 +1090,7 @@ if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.grid || text.find
     if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.grid
         insert-text(text)
         =
-    . parsed = markdown-blocks(text, base)
+    . parsed = rendered-blocks(text)
     if parsed.length == 1 && parsed[0].kind == MarkdownBlockKind.paragraph
         . draft = draft-at(point.block)
         . runs = markdown-runs-normalized(parsed[0].runs)
@@ -1112,7 +1113,7 @@ draft.runs = markdown-runs-slice(draft.runs, 0, point.offset)
 tail.runs = markdown-runs-slice(tail.runs, point.offset, size)
 . drafts [MarkdownDraft]
 drafts += draft
-for block in markdown-blocks(text, base)
+for block in rendered-blocks(text)
     drafts += markdown-block-draft(block, "")
 . last = drafts[drafts.length - 1]
 . caret-block = drafts.length - 1
@@ -1133,6 +1134,15 @@ if drafts.length > 1 && drafts[0].is-empty
     drafts.remove(0)
     caret-block -= 1
 commit(point.block, point.block, drafts, MarkdownPoint(caret-block, 0, caret-offset))
+
+────────────────────
+_ do rendered-blocks [MarkdownBlock]
+    - text String
+
+. parsed = markdown-blocks(text, base)
+for block in parsed
+    markdown-render-block(code-renderer, block)
+= parsed
 
 ────────────────────
 _ do copy-selection Bool
@@ -1167,9 +1177,9 @@ _ do set-caret
     - point MarkdownPoint
     - extends Bool
 
-caret = point
+caret = markdown-snap-point(blocks, point, markdown-point-before(caret, point))
 if !extends
-    anchor = point
+    anchor = caret
 typing-marks = null
 
 ────────────────────
@@ -1528,13 +1538,10 @@ if block.kind == MarkdownBlockKind.code || block.kind == MarkdownBlockKind.exhib
 if block.kind == MarkdownBlockKind.grid
     = grid-point-at-source(text, index, min(offset, model.ends[index]))
 . from = start + min(model.prefixes[index].size, model.ends[index] - start)
-. visible = slot-text(MarkdownPoint(index, 0, 0))
+. point = MarkdownPoint(index, 0, 0)
 . inner = if offset > from then offset - from else 0
-= clamp-point
-    - MarkdownPoint
-        - index
-        - 0
-        - markdown-visible-offset(text.text-in(from, model.ends[index]), visible, inner)
+. found = markdown-visible-offset(text.text-in(from, model.ends[index]), source-text(point), inner)
+= clamp-point(MarkdownPoint(index, 0, markdown-runs-shown-offset(slot-runs(point), found)))
 
 ────────────────────
 _ do grid-point-at-source MarkdownPoint
@@ -1562,7 +1569,8 @@ column = min(column, columns - 1)
 . cell-end = if column + 1 < cells.length then cells[column + 1] else text.line-length(line)
 . source = markdown-slice(text.line-text(line), cell-start, cell-end)
 . inner = if local > cell-start then local - cell-start else 0
-= clamp-point(MarkdownPoint(index, cell, markdown-visible-offset(source, slot-text(point), inner)))
+. found = markdown-visible-offset(source, source-text(point), inner)
+= clamp-point(MarkdownPoint(index, cell, markdown-runs-shown-offset(slot-runs(point), found)))
 
 ────────────────────
 _ do source-at-point Size
@@ -1588,11 +1596,22 @@ if block.kind == MarkdownBlockKind.grid
     =? text.line-start(line) if column >= cells.length
     . cell-end = if column + 1 < cells.length then cells[column + 1] else line-text.size
     . source = markdown-slice(line-text, cells[column], cell-end)
-    = text.line-start(line) + cells[column] + cell-offset
-        .. cell-offset = markdown-source-offset(source, slot-text(point), point.offset)
+    = text.line-start(line) + cells[column] + source-offset(source, point)
 . from = start + min(model.prefixes[index].size, model.ends[index] - start)
-. source = text.text-in(from, model.ends[index])
-= from + markdown-source-offset(source, slot-text(point), point.offset)
+= from + source-offset(text.text-in(from, model.ends[index]), point)
+
+────────────────────
+_ source-offset Size
+    - source String
+    - point MarkdownPoint
+
+markdown-source-offset(source, source-text(point), markdown-runs-source-offset(slot-runs(point), point.offset))
+
+────────────────────
+_ source-text String
+    - point MarkdownPoint
+
+markdown-runs-source-text(slot-runs(point))
 
 ────────────────────
 _ caret-context TextInputContext?

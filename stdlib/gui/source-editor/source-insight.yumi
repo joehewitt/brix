@@ -1,0 +1,158 @@
+/code/structure/rows
+/graphics/canvas
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/math
+
++ source-mark-line Length = 1
++ source-mark-dot Length = 1
++ source-mark-dot-gap Length = 2
++ source-hatch-step Length = 6
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceMarkKind is Union
+
+| wait
+| raise
+| convert
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceMark is Tuple
+
++ start Size
++ end Size
++ kind SourceMarkKind
++ detail String
++ caption String?
++ errors [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceFill is Tuple
+
++ type String
++ errors [String]
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceNote is Tuple
+
++ kind String
++ label String
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceMessage is Tuple
+
++ kind String
++ text String
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceInsight is Tuple
+
++ marks [U32 = [SourceMark]]
++ unknown [U32 = Bool]
++ fills [U32 = SourceFill]
++ notes [U32 = [SourceNote]]
+
+────────────────────
++ marks-of [SourceMark]
+    - row SourceRow
+
+marks[row.node-id] ?? List'SourceMark()
+
+────────────────────
++ is-unknown Bool
+    - row SourceRow
+
+unknown[row.owner-id] != null
+
+────────────────────
++ fill-of SourceFill?
+    - row SourceRow
+
+fills[row.node-id]
+
+────────────────────
++ notes-of [SourceNote]
+    - row SourceRow
+
+notes[row.node-id] ?? List'SourceNote()
+
+────────────────────
++ do message-at SourceMessage?
+    - row SourceRow
+    - column Size
+
+. marks = marks-of(row)
+for mark in marks
+    =? SourceMessage(mark-kind(mark.kind), mark.detail) if column >= mark.start && column <= mark.end
+=? SourceMessage(mark-kind(marks[0].kind), marks[0].detail) if marks.length != 0
+=? SourceMessage("unreached", "No main reaches this function, so nothing is known about it") if is-unknown(row)
+= null
+
+────────────────────
++ do errors-at [String]
+    - row SourceRow
+    - column Size
+
+for mark in marks-of(row)
+    =? mark.errors if column >= mark.start && column <= mark.end && mark.errors.length != 0
+= List'String()
+
+━━━━━━━━━━━━━━━━━━━━
+_ mark-kind String
+    - kind SourceMarkKind
+
+match kind
+    | .raise
+        "raises"
+    | .convert
+        "converts"
+    | .wait
+        "waits"
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-source-hatch
+    - canvas Canvas
+    - shape Outline
+    - band Rect
+    - color RGBA
+
+. bounds = shape.bounds
+do use canvas.saved-state
+    canvas.clip(band)
+    canvas.clip-outline(shape)
+    canvas.fill-color = null
+    canvas.stroke-color = color
+    canvas.stroke-width = 1
+    . x = floor((bounds.x - band.height + band.bottom) / source-hatch-step) * source-hatch-step - band.bottom
+    while x < bounds.right
+        canvas.line(x, band.bottom, x + band.height, band.y)
+        x += source-hatch-step
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-source-underline
+    - canvas Canvas
+    - mark SourceMark
+    - left Length
+    - y Length
+    - cell-width Length
+    - height Length
+    - color RGBA
+
+. x = left + mark.start * cell-width
+. end = left + mark.end * cell-width
+. line-y = y + height - 3
+canvas.stroke-color = null
+canvas.fill-color = color
+do match mark.kind
+    | .raise
+        canvas.rect(Rect(x, line-y, end - x, source-mark-line))
+    | .convert
+        . period = source-mark-dot + source-mark-dot-gap
+        . dot = x
+        while dot < end
+            canvas.rect(Rect(dot, line-y, min(source-mark-dot, end - dot), source-mark-line))
+            dot += period
+    | .wait
+        canvas.rect(Rect(x, y, end - x, height))

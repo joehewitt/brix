@@ -1,7 +1,6 @@
 ./markdown-blocks
 ./markdown-source
 ./markdown-view
-/core/_bytes
 /graphics/canvas
 /graphics/color
 /graphics/point
@@ -72,8 +71,9 @@ match granularity
 
 .. start = MarkdownPoint(point.block, point.cell, 0)
 .. text = markdown-slot-text(blocks, point)
-.. low = markdown-word-start(text, point.offset)
-.. high = markdown-word-end(text, point.offset)
+.. runs = markdown-slot-runs(blocks, point)
+.. low = markdown-runs-snap(runs, markdown-word-start(text, point.offset), false)
+.. high = markdown-runs-snap(runs, markdown-word-end(text, point.offset), true)
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-extend-range MarkdownRange
@@ -182,7 +182,18 @@ if markdown-is-atomic(block)
 . cells = if block.kind == MarkdownBlockKind.grid then block.cells.length else 1
 . cell = min(point.cell, if cells > 0 then cells - 1 else 0)
 . at = MarkdownPoint(index, cell, 0)
-= MarkdownPoint(index, cell, min(point.offset, markdown-slot-size(blocks, at)))
+= markdown-snap-point(blocks, MarkdownPoint(index, cell, min(point.offset, markdown-slot-size(blocks, at))), null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-snap-point MarkdownPoint
+    - blocks [MarkdownBlock]
+    - point MarkdownPoint
+    - forward Bool?
+
+=? point if point.block >= blocks.length
+. kind = blocks[point.block].kind
+=? point if kind == MarkdownBlockKind.code || kind == MarkdownBlockKind.exhibit
+= MarkdownPoint(point.block, point.cell, markdown-runs-snap(markdown-slot-runs(blocks, point), point.offset, forward))
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-first-point MarkdownPoint
@@ -232,7 +243,8 @@ if markdown-is-atomic(blocks[index])
 . slot = MarkdownPoint(index, cell, 0)
 . view = markdown-slot-view-in(found, slot)
 =? slot if !view
-= MarkdownPoint(index, cell, min(view.offset-at(point), markdown-slot-size(blocks, slot)))
+. offset = min(view.offset-at(point), markdown-slot-size(blocks, slot))
+= markdown-snap-point(blocks, MarkdownPoint(index, cell, offset), null)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-cell-at Size

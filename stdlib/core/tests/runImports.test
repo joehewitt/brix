@@ -1638,3 +1638,67 @@ Exception: Module "./touch.ios" is never part of the same build as keys.macos.yu
     ./touch.ios
     ^^^^^^^^^^^
 ;====
+:====
+# A file whose name starts with _ is private to its folder: modules in that folder and in the folders inside it import it
+
+./lib/shelf
+./lib/deep/stand
+
+-- "${shelf-tool()} ${stand-tool()}"
+
+:----
+%file: lib/_tool.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ tool-name String
+
+"tool"
+
+:----
+%file: lib/shelf.yumi
+
+./tool
+
+━━━━━━━━━━━━━━━━━━━━
++ shelf-tool String
+
+tool-name()
+
+:----
+%file: lib/deep/stand.yumi
+
+./../tool
+
+━━━━━━━━━━━━━━━━━━━━
++ stand-tool String
+
+tool-name()
+
+:----
+
+tool tool
+;====
+:====
+# A module outside the folder of a file whose name starts with _ can't import it, even from the folder around it
+
+./top
+
+-- 1
+
+:----
+%file: top.yumi
+
+./lib/tool
+
+:----
+%file: lib/_tool.yumi
+
+-- 2
+:----
+%compile-error
+
+Exception: Module "./lib/tool" is private to lib/, so only modules there can import it
+<top.yumi:2>
+    ./lib/tool
+    ^^^^^^^^^^
+;====

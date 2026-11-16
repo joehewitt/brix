@@ -204,7 +204,9 @@ assignments in priority order. It walks from the focused box outward and, at eac
 scope (a `keys` or `inside` focus mode, or `press` in the gui), takes the assignments that box owns.
 Unscoped assignments follow, those inside the modal before those outside it. An assignment's scope is
 its nearest key-scope ancestor. A gui binding with `is-container-wide` skips `press` ancestors, so
-one declared inside a button belongs to the container around the button.
+one declared inside a button belongs to the container around the button. Each workbench pane holds
+its content in an `inside` scope, so a binding declared in a pane acts only while focus is in that
+pane, even when the control that declares it takes no focus.
 
 A tui `Shortcut` runs either an `action` closure or a shared `command`. With a `command` it takes its
 title and availability from the command, so one `Command` can back a gui control, a palette entry,

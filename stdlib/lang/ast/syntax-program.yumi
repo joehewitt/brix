@@ -11,7 +11,6 @@
 ./row-range
 ./syntax-uses
 /YuEvents/YuEvents.h
-/core/_bytes
 /core/arena
 /core/atom-pool
 /core/list
@@ -454,6 +453,11 @@ _ do import-module ModuleSource ?! Error
     | module-name, module-path
         import-yumi-module(module-path, module-name)
 
+. refused = resolver.refused-folder(name, scope-module?.name, scope-module?.path)
+?! YumiSyntaxError(loc, message, source-of(source-path), source-path)
+    if refused != null
+.. message = "Module \"$name\" is private to $place, so only modules there can import it"
+.. place = if refused.length != 0 then "$refused/" else "its folder"
 ?! YumiSyntaxError(loc, "Module \"$name\" not found", source-of(source-path), source-path)
 
 ────────────────────

@@ -94,6 +94,12 @@ suites, and checks the packages in a sandbox on the Mac and in a new Linux VM. I
 compiler must build itself, and the macOS compiler from the C headers the Mac read, into the same
 objects the Mac built.
 
+The downloads the website offers are packaged separately, when wanted, with
+`toolchain/release/brix-downloads`. `brix-downloads editor` builds Brix Editor, puts a toolchain
+release inside it so that it runs programs without an installed `yumi`, signs it, and makes a
+disk image that opens to the app beside a link to Applications. With a Developer ID identity and
+`--notary-profile`, it notarizes and staples the image too.
+
 The repository
 --------------
 
@@ -104,6 +110,7 @@ The repository
 | `libs` | the C and C++ runtime: the garbage collector, the event loop, tasks, and system calls |
 | `toolchain` | the scripts that build the runtime, the compiler and releases, and in `toolchain/deps` the recipes for the third-party libraries and tools that builds use |
 | `examples` | small programs, from servers to terminal and graphical apps |
+| `editor` | Brix Editor, a small editor that reads, writes and runs Brix programs and other source |
 | `docs` | the guides for writing Yumi and notes on the libraries; the language guide is in `docs/ref/drafts` |
 
 Learning the language

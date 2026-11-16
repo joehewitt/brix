@@ -1,0 +1,247 @@
+./source-view
+/code/structure/listing
+/code/structure/rows
+/code/structure/session
+/graphics/canvas
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+/gui/code-editor
+/math
+/ui/virtual
+/ui/virtual-layout
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceListingPane is Box
+    using CodeEditorTheme
+    using CodeSyntaxStyle
+    using SourceStructureTheme
+
++ is-active Bool
++ session SourceSession?
++ stamp U64
++ source VirtualSource'SourceRow?
++ row-width VirtualCoord?
++ top-inset Length = 0
+
+_ lines SourceLineSource?
+_ cell-width Length
+_ measured-font Font?
+_ caret SourceLineRange?
+_ band SourceLineRange?
+_ is-caret-held Bool
+_ focused-first Size?
+_ is-focus-new Bool
+_ wants-reveal Bool
+_ is-picked Bool
+
++ event row-picked Size
+
+. changed < stamp, session, is-active
+. inset-changed < top-inset
+
+• This • code-editor-text flex-col
+
+────────────────────
+
+<This
+    <VirtualRegion'SourceRow region • flex:1
+        source = #source
+        virtual-layout = VerticalFixedLayout(source-row-height, #row-width)
+        overscan = VirtualInsets(100vcoord, 0vcoord, 100vcoord, 0vcoord)
+        top-inset = #top-inset
+
+        <SourceRowBox (row) - slot
+            row = slot.#item
+
+────────────────────
+for event on region.scroll-changed when arrival
+
+invalidate-paint()
+
+────────────────────
+for event on pointer-down
+
+. bound = lines
+. y = event.point.y - content-bounds.y - top-inset + region.scroll-y
+if bound && event.button == PointerButton.primary && y >= 0
+    . row = bound.listing.row-of(floor(y / (source-row-height as Length)) as Size)
+    if row != null
+        is-picked = true
+        row-picked <- row
+
+────────────────────
+_ do changed
+
+. active = session
+if !active || !is-active
+    lines = null
+    source = null
+    caret = null
+    band = null
+    focused-first = null
+    wants-reveal = false
+    is-picked = false
+    invalidate-paint()
+    =
+. document = active.document
+. current = lines
+. bound = if current != null && current.listing.document as Pointer? == document as Pointer? then current else SourceLineSource(SourceListing(document))
+if bound as Pointer? != current as Pointer?
+    lines = bound
+    source = bound
+    focused-first = null
+. listing = bound.listing
+. at = document.declaration-at(active.row)
+if listing.sync(active.preview(), at)
+    bound.refresh()
+    widen(listing.widest)
+. shown = active.row-at(active.row)
+caret = caret-lines(active, listing, at)
+is-caret-held = shown.is-invalid
+band = listing.find(shown.owner-id, at) ?? listing.lines-of(at)
+. start = band?.first
+if start != focused-first
+    focused-first = start
+    is-focus-new = true
+if is-picked
+    is-picked = false
+    is-focus-new = false
+else
+    reveal()
+invalidate-paint()
+
+────────────────────
+_ do inset-changed
+
+invalidate-paint()
+
+────────────────────
+_ do caret-lines SourceLineRange?
+    - active SourceSession
+    - listing SourceListing
+    - at Index
+
+=? null if active.row-at(active.row).node == null
+. first = active.document.first-row(at)
+. row = active.row
+while row >= first
+    . shown = active.row-at(row)
+    if shown.node != null
+        . found = listing.find(shown.node-id, at)
+        =? found if found
+    =? null if row == first
+    row -= 1
+= null
+
+────────────────────
+_ do reveal
+
+if region.content-bounds.height <= 0
+    wants-reveal = true
+    =
+wants-reveal = false
+. focus = band
+if is-focus-new && focus != null
+    region.scroll-to-address(focus.last, ScrollAlignment.nearest)
+    region.scroll-to-address(focus.first, ScrollAlignment.nearest)
+is-focus-new = false
+. mark = caret
+if mark
+    region.scroll-to-address(mark.first, ScrollAlignment.nearest)
+
+────────────────────
+_ do widen
+    - widest Size
+
+. font = Font($font-family, $font-size, $font-weight, $font-slant)
+if font != measured-font
+    measured-font = font
+    cell-width = code-cell-width(font)
+row-width = ceil(widest * cell-width + source-row-padding * 2) as I64
+
+────────────────────
+_ lines-rect Rect
+    - range SourceLineRange
+
+Rect
+    - content.x
+    - content.y + top-inset + range.first * height - region.scroll-y
+    - content.width
+    - (range.last - range.first + 1) * height
+
+.. content = content-bounds
+.. height = source-row-height as Length
+
+╌╌╌╌╌╌╌╌╌╌ is Box ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do did-layout
+
+super.did-layout()
+if wants-reveal
+    reveal()
+
+────────────────────
++ do paint-self
+    - canvas Canvas
+
+. content = content-bounds
+do use canvas.saved-state
+    canvas.clip(content)
+    canvas.fill-color = $gui-panel-color
+    canvas.rect(content)
+    . focus = band
+    if focus
+        canvas.fill-color = $source-focus-band-color
+        canvas.rect(lines-rect(focus))
+    . mark = caret
+    if mark
+        canvas.fill-color = if is-caret-held then $source-held-band-color else $source-focus-line-color
+        canvas.rect(lines-rect(mark))
+    canvas.fill-color = $gui-divider-color
+    canvas.rect(Rect(content.x, content.y, 1, content.height))
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceLineSource
+    is VirtualSource'SourceRow
+
++ listing SourceListing
++ revision := VirtualRevision()
+
+_ range VirtualRangeSource
+
+────────────────────
++ This
+    - listing
+
+.. range = VirtualRangeSource(0)
+
+────────────────────
++ do refresh
+
+range.count = listing.line-count as VirtualCoord
+revision.bump()
+
+╌╌╌╌╌╌╌╌╌╌ is VirtualSource ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ get domain VirtualSequenceDomain
+
+range
+
+────────────────────
++ do bind
+    - address I64
+    - generation U64
+    - target VirtualBindingTarget'SourceRow
+
+if address < 0 || address >= listing.line-count
+    target.fail(generation)
+else
+    . spans = source-listing-spans(listing.line(address))
+    target.commit
+        - VirtualKey(revision.value, address)
+        - SourceRow(null, source-row-decoration, 0, spans)
+        - generation

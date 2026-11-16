@@ -114,6 +114,7 @@ _ code-outdent-key := KeyCombo("Cmd+[")
 + find CodeFind?
 + text-revision U64
 + definition-key KeyCombo?
++ top-inset Length = 0
 + event save-requested CodeSession
 + event definition-requested Size
 + event link-probed Size
@@ -133,6 +134,8 @@ _ sticky-rows CodeStickyRows?
 _ event refreshed Bool
 _ event closing Bool
 
+. inset-changed < top-inset
+
 • This • code-editor-text flex-row
     focus-mode = FocusMode.input
     when #has-link
@@ -146,7 +149,7 @@ _ event closing Bool
         max-width = SizeSpec.coord(#gutter-width)
         numbered = #row-count
         caret-row = #caret-row
-        scrolled = #scroll-top
+        scrolled = #scroll-top - #top-inset
         row-length = #row-height as Length
         changes = #row-changes
         session = #session
@@ -155,13 +158,14 @@ _ event closing Bool
         source = #source
         virtual-layout = code-row-layout(#row-height, #row-width, #sticky-rows)
         overscan = VirtualInsets(60vcoord, 0vcoord, 60vcoord, 0vcoord)
+        top-inset = #top-inset
 
         <CodeRowBox (row) - slot
             row = slot.#item
             inset = code-text-inset
     <CodeOverview overview • absolute w:code-overview-width
         anchor = Anchor.parent
-        top = PositionOffset.coord(0)
+        top = PositionOffset.coord(#top-inset)
         right = PositionOffset.coord(0)
         bottom = PositionOffset.coord(0)
         rows = #row-count
@@ -275,7 +279,7 @@ Point(region.scroll-x, region.scroll-y)
 ────────────────────
 + get top-line Size
 
-line-at-point(Point(0, 0))
+line-at-point(Point(0, top-inset))
 
 ────────────────────
 + do scroll-to-line
@@ -666,6 +670,16 @@ _ get row-length Length
 row-height as Length
 
 ────────────────────
+_ get shown-top Length
+
+region.scroll-y - top-inset
+
+────────────────────
+_ do inset-changed
+
+invalidate-paint()
+
+────────────────────
 _ do refresh
 
 . active = session
@@ -735,7 +749,7 @@ _ page-rows Size
 
 if count > 1 then count - 1 else 1
 
-.. count = floor(region.content-bounds.height / row-length) as Size
+.. count = floor((region.content-bounds.height - top-inset) / row-length) as Size
 
 ────────────────────
 _ do probe
@@ -792,7 +806,7 @@ Rect(x, y, if high > low then (high - low) * cell-width else 0, row-length)
 .. low = active.display-column(found.start)
 .. high = active.display-column(found.end)
 .. x = content.x + code-text-inset + low * cell-width - region.scroll-x
-.. y = content.y + active.folds.shown(line) * row-length - region.scroll-y
+.. y = content.y + active.folds.shown(line) * row-length - shown-top
 
 ────────────────────
 _ character-at-point Size?
@@ -834,7 +848,7 @@ _ row-at-point Size
 
 if y > 0 then floor(y / row-length) as Size else 0
 
-.. y = point.y + region.scroll-y
+.. y = point.y + shown-top
 
 ────────────────────
 _ fold-target Size?
@@ -844,7 +858,7 @@ _ fold-target Size?
     null
 |? chip != null
     chip
-|? point.x < gutter-width - code-fold-width || point.x >= gutter-width
+|? point.x < gutter-width - code-gutter-gap - code-fold-width || point.x >= gutter-width
     null
 |? row-at-point(point) >= active.folds.row-count(active.line-count)
     null
@@ -884,7 +898,7 @@ _ stuck-rows [CodeStuckRow]
 |? !sticky || !active
     List'CodeStuckRow()
 ??
-    code-stuck-rows(sticky, active.folds.row-count(active.line-count), row-length, region.scroll-y)
+    code-stuck-rows(sticky, active.folds.row-count(active.line-count), row-length, region.scroll-y, top-inset)
 
 .. sticky = sticky-rows
 .. active = session
@@ -927,7 +941,7 @@ Rect(x - code-caret-width / 2, y + 1, code-caret-width, row-length - 2)
 
 .. content = text-bounds
 .. x = content.x + code-text-inset + active.caret-column * cell-width - region.scroll-x
-.. y = content.y + active.folds.shown(active.caret-line) * row-length - region.scroll-y
+.. y = content.y + active.folds.shown(active.caret-line) * row-length - shown-top
 
 ────────────────────
 _ caret-context TextInputContext?
@@ -951,7 +965,7 @@ _ do center-caret
 . view = region.content-bounds
 =? if !active || view.height <= 0
 centers-caret = false
-. centered-y = active.folds.shown(active.caret-line) * row-length + (row-length - view.height) / 2
+. centered-y = active.folds.shown(active.caret-line) * row-length + (row-length - view.height + top-inset) / 2
 region.scroll-to(Point(region.scroll-x, centered-y))
 
 ────────────────────
@@ -1069,7 +1083,7 @@ active.reveal-anchor()
 . view = region.content-bounds
 . row = active.folds.shown(hit.row)
 . y = row * row-length
-if y < region.scroll-y || y + row-length > region.scroll-y + view.height
+if y < region.scroll-y || y + row-length > region.scroll-y + view.height - top-inset
     region.scroll-to-address(row, ScrollAlignment.center)
 refresh()
 
@@ -1150,7 +1164,7 @@ canvas.rect(whole)
 =? if !active || active.line-count == 0
 . content = text-bounds
 . folds = active.folds
-. top = region.scroll-y
+. top = shown-top
 . first = if top > 0 then floor(top / row-length) as Size else 0
 . last = min
     - folds.row-count(active.line-count)
@@ -1239,7 +1253,7 @@ _ do paint-stuck
 . content = content-bounds
 . font = Font($font-family, $font-size, $font-weight, $font-slant)
 . right = content.x + gutter-width - code-gutter-gap - code-fold-width
-. arrow-x = content.x + gutter-width - code-fold-width / 2
+. arrow-x = content.x + gutter-width - (code-gutter-gap + code-fold-width) / 2
 do use canvas.saved-state
     canvas.clip(content)
     canvas.stroke-color = null
@@ -1257,7 +1271,7 @@ do use canvas.saved-state
         canvas.fill-color = $gui-editor-line-number-color
         code-fold-arrow(canvas, arrow-x, y + row-length / 2, true)
     . last = stuck[stuck.length - 1]
-    if last.y > (last.row as Length) * row-length - region.scroll-y
+    if last.y > (last.row as Length) * row-length - shown-top
         canvas.fill-color = $gui-editor-sticky-border-color
         canvas.rect(Rect(content.x, content.y + last.y + row-length, content.width, 1))
 
@@ -1398,7 +1412,7 @@ for index in low .. < high
     wanted += line + 1
 ensure-numbers(wanted)
 . right = content.x + content.width - code-gutter-gap - code-fold-width
-. arrow-x = content.x + content.width - code-fold-width / 2
+. arrow-x = content.x + content.width - (code-gutter-gap + code-fold-width) / 2
 do use canvas.saved-state
     canvas.clip(content)
     canvas.stroke-color = null
@@ -1729,6 +1743,7 @@ while line-count >= limit
     - row-count Size
     - row-length Length
     - top Length
+    - inset Length
 
 . found [CodeStuckRow]
 =? found if row-length <= 0
@@ -1745,7 +1760,7 @@ while reach >= 0
     . natural = (header as Size) * row-length
     . limit = ((sticky.sticky-section-last(header) as Size) + 1) * row-length
     . y = max(natural, min(bottom, limit - row-length))
-    found += CodeStuckRow(header, y - top)
+    found += CodeStuckRow(header, y - top + inset)
     bottom = y + row-length
     reach += row-length
 = found

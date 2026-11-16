@@ -340,13 +340,17 @@ for index in 0 .. < window.placement-count
 + row-height VirtualCoord
 + row-width VirtualCoord?
 + gap VirtualCoord?
++ tail VirtualCoord
 
 ────────────────────
 + This
     - row-height
     - row-width VirtualCoord? = null
     - gap VirtualCoord? = null
+    - tail VirtualCoord = 0vcoord
 
+?! Panic("Virtual padding must not be negative")
+    if tail < 0vcoord
 check-fixed-lengths(row-height, row-width)
 
 ╌╌╌╌╌╌╌╌╌╌ is VirtualLayout ╌╌╌╌╌╌╌╌╌╌
@@ -356,7 +360,7 @@ check-fixed-lengths(row-height, row-width)
     - window VirtualWindow
     - domain VirtualSequenceDomain
 
-fill-fixed-window(window, domain, true, row-height, row-width, gap)
+fill-fixed-window(window, domain, true, row-height, row-width, gap, tail)
 
 ────────────────────
 + rect-for-address VirtualRect?
@@ -937,6 +941,7 @@ _ do fill-fixed-window
     - item-length VirtualCoord
     - fixed-cross-length VirtualCoord?
     - gap VirtualCoord? = null
+    - tail VirtualCoord = 0vcoord
 
 window.clear-placements()
 
@@ -960,9 +965,9 @@ if !domain.is-final
 . trailing = larger-virtual(0vcoord, raw-trailing)
 
 . spare = if gap != null then 1vcoord else 0vcoord
-. known-length = checked-virtual-product(checked-virtual-sum(known-count, spare), item-length)
+. known-length = checked-virtual-sum(checked-virtual-product(checked-virtual-sum(known-count, spare), item-length), tail)
 . available-slots = checked-virtual-sum(available-count, spare)
-. available-length = checked-virtual-product(available-slots, item-length)
+. available-length = checked-virtual-sum(checked-virtual-product(available-slots, item-length), tail)
 . max-main = larger-virtual(0vcoord, available-length - viewport-main)
 . resolved-main = smaller-virtual(max-main, larger-virtual(0vcoord, scroll-main))
 
@@ -995,7 +1000,7 @@ while slot < last-index
 if domain.estimated-count
     . estimated-count = larger-virtual(0vcoord, domain.estimated-count!)
     . estimated-slots = checked-virtual-sum(estimated-count, spare)
-    estimated-length = checked-virtual-product(estimated-slots, item-length)
+    estimated-length = checked-virtual-sum(checked-virtual-product(estimated-slots, item-length), tail)
 
 if is-vertical
     window.resolved-scroll-x = resolved-cross

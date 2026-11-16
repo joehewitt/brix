@@ -126,9 +126,10 @@ super.arrange-positioned-children()
 + reserved-height Length = 0
 + glide-motion Motion = spring(320ms)
 + sticky-inset Length = 0
++ top-inset Length = 0
 + virtual-extent-x VirtualExtent
 + virtual-extent-y VirtualExtent
-+ virtual-scroll => VirtualPoint(virtual-floor(scroll-x), virtual-floor(scroll-y))
++ virtual-scroll => VirtualPoint(virtual-floor(scroll-x), virtual-floor(scroll-y - top-inset))
 + virtual-anchor => VirtualPoint(anchor-x, anchor-y)
 + is-layout-boundary => true
 
@@ -166,7 +167,7 @@ _ glide-delta VirtualCoord
 _ glided-size Dimensions
 
 . bindings-changed < source, virtual-layout, overscan, overscan-rows, retention, anchors-end
-. bindings-changed < sticky-inset
+. bindings-changed < sticky-inset, top-inset
 
 • This
     overflow-x = ScrollOverflow.auto
@@ -464,7 +465,7 @@ _ do glide-target Length?
 =? if placed == null
 . top = virtual-length(placed.y)
 =? max(0, top - inset) if room == null
-. bottom = virtual-length(placed.y + placed.height)
+. bottom = virtual-length(placed.y + placed.height) + top-inset
 = max(0, min(top - inset, bottom + room - content-bounds.height))
 
 ────────────────────
@@ -482,7 +483,7 @@ reserve-through(target)
 _ address-top Length?
     - address I64
 
-virtual-length(placed.y) if placed
+virtual-length(placed.y) + top-inset if placed
 
 .. placed = address-rect(address)
 
@@ -504,7 +505,8 @@ _ do address-reveal-rect VirtualRect?
 =? if !natural
 . header-margin = virtual-layout!.sticky-margin(address, source!.domain, recycler.window)
 . margin = header-margin + virtual-ceil(sticky-inset)
-= VirtualRect(natural.x, natural.y - margin, natural.width, natural.height + margin)
+. covered = virtual-ceil(top-inset)
+= VirtualRect(natural.x, natural.y - margin, natural.width, natural.height + margin + covered)
 
 ────────────────────
 _ do reserve-through
@@ -525,7 +527,7 @@ if reach < reserved-height
 ────────────────────
 _ do settle-reserved-height
 
-. natural = virtual-inner-length(virtual-extent-y.known, content-bounds.height)
+. natural = virtual-inner-length(virtual-extent-y.known, content-bounds.height, top-inset)
 if reserved-height <= natural
     reserved-height = 0
 inner-height = max(natural, reserved-height)
@@ -558,7 +560,7 @@ natural-window.row-height = max(1, round($row-height)) as I64
 live-layout.fill-window(natural-window, live-source.domain)
 = Dimensions
     - virtual-length(natural-window.known-width)
-    - virtual-length(natural-window.known-height)
+    - virtual-length(natural-window.known-height) + top-inset
 
 ────────────────────
 _ do checkpoint-window
@@ -627,15 +629,15 @@ if source && live-layout
     . pass Size
     . is-settled = false
     defers-overscan = binds-viewport-first && has-overscan && !shows-placed-rows(top-y, bottom-y)
-        .. top-y = virtual-floor(target-y + view.y)
-        .. bottom-y = virtual-ceil(target-y + view.bottom)
+        .. top-y = virtual-floor(target-y - top-inset + view.y)
+        .. bottom-y = virtual-ceil(target-y - top-inset + view.bottom)
     while !is-settled
         . height = virtual-ceil(content.height)
         if pins-end
             start-y = virtual-precision-limit
         else
-            start-y = virtual-floor(target-y + view.y)
-            height = virtual-ceil(target-y + view.bottom) - start-y
+            start-y = virtual-floor(target-y - top-inset + view.y)
+            height = virtual-ceil(target-y - top-inset + view.bottom) - start-y
         . shown-y = gui-device-aligned(target-y, device-scale)
         . sticky-line = virtual-floor(shown-y + sticky-offset) if sticky-offset != null
         recycler.window.sticky-line = sticky-line
@@ -647,7 +649,7 @@ if source && live-layout
         //-gui.virtual.bind
         if pins-end
             start-y = recycler.window.resolved-scroll-y
-            target-y = virtual-length(start-y)
+            target-y = virtual-length(start-y) + top-inset
         is-settled = true
         if live-layout.measures-rows && pass == virtual-measure-pass-limit
             rebinds-after-layout = true
@@ -688,9 +690,9 @@ if source && live-layout
     if virtual-distance(start-y, anchor-y) > virtual-anchor-span
         anchor-y = start-y
     if pins-end
-        target-y = gui-safe-span(virtual-length(extent-y.known) - content.height)
+        target-y = gui-safe-span(virtual-length(extent-y.known) + top-inset - content.height)
 arrange-virtual-roots(content)
-inner-width = virtual-inner-length(virtual-extent-x.known, content.width)
+inner-width = virtual-inner-length(virtual-extent-x.known, content.width, 0)
 if pinned != null
     reserved-height = target-y + content.height
 settle-reserved-height()
@@ -889,11 +891,11 @@ if recycler.has-pending-revision
     if last.width == bounds.width && last.height > 0
         glide-size-from(last, motion)
     . limit = virtual-ceil(content.height) * virtual-glide-screens
-    . natural = natural-extent()
-    if natural.height <= 0
+    . natural = natural-extent().height - top-inset
+    if natural <= 0
         glide-reach = limit
     else
-        glide-delta = virtual-ceil(natural.height) - virtual-extent-y.known
+        glide-delta = virtual-ceil(natural) - virtual-extent-y.known
         glide-reach = min(virtual-distance(glide-delta, 0vcoord), limit)
 else if glide-reach > 0vcoord && !rows-moving()
     glide-reach = 0vcoord
@@ -939,7 +941,7 @@ _ placement-rect
 Rect(x, y, width, height)
 
 .. x = content.x + virtual-length(placement.x - anchor-x)
-.. y = content.y + virtual-length(placement.y - anchor-y)
+.. y = content.y + top-inset + virtual-length(placement.y - anchor-y)
 .. width = virtual-length(placement.width)
 .. height = virtual-length(placement.height)
 
@@ -966,9 +968,10 @@ _ view-window VirtualRect
 VirtualRect(start-x, start-y, width, height)
 
 .. start-x = virtual-floor(scroll-x + view.x)
-.. start-y = virtual-floor(scroll-y + view.y)
+.. start-y = virtual-floor(top + view.y)
 .. width = virtual-ceil(scroll-x + view.right) - start-x
-.. height = virtual-ceil(scroll-y + view.bottom) - start-y
+.. height = virtual-ceil(top + view.bottom) - start-y
+.. top = scroll-y - top-inset
 
 ────────────────────
 _ do watch-clip-host
@@ -1018,7 +1021,7 @@ while cursor
     if !ancestor.is-markup-shadow
         shift += ancestor.content-offset.y
         if ancestor.is-scroll-axis-enabled(Orientation.vertical)
-            = ancestor.content-bounds.y + sticky-inset - content.y + shift
+            = ancestor.content-bounds.y + sticky-inset - content.y - top-inset + shift
     =? sticky-inset if ancestor.is-presentation-layer
     cursor = ancestor.material-parent
 = sticky-inset
@@ -1100,6 +1103,25 @@ native-rows
 Point(shown.x - virtual-length(anchor-x), shown.y - virtual-length(anchor-y))
 
 .. shown = device-aligned(scroll-position)
+
+────────────────────
++ do scroll-bounds-visible
+    - rect Rect
+    - alignment ScrollAlignment = ScrollAlignment.nearest
+    - margin Insets = Insets(0, 0, 0, 0)
+    - cause ScrollCause = ScrollCause.ensure-visible
+
+. clear = Insets(margin.top + top-inset, margin.right, margin.bottom, margin.left)
+= super.scroll-bounds-visible(rect, alignment, clear, cause)
+
+────────────────────
++ scroll-indicator-track-bounds
+    - axis Orientation
+
+if axis == Orientation.horizontal then track else Rect(track.x, track.y + covered, track.width, track.height - covered)
+
+.. track = super.scroll-indicator-track-bounds(axis)
+.. covered = min(top-inset, track.height)
 
 ────────────────────
 + do measured-content-size
@@ -1256,11 +1278,14 @@ _ virtual-natural-fit Int
 _ virtual-inner-length
     - extent VirtualCoord
     - viewport Length
+    - inset Length
 
 ?! Panic("Virtual extent exceeds GUI coordinate precision")
     if extent > virtual-precision-limit
 
-if extent <= virtual-ceil(viewport) then viewport else virtual-length(extent)
+if reach <= ceil(viewport) then viewport else reach
+
+.. reach = virtual-length(extent) + inset
 
 ━━━━━━━━━━━━━━━━━━━━
 _ virtual-reveal

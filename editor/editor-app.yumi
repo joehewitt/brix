@@ -1,0 +1,85 @@
+./editor-window
+./workspace
+/gui
+/lang/product/mac-app
+/os/cli
+/os/path
+/os/shell
+/ui/app-state
+/unistd.h
+
+if C:isatty(1) != 1
+    adopt-login-shell-environment()
+
+<MacApp product
+    id = "com.brix-lang.editor"
+    name = "Brix Editor"
+    <DocumentType
+        name = "Brix Source"
+        extensions = ["bx"]
+        rank = "owner"
+    <DocumentType
+        name = "Yumi Source"
+        extensions = ["yumi"]
+        rank = "alternate"
+    <DocumentType
+        name = "Text"
+        content-types = ["public.text"]
+        rank = "alternate"
+    <DocumentType
+        name = "Folder"
+        content-types = ["public.folder"]
+        rank = "alternate"
+
+. state = AppState("Brix Editor")
+<App app
+    state = state
+
+. shell = use EditorShell(app, state)
+shell.start(List'Path(Path(each, 0) in cmdline().args))
+for paths on app.open-requested
+    shell.open-paths(paths)
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorShell
+    is Closable
+
++ app App
++ state AppState
++ workspace Workspace
++ window EditorWindow
+
+────────────────────
++ This
+    - app
+    - state
+
+workspace = Workspace(state)
+window = EditorWindow(workspace)
+app += window
+for event on window.closed
+    if !app.is-quitting
+        app.stop()
+
+────────────────────
++ do start
+    - paths [Path]
+
+if paths.length > 0
+    window.open-paths(paths)
+else
+    workspace.restore()
+
+────────────────────
++ do open-paths
+    - paths [Path]
+
+window.open-paths(paths)
+window.bring-to-front()
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+workspace.close()

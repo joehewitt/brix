@@ -1,14 +1,29 @@
+./brix
 ./convert
+/code/structure/document
+/code/structure/rows
+/math
 
 ━━━━━━━━━━━━━━━━━━━━
 _ InlinePlace is (name String, before String, after String)
 
 ━━━━━━━━━━━━━━━━━━━━
+_ InlineCut is (row Index, start Size, end Size)
+
+━━━━━━━━━━━━━━━━━━━━
 + do brix-inline-view String?
     - form String
 
+. lines = brix-inline-rows(form)
+=? null if lines == null
+= "\n".join(inline-line-text(each) in lines)
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-inline-rows [[SourceSpan]]?
+    - form String
+
 for place in inline-places(inline-head(form))
-    =? inline-view(form, place)
+    =? inline-rows(form, place)
 = null
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -63,30 +78,43 @@ for c in form
 = head
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do inline-view String?
+_ do inline-rows [[SourceSpan]]?
     - form String
     - place InlinePlace
 
 . source = place.before ++ form ++ place.after
-. view = catch brix-yumi-text(source)
-=? null if view is Error
-. rows = view as String
-. back = catch brix-convert(rows)
+. read = catch brix-document-read(source)
+=? null if read is Error
+. document = read as SourceDocument
+do finally document.release()
+. rows = document.view-rows()
+. lines = List'String(each.text in rows)
+. text = "\n".join(lines)
+. back = catch brix-convert(text)
 =? null if back is Error
 =? null if squeezed(unblanked(back as String)) != squeezed(source)
-. placed = placed-rows(rows, place.name)
-=? null if place.name == "statement" && placed.ends-with("...")
+. starts [Size]
+. at Size = 0
+for line in lines
+    starts += at
+    at += line.length + 1
+. placed [[SourceSpan]]
+for cut in placed-cuts(lines, place.name)
+    placed += cut-spans(rows[cut.row], cut, text, starts[cut.row])
+if place.name == "statement" && placed.length > 0
+    =? null if inline-line-text(placed[placed.length - 1]).ends-with("...")
 = placed
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do placed-rows String
-    - rows String
+_ do placed-cuts [InlineCut]
+    - lines [String]
     - place String
 
-. kept = List'String()
+. kept [InlineCut]
 . line-no = 0
 . in-body = place != "member" && place != "param"
-for line in rows.split("\n")
+for row in 0 .. < lines.length
+    . line = lines[row]
     line-no += 1
     if line.starts-with("━") || line.starts-with("─")
         continue
@@ -99,44 +127,68 @@ for line in rows.split("\n")
         break
     do match place
         |= "arm"
-            kept +=? indented(line, 4) if line-no > 1
+            kept +=? indented(row, line, 4) if line-no > 1
         |= "transition"
-            kept +=? indented(line, 4) if line-no > 1
+            kept +=? indented(row, line, 4) if line-no > 1
         |= "pattern"
-            kept +=? indented(line, 6) if line-no == 2
+            kept +=? indented(row, line, 6) if line-no == 2
         |= "stream"
-            kept +=? indented(line, 6) if line-no == 2
+            kept +=? indented(row, line, 6) if line-no == 2
         |= "type"
-            kept +=? unassigned(indented(line, 4)) if line-no == 1
+            kept +=? unassigned(indented(row, line, 4), line) if line-no == 1
         |= "param"
-            kept += indented(line, 4)
+            kept += indented(row, line, 4)
         |= "clause"
-            kept +=? indented(line, 12) if line-no == 1
+            kept +=? indented(row, line, 12) if line-no == 1
         ??
-            kept += line
-while kept.length != 0 && !kept[0]
+            kept += indented(row, line, 0)
+while kept.length != 0 && kept[0].start >= kept[0].end
     -= kept[0]
-while kept.length != 0 && !kept[kept.length - 1]
+while kept.length != 0 && kept[kept.length - 1].start >= kept[kept.length - 1].end
     -= kept[kept.length - 1]
-= "\n".join(kept)
+= kept
 
 ━━━━━━━━━━━━━━━━━━━━
-_ unassigned String
-    - line String
+_ do cut-spans [SourceSpan]
+    - row SourceRow
+    - cut InlineCut
+    - text String
+    - start Size
 
-if line.ends-with(" = v") then line[0 .. < line.length - 4] else line
+. spans [SourceSpan]
+. indent = row.content-start
+if cut.start < indent
+    spans += SourceSpan(SourceSpanKind.plain, text[start + cut.start .. < start + min(indent, cut.end)])
+. at = indent
+for span in row.spans
+    . size = span.text.length
+    . low = max(at, cut.start)
+    . high = min(at + size, cut.end)
+    if high > low
+        spans += SourceSpan(span.kind, text[start + low .. < start + high])
+    at += size
+= spans
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do indented String
-    - line String
-    - depth Int
+_ inline-line-text String
+    - spans [SourceSpan]
 
-. out = ""
-. column = 0
-for c in line
-    out ++=? c if column >= depth
-    column += 1
-= out
+"".join(each.text in spans)
+
+━━━━━━━━━━━━━━━━━━━━
+_ unassigned InlineCut
+    - cut InlineCut
+    - line String
+
+if line[cut.start .. < cut.end].ends-with(" = v") then InlineCut(cut.row, cut.start, cut.end - 4) else cut
+
+━━━━━━━━━━━━━━━━━━━━
+_ indented InlineCut
+    - row Index
+    - line String
+    - depth Size
+
+InlineCut(row, min(depth, line.length), line.length)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ unblanked String

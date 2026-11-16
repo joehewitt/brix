@@ -308,6 +308,7 @@ ${"".join(children)}
 + MDInlineCode is Tuple
 
 + code String
++ language = ""
 
 ━━━━━━━━━━━━━━━━━━━━
 + MDFencedCode is Tuple
@@ -428,8 +429,12 @@ if column < alignments.length then alignments[column] else MDTableAlignment.none
         MDImage(url, contents)
 
 .. inline-code Markdown ~
-    ~ "`" code (!"`" !\nl .)* "`"
-        MDInlineCode(code)
+    ~ "`" code (!"`" !\nl .)* "`" language \code-class?
+        MDInlineCode(code, language ?? "")
+
+.. code-class String ~
+    ~ "{." name [a-zA-Z0-9_-]+ "}"
+        name
 
 .. escaped-text Markdown ~
     ~ "\\" text \escaped-char
@@ -549,7 +554,7 @@ match node
     | MDBlockQuote
         html-blockquote(render-blocks(it.content))
     | MDInlineCode
-        html-inline-code(html-escape(it.code))
+        render-inline-code(it)
     | MDFencedCode
         render-fenced-code(it)
     | MDList
@@ -596,6 +601,15 @@ _ render-link String
 html-link(html-escape(rendered.target), rendered.attributes, render-inlines(link.content))
 
 .. rendered = if link-renderer then link-renderer(link) else MarkdownHTMLLink(link.url, "")
+
+────────────────────
+_ render-inline-code
+    - code MDInlineCode
+
+|? code.language
+    html-language-inline-code(html-escape(code.language), html-escape(code.code))
+??
+    html-inline-code(html-escape(code.code))
 
 ────────────────────
 _ render-fenced-code
@@ -769,6 +783,13 @@ _ ¶ html-inline-code
     - content String
 
 <code>$content</code>
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ html-language-inline-code
+    - language String
+    - content String
+
+<code class="language-$language">$content</code>
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ¶ html-language-fenced-code

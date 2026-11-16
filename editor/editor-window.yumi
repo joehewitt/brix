@@ -1,0 +1,642 @@
+./editor-document
+./editor-theme
+./editor-toolbar
+./file-sidebar
+./output-panel
+./panes
+./runner
+./welcome
+./workspace
+/code/file-text
+/graphics/primitives
+/graphics/text
+/gui
+/gui/code-editor
+/gui/file-browsing
+/gui/icons/lucide/panel-left
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorClosing is Union
+
+| document(document EditorDocument)
+| folder(path Path)
+| window
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorWindow is Window
+    using EditorTheme
+
++ workspace Workspace
++ pending-close EditorClosing?
++ shows-forms = false
++ has-tabs = workspace.tabs(workspace.#revision).length > 0
++ chrome-height = gui-toolbar-height + (if #has-tabs then gui-toolbar-tab-bar-height else 0)
++ is-brix-active = workspace.#active?.is-brix ?? false
++ runner = Runner()
++ shows-output = false
++ is-running = runner-is-busy(runner.#state)
++ can-run = workspace.#active?.#can-run ?? false
+
+_ is-close-confirmed = false
+
+────────────────────
++ This
+    - workspace
+
+────────────────────
+
+<This • flex-row
+    title = workspace.#active?.title ?? workspace.#folder?.name ?? "Brix Editor"
+    titlebar-visible = false
+    stoplight-offset = gui-toolbar-stoplight-offset
+    allows-zoom = true
+    size = (1180, 780)
+    state-key = "editor"
+
+    <KeyShortcut new-file-shortcut "New File…"
+        key = KeyCombo("Cmd+N")
+        stable-key = "editor.file.new"
+        repeat = false
+        action = => do new-file()
+    <KeyShortcut open-shortcut "Open…"
+        key = KeyCombo("Cmd+O")
+        stable-key = "editor.file.open"
+        repeat = false
+        action = => do open-any()
+    <KeyShortcut go-to-file-shortcut "Go to File…"
+        key = KeyCombo("Cmd+P")
+        stable-key = "editor.file.go"
+        repeat = false
+        when = => workspace.folder != null
+        action = => do palettes.show-files()
+    <KeyShortcut close-tab-shortcut "Close Tab"
+        key = KeyCombo("Cmd+W")
+        stable-key = "editor.document.close"
+        repeat = false
+        when = => workspace.active != null
+        action = => do close-active()
+    <KeyShortcut close-window-shortcut "Close Window"
+        key = KeyCombo("Cmd+Shift+W")
+        stable-key = "editor.window.close"
+        repeat = false
+        action = => do close()
+    <KeyShortcut save-shortcut "Save"
+        key = KeyCombo("Cmd+S")
+        stable-key = "editor.file.save"
+        repeat = false
+        when = => workspace.active != null
+        action = => do save-active()
+    <KeyShortcut save-all-shortcut "Save All"
+        key = KeyCombo("Option+Cmd+S")
+        stable-key = "editor.file.save-all"
+        repeat = false
+        when = => workspace.unsaved-count(workspace.revision) > 0
+        action = => do workspace.save-all()
+    <KeyShortcut revert-shortcut "Revert to Saved"
+        stable-key = "editor.file.revert"
+        repeat = false
+        when = => workspace.active?.is-modified ?? false
+        action = => do revert-active()
+    <KeyShortcut find-shortcut "Find…"
+        key = KeyCombo("Cmd+F")
+        stable-key = "brix.find.find"
+        repeat = false
+        when = => workspace.active != null
+        action = => do find(FindAction.find)
+    <KeyShortcut replace-shortcut "Find and Replace…"
+        key = KeyCombo("Option+Cmd+F")
+        stable-key = "brix.find.replace"
+        repeat = false
+        when = => workspace.active != null
+        action = => do find(FindAction.replace)
+    <KeyShortcut find-next-shortcut "Find Next"
+        key = KeyCombo("Cmd+G")
+        stable-key = "brix.find.next"
+        when = => workspace.active != null
+        action = => do find(FindAction.next)
+    <KeyShortcut find-previous-shortcut "Find Previous"
+        key = KeyCombo("Cmd+Shift+G")
+        stable-key = "brix.find.previous"
+        when = => workspace.active != null
+        action = => do find(FindAction.previous)
+    <KeyShortcut find-selection-shortcut "Use Selection for Find"
+        key = KeyCombo("Cmd+E")
+        stable-key = "brix.find.selection"
+        repeat = false
+        when = => workspace.active != null
+        action = => do find(FindAction.selection)
+    <KeyShortcut find-files-shortcut "Find in Files…"
+        key = KeyCombo("Cmd+Shift+F")
+        stable-key = "brix.find.files"
+        repeat = false
+        when = => workspace.folder != null
+        action = => do palettes.show-text()
+    <KeyShortcut fold-shortcut "Fold"
+        key = KeyCombo("Option+Cmd+[")
+        stable-key = "brix.fold.fold"
+        when = => workspace.active != null
+        action = => do fold(FoldAction.fold)
+    <KeyShortcut unfold-shortcut "Unfold"
+        key = KeyCombo("Option+Cmd+]")
+        stable-key = "brix.fold.unfold"
+        when = => workspace.active != null
+        action = => do fold(FoldAction.unfold)
+    <KeyShortcut fold-all-shortcut "Fold All"
+        key = KeyCombo("Option+Cmd+{")
+        stable-key = "brix.fold.all"
+        repeat = false
+        when = => workspace.active != null
+        action = => do fold(FoldAction.fold-all)
+    <KeyShortcut unfold-all-shortcut "Unfold All"
+        key = KeyCombo("Option+Cmd+}")
+        stable-key = "brix.fold.unfold-all"
+        repeat = false
+        when = => workspace.active != null
+        action = => do fold(FoldAction.unfold-all)
+    <KeyShortcut forms-shortcut "Show Forms"
+        key = KeyCombo("Cmd+L")
+        stable-key = "brix.view.source"
+        repeat = false
+        is-on = #shows-forms
+        when = => workspace.active?.is-brix ?? false
+        action = => do shows-forms = !shows-forms
+    <KeyShortcut sidebar-shortcut "Show Sidebar"
+        key = KeyCombo("Cmd+\\")
+        stable-key = "editor.view.sidebar"
+        repeat = false
+        is-on = !files.#is-collapsed
+        action = => do files.toggle()
+    <KeyShortcut previous-tab-shortcut "Previous Tab"
+        key = KeyCombo("Cmd+{")
+        stable-key = "editor.document.previous"
+        action = => do workspace.step(-1)
+    <KeyShortcut next-tab-shortcut "Next Tab"
+        key = KeyCombo("Cmd+}")
+        stable-key = "editor.document.next"
+        action = => do workspace.step(1)
+    <KeyShortcut run-shortcut "Run"
+        key = KeyCombo("Cmd+R")
+        stable-key = "editor.run.run"
+        repeat = false
+        when = => (workspace.active?.can-run ?? false) && !runner.is-busy
+        action = => do run()
+    <KeyShortcut stop-shortcut "Stop"
+        key = KeyCombo("Cmd+.")
+        stable-key = "editor.run.stop"
+        repeat = false
+        when = => runner.is-busy
+        action = => do runner.stop()
+    <KeyShortcut output-shortcut "Show Output"
+        key = KeyCombo("Cmd+Shift+Y")
+        stable-key = "editor.view.output"
+        repeat = false
+        is-on = #shows-output
+        action = => do shows-output = !shows-output
+    <MenuBar
+        <MenuBarItem "File"
+            <Menu
+                <MenuItem
+                    command = new-file-shortcut
+                <MenuItem
+                    command = open-shortcut
+                <MenuItem "Open Recent"
+                    <Menu
+                        for path in workspace.recent-folders(workspace.#revision) keyed by "$path"
+                            <MenuItem
+                                title = path.name
+                                action = => do request-folder(path)
+                <MenuSeparator
+                <MenuItem
+                    command = go-to-file-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = close-tab-shortcut
+                <MenuItem
+                    command = close-window-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = save-shortcut
+                <MenuItem
+                    command = save-all-shortcut
+                <MenuItem
+                    command = revert-shortcut
+        <MenuBarItem "Edit"
+            <Menu
+                <MenuItem
+                    role = MenuRole.undo
+                <MenuItem
+                    role = MenuRole.redo
+                <MenuSeparator
+                <MenuItem
+                    role = MenuRole.cut
+                <MenuItem
+                    role = MenuRole.copy
+                <MenuItem
+                    role = MenuRole.paste
+                <MenuItem
+                    role = MenuRole.select-all
+                <MenuSeparator
+                <MenuItem
+                    command = find-shortcut
+                <MenuItem
+                    command = replace-shortcut
+                <MenuItem
+                    command = find-next-shortcut
+                <MenuItem
+                    command = find-previous-shortcut
+                <MenuItem
+                    command = find-selection-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = find-files-shortcut
+        <MenuBarItem "View"
+            <Menu
+                <MenuItem
+                    command = sidebar-shortcut
+                <MenuItem
+                    command = output-shortcut
+                <MenuItem
+                    command = forms-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = previous-tab-shortcut
+                <MenuItem
+                    command = next-tab-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = fold-shortcut
+                <MenuItem
+                    command = unfold-shortcut
+                <MenuItem
+                    command = fold-all-shortcut
+                <MenuItem
+                    command = unfold-all-shortcut
+                <MenuSeparator
+                <MenuItem
+                    role = MenuRole.zoom-in
+                <MenuItem
+                    role = MenuRole.zoom-out
+                <MenuItem
+                    role = MenuRole.actual-size
+        <MenuBarItem "Run"
+            <Menu
+                <MenuItem
+                    command = run-shortcut
+                <MenuItem
+                    command = stop-shortcut
+        <MenuBarItem "Window"
+            <Menu
+                <MenuItem
+                    role = MenuRole.minimize
+                <MenuItem
+                    role = MenuRole.zoom
+                <MenuSeparator
+                <MenuItem
+                    role = MenuRole.bring-all-to-front
+
+    <FileSidebar files • glass w:260
+        workspace = workspace
+    <Box • document-column
+        <Box • flex-col flex:1
+            for document in workspace.active-list(workspace.#revision) keyed by document.id
+                <DocumentPane • flex:1
+                    document = document
+                    find-options = workspace.find-options
+                    shows-forms = #shows-forms
+                    chrome-height = #chrome-height
+            if workspace.#active == null
+                <WelcomeView welcome • flex:1
+                    padding-top = #chrome-height
+                    workspace = workspace
+            if #shows-output
+                <OutputPanel • h:240
+                    workspace = workspace
+                    runner = runner
+                    for event on closed
+                        shows-output = false
+        <EditorToolbar toolbar • absolute
+            left = PositionOffset.coord(0)
+            right = PositionOffset.coord(0)
+            top = PositionOffset.coord(0)
+            workspace = workspace
+            is-title-bar = files.#is-collapsed
+            can-run = #can-run
+            is-running = #is-running
+            shows-output = #shows-output
+    <ToolbarGroup • absolute
+        left = PositionOffset.coord(if #is-full-screen then gui-toolbar-pad else #stoplight-inset)
+        top = PositionOffset.coord((gui-toolbar-height - gui-toolbar-group-height) / 2)
+        <ToolbarButton • icon-panel-left
+            action = => do files.toggle()
+            <Tooltip
+                text = if files.#is-collapsed then "Show Sidebar" else "Hide Sidebar"
+    <EditorPalettes palettes
+        workspace = workspace
+    <Dialog close-dialog
+        title = editor-closing-title(#pending-close)
+        <Label (body) • w:340
+            text = "Your changes will be lost if you don’t save them."
+            text-wrap = TextWrap.word
+        <Box (actions) • flex-row
+            <Button "Don’t Save" • w:100
+                action = => do settle-close(false)
+            <Box • flex:1
+            <Button "Cancel" • w:90
+                action = => do close-dialog.dismiss()
+            <Button "Save" • w:90 ml:8
+                role = ButtonRole.default
+                action = => do settle-close(true)
+    <Toaster toaster
+
+────────────────────
+whenever workspace.file-session.#current
+
+. node = workspace.file-session.current
+=? if !node || node.is-directory
+workspace.open-path(node.path)
+
+────────────────────
+for node on workspace.file-session.opened
+
+if !node.is-directory
+    workspace.open-path(node.path)
+
+────────────────────
+for message on workspace.file-session.failed
+
+. ignored = toaster.post(message, ToastSeverity.error)
+
+────────────────────
+for message on workspace.failed
+
+. ignored = toaster.post(message, ToastSeverity.error)
+
+────────────────────
+for event on toolbar.run-requested
+
+run()
+
+────────────────────
+for event on toolbar.stop-requested
+
+runner.stop()
+
+────────────────────
+for event on toolbar.output-toggled
+
+shows-output = !shows-output
+
+────────────────────
+for event on closed
+
+runner.close()
+
+────────────────────
+for document on toolbar.closing
+
+confirm-close(document)
+
+────────────────────
+for requested on welcome.open-requested
+
+open-any()
+
+────────────────────
+for requested on welcome.new-requested
+
+new-file()
+
+────────────────────
+for path on welcome.folder-requested
+
+request-folder(path)
+
+────────────────────
+for event on closing
+
+if !is-close-confirmed && workspace.unsaved-count(workspace.revision) > 0
+    event.cancel()
+    ask(EditorClosing.window)
+
+────────────────────
+for reason on close-dialog.dismissed when arrival
+
+pending-close = null
+
+────────────────────
++ do run
+
+. document = workspace.active
+=? if !document || !document.can-run || runner.is-busy
+workspace.save-all()
+shows-output = true
+runner.start(document.path, workspace.folder ?? document.path.parent ?? Path("/", 0))
+
+────────────────────
++ do request-folder
+    - path Path
+
+if workspace.unsaved-count(workspace.revision) > 0
+    ask(EditorClosing.folder(path))
+else
+    workspace.open-folder(path)
+
+────────────────────
++ do open-paths
+    - paths [Path]
+
+for path in paths
+    if path.is-dir
+        request-folder(path)
+    else
+        if workspace.folder == null
+            . parent = path.parent
+            if parent
+                workspace.open-folder(parent)
+        workspace.open-path(path)
+
+────────────────────
+_ do new-file
+
+. chosen = choose-save-path(this)
+    • name "untitled.bx"
+    • directory workspace.browse-folder()
+    • message "Name the new file"
+    • prompt "Create"
+=? if !chosen
+if workspace.folder == null
+    . parent = chosen.parent
+    if parent
+        workspace.open-folder(parent)
+workspace.create-file(chosen)
+
+────────────────────
+_ do open-any
+
+. chosen = choose-open-paths(this)
+    • directory workspace.browse-folder()
+    • allows-multiple true
+    • chooses-files true
+    • chooses-directories true
+    • message "Choose a folder or files to open"
+    • prompt "Open"
+open-paths(chosen)
+
+────────────────────
+_ do close-active
+
+. document = workspace.active
+if document
+    confirm-close(document)
+
+────────────────────
+_ do confirm-close
+    - document EditorDocument
+
+if document.is-modified
+    ask(EditorClosing.document(document))
+else
+    workspace.close(document)
+
+────────────────────
+_ do save-active
+
+. document = workspace.active
+if document
+    workspace.save(document)
+
+────────────────────
+_ do revert-active
+
+. document = workspace.active
+if document
+    workspace.revert(document)
+
+────────────────────
+_ do find
+    - action FindAction
+
+. document = workspace.active
+if document
+    document.find-requested <- action
+
+────────────────────
+_ do fold
+    - action FoldAction
+
+. document = workspace.active
+if document
+    document.fold-requested <- action
+
+────────────────────
+_ do ask
+    - target EditorClosing
+
+pending-close = target
+close-dialog.show()
+
+────────────────────
+_ do settle-close
+    - saves Bool
+
+. target = pending-close
+pending-close = null
+close-dialog.dismiss()
+=? if !target
+do match target
+    | .document(document)
+        if saves
+            workspace.save(document)
+        if !saves || !document.is-modified
+            workspace.close(document)
+    | .folder(path)
+        if saves
+            workspace.save-all()
+        workspace.open-folder(path)
+    | .window
+        if saves
+            workspace.save-all()
+        is-close-confirmed = true
+        close()
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorPalettes is Box
+
++ workspace Workspace
+
+_ file-palettes Descendants'FilePalette
+_ text-palettes Descendants'FileTextPalette
+
+────────────────────
+
+<This • absolute w:0 h:0
+    for folder in workspace.folder-list(workspace.#revision) keyed by "$folder"
+        <Box • absolute w:0 h:0
+            <FilePalette
+                files = workspace.files!
+                is-confined = true
+                for item on chosen
+                    take-file(item)
+                for spot on line-chosen
+                    take-line(spot)
+            <FileTextPalette
+                folder = folder
+                for match on chosen
+                    take-match(folder, match)
+
+────────────────────
++ do show-files
+
+for palette in file-palettes
+    palette.show()
+
+────────────────────
++ do show-text
+
+for palette in text-palettes
+    palette.show-seeded("")
+
+────────────────────
+_ do take-file
+    - item FilePaletteItem
+
+if item.is-directory
+    . node = workspace.files?.find(item.path)
+    if node
+        workspace.file-session.revealed <- node
+    =
+. line = item.line
+if line != null
+    workspace.open-path(item.path, EditorJump(line, item.column))
+else
+    workspace.open-path(item.path)
+
+────────────────────
+_ do take-line
+    - spot FilePaletteSpot
+
+. line = spot.line
+if line != null
+    workspace.active?.jump-to(line, spot.column)
+
+────────────────────
+_ do take-match
+    - folder Path
+    - match FileTextMatch
+
+workspace.open-path(Path("$folder/${match.path}", 0), EditorJump(match.line, match.column))
+
+━━━━━━━━━━━━━━━━━━━━
+_ editor-closing-title String
+    - closing EditorClosing?
+
+match closing
+    | .document(document)
+        "Save changes to ${document.title}?"
+    | .folder(path)
+        "Save changes before opening ${path.name}?"
+    | .window
+        "Save changes before closing?"
+    ??
+        ""

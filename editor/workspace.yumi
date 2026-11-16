@@ -1,0 +1,319 @@
+./editor-document
+/data/json
+/gui/code-editor
+/math
+/os/file
+/os/file-session
+/os/file-tree
+/os/path
+/ui/app-state
+/ui/recents
+
+_ workspace-key = "workspace"
+_ workspace-version = 1
+_ recents-key = "recents"
+_ recents-version = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Workspace
+    is Closable
+
++ state AppState
++ find-options = FindOptions()
++ recents = Recents()
++ folder Path?
++ files FileTree?
++ file-session = FileSession()
++ documents [EditorDocument]
++ active EditorDocument?
++ revision U64
++ event failed String
+
+_ next-id U64 = 1
+_ is-restoring = false
+_ last-path Path?
+
+────────────────────
++ This
+    - state
+
+find-options.restore(state)
+restore-recents()
+
+────────────────────
++ get folder-name String
+
+folder?.name ?? ""
+
+────────────────────
++ get title String
+
+active?.title ?? folder?.name ?? "Brix Editor"
+
+────────────────────
++ tabs [EditorDocument]
+    - revision U64
+
+List'EditorDocument(documents)
+
+.. ignored = revision
+
+────────────────────
++ folder-list [Path]
+    - revision U64
+
+if folder then List'Path(folder) else List'Path()
+
+.. ignored = revision
+
+────────────────────
++ active-list [EditorDocument]
+    - revision U64
+
+if active then List'EditorDocument(active) else List'EditorDocument()
+
+.. ignored = revision
+
+────────────────────
++ recent-folders [Path]
+    - revision U64
+
+List'Path(Path(each, 0) in recents.keys)
+
+.. ignored = revision
+
+────────────────────
++ unsaved-count Size
+    - revision U64
+
+List'EditorDocument(each in documents when each.is-modified).length
+
+.. ignored = revision
+
+────────────────────
++ do document-at EditorDocument?
+    - path Path
+
+for document in documents
+    =? document if "${document.path}" == "$path"
+= null
+
+────────────────────
++ do browse-folder Path?
+
+. parent = last-path?.parent
+=? parent if parent && parent.exists
+= folder
+
+────────────────────
++ do open-folder
+    - path Path
+
+. resolved = catch? path.resolved ?? path
+close-documents()
+files?.close()
+files = FileTree(resolved)
+file-session.current = null
+file-session.expanded = List'String()
+folder = resolved
+last-path = null
+recents.remember("$resolved")
+save-recents()
+revision += 1
+persist()
+
+────────────────────
++ do open-path
+    - path Path
+    - jump EditorJump? = null
+
+. existing = document-at(path)
+if existing
+    if jump
+        existing.jump = jump
+    activate(existing)
+    =
+. opened = catch open-editor-document(next-id, path)
+if opened is Error
+    failed <- (opened as Error).message
+    =
+next-id += 1
+. document = opened as EditorDocument
+if jump
+    document.jump = jump
+documents += document
+active = document
+follow-active(true)
+revision += 1
+persist()
+
+────────────────────
++ do create-file
+    - path Path
+
+if !path.exists
+    write-file-atomically(path, "")
+        catch error Error
+            failed <- "Unable to create ${path.name}: ${error.message}"
+            =
+open-path(path)
+
+────────────────────
++ do activate
+    - document EditorDocument
+
+=? if active?.id == document.id
+active = document
+follow-active(false)
+revision += 1
+persist()
+
+────────────────────
++ do step
+    - offset Int
+
+=? if documents.length == 0
+. current = index-of(active)
+. next = (current + offset + documents.length) % documents.length
+activate(documents[next])
+
+────────────────────
++ do close
+    - document EditorDocument
+
+. index = index-of(document)
+documents = List'EditorDocument(each in documents when each.id != document.id)
+if active?.id == document.id
+    active = if documents.length > 0 then documents[min(index, documents.length - 1)] else null
+    follow-active(false)
+document.close()
+revision += 1
+persist()
+
+────────────────────
++ do save
+    - document EditorDocument
+
+document.save()
+    catch error Error
+        failed <- error.message
+revision += 1
+
+────────────────────
++ do save-all
+
+for document in documents
+    if document.is-modified
+        save(document)
+
+────────────────────
++ do revert
+    - document EditorDocument
+
+document.revert()
+revision += 1
+
+────────────────────
++ do restore
+
+. saved = state.read(workspace-key, workspace-version)
+=? if !saved
+. fields = catch? JSONReader(workspace-key, saved).object()
+=? if !fields
+is-restoring = true
+. folder-text = catch? fields["folder"].string()
+if folder-text
+    . path = Path(folder-text, 0)
+    if path.exists
+        open-folder(path)
+. items = catch? fields["open"].items()
+if items
+    for item in items
+        . text = catch? item.string()
+        if text && Path(text, 0).exists
+            open-path(Path(text, 0))
+. chosen = catch? fields["active"].string()
+if chosen
+    . found = document-at(Path(chosen, 0))
+    if found
+        active = found
+follow-active(false)
+if !active
+    . last-text = catch? fields["last"].string()
+    if last-text
+        last-path = Path(last-text, 0)
+is-restoring = false
+revision += 1
+
+────────────────────
++ do persist
+
+=? if is-restoring
+. open = List'JSON(("${each.path}" as JSON) in documents)
+. folder-text String? = if folder then "${folder}" else null
+. active-text String? = if active then "${active.path}" else null
+. last-text String? = if last-path then "${last-path}" else null
+. fields = Map'String'JSON
+    •? "folder" folder-text
+    • "open" open as JSON
+    •? "active" active-text
+    •? "last" last-text
+state.write(workspace-key, workspace-version, fields)
+
+╌╌╌╌╌╌╌╌╌╌ is Closable ╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
++ do close
+
+close-documents()
+files?.close()
+files = null
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do close-documents
+
+for document in documents
+    document.close()
+documents = List'EditorDocument()
+active = null
+
+────────────────────
+_ do follow-active
+    - reveals Bool
+
+if active
+    last-path = active.path
+. node = if active then files?.find(active.path) else null
+file-session.current = node
+if node && reveals
+    file-session.revealed <- node
+
+────────────────────
+_ do index-of Index
+    - document EditorDocument?
+
+=? 0 if !document
+for index in 0 .. < documents.length
+    =? index if documents[index].id == document.id
+= 0
+
+────────────────────
+_ do restore-recents
+
+. saved = state.read(recents-key, recents-version)
+=? if !saved
+. items = catch? JSONReader(recents-key, saved).items()
+=? if !items
+. keys [String]
+for item in items
+    . text = catch? item.string()
+    if text
+        keys += text
+recents.keys = keys
+
+────────────────────
+_ do save-recents
+
+state.write(recents-key, recents-version, List'JSON((each as JSON) in recents.keys) as JSON)

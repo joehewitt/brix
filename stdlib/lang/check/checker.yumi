@@ -24854,6 +24854,13 @@ _ is-placed Bool
 (bindings.slots[slot].flags /and/ SlotFlag.slot-placed) != 0
 
 ────────────────────
+_ reads-before-made Bool
+    - read SyntaxId
+    - slot SlotId
+
+reads-before-placing(read, slot) || (!(outer && frame.is-captured(slot)) && frame.slot-type(slot) == no-type)
+
+────────────────────
 _ reads-before-placing Bool
     - read SyntaxId
     - slot SlotId
@@ -31944,7 +31951,7 @@ do match resolution.kind
         if bindings.slots[resolution.slot].kind == .slot-super && !want.asks(.want-receiver)
             frame.diagnose(id, .stated, program.store-atom("Bare super is not a value"))
             = Found(invalid-type)
-        if is-placed(resolution.slot) && reads-before-placing(id, resolution.slot)
+        if is-placed(resolution.slot) && reads-before-made(id, resolution.slot)
             . message = "Named markup element \"${name.text}\" is read before its markup constructs it"
             frame.diagnose(id, .stated, program.store-atom(message))
             = Found(invalid-type)
@@ -35125,7 +35132,8 @@ _ do event-receiver TypeId
 ` (`Emitter.event-owner`).
 do match? tree.nodes[reference]
     | .node-get-expression(get)
-        = facts.node-type(instance, get.object)
+        . object = facts.node-type(instance, get.object)
+        = link-receiver(get.object, object, no-type, chains-at(reference, get.is-optional))
     | .node-identifier(row)
         if (reference-flags /and/ ResolutionFlag.resolution-received) != 0
             = received-parent(reference, row.name)
@@ -36812,7 +36820,10 @@ do match? tree.nodes[callable]
             . writes = get.name.text == "<-write" && arguments.types.length == 1
             . rekeys = get.name.text == "rekey" && arguments.types.length == 1
             if writes
-                = Found(publish-event(id, get.object, event, arguments))
+                . published = publish-event(id, get.object, event, arguments)
+                if published != invalid-type && optional-chained(get.object)
+                    = Found(types.optional-of(published))
+                = Found(published)
             = Found(readdress-event(id, get.object, event, arguments, rekeys))
         . own = typed.link
         if receiver == invalid-type

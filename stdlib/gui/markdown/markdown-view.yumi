@@ -361,7 +361,7 @@ for block in found
     else if #block.kind == MarkdownBlockKind.grid
         <Box • markdown-grid flex:1
             layout = GridLayout(#block.columns, markdown-grid-min-track)
-            for cell in #block.cells keyed by cell.index
+            for cell in #block.#cells keyed by cell.index
                 <MarkdownGridCellView • markdown-grid-cell px:12 py:7
                     cell = cell
     else
@@ -369,12 +369,12 @@ for block in found
             <Label • markdown-marker
                 text = #block.marker
         <Text • markdown-prose flex:1
-            if markdown-runs-link(#block.runs)
-                for run in #block.runs keyed by run.index
+            if markdown-runs-link(#block.#runs)
+                for run in #block.#runs keyed by run.index
                     <MarkdownLinkSpan • markdown-run markdown-link
                         run = run
             else
-                for run in #block.runs keyed by run.index
+                for run in #block.#runs keyed by run.index
                     <MarkdownRunSpan • markdown-run
                         run = run
 
@@ -444,7 +444,11 @@ for block in found
 ────────────────────
 
 <This
-    text = #run.text
+    text = if #run.rendering != null then "" else #run.text
+    if #run.rendering != null
+        for piece in #run.rendering!
+            <MarkdownCodeSpan
+                run = piece
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownLinkSpan is Span
@@ -474,7 +478,11 @@ _ hover-scope MarkdownReferenceScope?
 ────────────────────
 
 <This
-    text = #run.text
+    text = if #run.rendering != null then "" else #run.text
+    if #run.rendering != null
+        for piece in #run.rendering!
+            <MarkdownCodeSpan
+                run = piece
     if #detail != null
         <MarkdownLinkTooltip
             detail = #detail!

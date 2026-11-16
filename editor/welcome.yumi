@@ -1,0 +1,63 @@
+./editor-theme
+./workspace
+/graphics/color
+/graphics/primitives
+/graphics/text
+/gui
+/os/path
+
+━━━━━━━━━━━━━━━━━━━━
+• extend EditorTheme
+
+• welcome-title • text:gui-strong-text-color mb:6
+    font-size = 22
+    font-weight = FontWeight.semibold
+
+• welcome-note • text:gui-muted-text-color mb:20
+
+• welcome-button • w:200 mb:8
+
+• welcome-recent • bg:transparent text:gui-text-color w:280 h:26 px:10
+    shadow = null
+    corner-radius = gui-control-radius
+
+    when #is-hover-within
+        • bg:gui-hover-color
+
+━━━━━━━━━━━━━━━━━━━━
++ WelcomeView is Box
+    using EditorTheme
+
++ workspace Workspace
++ event open-requested Bool
++ event folder-requested Path
++ event new-requested Bool
+
+────────────────────
+
+<This • flex-col items-center
+    justify = Justify.center
+    if workspace.#folder != null
+        <Label • welcome-note
+            text = "Open a file from the sidebar, or press ⌘P to go to one."
+        <Button "New File…" • welcome-button
+            action = => do new-requested <- true
+    else
+        <Label • welcome-title
+            text = "Brix Editor"
+        <Label • welcome-note
+            text = "Open a folder to read, write and run its programs."
+        <Button "Open…" • welcome-button
+            role = ButtonRole.default
+            action = => do open-requested <- true
+        <Button "New File…" • welcome-button
+            action = => do new-requested <- true
+        if workspace.recent-folders(workspace.#revision).length > 0
+            <Label • group-heading mt:24 mb:6
+                text = "Recent"
+            for path in workspace.recent-folders(workspace.#revision) keyed by "$path"
+                <Button • welcome-recent
+                    title = path.name
+                    action = => do folder-requested <- path
+                    <Tooltip
+                        text = "$path"

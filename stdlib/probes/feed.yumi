@@ -1,0 +1,58 @@
+/probes/model
+/probes/trace
+/time/duration
+
+_ probe-follow-interval = 40ms
+
+━━━━━━━━━━━━━━━━━━━━
++ ProbeFeed
+
++ trace ProbeTrace
++ revision U64
++ seen U64
++ is-recording = true
++ status Int?
++ problem String?
+
+────────────────────
++ This
+    - source TraceSource
+
+.. trace = ProbeTrace(source)
+
+────────────────────
++ do follow
+
+. listed = catch trace.read-catalog()
+if listed is Error
+    problem = (listed as Error).message
+. reader = use TraceReader(trace.source.trace, true)
+while is-recording
+    if !read(reader)
+        =
+    if !reader.advanced
+        probe-follow-interval.wait()
+while read(reader) && reader.advanced
+    continue
+trace.is-closed = reader.is-done
+
+────────────────────
++ do finish
+    - code Int?
+
+status = code
+is-recording = false
+
+────────────────────
+_ do read Bool
+    - reader TraceReader
+
+. items = reader.read-available()
+    catch error Error
+        problem = error.message ?? "The trace could not be read"
+        = false
+if items.length > 0
+    for item in items
+        trace.observe(item)
+    revision += 1
+= true

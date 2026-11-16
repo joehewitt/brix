@@ -1,6 +1,6 @@
 # GUI Code Editor
 
-The code editor is split across two libraries.
+The code editor is split across two libraries. Brix has an editor of its own, which shows forms as rows.
 
 | Concern | Where | Notes |
 | --- | --- | --- |
@@ -9,6 +9,8 @@ The code editor is split across two libraries.
 | Folding | `stdlib/code/code-folds.yumi` | `CodeFolds`, the collapsed ranges of a session (`CodeSession.folds`) |
 | Parsing and roles | `stdlib/code/syntax.yumi` | tree-sitter documents and queries, `SyntaxRole`, `syntax-styled-runs` |
 | View | `stdlib/gui/code-editor` | `CodeEditor`, `CodeGutter`, `CodeOverview`, `CodeLinkCard`, `CodeSyntaxStyle` |
+| Find bar | `stdlib/gui/code-editor/code-find-bar.yumi` | `FindBar` runs a `CodeFind` over its `target`; `FindOptions` keeps the case, word and regex toggles in an `AppState` |
+| Brix rows | `stdlib/gui/source-editor` | `SourceEditor` shows a `SourceSession` as rows, `SourceListingPane` shows the forms beside it, and `SourceSurface` paints the boxes behind them |
 
 `CodeEditor.show(session, scroll)` displays a `CodeSession`; several editors may show one session.
 The editor never reads or writes files. It publishes `save-requested`, and the owner saves, usually

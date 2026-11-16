@@ -1,0 +1,404 @@
+./code-find-options
+/code/code-find
+/graphics/primitives
+/gui
+/gui/icons/lucide/arrow-down
+/gui/icons/lucide/arrow-up
+/gui/icons/lucide/case-sensitive
+/gui/icons/lucide/chevron-right
+/gui/icons/lucide/regex
+/gui/icons/lucide/replace
+/gui/icons/lucide/replace-all
+/gui/icons/lucide/whole-word
+/gui/icons/lucide/x
+/regex
+
+━━━━━━━━━━━━━━━━━━━━
++ FindBar is Box
+
++ target CodeFindTarget?
++ options FindOptions
++ is-open = false
++ is-replacing = false
++ query = ""
++ template = ""
++ summary = ""
++ is-failing = false
+
+_ finder = CodeFind()
+_ origin = CodeFindPlace(0, 0)
+
+• This • flex-col px:8 py:4 bg:gui-panel-color
+    focus-mode = FocusMode.inside
+    border-color = gui-divider-color
+    border-bottom-width = 1
+    motion.size = gui-motion-quick
+    enter-space = EnterSpace.expand
+    leave-space = LeaveSpace.collapse
+
+    • find-line • flex-row h:28
+
+    • find-field • flex-row flex:1 h:24 px:6 bg:gui-field-color
+        corner-radius = gui-control-radius
+
+    • find-summary • text:gui-muted-text-color w:170 ml:8
+
+    when #is-failing
+        • find-summary • text:gui-danger-color
+        • find-field
+            animation = shake:3
+
+────────────────────
+
+<This
+    display = if #is-open then Display.visible else Display.hidden
+
+    <Box • find-line
+        <DisclosureButton • icon-chevron-right w:22 h:22 mr:4
+            align-y = Alignment.center
+            is-open = #is-replacing
+            action = => do toggle-replacing()
+            <Tooltip
+                text = if #is-replacing then "Hide Replace" else "Show Replace"
+        <Box • find-field
+            <TextInput find-input • flex:1
+                is-bare = true
+                placeholder = "Find"
+                passes-keys = [Key.enter, Key.escape]
+            <IconButton • icon-case-sensitive w:22 h:20 ml:2
+                align-y = Alignment.center
+                is-on = options.#matches-case
+                action = => do toggle-case()
+                <Tooltip "Match Case (⌥⌘C)"
+            <IconButton • icon-whole-word w:22 h:20 ml:2
+                align-y = Alignment.center
+                is-on = options.#matches-word
+                action = => do toggle-word()
+                <Tooltip "Match Whole Word (⌥⌘W)"
+            <IconButton • icon-regex w:22 h:20 ml:2
+                align-y = Alignment.center
+                is-on = options.#is-regex
+                action = => do toggle-regex()
+                <Tooltip "Use Regular Expression (⌥⌘R)"
+        <Label • find-summary
+            text = #summary
+        <IconButton • icon-arrow-up w:24 h:22 ml:4
+            align-y = Alignment.center
+            action = => do step(false)
+            <Tooltip "Previous Match (⇧⌘G)"
+        <IconButton • icon-arrow-down w:24 h:22 ml:2
+            align-y = Alignment.center
+            action = => do step(true)
+            <Tooltip "Next Match (⌘G)"
+        <IconButton • icon-x w:24 h:22 ml:2
+            align-y = Alignment.center
+            action = => do close()
+            <Tooltip "Close (Esc)"
+    <Box • find-line mt:2
+        display = if #is-replacing then Display.visible else Display.hidden
+        <Box • w:26
+        <Box • find-field
+            <TextInput replace-input • flex:1
+                is-bare = true
+                placeholder = "Replace"
+                passes-keys = [Key.enter, Key.escape]
+        <IconButton • icon-replace w:24 h:22 ml:8
+            align-y = Alignment.center
+            action = => do replace-one()
+            <Tooltip "Replace (↩)"
+        <IconButton • icon-replace-all w:24 h:22 ml:2
+            align-y = Alignment.center
+            action = => do replace-all()
+            <Tooltip "Replace All (⌥⌘↩)"
+        <Box • w:200
+
+    <KeyShortcut "Next Match"
+        key = .enter
+        discoverable = false
+        allow-while-input = true
+        action = => do confirm(true)
+    <KeyShortcut "Previous Match"
+        key = KeyCombo("Shift+Enter")
+        discoverable = false
+        allow-while-input = true
+        action = => do confirm(false)
+    <KeyShortcut "Replace All"
+        key = KeyCombo("Option+Cmd+Enter")
+        discoverable = false
+        allow-while-input = true
+        action = => do replace-all()
+    <KeyShortcut "Close Find"
+        key = .escape
+        discoverable = false
+        allow-while-input = true
+        action = => do close()
+    <KeyShortcut "Match Case"
+        key = KeyCombo("Option+Cmd+C")
+        discoverable = false
+        allow-while-input = true
+        action = => do toggle-case()
+    <KeyShortcut "Match Whole Word"
+        key = KeyCombo("Option+Cmd+W")
+        discoverable = false
+        allow-while-input = true
+        action = => do toggle-word()
+    <KeyShortcut "Use Regular Expression"
+        key = KeyCombo("Option+Cmd+R")
+        discoverable = false
+        allow-while-input = true
+        action = => do toggle-regex()
+
+────────────────────
+for event on find-input.input
+
+query = event.text
+rerun()
+
+────────────────────
+for event on replace-input.input
+
+template = event.text
+
+────────────────────
+whenever options.#revision
+
+if is-open
+    rerun()
+else
+    finder.set-query(asked())
+
+────────────────────
++ do open
+    - replacing Bool
+
+. host = target
+if host
+    origin = host.find-origin()
+    . seed = host.find-seed()
+    if seed
+        query = seed
+        find-input.replace-text(seed)
+if replacing
+    is-replacing = true
+is-open = true
+rerun()
+find-input.request-focus()
+find-input.select-range(0, query.length)
+
+────────────────────
++ do close
+
+=? if !is-open
+is-open = false
+. host = target
+=? if !host
+host.find-show(null)
+host.find-focus()
+
+────────────────────
++ do use-selection
+
+. host = target
+=? if !host
+. seed = host.find-seed()
+=? if !seed
+query = seed
+find-input.replace-text(seed)
+origin = host.find-origin()
+rerun()
+
+────────────────────
++ do step
+    - forward Bool
+
+. host = target
+=? if !host
+if !finder.is-active
+    open(false)
+    =
+if finder.is-stale(host)
+    finder.search(host)
+. hit = finder.current-found
+if hit && is-selected(hit, host.find-selection())
+    finder.step(forward)
+else if forward
+    . caret = host.find-caret()
+    finder.pick(caret.row, caret.column)
+else
+    . start = host.find-origin()
+    finder.pick(start.row, start.column)
+    finder.step(false)
+reveal()
+
+────────────────────
++ do follow
+
+=? if !is-open
+. host = target
+=? if !host || !finder.is-active || !finder.is-stale(host)
+finder.search(host)
+show-summary()
+paint()
+
+────────────────────
++ do reset
+
+finder.reset()
+follow()
+
+────────────────────
+_ do confirm
+    - forward Bool
+
+if forward && replace-input.is-focused
+    replace-one()
+else
+    step(forward)
+
+────────────────────
+_ do toggle-replacing
+
+is-replacing = !is-replacing
+if is-replacing
+    replace-input.request-focus()
+else
+    find-input.request-focus()
+
+────────────────────
+_ do toggle-case
+
+options.toggle-case()
+
+────────────────────
+_ do toggle-word
+
+options.toggle-word()
+
+────────────────────
+_ do toggle-regex
+
+options.toggle-regex()
+
+────────────────────
+_ asked CodeFindQuery?
+
+if query.length == 0 then null else find-query
+
+.. find-query = CodeFindQuery(query, options.matches-case, options.matches-word, options.is-regex)
+
+────────────────────
+_ do rerun
+
+finder.set-query(asked())
+. host = target
+=? if !host
+paint()
+if finder.is-active
+    finder.search(host)
+    finder.pick(origin.row, origin.column)
+    reveal()
+    =
+show-summary()
+
+────────────────────
+_ do reveal
+
+. hit = finder.current-found
+if hit
+    target?.find-reveal(hit)
+show-summary()
+paint()
+
+────────────────────
+_ do paint
+
+target?.find-show(finder if is-open)
+
+────────────────────
+_ do replace-one
+
+. host = target
+=? if !host || !finder.is-active
+if finder.is-stale(host)
+    finder.search(host)
+. hit = finder.current-found
+if !hit || !is-selected(hit, host.find-selection())
+    step(true)
+    =
+. made = catch finder.replacement(hit, template)
+if made is RegexError
+    fail((made as RegexError).message)
+    =
+. text = made as String
+if !host.find-replace(hit, text)
+    fail("That row can’t be edited")
+    =
+finder.search(host)
+finder.pick(hit.row, hit.start + text.length)
+reveal()
+
+────────────────────
+_ do replace-all
+
+. host = target
+=? if !host || !finder.is-active
+. outcome = catch finder.replace-all(host, template)
+if outcome is RegexError
+    fail((outcome as RegexError).message)
+    =
+. report = outcome as CodeReplaced
+finder.search(host)
+paint()
+summary = replaced-summary(report)
+is-failing = report.held > 0 || report.skipped > 0
+
+────────────────────
+_ do fail
+    - message String
+
+summary = message
+is-failing = true
+
+────────────────────
+_ do show-summary
+
+. problem = finder.problem
+if problem
+    fail(problem)
+    =
+. count = finder.found.length
+. more = if finder.is-truncated then "+" else ""
+. index = finder.current
+is-failing = finder.is-active && count == 0
+summary =
+    |? !finder.is-active
+        ""
+    |? count == 0
+        "No results"
+    |? index == null
+        "$count$more results"
+    ??
+        "${index + 1} of $count$more"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-selected Bool
+    - hit CodeHit
+    - selected CodeHit?
+
+|? !selected
+    false
+??
+    selected.row == hit.row && selected.start == hit.start && selected.end == hit.end
+
+━━━━━━━━━━━━━━━━━━━━
+_ replaced-summary String
+    - report CodeReplaced
+
+|? report.count == 0 && report.skipped == 0
+    "Nothing replaced"
+|? report.skipped > 0
+    "Replaced ${report.count}; ${report.skipped} rows can’t be edited"
+|? report.held > 0
+    "Replaced ${report.count}; ${report.held} rows don’t parse"
+??
+    "Replaced ${report.count} in ${report.rows} rows"

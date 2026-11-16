@@ -8,7 +8,9 @@ _ SourceFoldSpans
 + heads [Size]
 + counts [Size]
 + holds [Bool]
++ folds [Bool]
 + hidden Size
++ tucked Size
 
 ────────────────────
 + This
@@ -23,6 +25,7 @@ _ collapsed [U32 = U32]
 _ spans [U32 = SourceFoldSpans]
 _ ends [Size]
 _ total Size
+_ tucked Size
 _ synced U64
 _ synced-version U64
 _ compactions Size
@@ -33,9 +36,10 @@ _ is-synced = false
     - document
 
 ────────────────────
-+ get is-plain Bool
++ do get is-plain Bool
 
-collapsed.length == 0
+sync()
+= collapsed.length == 0 && tucked == 0
 
 ────────────────────
 + do row-count Size
@@ -282,7 +286,7 @@ sync()
 =? null if !found
 . local = row - document.first-row(index)
 for slot in 0 .. < found.heads.length
-    =? slot if found.heads[slot] == local
+    =? slot if found.heads[slot] == local && found.folds[slot]
 = null
 
 ────────────────────
@@ -310,6 +314,8 @@ else
     if count == 0
         while position + count + 1 < rows.length && rows[position + count + 1].indent > row.indent
             count += 1
+if count > 0 && rows[position + count].node == null && rows[position + count].divider == 0
+    count -= 1
 for later in position + 1 .. position + count
     =? count if rows[later].node != null
 = 0
@@ -326,24 +332,20 @@ if compactions != compacted
 is-synced = true
 synced = document.revision
 synced-version = version
-. homes = Map'U32'Bool()
-for _, home in collapsed
-    homes[home] = true
 . kept = Map'U32'SourceFoldSpans()
 . made [Size]
 . end Size = 0
+. tucks Size = 0
 for index in 0 .. < document.declarations.length
-    . count = document.first-row(index + 1) - document.first-row(index)
-    if homes has document.declaration(index).id
-        . place = document.declarations[index]
-        . found = spans[place] ?? spanned(index)
-        kept[place] = found
-        end += count - found.hidden
-    else
-        end += count
+    . place = document.declarations[index]
+    . found = spans[place] ?? spanned(index)
+    kept[place] = found
+    end += document.first-row(index + 1) - document.first-row(index) - found.hidden
+    tucks += found.tucked
     made += end
 ends = made
 spans = kept
+tucked = tucks
 total = end + 1
 
 ────────────────────
@@ -366,8 +368,16 @@ while position < rows.length
             made.heads += position
             made.counts += count
             made.holds += holds
+            made.folds += true
             made.hidden += count
             position += count + 1
             continue
+    if rows[position].is-text-only && position > 0
+        made.heads += position - 1
+        made.counts += 1
+        made.holds += false
+        made.folds += false
+        made.hidden += 1
+        made.tucked += 1
     position += 1
 = made

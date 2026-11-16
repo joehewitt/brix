@@ -1,5 +1,4 @@
 ./markdown-blocks
-/core/_bytes
 /graphics/text
 /math
 
@@ -11,6 +10,7 @@
 + is-code = false
 + url String? = null
 + is-image = false
++ language = ""
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownMark is Union
@@ -102,7 +102,7 @@ for cell in block.cells
 + markdown-run-marks MarkdownMarks
     - run MarkdownRun
 
-MarkdownMarks(run.is-strong, run.is-em, run.is-code, run.url, run.is-image)
+MarkdownMarks(run.is-strong, run.is-em, run.is-code, run.url, run.is-image, run.language)
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-marked-run MarkdownRun
@@ -119,6 +119,29 @@ MarkdownRun
     - null
     - false
     - marks.is-image
+    - if marks.is-code then marks.language else ""
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-remarked-run MarkdownRun
+    - run MarkdownRun
+    - marks MarkdownMarks
+
+|? run.is-rendered
+    MarkdownRun
+        - 0
+        - run.text
+        - marks.is-strong
+        - marks.is-em
+        - true
+        - marks.url
+        - null
+        - false
+        - marks.is-image
+        - run.language
+        - run.source
+        - run.rendering
+??
+    markdown-marked-run(run.text, marks)
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-runs-text String
@@ -143,13 +166,16 @@ for run in runs
     . count = result.length
     if run.is-break
         result += MarkdownRun(count, " ", false, false, false, null, null, true)
+    else if run.is-rendered
+        result += markdown-remarked-run(run, markdown-run-marks(run))
     else if run.text.size > 0
         . marks = markdown-run-marks(run)
-        if count > 0 && !result[count - 1].is-break && same-marks
+        if count > 0 && joins
             result[count - 1] = markdown-marked-run("${result[count - 1].text}${run.text}", marks)
         else
             result += markdown-marked-run(run.text, marks)
-        .. same-marks = markdown-run-marks(result[count - 1]) == marks
+        .. joins = !previous.is-break && !previous.is-rendered && markdown-run-marks(previous) == marks
+        .. previous = result[count - 1]
 = result
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -164,7 +190,9 @@ for run in runs
     . size = run.text.size
     . low = max(start, at)
     . high = min(end, at + size)
-    if high > low
+    if run.is-rendered
+        result +=? run if at >= start && at < end
+    else if high > low
         if run.is-break
             result += run
         else
@@ -173,6 +201,61 @@ for run in runs
                 - markdown-run-marks(run)
     at += size
 = markdown-runs-normalized(result)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-runs-snap Size
+    - runs [MarkdownRun]
+    - offset Size
+    - forward Bool?
+
+. at Size = 0
+for run in runs
+    =? offset if offset <= at
+    . end = at + run.text.size
+    if run.is-rendered && offset < end
+        = if forward ?? (offset - at >= end - offset) then end else at
+    at = end
+= offset
+
+━━━━━━━━━━━━━━━━━━━━
++ markdown-runs-source-text String
+    - runs [MarkdownRun]
+
+"".join((each.source ?? each.text) in runs)
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-runs-source-offset Size
+    - runs [MarkdownRun]
+    - offset Size
+
+. shown Size = 0
+. source Size = 0
+for run in runs
+    . size = run.text.size
+    . from = if run.is-rendered then (run.source ?? run.text).size else size
+    if offset <= shown + size
+        =? source + from if run.is-rendered && offset > shown
+        = source + offset - shown
+    shown += size
+    source += from
+= source + offset - shown
+
+━━━━━━━━━━━━━━━━━━━━
++ do markdown-runs-shown-offset Size
+    - runs [MarkdownRun]
+    - offset Size
+
+. shown Size = 0
+. source Size = 0
+for run in runs
+    . size = run.text.size
+    . from = if run.is-rendered then (run.source ?? run.text).size else size
+    if offset <= source + from
+        =? shown + size if run.is-rendered && offset > source
+        = shown + offset - source
+    shown += size
+    source += from
+= shown + offset - source
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-runs-join [MarkdownRun]
@@ -220,14 +303,20 @@ markdown-runs-join(markdown-runs-slice(runs, 0, start), markdown-runs-slice(runs
 for run in runs
     . end = at + run.text.size
     if at < offset && offset <= end
-        before = if run.is-break then null else markdown-run-marks(run)
+        before = if run.is-break then null else markdown-typing-marks(run)
         inside = offset < end
     if after == null && at >= offset && !run.is-break
-        after = markdown-run-marks(run)
+        after = markdown-typing-marks(run)
     at = end
 . found = before ?? after ?? MarkdownMarks()
 =? found if inside
-= MarkdownMarks(found.is-strong, found.is-em, found.is-code)
+= MarkdownMarks(found.is-strong, found.is-em, found.is-code, null, false, found.language)
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-typing-marks MarkdownMarks
+    - run MarkdownRun
+
+if run.is-rendered then MarkdownMarks(run.is-strong, run.is-em) else markdown-run-marks(run)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-runs-toggle [MarkdownRun]
@@ -247,8 +336,8 @@ for run in sliced
     if run.is-break
         middle += run
     else
-        middle += markdown-marked-run
-            - run.text
+        middle += markdown-remarked-run
+            - run
             - markdown-marks-with(markdown-run-marks(run), mark, !has)
 = markdown-runs-join
     - markdown-runs-join(markdown-runs-slice(runs, 0, start), middle)
@@ -275,11 +364,11 @@ match mark
 
 match mark
     | .strong
-        MarkdownMarks(on, marks.is-em, marks.is-code, marks.url, marks.is-image)
+        MarkdownMarks(on, marks.is-em, marks.is-code, marks.url, marks.is-image, marks.language)
     | .em
-        MarkdownMarks(marks.is-strong, on, marks.is-code, marks.url, marks.is-image)
+        MarkdownMarks(marks.is-strong, on, marks.is-code, marks.url, marks.is-image, marks.language)
     | .code
-        MarkdownMarks(marks.is-strong, marks.is-em, on, marks.url, marks.is-image)
+        MarkdownMarks(marks.is-strong, marks.is-em, on, marks.url, marks.is-image, if on then marks.language else "")
 
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-draft-source String
@@ -374,6 +463,11 @@ for index in 0 .. < normalized.length
         writer.close-to(0)
         writer.parts += "\n$break-prefix"
         writer.at-line-start = line-start
+    else if run.is-rendered
+        writer.close-to(3)
+        writer.open(markdown-run-marks(run))
+        writer.text(run.source ?? run.text, false)
+        writer.close-to(3)
     else
         . next = normalized[index + 1].url if index + 1 < normalized.length
         writer.open(markdown-run-marks(run))
@@ -526,6 +620,7 @@ _ linked = false
 _ strong = false
 _ em = false
 _ code = false
+_ language = ""
 
 ────────────────────
 + This
@@ -544,7 +639,7 @@ else if strong != marks.is-strong
     close-to(1)
 else if em != marks.is-em
     close-to(2)
-else if code != marks.is-code
+else if code != marks.is-code || language != marks.language
     close-to(3)
 if !linked && wants-link
     parts += if marks.is-image then "![" else "["
@@ -560,6 +655,7 @@ if !em && marks.is-em
 if !code && marks.is-code
     parts += "`"
     code = true
+    language = marks.language
 
 ────────────────────
 + do close-to
@@ -567,7 +663,9 @@ if !code && marks.is-code
 
 if code && level <= 3
     parts += "`"
+    parts +=? "{.$language}" if language.size > 0
     code = false
+    language = ""
 if em && level <= 2
     parts += "*"
     em = false
@@ -586,7 +684,7 @@ if linked && level == 0
     - links-next Bool
 
 if code
-    parts += text
+    parts += if in-table then "\\|".join(text.split("|")) else text
     at-line-start = false
     =
 . plain = !linked && !strong && !em

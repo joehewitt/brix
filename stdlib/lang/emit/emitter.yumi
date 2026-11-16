@@ -29264,10 +29264,11 @@ _ unlinked TypeId
 _ receiver-of SyntaxId
     - id SyntaxId
 
-` The receiver of a call of a link of an optional chain: what the name it calls is read from.
+` The receiver of a call of a link of an optional chain: what the name it calls is read from,
+` or for a write to an event, what the event is read from.
 match tree.nodes[id]
     | .node-call-expression(row)
-        receiver-of(row.callable)
+        receiver-of(called-link(id, row.callable))
     | .node-get-expression(row)
         row.object
     | .node-index-expression(row)
@@ -29412,9 +29413,23 @@ match tree.nodes[id]
     | .node-markup-read-expression(row)
         chains-at(id, row.is-optional)
     | .node-call-expression(row)
-        tests-receiver(row.callable)
+        tests-receiver(called-link(id, row.callable))
     ??
         false
+
+────────────────────
+_ do called-link SyntaxId
+    - id SyntaxId
+    - callable SyntaxId
+
+if facts.event-uses.length != 0
+    . used = tables.event-use-of(unit.reading, id)
+    if used && (used.kind == .event-publish || used.kind == .event-route)
+        do match? tree.nodes[used.reference]
+            | .node-index-expression(row)
+                = row.object
+        = used.reference
+= callable
 
 ────────────────────
 _ do emit-link Typed
@@ -49991,7 +50006,10 @@ if default.value != 0
     . own-unit = unit
     . own-filling = filling
     unit = unit.source-module = default.module
-    . run = enter-unit(unit-id) if holds-locals(unit-id, default.value, default.site)
+    . holds = holds-locals(unit-id, default.value, default.site)
+    if holds
+        fill-value-reads(unit-id)
+    . run = enter-unit(unit-id) if holds
     if run
         filling = filling.storing = false
         make-subscribers(default.value)
@@ -50052,6 +50070,31 @@ if tables.layouts.is-struct(layout)
 if kind == .machine-void
     = Typed(make-operand(.operand-void, 0), property.type)
 = Typed(integer(kind, 0), property.type)
+
+────────────────────
+_ do fill-value-reads
+    - unit-id InstanceId
+
+` Gives each stored property of the object being made that a value with locals of its own reads
+` its first value before the value runs, as a read gives it one (`read-filled`). The value runs as
+` an instance of its own (`enter-unit`), where a read cannot give the constructor's properties
+` their values.
+=? if !filling.storing || filling.count == 0
+. read = tables.first-read(unit-id)
+while read != no-fact
+    . found = property-of(filling.type, facts.value-reads[read].name)
+    if found
+        . position = (found as U32) - filling.start
+        . eager = types.properties[found].storage-kind == .storage-eager
+        if eager && position < filling.count && filling.filled[position] == 0 && !facts.defers(unit.instance, found as U32)
+            . own-unit = unit
+            . own-filling = filling
+            unit = unit.source-module = function.module
+            unit = unit.reading = unit.instance
+            store-property(position, 0)
+            unit = own-unit
+            filling = own-filling
+    read = tables.next-read(read)
 
 ────────────────────
 _ do hold-unit

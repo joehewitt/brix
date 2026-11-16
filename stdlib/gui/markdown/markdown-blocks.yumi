@@ -2,6 +2,7 @@
 /code/syntax
 /data/markdown
 /graphics/text
+/stream/aggregate
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownBlock
@@ -21,6 +22,7 @@
 + shows-source = false
 + rendering [MarkdownCodeLine]? = null
 + render-error String? = null
++ renders-runs = false
 
 ────────────────────
 + This
@@ -82,6 +84,19 @@ false
 
 ?! Error("No rendering for $language")
 
+────────────────────
++ renders-inline Bool
+    - language String
+
+false
+
+────────────────────
++ do render-inline [SyntaxStyledRun] ?! Error
+    - code String
+    - language String
+
+?! Error("No inline rendering for $language")
+
 ━━━━━━━━━━━━━━━━━━━━
 + markdown-is-rendered Bool
     - block MarkdownBlock
@@ -93,14 +108,78 @@ block.kind == MarkdownBlockKind.code && block.rendering != null && !block.shows-
     - renderer MarkdownCodeRenderer?
     - block MarkdownBlock
 
-=? if !renderer || block.kind != MarkdownBlockKind.code || block.shows-source || block.rendering != null
-=? if !renderer.renders(block.language)
+=? if !renderer
+if block.kind != MarkdownBlockKind.code
+    markdown-render-runs(renderer, block)
+    =
+=? if block.shows-source || block.rendering != null || !renderer.renders(block.language)
 . lines = catch renderer.render(block.code, block.language)
 if lines is Error
     block.render-error = "$lines"
     block.shows-source = true
     =
 block.rendering = lines as [MarkdownCodeLine]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-render-runs
+    - renderer MarkdownCodeRenderer
+    - block MarkdownBlock
+
+=? if block.renders-runs
+block.renders-runs = true
+=? if !markdown-runs-tagged(block.runs) && !(some(block.cells) • where markdown-runs-tagged(each.runs))
+block.runs = markdown-rendered-runs(renderer, block.runs)
+. cells [MarkdownGridCell]
+for cell in block.cells
+    cells += MarkdownGridCell
+        - cell.index
+        - markdown-rendered-runs(renderer, cell.runs)
+        - cell.alignment
+        - cell.is-header
+        - cell.is-final-row
+block.cells = cells
+
+━━━━━━━━━━━━━━━━━━━━
+_ markdown-runs-tagged Bool
+    - runs [MarkdownRun]
+
+some(runs) • where each.language.size > 0 && each.rendering == null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-rendered-runs [MarkdownRun]
+    - renderer MarkdownCodeRenderer
+    - runs [MarkdownRun]
+
+. result [MarkdownRun]
+for run in runs
+    . rendered = markdown-rendered-run(renderer, run)
+    result += rendered ?? run
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markdown-rendered-run MarkdownRun?
+    - renderer MarkdownCodeRenderer
+    - run MarkdownRun
+
+=? null if !run.is-code || !run.language.size || run.rendering != null || !renderer.renders-inline(run.language)
+. pieces = catch renderer.render-inline(run.text, run.language)
+=? null if pieces is Error
+. rendering = pieces as [SyntaxStyledRun]
+. text = "".join(each.text in rendering)
+=? null if !text.size
+= MarkdownRun
+    - run.index
+    - text
+    - run.is-strong
+    - run.is-em
+    - true
+    - run.url
+    - null
+    - false
+    - run.is-image
+    - run.language
+    - run.text
+    - rendering
 
 ━━━━━━━━━━━━━━━━━━━━
 + do markdown-toggle-source
@@ -145,6 +224,14 @@ if old.shows-source && old.kind == next.kind && old.language == next.language
 + reference MarkdownReference? = null
 + is-break = false
 + is-image = false
++ language = ""
++ source String? = null
++ rendering [SyntaxStyledRun]? = null
+
+────────────────────
++ get is-rendered
+
+rendering != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + MarkdownGridCell is Tuple
@@ -406,7 +493,7 @@ for node in nodes
             add-run
                 - result
                 - code.code
-                - MarkdownRunStyle(style.is-strong, style.is-em, true, style.url, style.is-image)
+                - MarkdownRunStyle(style.is-strong, style.is-em, true, style.url, style.is-image, code.language)
         ??
             add-run(result, "$node", style)
 
@@ -418,7 +505,7 @@ _ do add-run
 
 =? if !text.length
 if | [..., last] = result
-    if !last.is-break && markdown-run-style(last) == style
+    if !last.is-break && !style.language.size && markdown-run-style(last) == style
         result[result.length - 1] = MarkdownRun
             - last.index
             - "${last.text}$text"
@@ -440,6 +527,7 @@ result += MarkdownRun
     - null
     - false
     - style.is-image
+    - style.language
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MarkdownRunStyle is Tuple
@@ -449,6 +537,7 @@ _ MarkdownRunStyle is Tuple
 + is-code Bool
 + url String? = null
 + is-image = false
++ language = ""
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markdown-referenced-runs [MarkdownRun]
@@ -495,12 +584,13 @@ MarkdownRun
     - reference
     - run.is-break
     - run.is-image
+    - run.language
 
 ━━━━━━━━━━━━━━━━━━━━
 _ markdown-run-style
     - run MarkdownRun
 
-MarkdownRunStyle(run.is-strong, run.is-em, run.is-code, run.url, run.is-image)
+MarkdownRunStyle(run.is-strong, run.is-em, run.is-code, run.url, run.is-image, run.language)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ markdown-grid-alignment

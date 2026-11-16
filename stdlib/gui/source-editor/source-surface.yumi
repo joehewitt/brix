@@ -1,0 +1,308 @@
+/code/structure/document
+/code/structure/fold
+/code/structure/rows
+/code/structure/session
+/graphics/canvas
+/graphics/color
+/graphics/outline
+/graphics/primitives
+/math
+/stream/aggregate
+
++ source-box-radius Length = 8
++ source-box-indent Length = 18
++ source-member-indent Length = 10
++ source-box-margin Length = 8
++ source-edge-offset Length = 9
++ source-edge-step Length = 4
++ source-wash-trail Length = 6
++ source-border-width Length = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSurface is Union
+
+| none
+| box
+| tray
+| imports
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceReach is Tuple
+
++ top Length?
++ bottom Length?
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSlice is Tuple
+
++ surface SourceSurface
++ outer SourceReach?
++ member SourceReach? = null
++ wash SourceReach? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSurfacePalette is Tuple
+
++ box RGBA
++ box-border RGBA
++ tray RGBA
++ tray-border RGBA
++ member RGBA
++ member-border RGBA
++ wash RGBA
++ member-wash RGBA
++ imports RGBA
+
+━━━━━━━━━━━━━━━━━━━━
++ SourceSliceScan
+
++ session SourceSession
++ height Length
+
+_ member-declaration Index?
+_ member-start Size
+_ member-end Size
+_ is-member = false
+
+────────────────────
++ This
+    - session
+    - height
+
+────────────────────
++ do slice SourceSlice
+    - display Size
+
+. document = session.document
+. folds = session.folds
+. row = folds.actual(display)
+=? SourceSlice(.none, null) if row + 1 >= document.row-count
+. index = document.declaration-at(row)
+. rows = document.rows-of(index)
+. base = document.first-row(index)
+. local = row - base
+. surface = block-surface(rows[0].block)
+=? imports-slice(rows, base, local) if surface == SourceSurface.none
+. next = if display + 1 < folds.row-count() then folds.actual(display + 1) else document.row-count
+. after = next - base
+. current = rows[local]
+. closes = after >= rows.length
+. is-gap = current.node == null && current.divider == 0
+. is-tray = surface == SourceSurface.tray
+. outer-bottom Length? = null
+if closes
+    outer-bottom = if !is-gap then height else source-edge-offset
+. outer = SourceReach(if local == 0 then source-edge-offset else null, outer-bottom)
+. in-member = is-tray && is-member-row(index, rows, local)
+. member SourceReach? = null
+. bottom = outer-bottom
+if in-member
+    . member-closes = closes || after >= member-end
+    . member-bottom Length? = null
+    if member-closes
+        . edge = if is-gap then source-edge-offset else height
+        member-bottom = if closes then edge - source-edge-step else edge
+    member = SourceReach(if local == member-start then source-edge-offset else null, member-bottom)
+    bottom = member-bottom
+. opens = local == 0 || (in-member && local == member-start)
+. wash SourceReach? = null
+if current.zone == SourceRowZone.header
+    . continues = !closes && next == row + 1 && (rows[after].zone == SourceRowZone.header || rows[after].node == null)
+    wash = SourceReach(null, if continues then null else bottom ?? height)
+else if opens && local + 1 < rows.length && rows[local + 1].zone == SourceRowZone.header
+    wash = SourceReach(source-edge-offset, null)
+else if is-gap && local > 0 && rows[local - 1].zone == SourceRowZone.header
+    wash = SourceReach(null, min(source-wash-trail, bottom ?? source-wash-trail))
+= SourceSlice(surface, outer, member, wash)
+
+────────────────────
+_ do imports-slice SourceSlice
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+
+=? SourceSlice(.none, null) if !is-imported(rows, base, local)
+. opens = rows[local].zone == SourceRowZone.preamble && !runs-back(rows, base, local)
+. closes = local + 1 >= rows.length || !is-imported(rows, base, local + 1)
+= SourceSlice(.imports, SourceReach(if opens then 0 else null, if closes then height else null))
+
+────────────────────
+_ do is-imported Bool
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+
+=? true if rows[local].zone == SourceRowZone.preamble
+=? false if !is-aside(rows, base, local) || !runs-back(rows, base, local)
+= runs-ahead(rows, base, local) || session.in-preamble(session.document.node-id(rows[local]))
+
+────────────────────
+_ do runs-back Bool
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+
+. probe = local
+while probe > 0
+    probe -= 1
+    =? true if rows[probe].zone == SourceRowZone.preamble
+    =? false if !is-aside(rows, base, probe)
+= false
+
+────────────────────
+_ do runs-ahead Bool
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+
+. probe = local + 1
+while probe < rows.length
+    =? true if rows[probe].zone == SourceRowZone.preamble
+    =? false if !is-aside(rows, base, probe)
+    probe += 1
+= false
+
+────────────────────
+_ do is-aside Bool
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+
+. row = rows[local]
+=? false if row.node == null
+=? true if row.is-empty
+. spans = session.document.row-at(base + local).spans
+=? false if spans.length == 0
+= all(spans) • where each.kind == SourceSpanKind.comment || each.kind == SourceSpanKind.decoration
+
+────────────────────
+_ do is-member-row Bool
+    - index Index
+    - rows [SourceOutlineRow]
+    - local Size
+
+. home = rows[0].owner
+=? false if rows[local].owner == home
+=? is-member if member-declaration == index && local >= member-start && local < member-end
+. start = local
+while start > 0 && rows[start].divider != source-divider-thin && rows[start - 1].owner != home
+    start -= 1
+. end = start + 1
+while end < rows.length && rows[end].owner != home && rows[end].divider != source-divider-thin
+    end += 1
+member-declaration = index
+member-start = start
+member-end = end
+is-member = rows[start].divider == source-divider-thin && rows[start].block == SourceRowBlock.leaf
+= is-member
+
+━━━━━━━━━━━━━━━━━━━━
+_ block-surface SourceSurface
+    - block SourceRowBlock
+
+match block
+    | .leaf
+        SourceSurface.box
+    | .holder
+        SourceSurface.tray
+    | .none
+        SourceSurface.none
+
+━━━━━━━━━━━━━━━━━━━━
++ do paint-source-slice
+    - canvas Canvas
+    - slice SourceSlice
+    - band Rect
+    - left Length
+    - right Length
+    - palette SourceSurfacePalette
+
+. outer = slice.outer
+=? if !outer || right <= left
+. box = source-reached(band, outer, left, right)
+. step = source-box-indent - source-member-indent
+. member = slice.member
+. inner = box
+if member
+    inner = source-reached(band, member, left + step, right - step)
+do use canvas.saved-state
+    canvas.clip(band)
+    canvas.stroke-color = null
+    canvas.fill-color = source-surface-color(slice.surface, palette)
+    canvas.outline(Outline(box, source-box-radius))
+    if member
+        canvas.fill-color = palette.member
+        canvas.outline(Outline(inner, source-box-radius))
+    . wash = slice.wash
+    if wash
+        . top = band.y + (wash.top ?? -source-box-radius * 2)
+        . bottom = band.y + (wash.bottom ?? band.height + source-box-radius * 2)
+        do use canvas.saved-state
+            canvas.clip(Rect(band.x, top, band.width, bottom - top))
+            canvas.fill-color = if member then palette.member-wash else palette.wash
+            canvas.outline(Outline(inner, source-box-radius))
+    canvas.fill-color = null
+    canvas.stroke-width = source-border-width
+    . border = source-surface-border(slice.surface, palette)
+    if border
+        canvas.stroke-color = border
+        canvas.outline(Outline(box, source-box-radius).grow(-source-border-width / 2))
+    if member
+        canvas.stroke-color = palette.member-border
+        canvas.outline(Outline(inner, source-box-radius).grow(-source-border-width / 2))
+
+━━━━━━━━━━━━━━━━━━━━
++ source-slice-shape Outline?
+    - slice SourceSlice
+    - band Rect
+    - left Length
+    - right Length
+
+|? !outer
+    null
+|? !member
+    Outline(source-reached(band, outer, left, right), source-box-radius)
+??
+    Outline(source-reached(band, member, left + step, right - step), source-box-radius)
+
+.. outer = slice.outer
+.. member = slice.member
+.. step = source-box-indent - source-member-indent
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-reached Rect
+    - band Rect
+    - reach SourceReach
+    - left Length
+    - right Length
+
+Rect(left, top, right - left, bottom - top)
+
+.. top = band.y + (reach.top ?? -source-box-radius * 2)
+.. bottom = band.y + (reach.bottom ?? band.height + source-box-radius * 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-surface-color RGBA
+    - surface SourceSurface
+    - palette SourceSurfacePalette
+
+match surface
+    | .tray
+        palette.tray
+    | .imports
+        palette.imports
+    ??
+        palette.box
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-surface-border RGBA?
+    - surface SourceSurface
+    - palette SourceSurfacePalette
+
+match surface
+    | .tray
+        palette.tray-border
+    | .imports
+        null
+    ??
+        palette.box-border
