@@ -111,13 +111,13 @@ The repository
 | `toolchain` | the scripts that build the runtime, the compiler and releases, and in `toolchain/deps` the recipes for the third-party libraries and tools that builds use |
 | `examples` | small programs, from servers to terminal and graphical apps |
 | `editor` | Brix Editor, a small editor that reads, writes and runs Brix programs and other source |
-| `docs` | the guides for writing Yumi and notes on the libraries; the language guide is in `docs/ref/drafts` |
+| `docs` | the guides for writing Yumi and notes on the libraries; the language reference is in `docs/ref` |
 
 Learning the language
 ---------------------
 
-[The language guide](docs/ref/drafts/README.md) is a tour of what Yumi can do, starting with
-[Yumi at a glance](docs/ref/drafts/yumi-at-a-glance.md).
+[The language reference](docs/ref/README.md) describes the whole language, a chapter for each part,
+starting with [source text](docs/ref/source-text.md).
 
 License
 -------

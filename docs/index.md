@@ -17,11 +17,11 @@ standard library and these docs.
 
 ## Learning The Language
 
-- [The language guide](ref/drafts/README.md) gives each capability a chapter: types, sum types,
-  pattern matching, units, collections, streams, stream patterns, concurrency, state machines,
-  errors, markup and style sheets, modules and C, and probes. Read the chapter for the feature
-  you are about to use.
-- Its last chapters explain why the syntax is the way it is.
+- [The language reference](ref/README.md) gives each part of the language a chapter, from source
+  text and literals through types, patterns, streams, errors, concurrency, markup, styles and
+  native code. Read the chapter for the feature you are about to use.
+- Its last pages are a symbol index and a form index, which point to the entry that explains each
+  operator, mark, name and Brix form.
 
 ## The Core Tests
 
