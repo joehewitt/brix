@@ -1,4 +1,5 @@
 ./editor-window
+./examples
 ./workspace
 /gui
 /lang/product/mac-app
@@ -67,8 +68,12 @@ for event on window.closed
 
 if paths.length > 0
     window.open-paths(paths)
-else
-    workspace.restore()
+    =
+. examples = BundledExamples(state, examples-toolchain())
+update-examples(examples)
+workspace.restore()
+if !workspace.folder && workspace.documents.length == 0
+    open-examples(examples)
 
 ────────────────────
 + do open-paths
@@ -83,3 +88,27 @@ window.bring-to-front()
 + do close
 
 workspace.close()
+
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
+────────────────────
+_ do update-examples
+    - examples BundledExamples
+
+. kept = examples.update()
+    catch error Error
+        workspace.failed <- "Unable to update the examples: ${error.message}"
+        =
+if kept
+    workspace.remember-folder(kept)
+
+────────────────────
+_ do open-examples
+    - examples BundledExamples
+
+. installed = examples.install()
+    catch error Error
+        workspace.failed <- "Unable to set up the examples: ${error.message}"
+        =
+if installed
+    workspace.open-folder(installed)

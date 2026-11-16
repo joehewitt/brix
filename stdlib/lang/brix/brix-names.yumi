@@ -1,0 +1,176 @@
+./brix-print
+./brix-syntax
+./layout
+/code/structure/rows
+/core/table
+/data/source-tree
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixNames
+
++ store SourceStore
+
+_ homes [U32 = U32]
+_ owner U32?
+_ owner-id U32
+_ length Size
+_ known [String = SourceSpanKind]
+
+────────────────────
++ This
+    - store
+
+────────────────────
++ do home
+    - member ImmutableTableRow'SourceNode
+    - type ImmutableTableRow'SourceNode
+
+homes[member.index as U32] = type.index as U32
+
+────────────────────
++ do resolved [SourceSpan]
+    - spans [SourceSpan]
+    - tags [BrixTag]
+    - holder U32?
+
+=? brix-joined(spans) if tags.length == 0
+. scope = scope-of(holder)
+. result [SourceSpan]
+. column Size = 0
+. next Index = 0
+for span in spans
+    . end = column + span.text.length
+    while next < tags.length && tags[next].start < column
+        next += 1
+    . is-tagged = next < tags.length && tags[next].start == column && tags[next].end == end
+    . kind = if is-tagged then resolved-kind(span, tags[next].kind, scope) else span.kind
+    result += SourceSpan(kind, span.text, span.is-optional)
+    column = end
+= brix-joined(result)
+
+────────────────────
+_ resolved-kind SourceSpanKind
+    - span SourceSpan
+    - tag BrixTagKind
+    - scope [String = SourceSpanKind]
+
+|? tag == BrixTagKind.exit
+    if span.kind == SourceSpanKind.operator || span.kind == SourceSpanKind.keyword then SourceSpanKind.exit else span.kind
+|? tag == BrixTagKind.raise
+    if span.kind == SourceSpanKind.operator || span.kind == SourceSpanKind.type-name then SourceSpanKind.exit else span.kind
+|? tag == BrixTagKind.markup
+    if [SourceSpanKind.operator, SourceSpanKind.keyword, SourceSpanKind.identifier] has span.kind then SourceSpanKind.type-name else span.kind
+|? tag == BrixTagKind.binder && (span.kind == SourceSpanKind.identifier || span.kind == SourceSpanKind.punctuation)
+    SourceSpanKind.binder
+|? span.kind == SourceSpanKind.definition && found == SourceSpanKind.member
+    SourceSpanKind.member-binder
+|? span.kind != SourceSpanKind.identifier
+    span.kind
+|? tag == BrixTagKind.setting && found == SourceSpanKind.member
+    SourceSpanKind.member-binder
+??
+    found
+
+.. found = scope[span.text] ?? SourceSpanKind.identifier
+
+────────────────────
+_ do scope-of [String = SourceSpanKind]
+    - holder U32?
+
+=? known if holder == owner && store.length == length && store.id-at(holder) == owner-id
+owner = holder
+owner-id = store.id-at(holder)
+length = store.length
+known = Map'String'SourceSpanKind()
+. node = store.node-at(holder)
+=? known if !node
+. home = home-of(node)
+. is-holder-type = is-type(node)
+if home
+    add-members(home)
+else if is-holder-type
+    add-members(node)
+add-params(node)
+add-locals(node, is-holder-type)
+known["it"] = SourceSpanKind.identifier
+= known
+
+────────────────────
+_ do home-of ImmutableTableRow'SourceNode?
+    - member ImmutableTableRow'SourceNode
+
+. place = homes[member.index as U32]
+=? null if place == null || place >= store.length
+. type = store.node(place)
+=? null if !is-type(type)
+for item in store.items(type)
+    =? type if item.index == member.index
+= null
+
+────────────────────
+_ do add-members
+    - type ImmutableTableRow'SourceNode
+
+for item in store.listed(type, 1)
+    . head = store.head(item) ?? ""
+    . slot = if head == "variant" then 1 else 2
+    if (head == "prop" || head == "event" || head == "variant" || brix-is-callable(head)) && store.count(item) > slot
+        . name = store.item(item, slot)
+        if store.is-atom(name) && brix-is-name(store.text(name))
+            known[store.text(name)] = SourceSpanKind.member
+
+────────────────────
+_ do add-params
+    - node ImmutableTableRow'SourceNode
+
+. head = store.head(node) ?? ""
+=? if !brix-is-callable(head)
+if head.starts-with("fn-from") && store.count(node) > 2
+    bind(store.item(node, 2), SourceSpanKind.parameter)
+for item in store.listed(node, 1)
+    if store.is-form(item, "param")
+        for index in 1 .. < store.count(item)
+            if index < 3 && store.is-atom(store.item(item, index))
+                bind(store.item(item, index), SourceSpanKind.parameter)
+
+────────────────────
+_ do add-locals
+    - node ImmutableTableRow'SourceNode
+    - skips-members Bool
+
+=? if store.count(node) < 2
+for item in store.listed(node, 1)
+    if store.is-list(item) && !(skips-members && brix-is-callable(store.head(item) ?? ""))
+        bind-in(item)
+        add-locals(item, false)
+
+────────────────────
+_ do bind-in
+    - form ImmutableTableRow'SourceNode
+
+=? if store.count(form) < 2
+. head = store.head(form) ?? ""
+. first = store.item(form, 1)
+if ["let", "lazy", "in", "on", "on-error", "on-failure", "do-with", "iterates", "=>"] has head
+    bind(first, SourceSpanKind.identifier)
+else if ["case", "case-union", "state"] has head
+    bind(if store.is-form(first, "=") && store.count(first) > 1 then store.item(first, 1) else first, SourceSpanKind.identifier)
+
+────────────────────
+_ do bind
+    - node ImmutableTableRow'SourceNode
+    - kind SourceSpanKind
+
+if store.is-atom(node)
+    . text = store.text(node)
+    if brix-is-name(text)
+        known[text] = kind
+else
+    for item in store.listed(node)
+        bind(item, kind)
+
+────────────────────
+_ is-type Bool
+    - node ImmutableTableRow'SourceNode
+
+["type", "extend", "style", "style-extend"] has (store.head(node) ?? "")

@@ -45,6 +45,7 @@
 + refusal-texts [String] = ["", "this statement", "this expression", "printing a value that is not a String", "a global whose value runs code", "a probe", "a value of this type", "this function", "this conversion", "a C call that may block", "a C call that suspends the task", "a task or thread local whose value runs code, in a module some cases of a batch do not reach"]
 
 _ max-symbol-bytes Size = 200
+_ inline-rule-limit Size = 64
 _ observer-activation-name = "yumiCollectionObserverActivate"
 _ has-constants Byte = 1
 _ has-globals Byte = 2
@@ -4765,9 +4766,10 @@ functions.append(unnamed-function(.raise-message, no-instance, instances.rows[so
 _ do declare-lazy-rules
 
 ` Declares the function a local rule of a rule a module declares runs in: one for each local
-` rule that calls itself, and, where the rule raises errors, one for each local rule it calls.
-` Any other runs where it is called, as one does where the rule may panic, whose stack trace
-` then shows the rule. A local rule beside a match that calls itself
+` rule that calls itself, one for each that `shared-lazy-rules` finds too large to copy where
+` it is called, and, where the rule raises errors, one for each local rule it calls. Any other
+` runs where it is called, as one does where the rule may panic, whose stack trace then shows
+` the rule. A local rule beside a match that calls itself
 ` runs where a pattern calls it too, as the reference's does, and has two functions for the
 ` calls its own arms make: one given the stream, which a call from its arms calls, and the
 ` one its arms run in, which that one calls on the stream's view. It has them only where it
@@ -4780,11 +4782,12 @@ for owner in instances.ordered
     if rule-match(program, row.module, row.decl) == 0
         continue
     . tree = program.modules[row.module].tree
+    . shared = shared-lazy-rules(owner)
     for statement in lazy-rules-of(owner)
         do match? tree.nodes[statement]
             | .node-declare(declaration)
                 . raising = instances.signatures[owner].errors.count != 0
-                if typed && (raising || facts.is-recursive-rule(owner, statement))
+                if typed && (raising || facts.is-recursive-rule(owner, statement) || shared has statement)
                     . id FunctionId = functions.length as FunctionId
                     functions.append(unnamed-function(.lazy-rule, owner, row.module, 1))
                     functions[id].place = statement
@@ -4816,6 +4819,59 @@ for position in ranked-order(keys)
     functions[adapter].place = local.syntax
     functions[adapter].may-panic = row.may-panic
     rule-adapter-rows[pair] = adapter
+
+────────────────────
+_ do shared-lazy-rules [SyntaxId]
+    - owner InstanceId
+
+` The local rules of a rule that run as functions of their own because copying them where
+` they are called would copy too much: each called from more than one place, whose
+` declaration, with the local rules it copies, holds more than `inline-rule-limit` nodes.
+. row = instances.rows[owner]
+. tree = program.modules[row.module].tree
+. uses [SyntaxId = Size]
+for node in row.subtree.start .. < row.subtree.start + row.subtree.count
+    if tree.nodes[node] is .node-stream-call
+        . rule = local-rule-called(owner, node)
+        if rule != 0
+            uses[rule] = (uses[rule] ?? 0) + 1
+. sizes [SyntaxId = Size]
+. shared [SyntaxId]
+for rule in lazy-rules-of(owner)
+    copied-size(owner, rule, uses, sizes, shared)
+= shared
+
+────────────────────
+_ do copied-size Size
+    - owner InstanceId
+    - rule SyntaxId
+    - uses [SyntaxId = Size]
+    - sizes [SyntaxId = Size]
+    - shared [SyntaxId]
+
+` The nodes a call of a local rule copies where it runs: those of the rule's declaration and
+` of each local rule it calls that runs where it is called. A rule that runs as a function of
+` its own copies none, and is added to `shared` where it is one `shared-lazy-rules` finds.
+. known = sizes[rule]
+=? known if known != null
+sizes[rule] = 0
+. tree = program.modules[instances.rows[owner].module].tree
+. first = tree.subtree-start(rule)
+. size = (rule - first + 1) as Size
+for node in first .. < rule + 1
+    if tree.nodes[node] is .node-stream-call
+        . called = local-rule-called(owner, node)
+        if called != 0 && called != rule
+            size += copied-size(owner, called, uses, sizes, shared)
+. count = uses[rule] ?? 0
+. recursive = facts.is-recursive-rule(owner, rule)
+if recursive
+    size = 0
+else if count > 1 && size > inline-rule-limit
+    shared += rule
+    size = 0
+sizes[rule] = size
+= size
 
 ────────────────────
 _ do reads-own Bool

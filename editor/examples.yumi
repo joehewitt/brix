@@ -1,0 +1,179 @@
+./runner
+/data/json
+/os/env
+/os/file
+/os/file-tree
+/os/path
+/ui/app-state
+
+_ examples-key = "examples"
+_ examples-version = 1
+_ examples-folder-name = "Brix Examples"
+
+━━━━━━━━━━━━━━━━━━━━
++ BundledExamples
+
++ state AppState
++ toolchain Path?
++ folder Path
+
+────────────────────
++ This
+    - state
+    - toolchain
+
+folder = state.path.dir / examples-folder-name
+
+────────────────────
++ do install Path? ?! Error
+
+=? folder if folder.exists
+. source = examples-source()
+=? null if !source
+. staged = stage(source)
+staged.move(folder)
+record(release-version())
+= folder
+
+────────────────────
++ do update Path? ?! Error
+
+=? null if !folder.exists
+. source = examples-source()
+=? null if !source
+. version = release-version()
+=? null if recorded("version") == version
+. staged = stage(source)
+. kept Path? = null
+if recorded("fingerprint") == fingerprint()
+    delete-tree(folder, PathKind.directory)
+else
+    kept = set-aside()
+staged.move(folder)
+record(version)
+= kept
+
+────────────────────
+_ do examples-source Path?
+
+=? null if !toolchain
+. source = toolchain / "examples"
+= if source.is-dir then source else null
+
+────────────────────
+_ do release-version String?
+
+=? null if !toolchain
+. text = catch? read-file-text(toolchain / "release.json")
+=? null if !text
+. parsed = catch? parse-json(text)
+=? null if !parsed
+. fields = catch? JSONReader("release.json", parsed).object()
+=? null if !fields
+= catch? fields["version"].string()
+
+────────────────────
+_ do recorded String?
+    - field String
+
+. saved = state.read(examples-key, examples-version)
+=? null if !saved
+. fields = catch? JSONReader(examples-key, saved).object()
+=? null if !fields
+= catch? fields[field].string()
+
+────────────────────
+_ do record ?! Error
+    - version String?
+
+. fields = Map'String'JSON
+    •? "version" version
+    • "fingerprint" fingerprint()
+state.write(examples-key, examples-version, fields)
+state.flush()
+
+────────────────────
+_ do fingerprint String ?! Error
+
+. text String = folder-fingerprint(folder, "") as Hex
+= text
+
+────────────────────
+_ do stage Path ?! Error
+    - source Path
+
+. staged = folder.dir / "${examples-folder-name}.partial"
+if staged.exists
+    make-writable(staged, PathKind.directory)
+    delete-tree(staged, PathKind.directory)
+folder.dir.make-directories()
+file-tree-copy(source, staged)
+make-writable(staged, PathKind.directory)
+= staged
+
+────────────────────
+_ do set-aside Path ?! Error
+
+. base = "$examples-folder-name (${recorded("version") ?? "old"})"
+. target = folder.dir / base
+. count = 2
+while target.exists
+    target = folder.dir / "$base $count"
+    count += 1
+folder.move(target)
+= target
+
+━━━━━━━━━━━━━━━━━━━━
++ do examples-toolchain Path?
+
+. bundled = bundled-toolchain()
+=? bundled if bundled
+. home = env("YUMI_HOME") ?? "${env("HOME") ?? ""}/.yumi"
+. current = Path("$home/current", 0)
+= if current.is-dir then current else null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do folder-fingerprint U64 ?! Error
+    - folder Path
+    - relative String
+
+. total U64 = 0
+for entry in folder.entries
+    if !entry.name.starts-with(".")
+        . path = folder / entry.name
+        . name = if relative == "" then entry.name else "$relative/${entry.name}"
+        if entry.kind == PathKind.directory
+            total += folder-fingerprint(path, name)
+        else if entry.kind == PathKind.file
+            total += file-fingerprint(path, name)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-fingerprint U64 ?! Error
+    - path Path
+    - name String
+
+. label = name as Byte[]
+. contents = read-file-bytes(path)
+= fnv-hash(contents.data, contents.length, fnv-hash(label.data, label.length))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do make-writable ?! Error
+    - path Path
+    - kind PathKind
+
+=? if kind != PathKind.directory && kind != PathKind.file
+path.change-mode(((path.mode as FilePermissions) /and/ all-rwx-perm) /or/ user-write-perm)
+if kind == PathKind.directory
+    for entry in path.entries
+        make-writable(path / entry.name, entry.kind)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do delete-tree ?! Error
+    - path Path
+    - kind PathKind
+
+if kind == PathKind.directory
+    for entry in path.entries
+        delete-tree(path / entry.name, entry.kind)
+path.delete()

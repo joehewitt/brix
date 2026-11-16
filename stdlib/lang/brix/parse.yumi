@@ -52,7 +52,18 @@ message = "Syntax error at line $line, column $column"
     - store SourceStore
 
 . builder = BrixBuilder(store)
-= match "Æ${"\ufdd0".join(text.split("≥"))}\n≥"
+. scratch = use Arena()
+= match brix-chars("Æ${"\ufdd0".join(text.split("≥"))}\n≥", scratch)
     ~ parsed \brix-grammar(builder, BrixEntry.prose-row)
         builder.only(parsed)
     ?? null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-chars Char[]
+    - source String
+    - scratch Arena
+
+. bytes = byte-view(source)
+. chars = Array'Char(scratch.allocate'Char(bytes.size), bytes.size)
+. count, _ = decode-utf8-buffer(bytes, bytes.size, chars)
+= Array'Char(chars.data, count)

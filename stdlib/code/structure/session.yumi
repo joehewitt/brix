@@ -300,10 +300,11 @@ preamble-rows has id
 + is-padding Bool
     - index Size
 
-index + 1 < document.row-count && shown.node == null && !shown.is-divider && shown.zone != SourceRowZone.body && next != index && (row-at(next).is-divider || ends-tray(next) || is-blank-line(next))
+index + 1 < document.row-count && shown.node == null && !shown.is-divider && (shown.is-padding || is-gap)
 
 .. shown = row-at(index)
 .. next = folds.below(index)
+.. is-gap = shown.zone != SourceRowZone.body && next != index && !ends-tray(index) && (row-at(next).is-divider || ends-tray(next) || is-blank-line(next))
 
 ────────────────────
 + is-blank-line Bool
@@ -335,7 +336,7 @@ is-padding(index) || (index + 1 < document.row-count && (divider == source-divid
 
 =? false if index + 1 >= document.row-count
 . home = document.declaration-at(index)
-=? false if home >= document.declarations.length || index + 2 != document.first-row(home + 1)
+=? false if home >= document.declarations.length || index + 1 != document.first-row(home + 1)
 . shown = row-at(index)
 =? false if shown.node != null || shown.is-divider
 = row-at(document.first-row(home)).block == SourceRowBlock.holder
@@ -635,8 +636,7 @@ if has-selection
 if column <= row-at(row).content-start && is-block-head(row)
     commit()
     if is-block-head(row)
-        row -= 1
-        open(document.declaration-at(row))
+        open(document.declaration-at(row - 1), row - 1)
         =
 if is-dirty && column >= dirty-row.content-start + typed.length && promote()
     split()
@@ -651,7 +651,13 @@ if language.is-unparsed(shown.mode)
 . index = document.declaration-at(row)
 if shown.node == null || !language.is-flow(shown.mode)
     commit()
-    open(index)
+    . was-blank = is-blank-line(row)
+    open(index, row)
+    if was-blank && is-blank-line(row + 1)
+        row += 1
+        column = 0
+        goal-column = 0
+        collapse()
     =
 . was-typed = is-dirty
 . content = shown.content
@@ -927,6 +933,8 @@ _ do settle
 . count = document.row-count
 if row >= count
     row = if count > 0 then count - 1 else 0
+if count > 0
+    row = stop-at(row, false)
 column = clamped(column)
 goal-column = column
 collapse()
@@ -1205,7 +1213,7 @@ if node && document.store.is-blank(node) && document.language.is-flow(shown.mode
     settle()
     finish()
     = true
-row -= 1
+row = stop-at(row - 1, true)
 if target == row
     column = source-far-column
 settle()
@@ -1265,26 +1273,29 @@ finish()
 ────────────────────
 _ do open
     - index Index
+    - at Size
 
 if index >= document.declarations.length
     add-declaration(index)
     =
-. shown = document.row-at(row)
+. shown = document.row-at(at)
 . is-thick = shown.divider == source-divider-thick
 begin(index)
 . dropped = document.language.drop-row(document.declaration(index), shown)
 if dropped
     document.replace(index, dropped)
-    while row + 1 < document.row-count && document.row-at(row).node != null
+    row = at
+    while row + 1 < document.row-count && document.row-at(row).zone == SourceRowZone.header
         row += 1
-    . below = min(row + 1, document.row-count - 1)
-    . lower = document.row-at(below)
-    row = if lower.node == null && !lower.is-divider then stop-at(row, false) else stop-at(below, true)
+    if document.row-at(row).node == null && !is-blank-line(row)
+        . below = min(row + 1, document.row-count - 1)
+        . lower = document.row-at(below)
+        row = if lower.node == null && !lower.is-divider then stop-at(row, false) else stop-at(below, true)
     column = 0
     settle()
     finish()
     =
-. opened = opened-at(index, shown)
+. opened = opened-at(index, at)
 if opened
     document.replace(index, opened.declaration)
     seek(index, opened.added, source-far-column)
@@ -1298,14 +1309,13 @@ if is-thick
 _ do open-here Bool
 
 . index = document.declaration-at(row)
-. shown = document.row-at(row)
 . is-last = index >= document.declarations.length && row + 1 == document.row-count
 if is-last
     add-declaration(index)
     = true
 =? false if index >= document.declarations.length
 begin(index)
-. opened = opened-at(index, shown)
+. opened = opened-at(index, row)
 if !opened
     pending = null
     = false
@@ -1318,11 +1328,11 @@ finish()
 ────────────────────
 _ do opened-at SourceOpened?
     - index Index
-    - shown SourceRow
+    - at Size
 
 . declaration = document.declaration(index)
-=? document.language.open-end(declaration) if ends-tray(row)
-= document.language.open-below(declaration, shown)
+=? document.language.open-end(declaration) if ends-tray(at)
+= document.language.open-below(declaration, document.row-at(at))
 
 ────────────────────
 _ do add-declaration
@@ -1472,7 +1482,7 @@ for index in low .. < high + 1
 pending = SourceUndo(low, old, made.length, row, column)
 document.splice(low, high - low + 1, made)
 . now = document.row-count
-row = if now > after then now - after else 0
+row = stop-at(if now > after then now - after else 0, false)
 . landed = row-at(row).text.length
 column = clamped(if landed > right.length then landed - right.length else 0)
 goal-column = column

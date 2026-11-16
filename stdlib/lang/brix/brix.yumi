@@ -1,3 +1,4 @@
+./brix-names
 ./brix-print
 ./brix-syntax
 ./build
@@ -57,6 +58,7 @@ _ brix-repair-mark = "brix-unread-"
 
 _ printer BrixPrinter
 _ layout BrixLayout
+_ names BrixNames
 _ held-start Size
 _ arm-owner ImmutableTableRow'SourceNode?
 _ spare ImmutableTableRow'SourceNode?
@@ -67,6 +69,7 @@ _ spare ImmutableTableRow'SourceNode?
 .. store = SourceStore()
 .. printer = BrixPrinter(store)
 .. layout = BrixLayout(store)
+.. names = BrixNames(store)
 
 ╌╌╌╌╌╌╌╌╌╌ is SourceLanguage ╌╌╌╌╌╌╌╌╌╌
 
@@ -127,6 +130,8 @@ SourceRow
     - store.id-at(row.owner)
     - row.zone
     - row.block
+    - row.is-padding
+    - row.is-private
 
 .. spans = spans-of(row, store.node-at(row.node))
 
@@ -307,12 +312,7 @@ if is-main(owner) || store.is-form(owner, "content")
 =? null if !is-function(owner) && !is-type(owner)
 . text = paragraph-of(owner)
 =? opened(declaration, text, mode == brix-mode-tail, 1) if text != null && is-edge
-if is-function(owner) && (is-head || mode == brix-mode-parameter)
-    . added = raw-line("- ")
-    . slot = printer.header-count(owner)
-    if row.node != null && mode == brix-mode-parameter
-        slot = item-index(owner, row.node-id) + 1
-    = placed(declaration, owner, store.inserted(owner, slot, added), added.id)
+=? line-opened(declaration, owner, row) if takes-lines(owner) && (is-head || mode == brix-mode-parameter)
 . is-leading = is-head || mode == brix-mode-separator || mode == brix-mode-parameter
 |? is-leading
     = opened(declaration, owner, false, body-start(owner))
@@ -367,9 +367,7 @@ if is-function(owner) && (is-head || mode == brix-mode-parameter)
 
 . node = store.node-at(row.node)
 =? null if !node || row.mode != brix-mode-parameter || !is-unwritten(node, "-")
-. owner = current(declaration, row)
-=? null if !owner
-= store.swapped(declaration, owner, store.without(owner, item-index(owner, row.node-id)))
+= store.removed(declaration, row.node-id)
 
 ────────────────────
 + do adopt ImmutableTableRow'SourceNode?
@@ -669,6 +667,12 @@ _ is-header-line Bool
 ["param", "constraint", "iterates", "implements", "using"] has (store.head(node) ?? "")
 
 ────────────────────
+_ takes-lines Bool
+    - node ImmutableTableRow'SourceNode
+
+is-function(node) || (is-type(node) && !store.is-form(node, "extend"))
+
+────────────────────
 _ is-armed Bool
     - node ImmutableTableRow'SourceNode
     - child ImmutableTableRow'SourceNode
@@ -798,6 +802,17 @@ _ is-text Bool
 printer.text-body(store.items(node)) != null
 
 ────────────────────
+_ function-block SourceRowBlock
+    - node ImmutableTableRow'SourceNode
+
+|? is-text(node)
+    SourceRowBlock.text
+|? ["fn-do", "fn-from-do", "fn-to-do"] has (store.head(node) ?? "")
+    SourceRowBlock.steps
+??
+    SourceRowBlock.leaf
+
+────────────────────
 _ do item-index Index
     - node ImmutableTableRow'SourceNode
     - id U32
@@ -806,6 +821,17 @@ _ do item-index Index
 for index in 0 .. < items.length
     =? index if items[index].id == id
 = items.length
+
+────────────────────
+_ do parent-of ImmutableTableRow'SourceNode?
+    - root ImmutableTableRow'SourceNode
+    - id U32
+
+for child in store.items(root)
+    =? root if child.id == id
+    . found = parent-of(child, id)
+    =? found if found
+= null
 
 ────────────────────
 _ current ImmutableTableRow'SourceNode?
@@ -851,6 +877,12 @@ while index < items.length && (is-import(items[index]) || is-loose(items[index])
 =? node if last + 1 >= items.length || store.is-blank(items[last + 1])
 items.insert(store.blank(), last + 1)
 = store.with-items(node, items)
+
+────────────────────
+_ is-private-form Bool
+    - node ImmutableTableRow'SourceNode
+
+store.count(node) > 1 && store.text(store.item(node, 1)) == "_"
 
 ────────────────────
 _ is-import Bool
@@ -1017,6 +1049,30 @@ _ do opened SourceOpened?
 = placed(declaration, target, grown, added.id)
 
 ────────────────────
+_ do line-opened SourceOpened?
+    - declaration ImmutableTableRow'SourceNode
+    - owner ImmutableTableRow'SourceNode
+    - row SourceRow
+
+. is-line = row.node != null && row.mode == brix-mode-parameter
+. held = if is-line then parent-of(owner, row.node-id) else signature-of(owner)
+. lines = held ?? owner
+. slot = if is-line then item-index(lines, row.node-id) + 1 else lines-start(lines)
+. added = raw-line(if is-type(lines) then "" else "- ")
+= placed(declaration, lines, store.inserted(lines, slot, added), added.id)
+
+────────────────────
+_ do lines-start Index
+    - node ImmutableTableRow'SourceNode
+
+=? printer.header-count(node) if is-function(node) || is-type(node)
+. items = store.items(node)
+. start = items.length
+while start > 0 && is-header-line(items[start - 1])
+    start -= 1
+= start
+
+────────────────────
 _ do placed SourceOpened?
     - declaration ImmutableTableRow'SourceNode
     - target ImmutableTableRow'SourceNode
@@ -1065,7 +1121,10 @@ if !spot
     - lead
     - store.with-id(spot, 0)
     - if is-scope then child else block
-= store.swapped(parent, spot, store.group(spot.id, held))
+. grown = store.swapped(parent, spot, store.group(spot.id, held))
+=? grown if !grown || !is-binding || store.count(grown) != 4
+=? grown if store.text(store.item(grown, 2)) != "_" || brix-is-type-form(store, store.item(grown, 3))
+= store.without(grown, 2)
 
 ────────────────────
 _ do settled ImmutableTableRow'SourceNode
@@ -1220,10 +1279,10 @@ _ do function-rows
 . mode = brix-mode-function
 if is-open
     mode = if divider == source-divider-thick then brix-mode-head else brix-mode-method
-rows += brix-divider-row(divider, node, .leaf)
+rows += brix-divider-row(divider, node, function-block(node), is-private-form(node))
 rows += head-row(node, mode)
 . index = header-rows(node, rows)
-rows += brix-gap(brix-mode-separator, node)
+rows += brix-padding(node)
 for position in index .. < items.length
     if position > index && store.is-form(items[position - 1], "paragraph")
         rows += brix-gap(source-row-decoration, node)
@@ -1243,21 +1302,23 @@ _ do type-rows
 
 . rows = build.rows
 . items = store.items(node)
-rows += brix-divider-row(source-divider-thick, node, .holder)
+rows += brix-divider-row(source-divider-thick, node, .holder, is-private-form(node))
 rows += head-row(node, brix-mode-type)
 . index = header-rows(node, rows)
-rows += brix-gap(brix-mode-separator, node)
+. is-shaped = signature-of(node) != null
+if index < items.length || !is-shaped
+    rows += brix-padding(node)
 . first = rows.length
 . is-style = store.is-form(node, "style") || store.is-form(node, "style-extend")
 . mode = if is-style then brix-mode-style else brix-mode-member
 while index < items.length && !is-divided(items[index])
     part(build, items[index], brix-part-statement, mode, node, SourceRowZone.body)
     index += 1
-if rows.length > first
-    rows += brix-gap(brix-mode-tail, node)
-. has-parts = index < items.length
+if rows.length == first && !is-shaped
+    rows += brix-blank-line(brix-mode-separator, node)
 for position in index .. < items.length
     . item = items[position]
+    names.home(item, node)
     if is-function(item)
         part(build, item, brix-part-method, brix-mode-function, item, SourceRowZone.body)
     else if is-machine(item)
@@ -1266,8 +1327,6 @@ for position in index .. < items.length
         part(build, item, brix-part-content, brix-mode-statement, item, SourceRowZone.body)
     else
         part(build, item, brix-part-note, brix-mode-note, item, SourceRowZone.body)
-if has-parts
-    rows += brix-gap(brix-mode-tail, node)
 rows += brix-gap(brix-mode-tail, node)
 
 ────────────────────
@@ -1312,9 +1371,9 @@ _ do machine-rows
     - rows [SourceOutlineRow]
 
 . cases = store.items(store.item(node, store.count(node) - 1))
-rows += brix-divider-row(source-divider-thin, node, .leaf)
+rows += brix-divider-row(source-divider-thin, node, .leaf, is-private-form(node))
 rows += head-row(node, brix-mode-method)
-rows += brix-gap(brix-mode-separator, node)
+rows += brix-padding(node)
 for index in 1 .. < cases.length
     statement-rows(cases[index], 0, node, brix-mode-state, SourceRowZone.body, rows)
 rows += brix-gap(brix-mode-tail, node)
@@ -1531,13 +1590,29 @@ _ spans-of [SourceSpan]
 |? row.divider == source-divider-label
     brix-label-spans(printer.row(node))
 |? brix-is-head-mode(row.mode)
-    brix-highlight-head(printer.heading(node))
+    resolved-head(row, node)
 |? row.mode == brix-mode-text
     brix-highlight-line(printer.line(node))
 |? row.mode == brix-mode-unparsed
     highlight(store.raw-text(node) ?? "", row.mode)
 ??
-    highlight(printer.row(node), row.mode)
+    resolved-spans(row, node)
+
+────────────────────
+_ do resolved-spans [SourceSpan]
+    - row SourceOutlineRow
+    - node ImmutableTableRow'SourceNode
+
+. text = printer.row(node)
+= names.resolved(highlight(text, row.mode), printer.tags, row.owner)
+
+────────────────────
+_ do resolved-head [SourceSpan]
+    - row SourceOutlineRow
+    - node ImmutableTableRow'SourceNode
+
+. text = printer.heading(node)
+= names.resolved(brix-highlight-head(text), printer.tags, row.owner)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do brix-document-read SourceDocument ?! SexpError
@@ -1638,6 +1713,8 @@ for step in 0 .. < known.length
             - row.zone
             - row.block
             - row.is-text-only
+            - row.is-padding
+            - row.is-private
     reused += part.count
     = true
 = false
@@ -1762,8 +1839,9 @@ _ brix-divider-row SourceOutlineRow
     - divider U8
     - owner ImmutableTableRow'SourceNode
     - block SourceRowBlock
+    - is-private = false
 
-SourceOutlineRow(null, source-row-decoration, 0, false, divider, owner.index as U32, false, .none, block)
+SourceOutlineRow(null, source-row-decoration, 0, false, divider, owner.index as U32, false, .none, block) • is-private is-private
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-blank-line SourceOutlineRow
@@ -1785,6 +1863,12 @@ _ brix-gap SourceOutlineRow
     - owner ImmutableTableRow'SourceNode
 
 SourceOutlineRow(null, mode, 0, false, 0, owner.index as U32, true)
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-padding SourceOutlineRow
+    - owner ImmutableTableRow'SourceNode
+
+SourceOutlineRow(null, brix-mode-separator, 0, false, 0, owner.index as U32, true) • is-padding true
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do brix-read-chunk [ImmutableTableRow'SourceNode]

@@ -19,6 +19,23 @@ _ brix-level-postfix = 24
 _ brix-level-primary = 26
 
 ━━━━━━━━━━━━━━━━━━━━
++ BrixTagKind is Union
+
+| name
+| setting
+| exit
+| raise
+| markup
+| binder
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixTag is Tuple
+
++ start Size
++ end Size
++ kind BrixTagKind
+
+━━━━━━━━━━━━━━━━━━━━
 + BrixPrinter
 
 + holder ImmutableTableRow'SourceNode?
@@ -26,6 +43,7 @@ _ brix-level-primary = 26
 + armed ImmutableTableRow'SourceNode?
 + tail ImmutableTableRow'SourceNode?
 + has-text Bool
++ tags [BrixTag]
 
 _ store SourceStore
 _ layout BrixLayout
@@ -33,6 +51,10 @@ _ parts [String]
 _ no-prep Bool
 _ is-quiet Bool
 _ binds-clause Bool
+_ column Size
+_ is-field Bool
+_ is-setting Bool
+_ is-binding Bool
 
 ────────────────────
 + This
@@ -121,6 +143,7 @@ _ do begin
 
 if !quiet
     parts = List'String()
+    tags = List'BrixTag()
 holder = null
 armed = null
 tail = null
@@ -128,6 +151,10 @@ start = 0
 no-prep = false
 has-text = false
 is-quiet = quiet
+column = 0
+is-field = false
+is-setting = false
+is-binding = false
 
 ────────────────────
 _ do put
@@ -137,6 +164,7 @@ _ do put
 has-text = true
 if !is-quiet
     parts += text
+    column += text.length
 
 ────────────────────
 _ do quoted
@@ -144,7 +172,18 @@ _ do quoted
 
 has-text = true
 if !is-quiet
-    parts += brix-quoted(text)
+    . shown = brix-quoted(text)
+    parts += shown
+    column += shown.length
+
+────────────────────
+_ do tagged
+    - text String
+    - kind BrixTagKind
+
+if !is-quiet && text.size != 0
+    tags += BrixTag(column, column + text.length, kind)
+put(text)
 
 ────────────────────
 _ do hold
@@ -390,13 +429,14 @@ do match items
     | [.atom(_, "export"), name]
         put("+ ${store.text(name)}")
     | [.atom(_, "let"), target, ...]
-        binding(items, ". ", target)
+        binding(items, false, target)
     | [.atom(_, "lazy"), target, ...]
-        binding(items, ".. ", target)
+        binding(items, true, target)
     | [.atom(_, "return")]
-        put("=")
+        tagged("=", .exit)
     | [.atom(_, "return"), value, ...]
-        put("= ")
+        tagged("=", .exit)
+        put(" ")
         payload(value)
     | [.atom(_, mark {brix-is-yield(it)}), ...]
         put(brix-return-mark(mark))
@@ -408,18 +448,19 @@ do match items
         if !is-guard(test) || items.length > 3
             put(sexp-inline-text(store, node))
         else
-            put("=?")
+            tagged("=?", .exit)
             if items.length == 3
                 put(" ")
                 expression(items[1], brix-level-named, false)
             put(" if ")
             expression(unguarded(test), 0, true)
     | [.atom(_, word {it == "break" || it == "continue"}), ...]
-        put(word)
+        tagged(word, .exit)
     | [.atom(_, "print")]
         put("--")
     | [.atom(_, "throw"), raised, ...]
-        put("?! ")
+        tagged("?!", .exit)
+        put(" ")
         expression(raised, 0, false)
         hold(node, 2)
     | [.atom(_, word {it == "on-error" || it == "on-failure"}), handler, ...]
@@ -597,11 +638,16 @@ do match items
 ────────────────────
 _ do binding
     - items ImmutableTableSpan'SourceNode
-    - mark String
+    - is-lazy Bool
     - target ImmutableTableRow'SourceNode
 
-put(mark)
+tagged(".", .binder)
+if is-lazy
+    tagged(".", .binder)
+put(" ")
+is-binding = true
 expression(target, 0, false)
+is-binding = false
 . is-flat = items.length >= 3 && store.is-atom(target) && is-typed-binding
     .. is-typed-binding = items.length >= 4 || brix-is-type-form(store, items[2])
 if is-flat && !(store.is-atom(items[2]) && store.text(items[2]) == "_")
@@ -637,7 +683,9 @@ _ do plain
 . head = store.head(node) ?? ""
 . level = if items.length >= 3 then brix-precedence(head) else 0
 if level == brix-level-assign && items.length == 3
+    is-setting = true
     expression(items[1], brix-level-assign + 1, false)
+    is-setting = false
     put(" ")
     put(brix-operator-text(head))
     put(" ")
@@ -879,7 +927,9 @@ for index in 2 .. < items.length
             put(" = ")
             expression(value, 0, true)
         | [.atom(_, {it == "tuple" && is-payload}), ...]
+            is-field = true
             expression(item, brix-level-primary, false)
+            is-field = false
         ??
             put(" ")
             expression(item, brix-level-primary, false)
@@ -1103,8 +1153,13 @@ do match item
                     expression(spread, brix-level-primary, false)
                 = true
             | [.atom(_, "?!"), raised, ...]
-                put(" ?! ")
-                expression(raised, brix-level-primary, false)
+                put(" ")
+                tagged("?!", .raise)
+                put(" ")
+                if store.is-atom(raised)
+                    tagged(store.text(raised), .raise)
+                else
+                    expression(raised, brix-level-primary, false)
                 = true
             ??
                 = false
@@ -1297,8 +1352,13 @@ _ do markup
 if head == "<+" && items.length == 2
     put("<+ (${store.text(items[1])})")
     =
-put(if head == "<>" then "<" else "+ <")
-expression(items[1], brix-level-primary, false)
+if head != "<>"
+    put("+ ")
+tagged("<", .markup)
+if store.is-atom(items[1])
+    tagged(store.text(items[1]), .markup)
+else
+    expression(items[1], brix-level-primary, false)
 . origin Size = 2
 . has-id = false
 . tags [ImmutableTableRow'SourceNode]
@@ -1737,7 +1797,11 @@ do match node
     | .string(_, text)
         quoted(text)
     | .atom(_, text)
-        put(text)
+        if is-field || !brix-is-name(text)
+            put(text)
+        else
+            tagged(text, if is-setting then BrixTagKind.setting else if is-binding then BrixTagKind.binder else BrixTagKind.name)
+        is-setting = false
     | .list(_, start, count)
         operation(node, store.nodes[start .. < start + count], minimum, is-tail)
 
@@ -1775,7 +1839,9 @@ do match items
             put(")")
         for index in 2 .. < items.length
             put(op)
+            is-field = true
             expression(items[index], brix-level-primary, false)
+            is-field = false
     | [.atom(_, op {it == "[]" || it == "?[]"}), target, slot]
         expression(target, brix-level-primary, false)
         put(if op == "[]" then "[" else "?[")

@@ -43,7 +43,6 @@ _ brix-keywords List
     * "continue"
     * "true"
     * "false"
-    * "null"
     * "this"
     * "This"
     * "using"
@@ -52,13 +51,22 @@ _ brix-keywords List
     * "finally"
     * "where"
 
+_ brix-sigils List
+    * "#"
+    * "@"
+    * "\$"
+    * "%"
+    * "&"
+    * "!"
+    * "."
+
 ━━━━━━━━━━━━━━━━━━━━
 + brix-highlight [SourceSpan]
     - text String
 
 match text
     ~ spans \brix-highlight-grammar(text, false)
-        List(spans)
+        brix-joined(List(spans))
     ?? List'SourceSpan(SourceSpan(.plain, text))
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -67,8 +75,75 @@ match text
 
 match text
     ~ spans \brix-highlight-grammar(text, true)
-        List(spans)
+        brix-joined(List(spans))
     ?? List'SourceSpan(SourceSpan(.string, text))
+
+━━━━━━━━━━━━━━━━━━━━
++ do brix-joined [SourceSpan]
+    - spans [SourceSpan]
+
+. result [SourceSpan]
+result ++= spans
+. is-joined [Bool]
+for span in result
+    is-joined += false
+. index = result.length - 1
+while index > 0
+    index -= 1
+    . sigil = result[index].text
+    . next = result[index + 1]
+    if brix-sigils has sigil && (is-joined[index + 1] || brix-starts-name(next.text)) && brix-is-prefix(result, index)
+        . kind = if sigil == "#" then SourceSpanKind.tracked else next.kind
+        result[index] = SourceSpan(kind, sigil)
+        result[index + 1] = SourceSpan(kind, next.text, next.is-optional)
+        is-joined[index] = true
+for at in 0 .. < result.length
+    if brix-is-optional(result, at)
+        . span = result[at]
+        result[at] = SourceSpan(span.kind, span.text, true)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-is-optional Bool
+    - spans [SourceSpan]
+    - index Index
+
+. span = spans[index]
+. before = if index > 0 then spans[index - 1] else SourceSpan(.plain, "")
+. next = if index + 1 < spans.length then spans[index + 1].text else ""
+=? span.kind == SourceSpanKind.identifier if span.text == "null"
+=? before.kind == SourceSpanKind.type-name || next == "." || next == "[" if span.text == "?"
+=? before.text == "?" if span.text == "."
+=? brix-is-chain(spans, index + 1) || (next == "?" && span.kind == SourceSpanKind.type-name) if brix-starts-name(span.text)
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-chain Bool
+    - spans [SourceSpan]
+    - index Index
+
+index < spans.length && spans[index].text == "?" && index + 1 < spans.length && (spans[index + 1].text == "." || spans[index + 1].text == "[")
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-starts-name Bool
+    - text String
+
+text.length > 0 && ((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z'))
+
+.. first = text[0]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-is-prefix Bool
+    - spans [SourceSpan]
+    - index Index
+
+=? true if index == 0
+. before = spans[index - 1].text
+=? true if before.length == 0
+. last = before[before.length - 1]
+=? false if brix-starts-name("$last") || (last >= '0' && last <= '9')
+=? false if last == ')' || last == ']' || last == '}' || last == '"' || last == '\'' || last == '_'
+= spans[index].text != "." || !(last == '?' || last == '!' || last == '*')
 
 ━━━━━━━━━━━━━━━━━━━━
 + do brix-highlight-head [SourceSpan]
@@ -79,7 +154,7 @@ match text
 for span in brix-highlight(text)
     . is-word = span.kind == SourceSpanKind.identifier || span.kind == SourceSpanKind.type-name
     if is-word && !is-named
-        spans += SourceSpan(SourceSpanKind.definition, span.text)
+        spans += SourceSpan(if span.kind == SourceSpanKind.type-name then SourceSpanKind.type-definition else SourceSpanKind.definition, span.text)
         is-named = true
     else
         spans += span
@@ -374,13 +449,16 @@ is-keyword || heads has head || probes has head
 =? node if count == 0
 =? store.with-id(store.item(node, 1), node.id) if store.is-form(node, "scope") && count == 2
 . last = store.item(node, count - 1)
+. is-binding = store.is-form(node, "let") || store.is-form(node, "lazy")
 if !(store.is-form(last, "block") && store.count(last) == 1)
     . next = brix-prune(store, last, is-bare)
     =? node if next.index == last.index
-    = store.appended(store.trimmed(node, count - 1), next)
+    . pruned = store.appended(store.trimmed(node, count - 1), next)
+    . is-named = is-binding && count == 3 && store.is-atom(store.item(node, 1))
+    . becomes-type = brix-is-type-form(store, next) && !brix-is-type-form(store, last)
+    = if is-named && becomes-type then store.inserted(pruned, 2, store.atom("_")) else pruned
 =? node if count < 2
 =? store.trimmed(node, 2) if is-binding && count == 3
-.. is-binding = store.is-form(node, "let") || store.is-form(node, "lazy")
 =? store.trimmed(node, count - 1) if brix-takes-block(store, node)
 =? node if !store.is-form(node, "call")
 =? store.with-id(store.item(node, 1), node.id) if count == 3 && is-bare

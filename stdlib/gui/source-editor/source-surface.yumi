@@ -5,9 +5,9 @@
 /graphics/canvas
 /graphics/color
 /graphics/outline
+/graphics/point
 /graphics/primitives
 /math
-/stream/aggregate
 
 + source-box-radius Length = 8
 + source-box-indent Length = 18
@@ -17,6 +17,7 @@
 + source-edge-step Length = 4
 + source-wash-trail Length = 6
 + source-border-width Length = 1
+_ source-private-dash Length = 3
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceSurface is Union
@@ -24,7 +25,6 @@
 | none
 | box
 | tray
-| imports
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceReach is Tuple
@@ -39,6 +39,9 @@
 + outer SourceReach?
 + member SourceReach? = null
 + wash SourceReach? = null
++ kind = SourceRowBlock.none
++ is-private = false
++ is-member-private = false
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceSurfacePalette is Tuple
@@ -50,8 +53,12 @@
 + member RGBA
 + member-border RGBA
 + wash RGBA
-+ member-wash RGBA
-+ imports RGBA
++ steps-wash RGBA
++ text-wash RGBA
++ holder-wash RGBA
++ steps-border RGBA
++ text-border RGBA
++ background RGBA
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceSliceScan
@@ -82,7 +89,7 @@ _ is-member = false
 . base = document.first-row(index)
 . local = row - base
 . surface = block-surface(rows[0].block)
-=? imports-slice(rows, base, local) if surface == SourceSurface.none
+=? SourceSlice(.none, null) if surface == SourceSurface.none
 . next = if display + 1 < folds.row-count() then folds.actual(display + 1) else document.row-count
 . after = next - base
 . current = rows[local]
@@ -113,67 +120,8 @@ else if opens && local + 1 < rows.length && rows[local + 1].zone == SourceRowZon
     wash = SourceReach(source-edge-offset, null)
 else if is-gap && local > 0 && rows[local - 1].zone == SourceRowZone.header
     wash = SourceReach(null, min(source-wash-trail, bottom ?? source-wash-trail))
-= SourceSlice(surface, outer, member, wash)
-
-────────────────────
-_ do imports-slice SourceSlice
-    - rows [SourceOutlineRow]
-    - base Size
-    - local Size
-
-=? SourceSlice(.none, null) if !is-imported(rows, base, local)
-. opens = rows[local].zone == SourceRowZone.preamble && !runs-back(rows, base, local)
-. closes = local + 1 >= rows.length || !is-imported(rows, base, local + 1)
-= SourceSlice(.imports, SourceReach(if opens then 0 else null, if closes then height else null))
-
-────────────────────
-_ do is-imported Bool
-    - rows [SourceOutlineRow]
-    - base Size
-    - local Size
-
-=? true if rows[local].zone == SourceRowZone.preamble
-=? false if !is-aside(rows, base, local) || !runs-back(rows, base, local)
-= runs-ahead(rows, base, local) || session.in-preamble(session.document.node-id(rows[local]))
-
-────────────────────
-_ do runs-back Bool
-    - rows [SourceOutlineRow]
-    - base Size
-    - local Size
-
-. probe = local
-while probe > 0
-    probe -= 1
-    =? true if rows[probe].zone == SourceRowZone.preamble
-    =? false if !is-aside(rows, base, probe)
-= false
-
-────────────────────
-_ do runs-ahead Bool
-    - rows [SourceOutlineRow]
-    - base Size
-    - local Size
-
-. probe = local + 1
-while probe < rows.length
-    =? true if rows[probe].zone == SourceRowZone.preamble
-    =? false if !is-aside(rows, base, probe)
-    probe += 1
-= false
-
-────────────────────
-_ do is-aside Bool
-    - rows [SourceOutlineRow]
-    - base Size
-    - local Size
-
-. row = rows[local]
-=? false if row.node == null
-=? true if row.is-empty
-. spans = session.document.row-at(base + local).spans
-=? false if spans.length == 0
-= all(spans) • where each.kind == SourceSpanKind.comment || each.kind == SourceSpanKind.decoration
+. kind = if in-member then rows[member-start].block else rows[0].block
+= SourceSlice(surface, outer, member, wash, kind, rows[0].is-private, in-member && rows[member-start].is-private)
 
 ────────────────────
 _ do is-member-row Bool
@@ -193,7 +141,7 @@ while end < rows.length && rows[end].owner != home && rows[end].divider != sourc
 member-declaration = index
 member-start = start
 member-end = end
-is-member = rows[start].divider == source-divider-thin && rows[start].block == SourceRowBlock.leaf
+is-member = rows[start].divider == source-divider-thin && source-is-function-block(rows[start].block)
 = is-member
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -201,12 +149,18 @@ _ block-surface SourceSurface
     - block SourceRowBlock
 
 match block
-    | .leaf
-        SourceSurface.box
     | .holder
         SourceSurface.tray
     | .none
         SourceSurface.none
+    ??
+        SourceSurface.box
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-is-function-block Bool
+    - block SourceRowBlock
+
+block == SourceRowBlock.leaf || block == SourceRowBlock.steps || block == SourceRowBlock.text
 
 ━━━━━━━━━━━━━━━━━━━━
 + do paint-source-slice
@@ -225,13 +179,15 @@ match block
 . inner = box
 if member
     inner = source-reached(band, member, left + step, right - step)
+. fill = source-surface-color(slice.surface, palette).over(palette.background)
+. member-fill = palette.member.over(fill)
 do use canvas.saved-state
     canvas.clip(band)
     canvas.stroke-color = null
-    canvas.fill-color = source-surface-color(slice.surface, palette)
+    canvas.fill-color = fill
     canvas.outline(Outline(box, source-box-radius))
     if member
-        canvas.fill-color = palette.member
+        canvas.fill-color = member-fill
         canvas.outline(Outline(inner, source-box-radius))
     . wash = slice.wash
     if wash
@@ -239,17 +195,89 @@ do use canvas.saved-state
         . bottom = band.y + (wash.bottom ?? band.height + source-box-radius * 2)
         do use canvas.saved-state
             canvas.clip(Rect(band.x, top, band.width, bottom - top))
-            canvas.fill-color = if member then palette.member-wash else palette.wash
+            . washed = source-wash-fill(slice.kind, palette).over(if member then member-fill else fill)
+            canvas.fill-color = washed
             canvas.outline(Outline(inner, source-box-radius))
-    canvas.fill-color = null
-    canvas.stroke-width = source-border-width
     . border = source-surface-border(slice.surface, palette)
     if border
-        canvas.stroke-color = border
-        canvas.outline(Outline(box, source-box-radius).grow(-source-border-width / 2))
+        . shown = if slice.surface == SourceSurface.box then source-kind-border(slice.kind, border, palette) else border
+        stroke-source-edge(canvas, box, band, shown.over(fill), slice.is-private)
     if member
-        canvas.stroke-color = palette.member-border
-        canvas.outline(Outline(inner, source-box-radius).grow(-source-border-width / 2))
+        . edge = source-kind-border(slice.kind, palette.member-border, palette).over(member-fill)
+        stroke-source-edge(canvas, inner, band, edge, slice.is-member-private)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-source-edge
+    - canvas Canvas
+    - box Rect
+    - band Rect
+    - color RGBA
+    - is-dashed Bool
+
+. shape = Outline(box, source-box-radius).grow(-source-border-width / 2)
+canvas.fill-color = null
+canvas.stroke-width = source-border-width
+canvas.stroke-color = color
+if !is-dashed
+    canvas.outline(shape)
+    =
+. radius = source-box-radius
+stroke-source-corner(canvas, Point(box.x + radius, box.y + radius), 180deg, band)
+stroke-source-corner(canvas, Point(box.right - radius, box.y + radius), 270deg, band)
+stroke-source-corner(canvas, Point(box.right - radius, box.bottom - radius), 0deg, band)
+stroke-source-corner(canvas, Point(box.x + radius, box.bottom - radius), 90deg, band)
+canvas.stroke-color = null
+canvas.fill-color = color
+. width = source-border-width
+. count = max(round(band.height / (source-private-dash * 2)), 1)
+. period = band.height / count
+. top = max(band.y, box.y + radius)
+. bottom = min(band.bottom, box.bottom - radius)
+. y = band.y
+while y < bottom
+    . from = max(y, top)
+    . to = min(y + period / 2, bottom)
+    if to > from
+        canvas.rect(Rect(box.x, from, width, to - from))
+        canvas.rect(Rect(box.right - width, from, width, to - from))
+    y += period
+if box.y >= band.y - width && box.y < band.bottom
+    paint-source-dashes(canvas, box.x + radius, box.right - radius, box.y)
+if box.bottom > band.y && box.bottom <= band.bottom + width
+    paint-source-dashes(canvas, box.x + radius, box.right - radius, box.bottom - width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do stroke-source-corner
+    - canvas Canvas
+    - center Point
+    - start Radians
+    - band Rect
+
+. radius = source-box-radius - source-border-width / 2
+=? if center.y + radius <= band.y || center.y - radius >= band.bottom
+. count = max(round(radius * 1.5707963267948966 / (source-private-dash * 2)), 1)
+. step = 90deg / count
+. dashes = count as Size
+for index in 0 .. < dashes
+    . from = start + step * ((index as F64) + 0.25)
+    canvas.begin()
+    canvas.move(center.x + cos(from) * radius, center.y + sin(from) * radius)
+    for part in 1 .. 4
+        . angle = from + step / 2 * (part as F64) / 4
+        canvas.line(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
+    canvas.end()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do paint-source-dashes
+    - canvas Canvas
+    - left Length
+    - right Length
+    - y Length
+
+. x = left
+while x < right
+    canvas.rect(Rect(x, y, min(source-private-dash, right - x), source-border-width))
+    x += source-private-dash * 2
 
 ━━━━━━━━━━━━━━━━━━━━
 + source-slice-shape Outline?
@@ -289,10 +317,37 @@ _ source-surface-color RGBA
 match surface
     | .tray
         palette.tray
-    | .imports
-        palette.imports
     ??
         palette.box
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-wash-fill RGBA
+    - kind SourceRowBlock
+    - palette SourceSurfacePalette
+
+match kind
+    | .steps
+        palette.steps-wash
+    | .text
+        palette.text-wash
+    | .holder
+        palette.holder-wash
+    ??
+        palette.wash
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-kind-border RGBA
+    - kind SourceRowBlock
+    - plain RGBA
+    - palette SourceSurfacePalette
+
+match kind
+    | .steps
+        palette.steps-border
+    | .text
+        palette.text-border
+    ??
+        plain
 
 ━━━━━━━━━━━━━━━━━━━━
 _ source-surface-border RGBA?
@@ -302,7 +357,5 @@ _ source-surface-border RGBA?
 match surface
     | .tray
         palette.tray-border
-    | .imports
-        null
     ??
         palette.box-border

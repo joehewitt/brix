@@ -932,8 +932,16 @@ yumiStringNormalize(const char* str) {
     return _stringValue(result);
 }
 
+static inline bool
+_isScalarValue(uint32_t codepoint) {
+    return codepoint < 0x110000 && (codepoint < 0xd800 || codepoint >= 0xe000);
+}
+
 extern "C" const YumiStringData*
 yumiStringFromUtf8Codepoint(uint32_t c) {
+    if (!_isScalarValue(c)) {
+        return nullptr;
+    }
     utf8proc_uint8_t str[5];
     utf8proc_ssize_t bytes = utf8proc_encode_char(c, (utf8proc_uint8_t *)str);
     if (bytes < 0) {
@@ -958,10 +966,10 @@ yumiStringFromUtf8Codepoints(const uint32_t* self, size_t start, size_t end) {
 
     for (size_t i = start; i < end; i++) {
         uint32_t codepoint = self[i];
-        size_t bytes =
-            codepoint < 0x110000 && (codepoint < 0xd800 || codepoint >= 0xe000)
-                ? 1 + (codepoint >= 0x80) + (codepoint >= 0x800) + (codepoint >= 0x10000)
-                : 0;
+        if (!_isScalarValue(codepoint)) {
+            return nullptr;
+        }
+        size_t bytes = 1 + (codepoint >= 0x80) + (codepoint >= 0x800) + (codepoint >= 0x10000);
         if (bytes > SIZE_MAX - byteLength) {
             _stringAllocationFailed("Encoded String size overflow");
         }
