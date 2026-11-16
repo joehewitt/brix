@@ -1,0 +1,28 @@
+`benchmark.meta description: Reads a plain global in a hot loop, against which the reads of a @stack global are measured.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/array
+
++ scale = 3
+
+. item-count = 4096 as Size
+. pass-count = 16384 as Size
+. checksum = 0 as Size
+. values = Array'Size(item-count) • with each % 251
+
+checksum += sum-scaled(values, pass-count)
+
+-- "bench-result globals/plain-read checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do sum-scaled Size
+    - values Array'Size
+    - passes Size
+
+. checksum = 0 as Size
+for pass in 0 .. < passes
+    for index in 0 .. < values.length
+        values[index] = values[index] + (scale as Size)
+        checksum += values[index]
+= checksum

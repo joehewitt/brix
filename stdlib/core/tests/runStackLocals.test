@@ -483,3 +483,80 @@ do with current = 3
 6
 5, 10
 ;====
+:====
+# A with section binds stack values in turn, the first outermost, on a do block or on the header of
+# a do function, where it binds for the whole body.
+
++ @stack scope = "none"
++ @stack depth Int = 0
+
+do with scope = "one", depth = 1
+    report()
+do without gc with depth = 2
+    . doubled = 2 * 2
+scoped()
+report()
+
+━━━━━━━━━━━━━━━━━━━━
++ do report
+-- "$scope $depth"
+
+━━━━━━━━━━━━━━━━━━━━
++ do scoped with scope = "header", depth = depth + 5
+report()
+
+:----
+
+one 1
+header 5
+none 0
+;====
+:====
+
++ @stack depth Int = 0
+
+-- deeper()
+
+━━━━━━━━━━━━━━━━━━━━
++ deeper Int with depth = 1
+depth
+
+:----
+%compile-error
+
+Exception: A 'with' section needs a do function
+<no file:7>
+    + deeper Int with depth = 1
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A global nothing binds with do with holds its first value everywhere. Where that value is a
+# literal it is a constant, read where the task's memory is not: in a block without gc.
+
++ @stack level = 7
++ @stack label = "plain"
+
+. done SyncChannel'Int
+do new
+    done <- level * 2
+-- <- done
+. reader = => level + 1
+-- reader()
+do without gc
+    . doubled = level * 2
+-- add(3)
+-- ", ".join("${each + level} $label" in [1, 2])
+
+━━━━━━━━━━━━━━━━━━━━
++ do add Int without heap
+    - n Int
+
+= n + level
+
+:----
+
+14
+8
+10
+8 plain, 9 plain
+;====

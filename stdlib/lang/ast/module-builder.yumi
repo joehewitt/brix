@@ -269,22 +269,33 @@ do match? tree.nodes[id]
         next-syntax = class-body-start
             - tree
             - row.type-args
-            - row.base
+            - if row.facet-of > row.base then row.facet-of else row.base
             - row.or-bases
             - row.param-constraints
             - row.param-assignments
-        add-class
-            - tree
-            - id
-            - row.name
-            - row.aliases
-            - row.type-args
-            - row.base
-            - row.members
-            - row.access
-            - row.param-constraints
-            - row.param-assignments
-            - row.or-bases
+        if row.facet-of != 0
+            add-extension
+                - tree
+                - id
+                - row.facet-of
+                - row.members
+                - row.access
+                - RowRange'SyntaxId()
+                - RowRange'SyntaxId()
+                - row.name
+        else
+            add-class
+                - tree
+                - id
+                - row.name
+                - row.aliases
+                - row.type-args
+                - row.base
+                - row.members
+                - row.access
+                - row.param-constraints
+                - row.param-assignments
+                - row.or-bases
     | .node-extension(row)
         next-syntax = extension-body-start
             - tree
@@ -485,12 +496,20 @@ _ do add-rule DeclId
     - id SyntaxId
     - owner DeclId
 
-` A rule a class writes that runs as what it reads changes: a `when` rule, a `whenever` rule
-` on a value, or one on the markup an object is in, which names at most its changes, or a
-` dependency `. m < p`, which runs a method as properties change; or a section that
+` A rule a class or a facet of one writes that runs as what it reads changes: a `when` rule, a
+` `whenever` rule on a value, or one on the markup an object is in, which names at most its
+` changes, or a dependency `. m < p`, which runs a method as properties change; or a section that
 ` subscribes the object to a stream, `on s` or `for x on s`, which its constructors run. A rule
 ` of any other type declares nothing.
-= if decls[owner] is .decl-class then append(RuleDecl(id, owner)) else 0
+= if writes-rules then append(RuleDecl(id, owner)) else 0
+
+.. writes-rules = match decls[owner]
+    | .decl-class
+        true
+    | .decl-extension(row)
+        row.facet != null
+    ??
+        false
 
 ────────────────────
 _ do add-function DeclId
@@ -2400,6 +2419,7 @@ _ do add-extension DeclId
     - access Access
     - param-constraints RowRange'SyntaxId
     - param-assignments RowRange'SyntaxId
+    - facet Atom? = null
 
 . decl = ExtensionDecl
     - syntax
@@ -2408,6 +2428,9 @@ _ do add-extension DeclId
     - access
     - param-constraints
     - param-assignments
+    - facet
+    - if facet then store-sees(tree, member-syntax) else RowRange'SyntaxId()
+    - if facet then store-interfaces(tree, member-syntax) else RowRange'SyntaxId()
 . id = append(decl)
 . members = scan-members(tree, member-syntax, id)
 if written-content != 0
@@ -2429,6 +2452,22 @@ _ do store-interfaces RowRange'SyntaxId
 for member in tree.nodes[tree.children[member-syntax]]
     do match? member
         | .node-implements-declaration(row)
+            syntax-pool.append(row.type)
+= RowRange'SyntaxId(start as U32, (syntax-pool.length - start) as U32)
+
+────────────────────
+_ do store-sees RowRange'SyntaxId
+    - tree AST
+    - member-syntax RowRange'SyntaxId
+
+` The sibling facets a facet names with `sees`, in the order they are written.
+?! Panic("Module syntax pool exceeds U32 capacity")
+    if syntax-pool.length >= U32.max
+
+. start = syntax-pool.length
+for member in tree.nodes[tree.children[member-syntax]]
+    do match? member
+        | .node-sees-declaration(row)
             syntax-pool.append(row.type)
 = RowRange'SyntaxId(start as U32, (syntax-pool.length - start) as U32)
 
@@ -2523,6 +2562,8 @@ _ is-attached-syntax Bool
 ` and the types the next property or getter delegates to.
 match tree.nodes[id]
     | .node-implements-declaration
+        true
+    | .node-sees-declaration
         true
     | .node-delegate-declaration
         true

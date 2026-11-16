@@ -368,11 +368,12 @@
         bx.form(location, "type-line", header)
 
 .. class-line ImmutableTableRow'SourceNode ~
-    ~ acc \access // id \type-name type-args \type-argument* aliases \class-aliases? inherits \class-inherits? header \class-header-block?
+    ~ acc \access // id \type-name type-args \type-argument* aliases \class-aliases? owner \class-facet-of? inherits \class-inherits? header \class-header-block?
         bx.seq
             - bx.atom(location, acc)
             - bx.applied(location, bx.atom(location, id), bx.many(type-args))
             - aliases
+            - owner
             - inherits
             - header
 
@@ -391,6 +392,10 @@
         bx.atom(location, n)
     ~ n \unit
         bx.atom(location, n)
+
+.. class-facet-of ImmutableTableRow'SourceNode ~
+    ~ // "is" // "facet" // "of" // owner \type
+        bx.form(location, "facet-of", owner)
 
 .. class-inherits ImmutableTableRow'SourceNode ~
     ~ // "is" // types \class-or-list
@@ -438,6 +443,8 @@
         bx.form(location, "implements", t)
     ~ "using" // t \type
         bx.form(location, "using", t)
+    ~ "sees" // t \type
+        bx.form(location, "sees", t)
 
 .. class-body ImmutableTableRow'SourceNode ~
     ~ / \nl+ items \members
@@ -658,18 +665,19 @@
             - body
 
 .. converter-block ImmutableTableRow'SourceNode ~
-    ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type effects \annotation-names? args \arguments-block? / body \function-block-body-tail
+    ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type effects \annotation-names? scope \do-sections? args \arguments-block? / body \function-block-body-tail
         bx.form
             - location
             - if !!imperative then "fn-to-do" else "fn-to-expr"
             - bx.atom(location, acc)
             - ty
             - effects
+            - scope
             - args
             - body
 
 .. getter-block ImmutableTableRow'SourceNode ~
-    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? errors \function-error-declaration* effects \annotation-names? / body \function-block-body-tail
+    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? errors \function-error-declaration* effects \annotation-names? scope \do-sections? / body \function-block-body-tail
         bx.form
             - location
             - if !!imperative then "fn-do" else "fn-expr"
@@ -678,7 +686,7 @@
             - bx.blank-slot(location, t)
             - bx.atom(location, ":get")
             - bx.many(errors)
-            - effects
+            - bx.seq(effects, scope)
             - body
 
 .. when-rule-block ImmutableTableRow'SourceNode ~
@@ -724,7 +732,7 @@
             - body
 
 .. ordinary-function-block ImmutableTableRow'SourceNode ~
-    ~ \open \nl acc \access // static \function-static? imperative \function-imperative? key \function-key errors \function-error-declaration* effects \annotation-names? throws (// "throws")? args \arguments-block? / !(\same-line-body) body \function-block-body-tail
+    ~ \open \nl acc \access // static \function-static? imperative \function-imperative? key \function-key errors \function-error-declaration* effects \annotation-names? scope \do-sections? throws (// "throws")? args \arguments-block? / !(\same-line-body) body \function-block-body-tail
         bx.form
             - location
             - bx.function-head(!!imperative, key)
@@ -734,6 +742,7 @@
                 - bx.flag(location, ":static", !!static)
                 - bx.many(errors)
                 - effects
+                - scope
                 - bx.flag(location, ":throws", !!throws)
             - args
             - body
@@ -1089,13 +1098,49 @@
 .. do-block ImmutableTableRow'SourceNode ~
     ~ "do finally" body \do-block-body
         bx.form(location, "finally", body)
-    ~ "do with" // name \name / "=" // expr \inline-expression body \do-required-block-body
+    ~ "do with" // name \name / "=" // expr \inline-expression-no-prep-no-comma body \do-required-block-body
         bx.form(location, "do-with", bx.atom(location, name), expr, body)
     ~ "do use" is-optional "?"? // expr \inline-expression body \do-required-block-body
         bx.form(location, if is-optional then "do-use?" else "do-use", expr, body)
+    ~ "do" annotations \annotation-names? sections \do-sections body \row-block
+        bx.form(location, "do", annotations, sections, bx.body(body))
     ~ \task-block
     ~ "do" body \do-block-body
         bx.form(location, "do", body)
+
+.. do-sections ImmutableTableRow'SourceNode ~
+    ~ // "without" // names \without-names bindings \with-section?
+        bx.seq(bx.form(location, "without", names), bindings)
+    ~ // "with" // bindings \with-bindings names \without-section?
+        bx.seq(bindings, names)
+
+.. without-section ImmutableTableRow'SourceNode ~
+    ~ // "without" // names \without-names
+        bx.form(location, "without", names)
+
+.. with-section ImmutableTableRow'SourceNode ~
+    ~ // "with" // bindings \with-bindings
+        bindings
+
+.. without-names ImmutableTableRow'SourceNode ~
+    ~ name \raw-atom-name tail \without-name*
+        bx.seq(bx.atom(location, name), bx.many(tail))
+
+.. without-name ImmutableTableRow'SourceNode ~
+    ~ "," // name \raw-atom-name
+        bx.atom(location, name)
+
+.. with-bindings ImmutableTableRow'SourceNode ~
+    ~ head \with-binding tail \with-binding-more*
+        bx.seq(head, bx.many(tail))
+
+.. with-binding ImmutableTableRow'SourceNode ~
+    ~ name \name / "=" // value \inline-expression-no-prep-no-comma
+        bx.form(location, "with", bx.atom(location, name), value)
+
+.. with-binding-more ImmutableTableRow'SourceNode ~
+    ~ "," // binding \with-binding
+        binding
 
 .. task-block ImmutableTableRow'SourceNode ~
     ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body arms \task-catch*
@@ -2699,6 +2744,7 @@
 .. access String ~
     ~ "+"
     ~ "_"
+    ~ "^"
 
 .. infix-operator String ~
     ~ \increment-operator

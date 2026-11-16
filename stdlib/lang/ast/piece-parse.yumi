@@ -10,7 +10,6 @@
 /core/array-builder
 /core/atom-pool
 /core/parsing
-/lang/worker-failure
 
 _ default-piece-length Size = 65536
 
@@ -201,14 +200,15 @@ _ do parse-pieces ASTBuilder?
 
 . count = plan.pieces.length
 . results SyncBufferedChannel'ParsedPiece
-. failure = WorkerFailure()
+. group = TaskGroup()
 for index in 0 .. < count
     . span = plan.pieces[index]
-    do (pool) new
+    . task = do (pool) new
         results <- parse-piece(preparsed, source, source-path, span, index, atoms, atom-lock)
     catch failed
-        failure.keep(failed)
+        group.keep(failed)
         results <- ParsedPiece(index, null, null)
+    group.add(task)
 . slots [ParsedPiece?]
 for _ in 0 .. < count
     slots += null
@@ -227,7 +227,7 @@ if failed
     for slot in slots
         if slot && slot.tree
             slot.tree.release()
-    failure.raise-kept()
+    group.wait()
     = null
 . merged = catch merge.finish()
 =? null if merged is Error
@@ -292,6 +292,7 @@ use atom-lock
     - aliases
     - found.inherits
     - found.header
+    - found.facet-of
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do shared-atoms ImmutableArray'Atom
@@ -387,6 +388,7 @@ ClassHeader
     - header.aliases
     - inherits
     - variants
+    - shift.node(header.facet-of)
 
 .. inherits = shifted-ids(header.inherits, shift) if header.inherits
 .. variants = shifted-variants(header.header, shift) if header.header
@@ -427,5 +429,7 @@ match variant
         .implements-declaration(shift.node(value))
     | .using-declaration(value)
         .using-declaration(shift.node(value))
+    | .sees-declaration(value)
+        .sees-declaration(shift.node(value))
     | .iterator-header(location, loop)
         .iterator-header(shift.location(location), shift.node(loop))

@@ -379,8 +379,8 @@ do finally
         make-class-declaration(tree, header.location, header, null)
 
 .. class-line ClassHeader ~
-    ~ acc \access // id \type-name type-args \type-argument* aliases \class-aliases? inherits \class-inherits? header \class-header-block?
-        ClassHeader(location, acc, id, type-args, aliases, inherits, header)
+    ~ acc \access // id \type-name type-args \type-argument* aliases \class-aliases? owner \class-facet-of? inherits \class-inherits? header \class-header-block?
+        ClassHeader(location, acc, id, type-args, aliases, inherits, header, owner ?? 0)
 
 .. class-aliases ~
     ~ // "(" / aliases \alias-list / ")"
@@ -393,6 +393,10 @@ do finally
     ~ \name
     ~ \type-name
     ~ \unit
+
+.. class-facet-of SyntaxId ~
+    ~ // "is" // "facet" // "of" // owner \type
+        owner
 
 .. class-inherits ~
     ~ // "is" // types \class-or-list
@@ -440,6 +444,8 @@ do finally
         .implements-declaration(tree.append(ASTImplementsDeclaration(location, t)))
     ~ "using" // t \type
         .using-declaration(tree.append(ASTUsingDeclaration(location, t)))
+    ~ "sees" // t \type
+        .sees-declaration(tree.append(ASTSeesDeclaration(location, t)))
 
 .. class-body ImmutableArray'SyntaxId ~
     ~ / \nl+ items \members
@@ -690,15 +696,17 @@ do finally
                 - !!imperative
 
 .. converter-block SyntaxId ~
-    ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type annotations \annotation-names? args \arguments-block? / body \function-block-body-tail
-        tree.append(ASTConverter(declared-at(location), acc, ty, tree.store-optional-children(parameter-constraints(tree, variants)), tree.store-optional-children(parameter-assignments(tree, variants)), tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, body)), !!imperative, compilation-effects(location, names, false), has-annotation(names, "inline")))
+    ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type annotations \annotation-names? sections \do-sections? args \arguments-block? / body \function-block-body-tail
+        tree.append(ASTConverter(declared-at(location), acc, ty, tree.store-optional-children(parameter-constraints(tree, variants)), tree.store-optional-children(parameter-assignments(tree, variants)), tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, bound)), !!imperative, compilation-effects(location, names, false), has-annotation(names, "inline")))
             .. variants = args ?? ImmutableArray'ArgumentVariant()
-            .. names = annotations ?? ImmutableArray'Atom()
+            .. names = section-annotations(tree, declared-at(location), annotations ?? ImmutableArray'Atom(), sections, false)
+            .. bound = sectioned-body(tree, declared-at(location), sections, !!imperative, body)
 
 .. getter-block SyntaxId ~
-    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? errors \function-error-declaration* annotations \annotation-names? / body \function-block-body-tail
-        make-getter-function(tree, location, acc, names, !!imperative, anns, t, body, errors)
-            .. anns = annotations ?? ImmutableArray'Atom()
+    ~ \open \nl acc \access // imperative \function-imperative? "get" // names \function-left (// t \type)? errors \function-error-declaration* annotations \annotation-names? sections \do-sections? / body \function-block-body-tail
+        make-getter-function(tree, location, acc, names, !!imperative, anns, t, bound, errors)
+            .. anns = section-annotations(tree, declared-at(location), annotations ?? ImmutableArray'Atom(), sections, false)
+            .. bound = sectioned-body(tree, declared-at(location), sections, !!imperative, body)
 
 .. when-rule-block SyntaxId ~
     ~ \open \nl "when" // expr \inline-expression / body \function-block-body-tail
@@ -756,13 +764,14 @@ do finally
             .. checked-body = declaration-body(tree, body, same-line)
 
 .. ordinary-function-block SyntaxId ~
-    ~ \open \nl acc \access // static \function-static? imperative \function-imperative? key \function-key errors \function-error-declaration* annotations \annotation-names? throws (// "throws")? args \arguments-block? / same-line \same-line-body? body \function-block-body-tail
-        make-function(tree, location, acc, imp, stat, key, errors, anns, item, args, checked-body)
+    ~ \open \nl acc \access // static \function-static? imperative \function-imperative? key \function-key errors \function-error-declaration* annotations \annotation-names? sections \do-sections? throws (// "throws")? args \arguments-block? / same-line \same-line-body? body \function-block-body-tail
+        make-function(tree, location, acc, imp, stat, key, errors, anns, item, args, bound)
             .. checked-body = declaration-body(tree, body, same-line)
             .. imp = !!imperative
+            .. bound = sectioned-body(tree, declared-at(location), sections, imp, checked-body)
             .. stat = !!static
             .. item = tree.atom("StreamItem")
-            .. anns = annotations ?? ImmutableArray'Atom()
+            .. anns = section-annotations(tree, declared-at(location), annotations ?? ImmutableArray'Atom(), sections, false)
 
 .. function-imperative Bool ~
     ~ "do" //
@@ -1129,13 +1138,8 @@ do finally
 .. do-block SyntaxId ~
     ~ "do finally" body \do-block-body
         tree.append(ASTDoFinallyBlock(location, unannotated-body(location, body, "do finally")))
-    ~ "do with" // name \name / "=" // expr \inline-expression body \do-required-block-body
-        tree.append
-            - ASTStackLocalBindingBlock
-                - location
-                - name
-                - expr
-                - unannotated-body(location, body, "do with")
+    ~ "do" annotations \annotation-names? sections \do-sections body \block
+        sectioned-do(tree, location, sections, DoBody(body, annotations ?? ImmutableArray'Atom()))
     ~ "do use" is-optional "?"? // expr \inline-expression body \do-required-block-body
         tree.append
             - ASTUseBlock
@@ -1146,6 +1150,40 @@ do finally
     ~ "do" body \do-block-body
         tree.append(ASTDoBlock(location, body.body, masks.effects, masks.features))
             .. masks = do-annotation-masks(location, body.annotations)
+
+.. do-sections SectionsPartial ~
+    ~ // "without" // names \without-names bindings \with-section?
+        SectionsPartial(names, bindings ?? ImmutableArray'StackBindingPartial())
+    ~ // "with" // bindings \with-bindings names \without-section?
+        SectionsPartial(names ?? ImmutableArray'Atom(), bindings)
+
+.. without-section ImmutableArray'Atom ~
+    ~ // "without" // names \without-names
+        names
+
+.. with-section ImmutableArray'StackBindingPartial ~
+    ~ // "with" // bindings \with-bindings
+        bindings
+
+.. without-names ImmutableArray'Atom ~
+    ~ head \raw-atom-name tail \without-name*
+        with-tail(tree, head, tail)
+
+.. without-name Atom ~
+    ~ "," // name \raw-atom-name
+        name
+
+.. with-bindings ImmutableArray'StackBindingPartial ~
+    ~ head \with-binding tail \with-binding-more*
+        with-tail(tree, head, tail)
+
+.. with-binding StackBindingPartial ~
+    ~ name \name / "=" // value \inline-expression-no-prep-no-comma
+        StackBindingPartial(name, value)
+
+.. with-binding-more StackBindingPartial ~
+    ~ "," // binding \with-binding
+        binding
 
 .. task-block SyntaxId ~
     ~ "do" // (worker \paren-expression //)? "new thread" body \do-block-body catchers \task-catch*
@@ -3441,6 +3479,8 @@ do finally
         .public-access
     ~ "_"
         .private-access
+    ~ "^"
+        .family-access
 
 .. infix-operator ~
     ~ \increment-operator

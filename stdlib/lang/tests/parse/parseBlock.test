@@ -963,3 +963,81 @@ do for x in xs
     </For>
 </Do>
 ;====
+:====
+# A do block's with section binds stack values in turn, the first outermost; its without section
+# keeps the block from what it names.
+
++ @stack request Int
++ @stack depth Int
+
+do with request = 42, depth = 2
+    -- request
+do @feature-collection-observers without gc with depth = 3
+    -- depth
+do without cancel
+    -- depth
+
+:----
+%brix
+(prop + request Int @stack)
+(prop + depth Int @stack)
+(blank)
+
+(main
+  (do (with request 42) (with depth 2)
+    (print request)
+  )
+  (do @feature-collection-observers (without gc) (with depth 3)
+    (print depth)
+  )
+  (do (without cancel)
+    (print depth)
+  )
+)
+:----
+
+<Property access="public-access" decoration="stack">
+    <TypeCapture>
+        <Id name="request"/>
+        <TypeId name="Int"/>
+    </TypeCapture>
+</Property>
+<Property access="public-access" decoration="stack">
+    <TypeCapture>
+        <Id name="depth"/>
+        <TypeId name="Int"/>
+    </TypeCapture>
+</Property>
+<StackLocalBinding name="request">
+    <Integer value="42"/>
+    <Block>
+        <StackLocalBinding name="depth">
+            <Integer value="2"/>
+            <Block>
+                <Print>
+                    <Id name="request"/>
+                </Print>
+            </Block>
+        </StackLocalBinding>
+    </Block>
+</StackLocalBinding>
+<StackLocalBinding name="depth">
+    <Integer value="3"/>
+    <Block>
+        <Do effects="no-gc" features="feature-collection-observers">
+            <Block>
+                <Print>
+                    <Id name="depth"/>
+                </Print>
+            </Block>
+        </Do>
+    </Block>
+</StackLocalBinding>
+<Do>
+    <Block>
+        <Print>
+            <Id name="depth"/>
+        </Print>
+    </Block>
+</Do>
+;====

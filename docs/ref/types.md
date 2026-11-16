@@ -5,7 +5,8 @@ holds, the functions that work on it, and the constructors that make it. What th
 on decides what kind of type it is.
 
 This chapter covers classes, tuples, structs and interfaces, and what they share: properties,
-constructors, methods, static functions, type parameters, inheritance, delegation and extensions.
+constructors, methods, static functions, type parameters, inheritance, delegation, extensions
+and facets.
 Unions are in Unions and enums, function types in Functions, and number types with units in
 Units. Conversions a type declares are in Conversions, operators it defines in Operators, and
 events and rules in Reactivity.
@@ -108,6 +109,13 @@ A member written with `+` is public: any module that can see the type can use it
 written with `_` is private to the module that declares it, and code in other modules cannot read
 it, call it, or see it from a class derived from the type. The type's own access works the same
 way: a type declared with `_` can be used only in its own module.
+
+A member written with `^` is shared with the file family of its module, as `(fn-do ^ keep-end _
+…)` or `^ do keep-end`{.rows}: code in the family's files uses it as a public member, and
+code elsewhere is refused as it is for a private one: `Method "keep-end" of Box is shared,
+declared with ^, so only its own file family can call it`. File families are in Modules. Only a
+member is shared: `^` on a type, or on a function or value of a module, is an error, `Only a
+member can be shared with its file family; declare this + or _`.
 
 A type declares each name once. Declaring two members with one name, such as a property and a
 getter, is an error: `Counter declares "count" twice (first on line 8); remove one of them, or
@@ -1346,8 +1354,9 @@ ABC!
 An extension is declared with `extend`, and has members as a type has them, as in
 `(extend + Type (prop + name Type (=> value)))`{.brix}.
 
-- **What it can add.** Methods, getters, computed properties, conversions, operators and
-  constructors. A stored property is an error: `Stored properties are not allowed in extensions`.
+- **What it can add.** Methods, getters and setters, computed properties, conversions, operators
+  and constructors. A stored property is an error: `Stored properties are not allowed in
+  extensions`.
 - **`this`** is the value the member is called on, of the extended type.
 - **Where it applies.** An extension's members can be used in its own module and in modules that
   import it. Elsewhere the type does not have them.
@@ -1367,6 +1376,169 @@ An `as` clause, as in `(extend + Thing (as Shape))`{.brix}, is reserved for maki
 implement an interface from outside it. The compiler does not build it yet: `Not yet
 implemented`. Such an extension has no body, and is written `(extend-line + Thing (as Shape))`, in
 rows `+ extend Thing as Shape`{.rows}.
+
+## Facets
+
+A facet is a part of a class declared apart from the class's body, usually in a file of its own.
+It adds stored properties and methods to the class, its owner, and they live in the owner's
+objects: an object and its facets are one object, with one identity.
+
+```brix
+(main
+  (let box (call Box))
+  (call (. box scroll-by) 30)
+  (call (. box scroll-by) 30)
+  (print (. box offset))
+  (print (call (. box describe)))
+)
+
+(type + Box
+  (prop _ height Int (= 50))
+  (fn-expr + describe String
+    (str "height " height ", scrolled " offset)
+  )
+)
+
+(type + BoxScroll (facet-of Box)
+  (prop + offset Int (= 0))
+  (fn-do + scroll-by _
+    (param amount Int)
+    (+= offset amount)
+    (if (> offset height)
+      (= offset height)
+    )
+  )
+)
+```
+
+```output
+50
+height 50, scrolled 50
+```
+
+A facet is declared with `facet-of`, as in `(type + BoxScroll (facet-of Box))`{.brix}, in rows
+`+ BoxScroll is facet of Box`{.rows}.
+
+- **The owner.** `facet-of` names a class, or another facet of one, and the chain ends at a class,
+  the facet's owner. A facet of a facet reaches its parent's members. A class that takes type
+  parameters has no facets: `BoxScroll can't be part of Box, since a class that takes type
+  arguments has no facets`.
+- **Where.** A facet is declared in its owner's file or in a file of its family, named after it,
+  as `box.scroll.bx` is beside `box.bx`; see Modules. Anywhere else it is an error: `Extra is a
+  facet of Box, so it is declared in the file family of box.yumi, in a module named after it`.
+- **One object.** A facet's stored properties are stored in the owner's objects, after the
+  owner's own. Each constructor of the owner, and of the classes derived from it, gives them
+  their first values: the owner's first, then each facet's, in the order of the names of the
+  files that declare them, and in the order they are declared within a file. A constructor's
+  argument named after a facet's property gives it that value instead, as one named after the
+  owner's own property does. A facet's private property takes no argument's value: outside the
+  facet's file the argument is only an argument, and in it the argument is an error, since two
+  facets may keep one name: `hidden is private to facet BoxScroll, so a constructor's argument
+  can't give it a value`.
+- **No constructors.** A facet has no constructors and no static functions. Each of its stored
+  properties needs a value or an optional type: `offset needs a value or an optional type, since
+  BoxScroll is a facet and no constructor gives it one`.
+- **What it may declare.** Methods, getters and setters, stored, lazy and computed properties,
+  operators, conversions, events, `using`, interfaces, sections, `when` and `whenever` rules and
+  dependencies.
+- **Interfaces.** An interface a facet names, as in `(type + BoxScroll (facet-of Box) (implements
+  Scrollable))`{.brix}, in rows `is Scrollable`{.rows} under the facet's line, is its owner's: the
+  owner and the classes below it implement it, through the facet's members, which a class below
+  may override. A facet names only interfaces: `BoxScroll cannot implement Base, which is not an
+  interface; a facet is part of its class and is built on no type`. A member the facet leaves out
+  is reported as the owner's, and names the facet: `Box does not implement "position", which
+  Scrollable declares without a body; declare "position" in BoxScroll`. The other way, an
+  interface the owner names is answered by its facets' public members as by its own, so a class
+  hands an interface to a facet by naming it and leaving the members to the facet.
+- **No markup.** A class's `content` section, which gives its objects their children, is the
+  class's alone, written in its body: `BoxMarkup is a facet, so it writes no markup; a content
+  section is its owner's alone`.
+- **Sections and rules.** A facet's sections, `when` and `whenever` rules and dependencies are its
+  owner's: each object of the owner runs them, after the owner's own and before those of a class
+  below, and a facet's section subscribes to any event the facet reaches, its owner's or its own.
+- **Styles.** A facet's `using` gives its owner the style or style sheet, after the owner's own
+  and in the order of the facets, as if the owner named it: the owner's objects have the style's
+  properties wherever the owner is, markup writes them on its elements, and any code reads them,
+  the facet's as `$name`. `BoxFocus` uses `GUIBoxFocus`, so the focus code and its style move
+  together.
+- **Events.** A facet's events are its owner's objects' events. The facet, the owner's file and
+  the facets that see it publish one by its name alone, other code subscribes to it on an object
+  of the owner's type as to any event, and a public one bubbles as the owner's own do. Closing an
+  object ends what subscribes to its facets' events too. An event's name is its owner's alone,
+  private or not: `Facets BoxFocus and BoxScroll of Box both declare shaken; an event's name is
+  its class's alone, private or not`.
+- **`this`** is the object the member is called on, of the owner's type.
+- **Uses.** Wherever the owner's type is visible, its objects have the public members of all its
+  facets, as they have the owner's own, whatever the code using them imports, and in the owner's
+  file family they have the members the facets share with `^` as well. Only the code of the
+  facets' other files reaches fewer; see below. The owner's own members use them by name, as
+  `describe` uses `offset`.
+
+### Facet values
+
+A facet's name is a type, which goes wherever a class's does: a parameter, a property, a local, the
+items of a list, an optional. Its value is an object of the owner seen through the facet.
+- **Narrowing is unasked.** A value of the owner, or of a class below it, becomes a value of any of
+  its facets, and a facet's value becomes a value of the facets it is part of. The object is the
+  same object.
+- **What it has.** A facet's value has the members of its facet and of the facets it is part of,
+  and no others: `BoxScroll has no property "width"; a facet's value has only its facet's members
+  and those of the facets it is part of. Write "as Box" to reach the rest of Box`. A class below
+  that overrides one of them answers for it, as on the owner's value. In a facet's file, a value of
+  a sibling facet has its members only where the facet sees the sibling. A facet's events are not
+  reached through its value yet, and its value becomes an interface only as its owner: write
+  `(as value Box)`{.brix} for either.
+- **Widening is asked.** `(as value Box)`{.brix}, in rows `value as Box`{.rows}, gives the owner's
+  value back, checked when the program is built: `Expected Box here, but this is BoxScroll, which
+  becomes Box only when asked; write "as Box"`. A cast to a class below the owner tests the
+  object, as one from the owner does, and so do `is` and an arm of a match that name such a class.
+- **No test for a facet.** Every object of the owner has every facet, so `is` and an arm don't name
+  one: `BoxScroll is a facet, which every Box has, so no value is tested for it`. `(type-of value)`
+  of a facet's value is its owner's `TypeInfo`.
+- **No constructor.** `BoxScroll is a facet of Box, so it has no constructor; a Box is a BoxScroll`.
+  A stored property of a facet's type needs a value or an optional type: `held is a BoxScroll, a
+  facet of Box, which has no constructor to give it its first value; give it a value, or make it
+  optional`.
+- **Names outside the family.** Code outside the owner's family can't import a facet's file, so
+  importing the owner's module brings its facets' names, and nothing else of their files: `Type
+  "BoxScroll" not found; BoxScroll is a facet of Box, whose name comes with Box's module. Import
+  that module to name it`.
+
+### What a facet reaches
+
+Code in a file of the family, other than the owner's own, that declares a facet reaches:
+- the facet's own members, and those of the facets it is part of;
+- every member the owner declares, private ones included, and the private functions, values and
+  types of the owner's file;
+- the public and shared members of the sibling facets it names with `sees`.
+
+In `(type + BoxScroll (facet-of Box) (sees BoxFocus))`{.brix}, `sees` names another facet of the
+same owner; in rows, `sees BoxFocus`{.rows} goes on the line under the facet's. The grant is one
+way and is not passed on. A sibling's member that the facet does not see is an error: `Name
+"focused" not found; facet BoxFocus declares it, and only the facets a facet sees are in reach.
+Write "sees BoxFocus" under the facet that uses it`. A file that declares several facets of one
+owner reaches what they reach together. Other objects of the owner's type, such as a parent or a
+child, reach the same there and no more. The owner's own file reaches every facet, also when it
+declares one.
+
+- **Private members** of a facet are private to its file. Two facets may each declare a private
+  member of one name, and the code of each file reaches its own.
+- **Shared members**, declared with `^`, are for the owner's file family: the owner's file, the
+  facets that see the facet, and the family's other files reach them, on any object of the
+  owner's type. A facet shares what only the owner's family calls, such as a step the owner's
+  layout runs, and keeps it from code outside.
+- **Public and shared members** are the owner's. A facet can't declare a member the owner has,
+  its own or one a facet of a class above declares: `offset is already a member of Box, so facet
+  BoxScroll can't declare it`. Two facets of one owner can't both declare a member of one name
+  unless both are private.
+- **Derived classes** have the owner's facets and their storage. A derived class overrides a
+  facet's method, getter or setter as it would one its base declares, with a member of the same
+  name and kind. On the derived class's objects, every call of the facet's member runs the
+  override, the facet's own calls included, and the override reaches the facet's through
+  `super`. It gives a facet's stored or lazy property a new value by declaring the property with
+  one, as it would its base's: its objects start with that value, and the facet's own code reads
+  it. It can't declare any other member a facet declares: `Panel can't declare offset, since
+  facet BoxScroll of Box declares it`.
 
 ## Type information
 

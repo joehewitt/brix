@@ -30,7 +30,6 @@
 /lang/ir/ir
 /lang/ir/ir-digest
 /lang/ir/ir-text
-/lang/worker-failure
 /os/file
 /stream/sort
 /string.h
@@ -172,18 +171,16 @@ do finally
         worker.release()
 
 . pool = Worker(count)
-. finished SyncBufferedChannel'Bool
-. failure = WorkerFailure()
+do finally
+    pool.stop()
+. group = TaskGroup()
 for worker in workers
-    do (pool) new
+    . task = do (pool) new
         worker.emit-all()
-        finished <- true
     catch failed
-        failure.keep(failed)
-        finished <- true
-for _ in 0 .. < count
-    <- finished
-failure.raise-kept(pool)
+        group.keep(failed)
+    group.add(task)
+group.wait()
 if reusing
     . digesters [IRDigester]
     for worker in workers
@@ -193,22 +190,18 @@ if reusing
     //-emit.round.index
     //+emit.round.second
     for worker in workers
-        do (pool) new
+        . task = do (pool) new
             worker.decide-all()
-            finished <- true
         catch failed
-            failure.keep(failed)
-            finished <- true
-    for _ in 0 .. < count
-        <- finished
-    failure.raise-kept(pool)
+            group.keep(failed)
+        group.add(task)
+    group.wait()
     //-emit.round.second
     . mismatches [String]
     for worker in workers
         memory!.verified += worker.verified as U64
         mismatches ++= worker.mismatches
     if mismatches
-        pool.stop()
         ?! Error("Reuse differs from emitting again:\n${"\n".join(mismatches)}")
 //emit.gc-objects += C:yumiGCAllocatedObjectCount() - gc-objects-before
 //-compiler.phase.emission
@@ -235,10 +228,8 @@ for position in 0 .. < function-count
     if refusals[position].construct != .refused-nothing && (lines.length == 0 || program.is-batch)
         lines += refusal-line(program, refusals[position])
 if lines
-    pool.stop()
     ?! Error("\n".join(lines))
 if !options.writes-object
-    pool.stop()
     =
 
 . merge-started = clock()
@@ -303,16 +294,12 @@ tables.add-type-constants()
 
 queue.rewind()
 for worker in workers
-    do (pool) new
+    . task = do (pool) new
         worker.patch-all(names, bases)
-        finished <- true
     catch failed
-        failure.keep(failed)
-        finished <- true
-for _ in 0 .. < count
-    <- finished
-pool.stop()
-failure.raise-kept()
+        group.keep(failed)
+    group.add(task)
+group.wait()
 //-compiler.phase.merge
 options.merge-time = merge-started.elapsed'Microseconds()
 

@@ -1,4 +1,5 @@
 ./binding
+./claims
 ./conversions
 ./dispatch
 ./facts
@@ -23,8 +24,6 @@
 /lang/ast/row-range
 /lang/ast/viability
 /stream/sort
-
-_ allocating-c-names [String] = ["yumiAllocObject", "yumiAllocBuffer", "yumiResizeBuffer", "yumiGCAllocObject", "yumiGCAllocObjectDescribed", "yumiGCAllocBuffer", "yumiGCAllocBufferDescribed", "yumiGCResizeBuffer", "yumiGCResizeBufferDescribed", "yumiAllocObjectWithSiteKey"]
 
 ━━━━━━━━━━━━━━━━━━━━
 + RowCapture is Tuple
@@ -427,26 +426,29 @@ if callee == no-instance
 if name == types.bench-collect-atom!
     facts.set-plan(frame.instance, id, .plan-elided)
 note-described(id, name)
-check-zone-call(id, name)
+check-zone-call(id, name, callee)
 = demand-return(callee, id)
 
 ────────────────────
 _ do check-zone-call
     - id SyntaxId
     - name Atom
+    - callee InstanceId
 
-` A C call that allocates from the collector, where the heap may not be used, is TypeScript's
-` error, reported at the call: in a GC-free zone, naming where it is entered, or under
-` `@no-heap`.
-. effects = dispatch-effects(frame.surround.effects)
-if (effects /and/ CompilationEffect.no-heap) == 0 || allocating-c-names.find(name.text) == null
-    =
-if zone-allocated()
-    =
-. text = "allocation is not allowed in a @no-heap context"
-if (effects /and/ CompilationEffect.gc-free) != 0
-    text = "allocation is not allowed in a GC-free zone (entered at ${frame.zone-entry()})"
-frame.diagnose(id, .stated, program.store-atom(text))
+` A C call of a function that may suspend the task, where the code may not suspend, and one
+` that may allocate from the collector, where the heap may not be used, are reported at the
+` call: in a GC-free zone, naming where it is entered, or under `@no-suspend` or `@no-heap`.
+` What a function may do is its claim (`claims.yumi`), and one that polls the collector and has
+` none is taken to do both.
+. polls = false
+. row = instances.rows[callee]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        polls = (fn.effects /and/ CompilationEffect.gc-polling) != 0
+if may-suspend(name.text, polls)
+    frame.check-suspends(id)
+if may-allocate(name.text, polls)
+    frame.check-allocates(id)
 
 ────────────────────
 _ do note-described
@@ -917,6 +919,22 @@ ranking.release()
 . site = open-site()
 ranking.begin(site.shapes, site.types)
 . found = ranking.dispatch-getter(receiver, name)
+ranking.release()
+close-site(site)
+= found != null
+
+────────────────────
++ do has-setter Bool
+    - receiver TypeId
+    - name Atom
+    - value TypeId
+    - rhs SyntaxId
+
+` Whether a setter takes the value for the name: one an extension adds is no property of the class.
+. site = open-site()
+push-argument(value, rhs)
+ranking.begin(site.shapes, site.types)
+. found = ranking.dispatch-setter(receiver, name)
 ranking.release()
 close-site(site)
 = found != null
@@ -2095,7 +2113,7 @@ if callee == no-instance
 if host
     host.demand(callee)
 if by-name && types.intrinsic-of(constructed) == .class
-    check-zone-allocation(callee, constructed)
+    frame.check-allocates(id)
 if host
     if !instances.errors-known(callee)
         . running = instances.rows[callee].state == .instance-in-progress
@@ -2120,55 +2138,6 @@ if signature.errors.count != 0 && !deferred
         note-outgoing(instances.signature-types[signature.errors.start + offset], id)
     facts.mark-propagates(frame.instance, id)
 = constructed
-
-────────────────────
-_ do check-zone-allocation
-    - callee InstanceId
-    - constructed TypeId
-
-` A class constructed where the heap may not be used is TypeScript's error, which it reports
-` where the constructor allocates, the class's own declaration where it declares none: in a
-` GC-free zone, naming where it is entered, or under `@no-heap`. A raise is typed with no
-` such effect, as TypeScript raises outside the zone. It is checked once the constructor is
-` typed, as TypeScript gives the properties their values before it allocates the object.
-. effects = dispatch-effects(frame.surround.effects)
-if (effects /and/ CompilationEffect.no-heap) == 0 || zone-allocated()
-    =
-. text = "allocation is not allowed in a @no-heap context"
-if (effects /and/ CompilationEffect.gc-free) != 0
-    text = "allocation is not allowed in a GC-free zone (entered at ${frame.zone-entry()})"
-. row = instances.rows[callee]
-. module = row.module
-. place SyntaxId = 0
-do match? program.modules[row.module].decls[row.decl]
-    | .decl-function(fn)
-        place = fn.syntax
-if place == 0
-    do match? types.rows[constructed]
-        | .type-class(class)
-            module = class.module
-            do match? program.modules[class.module].decls[class.decl]
-                | .decl-class(owner)
-                    place = owner.syntax
-facts.record-diagnostic
-    - frame.instance
-    - module
-    - place
-    - .stated
-    - program.store-atom(text)
-    - no-type
-    - no-type
-
-────────────────────
-_ do zone-allocated Bool
-
-` Whether an allocation where the heap may not be used is already reported. TypeScript stops at
-` the first it compiles, so only the first typed is.
-for diagnostic in facts.diagnostics
-    if stated && diagnostic.name && diagnostic.name!.text.starts-with("allocation is not allowed")
-        = true
-    .. stated = diagnostic.kind == .stated
-= false
 
 ────────────────────
 _ do converts-literal Bool
@@ -2482,6 +2451,7 @@ for place in places
     - third TypeId = no-type
     - links Bool = true
     - named Atom? = null
+    - restricted Bool = true
 
 ` A method the compiler calls on a value without a call in the source: the iteration
 ` protocol of a loop's container, the protocol of a stream a pattern runs on, a method of a
@@ -2491,7 +2461,8 @@ for place in places
 ` with it, as a loop's read of a generator that raises does. A call that `links` is kept among
 ` those of its node. The first argument is given by the name `named` where there is one. Gives
 ` the call recorded and what it answers: the invalid type where there is no such method or what it
-` answers is not known yet.
+` answers is not known yet. One not `restricted` is typed as declared, outside the restrictions
+` of the code that calls it, as it is recorded only for what it answers.
 . fact = no-fact
 . opened = open-site()
 . count U32
@@ -2509,7 +2480,8 @@ ranking.begin(opened.shapes, opened.types)
 note-interface-call(receiver, hit)
 . result = invalid-type
 if hit && !ranking.ambiguity()
-    . callee = intern-hit(hit, callee-effects(frame, hit.module, hit.decl), true)
+    . effects = if restricted then callee-effects(frame, hit.module, hit.decl) else declared-effects(program, hit.module, hit.decl)
+    . callee = intern-hit(hit, effects, true)
     host!.demand(callee)
     host!.demand-errors(callee)
     fact = facts.record-call
@@ -3131,7 +3103,7 @@ _ do admits-value-call Bool
 . restricted = heap-free /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
     .. heap-free = CompilationEffect.gc-free /or/ CompilationEffect.no-heap
 =? true if (dispatch-effects(frame.surround.effects) /and/ restricted) == 0
-frame.diagnose(id, .stated, program.store-atom("Function value call requires unrestricted effects"))
+frame.diagnose(id, .restricted, program.store-atom("Function value call requires unrestricted effects"))
 = false
 
 ────────────────────
@@ -4214,12 +4186,14 @@ do match? owner.decls[hit.decl]
     - receiver TypeId
     - mark ScratchMark
     - zoned Bool = false
+    - reported Bool = false
 
 ` The constructor of a value the compiler makes, chosen as a call written in the module chooses
 ` it, so a parameter typed by its default ranks with that type. It is typed outside any GC-free
 ` zone, as an error or a panic is made on the path out of one; one `zoned` is typed in the zone
-` it is made in. The defaults of the parameters it leaves out are typed, as the value is made
-` with them.
+` it is made in, and one `reported`, for a report one instance serves wherever it is made, as
+` declared. The defaults of the parameters it leaves out are typed, as the value is made with
+` them.
 . shapes-mark = scratch.call-arguments.mark
 . count = scratch.types.length - mark
 for _ in 0 .. < count
@@ -4233,7 +4207,7 @@ local.begin(shapes, given)
 . callee = no-instance
 if hit
     . declared = declared-effects(program, hit.module, hit.decl)
-    . held = if zoned then frame.surround.effects else exceptional-effects(frame.surround.effects)
+    . held = if reported then 0u32 else if zoned then frame.surround.effects else exceptional-effects(frame.surround.effects)
     callee = intern-settled(hit, dispatch-effects(held /or/ declared))
     . empty U32 = ArgumentFill.fill-empty
     for position in 0 .. < hit.fills.length

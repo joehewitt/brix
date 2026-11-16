@@ -69,7 +69,9 @@ that `.release.json` pins (`toolchain/compiler.py`).
 7. Program tables seal everything whole-program before emission: class-table and witness slots,
    layouts, GC descriptors, symbols, task-local and thread-local layouts, tracked properties,
    event ids and style indexes. The type pass schedules every instance those tables need, so
-   interning an instance after the seal panics.
+   interning an instance after the seal panics. A `@stack` global that no `do with` in the
+   program binds, and whose value is a literal, is a `global-constant` there, read with no slot
+   and no check.
 8. Emitted IR is never reopened. Result, panic and cleanup shapes are chosen at entry from the
    signature, the facts, the body scans and program tables. Inlining reads finished IR and
    writes a new function.
@@ -122,6 +124,10 @@ that `.release.json` pins (`toolchain/compiler.py`).
 ## Layer Invariants
 
 **Binding**
+- The `with` and `without` sections of a block or a header never reach binding. Both readers
+  lower them (`section-annotations` and `stack-bound` in `ast/_grammar-helpers.yumi`): a
+  `without` name becomes the annotation it stands for, and each binding an
+  `ASTStackLocalBindingBlock`.
 - Binding reads syntax and declaration rows, never types. No type id appears in a binding table.
 - Resolution order is fixed: slots innermost first, then the implicit names, members of the
   owner chain, module globals, then functions and types through the name index, then
@@ -153,6 +159,80 @@ that `.release.json` pins (`toolchain/compiler.py`).
   second diagnostic, and a call with an invalid argument is not dispatched.
 - Instances are interned once. A return type found late is written into the signature, never
   into the key. A lambda instance is keyed by its closure row plus its enclosing instance.
+
+**Facets**
+- The loader finds file families (`family-base` in `module-resolver.yumi`), and refuses an import
+  of a family's module from outside the family (`syntax-program.yumi`).
+- A facet is an `ExtensionDecl` with a `facet` name. `ProgramBuilder` binds facets into
+  `program.facets` (`FacetTable`, `ast/facets.yumi`) before it indexes extensions: each facet's
+  parent, owner class and state, the siblings its `sees` names, and each class's facets in the
+  order they are laid out, by the name of the declaring module and then by declaration.
+- A facet joins the extension index under its owner class. `Program.extension-after` shows it
+  wherever the class is, except that a module other than the class's own that declares facets of
+  the class sees only those it reaches. `Program.reaches-private` gives such a module the private
+  declarations of the class's module.
+- `ProgramBuilder.note-families` records each module's file family in `Program.families`.
+  `Program.reaches-access` says whether code reaches a declaration of an access: a public one, a
+  shared one (`^`, `.family-access`) of its own family (`same-family`), and a private one as
+  `reaches-private` says. The binder, `hiding-access` (behind `is-hidden`), `visible-from`,
+  constructor gathering, the type store and the report ask it. The checker refuses `^` on a
+  module's own declarations (`check-shared-access`).
+- `complete-class` lays out the facets' stored and lazy properties after the class's own
+  (`gather-facets`). Each `TypeProperty` keeps its declaring facet, so a name two facets keep
+  private is found by the module that reads it (`property-seen`), and a lazy slot by its name and
+  facet (`property-declared`). Facet getters and setters stay out of the roster and dispatch as an
+  extension's do.
+- The checker reports a facet's binding, shape and name errors (`check-facet`), and a derived
+  class's names that a facet of a class above declares (`check-below-facets`), but for a method,
+  getter or setter of the same kind as the facet's, which overrides it (`overrides-facet`).
+- A facet's methods, getters and setters are class-table methods (`is-table-method`). Dispatch
+  ranks a facet member as an extension's, at its owner's level, and a member a derived class
+  declares again replaces it rather than conflicting with it (`is-facet-member`), so
+  `redispatch` records the override and `super` reaches the facet's.
+- A facet's events are its class's: `declared-event` finds an event in a class's body or in a
+  facet the module sees, for `event-of`, `hides-event` and `declares-event`, and its payload and
+  key types are read in the declaring module (`declared-payload`). Program tables key events by
+  class and name, so an event's name excludes every facet's members at any access
+  (`check-facet-names`), and `has-events` counts facets' events for `close`.
+- Program tables give each facet property the value its facet writes (`facet-default`), after the
+  class's own, and find the class that writes a facet's lazy value through its owner
+  (`writer-of`).
+- A class's styles and style sheets come from its own `using` and then its facets' in their order:
+  `sheet-parts` lists a class's bound facets after it, `part-members` reads a facet's members and
+  `holder-env` evaluates a facet's `using` under its owner's types, so the walks that gather a
+  class's styles (`find-visible-styles`, `chain-sheets`) take the facets' as the class's own.
+- A facet may write rules (`RuleDecl`, `add-rule`): sections, `when` and `whenever` rules and
+  dependencies. The checker's walks of a class's rules (`demand-rules`, `plan-event-handlers`,
+  `writes-sections`, `lowers-for`, `find-query-targets`) take `sheet-parts`, and program tables'
+  (`declare-class-rules`, `declare-markup-rules`, `reach-rules`) take `class-parts`, so each class's
+  facets' rules follow its own, typed for the class as its own are.
+- A class below a facet's class that gives a facet's stored property a new value keeps the facet's
+  slot and becomes the property's owner (`add-property`). `is-given-below` then sends
+  `declaring-decl`, `declaring-holder` and `default-of` to that class, so its value is typed and
+  stored as a base's property's is. A constructor's argument fills a facet's property by name
+  (`fill-inherited`), but for a private one, whose name two facets may share.
+- A facet's name is a type: `nearest-class` finds it where the caller sees the facet, as a
+  `.type-class` row of the facet's declaration, which `Types.facet-of-type` recognises.
+  `complete-facet` completes it as a class with no base whose property range is its owner's own
+  rows, so layouts, lazy slots and memo places are the owner's. `facet-owner` gives the owner's
+  type, and once the store is sealed only one made before.
+- Relations (`relate-facets`, ahead of the base-chain checks in `relate`): a class at or below the
+  owner and a facet within another narrow by an up-cast; a facet widens to its owner or above by an
+  up-cast marked `explicit`, which `implicit` refuses, and casts to a class below its owner by a
+  down-cast. All are the owner's pointer, so emission does nothing new.
+- No instance has a facet's type as its own. `property-seen` finds a facet value's properties
+  among its facet's and its ancestors' that the module sees (`property-of-facet`), `rank-methods`
+  ranks only those members, on the owner (`rank-facet-members`), and the receiver's conversion to
+  the owner is allowed (`lowers-facet`). `demand-member` types a facet value's properties for the
+  owner. `refuses-facet-test` refuses `is` and an arm naming a facet, and
+  `rejects-facet-default` a stored property of a facet's type with no value.
+- `Program.entry-rank` and `facet-listed-last` give a facet's name the rank and place of its
+  owner's module, so importing the owner brings it.
+- A facet's `is` lines are its `ExtensionDecl.interfaces`. `complete-class` adds them to its
+  owner's interfaces after the owner's own (`gather-facet-interfaces`), read in the facet's module,
+  and `check-facet-interfaces` reports one that names nothing or no interface. Dispatch lets a
+  facet member answer an interface's function without the extension conflict (`accept`,
+  `is-facet-member`), so the witness for the owner is the facet's member.
 
 ## Vocabulary
 

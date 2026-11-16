@@ -10,7 +10,6 @@
 /lang/ast/operator
 /lang/ast/program
 /lang/ast/row-range
-/lang/worker-failure
 
 + no-binding BindingId = U32.max
 + no-slot SlotId = U32.max
@@ -366,8 +365,7 @@ _ by-decl Map'Size'U32'ArenaBacking
 _ copies [BindingCopy]
 _ ends Binding
 _ taking Bool
-_ copied SyncBufferedChannel'Bool?
-_ copy-failure WorkerFailure?
+_ copying TaskGroup?
 
 ────────────────────
 + This
@@ -529,7 +527,7 @@ link-namesakes(row.slots.start)
 if existing
     = existing
 ?! Panic("Bindings takes a binding of another pass only while taking")
-    if !taking || copied
+    if !taking || copying
 . taken = Binding
     - row.module
     - row.decl
@@ -593,7 +591,7 @@ ends = Binding
     - pool Worker
 
 ?! Panic("Bindings copies only the bindings it took")
-    if !taking || copied
+    if !taking || copying
 resolutions.reserve(ends.resolution-base + ends.subtree.count)
 diagnostics.reserve(ends.diagnostics.end)
 nested.reserve(ends.nested.end)
@@ -605,31 +603,26 @@ captures.reserve(ends.captures.end)
 machines.reserve(ends.machines.end)
 machine-reads.reserve(ends.machine-reads.end)
 . pending = copies
-. done SyncBufferedChannel'Bool
-. failure = WorkerFailure()
-copied = done
-copy-failure = failure
-do (pool) new
+. group = TaskGroup()
+copying = group
+. task = do (pool) new
     for copy in pending
         copy-rows(copy)
-    done <- true
 catch failed
-    failure.keep(failed)
-    done <- true
+    group.keep(failed)
+group.add(task)
 
 ────────────────────
 + do end-taking
 
-. done = copied
-if done
-    <- done
-. failure = copy-failure
-copied = null
-copy-failure = null
+. group = copying
+if group
+    group.settle()
+copying = null
 copies = List'BindingCopy()
 taking = false
-if failure
-    failure.raise-kept()
+if group
+    group.wait()
 
 ────────────────────
 + do machine-slots MachineSlots?

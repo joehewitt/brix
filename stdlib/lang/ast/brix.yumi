@@ -275,7 +275,7 @@ _ do function SyntaxId ?! YumiSyntaxError
 . access-index = index + 2
 . key-index = tape.after(access-index)
 . result-index = tape.after(key-index)
-. access = if atom-is(access-index, "+") then Access.public-access else Access.private-access
+. access = access-at(access-index)
 . header = tape.after(result-index)
 . pattern-type SyntaxId? = null
 if header < close && head(header) == .over-label-head
@@ -295,7 +295,7 @@ while header < close && is-header-item(header)
             is-static = true
     else if head(header) == .raises-head
         error-count += 1
-    else
+    else if !is-scope(header)
         variant-count += 1
     header = tape.after(header)
 . key = function-key(key-index, result-index, pattern-type)
@@ -314,12 +314,13 @@ while item < header
     else if head(item) == .raises-head
         errors[error-filled] = reduce-type(item + 2)
         error-filled += 1
-    else
+    else if !is-scope(item)
         variants[variant-filled] = variant(item)
         variant-filled += 1
     item = tape.after(item)
-. body = function-body(header, close)
 . loc = located(begin, index)
+. sections = scope-of(first-header, header)
+. body = sectioned-body(tree, loc, sections, is-imperative, function-body(header, close))
 . stream-item = tree.atom("StreamItem")
 = placed
     - make-function
@@ -330,7 +331,7 @@ while item < header
         - is-static
         - key
         - scratch-items(errors, error-filled)
-        - scratch-items(annotations, annotation-filled)
+        - section-annotations(tree, loc, scratch-items(annotations, annotation-filled), sections, false)
         - stream-item
         - scratch-items(variants, variant-filled)
         - body
@@ -376,7 +377,7 @@ _ is-header-item Bool
 |? tape.is-atom(index)
     lead == 64 || (lead == 58 && tape.end(index) - tape.start(index) > 1)
 ??
-    kind == .raises-head || kind == .param-head || kind == .constraint-head || kind == .iterates-head
+    kind == .raises-head || kind == .param-head || kind == .constraint-head || kind == .iterates-head || is-scope(index)
 
 .. lead = bytes[tape.start(index)]
 .. kind = head(index)
@@ -595,7 +596,7 @@ _ do property SyntaxId ?! YumiSyntaxError
 . access-index = index + 2
 . name = tape.after(access-index)
 . type = tape.after(name)
-. access = if atom-is(access-index, "+") then Access.public-access else Access.private-access
+. access = access-at(access-index)
 . left SyntaxId = 0
 if atom-is(name, "_")
     left = reduce-type(type)
@@ -657,7 +658,7 @@ _ do class-block SyntaxId ?! YumiSyntaxError
 . close = tape.close-of(index)
 . access-index = index + 2
 . named = tape.after(access-index)
-. access = if atom-is(access-index, "+") then Access.public-access else Access.private-access
+. access = access-at(access-index)
 . is-applied = head(named) == .of-head
 . name = atom-at(if is-applied then named + 2 else named, 0)
 . type-args = if is-applied then type-arguments(named + 3, tape.close-of(named)) else empty-args
@@ -666,6 +667,10 @@ _ do class-block SyntaxId ?! YumiSyntaxError
 . aliases ImmutableArray'Atom? = null
 if item < close && head(item) == .alias-head
     aliases = listed-names(item)
+    item = tape.after(item)
+. facet-of SyntaxId = 0
+if item < close && head(item) == .facet-of-head
+    facet-of = reduce-type(item + 2)
     item = tape.after(item)
 . inherits ImmutableArray'SyntaxId? = null
 if item < close && head(item) == .is-head
@@ -705,6 +710,7 @@ while item < close
     - aliases
     - inherits
     - scratch-items(variants, header-filled)
+    - facet-of
 = placed(make-class-declaration(tree, loc, header, scratch-items(members, member-filled)), loc)
 
 ────────────────────
@@ -721,7 +727,7 @@ for base in bases
         | .node-type-numeric(numeric)
             . amount = signed-amount(numeric.value)
             if amount
-                . lead = if access == .public-access then "+" else "_"
+                . lead = access-text(access)
                 . suffix String? = if aliases && aliases.length != 0 then aliases[0].text else null
                 ?! YumiSyntaxError(tree.nodes.loc[numeric.value], signed-unit-advice(lead, name.text, suffix, amount))
 
@@ -787,7 +793,7 @@ if head(index) == .tuple-head && has-one-item && head(index + 2) == .capture-hea
 _ is-class-header-item Bool
     - index Index
 
-kind == .constraint-head || kind == .implements-head || kind == .using-head
+kind == .constraint-head || kind == .implements-head || kind == .using-head || kind == .sees-head
 
 .. kind = head(index)
 
@@ -800,6 +806,7 @@ _ do class-header-item ArgumentVariant ?! YumiSyntaxError
 . loc = located(begin-at(index), index)
 . type = reduce-type(index + 2)
 =? ArgumentVariant.implements-declaration(tree.append(ASTImplementsDeclaration(loc, type))) if kind == .implements-head
+=? ArgumentVariant.sees-declaration(tree.append(ASTSeesDeclaration(loc, type))) if kind == .sees-head
 = ArgumentVariant.using-declaration(tree.append(ASTUsingDeclaration(loc, type)))
 
 ────────────────────
@@ -809,7 +816,7 @@ _ do extension SyntaxId ?! YumiSyntaxError
 . begin = begin-at(index)
 . close = tape.close-of(index)
 . access-index = index + 2
-. access = if atom-is(access-index, "+") then Access.public-access else Access.private-access
+. access = access-at(access-index)
 . receiver-index = tape.after(access-index)
 . receiver = reduce-type(receiver-index)
 . item = tape.after(receiver-index)
@@ -1871,7 +1878,24 @@ while index < close
 _ access-at Access
     - index Index
 
-if atom-is(index, "+") then Access.public-access else Access.private-access
+|? atom-is(index, "+")
+    Access.public-access
+|? atom-is(index, "^")
+    Access.family-access
+??
+    Access.private-access
+
+────────────────────
+_ access-text String
+    - access Access
+
+match access
+    | .public-access
+        "+"
+    | .family-access
+        "^"
+    ??
+        "_"
 
 ────────────────────
 _ do enum-case SyntaxId ?! YumiSyntaxError
@@ -1909,12 +1933,12 @@ _ precedes-body Bool
     - item Index
     - raises Bool
 
-` Whether an item of a property's form comes before its rows: `:get`, `:set`, an annotation, or
-` where the property `raises`, an error it raises.
+` Whether an item of a property's form comes before its rows: `:get`, `:set`, an annotation, a
+` `without` or `with` part, or where the property `raises`, an error it raises.
 |? tape.is-atom(item)
     atom-is(item, ":get") || atom-is(item, ":set") || bytes[tape.start(item)] == 64
 ??
-    raises && head(item) == .raises-head
+    (raises && head(item) == .raises-head) || is-scope(item)
 
 ────────────────────
 _ do raised-types ImmutableArray'SyntaxId ?! YumiSyntaxError
@@ -1963,18 +1987,21 @@ if !atom-is(type-index, "_")
 . names = function-names(names-index, null)
 . errors = raised-types(flags, rows-first)
 . body = function-body(rows-first, close)
+. loc = located(begin, index)
+. is-imperative = head(index) == .fn-do-head
+. sections = scope-of(flags, rows-first)
 = placed
     - make-getter-function
         - tree
-        - located(begin, index)
+        - loc
         - access-at(access-index)
         - names
-        - head(index) == .fn-do-head
-        - annotation-atoms(flags, rows-first)
+        - is-imperative
+        - section-annotations(tree, loc, annotation-atoms(flags, rows-first), sections, false)
         - returns
-        - body
+        - sectioned-body(tree, loc, sections, is-imperative, body)
         - errors
-    - located(begin, index)
+    - loc
 
 ────────────────────
 _ do setter SyntaxId ?! YumiSyntaxError
@@ -2034,9 +2061,10 @@ while part < item
     part = tape.after(part)
 . variants = scratch-items(found, filled)
 . is-imperative = head(index) == .fn-to-do-head
-. names = annotation-atoms(flags, variants-first)
 . loc = located(begin, index)
-. body = function-body(item, close)
+. sections = scope-of(flags, variants-first)
+. names = section-annotations(tree, loc, annotation-atoms(flags, variants-first), sections, false)
+. body = sectioned-body(tree, loc, sections, is-imperative, function-body(item, close))
 . constraints = tree.store-optional-children(parameter-constraints(tree, variants))
 . assignments = tree.store-optional-children(parameter-assignments(tree, variants))
 = tree.append
@@ -2904,10 +2932,64 @@ _ do do-block SyntaxId ?! YumiSyntaxError
     - begin TokenLocation
 
 . close = tape.close-of(index)
-. body = do-body(index + 2, close, begin, index)
 . loc = located(begin, index)
+. first = index + 2
+. scopes = first
+while scopes < close && tape.is-atom(scopes) && bytes[tape.start(scopes)] == 64
+    scopes = tape.after(scopes)
+. rows = scopes
+while rows < close && is-scope(rows)
+    rows = tape.after(rows)
+. sections = scope-of(scopes, rows)
+if sections
+    = sectioned-do(tree, loc, sections, DoBody(arm-body(begin, index, rows, close), annotation-atoms(first, scopes)))
+. body = do-body(first, close, begin, index)
 . masks = do-annotation-masks(loc, body.annotations)
 = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features))
+
+────────────────────
+_ is-scope Bool
+    - index Index
+
+|? tape.is-atom(index)
+    false
+|? head(index) == .with-head
+    count-from(index + 2, tape.close-of(index)) == 2
+??
+    head(index) == .without-head
+
+────────────────────
+_ do scope-of SectionsPartial? ?! YumiSyntaxError
+    - first Index
+    - end Index
+
+. named Size = 0
+. bound Size = 0
+. item = first
+while item < end
+    if is-scope(item) && head(item) == .without-head
+        named += count-from(item + 2, tape.close-of(item))
+    else if is-scope(item)
+        bound += 1
+    item = tape.after(item)
+=? null if named == 0 && bound == 0
+. names = scratch-array'Atom(tree, named)
+. bindings = scratch-array'StackBindingPartial(tree, bound)
+. named-filled Size = 0
+. bound-filled Size = 0
+item = first
+while item < end
+    if is-scope(item) && head(item) == .without-head
+        . name = item + 2
+        while name < tape.close-of(item)
+            names[named-filled] = atom-at(name, 0)
+            named-filled += 1
+            name = tape.after(name)
+    else if is-scope(item)
+        bindings[bound-filled] = StackBindingPartial(atom-at(item + 2, 0), expression(tape.after(item + 2)))
+        bound-filled += 1
+    item = tape.after(item)
+= SectionsPartial(scratch-items(names, named-filled), scratch-items(bindings, bound-filled))
 
 ────────────────────
 _ do do-body DoBody ?! YumiSyntaxError

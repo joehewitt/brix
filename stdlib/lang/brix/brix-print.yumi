@@ -766,6 +766,10 @@ put(brix-do-suffix(head))
 while origin < items.length && is-attribute(items[origin])
     put(" ${store.text(items[origin])}")
     origin += 1
+. scopes = origin
+if head == "do" && origin < items.length && is-scope(items[origin])
+    origin = scope-parts(items, origin)
+attributed = attributed || origin > scopes
 . end = brix-arm-start(store, node)
 . inline = end == origin + 1 && store.is-form(items[origin], "inline")
 if inline && !attributed
@@ -952,8 +956,8 @@ do match items
     | [.atom(_, "iterates"), name, source]
         put("= ${store.text(name)} ")
         expression(source, 0, false)
-    | [_, value]
-        put(if store.is-form(node, "implements") then "is " else "using ")
+    | [.atom(_, word), value]
+        put("${brix-binding-word(word)} ")
         expression(value, 0, false)
     ??
         put(sexp-inline-text(store, node))
@@ -1079,6 +1083,10 @@ do match fields
         list(fields, 1, ", ", 0)
         put(")")
         = true
+    | [.atom(_, "facet-of"), owner]
+        put(" is facet of ")
+        expression(owner, brix-level-primary, false)
+        = true
     | [.atom(_, "is"), ...]
         put(" is ")
         list(fields, 1, " || ", brix-level-primary)
@@ -1128,8 +1136,72 @@ _ do signature-tail
     - origin Size
 
 . index = origin
-while index < items.length && signature-part(items[index], origin != 4)
-    index += 1
+while index < items.length
+    if is-scope(items[index])
+        index = scope-parts(items, index)
+    else if signature-part(items[index], origin != 4)
+        index += 1
+    else
+        break
+
+────────────────────
+_ is-scope-with Bool
+    - item ImmutableTableRow'SourceNode
+
+store.is-form(item, "with") && store.count(item) == 3
+
+────────────────────
+_ is-scope Bool
+    - item ImmutableTableRow'SourceNode
+
+is-scope-with(item) || store.is-form(item, "without")
+
+────────────────────
+_ do scope-parts Size
+    - items ImmutableTableSpan'SourceNode
+    - first Size
+
+` Puts the `without` and `with` parts that begin at `first` as one section of each, in the order
+` the first of each comes, and answers where they end.
+. end = first
+while end < items.length && is-scope(items[end])
+    end += 1
+if is-scope-with(items[first])
+    put-withs(items, first, end)
+    put-withouts(items, first, end)
+else
+    put-withouts(items, first, end)
+    put-withs(items, first, end)
+= end
+
+────────────────────
+_ do put-withouts
+    - items ImmutableTableSpan'SourceNode
+    - first Size
+    - end Size
+
+. named = false
+for index in first .. < end
+    if store.is-form(items[index], "without")
+        for position in 1 .. < store.count(items[index])
+            put(if named then ", " else " without ")
+            put(store.text(store.item(items[index], position)))
+            named = true
+
+────────────────────
+_ do put-withs
+    - items ImmutableTableSpan'SourceNode
+    - first Size
+    - end Size
+
+. bound = false
+for index in first .. < end
+    if is-scope-with(items[index])
+        put(if bound then ", " else " with ")
+        put(store.text(store.item(items[index], 1)))
+        put(" = ")
+        expression(store.item(items[index], 2), 0, false)
+        bound = true
 
 ────────────────────
 _ do signature-part Bool
@@ -2377,12 +2449,18 @@ _ brix-is-bullet Bool
 head == "bullet" || head == "bullet*" || head == "bullet?" || head == "bullet*?"
 
 ━━━━━━━━━━━━━━━━━━━━
+_ brix-binding-word String
+    - head String
+
+if head == "implements" then "is" else head
+
+━━━━━━━━━━━━━━━━━━━━
 _ brix-is-header-head Bool
     - head String
 
 head == "param" || head == "constraint" || head == "iterates" || is-binding
 
-.. is-binding = head == "implements" || head == "using"
+.. is-binding = head == "implements" || head == "using" || head == "sees"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-is-probe Bool

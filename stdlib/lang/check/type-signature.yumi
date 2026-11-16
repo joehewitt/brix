@@ -68,12 +68,20 @@ do match? program.modules[module].decls[owner]
 
 ` The environment of an extension, the names its pattern declares. The pattern is read where
 ` the class it extends is, so with a receiver known, a name of that class's parameters the
-` pattern does not declare is, while it is read, what the receiver gives it.
+` pattern does not declare is, while it is read, what the receiver gives it. A facet's `this` is
+` its class, which takes no type arguments, through whatever facets the facet is part of.
 . program = types.program
 . env = types.env-frame()
 . tree = program.modules[module].tree
 do match? program.modules[module].decls[decl]
     | .decl-extension(row)
+        if row.facet
+            . facets = program.facets
+            . facet = facets.index-of(module, decl)
+            . owner = invalid-type
+            if facet && facets.states[facet] == .facet-bound
+                owner = types.plain-class(facets.owner-modules[facet], facets.owner-decls[facet])
+            = types.env-with-this(env, owner)
         env = types.declare-into(env, tree, row.receiver, module, decl, env.start)
         . pattern = no-type
         if receiver != no-type
@@ -488,6 +496,9 @@ if owner == 0
 do match? owner-module.decls[owner]
     | .decl-class(row)
         members = row.members
+    | .decl-extension(row)
+        if row.facet
+            members = row.members
 if members.count == 0
     = 0
 . place = owner-module.first-member(members, name)
@@ -514,16 +525,21 @@ while place != no-member
 if first == 0
     = 0
 . owner-module = program.modules[module]
-do match? owner-module.decls[owner]
+. members = match owner-module.decls[owner]
     | .decl-class(row)
-        . place = owner-module.first-member(row.members, name)
-        while place != no-member
-            . member = owner-module.member-pool[place]
-            place = owner-module.member-links[place]
-            do match? owner-module.decls[member]
-                | .decl-property(property)
-                    if property.name && property.name == name && property.value != 0
-                        = member
+        row.members
+    | .decl-extension(row)
+        row.members
+    ??
+        RowRange'DeclId()
+. place = owner-module.first-member(members, name)
+while place != no-member
+    . member = owner-module.member-pool[place]
+    place = owner-module.member-links[place]
+    do match? owner-module.decls[member]
+        | .decl-property(property)
+            if property.name && property.name == name && property.value != 0
+                = member
 = first
 
 ━━━━━━━━━━━━━━━━━━━━

@@ -67,10 +67,36 @@ for offset in 0 .. < cases.count
     - name Atom
 
 ` The error of a type that answers no function an interface declares without a body and with
-` a result, which the type must answer. An operator is named as its declaration writes it.
+` a result, which the type must answer, in the type or in the facet of it that names the interface.
+` An operator is named as its declaration writes it.
 . shown = type-short-name(types, value)
 . member = written-member-name(name.text)
-= "$shown does not implement \"$member\", which ${type-short-name(types, interface)} declares without a body; declare \"$member\" in $shown"
+. wanted = type-short-name(types, interface)
+. place = naming-facet(types, value, wanted) ?? shown
+= "$shown does not implement \"$member\", which $wanted declares without a body; declare \"$member\" in $place"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do naming-facet String?
+    - types Types
+    - value TypeId
+    - wanted String
+
+` The name of a facet of a type or of a class above it that names an interface by a name.
+. program = types.program
+. facets = program.facets
+. current = value
+while current != no-type && facets.count != 0
+    . ref = class-ref(types, current)
+    . (start, end) = facets.class-range(ref.module, ref.decl)
+    for position in start .. < end
+        . facet = facets.class-facets[position]
+        . target = program.modules[facets.modules[facet]]
+        do match? target.decls[facets.decls[facet]]
+            | .decl-extension(row)
+                for syntax in target.syntax-pool[row.interfaces]
+                    =? row.facet?.text if types.type-syntax-name(target.tree, syntax)?.text == wanted
+    current = types.base-of(current) ?? no-type
+= null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ written-member-name String
@@ -565,6 +591,8 @@ match program.modules[module].decls[decl]
 match program.modules[module].decls[decl]
     | .decl-class(row)
         row.name.text
+    | .decl-extension(row)
+        if row.facet then row.facet.text else "<class?>"
     ??
         "<class?>"
 

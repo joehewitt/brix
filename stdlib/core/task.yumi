@@ -90,6 +90,15 @@ check-task-cancelation(canceled)
 C:yumiCancelTask(handle)
 
 ────────────────────
++ do close
+
+` Ends the task, as `use` does where its block ends: cancels it where it still runs, then waits
+` for it.
+=? if is-finished
+cancel()
+wait()
+
+────────────────────
 + suspend
 
 ` Suspends this task, which must be the active one, until something resumes it, and answers
@@ -117,6 +126,61 @@ C:yumiScheduleMainTaskWhenTaskFinishes
     - handle
     - run-task-finish-action as TaskFinishCallback
     - TaskFinishAction(action) as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskGroup
+
+` Tasks started together and waited for together. The `catch` after each task's block keeps the
+` panic that ended it, and `wait` raises the first one kept once every task has ended, so that a
+` task's crash fails the work that started it rather than ending the process.
+
+_ tasks [Task]
+_ lock = Mutex()
+_ first Panic? = null
+
+────────────────────
++ do add
+    - task Task
+
+tasks += task
+
+────────────────────
++ do keep
+    - failure Panic
+
+` Keeps the panic that ended a task, unless one is kept already.
+use lock
+if !first
+    first = failure
+
+────────────────────
++ do wait
+
+` Waits for every task to end, then raises the first panic kept.
+settle()
+. kept = taken()
+?! kept if kept
+
+────────────────────
++ do settle
+
+` Waits for every task to end, and leaves the first panic kept for a later `wait` to raise.
+for task in tasks
+    task.wait()
+tasks.clear()
+
+────────────────────
++ do cancel
+
+` Cancels every task that still runs.
+for task in tasks
+    task.cancel()
+
+────────────────────
+_ do taken Panic?
+
+use lock
+= first
 
 ━━━━━━━━━━━━━━━━━━━━
 + Worker is Tuple

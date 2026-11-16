@@ -17,7 +17,21 @@ visibility, the values a file holds, the order in which files start, and how a p
   `(import /os/path)`{.brix} finds `os/path.yumi`.
 - **Platform modules.** A file named with a platform after a dot, as in `input.macos.bx`, is part
   of that platform's builds only. Importing it for another platform imports nothing. Any other
-  suffix is an error. Platforms lists the platforms and the families of them.
+  suffix is an error, except in a file family. Platforms lists the platforms and the families of
+  them.
+- **File families.** A file named after another beside it, then a dot and more name, as
+  `box.scroll.bx` is beside `box.bx`, belongs to the file family of that file, its base. `.bx` and
+  `.yumi` files count alike.
+  - **The name** after the base's may have several parts, and may end with a platform, as
+    `box.touch.ios.bx` does, which makes the file part of that platform's builds only.
+  - **Only the family imports them.** The base and the family's other files may import a
+    family's files. Elsewhere it is an error: `Module "./lib/box.scroll" belongs to the file
+    family of box.yumi, so only that family can import it`. Code outside imports the base, which
+    imports the files of its family.
+  - **Ordinary modules.** A family's files may declare anything a module may. A class's facets are
+    declared in its family; see Types.
+  - **No base.** A dotted name with no file of its first part beside it, such as `host.macos.bx`
+    beside no `host.bx`, is no family's, and any module may import it.
 - **Names.** Stack traces, object text and some messages name a module.
   - The **entry file**, the one given to `yumi`, is always `__source__`, whatever the file is
     called.
@@ -154,7 +168,8 @@ passes its public names on to every file that imports this one.
 ## Visibility
 
 Every declaration states its access: `+` is public and `_` is private. That holds for module
-values, functions, types, members, extensions, events and units.
+values, functions, types, members, extensions, events and units. A member may also be written
+with `^`, shared with its file family.
 
 - **Private means the file.** A private name is usable anywhere in its own file: in functions,
   methods, setters and the rows of `main`. Two files in one folder cannot see each other's private
@@ -168,6 +183,20 @@ values, functions, types, members, extensions, events and units.
   - a private event: `Event "poked" is private`;
   - a private module value or type is not found, as if it were not declared:
     `Name "secret" not found` and `Type "Hidden" not found`.
+- **Shared means the file family.** A member declared with `^` is usable in every file of its
+  module's file family, as a public one is, and refused elsewhere, as a private one is:
+  - a shared method: `Method "keep-end" of Box is shared, declared with ^, so only its own file
+    family can call it`;
+  - a shared property: `Property "width" is shared, declared with ^, so only its own file family
+    can use it`;
+  - a shared constructor: the message lists the constructors and says which are shared with
+    their file family.
+
+  Only a member is shared, and `^` on anything else is an error: `Only a member can be shared
+  with its file family; declare this + or _`. A shared event does not bubble, as a private one
+  does not.
+- **Facets.** A file that declares a facet of a class reaches the private declarations of the
+  file that declares the class, but that file does not reach the facet's. See Types.
 - **Extensions.** The members a public extension adds are visible in its own module and in the
   modules that import it or receive it through an export. A private extension's members are
   visible in its own module only. An extension must state its access, as in

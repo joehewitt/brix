@@ -86,7 +86,7 @@ are given.
 
 | Row | Form | Meaning | See |
 | --- | --- | --- | --- |
-| `+ name …`, `_ name …` | `(fn-expr + name …)` | A public or private declaration. | [Declaring a function](functions.md#declaring-a-function) |
+| `+ name …`, `_ name …`, `^ name …` | `(fn-expr + name …)` | A public, private or shared declaration. | [Declaring a function](functions.md#declaring-a-function) |
 | `- name Type` | `(param name Type)` | A parameter. | [Parameters](functions.md#parameters) |
 | `... name Type` | `(param ... name Type)` | The rest parameter. | [Parameters](functions.md#parameters) |
 | `. name = value` | `(let name value)` | A local. | [Locals](control-flow.md#locals) |

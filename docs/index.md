@@ -43,7 +43,7 @@ print?". They are kept short to test one thing each, so take their constructs, n
 [`examples`](../examples) holds whole programs, all written in Brix, which each release builds and
 ships. Unlike the core tests, they show how complete programs are written.
 
-- [`examples/programs`](../examples/programs): programs that print, named for what they do, such
+- [`examples/basics`](../examples/basics): programs that print, named for what they do, such
   as `lisp.bx`, `vending.bx`, `json-parser.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
 - [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
   browsers with a client that joins it, and an MCP server. `chatgpt-mock-server.bx` stands in for
@@ -59,7 +59,8 @@ ships. Unlike the core tests, they show how complete programs are written.
   reduce motion switch. `quakes` is a live earthquake map that loads the USGS feed and pans and
   zooms under glass panels, and `pattern-designer` edits repeating patterns with undo, files and
   SVG export. `terminal` runs your shell in tabs and windows, with menus and key shortcuts.
-- [`examples/games`](../examples/games): two macOS games, `resonance` and `prism-break`.
+- [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
+  `clatter-hill`, a marble run with sound.
 - [`examples/graphics`](../examples/graphics): drawings written to image files, which need macOS.
 
 `examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does

@@ -16,6 +16,7 @@
 /lang/ast/state-machines
 /lang/backend/mir
 /lang/check/binding
+/lang/check/claims
 /lang/check/facts
 /lang/check/instances
 /lang/check/machine-composite
@@ -159,10 +160,12 @@ _ Unit is Tuple
 _ UnitRun is Tuple
 
 ` What the function emitted keeps while it runs the code of another instance as its own (see
-` `enter-unit`): its unit, and whether its code runs where the collector never sees it.
+` `enter-unit`): its unit, whether its code runs where the collector never sees it, and what the
+` `do` blocks it is in keep it from.
 
 + unit Unit
 + in-zone Bool
++ block-effects U32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ Match is Tuple
@@ -411,11 +414,12 @@ _ SharedReady is Tuple
 _ OpenCleanup is Tuple
 
 ` A cleanup open where code is emitted: its body, how many were open where the block that opened
-` it began, and what the cleanup of a `use` reads.
+` it began, what the cleanup of a `use` reads, and what the `do` blocks around it keep it from.
 
 + body SyntaxId
 + base Size
 + cell UseCell
++ effects U32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ StyleGate is Tuple
@@ -1344,9 +1348,10 @@ _ FunctionEmitter
 ` raises. `zone-answer` says, of the value the last call that raises errors answered where that zone
 ` has to do with it, what its path does to the zone: 1 nothing, 2 enters it, 3 leaves it; an error
 ` comes back outside it. It is 0 where the zone has nothing to do with the call, and whoever takes
-` the value apart clears it. `given-loop` is the loop of a comprehension, in the function generated
-` for it: that function is given the loop's container where it is called, and yields the body of the
-` loop for each item. `subscribing` is the `for` block of a loop on a stream, or a comprehension on
+` the value apart clears it. `block-effects` is what the `do` blocks around the code being emitted
+` keep it from (`effects-here`). `given-loop` is the loop of a comprehension, in the function
+` generated for it: that function is given the loop's container where it is called, and yields the
+` body of the loop for each item. `subscribing` is the `for` block of a loop on a stream, or a comprehension on
 ` one, in the function generated for it, which is given an item and the stream. `given-pipe` is a
 ` stream piped through a pattern, in the function generated for it, which is given the stream's
 ` value and yields what each match gives. `poll-landings` counts the checks of `landings` that a
@@ -1471,6 +1476,7 @@ _ landing IRBlockId = no-block
 _ in-landing Bool
 _ in-zone Bool
 _ zone-answer U8
+_ block-effects U32
 _ builds Bool
 _ initializes Bool
 _ live-actions [LiveTrackers]
@@ -2317,7 +2323,7 @@ while changed
             continue
         . read = tables.first-read(unit-id)
         while read != no-fact
-            . found = property-of(filling.type, facts.value-reads[read].name)
+            . found = property-read(filling.type, read)
             . unsure = unsure-read || filling.checks[position] != no-local
                 .. unsure-read = instances.rows[unit-id].branches && !facts.value-reads[read].surely
             if found && unsure
@@ -2460,7 +2466,7 @@ _ do open-cleanup
 ` Opens a cleanup in the block being emitted, which runs where the block is left: a body, a
 ` loop's streams or a `use`, with what a `use` reads. A panic raised from here on runs it
 ` too, so the checks that follow land on a pad of their own.
-open-cleanups += OpenCleanup(item, scoping.block-base, cell)
+open-cleanups += OpenCleanup(item, scoping.block-base, cell, block-effects)
 landing = no-block
 
 ────────────────────
@@ -2909,8 +2915,10 @@ _ do run-cleanups ?! Refused
 ` counts the cleanups open around it, which an error it raises runs on its way out, and
 ` `cleaning-top` those open where they began to run, above which are those opened in it.
 ` A panic leaves the zone the collector never sees before it lands, so one that may be raised
-` in a cleanup run in the zone has no shape.
+` in a cleanup run in the zone has no shape. Each runs kept from what the `do` blocks around it
+` were where it was opened, not where it runs.
 . saved = landing
+. inside = block-effects
 . own-scoping = scoping
 scoping = scoping.cleaning = true
 scoping = scoping.cleaning-top = open-cleanups.length
@@ -2934,7 +2942,9 @@ while position > mark
             scoping = scoping.unwinding-from = open-cleanups[position].body
         . aside = if unwinding || landings != entered then set-panic-aside() else no-local
         scoping = scoping.cleaning-open = position
+        block-effects = open-cleanups[position].effects
         run-cleanup(open-cleanups[position].body, open-cleanups[position].cell)
+        block-effects = inside
         if landings != checks && !unwinding && in-zone
             refuse(.refused-statement, open-cleanups[position].body)
         jump(following)
@@ -3165,10 +3175,12 @@ do match tree.nodes[id]
         . zoned = (row.compilation-effects /and/ CompilationEffect.gc-free) != 0
         if zoned && !is-off && !in-zone
             emit-region(id)
-        else if row.compilation-effects != 0 && !is-off && !(zoned && in-zone)
-            refuse(.refused-statement, id)
-        else if !is-off && !emit-match-statement(row.body)
-            emit-block(row.body)
+        else if !is-off
+            . outer = block-effects
+            block-effects = block-effects /or/ dispatch-effects(row.compilation-effects)
+            if !emit-match-statement(row.body)
+                emit-block(row.body)
+            block-effects = outer
     | .node-block
         emit-block(id)
     | .node-do-finally-block(row)
@@ -15379,7 +15391,7 @@ _ do open-polls
 ` the loops look in on the probes, the count down to the next look.
 budget = ir.add-local(u64-layout)
 store-local(budget, integer(.machine-u64, 1), 0)
-if tables.probe-loops && !is-unprobed(unit.instance)
+if tables.probe-loops && !is-unprobed()
     probe-countdown = ir.add-local(u64-layout)
     store-local(probe-countdown, integer(.machine-u64, 0), 0)
 
@@ -15388,8 +15400,9 @@ _ do look-in-on-probes
     - syntax SyntaxId
 
 ` The look a loop's poll takes in on the probes, where the count down has run out: it is given its
-` period again, and the probes flush what is due and answer the controller.
-if probe-countdown == no-local
+` period again, and the probes flush what is due and answer the controller. A loop in a `do` block
+` kept from looking in on them never does.
+if probe-countdown == no-local || is-unprobed()
     =
 . left = load-local(probe-countdown, syntax)
 . looking = ir.reserve-block()
@@ -15425,12 +15438,18 @@ call
 
 ────────────────────
 _ is-unprobed Bool
-    - function InstanceId
 
-` Whether a function's loops and the calls it makes that suspend the task never look in on the
-` probes, by what it declares.
-function != no-instance && (function-effects /and/ CompilationEffect.no-probe-safepoint) != 0
-.. function-effects = dispatch-effects(instances.rows[function].effects)
+` Whether the loops of the code emitted and the calls it makes that suspend the task never look in
+` on the probes, by what its function declares or a `do` block around it is kept from.
+(effects-here() /and/ CompilationEffect.no-probe-safepoint) != 0
+
+────────────────────
+_ effects-here U32
+
+` What the code emitted may not do: what its function declares, and what the `do` blocks around
+` it are kept from.
+declared /or/ block-effects
+.. declared = if unit.instance == no-instance then 0u32 else dispatch-effects(instances.rows[unit.instance].effects)
 
 ────────────────────
 _ do emit-poll
@@ -15443,9 +15462,10 @@ _ do emit-poll
 ` `raises-termination`, and otherwise stops at the task's safepoint, or at the collector's in a
 ` function that may not suspend. A loop where no safepoint is allowed polls nothing. A loop in any
 ` other function the type pass did not mark as one that polls has no shape.
+if is-unpolled() && unit.lender == no-instance
+    =
 if budget == no-local || unit.lender != no-instance
-    if !is-unpolled(unit.instance) || unit.lender != no-instance
-        refuse(.refused-statement, syntax)
+    refuse(.refused-statement, syntax)
     =
 . one = integer(.machine-u64, 1)
 . left = arithmetic(syntax, .arithmetic-subtract, load-local(budget, syntax), one, u64-layout)
@@ -15474,8 +15494,7 @@ else
     jump(stop)
 
 ir.start-block(stop)
-. suspends = unit.instance == no-instance || (instance-effects /and/ CompilationEffect.no-suspend) == 0
-    .. instance-effects = dispatch-effects(instances.rows[unit.instance].effects)
+. suspends = (effects-here() /and/ CompilationEffect.no-suspend) == 0
 call-runtime
     - if suspends then .runtime-task-safepoint else .runtime-safepoint
     - syntax
@@ -21056,7 +21075,8 @@ _ do enter-unit UnitRun
 
 ` Makes the function emitted that of another instance for a while, whose locals are its own for
 ` the run, and answers what the function kept of its own.
-. run = UnitRun(unit, in-zone)
+. run = UnitRun(unit, in-zone, block-effects)
+block-effects = 0
 read-instance(unit-id)
 bind-slots()
 clear-lazies()
@@ -21069,6 +21089,7 @@ _ do leave-unit
 ` Puts back what `enter-unit` kept of the function's own.
 unit = run.unit
 in-zone = run.in-zone
+block-effects = run.block-effects
 
 ────────────────────
 _ do run-markup-trigger
@@ -24102,8 +24123,8 @@ _ do read-global Typed
 
 ` Reads a global from where it is kept. A lazy global that has no value yet is first
 ` evaluated by its function, which the read calls unless it is in that function. A read the
-` type pass planned as checked, of any other global, raises a panic when the global has no
-` value yet. Both read the byte of state beside the global.
+` type pass planned as checked, of any other global but a constant, raises a panic when the
+` global has no value yet. Both read the byte of state beside the global.
 . nothing = make-operand(.operand-void, 0)
 . row = tables.storage-of(module, decl)
 if row == no-storage
@@ -24113,7 +24134,7 @@ if tables.global-kind(module, decl) == .global-stack
     = read-stack(id, row)
 . kept = tables.storage[row]
 . is-lazy = tables.global-kind(module, decl) == .global-lazy
-. checked = facts.plan-of(unit.reading, id) == .plan-guarded-read
+. checked = facts.plan-of(unit.reading, id) == .plan-guarded-read && tables.global-kind(module, decl) != .global-constant
 if is-lazy && function.kind == .lazy-global && function.place == row
     = load-global(kept, id)
 if !is-lazy && !checked
@@ -24233,7 +24254,7 @@ if unit-id == no-instance
     = true
 . read = tables.first-read(unit-id)
 while read != no-fact
-    . found = property-of(type, facts.value-reads[read].name)
+    . found = property-read(type, read)
     if found && filling.filled[(found as U32) - filling.start] != 2
         = true
     read = tables.next-read(read)
@@ -32864,7 +32885,7 @@ if depth > 8 || unit-id == no-instance || instances.rows[unit-id].reads-self
     = true
 . read = tables.first-read(unit-id)
 while read != no-fact
-    . found = property-of(filling.type, facts.value-reads[read].name)
+    . found = property-read(filling.type, read)
     if !found
         = true
     . kind = types.properties[found].storage-kind
@@ -33741,8 +33762,19 @@ _ property-of Index?
     - owner TypeId
     - name Atom
 
-` The property of a type by its name, among those the type pass completed it with.
-types.property-named(owner, name)
+` The property of a type by its name, among those the type pass completed it with, as the
+` module whose code is emitted sees it.
+types.property-seen(owner, name, unit.source-module)
+
+────────────────────
+_ property-read Index?
+    - owner TypeId
+    - read FactId
+
+` The property a value written for another reads, as the module of the value sees it.
+types.property-seen(owner, value.name, instances.rows[value.instance].module)
+
+.. value = facts.value-reads[read]
 
 ────────────────────
 _ do emit-binary Typed
@@ -50288,7 +50320,7 @@ _ do fill-value-reads
 =? if !filling.storing || filling.count == 0
 . read = tables.first-read(unit-id)
 while read != no-fact
-    . found = property-of(filling.type, facts.value-reads[read].name)
+    . found = property-read(filling.type, read)
     if found
         . position = (found as U32) - filling.start
         . eager = types.properties[found].storage-kind == .storage-eager
@@ -50830,7 +50862,7 @@ if described != no-layout
 else
     result = call(make-operand(.operand-symbol, symbol), id, mark, .callee-c, returns)
 if suspends
-    if !is-unprobed(unit.instance)
+    if !is-unprobed()
         call-probe-thunk(tables.probe-safepoint, id)
     . resumed = ir.reserve-block()
     . raised = call-instance(instances.report.termination, id, pending.length)
@@ -50929,12 +50961,11 @@ signals-panic || function.kind == .module-main || function.kind == .task-body
 
 ────────────────────
 _ is-unpolled Bool
-    - function InstanceId
 
-` Whether a function runs where no safepoint is allowed, by what it declares or because the
-` collector never sees it: its loops poll nothing.
-function != no-instance && (function-effects /and/ CompilationEffect.no-safepoint) != 0
-.. function-effects = dispatch-effects(instances.rows[function].effects)
+` Whether the code emitted runs where no safepoint is allowed, by what its function declares or a
+` `do` block around it is kept from, or because the collector never sees it: its loops poll
+` nothing.
+(effects-here() /and/ CompilationEffect.no-safepoint) != 0
 
 ────────────────────
 _ do read-instance
@@ -52019,7 +52050,15 @@ _ do call-runtime Operand
     - records-stack Bool = false
 
 ` A call of a runtime function with the pending arguments from `mark` on. It is never
-` checked: the runtime functions called here do not panic.
+` checked: the runtime functions called here do not panic. One that may allocate from the
+` collector, in a function that may not use the heap, is one typing did not plan, and is
+` refused.
+if (effects-here() /and/ CompilationEffect.no-heap) != 0
+    . name = runtime-function-names[callee as Size]
+    if may-allocate(name, safepoint-free-runtime-names.find(name) == null)
+        refuse(.refused-allocation, syntax)
+        drop-pending(mark)
+        = make-operand(.operand-void, 0)
 ir.depend(.callee-runtime, callee, 0)
 . symbol = make-operand(.operand-symbol, tables.runtime-symbol(callee))
 = call(symbol, syntax, mark, .callee-runtime, returns, false, records-stack)

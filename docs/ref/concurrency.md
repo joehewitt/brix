@@ -132,6 +132,7 @@ methods:
 | --- | --- |
 | `wait` | Waits until the task ends. A task cannot wait for itself. |
 | `cancel` | Cancels the task. It ends the next time it waits, running up to its first wait if it has not started: its cleanups run, and a wait in one of them ends that cleanup, but its `on-failure` rows do not run. |
+| `close` | Cancels the task if it still runs, then waits for it. A `use` of a handle closes it where its block ends, so a task started in the block ends there, however the block is left. |
 | `suspend` | Makes the task wait until it is resumed, and gives whether it was canceled. |
 | `resume-now`, `resume-later` | Resumes a suspended task. |
 | `when-finished` | Runs a function in a new task when the task ends. |
@@ -219,7 +220,41 @@ main thread calls 0
   worker.
 - **Idle workers** do not keep a program from exiting.
 
-### Values for each thread, task or stack
+### Task groups
+
+A `TaskGroup` waits for tasks started together. `add` takes a handle, and `wait` waits for every
+task added and then raises the first panic the group kept. Each task's `on-failure` arm keeps its
+panic with `keep`, so that a crash in one fails the work that started them:
+
+```brix
+(main
+  (let pool (call Worker 2))
+  (let group (call TaskGroup))
+  (let squares (list 0 0 0))
+  (for (in index (..< 0 3))
+    (let task
+      (do-new (worker: pool)
+        (= ([] squares index) (* index index))
+        (on-failure failed
+          (call (. group keep) failed)
+        )
+      )
+    )
+    (call (. group add) task)
+  )
+  (call (. group wait))
+  (print squares)
+  (call (. pool stop))
+)
+```
+
+```output
+0, 1, 4
+```
+
+- **Settling.** `settle` waits for every task as `wait` does and leaves the panic kept, for a
+  later `wait` to raise once other work is done.
+- **Cancelling.** `cancel` cancels each task that still runs.
 
 A module property can hold a value for each thread, each task or each stack of calls:
 
@@ -227,7 +262,13 @@ A module property can hold a value for each thread, each task or each stack of c
 | --- | --- |
 | `(prop + calls _ @thread (= 0))`{.brix} | One value for each thread. Tasks on the same thread share it. |
 | `(prop + depth _ @task (= 0))`{.brix} | One value for each task. Each task starts with the initial value. |
-| `(prop + scope _ @stack (= "none"))`{.brix} | One value for each stack of calls, given for a block by a `do-with` form. A task starts with the value it was started under. |
+| `(prop + scope _ @stack (= "none"))`{.brix} | One value for each stack of calls, given for a block by a `do-with` form, or by a `(with name value)` part of a `do` or a `fn-do`. A task starts with the value it was started under. |
+
+A `@stack` property with no initial value must be given one wherever it is read, through every
+call, interface and class method that reaches the read; where it is not, compiling fails with the
+calls that reach it. A closure or a task keeps the value given where it is made, so it must be made
+where one is given. A function that reads such a property cannot become a function value; write a
+closure that calls it.
 
 ### Locks
 

@@ -1,3 +1,4 @@
+./call-paths
 ./facts
 ./instances
 ./session
@@ -5,20 +6,26 @@
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/program
-/stream/sort
 
 ━━━━━━━━━━━━━━━━━━━━
 + StackLocals
 
 ` A global that each `do with` binds anew must be bound wherever it is read. A function requires
 ` the ones it reads outside a binding of its own, and the ones the functions it calls require
-` unless it calls them under a binding. A closure answers for itself: what it requires does not
-` reach its callers. What a module's own statements still require is never bound. What each
-` function reads outside its bindings, with or without a value of its own, is recorded too.
+` unless it calls them under a binding. A call of an interface member or of a method a class
+` declares again requires what each function that may answer it requires. A nested function holds
+` the state of where it is made, so what it requires reaches the function that makes it, unless
+` a binding is open where it is made, and does not reach its callers. What a module's own
+` statements still require is never bound, which is reported at a read it reaches, with the chain
+` from the statements to the read. A function becomes a value of a function type only where it
+` requires nothing, since what a call through the value requires reaches no caller; a closure
+` holds the state of where it is made. What each function reads outside its bindings, with or
+` without a value of its own, is recorded too.
 
 _ program Program
 _ instances Instances
 _ facts Facts
+_ paths CallPaths
 _ holders [InstanceId]
 _ modules [ModuleId]
 _ decls [DeclId]
@@ -34,6 +41,7 @@ _ call-links [U32]
 ────────────────────
 + This
     - session Session
+    - paths
 
 .. program = session.program
 .. instances = session.instances
@@ -51,16 +59,42 @@ while grew
     grew = false
     for call in facts.calls
         if call.callee != no-instance && requires-any(call.callee) && propagates(call.callee)
-            . total = holders.length
-            for position in 0 .. < total
-                if holders[position] == call.callee
-                    . module = modules[position]
-                    . decl = decls[position]
-                    if !binds(call.instance, call.syntax, module, decl)
-                        grew = require(call.instance, module, decl) || grew
+            grew = require-from(call.callee, call.instance, call.syntax) || grew
+    for slot in facts.witness-slots
+        if slot.callee != no-instance && slot.proto != no-instance && requires-any(slot.callee)
+            grew = require-from(slot.callee, slot.proto, 0) || grew
+    for fact in facts.overrides
+        if fact.override != no-instance && requires-any(fact.override)
+            grew = require-from(fact.override, fact.base, 0) || grew
+    . total = holders.length
+    for position in 0 .. < total
+        . holder = holders[position]
+        . outer = instances.rows[holder].enclosing
+        if outer != no-instance && is-nested(holder)
+            . module = modules[position]
+            . decl = decls[position]
+            if !binds(outer, made-at(holder), module, decl)
+                grew = require(outer, module, decl) || grew
+check-values()
 report()
 gather-needs()
 gather-holds()
+
+────────────────────
+_ do require-from Bool
+    - callee InstanceId
+    - caller InstanceId
+    - syntax SyntaxId
+
+. grew = false
+. total = holders.length
+for position in 0 .. < total
+    if holders[position] == callee
+        . module = modules[position]
+        . decl = decls[position]
+        if syntax == 0 || !binds(caller, syntax, module, decl)
+            grew = require(caller, module, decl) || grew
+= grew
 
 ────────────────────
 _ do gather-needs
@@ -244,25 +278,102 @@ program.modules[row.module].main-decl == row.decl
 ────────────────────
 _ do report
 
-. reported [InstanceId]
 for position in 0 .. < holders.length
-    . root = holders[position]
-    . seen = false
-    for done in reported
-        seen = seen || done == root
-    if !seen && is-root(root)
-        reported += root
+    if is-root(holders[position])
+        report-unbound(holders[position], modules[position], decls[position])
+
+────────────────────
+_ do report-unbound
+    - root InstanceId
+    - module ModuleId
+    - decl DeclId
+
+. found = paths.chain-from(root, :: edge CallEdge => carries(edge, module, decl), :: instance InstanceId => read-in(instance, module, decl) != 0)
+. reader = if found && found.length != 0 then found[found.length - 1].callee else root
+. read = read-in(reader, module, decl)
+. names [String]
+names += paths.name-of(root)
+if found
+    names ++= paths.names(found)
+. chain = if names.length > 1 then ": ${" → ".join(names)}" else ""
+. message = program.store-atom("Stack-local variable '${name-of(module, decl)}' is not bound$chain")
+if read == 0
+    facts.record-diagnostic(root, module, site-of(module, decl), .reached, message)
+    =
+facts.record-diagnostic(root, instances.rows[reader].module, read, .reached, message)
+
+────────────────────
+_ do check-values
+
+` A function made a value of a function type requires nothing of where it is called, since no
+` call through the value reaches it: reported where it is made, with the chain to a read.
+=? if holders.length == 0
+for fact in facts.conversions
+    check-value(fact.instance, fact.syntax, fact.runs)
+for fact in facts.conversion-parts
+    check-value(fact.instance, fact.syntax, fact.runs)
+
+────────────────────
+_ do check-value
+    - maker InstanceId
+    - site SyntaxId
+    - runs InstanceId
+
+=? if runs == no-instance || maker == no-instance || maker == instances.dead || is-nested(runs)
+for position in 0 .. < holders.length
+    if holders[position] == runs
+        . module = modules[position]
+        . decl = decls[position]
+        . found = paths.chain-from(runs, :: edge CallEdge => carries(edge, module, decl), :: instance InstanceId => read-in(instance, module, decl) != 0)
         . names [String]
-        for other in position .. < holders.length
-            if holders[other] == root
-                names += "'${name-of(modules[other], decls[other])}'"
-        . sorted [String] = sort(names)
-        . listed = ", ".join(sorted)
-        . message = "Stack-local variable $listed is not bound"
-        if names.length != 1
-            message = "Stack-local variables $listed are not bound"
-        . site = site-of(modules[position], decls[position])
-        facts.record-diagnostic(root, modules[position], site, .stated, program.store-atom(message))
+        names += paths.name-of(runs)
+        if found
+            names ++= paths.names(found)
+        . text = "Stack-local variable '${name-of(module, decl)}' cannot be read through a function value: ${" → ".join(names)}"
+        facts.record-diagnostic(maker, instances.rows[maker].module, site, .reached, program.store-atom(text))
+
+────────────────────
+_ do carries Bool
+    - edge CallEdge
+    - module ModuleId
+    - decl DeclId
+
+` Whether a global the function an edge reaches requires reaches the function it leaves.
+=? false if !requires(edge.callee, module, decl)
+do match edge.kind
+    |= .edge-call
+        = propagates(edge.callee) && !binds(edge.caller, edge.syntax, module, decl)
+    |= .edge-answer
+        = true
+    |= .edge-made
+        = !binds(edge.caller, edge.syntax, module, decl)
+    ??
+        = false
+= false
+
+────────────────────
+_ do requires Bool
+    - holder InstanceId
+    - module ModuleId
+    - decl DeclId
+
+for position in 0 .. < holders.length
+    if holders[position] == holder && modules[position] == module && decls[position] == decl
+        = true
+= false
+
+────────────────────
+_ do read-in SyntaxId
+    - instance InstanceId
+    - module ModuleId
+    - decl DeclId
+
+` A read of a global in a function outside a binding of its own, or none.
+for read in facts.stack-reads
+    if read.instance == instance && read.module == module && read.decl == decl
+        if !binds(instance, read.syntax, module, decl)
+            = read.syntax
+= 0
 
 ────────────────────
 _ do name-of String

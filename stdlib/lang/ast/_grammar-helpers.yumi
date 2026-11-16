@@ -11,6 +11,8 @@
 + DoBody is (body SyntaxId, annotations ImmutableArray'Atom)
 + DoAnnotationMasks is (effects CompilationEffect, features CompilerFeature)
 + ContainerPartial is (container SyntaxId, is-subscriber Bool)
++ StackBindingPartial is (name Atom, value SyntaxId)
++ SectionsPartial is (without ImmutableArray'Atom, bindings ImmutableArray'StackBindingPartial)
 + ProbeKeySelector is (object SyntaxId?, key Atom)
 + AssociatedTypeMember is (name Atom, args ImmutableArray'SyntaxId)
 
@@ -74,6 +76,7 @@
 + aliases ImmutableArray'Atom?
 + inherits ImmutableArray'SyntaxId?
 + header ImmutableArray'ArgumentVariant?
++ facet-of SyntaxId = 0
 
 ━━━━━━━━━━━━━━━━━━━━
 + SheetDerivation is Tuple
@@ -105,6 +108,7 @@
     - aliases
     - inherits
     - variants
+    - header.facet-of
 = YumiPiece(piece.location, detached(piece.items), detached-header)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -153,6 +157,7 @@ for item in items
 | argument-decl(value SyntaxId)
 | implements-declaration(value SyntaxId)
 | using-declaration(value SyntaxId)
+| sees-declaration(value SyntaxId)
 | iterator-header(location MatchLocation, loop SyntaxId)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1298,6 +1303,9 @@ for variant in header-variants
     else if variant is .using-declaration
         members[member-count] = variant
         member-count += 1
+    else if variant is .sees-declaration
+        members[member-count] = variant
+        member-count += 1
 for member in body-members
     members[member-count] = member
     member-count += 1
@@ -1318,6 +1326,9 @@ for member in body-members
         - stored-members
         - stored-constraints
         - stored-assignments
+        - false
+        - RowRange'Atom()
+        - header.facet-of
 
 ━━━━━━━━━━━━━━━━━━━━
 + do make-style-sheet-declaration SyntaxId
@@ -2735,7 +2746,7 @@ match tree.nodes[pattern]
 . scheduling TaskSchedulingClass = .task-scheduling-normal
 . found = false
 for name in annotations
-    if name.text == "large-stack"
+    if name.text == "large-stack" || name.text == "detached"
         continue
     . requested TaskSchedulingClass = match name.text
         |= "normal"
@@ -2863,6 +2874,104 @@ for name in names
         if effects-conflict(effects, effect)
     effects = effects /or/ effect
 = DoAnnotationMasks(normalize-compilation-effects(effects), features)
+
+━━━━━━━━━━━━━━━━━━━━
++ do section-annotations ImmutableArray'Atom ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - annotations ImmutableArray'Atom
+    - sections SectionsPartial?
+    - is-block Bool
+
+` The annotations a `without` section stands for, after those written with `@`. In a header
+` module `gc` and `blocking` are the labels of a C function.
+=? annotations if !sections
+. names = sections.without
+=? annotations if names.length == 0
+. native = tree.source-path.ends-with(".h")
+. joined = scratch-array'Atom(tree, annotations.length + names.length)
+. filled Size = 0
+for annotation in annotations
+    joined[filled] = annotation
+    filled += 1
+for name in names
+    . text = name.text
+    if text == "cancel"
+        ?! YumiSyntaxError(loc, "'without cancel' is only for a do block")
+            if !is-block
+        continue
+    ?! YumiSyntaxError(loc, "'without blocking' is only for a C function")
+        if text == "blocking" && !native
+    . meant = match text
+        |= "heap"
+            "no-heap"
+        |= "suspend"
+            "no-suspend"
+        |= "gc"
+            if native then "gc-leaf" else "no-gc"
+        |= "safepoints"
+            "no-safepoints"
+        |= "probe-safepoints"
+            "no-probe-safepoints"
+        |= "blocking"
+            "gc-polling"
+        ?! YumiSyntaxError(loc, "Unknown name '$text' after without")
+    for index in 0 .. < filled
+        ?! YumiSyntaxError(loc, "'$text' is named twice")
+            if joined[index].text == meant
+    joined[filled] = tree.atom(meant)
+    filled += 1
+= scratch-items(joined, filled)
+
+━━━━━━━━━━━━━━━━━━━━
++ do stack-bound SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - bindings ImmutableArray'StackBindingPartial
+    - body SyntaxId
+
+` The body inside the bindings of a `with` section, the first binding outermost.
+. inner = body
+. index = bindings.length
+while index > 0
+    index -= 1
+    . binding = bindings[index]
+    . held = if index == bindings.length - 1 then inner else tree.append(ASTBlock(loc, tree.store-child(inner)))
+    inner = tree.append(ASTStackLocalBindingBlock(loc, binding.name, binding.value, held))
+= inner
+
+━━━━━━━━━━━━━━━━━━━━
++ do sectioned-do SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - sections SectionsPartial
+    - body DoBody
+
+. annotations = section-annotations(tree, loc, body.annotations, sections, true)
+. bindings = sections.bindings
+=? stack-bound(tree, loc, bindings, body.body) if annotations.length == 0 && bindings.length > 0
+. masks = do-annotation-masks(loc, annotations)
+. block = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features))
+=? block if bindings.length == 0
+= stack-bound(tree, loc, bindings, tree.append(ASTBlock(loc, tree.store-child(block))))
+
+━━━━━━━━━━━━━━━━━━━━
++ do sectioned-body SyntaxId? ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - sections SectionsPartial?
+    - is-imperative Bool
+    - body SyntaxId?
+
+` A function's body inside the bindings of the `with` section on its header.
+=? body if !sections
+. bindings = sections.bindings
+=? body if bindings.length == 0
+?! YumiSyntaxError(loc, "A 'with' section needs a do function")
+    if !is-imperative
+?! YumiSyntaxError(loc, "A 'with' section needs a body")
+    if !body
+= tree.append(ASTBlock(loc, tree.store-child(stack-bound(tree, loc, bindings, body))))
 
 ━━━━━━━━━━━━━━━━━━━━
 + normalize-compilation-effects CompilationEffect
@@ -3388,6 +3497,8 @@ match nodes[id]
     | .node-implements-declaration
         false
     | .node-using-declaration
+        false
+    | .node-sees-declaration
         false
     | .node-style-domain-item
         false

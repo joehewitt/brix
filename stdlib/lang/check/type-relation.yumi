@@ -1420,6 +1420,33 @@ if truncates-float(forward)
 = forward
 
 ────────────────────
+_ do relate-facets Relation?
+    - from TypeId
+    - to TypeId
+
+` How a value meets a facet's type: a class at or below the facet's owner, or a facet within it,
+` narrows to it unasked, and a facet widens to its owner or a class above it only when asked, or
+` is cast to a class below its owner as the owner is, with a test.
+. facets = types.program.facets
+. target = types.facet-of-type(to)
+. source = types.facet-of-type(from)
+if target
+    if source
+        =? null if !facets.is-within(source, target)
+        = make-relation(.relation-up-cast, from, to, to)
+    =? null if !intrinsic-is-class(types.completions[from].intrinsic)
+    =? null if !in-base-chain(types, from, types.facet-owner(target))
+    = make-relation(.relation-up-cast, from, to, to)
+=? null if !source || !intrinsic-is-class(types.completions[to].intrinsic)
+. owner = types.facet-owner(source)
+if to != owner && in-base-chain(types, to, owner)
+    = make-relation(.relation-down-cast, from, to, to)
+=? null if !in-base-chain(types, owner, to)
+. widened = make-relation(.relation-up-cast, from, to, to)
+widened.explicit = true
+= widened
+
+────────────────────
 _ truncates-float Bool
     - relation Relation
 
@@ -1522,6 +1549,11 @@ if can-unwrap-cast(from, to)
                 . held = wrap-case(inner, target)
                 unwrap.case-index = if held != no-case then held else down-case(inner, target)
     = unwrap
+
+if types.program.facets.count != 0
+    . facet-relation = relate-facets(from, to)
+    if facet-relation
+        = facet-relation
 
 if in-base-chain(types, from, to)
     = make-relation(.relation-up-cast, from, to, to)

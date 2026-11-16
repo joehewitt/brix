@@ -1,0 +1,182 @@
+./call-paths
+./facts
+./instances
+./session
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/program
+
+━━━━━━━━━━━━━━━━━━━━
++ restricting-effects U32
+
+CompilationEffect.gc-free /or/ CompilationEffect.no-heap /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
+
+━━━━━━━━━━━━━━━━━━━━
++ Restrictions
+
+` A restriction broken is reported with the chain from where it is placed to where it is broken,
+` once typing has found every call: from a function that declares it, or from one whose `do` block
+` enters it, through each function typed again under it, to the code that breaks it. The report
+` is then `reached`: stated with its chain, and shown however many its function has.
+
+_ session Session
+_ paths CallPaths
+
+────────────────────
++ This
+    - session
+    - paths
+
+────────────────────
++ do chain-reports
+
+. facts = session.facts
+for position in 0 .. < facts.diagnostics.length
+    . row = facts.diagnostics[position]
+    if row.kind == .restricted
+        . name = row.name
+        if name
+            . chain = chain-text(row.instance, row.module, row.syntax)
+            . text = if chain.length == 0 then name.text else "${name.text}: $chain"
+            facts.diagnostics[position].name = session.program.store-atom(text)
+        facts.diagnostics[position].kind = .reached
+
+────────────────────
+_ do chain-text String
+    - broken InstanceId
+    - module ModuleId
+    - site SyntaxId
+
+. parts [String]
+. need = dispatch-effects(session.instances.rows[broken].effects) /and/ restricting-effects()
+if need == 0 || (written-effects(broken) /and/ restricting-effects()) != 0
+    parts += placed(broken, site)
+else
+    . found = paths.chain-to(broken, :: edge CallEdge => step(edge, need))
+    =? "" if !found || found.length == 0
+    parts += placed(found[0].caller, found[0].syntax)
+    parts ++= paths.names(found)
+. shown = site-text(module, site)
+if shown.length != 0
+    parts += shown
+= " → ".join(parts)
+
+────────────────────
+_ do step EdgeStep
+    - edge CallEdge
+    - need U32
+
+` Each function a restriction reaches is typed again under it, so the walk goes back through
+` those that have it and stops at the one that places it.
+. held = dispatch-effects(session.instances.rows[edge.caller].effects) /and/ need
+=? .step-reach if held != need || (written-effects(edge.caller) /and/ need) != 0
+= .step-follow
+
+────────────────────
+_ do placed String
+    - root InstanceId
+    - at SyntaxId
+
+` A function that places a restriction, with what it writes: its own decorations, or those of
+` the `do` block around where the chain leaves it. The body of a `do @no-gc` block is the
+` function it is written in.
+. row = session.instances.rows[root]
+. written = written-effects(root) /and/ restricting-effects()
+if is-region(root) && row.enclosing != no-instance
+    = "${paths.name-of(row.enclosing)} (do ${decorations(written)})"
+if written != 0
+    = "${paths.name-of(root)} (${decorations(written)})"
+. block = block-effects(root, at)
+=? "${paths.name-of(root)} (do ${decorations(block)})" if block != 0
+= paths.name-of(root)
+
+────────────────────
+_ do written-effects U32
+    - instance InstanceId
+
+. row = session.instances.rows[instance]
+do match? session.program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.effects
+= 0
+
+────────────────────
+_ do is-region Bool
+    - instance InstanceId
+
+. row = session.instances.rows[instance]
+do match? session.program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.kind == .region-decl
+= false
+
+────────────────────
+_ do block-effects U32
+    - instance InstanceId
+    - at SyntaxId
+
+` What the innermost `do` block of an instance that restricts code writes, among those around a
+` node.
+=? 0 if at == 0
+. row = session.instances.rows[instance]
+. tree = session.program.modules[row.module].tree
+. found = 0u32
+. narrowest SyntaxId = 0
+for offset in 0 .. < row.subtree.count
+    . id = (row.subtree.start + offset) as SyntaxId
+    do match? tree.nodes[id]
+        | .node-do-block(block)
+            . effects = (block.compilation-effects as U32) /and/ restricting-effects()
+            if effects != 0 && tree.subtree-start(id) <= at && at <= id && (narrowest == 0 || id < narrowest)
+                found = effects
+                narrowest = id
+= found
+
+────────────────────
+_ do site-text String
+    - module ModuleId
+    - site SyntaxId
+
+` The code that breaks a restriction as written, where it is short and on one line, or the first
+` line of a block that does.
+=? "" if site == 0
+. tree = session.program.modules[module].tree
+. loc = tree.nodes.loc[site]
+. line = source-line(tree.source, loc.begin.line)
+. first = loc.begin.column as Size
+if loc.begin.line != loc.end.line && is-block(tree.nodes[site])
+    =? "" if line.length - first > 40
+    = line[first ...].trim()
+=? "" if loc.begin.line != loc.end.line || loc.end.column < loc.begin.column
+. last = (loc.end.column as Size) + 1
+=? "" if last > line.length || last - first > 40
+= line[first .. < last]
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-block Bool
+    - node Syntax
+
+match node
+    | .node-do-block
+        true
+    | .node-do-task-block
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do decorations String
+    - effects U32
+
+=? "@no-gc" if (effects /and/ CompilationEffect.gc-free) != 0
+. parts [String]
+if (effects /and/ CompilationEffect.no-heap) != 0
+    parts += "@no-heap"
+if (effects /and/ CompilationEffect.no-safepoint) != 0
+    parts += "@no-safepoint"
+if (effects /and/ CompilationEffect.no-suspend) != 0
+    parts += "@no-suspend"
+= " ".join(parts)

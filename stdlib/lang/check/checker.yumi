@@ -31,6 +31,7 @@
 /lang/ast/ast-children
 /lang/ast/ast-nodes
 /lang/ast/decl
+/lang/ast/facets
 /lang/ast/module
 /lang/ast/operator
 /lang/ast/program
@@ -759,7 +760,7 @@ do match? types.rows[from]
 if instances.report.union-error != no-instance
     =
 . error = types.union-error-type
-. made = calls.demand-constructor(error, scratch.types.mark)
+. made = calls.demand-constructor(error, scratch.types.mark, false, true)
 . text = conversions.demand-converter(error, types.string-type)
 instances.report.union-error = made
 instances.report.union-text = text
@@ -909,12 +910,14 @@ for position in 0 .. < program.modules.length
                                     . target = query-target(query)
                                     if facts.query-targets.find(target) == null
                                         facts.query-targets += target
-                    for member in owner.member-pool[class.members]
-                        do match? owner.decls[member]
-                            | .decl-rule(rule)
-                                . target = trigger-target(ref, rule.syntax)
-                                if target != no-type && facts.query-targets.find(target) == null
-                                    facts.query-targets += target
+                    for part in sheet-parts(ref)
+                        . written = program.modules[part.module]
+                        for member in written.member-pool[part-members(part)]
+                            do match? written.decls[member]
+                                | .decl-rule(rule)
+                                    . target = trigger-target(part, rule.syntax)
+                                    if target != no-type && facts.query-targets.find(target) == null
+                                        facts.query-targets += target
                 else
                     note-open-targets(DeclRef(position as ModuleId, index), class.members)
         index += 1
@@ -1165,10 +1168,10 @@ for position in 0 .. < undeclared.length
 report.message = conversions.demand-converter(panic, types.string-type)
 . message-mark = scratch.types.mark
 scratch.types.push(types.string-type)
-report.panic = calls.demand-constructor(panic, message-mark)
+report.panic = calls.demand-constructor(panic, message-mark, false, true)
 scratch.types.rewind(message-mark)
 . termination = types.termination-type
-report.termination-error = calls.demand-constructor(termination, scratch.types.mark)
+report.termination-error = calls.demand-constructor(termination, scratch.types.mark, false, true)
 . error-module = class-ref(types, termination).module
 . decls = program.modules[error-module].decls
 for position in 0 .. < decls.length
@@ -1177,7 +1180,7 @@ for position in 0 .. < decls.length
             if fn.kind == .termination-panic-decl
                 . check = position as DeclId
                 report.termination = instances.intern(error-module, check, no-type, 0, no-instance)
-. found = types.property-named(panic, program.store-atom("source"))
+. found = property-named(panic, program.store-atom("source"))
 if found
     . property = types.properties[found]
     . declared = property.type
@@ -1191,12 +1194,12 @@ if found
         for field in types.properties-of(inner)
             if field.storage-kind != .storage-getter
                 scratch.types.push(field.type)
-        report.source = calls.demand-constructor(inner, mark)
+        report.source = calls.demand-constructor(inner, mark, false, true)
         scratch.types.rewind(mark)
-. traced = types.property-named(panic, program.store-atom("trace"))
+. traced = property-named(panic, program.store-atom("trace"))
 if traced
     report.trace-slot = types.properties[traced].slot
-. linked = types.property-named(panic, program.store-atom("previous"))
+. linked = property-named(panic, program.store-atom("previous"))
 if linked
     report.previous-slot = types.properties[linked].slot
 instances.report = report
@@ -1346,8 +1349,11 @@ do match? program.modules[owner].decls[property]
 ` (`content-property-type`), and one that projects a case of a machine of the markup the
 ` optional of what the case holds (`projection-type`). A state machine that refines one a class
 ` above declares, read while that one is typed, has the type it has from above and is typed
-` later (`refines-in-progress`).
-. ref = declaring-class(types, fact.owner, name)
+` later (`refines-in-progress`). A facet's value has its owner's properties, typed for the owner.
+. viewed = types.facet-of-type(receiver)
+if viewed
+    = demand-member(fact, types.facet-owner(viewed), name, replay, for-below)
+. ref = declaring-decl(types, fact)
 if ref.module == 0 && ref.decl == 0
     = invalid-type
 . owner-module = program.modules[ref.module]
@@ -1358,6 +1364,8 @@ if ref.module == 0 && ref.decl == 0
 . members = RowRange'DeclId()
 do match? owner-module.decls[ref.decl]
     | .decl-class(row)
+        members = row.members
+    | .decl-extension(row)
         members = row.members
 . place = owner-module.first-member(members, name)
 while place != no-member
@@ -1386,7 +1394,7 @@ if target == 0 || initializer == 0
 . machine = owner-module.tree.declared-machine(initializer) != 0
 . shared = lazily-held && intrinsic-is-class(types.intrinsic-of(receiver))
     .. lazily-held = fact.storage-kind == .storage-lazy || machine
-. holder = if shared then holding-type(receiver, ref) else receiver
+. holder = if shared then holding-type(receiver, declaring-holder(types, fact)) else receiver
 . unit = instances.intern-initializer(ref.module, target, holder)
 if for-below && instances.rows[unit].state == .instance-in-progress
     = no-type
@@ -1653,6 +1661,7 @@ if default-site != 0 && !giving.yields
 . generates = giving.yields && !building-list
 if generates
     instances.mark-generator(instance)
+    frame.check-allocates(declaration.syntax)
 if is-close-method(declaration) || is-generator-end(declaration)
     instances.mark-may-panic(instance)
 if is-generator-end(declaration)
@@ -1940,15 +1949,15 @@ if !load-context(receiver, site)
 . ref = class-ref(types, receiver)
 . owner = program.modules[ref.module]
 live-owned = false
-do match? owner.decls[ref.decl]
-    | .decl-class(class)
-        for member in owner.member-pool[class.members]
-            do match? owner.decls[member]
-                | .decl-rule(rule)
-                    if waits-for-markup(receiver, ref.module, rule.syntax)
-                        instances.mark-may-panic(instance)
-                        if is-live-rule(owner.tree, rule.syntax)
-                            live-owned = true
+for part in sheet-parts(ref)
+    . written = program.modules[part.module]
+    for member in written.member-pool[part-members(part)]
+        do match? written.decls[member]
+            | .decl-rule(rule)
+                if waits-for-markup(receiver, part.module, rule.syntax)
+                    instances.mark-may-panic(instance)
+                    if is-live-rule(written.tree, rule.syntax)
+                        live-owned = true
 own-markup-actions(receiver, site)
 . base = types.base-of(receiver) ?? no-type
 . given = base != no-type && holds-slot(base)
@@ -2099,7 +2108,7 @@ _ do clashes-property Bool
     - written SyntaxId
 
 . text = identifier-name(tree, name)
-. place = types.property-named(receiver, text) if text
+. place = property-named(receiver, text) if text
 if !place || names-element(types, types.properties[place])
     = false
 . property = types.properties[place]
@@ -2247,57 +2256,55 @@ plan-event-handlers(receiver, site)
 . found = false
 . ran = false
 while level
-    . ref = class-ref(types, level)
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(class)
-            for member in owner.member-pool[class.members]
-                . written SyntaxId = 0
-                do match? owner.decls[member]
-                    | .decl-rule(rule)
-                        written = rule.syntax
-                if written == 0
-                    continue
-                found = true
-                . section = section-loop(ref.module, written)
-                . tabled = facts.lowers(receiver, ref.module, section)
-                . waits = waits-for-markup(level, ref.module, written)
-                if waits && tabled && facts.holds-section(subscriptions, level, ref.module, section)
+    for ref in sheet-parts(class-ref(types, level))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            . written SyntaxId = 0
+            do match? owner.decls[member]
+                | .decl-rule(rule)
+                    written = rule.syntax
+            if written == 0
+                continue
+            found = true
+            . section = section-loop(ref.module, written)
+            . tabled = facts.lowers(receiver, ref.module, section)
+            . waits = waits-for-markup(level, ref.module, written)
+            if waits && tabled && facts.holds-section(subscriptions, level, ref.module, section)
+                decline(site)
+                =
+            .. subscriptions = facts.subscribed-sections
+            if dependency-line && is-markup-host(receiver) != is-markup-host(level)
+                decline(site)
+                =
+            .. dependency-line = owner.tree.nodes[written] is .node-dependency-declaration
+            if !waits && is-live-rule(owner.tree, written)
+                live-owned = true
+            if is-markup-trigger(owner.tree, written) && !host-self(receiver, site)
+                decline(site)
+                =
+            if !ran && !tabled
+                ran = true
+                if body != 0 && leaves-early(body)
+                    decline(body)
+                    =
+            . unit = instances.intern-initializer(ref.module, member, level)
+            demand-body(unit)
+            if waits && !facts.waits-for-markup(unit)
+                facts.markup-rules += unit
+            if waits && section != 0 && !tabled
+                demand-errors(unit)
+                if instances.signatures[unit].errors.count != 0
                     decline(site)
                     =
-                .. subscriptions = facts.subscribed-sections
-                if dependency-line && is-markup-host(receiver) != is-markup-host(level)
-                    decline(site)
-                    =
-                .. dependency-line = owner.tree.nodes[written] is .node-dependency-declaration
-                if !waits && is-live-rule(owner.tree, written)
-                    live-owned = true
-                if is-markup-trigger(owner.tree, written) && !host-self(receiver, site)
-                    decline(site)
-                    =
-                if !ran && !tabled
-                    ran = true
-                    if body != 0 && leaves-early(body)
-                        decline(body)
-                        =
-                . unit = instances.intern-initializer(ref.module, member, level)
-                demand-body(unit)
-                if waits && !facts.waits-for-markup(unit)
-                    facts.markup-rules += unit
-                if waits && section != 0 && !tabled
-                    demand-errors(unit)
-                    if instances.signatures[unit].errors.count != 0
+            if section != 0
+                note-unit-errors(unit, site)
+            else if is-live-rule(owner.tree, written)
+                demand-errors(unit)
+                if instances.signatures[unit].errors.count != 0
+                    if waits || is-markup-trigger(owner.tree, written) || !hands-off(unit)
                         decline(site)
                         =
-                if section != 0
                     note-unit-errors(unit, site)
-                else if is-live-rule(owner.tree, written)
-                    demand-errors(unit)
-                    if instances.signatures[unit].errors.count != 0
-                        if waits || is-markup-trigger(owner.tree, written) || !hands-off(unit)
-                            decline(site)
-                            =
-                        note-unit-errors(unit, site)
     level = types.base-of(level)
 if found
     instances.mark-may-panic(instance)
@@ -2336,7 +2343,7 @@ while node > floor
         | .node-get-expression(get)
             do match? tree.nodes[get.object]
                 | .node-identifier(read)
-                    . place = types.property-named(level, read.name)
+                    . place = property-named(level, read.name)
                     if place && names-element(types, types.properties[place])
                         = true
 = false
@@ -2501,60 +2508,58 @@ facts.lowered-types += receiver
 . closed [Bool]
 for offset in 0 .. < chain.length
     . holder = chain[chain.length - 1 - offset]
-    . ref = class-ref(types, holder)
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(class)
-            for member in owner.member-pool[class.members]
-                . syntax SyntaxId = 0
-                do match? owner.decls[member]
-                    | .decl-rule(rule)
-                        syntax = rule.syntax
-                . found = section-event(receiver, ref.module, syntax) if syntax != 0
-                if !found
-                    continue
-                . event = found
-                . index = owners.length
-                for position in 0 .. < owners.length
-                    if owners[position] == event.owner && names[position] == event.name
-                        index = position
-                if index == owners.length
-                    owners += event.owner
-                    names += event.name
-                    counts += 0
-                    closed += false
-                . order = counts[index]
-                counts[index] = order + 1
-                . subscribed = false
-                for other in heard
-                    if other.owner == event.owner && other.name == event.name
-                        subscribed = true
-                . iterator = section-loop(ref.module, syntax)
-                . arrives = section-delivery(ref.module, syntax) == 1
-                if open-event && lowerable-section && facts.event-register == no-instance
-                    demand-event-register()
-                .. open-event = event.key == no-type && !closed[index] && !subscribed
-                .. lowerable-section = lowerable(ref.module, ref.decl, syntax)
-                . registers = if arrives then facts.event-register-arrival else facts.event-register
-                if closed-event || not-lowered || registers == no-instance
-                    closed[index] = true
-                    if facts.holds-section(facts.lowered-sections, holder, ref.module, iterator)
-                        decline(site)
-                    if !facts.holds-section(facts.subscribed-sections, holder, ref.module, iterator)
-                        facts.subscribed-sections += SectionRef(holder, ref.module, iterator)
-                    continue
-                .. closed-event = event.key != no-type || closed[index] || subscribed
-                .. not-lowered = !lowerable(ref.module, ref.decl, syntax)
-                facts.lowered-handlers += LoweredHandler
-                    - receiver
-                    - holder
-                    - ref.module
-                    - member
-                    - iterator
-                    - event.owner
-                    - event.name
-                    - order
-                    - arrives
+    for ref in sheet-parts(class-ref(types, holder))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            . syntax SyntaxId = 0
+            do match? owner.decls[member]
+                | .decl-rule(rule)
+                    syntax = rule.syntax
+            . found = section-event(receiver, ref.module, syntax) if syntax != 0
+            if !found
+                continue
+            . event = found
+            . index = owners.length
+            for position in 0 .. < owners.length
+                if owners[position] == event.owner && names[position] == event.name
+                    index = position
+            if index == owners.length
+                owners += event.owner
+                names += event.name
+                counts += 0
+                closed += false
+            . order = counts[index]
+            counts[index] = order + 1
+            . subscribed = false
+            for other in heard
+                if other.owner == event.owner && other.name == event.name
+                    subscribed = true
+            . iterator = section-loop(ref.module, syntax)
+            . arrives = section-delivery(ref.module, syntax) == 1
+            if open-event && lowerable-section && facts.event-register == no-instance
+                demand-event-register()
+            .. open-event = event.key == no-type && !closed[index] && !subscribed
+            .. lowerable-section = lowerable(ref.module, ref.decl, syntax)
+            . registers = if arrives then facts.event-register-arrival else facts.event-register
+            if closed-event || not-lowered || registers == no-instance
+                closed[index] = true
+                if facts.holds-section(facts.lowered-sections, holder, ref.module, iterator)
+                    decline(site)
+                if !facts.holds-section(facts.subscribed-sections, holder, ref.module, iterator)
+                    facts.subscribed-sections += SectionRef(holder, ref.module, iterator)
+                continue
+            .. closed-event = event.key != no-type || closed[index] || subscribed
+            .. not-lowered = !lowerable(ref.module, ref.decl, syntax)
+            facts.lowered-handlers += LoweredHandler
+                - receiver
+                - holder
+                - ref.module
+                - member
+                - iterator
+                - event.owner
+                - event.name
+                - order
+                - arrives
 
 ────────────────────
 _ do writes-sections Bool
@@ -2562,15 +2567,13 @@ _ do writes-sections Bool
 
 ` Whether a class of a chain writes a section.
 for holder in chain
-    . ref = class-ref(types, holder)
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(class)
-            for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
-                    | .decl-rule(rule)
-                        if section-loop(ref.module, rule.syntax) != 0
-                            = true
+    for ref in sheet-parts(class-ref(types, holder))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            do match? owner.decls[member]
+                | .decl-rule(rule)
+                    if section-loop(ref.module, rule.syntax) != 0
+                        = true
 = false
 
 ────────────────────
@@ -2797,29 +2800,27 @@ while level && types.intrinsic-of(level) == .class
     level = types.base-of(level)
 . visible [TypeId]
 for position in 0 .. < chain.length
-    . ref = class-ref(types, chain[chain.length - 1 - position])
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(class)
-            for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
-                    | .decl-property(property)
-                        if property.type-syntax != 0 && queries-markup(ref, property.type-syntax) && query-type(ref, property.type-syntax) == no-type
-                            decline(site)
+    for ref in sheet-parts(class-ref(types, chain[chain.length - 1 - position]))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            do match? owner.decls[member]
+                | .decl-property(property)
+                    if property.type-syntax != 0 && queries-markup(ref, property.type-syntax) && query-type(ref, property.type-syntax) == no-type
+                        decline(site)
+                        =
+                | .decl-using(using)
+                    if using-sheet(ref, using) != no-type
+                        continue
+                    . used = using-style(ref, using, site)
+                    if used == no-type
+                        =
+                    . index = style-index(used, site, true)
+                    if index == U32.max
+                        =
+                    if visible.find(used) == null
+                        if !distinct-style(index, visible, ref.module, using.syntax, site)
                             =
-                    | .decl-using(using)
-                        if using-sheet(ref, using) != no-type
-                            continue
-                        . used = using-style(ref, using, site)
-                        if used == no-type
-                            =
-                        . index = style-index(used, site, true)
-                        if index == U32.max
-                            =
-                        if visible.find(used) == null
-                            if !distinct-style(index, visible, ref.module, using.syntax, site)
-                                =
-                            visible += used
+                        visible += used
 if program.module-by-name("core/style")
     apply-style-defaults(chain, site)
 
@@ -3137,7 +3138,7 @@ do match? owner.tree.nodes[root]
                     do match? owner.tree.nodes[statement]
                         | .node-assign(line)
                             . name = identifier-name(owner.tree, line.lhs)
-                            if name && !types.property-named(level, name)
+                            if name && !property-named(level, name)
                                 for member in owner.member-pool[members]
                                     do match? owner.decls[member]
                                         | .decl-property(property)
@@ -3354,7 +3355,7 @@ _ do is-query-property Bool
 
 ` Whether a property of a class is declared as a query of the markup its object is in, which
 ` the markup runtime keeps and nothing assigns.
-if types.intrinsic-of(receiver) != .class || types.property-named(receiver, name) == null
+if types.intrinsic-of(receiver) != .class || property-named(receiver, name) == null
     = false
 . ref = declaring-class(types, receiver, name)
 . owner = program.modules[ref.module]
@@ -3430,10 +3431,10 @@ _ do trigger-target TypeId
     - ref DeclRef
     - syntax SyntaxId
 
-` The class a rule a class writes looks for among the children or descendants of the object's
-` markup host, `whenever children T` or `whenever descendants T`, where it is a markup host,
-` or no type.
-. env = types.class-env(ref.module, ref.decl)
+` The class a rule a class or a facet of one writes looks for among the children or descendants
+` of the object's markup host, `whenever children T` or `whenever descendants T`, where it is a
+` markup host, or no type.
+. env = holder-env(ref)
 . type = rule-target(ref.module, syntax, env)
 types.env-release(env)
 = type
@@ -3580,7 +3581,7 @@ _ do markup-query U32
 ` the class the query looks for must be markup hosts, which the reference reports, and the latter
 ` must declare no `==`, since a new answer is compared with the old as one object. Those have no
 ` shape here.
-. place = types.property-named(level, name) if name
+. place = property-named(level, name) if name
 if !place
     decline(site)
     = U32.max
@@ -3839,17 +3840,15 @@ while level && types.intrinsic-of(level) == .class
     chain += level
     level = types.base-of(level)
 for position in 0 .. < chain.length
-    . ref = class-ref(types, chain[chain.length - 1 - position])
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(declared)
-            for member in owner.member-pool[declared.members]
-                do match? owner.decls[member]
-                    | .decl-using(using)
-                        . sheet = using-sheet(ref, using)
-                        if sheet != no-type
-                            facts.chain-sheets += sheet
-                            facts.chain-sheet-positions += position as U32
+    for ref in sheet-parts(class-ref(types, chain[chain.length - 1 - position]))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            do match? owner.decls[member]
+                | .decl-using(using)
+                    . sheet = using-sheet(ref, using)
+                    if sheet != no-type
+                        facts.chain-sheets += sheet
+                        facts.chain-sheet-positions += position as U32
 facts.chain-sheets += no-type
 facts.chain-sheet-positions += U32.max
 facts.chain-sheet-places[class] = start
@@ -4448,11 +4447,11 @@ if found == no-type
 . clashes = (resolution-flags /and/ ResolutionFlag.resolution-styled) == 0
     .. resolution-flags = bindings.resolution-of(frame.binding, value).flags
 for parent in content-parents
-    if types.property-named(parent, name) || declares-event(parent, name)
+    if property-named(parent, name) || declares-event(parent, name)
         clashes = true
 if self-class && (self-property || declares-event(frame.self-type, name))
     clashes = true
-.. self-property = types.property-named(frame.self-type, name)
+.. self-property = property-named(frame.self-type, name)
 .. self-class = frame.self-type != no-type && types.intrinsic-of(frame.self-type) == .class
 if clashes
     . text = "\"${name.text}\" is ambiguous: it names both a StyleSheet slot of ${type-short-name(types, found)} and a lexical value"
@@ -4621,7 +4620,7 @@ _ do reads-sheet-member Bool
 for node in tree.subtree-start(value) .. value
     do match? tree.nodes[node]
         | .node-identifier(row)
-            if row.name.text == "this" || (types.property-named(sheet, row.name) && not-slot)
+            if row.name.text == "this" || (property-named(sheet, row.name) && not-slot)
                 = true
             .. not-slot = !sheet-has-slot(root, row.name)
 = false
@@ -5141,7 +5140,7 @@ do match? owner.decls[ref.decl]
                             seen = true
                     if seen
                         continue
-                    . found = types.property-named(sheet, named)
+                    . found = property-named(sheet, named)
                     if !found
                         decline(at)
                         = U32.max
@@ -5591,7 +5590,7 @@ _ do add-style-property Bool
 ` registers. One that is not stored in the object, or whose type has no bits a slot holds,
 ` is declined.
 . name = property.name!
-. found = types.property-named(used, name)
+. found = property-named(used, name)
 if !found
     decline(site)
     = false
@@ -5943,7 +5942,7 @@ _ styles-attribute Bool
 |? !name || op != .eq-op || types.intrinsic-of(class) != .class || generic
     false
 ??
-    !types.property-named(class, name) && !interface-accessor(class, name) && program.module-by-name("core/style") != null
+    !property-named(class, name) && !interface-accessor(class, name) && program.module-by-name("core/style") != null
 
 .. generic = types.completions[class].has-variables
 
@@ -6006,21 +6005,19 @@ while level && types.intrinsic-of(level) == .class
     chain += level
     level = types.base-of(level)
 for position in 0 .. < chain.length
-    . ref = class-ref(types, chain[chain.length - 1 - position])
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(declared)
-            for member in owner.member-pool[declared.members]
-                do match? owner.decls[member]
-                    | .decl-using(using)
-                        usings = true
-                        if using-sheet(ref, using) != no-type
-                            continue
-                        . used = using-style(ref, using, site)
-                        if used == no-type
-                            = (false, true)
-                        if styles.find(used) == null
-                            styles += used
+    for ref in sheet-parts(class-ref(types, chain[chain.length - 1 - position]))
+        . owner = program.modules[ref.module]
+        for member in owner.member-pool[part-members(ref)]
+            do match? owner.decls[member]
+                | .decl-using(using)
+                    usings = true
+                    if using-sheet(ref, using) != no-type
+                        continue
+                    . used = using-style(ref, using, site)
+                    if used == no-type
+                        = (false, true)
+                    if styles.find(used) == null
+                        styles += used
 = (true, usings)
 
 ────────────────────
@@ -6205,7 +6202,7 @@ _ do answers-signature Bool
 for arg in signature.args
     if types.completions[arg].has-variables
         = true
-if kind != .function-decl && types.property-named(value, name)
+if kind != .function-decl && property-named(value, name)
     = true
 . busy = calls.suspend-ranking()
 . ranking = calls.ranking
@@ -6228,7 +6225,7 @@ else
 . steps [U32]
 if !answered && kind != .function-decl
     . holder = ranking.delegated-holder(value, name, steps)
-    answered = holder != no-type && steps.length != 0 && types.property-named(holder, name) != null
+    answered = holder != no-type && steps.length != 0 && property-named(holder, name) != null
 ranking.release()
 scratch.call-arguments.rewind(shapes-start)
 scratch.types.rewind(types-start)
@@ -6393,7 +6390,7 @@ _ do declared-style-property (TypeId, TypeId)
 . level TypeId? = used
 while level && types.intrinsic-of(level) == .style && level != types.type-row(.style)
     if names-own-style-property(level, name)
-        . place = types.property-named(level, name)
+        . place = property-named(level, name)
         if !place
             = (level, invalid-type)
         . property = types.properties[place]
@@ -9228,7 +9225,7 @@ _ do check-cell Bool
 do match? written.nodes[held.when]
     | .node-style-when(row)
         state = row.state
-. place = types.property-named(made, state)
+. place = property-named(made, state)
 . shown = type-short-name(types, made)
 if !place
     if !known
@@ -9813,7 +9810,7 @@ _ do gate-when [StyleWhen]?
 do match? written.nodes[branch]
     | .node-style-when(row)
         state = row.state
-. place = types.property-named(made, state)
+. place = property-named(made, state)
 . shown = type-short-name(types, made)
 if !place
     facts.record-diagnostic
@@ -9939,7 +9936,7 @@ if action == invalid-type
 types.complete(action)
 scratch.types.push(made)
 scratch.types.push
-    - types.properties[types.property-named(live, program.store-atom("trackers"))!].type
+    - types.properties[property-named(live, program.store-atom("trackers"))!].type
 scratch.types.push(instances.live.callback)
 . made-action = calls.demand-constructor(action, mark)
 scratch.types.rewind(mark)
@@ -10099,7 +10096,7 @@ for statement in lines
     do match? written.nodes[statement]
         | .node-assign(line)
             . name = style-name(written, line.lhs)
-            if line.op == .eq-op && name && !types.property-named(level, name) && style-answering(own, name) == no-type
+            if line.op == .eq-op && name && !property-named(level, name) && style-answering(own, name) == no-type
                 for position in 0 .. < seen.length
                     if names-style-property(seen[position], name)
                         wanted[position] = true
@@ -10946,7 +10943,7 @@ do match? tree.nodes[syntax]
                     do match? tree.nodes[statement]
                         | .node-assign(line)
                             . name = identifier-name(tree, line.lhs)
-                            if assigning && name && is-class && types.property-named(receiver, name)
+                            if assigning && name && is-class && property-named(receiver, name)
                                 if !update-unit-property(statement, line, receiver, name)
                                     =
                                 continue
@@ -10995,7 +10992,7 @@ do match? tree.nodes[syntax]
                                 =
                             | .node-assign(line)
                                 . name = identifier-name(tree, line.lhs)
-                                if name && types.property-named(receiver, name)
+                                if name && property-named(receiver, name)
                                     frame.diagnose(line.lhs, .stated, conditional-update(name))
                                     =
                         if !styles
@@ -11142,7 +11139,7 @@ _ do update-unit-property Bool
 ` tracked or a slot of a style sheet is set again as it changes by a function of its own, as an
 ` attribute's is (`settle-update`), and one that reads a value the rule takes where an application
 ` gives it values that do (`values-live`). A property a setter answers, a getter, and one of an array are declined.
-. place = types.property-named(receiver, name)
+. place = property-named(receiver, name)
 . property = types.properties[place!]
 . live = reads-tracked(line.rhs) || reads-slots(line.rhs)
 if property.storage-kind == .storage-getter || is-hidden(property, name, .setter-decl)
@@ -11233,7 +11230,7 @@ do match? tree.nodes[statement]
     | .node-assign(line)
         . name = style-name(tree, line.lhs)
         . sheet = types.intrinsic-of(receiver) == .style-sheet
-        if line.op != .eq-op || !name || (!sheet && types.property-named(receiver, name))
+        if line.op != .eq-op || !name || (!sheet && property-named(receiver, name))
             decline(statement)
             = false
         . (index, position) = find-style-property(styles, name, statement)
@@ -12332,7 +12329,7 @@ _ do infer-style-assign TypeId?
 ` None where no style answers. Any operator but `=` is declined, as is a declaration that may
 ` raise an error, which the reference reports as unhandled.
 . kind = types.intrinsic-of(receiver)
-if (kind != .class && kind != .interface) || types.property-named(receiver, name) || no-style
+if (kind != .class && kind != .interface) || property-named(receiver, name) || no-style
     = null
 .. no-style = !program.module-by-name("core/style")
 . styles = style-vocabulary(receiver, lhs)
@@ -12657,7 +12654,7 @@ _ do defer-values
 . given = Bool[count]
 . fill = facts.latest-fill-of(instance)
 while fill != no-fact
-    . place = types.property-named(receiver, facts.fills[fill].name)
+    . place = property-named(receiver, facts.fills[fill].name)
     if place && (place as U32) >= range.start && (place as U32) < range.start + count
         given[(place as U32) - range.start] = true
     fill = facts.prior-fill(fill)
@@ -12666,7 +12663,7 @@ for position in 0 .. < count
     . property = types.properties[range.start + position]
     if property.storage-kind != .storage-eager || given[position] || names-element(types, property)
         continue
-    . ref = declaring-class(types, property.owner, property.name)
+    . ref = declaring-decl(types, property)
     . member = valued-property(program, ref.module, ref.decl, property.name)
     do match? program.modules[ref.module].decls[member]
         | .decl-property(row)
@@ -12772,7 +12769,7 @@ do match? tree.nodes[node]
                     name = row.name
 if !name
     = U32.max
-. place = types.property-named(receiver, name)
+. place = property-named(receiver, name)
 . range = types.completions[receiver].properties
 if !place || (place as U32) < range.start || (place as U32) >= range.start + range.count
     = U32.max
@@ -12794,7 +12791,7 @@ while node > floor
         | .node-function-syntax
             node = tree.subtree-start(node)
         | .node-identifier(row)
-            . place = types.property-named(receiver, row.name)
+            . place = property-named(receiver, row.name)
             if place && names-element(types, types.properties[place])
                 = true
 = false
@@ -13469,7 +13466,7 @@ do match? program.modules[module].decls[property]
         check-style-unit(receiver, row.syntax, row.owner)
         =
     | .decl-property(row)
-        if row.defaults-root && row.name && received && !types.property-named(receiver, row.name)
+        if row.defaults-root && row.name && received && !property-named(receiver, row.name)
             check-root-style(receiver, row)
             =
         .. received = receiver != no-type
@@ -13611,7 +13608,7 @@ if clause != 0
     frame.diagnose(clause, .stated, program.store-atom(message))
     = false
 . name = identifier-name(tree, root)!
-. place = types.property-named(receiver, name)
+. place = property-named(receiver, name)
 if !place
     decline(root)
     = false
@@ -13778,7 +13775,7 @@ for arg in tree.children[rule.args]
     . resolution = bindings.resolution-of(frame.binding, named)
     . name = identifier-atom(named) if named != 0
     trigger.changes = types.well-known-type-of("core/markup", "MarkupChangeSet", target)
-    . added = types.property-named(trigger.changes, program.store-atom("added")) if trigger.changes != invalid-type
+    . added = property-named(trigger.changes, program.store-atom("added")) if trigger.changes != invalid-type
     if !name || name.text != "changes" || resolution.kind != .resolve-slot || !added
         decline(arg)
         =
@@ -13884,7 +13881,7 @@ _ do check-dependency
 ` a dependency on it would never run, and is reported.
 for name-syntax in tree.children[right]
     . name = identifier-atom(name-syntax)
-    . place = types.property-named(receiver, name) if name
+    . place = property-named(receiver, name) if name
     if !place
         . shown = if name then name.text else ""
         frame.diagnose(syntax, .stated, program.store-atom("Property \"$shown\" does not exist"))
@@ -14380,24 +14377,6 @@ if is-subtype(types, raised, types.error-type)
 frame.diagnose(id, .invalid-bang-return, null, raised)
 
 ────────────────────
-_ do check-suspends
-    - site SyntaxId
-
-` A function that may not suspend does not yield, which TypeScript reports where it yields:
-` in a GC-free zone, naming where it is entered, or under `@no-suspend` or `@no-safepoint`.
-. effects = dispatch-effects(frame.surround.effects)
-if (effects /and/ CompilationEffect.no-suspend) == 0
-    =
-if (effects /and/ CompilationEffect.gc-free) != 0
-    frame.diagnose
-        - site
-        - .stated
-        - program.store-atom
-            - "cannot suspend inside a GC-free zone (entered at ${frame.zone-entry()})"
-    =
-frame.diagnose(site, .stated, program.store-atom("cannot suspend inside a @no-suspend context"))
-
-────────────────────
 _ do check-zone-store
     - id SyntaxId
     - lhs SyntaxId
@@ -14420,7 +14399,7 @@ do match? tree.nodes[lhs]
 if !held
     =
 . text = "storing a managed pointer is not allowed in a GC-free zone (entered at ${frame.zone-entry()}); compute into a zone buffer and publish after the zone exits"
-frame.diagnose(id, .stated, program.store-atom(text))
+frame.diagnose(id, .restricted, program.store-atom(text))
 
 ────────────────────
 _ do check-top-level
@@ -14446,6 +14425,7 @@ for index in 0 .. < decls.length
                 infer(row.value)
         | .decl-function(fn)
             if !fn.is-generated
+                check-shared-access(fn.syntax, fn.access, fn.owner)
                 check-argument-shapes(fn.args)
                 if declares-within(declaring, fn.subtree)
                     check-type-params(fn)
@@ -14453,7 +14433,10 @@ for index in 0 .. < decls.length
                 check-getter-annotations(fn.syntax)
                 check-return-mode(index as DeclId, fn.return-type)
         | .decl-event(event)
-            if event.owner != 0 && !is-class(event.owner)
+            check-shared-access(event.syntax, event.access, event.owner)
+            if event.owner != 0 && is-facet-decl(event.owner)
+                check-facet-event(event)
+            else if event.owner != 0 && !is-class(event.owner)
                 decline(event.syntax)
             else if event.owner != 0
                 check-event-owner(event)
@@ -14462,10 +14445,16 @@ for index in 0 .. < decls.length
                 . message = program.store-atom("Associated type binding must be a type")
                 frame.diagnose(associated.binding, .stated, message)
         | .decl-extension(extension)
-            check-extension(extension.syntax)
+            check-shared-access(extension.syntax, extension.access, 0)
+            if extension.facet
+                declare-members(extension.members)
+                check-facet(index as DeclId, extension)
+            else
+                check-extension(extension.syntax)
         | .decl-sheet-extension(extension)
             check-sheet-extension(index as DeclId, extension)
         | .decl-class(class)
+            check-shared-access(class.syntax, class.access, 0)
             if redeclares-class(classes, class)
                 decline(class.syntax)
             else if class.name.text == "This" && is-sheet-decl(module, index as DeclId)
@@ -14474,9 +14463,10 @@ for index in 0 .. < decls.length
                     - .stated
                     - program.store-atom("\"This\" is not a valid style sheet name")
             else
-                declare-members(class)
+                declare-members(class.members)
                 check-unit-base(class)
                 check-suffixes(class, suffixes)
+                check-below-facets(index as DeclId, class)
                 if is-sheet-decl(module, index as DeclId)
                     check-derived-sheet(index as DeclId, class)
                     check-sheet-domains(index as DeclId, class)
@@ -14490,8 +14480,10 @@ for index in 0 .. < decls.length
             check-conversion-access(fromverter.syntax, fromverter.access)
             check-return-mode(index as DeclId, 0)
         | .decl-unit(unit)
+            check-shared-access(unit.syntax, unit.access, unit.owner)
             check-equality(unit)
         | .decl-property(property)
+            check-shared-access(property.syntax, property.access, property.owner)
             if !is-class(property.owner)
                 check-member-property(index as DeclId, property)
             . literal = core-literal-type(module, index as DeclId) != no-type
@@ -14575,17 +14567,17 @@ facts.record-call(frame.instance, id, callee, .call-function, scratch.no-fills, 
 
 ────────────────────
 _ do declare-members
-    - class ClassDecl
+    - declared RowRange'DeclId
 
-` Checks each member of a class against those it declares before, as the reference does as it
-` declares the class, whether or not the class is used: a property or a getter takes a name for
+` Checks each member of a class or a facet against those it declares before, as the reference
+` does as it declares the class, whether or not the class is used: a property or a getter takes a name for
 ` a property, which a property or a getter of that name redefines, and an event or an associated
 ` type takes a name for a member, which nothing may take again. A setter takes the name for a
 ` property where nothing took it.
 . owner = program.modules[module]
 . properties [Atom]
 . members [Atom]
-for member in owner.member-pool[class.members]
+for member in owner.member-pool[declared]
     do match? owner.decls[member]
         | .decl-property(property)
             if property.name && !property.defaults-root && property.element == 0
@@ -14950,6 +14942,40 @@ frame.diagnose(class.syntax, .stated, program.store-atom(message))
 = false
 
 ────────────────────
+_ is-facet-decl Bool
+    - decl DeclId
+
+match program.modules[module].decls[decl]
+    | .decl-extension(row)
+        row.facet != null
+    ??
+        false
+
+────────────────────
+_ do check-facet-event
+    - event EventDecl
+
+` An event a facet declares is its class's, and its types are checked as a class's event's are.
+` One of a facet that is not bound to its class was reported with the facet.
+. facets = program.facets
+. found = facets.index-of(module, event.owner)
+=? if !found || facets.states[found] != .facet-bound
+. index = found
+. owner = types.plain-class(facets.owner-modules[index], facets.owner-decls[index])
+check-event-types(event, owner)
+
+────────────────────
+_ do check-shared-access
+    - syntax SyntaxId
+    - access Access
+    - owner DeclId
+
+` Only a member is shared with its file family; what a module declares itself is public or private.
+if owner == 0 && access is .family-access
+    . message = "Only a member can be shared with its file family; declare this + or _"
+    frame.diagnose(syntax, .stated, program.store-atom(message))
+
+────────────────────
 _ do check-conversion-access
     - syntax SyntaxId
     - access Access
@@ -15199,6 +15225,333 @@ do match? tree.nodes[syntax]
                     =
 
 ────────────────────
+_ do check-facet
+    - decl DeclId
+    - facet ExtensionDecl
+
+` A facet is part of a class, or of another facet of it, declared in the class's file family. It
+` holds what a class body may but for what only a class has: a base, type parameters,
+` constructors, static functions and markup. The interfaces it names are its class's, and each
+` names an interface. Its stored properties have their first values from the class's
+` constructors, so each has a value or an optional type. Its members are found wherever the
+` class's are, so none takes a name the class answers, nor a name, not private, that another facet
+` of the class declares.
+. facets = program.facets
+. found = facets.index-of(module, decl)
+=? if !found
+. index = found
+. name = facet.facet!.text
+. owner = (types.type-syntax-name(tree, facet.receiver)?.text) ?? "its owner"
+. state = facets.states[index]
+if state != .facet-bound
+    . (root-module, _) = facets.root-of(index)
+    . family = "its class's"
+    if root-module != U32.max
+        family = path-file(program.modules[root-module].path)
+    . message = facet-state-message(state, name, owner, family)
+    frame.diagnose(facet.receiver, .stated, program.store-atom(message))
+check-facet-shape(facet, name)
+=? if state != .facet-bound
+check-facet-interfaces(decl, facet, name)
+. owner-ref = DeclRef(facets.owner-modules[index], facets.owner-decls[index])
+. owner-type = types.plain-class(owner-ref.module, owner-ref.decl)
+if types.intrinsic-of(owner-type) != .class
+    . message = "$name can't be part of $owner, since only a class has facets"
+    frame.diagnose(facet.receiver, .stated, program.store-atom(message))
+    =
+. sees-start = facets.sees-starts[index]
+for position in sees-start .. < facets.sees-starts[index + 1]
+    if facets.sees[position] == U32.max
+        . written = program.modules[module].syntax-pool[facet.sees.start + position - sees-start]
+        . seen = (types.type-syntax-name(tree, written)?.text) ?? "It"
+        . message = "\"$seen\" is no other facet of ${class-name-of(owner-ref)}, so $name can't see it"
+        frame.diagnose(written, .stated, program.store-atom(message))
+check-facet-names(index, facet, name)
+
+────────────────────
+_ do check-below-facets
+    - decl DeclId
+    - class ClassDecl
+
+` A class below one with facets may not declare a member of the name of a member, not private,
+` that a facet of a class above declares, but to override a facet's method, getter or setter, or
+` to give a property the facet stores a new value (`overrides-facet`).
+. facets = program.facets
+=? if facets.count == 0 || class.base == 0
+. env = types.class-env(module, decl)
+. level TypeId? = types.evaluate-type(module, tree, class.base, env)
+types.env-release(env)
+. target = program.modules[module]
+while level && level != invalid-type
+    . ref = class-ref(types, level)
+    . (start, end) = facets.class-range(ref.module, ref.decl)
+    for position in start .. < end
+        . facet = facets.class-facets[position]
+        for member in target.member-pool[class.members]
+            . (named, _, site) = member-name(target, member)
+            . facet-module = facets.modules[facet]
+            if named && declares-name(facet-module, facets.decls[facet], named, true) && !overriding
+                . message = "${class.name.text} can't declare ${named.text}, since facet ${facet-name-of(facet)} of ${class-name-of(ref)} declares it"
+                frame.diagnose(site, .stated, program.store-atom(message))
+            .. overriding = overrides-facet(target.decls[member], facet-module, facets.decls[facet])
+    level = types.base-of(level)
+
+────────────────────
+_ do overrides-facet Bool
+    - decl Decl
+    - facet-module ModuleId
+    - facet-decl DeclId
+
+` Whether a member of a class below one with facets overrides a facet's: a method, getter or
+` setter where the facet declares one of its name and kind, or a property with a value where the
+` facet stores one of its name.
+. target = program.modules[facet-module]
+. members = match target.decls[facet-decl]
+    | .decl-extension(row)
+        row.members
+    ??
+        RowRange'DeclId()
+do match? decl
+    | .decl-function(fn)
+        =? false if fn.is-static || !fn.name || !is-overridable-kind(fn.kind)
+        . place = target.first-member(members, fn.name)
+        while place != no-member
+            . member = target.member-pool[place]
+            place = target.member-links[place]
+            do match? target.decls[member]
+                | .decl-function(other)
+                    =? true if other.name == fn.name && other.kind == fn.kind && !other.is-static
+    | .decl-property(property)
+        =? false if property.value == 0 || !property.name
+        . place = target.first-member(members, property.name)
+        while place != no-member
+            . member = target.member-pool[place]
+            place = target.member-links[place]
+            do match? target.decls[member]
+                | .decl-property(other)
+                    =? true if other.name == property.name
+= false
+
+────────────────────
+_ is-overridable-kind Bool
+    - kind DeclKind
+
+kind == .function-decl || kind == .getter-decl || kind == .setter-decl
+
+────────────────────
+_ path-file String
+    - path String
+
+|? path.find-reverse("/")
+    path[it! + 1 ...]
+??
+    path
+
+────────────────────
+_ facet-state-message String
+    - state FacetState
+    - name String
+    - owner String
+    - family String
+
+match state
+    |= .facet-owner-missing
+        "\"$owner\" names no class or facet that $name can be part of"
+    |= .facet-owner-not-class
+        "A facet is part of a class or of another facet of one, and \"$owner\" is neither"
+    |= .facet-owner-generic
+        "$name can't be part of $owner, since a class that takes type arguments has no facets"
+    |= .facet-outside-family
+        "$name is a facet of $owner, so it is declared in the file family of $family, in a module named after it"
+    |= .facet-cycle
+        "$name is part of itself, through the facets it is part of"
+    ??
+        "$name has no owner"
+
+────────────────────
+_ do check-facet-interfaces
+    - decl DeclId
+    - facet ExtensionDecl
+    - name String
+
+` An interface a facet names that names nothing is reported (`missing-type`), and so is a class, a
+` struct or a tuple, which a facet, part of its class, is not built on.
+=? if facet.interfaces.count == 0
+. env = holder-env(DeclRef(module, decl))
+for interface in program.modules[module].syntax-pool[facet.interfaces]
+    if !report-missing-type(interface, env)
+        . named = types.evaluate-type(module, tree, interface, env)
+        . kind = if named != invalid-type then types.intrinsic-of(named) else IntrinsicKind.none
+        if kind == .class || kind == .struct || kind == .tuple
+            . shown = type-short-name(types, named)
+            . text = "$name cannot implement $shown, which is not an interface; a facet is part of its class and is built on no type"
+            frame.diagnose(interface, .stated, program.store-atom(text))
+types.env-release(env)
+
+────────────────────
+_ do check-facet-shape
+    - facet ExtensionDecl
+    - name String
+
+` What a facet may not hold, in what it writes and in what it declares.
+do match? tree.nodes[facet.syntax]
+    | .node-class-block(row)
+        if row.type-args.count != 0
+            . message = "$name is a facet, so it takes no type parameters"
+            frame.diagnose(facet.syntax, .stated, program.store-atom(message))
+        if row.base != 0
+            . message = "$name is a facet, part of its owner, so it derives from no class"
+            frame.diagnose(row.base, .stated, program.store-atom(message))
+        for member in tree.children[row.members]
+            . shown = match tree.nodes[member]
+                | .node-content-block
+                    "$name is a facet, so it writes no markup; a content section is its owner's alone"
+                ??
+                    ""
+            if shown.length != 0
+                frame.diagnose(member, .stated, program.store-atom(shown))
+. target = program.modules[module]
+for member in target.member-pool[facet.members]
+    do match? target.decls[member]
+        | .decl-function(fn)
+            if is-constructor-kind(fn.kind)
+                . message = "$name is a facet, so it has no constructors; its owner's give its properties their first values"
+                frame.diagnose(fn.syntax, .stated, program.store-atom(message))
+            else if fn.is-static
+                . message = "$name is a facet, so it has no static functions"
+                frame.diagnose(fn.syntax, .stated, program.store-atom(message))
+        | .decl-property(property)
+            if property.value == 0 && property.name && !starts-empty(property.type-syntax)
+                . message = "${property.name.text} needs a value or an optional type, since $name is a facet and no constructor gives it one"
+                frame.diagnose(property.syntax, .stated, program.store-atom(message))
+
+────────────────────
+_ do starts-empty Bool
+    - written SyntaxId
+
+` Whether a facet's property of a type written may start with no value: an optional type, or one
+` that names nothing, which is reported where it is written.
+=? false if written == 0
+types.clear-fault()
+. made = types.evaluate-type(module, tree, written, frame.env)
+types.clear-fault()
+= made == invalid-type || types.is-optional(made)
+
+────────────────────
+_ do check-facet-names
+    - index U32
+    - facet ExtensionDecl
+    - name String
+
+` A facet's member may not take a name its class, or a class above it or a facet of one, declares;
+` nor may one that is not private take the name of such a member of another facet of the class.
+. facets = program.facets
+. owner-ref = DeclRef(facets.owner-modules[index], facets.owner-decls[index])
+. owner = types.plain-class(owner-ref.module, owner-ref.decl)
+. target = program.modules[module]
+. (start, end) = facets.class-range(owner-ref.module, owner-ref.decl)
+for member in target.member-pool[facet.members]
+    . (named, is-shared, site) = member-name(target, member)
+    if !named
+        continue
+    . declared = named
+    . level TypeId? = owner
+    . taken = false
+    while level && !taken
+        . ref = class-ref(types, level)
+        . above = level != owner && facet-declares(ref, declared)
+        taken = above || declares-name(ref.module, ref.decl, declared, false)
+        level = types.base-of(level)
+    if taken
+        . message = "${declared.text} is already a member of ${class-name-of(owner-ref)}, so facet $name can't declare it"
+        frame.diagnose(site, .stated, program.store-atom(message))
+        continue
+    if !is-shared
+        continue
+    . event = target.decls[member] is .decl-event
+    for position in start .. < end
+        . other = facets.class-facets[position]
+        . shared = declares-name(facets.modules[other], facets.decls[other], declared, !event)
+        if other != index && shared
+            . other-name = facet-name-of(other)
+            . reason = if event then "an event's name is its class's alone, private or not" else "a facet's members that are not private are its class's, so a name is one facet's"
+            . message = "Facets $name and $other-name of ${class-name-of(owner-ref)} both declare ${declared.text}; $reason"
+            frame.diagnose(site, .stated, program.store-atom(message))
+
+────────────────────
+_ member-name (Atom?, Bool, SyntaxId)
+    - target Module
+    - member DeclId
+
+match target.decls[member]
+    | .decl-property(row)
+        (row.name, row.access != .private-access, row.syntax)
+    | .decl-function(row)
+        (row.name, row.access != .private-access, row.syntax)
+    | .decl-event(row)
+        (row.name, true, row.syntax)
+    ??
+        (null, false, 0)
+
+────────────────────
+_ do facet-declares Bool
+    - ref DeclRef
+    - name Atom
+
+` Whether a facet of a class declares a member of a name that is not private.
+. facets = program.facets
+. (start, end) = facets.class-range(ref.module, ref.decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    =? true if declares-name(facets.modules[facet], facets.decls[facet], name, true)
+= false
+
+────────────────────
+_ do declares-name Bool
+    - owner-module ModuleId
+    - owner DeclId
+    - name Atom
+    - shared-only Bool
+
+` Whether a class or facet declares a member of a name, or one of the name that is not private.
+. target = program.modules[owner-module]
+. members = match target.decls[owner]
+    | .decl-class(row)
+        row.members
+    | .decl-extension(row)
+        row.members
+    ??
+        RowRange'DeclId()
+. place = target.first-member(members, name)
+while place != no-member
+    . member = target.member-pool[place]
+    place = target.member-links[place]
+    . (named, is-shared, _) = member-name(target, member)
+    if named && named == name && (is-shared || !shared-only)
+        = true
+= false
+
+────────────────────
+_ class-name-of String
+    - ref DeclRef
+
+match program.modules[ref.module].decls[ref.decl]
+    | .decl-class(row)
+        row.name.text
+    ??
+        "its class"
+
+────────────────────
+_ facet-name-of String
+    - facet U32
+
+match program.modules[program.facets.modules[facet]].decls[program.facets.decls[facet]]
+    | .decl-extension(row)
+        row.facet?.text ?? "a facet"
+    ??
+        "a facet"
+
+────────────────────
 _ do check-base
     - decl DeclId
     - class ClassDecl
@@ -15334,7 +15687,7 @@ do match? tree.nodes[root]
                             if !name || attribute.op != .eq-op
                                 decline(statement)
                                 =
-                            . place = types.property-named(owner, name)
+                            . place = property-named(owner, name)
                             if !place
                                 if program.module-by-name("core/style")
                                     continue
@@ -15529,7 +15882,7 @@ if base != no-type && declares-event(base, name)
     . message = "Inherited event \"${name.text}\" cannot be redeclared as a property"
     frame.diagnose(syntax, .stated, program.store-atom(message))
     = false
-. inherited = types.property-named(base, name) if base != no-type
+. inherited = property-named(base, name) if base != no-type
 if inherited && tree.nodes[syntax] is .node-state-case
     = true
 if inherited
@@ -15572,10 +15925,9 @@ if base != no-type && declares-event(base, name)
 _ do check-inherited-event
     - event EventDecl
 
-` An event may not take the name of a property or an event its class inherits, what it
-` publishes is a type other than `Void`, and the key it is published by, where it has one, is
-` an `EventKey` (see `event-key`). One whose class took its name before is checked no further,
-` as `declare-members` reported it.
+` An event may not take the name of a property or an event its class inherits, and its types are
+` as `check-event-types` says. One whose class took its name before is checked no further, as
+` `declare-members` reported it.
 . decls = program.modules[module].decls
 do match? decls[event.owner]
     | .decl-class(class)
@@ -15600,7 +15952,7 @@ if owner == invalid-type
     =
 types.complete(owner)
 . base = types.base-of(owner) ?? no-type
-if base != no-type && types.property-named(base, event.name) != null
+if base != no-type && property-named(base, event.name) != null
     . message = "Inherited property \"${event.name.text}\" cannot be redeclared as an event"
     frame.diagnose(event.syntax, .stated, program.store-atom(message))
     =
@@ -15612,7 +15964,16 @@ if base != no-type && declares-method(base, event.name)
     . message = "Inherited method \"${event.name.text}\" cannot be redeclared as an event"
     frame.diagnose(event.syntax, .stated, program.store-atom(message))
     =
-. payload = declared-payload(owner, event.type-syntax)
+check-event-types(event, owner)
+
+────────────────────
+_ do check-event-types
+    - event EventDecl
+    - owner TypeId
+
+` What an event publishes is a type other than `Void`, and the key it is published by, where it
+` has one, is an `EventKey` (see `event-key`).
+. payload = declared-payload(owner, event.type-syntax, module)
 if payload == no-type
     if !report-missing-type(event.type-syntax, frame.env)
         decline(event.syntax)
@@ -15623,7 +15984,7 @@ if payload == types.void-type
     =
 if event.key-type == 0
     =
-. key = declared-payload(owner, event.key-type)
+. key = declared-payload(owner, event.key-type, module)
 if key == no-type
     if !report-missing-type(event.key-type, frame.env)
         decline(event.syntax)
@@ -16126,7 +16487,7 @@ for member in owner.member-pool[class.members]
         | .decl-property(property)
             . named = property.name
             if named
-                . found = types.property-named(base, named)
+                . found = property-named(base, named)
                 if !found || !is-sheet-type(types.properties[found].owner)
                     frame.diagnose(property.syntax, .stated, program.store-atom("Derived StyleSheet \"${class.name.text}\" can only override slots of ${type-short-name(types, base)}, which has no slot \"${named.text}\""))
 
@@ -16134,12 +16495,20 @@ for member in owner.member-pool[class.members]
 _ do sheet-parts [DeclRef]
     - ref DeclRef
 
-` The declarations whose members a class has: those of a style sheet are the sheet's, then each
-` extension of it the program declares (`• extend Name`), as the reference declares them into
-` the sheet: in the order the modules are declared and, in one, in the order written.
+` The declarations whose members a class has: a class's own, then each facet bound to it in the
+` order of its facets; those of a style sheet are the sheet's, then each extension of it the
+` program declares (`• extend Name`), as the reference declares them into the sheet: in the order
+` the modules are declared and, in one, in the order written.
 . parts [DeclRef]
 parts += ref
 if !is-sheet-decl(ref.module, ref.decl)
+    . facets = program.facets
+    =? parts if facets.count == 0
+    . (start, end) = facets.class-range(ref.module, ref.decl)
+    for position in start .. < end
+        . facet = facets.class-facets[position]
+        if facets.states[facet] == .facet-bound
+            parts += DeclRef(facets.modules[facet], facets.decls[facet])
     = parts
 . key = ((ref.module as Size) /lshift/ 32) /or/ (ref.decl as Size)
 . next = facts.sheet-extension-heads[key] ?? U32.max
@@ -16153,9 +16522,11 @@ while next != U32.max
 _ part-members RowRange'DeclId
     - ref DeclRef
 
-` The members a class, or an extension of a style sheet, declares.
+` The members a class, a facet of one, or an extension of a style sheet, declares.
 match program.modules[ref.module].decls[ref.decl]
     | .decl-class(row)
+        row.members
+    | .decl-extension(row)
         row.members
     | .decl-sheet-extension(row)
         row.members
@@ -16216,11 +16587,15 @@ for held in facts.sheet-extensions
 _ do holder-env TypeEnv
     - ref DeclRef
 
-` The types the members of a class, or of an extension of a style sheet, are written under:
-` those of the class, or of the sheet it extends.
+` The types the members of a class, a facet of one, or an extension of a style sheet, are written
+` under: those of the class, the facet's class, or the sheet it extends.
 . sheet = extended-sheet(ref)
 if sheet
     = types.class-env(sheet.module, sheet.decl)
+. facets = program.facets
+. facet = facets.index-of(ref.module, ref.decl) if facets.count != 0
+if facet
+    = types.class-env(facets.owner-modules[facet], facets.owner-decls[facet])
 = types.class-env(ref.module, ref.decl)
 
 ────────────────────
@@ -16641,7 +17016,7 @@ do match tree.nodes[id]
         = no-type
     | .node-yield(row)
         require-do(id, "Yield requires do")
-        check-suspends(id)
+        frame.check-suspends(id)
         note-yield(yielded-value(id, row.expr), id, false, written-literal(row.expr))
         note-escape(row.expr)
         if cleans-up || loop-depth != 0
@@ -18666,7 +19041,7 @@ for index in entered-starts[position] .. < end
 _ do member-type TypeId
     - name Atom
 
-. found = types.property-named(frame.self-type, name) if frame.self-type != no-type
+. found = property-named(frame.self-type, name) if frame.self-type != no-type
 = if found then member-type(types.properties[found], frame.self-type) else no-type
 
 ────────────────────
@@ -18861,7 +19236,7 @@ do match? owner-module.decls[frame.decl]
 _ do has-events Bool
     - type TypeId
 
-` Whether a class declares an event or inherits one.
+` Whether a class declares an event or inherits one, in its body or in a facet.
 . cursor = type
 while cursor != no-type
     do match? types.rows[cursor]
@@ -18869,10 +19244,36 @@ while cursor != no-type
             . target = program.modules[row.module]
             do match? target.decls[row.decl]
                 | .decl-class(class)
-                    for member in target.member-pool[class.members]
-                        if target.decls[member] is .decl-event
-                            = true
+                    =? true if has-event-member(target, class.members)
+            =? true if facets-have-events(row.module, row.decl)
     cursor = types.base-of(cursor) ?? no-type
+= false
+
+────────────────────
+_ do has-event-member Bool
+    - target Module
+    - members RowRange'DeclId
+
+` Whether a class's or a facet's members hold an event.
+for member in target.member-pool[members]
+    =? true if target.decls[member] is .decl-event
+= false
+
+────────────────────
+_ do facets-have-events Bool
+    - class-module ModuleId
+    - class-decl DeclId
+
+` Whether a facet of a class declares an event.
+. facets = program.facets
+=? false if facets.count == 0
+. (start, end) = facets.class-range(class-module, class-decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    . home = program.modules[facets.modules[facet]]
+    do match? home.decls[facets.decls[facet]]
+        | .decl-extension(row)
+            =? true if facets.states[facet] == .facet-bound && has-event-member(home, row.members)
 = false
 
 ────────────────────
@@ -21250,7 +21651,7 @@ for arg in tree.children[args]
         if live.instance != instance || live.site != arg || live.rerun != no-instance
             continue
         . name = argument-name(arg, id, instance)
-        . place = types.property-named(made, name) if name
+        . place = property-named(made, name) if name
         if !place
             frame.diagnose
                 - arg
@@ -21317,7 +21718,7 @@ _ do argument-again TypeId
 ` makes the element chose its constructor, is declined.
 . element = tree.argument-element(arg)
 . name = argument-name(arg, element, instances.rows[instance].enclosing)
-. place = types.property-named(made, name) if name
+. place = property-named(made, name) if name
 if !place
     decline(arg)
     = invalid-type
@@ -21426,7 +21827,7 @@ _ do attribute-accessor Index?
     - class TypeId
     - name Atom
 
-. found = types.property-named(class, name)
+. found = property-named(class, name)
 if found
     =? found if types.properties[found].storage-kind == .storage-getter
     = null
@@ -21443,7 +21844,7 @@ if base
     . inherited = interface-accessor(base, name)
     =? inherited if inherited
 for interface in types.interfaces-of(type)
-    . place = types.property-named(interface, name)
+    . place = property-named(interface, name)
     =? place if place && types.properties[place].storage-kind == .storage-getter
     . deeper = interface-accessor(interface, name)
     =? deeper if deeper
@@ -21469,7 +21870,7 @@ if op != .eq-op || !name || types.intrinsic-of(class) != .class || generic
     decline(statement)
     = invalid-type
 .. generic = types.completions[class].has-variables
-. place = types.property-named(class, name)
+. place = property-named(class, name)
 if !place || is-hidden(types.properties[place], name, .setter-decl)
     if program.module-by-name("core/style")
         decline(statement)
@@ -21526,7 +21927,7 @@ do match? tree.nodes[body]
                     do match? tree.nodes[statement]
                         | .node-assign(attribute)
                             . name = identifier-name(tree, attribute.lhs)
-                            . place = (types.property-named(made, name) ?? interface-accessor(made, name)) if name
+                            . place = (property-named(made, name) ?? interface-accessor(made, name)) if name
                             if !place && facts.style-declaration-of(instance, statement)
                                 continue
                             if !place
@@ -22154,7 +22555,7 @@ _ names-property Bool
 |? self == no-type || self == invalid-type || types.intrinsic-of(self) != .class || lacks-self()
     false
 ??
-    text != null && types.property-named(self, text) != null
+    text != null && property-named(self, text) != null
 
 .. self = frame.self-type
 .. text = identifier-name(tree, name)
@@ -23245,7 +23646,7 @@ do match? owner.decls[callee.decl]
                 = false
             if position < fn.args.count
                 . shape = owner.arg-pool[fn.args.start + position]
-                . place = types.property-named(made, shape.name) if shape.name
+                . place = property-named(made, shape.name) if shape.name
                 if place
                     . property = types.properties[place]
                     . given = facts.node-type(instance, arg)
@@ -24418,7 +24819,7 @@ _ do read-row-item TypeId
 ` of an assignment written with an operator other than `=`, which nothing runs again, the read
 ` is a plain one, as it is in the value of a declaration.
 . name = program.store-atom("item")
-. place = types.property-named(held, name)
+. place = property-named(held, name)
 if !place
     decline(id)
     = invalid-type
@@ -24731,10 +25132,10 @@ if bindings.resolution-of(frame.binding, name).kind != .resolve-member
 if self == no-type || self == invalid-type || types.intrinsic-of(self) != .class || lacks-self()
     = false
 . text = identifier-name(tree, name)
-. place = types.property-named(self, text) if text
+. place = property-named(self, text) if text
 if !place
     = false
-. ref = declaring-class(types, types.properties[place].owner, text!)
+. ref = declaring-decl(types, types.properties[place])
 . member = owner-property(program, ref.module, ref.decl, text!)
 if member == 0
     = false
@@ -24780,11 +25181,11 @@ _ do named-place U32?
 if self == no-type || self == invalid-type || types.intrinsic-of(self) != .class || lacks-self()
     = null
 . text = identifier-name(tree, name)
-. place = types.property-named(self, text) if text
+. place = property-named(self, text) if text
 if !place
     = null
 . property = types.properties[place]
-. ref = declaring-class(types, property.owner, text!)
+. ref = declaring-decl(types, property)
 . member = owner-property(program, ref.module, ref.decl, text!)
 do match? program.modules[ref.module].decls[member]
     | .decl-property(declared)
@@ -25103,6 +25504,9 @@ do match? tree.nodes[key-syntax]
 _ do check-task
     - id SyntaxId
 
+` A task spawned where its block is written. A body that captures a local is given an object the
+` collector owns where it is spawned, and a panic a handler takes is moved into the collector's
+` heap.
 . row = bindings.bindings[frame.binding]
 for offset in 0 .. < row.nested.count
     . nested = bindings.nested[row.nested.start + offset]
@@ -25113,9 +25517,20 @@ for offset in 0 .. < row.nested.count
         if instances.rows[callee].state == .instance-unstarted
             facts.task-bodies += callee
             run-within(callee, this)
+        if nested.captures.count != 0 || has-handlers(id)
+            frame.check-allocates(id)
         facts.record-call(instance, id, callee, .call-task, scratch.no-fills, false)
         demand-panic-report()
         =
+
+────────────────────
+_ do has-handlers Bool
+    - task SyntaxId
+
+do match? tree.nodes[task]
+    | .node-do-task-block(row)
+        = row.catchers.count != 0
+= false
 
 ────────────────────
 _ do check-region
@@ -25128,7 +25543,8 @@ _ do check-region
 ` What the flow knows of those locals holds in the body as in a plain block, and what the body
 ` leaves them as holds after it (`leave-region`). The call ends what is known of properties, as
 ` any call does. A block whose last line returns or raises is the reference's error. One that
-` lets an error out has no shape here.
+` lets an error out has no shape here. A body that captures a local is given an object the
+` collector owns where it runs.
 if ends-returning(body)
     frame.diagnose
         - id
@@ -25149,6 +25565,8 @@ for offset in 0 .. < row.nested.count
         if instances.signatures[callee].errors.count != 0
             decline(id)
             =
+        if nested.captures.count != 0
+            frame.check-allocates(id)
         facts.record-call(instance, id, callee, .call-function, scratch.no-fills, false)
         if instances.rows[callee].may-panic
             instances.mark-may-panic(instance)
@@ -25273,7 +25691,7 @@ if owner == invalid-type
     = no-instance
 types.complete(owner)
 . base = types.base-of(owner) ?? no-type
-. place = types.property-named(base, name) if base != no-type
+. place = property-named(base, name) if base != no-type
 if !place
     = no-instance
 . level = types.properties[place].owner
@@ -26562,26 +26980,28 @@ while level
 . hearing = 0u32
 for holder in chain
     . ref = class-ref(types, holder)
+    for part in sheet-parts(ref)
+        . part-module = program.modules[part.module]
+        for member in part-module.member-pool[part-members(part)]
+            do match? part-module.decls[member]
+                | .decl-rule(rule)
+                    . heard = section-event(receiver, part.module, rule.syntax)
+                    if heard && heard.owner == event.owner && heard.name == event.name
+                        = false
+                | .decl-property(property)
+                    . machine = if property.name && !property.is-lazy then machine-node else 0
+                        .. machine-node = part-module.tree.declared-machine(property.value)
+                    if machine != 0
+                        . heard = event-groups
+                            - part-module.tree
+                            - part-module.tree.state-items
+                                - part-module.tree.state-body(machine)
+                            - event.name
+                        groups += heard
+                        hearing += if heard != 0 then 1 else 0
     . owner-module = program.modules[ref.module]
     do match? owner-module.decls[ref.decl]
         | .decl-class(class)
-            for member in owner-module.member-pool[class.members]
-                do match? owner-module.decls[member]
-                    | .decl-rule(rule)
-                        . heard = section-event(receiver, ref.module, rule.syntax)
-                        if heard && heard.owner == event.owner && heard.name == event.name
-                            = false
-                    | .decl-property(property)
-                        . machine = if property.name && !property.is-lazy then machine-node else 0
-                            .. machine-node = owner-module.tree.declared-machine(property.value)
-                        if machine != 0
-                            . heard = event-groups
-                                - owner-module.tree
-                                - owner-module.tree.state-items
-                                    - owner-module.tree.state-body(machine)
-                                - event.name
-                            groups += heard
-                            hearing += if heard != 0 then 1 else 0
             for machine in owner-module.tree.content-machines(class.content)
                 . heard = event-groups
                     - owner-module.tree
@@ -28332,7 +28752,7 @@ _ stored-shape U32
 ??
     if facts.plan-of(instance, node) == .plan-field then 1 else 2
 
-.. found = types.property-named(owner, name)
+.. found = property-named(owner, name)
 
 ────────────────────
 _ do demand-materialized
@@ -30807,6 +31227,8 @@ for offset in 0 .. < row.nested.count
             if holds-tested(bindings.captures[nested.captures.start + index].slot)
                 decline(id)
                 = invalid-type
+        if nested.captures.count != 0
+            frame.check-allocates(id)
         = intern-nested(nested.decl)
 decline(id)
 = invalid-type
@@ -31379,6 +31801,17 @@ if is-task-local(owner, decl) || is-thread-local(owner, decl) || is-stack-global
 = type
 
 ────────────────────
+_ do is-lazy-global Bool
+    - owner ModuleId
+    - decl DeclId
+
+` Whether a global takes its value where it is first read.
+do match? program.modules[owner].decls[decl]
+    | .decl-property(row)
+        = row.owner == 0 && row.is-lazy && row.decoration == null
+= false
+
+────────────────────
 _ do is-task-local Bool
     - owner ModuleId
     - decl DeclId
@@ -31418,11 +31851,12 @@ _ do is-constant-global Bool
 
 ` A global whose value is a literal laid down before anything runs: a number or a string, of a
 ` numeric type or String when it declares one. Every other global takes its value when its
-` module starts, or, kept for each task or thread, as the task or thread starts.
+` module starts, or, kept for each task or thread, as the task or thread starts. One `do with`
+` could bind is laid down so only where nothing binds it (`ProgramTables`).
 . target = program.modules[owner]
 do match? target.decls[decl]
     | .decl-property(row)
-        if row.decoration != null
+        if row.decoration != null && row.decoration.text != "stack"
             = false
         . worded = row.value != 0 && is-string-literal(target.tree, row.value)
         if row.value != 0 && !worded && !is-constant-literal(owner, row.value)
@@ -31657,7 +32091,7 @@ _ do read-received Found
 if parent == no-type
     decline(id)
     = Found(invalid-type)
-. place = types.property-named(parent, name)
+. place = property-named(parent, name)
 if !place && bindings.resolution-of(frame.binding, id).slot != no-slot
     . found = event-of(parent, name)
     if !found
@@ -31855,7 +32289,7 @@ do match? tree.nodes[object-syntax]
             = false
         .. object-flags = bindings.resolution-of(frame.binding, object-syntax).flags
         . owner = received-parent(object-syntax, row.name)
-        if owner != no-type && types.property-named(owner, row.name)
+        if owner != no-type && property-named(owner, row.name)
             = hidden-member(object-syntax, owner, row.name, "a property")
 = false
 
@@ -31872,7 +32306,7 @@ _ do read-unmade TypeId
 ` makes is the reference's error.
 . self = frame.self-type
 if self != no-type && self != invalid-type && !lacks-self() && types.intrinsic-of(self) == .class
-    . place = types.property-named(self, name)
+    . place = property-named(self, name)
     if place && names-element(types, types.properties[place])
         facts.set-plan(instance, id, .plan-element-property)
         = read-property(id, id, self, name).type
@@ -31902,7 +32336,7 @@ _ received-parent TypeId
 
 .. kept = bindings.resolution-of(frame.binding, id).slot
 .. parent = frame.slot-type(kept)
-.. place = types.property-named(parent, name)
+.. place = property-named(parent, name)
 
 ────────────────────
 _ do keep-element Bool
@@ -31935,7 +32369,7 @@ while position != 0
     . parent = content-parents[position]
     if types.intrinsic-of(parent) != .class
         continue
-    . place = types.property-named(parent, name)
+    . place = property-named(parent, name)
     if place && !names-element(types, types.properties[place])
         = parent
     if !place && declares-event(parent, name)
@@ -32032,6 +32466,8 @@ do match resolution.kind
             = Found(invalid-type)
         if is-stack-local(id)
             facts.stack-reads.append(StackRead(instance, id, resolution.module, resolution.decl))
+        if is-lazy-global(resolution.module, resolution.decl)
+            frame.check-lazy-read(id, name.text)
         if guards-read(id, resolution.module, resolution.decl)
             note-guarded(id, resolution.module, resolution.decl)
         = Found(demand-global(id, resolution.module, resolution.decl))
@@ -32108,7 +32544,7 @@ demand-live-runtime()
 . live = instances.live
 if live.track-collection == no-instance && live.trackers != no-instance
     . module = class-ref(types, types.live-action-type).module
-    . trackers = types.properties[types.property-named(types.live-action-type, program.store-atom("trackers"))!].type
+    . trackers = types.properties[property-named(types.live-action-type, program.store-atom("trackers"))!].type
     . mark = scratch.types.mark
     scratch.types.push(trackers)
     scratch.types.push(trackers)
@@ -32463,7 +32899,7 @@ _ do track-read
 ` A read through an optional chain reads the object the optional holds.
 if receiver == no-type || receiver == invalid-type
     =
-. place = types.property-named(receiver, name)
+. place = property-named(receiver, name)
 if place && types.properties[place].storage-kind == .storage-getter
     frame.diagnose
         - id
@@ -33231,8 +33667,8 @@ instances.live.demanded = true
 . live = instances.live
 types.complete(action)
 . module = class-ref(types, action).module
-. trackers = types.properties[types.property-named(action, program.store-atom("trackers"))!].type
-. callback = types.properties[types.property-named(action, program.store-atom("callback"))!].type
+. trackers = types.properties[property-named(action, program.store-atom("trackers"))!].type
+. callback = types.properties[property-named(action, program.store-atom("callback"))!].type
 . mark = scratch.types.mark
 live.trackers = calls.demand-constructor(trackers, mark)
 scratch.types.push(trackers)
@@ -33343,7 +33779,7 @@ _ do tracker-field TypeId
 
 ` The declared type of a property of the runtime's property tracker, which gives the types the
 ` runtime's tracking functions take.
-. place = types.property-named(tracker, program.store-atom(name))
+. place = property-named(tracker, program.store-atom(name))
 = if place then types.properties[place].type else invalid-type
 
 ────────────────────
@@ -33386,7 +33822,7 @@ _ reads-unmade Bool
     place != null && names-element(types, types.properties[place])
 
 .. self = frame.self-type
-.. place = types.property-named(self, name)
+.. place = property-named(self, name)
 
 ────────────────────
 _ do is-eager-value Bool
@@ -33459,7 +33895,7 @@ do match? resolution.kind
                 if row.owner == 0 && row.decoration == null && row.name && !row.is-lazy
                     plain = true
     |= .resolve-member
-        . found = types.property-named(frame.self-type, name) if frame.self-type != no-type
+        . found = property-named(frame.self-type, name) if frame.self-type != no-type
         plain = found != null && types.properties[found].storage-kind == .storage-eager
         if plain && program.is-derived-name(name) && types.intrinsic-of(frame.self-type) == .class
             instances.mark-may-panic(instance)
@@ -33496,7 +33932,7 @@ _ narrowed-from TypeId
     if found then types.properties[found].type else no-type
 
 .. declared = key-declared(key)
-.. found = types.property-named(receiver, name)
+.. found = property-named(receiver, name)
 
 ────────────────────
 _ do plan-case-read
@@ -33979,20 +34415,20 @@ if receiver-kind == .atom
 . viewed = view-field(receiver, name)
 if viewed != no-type
     . item = row-struct-of(receiver)
-    plan-view(id, types.properties[types.property-named(item, name)!].slot)
+    plan-view(id, types.properties[property-named(item, name)!].slot)
     = Found(viewed)
 if (is-column-receiver(receiver-kind) || columns || is-index-reader(receiver-kind)) && length-name
     plan-table(id, .table-length)
     = Found(types.size-type)
 .. columns = receiver-kind == .table-column || receiver-kind == .immutable-table-column
 .. length-name = name == types.length-atom! || name.text == "size"
-. found = types.property-named(receiver, name)
+. found = property-named(receiver, name)
 if found && is-hidden(types.properties[found], name) && row-answers(receiver, name)
     found = null
 if found
     . property = types.properties[found]
     if is-hidden(property, name)
-        . message = "Property \"${name.text}\" is private"
+        . message = privacy-message(property, name)
         if id == object-syntax
             message = "Name not found"
         frame.diagnose(id, .stated, program.store-atom(message))
@@ -34032,7 +34468,7 @@ if shared-field != no-type
     = Found(shared-field)
 . places [U32]
 . holder = calls.ranking.delegated-holder(receiver, name, places)
-. reached = types.property-named(holder, name) if holder != no-type && places.length != 0
+. reached = property-named(holder, name) if holder != no-type && places.length != 0
 if reached && types.properties[reached].storage-kind != .storage-getter && !is-hidden(types.properties[reached], name)
     if calls.ranking.has-extension-getter(receiver, name)
         frame.diagnose(id, .extension-conflict)
@@ -34085,6 +34521,7 @@ if views != no-type
         frame.diagnose(id, .stated, program.store-atom(message))
         = Found(invalid-type)
     plan-view(id)
+    frame.check-allocates(id)
     = Found(views)
 if name == types.length-atom! && (receiver-kind == .tuple || receiver-kind == .struct)
     . arity = tuple-arity(receiver)
@@ -34100,10 +34537,10 @@ if is-column-receiver(receiver-kind)
         . immutable = receiver-kind == .immutable-table || receiver-kind == .immutable-table-span
         . row = row-struct-of(receiver)
         if types.intrinsic-of(row) == .struct
-            plan-table(id, .table-column, types.properties[types.property-named(row, name)!].slot)
+            plan-table(id, .table-column, types.properties[property-named(row, name)!].slot)
         else if types.intrinsic-of(row) == .union
             . first = types.cases-of(row)[0].type
-            . shared = types.property-named(first, name)
+            . shared = property-named(first, name)
             if shared
                 plan-table(id, .table-column, types.properties[shared].slot)
         = Found(types.column-view-of(column, immutable))
@@ -34113,11 +34550,11 @@ if receiver-kind == .table-row || receiver-kind == .immutable-table-row
         if has-case-getter(row, name)
             forwarded-row = receiver
             = read-property(id, object-syntax, row, name, want)
-    . column = types.property-named(row, name) if row != no-type
+    . column = property-named(row, name) if row != no-type
     if column
         . field = types.properties[column]
         if is-hidden(field, name)
-            frame.diagnose(id, .stated, program.store-atom("Property \"${name.text}\" is private"))
+            frame.diagnose(id, .stated, program.store-atom(privacy-message(field, name)))
             = Found(invalid-type)
         if field.storage-kind == .storage-eager
             if types.intrinsic-of(row) == .struct
@@ -34219,7 +34656,7 @@ if row == no-type
 . shared = shared-case-field-type(row, name)
 if shared != no-type
     . held = types.cases-of(row)
-    . first = types.property-named(held[0].type, name) if held.length != 0
+    . first = property-named(held[0].type, name) if held.length != 0
     if first && is-common-field(types, row, types.properties[first])
         plan-table(id, .table-field, types.properties[first].slot)
 = shared
@@ -34239,10 +34676,18 @@ _ row-answers Bool
 |? types.intrinsic-of(row) == .union && has-case-getter(row, name)
     true
 ??
-    types.property-named(row, name) != null
+    property-named(row, name) != null
 
 .. kind = types.intrinsic-of(receiver)
 .. row = row-struct-of(receiver)
+
+────────────────────
+_ do property-named Index?
+    - id TypeId
+    - name Atom
+
+` The place of a property of a type by a name, as the module being typed sees it.
+= types.property-seen(id, name, module)
 
 ────────────────────
 _ do is-hidden Bool
@@ -34250,27 +34695,80 @@ _ do is-hidden Bool
     - name Atom
     - accessor DeclKind = .getter-decl
 
-` Whether a property, or the getter or setter that answers for it, is private to a module
-` other than the one using it. One a markup element's name declares is not
-` (`PropertyDecl.element`).
-. ref = declaring-class(types, fact.owner, name)
+` Whether a property, or the getter or setter that answers for it, is out of reach of the module
+` using it, as `hiding-access` finds it.
+= hiding-access(fact, name, accessor) != null
+
+────────────────────
+_ do hiding-access Access?
+    - fact TypeProperty
+    - name Atom
+    - accessor DeclKind = .getter-decl
+
+` The access that keeps a property, or the getter or setter that answers for it, from the module
+` using it: private to another module, or shared with a file family not this one's. One a markup
+` element's name declares is not kept (`PropertyDecl.element`). A module that declares a facet of a
+` class reaches the private members of the class, but a facet's private members are its own
+` module's.
+. ref = declaring-decl(types, fact)
 if ref.module == module || (ref.module == 0 && ref.decl == 0)
-    = false
+    = null
+if fact.facet == U32.max && program.reaches-private(module, ref.module)
+    = null
 . owner-module = program.modules[ref.module]
-do match? owner-module.decls[ref.decl]
+. members = match owner-module.decls[ref.decl]
     | .decl-class(row)
-        . place = owner-module.first-member(row.members, name)
-        while place != no-member
-            . member = owner-module.member-pool[place]
-            place = owner-module.member-links[place]
-            do match? owner-module.decls[member]
-                | .decl-property(property)
-                    if property.name && property.name == name
-                        = !is-public(property.access) && property.element == 0
-                | .decl-function(fn)
-                    if fn.kind == accessor && fn.name && fn.name == name
-                        = !is-public(fn.access)
-= false
+        row.members
+    | .decl-extension(row)
+        row.members
+    ??
+        RowRange'DeclId()
+. place = owner-module.first-member(members, name)
+while place != no-member
+    . member = owner-module.member-pool[place]
+    place = owner-module.member-links[place]
+    do match? owner-module.decls[member]
+        | .decl-property(property)
+            if property.name && property.name == name
+                =? null if property.element != 0
+                = shut-access(property.access, ref.module)
+        | .decl-function(fn)
+            if fn.kind == accessor && fn.name && fn.name == name
+                = shut-access(fn.access, ref.module)
+= null
+
+────────────────────
+_ do shut-access Access?
+    - access Access
+    - other ModuleId
+
+` An access that keeps a member of another module from this one, once `reaches-private` has had
+` its say: private, or shared with a file family not this one's.
+if access is .public-access || (access is .family-access && program.same-family(module, other))
+    = null
+= access
+
+────────────────────
+_ do privacy-message String
+    - fact TypeProperty
+    - name Atom
+    - accessor DeclKind = .getter-decl
+
+` What an error says of a property `is-hidden` keeps from this module.
+= hidden-message("Property", name, hiding-access(fact, name, accessor) ?? Access.private-access)
+
+────────────────────
+_ hidden-message String
+    - kind String
+    - name Atom
+    - access Access
+
+` What an error says of a member another module keeps from this one: that it is private, or that
+` it is shared with a file family not this one's.
+|? access is .private-access
+    "$kind \"${name.text}\" is private"
+??
+    "$kind \"${name.text}\" is shared, declared with ^, so only its own file family can use it"
 
 ────────────────────
 _ do union-property TypeId
@@ -34570,7 +35068,7 @@ _ do view-field TypeId
 . item = if row-item != no-type then row-item else view-item(receiver, types.array-fields-decl)
 if item == no-type
     = no-type
-. found = types.property-named(item, name)
+. found = property-named(item, name)
 if !found
     = no-type
 . field = eager-type(item, types.properties[found])
@@ -34801,31 +35299,64 @@ _ do event-of NamedEvent?
 for cursor in event-chain(receiver)
     do match? types.rows[cursor]
         | .type-class(row)
-            . target = program.modules[row.module]
-            do match? target.decls[row.decl]
-                | .decl-class(class)
-                    . place = target.first-member(class.members, name)
-                    while place != no-member
-                        . member = target.member-pool[place]
-                        place = target.member-links[place]
-                        do match? target.decls[member]
-                            | .decl-event(event)
-                                if event.name == name
-                                    . hidden = match event.access
-                                        | .private-access
-                                            row.module != module
-                                        ??
-                                            false
-                                    if hidden && !anywhere
-                                        = null
-                                    . private = event.access is .private-access
-                                    = NamedEvent
-                                        - cursor
-                                        - name
-                                        - declared-payload(cursor, event.type-syntax)
-                                        - declared-key(cursor, event.key-type)
-                                        - 0
-                                        - private
+            . found = declared-event(row.module, row.decl, name)
+            if found
+                . home = found.module
+                do match? program.modules[home].decls[found.decl]
+                    | .decl-event(event)
+                        . hidden = !program.reaches-access(module, home, event.access)
+                        if hidden && !anywhere
+                            = null
+                        . private = !(event.access is .public-access)
+                        = NamedEvent
+                            - cursor
+                            - name
+                            - declared-payload(cursor, event.type-syntax, home)
+                            - declared-key(cursor, event.key-type, home)
+                            - 0
+                            - private
+= null
+
+────────────────────
+_ do declared-event DeclRef?
+    - class-module ModuleId
+    - class-decl DeclId
+    - name Atom
+
+` The event of a name a class declares, in its body or in a facet of it this module sees, as the
+` module and the declaration that declare it.
+. target = program.modules[class-module]
+do match? target.decls[class-decl]
+    | .decl-class(class)
+        =? DeclRef(class-module, found) if found
+        .. found = member-event(target, class.members, name)
+. facets = program.facets
+=? null if facets.count == 0
+. (start, end) = facets.class-range(class-module, class-decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    if facets.states[facet] == .facet-bound && program.sees-facet(module, facet)
+        . home = facets.modules[facet]
+        do match? program.modules[home].decls[facets.decls[facet]]
+            | .decl-extension(row)
+                =? DeclRef(home, found) if found
+                .. found = member-event(program.modules[home], row.members, name)
+= null
+
+────────────────────
+_ do member-event DeclId?
+    - target Module
+    - members RowRange'DeclId
+    - name Atom
+
+` The event of a name among a class's or a facet's members.
+. place = target.first-member(members, name)
+while place != no-member
+    . member = target.member-pool[place]
+    place = target.member-links[place]
+    do match? target.decls[member]
+        | .decl-event(event)
+            =? member if event.name == name
 = null
 
 ────────────────────
@@ -34873,30 +35404,19 @@ _ do hides-event Bool
     - name Atom
 
 ` Whether the event of this name a class declares or inherits, or an interface it is of
-` declares, is private to another module, which is reported where the event is declared.
+` declares, is kept from this module, which is reported where the event is declared.
 for cursor in event-chain(receiver)
     do match? types.rows[cursor]
         | .type-class(row)
-            . target = program.modules[row.module]
-            do match? target.decls[row.decl]
-                | .decl-class(class)
-                    . place = target.first-member(class.members, name)
-                    while place != no-member
-                        . member = target.member-pool[place]
-                        place = target.member-links[place]
-                        do match? target.decls[member]
-                            | .decl-event(event)
-                                if event.name == name && private-event && row.module != module
-                                    . message = program.store-atom
-                                        - "Event \"${name.text}\" is private"
-                                    facts.record-diagnostic
-                                        - instance
-                                        - row.module
-                                        - event.syntax
-                                        - .stated
-                                        - message
-                                    = true
-                                .. private-event = event.access is .private-access
+            . found = declared-event(row.module, row.decl, name)
+            if found
+                . home = found.module
+                do match? program.modules[home].decls[found.decl]
+                    | .decl-event(event)
+                        if !program.reaches-access(module, home, event.access)
+                            . message = program.store-atom(hidden-message("Event", name, event.access))
+                            facts.record-diagnostic(instance, home, event.syntax, .stated, message)
+                            = true
 = false
 
 ────────────────────
@@ -35136,7 +35656,7 @@ _ do event-node TypeId
     - reference SyntaxId
     - event NamedEvent
 
-` The `EventNode` an event is published along, where it bubbles: one that is not private and is
+` The `EventNode` an event is published along, where it bubbles: one that is public and is
 ` published by no key, on an object whose class is an `EventNode`, which is converted at the node
 ` that names the event (`reason-event-node`). No type where it does not bubble.
 if event.is-private || event.key != no-type
@@ -35466,27 +35986,31 @@ do match? tree.nodes[index]
 _ do declared-key TypeId
     - owner TypeId
     - syntax SyntaxId
+    - home ModuleId
 
 ` The type of the key an event is published by, or none where it is published by none. A key
 ` whose type is not known is the invalid type.
 if syntax == 0
     = no-type
-. key = declared-payload(owner, syntax)
+. key = declared-payload(owner, syntax, home)
 = if key == no-type then invalid-type else key
 
 ────────────────────
 _ do declared-payload TypeId
     - owner TypeId
     - syntax SyntaxId
+    - home ModuleId
 
+` The type an event of a class publishes, written in the module that declares the event: the
+` class's own, or a facet's.
 if syntax == 0
     = types.void-type
 . payload = invalid-type
 do match? types.rows[owner]
     | .type-class(row)
         . env = types.class-env-for(row.module, row.decl, row.args, owner)
-        . tree = program.modules[row.module].tree
-        payload = types.evaluate-type(row.module, tree, syntax, env)
+        . tree = program.modules[home].tree
+        payload = types.evaluate-type(home, tree, syntax, env)
         types.env-release(env)
 = if payload == invalid-type then no-type else payload
 
@@ -35498,17 +36022,7 @@ _ do declares-event Bool
 for cursor in event-chain(receiver)
     do match? types.rows[cursor]
         | .type-class(row)
-            . target = program.modules[row.module]
-            do match? target.decls[row.decl]
-                | .decl-class(class)
-                    . place = target.first-member(class.members, name)
-                    while place != no-member
-                        . member = target.member-pool[place]
-                        place = target.member-links[place]
-                        do match? target.decls[member]
-                            | .decl-event(event)
-                                if event.name == name
-                                    = true
+            =? true if declared-event(row.module, row.decl, name) != null
 = false
 
 ────────────────────
@@ -35550,7 +36064,7 @@ do match? program.modules[module].decls[frame.decl]
             types.complete(self)
             . base = types.base-of(self) ?? no-type
             if base != no-type && states-getter-type(base, name)
-                . inherited = types.property-named(base, name)
+                . inherited = property-named(base, name)
                 if inherited
                     = types.properties[inherited].type
 = no-type
@@ -35608,7 +36122,7 @@ if row == no-type || row == invalid-type
     = no-type
 if types.intrinsic-of(row) == .union
     = shared-case-field-type(row, name)
-. column = types.property-named(row, name)
+. column = property-named(row, name)
 if !column
     = no-type
 . field = types.properties[column]
@@ -35626,7 +36140,7 @@ _ do shared-case-field-type TypeId
 . first = first-case(union)
 if first == no-type
     = no-type
-. found = types.property-named(first, name)
+. found = property-named(first, name)
 if !found
     = no-type
 . field = types.properties[found]
@@ -35655,7 +36169,7 @@ _ do has-case-getter Bool
 
 for fact in types.cases-of(union)
     if !fact.is-default && fact.type != no-type && fact.type != invalid-type
-        . found = types.property-named(fact.type, name)
+        . found = property-named(fact.type, name)
         if found && types.properties[found].storage-kind == .storage-getter
             = true
         if !found && calls.has-getter(fact.type, name)
@@ -35762,12 +36276,12 @@ for statement in tree.children[body-statements()]
                         - .stated
                         - program.store-atom("Illegal to redefine property type")
                     =
-                .. declared-property = property != 0 || types.property-named(frame.self-type, name)
+                .. declared-property = property != 0 || property-named(frame.self-type, name)
                 if property != 0
                     read-slot(slot)
                     fill-property(name, property, slot, row.right)
                     filling += slot
-                else if types.property-named(frame.self-type, name)
+                else if property-named(frame.self-type, name)
                     read-slot(slot)
                     fill-inherited(name, slot, row.right)
                     filling += slot
@@ -35869,7 +36383,7 @@ for statement in tree.children[body-statements()]
         collect-assigned(statement, assigned, declared)
 . fields [Atom]
 for name in assigned
-    if declared.find(name) == null && types.property-named(frame.self-type, name)
+    if declared.find(name) == null && property-named(frame.self-type, name)
         fields += name
 if fields.length == 0
     =
@@ -35877,7 +36391,7 @@ for statement in tree.children[body-statements()]
     do match? tree.nodes[statement]
         | .node-declare(row)
             . name = pattern-name(types, tree, row.left) if row.is-lazy
-            if name && types.property-named(frame.self-type, name)
+            if name && property-named(frame.self-type, name)
                 . read = field-read(row.right, fields)
                 if read != 0
                     . field = field-reference(read)!
@@ -35982,12 +36496,21 @@ _ do fill-inherited
     - slot SlotId
     - value-syntax SyntaxId
 
-` An argument or a lazy local named as a property a base class declares gives that property
-` its value too. Its conversion to the property's type is recorded at the value: the type
-` written for the property, or else the type of the value written for it.
-. found = types.property-named(frame.self-type, name)
+` An argument or a lazy local named as a property a base class or a facet declares gives that
+` property its value too. A facet's private property takes none: code outside the facet's file
+` doesn't see it, and in that file it is refused, since another facet may keep the name as well.
+` Its conversion to the property's type is recorded at the value: the type written for the
+` property, or else the type of the value written for it.
+. found = property-named(frame.self-type, name)
 if !found
     =
+. facet = types.properties[found].facet
+if facet != U32.max && !declares-name(facets.modules[facet], facets.decls[facet], name, true)
+    if facets.modules[facet] == module
+        . message = "${name.text} is private to facet ${facet-name-of(facet)}, so a constructor's argument can't give it a value"
+        frame.diagnose(value-syntax, .stated, program.store-atom(message))
+    =
+.. facets = program.facets
 . given = frame.known(slot)
 if given == no-type || given == invalid-type
     =
@@ -36017,7 +36540,7 @@ do match? program.modules[module].decls[property]
     | .decl-property(row)
         facts.record-fill(FillFact(instance, name, slot, row.syntax))
         . declared = invalid-type
-        . held = types.property-named(frame.self-type, name)
+        . held = property-named(frame.self-type, name)
         . above = if held then first-type(types.properties[held], name) else no-type
         if row.type-syntax != 0
             declared = types.evaluate-type(module, tree, row.type-syntax, frame.env)
@@ -36078,7 +36601,7 @@ _ do check-shared-machine
 ` the class has no shape here.
 if !intrinsic-is-class(types.intrinsic-of(receiver))
     =
-. current = holding-type(receiver, declaring-class(types, property.owner, property.name))
+. current = holding-type(receiver, declaring-holder(types, property))
 while current != no-type
     . typed = current
     . level = class-ref(types, current)
@@ -36180,7 +36703,7 @@ _ do construct-default
 ` own for the receiver, as a value written for the property is, and the constructor lets out
 ` its errors at its class and may panic where it may. The first values of a named tuple's or
 ` struct's fields are typed too, which emission gives the fields where the value is made.
-. ref = declaring-class(types, fact.owner, fact.name)
+. ref = declaring-decl(types, fact)
 if fact.type == no-type || fact.type == invalid-type || names-element(types, fact)
     =
 . tuple = if ref.decl == 0 then written-tuple(types, receiver, fact.owner) else DeclRef(0, 0)
@@ -36211,6 +36734,8 @@ while place != no-member
                     =
                 if row.line == 0 && rejects-default-cycle(ref.module, row.syntax, fact)
                     =
+                if row.line == 0 && rejects-facet-default(ref.module, row.syntax, fact)
+                    =
                 if !elsewhere
                     construct-value(row.syntax, fact.type)
                     =
@@ -36223,6 +36748,23 @@ while place != no-member
                 replay-member(unit)
                 note-unit-errors(unit, owner-syntax())
                 =
+
+────────────────────
+_ do rejects-facet-default Bool
+    - owner ModuleId
+    - site SyntaxId
+    - fact TypeProperty
+
+` Whether a stored property with no value written is of a facet's type, which no constructor makes,
+` and reports so.
+=? false if is-constructor-parameter(fact.name) || instances.fill-argument(instance, fact.name) != U32.max
+. facet = types.facet-of-type(fact.type)
+=? false if !facet
+. shown = type-short-name(types, fact.type)
+. made = type-short-name(types, types.facet-owner(facet))
+. message = "${fact.name.text} is a $shown, a facet of $made, which has no constructor to give it its first value; give it a value, or make it optional"
+facts.record-diagnostic(instance, owner, site, .stated, program.store-atom(message))
+= true
 
 ────────────────────
 _ do rejects-default-cycle Bool
@@ -36334,7 +36876,7 @@ _ do writes-value Bool
     - fact TypeProperty
 
 ` Whether the nearest class that declares a property writes a value for it.
-. ref = declaring-class(types, fact.owner, fact.name)
+. ref = declaring-decl(types, fact)
 . member = valued-property(program, ref.module, ref.decl, fact.name)
 if member == 0
     = false
@@ -36601,7 +37143,7 @@ while current != no-type
         break
 if current == no-type
     = no-type
-. found = types.property-named(current, name)
+. found = property-named(current, name)
 if !found
     = no-type
 . above = types.properties[found]
@@ -36619,7 +37161,7 @@ _ is-accessor Bool
 
 if found then types.properties[found].storage-kind == .storage-getter else inherited
 
-.. found = types.property-named(receiver, name)
+.. found = property-named(receiver, name)
 .. inherited = types.intrinsic-of(receiver) == .class && interface-accessor(receiver, name) != null
 
 ────────────────────
@@ -36989,7 +37531,7 @@ _ calls-property Bool
 |? kind == .union || kind == .type-info || calls.has-method(receiver, name, arguments)
     false
 ??
-    types.property-named(receiver, name) != null || calls.has-getter(receiver, name)
+    property-named(receiver, name) != null || calls.has-getter(receiver, name)
 
 .. kind = types.intrinsic-of(receiver)
 
@@ -37262,7 +37804,7 @@ if types.delegates-of(row).length != 0
 for index in 0 .. < types.properties-of(row).length
     . property = types.properties-of(row)[index]
     if property.storage-kind != .storage-eager
-        . owner = declaring-class(types, property.owner, property.name)
+        . owner = declaring-decl(types, property)
         . written = member-site(types, owner, property.name)
         = refuse-row(owner.module, written, "Table row fields must be eager stored fields")
 if held
@@ -37317,7 +37859,7 @@ for index in 0 .. < count
     for position in 0 .. < types.properties-of(fact.type).length
         . property = types.properties-of(fact.type)[position]
         if property.storage-kind == .storage-lazy
-            . owner = declaring-class(types, property.owner, property.name)
+            . owner = declaring-decl(types, property)
             . written = member-site(types, owner, property.name)
             . message = "Table union case '$shown' cannot use lazy stored fields"
             = refuse-row(owner.module, written, message)
@@ -37325,7 +37867,7 @@ for index in 0 .. < count
 for position in 0 .. < types.properties-of(first).length
     . property = types.properties-of(first)[position]
     if is-common-field(types, union, property) && is-hot-field(types, property)
-        . owner = declaring-class(types, property.owner, property.name)
+        . owner = declaring-decl(types, property)
         . named = type-short-name(types, union)
         . message = "Table union '$named' common field '${property.name.text}' cannot be @hot "
         message ++= "because it already has a dedicated common column"
@@ -37341,7 +37883,7 @@ for index in 0 .. < count
             continue
         . stored = eager-type(fact.type, property)
         if stored != no-type && stored != invalid-type && is-managed(stored, 0)
-            . owner = declaring-class(types, property.owner, property.name)
+            . owner = declaring-decl(types, property)
             . message = "Table union case '$shown' field '${property.name.text}' contains managed "
             message ++= "pointers through ${type-key(types, stored)}"
             = refuse-row(owner.module, member-site(types, owner, property.name), message, stored)
@@ -38028,6 +38570,8 @@ if target == invalid-type || target == no-type
 types.complete(target)
 if types.intrinsic-of(target) != .class || types.completions[target].has-variables
     =
+if types.facet-of-type(target) != null
+    =
 . kind = relations.compare(value, target).kind
 . same = kind == .relation-same || kind == .relation-equal
 if !same && kind != .relation-up-cast && kind != .relation-down-cast
@@ -38126,6 +38670,8 @@ do match tree.nodes[right]
 if target == invalid-type || target == no-type
     report-missing-type(right, frame.env)
     =
+if refuses-facet-test(right, target)
+    =
 if types.completions[target].has-variables
     target = complete-named(target, subject, kind)
 if target != no-type && could-match(subject, target, kind)
@@ -38134,6 +38680,20 @@ if target != no-type && could-match(subject, target, kind)
 else
     facts.set-plan(instance, right, .plan-never)
 facts.set-plan(instance, id, .plan-is)
+
+────────────────────
+_ do refuses-facet-test Bool
+    - syntax SyntaxId
+    - target TypeId
+
+` Whether a type a value is tested for is a facet's, which every object of its owner has, so that
+` no test could say anything, and reports so.
+. facet = types.facet-of-type(target)
+=? false if !facet
+. owner = types.facet-owner(facet)
+. message = "${type-short-name(types, target)} is a facet, which every ${type-short-name(types, owner)} has, so no value is tested for it"
+frame.diagnose(syntax, .stated, program.store-atom(message))
+= true
 
 ────────────────────
 _ do tuple-named TypeId
@@ -38928,7 +39488,7 @@ instances.mark-may-panic(instance)
 if (dispatch-effects(frame.surround.effects) /and/ restricted) != 0
     frame.diagnose
         - id
-        - .stated
+        - .restricted
         - program.store-atom("Interface equality requires unrestricted effects")
     =
 facts.require-equality(interface)
@@ -39552,7 +40112,8 @@ if op == .optional-force-op
 if op == .type-of-op
     if types.intrinsic-of(operand) == .class
         note-loose(operand-syntax)
-    = type-info-of(id, operand)
+    . viewed = types.facet-of-type(operand)
+    = type-info-of(id, if viewed then types.facet-owner(viewed) else operand)
 if op == .facts-of-op
     = types.string-type
 decline(operand-syntax)
@@ -40115,10 +40676,10 @@ _ do qualified-event Found
     - want Want
 
 ` An event a loop names by the class that declares it, which the loop hears as it bubbles up to
-` the object that owns the loop. A private event or one published by key does not bubble, which
-` is an error at the node.
+` the object that owns the loop. An event that is not public, or one published by key, does not
+` bubble, which is an error at the node.
 if event.is-private
-    frame.diagnose(id, .stated, program.store-atom("Private event \"${event.name.text}\" does not bubble, so it cannot be named by its class"))
+    frame.diagnose(id, .stated, program.store-atom("Event \"${event.name.text}\" is not public, so it does not bubble and cannot be named by its class"))
     = Found(invalid-type)
 if event.key != no-type
     frame.diagnose(id, .stated, program.store-atom("Keyed event \"${event.name.text}\" does not bubble, so it cannot be named by its class"))
@@ -40175,7 +40736,7 @@ if kind != .table-row && kind != .immutable-table-row
 . row = row-struct-of(object)
 if row == no-type || types.intrinsic-of(row) != .struct
     =
-. column = types.property-named(row, name)
+. column = property-named(row, name)
 if column && types.properties[column].storage-kind == .storage-eager
     plan-table(id, .table-field, types.properties[column].slot)
 
@@ -40198,7 +40759,7 @@ do match? tree.nodes[object-syntax]
         . item = facts.node-type(instance, object-syntax)
         if types.intrinsic-of(item) != .struct
             =
-        . found = types.property-named(item, name)
+        . found = property-named(item, name)
         if !found
             =
         . field = types.properties[found]
@@ -41434,7 +41995,7 @@ if facts.storage-body-of(instance, helping.body) == U32.max
     . places [U32]
     if receiver == no-type || (receiver != participant && !calls.ranking.delegate-path(participant, receiver, places))
         = false
-    . found = types.property-named(receiver, program.store-atom("pattern-collector-context"))
+    . found = property-named(receiver, program.store-atom("pattern-collector-context"))
     if !found
         = false
     . property = types.properties[found]
@@ -42112,8 +42673,16 @@ _ do record-stream-text Bool
     - id SyntaxId
 
 ` Records where a part of a stream pattern gives the text it matched the call that makes it:
-` `slice-string` of the part of the stream's buffer it matched.
-= calls.protocol-call(stream-view.buffer, program.store-atom("slice-string"), id).answer == types.string-type
+` `slice-string` of the part of the stream's buffer it matched. Within a rule typed with no
+` helper for the text of a call of it under one, the call is not made, so it is typed outside any
+` restriction.
+. unmade = helping.span-typing && helping.helper == null
+. call = calls.protocol-call
+    - stream-view.buffer
+    - program.store-atom("slice-string")
+    - id
+    • restricted !unmade
+= call.answer == types.string-type
 
 ────────────────────
 _ do join-stream-types TypeId
@@ -42669,8 +43238,8 @@ _ shares-number Bool
 ??
     is-numeric(types, type) && type == member-type(types.properties[text], types.string-type)
 
-.. found = types.property-named(span, name)
-.. text = types.property-named(types.string-type, name)
+.. found = property-named(span, name)
+.. text = property-named(types.string-type, name)
 .. type = member-type(types.properties[found], span)
 
 ────────────────────
@@ -47693,7 +48262,7 @@ if target == no-type
     target = types.evaluate-type(module, tree, pattern, frame.env)
     if target == invalid-type
         report-missing-type(pattern, frame.env)
-if target == invalid-type || target == no-type
+if target == invalid-type || target == no-type || refuses-facet-test(pattern, target)
     =
 if types.completions[target].has-variables
     target = complete-named(target, subject, kind)
@@ -47995,7 +48564,7 @@ if found != no-type
 if owner != no-type
     property = subject-property(matching.case)
 . classed = receiver != no-type && types.intrinsic-of(receiver) == .class
-. place = types.property-named(receiver, property) if property && classed
+. place = property-named(receiver, property) if property && classed
 if !place
     = no-type
 . ref = class-ref(types, types.properties[place].owner)
@@ -48727,7 +49296,7 @@ _ do infer-received-assign TypeId
 ` (`received-parent`). A member that is no stored property, or one assigned where no element is
 ` being built, has no shape here.
 . parent = received-parent(lhs, name)
-. place = types.property-named(parent, name) if parent != no-type
+. place = property-named(parent, name) if parent != no-type
 if !place || types.properties[place].storage-kind == .storage-getter
     decline(id)
     = invalid-type
@@ -48866,7 +49435,7 @@ while level
                 if row.line != line || ref.module != module
                     = false
                 . above = types.base-of(level)
-                = !above || !types.property-named(above, name)
+                = !above || !property-named(above, name)
         = false
     level = types.base-of(level)
 = false
@@ -49056,7 +49625,7 @@ _ answers Bool
     - receiver TypeId
     - name Atom
 
-|? types.property-named(receiver, name) != null || calls.has-getter(receiver, name)
+|? property-named(receiver, name) != null || calls.has-getter(receiver, name)
     true
 ??
     calls.method-binding(receiver, name) != no-type
@@ -49119,13 +49688,14 @@ if object-syntax != 0 && refuses-write(lhs, receiver, false)
     = invalid-type
 if object-syntax != 0 && writes-machine(id, receiver, name)
     = invalid-type
-. sets-length = name == types.length-atom! && !types.property-named(receiver, name)
+. sets-length = name == types.length-atom! && !property-named(receiver, name)
 if object-syntax != 0 && op == .eq-op && refuses-layout(id, lhs, object-syntax, receiver, name, rhs, want)
     = invalid-type
-if (doubted || stored) && (is-accessor(receiver, name) || forwards-setter(receiver, name))
+. added = sets-added(receiver, name, value, rhs)
+if (doubted || stored) && (is-accessor(receiver, name) || added || forwards-setter(receiver, name))
     decline(rhs)
     = invalid-type
-if op == .eq-op && is-accessor(receiver, name)
+if op == .eq-op && (is-accessor(receiver, name) || added)
     = store-through-setter(lhs, object-syntax, receiver, name, rhs, value, .call-setter)
 if op == .eq-op && forwards-setter(receiver, name)
     . site = if object-syntax != 0 then object-syntax else lhs
@@ -49194,9 +49764,10 @@ else
             frame.push-assigned(key, target)
             frame.reset-paths(key)
 . result = assign-into(id, lhs, op, target, rhs, value)
-if compound-result && is-accessor(receiver, name) && !updates-in-place(target, op, value, rhs)
+if compound-result && sets && !updates-in-place(target, op, value, rhs)
     =? invalid-type if store-through-setter(lhs, object-syntax, receiver, name, lhs, target, .call-store-setter) == invalid-type
 .. compound-result = op != .eq-op && result != invalid-type
+.. sets = is-accessor(receiver, name) || sets-added(receiver, name, target, lhs)
 note-replacement(id, target, if op == .eq-op then value else result)
 if object-syntax != 0 && !facts.is-replacing(instance, id) && forget-store-root(object-syntax)
     settled-store = id
@@ -49237,9 +49808,10 @@ _ do store-through-setter TypeId
 
 ` A value stored in a property its setter answers: by an assignment, or by an assigning operator
 ` that stores the value it makes through the setter (`call-store-setter`).
-. found = types.property-named(receiver, name)
+. found = property-named(receiver, name)
 if found && is-hidden(types.properties[found], name, .setter-decl)
-    frame.diagnose(lhs, .stated, program.store-atom("Property \"${name.text}\" is private"))
+    . message = privacy-message(types.properties[found], name, .setter-decl)
+    frame.diagnose(lhs, .stated, program.store-atom(message))
     = invalid-type
 . diagnosed = facts.diagnostics.length
 . site = if object-syntax != 0 then object-syntax else lhs
@@ -49285,9 +49857,9 @@ if object-syntax == 0
 . kind = types.intrinsic-of(receiver)
 if !is-plain-tuple(receiver) && (kind != .tuple || view-kind(receiver) != 0)
     = no-type
-if name == types.length-atom! && !types.property-named(receiver, name)
+if name == types.length-atom! && !property-named(receiver, name)
     = truncated-tuple(id, receiver, rhs)
-. field = types.property-named(receiver, name)
+. field = property-named(receiver, name)
 if !field || types.properties[field].storage-kind != .storage-eager
     = no-type
 = receiver
@@ -49343,7 +49915,7 @@ _ do refuses-layout Bool
 ` cast to its base, which is a copy, or one a call gives.
 . kind = types.intrinsic-of(receiver)
 . plain = is-plain-tuple(receiver) || (kind == .tuple && view-kind(receiver) == 0)
-if name == types.length-atom! && !types.property-named(receiver, name)
+if name == types.length-atom! && !property-named(receiver, name)
     if kind == .struct
         frame.diagnose(lhs, .stated, program.store-atom("Struct layout cannot be changed"))
         = true
@@ -49352,7 +49924,7 @@ if name == types.length-atom! && !types.property-named(receiver, name)
         = true
     = false
 if kind == .struct && !holds-struct(object-syntax)
-    . stored = types.property-named(receiver, name)
+    . stored = property-named(receiver, name)
     if stored && types.properties[stored].storage-kind == .storage-eager
         . shown = type-display(types, receiver)
         . message = "Assigning ${name.text} changes a $shown struct that nothing holds, so the change is lost; assign ${name.text} where the struct is held"
@@ -49362,7 +49934,7 @@ if !plain || !want.asks(.want-statement) || is-row-cursor(object-syntax)
     = false
 if !want.asks(.want-quasi) && !frame.declaration.is-imperative && !frame.declaration.is-main
     = false
-. field = types.property-named(receiver, name)
+. field = property-named(receiver, name)
 if !field || types.properties[field].storage-kind != .storage-eager
     = false
 . owner = description-of(tree, object-syntax)
@@ -49452,6 +50024,18 @@ do match? tree.nodes[syntax]
             = op == TableOp.table-row || op == TableOp.selection-row || op == TableOp.proven-row
         .. table-planned = facts.plan-of(instance, syntax) == .plan-table
 = false
+
+────────────────────
+_ do sets-added Bool
+    - receiver TypeId
+    - name Atom
+    - value TypeId
+    - rhs SyntaxId
+
+` Whether a setter that an extension or a facet adds takes a value stored to a name the class has
+` no property of.
+=? false if property-named(receiver, name) != null || types.intrinsic-of(receiver) != .class
+= calls.has-setter(receiver, name, value, rhs)
 
 ────────────────────
 _ do forwards-setter Bool
@@ -50028,7 +50612,7 @@ _ NamedEvent is Tuple
 
 ` An event a node names: the class that declares it, as the object's type has it, its name,
 ` what it publishes, and the type of its key where it is published by key, with the node that
-` indexes it with a key where one does. A private event does not bubble.
+` indexes it with a key where one does. An event that is not public does not bubble.
 
 + owner TypeId
 + name Atom

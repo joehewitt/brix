@@ -269,8 +269,12 @@ if caller
         do match? owner.decls[extension.decl]
             | .decl-extension(row)
                 . home = extension.module
-                add-declared(owner, home, row.members, calls, into, slots, outer, caller)
-add-declared(module, declaring.module, range, calls, into, slots, outer, caller)
+                . open = program.reaches-private(caller, home)
+                . shared = program.same-family(caller, home)
+                add-declared(owner, home, row.members, calls, into, slots, outer, open, shared)
+. reached = !caller || program.reaches-private(caller, declaring.module)
+. shared = !caller || program.same-family(caller, declaring.module)
+add-declared(module, declaring.module, range, calls, into, slots, outer, reached, shared)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do add-generated
@@ -394,9 +398,11 @@ _ do add-declared
     - into [ConstructorCandidate]
     - slots [U32]
     - owner TypeId
-    - caller ModuleId?
+    - reached Bool
+    - shared Bool
 
-` A private constructor constructs only for the module that declares it.
+` A private constructor constructs only for code that reaches its module's private declarations,
+` and one shared with a file family only for code of that family.
 if range.count == 0
     =
 for member in module.member-pool[range]
@@ -404,7 +410,9 @@ for member in module.member-pool[range]
         | .decl-function(row)
             . open = match row.access
                 | .private-access
-                    caller == null || caller == module-index
+                    reached
+                | .family-access
+                    shared
                 ??
                     true
             if row.kind == .constructor-decl && open

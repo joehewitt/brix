@@ -403,7 +403,7 @@ failures[source-path] = (imported as Error).message
 _ do admit-root ?! Error
     - path String
 
-. suffix = platform-suffix(path)
+. suffix = module-platform(path)
 if !target
     target = target-including(suffix)
 ?! Error("${file-name(path)} ends in \".${suffix}\", which isn't a platform")
@@ -417,6 +417,16 @@ if resolver.c-headers.target-name != target!.name
     resolver.use-c-headers(target-c-headers(target!))
 
 ────────────────────
+_ do module-platform String?
+    - path String
+
+` The platform a module is built for, from the last part of its name. A module of a file family
+` that names none there is built for every platform, as `box.scroll.yumi` is.
+. suffix = platform-suffix(path)
+=? null if suffix && !is-platform(suffix) && resolver.family-base(path)
+= suffix
+
+────────────────────
 _ do import-present-module ModuleSource? ?! Error
     - loc MatchLocation
     - name String
@@ -425,12 +435,16 @@ _ do import-present-module ModuleSource? ?! Error
 
 do match? resolver.find-module(name, scope-module.name, scope-module.path)
     | module-name, module-path
-        . suffix = platform-suffix(module-path as String)
+        . family = resolver.family-base(module-path as String)
+        ?! YumiSyntaxError(loc, family-message, source-of(source-path), source-path)
+            if family && !resolver.in-family(scope-module.path, family)
+        .. family-message = "Module \"$name\" belongs to the file family of ${file-name(family)}, so only that family can import it"
+        . suffix = module-platform(module-path as String)
         if !target!.includes(suffix)
             ?! YumiSyntaxError(loc, platform-message, source-of(source-path), source-path)
                 if !is-platform(suffix!)
             .. platform-message = "Module \"$name\" ends in \".${suffix!}\", which isn't a platform"
-            . importer = platform-suffix(scope-module.path)
+            . importer = module-platform(scope-module.path)
             ?! YumiSyntaxError(loc, "Module \"$name\" is never part of the same build as ${file-name(scope-module.path)}", source-of(source-path), source-path)
                 if !builds-together(importer, suffix)
             absent-imports += AbsentImport(scope-module.name, module-path as String)

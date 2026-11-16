@@ -3,6 +3,7 @@
 /lang/ast/ast-nodes
 /lang/ast/decl
 /lang/ast/module
+/lang/ast/operator
 /lang/ast/program
 /lang/ast/row-range
 /lang/check/binding
@@ -506,12 +507,12 @@ _ do own-receiver TypeId
 
 ` The class whose method a call by a name alone names, where no function by that name is
 ` visible: that of the method the call is in, or of one it is written in.
-=? no-type if visible-signatures(diagnostic.module, name, .function-decl, false).length != 0
+=? no-type if visible-signatures(diagnostic.module, name, .function-decl, null).length != 0
 . instance = diagnostic.instance
 while instance < instances.rows.length
     . own = instances.rows[instance].self-type
     =? own if own != no-type && matching != 0
-    .. matching = member-signatures(diagnostic.module, own, name, false, diagnostic.members).length
+    .. matching = member-signatures(diagnostic.module, own, name, null, diagnostic.members).length
     instance = instances.rows[instance].enclosing
 = no-type
 
@@ -530,8 +531,8 @@ _ free-function-message String
 ??
     "Function \"${name.text}\" not found${missing-note(caller, name, false, nearby)}"
 
-.. signatures = visible-signatures(caller, name, .function-decl, false)
-.. hidden = visible-signatures(caller, name, .function-decl, true)
+.. signatures = visible-signatures(caller, name, .function-decl, null)
+.. hidden = visible-signatures(caller, name, .function-decl, Access.private-access)
 .. declared = "${declared-as(signatures)}${private-note(hidden)}"
 .. nearby = visible-name-texts(caller, false)
 
@@ -603,15 +604,24 @@ _ method-message String
     "No method \"$method\" of $shown${accepting(given)}; $declared"
 |? hidden.length != 0
     "Method \"$method\" of $shown is private, declared with _, so only its own module can call it"
+|? shared.length != 0
+    "Method \"$method\" of $shown is shared, declared with ^, so only its own file family can call it"
+|? unseen
+    "$shown has no method \"$method\" here; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
+|? widening
+    "$shown has no method \"$method\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"as $widening\" to reach the rest of $widening"
 ??
     "$shown has no method \"$method\"${suggested(method, member-names(caller, receiver))}"
 
 .. method = name.text
+.. widening = facet-widening(receiver, name)
+.. unseen = unseen-facet(caller, name, receiver)
 .. shown = type-source(types, receiver)
 .. inner = optional-inner(receiver)
-.. signatures = member-signatures(caller, receiver, name, false, added)
-.. hidden = member-signatures(caller, receiver, name, true, added)
-.. declared = "${declared-as(signatures)}${private-note(hidden)}"
+.. signatures = member-signatures(caller, receiver, name, null, added)
+.. hidden = member-signatures(caller, receiver, name, Access.private-access, added)
+.. shared = member-signatures(caller, receiver, name, Access.family-access, added)
+.. declared = "${declared-as(signatures)}${private-note(hidden)}${family-note(shared)}"
 
 ────────────────────
 _ do constructor-message String
@@ -668,6 +678,8 @@ _ named-constructor-message String
     - atom Atom
     - given String?
 
+|? facet
+    "$name is a facet of ${facet-owner-name(facet)}, so it has no constructor; a ${facet-owner-name(facet)} is a $name"
 |? !visible-type(caller, atom)
     "Type \"$name\" not found${missing-note(caller, atom, true, visible-name-texts(caller, true))}"
 |? is-interface(caller, atom)
@@ -675,17 +687,22 @@ _ named-constructor-message String
 |? alternatives.length != 0
     "$name stands for any one of ${" and ".join(alternatives)}, so it has no constructor; give it a value of one of them, as in $name(value)"
 |? signatures.length != 0
-    "$message; its declared constructors are ${" and ".join(signatures)}${private-note(hidden)}"
+    "$message; its declared constructors are ${" and ".join(signatures)}$kept"
 |? hidden.length != 0
     "$message; its constructors are private, declared with _, so only its own module can call them"
+|? shared.length != 0
+    "$message; its constructors are shared, declared with ^, so only its own file family can call them"
 ??
     message
 
 .. name = atom.text
+.. facet = visible-facet(caller, atom)
 .. message = "No constructor of $name${accepting(given)}"
 .. alternatives = alternative-names(caller, atom)
-.. signatures = constructor-signatures(caller, atom, name, false)
-.. hidden = constructor-signatures(caller, atom, name, true)
+.. signatures = constructor-signatures(caller, atom, name, null)
+.. hidden = constructor-signatures(caller, atom, name, Access.private-access)
+.. shared = constructor-signatures(caller, atom, name, Access.family-access)
+.. kept = "${private-note(hidden)}${family-note(shared)}"
 
 ────────────────────
 _ do enclosing-call SyntaxId
@@ -746,7 +763,7 @@ _ do constructor-signatures [String]
     - caller ModuleId
     - name Atom
     - shown String
-    - hidden Bool
+    - kept Access?
 
 . found [String]
 for candidate in program.lookup(caller, name)
@@ -758,9 +775,9 @@ for candidate in program.lookup(caller, name)
                 . member = owner.member-pool[class.members.start + offset]
                 do match? owner.decls[member]
                     | .decl-function(fn)
-                        . open = is-public(fn.access) || candidate.module == caller
+                        . open = keeps(caller, candidate.module, fn.access, kept)
                         . written = constructor-signature(owner, class, fn, shown, intrinsic)
-                        if written && open != hidden && found.length < 4 && !(found has written)
+                        if written && open && found.length < 4 && !(found has written)
                             found += written
 = found
 
@@ -839,10 +856,16 @@ _ member-read-message String
     "Property \"$property\" not found"
 |? inner != no-type && class-declares(inner, name)
     "Property \"$property\" is read from $shown, which may be null; unwrap it first with ! or ?."
+|? unseen
+    "$shown has no property \"$property\" here; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
+|? widening
+    "$shown has no property \"$property\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"as $widening\" to reach the rest of $widening"
 ??
     "$shown has no property \"$property\"${suggested(property, member-names(caller, receiver))}"
 
 .. property = name.text
+.. widening = facet-widening(receiver, name)
+.. unseen = unseen-facet(caller, name, receiver)
 .. interpolated = interpolated-read(tree, object)
 .. named = written-name(tree, object)
 .. cases = case-names(caller, named)
@@ -998,9 +1021,63 @@ if !name
         | .node-float-syntax(row)
             = unit-message(diagnostic, row.unit)
     = base
+. facet = facet-named(program.store-atom(name))
+=? facet-reach-message(diagnostic.module, name, facet) if facet
 . nearby = visible-name-texts(diagnostic.module, true)
 . note = missing-note(diagnostic.module, program.store-atom(name), true, nearby)
 = "Type \"$name\" not found$note"
+
+────────────────────
+_ facet-reach-message String
+    - module ModuleId
+    - name String
+    - facet U32
+
+|? kept
+    "$missing; facet $name of $owner is private, declared with _, so only its own file names it"
+|? hosted
+    "$missing; facet $name of $owner is in reach of another facet only where it sees it. Write \"sees $name\" under the facet that uses it"
+??
+    "$missing; $name is a facet of $owner, whose name comes with $owner's module. Import that module to name it"
+
+.. missing = "Type \"$name\" not found"
+.. owner = facet-owner-name(facet)
+.. kept = is-kept-facet(module, facet)
+.. hosts = program.facets.hosts
+.. hosted = module < hosts.length && hosts[module] == program.facets.owner-modules[facet]
+
+────────────────────
+_ is-kept-facet Bool
+    - module ModuleId
+    - facet U32
+
+` Whether a facet is private to a file other than a module's.
+match program.modules[home].decls[program.facets.decls[facet]]
+    | .decl-extension(row)
+        home != module && !program.reaches-access(module, home, row.access)
+    ??
+        false
+
+.. home = program.facets.modules[facet]
+
+────────────────────
+_ do facet-named U32?
+    - name Atom
+
+` The facet of the program with a name, if one has it.
+. facets = program.facets
+for facet in 0 .. < facets.count
+    do match? program.modules[facets.modules[facet]].decls[facets.decls[facet]]
+        | .decl-extension(row)
+            if row.facet == name
+                = facet as U32
+= null
+
+────────────────────
+_ facet-owner-name String
+    - facet U32
+
+class-name(program, program.facets.owner-modules[facet], program.facets.owner-decls[facet])
 
 ────────────────────
 _ do unit-message String
@@ -1035,6 +1112,54 @@ do match? tree.nodes[id]
 = null
 
 ────────────────────
+_ do facet-widening String?
+    - receiver TypeId
+    - name Atom
+
+` The owner of a facet's value, where the owner or another of its facets has a member of a name
+` that the facet's value lacks.
+. facet = types.facet-of-type(receiver) if receiver != no-type && receiver != invalid-type
+=? null if !facet
+. owner = types.facet-owner(facet)
+=? null if owner == no-type || !class-declares(owner, name)
+= type-source(types, owner)
+
+────────────────────
+_ do unseen-facet String?
+    - module ModuleId
+    - name Atom
+    - receiver TypeId = no-type
+
+` A facet of a class that a module declares facets of, which declares a member of a name that is
+` not private and which the module's facets do not see: a facet of the receiver's class or of a
+` class above it, where there is a receiver, which a facet's value is its owner's.
+. facets = program.facets
+. viewed = types.facet-of-type(receiver) if receiver != no-type && receiver != invalid-type
+. held = if viewed then types.facet-owner(viewed) else receiver
+for facet in 0 .. < facets.count
+    . owned = held == no-type || is-of-class(held, facets.owner-modules[facet], facets.owner-decls[facet])
+    if owned && facets.states[facet] == .facet-bound && !program.sees-facet(module, facet as U32)
+        . target = program.modules[facets.modules[facet]]
+        do match? target.decls[facets.decls[facet]]
+            | .decl-extension(row)
+                . place = target.first-member(row.members, name)
+                while place != no-member
+                    . member = target.member-pool[place]
+                    place = target.member-links[place]
+                    . shared = match target.decls[member]
+                        | .decl-property(property)
+                            property.name == name && property.access != .private-access
+                        | .decl-function(fn)
+                            fn.name == name && fn.access != .private-access
+                        | .decl-event(event)
+                            event.name == name && event.access != .private-access
+                        ??
+                            false
+                    if shared
+                        = row.facet?.text
+= null
+
+────────────────────
 _ stated-name-message String
     - diagnostic TypeDiagnostic
     - base String
@@ -1051,10 +1176,13 @@ _ name-message String
 
 |? dash && dash > 0 && preceded-by-dollar(program.modules[module].tree, syntax)
     "$missing; in a string, \"\$$name\" reads the whole name \"$name\". $fix"
+|? unseen
+    "$missing; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
 ??
     "$missing${missing-note(module, program.store-atom(name), false, nearby)}"
 
 .. missing = "Name \"$name\" not found"
+.. unseen = unseen-facet(module, program.store-atom(name))
 .. dash = name.find-reverse("-")
 .. rest = name[dash ...]
 .. fix = "Write \"${braced(name[0 .. < dash])}$rest\" to put \"$rest\" after the value"
@@ -1084,6 +1212,10 @@ if !known(value)
     = base
 . wanted = written-type(tree, annotation)
 . shown = type-source(types, value)
+. viewed = types.facet-of-type(value)
+if viewed
+    . owner = type-source(types, types.facet-owner(viewed))
+    = "\"$name\" is declared $wanted, but its value is $shown, a facet's value, which becomes only the facets it is part of unasked; write \"as $owner\" to convert its class"
 . fix = "convert the value, or declare \"$name\" without a type"
 = "\"$name\" is declared $wanted, but its value is $shown, which can never be $wanted; $fix"
 
@@ -1395,7 +1527,7 @@ _ local-call-message String?
 
 |? local-names(diagnostic.module, callable).find(name.text) == null
     null
-|? visible-signatures(diagnostic.module, name, .function-decl, false).length != 0
+|? visible-signatures(diagnostic.module, name, .function-decl, null).length != 0
     null
 |? shown.starts-with("function ") || shown == "closure"
     null
@@ -2250,6 +2382,28 @@ if hidden.length == 0 then "" else "; ${" and ".join(hidden)} $verb private to i
 .. verb = if hidden.length == 1 then "is" else "are"
 
 ────────────────────
+_ family-note String
+    - shared [String]
+
+if shared.length == 0 then "" else "; ${" and ".join(shared)} $verb shared with its file family"
+
+.. verb = if shared.length == 1 then "is" else "are"
+
+────────────────────
+_ do keeps Bool
+    - caller ModuleId
+    - module ModuleId
+    - access Access
+    - kept Access?
+
+` Whether a declaration of a module with an access belongs in a list of signatures: one the caller
+` reaches, for a list of none kept, or one kept from the caller by the access the list is of.
+. reached = program.reaches-access(caller, module, access)
+if !kept
+    = reached
+= !reached && access == kept
+
+────────────────────
 _ is-letter Bool
     - text String
 
@@ -2283,7 +2437,7 @@ _ do visible-signatures [String]
     - caller ModuleId
     - name Atom
     - kind DeclKind
-    - hidden Bool
+    - kept Access?
 
 . found [String]
 for candidate in program.lookup(caller, name)
@@ -2292,8 +2446,8 @@ for candidate in program.lookup(caller, name)
         continue
     do match? owner.decls[candidate.decl]
         | .decl-function(fn)
-            . open = is-public(fn.access) || candidate.module == caller
-            if fn.owner == 0 && fn.kind == kind && open != hidden && found.length < 3
+            . open = keeps(caller, candidate.module, fn.access, kept)
+            if fn.owner == 0 && fn.kind == kind && open && found.length < 3
                 found += signature(owner, fn)
 = found
 
@@ -2302,7 +2456,7 @@ _ do member-signatures [String]
     - caller ModuleId
     - receiver TypeId
     - name Atom
-    - hidden Bool
+    - kept Access?
     - added RowRange'DeclRef = RowRange'DeclRef()
 
 . found [String]
@@ -2310,9 +2464,9 @@ for ref in member-refs(receiver, added)
     . owner = program.modules[ref.module]
     do match? owner.decls[ref.decl]
         | .decl-function(fn)
-            . open = is-public(fn.access) || ref.module == caller
+            . open = keeps(caller, ref.module, fn.access, kept)
             . wanted = fn.name == name && fn.kind == .function-decl
-            if wanted && open != hidden && found.length < 3
+            if wanted && open && found.length < 3
                 found += signature(owner, fn)
 = found
 
@@ -2338,14 +2492,32 @@ refs ++= facts.diagnostic-members[added.start .. < added.end]
 = refs
 
 ────────────────────
+_ do is-of-class Bool
+    - receiver TypeId
+    - module ModuleId
+    - decl DeclId
+
+` Whether a type is a class a module declares, or a class below it.
+. current = receiver
+. depth = 0
+while settled(current) && depth < 16
+    do match? types.rows[current]
+        | .type-class(row)
+            =? true if row.module == module && row.decl == decl
+    current = types.completion-of(current).base
+    depth += 1
+= false
+
+────────────────────
 _ class-declares Bool
     - type TypeId
     - name Atom
 
-settled(type) && (types.property-named(type, name) != null || visible.length + hidden.length != 0)
+settled(type) && (types.property-named(type, name) != null || visible + hidden + shared != 0)
 
-.. visible = member-signatures(0, type, name, false)
-.. hidden = member-signatures(0, type, name, true)
+.. visible = member-signatures(0, type, name, null).length
+.. hidden = member-signatures(0, type, name, Access.private-access).length
+.. shared = member-signatures(0, type, name, Access.family-access).length
 
 ────────────────────
 _ do signature String
@@ -2366,6 +2538,20 @@ for offset in 0 .. < fn.args.count
 . name = named ?? (if fn.name then fn.name.text else "?")
 . params = if written.length != 0 then "(${", ".join(written)})" else ""
 = "\"$name$params\""
+
+────────────────────
+_ do visible-facet U32?
+    - caller ModuleId
+    - name Atom
+
+` The facet a name names where the caller sees it, and sees no class of the name.
+=? null if visible-type(caller, name)
+for candidate in program.lookup(caller, name)
+    do match? program.modules[candidate.module].decls[candidate.decl]
+        | .decl-extension(row)
+            if row.facet == name
+                = program.facets.index-of(candidate.module, candidate.decl)
+= null
 
 ────────────────────
 _ do visible-type Bool

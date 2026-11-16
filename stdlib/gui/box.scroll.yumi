@@ -1,0 +1,582 @@
+./box
+./events
+./frame-clock
+./primitives
+./styles
+/graphics/canvas
+/graphics/color
+/graphics/point
+/graphics/primitives
+/math
+/math/motion
+/time/deadline
+
+━━━━━━━━━━━━━━━━━━━━
++ BoxScroll is facet of Box
+    using GUIBoxScroll
+
++ scroll-position => if scroll-state then scroll-state.position else Point(0, 0)
++ scroll-x => scroll-position.x
++ scroll-y => scroll-position.y
++ scroll-min => Point(0, 0)
++ scroll-max => calculate-scroll-max()
++ scroll-viewport => content-bounds.size
++ scroll-content-bounds => calculate-scroll-content-bounds()
++ scroll-phase => calculate-scroll-phase()
++ is-scrolling => is-active-scroll-phase(scroll-phase)
+
+────────────────────
++ get content-scroll-translation
+
+Point(-offset.x, -offset.y)
+
+.. offset = content-offset
+
+────────────────────
++ get is-gliding Bool
+
+glide != null && is-animating(glide)
+
+.. glide = scroll-state?.glide
+
+────────────────────
++ get retained-scroll-indicator-color RGBA
+
+$scroll-indicator-color ?? $gui-scroll-indicator-color
+
+────────────────────
++ do get has-retained-scroll-indicator Bool
+
+. horizontal = is-scroll-axis-enabled(Orientation.horizontal)
+horizontal = horizontal && $scroll-indicator-x != ScrollIndicatorVisibility.hidden
+. vertical = is-scroll-axis-enabled(Orientation.vertical)
+vertical = vertical && $scroll-indicator-y != ScrollIndicatorVisibility.hidden
+= horizontal || vertical
+
+────────────────────
++ has-lingering-scroll-indicator
+
+|? !scroll-state
+    false
+??
+    scroll-state.is-indicator-lingering || scroll-state.indicator-fade != null
+
+────────────────────
++ is-scroll-axis-enabled
+    - axis Orientation
+
+overflow == ScrollOverflow.auto || overflow == ScrollOverflow.scroll
+
+.. overflow = if axis == Orientation.horizontal then $overflow-x else $overflow-y
+
+────────────────────
++ scroll-axis-maximum
+    - axis Orientation
+
+|? !is-scroll-axis-enabled(axis)
+    0
+??
+    gui-safe-span(content - viewport)
+
+.. viewport = if axis == Orientation.horizontal then content-bounds.width else content-bounds.height
+.. content = if axis == Orientation.horizontal then inner-width else inner-height
+
+────────────────────
++ do scroll-to
+    - point Point
+    - cause ScrollCause = ScrollCause.programmatic
+
+= apply-scroll-position(point, cause, ScrollPhase.none, ScrollPhase.none)
+
+────────────────────
++ do scroll-to
+    - point Point
+    - motion Motion
+
+scroll-to
+    - => point
+    - motion
+
+────────────────────
++ do scroll-to
+    - goal ScrollGoal
+    - motion Motion
+
+. first = goal()
+=? if !first
+. clock = frame-clock
+if !clock
+    . ignored = scroll-to(first)
+    =
+. state = scroll-state-for-write()
+. running = state.glide
+if running && clock.is-animating(running)
+    running.retarget(goal, motion, clock.now)
+    =
+. position = MotionChannel(scroll-position.motion-vector, scroll-glide-precision)
+. glide = ScrollGlide(this, goal, motion, position)
+glide.aim(first, clock.now)
+state.glide = glide
+animate(glide)
+
+────────────────────
++ do stop-gliding
+
+. glide = scroll-state?.glide
+=? if !glide
+scroll-state?.glide = null
+stop-animating(glide)
+
+────────────────────
++ do scroll-by
+    - delta Point
+    - cause ScrollCause = ScrollCause.programmatic
+
+= consume-scroll(delta, cause, ScrollPhase.none, ScrollPhase.none)
+
+────────────────────
++ do scroll-by Bool
+    - amount Length
+    - direction ScrollDirection = ScrollDirection.down
+    - cause ScrollCause = ScrollCause.programmatic
+
+. consumed = scroll-by(scroll-direction-delta(direction, amount), cause)
+= consumed.actual.x != 0 || consumed.actual.y != 0
+
+────────────────────
++ do consume-scroll
+    - delta Point
+    - cause ScrollCause
+    - phase ScrollPhase
+    - momentum-phase ScrollPhase
+
+. x-consumption = consume-scroll-axis(Orientation.horizontal, delta.x, cause)
+. y-consumption = consume-scroll-axis(Orientation.vertical, delta.y, cause)
+. next = Point(scroll-x + x-consumption.actual, scroll-y + y-consumption.actual)
+apply-scroll-position(next, cause, phase, momentum-phase)
+. actual = Point(x-consumption.actual, y-consumption.actual)
+= ScrollConsumption(delta, actual, Point(delta.x - actual.x, delta.y - actual.y))
+
+────────────────────
++ do settle-scroll-phase
+    - phase ScrollPhase
+    - momentum-phase ScrollPhase
+
+=? if !scroll-state || !is-scrolling
+. state = scroll-state-for-write()
+state.direct-phase = scroll-phase-code(phase) as U8
+state.momentum-phase = scroll-phase-code(momentum-phase) as U8
+
+────────────────────
++ consume-scroll-axis
+    - axis Orientation
+    - pixel-delta Length
+    - cause ScrollCause
+
+|? !is-scroll-axis-enabled(axis)
+    ScrollAxisConsumption(pixel-delta, 0, pixel-delta)
+??
+    gui-scroll-consume-axis
+        - snapshot.position
+        - snapshot.minimum
+        - snapshot.maximum
+        - pixel-delta
+
+.. snapshot = scroll-axis-snapshot(axis)
+
+────────────────────
++ stops-scroll-remainder
+    - axis Orientation
+
+|? !is-scroll-axis-enabled(axis)
+    false
+??
+    behavior != OverscrollBehavior.auto
+
+.. behavior = if is-horizontal then $overscroll-behavior-x else $overscroll-behavior-y
+.. is-horizontal = axis == Orientation.horizontal
+
+────────────────────
++ do scroll-to-start
+    - axis Orientation
+
+. next = if axis == Orientation.horizontal then Point(0, scroll-y) else Point(scroll-x, 0)
+= scroll-to(next)
+
+────────────────────
++ do scroll-to-end
+    - axis Orientation
+
+. next Point
+if axis == Orientation.horizontal
+    next = Point(scroll-max.x, scroll-y)
+else
+    next = Point(scroll-x, scroll-max.y)
+= scroll-to(next)
+
+────────────────────
++ do nearest-scroll-container Box?
+    - axis Orientation
+
+. cursor Box? = this
+while cursor
+    . box = cursor
+    if !box.is-markup-shadow && box.is-scroll-axis-enabled(axis)
+        . overflows = box.has-vertical-overflow
+        if axis == Orientation.horizontal
+            overflows = box.has-horizontal-overflow
+        =? box if overflows
+    =? if box.is-presentation-layer
+    cursor = box.material-parent
+
+────────────────────
++ do has-scroll-container-ancestor
+
+=? false if is-presentation-layer
+. cursor = this.material-parent
+while cursor
+    . ancestor = cursor
+    . scrolls-x = ancestor.is-scroll-axis-enabled(Orientation.horizontal)
+    . scrolls-y = ancestor.is-scroll-axis-enabled(Orientation.vertical)
+    =? true if scrolls-x || scrolls-y
+    =? false if ancestor.is-presentation-layer
+    cursor = ancestor.material-parent
+= false
+
+────────────────────
++ do scroll-indicator-bounds
+    - axis Orientation
+
+. track = scroll-indicator-track-bounds(axis)
+=? Rect(0, 0, 0, 0) if track.width <= 0 || track.height <= 0
+. snapshot = scroll-axis-snapshot(axis)
+if axis == Orientation.horizontal
+    . metrics = gui-scroll-indicator-metrics
+        - snapshot.position
+        - snapshot.minimum
+        - snapshot.maximum
+        - snapshot.viewport
+        - snapshot.content
+        - track.width
+        - $scroll-indicator-min-length
+    = Rect
+        - track.x + metrics.thumb-start
+        - track.y
+        - metrics.thumb-length
+        - track.height
+. metrics = gui-scroll-indicator-metrics
+    - snapshot.position
+    - snapshot.minimum
+    - snapshot.maximum
+    - snapshot.viewport
+    - snapshot.content
+    - track.height
+    - $scroll-indicator-min-length
+= Rect
+    - track.x
+    - track.y + metrics.thumb-start
+    - track.width
+    - metrics.thumb-length
+
+────────────────────
++ do scroll-indicator-axis-at
+    - root-point Point
+
+. vertical = presentation-rect(scroll-indicator-track-bounds(Orientation.vertical))
+=? Orientation.vertical if vertical.width > 0 && vertical.contains(root-point)
+. horizontal = presentation-rect(scroll-indicator-track-bounds(Orientation.horizontal))
+=? Orientation.horizontal if horizontal.height > 0 && horizontal.contains(root-point)
+
+────────────────────
++ scroll-indicator-drag-offset
+    - axis Orientation
+    - root-point Point
+
+|? thumb.contains(root-point)
+    coordinate - thumb-start
+??
+    thumb-length / 2
+
+.. thumb = presentation-rect(scroll-indicator-bounds(axis))
+.. coordinate = if axis == Orientation.horizontal then root-point.x else root-point.y
+.. thumb-start = if axis == Orientation.horizontal then thumb.x else thumb.y
+.. thumb-length = if axis == Orientation.horizontal then thumb.width else thumb.height
+
+────────────────────
++ do scroll-indicator-scroll-to-point
+    - axis Orientation
+    - root-point Point
+    - drag-offset Length
+
+. snapshot = scroll-axis-snapshot(axis)
+=? false if snapshot.maximum <= snapshot.minimum
+. track = presentation-rect(scroll-indicator-track-bounds(axis))
+. thumb = presentation-rect(scroll-indicator-bounds(axis))
+. coordinate = if axis == Orientation.horizontal then root-point.x else root-point.y
+. track-start = if axis == Orientation.horizontal then track.x else track.y
+. track-length = if axis == Orientation.horizontal then track.width else track.height
+. thumb-length = if axis == Orientation.horizontal then thumb.width else thumb.height
+. travel = max(0, track-length - thumb-length)
+=? false if travel <= 0
+. thumb-start = min(travel, max(0, coordinate - track-start - drag-offset))
+= scroll-indicator-seek
+    - axis
+    - snapshot.minimum + (snapshot.maximum - snapshot.minimum) * thumb-start / travel
+
+────────────────────
++ do paint-scroll-indicators
+    - canvas Canvas
+
+. horizontal = scroll-indicator-bounds(Orientation.horizontal)
+. vertical = scroll-indicator-bounds(Orientation.vertical)
+if horizontal.width > 0 && horizontal.height > 0
+    do use canvas.saved-state
+        canvas.fill-color = scroll-indicator-paint-color($scroll-indicator-x)
+        canvas.stroke-color = null
+        canvas.outline(gui-scroll-indicator-outline(horizontal))
+if vertical.width > 0 && vertical.height > 0
+    do use canvas.saved-state
+        canvas.fill-color = scroll-indicator-paint-color($scroll-indicator-y)
+        canvas.stroke-color = null
+        canvas.outline(gui-scroll-indicator-outline(vertical))
+
+────────────────────
++ do linger-scroll-indicator
+
+. state = scroll-state-for-write()
+state.indicator-deadline = Deadline(gui-scroll-indicator-linger)
+=? if state.is-indicator-lingering
+state.is-indicator-lingering = true
+state.indicator-fade = null
+do new
+    settle-scroll-indicator-linger()
+
+────────────────────
+_ scroll-phase-code
+    - phase ScrollPhase
+
+match phase
+    |= ScrollPhase.began
+        1
+    |= ScrollPhase.stationary
+        2
+    |= ScrollPhase.changed
+        3
+    |= ScrollPhase.ended
+        4
+    |= ScrollPhase.cancelled
+        5
+    |= ScrollPhase.may-begin
+        6
+    ??
+        0
+
+────────────────────
+_ scroll-phase-from-code
+    - code U8
+
+match code
+    |= 1
+        ScrollPhase.began
+    |= 2
+        ScrollPhase.stationary
+    |= 3
+        ScrollPhase.changed
+    |= 4
+        ScrollPhase.ended
+    |= 5
+        ScrollPhase.cancelled
+    |= 6
+        ScrollPhase.may-begin
+    ??
+        ScrollPhase.none
+
+────────────────────
+_ is-active-scroll-phase
+    - phase ScrollPhase
+
+match phase
+    |= ScrollPhase.none
+        false
+    |= ScrollPhase.ended
+        false
+    |= ScrollPhase.cancelled
+        false
+    ??
+        true
+
+────────────────────
+_ calculate-scroll-max
+
+Point
+    - scroll-axis-maximum(Orientation.horizontal)
+    - scroll-axis-maximum(Orientation.vertical)
+
+────────────────────
+_ calculate-scroll-content-bounds Rect
+
+Rect(content-bounds.x, content-bounds.y, inner-width, inner-height)
+
+────────────────────
+_ calculate-scroll-phase
+
+|? !scroll-state
+    ScrollPhase.none
+|? momentum != ScrollPhase.none
+    momentum
+??
+    scroll-phase-from-code(scroll-state!.direct-phase)
+
+.. momentum = scroll-phase-from-code(scroll-state.momentum-phase)
+
+────────────────────
+^ do apply-scroll-position
+    - requested Point
+    - cause ScrollCause
+    - phase ScrollPhase
+    - momentum-phase ScrollPhase
+
+if cause.is-direct
+    stop-gliding()
+. previous = scroll-position
+. next = clipped-scroll-position(requested)
+. has-phase = phase != ScrollPhase.none || momentum-phase != ScrollPhase.none
+if scroll-state || previous != next || has-phase
+    . state = scroll-state-for-write()
+    state.direct-phase = scroll-phase-code(phase) as U8
+    state.momentum-phase = scroll-phase-code(momentum-phase) as U8
+=? false if previous == next
+. state = scroll-state-for-write()
+state.position = next
+if cause.is-direct && has-retained-scroll-indicator
+    linger-scroll-indicator()
+invalidate-scroll-paint()
+invalidate-visited-native-geometry()
+. host = window-host
+host?.invalidate-popup-placement()
+host?.notify-clip-watchers(this)
+scroll-changed <- ScrollChangedEvent(previous, next, cause, phase, momentum-phase)
+= true
+
+────────────────────
+^ do clamp-scroll-after-layout
+
+apply-scroll-position
+    - scroll-position
+    - ScrollCause.layout-clamp
+    - ScrollPhase.none
+    - ScrollPhase.none
+
+────────────────────
+_ do invalidate-scroll-paint
+
+retained-move-only-invalidation = false
+retained-transform-only-invalidation = false
+if !retained-paint-self-invalid
+    retained-scroll-only-invalidation = true
+mark-retained-paint-invalid()
+window?.schedule-render()
+
+────────────────────
+^ is-scroll-pinned-to-end Bool
+
+anchors-end && scroll-position.y >= scroll-max.y - 1
+
+.. anchors-end = $scroll-anchor == ScrollAnchor.end && is-scroll-axis-enabled(Orientation.vertical)
+
+────────────────────
+^ do keep-scroll-end
+
+. end = scroll-max.y
+=? if end == scroll-position.y
+apply-scroll-position
+    - Point(scroll-position.x, end)
+    - ScrollCause.layout-clamp
+    - ScrollPhase.none
+    - ScrollPhase.none
+
+────────────────────
+_ scroll-indicator-paint-color RGBA
+    - visibility ScrollIndicatorVisibility
+
+|? visibility == ScrollIndicatorVisibility.always
+    color
+??
+    color.with-alpha(color.alpha * scroll-indicator-alpha())
+
+.. color = retained-scroll-indicator-color
+
+────────────────────
+_ scroll-indicator-alpha F64
+
+|? !state
+    0
+|? state.is-indicator-lingering
+    1
+|? !fade
+    0
+??
+    max(0, min(1, fade.value[0]))
+
+.. state = scroll-state
+.. fade = state.indicator-fade
+
+────────────────────
+_ do settle-scroll-indicator-linger
+
+while scroll-state
+    . state = scroll-state
+    . host = window-host
+    if host && host.holds-scroll-indicator(this)
+        state.indicator-deadline = Deadline(gui-scroll-indicator-linger)
+    . deadline = state.indicator-deadline!
+    if deadline.has-passed
+        break
+    deadline.remaining.wait()
+if scroll-state
+    scroll-state.is-indicator-lingering = false
+    fade-scroll-indicator()
+    invalidate-scroll-paint()
+
+────────────────────
+_ do fade-scroll-indicator
+
+. state = scroll-state
+. clock = frame-clock
+=? if !state || !clock
+. fade = MotionChannel([1.0])
+fade.retarget([0.0], $gui-motion-smooth, clock.now)
+state.indicator-fade = fade
+animate(ScrollIndicatorFade(this))
+
+━━━━━━━━━━━━━━━━━━━━
+_ ScrollIndicatorFade
+    is FrameAnimation
+
++ box Box
+
+────────────────────
++ This
+    - box
+
+────────────────────
++ do advance Bool
+    - tick FrameTick
+
+. state = box.scroll-state
+=? false if !state
+. fade = state.indicator-fade
+=? false if !fade
+fade.update(tick.now)
+if !fade.is-moving
+    state.indicator-fade = null
+box.invalidate-scroll-paint()
+= fade.is-moving
+
+────────────────────
++ do finish
+
+. state = box.scroll-state
+=? if !state || !state.indicator-fade
+state.indicator-fade = null
+box.invalidate-scroll-paint()

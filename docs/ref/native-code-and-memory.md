@@ -519,20 +519,29 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
 
 `@no-gc`, on a function or on a `(do @no-gc …)` block, makes code that never meets the collector:
 it allocates nothing the collector manages, never pauses for it, and never suspends its task. The
-core library's arrays, tables and arenas use it for their inner loops.
+core library's arrays, tables and arenas use it for their inner loops. Each restriction can also be written as
+a `(without …)` part after the annotations, as in `(do (without gc) …)`{.brix} or
+`(fn-do + mean F64 (without heap suspend) …)`{.brix}; see Functions.
 
 | Annotation | Refuses |
 | --- | --- |
-| `@no-heap` | Making objects, arrays and lists. |
+| `@no-heap` | Making objects, arrays, lists and text; closures, tasks and `(do @no-gc …)` blocks that capture locals; a struct or other value that is no object made a value of an interface; a view of an array's rows or fields; calling a generator; a method bound to its object made a function value; and reading a global written with `(:= …)`. |
 | `@no-safepoint` | Pausing for the collector. |
-| `@no-suspend` | Suspending the task, and calling function values. |
+| `@no-suspend` | Suspending the task, calling function values, and reading a global written with `(:= …)`. |
 | `@no-gc` | All three. |
 
 - **Messages.** Making an object gives `allocation is not allowed in a GC-free zone (entered at …)`,
   storing an object anywhere but the zone's own locals gives `storing a managed pointer is not
-  allowed in a GC-free zone`, and waiting gives `cannot suspend inside a GC-free zone`.
+  allowed in a GC-free zone`, and waiting gives `cannot suspend inside a GC-free zone`. Each is
+  reported where it happens, with the calls that reach it from where the restriction is placed,
+  as in `mean (@no-gc) → helper → Box()`. Code a restriction reaches is checked under it however
+  it is called: directly, through an interface or a class's method, or through a conversion.
+  Reading a global written with `(:= …)` gives `cannot read lazy global 'name' inside …, since its
+  first read runs its value`, as that read may run any code and wait while another task runs it.
 - **What may run.** Numbers, structs, pointers, arrays made outside the code, method calls, C calls,
-  and an arena's methods, which are themselves `@no-gc`.
+  and an arena's methods, which are themselves `@no-gc`. A C function marked `@gc-polling` may
+  reach the collector, so under `@no-heap` or `@no-suspend` one counts as allocating and as
+  suspending unless the compiler knows it does neither.
 
 ## What is checked
 

@@ -7,6 +7,7 @@
 /lang/ast/module
 /lang/ast/program
 /lang/brix/convert
+/lang/check/call-paths
 /lang/check/facts
 /lang/check/instances
 /lang/check/session
@@ -240,6 +241,7 @@ _ ExplainReport
 
 _ copies [InstanceId]
 _ lines [ExplainLine]
+_ paths CallPaths
 
 ────────────────────
 + This
@@ -247,6 +249,8 @@ _ lines [ExplainLine]
     - root
     - ref
     - source
+
+.. paths = CallPaths(session)
 
 ────────────────────
 + do text String
@@ -369,34 +373,41 @@ _ do raise-path String
     - start InstanceId
     - error TypeId
 
-. facts = session.facts
-. parent [InstanceId = InstanceId]
-. queue [InstanceId]
-queue += start
-parent[start] = start
-. next Size = 0
-while next < queue.length
-    . id = queue[next]
-    next += 1
-    . site = raise-site(id, error)
-    if site
-        = "${path-to(parent, start, id)}${site}"
-    for call in facts.instance-calls(id)
-        . fact = facts.calls[call]
-        if fact.propagates && fact.callee != no-instance && raises-error(fact.callee, error) && parent[fact.callee] == null
-            parent[fact.callee] = id
-            queue += fact.callee
-    for conversion in facts.instance-conversions(id)
-        . fact = facts.conversions[conversion]
-        if fact.raise == .raise-leaves && fact.callee != no-instance && raises-error(fact.callee, error) && parent[fact.callee] == null
-            parent[fact.callee] = id
-            queue += fact.callee
-for id in queue
-    for call in facts.instance-calls(id)
-        . fact = facts.calls[call]
-        if fact.propagates && fact.form == .call-closure && fact.callee == no-instance
-            = "${path-to(parent, start, id)}a call of a function value, at ${place(id, fact.syntax)}"
+. found = paths.chain-from(start, :: edge CallEdge => passes-error(edge, error), :: instance InstanceId => raise-site(instance, error) != null)
+if found
+    . end = if found.length == 0 then start else found[found.length - 1].callee
+    = "${path-text(found)}${raise-site(end, error)!}"
+. through = paths.chain-from(start, :: edge CallEdge => passes-error(edge, error), :: instance InstanceId => value-call(instance) != 0)
+if through
+    . end = if through.length == 0 then start else through[through.length - 1].callee
+    = "${path-text(through)}a call of a function value, at ${place(end, value-call(end))}"
 = "no raise found"
+
+────────────────────
+_ do passes-error Bool
+    - edge CallEdge
+    - error TypeId
+
+. facts = session.facts
+do match edge.kind
+    |= .edge-call
+        = facts.calls[edge.fact].propagates && raises-error(edge.callee, error)
+    |= .edge-convert
+        = facts.conversions[edge.fact].raise == .raise-leaves && raises-error(edge.callee, error)
+    ??
+        = false
+= false
+
+────────────────────
+_ do value-call SyntaxId
+    - instance InstanceId
+
+` A call of a function value an instance makes that passes on what it raises, or none.
+. facts = session.facts
+for call in facts.instance-calls(instance)
+    . fact = facts.calls[call]
+    =? fact.syntax if fact.propagates && fact.form == .call-closure && fact.callee == no-instance
+= 0
 
 ────────────────────
 _ do raise-site String?
@@ -449,24 +460,20 @@ _ do read-path String
     - module ModuleId
     - decl DeclId
 
-. facts = session.facts
-. parent [InstanceId = InstanceId]
-. queue [InstanceId]
-queue += start
-parent[start] = start
-. next Size = 0
-while next < queue.length
-    . id = queue[next]
-    next += 1
-    for read in facts.stack-reads
-        if read.instance == id && read.module == module && read.decl == decl
-            = "${path-to(parent, start, id)}at ${place(id, read.syntax)}"
-    for call in facts.instance-calls(id)
-        . callee = facts.calls[call].callee
-        if callee != no-instance && needs-global(callee, module, decl) && parent[callee] == null
-            parent[callee] = id
-            queue += callee
-= "no read found"
+. found = paths.chain-from(start, :: edge CallEdge => edge.kind == .edge-call && needs-global(edge.callee, module, decl), :: instance InstanceId => global-read(instance, module, decl) != 0)
+=? "no read found" if !found
+. end = if found.length == 0 then start else found[found.length - 1].callee
+= "${path-text(found)}at ${place(end, global-read(end, module, decl))}"
+
+────────────────────
+_ do global-read SyntaxId
+    - instance InstanceId
+    - module ModuleId
+    - decl DeclId
+
+for read in session.facts.stack-reads
+    =? read.syntax if read.instance == instance && read.module == module && read.decl == decl
+= 0
 
 ────────────────────
 _ do needs-global Bool
@@ -500,42 +507,14 @@ _ do caller-text String
 
 . fact = session.facts.calls[callers[0]]
 . more = if callers.length > 1 then " and ${callers.length - 1} more" else ""
-= "for ${callee-name(fact.instance)} at ${place(fact.instance, fact.syntax)}$more"
+= "for ${paths.name-of(fact.instance)} at ${place(fact.instance, fact.syntax)}$more"
 
 ────────────────────
-_ do path-to String
-    - parent [InstanceId = InstanceId]
-    - start InstanceId
-    - end InstanceId
+_ do path-text String
+    - chain [CallEdge]
 
-. names [String]
-. cursor = end
-while cursor != start
-    names.insert(callee-name(cursor), 0)
-    cursor = parent[cursor] ?? start
-=? "" if names.length == 0
-= "${" → ".join(names)}, "
-
-────────────────────
-_ do callee-name String
-    - instance InstanceId
-
-. row = session.instances.rows[instance]
-. decls = session.program.modules[row.module].decls
-do match? decls[row.decl]
-    | .decl-function(fn)
-        . owner = class-named(decls, fn.owner)
-        =? owner if fn.kind == .constructor-decl && owner.length != 0
-        . name = fn.name
-        if name
-            =? "${owner}.${name.text}" if owner.length != 0
-            = name.text
-        =? "a function in ${callee-name(row.enclosing)}" if row.enclosing != no-instance
-    | .decl-converter(converter)
-        = "the converter of ${class-named(decls, converter.owner)}"
-    | .decl-fromverter(fromverter)
-        = "the fromverter of ${class-named(decls, fromverter.owner)}"
-= "a function"
+=? "" if chain.length == 0
+= "${" → ".join(paths.names(chain))}, "
 
 ────────────────────
 _ do global-name String

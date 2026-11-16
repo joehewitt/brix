@@ -26,6 +26,42 @@ while current != no-type
 = class-ref(types, owner)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do declaring-decl DeclRef
+    - types Types
+    - fact TypeProperty
+
+` The class or facet that declares a property: the facet a facet's property has, unless a class
+` below the facet's own gives it a new value (`is-given-below`), or else the class among a type
+` and its bases that declares it.
+=? declaring-class(types, fact.owner, fact.name) if fact.facet == U32.max || is-given-below(types, fact)
+. facets = types.program.facets
+= DeclRef(facets.modules[fact.facet], facets.decls[fact.facet])
+
+━━━━━━━━━━━━━━━━━━━━
++ is-given-below Bool
+    - types Types
+    - fact TypeProperty
+
+` Whether a class below the class of a facet gives the facet's property a new value: the
+` property's owner is then that class, not the facet's.
+fact.facet != U32.max && (holder.module != owner-module || holder.decl != owner-decl)
+
+.. holder = class-ref(types, fact.owner)
+.. owner-module = types.program.facets.owner-modules[fact.facet]
+.. owner-decl = types.program.facets.owner-decls[fact.facet]
+
+━━━━━━━━━━━━━━━━━━━━
++ do declaring-holder DeclRef
+    - types Types
+    - fact TypeProperty
+
+` The class that holds a property: the class of a facet that declares it, unless a class below
+` gives it a new value (`is-given-below`), or else the class that declares it.
+=? declaring-class(types, fact.owner, fact.name) if fact.facet == U32.max || is-given-below(types, fact)
+. facets = types.program.facets
+= DeclRef(facets.owner-modules[fact.facet], facets.owner-decls[fact.facet])
+
+━━━━━━━━━━━━━━━━━━━━
 + do written-tuple DeclRef
     - types Types
     - type TypeId
@@ -72,7 +108,7 @@ do match? owner.decls[ref.decl]
 
 ` Whether a property is one the markup written in a class declared for an element of a
 ` name: it holds nothing until that markup makes the element.
-. ref = declaring-class(types, fact.owner, fact.name)
+. ref = declaring-decl(types, fact)
 . member = owner-property(types.program, ref.module, ref.decl, fact.name)
 if member == 0
     = false
@@ -111,7 +147,7 @@ do match? owner.decls[ref.decl]
     - property TypeProperty
 
 ` Whether the declaration of a field asks to be packed first among a table row's inline bytes.
-. owner = declaring-class(types, property.owner, property.name)
+. owner = declaring-decl(types, property)
 . written = member-site(types, owner, property.name)
 . target = types.program.modules[owner.module].tree
 do match? target.nodes[written]
@@ -131,7 +167,7 @@ do match? target.nodes[written]
 ` column of its own.
 if field.storage-kind != .storage-eager
     = false
-. declared = declaring-class(types, field.owner, field.name)
+. declared = declaring-decl(types, field)
 for fact in types.cases-of(union)
     if fact.is-default || fact.type == no-type || fact.type == invalid-type
         = false
@@ -141,7 +177,7 @@ for fact in types.cases-of(union)
     . other = types.properties[found]
     if other.storage-kind != .storage-eager || other.type != field.type
         = false
-    . held = declaring-class(types, other.owner, other.name)
+    . held = declaring-decl(types, other)
     if held.module != declared.module || held.decl != declared.decl
         = false
 = true

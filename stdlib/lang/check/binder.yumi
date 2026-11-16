@@ -4818,10 +4818,11 @@ for candidate in program.lookup(module, name)
     . target = program.modules[candidate.module]
     do match? target.decls[candidate.decl]
         | .decl-property(row)
-            if row.owner == 0 && (candidate.module == (module) || is-public(row.access))
+            if row.owner == 0 && (is-public(row.access) || reaches)
                 . found = Resolution(.resolve-global, candidate.module, no-slot, candidate.decl, 0)
                 bindings.set-resolution(binding, id, found)
                 =
+            .. reaches = program.reaches-private(module, candidate.module)
 bindings.diagnostics.append(Diagnostic(module, id, .name-not-found, name))
 
 ────────────────────
@@ -5003,8 +5004,9 @@ for candidate in program.lookup(module, name)
     do match? target.decls[candidate.decl]
         | .decl-property(row)
             if row.owner == 0 && !global
-                if candidate.module == (module) || is-public(row.access)
+                if is-public(row.access) || reaches
                     global = DeclRef(candidate.module, candidate.decl)
+                .. reaches = program.reaches-private(module, candidate.module)
         | .decl-class(row)
             if row.name == name && (!class || (candidate.module == class.module && no-type-args))
                 class = DeclRef(candidate.module, candidate.decl)
@@ -5063,7 +5065,7 @@ do match? target.decls[owner]
         . direct = function-row(target, row.members, name)
         if direct
             = DeclRef(owner-module, direct)
-        . receiver = class-written(owner-module, owner-tree, row.receiver)
+        . receiver = extended-decl(owner-module, owner, row)
         if receiver
             = method-of(receiver.module, receiver.decl, name, depth + 1)
 = null
@@ -5106,6 +5108,9 @@ do match? target.decls[owner]
         . direct = member-row(target, row.members, name)
         if direct
             = DeclRef(owner-module, direct)
+        . faceted = facet-member(owner-module, owner, name)
+        if faceted
+            = faceted
         if is-builtin-member(owner-module, owner, name)
             = DeclRef(owner-module, owner)
         if row.base != 0
@@ -5132,7 +5137,7 @@ do match? target.decls[owner]
         . direct = member-row(target, row.members, name)
         if direct
             = DeclRef(owner-module, direct)
-        . receiver = class-written(owner-module, owner-tree, row.receiver)
+        . receiver = extended-decl(owner-module, owner, row)
         if receiver
             = member-of(receiver.module, receiver.decl, name, depth + 1)
     | .decl-sheet-extension(row)
@@ -5155,6 +5160,62 @@ _ is-builtin-member Bool
     name == unit-name
 ??
     false
+
+────────────────────
+_ do extended-decl DeclRef?
+    - module ModuleId
+    - decl DeclId
+    - row ExtensionDecl
+
+` What an extension adds to: the class it names, or for a facet, the class or facet it is part
+` of.
+=? class-written(module, program.modules[module].tree, row.receiver) if !row.facet
+. facets = program.facets
+. facet = facets.index-of(module, decl)
+=? null if !facet || facets.parent-modules[facet] == U32.max
+= DeclRef(facets.parent-modules[facet], facets.parent-decls[facet])
+
+────────────────────
+_ do facet-member DeclRef?
+    - owner-module ModuleId
+    - owner DeclId
+    - name Atom
+
+` A member of a name that a facet of a class declares, among the facets this module sees: a
+` public one, or a private one of a facet this module declares.
+. facets = program.facets
+=? null if facets.count == 0
+. (start, end) = facets.class-range(owner-module, owner)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    . facet-module = facets.modules[facet]
+    if program.sees-facet(module, facet)
+        . target = program.modules[facet-module]
+        do match? target.decls[facets.decls[facet]]
+            | .decl-extension(row)
+                . found = member-row(target, row.members, name)
+                if found && (facet-module == module || member-reaches(target, found, facet-module))
+                    = DeclRef(facet-module, found)
+= null
+
+────────────────────
+_ do member-reaches Bool
+    - target Module
+    - member DeclId
+    - other ModuleId
+
+` Whether this module reaches a member of a facet another module declares: a public one, or one
+` shared with this module's file family.
+. access = match target.decls[member]
+    | .decl-property(row)
+        row.access
+    | .decl-event(row)
+        row.access
+    | .decl-function(row)
+        row.access
+    ??
+        Access.private-access
+= access is .public-access || (access is .family-access && program.same-family(module, other))
 
 ────────────────────
 _ do member-row DeclId?

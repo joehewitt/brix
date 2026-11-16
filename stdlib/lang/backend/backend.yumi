@@ -10,7 +10,6 @@
 /core/arena
 /core/table
 /lang/target
-/lang/worker-failure
 /os/env
 /os/file
 /os/path
@@ -76,19 +75,16 @@ do finally
         worker.release()
 
 . pool = Worker(count)
-. finished SyncBufferedChannel'Bool
-. failure = WorkerFailure()
+do finally
+    pool.stop()
+. group = TaskGroup()
 for worker in workers
-    do (pool) new
+    . task = do (pool) new
         worker.run()
-        finished <- true
     catch failed
-        failure.keep(failed)
-        finished <- true
-for _ in 0 .. < count
-    <- finished
-pool.stop()
-failure.raise-kept()
+        group.keep(failed)
+    group.add(task)
+group.wait()
 
 . built = MIRCounts()
 . allocated = MIRCounts()

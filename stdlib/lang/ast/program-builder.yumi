@@ -2,8 +2,10 @@
 ./ast-children
 ./ast-nodes
 ./decl
+./facets
 ./module
 ./module-builder
+./module-resolver
 ./program
 ./slot-hosts
 ./syntax-program
@@ -13,7 +15,7 @@
 /core/list
 /core/map
 /lang/constants
-/lang/worker-failure
+/lang/target
 
 ━━━━━━━━━━━━━━━━━━━━
 + ProgramBuilder
@@ -37,6 +39,7 @@ _ pair-decls List'U32'ArenaBacking
 _ name-ids Map'Atom'U32'ArenaBacking
 _ name-count Size
 _ borrows Bool
+_ families [U32]
 _ finished Bool
 _ scratch-released Bool
 _ released Bool
@@ -110,6 +113,7 @@ for held in reused
             .. default-hosts = job.builder.default-hosts
         module-ids[job.builder.path] = add-module(job.module!)
         job.transferred = true
+note-families(syntax.resolver, module-ids)
 
 = link(syntax.builtin-paths, syntax.edges, syntax.source-path, module-ids, syntax.root-paths)
 
@@ -118,19 +122,46 @@ _ do finish-modules
     - jobs [ModuleJob]
 
 . pool = Worker(default-worker-count)
-. done SyncBufferedChannel'Bool
-. failure = WorkerFailure()
+do finally
+    pool.stop()
+. group = TaskGroup()
 for job in jobs
-    do (pool) new
+    . task = do (pool) new
         job.finish(atoms, atom-lock)
-        done <- true
     catch failed
-        failure.keep(failed)
-        done <- true
-for _ in 0 .. < jobs.length
-    <- done
-pool.stop()
-failure.raise-kept()
+        group.keep(failed)
+    group.add(task)
+group.wait()
+
+────────────────────
+_ do note-families
+    - resolver ModuleResolver
+    - module-ids [String = Index]
+
+` The file family of each module, as the module of its family's base, or a number past the
+` modules for a base the program does not load. A module of no family is its own.
+. unloaded [String = U32]
+for index in 0 .. < modules.length
+    . base = resolver.family-base(modules[index].path)
+    . loaded = module-ids[base] if base
+    if !base
+        families += index as U32
+    else if loaded
+        families += loaded as U32
+    else
+        . next = (modules.length + unloaded.length) as U32
+        . family = unloaded[base] ?? next
+        unloaded[base] = family
+        families += family
+
+────────────────────
+_ is-family-base Bool
+    - module U32
+    - base U32
+
+` Whether a module belongs to the file family whose base is another, as `box.scroll.yumi` does
+` to that of `box.yumi`, or is that module.
+module == base || (module < families.length && families[module] == base)
 
 ────────────────────
 _ do link Program
@@ -210,7 +241,8 @@ name-ids = Map'Atom'U32(program-arena)
 . batch = build-batch-orders(roots, outgoing)
 . feature-gates = build-feature-gates()
 . index = build-name-index(program-arena)
-. extensions = build-extension-index(program-arena, index, ranks)
+. facets = build-facet-table(index, ranks)
+. extensions = build-extension-index(program-arena, index, ranks, facets)
 . parsed = gather-atoms()
 . atom-ordinals = build-atom-ordinals(program-arena, parsed)
 . parse-atoms = build-parse-atoms(program-arena, parsed)
@@ -255,6 +287,8 @@ store-names(path-ids, module-names)
     - borrows
     - shares-atoms
     - atom-lock
+program.facets = facets
+program.families = families
 finished = true
 = program
 
@@ -661,6 +695,7 @@ _ do build-extension-index BuiltExtensionIndex
     - arena Arena
     - index BuiltNameIndex
     - ranks ImmutableArray'U16'ArenaBacking
+    - facets FacetTable
 
 . key-modules = List'U32(scratch)
 . key-decls = List'U32(scratch)
@@ -673,7 +708,7 @@ for position in 0 .. < modules.length
     for row in module.decls
         do match? row
             | .decl-extension(extension)
-                . head = receiver-head(module.tree, extension.receiver)
+                . head = receiver-head(module.tree, extension.receiver) if !extension.facet
                 if head
                     . receiver = first-class-named(index, ranks, position as ModuleId, head)
                     if receiver
@@ -682,6 +717,12 @@ for position in 0 .. < modules.length
                         entry-modules += position as U32
                         entry-decls += decl
         decl += 1
+for facet in 0 .. < facets.count
+    if facets.states[facet] == .facet-bound
+        . owner = Candidate(facets.owner-modules[facet], facets.owner-decls[facet], 0)
+        entry-keys += extension-key(key-modules, key-decls, owner)
+        entry-modules += facets.modules[facet]
+        entry-decls += facets.decls[facet]
 
 . key-count = key-modules.length
 . entry-count = entry-keys.length
@@ -748,6 +789,7 @@ _ do first-class-named Candidate?
     - ranks ImmutableArray'U16'ArenaBacking
     - caller ModuleId
     - name Atom
+    - facets Bool = false
 
 . name-id = name-ids[name]
 if !name-id
@@ -762,15 +804,213 @@ for entry in begin .. < end
     . rank = ranks[caller * total + entry-module]
     if rank != U16.max
         . entry-decl = index.entry-decls[entry] as DeclId
-        . is-class = match? modules[entry-module].decls[entry-decl]
+        . is-class = match modules[entry-module].decls[entry-decl]
             | .decl-class
                 true
+            | .decl-extension(extension)
+                facets && extension.facet != null
+            ??
+                false
         if is-class
             . key = (((rank as Size) + 1) /lshift/ 32) /or/ (entry - begin)
             if key < best-key
                 best-key = key
                 best = Candidate(entry-module, entry-decl, rank)
 = best
+
+────────────────────
+_ do build-facet-table FacetTable
+    - index BuiltNameIndex
+    - ranks ImmutableArray'U16'ArenaBacking
+
+` The facets of the program, each bound to what its `facet-of` names, read where it is declared,
+` and to the class at the root of that chain, with the siblings its `sees` names; and for each
+` class, its facets by module name and then by declaration.
+. table = FacetTable()
+for position in 0 .. < modules.length
+    . decl = 0u32
+    for row in modules[position].decls
+        do match? row
+            | .decl-extension(extension)
+                if extension.facet
+                    table.places[place-key(position as U32, decl)] = table.modules.length as U32
+                    table.modules += position as U32
+                    table.decls += decl
+        decl += 1
+for _ in 0 .. < modules.length
+    table.hosts += U32.max
+. count = table.modules.length
+for facet in 0 .. < count
+    bind-facet(table, index, ranks, facet)
+for facet in 0 .. < count
+    root-facet(table, facet)
+for facet in 0 .. < count
+    table.sees-starts += table.sees.length as U32
+    see-facets(table, facet)
+table.sees-starts += table.sees.length as U32
+order-facets(table)
+for facet in 0 .. < count
+    if table.states[facet] == .facet-bound
+        table.hosts[table.modules[facet]] = table.owner-modules[facet]
+= table
+
+────────────────────
+_ do bind-facet
+    - table FacetTable
+    - index BuiltNameIndex
+    - ranks ImmutableArray'U16'ArenaBacking
+    - facet Size
+
+. module = table.modules[facet]
+. tree = modules[module].tree
+. receiver = facet-receiver(module, table.decls[facet])
+. head = receiver-head(tree, receiver)
+. found = first-class-named(index, ranks, module as ModuleId, head, true) if head
+. state = FacetState.facet-bound
+. parent = U32.max
+if !found
+    state = .facet-owner-missing
+else
+    do match modules[found.module].decls[found.decl]
+        | .decl-class(owner)
+            if owner.type-args.count != 0 || tree.nodes[receiver] is .node-type-arguments
+                state = .facet-owner-generic
+        | .decl-extension
+            parent = table.index-of(found.module, found.decl) ?? U32.max
+        ??
+            state = .facet-owner-not-class
+table.parents += parent
+table.parent-modules += if found then found.module else U32.max
+table.parent-decls += if found then found.decl else U32.max
+table.owner-modules += U32.max
+table.owner-decls += U32.max
+table.states += state
+
+────────────────────
+_ do root-facet
+    - table FacetTable
+    - facet Size
+
+` Follows a facet's chain of parents to the class at its root, which must be declared in the
+` base module of the facet's file family.
+=? if table.states[facet] != .facet-bound
+. current = facet
+. steps Size = 0
+while table.parents[current] != U32.max
+    current = table.parents[current]
+    steps += 1
+    if steps > table.count
+        table.states[facet] = .facet-cycle
+        =
+    if table.states[current] != .facet-bound
+        table.states[facet] = .facet-owner-missing
+        =
+. owner-module = table.parent-modules[current]
+. owner-decl = table.parent-decls[current]
+if !is-family-base(table.modules[facet], owner-module)
+    table.states[facet] = .facet-outside-family
+    =
+table.owner-modules[facet] = owner-module
+table.owner-decls[facet] = owner-decl
+
+────────────────────
+_ do see-facets
+    - table FacetTable
+    - facet Size
+
+` The siblings a facet's `sees` names, found among the other facets of its class by name, or
+` none for a name that is no such facet's.
+. module = table.modules[facet]
+. target = modules[module]
+do match? target.decls[table.decls[facet]]
+    | .decl-extension(row)
+        for offset in 0 .. < row.sees.count
+            . syntax = target.syntax-pool[row.sees.start + offset]
+            . head = receiver-head(target.tree, syntax)
+            . seen = U32.max
+            if head && table.states[facet] == .facet-bound
+                for other in 0 .. < table.count
+                    . bound = table.states[other] == .facet-bound
+                    if bound && other != facet && is-sibling(table, facet, other)
+                        if facet-name(table, other) == head
+                            seen = other as U32
+            table.sees += seen
+
+────────────────────
+_ is-sibling Bool
+    - table FacetTable
+    - facet Size
+    - other Size
+
+table.owner-modules[other] == table.owner-modules[facet] && same-decl
+
+.. same-decl = table.owner-decls[other] == table.owner-decls[facet]
+
+────────────────────
+_ facet-name Atom?
+    - table FacetTable
+    - facet Size
+
+match modules[table.modules[facet]].decls[table.decls[facet]]
+    | .decl-extension(row)
+        row.facet
+    ??
+        null
+
+────────────────────
+_ do order-facets
+    - table FacetTable
+
+` Groups the bound facets by their class, each group by the name of the module that declares a
+` facet and then by declaration.
+. sorted [U32]
+for facet in 0 .. < table.count
+    if table.states[facet] == .facet-bound
+        . place = sorted.length
+        while place > 0 && facet-after(table, sorted[place - 1], facet as U32)
+            place -= 1
+        sorted.insert(facet as U32, place)
+for facet in sorted
+    . module = table.owner-modules[facet]
+    . decl = table.owner-decls[facet]
+    . last = table.class-modules.length
+    if last == 0 || table.class-modules[last - 1] != module || table.class-decls[last - 1] != decl
+        table.class-modules += module
+        table.class-decls += decl
+        table.class-starts += table.class-facets.length as U32
+    table.class-facets += facet
+table.class-starts += table.class-facets.length as U32
+
+────────────────────
+_ facet-after Bool
+    - table FacetTable
+    - first U32
+    - second U32
+
+` Whether one facet goes after another: by its class, then by the name of the module that
+` declares it, then by declaration.
+|? table.owner-modules[first] != table.owner-modules[second]
+    table.owner-modules[first] > table.owner-modules[second]
+|? table.owner-decls[first] != table.owner-decls[second]
+    table.owner-decls[first] > table.owner-decls[second]
+|? first-name != second-name
+    first-name > second-name
+??
+    table.decls[first] > table.decls[second]
+
+.. first-name = modules[table.modules[first]].name
+.. second-name = modules[table.modules[second]].name
+
+────────────────────
+_ facet-receiver SyntaxId
+    - module U32
+    - decl U32
+
+match modules[module].decls[decl]
+    | .decl-extension(row)
+        row.receiver
+    ??
+        0
 
 ────────────────────
 _ do build-name-index BuiltNameIndex
@@ -833,6 +1073,9 @@ for decl in 1 .. < module.decls.length
         | .decl-event(row)
             if row.owner == 0
                 add-pair(row.name, index as ModuleId, decl as DeclId)
+        | .decl-extension(row)
+            if row.facet
+                add-pair(row.facet, index as ModuleId, decl as DeclId)
 
 ────────────────────
 _ do add-pair

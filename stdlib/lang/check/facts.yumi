@@ -10,7 +10,6 @@
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/row-range
-/lang/worker-failure
 /stream/sort
 
 + FactId is U32
@@ -1076,6 +1075,8 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 | unasked-text = 25
 | unasked-narrowing = 26
 | unasked-conversion = 27
+| restricted = 28
+| reached = 29
 
 ━━━━━━━━━━━━━━━━━━━━
 + ForceFact is Struct
@@ -2731,8 +2732,7 @@ _ node-conversion-tails List'FactId'ArenaBacking
 + node-chains List'ChainForm'ArenaBacking
 + node-constants List'FactId'ArenaBacking
 _ node-copies SyncBufferedChannel'NodeCopy?
-_ nodes-copied SyncBufferedChannel'Bool?
-_ node-copy-failure WorkerFailure?
+_ node-copying TaskGroup?
 + calls Table'CallFact
 + call-fills List'ArgumentFill'ArenaBacking
 + steps List'U32'ArenaBacking
@@ -7778,32 +7778,29 @@ node-plans.reserve(room)
 node-chains.reserve(room)
 node-constants.reserve(room)
 . queue SyncBufferedChannel'NodeCopy
-. done SyncBufferedChannel'Bool
-. failure = WorkerFailure()
+. group = TaskGroup()
 node-copies = queue
-nodes-copied = done
-node-copy-failure = failure
-do (pool) new
+node-copying = group
+. task = do (pool) new
     for copy in queue
         copy-nodes(copy)
-    done <- true
 catch failed
-    failure.keep(failed)
-    done <- true
+    group.keep(failed)
+group.add(task)
 
 ────────────────────
 + do end-copying-nodes
 
 . queue = node-copies
+. group = node-copying
 if queue
     queue.close()
-    <- nodes-copied!
-. failure = node-copy-failure
+if group
+    group.settle()
 node-copies = null
-nodes-copied = null
-node-copy-failure = null
-if failure
-    failure.raise-kept()
+node-copying = null
+if group
+    group.wait()
 
 ────────────────────
 _ do copy-nodes

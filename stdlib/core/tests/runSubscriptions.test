@@ -1832,6 +1832,77 @@ Exception: Event "hidden" is private
     ^^^^^^^^^^^^^^^^^^
 ;====
 :================================================================================================
+# A shared event is heard in its module's file family
+
+./lib/shared-source
+
+. source = SharedSource()
+source.listen()
+source.emit(5)
+
+:------------------------------------------------------------------------------------------------
+%file: lib/shared-source.yumi
+
+./shared-source.watch
+
+━━━━━━━━━━━━━━━━━━━━
++ SharedSource
+
+^ event pinged Int
+
+────────────────────
++ do emit
+    - value Int
+
+pinged <- value
+
+────────────────────
++ do listen
+
+watch(this)
+
+:------------------------------------------------------------------------------------------------
+%file: lib/shared-source.watch.yumi
+
+./shared-source
+
+━━━━━━━━━━━━━━━━━━━━
++ do watch
+    - source SharedSource
+
+for value on source.pinged
+    -- "heard $value"
+
+:------------------------------------------------------------------------------------------------
+
+heard 5
+;====
+:================================================================================================
+# Shared events reject observation from outside their module's file family
+
+./lib/shared-event-source
+
+. source = SharedEventSource()
+for value on source.hidden
+    -- value
+
+:------------------------------------------------------------------------------------------------
+%file: lib/shared-event-source.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ SharedEventSource
+
+^ event hidden Int
+
+:------------------------------------------------------------------------------------------------
+%crash
+
+Exception: Event "hidden" is shared, declared with ^, so only its own file family can use it
+<lib/shared-event-source.yumi:5>
+    ^ event hidden Int
+    ^^^^^^^^^^^^^^^^^^
+;====
+:================================================================================================
 # Event names cannot collide with stored properties
 
 CollisionSource()
@@ -3830,7 +3901,33 @@ for value on Picker.quiet
 :----
 %compile-error
 
-Exception: Private event "quiet" does not bubble, so it cannot be named by its class
+Exception: Event "quiet" is not public, so it does not bubble and cannot be named by its class
+<no file:13>
+    for value on Picker.quiet
+                 ^^^^^^^^^^^^
+;====
+:====
+# A shared event does not bubble, so it cannot be named by its class either
+
+. root = Panel()
+
+━━━━━━━━━━━━━━━━━━━━
++ Picker
+
+^ event quiet String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
+────────────────────
+for value on Picker.quiet
+
+-- value
+
+:----
+%compile-error
+
+Exception: Event "quiet" is not public, so it does not bubble and cannot be named by its class
 <no file:13>
     for value on Picker.quiet
                  ^^^^^^^^^^^^

@@ -674,11 +674,8 @@ _ visible-from Bool
     - module ModuleId
     - access Access
 
-match access
-    | .public-access
-        true
-    ??
-        module == caller
+` Whether a declaration of a module is visible to the caller, as `reaches-access` says.
+program.reaches-access(caller, module, access)
 
 ────────────────────
 + do dispatch-c-function Hit?
@@ -1006,7 +1003,7 @@ if best
             =
         ambiguous-extension = preferred == 0
     else if !same && best!.is-extension != hit.is-extension && same-signature(best!, hit)
-        conflicting = true
+        conflicting = conflicting || !(is-facet-member(best!) || is-facet-member(hit))
     if !equal
         ambiguous-constructor = false
         ambiguous-static = false
@@ -1123,6 +1120,19 @@ for offset in 0 .. < left.params.length
 = false
 
 ────────────────────
+_ do is-facet-member Bool
+    - hit Hit
+
+` Whether a candidate is a member of a facet, which a class below the facet's own declares again
+` to override it, as it would a member of the class, and which answers an interface's function as
+` the class's own member would.
+=? false if !hit.is-extension || program.facets.count == 0
+do match? program.modules[hit.module].decls[hit.decl]
+    | .decl-function(fn)
+        = program.facets.index-of(hit.module, fn.owner) != null
+= false
+
+────────────────────
 _ do same-signature Bool
     - left Hit
     - right Hit
@@ -1168,6 +1178,10 @@ _ do rank-methods
     - name Atom
     - kind DeclKind
 
+. viewed = types.facet-of-type(receiver)
+if viewed
+    rank-facet-members(viewed, name, kind)
+    =
 . receiver-kind = types.intrinsic-of(receiver)
 . base = types.base-of(receiver)
 if receiver-kind != .interface
@@ -1180,6 +1194,36 @@ if receiver-kind == .interface
 rank-methods-at(receiver, receiver, name, kind)
 if receiver-kind == .table-row || receiver-kind == .immutable-table-row
     rank-logical(receiver, name, kind)
+
+────────────────────
+_ do rank-facet-members
+    - facet U32
+    - name Atom
+    - kind DeclKind
+
+` Ranks what a facet's value answers: the members of the facet and of its ancestor facets that
+` the caller sees, the nearest last, each run on the facet's owner, so that a class below that
+` declares one again answers for it.
+. facets = program.facets
+. owner = types.facet-owner(facet)
+. chain [U32]
+. current = facet
+while current != U32.max && chain.length <= facets.count
+    chain += current
+    current = facets.parents[current]
+for offset in 0 .. < chain.length
+    . held = chain[chain.length - 1 - offset]
+    if !program.sees-facet(caller, held)
+        continue
+    . module = facets.modules[held]
+    . target = program.modules[module]
+    do match? target.decls[facets.decls[held]]
+        | .decl-extension(body)
+            extension-ranking = true
+            extension-level = owner
+            rank-members(module, target, body.members, name, owner, no-type-arguments(types), kind)
+            extension-ranking = false
+            extension-level = no-type
 
 ────────────────────
 _ do rank-bases

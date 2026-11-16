@@ -2,8 +2,10 @@
 ./ast-children
 ./ast-nodes
 ./decl
+./facets
 ./module
 ./module-resolver
+./operator
 ./probe-selection
 /core/arena
 /core/array-builder
@@ -55,6 +57,8 @@ _ atom-lock Mutex
 + absent-imports [AbsentImport]
 + feature-gate-starts ImmutableArray'U32'ArenaBacking
 + feature-gates ImmutableArray'U32'ArenaBacking
++ facets = FacetTable()
++ families [U32]
 _ batch-cases ImmutableArray'U64'ArenaBacking
 _ borrows Bool
 _ shares-atoms Bool
@@ -369,11 +373,9 @@ if caller >= modules.length
 . name-id = name-ids[name]
 if !name-id
     = found
-. total = modules.length
 for entry in bucket-starts[name-id] .. < bucket-starts[name-id + 1]
-    . module = entry-modules[entry]
-    if ranks[caller * total + module] == U16.max
-        found += Candidate(module, entry-decls[entry], U16.max)
+    if entry-rank(caller, entry) == U16.max
+        found += Candidate(entry-modules[entry], entry-decls[entry], U16.max)
 = found
 
 ────────────────────
@@ -383,11 +385,10 @@ for entry in bucket-starts[name-id] .. < bucket-starts[name-id + 1]
 . found [Atom]
 if caller >= modules.length
     = found
-. total = modules.length
 for name in name-ids.keys
     . name-id = name-ids[name]!
     for entry in bucket-starts[name-id] .. < bucket-starts[name-id + 1]
-        if ranks[caller * total + entry-modules[entry]] != U16.max
+        if entry-rank(caller, entry) != U16.max
             found += name
             break
 = found
@@ -399,11 +400,10 @@ for name in name-ids.keys
 
 ` The nearest candidate past the one whose key was last, with its own key. A key is the import
 ` distance and then the position among the name's declarations, and no key is zero.
-. total = modules.length
 . best-key = Size.max
 . best-offset = Size.max
 for entry in found.begin .. < found.end
-    . rank = ranks[found.caller * total + entry-modules[entry]]
+    . rank = entry-rank(found.caller, entry)
     if rank != U16.max
         . key = (((rank as Size) + 1) /lshift/ 32) /or/ (entry - found.begin)
         if key < best-key && key > last-key
@@ -413,8 +413,34 @@ for entry in found.begin .. < found.end
 if best-offset == Size.max
     = (last-key, none)
 . found-module = entry-modules[best-offset]
-. found-rank = ranks[found.caller * total + found-module]
+. found-rank = entry-rank(found.caller, best-offset)
 = (best-key, Candidate(found-module, entry-decls[best-offset], found-rank))
+
+────────────────────
+_ do entry-rank U16
+    - caller ModuleId
+    - entry Size
+
+` How far a module is through its imports from a declaration a name finds, or none. A facet's
+` name is as near as its owner's module, whose import brings it.
+. total = modules.length
+. module = entry-modules[entry]
+. rank = ranks[caller * total + module]
+=? rank if rank != U16.max || module >= facets.hosts.length || facets.hosts[module] == U32.max
+. facet = facets.index-of(module, entry-decls[entry])
+=? rank if !facet || facets.states[facet] != .facet-bound
+= ranks[caller * total + facets.owner-modules[facet]]
+
+────────────────────
++ do facet-listed-last U32
+    - caller ModuleId
+    - module ModuleId
+
+` Where a module that declares a facet comes last among those another can name, or where its
+` owner's module does, whose import brings the facet's name.
+. own = listed-last(caller, module)
+=? own if own != U32.max || module >= facets.hosts.length || facets.hosts[module] == U32.max
+= listed-last(caller, facets.hosts[module])
 
 ────────────────────
 + do extensions-for Extensions
@@ -435,16 +461,69 @@ for key in 0 .. < extension-key-modules.length
     - found Extensions
     - entry Size
 
-` The first extension at or past an entry that the caller can see, with the entry after it.
+` The first extension at or past an entry that the caller can see, with the entry after it. A
+` facet is seen wherever its class is, but code in a module that declares facets of the class
+` sees only those it reaches.
 . total = modules.length
 for position in entry .. < found.end
     . owner = extension-modules[position]
-    if extension-ranks[found.caller * total + owner] != U16.max
-        . extension = extension-decls[position] as DeclId
-        if owner == found.caller || extension-is-public(owner, extension)
+    . extension = extension-decls[position] as DeclId
+    . facet = facets.index-of(owner, extension) if facets.count != 0
+    if facet
+        if owner == found.caller || sees-facet(found.caller, facet)
+            = (position + 1, ExtensionRef(owner, extension))
+    else if extension-ranks[found.caller * total + owner] != U16.max
+        if extension-is-public(owner, extension) || reaches-private(found.caller, owner)
             = (position + 1, ExtensionRef(owner, extension))
 . none ExtensionRef?
 = (found.end, none)
+
+────────────────────
++ do sees-facet Bool
+    - caller ModuleId
+    - facet U32
+
+` Whether code in a module sees a facet: anywhere but a module other than its class's that declares
+` facets of the class, and there, one of those, an ancestor of one, or one that one of them sees.
+. owner-module = facets.owner-modules[facet]
+. owner-decl = facets.owner-decls[facet]
+=? true if caller == owner-module || !facets.declares-facet-of(caller, owner-module, owner-decl)
+= facets.reaches(caller, facet)
+
+────────────────────
++ same-family Bool
+    - module ModuleId
+    - other ModuleId
+
+` Whether two modules are of one file family, or are one module.
+module == other || (module < families.length && other < families.length && joined)
+
+.. joined = families[module] == families[other]
+
+────────────────────
++ reaches-access Bool
+    - caller ModuleId
+    - module ModuleId
+    - access Access
+
+` Whether code in a module reaches a declaration of a module with an access: a public one, one
+` shared with the file family of the caller's own, and a private one as `reaches-private` says.
+match access
+    | .public-access
+        true
+    | .family-access
+        same-family(caller, module)
+    ??
+        reaches-private(caller, module)
+
+────────────────────
++ reaches-private Bool
+    - caller ModuleId
+    - module ModuleId
+
+` Whether code in a module reaches the private declarations of a module: its own, and those of the
+` module that declares the class of a facet it declares.
+caller == module || (caller < facets.hosts.length && facets.hosts[caller] == module)
 
 ────────────────────
 _ extension-is-public Bool

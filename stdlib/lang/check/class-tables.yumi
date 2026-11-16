@@ -228,6 +228,20 @@ for item in shared.table-classes-from(classes-taken)
     classes-taken += 1
 
 ────────────────────
+_ do is-facet-of Bool
+    - module ModuleId
+    - decl DeclId
+    - home DeclRef
+
+` Whether a declaration is a facet bound to a class.
+. facets = program.facets
+. found = facets.index-of(module, decl)
+=? false if !found
+. index = found
+= facets.states[index] == .facet-bound && facets.owner-modules[index] == home.module && same-decl
+.. same-decl = facets.owner-decls[index] == home.decl
+
+────────────────────
 _ do claims Bool
     - method InstanceId
     - receiver TypeId
@@ -248,7 +262,8 @@ _ do redeclares Bool
 
 ` Whether a class, or a class above it and below the one a method is typed for, declares a member
 ` of the method's name, or an extension declares one, or the method is not one the class it is
-` typed for declares: where none is, the class's objects run the method itself (`redispatch`).
+` typed for or a facet of it declares: where none is, the class's objects run the method itself
+` (`redispatch`).
 . row = instances.rows[method]
 . name Atom? = null
 . owner = 0u32
@@ -257,7 +272,8 @@ do match? program.modules[row.module].decls[row.decl]
         name = fn.name
         owner = fn.owner
 . home = class-ref(types, row.self-type)
-if !name || extension-names[name] != null || home.module != row.module || home.decl != owner
+. own = home.module == row.module && home.decl == owner
+if !name || extension-names[name] != null || (!own && !is-facet-of(row.module, owner, home))
     = true
 . level TypeId? = receiver
 while level
@@ -472,6 +488,8 @@ do match? owner-module.decls[row.decl]
         do match? owner-module.decls[fn.owner]
             | .decl-class
                 = true
+            | .decl-extension(extension)
+                = extension.facet != null
 = false
 
 ────────────────────
@@ -663,12 +681,15 @@ if override != no-instance && override != method
 _ do name-extensions Map'Atom'Bool
     - program Program
 
-` The name of each function and property an extension declares, anywhere in a program.
+` The name of each function and property an extension declares, anywhere in a program. A facet's
+` are left out: no class below its own, nor a facet of one, may take them but to override one.
 . names = Map'Atom'Bool()
 for owner in program.modules
     for decl in owner.decls
         do match? decl
             | .decl-extension(extended)
+                if extended.facet
+                    continue
                 for member in owner.member-pool[extended.members]
                     do match? owner.decls[member]
                         | .decl-function(fn)

@@ -1,8 +1,10 @@
+./call-paths
 ./checker
 ./class-tables
 ./facts
 ./instances
 ./portable
+./restrictions
 ./session
 ./stack-locals
 ./type-signature
@@ -76,7 +78,9 @@ while true
         session.facts.fold-initializers(session.bindings, everywhere)
         session.facts.chain-loose-calls()
         session.panics.propagate()
-        StackLocals(session).check()
+        . paths = CallPaths(session)
+        StackLocals(session, paths).check()
+        Restrictions(session, paths).chain-reports()
         seed-startup(session)
         tables.release()
         = true

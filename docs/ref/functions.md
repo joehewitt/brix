@@ -933,3 +933,25 @@ A function that calls itself, directly or through other functions, cannot be inl
 compiler calls it as usual and, with `--warnings`, reports each call it could not inline.
 
 An annotation the compiler does not know is an error, and so are two that contradict each other.
+
+### Without and with
+
+After its annotations, a function's header can take a `(without …)` part and `(with …)` parts:
+
+```brix
+(fn-do + step _ @inline (without heap suspend) (with depth 2) (with scope "step")
+  (call tick)
+)
+```
+
+- **Without.** `(without heap)` is `@no-heap`, and so for `suspend`, `safepoints`,
+  `probe-safepoints` and `gc`. On a C function in a header module, `(without gc)` is `@gc-leaf`
+  and `(without blocking)` is `@gc-polling`. A name that is none of these, or one named twice, is
+  an error.
+- **With.** Each `(with name value)` sets a `@stack` property for the whole body, as a `do-with`
+  around it would, the first outermost, so a later value can read an earlier one. It needs a
+  `fn-do`.
+- **Blocks.** A `(do …)` takes the same parts after its annotations, as in
+  `(do (without gc) (with depth 3) …)`{.brix}. There `(without cancel)` is also accepted, and
+  changes nothing yet. A `(do …)` kept from anything but `gc` runs in place: the functions it
+  calls are kept from the same, and its loops poll only as far as that allows.

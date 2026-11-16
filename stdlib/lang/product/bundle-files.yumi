@@ -1,5 +1,4 @@
 /data/json
-/lang/worker-failure
 /os/env
 /os/file
 /os/path
@@ -105,17 +104,18 @@ run-tool(codesign, arguments)
 . process = use Process(tool, ProcessStderr.capture, arguments)
 . errors = process.stderr!
 . drained = Semaphore'String()
-. failure = WorkerFailure()
-do new
+. group = TaskGroup()
+. task = do new
     . text = errors as String
     drained.post(text)
 catch failed
-    failure.keep(failed)
+    group.keep(failed)
     drained.post("")
+group.add(task)
 . output = process as String
 . status = process.wait(null) ?? 1
 . message = drained.await() ?? ""
-failure.raise-kept()
+group.wait()
 ?! Error("${Path(tool).name} failed with status $status\n${"$output$message".trim()}")
     if status != 0
 

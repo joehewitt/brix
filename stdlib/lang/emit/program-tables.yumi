@@ -18,6 +18,7 @@
 /lang/backend/bundle
 /lang/backend/mir
 /lang/check/binding
+/lang/check/claims
 /lang/check/facts
 /lang/check/header
 /lang/check/instances
@@ -42,7 +43,7 @@
 + table-header-size U32 = 16
 + table-slot-size U32 = 8
 + witness-header-slots U32 = 3
-+ refusal-texts [String] = ["", "this statement", "this expression", "printing a value that is not a String", "a global whose value runs code", "a probe", "a value of this type", "this function", "this conversion", "a C call that may block", "a C call that suspends the task", "a task or thread local whose value runs code, in a module some cases of a batch do not reach"]
++ refusal-texts [String] = ["", "this statement", "this expression", "printing a value that is not a String", "a global whose value runs code", "a probe", "a value of this type", "this function", "this conversion", "a C call that may block", "a C call that suspends the task", "a task or thread local whose value runs code, in a module some cases of a batch do not reach", "an allocation typing did not report, in a function that may not use the heap"]
 
 _ max-symbol-bytes Size = 200
 _ inline-rule-limit Size = 64
@@ -743,7 +744,7 @@ do match? program.modules[row.module].decls[row.decl]
 ` order the type pass recorded them; none where one is not kept.
 . rows [U32]
 for hold in facts.stack-holds
-    if hold.instance == instance
+    if hold.instance == instance && global-kind(hold.module, hold.decl) != .global-constant
         . row = storage-of(hold.module, hold.decl)
         rows += if global-kind(hold.module, hold.decl) == .global-stack then row else no-storage
 = rows
@@ -757,7 +758,7 @@ for hold in facts.stack-holds
 ` where one is not kept.
 . rows [U32]
 for need in facts.stack-needs
-    if need.instance == instance
+    if need.instance == instance && global-kind(need.module, need.decl) != .global-constant
         . row = storage-of(need.module, need.decl)
         rows += if global-kind(need.module, need.decl) == .global-stack then row else no-storage
 = rows
@@ -1962,6 +1963,8 @@ while loose != no-fact
 ` one reads no class.
 |? property < default-count && default-rows[property] != U32.max
     defaults[default-rows[property]]
+|? row.facet != U32.max && !is-given-below(types, row)
+    facet-default(row)
 |? found.site != 0 || row.owner == no-type
     found
 ??
@@ -2903,8 +2906,9 @@ if stepped
         held += no-type
 for hold in facts.stack-holds
     . inner = hold.instance
-    if instances.rows[inner].enclosing != instance || copies-in(inner)
+    if instances.rows[inner].enclosing != instance || copies-in(inner) || fixed
         continue
+    .. fixed = global-kind(hold.module, hold.decl) == .global-constant
     . decl = instances.rows[inner].decl
     . row = if on-stack then storage-of(hold.module, hold.decl) else no-storage
         .. on-stack = global-kind(hold.module, hold.decl) == .global-stack
@@ -2926,8 +2930,9 @@ _ do makes-holders Bool
 ` Whether a function writes a nested function, other than a spawned task's body or that of a
 ` `do @no-gc` block, that holds the state of a global `do with` binds.
 for hold in facts.stack-holds
-    if instances.rows[hold.instance].enclosing == instance && !copies-in(hold.instance)
+    if instances.rows[hold.instance].enclosing == instance && !copies-in(hold.instance) && !fixed
         = true
+    .. fixed = global-kind(hold.module, hold.decl) == .global-constant
 = false
 
 ────────────────────
@@ -3100,18 +3105,6 @@ _ describing U32
     RuntimeFunction.runtime-arena-reserve-described
 ??
     no-runtime-function
-
-────────────────────
-_ do suspends-task Bool
-    - name String
-
-` Whether a C function is one of the runtime's that suspend the task that calls it.
-if name.starts-with(task-suspending-runtime-prefix)
-    = true
-for each in task-suspending-runtime-names
-    if each == name
-        = true
-= false
 
 ────────────────────
 _ do name-runtime
@@ -5454,10 +5447,10 @@ for type in types.ranked
         . property = types.properties[place]
         if property.storage-kind != .storage-lazy
             continue
-        . owner = declaring
+        . owner = writer-of
             - if property.owner != no-type then property.owner else type
-            - property.name
-        . declared = if owner != no-type then place-of(owner, property.name) else U32.max
+            - property
+        . declared = if owner != no-type then place-of-fact(owner, property) else U32.max
         if declared == U32.max
             continue
         if lazy-functions[declared] == no-function
@@ -5564,35 +5557,66 @@ for type in types.ranked
     . start = class-rule-order.length
     for offset in 0 .. < chain.length
         . holder = chain[chain.length - 1 - offset]
-        . ref = class-ref(types, holder)
-        . owner = program.modules[ref.module]
-        do match? owner.decls[ref.decl]
-            | .decl-class(class)
-                for pass in 0 .. < 3
-                    if pass == 2
-                        for member in owner.member-pool[class.members]
-                            . machine = member-machine(ref.module, member)
-                            if machine != 0
-                                class-rule-order += class-machine
+        . parts = class-parts(class-ref(types, holder))
+        for pass in 0 .. < 3
+            if pass == 2
+                for part in parts
+                    . owner = program.modules[part.module]
+                    for member in owner.member-pool[class-part-members(part)]
+                        . machine = member-machine(part.module, member)
+                        if machine != 0
+                            class-rule-order += class-machine
+                                - holder
+                                - part.module
+                                - member
+                                - machine
+            for part in parts
+                . owner = program.modules[part.module]
+                for member in owner.member-pool[class-part-members(part)]
+                    do match? owner.decls[member]
+                        | .decl-rule(rule)
+                            if in-pass && !waits(holder, part.module, member)
+                                class-rule-order += class-rule
                                     - holder
-                                    - ref.module
+                                    - part.module
                                     - member
-                                    - machine
-                    for member in owner.member-pool[class.members]
-                        do match? owner.decls[member]
-                            | .decl-rule(rule)
-                                if in-pass && !waits(holder, ref.module, member)
-                                    class-rule-order += class-rule
-                                        - holder
-                                        - ref.module
-                                        - member
-                                        - rule.syntax
-                                .. in-pass = rule-pass(ref.module, rule.syntax) == pass
+                                    - rule.syntax
+                            .. in-pass = rule-pass(part.module, rule.syntax) == pass
     if class-rule-order.length != start
         class-rule-order += U32.max
         class-rule-heads[type] = start as U32
     for holder in chain
         declare-markup-rules(holder)
+
+────────────────────
+_ do class-parts [DeclRef]
+    - ref DeclRef
+
+` The declarations a class writes its rules in: its own, then each facet bound to it, in the order
+` of its facets.
+. parts [DeclRef]
+parts += ref
+. facets = program.facets
+=? parts if facets.count == 0
+. (start, end) = facets.class-range(ref.module, ref.decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    if facets.states[facet] == .facet-bound
+        parts += DeclRef(facets.modules[facet], facets.decls[facet])
+= parts
+
+────────────────────
+_ class-part-members RowRange'DeclId
+    - ref DeclRef
+
+` The members a class or a facet of one declares.
+match program.modules[ref.module].decls[ref.decl]
+    | .decl-class(row)
+        row.members
+    | .decl-extension(row)
+        row.members
+    ??
+        RowRange'DeclId()
 
 ────────────────────
 _ member-machine SyntaxId
@@ -5641,21 +5665,20 @@ _ do declare-markup-rules
     - level TypeId
 
 ` The rules a class runs once its markup has, as rows of `class-rules`, listed once for the
-` class.
+` class: its own, then its facets'.
 if markup-rule-heads[level]
     =
-. ref = class-ref(types, level)
-. owner = program.modules[ref.module]
+. parts = class-parts(class-ref(types, level))
 . start = class-rule-order.length
-do match? owner.decls[ref.decl]
-    | .decl-class(class)
-        for pass in 1 .. < 3
-            for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
-                    | .decl-rule(rule)
-                        if in-pass && waits(level, ref.module, member)
-                            class-rule-order += class-rule(level, ref.module, member, rule.syntax)
-                        .. in-pass = rule-pass(ref.module, rule.syntax) == pass
+for pass in 1 .. < 3
+    for part in parts
+        . owner = program.modules[part.module]
+        for member in owner.member-pool[class-part-members(part)]
+            do match? owner.decls[member]
+                | .decl-rule(rule)
+                    if in-pass && waits(level, part.module, member)
+                        class-rule-order += class-rule(level, part.module, member, rule.syntax)
+                    .. in-pass = rule-pass(part.module, rule.syntax) == pass
 class-rule-order += U32.max
 markup-rule-heads[level] = start as U32
 
@@ -7035,8 +7058,15 @@ for position in 0 .. < facts.local-global-uses.length
     . place = storage-starts[use.module] + use.decl
     if local-firsts[place] == U32.max
         local-firsts[place] = position as U32
+. bound = arena.allocate'Byte(total + 1)
+for position in 0 .. < total
+    bound[position] = 0
+for scope in facts.stack-scopes
+    bound[storage-starts[scope.module] + scope.decl] = 1
 for constant in facts.constant-globals
-    global-kinds[storage-starts[constant.module] + constant.decl] = GlobalKind.global-constant
+    . place = storage-starts[constant.module] + constant.decl
+    if bound[place] == 0
+        global-kinds[place] = GlobalKind.global-constant
 for module in 0 .. < module-count
     . owner = program.modules[module]
     for index in 0 .. < owner.decls.length
@@ -7148,7 +7178,8 @@ _ do declare-global
 
 . owner = program.modules[module]
 . place = storage-starts[module] + decl
-if property.decoration != null || !property.name
+. fixed = global-kinds[place] == GlobalKind.global-constant
+if (property.decoration != null && !fixed) || !property.name
     global-kinds[place] = GlobalKind.global-other
     if property.name && property.decoration != null
         . decoration = property.decoration.text
@@ -7624,14 +7655,25 @@ while current != no-type
 = no-type
 
 ────────────────────
-_ place-of U32
+_ do writer-of TypeId
     - type TypeId
-    - name Atom
+    - property TypeProperty
 
-` The place among all properties of a type's property of a name, or none.
+` The class that writes a property's value for the objects of a class: the nearest, from the class
+` up through its bases, that itself writes it, or the class whose facet declares it.
+=? property.owner if property.facet != U32.max
+= declaring(type, property.name)
+
+────────────────────
+_ place-of-fact U32
+    - type TypeId
+    - fact TypeProperty
+
+` The place among all properties of a type's property that is another's, by its name and the
+` facet that declares it, or none.
 if found then found as U32 else U32.max
 
-.. found = types.property-named(type, name)
+.. found = types.property-declared(type, fact.name, fact.facet)
 
 ────────────────────
 _ do note-lazy-result
@@ -9260,21 +9302,19 @@ _ do reach-rules
 ` the value of a `whenever` rule has changed.
 . level TypeId? = type
 while level
-    . ref = class-ref(types, level)
-    . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
-        | .decl-class(class)
-            for member in owner.member-pool[class.members]
-                if !(owner.decls[member] is .decl-rule)
-                    continue
-                . unit = instances.find-initializer(ref.module, member, level)
-                if unit != no-instance && kinds[unit] == Reach.none
-                    kinds[unit] = Reach.in-frame
-                    reach-queue[reach-length] = unit
-                    reach-length += 1
-                if unit != no-instance
-                    mark(kinds, facts.change-test-of(unit))
-                    reach-trigger(kinds, unit)
+    for part in class-parts(class-ref(types, level))
+        . owner = program.modules[part.module]
+        for member in owner.member-pool[class-part-members(part)]
+            if !(owner.decls[member] is .decl-rule)
+                continue
+            . unit = instances.find-initializer(part.module, member, level)
+            if unit != no-instance && kinds[unit] == Reach.none
+                kinds[unit] = Reach.in-frame
+                reach-queue[reach-length] = unit
+                reach-length += 1
+            if unit != no-instance
+                mark(kinds, facts.change-test-of(unit))
+                reach-trigger(kinds, unit)
     level = types.base-of(level)
 
 ────────────────────
@@ -9493,7 +9533,7 @@ if given.value == 0
 . receiver = type
 . machine = program.modules[given.module].tree.declared-machine(given.value) != 0
 if (property.storage-kind == .storage-lazy || machine) && is-class(type)
-    . writer = declaring(type, property.name)
+    . writer = writer-of(type, property)
     if writer != no-type
         receiver = writer
 = instances.find-initializer(given.module, given.decl, receiver)
@@ -9517,6 +9557,20 @@ while current != no-type
                     if member != 0
                         = PropertyDefault(row.module, property.value, property.syntax, member)
     current = types.completions[current].base
+= PropertyDefault(0, 0, 0, 0)
+
+────────────────────
+_ do facet-default PropertyDefault
+    - row TypeProperty
+
+` The value a facet writes for one of its properties.
+. facets = program.facets
+. module = facets.modules[row.facet]
+. member = valued-property(program, module, facets.decls[row.facet], row.name)
+do match? program.modules[module].decls[member]
+    | .decl-property(property)
+        if member != 0
+            = PropertyDefault(module, property.value, property.syntax, member)
 = PropertyDefault(0, 0, 0, 0)
 
 ────────────────────
@@ -9757,7 +9811,7 @@ if base-index != U32.max
         . entry = no-function
         if proto >= lazy-proto
             . root = proto - lazy-proto
-            . mine = place-of(type, types.properties[root].name)
+            . mine = place-of-fact(type, types.properties[root])
             if mine != U32.max && types.properties[mine].storage-kind == .storage-lazy
                 lazy-slots[mine] = position - inherited.start
                 lazy-roots[mine] = root
@@ -10519,7 +10573,8 @@ _ is-numeric-node Bool
 ` first read. One each task holds its own of is `global-task`, kept in the memory of each
 ` task, and one each thread holds its own of `global-thread`, in the memory of each thread.
 ` One `do with` binds is `global-stack`, a slot in the memory of each task that says whether
-` it is bound and holds its value. A value of an enum is made
+` it is bound and holds its value, unless nothing binds it and its value is a literal, which
+` makes it a constant. A value of an enum is made
 ` when its module starts, before the module's eager globals, where an emitted function reads
 ` it; one nothing emitted reads is `global-enum-unread`, and is not made.
 
@@ -10549,6 +10604,7 @@ _ is-numeric-node Bool
 | refused-blocking-call = 9
 | refused-suspending-call = 10
 | refused-batch-local = 11
+| refused-allocation = 12
 
 ━━━━━━━━━━━━━━━━━━━━
 + Refusal is Struct

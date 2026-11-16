@@ -53,9 +53,9 @@ Exception: Stack-local variable 'current' can only be rebound with do with
 %crash
 
 Exception: Stack-local variable 'current' is not bound
-<no file:2>
-    + @stack current Int
-    ^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+    -- current
+       ^^^^^^^
 ;====
 :================================================================================================
 
@@ -71,10 +71,10 @@ current
 :------------------------------------------------------------------------------------------------
 %crash
 
-Exception: Stack-local variable 'current' is not bound
-<no file:2>
-    + @stack current Int
-    ^^^^^^^^^^^^^^^^^^^^
+Exception: Stack-local variable 'current' is not bound: main → read-current
+<no file:9>
+    current
+    ^^^^^^^
 ;====
 :================================================================================================
 
@@ -198,4 +198,189 @@ if n == 0
 :------------------------------------------------------------------------------------------------
 
 91
+;====
+:================================================================================================
+
++ @stack current Int
+
+. reader = Impl() as Reader
+-- reader.read()
+
+━━━━━━━━━━━━━━━━━━━━
++ Reader is Interface
+
+────────────────────
++ read Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Impl
+    is Reader
+
+────────────────────
++ read Int
+
+current
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'current' is not bound: main → Reader.read → Impl.read
+<no file:20>
+    current
+    ^^^^^^^
+;====
+:================================================================================================
+
++ @stack current Int
+
+. base Base = Derived()
+-- base.value()
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ This
+
+────────────────────
++ value Int
+
+0
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ This
+
+────────────────────
++ value Int
+
+current
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'current' is not bound: main → Base.value → Derived.value
+<no file:27>
+    current
+    ^^^^^^^
+;====
+:================================================================================================
+
++ @stack current Int
+
+. get Getter'Int = read-current
+do with current = 4
+    -- get()
+
+━━━━━━━━━━━━━━━━━━━━
++ read-current Int
+
+current
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'current' cannot be read through a function value: read-current
+<no file:4>
+    . get Getter'Int = read-current
+          ^^^^^^^^^^
+;====
+:================================================================================================
+
++ @stack current Int
+
+. get = => current
+do with current = 4
+    -- get()
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'current' is not bound: main → (closure)
+<no file:4>
+    . get = => current
+               ^^^^^^^
+;====
+:================================================================================================
+
++ @stack current Int
+
+-- made()
+
+━━━━━━━━━━━━━━━━━━━━
++ do made Int
+
+. get = => current
+= get()
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'current' is not bound: main → made → (closure)
+<no file:9>
+    . get = => current
+               ^^^^^^^
+;====
+:================================================================================================
+
++ @stack current Int
+
+. reader = Impl() as Reader
+do with current = 4
+    -- reader.read()
+    . get = => current + 1
+    -- get()
+-- made(7)
+
+━━━━━━━━━━━━━━━━━━━━
++ Reader is Interface
+
+────────────────────
++ read Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Impl
+    is Reader
+
+────────────────────
++ read Int
+
+current
+
+━━━━━━━━━━━━━━━━━━━━
++ do made Int
+    - n Int
+
+do with current = n
+    . get = => current * 2
+    = get()
+= 0
+
+:------------------------------------------------------------------------------------------------
+
+4
+5
+14
+;====
+:================================================================================================
+
++ @stack first Int
++ @stack second Int
+
+-- first + second
+
+:------------------------------------------------------------------------------------------------
+%compile-error
+
+Exception: Stack-local variable 'first' is not bound
+<no file:5>
+    -- first + second
+       ^^^^^
+
+Exception: Stack-local variable 'second' is not bound
+<no file:5>
+    -- first + second
+               ^^^^^^
 ;====

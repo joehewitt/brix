@@ -113,7 +113,8 @@ The first characters of an atom say what it is:
 
 Some atoms fill fixed places in a form:
 
-- **Access.** `+` is public and `_` is private, as in `(fn-expr + greet String …)`.
+- **Access.** `+` is public, `_` is private, and `^` shares a member with its file family, as in
+  `(fn-expr + greet String …)`.
 - **The hole.** `_` in a type's place lets the compiler infer it, and in a pattern or a loop it
   stands for a value with no name.
 - **Flags** start with a colon, such as `:get` and `:static`, and **annotations** start with `@`,
@@ -220,7 +221,7 @@ A row begins with a mark that says what it is, followed by a space.
 
 | Row | Meaning | Form |
 | --- | --- | --- |
-| `+ name …`, `_ name …` | A public or private declaration. | `(fn-expr + name …)`, `(prop _ name …)` |
+| `+ name …`, `_ name …`, `^ name …` | A public, private or shared declaration. | `(fn-expr + name …)`, `(prop _ name …)`, `(fn-do ^ name …)` |
 | `- name Type` | A parameter. | `(param name Type)`{.brix} |
 | `... name Type` | The rest parameter. | `(param ... name Type)` |
 | `. name = value` | A local. | `(let name value)` |

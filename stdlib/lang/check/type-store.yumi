@@ -1439,16 +1439,29 @@ scratch.types.rewind(mark)
 ` The class the reference reaches first looking for a type written by name that takes `given`
 ` type arguments or more: modules by where they last come among those the caller lists, from the
 ` last to the first, so its own module first, and of a module's classes the last declared first.
-` Another module's private classes are not seen, and with `aliased` only other names are.
+` Another module's private classes are not seen, but by a module that declares a facet of one of
+` its classes, and with `aliased` only other names are. A facet is the class of its name where the
+` caller sees it (`sees-facet`) and reaches its access, and takes no type arguments.
 . best DeclRef? = null
 . best-place = 0u32
 . best-exact = false
 for candidate in program.lookup(caller, name)
     do match? program.modules[candidate.module].decls[candidate.decl]
+        | .decl-extension(row)
+            if aliased || given != 0 || !named-facet(caller, DeclRef(candidate.module, candidate.decl), row.facet == name)
+                continue
+            if !program.reaches-access(caller, candidate.module, row.access)
+                continue
+            . place = program.facet-listed-last(caller, candidate.module)
+            if place == U32.max || (best && place < best-place)
+                continue
+            best = DeclRef(candidate.module, candidate.decl)
+            best-place = place
+            best-exact = true
         | .decl-class(row)
             if (row.name != name) != aliased
                 continue
-            if candidate.module != caller && row.access != .public-access
+            if row.access != .public-access && !program.reaches-private(caller, candidate.module)
                 continue
             . place = program.listed-last(caller, candidate.module)
             if place == U32.max || (best && place < best-place)
@@ -1459,6 +1472,52 @@ for candidate in program.lookup(caller, name)
                 best-place = place
                 best-exact = taken == given
 = best
+
+────────────────────
+_ do named-facet Bool
+    - caller ModuleId
+    - candidate DeclRef
+    - named Bool
+
+` Whether a declaration a name finds is a facet bound to a class that the caller sees.
+=? false if !named || program.facets.count == 0
+. facet = program.facets.index-of(candidate.module, candidate.decl)
+=? false if !facet
+= program.facets.states[facet] == .facet-bound && program.sees-facet(caller, facet)
+
+────────────────────
++ do facet-of-type U32?
+    - id TypeId
+
+` The facet a type is, where it is the type of a facet's name.
+=? null if program.facets.count == 0
+do match? rows[id]
+    | .type-class(row)
+        = program.facets.index-of(row.module, row.decl)
+= null
+
+────────────────────
++ do plain-class TypeId
+    - module ModuleId
+    - decl DeclId
+
+` The type of a class that takes no type arguments.
+= class-with-args(module, decl, scratch.types.mark)
+
+────────────────────
++ do facet-owner TypeId
+    - facet U32
+
+` The type of a facet's owner. Once the store is sealed, it is the one made before, or none.
+. module = program.facets.owner-modules[facet]
+. decl = program.facets.owner-decls[facet]
+=? plain-class(module, decl) if !sealed
+ensure-scratch(3)
+key-scratch[0] = TypeTag.class
+key-scratch[1] = module
+key-scratch[2] = decl
+. found = keys.find(key-scratch.data, 3)
+= if found then found as TypeId else no-type
 
 ────────────────────
 + do class-with-args TypeId
@@ -1861,6 +1920,93 @@ for offset in 0 .. < range.count
     if properties[position].name == name
         = position
 = null
+
+────────────────────
++ do property-seen Index?
+    - id TypeId
+    - name Atom
+    - module ModuleId
+
+` The place of the property of a type by a name, as code in a module sees it. Facets of a class
+` may each declare a private property of one name: of those, code sees its own module's, and
+` otherwise one that no facet keeps to itself. A module that declares facets of the class sees
+` no property of a facet it does not reach. A facet's value has its facet's properties and its
+` ancestor facets', and no others.
+. viewed = facet-of-type(id)
+if viewed
+    . held = property-of-facet(id, name, viewed)
+    =? null if held && !program.sees-facet(module, properties[held].facet)
+    = held
+. found = property-named(id, name)
+=? found if !found || properties[found].facet == U32.max
+. facets = program.facets
+. range = completions[id].properties
+. open Index? = null
+. kept Index? = null
+for offset in 0 .. < range.count
+    . position = (range.start + offset) as Index
+    . fact = properties[position]
+    if fact.name == name
+        =? position if fact.facet == U32.max || facets.modules[fact.facet] == module
+        if program.sees-facet(module, fact.facet)
+            if !is-facet-private(fact.facet, name)
+                open = open ?? position
+            else if !kept
+                kept = position
+= open ?? kept
+
+────────────────────
+_ do property-of-facet Index?
+    - id TypeId
+    - name Atom
+    - facet U32
+
+` The place of the property of a facet's type by a name that the facet or one of its ancestor
+` facets declares, the nearest first.
+complete(id)
+. facets = program.facets
+. current = facet
+. steps Size = 0
+while current != U32.max && steps <= facets.count
+    . found = property-declared(id, name, current)
+    =? found if found
+    current = facets.parents[current]
+    steps += 1
+= null
+
+────────────────────
++ do property-declared Index?
+    - id TypeId
+    - name Atom
+    - facet U32
+
+` The place of the property of a type by a name and the facet that declares it, or none.
+=? property-named(id, name) if facet == U32.max
+. range = completions[id].properties
+for offset in 0 .. < range.count
+    . position = (range.start + offset) as Index
+    if properties[position].name == name && properties[position].facet == facet
+        = position
+= null
+
+────────────────────
+_ do is-facet-private Bool
+    - facet U32
+    - name Atom
+
+` Whether a facet keeps a property of a name to its own module.
+. target = program.modules[program.facets.modules[facet]]
+do match? target.decls[program.facets.decls[facet]]
+    | .decl-extension(row)
+        . place = target.first-member(row.members, name)
+        while place != no-member
+            . member = target.member-pool[place]
+            place = target.member-links[place]
+            do match? target.decls[member]
+                | .decl-property(property)
+                    if property.name && property.name == name
+                        = property.access == .private-access
+= false
 
 ────────────────────
 + do implements-type Bool
@@ -2563,13 +2709,9 @@ if member
     . module = program.modules[declaring.module]
     do match? module.decls[member]
         | .decl-associated(row)
-            . hidden = match row.access
-                | .private-access
-                    caller != null && caller != declaring.module
-                ??
-                    false
+            . hidden = caller != null && !program.reaches-access(caller, declaring.module, row.access)
             if hidden
-                raise-fault("Associated type ${name.text} is private")
+                raise-fault(associated-hidden-message(name, row.access))
                 scratch.types.rewind(mark)
                 = invalid-type
             if row.binding != 0
@@ -2606,6 +2748,17 @@ if base
     = resolve-binding(base, name, mark, count, caller)
 scratch.types.rewind(mark)
 = invalid-type
+
+────────────────────
+_ associated-hidden-message String
+    - name Atom
+    - access Access
+
+` What an error says of an associated type another module keeps from the code naming it.
+|? access is .family-access
+    "Associated type ${name.text} is shared, declared with ^, so only its own file family can use it"
+??
+    "Associated type ${name.text} is private"
 
 ────────────────────
 _ do is-resolving Bool
@@ -2826,7 +2979,7 @@ _ do complete-fields
 . mark = property-scratch.length
 for offset in 0 .. < fields.count
     . name = child-name(names, offset)
-    . fact = TypeProperty(name, .storage-eager, offset, child-type(fields, offset), id)
+    . fact = TypeProperty(name, .storage-eager, offset, child-type(fields, offset), id, U32.max)
     property-scratch.append(fact)
 set-completion(id, .completion-done, type, null)
 commit-properties(id, mark)
@@ -2861,6 +3014,10 @@ _ do complete-class
     - args RowRange'TypeId
     - errors RowRange'TypeId
 
+. facet = program.facets.index-of(module, decl) if program.facets.count != 0
+if facet
+    complete-facet(id, facet)
+    =
 . owner-module = program.modules[module]
 . tree = owner-module.tree
 . base-syntax SyntaxId = 0
@@ -2942,6 +3099,7 @@ for member in owner-module.member-pool[members]
                     delegated += interface
                     delegated += held
                     delegators += delegator
+gather-facet-interfaces(module, decl, env)
 . alternative-start = scratch.types.length
 for child in tree.children[or-bases]
     scratch.types.push(evaluate-type(module, tree, child, env))
@@ -2950,6 +3108,8 @@ for child in tree.children[or-bases]
 if members.count != 0
     for member in owner-module.member-pool[members]
         gather-member(id, module, member, env, type, property-mark)
+gather-facets(id, module, decl, env, type, property-mark)
+if members.count != 0
     converter-start = scratch.types.length
     for member in owner-module.member-pool[members]
         gather-converter(id, module, member, env, true)
@@ -3033,7 +3193,8 @@ _ do inherit-properties
 
 . range = completions[base].properties
 for inherited in properties[range]
-    add-property(mark, inherited.name, inherited.storage-kind, inherited.type, inherited.owner)
+    . kind = inherited.storage-kind
+    add-property(mark, inherited.name, kind, inherited.type, inherited.owner, inherited.facet)
 
 ────────────────────
 _ do action-type TypeId
@@ -3074,12 +3235,18 @@ _ do add-property
     - storage StorageKind
     - type TypeId
     - owner TypeId
+    - facet U32 = U32.max
 
+` A property of the name gathered before is the same property, given again by a class below,
+` unless a facet declares the new one, or a facet keeps the one before to itself: facets name their
+` private properties as they like. A class below that gives a facet's stored property a new value
+` gives it the facet's own, which stays the facet's.
 . key = MemberKey(mark as U32, name)
 . found = scratch-places[key]
 if found
     . slot Index = found
-    if slot >= mark && slot < property-scratch.length && property-scratch[slot].name == name
+    . same = slot >= mark && slot < property-scratch.length && property-scratch[slot].name == name
+    if same && facet == U32.max && (held == U32.max || given-again)
         . existing = property-scratch[slot]
         . kept = if existing.type != no-type then existing.type else type
         property-scratch[slot] = TypeProperty
@@ -3088,13 +3255,61 @@ if found
             - existing.slot
             - kept
             - owner
+            - held
         =
+    .. held = property-scratch[slot].facet
+    .. stored = storage != .storage-getter && property-scratch[slot].storage-kind != .storage-getter
+    .. given-again = stored && !is-facet-private(held, name)
 . index = U32.max
 if storage != .storage-getter
     index = stored-count
     stored-count += 1
 scratch-places[key] = property-scratch.length as U32
-property-scratch.append(TypeProperty(name, storage, index, type, owner))
+property-scratch.append(TypeProperty(name, storage, index, type, owner, facet))
+
+────────────────────
+_ do gather-facets
+    - id TypeId
+    - module ModuleId
+    - decl DeclId
+    - env TypeEnv
+    - type IntrinsicKind
+    - mark ScratchMark
+
+` The properties a class's facets declare, after the class's own, facet by facet in their order.
+` A facet's getters and setters are found as an extension's are.
+. facets = program.facets
+=? if facets.count == 0
+. (start, end) = facets.class-range(module, decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    . facet-module = facets.modules[facet]
+    . target = program.modules[facet-module]
+    do match? target.decls[facets.decls[facet]]
+        | .decl-extension(row)
+            for member in target.member-pool[row.members]
+                if target.decls[member] is .decl-property
+                    gather-member(id, facet-module, member, env, type, mark, facet)
+
+────────────────────
+_ do gather-facet-interfaces
+    - module ModuleId
+    - decl DeclId
+    - env TypeEnv
+
+` The interfaces a class's facets name, after the class's own, facet by facet in their order, each
+` read in its facet's module.
+. facets = program.facets
+=? if facets.count == 0
+. (start, end) = facets.class-range(module, decl)
+for position in start .. < end
+    . facet = facets.class-facets[position]
+    . facet-module = facets.modules[facet]
+    . target = program.modules[facet-module]
+    do match? target.decls[facets.decls[facet]]
+        | .decl-extension(row)
+            for interface in target.syntax-pool[row.interfaces]
+                scratch.types.push(evaluate-type(facet-module, target.tree, interface, env))
 
 ────────────────────
 _ do gather-member
@@ -3104,6 +3319,7 @@ _ do gather-member
     - env TypeEnv
     - type IntrinsicKind
     - mark ScratchMark
+    - facet U32 = U32.max
 
 . owner-module = program.modules[module]
 . tree = owner-module.tree
@@ -3125,7 +3341,7 @@ do match? owner-module.decls[member]
                 declared = pointer-type(module)
             else if row.part != 0
                 declared = action-type()
-            add-property(mark, property-name, storage, declared, id)
+            add-property(mark, property-name, storage, declared, id, facet)
     | .decl-function(row)
         . is-accessor = row.kind == .getter-decl || row.kind == .setter-decl
         if row.name && is-accessor && row.owner == member-owner(module, member)
@@ -3133,7 +3349,7 @@ do match? owner-module.decls[member]
             . declared = no-type
             if row.kind == .getter-decl && row.return-type != 0
                 declared = evaluate-type(module, tree, row.return-type, env)
-            add-property(mark, accessor-name, .storage-getter, declared, id)
+            add-property(mark, accessor-name, .storage-getter, declared, id, facet)
     | .decl-case(row)
         if type != .union
             set-flag(id, .flag-enums)
@@ -3406,13 +3622,45 @@ for index in start .. < end
 = RowRange'TypeId(first as U32, (children.length - first) as U32)
 
 ────────────────────
+_ do complete-facet
+    - id TypeId
+    - facet U32
+
+` A facet's type is its class's objects seen through the facet: a class of its own with no base,
+` whose properties are its class's own, so that its objects are laid out as the class's are and a
+` property is one wherever it is read. Which of them code reaches through it is the checker's to
+` say.
+. facets = program.facets
+if facets.states[facet] != .facet-bound
+    set-completion(id, .completion-failed, .none, null)
+    =
+. owner = facet-owner(facet)
+complete-slow(owner)
+if completions[owner].completion != .completion-done
+    set-completion(id, .completion-failed, .none, null)
+    =
+set-completion(id, .completion-done, .class, null)
+. range = completions[owner].properties
+completions[id].properties = range
+if range.count > property-scan-limit
+    for offset in 0 .. < range.count
+        . place = range.start + range.count - 1 - offset
+        property-places[MemberKey(id, properties[place].name)] = place as U32
+
+────────────────────
 _ do commit-properties
     - id TypeId
     - mark ScratchMark
 
 . first = properties.length
 for fact in property-scratch[mark .. < property-scratch.length]
-    . copied = TypeProperty(fact.name, fact.storage-kind, fact.slot, fact.type, fact.owner)
+    . copied = TypeProperty
+        - fact.name
+        - fact.storage-kind
+        - fact.slot
+        - fact.type
+        - fact.owner
+        - fact.facet
     properties.append(copied)
 property-scratch.truncate(mark)
 . count = properties.length - first

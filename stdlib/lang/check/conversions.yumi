@@ -103,8 +103,9 @@ if types.completions[source].intrinsic == .binding
         = invalid-type
 . relation = compare-held(source, target)
 . fitted = if types.completions[target].has-variables then relations.complete-from(target, source) ?? target else target
-. asked = requested || reason == .reason-operator || fitting-literal(value-syntax, fitted)
+. asked = requested || reason == .reason-operator || fitting-literal(value-syntax, fitted) || lowers
     .. requested = cast || reason == .reason-explicit || reason == .reason-print
+    .. lowers = lowers-facet(relation, reason)
 if !relation-legal(relation) || (!asked && !relations.implicit(relation))
     if misfits-literal(value-syntax, target)
         check-literal-fit(value-syntax, target)
@@ -129,6 +130,18 @@ else if reason == .reason-return
     record-conversion(syntax, relation, .reason-literal-return, false, no-type, value-syntax)
 . open = types.completions[target].has-variables || relations.holds-alternatives(target)
 = if chooses || open then relation.to else target
+
+────────────────────
+_ lowers-facet Bool
+    - relation Relation
+    - reason ConversionReason
+
+` Whether a conversion is of a facet's value to its owner as the receiver of a member of the
+` facet, which runs on the owner's object.
+|? reason != .reason-receiver && reason != .reason-own-receiver
+    false
+??
+    relation.kind == .relation-up-cast && types.facet-of-type(relation.from) != null
 
 ────────────────────
 + converts-value Bool
@@ -299,10 +312,12 @@ _ known-size U32
     - target TypeId
 
 ` The instance of the function a type declares to convert a value of one type to another, or
-` none where no such function converts it.
+` none where no such function converts it. It is demanded for a report, which one instance
+` serves wherever it is made, so it is typed as declared, outside any restriction where the
+` report is demanded.
 . relation = relations.compare(source, target, false, false, null, frame.module)
-if relation.kind == .relation-converter
-    = converter-of(relation)
+if relation.kind == .relation-converter && relation.converter-module != U32.max
+    = converter-instance(relation, false)
 = no-instance
 
 ────────────────────
@@ -357,7 +372,7 @@ if unwraps-case(relation) && host && !tests
     host!.demand-union-error()
 if relation.kind == .relation-side-cast && types.completions[relation.to].intrinsic == .table-span
     instances.mark-may-panic(frame.instance)
-demand-witness(relation)
+demand-witness(relation, syntax)
 if relation.kind == .relation-final-cast
     check-item-size(syntax, relation.from, relation.to)
 . casts = relation.kind == .relation-final-cast || relation.kind == .relation-side-cast
@@ -378,6 +393,8 @@ note-adapted
 if casts-function(relation)
     facts.conversions[id].casts = true
     note-cast(relation.from, relation.to, reason == .reason-explicit)
+if copies-function(relation, facts.conversions[id].casts)
+    frame.check-allocates(facts.conversions[id].syntax)
 part-site = facts.conversions[id].syntax
 part-value = if tests then 0 else value
 . parts = record-parts(relation, reason)
@@ -459,15 +476,47 @@ _ as-text Relation
 ────────────────────
 _ do demand-witness
     - relation Relation
+    - site SyntaxId = 0
 
 ` A value that becomes a value of an interface needs the witness of its type for that
-` interface. One made so inside an optional is the optional's part.
+` interface. One made so inside an optional is the optional's part. A value that is no object
+` and no whole number is copied into an object the collector owns, where it converts.
 if !host
     =
 if relation.kind == .relation-interface-cast
     host.record-witness(relation.from, relation.to)
+    if site != 0 && boxes(relation.from)
+        frame.check-allocates(site)
 if relation.kind == .relation-interface-down-cast && types.intrinsic-of(relation.to) == .interface
     facts.record-dynamic-witness(relation.from, relation.to)
+
+────────────────────
+_ copies-function Bool
+    - relation Relation
+    - casts Bool
+
+` Whether a value of a function type is made with a copy the collector owns: of a binding that
+` holds the value it calls on or arguments, or of a value of another function type.
+types.intrinsic-of(relation.to) == .function && (casts || binds(relation.from))
+
+────────────────────
+_ do binds Bool
+    - type TypeId
+
+do match? types.rows[type]
+    | .type-binding(row)
+        = (row.object != no-type && row.form != .bound-constructor) || row.items.count > row.param-count
+= false
+
+────────────────────
+_ boxes Bool
+    - type TypeId
+
+` Whether a value of a type is copied into an object the collector owns where it becomes a
+` value of an interface: one that is no object and is not held as a whole number.
+!(kind == .class || kind == .interface || kind == .bool || kind == .int1 || kind == .char || kind == .int8 || kind == .uint8 || kind == .int16 || kind == .uint16 || kind == .int32 || kind == .uint32 || kind == .int64 || kind == .uint64)
+
+.. kind = types.intrinsic-of(type)
 
 ────────────────────
 _ do note-adapted
@@ -925,7 +974,7 @@ if unwraps-case(part) && host
     instances.mark-may-panic(frame.instance)
     host!.demand-union-error()
 note-narrowing(part, reason)
-demand-witness(part)
+demand-witness(part, part-site)
 . id = facts.record-part(frame.instance, part, reason, callee)
 if callee != no-instance && host && part-value != 0
     facts.conversion-parts[id].raise = settle-raise(callee, part-value)
@@ -938,6 +987,8 @@ if held != target && casts-function(part)
     facts.conversion-parts[id].casts = true
     facts.conversion-parts[id].syntax = part-site
     note-cast(part.from, part.to)
+if held != target && copies-function(part, facts.conversion-parts[id].casts)
+    frame.check-allocates(part-site)
 part-depth += 1
 . inner = record-parts(part, reason)
 part-depth -= 1
@@ -1020,9 +1071,11 @@ facts.record-call(frame.instance, 0, callee, .call-converter, scratch.no-fills, 
 ────────────────────
 _ do converter-instance InstanceId
     - relation Relation
+    - restricted Bool = true
 
 ` The instance of the function a conversion runs, demanded of the host where there is one; one
-` found with no host, where a witness answers, is typed from the queue.
+` found with no host, where a witness answers, is typed from the queue. A restricted one is
+` typed under the restrictions of the code that converts.
 . self = if relation.kind == .relation-converter then relation.from else relation.to
 . mark = scratch.types.mark
 . params = scratch.no-types
@@ -1037,7 +1090,7 @@ if relation.kind == .relation-unwrap-cast
     scratch.types.push(relation.via)
     args = scratch.types.since(mark)
 . decl = relation.converter-decl
-. effects = declared-effects(frame.program, relation.converter-module, decl)
+. effects = if restricted then callee-effects(frame, relation.converter-module, decl) else declared-effects(frame.program, relation.converter-module, decl)
 . callee = instances.intern
     - relation.converter-module
     - decl
@@ -1046,6 +1099,7 @@ if relation.kind == .relation-unwrap-cast
     - no-instance
     - params
     - args
+    • zone if restricted then frame.zone() else ZoneEntry()
 scratch.types.rewind(mark)
 if host
     host.demand(callee)

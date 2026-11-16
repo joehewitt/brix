@@ -699,6 +699,30 @@ cleanup saw Task terminated
 worker cleanup
 ;====
 :====
+# A task terminated while it waits for another task ends there, and its cleanup runs.
+
+. ready = Semaphore()
+. sleeper = do new
+    Semaphore().wait()
+do new
+    do finally
+        . failure = Task().failure
+        if failure
+            -- "cleanup saw $failure.message"
+        -- "worker cleanup"
+    ready.post()
+    sleeper.wait()
+    -- "unexpected resume"
+ready.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+cleanup saw Task terminated
+worker cleanup
+;====
+:====
 
 . ready = Semaphore()
 . done = Semaphore()
@@ -2683,3 +2707,108 @@ waiter cleanup saw Task cancelled
 cancelled: true
 reaped: true
 ;===
+:====
+# A TaskGroup waits for every task added to it.
+
+. pool = Worker(2)
+. group = TaskGroup()
+. results = [0, 0, 0, 0]
+for index in 0 .. < 4
+    . task = do (pool) new
+        results[index] = index * index
+    catch failed
+        group.keep(failed)
+    group.add(task)
+group.wait()
+-- ", ".join("$each" in results)
+pool.stop()
+
+:----
+
+0, 1, 4, 9
+;====
+:====
+# The catch after each task keeps its panic, and wait raises the first kept once every task has
+# ended. settle waits the same way and leaves the panic for wait.
+
+. pool = Worker(2)
+. outer = do new
+    . group = TaskGroup()
+    . finished = [false, false, false]
+    for index in 0 .. < 3
+        . task = do (pool) new
+            if index == 1
+                ?! Panic("worker $index broke")
+            finished[index] = true
+        catch failed
+            group.keep(failed)
+        group.add(task)
+    group.settle()
+    -- "settled: ${", ".join("$each" in finished)}"
+    group.wait()
+    -- "not reached"
+catch failure
+    -- "caught: $failure.message"
+outer.wait()
+pool.stop()
+
+:----
+
+settled: true, false, true
+caught: worker 1 broke
+;====
+:====
+# close cancels a task that still runs and waits for it, as use does where its block ends; a task
+# that has ended is left as it is. cancel on a group cancels each task.
+
+. parked = do new
+    Semaphore().wait()
+    -- "never"
+parked.close()
+-- parked.end == .cancelled
+. quick = do new
+    -- "quick ran"
+quick.wait()
+quick.close()
+-- quick.end == .finished
+held()
+. group = TaskGroup()
+. waiting = do new
+    Semaphore().wait()
+group.add(waiting)
+group.cancel()
+group.wait()
+-- waiting.end == .cancelled
+
+━━━━━━━━━━━━━━━━━━━━
+_ do held
+
+. outside = do new
+    Semaphore().wait()
+do
+    . task = use outside
+    -- "leaving"
+-- outside.end == .cancelled
+
+:----
+
+true
+quick ran
+true
+leaving
+true
+true
+;====
+:====
+# @detached is accepted on a task and changes nothing yet: no task has an owner.
+
+. task = do new @detached
+    -- "detached ran"
+task.wait()
+-- task.end == .finished
+
+:----
+
+detached ran
+true
+;====
