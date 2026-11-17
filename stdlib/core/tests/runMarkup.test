@@ -3125,8 +3125,8 @@ true
 made
 ;====
 :====
-# A closure an attribute of a markup element gives reads a member of the element around it by
-# its name alone from that element's object when it runs.
+# A closure an attribute of a markup element gives reads a member of an element around it through
+# that element's name, from its object when it runs.
 
 /core/tests/support/markup-fixtures
 
@@ -3164,9 +3164,9 @@ if callback
 ────────────────────
 
 <This
-    <Item "outer"
+    <Item outer "outer"
         <Item "inner"
-            run = => do note("$title")
+            run = => do note(outer.title)
 
 ────────────────────
 + do note
@@ -3214,8 +3214,9 @@ true
 false
 ;====
 :====
-# A loop on a stream in the body of a markup element reads a member of the element by its name
-# alone from the element's object, made each turn of the loop around it, when an item comes.
+# A loop on a stream in the body of a markup element subscribes to the element's event, and reads
+# the scope outside the element as its attributes do: the item of the loop around it, not the
+# element's member of that name.
 
 /core/tests/support/markup-fixtures
 
@@ -3259,8 +3260,8 @@ seen = seen ++ text ++ ";"
 
 :----
 
-a! 3;b! 4;
-a! 3;b! 4;changed 5;
+a 3;b 4;
+a 3;b 4;b 5;
 ;====
 :====
 # A descendant query of a class with type parameters looks for its target for the parameters the
@@ -3554,9 +3555,9 @@ first hello
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            . pressed = press
+            . pressed = button.press
             seen = "pressed"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -3569,8 +3570,8 @@ first hello
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:16>
-                . pressed = press
-                            ^^^^^
+                . pressed = button.press
+                            ^^^^^^^^^^^^
 ;====
 :====
 # An event of a markup element is no value: a handler in the element's body that prints it is an
@@ -3586,9 +3587,9 @@ Exception: "press" is an event of Button; it cannot be used as a value
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            -- press
+            -- button.press
 
 ━━━━━━━━━━━━━━━━━━━━
 + Button is Box
@@ -3600,8 +3601,8 @@ Exception: "press" is an event of Button; it cannot be used as a value
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:14>
-                -- press
-                   ^^^^^
+                -- button.press
+                   ^^^^^^^^^^^^
 ;====
 :====
 # An event given to a parameter of a type its endpoint is not, which only converting it as a value
@@ -3653,9 +3654,9 @@ Exception: "press" is an event of Button; it cannot be used as a value
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            count = press
+            count = button.press
 
 ━━━━━━━━━━━━━━━━━━━━
 + Button is Box
@@ -3667,8 +3668,8 @@ Exception: "press" is an event of Button; it cannot be used as a value
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:16>
-                count = press
-                        ^^^^^
+                count = button.press
+                        ^^^^^^^^^^^^
 ;====
 :====
 # An event of a markup element is no value: a handler in the element's body that makes it an item
@@ -3686,9 +3687,9 @@ Exception: "press" is an event of Button; it cannot be used as a value
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            . all = [press]
+            . all = [button.press]
             seen = all.length
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -3701,8 +3702,8 @@ Exception: "press" is an event of Button; it cannot be used as a value
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:16>
-                . all = [press]
-                         ^^^^^
+                . all = [button.press]
+                         ^^^^^^^^^^^^
 ;====
 :====
 # An event is no value: one made a field of a tuple is an error at the event.
@@ -3747,9 +3748,9 @@ Exception: "press" is an event of Button; it cannot be used as a value
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            seen = press as String
+            seen = button.press as String
 
 ━━━━━━━━━━━━━━━━━━━━
 + Button is Box
@@ -3761,8 +3762,8 @@ Exception: "press" is an event of Button; it cannot be used as a value
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:16>
-                seen = press as String
-                       ^^^^^
+                seen = button.press as String
+                       ^^^^^^^^^^^^
 ;====
 :====
 # An event of a markup element is no value: a handler in the element's body that gives it to a
@@ -3780,9 +3781,9 @@ Exception: "press" is an event of Button; it cannot be used as a value
 ────────────────────
 
 <This
-    <Button
+    <Button button
         for event on press
-            record(press)
+            record(button.press)
 
 ────────────────────
 + do record
@@ -3801,8 +3802,8 @@ for item in items
 
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:16>
-                record(press)
-                       ^^^^^
+                record(button.press)
+                       ^^^^^^^^^^^^
 ;====
 :====
 # An event is no value: an attribute of a markup element that gives it to a property of another
@@ -4758,4 +4759,36 @@ Exception: A slot outlet cannot bind with "<->", since what fills the slot is ma
 <no file:14>
         text <-> caption
         ^^^^^^^^^^^^^^^^
+;====
+:====
+# A handler in the body of a markup element reads and assigns the names around the element, though
+# the element has members of those names, and reads the element through its name.
+
+/core/tests/support/markup-fixtures
+
+. panel = Panel()
+panel.button.press <- 1
+-- "${panel.count} ${panel.button.count}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ count = 7
+
+────────────────────
+
+<This
+    <Button button
+        for event on press
+            count = count + button.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Button is Box
+
++ count = 3
++ event press Int
+
+:----
+
+10 3
 ;====

@@ -160,6 +160,10 @@ overloaded, so an element can take texts, names and elements of different types 
 
 - **Steps.** Rows that give no value run as steps: `print`, `let`, `lazy`, `do`, and calls that
   return nothing. An element written inside a `(do …)` row is made but not added.
+- **What rows can read.** Every row of an element's body reads the names around the element, as
+  its attributes do, and none of the element's own members, nor those of an element it is in.
+  Read an element through its name, as `(. doc #chapters)`{.brix} does in [Batches](#batches). A
+  handler's event is the one exception: see [Links between elements](#links-between-elements).
 - **What a class needs.** A class takes children when it declares `+=` for their type. A line that
   no `+=` takes gives `Content not accepted`.
 - **More than children.** Three classes in core give an element more:
@@ -408,7 +412,7 @@ back in the place.
 (main
   (<> Outline (id: doc)
     (<> Heading (text: "Intro"))
-    (for (in title #chapters)
+    (for (in title (. doc #chapters))
       (<> Heading (text: title))
     )
   )
@@ -632,7 +636,7 @@ Team: [ann! bo!]
     (<> Group
       (<> Button (id: undo) (text: "undo")
         (for (on name pressed)
-          (print (str "undo heard its own press, label " label))
+          (print (str "undo heard its own press, label " (. undo label)))
         )
       )
     )
@@ -686,7 +690,9 @@ undo
 - **Types.** On a `MarkupNode`, a link gives a `MarkupNode?`, so read a member of another class
   after `as`.
 - **Handlers.** A `(for (on name pressed) …)` row in an element's body subscribes to the element's
-  own event, and reads the element's members by name. It ends when the element closes.
+  own event, or to one of an element it is in. Its body reads the names around the element, as
+  every row of the body does, so it reads the element through its name, as `(. undo label)`. It
+  ends when the element closes.
 - **Events that rise.** A class that implements `EventNode` and gives its parent as `event-parent`
   sends its events up the tree, where an ancestor subscribes to them by class, as `Toolbar` does to
   `(. Button pressed)`. See Reactivity.

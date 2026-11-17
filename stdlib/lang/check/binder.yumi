@@ -68,6 +68,8 @@ _ placed-elements [SyntaxId]
 _ in-callee Bool
 _ redeclaring SyntaxId = 0
 _ quiet-name SyntaxId = 0
+_ event-source SyntaxId = 0
+_ condition-level Size?
 _ repeating-depth U32
 _ owner-decl DeclId = 0
 _ value-floor U32
@@ -1383,7 +1385,10 @@ for child in tree.children-of(element)
                 styled-depth -= 1
                 if applied.condition != 0
                     open-receiver(element, class)
+                    . around = condition-level
+                    condition-level = receiver-decls.length - 1
                     walk(applied.condition)
+                    condition-level = around
                     close-receiver()
             ??
                 walk(child)
@@ -1762,8 +1767,9 @@ _ do walk-element Void
     - bound Bool = false
 
 ` The content of a markup element's body. A line that assigns is an attribute, walked with
-` what makes the element's object. The other lines are the element's content, where a name
-` is a member of the element before it is one of a scope outside, as `received-level` says,
+` what makes the element's object. The other lines are the element's content, which read the
+` scope outside the element, as its attributes do, but for the event a handler subscribes to,
+` which is the element's or one it is in, as `received-level` says,
 ` each with the function that gives it again where it has one, as an attribute has. The names
 ` of the elements among them are declared by a block around this one. Where a function of its
 ` own builds the lines that give the default slot content (`walk-wrapped`), only the content
@@ -1922,16 +1928,17 @@ receiver-scopes.pop()
 _ do received-level Size?
     - name Atom
     - position Size?
+    - lowest Size = 0
 
-` The level of the markup element a name read in the body of an element is a member of, the
-` element or one it is in, rather than what the scopes give it, or none: it is none where a
-` local the body itself declares hides the member. The innermost element is asked first. A
-` property the markup of the element's class declares for an element is hidden there, as the
-` reference hides it, and the name is asked of what is around. An element whose class the
-` binder cannot name by its type may hold any member, so every name in its body that is no
-` local of the body is taken for one.
+` The level of the markup element a name is a member of, the element or one it is in, no lower
+` than `lowest`, rather than what the scopes give it, or none: it is none where a local the body
+` itself declares hides the member. The innermost element is asked first. A property the markup
+` of the element's class declares for an element is hidden there, as the reference hides it,
+` and the name is asked of what is around. An element whose class the binder cannot name by its
+` type may hold any member, so every name asked of it that is no local of the body is taken for
+` one.
 . level = receiver-decls.length
-while level != 0
+while level > lowest
     level -= 1
     if position && position >= receiver-marks[level]
         = null
@@ -3318,7 +3325,7 @@ _ do walk-generator Void
 ` and body binds inside the closure's own scope and captures like a lambda body.
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        walk(row.container)
+        walk-source(row)
 walk-whenever(loop)
 push-scope(.scope-nested, id)
 function-depth += 1
@@ -3354,7 +3361,7 @@ _ do walk-broadcaster Void
 ` binds outside too (see `walk-whenever`).
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        walk(row.container)
+        walk-source(row)
 walk-whenever(loop)
 . flags = SlotFlag.slot-constant /or/ SlotFlag.slot-captured
 . channel = bindings.slots.append(channel-slot) as SlotId
@@ -3489,7 +3496,7 @@ _ do walk-loop Void
 do match? tree.nodes[id]
     | .node-loop-syntax(row)
         if !container-bound
-            walk(row.container)
+            walk-source(row)
         . streams = tree.is-stream-pattern(row.pattern)
         if streams
             stream-reach += 1
@@ -3537,6 +3544,17 @@ do match? tree.nodes[id]
         pop-scope()
         if streams
             stream-reach -= 1
+
+────────────────────
+_ do walk-source Void
+    - row ASTLoop
+
+` The container of a loop's first header. That of a handler, which names the event it subscribes
+` to, is the one name a row of a markup element's body reads as a member of the element.
+. around = event-source
+event-source = if row.is-subscriber then row.container else 0
+walk(row.container)
+event-source = around
 
 ────────────────────
 _ do walk-line Void
@@ -3940,14 +3958,20 @@ _ do resolve Void
 ` a style the object sees, which the type pass decides. A `rule` a pattern calls is never a name
 ` the match captures, as the reference calls rules by name and reads captures as values. A
 ` function that reads the name of a markup element of the one it is written in captures the
-` receiver too, whose property of the name it reads where the element is not made yet. A member
-` of a markup element read where the element's body is written notes the element, for a
-` function that gives the read again (`keep-received`). One that hides a local of the name
-` declared outside the element is noted so, for the type pass to say where the read fails.
+` receiver too, whose property of the name it reads where the element is not made yet. A name
+` is a member of a markup element only where it is the event a handler written in the element's
+` body subscribes to, or a name the condition of a style rule the element applies reads
+` (`received-level`); every other row of the body reads the scope outside the element. Such a
+` member read where the element's body is written notes the element, for a function that gives
+` the read again (`keep-received`). One that hides a local of the name declared outside the
+` element is noted so, for the type pass to say where the read fails.
 . position = if rule then rule-position(name) ?? lookup-position(name) else lookup-position(name)
 if coded-depth != 0 && !rule
     position = coded-position(position)
-. level = received-level(name, position) if receiver-decls.length != 0 && !rule
+. lowest Size? = if id == event-source then 0 else condition-level
+. level Size? = null
+if receiver-decls.length != 0 && !rule && lowest != null
+    level = received-level(name, position, lowest)
 if level
     . received = flags /or/ ResolutionFlag.resolution-received
     if position
