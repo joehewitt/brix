@@ -8618,6 +8618,11 @@ do match kind
         mark(kinds, facts.machine-own)
         mark(kinds, facts.machine-stop)
         mark(kinds, facts.machine-close)
+    |= .visit-slot-outlet
+        mark(kinds, facts.slot-outlets[row].chosen)
+    |= .visit-slot-choice
+        mark(kinds, facts.slot-choices[row].create)
+        mark(kinds, facts.slot-choices[row].fill)
     |= .visit-machine-refinement
         . refined = facts.machines[row].refined
         . unit = if refined != no-instance then instances.rows[refined].enclosing else no-instance
@@ -8694,6 +8699,12 @@ for machine in facts.machines
 ends += owners.length as U32
 for machine in facts.machines
     owners += if stops-at-close(machine) then machine.instance else no-instance
+ends += owners.length as U32
+for outlet in facts.slot-outlets
+    owners += if outlet.chosen != no-instance then outlet.instance else no-instance
+ends += owners.length as U32
+for choice in facts.slot-choices
+    owners += choice.instance
 ends += owners.length as U32
 visit-starts = arena.allocate'U32(count + 1)
 for instance in 0 .. < count + 1
@@ -11054,6 +11065,8 @@ _ VisitFact is U32
 | visit-machine-group = 17
 | visit-machine-refinement = 18
 | visit-machine-stop = 19
+| visit-slot-outlet = 20
+| visit-slot-choice = 21
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do is-literal-value Bool

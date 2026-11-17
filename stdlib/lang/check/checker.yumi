@@ -1545,6 +1545,9 @@ if declaration.kind == .source-decl
 if declaration.kind == .key-decl
     check-key(declaration.syntax)
     =
+if declaration.kind == .selector-decl
+    check-selector(declaration.syntax)
+    =
 if declaration.kind == .slot-decl
     check-slot(declaration.syntax)
     =
@@ -17497,6 +17500,9 @@ for statement in tree.children[body]
     if attributes && (tree.nodes[statement] is .node-assign || binds-slot(statement))
         facts.note-content-link(ContentLink(instance, statement, parent, no-type, no-fact))
         continue
+    if parent != no-type && tree.element-fill(statement)
+        facts.note-content-link(ContentLink(instance, statement, parent, no-type, no-fact))
+        continue
     . hosted = content-blocks.length
     . reported = facts.diagnostics.length
     if parent != no-type
@@ -21265,7 +21271,7 @@ if row.slot-binding != 0 && !builds-slot(id)
         frame.diagnose
             - row.slot-binding
             - .stated
-            - program.store-atom("Slot binding is only valid directly inside markup body")
+            - program.store-atom("A slot is filled by a line of the element's body, or by a line of an arm of an if or match there")
     else
         decline(id)
     = invalid-type
@@ -22613,6 +22619,7 @@ do match? tree.nodes[statement]
         = nested-decl-of(statement) != 0
     | .node-markup-slot-forward
         = true
+=? true if tree.fills-only(statement)
 = wraps-default(statement)
 
 ────────────────────
@@ -22915,7 +22922,7 @@ if wraps-default(body)
 do match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
-            if binds-slot(statement)
+            if binds-slot(statement) || tree.holds-fills(statement)
                 lines += statement
 . outlets = types.intrinsic-of(class) == .class && holds-outlets(class)
 if lines.length == 0 && !outlets
@@ -23001,6 +23008,10 @@ _ do give-lines Bool
 . defaulted = names.find(program.store-atom("")) != null
 . seen [Atom]
 for line in lines
+    if tree.holds-fills(line)
+        if !give-choices(line, names, wanted, items, styles, sheets, levels, given, builders, class, scopes, scoped, keeps-own, seen)
+            = false
+        continue
     . binding SyntaxId = 0
     . parameter SyntaxId = 0
     . forwarding SyntaxId = 0
@@ -23062,6 +23073,9 @@ for line in lines
     if forwarding != 0
         if forwards-nothing(name)
             continue
+        if forwards-choice(name)
+            frame.diagnose(line, .stated, program.store-atom("A slot filled inside an if or match is not passed on with <+; give it content here instead"))
+            = false
         if builder == invalid-type || !forward-slot(line, forwarding, name, builder)
             decline(line)
             = false
@@ -23127,6 +23141,116 @@ for line in lines
 = true
 
 ────────────────────
+_ do give-choices Bool
+    - control SyntaxId
+    - names [Atom]
+    - wanted [TypeId]
+    - items [TypeId]
+    - styles [TypeId]
+    - sheets [TypeId]
+    - levels [U32]
+    - given [Atom]
+    - builders [TypeId]
+    - class TypeId
+    - scopes [ScopeUse]
+    - scoped Bool
+    - keeps-own Bool
+    - seen [Atom]
+
+if keeps-own
+    frame.diagnose(control, .stated, program.store-atom("A subclass fills its base's slots with lines of its content, not inside an if or match"))
+    = false
+. filled [Atom]
+. firsts [SyntaxId]
+for arm in tree.region-arms(control)
+    . fills [SyntaxId]
+    do match? tree.nodes[tree.region-arm-body(arm)]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                if tree.fills-slot(line)
+                    fills += line
+    if fills.length == 0
+        continue
+    for line in fills
+        if tree.nodes[line] is .node-markup-slot-forward
+            frame.diagnose(line, .stated, program.store-atom("A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body"))
+            = false
+    do match? tree.nodes[arm]
+        | .node-type-transform(row)
+            . bound [Atom]
+            tree.pattern-names(row.pattern, bound)
+            if bound.length != 0
+                frame.diagnose(row.pattern, .stated, program.store-atom("A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"))
+                = false
+    . arm-given [Atom]
+    . arm-builders [TypeId]
+    if !give-lines(fills, names, wanted, items, styles, sheets, levels, arm-given, arm-builders, class, scopes, scoped, keeps-own)
+        = false
+    for line in fills
+        . name = filled-name(line)
+        if name && filled.find(name) == null
+            filled += name
+            firsts += line
+. selector = types.well-known-type("core/markup", "MarkupSlotSelector")
+. anchor = tree.selector-anchor(control)
+. decl = if anchor != 0 then nested-decl-of(anchor) else 0u32
+if selector == invalid-type || decl == 0 || demand-nested(decl, no-type) == no-instance
+    decline(control)
+    = false
+. closure = intern-nested(decl)
+if conversions.convert(anchor, anchor, closure, selector, .reason-markup-slot) == invalid-type
+    = false
+. index = types.index-type
+for offset in 0 .. < filled.length
+    . name = filled[offset]
+    . first = firsts[offset]
+    if seen.find(name) != null || given.find(name) != null
+        frame.diagnose(first, .stated, program.store-atom("Duplicate slot content"))
+        = false
+    seen += name
+    . position = names.find(name)!
+    if items[position] != no-type
+        frame.diagnose(first, .stated, program.store-atom("A repeated slot cannot be filled inside an if or match"))
+        = false
+    . content = wanted[position]
+    . choice = types.well-known-type-of("core/markup", "MarkupSlotChoice", content)
+    . builder = builder-type(content, no-type)
+    if choice == invalid-type || builder == invalid-type
+        decline(first)
+        = false
+    . markup = types.markup-host-decl.module
+    . mark = scratch.types.mark
+    scratch.types.push(content)
+    scratch.types.push(selector)
+    scratch.types.push(index)
+    . create = calls.demand-runtime-call(markup, no-type, program.store-atom("markup-slot-choice"), mark, 1)
+    scratch.types.rewind(mark)
+    scratch.types.push(content)
+    scratch.types.push(choice)
+    scratch.types.push(index)
+    scratch.types.push(builder)
+    . fill = calls.demand-runtime-call(markup, no-type, program.store-atom("markup-slot-arm"), mark, 1)
+    scratch.types.rewind(mark)
+    if create == no-instance || fill == no-instance
+        decline(first)
+        = false
+    facts.slot-choices += SlotChoice(instance, control, first, choice, create, fill, closure)
+    add-slot(name, choice, given, builders)
+= true
+
+────────────────────
+_ filled-name Atom?
+    - line SyntaxId
+
+match tree.nodes[line]
+    | .node-markup(row)
+        identifier-name(tree, row.slot-binding)
+    | .node-markup-slot-forward(row)
+        identifier-name(tree, row.slot-binding)
+    ??
+        null
+
+────────────────────
 _ do keep-root SlotId
     - line SyntaxId
 
@@ -23188,6 +23312,16 @@ if !frame.declaration.is-content
     argument = U32.max
 facts.slot-outlets += SlotOutlet(instance, outlet, argument, 0, no-type, held, 0)
 = true
+
+────────────────────
+_ do forwards-choice Bool
+    - name Atom
+
+. filling = filling-checker()
+if !filling
+    = false
+. argument = instances.slot-argument(filling.instance, name)
+= argument != U32.max && chosen-slot(instances.argument-type(filling.instance, argument)) != no-type
 
 ────────────────────
 _ forwards-nothing Bool
@@ -23562,7 +23696,12 @@ for outlet in found
     do match? owner.tree.nodes[outlet]
         | .node-markup-slot-forward(row)
             . name = identifier-name(owner.tree, row.slot-binding)
-            . element = owner.tree.holder-of(owner.tree.holder-of(outlet))
+            . body = owner.tree.holder-of(outlet)
+            . element = owner.tree.holder-of(body)
+            if !(owner.tree.nodes[element] is .node-markup)
+                . control = owner.tree.arm-control(body)
+                if control != 0
+                    element = owner.tree.holder-of(owner.tree.holder-of(control))
             . host = no-type
             do match? owner.tree.nodes[element]
                 | .node-markup(made)
@@ -23736,8 +23875,17 @@ if rebuilt && argument == U32.max && !tree.builds-outlet-alone(id)
     = invalid-type
 . held = no-slot
 . fallback SyntaxId = 0
-if argument != U32.max
+. picks = no-type
+. supplied = argument != U32.max
+if supplied
     . builder = instances.argument-type(filling.instance, argument)
+    . chosen = chosen-slot(builder)
+    if chosen != no-type
+        if frame.declaration.is-content || given != 0
+            decline(id)
+            = invalid-type
+        picks = types.well-known-type-of("core/markup", "MarkupSlotBuilder", chosen)
+        builder = picks
     if !frame.declaration.is-content
         held = builder-slot(name)
         if held == no-slot
@@ -23761,13 +23909,16 @@ if argument != U32.max
         = invalid-type
     if !hold-cells(id, rule-scopes)
         = invalid-type
-    if row.body != 0
+    if row.body != 0 && picks == no-type
         leave-unbuilt(row.body)
+if supplied && picks == no-type
+    fallback = 0
 else if lines.length == 0
-    facts.slot-outlets += SlotOutlet(instance, id, U32.max, 0, content)
-    if row.body != 0
-        leave-unbuilt(row.body)
-    = no-type
+    if picks == no-type
+        facts.slot-outlets += SlotOutlet(instance, id, U32.max, 0, content)
+        if row.body != 0
+            leave-unbuilt(row.body)
+        = no-type
 else if lines.length > 1 || is-control-line(lines[0])
     fallback = row.body
     if in-batch() && !defers-roots()
@@ -23793,7 +23944,7 @@ else
         = invalid-type
     if conversions.convert(fallback, fallback, made, content, .reason-assignment) == invalid-type
         = invalid-type
-facts.slot-outlets += SlotOutlet(instance, id, argument, fallback, content, held, given)
+facts.slot-outlets += SlotOutlet(instance, id, argument, fallback, content, held, given, no-instance, picks)
 . named = declaring-slot(row.name) if row.name != 0 && !rebuilt
 if named && bindings.slots[named].group == id
     frame.assign(named, content)
@@ -23910,6 +24061,9 @@ for offset in 0 .. < range.count
         decline(site)
         = false
     . builder = builder-type(wanted[position], items[position])
+    . argument = instances.slot-argument(instance, bindings.slots[slot].name)
+    if argument != U32.max && chosen-slot(instances.argument-type(instance, argument)) != no-type
+        builder = instances.argument-type(instance, argument)
     if builder == invalid-type
         decline(site)
         = false
@@ -24002,6 +24156,8 @@ _ do check-line TypeId
 ` `for` does, and any other is checked as a statement.
 if parent != no-type && is-region(statement)
     = check-branch(statement, parent)
+if parent != no-type && outlet-choice(statement) != no-type
+    = check-chosen-outlet(statement, parent, outlet-choice(statement))
 if parent != no-type && tree.builds-outlet-alone(statement)
     = check-outlet-arm(statement, parent)
 if parent != no-type && outlet-region(statement) != 0
@@ -24016,6 +24172,153 @@ if parent != no-type && nested-decl-of(statement) == 0
             frame.forget-members()
             = no-type
 = check-statement(statement, want)
+
+────────────────────
+_ do chosen-slot TypeId
+    - builder TypeId
+
+do match? types.rows[builder]
+    | .type-class(row)
+        if row.args.count == 1
+            . slot = types.child-type(row.args, 0)
+            if types.well-known-type-of("core/markup", "MarkupSlotChoice", slot) == builder
+                = slot
+= no-type
+
+────────────────────
+_ do outlet-name Atom
+    - row ASTSlotOutlet
+
+. name = program.store-atom("")
+if row.name != 0
+    name = identifier-name(tree, row.name) ?? name
+= name
+
+────────────────────
+_ do outlet-choice TypeId
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        =? no-type if row.slot-parameter != 0
+        . filling = filling-checker()
+        =? no-type if !filling
+        . argument = instances.slot-argument(filling.instance, outlet-name(row))
+        =? no-type if argument == U32.max
+        = chosen-slot(instances.argument-type(filling.instance, argument))
+= no-type
+
+────────────────────
+_ do check-chosen-outlet TypeId
+    - id SyntaxId
+    - parent TypeId
+    - slot TypeId
+
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        = check-chosen-region(id, row, parent, slot)
+decline(id)
+= invalid-type
+
+────────────────────
+_ do check-chosen-region TypeId
+    - id SyntaxId
+    - row ASTSlotOutlet
+    - parent TypeId
+    - slot TypeId
+
+. tree-host = derived-interface(parent, types.markup-tree-host-decl)
+. content = if tree-host != no-type then first-arg(tree-host) else no-type
+. filling = filling-checker()
+if content == no-type || content == invalid-type || !filling || in-batch()
+    decline(id)
+    = invalid-type
+if !makes-region(parent)
+    frame.diagnose(id, .stated, program.store-atom(message))
+    .. message = "Markup branch host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
+    = invalid-type
+. name = outlet-name(row)
+. argument = instances.slot-argument(filling.instance, name)
+. choice = instances.argument-type(filling.instance, argument)
+. held = no-slot
+if !frame.declaration.is-content
+    held = builder-slot(name)
+    if held == no-slot
+        decline(id)
+        = invalid-type
+    argument = U32.max
+. alone = tree.builds-outlet-alone(id)
+. builder = types.well-known-type-of("core/markup", "MarkupBranchBuilder", content)
+. arm = if alone && builder != invalid-type then check-chosen-arm(id, row, content, builder) else no-type
+if alone && (arm == no-type || arm == invalid-type)
+    decline(id)
+    = invalid-type
+. mark = scratch.types.mark
+scratch.types.push(slot)
+scratch.types.push(content)
+scratch.types.push(parent)
+scratch.types.push(parent)
+scratch.types.push(choice)
+if alone
+    scratch.types.push(builder)
+    scratch.types.push(types.bool-type)
+. call = calls.demand-runtime-call
+    - types.markup-host-decl.module
+    - no-type
+    - program.store-atom(if alone then "markup-chosen-arm" else "markup-chosen-slot")
+    - mark
+    - 3
+scratch.types.rewind(mark)
+if call == no-instance || !raises-out(id, call)
+    decline(id)
+    = invalid-type
+. fallback = if alone && falls-back(row) then row.body else 0
+facts.slot-outlets += SlotOutlet(instance, id, argument, fallback, slot, held, 0, call, no-type, arm)
+. made = instances.signatures[call].returns
+facts.set-node-type(instance, id, made)
+= made
+
+────────────────────
+_ do falls-back Bool
+    - row ASTSlotOutlet
+
+do match? tree.nodes[row.body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            if !(tree.nodes[statement] is .node-assign)
+                = true
+= false
+
+────────────────────
+_ do check-chosen-arm TypeId
+    - id SyntaxId
+    - row ASTSlotOutlet
+    - content TypeId
+    - builder TypeId
+
+. resolution = bindings.resolution-of(frame.binding, id)
+. decl = nested-decl-of(id)
+if resolution.kind != .resolve-slot || decl == 0 || bindings.slots[resolution.slot - 1].syntax != id
+    = no-type
+frame.assign(resolution.slot - 1, types.void-type)
+. named = declaring-slot(row.name) if row.name != 0
+if named && bindings.slots[named].group == id
+    . filling = filling-checker()
+    if filling
+        . made = types.evaluate-type(module, tree, row.type-id, filling.frame.env)
+        if made != invalid-type
+            frame.assign(named, made)
+. outer-batch = region
+region = region.batch = false
+region = region.root = resolution.slot - 1
+. demanded = demand-nested(decl, content)
+region = outer-batch
+if demanded == no-instance
+    = no-type
+. closure = intern-nested(decl)
+if conversions.convert(id, id, closure, builder, .reason-markup-arm) == invalid-type
+    = invalid-type
+= closure
 
 ────────────────────
 _ do check-outlet-arm TypeId
@@ -24072,6 +24375,36 @@ do match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .branch-decl
 = false
+
+────────────────────
+_ do is-selector Bool
+    - id SyntaxId
+
+. decl = nested-decl-of(id)
+if decl == 0
+    = false
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        = fn.kind == .selector-decl
+= false
+
+────────────────────
+_ do selector-head SyntaxId
+    - arm SyntaxId
+
+. head = arm
+while head != 0
+    if is-selector(head)
+        = head
+    . before = tree.subtree-start(head) - 1
+    . linked = false
+    do match? tree.nodes[before]
+        | .node-if-block(row)
+            linked = row.next == head
+    if !linked
+        = 0
+    head = before
+= 0
 
 ────────────────────
 _ do outlet-region SyntaxId
@@ -25109,7 +25442,7 @@ for line in lines
                 frame.diagnose
                     - element.slot-binding
                     - .stated
-                    - program.store-atom("Slot binding is only valid directly inside markup body")
+                    - program.store-atom("A slot is filled by a line of the element's body, or by a line of an arm of an if or match there")
                 finish-errors(frame)
                 close()
                 =
@@ -25231,6 +25564,25 @@ if value != invalid-type && value != no-type
         - .reason-return
         - true
         - true
+finish-errors(frame)
+close()
+
+────────────────────
+_ do check-selector
+    - anchor SyntaxId
+
+. id = tree.selector-control(anchor)
+prepare()
+demand-live-runtime()
+. selected = types.optional-of(types.index-type)
+instances.set-returns(instance, selected, selected, .return-declared)
+content-blocks += 0
+content-parents += no-type
+content-names += false
+read-arms(id)
+content-blocks.pop()
+content-parents.pop()
+content-names.pop()
 finish-errors(frame)
 close()
 
@@ -32901,6 +33253,10 @@ do match resolution.kind
             = Found(invalid-type)
         if bindings.slots[resolution.slot].getter != 0
             = Found(read-getter(id, resolution.slot))
+        if is-placed(resolution.slot) && outlet-choice(bindings.slots[resolution.slot].group) != no-type
+            . message = "Outlet \"${name.text}\" is not read by its name where its slot is filled inside an if or match"
+            frame.diagnose(id, .stated, program.store-atom(message))
+            = Found(invalid-type)
         if unbuilt.length != 0 && unbuilt.find(resolution.slot) != null
             if resolution.slot == building || held.find(resolution.slot) != null
                 . message = "Named markup element \"${name.text}\" is read before its markup constructs it"
@@ -33286,7 +33642,7 @@ _ do track-local
 . plain = !restored(slot) && !restored-namesake(slot)
 . subscribers = subscribers-slot(slot)
 . kind = frame.declaration.kind
-. reaches = kind == .live-decl || kind == .whenever-decl || kind == .gate-decl || kind == .branch-decl || kind == .branch-arm-decl || kind == .source-decl || kind == .row-decl || kind == .slot-decl
+. reaches = kind == .live-decl || kind == .whenever-decl || kind == .gate-decl || kind == .branch-decl || kind == .branch-arm-decl || kind == .source-decl || kind == .row-decl || kind == .slot-decl || kind == .selector-decl
 if kind == .key-decl && tests-row(frame.declaration.syntax) && !plain
     . name = identifier-name(tree, id)
     . shown = if name then name.text else "it"
@@ -33926,6 +34282,9 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
             if row.op == .whenever-clause && !nested && nested-decl-of(node) != 0
                 = .live-whenever
         | .node-if-block
+            . chooser = selector-head(node)
+            if chooser != 0 && !nested
+                = if in-arm-body(chooser, id) then LiveContext.live-other else LiveContext.live-region
             . head = region-head(node)
             if head != 0
                 if !nested && arm-line(head, id) != 0
@@ -33934,6 +34293,8 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
                     = .live-other
                 = .live-region
         | .node-match-expression
+            if is-selector(node) && !nested
+                = if in-arm-body(node, id) then LiveContext.live-other else LiveContext.live-region
             if is-region(node)
                 if !nested && arm-line(node, id) != 0
                     = .live-statement

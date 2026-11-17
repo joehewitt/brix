@@ -1501,6 +1501,20 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 + content TypeId = no-type
 + held SlotId = no-slot
 + item SyntaxId = 0
++ chosen InstanceId = no-instance
++ picks TypeId = no-type
++ arm TypeId = no-type
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotChoice is Struct
+
++ instance InstanceId
++ site SyntaxId
++ line SyntaxId
++ choice TypeId
++ create InstanceId
++ fill InstanceId
++ selector TypeId
 
 ━━━━━━━━━━━━━━━━━━━━
 + BranchRegion is Struct
@@ -2888,6 +2902,7 @@ _ deferred-rows Map'Size'U32'ArenaBacking
 + markup-reads List'MarkupRead'ArenaBacking
 + element-roots List'ElementRoot'ArenaBacking
 + slot-outlets List'SlotOutlet'ArenaBacking
++ slot-choices List'SlotChoice'ArenaBacking
 + branch-regions List'BranchRegion'ArenaBacking
 + loop-regions List'LoopRegion'ArenaBacking
 + row-item-reads List'RowItemRead'ArenaBacking
@@ -3140,6 +3155,7 @@ _ const-array-keys IdMap
 .. markup-reads = List'MarkupRead(arena)
 .. element-roots = List'ElementRoot(arena)
 .. slot-outlets = List'SlotOutlet(arena)
+.. slot-choices = List'SlotChoice(arena)
 .. branch-regions = List'BranchRegion(arena)
 .. loop-regions = List'LoopRegion(arena)
 .. row-item-reads = List'RowItemRead(arena)
@@ -4279,6 +4295,16 @@ for row in element-roots
 ` How a slot outlet of an instance is mounted, or none.
 for row in slot-outlets
     if row.instance == instance && row.site == site
+        = row
+= null
+
+────────────────────
++ do slot-choice-of SlotChoice?
+    - instance InstanceId
+    - line SyntaxId
+
+for row in slot-choices
+    if row.instance == instance && row.line == line
         = row
 = null
 
@@ -6721,6 +6747,9 @@ for position in 0 .. < element-roots.length
 for position in 0 .. < slot-outlets.length
     if held-by(retired, slot-outlets[position].instance)
         slot-outlets[position].instance = dead
+for position in 0 .. < slot-choices.length
+    if held-by(retired, slot-choices[position].instance)
+        slot-choices[position].instance = dead
 for position in 0 .. < branch-regions.length
     if held-by(retired, branch-regions[position].instance)
         branch-regions[position].instance = dead
@@ -7454,6 +7483,7 @@ retirable-weight() + kept-weight() + unretirable-weight() - absorbed-weight()
 . markup = change-test-count + markup-reads.length + row-item-reads.length + collection-reads.length
     .. change-test-count = change-tests.length
 markup += element-roots.length + named-stores.length + slot-outlets.length + raised-elements.length
+markup += slot-choices.length
 markup += loop-regions.length + branch-regions.length + trigger-count + deferred-values.length
     .. trigger-count = markup-triggers.length
 markup += region-roots.length + whenever-calls.length + query-targets.length
@@ -7519,6 +7549,7 @@ events += if event-register-arrival != no-instance then 1u32 else 0u32
 
 . markup = collection-reads.length + event-uses.length + markup-reads.length + element-roots.length
 markup += slot-outlets.length + branch-regions.length + loop-regions.length + row-item-reads.length
+markup += slot-choices.length
 markup += region-roots.length + query-registrations.length + markup-triggers.length
 markup += whenever-call-count + raised-elements.length + named-stores.length + event-closers.length
     .. whenever-call-count = whenever-calls.length
@@ -9090,7 +9121,20 @@ for row in peer.slot-outlets
         fact.instance = ids.instance(row.instance)
         fact.content = ids.type(row.content)
         fact.held = ids.slot(row.held)
+        fact.chosen = ids.instance(row.chosen)
+        fact.picks = ids.type(row.picks)
+        fact.arm = ids.type(row.arm)
         slot-outlets += fact
+for row in peer.slot-choices
+    if ids.owns(row.instance)
+        slot-choices += SlotChoice
+            - ids.instance(row.instance)
+            - row.site
+            - row.line
+            - ids.type(row.choice)
+            - ids.instance(row.create)
+            - ids.instance(row.fill)
+            - ids.type(row.selector)
 for row in peer.raised-elements
     if ids.owns(row.instance)
         note-raised(ids.instance(row.instance), row.block, row.element)

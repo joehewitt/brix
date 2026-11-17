@@ -685,6 +685,109 @@ do match? nodes[id]
 = false
 
 ────────────────────
++ do fills-only Bool
+    - id SyntaxId
+
+if !(nodes[id] is .node-if-block) && !(nodes[id] is .node-match-expression)
+    = false
+. arms = region-arms(id)
+=? false if arms.length == 0
+. fills = false
+for arm in arms
+    do match? nodes[region-arm-body(arm)]
+        | .node-block(block)
+            for line in children[block.body]
+                if !fills-slot(line)
+                    = false
+                fills = true
+= fills
+
+────────────────────
++ do holds-fills Bool
+    - id SyntaxId
+
+if !(nodes[id] is .node-if-block) && !(nodes[id] is .node-match-expression)
+    = false
+for arm in region-arms(id)
+    do match? nodes[region-arm-body(arm)]
+        | .node-block(block)
+            for line in children[block.body]
+                if fills-slot(line)
+                    = true
+= false
+
+────────────────────
++ do selector-anchor SyntaxId
+    - control SyntaxId
+
+=? control if fills-only(control)
+do match? nodes[control]
+    | .node-if-block(row)
+        = row.condition
+    | .node-match-expression(row)
+        = row.subject
+= 0
+
+────────────────────
++ do selector-control SyntaxId
+    - anchor SyntaxId
+
+=? anchor if nodes[anchor] is .node-if-block || nodes[anchor] is .node-match-expression
+= holder-of(anchor)
+
+────────────────────
++ do arm-control SyntaxId
+    - body SyntaxId
+
+. arm = holder-of(body)
+if !(nodes[arm] is .node-if-block)
+    for node in body + 1 .. < (nodes.length as SyntaxId)
+        do match? nodes[node]
+            | .node-type-transform(row)
+                if row.expr == body
+                    = arm-match(node)
+    = 0
+do match? nodes[arm]
+    | .node-if-block(row)
+        =? 0 if row.body != body
+        . head = arm
+        while true
+            . above = holder-of(head)
+            . chained = false
+            do match? nodes[above]
+                | .node-if-block(link)
+                    chained = link.next == head
+            if !chained
+                = head
+            head = above
+= 0
+
+────────────────────
++ do element-fill Bool
+    - line SyntaxId
+
+=? false if !fills-slot(line)
+. control = arm-control(holder-of(line))
+=? false if control == 0 || !holds-fills(control)
+. element = body-element(holder-of(control))
+do match? nodes[element]
+    | .node-markup(row)
+        = !names-this(row.type-id)
+= false
+
+────────────────────
++ fills-slot Bool
+    - line SyntaxId
+
+match nodes[line]
+    | .node-markup(row)
+        row.slot-binding != 0
+    | .node-markup-slot-forward
+        true
+    ??
+        false
+
+────────────────────
 + do when-clause SyntaxId
     - loop SyntaxId
 

@@ -1296,10 +1296,14 @@ for reverse in 1 .. < tree.root
                             gates[applied.condition] = true
                         .. is-reference = tree.is-condition-reference(applied.condition)
         | .node-if-block
-            if content[id] && is-branch-region(tree, id)
+            if attributes[id] && tree.holds-fills(id)
+                add-selector(tree, id, owner, named)
+            if content[id] && !tree.fills-only(id) && is-branch-region(tree, id)
                 add-branch(tree, id, owner, named)
         | .node-match-expression
-            if content[id] && is-match-region(tree, id)
+            if attributes[id] && tree.holds-fills(id)
+                add-selector(tree, id, owner, named)
+            if content[id] && !tree.fills-only(id) && is-match-region(tree, id)
                 add-branch(tree, id, owner, named)
         | .node-slot-outlet(row)
             if tree.builds-outlet-alone(id)
@@ -1618,7 +1622,7 @@ match tree.nodes[line]
     | .node-markup(row)
         row.slot-binding == 0
     ??
-        true
+        !tree.fills-only(line)
 
 ────────────────────
 _ do naming SyntaxId
@@ -1945,7 +1949,7 @@ do match? tree.nodes[body]
             content[line] = true
             do match? tree.nodes[line]
                 | .node-if-block
-                    . region = is-branch-region(tree, line)
+                    . region = is-branch-region(tree, line) && !tree.fills-only(line)
                     . arm = line
                     while arm != 0
                         . next SyntaxId = 0
@@ -1956,7 +1960,7 @@ do match? tree.nodes[body]
                                 next = branch.next
                         arm = next
                 | .node-match-expression
-                    if is-match-region(tree, line)
+                    if is-match-region(tree, line) && !tree.fills-only(line)
                         . held [SyntaxId]
                         tree.match-arms(line, held)
                         for arm in held
@@ -1983,6 +1987,8 @@ _ do add-branch
     - id SyntaxId
     - owner DeclId
     - named SyntaxId
+    - kind = DeclKind.branch-decl
+    - anchor SyntaxId = 0
 
 ` The function that selects the arm of a markup branch region again when what its conditions
 ` read tracked changes, whose first selection is the enclosing function's; each arm is built by
@@ -2002,12 +2008,12 @@ while arm != 0
             next = row.next
     arm = next
 . fn = FunctionDecl
-    - id
+    - if anchor != 0 then anchor else id
     - null
     - RowRange'Atom()
     - owner
     - Access.private-access
-    - DeclKind.branch-decl
+    - kind
     - RowRange'DeclId()
     - 0
     - RowRange'SyntaxId()
@@ -2024,6 +2030,17 @@ while arm != 0
     - RowRange'SyntaxId()
     - named
 do append(fn)
+
+────────────────────
+_ do add-selector
+    - tree AST
+    - id SyntaxId
+    - owner DeclId
+    - named SyntaxId
+
+. anchor = tree.selector-anchor(id)
+if anchor != 0
+    add-branch(tree, id, owner, named, DeclKind.selector-decl, anchor)
 
 ────────────────────
 _ do add-source

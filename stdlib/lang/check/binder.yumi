@@ -1829,6 +1829,9 @@ do match? tree.nodes[body]
         for statement in tree.children[row.body]
             if !bound && is-finally(statement)
                 walk(statement)
+        for statement in tree.children[row.body]
+            if tree.holds-fills(statement) && !tree.fills-only(statement) && selects(statement)
+                walk-chosen-fills(statement)
         pop-scope()
         close-receiver()
         =
@@ -1849,7 +1852,7 @@ do match? tree.nodes[line]
         = false
     | .node-markup(row)
         = row.slot-binding == 0
-= true
+= !tree.fills-only(line)
 
 ────────────────────
 _ do keep-root SlotId
@@ -2216,6 +2219,8 @@ do match tree.nodes[id]
     | .node-if-block(row)
         if is-branch(id)
             walk-branch(id)
+        else if is-selector(id)
+            walk-selector(id)
         else
             branch-depth += 1
             walk-condition(id, row.condition, row.body)
@@ -2277,6 +2282,8 @@ do match tree.nodes[id]
         if short-circuit || row.op == .if-op
             branch-depth -= 1
     | .node-markup(row)
+        if tree.element-fill(id)
+            =
         if is-slot-builder(id)
             walk-slot(id, row.id, row.type-id, row.body)
         else
@@ -2343,6 +2350,9 @@ do match tree.nodes[id]
     | .node-match-expression(row)
         if is-branch(id)
             walk-match-region(id, row.subject)
+            =
+        if is-selector(id)
+            walk-selector(id)
             =
         walk(row.subject)
         if row.subject != 0 && tree.stream-statement(row.body) != 0
@@ -4395,6 +4405,80 @@ do match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .branch-decl
 = false
+
+────────────────────
+_ do is-selector Bool
+    - id SyntaxId
+
+. decl = nested-decl-for(id)
+if decl == 0
+    = false
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        = fn.kind == .selector-decl
+= false
+
+────────────────────
+_ do selects Bool
+    - control SyntaxId
+
+. anchor = tree.selector-anchor(control)
+=? false if anchor == 0
+. decl = nested-decl-for(anchor)
+if decl == 0
+    = false
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        = fn.kind == .selector-decl
+= false
+
+────────────────────
+_ do walk-selector Void
+    - id SyntaxId
+
+branch-depth += 1
+do match? tree.nodes[id]
+    | .node-match-expression(row)
+        walk(row.subject)
+for arm in tree.region-arms(id)
+    do match? tree.nodes[arm]
+        | .node-if-block(row)
+            if row.condition != 0
+                walk(row.condition)
+        | .node-type-transform(row)
+            if row.pattern != 0
+                push-scope(.scope-arm, arm)
+                walk(row.pattern)
+                pop-scope()
+branch-depth -= 1
+walk-chosen-fills(id)
+
+────────────────────
+_ do walk-chosen-fills Void
+    - control SyntaxId
+
+. slots [SlotId]
+do match? tree.nodes[control]
+    | .node-match-expression(row)
+        note-reads(row.subject, slots, true)
+for arm in tree.region-arms(control)
+    do match? tree.nodes[arm]
+        | .node-if-block(row)
+            if row.condition != 0
+                note-reads(row.condition, slots, true)
+        | .node-type-transform(row)
+            if row.pattern != 0
+                note-reads(row.pattern, slots, true)
+    do match? tree.nodes[tree.region-arm-body(arm)]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                do match? tree.nodes[line]
+                    | .node-markup(row)
+                        if row.slot-binding != 0 && is-slot-builder(line)
+                            walk-slot(line, row.id, row.type-id, row.body)
+                    | .node-markup-slot-forward
+                        walk(line)
+capture-in(tree.selector-anchor(control), slots)
 
 ────────────────────
 _ do walk-branch Void

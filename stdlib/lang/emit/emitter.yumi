@@ -4058,6 +4058,24 @@ if live-actions.length != 0 || facts.pulls(unit.reading, id)
 = load-property(id, base.operand, held, item)
 
 ────────────────────
+_ do emit-selector
+    - declared SyntaxId
+    - id SyntaxId
+
+. live = instances.live
+if live.previous == no-instance || live.next == no-instance
+    refuse(.refused-function, declared)
+    =
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, id, pending.length).operand, id)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, id, pending.length).operand, id)
+live-actions += LiveTrackers(previous, next)
+. selected = emit-arm-index(id, returns-type)
+live-actions.pop()
+return-value(selected.operand, declared)
+
+────────────────────
 _ do emit-reselect
     - declared SyntaxId
     - id SyntaxId
@@ -7529,11 +7547,12 @@ _ do give-slots
 . slots = instances.rows[callee].slots.count
 . first = instances.signatures[callee].args.count - slots
 for offset in 0 .. < slots
-    . line = slot-line(element, instances.slot-name(callee, offset))
+    . name = instances.slot-name(callee, offset)
+    . line = slot-line(element, name)
     if line == 0
         refuse(.refused-expression, element)
         break
-    . built = builder-value(line)
+    . built = if tree.holds-fills(line) then emit-choice(line, name) else builder-value(line)
     if built.type != instances.argument-type(callee, first + offset)
         refuse(.refused-conversion, line)
     pending += built.operand
@@ -7569,6 +7588,8 @@ if default && is-closure(facts.node-type(unit.instance, body))
 do match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
+            if !default && fills-name(statement, name)
+                = statement
             do match tree.nodes[statement]
                 | .node-markup(line)
                     if is-closure(facts.node-type(unit.instance, statement))
@@ -7582,9 +7603,67 @@ do match? tree.nodes[body]
                         = statement
                 ??
                     . attribute = tree.nodes[statement] is .node-assign
-                    if default && !attribute && is-closure(facts.node-type(unit.instance, statement))
+                    if default && !attribute && !tree.holds-fills(statement) && is-closure(facts.node-type(unit.instance, statement))
                         = statement
 = 0
+
+────────────────────
+_ do fills-name Bool
+    - control SyntaxId
+    - name Atom
+
+=? false if !tree.holds-fills(control)
+= chosen-line(control, name) != 0
+
+────────────────────
+_ do chosen-line SyntaxId
+    - control SyntaxId
+    - name Atom
+
+for arm in tree.region-arms(control)
+    do match? tree.nodes[tree.region-arm-body(arm)]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                do match? tree.nodes[line]
+                    | .node-markup(row)
+                        if identifier-name(tree, row.slot-binding) == name
+                            = line
+= 0
+
+────────────────────
+_ do emit-choice Typed
+    - control SyntaxId
+    - name Atom
+
+. nothing = Typed(make-operand(.operand-void, 0), no-type)
+. fact = facts.slot-choice-of(unit.reading, chosen-line(control, name))
+if !fact
+    refuse(.refused-expression, control)
+    = nothing
+. arms = tree.region-arms(control)
+. index-kind = layout-of(types.index-type, control) as MachineKind
+. anchor = tree.selector-anchor(control)
+. selector = convert(anchor, .reason-markup-slot, emit-closure(anchor, fact.selector))
+. mark = pending.length
+pending += selector.operand
+pending += integer(index-kind, arms.length as U64)
+. choice = call-instance(fact.create, control, mark)
+. held = ir.add-local(managed-layout)
+store-local(held, choice.operand, control)
+for position in 0 .. < arms.length
+    do match? tree.nodes[tree.region-arm-body(arms[position])]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                do match? tree.nodes[line]
+                    | .node-markup(row)
+                        if identifier-name(tree, row.slot-binding) == name
+                            . built = builder-value(line)
+                            . filling = pending.length
+                            pending += load-local(held, control)
+                            pending += integer(index-kind, position as U64)
+                            pending += built.operand
+                            do call-instance(fact.fill, line, filling)
+= Typed(load-local(held, control), fact.choice)
 
 ────────────────────
 _ do builder-value Typed
@@ -7637,10 +7716,12 @@ _ do emit-outlet Operand
 ` nothing gives nothing. One built by the function of the arm it is (`builds-outlet`) gives its name
 ` nothing, unless that function builds it alone (`builds-outlet-alone`).
 . nothing = make-operand(.operand-void, 0)
+. fact = facts.slot-outlet-of(unit.reading, id)
+if fact && fact.chosen != no-instance
+    = emit-chosen-outlet(id, fact)
 if tree.builds-outlet-alone(id) && !builds-outlet(id)
     emit-outlet-arm(id)
     = nothing
-. fact = facts.slot-outlet-of(unit.reading, id)
 if !fact
     refuse(.refused-expression, id)
     = nothing
@@ -7648,7 +7729,9 @@ if fact.argument == U32.max && fact.held == no-slot && fact.fallback == 0
     = nothing
 . type = fact.content
 . built = Typed(nothing, no-type)
-if fact.argument != U32.max || fact.held != no-slot
+if fact.picks != no-type
+    built = emit-picked-outlet(id, fact, type)
+else if fact.argument != U32.max || fact.held != no-slot
     . source = nothing
     . builder = no-type
     if fact.argument != U32.max
@@ -7661,16 +7744,9 @@ if fact.argument != U32.max || fact.held != no-slot
     . item Operand? = null
     if fact.item != 0
         item = convert(fact.item, .reason-argument, emit-expression(fact.item)).operand
-    . holding = hold-outlet-cells(id)
-    built = call-builder(id, source, builder, item)
-    if holding != no-local
-        . mark = pending.length
-        pending += load-local(holding, id)
-        do call-instance(facts.style-runtime.outlet-release, id, mark)
-else if tree.nodes[fact.fallback] is .node-block
-    built = convert(fact.fallback, .reason-assignment, emit-wrapper(fact.fallback))
+    built = call-outlet-builder(id, source, builder, item)
 else
-    built = convert(fact.fallback, .reason-assignment, emit-expression(fact.fallback))
+    built = emit-outlet-fallback(fact.fallback)
 if built.type != type
     refuse(.refused-conversion, id)
     = nothing
@@ -7706,6 +7782,91 @@ while attribute-trackers.length > lively
     attribute-trackers.pop()
 finish-styles(id, made, type, association)
 = made
+
+────────────────────
+_ do call-outlet-builder Typed
+    - id SyntaxId
+    - source Operand
+    - builder TypeId
+    - item Operand? = null
+
+. holding = hold-outlet-cells(id)
+. built = call-builder(id, source, builder, item)
+if holding != no-local
+    . mark = pending.length
+    pending += load-local(holding, id)
+    do call-instance(facts.style-runtime.outlet-release, id, mark)
+= built
+
+────────────────────
+_ do emit-outlet-fallback Typed
+    - fallback SyntaxId
+
+=? convert(fallback, .reason-assignment, emit-wrapper(fallback)) if tree.nodes[fallback] is .node-block
+= convert(fallback, .reason-assignment, emit-expression(fallback))
+
+────────────────────
+_ do emit-picked-outlet Typed
+    - id SyntaxId
+    - fact SlotOutlet
+    - type TypeId
+
+. nothing = Typed(make-operand(.operand-void, 0), no-type)
+. choice-type = find-captured(fact.held, id).type
+. choice = read-captured(fact.held, id, choice-type)
+. read = load-property(id, choice.operand, choice-type, program.store-atom("chosen"), true)
+if !types.is-optional(read.type) || types.optional-inner(read.type) != fact.picks
+    refuse(.refused-expression, id)
+    = nothing
+if fact.fallback == 0
+    = call-outlet-builder(id, payload(id, read).operand, fact.picks)
+. result = ir.add-local(layout-of(type, id), false)
+. filled = ir.reserve-block()
+. empty = ir.reserve-block()
+. onward = ir.reserve-block()
+branch(present(id, read).operand, filled, empty)
+ir.start-block(filled)
+. given = call-outlet-builder(id, payload(id, read).operand, fact.picks)
+if given.type != type
+    refuse(.refused-conversion, id)
+    = nothing
+store-local(result, given.operand, id)
+jump(onward)
+ir.start-block(empty)
+. fell = emit-outlet-fallback(fact.fallback)
+if fell.type != type
+    refuse(.refused-conversion, id)
+    = nothing
+store-local(result, fell.operand, id)
+jump(onward)
+ir.start-block(onward)
+= Typed(load-local(result, id), type)
+
+────────────────────
+_ do emit-chosen-outlet Operand
+    - id SyntaxId
+    - fact SlotOutlet
+
+. nothing = make-operand(.operand-void, 0)
+. top = content-hosts.length
+if top == 0
+    refuse(.refused-statement, id)
+    = nothing
+. choice = nothing
+if fact.argument != U32.max
+    . position = fact.argument
+    choice = make-operand(.operand-argument, if unit.takes-self then position + 1 else position)
+else
+    choice = read-captured(fact.held, id, find-captured(fact.held, id).type).operand
+. alone = tree.builds-outlet-alone(id)
+. arm = if alone then convert(id, .reason-markup-arm, emit-closure(id, fact.arm)).operand else nothing
+. mark = pending.length
+pending += content-hosts[top - 1].operand
+pending += choice
+if alone
+    pending += arm
+    pending += integer(.machine-u8, if fact.fallback != 0 then 1 else 0)
+= raising-call(id, fact.chosen, mark).operand
 
 ────────────────────
 _ do emit-outlet-arm
@@ -17568,6 +17729,7 @@ for forward in facts.swap-forwards
 . retest = false
 . tests-gate = false
 . reselects = false
+. selects = false
 . builds-arm = false
 . sources = false
 . builds-row = false
@@ -17666,6 +17828,11 @@ do match? program.modules[row.module].decls[row.decl]
             body = fn.syntax
             imperative = true
             reselects = true
+        if fn.kind == .selector-decl
+            owned = false
+            unit = unit.received = true
+            body = fn.syntax
+            selects = true
         if fn.kind == .branch-arm-decl
             owned = false
             unit = unit.received = true
@@ -17803,6 +17970,9 @@ if tests-gate
     =
 if reselects
     emit-reselect(declared, body)
+    =
+if selects
+    emit-selector(declared, tree.selector-control(body))
     =
 if builds-arm
     emit-arm(declared, body)
@@ -30787,7 +30957,7 @@ _ is-applied Bool
 ` event that bubbles applies its object made an `EventNode` (`emit-publish`, `emit-route`).
 |? reason == .reason-argument || reason == .reason-print || reason == .reason-operand
     true
-|? reason == .reason-markup-host || reason == .reason-markup-slot
+|? reason == .reason-markup-host || reason == .reason-markup-slot || reason == .reason-markup-arm
     true
 |? reason == .reason-explicit || reason == .reason-return || reason == .reason-join
     true

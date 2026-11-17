@@ -2683,7 +2683,8 @@ head,[[a,b,c]]
 head,[[]]
 ;====
 :====
-# A slot binding inside a branch is rejected.
+# A slot filled inside a live if holds the caller's content, one region deeper, while the
+# condition holds, and nothing otherwise, as the unfilled slot shows.
 
 /core/tests/support/markup-fixtures
 
@@ -2692,6 +2693,369 @@ head,[[]]
 <Card card
     if #is-shown
         <TextBox (icon) = "badge"
+
+-- dump(card)
+is-shown = false
+-- dump(card)
+is-shown = true
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+
+[badge]
+[]
+[badge]
+;====
+:====
+# A slot filled inside a live if holds the caller's content while the condition holds, and the
+# slot's fallback otherwise.
+
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+
+<Card card
+    if #is-shown
+        <TextBox (icon) = "badge"
+    <TextBox = "body"
+
+-- dump(card)
+is-shown = false
+-- dump(card)
+is-shown = true
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+
+:----
+
+[badge],body
+[no icon],body
+[badge],body
+;====
+:====
+# A static if decides the slot's content as the element is made.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+. hidden = false
+
+<Card visible
+    if shown
+        <TextBox (icon) = "badge"
+<Card invisible
+    if hidden
+        <TextBox (icon) = "badge"
+
+-- dump(visible)
+-- dump(invisible)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+:----
+
+[badge],no body
+[no icon],no body
+;====
+:====
+# Each arm of an if and else, or of a match, may fill the same slot; an arm that fills nothing
+# leaves the fallback.
+
+/core/tests/support/markup-fixtures
+
+. is-draft = true
+. kind = "a"
+
+<Card toggled
+    if #is-draft
+        <TextBox (icon) = "draft"
+    else
+        <TextBox (icon) = "final"
+<Card matched
+    match #kind
+        |= "a"
+            <TextBox (icon) = "alpha"
+        |= "b"
+            <TextBox (icon) = "beta"
+        | _
+            <TextBox = "plain"
+
+-- dump(toggled)
+-- dump(matched)
+is-draft = false
+kind = "b"
+-- dump(toggled)
+-- dump(matched)
+kind = "c"
+-- dump(matched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+:----
+
+[draft],no body
+[alpha],[[]]
+[final],no body
+[beta],[[]]
+[no icon],[[plain]]
+;====
+:====
+# An arm may fill a slot and give the default slot content too, and both come and go with it.
+# A fallback that reads the component's state follows it while it shows.
+
+/core/tests/support/markup-fixtures
+
+. is-open = true
+
+<Card card
+    if #is-open
+        <TextBox (icon) = "badge"
+        <TextBox = "details"
+
+-- dump(card)
+is-open = false
+-- dump(card)
+card.label = "closed"
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
++ label = "no icon"
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = #label
+    + <Box
+        <TextBox = "no body"
+
+:----
+
+[badge],[[details]]
+[no icon],[[]]
+[closed],[[]]
+;====
+:====
+# One component given a slot unfilled, filled and filled in a branch in one program.
+
+/core/tests/support/markup-fixtures
+
+. is-shown = false
+
+<Card plain
+<Card filled
+    <TextBox (icon) = "given"
+<Card branched
+    if #is-shown
+        <TextBox (icon) = "maybe"
+
+-- dump(plain)
+-- dump(filled)
+-- dump(branched)
+is-shown = true
+-- dump(branched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+
+:----
+
+no icon
+given
+[no icon]
+[maybe]
+;====
+:====
+# Each arm of an else-if chain may fill the slot, alone or with default slot content, and an
+# arm that fills nothing leaves the fallback.
+
+/core/tests/support/markup-fixtures
+
+. level = 0
+. extra = "x"
+
+<Card only
+    if #level == 0
+        <TextBox (icon) = "zero"
+    else if #level == 1
+        <TextBox (icon) = "one $extra"
+    else if #level == 2
+        <TextBox (icon) = "two"
+<Card mixed
+    if #level == 0
+        <TextBox (icon) = "zero"
+    else if #level == 1
+        <TextBox (icon) = "one"
+        <TextBox = "one body"
+    else
+        <TextBox = "else body"
+
+-- "${dump(only)} | ${dump(mixed)}"
+level = 1
+-- "${dump(only)} | ${dump(mixed)}"
+level = 2
+-- "${dump(only)} | ${dump(mixed)}"
+level = 0
+-- "${dump(only)} | ${dump(mixed)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+:----
+
+[zero],no body | [zero],[[]]
+[one x],no body | [one],[[one body]]
+[two],no body | [no icon],[[else body]]
+[zero],no body | [zero],[[]]
+;====
+:====
+# A slot filled both outside and inside a branch is filled twice.
+
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+
+<Card card
+    <TextBox (icon) = "first"
+    if #is-shown
+        <TextBox (icon) = "second"
 
 ━━━━━━━━━━━━━━━━━━━━
 + Card is Box
@@ -2705,10 +3069,419 @@ head,[[]]
 :----
 %crash
 
-Exception: Slot binding is only valid directly inside markup body
-<no file:8>
-            <TextBox (icon) = "badge"
+Exception: Duplicate slot content
+<no file:9>
+            <TextBox (icon) = "second"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Two branches filling one slot fill it twice.
+
+/core/tests/support/markup-fixtures
+
+. a = true
+. b = false
+
+<Card card
+    if #a
+        <TextBox (icon) = "first"
+    if #b
+        <TextBox (icon) = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: Duplicate slot content
+<no file:11>
+            <TextBox (icon) = "second"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# One arm filling a slot twice fills it twice.
+
+/core/tests/support/markup-fixtures
+
+. a = true
+
+<Card card
+    if #a
+        <TextBox (icon) = "first"
+        <TextBox (icon) = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: Duplicate slot content
+<no file:9>
+            <TextBox (icon) = "second"
                       ^^^^
+;====
+:====
+# A slot filled in a branch inside a loop is rejected.
+
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+
+<Card card
+    for name in names
+        if name == "a"
+            <TextBox (icon) = name
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:9>
+                <TextBox (icon) = name
+                          ^^^^
+;====
+:====
+# A slot filled in a loop inside a branch is rejected.
+
+/core/tests/support/markup-fixtures
+
+. a = true
+. names = List'String(["a", "b"])
+
+<Card card
+    if #a
+        for name in names
+            <TextBox (icon) = name
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:10>
+                <TextBox (icon) = name
+                          ^^^^
+;====
+:====
+# A match arm that binds names does not fill a slot.
+
+/core/tests/support/markup-fixtures
+
+. pick Int? = 3
+
+<Card card
+    match pick
+        | n Int
+            <TextBox (icon) = "number"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does
+<no file:8>
+            | n Int
+              ^^^^^
+;====
+:====
+# A slot filled in an if two deep is rejected.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+. more = true
+
+<Card card
+    if shown
+        if more
+            <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+:----
+%crash
+
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:10>
+                <TextBox (icon) = "badge"
+                          ^^^^
+;====
+:====
+# A slot is not passed on with <+ inside an if.
+
+/core/tests/support/markup-fixtures
+
+<Wrap wrap
+    <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
++ shown = true
+
+────────────────────
+
+<This
+    <Card
+        if shown
+            <+ (icon)
+
+:----
+%crash
+
+Exception: A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body
+<no file:26>
+                <+ (icon)
+                ^^^^^^^^^
+;====
+:====
+# A slot filled inside an if is not passed on with <+.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Wrap wrap
+    if shown
+        <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    <Card
+        <+ (icon)
+
+:----
+%crash
+
+Exception: A slot filled inside an if or match is not passed on with <+; give it content here instead
+<no file:26>
+            <+ (icon)
+            ^^^^^^^^^
+;====
+:====
+# A subclass does not fill its base's slots inside an if.
+
+/core/tests/support/markup-fixtures
+
+<Sub sub
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Card
+
++ shown = true
+
+────────────────────
+
+if shown
+    <TextBox (icon) = "badge"
+
+:----
+%crash
+
+Exception: A subclass fills its base's slots with lines of its content, not inside an if or match
+<no file:22>
+    if shown
+    ^^^^^^^
+;====
+:====
+# A component does not read an outlet by its name where its slot is filled inside an if.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Card card
+    if shown
+        <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    <TextBox = dump(icon)
+
+:----
+%crash
+
+Exception: Outlet "icon" is not read by its name where its slot is filled inside an if or match
+<no file:29>
+        <TextBox = dump(icon)
+                        ^^^^
+;====
+:====
+# A slot filled inside a live if reaches an outlet in each row of a keyed loop, rows added later
+# too.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<List list
+    if #shown
+        <TextBox (icon) = "badge"
+
+-- dump(list)
+shown = false
+-- dump(list)
+list.names += "c"
+-- dump(list)
+shown = true
+-- dump(list)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
++ names = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    for name in #names keyed by name
+        <Box
+            + <Box icon
+                <TextBox = "no icon"
+            <TextBox = name
+
+:----
+
+[[[badge],a],[[badge],b]]
+[[[no icon],a],[[no icon],b]]
+[[[no icon],a],[[no icon],b],[[no icon],c]]
+[[[badge],a],[[badge],b],[[badge],c]]
+;====
+:====
+# A repeated slot is not filled inside an if.
+
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<List list
+    if shown
+        <TextBox (row) - who = who
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
++ names = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    for name in names
+        + <TextBox row - name String
+
+:----
+%crash
+
+Exception: A repeated slot cannot be filled inside an if or match
+<no file:8>
+            <TextBox (row) - who = who
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
 # A slot binding on a loop row is rejected.
@@ -2733,7 +3506,7 @@ Exception: Slot binding is only valid directly inside markup body
 :----
 %crash
 
-Exception: Slot binding is only valid directly inside markup body
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
 <no file:8>
             <TextBox (icon) = name
                       ^^^^

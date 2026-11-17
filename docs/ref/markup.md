@@ -554,8 +554,104 @@ caller's other rows fill.
   follows the base's content otherwise. A caller's rows given to a component with no default slot
   follow its content.
 - **Messages.** Filling a slot twice gives `Duplicate slot content`, a slot the class lacks
-  `Unknown slot`, and a slot filled from inside an `if` or a `for` `Slot binding is only valid
-  directly inside markup body`.
+  `Unknown slot`, and a slot filled from inside a `for`, or from deeper than an arm of an `if` or
+  `match` in the element's body, `A slot is filled by a line of the element's body, or by a line of
+  an arm of an if or match there`.
+
+### Slots filled in an if or match
+
+```brix
+(main
+  (let urgent true)
+  (let step "draft")
+  (<> Card (id: todo)
+    (if #urgent
+      (<> Text (slot: title) (text: "Urgent:"))
+    )
+    (<> Text (text: "Call Bo."))
+  )
+  (<> Card (id: page)
+    (match #step
+      (case= "draft"
+        (<> Text (slot: title) (text: "Draft:"))
+      )
+      (case= "final"
+        (<> Text (slot: title) (text: "Final:"))
+        (<> Text (text: "Signed."))
+      )
+    )
+  )
+  (print (str (call outline todo) " | " (call outline page)))
+  (= urgent false)
+  (= step "final")
+  (print (str (call outline todo) " | " (call outline page)))
+  (= step "lost")
+  (print (str (call outline todo) " | " (call outline page)))
+)
+
+(fn-do + outline String
+  (param node MarkupNode)
+  (let parts (list String))
+  (for (in child (. node children))
+    (if (is child Text)
+      (+= parts (. (as child Text) text))
+      (else
+        (+= parts (str "[" (call outline child) "]"))
+      )
+    )
+  )
+  (return (call (. " " join) parts))
+)
+
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
+
+(type + Card (is MarkupNode)
+  (content
+    (+<> Text (id: title)
+      (<> Text (text: "Untitled:"))
+    )
+    (+<> MarkupNode
+      (<> Text (text: "(empty)"))
+    )
+    (<> Text (text: "--"))
+  )
+)
+```
+
+```output
+Urgent: Call Bo. -- | Draft: [] --
+Untitled: Call Bo. -- | Final: [Signed.] --
+Untitled: Call Bo. -- | Untitled: [] --
+```
+
+A row of an arm of an `if` or `match` in a caller's body may fill a slot, and the slot follows the
+arm taken.
+
+- **Taken arm.** While an arm that fills a slot is taken, the slot holds what the arm gives it.
+  While another is, the slot holds its fallback, `Untitled:` here, or nothing. A condition or
+  subject with tracked reads changes the slot when the arm taken changes; any other picks the arm
+  once, as the element is made.
+- **Arms.** Each arm may fill the same slot, and one that fills none leaves the fallback, as
+  `"lost"` does. An arm may give the default slot rows as well, as `"final"` does. The `match` is
+  then the default slot's content, built into one element as several elements are, and empty while
+  an arm that gives none is taken.
+- **Limits.** A fill is a row of the arm itself, not of an `if` or `for` inside it. Otherwise a slot
+  is filled once: by one row of the element's body, or in the arms of one `if` or `match`. A
+  `match` arm that fills a slot binds no names. A repeated slot is not filled in an arm,
+  nor is a base's slot from a subclass's `content`, and `(<+ …)` is not written in an arm. A slot
+  filled in an arm is not passed on with `(<+ …)`, and the component does not read that slot's
+  outlet by its `id`.
+- **Messages.** `A match arm that fills a slot binds no names; test the subject without binding,
+  as |= value or a type alone does`, `A repeated slot cannot be filled inside an if or match`, `A
+  subclass fills its base's slots with lines of its content, not inside an if or match`, `A slot is
+  not passed on with <+ inside an if or match; write <+ as a line of the element's body`, `A slot
+  filled inside an if or match is not passed on with <+; give it content here instead`, and
+  `Outlet "title" is not read by its name where its slot is filled inside an if or match`.
 
 ### Repeated slots and passing slots on
 

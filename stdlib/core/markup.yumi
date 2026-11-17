@@ -2984,6 +2984,135 @@ _ markup-branch-region-keeps-arm'Content Bool
 (markup-region-controller(region)! as MarkupBranchController'Content).selected-arm == arm
 
 ━━━━━━━━━━━━━━━━━━━━
+_ MarkupSlotSelector is () Index? ?! Error
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupSlotChoice'Slot
+
++ select MarkupSlotSelector
++ builders [MarkupSlotBuilder'Slot?]
++ chosen MarkupSlotBuilder'Slot?
+
+────────────────────
++ This
+    - select
+    - builders
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-slot-choice'Slot MarkupSlotChoice'Slot
+    - select MarkupSlotSelector
+    - arms Index
+
+. builders = List'(MarkupSlotBuilder'Slot?)()
+for _ in 0 .. < arms
+    builders += null
+= MarkupSlotChoice'Slot(select, builders)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-slot-arm'Slot
+    - choice MarkupSlotChoice'Slot
+    - arm Index
+    - builder MarkupSlotBuilder'Slot
+
+choice.builders[arm] = builder
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupChosenSlot'Slot'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
+
++ region Content
++ choice MarkupSlotChoice'Slot
++ arm MarkupBranchBuilder'Content?
++ falls-back Bool
+
+_ branch MarkupBranchController'Content?
+_ action LiveAction?
+
+────────────────────
++ This
+    - region
+    - choice
+    - arm
+    - falls-back
+
+────────────────────
++ do start ?! Error
+
+. arms = List'(MarkupBranchBuilder'Content)()
+for _ in 0 .. < choice.builders.length + 1
+    arms += this.build-arm
+branch = MarkupBranchController'Content(region, arms, null)
+. made = make-owner-markup-action(List'Tracker(), this.select, region)
+action = made
+made.run-now()
+mark-structural-markup-action(made, region)
+
+────────────────────
++ do select ?! Error
+
+. count = choice.builders.length
+. index = count
+. taken = choice.select()
+if taken && taken < count && choice.builders[taken]
+    index = taken
+. held = branch!
+if held.selected-arm != index
+    choice.chosen = if index < count then choice.builders[index] else null
+    held.select-markup-branch(index)
+
+────────────────────
++ do build-arm ?! Error
+    - into Content
+
+. builder = choice.chosen
+. outlet = arm
+if outlet
+    if builder || falls-back
+        outlet(into)
+else if builder
+    markup-append(into, into.markup-content(builder()))
+
+────────────────────
++ do close
+
+action?.close()
+action = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-chosen-slot'Slot'Content'Host Content ?! Error
+    - parent Host
+    - choice MarkupSlotChoice'Slot
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+
+= markup-start-chosen-slot(parent.markup-make-region()!, choice, null, false)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-chosen-arm'Slot'Content'Host Content ?! Error
+    - parent Host
+    - choice MarkupSlotChoice'Slot
+    - arm MarkupBranchBuilder'Content
+    - falls-back Bool
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+
+= markup-start-chosen-slot(parent.markup-make-region()!, choice, arm, falls-back)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-start-chosen-slot'Slot'Content Content ?! Error
+    - region Content
+    - choice MarkupSlotChoice'Slot
+    - arm MarkupBranchBuilder'Content?
+    - falls-back Bool
+    - Content is MarkupParent'Content
+
+. chosen = MarkupChosenSlot'Slot'Content(region, choice, arm, falls-back)
+markup-set-region-controller(region, chosen)
+chosen.start()
+= region
+
+━━━━━━━━━━━━━━━━━━━━
 _ markup-attachment-lane
 
 C:brixGCMarkupAttachmentsSidePayloadLane()
