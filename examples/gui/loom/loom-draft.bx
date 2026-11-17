@@ -1,0 +1,134 @@
+(import /core/bitmap)
+(import /graphics/color)
+(import /math)
+(import /stream/aggregate)
+
+(type-line + Shafts (is (of Bitmap U64)))
+
+(type-line + Treadles (is (of Bitmap U64)))
+
+(type + Draft (is Tuple)
+  (prop + name String)
+  (prop + shafts Size)
+  (prop + treadles Size)
+  (prop + threading (list Shafts))
+  (prop + tie-up (list Shafts))
+  (prop + treadling (list Treadles))
+  (prop + palette (list RGBA))
+  (prop + warp-colors (list Index))
+  (prop + weft-colors (list Index))
+  (fn-expr + ends Size :get
+    (. threading length)
+  )
+  (fn-expr + picks Size :get
+    (. treadling length)
+  )
+  (fn-expr + treads Treadles
+    (param pick Index)
+    ([] treadling (% pick picks))
+  )
+  (fn-expr + shed Shafts
+    (param pick Index)
+    (call reduce (call Shafts) (in ([] tie-up each) (call (. (call treads pick) indices) true))
+      (:using (=> (shed lifted) (/or/ shed lifted)))
+    )
+  )
+  (fn-expr + row (list Bool)
+    (param pick Index)
+    (call List (in (call shows-warp each lifted) threading))
+    (where
+      (lazy lifted (call shed pick))
+    )
+  )
+  (fn-expr + warp-color RGBA
+    (param end Index)
+    ([] palette ([] warp-colors end))
+  )
+  (fn-expr + weft-color RGBA
+    (param pick Index)
+    ([] palette ([] weft-colors (% pick picks)))
+  )
+)
+
+(fn-expr + shows-warp Bool
+  (param heddles Shafts)
+  (param lifted Shafts)
+  (!= (/and/ heddles lifted) (call Shafts))
+)
+
+(fn-expr + drawdown (list (list Bool))
+  (param draft Draft)
+  (param picks (of Range Index))
+  (call List (in (call (. draft row) each) picks))
+)
+
+(fn-expr + (of bits-of Bits) Bits
+  (param numbers (list Int))
+  (call reduce (call Bits) (in (call Bits (/lshift/ 1u64 (- each 1))) numbers (when (> each 0)))
+    (:using (=> (bits one) (/or/ bits one)))
+  )
+)
+
+(fn-expr + slots (list Index)
+  (param count Size)
+  (call List (in each (..< 0 count)))
+)
+
+(fn-do + with-threading Draft
+  (param draft Draft)
+  (param end Index)
+  (param heddles Shafts)
+  (return (= (. draft threading) (call replaced (. draft threading) end heddles)))
+)
+
+(fn-do + with-tie-up Draft
+  (param draft Draft)
+  (param treadle Index)
+  (param lifted Shafts)
+  (return (= (. draft tie-up) (call replaced (. draft tie-up) treadle lifted)))
+)
+
+(fn-do + with-treadling Draft
+  (param draft Draft)
+  (param pick Index)
+  (param treads Treadles)
+  (let longer (call extended draft (+ pick 1)))
+  (return (= (. longer treadling) (call replaced (. longer treadling) pick treads)))
+)
+
+(fn-do + with-warp-color Draft
+  (param draft Draft)
+  (param end Index)
+  (param color Index)
+  (return (= (. draft warp-colors) (call replaced (. draft warp-colors) end color)))
+)
+
+(fn-do + with-weft-color Draft
+  (param draft Draft)
+  (param pick Index)
+  (param color Index)
+  (let longer (call extended draft (+ pick 1)))
+  (return (= (. longer weft-colors) (call replaced (. longer weft-colors) pick color)))
+)
+
+(fn-do + with-palette-color Draft
+  (param draft Draft)
+  (param slot Index)
+  (param color RGBA)
+  (return (= (. draft palette) (call replaced (. draft palette) slot color)))
+)
+
+(fn-do + extended Draft
+  (param draft Draft)
+  (param count Size)
+  (let span (..< 0 (call max count (. draft picks))))
+  (let longer (= (. draft treadling) (call List (in (call (. draft treads) each) span))))
+  (return (= (. longer weft-colors) (call List (in ([] (. draft weft-colors) (% each (. draft picks))) span))))
+)
+
+(fn-expr + (of replaced Item) (list Item)
+  (param items (list Item))
+  (param index Index)
+  (param value Item)
+  (call List (in (if-expr (== each index) value ([] items each)) (..< 0 (. items length))))
+)

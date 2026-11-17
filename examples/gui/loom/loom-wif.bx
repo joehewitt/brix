@@ -1,0 +1,274 @@
+(import ./loom-draft)
+(import /core/bitmap)
+(import /graphics/color)
+(import /math)
+(import /stream/aggregate)
+(blank)
+(prop _ most-shafts _ (= 64))
+(prop _ truths _ (= (list "true" "on" "yes" "1")))
+(prop _ fallback-palette _ (= (list (call RGBA "#f3ecdc") (call RGBA "#26395f"))))
+
+(fn-expr + wif-text String
+  (param draft Draft)
+  (paragraph
+    "[WIF]"
+    "Version=1.1"
+    "Date=April 20, 1997"
+    "Developers=wif@mhsoft.com"
+    "Source Program=Loom"
+    ""
+    "[CONTENTS]"
+    "COLOR PALETTE=true"
+    "TEXT=true"
+    "WEAVING=true"
+    "WARP=true"
+    "WEFT=true"
+    "COLOR TABLE=true"
+    "THREADING=true"
+    "TIEUP=true"
+    "TREADLING=true"
+    "WARP COLORS=true"
+    "WEFT COLORS=true"
+    ""
+    "[TEXT]"
+    (str "Title=" (. draft name))
+    ""
+    "[WEAVING]"
+    (str "Shafts=" (. draft shafts))
+    (str "Treadles=" (. draft treadles))
+    "Rising Shed=true"
+    ""
+    "[WARP]"
+    (str "Threads=" (. draft ends))
+    "Color=1"
+    ""
+    "[WEFT]"
+    (str "Threads=" (. draft picks))
+    "Color=1"
+    ""
+    "[COLOR PALETTE]"
+    (str "Entries=" (. draft palette length))
+    "Range=0,255"
+    ""
+    "[COLOR TABLE]"
+    (str (call numbered (call List (in (call channels each) (. draft palette)))))
+    ""
+    "[THREADING]"
+    (str (call numbered (call List (in (call bit-list each) (. draft threading)))))
+    ""
+    "[TIEUP]"
+    (str (call numbered (call List (in (call bit-list each) (. draft tie-up)))))
+    ""
+    "[TREADLING]"
+    (str (call numbered (call List (in (call bit-list each) (. draft treadling)))))
+    ""
+    "[WARP COLORS]"
+    (str (call numbered (call List (in (str (+ each 1)) (. draft warp-colors)))))
+    ""
+    "[WEFT COLORS]"
+    (str (call numbered (call List (in (str (+ each 1)) (. draft weft-colors)))))
+    ""
+  )
+)
+
+(fn-expr _ numbered String
+  (param values (list String))
+  (call (. "\n" join) (in (str (+ each 1) "=" ([] values each)) (..< 0 (. values length))))
+)
+
+(fn-expr _ (of bit-list Bits) String
+  (param bits Bits)
+  (if-expr (== (call (. bits count) true) 0) "0" (call (. "," join) (in (+ each 1) (call (. bits indices) true))))
+)
+
+(fn-expr _ channels String
+  (param color RGBA)
+  (call (. "," join) (in (as (call round (* each 255)) Int) (list (. color red) (. color green) (. color blue))))
+)
+
+(fn-expr + wif-sections (map String (map String String)) (over: Char)
+  (~ (seq (* \filler) (: sections (* \section)))
+    (call Map sections)
+  )
+  (where
+    (lazy section (tuple String (map String String))
+      (pattern
+        (~ (seq / "[" (: name (+ (seq (! "]") (! \nl) .))) "]" \rest (* (| (: ...entries \entry) \filler)))
+          (tuple (. (call (. name trim)) uppercased) (call Map entries))
+        )
+      )
+    )
+    (lazy entry (tuple String String)
+      (pattern
+        (~ (seq / (: key (+ (seq (! (chars "=[;")) (! \nl) .))) "=" (: value \rest))
+          (tuple (. (call (. key trim)) lowercased) (call (. value trim)))
+        )
+      )
+    )
+    (lazy filler String
+      (pattern
+        (~ (seq (! (seq / "[")) (& .) \rest))
+      )
+    )
+    (lazy rest String
+      (pattern
+        (~ (seq (: text (* (seq (! \nl) .))) (| \nl (! .)))
+          text
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + wif-numbers (list Int) (over: Char)
+  (~ (seq / (: items (call \delimited "," (~ (of \num Int)))) / (? (seq ";" (* .))))
+    (call List items)
+  )
+)
+
+(fn-do + read-wif Draft (?! Error)
+  (param text String)
+  (param fallback-name String)
+  (let sections (?? (~ \wif-sections (of: text)) (call (of Map String (map String String)))))
+  (throw (call Error "This file is not a WIF document.") (if (not (has sections "WIF"))))
+  (let weaving (call section sections "WEAVING"))
+  (let shafts (call count-in weaving "shafts" 4))
+  (throw (call Error (str "Loom weaves up to " most-shafts " shafts.")) (if (> shafts most-shafts)))
+  (let ends (call max 1 (call count-in (call section sections "WARP") "threads" 1)))
+  (let picks (call max 1 (call count-in (call section sections "WEFT") "threads" 1)))
+  (let rising (call flag ([] weaving "rising shed")))
+  (let lifts (call has-entries sections "LIFTPLAN"))
+  (let treadles (if-expr lifts shafts (call min most-shafts (call count-in weaving "treadles" 4))))
+  (let tie-up (if-expr lifts (call List (in (call (of bits-of Shafts) (list (+ each 1))) (..< 0 shafts))) (call List (in (call raised (call numbers-at sections "TIEUP" each) shafts rising) (.. 1 treadles)))))
+  (let treadling
+    (if-expr lifts (call List (in (call (of bits-of Treadles) (call indices-of (call raised (call numbers-at sections "LIFTPLAN" each) shafts rising))) (.. 1 picks))) (call List (in (call (of bits-of Treadles) (call within (call numbers-at sections "TREADLING" each) treadles)) (.. 1 picks))))
+  )
+  (let palette (call colors-in sections))
+  (return
+    (call Draft
+      (block
+        (arg (?? ([] (call section sections "TEXT") "title") fallback-name))
+        (arg shafts)
+        (arg treadles)
+        (arg (call List (in (call (of bits-of Shafts) (call within (call numbers-at sections "THREADING" each) shafts)) (.. 1 ends))))
+        (arg tie-up)
+        (arg treadling)
+        (arg palette)
+        (arg (call color-order sections "WARP" ends (. palette length)))
+        (arg (call color-order sections "WEFT" picks (. palette length)))
+      )
+    )
+  )
+)
+
+(fn-expr _ section (map String String)
+  (param sections (map String (map String String)))
+  (param name String)
+  (?? ([] sections name) (call (of Map String String)))
+)
+
+(fn-expr _ has-entries Bool
+  (param sections (map String (map String String)))
+  (param name String)
+  (> (. (call section sections name) length) 0)
+)
+
+(fn-expr _ numbers-at (list Int)
+  (param sections (map String (map String String)))
+  (param name String)
+  (param key Int)
+  (?? (~ \wif-numbers (of: (?? ([] (call section sections name) (str key)) ""))) (call (of List Int)))
+)
+
+(fn-expr _ count-in Int
+  (param section (map String String))
+  (param key String)
+  (param fallback Int)
+  (call first-or (?? (~ \wif-numbers (of: (?? ([] section key) ""))) (call (of List Int))) fallback)
+)
+
+(fn-expr _ first-or Int
+  (param numbers (list Int))
+  (param fallback Int)
+  (if-expr (> (. numbers length) 0) ([] numbers 0) fallback)
+)
+
+(fn-expr _ flag Bool
+  (param value (? String))
+  (has truths (. word lowercased))
+  (where
+    (lazy word (?? (~ (seq / (: letters (+ (chars "a-zA-Z0-9"))) (* .)) (of: (?? value "")) letters) ""))
+  )
+)
+
+(fn-expr _ within (list Int)
+  (param numbers (list Int))
+  (param limit Int)
+  (call List (in each numbers (when (and (> each 0) (<= each limit)))))
+)
+
+(fn-expr _ raised Shafts
+  (param numbers (list Int))
+  (param shafts Int)
+  (param rising Bool)
+  (if-expr rising listed (/xor/ listed (call (of bits-of Shafts) (call List (.. 1 shafts)))))
+  (where
+    (lazy listed (call (of bits-of Shafts) (call within numbers shafts)))
+  )
+)
+
+(fn-expr _ indices-of (list Int)
+  (param bits Shafts)
+  (call List (in (+ each 1) (call (. bits indices) true)))
+)
+
+(fn-expr _ colors-in (list RGBA)
+  (param sections (map String (map String String)))
+  (if-expr (> count 0) (call List (in (call color-at (call numbers-at sections "COLOR TABLE" each) low high) (.. 1 count))) fallback-palette)
+  (where
+    (lazy palette (call section sections "COLOR PALETTE"))
+    (lazy count (call count-in palette "entries" (as (. (call section sections "COLOR TABLE") length) Int)))
+    (lazy range (call wif-range ([] palette "range")))
+    (lazy low ([] range 0))
+    (lazy high ([] range 1))
+  )
+)
+
+(fn-expr _ wif-range (list Float)
+  (param value (? String))
+  (if-expr (and (== (. numbers length) 2) (> ([] numbers 1) ([] numbers 0))) (list (as ([] numbers 0) Float) (as ([] numbers 1) Float)) (list 0.0 255.0))
+  (where
+    (lazy numbers (?? (~ \wif-numbers (of: (?? value ""))) (call (of List Int))))
+  )
+)
+
+(fn-expr _ color-at RGBA
+  (param values (list Int))
+  (param low Float)
+  (param high Float)
+  (if-expr (== (. values length) 3) (call RGBA (call level ([] values 0) low high) (call level ([] values 1) low high) (call level ([] values 2) low high)) (call RGBA "#808080"))
+)
+
+(fn-expr _ level Float
+  (param value Int)
+  (param low Float)
+  (param high Float)
+  (call clamp (/ (- value low) (- high low)) 0.0 1.0)
+)
+
+(fn-expr _ color-order (list Index)
+  (param sections (map String (map String String)))
+  (param side String)
+  (param count Int)
+  (param colors Size)
+  (call List (in (call palette-slot (call first-or (call numbers-at sections (str side " COLORS") each) default) colors) (.. 1 count)))
+  (where
+    (lazy default (call count-in (call section sections side) "color" (if-expr (== side "WARP") 1 2)))
+  )
+)
+
+(fn-expr _ palette-slot Index
+  (param number Int)
+  (param colors Size)
+  (call clamp (- number 1) 0 (- colors 1))
+)
