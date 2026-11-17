@@ -1,4 +1,5 @@
 ./editor-theme
+./runner
 ./workspace
 /graphics/color
 /graphics/primitives
@@ -29,9 +30,11 @@
     using EditorTheme
 
 + workspace Workspace
++ runner Runner
 + event open-requested Bool
 + event folder-requested Path
 + event new-requested Bool
++ event install-requested Bool
 
 ────────────────────
 
@@ -47,7 +50,7 @@
             text = "Brix Editor"
         <Label • welcome-note
             text = "Open a folder to read, write and run its programs."
-        <Button "Open…" • welcome-button
+        <Button "Open a Folder…" • welcome-button
             role = ButtonRole.default
             action = => do open-requested <- true
         <Button "New File…" • welcome-button
@@ -61,3 +64,9 @@
                     action = => do folder-requested <- path
                     <Tooltip
                         text = "$path"
+    if !runner.#has-toolchain
+        <Label • welcome-note mt:24 mb:10
+            text = "Running programs needs the Brix toolchain."
+        <Button "Install Brix Toolchain" • welcome-button
+            is-enabled = !runner-is-busy(runner.#state)
+            action = => do install-requested <- true

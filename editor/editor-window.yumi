@@ -187,12 +187,21 @@ _ is-close-confirmed = false
         repeat = false
         when = => runner.is-busy
         action = => do runner.stop()
+    <KeyShortcut install-shortcut "Install Brix Toolchain"
+        stable-key = "editor.run.install"
+        repeat = false
+        when = => !runner.is-busy
+        action = => do install-toolchain()
     <KeyShortcut output-shortcut "Show Output"
         key = KeyCombo("Cmd+Shift+Y")
         stable-key = "editor.view.output"
         repeat = false
         is-on = #shows-output
         action = => do shows-output = !shows-output
+    <KeyShortcut updates-shortcut "Check for Updates…"
+        stable-key = "editor.help.updates"
+        repeat = false
+        action = => do updates.check-now()
     <MenuBar
         <MenuBarItem "File"
             <Menu
@@ -285,6 +294,9 @@ _ is-close-confirmed = false
                     command = run-shortcut
                 <MenuItem
                     command = stop-shortcut
+                <MenuSeparator
+                <MenuItem
+                    command = install-shortcut
         <MenuBarItem "Window"
             <Menu
                 <MenuItem
@@ -413,6 +425,11 @@ for path on welcome.folder-requested
 request-folder(path)
 
 ────────────────────
+for requested on welcome.install-requested
+
+install-toolchain()
+
+────────────────────
 for event on closing
 
 if !is-close-confirmed && workspace.unsaved-count(workspace.revision) > 0
@@ -432,6 +449,13 @@ pending-close = null
 workspace.save-all()
 shows-output = true
 runner.start(document.path, workspace.folder ?? document.path.parent ?? Path("/", 0))
+
+────────────────────
++ do install-toolchain
+
+=? if runner.is-busy
+shows-output = true
+runner.install-toolchain()
 
 ────────────────────
 + do request-folder

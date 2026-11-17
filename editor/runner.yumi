@@ -11,6 +11,7 @@
 _ runner-note-style = "\x1b[2m"
 _ runner-error-style = "\x1b[31m"
 _ runner-style-reset = "\x1b[0m"
+_ runner-installer-url = "https://brix-lang.com/install.py"
 
 ━━━━━━━━━━━━━━━━━━━━
 + RunState is Union
@@ -18,9 +19,11 @@ _ runner-style-reset = "\x1b[0m"
 | idle
 | compiling
 | running
+| installing
 | stopping
 | stopped
 | exited
+| installed
 | failed
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -39,6 +42,8 @@ _ runner-style-reset = "\x1b[0m"
 + exit-code Int?
 + source Path?
 + feed ProbeFeed?
++ has-toolchain = false
++ event toolchain-installed Bool
 
 _ service BuildService?
 _ is-stop-requested = false
@@ -49,11 +54,12 @@ _ is-closed = false
 + This
 
 session = TerminalSession(env("HOME") ?? "/")
+has-toolchain = runner-finds-toolchain()
 
 ────────────────────
 + get is-busy Bool
 
-state == RunState.compiling || state == RunState.running || state == RunState.stopping
+runner-is-busy(state)
 
 ────────────────────
 + do start
@@ -70,6 +76,19 @@ session.clear()
 state = RunState.compiling
 do new
     perform(path)
+
+────────────────────
++ do install-toolchain
+
+=? if is-busy || is-closed
+source = null
+feed = null
+exit-code = null
+is-stop-requested = false
+session.clear()
+state = RunState.installing
+do new
+    perform-install()
 
 ────────────────────
 + do stop
@@ -96,6 +115,51 @@ _ do perform
 execute(path)
     catch error Error
         fail(error.message)
+
+────────────────────
+_ do perform-install
+
+install()
+    catch error Error
+        fail(error.message)
+
+────────────────────
+_ do install ?! Error
+
+await-login-shell-environment()
+. variables = terminal-environment()
+. tools = session.execute("/usr/bin/xcode-select", ["--print-path"], variables)
+if tools == null || is-stop-requested
+    halt()
+    =
+if tools != 0
+    . ignored = session.execute("/usr/bin/xcode-select", ["--install"], variables)
+    note("Brix needs Apple’s Command Line Tools to build programs. Install them in the window macOS opened, then choose Install Brix Toolchain again.")
+    state = RunState.idle
+    =
+. caches = runner-caches()
+caches.make-directories()
+. script = caches / "install.py"
+note("Downloading $runner-installer-url")
+. fetched = session.execute("/usr/bin/curl", ["--fail", "--silent", "--show-error", "--location", "--output", "$script", runner-installer-url], variables)
+if fetched == null || is-stop-requested
+    halt()
+    =
+if fetched != 0
+    exit-code = fetched
+    fail("Downloading the installer failed")
+    =
+. code = session.execute("/usr/bin/python3", ["$script", "--yes", "--no-modify-path"], variables)
+if code == null || is-stop-requested
+    halt()
+    =
+exit-code = code
+if code != 0
+    fail("Installing the Brix toolchain failed")
+    =
+has-toolchain = runner-finds-toolchain()
+state = RunState.installed
+toolchain-installed <- true
 
 ────────────────────
 _ do execute ?! Error
@@ -191,7 +255,8 @@ if checkout
     = RunToolchain("$checkout", command.arguments[0], command)
 . variables = terminal-environment()
 . compiler = installed-compiler(variables)
-?! Error("Running a Brix program needs the Brix toolchain, and none was found. Install it, then run again.")
+has-toolchain = compiler != null
+?! Error("Running a Brix program needs the Brix toolchain. Choose Install Brix Toolchain from the Run menu, then run again.")
     if !compiler
 = RunToolchain(variables["HOME"] ?? "/", compiler, BuildServiceCommand([compiler, "--serve"], variables))
 
@@ -244,7 +309,7 @@ runner-runs-brix(path) || text.starts-with("#!") || runner-interpreter(path.exte
 + runner-is-busy Bool
     - state RunState
 
-state == RunState.compiling || state == RunState.running || state == RunState.stopping
+state == RunState.compiling || state == RunState.running || state == RunState.installing || state == RunState.stopping
 
 ━━━━━━━━━━━━━━━━━━━━
 + runner-status String
@@ -258,12 +323,16 @@ match state
         "Compiling…"
     | .running
         "Running"
+    | .installing
+        "Installing the Brix toolchain…"
     | .stopping
         "Stopping…"
     | .stopped
         "Stopped"
     | .exited
         "Exited (${exit-code ?? 0})"
+    | .installed
+        "Installed the Brix toolchain"
     | .failed
         "Failed"
 
@@ -305,35 +374,25 @@ if first.starts-with("#!")
 _ do runner-artifact Path
     - source Path
 
-. caches = Path(env("HOME") ?? "/tmp", 0) / "Library" / "Caches" / "com.brix-lang.editor" / "builds"
+. caches = runner-caches() / "builds"
 . folder = source.parent
 = Path("$caches${folder ?? Path("/", 0)}", 0) / source.base-name
+
+━━━━━━━━━━━━━━━━━━━━
+_ runner-caches Path
+
+Path(env("HOME") ?? "/tmp", 0) / "Library" / "Caches" / "com.brix-lang.editor"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do runner-finds-toolchain Bool
+
+= installed-compiler(terminal-environment()) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do installed-compiler String?
     - variables [String = String]
 
-. bundled = bundled-compiler()
-=? bundled if bundled
 . home = variables["BRIX_HOME"] ?? "${variables["HOME"] ?? ""}/.brix"
 . installed = "$home/bin/brix"
 =? installed if Path(installed, 0).is-file
 = find-executable("brix", variables)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bundled-toolchain Path?
-
-. executable = catch? executable-path()
-=? null if !executable
-. contents = executable.parent?.parent
-=? null if !contents
-. found = contents / "Resources" / "toolchain"
-= if found.is-dir then found else null
-
-━━━━━━━━━━━━━━━━━━━━
-_ do bundled-compiler String?
-
-. toolchain = bundled-toolchain()
-=? null if !toolchain
-. found = toolchain / "bin" / "brix"
-= if found.is-file then "$found" else null

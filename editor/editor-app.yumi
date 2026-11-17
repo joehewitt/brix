@@ -61,6 +61,8 @@ app += window
 for event on window.closed
     if !app.is-quitting
         app.stop()
+for event on window.runner.toolchain-installed
+    set-up-examples()
 
 ────────────────────
 + do start
@@ -97,6 +99,20 @@ _ do update-examples
         =
 if kept
     workspace.remember-folder(kept)
+
+────────────────────
+_ do set-up-examples
+
+. examples = BundledExamples(state, examples-toolchain())
+. installed = examples.install()
+    catch error Error
+        workspace.failed <- "Unable to set up the examples: ${error.message}"
+        =
+=? if !installed
+if !workspace.folder && workspace.documents.length == 0
+    workspace.open-folder(installed)
+else
+    workspace.remember-folder(installed)
 
 ────────────────────
 _ do open-examples
