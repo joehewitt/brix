@@ -4469,6 +4469,13 @@ for arm in tree.region-arms(control)
         | .node-type-transform(row)
             if row.pattern != 0
                 note-reads(row.pattern, slots, true)
+    . pattern = tree.arm-pattern(arm)
+    . bound [Atom]
+    if pattern != 0
+        tree.pattern-names(pattern, bound)
+    if bound.length != 0
+        push-scope(.scope-arm, arm)
+        declare-pattern(pattern, .slot-pattern, SlotFlag.slot-constant, 0)
     do match? tree.nodes[tree.region-arm-body(arm)]
         | .node-block(block)
             for line in tree.children[block.body]
@@ -4478,6 +4485,8 @@ for arm in tree.region-arms(control)
                             walk-slot(line, row.id, row.type-id, row.body)
                     | .node-markup-slot-forward
                         walk(line)
+    if bound.length != 0
+        pop-scope()
 capture-in(tree.selector-anchor(control), slots)
 
 ────────────────────

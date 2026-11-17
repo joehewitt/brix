@@ -23064,7 +23064,12 @@ for line in lines
                     - program.store-atom("Repeated slot content requires a slot parameter")
                 = false
     . root = if forwarding == 0 then keep-root(line) else no-slot
-    if given.find(name) != null
+    . held = given.find(name)
+    if held && keeps-own && chosen-slot(builders[held]) != no-type
+        . message = "Slot \"${name.text}\" is filled inside an if or match where this object is made, so the class's content does not fill it too"
+        frame.diagnose(line, .stated, program.store-atom(message))
+        = false
+    if held != null
         continue
     if item != no-type && forwarding == 0 && rebinds(item) && !reads-rebindable(line, parameter)
         = false
@@ -23175,16 +23180,25 @@ for arm in tree.region-arms(control)
         if tree.nodes[line] is .node-markup-slot-forward
             frame.diagnose(line, .stated, program.store-atom("A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body"))
             = false
-    do match? tree.nodes[arm]
-        | .node-type-transform(row)
-            . bound [Atom]
-            tree.pattern-names(row.pattern, bound)
-            if bound.length != 0
-                frame.diagnose(row.pattern, .stated, program.store-atom("A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"))
-                = false
+    . pattern = tree.arm-pattern(arm)
+    . bound [Atom]
+    if pattern != 0
+        tree.pattern-names(pattern, bound)
+    if pattern != 0 && tree.nodes[arm] is .node-if-block
+        frame.diagnose(pattern, .stated, program.store-atom("An if that fills a slot tests a condition, not a pattern; write is or == instead"))
+        = false
+    if bound.length != 0
+        frame.diagnose(pattern, .stated, program.store-atom("A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"))
+        = false
     . arm-given [Atom]
     . arm-builders [TypeId]
-    if !give-lines(fills, names, wanted, items, styles, sheets, levels, arm-given, arm-builders, class, scopes, scoped, keeps-own)
+    . arm-mark = scratch.narrowings.mark
+    . known = frame.save-members()
+    narrow-arm(control, arm)
+    . gave = give-lines(fills, names, wanted, items, styles, sheets, levels, arm-given, arm-builders, class, scopes, scoped, keeps-own)
+    frame.pop-narrowing(arm-mark)
+    frame.restore-members(known)
+    if !gave
         = false
     for line in fills
         . name = filled-name(line)
@@ -23237,6 +23251,18 @@ for offset in 0 .. < filled.length
     facts.slot-choices += SlotChoice(instance, control, first, choice, create, fill, closure)
     add-slot(name, choice, given, builders)
 = true
+
+────────────────────
+_ do narrow-arm
+    - control SyntaxId
+    - arm SyntaxId
+
+for other in tree.region-arms(control)
+    do match? tree.nodes[other]
+        | .node-if-block(row)
+            narrowing.narrow-condition(row.condition, other == arm)
+    if other == arm
+        =
 
 ────────────────────
 _ filled-name Atom?
@@ -24534,6 +24560,8 @@ for around in node + 1 .. < body
     if tree.subtree-start(around) <= node && loop-region
         = true
     .. loop-region = tree.nodes[around] is .node-for-block && is-loop-region(around)
+    if tree.subtree-start(around) <= node && is-selector(around)
+        = true
 = false
 
 ────────────────────

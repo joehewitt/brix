@@ -690,6 +690,7 @@ do match? nodes[id]
 
 if !(nodes[id] is .node-if-block) && !(nodes[id] is .node-match-expression)
     = false
+=? false if tests-pattern(id)
 . arms = region-arms(id)
 =? false if arms.length == 0
 . fills = false
@@ -708,6 +709,7 @@ for arm in arms
 
 if !(nodes[id] is .node-if-block) && !(nodes[id] is .node-match-expression)
     = false
+=? false if tests-pattern(id)
 for arm in region-arms(id)
     do match? nodes[region-arm-body(arm)]
         | .node-block(block)
@@ -740,13 +742,13 @@ do match? nodes[control]
     - body SyntaxId
 
 . arm = holder-of(body)
+=? 0 if nodes[arm] is .node-markup
 if !(nodes[arm] is .node-if-block)
-    for node in body + 1 .. < (nodes.length as SyntaxId)
-        do match? nodes[node]
-            | .node-type-transform(row)
-                if row.expr == body
-                    = arm-match(node)
-    = 0
+    . transform = transform-of(body)
+    =? 0 if transform == 0
+    . control = arm-match(transform)
+    =? control if control == 0 || !tests-pattern(control)
+    arm = holder-of(control)
 do match? nodes[arm]
     | .node-if-block(row)
         =? 0 if row.body != body
@@ -760,6 +762,45 @@ do match? nodes[arm]
             if !chained
                 = head
             head = above
+= 0
+
+────────────────────
++ do transform-of SyntaxId
+    - body SyntaxId
+
+for node in body + 1 .. < (nodes.length as SyntaxId)
+    do match? nodes[node]
+        | .node-type-transform(row)
+            if row.expr == body
+                = node
+= 0
+
+────────────────────
++ tests-pattern Bool
+    - id SyntaxId
+
+match nodes[holder-of(id)]
+    | .node-if-block(row)
+        row.condition == id
+    ??
+        false
+
+────────────────────
++ do arm-pattern SyntaxId
+    - arm SyntaxId
+
+do match? nodes[arm]
+    | .node-type-transform(row)
+        = row.pattern
+    | .node-if-block(row)
+        do match? nodes[row.condition]
+            | .node-structure-match(test)
+                = test.pattern
+            | .node-match-expression
+                . arms [SyntaxId]
+                match-arms(row.condition, arms)
+                if arms.length != 0
+                    = arm-pattern(arms[0])
 = 0
 
 ────────────────────

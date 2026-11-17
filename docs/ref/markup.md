@@ -642,16 +642,20 @@ arm taken.
   an arm that gives none is taken.
 - **Limits.** A fill is a row of the arm itself, not of an `if` or `for` inside it. Otherwise a slot
   is filled once: by one row of the element's body, or in the arms of one `if` or `match`. A
-  `match` arm that fills a slot binds no names. A repeated slot is not filled in an arm,
-  nor is a base's slot from a subclass's `content`, and `(<+ …)` is not written in an arm. A slot
-  filled in an arm is not passed on with `(<+ …)`, and the component does not read that slot's
-  outlet by its `id`.
+  `match` arm that fills a slot binds no names, and an `if` that fills one tests a condition, not
+  a pattern; a fill reads what the condition narrows. A repeated slot is not filled in an arm, nor
+  is a slot the component's own `content` fills, as a subclass's may, and a subclass's `content`
+  fills its base's slots outside arms. `(<+ …)` is not written in an arm, a slot filled in an arm
+  is not passed on with `(<+ …)`, and the component does not read that slot's outlet by its `id`.
 - **Messages.** `A match arm that fills a slot binds no names; test the subject without binding,
-  as |= value or a type alone does`, `A repeated slot cannot be filled inside an if or match`, `A
-  subclass fills its base's slots with lines of its content, not inside an if or match`, `A slot is
-  not passed on with <+ inside an if or match; write <+ as a line of the element's body`, `A slot
-  filled inside an if or match is not passed on with <+; give it content here instead`, and
-  `Outlet "title" is not read by its name where its slot is filled inside an if or match`.
+  as |= value or a type alone does`, `An if that fills a slot tests a condition, not a pattern;
+  write is or == instead`, `A repeated slot cannot be filled inside an if or match`, `Slot "title"
+  is filled inside an if or match where this object is made, so the class's content does not fill
+  it too`, `A subclass fills its base's slots with lines of its content, not inside an if or
+  match`, `A slot is not passed on with <+ inside an if or match; write <+ as a line of the
+  element's body`, `A slot filled inside an if or match is not passed on with <+; give it content
+  here instead`, and `Outlet "title" is not read by its name where its slot is filled inside an if
+  or match`.
 
 ### Repeated slots and passing slots on
 
