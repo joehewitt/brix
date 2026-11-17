@@ -1,3 +1,4 @@
+./binary
 /core/arena
 /core/pattern-helpers
 
@@ -122,40 +123,78 @@ to-json(this)
     value
 
 ━━━━━━━━━━━━━━━━━━━━
-+ to-json String
++ do to-json String
     - value
 
-match value
-    | Null!
-        "null"
-    | Int~
-        "$value"
-    | Float~
-        "$value"
-
-    | text String
-        json-quote(text)
-    | list List
-        "[$joined]"
-        .. joined = ", ".join(items)
-        .. items = to-json(each) in list
-    | map Map
-        "{$joined}"
-        .. joined = ", ".join(pairs)
-        .. pairs  = <* key, val in map
-            "${json-quote(key)}: ${to-json(val)}"
-    | Bool {it}
-        "true"
-    | Bool {it == false}
-        "false"
-    ??
-        "null"
+. writer = ByteWriter()
+write-json(writer, value)
+= writer.finish().slice-string()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ json-quote
++ do json-quote String
     - value String
 
-"${"".join(json-escaped(each) in value)}"
+. writer = ByteWriter()
+write-json-text(writer, value)
+= writer.finish().slice-string()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-json
+    - writer ByteWriter
+    - value
+
+do match value
+    | Null!
+        writer.bytes(byte-view("null"))
+    | Int~
+        writer.bytes(byte-view("$value"))
+    | Float~
+        writer.bytes(byte-view("$value"))
+    | text String
+        write-json-text(writer, text)
+    | list List
+        writer.u8('[' as Byte)
+        . separates = false
+        for item in list
+            if separates
+                writer.bytes(byte-view(", "))
+            separates = true
+            write-json(writer, item)
+        writer.u8(']' as Byte)
+    | map Map
+        writer.u8('{' as Byte)
+        . separates = false
+        for key, item in map
+            if separates
+                writer.bytes(byte-view(", "))
+            separates = true
+            write-json-text(writer, key)
+            writer.bytes(byte-view(": "))
+            write-json(writer, item)
+        writer.u8('}' as Byte)
+    | Bool {it}
+        writer.bytes(byte-view("true"))
+    | Bool {it == false}
+        writer.bytes(byte-view("false"))
+    ??
+        writer.bytes(byte-view("null"))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do write-json-text
+    - writer ByteWriter
+    - text String
+
+. bytes = byte-view(text)
+. start Index = 0
+writer.u8('"' as Byte)
+for index in 0 .. < bytes.size
+    . byte = bytes[index]
+    if byte < 0x20 || byte == ('"' as Byte) || byte == ('\\' as Byte)
+        writer.bytes(bytes[start .. < index])
+        writer.bytes(byte-view(json-escaped(byte as Char)))
+        start = index + 1
+writer.bytes(bytes[start .. < bytes.size])
+writer.u8('"' as Byte)
 
 ━━━━━━━━━━━━━━━━━━━━
 + json-escaped
