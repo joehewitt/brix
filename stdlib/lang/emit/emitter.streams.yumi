@@ -36,6 +36,15 @@
 /stream/sort
 
 ━━━━━━━━━━━━━━━━━━━━
+_ RuleCells is Tuple
+
+` The locals a rule a part calls writes: where it stopped, how far it read and where it failed.
+
++ ended LocalId
++ reached LocalId
++ erred LocalId
+
+━━━━━━━━━━━━━━━━━━━━
 _ Streams is facet of FunctionEmitter
     sees Loops
     sees MatchArms
@@ -1502,21 +1511,8 @@ for position in 0 .. < written.count
         refuse(.refused-conversion, argument)
     pending += value.operand
 drop-bound(named)
-. ended = ir.add-local(run.index-layout, true, true)
-. reached = ir.add-local(run.index-layout, true, true)
-. erred = ir.add-local(run.index-layout, true, true)
-pending += run-data(run, id)
-pending += cursor
-pending += run-length(run, id)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), ended, pointer-layout)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), reached, pointer-layout)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), erred, pointer-layout)
+. cells = rule-cells(run)
+pass-run(run, id, cursor, cells)
 . helped = instances.rows[callee].helper
 if helped != no-type
     if helped != streaming.pattern-helper-type
@@ -1548,23 +1544,7 @@ if raising
     answer = propagate(id, callee, answer.operand)
 if carried != no-type
     answer = propagate-held(id, carries, answer.operand)
-. answer-type = answer.type
-reclaim-collectors(lendings, id)
-record-call-extent(run, id, load-local(reached, id))
-record-error(run, id, load-local(erred, id))
-. flag = present(id, Typed(answer.operand, answer-type))
-. passed = ir.reserve-block()
-branch(flag.operand, passed, failed)
-ir.start-block(passed)
-take-mark(given-mark, id)
-if mapped || spanned
-    . ending = load-local(ended, id)
-    = StreamPart(ending, spanned-value(run, id, spanned, cursor, ending))
-. value = payload(id, Typed(answer.operand, answer-type))
-if value.type != result
-    refuse(.refused-type, id)
-    = bare-part(cursor)
-= StreamPart(load-local(ended, id), Typed(value.operand, result))
+= take-rule-answer(run, id, result, cursor, failed, cells, answer, given-mark, lendings, mapped, spanned)
 
 ────────────────────
 + do adapter-call StreamPart
@@ -1932,6 +1912,72 @@ do match? tree.nodes[rule-declaration(call)]
 .. row = bindings.slots[resolution.slot]
 
 ────────────────────
+_ do rule-cells RuleCells
+    - run StreamRun
+
+` The cells a rule a part calls writes where it stopped, how far it read and where it failed.
+= RuleCells
+    - ir.add-local(run.index-layout, true, true)
+    - ir.add-local(run.index-layout, true, true)
+    - ir.add-local(run.index-layout, true, true)
+
+────────────────────
+_ do pass-run
+    - run StreamRun
+    - id SyntaxId
+    - cursor Operand
+    - cells RuleCells
+
+` Passes a rule a part calls what it reads, from `cursor`, and where to write what `cells` hold.
+pending += run-data(run, id)
+pending += cursor
+pending += run-length(run, id)
+pending += make-operand
+    - .operand-value
+    - append(.op-local-address, id, Span(), cells.ended, pointer-layout)
+pending += make-operand
+    - .operand-value
+    - append(.op-local-address, id, Span(), cells.reached, pointer-layout)
+pending += make-operand
+    - .operand-value
+    - append(.op-local-address, id, Span(), cells.erred, pointer-layout)
+
+────────────────────
+_ do take-rule-answer StreamPart
+    - run StreamRun
+    - id SyntaxId
+    - result TypeId
+    - cursor Operand
+    - failed IRBlockId
+    - cells RuleCells
+    - answer Typed
+    - given-mark LocalId
+    - lendings [Lending]
+    - mapped Bool
+    - spanned Bool
+
+` What a part that called a rule gives once the rule answered: the collectors it lent are taken
+` back and how far it read and where it failed are recorded; where its answer holds nothing the
+` part fails, and otherwise it ends where the rule stopped, giving what it read where the rule
+` is `mapped` or the part `spanned`, and otherwise what the answer holds, of type `result`.
+reclaim-collectors(lendings, id)
+record-call-extent(run, id, load-local(cells.reached, id))
+record-error(run, id, load-local(cells.erred, id))
+. flag = present(id, answer)
+. passed = ir.reserve-block()
+branch(flag.operand, passed, failed)
+ir.start-block(passed)
+take-mark(given-mark, id)
+if mapped || spanned
+    . ending = load-local(cells.ended, id)
+    = StreamPart(ending, spanned-value(run, id, spanned, cursor, ending))
+. value = payload(id, answer)
+if value.type != result
+    refuse(.refused-type, id)
+    = bare-part(cursor)
+= StreamPart(load-local(cells.ended, id), Typed(value.operand, result))
+
+────────────────────
 + do lazy-rule-call StreamPart
     - run StreamRun
     - id SyntaxId
@@ -1985,26 +2031,13 @@ else if !rule-arguments || answerless || other-stream || (raising && in-zone) ||
 .. other-stream = run.stream-type != instances.argument-type(unit.instance, 0)
 .. other-helper = helped != no-type && streaming.pattern-helper-type != helped
 . returns = layout-of(returned, id)
-. ended = ir.add-local(run.index-layout, true, true)
-. reached = ir.add-local(run.index-layout, true, true)
-. erred = ir.add-local(run.index-layout, true, true)
+. cells = rule-cells(run)
 . mark = pending.length
 pending += run.stream
 if !bare
     for position in 1 .. < signature.args.count
         pending += rule-argument(position, id)
-pending += run-data(run, id)
-pending += cursor
-pending += run-length(run, id)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), ended, pointer-layout)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), reached, pointer-layout)
-pending += make-operand
-    - .operand-value
-    - append(.op-local-address, id, Span(), erred, pointer-layout)
+pass-run(run, id, cursor, cells)
 if helped != no-type
     pending += streaming.pattern-helper
 . given-mark = lend-mark(unit.instance, id)
@@ -2029,22 +2062,8 @@ cross-back(id, enters, raising)
 land-closed(closing, id)
 if raising
     answer = propagate-held(id, returned, answer).operand
-reclaim-collectors(lendings, id)
-record-call-extent(run, id, load-local(reached, id))
-record-error(run, id, load-local(erred, id))
-. flag = present(id, Typed(answer, answer-type))
-. passed = ir.reserve-block()
-branch(flag.operand, passed, failed)
-ir.start-block(passed)
-take-mark(given-mark, id)
-if mappings.count != 0 || spanned
-    . ending = load-local(ended, id)
-    = StreamPart(ending, spanned-value(run, id, spanned, cursor, ending))
-. value = payload(id, Typed(answer, answer-type))
-if value.type != result
-    refuse(.refused-type, id)
-    = bare-part(cursor)
-= StreamPart(load-local(ended, id), Typed(value.operand, result))
+. answered = Typed(answer, answer-type)
+= take-rule-answer(run, id, result, cursor, failed, cells, answered, given-mark, lendings, mappings.count != 0, spanned)
 
 ────────────────────
 _ do lend-collectors [Lending]
