@@ -1433,7 +1433,7 @@ for variant in variants
 MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), location.end)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ make-getter-function SyntaxId ?! YumiSyntaxError
++ do make-getter-function SyntaxId ?! YumiSyntaxError
     - tree ASTBuilder
     - location MatchLocation
     - access Access
@@ -1450,10 +1450,7 @@ MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), loc
     if has-annotation(annotations, "live")
 ?! YumiSyntaxError(location, "@no-return is not supported on getters")
     if has-annotation(annotations, "no-return")
-
-tree.append(node)
-
-.. node = ASTFunction
+. node = ASTFunction
     - declared-at(location)
     - access
     - tree.store-atoms(names)
@@ -1472,6 +1469,9 @@ tree.append(node)
     - true
     - false
     - has-annotation(annotations, "inline")
+node = node.bans = lowered-bans(tree, annotations)
+node = node.door = lowered-door(tree, declared-at(location), annotations)
+= tree.append(node)
 
 ━━━━━━━━━━━━━━━━━━━━
 + c-declaration-name ImmutableArray'Atom ?! YumiSyntaxError
@@ -1577,6 +1577,8 @@ for variant in variants
     - has-annotation(annotations, "inline")
 node = node.is-live = has-annotation(annotations, "live")
 node = node.is-no-return = has-annotation(annotations, "no-return")
+node = node.bans = lowered-bans(tree, annotations)
+node = node.door = lowered-door(tree, declared-at(location), annotations)
 = tree.append(node)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2954,7 +2956,7 @@ gc-free-joined || (mask /and/ effect) == effect
 
 . mask = CompilationEffect.none
 for name in names
-    if name.text == "inline" || (skips-rollback && (name.text == "rollback" || name.text == "live" || name.text == "no-return"))
+    if name.text == "inline" || is-lowered(name) || (skips-rollback && (name.text == "rollback" || name.text == "live" || name.text == "no-return"))
         continue
     . effect = compilation-effect-named(name.text)
     ?! YumiSyntaxError(loc, "Unknown compilation effect '${name.text}'")
@@ -2974,6 +2976,10 @@ for name in names
 for name in names
     if name.text == "feature-collection-observers"
         features = features /or/ CompilerFeature.collection-observers
+        continue
+    ?! YumiSyntaxError(loc, "'@door' is only for a function")
+        if name.text.starts-with("door:")
+    if name.text.starts-with("without:")
         continue
     . effect = compilation-effect-named(name.text)
     ?! YumiSyntaxError(loc, "Unknown do annotation '${name.text}'")
@@ -3023,6 +3029,67 @@ match text
         null
 
 ━━━━━━━━━━━━━━━━━━━━
++ do door-annotation Atom
+    - tree ASTBuilder
+    - effect Atom
+
+` The annotation `@door(effect)` stands for, which the function it is written on keeps as its
+` `door`.
+= tree.atom("door:${effect.text}")
+
+━━━━━━━━━━━━━━━━━━━━
++ is-lowered Bool
+    - name Atom
+
+` Whether an annotation stands for a door or a ban, which a function or a `do` block keeps apart
+` from its masks.
+name.text.starts-with("door:") || name.text.starts-with("without:")
+
+━━━━━━━━━━━━━━━━━━━━
++ do unlowered ImmutableArray'Atom ?! YumiSyntaxError
+    - loc MatchLocation
+    - names ImmutableArray'Atom
+
+` The annotations of a conversion, which is no door and bans no effect.
+for name in names
+    ?! YumiSyntaxError(loc, "A conversion cannot be a door")
+        if name.text.starts-with("door:")
+    ?! YumiSyntaxError(loc, "A conversion cannot ban an effect, as 'without ${name.text["without:".length ...]}' does")
+        if name.text.starts-with("without:")
+= names
+
+━━━━━━━━━━━━━━━━━━━━
++ do lowered-bans RowRange'Atom
+    - tree ASTBuilder
+    - names ImmutableArray'Atom
+
+` The effects the `without` section of a function or a `do` block bans, which the checker looks
+` up among those declared.
+. bans = scratch-array'Atom(tree, names.length)
+. filled Size = 0
+for name in names
+    if name.text.starts-with("without:")
+        bans[filled] = tree.atom(name.text["without:".length ...])
+        filled += 1
+=? RowRange'Atom() if filled == 0
+= tree.store-atoms(scratch-items(bans, filled))
+
+━━━━━━━━━━━━━━━━━━━━
++ do lowered-door Atom? ?! YumiSyntaxError
+    - tree ASTBuilder
+    - loc MatchLocation
+    - names ImmutableArray'Atom
+
+` The effect a function is a door of, if it names one.
+. door Atom? = null
+for name in names
+    if name.text.starts-with("door:")
+        ?! YumiSyntaxError(loc, "A function is the door of one effect")
+            if door
+        door = tree.atom(name.text["door:".length ...])
+= door
+
+━━━━━━━━━━━━━━━━━━━━
 + do section-annotations ImmutableArray'Atom ?! YumiSyntaxError
     - tree ASTBuilder
     - loc MatchLocation
@@ -3030,8 +3097,9 @@ match text
     - sections SectionsPartial?
     - is-block Bool
 
-` The annotations a `without` section stands for, after those written with `@`. In a header
-` module `gc` and `blocking` are the labels of a C function.
+` The annotations a `without` section stands for, after those written with `@`: a restriction's,
+` and for any other name a ban of the effect it names, which the checker looks up. In a header
+` module `gc` and `blocking` are the labels of a C function, and no other name is known.
 =? annotations if !sections
 . names = sections.without
 =? annotations if names.length == 0
@@ -3062,7 +3130,10 @@ for name in names
             "no-probe-safepoints"
         |= "blocking"
             "gc-polling"
-        ?! YumiSyntaxError(loc, "Unknown name '$text' after without")
+        ??
+            if native then "" else "without:$text"
+    ?! YumiSyntaxError(loc, "Unknown name '$text' after without")
+        if meant.length == 0
     for index in 0 .. < filled
         ?! YumiSyntaxError(loc, "'$text' is named twice")
             if joined[index].text == meant
@@ -3099,7 +3170,7 @@ while index > 0
 . holds = names-cancel(sections.without)
 =? stack-bound(tree, loc, bindings, body.body) if annotations.length == 0 && bindings.length > 0 && !holds
 . masks = do-annotation-masks(loc, annotations)
-. block = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features, holds))
+. block = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features, holds, lowered-bans(tree, annotations)))
 =? block if bindings.length == 0
 = stack-bound(tree, loc, bindings, tree.append(ASTBlock(loc, tree.store-child(block))))
 
@@ -3633,6 +3704,8 @@ match nodes[id]
     | .node-class-block
         false
     | .node-event-declaration
+        false
+    | .node-effect-declaration
         false
     | .node-property-syntax
         false

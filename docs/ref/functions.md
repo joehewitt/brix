@@ -949,14 +949,91 @@ After its annotations, a function's header can take a `(without …)` part and `
   | `probe-safepoints` | Hold a point where probes may stop it. |
   | `gc` | Do any of `heap`, `safepoints` and `suspend`. |
 
-  On a C function in a header module, `(without gc)` says the function never reaches the
-  collector, and `(without blocking)` that it is called between two of the collector's checks;
-  see Native code and memory. A name that is none of these, or one named twice, is an error.
+  Any other name bans an effect a library declares: see Effects and doors. On a C function in a
+  header module, `(without gc)` says the function never reaches the collector, and
+  `(without blocking)` that it is called between two of the collector's checks; see Native code
+  and memory. A name that is neither a restriction nor an effect the file sees, or one named
+  twice, is an error.
 - **With.** Each `(with name value)` sets a `@stack` property for the whole body, as a `do-with`
-  around it would, the first outermost, so a later value can read an earlier one. It needs a
-  `fn-do`.
+  around it would, the first outermost, so a later value can read an earlier one. A name that is
+  an effect binds a fake to it: see Effects and doors. It needs a `fn-do`.
 - **Blocks.** A `(do …)` takes the same parts after its annotations, as in
   `(do (without gc) (with depth 3) …)`. A `(do …)` kept from any of these but `gc` runs in
   place: the functions it calls are kept from the same, and its loops poll only as far as that
   allows. A block can also name `cancel`, which a function cannot: a task cancelled while it runs
   the block goes on to the block's end and ends at its first wait after it; see Concurrency.
+
+### Effects and doors
+
+An effect is a kind of contact with the world outside the program, such as the network. A library
+declares one at the top of a file, with the C functions it claims, and marks the functions through
+which a program makes that contact, its doors, with a `(door …)` part after their annotations:
+
+```brix
+(effect + network
+  (claim C:socket)
+  (claim C:connect)
+)
+
+(fn-do + connect-to I32 (door network)
+  (param host String)
+  (param port Port)
+  (return (call C:socket C:AF_INET C:SOCK_STREAM 0))
+)
+```
+
+- **Claims.** Only a door of the effect may call a C function the effect claims, and so may a
+  function written inside a door, such as a closure or a task's body. A call anywhere else is an
+  error that names the effect. A C function two effects claim is an error where it is called.
+- **Bans.** `(without network)` on a function, or on a `(do …)`, keeps its code, and everything that
+  code calls, from reaching a door of `network`. Reaching one is an error that names the path from
+  the ban to the call of the door, as in
+  `parse-document (without network) → load-schema → connect-to(host, port)`. A ban follows calls
+  of interface members to each function that may answer them, and it holds in a task the code
+  starts. A call through a function value, or a comparison of interface values, is an error
+  under a ban, as it is under a restriction.
+- **What a ban promises.** A ban covers only what libraries claim. A C function that no effect
+  claims passes, and so does what native code does by itself, so a ban is a guard against
+  reaching the outside world by mistake, not a sandbox.
+
+`(with network net)` on a `do` or a `fn-do`, or a `do-with` form, binds a fake to an effect for
+the code under it and everything that code calls. Each door of `network` that code reaches calls
+the method of the same name on `net` in its place, with the door's arguments, and gives what that
+gives:
+
+```brix
+(type + Switchboard
+  (fn-do + connect-to I32
+    (param host String)
+    (param port Port)
+    (return 3)
+  )
+)
+
+(fn-do + fetch-offline _ (with network (call Switchboard))
+  (call load-schema)
+)
+```
+
+- **Fakes.** `net` is an object of a class, which must have a method for each door the code under
+  it reaches, taking and giving what the door does. A missing or different method is an error that
+  names the path from the binding to the door, as in
+  `fetch-offline (with network) → load-schema → connect-to(host, port)`. Only a door written as
+  a function of its file can be answered so.
+- **What a fake's methods reach.** A fake's method runs as the code around its binding does: a
+  door of the same effect it calls is the real door, or the fake of a binding outside, so a fake
+  can record what reaches the outside world and pass it on. Everything else is as where the door
+  was called. A ban outside a binding lets the fake's doors through and still bans the real doors
+  its methods reach.
+- **Tasks and function values.** A task started under a binding keeps it, and so does a closure
+  made under it. A function that reaches a door cannot become a function value under a binding of
+  the door's effect, as one that reads a `@stack` property with no value of its own cannot. A named
+  function made a value outside every binding is compiled outside them: in a program that binds
+  the effect anywhere, its doors read at each call the fake the running task has bound, and call
+  that fake's method, or panic where it has none. A closure made outside a binding reads what was
+  bound where it was made, as it keeps a `@stack` property's value. In a program that never binds
+  an effect, a call of one of its doors costs what a call of the door's body does. A program can
+  bind fakes of at most 255 classes to one effect.
+- **Names.** An effect's name is seen as the file's other names are: a public effect from the files
+  that import its file, and a private one only in its own. A program can ban or bind at most 32
+  effects.

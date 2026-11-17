@@ -338,6 +338,43 @@ form != .call-truth && form != .call-operand-truth && !made && !listed
 + decl DeclId
 
 ━━━━━━━━━━━━━━━━━━━━
++ SwapForward is Struct
+
+` A door typed under a `do with` that binds a fake to its effect, which calls the fake's method
+` that answers it, the `callee`, with the fake its effect's slot holds; or none, and why
+` (`miss`), where the fake answers it with no method.
+
++ instance InstanceId
++ callee InstanceId
++ module ModuleId
++ decl DeclId
++ effect U32
++ miss SwapMiss
+
+━━━━━━━━━━━━━━━━━━━━
++ SwapDispatch is Struct
+
+` A door reached where no `do with` binds a fake to its effect, as code a function value runs is,
+` in a program that binds one somewhere: where its effect's slot holds a fake of the class `fake`,
+` numbered `kind` there (`Instances.fake-kind`), it calls the `forwarder`, the door typed under a
+` binding of that fake, in place of its body.
+
++ instance InstanceId
++ fake TypeId
++ kind U32
++ forwarder InstanceId
++ module ModuleId
++ decl DeclId
+
+━━━━━━━━━━━━━━━━━━━━
++ SwapMiss is Union
+
+| swap-answered
+| swap-missing
+| swap-mismatched
+| swap-unanswerable
+
+━━━━━━━━━━━━━━━━━━━━
 + ConversionReason is U32
 
 ` Why a value is converted, which also says whose value it is:
@@ -2773,6 +2810,8 @@ _ node-copying TaskGroup?
 + stack-holds Table'StackHold
 + local-global-uses Table'LocalGlobalUse
 + stack-scopes Table'StackScope
++ swap-forwards Table'SwapForward
++ swap-dispatches Table'SwapDispatch
 + global-uses Table'GlobalUse
 + value-reads Table'ValueRead
 + constant-globals Table'ConstantGlobal
@@ -3030,6 +3069,8 @@ _ const-array-keys IdMap
 .. stack-holds = Table'StackHold(arena, 16)
 .. local-global-uses = Table'LocalGlobalUse(arena, 16)
 .. stack-scopes = Table'StackScope(arena, 16)
+.. swap-forwards = Table'SwapForward(arena, 16)
+.. swap-dispatches = Table'SwapDispatch(arena, 16)
 .. global-uses = Table'GlobalUse(arena, 16)
 .. value-reads = Table'ValueRead(arena, 16)
 .. constant-globals = Table'ConstantGlobal(arena, 16)
@@ -5327,6 +5368,17 @@ conversion-parts[id].case-index = relation.case-index
 = id
 
 ────────────────────
++ do dispatches-to Bool
+    - caller InstanceId
+    - callee InstanceId
+
+` Whether a door calls the door typed under a fake where its effect's slot holds one
+` (`SwapDispatch`).
+for dispatch in swap-dispatches
+    =? true if dispatch.instance == caller && dispatch.forwarder == callee
+= false
+
+────────────────────
 + do record-call U32
     - instance InstanceId
     - syntax SyntaxId
@@ -5721,6 +5773,11 @@ for position in 0 .. < stack-reads.length
 for position in 0 .. < stack-scopes.length
     if mains[stack-scopes[position].instance] != no-instance
         stack-scopes[position].instance = mains[stack-scopes[position].instance]
+for position in 0 .. < swap-forwards.length
+    if mains[swap-forwards[position].instance] != no-instance
+        swap-forwards[position].instance = mains[swap-forwards[position].instance]
+    if swap-forwards[position].callee != no-instance && mains[swap-forwards[position].callee] != no-instance
+        swap-forwards[position].callee = mains[swap-forwards[position].callee]
 for position in 0 .. < global-uses.length
     if mains[global-uses[position].instance] != no-instance
         global-uses[position].instance = mains[global-uses[position].instance]
@@ -6545,6 +6602,12 @@ for position in 0 .. < local-global-uses.length
 for position in 0 .. < stack-scopes.length
     if held-by(retired, stack-scopes[position].instance)
         stack-scopes[position].instance = dead
+for position in 0 .. < swap-forwards.length
+    if held-by(retired, swap-forwards[position].instance)
+        swap-forwards[position].instance = dead
+for position in 0 .. < swap-dispatches.length
+    if held-by(retired, swap-dispatches[position].instance)
+        swap-dispatches[position].instance = dead
 for position in 0 .. < global-uses.length
     if held-by(retired, global-uses[position].instance)
         global-uses[position].instance = dead
@@ -7955,6 +8018,12 @@ for row in peer.stack-scopes
     if ids.owns(row.instance)
         stack-scopes.append
             - StackScope(ids.instance(row.instance), row.first, row.last, row.module, row.decl)
+for row in peer.swap-forwards
+    if ids.owns(row.instance)
+        . fact = row as SwapForward
+        fact.instance = ids.instance(row.instance)
+        fact.callee = ids.instance(row.callee)
+        swap-forwards.append(fact)
 for row in peer.global-uses
     if ids.owns(row.instance)
         global-uses.append(GlobalUse(ids.instance(row.instance), row.syntax, row.module, row.decl))

@@ -1584,6 +1584,10 @@ if declaration.is-generated && !declaration.is-main
     =
 
 prepare()
+. door = program.effects.door-of(module, frame.decl)
+if door && instances.fake-of(instances.rows[instance].effects, door) != no-type
+    check-forwarder(door)
+    =
 . ruled = rule-match(program, module, frame.decl)
 if ruled != 0
     check-rule(declaration, ruled)
@@ -1726,6 +1730,18 @@ if generates
 demand-materialized(declaration)
 if in-zone-body
     leave-region()
+close()
+
+────────────────────
+_ do check-forwarder
+    - effect U32
+
+` A door typed under a `do with` that binds a fake to its effect, which calls the fake's method in
+` place of its body (`Calls.answer-door`).
+. declared = if declared-return != no-type then declared-return else types.void-type
+instances.set-returns(instance, declared, declared, .return-declared)
+calls.answer-door(frame.decl, effect, declared)
+finish-errors(frame)
 close()
 
 ────────────────────
@@ -17183,7 +17199,7 @@ do match tree.nodes[id]
             check-region(id, row.body)
             = no-type
         . saved = frame.surround
-        frame.surround = frame.surround.effects = dispatch-effects(saved.effects /or/ row.compilation-effects)
+        frame.surround = frame.surround.effects = dispatch-effects(saved.effects /or/ row.compilation-effects /or/ program.bans-named(module, row.bans))
         if (saved.effects /and/ CompilationEffect.gc-free) == 0 && enters-gc-free
             frame.surround = frame.surround.zone-site = id
         .. enters-gc-free = (row.compilation-effects /and/ CompilationEffect.gc-free) != 0
@@ -17307,6 +17323,9 @@ _ do check-stack-binding
     - body SyntaxId
 
 . resolution = bindings.resolution-of(frame.binding, id)
+if resolution.kind == .resolve-global && program.modules[resolution.module].decls[resolution.decl] is .decl-effect
+    check-effect-binding(id, value-syntax, body, resolution.module, resolution.decl)
+    =
 . declared = no-type
 if resolution.kind == .resolve-global
     declared = demand-global(id, resolution.module, resolution.decl)
@@ -17318,6 +17337,39 @@ if resolution.kind == .resolve-global
     facts.stack-scopes.append(StackScope(instance, first, body, resolution.module, resolution.decl))
 discarding-block = body
 check-statement(body)
+
+────────────────────
+_ do check-effect-binding
+    - id SyntaxId
+    - value-syntax SyntaxId
+    - body SyntaxId
+    - module ModuleId
+    - decl DeclId
+
+` `do with` an effect: the body runs with the fake bound to it, an object of a class whose methods
+` answer the effect's doors that the body reaches, each typed with the fake in its key.
+. value = infer(value-syntax)
+. effect = program.effects.index-of(module, decl)
+facts.stack-scopes.append(StackScope(instance, tree.subtree-start(body), body, module, decl))
+. saved = frame.surround
+if value != invalid-type && (!types.is-class-type(value) || types.is-optional(value))
+    frame.diagnose(value-syntax, .stated, program.store-atom(fake-class-text(module, decl, value)))
+else if effect && effect >= most-effects()
+    frame.diagnose(id, .stated, program.store-atom("A program can bind at most ${most-effects()} effects, and '${program.effects.names[effect].text}' is past them"))
+else if value != invalid-type && effect
+    frame.surround = frame.surround.effects = instances.bound-to(saved.effects, effect, value)
+discarding-block = body
+check-statement(body)
+frame.surround = saved
+
+────────────────────
+_ do fake-class-text String
+    - module ModuleId
+    - decl DeclId
+    - value TypeId
+
+. name = program.effects.names[program.effects.index-of(module, decl) ?? 0].text
+= "A fake bound to '$name' is an object of a class, not ${type-short-name(types, value)}"
 
 ────────────────────
 _ do redeclares-in Bool
@@ -40162,7 +40214,7 @@ _ do require-interface-equality
 ` equality, the getter of a tracker's comparison for a change is recorded at the node, and
 ` the comparison may panic. Under an effect that forbids it, it is TypeScript's error.
 instances.mark-may-panic(instance)
-. restricted = heap-effects /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
+. restricted = heap-effects /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend /or/ ban-bits()
     .. heap-effects = CompilationEffect.gc-free /or/ CompilationEffect.no-heap
 if (dispatch-effects(frame.surround.effects) /and/ restricted) != 0
     frame.diagnose

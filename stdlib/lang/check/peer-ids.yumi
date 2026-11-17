@@ -234,7 +234,7 @@ for offset in 0 .. < row.slots.count
     - row.module
     - row.decl
     - self-type
-    - row.effects
+    - swap-effects(row.effects)
     - enclosing
     - params
     - args
@@ -255,6 +255,29 @@ for offset in 0 .. < row.slots.count
 words.rewind(fills-mark)
 stack.rewind(mark)
 = made
+
+────────────────────
++ do swap-effects EffectMask
+    - effects EffectMask
+
+` A peer's mask with the fakes it binds, which the peer numbers in its own sets, numbered here.
+. set = swap-set-of(effects)
+=? effects if set == 0
+. given = peer-instances
+. entries [U32]
+. start = given.swap-set-starts[set - 1]
+for position in start .. < start + given.swap-set-counts[set - 1]
+    entries += swap-entry(given.swap-set-entries[position])
+= with-swap-set(effects, instances.intern-swap-set(entries))
+
+────────────────────
+_ do swap-entry U32
+    - entry U32
+
+. held = peer-instances.swap-entries[entry - 1]
+. outer = if held.outer == 0 then 0u32 else swap-entry(held.outer)
+. fake = if held.fake == no-type then no-type else type(held.fake)
+= instances.intern-swap-entry(SwapEntry(held.effect, fake, outer, held.banned))
 
 ────────────────────
 + do style-context U32

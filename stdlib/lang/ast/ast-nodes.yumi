@@ -160,6 +160,7 @@
 | node-whenever-rule-syntax ASTWheneverRule
 | node-probe-scope ASTProbeScope
 | node-core-type-identifier ASTCoreTypeIdentifier
+| node-effect-declaration ASTEffectDeclaration
 ━━━━━━━━━━━━━━━━━━━━
 + SyntaxNode is Tuple
 
@@ -231,6 +232,15 @@
 + name Atom
 + type SyntaxId
 + key-type SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
++ ASTEffectDeclaration is SyntaxNode
+
+` An effect a library declares, with the C functions it claims.
+
++ access Access
++ name Atom
++ claims RowRange'Atom
 
 ━━━━━━━━━━━━━━━━━━━━
 + ASTProperty is SyntaxNode
@@ -454,6 +464,7 @@
 + compilation-effects CompilationEffect
 + feature-gate-features CompilerFeature
 + holds-cancel Bool = false
++ bans RowRange'Atom = RowRange'Atom()
 
 ━━━━━━━━━━━━━━━━━━━━
 + ASTProbeStatement is SyntaxNode
@@ -657,6 +668,8 @@
 + property-site SyntaxId = 0
 + is-live Bool
 + is-no-return = false
++ bans RowRange'Atom = RowRange'Atom()
++ door Atom? = null
 
 ━━━━━━━━━━━━━━━━━━━━
 + ASTStateMachine is ASTExpression
@@ -1197,7 +1210,53 @@ RowRange'SyntaxId(operands.start + param-count, operands.count - param-count)
 | gc-polling = 256
 
 ━━━━━━━━━━━━━━━━━━━━
-+ EffectMask is U32
++ EffectMask is U64
+
+━━━━━━━━━━━━━━━━━━━━
++ most-effects Size
+
+` How many effects a program can ban, each with a bit of a mask past those of the restrictions.
+32
+
+━━━━━━━━━━━━━━━━━━━━
++ ban-bit EffectMask
+    - effect U32
+
+` The bit of an effect's ban in a mask of restrictions and bans.
+1u64 /lshift/ (16u64 + (effect as U64))
+
+━━━━━━━━━━━━━━━━━━━━
++ ban-bits EffectMask
+
+0x0000FFFFFFFF0000
+
+━━━━━━━━━━━━━━━━━━━━
++ swap-bits EffectMask
+
+` The bits of a mask past the bans, which hold the number of the fakes bound where it is, among
+` those a type pass interns (`Instances.swap-sets`), or 0 for none.
+U64.max /lshift/ 48u64
+
+━━━━━━━━━━━━━━━━━━━━
++ swap-set-of U32
+    - effects EffectMask
+
+(effects /zrshift/ 48u64) as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ with-swap-set EffectMask
+    - effects EffectMask
+    - set U32
+
+(effects /and/ 0x0000FFFFFFFFFFFF) /or/ ((set as U64) /lshift/ 48u64)
+
+━━━━━━━━━━━━━━━━━━━━
++ restrictions-of U32
+    - effects EffectMask
+
+` The restrictions of a mask, without its bans and fakes, which change nothing a function compiles
+` to.
+(effects /and/ 0x000000000000FFFF) as U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + CompilerFeature is U32

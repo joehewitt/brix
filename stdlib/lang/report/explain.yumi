@@ -499,7 +499,30 @@ for copy in copies
             if facts.calls[position].callee == copy
                 callers += position as FactId
         . path = if callers.length == 0 then "made by the compiler" else caller-text(callers)
-        lines += ExplainLine("copies", restriction-text(effects), path)
+        . parts [String]
+        . restricted = restriction-text(effects, session.program.effects.names)
+        if restricted.length != 0
+            parts += restricted
+        parts ++= fakes-text(effects)
+        lines += ExplainLine("copies", ", ".join(parts), path)
+
+────────────────────
+_ do fakes-text [String]
+    - effects EffectMask
+
+` What a copy is typed with of the fakes `do with` binds: each effect with the class of its fake,
+` or with its real doors in a fake's own methods.
+. parts [String]
+. set = swap-set-of(effects)
+=? parts if set == 0
+. instances = session.instances
+. names = session.program.effects.names
+. start = instances.swap-set-starts[set - 1]
+for position in start .. < start + instances.swap-set-counts[set - 1]
+    . held = instances.swap-entries[instances.swap-set-entries[position] - 1]
+    . name = names[held.effect].text
+    parts += if held.fake == no-type then "with real $name" else "with $name = ${type-short-name(session.types, held.fake)}"
+= parts
 
 ────────────────────
 _ do caller-text String
@@ -525,6 +548,8 @@ do match? session.program.modules[module].decls[decl]
     | .decl-property(property)
         . name = property.name
         =? name.text if name
+    | .decl-effect(effect)
+        = "the fake bound to ${effect.name.text}"
 = "a global"
 
 ────────────────────
@@ -581,6 +606,7 @@ match tree.nodes[syntax]
 ━━━━━━━━━━━━━━━━━━━━
 _ do restriction-text String
     - effects EffectMask
+    - names [Atom]
 
 =? "gc-free" if (effects /and/ CompilationEffect.gc-free) != 0
 . parts [String]
@@ -592,6 +618,9 @@ else if (effects /and/ CompilationEffect.no-suspend) != 0
     parts += "without suspending"
 if (effects /and/ CompilationEffect.no-probe-safepoint) != 0
     parts += "without probe safepoints"
+for index in 0 .. < names.length
+    if index < most-effects() && (effects /and/ ban-bit(index as U32)) != 0
+        parts += "without ${names[index].text}"
 = ", ".join(parts)
 
 ━━━━━━━━━━━━━━━━━━━━

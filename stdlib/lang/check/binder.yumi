@@ -257,6 +257,9 @@ do match? decls[decl]
     | .decl-function(row)
         . range = row.subtree
         binding = bindings.reserve(module, decl, range)
+        do match? tree.nodes[row.syntax]
+            | .node-function-syntax(node)
+                check-effect-names(row.syntax, node.bans, node.door)
         bind-function()
         share-lazy-values()
         scan-body(row.syntax, range)
@@ -277,6 +280,23 @@ do match? decls[decl]
         bindings.finish(binding, tree)
         = binding
 ?! Panic("Binding requires a function, converter, or fromverter declaration")
+
+────────────────────
+_ do check-effect-names
+    - id SyntaxId
+    - bans RowRange'Atom
+    - door Atom?
+
+` The effects a `without` section bans and a door names are effects its module sees.
+for offset in 0 .. < bans.count
+    . name = tree.atoms[bans.start + offset]
+    . found = program.effect-named(module, name)
+    if !found
+        bindings.diagnostics.append(Diagnostic(module, id, .stated, program.store-atom("Unknown name '${name.text}' after without")))
+    else if found >= most-effects()
+        bindings.diagnostics.append(Diagnostic(module, id, .stated, program.store-atom("A program can ban at most ${most-effects()} effects, and '${name.text}' is past them")))
+if door && !program.effect-named(module, door)
+    bindings.diagnostics.append(Diagnostic(module, id, .stated, program.store-atom("Unknown effect '${door.text}' in @door")))
 
 ────────────────────
 _ do reset
@@ -2367,6 +2387,7 @@ do match tree.nodes[id]
             own-task(id)
         walk-nested(id, RowRange'SyntaxId(), row.body, row.catchers)
     | .node-do-block(row)
+        check-effect-names(id, row.bans, null)
         if nested-decl-for(id) != 0
             walk-nested(id, RowRange'SyntaxId(), row.body)
         else
@@ -4901,6 +4922,11 @@ for candidate in program.lookup(module, name)
                 bindings.set-resolution(binding, id, found)
                 =
             .. reaches = program.reaches-private(module, candidate.module)
+        | .decl-effect(row)
+            if is-public(row.access) || program.reaches-private(module, candidate.module)
+                . found = Resolution(.resolve-global, candidate.module, no-slot, candidate.decl, 0)
+                bindings.set-resolution(binding, id, found)
+                =
 bindings.diagnostics.append(Diagnostic(module, id, .name-not-found, name))
 
 ────────────────────

@@ -155,6 +155,10 @@
 + context-valued List'U32'ArenaBacking
 + context-value-types List'TypeId'ArenaBacking
 + state-keys List'StateKey'ArenaBacking
++ swap-entries List'SwapEntry'ArenaBacking
++ swap-set-starts List'U32'ArenaBacking
++ swap-set-counts List'U32'ArenaBacking
++ swap-set-entries List'U32'ArenaBacking
 + frames List'RuleFrame'ArenaBacking
 + ranked Array'InstanceId'ArenaBacking
 + ordered Array'InstanceId'ArenaBacking
@@ -200,6 +204,10 @@ _ slot-ids Map'Atom'U32
 .. context-valued = List'U32(arena)
 .. context-value-types = List'TypeId(arena)
 .. state-keys = List'StateKey(arena)
+.. swap-entries = List'SwapEntry(arena)
+.. swap-set-starts = List'U32(arena)
+.. swap-set-counts = List'U32(arena)
+.. swap-set-entries = List'U32(arena)
 .. frames = List'RuleFrame(arena)
 .. ranked = Array'InstanceId(arena, 0)
 .. ordered = Array'InstanceId(arena, 0)
@@ -450,12 +458,14 @@ if instance < ranks.length then ranks[instance] else U32.max
 . redefaulting = if redefaults == 0 then 0u32 else 2u32
 . spanning = if spans then 1u32 else 0u32
 . encoding = if encoded then 1u32 else 0u32
+. high-effects = (effects /rshift/ 32) as U32
+. banning = if high-effects == 0 then 0u32 else 2u32
 ensure-scratch
-    - 10 + count + filled + slotted + contexted + inheriting + redefaulting + spanning + encoding
+    - 10 + count + filled + slotted + contexted + inheriting + redefaulting + spanning + encoding + banning
 key-scratch[0] = module
 key-scratch[1] = decl
 key-scratch[2] = self-type
-key-scratch[3] = effects
+key-scratch[3] = (effects /and/ U32.max) as U32
 key-scratch[4] = enclosing
 key-scratch[5] = param-count
 key-scratch[6] = row-receiver
@@ -488,9 +498,12 @@ if spans
 if encoded
     key-scratch[spans-at + spanning] = U32.max - 9
     .. spans-at = 10 + count + filled + slotted + contexted + inheriting + redefaulting
+. tail-at = 10 + count + filled + slotted + contexted + inheriting + redefaulting + spanning + encoding
+if high-effects != 0
+    key-scratch[tail-at] = U32.max - 10
+    key-scratch[tail-at + 1] = high-effects
 
-. id = keys.store(key-scratch.data, tail-at + redefaulting + spanning + encoding) as InstanceId
-    .. tail-at = 10 + count + filled + slotted + contexted + inheriting
+. id = keys.store(key-scratch.data, tail-at + banning) as InstanceId
 last-inserted = keys.last-inserted
 if last-inserted
     ?! Panic("An instance cannot be interned after the instance table is sealed")
@@ -538,8 +551,10 @@ if last-inserted
     signatures.append(signature)
     . key = mixed(mixed(mixed(stable-key-seed, module), decl), types.key-of(self-type))
     key = mixed
-        - mixed(key, effects)
+        - mixed(key, effects /and/ 0x0000FFFFFFFFFFFF)
         - if enclosing != no-instance then stable-keys[enclosing] else 0u64
+    if swap-set-of(effects) != 0
+        key = mixed-swaps(key, swap-set-of(effects))
     key = mixed(key, param-count)
     if row-receiver != no-type
         key = mixed
@@ -1348,6 +1363,167 @@ _ ranks-before Bool
 .. right = rows[second]
 
 ────────────────────
++ do intern-swap-entry U32
+    - entry SwapEntry
+
+` The number of a fake bound to an effect among `swap-entries`, counted from 1; made at the first.
+for index in 0 .. < swap-entries.length
+    . held = swap-entries[index]
+    if held.effect == entry.effect && held.fake == entry.fake && same-outer
+        = (index + 1) as U32
+    .. same-outer = held.outer == entry.outer && held.banned == entry.banned
+swap-entries += entry
+= swap-entries.length as U32
+
+────────────────────
++ do intern-swap-set U32
+    - entries [U32]
+
+` The number of a set of fakes, one for each effect, in the order of the effects, among the sets
+` `swap-set-starts` and `swap-set-counts` keep, counted from 1, or 0 for none; made at the first.
+=? 0 if entries.length == 0
+for index in 0 .. < swap-set-starts.length
+    if swap-set-counts[index] == entries.length as U32
+        . start = swap-set-starts[index]
+        . same = true
+        for offset in 0 .. < entries.length
+            if swap-set-entries[start + offset as U32] != entries[offset]
+                same = false
+        if same
+            = (index + 1) as U32
+swap-set-starts += swap-set-entries.length as U32
+swap-set-counts += entries.length as U32
+for entry in entries
+    swap-set-entries += entry
+= swap-set-starts.length as U32
+
+────────────────────
++ do swap-entry-of U32
+    - effects EffectMask
+    - effect U32
+
+` The fake a mask binds to an effect, by its number among `swap-entries`, or 0 for none.
+. set = swap-set-of(effects)
+=? 0 if set == 0
+. start = swap-set-starts[set - 1]
+for position in start .. < start + swap-set-counts[set - 1]
+    . entry = swap-set-entries[position]
+    =? entry if swap-entries[entry - 1].effect == effect
+= 0
+
+────────────────────
++ do fake-of TypeId
+    - effects EffectMask
+    - effect U32
+
+` The class of the fake a mask binds to an effect, or no type where it binds none or the effect is
+` known to reach its real doors.
+. entry = swap-entry-of(effects, effect)
+= if entry == 0 then no-type else swap-entries[entry - 1].fake
+
+────────────────────
++ do fake-kind U32
+    - effect U32
+    - fake TypeId
+
+` The number a slot of an effect holds where a `do with` binds a fake of a class to it, counted
+` from 1 among the classes fakes of the effect are bound as, in the order they are first bound,
+` or 0 for none.
+. kind U32 = 0
+. seen [TypeId]
+for entry in swap-entries
+    if entry.effect == effect && entry.fake != no-type && seen.find(entry.fake) == null
+        seen += entry.fake
+        kind += 1
+        =? kind if entry.fake == fake
+= 0
+
+────────────────────
++ do fakes-of [TypeId]
+    - effect U32
+
+` The classes fakes of an effect are bound as, in the order of their numbers (`fake-kind`).
+. seen [TypeId]
+for entry in swap-entries
+    if entry.effect == effect && entry.fake != no-type && seen.find(entry.fake) == null
+        seen += entry.fake
+= seen
+
+────────────────────
++ do swapped EffectMask
+    - effects EffectMask
+    - effect U32
+    - entry U32
+
+` A mask with what it binds to an effect replaced by an entry, or by nothing for 0.
+. set = swap-set-of(effects)
+. entries [U32]
+. placed = entry == 0
+if set != 0
+    . start = swap-set-starts[set - 1]
+    for position in start .. < start + swap-set-counts[set - 1]
+        . held = swap-set-entries[position]
+        . held-effect = swap-entries[held - 1].effect
+        if !placed && swap-entries[entry - 1].effect < held-effect
+            entries += entry
+            placed = true
+        if held-effect != effect
+            entries += held
+if !placed
+    entries += entry
+= with-swap-set(effects, intern-swap-set(entries))
+
+────────────────────
++ do bound-to EffectMask
+    - effects EffectMask
+    - effect U32
+    - fake TypeId
+
+` The mask of code under a `do with` that binds a fake of a class to an effect, which keeps what
+` was bound to the effect outside and whether it was banned there.
+. outer = swap-entry-of(effects, effect)
+. banned = (effects /and/ ban-bit(effect)) != 0
+= swapped(effects, effect, intern-swap-entry(SwapEntry(effect, fake, outer, banned)))
+
+────────────────────
++ do handled-by EffectMask
+    - effects EffectMask
+    - entry U32
+
+` The mask a fake's method runs under where it answers a door of the effect an entry binds it to,
+` from the door's own: the effect as it was outside the `do with`, banned or not, and bound to
+` what was bound there, or else known to reach its real doors. The rest is as at the door.
+. held = swap-entries[entry - 1]
+. outer = if held.outer != 0 then held.outer else intern-swap-entry(SwapEntry(held.effect, no-type, 0, false))
+. bit = ban-bit(held.effect)
+. banned = if held.banned then effects /or/ bit else effects /and/ (U64.max /xor/ bit)
+= swapped(banned, held.effect, outer)
+
+────────────────────
+_ do mixed-swaps StableKey
+    - key StableKey
+    - set U32
+
+` Mixes a set of fakes into a stable key by what each binds rather than by its number, which
+` another type pass gives another set.
+. mixed-key = mixed(key, U32.max - 11)
+. start = swap-set-starts[set - 1]
+for position in start .. < start + swap-set-counts[set - 1]
+    mixed-key = mixed-swap-entry(mixed-key, swap-set-entries[position])
+= mixed-key
+
+────────────────────
+_ do mixed-swap-entry StableKey
+    - key StableKey
+    - entry U32
+
+. held = swap-entries[entry - 1]
+. fake-key = if held.fake == no-type then 0u64 else types.key-of(held.fake)
+. mixed-key = mixed(mixed(mixed(key, held.effect), fake-key), if held.banned then 1 else 0)
+=? mixed(mixed-key, 0u64) if held.outer == 0
+= mixed-swap-entry(mixed(mixed-key, 1u64), held.outer)
+
+────────────────────
 _ do mixed-context StableKey
     - key StableKey
     - context U32
@@ -1496,6 +1672,19 @@ if count > key-scratch.length
 + layer U32 = 0
 + value-first U32 = 0
 + values U32 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ SwapEntry is Struct
+
+` A fake a `do with` binds to an effect: the effect's number, the class of the fake, or no type
+` where the effect is known to reach its real doors, as in a fake's own methods; what was bound
+` to the effect outside, by its number among `swap-entries`, or 0 for nothing; and whether the
+` effect was banned there.
+
++ effect U32
++ fake TypeId
++ outer U32
++ banned Bool
 
 ━━━━━━━━━━━━━━━━━━━━
 + StateKey is Struct
@@ -1690,7 +1879,7 @@ if count > key-scratch.length
 + demanded Bool
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do dispatch-effects U32
++ do dispatch-effects EffectMask
     - effects EffectMask
 
 . normalized = effects
@@ -1699,7 +1888,7 @@ if (normalized /and/ CompilationEffect.gc-free) != 0
     normalized = normalized /or/ (CompilationEffect.no-safepoint)
 if (normalized /and/ CompilationEffect.no-safepoint) != 0
     normalized = normalized /or/ (CompilationEffect.no-suspend)
-= normalized /and/ dispatch-effect-bits
+= normalized /and/ (dispatch-effect-bits /or/ ban-bits() /or/ swap-bits())
 
 ━━━━━━━━━━━━━━━━━━━━
 + runs-inline Bool

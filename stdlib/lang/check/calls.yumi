@@ -2,6 +2,7 @@
 ./claims
 ./conversions
 ./dispatch
+./error-sets
 ./facts
 ./frame
 ./instances
@@ -427,7 +428,33 @@ if name == types.bench-collect-atom!
     facts.set-plan(frame.instance, id, .plan-elided)
 note-described(id, name)
 check-zone-call(id, name, callee)
+check-claim(id, name)
 = demand-return(callee, id)
+
+────────────────────
+_ do check-claim
+    - id SyntaxId
+    - name Atom
+
+` A C function an effect claims is called only by a door of that effect, or by a function written
+` in one. One that two effects claim is called by neither's.
+. table = program.effects
+=? if table.count == 0
+. claimed = table.claims[name]
+=? if !claimed
+. contested = table.contested[name]
+if contested
+    . first = table.names[claimed].text
+    . second = table.names[contested].text
+    frame.diagnose(id, .stated, program.store-atom("'C:${name.text}' is claimed by both the '$first' and the '$second' effect"))
+    =
+. outer = frame.instance
+while instances.rows[outer].enclosing != no-instance
+    outer = instances.rows[outer].enclosing
+. row = instances.rows[outer]
+=? if table.door-of(row.module, row.decl) == claimed
+. effect = table.names[claimed].text
+frame.diagnose(id, .stated, program.store-atom("'C:${name.text}' belongs to the '$effect' effect, so only its doors may call it"))
 
 ────────────────────
 _ do check-zone-call
@@ -2393,6 +2420,104 @@ if callee != no-instance && host
 = callee
 
 ────────────────────
++ do answer-door
+    - door DeclId
+    - effect U32
+    - declared TypeId
+
+` Types a door under a `do with` that binds a fake to its effect as a call of the fake's method of
+` the door's name that takes the door's arguments, with the fake its effect's slot holds, and
+` gives what the door gives. The method runs as at the `do with`, under what was bound to the
+` effect there, and so does what it calls (`Instances.handled-by`). A fake answers only a door
+` that is a function of its module. Where the door states its errors, the method raises only those,
+` or classes below them. One the fake cannot answer panics, where only a door a function value
+` reaches calls it; elsewhere that is reported (`Restrictions.report-swaps`).
+. module = frame.module
+. own = frame.instance
+. effects = instances.rows[own].effects
+. entry = instances.swap-entry-of(effects, effect)
+. fake = instances.swap-entries[entry - 1].fake
+. name Atom? = null
+do match? program.modules[module].decls[door]
+    | .decl-function(fn)
+        if fn.owner == 0 && fn.kind == .function-decl
+            name = fn.name
+. syntax = frame.declaration.syntax
+. effect-module = program.effects.modules[effect] as ModuleId
+. effect-decl = program.effects.decls[effect] as DeclId
+if !name
+    facts.swap-forwards.append(SwapForward(own, no-instance, effect-module, effect-decl, effect, .swap-unanswerable))
+    instances.mark-may-panic(own)
+    =
+. signature = instances.signatures[own]
+. mark = scratch.types.mark
+for position in 0 .. < signature.args.count
+    scratch.types.push(instances.argument-type(own, position))
+. shapes-mark = scratch.call-arguments.mark
+for _ in 0 .. < signature.args.count
+    scratch.call-arguments.push(CallArgument(null, false, false, false, false))
+. local = local-ranking(class-ref(types, fake).module)
+local.begin(scratch.call-arguments.since(shapes-mark), scratch.types.since(mark))
+. hit = local.dispatch-method(fake, name)
+. callee = no-instance
+if hit && !local.ambiguity() && is-own-method(hit, fake)
+    . handled = instances.handled-by(effects, entry)
+    callee = intern-settled(hit, dispatch-effects(handled /or/ declared-effects(program, hit.module, hit.decl)))
+local.release()
+scratch.call-arguments.rewind(shapes-mark)
+scratch.types.rewind(mark)
+if callee == no-instance
+    facts.swap-forwards.append(SwapForward(own, no-instance, effect-module, effect-decl, effect, .swap-missing))
+    instances.mark-may-panic(own)
+    =
+. matches = instances.signatures[callee].args.count == signature.args.count
+for position in 0 .. < signature.args.count
+    if matches && instances.argument-type(callee, position) != instances.argument-type(own, position)
+        matches = false
+if matches && demand-return(callee, syntax) != declared
+    matches = false
+if matches && instances.signatures[own].error-state == .errors-stated
+    host!.demand-errors(callee)
+    matches = raises-within(callee, own)
+if !matches
+    facts.swap-forwards.append(SwapForward(own, no-instance, effect-module, effect-decl, effect, .swap-mismatched))
+    instances.mark-may-panic(own)
+    =
+facts.swap-forwards.append(SwapForward(own, callee, effect-module, effect-decl, effect, .swap-answered))
+facts.record-call(own, syntax, callee, .call-method, scratch.no-fills, false, false)
+facts.stack-reads.append(StackRead(own, syntax, effect-module, effect-decl))
+
+────────────────────
+_ do raises-within Bool
+    - callee InstanceId
+    - door InstanceId
+
+` Whether each error a fake's method raises is one a door states, or a class below one.
+. raised = instances.signatures[callee].errors
+. stated = instances.signatures[door].errors
+for position in raised.start .. < raised.start + raised.count
+    . error = instances.signature-types[position]
+    . taken = false
+    for place in stated.start .. < stated.start + stated.count
+        if is-subtype(types, error, instances.signature-types[place])
+            taken = true
+    if !taken
+        = false
+= true
+
+────────────────────
+_ do is-own-method Bool
+    - hit Hit
+    - fake TypeId
+
+` Whether a method a fake's class dispatches to is one an object of it is called with: declared by
+` the class or one it is derived from, and not static.
+do match? program.modules[hit.module].decls[hit.decl]
+    | .decl-function(fn)
+        = fn.owner != 0 && !fn.is-static
+= false
+
+────────────────────
 _ do getter-instance InstanceId
     - receiver TypeId
     - name Atom
@@ -3100,7 +3225,7 @@ close-site(site)
 _ do admits-value-call Bool
     - id SyntaxId
 
-. restricted = heap-free /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend
+. restricted = heap-free /or/ CompilationEffect.no-safepoint /or/ CompilationEffect.no-suspend /or/ ban-bits()
     .. heap-free = CompilationEffect.gc-free /or/ CompilationEffect.no-heap
 =? true if (dispatch-effects(frame.surround.effects) /and/ restricted) == 0
 frame.diagnose(id, .restricted, program.store-atom("Function value call requires unrestricted effects"))

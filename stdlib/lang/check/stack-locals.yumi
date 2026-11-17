@@ -2,6 +2,7 @@
 ./facts
 ./instances
 ./session
+./types
 /lang/ast/ast-nodes
 /lang/ast/decl
 /lang/ast/module
@@ -12,7 +13,8 @@
 
 ` A global that each `do with` binds anew must be bound wherever it is read. A function requires
 ` the ones it reads outside a binding of its own, and the ones the functions it calls require
-` unless it calls them under a binding. A call of an interface member or of a method a class
+` unless it calls them under a binding. A door that calls the door typed under a fake where its
+` effect's slot holds one hands on nothing: it reads the slot. A call of an interface member or of a method a class
 ` declares again requires what each function that may answer it requires. A nested function holds
 ` the state of where it is made, so what it requires reaches the function that makes it, unless
 ` a binding is open where it is made, and does not reach its callers. What a module's own
@@ -52,14 +54,15 @@ _ call-links [U32]
 
 for read in facts.stack-reads
     . bound = binds(read.instance, read.syntax, read.module, read.decl)
-    if !bound && !has-default(read.module, read.decl)
+    if !bound && !has-default(read.instance, read.module, read.decl)
         require(read.instance, read.module, read.decl)
 . grew = holders.length != 0
 while grew
     grew = false
     for call in facts.calls
-        if call.callee != no-instance && requires-any(call.callee) && propagates(call.callee)
+        if call.callee != no-instance && requires-any(call.callee) && propagates(call.callee) && !dispatches
             grew = require-from(call.callee, call.instance, call.syntax) || grew
+        .. dispatches = facts.dispatches-to(call.instance, call.callee)
     for slot in facts.witness-slots
         if slot.callee != no-instance && slot.proto != no-instance && requires-any(slot.callee)
             grew = require-from(slot.callee, slot.proto, 0) || grew
@@ -249,12 +252,18 @@ for scope in facts.stack-scopes
 
 ────────────────────
 _ do has-default Bool
+    - instance InstanceId
     - module ModuleId
     - decl DeclId
 
+` Whether a read of a global `do with` binds has a value where none is bound: the one written, or
+` for an effect the real doors, which a door reached where no fake is bound calls.
 do match? program.modules[module].decls[decl]
     | .decl-property(row)
         = row.value != 0
+    | .decl-effect
+        . effect = program.effects.index-of(module, decl)
+        = !effect || instances.fake-of(instances.rows[instance].effects, effect) == no-type
 = false
 
 ────────────────────
@@ -296,7 +305,7 @@ names += paths.name-of(root)
 if found
     names ++= paths.names(found)
 . chain = if names.length > 1 then ": ${" → ".join(names)}" else ""
-. message = program.store-atom("Stack-local variable '${name-of(module, decl)}' is not bound$chain")
+. message = program.store-atom("${subject-of(module, decl)} is not bound$chain")
 if read == 0
     facts.record-diagnostic(root, module, site-of(module, decl), .reached, message)
     =
@@ -329,7 +338,7 @@ for position in 0 .. < holders.length
         names += paths.name-of(runs)
         if found
             names ++= paths.names(found)
-        . text = "Stack-local variable '${name-of(module, decl)}' cannot be read through a function value: ${" → ".join(names)}"
+        . text = "${subject-of(module, decl)} cannot be read through a function value: ${" → ".join(names)}"
         facts.record-diagnostic(maker, instances.rows[maker].module, site, .reached, program.store-atom(text))
 
 ────────────────────
@@ -374,6 +383,18 @@ for read in facts.stack-reads
         if !binds(instance, read.syntax, module, decl)
             = read.syntax
 = 0
+
+────────────────────
+_ do subject-of String
+    - module ModuleId
+    - decl DeclId
+
+` What an error names a global `do with` binds as: a stack-local variable, or the fake bound to
+` an effect.
+do match? program.modules[module].decls[decl]
+    | .decl-effect(row)
+        = "The fake bound to '${row.name.text}'"
+= "Stack-local variable '${name-of(module, decl)}'"
 
 ────────────────────
 _ do name-of String

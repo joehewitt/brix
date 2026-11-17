@@ -7,6 +7,7 @@
 ./restrictions
 ./session
 ./stack-locals
+./signature
 ./type-signature
 ./type-store
 ./types
@@ -50,6 +51,8 @@ while true
     . queued = instances.worklist.length
     expand-tables(session, tables)
     . grew = expand-witnesses(session, witnesses)
+    if expand-swaps(session)
+        grew = true
     if instances.worklist.length == queued && !grew
         seed-unreached(session)
         if instances.worklist.length == queued
@@ -447,6 +450,94 @@ checker.retire()
 = grew
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do expand-swaps Bool
+    - session Session
+
+` In a program that binds a fake to an effect somewhere, a door of it reached where no `do with`
+` binds one, as code a function value runs is, reads the effect's slot, and where it holds a fake
+` calls the door typed under a binding of that fake's class: that is interned for each class
+` fakes of the effect are bound as, and recorded as a call, which may panic where the fake has no
+` method that answers it. Such a door reads the slot as a global `do with` binds. Says whether it
+` interned any.
+. program = session.program
+. instances = session.instances
+. facts = session.facts
+=? false if program.effects.count == 0 || instances.swap-entries.length == 0
+. grew = false
+. total = instances.length
+for position in 0 .. < total
+    . id = position as InstanceId
+    . row = instances.rows[id]
+    . door = program.effects.door-of(row.module, row.decl)
+    if id != instances.dead && door && door < most-effects() && instances.swap-entry-of(row.effects, door) == 0
+        grew = dispatch-door(session, id, door) || grew
+= grew
+
+━━━━━━━━━━━━━━━━━━━━
+_ do dispatch-door Bool
+    - session Session
+    - id InstanceId
+    - effect U32
+
+. program = session.program
+. instances = session.instances
+. facts = session.facts
+. fakes = instances.fakes-of(effect)
+=? false if fakes.length == 0
+. module = program.effects.modules[effect] as ModuleId
+. decl = program.effects.decls[effect] as DeclId
+. grew = false
+for fake in fakes
+    . known = false
+    for dispatch in facts.swap-dispatches
+        if dispatch.instance == id && dispatch.fake == fake
+            known = true
+    if !known
+        . row = instances.rows[id]
+        . entry = instances.intern-swap-entry(SwapEntry(effect, fake, 0, false))
+        . signature = instances.signatures[id]
+        . stack = session.types.scratch.types
+        . mark = stack.mark
+        for place in signature.args.start - signature.param-count .. < signature.args.start + signature.args.count
+            stack.push(instances.signature-types[place])
+        . forwarder = instances.intern
+            - row.module
+            - row.decl
+            - row.self-type
+            - instances.swapped(row.effects, effect, entry)
+            - row.enclosing
+            - stack.span(mark, signature.param-count)
+            - stack.span(mark + signature.param-count, signature.args.count)
+        stack.rewind(mark)
+        if facts.swap-dispatches.length == 0 || first-of(facts, id)
+            . site = declared-syntax(program, row.module, row.decl)
+            facts.stack-reads.append(StackRead(id, site, module, decl))
+        facts.swap-dispatches.append(SwapDispatch(id, fake, instances.fake-kind(effect, fake), forwarder, module, decl))
+        facts.record-call(id, declared-syntax(program, row.module, row.decl), forwarder, .call-function, session.scratch.no-fills, false, false)
+        grew = true
+= grew
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first-of Bool
+    - facts Facts
+    - id InstanceId
+
+for dispatch in facts.swap-dispatches
+    =? false if dispatch.instance == id
+= true
+
+━━━━━━━━━━━━━━━━━━━━
+_ do declared-syntax SyntaxId
+    - program Program
+    - module ModuleId
+    - decl DeclId
+
+do match? program.modules[module].decls[decl]
+    | .decl-function(fn)
+        = fn.syntax
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
 _ do seed-startup
     - session Session
 
@@ -785,11 +876,11 @@ match types.rows[type]
 . types = session.types
 . program = session.program
 . owner = 0u32
-. effects = 0u32
+. effects EffectMask = 0
 do match? program.modules[module].decls[decl]
     | .decl-function(row)
         owner = row.owner
-        effects = dispatch-effects(row.effects)
+        effects = declared-effects(program, module, decl)
     | .decl-converter(row)
         owner = row.owner
     | .decl-fromverter(row)

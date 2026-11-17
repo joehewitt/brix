@@ -779,7 +779,7 @@ _ is-function Bool
 brix-is-callable(head) || rules has head
 
 .. head = store.head(node) ?? ""
-.. rules = ["when-rule", "whenever-rule", "subscribe", "subscribe-for"]
+.. rules = ["when-rule", "whenever-rule", "subscribe", "subscribe-for", "effect"]
 
 ────────────────────
 _ is-type Bool
@@ -805,7 +805,7 @@ store.is-form(node, "prop") && count > 4 && store.is-form(store.item(node, count
 _ is-header-line Bool
     - node ImmutableTableRow'SourceNode
 
-["param", "constraint", "iterates", "implements", "using", "sees"] has (store.head(node) ?? "")
+["param", "constraint", "iterates", "implements", "using", "sees", "claim"] has (store.head(node) ?? "")
 
 ────────────────────
 _ takes-lines Bool
@@ -1492,7 +1492,9 @@ if is-open
 rows += brix-divider-row(divider, node, function-block(node), is-private-form(node))
 rows += head-row(node, mode)
 . index = header-rows(node, rows)
-rows += brix-padding(node)
+. is-effect = store.is-form(node, "effect")
+if !is-effect
+    rows += brix-padding(node)
 for position in index .. < items.length
     . is-ruled = position > index && store.is-form(items[position - 1], "paragraph")
     if is-ruled
@@ -1501,7 +1503,7 @@ for position in index .. < items.length
         part(build, items[position], brix-part-statement, brix-mode-statement, node, SourceRowZone.body)
     else
         statement-rows(items[position], 0, node, brix-mode-statement, SourceRowZone.body, rows)
-if index >= items.length
+if index >= items.length && !is-effect
     rows += brix-blank-line(brix-mode-separator, node)
 rows += brix-gap(brix-mode-tail, node) • is-open-end paragraph-of(node) != null
 

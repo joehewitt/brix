@@ -2,11 +2,13 @@
 ./ast-children
 ./ast-nodes
 ./decl
+./effects
 ./facets
 ./module
 ./module-resolver
 ./operator
 ./probe-selection
+./row-range
 /core/arena
 /core/array-builder
 /core/atom-pool
@@ -59,6 +61,7 @@ _ atom-lock Mutex
 + feature-gate-starts ImmutableArray'U32'ArenaBacking
 + feature-gates ImmutableArray'U32'ArenaBacking
 + facets = FacetTable()
++ effects = EffectTable()
 + families [U32]
 _ batch-cases ImmutableArray'U64'ArenaBacking
 _ borrows Bool
@@ -525,6 +528,36 @@ match access
 ` Whether code in a module reaches the private declarations of a module: its own, and those of the
 ` module that declares the class of a facet it declares.
 caller == module || (caller < facets.hosts.length && facets.hosts[caller] == module)
+
+────────────────────
++ do effect-named U32?
+    - caller ModuleId
+    - name Atom
+
+` The number of the effect a name names where code in a module sees it.
+for candidate in lookup(caller, name)
+    do match? modules[candidate.module].decls[candidate.decl]
+        | .decl-effect(row)
+            if is-public || reaches-private(caller, candidate.module)
+                = effects.index-of(candidate.module, candidate.decl)
+            .. is-public = row.access == .public-access
+= null
+
+────────────────────
++ do bans-named EffectMask
+    - caller ModuleId
+    - names RowRange'Atom
+
+` The bans of the effects a `without` section names where code in a module sees them. A name
+` that names no effect bans nothing; the binder reports it.
+=? 0 if names.count == 0
+. tree = modules[caller].tree
+. mask EffectMask = 0
+for offset in 0 .. < names.count
+    . found = effect-named(caller, tree.atoms[names.start + offset])
+    if found && found < most-effects()
+        mask = mask /or/ ban-bit(found)
+= mask
 
 ────────────────────
 _ extension-is-public Bool

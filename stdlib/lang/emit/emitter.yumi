@@ -489,11 +489,13 @@ _ RecordedLocal is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ StackBinding is Tuple
 
-` A binding of a global `do with` binds that is open around what is being emitted, and the local
-` that keeps the value it replaced.
+` A binding of a global `do with` binds that is open around what is being emitted, the local
+` that keeps the value it replaced, and what its slot's flag holds: 1, or for an effect the number
+` of the class of the fake bound (`Instances.fake-kind`).
 
 + bind U32
 + value LocalId
++ flag U32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ Rebinding is Tuple
@@ -2461,7 +2463,7 @@ if (effects /and/ CompilationEffect.gc-free) != 0 && !in-zone
     emit-region(id)
     =
 . outer = block-effects
-block-effects = block-effects /or/ dispatch-effects(effects)
+block-effects = block-effects /or/ restrictions-of(dispatch-effects(effects))
 if !emit-match-statement(body)
     emit-block(body)
 block-effects = outer
@@ -2762,6 +2764,106 @@ _ ending-call FactId
 if only-closes(begins) then begins else facts.calls[begins].next
 
 ────────────────────
+_ do emit-forwarder
+    - forward SwapForward
+
+` A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
+` `do with` or what holds its state put it, and calls the fake's method with it and the door's
+` arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
+` the fake's class has no method that answers it, which only a door a function value reaches
+` lets through, it panics.
+. row = instances.rows[unit.instance]
+. declared = match program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        fn.syntax
+    ??
+        0u32
+. own = instances.signatures[unit.instance]
+for position in 0 .. < own.args.count
+    ir.add-argument(layout-of(instances.argument-type(unit.instance, position), declared))
+returns-type = own.returns
+ir.returns = layout-of(own.returns, declared)
+if own.errors.count != 0
+    return-results(own.result, declared)
+if forward.callee == no-instance
+    . name = program.effects.names[forward.effect].text
+    raise-text(declared, "The fake bound to '$name' has no method '${paths-name(row)}' to answer its door")
+    =
+. slot = tables.storage-of(forward.module, forward.decl)
+if slot == no-storage || tables.instance-functions[forward.callee] == no-function
+    refuse(.refused-function, declared)
+    =
+. theirs = instances.signatures[forward.callee]
+. kept = tables.storage[slot]
+. state = stack-state(slot, declared)
+. fake = take(state, tables.layouts.field(kept.layout, 1), declared)
+. mark = pending.length
+pending += fake
+for position in 0 .. < own.args.count
+    pending += make-operand(.operand-argument, position)
+. forwards = theirs.errors.count != 0
+takes-result = forwards
+. answer = call-method(forward.callee, declared, mark, true)
+if forwards && theirs.result != own.result
+    return-recased(answer.operand, theirs.result, declared, no-instance, declared)
+else if forwards
+    return-held(answer.operand)
+else if own.returns == types.void-type
+    return-nothing()
+else
+    return-value(answer.operand, 0)
+
+────────────────────
+_ do emit-dispatch
+    - declared SyntaxId
+    - signature InstanceSignature
+
+` A door reached where no `do with` binds a fake to its effect, in a program that binds one
+` somewhere, as code a function value runs is: where the effect's slot holds a fake, it calls the
+` door typed under a binding of that fake's class with its arguments and gives what that gives,
+` which panics where that class has no method that answers it. It runs its body where the slot
+` holds none.
+. kind = make-operand(.operand-void, 0)
+. read = false
+for dispatch in facts.swap-dispatches
+    if dispatch.instance == unit.instance
+        . slot = tables.storage-of(dispatch.module, dispatch.decl)
+        if slot == no-storage
+            refuse(.refused-function, declared)
+            =
+        if !read
+            . kept = tables.storage[slot]
+            . flag = tables.layouts.field(kept.layout, 0)
+            kind = load(stack-state(slot, declared), flag.offset, flag.layout, declared)
+            read = true
+        . chosen = ir.reserve-block()
+        . next = ir.reserve-block()
+        branch(compare(declared, .compare-equal, kind, integer(.machine-u8, dispatch.kind as U64)), chosen, next)
+        ir.start-block(chosen)
+        . mark = pending.length
+        for position in 0 .. < signature.args.count
+            pending += make-operand(.operand-argument, position)
+        takes-result = signature.errors.count != 0
+        . answer = call-instance(dispatch.forwarder, declared, mark)
+        if signature.errors.count != 0
+            return-held(answer.operand)
+        else if signature.returns == types.void-type
+            return-nothing()
+        else
+            return-value(answer.operand, 0)
+        ir.start-block(next)
+
+────────────────────
+_ do paths-name String
+    - row Instance
+
+= match program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        if fn.name then fn.name.text else ""
+    ??
+        ""
+
+────────────────────
 _ do emit-stack-binding
     - id SyntaxId
     - value SyntaxId
@@ -2770,7 +2872,8 @@ _ do emit-stack-binding
 ` `do with`: the global is bound to the value, converted to its type, for the body. The slot's
 ` state is kept and the slot bound, and the body runs in a block of its own, whose reads of
 ` the global read the value, and which puts the slot back as it was where it is left, by any
-` way out. One written where `do finally` has no shape has none.
+` way out. One written where `do finally` has no shape has none. An effect is bound to a fake,
+` an object of any class, as it is.
 if scoping.cleaning || builds || initializes || is-free(unit.instance) || unit.reading != unit.instance
     refuse(.refused-statement, id)
     =
@@ -2779,25 +2882,38 @@ if row == no-storage
     refuse(.refused-statement, id)
     =
 . kept = tables.storage[row]
-. bound = convert(id, .reason-assignment, emit-expression(value))
-if bound.type != kept.type
+. fakes = program.modules[kept.module].decls[kept.decl] is .decl-effect
+. bound = if fakes then emit-expression(value) else convert(id, .reason-assignment, emit-expression(value))
+if bound.type != kept.type && !fakes
     refuse(.refused-conversion, id)
     =
-. held = ir.add-local(layout-of(kept.type, id))
+. held = ir.add-local(if fakes then managed-layout else layout-of(kept.type, id))
 store-local(held, bound.operand, id)
 . previous = ir.add-local(kept.layout)
 . slot = stack-slot(kept, id)
 store-local(previous, slot, id)
-fill-stack(slot, kept, load-local(held, id), id)
+. flag = if fakes then fake-kind(kept, bound.type) else 1u32
+if flag == 0 || flag > 255
+    refuse(.refused-statement, id)
+    =
+fill-stack(slot, kept, load-local(held, id), id, flag)
 . mark = open-cleanups.length
 . own-scoping = scoping
 scoping = scoping.block-base = mark
 open-cleanup(id, UseCell(no-local, previous, no-type))
-stack-bindings += StackBinding(row, held)
+stack-bindings += StackBinding(row, held, flag)
 emit-block(body)
 stack-bindings.pop()
 close-cleanups(mark)
 scoping = own-scoping
+
+────────────────────
+_ do fake-kind U32
+    - kept GlobalStorage
+    - fake TypeId
+
+. effect = program.effects.index-of(kept.module, kept.decl)
+= if effect then instances.fake-kind(effect, fake) else 0u32
 
 ────────────────────
 _ do unbind-stack
@@ -2854,12 +2970,14 @@ _ do fill-stack
     - kept GlobalStorage
     - value Operand
     - site SyntaxId
+    - bound U32 = 1
 
-` Binds the state of a global `do with` binds, where it is kept, to a value: the flag is set
-` and the value stored, through the write barrier where it is a managed pointer.
+` Binds the state of a global `do with` binds, where it is kept, to a value: the flag is set,
+` for an effect to the number of the fake's class, and the value stored, through the write barrier
+` where it is a managed pointer.
 . flag = tables.layouts.field(kept.layout, 0)
 . held = tables.layouts.field(kept.layout, 1)
-store(target, flag.offset, integer(.machine-u8, 1), false, site)
+store(target, flag.offset, integer(.machine-u8, bound as U64), false, site)
 if tables.layouts.is-struct(held.layout)
     copy
         - address(target, held.offset, held.layout, site)
@@ -2971,7 +3089,7 @@ if row == no-storage
 while position != 0
     position -= 1
     if stack-bindings[position].bind == row
-        fill-stack(target, kept, load-local(stack-bindings[position].value, site), site)
+        fill-stack(target, kept, load-local(stack-bindings[position].value, site), site, stack-bindings[position].flag)
         =
 copy(target, stack-state(row, site), kept.layout, tables.layouts.rows[kept.layout].is-managed, site)
 
@@ -15653,7 +15771,7 @@ _ effects-here U32
 ` What the code emitted may not do: what its function declares, and what the `do` blocks around
 ` it are kept from.
 declared /or/ block-effects
-.. declared = if unit.instance == no-instance then 0u32 else dispatch-effects(instances.rows[unit.instance].effects)
+.. declared = if unit.instance == no-instance then 0u32 else restrictions-of(dispatch-effects(instances.rows[unit.instance].effects))
 
 ────────────────────
 _ do emit-poll
@@ -17380,8 +17498,13 @@ _ do emit-body
 ` runs a live statement again is given the environment it was written in, as a closure is.
 ` A method that yields and is typed again for a class's table with the errors a base's
 ` generator carries has no shape where it is called as first typed too: the reference's method
-` carries the errors of whichever it compiles first.
+` carries the errors of whichever it compiles first. A door a fake answers under a `do with`
+` calls the fake's method (`emit-forwarder`).
 . row = instances.rows[unit.instance]
+for forward in facts.swap-forwards
+    if forward.instance == unit.instance
+        emit-forwarder(forward)
+        =
 . body SyntaxId = 0
 . declared SyntaxId = 0
 . unwritten SyntaxId = 0
@@ -17599,6 +17722,8 @@ if bridged
     =
 if signature.errors.count != 0 && function.kind != .event-handler
     return-results(signature.result, declared)
+if !unit.takes-self && !unit.received
+    emit-dispatch(declared, signature)
 if function.kind == .event-handler
     open-handler()
 if unit.received

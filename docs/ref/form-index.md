@@ -26,6 +26,7 @@ kept for a meaning to come.
 | `main` | `(main row:Step*)` | The code that runs when the file runs. Rows run in order. | [Modules: The code a file runs](modules.md#the-code-a-file-runs) |
 | `main` | `(main row:Value/Lazy*)` | The same, when the file's code is one pipeline. | [Modules: The code a file runs](modules.md#the-code-a-file-runs) |
 | `unit` | `(unit access:Access name:Atom value:Expr)` | States that an amount of one unit equals an amount of another, so values convert between them. | [Units: Equalities](units.md#equalities) |
+| `effect` | `(effect access:Access name:Name claim:Claim*)` | An effect: a kind of contact with the world outside the program. Its claims are the C functions that only its doors may call, such as `C:connect`, and `without` keeps code from reaching its doors. | [Functions: Effects and doors](functions.md#effects-and-doors) |
 | `blank` | `(blank)` | An empty row, kept for the reader. | [Source text: Comments](source-text.md#comments) |
 
 ## Functions
@@ -55,8 +56,10 @@ kept for a meaning to come.
 | `iterates` | `(iterates name:Atom source:Expr)` | Makes the body of the function a loop over the source. The body runs for each item, and the function gives the stream of results. | [Streams: Functions whose body is a comprehension](streams.md#functions-whose-body-is-a-comprehension) |
 | `?!` | `(?! error:Type)` | An error the function can raise. | [Errors: Declaring errors](errors.md#declaring-errors) |
 | `over:` | `(over: type:Type)` | The item type of the stream the function matches. | [Stream patterns: Rules](stream-patterns.md#rules) |
-| `without` | `(without name:Name+)` | Keep the code from what is named, checked as the program compiles: `heap`, `suspend`, `gc`, `safepoints` or `probe-safepoints`. On a C function, `gc` and `blocking` are promises the compiler trusts. In a `do`, `cancel` is accepted and changes nothing yet. | [Functions: Without and with](functions.md#without-and-with) |
-| `with` | `(with name:Name value:Expr)` | Set the stack value `name` to `value` for the code and what it calls, as `do-with` does. | [Concurrency: Values for each thread, task or stack](concurrency.md#values-for-each-thread-task-or-stack) |
+| `without` | `(without name:Name+)` | Keep the code from what is named, checked as the program compiles: `heap`, `suspend`, `gc`, `safepoints`, `probe-safepoints`, or an effect a library declares, whose doors it may not reach. On a C function, `gc` and `blocking` are promises the compiler trusts. In a `do`, `cancel` holds off cancellation. | [Functions: Without and with](functions.md#without-and-with) |
+| `claim` | `(claim function:Name)` | Claim the C function, such as `C:connect`, for the effect: only its doors may call it. | [Functions: Effects and doors](functions.md#effects-and-doors) |
+| `door` | `(door effect:Name)` | Make the function a door of the effect: one through which the program makes that kind of contact with the world, and the only kind of function that may call the C functions the effect claims. | [Functions: Effects and doors](functions.md#effects-and-doors) |
+| `with` | `(with name:Name value:Expr)` | Set the stack value `name` to `value` for the code and what it calls, as `do-with` does, or bind a fake to the effect `name`. | [Concurrency: Values for each thread, task or stack](concurrency.md#values-for-each-thread-task-or-stack) |
 | `=` | `(= value:Expr/Block)` | The value. | [Types: Stored properties](types.md#stored-properties) |
 | `:=` | `(:= value:Expr/Block)` | A value computed once, the first time it is read. | [Types: Lazy properties](types.md#lazy-properties) |
 | `=>` | `(=> value:Expr/Body)` | A value computed each time it is read. | [Types: Computed properties](types.md#computed-properties) |
@@ -161,7 +164,7 @@ kept for a meaning to come.
 | `do-new-thread` | `(do-new-thread worker:Worker? deco:Deco* body:Inline failure:Failure*)` | Run one step as a task in the shared thread pool. | [Concurrency: Where a task runs](concurrency.md#where-a-task-runs) |
 | `worker:` | `(worker: value:Expr)` | The worker that runs the task. | [Concurrency: Workers](concurrency.md#workers) |
 | `on-failure` | `(on-failure error:Binder row:Step*)` | Rows the task runs when a panic of the named type ends it, after its cleanups, with that panic. | [Errors: Handling a failed task](errors.md#handling-a-failed-task) |
-| `do-with` | `(do-with name:Name value:Expr row:Step*)` | Run the rows with a stack value set for them and for what they call. The value is restored after. | [Concurrency: Values for each thread, task or stack](concurrency.md#values-for-each-thread-task-or-stack) |
+| `do-with` | `(do-with name:Name value:Expr row:Step*)` | Run the rows with a stack value set for them and for what they call, or a fake bound to the effect `name`. The value is restored after. | [Concurrency: Values for each thread, task or stack](concurrency.md#values-for-each-thread-task-or-stack) |
 | `do-use` | `(do-use resource:Expr row:Step*)` | Run the rows with a resource that is released at the end. | [Errors: use](errors.md#use) |
 | `do-use?` | `(do-use? resource:Expr row:Step*)` | The same, skipped when the resource is null. | [Errors: use](errors.md#use) |
 | `throw` | `(throw error:Expr guard:Guard? handler:Handler*)` | Raise an error, only when the condition holds if one is given. With handlers below it, it raises nothing now: an error the handlers name is replaced by this one when it leaves the function. | [Errors: Raising](errors.md#raising) |

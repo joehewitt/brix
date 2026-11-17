@@ -586,14 +586,17 @@ if place != U32.max
     =
 . signature = instances.signatures[method]
 . given = signature.param-count - implicit-argument-count(types, row.module, row.decl)
-. words = 5 + given + signature.args.count
+. high-effects = (row.effects /rshift/ 32) as U32
+. words = 5 + given + signature.args.count + (if high-effects == 0 then 0 else 1)
 if words > answer-key.length
     answer-key = answer-key.resize(words * 2, instances.arena)
 answer-key[0] = receiver
 answer-key[1] = kind
 answer-key[2] = program.atom-key(name) as U32
 answer-key[3] = given
-answer-key[4] = row.effects
+answer-key[4] = (row.effects /and/ U32.max) as U32
+if high-effects != 0
+    answer-key[words - 1] = high-effects
 for offset in 0 .. < given
     answer-key[5 + offset] = instances.param-type(method, offset)
 for offset in 0 .. < signature.args.count

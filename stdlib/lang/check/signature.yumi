@@ -195,7 +195,7 @@ if !instances.errors-known(instance)
 errors.close-body(instance, syntax, outgoing, frame.transforms, lacks-result, unbuildable)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ callee-effects U32
++ callee-effects EffectMask
     - frame Frame
     - module ModuleId
     - decl DeclId
@@ -203,27 +203,28 @@ errors.close-body(instance, syntax, outgoing, frame.transforms, lacks-result, un
 dispatch-effects(frame.surround.effects /or/ declared-effects(frame.program, module, decl))
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do exceptional-effects U32
++ do exceptional-effects EffectMask
     - effects EffectMask
 
 if (effects /and/ CompilationEffect.gc-free) == 0
     = effects
-. zone U32 = CompilationEffect.gc-free
+. zone EffectMask = CompilationEffect.gc-free
 zone = zone /or/ (CompilationEffect.no-heap)
 zone = zone /or/ (CompilationEffect.no-safepoint)
 zone = zone /or/ (CompilationEffect.no-suspend)
-= effects /and/ (U32.max /xor/ zone)
+= effects /and/ (U64.max /xor/ zone)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do declared-effects U32
++ do declared-effects EffectMask
     - program Program
     - module ModuleId
     - decl DeclId
 
-. declared = CompilationEffect.none
+` What a function's header keeps its code from: the restrictions it writes, and the effects it bans.
+. declared EffectMask = 0
 do match? program.modules[module].decls[decl]
     | .decl-function(row)
-        declared = row.effects
+        declared = row.effects /or/ program.effects.bans-of(module, decl)
 = dispatch-effects(declared)
 
 ━━━━━━━━━━━━━━━━━━━━

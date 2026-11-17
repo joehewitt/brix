@@ -188,6 +188,7 @@ do finally
     ~ \style-sheet-extension-block
     ~ \style-sheet-block
     ~ \c-constant-declaration
+    ~ \effect-declaration
     ~ \class-block
     ~ \function-block
     ~ \state-machine-declaration
@@ -702,7 +703,7 @@ do finally
     ~ \open \nl acc \access // imperative \function-imperative? "to" // ty \type annotations \annotation-names? sections \do-sections? args \arguments-block? / body \function-block-body-tail
         tree.append(ASTConverter(declared-at(location), acc, ty, tree.store-optional-children(parameter-constraints(tree, variants)), tree.store-optional-children(parameter-assignments(tree, variants)), tree.syntax-or-invalid(imperative-body(tree, !!!!imperative, bound)), !!imperative, compilation-effects(location, names, false), has-annotation(names, "inline")))
             .. variants = args ?? ImmutableArray'ArgumentVariant()
-            .. names = section-annotations(tree, declared-at(location), annotations ?? ImmutableArray'Atom(), sections, false)
+            .. names = unlowered(declared-at(location), section-annotations(tree, declared-at(location), annotations ?? ImmutableArray'Atom(), sections, false))
             .. bound = sectioned-body(tree, declared-at(location), sections, !!imperative, body)
 
 .. getter-block SyntaxId ~
@@ -951,6 +952,27 @@ do finally
     ~ acc \access decorations \property-decorations // left \type-capture // "~>" / machine \state-machine-block
         tree.append(ASTProperty(location, acc, left, machine, stored.decoration, false, stored.annotations))
             .. stored = tree.store-property-decorations(decorations)
+
+.. effect-declaration SyntaxId ~
+    ~ \open \nl declared \effect-line / \nl* / \close
+        declared
+    ~ \effect-line
+
+.. effect-line SyntaxId ~
+    ~ acc \access // "effect" // name \name claims \effect-claims?
+        tree.append(ASTEffectDeclaration(location, acc, name, tree.store-atoms(claims ?? ImmutableArray'Atom())))
+
+.. effect-claims ImmutableArray'Atom ~
+    ~ \open body \effect-claim-lines / \close
+        body
+
+.. effect-claim-lines ImmutableArray'Atom ~
+    ~ \nl* lines \effect-claim+ / \nl*
+        lines
+
+.. effect-claim Atom ~
+    ~ / "-" // "C:" symbol \c-symbol / (\nl+ | &\close)
+        symbol
 
 .. c-constant-declaration SyntaxId ~
     ~ acc \access // "C:" symbol \c-symbol // "=" value \block-or-expression
@@ -1231,6 +1253,8 @@ do finally
         names
 
 .. annotation-name Atom ~
+    ~ // "@door(" effect \name ")"
+        door-annotation(tree, effect)
     ~ // "@" name \raw-atom-name
         written-annotation(location, name)
 

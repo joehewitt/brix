@@ -979,6 +979,8 @@ if raw != null
 do match items
     | [.atom(_, "param"), ...]
         parameter(node, true)
+    | [.atom(_, "claim"), name]
+        put("- ${store.text(name)}")
     | [.atom(_, "constraint"), op, left, right]
         put("- ")
         expression(left, brix-level-primary, false)
@@ -1064,6 +1066,8 @@ do match items
         put(if is-from then "from " else "to ")
         expression(other, if is-from then 0 else brix-level-primary, false)
         signature-tail(items, 3)
+    | [.atom(_, "effect"), access, name, ...]
+        put("${store.text(access)} effect ${store.text(name)}")
     | [.atom(_, "when-rule"), test, ...]
         put("when ")
         expression(test, 0, false)
@@ -1252,6 +1256,9 @@ do match item
                 if shows-spread
                     put(" ~ ")
                     expression(spread, brix-level-primary, false)
+                = true
+            | [.atom(_, "door"), effect]
+                put(" @door(${store.text(effect)})")
                 = true
             | [.atom(_, "?!"), raised, ...]
                 put(" ")
@@ -2495,7 +2502,7 @@ if head == "implements" then "is" else head
 _ brix-is-header-head Bool
     - head String
 
-head == "param" || head == "constraint" || head == "iterates" || is-binding
+head == "param" || head == "constraint" || head == "iterates" || head == "claim" || is-binding
 
 .. is-binding = head == "implements" || head == "using" || head == "sees"
 

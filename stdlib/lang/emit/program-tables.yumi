@@ -7087,6 +7087,9 @@ for module in 0 .. < module-count
                 if property.owner == 0 && !literal
                     declare-global(module as ModuleId, index as DeclId, property)
                 .. literal = types.is-literal-global(module as ModuleId, index as DeclId)
+            | .decl-effect
+                if bound[storage-starts[module] + index] != 0
+                    declare-effect-slot(module as ModuleId, index as DeclId)
 for unit in instances.ordered
     . row = instances.rows[unit]
     if row.initializer != 0 && row.state == .instance-done
@@ -7250,6 +7253,51 @@ keep
         - layout
         - no-function
         - no-storage
+
+────────────────────
+_ do declare-effect-slot
+    - module ModuleId
+    - decl DeclId
+
+` Gives an effect a `do with` binds a fake to a slot in the memory of every task, `{bound, fake}`,
+` as it gives a global `do with` binds: a door the fake answers reads the fake there. It holds the
+` fake as an object of any class, and is bound only by a `do with`.
+. place = storage-starts[module] + decl
+. effect = program.effects.index-of(module, decl)
+. fake = no-type
+for entry in instances.swap-entries
+    if fake == no-type && effect && entry.effect == effect
+        fake = entry.fake
+if fake == no-type
+    =
+. children [LayoutId]
+. held [TypeId]
+children += layouts.values[types.bool-type]
+children += managed-layout
+held += types.bool-type
+held += fake
+. layout = layouts.environment(children, held, "effect-slot.${module}.${decl}")
+. alignment = layouts.rows[layout].alignment
+. offset U32 = (((task-local-size as U32) + alignment - 1) / alignment) * alignment
+task-local-size = offset + layouts.rows[layout].size
+storage-rows[place] = storage.length as U32
+storage.append
+    - GlobalStorage
+        - module
+        - decl
+        - 0
+        - no-instance
+        - no-string
+        - no-string
+        - fake
+        - layout
+        - no-function
+        - no-storage
+        - offset
+        - false
+module-flags[module] = module-flags[module] /or/ has-locals
+global-kinds[place] = GlobalKind.global-stack
+task-local-rows += (storage.length - 1) as U32
 
 ────────────────────
 _ do declare-local
