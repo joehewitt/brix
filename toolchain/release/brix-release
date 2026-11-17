@@ -762,8 +762,8 @@ def page_links(page):
 
 
 def kit_names(config, host):
-    runtime = config['runtimeProjects']
-    pending = [name for project in host_projects(config, host) for name in runtime[project].get('requires', [])]
+    projects = config['runtimeProjects']
+    pending = [name for project in host_projects(config, host) for name in projects[project].get('requires', [])]
     visited = set()
     names = set()
     while pending:
@@ -771,13 +771,13 @@ def kit_names(config, host):
         if name in visited:
             continue
         visited.add(name)
-        if name in runtime:
-            pending += runtime[name].get('requires', [])
+        if name in projects:
+            pending += projects[name].get('requires', [])
         elif name in config['externalLibraries']:
             names.add(config['externalLibraries'][name]['path'].split('/')[2])
     if host != BUILD_HOST:
         target = config['targets'][host]
-        names.update(target[key].split('/')[2] for key in ('sysroot', 'linker') if key in target)
+        names.update(target[key].split('/')[2] for key in runtime.TARGET_TOOLS if key in target)
     return sorted(names)
 
 

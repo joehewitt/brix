@@ -391,7 +391,7 @@ def toolchain_inputs():
         clang = shutil.which('clang')
         if not clang:
             fail('Building the runtime on Linux needs clang')
-        return [clang] + [built_path(target[name]) for name in ('linker', 'libclang')]
+        return [clang] + [built_path(target[name]) for name in ('linker', 'archiver', 'libclang')]
     clang = xcrun('--find', 'clang')
     linker = xcrun('--find', 'ld')
     sdk = xcrun('--show-sdk-path')

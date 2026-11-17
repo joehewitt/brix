@@ -173,6 +173,7 @@ def build_recipe(name, keys, prefix, target=None):
                 environment['TARGET_SYSROOT'] = sysroot
                 environment['TARGET_GCC_INSTALL_DIR'] = os.path.join(sysroot, target['gccInstallDirectory'])
                 environment['TARGET_LINKER'] = host_tool_path(target['linker'])
+                environment['TARGET_ARCHIVER'] = host_tool_path(target['archiver'])
             else:
                 environment['SDKROOT'] = xcrun('--sdk', target['sdk'], '--show-sdk-path')
         for required in recipe.get('requires', []):

@@ -7,7 +7,8 @@ done
 
 cd "$SOURCES/ghostty"
 "$ZIG_PREFIX/zig" build -Demit-lib-vt -Demit-xcframework=false -Doptimize=ReleaseFast --prefix "$PREFIX"
-rm -rf "$PREFIX/include/ghostty" "$PREFIX"/lib/*.dylib
+rm -rf "$PREFIX/include/ghostty" "$PREFIX"/lib/*.dylib "$PREFIX/share"
+xcrun strip -S "$PREFIX/lib/libghostty-vt.a"
 mkdir -p "$PREFIX/include/ghostty"
 rsync -a --include='*/' --include='*.h' --exclude='*' include/ghostty/ "$PREFIX/include/ghostty/"
 cp LICENSE "$PREFIX/LICENSE"

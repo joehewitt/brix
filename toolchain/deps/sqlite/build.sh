@@ -23,6 +23,6 @@ flags=(
 )
 
 clang "${flags[@]}" -c "$source/sqlite3.c" -o sqlite3.o
-ar rcs "$PREFIX/lib/libsqlite3.a" sqlite3.o
+"${TARGET_ARCHIVER:-ar}" rcs "$PREFIX/lib/libsqlite3.a" sqlite3.o
 cp "$source/sqlite3.h" "$PREFIX/include/sqlite3.h"
 printf 'The SQLite source code is in the public domain. See https://sqlite.org/copyright.html\n' > "$PREFIX/LICENSE.md"

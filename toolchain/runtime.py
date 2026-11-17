@@ -22,6 +22,7 @@ CXX_EXTENSIONS = ('.cpp', '.mm')
 C_STANDARD = 'gnu99'
 DEBUG_FLAGS = ['-gdwarf-2', '-DDEBUG', '-D_DEBUG']
 ARCHIVER = 'libtool'
+TARGET_TOOLS = ('sysroot', 'linker', 'archiver')
 COLOR_FLAG = '-fcolor-diagnostics'
 SANITIZERS = {'tsan': 'thread', 'asan': 'address'}
 TRUE_WORDS = ('1', 'true', 'yes', 'on')
@@ -50,7 +51,7 @@ def target_dependencies(config, target, projects):
         library = config['externalLibraries'][name]
         paths += [library['path']] + library.get('includePaths', []) + library.get('libraryPaths', [])
     names = sorted({path.split('/')[2] for path in paths if path.startswith('build/deps/')})
-    tools = [target[key].split('/')[2] for key in ('sysroot', 'linker') if key in target]
+    tools = sorted({target[key].split('/')[2] for key in TARGET_TOOLS if key in target})
     return names, tools
 
 
@@ -212,8 +213,8 @@ class Build:
         return False
 
     def archive_command(self, archive):
-        if self.target and 'sysroot' in self.target:
-            return ['/usr/bin/env', 'ZERO_AR_DATE=1', 'ar', 'rc', self.local(archive)]
+        if self.target and 'archiver' in self.target:
+            return [built_path(self.target['archiver'], self.root), 'rc', self.local(archive)]
         return [ARCHIVER, '-static', '-D', '-o', self.local(archive)]
 
     def flags(self):

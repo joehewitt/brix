@@ -27,6 +27,8 @@ if [ -n "${TARGET_SYSROOT:-}" ]; then
         -DCMAKE_C_COMPILER_TARGET="$TARGET_TRIPLE" \
         -DCMAKE_CXX_COMPILER_TARGET="$TARGET_TRIPLE" \
         -DCMAKE_SYSROOT="$TARGET_SYSROOT" \
+        -DCMAKE_AR="$TARGET_ARCHIVER" \
+        -DCMAKE_RANLIB="${TARGET_ARCHIVER%/*}/llvm-ranlib" \
         -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
         -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
@@ -44,10 +46,11 @@ if [ -n "${TARGET_SYSROOT:-}" ]; then
         -DCLANG_HAVE_DLFCN_H=1 \
         -DCLANG_HAVE_DLADDR=1 \
         -DCROSS_TOOLCHAIN_FLAGS_NATIVE="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++"
-    "$ninja" -C build -j"$JOBS" lld libclang clang-resource-headers
+    "$ninja" -C build -j"$JOBS" lld llvm-ar libclang clang-resource-headers
     mkdir -p "$PREFIX/bin" "$PREFIX/lib"
-    cp build/bin/lld "$PREFIX/bin/"
+    cp build/bin/lld build/bin/llvm-ar "$PREFIX/bin/"
     ln -s lld "$PREFIX/bin/ld.lld"
+    ln -s llvm-ar "$PREFIX/bin/llvm-ranlib"
     cp -P build/lib/libclang.so* "$PREFIX/lib/"
     cp -R build/lib/clang "$PREFIX/lib/"
     cp "$SOURCES/llvm/clang/LICENSE.TXT" "$PREFIX/LICENSE.TXT"
@@ -55,11 +58,12 @@ else
     "$cmake" -S "$SOURCES/llvm/llvm" -B build -G Ninja "${options[@]}" \
         -DCMAKE_OSX_ARCHITECTURES=arm64 \
         -DLLVM_ENABLE_PROJECTS=lld
-    "$ninja" -C build -j"$JOBS" lld llvm-readobj llvm-objdump
+    "$ninja" -C build -j"$JOBS" lld llvm-ar llvm-readobj llvm-objdump
     mkdir -p "$PREFIX/bin"
-    cp build/bin/lld build/bin/llvm-readobj build/bin/llvm-objdump "$PREFIX/bin/"
+    cp build/bin/lld build/bin/llvm-ar build/bin/llvm-readobj build/bin/llvm-objdump "$PREFIX/bin/"
     ln -s lld "$PREFIX/bin/ld.lld"
     ln -s lld "$PREFIX/bin/ld64.lld"
+    ln -s llvm-ar "$PREFIX/bin/llvm-ranlib"
     ln -s llvm-readobj "$PREFIX/bin/llvm-readelf"
     cp "$SOURCES/llvm/lld/LICENSE.TXT" "$PREFIX/LICENSE.TXT"
 fi
