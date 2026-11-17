@@ -1260,19 +1260,55 @@ for position in 0 .. < fact.fills.count
         = Typed(nothing, no-type)
 . mark = pending.length
 . start = given.length
+give-arguments(written)
+pass-arguments(written, start, callee, 0, written.count)
+drop-given(start)
+= call-checked(id, fact, mark)
+
+────────────────────
+_ do give-arguments
+    - written RowRange'SyntaxId
+    - refuses-named Bool = false
+
+` Emits the arguments written for a call in order onto `given`, each settled where one written
+` after it may change what it read. Where it `refuses-named`, an argument written with a name
+` has no shape.
 . evaluated U32
 for argument in tree.children[written]
     . expression = argument-value(argument)
+    if refuses-named && is-named(argument)
+        refuse(.refused-expression, argument)
+        break
     evaluated += 1
-    . made = emit-expression(expression)
-    given += Typed(settled(made, expression, written, evaluated), made.type)
-for position in 0 .. < written.count
+    . emitted = emit-expression(expression)
+    given += Typed(settled(emitted, expression, written, evaluated), emitted.type)
+
+────────────────────
+_ do pass-arguments
+    - written RowRange'SyntaxId
+    - start Size
+    - callee InstanceId
+    - first U32
+    - count U32
+
+` Passes the first `count` arguments written for a call, which `given` holds from `start`, each
+` converted to the type of its parameter of `callee`, counting the parameters from `first`.
+for position in 0 .. < count
     . site = tree.children[written.start + position]
     . value = convert(site, .reason-argument, given[start + position])
-    if value.type != instances.argument-type(callee, position)
+    if value.type != instances.argument-type(callee, first + position)
         refuse(.refused-conversion, site)
     pending += value.operand
-drop-given(start)
+
+────────────────────
+_ do call-checked Typed
+    - id SyntaxId
+    - fact CallFact
+    - mark Size
+
+` Calls the callee of a call fact with the arguments passed from `mark`, propagating what it
+` raises where the call does, and answers what the call answers, as the type pass typed it.
+. callee = fact.callee
 . raising = instances.signatures[callee].errors.count != 0
 takes-result = raising
 . answer = call-instance(callee, id, mark)
@@ -1323,29 +1359,14 @@ if !is-closure(closure.type) || bound + passed != wanted || misfilled
 .. misfilled = packed && (bound != 0 || tail-first > written.count)
 . mark = pending.length
 . start = given.length
-. evaluated U32
-for argument in tree.children[written]
-    . expression = argument-value(argument)
-    if is-named(argument)
-        refuse(.refused-expression, argument)
-        break
-    evaluated += 1
-    . emitted = emit-expression(expression)
-    given += Typed(settled(emitted, expression, written, evaluated), emitted.type)
+give-arguments(written, true)
 pending += closure.operand
 for offset in 0 .. < bound
     . piece = part(tuple.operand, held, 1 + offset, callable)
     pending += piece.operand
     if piece.type != instances.argument-type(callee, offset)
         refuse(.refused-conversion, id)
-for position in 0 .. < written.count
-    if position >= tail-first
-        break
-    . site = tree.children[written.start + position]
-    . value = convert(site, .reason-argument, given[start + position])
-    if value.type != instances.argument-type(callee, bound + position)
-        refuse(.refused-conversion, site)
-    pending += value.operand
+pass-arguments(written, start, callee, bound, tail-first)
 if packed
     . listed = instances.argument-type(callee, tail-first)
     . tail = emit-tail(id, written, 0, start, tail-first, written.count, listed, 0)
@@ -1353,16 +1374,7 @@ if packed
         refuse(.refused-conversion, id)
     pending += tail.operand
 drop-given(start)
-. raising = instances.signatures[callee].errors.count != 0
-takes-result = raising
-. answer = call-instance(callee, id, mark)
-takes-result = false
-if raising && fact.propagates
-    answer = propagate(id, callee, answer.operand)
-. expected = facts.node-type(unit.reading, id)
-if answer.type != expected && !links-into(id, answer.type, expected)
-    refuse(.refused-conversion, id)
-= answer
+= call-checked(id, fact, mark)
 
 ────────────────────
 _ do emit-value-call Typed
@@ -1429,12 +1441,7 @@ if layout != tables.layouts.function-layout
 . data = load(source.operand, tables.layouts.field(layout, 1).offset, managed-layout, id)
 . mark = pending.length
 . start = given.length
-. evaluated U32
-for argument in tree.children[written]
-    . expression = argument-value(argument)
-    evaluated += 1
-    . emitted = emit-expression(expression)
-    given += Typed(settled(emitted, expression, written, evaluated), emitted.type)
+give-arguments(written)
 pending += data
 . empty U32 = ArgumentFill.fill-empty
 for place in 0 .. < args.count
@@ -1486,12 +1493,7 @@ if !is-pointer(layout-of(source.type, callable))
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
 . start = given.length
-. evaluated U32
-for argument in tree.children[written]
-    . expression = argument-value(argument)
-    evaluated += 1
-    . emitted = emit-expression(expression)
-    given += Typed(settled(emitted, expression, written, evaluated), emitted.type)
+give-arguments(written)
 . mark = pending.length
 . empty U32 = ArgumentFill.fill-empty
 for place in 0 .. < args.count
@@ -1724,15 +1726,7 @@ if leading != 0
     lead = 1
     . emitted = emit-expression(leading)
     given += Typed(settled(emitted, leading, written, 0), emitted.type)
-. evaluated U32
-for argument in tree.children[written]
-    . expression = argument
-    do match? tree.nodes[argument]
-        | .node-argument(named)
-            expression = named.expr
-    evaluated += 1
-    . emitted = emit-expression(expression)
-    given += Typed(settled(emitted, expression, written, evaluated), emitted.type)
+give-arguments(written)
 for position in 0 .. < lead
     if leading != 0
         . converted = convert(leading, .reason-argument, given[start + position])
