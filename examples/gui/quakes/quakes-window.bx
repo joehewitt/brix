@@ -39,6 +39,12 @@
   (prop + phase _
     (machine
       (state loading
+        (do
+          (do-new
+            (<- outcome (call load-quakes feed))
+          )
+        )
+        (blank)
         (then showing (trigger for (call .loaded found) outcome)
           (do
             (= quakes found)
@@ -49,17 +55,20 @@
         (blank)
         (then (call failed message) (trigger for (call .failed message) outcome))
         (then loading (trigger on reloads))
+        (then loading (trigger whenever #feed))
         (blank)
-        (lazy outcome (call load-quakes feed))
+        (lazy outcome (call (of AsyncBufferedChannel QuakeUpdate)))
       )
       (blank)
       (state showing
         (then loading (trigger on reloads))
+        (then loading (trigger whenever #feed))
         (then loading (trigger on (call Timer refresh-interval)))
       )
       (blank)
       (state (call failed message)
         (then loading (trigger on reloads))
+        (then loading (trigger whenever #feed))
         (then loading (trigger on (call Timer retry-interval)))
       )
     )
@@ -154,7 +163,6 @@
             (= selected #feed)
             (for (on event selection-changed)
               (= feed (. event value))
-              (<- reloads true)
             )
             (for (in choice feeds)
               (<> (of Segment QuakeFeed) (text: (. choice title))

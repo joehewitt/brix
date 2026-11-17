@@ -54,24 +54,16 @@
   (variant failed String)
 )
 
-(fn-do + load-quakes (of AsyncBufferedChannel QuakeUpdate)
+(fn-do + load-quakes QuakeUpdate
   (param feed QuakeFeed)
-  (let updates (call (of AsyncBufferedChannel QuakeUpdate)))
-  (do-new
-    (let update
-      (match (catch (call fetch-quakes feed))
-        (case (: found (list Quake))
-          (call (. QuakeUpdate loaded) found)
-        )
-        (case (: error Error)
-          (call (. QuakeUpdate failed) (str error))
-        )
-      )
+  (match (catch (call fetch-quakes feed))
+    (case (: found (list Quake))
+      (return (call (. QuakeUpdate loaded) found))
     )
-    (<- updates update)
-    (call (. updates close))
+    (case (: error Error)
+      (return (call (. QuakeUpdate failed) (str error)))
+    )
   )
-  (return updates)
 )
 
 (fn-do + fetch-quakes (list Quake) (?! Error)
