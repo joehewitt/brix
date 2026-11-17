@@ -46,7 +46,7 @@ CTimeSpec(s, ns)
 + do wait
 
 . sem = Semaphore()
-. canceled = C:brixSuspendActiveTaskUntilTime(this as Microseconds, sem.native-pointer)
+. canceled = wait-for-duration(this as Microseconds, sem)
 check-task-cancelation(canceled)
 
 = this
@@ -54,10 +54,7 @@ check-task-cancelation(canceled)
 ────────────────────
 + do freeze
 
-. spec = this as CTimeSpec
-C:brixGCEnterFFI()
-do C:nanosleep(&spec, null)
-C:brixGCLeaveFFI()
+freeze-thread(this)
 
 ────────────────────
 + do loop
@@ -101,6 +98,15 @@ Timer(this as Interval)
 + 1csec = 1000000000cnsec
 + 1csec = 1seconds
 + 1cnsec = 1ns
+
+━━━━━━━━━━━━━━━━━━━━
++ do freeze-thread @door(time)
+    - delay Duration
+
+. spec = delay as CTimeSpec
+C:brixGCEnterFFI()
+do C:nanosleep(&spec, null)
+C:brixGCLeaveFFI()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do timeout'Item

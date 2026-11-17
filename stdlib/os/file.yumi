@@ -539,16 +539,34 @@ temporary.move(path)
 ━━━━━━━━━━━━━━━━━━━━
 + do wait-until-readable ?! TimeoutError
     - fd I32
-    - deadline Deadline? = null
 
-check-wait(C:brixSuspendActiveTaskUntilReadable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
+check-wait(C:brixSuspendActiveTaskUntilReadable(fd, 0) as WaitResult)
+
+━━━━━━━━━━━━━━━━━━━━
++ do wait-until-readable ?! TimeoutError
+    - fd I32
+    - deadline Deadline?
+
+if deadline
+    check-wait(wait-for-handle(fd, false, deadline) as WaitResult)
+else
+    wait-until-readable(fd)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do wait-until-writable ?! TimeoutError
     - fd I32
-    - deadline Deadline? = null
 
-check-wait(C:brixSuspendActiveTaskUntilWritable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
+check-wait(C:brixSuspendActiveTaskUntilWritable(fd, 0) as WaitResult)
+
+━━━━━━━━━━━━━━━━━━━━
++ do wait-until-writable ?! TimeoutError
+    - fd I32
+    - deadline Deadline?
+
+if deadline
+    check-wait(wait-for-handle(fd, true, deadline) as WaitResult)
+else
+    wait-until-writable(fd)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do check-wait ?! TimeoutError

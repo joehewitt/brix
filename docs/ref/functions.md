@@ -1037,3 +1037,41 @@ gives:
 - **Names.** An effect's name is seen as the file's other names are: a public effect from the files
   that import its file, and a private one only in its own. A program can ban or bind at most 32
   effects.
+
+The standard library declares `time` in `/time/clock`. Every read of the clock, the wall clock, the
+monotonic clock and the local time zone alike, goes through its doors, and so do the waits that
+end at a time: `wait`, `freeze`, the timers, and a wait for a file or a socket with a deadline. A
+wait for a handle with no deadline, as every blocking read and write makes, is not a door, so
+`(without time)` lets code read files. `FakeClock`, in `/time/fake-clock`, is a fake for `time`
+whose clock starts at the start of 2026 in UTC and moves only when `advance` moves it:
+
+```brix
+(import /time)
+(import /time/fake-clock)
+
+(main
+  (let fake (call FakeClock))
+  (do-with time fake
+    (let reminder (do-new
+      (call (. 5minutes wait))
+      (print "ring")
+    ))
+    (call (. fake advance) 5minutes)
+    (call (. reminder wait))
+    (print (. (call clock) s))
+  )
+)
+```
+
+```output
+ring
+1767225900
+```
+
+- **Advancing.** `advance` first lets every task that is ready to run go on until it waits, so a
+  task just started reaches its wait. Then it ends the waits whose time it passes one at a time,
+  earliest first, with the clocks set to each wait's time, and lets the task and the tasks it makes
+  ready run until they wait again before it takes the next. It leaves the clocks at the time it
+  was given. `freeze` advances instead of stopping the thread.
+- **Handles.** A wait for a handle with a deadline ends when the handle is ready, or as a timeout
+  when `advance` reaches the deadline.

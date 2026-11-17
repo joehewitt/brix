@@ -83,10 +83,12 @@ compiler, sets a larger one.
 
 ### time
 
-Durations, dates, clocks and timers. `/time` gathers every module except `/time/timer`.
+Durations, dates, clocks and timers. `/time` gathers every module except `/time/timer` and
+`/time/fake-clock`.
 
 - `/time/duration`: `Duration`, the units from `ns` to `milleniums`, `wait` and `timeout`.
-- `/time/clock`: `ClockTime` and `measure`.
+- `/time/clock`: `ClockTime`, `measure`, and the `time` effect, whose doors every read of the clock
+  and every timed wait go through; see Functions.
 - `/time/datetime`: `DateTime`, `Date`, `Time`, `Month`, `now` and `today`.
 - `/time/zone`: `TimeZone`, `utc` and `local`.
 - `/time/timestamp`: reading and writing ISO 8601, RFC 2822 and RFC 3339 timestamps.
@@ -95,6 +97,7 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 - `/time/flicks`: `Flicks`, a unit of 1/705,600,000 of a second, chosen so that a frame at common
   video and audio rates lasts a whole number of flicks.
 - `/time/timer`: `Timer`, `TimerLoop` and `AnimationLoop`.
+- `/time/fake-clock`: `FakeClock`, a fake for `time` whose clock moves only when `advance` moves it.
 
 ### math
 

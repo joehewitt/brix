@@ -33,14 +33,14 @@ ticker = do new
     . elapsed = Interval(0)
     if start-time > 0
         . us = start-time as Microseconds
-        =? if C:brixSuspendActiveTaskUntilTime(us, lock.native-pointer)
+        =? if wait-for-duration(us, lock)
 
         elapsed = start-time
         channel <- elapsed
 
     . us = increment as Microseconds
     while true
-        if C:brixSuspendActiveTaskUntilTime(us, lock.native-pointer)
+        if wait-for-duration(us, lock)
             break
 
         elapsed += increment
@@ -54,7 +54,7 @@ ticker = do new
 
 ticker?.cancel-later()
 ticker = null
-C:brixCancelTimerEventListener(lock.native-pointer)
+cancel-timer-event-listener(lock)
 
 ━━━━━━━━━━━━━━━━━━━━
 + TimerLoop
@@ -70,7 +70,7 @@ _ is-canceled = false
 . t1 = clock()
 . t = duration
 while !is-canceled
-    if C:brixSuspendActiveTaskUntilTime(t, sem.native-pointer)
+    if wait-for-duration(t, sem)
         break
 
     fn()
@@ -82,7 +82,7 @@ while !is-canceled
 + do cancel
 
 is-canceled = true
-C:brixCancelTimerEventListener(sem.native-pointer)
+cancel-timer-event-listener(sem)
 
 ━━━━━━━━━━━━━━━━━━━━
 + AnimationLoop
@@ -196,7 +196,7 @@ _ next-deadline
 .. next = last-deadline-ns + interval-ns
 
 ━━━━━━━━━━━━━━━━━━━━
-+ monotonic-time-nanoseconds U64
++ monotonic-time-nanoseconds U64 @door(time)
 
 C:brixMonotonicTimeNanoseconds()
 
@@ -214,10 +214,17 @@ C:brixMonotonicTimeNanoseconds()
 . delay = (delay-ns as Nanoseconds) as Microseconds
 =? if delay <= 0
 
-= C:brixSuspendActiveTaskUntilTime(delay, sem.native-pointer)
+= wait-for-duration(delay, sem)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do cancel-timer-event-listener
++ wait-for-duration Bool @door(time)
+    - delay Microseconds
+    - sem Semaphore
+
+C:brixSuspendActiveTaskUntilTime(delay, sem.native-pointer)
+
+━━━━━━━━━━━━━━━━━━━━
++ do cancel-timer-event-listener @door(time)
     - sem Semaphore
 
 C:brixCancelTimerEventListener(sem.native-pointer)

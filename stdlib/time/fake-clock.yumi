@@ -1,0 +1,221 @@
+./clock
+./ctime
+./deadline
+./duration
+./timer
+./zone
+/BxEvents/BxEvents.h
+
+━━━━━━━━━━━━━━━━━━━━
++ FakeClock
+
++ zone TimeZone
+
+_ wall U64
+_ monotonic U64 = 1000000000
+_ waiters [ClockWaiter]
+_ next-id U64 = 1
+_ lock = Mutex()
+
+────────────────────
++ This
+    - start CSeconds = 1767225600
+    - zone = utc
+
+wall = (start as U64) * 1000000000
+
+────────────────────
++ do advance
+    - by Duration
+
+. target = monotonic + (by as Nanoseconds) as U64
+settle()
+while true
+    . waiter = take-due(target)
+    if !waiter
+        break
+    move-to(waiter.deadline)
+    check-task-cancelation(waiter.task.resume-now())
+    settle()
+move-to(target)
+
+────────────────────
++ get-clock-time CTimeSpec
+
+CTimeSpec((wall / 1000000000) as CSeconds, (wall % 1000000000) as CNanoseconds)
+
+────────────────────
++ get-utc-time CSeconds
+
+(wall / 1000000000) as CSeconds
+
+────────────────────
++ local-time-zone TimeZone
+
+zone
+
+────────────────────
++ monotonic-time-nanoseconds U64
+
+monotonic
+
+────────────────────
++ do wait-for-duration Bool
+    - delay Microseconds
+    - sem Semaphore
+
+. task = Task()
+=? true if task.is-canceled
+=? real-wait-for-duration(delay, sem) if delay <= 0
+. id = add-waiter(monotonic + (delay as Nanoseconds) as U64, sem, task)
+. canceled = task.suspend()
+= remove-waiter(id) == .canceled || canceled
+
+────────────────────
++ do cancel-timer-event-listener
+    - sem Semaphore
+
+. task = cancel-waiter(sem)
+task?.resume-later()
+
+────────────────────
++ do freeze-thread
+    - delay Duration
+
+advance(delay)
+
+────────────────────
++ do wait-for-handle U32
+    - fd I32
+    - writable Bool
+    - deadline Deadline
+
+. task = Task()
+=? HandleWait.canceled as U32 if task.is-canceled
+=? HandleWait.timed-out as U32 if monotonic >= deadline.nanoseconds
+. id = add-waiter(deadline.nanoseconds, null, task)
+. watcher = do new
+    if wait-without-deadline(fd, writable) == HandleWait.ready as U32 && mark-ready(id)
+        task.resume-later()
+. canceled = task.suspend()
+. state = remove-waiter(id)
+watcher.cancel-later()
+=? HandleWait.canceled as U32 if canceled
+= if state == .due then HandleWait.timed-out as U32 else HandleWait.ready as U32
+
+────────────────────
+_ do move-to
+    - point U64
+
+=? if point <= monotonic
+wall += point - monotonic
+monotonic = point
+
+────────────────────
+_ do settle
+
+check-task-cancelation(real-wait-for-duration(0, Semaphore()))
+
+────────────────────
+_ do add-waiter U64
+    - deadline U64
+    - sem Semaphore?
+    - task Task
+
+use lock
+. id = next-id
+next-id += 1
+waiters += ClockWaiter(id, deadline, sem, task, .pending)
+= id
+
+────────────────────
+_ do remove-waiter WaiterState
+    - id U64
+
+use lock
+for index in 0 .. < waiters.length
+    if waiters[index].id == id
+        . state = waiters[index].state
+        waiters.remove(index)
+        = state
+= .pending
+
+────────────────────
+_ do take-due ClockWaiter?
+    - target U64
+
+use lock
+. found Index = -1
+for index in 0 .. < waiters.length
+    . waiter = waiters[index]
+    if waiter.state == .pending && waiter.deadline <= target
+        if found < 0 || waiter.deadline < waiters[found].deadline
+            found = index
+=? null if found < 0
+waiters[found] = waiters[found].state = .due
+= waiters[found]
+
+────────────────────
+_ do cancel-waiter Task?
+    - sem Semaphore
+
+use lock
+for index in 0 .. < waiters.length
+    . waiter = waiters[index]
+    if waiter.state == .pending && waiter.sem?.native-pointer == sem.native-pointer
+        waiters[index] = waiter.state = .canceled
+        = waiter.task
+= null
+
+────────────────────
+_ do mark-ready Bool
+    - id U64
+
+use lock
+for index in 0 .. < waiters.length
+    . waiter = waiters[index]
+    if waiter.id == id && waiter.state == .pending
+        waiters[index] = waiter.state = .ready
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ ClockWaiter is Tuple
+
++ id U64
++ deadline U64
++ sem Semaphore?
++ task Task
++ state WaiterState
+
+━━━━━━━━━━━━━━━━━━━━
+_ WaiterState is U8
+
+| pending = 0
+| due = 1
+| canceled = 2
+| ready = 3
+
+━━━━━━━━━━━━━━━━━━━━
+_ HandleWait is U32
+
+| ready = 0
+| canceled = 1
+| timed-out = 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ wait-without-deadline U32
+    - fd I32
+    - writable Bool
+
+|? writable
+    C:brixSuspendActiveTaskUntilWritable(fd, 0)
+??
+    C:brixSuspendActiveTaskUntilReadable(fd, 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do real-wait-for-duration Bool
+    - delay Microseconds
+    - sem Semaphore
+
+= wait-for-duration(delay, sem)
