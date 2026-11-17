@@ -103,6 +103,18 @@ _ EmittedLoop is Tuple
 + kept SlotId
 
 ━━━━━━━━━━━━━━━━━━━━
+_ CountingPass is Tuple
+
+` A loop `open-pass` began, which counts its passes from 0: the local that holds the count, the
+` block that tests it, the block after the last pass, and `index`, the count in the pass being
+` emitted.
+
++ counter LocalId
++ testing IRBlockId
++ done IRBlockId
++ index Operand
+
+━━━━━━━━━━━━━━━━━━━━
 _ Unit is Tuple
 
 ` Whose code the walker emits, and where the locals of its binding are. `instance` is the instance
@@ -27363,16 +27375,8 @@ _ do copy-items
     - length Operand
 
 ` Copies items one by one from where one view's lie to where another's lie.
-. counter = ir.add-local(u64-layout)
-store-local(counter, integer(.machine-u64, 0), id)
-. checking = ir.reserve-block()
-. copying = ir.reserve-block()
-. copied = ir.reserve-block()
-jump(checking)
-ir.start-block(checking)
-branch(compare(id, .compare-less, load-local(counter, id), length), copying, copied)
-ir.start-block(copying)
-. place = load-local(counter, id)
+. counting = open-pass(id, length)
+. place = counting.index
 . reading-cell = moved-bytes
     - id
     - source
@@ -27385,13 +27389,39 @@ if tables.layouts.is-struct(layout)
     copy(writing-cell, reading-cell, layout, false, id)
 else
     store(writing-cell, 0, load(reading-cell, 0, layout, id), false, id)
-store-local
-    - counter
-    - arithmetic(id, .arithmetic-add, place, integer(.machine-u64, 1), u64-layout)
-    - id
-jump(checking)
-ir.start-block(copied)
+close-pass(id, counting)
 
+
+────────────────────
+_ do open-pass CountingPass
+    - site SyntaxId
+    - size Operand
+
+` Begins a loop that counts its passes from 0 while the count, a U64, is below `size`, and
+` starts its first pass. `close-pass` ends a pass and the loop.
+. counter = ir.add-local(u64-layout)
+store-local(counter, integer(.machine-u64, 0), site)
+. testing = ir.reserve-block()
+. passing = ir.reserve-block()
+. done = ir.reserve-block()
+jump(testing)
+ir.start-block(testing)
+branch(compare(site, .compare-less, load-local(counter, site), size), passing, done)
+ir.start-block(passing)
+= CountingPass(counter, testing, done, load-local(counter, site))
+
+────────────────────
+_ do close-pass
+    - site SyntaxId
+    - counting CountingPass
+
+` Ends a pass of a loop `open-pass` began, counting it, and goes on after the loop.
+store-local
+    - counting.counter
+    - arithmetic(site, .arithmetic-add, counting.index, integer(.machine-u64, 1), u64-layout)
+    - site
+jump(counting.testing)
+ir.start-block(counting.done)
 ────────────────────
 _ do emit-pointer-add Typed
     - id SyntaxId

@@ -1053,17 +1053,7 @@ else
     branch(compare(loop, below, item.operand, end.operand), inside, done)
 
 ir.start-block(inside)
-. turns = open-turns.length
-open-turn(loop, item.operand, type)
-loops += EmittedLoop(loop, step, done, item.operand, type, open-cleanups.length, kept)
-emit-clause(clause, step, done)
-if gives-items(loop, body)
-    give-item(loop, facts.bullet-site(unit.reading, loop), read-item(loop, loop, type))
-else if body != 0
-    emit-block(body)
-close-turns(turns)
-loops.pop()
-jump(step)
+emit-loop-body(loop, item.operand, type, step, done, kept, clause, body)
 
 ir.start-block(step)
 if stepping
@@ -1164,14 +1154,7 @@ emit-poll(loop)
 branch(compare(loop, .compare-less, item, end), inside, done)
 
 ir.start-block(inside)
-. turns = open-turns.length
-open-turn(loop, item, type)
-loops += EmittedLoop(loop, step, done, item, type, open-cleanups.length, no-slot)
-emit-clause(clause, step, done)
-emit-block(body)
-close-turns(turns)
-loops.pop()
-jump(step)
+emit-loop-body(loop, item, type, step, done, no-slot, clause, body)
 
 ir.start-block(step)
 . wide = if tables.layouts.rows[layout].size >= 4 then layout else i32-layout
@@ -1190,6 +1173,32 @@ jump(head)
 ir.start-block(done)
 forget-proven(loop)
 
+
+────────────────────
+_ do emit-loop-body
+    - loop SyntaxId
+    - item Operand
+    - type TypeId
+    - step IRBlockId
+    - done IRBlockId
+    - kept SlotId
+    - clause SyntaxId
+    - body SyntaxId
+
+` Emits a pass of a range loop over `item`, of `type`, which `continue` leaves for `step` and
+` `break` for `done`: its clause, then its body, or where it has none and gives items, the item
+` it gives.
+. turns = open-turns.length
+open-turn(loop, item, type)
+loops += EmittedLoop(loop, step, done, item, type, open-cleanups.length, kept)
+emit-clause(clause, step, done)
+if gives-items(loop, body)
+    give-item(loop, facts.bullet-site(unit.reading, loop), read-item(loop, loop, type))
+else if body != 0
+    emit-block(body)
+close-turns(turns)
+loops.pop()
+jump(step)
 ────────────────────
 _ do hoist-columns
     - loop SyntaxId

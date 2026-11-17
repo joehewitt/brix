@@ -216,24 +216,11 @@ _ do clear-union-rows
 if tables.writes-constructor(first)
     refuse(.refused-type, site)
     =
-. counter = ir.add-local(u64-layout)
-store-local(counter, integer(.machine-u64, 0), site)
-. testing = ir.reserve-block()
-. clearing = ir.reserve-block()
-. cleared = ir.reserve-block()
-jump(testing)
-ir.start-block(testing)
-branch(compare(site, .compare-less, load-local(counter, site), size), clearing, cleared)
-ir.start-block(clearing)
-. index = load-local(counter, site)
+. counting = open-pass(site, size)
+. index = counting.index
 . empty = make-fields(first, first-layout, RowRange'ArgumentFill(), given.length, 0, site)
 scatter-union-case(site, place, 0, columns, index, empty, no-meta(), false)
-store-local
-    - counter
-    - arithmetic(site, .arithmetic-add, index, integer(.machine-u64, 1), u64-layout)
-    - site
-jump(testing)
-ir.start-block(cleared)
+close-pass(site, counting)
 
 ────────────────────
 + do union-cell Operand
@@ -1374,16 +1361,8 @@ _ do fill-table
 
 ` Fills each row of a new table, from the first, with what a filler of a function type
 ` answers for the row's index, a call that may panic.
-. counter = ir.add-local(u64-layout)
-store-local(counter, integer(.machine-u64, 0), site)
-. testing = ir.reserve-block()
-. filling = ir.reserve-block()
-. filled = ir.reserve-block()
-jump(testing)
-ir.start-block(testing)
-branch(compare(site, .compare-less, load-local(counter, site), size), filling, filled)
-ir.start-block(filling)
-. index = load-local(counter, site)
+. counting = open-pass(site, size)
+. index = counting.index
 . code = load(filler, 0, pointer-layout, site)
 . data = load
     - filler
@@ -1398,12 +1377,7 @@ if types.intrinsic-of(row) == .union
     scatter-union(site, tables.unions.of(row), columns, index, made, no-meta(), false)
 else
     scatter-row(site, row-layout, columns, index, made)
-store-local
-    - counter
-    - arithmetic(site, .arithmetic-add, index, integer(.machine-u64, 1), u64-layout)
-    - site
-jump(testing)
-ir.start-block(filled)
+close-pass(site, counting)
 
 ────────────────────
 + do table-cell Operand
@@ -3442,16 +3416,8 @@ _ do table-extend
 . data = word-at(site, rows, array-layout, 0)
 . size = word-at(site, rows, array-layout, 1)
 . stride = integer(.machine-u64, tables.layouts.rows[row-layout].size)
-. counter = ir.add-local(u64-layout)
-store-local(counter, integer(.machine-u64, 0), site)
-. testing = ir.reserve-block()
-. appending = ir.reserve-block()
-. appended = ir.reserve-block()
-jump(testing)
-ir.start-block(testing)
-branch(compare(site, .compare-less, load-local(counter, site), size), appending, appended)
-ir.start-block(appending)
-. index = load-local(counter, site)
+. counting = open-pass(site, size)
+. index = counting.index
 . item = num-cast
     - site
     - arithmetic
@@ -3463,12 +3429,7 @@ ir.start-block(appending)
     - u64-layout
     - pointer-layout
 table-append(site, table, layout, row, row-layout, item)
-store-local
-    - counter
-    - arithmetic(site, .arithmetic-add, index, integer(.machine-u64, 1), u64-layout)
-    - site
-jump(testing)
-ir.start-block(appended)
+close-pass(site, counting)
 
 ────────────────────
 _ do table-truncate
