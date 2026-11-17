@@ -1,14 +1,3 @@
-## Orthogonal Failures
-
-When unexpected, orthogonal failures appear, detour: reduce them to a focused scratch case, fix
-the bug there, then return. Avoid repeated full-app/library experiments; they are slow,
-indirect, and invite workarounds. Find the cause with probes, and with `bin/brix --compiler-probes`
-when the compiler is at fault, rather than with prints.
-
-## No Legacy
-
-Do not keep rejected code as "legacy" compatibility. Assume there is no need for backwards compatibility ever in this repo unless explicitly asked to preserve it.
-
 ## Writing Brix
 
 `docs/index.md` lists the guides for writing Brix, which releases also ship to agents outside this
@@ -80,6 +69,4 @@ selectors under a profile with a name
 and selectors with `--compare <name>` after edits. `bin/brix bench list` shows the profiles and
 suites.
 
-# Comments
 
-Do not write code comments. The only exception is front matter for files that call for it.
