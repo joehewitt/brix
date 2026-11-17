@@ -1330,15 +1330,11 @@ _ do add-named-functions
 . target = program.modules[module]
 do match? target.decls[decl]
     | .decl-extension(body)
-        if body.members.count != 0
-            . place = target.first-member(body.members, name)
-            while place != no-member
-                . member = target.member-pool[place]
-                place = target.member-links[place]
-                do match? target.decls[member]
-                    | .decl-function(row)
-                        if row.name && row.name == name && row.kind == .function-decl
-                            found += DeclRef(module, member)
+        for member in target.members-named(body.members, name)
+            do match? target.decls[member]
+                | .decl-function(row)
+                    if row.name && row.name == name && row.kind == .function-decl
+                        found += DeclRef(module, member)
 
 ────────────────────
 _ do extends-getter Bool
@@ -1351,15 +1347,11 @@ _ do extends-getter Bool
 do match? target.decls[decl]
     | .decl-extension(body)
         . named = false
-        if body.members.count != 0
-            . place = target.first-member(body.members, name)
-            while place != no-member
-                . member = target.member-pool[place]
-                place = target.member-links[place]
-                do match? target.decls[member]
-                    | .decl-function(row)
-                        if row.kind == .getter-decl && row.name && row.name == name
-                            named = true
+        for member in target.members-named(body.members, name)
+            do match? target.decls[member]
+                | .decl-function(row)
+                    if row.kind == .getter-decl && row.name && row.name == name
+                        named = true
         if !named
             = false
         . matched = relations.match-extension(module, decl, level)
@@ -1439,10 +1431,7 @@ if ref.module == U32.max
 . owner = program.modules[ref.module]
 do match? owner.decls[ref.decl]
     | .decl-class(row)
-        . place = owner.first-member(row.members, name)
-        while place != no-member
-            . member = owner.member-pool[place]
-            place = owner.member-links[place]
+        for member in owner.members-named(row.members, name)
             do match? owner.decls[member]
                 | .decl-function(fn)
                     if fn.name && fn.name == name && fn.kind == kind
@@ -1638,12 +1627,7 @@ _ do rank-defaults
     - receiver TypeId
     - kind DeclKind
 
-if members.count == 0
-    =
-. place = target.first-member(members, name)
-while place != no-member
-    . member = target.member-pool[place]
-    place = target.member-links[place]
+for member in target.members-named(members, name)
     do match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
@@ -1735,12 +1719,7 @@ _ do rank-members
     - bindings TypeArguments
     - kind DeclKind
 
-if members.count == 0
-    =
-. place = target.first-member(members, name)
-while place != no-member
-    . member = target.member-pool[place]
-    place = target.member-links[place]
+for member in target.members-named(members, name)
     do match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
@@ -1756,12 +1735,7 @@ _ do rank-statics
     - name Atom
     - owner TypeId
 
-if members.count == 0
-    =
-. place = target.first-member(members, name)
-while place != no-member
-    . member = target.member-pool[place]
-    place = target.member-links[place]
+for member in target.members-named(members, name)
     do match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
@@ -1932,10 +1906,7 @@ _ do field-has-default Bool
 do match? owner-module.decls[decl]
     | .decl-class(row)
         members = row.members
-. place = owner-module.first-member(members, name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
+for member in owner-module.members-named(members, name)
     do match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == name
@@ -3555,10 +3526,7 @@ if ref.module == U32.max
 do match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
-. place = owner-module.first-member(members, name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
+for member in owner-module.members-named(members, name)
     do match? owner-module.decls[member]
         | .decl-case(row)
             if row.name && row.name == name
