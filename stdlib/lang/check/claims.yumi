@@ -1,3 +1,5 @@
+/lang/constants
+
 + task-suspending-names [String] = ["yumiSuspendTask", "yumiWaitForSemaphore", "yumiPostSemaphore", "yumiLockMutex", "yumiGCSafepoint", "yumiTaskSafepoint", "yumiGCLeaveFFI", "yumiClaimLazyGlobal"]
 
 + task-suspending-prefix = "yumiSuspendActiveTask"
@@ -16,7 +18,8 @@
 + suspends-task Bool
     - name String
 
-name.starts-with(task-suspending-prefix) || task-suspending-names.find(name) != null
+canonical.starts-with(task-suspending-prefix) || task-suspending-names.find(canonical) != null
+.. canonical = canonical-runtime-name(name)
 
 ━━━━━━━━━━━━━━━━━━━━
 + leaves-termination Bool
@@ -27,13 +30,13 @@ name.starts-with(task-suspending-prefix) || task-suspending-names.find(name) != 
 ` woken only to take it, and a task ended there would hold it before its `use` keeps it, to give it
 ` back. `yumiSuspendTask` answers whether the task is cancelled, as a termination makes it, and
 ` its caller checks the answer, doing its own work first, such as leaving a queue.
-termination-leaving-names.find(name) != null
+termination-leaving-names.find(canonical-runtime-name(name)) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + allocates Bool
     - name String
 
-allocating-names.find(name) != null
+allocating-names.find(canonical-runtime-name(name)) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-claimed Bool
@@ -43,13 +46,13 @@ allocating-names.find(name) != null
 ` allocates from the collector, one that runs code that may do either, or one that polls and does
 ` neither.
 suspends-task(name) || yields-to-task(name) || allocates(name) || is-plain-polling || runs-code(name)
-.. is-plain-polling = plain-polling-names.find(name) != null
+.. is-plain-polling = plain-polling-names.find(canonical-runtime-name(name)) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + runs-code Bool
     - name String
 
-code-running-names.find(name) != null
+code-running-names.find(canonical-runtime-name(name)) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + yields-to-task Bool
@@ -58,7 +61,7 @@ code-running-names.find(name) != null
 ` Whether a C function lets another task run before it returns: one that waits for a task to end,
 ` or one that cancels or resumes a task and yields to it. It suspends the task, but is called as
 ` its declaration says, as one that may block, and not as one that suspends it.
-task-yielding-names.find(name) != null
+task-yielding-names.find(canonical-runtime-name(name)) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + may-suspend Bool

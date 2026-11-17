@@ -179,7 +179,7 @@ _ do runtime-variant RuntimeVariant ?! Error
     - config JSON
 
 ` The host runtime the environment chooses. A benchmark-only GC mode needs the benchmark runtime.
-. mode-name = (env("YUMI_GC_MODE") ?? "").trim().lowercased
+. mode-name = (toolchain-env("_GC_MODE") ?? "").trim().lowercased
 . name = if mode-name != "" then mode-name else "normal"
 . modes = config-member(config, "gcModes")
 . mode = (modes as [String = JSON])[name] if modes is [String = JSON]
@@ -188,7 +188,7 @@ for key, _ in modes as [String = JSON]
     names += key
 ?! Error("YUMI_GC_MODE must be one of ${", ".join(names)}")
     if !mode
-. bench = environment-flag("YUMI_BENCH_RUNTIME")
+. bench = environment-flag("BRIX_BENCH_RUNTIME") || environment-flag("YUMI_BENCH_RUNTIME")
 . benchmark-only = (mode as [String = JSON])["benchmarkOnly"] if mode is [String = JSON]
 ?! Error("YUMI_GC_MODE=$name is benchmark-only; set YUMI_BENCH_RUNTIME=1")
     if benchmark-only && benchmark-only is Bool && benchmark-only as Bool && !bench
@@ -200,7 +200,7 @@ _ do runtime-sanitizer JSON? ?! Error
 
 ` The sanitizer `YUMI_SANITIZER` names by its name in the runtime build config or by its build
 ` directory, or none when it is empty, `off` or `none`.
-. value = (env("YUMI_SANITIZER") ?? "").trim().lowercased
+. value = (toolchain-env("_SANITIZER") ?? "").trim().lowercased
 =? null if value == "" || value == "off" || value == "none"
 . sanitizers = config-member(config, "sanitizers")
 . names [String]

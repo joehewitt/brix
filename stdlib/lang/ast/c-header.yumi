@@ -15,6 +15,8 @@
 + allowed-word-chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 _ gc-leaf-suffix = ",yumi:gc_leaf"
 _ gc-polling-suffix = ",yumi:gc_polling"
+_ brix-gc-leaf-suffix = ",brix:gc_leaf"
+_ brix-gc-polling-suffix = ",brix:gc_polling"
 
 + implicit-leaf-names List
     * "abs"
@@ -438,11 +440,11 @@ while line-start < length
         . struct-name = record-name(bytes, line-start, line-end)
         if struct-name
             structs[struct-name] = bytes.slice-string(line-start .. < line-end)
-    else if kind == 65 && record-line-ends-with(bytes, line-start, line-end, gc-leaf-suffix)
+    else if kind == 65 && (record-line-ends-with(bytes, line-start, line-end, gc-leaf-suffix) || record-line-ends-with(bytes, line-start, line-end, brix-gc-leaf-suffix))
         . leaf = record-name(bytes, line-start, line-end)
         if leaf
             leaves[leaf] = true
-    else if kind == 65 && record-line-ends-with(bytes, line-start, line-end, gc-polling-suffix)
+    else if kind == 65 && (record-line-ends-with(bytes, line-start, line-end, gc-polling-suffix) || record-line-ends-with(bytes, line-start, line-end, brix-gc-polling-suffix))
         . polled = record-name(bytes, line-start, line-end)
         if polled
             polling[polled] = true
@@ -663,7 +665,7 @@ _ pointer-wrapped String
 _ c-type-name String?
     - key String
 
-match? key
+match? canonical-runtime-name(key)
     |= "void"
         "Void"
     |= "bool"
