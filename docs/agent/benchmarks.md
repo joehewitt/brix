@@ -42,7 +42,7 @@ Benchmark programs must not time themselves and must not read changing repo file
 or depend on clocks. Put fixed inputs directly in the source or generate them from deterministic
 templates.
 
-The compiler benchmarks in `parser` intentionally read the `compiler/brix-cli.yumi` import closure from
+The compiler benchmarks in `parser` intentionally read the `apps/compiler/brix-cli.yumi` import closure from
 this worktree. Their corpus grows with the compiler. Treat them as practical watchpoints rather
 than fixed-input benchmarks:
 

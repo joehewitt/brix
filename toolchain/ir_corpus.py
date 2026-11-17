@@ -34,9 +34,9 @@ def toolchain_path(*parts):
     return os.path.normpath(os.path.join(PREFIX, *parts))
 
 
-SNAPSHOT_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'compiler', 'examples'))
-COMPILER_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'compiler'))
-COMPILER_SOURCE = toolchain_path('compiler', 'brix-cli.yumi')
+SNAPSHOT_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'apps/compiler', 'examples'))
+COMPILER_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'apps/compiler'))
+COMPILER_SOURCE = toolchain_path('apps', 'compiler', 'brix-cli.yumi')
 STDLIB = toolchain_path('stdlib')
 APP_PATTERNS = ('*-app.yumi', '*-app.bx')
 FULL = 'ir'

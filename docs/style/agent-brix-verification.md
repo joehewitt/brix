@@ -54,7 +54,7 @@ such as `//dispatch.rank// candidate $decl ranks $rank`. Then run
 `.tmp/build/tools/brix-probed`, which is reused until the compiler's sources or the selectors
 change. It then runs that compiler on the rest of the command line, as `brix probes run` would, and
 records its trace as `last`. Add `-o` to build and run `x` too. The selectors work as they do for
-`--probes`. Without selectors, every probe in `compiler/brix-cli.yumi` and every probe with no
+`--probes`. Without selectors, every probe in `apps/compiler/brix-cli.yumi` and every probe with no
 key compiles in. Keyed probes in the compiler compile out of `bin/brix` itself, so leaving them in
 costs nothing.
 

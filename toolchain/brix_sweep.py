@@ -8,7 +8,7 @@ import compiler
 from common import BUILD, ROOT, Failure, file_digest, say, take_folders
 
 SWEEP = os.path.join(BUILD, 'brix-sweep')
-COMPILER_SOURCE = os.path.join('compiler', 'brix-cli.bx')
+COMPILER_SOURCE = os.path.join('apps', 'compiler', 'brix-cli.bx')
 SUMMARY = 'sweep files '
 SHOWN_PROBLEMS = 40
 WORKERS = os.cpu_count() or 4

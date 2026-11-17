@@ -15,7 +15,7 @@ COMPILER = os.path.join(TOOLS, 'brix')
 OBJECT = COMPILER + '.o'
 INPUTS = COMPILER + '.inputs.json'
 LOCK = COMPILER + '.lock'
-SOURCE = os.path.join(ROOT, 'compiler', 'brix-cli.yumi')
+SOURCE = os.path.join(ROOT, 'apps', 'compiler', 'brix-cli.yumi')
 RUNTIME_BUILDER = os.path.join(ROOT, 'toolchain', 'runtime.py')
 INPUTS_VERSION = 5
 BUILDER_FILES = (
@@ -26,12 +26,12 @@ BUILDER_FILES = (
 )
 TOOL_SEED = 'compiler'
 TOOL_SOURCES = {
-    'probes': os.path.join(ROOT, 'compiler', 'probes', 'probe-cli.yumi'),
-    'test': os.path.join(ROOT, 'compiler', 'test', 'test-cli.yumi'),
-    'test-suite': os.path.join(ROOT, 'compiler', 'test', 'test-suite.yumi'),
-    'bench': os.path.join(ROOT, 'compiler', 'bench', 'bench-cli.yumi'),
-    'lint': os.path.join(ROOT, 'compiler', 'lint', 'lint-cli.yumi'),
-    'brix': os.path.join(ROOT, 'compiler', 'brix', 'brix-cli.yumi'),
+    'probes': os.path.join(ROOT, 'apps', 'compiler', 'probes', 'probe-cli.yumi'),
+    'test': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-cli.yumi'),
+    'test-suite': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-suite.yumi'),
+    'bench': os.path.join(ROOT, 'apps', 'compiler', 'bench', 'bench-cli.yumi'),
+    'lint': os.path.join(ROOT, 'apps', 'compiler', 'lint', 'lint-cli.yumi'),
+    'brix': os.path.join(ROOT, 'apps', 'compiler', 'brix', 'brix-cli.yumi'),
 }
 PROBED_COMPILER = os.path.join(TOOLS, 'brix-probed')
 SELECTOR_CHARACTERS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.*:,-_ ')

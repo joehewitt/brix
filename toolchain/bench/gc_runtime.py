@@ -75,7 +75,7 @@ RUNTIME_ARCHIVES = (
 GC_ARCHIVE = 'brix/libs/gc/libbrixgc.a'
 SUPPORT_FILES = (
     '.brix/benchmarks.json',
-    'compiler/bench/bench-launch.yumi',
+    'apps/compiler/bench/bench-launch.yumi',
     'libs/build.json',
     'toolchain/bench/compile.py',
     'toolchain/bench/gc_runtime.py',

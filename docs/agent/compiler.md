@@ -1,7 +1,7 @@
 # The Compiler
 
 How the compiler in `stdlib/lang` is built, and the rules its design keeps. The program is
-`compiler/brix-cli.yumi`; `bin/brix` builds it into `.tmp/build/tools/brix` from the seed
+`apps/compiler/brix-cli.yumi`; `bin/brix` builds it into `.tmp/build/tools/brix` from the seed
 that `.release.json` pins (`toolchain/compiler.py`).
 
 | Directory | Holds |
