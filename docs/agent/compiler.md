@@ -53,7 +53,10 @@ that `.release.json` pins (`toolchain/compiler.py`).
 1. The pass order is parse, declare, link, bind, type, program tables, emit, IR to MIR, machine
    code. Binding runs once per declaration. Typing and emission run per instance.
 2. One walker per pass enumerates the language: `Binder`, `Checker`, `Emitter`. Lowering is
-   never spread across type, operator and builder objects.
+   never spread across type, operator and builder objects. The checker and the emitter are each
+   a file family: a core module (`checker.yumi`, `emitter.yumi`) and one module per feature, such
+   as `emitter.loops.yumi`, each a facet of the walker that `sees` the sibling features it calls.
+   A helper or state two features use stays in the core.
 3. There are two lowering modes, statement and expression. A subsystem (markup, styles, state
    machines, stream patterns, reactivity) desugars, uses typed intrinsics, or uses a
    whole-construct emitter shape. It never adds a third mode.
