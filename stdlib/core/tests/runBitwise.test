@@ -225,6 +225,60 @@ Exception: Expected I64 here, but this is F32, which becomes I64 only when asked
 -8
 ;====
 :====
+# A shift to the right of a 64-bit integer narrowed by `as` keeps the bits the shift brings down from the high word.
+
+-- top-byte(0x9e3779b97f4a7c15)
+-- top-bit(0x9e3779b97f4a7c15)
+-- top-word(0x9e3779b97f4a7c15)
+
+━━━━━━━━━━━━━━━━━━━━
++ top-byte U8
+    - state U64
+
+(state /zrshift/ 56) as U8
+
+━━━━━━━━━━━━━━━━━━━━
++ top-bit U8
+    - state U64
+
+(state /zrshift/ 63) as U8
+
+━━━━━━━━━━━━━━━━━━━━
++ top-word U32
+    - state U64
+
+(state /zrshift/ 40) as U32
+
+:----
+
+158
+1
+10368889
+;====
+:====
+# A shift to the right of a 64-bit integer narrowed to 32 bits brings down none of the bits above them, whatever widens its result afterward.
+
+-- low-byte(0x9e3779b97f4a7c15)
+-- low-half(0x9e3779b97f4a7c15)
+
+━━━━━━━━━━━━━━━━━━━━
++ low-byte U64
+    - state U64
+
+((state as U32) /zrshift/ 24) as U8 as U64
+
+━━━━━━━━━━━━━━━━━━━━
++ low-half U64
+    - state U64
+
+((state as U32) /zrshift/ 16) as U16 as U64
+
+:----
+
+127
+32586
+;====
+:====
 
 /core/intrinsics
 

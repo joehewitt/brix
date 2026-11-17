@@ -518,12 +518,16 @@ if dest == source || widths[source] as U32 > limit
 . definer = definers[source]
 if definer >= Definer.first && definers[dest] == id + Definer.first && used-once
     . definition = definer - Definer.first
-    if unhinted && !function.vregs[dest-row].gc-root && !copies-register
+    . defined-row = vreg-row(function, function.instructions[definition].operands[0])
+    . opcode = function.instructions[definition].opcode
+    if unhinted && keeps-bits && !function.vregs[dest-row].gc-root && !copies-register
         function.instructions[definition].operands.data[0] = operands[0]
         definers[dest] = definer
         function.drop-uses(id)
         = Rewrite.dropped
     .. unhinted = function.vregs[dest-row].hint == no-register
+    .. keeps-bits = (opcode != .lsr && opcode != .ubfx) || keeps-width
+    .. keeps-width = function.vregs[defined-row].reg-class == function.vregs[dest-row].reg-class
     .. copies-register = is-register-copy(function, definition)
 .. used-once = function.use-count(source) == 1
 if function.vregs[dest-row].reg-class == function.vregs[source-row].reg-class
