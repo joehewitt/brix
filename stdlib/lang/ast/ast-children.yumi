@@ -649,6 +649,10 @@ do match? nodes[branch]
 + do row-region Bool
     - body SyntaxId
 
+do match? nodes[holder-of(body)]
+    | .node-for-block(row)
+        if row.body == body && when-clause(row.loop) != 0
+            = true
 do match? nodes[body]
     | .node-block(block)
         . elements = 0u32
@@ -666,6 +670,23 @@ do match? nodes[body]
                     elements += 1
         = elements > 1
 = false
+
+────────────────────
++ do when-clause SyntaxId
+    - loop SyntaxId
+
+do match? nodes[loop]
+    | .node-loop-syntax(row)
+        . clause = row.clause
+        while clause != 0
+            . next SyntaxId = 0
+            do match? nodes[clause]
+                | .node-clause(item)
+                    if item.op == .when-clause
+                        = clause
+                    next = item.next
+            clause = next
+= 0
 
 ────────────────────
 + do keyed-clause SyntaxId

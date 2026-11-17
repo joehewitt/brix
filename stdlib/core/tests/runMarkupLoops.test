@@ -3331,3 +3331,149 @@ for child in children-of'Text()
 one, 1:a, many, 2:a
 one, 1:other, many, 2:other
 ;====
+:====
+# A `when` clause on a loop that follows state is tested in each row on its own, as the item changes.
+/core/markup
+
+. todos = List'Todo([Todo("a", false), Todo("b", true), Todo("c", false)])
+<Board board
+    for todo in #todos when !todo.#done
+        <Text = todo.name
+board.show()
+todos[1].done = false
+board.show()
+todos[0].done = true
+board.show()
+todos += Todo("d", true)
+board.show()
+todos[3].done = false
+board.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Todo
+
++ name String
++ done Bool
+
+────────────────────
++ This
+    - name
+    - done
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is MarkupNode
+
++ text String
+
+────────────────────
++ This
+    - text
+
+-- "  make $text"
+
+━━━━━━━━━━━━━━━━━━━━
++ Board is MarkupNode
+
+────────────────────
++ do show
+
+. parts = List'String()
+for child in children-of'Text()
+    parts += child.text
+-- ", ".join(parts)
+
+:----
+
+  make a
+  make c
+a, c
+  make b
+a, b, c
+b, c
+b, c
+  make d
+b, c, d
+;====
+:====
+# A keyed row tests its `when` clause again when its key comes to hold another item.
+/core/markup
+
+. todos = List'Todo([Todo("a", false), Todo("b", true)])
+<Board board
+    for todo in #todos keyed by todo.name when todo.#done
+        <Text = todo.name
+        <Text = "!"
+board.show()
+todos = List'Todo([Todo("a", true), Todo("b", false)])
+board.show()
+todos[1].done = true
+board.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Todo
+
++ name String
++ done Bool
+
+────────────────────
++ This
+    - name
+    - done
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is MarkupNode
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Board is MarkupNode
+
+────────────────────
++ do show
+
+. parts = List'String()
+for child in children-of'Text()
+    parts += child.text
+-- ", ".join(parts)
+
+:----
+
+b, !
+a, !
+a, !, b, !
+;====
+:====
+# A `when` clause on a loop that follows state reads a tracked local nowhere it could follow it.
+/core/markup
+
+. names = List'String(["a"])
+. long = false
+<Board board
+    for name in #names when name.length > 1 || #long
+        <Text = name
+long = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is MarkupNode
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Board is MarkupNode
+
+:----
+%compile-error
+
+Exception: The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep "long" in a property and read it with "#"
+<no file:7>
+        for name in #names when name.length > 1 || #long
+                                                   ^^^^^
+;====

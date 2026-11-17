@@ -426,6 +426,10 @@ if state == 2
     - region Content
 
 ━━━━━━━━━━━━━━━━━━━━
++ MarkupRowFilter'Item is () Bool
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
 + MarkupKeyBuilder'Item is () String
     - item Item
 
@@ -2847,20 +2851,79 @@ _ MarkupRegionRow'Item'Content'Host
 
 + parent Host
 + builder MarkupRegionRowBuilder'Item'Content
++ filter MarkupRowFilter'Item?
 
 ────────────────────
 + This
     - parent
     - builder
+    - filter MarkupRowFilter'Item? = null
 
 ────────────────────
 + do build Content ?! Error
     - item Item
 
 . region = parent.markup-make-region()!
+. tested = filter
+if tested
+    . row = MarkupFilteredRow'Item'Content(region, item, builder, tested)
+    markup-set-region-controller(region, row)
+    row.start()
+    = region
 markup-set-region-controller(region, MarkupRowRegion())
 builder(item, region)
 = region
+
+━━━━━━━━━━━━━━━━━━━━
+_ MarkupFilteredRow'Item'Content
+    is MarkupRegionController
+    - Content is MarkupParent'Content
+
++ region Content
++ item Item
++ builder MarkupRegionRowBuilder'Item'Content
++ filter MarkupRowFilter'Item
+
+_ branch MarkupBranchController'Content?
+_ action LiveAction?
+
+────────────────────
++ This
+    - region
+    - item
+    - builder
+    - filter
+
+────────────────────
++ do start ?! Error
+
+. arms = List'(MarkupBranchBuilder'Content)()
+arms += this.build-arm
+branch = MarkupBranchController'Content(region, arms, null)
+. made = make-owner-markup-action(List'Tracker(), this.select, region)
+action = made
+made.run-now()
+mark-structural-markup-action(made, region)
+
+────────────────────
++ do build-arm ?! Error
+    - into Content
+
+builder(item, into)
+
+────────────────────
++ do select ?! Error
+
+. arm Index? = if filter(item) then 0 else null
+. held = branch!
+if held.selected-arm != arm
+    held.select-markup-branch(arm)
+
+────────────────────
++ do close
+
+action?.close()
+action = null
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-region-row'Item'Content'Host MarkupRowBuilder'Item'Content
@@ -2879,6 +2942,26 @@ _ do markup-region-keyed-row'Item'Content'Host MarkupCollectionRowBuilder'Item'C
     - Host is MarkupParent'Content
 
 = MarkupRegionRow'(MarkupRowItem'Item)'Content'Host(parent, builder).build
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-region-filtered-row'Item'Content'Host MarkupRowBuilder'Item'Content
+    - parent Host
+    - builder MarkupRegionRowBuilder'Item'Content
+    - filter MarkupRowFilter'Item
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+
+= MarkupRegionRow'Item'Content'Host(parent, builder, filter).build
+
+━━━━━━━━━━━━━━━━━━━━
+_ do markup-region-keyed-filtered-row'Item'Content'Host MarkupCollectionRowBuilder'Item'Content
+    - parent Host
+    - builder MarkupRegionRowBuilder'(MarkupRowItem'Item)'Content
+    - filter MarkupRowFilter'(MarkupRowItem'Item)
+    - Content is MarkupParent'Content
+    - Host is MarkupParent'Content
+
+= MarkupRegionRow'(MarkupRowItem'Item)'Content'Host(parent, builder, filter).build
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do markup-create-branch-region'Content'Host Content

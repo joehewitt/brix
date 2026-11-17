@@ -3844,9 +3844,13 @@ do match? tree.nodes[id]
     | .node-for-block(row)
         . built = convert(id, .reason-markup-row, emit-closure(row.body))
         if region.adapts != no-instance
+            . filter = tree.when-clause(row.loop)
+            . tester = if filter != 0 then convert(filter, .reason-markup-key, emit-closure(filter)).operand else nothing
             . adapting = pending.length
             pending += content-hosts[top - 1].operand
             pending += built.operand
+            if filter != 0
+                pending += tester
             built = raising-call(id, region.adapts, adapting)
         . keyed = tree.keyed-clause(row.loop)
         . keyer = if keyed != 0 then convert(keyed, .reason-markup-key, emit-closure(keyed)).operand else nothing
@@ -4049,7 +4053,7 @@ if !tables.is-class(held)
     = Typed(make-operand(.operand-void, 0), no-type)
 . base = emit-identifier(id, name, held)
 . item = program.store-atom("item")
-if live-actions.length != 0
+if live-actions.length != 0 || facts.pulls(unit.reading, id)
     track(id, base.operand, item)
 = load-property(id, base.operand, held, item)
 

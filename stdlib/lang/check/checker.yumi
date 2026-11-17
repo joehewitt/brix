@@ -24701,15 +24701,24 @@ if pattern != 0 && !(tree.nodes[pattern] is .node-type-capture)
         - program.store-atom("Markup loop patterns must be simple captures")
     = invalid-type
 . current = clause
+. filters = 0
 while current != 0
     . next SyntaxId = 0
     do match? tree.nodes[current]
         | .node-clause(row)
-            if row.op != .keyed-by-clause
+            if row.op == .when-clause
+                filters += 1
+            if row.op != .keyed-by-clause && row.op != .when-clause
                 frame.diagnose
                     - current
                     - .stated
-                    - program.store-atom("Markup loop only supports keyed by clauses")
+                    - program.store-atom("A markup loop that follows state takes only keyed by and when clauses")
+                = invalid-type
+            if filters > 1
+                frame.diagnose
+                    - current
+                    - .stated
+                    - program.store-atom("A markup loop that follows state takes one when clause; join its conditions with &&")
                 = invalid-type
             next = row.next
     current = next
@@ -24786,6 +24795,18 @@ if keyed != 0
     facts.set-node-type(instance, keyed, keying)
     if conversions.convert(keyed, keyed, keying, keyer, .reason-markup-key) == invalid-type
         = invalid-type
+. filter = tree.when-clause(loop)
+. tester = no-type
+if filter != 0
+    tester = types.well-known-type-of("core/markup", "MarkupRowFilter", given)
+    . test = nested-decl-of(filter)
+    if tester == invalid-type || test == 0 || demand-nested(test, given) == no-instance
+        decline(id)
+        = invalid-type
+    . testing = intern-nested(test)
+    facts.set-node-type(instance, filter, testing)
+    if conversions.convert(filter, filter, testing, tester, .reason-markup-key) == invalid-type
+        = invalid-type
 demand-live-runtime()
 . live = instances.live
 . markup = types.markup-host-decl.module
@@ -24826,7 +24847,10 @@ if regioned
     scratch.types.push(parent)
     scratch.types.push(parent)
     scratch.types.push(shaped)
-    . adapter = if refreshes then "markup-region-keyed-row" else "markup-region-row"
+    if tester != no-type
+        scratch.types.push(tester)
+    . kind = if tester != no-type then "filtered-row" else "row"
+    . adapter = if refreshes then "markup-region-keyed-$kind" else "markup-region-$kind"
     adapts = calls.demand-runtime-call(markup, no-type, program.store-atom(adapter), mark, 3)
     scratch.types.rewind(mark)
     if adapts == no-instance || instances.signatures[adapts].returns != builder || !raises-out(id, adapts)
@@ -25113,20 +25137,25 @@ _ do check-key
 
 ` The function that keys a row of a markup loop region: given the row's item, which the name the
 ` loop's header writes, `each` and `it` hold, it gives the value of the `keyed by` clause,
-` converted to a `String` at the value, as the reference casts it.
+` converted to a `String` at the value, as the reference casts it. That of a `when` clause tests
+` the row's item, given as the row's function is, as a condition, and the markup runtime runs it
+` in a live action of the row's own, which what it reads with `#` notes (`watched`).
 prepare()
 . item = instances.argument-type(instance, 0)
 . resolution = bindings.resolution-of(frame.binding, clause)
 . expr SyntaxId = 0
+. tests = false
 do match? tree.nodes[clause]
     | .node-clause(row)
         expr = row.expr
+        tests = row.op == .when-clause
 if resolution.kind != .resolve-slot || item == no-type || expr == 0
     decline(clause)
     finish-errors(frame)
     close()
     =
-instances.set-returns(instance, types.string-type, types.string-type, .return-declared)
+. answer = if tests then types.bool-type else types.string-type
+instances.set-returns(instance, answer, answer, .return-declared)
 frame.assign(resolution.slot, item)
 . value = infer(expr)
 if value != invalid-type && value != no-type
@@ -25134,7 +25163,7 @@ if value != invalid-type && value != no-type
         - return-site(expr)
         - expr
         - value
-        - types.string-type
+        - answer
         - .reason-return
         - true
         - true
@@ -25230,8 +25259,18 @@ if decl == 0
     = false
 do match? program.modules[module].decls[decl]
     | .decl-function(fn)
-        = fn.kind == .row-decl
+        = fn.kind == .row-decl || (fn.kind == .key-decl && tests-row(fn.syntax))
 = false
+
+────────────────────
+_ tests-row Bool
+    - clause SyntaxId
+
+match tree.nodes[clause]
+    | .node-clause(row)
+        row.op == .when-clause
+    ??
+        false
 
 ────────────────────
 _ do check-source-update
@@ -33223,6 +33262,12 @@ _ do track-local
 . subscribers = subscribers-slot(slot)
 . kind = frame.declaration.kind
 . reaches = kind == .live-decl || kind == .whenever-decl || kind == .gate-decl || kind == .branch-decl || kind == .branch-arm-decl || kind == .source-decl || kind == .row-decl || kind == .slot-decl
+if kind == .key-decl && tests-row(frame.declaration.syntax) && !plain
+    . name = identifier-name(tree, id)
+    . shown = if name then name.text else "it"
+    . message = "The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep \"$shown\" in a property and read it with \"#\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    =
 if subscribers == no-slot || (frame.is-captured(slot) && !reaches) || in-initializer
     if !plain
         decline(id)
@@ -33516,6 +33561,9 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
             | .node-function-syntax
                 if function == 0
                     function = node
+            | .node-clause(row)
+                if function == 0 && row.op == .when-clause && nested-decl-of(node) != 0
+                    = true
             | .node-state-trigger(row)
                 =? false if row.kind != .state-trigger-whenever || function == 0
                 = tree.trigger-item(node, 0) == function
