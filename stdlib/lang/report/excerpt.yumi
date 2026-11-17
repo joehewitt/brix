@@ -1,0 +1,69 @@
+/lang/ast/ast
+/lang/ast/module
+/lang/ast/program
+/lang/brix/excerpt
+/lang/target
+
+━━━━━━━━━━━━━━━━━━━━
++ ExcerptSources
+
+_ program Program
+_ documents [ModuleId = BrixExcerpts]
+
+────────────────────
++ This
+    - program
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+for (_, excerpts) in documents
+    excerpts.end-using()
+
+────────────────────
++ do excerpt String
+    - module ModuleId
+    - loc MatchLocation
+    - inset U32 = 0
+    - span U32 = 0
+
+. found = shown(module, loc)
+=? "    ${found.text}\n${" " * (4 + found.start)}${"^" * found.width}" if found
+. text = source-line(program.modules[module].tree.source, loc.begin.line)
+. start = loc.begin.column + inset
+. width = 1
+if span != 0
+    width = span
+else if loc.end.line > loc.begin.line
+    width = if text.length > start then text.length - start - 1 else 0
+else if loc.end.column + 1 >= start
+    width = loc.end.column + 1 - start
+= "    $text\n${" " * (4 + start)}${"^" * width}"
+
+────────────────────
++ do line String
+    - module ModuleId
+    - loc MatchLocation
+
+. found = shown(module, loc)
+=? "    ${found.text}" if found
+= "    ${source-line(program.modules[module].tree.source, loc.begin.line)}"
+
+────────────────────
+_ do shown BrixExcerpt?
+    - module ModuleId
+    - loc MatchLocation
+
+. tree = program.modules[module].tree
+=? null if !program.shows-ubrix || !tree.source-path.ends-with(brix-extension)
+=? null if loc.begin.line == 0 && loc.begin.column == 0 && loc.end.line == 0 && loc.end.column == 0
+. held = documents[module]
+=? held.at(loc) if held
+. made = BrixExcerpts(tree.source)
+documents[module] = made
+= made.at(loc)

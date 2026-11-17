@@ -1,0 +1,76 @@
+./brix
+/code/structure/document
+/code/structure/rows
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixExcerpt is Tuple
+
++ text String
++ start Size
++ width Size
+
+━━━━━━━━━━━━━━━━━━━━
++ BrixExcerpts
+
++ source String
+
+_ language BrixLanguage
+_ document SourceDocument?
+_ line-starts [Index]
+
+────────────────────
++ This
+    - source
+
+.. language = BrixLanguage()
+document = catch? source-document-read(language, source)
+. bytes = byte-view(source)
+line-starts += 0
+for index in 0 .. < bytes.size
+    if bytes[index] == 10
+        line-starts += index + 1
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+language.store.release()
+
+────────────────────
++ do at BrixExcerpt?
+    - place MatchLocation
+
+. held = document
+=? null if !held
+. first = offset(place.begin)
+. last = offset(place.end)
+=? null if first == null || last == null
+. trail = held.trail-around(first, if last < first then first else last)
+=? null if trail.length == 0
+. row = held.row-of-node(trail[0])
+=? null if row == null
+. index = held.declaration-at(row)
+. shown = held.rows-of(index)[row - held.first-row(index)]
+. marked = language.marked-row(shown, trail)
+=? null if !marked
+. indent = shown.content-start
+= BrixExcerpt(" " * indent ++ marked.text, indent + marked.start, marked.end - marked.start)
+
+────────────────────
+_ do offset Index?
+    - place TokenLocation
+
+. line = place.line as Index
+=? null if line >= line-starts.length
+. bytes = byte-view(source)
+. column U32 = 0
+for position in line-starts[line] .. < bytes.size
+    . byte = bytes[position]
+    if byte < 128 || byte >= 192
+        =? position if column == place.column
+        column += 1
+= null

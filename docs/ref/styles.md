@@ -174,8 +174,11 @@ order they are written in the sheet does not matter:
    element's name: `<Field email • wide`{.rows}.
 4. **The element's own assignments**, which come last, so `code` is 8 wide.
 
-A later rule's value replaces an earlier one's. A name no visible rule has is ignored, so a
-misspelled `(• wied)` is never reported. So is a rule named for a type that does not exist.
+A later rule's value replaces an earlier one's. A name that no module of the program declares a
+rule for is an error, so a misspelled `(• wied)` is reported. A library that applies a name only
+for a theme to style declares it with an empty rule, `(rule wide)`, in the class whose markup
+applies it. A name some rule declares but none the element sees is ignored, and so is a rule named
+for a type that does not exist.
 
 ### Parameters
 
@@ -1044,6 +1047,7 @@ settled: paint false, layout true
 | Mistake | Message |
 | --- | --- |
 | A style without `/core/style` | `Type "Style" not found; it is declared in /core/style, which this module does not import. Add the import /core/style` |
+| A name no rule declares | `No style rule is named "wied". Write one in a style sheet, or, where a library applies it for a theme to style, declare it there with an empty rule` |
 | An unknown annotation | `Unknown style property annotation "@glowing"; only "@inherited" is supported` |
 | A slot in an extension | `StyleSheet extensions may not declare slots` |
 | A `This` rule in a sheet | `StyleSheets may not declare a "This" defaults rule` |

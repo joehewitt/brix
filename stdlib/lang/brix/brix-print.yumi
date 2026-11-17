@@ -36,6 +36,13 @@ _ brix-level-primary = 26
 + kind BrixTagKind
 
 ━━━━━━━━━━━━━━━━━━━━
++ BrixMarked is Tuple
+
++ text String
++ start Size
++ end Size
+
+━━━━━━━━━━━━━━━━━━━━
 + BrixPrinter
 
 + holder ImmutableTableRow'SourceNode?
@@ -44,6 +51,11 @@ _ brix-level-primary = 26
 + tail ImmutableTableRow'SourceNode?
 + has-text Bool
 + tags [BrixTag]
++ targets [U32]
++ target-start Size
++ target-end Size
+
+_ target-depth Index
 
 _ store SourceStore
 _ layout BrixLayout
@@ -155,6 +167,22 @@ column = 0
 is-field = false
 is-setting = false
 is-binding = false
+target-start = 0
+target-end = 0
+target-depth = targets.length
+
+────────────────────
+_ do note
+    - node ImmutableTableRow'SourceNode
+    - before Size
+
+=? if column <= before
+. depth = targets.find(node.id)
+=? if depth == null || depth > target-depth
+=? if depth == target-depth && before > target-start
+target-depth = depth
+target-start = before
+target-end = column
 
 ────────────────────
 _ do put
@@ -401,6 +429,7 @@ do match items
 _ do statement
     - node ImmutableTableRow'SourceNode
 
+. before = column
 do match node
     | .comment(_, text)
         put(if text.length > 0 then "` $text" else "`")
@@ -408,6 +437,8 @@ do match node
         form(node, store.nodes[start .. < start + count])
     ??
         expression(node, 0, true)
+if targets.length != 0
+    note(node, before)
 
 ────────────────────
 _ do form
@@ -1782,7 +1813,10 @@ for index in origin .. < items.length
         | .atom(_, name)
             if brix-is-name(name) && !is-joined
                 put("\$")
+                . before = column
                 tagged(name, .name)
+                if targets.length != 0
+                    note(part, before)
             else
                 braced(part)
         | .list(_, start, count)
@@ -1869,6 +1903,7 @@ _ do expression
 
 if is-tail && tail == null && minimum <= brix-level-named && ends-tail(node)
     tail = node
+. before = column
 do match node
     | .comment(_, text)
         put("` $text")
@@ -1882,6 +1917,8 @@ do match node
         is-setting = false
     | .list(_, start, count)
         operation(node, store.nodes[start .. < start + count], minimum, is-tail)
+if targets.length != 0
+    note(node, before)
 
 ────────────────────
 _ do operation

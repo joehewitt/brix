@@ -16,6 +16,7 @@
 /lang/check/type-store
 /lang/check/types
 /lang/ir/ir
+/lang/report/excerpt
 
 _ inline-depth U32 = 4
 _ inline-rounds U32 = 4
@@ -2259,7 +2260,8 @@ for position in 0 .. < ir.order.length
             chains += chain
         else if chains[found].length == 0
             chains[found] = chain
-= "\n".join(warning-text(targets[each], reasons[each], modules[each], syntaxes[each], chains[each]) in 0 .. < targets.length)
+. sources = use ExcerptSources(program)
+= "\n".join(warning-text(targets[each], reasons[each], modules[each], syntaxes[each], chains[each], sources) in 0 .. < targets.length)
 
 ────────────────────
 _ do warning-text String
@@ -2268,9 +2270,9 @@ _ do warning-text String
     - module ModuleId
     - syntax SyntaxId
     - chain IdList
+    - sources ExcerptSources
 
-. tree = program.modules[module].tree
-. loc = tree.nodes[syntax].loc
+. loc = program.modules[module].tree.nodes[syntax].loc
 . site = "${module-path(module)}:${loc.begin.line + 1}"
 . reason = if recursive then "recursive function" else "unresolved target: virtual dispatch"
 . row = instances.rows[tables.functions[target].instance]
@@ -2282,14 +2284,7 @@ if chain.length != 0
     for position in 0 .. < chain.length
         steps += "${display(chain[position])} at $site"
     message = "$message; expanded through ${" -> ".join(steps)}"
-. text = source-line(tree.source, loc.begin.line)
-. width = text.length as U32
-. count U32 = 1
-if loc.end.line > loc.begin.line
-    count = if width > loc.begin.column + 1 then width - loc.begin.column - 1 else 0
-else if loc.end.column >= loc.begin.column
-    count = loc.end.column - loc.begin.column + 1
-= "Warning: $message\n<$site>\n    $text\n${" " * (4 + loc.begin.column)}${"^" * count}"
+= "Warning: $message\n<$site>\n${sources.excerpt(module, loc)}"
 
 ────────────────────
 _ display String

@@ -1,5 +1,6 @@
 ./decl-text
 ./diagnostic-report
+./excerpt
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
@@ -650,39 +651,29 @@ _ unwritten-message String
     - message String
     - inset U32 = 0
     - span U32 = 0
+    - sources ExcerptSources? = null
 
 . owner = program.modules[module]
 . path = display-path(owner.path)
 if syntax == 0
     = "Exception: $message\n<$path>"
-. tree = owner.tree
-. loc = tree.nodes.loc[syntax]
-. text = source-line(tree.source, loc.begin.line)
-. start = loc.begin.column + inset
-. width = 1
-if span != 0
-    width = span
-else if loc.end.line > loc.begin.line
-    width = if text.length > start then text.length - start - 1 else 0
-else if loc.end.column + 1 >= start
-    width = loc.end.column + 1 - start
-. indent = " " * (4 + start)
-. carets = "^" * width
-= "Exception: $message\n<$path:${loc.begin.line + 1}>\n    $text\n$indent$carets"
+. loc = owner.tree.nodes.loc[syntax]
+. own = use ExcerptSources(program)
+= "Exception: $message\n<$path:${loc.begin.line + 1}>\n${(sources ?? own).excerpt(module, loc, inset, span)}"
 
 ━━━━━━━━━━━━━━━━━━━━
-+ related-text String
++ do related-text String
     - program Program
     - module ModuleId
     - syntax SyntaxId
     - label String
+    - sources ExcerptSources? = null
 
 ` A second place a diagnostic points at: its label, where it is, and the line there.
-"$label:\n<$path:${loc.begin.line + 1}>\n    ${source-line(owner.tree.source, loc.begin.line)}"
-
-.. owner = program.modules[module]
-.. path = display-path(owner.path)
-.. loc = owner.tree.nodes.loc[syntax]
+. owner = program.modules[module]
+. loc = owner.tree.nodes.loc[syntax]
+. own = use ExcerptSources(program)
+= "$label:\n<${display-path(owner.path)}:${loc.begin.line + 1}>\n${(sources ?? own).line(module, loc)}"
 
 ━━━━━━━━━━━━━━━━━━━━
 + display-path String
@@ -1161,6 +1152,7 @@ _ report-order
 ` The errors reported of a module, by line. One TypeScript states with no place keeps the line
 ` of its node for the order and is shown with none.
 . owner = program.modules[module]
+. sources = use ExcerptSources(program)
 . keyed [String]
 . reported [String]
 for diagnostic in bindings.diagnostics
@@ -1171,7 +1163,7 @@ for diagnostic in bindings.diagnostics
     if reported.find(key) != null
         continue
     reported += key
-    . text = diagnostic-text(program, module, diagnostic.syntax, message)
+    . text = diagnostic-text(program, module, diagnostic.syntax, message) • sources sources
     keyed += keyed-text(owner, diagnostic.syntax, text)
 . seen [InstanceId]
 . reached [String]
@@ -1192,10 +1184,11 @@ for diagnostic in facts.diagnostics
         - message
         - if moved then 0u32 else diagnostic.inset
         - if moved then 0u32 else diagnostic.width
+        - sources
     if diagnostic.related-label
         . label = diagnostic.related-label
         . related = diagnostic.related-module
-        text += "\n" ++ related-text(program, related, diagnostic.related-syntax, label!.text)
+        text += "\n" ++ related-text(program, related, diagnostic.related-syntax, label!.text, sources)
     . entry = keyed-text(owner, if moved then place else diagnostic.syntax, text)
     if diagnostic.kind == .reached
         reached += entry
@@ -1219,17 +1212,12 @@ for text in ordered
     - module ModuleId
 
 . owner = program.modules[module]
+. sources = use ExcerptSources(program)
 . keyed [String]
 for diagnostic in facts.diagnostics
     if diagnostic.module == module && diagnostic.kind == .not-supported
-        keyed += keyed-text
-            - owner
-            - diagnostic.syntax
-            - diagnostic-text
-                - program
-                - module
-                - diagnostic.syntax
-                - report.decline-message(diagnostic)
+        . text = diagnostic-text(program, module, diagnostic.syntax, report.decline-message(diagnostic)) • sources sources
+        keyed += keyed-text(owner, diagnostic.syntax, text)
 = ordered-entries(keyed)
 
 ────────────────────
@@ -1242,6 +1230,7 @@ for diagnostic in facts.diagnostics
 ` module, or a member of an extension of a style sheet that is wrong, whose check judges the
 ` extension whole.
 . owner = program.modules[module]
+. sources = use ExcerptSources(program)
 . keyed [String]
 for position in 0 .. < owner.undeclared.length
     . written = owner.undeclared[position]
@@ -1253,10 +1242,8 @@ for position in 0 .. < owner.undeclared.length
     if judged || reported-within(module, written)
         continue
     if holder == 0 || (members && is-named(module, holder))
-        keyed += keyed-text
-            - owner
-            - written
-            - diagnostic-text(program, module, written, "Not supported")
+        . text = diagnostic-text(program, module, written, "Not supported") • sources sources
+        keyed += keyed-text(owner, written, text)
 = ordered-entries(keyed)
 
 ────────────────────

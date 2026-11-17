@@ -149,6 +149,32 @@ SourceRow
 .. spans = spans-of(row, store.node-at(row.node))
 
 ────────────────────
++ do marked-row BrixMarked?
+    - row SourceOutlineRow
+    - trail [U32]
+
+. node = store.node-at(row.node)
+=? null if !node || row.is-divider || row.mode == brix-mode-unparsed
+printer.targets = trail
+. text = printed(row, node)
+. found = printer.target-end > printer.target-start
+. marked = BrixMarked(text, if found then printer.target-start else 0, if found then printer.target-end else text.length)
+printer.targets = List'U32()
+= marked
+
+────────────────────
+_ printed String
+    - row SourceOutlineRow
+    - node ImmutableTableRow'SourceNode
+
+|? brix-is-head-mode(row.mode)
+    printer.heading(node)
+|? row.mode == brix-mode-text
+    printer.line(node)
+??
+    printer.row(node)
+
+────────────────────
 + mode-name String
     - mode SourceRowMode
 

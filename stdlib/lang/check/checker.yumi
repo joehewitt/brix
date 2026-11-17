@@ -7009,7 +7009,7 @@ _ do choose-written-rule Bool
 ` `resolveMatch` does, or else those the style sheets in view choose, each with the class that
 ` writes it, in `levels` and `members`; then those of the rules written in rules in view
 ` (`element-scopes`) in `scoped`. A name that some rule takes but none for those values is the
-` reference's error; more than one rule given values, a rule that matches ambiguously, and a
+` reference's error, and so is a name no module of the program declares (`style-declared`); more than one rule given values, a rule that matches ambiguously, and a
 ` choice the sheets or the rules in view cannot make here are declined. False where one is.
 do match? tree.nodes[application]
     | .node-style-rule-application(applied)
@@ -7041,6 +7041,9 @@ do match? tree.nodes[application]
             . place = if place-missed != U32.max then missed-value else application
                 .. missed-value = tree.children[applied.args.start + place-missed]
             frame.diagnose(place, .stated, program.store-atom("Type mismatch"))
+            = false
+        if levels.length == 0 && scoped.length == 0 && !style-declared(applied.name)
+            frame.diagnose(application, .stated, program.store-atom("No style rule is named \"${applied.name.text}\". Write one in a style sheet, or, where a library applies it for a theme to style, declare it there with an empty rule"))
             = false
         if several && given.length != 0 && (scoped.length != 0 || !variants-alike(levels, members))
             decline(application)
@@ -10785,6 +10788,20 @@ _ do scoping-any Bool
 for owner in facts.scoping-modules
     if program.shares-case(module, owner)
         = true
+= false
+
+────────────────────
+_ do style-declared Bool
+    - name Atom
+
+` Whether a module the module being typed shares a case with writes a style rule of a name, in a
+` rule or outside one.
+=? true if nested-named(name)
+. position = facts.first-style-rule(name)
+while position != U32.max
+    . ref = facts.style-rules[position]
+    position = facts.style-rule-nexts[position]
+    =? true if program.shares-case(module, ref.module)
 = false
 
 ────────────────────

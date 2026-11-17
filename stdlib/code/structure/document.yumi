@@ -24,6 +24,7 @@ _ source-rendered-capacity Size = 4096
 + revision U64
 + line-ids [U32]
 
+_ marks SexpMarks
 _ row-ends [Size]
 _ kept [U32 = SourceShown]
 _ retired [SourceShown]
@@ -41,6 +42,7 @@ _ viewed [U32 = [String]]
     - language
     - declarations
     - line-ids
+    - marks
 
 .. store = language.store
 . end Size = 0
@@ -300,6 +302,16 @@ revision += 1
 = row-on-trail(home, trail)
 
 ────────────────────
++ do trail-around [U32]
+    - first Index
+    - last Index
+
+. trail [U32]
+for index in 0 .. < declarations.length
+    =? trail if around(declaration(index), first, last, trail)
+= trail
+
+────────────────────
 + do written SexpWritten
 
 . nodes [ImmutableTableRow'SourceNode]
@@ -430,6 +442,23 @@ trail += node.id
 = true
 
 ────────────────────
+_ do around Bool
+    - node ImmutableTableRow'SourceNode
+    - first Index
+    - last Index
+    - trail [U32]
+
+. end = marks.end(node.id)
+=? false if end != 0 && (marks.start(node.id) > first || last >= end)
+for item in store.items(node)
+    if around(item, first, last, trail)
+        trail += node.id
+        = true
+=? false if end == 0
+trail += node.id
+= true
+
+────────────────────
 _ do row-on-trail Size
     - index Index
     - trail [U32]
@@ -508,7 +537,7 @@ for place in roots
 . places [U32]
 for declaration in source-declarations(language, forms, true)
     places += declaration.index as U32
-= SourceDocument(language, places, marks.line-ids(text, store, roots))
+= SourceDocument(language, places, marks.line-ids(text, store, roots), marks)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do source-declarations [ImmutableTableRow'SourceNode]
