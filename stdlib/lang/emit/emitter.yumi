@@ -20917,15 +20917,22 @@ if !place || held == no-layout || types.properties[place].storage-kind != .stora
 . property = types.properties[place]
 . object = read-captured(slot, anchor, type)
 track(anchor, object.operand, name)
-. value = load-property(anchor, object.operand, type, name)
+. read = load-property(anchor, object.operand, type, name, true)
 . tracking = live-actions.pop()
+. unwraps = types.is-optional(read.type) && facts.node-type(unit.reading, anchor) == types.optional-inner(read.type)
+. onward = if unwraps then ir.reserve-block() else no-block
+if unwraps
+    . filled = ir.reserve-block()
+    branch(present(anchor, read).operand, filled, onward)
+    ir.start-block(filled)
+. value = if unwraps then payload(anchor, read) else read
 . mark = pins.length
 pin(anchor, value.operand, value.type)
 do match? tree.nodes[statement]
     | .node-assign(row)
         . assignment = emit-assign(anchor, .eq-op, row.rhs, anchor)
         unpin(mark)
-        if assignment.stored.type != no-type && assignment.stored.type != property.type
+        if !unwraps && assignment.stored.type != no-type && assignment.stored.type != property.type
             . back = convert(statement, .reason-assignment, assignment.stored)
             if back.type == property.type
                 put-property
@@ -20937,6 +20944,9 @@ do match? tree.nodes[statement]
                     - U32.max
                     - false
                     - memo-flag-of(type, property)
+if unwraps
+    jump(onward)
+    ir.start-block(onward)
 live-actions += tracking
 
 ────────────────────

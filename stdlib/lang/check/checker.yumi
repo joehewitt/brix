@@ -1891,7 +1891,7 @@ demand-live-runtime()
 do match? tree.nodes[statement]
     | .node-assign(row)
         standing = anchor
-        standing-type = declared
+        standing-type = if takes-held(declared, named-place-type(row.rhs)) then types.optional-inner(declared) else declared
         . stored = infer-assign(anchor, .eq-op, row.rhs, anchor, Want())
         standing = 0
         standing-type = no-type
@@ -1901,6 +1901,24 @@ do match? tree.nodes[statement]
             =? false if conversions.convert(statement, row.rhs, held, declared, .reason-assignment) == invalid-type
         = true
 = false
+
+────────────────────
+_ do takes-held Bool
+    - property TypeId
+    - place TypeId
+
+=? false if !types.is-optional(property) || place == no-type || place == invalid-type || types.is-optional(place)
+=? false if relations.implicit(conversions.compare-held(property, place))
+= relations.implicit(conversions.compare-held(types.optional-inner(property), place))
+
+────────────────────
+_ do named-place-type TypeId
+    - place SyntaxId
+
+do match? tree.nodes[place]
+    | .node-get-expression(row)
+        = member-type(named-place-type(row.object), row.name)
+= place-type(place)
 
 ────────────────────
 _ do place-type TypeId

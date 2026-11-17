@@ -4607,6 +4607,88 @@ b=4 a=1 k4 k1
 b=4 a=6 k4 k6
 ;====
 :====
+# A non-optional place bound to an optional property stores back what the property holds, and
+# nothing where it holds nothing.
+
+. miles = false
+<Picker picker
+    selected <-> miles
+-- "${miles} ${picker.selected}"
+picker.pick(true)
+-- "${miles} ${picker.selected}"
+picker.clear()
+-- "${miles} ${picker.selected}"
+miles = false
+-- "${miles} ${picker.selected}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Picker
+
++ selected Bool?
+
+────────────────────
++ do pick
+    - next Bool
+
+selected = next
+
+────────────────────
++ do clear
+
+selected = null
+:----
+
+false false
+true true
+true unknown
+false false
+;====
+:====
+# An optional property may bind a place that is a member of another object, and an optional place
+# still takes nothing.
+
+. settings = Settings()
+. maybe Int? = 4
+<Chooser first
+    chosen <-> settings.size
+<Chooser second
+    chosen <-> maybe
+first.choose(7)
+second.choose(8)
+-- "${settings.size} ${maybe}"
+first.clear()
+second.clear()
+-- "${settings.size} ${maybe}"
+settings.size = 2
+-- "${settings.size} ${first.chosen}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Settings
+
++ size = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Chooser
+
++ chosen Int?
+
+────────────────────
++ do choose
+    - next Int
+
+chosen = next
+
+────────────────────
++ do clear
+
+chosen = null
+:----
+
+7 8
+7 unknown
+2 2
+;====
+:====
 # A binding written outside a markup element's body is reported.
 
 . a = 1

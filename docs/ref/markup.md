@@ -397,6 +397,10 @@ back in the place.
   only when asked; bind a place of the property's type`. Where the property holds a number or a
   `Bool` and the place another type, the element is given back what the place holds after each
   store, so a conversion that loses something shows what was kept.
+- **An optional property** binds a place of the type it holds, as a `SegmentedControl`'s
+  `selected` binds a `Bool` in `(<-> selected uses-miles)`{.brix}. The place is stored only a
+  value the property holds: where the property holds nothing, the place keeps its value. A place
+  that is optional too takes nothing as well.
 - **When.** Without a batch root, a change of the element is stored back before the statement that
   made it goes on. Under a batch root it is stored back when the batch runs, as other actions are,
   so a handler of an event the element publishes as it changes still sees the place's old value.
