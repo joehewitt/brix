@@ -1,0 +1,229 @@
+./editor-theme
+/data/json
+/graphics/primitives
+/gui
+/gui/desktop
+/math
+/net/http
+/net/url
+/os/file
+/os/path
+/regex
+/time/duration
+/ui/app-state
+
+_ updates-key = "updates"
+_ updates-version = 1
+_ updates-url = "https://brix-lang.com/releases/editor/latest.json"
+_ updates-interval = 86400
+
+━━━━━━━━━━━━━━━━━━━━
+• extend EditorTheme
+
+• update-bar • flex-row items-center h:38 px:12 bg:editor-document-color
+    border-color = gui-divider-color
+    border-width = 0
+    border-top-width = 1
+
+• update-text • flex:1 text:gui-text-color
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorRelease is Tuple
+
++ version String
++ page String
++ minimum-system String?
+
+━━━━━━━━━━━━━━━━━━━━
++ EditorUpdates
+    is Closable
+
++ state AppState
++ version String?
++ available EditorRelease?
++ event reported String
+
+_ is-closed = false
+
+────────────────────
++ This
+    - state
+
+version = editor-version()
+
+────────────────────
++ do start
+
+=? if !version
+do new
+    watch()
+
+────────────────────
++ do check-now
+
+do new
+    check(true)
+
+────────────────────
++ do download
+
+. shown = available
+=? if !shown
+. ignored = open-url(shown.page)
+
+────────────────────
++ do dismiss
+
+. shown = available
+=? if !shown
+available = null
+. fields = Map'String'JSON
+    • "dismissed" shown.version
+state.write(updates-key, updates-version, fields)
+state.flush()
+
+────────────────────
++ do close
+
+is-closed = true
+
+────────────────────
+_ do watch
+
+while !is-closed
+    check(false)
+    (updates-interval as Seconds).wait()
+
+────────────────────
+_ do check
+    - is-asked Bool
+
+. current = version
+if !current
+    if is-asked
+        reported <- "This build of Brix Editor has no version, so it cannot check for updates."
+    =
+. fetched = catch fetch-editor-release()
+if fetched is Error
+    if is-asked
+        reported <- "Unable to check for updates: ${(fetched as Error).message}"
+    =
+. release = fetched as EditorRelease?
+if !release
+    if is-asked
+        reported <- "Brix Editor $current is the latest version."
+    =
+if !editor-version-is-newer(release.version, current) || !editor-runs-on(release.minimum-system)
+    if is-asked
+        reported <- "Brix Editor $current is the latest version."
+    =
+if !is-asked && dismissed() == release.version
+    =
+available = release
+
+────────────────────
+_ do dismissed String?
+
+. saved = state.read(updates-key, updates-version)
+=? null if !saved
+. fields = catch? JSONReader(updates-key, saved).object()
+=? null if !fields
+= catch? fields["dismissed"].string()
+
+━━━━━━━━━━━━━━━━━━━━
++ UpdateBar is Box
+    using EditorTheme
+
++ updates EditorUpdates
++ release EditorRelease
+
+────────────────────
+
+<This • update-bar
+    <Label • update-text
+        text = "Brix Editor ${release.version} is available."
+    <Button "Not Now" • w:90
+        action = => do updates.dismiss()
+    <Button "Download" • w:100 ml:8
+        role = ButtonRole.default
+        action = => do updates.download()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fetch-editor-release EditorRelease? ?! Error
+
+. response = http-get(URL(updates-url))
+=? null if response.status == HTTPStatus.not-found
+?! Error("brix-lang.com answered ${response.status}") if response.status != HTTPStatus.ok
+. fields = JSONReader("latest.json", parse-json(response.text)).object()
+. minimum = catch? fields["minimumSystem"].string()
+= EditorRelease(fields["version"].string(), fields["page"].string(), minimum)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do editor-version String?
+
+. executable = catch? executable-path()
+=? null if !executable
+. contents = executable.parent?.parent
+=? null if !contents
+= plist-string(contents / "Info.plist", "CFBundleShortVersionString")
+
+━━━━━━━━━━━━━━━━━━━━
++ do editor-version-is-newer Bool
+    - candidate String
+    - current String
+
+. later = release-numbers(candidate)
+. earlier = release-numbers(current)
+=? false if later.length != 4 || earlier.length != 4
+= numbers-are-later(later, earlier)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do editor-runs-on Bool
+    - minimum String?
+
+=? true if !minimum
+. system = plist-string(Path("/System/Library/CoreServices/SystemVersion.plist", 0), "ProductVersion")
+=? true if !system
+= !numbers-are-later(dotted-numbers(minimum), dotted-numbers(system))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do numbers-are-later Bool
+    - later [Int]
+    - earlier [Int]
+
+for index in 0 .. < min(later.length, earlier.length)
+    =? later[index] > earlier[index] if later[index] != earlier[index]
+= later.length > earlier.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do release-numbers [Int]
+    - version String
+
+. pattern = catch? Regex("^(\\d{4})\\.(\\d{2})\\.(\\d{2})-(\\d+)")
+=? List'Int() if !pattern
+. found = catch? pattern.find(version)
+=? List'Int() if !found || found.value != version
+= List'Int(Int(found.group(each) ?? "0") in [1, 2, 3, 4])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do dotted-numbers [Int]
+    - text String
+
+. pattern = catch? Regex("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?")
+=? List'Int() if !pattern
+. found = catch? pattern.find(text)
+=? List'Int() if !found
+= List'Int(Int(found.group(each) ?? "0") in [1, 2, 3])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do plist-string String?
+    - path Path
+    - key String
+
+. text = catch? read-file-text(path)
+=? null if !text
+. pattern = catch? Regex("<key>${regex-escape(key)}</key>\\s*<string>([^<]*)</string>")
+=? null if !pattern
+. found = catch? pattern.find(text)
+=? null if !found
+= found.group(1)

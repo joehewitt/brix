@@ -5,6 +5,7 @@
 ./output-panel
 ./panes
 ./runner
+./updates
 ./welcome
 ./workspace
 /code/file-text
@@ -34,6 +35,7 @@
 + chrome-height = gui-toolbar-height + (if #has-tabs then gui-toolbar-tab-bar-height else 0)
 + is-brix-active = workspace.#active?.is-brix ?? false
 + runner = Runner()
++ updates = EditorUpdates(workspace.state)
 + shows-output = false
 + is-running = runner-is-busy(runner.#state)
 + can-run = workspace.#active?.#can-run ?? false
@@ -43,6 +45,8 @@ _ is-close-confirmed = false
 ────────────────────
 + This
     - workspace
+
+updates.start()
 
 ────────────────────
 
@@ -306,6 +310,10 @@ _ is-close-confirmed = false
                 <MenuSeparator
                 <MenuItem
                     role = MenuRole.bring-all-to-front
+        <MenuBarItem "Help"
+            <Menu
+                <MenuItem
+                    command = updates-shortcut
 
     <FileSidebar files • glass w:260
         workspace = workspace
@@ -321,6 +329,11 @@ _ is-close-confirmed = false
                 <WelcomeView welcome • flex:1
                     padding-top = #chrome-height
                     workspace = workspace
+                    runner = runner
+            if updates.#available != null
+                <UpdateBar
+                    updates = updates
+                    release = updates.#available!
             if #shows-output
                 <OutputPanel • h:240
                     workspace = workspace
@@ -403,6 +416,12 @@ shows-output = !shows-output
 for event on closed
 
 runner.close()
+updates.close()
+
+────────────────────
+for message on updates.reported
+
+. ignored = toaster.post(message, ToastSeverity.info)
 
 ────────────────────
 for document on toolbar.closing
