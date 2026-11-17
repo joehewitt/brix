@@ -1443,24 +1443,7 @@ if layout != tables.layouts.function-layout
 . start = given.length
 give-arguments(written)
 pending += data
-. empty U32 = ArgumentFill.fill-empty
-for place in 0 .. < args.count
-    . fill = facts.call-fills[fills.start + place] as U32
-    . declared = types.child-type(args, place)
-    . value = Typed(nothing, no-type)
-    . site = id
-    if fill != empty && fill < written.count
-        site = tree.children[written.start + fill]
-        value = convert(site, .reason-argument, given[start + fill])
-    else if fill == empty && binding != no-type
-        value = part(tuple.operand, held, 1 + place, id)
-        if value.type != declared
-            value = convert-held(id, value, declared)
-    else
-        refuse(.refused-expression, id)
-    if value.type != declared
-        refuse(.refused-conversion, site)
-    pending += value.operand
+pass-filled(id, written, start, fills, args, tuple.operand, held)
 drop-given(start)
 . answered = if carried == no-type then returns else carried
 . result = Typed(call(code, id, mark, .callee-value, layout-of(answered, id), !in-landing), answered)
@@ -1469,6 +1452,39 @@ if carried != no-type && fact != no-fact && facts.calls[fact].propagates
 if result.type != facts.node-type(unit.reading, id) && !links-into(id, result.type, facts.node-type(unit.reading, id))
     refuse(.refused-conversion, id)
 = result
+
+────────────────────
+_ do pass-filled
+    - id SyntaxId
+    - written RowRange'SyntaxId
+    - start Size
+    - fills RowRange'ArgumentFill
+    - args RowRange'TypeId
+    - bound Operand
+    - held LayoutId
+
+` Passes an argument for each place a value's function type declares, converted to what the
+` type declares for it: the argument written that the type pass recorded as filling the place,
+` which `given` holds from `start`, or else what a binding of the value, `bound` laid out as
+` `held`, holds there.
+. empty U32 = ArgumentFill.fill-empty
+for place in 0 .. < args.count
+    . fill = facts.call-fills[fills.start + place] as U32
+    . declared = types.child-type(args, place)
+    . value = Typed(make-operand(.operand-void, 0), no-type)
+    . site = id
+    if fill != empty && fill < written.count
+        site = tree.children[written.start + fill]
+        value = convert(site, .reason-argument, given[start + fill])
+    else if fill == empty && held != void-layout
+        value = part(bound, held, 1 + place, id)
+        if value.type != declared
+            value = convert-held(id, value, declared)
+    else
+        refuse(.refused-expression, id)
+    if value.type != declared
+        refuse(.refused-conversion, site)
+    pending += value.operand
 
 ────────────────────
 _ do emit-c-value-call Typed
@@ -1495,18 +1511,7 @@ if !is-pointer(layout-of(source.type, callable))
 . start = given.length
 give-arguments(written)
 . mark = pending.length
-. empty U32 = ArgumentFill.fill-empty
-for place in 0 .. < args.count
-    . fill = facts.call-fills[fills.start + place] as U32
-    . declared = types.child-type(args, place)
-    if fill == empty || fill >= written.count
-        refuse(.refused-expression, id)
-        break
-    . site = tree.children[written.start + fill]
-    . value = convert(site, .reason-argument, given[start + fill])
-    if value.type != declared
-        refuse(.refused-conversion, site)
-    pending += value.operand
+pass-filled(id, written, start, fills, args, nothing, void-layout)
 drop-given(start)
 . result = call(source.operand, id, mark, .callee-value, layout-of(returns, id), !in-landing)
 if returns != facts.node-type(unit.reading, id)
