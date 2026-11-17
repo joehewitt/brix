@@ -607,6 +607,82 @@ slot
 slot
 ;====
 :====
+# Demonstrates that a slot outlet that sets attributes on its content can be referenced locally
+# inside the component body.
+
+<ReferencePanel panel
+    <MarkText (header) = "slot"
+
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ first-child MarkNode?
++ last-child MarkNode?
++ next MarkNode?
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+. child = first-child
+while child
+    if cursor == index
+        = child
+    cursor += 1
+    child = child.next
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ ReferencePanel is MarkNode
+
+────────────────────
++ <MarkText header
+    text = "overlaid"
+<MarkText = header.text
+
+:----
+
+overlaid
+overlaid
+;====
+:====
 # Demonstrates local ids on slotted nodes and live property overlays on slot fallbacks.
 
 . title = "Inline"
