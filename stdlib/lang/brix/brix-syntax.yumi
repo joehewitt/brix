@@ -53,15 +53,6 @@ _ brix-keywords List
     * "finally"
     * "where"
 
-_ brix-sigils List
-    * "#"
-    * "@"
-    * "\$"
-    * "%"
-    * "&"
-    * "!"
-    * "."
-
 ━━━━━━━━━━━━━━━━━━━━
 + brix-highlight [SourceSpan]
     - text String
@@ -84,26 +75,31 @@ match text
 + do brix-joined [SourceSpan]
     - spans [SourceSpan]
 
-. result [SourceSpan]
-result ++= spans
-. is-joined [Bool]
-for span in result
-    is-joined += false
-. index = result.length - 1
+. is-next-joined = false
+. index = spans.length - 1
 while index > 0
     index -= 1
-    . sigil = result[index].text
-    . next = result[index + 1]
-    if result[index].kind != SourceSpanKind.string && brix-sigils has sigil && (is-joined[index + 1] || brix-starts-name(next.text)) && brix-is-prefix(result, index)
+    . sigil = spans[index].text
+    . next = spans[index + 1]
+    . is-joined = spans[index].kind != SourceSpanKind.string && brix-is-sigil(sigil) && (is-next-joined || brix-starts-name(next.text)) && brix-is-prefix(spans, index)
+    if is-joined
         . kind = if sigil == "#" then SourceSpanKind.tracked else next.kind
-        result[index] = SourceSpan(kind, sigil)
-        result[index + 1] = SourceSpan(kind, next.text, next.is-optional)
-        is-joined[index] = true
-for at in 0 .. < result.length
-    if brix-is-optional(result, at)
-        . span = result[at]
-        result[at] = SourceSpan(span.kind, span.text, true)
-= result
+        spans[index] = SourceSpan(kind, sigil)
+        spans[index + 1] = SourceSpan(kind, next.text, next.is-optional)
+    is-next-joined = is-joined
+for at in 0 .. < spans.length
+    if brix-is-optional(spans, at)
+        . span = spans[at]
+        spans[at] = SourceSpan(span.kind, span.text, true)
+= spans
+
+━━━━━━━━━━━━━━━━━━━━
+_ brix-is-sigil Bool
+    - text String
+
+text.length == 1 && (first == '#' || first == '@' || first == '$' || first == '%' || first == '&' || first == '!' || first == '.')
+
+.. first = text[0]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do brix-is-optional Bool
@@ -111,6 +107,7 @@ _ do brix-is-optional Bool
     - index Index
 
 . span = spans[index]
+=? false if !brix-starts-name(span.text) && span.text != "?" && span.text != "."
 . before = if index > 0 then spans[index - 1] else SourceSpan(.plain, "")
 . next = if index + 1 < spans.length then spans[index + 1].text else ""
 =? span.kind == SourceSpanKind.identifier if span.text == "null"

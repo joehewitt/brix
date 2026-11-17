@@ -5,6 +5,22 @@
 /core/table
 /data/source-tree
 
+_ brix-binding-heads List
+    * "let"
+    * "lazy"
+    * "in"
+    * "on"
+    * "on-error"
+    * "on-failure"
+    * "do-with"
+    * "iterates"
+    * "=>"
+
+_ brix-case-heads List
+    * "case"
+    * "case-union"
+    * "state"
+
 ━━━━━━━━━━━━━━━━━━━━
 + BrixNames
 
@@ -15,6 +31,12 @@ _ owner U32?
 _ owner-id U32
 _ length Size
 _ known [String = SourceSpanKind]
+_ shared [String = SourceSpanKind]
+_ blank [String = SourceSpanKind]
+_ members-owner U32?
+_ members-id U32
+_ members-length Size
+_ members [String = SourceSpanKind]
 
 ────────────────────
 + This
@@ -34,25 +56,32 @@ homes[member.index as U32] = type.index as U32
     - holder U32?
 
 =? brix-joined(spans) if tags.length == 0
-. scope = scope-of(holder)
+settle-scope(holder)
 . result [SourceSpan]
+. is-changed = false
 . column Size = 0
 . next Index = 0
-for span in spans
+for position in 0 .. < spans.length
+    . span = spans[position]
     . end = column + span.text.length
     while next < tags.length && tags[next].start < column
         next += 1
     . is-tagged = next < tags.length && tags[next].start == column && tags[next].end == end
-    . kind = if is-tagged then resolved-kind(span, tags[next].kind, scope) else span.kind
-    result += SourceSpan(kind, span.text, span.is-optional)
+    . kind = if is-tagged then resolved-kind(span, tags[next].kind) else span.kind
+    if kind != span.kind && !is-changed
+        is-changed = true
+        result.reserve(spans.length)
+        for earlier in 0 .. < position
+            result += spans[earlier]
+    if is-changed
+        result += SourceSpan(kind, span.text, span.is-optional)
     column = end
-= brix-joined(result)
+= brix-joined(if is-changed then result else spans)
 
 ────────────────────
 _ resolved-kind SourceSpanKind
     - span SourceSpan
     - tag BrixTagKind
-    - scope [String = SourceSpanKind]
 
 |? tag == BrixTagKind.exit
     if span.kind == SourceSpanKind.operator || span.kind == SourceSpanKind.keyword then SourceSpanKind.exit else span.kind
@@ -71,29 +100,48 @@ _ resolved-kind SourceSpanKind
 ??
     found
 
-.. found = scope[span.text] ?? SourceSpanKind.identifier
+.. found = known[span.text] ?? shared[span.text] ?? SourceSpanKind.identifier
 
 ────────────────────
-_ do scope-of [String = SourceSpanKind]
+_ do settle-scope
     - holder U32?
 
-=? known if holder == owner && store.length == length && store.id-at(holder) == owner-id
+=? if holder == owner && store.length == length && store.id-at(holder) == owner-id
 owner = holder
 owner-id = store.id-at(holder)
 length = store.length
 known = Map'String'SourceSpanKind()
+shared = blank
 . node = store.node-at(holder)
-=? known if !node
+=? if !node
 . home = home-of(node)
 . is-holder-type = is-type(node)
 if home
-    add-members(home)
+    shared = members-of(home)
 else if is-holder-type
-    add-members(node)
+    shared = members-of(node)
 add-params(node)
 add-locals(node, is-holder-type)
 known["it"] = SourceSpanKind.identifier
-= known
+
+────────────────────
+_ do members-of [String = SourceSpanKind]
+    - type ImmutableTableRow'SourceNode
+
+. at = type.index as U32
+=? members if at == members-owner && store.length == members-length && store.id-at(at) == members-id
+members-owner = at
+members-id = store.id-at(at)
+members-length = store.length
+members = Map'String'SourceSpanKind()
+for item in store.listed(type, 1)
+    . head = store.head(item) ?? ""
+    . slot = if head == "variant" then 1 else 2
+    if (head == "prop" || head == "event" || head == "variant" || brix-is-callable(head)) && store.count(item) > slot
+        . name = store.item(item, slot)
+        if store.is-atom(name) && brix-is-name(store.text(name))
+            members[store.text(name)] = SourceSpanKind.member
+= members
 
 ────────────────────
 _ do home-of ImmutableTableRow'SourceNode?
@@ -106,18 +154,6 @@ _ do home-of ImmutableTableRow'SourceNode?
 for item in store.items(type)
     =? type if item.index == member.index
 = null
-
-────────────────────
-_ do add-members
-    - type ImmutableTableRow'SourceNode
-
-for item in store.listed(type, 1)
-    . head = store.head(item) ?? ""
-    . slot = if head == "variant" then 1 else 2
-    if (head == "prop" || head == "event" || head == "variant" || brix-is-callable(head)) && store.count(item) > slot
-        . name = store.item(item, slot)
-        if store.is-atom(name) && brix-is-name(store.text(name))
-            known[store.text(name)] = SourceSpanKind.member
 
 ────────────────────
 _ do add-params
@@ -151,9 +187,9 @@ _ do bind-in
 =? if store.count(form) < 2
 . head = store.head(form) ?? ""
 . first = store.item(form, 1)
-if ["let", "lazy", "in", "on", "on-error", "on-failure", "do-with", "iterates", "=>"] has head || (head == "with" && store.count(form) == 3)
+if brix-binding-heads has head || (head == "with" && store.count(form) == 3)
     bind(first, SourceSpanKind.identifier)
-else if ["case", "case-union", "state"] has head
+else if brix-case-heads has head
     bind(if store.is-form(first, "=") && store.count(first) > 1 then store.item(first, 1) else first, SourceSpanKind.identifier)
 
 ────────────────────
