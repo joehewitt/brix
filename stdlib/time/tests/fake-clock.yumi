@@ -18,6 +18,7 @@ cases = cases.then("Fake Clock Waits", wait-tests)
 cases = cases.then("Fake Clock Order", order-tests)
 cases = cases.then("Fake Clock Loops", loop-tests)
 cases = cases.then("Fake Clock Timers", timer-tests)
+cases = cases.then("Fake Clock Cancels", cancel-tests)
 cases = cases.then("Fake Clock Freeze", freeze-tests)
 cases = cases.then("Fake Clock Handle Waits", handle-tests)
 = cases
@@ -113,6 +114,32 @@ do with time = fake
     timer.unsubscribe(counter)
     fake.advance(1s)
     t.expect("a timer with no subscriber stops", 10, ticks.length)
+= t
+
+━━━━━━━━━━━━━━━━━━━━
++ do cancel-tests TestCase
+    - t TestCase
+
+. fake = FakeClock()
+. heard [String]
+. calls = 0
+do with time = fake
+    . waiting = do new
+        10s.wait()
+        heard += "late"
+    fake.advance(0s)
+    waiting.close()
+    fake.advance(20s)
+    t.expect("a task cancelled in its wait ends there", 0, heard.length)
+
+    . action = debounced(100ms, => do calls += 1)
+    action()
+    fake.advance(50ms)
+    action()
+    fake.advance(50ms)
+    t.expect("a call within the delay starts it again", 0, calls)
+    fake.advance(50ms)
+    t.expect("the action runs a delay after the last call", 1, calls)
 = t
 
 ━━━━━━━━━━━━━━━━━━━━
