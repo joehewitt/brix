@@ -4617,11 +4617,18 @@ if names-item(pattern)
 else
     given = declare(each-name, .slot-argument, body, 0, 0)
 bindings.set-resolution(binding, body, Resolution(.resolve-slot, 0, given, 0, 0))
+. regioned = tree.row-region(body)
+if regioned
+    . parent = Slot(.slot-argument, branch-parent-name, loop, current-scope, decl, 0, SlotFlag.slot-constant)
+    . region = bindings.slots.append(parent) as SlotId
+    bindings.set-resolution(binding, loop, Resolution(.resolve-slot, 0, region, 0, ResolutionFlag.resolution-declares))
 if bindings.slots[given].name != each-name
     alias(each-name, given)
 alias(it-name, given)
 note-getters(loop, body)
 walk(body)
+if regioned
+    walk-arm-lines(body)
 close-nested()
 function-depth -= 1
 pop-scope()

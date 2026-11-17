@@ -3843,6 +3843,11 @@ if source.type != region.source
 do match? tree.nodes[id]
     | .node-for-block(row)
         . built = convert(id, .reason-markup-row, emit-closure(row.body))
+        if region.adapts != no-instance
+            . adapting = pending.length
+            pending += content-hosts[top - 1].operand
+            pending += built.operand
+            built = raising-call(id, region.adapts, adapting)
         . keyed = tree.keyed-clause(row.loop)
         . keyer = if keyed != 0 then convert(keyed, .reason-markup-key, emit-closure(keyed)).operand else nothing
         . mark = pending.length
@@ -4151,6 +4156,31 @@ if fail-jumps != jumps
     ir.start-block(failed)
     jump(finished)
     ir.start-block(finished)
+emit-end(declared)
+
+────────────────────
+_ do emit-row-region ?! Refused
+    - declared SyntaxId
+    - body SyntaxId
+
+. parent = make-operand(.operand-argument, 2)
+. type = instances.argument-type(unit.instance, 1)
+. batch = make-operand(.operand-void, 0)
+. root = facts.region-root-of(unit.reading, body)
+if root
+    batch = read-captured(root.slot, body, root.batch).operand
+    if root.ensure != no-instance
+        . host = convert(body, .reason-markup-host, Typed(parent, type))
+        . given = convert-from(body, .reason-markup-root, batch)
+        . mark = pending.length
+        pending += host.operand
+        pending += given.operand
+        call-instance(root.ensure, body, mark)
+content-hosts += Typed(parent, type)
+content-roots += batch
+emit-block(body)
+content-hosts.pop()
+content-roots.pop()
 emit-end(declared)
 
 ────────────────────
@@ -17753,6 +17783,9 @@ if reselects
     =
 if builds-arm
     emit-arm(declared, body)
+    =
+if builds-row && tree.row-region(body)
+    emit-row-region(declared, body)
     =
 if binds
     emit-binder(body)

@@ -24658,7 +24658,11 @@ _ do check-loop-region TypeId
 ` function of its own given the item, which gives one element as the host's content, made a
 ` `MarkupRowBuilder` at the `for`; that of a keyed loop over a collection is given a
 ` `MarkupRowItem` that holds the item, and made a `MarkupCollectionRowBuilder`. The key's
-` function is made a `MarkupKeyBuilder` at its clause. The markup runtime makes the region of
+` function is made a `MarkupKeyBuilder` at its clause. A row whose body is not one element, as
+` `row-region` says, is built as an arm is, into a region of its own: its function is given the
+` region after the item, made a `MarkupRegionRowBuilder` at the `for`, and the markup runtime's
+` `markup-region-row`, or `markup-region-keyed-row`, makes the builder of it, which makes the
+` region of the host for each row. The markup runtime makes the region of
 ` the host, the builders and the source, given last, as `loop-source` says, keyed where the loop
 ` is, and gives the region a source again by a replacer of its own; the region is the line's
 ` value, which the host takes. The host and the region are kept, in the
@@ -24740,7 +24744,8 @@ if types.intrinsic-of(content) == .class && !makes-region(parent)
     frame.diagnose(id, .stated, program.store-atom(message))
     .. message = "Markup loop host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
     = invalid-type
-if !one-element(body)
+. regioned = tree.row-region(body)
+if !knows-getters(body)
     = invalid-type
 . refreshes = keyed != 0 && found.kind == "collection"
 . given = if refreshes then types.well-known-type-of("core/markup", "MarkupRowItem", item) else item
@@ -24749,8 +24754,9 @@ if !one-element(body)
     - if refreshes then "MarkupCollectionRowBuilder" else "MarkupRowBuilder"
     - item
     - content
+. shaped = if regioned then types.well-known-type-of("core/markup", "MarkupRegionRowBuilder", given, content) else builder
 . decl = nested-decl-of(body)
-if classless || builder == invalid-type || given == invalid-type || decl == 0
+if classless || builder == invalid-type || shaped == invalid-type || given == invalid-type || decl == 0
     decline(id)
     = invalid-type
 .. classless = types.intrinsic-of(content) != .class
@@ -24760,14 +24766,14 @@ if classless || builder == invalid-type || given == invalid-type || decl == 0
 region = region.content = content
 region = region.batch = rooted
 region = region.root = resolution.slot + 2
-. built = demand-nested(decl, given)
+. built = demand-nested(decl, given, if regioned then content else no-type)
 region = outer-content
 if built == no-instance
     decline(id)
     = invalid-type
 . closure = intern-nested(decl)
 facts.set-node-type(instance, body, closure)
-if conversions.convert(id, id, closure, builder, .reason-markup-row) == invalid-type
+if conversions.convert(id, id, closure, shaped, .reason-markup-row) == invalid-type
     = invalid-type
 . keyer = no-type
 if keyed != 0
@@ -24813,6 +24819,19 @@ scratch.types.rewind(mark)
 if replace == no-instance
     decline(id)
     = invalid-type
+. adapts = no-instance
+if regioned
+    scratch.types.push(item)
+    scratch.types.push(content)
+    scratch.types.push(parent)
+    scratch.types.push(parent)
+    scratch.types.push(shaped)
+    . adapter = if refreshes then "markup-region-keyed-row" else "markup-region-row"
+    adapts = calls.demand-runtime-call(markup, no-type, program.store-atom(adapter), mark, 3)
+    scratch.types.rewind(mark)
+    if adapts == no-instance || instances.signatures[adapts].returns != builder || !raises-out(id, adapts)
+        decline(id)
+        = invalid-type
 . host = derived-interface(made, types.markup-host-decl)
 scratch.types.push
     - if live.trackers != no-instance then instances.signatures[live.trackers].returns else no-type
@@ -24865,6 +24884,7 @@ facts.loop-regions += LoopRegion
     - hosted
     - rooted
     - replace
+    - adapts
 = made
 
 ────────────────────
@@ -24948,33 +24968,19 @@ if conversions.convert(container, container, read, given, .reason-argument) == i
 = LoopSource(item, given, kind)
 
 ────────────────────
-_ do one-element Bool
+_ do knows-getters Bool
     - body SyntaxId
 
-` Whether the body of a markup loop region gives one element, as the reference requires of a
-` row: a line that is an `if`, or a second element, is its error at the body. A lazy
-` declaration the binder found no getter in has no shape here.
+` Whether the lazy declarations of the body of a markup loop region's row are those the binder
+` found a getter in. One it found none in has no shape here.
 do match? tree.nodes[body]
     | .node-block(block)
-        . elements = 0u32
         for line in tree.children[block.body]
             do match? tree.nodes[line]
                 | .node-declare(declared)
                     if declared.is-lazy && !declares-getter(declared.left)
                         decline(line)
                         = false
-            if tree.nodes[line] is .node-if-block
-                frame.diagnose(body, .stated, program.store-atom("A markup loop row must be one element; put its conditions in the element's properties"))
-                = false
-            if tree.nodes[line] is .node-markup
-                elements += 1
-        if elements > 1
-            frame.diagnose
-                - body
-                - .stated
-                - program.store-atom
-                    - "A markup loop row must be one element; wrap its elements in one"
-            = false
 = true
 
 ────────────────────
@@ -24983,7 +24989,8 @@ _ do check-row
 
 ` The function that builds a row of a markup loop region: given the row's item, which the name
 ` the loop's header writes, `each` and `it` hold, it runs the loop's body as the body of a
-` function, under the styles, the rules written in rules, with the state cells it keeps
+` function, or, where the row is a region of its own (`row-region`), as content of the region
+` it is given after the item, as an arm's body runs, under the styles, the rules written in rules, with the state cells it keeps
 ` (`take-scope`), and the batch in force where the region is written, and gives
 ` what the body gives, converted to the content of the region's host at the body, as the
 ` reference casts it. An element that binds a slot written as a line of the body is the
@@ -24997,7 +25004,9 @@ if resolution.kind != .resolve-slot || content == no-type || item == no-type
     finish-errors(frame)
     close()
     =
-instances.set-returns(instance, content, content, .return-declared)
+. regioned = tree.row-region(body)
+. returned = if regioned then types.void-type else content
+instances.set-returns(instance, returned, returned, .return-declared)
 . lines [SyntaxId]
 do match tree.nodes[body]
     | .node-block(block)
@@ -25017,6 +25026,14 @@ for line in lines
                 close()
                 =
 frame.assign(resolution.slot, item)
+if regioned
+    . held = bindings.resolution-of(frame.binding, row-loop(body))
+    if held.kind != .resolve-slot
+        decline(body)
+        finish-errors(frame)
+        close()
+        =
+    frame.assign(held.slot, content)
 if reads-eager-getter(body) && !is-row-item(resolution.slot, item)
     decline(body)
     finish-errors(frame)
@@ -25033,9 +25050,27 @@ if outer
     scopes-given = outer!.scopes-known()
     layer-given = outer!.markup-layer()
 . rooted = if outer then outer.region.batch else false
-if rooted
+if rooted && regioned && !arm-root(body, content, outer!.region.root)
+    finish-errors(frame)
+    close()
+    =
+if rooted && !regioned
     facts.region-roots += RegionRoot(instance, body, outer!.region.root, batch-type())
 batched += rooted
+if regioned
+    content-blocks += body
+    content-parents += content
+    content-names += false
+    check-statement(body)
+    content-blocks.pop()
+    content-parents.pop()
+    content-names.pop()
+    batched.pop()
+    while markup-styles.length > styled
+        markup-styles.pop()
+    finish-errors(frame)
+    close()
+    =
 value-syntax = body
 . value = check-statement(body)
 batched.pop()
@@ -25045,6 +25080,16 @@ if value != invalid-type && value != no-type
     conversions.convert(body, value-syntax, value, content, .reason-return)
 finish-errors(frame)
 close()
+
+────────────────────
+_ row-loop SyntaxId
+    - body SyntaxId
+
+match tree.nodes[tree.holder-of(body)]
+    | .node-for-block(row)
+        row.loop
+    ??
+        0
 
 ────────────────────
 _ do reads-eager-getter Bool
@@ -29354,6 +29399,7 @@ _ do intern-nested TypeId
 _ do demand-nested InstanceId
     - decl DeclId
     - argument TypeId
+    - second TypeId = no-type
 
 ` The one instance of a generated closure, keyed under this instance like a lambda's: a
 ` comprehension's takes its container, a pipeline body its item, and a bullet list nothing.
@@ -29364,6 +29410,8 @@ intern-nested(decl)
 . mark = scratch.types.mark
 if argument != no-type
     scratch.types.push(argument)
+if second != no-type
+    scratch.types.push(second)
 . argument-span = scratch.types.since(mark)
 . callee = instances.intern(module, decl, no-type, mask, instance, scratch.no-types, argument-span)
 scratch.types.rewind(mark)

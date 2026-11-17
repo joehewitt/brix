@@ -328,8 +328,10 @@ Markup that makes tracked reads, `#players` here, follows the values it reads; s
   and the rows of removed keys go. Without keys, rows follow positions, so removing the first item
   makes again every row after it.
 - **Loops and branches that follow state** need a `MarkupNode` parent: `Dynamic markup loop parent
-  must implement MarkupElement`. Each row of such a loop is one element: `A markup loop row must be
-  one element; wrap its elements in one`. It takes no `when`, `while` or `until` clauses.
+  must implement MarkupElement`. A row may give several elements, and hold an `if`, a `match` or a
+  `for`, as any body does; such a row is a region of its own, and an `if` or `match` in it that
+  makes tracked reads follows them in each row. A loop of this kind takes no `when`, `while` or
+  `until` clauses.
 - **When.** Without a batch root, each change updates the markup before the statement that made it
   goes on, as above.
 - **Lifetime.** An element follows its reads until it is closed. A `MarkupNode` closes its children

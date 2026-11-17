@@ -91,10 +91,11 @@ Exception: Markup loop requires a concrete Collection source
            ^^^^^^^^^^^^^^
 ;====
 :====
+# A markup loop row with an `if` is a region of its own, and the arm it takes is its content.
 
 /core/tests/support/markup-fixtures
 
-. items = List'String(["a"])
+. items = List'String(["a", ""])
 
 <Box box
     for item in #items
@@ -102,32 +103,75 @@ Exception: Markup loop requires a concrete Collection source
             <TextBox = item
         else
             <TextBox = "empty"
+-- texts(box)
+items += "b"
+-- texts(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - box Box
+
+. parts = List'String()
+gather(box, parts)
+= " ".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do gather
+    - box Box
+    - parts [String]
+
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        gather(child, parts)
 
 :----
-%crash
 
-Exception: A markup loop row must be one element; put its conditions in the element's properties
-<no file:7>
-        for item in #items
+a empty
+a empty b
 ;====
 :====
-# A markup loop row with two sibling elements is rejected by the one-element rule.
+# A markup loop row with two sibling elements is a region of its own that holds both.
 
 /core/tests/support/markup-fixtures
 
 . items = List'String(["a"])
 
 <Box box
-    for item in #items
+    for item in #items keyed by item
         <TextBox = item
         <TextBox = "/"
+-- texts(box)
+items += "b"
+-- texts(box)
+items -= "a"
+-- texts(box)
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - box Box
+
+. parts = List'String()
+gather(box, parts)
+= " ".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do gather
+    - box Box
+    - parts [String]
+
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        gather(child, parts)
 
 :----
-%crash
 
-Exception: A markup loop row must be one element; wrap its elements in one
-<no file:7>
-        for item in #items
+a /
+a / b /
+b /
 ;====
 :====
 
@@ -3181,4 +3225,109 @@ for child in box.%first-child!.children
 :----
 
 a, c
+;====
+:====
+# A keyed row that is a region keeps its live `if` following the item its key holds now.
+
+/core/markup
+
+. todos = List'Todo([Todo("a", false), Todo("b", true)])
+<Board board
+    for todo in #todos keyed by todo.name
+        <Text = todo.name
+        if todo.#done
+            <Text = "done"
+board.show()
+todos[0].done = true
+board.show()
+todos = List'Todo([Todo("a", false), Todo("b", true)])
+board.show()
+todos[1].done = false
+board.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Todo
+
++ name String
++ done Bool
+
+────────────────────
++ This
+    - name
+    - done
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is MarkupNode
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Board is MarkupNode
+
+────────────────────
++ do show
+
+. parts = List'String()
+for child in children-of'Text()
+    parts += child.text
+-- ", ".join(parts)
+
+:----
+
+a, b, done
+a, done, b, done
+a, b, done
+a, b
+;====
+:====
+# A row may hold a match, and a live match selects its arm again in each row.
+
+/core/markup
+
+. items = List'Int([1, 2])
+. mode = "a"
+<Board board
+    for n in #items
+        match n
+            | 1
+                <Text = "one"
+            | _
+                <Text = "many"
+        match #mode
+            | "a"
+                <Text = "$n:a"
+            | _
+                <Text = "$n:other"
+board.show()
+mode = "b"
+board.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is MarkupNode
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Board is MarkupNode
+
+────────────────────
++ do show
+
+. parts = List'String()
+for child in children-of'Text()
+    parts += child.text
+-- ", ".join(parts)
+
+:----
+
+one, 1:a, many, 2:a
+one, 1:other, many, 2:other
 ;====
