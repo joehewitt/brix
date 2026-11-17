@@ -73,6 +73,7 @@ def install(options):
     try:
         launcher.fetch_release(version, expected)
         release = launcher.checked_release({'version': version, 'release': expected})
+        source = repository_commit(release, version) if options.source else None
         launcher.install_toolchain(version, release)
     except launcher.LaunchError as error:
         raise InstallError(str(error))
@@ -81,7 +82,7 @@ def install(options):
     say('Checking that it compiles and runs a program')
     check_command(command)
     if options.source:
-        install_source(launcher, options, host, version, release, command)
+        install_source(launcher, options, host, version, release, source)
     offer_path(options, home)
     say('\nBrix %s is installed. Run brix --help to start.' % version)
 
@@ -210,7 +211,15 @@ def check_command(command):
             raise InstallError('The installed compiler could not build a program:\n%s' % result.stdout.strip())
 
 
-def install_source(launcher, options, host, version, release, command):
+def repository_commit(release, version):
+    commit = release['source'].get('repositoryCommit')
+    if not commit:
+        raise InstallError('Release %s does not record its commit in the Brix repository, so it cannot be built '
+                           'from source' % version)
+    return commit
+
+
+def install_source(launcher, options, host, version, release, source):
     git = shutil.which('git')
     if not git:
         raise InstallError('Building from source needs git')
@@ -224,7 +233,6 @@ def install_source(launcher, options, host, version, release, command):
     tag = 'v' + version
     say('Cloning %s at %s into %s' % (options.repository, tag, shown(checkout)))
     run([git, 'clone', '--quiet', '--branch', tag, options.repository, checkout], 'Cloning failed')
-    source = release['source']['commit']
     parent = run([git, '-C', checkout, 'rev-parse', 'HEAD^'], 'Reading the clone failed').strip()
     if parent != source:
         raise InstallError('%s is not the release of %s; its parent is %s' % (tag, source[:12], parent[:12]))

@@ -269,7 +269,15 @@ def source_state():
     if changes:
         listed = '\n'.join(changes.splitlines()[:20])
         raise Failure('%s has uncommitted changes:\n%s' % (MAIN_BRANCH, listed))
-    return {'commit': head, 'tree': git('rev-parse', 'HEAD^{tree}')}
+    return {'commit': head, 'tree': git('rev-parse', 'HEAD^{tree}'), 'repositoryCommit': repository_commit(head)}
+
+
+def repository_commit(commit):
+    prefix = git('rev-parse', '--show-prefix').rstrip('/')
+    if not prefix:
+        return commit
+    top = git('rev-parse', '--show-toplevel')
+    return git('-C', top, 'subtree', 'split', '--prefix=' + prefix, commit).splitlines()[-1]
 
 
 def checkout_state():
