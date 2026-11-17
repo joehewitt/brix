@@ -1,0 +1,52 @@
+`benchmark.meta description: Builds components whose slot outlets have fallback content and attributes, unfilled and filled.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: markup-runtime,compile-timing
+
+/core/markup
+/tui/box
+/tui/text
+
+. count Size = 20000
+. checksum Size = 0
+for index in 0 .. < count
+    checksum += outlet-children(plain-card()) + outlet-children(filled-card(index))
+-- "bench-result markup/outlet-build checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain-card OutletCard
+
+<OutletCard card
+= card
+
+━━━━━━━━━━━━━━━━━━━━
++ do filled-card OutletCard
+    - index Size
+
+<OutletCard card
+    <Label (heading) = "title $index"
+    <Label = "body"
+= card
+
+━━━━━━━━━━━━━━━━━━━━
++ do outlet-children Size
+    - box Box
+
+. total Size = 0
+for child in box.structural-children
+    total += 1 + outlet-children(child)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ OutletCard is Box
+
++ title = "card"
+
+────────────────────
+
+<This
+    + <Label heading
+        text = #title
+    + <Box
+        <Label = "empty"
+        <Label = "card"
+    + <Label footer

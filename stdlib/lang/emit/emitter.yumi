@@ -7635,8 +7635,11 @@ _ do emit-outlet Operand
 ` outlet applies and the lines that declare styles declare them for the node first, at the outlet's
 ` own site (`declare-styles`), which is made ready last (`finish-styles`). An outlet that mounts
 ` nothing gives nothing. One built by the function of the arm it is (`builds-outlet`) gives its name
-` nothing.
+` nothing, unless that function builds it alone (`builds-outlet-alone`).
 . nothing = make-operand(.operand-void, 0)
+if tree.builds-outlet-alone(id) && !builds-outlet(id)
+    emit-outlet-arm(id)
+    = nothing
 . fact = facts.slot-outlet-of(unit.reading, id)
 if !fact
     refuse(.refused-expression, id)
@@ -7672,7 +7675,7 @@ if built.type != type
     refuse(.refused-conversion, id)
     = nothing
 . made = built.operand
-if names-placed(name) && !builds-outlet(id)
+if names-placed(name) && (!builds-outlet(id) || tree.builds-outlet-alone(id))
     name-element(id, name, built)
 . association = declare-styles(id, made, type)
 . lively = attribute-trackers.length
@@ -7703,6 +7706,26 @@ while attribute-trackers.length > lively
     attribute-trackers.pop()
 finish-styles(id, made, type, association)
 = made
+
+────────────────────
+_ do emit-outlet-arm
+    - id SyntaxId
+
+. top = content-hosts.length
+. slot = channel-slot(id)
+if top == 0 || slot == no-slot
+    refuse(.refused-statement, id)
+    =
+. batch = slot - 1
+. kept = find-captured(batch, id)
+if kept.type != types.void-type
+    . root = if content-roots.length != 0 then content-roots[content-roots.length - 1] else make-operand(.operand-void, 0)
+    if operand-kind(root) == .operand-void
+        refuse(.refused-statement, id)
+        =
+    keep-captured(batch, root, kept.type, id)
+. closure = convert(id, .reason-markup-arm, emit-closure(id))
+do call-builder(id, closure.operand, closure.type, content-hosts[top - 1].operand)
 
 ────────────────────
 _ do call-builder Typed

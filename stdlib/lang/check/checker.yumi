@@ -23731,7 +23731,7 @@ do match? tree.nodes[row.body]
                 lines += statement
 . argument = instances.slot-argument(filling.instance, name)
 . rebuilt = frame.declaration.kind == .branch-arm-decl && frame.declaration.syntax == id
-if rebuilt && argument == U32.max
+if rebuilt && argument == U32.max && !tree.builds-outlet-alone(id)
     decline(id)
     = invalid-type
 . held = no-slot
@@ -24002,6 +24002,8 @@ _ do check-line TypeId
 ` `for` does, and any other is checked as a statement.
 if parent != no-type && is-region(statement)
     = check-branch(statement, parent)
+if parent != no-type && tree.builds-outlet-alone(statement)
+    = check-outlet-arm(statement, parent)
 if parent != no-type && outlet-region(statement) != 0
     = check-branch(outlet-region(statement), parent)
 if parent != no-type && is-loop-region(statement)
@@ -24014,6 +24016,48 @@ if parent != no-type && nested-decl-of(statement) == 0
             frame.forget-members()
             = no-type
 = check-statement(statement, want)
+
+────────────────────
+_ do check-outlet-arm TypeId
+    - id SyntaxId
+    - parent TypeId
+
+. resolution = bindings.resolution-of(frame.binding, id)
+. decl = nested-decl-of(id)
+if resolution.kind != .resolve-slot || decl == 0 || bindings.slots[batch].syntax != id
+    decline(id)
+    = invalid-type
+.. batch = resolution.slot - 1
+. rooted = in-batch()
+frame.assign(batch, if rooted then batch-type() else types.void-type)
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        . named = declaring-slot(row.name) if row.name != 0
+        . filling = filling-checker()
+        if named && filling && bindings.slots[named].group == id
+            . content = types.evaluate-type(module, tree, row.type-id, filling.frame.env)
+            if content != invalid-type
+                frame.assign(named, content)
+. outer-batch = region
+region = region.batch = rooted
+region = region.root = batch
+. made = demand-nested(decl, parent)
+region = outer-batch
+if made == no-instance
+    decline(id)
+    = invalid-type
+. closure = intern-nested(decl)
+facts.set-node-type(instance, id, closure)
+. builder = types.well-known-type-of("core/markup", "MarkupBranchBuilder", parent)
+if builder == invalid-type
+    decline(id)
+    = invalid-type
+if conversions.convert(id, id, closure, builder, .reason-markup-arm) == invalid-type
+    = invalid-type
+if calls.builder-call(id, builder, 1) == invalid-type
+    decline(id)
+    = invalid-type
+= types.void-type
 
 ────────────────────
 _ do is-region Bool
@@ -24591,7 +24635,9 @@ if outer
     scopes-given = outer!.scopes-known()
     layer-given = outer!.markup-layer()
 . rooted = if outer then outer.region.batch else false
-if rooted && !arm-root(body, content, outer!.region.root)
+if rooted && tree.builds-outlet-alone(body)
+    facts.region-roots += RegionRoot(instance, body, outer!.region.root, batch-type(), no-instance)
+else if rooted && !arm-root(body, content, outer!.region.root)
     finish-errors(frame)
     close()
     =

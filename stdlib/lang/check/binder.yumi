@@ -1296,6 +1296,36 @@ do match? tree.nodes[body]
         pop-scope()
 
 ────────────────────
+_ do walk-outlet-arm Void
+    - id SyntaxId
+    - name SyntaxId
+    - rules RowRange'SyntaxId
+    - body SyntaxId
+
+. kept = SlotFlag.slot-constant /or/ SlotFlag.slot-captured
+. batch = bindings.slots.append(batch-slot) as SlotId
+    .. batch-slot = Slot(.slot-local, batch-root-name, id, current-scope, decl, 0, kept)
+branch-depth += 1
+push-scope(.scope-nested, id)
+function-depth += 1
+open-nested(id)
+record-capture(batch, slot-depth(batch), false)
+if name != 0
+    hold-placed(name)
+. arm = bindings.slots.append(arm-slot) as SlotId
+    .. arm-slot = Slot(.slot-argument, branch-parent-name, id, current-scope, decl, 0, constant)
+    .. constant = SlotFlag.slot-constant
+bindings.set-resolution
+    - binding
+    - id
+    - Resolution(.resolve-slot, 0, arm, 0, ResolutionFlag.resolution-declares)
+walk-outlet(name, 0, rules, body)
+close-nested()
+function-depth -= 1
+pop-scope()
+branch-depth -= 1
+
+────────────────────
 _ do walk-outlet-region Void
     - id SyntaxId
     - name SyntaxId
@@ -2259,6 +2289,8 @@ do match tree.nodes[id]
                 - row.slot-parameter
                 - row.style-rule-applications
                 - row.body
+        else if tree.builds-outlet-alone(id)
+            walk-outlet-arm(id, row.name, row.style-rule-applications, row.body)
         else
             walk-outlet(row.name, row.slot-parameter, row.style-rule-applications, row.body)
     | .node-markup-slot-forward(row)
