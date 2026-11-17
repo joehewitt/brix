@@ -39555,12 +39555,24 @@ if equates && names-left && symbol-of(right) == null && !calls-symbol(right)
 if is-arithmetic(op) && !is-bitwise(op) && shared-symbol(left)
     . given = infer(right)
     = infer-binary-values(id, op, left, infer-receiver-symbol(left, op, given), right, given)
-. lhs = infer(left)
+. lhs = infer(left, member-want(op, left, false))
 if equates && compares-machine-case(op, right, lhs)
     = invalid-type
-. rhs = if equates then infer-comparand(right, lhs) else infer(right)
+. rhs = if equates then infer-comparand(right, lhs) else infer(right, member-want(op, right, true))
 note-operand-suffixes(op, left, lhs, right, rhs)
 = infer-compared(id, op, left, lhs, right, rhs)
+
+────────────────────
+_ member-want Want
+    - op Operator
+    - operand SyntaxId
+    - is-right Bool
+
+` What a membership test asks of the operand it looks in, where that is a list written: that the
+` test record what makes it (`want-member`).
+if tests && tree.nodes[operand] is .node-list-syntax then Want().adding(.want-member) else Want()
+
+.. tests = if is-right then op == .is-in-op || op == .not-in-op else op == .has-op || op == .has-not-op
 
 ────────────────────
 _ do compares-machine-case Bool
@@ -39674,9 +39686,9 @@ if lhs == invalid-type || rhs == invalid-type
 if left-type != lhs || right-type != rhs
     = infer-binary-values(id, op, left, left-type, right, right-type)
 if op == .is-in-op || op == .not-in-op
-    = infer-containment(id, op == .is-in-op, rhs, left, lhs, true)
+    = infer-containment(id, op == .is-in-op, right, rhs, left, lhs, true)
 if op == .has-op || op == .has-not-op
-    = infer-containment(id, op == .has-op, lhs, right, rhs, false)
+    = infer-containment(id, op == .has-op, left, lhs, right, rhs, false)
 if op == .concat-op || op == .concat-string-op
     if op == .concat-op && non-string && calls.has-operator(lhs, types.concat-atom!, rhs)
         = calls.operator-call(id, lhs, types.concat-atom!, right, rhs)
@@ -40418,6 +40430,7 @@ for offset in 0 .. < fields.count
 _ do infer-containment TypeId
     - id SyntaxId
     - positive Bool
+    - container-syntax SyntaxId
     - container TypeId
     - item-syntax SyntaxId
     - item TypeId
@@ -40425,7 +40438,9 @@ _ do infer-containment TypeId
 
 ` `has` and `has not` answer for each other: a container that declares only one is asked that
 ` one and the answer is negated, as the reference does for an operator and its opposite.
-` `is-right` says the container is the operator's right operand, as it is for `is in`.
+` `is-right` says the container is the operator's right operand, as it is for `is in`. A list
+` written in place may be answered without being made (`plans-list-member`); one that is not
+` records here what makes it.
 . has-not = program.store-atom("has not")
 . wanted = if positive then types.has-atom! else has-not
 . other = if positive then has-not else types.has-atom!
@@ -40438,7 +40453,71 @@ if found == invalid-type
 if is-right
     facts.mark-swapped(instance, id)
 facts.set-plan(instance, id, if chosen == wanted then .plan-call else .plan-negated-call)
+if chosen == types.has-atom! && plans-list-member(id, container-syntax, container)
+    facts.set-plan(instance, id, .plan-list-member)
+else if tree.nodes[container-syntax] is .node-list-syntax
+    instances.mark-may-panic(instance)
+    calls.note-list(container-syntax, container)
 = types.bool-type
+
+────────────────────
+_ do plans-list-member Bool
+    - id SyntaxId
+    - written SyntaxId
+    - list TypeId
+
+` Whether `has` of a list written in place, which core's `List` answers, is answered as
+` `List.has` answers it without making the list (`plan-list-member`): where `==` of two values
+` of the list's item type, planned at the list, compares them by the machine, as one object or
+` one atom, or by the one function it calls, declared in a class, which `List.has` sees as this
+` module does. An extension's `==` that this module sees may be hidden from `List.has`.
+=? false if tree.nodes[written] is not .node-list-syntax
+. callee = operator-callee(id)
+=? false if callee == no-instance || instances.rows[callee].module != types.list-decl.module
+=? false if instances.rows[callee].self-type != list || !same-decl(class-ref(types, list), types.list-decl)
+. item = first-arg(list)
+=? false if item == no-type || item == invalid-type
+. kind = types.intrinsic-of(item)
+. identified = kind == .class || kind == .atom
+. declared = calls.has-operator(item, program.store-atom("${Operator.equals-op}"), item)
+=? false if !declared && !identified && !compares-by-machine(types, item)
+. answer = infer-binary-values(written, .equals-op, written, item, written, item)
+. plan = facts.plan-of(instance, written)
+. machine = plan == .plan-builtin && compares-by-machine(types, item)
+. same = plan == .plan-identity && identified
+. called = plan == .plan-call && in-class(operator-callee(written))
+=? true if answer == types.bool-type && (machine || same || called)
+facts.set-plan(instance, written, .plan-none)
+= false
+
+────────────────────
+_ do in-class Bool
+    - callee InstanceId
+
+` Whether a function is declared in the body of a class, which code sees wherever it sees the
+` class, and not in an extension.
+=? false if callee == no-instance
+. row = instances.rows[callee]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = program.modules[row.module].decls[fn.owner] is .decl-class
+= false
+
+────────────────────
+_ do operator-callee InstanceId
+    - id SyntaxId
+
+` The function the one call of an operator recorded at a node calls, or no instance where
+` there is none, or more than one.
+. found = no-instance
+. fact = facts.first-call(instance, id)
+while fact != no-fact
+    . row = facts.calls[fact]
+    if row.form == .call-operator
+        =? no-instance if found != no-instance || row.is-partial
+        found = row.callee
+    fact = row.next
+= found
 
 ────────────────────
 _ do infer-conditional TypeId
@@ -41242,8 +41321,11 @@ _ do infer-list TypeId
     - want Want = Want()
 
 ` The items are joined, unless the list is expected as a list of a type each item converts to on
-` its own (`want-items`), which each is made then, as a declared local of that type would be.
-instances.mark-may-panic(instance)
+` its own (`want-items`), which each is made then, as a declared local of that type would be. A
+` list a membership test looks in is made only where the test makes it (`want-member`).
+. makes = !want.asks(.want-member)
+if makes
+    instances.mark-may-panic(instance)
 . start = scratch.types.mark
 . syntax-start = scratch.syntax.mark
 . count = 0
@@ -41287,7 +41369,8 @@ if !valid
 . list-mark = scratch.types.mark
 scratch.types.push(joined)
 . list-type = types.class-named-with-args(module, types.list-atom!, list-mark)
-calls.note-list(id, list-type)
+if makes
+    calls.note-list(id, list-type)
 = list-type
 
 ────────────────────
@@ -51395,7 +51478,8 @@ _ WantRole is U32
 ` markup body (`want-content-line`), the container of a markup loop region, which the region
 ` observes itself (`want-observed`), the name of a pattern a pattern compares with or calls
 ` (`want-pattern`), or a list written with its items, which are each made the item of the list
-` type it expects where each converts to it (`want-items`).
+` type it expects where each converts to it (`want-items`), or the list written that a membership
+` test looks in, which records what makes it only where the test makes it (`want-member`).
 
 | want-none = 0
 | want-fitting = 1
@@ -51416,6 +51500,7 @@ _ WantRole is U32
 | want-observed = 32768
 | want-pattern = 65536
 | want-items = 131072
+| want-member = 262144
 
 ━━━━━━━━━━━━━━━━━━━━
 _ Want is Tuple

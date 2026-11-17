@@ -34278,6 +34278,8 @@ if plan == .plan-absent && (op == .equals-op || op == .not-equals-op)
     = emit-absent(id, lhs, rhs, op == .not-equals-op)
 if plan == .plan-held && (op == .equals-op || op == .not-equals-op)
     = emit-held(id, lhs, rhs, op == .not-equals-op)
+if plan == .plan-list-member
+    = emit-list-member(id, op, lhs, rhs)
 if plan == .plan-builtin
     = emit-builtin(id, op, lhs, rhs)
 if plan == .plan-sign-checked-left || plan == .plan-sign-checked-right
@@ -34315,6 +34317,92 @@ if (plan == .plan-unlike || plan == .plan-alike) && (op == .equals-op || op == .
     = Typed(integer(.machine-u8, if (op == .not-equals-op) == (plan == .plan-unlike) then 1 else 0), types.bool-type)
 refuse(.refused-expression, id)
 = Typed(make-operand(.operand-void, 0), no-type)
+
+────────────────────
+_ do emit-list-member Typed
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` `has` or `has not` of a list written in place, or `is in` or `not in` of a value in one,
+` answered as `List.has` answers it without making the list: the operands are evaluated in the
+` order they are written, the items converted as the list's are and the value as the argument
+` of `has` is, and each item in turn is compared with the value by the plan of `==` recorded at
+` the list, up to the first that is equal.
+. nothing = make-operand(.operand-void, 0)
+. is-right = op == .is-in-op || op == .not-in-op
+. negated = op == .has-not-op || op == .not-in-op
+. written = if is-right then rhs else lhs
+. tested = if is-right then lhs else rhs
+. items = RowRange'SyntaxId()
+do match? tree.nodes[written]
+    | .node-list-syntax(row)
+        items = row.items
+. has = own-call(id)
+. plan = facts.plan-of(unit.reading, written)
+. equality = list-equality(written)
+. machine = plan == .plan-builtin || plan == .plan-identity
+if items.count == 0 || has == no-fact || (!machine && (plan != .plan-call || equality == no-fact))
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. item-type = instances.argument-type(facts.calls[has].callee, 0)
+. value = Typed(nothing, no-type)
+if is-right
+    . emitted = emit-expression(tested)
+    value = Typed(apart(emitted, tested, !is-inert(written)), emitted.type)
+. start = given.length
+. disturbed = items.count > 1 || (!is-right && !is-inert(tested))
+for item in tree.children[items]
+    . made = emit-expression(item)
+    given += Typed(apart(made, item, disturbed), made.type)
+for position in 0 .. < items.count
+    . item = tree.children[items.start + position]
+    given[start + position] = convert(item, .reason-element, given[start + position])
+    if given[start + position].type != item-type
+        refuse(.refused-conversion, item)
+if !is-right
+    value = emit-expression(tested)
+value = convert(tested, .reason-argument, value)
+if value.type != item-type
+    refuse(.refused-conversion, tested)
+. joined = ir.reserve-block()
+. slot = make-operand(.operand-void, 0)
+. arrivals = joins.length
+. found = integer(.machine-u8, if negated then 0 else 1)
+for position in 0 .. < items.count
+    . item = tree.children[items.start + position]
+    . element = given[start + position].operand
+    . equal = nothing
+    if machine
+        equal = compare(item, .compare-equal, element, value.operand)
+    else
+        . answer = call-operator(written, equality, written, element, item-type, written, value.operand, item-type)
+        if answer.type != types.bool-type
+            refuse(.refused-expression, id)
+        equal = answer.operand
+    . matched = ir.reserve-block()
+    . next = ir.reserve-block()
+    branch(equal, matched, next)
+    ir.start-block(matched)
+    arrive(id, found, joined, slot)
+    ir.start-block(next)
+drop-given(start)
+arrive(id, integer(.machine-u8, if negated then 1 else 0), joined, slot)
+= Typed(close-joins(joined, arrivals, u8-layout, slot), types.bool-type)
+
+────────────────────
+_ do list-equality FactId
+    - written SyntaxId
+
+` The call of `==` recorded at a list written in place, after the calls that would make it, or
+` no fact where none was.
+. fact = facts.first-call(unit.reading, written)
+while fact != no-fact
+    if facts.calls[fact].form == .call-operator
+        = fact
+    fact = facts.calls[fact].next
+= no-fact
 
 ────────────────────
 _ do emit-held Typed ?! Refused
