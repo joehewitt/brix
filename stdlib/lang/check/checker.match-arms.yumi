@@ -33,6 +33,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/facets
 /lang/ast/module
@@ -44,6 +45,14 @@
 /lang/constants
 /stream/aggregate
 /stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ CursorBinding is Tuple
+
+` The row cursor a pattern binds (`check-pattern`): whether it binds one, and the row it captures.
+
++ binds Bool
++ capture RowCapture = RowCapture(no-type, U32.max, false)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MatchArms is facet of Checker
@@ -465,7 +474,7 @@ _ do arm-settles TypeId
 . settled = no-type
 for position in arm-starts[arm] .. < arm-ends[arm]
     if frame.assigned-slots[position] == slot
-        if is-direct-statement(arm-bodies[arm], frame.assigned-syntax[position])
+        if tree.is-direct-statement(arm-bodies[arm], frame.assigned-syntax[position])
             settled = frame.assigned-types[position]
 = settled
 
@@ -642,7 +651,7 @@ do match tree.nodes[id]
             if it-slot != no-slot && it-type != no-type
                 frame.assign(it-slot, it-type)
         . value = no-type
-        . symbol = symbol-of(row.expr)
+        . symbol = tree.symbol-of(row.expr)
         . assigned-start = frame.assigned-syntax.length
         if symbol && arming.expected == no-type
             value = arm-symbol(row.expr, symbol)
@@ -704,7 +713,7 @@ _ do passes-expected Bool
 ` Whether the value of an arm is a match that nothing in the arm runs before, which is of the
 ` type the arms are expected to give as a returned match is, so that its own arms convert to it.
 . value = arm-value(body)
-=? false if arming.expected == no-type || arming.expected == types.void-type || !is-match-syntax(value)
+=? false if arming.expected == no-type || arming.expected == types.void-type || !tree.is-match-syntax(value)
 =? false if may-miss(value, arming.expected)
 do match? tree.nodes[body]
     | .node-block(block)

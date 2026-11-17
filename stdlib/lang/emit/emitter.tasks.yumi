@@ -1,0 +1,254 @@
+./emitter
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Tasks is facet of FunctionEmitter
+
+────────────────────
++ do emit-task-body
+
+` The body of a spawned task: a function the runtime runs with the capture made where the
+` task was spawned, and that returns to nothing. It runs `taskinit` where the program has
+` one, then the body, flushes what it wrote of probes where they compile, and ends the task,
+` where the body ends or returns. A task with handlers tries them where a panic ends it
+` (`handle-failure`).
+. row = instances.rows[unit.instance]
+. body SyntaxId = 0
+. declared SyntaxId = 0
+. handlers = RowRange'SyntaxId()
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        declared = fn.syntax
+        do match? tree.nodes[fn.syntax]
+            | .node-do-task-block(task)
+                body = task.body
+                handlers = task.catchers
+if body == 0 || tables.captures[unit.instance] == unbuilt-environment
+    refuse(.refused-function, declared)
+    =
+unit = unit.received = true
+unit = unit.takes-self = true
+ir.add-argument(managed-layout)
+ir.returns = void-layout
+if tables.task-init != no-function
+    call-function(tables.task-init, declared)
+open-environment(declared)
+share-self(declared)
+task-leaving = ir.reserve-block()
+if handlers.count != 0
+    task-failing = ir.reserve-block()
+    task-handlers = handlers
+emit-block(body)
+jump(task-leaving)
+ir.start-block(task-leaving)
+set-task-end(task-end-finished)
+if tables.probe-flush != no-function
+    call-function(tables.probe-flush, declared)
+call-runtime(.runtime-terminate-active-task, 0, pending.length)
+return-nothing()
+
+────────────────────
++ do set-task-end
+    - end U32
+
+` Tells the runtime how the task ends, which the `Task` a `do new` gave reads. The first it is
+` told stands.
+. mark = pending.length
+pending += integer(.machine-u32, end)
+call-runtime(.runtime-set-task-end, 0, mark)
+
+────────────────────
++ do emit-task-value Operand
+    - id SyntaxId
+    - row ASTDoTaskBlock
+
+` The `Task` a `do new` used as a value gives: the task is spawned as one written as a statement
+` is, but the runtime is asked for the record it keeps of how the task ends, which the function
+` the type pass recorded at the node makes the value of.
+. worker = if row.is-parallel then 0 else row.worker
+. priority = row.scheduling == .task-scheduling-priority
+. ending = emit-spawn(id, worker, row.is-parallel, priority, row.large-stack, true)
+. callee = task-value-callee(id)
+if callee == no-instance
+    refuse(.refused-expression, id)
+    = make-operand(.operand-void, 0)
+. mark = pending.length
+pending += ending
+= call-instance(callee, id, mark).operand
+
+────────────────────
+_ do task-value-callee InstanceId
+    - id SyntaxId
+
+` The function that makes the `Task` a `do new` used as a value gives, as the type pass
+` recorded it at the node.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-function
+        = facts.calls[fact].callee
+    fact = facts.calls[fact].next
+= no-instance
+
+────────────────────
++ do emit-spawn Operand
+    - id SyntaxId
+    - worker SyntaxId
+    - parallel Bool
+    - priority Bool
+    - large-stack Bool
+    - valued = false
+
+` Spawns a task, given the capture `make-capture` makes for its body. The runtime is given the
+` queue the worker named holds, where there is one, the body and its capture, the size of the
+` memory a task holds its own globals in, the place the task was spawned at and how to run it.
+` A `valued` spawn also asks for the record the runtime keeps of how the task ends, which it
+` answers. A task an object owns is started with the object, which keeps it for its `close`
+` to cancel.
+. nothing = make-operand(.operand-void, 0)
+. callee = task-callee(id)
+. body = if callee != no-instance then tables.instance-functions[callee] else no-function
+if body == no-function
+    refuse(.refused-statement, id)
+    = nothing
+. owned = is-owned-task(id)
+. owner = if owned then task-owner(id) else nothing
+if owned && operand-kind(owner) == .operand-void
+    = nothing
+. capture = make-capture(id, callee)
+. mark = pending.length
+if owned
+    pending += num-cast(id, owner, managed-layout, pointer-layout)
+if worker != 0
+    . queue = emit-expression(worker)
+    . held = layout-of(queue.type, worker)
+    if tables.layouts.is-struct(held) && tables.layouts.rows[held].fields.count == 1
+        queue = Typed(take(queue.operand, tables.layouts.field(held, 0), worker), queue.type)
+        held = tables.layouts.field(held, 0).layout
+    if held != pointer-layout && held != managed-layout
+        refuse(.refused-statement, worker)
+        = nothing
+    pending += queue.operand
+else
+    pending += integer(.machine-pointer, 0)
+ir.depend(.callee-function, body, 0)
+pending += make-operand(.operand-symbol, tables.functions[body].symbol)
+pending += capture
+pending += integer(.machine-u64, tables.task-local-size as U64)
+. path = program.modules[unit.source-module].relative-path
+pending += make-operand
+    - .operand-constant
+    - ir.add-string(if path.length != 0 then path else "no file")
+. begin = tree.nodes[id].loc.begin
+pending += integer(.machine-u32, begin.line + 1)
+pending += integer(.machine-u32, begin.column + 1)
+. options U32 = 0
+if priority
+    options = options /or/ task-start-priority
+if parallel
+    options = options /or/ task-start-spin
+if large-stack
+    options = options /or/ task-start-large-stack
+if valued
+    options = options /or/ task-start-handle
+pending += integer(.machine-u32, options)
+. start = if owned then RuntimeFunction.runtime-start-owned-task else RuntimeFunction.runtime-start-task
+= call-runtime(start, id, mark, pointer-layout)
+
+────────────────────
+_ do is-owned-task Bool
+    - id SyntaxId
+
+` Whether the type pass found the task spawned at a node owned by an object.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-owned-task
+        = true
+    fact = facts.calls[fact].next
+= false
+
+────────────────────
+_ do task-owner Operand
+    - site SyntaxId
+
+` The object that owns a task the type pass found owned: the innermost markup element being
+` built, or else the `TaskOwner` of the activation of a case the binder gave it to, or else the
+` receiver, as `own-callback` finds the owner of a live action. An activation that keeps no
+` `TaskOwner` leaves the task owned by nothing.
+. binding = instances.rows[unit.reading].binding
+. tasks = bindings.activation-tasks(binding, site, program.store-atom("(tasks)"))
+if content-hosts.length != 0
+    . host = content-hosts[content-hosts.length - 1]
+    if tables.is-class(host.type)
+        = host.operand
+else if tasks != no-slot
+    = read-captured(tasks, site, find-captured(tasks, site).type).operand
+else if unit.has-self && tables.is-class(unit.owner-type)
+    = unit.self
+refuse(.refused-statement, site)
+= make-operand(.operand-void, 0)
+
+────────────────────
++ do task-holds Bool
+    - slot SlotId
+
+` Whether a local of a function further out is held in the capture of a spawned task's body
+` that the function is, or is written in, as one the body copies. A lazy one is held there as
+` the value the spawn evaluated, the body's own to change.
+. home = tables.slot-functions[slot]
+. owner = unit.instance
+while owner != no-instance && tables.instance-scopes[owner] != home
+    if tables.capture-rows[owner] != no-place && tables.copies(owner, slot)
+        = true
+    owner = instances.rows[owner].enclosing
+= false
+
+────────────────────
+_ do task-callee InstanceId
+    - id SyntaxId
+
+` The body of the task spawned at a node, as the type pass recorded it.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if spawns-task(facts.calls[fact].form)
+        = facts.calls[fact].callee
+    fact = facts.calls[fact].next
+= no-instance
+
+────────────────────
++ do task-locals Operand
+    - site SyntaxId
+
+= make-operand
+    - .operand-value
+    - append(.op-load-task-word, site, Span(), task-locals-offset, pointer-layout)

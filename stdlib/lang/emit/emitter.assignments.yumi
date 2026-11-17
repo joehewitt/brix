@@ -1,0 +1,2432 @@
+./emitter
+./emitter.calls
+./emitter.lazies
+./emitter.live-actions
+./emitter.loops
+./emitter.match-arms
+./emitter.styles
+./emitter.tables
+./emitter.tasks
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Assignments is facet of FunctionEmitter
+    sees Calls
+    sees Lazies
+    sees LiveActions
+    sees Loops
+    sees MatchArms
+    sees Styles
+    sees Tables
+    sees Tasks
+
+────────────────────
+_ do clear-fills
+
+` Gives each lazy local of a constructor the flag that says whether it has been evaluated
+` for the properties' first values, cleared here before the first of them.
+for offset in 0 .. < unit.slot-count
+    if bindings.slots[unit.slot-start + offset].kind != .slot-lazy
+        continue
+    . flag = ir.add-local(u8-layout)
+    unit.fill-flags[offset] = flag
+    store-local(flag, integer(.machine-u8, 0), 0)
+
+────────────────────
+_ do clear-checks
+
+` Gives each property of the object being made that a value may first read on some of its paths
+` alone the flag that says whether it has its first value, cleared here before the first of
+` them, as the reference keeps one where such a read gives the property its value: so may a
+` value given on some paths alone, which a flagged property's is. Where a read or its own turn
+` finds the flag clear, the property is given its value (`check-property`). One whose value runs
+` in a live action of its own has the trackers of the action made here, as the reference makes
+` them, for whichever path gives it its value.
+filling = filling.checks = storage.allocate'U32(filling.count + 1)
+filling = filling.trackers = storage.allocate'U32(filling.count + 1)
+for position in 0 .. < filling.count
+    filling.checks[position] = no-local
+    filling.trackers[position] = no-local
+. changed = true
+while changed
+    changed = false
+    for position in 0 .. < filling.count
+        . unit-id = tables.value-unit(filling.start + position)
+        if unit-id == no-instance
+            continue
+        . read = tables.first-read(unit-id)
+        while read != no-fact
+            . found = property-read(filling.type, read)
+            . unsure = unsure-read || filling.checks[position] != no-local
+                .. unsure-read = instances.rows[unit-id].branches && !facts.value-reads[read].surely
+            if found && unsure
+                . held = (found as U32) - filling.start
+                if held < filling.count && filling.checks[held] == no-local
+                    . flag = ir.add-local(u8-layout)
+                    filling.checks[held] = flag
+                    store-local(flag, integer(.machine-u8, 0), 0)
+                    changed = true
+            read = tables.next-read(read)
+for position in 0 .. < filling.count
+    . unit-id = tables.value-unit(filling.start + position)
+    if filling.checks[position] != no-local && unit-id != no-instance && instances.rows[unit-id].is-live
+        filling.trackers[position] = open-trackers(0)
+
+────────────────────
++ do store-named
+    - id SyntaxId
+    - place U32
+    - value Typed
+
+` Stores what the name of a markup element holds in the property of that name of the
+` object the function runs on, converted as the type pass recorded at the element for a
+` value the property is given.
+. stored = convert(id, .reason-declaration, value)
+if !unit.has-self
+    refuse(.refused-statement, id)
+    =
+store-argument(unit.self, unit.owner-type, place, stored.operand, stored.type, id)
+
+────────────────────
++ do store-argument
+    - object Operand
+    - type TypeId
+    - place U32
+    - value Operand
+    - given TypeId
+    - site SyntaxId
+
+` Stores an argument of a markup element in the property of its parameter's name, as an
+` assignment to the property stores a value of the property's type: a lazy property is
+` marked as having its value.
+. property = types.properties[place]
+. held = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+. is-lazy = property.storage-kind == .storage-lazy
+if held == no-layout || unstored || given != property.type
+    refuse(.refused-statement, site)
+    =
+.. unstored = property.storage-kind != .storage-eager && !is-lazy
+. field = tables.layouts.field(held, object-header-fields + property.slot)
+. flag-offset U32 = U32.max
+if is-lazy
+    if !tables.layouts.is-struct(field.layout)
+        refuse(.refused-statement, site)
+        =
+    . pair = field
+    . inner = tables.layouts.field(pair.layout, 0)
+    flag-offset = pair.offset + tables.layouts.field(pair.layout, 1).offset
+    field = LayoutField(pair.offset + inner.offset, inner.layout)
+put-property(object, field, property, value, site, flag-offset, false, memo-flag-of(type, property))
+
+────────────────────
++ do store-part
+    - id SyntaxId
+    - name SyntaxId
+    - slot SlotId
+    - offset U32
+    - part Operand
+    - held TypeId
+    - kept LayoutId
+    - declares Bool
+
+` Stores a part of a value taken apart in the local a name gives it: in the environment that
+` holds the local, or in its cell, which a declaration gives it unless it is a lazy one that
+` keeps the cell it was first given.
+if kept == void-layout
+    =
+if is-captured(slot)
+    if bindings.slots[slot].kind == .slot-lazy
+        refuse(.refused-statement, name)
+        =
+    keep-captured(slot, part, held, id)
+    =
+if declares && (unit.cells[offset] == no-local || bindings.slots[slot].kind != .slot-lazy)
+    . taken = (bindings.slots[slot].flags /and/ SlotFlag.slot-address-taken) != 0
+    unit.cells[offset] = ir.add-local(kept, taken)
+if unit.cells[offset] == no-local
+    refuse(.refused-statement, name)
+    =
+store-local(unit.cells[offset], part, id)
+
+────────────────────
++ do store-part-global
+    - name SyntaxId
+    - kept U32
+    - part Operand
+    - type TypeId
+
+` Stores a part of a value taken apart in the global a name gives it, where the global has the
+` part's type, as an assignment of the global does.
+. global = tables.storage[kept]
+if type != global.type
+    refuse(.refused-conversion, name)
+    =
+store-global(global, part, name)
+if tables.global-kind(global.module, global.decl) == .global-lazy
+    store-release(make-operand(.operand-symbol, global.state), 0, integer(.machine-u8, 1), name)
+
+────────────────────
+_ do assigned-lazy SlotId
+    - name SyntaxId
+
+` The slot of a lazy local a name is assigned through, when a flag of this function says
+` whether the local has its value.
+. binding = instances.rows[unit.reading].binding
+if binding == no-binding || unit.reading != unit.instance
+    = no-slot
+do match? tree.nodes[name]
+    | .node-identifier
+        . resolution = bindings.resolution-of(binding, name)
+        if resolution.kind != .resolve-slot || !is-own-slot(resolution.slot)
+            = no-slot
+        if bindings.slots[resolution.slot].kind != .slot-lazy
+            = no-slot
+        if unit.lazy-flags[resolution.slot - unit.slot-start] != no-local
+            = resolution.slot
+= no-slot
+
+────────────────────
++ do emit-assign Assignment ?! Refused
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` Stores a value in a local or a global: the one written, or for an assigning operator what its
+` operator gives for the place and the value, in the way the type pass planned it. The value takes
+` the conversion recorded for the store, and the store answers it with the value given
+` (`Assignment`). A lazy global assigned is marked as having its value, which is then never
+` evaluated. An assigning operator that a function of its own name answers stores nothing, unless
+` the type pass planned its answer to be stored. A field is assigned in its own way, and so are the
+` locals a tuple is taken apart into, the flag of a domain of styles, and a name of an object that
+` declares a style for it. A local of no size, as a `Void` is, keeps nothing: its value is evaluated
+` and goes nowhere. An array stored over an array where the value or the place is a link of an
+` optional chain has no shape here: the runtime is told of no replaced storage there. A store to a
+` local some read tracks runs the actions that read it where its bits change, as `watches` says,
+` those of a struct against a copy taken before the store: a lazy one only where it had its value,
+` since no action can read it before.
+. chains = (is-chained(rhs) && !is-pinned(rhs)) || (is-link(lhs) && !is-pinned(receiver-of(lhs)))
+if chains && facts.is-replacing(unit.reading, id)
+    refuse(.refused-statement, id)
+    = Assignment()
+if is-chained(rhs) && !is-pinned(rhs)
+    emit-withheld(id, op, lhs, rhs, false)
+    = Assignment()
+if is-link(lhs) && !is-pinned(receiver-of(lhs))
+    emit-chained-assign(id, op, lhs, rhs)
+    = Assignment()
+. answered = op != .eq-op && assigning-call(lhs) != no-fact
+. plan = facts.plan-of(unit.reading, id)
+if answered && plan != .plan-store-answer
+    emit-assigning-call(id, assigning-call(lhs), lhs, rhs)
+    = Assignment()
+do match? tree.nodes[lhs]
+    | .node-style-read-expression(row)
+        emit-style-write(id, row.object, rhs)
+        = Assignment()
+    | .node-get-expression(row)
+        . styled = facts.style-write-of(unit.reading, id)
+        if styled
+            emit-style-assign(id, row.object, rhs, styled)
+            = Assignment()
+        if facts.plan-of(unit.reading, lhs) == .plan-view
+            = emit-view-field-assign(id, op, lhs, row.object, rhs)
+        if facts.plan-of(unit.reading, lhs) == .plan-table
+            = emit-table-field-assign(id, op, lhs, row.object, rhs)
+        = emit-field-assign(id, op, lhs, row.object, rhs)
+    | .node-index-expression(row)
+        if facts.plan-of(unit.reading, lhs) == .plan-view
+            = emit-view-index-assign(id, op, lhs, row.object, row.index, rhs)
+        if facts.plan-of(unit.reading, lhs) == .plan-table
+            if op != .eq-op
+                refuse(.refused-statement, id)
+                = Assignment()
+            if table-op(lhs) == TableOp.table-item-store
+                emit-table-item-store(lhs, row.object, row.index, rhs)
+                = Assignment()
+            if table-op(lhs) == TableOp.table-range-store
+                emit-table-range-store(lhs, row.object, row.index, rhs)
+                = Assignment()
+            emit-table-store(lhs, row.object, row.index, rhs)
+            = Assignment()
+        if facts.plan-of(unit.reading, lhs) == .plan-item
+            = emit-item-assign(id, op, lhs, row.object, row.index, rhs)
+        . stores = own-call(lhs)
+        if op == .eq-op && stores != no-fact && facts.plan-of(unit.reading, lhs) == .plan-array-item
+            = emit-array-store(lhs, facts.calls[stores].callee, row.object, row.index, rhs)
+        if op == .eq-op && stores != no-fact && facts.calls[stores].form != .call-setter
+            = emit-index-store(lhs, facts.calls[stores], row.object, row.index, rhs)
+        . reached = !chains-at(lhs, row.is-optional) || is-pinned(row.object)
+        if op != .eq-op && reached && facts.plan-of(unit.reading, lhs) == .plan-answer-item
+            emit-item-answer(lhs, row.object, row.index, rhs)
+            = Assignment()
+        if op != .eq-op && reached && call-at(lhs, .call-operator) != no-fact
+            = emit-index-update(lhs, op, row.object, row.index, rhs)
+        = emit-field-assign(id, op, lhs, row.object, rhs)
+    | .node-tuple-syntax(row)
+        if op == .eq-op
+            emit-destructure(id, row.items, rhs, false)
+            = Assignment()
+    | .node-identifier
+        . styled = facts.style-write-of(unit.reading, id)
+        if styled
+            emit-style-assign(id, 0, rhs, styled)
+            = Assignment()
+        if is-own-field(lhs) || is-case-member(lhs)
+            = emit-field-assign(id, op, lhs, 0, rhs)
+        . setter = own-call(lhs)
+        if setter != no-fact && facts.calls[setter].form == .call-setter && op == .eq-op
+            emit-module-setter(lhs, rhs, facts.calls[setter])
+            = Assignment()
+        if op != .eq-op && call-at(lhs, .call-store-setter) != no-fact
+            = emit-setter-update(id, op, lhs, 0, rhs, false)
+. kept = assigned-global(lhs, id)
+. local = no-local
+. target = no-type
+. memory = make-operand(.operand-void, 0)
+. shared = no-slot
+. written = no-local
+. watched = no-slot
+if kept == no-storage
+    . slot = assigned-lazy(lhs)
+    if slot == no-slot
+        slot = local-slot(lhs, id, true, false, true)
+    . offset = slot-offset(slot, id)
+    if watches(slot, id)
+        watched = slot
+    if is-captured(slot)
+        shared = slot
+        target = find-captured(slot, id).type
+    else
+        target = facts.slot-type(unit.instance, offset)
+        if unit.lazy-flags[offset] != no-local
+            written = unit.lazy-flags[offset]
+            if unit.cells[offset] == no-local && target != no-type && target != invalid-type
+                . taken = (bindings.slots[slot].flags /and/ SlotFlag.slot-address-taken) != 0
+                unit.cells[offset] = ir.add-local(layout-of(target, id), taken)
+        local = unit.cells[offset]
+        if local == no-local && layout-of(target, id) != void-layout
+            memory = argument-memory(slot, target, id)
+else
+    target = tables.storage[kept].type
+. given = Typed(make-operand(.operand-void, 0), no-type)
+. base = increment-base(op)
+if op == .eq-op
+    given = emit-expression(rhs)
+else if answered
+    given = emit-assigning-call(id, assigning-call(lhs), lhs, rhs)
+else if base && base == .concat-op
+    given = emit-concat(id, lhs, rhs, false)
+else if base && plan == .plan-builtin
+    given = emit-builtin(id, base, lhs, rhs, true)
+else if base && plan == .plan-call
+    given = emit-operator-call(id, lhs, rhs, .plan-call, true)
+else
+    refuse(.refused-statement, id)
+. converted = convert(id, .reason-assignment, given)
+. value = converted.operand
+if converted.type != target
+    refuse(.refused-conversion, id)
+    = Assignment()
+. assignment = Assignment(converted, given)
+if facts.is-replacing(unit.reading, id)
+    . old = memory
+    if shared != no-slot
+        old = read-captured(shared, id, target).operand
+    else if kept != no-storage
+        old = load-global(tables.storage[kept], id).operand
+    else if local != no-local
+        old = load-local(local, id)
+    replace-storage(id, old, target, given.operand, given.type)
+. prior = make-operand(.operand-void, 0)
+. armed = make-operand(.operand-void, 0)
+if watched != no-slot
+    if local == no-local && shared == no-slot
+        refuse(.refused-statement, id)
+        = Assignment()
+    prior = if shared != no-slot then read-captured(shared, id, target).operand else load-local(local, id)
+    . held = layout-of(target, id)
+    if tables.layouts.is-struct(held)
+        . saved = frame(held)
+        copy(saved, prior, held, false, id)
+        prior = saved
+    if written != no-local
+        armed = load-local(written, id)
+if shared != no-slot
+    if fills-share() && !filling.storing && bindings.slots[shared].kind == .slot-lazy
+        refuse(.refused-statement, id)
+        = Assignment()
+    keep-captured(shared, value, target, id)
+    if bindings.slots[shared].kind == .slot-lazy && !task-holds(shared)
+        settle-shared(shared, id)
+    if watched != no-slot
+        dispatch-local(watched, prior, read-captured(shared, id, target).operand, target, id)
+    = assignment
+if kept == no-storage && local == no-local
+    if layout-of(target, id) != void-layout
+        copy(memory, value, layout-of(target, id), false, id)
+    = assignment
+if kept == no-storage
+    store-local(local, value, id)
+    if written != no-local
+        store-local(written, integer(.machine-u8, 1), id)
+    if watched != no-slot
+        dispatch-local(watched, prior, load-local(local, id), target, id, armed)
+    = assignment
+. global = tables.storage[kept]
+store-global(global, value, id)
+if tables.global-kind(global.module, global.decl) == .global-lazy
+    store-release(make-operand(.operand-symbol, global.state), 0, integer(.machine-u8, 1), id)
+= assignment
+
+────────────────────
++ do assigned-global U32
+    - lhs SyntaxId
+    - id SyntaxId
+
+` The storage of the global an assignment names, or none when it names something else. A
+` global with no storage has no shape here.
+. binding = instances.rows[unit.reading].binding
+if binding == no-binding
+    = no-storage
+do match? tree.nodes[lhs]
+    | .node-identifier
+        . resolution = bindings.resolution-of(binding, lhs)
+        if resolution.kind == .resolve-global
+            . row = tables.storage-of(resolution.module, resolution.decl)
+            if row == no-storage
+                refuse(.refused-statement, id)
+            = row
+= no-storage
+
+────────────────────
+_ do assigning-call FactId
+    - lhs SyntaxId
+
+` The call of an assigning operator that a function of its own name answers, which the type
+` pass records as an operator's call at the place assigned. No fact when the operator is not
+` such a one.
+do match? tree.nodes[lhs]
+    | .node-index-expression
+        = no-fact
+. fact = own-call(lhs)
+if fact == no-fact || facts.calls[fact].form != .call-operator
+    = no-fact
+= fact
+
+────────────────────
+_ do emit-assigning-call Typed
+    - id SyntaxId
+    - fact FactId
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` An assigning operator that a function of its own name answers: the function is called on
+` what the place holds with the value. A struct or a tuple is given as the place itself, so the
+` function reads what the place holds when it is called, after the value is evaluated; a
+` number or an object is read before. Nothing is stored here: where the type pass planned the
+` answer to be stored, the assignment that called for it stores it.
+. nothing = make-operand(.operand-void, 0)
+. left = emit-expression(lhs)
+. left-type = left.type
+. right = emit-expression(rhs)
+. right-type = right.type
+= call-operator(id, fact, lhs, left.operand, left-type, rhs, right.operand, right-type)
+
+────────────────────
+_ do emit-field-assign Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - rhs SyntaxId
+
+` An assignment to a field. A struct's field is stored in place: at its address inside the
+` local, or inside the field, that holds the struct, or inside the receiver when no object is
+` written. A tuple's field is stored only by its own constructor, which is making it: any
+` other assignment gives a new tuple, which a statement drops. A property of an object is
+` assigned in its own way. A store into a struct that an object holds has no shape yet when
+` it writes a managed pointer. The value is evaluated before the object, as TypeScript does. An assigning operator whose answer
+` the type pass planned to be stored stores it as any value, and has no shape in a tuple's
+` field. A value named alone that a getter answers has no shape here unless it is an object. A
+` struct that lies in storage, as `places-item` finds it, is stored where it lies, a managed
+` pointer through the write barrier, as TypeScript stores once it has inlined what reads it;
+` any other struct an index answered by a function gave has no shape here, since TypeScript
+` stores into a copy of it. A field of the case of a row a name stands for is written in its
+` cell, and so is one named alone in a member that runs on the case.
+. cursor = if object != 0 then case-cursor-of(object) else this-cursor
+if cursor != U32.max
+    . named = member-name(lhs)
+    . field = case-field(cursor, named) if named
+    if !field
+        refuse(.refused-statement, id)
+        = Assignment()
+    = emit-case-field-assign(id, op, lhs, cursor, field, rhs)
+if object != 0 && is-getter-name(object) && !tables.is-class(held-type(object))
+    refuse(.refused-statement, id)
+    = Assignment()
+if facts.plan-of(unit.reading, lhs) == .plan-forward
+    emit-forward-set(id, op, lhs, object, rhs)
+    = Assignment()
+if op != .eq-op && call-at(lhs, .call-store-setter) != no-fact
+    = emit-setter-update(id, op, lhs, object, rhs, true)
+. owner = if object == 0 then unit.owner-type else held-type(object)
+if owner != no-type && owner != invalid-type && tables.is-class(owner)
+    = emit-property-assign(id, op, lhs, object, rhs, owner)
+. setter = own-call(lhs)
+if setter != no-fact && facts.calls[setter].form == .call-setter && op == .eq-op
+    emit-setter(lhs, object, rhs, facts.calls[setter])
+    = Assignment()
+if owner == no-type || owner == invalid-type || !is-stored(owner, object)
+    if facts.plan-of(unit.reading, id) == .plan-store-answer
+        refuse(.refused-statement, id)
+        = Assignment()
+    emit-update(id, op, lhs, rhs)
+    = Assignment()
+. placed = object != 0 && places-item(object)
+if object != 0 && !placed && through-answer(object)
+    refuse(.refused-statement, id)
+    = Assignment()
+. layout = layout-of(owner, id)
+. position = field-position(lhs, owner)
+if !tables.layouts.is-struct(layout) || position >= tables.layouts.rows[layout].fields.count
+    refuse(.refused-statement, id)
+    = Assignment()
+if managed-field && !is-framed(object) && !placed
+    refuse(.refused-statement, id)
+    = Assignment()
+.. managed-field = tables.layouts.rows[tables.layouts.field(layout, position).layout].is-managed
+. given = Typed(make-operand(.operand-void, 0), no-type)
+. increment = increment-base(op)
+. site = id
+do match? tree.nodes[lhs]
+    | .node-index-expression
+        site = lhs
+. stores-answer = facts.plan-of(unit.reading, site) == .plan-store-answer
+if op == .eq-op
+    . made = emit-expression(rhs)
+    given = Typed(apart(made, rhs, object != 0 && !is-inert(object)), made.type)
+else if stores-answer && assigning-call(lhs) != no-fact && (object == 0 || is-place(object))
+    given = emit-assigning-call(site, assigning-call(lhs), lhs, rhs)
+else if increment && builtin-plan && (object == 0 || is-place(object) || placed)
+    given = emit-builtin(site, increment, lhs, rhs, true)
+else
+    refuse(.refused-statement, id)
+.. builtin-plan = facts.plan-of(unit.reading, site) == .plan-builtin
+. converted = convert(site, .reason-assignment, given)
+. value = converted.operand
+if converted.type != field-type(owner, position)
+    refuse(.refused-conversion, id)
+    = Assignment()
+. assignment = Assignment(converted, given)
+. base = if object == 0 then unit.self else if placed then place-of(object).operand else emit-expression(object).operand
+if facts.is-replacing(unit.reading, id)
+    replace-storage
+        - id
+        - take(base, tables.layouts.field(layout, position), id)
+        - field-type(owner, position)
+        - given.operand
+        - given.type
+if placed
+    put-lent(base, tables.layouts.field(layout, position), value, id)
+else
+    put(base, tables.layouts.field(layout, position), value, id)
+= assignment
+
+────────────────────
+_ do is-getter-name Bool
+    - id SyntaxId
+
+` Whether an expression is a name alone that a getter answers.
+do match? tree.nodes[id]
+    | .node-identifier
+        = reads-getter(id)
+= false
+
+────────────────────
+_ do emit-property-assign Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - rhs SyntaxId
+    - owner TypeId
+    - received Bool = false
+
+` An assignment to a property of an object: of the value written before the property's
+` name, or of the receiver when none is, or where the name alone is `received`, of the markup
+` element `received-object` finds. A setter is called with the value. A stored
+` property is stored at its place in the object: a managed pointer through the write
+` barrier, and a struct by a copy. A lazy property is stored the same way and marked as
+` having its value, which is then never evaluated. The value is evaluated before the object,
+` as TypeScript does. An assigning operator reads the property first and then stores it, so
+` its object is read twice. A tracked property runs the actions that read it where the store changed it.
+. name = member-name(lhs)
+. setter = own-call(lhs)
+if setter != no-fact && facts.calls[setter].form == .call-setter && op == .eq-op
+    emit-setter(lhs, object, rhs, facts.calls[setter])
+    = Assignment()
+. found = property-of(owner, name) if name
+. held = tables.layouts.objects[owner]
+if !found || held == no-layout
+    refuse(.refused-statement, id)
+    = Assignment()
+. property = types.properties[found]
+. is-lazy = property.storage-kind == .storage-lazy
+if property.storage-kind != .storage-eager && !is-lazy
+    refuse(.refused-statement, id)
+    = Assignment()
+. field = tables.layouts.field(held, object-header-fields + property.slot)
+. flag-offset U32
+if is-lazy
+    if !tables.layouts.is-struct(field.layout)
+        refuse(.refused-statement, id)
+        = Assignment()
+    . pair = field
+    . inner = tables.layouts.field(pair.layout, 0)
+    flag-offset = pair.offset + tables.layouts.field(pair.layout, 1).offset
+    field = LayoutField(pair.offset + inner.offset, inner.layout)
+if op == .eq-op && object == 0 && !received && !is-lazy
+    . updated = emit-own-update(id, lhs, rhs, owner, property, field)
+    if updated
+        = updated
+. given = Typed(make-operand(.operand-void, 0), no-type)
+. increment = increment-base(op)
+. plan = facts.plan-of(unit.reading, id)
+if op == .eq-op
+    . made = emit-expression(rhs)
+    given = Typed(apart(made, rhs, object != 0 && !is-inert(object)), made.type)
+else if plan == .plan-store-answer
+    given = emit-assigning-call(id, assigning-call(lhs), lhs, rhs)
+else if increment
+    if increment == .concat-op
+        given = emit-concat(id, lhs, rhs, false)
+    else if plan == .plan-builtin
+        given = emit-builtin(id, increment, lhs, rhs, true)
+    else if plan == .plan-call
+        given = emit-operator-call(id, lhs, rhs, .plan-call, true)
+    else
+        refuse(.refused-statement, id)
+else
+    refuse(.refused-statement, id)
+. converted = convert(id, .reason-assignment, given)
+. value = converted.operand
+if converted.type != property.type
+    refuse(.refused-conversion, id)
+    = Assignment()
+. assignment = Assignment(converted, given)
+. base = if received then received-object(lhs, name!).operand else if object == 0 then unit.self else emit-expression(object).operand
+if facts.is-replacing(unit.reading, id)
+    if is-lazy
+        refuse(.refused-statement, id)
+        = Assignment()
+    replace-storage(id, take(base, field, id), property.type, given.operand, given.type)
+put-property
+    - base
+    - field
+    - property
+    - value
+    - id
+    - if is-lazy then flag-offset else U32.max
+    - false
+    - memo-flag-of(owner, property)
+= assignment
+
+────────────────────
+_ do emit-own-update Assignment?
+    - id SyntaxId
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - owner TypeId
+    - property TypeProperty
+    - field LayoutField
+
+` An assignment to a field of the receiver that holds a tuple, of that tuple with one of its
+` own fields assigned, as `frame = frame.depth = 2` is: the one field is stored where it lies
+` inside the receiver, since the tuple stored would differ from the old one only there. The
+` assignment gives the tuple as it then lies. Nothing is emitted where the assignment is other
+` than that, or where the field stores more than its bits: one some read tracks, a memo, or
+` storage the assignment replaces.
+. named = member-name(lhs)
+if !named || !tables.layouts.is-struct(field.layout) || tracks(property)
+    = null
+if memo-flag-of(owner, property) != U32.max || facts.is-replacing(unit.reading, id)
+    = null
+if facts.is-replacing(unit.reading, rhs) || tables.live-statement-of(unit.reading, rhs)
+    = null
+if facts.node-type(unit.reading, rhs) != property.type
+    = null
+. target SyntaxId = 0
+. value SyntaxId = 0
+do match? tree.nodes[rhs]
+    | .node-assign(row)
+        if row.op == .eq-op && !is-chained(row.rhs)
+            target = row.lhs
+            value = row.rhs
+=? null if target == 0
+. object SyntaxId = 0
+. member Atom? = null
+do match? tree.nodes[target]
+    | .node-get-expression(row)
+        if !row.is-optional
+            object = row.object
+            member = row.name
+=? null if object == 0 || !member
+. same = false
+do match? tree.nodes[object]
+    | .node-identifier(row)
+        same = row.name == named && is-own-field(object)
+. plan = facts.plan-of(unit.reading, rhs)
+if !same || plan == .plan-extend || plan == .plan-truncate || stores-place(target)
+    = null
+. found = property-of(property.type, member)
+if !found || types.properties[found].storage-kind != .storage-eager
+    = null
+. position = types.properties[found].slot
+if position >= tables.layouts.rows[field.layout].fields.count
+    = null
+. converted = convert(rhs, .reason-assignment, emit-expression(value))
+if converted.type != field-type(property.type, position)
+    refuse(.refused-conversion, rhs)
+    = Assignment()
+. base = field-value(unit.self, field, id)
+put-lent(base, tables.layouts.field(field.layout, position), converted.operand, id)
+. stored = Typed(base, property.type)
+= Assignment(stored, stored)
+
+────────────────────
+_ member-name Atom?
+    - lhs SyntaxId
+
+` The name an assignment gives a property by: after an object, or alone.
+match? tree.nodes[lhs]
+    | .node-get-expression(row)
+        row.name
+    | .node-identifier(row)
+        row.name
+
+────────────────────
+_ do emit-setter-update Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - rhs SyntaxId
+    - is-member Bool
+
+` An assigning operator on a property, of an object or of a module, that a getter and a setter
+` answer: the getter reads the value, the machine operation of numbers, the join of text or the
+` function that answers the operator makes the new value of it and the value written, and the
+` setter stores that, as the reference does. The reference evaluates the object for the read and
+` again for the store, so only an object that names storage has a shape here, read once before
+` the value for both calls.
+. read = call-at(lhs, .call-getter)
+. store = call-at(lhs, .call-store-setter)
+. increment = increment-base(op)
+. plan = facts.plan-of(unit.reading, id)
+if read == no-fact || store == no-fact || !increment || other-plan || unplaced
+    refuse(.refused-statement, id)
+    = Assignment()
+.. other-plan = increment != .concat-op && plan != .plan-builtin && plan != .plan-call
+.. unplaced = object != 0 && !is-place(object)
+. getter = facts.calls[read].callee
+. setter = facts.calls[store].callee
+if getter == no-instance || setter == no-instance || partial-call || uncallable
+    refuse(.refused-statement, id)
+    = Assignment()
+.. partial-call = facts.calls[read].is-partial || facts.calls[store].is-partial
+.. uncallable = !is-callable(getter) || !is-callable(setter)
+if instances.signatures[getter].args.count != 0 || instances.signatures[setter].args.count != 1
+    refuse(.refused-statement, id)
+    = Assignment()
+. receiver = make-operand(.operand-void, 0)
+if is-member
+    . received = emit-receiver(lhs, object, true)
+    receiver = received.operand
+    if received.type != instances.rows[getter].self-type || other-setter
+        refuse(.refused-conversion, lhs)
+    .. other-setter = received.type != instances.rows[setter].self-type
+. read-mark = pending.length
+if is-member
+    pending += receiver
+. current = if is-member then call-method(getter, lhs, read-mark) else call-instance(getter, lhs, read-mark)
+. current-type = current.type
+. value = current
+if increment == .concat-op
+    value = join-text(id, lhs, current.operand, current-type, rhs, false)
+else if plan == .plan-builtin
+    value = combine-builtin(id, increment, lhs, current.operand, current-type, rhs, true)
+else
+    . combined = answering(facts.first-call(unit.reading, id))
+    if combined == no-fact || answering(facts.calls[combined].next) != no-fact
+        refuse(.refused-statement, id)
+        = Assignment()
+    . given = emit-expression(rhs)
+    . given-type = given.type
+    value = call-operator(id, combined, lhs, current.operand, current-type, rhs, given.operand, given-type)
+. computed = value
+value = convert(id, .reason-assignment, value)
+value = convert(lhs, .reason-argument, value)
+if value.type != instances.argument-type(setter, 0)
+    refuse(.refused-conversion, id)
+    = Assignment()
+. assignment = Assignment(value, computed)
+. mark = pending.length
+if is-member
+    pending += receiver
+pending += value.operand
+if is-member
+    call-method(setter, lhs, mark)
+else
+    call-instance(setter, lhs, mark)
+= assignment
+
+────────────────────
+_ do emit-module-setter
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - fact CallFact
+
+. callee = fact.callee
+if callee == no-instance || fact.is-partial || !is-callable(callee)
+    refuse(.refused-statement, lhs)
+    =
+if instances.signatures[callee].args.count != 1
+    refuse(.refused-statement, lhs)
+    =
+. value = convert(rhs, .reason-argument, emit-expression(rhs))
+if value.type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, rhs)
+    =
+. mark = pending.length
+pending += value.operand
+call-instance(callee, lhs, mark)
+
+────────────────────
+_ do field-position U32
+    - lhs SyntaxId
+    - owner TypeId
+
+` Which stored field the left side of an assignment names: by a constant index the type pass
+` recorded, or by the name of a property the type stores.
+do match? tree.nodes[lhs]
+    | .node-index-expression
+        . place = indexed-field(lhs)
+        if place != no-fact
+            = facts.constants[place].bits as U32
+    | .node-get-expression(row)
+        . found = property-of(owner, row.name)
+        if found && types.properties[found].storage-kind == .storage-eager
+            = types.properties[found].slot
+    | .node-identifier(row)
+        . found = property-of(owner, row.name)
+        if found && types.properties[found].storage-kind == .storage-eager
+            = types.properties[found].slot
+refuse(.refused-statement, lhs)
+= 0
+
+────────────────────
+_ is-case-member Bool
+    - name SyntaxId
+
+` Whether a name is a member of the receiver, in a member that runs on the case of a row.
+|? binding == no-binding || unit.reading != unit.instance || this-cursor == U32.max
+    false
+??
+    bindings.resolution-of(binding, name).kind == .resolve-member
+
+.. binding = instances.rows[unit.reading].binding
+
+────────────────────
++ is-stored Bool
+    - owner TypeId
+    - object SyntaxId
+
+` Whether an assignment to a field of a type stores it in place: a struct's, or that of the
+` tuple a constructor is making, written by its name alone.
+is-mutable-value(owner) || (object == 0 && builds && intrinsic(owner) == .tuple)
+
+────────────────────
+_ do through-answer Bool
+    - id SyntaxId
+
+` Whether a struct is read from what an index answered by a function gave, itself or as a
+` field of it. A store into it would change a value nothing names. A property of an object
+` is stored in the object, wherever the object came from.
+do match? tree.nodes[id]
+    | .node-get-expression(row)
+        . owner = facts.node-type(unit.reading, row.object)
+        if owner == no-type || owner == invalid-type || tables.is-class(owner)
+            = false
+        = through-answer(row.object)
+    | .node-index-expression(row)
+        if !names-field(id)
+            = true
+        = through-answer(row.object)
+= false
+
+────────────────────
+_ do stores-place Bool
+    - lhs SyntaxId
+
+` Whether an assignment stores into the place it names: a name that is no field, a field
+` of an object or of a struct, or an item of a text, which is stored whole. A tuple's field
+` is not one: assigning it gives a new tuple. A field of a row of a table or of an array, and
+` one of the case of a row a name stands for, is one, kept in its cell.
+. owner = no-type
+. indexes = false
+do match? tree.nodes[lhs]
+    | .node-identifier
+        if !is-own-field(lhs)
+            = true
+        owner = unit.owner-type
+    | .node-get-expression(row)
+        . plan = facts.plan-of(unit.reading, lhs)
+        if case-cursor-of(row.object) != U32.max || plan == .plan-view || plan == .plan-table
+            = true
+        owner = facts.node-type(unit.reading, row.object)
+    | .node-index-expression(row)
+        owner = facts.node-type(unit.reading, row.object)
+        indexes = true
+if owner == no-type || owner == invalid-type
+    = false
+= tables.is-class(owner) || is-mutable-value(owner) || (indexes && intrinsic(owner) == .string)
+
+────────────────────
+_ do stores-by-call Bool
+    - lhs SyntaxId
+
+` Whether an index is assigned through the function that answers `[]=`, which stores the value
+` wherever the object keeps it.
+do match? tree.nodes[lhs]
+    | .node-index-expression
+        if facts.plan-of(unit.reading, lhs) == .plan-item
+            = false
+        . stores = own-call(lhs)
+        = stores != no-fact && facts.calls[stores].form != .call-setter
+= false
+
+────────────────────
++ do emit-update Typed ?! Refused
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` What an assignment gives as a value. An assigning operator that a function answers gives
+` what the function answers; where the type pass planned the answer to be stored it is stored
+` first, and the value is the one stored, when storing it changed its type in no way. An
+` assignment that stores into the place it names gives the value stored, as a copy when it
+` is a struct, or the value as it was before the store converted it: whichever is of the
+` type the type pass gave the assignment.
+` An assignment to a tuple's field gives a new tuple: its fields are those of
+` the old one, but for the one assigned, which an assigning operator gives from the field's
+` value. An extension adds a field, and a truncation keeps
+` the first. The old tuple is evaluated after the value assigned, as TypeScript evaluates it,
+` and that value is kept apart from what evaluating it may change. A live statement has no
+` shape here as a value.
+. nothing = make-operand(.operand-void, 0)
+. type = facts.node-type(unit.reading, id)
+. plan = facts.plan-of(unit.reading, id)
+if tables.live-statement-of(unit.reading, id)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if is-chained(rhs) && !is-pinned(rhs) && facts.is-replacing(unit.reading, id)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if is-chained(rhs) && !is-pinned(rhs)
+    = emit-withheld(id, op, lhs, rhs, true)
+if is-link(lhs)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if op != .eq-op && plan == .plan-store-answer
+    . assignment = emit-assign(id, op, lhs, rhs)
+    if assignment.stored.type != type
+        refuse(.refused-conversion, id)
+        = Typed(nothing, no-type)
+    = assignment.stored
+if op != .eq-op && assigning-call(lhs) != no-fact
+    . answer = emit-assigning-call(id, assigning-call(lhs), lhs, rhs)
+    if answer.type != type
+        refuse(.refused-conversion, id)
+    = answer
+if plan != .plan-extend && plan != .plan-truncate && places-store
+    . assignment = emit-assign(id, op, lhs, rhs)
+    . unconverted = assignment.stored.type != type && assignment.given.type == type
+    . gives = if unconverted then assignment.given else assignment.stored
+    if gives.type != type
+        refuse(.refused-conversion, id)
+        = Typed(nothing, no-type)
+    . stored = layout-of(type, id)
+    = if tables.layouts.is-struct(stored) then Typed(snapshot(gives.operand, stored, id), type) else gives
+.. places-store = stores-place(lhs) || (op == .eq-op && stores-by-call(lhs))
+. extends = plan == .plan-extend && op == .add-eq-op
+. object = lhs
+if !extends
+    do match? tree.nodes[lhs]
+        | .node-get-expression(row)
+            object = row.object
+        | .node-index-expression(row)
+            object = row.object
+    if object == lhs
+        refuse(.refused-expression, id)
+        = Typed(nothing, no-type)
+. given = nothing
+. given-type = no-type
+. increment = increment-base(op)
+if !extends && op != .eq-op && (!increment || plan != .plan-builtin)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if extends || plan != .plan-truncate
+    . value = if extends || op == .eq-op then emit-expression(rhs) else emit-builtin(id, increment!, lhs, rhs, true)
+    if !extends
+        . site = id
+        do match? tree.nodes[lhs]
+            | .node-index-expression
+                site = lhs
+        value = convert(site, .reason-assignment, value)
+    given = apart(value, rhs, !is-place(object))
+    given-type = value.type
+. source = emit-expression(object)
+. owner = source.type
+. held-layout = layout-of(owner, id)
+. layout = layout-of(type, id)
+if !tables.layouts.is-struct(held-layout) || !tables.layouts.is-struct(layout) || mutable-owner
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+.. mutable-owner = is-mutable-value(owner)
+. held = tables.layouts.rows[held-layout].fields.count
+. count = tables.layouts.rows[layout].fields.count
+. position = U32.max
+if extends
+    position = held
+else if plan != .plan-truncate
+    position = field-position(lhs, owner)
+if position != U32.max && (position >= count || given-type != field-type(type, position))
+    refuse(.refused-conversion, id)
+    = Typed(nothing, no-type)
+. made = frame(layout)
+for index in 0 .. < count
+    . field = tables.layouts.field(layout, index)
+    if index == position
+        put(made, field, given, id)
+        continue
+    if index >= held || field-type(type, index) != field-type(owner, index)
+        refuse(.refused-conversion, id)
+        = Typed(nothing, no-type)
+    put(made, field, take(source.operand, tables.layouts.field(held-layout, index), id), id)
+= Typed(made, type)
+
+────────────────────
++ do emit-probe-assign
+    - id SyntaxId
+    - row ASTProbeAssign
+
+` The assignment of a property a probe makes writes an event of the key and the value, of the
+` object it is written of where it has one, through the calls the type pass recorded at it.
+. number = tables.probe-number(unit.reading, id)
+if number == 0
+    refuse(.refused-probe, id)
+    =
+. made = probe-calls(id)
+. start = given.length
+gather-probe-object(row.object)
+. values = given.length
+given += Typed(make-operand(.operand-constant, ir.add-string(row.key.text)), types.string-type)
+. value = emit-expression(row.content)
+given += value
+. converted = convert(row.content, .reason-print, Typed(value.operand, given[values + 1].type))
+given[values + 1] = converted
+. head = pending.length
+pending += integer(.machine-u16, number)
+push-probe-object(row.object, start)
+. snapshots [Bool]
+emit-probe-record(id, made, 0, head, values, snapshots)
+drop-given(start)
+
+────────────────────
++ do emit-updater
+
+` The function that evaluates again the value of a property that reads something tracked,
+` which the live action the constructor made for it runs through its adapter, given the
+` object. The trackers of the action that runs it are those it notes reads in, and the value
+` is stored as an assignment stores it.
+. type = function.type
+. place = function.place
+. property = types.properties[place]
+. object = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+. default = tables.default-of(type, place)
+. unit-id = tables.value-unit(place)
+. live = instances.live
+unit = unit.source-module = default.module
+if object == no-layout || not-eager || default.value == 0 || unit-id == no-instance
+    refuse(.refused-function, default.site)
+    =
+.. not-eager = property.storage-kind != .storage-eager
+if tables.environments[unit-id] != no-layout || unchained
+    refuse(.refused-function, default.site)
+    =
+.. unchained = live.previous == no-instance || live.next == no-instance
+. field = tables.layouts.field(object, object-header-fields + property.slot)
+unit = unit.takes-self = true
+unit = unit.has-self = true
+unit = unit.self-type = type
+unit = unit.self = make-operand(.operand-argument, 0)
+ir.add-argument(managed-layout)
+returns-type = types.void-type
+ir.returns = void-layout
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, default.site, pending.length).operand, default.site)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, default.site, pending.length).operand, default.site)
+live-actions += LiveTrackers(previous, next)
+. value = first-value(property, place, type, field.layout, default.site)
+live-actions.pop()
+put-property
+    - unit.self
+    - field
+    - property
+    - value.operand
+    - default.site
+    - U32.max
+    - false
+    - memo-flag-of(type, property)
+return-value(make-operand(.operand-void, 0), default.site)
+
+────────────────────
++ do restore-properties
+    - type TypeId
+    - declared SyntaxId
+
+` Stores again the properties an initializer's arguments fill, and each property whose
+` value reads one stored again, in the order the properties are declared. The rest have
+` their values already. A lazy property whose value reads one stored again is stale: what
+` it holds, if it was evaluated, was computed from what is replaced. It is evaluated again
+` where a value stored again reads it, and is otherwise left as it is.
+. range = types.completions[type].properties
+filling = filling.type = type
+filling = filling.start = range.start
+filling = filling.count = range.count
+filling = filling.filled = storage.allocate'Byte(range.count + 1)
+for position in 0 .. < range.count
+    . property = types.properties[range.start + position]
+    . refills = property.storage-kind != .storage-getter && has-fill
+        .. has-fill = tables.fill-of(unit.instance, property.name) != no-fact
+    filling.filled[position] = if refills then 0 else 2
+. changed = true
+while changed
+    changed = false
+    for position in 0 .. < range.count
+        if filling.filled[position] == 2 && reads-refilled(type, range.start + position)
+            . is-lazy = types.properties[range.start + position].storage-kind == .storage-lazy
+            filling.filled[position] = if is-lazy then 3 else 0
+            changed = true
+clear-fills()
+clear-checks()
+filling = filling.storing = true
+for position in 0 .. < range.count
+    if filling.filled[position] == 0 || filling.filled[position] == 4
+        store-property(position, declared)
+filling = filling.storing = false
+filling = filling.count = 0
+
+────────────────────
+_ do reads-refilled Bool
+    - type TypeId
+    - place U32
+
+` Whether the value a class writes for a stored or lazy property reads a property that is
+` being stored again, or a lazy one that is stale, as the type pass recorded what the value
+` reads: by a name the binder resolved to a member, or after the receiver. A value no
+` instance typed may read any.
+if types.properties[place].storage-kind == .storage-getter
+    = false
+if tables.default-of(type, place).value == 0
+    = false
+. unit-id = tables.value-unit(place)
+if unit-id == no-instance
+    = true
+. read = tables.first-read(unit-id)
+while read != no-fact
+    . found = property-read(type, read)
+    if found && filling.filled[(found as U32) - filling.start] != 2
+        = true
+    read = tables.next-read(read)
+= false
+
+────────────────────
++ do store-properties
+    - type TypeId
+    - declared SyntaxId
+
+` Gives each stored property of the object being made its first value, in the order the
+` properties are declared, base first. `filled` says which have theirs: a value that reads
+` a property gives that one its value first. The live actions of the values that read
+` something tracked are made once all have theirs.
+. range = types.completions[type].properties
+filling = filling.type = type
+filling = filling.start = range.start
+filling = filling.count = range.count
+filling = filling.filled = storage.allocate'Byte(range.count + 1)
+for position in 0 .. < range.count
+    filling.filled[position] = 0
+clear-fills()
+clear-checks()
+filling = filling.storing = true
+for position in 0 .. < range.count
+    store-property(position, declared)
+filling = filling.storing = false
+subscribe-values(declared)
+filling = filling.count = 0
+
+────────────────────
++ do store-property
+    - position U32
+    - syntax SyntaxId
+
+` Gives one property of the object being made its first value, unless it has it: the
+` argument of the property's name, or else the value its class writes for it, or the zero
+` of its type. A lazy property is given only an argument of its name. A property whose
+` value is being evaluated has no value to read. One whose value the constructor puts off
+` holds nothing until the markup of the class has run. One a read gave its value on some paths
+` alone is given it where its flag says it has none (`check-property`).
+if filling.filled[position] == 4
+    check-property(position, syntax)
+    filling.filled[position] = if checking != 0 then 4 else 2
+    =
+if filling.filled[position] == 2
+    =
+if filling.filled[position] == 1
+    refuse(.refused-expression, syntax)
+    =
+filling.filled[position] = 1
+. place = filling.start + position
+. property = types.properties[place]
+if property.storage-kind == .storage-eager
+    . object = tables.layouts.objects[filling.type]
+    . field = tables.layouts.field(object, object-header-fields + property.slot)
+    . fill = tables.fill-of(unit.instance, property.name)
+    if facts.defers(unit.instance, place)
+        store-unset(field, property, syntax)
+    else if fill == no-fact
+        store-default(unit.self, field, property, place, filling.type, syntax)
+    else if facts.fills[fill].argument != U32.max
+        store-given(field, property, facts.fills[fill].argument, syntax)
+    else
+        store-fill(unit.self, field, property, place, filling.type, facts.fills[fill], syntax)
+else if property.storage-kind == .storage-lazy
+    . fill = tables.fill-of(unit.instance, property.name)
+    if fill != no-fact && facts.fills[fill].argument != U32.max
+        . pair = tables.layouts.field
+            - tables.layouts.objects[filling.type]
+            - object-header-fields + property.slot
+        if !tables.layouts.is-struct(pair.layout)
+            refuse(.refused-function, syntax)
+        else
+            . inner = tables.layouts.field(pair.layout, 0)
+            store-given
+                - LayoutField(pair.offset + inner.offset, inner.layout)
+                - property
+                - facts.fills[fill].argument
+                - syntax
+            store
+                - unit.self
+                - pair.offset + tables.layouts.field(pair.layout, 1).offset
+                - integer(.machine-u8, 1)
+                - false
+                - syntax
+    else if fill != no-fact
+        store-lazy-fill(property, facts.fills[fill], syntax)
+filling.filled[position] = 2
+
+────────────────────
+_ do store-unset
+    - field LayoutField
+    - property TypeProperty
+    - syntax SyntaxId
+
+` Stores in a property of the object being made what the reference holds there before its
+` first value: no bits set, but for the empty text wherever a text is held.
+. value = if property.type == types.string-type then make-operand(.operand-constant, ir.add-string("")) else integer(tables.layouts.kind-of(field.layout), 0)
+if tables.layouts.is-struct(field.layout)
+    value = null-value(property.type, field.layout, syntax).operand
+if tables.layouts.is-struct(field.layout)
+    store-struct(unit.self, field, value, syntax)
+else if field.layout != void-layout
+    store(unit.self, field.offset, value, is-managed-pointer(field.layout), syntax)
+
+────────────────────
+_ do store-given
+    - field LayoutField
+    - property TypeProperty
+    - argument U32
+    - syntax SyntaxId
+
+` Stores the value a markup element gives a constructor for a property, which arrives as an
+` argument of the property's type: a managed pointer through the write barrier, and a
+` struct by a copy.
+if instances.argument-type(unit.instance, argument) != property.type
+    refuse(.refused-conversion, syntax)
+    =
+. value = make-operand(.operand-argument, if unit.takes-self then argument + 1 else argument)
+if tables.layouts.is-struct(field.layout)
+    store-struct(unit.self, field, value, syntax)
+else if field.layout != void-layout
+    store(unit.self, field.offset, value, is-managed-pointer(field.layout), syntax)
+
+────────────────────
++ do store-stale
+    - position U32
+    - syntax SyntaxId
+
+` Evaluates a stale lazy property where a value stored again reads it: the value the
+` constructor's class writes for it is stored, whatever the object held, and the property
+` is marked as having its value.
+filling.filled[position] = 1
+. place = filling.start + position
+. property = types.properties[place]
+. pair = tables.layouts.field
+    - tables.layouts.objects[filling.type]
+    - object-header-fields + property.slot
+if !tables.layouts.is-struct(pair.layout)
+    refuse(.refused-function, syntax)
+    =
+. held = tables.layouts.field(pair.layout, 0)
+. slot = LayoutField(pair.offset + held.offset, held.layout)
+store-default(unit.self, slot, property, place, filling.type, syntax)
+store
+    - unit.self
+    - pair.offset + tables.layouts.field(pair.layout, 1).offset
+    - integer(.machine-u8, 1)
+    - false
+    - syntax
+filling.filled[position] = 2
+
+────────────────────
+_ do store-lazy-fill
+    - property TypeProperty
+    - fact FillFact
+    - syntax SyntaxId
+
+` Stores the argument a constructor fills a lazy property from, and marks the property as
+` having its value. An optional argument, which may leave the property to be evaluated, has
+` no shape here. A lazy local of the property's name fills it with its value, evaluated
+` here, as it fills a property that is not lazy.
+. binding = instances.rows[unit.instance].binding
+. kind = if binding == no-binding || !is-own-slot(fact.slot) then SlotKind.slot-local else slot-kind
+    .. slot-kind = bindings.slots[fact.slot].kind
+. pair = tables.layouts.field
+    - tables.layouts.objects[filling.type]
+    - object-header-fields + property.slot
+if (kind != .slot-argument && kind != .slot-lazy) || !tables.layouts.is-struct(pair.layout)
+    refuse(.refused-function, syntax)
+    =
+. inner = tables.layouts.field(pair.layout, 0)
+. field = LayoutField(pair.offset + inner.offset, inner.layout)
+. argument = Typed(make-operand(.operand-void, 0), no-type)
+if kind == .slot-lazy
+    . held = facts.slot-type(unit.instance, slot-offset(fact.slot, syntax))
+    argument = Typed(read-lazy-local(fact.slot, syntax, held).operand, held)
+else
+    . position = argument-position(fact.slot)
+    argument = Typed(make-operand(.operand-argument, if unit.takes-self then position + 1 else position), instances.argument-type(unit.instance, position))
+    if types.is-optional(argument.type)
+        refuse(.refused-function, syntax)
+store-converted(unit.self, field, property, fact.site, argument, syntax)
+store
+    - unit.self
+    - pair.offset + tables.layouts.field(pair.layout, 1).offset
+    - integer(.machine-u8, 1)
+    - false
+    - syntax
+
+────────────────────
+_ do store-fill
+    - object Operand
+    - field LayoutField
+    - property TypeProperty
+    - place U32
+    - owner TypeId
+    - fact FillFact
+    - syntax SyntaxId
+
+` Stores the argument a constructor fills a property from. An optional argument fills it only
+` when it has a value; when it has none the property gets its default. An optional held as a
+` pointer has a value where the pointer points at something. A lazy local of the
+` property's name fills it with its value, read as any read made while the properties are
+` given their values.
+. binding = instances.rows[unit.instance].binding
+if binding == no-binding || !is-own-slot(fact.slot)
+    refuse(.refused-function, syntax)
+    =
+if bindings.slots[fact.slot].kind == .slot-lazy
+    . held = facts.slot-type(unit.instance, slot-offset(fact.slot, syntax))
+    . value = read-lazy-local(fact.slot, syntax, held)
+    if field.layout != void-layout
+        store-converted(object, field, property, fact.site, Typed(value.operand, held), syntax)
+    =
+if bindings.slots[fact.slot].kind != .slot-argument
+    refuse(.refused-function, syntax)
+    =
+. position = argument-position(fact.slot)
+. given = instances.argument-type(unit.instance, position)
+. argument = make-operand(.operand-argument, if unit.takes-self then position + 1 else position)
+if !types.is-optional(given)
+    store-converted(object, field, property, fact.site, Typed(argument, given), syntax)
+    =
+. layout = layout-of(given, syntax)
+. nullable = is-null-form(given)
+if !tables.layouts.is-struct(layout) && !nullable
+    refuse(.refused-type, syntax)
+    =
+. present = ir.reserve-block()
+. absent = ir.reserve-block()
+. stored = ir.reserve-block()
+if nullable
+    branch
+        - compare(syntax, .compare-not-equal, argument, integer(layout as MachineKind, 0))
+        - present
+        - absent
+else
+    . flag = tables.layouts.field(layout, 1)
+    branch(load(argument, flag.offset, flag.layout, syntax), present, absent)
+ir.start-block(absent)
+store-default(object, field, property, place, owner, syntax)
+jump(stored)
+ir.start-block(present)
+. value = argument
+if !nullable
+    . inner = tables.layouts.field(layout, 0)
+    if tables.layouts.is-struct(inner.layout)
+        value = address(argument, inner.offset, inner.layout, syntax)
+    else
+        value = load(argument, inner.offset, inner.layout, syntax)
+store-converted(object, field, property, fact.site, Typed(value, types.optional-inner(given)), syntax)
+jump(stored)
+ir.start-block(stored)
+
+────────────────────
+_ do store-converted
+    - object Operand
+    - field LayoutField
+    - property TypeProperty
+    - site SyntaxId
+    - value Typed
+    - syntax SyntaxId
+
+` Stores a value in a property, converted to the property's type as the type pass recorded
+` where the value is written. A value with no bits is held nowhere, and nothing is stored.
+. converted = convert-fill(site, value)
+if converted.type != property.type
+    refuse(.refused-conversion, syntax)
+    =
+if tables.layouts.is-struct(field.layout)
+    store-struct(object, field, converted.operand, syntax)
+else if field.layout != void-layout
+    store(object, field.offset, converted.operand, is-managed-pointer(field.layout), syntax)
+
+────────────────────
++ do store-default
+    - object Operand
+    - field LayoutField
+    - property TypeProperty
+    - place U32
+    - owner TypeId
+    - syntax SyntaxId
+
+` Stores a property's first value in an object. `place` is the property's place among all
+` properties. A value that reads something tracked, while a constructor gives the values or
+` those it put off, runs in a live action of its own, whose trackers are kept to make the
+` action with: those made for it where the constructor began, where it was. A value put off is
+` stored as an assignment stores it, since the markup that ran before it may already read it.
+. unit-id = tables.value-unit(place)
+. live = (filling.storing || unit.deferred-type != no-type) && unit-id != no-instance && live-unit
+    .. live-unit = instances.rows[unit-id].is-live
+. opened = if filling.count != 0 && place >= filling.start && place - filling.start < filling.count then filling.trackers[place - filling.start] else no-local
+. trackers = no-local
+if live
+    trackers = if opened != no-local then opened else open-trackers(syntax)
+    live-actions += LiveTrackers(trackers, trackers)
+. value = first-value(property, place, owner, field.layout, syntax)
+if live
+    live-actions.pop()
+if unit.deferred-type != no-type
+    put-property(object, field, property, value.operand, syntax)
+else if tables.layouts.is-struct(field.layout)
+    store-struct(object, field, value.operand, syntax)
+else if field.layout != void-layout
+    store(object, field.offset, value.operand, is-managed-pointer(field.layout), syntax)
+if live && (opened == no-local || !keeps-trackers(place))
+    place-trackers += LivePlace(place, trackers)
+
+────────────────────
+_ do emit-withheld Typed
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - wanted Bool
+
+` An assignment whose value is written after `?`. The value is evaluated first. Where the
+` flow knows it to hold a value, it is assigned as any value is. Otherwise it is an optional,
+` tested once: where it holds a value, what it holds is assigned, and where it holds nothing
+` the place is read and nothing is stored, as TypeScript does. The assignment then gives
+` what the place holds: `wanted` says its value is used. Only a place that names storage has
+` a shape here, and none that is a link of an optional chain. Nor has a name alone that holds
+` an optional, tested so: TypeScript takes it to hold a value afterwards, whatever was stored.
+. nothing = make-operand(.operand-void, 0)
+. written = 0u32
+do match? tree.nodes[rhs]
+    | .node-optional-chain(row)
+        written = row.expr
+if written == 0 || is-link(lhs) || !is-place(lhs)
+    refuse(.refused-statement, id)
+    = Typed(nothing, no-type)
+. given = emit-expression(written)
+. held = given.type
+. type = facts.node-type(unit.reading, id)
+if !types.is-optional(held)
+    . known = pins.length
+    pin(rhs, given.operand, held)
+    . plain = Typed(nothing, no-type)
+    if wanted
+        plain = emit-update(id, op, lhs, rhs)
+    else
+        emit-assign(id, op, lhs, rhs)
+    unpin(known)
+    = plain
+. named = match tree.nodes[lhs]
+    | .node-identifier
+        true
+    ??
+        false
+. kept-type = facts.node-type(unit.reading, lhs)
+if op == .eq-op && named && optional-kept
+    refuse(.refused-statement, id)
+    = Typed(nothing, no-type)
+.. optional-kept = kept-type == no-type || kept-type == invalid-type || types.is-optional(kept-type)
+. layout = if wanted then layout-of(type, id) else void-layout
+. tested = present(written, given)
+. filled = ir.reserve-block()
+. empty = ir.reserve-block()
+. joined = ir.reserve-block()
+. slot = if wanted then join-slot(layout) else nothing
+. mark = joins.length
+branch(tested.operand, filled, empty)
+ir.start-block(filled)
+. inside = payload(written, Typed(given.operand, held))
+. pin-mark = pins.length
+pin(rhs, inside.operand, inside.type)
+. assignment = emit-assign(id, op, lhs, rhs)
+unpin(pin-mark)
+if wanted && assignment.stored.type != type
+    refuse(.refused-conversion, id)
+if wanted
+    arrive(id, assignment.stored.operand, joined, slot)
+else
+    jump(joined)
+ir.start-block(empty)
+. kept = emit-expression(lhs)
+if wanted && kept.type != type
+    refuse(.refused-conversion, id)
+if wanted
+    arrive(id, kept.operand, joined, slot)
+    = Typed(close-joins(joined, mark, layout, slot), type)
+jump(joined)
+ir.start-block(joined)
+= Typed(nothing, kept.type)
+
+────────────────────
+_ do emit-chained-assign
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` An assignment to a place that is a link of an optional chain. The value is evaluated,
+` whatever the chain holds, and then the chain up to the place, in TypeScript's order for `=`,
+` which an assigning operator, whose place TypeScript reads first, follows here too. Where each
+` optional it tests holds a value, the value is converted and stored as it is in a place
+` written with no chain, by an assigning operator what it gives for the place and the value,
+` and where one holds nothing, nothing is stored.
+. object = receiver-of(lhs)
+if object == 0
+    refuse(.refused-statement, id)
+    =
+. made = emit-expression(rhs)
+. value = apart(made, rhs, true)
+. given = made.type
+if is-unmade(lhs)
+    emit-unmade(lhs)
+    =
+. skipped = ir.reserve-block()
+. held = held-receiver(lhs, object, skipped)
+. pin-mark = pins.length
+pin(object, held.operand, held.type)
+pin(rhs, value, given)
+emit-assign(id, op, lhs, rhs)
+unpin(pin-mark)
+jump(skipped)
+ir.start-block(skipped)
+
+────────────────────
+_ do emit-forward-set
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - rhs SyntaxId
+
+` An assignment to a member of a union that each case answers with its own setter, as the
+` type pass planned it. The value is evaluated, and then the union, once each. Both are given
+` to the function made for the member where a case may panic, and else each case is set in
+` place.
+. count-answered = answer-count(lhs)
+if op != .eq-op || object == 0 || count-answered == 0 || tables.forward-unbuilt(unit.reading, lhs)
+    refuse(.refused-statement, id)
+    =
+. made = emit-expression(rhs)
+. value = apart(made, rhs, !is-inert(object))
+. given = made.type
+. held = emit-whole(object)
+. layout = layout-of(held.type, id)
+if !tables.layouts.is-union(layout) || tables.layouts.rows[layout].cases.count != count-answered
+    refuse(.refused-statement, id)
+    =
+. pin-mark = pins.length
+pin(rhs, value, given)
+. dispatch = tables.forward-function(unit.reading, lhs)
+if dispatch != no-function
+    call-forward(lhs, dispatch, held.operand, pin-mark, types.void-type)
+else
+    set-cases(id, lhs, object, rhs, held.operand, layout)
+unpin(pin-mark)
+
+────────────────────
+_ do emit-item-assign Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` Stores a value at the item an index names past a pointer, with no check. The value is
+` evaluated first, then the pointer and the index, as TypeScript does, and then it takes
+` the conversion recorded for the store. A managed pointer is stored through the write
+` barrier, and a struct by a copy. An assigning operator of the machine reads the item, then
+` evaluates the value and combines the two, and the pointer and the index are evaluated again
+` for the store, as TypeScript does; the assignment holds the operator's plan and conversion.
+. given = Typed(make-operand(.operand-void, 0), no-type)
+. increment = increment-base(op)
+. site = lhs
+if op == .eq-op
+    . made = emit-expression(rhs)
+    given = Typed(apart(made, rhs, !is-inert(object) || !is-inert(index)), made.type)
+else if increment && facts.plan-of(unit.reading, id) == .plan-builtin
+    . item = emit-item(lhs, object, index)
+    given = combine-builtin(id, increment, lhs, item.operand, item.type, rhs, true)
+    site = id
+else
+    refuse(.refused-statement, id)
+    = Assignment()
+. place = item-address(lhs, object, index)
+. item-type = tables.layouts.pointee-type(place.type)
+. converted = convert(site, .reason-assignment, given)
+. value = converted.operand
+if converted.type != item-type
+    refuse(.refused-conversion, id)
+    = Assignment()
+. layout = layout-of(item-type, id)
+. assignment = Assignment(converted, given)
+if tables.layouts.is-struct(layout)
+    store-struct(place.operand, LayoutField(0, layout), value, id)
+else if layout != void-layout
+    store(place.operand, 0, value, is-managed-pointer(layout), id)
+= assignment
+
+────────────────────
+_ do row-cell Operand
+    - id SyntaxId
+    - row Operand
+    - held TypeId
+    - object SyntaxId
+
+if facts.plan-of(unit.reading, object) == .plan-proven-row
+    = part(row, layout-of(held, id), 0, id).operand
+= view-cell(id, row, layout-of(held, id), integer(.machine-u64, 0))
+
+────────────────────
+_ do emit-view-field-assign Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - rhs SyntaxId
+
+` An assignment to a field through a row, stored where the row's one item lies. The value is
+` evaluated before the row. An assigning operator reads the field through the row first, and
+` the row is evaluated again for the store.
+. written = Typed(make-operand(.operand-void, 0), no-type)
+. increment = increment-base(op)
+if op == .eq-op
+    . made = emit-expression(rhs)
+    written = Typed(apart(made, rhs, !is-inert(object)), made.type)
+else if increment && facts.plan-of(unit.reading, id) == .plan-builtin
+    written = emit-builtin(id, increment, lhs, rhs, true)
+else
+    refuse(.refused-statement, id)
+. converted = convert(id, .reason-assignment, written)
+. value = converted.operand
+. given = converted.type
+. row = emit-expression(object)
+. held = row.type
+if view-shape(held) != 4
+    refuse(.refused-statement, id)
+    = Assignment()
+. field = item-field(id, held, view-slot(lhs))
+if given != field.type
+    refuse(.refused-conversion, id)
+    = Assignment()
+. assignment = Assignment(converted, written)
+. cell = row-cell(id, row.operand, held, object)
+store-viewed(cell, field, value, id)
+if facts.plan-of(unit.reading, object) == .plan-proven-row
+    forget-read(innermost-loop(), view-slot(lhs))
+= assignment
+
+────────────────────
+_ do emit-view-index-assign Assignment
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` An assignment to an index the compiler answers for a view: a constant one stores a field of
+` a row, a range copies a view of the same kind into the rows or the items it spans, and any
+` other stores the row or the item at that index. The value is evaluated first, then the
+` view, then the key.
+if op != .eq-op
+    refuse(.refused-statement, id)
+    = Assignment()
+. made = emit-expression(rhs)
+. value = apart(made, rhs, !is-inert(object) || !is-inert(index))
+. given = made.type
+if call-at(lhs, .call-view-range) != no-fact
+    copy-view-range(lhs, value, given, object, index)
+    = Assignment()
+. emitted = emit-expression(object)
+. base = apart(emitted, object, !is-inert(index))
+. held = emitted.type
+. shape = view-shape(held)
+. layout = layout-of(held, id)
+. field = LayoutField(0, void-layout)
+. key = integer(.machine-u64, 0)
+if shape == 4
+    field = item-field(lhs, held, view-slot(lhs))
+else if shape == 1 || shape == 2
+    . converted = convert(index, .reason-argument, emit-expression(index))
+    key = converted.operand
+    if converted.type != types.index-type
+        refuse(.refused-conversion, index)
+    . item = viewed-item(held)
+    field = LayoutField(0, layout-of(item, id), item)
+else
+    refuse(.refused-statement, id)
+. converted = convert(lhs, .reason-assignment, Typed(value, given))
+if converted.type != field.type
+    refuse(.refused-conversion, lhs)
+store-viewed(view-cell(lhs, base, layout, key), field, converted.operand, lhs)
+= Assignment(converted, Typed(value, given))
+
+────────────────────
+_ do store-viewed
+    - cell Operand
+    - field LayoutField
+    - value Operand
+    - syntax SyntaxId
+
+` Stores a value where a view's item lies: a struct by a copy, and a managed pointer through
+` the write barrier.
+if tables.layouts.is-struct(field.layout)
+    store-struct(cell, field, value, syntax)
+else if field.layout != void-layout
+    store(cell, field.offset, value, is-managed-pointer(field.layout), syntax)
+
+────────────────────
+_ do copy-view-range
+    - id SyntaxId
+    - source Operand
+    - source-type TypeId
+    - object SyntaxId
+    - index SyntaxId
+
+` A view of the same kind copied into the rows or the items a range spans of a view: both
+` views must not be stale, and the range the same size as the source. The source is copied to
+` a buffer of its own first, so that the two may overlap, which the runtime allocates as
+` TypeScript has it allocate one, with no poll around it.
+. emitted = emit-expression(object)
+. target = apart(emitted, object, !is-inert(index))
+. held = emitted.type
+. range = emit-expression(index)
+. range-type = range.type
+. layout = layout-of(held, id)
+. source-layout = layout-of(source-type, id)
+. item-layout = layout-of(viewed-item(held), id)
+if tables.layouts.rows[item-layout].is-managed
+    refuse(.refused-statement, id)
+    =
+validate-view(id, target, layout)
+validate-view(id, source, source-layout)
+. spanned = slice-view(id, target, held, range.operand, range-type, object, held)
+. length = part(spanned.operand, layout, 2, id)
+fail-view
+    - id
+    - compare(id, .compare-not-equal, length.operand, part(source, source-layout, 2, id).operand)
+    - "Array view range sizes differ"
+. stride = integer(.machine-u64, tables.layouts.rows[item-layout].size)
+. mark = pending.length
+pending += stride
+pending += length.operand
+. snapshot = call-runtime(.runtime-allocate-plain-buffer, id, mark, pointer-layout)
+copy-items
+    - id
+    - item-layout
+    - snapshot
+    - stride
+    - part(source, source-layout, 0, id).operand
+    - part(source, source-layout, 1, id).operand
+    - length.operand
+copy-items
+    - id
+    - item-layout
+    - part(spanned.operand, layout, 0, id).operand
+    - part(spanned.operand, layout, 1, id).operand
+    - snapshot
+    - stride
+    - length.operand
+
+────────────────────
++ do emit-store-untraced Typed
+    - id SyntaxId
+    - fact CallFact
+    - object SyntaxId
+    - operands RowRange'SyntaxId
+
+` A call the compiler answers itself: an item stored past a pointer into memory the
+` collector does not own, with no check. The pointer is evaluated, then the item, then the
+` index, and each takes the conversion recorded for it. An item that holds an object or a
+` function, which the type pass says an arena traces, is stored through the write barrier.
+. nothing = make-operand(.operand-void, 0)
+. callee = fact.callee
+. constant = facts.constant-of(unit.reading, id)
+if callee == no-instance || constant == no-fact || out-of-order || operands.count != 2
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+.. out-of-order = !fills-in-order(fact, callee, 2)
+. traced = facts.constants[constant].bits != 0
+. written = tree.children[operands]
+. first = argument-value(written[0])
+. second = argument-value(written[1])
+. pointer = convert(object, .reason-receiver, emit-expression(object))
+. pointer-type = pointer.type
+. emitted = emit-expression(first)
+. item = apart(emitted, first, !is-inert(second))
+. given = emitted.type
+. index = convert(written[1], .reason-argument, emit-expression(second))
+. index-type = index.type
+. converted = convert(written[0], .reason-argument, Typed(item, given))
+item = converted.operand
+. item-type = tables.layouts.pointee-type(pointer-type)
+if pointer-type != instances.rows[callee].self-type || converted.type != item-type
+    refuse(.refused-conversion, id)
+    = Typed(nothing, no-type)
+if converted.type != instances.argument-type(callee, 0) || index-differs
+    refuse(.refused-conversion, id)
+    = Typed(nothing, no-type)
+.. index-differs = index-type != instances.argument-type(callee, 1)
+. layout = layout-of(item-type, id)
+. counted = layout-of(index-type, id)
+. held = layout-of(pointer-type, id)
+if !is-pointer(held) || !is-integer(counted) || layout == void-layout
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. step = integer(.machine-u64, tables.layouts.rows[layout].size)
+. distance = arithmetic
+    - id
+    - .arithmetic-multiply
+    - num-cast(id, index.operand, counted, u64-layout)
+    - step
+    - u64-layout
+. moved = arithmetic
+    - id
+    - .arithmetic-add
+    - num-cast(id, pointer.operand, held, u64-layout)
+    - distance
+    - u64-layout
+. place = num-cast(id, moved, u64-layout, held)
+if tables.layouts.is-struct(layout)
+    copy
+        - address(place, 0, layout, id)
+        - item
+        - layout
+        - traced && tables.layouts.rows[layout].is-managed
+        - id
+else
+    store(place, 0, item, traced && is-managed-pointer(layout), id)
+= Typed(nothing, types.void-type)
+
+────────────────────
+_ do emit-array-store Assignment
+    - site SyntaxId
+    - callee InstanceId
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+. emitted = emit-expression(rhs)
+. value = apart(emitted, rhs, !is-inert(object) || !is-inert(index))
+. given = emitted.type
+. receiver = convert(object, .reason-receiver, emit-expression(object))
+. receiver-type = receiver.type
+. key = convert(index, .reason-argument, emit-expression(index))
+. key-type = key.type
+. stored = convert(rhs, .reason-argument, Typed(value, given))
+if receiver-type != instances.rows[callee].self-type || key-differs || value-differs
+    refuse(.refused-conversion, site)
+    = Assignment()
+.. key-differs = key-type != instances.argument-type(callee, 0)
+.. value-differs = stored.type != instances.argument-type(callee, 1)
+. layout = layout-of(receiver-type, site)
+. key-layout = layout-of(key-type, site)
+. item-layout = layout-of(stored.type, site)
+. data = part(receiver.operand, layout, 0, site)
+. data-layout = layout-of(data.type, site)
+. proven = facts.constant-of(unit.reading, site) != no-fact
+. size = if proven then Typed(integer(.machine-u64, 0), types.size-type) else part(receiver.operand, layout, 1, site)
+. size-layout = if proven then u64-layout else layout-of(size.type, site)
+if !is-pointer(data-layout) || !is-integer(size-layout) || !is-integer(key-layout) || struct-item
+    refuse(.refused-type, site)
+    = Assignment()
+.. struct-item = tables.layouts.is-struct(item-layout)
+. wide = num-cast(site, key.operand, key-layout, u64-layout)
+. stride = integer(.machine-u64, tables.layouts.rows[item-layout].size)
+. assignment = Assignment(Typed(stored.operand, instances.argument-type(callee, 1)), Typed(value, given))
+if proven
+    . moved = moved-bytes
+        - site
+        - num-cast(site, data.operand, data-layout, pointer-layout)
+        - arithmetic(site, .arithmetic-multiply, wide, stride, u64-layout)
+    store(moved, 0, stored.operand, false, site)
+    = assignment
+. inside = ir.reserve-block()
+. outside = ir.reserve-block()
+. joined = ir.reserve-block()
+branch
+    - compare(site, .compare-less, wide, num-cast(site, size.operand, size-layout, u64-layout))
+    - inside
+    - outside
+ir.start-block(inside)
+store
+    - moved-bytes
+        - site
+        - num-cast(site, data.operand, data-layout, pointer-layout)
+        - arithmetic(site, .arithmetic-multiply, wide, stride, u64-layout)
+    - 0
+    - stored.operand
+    - false
+    - site
+jump(joined)
+ir.start-block(outside)
+. mark = pending.length
+pending += receiver.operand
+pending += key.operand
+pending += stored.operand
+do call-method(callee, site, mark)
+jump(joined)
+ir.start-block(joined)
+= assignment
+
+────────────────────
+_ do emit-index-store Assignment
+    - site SyntaxId
+    - fact CallFact
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` An index assigned through the function that answers `[]=`, which stores the value: the
+` function is called on the object with the key and the value. The value is evaluated
+` first, then the object, then the key, as TypeScript does, and each takes the conversion
+` recorded for it. The value of the assignment is what the function answers, or when it answers
+` nothing, the value written, as given or as stored. Where the type pass planned the answer to be stored, it
+` is stored where the object was read from, which then only names storage; an object that is
+` itself an index has it stored through that index.
+. callee = fact.callee
+if callee == no-instance || fact.is-partial || !is-callable(callee)
+    refuse(.refused-statement, site)
+    = Assignment()
+. owner = instances.rows[callee].self-type
+. answers = instances.signatures[callee].returns
+if !fills-in-order(fact, callee, 2) || names-slot(object, .slot-super)
+    refuse(.refused-statement, site)
+    = Assignment()
+. stores-back = facts.plan-of(unit.reading, site) == .plan-store-answer
+if owner == no-type || (is-numeric-type(owner) && !stores-back)
+    refuse(.refused-statement, site)
+    = Assignment()
+if !stores-back && answers == owner && !tables.is-class(owner)
+    refuse(.refused-statement, site)
+    = Assignment()
+do match? tree.nodes[object]
+    | .node-index-expression(row)
+        if !tables.is-class(owner)
+            . outer = stored-through(object)
+            if !stores-back || answers != owner || outer == no-fact || chained
+                refuse(.refused-statement, site)
+                = Assignment()
+            .. chained = chains-at(object, row.is-optional)
+            = emit-store-through(site, fact, facts.calls[outer], object, index, rhs)
+if stores-back && (answers != owner || !is-place(object) || retyped)
+    refuse(.refused-statement, site)
+    = Assignment()
+.. retyped = facts.node-type(unit.reading, object) != owner
+. emitted = emit-expression(rhs)
+. value = apart(emitted, rhs, !is-inert(object) || !is-inert(index))
+. given = emitted.type
+. pin-mark = pins.length
+if stores-back
+    pin-holder(object)
+. receiver = convert(object, .reason-receiver, emit-expression(object))
+. receiver-type = receiver.type
+. key = receiver
+. key-type = no-type
+key = convert(index, .reason-argument, emit-expression(index))
+key-type = key.type
+. stored = convert(rhs, .reason-argument, Typed(value, given))
+if receiver-type != owner
+    refuse(.refused-conversion, object)
+if key-type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, index)
+if stored.type != instances.argument-type(callee, 1)
+    refuse(.refused-conversion, rhs)
+. answer = stored
+. replaced = call-at(site, .call-replaced)
+if replaced != no-fact
+    . read-mark = pending.length
+    pending += receiver.operand
+    pending += key.operand
+    . old = call-method(facts.calls[replaced].callee, site, read-mark)
+    . old-type = old.type
+    if is-array-type(old-type)
+        replace-storage(site, old.operand, old-type, value, given)
+. mark = pending.length
+pending += receiver.operand
+pending += key.operand
+pending += stored.operand
+answer = call-method(callee, site, mark)
+if stores-back
+    store-place(object, answer.operand, owner, site)
+unpin(pin-mark)
+if answers != types.void-type
+    . answered = Typed(answer.operand, answers)
+    = Assignment(answered, answered)
+= Assignment(Typed(stored.operand, instances.argument-type(callee, 1)), Typed(value, given))
+
+────────────────────
+_ do emit-index-update Assignment
+    - site SyntaxId
+    - op Operator
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` An index given a value an assigning operator makes from the one it holds: the function that
+` answers `[]` reads the item, the machine operation of numbers, or the function that answers
+` the operator the assignment applies, makes the new value of it and the value written, and the
+` function that answers `[]=` stores that, as the reference does.
+` The reference evaluates the object and the key for the read and again for the store, so only
+` an object that names storage has a shape here, read once, and only where `[]=` stores in
+` place: on an object, or on a value it does not answer anew. A key that changes nothing is read
+` once too; another is evaluated again for the store where it can be.
+. read = call-at(site, .call-operator)
+. store = next-operator(read)
+. plan = facts.plan-of(unit.reading, site)
+. combined = no-fact
+if plan == .plan-call
+    combined = store
+    store = next-operator(combined)
+. increment = increment-base(op)
+. inert = is-inert(index)
+if store == no-fact || !increment || increment == .concat-op || other-plan || unrepeatable
+    refuse(.refused-statement, site)
+    = Assignment()
+.. other-plan = plan != .plan-builtin && plan != .plan-call
+.. unrepeatable = !is-place(object) || (!inert && !is-repeatable(index))
+. getter = facts.calls[read].callee
+. setter = facts.calls[store].callee
+if getter == no-instance || setter == no-instance || partial-call || uncallable
+    refuse(.refused-statement, site)
+    = Assignment()
+.. partial-call = facts.calls[read].is-partial || facts.calls[store].is-partial
+.. uncallable = !is-callable(getter) || !is-callable(setter)
+. owner = instances.rows[setter].self-type
+if owner == no-type || returns-owner || !getter-fills || !setter-fills
+    refuse(.refused-statement, site)
+    = Assignment()
+.. returns-owner = !tables.is-class(owner) && instances.signatures[setter].returns == owner
+.. getter-fills = fills-in-order(facts.calls[read], getter, 1)
+.. setter-fills = fills-in-order(facts.calls[store], setter, 2)
+. receiver = convert(object, .reason-receiver, emit-expression(object))
+. receiver-type = receiver.type
+. key = receiver
+. key-type = no-type
+key = convert(index, .reason-argument, emit-expression(index), 0, true)
+key-type = key.type
+if receiver-type != owner || instances.rows[getter].self-type != owner
+    refuse(.refused-conversion, object)
+    = Assignment()
+if key-type != instances.argument-type(getter, 0) || key-type != instances.argument-type(setter, 0)
+    refuse(.refused-conversion, index)
+    = Assignment()
+. read-mark = pending.length
+pending += receiver.operand
+pending += key.operand
+. current = call-method(getter, site, read-mark)
+. current-type = current.type
+. value = current
+if combined == no-fact
+    value = combine-builtin(site, increment, site, current.operand, current-type, rhs, true)
+else
+    . given = emit-expression(rhs)
+    . given-type = given.type
+    value = call-operator(site, combined, site, current.operand, current-type, rhs, given.operand, given-type)
+. computed = value
+value = convert(site, .reason-assignment, value)
+if value.type != instances.argument-type(setter, 1)
+    refuse(.refused-conversion, site)
+    = Assignment()
+. assignment = Assignment(value, computed)
+if !inert
+    key = convert(index, .reason-argument, emit-expression(index), 0, true)
+    if key.type != key-type
+        refuse(.refused-conversion, index)
+        = Assignment()
+. mark = pending.length
+pending += receiver.operand
+pending += key.operand
+pending += value.operand
+call-method(setter, site, mark)
+= assignment
+
+────────────────────
+_ do next-operator FactId
+    - fact FactId
+
+` The call of an operator recorded at a node after the one given, or none.
+. next = if fact != no-fact then facts.calls[fact].next else no-fact
+while next != no-fact && facts.calls[next].form != .call-operator
+    next = facts.calls[next].next
+= next
+
+────────────────────
+_ do emit-item-answer
+    - site SyntaxId
+    - object SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` An assigning operator on an item that a function of its own name answers, where the item holds
+` no struct or tuple: the item is read by the function that answers `[]`, the value is evaluated,
+` and the function is called on the item with it, as the reference compiles it for an object.
+` Nothing is stored.
+. read = call-at(site, .call-operator)
+. answer = next-operator(read)
+if answer == no-fact
+    refuse(.refused-statement, site)
+    =
+. item = emit-index-call(site, facts.calls[read], object, index)
+. item-type = item.type
+. given = emit-expression(rhs)
+. given-type = given.type
+call-operator(site, answer, site, item.operand, item-type, rhs, given.operand, given-type)
+
+────────────────────
+_ do is-repeatable Bool
+    - id SyntaxId
+
+` Whether an operand can be emitted again where the reference evaluates it again: a literal, a
+` name, or a read, a call, a cast or an operation of such operands, none of which makes a function.
+do match? tree.nodes[id]
+    | .node-argument(named)
+        = is-repeatable(named.expr)
+    | .node-cast-expression(row)
+        = is-repeatable(row.lhs)
+    | .node-binary-expression(row)
+        = is-repeatable(row.lhs) && is-repeatable(row.rhs)
+    | .node-unary-expression(row)
+        = is-repeatable(row.operand)
+    | .node-get-expression(row)
+        = row.object == 0 || is-repeatable(row.object)
+    | .node-index-expression(row)
+        = is-repeatable(row.object) && is-repeatable(row.index)
+    | .node-call-expression(row)
+        for argument in tree.children[row.args]
+            if !is-repeatable(argument)
+                = false
+        = is-repeatable(row.callable)
+    | .node-integer-syntax
+        = true
+    | .node-float-syntax
+        = true
+    | .node-string-syntax
+        = true
+    | .node-identifier
+        = true
+= false
+
+────────────────────
+_ do stored-through FactId
+    - id SyntaxId
+
+` The call recorded at an inner index of the function that stores what `[]=` answered for
+` the item the index gave. No fact where the type pass recorded none.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-store-through
+        = fact
+    fact = facts.calls[fact].next
+= no-fact
+
+────────────────────
+_ do emit-store-through Assignment
+    - site SyntaxId
+    - fact CallFact
+    - outer CallFact
+    - held SyntaxId
+    - index SyntaxId
+    - rhs SyntaxId
+
+` An index of an index assigned, where the inner index gives a struct or a number and the
+` type pass planned what `[]=` answers for it to be stored. In TypeScript's order:
+` 1. The value is evaluated, and then the object the inner index reads from and its key,
+`    once each. A struct among them is copied, since the calls that follow may change the
+`    storage it was read from.
+` 2. The item is read with the inner index's own function, or as TypeScript reads an item of
+`    an array of numbers, where the type pass planned it so.
+` 3. The key is evaluated, and `[]=` is called on the item.
+` 4. What it answers is stored with the `[]=` of the object, under the same key.
+` The value of the assignment is the value written. An object held by value whose `[]=`
+` answers one of its own type would have that stored in turn, which has no shape yet.
+. callee = fact.callee
+. owner = instances.rows[callee].self-type
+. reads = own-call(held)
+. stores = outer.callee
+. object = 0u32
+. key-syntax = 0u32
+do match? tree.nodes[held]
+    | .node-index-expression(row)
+        object = row.object
+        key-syntax = row.index
+if reads == no-fact || stores == no-instance || object == 0 || names-slot(object, .slot-super)
+    refuse(.refused-statement, site)
+    = Assignment()
+. read = facts.calls[reads]
+. reader = read.callee
+if read.form != .call-operator || read.is-partial || outer.is-partial || reader == no-instance
+    refuse(.refused-statement, site)
+    = Assignment()
+if tables.instance-functions[reader] == no-function || no-stores-function
+    refuse(.refused-statement, site)
+    = Assignment()
+.. no-stores-function = tables.instance-functions[stores] == no-function
+if !fills-in-order(read, reader, 1) || !fills-in-order(outer, stores, 2)
+    refuse(.refused-statement, site)
+    = Assignment()
+. holder = instances.rows[stores].self-type
+. keyed = instances.argument-type(reader, 0)
+if instances.rows[reader].self-type != holder
+    refuse(.refused-statement, site)
+    = Assignment()
+if instances.argument-type(stores, 0) != keyed || instances.argument-type(stores, 1) != owner
+    refuse(.refused-statement, site)
+    = Assignment()
+if instances.signatures[stores].returns == holder && !tables.is-class(holder)
+    refuse(.refused-statement, site)
+    = Assignment()
+. emitted = emit-expression(rhs)
+. value = apart(emitted, rhs, true)
+. given = emitted.type
+. container = convert(object, .reason-receiver, emit-expression(object))
+if container.type != holder
+    refuse(.refused-conversion, object)
+    = Assignment()
+container = Typed(apart(container, object, true), container.type)
+. key = convert(key-syntax, .reason-argument, emit-expression(key-syntax))
+if key.type != keyed
+    refuse(.refused-conversion, key-syntax)
+    = Assignment()
+key = Typed(apart(key, key-syntax, true), key.type)
+. read-item = Typed(make-operand(.operand-void, 0), no-type)
+if facts.plan-of(unit.reading, held) == .plan-array-item
+    read-item = array-item(held, reader, container.operand, holder, key.operand, keyed)
+else
+    . mark = pending.length
+    pending += container.operand
+    pending += key.operand
+    read-item = call-method(reader, held, mark)
+. item = convert(held, .reason-receiver, read-item)
+if item.type != owner
+    refuse(.refused-conversion, held)
+    = Assignment()
+item = Typed(apart(item, held, !is-inert(index)), item.type)
+. place = convert(index, .reason-argument, emit-expression(index))
+. place-type = place.type
+. stored = convert(rhs, .reason-argument, Typed(value, given))
+if place-type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, index)
+    = Assignment()
+if stored.type != instances.argument-type(callee, 1)
+    refuse(.refused-conversion, rhs)
+    = Assignment()
+. store-mark = pending.length
+pending += item.operand
+pending += place.operand
+pending += stored.operand
+. answer = call-method(callee, site, store-mark)
+if answer.type != owner
+    refuse(.refused-conversion, site)
+    = Assignment()
+. back-mark = pending.length
+pending += container.operand
+pending += key.operand
+pending += answer.operand
+call-method(stores, held, back-mark)
+= Assignment(Typed(stored.operand, instances.argument-type(callee, 1)), Typed(value, given))
+
+────────────────────
++ do store-place
+    - place SyntaxId
+    - value Operand
+    - type TypeId
+    - site SyntaxId
+
+` Stores a value in the storage an expression names, which holds the value's type: a local,
+` an argument that is a struct, a local or an argument nested functions capture, in the
+` environment that holds it, a global, a field or a property of the receiver named alone, or a
+` stored field or property of what such an expression names. The object of a property is the
+` one kept when the place was read, where one was kept.
+. layout = layout-of(type, site)
+do match? tree.nodes[place]
+    | .node-identifier(row)
+        if is-own-field(place)
+            . owner = unit.owner-type
+            . found = property-of(owner, row.name)
+            if !found || reads-getter(place)
+                refuse(.refused-statement, site)
+                =
+            store-held(unit.self, 0, owner, found, value, type, site)
+            =
+        . kept = assigned-global(place, site)
+        if kept != no-storage
+            . global = tables.storage[kept]
+            if global.type != type || tables.global-kind(global.module, global.decl) == .global-lazy
+                refuse(.refused-statement, site)
+                =
+            store-global(global, value, site)
+            =
+        . slot = local-slot(place, site, true)
+        if is-captured(slot)
+            if bindings.slots[slot].kind == .slot-lazy
+                refuse(.refused-statement, site)
+                =
+            keep-captured(slot, value, type, site)
+            =
+        . offset = slot-offset(slot, site)
+        if facts.slot-type(unit.instance, offset) != type
+            refuse(.refused-statement, site)
+            =
+        if unit.cells[offset] != no-local
+            store-local(unit.cells[offset], value, site)
+            =
+        . memory = argument-memory(slot, type, site)
+        copy(memory, value, layout, false, site)
+        =
+    | .node-get-expression(row)
+        . owner = facts.node-type(unit.reading, row.object)
+        . known = owner != no-type && owner != invalid-type
+        . found = property-of(owner, row.name) if known
+        if !found || reads-getter(place)
+            refuse(.refused-statement, site)
+            =
+        . base = emit-expression(row.object)
+        store-held(base.operand, row.object, owner, found, value, type, site)
+        =
+refuse(.refused-statement, site)
+
+────────────────────
++ do restore-stacks
+    - callee InstanceId
+    - saved [LocalId]
+    - site SyntaxId
+
+` After such a call each slot set before it is put back as it was.
+if saved.length == 0
+    =
+. rows = tables.stack-needs(callee)
+for index in 0 .. < saved.length
+    if saved[index] != no-local
+        . kept = tables.storage[rows[index]]
+        copy
+            - stack-slot(kept, site)
+            - load-local(saved[index], site)
+            - kept.layout
+            - tables.layouts.rows[kept.layout].is-managed
+            - site
+
+────────────────────
+_ do put-lent
+    - target Operand
+    - field LayoutField
+    - value Operand
+    - syntax SyntaxId
+
+` Stores a value at a field of a struct that lies in storage, which may be an object: a managed
+` pointer written goes through the write barrier.
+if tables.layouts.is-struct(field.layout)
+    store-struct(target, field, value, syntax)
+else if field.layout != void-layout
+    store(target, field.offset, value, is-managed-pointer(field.layout), syntax)

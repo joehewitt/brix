@@ -1,0 +1,937 @@
+./ast
+./ast-children
+./ast-nodes
+./decl
+./facets
+./module
+./operator
+./program
+./row-range
+./state-machines
+./viability
+/core/arena
+/core/scratch
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
++ extend AST
+
+────────────────────
++ binds-line Bool
+    - line SyntaxId
+
+match nodes[line]
+    | .node-assign(row)
+        row.op == .bind-op
+    ??
+        false
+
+────────────────────
++ do binding-line SyntaxId
+    - body SyntaxId
+
+for node in subtree-start(body) .. body
+    if binds-line(node)
+        = node
+= 0
+
+────────────────────
++ do is-inherit Bool
+    - value SyntaxId
+
+` Whether a style value is the keyword `inherit`.
+do match? nodes[value]
+    | .node-identifier(row)
+        = row.name.text == "inherit"
+= false
+
+────────────────────
++ do leaves-early Bool
+    - body SyntaxId
+
+` Whether the body of a constructor leaves before its end by a return of its own, apart
+` from those of the functions written in it.
+if body == 0
+    = false
+. skip-from SyntaxId = 0
+. skip-to SyntaxId = 0
+. node = body
+while node > subtree-start(body)
+    node -= 1
+    do match? nodes[node]
+        | .node-function-syntax
+            if !(node >= skip-from && node < skip-to)
+                skip-from = subtree-start(node)
+                skip-to = node
+        | .node-return
+            if !(node >= skip-from && node < skip-to)
+                = true
+        | .node-return-if-true
+            if !(node >= skip-from && node < skip-to)
+                = true
+= false
+
+────────────────────
++ is-empty-block Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-block(row)
+        row.body.count == 0
+    ??
+        false
+
+────────────────────
++ do yields-itself Bool
+    - declaration CheckedDecl
+
+` Whether a function's own statements yield, outside the functions nested in it.
+. start = declaration.subtree.start
+. position = declaration.syntax
+while position > start
+    position -= 1
+    do match? nodes[position]
+        | .node-yield
+            = true
+        | .node-function-syntax
+            position = subtree-start(position)
+= false
+
+────────────────────
++ do identifier-atom Atom?
+    - id SyntaxId
+
+` The name an identifier writes, or none for any other node.
+do match? nodes[id]
+    | .node-identifier(row)
+        = row.name
+= null
+
+────────────────────
++ is-empty-list Bool
+    - syntax SyntaxId
+
+` Whether an expression is a list written with no items, which takes the type of the
+` parameter it is the default of and has no type anywhere else.
+match nodes[syntax]
+    | .node-list-syntax(row)
+        row.items.count == 0
+    ??
+        false
+
+────────────────────
++ do offset-of SyntaxId
+    - expr SyntaxId
+
+` The first number with no unit a side of an equality adds to or takes from a number in a unit
+` other than zero, which is no ratio, or none. Zero in a unit adds nothing, as in
+` `(1 / 3) + 0foo`, which writes a third of foo.
+do match? nodes[expr]
+    | .node-binary-expression(row)
+        . inner = offset-of(row.lhs)
+        if inner != 0
+            = inner
+        . right = offset-of(row.rhs)
+        if right != 0
+            = right
+        if row.op != .add-op && row.op != .subtract-op
+            = 0
+        . left-unit = has-unit(row.lhs)
+        . right-unit = has-unit(row.rhs)
+        if left-unit && !right-unit && !zero-amount(row.lhs)
+            = row.rhs
+        if right-unit && !left-unit && !zero-amount(row.rhs)
+            = row.lhs
+= 0
+
+────────────────────
++ has-unit Bool
+    - expr SyntaxId
+
+` Whether a side of an equality writes a number in a unit.
+match nodes[expr]
+    | .node-integer-syntax(row)
+        row.unit != null
+    | .node-float-syntax(row)
+        row.unit != null
+    | .node-binary-expression(row)
+        has-unit(row.lhs) || has-unit(row.rhs)
+    ??
+        false
+
+────────────────────
++ zero-amount Bool
+    - expr SyntaxId
+
+` Whether a side of an equality is a number written as zero.
+match nodes[expr]
+    | .node-integer-syntax(row)
+        (row.value as F64) == 0.0
+    | .node-float-syntax(row)
+        (row.value as F64) == 0.0
+    ??
+        false
+
+────────────────────
++ do unevaluated-operation SyntaxId
+    - expr SyntaxId
+
+` The first operation of a side of an equality that gives no number, its operands before it and
+` the left before the right, as the reference evaluates them, or none.
+do match? nodes[expr]
+    | .node-binary-expression(row)
+        . left = unevaluated-operation(row.lhs)
+        if left != 0
+            = left
+        . right = unevaluated-operation(row.rhs)
+        if right != 0
+            = right
+        if !is-constant-arithmetic(row.op)
+            = expr
+= 0
+
+────────────────────
++ do first-unexpressed SyntaxId
+    - body SyntaxId
+    - statements Bool
+
+` The first node of a body, in the order the reference visits them, that a function written as
+` one expression may not hold: an explicit return or, with `statements`, an immediate
+` declaration, a loop or a yield outside a `do` block. Neither is looked for in the functions,
+` tasks and deferred blocks written in the body.
+. found SyntaxId = 0
+. floor = subtree-start(body)
+. node = body + 1
+while node > floor
+    node -= 1
+    do match? nodes[node]
+        | .node-function-syntax
+            node = subtree-start(node)
+        | .node-do-task-block
+            node = subtree-start(node)
+        | .node-do-finally-block
+            node = subtree-start(node)
+        | .node-do-block
+            if statements
+                node = subtree-start(node)
+        | .node-return
+            if !statements
+                found = node
+        | .node-return-if-true
+            if !statements
+                found = node
+        | .node-declare(row)
+            if statements && !row.is-lazy
+                found = node
+        | .node-for-block
+            if statements
+                found = node
+        | .node-while-block
+            if statements
+                found = node
+        | .node-yield
+            if statements
+                found = node
+= found
+
+────────────────────
++ requires-do-text String
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-declare(row)
+        if row.is-lazy then "Lazy before the value requires do" else "Immediate declaration requires do"
+    | .node-yield
+        "Yield requires do"
+    | .node-assign
+        "Assignment requires do"
+    | .node-if-block
+        "If statement requires do"
+    | .node-call-expression
+        "Call before the value requires do"
+    ??
+        "Loop requires do"
+
+────────────────────
++ is-trailing-row Bool
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-declare(row)
+        row.is-lazy
+    | .node-pipeline-expression(row)
+        row.left == 0
+    ??
+        false
+
+────────────────────
++ do same-syntaxes Bool
+    - left RowRange'SyntaxId
+    - right RowRange'SyntaxId
+
+if left.count != right.count
+    = false
+for offset in 0 .. < left.count
+    if !same-syntax(children[left.start + offset], children[right.start + offset])
+        = false
+= true
+
+────────────────────
++ do same-syntax Bool
+    - left SyntaxId
+    - right SyntaxId
+
+` Whether two types are written the same way. A way of writing a type this does not know is
+` never the same as another.
+if left == 0 || right == 0
+    = left == right
+do match? nodes[left]
+    | .node-type-identifier(mine)
+        do match? nodes[right]
+            | .node-type-identifier(theirs)
+                = mine.name == theirs.name && mine.is-declare == theirs.is-declare
+    | .node-type-arguments(mine)
+        do match? nodes[right]
+            | .node-type-arguments(theirs)
+                = same-syntax(mine.base, theirs.base) && same-syntaxes(mine.args, theirs.args)
+    | .node-type-optional(mine)
+        do match? nodes[right]
+            | .node-type-optional(theirs)
+                = same-syntaxes(mine.field-types, theirs.field-types)
+    | .node-type-tuple(mine)
+        do match? nodes[right]
+            | .node-type-tuple(theirs)
+                = same-syntaxes(mine.field-types, theirs.field-types)
+    | .node-type-capture(mine)
+        do match? nodes[right]
+            | .node-type-capture(theirs)
+                = same-syntax(mine.id, theirs.id) && same-syntax(mine.type, theirs.type)
+    | .node-identifier(mine)
+        do match? nodes[right]
+            | .node-identifier(theirs)
+                = mine.name == theirs.name
+    | .node-param-constraint(mine)
+        do match? nodes[right]
+            | .node-param-constraint(theirs)
+                = same-syntax(mine.left, theirs.left) && same-syntax(mine.right, theirs.right)
+= false
+
+────────────────────
++ do kept-row SyntaxId
+    - body RowRange'SyntaxId
+
+. position = body.count
+while position > 0
+    position -= 1
+    . row = children[body.start + position]
+    =? row if !is-lazy-declare(row)
+= 0
+
+────────────────────
++ do final-print SyntaxId
+    - body SyntaxId
+
+do match? nodes[body]
+    | .node-block(row)
+        . kept = kept-row(row.body)
+        = if kept != 0 && nodes[kept] is .node-print then kept else 0
+= if nodes[body] is .node-print then body else 0
+
+────────────────────
++ is-finally Bool
+    - statement SyntaxId
+
+` A finally block runs as its enclosing block ends, after every other statement of it.
+match nodes[statement]
+    | .node-do-finally-block
+        true
+    ??
+        false
+
+────────────────────
++ is-lazy-declare Bool
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-declare(row)
+        row.is-lazy
+    ??
+        false
+
+────────────────────
++ is-conditional-value Bool
+    - expr SyntaxId
+
+` Whether an expression is a value chosen by a condition, `x if c` or `if c then x else y`, or
+` one with a fallback.
+match nodes[expr]
+    | .node-binary-expression(row)
+        row.op == .if-op || row.op == .coalesce-op || row.op == .else-op
+    ??
+        false
+
+────────────────────
++ calls-symbol Bool
+    - expr SyntaxId
+
+` Whether an expression calls a case by its symbol alone, which the type expected of it names.
+match nodes[expr]
+    | .node-call-expression(row)
+        symbol-of(row.callable) != null
+    ??
+        false
+
+────────────────────
++ do first-named SyntaxId
+    - pattern SyntaxId
+
+` The name a declaration declares, or the first of those it declares together: they are
+` typed together, so what is known of the first is known of each.
+do match? nodes[pattern]
+    | .node-type-capture(row)
+        = row.id
+    | .node-tuple-syntax(row)
+        if row.items.count != 0
+            = first-named(children[row.items.start])
+    | .node-type-tuple(row)
+        if row.field-types.count != 0
+            = first-named(children[row.field-types.start])
+= pattern
+
+────────────────────
++ do place-syntax SyntaxId
+    - value SyntaxId
+    - position U32
+    - count Size
+
+` What a pattern of items declares a place with: the item at that place where it is declared
+` with a tuple written with as many items, or else the value.
+do match? nodes[value]
+    | .node-tuple-syntax(row)
+        if row.items.count == count
+            . offset = 0u32
+            for item in children[row.items]
+                =? item if offset == position
+                offset += 1
+= value
+
+────────────────────
++ machine-or-value SyntaxId
+    - pattern SyntaxId
+    - value SyntaxId
+
+` What a declaration's value is checked as: the state machine it is, where it declares one
+` name, or the value.
+if declared-local(pattern) != 0 then declared-value(value) else value
+
+────────────────────
++ pattern-identifier SyntaxId
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-capture(row)
+        row.id
+    ??
+        pattern
+
+────────────────────
++ force-operand SyntaxId
+    - syntax SyntaxId
+
+match nodes[syntax]
+    | .node-unary-expression(row)
+        row.operand
+    ??
+        0
+
+────────────────────
++ returned-expr SyntaxId
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-return(row)
+        row.expr
+    | .node-return-if-true(row)
+        row.expr
+    ??
+        0
+
+────────────────────
++ yielded-syntax SyntaxId
+    - site SyntaxId
+
+` What a yield written as a statement gives, so an integer it gives with no suffix converts to the
+` items as that integer does; any other site is its own value.
+match nodes[site]
+    | .node-yield(row)
+        row.expr
+    ??
+        site
+
+────────────────────
++ is-integer-literal Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-integer-syntax
+        true
+    ??
+        false
+
+────────────────────
++ is-match-syntax Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-match-expression
+        true
+    ??
+        false
+
+────────────────────
++ arms-value SyntaxId
+    - expr SyntaxId
+
+` The value a declaration gives where it is written alone in a block of its own, as arms are.
+match nodes[expr]
+    | .node-block(row)
+        if row.body.count == 1 then children[row.body.start] else expr
+    ??
+        expr
+
+────────────────────
++ is-arms-syntax Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-match-expression
+        true
+    | .node-structure-match
+        true
+    ??
+        false
+
+────────────────────
++ is-quasi-syntax Bool
+    - expr SyntaxId
+
+` Whether a statement gives no value though it is typed as an expression: an assignment, a line
+` of markup that declares a property, a print, or a `do` block.
+match nodes[expr]
+    | .node-assign
+        true
+    | .node-property-syntax
+        true
+    | .node-print
+        true
+    | .node-do-block
+        true
+    | .node-do-finally-block
+        true
+    ??
+        false
+
+────────────────────
++ is-string-syntax Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-string-syntax
+        true
+    ??
+        false
+
+────────────────────
++ return-site SyntaxId
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-match-expression(row)
+        row.body
+    ??
+        expr
+
+────────────────────
++ do is-direct-statement Bool
+    - body SyntaxId
+    - id SyntaxId
+
+if body == id
+    = true
+do match? nodes[body]
+    | .node-block(row)
+        for statement in children[row.body]
+            if statement == id
+                = true
+= false
+
+────────────────────
++ tested SyntaxId
+    - condition SyntaxId
+
+` The match a condition is, where `if` or `while` is written with a pattern: its arm runs
+` the body, so what the body assigns is assigned under the condition. No node for any other
+` condition.
+match nodes[condition]
+    | .node-match-expression(row)
+        if row.subject != 0 && !row.is-optional && !row.is-block then condition else 0
+    ??
+        0
+
+────────────────────
++ is-plain-name Bool
+    - pattern SyntaxId
+
+` Whether what a declaration declares is one name, with no type and no pattern.
+match nodes[pattern]
+    | .node-identifier
+        true
+    | .node-type-capture(row)
+        row.type == 0
+    ??
+        false
+
+────────────────────
++ do in-body-loop Bool
+    - node SyntaxId
+    - body SyntaxId
+
+` Whether a node is written in the body of a `for` within a body, which runs it each turn.
+for around in node + 1 .. < body
+    if subtree-start(around) <= node && nodes[around] is .node-for-block
+        = true
+= false
+
+────────────────────
++ do in-attribute Bool
+    - node SyntaxId
+    - body SyntaxId
+
+` Whether a node is written in a line of a block that assigns.
+do match? nodes[body]
+    | .node-block(row)
+        for statement in children[row.body]
+            if nodes[statement] is .node-assign && after-start && node < statement
+                = true
+            .. after-start = subtree-start(statement) <= node
+= false
+
+────────────────────
++ do tests-plainly Bool
+    - pattern SyntaxId
+
+` Whether a pattern tests with no expression of its own that reads what it binds.
+if pattern == 0
+    = true
+for node in subtree-start(pattern) .. pattern
+    if nodes[node] is .node-type-predicate
+        = false
+= true
+
+────────────────────
++ do in-operator-value Bool
+    - id SyntaxId
+
+` Whether a node is in the value of an assignment written with an operator other than `=`, and
+` in no function written there.
+for node in id + 1 .. < (nodes.length as SyntaxId)
+    if subtree-start(node) > id
+        continue
+    do match? nodes[node]
+        | .node-assign(row)
+            = row.op != .eq-op && subtree-start(row.rhs) <= id && id <= row.rhs
+        | .node-declare
+            = false
+        | .node-function-syntax
+            = false
+        | .node-markup
+            = false
+= false
+
+────────────────────
++ do has-handlers Bool
+    - task SyntaxId
+
+do match? nodes[task]
+    | .node-do-task-block(row)
+        = row.catchers.count != 0
+= false
+
+────────────────────
++ both-targets-text String
+
+` The error of a task forked onto a worker and onto the pool's threads both.
+"A task runs on a worker or on the pool's threads, not both; write $forms"
+.. forms = if source-path.ends-with(".bx") then brix-forms else rows-forms
+.. brix-forms = "\"(do-new (worker: w) …)\" or \"(do-new-thread …)\""
+.. rows-forms = "\"do (w) new\" or \"do new thread\""
+
+────────────────────
++ optional-chain-expr SyntaxId
+    - id SyntaxId
+
+match nodes[id]
+    | .node-optional-chain(row)
+        row.expr
+    ??
+        0u32
+
+────────────────────
++ handled-type SyntaxId
+    - pattern SyntaxId
+
+` The type a handler's pattern names, or none for one that names only the panic.
+match nodes[pattern]
+    | .node-type-capture(row)
+        row.type
+    | .node-type-identifier
+        pattern
+    ??
+        0
+
+────────────────────
++ do never-reads Bool
+    - id SyntaxId
+
+` Whether a stream pattern matches without ever reading an item: one made only of lookaheads.
+do match? nodes[id]
+    | .node-stream-match(row)
+        = never-reads(row.pattern)
+    | .node-stream-unary(row)
+        = row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
+    | .node-stream-and(row)
+        = never-reads(row.left) && never-reads(row.right)
+    | .node-stream-or(row)
+        = never-reads(row.left) && never-reads(row.right)
+    | .node-stream-capture(row)
+        = never-reads(row.pattern)
+    | .node-stream-transform(row)
+        = row.pattern != 0 && never-reads(row.pattern)
+= false
+
+────────────────────
++ do clause-expr SyntaxId
+    - clause SyntaxId
+
+` The value a clause tests.
+do match? nodes[clause]
+    | .node-clause(row)
+        = row.expr
+= 0
+
+────────────────────
++ symbol-of Atom?
+    - expr SyntaxId
+
+match? nodes[expr]
+    | .node-symbol(row)
+        row.name
+
+────────────────────
++ argument-symbol Atom?
+    - expr SyntaxId
+
+` The case an argument names by its symbol alone, bare or called with the case's values: the
+` parameter it fills names the union.
+match? nodes[expr]
+    | .node-symbol(row)
+        row.name
+    | .node-call-expression(row)
+        symbol-of(row.callable)
+
+────────────────────
++ other-side SyntaxId
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-binary-expression(row)
+        row.rhs
+    ??
+        0
+
+────────────────────
++ do reads-once Bool
+    - id SyntaxId
+
+` Whether a node is the operand of a `<-` written before it, which reads one item.
+do match? nodes[holder-of(id)]
+    | .node-unary-expression(row)
+        = row.op == .read-op && row.operand == id
+= false
+
+────────────────────
++ do stable-key Bool
+    - key SyntaxId
+
+` Whether a key names what lasts as long as the address it makes, as the reference decides:
+` a name, a number, a text or a case written alone, a name read from one, or a tuple of them.
+do match? nodes[key]
+    | .node-identifier
+        = true
+    | .node-integer-syntax
+        = true
+    | .node-string-syntax
+        = true
+    | .node-anonymous-case
+        = true
+    | .node-get-expression(get)
+        = stable-key(get.object)
+    | .node-tuple-syntax(row)
+        for item in children[row.items]
+            if !stable-key(item)
+                = false
+        = true
+= false
+
+────────────────────
++ do index-key SyntaxId
+    - index SyntaxId
+
+` The key an index is written with.
+do match? nodes[index]
+    | .node-index-expression(row)
+        = row.index
+= 0
+
+────────────────────
++ do index-object SyntaxId
+    - index SyntaxId
+
+` What an index is read from.
+do match? nodes[index]
+    | .node-index-expression(row)
+        = row.object
+= 0
+
+────────────────────
++ lazy-value SyntaxId
+    - declaration SyntaxId
+
+` The value a lazy local is declared with.
+match nodes[declaration]
+    | .node-declare(row)
+        row.right
+    ??
+        0
+
+────────────────────
++ is-typed Bool
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-capture(row)
+        row.type != 0
+    ??
+        false
+
+────────────────────
++ coalesces-condition Bool
+    - id SyntaxId
+    - left SyntaxId
+
+` Whether `??` takes the other side of a value written `value if condition`, as its left side
+` or as the last of the sides before it in one chain, which shares the chain's place.
+match nodes[left]
+    | .node-binary-expression(row)
+        |? row.op == .if-op
+            true
+        |? row.op == .coalesce-op && nodes.loc[left] == nodes.loc[id]
+            is-if-syntax(row.rhs)
+        ??
+            false
+    ??
+        false
+
+────────────────────
++ is-if-syntax Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-binary-expression(row)
+        row.op == .if-op
+    ??
+        false
+
+────────────────────
++ is-choice-syntax Bool
+    - expr SyntaxId
+
+` Whether an expression is `if condition then value else other`.
+match nodes[expr]
+    | .node-binary-expression(row)
+        row.op == .else-op && is-if-syntax(row.lhs)
+    ??
+        false
+
+────────────────────
++ escaped-subject SyntaxId
+    - value SyntaxId
+
+match nodes[value]
+    | .node-cast-expression(row)
+        escaped-subject(row.lhs)
+    | .node-unary-expression(row)
+        if row.op == .optional-force-op then escaped-subject(row.operand) else 0
+    ??
+        value
+
+────────────────────
++ matched-subject SyntaxId
+    - matching SyntaxId
+
+` The subject of a match, or none.
+match nodes[matching]
+    | .node-match-expression(row)
+        row.subject
+    ??
+        0
+
+────────────────────
++ do bound-attribute SyntaxId
+    - anchor SyntaxId
+
+. holder = holder-of(anchor)
+do match? nodes[holder]
+    | .node-assign(row)
+        if row.op == .bind-op && row.lhs == anchor && attribute-element(holder) != 0
+            = holder
+= 0
+
+────────────────────
++ do when-lines [SyntaxId]
+    - branch SyntaxId
+
+` The lines of the body of a `when` of a style rule, in the order written: the one line of a
+` `when` written on one, or those of its block.
+. lines [SyntaxId]
+do match? nodes[branch]
+    | .node-style-when(row)
+        do match nodes[row.body]
+            | .node-block(block)
+                for line in children[block.body]
+                    lines += line
+            ??
+                lines += row.body
+= lines
+
+────────────────────
++ do falls-back Bool
+    - row ASTSlotOutlet
+
+do match? nodes[row.body]
+    | .node-block(block)
+        for statement in children[block.body]
+            if !(nodes[statement] is .node-assign)
+                = true
+= false
+
+────────────────────
++ tests-row Bool
+    - clause SyntaxId
+
+match nodes[clause]
+    | .node-clause(row)
+        row.op == .when-clause
+    ??
+        false

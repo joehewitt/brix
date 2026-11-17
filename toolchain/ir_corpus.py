@@ -47,7 +47,7 @@ EXAMPLE_PATTERNS = tuple(toolchain_path('examples', pattern) for pattern in (
     '*/*/*-app.yumi',
     '*/*/*-app.bx',
 ))
-FUNCTION_START = re.compile(rb'^function (\S+) kind=', re.MULTILINE)
+FUNCTION_START = re.compile(rb'^function (.+?) kind=', re.MULTILINE)
 FUNCTION_LINE = b'function '
 NEWLINE_FUNCTION = b'\n' + FUNCTION_LINE
 READ_SIZE = 1 << 22

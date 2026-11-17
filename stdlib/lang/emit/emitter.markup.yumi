@@ -1,0 +1,1821 @@
+./emitter
+./emitter.assignments
+./emitter.calls
+./emitter.live-actions
+./emitter.styles
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Markup is facet of FunctionEmitter
+    sees Assignments
+    sees Calls
+    sees LiveActions
+    sees Styles
+
+────────────────────
++ do emit-content
+    - id SyntaxId
+    - link ContentLink
+
+` A line of a markup element's body that the element takes: its value is evaluated, takes
+` the conversion recorded for it as an argument, and is given to the method the type pass
+` found for it, called on the element whose body is being run. What the method answers is
+` dropped, but where the line is an element a name is declared for: the name then holds the
+` answer, converted as a value assigned to it. A line that is a markup branch region or a
+` markup loop region is the region, whose action is made once the element has taken it. A line
+` whose value read something tracked is evaluated while a live action of its own is open, whose
+` trackers note what it reads, and the action is made once the element has taken the value, as
+` that of an attribute is (`give-again`), and what the element took of it is kept for the action
+` to replace (`keep-taken`). An element named for the property its class's markup declares for
+` it, which no local is declared for, gives the property what the element took it as, or the
+` object where that is nothing; one a local is declared for gives it what the local holds, which
+` the environment of a function the element is written in may keep. A slot outlet that is a
+` branch region is written at its parameter (`region-site`).
+. site = region-site(id)
+. region = facts.branch-region-of(unit.reading, site)
+. looped = facts.loop-region-of(unit.reading, id)
+. live = tables.live-statement-of(unit.reading, id) if !region && !looped && !rerunning && unit.reading == unit.instance
+. trackers = no-local
+. made = Typed(make-operand(.operand-void, 0), no-type)
+if region
+    made = emit-branch(site, region)
+else if looped
+    made = emit-loop(id, looped)
+else if live
+    trackers = open-trackers(id)
+    live-actions += LiveTrackers(trackers, trackers)
+    made = emit-expression(id)
+    live-actions.pop()
+else
+    made = emit-expression(id)
+. converted = convert(id, .reason-argument, made)
+. top = content-hosts.length
+if top == 0 || content-hosts[top - 1].type != link.parent
+    refuse(.refused-statement, id)
+    =
+if converted.type != link.taken
+    refuse(.refused-conversion, id)
+    =
+. answer = call-protocol
+    - id
+    - link.call
+    - content-hosts[top - 1].operand
+    - link.parent
+    - converted.operand
+    - link.taken
+    - false
+if link.append != no-instance
+    . mark = pending.length
+    pending += content-hosts[top - 1].operand
+    pending += answer.operand
+    call-instance(link.append, id, mark)
+. answered = answer.type
+if live
+    . whole = link.append != no-instance || answered != types.void-type
+    keep-taken(id, (if whole then answer else made).operand, if whole then answered else made.type)
+if live
+    give-again(id, trackers, content-hosts[top - 1].operand, link.parent)
+    =
+if region
+    own-branch(site, region, made.operand)
+    =
+if looped
+    own-loop(id, looped, made.operand)
+    =
+if link.answers == no-type
+    . named = facts.named-store-of(unit.reading, id)
+    if named != U32.max
+        do match? tree.nodes[id]
+            | .node-markup(row)
+                if !declares-element(id, row.id)
+                    . gives = answered != no-type && answered != types.void-type
+                    store-named(id, named, if gives then answer else made)
+                    =
+                . slot = local-slot(row.id, id, true, false, true)
+                . outer = is-captured(slot) && tables.slot-functions[slot] != unit.own-scope
+                . held = if outer then find-captured(slot, id).type else facts.slot-type(unit.instance, slot-offset(slot, id))
+                . kept = if outer then read-captured(slot, id, held) else slot-value(slot, id, held)
+                store-named(id, named, Typed(kept.operand, held))
+if link.answers == no-type
+    =
+if answered != link.answers
+    refuse(.refused-conversion, id)
+    =
+. raw = answer
+answer = convert(id, .reason-assignment, answer)
+do match? tree.nodes[id]
+    | .node-markup(row)
+        . slot = local-slot(row.id, id, true, false, true)
+        if is-captured(slot) && tables.slot-functions[slot] != unit.own-scope
+            keep-captured(slot, answer.operand, answer.type, id)
+        else
+            keep-state(slot, answer.operand, answer.type, id)
+. named = facts.named-store-of(unit.reading, id)
+if named != U32.max
+    store-named(id, named, raw)
+
+────────────────────
+_ region-site SyntaxId
+    - id SyntaxId
+
+` Where the markup branch region a line may be is written: a slot outlet's parameter, or the line.
+match tree.nodes[id]
+    | .node-slot-outlet(row)
+        if row.slot-parameter != 0 then row.slot-parameter else id
+    ??
+        id
+
+────────────────────
+_ do emit-branch Typed
+    - id SyntaxId
+    - region BranchRegion
+
+` A markup branch region, as the reference makes one:
+` the function of each arm, made the `MarkupBranchBuilder` recorded at the arm, in a
+` list made at the `if`; the index of the arm whose condition holds, read while a live action
+` of the region's own is open, whose trackers are kept to make the action with once the
+` element has taken the region; and the region the markup runtime makes of them for the
+` element being built. The batch in force is kept first for the arms, which the region builds
+` as it is made, and the region is put under the batch found for the host. The arms of a match
+` region read its subject again where the host is kept, which is first done here.
+. nothing = make-operand(.operand-void, 0)
+. top = content-hosts.length
+if top == 0 || content-hosts[top - 1].type != region.host
+    refuse(.refused-statement, id)
+    = Typed(nothing, no-type)
+if region.rooted
+    keep-batch(id)
+if tree.nodes[id] is .node-match-expression
+    keep-captured(channel-slot(id), content-hosts[top - 1].operand, region.host, id)
+. start = given.length
+. count U32
+for arm in tree.region-arms(id)
+    . built = convert(arm, .reason-markup-arm, emit-closure(tree.region-arm-body(arm)))
+    given += Typed(apart(built, arm, true), built.type)
+    count += 1
+. list = nothing
+list = build-list(id, RowRange'SyntaxId(0, count), region.list, start, false).operand
+drop-given(start)
+. trackers = open-trackers(id)
+live-actions += LiveTrackers(trackers, trackers)
+. selected = emit-arm-index(id, region.selected)
+live-actions.pop()
+. mark = pending.length
+pending += content-hosts[top - 1].operand
+pending += list
+pending += selected.operand
+. made = raising-call(id, region.create, mark)
+put-under-batch
+    - id
+    - region.ensure
+    - region.hosted
+    - made.operand
+    - instances.signatures[region.create].returns
+branch-trackers += trackers
+= Typed(made.operand, instances.signatures[region.create].returns)
+
+────────────────────
+_ do own-branch
+    - id SyntaxId
+    - region BranchRegion
+    - made Operand
+
+` The action of a markup branch region, once the element has taken the region: the element and
+` the region are kept in the locals no name reaches declared at the `if`, for the function that
+` selects the arm again, and the action, made by the markup runtime with the trackers the
+` conditions noted and a callback that runs that function with the environment in force here,
+` given the element as the host, or the batch found for it where the type pass found one, is
+` owned by the element and marked structural.
+. trackers = branch-trackers[branch-trackers.length - 1]
+branch-trackers.pop()
+. slot = channel-slot(id)
+. code = tables.instance-functions[region.updater]
+. top = content-hosts.length
+if slot == no-slot || code == no-function || top == 0
+    refuse(.refused-statement, id)
+    =
+. host = content-hosts[top - 1].operand
+keep-captured(slot, host, region.host, id)
+keep-captured(slot + 1, made, instances.signatures[region.create].returns, id)
+. callback = make-callback(tables.live-adapter-of(code), written-environment(id), id)
+. owner = if region.rooted || region.hosted then region-batch(id, region.hosted) else convert(id, .reason-markup-host, Typed(host, region.host)).operand
+. mark = pending.length
+pending += load-local(trackers, id)
+pending += callback
+pending += owner
+. action = raising-call(id, region.action, mark)
+attach-action(host, action.operand, id)
+. marking = pending.length
+pending += action.operand
+pending += structural-owner(id, host, region.host, region.structural).operand
+do raising-call(id, region.structural, marking)
+
+────────────────────
+_ do emit-loop Typed
+    - id SyntaxId
+    - region LoopRegion
+
+` A markup loop region, as the reference makes one:
+` the container, read while a live action of the region's own is open, whose trackers are kept
+` to make the action with once the element has taken the region, and converted to the source the
+` type pass recorded at the container where it is no collection; the function that builds each
+` row, made the builder recorded at the `for`, and that keys it, where the loop is keyed, made
+` the `MarkupKeyBuilder` recorded at its clause; and the region the markup runtime makes of
+` them for the element being built. The batch in force is kept first for the rows, which the
+` region builds as it is made, and the region is put under the batch found for the host.
+. nothing = make-operand(.operand-void, 0)
+. top = content-hosts.length
+. container = region-container(id)
+if top == 0 || content-hosts[top - 1].type != region.host || container == 0
+    refuse(.refused-statement, id)
+    = Typed(nothing, no-type)
+if region.rooted
+    keep-batch(id)
+. trackers = open-trackers(id)
+live-actions += LiveTrackers(trackers, trackers)
+. source = emit-expression(container)
+live-actions.pop()
+if source.type != region.source
+    source = convert(container, .reason-argument, source)
+if source.type != region.source
+    refuse(.refused-conversion, container)
+    = Typed(nothing, no-type)
+do match? tree.nodes[id]
+    | .node-for-block(row)
+        . built = convert(id, .reason-markup-row, emit-closure(row.body))
+        if region.adapts != no-instance
+            . filter = tree.when-clause(row.loop)
+            . tester = if filter != 0 then convert(filter, .reason-markup-key, emit-closure(filter)).operand else nothing
+            . adapting = pending.length
+            pending += content-hosts[top - 1].operand
+            pending += built.operand
+            if filter != 0
+                pending += tester
+            built = raising-call(id, region.adapts, adapting)
+        . keyed = tree.keyed-clause(row.loop)
+        . keyer = if keyed != 0 then convert(keyed, .reason-markup-key, emit-closure(keyed)).operand else nothing
+        . mark = pending.length
+        pending += content-hosts[top - 1].operand
+        pending += built.operand
+        if keyed != 0
+            pending += keyer
+        pending += source.operand
+        . made = raising-call(id, region.create, mark)
+        put-under-batch
+            - id
+            - region.ensure
+            - region.hosted
+            - made.operand
+            - instances.signatures[region.create].returns
+        branch-trackers += trackers
+        = Typed(made.operand, instances.signatures[region.create].returns)
+refuse(.refused-statement, id)
+= Typed(nothing, no-type)
+
+────────────────────
++ do emit-selector
+    - declared SyntaxId
+    - id SyntaxId
+
+. live = instances.live
+if live.previous == no-instance || live.next == no-instance
+    refuse(.refused-function, declared)
+    =
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, id, pending.length).operand, id)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, id, pending.length).operand, id)
+live-actions += LiveTrackers(previous, next)
+. selected = emit-arm-index(id, returns-type)
+live-actions.pop()
+return-value(selected.operand, declared)
+
+────────────────────
++ do emit-row-region ?! Refused
+    - declared SyntaxId
+    - body SyntaxId
+
+. parent = make-operand(.operand-argument, 2)
+. type = instances.argument-type(unit.instance, 1)
+. batch = make-operand(.operand-void, 0)
+. root = facts.region-root-of(unit.reading, body)
+if root
+    batch = read-captured(root.slot, body, root.batch).operand
+    if root.ensure != no-instance
+        . host = convert(body, .reason-markup-host, Typed(parent, type))
+        . given = convert-from(body, .reason-markup-root, batch)
+        . mark = pending.length
+        pending += host.operand
+        pending += given.operand
+        call-instance(root.ensure, body, mark)
+content-hosts += Typed(parent, type)
+content-roots += batch
+emit-block(body)
+content-hosts.pop()
+content-roots.pop()
+emit-end(declared)
+
+────────────────────
++ region-container SyntaxId
+    - id SyntaxId
+
+` The container of the one header of a markup loop region's `for`.
+match tree.nodes[id]
+    | .node-for-block(row)
+        match tree.nodes[row.loop]
+            | .node-loop-syntax(loop)
+                loop.container
+            ??
+                0
+    ??
+        0
+
+────────────────────
+_ do own-loop
+    - id SyntaxId
+    - region LoopRegion
+    - made Operand
+
+` The action of a markup loop region, once the element has taken the region: the element and the
+` region are kept in the locals no name reaches declared at the `for`, for the function that reads
+` the container again, and the action, made by the markup runtime with the trackers the container
+` noted and a callback that runs that function with the environment in force here, given the region
+` as the host, or the batch in force where there is one, is owned by the region and marked
+` structural.
+. trackers = branch-trackers[branch-trackers.length - 1]
+branch-trackers.pop()
+. slot = channel-slot(id)
+. code = tables.instance-functions[region.updater]
+. top = content-hosts.length
+if slot == no-slot || code == no-function || top == 0
+    refuse(.refused-statement, id)
+    =
+. made-type = instances.signatures[region.create].returns
+keep-captured(slot, content-hosts[top - 1].operand, region.host, id)
+keep-captured(slot + 1, made, made-type, id)
+. callback = make-callback(tables.live-adapter-of(code), written-environment(id), id)
+. owner = if region.rooted then region-batch(id, false) else convert(id, .reason-markup-host, Typed(made, made-type)).operand
+. mark = pending.length
+pending += load-local(trackers, id)
+pending += callback
+pending += owner
+. action = raising-call(id, region.action, mark)
+attach-action(made, action.operand, id)
+. marking = pending.length
+pending += action.operand
+pending += structural-owner(id, made, made-type, region.structural).operand
+do raising-call(id, region.structural, marking)
+
+────────────────────
+_ do structural-owner Typed
+    - id SyntaxId
+    - owner Operand
+    - type TypeId
+    - call InstanceId
+
+` The host that owns the action of a markup region, as the optional the call that marks the
+` action structural takes: the parent of a branch or the region of a loop, converted where the
+` type pass recorded it as a markup host, and nothing where it is none.
+. fact = facts.first-conversion(unit.reading, id)
+while fact != no-fact
+    if facts.conversions[fact].reason == .reason-markup-structural
+        . host = convert(id, .reason-markup-host, Typed(owner, type))
+        = convert(id, .reason-markup-structural, host)
+    fact = facts.conversions[fact].next
+. optional = types.child-type(instances.signatures[call].args, 1)
+= empty-optional(optional, layout-of(optional, id))
+
+────────────────────
+_ do keep-batch
+    - id SyntaxId
+
+` Keeps the batch in force where a markup region is written in the third local no name
+` reaches declared at the `if` or `for`, which the functions that build its arms or rows read.
+. slot = channel-slot(id)
+. batch = if content-roots.length != 0 then outer-root else make-operand(.operand-void, 0)
+    .. outer-root = content-roots[content-roots.length - 1]
+if slot == no-slot || operand-kind(batch) == .operand-void
+    refuse(.refused-statement, id)
+    =
+. field = find-captured(slot + 2, id)
+keep-captured(slot + 2, batch, field.type, id)
+
+────────────────────
+_ do region-batch Operand
+    - id SyntaxId
+    - hosted Bool
+
+` The batch the reference finds for the host of a markup region: the host itself where it is
+` one, converted at the `if` or `for`, else the one in force.
+. nothing = make-operand(.operand-void, 0)
+. top = content-hosts.length
+if hosted && top != 0
+    = convert(id, .reason-markup-batch, content-hosts[top - 1]).operand
+if hosted || content-roots.length == 0 || void-root
+    refuse(.refused-statement, id)
+    = nothing
+.. void-root = operand-kind(content-roots[content-roots.length - 1]) == .operand-void
+= content-roots[content-roots.length - 1]
+
+────────────────────
+_ do put-under-batch
+    - id SyntaxId
+    - ensure InstanceId
+    - hosted Bool
+    - made Operand
+    - type TypeId
+
+` Puts the region a markup region made under the batch found for its host, where the type pass
+` found one, as the markup runtime's `ensure-markup-root` does, given the region as a host and
+` the batch as the optional it takes.
+if ensure == no-instance
+    =
+. batch = region-batch(id, hosted)
+. region = convert(id, .reason-markup-region, Typed(made, type))
+. given = convert-from(id, .reason-markup-root, batch)
+. mark = pending.length
+pending += region.operand
+pending += given.operand
+call-instance(ensure, id, mark)
+
+────────────────────
++ do emit-markup Typed
+    - id SyntaxId
+    - name SyntaxId
+    - type-id SyntaxId
+    - args RowRange'SyntaxId
+    - body SyntaxId
+
+` A markup element: its object, with the lines of its body run as its content, the object being the
+` element they are given to. Where it is a statement, the objects of the elements it declares names
+` for are made first (`raise-elements`). The object of an element a block declares a name for is read
+` from the name: one this function has not made has no shape. One whose name is placed is made here
+` and given to the name. A body a function of its own builds into the default slot's node is no
+` content here.
+. nothing = make-operand(.operand-void, 0)
+. made = nothing
+. type = no-type
+raise-elements(id)
+if facts.is-raised(unit.reading, id)
+    . slot = local-slot(name, id, true, false, true)
+    if built.find(id) == null
+        refuse(.refused-expression, id)
+        = Typed(nothing, no-type)
+    type = facts.slot-type(unit.instance, slot-offset(slot, id))
+    made = slot-value(slot, id, type).operand
+else
+    . element = make-element(id, type-id, args)
+    made = element.operand
+    type = element.type
+    if names-placed(name)
+        name-element(id, name, element)
+. root = batch-root(id, type-id, Typed(made, type))
+if body != 0 && !is-closure(facts.node-type(unit.reading, body))
+    content-hosts += Typed(made, type)
+    content-roots += root
+    emit-block(body)
+    content-hosts.pop()
+    content-roots.pop()
+mount-root(id, type-id, made, type, root)
+= Typed(made, type)
+
+────────────────────
+_ declares-element Bool
+    - element SyntaxId
+    - name SyntaxId
+
+` Whether a block declares a local for a markup element's name, in the function whose facts
+` are being read.
+|? binding == no-binding
+    false
+??
+    resolution.kind == .resolve-slot && bindings.slots[resolution.slot].group == element
+
+.. binding = instances.rows[unit.reading].binding
+.. resolution = bindings.resolution-of(binding, name)
+
+────────────────────
+_ names-placed Bool
+    - name SyntaxId
+
+` Whether a markup element's name is placed: given the element's object where the element is
+` written, as no block made it where it starts.
+|? name == 0 || binding == no-binding
+    false
+??
+    resolution.kind == .resolve-slot && (bindings.slots[resolution.slot].flags /and/ SlotFlag.slot-placed) != 0
+
+.. binding = instances.rows[unit.reading].binding
+.. resolution = bindings.resolution-of(binding, name)
+
+────────────────────
+_ do batch-root Operand
+    - id SyntaxId
+    - type-id SyntaxId
+    - made Typed
+
+` The batch of markup in force in the body of a markup element, a `MarkupRootElement`: the element
+` itself where its class is a batch, else the one in force where the element is written, if
+` any. An element of a markup host is put under it first, given as the `MarkupRootElement?` the
+` markup runtime takes.
+. nothing = make-operand(.operand-void, 0)
+. inherited = if content-roots.length != 0 then content-roots[content-roots.length - 1] else nothing
+. root = facts.element-root-of(unit.reading, id)
+if !root
+    = inherited
+. batch = inherited
+if root.owns
+    batch = convert(type-id, .reason-markup-batch, made).operand
+if root.ensure != no-instance
+    if operand-kind(batch) == .operand-void
+        refuse(.refused-expression, id)
+        = nothing
+    . host = convert(type-id, .reason-markup-host, made)
+    . given = convert-from(type-id, .reason-markup-root, batch)
+    . mark = pending.length
+    pending += host.operand
+    pending += given.operand
+    call-instance(root.ensure, id, mark)
+= batch
+
+────────────────────
+_ do mount-root
+    - id SyntaxId
+    - type-id SyntaxId
+    - made Operand
+    - type TypeId
+    - batch Operand
+
+` Mounts a markup element that is no line of another as a root of the batch in force, once
+` its body has run.
+. root = facts.element-root-of(unit.reading, id)
+if !root || root.mount == no-instance
+    =
+if operand-kind(batch) == .operand-void
+    refuse(.refused-expression, id)
+    =
+. host = convert(type-id, .reason-markup-host, Typed(made, type))
+. given = convert-from(type-id, .reason-markup-root, batch)
+. mark = pending.length
+pending += host.operand
+pending += given.operand
+call-instance(root.mount, id, mark)
+
+────────────────────
++ do raise-elements
+    - block SyntaxId
+
+` Makes the object of each named markup element the type pass kept for a block of markup content,
+` where it starts, or for a statement, where it runs, in order, and declares the element's name as
+` a local that holds it.
+. raised = facts.first-raised(unit.reading, block)
+while raised != U32.max
+    . fact = facts.raised-elements[raised]
+    raise-element(fact.element)
+    raised = fact.next
+
+────────────────────
++ do raise-element
+    - element SyntaxId
+
+` Makes the object of a named markup element and declares its name as a local that holds it.
+do match? tree.nodes[element]
+    | .node-markup(row)
+        . made = make-element(element, row.type-id, row.args)
+        name-element(element, row.id, made)
+
+────────────────────
+_ do name-element
+    - element SyntaxId
+    - name SyntaxId
+    - made Typed
+
+` Gives the name of a markup element its cell and stores the element's object there, as a
+` declaration of a local with that value does: one some read tracks tells no read of it. A
+` name a function this one is written in declares is kept in its environment.
+. slot = local-slot(name, element, true, false, true)
+. offset = slot-offset(slot, element)
+. type = if is-captured(slot) && tables.slot-functions[slot] != unit.own-scope then find-captured(slot, element).type else facts.slot-type(unit.instance, offset)
+if type == no-type || type == invalid-type || type != made.type
+    refuse(.refused-statement, element)
+    =
+. layout = layout-of(type, element)
+built += element
+if is-captured(slot)
+    keep-captured(slot, made.operand, type, element)
+    =
+. local = ir.add-local(layout, (bindings.slots[slot].flags /and/ SlotFlag.slot-address-taken) != 0)
+unit.cells[offset] = local
+store-local(local, made.operand, element)
+
+────────────────────
+_ do make-element Typed
+    - id SyntaxId
+    - type-id SyntaxId
+    - args RowRange'SyntaxId
+
+` The object of a markup element, as its constructor makes it for its arguments and its
+` attributes.
+` 1. The constructor is called as a call written with the arguments is: an attribute that
+`    names a parameter fills it, and the value of each other attribute is given after the
+`    arguments. Each argument is kept as it was evaluated, before the call converted it, and
+`    each attribute as given: converted to the property's type, and then, where it fills a
+`    parameter, to the parameter's, as the call converted it.
+`    The values given to the style rules written on the element are evaluated after the
+`    attributes, before the call (`emit-rule-values`).
+` 2. The object is kept for the functions that read its members by name alone, the gates of
+`    the style rules written on it among them (`keep-element`). The state cells of the `when`s
+`    around the rules written in rules the element sees, made before the call (`make-cells`),
+`    are bound (`bind-cells`). The style rules the element applies run, then each attribute
+`    that declares a style property declares it, in the order written.
+` 3. Each value the type pass bound to a property is stored in the property: the
+`    attributes, then the arguments, each in the order written. An argument takes the
+`    conversion recorded for it as a value assigned. An attribute a setter answers is given
+`    to the setter instead, in its place among them. Then the element's style site, if it has
+`    one, is made ready.
+` 4. Each attribute whose value read something tracked is given a live action, in the order
+`    written, owned by the object, which gives it again: the object is kept where that
+`    function reaches it. Then each argument given by position whose value did, so.
+. nothing = make-operand(.operand-void, 0)
+. own-styling = styling
+. start = element-given.length
+. filling = element-filled.length
+. setting = setter-given.length
+. valued = rule-givens.length
+. lively = attribute-trackers.length
+. arguing = argument-trackers.length
+styling = styling.element = if facts.first-element-store(unit.reading, id) != U32.max || writes-attributes(id) then id else 0
+styling = styling.valued = if gives-rule-values(id) then id else 0
+make-cells(id)
+. made = emit-call(id, type-id, args)
+. type = made.type
+styling = own-styling
+keep-element(id, made.operand, type)
+bind-cells(id, made.operand)
+. association = declare-styles(id, made.operand, type)
+while rule-givens.length > valued
+    rule-givens.pop()
+. store = facts.first-element-store(unit.reading, id)
+while store != U32.max
+    . fact = facts.element-stores[store]
+    . place = start + fact.argument
+    if fact.setter != 0
+        set-attribute(fact.setter, made.operand, type, setting + fact.argument)
+    else if place >= element-given.length
+        refuse(.refused-expression, id)
+    else
+        . stored = element-given[place]
+        if fact.converted != 0
+            stored = convert(fact.converted, .reason-assignment, stored)
+        store-argument(made.operand, type, fact.property, stored.operand, stored.type, id)
+    store = fact.next
+while element-given.length > start
+    element-given.pop()
+while element-filled.length > filling
+    element-filled.pop()
+while setter-given.length > setting
+    setter-given.pop()
+finish-styles(id, made.operand, type, association)
+for position in lively .. < attribute-trackers.length
+    give-again(attribute-trackers[position].member, attribute-trackers[position].trackers, made.operand, type)
+for position in arguing .. < argument-trackers.length
+    give-again(argument-trackers[position].member, argument-trackers[position].trackers, made.operand, type)
+follow-bound(id, made.operand, type)
+while attribute-trackers.length > lively
+    attribute-trackers.pop()
+while argument-trackers.length > arguing
+    argument-trackers.pop()
+= Typed(made.operand, type)
+
+────────────────────
+_ do follow-bound
+    - id SyntaxId
+    - made Operand
+    - type TypeId
+
+` Gives each binding of a markup element the action that stores back what the element holds as
+` it changes: its first run only notes the read of the element's property, so that the place
+` keeps the value it gave the element.
+do match? tree.nodes[id]
+    | .node-markup(element)
+        do match? tree.nodes[element.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    do match? tree.nodes[statement]
+                        | .node-assign(attribute)
+                            if attribute.op == .bind-op
+                                . name = identifier-name(tree, attribute.lhs)
+                                if !name
+                                    refuse(.refused-statement, statement)
+                                    =
+                                . trackers = open-trackers(attribute.lhs)
+                                live-actions += LiveTrackers(trackers, trackers)
+                                track(attribute.lhs, made, name)
+                                live-actions.pop()
+                                give-again(statement, trackers, made, type, attribute.lhs)
+
+────────────────────
+_ do set-attribute
+    - target SyntaxId
+    - made Operand
+    - type TypeId
+    - place Size
+
+` Gives the object of a markup element, once made, the value of an attribute a setter
+` answers, kept where it was evaluated, by calling the setter the type pass chose at the
+` attribute's name.
+. call = own-call(target)
+if call == no-fact || facts.calls[call].form != .call-setter || place >= setter-given.length
+    refuse(.refused-expression, target)
+    =
+. callee = facts.calls[call].callee
+if callee == no-instance || facts.calls[call].is-partial || !is-callable(callee) || other-arity
+    refuse(.refused-expression, target)
+    =
+.. other-arity = instances.signatures[callee].args.count != 1
+if setter-given[place].type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, target)
+    =
+. receiver = convert(target, .reason-receiver, Typed(made, type))
+if receiver.type != instances.rows[callee].self-type
+    refuse(.refused-conversion, target)
+. mark = pending.length
+pending += receiver.operand
+pending += setter-given[place].operand
+call-method(callee, target, mark)
+
+────────────────────
+_ do hold-outlet-cells LocalId
+    - id SyntaxId
+
+` Holds, while the function that builds what a slot outlet mounts runs, the state cells the
+` outlet holds (`OutletCell`), each by where it was made, after a mark of those held already,
+` which it answers in a local of its own, as the reference's `withMarkupOutletStyleStateCells`
+` holds them; none where it holds none.
+. mark = no-local
+for held in facts.outlet-cells
+    if held.instance != unit.reading || held.outlet != id
+        continue
+    . local = cell-local(held.cell)
+    if local == no-local
+        refuse(.refused-expression, id)
+        = no-local
+    if mark == no-local
+        . runtime = facts.style-runtime
+        mark = ir.add-local(layout-of(instances.signatures[runtime.outlet-mark].returns, id))
+        store-local(mark, call-instance(runtime.outlet-mark, id, pending.length).operand, id)
+    . first = pending.length
+    pending += integer(.machine-u32, tables.state-key-number(facts.scope-cells[held.cell].key))
+    pending += load-local(local, id)
+    do call-instance(facts.style-runtime.outlet-push, id, first)
+= mark
+
+────────────────────
+_ do give-again
+    - statement SyntaxId
+    - trackers LocalId
+    - made Operand
+    - type TypeId
+    - site SyntaxId = 0
+
+` The live action of an attribute whose value read something tracked: the element's object
+` is kept in the local no name reaches declared at the attribute, and the action, with the
+` trackers the value noted and a callback that runs the attribute's function with the
+` environment in force here, is owned by the object. That of an argument given by position
+` keeps the object in the one declared at the element. The action of an element of a markup
+` host is made by the markup runtime, given the element as its host, or where the type pass
+` made it with a batch, given the element where it is the batch and else the one in force. That
+` of a line of the element's body that gives content is made as an attribute's is, and that of a
+` line of an arm's body is given what the arm's function is given, converted at the line. The
+` action that stores back what a binding's element holds is made at the `site` it is written at.
+. at = if site != 0 then site else statement
+. row = tables.live-statement-of(unit.reading, at)
+. element = tree.argument-element(statement)
+. slot = if element != 0 then channel-slot(element) else line-keeper(statement)
+. code = if row && row.rerun != no-instance then tables.instance-functions[row.rerun] else no-function
+if code == no-function || slot == no-slot
+    refuse(.refused-statement, at)
+    =
+if site == 0
+    keep-captured(slot, made, type, statement)
+if row!.owned == no-instance
+    . action = make-action
+        - load-local(trackers, at)
+        - tables.live-adapter-of(code)
+        - written-environment(at)
+        - at
+    attach-action(made, action.operand, at)
+    =
+. callback = make-callback(tables.live-adapter-of(code), written-environment(at), at)
+. written = if element != 0 then element else tree.attribute-element(statement)
+if written == 0
+    written = tree.content-element(statement)
+. type-id SyntaxId = if written == 0 then statement else 0u32
+do match? tree.nodes[written]
+    | .node-markup(row)
+        type-id = row.type-id
+    | .node-slot-outlet(row)
+        type-id = row.type-id
+. owner = make-operand(.operand-void, 0)
+if row!.rooted
+    . root = facts.element-root-of(unit.reading, written)
+    if root && root.owns
+        owner = convert(type-id, .reason-markup-batch, Typed(made, type)).operand
+    else if content-roots.length != 0
+        owner = content-roots[content-roots.length - 1]
+    if operand-kind(owner) == .operand-void
+        refuse(.refused-statement, statement)
+else
+    owner = convert(type-id, .reason-markup-host, Typed(made, type)).operand
+. mark = pending.length
+pending += load-local(trackers, at)
+pending += callback
+pending += owner
+. action = raising-call(at, row!.owned, mark)
+attach-action(made, action.operand, at)
+
+────────────────────
++ do emit-attributes
+    - id SyntaxId
+    - callee InstanceId
+    - fact CallFact
+    - count U32
+
+` Evaluates the attributes of a markup element that its constructor is given after its
+` `count` arguments, in the order written: each takes the conversion recorded at its line as a
+` value assigned, and is kept. One that names a parameter fills it; the place among the values
+` kept of each other one is kept too, as the constructor is given those after its parameters.
+` One whose value reads something tracked is evaluated in a live action of its own, whose
+` trackers are kept to make the action with. One that declares a style is evaluated once the
+` object is made, and one a setter answers is kept apart, for the setter (`set-attribute`). One
+` the constructor is not given at the place it is written at has no shape here.
+. given U32
+. written U32
+. declared = unfilled - instances.rows[callee].carried - instances.rows[callee].slots.count
+    .. unfilled = instances.signatures[callee].args.count - instances.rows[callee].fills.count
+do match? tree.nodes[id]
+    | .node-markup(element)
+        do match? tree.nodes[element.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    do match? tree.nodes[statement]
+                        | .node-assign(attribute)
+                            if facts.style-declaration-of(unit.reading, statement)
+                                continue
+                            . setter = own-call(attribute.lhs)
+                            if setter != no-fact && facts.calls[setter].form == .call-setter
+                                . tracked = tables.live-statement-of(unit.reading, statement)
+                                . watching = if tracked then open-trackers(statement) else no-local
+                                if tracked
+                                    live-actions += LiveTrackers(watching, watching)
+                                . given = convert
+                                    - attribute.rhs
+                                    - .reason-argument
+                                    - emit-expression(attribute.rhs)
+                                if tracked
+                                    live-actions.pop()
+                                    attribute-trackers += LiveMember(statement, watching)
+                                setter-given += Typed(apart(given, attribute.rhs, true), given.type)
+                                continue
+                            . name = identifier-name(tree, attribute.lhs)
+                            . place = if name then instances.fill-argument(callee, name) else U32.max
+                            . fills = filled-parameter(fact, count + written) != U32.max
+                            if !fills && place != declared + given
+                                refuse(.refused-expression, statement)
+                            else
+                                . live = tables.live-statement-of(unit.reading, statement)
+                                . trackers = if live then open-trackers(statement) else no-local
+                                if live
+                                    live-actions += LiveTrackers(trackers, trackers)
+                                . value = convert
+                                    - statement
+                                    - .reason-assignment
+                                    - emit-expression(attribute.rhs)
+                                if fills
+                                    value = convert(statement, .reason-argument, value)
+                                if live
+                                    live-actions.pop()
+                                    attribute-trackers += LiveMember(statement, trackers)
+                                if !fills
+                                    element-filled += element-given.length as U32
+                                    given += 1
+                                element-given += Typed(apart(value, attribute.rhs, true), value.type)
+                                written += 1
+
+────────────────────
++ do give-slots
+    - element SyntaxId
+    - callee InstanceId
+
+` Gives the constructor of a markup element the function that builds each slot the lines of
+` its body give content, in the order the constructor takes them (`builder-value`). Making these
+` runs nothing.
+. slots = instances.rows[callee].slots.count
+. first = instances.signatures[callee].args.count - slots
+for offset in 0 .. < slots
+    . name = instances.slot-name(callee, offset)
+    . line = slot-line(element, name)
+    if line == 0
+        refuse(.refused-expression, element)
+        break
+    . built = if tree.holds-fills(line) then emit-choice(line, name) else builder-value(line)
+    if built.type != instances.argument-type(callee, first + offset)
+        refuse(.refused-conversion, line)
+    pending += built.operand
+
+────────────────────
+_ do slot-line SyntaxId
+    - element SyntaxId
+    - name Atom
+
+` The line of a markup element's body that gives the slot of a name content
+` (`body-slot-line`), or the name of the element for the name of the function that gives the
+` name its object; or none.
+do match? tree.nodes[element]
+    | .node-markup(row)
+        if name.text == binder-slot
+            = row.id
+        = body-slot-line(row.body, name)
+= 0
+
+────────────────────
++ do body-slot-line SyntaxId
+    - body SyntaxId
+    - name Atom
+
+` The line of a body that binds the slot of a name, or that gives the default slot, for the
+` empty name, element or value, or the body where all of it does, that the type pass made a
+` function of, or that forwards the slot of the name; or none.
+. default = name.text.length == 0
+if body == 0
+    = 0
+if default && is-closure(facts.node-type(unit.instance, body))
+    = body
+do match? tree.nodes[body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            if !default && fills-name(statement, name)
+                = statement
+            do match tree.nodes[statement]
+                | .node-markup(line)
+                    if is-closure(facts.node-type(unit.instance, statement))
+                        if default && line.slot-binding == 0
+                            = statement
+                        if !default && line.slot-binding != 0 && same-name
+                            = statement
+                        .. same-name = identifier-name(tree, line.slot-binding) == name
+                | .node-markup-slot-forward(line)
+                    if !default && identifier-name(tree, line.slot-binding) == name
+                        = statement
+                ??
+                    . attribute = tree.nodes[statement] is .node-assign
+                    if default && !attribute && !tree.holds-fills(statement) && is-closure(facts.node-type(unit.instance, statement))
+                        = statement
+= 0
+
+────────────────────
+_ do fills-name Bool
+    - control SyntaxId
+    - name Atom
+
+=? false if !tree.holds-fills(control)
+= chosen-line(control, name) != 0
+
+────────────────────
++ do chosen-line SyntaxId
+    - control SyntaxId
+    - name Atom
+
+for arm in tree.region-arms(control)
+    do match? tree.nodes[tree.region-arm-body(arm)]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                do match? tree.nodes[line]
+                    | .node-markup(row)
+                        if identifier-name(tree, row.slot-binding) == name
+                            = line
+= 0
+
+────────────────────
++ do emit-outlet Operand
+    - id SyntaxId
+    - name SyntaxId
+    - body SyntaxId
+
+` A slot outlet, as the function that fills an object with its class's markup mounts it
+` (`SlotOutlet`): the node the function that builds the slot gives, the argument this function was
+` given for it, or the local a function written in it reads it from, called, given the item the
+` outlet names where the slot repeats; or else the one the element its body writes makes, or the
+` node its lines are built into (`emit-wrapper`), cast to the type of the slot, which the local the
+` outlet's name declares is given. Then each line of its body that assigns is evaluated, in the
+` order written, converted as a value assigned to the property it names, and stored there, and the
+` one whose value read something tracked is given its live action, owned by the node. The rules the
+` outlet applies and the lines that declare styles declare them for the node first, at the outlet's
+` own site (`declare-styles`), which is made ready last (`finish-styles`). An outlet that mounts
+` nothing gives nothing. One built by the function of the arm it is (`builds-outlet`) gives its name
+` nothing, unless that function builds it alone (`builds-outlet-alone`).
+. nothing = make-operand(.operand-void, 0)
+. fact = facts.slot-outlet-of(unit.reading, id)
+if fact && fact.chosen != no-instance
+    = emit-chosen-outlet(id, fact)
+if tree.builds-outlet-alone(id) && !builds-outlet(id)
+    emit-outlet-arm(id)
+    = nothing
+if !fact
+    refuse(.refused-expression, id)
+    = nothing
+if fact.argument == U32.max && fact.held == no-slot && fact.fallback == 0
+    = nothing
+. type = fact.content
+. built = Typed(nothing, no-type)
+if fact.picks != no-type
+    built = emit-picked-outlet(id, fact, type)
+else if fact.argument != U32.max || fact.held != no-slot
+    . source = nothing
+    . builder = no-type
+    if fact.argument != U32.max
+        . position = fact.argument
+        source = make-operand(.operand-argument, if unit.takes-self then position + 1 else position)
+        builder = instances.argument-type(unit.instance, position)
+    else
+        builder = find-captured(fact.held, id).type
+        source = read-captured(fact.held, id, builder).operand
+    . item Operand? = null
+    if fact.item != 0
+        item = convert(fact.item, .reason-argument, emit-expression(fact.item)).operand
+    built = call-outlet-builder(id, source, builder, item)
+else
+    built = emit-outlet-fallback(fact.fallback)
+if built.type != type
+    refuse(.refused-conversion, id)
+    = nothing
+. made = built.operand
+if names-placed(name) && (!builds-outlet(id) || tree.builds-outlet-alone(id))
+    name-element(id, name, built)
+. association = declare-styles(id, made, type)
+. lively = attribute-trackers.length
+do match? tree.nodes[body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            do match? tree.nodes[statement]
+                | .node-assign(attribute)
+                    if facts.style-declaration-of(unit.reading, statement)
+                        continue
+                    . name = identifier-name(tree, attribute.lhs)
+                    . place = types.property-named(type, name) if name
+                    if !place
+                        refuse(.refused-statement, statement)
+                        break
+                    . live = tables.live-statement-of(unit.reading, statement)
+                    . trackers = if live then open-trackers(statement) else no-local
+                    if live
+                        live-actions += LiveTrackers(trackers, trackers)
+                    . value = convert(statement, .reason-assignment, emit-expression(attribute.rhs))
+                    if live
+                        live-actions.pop()
+                        attribute-trackers += LiveMember(statement, trackers)
+                    store-argument(made, type, place as U32, value.operand, value.type, statement)
+for position in lively .. < attribute-trackers.length
+    give-again(attribute-trackers[position].member, attribute-trackers[position].trackers, made, type)
+while attribute-trackers.length > lively
+    attribute-trackers.pop()
+finish-styles(id, made, type, association)
+= made
+
+────────────────────
+_ do call-outlet-builder Typed
+    - id SyntaxId
+    - source Operand
+    - builder TypeId
+    - item Operand? = null
+
+. holding = hold-outlet-cells(id)
+. built = call-builder(id, source, builder, item)
+if holding != no-local
+    . mark = pending.length
+    pending += load-local(holding, id)
+    do call-instance(facts.style-runtime.outlet-release, id, mark)
+= built
+
+────────────────────
+_ do emit-outlet-fallback Typed
+    - fallback SyntaxId
+
+=? convert(fallback, .reason-assignment, emit-wrapper(fallback)) if tree.nodes[fallback] is .node-block
+= convert(fallback, .reason-assignment, emit-expression(fallback))
+
+────────────────────
+_ do emit-picked-outlet Typed
+    - id SyntaxId
+    - fact SlotOutlet
+    - type TypeId
+
+. nothing = Typed(make-operand(.operand-void, 0), no-type)
+. choice-type = find-captured(fact.held, id).type
+. choice = read-captured(fact.held, id, choice-type)
+. read = load-property(id, choice.operand, choice-type, program.store-atom("chosen"), true)
+if !types.is-optional(read.type) || types.optional-inner(read.type) != fact.picks
+    refuse(.refused-expression, id)
+    = nothing
+if fact.fallback == 0
+    = call-outlet-builder(id, payload(id, read).operand, fact.picks)
+. result = ir.add-local(layout-of(type, id), false)
+. filled = ir.reserve-block()
+. empty = ir.reserve-block()
+. onward = ir.reserve-block()
+branch(present(id, read).operand, filled, empty)
+ir.start-block(filled)
+. given = call-outlet-builder(id, payload(id, read).operand, fact.picks)
+if given.type != type
+    refuse(.refused-conversion, id)
+    = nothing
+store-local(result, given.operand, id)
+jump(onward)
+ir.start-block(empty)
+. fell = emit-outlet-fallback(fact.fallback)
+if fell.type != type
+    refuse(.refused-conversion, id)
+    = nothing
+store-local(result, fell.operand, id)
+jump(onward)
+ir.start-block(onward)
+= Typed(load-local(result, id), type)
+
+────────────────────
+_ do emit-chosen-outlet Operand
+    - id SyntaxId
+    - fact SlotOutlet
+
+. nothing = make-operand(.operand-void, 0)
+. top = content-hosts.length
+if top == 0
+    refuse(.refused-statement, id)
+    = nothing
+. choice = nothing
+if fact.argument != U32.max
+    . position = fact.argument
+    choice = make-operand(.operand-argument, if unit.takes-self then position + 1 else position)
+else
+    choice = read-captured(fact.held, id, find-captured(fact.held, id).type).operand
+. alone = tree.builds-outlet-alone(id)
+. arm = if alone then convert(id, .reason-markup-arm, emit-closure(id, fact.arm)).operand else nothing
+. mark = pending.length
+pending += content-hosts[top - 1].operand
+pending += choice
+if alone
+    pending += arm
+    pending += integer(.machine-u8, if fact.fallback != 0 then 1 else 0)
+= raising-call(id, fact.chosen, mark).operand
+
+────────────────────
+_ do emit-outlet-arm
+    - id SyntaxId
+
+. top = content-hosts.length
+. slot = channel-slot(id)
+if top == 0 || slot == no-slot
+    refuse(.refused-statement, id)
+    =
+. batch = slot - 1
+. kept = find-captured(batch, id)
+if kept.type != types.void-type
+    . root = if content-roots.length != 0 then content-roots[content-roots.length - 1] else make-operand(.operand-void, 0)
+    if operand-kind(root) == .operand-void
+        refuse(.refused-statement, id)
+        =
+    keep-captured(batch, root, kept.type, id)
+. closure = convert(id, .reason-markup-arm, emit-closure(id))
+do call-builder(id, closure.operand, closure.type, content-hosts[top - 1].operand)
+
+────────────────────
+_ do call-builder Typed
+    - site SyntaxId
+    - source Operand
+    - builder TypeId
+    - item Operand? = null
+
+` A call of what a value of a function type that takes nothing, or the one `item`, holds, given the
+` data it holds: the function that builds a slot, as a slot outlet calls it. What runs is not known
+` here, so the call is checked for a panic, which the type pass has said of the caller. A type that
+` carries errors answers with its value or one of them, and an error leaves the function at the
+` call, as the type pass kept.
+. nothing = make-operand(.operand-void, 0)
+. fn = function-row(types, builder)
+. returns = no-type
+if fn != no-type
+    do match? types.rows[fn]
+        | .type-function(row)
+            returns = value-returned(row.return-type)
+. carried = if fn != no-type && carries(fn) then facts.carried-result(fn) else no-type
+. fact = own-call(site)
+if returns == no-type || uncarried || fact == no-fact || in-zone || uncaught-panic
+    refuse(.refused-expression, site)
+    = Typed(nothing, no-type)
+.. uncarried = fn != no-type && carries(fn) && carried == no-type
+.. uncaught-panic = !function.may-panic && !in-landing
+. layout = layout-of(builder, site)
+if layout != tables.layouts.function-layout
+    refuse(.refused-expression, site)
+    = Typed(nothing, no-type)
+. code = load(source, 0, pointer-layout, site)
+. data = load(source, tables.layouts.field(layout, 1).offset, managed-layout, site)
+. mark = pending.length
+pending += data
+if item
+    pending += item
+. answers = layout-of(if carried == no-type then returns else carried, site)
+. result = Typed(call(code, site, mark, .callee-value, answers, !in-landing), returns)
+if carried != no-type
+    result = Typed(result.operand, carried)
+    if facts.calls[fact].propagates
+        result = propagate-held(site, carried, result.operand)
+= result
+
+────────────────────
+_ do writes-attributes Bool
+    - id SyntaxId
+
+` Whether the body of a markup element gives its constructor an attribute: a line that assigns
+` and declares no style.
+do match? tree.nodes[id]
+    | .node-markup(element)
+        do match? tree.nodes[element.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    if tree.nodes[statement] is .node-assign && unstyled
+                        = true
+                    .. unstyled = !facts.style-declaration-of(unit.reading, statement)
+= false
+
+────────────────────
++ do get fills-content Bool
+
+` Whether the function being emitted fills an object with the markup written in its class.
+if function.kind != .instance-body || unit.instance == no-instance
+    = false
+. row = instances.rows[unit.instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.is-content
+= false
+
+────────────────────
+_ do builds-outlet Bool
+    - id SyntaxId
+
+` Whether the function being emitted builds a slot outlet that is a markup branch region.
+if function.kind != .instance-body || unit.instance == no-instance
+    = false
+. row = instances.rows[unit.instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.kind == .branch-arm-decl && fn.syntax == id
+= false
+
+────────────────────
++ do emit-region
+    - id SyntaxId
+
+` A `do without gc` block outlined, as the reference calls it: its body's function is called with
+` the capture `make-capture` makes, crossing into the zone the collector never sees and back.
+. callee = region-callee(id)
+if callee == no-instance || tables.instance-functions[callee] == no-function
+    refuse(.refused-statement, id)
+    =
+. capture = make-capture(id, callee)
+. mark = pending.length
+pending += capture
+do call-instance(callee, id, mark)
+
+────────────────────
+_ do region-callee InstanceId
+    - id SyntaxId
+
+` The body of the `do without gc` block at a node, as the type pass recorded it.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-function && tables.is-region(facts.calls[fact].callee)
+        = facts.calls[fact].callee
+    fact = facts.calls[fact].next
+= no-instance
+
+────────────────────
++ do emit-region-body
+
+` The body of a `do without gc` block: a function called with the capture made where the block is,
+` which returns nothing.
+. row = instances.rows[unit.instance]
+. body SyntaxId = 0
+. declared SyntaxId = 0
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        declared = fn.syntax
+        body = fn.body
+if body == 0 || tables.captures[unit.instance] == unbuilt-environment
+    refuse(.refused-function, declared)
+    =
+unit = unit.received = true
+unit = unit.takes-self = true
+ir.add-argument(managed-layout)
+ir.returns = void-layout
+open-environment(declared)
+share-self(declared)
+emit-block(body)
+return-nothing()
+
+────────────────────
+_ do keep-element
+    - element SyntaxId
+    - made Operand
+    - type TypeId
+
+` Keeps the object of a markup element in the local no name reaches declared at the element,
+` where the functions that read its members by name alone capture it: those written in its
+` body, and those that test again the conditions of the style rules written on it.
+. slot = channel-slot(element)
+if slot != no-slot && is-captured(slot)
+    keep-captured(slot, made, type, element)
+
+────────────────────
+_ do keep-taken
+    - id SyntaxId
+    - taken Operand
+    - type TypeId
+
+` Keeps what a markup element took of a line of its body that a live action gives again, in
+` the local no name reaches after the one that keeps the element, which the action replaces;
+` where the element absorbs the line again, that local holds nothing.
+. slot = line-keeper(id)
+if slot == no-slot
+    refuse(.refused-statement, id)
+    =
+. kept = (slot + 1) as SlotId
+. found = find-captured(kept, id)
+if found.type == types.void-type
+    =
+keep-captured(kept, taken, type, id)
+
+────────────────────
++ do emit-ancestor-query
+
+` The function made for an ancestor query of the markup an object is in, which the markup
+` runtime runs with the object as its data: the object of the first markup host above the
+` object's, from its parent up, that is of the class the query looks for, or nothing, compared
+` with what the property holds as one object and stored where they differ, which runs what
+` reads the property. It answers whether they differed.
+ir.add-argument(managed-layout)
+. query = enter-query()
+. site = query.site
+. object = if tables.is-class(query.level) then tables.layouts.objects[query.level] else no-layout
+. property = types.properties[query.place]
+if object == no-layout || query.parent == no-instance
+    refuse(.refused-function, site)
+    =
+. field = tables.layouts.field(object, object-header-fields + property.slot)
+. held = layout-of(property.type, site)
+. cursor-type = instances.signatures[query.parent].returns
+. cursor-layout = layout-of(cursor-type, site)
+. owner = convert-one(site, facts.conversions[query.hosted], Typed(unit.self, query.level))
+. result = ir.add-local(held)
+store-local(result, empty-optional(property.type, held).operand, site)
+. cursor = ir.add-local(cursor-layout)
+. first = pending.length
+pending += owner.operand
+store-local(cursor, call-instance(query.parent, site, first).operand, site)
+. test = ir.reserve-block()
+. body = ir.reserve-block()
+. next = ir.reserve-block()
+. ended = ir.reserve-block()
+jump(test)
+ir.start-block(test)
+. holds = present(site, Typed(load-local(cursor, site), cursor-type))
+branch(holds.operand, body, ended)
+ir.start-block(body)
+. host = payload(site, Typed(load-local(cursor, site), cursor-type))
+. target = host-object(site, host.operand, query.target, next)
+store-local(result, wrap(site, target, property.type).operand, site)
+jump(ended)
+ir.start-block(next)
+. above = payload(site, Typed(load-local(cursor, site), cursor-type))
+. again = pending.length
+pending += above.operand
+store-local(cursor, call-instance(query.parent, site, again).operand, site)
+jump(test)
+ir.start-block(ended)
+. changed = bits-differ(field-value(unit.self, field, site), load-local(result, site), held, site)
+. storing = ir.reserve-block()
+. done = ir.reserve-block()
+branch(changed, storing, done)
+ir.start-block(storing)
+put-property(unit.self, field, property, load-local(result, site), site)
+jump(done)
+ir.start-block(done)
+return-value(changed, site)
+
+────────────────────
++ do run-markup-rules
+    - type TypeId
+    - site SyntaxId
+
+` Runs the rules a class runs once its markup has, on the object the function that fills it
+` has filled, as `run-class-rules` runs those of a constructor. A section here is run from the
+` table of every class that runs it or of none.
+for index in tables.markup-rules-of(type)
+    . rule = tables.class-rules[index]
+    run-class-rule(rule, facts.lowers-only(rule.level, rule.module, section-of(rule)), site)
+
+────────────────────
++ do run-markup-trigger
+    - rule ClassRule
+    - trigger MarkupTrigger
+    - kept LocalId
+    - site SyntaxId
+
+` Runs a `whenever` rule on the markup an object is in once the constructor's body has, as the
+` reference compiles it: what the rule keeps for the object holds the object as its markup
+` host, the changes it names, made here, and for an ancestor nothing found yet, and then a
+` live action of the object's with no trackers, whose callback runs the rule again. The rule
+` is registered with the markup runtime, given the object as its host and callbacks that note
+` what it looks for, given what it keeps: for children or descendants one as an object is
+` added and one as it is removed, with the number of the class looked for, and for an
+` ancestor one that looks for it again. The object is converted where the type pass converted
+` it for the live actions it owns.
+. owned = facts.self-action-of(unit.reading)
+if !owned
+    refuse(.refused-function, site)
+    =
+. owner = convert-self(owned.site, .reason-markup-host)
+. hosted = tables.layouts.field(rule.kept, 3)
+if tables.layouts.is-struct(hosted.layout)
+    store-struct(load-local(kept, site), hosted, owner.operand, site)
+else
+    store(load-local(kept, site), hosted.offset, owner.operand, is-managed-pointer(hosted.layout), site)
+. next U32 = 4
+if trigger.changes != no-type
+    . made = call-instance(trigger.made, site, pending.length)
+    store(load-local(kept, site), tables.layouts.field(rule.kept, next).offset, made.operand, true, site)
+    next += 1
+if trigger.target-id == 0
+    . field = tables.layouts.field(rule.kept, next)
+    keep-rule-value
+        - load-local(kept, site)
+        - field
+        - empty-optional(trigger.found, field.layout).operand
+        - site
+. trackers = open-trackers(site)
+. action = own-action(load-local(trackers, site), rule.updater, load-local(kept, site), site)
+store(load-local(kept, site), tables.layouts.field(rule.kept, 2).offset, action, true, site)
+. mark = pending.length
+pending += owner.operand
+if trigger.target-id != 0
+    pending += integer(.machine-u64, tables.target-number(trigger.target-id))
+pending += make-callback(rule.add, load-local(kept, site), site)
+if trigger.target-id != 0
+    pending += make-callback(rule.remove, load-local(kept, site), site)
+do call-instance(trigger.register, site, mark)
+
+────────────────────
++ do emit-trigger-change
+    - removes Bool
+
+` The function the markup runtime calls with a markup host as one is added below the object a
+` `whenever children` or `whenever descendants` rule runs on, or removed, given what the rule
+` keeps for the object, as the reference compiles it: where the host's object is of the class
+` the rule looks for, and for children where the host's parent is the object's own, the
+` object is added to the changes the rule names, or to those removed, and the rule notes that
+` the markup changed and runs its live action. It answers true.
+. rule = tables.class-rules[function.place]
+. trigger = facts.markup-trigger-of(rule.unit)
+. site = rule.syntax
+unit = unit.source-module = rule.module
+if !trigger || rule.kept == no-layout
+    refuse(.refused-function, site)
+    =
+. host-layout = layout-of(trigger.host, site)
+ir.add-argument(managed-layout)
+ir.add-argument(host-layout)
+returns-type = types.bool-type
+ir.returns = layout-of(types.bool-type, site)
+. kept = make-operand(.operand-argument, 0)
+. candidate = ir.add-local(host-layout)
+store-local(candidate, make-operand(.operand-argument, 1), site)
+. done = ir.reserve-block()
+. target = host-object(site, load-local(candidate, site), trigger.target, done)
+. children = false
+do match? tree.nodes[rule.syntax]
+    | .node-whenever-rule-syntax(whenever)
+        children = whenever.kind.text == "children"
+if children
+    . mark = pending.length
+    pending += load-local(candidate, site)
+    . found = call-instance(trigger.parent, site, mark)
+    . parent-type = instances.signatures[trigger.parent].returns
+    . parent = ir.add-local(layout-of(parent-type, site))
+    store-local(parent, found.operand, site)
+    . holds = present(site, Typed(load-local(parent, site), parent-type))
+    . above = ir.reserve-block()
+    branch(holds.operand, above, done)
+    ir.start-block(above)
+    . host = payload(site, Typed(load-local(parent, site), parent-type))
+    . owned = compare
+        - site
+        - .compare-equal
+        - load(host.operand, 0, managed-layout, site)
+        - load(kept, tables.layouts.field(rule.kept, 0).offset, managed-layout, site)
+    . matched = ir.reserve-block()
+    branch(owned, matched, done)
+    ir.start-block(matched)
+note-change(rule, trigger, kept, target.operand, removes, site)
+mark-trigger(rule, trigger, kept, site)
+jump(done)
+ir.start-block(done)
+return-value(integer(.machine-u8, 1), site)
+
+────────────────────
++ do emit-trigger-ancestor
+
+` The function the markup runtime calls where the ancestors of the object a `whenever
+` ancestor` rule runs on might have changed, given what the rule keeps for the object, as the
+` reference compiles it: the object of the first markup host above the object's, from its
+` parent up, that is of the class the rule looks for, or nothing, compared with the one found
+` last as one object. Where they differ, the one found last is taken from the changes the rule
+` names and the new one added, it is kept, and the rule notes that the markup changed and runs
+` its live action. It answers whether they differed.
+. rule = tables.class-rules[function.place]
+. trigger = facts.markup-trigger-of(rule.unit)
+. site = rule.syntax
+unit = unit.source-module = rule.module
+if !trigger || rule.kept == no-layout
+    refuse(.refused-function, site)
+    =
+. found = trigger
+ir.add-argument(managed-layout)
+returns-type = types.bool-type
+ir.returns = layout-of(types.bool-type, site)
+. kept = make-operand(.operand-argument, 0)
+. hosted = tables.layouts.field(rule.kept, 3)
+. last = tables.layouts.field(rule.kept, if found.changes != no-type then 5 else 4)
+. optional = found.found
+. cursor-type = instances.signatures[found.parent].returns
+. cursor-layout = layout-of(cursor-type, site)
+. prior = if tables.layouts.is-struct(last.layout) then snapshot(field-value(kept, last, site), last.layout, site) else load(kept, last.offset, last.layout, site)
+. result = ir.add-local(last.layout)
+store-local(result, empty-optional(optional, last.layout).operand, site)
+. cursor = ir.add-local(cursor-layout)
+. first = pending.length
+pending += field-value(kept, hosted, site)
+store-local(cursor, call-instance(found.parent, site, first).operand, site)
+. test = ir.reserve-block()
+. body = ir.reserve-block()
+. next = ir.reserve-block()
+. ended = ir.reserve-block()
+jump(test)
+ir.start-block(test)
+. holds = present(site, Typed(load-local(cursor, site), cursor-type))
+branch(holds.operand, body, ended)
+ir.start-block(body)
+. host = payload(site, Typed(load-local(cursor, site), cursor-type))
+. target = host-object(site, host.operand, found.target, next)
+store-local(result, wrap(site, target, optional).operand, site)
+jump(ended)
+ir.start-block(next)
+. above = payload(site, Typed(load-local(cursor, site), cursor-type))
+. again = pending.length
+pending += above.operand
+store-local(cursor, call-instance(found.parent, site, again).operand, site)
+jump(test)
+ir.start-block(ended)
+. changed = bits-differ(prior, load-local(result, site), last.layout, site)
+. fires = ir.reserve-block()
+. done = ir.reserve-block()
+branch(changed, fires, done)
+ir.start-block(fires)
+if found.changes != no-type
+    note-ancestor(rule, found, kept, prior, true, site)
+    note-ancestor(rule, found, kept, load-local(result, site), false, site)
+keep-rule-value(kept, last, load-local(result, site), site)
+mark-trigger(rule, found, kept, site)
+jump(done)
+ir.start-block(done)
+return-value(changed, site)
+
+────────────────────
+_ do note-ancestor
+    - rule ClassRule
+    - trigger MarkupTrigger
+    - kept Operand
+    - value Operand
+    - removes Bool
+    - site SyntaxId
+
+` Where an ancestor a `whenever ancestor` rule found holds an object, adds it to the changes
+` the rule names, or to those removed.
+. optional = trigger.found
+. holds = present(site, Typed(value, optional))
+. noting = ir.reserve-block()
+. skipped = ir.reserve-block()
+branch(holds.operand, noting, skipped)
+ir.start-block(noting)
+. held = payload(site, Typed(value, optional))
+note-change(rule, trigger, kept, held.operand, removes, site)
+jump(skipped)
+ir.start-block(skipped)
+
+────────────────────
+_ do note-change
+    - rule ClassRule
+    - trigger MarkupTrigger
+    - kept Operand
+    - target Operand
+    - removes Bool
+    - site SyntaxId
+
+` Adds an object to the changes a `whenever` rule on the markup an object is in names, as one
+` added or, with `removes`, one removed: to the list the property of that name holds.
+if trigger.changes == no-type
+    =
+. object = if tables.is-class(trigger.changes) then object-layout else no-layout
+    .. object-layout = tables.layouts.objects[trigger.changes]
+. place = types.property-named
+    - trigger.changes
+    - program.store-atom(if removes then "removed" else "added")
+if object == no-layout || !place
+    refuse(.refused-function, site)
+    =
+. changes = load(kept, tables.layouts.field(rule.kept, 4).offset, managed-layout, site)
+. field = tables.layouts.field(object, object-header-fields + types.properties[place].slot)
+. mark = pending.length
+pending += load(changes, field.offset, field.layout, site)
+pending += target
+do call-method(trigger.record, site, mark)
+
+────────────────────
+_ do mark-trigger
+    - rule ClassRule
+    - trigger MarkupTrigger
+    - kept Operand
+    - site SyntaxId
+
+` Notes that the markup a `whenever` rule on the markup an object is in looks at changed, and
+` runs the rule's live action, which runs it where it is due.
+store(kept, tables.layouts.field(rule.kept, 1).offset, integer(.machine-u8, 1), false, site)
+. mark = pending.length
+pending += load(kept, tables.layouts.field(rule.kept, 2).offset, managed-layout, site)
+do call-method(trigger.schedule, site, mark)
+
+────────────────────
++ do emit-slot-forward
+
+` The function a line that forwards a slot gives in place of the builder it forwards where it
+` holds state cells (`SlotForward`), as the reference's `markup-slot-forward` function runs: given
+` what it keeps, the builder and the cells, and the item where the slot repeats, it holds the cells
+` (`OutletCell`) while the builder runs, and answers what the builder answers.
+. row = facts.slot-forwards[function.place]
+. layout = tables.slot-forward-layouts[function.place]
+. runtime = facts.style-runtime
+unit = unit.source-module = instances.rows[row.instance].module
+. site = row.line
+. fn = function-row(types, row.builder)
+. returns = no-type
+if fn != no-type
+    do match? types.rows[fn]
+        | .type-function(shape)
+            returns = value-returned(shape.return-type)
+. carried = if fn != no-type && carries(fn) then facts.carried-result(fn) else no-type
+if returns == no-type || (fn != no-type && carries(fn) && carried == no-type)
+    refuse(.refused-function, site)
+    =
+. answers = if carried == no-type then returns else carried
+ir.add-argument(managed-layout)
+if row.item != no-type
+    ir.add-argument(layout-of(row.item, site))
+returns-type = answers
+ir.returns = layout-of(answers, site)
+. kept = make-operand(.operand-argument, 0)
+. mark = ir.add-local(layout-of(instances.signatures[runtime.outlet-mark].returns, site))
+store-local(mark, call-instance(runtime.outlet-mark, site, pending.length).operand, site)
+. index U32
+for held in facts.outlet-cells
+    if held.instance != row.instance || held.outlet != row.line
+        continue
+    . first = pending.length
+    pending += integer(.machine-u32, tables.state-key-number(facts.scope-cells[held.cell].key))
+    pending += load(kept, tables.layouts.field(layout, 2 + index).offset, managed-layout, site)
+    do call-instance(runtime.outlet-push, site, first)
+    index += 1
+. code = load(kept, tables.layouts.field(layout, 0).offset, pointer-layout, site)
+. data = load(kept, tables.layouts.field(layout, 1).offset, managed-layout, site)
+. first = pending.length
+pending += data
+if row.item != no-type
+    pending += make-operand(.operand-argument, 1)
+. result = call(code, site, first, .callee-value, layout-of(answers, site), true)
+. held = ir.add-local(layout-of(answers, site))
+store-local(held, result, site)
+. last = pending.length
+pending += load-local(mark, site)
+do call-instance(runtime.outlet-release, site, last)
+if carried != no-type
+    return-held(load-local(held, site))
+else
+    return-value(load-local(held, site), site)
+
+────────────────────
++ do guard-element Typed
+    - id SyntaxId
+    - element Typed
+    - name Atom
+
+. held = element.type
+if !function.may-panic && !in-landing
+    refuse(.refused-expression, id)
+    = element
+. made = ir.reserve-block()
+. missing = ir.reserve-block()
+branch(compare(id, .compare-not-equal, element.operand, integer(.machine-pointer, 0)), made, missing)
+ir.start-block(missing)
+raise-text(id, "Named markup element \"${name.text}\" is read before its markup constructs it")
+ir.start-block(made)
+= Typed(element.operand, held)
+
+────────────────────
++ do emit-markup-read Typed
+    - id SyntaxId
+    - object SyntaxId
+
+` A read of a markup link: the subject, given to the markup runtime's function as a
+` `MarkupElement`, and the host it answers, taken where it is one as the class the read gives,
+` unchecked, as the reference takes it.
+. nothing = make-operand(.operand-void, 0)
+. read = facts.markup-read-of(unit.reading, id)
+if !read || (object == 0 && !unit.has-self)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. subject = Typed(unit.self, if unit.reading != unit.instance then instances.rows[unit.reading].self-type else unit.owner-type)
+if object != 0
+    subject = emit-expression(object)
+. host = convert(id, .reason-argument, subject)
+. mark = pending.length
+pending += host.operand
+. linked = call-instance(read.reader, id, mark)
+if read.target == no-type
+    = linked
+. type = facts.node-type(unit.reading, id)
+. layout = layout-of(type, id)
+. host-type = types.optional-inner(instances.signatures[read.reader].returns)
+. host-layout = layout-of(host-type, id)
+. holding = ir.reserve-block()
+. empty = ir.reserve-block()
+. joined = ir.reserve-block()
+. slot = join-slot(layout)
+. sides = joins.length
+branch(present(id, Typed(linked.operand, instances.signatures[read.reader].returns)).operand, holding, empty)
+ir.start-block(holding)
+. given = payload(id, Typed(linked.operand, instances.signatures[read.reader].returns))
+. made = take(given.operand, tables.layouts.field(host-layout, 0), id)
+arrive(id, wrap(id, Typed(made, read.target), type).operand, joined, slot)
+ir.start-block(empty)
+arrive(id, empty-optional(type, layout).operand, joined, slot)
+= Typed(close-joins(joined, sides, layout, slot), type)
+
+────────────────────
++ do filled-parameter U32
+    - fact CallFact
+    - given U32
+
+` The parameter an argument a call gives fills, or none.
+for position in 0 .. < fact.fills.count
+    if (facts.call-fills[fact.fills.start + position] as U32) == given
+        = position
+= U32.max

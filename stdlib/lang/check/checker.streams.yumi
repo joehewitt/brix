@@ -35,6 +35,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/facets
 /lang/ast/module
@@ -46,6 +47,19 @@
 /lang/constants
 /stream/aggregate
 /stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ PatternArms is Tuple
+
+` The arms of a stream pattern being typed (`arms-type`): whether an arm selects what it
+` materializes, whether they are scoped, whether an action's type cannot be inferred, whether
+` they join as alternatives, and the arm being typed (`enter-arm`).
+
++ selects Bool
++ scoped Bool
++ uninferred Bool
++ joined Bool
++ arm SyntaxId = 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ Streams is facet of Checker
@@ -1842,8 +1856,8 @@ instances.clear-may-panic(instance)
 valuing = valuing.action-arm = id
 . value = check-statement(body)
 valuing = outer-arm
-if (value == no-type || value == types.void-type) && final-print(body) != 0
-    frame.diagnose(final-print(body), .stated, program.store-atom(print-block-text()))
+if (value == no-type || value == types.void-type) && tree.final-print(body) != 0
+    frame.diagnose(tree.final-print(body), .stated, program.store-atom(print-block-text()))
     = invalid-type
 . panics-here = instances.rows[instance].may-panic
 if was
@@ -4105,18 +4119,6 @@ bindings.slots[slot].kind == .slot-argument && rule-match(program, row.module, r
 .. row = instances.rows[instance]
 
 ────────────────────
-+ do is-pattern-func Bool
-    - type TypeId
-
-` Whether a type is a `PatternFunc` of any items.
-if type == no-type || type == invalid-type
-    = false
-do match? types.rows[type]
-    | .type-class(row)
-        = types.pattern-func-decl.refers-to(row.module, row.decl)
-= false
-
-────────────────────
 _ do plan-pattern-call TypeId
     - id SyntaxId
     - called TypeId
@@ -4152,7 +4154,7 @@ _ do equality-type TypeId
 . known = facts.node-type(instance, id)
 if known != no-type
     = known
-. named = symbol-of(value)
+. named = tree.symbol-of(value)
 if named && types.intrinsic-of(stream-view.item) == .union
     note-case(id, stream-view.item, named)
     if facts.plan-of(instance, id) == .plan-case
@@ -5238,9 +5240,9 @@ for arg in tree.children[args]
             optional = argument.is-optional
     . written = tree.nodes[given] is .node-stream-match
     . type = if written then pattern-argument-type(given) else infer-argument(given, given-symbol)
-        .. given-symbol = argument-symbol(given)
+        .. given-symbol = tree.argument-symbol(given)
     scratch.call-arguments.push(argument-shape(label, optional, given))
-    if helping.helper != null && is-pattern-func(type)
+    if helping.helper != null && types.is-pattern-func(type)
         patterned = true
         if !written
             decline(given)

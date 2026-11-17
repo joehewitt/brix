@@ -1,6 +1,8 @@
 ./binding
 ./calls
 ./checker
+./checker.comprehensions
+./checker.markup
 ./checker.tables
 ./conversions
 ./coverage
@@ -32,6 +34,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/facets
 /lang/ast/module
@@ -45,7 +48,17 @@
 /stream/sort
 
 ━━━━━━━━━━━━━━━━━━━━
+_ FoldedNumber is Tuple
+
+` The bits a constant number folds to, where it `folds`.
+
++ bits U64
++ folds Bool
+
+━━━━━━━━━━━━━━━━━━━━
 _ CallTyping is facet of Checker
+    sees Comprehensions
+    sees Markup
     sees Tables
 
 ────────────────────
@@ -203,12 +216,12 @@ argument-typing = argument-typing.keeps = true
 for arg in tree.children[args]
     do match tree.nodes[arg]
         | .node-argument(argument)
-            scratch.types.push(infer-argument(argument.expr, argument-symbol(argument.expr)))
+            scratch.types.push(infer-argument(argument.expr, tree.argument-symbol(argument.expr)))
             scratch.call-arguments.push
                 - argument-shape(argument.name, argument.is-optional, argument.expr)
             scratch.syntax.push(arg)
         ??
-            scratch.types.push(infer-argument(arg, argument-symbol(arg)))
+            scratch.types.push(infer-argument(arg, tree.argument-symbol(arg)))
             scratch.call-arguments.push(argument-shape(null, false, arg))
             scratch.syntax.push(arg)
 argument-typing = outer-unknown

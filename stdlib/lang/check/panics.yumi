@@ -383,10 +383,12 @@ for fact in facts.calls
 ` module's initializers marks nothing of its main, nor does the body of a task where the task is
 ` spawned, and a generator is never marked by what it calls. The value of a property is marked by
 ` the calls it makes, those its conversions make among them, and a mark on it passes to the
-` instances that read the property lazily. An instance the reference takes for one that raises
-` nothing is marked as one no call checks. A generator typing marked loses its mark once it has
-` passed it on, and gets it back when the instances are settled again after an edit typed in place
-` (`retype-edit`), which starts from what typing marked.
+` instances that read the property lazily. The value of a case of an enum is marked too by the calls
+` its module's main recorded where main typed the value first, which the module's statics run. An
+` instance the reference takes for one that raises nothing is marked as one no call checks. A
+` generator typing marked loses its mark once it has passed it on, and gets it back when the
+` instances are settled again after an edit typed in place (`retype-edit`), which starts from what
+` typing marked.
 for generator in cleared-generators
     instances.mark-may-panic(generator)
 cleared-generators.clear()
@@ -409,8 +411,31 @@ init-count = U32[program.modules.length]
 . links = U32[facts.calls.length]
 . callers = U32[facts.calls.length]
 . owned = Bool[facts.calls.length]
+. owned-calls [U32]
+. owners [InstanceId]
+position = 0
 for listed in unit-calls
     owned[listed] = true
+    owned-calls += listed
+    owners += unit-owners[position]
+    position += 1
+. mains = main-instances()
+index = 0
+for row in instances.rows
+    . main = mains[row.module]
+    if row.initializer != 0 && main != no-instance
+        do match? program.modules[row.module].decls[row.initializer]
+            | .decl-case(case)
+                . tree = program.modules[row.module].tree
+                for node in tree.subtree-start(case.syntax) .. case.syntax
+                    . fact = facts.first-call(main, node)
+                    while fact != no-fact
+                        if !owned[fact]
+                            owned[fact] = true
+                            owned-calls += fact
+                            owners += index
+                        fact = facts.calls[fact].next
+    index += 1
 position = 0
 for fact in facts.calls
     . listed = position
@@ -425,8 +450,8 @@ for fact in facts.calls
     else if !caller.may-panic && panic-capable-call(fact)
         instances.mark-may-panic(fact.instance)
 position = 0
-for listed in unit-calls
-    . unit = unit-owners[position]
+for listed in owned-calls
+    . unit = owners[position]
     position += 1
     . fact = facts.calls[listed]
     callers[listed] = unit
@@ -473,6 +498,20 @@ for row in instances.rows
         cleared-generators += cleared
     cleared += 1
 settle-outlined()
+
+────────────────────
+_ do main-instances [InstanceId]
+
+` The main of each module, or none where no instance types it.
+. mains [InstanceId]
+for _ in 0 .. < program.modules.length
+    mains += no-instance
+. index = 0u32
+for row in instances.rows
+    if row.initializer == 0 && row.decl == program.modules[row.module].main-decl
+        mains[row.module] = index
+    index += 1
+= mains
 
 ────────────────────
 _ do settle-outlined

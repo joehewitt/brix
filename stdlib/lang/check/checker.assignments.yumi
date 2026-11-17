@@ -1,0 +1,1554 @@
+./binding
+./calls
+./checker
+./checker.live-actions
+./checker.styles
+./checker.tables
+./conversions
+./coverage
+./dispatch
+./error-sets
+./facts
+./frame
+./header
+./instances
+./narrowing
+./narrowing-key
+./numeric
+./panics
+./pattern-helper
+./portable
+./probe-casts
+./session
+./signature
+./table-rows
+./type-env
+./type-relation
+./type-signature
+./type-store
+./type-text
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/ast-queries
+/lang/ast/decl
+/lang/ast/facets
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/ast/viability
+/lang/constants
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Assignments is facet of Checker
+    sees LiveActions
+    sees Styles
+    sees Tables
+
+────────────────────
++ do assigning-line SyntaxId
+    - body SyntaxId
+
+` The first line of a block that assigns, or none.
+do match? tree.nodes[body]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if tree.nodes[statement] is .node-assign
+                = statement
+= 0
+
+────────────────────
+_ do is-query-property Bool
+    - receiver TypeId
+    - name Atom
+
+` Whether a property of a class is declared as a query of the markup its object is in, which
+` the markup runtime keeps and nothing assigns.
+if types.intrinsic-of(receiver) != .class || property-named(receiver, name) == null
+    = false
+. ref = declaring-class(types, receiver, name)
+. owner = program.modules[ref.module]
+do match? owner.decls[ref.decl]
+    | .decl-class(class)
+        for member in owner.member-pool[class.members]
+            do match? owner.decls[member]
+                | .decl-property(property)
+                    if property.name && property.name == name && property.type-syntax != 0
+                        = query-type(ref, property.type-syntax) != no-type
+= false
+
+────────────────────
+_ do check-zone-store
+    - id SyntaxId
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - value TypeId
+
+` A GC-free zone stores no managed pointer anywhere but in a local of its own, which
+` TypeScript reports where the assignment is: a property, a global or a captured local
+` holds what the collector must be told of. A store of `null` holds nothing.
+if outside-zone || narrowing.is-null-syntax(rhs) || !is-managed(value, 0)
+    =
+.. outside-zone = (frame.surround.effects /and/ CompilationEffect.gc-free) == 0
+. held = false
+do match? tree.nodes[lhs]
+    | .node-identifier
+        . resolution = bindings.resolution-of(frame.binding, lhs)
+        held = resolution.kind != .resolve-slot || frame.is-captured(resolution.slot)
+    | .node-get-expression
+        held = true
+if !held
+    =
+. text = "storing a managed pointer is not allowed in a GC-free zone (entered at ${frame.zone-entry()}); compute into a zone buffer and publish after the zone exits"
+frame.diagnose(id, .restricted, program.store-atom(text))
+
+────────────────────
++ do stored-interface-text String
+    - property PropertyDecl
+
+` The error of a property an interface declares to store: one with no value is a getter the
+` types that are the interface answer, and one with a value a getter that gives it. A state
+` machine, or one of its cases, belongs in the types that are the interface.
+. shown = match program.modules[module].decls[property.owner]
+    | .decl-class(class)
+        class.name.text
+    ??
+        "?"
+. machine = property.value != 0 && tree.nodes[property.value] is .node-state-machine
+if machine || tree.nodes[property.syntax] is .node-state-case
+    = "$shown is an interface, so it cannot hold a state machine; declare the machine in the classes that are $shown"
+. name = property.name!.text
+. lead = "$shown is an interface, so it cannot store \"$name\""
+if property.value != 0
+    . written = if property.is-lazy then ":=" else "="
+    = "$lead; declare a getter that gives the value, with \"=>\" in place of \"$written\""
+if property.type-syntax == 0
+    = "$lead; declare a getter for the types that are $shown to answer"
+. env = types.class-env(module, property.owner)
+. stated = types.evaluate-type(module, tree, property.type-syntax, env)
+types.env-release(env)
+= "$lead; declare a getter for the types that are $shown to answer, as in \"+ get $name ${type-source(types, stated)}\""
+
+────────────────────
++ writes-type Bool
+    - pattern SyntaxId
+
+` Whether a declaration's pattern writes the type of what it declares.
+match tree.nodes[pattern]
+    | .node-type-capture(row)
+        row.type != 0
+    ??
+        false
+
+────────────────────
+_ assigns-early Bool
+    - lhs SyntaxId
+
+resolution.kind == .resolve-slot && precedes-declaration(resolution.slot)
+
+.. resolution = bindings.resolution-of(frame.binding, lhs)
+
+────────────────────
+_ do stores-loop-constant Bool
+    - lhs SyntaxId
+    - op Operator
+    - target TypeId
+    - value TypeId
+    - rhs SyntaxId
+
+` Whether an assignment stores to the item of a loop that counts through its range itself,
+` or to that loop's `it` or `each`. The loop gives them their value on each pass, and nothing
+` else may. An assigning operator the type answers with a function of its own stores nothing.
+` Whether the item of any other loop is a constant depends on how the loop is lowered.
+. loop SyntaxId = 0
+do match? tree.nodes[lhs]
+    | .node-identifier
+        . resolution = bindings.resolution-of(frame.binding, lhs)
+        if resolution.kind == .resolve-slot
+            . row = bindings.slots[resolution.slot]
+            if row.kind == .slot-loop-item
+                loop = bindings.scopes[row.scope].syntax
+            else if row.kind == .slot-it || row.kind == .slot-each
+                loop = row.syntax
+if loop == 0 || facts.plan-of(instance, loop) != .plan-range-loop
+    = false
+= op == .eq-op || !(calls.has-operator(target, program.store-atom("$op"), value) • arg-syntax rhs)
+
+────────────────────
+_ is-identifier-syntax Bool
+    - expr SyntaxId
+
+match tree.nodes[expr]
+    | .node-identifier
+        true
+    ??
+        false
+
+────────────────────
++ assigns Bool
+    - expr SyntaxId
+
+` An arrow body that is an assignment gives the value assigned.
+match tree.nodes[expr]
+    | .node-assign
+        true
+    ??
+        false
+
+────────────────────
++ do merge-assignments
+    - condition SyntaxId
+    - body SyntaxId
+    - settled [Narrowed]
+
+` After an `if` without an else whose body falls through and leaves an optional local holding
+` a present value, the local stays present when the condition's false branch narrows it the
+` same way: both paths agree, as the reference's flow facts merge them. What the body leaves a
+` local as is what the last of its assignments settled, so a match whose arms that fall through
+` agree counts, and an assignment in a nested branch that may not run, which was widened back,
+` does not. A local that holds a union stays known to hold the case both paths leave it as.
+. seen [NarrowingKey]
+. position = settled.length
+while position != 0
+    position -= 1
+    . row = settled[position]
+    if is-member-key(row.key) || seen.find(row.key) != null
+        continue
+    seen += row.key
+    . slot = row.key as SlotId
+    if row.type == no-type || row.type == slot-known(slot)
+        continue
+    . probe = scratch.narrowings.mark
+    narrowing.narrow-condition(condition, false)
+    . narrowed = frame.slot-type(slot)
+    . cases = frame.narrowed-cases(row.key)
+    frame.pop-narrowing(probe)
+    if narrowed == row.type
+        frame.push-assigned(row.key, row.type, if cases == row.cases then cases else 0)
+
+────────────────────
++ do check-branch-update
+    - id SyntaxId
+
+` The function the action of a markup branch region runs: it reads the conditions again, where
+` a member of the region's host read by its name alone is read from the host, kept where the
+` region was made, as is the region, given to the markup runtime as the host's content. What
+` the markup runtime raises leaves the function, and the callback that runs it, as the
+` reference's does.
+prepare()
+instances.set-returns(instance, types.void-type, types.void-type, .return-declared)
+. resolution = bindings.resolution-of(frame.binding, id)
+. content = if outer then outer.region.content else no-type
+if resolution.kind != .resolve-slot || content == no-type
+    decline(id)
+    finish-errors(frame)
+    close()
+    =
+content-blocks += 0
+content-parents += frame.slot-type(resolution.slot)
+content-names += false
+read-arms(id)
+content-blocks.pop()
+content-parents.pop()
+content-names.pop()
+conversions.convert(id, id, frame.slot-type(resolution.slot + 1), content, .reason-argument)
+. keeps = outer!.region.keeps
+if (keeps != no-instance && !raises-out(id, keeps)) || !raises-out(id, outer!.region.select)
+    decline(id)
+finish-errors(frame)
+close()
+
+────────────────────
++ do check-source-update
+    - id SyntaxId
+
+` The function the action of a markup loop region runs: it reads the container again, where its
+` read of a collection is no change the action follows and a member of the region's host read by
+` its name alone is read from the host, kept where the region was made, and gives what it gives
+` to the region, kept there too, by the markup runtime's replacer for the region's source, which
+` hands it to the region's controller. What that raises leaves the function, and the callback that
+` runs it, as the reference's does.
+prepare()
+instances.set-returns(instance, types.void-type, types.void-type, .return-declared)
+. resolution = bindings.resolution-of(frame.binding, id)
+. container SyntaxId = 0
+do match? tree.nodes[id]
+    | .node-for-block(row)
+        do match? tree.nodes[row.loop]
+            | .node-loop-syntax(loop)
+                container = loop.container
+. expected = if outer then outer.region.source else no-type
+if resolution.kind != .resolve-slot || container == 0 || expected == no-type
+    decline(id)
+    finish-errors(frame)
+    close()
+    =
+content-blocks += 0
+content-parents += frame.slot-type(resolution.slot)
+content-names += false
+. read = infer(container, Want().adding(.want-observed))
+content-blocks.pop()
+content-parents.pop()
+content-names.pop()
+. source = if read != invalid-type then loop-source(id, container, read).given else no-type
+. replace = if outer then outer.region.replace else no-instance
+if source != expected || replace == no-instance || !raises-out(id, replace)
+    decline(id)
+finish-errors(frame)
+close()
+
+────────────────────
++ do assign-placed
+    - slot SlotId
+    - made TypeId
+
+` Gives the local declared for a markup element's name the element's object, in the function
+` that declares it.
+if outer && frame.is-captured(slot)
+    outer.assign-placed(slot, made)
+else
+    frame.assign(slot, made)
+
+────────────────────
+_ do store-event Bool
+    - rhs SyntaxId
+    - event NamedEvent
+    - kept Bool
+    - target TypeId
+
+` An event stored in a property, once the property is known: one whose `Broadcastable` the
+` property is not is reported as `refuse-event-value` says, one stored in a property of that
+` very `Broadcastable` is made that endpoint, as `escape-event` says, and any other, or one
+` read in a function written in a markup element's body, has no shape here. Says whether the
+` store goes on.
+. endpoint = endpoint-of(event)
+if !takes-endpoint(endpoint, target)
+    refuse-event-value(rhs, event.owner, event.name)
+    = false
+if kept || target != endpoint
+    decline(rhs)
+    = false
+escape-event(rhs, event, endpoint, rhs)
+= true
+
+────────────────────
+_ do tuple-arity-at Bool
+    - object TypeId
+    - key-syntax SyntaxId
+
+` Whether a constant index names the position just past a tuple's last field: assigning there
+` gives a new tuple with one more field.
+do match? types.rows[object]
+    | .type-tuple(row)
+        do match? tree.nodes[key-syntax]
+            | .node-integer-syntax(key)
+                . literal = parse-integer-literal(key.value)
+                = !literal.negative && !literal.overflow && literal.value == row.fields.count
+= false
+
+────────────────────
+_ do extended-tuple TypeId
+    - object TypeId
+    - value TypeId
+
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+do match? types.rows[object]
+    | .type-tuple(row)
+        for offset in 0 .. < row.fields.count
+            scratch.names.push(types.index-atom(offset))
+            scratch.types.push(types.child-type(row.fields, offset))
+scratch.names.push(types.index-atom(scratch.types.length - mark))
+scratch.types.push(value)
+= types.intern-tuple(mark, names-mark)
+
+────────────────────
++ do collect-assigned
+    - id SyntaxId
+    - assigned [Atom]
+    - declared [Atom]
+
+do match? tree.nodes[id]
+    | .node-function-syntax
+        =
+    | .node-for-block(row)
+        do match? tree.nodes[row.loop]
+            | .node-loop-syntax(loop)
+                if loop.is-subscriber
+                    =
+    | .node-declare(row)
+        . name = pattern-name(types, tree, row.left)
+        if name
+            declared += name
+    | .node-assign(row)
+        collect-target(row.lhs, assigned)
+        collect-assigned(row.rhs, assigned, declared)
+        =
+for child in tree.children-of(id)
+    collect-assigned(child, assigned, declared)
+
+────────────────────
+_ do collect-target
+    - target SyntaxId
+    - assigned [Atom]
+
+. name = field-reference(target)
+if name
+    assigned += name
+    =
+do match? tree.nodes[target]
+    | .node-tuple-syntax(row)
+        for item in tree.children[row.items]
+            collect-target(item, assigned)
+
+────────────────────
++ do writes-value Bool
+    - fact TypeProperty
+
+` Whether the nearest class that declares a property writes a value for it.
+. ref = declaring-decl(types, fact)
+. member = valued-property(program, ref.module, ref.decl, fact.name)
+if member == 0
+    = false
+do match? program.modules[ref.module].decls[member]
+    | .decl-property(row)
+        = row.value != 0
+= false
+
+────────────────────
+_ do forget-store-root Bool
+    - object SyntaxId
+
+` A store to a property of an object ends what the reference knows of every property of the
+` name the object is read from through properties, and of every path from it, and it ends
+` what it knows of every property of the receiver where that name is the receiver or one of
+` its properties. What is known of a local itself the reference keeps. A store through a row of
+` a table read in place (`answers-in-place`) ends what is known of every property, as the
+` reference checks the table there and its failure makes calls. Answers whether the object is
+` read from a local, the receiver or such a row, where the store ends just that.
+. root = object
+while tree.nodes[root] is .node-get-expression
+    do match? tree.nodes[root]
+        | .node-get-expression(row)
+            root = row.object
+do match? tree.nodes[root]
+    | .node-index-expression
+        if facts.answers-in-place(instance, root)
+            frame.forget-members()
+            = true
+    | .node-identifier
+        . resolution = bindings.resolution-of(frame.binding, root)
+        if resolution.kind == .resolve-member
+            frame.forget-receiver()
+            = true
+        if resolution.kind != .resolve-slot
+            = false
+        if bindings.slots[resolution.slot].kind == .slot-this
+            frame.forget-receiver()
+            = true
+        frame.forget-escaped(slot-key(resolution.slot))
+        = true
+= false
+
+────────────────────
++ do check-probe-assign
+    - id SyntaxId
+    - row ASTProbeAssign
+
+` A probe that assigns a property writes an event named `set-property`, of the object it is written
+` of where it has one: the key, then the value. Its record is flushed at once.
+. found = probes-module(id)
+if !found
+    =
+. probes = found
+. object = check-probe-object(row.object)
+if object == invalid-type
+    =
+. head = if object != no-type then "probe-object-event-head" else "probe-event-head"
+if !record-probe-head(id, probes, head, object) || !record-probe-call(id, probes, "probe-write", [types.string-type]) || !check-probe-value(id, probes, row.content, false)
+    =
+record-probe-flush(id, probes, "probe-flush")
+
+────────────────────
+_ do refuses-machine-write Bool
+    - id SyntaxId
+    - name Atom
+    - resolution Resolution
+
+` Reports an assignment to a name of a state machine, which moves only by its transitions: the
+` local or the property it is kept in, or the property that says whether one of its cases is
+` active or holds what the case holds, and says whether it did.
+if resolution.kind == .resolve-member
+    = writes-machine(id, frame.self-type, name)
+if resolution.kind == .resolve-global
+    = writes-machine-property(id, resolution.module, resolution.decl, name)
+if resolution.kind != .resolve-slot
+    = false
+if bindings.slots[resolution.slot].kind == .slot-machine
+    = machine-write(id, "\"${name.text}\" is a case of a state machine, which")
+for row in bindings.machines
+    if row.bound != no-slot && row.bound == resolution.slot
+        = machine-write(id, "State machine \"${name.text}\"")
+= false
+
+────────────────────
+_ do writes-machine Bool
+    - id SyntaxId
+    - receiver TypeId
+    - name Atom
+
+` Reports an assignment to a property of a class that is a state machine or one of its cases, as
+` `refuses-machine-write` does, and says whether it did.
+if !intrinsic-is-class(types.intrinsic-of(receiver))
+    = false
+. ref = declaring-class(types, receiver, name)
+= writes-machine-property(id, ref.module, owner-property(program, ref.module, ref.decl, name), name)
+
+────────────────────
+_ do writes-machine-property Bool
+    - id SyntaxId
+    - module ModuleId
+    - decl DeclId
+    - name Atom
+
+` Reports an assignment to a property that is a state machine or one of its cases, as
+` `refuses-machine-write` does, and says whether it did.
+if decl == 0
+    = false
+do match? program.modules[module].decls[decl]
+    | .decl-property(row)
+        if program.modules[module].tree.declared-machine(row.value) != 0
+            = machine-write(id, "State machine \"${name.text}\"")
+        if row.flag != 0 || row.projection != 0
+            = machine-write(id, "\"${name.text}\" is a case of a state machine, which")
+= false
+
+────────────────────
+_ do machine-write Bool
+    - id SyntaxId
+    - subject String
+
+` Reports an assignment to a state machine or to one of its cases.
+. text = "${subject} moves only by its transitions, so it cannot be assigned; add a transition that enters the case"
+frame.diagnose(id, .stated, program.store-atom(text))
+= true
+
+────────────────────
++ do infer-assign TypeId
+    - id SyntaxId
+    - op Operator
+    - lhs SyntaxId
+    - rhs SyntaxId
+    - want Want
+
+if op == .bind-op
+    . message = "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+do match? tree.nodes[lhs]
+    | .node-tuple-syntax(row)
+        if op == .eq-op
+            = infer-destructure(lhs, row.items, rhs)
+    | .node-list-syntax
+        infer(rhs)
+        . text = "Names in brackets can be declared from a list, as in \". [x, y] = items\", but not assigned again; assign a tuple to them, as in \"x, y = items[0], items[1]\""
+        frame.diagnose(lhs, .stated, program.store-atom(text))
+        = invalid-type
+    | .node-call-expression
+        frame.diagnose(id, .stated, program.store-atom("Illegal assignment"))
+        = invalid-type
+    | .node-style-read-expression(row)
+        = infer-style-write(id, op, lhs, row, rhs)
+    | .node-index-expression(row)
+        . stored = infer-index-assign(lhs, id, op, row.object, row.index, rhs, row.is-optional)
+        = chain-stored(lhs, stored)
+    | .node-get-expression(row)
+        . stored = infer-property-assign(id, lhs, op, row.object, row.name, rhs, row.is-optional, no-type, want)
+        = chain-stored(lhs, stored)
+    | .node-identifier(row)
+        . resolution = bindings.resolution-of(frame.binding, lhs)
+        if refuses-machine-write(id, row.name, resolution)
+            = invalid-type
+        if resolution.kind == .resolve-member
+            = infer-property-assign(id, lhs, op, 0, row.name, rhs, false, no-type, want)
+        if resolution.kind == .resolve-function && module-accessor
+            = infer-module-setter-assign(id, lhs, op, row.name, rhs)
+        .. module-accessor = names-module-accessor(resolution.module, resolution.decl)
+        if resolution.kind == .resolve-function
+            frame.diagnose(id, .stated, program.store-atom("Function \"${row.name.text}\" cannot be assigned"))
+            = invalid-type
+        if resolution.kind == .resolve-unresolved && styled
+            = infer-self-style-assign(id, lhs, op, row.name, rhs)
+        .. styled = (resolution.flags /and/ ResolutionFlag.resolution-styled) != 0
+        if is-stack-local(lhs)
+            . message = "Stack-local variable '${row.name.text}' can only be rebound with do with"
+            frame.diagnose(id, .stated, program.store-atom(message))
+            = invalid-type
+        if assigns-early(lhs)
+            if op == .eq-op
+                frame.diagnose(id, .stated, program.store-atom("Variable not declared"))
+            else
+                frame.diagnose(lhs, .stated, program.store-atom("Name not found"))
+            = invalid-type
+        if op != .eq-op
+            facts.set-node-type(instance, lhs, target-of(lhs, true))
+            . assigned = bindings.resolution-of(frame.binding, lhs)
+            if assigned.kind == .resolve-global && guards-read(lhs, assigned.module, assigned.decl)
+                note-guarded(lhs, assigned.module, assigned.decl)
+        check-tracked-store(id, lhs)
+. target = target-of(lhs, op != .eq-op)
+. written = if op == .eq-op then infer-with-expected(rhs, target, Want().escaping(target, rhs)) else infer(rhs)
+if written == invalid-type || target == invalid-type
+    = invalid-type
+. value = stored-value(rhs, written)
+. withheld = value != written
+if stores-loop-constant(lhs, op, target, value, rhs)
+    frame.diagnose(id, .stated, program.store-atom("Illegal to update const variables"))
+    = invalid-type
+note-escape(rhs)
+if op == .eq-op && is-identifier-syntax(lhs)
+    calls.note-context-cast(rhs, target, .cast-assignment)
+. result = assign-into(id, lhs, op, target, rhs, value)
+check-zone-store(id, lhs, rhs, value)
+if !withheld
+    note-replacement(id, target, if op == .eq-op then value else result)
+. slot = narrowing.condition-slot(lhs)
+if slot
+    . settled = slot-known(slot)
+    . held U64
+    if op == .eq-op && withheld
+        if frame.slot-type(slot) == assigned-narrowing(settled, value)
+            settled = frame.slot-type(slot)
+    else if op == .eq-op
+        held = assigned-case(settled, value)
+        settled = assigned-narrowing(settled, value)
+    else if !(outer && frame.is-captured(slot))
+        . current = frame.slot-type(slot)
+        if current != no-type && current != invalid-type
+            settled = current
+    frame.push-assigned(slot-key(slot), settled, held)
+    frame.reset-paths(slot-key(slot))
+    frame.note-assignment(id, slot, settled)
+if withheld && op == .eq-op
+    = infer(lhs)
+= result
+
+────────────────────
+_ do infer-module-setter-assign TypeId
+    - id SyntaxId
+    - lhs SyntaxId
+    - op Operator
+    - name Atom
+    - rhs SyntaxId
+
+if op == .eq-op
+    . value = infer(rhs)
+    =? invalid-type if value == invalid-type
+    = store-through-module-setter(lhs, name, rhs, value, .call-setter)
+. target = infer(lhs)
+=? invalid-type if target == invalid-type
+. value = infer(rhs)
+=? invalid-type if value == invalid-type
+if updates-in-place(target, op, value, rhs)
+    decline(id)
+    = invalid-type
+. result = assign-into(id, lhs, op, target, rhs, value)
+=? invalid-type if result == invalid-type
+=? invalid-type if store-through-module-setter(lhs, name, lhs, target, .call-store-setter) == invalid-type
+= result
+
+────────────────────
+_ do store-through-module-setter TypeId
+    - lhs SyntaxId
+    - name Atom
+    - argument SyntaxId
+    - value TypeId
+    - form CallForm
+
+. diagnosed = facts.diagnostics.length
+. set = calls.module-setter-call(lhs, name, argument, value, form)
+if set == invalid-type
+    facts.restate
+        - diagnosed
+        - instance
+        - lhs
+        - .function-not-found
+        - .stated
+        - program.store-atom("Setter not found")
+= set
+
+────────────────────
+_ do reads-as-declared Bool
+    - rhs SyntaxId
+    - target TypeId
+
+` Whether a value stored is a read of a property of a path a test narrowed, made to a place of
+` the type the path declares the property as: the read is then taken as declared, which gives
+` what the narrowed one would where the property holds what was tested, and what it gives where
+` a store before it ended what is known, so it relies on nothing the flow knew.
+do match? tree.nodes[rhs]
+    | .node-get-expression(row)
+        if row.is-optional || row.is-tracked
+            = false
+        . base = narrowing.base-key(row.object)
+        if !base
+            = false
+        . key = frame.find-path-key(base, row.name)
+        if !key || !is-path-key(key)
+            = false
+        . narrowed = frame.held-member(key)
+        if narrowed == no-type || facts.node-type(instance, rhs) != narrowed
+            = false
+        if frame.path-declared-type(key) != target
+            = false
+        facts.replace-node-type(instance, rhs, target)
+        frame.member-reads -= 1
+        = true
+= false
+
+────────────────────
+_ do chain-stored TypeId
+    - lhs SyntaxId
+    - stored TypeId
+
+` What an assignment gives where the place assigned is a link of an optional chain: the
+` optional of what the store gives, which holds nothing where the store was not made.
+if stored == invalid-type || stored == no-type || !optional-chained(lhs)
+    = stored
+= types.optional-of(stored)
+
+────────────────────
++ do assigned-narrowing TypeId
+    - declared TypeId
+    - value TypeId
+
+` An optional local assigned a present value, or a union local assigned the value of one of
+` its cases, reads as that value until the next assignment, as the reference's flow facts
+` track it.
+if value == invalid-type || value == no-type || declared == invalid-type || declared == no-type
+    = declared
+if types.intrinsic-of(declared) == .union && types.intrinsic-of(value) != .union
+    . wrap = relations.compare(value, declared)
+    if wrap.kind == .relation-wrap-cast
+        . fact = types.cases-of(declared)[wrap.case-index]
+        if !fact.is-default && fact.type != no-type
+            = fact.type
+    = declared
+if !types.is-optional(declared) || types.is-optional(value) || value == types.null-type
+    = declared
+= types.optional-inner(declared)
+
+────────────────────
+_ assigned-case U64
+    - declared TypeId
+    - value TypeId
+
+` The one case a union local holds after it is assigned a value of that case, as a mask, or
+` none where it reads as the union still.
+|? assigned-narrowing(declared, value) == declared
+    0
+|? types.intrinsic-of(declared) != .union
+    0
+??
+    if wrap.case-index < 64 then 1u64 /lshift/ wrap.case-index else 0u64
+
+.. wrap = relations.compare(value, declared)
+
+────────────────────
+_ do infer-property-assign TypeId
+    - id SyntaxId
+    - lhs SyntaxId
+    - op Operator
+    - object-syntax SyntaxId
+    - name Atom
+    - rhs SyntaxId
+    - is-optional Bool = false
+    - owner TypeId = no-type
+    - want Want = Want()
+
+` What an assignment to a property gives as a value. A property named alone is the receiver's,
+` or the `owner`'s where one is given, and gives the value assigned, as it was before the store
+` converted it. A field of a tuple gives the new tuple,
+` also by an assigning operator that assigns it (`updates-in-place`), which is not stored, and
+` any other place, of an object, a struct, a row or a builder, gives what it then holds. A
+` property written after `?` is that of what the optional before it holds, and the object of
+` a property written after a link of an optional chain is what that link gives by itself. A
+` store to a property some read tracks runs the actions that read it, which ends what is known
+` of every property. One no read typed so far tracks is taken as running nothing where that
+` matters, and the pass starts over knowing it tracked where a read typed later tracks it
+` (`Panics.typed-late`). A narrowed read stored after such a store is taken as declared where
+` that is what the place holds (`reads-as-declared`), and one in doubt that is stored any other
+` way is declined. The object of an assignment that applies an operator is typed before the
+` value, and that of a plain one after it, as the reference evaluates them, but before a case
+` named by its symbol alone, which evaluates nothing, so that a state machine is found before
+` the case is (`writes-machine`). An event stored is taken once the property is known, as
+` `store-event` says.
+. object-first = (op != .eq-op || tree.nodes[rhs] is .node-symbol) && object-syntax != 0
+. early = if object-first then infer-found(object-syntax) else Found(no-type)
+if object-first && op == .eq-op && writes-machine(id, early.type, name)
+    = invalid-type
+. assigned = infer-found(rhs, if op == .eq-op then Want().adding(.want-store) else Want())
+. value = stored-value(rhs, assigned.type)
+. doubted = assigned.doubted
+. stored = found-event-of(assigned)
+. kept = assigned.kept
+. own-receiver = if owner != no-type then owner else frame.self-type
+. unqualified = object-syntax == 0
+. late = if unqualified || object-first then Found(no-type) else infer-found(object-syntax)
+. receiver = if unqualified then own-receiver else if object-first then early.type else late.type
+. own = if object-first then early.link else late.link
+if value == invalid-type || receiver == invalid-type || receiver == no-type
+    = invalid-type
+. form = if is-optional then note-chain(lhs, lhs, receiver) else ChainForm.chain-plain
+if form == .chain-absent || (object-syntax != 0 && absent-after(object-syntax, receiver))
+    = value
+. optional = form == .chain-tested
+if optional
+    receiver = types.optional-inner(receiver)
+else if object-syntax != 0 && types.is-optional(receiver) && optional-chained(object-syntax)
+    receiver = link-receiver(object-syntax, receiver, own, false)
+    facts.set-node-type(instance, object-syntax, receiver)
+if object-syntax != 0 && refuses-write(lhs, receiver, false)
+    = invalid-type
+if object-syntax != 0 && writes-machine(id, receiver, name)
+    = invalid-type
+. sets-length = name == types.length-atom! && !property-named(receiver, name)
+if object-syntax != 0 && op == .eq-op && refuses-layout(id, lhs, object-syntax, receiver, name, rhs, want)
+    = invalid-type
+. added = sets-added(receiver, name, value, rhs)
+if (doubted || stored) && (is-accessor(receiver, name) || added || forwards-setter(receiver, name))
+    decline(rhs)
+    = invalid-type
+if op == .eq-op && (is-accessor(receiver, name) || added)
+    = store-through-setter(lhs, object-syntax, receiver, name, rhs, value, .call-setter)
+if op == .eq-op && forwards-setter(receiver, name)
+    . site = if object-syntax != 0 then object-syntax else lhs
+    . sent = no-type
+    for index in 0 .. < types.cases-of(receiver).length
+        . payload = types.cases-of(receiver)[index].type
+        sent = calls.setter-call(lhs, site, payload, name, rhs, value)
+        if sent == invalid-type
+            = invalid-type
+    facts.set-plan(instance, lhs, .plan-forward)
+    facts.note-forward(instance, lhs, sent, rhs)
+    = sent
+if is-batch-flush(receiver)
+    . (domain, below) = accessor-domain(name.text)
+    . flag = domain.length != 0 && !below
+    . message = if flag then "Markup batch flush domain flags are immutable" else "Markup batch flush summaries are immutable"
+    frame.diagnose(lhs, .stated, program.store-atom(message))
+    = invalid-type
+if op == .eq-op && is-query-property(receiver, name)
+    frame.diagnose
+        - lhs
+        - .stated
+        - program.store-atom("Markup query properties are compiler-managed and cannot be assigned")
+    = invalid-type
+if object-syntax != 0
+    . styled = infer-style-assign(id, lhs, receiver, name, op, rhs, value)
+    if styled && (doubted || stored)
+        decline(rhs)
+        = invalid-type
+    if styled
+        = styled
+assigns-plainly = op == .eq-op
+. target = read-property(lhs, if object-syntax != 0 then object-syntax else lhs, receiver, name).type
+assigns-plainly = false
+if target == invalid-type
+    = invalid-type
+if stored && !store-event(rhs, stored, kept, target)
+    = invalid-type
+if op == .eq-op && reads-as-declared(rhs, target)
+    value = target
+else if doubted
+    decline(rhs)
+    = invalid-type
+check-zone-store(id, lhs, rhs, value)
+if op == .eq-op && tree.symbol-of(rhs) != null
+    value = infer-with-expected(rhs, target)
+. written = panics.property-of(receiver, name)
+if written
+    panics.note-write(instance, written)
+facts.set-node-type(instance, lhs, if op == .eq-op && object-syntax == 0 then value else target)
+note-escape(rhs)
+if object-syntax == 0
+    . resolution = bindings.resolution-of(frame.binding, lhs)
+    if resolution.kind == .resolve-member
+        frame.push-assigned(member-key(resolution.decl), target)
+        frame.reset-paths(member-key(resolution.decl))
+else
+    . shared = narrowing.receiver-member(object-syntax, name)
+    . base = narrowing.base-key(object-syntax)
+    if shared
+        frame.push-assigned(shared, target)
+        frame.reset-paths(shared)
+    else if base
+        . key = frame.find-path-key(base, name)
+        if key
+            frame.push-assigned(key, target)
+            frame.reset-paths(key)
+. result = assign-into(id, lhs, op, target, rhs, value)
+if compound-result && sets && !updates-in-place(target, op, value, rhs)
+    =? invalid-type if store-through-setter(lhs, object-syntax, receiver, name, lhs, target, .call-store-setter) == invalid-type
+.. compound-result = op != .eq-op && result != invalid-type
+.. sets = is-accessor(receiver, name) || sets-added(receiver, name, target, lhs)
+note-replacement(id, target, if op == .eq-op then value else result)
+if object-syntax != 0 && !facts.is-replacing(instance, id) && forget-store-root(object-syntax)
+    settled-store = id
+if written && frame.knows-properties()
+    if panics.is-tracked-property(written)
+        frame.forget-members()
+    else
+        unsure-stores += panics.assume-untracked(instance, id, written)
+        unsure-reads += frame.member-reads
+if object-syntax != 0 && op != .eq-op && !sets-length && !is-row-cursor(object-syntax)
+    if result != invalid-type && !updates-in-place(target, op, value, rhs)
+        if refuses-layout(id, lhs, object-syntax, receiver, name, rhs, want)
+            = invalid-type
+        . updated = replaced-tuple(id, object-syntax, receiver, name, rhs)
+        =? updated if updated != no-type
+if op != .eq-op
+    = result
+if object-syntax == 0
+    = value
+if is-row-cursor(object-syntax)
+    = target
+. replaced = replaced-tuple(id, object-syntax, receiver, name, rhs)
+if replaced != no-type
+    = replaced
+. kind = types.intrinsic-of(receiver)
+. plain = types.is-plain-tuple(receiver) || (kind == .tuple && view-kind(receiver) == 0)
+= if plain then no-type else target
+
+────────────────────
+_ do store-through-setter TypeId
+    - lhs SyntaxId
+    - object-syntax SyntaxId
+    - receiver TypeId
+    - name Atom
+    - argument SyntaxId
+    - value TypeId
+    - form CallForm
+
+` A value stored in a property its setter answers: by an assignment, or by an assigning operator
+` that stores the value it makes through the setter (`call-store-setter`).
+. found = property-named(receiver, name)
+if found && is-hidden(types.properties[found], name, .setter-decl)
+    . message = privacy-message(types.properties[found], name, .setter-decl)
+    frame.diagnose(lhs, .stated, program.store-atom(message))
+    = invalid-type
+. diagnosed = facts.diagnostics.length
+. site = if object-syntax != 0 then object-syntax else lhs
+. set = calls.setter-call(lhs, site, receiver, name, argument, value, form)
+if set == invalid-type
+    facts.restate
+        - diagnosed
+        - instance
+        - lhs
+        - .function-not-found
+        - .stated
+        - program.store-atom("Setter not found")
+= set
+
+────────────────────
+_ do updates-in-place Bool
+    - target TypeId
+    - op Operator
+    - value TypeId
+    - rhs SyntaxId
+
+` Whether an assigning operator changes what a place holds without assigning the place: a
+` function of its own name on a type that is not a struct or a tuple, as the reference's
+` `increment` calls it and stores nothing.
+. held = types.intrinsic-of(target)
+if held == .struct || held == .tuple
+    = false
+= calls.has-operator(target, program.store-atom("$op"), value) • arg-syntax rhs
+
+────────────────────
+_ do replaced-tuple TypeId
+    - id SyntaxId
+    - object-syntax SyntaxId
+    - receiver TypeId
+    - name Atom
+    - rhs SyntaxId
+
+` What an assignment to a field of a tuple gives: a new tuple of the same type, or of its
+` first fields when it is the length that is assigned, where the tuple declares no `length`
+` of its own. An assignment to any other place gives nothing here.
+if object-syntax == 0
+    = no-type
+. kind = types.intrinsic-of(receiver)
+if !types.is-plain-tuple(receiver) && (kind != .tuple || view-kind(receiver) != 0)
+    = no-type
+if name == types.length-atom! && !property-named(receiver, name)
+    = truncated-tuple(id, receiver, rhs)
+. field = property-named(receiver, name)
+if !field || types.properties[field].storage-kind != .storage-eager
+    = no-type
+= receiver
+
+────────────────────
+_ do truncated-tuple TypeId
+    - id SyntaxId
+    - receiver TypeId
+    - rhs SyntaxId
+
+` The tuple of the first fields of a tuple, as many as a constant says. A count written
+` below zero has no plan.
+. count U64 = U64.max
+. counted = true
+do match? tree.nodes[rhs]
+    | .node-integer-syntax(row)
+        . literal = parse-integer-literal(row.value)
+        count = literal.value
+        counted = !literal.negative && !literal.overflow
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+do match? types.rows[receiver]
+    | .type-tuple(row)
+        if count > (row.fields.count as U64)
+            frame.diagnose(id, .stated, program.store-atom("Illegal to increase tuple length"))
+            = invalid-type
+        . kept = count as U32
+        for offset in 0 .. < kept
+            scratch.names.push(types.index-atom(offset))
+            scratch.types.push(types.child-type(row.fields, offset))
+        if counted
+            facts.set-plan(instance, id, .plan-truncate)
+        = types.intern-tuple(mark, names-mark)
+= no-type
+
+────────────────────
+_ do refuses-layout Bool
+    - id SyntaxId
+    - lhs SyntaxId
+    - object-syntax SyntaxId
+    - receiver TypeId
+    - name Atom
+    - rhs SyntaxId
+    - want Want
+
+` A tuple is a value: assigning one of its fields, by `=` or by an assigning operator that
+` assigns it (`updates-in-place`), gives a new tuple, which a statement that does nothing with
+` it loses, and its length changes only to a constant. A struct's layout does not change at all. A `length` the type declares is a
+` field like any other. As the reference has it, a statement loses the tuple in a `do`
+` function or a module's main, and in the body of another function only as one of its own
+` statements (`want-quasi`): the value of an arm or a block inside gives the tuple. A struct's
+` field is changed in place, which loses the change where nothing holds the struct: a struct
+` cast to its base, which is a copy, or one a call gives.
+. kind = types.intrinsic-of(receiver)
+. plain = types.is-plain-tuple(receiver) || (kind == .tuple && view-kind(receiver) == 0)
+if name == types.length-atom! && !property-named(receiver, name)
+    if kind == .struct
+        frame.diagnose(lhs, .stated, program.store-atom("Struct layout cannot be changed"))
+        = true
+    if plain && !tree.is-integer-literal(rhs)
+        frame.diagnose(lhs, .stated, program.store-atom("Value has no constant form"))
+        = true
+    = false
+if kind == .struct && !holds-struct(object-syntax)
+    . stored = property-named(receiver, name)
+    if stored && types.properties[stored].storage-kind == .storage-eager
+        . shown = type-display(types, receiver)
+        . message = "Assigning ${name.text} changes a $shown struct that nothing holds, so the change is lost; assign ${name.text} where the struct is held"
+        frame.diagnose(id, .stated, program.store-atom(message), receiver)
+        = true
+if !plain || !want.asks(.want-statement) || is-row-cursor(object-syntax)
+    = false
+if !want.asks(.want-quasi) && !frame.declaration.is-imperative && !frame.declaration.is-main
+    = false
+. field = property-named(receiver, name)
+if !field || types.properties[field].storage-kind != .storage-eager
+    = false
+. owner = description-of(tree, object-syntax)
+. shown = type-display(types, receiver)
+. message = "Assigning ${name.text} creates a new $shown tuple that is discarded; "
+message ++= "write $owner = $owner.${name.text} = value"
+frame.diagnose(id, .stated, program.store-atom(message), receiver)
+= true
+
+────────────────────
+_ holds-struct Bool
+    - object-syntax SyntaxId
+
+` Whether a struct whose field is assigned is held where the change stays: not one a cast or
+` a call gives.
+match tree.nodes[object-syntax]
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
+
+────────────────────
+_ is-row-cursor Bool
+    - object-syntax SyntaxId
+
+` Whether a name stands for the case of a table row a pattern matched: a place in the table,
+` which a field assignment writes through.
+object-syntax != 0 && row-capture-of(object-syntax) != null
+
+────────────────────
+_ do sets-added Bool
+    - receiver TypeId
+    - name Atom
+    - value TypeId
+    - rhs SyntaxId
+
+` Whether a setter that an extension or a facet adds takes a value stored to a name the class has
+` no property of.
+=? false if property-named(receiver, name) != null || types.intrinsic-of(receiver) != .class
+= calls.has-setter(receiver, name, value, rhs)
+
+────────────────────
+_ do forwards-setter Bool
+    - receiver TypeId
+    - name Atom
+
+` A union whose every case sets a member through a setter sets it through each case's own.
+if !calls.forwards-to-cases(receiver)
+    = false
+for fact in types.cases-of(receiver)
+    if !is-accessor(fact.type, name)
+        = false
+= true
+
+────────────────────
+_ do refuses-write Bool
+    - id SyntaxId
+    - target TypeId
+    - indexed Bool
+
+` Reports a store through a value that only reads: an immutable table and its rows, spans and
+` fields, a constant array, an immutable array's elements, and an array view with read access.
+. message = read-only-message(target, indexed)
+if message.length == 0
+    = false
+frame.diagnose(id, .stated, program.store-atom(message))
+= true
+
+────────────────────
+_ do read-only-message String
+    - target TypeId
+    - indexed Bool
+
+. kind = types.intrinsic-of(target)
+if kind == .immutable-table
+    = "ImmutableTable is read-only"
+if kind == .immutable-table-row
+    = "ImmutableTableRow is read-only"
+if kind == .immutable-table-span
+    = "ImmutableTableSpan is read-only"
+if kind == .immutable-table-column
+    = "ImmutableTableField is read-only"
+if indexed && is-const-array(target)
+    = "ConstArray values are read-only"
+if kind != .tuple
+    = ""
+if indexed && types.ancestor-of(target, types.immutable-array-decl) != no-type
+    = "ImmutableArray does not support element assignment"
+for view in [types.array-row-decl, types.array-row-range-decl, types.array-field-decl]
+    . found = types.ancestor-of(target, view)
+    if found != no-type
+        do match? types.rows[found]
+            | .type-class(row)
+                if row.args.count == 2 && types.child-type(row.args, 1) == types.array-read-access
+                    = "Cannot write through a read-only array view"
+= ""
+
+────────────────────
+_ do assign-into TypeId
+    - id SyntaxId
+    - lhs SyntaxId
+    - op Operator
+    - target TypeId
+    - rhs SyntaxId
+    - value TypeId
+    - in-place Bool = false
+
+` `in-place` says the node is itself the place assigned, a field of a struct named by an
+` index, so an assigning operator is planned at it as it is at an assignment. The value of
+` an assignment is what was assigned, or what the function of an assigning operator answers.
+` A struct and a tuple are values, so what such a function answers for one is assigned to the
+` place, as the reference assigns it: the value is then what the place holds, but for a local
+` or a global, where it is the answer. A function of its own name answers before any rule for
+` numbers does.
+if op == .eq-op
+    conversions.convert(id, rhs, value, target, .reason-assignment)
+    = value
+. token = program.store-atom("$op")
+if op == .add-eq-op && types.is-plain-tuple(target)
+    . extended = extended-tuple(target, value)
+    facts.set-node-type(instance, id, extended)
+    facts.set-plan(instance, id, .plan-extend)
+    = extended
+. stepped = increment-base(op)
+if stepped && stepped != .pow-op && stepped != .concat-op
+    calls.note-operand-suffix(rhs, lhs, target)
+. given = conversions.adapted-literal(rhs, value, target)
+. numeric = is-numeric(types, target) && is-numeric(types, given)
+if numeric && !calls.has-operator(target, token, given)
+    . promoted = promote(types, target, given)
+    . base = increment-base(op)
+    if (lhs != id || in-place) && base && base != .pow-op
+        . unit = unit-arithmetic-type(types, target, given)
+        plan-arithmetic(id, lhs, target, rhs, given, unit, promoted)
+        if unit != no-type
+            = target
+    if (lhs != id || in-place) && base && base == .pow-op
+        . raised = infer-binary-values(id, base, lhs, target, rhs, given)
+        if raised != invalid-type
+            conversions.convert(id, id, raised, target, .reason-assignment)
+        = target
+    if promoted != target
+        conversions.convert(id, id, promoted, target, .reason-assignment, true, given == target)
+        if lhs == id || is-identifier-syntax(lhs)
+            facts.set-node-type(instance, id, promoted)
+            = promoted
+    else if in-place
+        facts.set-node-type(instance, id, target)
+    = target
+. result = invalid-type
+. diagnosed = facts.diagnostics.length
+. answers = true
+. stores = false
+if calls.has-operator(target, token, value) • arg-syntax rhs
+    result = calls.operator-call(lhs, target, token, rhs, value)
+    . held = types.intrinsic-of(target)
+    stores = result != invalid-type && (held == .struct || held == .tuple)
+else
+    . base = increment-base(op)
+    if base
+        answers = false
+        result = infer-binary-values(id, base, lhs, target, rhs, value)
+        if result != invalid-type
+            conversions.convert(id, id, result, target, .reason-assignment)
+    else
+        result = calls.operator-call(lhs, target, token, rhs, value)
+if result == invalid-type && types.intrinsic-of(target) == .struct
+    facts.restate(diagnosed, instance, id, .illegal-operation, .function-not-found)
+facts.set-node-type(instance, id, result)
+if answers && result != invalid-type
+    place-given(id, rhs, value)
+if stores
+    facts.set-plan(instance, id, .plan-store-answer)
+    conversions.convert(id, id, result, target, .reason-assignment)
+    = if names-variable(lhs) then result else target
+= if answers && result != invalid-type then result else target
+
+────────────────────
+_ do place-given
+    - statement SyntaxId
+    - written SyntaxId
+    - closure TypeId
+
+` Says where the reference places the function a closure runs as a value of a function type
+` once the function that answers an assigning operator is given it: where the closure's
+` value is made. That is the statement for a closure written in a loop of its function,
+` whose turn holds it, and the line below the closure for any other.
+if closure == no-type || closure == invalid-type || types.intrinsic-of(closure) != .closure
+    =
+. row = bindings.bindings[frame.binding]
+for offset in 0 .. < row.nested.count
+    . nested = bindings.nested[row.nested.start + offset]
+    if nested.syntax != written
+        continue
+    . scope = bindings.scopes[nested.scope].parent
+    . looped = false
+    while bindings.scopes[scope].kind != .scope-function && bindings.scopes[scope].kind != .scope-nested
+        looped = looped || bindings.scopes[scope].kind == .scope-loop
+        scope = bindings.scopes[scope].parent
+    types.place-closure(closure, if looped then statement else written, !looped)
+    =
+
+────────────────────
+_ names-variable Bool
+    - id SyntaxId
+
+` Whether an expression is the name of a local or of a global.
+|? !is-identifier-syntax(id)
+    false
+??
+    kind == .resolve-slot || kind == .resolve-global
+
+.. kind = bindings.resolution-of(frame.binding, id).kind
+
+────────────────────
+_ do infer-destructure TypeId
+    - lhs SyntaxId
+    - items RowRange'SyntaxId
+    - rhs SyntaxId
+
+. value = infer(rhs)
+if value == invalid-type
+    = invalid-type
+facts.set-node-type(instance, lhs, value)
+types.complete(value)
+. arity = tuple-arity(value)
+if arity == U32.max
+    frame.diagnose(lhs, .stated, program.store-atom("Tuple expected"))
+    = invalid-type
+if items.count != arity
+    frame.diagnose(lhs, .stated, program.store-atom("Tuple sizes don't match"))
+    = invalid-type
+. position = 0u32
+for item in tree.children[items]
+    if position < arity
+        . field = field-of(value, position)
+        do match? tree.nodes[item]
+            | .node-identifier
+                . resolution = bindings.resolution-of(frame.binding, item)
+                if resolution.kind == .resolve-slot
+                    frame.assign
+                        - resolution.slot
+                        - assigned-part(item, written-part(rhs, position), field)
+    position += 1
+= value
+
+────────────────────
+_ do assigned-part TypeId
+    - item SyntaxId
+    - written SyntaxId
+    - field TypeId
+
+` What a local a tuple is taken apart into holds of a field: the field converted to the local's
+` type at the local's name, as an assignment converts it, and then the field itself, or the
+` local's type where both are numbers.
+. target = target-of(item)
+=? field if target == field || target == no-type || target == invalid-type
+if conversions.convert(item, written, field, target, .reason-assignment) == invalid-type
+    = target
+= if is-numeric(types, field) && is-numeric(types, target) then target else field
+
+────────────────────
+_ written-part SyntaxId
+    - rhs SyntaxId
+    - position U32
+
+` The item written at a position of a tuple written as a value, or none.
+match tree.nodes[rhs]
+    | .node-tuple-syntax(row)
+        if position < row.items.count then tree.children[row.items.start + position] else 0
+    ??
+        0
+
+────────────────────
+_ do infer-index-assign TypeId
+    - id SyntaxId
+    - assignment SyntaxId
+    - op Operator
+    - object-syntax SyntaxId
+    - key-syntax SyntaxId
+    - rhs SyntaxId
+    - is-optional Bool
+
+` An index assigned. An assigning operator reads the item by `[]` and gives the value its
+` operator makes to `[]=`, but where the item holds no struct or tuple and a function of the
+` operator's own name answers it, as the reference compiles it for an object: that function is
+` called on the item, and nothing is stored (`plan-answer-item`). An item past a pointer is
+` read and stored by its plan, and the operator is planned at the assignment, as for a field.
+` A text's item assigned gives a new text, stored where the text is held, so one written where
+` nothing holds it, as a literal or what a call gives, is an error.
+. value = stored-value(rhs, infer(rhs))
+. noted = facts.diagnostics.length
+. object-found = infer-found(object-syntax)
+. object = object-found.type
+. own = object-found.link
+if object == invalid-type
+    facts.resite(noted, instance, object-syntax, id)
+. key = infer(key-syntax)
+if object == invalid-type || key == invalid-type || value == invalid-type
+    = invalid-type
+. form = if is-optional then note-chain(id, id, object) else ChainForm.chain-plain
+if form == .chain-absent || absent-after(object-syntax, object)
+    = value
+. optional = form == .chain-tested
+object = link-receiver(object-syntax, object, own, optional)
+if refuses-write(id, object, true)
+    = invalid-type
+if object == types.string-type && !holds-text(object-syntax)
+    . message = "Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+. pointee = cpointer-item(object)
+if pointee == types.void-type
+    frame.diagnose(id, .stated, program.store-atom("Void has no physical address"))
+    = invalid-type
+if pointee != no-type
+    facts.set-plan(instance, id, .plan-item)
+    if op != .eq-op
+        facts.set-node-type(instance, id, pointee)
+        = assign-into(assignment, id, op, pointee, rhs, value)
+    conversions.convert(id, rhs, value, pointee, .reason-assignment)
+    = pointee
+if op == .eq-op && tuple-arity-at(object, key-syntax)
+    note-field(id, object, key-syntax)
+    = extended-tuple(object, value)
+. cell = view-index(object, key-syntax, true)
+if cell == no-type
+    cell = aggregate-field(object, key-syntax, key, types.index-assign-atom!, value)
+    if cell != no-type
+        note-field(id, object, key-syntax)
+        . held = types.intrinsic-of(object)
+        . stored = assign-into(id, id, op, cell, rhs, value, held == .struct)
+        if op == .eq-op && held == .struct
+            = cell
+        = if op == .eq-op && held == .tuple then object else stored
+if cell != no-type
+    plan-view(id, eager-slot(row-struct-of(object), key-syntax))
+    = assign-into(id, id, op, cell, rhs, value)
+if op == .eq-op && is-range-type(key) && view-kind(object) != 0
+    . same-item = row-struct-of(object) == row-struct-of(value)
+    if view-kind(value) != view-kind(object) || !same-item
+        . message = "Array view range assignment requires a compatible view"
+        frame.diagnose(id, .stated, program.store-atom(message))
+        = invalid-type
+    plan-view(id)
+    if !note-view-range(id, object-syntax, object, key-syntax, key)
+        = invalid-type
+    = types.void-type
+if op == .eq-op && view-kind(object) != 0
+    plan-view(id)
+    conversions.convert(key-syntax, key-syntax, key, types.index-type, .reason-argument)
+    = assign-into(id, id, op, row-struct-of(object), rhs, value)
+. is-array = is-array-type(object) && !is-range-type(key)
+. diagnosed = facts.diagnostics.length
+if op != .eq-op
+    . current = calls.operator-call(id, object, types.index-op-atom!, key-syntax, key)
+    if current == invalid-type
+        restate-index(diagnosed, id, object, key-syntax)
+        = invalid-type
+    . held = types.intrinsic-of(current)
+    . alone = held != .struct && held != .tuple && (calls.has-operator(current, program.store-atom("$op"), value) • arg-syntax rhs)
+    if alone
+        facts.set-node-type(instance, id, current)
+        facts.set-plan(instance, id, .plan-answer-item)
+    . updated = assign-into(id, id, op, current, rhs, value, true)
+    if alone
+        = updated
+    = calls.index-assign-call(id, object, key-syntax, key, rhs, current, is-array)
+. literal = tree.is-integer-literal(rhs)
+. first-call FactId = facts.calls.length as FactId
+. stored = calls.index-assign-call(id, object, key-syntax, key, rhs, value, is-array, literal)
+if stored != invalid-type && array-item && first-call < facts.calls.length
+    . store = facts.calls[first-call]
+    if store.syntax == id && store.callee != no-instance && two-args
+        calls.note-replaced-read(id, object, instances.argument-type(store.callee, 0))
+    .. two-args = instances.signatures[store.callee].args.count == 2
+.. array-item = is-array-value(value) && !is-range-type(key)
+if stored != invalid-type && !optional && is-array && own-call && stores-item
+    facts.set-plan(instance, id, .plan-array-item)
+.. own-call = first-call < facts.calls.length && facts.calls[first-call].syntax == id
+.. stores-item = calls.stores-array-item(facts.calls[first-call].callee)
+if stored == invalid-type
+    restate-index(diagnosed, id, object, key-syntax)
+else if !optional
+    store-through(id, object-syntax, object)
+if stored != invalid-type && first-call < facts.calls.length && stores-row
+    plan-table(id, .table-store)
+else if stored != invalid-type && types.intrinsic-of(object) == .table-column && !is-range-type(key)
+    plan-table(id, .table-item-store)
+else if stored != invalid-type && is-range-type(key) && copies-range(object, value)
+    if !note-view-range(id, object-syntax, object, key-syntax, key)
+        = invalid-type
+    plan-table(id, .table-range-store)
+.. stores-row = stores-table-row(object, facts.calls[first-call].callee)
+= stored
+
+────────────────────
+_ stores-table-row Bool
+    - object TypeId
+    - callee InstanceId
+
+` Whether an index assigned of a table or a span of one stores a row at a single index, which
+` TypeScript answers itself.
+|? (kind != .table && kind != .table-span) || callee == no-instance
+    false
+??
+    takes-two && instances.argument-type(callee, 0) == types.index-type
+
+.. kind = types.intrinsic-of(object)
+.. takes-two = instances.signatures[callee].args.count == 2
+
+────────────────────
+_ do copies-range Bool
+    - object TypeId
+    - given TypeId
+
+` Whether a range of a table, of a span of one or of a view of a field's column is assigned
+` from what TypeScript copies into it itself: the rows of a span or a table of struct or union
+` rows, or the items of a view of the same field's type.
+. kind = types.intrinsic-of(object)
+. given-kind = types.intrinsic-of(given)
+if kind == .table-column
+    = given-kind == .table-column && class-arg(types, given, 0) == class-arg(types, object, 0)
+if kind != .table && kind != .table-span
+    = false
+. row = types.intrinsic-of(row-struct-of(object))
+= given-table && (row == .struct || row == .union) && row-struct-of(given) == row-struct-of(object)
+    .. given-table = given-kind == .table-span || given-kind == .table
+
+────────────────────
+_ holds-text Bool
+    - object-syntax SyntaxId
+
+` Whether a text whose item is assigned is held where the new text is stored: not a literal, a
+` text joined from parts, or one a cast or a call gives.
+match tree.nodes[object-syntax]
+    | .node-string-syntax
+        false
+    | .node-binary-expression
+        false
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
+
+────────────────────
+_ do store-through
+    - id SyntaxId
+    - held-syntax SyntaxId
+    - held TypeId
+
+` Where the object of an index assigned is itself an index, has the `[]=` of the object that
+` inner index reads from recorded, for the answer the type pass planned to be stored.
+do match? tree.nodes[held-syntax]
+    | .node-index-expression(row)
+        . container = facts.node-type(instance, row.object)
+        . key = facts.node-type(instance, row.index)
+        . known = container != no-type && container != invalid-type
+        if known && key != no-type && key != invalid-type && !row.is-optional
+            calls.index-store-through(id, held-syntax, container, key, held)
+
+────────────────────
+_ do target-of TypeId
+    - lhs SyntaxId
+    - narrowed Bool = false
+
+do match? tree.nodes[lhs]
+    | .node-identifier(ident)
+        . resolution = bindings.resolution-of(frame.binding, lhs)
+        do match resolution.kind
+            |= .resolve-slot
+                . slot = resolution.slot
+                . known = if narrowed then frame.slot-type(slot) else slot-known(slot)
+                = if known == no-type then read-slot(slot) else known
+            |= .resolve-global
+                = demand-global(lhs, resolution.module, resolution.decl)
+            |= .resolve-member
+                = read-member(lhs, ident.name).type
+            ??
+                = invalid-type
+= infer(lhs)

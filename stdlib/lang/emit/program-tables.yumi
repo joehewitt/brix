@@ -2474,23 +2474,13 @@ do match? program.modules[row.module].decls[row.initializer]
 = false
 
 ────────────────────
-_ do function-scope ScopeId
-    - scope ScopeId
-
-` The scope of the function a scope lies in.
-. found = scope
-while bindings.scopes[found].kind != .scope-function && bindings.scopes[found].kind != .scope-nested
-    found = bindings.scopes[found].parent
-= found
-
-────────────────────
 _ do link-scopes
     - nested NestedFunction
 
 ` Marks each nested function's scope that lies between where a nested function is written
 ` and where a local it captures is declared. A slot only tasks capture is reached through the
 ` captures of the tasks around, which need no environment for the link.
-. written = function-scope(bindings.scopes[nested.scope].parent)
+. written = bindings.function-scope(bindings.scopes[nested.scope].parent)
 for index in 0 .. < nested.captures.count
     . slot = bindings.captures[nested.captures.start + index].slot
     if slot-copied[slot] != 0
@@ -2499,7 +2489,7 @@ for index in 0 .. < nested.captures.count
     . scope = written
     while home != no-scope && scope != home && bindings.scopes[scope].kind == .scope-nested
         scope-links[scope] = 1
-        scope = function-scope(bindings.scopes[scope].parent)
+        scope = bindings.function-scope(bindings.scopes[scope].parent)
 
 ────────────────────
 _ do mark-copies
@@ -2671,7 +2661,7 @@ if use.writes != 0 || use.refs != 0 || use.tracked != 0 || (use.flags /and/ apar
 if value == 0
     = false
 . dominated = bindings.lazy-dominated(slot)
-. home = function-scope(row.scope)
+. home = bindings.function-scope(row.scope)
 . declared = false
 for position in 0 .. < typed.length
     . instance = typed[position]
@@ -2909,7 +2899,7 @@ for offset in 0 .. < bound.slots.count
 if stepped
     for offset in 0 .. < bound.scopes.count
         . loop = bound.scopes.start + offset
-        if not-loop || scope-captures[loop] == 0 || function-scope(loop) != scope
+        if not-loop || scope-captures[loop] == 0 || bindings.function-scope(loop) != scope
             continue
         .. not-loop = bindings.scopes[loop].kind != .scope-loop
         turn-places[pair-key(instance, loop)] = children.length as U32
@@ -3067,7 +3057,7 @@ _ do lay-turns
 ` beside it. One that holds a local the instance types nothing for is not built yet.
 for offset in 0 .. < bound.scopes.count
     . loop = bound.scopes.start + offset
-    if !is-turn-scope(loop) || scope-captures[loop] == 0 || function-scope(loop) != scope
+    if !is-turn-scope(loop) || scope-captures[loop] == 0 || bindings.function-scope(loop) != scope
         continue
     . children [LayoutId]
     . held [TypeId]

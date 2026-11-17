@@ -1,0 +1,2252 @@
+./emitter
+./emitter.assignments
+./emitter.lazies
+./emitter.loops
+./emitter.markup
+./emitter.state-machines
+./emitter.styles
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-queries
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ LiveActions is facet of FunctionEmitter
+    sees Assignments
+    sees Lazies
+    sees Loops
+    sees Markup
+    sees StateMachines
+    sees Styles
+
+────────────────────
++ do bind-cells
+    - site SyntaxId
+    - subject Operand
+
+` Binds the state cells made at a site of this instance, in the order made (`bind-cell`): at a
+` markup element once its object is made, or, for none, in the function that fills an object
+` with its class's markup before the markup runs.
+for index in 0 .. < facts.scope-cells.length
+    . held = facts.scope-cells[index]
+    if held.instance == unit.reading && held.site == site
+        bind-cell(index as U32, subject)
+
+────────────────────
++ do make-cells
+    - site SyntaxId
+
+` Makes the state cells of a site of this instance, as the reference's
+` `createStyleScopeState` does, each kept in a local of its own (`state-cells`).
+for index in 0 .. < facts.scope-cells.length
+    . held = facts.scope-cells[index]
+    if held.instance != unit.reading || held.site != site
+        continue
+    . own-unit = unit
+    unit = unit.source-module = held.module
+    . local = ir.add-local(managed-layout)
+    store-local
+        - local
+        - call-instance(facts.style-runtime.scope-state, held.when, pending.length).operand
+        - held.when
+    state-cells += StateCell(index as U32, local)
+    unit = own-unit
+
+────────────────────
++ do take-cells
+    - declared SyntaxId
+
+` Keeps the state cells the function that fills an object with its class's markup is given, each
+` in a local of its own (`state-cells`).
+for index in 0 .. < facts.scope-cells.length
+    . held = facts.scope-cells[index]
+    if held.instance != unit.reading || held.argument == U32.max
+        continue
+    . place = instances.value-argument(unit.instance, held.argument)
+    . local = ir.add-local(managed-layout)
+    store-local
+        - local
+        - make-operand(.operand-argument, if unit.takes-self then place + 1 else place)
+        - declared
+    state-cells += StateCell(index as U32, local)
+
+────────────────────
++ do keep-cells
+    - declared SyntaxId
+
+` Keeps, in a function that builds markup, the state cells it keeps of the function it is written
+` in, which the environment it is given holds after the one that function had in force where it
+` made it (`kept-layout-of`), which is the environment it reads from, and then the values of rules
+` it keeps (`taken-values`); then those it reads from the cells the slot outlet that mounts what it
+` builds holds, as the reference's `style-outlet-state` reads one; each in a local of its own
+` (`state-cells`).
+. layout = tables.kept-layout-of(unit.instance)
+if layout != no-layout
+    . wrapper = make-operand(.operand-argument, 0)
+    made-environment = ir.add-local(managed-layout)
+    store-local
+        - made-environment
+        - load(wrapper, tables.layouts.field(layout, 0).offset, managed-layout, declared)
+        - declared
+    . place U32 = 1
+    for index in 0 .. < facts.scope-cells.length
+        . held = facts.scope-cells[index]
+        if held.instance != unit.reading || held.kept == U32.max
+            continue
+        . local = ir.add-local(managed-layout)
+        store-local
+            - local
+            - load
+                - wrapper
+                - tables.layouts.field(layout, held.kept + 1).offset
+                - managed-layout
+                - declared
+            - declared
+        state-cells += StateCell(index as U32, local)
+        place += 1
+    for index in 0 .. < facts.scope-values.length
+        . held = facts.scope-values[index]
+        if held.instance != unit.reading || held.kept == U32.max
+            continue
+        taken-values += TakenValues(index as U32, around-values.length as U32)
+        for position in held.type-first .. < held.type-first + held.count
+            . field = tables.layouts.field(layout, place)
+            if tables.layouts.is-struct(field.layout)
+                refuse(.refused-function, declared)
+                =
+            . local = ir.add-local(field.layout, false)
+            store-local(local, load(wrapper, field.offset, field.layout, declared), declared)
+            around-values += AroundValue(0, local, facts.scope-value-types[position])
+            place += 1
+for index in 0 .. < facts.scope-cells.length
+    . held = facts.scope-cells[index]
+    if held.instance != unit.reading || !held.read
+        continue
+    . mark = pending.length
+    pending += integer(.machine-u32, tables.state-key-number(held.key))
+    . local = ir.add-local(managed-layout)
+    store-local(local, call-instance(facts.style-runtime.outlet-state, declared, mark).operand, declared)
+    state-cells += StateCell(index as U32, local)
+
+────────────────────
++ do kept-cells Operand
+    - id SyntaxId
+    - type TypeId
+    - written Operand
+
+` The environment a nested function written at a node is given where it keeps state cells or
+` values of rules of the function it is written in (`kept-layout-of`): the environment in force
+` where it is written, then each cell it keeps, as made or given here, then each value
+` (`around-local`). The environment in force alone where it keeps none. One made by a function it
+` is not written in has no shape.
+. callee = kept-callee(type)
+if callee == no-instance
+    = written
+if instances.rows[callee].enclosing != unit.reading
+    refuse(.refused-expression, id)
+    = written
+. layout = tables.kept-layout-of(callee)
+. mark = pending.length
+pending += integer(.machine-u64, tables.layouts.rows[layout].size)
+pending += make-operand(.operand-descriptor, layout)
+. kept = ir.add-local(managed-layout)
+store-local(kept, call-runtime(.runtime-allocate-object, id, mark, managed-layout), id)
+store(load-local(kept, id), tables.layouts.field(layout, 0).offset, written, true, id)
+. place U32 = 1
+for held in facts.scope-cells
+    if held.instance != callee || held.kept == U32.max
+        continue
+    . local = cell-local(held.source)
+    if local == no-local
+        refuse(.refused-expression, id)
+        = written
+    store
+        - load-local(kept, id)
+        - tables.layouts.field(layout, held.kept + 1).offset
+        - load-local(local, id)
+        - true
+        - id
+    place += 1
+for held in facts.scope-values
+    if held.instance != callee || held.kept == U32.max
+        continue
+    for position in 0 .. < held.count
+        . (local, type) = around-local(held.source, position)
+        . field = tables.layouts.field(layout, place)
+        if local == no-local || other-type || tables.layouts.is-struct(field.layout)
+            refuse(.refused-expression, id)
+            = written
+        .. other-type = type != facts.scope-value-types[held.type-first + position]
+        store
+            - load-local(kept, id)
+            - field.offset
+            - load-local(local, id)
+            - is-managed-pointer(field.layout)
+            - id
+        place += 1
+= load-local(kept, id)
+
+────────────────────
+_ do kept-callee InstanceId
+    - type TypeId
+
+` The instance a closure type runs where it keeps state cells of the function it is written in,
+` or none.
+do match? types.rows[type]
+    | .type-closure(row)
+        for held in tables.kept-instances
+            . shape = instances.rows[held]
+            if shape.module == row.module && shape.decl == row.decl && same-enclosing
+                = held
+            .. same-enclosing = shape.enclosing == row.enclosing
+= no-instance
+
+────────────────────
+_ do bind-cell
+    - index U32
+    - subject Operand
+
+` Binds a state cell `make-cells` made to an object, read as of the cell's `owner`, as the
+` reference's `bindStyleScopeState` does: the cell is given its value once in a live action of
+` its own to gather what it reads (`set-cell`), and a live action with those trackers runs the
+` cell's function (`emit-scope-cell`) with what it keeps: the object and the cell. The object
+` owns that action (`attach-action`), since the trackers hold it only weakly.
+. held = facts.scope-cells[index]
+. own-unit = unit
+unit = unit.source-module = held.module
+. site = held.when
+. local = cell-local(index)
+if local == no-local
+    refuse(.refused-statement, site)
+    unit = own-unit
+    =
+. code = tables.cell-functions[index]
+. trackers = open-trackers(site)
+live-actions += LiveTrackers(trackers, trackers)
+set-cell(held, subject, held.owner, load-local(local, site))
+live-actions.pop()
+. layout = tables.cell-layouts[index]
+. size = tables.layouts.rows[layout].size
+. mark = pending.length
+pending += integer(.machine-u64, size)
+pending += make-operand(.operand-descriptor, layout)
+. kept = ir.add-local(managed-layout)
+store-local(kept, call-runtime(.runtime-allocate-object, site, mark, managed-layout), site)
+store(load-local(kept, site), tables.layouts.field(layout, 0).offset, subject, true, site)
+store
+    - load-local(kept, site)
+    - tables.layouts.field(layout, 1).offset
+    - load-local(local, site)
+    - true
+    - site
+. action = make-action
+    - load-local(trackers, site)
+    - tables.live-adapter-of(code)
+    - load-local(kept, site)
+    - site
+attach-action(subject, action.operand, site)
+unit = own-unit
+
+────────────────────
+_ do set-cell
+    - held ScopeCell
+    - subject Operand
+    - type TypeId
+    - target Operand
+
+` Gives a state cell whether the state its `when` names holds on an object of a type, read
+` tracked, as the reference's `bindStyleScopeState` assigns it: true, or where the `when` is
+` negated, false. The cell's `is-on` is set as an assignment sets it.
+do match? tree.nodes[held.when]
+    | .node-style-when(row)
+        track(held.when, subject, row.state)
+        . value = read-state(held.when, subject, type, row.state)
+        if row.is-negated
+            value = compare-zero(held.when, value, .compare-equal)
+        . cell = tables.cell-type()
+        . found = property-of(cell, program.store-atom("is-on"))
+        if !found
+            refuse(.refused-statement, held.when)
+            =
+        . field = held-field(held.when, cell, found)
+        put-property(target, field, types.properties[found], value.operand, held.when)
+
+────────────────────
++ do give-cells
+    - id SyntaxId
+    - count U32
+
+` Gives the constructor of a markup element the state cells the element's context gives, in the
+` order the type pass recorded them (`CarriedCell`), each as made or given where code is
+` emitted, and then the values of the rules around rules written in rules it gives
+` (`CarriedValues`), each as kept where code is emitted (`around-local`).
+. given U32
+for held in facts.carried-cells
+    if held.instance != unit.reading || held.site != id
+        continue
+    . local = cell-local(held.cell)
+    if local == no-local
+        refuse(.refused-expression, id)
+        =
+    pending += load-local(local, id)
+    given += 1
+for held in facts.carried-values
+    if held.instance != unit.reading || held.site != id
+        continue
+    for position in 0 .. < around-count(held.values)
+        . (local, type) = around-local(held.values, position)
+        if local == no-local
+            refuse(.refused-expression, id)
+            =
+        pending += load-local(local, id)
+        given += 1
+if given != count
+    refuse(.refused-expression, id)
+
+────────────────────
++ do emit-subscription
+    - id SyntaxId
+    - loop SyntaxId
+    - container SyntaxId
+
+` A loop on a stream where it is written: the container is made a `Broadcastable`, and the
+` loop's subscriber, the environment in force here, is made a `Subscriber` and given to the
+` broadcaster's `subscribe`, whose errors leave the function as the type pass said, or, where
+` an object owns it, to the object (see `own-subscription`), or where it has a `whenever`
+` clause, as `subscribe-whenever` says. A section of a class, which a constructor runs, has an
+` environment of its own: see `lone-environment`.
+. used = tables.event-use-of(unit.reading, id)
+. source = Typed(make-operand(.operand-void, 0), no-type)
+if used && used.second == no-instance
+    refuse(.refused-statement, id)
+    =
+if used
+    . owner = event-owner(used.reference, used.owner)
+    . number = tables.event-number(used.owner, used.name)
+    if number == U32.max
+        =
+    if used.address != 0
+        . endpoint = keyed-endpoint(id, used, owner.operand, number)
+        source = convert(loop, .reason-argument, endpoint)
+    else
+        source = event-endpoint(loop, used.first, owner.operand, number)
+else
+    source = emit-broadcastable(loop, container)
+. stream = source.operand
+. broadcaster = source.type
+. written = Typed(make-operand(.operand-void, 0), no-type)
+if unit.reading == unit.instance
+    written = emit-closure(id)
+else
+    . closure = subscriber-closure(id)
+    . lone = lone-environment(id, no-slot)
+    if closure == no-type
+        refuse(.refused-statement, id)
+        =
+    written = Typed(load-local(lone, id), closure)
+. subscriber = convert(id, .reason-argument, written)
+. given = subscriber.type
+. owned = tables.owned-subscription-of(unit.reading, id)
+. retested = tree.whenever-clause(loop)
+. retest = tables.live-statement-of(unit.reading, retested) if retested != 0
+if retest
+    subscribe-whenever(id, retested, retest, stream, broadcaster, subscriber.operand)
+else if retested != 0
+    refuse(.refused-statement, retested)
+else if owned
+    own-subscription(id, owned, stream, subscriber.operand, used != null, arrives(loop))
+else if used
+    . wrapping = pending.length
+    pending += subscriber.operand
+    pending += integer(.machine-u8, if arrives(loop) then 1 else 0)
+    . subscription = call-instance(used.second, id, wrapping)
+    do call-protocol(id, own-call(id), stream, broadcaster, subscription.operand, subscription.type)
+else
+    do call-protocol(id, own-call(id), stream, broadcaster, subscriber.operand, given)
+
+────────────────────
++ do subscribe-whenever
+    - id SyntaxId
+    - clause SyntaxId
+    - retest LiveStatement
+    - stream Operand
+    - broadcaster TypeId
+    - subscriber Operand
+
+` A loop or a comprehension on a stream with a `whenever` clause, subscribed as the reference
+` subscribes it: the clause's value is evaluated while a live action of its own is open, whose
+` trackers note what it reads. Where no object owns the subscription, the subscriber is
+` wrapped in a `Subscription`, which is given to the broadcaster's `subscribe` where the value
+` holds, whose errors leave the function as the type pass said. Where an object owns it, the
+` tracker `own-tracker` makes of it is added to the action's trackers where the value holds.
+` What the value gave, the subscription or its tracker, and the broadcaster are kept in the
+` locals declared at the clause, and the action is made with those trackers and a callback
+` that tests the clause again through the function written for it, given the environment in
+` force here, or one of its own where none is (see `lone-environment`). The object that owns
+` the subscription owns the action.
+. slot = channel-slot(clause)
+. code = if retest.rerun != no-instance then rerun-function else no-function
+    .. rerun-function = tables.instance-functions[retest.rerun]
+. owned = tables.owned-subscription-of(unit.reading, clause)
+. made = call-at(clause, .call-constructor)
+if slot == no-slot || code == no-function || (!owned && made == no-fact) || (owned && !unit.has-self)
+    refuse(.refused-statement, clause)
+    =
+. lone = if unit.reading != unit.instance then lone-environment(clause, slot, 3) else no-local
+. trackers = open-trackers(clause)
+live-actions += LiveTrackers(trackers, trackers)
+. passed = emit-expression(tree.clause-expr(clause))
+live-actions.pop()
+. kept = Typed(make-operand(.operand-void, 0), no-type)
+if owned
+    kept = own-tracker(clause, owned, stream, subscriber)
+else
+    . mark = pending.length
+    pending += subscriber
+    kept = call-instance(facts.calls[made].callee, clause, mark)
+keep-hidden(lone, slot + 1, kept.operand, kept.type, clause)
+keep-hidden(lone, slot, passed.operand, types.bool-type, clause)
+. adding = ir.reserve-block()
+. done = ir.reserve-block()
+branch(passed.operand, adding, done)
+ir.start-block(adding)
+. given = convert(clause, .reason-argument, kept)
+. given-type = given.type
+if owned
+    add-tracker(load-local(trackers, clause), given.operand, clause)
+else
+    do call-protocol(id, call-at(id, .call-method), stream, broadcaster, given.operand, given-type)
+jump(done)
+ir.start-block(done)
+keep-hidden(lone, slot + 2, stream, broadcaster, clause)
+. environment = if lone != no-local then load-local(lone, clause) else written-environment(clause)
+if owned
+    do own-action(load-local(trackers, clause), code, environment, clause)
+else
+    do make-action(load-local(trackers, clause), tables.live-adapter-of(code), environment, clause)
+
+────────────────────
+_ do keep-hidden
+    - lone LocalId
+    - slot SlotId
+    - value Operand
+    - type TypeId
+    - site SyntaxId
+
+` Stores a value in a local no name reaches that a nested function captures: in the
+` environment `lone` made for that function alone, where there is one.
+if lone != no-local
+    keep-lone(lone, slot, value, type, site)
+else
+    keep-captured(slot, value, type, site)
+
+────────────────────
++ do add-tracker
+    - trackers Operand
+    - tracker Operand
+    - site SyntaxId
+
+` Adds a tracker, made a `Tracker`, to a list of trackers.
+. adding = pending.length
+pending += trackers
+pending += tracker
+do call-instance(instances.live.add-tracker, site, adding)
+
+────────────────────
+_ do retrack
+    - clause SyntaxId
+    - slot SlotId
+    - passed Operand
+    - next LocalId
+
+` The rest of a test of a `whenever` clause again where an object owns the subscription: where
+` the value holds, the tracker kept in `slot` is added to the trackers the action now has, so
+` that it stays attached, and the subscription with it; where not, the action detaches it.
+. type = find-captured(slot, clause).type
+. adding = ir.reserve-block()
+. done = ir.reserve-block()
+branch(passed, adding, done)
+ir.start-block(adding)
+. tracker = read-captured(slot, clause, type)
+. given = convert(clause, .reason-argument, Typed(tracker.operand, type))
+add-tracker(load-local(next, clause), given.operand, clause)
+jump(done)
+ir.start-block(done)
+emit-end(clause)
+
+────────────────────
++ do own-subscription
+    - id SyntaxId
+    - row OwnedSubscription
+    - stream Operand
+    - subscriber Operand
+    - event Bool = false
+    - arrival Bool = false
+
+` A subscription the object owns, as the reference makes it: the tracker `own-tracker` makes
+` of it is added to the trackers of a live action of the object, whose constructor attaches the
+` tracker, which subscribes, and whose callback does nothing.
+. tracker = own-tracker(id, row, stream, subscriber, event, arrival)
+. given = convert(id, .reason-argument, tracker)
+. trackers = open-trackers(id)
+add-tracker(load-local(trackers, id), given.operand, id)
+do own-callback(load-local(trackers, id), idle, integer(.machine-managed-pointer, 0), id)
+    .. idle = tables.idle-action
+
+────────────────────
+_ do own-tracker Typed
+    - id SyntaxId
+    - row OwnedSubscription
+    - stream Operand
+    - subscriber Operand
+    - event Bool = false
+    - arrival Bool = false
+
+` The tracker that subscribes a subscription an object owns: the subscriber is wrapped in a
+` `Subscription`, or for an `event` in the event runtime's subscription, which hears every
+` publication or with `arrival` only those the object is the target of, and given with the
+` broadcaster to a `SubscriptionTracker`, whose type it has.
+. nothing = make-operand(.operand-void, 0)
+. mark = pending.length
+pending += subscriber
+if event
+    pending += integer(.machine-u8, if arrival then 1 else 0)
+. made = call-instance(row.subscription, id, mark)
+. wrapped = convert(id, .reason-argument, made)
+. tracking = pending.length
+pending += stream
+pending += wrapped.operand
+= call-instance(row.tracker, id, tracking)
+
+────────────────────
++ do subscriber-closure TypeId
+    - id SyntaxId
+
+` The closure a comprehension on a stream subscribes, as the conversion recorded where it is
+` made a `Subscriber` gives it.
+. scan = facts.first-conversion(unit.reading, id)
+while scan != no-fact
+    . row = facts.conversions[scan]
+    if row.reason == .reason-argument && is-closure(row.from)
+        = row.from
+    scan = row.next
+= no-type
+
+────────────────────
++ do emit-subscriber
+    - loop SyntaxId
+    - clause SyntaxId
+    - body SyntaxId
+    - writes SyntaxId = 0
+
+` The function a loop on a stream runs for each item it is given, after the environment it
+` was made with: the header's pattern takes the item, and a `when` that fails or an item a
+` match passes over returns. A `while` or an `until` that fails unsubscribes and returns.
+` Then the body runs, where a `break` that leaves no loop of the body unsubscribes and returns.
+` That of a comprehension on a stream, which `writes` to the
+` comprehension's channel, tests its clauses in the order written and writes what its body
+` gives.
+. type = instances.argument-type(unit.instance, 0)
+. last = loop-slots(loop) + loop-state-count - 1
+. skip = ir.reserve-block()
+. ended = ir.reserve-block()
+. item = make-operand(.operand-argument, 1)
+take-item(loop, last, item, type, skip)
+. turned = facts.slot-type(unit.instance, slot-offset(last, loop))
+. depth = loops.length
+loops += EmittedLoop(loop, skip, ended, item, turned, open-cleanups.length, last)
+emit-clause(clause, skip, ended)
+if writes != 0
+    emit-write(writes, body)
+else
+    emit-block(body)
+while loops.length > depth
+    loops.pop()
+jump(skip)
+ir.start-block(ended)
+if own-call(loop) != no-fact
+    unsubscribe(loop)
+jump(skip)
+ir.start-block(skip)
+
+────────────────────
+_ do emit-write
+    - id SyntaxId
+    - body SyntaxId
+
+` What the body of a comprehension on a stream gives, written to the channel the comprehension
+` made, read from the environment it was kept in, by the call of `<-` the type pass recorded
+` at the comprehension.
+. value = emit-expression(body)
+. written = value.type
+. fact = call-at(id, .call-operator)
+. slot = channel-slot(id)
+if fact == no-fact || slot == no-slot || facts.calls[fact].callee == no-instance
+    refuse(.refused-expression, id)
+    =
+. channel = instances.rows[facts.calls[fact].callee].self-type
+. held = read-captured(slot, id, channel)
+do call-operator(id, fact, id, held.operand, channel, body, value.operand, written)
+
+────────────────────
++ do breaks-subscription Bool
+
+` Whether a `break` here unsubscribes: the innermost loop is the one on a stream that the
+` function being emitted runs for an item.
+if subscribing == 0 || loops.length == 0
+    = false
+do match? tree.nodes[subscribing]
+    | .node-for-block(row)
+        = loops[loops.length - 1].syntax == row.loop
+= false
+
+────────────────────
++ do unsubscribe
+    - site SyntaxId
+
+` The subscriber being run, made a `Subscriber` again by the conversion recorded where it was
+` subscribed, so it is the same value, given to `unsubscribe` of the stream it was given, as
+` the type pass recorded at the node that unsubscribes. An error that leaves `unsubscribe` is
+` given to the global `unhandled-error` and what follows runs, as the reference's raw call does.
+. fact = own-call(site)
+. closure = facts.node-type(unit.reading, subscribing)
+. enclosing = facts-owner(instances.rows[unit.instance].enclosing)
+. made = no-fact
+. scan = if enclosing != no-instance then enclosing-first else no-fact
+    .. enclosing-first = facts.first-conversion(enclosing, subscribing)
+while scan != no-fact
+    . row = facts.conversions[scan]
+    if row.reason == .reason-argument && row.from == closure
+        made = scan
+    scan = row.next
+if fact == no-fact || made == no-fact
+    refuse(.refused-statement, site)
+    =
+. subscriber = convert-one(site, facts.conversions[made], Typed(make-operand(.operand-argument, 0), closure))
+. given = subscriber.type
+. stream = make-operand(.operand-argument, 2)
+. broadcaster = instances.argument-type(unit.instance, 1)
+call-subscription(site, fact, stream, broadcaster, subscriber.operand, given)
+
+────────────────────
++ do call-subscription
+    - site SyntaxId
+    - fact FactId
+    - stream Operand
+    - broadcaster TypeId
+    - given Operand
+    - given-type TypeId
+
+` The broadcaster's `subscribe` or `unsubscribe` the type pass recorded as `fact`, given a
+` subscriber or a subscription, as the reference's raw call makes it: an error that leaves it is
+` given to the global `unhandled-error` and what follows runs.
+. callee = facts.calls[fact].callee
+if layout-of(given-type, site) != layout-of(instances.argument-type(callee, 0), site) || other-self
+    refuse(.refused-statement, site)
+    =
+.. other-self = broadcaster != instances.rows[callee].self-type
+. raising = instances.signatures[callee].errors.count != 0
+. mark = pending.length
+pending += stream
+pending += given
+takes-result = raising
+. answer = call-instance(callee, site, mark, false, true)
+takes-result = false
+if raising
+    do report-result(site, instances.signatures[callee].result, answer.operand, true)
+
+────────────────────
++ do emit-retest
+    - clause SyntaxId
+
+` The function a live action runs to test a `whenever` clause again, given the environment the
+` loop was written in, as the reference's closure does: the clause's value, with the trackers
+` of the action that runs it noting what it reads, is compared with the one the clause last
+` gave, kept where the loop was written. Where it differs it is kept instead, and the
+` subscription kept there is given to the broadcaster's `subscribe` where the value holds, or
+` else to its `unsubscribe`, as `call-subscription` says. Where an object owns the
+` subscription, the clause is tested as `retrack` says instead.
+. live = instances.live
+. calls = facts.whenever-calls-of(unit.instance)
+. slot = channel-slot(clause)
+if live.previous == no-instance || live.next == no-instance || !calls || slot == no-slot
+    refuse(.refused-function, clause)
+    =
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, clause, pending.length).operand, clause)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, clause, pending.length).operand, clause)
+live-actions += LiveTrackers(previous, next)
+. passed = emit-expression(tree.clause-expr(clause))
+live-actions.pop()
+if calls.owns
+    retrack(clause, slot + 1, passed.operand, next)
+    =
+. last = read-captured(slot, clause, types.bool-type)
+. wrapped = find-captured(slot + 1, clause).type
+. broadcaster = find-captured(slot + 2, clause).type
+. changing = ir.reserve-block()
+. done = ir.reserve-block()
+branch(compare(clause, .compare-not-equal, passed.operand, last.operand), changing, done)
+ir.start-block(changing)
+keep-captured(slot, passed.operand, types.bool-type, clause)
+. stream = read-captured(slot + 2, clause, broadcaster)
+. subscription = read-captured(slot + 1, clause, wrapped)
+. given = convert(clause, .reason-argument, Typed(subscription.operand, wrapped))
+. given-type = given.type
+. adding = ir.reserve-block()
+. dropping = ir.reserve-block()
+branch(passed.operand, adding, dropping)
+ir.start-block(adding)
+call-subscription(clause, calls.subscribe, stream.operand, broadcaster, given.operand, given-type)
+jump(done)
+ir.start-block(dropping)
+call-subscription(clause, calls.unsubscribe, stream.operand, broadcaster, given.operand, given-type)
+jump(done)
+ir.start-block(done)
+emit-end(clause)
+
+────────────────────
++ do get reruns-statement Bool
+
+` Whether the function being emitted is one a live action runs a live statement again with.
+if function.kind != .instance-body || unit.instance == no-instance
+    = false
+. row = instances.rows[unit.instance]
+do match? program.modules[row.module].decls[row.decl]
+    | .decl-function(fn)
+        = fn.kind == .live-decl
+= false
+
+────────────────────
++ do open-trackers LocalId
+    - site SyntaxId
+
+` A new list of trackers for a live action a value runs in, or one that owns a subscription,
+` kept in a local of its own.
+. made = call-instance(instances.live.trackers, site, pending.length)
+. kept = ir.add-local(managed-layout)
+store-local(kept, made.operand, site)
+= kept
+
+────────────────────
++ do subscribe-values
+    - site SyntaxId
+
+` Makes the live action of each value that read something tracked as the constructor gave it,
+` in the order the properties are declared, with the trackers it noted and its property's
+` updater as the callback, and gives the object the action.
+for position in 0 .. < filling.count
+    for index in 0 .. < place-trackers.length
+        if place-trackers[index].place == filling.start + position
+            subscribe-value(place-trackers[index].place, place-trackers[index].trackers, filling.type, site)
+place-trackers.clear()
+
+────────────────────
++ do subscribe-value
+    - place U32
+    - trackers LocalId
+    - owner TypeId
+    - site SyntaxId
+
+` A live action of the object being made, with the trackers a value noted and a callback that
+` runs the property's updater with the object. Where the object's class keeps a flag for the
+` property, the action is its memo, which a change of what the value read marks rather than
+` runs, and a read settles.
+. code = tables.updater-of(place)
+if code == no-function
+    refuse(.refused-function, site)
+    =
+. flag = memo-flag-of(owner, types.properties[place])
+. live = instances.live
+if flag == U32.max || live.memo-action == no-instance
+    do own-action(load-local(trackers, site), code, unit.self, site)
+    =
+. callback = make-callback(tables.live-adapter-of(code), unit.self, site)
+. mark = pending.length
+pending += load-local(trackers, site)
+pending += callback
+pending += num-cast(site, unit.self, managed-layout, pointer-layout)
+pending += integer(.machine-u64, flag)
+pending += make-operand(.operand-constant, ir.add-string(types.properties[place].name.text))
+. action = call-instance(live.memo-action, site, mark)
+attach-action(unit.self, action.operand, site)
+
+────────────────────
++ do own-action Operand
+    - trackers Operand
+    - code FunctionId
+    - data Operand
+    - site SyntaxId
+
+` Gives the object being made a live action with the trackers given and a callback that runs
+` a function again with the data given, through the function's adapter, and answers it. Where
+` no markup element is being built and the object's class is a markup host or batch, the action
+` is made the way the type pass chose (`SelfAction`), or refused where it chose none.
+. nothing = make-operand(.operand-void, 0)
+. owned = facts.self-action-of(unit.reading) if content-hosts.length == 0 && unit.has-self
+if !owned
+    = own-callback(trackers, tables.live-adapter-of(code), data, site)
+if owned.maker == no-instance
+    refuse(.refused-function, site)
+    = nothing
+. callback = make-callback(tables.live-adapter-of(code), data, site)
+. owner = convert-self
+    - owned.site
+    - if owned.rooted then .reason-markup-batch else .reason-markup-host
+. mark = pending.length
+pending += trackers
+pending += callback
+pending += owner.operand
+. action = raising-call(owned.site, owned.maker, mark)
+attach-action(unit.self, action.operand, site)
+= action.operand
+
+────────────────────
++ do emit-live-statement
+    - id SyntaxId
+    - row LiveStatement
+    - lhs SyntaxId
+    - rhs SyntaxId
+
+` An assignment whose value reads something tracked, as the reference compiles it: it is
+` stored as any assignment is, while a live action of its own is open, whose trackers note what
+` the value reads. Then the action is made with those trackers and a callback that runs the
+` statement again through the function written for it, given the environment in force here,
+` and the object named alone whose property is assigned, read again, owns the action where it
+` is of a class. Where that class is a markup host or batch, the action is made as the type
+` pass chose for it (`LiveStatement`), given the object as its host or its batch.
+. code = if row.rerun != no-instance then tables.instance-functions[row.rerun] else no-function
+if code == no-function || is-chained(rhs) || is-link(lhs)
+    refuse(.refused-statement, id)
+    =
+. trackers = open-trackers(id)
+live-actions += LiveTrackers(trackers, trackers)
+emit-assign(id, .eq-op, lhs, rhs)
+live-actions.pop()
+. owner = make-operand(.operand-void, 0)
+. held = no-type
+. owned = false
+do match? tree.nodes[lhs]
+    | .node-get-expression(get)
+        . emitted = emit-expression(get.object)
+        owner = emitted.operand
+        held = emitted.type
+        owned = tables.is-class(emitted.type)
+. adapter = tables.live-adapter-of(code)
+if row.owned != no-instance
+    if !owned || held != row.holder
+        refuse(.refused-statement, id)
+        =
+    . callback = make-callback(adapter, written-environment(id), id)
+    . given = convert
+        - id
+        - if row.rooted then .reason-markup-batch else .reason-markup-host
+        - Typed(owner, held)
+    . mark = pending.length
+    pending += load-local(trackers, id)
+    pending += callback
+    pending += given.operand
+    . made = raising-call(id, row.owned, mark)
+    attach-action(owner, made.operand, id)
+    =
+. action = make-action(load-local(trackers, id), adapter, written-environment(id), id)
+if owned
+    attach-action(owner, action.operand, id)
+
+────────────────────
+_ do write-again
+    - statement SyntaxId
+    - expr SyntaxId
+
+` The value of a stream of a value as it changes, given again by its live action: evaluated with
+` the trackers of the action noting what it reads, and written by `<-write` to the channel kept
+` where the stream was made.
+. slot = channel-slot(statement)
+. write = stream-call(statement, .call-method)
+if slot == no-slot || write == no-fact
+    refuse(.refused-statement, statement)
+    =
+. found = find-captured(slot, statement)
+. channel = read-captured(slot, statement, found.type)
+. value = emit-expression(expr)
+. held = value.type
+do call-protocol(statement, write, channel.operand, found.type, value.operand, held, false)
+
+────────────────────
++ do emit-rerun
+    - declared SyntaxId
+    - statement SyntaxId
+
+` The function a live action runs a live statement again with, given the environment the
+` statement was written in: the statement runs again with the trackers of the action that runs
+` it noting what its value reads, as the reference's closure does, an assignment as one, and so
+` a line of a class's markup that declares a property (`content-property`), a declaration as
+` `declare-again` says, a line of a markup element's body that gives content
+` as `absorb-again` or `replace-again` says, and the value of a stream as `write-again` says. An
+` attribute of an element and a line of a style rule that sets a property are stored again in the
+` object kept where they were written (`store-again`).
+. live = instances.live
+if live.previous == no-instance || live.next == no-instance
+    refuse(.refused-function, declared)
+    =
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, statement, pending.length).operand, statement)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, statement, pending.length).operand, statement)
+live-actions += LiveTrackers(previous, next)
+rerunning = true
+. element = tree.argument-element(statement)
+. streamed SyntaxId = 0
+do match? tree.nodes[statement]
+    | .node-iterable-expression(row)
+        streamed = row.expr
+if streamed != 0
+    write-again(statement, streamed)
+else if element != 0
+    . row = tables.live-statement-of(instances.rows[unit.instance].enclosing, statement)
+    if row && row.property != U32.max
+        store-again(statement, element, types.properties[row.property].name, statement)
+    else
+        refuse(.refused-statement, statement)
+else if tree.content-line(statement)
+    if replaces(statement)
+        replace-again(statement)
+    else
+        absorb-again(statement)
+else if tree.bound-attribute(statement) != 0
+    store-back(statement, tree.bound-attribute(statement))
+else
+    do match tree.nodes[statement]
+        | .node-assign(row)
+            . styled = facts.style-declaration-of(instances.rows[unit.instance].enclosing, statement)
+            if styled
+                author-again(statement, row.rhs, styled)
+            else if tree.attribute-element(statement) != 0 || rule-update
+                . name = identifier-name(tree, row.lhs)
+                . setter = own-call(row.lhs)
+                if setter != no-fact && facts.calls[setter].form == .call-setter
+                    set-again(statement, row.lhs, row.rhs, facts.calls[setter].callee)
+                else if name
+                    store-again(statement, statement, name, row.rhs)
+                else
+                    refuse(.refused-statement, statement)
+            else
+                emit-assign(statement, row.op, row.lhs, row.rhs)
+            .. rule-update = facts.rule-update-of(instances.rows[unit.instance].enclosing, statement)
+        | .node-property-syntax(row)
+            emit-assign(statement, .eq-op, tree.content-property-name(statement), row.value)
+        | .node-declare(row)
+            declare-again(statement, row.left, row.right)
+        ??
+            refuse(.refused-statement, statement)
+rerunning = false
+live-actions.pop()
+emit-end(declared)
+
+────────────────────
++ do reruns-in Bool
+    - owner InstanceId
+
+` Whether the function being emitted runs again a statement the instance given writes.
+if instances.rows[unit.instance].enclosing != owner
+    = false
+do match? program.modules[instances.rows[unit.instance].module].decls[instances.rows[unit.instance].decl]
+    | .decl-function(fn)
+        = fn.kind == .live-decl
+= false
+
+────────────────────
+_ do store-again
+    - statement SyntaxId
+    - kept SyntaxId
+    - name Atom
+    - rhs SyntaxId
+
+` An attribute of a markup element, or an argument given by position, given again, as the
+` reference's `prop-` function gives it: its value, converted as where it is written, is
+` stored in the property of `name` of the element's object, kept at `kept` where the element
+` was made, as an assignment to the property stores it.
+. slot = channel-slot(kept)
+if slot == no-slot
+    refuse(.refused-statement, statement)
+    =
+. found = find-captured(slot, statement)
+. type = found.type
+. place = types.property-named(type, name)
+. held = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+if !place || held == no-layout
+    refuse(.refused-statement, statement)
+    =
+. property = types.properties[place]
+if property.storage-kind != .storage-eager
+    refuse(.refused-statement, statement)
+    =
+. value = convert(statement, .reason-assignment, emit-expression(rhs))
+if value.type != property.type
+    refuse(.refused-conversion, statement)
+    =
+. object = read-captured(slot, statement, type)
+put-property
+    - object.operand
+    - tables.layouts.field(held, object-header-fields + property.slot)
+    - property
+    - value.operand
+    - statement
+    - U32.max
+    - false
+    - memo-flag-of(type, property)
+
+────────────────────
+_ do store-back
+    - anchor SyntaxId
+    - statement SyntaxId
+
+` A binding's element given again to its place, as its property changes: the property is read
+` from the element's object, kept where the element was made, in the action's trackers, and
+` stored in the place as an assignment to it stores. Where the type pass recorded a conversion
+` back, the value stored is given back to the element, which then shows what the place holds.
+. slot = channel-slot(statement)
+. name = identifier-name(tree, anchor)
+if slot == no-slot || !name
+    refuse(.refused-statement, statement)
+    =
+. type = find-captured(slot, anchor).type
+. place = types.property-named(type, name)
+. held = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+if !place || held == no-layout || types.properties[place].storage-kind != .storage-eager
+    refuse(.refused-statement, statement)
+    =
+. property = types.properties[place]
+. object = read-captured(slot, anchor, type)
+track(anchor, object.operand, name)
+. read = load-property(anchor, object.operand, type, name, true)
+. tracking = live-actions.pop()
+. unwraps = types.is-optional(read.type) && facts.node-type(unit.reading, anchor) == types.optional-inner(read.type)
+. onward = if unwraps then ir.reserve-block() else no-block
+if unwraps
+    . filled = ir.reserve-block()
+    branch(present(anchor, read).operand, filled, onward)
+    ir.start-block(filled)
+. value = if unwraps then payload(anchor, read) else read
+. mark = pins.length
+pin(anchor, value.operand, value.type)
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        . assignment = emit-assign(anchor, .eq-op, row.rhs, anchor)
+        unpin(mark)
+        if !unwraps && assignment.stored.type != no-type && assignment.stored.type != property.type
+            . back = convert(statement, .reason-assignment, assignment.stored)
+            if back.type == property.type
+                put-property
+                    - object.operand
+                    - tables.layouts.field(held, object-header-fields + property.slot)
+                    - property
+                    - back.operand
+                    - statement
+                    - U32.max
+                    - false
+                    - memo-flag-of(type, property)
+if unwraps
+    jump(onward)
+    ir.start-block(onward)
+live-actions += tracking
+
+────────────────────
+_ do set-again
+    - statement SyntaxId
+    - target SyntaxId
+    - rhs SyntaxId
+    - callee InstanceId
+
+. slot = channel-slot(statement)
+if slot == no-slot || callee == no-instance || !is-callable(callee) || other-arity
+    refuse(.refused-statement, statement)
+    =
+.. other-arity = instances.signatures[callee].args.count != 1
+. type = find-captured(slot, statement).type
+. given = convert(rhs, .reason-argument, emit-expression(rhs))
+if given.type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, statement)
+    =
+. object = read-captured(slot, statement, type)
+. receiver = convert(target, .reason-receiver, Typed(object.operand, type))
+if receiver.type != instances.rows[callee].self-type
+    refuse(.refused-conversion, statement)
+    =
+. mark = pending.length
+pending += receiver.operand
+pending += given.operand
+call-method(callee, target, mark)
+
+────────────────────
+_ do replaces Bool
+    - statement SyntaxId
+
+` Whether a line of a markup element's body that a live action gives again replaces what the
+` element took, rather than being absorbed again.
+. slot = line-keeper(statement)
+if slot == no-slot
+    = false
+. found = find-captured(slot + 1, statement)
+= found.type != types.void-type
+
+────────────────────
+_ do replace-again
+    - statement SyntaxId
+
+` A line of a markup element's body given again in place of what the element took before, as
+` the reference's replacer gives it: the element's object and what it took, kept where the
+` element was made, are read, and the line's value is made the node a markup host's
+` `markup-content` makes of it, which the markup runtime's `markup-replace` puts in place of the
+` one before, or is given with the one before to the element's `replace`, whose answer, where it
+` gives one, is kept in place of the value. What was taken before is closed, by its `close` or
+` by closing each action it owns, and what is kept now is kept in its place.
+. nothing = make-operand(.operand-void, 0)
+. slot = line-keeper(statement)
+. link = facts.content-link-of(unit.reading, statement)
+if slot == no-slot || link == U32.max
+    refuse(.refused-statement, statement)
+    =
+. row = facts.content-links[link]
+. kept-slot = (slot + 1) as SlotId
+. held = find-captured(slot, statement)
+. object = read-captured(slot, statement, held.type)
+. earlier = find-captured(kept-slot, statement)
+. previous = read-captured(kept-slot, statement, earlier.type)
+content-hosts += Typed(object.operand, held.type)
+. value = emit-expression(statement)
+content-hosts.pop()
+. kept = value
+. kept-type = kept.type
+if row.append != no-instance
+    . given = convert(statement, .reason-argument, Typed(value.operand, kept.type))
+    if given.type != row.taken
+        refuse(.refused-conversion, statement)
+    kept = call-protocol(statement, row.call, object.operand, row.parent, given.operand, row.taken, false)
+    kept-type = kept.type
+    . mark = pending.length
+    pending += object.operand
+    pending += previous.operand
+    pending += kept.operand
+    do call-instance(row.append, statement, mark)
+else
+    . answer = call-protocol
+        - statement
+        - row.call
+        - object.operand
+        - row.parent
+        - previous.operand
+        - earlier.type
+        - false
+        - value.operand
+        - kept-type
+    if answer.type != types.void-type
+        kept = answer
+        kept-type = kept.type
+if row.close != no-fact
+    do call-protocol(statement, row.close, previous.operand, earlier.type, nothing)
+else
+    close-actions(statement, previous.operand)
+keep-captured(kept-slot, kept.operand, kept-type, statement)
+
+────────────────────
+_ do absorb-again
+    - statement SyntaxId
+
+` A line of a markup element's body that gives content, given the element again, as the
+` reference's absorber gives it: the element's object, kept at the line where the element was
+` made, is the element being built while the line runs as content, as the type pass typed it.
+. slot = line-keeper(statement)
+. link = facts.content-link-of(unit.reading, statement)
+if slot == no-slot || link == U32.max
+    refuse(.refused-statement, statement)
+    =
+. found = find-captured(slot, statement)
+. object = read-captured(slot, statement, found.type)
+content-hosts += Typed(object.operand, found.type)
+emit-content(statement, facts.content-links[link])
+content-hosts.pop()
+
+────────────────────
+_ do declare-again
+    - statement SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+` A lazy declaration run again, as the reference's `var` function runs it: its value is
+` evaluated and stored in the local it declares, held by the environment of the function that
+` declares it, which then has its value; the store runs the actions that read the local where
+` its bits change, as an assignment's does. One that holds a struct has no shape here where a
+` read tracks it.
+. slot = declared-slot(statement)
+if slot == no-slot || !is-captured(slot)
+    refuse(.refused-statement, statement)
+    =
+. field = find-captured(slot, statement)
+. value = declared-value(left, 0, right, field.type)
+. watched = watches(slot, statement)
+if watched && tables.layouts.is-struct(field.layout)
+    refuse(.refused-statement, statement)
+. prior = if watched then read-captured(slot, statement, field.type).operand else no-prior
+    .. no-prior = make-operand(.operand-void, 0)
+keep-captured(slot, value.operand, field.type, statement)
+settle-shared(slot, statement)
+if watched
+    dispatch-local(slot, prior, read-captured(slot, statement, field.type).operand, field.type, statement)
+
+────────────────────
+_ do declared-slot SlotId
+    - statement SyntaxId
+
+` The lazy local a declaration declares, of those the function's binding holds, or none.
+for offset in 0 .. < unit.slot-count
+    . row = bindings.slots[unit.slot-start + offset]
+    if row.kind == .slot-lazy && row.group == statement
+        = unit.slot-start + offset
+= no-slot
+
+────────────────────
++ do run-class-rules
+    - type TypeId
+    - site SyntaxId
+
+` Runs each rule of the class of the object a constructor has made, and of the classes above
+` it, base first, once the constructor's body has run, as the reference runs them: each in a
+` live action of its own whose trackers note what it reads, which is then the object's. What
+` the rule keeps for the object is made here, holding the object, and is the data of the
+` action's callback, which runs the rule again. A rule is read through the facts of the
+` instance that types it, and a local it declares has no shape here. A section the event
+` runtime runs from the table of the class is not subscribed. A state machine a property holds
+` starts among them (see `start-member-machine`). The queries of the markup the
+` object is in that each class declares are registered once its rules have run, and then its
+` style defaults are declared (see `register-queries`, `apply-style-defaults`).
+. chain [TypeId]
+. level TypeId? = type
+while level && tables.is-class(level)
+    chain += level
+    level = types.base-of(level)
+. next U32
+for index in tables.class-rules-of(type)
+    . rule = tables.class-rules[index]
+    while next < chain.length && chain[chain.length - 1 - next] != rule.level
+        register-queries(chain[chain.length - 1 - next])
+        apply-style-defaults(chain[chain.length - 1 - next])
+        next += 1
+    if next == chain.length
+        refuse(.refused-function, site)
+        break
+    if program.modules[rule.module].tree.nodes[rule.syntax] is .node-state-machine
+        start-member-machine(type, rule, site)
+        continue
+    run-class-rule(rule, facts.lowers(type, rule.module, section-of(rule)), site)
+while next < chain.length
+    register-queries(chain[chain.length - 1 - next])
+    apply-style-defaults(chain[chain.length - 1 - next])
+    next += 1
+
+────────────────────
+_ do start-member-machine
+    - type TypeId
+    - rule ClassRule
+    - site SyntaxId
+
+` Starts a state machine a property of the object's class holds, as the reference starts it
+` once the constructor's body has run: through the facts of the instance that types the
+` property's value for the object's class. The machine keeps its value in the property. Where
+` the class refines the machine of its base's property, the machine it refines starts with it
+` (`start-refined`), and not by a rule of its own.
+. name = decl-name(rule.module, rule.decl)
+. found = property-of(type, name) if name
+. unit-id = if found then tables.value-unit(found as U32) else no-instance
+if unit-id == no-instance
+    refuse(.refused-function, site)
+    =
+. started = unit-machine(unit-id)
+if started && started.refined != no-instance
+    if started.module == rule.module && started.syntax == rule.syntax
+        start-refined(started)
+    =
+. own-unit = unit
+. own-filling = filling
+unit = unit.source-module = rule.module
+unit = unit.reading = unit-id
+filling = filling.root = rule.syntax
+do emit-expression(rule.syntax)
+unit = own-unit
+filling = own-filling
+
+────────────────────
+_ do register-queries
+    - level TypeId
+
+` The registrations a constructor makes once the rules of a class of its object have run, as
+` the type pass recorded them (`QueryRegistration`): each markup query the class declares, in
+` order, given to the markup runtime with the object as its host and a callback that runs each
+` function made for the query with the object; then the object as a target of each descendant
+` query that looks for the class or one above it (`ProgramTables.target-ids-of`), given with the
+` number of its target, in the order of those numbers.
+. keys [U64]
+for position in 0 .. < facts.query-registrations.length
+    . held = facts.query-registrations[position]
+    if held.instance == unit.instance && held.level == level
+        if held.query != U32.max
+            keys += position as U64
+        else
+            for target-id in tables.target-ids-of(level)
+                keys += (target-bits /lshift/ 32) /or/ (position as U64)
+                    .. target-bits = tables.target-number(target-id) as U64
+. ordered-keys = sort(keys)
+for key in ordered-keys
+    . registration = facts.query-registrations[(key /and/ 0xffffffff) as Size]
+    . site = registration.site
+    . owner = convert-self(site, .reason-markup-host)
+    . mark = pending.length
+    pending += owner.operand
+    if registration.query == U32.max
+        pending += integer(.machine-u64, key /rshift/ 32)
+    else
+        . query = facts.markup-queries[registration.query]
+        if query.target-id != 0
+            pending += integer(.machine-u64, tables.target-number(query.target-id))
+        pending += make-callback(tables.query-function-of(registration.query), unit.self, site)
+        if query.target-id != 0
+            pending += make-callback(tables.query-function-of(registration.query, true), unit.self, site)
+    do raising-call(site, registration.register, mark)
+
+────────────────────
++ do run-class-rule
+    - rule ClassRule
+    - tabled Bool
+    - site SyntaxId
+
+do match? program.modules[rule.module].tree.nodes[rule.syntax]
+    | .node-dependency-declaration(dependency)
+        subscribe-dependency(rule, dependency.left, dependency.right, site)
+        =
+    | .node-subscriber-syntax(section)
+        if !tabled
+            run-section(rule, section.iterator, site)
+        =
+if rule.unit == no-instance || rule.kept == no-layout || rule.updater == no-function
+    refuse(.refused-function, site)
+    =
+. kept = make-kept(rule, site)
+. trigger = facts.markup-trigger-of(rule.unit)
+if trigger
+    run-markup-trigger(rule, trigger, kept, site)
+    =
+. trackers = open-trackers(site)
+live-actions += LiveTrackers(trackers, trackers)
+. own-unit = unit
+unit = unit.source-module = rule.module
+unit = unit.reading = rule.unit
+unit = unit.self-type = rule.level
+unit = unit.running-rule = true
+run-rule-first(rule, load-local(kept, site))
+unit = unit.running-rule = false
+unit = own-unit
+live-actions.pop()
+do own-action(load-local(trackers, site), rule.updater, load-local(kept, site), site)
+
+────────────────────
+_ do make-kept LocalId
+    - rule ClassRule
+    - site SyntaxId
+
+` What a rule of a class keeps for the object being made, made here, which holds the object.
+. layout = tables.layouts.rows[rule.kept]
+. mark = pending.length
+pending += integer(.machine-u64, layout.size)
+pending += make-operand(.operand-descriptor, rule.kept)
+. kept = ir.add-local(managed-layout)
+store-local(kept, call-runtime(.runtime-allocate-object, site, mark, managed-layout), site)
+store(load-local(kept, site), tables.layouts.field(rule.kept, 0).offset, unit.self, true, site)
+= kept
+
+────────────────────
+_ do run-rule-first
+    - rule ClassRule
+    - object Operand
+
+` Runs a rule of a class the first time, where the constructor runs it, as the instance that
+` types the rule, which the function a live action runs it again with is too: the locals the
+` rule declares are the constructor's for the run, and what the constructor keeps of its own
+` slots is put back after it. A rule whose nested functions read what it declares makes the
+` environment of its scope for the run and shares the object there, as a method does.
+. run = enter-unit(rule.unit)
+unit = unit.environment = no-local
+unit = unit.received = false
+open-environment(rule.syntax)
+share-self(rule.syntax)
+apply-class-rule(rule, object, true)
+leave-unit(run)
+
+────────────────────
+_ do run-section
+    - rule ClassRule
+    - iterator SyntaxId
+    - site SyntaxId
+
+` Subscribes the loop a section of a class writes to its stream for the object being made,
+` which owns the subscription, recorded at the loop or at its `whenever` clause. The loop is
+` read through the facts of the instance that types the section. One that follows an element a
+` branch of the markup makes is subscribed in a live action of its own (`first-rebinding`).
+if rule.unit == no-instance
+    refuse(.refused-function, site)
+    =
+. own-unit = unit
+unit = unit.source-module = rule.module
+unit = unit.reading = rule.unit
+unit = unit.self-type = rule.level
+unit = unit.running-rule = true
+. found = false
+if facts.rebinds-section(rule.level, rule.module, iterator)
+    found = true
+    first-rebinding(rule, iterator, site)
+else
+    do match? tree.nodes[iterator]
+        | .node-for-block(block)
+            do match? tree.nodes[block.loop]
+                | .node-loop-syntax(row)
+                    . retested = tree.whenever-clause(block.loop)
+                    . owned = tables.owned-subscription-of(unit.reading, iterator) || retest-owned
+                        .. retest-owned = tables.owned-subscription-of(unit.reading, retested)
+                    if row.is-subscriber && owned
+                        found = true
+                        emit-subscription(iterator, block.loop, row.container)
+if !found
+    refuse(.refused-statement, iterator)
+unit = unit.running-rule = false
+unit = own-unit
+
+────────────────────
+_ do first-rebinding
+    - rule ClassRule
+    - iterator SyntaxId
+    - site SyntaxId
+
+` Subscribes a section that follows an element a branch of the markup makes, as the reference's
+` `loopAsRebindingSubscription` does: what it keeps for the object holds the object, the stream
+` is read in a live action of its own (`rebind-section`), and a live action of the object holds
+` the trackers it noted, with a callback that does it again as the branch makes the element.
+if rule.kept == no-layout || rule.updater == no-function
+    refuse(.refused-function, site)
+    =
+. kept = make-kept(rule, site)
+. trackers = open-trackers(site)
+live-actions += LiveTrackers(trackers, trackers)
+rebind-section(rule, iterator, load-local(kept, site), true)
+live-actions.pop()
+do own-callback(load-local(trackers, site), adapter, load-local(kept, site), site)
+    .. adapter = tables.live-adapter-of(rule.updater)
+
+────────────────────
+_ do rebind-section
+    - rule ClassRule
+    - iterator SyntaxId
+    - kept Operand
+    - first Bool
+
+` Reads the stream of a section that follows an element a branch of the markup makes, with the
+` element's name read tracked, and adds to the trackers of the live action open the tracker of
+` a subscription to it the object owns, of the closure the section's loop subscribes: made and
+` kept the first time, and read from what the section keeps after that. A loop on an event that
+` is not live subscribes nothing.
+. loop SyntaxId = 0
+. container SyntaxId = 0
+do match? tree.nodes[iterator]
+    | .node-for-block(block)
+        loop = block.loop
+        do match? tree.nodes[block.loop]
+            | .node-loop-syntax(row)
+                container = row.container
+. root = container
+. reached = false
+while !reached
+    do match tree.nodes[root]
+        | .node-get-expression(get)
+            root = get.object
+        ??
+            reached = true
+. name Atom? = null
+do match? tree.nodes[root]
+    | .node-identifier(read)
+        name = read.name
+. owned = tables.owned-subscription-of(unit.reading, iterator)
+. closure = subscriber-closure(iterator)
+if loop == 0 || !name || !owned || closure == no-type
+    refuse(.refused-statement, iterator)
+    =
+track(root, unit.self, name)
+. used = tables.event-use-of(unit.reading, iterator)
+. stream = make-operand(.operand-void, 0)
+if used && used.second == no-instance
+    refuse(.refused-statement, iterator)
+    =
+if used
+    . owner = event-owner(used.reference, used.owner)
+    . number = tables.event-number(used.owner, used.name)
+    if number == U32.max
+        =
+    if used.address != 0
+        refuse(.refused-statement, iterator)
+        =
+    stream = event-endpoint(loop, used.first, owner.operand, number).operand
+else
+    stream = emit-broadcastable(loop, container).operand
+. field = tables.layouts.field(rule.kept, 1)
+. written = make-operand(.operand-void, 0)
+if first
+    . lone = lone-environment(iterator, no-slot)
+    written = load-local(lone, iterator)
+    store(kept, field.offset, written, true, iterator)
+else
+    written = load(kept, field.offset, managed-layout, iterator)
+. subscriber = convert(iterator, .reason-argument, Typed(written, closure))
+. tracker = own-tracker(iterator, owned, stream, subscriber.operand, used != null, arrives(loop))
+. given = convert(iterator, .reason-argument, tracker)
+add-tracker(load-local(live-actions[live-actions.length - 1].next, iterator), given.operand, iterator)
+
+────────────────────
+_ do subscribe-dependency
+    - rule ClassRule
+    - left SyntaxId
+    - rights RowRange'SyntaxId
+    - site SyntaxId
+
+` Subscribes the method a dependency of a class names, read as a value of the object being
+` made and made a `Doer` as the type pass recorded, to each property it names, in the order
+` written, as `property-dependency-subscribe` does, or for an object of a markup host the
+` markup runtime's `markup-property-dependency-subscribe`, given the object as its host too:
+` the live action it answers is the object's.
+. live = instances.live
+. subscribe = if rule.unit != no-instance then facts.change-test-of(rule.unit) else no-instance
+if subscribe == no-instance || live.add-action == no-instance
+    refuse(.refused-function, site)
+    =
+. tree = program.modules[rule.module].tree
+. own-unit = unit
+unit = unit.source-module = rule.module
+unit = unit.reading = rule.unit
+. bound = facts.node-type(unit.reading, left)
+. layout = layout-of(bound, left)
+. defaults = bound-count(bound)
+if !binds-object(bound) || layout == void-layout
+    refuse(.refused-expression, left)
+if tables.layouts.rows[layout].fields.count != 1 + defaults || other-level
+    refuse(.refused-conversion, left)
+.. other-level = tables.layouts.field(layout, 0).type != rule.level
+for right in tree.children[rights]
+    . made = frame(layout)
+    put(made, tables.layouts.field(layout, 0), unit.self, left)
+    put-defaults(left, made, layout, defaults)
+    . doer = convert(rule.syntax, .reason-argument, Typed(made, bound))
+    . name = ""
+    do match? tree.nodes[right]
+        | .node-identifier(row)
+            name = row.name.text
+    . host = make-operand(.operand-void, 0)
+    if facts.hosts-dependency(rule.unit)
+        host = convert(rule.syntax, .reason-markup-host, Typed(unit.self, rule.level)).operand
+    . mark = pending.length
+    pending += unit.self
+    if operand-kind(host) != .operand-void
+        pending += host
+    pending += make-operand(.operand-constant, ir.add-string(name))
+    pending += doer.operand
+    . action = call-instance(subscribe, right, mark)
+    . actions = side-list(site, unit.self, 1, live.actions)
+    . adding = pending.length
+    pending += actions.operand
+    pending += action.operand
+    do call-instance(live.add-action, site, adding)
+unit = own-unit
+
+────────────────────
++ do emit-class-rule-updater
+
+` The function a live action runs a rule of a class again with, given what the rule keeps for
+` the object it runs on: it runs as the instance that types the rule, on that object, with
+` the trackers of the action that runs it noting what it reads; the errors it lets out are
+` handed off. A rule whose nested functions read what it declares makes the environment of its
+` scope and shares the object there, as a method does. A section that follows an element a
+` branch of the markup makes subscribes again (`rebind-section`).
+. rule = tables.class-rules[function.place]
+. live = instances.live
+unit = unit.source-module = rule.module
+if rule.unit == no-instance || rule.kept == no-layout || unchained
+    refuse(.refused-function, rule.syntax)
+    =
+.. unchained = live.previous == no-instance || live.next == no-instance
+. section = section-of(rule)
+read-instance(rule.unit)
+bind-slots()
+clear-lazies()
+ir.add-argument(managed-layout)
+returns-type = types.void-type
+ir.returns = void-layout
+. kept = make-operand(.operand-argument, 0)
+unit = unit.self = load(kept, tables.layouts.field(rule.kept, 0).offset, managed-layout, rule.syntax)
+unit = unit.self-type = rule.level
+unit = unit.has-self = true
+if section == 0
+    open-environment(rule.syntax)
+    share-self(rule.syntax)
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, rule.syntax, pending.length).operand, rule.syntax)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, rule.syntax, pending.length).operand, rule.syntax)
+live-actions += LiveTrackers(previous, next)
+unit = unit.running-rule = true
+if section != 0
+    rebind-section(rule, section, kept, false)
+else
+    apply-class-rule(rule, kept, false)
+unit = unit.running-rule = false
+live-actions.pop()
+return-value(make-operand(.operand-void, 0), rule.syntax)
+
+────────────────────
++ do emit-scope-cell
+
+` The function the action that keeps a state cell runs, given what it keeps, as the reference's
+` `style-scope-state` function does: whether the state of its `when` holds on the object is
+` evaluated again, with the trackers of the action that runs it noting what it reads, and the
+` cell is given it (`set-cell`).
+. held = facts.scope-cells[function.place]
+. layout = tables.cell-layouts[function.place]
+. live = instances.live
+unit = unit.source-module = held.module
+. site = held.when
+if live.previous == no-instance || live.next == no-instance
+    refuse(.refused-function, site)
+    =
+ir.add-argument(managed-layout)
+returns-type = types.void-type
+ir.returns = void-layout
+. kept = make-operand(.operand-argument, 0)
+. subject = load(kept, tables.layouts.field(layout, 0).offset, managed-layout, site)
+. cell = load(kept, tables.layouts.field(layout, 1).offset, managed-layout, site)
+. previous = ir.add-local(managed-layout)
+store-local(previous, call-instance(live.previous, site, pending.length).operand, site)
+. next = ir.add-local(managed-layout)
+store-local(next, call-instance(live.next, site, pending.length).operand, site)
+live-actions += LiveTrackers(previous, next)
+set-cell(held, subject, held.owner, cell)
+live-actions.pop()
+return-value(make-operand(.operand-void, 0), site)
+
+────────────────────
++ do emit-live-adapter
+
+` The function a live action calls through the callback it holds, as the reference casts the
+` function that runs a value or a rule again to the callback's type: given the data the
+` callback holds, it calls that function with it where the value or the rule is written, the
+` place a stack trace names, and answers as the callback's type does: an error that function
+` raises leaves with the answer, as one the function that enables generated content answers
+` does.
+. code = function.place
+. target = tables.functions[code]
+. live = instances.live
+. site = live-site(target)
+ir.add-argument(managed-layout)
+returns-type = types.void-type
+ir.returns = void-layout
+if live.callback-result != no-type
+    return-results(live.callback-result, site)
+. mark = pending.length
+pending += make-operand(.operand-argument, 0)
+if target.kind == .instance-body && instances.signatures[target.instance].errors.count != 0
+    if live.callback-result == no-type
+        refuse(.refused-function, site)
+        =
+    takes-result = true
+    . answer = call-instance(target.instance, site, mark)
+    takes-result = false
+    do propagate(site, target.instance, answer.operand)
+    return-value(make-operand(.operand-void, 0), site)
+    =
+if target.kind == .style-gate && facts.style-gates[target.place].content
+    . answered = if live.callback-result != no-type then layout-of(live.callback-result, site) else no-layout
+    if answered == no-layout
+        refuse(.refused-function, site)
+        =
+    ir.depend(.callee-function, code, may-panic-dependency)
+    . answer = call
+        - make-operand(.operand-symbol, target.symbol)
+        - site
+        - mark
+        - .callee-function
+        - answered
+        - !in-landing
+    do propagate-held(site, live.callback-result, answer)
+    return-value(make-operand(.operand-void, 0), site)
+    =
+ir.depend(.callee-function, code, may-panic-dependency)
+call
+    - make-operand(.operand-symbol, target.symbol)
+    - site
+    - mark
+    - .callee-function
+    - void-layout
+    - !in-landing
+return-value(make-operand(.operand-void, 0), site)
+
+────────────────────
+_ do retest-site SyntaxId
+    - tree AST
+    - clause SyntaxId
+
+` Where the reference places the loop whose `whenever` clause a function tests again: the
+` section of a class the loop is, or else the loop's header.
+. loop = tree.clause-loop(clause)
+for node in loop + 1 .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) <= loop
+        do match tree.nodes[node]
+            | .node-for-block(block)
+                if block.loop != loop
+                    = loop
+            | .node-subscriber-syntax
+                = node
+            ??
+                = loop
+= loop
+
+────────────────────
+_ do live-site SyntaxId
+    - target EmittedFunction
+
+` Where the reference places the call of a function a live action runs: the property whose
+` value it evaluates again, the live statement it runs again or the first read of the
+` declaration it runs again, the loop whose `whenever` clause it tests again (see
+` `retest-site`), what a rule of a class reads or the class a rule on the markup an object is
+` in looks for, the innermost `when` whose conditions a gate's function evaluates, the `when`
+` whose state a state cell's function evaluates, or the declaration of a style rule whose
+` value, or the values its rule is given, its function declares again. Its module is the one
+` read.
+if target.kind == .style-author
+    . author = facts.style-authors[target.place]
+    unit = unit.source-module = instances.rows[author.instance].module
+    = author.site
+if target.kind == .style-given-author
+    unit = unit.source-module = instances.rows[given-unit].module
+        .. given-unit = facts.style-applications[tables.given-applications[target.place]].unit
+    = tables.given-sites[target.place]
+if target.kind == .style-gate
+    . gate = facts.style-gates[target.place]
+    . place = facts.style-gate-whens[gate.first + gate.count - 1]
+    unit = unit.source-module = place.module
+    = place.syntax
+if target.kind == .style-scope-state
+    . held = facts.scope-cells[target.place]
+    unit = unit.source-module = held.module
+    = held.when
+if target.kind == .property-updater
+    . default = tables.default-of(target.type, target.place)
+    unit = unit.source-module = default.module
+    . declared = property-site(target.type, types.properties[target.place].name)
+    = if declared != 0 then declared else default.site
+if target.kind == .instance-body
+    . row = instances.rows[target.instance]
+    unit = unit.source-module = row.module
+    do match? program.modules[row.module].decls[row.decl]
+        | .decl-function(fn)
+            if fn.kind == .whenever-decl
+                = retest-site(program.modules[row.module].tree, fn.syntax)
+            . live = tables.live-statement-of(row.enclosing, fn.syntax)
+            = if live && live.read != 0 then live.read else fn.syntax
+    = 0
+. rule = tables.class-rules[target.place]
+unit = unit.source-module = rule.module
+do match? program.modules[rule.module].tree.nodes[rule.syntax]
+    | .node-when-rule-syntax(when)
+        = when.expr
+    | .node-whenever-rule-syntax(whenever)
+        = if whenever.expr != 0 then whenever.expr else whenever.target-type
+= rule.syntax
+
+────────────────────
+_ do property-site SyntaxId
+    - type TypeId
+    - name Atom
+
+` Where the reference places a property: at its declaration in the nearest class that
+` declares it, past the values lines of a root `<This` give it, in that class's module.
+. level TypeId? = type
+while level
+    . ref = class-ref(types, level)
+    . member = owner-property(program, ref.module, ref.decl, name)
+    do match? program.modules[ref.module].decls[member]
+        | .decl-property(row)
+            if member != 0 && !row.defaults-root
+                unit = unit.source-module = ref.module
+                = row.syntax
+    level = types.base-of(level)
+= 0
+
+────────────────────
++ do track
+    - id SyntaxId
+    - object Operand
+    - name Atom
+
+` Notes a read of a property of an object in the trackers of the live action open, with the
+` object's list of subscribers, as `track-in` does.
+. live = instances.live
+. active = live-actions.length == 0 && facts.pulls(unit.reading, id)
+if live.track == no-instance || live.subscribers == no-instance || (live-actions.length == 0 && !active)
+    refuse(.refused-expression, id)
+    =
+. subscribers = side-list(id, object, 0, live.subscribers)
+track-in(id, subscribers.operand, object, name)
+
+────────────────────
++ do track-collection
+    - id SyntaxId
+    - value Typed
+
+` Notes the read of a collection in the trackers of the live action open, where the type pass
+` noted it (`CollectionRead`), so that the action runs again as the collection changes, as the
+` reference's `trackCollectionRead` does. An optional collection is noted where it holds one.
+if !facts.reads-collection(unit.reading, id)
+    =
+. live = instances.live
+. active = live-actions.length == 0 && facts.pulls(unit.reading, id)
+if active && live.track-active-collection == no-instance
+    refuse(.refused-expression, id)
+    =
+if !active && (live.track-collection == no-instance || live-actions.length == 0)
+    refuse(.refused-expression, id)
+    =
+. held = value.type
+. tracked = value
+. done = no-block
+if types.is-optional(held)
+    . filled = ir.reserve-block()
+    done = ir.reserve-block()
+    branch(present(id, Typed(value.operand, tracked.type)).operand, filled, done)
+    ir.start-block(filled)
+    tracked = payload(id, Typed(value.operand, held))
+. mark = pending.length
+if active
+    pending += num-cast(id, tracked.operand, managed-layout, pointer-layout)
+    do call-instance(live.track-active-collection, id, mark)
+else
+    pending += load-local(live-actions[live-actions.length - 1].previous, id)
+    pending += load-local(live-actions[live-actions.length - 1].next, id)
+    pending += num-cast(id, tracked.operand, managed-layout, pointer-layout)
+    do call-instance(live.track-collection, id, mark)
+if done != no-block
+    jump(done)
+    ir.start-block(done)
+
+────────────────────
+_ do track-in
+    - id SyntaxId
+    - subscribers Operand
+    - owner Operand
+    - name Atom
+
+` Notes a read of a name in the trackers of the live action open, as the reference's
+` `track-property-dependency` does: with the trackers the action had and those it gathers now,
+` the name and a number for it, and the list of subscribers with its owner.
+. live = instances.live
+if live-actions.length == 0 && facts.pulls(unit.reading, id) && live.track-active != no-instance
+    . start = pending.length
+    pending += make-operand(.operand-constant, ir.add-string(name.text))
+    pending += integer(.machine-u64, program.atom-ordinal(name) as U64)
+    pending += subscribers
+    pending += num-cast(id, owner, managed-layout, pointer-layout)
+    do call-instance(live.track-active, id, start)
+    =
+if live.track == no-instance || live-actions.length == 0
+    refuse(.refused-expression, id)
+    =
+. mark = pending.length
+pending += load-local(live-actions[live-actions.length - 1].previous, id)
+pending += load-local(live-actions[live-actions.length - 1].next, id)
+pending += make-operand(.operand-constant, ir.add-string(name.text))
+pending += integer(.machine-u64, program.atom-ordinal(name) as U64)
+pending += subscribers
+pending += num-cast(id, owner, managed-layout, pointer-layout)
+do call-instance(live.track, id, mark)
+
+────────────────────
++ do track-name
+    - id SyntaxId
+    - name Atom
+
+` A tracked read of a name alone in a live action: a local is noted with the list of
+` subscribers of the function that declares it, which owns the list, a member of a markup
+` element being built read by its name with the element's, kept where it was made where the
+` read is in a function written in its body, and a member of the receiver with the receiver's.
+. binding = instances.rows[unit.reading].binding
+if binding != no-binding && (resolution-flags /and/ ResolutionFlag.resolution-received) != 0
+    . kept = received-kept(id)
+    if kept != no-slot
+        . object = read-kept(kept, id)
+        track(id, object.operand, name)
+        =
+    . position = received-position(name)
+    if !position
+        refuse(.refused-expression, id)
+        =
+    track(id, content-hosts[position].operand, name)
+    =
+.. resolution-flags = bindings.resolution-of(binding, id).flags
+. slot = tracked-local(id)
+if slot == no-slot
+    if !unit.has-self
+        refuse(.refused-expression, id)
+        =
+    track(id, unit.self, name)
+    =
+. list = local-subscribers(slot, id)
+track-in(id, list, list, name)
+
+────────────────────
+_ tracked-local SlotId
+    - id SyntaxId
+
+` The local or argument a name alone reads where some read tracks it, or none.
+|? binding == no-binding
+    no-slot
+|? resolution.kind != .resolve-slot
+    no-slot
+|? kind != .slot-local && kind != .slot-lazy && kind != .slot-argument
+    no-slot
+??
+    resolution.slot
+
+.. binding = instances.rows[unit.reading].binding
+.. resolution = bindings.resolution-of(binding, id)
+.. kind = bindings.slots[resolution.slot].kind
+
+────────────────────
+_ do local-subscribers Operand
+    - slot SlotId
+    - site SyntaxId
+
+` The list of subscribers of the function that declares a local, where it keeps it: in its
+` environment where a function written in it reads it.
+. nothing = make-operand(.operand-void, 0)
+. list = subscribers-slot(slot)
+if list == no-slot
+    refuse(.refused-expression, site)
+    = nothing
+if is-captured(list)
+    . field = find-captured(list, site)
+    = take(captured-base(site), field, site)
+. offset = list - unit.slot-start
+if !owns(list) || unit.cells[offset] == no-local
+    refuse(.refused-expression, site)
+    = nothing
+= load-local(unit.cells[offset], site)
+
+────────────────────
+_ do subscribers-slot SlotId
+    - slot SlotId
+
+` The hidden local that holds the list of subscribers of the function that declares a local.
+. home = bindings.slots[slot].scope
+while bindings.scopes[home].kind != .scope-function && bindings.scopes[home].kind != .scope-nested
+    home = bindings.scopes[home].parent
+for offset in 0 .. < unit.slot-count
+    . row = bindings.slots[unit.slot-start + offset]
+    if row.kind == .slot-subscribers && row.scope == home
+        = unit.slot-start + offset
+= no-slot
+
+────────────────────
++ do make-subscribers
+    - site SyntaxId
+
+` Makes the lists of subscribers the function keeps for the locals it declares that some read
+` tracks, where it starts, as the reference does in its head. One that nested functions read
+` is kept in the environment.
+. live = instances.live
+if unit.instance == no-instance || live.subscribers == no-instance
+    =
+for offset in 0 .. < unit.slot-count
+    . slot = unit.slot-start + offset
+    if bindings.slots[slot].kind != .slot-subscribers || !owns(slot)
+        continue
+    . type = facts.slot-type(unit.instance, offset)
+    if type == no-type || type == invalid-type
+        continue
+    . made = call-instance(live.subscribers, site, pending.length)
+    if is-captured(slot)
+        keep-captured(slot, made.operand, type, site)
+    else
+        unit.cells[offset] = ir.add-local(managed-layout)
+        store-local(unit.cells[offset], made.operand, site)
+
+────────────────────
++ watches Bool
+    - slot SlotId
+    - id SyntaxId
+
+` Whether a store to a local runs the actions that read it: some read tracks it, and the
+` function that declares it has made its list of subscribers by then, as the reference makes
+` it at the first tracked read of one of its locals that it compiles. The function that runs a
+` live statement again stores after that, and so does any other function written in the one
+` that declares the local, where that one reads one of its locals tracked.
+|? (bindings.slots[slot].flags /and/ SlotFlag.slot-tracked) == 0 || undispatched
+    false
+|? kind != .slot-local && kind != .slot-lazy && kind != .slot-argument
+    false
+|? tables.is-rerun(unit.instance)
+    facts.tracked-locals-from(instances.rows[unit.instance].enclosing) != 0
+|? !owns(slot)
+    declarer(slot) != no-instance && facts.tracked-locals-from(declarer(slot)) != 0
+??
+    first != 0 && first < id
+
+.. undispatched = instances.live.dispatch == no-instance
+.. kind = bindings.slots[slot].kind
+.. first = facts.tracked-locals-from(unit.instance)
+
+────────────────────
+_ do declarer InstanceId
+    - slot SlotId
+
+` The function the emitted one is written in that declares a slot, or none.
+. owner = unit.instance
+while owner != no-instance && tables.instance-scopes[owner] != tables.slot-functions[slot]
+    owner = instances.rows[owner].enclosing
+= owner
+
+────────────────────
++ do dispatch-local
+    - slot SlotId
+    - prior Operand
+    - latest Operand
+    - type TypeId
+    - site SyntaxId
+    - armed Operand = make-operand(.operand-void, 0)
+
+` Runs the actions that read a tracked local where a store changed its bits, as `bits-differ`
+` says, through the list of subscribers of the function that declares it, under the local's
+` name; where `armed` is given, only where it is set.
+. live = instances.live
+. changed = bits-differ(prior, latest, layout-of(type, site), site)
+if operand-kind(armed) != .operand-void
+    changed = bitwise(site, .bitwise-and, changed, armed, u8-layout)
+. sending = ir.reserve-block()
+. done = ir.reserve-block()
+branch(changed, sending, done)
+ir.start-block(sending)
+. list = local-subscribers(slot, site)
+. mark = pending.length
+pending += list
+pending += make-operand(.operand-constant, ir.add-string(bindings.slots[slot].name.text))
+do call-instance(live.dispatch, site, mark)
+jump(done)
+ir.start-block(done)
+
+────────────────────
++ do emit-tracked-get Typed
+    - id SyntaxId
+    - object SyntaxId
+    - name Atom
+
+` A tracked read of a stored property of an object in a live action: the object is read once,
+` the read is noted in the action's trackers, and the property is read from the object. An
+` object written as a member of the receiver or a local named alone is tracked as it is read,
+` as the reference tracks the start of the chain. Any other tracked read has no shape there.
+. owner = held-type(object)
+. fact = own-call(id)
+. getter = fact != no-fact && facts.calls[fact].form == .call-getter
+if owner == no-type || owner == invalid-type || !tables.is-class(owner) || planned || getter
+    refuse(.refused-expression, id)
+    = Typed(make-operand(.operand-void, 0), no-type)
+.. planned = facts.plan-of(unit.reading, id) != .plan-none
+. root = tracked-root(object)
+if root && !pin-of(object)
+    track(object, unit.self, root)
+. local = if !pin-of(object) then tracked-root-local(object) else no-slot
+if local != no-slot && !settles-once(local) && live-actions.length != 0
+    . list = local-subscribers(local, object)
+    track-in(object, list, list, bindings.slots[local].name)
+. base = emit-expression(object)
+track(id, base.operand, name)
+. value = load-property(id, base.operand, owner, name)
+track-collection(id, value)
+= value
+
+────────────────────
+_ do settles-once Bool
+    - slot SlotId
+
+` Whether a local is a lazy one whose declaration no live action runs again, so that nothing
+` stores to it after its value is evaluated and a read of it tracks nothing.
+. row = bindings.slots[slot]
+if row.kind != .slot-lazy
+    = false
+. binding = instances.rows[unit.reading].binding
+. nested = bindings.bindings[binding].nested
+for offset in 0 .. < nested.count
+    . held = bindings.nested[nested.start + offset]
+    if held.syntax == row.group
+        do match? program.modules[unit.source-module].decls[held.decl]
+            | .decl-function(fn)
+                if fn.kind == .live-decl
+                    = false
+= true
+
+────────────────────
++ do tracked-root Atom?
+    - object SyntaxId
+
+` The name of the member of the receiver a tracked read reads from, where its object is that
+` member named alone and untracked, or none.
+. binding = instances.rows[unit.reading].binding
+if binding == no-binding
+    = null
+do match? tree.nodes[object]
+    | .node-identifier(row)
+        if !row.is-tracked && bindings.resolution-of(binding, object).kind == .resolve-member
+            = row.name
+= null
+
+────────────────────
+_ do tracked-root-local SlotId
+    - object SyntaxId
+
+` The local a tracked read reads from, where its object is that local named alone and
+` untracked, or none.
+do match? tree.nodes[object]
+    | .node-identifier(row)
+        if !row.is-tracked
+            = tracked-local(object)
+= no-slot
+
+────────────────────
++ tracks Bool
+    - property TypeProperty
+
+` Whether some read tracks a property, by the topmost class that declares it (`tracked-root`),
+` which an override shares.
+|? property.owner == no-type || property.owner == invalid-type || undispatched
+    false
+??
+    facts.is-tracked(ref.module, ref.decl, property.name)
+
+.. undispatched = instances.live.dispatch == no-instance
+.. ref = class-ref(types, types.tracked-root(property.owner, property.name))
+
+────────────────────
++ do keeps-trackers Bool
+    - place U32
+
+` Whether the trackers of a property's own live action are kept (`place-trackers`).
+for kept in place-trackers
+    if kept.place == place
+        = true
+= false
+
+────────────────────
++ do tracks-link Bool
+    - id SyntaxId
+
+` Whether a link of an optional chain is a tracked read made in a live action.
+if live-actions.length == 0
+    = false
+do match? tree.nodes[id]
+    | .node-get-expression(row)
+        = row.is-tracked
+= false
+
+────────────────────
++ do emit-latest Typed
+    - id SyntaxId
+    - value SyntaxId
+
+` The latest item of a stream, `##` of it, as the reference reads it in a live action. Where
+` the action is made, the stream is made a `Broadcastable` and given, with the empty value of
+` its item, to a `BroadcasterTracker`, which is kept in the local the node declares and added
+` to the action's trackers, and the read is that empty value. The function that runs the
+` action again adds the tracker it captures to its trackers and reads its `latest`. A read
+` where no action is open, or in a function written in the action, has no shape here.
+. nothing = make-operand(.operand-void, 0)
+. row = facts.latest-read-of(unit.reading, id)
+. binding = instances.rows[unit.reading].binding
+if !row || binding == no-binding || live-actions.length == 0
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. resolution = bindings.resolution-of(binding, id)
+if resolution.kind != .resolve-slot
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. slot = resolution.slot
+. item = facts.node-type(unit.reading, id)
+. tracking = instances.signatures[row.tracker].returns
+. trackers = live-actions[live-actions.length - 1].next
+. own = is-own-slot(slot) && owns(slot)
+if rerunning && !own
+    . kept = read-captured(slot, id, tracking)
+    add-tracker(load-local(trackers, id), convert(id, .reason-argument, Typed(kept.operand, tracking)).operand, id)
+    = load-property(id, kept.operand, tracking, program.store-atom("latest"), false, item)
+if rerunning || !own
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. held = emit-expression(value)
+. stream = Typed(nothing, no-type)
+if row.publisher != no-instance
+    . mark = pending.length
+    pending += convert(value, .reason-argument, held).operand
+    stream = call-instance(row.publisher, id, mark)
+else
+    stream = convert(value, .reason-argument, held)
+if stream.type != row.stream
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. latest = default-value(0, item, layout-of(item, id), id)
+. making = pending.length
+pending += stream.operand
+pending += latest.operand
+. made = call-instance(row.tracker, id, making)
+keep-captured(slot, made.operand, tracking, id)
+add-tracker(load-local(trackers, id), convert(id, .reason-argument, Typed(made.operand, tracking)).operand, id)
+= Typed(latest.operand, item)
+
+────────────────────
+_ do unit-machine MachineFact?
+    - unit-id InstanceId
+
+` The state machine of a property that the instance typing its value starts, or none.
+for machine in facts.machines
+    . member = machine.store == .store-member && machine.outer == 0
+    if member && instances.rows[machine.instance].enclosing == unit-id
+        = machine
+= null

@@ -5,6 +5,7 @@
 /core/table
 /lang/ast/ast
 /lang/ast/ast-children
+/lang/ast/ast-queries
 /lang/ast/ast-nodes
 /lang/ast/decl
 /lang/ast/module
@@ -615,7 +616,7 @@ do match? tree.nodes[id]
         predeclare-lazies(row.statements)
         place-elements(row.statements)
         for statement in tree.children[row.statements]
-            if is-finally(statement)
+            if tree.is-finally(statement)
                 continue
             if !is-declaration-syntax(tree, statement)
                 raise-element(statement)
@@ -623,7 +624,7 @@ do match? tree.nodes[id]
             else
                 walk-initializers(statement)
         for statement in tree.children[row.statements]
-            if is-finally(statement)
+            if tree.is-finally(statement)
                 walk(statement)
 
 ────────────────────
@@ -1288,10 +1289,10 @@ do match? tree.nodes[body]
         raise-elements(block.body)
         . lazies-end = names.length as U32
         for statement in tree.children[block.body]
-            if !is-finally(statement) && !(tree.nodes[statement] is .node-assign)
+            if !tree.is-finally(statement) && !(tree.nodes[statement] is .node-assign)
                 walk-statement(statement, false, lazies-end)
         for statement in tree.children[block.body]
-            if is-finally(statement)
+            if tree.is-finally(statement)
                 walk(statement)
         pop-scope()
 
@@ -1818,7 +1819,7 @@ do match? tree.nodes[body]
                 predeclare-lazies(row.body, true, false)
         . lazies-end = names.length as U32
         for statement in tree.children[row.body]
-            if !is-finally(statement) && !assignment && (!bound || !gives-default(statement))
+            if !tree.is-finally(statement) && !assignment && (!bound || !gives-default(statement))
                 if !(tree.nodes[statement] is .node-markup) && is-slot-builder(statement)
                     walk-slot(statement, 0, 0, 0)
                 else
@@ -1827,7 +1828,7 @@ do match? tree.nodes[body]
                     walk-attribute(statement)
             .. assignment = tree.nodes[statement] is .node-assign
         for statement in tree.children[row.body]
-            if !bound && is-finally(statement)
+            if !bound && tree.is-finally(statement)
                 walk(statement)
         for statement in tree.children[row.body]
             if tree.holds-fills(statement) && !tree.fills-only(statement) && selects(statement)
@@ -1888,10 +1889,10 @@ do match? tree.nodes[body]
             predeclare-lazies(row.body, true, false)
         . lazies-end = names.length as U32
         for statement in tree.children[row.body]
-            if !is-finally(statement) && gives-default(statement)
+            if !tree.is-finally(statement) && gives-default(statement)
                 walk-statement(statement, false, lazies-end)
         for statement in tree.children[row.body]
-            if is-finally(statement)
+            if tree.is-finally(statement)
                 walk(statement)
         pop-scope()
 close-nested()
@@ -1927,7 +1928,7 @@ do match? tree.nodes[body]
         push-scope(.scope-block, body)
         . lazies-end = names.length as U32
         for statement in tree.children[row.body]
-            if !is-finally(statement) && !assignment && !gives-default(statement)
+            if !tree.is-finally(statement) && !assignment && !gives-default(statement)
                 walk-statement(statement, false, lazies-end)
             .. assignment = tree.nodes[statement] is .node-assign
         pop-scope()
@@ -2036,12 +2037,12 @@ do match? tree.nodes[body]
         push-scope(.scope-block, body)
         . dead = false
         for statement in tree.children[row.body]
-            if !dead && !is-finally(statement)
+            if !dead && !tree.is-finally(statement)
                 walk(statement)
             dead = dead || leaves-block(statement)
         dead = false
         for statement in tree.children[row.body]
-            if !dead && is-finally(statement)
+            if !dead && tree.is-finally(statement)
                 walk(statement)
             dead = dead || leaves-block(statement)
         pop-scope()
@@ -2125,12 +2126,12 @@ do match tree.nodes[id]
                 walk-statement(statement, builds, lazies-end)
                 if given && is-live(statement)
                     walk-attribute(statement)
-            .. reached = (!dead || is-lazy-declare(statement)) && !is-finally(statement)
+            .. reached = (!dead || tree.is-lazy-declare(statement)) && !tree.is-finally(statement)
             .. given-assign = given && tree.nodes[statement] is .node-assign
             dead = dead || (!content && leaves-block(statement))
         dead = false
         for statement in tree.children[row.body]
-            if !dead && is-finally(statement)
+            if !dead && tree.is-finally(statement)
                 walk(statement)
             dead = dead || (!content && leaves-block(statement))
         if builds
@@ -3660,17 +3661,6 @@ note-reads(clause, slots)
 capture-in(clause, slots)
 
 ────────────────────
-_ is-finally Bool
-    - statement SyntaxId
-
-` A finally block runs as its enclosing block ends, so it sees every local the block declares.
-match tree.nodes[statement]
-    | .node-do-finally-block
-        true
-    ??
-        false
-
-────────────────────
 _ leaves-block Bool
     - statement SyntaxId
 
@@ -3686,16 +3676,6 @@ match tree.nodes[statement]
         true
     | .node-break
         true
-    ??
-        false
-
-────────────────────
-_ is-lazy-declare Bool
-    - statement SyntaxId
-
-match tree.nodes[statement]
-    | .node-declare(row)
-        row.is-lazy
     ??
         false
 
@@ -4166,7 +4146,7 @@ if bindings.slots[slot].kind == .slot-lazy
     note-lazy-use(slot, flags)
 . tracked = (flags /and/ (ResolutionFlag.resolution-tracked)) != 0
 . stored = (flags /and/ (ResolutionFlag.resolution-write)) != 0 && depth < function-depth
-if is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
+if bindings.is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
     . subscribers = subscribers-of(slot)
     if depth < function-depth
         bindings.mark-slot(subscribers, SlotFlag.slot-captured)
@@ -4284,16 +4264,6 @@ for position in first .. < end
             use-slot(read, getter-depths[position], getter-flags[position])
 if getter-selves[index]
     capture-self()
-
-────────────────────
-_ is-trackable Bool
-    - slot SlotId
-
-` Whether a local is one a tracked read tracks: a lazy local, one a declaration names, or an
-` argument.
-kind == .slot-local || kind == .slot-lazy || kind == .slot-argument
-
-.. kind = bindings.slots[slot].kind
 
 ────────────────────
 _ do subscribers-of SlotId
@@ -4520,7 +4490,7 @@ while arm != 0
                 bindings.set-resolution(binding, arm, Resolution(.resolve-slot, 0, host, 0, 0))
             . pattern = tree.pattern-arm(arm)
             if pattern != 0
-                . subject = matched-subject(row.condition)
+                . subject = tree.matched-subject(row.condition)
                 walk(subject)
                 . read [SlotId]
                 read += host
@@ -4542,7 +4512,7 @@ while arm != 0
         | .node-if-block(row)
             . pattern = tree.pattern-arm(arm)
             if pattern != 0
-                note-reads(matched-subject(row.condition), slots, true)
+                note-reads(tree.matched-subject(row.condition), slots, true)
                 do match? tree.nodes[pattern]
                     | .node-type-transform(transform)
                         if transform.pattern != 0
@@ -4552,17 +4522,6 @@ while arm != 0
             next = row.next
     arm = next
 capture-in(id, slots)
-
-────────────────────
-_ matched-subject SyntaxId
-    - matching SyntaxId
-
-` The subject of a match, or none.
-match tree.nodes[matching]
-    | .node-match-expression(row)
-        row.subject
-    ??
-        0
 
 ────────────────────
 _ do walk-match-region Void
@@ -4879,7 +4838,7 @@ if slots.find(slot) == null
     slots += slot
 . tracked = (flags /and/ (ResolutionFlag.resolution-tracked)) != 0
 . stored = (flags /and/ (ResolutionFlag.resolution-write)) != 0
-if is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
+if bindings.is-trackable(slot) && (tracked || (stored && reads-tracked(bindings.slots[slot].name, slot)))
     . subscribers = subscribers-of(slot)
     if slots.find(subscribers) == null
         slots += subscribers

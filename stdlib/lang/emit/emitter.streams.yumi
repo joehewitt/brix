@@ -1,4 +1,5 @@
 ./emitter
+./emitter.cleanups
 ./emitter.loops
 ./emitter.match-arms
 ./emitter.tables
@@ -45,7 +46,63 @@ _ RuleCells is Tuple
 + erred LocalId
 
 ━━━━━━━━━━━━━━━━━━━━
+_ Lending is Tuple
+
+` A list of the caller's a call lends a function, as a collector in memory of the frame:
+` that memory, and the list among the lists of captures.
+
++ memory Operand
++ level U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ LevelMark is Tuple
+
+` How many items a list held where a part of a pattern began, which it is cut back to where
+` the part fails: the list among the lists of captures, and the local that holds the count.
+
++ level U32
++ mark LocalId
+
+━━━━━━━━━━━━━━━━━━━━
+_ ArmGroup is Tuple
+
+` Alternatives of a choice that may start with the same items, as the reference groups them:
+` their places, in order, and the ranges of the items any of them may start with.
+
++ arms [U32]
++ ranges [ItemRange]
+
+━━━━━━━━━━━━━━━━━━━━
+_ ArmWay is Tuple
+
+` How the alternatives of a choice are emitted: as the arms of a match or a rule, which join
+` with the value each gives, of the type `result`, after reading the whole input where
+` `whole`, and keep where each ended in `end`; or as `parts` of a pattern, which join with
+` where each ended, and where the choice gives a value leave theirs, of the type `result`, in
+` `end`. `site` is the choice. `unread` says nothing reads the value arms join with.
+
++ site SyntaxId
++ result TypeId
++ whole Bool
++ end LocalId
++ joined IRBlockId
++ slot Operand
++ parts Bool
++ unread Bool
+
+━━━━━━━━━━━━━━━━━━━━
+_ RuleTarget is Tuple
+
+` The pattern of a rule a call names, the module whose syntax it is, and the instance whose
+` facts and binding are read for it.
+
++ module ModuleId
++ owner InstanceId
++ pattern SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
 _ Streams is facet of FunctionEmitter
+    sees Cleanups
     sees Loops
     sees MatchArms
     sees Tables
@@ -185,7 +242,7 @@ if commits == no-fact
 if subject-slot != no-slot
     bound += BoundValue(subject-slot, subject-type, value.operand)
 . regional = subject-type == types.string-type || array-subject
-    .. array-subject = same-ref(class-ref(types, subject-type), types.array-decl)
+    .. array-subject = same-decl(class-ref(types, subject-type), types.array-decl)
 . region-mark = if regional then make-operand(.operand-value, append(.op-load-task-word, matched, Span(), parse-region-mark-offset, u64-layout)) else nothing
 . run = open-stream(matched, value.operand, subject-type, made, viewed, extends, regional)
 . done = ir.reserve-block()
@@ -270,7 +327,7 @@ if subjectless || result == no-type || not-optional
 if commits == no-fact || (counted != no-fact && !counts) || not-capture-result
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
-.. not-capture-result = !same-ref(class-ref(types, captured), types.capture-result-decl)
+.. not-capture-result = !same-decl(class-ref(types, captured), types.capture-result-decl)
 if !tables.layouts.is-struct(captured-layout) || unpaired-capture
     refuse(.refused-type, id)
     = Typed(nothing, no-type)
@@ -413,7 +470,7 @@ if regional
 if regional
     call-runtime(.runtime-parse-region-leave-scope, site, pending.length)
 . refills = made == no-fact || chunked
-    .. chunked = same-ref(class-ref(types, stream-type), types.chunked-token-stream-decl)
+    .. chunked = same-decl(class-ref(types, stream-type), types.chunked-token-stream-decl)
 = view-stream(site, stream.operand, stream-type, refills, viewed, extends)
 
 ────────────────────
@@ -1877,7 +1934,7 @@ if types.is-optional(answer.type)
     branch(flag.operand, passed, failed)
     ir.start-block(passed)
     value = payload(id, value)
-if same-ref(class-ref(types, value.type), types.capture-result-decl)
+if same-decl(class-ref(types, value.type), types.capture-result-decl)
     value = part(value.operand, layout-of(value.type, id), 1, id)
 if value.type != result
     refuse(.refused-type, id)
@@ -4992,7 +5049,7 @@ if tables.layouts.is-struct(run.item-layout)
 item == char && class-arg(types, run.buffer-type, 0) == types.type-row(.uint8)
 
 .. char = types.type-row(.char)
-.. item = if same-ref(class-ref(types, run.stream-type), types.text-token-stream-decl) then char else class-arg(types, run.stream-type, 0)
+.. item = if same-decl(class-ref(types, run.stream-type), types.text-token-stream-decl) then char else class-arg(types, run.stream-type, 0)
 
 ────────────────────
 _ do wide-ranges Bool
@@ -5795,3 +5852,147 @@ else if is-float(layout)
     store-local(local, float-number(layout, 0.0), site)
 else
     store-local(local, integer(tables.layouts.kind-of(layout), 0), site)
+
+────────────────────
++ do emit-raising-rule
+
+` A rule as the function calls that give it a pattern whose function may raise errors run:
+` as the rule's function, but a call of the pattern it is given takes the pattern's answer or
+` one of the errors, which leaves the function with the call, and the function returns its
+` own answer or one of them. The rule takes one pattern, and reads it only to call it, as
+` `emit-identifier` checks. A local rule of the rule that runs as a function has such a
+` function too, which the rule's calls.
+. row = facts.raising-rules[function.place]
+. signature = instances.signatures[unit.instance]
+. patterns U32
+for position in 0 .. < signature.args.count
+    if types.is-pattern-func(instances.argument-type(unit.instance, position))
+        patterns += 1
+if patterns != 1 || signature.errors.count != 0
+    refuse-own()
+    =
+carried-given = row.given
+carried-result = row.result
+if row.rule == 0
+    emit-body()
+else
+    emit-lazy-rule(row.rule)
+
+────────────────────
++ do emit-mapped-rule
+
+` A rule, or a local rule of one, as the function calls of it that give it a set of
+` collectors run: as the rule's function, given after its other arguments a pointer to each
+` collector, whose list the rule's name it is given for adds to while it runs. No such call
+` reads what the rule gives, so its arms make no text of what they matched. A set of no
+` collectors adds no arguments.
+. mapping = tables.rule-mappings[function.place]
+if mapping.names != no-string
+    for name in tables.bundle.text(mapping.names).split(",")
+        collector-args += name
+if mapping.rule == 0
+    emit-body()
+else
+    emit-lazy-rule(mapping.rule)
+
+────────────────────
++ do emit-lazy-rule
+    - rule SyntaxId
+
+` A local rule of a rule a module declares, as a function of its own that a pattern calls as
+` it calls the rule: given the rule's stream and arguments, then the address the stream's
+` items start at, the cursor to start from and the count of items, and where to keep where it
+` ended, how far it read and the farthest cursor a part of it failed at. It reads the rule's
+` arguments as the rule does. One of a rule that raises errors raises them too. One of a rule
+` given its own helper as an argument runs under it, and one of a rule typed for a helper is
+` given the helper as the rule is, and runs under it. One of a rule whose pattern holds a
+` rollback mark holds one too, kept as the rule's, and gives it as the rule does. One no call
+` reads the value of makes no text of what its arms matched. The function of a local rule
+` beside a match that calls itself is given the stream alone before the address, and reads
+` nothing of the function the rule is written in, as the tables made sure. Under a helper that
+` observes literal words, one tells it of them only where `observes-literals` says its pattern
+` holds any.
+. signature = instances.signatures[unit.instance]
+. declared SyntaxId = 0
+do match? program.modules[unit.source-module].decls[instances.rows[unit.instance].decl]
+    | .decl-function(fn)
+        declared = fn.syntax
+. matched SyntaxId = 0
+do match? tree.nodes[rule]
+    | .node-declare(declaration)
+        matched = declaration.right
+. pattern SyntaxId = 0
+do match? tree.nodes[matched]
+    | .node-stream-match(row)
+        pattern = row.pattern
+. result = facts.node-type(unit.reading, matched)
+. place = facts.local-rule-of(unit.instance, rule)
+. returned = if place != U32.max then facts.local-rules[place].answer else no-type
+if tables.rule-adapter-of(unit.instance, rule) != no-function
+    . local = facts.local-rules[place]
+    if pattern == 0 || untyped-result || local.buffer == no-type || carrying
+        refuse(.refused-function, rule)
+        =
+    .. untyped-result = result == no-type || returned == no-type
+    .. carrying = carried-result != no-type || carries(unit.instance)
+    ir.add-argument(layout-of(local.stream, rule))
+    returns-type = returned
+    ir.returns = layout-of(returned, rule)
+    if signature.errors.count != 0
+        return-results(local.result, rule)
+    if !direct-arguments(local.buffer, rule)
+        =
+    inlining += rule
+    . viewed = facts.first-call(unit.reading, matched)
+    match-direct
+        - rule
+        - matched
+        - pattern
+        - result
+        - returned
+        - local.stream
+        - local.buffer
+        - 1
+        - viewed
+        - next-call(next-call(viewed))
+    stop-inlining(rule)
+    =
+. buffer-type = facts.node-type(unit.reading, declared)
+if declared == 0 || pattern == 0 || result == no-type || returned == no-type || unbuffered
+    refuse(.refused-function, rule)
+    =
+.. unbuffered = buffer-type == no-type || signature.args.count == 0
+. stream-type = instances.argument-type(unit.instance, 0)
+ir.add-argument(layout-of(stream-type, rule))
+for position in 1 .. < signature.args.count
+    ir.add-argument(layout-of(instances.argument-type(unit.instance, position), rule))
+returns-type = returned
+ir.returns = layout-of(returned, rule)
+if signature.errors.count != 0
+    return-results(facts.local-rules[place].result, rule)
+if carried-result != no-type
+    return-results(carried-result, rule)
+. first U32 = ir.arguments.length
+if !direct-arguments(buffer-type, rule, instances.rows[unit.instance].helper, carries(unit.instance))
+    =
+if instances.rows[unit.instance].helper == no-type
+    ambient-helper()
+open-environment(declared)
+bind-arguments(declared)
+rule-arguments = true
+. ruled = rule-match(program, instances.rows[unit.instance].module, instances.rows[unit.instance].decl)
+. views = facts.first-call(unit.reading, ruled)
+match-direct
+    - rule
+    - matched
+    - pattern
+    - result
+    - returned
+    - stream-type
+    - buffer-type
+    - first
+    - views
+    - next-call(views)
+    - ruled
+    - function.kind == .mapped-rule || !tables.reads-rule(unit.instance, rule)
+    - observes-literals(tree, facts, unit.reading, pattern)

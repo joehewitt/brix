@@ -1,0 +1,4269 @@
+./binding
+./calls
+./checker
+./checker.assignments
+./checker.calls
+./checker.comprehensions
+./checker.live-actions
+./checker.styles
+./conversions
+./coverage
+./dispatch
+./error-sets
+./facts
+./frame
+./header
+./instances
+./narrowing
+./narrowing-key
+./numeric
+./panics
+./pattern-helper
+./portable
+./probe-casts
+./session
+./signature
+./table-rows
+./type-env
+./type-relation
+./type-signature
+./type-store
+./type-text
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/ast-queries
+/lang/ast/decl
+/lang/ast/facets
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/ast/viability
+/lang/constants
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Markup is facet of Checker
+    sees Assignments
+    sees CallTyping
+    sees Comprehensions
+    sees LiveActions
+    sees Styles
+
+────────────────────
++ do leave-region
+
+` Keeps what the assignments of the body of a `do without gc` block left each local it captures as,
+` for the function around it to take once the body is checked (`check-region`): that holds after
+` the block as after a plain one.
+for row in frame.assigned-in-frame
+    if !is-member-key(row.key) && frame.is-captured(row.key)
+        region-left += row
+
+────────────────────
++ do clashes-element Bool
+    - receiver TypeId
+    - content SyntaxId
+
+if content == 0 || no-receiver || types.intrinsic-of(receiver) != .class
+    = false
+.. no-receiver = receiver == no-type || receiver == invalid-type
+. root = tree.root-this(content)
+for node in tree.subtree-start(content) .. < content
+    do match? tree.nodes[node]
+        | .node-markup(row)
+            if named-element && clashes-property(receiver, node, row.id, row.type-id)
+                = true
+            .. named-element = row.id != 0 && node != root && !enclosed-element(node, content)
+= false
+
+────────────────────
+_ do clashes-property Bool
+    - receiver TypeId
+    - element SyntaxId
+    - name SyntaxId
+    - written SyntaxId
+
+. text = identifier-name(tree, name)
+. place = property-named(receiver, text) if text
+if !place || names-element(types, types.properties[place])
+    = false
+. property = types.properties[place]
+. held = property.type
+if held == no-type
+    held = demand-member(property, receiver, text!)
+types.clear-fault()
+. made = types.evaluate-type(module, tree, written, frame.env)
+types.clear-fault()
+if held == no-type || held == invalid-type || made == invalid-type || generic
+    = false
+.. generic = types.completions[made].has-variables
+if holds-object(made, held)
+    = false
+. message = "Named markup element \"${text!.text}\" clashes with property \"${text!.text}\", which holds ${type-source(types, held)}, not ${type-source(types, made)}; rename the element"
+frame.diagnose(element, .stated, program.store-atom(message))
+= true
+
+────────────────────
+_ holds-object Bool
+    - made TypeId
+    - held TypeId
+
+|? kind == .relation-side-cast && types.is-optional(held)
+    holds-object(made, types.optional-inner(held))
+??
+    direct || interface-cast || kind == .relation-or-cast || kind == .relation-wrap-cast
+
+.. kind = relations.compare(made, held).kind
+.. direct = kind == .relation-same || kind == .relation-equal || kind == .relation-up-cast
+.. interface-cast = kind == .relation-interface-cast
+
+────────────────────
++ do waits-for-markup Bool
+    - level TypeId
+    - module ModuleId
+    - syntax SyntaxId
+
+` Whether a rule a class writes runs once the markup of the class has, as the reference runs
+` it, rather than once a constructor's body has: where the class, or one above it, writes
+` markup, each section that subscribes to a stream does, and so does a `when` or `whenever`
+` rule whose test reads a member of a name the markup gives an element, apart from the
+` functions written there.
+if !writes-content(level)
+    = false
+. tree = program.modules[module].tree
+. test SyntaxId = 0
+do match? tree.nodes[syntax]
+    | .node-subscriber-syntax
+        = true
+    | .node-when-rule-syntax(rule)
+        test = rule.expr
+    | .node-whenever-rule-syntax(rule)
+        test = rule.expr
+if test == 0
+    = false
+. floor = tree.subtree-start(test)
+. node = test + 1
+while node > floor
+    node -= 1
+    do match? tree.nodes[node]
+        | .node-function-syntax
+            node = tree.subtree-start(node)
+        | .node-get-expression(get)
+            do match? tree.nodes[get.object]
+                | .node-identifier(read)
+                    . place = property-named(level, read.name)
+                    if place && names-element(types, types.properties[place])
+                        = true
+= false
+
+────────────────────
++ do is-markup-trigger Bool
+    - tree AST
+    - syntax SyntaxId
+
+` Whether a rule a class writes is a `whenever` rule on the markup an object is in.
+do match? tree.nodes[syntax]
+    | .node-whenever-rule-syntax(rule)
+        = rule.kind.text != "value"
+= false
+
+────────────────────
++ do own-markup-actions
+    - receiver TypeId
+    - site SyntaxId
+
+` How the function being typed makes the live actions the object it makes or fills owns, where
+` its class is a markup host or batch, as the reference's `createMarkupAction` makes them with
+` the object as owner: for a markup host, the markup runtime's `make-owner-markup-action`,
+` given the object as its host, else `make-markup-action`, given it as the batch, each
+` converted at `site`. It is noted only where a value or rule it runs is live
+` (`live-owned`), and otherwise noted with none, so that a plain action is made for no such
+` object. Either may raise.
+if receiver == no-type || receiver == invalid-type || owns-plain-actions(receiver)
+    =
+if !live-owned
+    facts.self-actions += SelfAction(instance, site, no-instance, false)
+    =
+. host = derived-interface(receiver, types.markup-host-decl)
+. rooted = host == no-type
+. wanted = if rooted then batch-type() else host
+demand-live-runtime()
+. live = instances.live
+. mark = scratch.types.mark
+scratch.types.push
+    - if live.trackers != no-instance then instances.signatures[live.trackers].returns else no-type
+scratch.types.push(live.callback)
+scratch.types.push(wanted)
+. action = calls.demand-runtime-call
+    - types.markup-host-decl.module
+    - no-type
+    - program.store-atom(if rooted then "make-markup-action" else "make-owner-markup-action")
+    - mark
+scratch.types.rewind(mark)
+if action == no-instance || live.has-actions == no-instance || wrong-return
+    decline(site)
+    =
+.. wrong-return = instances.signatures[action].returns != types.live-action-type
+if !raises-out(site, action)
+    decline(site)
+    =
+if rooted
+    conversions.convert(site, site, receiver, wanted, .reason-markup-batch)
+else
+    do host-self(receiver, site)
+facts.self-actions += SelfAction(instance, site, action, rooted)
+
+────────────────────
++ do is-ancestor-query Bool
+    - query TypeId
+
+` Whether a query of the markup an object is in looks for an ancestor, `Ancestor'T`.
+do match? types.rows[query]
+    | .type-class(row)
+        = types.ancestor-decl.refers-to(row.module, row.decl)
+= false
+
+────────────────────
++ do trigger-target TypeId
+    - ref DeclRef
+    - syntax SyntaxId
+
+` The class a rule a class or a facet of one writes looks for among the children or descendants
+` of the object's markup host, `whenever children T` or `whenever descendants T`, where it is a
+` markup host, or no type.
+. env = holder-env(ref)
+. type = rule-target(ref.module, syntax, env)
+types.env-release(env)
+= type
+
+────────────────────
++ do markup-query U32
+    - level TypeId
+    - query TypeId
+    - site SyntaxId
+    - written-module ModuleId
+    - written SyntaxId
+    - name Atom?
+
+` The row of `markup-queries` for a property a class declares as a query of the markup its
+` object is in, recorded the first time a constructor registers it, and found by the class and
+` the property after that, taking again where the property is written, which an edit typed again
+` in place may move (`retype-edit`): the functions the reference makes for it read the object as
+` one of the class, made its markup host as converted here, and call the markup runtime to find
+` a parent host, or to add an object to a list kept in order or take one from it. The class and
+` the class the query looks for must be markup hosts, which the reference reports, and the latter
+` must declare no `==`, since a new answer is compared with the old as one object. Those have no
+` shape here.
+. place = property-named(level, name) if name
+if !place
+    decline(site)
+    = U32.max
+for offset in 0 .. < facts.markup-queries.length
+    if same-level && facts.markup-queries[offset].place == place as U32
+        facts.markup-queries[offset].module = written-module
+        facts.markup-queries[offset].site = written
+        = offset as U32
+    .. same-level = facts.markup-queries[offset].level == level
+. target = query-target(query)
+. ancestor = is-ancestor-query(query)
+if !is-markup-host(level) || !is-markup-host(target)
+    decline(site)
+    = U32.max
+for token in ["==", "!="]
+    if calls.has-operator(target, program.store-atom(token), target)
+        decline(site)
+        = U32.max
+. host = derived-interface(level, types.markup-host-decl)
+. held = types.properties[place].type
+. module = types.markup-host-decl.module
+. row = MarkupQuery
+    - level
+    - place as U32
+    - written-module
+    - written
+    - target
+    - 0
+    - no-fact
+    - no-instance
+    - no-instance
+    - no-instance
+. mark = scratch.types.mark
+if ancestor
+    scratch.types.push(host)
+    row.parent = calls.demand-runtime-call
+        - module
+        - no-type
+        - program.store-atom("markup-query-parent-host")
+        - mark
+    scratch.types.rewind(mark)
+    if row.parent == no-instance || held != types.optional-of(target)
+        decline(site)
+        = U32.max
+else
+    . found = facts.query-targets.find(target)
+    if !found
+        decline(site)
+        = U32.max
+    row.target-id = (found + 1) as U32
+    scratch.types.push(held)
+    scratch.types.push(host)
+    scratch.types.push(target)
+    row.add = calls.demand-runtime-call
+        - module
+        - no-type
+        - program.store-atom("markup-query-add-descendant")
+        - mark
+    row.remove = calls.demand-runtime-call
+        - module
+        - no-type
+        - program.store-atom("markup-query-remove-descendant")
+        - mark
+    scratch.types.rewind(mark)
+    if row.add == no-instance || row.remove == no-instance
+        decline(site)
+        = U32.max
+. recorded = facts.conversions.length
+conversions.convert(0, 0, level, host, .reason-markup-host)
+if unrecorded || facts.conversions[recorded].from != level || facts.conversions[recorded].to != host
+    decline(site)
+    = U32.max
+.. unrecorded = facts.conversions.length == recorded
+row.hosted = recorded as FactId
+facts.markup-queries += row
+= (facts.markup-queries.length - 1) as U32
+
+────────────────────
+_ do element-context U32
+    - class TypeId
+    - id SyntaxId
+
+` The styles and style sheets a markup element of a class sees, which the reference hands the
+` constructor of a class whose markup is its content, to make it under them
+` (`markupStyleContextFor`): the element's vocabulary (`style-vocabulary`), the sheets it sees
+` (`visible-sheets`) and the rules written in rules it sees, with those its own rules bring into
+` view (`push-scopes`), as a context among `instances.contexts`; the sheets alone for a class
+` that writes none but whose defaults apply rules (`defaults-apply-rules`); none for any other
+` class, or where there are none. Each rule written in a rule under the state cell of a `when`
+` gives the constructor the cell (`CarriedCell`), in turn, and then the values of each rule
+` around rules written in it that takes some, once each (`CarriedValues`). `U32.max - 1` where
+` it is declined: where they are not known here, or a using is.
+if types.intrinsic-of(class) != .class || !program.module-by-name("core/style")
+    = U32.max
+. content = writes-content(class)
+if !content && !defaults-apply-rules(class)
+    = U32.max
+if !sheets-known()
+    decline(id)
+    = U32.max - 1
+. styles [TypeId]
+if content
+    . seen = style-vocabulary(class, id)
+    if !seen
+        = U32.max - 1
+    styles = seen
+. sheets [TypeId]
+. levels [U32]
+if types.well-known-type("core/style", "StyleSheetInfo") != invalid-type
+    visible-sheets(class, sheets, levels)
+if !content && sheets.length == 0
+    = U32.max
+. scopes [RuleScope]
+. cells [U32]
+. carried [U32]
+. valued [U32]
+. value-types [TypeId]
+. rows [U32]
+if content
+    if !scopes-known() && nested-any()
+        decline(id)
+        = U32.max - 1
+    . seen = rule-scopes.length
+    push-scopes(id)
+    . next U32
+    for use in rule-scopes
+        scopes += use.scope
+        . count = use-cells(use)
+        cells += count
+        if count != 0
+            facts.link-cells(use.outer-cells, carried)
+            carried += use.cell
+            next += count
+    . known = place-values(next, valued, value-types, rows)
+    while rule-scopes.length > seen
+        rule-scopes.pop()
+    if !known
+        decline(id)
+        = U32.max - 1
+. recorded = false
+for held in facts.carried-cells
+    recorded = recorded || (held.instance == instance && held.site == id)
+for held in facts.carried-values
+    recorded = recorded || (held.instance == instance && held.site == id)
+if !recorded
+    for cell in carried
+        facts.carried-cells += CarriedCell(instance, id, cell)
+    for row in rows
+        facts.carried-values += CarriedValues(instance, id, row)
+= instances.intern-context(styles, sheets, levels, scopes, cells, no-type, 0, valued, value-types)
+
+────────────────────
++ do content-context U32
+
+` The context the function that fills an object with its class's markup is made under, as
+` `load-context` took it, which it hands the function of the class above: with the rules
+` written in rules of the markup that made the object as it was given them, but not those its own
+` markup brings into view, with the state cells it was given, which it gives on; and where a rule
+` `• This` holds rules (`scoping-names`), the class of the object, which the class above brings
+` those of its chain's rules `• This` into view for.
+. styles [TypeId]
+for position in 0 .. < markup-styles.length
+    styles += markup-styles[markup-styles.length - 1 - position]
+. scopes [RuleScope]
+. cells [U32]
+. valued [U32]
+. context = instances.rows[instance].context
+. value-types [TypeId]
+if context != U32.max
+    . held = instances.contexts[context]
+    for position in held.scope-first .. < held.scope-first + held.scopes
+        scopes += instances.context-scopes[position]
+        cells += instances.context-cells[position]
+        valued += instances.context-valued[position]
+    for position in held.value-first .. < held.value-first + held.values
+        value-types += instances.context-value-types[position]
+. made = if context != U32.max then instances.contexts[context].made else no-type
+if made == no-type && scoping-named(program.store-atom("This"))
+    made = frame.self-type
+= instances.intern-context
+    - styles
+    - markup-sheets
+    - sheet-levels
+    - scopes
+    - cells
+    - made
+    - 0
+    - valued
+    - value-types
+
+────────────────────
+_ use-cells U32
+    - use ScopeUse
+
+` How many state cells of the `when`s around a rule written in a rule seen are carried with it:
+` none where it is under none, or under one not carried.
+if use.cell >= U32.max - 1 then 0 else 1 + facts.link-count(use.outer-cells)
+
+────────────────────
+_ do content-values U32
+    - scope RuleScope
+    - place U32
+
+` The values of the rule around a rule written in a rule that the function that builds content a
+` style rule generates keeps, from the `place`th on among those its context names, made once, in
+` the order kept; the markup element it is generated at gives them (`StyleContent`). `U32.max - 1`,
+` values not here, where their types are not known.
+. frame = valued-frame(scope.frames)
+. count U32
+for index in 0 .. < facts.scope-values.length
+    . held = facts.scope-values[index]
+    if held.instance == instance && held.kept != U32.max
+        if held.argument == place
+            = index as U32
+        count += 1
+if frame == U32.max
+    = U32.max - 1
+. taken = frame-types(frame)
+if !taken
+    = U32.max - 1
+. first = facts.scope-value-types.length as U32
+for type in taken
+    facts.scope-value-types += type
+facts.scope-values += ScopeValues
+    - instance
+    - 0
+    - module
+    - frame
+    - place
+    - count
+    - U32.max
+    - first
+    - taken.length as U32
+= (facts.scope-values.length - 1) as U32
+
+────────────────────
++ do demand-outlet-states Bool
+
+` The functions of the style runtime a slot outlet calls to hold state cells while what it mounts
+` is built, and the one that reads them, typed once.
+. runtime = facts.style-runtime
+if runtime.outlet-state != no-instance
+    = true
+. cell = types.well-known-type("core/style", "StyleScopeState")
+if cell == invalid-type
+    = false
+types.complete(cell)
+. module-id = class-ref(types, cell).module
+. mark = scratch.types.mark
+runtime.outlet-mark = calls.demand-runtime-call
+    - module-id
+    - no-type
+    - program.store-atom("style-outlet-states-mark")
+    - mark
+if runtime.outlet-mark == no-instance
+    = false
+scratch.types.push(types.type-row(.uint32))
+scratch.types.push(cell)
+runtime.outlet-push = calls.demand-runtime-call
+    - module-id
+    - no-type
+    - program.store-atom("style-outlet-state-push")
+    - mark
+scratch.types.rewind(mark)
+scratch.types.push(instances.signatures[runtime.outlet-mark].returns)
+runtime.outlet-release = calls.demand-runtime-call
+    - module-id
+    - no-type
+    - program.store-atom("style-outlet-states-release")
+    - mark
+scratch.types.rewind(mark)
+scratch.types.push(types.type-row(.uint32))
+runtime.outlet-state = calls.demand-runtime-call
+    - module-id
+    - no-type
+    - program.store-atom("style-outlet-state")
+    - mark
+scratch.types.rewind(mark)
+facts.style-runtime = runtime
+= outlets-ready && runtime.outlet-state != no-instance
+    .. outlets-ready = runtime.outlet-push != no-instance && runtime.outlet-release != no-instance
+
+────────────────────
+_ do slot-scopes-for Bool
+    - element SyntaxId
+    - class TypeId
+    - scopes [ScopeUse]
+
+` The rules written in rules that the functions building what the lines of a markup element's
+` body give the slots of its class see before those found on the way to each slot's outlet, as
+` the reference's `slotOutletStyleContext` holds them: those the element sees, those its rules
+` bring (`scopes-of`), and those of the rules `• This` of its class's chain, under state cells
+` made at the element, but those that reach only the markup of its class's own
+` (`scope-pending`). False where they are not known here.
+if !scoping-any() || !scopes-known() || !sheets-known()
+    = false
+for use in rule-scopes
+    scopes += use
+. (start, end) = scopes-of(element)
+for position in start .. < end
+    if scoped-rows[position].scope.own != .scope-pending
+        scopes += scoped-rows[position]
+default-scopes(class, element, scopes, false)
+= true
+
+────────────────────
++ do slot-outlet (TypeId, SyntaxId)
+    - class TypeId
+    - name Atom
+
+` The class of a chain whose markup declares the slot of a name, and its outlet there or the line
+` that forwards it, as `level-slots` finds them; or no type.
+. level TypeId? = class
+while level && types.intrinsic-of(level) == .class
+    . ref = class-ref(types, level)
+    . owner = program.modules[ref.module]
+    . content SyntaxId = 0
+    do match? owner.decls[ref.decl]
+        | .decl-class(row)
+            content = row.content
+    if content != 0
+        for node in owner.tree.subtree-start(content) .. < content
+            do match? owner.tree.nodes[node]
+                | .node-slot-outlet(row)
+                    . named = program.store-atom("")
+                    if row.name != 0
+                        named = identifier-name(owner.tree, row.name) ?? named
+                    if named == name && !inner-outlet(owner.tree, content, node)
+                        = (level, node)
+                | .node-markup-slot-forward(row)
+                    if identifier-name(owner.tree, row.slot-binding) == name
+                        = (level, node)
+    level = types.base-of(level)
+= (no-type, 0u32)
+
+────────────────────
+_ do inner-outlet Bool
+    - written AST
+    - content SyntaxId
+    - outlet SyntaxId
+
+` Whether a slot outlet of the markup written in a class is no slot's: one a line forwards, or one
+` in the body of another, which is content the other mounts where it is given none.
+for node in written.subtree-start(content) .. < content
+    do match? written.nodes[node]
+        | .node-markup-slot-forward(row)
+            if row.outlet == outlet
+                = true
+        | .node-slot-outlet(row)
+            if node != outlet && row.body != 0 && in-body
+                = true
+            .. in-body = written.subtree-start(row.body) <= outlet && outlet <= row.body
+= false
+
+────────────────────
++ do outlet-scopes U32
+    - class TypeId
+    - name Atom
+    - content TypeId
+    - applies Bool
+    - base [ScopeUse]
+    - sheets [TypeId]
+    - levels [U32]
+    - found [ScopeUse]
+    - keeps-own Bool
+
+` The rules written in rules that the function building what a line gives a slot of a class, of
+` type `content`, sees after those of the markup that gives it (`base`, seeing the style sheets
+` `sheets` in their `levels`), found on the way to the slot's outlet, as the reference's
+` `markupSlotOutletRuleScopes` finds them (`follow-outlet`), the state cell of the `when` around
+` each one the cell that outlet holds of those made there (`discovering`); then, where it
+` `applies` them, as `markupSlotScopeAdditions` does, those the rules the outlet applies bring
+` (`outlet-applications`). None are found on the way to an outlet being followed already. Answers
+` 0, 2 where one is declined, or 3 where the rules the outlet applies bring rules under the state
+` cells of `when`s, which the function that builds the content brings itself
+` (`root-applications`); `found` is given those found for 0, and those but these for 3. The way
+` sees of `base` those that match in the markup of the class being filled (`scope-entered`) only
+` where that markup `keeps-own`, as the class's chain does, as the reference's
+` `markupSlotScopeAdditions` leaves them, and none found reaches only the markup of an element's
+` class (`scope-pending`), which what a line gives a slot is not.
+. (owner, outlet) = slot-outlet(class, name)
+if owner == no-type
+    = 0
+. ref = class-ref(types, owner)
+. tag = ((ref.module as U64) /lshift/ 32) /or/ (outlet as U64)
+. followed = discoveries.find(tag) != null
+. written = program.modules[ref.module].tree
+. markup SyntaxId = 0
+do match? program.modules[ref.module].decls[ref.decl]
+    | .decl-class(declared)
+        markup = declared.content
+. root = written.root-this(markup)
+. path [SyntaxId]
+. node = written.holder-of(outlet)
+while node != 0 && node != markup
+    if node != root && written.nodes[node] is .node-markup
+        path += node
+    node = written.holder-of(node)
+. saved-scopes [ScopeUse]
+for use in rule-scopes
+    saved-scopes += use
+. saved-sheets [TypeId]
+for sheet in markup-sheets
+    saved-sheets += sheet
+. saved-levels [U32]
+for level in sheet-levels
+    saved-levels += level
+. own-keying = keying
+rule-scopes.clear()
+for use in base
+    if keeps-own || use.scope.own != .scope-entered
+        rule-scopes += use
+. based = rule-scopes.length
+markup-sheets.clear()
+sheet-levels.clear()
+for sheet in sheets
+    markup-sheets += sheet
+for level in levels
+    sheet-levels += level
+keying = keying.sheet-self = owner
+keying = keying.discovering = true
+. status = 1u32
+if !followed
+    discoveries += tag
+    status = follow-outlet(owner, ref.module, written, root, path, outlet, name)
+    discoveries.pop()
+if status == 3
+    status = 2
+if status == 1
+    status = 0
+    while rule-scopes.length > based
+        rule-scopes.pop()
+if status == 0 && applies
+    markup-sheets.clear()
+    sheet-levels.clear()
+    for sheet in sheets
+        markup-sheets += sheet
+    for level in levels
+        sheet-levels += level
+    status = outlet-applications(class, name, content)
+if status == 0 || status == 3
+    for position in based .. < rule-scopes.length
+        if rule-scopes[position].scope.own != .scope-pending
+            found += rule-scopes[position]
+rule-scopes.clear()
+for use in saved-scopes
+    rule-scopes += use
+markup-sheets.clear()
+for sheet in saved-sheets
+    markup-sheets += sheet
+sheet-levels.clear()
+for level in saved-levels
+    sheet-levels += level
+keying = own-keying
+= status
+
+────────────────────
+_ do follow-outlet U32
+    - owner TypeId
+    - home ModuleId
+    - written AST
+    - root SyntaxId
+    - path [SyntaxId]
+    - outlet SyntaxId
+    - name Atom
+
+` Follows the way to a slot outlet of the markup written in the class `owner`, in `home`, through
+` the markup elements `path` it is in, innermost first, bringing into view the rules written in
+` rules seen on the way (`rule-scopes`), as `markupSlotOutletRuleScopes` does: where the class
+` above writes markup, those of its root `<This` and those found on the way to the outlet of the
+` slot the outermost element gives content, or the default one; else those of the class's root
+` `<This` (`gather-root`). Then, for each element, outermost first, those its rules bring; where
+` the next is content of a slot of the element's class, or the outlet forwards one of it, those of
+` the rules `• This` of its chain, made at the element, and those found on the way to that slot's
+` outlet in turn. Answers as `outlet-scopes` does.
+. above = types.base-of(owner) ?? no-type
+. entered = false
+if above != no-type && writes-content(above)
+    . first = if path.length != 0 then path[path.length - 1] else 0u32
+    . slot = program.store-atom("")
+    . bound = false
+    do match? written.nodes[first]
+        | .node-markup(row)
+            if row.slot-binding != 0 && written.holder-of(first) == owner-lines
+                bound = true
+                slot = identifier-name(written, row.slot-binding) ?? slot
+            .. owner-lines = written.content-lines(class-content(owner))
+    . names [Atom]
+    . wanted [TypeId]
+    . items [TypeId]
+    if !class-outlets(above, names, wanted, items)
+        = 2
+    . has = names.find(slot) != null
+    if bound && !has
+        = 1
+    if has
+        . base-written = program.modules[class-ref(types, above).module].tree
+        . base-content = class-content(above)
+        if gather-root(above, base-module, base-written, base-written.root-this(base-content)) != 0
+            = 2
+        .. base-module = class-ref(types, above).module
+        . seen [ScopeUse]
+        for use in rule-scopes
+            seen += use
+        . sheets [TypeId]
+        for sheet in markup-sheets
+            sheets += sheet
+        . levels [U32]
+        for level in sheet-levels
+            levels += level
+        . inner [ScopeUse]
+        . status = outlet-scopes
+            - above
+            - slot
+            - wanted[names.find(slot)!]
+            - true
+            - seen
+            - sheets
+            - levels
+            - inner
+            - true
+        if status != 0
+            = status
+        for use in inner
+            rule-scopes += use
+        entered = true
+if !entered && gather-root(owner, home, written, root) != 0
+    = 2
+. ref = class-ref(types, owner)
+. args = RowRange'TypeId()
+do match? types.rows[owner]
+    | .type-class(row)
+        args = row.args
+. env = types.class-env-for(ref.module, ref.decl, args, owner)
+. status = 0u32
+for index in 0 .. < path.length
+    . node = path[path.length - 1 - index]
+    . next = if index + 1 < path.length then path[path.length - 2 - index] else 0u32
+    do match? written.nodes[node]
+        | .node-markup(row)
+            types.clear-fault()
+            . type = types.evaluate-type(home, written, row.type-id, env)
+            types.clear-fault()
+            if type == invalid-type || type == no-type || types.intrinsic-of(type) != .class
+                status = 1
+                break
+            . names [Atom]
+            for text in implicit-names(type, row.type-id, row.id, written)
+                names += program.store-atom(text)
+            . gathered [ScopeUse]
+            . own-keying = keying
+            keying = Keying(keying.discovering, keying.sheet-self, home, node)
+            . gathering = gather-scopes
+                - type
+                - names
+                - row.style-rule-applications
+                - node
+                - type
+                - gathered
+                - written
+            keying = own-keying
+            if !gathering
+                status = 2
+                break
+            for use in gathered
+                rule-scopes += use
+            add-sheet-groups(type, markup-sheets, sheet-levels)
+            . forwards = written.nodes[outlet] is .node-markup-slot-forward && last-step
+                .. last-step = index == path.length - 1
+            . bound SyntaxId = 0
+            do match? written.nodes[next]
+                | .node-markup(line)
+                    if line.slot-binding != 0 && row.body != 0 && in-body
+                        bound = next
+                    .. in-body = written.holder-of(next) == row.body
+            . slot = program.store-atom("")
+            if forwards
+                slot = name
+            else if bound != 0
+                do match? written.nodes[bound]
+                    | .node-markup(line)
+                        slot = identifier-name(written, line.slot-binding) ?? slot
+            . slots [Atom]
+            . wanted [TypeId]
+            . items [TypeId]
+            if !class-outlets(type, slots, wanted, items)
+                status = 2
+                break
+            . has = slots.find(slot) != null
+            if (bound != 0 || forwards) && !has
+                status = 1
+                break
+            if !has
+                continue
+            . outer-keying = keying
+            keying = Keying(keying.discovering, keying.sheet-self, home, node)
+            default-scopes(type, node, rule-scopes, false)
+            keying = outer-keying
+            . seen [ScopeUse]
+            for use in rule-scopes
+                seen += use
+            . sheets [TypeId]
+            for sheet in markup-sheets
+                sheets += sheet
+            . levels [U32]
+            for level in sheet-levels
+                levels += level
+            . inner [ScopeUse]
+            . held = outlet-scopes
+                - type
+                - slot
+                - wanted[slots.find(slot)!]
+                - !forwards
+                - seen
+                - sheets
+                - levels
+                - inner
+                - false
+            if held != 0
+                status = held
+                break
+            for use in inner
+                rule-scopes += use
+types.env-release(env)
+= status
+
+────────────────────
+_ do gather-root U32
+    - class TypeId
+    - home ModuleId
+    - written AST
+    - root SyntaxId
+
+` Brings into view, on the way to a slot outlet, the rules written in rules that the rules a root
+` `<This` of the markup a class writes matches bring, each not in view already, as the reference's
+` `classContentRootStyleRuleScopes` gathers them, the state cell of each made where the root is.
+` Answers 0, or 2 where one is declined.
+do match? written.nodes[root]
+    | .node-markup(row)
+        . names [Atom]
+        for text in implicit-names(class, row.type-id, 0, written)
+            names += program.store-atom(text)
+        . gathered [ScopeUse]
+        . own-keying = keying
+        keying = Keying(keying.discovering, keying.sheet-self, home, root)
+        . gathering = gather-scopes
+            - class
+            - names
+            - row.style-rule-applications
+            - root
+            - class
+            - gathered
+            - written
+        keying = own-keying
+        if !gathering
+            = 2
+        . added [ScopeUse]
+        for use in gathered
+            . shown = false
+            for held in rule-scopes
+                shown = shown || instances.same-scope(held.scope, use.scope)
+            for held in added
+                shown = shown || instances.same-scope(held.scope, use.scope)
+            if !shown
+                added += use
+        for use in added
+            rule-scopes += use
+= 0
+
+────────────────────
++ do class-content SyntaxId
+    - class TypeId
+
+` The section of markup a class writes, or none.
+. ref = class-ref(types, class)
+do match? program.modules[ref.module].decls[ref.decl]
+    | .decl-class(declared)
+        = declared.content
+= 0
+
+────────────────────
+_ do content-cell U32
+    - scope RuleScope
+    - kept U32
+    - depth U32
+
+` The state cell the function that builds generated content keeps, its `kept`th, for a `when`
+` around a rule written in a rule its context gives: the frame of the rule that is the `depth`th
+` `when`'s from the innermost, which the markup element the content is generated at holds
+` (`StyleContent`).
+. frame = scope.frames
+. passed U32
+while frame != U32.max
+    if instances.frames[frame].gate != 0
+        if passed == depth
+            break
+        passed += 1
+    frame = instances.frames[frame].outer
+. module = if frame != U32.max then instances.frames[frame].module else 0u32
+. branch = if frame != U32.max then instances.frames[frame].gate else 0u32
+facts.scope-cells += ScopeCell
+    - instance
+    - U32.max
+    - module
+    - branch
+    - no-type
+    - true
+    - U32.max
+    - U32.max
+    - kept
+= (facts.scope-cells.length - 1) as U32
+
+────────────────────
+_ do record-scopes
+    - id SyntaxId
+    - scopes [ScopeUse]
+
+` Keeps the rules written in rules that the style rules a markup element applies bring into view,
+` for the markup its object makes and its body.
+scoped-sites += id
+scoped-starts += scoped-rows.length as U32
+for scope in scopes
+    scoped-rows += scope
+scoped-ends += scoped-rows.length as U32
+
+────────────────────
+_ do push-scopes
+    - id SyntaxId
+
+` Brings into view, for the constructor of a markup element's object, the rules written in rules
+` that the style rules the element applies do, those that reach only the markup of its class's
+` own (`scope-pending`) with them.
+. (start, end) = scopes-of(id)
+for position in start .. < end
+    rule-scopes += scoped-rows[position]
+
+────────────────────
+_ do push-body-scopes
+    - id SyntaxId
+
+` Brings into view, for the markup in a markup element's body, the rules written in rules that the
+` style rules the element applies do, but those that reach only the markup of its class's own
+` (`scope-pending`), as the reference's `withoutPendingOwnStyleRuleScopes` leaves them out.
+. (start, end) = scopes-of(id)
+for position in start .. < end
+    if scoped-rows[position].scope.own != .scope-pending
+        rule-scopes += scoped-rows[position]
+
+────────────────────
++ do markup-layer U32
+
+` The layer at which the elements of markup written here declare styles: content, 1, in the
+` function that makes a class's content, as the reference sets it there, and inline, 5,
+` anywhere else. A function that builds markup takes that of the markup around it
+` (`layer-given`), as the reference's builders carry it. None in another function nested in one
+` that makes content, which the reference gives the layer of the function it is made in only in
+` some ways of making it.
+if layer-given != 0
+    = layer-given
+if frame.declaration.is-content
+    = 1
+. outer = instances.rows[instance].enclosing
+while outer != no-instance
+    . row = instances.rows[outer]
+    . written = describe(program, row.module, row.decl)
+    if written && written.is-content
+        = U32.max
+    outer = row.enclosing
+= 5
+
+────────────────────
++ do reads-element Bool
+    - receiver TypeId
+    - tree AST
+    - value SyntaxId
+
+` Whether a value reads by its name alone a property the markup of a class declares for an
+` element, apart from in the functions written in it.
+. floor = tree.subtree-start(value)
+. node = value + 1
+while node > floor
+    node -= 1
+    do match? tree.nodes[node]
+        | .node-function-syntax
+            node = tree.subtree-start(node)
+        | .node-identifier(row)
+            . place = property-named(receiver, row.name)
+            if place && names-element(types, types.properties[place])
+                = true
+= false
+
+────────────────────
++ do writes-content Bool
+    - type TypeId
+
+` Whether a class, or one above it, has a section of markup.
+. level TypeId? = type
+while level
+    . ref = class-ref(types, level)
+    . owner = program.modules[ref.module]
+    do match? owner.decls[ref.decl]
+        | .decl-class(class)
+            do match? owner.decls[class.content-function]
+                | .decl-function(fn)
+                    if fn.is-content && fn.syntax != 0
+                        = true
+    level = types.base-of(level)
+= false
+
+────────────────────
++ do branches-element Bool
+    - markup AST
+    - content SyntaxId
+    - name Atom
+
+` Whether a class's markup gives an element of a name in an `if` or a `match` of it, outside
+` its functions and loops.
+for node in markup.subtree-start(content) .. < content
+    do match? markup.nodes[node]
+        | .node-markup(element)
+            do match? markup.nodes[element.id]
+                | .node-identifier(id)
+                    if id.name == name && branched(markup, content, node)
+                        = true
+= false
+
+────────────────────
+_ do branched Bool
+    - markup AST
+    - content SyntaxId
+    - element SyntaxId
+    - outlets = false
+
+` Whether an element of a class's markup is written in an `if` or a `match` of it, or with
+` `outlets` in the default content of a slot, and in no function or loop of it.
+. found = false
+for node in element + 1 .. < content
+    if markup.subtree-start(node) <= element
+        do match? markup.nodes[node]
+            | .node-function-syntax
+                = false
+            | .node-for-block
+                = false
+            | .node-if-block
+                found = true
+            | .node-match-expression
+                found = true
+            | .node-slot-outlet
+                found = found || outlets
+= found
+
+────────────────────
++ do check-markup-trigger
+    - receiver TypeId
+    - syntax SyntaxId
+    - rule ASTWheneverRule
+
+` A `whenever` rule on the markup an object is in, typed as the reference compiles it: the
+` object must be a markup host, and so must the class the rule looks for, which, for an
+` ancestor, must declare no `==`, since a new ancestor is compared with the last as one object,
+` which an optional of the class holds.
+` Children and descendants are looked for by the number of the class among the targets of
+` descendant queries; a class numbered only as the rule is typed, as one a class with type
+` parameters looks for is, has no shape here. Where the rule names its changes, a
+` `MarkupChangeSet` of that class is made for it, whose lists take each object added or
+` removed and which is emptied after each run. The rule registers with the markup runtime,
+` finds parent hosts there, and runs its live action by a call; its body runs in that action.
+` The reference's errors for these, and runtime functions that raise, have no shape here.
+. ancestor = rule.kind.text == "ancestor"
+. host = if is-markup-host(receiver) then markup-host else no-type
+    .. markup-host = derived-interface(receiver, types.markup-host-decl)
+. target = types.evaluate-type(module, tree, rule.target-type, frame.env)
+if host == no-type || target == invalid-type || !is-markup-host(target)
+    decline(syntax)
+    =
+if ancestor
+    for token in ["==", "!="]
+        if calls.has-operator(target, program.store-atom(token), target)
+            decline(syntax)
+            =
+. found = if ancestor then types.optional-of(target) else no-type
+if found != no-type
+    types.complete(found)
+. trigger = MarkupTrigger
+    - instance
+    - target
+    - 0
+    - found
+    - host
+    - no-type
+    - no-instance
+    - no-instance
+    - no-instance
+    - no-instance
+    - no-instance
+    - no-instance
+if !ancestor
+    note-class-targets(receiver)
+    . found = facts.query-targets.find(target)
+    if !found
+        decline(syntax)
+        =
+    trigger.target-id = (found + 1) as U32
+demand-live-runtime()
+. markup = types.markup-host-decl.module
+. mark = scratch.types.mark
+for arg in tree.children[rule.args]
+    . named SyntaxId = 0
+    do match? tree.nodes[arg]
+        | .node-argument-decl(row)
+            do match? tree.nodes[row.pattern]
+                | .node-identifier
+                    named = row.pattern
+                | .node-type-capture(capture)
+                    named = if capture.type == 0 then capture.id else 0
+    . resolution = bindings.resolution-of(frame.binding, named)
+    . name = tree.identifier-atom(named) if named != 0
+    trigger.changes = types.well-known-type-of("core/markup", "MarkupChangeSet", target)
+    . added = property-named(trigger.changes, program.store-atom("added")) if trigger.changes != invalid-type
+    if !name || name.text != "changes" || resolution.kind != .resolve-slot || !added
+        decline(arg)
+        =
+    frame.assign(resolution.slot, trigger.changes)
+    trigger.made = calls.demand-constructor(trigger.changes, mark)
+    trigger.clear = calls.demand-method(trigger.changes, program.store-atom("clear"))
+    scratch.types.push(target)
+    trigger.record = calls.demand-runtime-call
+        - markup
+        - types.properties[added].type
+        - program.store-atom("+=")
+        - mark
+    scratch.types.rewind(mark)
+if rule.kind.text != "descendants"
+    scratch.types.push(host)
+    trigger.parent = calls.demand-runtime-call
+        - markup
+        - no-type
+        - program.store-atom("markup-query-parent-host")
+        - mark
+    scratch.types.rewind(mark)
+. callback = types.well-known-type
+    - "core/markup"
+    - if ancestor then "MarkupAncestorQueryRefresher" else "MarkupDescendantsQueryApplier"
+scratch.types.push(host)
+if !ancestor
+    scratch.types.push(types.size-type)
+    scratch.types.push(callback)
+scratch.types.push(callback)
+trigger.register = calls.demand-runtime-call
+    - markup
+    - no-type
+    - program.store-atom
+        - if ancestor then "register-markup-ancestor-query" else "register-markup-descendants-query"
+    - mark
+scratch.types.rewind(mark)
+trigger.schedule = if types.call-atom then calls.demand-method(types.live-action-type, types.call-atom) else no-instance
+for callee in [trigger.made, trigger.clear, trigger.record, trigger.parent, trigger.register, trigger.schedule]
+    if callee != no-instance
+        demand-errors(callee)
+. orphaned = trigger.parent == no-instance && rule.kind.text != "descendants"
+. missing = orphaned || trigger.register == no-instance || trigger.schedule == no-instance
+. unmade = trigger.changes != no-type && (set-missing || trigger.record == no-instance)
+    .. set-missing = trigger.made == no-instance || trigger.clear == no-instance
+if missing || unmade || callback == invalid-type
+    decline(syntax)
+    =
+for callee in [trigger.made, trigger.clear, trigger.record, trigger.parent, trigger.register, trigger.schedule]
+    if callee != no-instance && instances.signatures[callee].errors.count != 0
+        decline(syntax)
+        =
+facts.markup-triggers += trigger
+check-statement(rule.body)
+
+────────────────────
++ do follows-content Bool
+    - member SyntaxId
+    - owner DeclId
+
+` Whether a section written in a class follows the class's content: an earlier section, or a
+` `• This` with lines that are not its own (`rule-part`), which the reference makes the content.
+` The reference reports a second as it declares the class, used or not.
+if !(tree.nodes[member] is .node-content-block)
+    = false
+do match? program.modules[module].decls[owner]
+    | .decl-class(class)
+        do match? tree.nodes[class.syntax]
+            | .node-class-block(row)
+                for written in tree.children[row.members]
+                    if written == member
+                        = false
+                    if tree.nodes[written] is .node-content-block || holds-markup(written)
+                        = true
+= false
+
+────────────────────
+_ do holds-markup Bool
+    - rule SyntaxId
+
+` Whether a style rule is a `• This` with a line of its body that is not the rule's own.
+do match? tree.nodes[rule]
+    | .node-rule-syntax(row)
+        if row.name.text != "This" || row.body == 0
+            = false
+        do match? tree.nodes[row.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    if !tree.rule-part(statement)
+                        = true
+= false
+
+────────────────────
++ do check-content
+    - decl DeclId
+    - class ClassDecl
+
+` A section of a type with markup written in it is the type's content, which only a class
+` holds. A struct says that it holds none; in a type of any other kind the section is declined.
+` A root `<This` is checked as the reference checks it.
+if class.content == 0
+    =
+if class.or-bases.count != 0
+    decline(class.content)
+    =
+if class.base != 0
+    . env = types.class-env(module, decl)
+    . base = types.evaluate-type(module, tree, class.base, env)
+    types.env-release(env)
+    if base == invalid-type
+        =
+    . kind = types.intrinsic-of(base)
+    if kind == .struct
+        . message = program.store-atom("Content is not supported on structs")
+        frame.diagnose(class.syntax, .stated, message)
+        =
+    if kind != .class
+        decline(class.content)
+        =
+check-root(decl, class)
+
+────────────────────
+_ do check-root
+    - decl DeclId
+    - class ClassDecl
+
+` The root `<This` of the markup written in a class names no object, takes no argument and fills no
+` slot, and every other line of the markup is written in it, but state machines. Each of its lines
+` that assigns gives a property the class has from a class above its first value: a property stored
+` in the object, given one value. One the class declares itself with a value is given two; one it
+` declares with none takes this one. A name that is no property is one of a style, where a style
+` could answer it, which the constructor declares (`apply-root-rules`), and else is no name at all.
+` The style rules it applies are applied by the constructor (`apply-root-rules`), and are declined
+` where the program has no style runtime.
+. root = tree.root-this(class.content)
+do match? tree.nodes[root]
+    | .node-markup(row)
+        if row.id != 0
+            frame.diagnose(row.id, .stated, program.store-atom("Root <This> cannot have an id"))
+            =
+        if row.slot-binding != 0
+            frame.diagnose
+                - row.slot-binding
+                - .stated
+                - program.store-atom("Root <This> cannot bind a slot")
+            =
+        if row.args.count != 0
+            . message = program.store-atom("Root <This> cannot pass constructor arguments")
+            frame.diagnose(tree.children[row.args.start], .stated, message)
+            =
+        if row.slot-parameter != 0 || (row.style-rule-applications.count != 0 && no-style-module)
+            decline(root)
+            =
+        .. no-style-module = !program.module-by-name("core/style")
+        do match? tree.nodes[class.content]
+            | .node-content-block(section)
+                do match? tree.nodes[section.body]
+                    | .node-block(block)
+                        for statement in tree.children[block.body]
+                            if statement == root || tree.nodes[statement] is .node-state-machine
+                                continue
+                            . message = program.store-atom
+                                - "Root <This> must wrap all class content"
+                            frame.diagnose(root, .stated, message)
+                            =
+        . mark = scratch.types.mark
+        . owner = types.class-pattern-with-args(module, decl, mark)
+        if owner == invalid-type
+            =
+        types.complete(owner)
+        . seen [Atom]
+        do match? tree.nodes[row.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    do match? tree.nodes[statement]
+                        | .node-assign(attribute)
+                            . name = style-name(tree, attribute.lhs)
+                            if attribute.op == .bind-op
+                                . message = "A root <This> cannot bind with \"<->\", since its attributes give the object's own properties their first values; bind the property where the object is made"
+                                frame.diagnose(statement, .stated, program.store-atom(message))
+                                =
+                            if !name || attribute.op != .eq-op
+                                decline(statement)
+                                =
+                            . place = property-named(owner, name)
+                            if !place
+                                if program.module-by-name("core/style")
+                                    continue
+                                frame.diagnose
+                                    - attribute.lhs
+                                    - .stated
+                                    - program.store-atom("Property not found")
+                                =
+                            if seen.find(name) != null
+                                . message = program.store-atom
+                                    - "Duplicate root <This> property default"
+                                frame.diagnose(attribute.lhs, .stated, message)
+                                =
+                            seen += name
+                            if types.properties[place].storage-kind != .storage-eager
+                                . message = program.store-atom
+                                    - "Root <This> can only default eager properties"
+                                frame.diagnose(attribute.lhs, .stated, message)
+                                =
+                            . own = owner-property(program, module, decl, name)
+                            do match? program.modules[module].decls[own]
+                                | .decl-property(property)
+                                    if own != 0 && !property.defaults-root && property.value != 0
+                                        . message = "Root <This> property default duplicates property declaration"
+                                        frame.diagnose
+                                            - attribute.lhs
+                                            - .stated
+                                            - program.store-atom(message)
+                                        =
+
+────────────────────
++ is-region-body Bool
+    - decl DeclId
+
+match program.modules[module].decls[decl]
+    | .decl-function(fn)
+        fn.kind == .region-decl
+    ??
+        false
+
+────────────────────
++ awaits-element Bool
+    - slot SlotId
+
+` Whether a local an enclosing function declares is the name of a markup element it has not
+` made yet. A closure made before then reads it when it runs (`read-later-element`).
+|? outer && frame.is-captured(slot)
+    outer.awaits-element(slot)
+??
+    waited != null && awaited[waited] != 0
+
+.. waited = unbuilt.find(slot)
+
+────────────────────
+_ do starts-task Bool
+    - slot SlotId
+
+. enclosing = outer
+if !enclosing || !frame.is-captured(slot)
+    = false
+= enclosing.starts-task(slot) || (frame.declaration.kind == .task-decl && !enclosing.frame.is-captured(slot))
+
+────────────────────
+_ do foresee-element TypeId
+    - slot SlotId
+
+if outer && frame.is-captured(slot)
+    = outer.foresee-element(slot)
+. known = foreseen.find(slot)
+if known != null
+    = foreseen-types[known]
+. waited = unbuilt.find(slot)
+if waited == null || awaited[waited] == 0
+    = no-type
+do match? tree.nodes[awaited[waited]]
+    | .node-markup(row)
+        types.clear-fault()
+        . class = types.evaluate-type(module, tree, row.type-id, frame.env)
+        types.clear-fault()
+        if class != invalid-type
+            foreseen += slot
+            foreseen-types += class
+        = class
+= no-type
+
+────────────────────
++ do assign-element
+    - slot SlotId
+    - made TypeId
+    - element SyntaxId
+
+frame.assign(slot, made)
+. known = foreseen.find(slot)
+if known == null || made == invalid-type || foreseen-types[known] == made
+    =
+. name = bindings.slots[slot].name
+. read = type-source(types, foreseen-types[known])
+. message = "Named markup element \"${name.text}\" is read in a closure made before its markup constructs it, as $read, but its markup makes ${type-source(types, made)}; write its type in full"
+frame.diagnose(element, .stated, program.store-atom(message))
+
+────────────────────
++ do infer-markup-read Found
+    - id SyntaxId
+    - row ASTMarkupReadExpression
+
+` A read of a markup link, `%parent`, `%first-child`, `%last-child`, `%previous-sibling` or
+` `%next-sibling`, of an object or of `this` whose class is a markup host: the optional of the
+` host the markup runtime links it to. Where the class is a tree host of a concrete class of
+` children, a child read gives that class, and so do a parent and a sibling read where the
+` subject is one; else a sibling read gives the subject's class, and any other the host. The
+` link is the host's object taken as that class, unchecked, as the reference takes it. A read
+` written after `?` reads from what the optional before it holds, as a read of a member does. A
+` link given as an interface has no shape here.
+. name = row.name.text
+. reader = "markup-structural-${name}-host"
+if name != "parent" && name != "first-child" && name != "last-child" && no-sibling
+    frame.diagnose(id, .stated, program.store-atom("Markup link \"%$name\" not found"))
+    = Found(invalid-type)
+.. no-sibling = name != "previous-sibling" && name != "next-sibling"
+. subject = no-type
+if row.object != 0
+    if this.tree.optional-chain-expr(row.object) != 0
+        decline(id)
+        = Found(invalid-type)
+    . object-found = infer-found(row.object)
+    . object = object-found.type
+    . own = object-found.link
+    if object == invalid-type
+        = Found(invalid-type)
+    . form = if row.is-optional then note-chain(id, id, object) else ChainForm.chain-plain
+    if form == .chain-absent || absent-after(row.object, object)
+        = Found(types.null-type)
+    . optional = form == .chain-tested
+    subject = link-receiver(row.object, object, own, optional)
+    if optional
+        facts.unwrapped.append(UnwrappedFact(instance, row.object, subject))
+else
+    subject = frame.self-type
+if subject == no-type
+    frame.diagnose(id, .stated, program.store-atom("Markup link \"%$name\" not found"))
+    = Found(invalid-type)
+if types.is-optional(subject)
+    decline(id)
+    = Found(invalid-type)
+. host-decl = types.markup-host-decl
+. host = if hostable then derived-interface(subject, host-decl) else no-type
+    .. hostable = subject != no-type && (host-decl.module != 0 || host-decl.decl != 0)
+if host == no-type
+    frame.diagnose(id, .stated, program.store-atom("Markup link \"%$name\" not found"))
+    = Found(invalid-type)
+if types.intrinsic-of(subject) != .class && subject != host
+    decline(id)
+    = Found(invalid-type)
+. tree = if tree-host then derived-interface(subject, types.markup-tree-host-decl) else no-type
+    .. tree-host = types.markup-tree-host-decl.module != 0 || types.markup-tree-host-decl.decl != 0
+. child = if tree != no-type then first-arg(tree) else no-type
+. concrete = child != no-type && !types.completions[child].has-variables
+. target = no-type
+if name == "first-child" || name == "last-child"
+    target = if concrete then child else no-type
+else if concrete && derived-interface(subject, class-ref(types, child)) == child
+    target = child
+else if name == "previous-sibling" || name == "next-sibling"
+    target = if !types.completions[subject].has-variables then subject else no-type
+if target == host
+    target = no-type
+if target != no-type && types.intrinsic-of(target) != .class
+    decline(id)
+    = Found(invalid-type)
+. mark = scratch.types.mark
+scratch.types.push(host)
+. read = calls.demand-runtime-call(host-decl.module, no-type, program.store-atom(reader), mark)
+scratch.types.rewind(mark)
+if read == no-instance
+    decline(id)
+    = Found(invalid-type)
+conversions.convert(id, if row.object != 0 then row.object else id, subject, host, .reason-argument)
+facts.markup-reads += MarkupRead(instance, id, read, target)
+. link = types.optional-of(if target != no-type then target else host)
+= Found(link).linking(link)
+
+────────────────────
++ do infer-markup TypeId
+    - id SyntaxId
+    - row ASTMarkup
+    - want Want = Want()
+
+` A markup element: an object of its class, whose body runs with each of its lines as
+` content of the object. A line that gives a value is taken by the element: by its `+=`, or
+` else by its `++=`. An `if` and a `for` written as lines run their bodies as content of the
+` same element; a `do` block runs as it would anywhere. The object of an element a block
+` declares a name for was made where that block starts, and the name holds it, but where the
+` name is placed (`is-placed`): the object is made here and the name given it, which a
+` function written in another may not do. An element written with a name no block declares,
+` where the name is one something else declared, is that thing's value to the reference and
+` makes no object: it is declined, but where that is the property the markup of the class
+` declares for the element (`names-content-property`), whose object is made here and given to
+` the property once the line has run. A name placed so that the function building a slot an
+` element is given declares it in a function the slot is written in is given the object
+` there, as the reference's builder writes the local it captures (`places-across`). What
+` makes a placed element reads its name only in a function of its own: read anywhere else, the
+` name is the reference's error. An
+` element that binds a slot is made only by the function
+` that builds the slot; written as a line anywhere else it is the reference's error. An
+` element of a markup host runs under the batch of markup in force, as `batch-element` says.
+if row.slot-binding != 0 && !builds-slot(id)
+    if want.asks(.want-content-line)
+        frame.diagnose
+            - row.slot-binding
+            - .stated
+            - program.store-atom("A slot is filled by a line of the element's body, or by a line of an arm of an if or match there")
+    else
+        decline(id)
+    = invalid-type
+. slot = element-slot(id, row.id)
+if row.id != 0 && !slot
+    . resolution = bindings.resolution-of(frame.binding, row.id)
+    . found = resolution.kind != .resolve-unresolved && resolution.kind != .resolve-none
+    if (found && !names-content-property(id, row.id)) || received
+        decline(id)
+        = invalid-type
+    .. received = (resolution.flags /and/ ResolutionFlag.resolution-received) != 0
+. placed = slot && is-placed(slot)
+if placed && frame.is-captured(slot!) && !places-across(slot!)
+    decline(id)
+    = invalid-type
+. made = if slot && !placed then frame.slot-type(slot) else no-type
+if placed
+    . first = unbuilt.length
+    . around = building
+    unbuilt += slot!
+    awaited += 0
+    building = slot!
+    made = make-element(id, row)
+    building = around
+    while unbuilt.length > first
+        unbuilt.pop()
+        awaited.pop()
+else if !slot
+    made = make-element(id, row)
+if made == invalid-type || made == no-type
+    = invalid-type
+if placed
+    assign-placed(slot!, made)
+if !keep-element(id, made)
+    decline(id)
+    = invalid-type
+. rooted = batch-element(id, row, made, want.asks(.want-content-line))
+if row.body != 0 && !wraps-default(row.body)
+    . styled = markup-styles.length
+    if program.module-by-name("core/style") && !add-visible-styles(made, markup-styles, id)
+        = invalid-type
+    . sheeted = markup-sheets.length
+    if program.module-by-name("core/style")
+        if markup-sheets.length == 0
+            add-sheet-groups(frame.self-type, markup-sheets, sheet-levels)
+        add-sheet-groups(made, markup-sheets, sheet-levels)
+    . scoped = rule-scopes.length
+    push-body-scopes(id)
+    content-blocks += row.body
+    content-parents += made
+    content-names += false
+    element-bodies += row.body
+    batched += rooted
+    check-statement(row.body)
+    batched.pop()
+    content-blocks.pop()
+    content-parents.pop()
+    content-names.pop()
+    element-bodies.pop()
+    while rule-scopes.length > scoped
+        rule-scopes.pop()
+    while markup-styles.length > styled
+        markup-styles.pop()
+    while markup-sheets.length > sheeted
+        markup-sheets.pop()
+        sheet-levels.pop()
+= made
+
+────────────────────
+_ do batch-element Bool
+    - id SyntaxId
+    - row ASTMarkup
+    - made TypeId
+    - linked Bool
+
+` Whether a batch of markup is in force in the body of a markup element: the element itself
+` where its class is a batch, else the one in force where the element is written. An element
+` of a markup host under one whose body gives it content (`gives-default`) is put under the
+` batch by the markup runtime's `ensure-markup-root` before its body runs, and one that is no
+` line of another element is mounted as a root of the batch by `markup-mount-root` once it is
+` made, as the reference does, but for one the function that builds a row of a markup loop
+` region or what a line gives a slot makes, which the reference builds with both put off. An
+` element that is a batch is converted to the `MarkupRootElement` what is made under it is put under.
+. owns = is-batch(made)
+. rooted = owns || in-batch()
+if !rooted
+    = false
+. root = ElementRoot(instance, id, no-instance, no-instance, owns)
+. batch = batch-type()
+if owns
+    conversions.convert(row.type-id, row.type-id, made, batch, .reason-markup-batch)
+. bodied = gives-default(row.body)
+if is-markup-host(made) && !defers-roots() && (bodied || !linked)
+    . markup = types.markup-host-decl.module
+    . host = derived-interface(made, types.markup-host-decl)
+    . optional = types.optional-of(batch)
+    . mark = scratch.types.mark
+    scratch.types.push(host)
+    scratch.types.push(optional)
+    if bodied
+        root.ensure = calls.demand-runtime-call
+            - markup
+            - no-type
+            - program.store-atom("ensure-markup-root")
+            - mark
+    if !linked
+        root.mount = calls.demand-runtime-call
+            - markup
+            - no-type
+            - program.store-atom("markup-mount-root")
+            - mark
+    scratch.types.rewind(mark)
+    if (bodied && root.ensure == no-instance) || (!linked && root.mount == no-instance)
+        decline(id)
+        = rooted
+    conversions.convert(row.type-id, row.type-id, made, host, .reason-markup-host)
+    conversions.convert(row.type-id, row.type-id, batch, optional, .reason-markup-root)
+if owns || root.ensure != no-instance || root.mount != no-instance
+    facts.element-roots += root
+= rooted
+
+────────────────────
+_ defers-roots Bool
+
+` Whether the function being typed builds markup with its roots neither put under the batch in
+` force nor mounted: one that builds a row of a markup loop region or what a line gives a slot,
+` as the reference builds them.
+frame.declaration.kind == .row-decl || frame.declaration.kind == .slot-decl
+
+────────────────────
++ do make-element TypeId
+    - id SyntaxId
+    - row ASTMarkup
+
+` The object of a markup element, made by the constructor its arguments choose. An argument
+` whose parameter has the name of a property of the class is stored in that property once
+` the object is made, as the reference binds the two.
+` An attribute whose value reads something tracked is given again by a function of its own.
+` An attribute that names a property of a style the element sees is a style declaration
+` (`declare-styles`), after the style rules the element applies (`apply-style-rules`). An
+` element whose body gives slots content gives its constructor the functions that build them
+` (`supply-slots`). The constructor of a class whose markup is its content is one of its own
+` for the styles and style sheets the element sees (`element-context`). The rules written in
+` rules that the element's style rules bring into view are gathered first, for the class
+` written, as the reference prepares them (`gather-scopes`); an element whose object is of
+` another class is declined then. One whose class takes its content through the markup protocol
+` or builds content of its own is declined, and so is a body that tracks what it reads
+` elsewhere. The local that keeps the object for the functions of its body that read its members
+` holds the class written while the body is typed (`keep-element`).
+if !is-plain-body(row.body)
+    decline(id)
+    = invalid-type
+types.clear-fault()
+. class = types.evaluate-type(module, tree, row.type-id, frame.env)
+if class == invalid-type
+    if !report-circular() && !report-fault(row.type-id)
+        frame.diagnose(row.type-id, .stated, program.store-atom("Type not found"))
+    = invalid-type
+. reported = facts.diagnostics.length
+. scoping = may-scope(class, row)
+if scoping
+    . names [Atom]
+    for name in implicit-names(class, row.type-id, row.id, tree)
+        names += program.store-atom(name)
+    . gathered [ScopeUse]
+    if !gather-scopes(class, names, row.style-rule-applications, id, class, gathered, tree)
+        decline(id)
+        = invalid-type
+    record-scopes(id, gathered)
+. names-mark = scratch.names.mark
+. builders-mark = scratch.types.mark
+if !supply-slots(id, row.body, class)
+    scratch.names.rewind(names-mark)
+    scratch.types.rewind(builders-mark)
+    = invalid-type
+. slots = scratch.names.since(names-mark)
+. builders = scratch.types.since(builders-mark)
+. context = element-context(class, id)
+if context == U32.max - 1
+    scratch.names.rewind(names-mark)
+    scratch.types.rewind(builders-mark)
+    = invalid-type
+do keep-element(id, class)
+. made = infer-call(id, row.type-id, RowRange'SyntaxId(), row.args, false, row.body, class, Want(), slots, builders, context).type
+scratch.names.rewind(names-mark)
+scratch.types.rewind(builders-mark)
+if made == invalid-type || made == no-type
+    = invalid-type
+if !fills-constructor(id, row, made)
+    = invalid-type
+if !accepts || (has-attributes(row.body) && made != class) || (scoping && made != class)
+    decline(id)
+    = invalid-type
+.. accepts = takes-lines(made) || takes-hosted(made) || (holds-slot(made) && is-markup-host(made))
+if !check-cells(id, id, made, true)
+    = invalid-type
+. outer-prepared = preparing
+preparing = preparing.site = id
+. applied = apply-style-rules(id, made, row)
+preparing = outer-prepared
+if applied == U32.max || !declare-styles(id, made, row.body, applied)
+    = invalid-type
+if !store-attributes(id, made, row.args, row.body) || !store-arguments(id, made, row.args)
+    if facts.diagnostics.length == reported
+        decline(id)
+    = invalid-type
+settle-attributes(row.body, made, row.type-id)
+settle-arguments(id, row.args, made, row.type-id)
+= made
+
+────────────────────
+_ do fills-constructor Bool
+    - id SyntaxId
+    - row ASTMarkup
+    - made TypeId
+
+. fact = facts.latest-call(instance, id)
+if fact == no-fact || facts.calls[fact].callee == no-instance
+    = true
+. callee = instances.rows[facts.calls[fact].callee]
+do match? program.modules[callee.module].decls[callee.decl]
+    | .decl-function(fn)
+        if fn.kind != .default-constructor-decl
+            = true
+. given [Atom]
+do match? tree.nodes[row.body] if row.body != 0
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            do match? tree.nodes[statement]
+                | .node-assign(attribute)
+                    . name = identifier-name(tree, attribute.lhs)
+                    if name
+                        given += name
+. count = 0
+. wanted Atom? = null
+. ref = class-ref(types, made)
+. owner = program.modules[ref.module]
+do match? owner.decls[ref.decl]
+    | .decl-class(class)
+        if class.members.count != 0
+            for member in owner.member-pool[class.members]
+                do match? owner.decls[member]
+                    | .decl-function(fn)
+                        if fn.kind == .constructor-decl && !fn.is-generated
+                            count += 1
+                            . fills = true
+                            for shape in owner.arg-pool[fn.args]
+                                if !shape.has-default && ungiven
+                                    fills = false
+                                    if !wanted
+                                        wanted = shape.name
+                                .. ungiven = !shape.name || given.find(shape.name) == null
+                            if fills
+                                = true
+if count == 0
+    = true
+. shown = type-source(types, made)
+. message = "Markup element <$shown gives none of the arguments the constructors of $shown require"
+if count == 1 && wanted
+    message = "Markup element <$shown gives no value for \"${wanted.text}\", which the constructor of $shown requires"
+. named = identifier-name(tree, row.id) if row.id != 0
+if named
+    message = "$message; \"${named.text}\" after <$shown names the element"
+frame.diagnose(row.type-id, .stated, program.store-atom(message))
+= false
+
+────────────────────
+_ do settle-attributes
+    - body SyntaxId
+    - made TypeId
+    - type-id SyntaxId
+
+` Types the function that gives again each attribute of a markup element whose value read
+` something tracked, once the element's object is typed, as the reference makes it: the
+` local no name reaches that keeps the object for it, declared at the attribute, holds one of
+` the element's class, and the action is made as `owner-action` says, or for a style the
+` attribute declares is the style runtime's `StyleDynamicAction` of the class. The local holds
+` one also where the value read nothing tracked after all, as where a name the module builder
+` took for one of a keyed row's is a member of an element around it, and nothing gives it again.
+do match? tree.nodes[body]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if tree.nodes[statement] is .node-assign && is-live-statement(statement)
+                . kept = bindings.resolution-of(frame.binding, statement)
+                if kept.kind == .resolve-slot
+                    frame.assign(kept.slot, made)
+            . position = facts.live-statements.length
+            while position != 0
+                position -= 1
+                . live = facts.live-statements[position]
+                if live.instance != instance || live.site != statement || live.rerun != no-instance
+                    continue
+                . resolution = bindings.resolution-of(frame.binding, statement)
+                if resolution.kind != .resolve-slot
+                    decline(statement)
+                    =
+                . styled = facts.style-declaration-of(instance, statement) != null
+                . owned InstanceId? = null
+                if styled
+                    owned = demand-style-gates(made)
+                else
+                    owned = owner-action(statement, made, type-id)
+                if !owned
+                    =
+                frame.assign(resolution.slot, made)
+                . rerun = demand-lambda(intern-nested(nested-decl-of(statement)), scratch.no-types)
+                if rerun == no-instance || instances.signatures[rerun].errors.count != 0
+                    decline(statement)
+                    =
+                instances.mark-may-panic(instance)
+                facts.live-statements[position] = LiveStatement
+                    - instance
+                    - statement
+                    - rerun
+                    - 0
+                    - U32.max
+                    - owned
+                    - !styled && owned != no-instance && owns-batch(made)
+                break
+            settle-binding(statement)
+
+────────────────────
+_ do settle-binding
+    - statement SyntaxId
+
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        if row.op != .bind-op
+            =
+        . given = facts.live-statement-of(instance, statement)
+        if !given || given.rerun == no-instance
+            =
+        . rerun = demand-lambda(intern-nested(nested-decl-of(row.lhs)), scratch.no-types)
+        if rerun == no-instance || instances.signatures[rerun].errors.count != 0
+            decline(statement)
+            =
+        facts.live-statements += LiveStatement(instance, row.lhs, rerun, 0, U32.max, given.owned, given.rooted)
+
+────────────────────
++ do settle-content
+    - statement SyntaxId
+    - parent TypeId
+    - produced TypeId
+
+` Types the function that gives a line of a markup element's body again where its value read
+` something tracked, once the element has taken it, as the reference makes it: an element of a
+` markup host that absorbed the value by its `markup-absorb` absorbs it again, and one that took
+` it another way replaces what it took (`replace-again`). The local no name reaches that keeps
+` the element's object, declared at the line, holds one of the element's class, the one after it
+` what the element took, and the action is made as `owner-action` says. A line of the body of an
+` arm of a region is given so to what the arm's function is given, converted at the line.
+. position = facts.live-statements.length
+while position != 0
+    position -= 1
+    . live = facts.live-statements[position]
+    if live.instance != instance || live.site != statement || live.rerun != no-instance
+        continue
+    . link = facts.content-link-of(instance, statement)
+    . kept = line-keeper(statement)
+    . absorbed = link != U32.max && is-markup-host(parent) && unappended && link-called
+        .. unappended = facts.content-links[link].append == no-instance
+        .. link-called = facts.content-links[link].call != no-fact
+    . replaced = if absorbed || link == U32.max then no-type else taken-type
+        .. taken-type = content-taken(facts.content-links[link], produced)
+    if (!absorbed && replaced == no-type) || kept == no-slot
+        decline(statement)
+        =
+    . type-id SyntaxId = statement
+    do match? tree.nodes[tree.content-element(statement)]
+        | .node-markup(row)
+            type-id = row.type-id
+    . owned = owner-action(statement, parent, type-id)
+    if !owned
+        =
+    frame.assign(kept, parent)
+    frame.assign(kept + 1, if absorbed then types.void-type else replaced)
+    . rerun = demand-lambda(intern-nested(nested-decl-of(statement)), scratch.no-types)
+    if rerun == no-instance || instances.signatures[rerun].errors.count != 0
+        decline(statement)
+        =
+    instances.mark-may-panic(instance)
+    facts.live-statements[position] = LiveStatement
+        - instance
+        - statement
+        - rerun
+        - 0
+        - U32.max
+        - owned
+        - owned != no-instance && owns-batch(parent)
+    =
+
+────────────────────
+_ content-taken TypeId
+    - row ContentLink
+    - produced TypeId
+
+` What a markup element took of a line of its body, which a function that gives the line again
+` replaces: the node the markup runtime linked for a markup host, else what the element's
+` method answered, or the value where it answers nothing, as the reference keeps it.
+|? row.call == no-fact
+    no-type
+|? row.append != no-instance
+    instances.argument-type(row.append, 1)
+??
+    if answered == types.void-type then produced else answered
+
+.. answered = instances.signatures[facts.calls[row.call].callee].returns
+
+────────────────────
+_ do owner-action InstanceId?
+    - site SyntaxId
+    - made TypeId
+    - type-id SyntaxId
+
+` The function that makes the live action a markup element owns where an attribute or an
+` argument of it read something tracked, as the reference makes it: where a batch is found
+` for the element, as `owns-batch` says, the markup runtime's `make-markup-action`, given the
+` batch; else none where the element's actions are plain ones, and for an element of a markup
+` host `make-owner-markup-action`, given the element as the host, to which it is converted at
+` its type once, however many of its attributes read something tracked. Either may raise. One
+` that has no shape here is declined, which is answered with nothing.
+. rooted = owns-batch(made)
+if owns-plain-actions(made) && !rooted
+    = no-instance
+. action = action-maker(site, made, rooted)
+if !action
+    = null
+if !rooted && !converts-at(type-id, .reason-markup-host)
+    conversions.convert
+        - type-id
+        - type-id
+        - made
+        - derived-interface(made, types.markup-host-decl)
+        - .reason-markup-host
+= action
+
+────────────────────
+_ do converts-at Bool
+    - site SyntaxId
+    - reason ConversionReason
+
+` Whether a conversion for a reason is recorded at a node of the instance being typed.
+. fact = facts.first-conversion(instance, site)
+while fact != no-fact
+    if facts.conversions[fact].reason == reason
+        = true
+    fact = facts.conversions[fact].next
+= false
+
+────────────────────
+_ do settle-arguments
+    - id SyntaxId
+    - args RowRange'SyntaxId
+    - made TypeId
+    - type-id SyntaxId
+
+` Types the function that gives again each argument of a markup element, given by position,
+` whose value read something tracked, once the element's object is typed, as the reference
+` makes it: the parameter the argument fills must name a property of the element's class,
+` which is the reference's error otherwise, and the local no name reaches that keeps the
+` object, declared at the element, holds one of the element's class. The action is made as
+` `owner-action` says.
+for arg in tree.children[args]
+    . position = facts.live-statements.length
+    while position != 0
+        position -= 1
+        . live = facts.live-statements[position]
+        if live.instance != instance || live.site != arg || live.rerun != no-instance
+            continue
+        . name = argument-name(arg, id, instance)
+        . place = property-named(made, name) if name
+        if !place
+            frame.diagnose
+                - arg
+                - .stated
+                - program.store-atom("Tracked markup constructor argument must match a property")
+            =
+        . resolution = bindings.resolution-of(frame.binding, id)
+        if resolution.kind != .resolve-slot
+            decline(arg)
+            =
+        . owned = owner-action(arg, made, type-id)
+        if !owned
+            =
+        frame.assign(resolution.slot, made)
+        . rerun = demand-lambda(intern-nested(nested-decl-of(arg)), scratch.no-types)
+        if rerun == no-instance || instances.signatures[rerun].errors.count != 0
+            decline(arg)
+            =
+        instances.mark-may-panic(instance)
+        facts.live-statements[position] = LiveStatement
+            - instance
+            - arg
+            - rerun
+            - 0
+            - place as U32
+            - owned
+            - owned != no-instance && owns-batch(made)
+        break
+
+────────────────────
+_ do has-attributes Bool
+    - body SyntaxId
+
+` Whether the body of a markup element writes an attribute: a line that assigns.
+do match? tree.nodes[body]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if tree.nodes[statement] is .node-assign
+                = true
+= false
+
+────────────────────
++ do push-attributes Bool
+    - body SyntaxId
+    - class TypeId
+
+` Types the attributes of a markup element in the order written and pushes each as an
+` argument of its constructor's call: one named as the property, marked as a property, of
+` the property's type, to which the value is converted as one assigned is. One that may name a
+` style property is left to `declare-styles`, and one a setter answers is no argument
+` (`setter-attribute`). False where an attribute has no shape or names no property, which is
+` reported.
+. given = true
+do match? tree.nodes[body]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            do match? tree.nodes[statement]
+                | .node-assign(attribute)
+                    . name = style-name(tree, attribute.lhs)
+                    if styles-attribute(attribute.op, class, name)
+                        continue
+                    if name && attribute-accessor(class, name)
+                        if !setter-attribute(statement, attribute.op, attribute.lhs, attribute.rhs, class)
+                            given = false
+                        continue
+                    . type = attribute-type
+                        - statement
+                        - attribute.op
+                        - attribute.lhs
+                        - attribute.rhs
+                        - class
+                    if type == invalid-type
+                        given = false
+                    else
+                        scratch.call-arguments.push(CallArgument(name, false, false, true, false))
+                        scratch.types.push(type)
+                        scratch.syntax.push(statement)
+= given
+
+────────────────────
++ do setter-attribute Bool
+    - statement SyntaxId
+    - op Operator
+    - target SyntaxId
+    - value SyntaxId
+    - class TypeId
+
+` An attribute of a markup element that a setter answers, which the reference gives the object
+` once it is made, as it updates any property the constructor does not fill: the value is typed
+` by itself and the setter chosen for it as an assignment to the property chooses one, the
+` reference's error where none answers. One of a setter private to another module, one written
+` with an assigning operator, and one of a class with type variables are declined.
+. name = identifier-name(tree, target)
+. found = attribute-accessor(class, name!)
+if op == .bind-op
+    . shown = type-short-name(types, class)
+    . message = "\"<->\" binds a property the element stores, and $shown answers \"${name!.text}\" with a getter or a setter, which a binding cannot follow; bind a property $shown stores"
+    frame.diagnose(target, .stated, program.store-atom(message))
+    = false
+if op != .eq-op || !found || types.completions[class].has-variables || is-hidden(types.properties[found], name!, .setter-decl)
+    decline(statement)
+    = false
+. given = stored-value(value, infer(value))
+if given == invalid-type
+    = false
+. diagnosed = facts.diagnostics.length
+if calls.setter-call(target, target, class, name!, value, given) == invalid-type
+    facts.restate
+        - diagnosed
+        - instance
+        - statement
+        - .function-not-found
+        - .stated
+        - program.store-atom("Setter not found")
+    = false
+= true
+
+────────────────────
++ do attribute-accessor Index?
+    - class TypeId
+    - name Atom
+
+. found = property-named(class, name)
+if found
+    =? found if types.properties[found].storage-kind == .storage-getter
+    = null
+= interface-accessor(class, name)
+
+────────────────────
++ do attribute-not-found
+    - target SyntaxId
+    - name Atom
+
+. message = "Property \"${name.text}\" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: \"do ${name.text} = …\""
+frame.diagnose(target, .stated, program.store-atom(message))
+
+────────────────────
++ do attribute-type TypeId
+    - statement SyntaxId
+    - op Operator
+    - target SyntaxId
+    - value SyntaxId
+    - class TypeId
+
+` The type an attribute of a markup element gives its constructor: that of the property it
+` names, to which the value written is converted as a value assigned to the property is. A
+` bullet list written for a list takes the list's item type, as the reference contextualizes it.
+` A name that is no property of the class, or one private to another module, is the
+` reference's error where no style could answer it. An attribute a setter answers, one of an
+` array and one written with an assigning operator are declined. An event written is wanted as
+` the property's type, as `use-event` says.
+. name = identifier-name(tree, target)
+if (op != .eq-op && op != .bind-op) || !name || types.intrinsic-of(class) != .class || generic
+    decline(statement)
+    = invalid-type
+.. generic = types.completions[class].has-variables
+. place = property-named(class, name)
+if op == .bind-op && (!place || is-hidden(types.properties[place], name, .setter-decl))
+    . message = "\"<->\" binds a property of the element, and ${type-short-name(types, class)} has no property \"${name.text}\""
+    frame.diagnose(target, .stated, program.store-atom(message))
+    = invalid-type
+if !place || is-hidden(types.properties[place], name, .setter-decl)
+    if program.module-by-name("core/style")
+        decline(statement)
+    else if place
+        frame.diagnose(target, .stated, program.store-atom("Property not found"))
+    else
+        attribute-not-found(target, name)
+    = invalid-type
+. property = types.properties[place]
+if property.storage-kind == .storage-getter
+    decline(statement)
+    = invalid-type
+. declared = property.type
+if declared == no-type
+    declared = demand-member(property, class, name)
+if declared == no-type || declared == invalid-type
+    decline(statement)
+    = invalid-type
+if is-array-value(declared)
+    decline(statement)
+    = invalid-type
+expect-bullets(value, declared)
+. written = infer-with-expected(value, declared, Want().escaping(declared, value))
+if written == invalid-type || written == no-type
+    = invalid-type
+if conversions.convert(statement, value, written, declared, .reason-assignment) == invalid-type
+    = invalid-type
+= declared
+
+────────────────────
+_ do store-attributes Bool
+    - id SyntaxId
+    - made TypeId
+    - args RowRange'SyntaxId
+    - body SyntaxId
+
+` Keeps, for each attribute of a markup element that names no parameter of its constructor,
+` that the value is stored in the property again once the object is made, as the reference
+` does, or given to the setter that answers it. An attribute that names a parameter an
+` argument fills is the reference's error. One that names another parameter fills it, as an
+` argument by name does, and is not stored again; one a setter answers that names a parameter
+` is declined.
+. fact = facts.latest-call(instance, id)
+if fact == no-fact || facts.calls[fact].callee == no-instance
+    = !has-attributes(body)
+. call = facts.calls[fact]
+. callee = instances.rows[call.callee]
+. owner = program.modules[callee.module]
+do match? tree.nodes[body]
+    | .node-block(row)
+        do match? owner.decls[callee.decl]
+            | .decl-function(fn)
+                . given U32
+                . setters U32
+                for statement in tree.children[row.body]
+                    do match? tree.nodes[statement]
+                        | .node-assign(attribute)
+                            . name = identifier-name(tree, attribute.lhs)
+                            . place = (property-named(made, name) ?? interface-accessor(made, name)) if name
+                            if !place && facts.style-declaration-of(instance, statement)
+                                continue
+                            if !place
+                                = false
+                            . parameter = shape-index(owner, fn, name!)
+                            if types.properties[place].storage-kind == .storage-getter
+                                if parameter != U32.max
+                                    decline(statement)
+                                    = false
+                                facts.note-element-store
+                                    - ElementStore(instance, id, setters, U32.max, 0, attribute.lhs)
+                                setters += 1
+                                continue
+                            if parameter != U32.max
+                                . fill = if in-fills then kept else ArgumentFill.fill-empty
+                                    .. in-fills = parameter < call.fills.count
+                                    .. kept = facts.call-fills[call.fills.start + parameter] as U32
+                                if fill < args.count + given
+                                    . shown = "Parameter \"${name!.text}\" is given twice"
+                                    . text = if fill < args.count then from-header else from-above
+                                        .. from-header = "$shown, by the element's header and by this attribute; give it once"
+                                        .. from-above = "$shown, by an attribute above and by this one; remove one"
+                                    frame.diagnose(statement, .stated, program.store-atom(text))
+                                    = false
+                                if fill != args.count + given
+                                    = false
+                                given += 1
+                                continue
+                            if instances.fill-argument(call.callee, name!) == U32.max
+                                = false
+                            . written = panics.property-of(made, name!)
+                            if written
+                                panics.note-write(instance, written)
+                            facts.note-element-store
+                                - ElementStore(instance, id, args.count + given, place as U32, 0)
+                            given += 1
+                = true
+= !has-attributes(body)
+
+────────────────────
++ do raise-elements
+    - block SyntaxId
+    - statements RowRange'SyntaxId
+
+` Makes, where a block of markup content starts, the object of each markup element the block
+` declares a name for: one written as a line of the block, or as a line of the body of such an
+` element, in the order they are written, as the reference does before it runs any line of the
+` block. What makes one object may read the name of an element the block has not made yet,
+` which makes that one first (`raise-early`); its own is the reference's error.
+. first = await-elements(statements)
+if unbuilt.length == first
+    =
+for statement in tree.children[statements]
+    raise-element(block, statement)
+settle-elements(first)
+
+────────────────────
++ do await-elements Int
+    - statements RowRange'SyntaxId
+
+` Notes, where a block starts, each markup element the block declares a name for and has not
+` made, and gives how many were noted before them, for `settle-elements` where the block ends.
+. first = unbuilt.length
+for statement in tree.children[statements]
+    await-element(statement)
+= first
+
+────────────────────
++ do settle-elements
+    - first Int
+
+` Forgets the markup elements a block noted it would make, where the block ends.
+while unbuilt.length > first
+    unbuilt.pop()
+    awaited.pop()
+
+────────────────────
++ do await-element
+    - element SyntaxId
+
+do match? tree.nodes[element]
+    | .node-markup(row)
+        . slot = element-slot(element, row.id)
+        if slot && !is-placed(slot)
+            unbuilt += slot
+            awaited += element
+        do match? tree.nodes[row.body]
+            | .node-block(body)
+                for statement in tree.children[body.body]
+                    await-element(statement)
+
+────────────────────
++ do raise-element
+    - block SyntaxId
+    - element SyntaxId
+
+` Makes the object of a markup element that declares a name, then those of the lines of its
+` body, under the styles and style sheets the class it names sees and the rules written in rules
+` its style rules bring into view (`gather-scopes`), as the reference installs them before it
+` evaluates the names a body declares. One a read made first is not made again.
+do match? tree.nodes[element]
+    | .node-markup(row)
+        . slot = element-slot(element, row.id)
+        if slot && !is-placed(slot) && unbuilt.find(slot) != null
+            . around = building
+            building = slot
+            . made = make-element(element, row)
+            building = around
+            assign-element(slot, made, element)
+            . waited = unbuilt.find(slot)
+            if waited != null
+                unbuilt[waited] = no-slot
+            facts.note-raised(instance, block, element)
+        do match? tree.nodes[row.body]
+            | .node-block(body)
+                . styled = markup-styles.length
+                . sheeted = markup-sheets.length
+                if program.module-by-name("core/style")
+                    types.clear-fault()
+                    . written = types.evaluate-type(module, tree, row.type-id, frame.env)
+                    types.clear-fault()
+                    if written != invalid-type && types.intrinsic-of(written) == .class
+                        do add-visible-styles(written, markup-styles, element)
+                        if markup-sheets.length == 0
+                            add-sheet-groups(frame.self-type, markup-sheets, sheet-levels)
+                        add-sheet-groups(written, markup-sheets, sheet-levels)
+                        . (start, end) = scopes-of(element)
+                        if end == start && may-scope(written, row)
+                            . names [Atom]
+                            for name in implicit-names(written, row.type-id, row.id, tree)
+                                names += program.store-atom(name)
+                            . gathered [ScopeUse]
+                            if !gather-scopes(written, names, row.style-rule-applications, element, written, gathered, tree)
+                                decline(element)
+                                =
+                            record-scopes(element, gathered)
+                . scoped = rule-scopes.length
+                push-body-scopes(element)
+                for statement in tree.children[body.body]
+                    raise-element(block, statement)
+                while rule-scopes.length > scoped
+                    rule-scopes.pop()
+                while markup-styles.length > styled
+                    markup-styles.pop()
+                while markup-sheets.length > sheeted
+                    markup-sheets.pop()
+                    sheet-levels.pop()
+
+────────────────────
++ do names-elements Bool
+    - block SyntaxId
+
+` Whether a block whose lines are content of a markup element declares the names of the
+` elements among them: the body of a `for` written as a line does, each turn.
+. position = content-blocks.length
+while position != 0
+    position -= 1
+    if content-blocks[position] == block
+        = content-names[position]
+= false
+
+────────────────────
++ do check-content
+    - element SyntaxId
+
+` The function that builds what a line of a style rule generates where the rule is applied to a
+` markup element, as the reference's `styleContentBuilderFunc` builds it: the element made with
+` its content, as it would be anywhere, as a `MarkupElement`, under the styles, the style sheets and
+` the rules written in rules its context holds, at the layer it holds, with no content generated
+` by the rules the markup it makes applies (`generating`). A rule seen under the state cells of
+` `when`s is seen under those it keeps (`content-cell`), and the values of the rule around one are
+` kept (`content-values`), as the reference's closure captures its frames. It answers that type,
+` and lets out what making the element raises. An element written with a name is declined.
+prepare()
+. host = types.well-known-type("core/markup", "MarkupElement")
+. held = instances.contexts[instances.rows[instance].context]
+. named = false
+do match? tree.nodes[element]
+    | .node-markup(row)
+        named = row.id != 0
+if host == invalid-type || named
+    decline(element)
+    finish-errors(frame)
+    close()
+    =
+instances.set-returns(instance, host, host, .return-declared)
+for position in 0 .. < held.styles
+    markup-styles += instances.context-types[held.first + held.styles - 1 - position]
+for position in held.first + held.styles .. < held.first + held.styles + held.sheets
+    markup-sheets += instances.context-types[position]
+    sheet-levels += instances.context-levels[position]
+sheets-given = true
+. kept U32
+for position in held.scope-first .. < held.scope-first + held.scopes
+    . scope = instances.context-scopes[position]
+    . place = instances.context-valued[position]
+    . values = if place == U32.max then U32.max else content-values(scope, place)
+    . count = instances.context-cells[position]
+    if count != 0
+        . links = U32.max
+        for depth in 0 .. < count - 1
+            links = facts.scope-link(content-cell(scope, kept + depth, count - 1 - depth), links)
+        rule-scopes += ScopeUse(scope, content-cell(scope, kept + count - 1, 0), values, links)
+        kept += count
+    else
+        rule-scopes += ScopeUse(scope, U32.max, values)
+scopes-given = true
+layer-given = held.layer
+batched += false
+. made = infer(element)
+batched.pop()
+if made != invalid-type && made != no-type
+    conversions.convert(element, element, made, host, .reason-return)
+finish-errors(frame)
+close()
+
+────────────────────
+_ do binds-property Bool
+    - statement SyntaxId
+
+` Whether a markup element gives a function of its own its name's object, as one whose body
+` gives slots content does, and the name is a property of the class the markup is run on.
+do match? tree.nodes[statement]
+    | .node-markup(row)
+        = row.id != 0 && nested-decl-of(row.id) != 0 && names-property(row.id)
+= false
+
+────────────────────
+_ do give-binder Bool
+    - element SyntaxId
+    - name SyntaxId
+    - class TypeId
+
+` Types the function that gives a markup element's name its object, where its body gives
+` slots content, as the `MarkupIdBinder` the constructor is given after the functions that
+` build the slots: before those, so that what they are given reads the name as the object.
+` The name must be one the element is made in place for, or, where no block declares it, as
+` under an `if` written as a line, a property the markup of the class declares for it.
+. slot = element-slot(element, name)
+. decl = nested-decl-of(name)
+. binds = types.well-known-type-of("core/markup", "MarkupIdBinder", class)
+. held = if slot then is-placed(slot) else names-content-property(element, name)
+if !held || decl == 0 || binds == invalid-type
+    decline(element)
+    = false
+. callee = demand-nested(decl, class)
+if callee == no-instance
+    decline(element)
+    = false
+. closure = intern-nested(decl)
+facts.set-node-type(instance, name, closure)
+= conversions.convert(name, name, closure, binds, .reason-markup-slot) != invalid-type
+
+────────────────────
+_ do supply-slots Bool
+    - element SyntaxId
+    - body SyntaxId
+    - class TypeId
+
+` The slots of the markup written in a class that the lines of a markup element's body give
+` content, each line an element that binds a slot by name, or the one line that is no attribute
+` and binds none, which gives the default slot. Each is built by a function of its own, typed
+` here for the type the slot's outlet declares, and made the `MarkupSlotBuilder` of that type
+` the constructor is given, after its other arguments, in the order of the slots' names, the
+` default one first, as the reference orders them. A name bound twice is the reference's error,
+` as is one the class declares no slot of. Content the default slot is given in another shape,
+` or which a class declaring none is given by a line the module builder took for it, is
+` declined. What a slot is given is made under the styles the element's own body sees, as the
+` reference makes it under the element's context. Slots of a class whose slots have no shape
+` here (`class-outlets`) are declined, whose outlets are checked wherever an element of it is
+` written, as the reference finds them there.
+` An element written with a name gives its constructor last the function that gives the name
+` the object (`give-binder`). The name of each slot is pushed on the names, and the type of its
+` builder on the types. Answers false where the element is not made.
+. lines [SyntaxId]
+if wraps-default(body)
+    lines += body
+do match? tree.nodes[body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            if binds-slot(statement) || tree.holds-fills(statement)
+                lines += statement
+. outlets = types.intrinsic-of(class) == .class && holds-outlets(class)
+if lines.length == 0 && !outlets
+    = true
+if types.intrinsic-of(class) != .class || types.completions[class].has-variables
+    decline(element)
+    = false
+. names [Atom]
+. wanted [TypeId]
+. items [TypeId]
+. reported = facts.diagnostics.length
+if !class-outlets(class, names, wanted, items)
+    if facts.diagnostics.length == reported
+        decline(element)
+    = false
+. defaulted = names.find(program.store-atom("")) != null
+if defaulted && gives-default(body)
+    decline(element)
+    = false
+if lines.length == 0
+    = true
+. name SyntaxId = 0
+do match? tree.nodes[element]
+    | .node-markup(row)
+        name = row.id
+. binder = if name != 0 then types.well-known-type-of("core/markup", "MarkupIdBinder", class) else no-type
+if name != 0 && !give-binder(element, name, class)
+    = false
+. styles [TypeId]
+if program.module-by-name("core/style")
+    for style in markup-styles
+        styles += style
+    if !add-visible-styles(class, styles, element)
+        = false
+. sheets [TypeId]
+. levels [U32]
+visible-sheets(class, sheets, levels)
+. given [Atom]
+. builders [TypeId]
+. scopes [ScopeUse]
+. scoped = slot-scopes-for(element, class, scopes)
+if !give-lines(lines, names, wanted, items, styles, sheets, levels, given, builders, class, scopes, scoped, false)
+    = false
+for offset in 0 .. < given.length
+    scratch.names.push(given[offset])
+    scratch.types.push(builders[offset])
+if binder != no-type
+    scratch.names.push(program.store-atom(binder-slot))
+    scratch.types.push(binder)
+= true
+
+────────────────────
++ do give-choices Bool
+    - control SyntaxId
+    - names [Atom]
+    - wanted [TypeId]
+    - items [TypeId]
+    - styles [TypeId]
+    - sheets [TypeId]
+    - levels [U32]
+    - given [Atom]
+    - builders [TypeId]
+    - class TypeId
+    - scopes [ScopeUse]
+    - scoped Bool
+    - keeps-own Bool
+    - seen [Atom]
+
+if keeps-own
+    frame.diagnose(control, .stated, program.store-atom("A subclass fills its base's slots with lines of its content, not inside an if or match"))
+    = false
+. filled [Atom]
+. firsts [SyntaxId]
+for arm in tree.region-arms(control)
+    . fills [SyntaxId]
+    do match? tree.nodes[tree.region-arm-body(arm)]
+        | .node-block(block)
+            for line in tree.children[block.body]
+                if tree.fills-slot(line)
+                    fills += line
+    if fills.length == 0
+        continue
+    for line in fills
+        if tree.nodes[line] is .node-markup-slot-forward
+            frame.diagnose(line, .stated, program.store-atom("A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body"))
+            = false
+    . pattern = tree.arm-pattern(arm)
+    . bound [Atom]
+    if pattern != 0
+        tree.pattern-names(pattern, bound)
+    if pattern != 0 && tree.nodes[arm] is .node-if-block
+        frame.diagnose(pattern, .stated, program.store-atom("An if that fills a slot tests a condition, not a pattern; write is or == instead"))
+        = false
+    if bound.length != 0
+        frame.diagnose(pattern, .stated, program.store-atom("A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"))
+        = false
+    . arm-given [Atom]
+    . arm-builders [TypeId]
+    . arm-mark = scratch.narrowings.mark
+    . known = frame.save-members()
+    narrow-arm(control, arm)
+    . gave = give-lines(fills, names, wanted, items, styles, sheets, levels, arm-given, arm-builders, class, scopes, scoped, keeps-own)
+    frame.pop-narrowing(arm-mark)
+    frame.restore-members(known)
+    if !gave
+        = false
+    for line in fills
+        . name = filled-name(line)
+        if name && filled.find(name) == null
+            filled += name
+            firsts += line
+. selector = types.well-known-type("core/markup", "MarkupSlotSelector")
+. anchor = tree.selector-anchor(control)
+. decl = if anchor != 0 then nested-decl-of(anchor) else 0u32
+if selector == invalid-type || decl == 0 || demand-nested(decl, no-type) == no-instance
+    decline(control)
+    = false
+. closure = intern-nested(decl)
+if conversions.convert(anchor, anchor, closure, selector, .reason-markup-slot) == invalid-type
+    = false
+. index = types.index-type
+for offset in 0 .. < filled.length
+    . name = filled[offset]
+    . first = firsts[offset]
+    if seen.find(name) != null || given.find(name) != null
+        frame.diagnose(first, .stated, program.store-atom("Duplicate slot content"))
+        = false
+    seen += name
+    . position = names.find(name)!
+    if items[position] != no-type
+        frame.diagnose(first, .stated, program.store-atom("A repeated slot cannot be filled inside an if or match"))
+        = false
+    . content = wanted[position]
+    . choice = types.well-known-type-of("core/markup", "MarkupSlotChoice", content)
+    . builder = builder-type(content, no-type)
+    if choice == invalid-type || builder == invalid-type
+        decline(first)
+        = false
+    . markup = types.markup-host-decl.module
+    . mark = scratch.types.mark
+    scratch.types.push(content)
+    scratch.types.push(selector)
+    scratch.types.push(index)
+    . create = calls.demand-runtime-call(markup, no-type, program.store-atom("markup-slot-choice"), mark, 1)
+    scratch.types.rewind(mark)
+    scratch.types.push(content)
+    scratch.types.push(choice)
+    scratch.types.push(index)
+    scratch.types.push(builder)
+    . fill = calls.demand-runtime-call(markup, no-type, program.store-atom("markup-slot-arm"), mark, 1)
+    scratch.types.rewind(mark)
+    if create == no-instance || fill == no-instance
+        decline(first)
+        = false
+    facts.slot-choices += SlotChoice(instance, control, first, choice, create, fill, closure)
+    add-slot(name, choice, given, builders)
+= true
+
+────────────────────
+_ do narrow-arm
+    - control SyntaxId
+    - arm SyntaxId
+
+for other in tree.region-arms(control)
+    do match? tree.nodes[other]
+        | .node-if-block(row)
+            narrowing.narrow-condition(row.condition, other == arm)
+    if other == arm
+        =
+
+────────────────────
+_ filled-name Atom?
+    - line SyntaxId
+
+match tree.nodes[line]
+    | .node-markup(row)
+        identifier-name(tree, row.slot-binding)
+    | .node-markup-slot-forward(row)
+        identifier-name(tree, row.slot-binding)
+    ??
+        null
+
+────────────────────
++ do forwards-choice Bool
+    - name Atom
+
+. filling = filling-checker()
+if !filling
+    = false
+. argument = instances.slot-argument(filling.instance, name)
+= argument != U32.max && chosen-slot(instances.argument-type(filling.instance, argument)) != no-type
+
+────────────────────
++ do class-outlets Bool
+    - class TypeId
+    - names [Atom]
+    - wanted [TypeId]
+    - items [TypeId]
+
+` The slots the markup written in a class declares by its outlets, each named, the default one
+` by the empty text, with the type its outlet declares, and the type of the item it gives the
+` function that builds it where the slot repeats, or no type: every outlet written in the
+` markup but one in the body of another, which is content the other mounts where it is given
+` none, those of the classes above it first, from the top. A name declared twice, in one class
+` or two, and an outlet that repeats with no type for its item, are the reference's errors,
+` reported where the class is written in this module and else declined. An outlet whose type
+` names nothing is reported where the type is written, in whichever module that is, since the
+` element fails before the class's own markup is checked. A slot its markup
+` forwards is declared as `level-slots` says. The slots of a class are looked for with it, and
+` then each class above it, marked as being looked for (`outlet-classes`), as the reference marks
+` them (`recursing-class`). Slots of a class whose markup passes an outlet as an argument have
+` no shape here: answers false.
+outlet-classes += class
+. base = types.base-of(class)
+. complete = if base then class-outlets(base, names, wanted, items) else true
+if complete
+    complete = level-slots(class, names, wanted, items)
+outlet-classes.pop()
+= complete
+
+────────────────────
+_ do recursing-class TypeId
+    - class TypeId
+
+` The first of a class and those above it whose slots are being looked for, from the class up,
+` which the reference reports looking for again, or no type.
+. level TypeId? = class
+while level
+    if outlet-classes.find(level) != null
+        = level
+    level = types.base-of(level)
+= no-type
+
+────────────────────
+_ do level-slots Bool
+    - class TypeId
+    - names [Atom]
+    - wanted [TypeId]
+    - items [TypeId]
+
+` The slots the markup written in one class declares, not counting those of the classes above
+` it, added to those found so far, as `class-outlets` finds them. A line of an element's body
+` that forwards a slot declares the slot of that name the element's class declares, where it
+` declares one, as the reference takes it. Where that class's slots are being looked for, it
+` is the reference's error, at the element, reported where the class is written in this module
+` and else declined.
+. ref = class-ref(types, class)
+. owner = program.modules[ref.module]
+. content SyntaxId = 0
+do match? owner.decls[ref.decl]
+    | .decl-class(row)
+        content = row.content
+if content == 0
+    = true
+. found [SyntaxId]
+for node in owner.tree.subtree-start(content) .. < content
+    do match? owner.tree.nodes[node]
+        | .node-slot-outlet(row)
+            if owner.tree.argument-element(node) != 0
+                = false
+            found += node
+        | .node-markup-slot-forward
+            found += node
+. forwarded [SyntaxId]
+for node in found
+    do match? owner.tree.nodes[node]
+        | .node-markup-slot-forward(row)
+            forwarded += row.outlet
+. args = RowRange'TypeId()
+do match? types.rows[class]
+    | .type-class(row)
+        args = row.args
+. env = types.class-env-for(ref.module, ref.decl, args, class)
+. complete = true
+for outlet in found
+    . inner = forwarded.find(outlet) != null
+    for other in found
+        do match? owner.tree.nodes[other]
+            | .node-slot-outlet(row)
+                if row.body != 0 && after-start && outlet <= row.body
+                    inner = true
+                .. after-start = owner.tree.subtree-start(row.body) <= outlet
+    if inner
+        continue
+    do match? owner.tree.nodes[outlet]
+        | .node-markup-slot-forward(row)
+            . name = identifier-name(owner.tree, row.slot-binding)
+            . body = owner.tree.holder-of(outlet)
+            . element = owner.tree.holder-of(body)
+            if !(owner.tree.nodes[element] is .node-markup)
+                . control = owner.tree.arm-control(body)
+                if control != 0
+                    element = owner.tree.holder-of(owner.tree.holder-of(control))
+            . host = no-type
+            do match? owner.tree.nodes[element]
+                | .node-markup(made)
+                    host = types.evaluate-type(ref.module, owner.tree, made.type-id, env)
+            if !name || host == invalid-type
+                complete = false
+                break
+            if host == no-type || types.intrinsic-of(host) != .class
+                continue
+            . recursing = recursing-class(host)
+            if recursing != no-type
+                if ref.module == module
+                    frame.diagnose(element, .stated, program.store-atom("Recursive markup slot signature discovery for ${type-short-name(types, recursing)}"))
+                complete = false
+                break
+            . held [Atom]
+            . contents [TypeId]
+            . kept [TypeId]
+            if !class-outlets(host, held, contents, kept)
+                complete = false
+                break
+            . position = held.find(name)
+            if position == null
+                continue
+            if names.find(name) != null
+                if ref.module == module
+                    frame.diagnose
+                        - row.slot-binding
+                        - .stated
+                        - program.store-atom("Duplicate slot outlet")
+                complete = false
+                break
+            names += name
+            wanted += contents[position]
+            items += kept[position]
+        | .node-slot-outlet(row)
+            . name = program.store-atom("")
+            if row.name != 0
+                name = identifier-name(owner.tree, row.name) ?? name
+            if names.find(name) != null
+                if ref.module == module
+                    frame.diagnose(outlet, .stated, program.store-atom("Duplicate slot outlet"))
+                complete = false
+                break
+            types.clear-fault()
+            . type = types.evaluate-type(ref.module, owner.tree, row.type-id, env)
+            if type == invalid-type
+                . message = types.fault ?? program.store-atom("Type not found")
+                types.clear-fault()
+                facts.record-diagnostic(instance, ref.module, row.type-id, .stated, message)
+            if type == invalid-type || types.intrinsic-of(type) != .class
+                complete = false
+                break
+            . item = no-type
+            do match? owner.tree.nodes[row.slot-parameter]
+                | .node-markup-slot-parameter(parameter)
+                    if parameter.type-id == 0
+                        if ref.module == module
+                            frame.diagnose
+                                - parameter.name
+                                - .stated
+                                - program.store-atom
+                                    - "Repeated slot outlet requires a slot parameter type"
+                        complete = false
+                        break
+                    item = types.evaluate-type(ref.module, owner.tree, parameter.type-id, env)
+                    if item == invalid-type
+                        complete = false
+                        break
+            names += name
+            wanted += type
+            items += item
+types.env-release(env)
+= complete
+
+────────────────────
++ do holds-outlets Bool
+    - class TypeId
+
+` Whether the markup a class writes, or that of a class above it, holds a slot outlet or
+` forwards a slot.
+. level TypeId? = class
+while level
+    if writes-outlets(level)
+        = true
+    level = types.base-of(level)
+= false
+
+────────────────────
+_ do writes-outlets Bool
+    - class TypeId
+
+` Whether the markup a class writes, not counting that of the classes above it, holds a slot
+` outlet or forwards a slot.
+. ref = class-ref(types, class)
+. owner = program.modules[ref.module]
+do match? owner.decls[ref.decl]
+    | .decl-class(row)
+        if row.content != 0
+            for node in owner.tree.subtree-start(row.content) .. < row.content
+                if owner.tree.nodes[node] is .node-slot-outlet || slot-forward
+                    = true
+                .. slot-forward = owner.tree.nodes[node] is .node-markup-slot-forward
+= false
+
+────────────────────
++ do infer-outlet TypeId
+    - id SyntaxId
+    - row ASTSlotOutlet
+
+` A slot outlet of the markup written in a class, in the function that fills an object of it,
+` or in a function written in that one, which reaches what the filling function was given
+` through the local that holds it (`builder-slot`). Its node is of the type it declares: the one
+` the function that builds the slot gives, which the filling function was given for the slot
+` by the constructor; or else, where it was given none, the one the element its body writes
+` makes, cast to that type, made where the outlet is and the line of no element. Nothing is
+` mounted where it has neither. Where the slot repeats, the function that builds it is given
+` the item the outlet names, as the type it declares for it. The local its name declares holds
+` the node. Content of several lines, or one `if`, `match` or loop of content, is built into a
+` node of the slot's type made with no arguments (`wrap`), as the reference builds it. Then each
+` line of its body that assigns gives the node a property as an attribute gives an element's
+` object one, and one whose value read something tracked is given again by a function of its
+` own, owned by the node. The style rules the outlet applies after `•`, then the lines of its
+` body that declare styles, declare them for the node at a site of the outlet's own, as the
+` reference's `compileSlotOverlay` does, seeing the style sheets of the markup but none of the
+` node's class (`overlaying`). An outlet anywhere but the markup of a class, one whose item is
+` read again where the row it is in is bound to another, body content of one line that is no
+` element, and content built into a node under a batch where roots are not put off, which the
+` reference puts under the batch, are declined. A type that names nothing is reported where it
+` is written, as an element's is. Where it is given a builder, the locals its
+` content declares are built nowhere here (`leave-unbuilt`), nor, where it mounts nothing, those
+` its attributes declare. One that is a markup branch region
+` (`outlet-region`) is built by the function of its one arm, which reads the item plainly and
+` gives its name nothing; one of those given no builder is declined.
+. filling = filling-checker()
+if !filling
+    decline(id)
+    = invalid-type
+types.clear-fault()
+. content = types.evaluate-type(module, tree, row.type-id, filling.frame.env)
+if content == invalid-type
+    if !report-circular() && !report-fault(row.type-id)
+        frame.diagnose(row.type-id, .stated, program.store-atom("Type not found"))
+    = invalid-type
+if types.intrinsic-of(content) != .class
+    decline(id)
+    = invalid-type
+. name = program.store-atom("")
+if row.name != 0
+    name = identifier-name(tree, row.name) ?? name
+. item = no-type
+. given SyntaxId = 0
+do match? tree.nodes[row.slot-parameter]
+    | .node-markup-slot-parameter(parameter)
+        if parameter.type-id != 0
+            item = types.evaluate-type(module, tree, parameter.type-id, filling.frame.env)
+        given = parameter.name
+        if item == invalid-type || item == no-type
+            decline(id)
+            = invalid-type
+. lines [SyntaxId]
+do match? tree.nodes[row.body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            if !(tree.nodes[statement] is .node-assign)
+                lines += statement
+. argument = instances.slot-argument(filling.instance, name)
+. rebuilt = frame.declaration.kind == .branch-arm-decl && frame.declaration.syntax == id
+if rebuilt && argument == U32.max && !tree.builds-outlet-alone(id)
+    decline(id)
+    = invalid-type
+. held = no-slot
+. fallback SyntaxId = 0
+. picks = no-type
+. supplied = argument != U32.max
+if supplied
+    . builder = instances.argument-type(filling.instance, argument)
+    . chosen = chosen-slot(builder)
+    if chosen != no-type
+        if frame.declaration.is-content || given != 0
+            decline(id)
+            = invalid-type
+        picks = types.well-known-type-of("core/markup", "MarkupSlotBuilder", chosen)
+        builder = picks
+    if !frame.declaration.is-content
+        held = builder-slot(name)
+        if held == no-slot
+            decline(id)
+            = invalid-type
+        argument = U32.max
+    if given != 0
+        . value = infer(given)
+        if value == invalid-type
+            = invalid-type
+        if !rebuilt && (facts.plan-of(instance, given) == .plan-row-item || reads-getter(given))
+            decline(id)
+            = invalid-type
+        if conversions.convert(given, given, value, item, .reason-argument) == invalid-type
+            = invalid-type
+    . produced = calls.builder-call(id, builder, if given == 0 then 0 else 1)
+    if produced == invalid-type
+        = invalid-type
+    if produced != content
+        decline(id)
+        = invalid-type
+    if !hold-cells(id, rule-scopes)
+        = invalid-type
+    if row.body != 0 && picks == no-type
+        leave-unbuilt(row.body)
+if supplied && picks == no-type
+    fallback = 0
+else if lines.length == 0
+    if picks == no-type
+        facts.slot-outlets += SlotOutlet(instance, id, U32.max, 0, content)
+        if row.body != 0
+            leave-unbuilt(row.body)
+        = no-type
+else if lines.length > 1 || is-control-line(lines[0])
+    fallback = row.body
+    if in-batch() && !defers-roots()
+        decline(id)
+        = invalid-type
+    . made = wrap(fallback, content)
+    if made == invalid-type
+        = invalid-type
+    if conversions.convert(fallback, fallback, made, content, .reason-assignment) == invalid-type
+        = invalid-type
+else
+    fallback = lines[0]
+    do match tree.nodes[fallback]
+        | .node-markup(element)
+            if element.slot-binding != 0
+                decline(fallback)
+                = invalid-type
+        ??
+            decline(fallback)
+            = invalid-type
+    . made = infer(fallback)
+    if made == invalid-type || made == no-type
+        = invalid-type
+    if conversions.convert(fallback, fallback, made, content, .reason-assignment) == invalid-type
+        = invalid-type
+facts.slot-outlets += SlotOutlet(instance, id, argument, fallback, content, held, given, no-instance, picks)
+. named = declaring-slot(row.name) if row.name != 0 && !rebuilt
+if named && bindings.slots[named].group == id
+    frame.assign(named, content)
+. outer-overlay = preparing
+preparing = preparing.overlaying = true
+preparing = preparing.site = 0
+element-scopes.clear()
+empty-shared = false
+. applied = apply-written-rules(id, content, row.style-rule-applications, 0)
+element-scopes.clear()
+. declared = applied != U32.max && declare-styles(id, content, row.body, applied)
+preparing = outer-overlay
+if !declared
+    = invalid-type
+do match? tree.nodes[row.body]
+    | .node-block(block)
+        for statement in tree.children[block.body]
+            do match? tree.nodes[statement]
+                | .node-assign(attribute)
+                    if attribute.op == .bind-op
+                        misplaced-binding(statement)
+                        = invalid-type
+                    if styles-attribute(attribute.op, content, style-name(tree, attribute.lhs))
+                        continue
+                    if attribute-type(statement, attribute.op, attribute.lhs, attribute.rhs, content) == invalid-type
+                        = invalid-type
+settle-attributes(row.body, content, row.type-id)
+= content
+
+────────────────────
+_ do outlet-name Atom
+    - row ASTSlotOutlet
+
+. name = program.store-atom("")
+if row.name != 0
+    name = identifier-name(tree, row.name) ?? name
+= name
+
+────────────────────
++ do outlet-choice TypeId
+    - id SyntaxId
+
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        =? no-type if row.slot-parameter != 0
+        . filling = filling-checker()
+        =? no-type if !filling
+        . argument = instances.slot-argument(filling.instance, outlet-name(row))
+        =? no-type if argument == U32.max
+        = chosen-slot(instances.argument-type(filling.instance, argument))
+= no-type
+
+────────────────────
++ do check-chosen-outlet TypeId
+    - id SyntaxId
+    - parent TypeId
+    - slot TypeId
+
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        = check-chosen-region(id, row, parent, slot)
+decline(id)
+= invalid-type
+
+────────────────────
+_ do check-chosen-region TypeId
+    - id SyntaxId
+    - row ASTSlotOutlet
+    - parent TypeId
+    - slot TypeId
+
+. tree-host = derived-interface(parent, types.markup-tree-host-decl)
+. content = if tree-host != no-type then first-arg(tree-host) else no-type
+. filling = filling-checker()
+if content == no-type || content == invalid-type || !filling || in-batch()
+    decline(id)
+    = invalid-type
+if !makes-region(parent)
+    frame.diagnose(id, .stated, program.store-atom(message))
+    .. message = "Markup branch host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
+    = invalid-type
+. name = outlet-name(row)
+. argument = instances.slot-argument(filling.instance, name)
+. choice = instances.argument-type(filling.instance, argument)
+. held = no-slot
+if !frame.declaration.is-content
+    held = builder-slot(name)
+    if held == no-slot
+        decline(id)
+        = invalid-type
+    argument = U32.max
+. alone = tree.builds-outlet-alone(id)
+. builder = types.well-known-type-of("core/markup", "MarkupBranchBuilder", content)
+. arm = if alone && builder != invalid-type then check-chosen-arm(id, row, content, builder) else no-type
+if alone && (arm == no-type || arm == invalid-type)
+    decline(id)
+    = invalid-type
+. mark = scratch.types.mark
+scratch.types.push(slot)
+scratch.types.push(content)
+scratch.types.push(parent)
+scratch.types.push(parent)
+scratch.types.push(choice)
+if alone
+    scratch.types.push(builder)
+    scratch.types.push(types.bool-type)
+. call = calls.demand-runtime-call
+    - types.markup-host-decl.module
+    - no-type
+    - program.store-atom(if alone then "markup-chosen-arm" else "markup-chosen-slot")
+    - mark
+    - 3
+scratch.types.rewind(mark)
+if call == no-instance || !raises-out(id, call)
+    decline(id)
+    = invalid-type
+. fallback = if alone && tree.falls-back(row) then row.body else 0
+facts.slot-outlets += SlotOutlet(instance, id, argument, fallback, slot, held, 0, call, no-type, arm)
+. made = instances.signatures[call].returns
+facts.set-node-type(instance, id, made)
+= made
+
+────────────────────
+_ do check-chosen-arm TypeId
+    - id SyntaxId
+    - row ASTSlotOutlet
+    - content TypeId
+    - builder TypeId
+
+. resolution = bindings.resolution-of(frame.binding, id)
+. decl = nested-decl-of(id)
+if resolution.kind != .resolve-slot || decl == 0 || bindings.slots[resolution.slot - 1].syntax != id
+    = no-type
+frame.assign(resolution.slot - 1, types.void-type)
+. named = declaring-slot(row.name) if row.name != 0
+if named && bindings.slots[named].group == id
+    . filling = filling-checker()
+    if filling
+        . made = types.evaluate-type(module, tree, row.type-id, filling.frame.env)
+        if made != invalid-type
+            frame.assign(named, made)
+. outer-batch = region
+region = region.batch = false
+region = region.root = resolution.slot - 1
+. demanded = demand-nested(decl, content)
+region = outer-batch
+if demanded == no-instance
+    = no-type
+. closure = intern-nested(decl)
+if conversions.convert(id, id, closure, builder, .reason-markup-arm) == invalid-type
+    = invalid-type
+= closure
+
+────────────────────
++ do check-outlet-arm TypeId
+    - id SyntaxId
+    - parent TypeId
+
+. resolution = bindings.resolution-of(frame.binding, id)
+. decl = nested-decl-of(id)
+if resolution.kind != .resolve-slot || decl == 0 || bindings.slots[batch].syntax != id
+    decline(id)
+    = invalid-type
+.. batch = resolution.slot - 1
+. rooted = in-batch()
+frame.assign(batch, if rooted then batch-type() else types.void-type)
+do match? tree.nodes[id]
+    | .node-slot-outlet(row)
+        . named = declaring-slot(row.name) if row.name != 0
+        . filling = filling-checker()
+        if named && filling && bindings.slots[named].group == id
+            . content = types.evaluate-type(module, tree, row.type-id, filling.frame.env)
+            if content != invalid-type
+                frame.assign(named, content)
+. outer-batch = region
+region = region.batch = rooted
+region = region.root = batch
+. made = demand-nested(decl, parent)
+region = outer-batch
+if made == no-instance
+    decline(id)
+    = invalid-type
+. closure = intern-nested(decl)
+facts.set-node-type(instance, id, closure)
+. builder = types.well-known-type-of("core/markup", "MarkupBranchBuilder", parent)
+if builder == invalid-type
+    decline(id)
+    = invalid-type
+if conversions.convert(id, id, closure, builder, .reason-markup-arm) == invalid-type
+    = invalid-type
+if calls.builder-call(id, builder, 1) == invalid-type
+    decline(id)
+    = invalid-type
+= types.void-type
+
+────────────────────
+_ do leave-unbuilt
+    - body SyntaxId
+
+` Gives each local a body declares, which nothing here runs, the void type, so that the
+` environment that holds those a nested function would capture has room for none of them: the
+` content an outlet mounts where it is given none, in a function given a builder for it.
+. start = tree.subtree-start(body)
+. range = bindings.bindings[frame.binding].slots
+for offset in 0 .. < range.count
+    . slot = range.start + offset
+    . syntax = bindings.slots[slot].syntax
+    if syntax >= start && syntax <= body && frame.known(slot) == no-type
+        frame.assign(slot, types.void-type)
+
+────────────────────
+_ do is-control-line Bool
+    - line SyntaxId
+
+` Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
+` as the reference's `isMarkupControlFlow` finds it.
+do match? tree.nodes[line]
+    | .node-if-block
+        = true
+    | .node-match-expression
+        = true
+    | .node-for-block(row)
+        = !is-subscriber-loop(row.loop)
+    | .node-iterator-expression(row)
+        = !is-subscriber-loop(row.loop)
+= false
+
+────────────────────
+_ do store-arguments Bool
+    - id SyntaxId
+    - made TypeId
+    - args RowRange'SyntaxId
+
+` Keeps, for each argument of a markup element whose parameter has the name of a property of
+` the element's class, that the argument is stored in the property once the object is made,
+` converted as a value assigned to the property is. False where such a store has no shape
+` here: an argument written with a name or a `?`, or given to a variadic parameter, a
+` property that is not stored in the object or is private to another module, or an array,
+` whose storage the runtime is told is replaced.
+. fact = facts.latest-call(instance, id)
+if fact == no-fact || facts.calls[fact].callee == no-instance
+    = args.count == 0
+. callee = instances.rows[facts.calls[fact].callee]
+. owner = program.modules[callee.module]
+do match? owner.decls[callee.decl]
+    | .decl-function(fn)
+        . position U32
+        for arg in tree.children[args]
+            if tree.nodes[arg] is .node-argument
+                = false
+            if position < fn.args.count
+                . shape = owner.arg-pool[fn.args.start + position]
+                . place = property-named(made, shape.name) if shape.name
+                if place
+                    . property = types.properties[place]
+                    . given = facts.node-type(instance, arg)
+                    if shape.is-variadic || property.storage-kind != .storage-eager
+                        = false
+                    if is-hidden(property, shape.name!, .setter-decl)
+                        = false
+                    . declared = property.type
+                    if declared == no-type
+                        declared = demand-member(property, made, shape.name!)
+                    if declared == no-type || declared == invalid-type
+                        = false
+                    if is-array-value(declared)
+                        = false
+                    if conversions.convert(arg, arg, given, declared, .reason-assignment) == invalid-type
+                        = false
+                    . written = panics.property-of(made, shape.name!)
+                    if written
+                        panics.note-write(instance, written)
+                    facts.note-element-store
+                        - ElementStore(instance, id, position, place as U32, arg)
+            position += 1
+        = true
+= args.count == 0
+
+────────────────────
++ do content-parent TypeId
+    - block SyntaxId
+
+` The type of the markup element a block's lines are content of, or no type for a block
+` that is not such a one.
+. position = content-blocks.length
+while position != 0
+    position -= 1
+    if content-blocks[position] == block
+        = content-parents[position]
+= no-type
+
+────────────────────
++ do outlet-region SyntaxId
+    - outlet SyntaxId
+
+` The parameter of a slot outlet that is a markup branch region of one arm, the outlet, at which
+` the region is written, or none.
+do match? tree.nodes[outlet]
+    | .node-slot-outlet(row)
+        = if row.slot-parameter != 0 && region-slot then row.slot-parameter else 0u32
+            .. region-slot = is-region(row.slot-parameter)
+= 0
+
+────────────────────
++ do region-ensure InstanceId?
+    - id SyntaxId
+    - made TypeId
+    - batched Bool
+    - reason ConversionReason
+
+` The call that puts a markup region under the batch the reference finds for its host, as
+` `applyMarkupBatchRoot` does: none where no batch is found or the region is no markup host.
+` The region is converted at the `if` or `for` to the host for the given reason, and the
+` batch to the optional the call takes. One that has no shape here is declined, which is
+` answered with nothing.
+if !batched || !is-markup-host(made)
+    = no-instance
+. host = derived-interface(made, types.markup-host-decl)
+. optional = types.optional-of(batch-type())
+. mark = scratch.types.mark
+scratch.types.push(host)
+scratch.types.push(optional)
+. ensure = calls.demand-runtime-call
+    - types.markup-host-decl.module
+    - no-type
+    - program.store-atom("ensure-markup-root")
+    - mark
+scratch.types.rewind(mark)
+if ensure == no-instance || !raises-out(id, ensure)
+    decline(id)
+    = null
+conversions.convert(id, id, made, host, reason)
+conversions.convert(id, id, batch-type(), optional, .reason-markup-root)
+= ensure
+
+────────────────────
++ do makes-region Bool
+    - host TypeId
+
+` Whether a markup host makes the regions of live loops and branches: a class declares
+` `markup-make-region`, itself or in a base class, which the markup runtime calls for an empty
+` region of the host's content to hold the region's controller. A host that is no class is left
+` to the runtime.
+=? true if types.intrinsic-of(host) != .class
+= declares-method(host, program.store-atom("markup-make-region"))
+
+────────────────────
++ do check-loop-region TypeId
+    - id SyntaxId
+    - parent TypeId
+
+` A markup loop region, as the reference compiles one:
+` one header, whose pattern is a name alone or none, with no clause but `keyed by`,
+` by whose last one a function of its own keys each row (`check-key`).
+` Its container is read in a live action of the region's own, where its read of a collection
+` is no change the action follows, since the region observes the collection itself, and is the
+` region's source as `loop-source` says. The host the `for` is content of must be a
+` `MarkupElement`, whose `MarkupParent` gives the type of its content. Each row is built by a
+` function of its own given the item, which gives one element as the host's content, made a
+` `MarkupRowBuilder` at the `for`; that of a keyed loop over a collection is given a
+` `MarkupRowItem` that holds the item, and made a `MarkupCollectionRowBuilder`. The key's
+` function is made a `MarkupKeyBuilder` at its clause. A row whose body is not one element, as
+` `row-region` says, is built as an arm is, into a region of its own: its function is given the
+` region after the item, made a `MarkupRegionRowBuilder` at the `for`, and the markup runtime's
+` `markup-region-row`, or `markup-region-keyed-row`, makes the builder of it, which makes the
+` region of the host for each row. The markup runtime makes the region of
+` the host, the builders and the source, given last, as `loop-source` says, keyed where the loop
+` is, and gives the region a source again by a replacer of its own; the region is the line's
+` value, which the host takes. The host and the region are kept, in the
+` two locals no name reaches declared at the `for`, for the function that reads the container
+` again, which the action runs: made by
+` `make-owner-markup-action`, owned by the region and marked structural. Where a batch is found
+` for the host, the host itself where it is a batch and else the one in force, the region is
+` put under it by `ensure-markup-root` once made; where one is in force it is kept in a third
+` local no name reaches, which the rows are built under, and the action is made with it by
+` `make-markup-action`. One whose region is no class is declined; one of a class with events
+` is kept as any other, as the reference keeps it. One whose content is a class and whose host
+` makes no regions, as `makes-region` says, is an error at the `for`.
+. loop SyntaxId = 0
+. body SyntaxId = 0
+do match? tree.nodes[id]
+    | .node-for-block(row)
+        loop = row.loop
+        body = row.body
+. pattern SyntaxId = 0
+. container SyntaxId = 0
+. clause SyntaxId = 0
+. chained SyntaxId = 0
+do match? tree.nodes[loop]
+    | .node-loop-syntax(row)
+        pattern = row.pattern
+        container = row.container
+        clause = row.clause
+        chained = row.next
+if chained != 0
+    frame.diagnose(id, .stated, program.store-atom("Combined markup loops not supported"))
+    = invalid-type
+if pattern != 0 && !(tree.nodes[pattern] is .node-type-capture)
+    frame.diagnose
+        - pattern
+        - .stated
+        - program.store-atom("Markup loop patterns must be simple captures")
+    = invalid-type
+. current = clause
+. filters = 0
+while current != 0
+    . next SyntaxId = 0
+    do match? tree.nodes[current]
+        | .node-clause(row)
+            if row.op == .when-clause
+                filters += 1
+            if row.op != .keyed-by-clause && row.op != .when-clause
+                frame.diagnose
+                    - current
+                    - .stated
+                    - program.store-atom("A markup loop that follows state takes only keyed by and when clauses")
+                = invalid-type
+            if filters > 1
+                frame.diagnose
+                    - current
+                    - .stated
+                    - program.store-atom("A markup loop that follows state takes one when clause; join its conditions with &&")
+                = invalid-type
+            next = row.next
+    current = next
+. resolution = bindings.resolution-of(frame.binding, id)
+if resolution.kind != .resolve-slot
+    decline(id)
+    = invalid-type
+. keyed = tree.keyed-clause(loop)
+. read = infer(container, Want().adding(.want-observed))
+if read == invalid-type || read == no-type
+    = invalid-type
+. found = loop-source(id, container, read)
+. item = found.item
+. source = found.given
+if item == invalid-type
+    = invalid-type
+if !is-markup-host(parent)
+    frame.diagnose
+        - id
+        - .stated
+        - program.store-atom("Dynamic markup loop parent must implement MarkupElement")
+    = invalid-type
+. tree-host = derived-interface(parent, types.markup-tree-host-decl)
+. content = if tree-host != no-type then first-arg(tree-host) else no-type
+if content == no-type || content == invalid-type || types.completions[content].has-variables
+    frame.diagnose
+        - id
+        - .stated
+        - program.store-atom("Dynamic markup loop host content type could not be resolved")
+    = invalid-type
+if types.intrinsic-of(content) == .class && !makes-region(parent)
+    frame.diagnose(id, .stated, program.store-atom(message))
+    .. message = "Markup loop host ${type-source(types, parent)} must declare markup-make-region, or extend MarkupNode"
+    = invalid-type
+. regioned = tree.row-region(body)
+if !knows-getters(body)
+    = invalid-type
+. refreshes = keyed != 0 && found.kind == "collection"
+. given = if refreshes then types.well-known-type-of("core/markup", "MarkupRowItem", item) else item
+. builder = types.well-known-type-of
+    - "core/markup"
+    - if refreshes then "MarkupCollectionRowBuilder" else "MarkupRowBuilder"
+    - item
+    - content
+. shaped = if regioned then types.well-known-type-of("core/markup", "MarkupRegionRowBuilder", given, content) else builder
+. decl = nested-decl-of(body)
+if classless || builder == invalid-type || shaped == invalid-type || given == invalid-type || decl == 0
+    decline(id)
+    = invalid-type
+.. classless = types.intrinsic-of(content) != .class
+. rooted = in-batch()
+. hosted = is-batch(parent)
+. outer-content = region
+region = region.content = content
+region = region.batch = rooted
+region = region.root = resolution.slot + 2
+. built = demand-nested(decl, given, if regioned then content else no-type)
+region = outer-content
+if built == no-instance
+    decline(id)
+    = invalid-type
+. closure = intern-nested(decl)
+facts.set-node-type(instance, body, closure)
+if conversions.convert(id, id, closure, shaped, .reason-markup-row) == invalid-type
+    = invalid-type
+. keyer = no-type
+if keyed != 0
+    keyer = types.well-known-type-of("core/markup", "MarkupKeyBuilder", item)
+    . key = nested-decl-of(keyed)
+    if keyer == invalid-type || key == 0 || demand-nested(key, item) == no-instance
+        decline(id)
+        = invalid-type
+    . keying = intern-nested(key)
+    facts.set-node-type(instance, keyed, keying)
+    if conversions.convert(keyed, keyed, keying, keyer, .reason-markup-key) == invalid-type
+        = invalid-type
+. filter = tree.when-clause(loop)
+. tester = no-type
+if filter != 0
+    tester = types.well-known-type-of("core/markup", "MarkupRowFilter", given)
+    . test = nested-decl-of(filter)
+    if tester == invalid-type || test == 0 || demand-nested(test, given) == no-instance
+        decline(id)
+        = invalid-type
+    . testing = intern-nested(test)
+    facts.set-node-type(instance, filter, testing)
+    if conversions.convert(filter, filter, testing, tester, .reason-markup-key) == invalid-type
+        = invalid-type
+demand-live-runtime()
+. live = instances.live
+. markup = types.markup-host-decl.module
+. mark = scratch.types.mark
+. optional = types.intrinsic-of(source) == .optional
+. held = if optional then types.optional-inner(source) else source
+scratch.types.push(item)
+scratch.types.push(content)
+scratch.types.push(parent)
+scratch.types.push(held)
+scratch.types.push(parent)
+scratch.types.push(builder)
+if keyer != no-type
+    scratch.types.push(keyer)
+scratch.types.push(source)
+. creates = "markup-create-${if optional then "optional-" else ""}${if keyed != 0 then "keyed-" else ""}${found.kind}-region"
+. create = calls.demand-runtime-call(markup, no-type, program.store-atom(creates), mark, 4)
+scratch.types.rewind(mark)
+. made = if create != no-instance then instances.signatures[create].returns else no-type
+if made == no-type || types.intrinsic-of(made) != .class || !is-markup-host(made) || live.has-actions == no-instance
+    decline(id)
+    = invalid-type
+scratch.types.push(item)
+scratch.types.push(made)
+scratch.types.push(held)
+scratch.types.push(made)
+scratch.types.push(source)
+. replaces = "markup-replace-${if optional then "optional-" else ""}${found.kind}-source"
+. replace = calls.demand-runtime-call(markup, no-type, program.store-atom(replaces), mark, 3)
+scratch.types.rewind(mark)
+if replace == no-instance
+    decline(id)
+    = invalid-type
+. adapts = no-instance
+if regioned
+    scratch.types.push(item)
+    scratch.types.push(content)
+    scratch.types.push(parent)
+    scratch.types.push(parent)
+    scratch.types.push(shaped)
+    if tester != no-type
+        scratch.types.push(tester)
+    . kind = if tester != no-type then "filtered-row" else "row"
+    . adapter = if refreshes then "markup-region-keyed-$kind" else "markup-region-$kind"
+    adapts = calls.demand-runtime-call(markup, no-type, program.store-atom(adapter), mark, 3)
+    scratch.types.rewind(mark)
+    if adapts == no-instance || instances.signatures[adapts].returns != builder || !raises-out(id, adapts)
+        decline(id)
+        = invalid-type
+. host = derived-interface(made, types.markup-host-decl)
+scratch.types.push
+    - if live.trackers != no-instance then instances.signatures[live.trackers].returns else no-type
+scratch.types.push(live.callback)
+scratch.types.push(if rooted then batch-type() else host)
+. action = calls.demand-runtime-call
+    - markup
+    - no-type
+    - program.store-atom(if rooted then "make-markup-action" else "make-owner-markup-action")
+    - mark
+scratch.types.rewind(mark)
+. structural = mark-structural(id, made)
+if action == no-instance || structural == no-instance || other-return
+    decline(id)
+    = invalid-type
+.. other-return = instances.signatures[action].returns != types.live-action-type
+if !raises-out(id, create) || !raises-out(id, action) || !raises-out(id, structural)
+    decline(id)
+    = invalid-type
+if hosted
+    conversions.convert(id, id, parent, batch-type(), .reason-markup-batch)
+. ensure = region-ensure(id, made, rooted || hosted, .reason-markup-region)
+if !ensure
+    = invalid-type
+conversions.convert(id, id, made, host, .reason-markup-host)
+frame.assign(resolution.slot, parent)
+frame.assign(resolution.slot + 1, made)
+frame.assign(resolution.slot + 2, if rooted then batch-type() else types.void-type)
+. outer-source = region
+region = region.source = source
+region = region.replace = replace
+. updater = demand-lambda(intern-nested(nested-decl-of(id)), scratch.no-types)
+region = outer-source
+if updater == no-instance || (updater-raises && live.callback-result == no-type)
+    decline(id)
+    = invalid-type
+.. updater-raises = instances.signatures[updater].errors.count != 0
+instances.mark-may-panic(instance)
+facts.loop-regions += LoopRegion
+    - instance
+    - id
+    - parent
+    - content
+    - source
+    - create
+    - updater
+    - action
+    - structural
+    - ensure
+    - hosted
+    - rooted
+    - replace
+    - adapts
+= made
+
+────────────────────
+_ do knows-getters Bool
+    - body SyntaxId
+
+` Whether the lazy declarations of the body of a markup loop region's row are those the binder
+` found a getter in. One it found none in has no shape here.
+do match? tree.nodes[body]
+    | .node-block(block)
+        for line in tree.children[block.body]
+            do match? tree.nodes[line]
+                | .node-declare(declared)
+                    if declared.is-lazy && !declares-getter(declared.left)
+                        decline(line)
+                        = false
+= true
+
+────────────────────
++ row-loop SyntaxId
+    - body SyntaxId
+
+match tree.nodes[tree.holder-of(body)]
+    | .node-for-block(row)
+        row.loop
+    ??
+        0
+
+────────────────────
++ do check-selector
+    - anchor SyntaxId
+
+. id = tree.selector-control(anchor)
+prepare()
+demand-live-runtime()
+. selected = types.optional-of(types.index-type)
+instances.set-returns(instance, selected, selected, .return-declared)
+content-blocks += 0
+content-parents += no-type
+content-names += false
+read-arms(id)
+content-blocks.pop()
+content-parents.pop()
+content-names.pop()
+finish-errors(frame)
+close()
+
+────────────────────
++ do host-content
+    - statement SyntaxId
+    - parent TypeId
+
+` An `if`, a `for`, and a loop written with `in` that is no function of its own, written as
+` lines of a markup element's body, run their bodies as content of the same element: each body
+` is noted as such while the statement is typed. A loop on a stream subscribes, and its body
+` is no content, the arms of a markup branch region are content of the region, which functions
+` of their own build, and the body of a markup loop region builds a row.
+if is-region(statement) || is-loop-region(statement)
+    =
+do match? tree.nodes[statement]
+    | .node-if-block
+        . branch = statement
+        while branch != 0
+            . next SyntaxId = 0
+            do match? tree.nodes[branch]
+                | .node-if-block(row)
+                    content-blocks += tree.arm-body(branch)
+                    content-parents += parent
+                    content-names += false
+                    next = row.next
+            branch = next
+    | .node-for-block(row)
+        if is-subscriber-loop(row.loop)
+            =
+        content-blocks += row.body
+        content-parents += parent
+        content-names += true
+    | .node-iterator-expression(row)
+        if nested-decl-of(statement) != 0
+            =
+        content-blocks += row.body
+        content-parents += parent
+        content-names += true
+
+────────────────────
++ do link-content
+    - statement SyntaxId
+    - produced TypeId
+    - parent TypeId
+
+` A line of a markup element's body that gives a value is taken by the element: by its
+` `+=`, or else its `++=`, with the value converted as an argument of the one found, or where
+` the element is a markup host as `link-hosted` says. The call is kept for the line. An
+` assignment, a print and a state machine give the element nothing, and a loop written as an
+` expression has no shape as a line. An element no local is declared for, named for the property
+` its class's markup declares for it, gives the property what the call answers, or the object
+` where it answers nothing.
+if untyped || produced == types.void-type || tree.is-quasi-syntax(statement)
+    =
+.. untyped = produced == no-type || produced == invalid-type
+if tree.nodes[statement] is .node-state-machine
+    =
+if tree.nodes[statement] is .node-iterator-expression
+    decline(statement)
+    =
+if is-markup-host(parent)
+    link-hosted(statement, produced, parent)
+    =
+. content = calls.content-call(parent, program.store-atom("+="), statement, produced)
+if content.taken == no-type
+    content = calls.content-call(parent, program.store-atom("++="), statement, produced)
+. taken = content.taken
+. link = content.fact
+. answered = content.answer
+if taken == no-type || link == no-fact
+    frame.diagnose(statement, .stated, program.store-atom("Content not accepted"))
+    =
+conversions.convert(statement, statement, produced, taken, .reason-argument)
+. answers = no-type
+. named = named-element(statement)
+if named && answered != no-type
+    if answered == invalid-type
+        decline(statement)
+        =
+    if conversions.convert(statement, statement, answered, frame.slot-type(named), .reason-assignment, true, true) == invalid-type
+        =
+    answers = answered
+facts.note-content-link(ContentLink(instance, statement, parent, taken, link, answers))
+if named
+    note-named(statement, if answers != no-type then answers else frame.slot-type(named))
+else if content-named(statement)
+    note-named
+        - statement
+        - if answered != no-type && answered != types.void-type then answered else produced
+
+────────────────────
+_ do link-hosted
+    - statement SyntaxId
+    - produced TypeId
+    - parent TypeId
+
+` A line of the body of a markup element whose class is a markup host is taken through the
+` markup protocol: by the host's `markup-absorb` where the value is an argument of one, which
+` keeps it in the host's own state; else by its `markup-content`, which answers the node the
+` value becomes, and that node is linked as the host's last child by the markup runtime's
+` `markup-append`. A line that is an element a name is declared for gives the name the node,
+` converted as a value assigned to the name, which casts it, checked, to the element's class;
+` but where the element gives slots content and its name is a property of the class the markup
+` is run on, the name and the property keep the object, as the reference keeps it there. One no
+` local is declared for, named for the property its class's markup declares for it, gives the
+` property the node, or the object where the host absorbs it.
+. absorbing = calls.content-call(parent, program.store-atom("markup-absorb"), statement, produced)
+. absorbed = absorbing.taken
+if absorbed != no-type
+    conversions.convert(statement, statement, produced, absorbed, .reason-argument)
+    facts.note-content-link(ContentLink(instance, statement, parent, absorbed, absorbing.fact))
+    . kept = named-element(statement)
+    if kept
+        note-named(statement, frame.slot-type(kept))
+    else if content-named(statement)
+        note-named(statement, produced)
+    =
+. content = calls.content-call(parent, program.store-atom("markup-content"), statement, produced)
+. taken = content.taken
+. link = content.fact
+. answered = content.answer
+if taken == no-type || link == no-fact || answered == no-type
+    frame.diagnose(statement, .stated, program.store-atom("Content not accepted"))
+    =
+. named = named-element(statement)
+if answered == invalid-type
+    decline(statement)
+    =
+conversions.convert(statement, statement, produced, taken, .reason-argument)
+. kept = named && !binds-property(statement)
+if kept && conversions.convert(statement, statement, answered, frame.slot-type(named!), .reason-assignment, true, true) == invalid-type
+    =
+. mark = scratch.types.mark
+scratch.types.push(parent)
+scratch.types.push(answered)
+. append = calls.demand-runtime-call
+    - types.markup-host-decl.module
+    - no-type
+    - program.store-atom("markup-append")
+    - mark
+scratch.types.rewind(mark)
+if append == no-instance
+    decline(statement)
+    =
+. answers = if kept then answered else no-type
+facts.note-content-link(ContentLink(instance, statement, parent, taken, link, answers, append))
+if kept
+    note-named(statement, answered)
+else if content-named(statement)
+    note-named(statement, answered)
+else if named
+    note-named(statement, frame.slot-type(named))
+
+────────────────────
+_ do content-named Bool
+    - statement SyntaxId
+
+` Whether a line of content is a markup element that no block declares a local for, whose name
+` is that of the property the markup of the class declares for it (`names-content-property`).
+do match? tree.nodes[statement]
+    | .node-markup(row)
+        = unslotted && names-content-property(statement, row.id)
+            .. unslotted = row.id != 0 && !element-slot(statement, row.id)
+= false
+
+────────────────────
+_ do names-content-property Bool
+    - element SyntaxId
+    - name SyntaxId
+
+` Whether the name of a markup element is that of a property the markup of the class of the
+` object the function runs on declares for its elements of that name, where the element is one
+` of them: written in that markup outside any function or loop of it. The reference gives such
+` a property each such element's object, as `named-place` says.
+if bindings.resolution-of(frame.binding, name).kind != .resolve-member
+    = false
+. self = frame.self-type
+if self == no-type || self == invalid-type || types.intrinsic-of(self) != .class || lacks-self()
+    = false
+. text = identifier-name(tree, name)
+. place = property-named(self, text) if text
+if !place
+    = false
+. ref = declaring-decl(types, types.properties[place])
+. member = owner-property(program, ref.module, ref.decl, text!)
+if member == 0
+    = false
+. content SyntaxId = 0
+do match? program.modules[ref.module].decls[ref.decl]
+    | .decl-class(class)
+        content = class.content
+do match? program.modules[ref.module].decls[member]
+    | .decl-property(declared)
+        = owned && tree.subtree-start(content) <= element && !enclosed-element(element, content)
+            .. owned = declared.element != 0 && ref.module == module && content > element
+= false
+
+────────────────────
+_ do enclosed-element Bool
+    - element SyntaxId
+    - content SyntaxId
+
+` Whether a markup element of a class's markup is written in a function or a loop there.
+for node in element + 1 .. < content
+    if tree.subtree-start(node) <= element
+        do match? tree.nodes[node]
+            | .node-function-syntax
+                = true
+            | .node-for-block
+                = true
+= false
+
+────────────────────
++ do named-element SlotId?
+    - statement SyntaxId
+
+` The local a line of content that is a markup element declares for the element, where a
+` block declares one.
+do match? tree.nodes[statement]
+    | .node-markup(row)
+        = element-slot(statement, row.id)
+= null
+
+────────────────────
++ element-slot SlotId?
+    - element SyntaxId
+    - name SyntaxId
+
+` The local a block declares for a markup element written with a name. A name no block
+` declares for the element may find a local something else declared, which is not one.
+|? name == 0
+    null
+|? slot && bindings.slots[slot].group == element
+    slot
+??
+    null
+
+.. slot = declaring-slot(name)
+
+────────────────────
++ places-across Bool
+    - slot SlotId
+
+` Whether a local a function this one is written in declares for a markup element's name is
+` reached through functions that build slots alone, from this one out to the one that
+` declares it.
+|? !outer || !frame.is-captured(slot)
+    true
+|? frame.declaration.kind != .slot-decl
+    false
+??
+    outer.places-across(slot)
+
+────────────────────
++ do check-region
+    - id SyntaxId
+    - body SyntaxId
+
+` A `do without gc` block written where code is outside the zone the collector never sees, as the
+` reference outlines it: a function of its own, typed once, which reaches the locals and
+` arguments of the function around it where they are kept and is called where the block is.
+` What the flow knows of those locals holds in the body as in a plain block, and what the body
+` leaves them as holds after it (`leave-region`). The call ends what is known of properties, as
+` any call does. A block whose last line returns or raises is the reference's error. One that
+` lets an error out has no shape here. A body that captures a local is given an object the
+` collector owns where it runs.
+if ends-returning(body)
+    frame.diagnose
+        - id
+        - .stated
+        - program.store-atom("GC-free do blocks cannot return from their enclosing function")
+    =
+. row = bindings.bindings[frame.binding]
+for offset in 0 .. < row.nested.count
+    . nested = bindings.nested[row.nested.start + offset]
+    if nested.syntax == id
+        . mask = callee-effects(frame, module, nested.decl)
+        . none = scratch.no-types
+        . callee = instances.intern(module, nested.decl, no-type, mask, instance, none, none, false)
+        . left [Narrowed]
+        if instances.rows[callee].state == .instance-unstarted
+            facts.region-bodies += callee
+            left = run-within(callee, this)
+        if instances.signatures[callee].errors.count != 0
+            decline(id)
+            =
+        if nested.captures.count != 0
+            frame.check-allocates(id)
+        facts.record-call(instance, id, callee, .call-function, scratch.no-fills, false)
+        if instances.rows[callee].may-panic
+            instances.mark-may-panic(instance)
+        forget-assigned(nested)
+        frame.keep-assigned(left)
+        frame.forget-members()
+        =
+decline(id)
+
+────────────────────
+_ do forget-assigned
+    - nested NestedFunction
+
+` Each local a `do without gc` block assigns is known past the block as its own type, until what
+` the body left it as is known again (`leave-region`): a body typed before is not typed again.
+for index in 0 .. < nested.captures.count
+    . capture = bindings.captures[nested.captures.start + index]
+    if (capture.flags /and/ CaptureFlag.capture-assigned) == 0
+        continue
+    . held = slot-known(capture.slot)
+    if held == no-type || held == invalid-type
+        continue
+    frame.push-assigned(slot-key(capture.slot), held)
+    frame.reset-paths(slot-key(capture.slot))
+
+────────────────────
+_ do ends-returning Bool
+    - body SyntaxId
+
+` Whether the last line of a block returns or raises a panic or an error with no condition.
+do match? tree.nodes[body]
+    | .node-block(block)
+        if block.body.count == 0
+            = false
+        do match? tree.nodes[tree.children[block.body.start + block.body.count - 1]]
+            | .node-return
+                = true
+            | .node-assertion-syntax(row)
+                = row.condition == 0
+= false
+
+────────────────────
++ do read-later-element TypeId
+    - id SyntaxId
+    - name Atom
+    - slot SlotId
+
+if starts-task(slot)
+    . message = "Named markup element \"${name.text}\" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+. class = foresee-element(slot)
+if class == invalid-type || class == no-type
+    decline(id)
+    = invalid-type
+if types.completions[class].has-variables
+    . written = class-name-of(class-ref(types, class))
+    . message = "Named markup element \"${name.text}\" is read in a closure made before its markup constructs it, so it needs its type arguments written after \"$written\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+instances.mark-may-panic(instance)
+facts.set-plan(instance, id, .plan-guarded-read)
+= class
+
+────────────────────
+_ do keep-element Bool
+    - element SyntaxId
+    - made TypeId
+
+` The local no name reaches that keeps the object of a markup element, where a function written
+` in its body reads its members by name alone or one gives its arguments again, holds one of the
+` element's class: the class written, as the functions that build regions of its body are typed
+` with the body, and then that of the object made, which must be the same. False where it is not.
+. resolution = bindings.resolution-of(frame.binding, element)
+if resolution.kind != .resolve-slot
+    = true
+. held = frame.slot-type(resolution.slot)
+if held != no-type && held != made
+    = false
+frame.assign(resolution.slot, made)
+= true
+
+────────────────────
++ do writes-markup Bool
+
+` Whether the body of the function being typed writes a markup element.
+. body = frame.declaration.body
+if body == 0
+    = false
+for node in tree.subtree-start(body) .. body
+    if tree.nodes[node] is .node-markup
+        = true
+= false
+
+────────────────────
++ is-markup-query Bool
+    - type TypeId
+
+match types.rows[type]
+    | .type-class(row)
+        types.ancestor-decl.refers-to(row.module, row.decl) || descendant-query
+
+        .. descendant-query = types.descendants-decl.refers-to(row.module, row.decl)
+    ??
+        false
+
+────────────────────
++ do content-property-type TypeId
+    - ref DeclRef
+    - line SyntaxId
+
+` The type of the property a line of a class's markup declares (`content-property`): that of the
+` value the line gives it, as each function that fills an object with the markup typed it, which
+` must agree, as the reference gives the property the type of the first value stored. Where none
+` has typed the line yet, a filler or constructor of the class still waiting in the queue is typed
+` first, one at a time, until one has (`pending-filler`). None where none is left.
+. owner-module = program.modules[ref.module]
+. filler DeclId = 0
+do match? owner-module.decls[ref.decl]
+    | .decl-class(class)
+        filler = class.content-function
+. value SyntaxId = 0
+do match? owner-module.tree.nodes[line]
+    | .node-property-syntax(row)
+        value = row.value
+if filler == 0 || value == 0
+    = invalid-type
+while true
+    . found = no-type
+    for unit in 0u32 .. < (instances.rows.length as U32)
+        . row = instances.rows[unit]
+        if row.module == ref.module && row.decl == filler
+            . typed = facts.node-type(unit, value)
+            if typed != no-type && typed != invalid-type
+                if found != no-type && found != typed
+                    = invalid-type
+                found = typed
+    if found != no-type
+        = found
+    . pending = pending-filler(ref, filler)
+    if pending == no-instance
+        = invalid-type
+    demand-body(pending)
+
+────────────────────
++ do infer-content-property TypeId
+    - id SyntaxId
+    - value SyntaxId
+    - want Want
+
+` A line of a class's markup that declares a property it gives its value (`content-property`), as
+` the reference's content runs it: the value is stored in the property of the object being filled
+` where the line runs, as an assignment to the property named alone stores it, and runs again
+` where it reads something tracked, as a live assignment does. The line gives no content. One
+` whose name its class or a class above declares too is reported (`report-content-clash`).
+. left = tree.content-property-name(id)
+. name = identifier-name(tree, left) if left != 0
+if !name || bindings.resolution-of(frame.binding, left).kind != .resolve-member
+    decline(id)
+    = invalid-type
+if !owns-content-property(frame.self-type, name, id)
+    report-content-clash(frame.self-type, name, id)
+    = invalid-type
+. assigned = infer-assign(id, .eq-op, left, value, want)
+if assigned != invalid-type && facts.live-statements.length != 0
+    settle-live-statement(id, left, value, facts.node-type(instance, value))
+= assigned
+
+────────────────────
+_ do report-content-clash
+    - receiver TypeId
+    - name Atom
+    - id SyntaxId
+
+` Reports the property of a name that the class whose markup holds the line `id`, or a class
+` above it, declares otherwise than the line does (`content-property`), as the reference reports
+` a property stored two ways: `Inherited properties must have same assignment type` at that
+` declaration, where it is a stored one of this module. Any other clash, one a class below
+` declares among them, is declined.
+. level TypeId? = receiver
+. reached = false
+while level
+    . ref = class-ref(types, level)
+    reached = reached || holds-line(ref, id)
+    . member = owner-property(program, ref.module, ref.decl, name)
+    if member != 0
+        do match? program.modules[ref.module].decls[member]
+            | .decl-property(row)
+                if row.line != id && reached
+                    if ref.module == module && !row.is-lazy
+                        frame.diagnose
+                            - row.syntax
+                            - .stated
+                            - program.store-atom
+                                - "Inherited properties must have same assignment type"
+                        =
+                    decline(id)
+                    =
+    level = types.base-of(level)
+decline(id)
+
+────────────────────
+_ do holds-line Bool
+    - ref DeclRef
+    - id SyntaxId
+
+` Whether a line of this module is one of the markup the class `ref` writes.
+if ref.module != module
+    = false
+do match? program.modules[module].decls[ref.decl]
+    | .decl-class(class)
+        = class.content != 0 && tree.subtree-start(class.content) <= id && id <= class.content
+= false
+
+────────────────────
+_ do owns-content-property Bool
+    - receiver TypeId
+    - name Atom
+    - line SyntaxId
+
+` Whether the property of a name an object of `receiver` has is the one a line of the markup of
+` its class, or of a class above, declares (`content-property`), and no class above that one
+` declares one of the name.
+. level TypeId? = receiver
+while level
+    . ref = class-ref(types, level)
+    . member = owner-property(program, ref.module, ref.decl, name)
+    if member != 0
+        do match? program.modules[ref.module].decls[member]
+            | .decl-property(row)
+                if row.line != line || ref.module != module
+                    = false
+                . above = types.base-of(level)
+                = !above || !property-named(above, name)
+        = false
+    level = types.base-of(level)
+= false

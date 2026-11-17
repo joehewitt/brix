@@ -1,4 +1,6 @@
 ./emitter
+./emitter.calls
+./emitter.live-actions
 ./emitter.loops
 ./emitter.match-arms
 ./layouts
@@ -36,6 +38,8 @@
 
 ━━━━━━━━━━━━━━━━━━━━
 _ StateMachines is facet of FunctionEmitter
+    sees Calls
+    sees LiveActions
     sees Loops
     sees MatchArms
 
@@ -2025,7 +2029,7 @@ for name in machining.kept[position]
         value = integer(layout as MachineKind, 0)
     else if intrinsic(type) == .interface && tables.layouts.is-struct(layout)
         value = null-value(type, layout, activation).operand
-    else if is-aggregate(type) && !is-plain-tuple(type)
+    else if is-aggregate(type) && !types.is-plain-tuple(type)
         if tables.writes-constructor(type)
             refuse(.refused-type, activation)
             =
@@ -2814,3 +2818,382 @@ for head in tree.group-heads(items)
     keep(head, "(subscriber)", empty-optional(optional, layout).operand, head)
     jump(done)
     ir.start-block(done)
+
+────────────────────
++ do machine-of-union MachineFact?
+    - union TypeId
+
+` The state machine whose union a type is, or none.
+for machine in facts.machines
+    if machine.union == union
+        = machine
+= null
+
+────────────────────
++ do start-refined
+    - machine MachineFact
+
+` Starts a machine that refines another, as the reference starts the two merged: each machine
+` that refines another, from the one of the object's class up, keeps what it keeps for the
+` object, and then the machine none refines starts, through the facts of the instance that types
+` its value for the class that declares it.
+. current MachineFact? = machine
+while current
+    . own-unit = unit
+    . own-filling = filling
+    unit = unit.source-module = current.module
+    unit = unit.reading = instances.rows[current.instance].enclosing
+    filling = filling.root = current.syntax
+    do emit-expression(current.syntax)
+    unit = own-unit
+    filling = own-filling
+    current = facts.machine-of(current.refined) if current.refined != no-instance
+
+────────────────────
++ resolves-member Bool
+    - id SyntaxId
+
+` Whether a name alone resolves to a member of the object the function is emitted for.
+|? binding == no-binding
+    false
+??
+    bindings.resolution-of(binding, id).kind == .resolve-member
+
+.. binding = instances.rows[unit.reading].binding
+
+────────────────────
++ do flag-name Atom
+    - property Atom
+    - name Atom
+
+` The name of the object's flag of a case of the machine a property of its class holds.
+= program.store-atom("(${property.text}-${name.text}-active)")
+
+────────────────────
++ do composite-classes [TypeId]
+    - fact MachineFact
+    - root MachineFact
+    - owner TypeId
+
+` The classes whose objects start a machine a property of a class holds (`leaf-classes`), where
+` it is, or refines, the machine of a union, that are or derive from a class, or none.
+. found [TypeId]
+if fact.outer != 0
+    = found
+. top MachineFact? = fact
+while top && top.refined != no-instance
+    top = facts.machine-of(top.refined)
+if !top || top.module != root.module || top.syntax != root.syntax
+    = found
+for type in tables.leaf-classes(fact)
+    if derives(type, owner)
+        found += type
+= found
+
+────────────────────
++ do classes-branch
+    - site SyntaxId
+    - value Operand
+    - classes [TypeId]
+    - matched IRBlockId
+    - missed IRBlockId
+
+` Leaves to `matched` when an object is of one of some classes itself, and to `missed` when it is
+` of another.
+. table = load(value, 0, pointer-layout, site)
+for position in 0 .. < classes.length
+    . next = if position + 1 == classes.length then missed else ir.reserve-block()
+    . symbol = tables.table-symbols[classes[position]]
+    if symbol == no-string
+        jump(next)
+    else
+        branch
+            - compare(site, .compare-equal, table, make-operand(.operand-symbol, symbol))
+            - matched
+            - next
+    if position + 1 < classes.length
+        ir.start-block(next)
+if classes.length == 0
+    jump(missed)
+
+────────────────────
++ do derives Bool
+    - type TypeId
+    - base TypeId
+
+` Whether a class is another or derives from it.
+. level TypeId? = type
+while level
+    if level == base
+        = true
+    level = types.base-of(level)
+= false
+
+────────────────────
++ do emit-machine-path Typed
+    - id SyntaxId
+    - object SyntaxId
+
+` `path` read from a value of a state machine's union, as the reference makes it: an empty list,
+` given the name of each active case of the machine in turn, its cases written outermost first,
+` each before those written in it, then those only a continuation enters. The flags are read
+` where a case test reads them: those of a machine a property of a class holds from the object
+` written before the property's name, evaluated once, or the one a name alone is read from; any
+` other's as `machine-flag` reads them. Where the object is of a class whose composite merges the
+` machine with refinements, the composite's cases are listed (`append-composite`). A value of the
+` union read from elsewhere than the machine lists the case it holds after those it is written in,
+` outermost first (`append-held`).
+. nothing = make-operand(.operand-void, 0)
+. list-type = facts.node-type(unit.reading, id)
+. union = facts.node-type(unit.reading, object)
+. machine = machine-of-union(union)
+. makes = no-fact
+. append = no-instance
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    . row = facts.calls[fact]
+    if row.form == .call-list-make
+        makes = fact
+    else if row.form == .call-method
+        append = row.callee
+    fact = row.next
+if !machine || makes == no-fact || append == no-instance
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. member = machine.store == .store-member
+. live = reads-machine(object, machine)
+. base = nothing
+. owner = no-type
+. property = decl-name(machine.module, machine.decl)
+if !live
+    base = emit-expression(object).operand
+else if member && property
+    do match? tree.nodes[object]
+        | .node-get-expression(row)
+            if row.name == property && !is-link(object)
+                owner = held-type(row.object)
+                base = emit-expression(row.object).operand
+        | .node-identifier(row)
+            if row.name == property && resolves-member(object)
+                owner = self-owner()
+                base = unit.self
+    if owner == no-type || owner == invalid-type || !tables.is-class(owner)
+        refuse(.refused-expression, object)
+else if member || !(tree.nodes[object] is .node-identifier)
+    refuse(.refused-expression, object)
+. list = emit-fact-call(id, facts.calls[makes], 0, RowRange'SyntaxId(), 0, 0, list-type)
+if list.type != list-type
+    refuse(.refused-conversion, id)
+. machine-tree = program.modules[machine.module].tree
+. items = machine-tree.state-items(machine-tree.state-body(machine.syntax))
+. cases = machine-tree.machine-cases(items)
+. order [SyntaxId]
+for node in machine-tree.explicit-cases(items)
+    order += node
+for node in cases
+    if order.find(node) == null
+        order += node
+. done = ir.reserve-block()
+if !live
+    append-held(id, list.operand, append, base, machine, done)
+    ir.start-block(done)
+    = Typed(list.operand, list-type)
+if member
+    for position in tables.machine-order
+        . fact = facts.machines[position]
+        . classes = composite-classes(fact, machine, owner)
+        . composite = compose-machine(program, facts, fact) if classes.length != 0
+        if composite
+            append-composite
+                - id
+                - list.operand
+                - append
+                - base
+                - composite
+                - property!
+                - classes
+                - tables.machine-receiver(fact)
+                - done
+for node in order
+    . name = machine-tree.state-name(node)!
+    . index = machine-tree.case-position(cases, name)!
+    . flag = nothing
+    if member
+        . flagged = property-of(owner, flag-name(property, name)) if property
+        if !flagged
+            refuse(.refused-expression, id)
+            = Typed(nothing, no-type)
+        . field = held-field(id, owner, flagged)
+        flag = load(base, field.offset, field.layout, id)
+    else
+        flag = machine-flag(id, machine, index, done).operand
+    append-active(id, list.operand, append, flag, name)
+jump(done)
+ir.start-block(done)
+= Typed(list.operand, list-type)
+
+────────────────────
+_ do append-active
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - flag Operand
+    - name Atom
+
+` Appends the name of a case to a machine's path where its flag says it is active.
+. adding = ir.reserve-block()
+. next = ir.reserve-block()
+branch(compare(id, .compare-not-equal, flag, integer(.machine-u8, 0)), adding, next)
+ir.start-block(adding)
+append-name(id, list, append, name)
+jump(next)
+ir.start-block(next)
+
+────────────────────
+_ do append-name
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - name Atom
+
+` Appends the name of a case to a machine's path.
+. mark = pending.length
+pending += list
+pending += make-operand(.operand-constant, ir.add-string(name.text))
+do call-instance(append, id, mark)
+
+────────────────────
+_ do append-held
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - value Operand
+    - machine MachineFact
+    - done IRBlockId
+
+` Appends to a path read from a value of a state machine's union, read from elsewhere than the
+` machine, the names of the case it holds, the innermost the machine was in when it was read, and
+` of the cases that case is written in, outermost first, and leaves to `done`.
+. machine-tree = program.modules[machine.module].tree
+. items = machine-tree.state-items(machine-tree.state-body(machine.syntax))
+. cases = machine-tree.machine-cases(items)
+. tag = load(value, 0, u8-layout, id)
+for position in 0 .. < cases.length
+    . adding = ir.reserve-block()
+    . next = ir.reserve-block()
+    branch(compare(id, .compare-equal, tag, integer(.machine-u8, position as U64)), adding, next)
+    ir.start-block(adding)
+    for node in machine-tree.path-to(items, cases[position])
+        append-name(id, list, append, machine-tree.state-name(node)!)
+    jump(done)
+    ir.start-block(next)
+jump(done)
+
+────────────────────
+_ do append-composite
+    - id SyntaxId
+    - list Operand
+    - append InstanceId
+    - object Operand
+    - composite MachineComposite
+    - property Atom
+    - classes [TypeId]
+    - level TypeId
+    - done IRBlockId
+
+` Appends to a path, where an object is of one of the classes that run a composite typed for a
+` class itself, the name of each active case of the composite, each before those written in it,
+` then those only a continuation enters, and leaves to `done`.
+. missed = ir.reserve-block()
+. matched = ir.reserve-block()
+classes-branch(id, object, classes, matched, missed)
+ir.start-block(matched)
+. names [Atom]
+for name in composite.names
+    names += name
+for fact in composite.pieces
+    . owner = program.modules[fact.module].tree
+    for node in owner.machine-cases(owner.state-items(owner.state-body(fact.syntax)))
+        if names.find(owner.state-name(node)!) == null
+            names += owner.state-name(node)!
+for name in names
+    . flagged = property-of(level, flag-name(property, name))
+    if !flagged
+        refuse(.refused-expression, id)
+        =
+    . field = held-field(id, level, flagged)
+    append-active(id, list, append, load(object, field.offset, field.layout, id), name)
+jump(done)
+ir.start-block(missed)
+
+────────────────────
++ self-owner TypeId
+
+` The class of the object a member's name alone is read from in the function being emitted, as
+` `emit-identifier` reads it, or no type where it is read otherwise.
+|? !unit.has-self
+    no-type
+|? unit.reading == unit.instance || unit.reading == unit.lender
+    unit.owner-type
+|? filling.count != 0
+    no-type
+|? unit.deferred-type != no-type
+    unit.deferred-type
+|? evaluates-value()
+    unit.self-type
+??
+    no-type
+
+────────────────────
++ do machine-default Typed
+    - machine MachineFact
+    - site SyntaxId
+
+` What a property that holds a state machine holds until the machine starts: the first case of
+` its union, as the reference gives a union no value is written for, holding what a local of its
+` type holds with nothing written (`first-case`).
+. layout = layout-of(machine.union, site)
+if tables.layouts.is-union(layout)
+    = first-case(machine.union, layout, site)
+refuse(.refused-expression, site)
+= Typed(make-operand(.operand-void, 0), no-type)
+
+────────────────────
++ do machine-flag Typed
+    - site SyntaxId
+    - machine MachineFact
+    - index U32
+    - failed IRBlockId
+
+` Whether a machine's case is active, where a case test is in reach of its flag: in the module
+` of a machine a module's property is, from the global that holds its environment, which fails
+` the test before the machine starts, in reach of the local a machine is kept in, beside it,
+` and in the machine around a named machine written in a case of another. Elsewhere the case
+` test is refused, as the reference tests the tag there.
+. nothing = make-operand(.operand-void, 0)
+. row = bindings.machine-slots(machine.module, machine.syntax)
+. cases = program.modules[machine.module].tree.machine-cases
+    - program.modules[machine.module].tree.state-items
+        - program.modules[machine.module].tree.state-body(machine.syntax)
+if !row || index >= cases.length as U32
+    refuse(.refused-expression, site)
+    = Typed(nothing, no-type)
+. slot = bindings.machine-slot(row, cases[index], program.store-atom("(active)"))
+if slot == no-slot
+    refuse(.refused-expression, site)
+    = Typed(nothing, no-type)
+if machine.store == .store-local || (machine.store == .store-nested && machine.instance == unit.reading)
+    = read-captured(slot, site, types.bool-type)
+. storage = tables.storage-of(machine.module, instances.rows[machine.instance].decl)
+. layout = tables.environments[machine.instance]
+if machine.store != .store-global || storage == no-storage || foreign-machine || unbuilt-layout
+    refuse(.refused-expression, site)
+    = Typed(nothing, no-type)
+.. foreign-machine = machine.module != instances.rows[unit.reading].module
+.. unbuilt-layout = layout == no-layout || layout == unbuilt-environment
+. field = tables.layouts.field(layout, 1 + tables.slot-fields[slot])
+. base = load-global(tables.storage[storage], site)
+pass-or-fail
+    - compare(site, .compare-not-equal, base.operand, integer(managed-layout as MachineKind, 0))
+    - failed
+= Typed(load(base.operand, field.offset, field.layout, site), types.bool-type)

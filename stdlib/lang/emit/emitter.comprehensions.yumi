@@ -1,0 +1,719 @@
+./emitter
+./emitter.calls
+./emitter.lazies
+./emitter.live-actions
+./emitter.loops
+./emitter.streams
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Comprehensions is facet of FunctionEmitter
+    sees Calls
+    sees Lazies
+    sees LiveActions
+    sees Loops
+    sees Streams
+
+────────────────────
+_ do emit-broadcaster Typed
+    - id SyntaxId
+    - loop SyntaxId
+    - container SyntaxId
+
+` A comprehension on a stream where it is written: the container is made a `Broadcastable`,
+` the channel is made and kept in the local the subscriber captures, and the subscriber, the
+` environment in force here, is made a `Subscriber` and given to the broadcaster's
+` `subscribe`, whose errors leave the function as the type pass said, or subscribed as
+` `subscribe-whenever` says where the comprehension has a `whenever` clause. The channel, read again
+` from where it is kept, is the comprehension's value. One written in the value of a global,
+` where the function that types the value is not the one emitted, keeps the channel in an
+` environment of its own: see `lone-environment`. One that is the value of a lazy local nested
+` functions capture, evaluated by a function written in the one that declares the local, keeps
+` it in the environment that holds the local, as `emit-closure` gives that environment.
+. nothing = make-operand(.operand-void, 0)
+. stream = emit-broadcastable(loop, container)
+. broadcaster = stream.type
+. made = call-at(id, .call-constructor)
+. slot = channel-slot(id)
+. channel = facts.node-type(unit.reading, id)
+. closure = subscriber-closure(id)
+if made == no-fact || slot == no-slot || closure == no-type || other-channel
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+.. other-channel = instances.signatures[facts.calls[made].callee].returns != channel
+. lone = if unit.reading != unit.instance && shared-written(id) == no-slot then lone-environment(id, slot) else no-local
+. object = call-instance(facts.calls[made].callee, id, pending.length)
+. written = Typed(nothing, no-type)
+if lone == no-local
+    keep-captured(slot, object.operand, channel, id)
+    written = emit-closure(id, closure)
+else
+    keep-lone(lone, slot, object.operand, channel, id)
+    written = Typed(load-local(lone, id), closure)
+. subscriber = convert(id, .reason-argument, written)
+. given = subscriber.type
+. owned = tables.owned-subscription-of(unit.reading, id)
+. retested = tree.whenever-clause(loop)
+. retest = tables.live-statement-of(unit.reading, retested) if retested != 0
+if retest
+    subscribe-whenever(id, retested, retest, stream.operand, broadcaster, subscriber.operand)
+else if retested != 0
+    refuse(.refused-expression, retested)
+else if owned
+    own-subscription(id, owned, stream.operand, subscriber.operand)
+else
+    do call-protocol(id, call-at(id, .call-method), stream.operand, broadcaster, subscriber.operand, given)
+if lone != no-local
+    = Typed(take(load-local(lone, id), lone-field(slot), id), channel)
+= read-captured(slot, id, channel)
+
+────────────────────
++ do emit-comprehension Typed
+    - id SyntaxId
+    - loop SyntaxId
+
+` A comprehension written as a value: a call of the function generated for it. The
+` container of its loop is evaluated here, where the comprehension is written, and given
+` to the function. The call gives the generator. One on a stream subscribes here instead:
+` see `emit-broadcaster`.
+. container SyntaxId = 0
+do match? tree.nodes[loop]
+    | .node-loop-syntax(row)
+        if row.is-subscriber
+            = emit-broadcaster(id, loop, row.container)
+        container = row.container
+if container == 0
+    refuse(.refused-expression, id)
+    = Typed(make-operand(.operand-void, 0), no-type)
+= emit-comprehension-call(id, container)
+
+────────────────────
+_ do emit-comprehension-call Typed
+    - id SyntaxId
+    - container SyntaxId
+    - converts Bool = false
+
+` The call of the function generated for a comprehension, or for a stream piped through a
+` pattern, given the container, which gives the generator. A container that `converts` is
+` converted as the type pass recorded for it as an argument.
+. answer = call-generated(id, container, converts)
+if answer.type != facts.node-type(unit.reading, id)
+    refuse(.refused-conversion, id)
+= answer
+
+────────────────────
+_ do call-generated Typed
+    - id SyntaxId
+    - given-site SyntaxId
+    - converts Bool = false
+
+` A call of the function generated for what is written at a node, a comprehension, a list
+` of bullets or the right side of a pipe, which the type pass recorded there. It is given
+` the environment in force, which the function reads the locals it captures from, and
+` then the value written at `given-site`, where it takes one, evaluated here, and where it
+` `converts`, converted as the type pass recorded for it as an argument. One written in
+` the value a class writes for a property is typed by the instance that types that value,
+` and given no environment, where that instance makes none: it captures nothing. Where it
+` makes one it has no shape. One written in the value of a lazy local nested functions
+` capture, evaluated by a function written in the one that declares it (`read-shared`), is
+` given the environment that holds the local, which is the one in force where it is written.
+` One a constructor makes has no shape where `emit-closure` gives a nested function none: while
+` the properties are given their values, where nested functions read the receiver, and after,
+` where the properties read a lazy local nested functions capture.
+. nothing = make-operand(.operand-void, 0)
+. callee = no-instance
+. propagates = false
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-closure
+        callee = facts.calls[fact].callee
+        propagates = facts.calls[fact].propagates
+    fact = facts.calls[fact].next
+. count U32 = if given-site != 0 then 1 else 0
+. outside = unit.reading != unit.instance
+. held = outside && tables.environments[unit.reading] != no-layout
+. shared = shared-slot()
+. receiving = filling.storing && !outside && shares-receiver()
+. doubled = !filling.storing && !outside && fills-share() && shares-lazy()
+if callee == no-instance || (held && shared == no-slot) || receiving || doubled
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if outside && instances.rows[callee].enclosing != unit.reading
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if tables.instance-functions[callee] == no-function || other-arity
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+.. other-arity = instances.signatures[callee].args.count != count
+. given-value = Typed(nothing, no-type)
+if given-site != 0
+    given-value = emit-expression(given-site)
+    if converts
+        given-value = convert(given-site, .reason-argument, given-value)
+    if given-value.type != instances.argument-type(callee, 0)
+        refuse(.refused-conversion, given-site)
+. written = nested-environment(id)
+if outside && tables.stack-holds(callee).length != 0
+    refuse(.refused-expression, id)
+hold-stacks(id, instances.rows[callee].decl, written)
+. mark = pending.length
+pending += written
+if given-site != 0
+    pending += given-value.operand
+. raising = instances.signatures[callee].errors.count != 0
+takes-result = raising
+. answer = call-instance(callee, id, mark)
+takes-result = false
+=? propagate(id, callee, answer.operand) if raising && propagates
+= answer
+
+────────────────────
++ do emit-bullet-list Typed
+    - id SyntaxId
+
+` A list of bullets written as a value: a call of the function generated for it, which the
+` type pass recorded at the first bullet, and which gives the generator.
+= call-generated(id, 0)
+
+────────────────────
++ do emit-bullets
+    - first SyntaxId
+
+` The body of the function generated for a list of bullets: each bullet in turn yields
+` its item, converted as the type pass recorded for the list at the item; one written
+` `*?` yields what an optional holds, where it holds anything; and one written `**`
+` yields every item of what it writes, by the loop the type pass planned at the bullet.
+` An item written as a cast keeps the cast's conversion where the list's is kept, so only
+` the conversions of what the item gave are made. One written `*?` whose item is no
+` optional has no shape yet.
+. bullet = first
+while bullet != 0
+    . next SyntaxId = 0
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            next = row.next
+            if row.is-multi
+                emit-spread(bullet, row.item, row.is-optional)
+            else
+                . value = convert-matched
+                    - row.item
+                    - .reason-explicit
+                    - emit-expression(row.item)
+                    - no-type
+                if row.is-optional && !types.is-optional(value.type)
+                    refuse(.refused-expression, bullet)
+                yield-item(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
+    bullet = next
+
+────────────────────
++ do emit-built-bullets
+    - declared SyntaxId
+    - first SyntaxId
+
+. list = build-bullets(first, first, returns-type, .reason-return)
+return-value(list.operand, declared)
+
+────────────────────
++ do emit-listed-bullets Typed
+    - id SyntaxId
+    - first SyntaxId
+
+= build-bullets(id, first, facts.node-type(unit.reading, id), .reason-element)
+
+────────────────────
+_ do build-bullets Typed ?! Refused
+    - home SyntaxId
+    - first SyntaxId
+    - listed TypeId
+    - reason ConversionReason
+
+. appends = call-at(home, .call-list-append)
+if appends == no-fact || first == 0
+    refuse(.refused-expression, home)
+    = Typed(make-operand(.operand-void, 0), no-type)
+. outer-list = built-list
+. outer-item = built-item
+. outer-append = built-append
+. outer-reason = built-reason
+. outer-spreading = spreading
+built-append = facts.calls[appends].callee
+built-item = instances.argument-type(built-append, 0)
+built-reason = reason
+spreading = 0
+. count U32 = 0
+. room U32 = 0
+. leading = true
+. bullet = first
+while bullet != 0
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            leading = leading && !row.is-multi && !row.is-optional
+            if leading
+                count += 1
+            else if !row.is-multi
+                room += 1
+    bullet = next-bullet(bullet)
+. mark = open-cleanups.length
+. own-scoping = scoping
+scoping = scoping.block-base = mark
+. start = given.length
+bullet = first
+for _ in 0 .. < count
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
+            . site = facts.bullet-site(unit.reading, bullet)
+            . converted = built-value(site, value)
+            if converted.type != built-item
+                refuse(.refused-conversion, site)
+            given += Typed(apart(converted, row.item, count > 1), converted.type)
+    bullet = next-bullet(bullet)
+. list = build-list(home, RowRange'SyntaxId(0, count), listed, start, false, first, room)
+drop-given(start)
+built-list = list.operand
+while bullet != 0
+    do match? tree.nodes[bullet]
+        | .node-bullet-expression(row)
+            if row.is-multi
+                spreading = bullet
+                emit-spread(bullet, row.item, row.is-optional)
+                spreading = 0
+            else
+                . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
+                if row.is-optional && !types.is-optional(value.type) && reason == .reason-return
+                    refuse(.refused-expression, bullet)
+                append-built(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
+    bullet = next-bullet(bullet)
+. built = close-value(list, mark, own-scoping, home)
+built-list = outer-list
+built-item = outer-item
+built-append = outer-append
+built-reason = outer-reason
+spreading = outer-spreading
+= built
+
+────────────────────
+_ do emit-spread
+    - bullet SyntaxId
+    - item SyntaxId
+    - optional Bool
+
+` A bullet that gives every item of what it writes. Of a range of integers written there,
+` the loop that counts through it. Of a container, a loop over it by the protocol the type
+` pass planned at the bullet, whose slots keep the container, converted first to the iterable
+` it is read as where it is not one: `**?` reads what an optional holds and gives nothing
+` where it holds none. Each item is yielded as it is read. What the
+` loop does at the bullet is located on the line under it where the type pass noted that.
+. plan = facts.plan-of(unit.reading, bullet)
+if plan == .plan-range-loop && !optional
+    do match? tree.nodes[item]
+        | .node-range-expression(range)
+            emit-range-loop(bullet, range.op, range.left, range.right, 0, 0)
+            =
+if plan != .plan-index-loop && plan != .plan-cursor-loop && plan != .plan-stream-loop
+    refuse(.refused-expression, bullet)
+    =
+. slot = loop-slots(bullet)
+. held = convert(item, .reason-explicit, emit-expression(item))
+. beyond = no-block
+if optional && types.is-optional(held.type)
+    . wrapped = held.type
+    . given = ir.reserve-block()
+    beyond = ir.reserve-block()
+    branch(present(bullet, held).operand, given, beyond)
+    ir.start-block(given)
+    held = payload(bullet, Typed(held.operand, wrapped))
+. site = facts.bullet-site(unit.reading, bullet)
+if site != 0
+    held = convert(site, .reason-operand, held)
+keep-state(slot, held.operand, held.type, bullet)
+. shifted = lowered
+lowered = if facts.is-bullet-below(unit.reading, bullet) then bullet else 0
+emit-headed(bullet, item, 0, 0, true)
+lowered = shifted
+if beyond != no-block
+    jump(beyond)
+    ir.start-block(beyond)
+
+────────────────────
++ do emit-pattern-pipe
+    - pipe SyntaxId
+
+` The body of the function generated for a stream piped through a pattern, as the reference
+` makes it: the stream the pattern reads the value piped through is made, once, of what a
+` bullet the pipe reads alone writes where it reads one, evaluated then and converted as the
+` type pass recorded. Then on each pass a stream the type pass found the function makes for
+` itself is released, where it can be; the stream is asked whether it has more, and the
+` function ends where it has not; it is marked, and the pattern matched from where it is, as
+` a rule's arms are, without reading the rest, asking the stream for more input where a part
+` reads past the end of its buffer; the function ends where it fails. Where the match did not
+` move the stream on, it panics; else what it gave is yielded. A helper the pipe is given is
+` evaluated once, after the stream is made, and kept for every match to run under. One that
+` marks the records a pipe matches is asked to begin each record, where the stream has more,
+` before the stream is marked.
+. right SyntaxId = 0
+do match? tree.nodes[pipe]
+    | .node-pipeline-expression(row)
+        right = row.right
+    | .node-binary-expression(row)
+        right = row.rhs
+. pattern = right
+. helper SyntaxId = 0
+do match? tree.nodes[right]
+    | .node-stream-match(row)
+        pattern = row.pattern
+        helper = row.helper
+. result = facts.node-type(unit.reading, pattern)
+. first = facts.first-call(unit.reading, pipe)
+. releases = if first != no-fact && facts.calls[first].form == .call-method then first else no-fact
+. asks = if releases != no-fact then next-call(first) else first
+. marks = next-call(asks)
+. begins = next-call(marks)
+if right == 0 || result == no-type || result == invalid-type || marks == no-fact
+    refuse(.refused-statement, pipe)
+    =
+. slot = loop-slots(pipe)
+do match? tree.nodes[tree.piped-bullet(pipe)]
+    | .node-bullet-expression(row)
+        . written = convert(row.item, .reason-argument, emit-expression(row.item))
+        keep-state(slot, written.operand, written.type, pipe)
+. container = state(slot, pipe)
+. container-type = container.type
+. made = stream-maker(right)
+. viewed = if made != no-fact then next-call(made) else facts.first-call(unit.reading, right)
+. commits = next-call(viewed)
+if commits == no-fact
+    refuse(.refused-statement, pipe)
+    =
+. opened = stream-of(right, container.operand, container-type, made)
+keep-state(slot + 1, opened.operand, opened.type, pipe)
+if helper != 0
+    . helping = emit-expression(helper)
+    keep-state(slot + 2, helping.operand, helping.type, pipe)
+    if facts.plan-of(unit.reading, helper) != .plan-pattern-helper
+        refuse(.refused-statement, pipe)
+        =
+. root = ir.reserve-block()
+. done = ir.reserve-block()
+jump(root)
+ir.start-block(root)
+emit-poll(pipe)
+. stream = state(slot + 1, pipe)
+. stream-type = stream.type
+if releases != no-fact
+    call-protocol(pipe, releases, stream.operand, stream-type, make-operand(.operand-void, 0))
+. more = call-protocol(pipe, asks, stream.operand, stream-type, make-operand(.operand-void, 0))
+if more.type != types.bool-type
+    refuse(.refused-statement, pipe)
+    =
+. moving = ir.reserve-block()
+branch(compare(pipe, .compare-not-equal, more.operand, integer(.machine-u8, 0)), moving, done)
+ir.start-block(moving)
+if begins != no-fact
+    . kept = state(slot + 2, pipe)
+    call-protocol(pipe, begins, kept.operand, kept.type, make-operand(.operand-void, 0))
+. began = marked-cursor(pipe, marks, stream.operand, stream-type)
+. refills = made == no-fact || chunked
+    .. chunked = same-decl(class-ref(types, stream-type), types.chunked-token-stream-decl)
+. run = view-stream(right, stream.operand, stream-type, refills, viewed, next-call(commits))
+if helper != 0
+    . kept-state = state(slot + 2, pipe)
+    streaming = streaming.pattern-helper = kept-state.operand
+    streaming = streaming.pattern-helper-type = kept-state.type
+. value = attempt-arms(right, pattern, result, run, false, commits, done, false)
+. ended = marked-cursor(pipe, marks, stream.operand, stream-type)
+. moved = ir.reserve-block()
+. stuck = ir.reserve-block()
+branch(compare(pipe, .compare-greater, ended.operand, began.operand), moved, stuck)
+ir.start-block(stuck)
+raise-text(right, "Stream pattern pipeline made no input progress")
+ir.start-block(moved)
+yield-item(right, Typed(value.operand, result), false)
+jump(root)
+ir.start-block(done)
+
+────────────────────
+_ do marked-cursor Typed
+    - site SyntaxId
+    - fact FactId
+    - stream Operand
+    - stream-type TypeId
+
+` Where a stream is, as the mark the call the type pass recorded makes of it holds it.
+. mark = call-protocol(site, fact, stream, stream-type, make-operand(.operand-void, 0))
+. layout = layout-of(mark.type, site)
+if !tables.layouts.is-struct(layout) || tables.layouts.rows[layout].fields.count != 2
+    refuse(.refused-type, site)
+    = mark
+= part(mark.operand, layout, 1, site)
+
+────────────────────
++ do keep-piped
+    - declared SyntaxId
+
+` Copies the item, or the value, a pipe gives the function generated for its right side into
+` the function's environment, where nested functions capture its `each` or its `it`.
+for offset in 0 .. < unit.slot-count
+    . slot = unit.slot-start + offset
+    . row = bindings.slots[slot]
+    if (row.kind != .slot-each && row.kind != .slot-it) || row.syntax != piped || uncaptured
+        continue
+    .. uncaptured = !owns(slot) || !is-captured(slot)
+    if ir.arguments.length != 2
+        refuse(.refused-function, declared)
+        =
+    keep-captured
+        - slot
+        - make-operand(.operand-argument, 1)
+        - instances.argument-type(unit.instance, 0)
+        - declared
+
+────────────────────
+_ do emit-stream-pipe Typed
+    - id SyntaxId
+    - left SyntaxId
+
+` A stream piped through a function over each of its items: the call the type pass
+` recorded at the pipe, of the function of `core/stream` that maps, filters or taps a
+` stream, given the stream on the left and the function generated for the right side as a
+` value of the function type it takes.
+` 1. The stream is evaluated, and converted as the type pass recorded where its facts are
+`    kept: at the left side, or for a list of bullets at the bullet after the first, or at
+`    the pipe where there is none, for a reason of its own apart from the pipe's value.
+` 2. The function is the environment its body is given (`nested-environment`), converted as
+`    recorded at the pipe.
+` A stack trace through the function on the right is the one TypeScript prints with no
+` inlining. The answer has the type the function called returns: the type pass keeps the
+` type of a list of one bullet at the pipe that reads it.
+. nothing = make-operand(.operand-void, 0)
+. fact = own-call(id)
+. site = left
+do match? tree.nodes[left]
+    | .node-bullet-expression(row)
+        site = if row.next != 0 then row.next else id
+. outside = unit.reading != unit.instance
+if fact == no-fact || (holds-environment && shared-slot() == no-slot) || receiving
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+.. holds-environment = outside && tables.environments[unit.reading] != no-layout
+.. receiving = filling.storing && !outside && shares-receiver()
+. call = facts.calls[fact]
+. callee = call.callee
+if call.form != .call-function || callee == no-instance || call.is-partial || call.fills.count != 2
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. first = facts.call-fills[call.fills.start] as U32
+. second = facts.call-fills[call.fills.start + 1] as U32
+if first != 0 || second != 1 || tables.instance-functions[callee] == no-function
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. reason ConversionReason = if site == id then .reason-piped else .reason-argument
+. source = convert-matched(site, reason, emit-expression(left), instances.argument-type(callee, 0))
+if source.type != instances.argument-type(callee, 0)
+    refuse(.refused-conversion, left)
+    = Typed(nothing, no-type)
+. function = Typed(nothing, no-type)
+. wanted = instances.argument-type(callee, 1)
+. shape = facts.first-conversion(unit.reading, id)
+while shape != no-fact && function.type != wanted
+    . row = facts.conversions[shape]
+    if row.reason == .reason-argument && is-closure(row.from) && row.runs != no-instance
+        if outside && instances.rows[row.runs].enclosing != unit.reading
+            refuse(.refused-expression, id)
+            = Typed(nothing, no-type)
+        function = convert-one(id, row, Typed(nested-environment(id), row.from))
+    shape = row.next
+if function.type != wanted
+    refuse(.refused-conversion, id)
+    = Typed(nothing, no-type)
+. mark = pending.length
+pending += source.operand
+pending += function.operand
+= call-instance(callee, id, mark)
+
+────────────────────
+_ do emit-write-all Typed
+    - id SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+` A value written whole to what is on the right of the pipe: the one call the type pass
+` recorded at the pipe, of the function the type on the right declares for a write, given
+` the value. The value is evaluated first, as it is written first, and the pipe gives what
+` it wrote to.
+. nothing = make-operand(.operand-void, 0)
+. fact = facts.first-call(unit.reading, id)
+if fact == no-fact || facts.calls[fact].next != no-fact || facts.calls[fact].is-swapped
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. made = emit-expression(left)
+. value = apart(made, left, !is-inert(right))
+. given = made.type
+. sink = emit-expression(right)
+. sink-type = sink.type
+call-operator(id, fact, right, sink.operand, sink-type, left, value, given)
+= Typed(sink.operand, sink-type)
+
+────────────────────
+_ do emit-write-each Typed
+    - id SyntaxId
+    - left SyntaxId
+    - right SyntaxId
+
+` Each item of what the pipe reads written to what is on the right, as the reference lowers
+` it: what is on the right is evaluated first and kept, and the loop the type pass planned
+` at the pipe reads the left, each turn giving the item to the write recorded at the pipe
+` after the calls of the loop's protocol. A range of integers written there is counted
+` through. The pipe gives what it wrote to.
+. nothing = make-operand(.operand-void, 0)
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact && facts.calls[fact].next != no-fact
+    fact = facts.calls[fact].next
+if fact == no-fact || facts.calls[fact].is-swapped
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. sink = emit-expression(right)
+. sink-type = sink.type
+. layout = layout-of(sink-type, id)
+. kept = ir.add-local(layout)
+store-local(kept, sink.operand, id)
+writes += WriteEach(id, fact, left, right, kept, sink-type)
+. plan = facts.plan-of(unit.reading, id)
+. counted = false
+do match? tree.nodes[left]
+    | .node-range-expression(range)
+        if plan == .plan-range-loop && range.left != 0 && range.right != 0
+            emit-range-loop(id, range.op, range.left, range.right, 0, 0)
+            counted = true
+if !counted && (plan == .plan-index-loop || plan == .plan-cursor-loop || plan == .plan-stream-loop)
+    emit-headed(id, left, 0, 0)
+else if !counted
+    refuse(.refused-expression, id)
+writes.pop()
+. written = load-local(kept, id)
+= Typed(written, sink-type)
+
+────────────────────
++ pipes-stream Bool
+    - op Operator
+
+` Whether a pipe gives each item of a stream to the function written on its right.
+op == .map-op || op == .filter-op || op == .map-filter-op || op == .pipe-repeat-op
+
+────────────────────
+_ do emit-piped Typed
+    - id SyntaxId
+    - left SyntaxId
+
+` A value given whole to the function generated for the right side of the pipe, which reads
+` it as `it`: a call of that function, given the value.
+. answer = call-generated(id, left)
+if answer.type != facts.node-type(unit.reading, id)
+    refuse(.refused-conversion, id)
+= answer
+
+────────────────────
++ do emit-pipe Typed
+    - id SyntaxId
+    - op Operator
+    - left SyntaxId
+    - right SyntaxId
+
+` A value piped forward into the function written on the right, as the last argument of the
+` call the type pass recorded at the pipe; a stream piped through the function written on
+` the right, which maps, filters or taps its items, or through a pattern, as a comprehension
+` is called, given what is piped as the type pass cast it, but for a bullet that function
+` evaluates; a value given whole to the function
+` generated for the right side; or a value written whole, or each of its items, to what is
+` on the right. Any other pipe has no shape yet. A list of bullets piped
+` forward has what converts it kept at the bullet after the first, beside what converts
+` the yields of bullets, and a list of one bullet at the pipe, apart from what converts the
+` pipe's value.
+if pipes-stream(op)
+    = emit-stream-pipe(id, left)
+if op == .stream-pattern-pipe-op
+    = emit-comprehension-call(id, if tree.piped-bullet(id) == 0 then left else 0, true)
+if op == .pipe-closure-op
+    = emit-piped(id, left)
+if op == .pipe-write-all-op
+    = emit-write-all(id, left, right)
+if op == .pipe-write-each-op
+    = emit-write-each(id, left, right)
+if op != .pipe-forward-op
+    refuse(.refused-expression, id)
+    = Typed(make-operand(.operand-void, 0), no-type)
+=? emit-listed-bullets(id, tree.listed-bullets(id)) if facts.plan-of(unit.reading, id) == .plan-built-bullets
+do match? tree.nodes[left]
+    | .node-bullet-expression(row)
+        piped-site = if row.next != 0 then row.next else id
+    | .node-pipeline-expression(row)
+        if pipes-stream(row.op)
+            piped-site = left
+    | .node-binary-expression(row)
+        if pipes-stream(row.op)
+            piped-site = left
+. answer = Typed(make-operand(.operand-void, 0), no-type)
+do match tree.nodes[right]
+    | .node-call-expression(call)
+        answer = emit-call-at(id, call.callable, call.args, left)
+    ??
+        answer = emit-call-at(id, right, RowRange'SyntaxId(), left)
+piped-site = 0
+= answer
+
+────────────────────
++ next-bullet SyntaxId
+    - bullet SyntaxId
+
+match tree.nodes[bullet]
+    | .node-bullet-expression(row)
+        row.next
+    ??
+        0
+
+────────────────────
+_ do nested-environment Operand
+    - id SyntaxId
+
+` The environment a nested function of the instance whose facts are read is given where it is
+` written: the one in force, or where a function written in that instance evaluates the value
+` of a lazy local it declares, the one that holds the local, which is in force where the value
+` is written (`shared-slot`). One made there by an instance with no environment is given none.
+if unit.reading == unit.instance
+    = written-environment(id)
+. shared = shared-slot()
+if shared == no-slot
+    = integer(.machine-managed-pointer, 0)
+find-captured(shared, id)
+= captured-base(id)

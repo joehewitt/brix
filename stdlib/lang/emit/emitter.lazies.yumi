@@ -1,0 +1,957 @@
+./emitter
+./emitter.live-actions
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-queries
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Lazies is facet of FunctionEmitter
+    sees LiveActions
+
+_ lazy-claim = LayoutField(0, no-layout)
+
+────────────────────
++ do clear-lazies
+
+` Gives each lazy local that is evaluated once in a run of the function the flag that says
+` whether it has been, cleared here where the function starts, and notes whether any is
+` evaluated by its one read. The locals one declaration names together have one flag. A lazy
+` local held as an eager local is (`holds-lazy`) has its flag here, not in the environment.
+unit = unit.inlines = false
+for offset in 0 .. < unit.slot-count
+    if bindings.slots[unit.slot-start + offset].kind != .slot-lazy || !owns(unit.slot-start + offset)
+        continue
+    . held = tables.holds-lazy(unit.slot-start + offset)
+    if is-captured(unit.slot-start + offset) && !held
+        continue
+    if bindings.lazy-inlines(unit.slot-start + offset)
+        unit = unit.inlines = true
+    if bindings.lazy-policy(unit.slot-start + offset) != .lazy-memo && !held
+        continue
+    . group = bindings.slots[unit.slot-start + offset].group
+    if offset != 0 && unit.lazy-flags[offset - 1] != no-local && same-group
+        unit.lazy-flags[offset] = unit.lazy-flags[offset - 1]
+        continue
+    .. same-group = bindings.slots[unit.slot-start + offset - 1].group == group
+    . flag = ir.add-local(u8-layout)
+    unit.lazy-flags[offset] = flag
+    store-local(flag, integer(.machine-u8, 0), 0)
+
+────────────────────
++ do clear-turn-lazies
+    - body SyntaxId
+
+` Clears again the flag of each lazy local a block declares in a loop that is evaluated once
+` a turn, here where the block starts each turn, before any read of it.
+do match? tree.nodes[body]
+    | .node-block(row)
+        for statement in tree.children[row.body]
+            if !is-lazy-local(statement)
+                continue
+            for offset in 0 .. < unit.slot-count
+                . lazy = bindings.slots[unit.slot-start + offset]
+                if lazy.group != statement || unit.lazy-flags[offset] == no-local
+                    continue
+                if (slot-use /and/ (LazyUseFlag.declared-in-loop)) != 0
+                    store-local(unit.lazy-flags[offset], integer(.machine-u8, 0), 0)
+                .. slot-use = bindings.lazy-use-of(unit.slot-start + offset).flags
+
+────────────────────
++ do emit-lazy
+
+` The function of a lazy property: it takes the object and answers the property's value, or
+` for a struct the address of the value stored in the object, which a read then reads where
+` it lies, as a stored struct is read. When the object has none yet, the function claims the
+` property from the runtime, which holds a task that reads it from elsewhere meanwhile until
+` it has its value, then evaluates the value its class writes, stores it in the object, and
+` releases the property as there. A read from the task evaluating it evaluates it again. A
+` value that panics leaves the object without one, and so does one that lets out an error,
+` which leaves the function with it; either gives up the claim (`abandon-lazy`). A value
+` whose nested functions read what it declares is evaluated as the getter's own body: the
+` getter takes the value's instance as its own, makes the environment of the value's scope,
+` and shares its receiver there, as a method does.
+. type = function.type
+. place = function.place
+. property = types.properties[place]
+. object = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+. default = tables.default-of(type, place)
+unit = unit.source-module = default.module
+if object == no-layout || property.storage-kind != .storage-lazy || default.value == 0
+    refuse(.refused-function, default.site)
+    =
+. unit-id = tables.value-unit(place)
+if unit-id != no-instance && tables.environments[unit-id] != no-layout
+    read-instance(unit-id)
+    bind-slots()
+    clear-lazies()
+. pair = tables.layouts.field(object, object-header-fields + property.slot)
+if !tables.layouts.is-struct(pair.layout)
+    refuse(.refused-function, default.site)
+    =
+. held = tables.layouts.field(pair.layout, 0)
+. flag = tables.layouts.field(pair.layout, 1)
+. slot = LayoutField(pair.offset + held.offset, held.layout)
+unit = unit.takes-self = true
+unit = unit.has-self = true
+unit = unit.self-type = type
+unit = unit.self = make-operand(.operand-argument, 0)
+ir.add-argument(managed-layout)
+returns-type = property.type
+ir.returns = layout-of(property.type, default.site)
+if tables.layouts.is-struct(held.layout)
+    ir.returns = pointer-layout
+. raised = tables.lazy-function-result(place)
+if raised != no-type
+    return-results(raised, default.site)
+. state = LayoutField(pair.offset + flag.offset, flag.layout)
+. claiming = ir.reserve-block()
+. evaluate = ir.reserve-block()
+. ready = ir.reserve-block()
+. given = load-acquire(unit.self, state.offset, state.layout, default.site)
+branch(compare(default.site, .compare-equal, given, integer(.machine-u8, 1)), ready, claiming)
+ir.start-block(claiming)
+. mark = pending.length
+pending += address(unit.self, state.offset, state.layout, default.site)
+. claim = call-runtime(.runtime-claim-lazy-global, default.site, mark, i32-layout)
+branch(compare(default.site, .compare-equal, claim, integer(.machine-i32, 1)), ready, evaluate)
+ir.start-block(evaluate)
+lazy-claim = state
+if unit.instance != no-instance
+    open-environment(default.site)
+    share-self(default.site)
+. value = first-value(property, place, type, held.layout, default.site)
+if tables.layouts.is-struct(held.layout)
+    store-struct(unit.self, slot, value.operand, default.site)
+else if held.layout != void-layout
+    store(unit.self, slot.offset, value.operand, is-managed-pointer(held.layout), default.site)
+. released = pending.length
+pending += address(unit.self, state.offset, state.layout, default.site)
+call-runtime(.runtime-release-lazy-global, default.site, released)
+jump(ready)
+ir.start-block(ready)
+if held.layout == void-layout
+    return-nothing()
+else if tables.layouts.is-struct(held.layout)
+    return-value(address(unit.self, slot.offset, held.layout, default.site), default.site)
+else
+    return-value(load(unit.self, slot.offset, held.layout, default.site), default.site)
+
+────────────────────
++ do read-lazy Typed
+    - id SyntaxId
+    - object Operand
+    - place U32
+
+` Reads a lazy property of an object: the function in the property's slot of the object's
+` class table is called with the object, and answers the value, which it evaluates when the
+` object has none yet. A struct is read where the object stores it, at the address the
+` function answers. The call is checked when the value some class writes may panic,
+` which the type pass must have said of the reader too. Where the value lets out errors, the
+` function answers the value or one of them: the errors leave the reader with the read, or
+` under `catch`, which the type pass typed the read as answering them, are answered.
+. nothing = make-operand(.operand-void, 0)
+. slot = tables.lazy-slots[place]
+. property = types.properties[place]
+. raises = tables.lazy-raises(place)
+. raised = tables.lazy-result(place)
+if (raises && !function.may-panic && !in-landing) || raised == invalid-type
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. caught = raised != no-type && facts.node-type(unit.reading, id) == raised
+. returns = layout-of(if raised == no-type then property.type else raised, id)
+if raised != no-type && tables.layouts.is-struct(layout-of(property.type, id))
+    refuse(.refused-expression, id)
+. table = load(object, 0, pointer-layout, id)
+. method = load(table, table-header-size + slot * table-slot-size, pointer-layout, id)
+. mark = pending.length
+pending += object
+if in-zone
+    cross-zone(id, false)
+. in-place = raised == no-type && tables.layouts.is-struct(returns)
+. result = call
+    - method
+    - id
+    - mark
+    - .callee-value
+    - if in-place then pointer-layout else returns
+    - raises && !in-landing
+if in-zone
+    cross-zone(id, true)
+if caught
+    = Typed(result, raised)
+if raised != no-type
+    = propagate-held(id, raised, result)
+if in-place
+    = Typed(address(result, 0, returns, id), property.type)
+= Typed(result, property.type)
+
+────────────────────
++ do emit-lazy-global
+
+` The function that evaluates a lazy global, which a read calls while the global has no
+` value. The runtime gives the global to one task to evaluate, and holds a task that reads it
+` from elsewhere meanwhile until it has its value; a read from the task evaluating it is one
+` its own value made, and raises a panic. A value that panics leaves the global held so.
+. kept = tables.storage[function.place]
+. state = make-operand(.operand-symbol, kept.state)
+unit = unit.source-module = kept.module
+unit = unit.reading = tables.main-instances[kept.module]
+do match? program.modules[kept.module].decls[kept.decl]
+    | .decl-property(property)
+        . syntax = property.syntax
+        . ready = ir.reserve-block()
+        . unready = ir.reserve-block()
+        . busy = ir.reserve-block()
+        . evaluate = ir.reserve-block()
+        . mark = pending.length
+        pending += state
+        . claim = call-runtime(.runtime-claim-lazy-global, syntax, mark, i32-layout)
+        branch(compare(syntax, .compare-equal, claim, integer(.machine-i32, 1)), ready, unready)
+        ir.start-block(ready)
+        return-nothing()
+        ir.start-block(unready)
+        branch(compare(syntax, .compare-equal, claim, integer(.machine-i32, 2)), busy, evaluate)
+        ir.start-block(busy)
+        raise-text(syntax, "Global '${tables.global-name(kept)}' is read before it is initialized")
+        ir.start-block(evaluate)
+        store-global(kept, global-value(kept, property).operand, syntax)
+        . released = pending.length
+        pending += state
+        call-runtime(.runtime-release-lazy-global, syntax, released)
+return-nothing()
+
+────────────────────
++ do read-lent-lazy Typed
+    - slot SlotId
+    - id SyntaxId
+    - type TypeId
+
+` A lazy local of the function whose syntax is read for another, which no environment keeps:
+` one each read evaluates is evaluated in place, and one evaluated once by the cells
+` `open-lent-lazies` gave it, typed as the instance that declares it typed it. A read the type
+` pass narrowed is of what the local holds. One whose value is being evaluated, one declared
+` with others, and one with no cells, have no shape here.
+. nothing = make-operand(.operand-void, 0)
+for open in lazy-open
+    if open == slot
+        refuse(.refused-expression, id)
+        = Typed(nothing, no-type)
+. binding = instances.rows[unit.reading].binding
+. held = facts.slot-type(unit.reading, slot - bindings.bindings[binding].slots.start)
+. group = bindings.slots[slot].group
+. policy = bindings.lazy-policy(slot)
+. position = lent-lazies.length
+. kept = false
+while position != 0 && !kept
+    position -= 1
+    kept = lent-lazies[position].slot == slot
+. narrowed = held != type && holds(held, type)
+. typed = held == type || (narrowed && (shared-depth == 0 || facts.is-inside-read(unit.reading, id)))
+if !typed || held == no-type || bindings.lazy-together(slot) || (policy != .lazy-inline && !kept)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+do match? tree.nodes[group]
+    | .node-declare(row)
+        . name = row.left
+        . annotation SyntaxId = 0
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                name = capture.id
+                annotation = capture.type
+        if tree.nodes[name] is .node-identifier && row.right != 0
+            . ready = if kept then ir.reserve-block() else no-block
+            if kept
+                . evaluate = ir.reserve-block()
+                branch(load-local(lent-lazies[position].flag, id), ready, evaluate)
+                ir.start-block(evaluate)
+            lazy-open += slot
+            . value = declared-value(name, annotation, row.right, held)
+            lazy-open.pop()
+            claim-lazy(group, value.operand, held)
+            if kept
+                if lent-lazies[position].cell != no-local
+                    store-local(lent-lazies[position].cell, value.operand, id)
+                store-local(lent-lazies[position].flag, integer(.machine-u8, 1), id)
+                jump(ready)
+                ir.start-block(ready)
+                value = if lent-lazies[position].cell != no-local then Typed(load-local(cell, id), held) else Typed(nothing, held)
+                    .. cell = lent-lazies[position].cell
+            if narrowed
+                = payload(id, Typed(value.operand, held))
+            = Typed(value.operand, held)
+refuse(.refused-expression, id)
+= Typed(nothing, no-type)
+
+────────────────────
+_ do open-lent-lazies
+    - value SyntaxId
+    - site SyntaxId
+
+` Gives each lazy local declared inside the value of a lazy local that a function written in the
+` one declaring them evaluates, which no environment keeps and which is evaluated once, the
+` flag that says whether it has its value and the cell that holds the value, both cleared here
+` where the value starts: every read of it lies in the value. A function written in the value
+` declares its own.
+. binding = instances.rows[unit.reading].binding
+if binding == no-binding
+    =
+. bound = bindings.bindings[binding].slots
+. low = tree.subtree-start(value)
+for offset in 0 .. < bound.count
+    . slot = bound.start + offset
+    . row = bindings.slots[slot]
+    if row.kind != .slot-lazy || bindings.lazy-policy(slot) != .lazy-memo || is-captured(slot)
+        continue
+    if row.syntax < low || row.syntax > value || other-scope
+        continue
+    .. other-scope = tables.slot-functions[slot] != tables.instance-scopes[unit.reading]
+    . layout = layout-of(facts.slot-type(unit.reading, offset), site)
+    . flag = ir.add-local(u8-layout)
+    store-local(flag, integer(.machine-u8, 0), site)
+    . cell = if layout != void-layout then ir.add-local(layout, true) else no-local
+    if cell != no-local
+        zero
+            - make-operand
+                - .operand-value
+                - append(.op-local-address, site, Span(), cell, pointer-layout)
+            - layout
+    lent-lazies += LentLazy(slot, flag, cell)
+
+────────────────────
+_ do close-lent-lazies
+    - mark Size
+
+` Drops the cells `open-lent-lazies` gave past a mark.
+while lent-lazies.length > mark
+    lent-lazies.pop()
+
+────────────────────
++ do read-lazy-local Typed
+    - slot SlotId
+    - id SyntaxId
+    - type TypeId
+
+` The value of a lazy local, evaluated where the binding's policy for it says: by this read
+` each time it runs, by the first read emitted each time that one runs, or by whichever read
+` runs first, which tests the local's flag and sets it. The value is evaluated in place, so
+` one read in several places is evaluated in each. A local whose value is being evaluated
+` is not read by that value. One whose value lets errors out, read where other transformers
+` are declared than where it was typed, has no shape here. In a function that yields, whose
+` environment keeps its locals from step to step, one evaluated once is kept there with its
+` flag, as one nested functions capture is; one a loop declares, whose flag each turn clears,
+` has no shape there. One held as an eager local is (`holds-lazy`) is read as `read-held` says,
+` or where the function keeps it in a local, as one evaluated once.
+. nothing = make-operand(.operand-void, 0)
+if facts.lazy-unheld(unit.reading, slot)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. held = tables.holds-lazy(slot)
+. policy = if held then LazyPolicy.lazy-memo else bindings.lazy-policy(slot)
+. is-open = false
+for open in lazy-open
+    if open == slot
+        is-open = true
+if held && !is-open && is-captured(slot)
+    = read-held(slot, id, type)
+if policy == .lazy-shared && !is-open
+    = read-shared(slot, id, type)
+. offset = slot-offset(slot, id)
+if filling.storing && !is-open
+    = read-filling(slot, offset, id, type)
+if policy == .lazy-unsettled || is-open
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if !held && evaluates-in-place(slot, policy, id, type)
+    = evaluate-in-place(slot, type)
+if policy == .lazy-memo && is-captured(slot) && outside-loop
+    = read-shared(slot, id, type)
+.. outside-loop = (bindings.lazy-use-of(slot).flags /and/ (LazyUseFlag.declared-in-loop)) == 0
+if policy == .lazy-memo
+    . flag = unit.lazy-flags[offset]
+    if flag == no-local
+        refuse(.refused-expression, id)
+        = Typed(nothing, no-type)
+    if evaluated-before(flag)
+        = read-local(slot, id, type)
+    . evaluate = ir.reserve-block()
+    . ready = ir.reserve-block()
+    branch(load-local(flag, id), ready, evaluate)
+    ir.start-block(evaluate)
+    . wavers = read-wavers(slot, id)
+    if wavers
+        shared-depth += 1
+    evaluate-lazy(slot, offset, id)
+    if wavers
+        shared-depth -= 1
+    store-local(flag, integer(.machine-u8, 1), id)
+    jump(ready)
+    ir.start-block(ready)
+    ready-lazies += ReadyLazy(flag, ready)
+else
+    if policy == .lazy-first-read && unit.lazy-readers[offset] == 0
+        unit.lazy-readers[offset] = id
+    if policy == .lazy-inline || unit.lazy-readers[offset] == id
+        evaluate-lazy(slot, offset, id)
+= read-local(slot, id, type)
+
+────────────────────
+_ do evaluates-in-place Bool
+    - slot SlotId
+    - policy LazyPolicy
+    - id SyntaxId
+    - type TypeId
+
+. once = policy == .lazy-inline || (policy == .lazy-memo && bindings.lazy-reads-once(slot))
+if !once || !is-own-slot(slot) || is-captured(slot) || bindings.lazy-together(slot)
+    = false
+if read-wavers(slot, id) || facts.address-claim-of(unit.reading, bindings.slots[slot].group)
+    = false
+. kept = facts.slot-type(unit.instance, slot - unit.slot-start)
+if kept != type || type == no-type || type == invalid-type
+    = false
+do match? tree.nodes[bindings.slots[slot].group]
+    | .node-declare(row)
+        . named = row.left
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                named = capture.id
+        = row.right != 0 && tree.nodes[named] is .node-identifier
+= false
+
+────────────────────
+_ do evaluate-in-place Typed
+    - slot SlotId
+    - type TypeId
+
+. nothing = make-operand(.operand-void, 0)
+do match? tree.nodes[bindings.slots[slot].group]
+    | .node-declare(row)
+        . named = row.left
+        . annotation SyntaxId = 0
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                named = capture.id
+                annotation = capture.type
+        lazy-open += slot
+        . value = declared-value(named, annotation, row.right, type)
+        lazy-open.pop()
+        = value
+= Typed(nothing, type)
+
+────────────────────
+_ do shared-evaluated-before Bool
+    - slot SlotId
+
+` Whether an evaluation of a lazy local nested functions capture, emitted in the function, ended
+` in a block every way here passes (`evaluated-before`).
+for position in 0 .. < shared-ready.length
+    if shared-ready[position].slot == slot && ready-before
+        = true
+    .. ready-before = ir.dominates(shared-ready[position].block, ir.current)
+= false
+
+────────────────────
+_ do read-held Typed
+    - slot SlotId
+    - id SyntaxId
+    - type TypeId
+
+` The value of a lazy local held as an eager local is (`holds-lazy`), which the environment of
+` the function that declares it holds with no flag. That function gives it its value at its
+` first read, or where it makes a nested function that reads it (`force-held`), and keeps the
+` flag that says it has one; any other function reads it as it reads a captured local, since
+` the function that declares it made that one after the local had its value.
+. nothing = make-operand(.operand-void, 0)
+if owns(slot) && unit.reading == unit.instance
+    force-held(slot, id)
+= read-captured(slot, id, type)
+
+────────────────────
+_ do read-shared Typed
+    - slot SlotId
+    - id SyntaxId
+    - type TypeId
+
+` The value of a lazy local that nested functions capture. Its environment holds it, and
+` after it the byte that says whether it has its value, which arrives cleared with the
+` environment. Whichever read runs first, in the function that declares the local or in one
+` written in it, evaluates the value there and sets the byte. The value is typed by the
+` instance that declares the local, so a nested function reads that instance's facts while
+` it evaluates it; one that returns nothing is evaluated for what it does, and a closable one is
+` claimed as `claim-lazy` says. What the flow knows
+` in the value holds wherever it is evaluated, unless the type pass found a read where a local
+` the value reads is known otherwise than at the first.
+` TypeScript gives a constructor two of each lazy local, one read while the properties are
+` given their values and one its body reads, where one environment here holds one. So a
+` constructor whose properties read such a local, or make a nested function, has no shape
+` where its body reads one too. The value of a live declaration is evaluated in a live action
+` whose trackers note what it reads, and the action is then made with the function that runs
+` the declaration again, as `own-declared` makes it; one evaluated by a
+` function written in the one that declares it, or in a turn of a loop that keeps an
+` environment, has no shape here. The function that runs a statement of that one again reads
+` it as it is: each read there is plain, so the statement's first run gave it its value.
+. nothing = make-operand(.operand-void, 0)
+. field = find-captured(slot, id)
+. owner = home-owner
+. declared = tables.live-statement-of(owner, bindings.slots[slot].group)
+if declared && declared.rerun != no-instance && owner != unit.instance && reruns-in(owner)
+    = read-captured(slot, id, type)
+if facts.lazy-unheld(owner, slot) || tables.capture-rows[owner] != no-place
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if !filling.storing && owner == unit.instance && fills-share()
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if shared-evaluated-before(slot)
+    = read-captured(slot, id, type)
+. flag = lazy-flag(slot, id)
+. evaluate = ir.reserve-block()
+. ready = ir.reserve-block()
+branch(load(captured-base(id), flag.offset, flag.layout, id), ready, evaluate)
+ir.start-block(evaluate)
+. group = bindings.slots[slot].group
+. row = tree.nodes[group]
+. live = tables.live-statement-of(owner, group)
+. trackers = no-local
+if live
+    if owner != unit.instance || open-turns.length != 0 || live.rerun == no-instance
+        refuse(.refused-expression, id)
+        = Typed(nothing, no-type)
+    trackers = open-trackers(id)
+    live-actions += LiveTrackers(trackers, trackers)
+. own-unit = unit
+if owner != unit.instance
+    unit = unit.lender = owner
+    unit = unit.reading = owner
+. wavers = facts.lazy-wavers(owner, slot) || dominated-read
+    .. dominated-read = own-unit.reading == unit.instance && facts.is-dominated-read(unit.instance, id)
+if wavers
+    shared-depth += 1
+sharing += 1
+lazy-open += slot
+. initial = nothing
+do match row
+    | .node-declare(declaration)
+        . name = declaration.left
+        . annotation SyntaxId = 0
+        do match? tree.nodes[declaration.left]
+            | .node-type-capture(capture)
+                name = capture.id
+                annotation = capture.type
+        if field.type == no-type || field.type == invalid-type
+            refuse(.refused-expression, id)
+        else if bindings.lazy-together(slot)
+            share-together(declaration.left, declaration.right, id)
+        else if declaration.right == 0
+            initial = default-value(annotation, field.type, field.layout, id).operand
+        else
+            . opened = lent-lazies.length
+            if owner != unit.instance
+                open-lent-lazies(declaration.right, id)
+            initial = declared-value(name, annotation, declaration.right, field.type).operand
+            close-lent-lazies(opened)
+            claim-lazy(group, initial, field.type)
+    ??
+        refuse(.refused-expression, id)
+lazy-open.pop()
+if wavers
+    shared-depth -= 1
+sharing -= 1
+unit = own-unit
+if live
+    live-actions.pop()
+if !bindings.lazy-together(slot)
+    keep-captured(slot, initial, field.type, id)
+    settle-shared(slot, id)
+if live
+    own-declared(id, live, trackers)
+jump(ready)
+ir.start-block(ready)
+shared-ready += SharedReady(slot, ready)
+= read-captured(slot, id, type)
+
+────────────────────
++ do claim-lazy
+    - group SyntaxId
+    - value Operand
+    - type TypeId
+
+` A closable value a lazy declaration holds, given where it is evaluated to the innermost markup
+` element being built, or else the object `self` names, as the type pass claimed it
+` (`AddressClaim`): made a `Closable` at the declaration and given to the `ClosableTracker`
+` recorded there, which is made a `Tracker` and added to the trackers of a live action of that
+` object, whose callback does nothing. Where neither is in force, nothing owns it.
+. claimed = facts.address-claim-of(unit.reading, group)
+if !claimed || (content-hosts.length == 0 && !(unit.has-self && tables.is-class(unit.owner-type)))
+    =
+. closable = convert(group, .reason-argument, Typed(value, type))
+. mark = pending.length
+pending += closable.operand
+. tracker = call-instance(claimed.closer, group, mark)
+. given = convert(group, .reason-argument, tracker)
+. trackers = open-trackers(group)
+add-tracker(load-local(trackers, group), given.operand, group)
+do own-callback(load-local(trackers, group), idle, integer(.machine-managed-pointer, 0), group)
+    .. idle = tables.idle-action
+
+────────────────────
+_ do own-declared
+    - id SyntaxId
+    - live LiveStatement
+    - trackers LocalId
+
+` The live action of a lazy declaration whose value read something tracked, made once the value
+` is kept, with the trackers the value noted and a callback that runs the declaration again
+` with the environment in force here: it is owned by the innermost markup element being built,
+` or else by the object `self` names, and made as the type pass chose for an owner of that type
+` (`LiveStatement`). It is made at whichever read evaluates the value first; at a read where no
+` object is in force, it is a plain one, owned by nothing.
+. code = tables.live-adapter-of(tables.instance-functions[live.rerun])
+. top = content-hosts.length
+. owner = if top != 0 then content-hosts[top - 1].operand else unit.self
+. holder = if top != 0 then content-hosts[top - 1].type else own-holder
+    .. own-holder = if unit.has-self && tables.is-class(unit.owner-type) then unit.owner-type else no-type
+if holder != live.holder && holder != no-type
+    refuse(.refused-expression, id)
+    =
+if live.owned == no-instance || holder != live.holder
+    . action = make-action(load-local(trackers, id), code, written-environment(id), id)
+    if holder != no-type
+        attach-action(owner, action.operand, id)
+    =
+. callback = make-callback(code, written-environment(id), id)
+. given = convert
+    - live.site
+    - if live.rooted then .reason-markup-batch else .reason-markup-host
+    - Typed(owner, holder)
+. mark = pending.length
+pending += load-local(trackers, id)
+pending += callback
+pending += given.operand
+. action = raising-call(live.site, live.owned, mark)
+attach-action(owner, action.operand, id)
+
+────────────────────
+_ do share-together
+    - left SyntaxId
+    - value SyntaxId
+    - site SyntaxId
+
+` Evaluates the value of lazy locals declared together that an environment holds, and stores
+` each first field of it in the field of the local its name declares, with the byte after it
+` set. A name written as `_` takes nothing. A field of another type than its local's, a name
+` written as a tuple, and locals declared together with no value have no shape here.
+. names = RowRange'SyntaxId()
+do match? tree.nodes[left]
+    | .node-tuple-syntax(row)
+        names = row.items
+    | .node-type-tuple(row)
+        names = row.field-types
+if value == 0 || names.count == 0
+    refuse(.refused-expression, site)
+    =
+. source = emit-expression(value)
+. owner = source.type
+. layout = layout-of(owner, site)
+if !tables.layouts.is-struct(layout) || tables.layouts.rows[layout].fields.count < names.count
+    refuse(.refused-expression, site)
+    =
+. binding = instances.rows[unit.reading].binding
+for position in 0 .. < names.count
+    . name = tree.children[names.start + position]
+    . skipped = false
+    do match? tree.nodes[name]
+        | .node-type-capture(row)
+            name = row.id
+        | .node-type-wildcard
+            skipped = true
+    if skipped
+        continue
+    . resolution = bindings.resolution-of(binding, name)
+    if resolution.kind != .resolve-slot || bindings.slots[resolution.slot].kind != .slot-lazy
+        refuse(.refused-expression, name)
+        =
+    . part = take(source.operand, tables.layouts.field(layout, position), site)
+    keep-captured(resolution.slot, part, field-type(owner, position), site)
+    settle-shared(resolution.slot, site)
+
+────────────────────
++ do settle-shared
+    - slot SlotId
+    - site SyntaxId
+
+` Says a lazy local an environment holds has its value: sets the byte after it.
+find-captured(slot, site)
+. flag = lazy-flag(slot, site)
+. base = captured-base(site)
+store(base, flag.offset, integer(.machine-u8, 1), false, site)
+
+────────────────────
+_ do lazy-flag LayoutField
+    - slot SlotId
+    - site SyntaxId
+
+` The byte that says a lazy local `find-captured` has just found has its value: the field
+` after the local's in the environment that holds it, the function's or that of a turn of
+` a loop.
+. place = 2 + tables.slot-fields[slot]
+if home-layout == no-layout || place >= tables.layouts.rows[home-layout].fields.count
+    refuse(.refused-expression, site)
+    = LayoutField(0, void-layout)
+= tables.layouts.field(home-layout, place)
+
+────────────────────
+_ do read-filling Typed
+    - slot SlotId
+    - offset U32
+    - id SyntaxId
+    - type TypeId
+
+` The value of a lazy local read while a constructor gives the properties their first
+` values: whichever such read runs first evaluates it, into a cell of its own, and sets its
+` flag. The body's reads evaluate the value again, as the binding's policy says. A tracked
+` read of one tracks nothing, since nothing stores to it. A local that a nested function reads
+` has no shape here, nor has one declared together with others: TypeScript evaluates their
+` value once for them all.
+. nothing = make-operand(.operand-void, 0)
+. flag = unit.fill-flags[offset]
+if flag == no-local || (bindings.slots[slot].flags /and/ SlotFlag.slot-captured) != 0
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+if bindings.lazy-together(slot)
+    refuse(.refused-expression, id)
+    = Typed(nothing, no-type)
+. own = unit.cells[offset]
+unit.cells[offset] = unit.fill-cells[offset]
+. evaluate = ir.reserve-block()
+. ready = ir.reserve-block()
+branch(load-local(flag, id), ready, evaluate)
+ir.start-block(evaluate)
+shared-depth += 1
+evaluate-lazy(slot, offset, id)
+shared-depth -= 1
+. value = nothing
+store-local(flag, integer(.machine-u8, 1), id)
+jump(ready)
+ir.start-block(ready)
+. localed = read-local(slot, id, type)
+value = localed.operand
+unit.fill-cells[offset] = unit.cells[offset]
+unit.cells[offset] = own
+= Typed(value, localed.type)
+
+────────────────────
+_ do evaluate-lazy
+    - slot SlotId
+    - offset U32
+    - site SyntaxId
+
+` Evaluates the value a lazy local is declared with and stores it in the local's cell, which
+` it is given the first time. The value is converted to the type written for the local, and
+` one with no value written is what its type has for one; a closable one is claimed as
+` `claim-lazy` says. The locals a declaration names together are declared together, as where
+` the declaration is not lazy.
+. group = bindings.slots[slot].group
+if bindings.lazy-together(slot)
+    do match? tree.nodes[group]
+        | .node-declare(row)
+            . opened = lazy-open.length
+            for position in 0 .. < unit.slot-count
+                if bindings.slots[unit.slot-start + position].group == group
+                    lazy-open += unit.slot-start + position
+            emit-declare(group, row.left, tree.machine-or-value(row.left, row.right))
+            while lazy-open.length != opened
+                lazy-open.pop()
+            =
+lazy-open += slot
+do match tree.nodes[group]
+    | .node-declare(row)
+        . name = row.left
+        . annotation SyntaxId = 0
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                name = capture.id
+                annotation = capture.type
+        . type = facts.slot-type(unit.instance, offset)
+        . plain = false
+        do match? tree.nodes[name]
+            | .node-identifier
+                plain = true
+        if !plain || type == no-type || type == invalid-type
+            refuse(.refused-expression, site)
+        . layout = layout-of(type, site)
+        . initial = if row.right == 0 then default-value(annotation, type, layout, site) else declared-value(name, annotation, row.right, type)
+        if row.right != 0
+            claim-lazy(group, initial.operand, type)
+        if layout != void-layout
+            if unit.cells[offset] == no-local
+                . taken = (bindings.slots[slot].flags /and/ SlotFlag.slot-address-taken) != 0
+                unit.cells[offset] = ir.add-local(layout, taken)
+            store-local(unit.cells[offset], initial.operand, site)
+    ??
+        refuse(.refused-expression, site)
+lazy-open.pop()
+
+────────────────────
++ do logic-lazy SlotId
+    - name SyntaxId
+    - site SyntaxId
+    - is-right Bool
+
+if name == 0 || unit.instance == no-instance || unit.reading != unit.instance || filling.storing
+    = no-slot
+. resolution = bindings.resolution-of(instances.rows[unit.instance].binding, name)
+if resolution.kind != .resolve-slot
+    = no-slot
+. slot = resolution.slot
+. policy = bindings.lazy-policy(slot)
+. once = policy == .lazy-inline || (policy == .lazy-memo && bindings.lazy-reads-once(slot))
+if bindings.slots[slot].kind != .slot-lazy || !once || !is-own-slot(slot) || is-captured(slot)
+    = no-slot
+if tables.holds-lazy(slot) || bindings.lazy-together(slot) || facts.lazy-unheld(unit.reading, slot)
+    = no-slot
+if read-wavers(slot, name)
+    = no-slot
+for open in lazy-open
+    if open == slot
+        = no-slot
+. declared = lazy-value(slot)
+if declared == 0 || !is-logic(declared)
+    = no-slot
+do match? tree.nodes[bindings.slots[slot].group]
+    | .node-declare(row)
+        . named = row.left
+        . annotation SyntaxId = 0
+        do match? tree.nodes[row.left]
+            | .node-type-capture(capture)
+                named = capture.id
+                annotation = capture.type
+        . plain = tree.nodes[named] is .node-identifier
+        if plain && (annotation == 0 || facts.first-conversion(unit.reading, annotation) == no-fact)
+            . kept = facts.slot-type(unit.instance, slot - unit.slot-start)
+            if reads-plainly(name, declared, kept, site, is-right)
+                = slot
+= no-slot
+
+────────────────────
++ do lazy-value SyntaxId
+    - slot SlotId
+
+do match? tree.nodes[bindings.slots[slot].group]
+    | .node-declare(row)
+        = row.right
+= 0
+
+────────────────────
+_ do reads-plainly Bool
+    - name SyntaxId
+    - declared SyntaxId
+    - kept TypeId
+    - site SyntaxId
+    - is-right Bool
+
+if kept != types.bool-type || (pins.length != 0 && (pin-of(name) || pin-of(declared)))
+    = false
+if facts.first-conversion(unit.reading, name) != no-fact
+    = false
+if facts.first-conversion(unit.reading, declared) != no-fact
+    = false
+. truth = if site == 0 then truth-call(name, false, false) else truth-call(site, true, is-right)
+if truth != no-fact || facts.answer-type(unit.reading, name) != kept
+    = false
+= facts.answer-type(unit.reading, declared) == kept
+
+────────────────────
++ do is-lazy-local Bool
+    - statement SyntaxId
+
+` Whether a statement declares a lazy local, or a local of a row of a markup loop region read
+` as a getter, which emits nothing where it stands.
+do match? tree.nodes[statement]
+    | .node-declare(row)
+        = row.is-lazy || declares-getter(row.left)
+= false
+
+────────────────────
++ do shared-slot SlotId
+
+` The lazy local whose value is being evaluated by a function written in the one that declares
+` it (`read-shared`), where that one has an environment, which holds the local; or none. One
+` declared inside that value and evaluated with it, which no environment keeps, is passed over.
+if unit.reading == unit.instance || sharing == 0 || lazy-open.length == 0 || no-environment
+    = no-slot
+.. no-environment = tables.environments[unit.reading] == no-layout
+. position = lazy-open.length
+while position != 0
+    position -= 1
+    if is-captured(lazy-open[position])
+        = lazy-open[position]
+= no-slot
+
+────────────────────
++ do shared-written SlotId
+    - id SyntaxId
+
+` The lazy local a nested function is written as the value of, while a function written in
+` the one that declares the local evaluates it, as `read-shared` does; or none. One whose
+` function keeps the state of a global `do with` binds has no shape there.
+if (shared-depth == 0 && sharing == 0) || lazy-open.length == 0 || tables.holds-stacks(unit.reading)
+    = no-slot
+. slot = lazy-open[lazy-open.length - 1]
+do match? tree.nodes[bindings.slots[slot].group]
+    | .node-declare(declaration)
+        if declaration.right == id && is-captured(slot)
+            = slot
+= no-slot
+
+────────────────────
++ do shares-lazy Bool
+
+` Whether the function declares a lazy local that nested functions capture.
+for offset in 0 .. < unit.slot-count
+    . slot = unit.slot-start + offset
+    if bindings.slots[slot].kind == .slot-lazy && is-captured(slot)
+        = true
+= false
+
+────────────────────
++ do abandon-lazy
+    - site SyntaxId
+
+` Gives up the claim a lazy property's function took on its object (`emit-lazy`) where the
+` value panics or lets out an error, so that a task the runtime holds on the property, or the
+` next read, evaluates it again. The runtime does nothing where the property is not claimed.
+=? if lazy-claim.layout == no-layout
+. mark = pending.length
+pending += address(unit.self, lazy-claim.offset, lazy-claim.layout, site)
+call-runtime(.runtime-abandon-lazy-global, site, mark)
