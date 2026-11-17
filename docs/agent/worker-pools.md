@@ -1,6 +1,6 @@
 # Worker Pools
 
-Yumi runs tasks in two ways.
+Brix runs tasks in two ways.
 
 ## Default Queues
 
@@ -9,7 +9,7 @@ Yumi runs tasks in two ways.
 socket, a timer or a `Mutex`. Code on a default queue never sees another task change shared data
 between two suspensions, so it needs no locks. GUI code depends on this.
 
-Set `YUMI_LONG_TASK_WARNINGS=1` to find tasks that hold a default queue. With it set, a task that
+Set `BRIX_LONG_TASK_WARNINGS=1` to find tasks that hold a default queue. With it set, a task that
 runs for 100 ms without suspending while other tasks wait on its queue prints a warning on
 `stderr`. It names the task, where it was spawned, and the stack at its next loop poll. If the task
 is in native code instead, the warning prints when the task next suspends, without a stack. The
@@ -26,7 +26,7 @@ thread steals half of another thread's queue. A new task wakes one idle thread, 
 
 A pool task that runs for 10 ms while other pool tasks wait is preempted at its next loop poll and
 goes to the back of the pool's shared queue. Preemption never happens on a default queue, in code
-kept `without suspend` or `without gc`, or while native code that called back into Yumi is on the
+kept `without suspend` or `without gc`, or while native code that called back into Brix is on the
 task's stack. Loop polls cost nothing more for this: the runtime handles preemption in the same call that
 answers a GC handshake.
 

@@ -1,4 +1,4 @@
-/YuRegex/YuRegex.h
+/BxRegex/BxRegex.h
 
 ━━━━━━━━━━━━━━━━━━━━
 + RegexErrorKind is Union
@@ -49,7 +49,7 @@ _ flags U32
 flags = regex-flags(ignores-case, is-multiline, dot-matches-newline)
 . error I32
 . offset U32
-. count = C:yumiRegexCompile(pattern, pattern.size, flags, &error, &offset)
+. count = C:brixRegexCompile(pattern, pattern.size, flags, &error, &offset)
 ?! RegexError(RegexErrorKind.pattern, regex-message(error), offset as Size)
     if count < 0
 group-count = count as Size
@@ -59,7 +59,7 @@ group-count = count as Size
     - text String
 
 . none = U32[0]
-. count = C:yumiRegexFind(pattern, pattern.size, flags, text, text.size, 0, 1, none, 0)
+. count = C:brixRegexFind(pattern, pattern.size, flags, text, text.size, 0, 1, none, 0)
 regex-check(count)
 = count > 0
 
@@ -69,7 +69,7 @@ regex-check(count)
     - from = 0
 
 . bounds = U32[stride]
-. count = C:yumiRegexFind
+. count = C:brixRegexFind
     - pattern
     - pattern.size
     - flags
@@ -88,11 +88,11 @@ regex-check(count)
     - text String
 
 . bounds = U32[stride * 16]
-. count = C:yumiRegexFind(pattern, pattern.size, flags, text, text.size, 0, 0, bounds, bounds.size)
+. count = C:brixRegexFind(pattern, pattern.size, flags, text, text.size, 0, 0, bounds, bounds.size)
 regex-check(count)
 if (count as Size) * stride > bounds.size
     bounds = U32[(count as Size) * stride]
-    count = C:yumiRegexFind
+    count = C:brixRegexFind
         - pattern
         - pattern.size
         - flags
@@ -143,7 +143,7 @@ pieces += text[last .. < text.length]
 
 if number < 0 then null else number as Size
 
-.. number = C:yumiRegexGroupNumber(pattern, pattern.size, flags, name, name.size)
+.. number = C:brixRegexGroupNumber(pattern, pattern.size, flags, name, name.size)
 
 ────────────────────
 _ get stride Size
@@ -160,7 +160,7 @@ _ do substitute String ?! RegexError
 . output = Byte[text.size + template.size + 16]
 . length U32
 . offset I32
-. status = C:yumiRegexReplace
+. status = C:brixRegexReplace
     - pattern
     - pattern.size
     - flags
@@ -176,7 +176,7 @@ _ do substitute String ?! RegexError
     - &offset
 if status >= 0 && length > output.size
     output = Byte[length]
-    status = C:yumiRegexReplace
+    status = C:brixRegexReplace
         - pattern
         - pattern.size
         - flags
@@ -297,7 +297,7 @@ _ regex-failure RegexError
 
 |? offset >= 0
     RegexError(RegexErrorKind.template, reason, offset as Size)
-|? C:yumiRegexIsLimitError(status)
+|? C:brixRegexIsLimitError(status)
     RegexError(RegexErrorKind.limit, reason, null)
 ??
     RegexError(RegexErrorKind.match, reason, null)
@@ -309,5 +309,5 @@ _ do regex-message String
     - status I32
 
 . buffer = Byte[256]
-. length = C:yumiRegexErrorMessage(status, buffer, buffer.size)
+. length = C:brixRegexErrorMessage(status, buffer, buffer.size)
 = buffer.slice-string(0 .. < length)

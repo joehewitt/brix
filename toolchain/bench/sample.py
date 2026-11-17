@@ -30,23 +30,23 @@ BLOCKED_LEAVES = {
 BLOCKED_SYMBOL = re.compile(r'psynch|ulock|kevent|semwait|mach_msg')
 SYSTEM_BINARY = re.compile(r'^(libsystem|libc\+\+|libobjc|dyld|libdispatch)')
 CPU_CAUSES = (
-    ('gc-write-barrier', re.compile(r'yumiGC(Bulk)?WriteBarrier|yumiWriteBarrier')),
-    ('gc-roots', re.compile(r'yumiGC(Add|Remove)Root|GCStackMap|StorageRoot')),
-    ('alloc', re.compile(r'yumiAlloc|yumiTryFastGCAllocation|yumiGCResizeBuffer|allocObject|allocDescribed|'
+    ('gc-write-barrier', re.compile(r'brixGC(Bulk)?WriteBarrier|brixWriteBarrier')),
+    ('gc-roots', re.compile(r'brixGC(Add|Remove)Root|GCStackMap|StorageRoot')),
+    ('alloc', re.compile(r'brixAlloc|brixTryFastGCAllocation|brixGCResizeBuffer|allocObject|allocDescribed|'
                          r'finishAllocation|AllocBatch|BatchAllocation|BatchReservation|'
-                         r'yumiRecordGCPublicAllocation|allocSpan')),
+                         r'brixRecordGCPublicAllocation|allocSpan')),
     ('gc-pacing-sweep', re.compile(r'sweepDebt|SweepDebt|needsSweepNow|sweepIncremental|GCProgress|AllocationAssist|'
                                    r'rescueSweep|publicCollectorPhase|Safepoint|safepoint|Handshake|GCSpan::sweep|'
                                    r'drainLimit|traceDescriptor')),
-    ('gc-ffi-context', re.compile(r'yumiGC(Enter|Leave)FFI|PublishBlockingContext|yumiContextGet|yumiGCRegisterTask|'
-                                  r'yumiGCUnregisterTask')),
-    ('panic-state', re.compile(r'yumiPanic')),
-    ('string-runtime', re.compile(r'yumiString|YuString')),
-    ('number-runtime', re.compile(r'yumiNumber|YuNumber|ToString')),
-    ('scheduler', re.compile(r'YuTaskQueue|YuTask::|yumiSchedule|YuThread|YuSemaphore|YuKQueue|YuSelectLoop|'
-                             r'yumiRunEventLoop|YuEvents')),
+    ('gc-ffi-context', re.compile(r'brixGC(Enter|Leave)FFI|PublishBlockingContext|brixContextGet|brixGCRegisterTask|'
+                                  r'brixGCUnregisterTask')),
+    ('panic-state', re.compile(r'brixPanic')),
+    ('string-runtime', re.compile(r'brixString|BxString')),
+    ('number-runtime', re.compile(r'brixNumber|BxNumber|ToString')),
+    ('scheduler', re.compile(r'BxTaskQueue|BxTask::|brixSchedule|BxThread|BxSemaphore|BxKQueue|BxSelectLoop|'
+                             r'brixRunEventLoop|BxEvents')),
 )
-FRAME_COMMIT = re.compile(r'CA::Transaction::commit|CA::Render::(prepare_image|copy_image)|yumiGuiWindowCommitFrame|'
+FRAME_COMMIT = re.compile(r'CA::Transaction::commit|CA::Render::(prepare_image|copy_image)|brixGuiWindowCommitFrame|'
                           r'setCanvasImage')
 IMAGE_DATA_LOCK = re.compile(r'CGSImageDataLock')
 ICC_CONVERSION = re.compile(r'convert_icc|convert_using_vImageConverter|CGColorTransformConvertUsingCMSConverter')
@@ -69,7 +69,7 @@ def main(arguments):
 
 
 def analyze(text, metrics=None):
-    symbols = yumi_symbols(metrics or {})
+    symbols = brix_symbols(metrics or {})
     threads = sample_threads(text)
     causes = {}
     blocked_leaves = {}
@@ -136,7 +136,7 @@ def analyze(text, metrics=None):
     }
 
 
-def yumi_symbols(metrics):
+def brix_symbols(metrics):
     records = (metrics.get('mir') or {}).get('topFunctions')
     if records is None:
         records = metrics.get('mirTopFunctions') or []
@@ -229,10 +229,10 @@ def cpu_bucket(frames, symbols):
         if found:
             location = found['loc']
             if '/stdlib/' in location:
-                return 'yumi:' + re.sub(r'\.yumi.*', '', location.split('/stdlib/')[1])
+                return 'brix:' + re.sub(r'\.yumi.*', '', location.split('/stdlib/')[1])
             if '/bench/' in location:
-                return 'yumi:bench-app'
-            return 'yumi:other'
+                return 'brix:bench-app'
+            return 'brix:other'
     return 'other-cpp-or-system'
 
 

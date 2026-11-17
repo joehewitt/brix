@@ -1,6 +1,6 @@
 
-#ifndef YU_TESTS_H
-#define YU_TESTS_H
+#ifndef BX_TESTS_H
+#define BX_TESTS_H
 
 #include <cstdio>
 
@@ -8,7 +8,7 @@ typedef struct {
     char* vtable;
     int uid;
     int field;
-} YumiObject;
+} BrixObject;
 
 typedef struct {
     int a;
@@ -62,7 +62,7 @@ extern "C" void ctest2b(bool n);
 extern "C" void ctest2c(double n);
 extern "C" void ctest2d(long long n);
 extern "C" void ctest2e(char* n);
-extern "C" void ctest2f(YumiObject* n);
+extern "C" void ctest2f(BrixObject* n);
 extern "C" void ctest2g(const char* n);
 extern "C" int ctest4a();
 extern "C" long long ctest4b();
@@ -72,7 +72,7 @@ extern "C" int ctest5(int a, int b);
 extern "C" int ctestCallback(TestCallback cb);
 extern "C" int ctestMethodCallback(TestMethodCallback cb);
 extern "C" int ctestClobberedCallback(TestTextCallback cb);
-extern "C" void ctest13(YumiObject* n, char* c);
+extern "C" void ctest13(BrixObject* n, char* c);
 extern "C" const char* ctest14();
 extern "C" void ctest15(TestThingStruct* n);
 

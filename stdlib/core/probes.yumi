@@ -3,9 +3,9 @@
 ./intrinsics
 ./number
 ./string
-/YuCore/YuCore.h
-/YuCore/YuProbe.h
-/YuEvents/YuEvents.h
+/BxCore/BxCore.h
+/BxCore/BxProbe.h
+/BxEvents/BxEvents.h
 /stdlib.h
 /string.h
 
@@ -166,14 +166,14 @@ _ token U64 = 0
 + This
     - object T
 
-token = C:yumiGCRegisterOwnerWeak(this as Pointer, object as Pointer)
+token = C:brixGCRegisterOwnerWeak(this as Pointer, object as Pointer)
 
 ────────────────────
 + is-alive Bool
 
 pointer != null
 
-.. pointer = C:yumiGCOwnerWeakLoad(token)
+.. pointer = C:brixGCOwnerWeakLoad(token)
 
 ────────────────────
 + is-kept Bool
@@ -183,7 +183,7 @@ is-alive()
 ────────────────────
 + do target Inspectable?
 
-. pointer = C:yumiGCOwnerWeakLoad(token)
+. pointer = C:brixGCOwnerWeakLoad(token)
 =? if !pointer
 = gc-object-from-pointer'T(pointer)
 
@@ -201,14 +201,14 @@ _ length Size
 
 address = array.data.address
 length = array.length
-token = C:yumiGCRegisterOwnerWeak(this as Pointer, array.data as Pointer)
+token = C:brixGCRegisterOwnerWeak(this as Pointer, array.data as Pointer)
 
 ────────────────────
 + is-alive Bool
 
 !token || pointer != null
 
-.. pointer = C:yumiGCOwnerWeakLoad(token)
+.. pointer = C:brixGCOwnerWeakLoad(token)
 
 ────────────────────
 + is-kept Bool
@@ -218,7 +218,7 @@ token != 0 && is-alive()
 ────────────────────
 + do target Inspectable?
 
-=? if token && !C:yumiGCOwnerWeakLoad(token)
+=? if token && !C:brixGCOwnerWeakLoad(token)
 = Array'T(address as CPointer'T, length)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -265,7 +265,7 @@ _ do probe-buffer-reserve Size without probe-safepoints, suspend
 probe-buffer-ensure(required)
 probe-buffer-length = required
 if !probe-next-flush-ns
-    probe-next-flush-ns = C:yumiProbeNowNs() + probe-flush-interval-ns
+    probe-next-flush-ns = C:brixProbeNowNs() + probe-flush-interval-ns
 = offset
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -315,7 +315,7 @@ _ do probe-write-head Size without probe-safepoints, suspend
     - class-type ProbeClassId
     - tail-size Size = 0
 
-. now = C:yumiProbeNowNs()
+. now = C:brixProbeNowNs()
 probe-latest-time-ns = now
 . offset = probe-buffer-reserve(probe-head-size + tail-size)
 probe-buffer.write'U8(probe-type, offset, .little)
@@ -351,15 +351,15 @@ if probes
 ━━━━━━━━━━━━━━━━━━━━
 _ do probes-begin without probe-safepoints
 
-C:yumiProbeCounterSetup(0)
+C:brixProbeCounterSetup(0)
 probe-profile-metric-count = 0
 . probes-path = get-probes-path()
 if probes-path
     probes-open(probes-path)
-    C:yumiRequestTerminationOnSignals()
+    C:brixRequestTerminationOnSignals()
     . control-path = C:getenv("PROBES_CONTROL_PATH")
     if control-path
-        probe-inspecting = C:yumiProbeControlOpen(control-path, "")
+        probe-inspecting = C:brixProbeControlOpen(control-path, "")
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probes-end without probe-safepoints
@@ -388,7 +388,7 @@ probe-segment-table-capacity = probe-env-size
 if probe-segment-table-capacity < segment-pool
     probe-segment-table-capacity = segment-pool
 
-. did-open = C:yumiProbeOpen
+. did-open = C:brixProbeOpen
     - probes-path
     - probe-segment-size
     - segment-pool
@@ -399,9 +399,9 @@ if probe-segment-table-capacity < segment-pool
 if !did-open
     ?! IOError("Unable to open probe log")
 
-probe-task-buffer-size = C:yumiProbeTaskBufferSize() as I64
-probe-flush-threshold = C:yumiProbeFlushThreshold() as I64
-probe-flush-interval-ns = C:yumiProbeFlushIntervalNs()
+probe-task-buffer-size = C:brixProbeTaskBufferSize() as I64
+probe-flush-threshold = C:brixProbeFlushThreshold() as I64
+probe-flush-interval-ns = C:brixProbeFlushIntervalNs()
 probe-buffer-reset()
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -481,7 +481,7 @@ _ do probe-declare-counter without probe-safepoints
     - source-path String
     - line U32
 
-C:yumiProbeCounterEnsure((id as Size) + 1)
+C:brixProbeCounterEnsure((id as Size) + 1)
 probe-buffer-write'U8(ProbeType.declare-counter)
 probe-buffer-write'U16(id)
 probe-buffer-write'U32(key.size as U32)
@@ -520,14 +520,14 @@ probe-flush()
 _ do probe-counter-setup without probe-safepoints
     - max-id Size
 
-C:yumiProbeCounterSetup(max-id + 1)
+C:brixProbeCounterSetup(max-id + 1)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-counter-add without probe-safepoints
     - id ProbeId
     - delta U64
 
-C:yumiProbeCounterAdd(id, delta)
+C:brixProbeCounterAdd(id, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-gc-counter-flush without probe-safepoints
@@ -536,18 +536,18 @@ _ do probe-gc-counter-flush without probe-safepoints
     - assist-nanos-id ProbeId
 
 if cycles-id
-    probe-counter-add(cycles-id, C:yumiGCCollectionCount() as U64)
+    probe-counter-add(cycles-id, C:brixGCCollectionCount() as U64)
 if pauses-id
-    probe-counter-add(pauses-id, C:yumiGCPauseCount() as U64)
+    probe-counter-add(pauses-id, C:brixGCPauseCount() as U64)
 if assist-nanos-id
-    probe-counter-add(assist-nanos-id, C:yumiGCAssistTimeNanos() as U64)
+    probe-counter-add(assist-nanos-id, C:brixGCAssistTimeNanos() as U64)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-profile-setup without probe-safepoints
     - metric-count Size
 
 probe-profile-metric-count = metric-count
-C:yumiProbeProfileSetup(metric-count)
+C:brixProbeProfileSetup(metric-count)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-declare-profile-metric without probe-safepoints
@@ -574,7 +574,7 @@ probe-buffer-write'U16(object-type)
 ━━━━━━━━━━━━━━━━━━━━
 _ probe-profile-now-ns U64 without probe-safepoints
 
-C:yumiProbeMonotonicNowNs()
+C:brixProbeMonotonicNowNs()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-profile-flush without probe-safepoints
@@ -585,7 +585,7 @@ _ do probe-profile-flush without probe-safepoints
 . profile-limit = probe-profile-metric-count + 1
 
 for id in 1 .. < profile-limit
-    . value = C:yumiProbeProfileCounterValue(id as ProbeProfileMetricId)
+    . value = C:brixProbeProfileCounterValue(id as ProbeProfileMetricId)
     if value
         probe-buffer-write'U8(ProbeType.profile-metric)
         probe-buffer-write'U16(id as ProbeProfileMetricId)
@@ -599,7 +599,7 @@ for id in 1 .. < profile-limit
 . timer = U64[4]
 for id in 1 .. < profile-limit
     . profile-id = id as ProbeProfileMetricId
-    C:yumiProbeProfileTimerRead(profile-id, now, timer.data)
+    C:brixProbeProfileTimerRead(profile-id, now, timer.data)
     if timer[0] || timer[2]
         probe-buffer-write'U8(ProbeType.profile-metric)
         probe-buffer-write'U16(profile-id)
@@ -619,12 +619,12 @@ _ do probe-object-uid'T ProbeUID without probe-safepoints, suspend
 
 . key = ProbeArrayKey(object.data.address, object.length, class-type)
 probe-live-lock()
-do finally C:yumiProbeLiveUnlock()
+do finally C:brixProbeLiveUnlock()
 . found = probe-live-arrays[key]
 =? found.uid if found && found.live.is-alive()
 if !found
     probe-live-array-keys.append(key)
-. entry = ProbeLiveEntry(C:yumiGenerateUID(), class-type, ProbeLiveArray'T(object))
+. entry = ProbeLiveEntry(C:brixGenerateUID(), class-type, ProbeLiveArray'T(object))
 probe-live-arrays[key] = entry
 if probe-inspecting
     probe-live-objects[entry.uid] = entry
@@ -658,7 +658,7 @@ _ do probe-object-counter-add'T without probe-safepoints
     - delta U64
     - T is Inspectable
 
-C:yumiProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
+C:brixProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-object-counter-add'T without probe-safepoints
@@ -667,17 +667,17 @@ _ do probe-object-counter-add'T without probe-safepoints
     - class-type ProbeClassId
     - delta U64
 
-C:yumiProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
+C:brixProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-counter-flush without probe-safepoints
 
-. counter-count = C:yumiProbeCounterCount()
+. counter-count = C:brixProbeCounterCount()
 if counter-count > 1
     for id in 1 .. < counter-count
         . counter-id = id as ProbeId
-        . value = C:yumiProbeCounterValue(counter-id)
-        if value || C:yumiProbeCounterTouched(counter-id)
+        . value = C:brixProbeCounterValue(counter-id)
+        if value || C:brixProbeCounterTouched(counter-id)
             probe-buffer-write'U8(ProbeType.counter)
             probe-buffer-write'U16(counter-id)
             probe-buffer-write'U32(0)
@@ -685,14 +685,14 @@ if counter-count > 1
             probe-buffer-write'U64(value)
             probe-buffer-write'U8(ProbeType.done)
 
-. object-counter-count = C:yumiProbeObjectCounterCollect()
+. object-counter-count = C:brixProbeObjectCounterCollect()
 for index in 0 .. < object-counter-count
-    . value = C:yumiProbeObjectCounterValue(index)
+    . value = C:brixProbeObjectCounterValue(index)
     if value
         probe-buffer-write'U8(ProbeType.counter)
-        probe-buffer-write'U16(C:yumiProbeObjectCounterId(index))
-        probe-buffer-write'U32(C:yumiProbeObjectCounterObjectId(index))
-        probe-buffer-write'U16(C:yumiProbeObjectCounterClassType(index))
+        probe-buffer-write'U16(C:brixProbeObjectCounterId(index))
+        probe-buffer-write'U32(C:brixProbeObjectCounterObjectId(index))
+        probe-buffer-write'U16(C:brixProbeObjectCounterClassType(index))
         probe-buffer-write'U64(value)
         probe-buffer-write'U8(ProbeType.done)
 
@@ -701,13 +701,13 @@ probe-flush()
 ━━━━━━━━━━━━━━━━━━━━
 _ do probes-close without probe-safepoints
 
-C:yumiProbeClose()
+C:brixProbeClose()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-control-close without probe-safepoints
 
 probe-inspecting = false
-C:yumiProbeControlClose()
+C:brixProbeControlClose()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ probe-control-read-u16 without probe-safepoints
@@ -760,7 +760,7 @@ probe-control-write-u32(frame, 20, message-bytes.size as U32)
 if message-bytes.size
     frame[24 .. < 24 + message-bytes.size] = message-bytes
 
-= C:yumiProbeControlWrite(frame.data, frame.size)
+= C:brixProbeControlWrite(frame.data, frame.size)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-control-inspection-log without probe-safepoints
@@ -781,7 +781,7 @@ _ do probe-live-register'T without probe-safepoints, suspend
     - T is Inspectable
 
 probe-live-lock()
-do finally C:yumiProbeLiveUnlock()
+do finally C:brixProbeLiveUnlock()
 =? if probe-live-objects has uid
 probe-live-objects[uid] = ProbeLiveEntry(uid, class-type, ProbeLiveObject'T(object))
 probe-live-object-ids.append(uid)
@@ -792,14 +792,14 @@ _ do probe-live-entry ProbeLiveEntry? without probe-safepoints, suspend
     - uid ProbeUID
 
 probe-live-lock()
-do finally C:yumiProbeLiveUnlock()
+do finally C:brixProbeLiveUnlock()
 = probe-live-objects[uid]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-live-lock without probe-safepoints
 
-if !C:yumiProbeLiveTryLock()
-    C:yumiProbeLiveLock()
+if !C:brixProbeLiveTryLock()
+    C:brixProbeLiveLock()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-live-prune without probe-safepoints, suspend
@@ -949,13 +949,13 @@ probe-control-handle-inspect(request)
 _ do probe-control-poll without probe-safepoints, suspend
 
 =? if probe-control-is-polling || probe-open-snapshots
-=? if !C:yumiProbeControlAvailable()
+=? if !C:brixProbeControlAvailable()
 
 probe-control-is-polling = true
 if probe-control-buffer.size < probe-control-buffer-size
     probe-control-buffer = Byte[probe-control-buffer-size]
 while true
-    . frame-size = C:yumiProbeControlRead(probe-control-buffer.data, probe-control-buffer.size)
+    . frame-size = C:brixProbeControlRead(probe-control-buffer.data, probe-control-buffer.size)
     if !frame-size
         break
     probe-control-handle-frame(probe-control-buffer, frame-size as Size)
@@ -976,8 +976,8 @@ _ do probe-flush without probe-safepoints, suspend
 
 =? if !probe-buffer-length || probe-open-snapshots
 
-. now-ns = C:yumiProbeNowNs()
-C:yumiProbePublish(probe-buffer.data, probe-buffer-length, now-ns)
+. now-ns = C:brixProbeNowNs()
+C:brixProbePublish(probe-buffer.data, probe-buffer-length, now-ns)
 probe-buffer-length = 0
 probe-next-flush-ns = now-ns + probe-flush-interval-ns
 
@@ -988,7 +988,7 @@ _ do probe-flush-at-if-needed without probe-safepoints, suspend
 
 if buffer-length && !probe-open-snapshots
     if buffer-length >= probe-flush-threshold || (probe-next-flush-ns && is-due)
-        C:yumiProbePublish(probe-buffer.data, buffer-length, now-ns)
+        C:brixProbePublish(probe-buffer.data, buffer-length, now-ns)
         probe-buffer-length = 0
         probe-next-flush-ns = now-ns + probe-flush-interval-ns
     .. is-due = now-ns >= probe-next-flush-ns
@@ -1000,7 +1000,7 @@ _ do probe-flush-if-needed without probe-safepoints, suspend
 if buffer-length
     . now-ns = probe-latest-time-ns
     if !now-ns
-        now-ns = C:yumiProbeNowNs()
+        now-ns = C:brixProbeNowNs()
 
     probe-flush-at-if-needed(buffer-length, now-ns)
 
@@ -1010,13 +1010,13 @@ _ do probe-safepoint-flush-if-needed without probe-safepoints
 probe-control-safepoint-poll()
 . buffer-length = probe-buffer-length
 if buffer-length
-    probe-flush-at-if-needed(buffer-length, C:yumiProbeNowNs())
+    probe-flush-at-if-needed(buffer-length, C:brixProbeNowNs())
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do probe-group-push without probe-safepoints, suspend
     - probe-id U16
 
-. group-id = C:yumiGenerateUID()
+. group-id = C:brixGenerateUID()
 stack.append(ProbeFrame(group-id, ProbeDataType.group))
 . object-id = top-object-uid
 . class-type = top-class-type
@@ -1029,7 +1029,7 @@ top-class-type = ProbeDataType.group
 _ do probe-group-push-event without probe-safepoints, suspend
     - probe-id U16
 
-. group-id = C:yumiGenerateUID()
+. group-id = C:brixGenerateUID()
 stack.append(ProbeFrame(group-id, ProbeDataType.group))
 . object-id = top-object-uid
 . class-type = top-class-type
@@ -1064,7 +1064,7 @@ _ do probe-group-push-object-id without probe-safepoints, suspend
     - object-id ProbeUID
     - class-type ProbeClassId
 
-. group-id = C:yumiGenerateUID()
+. group-id = C:brixGenerateUID()
 stack.append(ProbeFrame(group-id, ProbeDataType.group))
 top-object-uid = group-id
 top-class-type = ProbeDataType.group

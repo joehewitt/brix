@@ -9,7 +9,7 @@ from common import BUILD, ROOT, Failure, file_digest, say, take_folders
 
 LEFT_OUT = ('www/dist/',)
 SWEEP = os.path.join(BUILD, 'brix-sweep')
-COMPILER_SOURCE = os.path.join('compiler', 'yumi-cli.bx')
+COMPILER_SOURCE = os.path.join('compiler', 'brix-cli.bx')
 SUMMARY = 'sweep files '
 SHOWN_PROBLEMS = 40
 WORKERS = os.cpu_count() or 4
@@ -18,7 +18,7 @@ WORKERS = os.cpu_count() or 4
 def main(arguments):
     folders, rest = take_folders(arguments)
     if rest:
-        raise Failure('yumi brix-sweep takes only --with FOLDER, to convert the files of a folder outside the toolchain too')
+        raise Failure('brix brix-sweep takes only --with FOLDER, to convert the files of a folder outside the toolchain too')
     started = time.time()
     compiler.ensure_compiler(compiler.seed_name())
     converter = compiler.ensure_tool('brix')
@@ -94,10 +94,10 @@ def convert_chunk(converter, chunk, environment, root=ROOT):
 
 
 def build(builder, tree, directory, environment):
-    reading = dict(environment, YUMIPATH=os.path.join(tree, 'stdlib'))
+    reading = dict(environment, BRIXPATH=os.path.join(tree, 'stdlib'))
     source = os.path.join(tree, COMPILER_SOURCE)
-    first = os.path.join(directory, 'first', 'yumi')
-    second = os.path.join(directory, 'second', 'yumi')
+    first = os.path.join(directory, 'first', 'brix')
+    second = os.path.join(directory, 'second', 'brix')
     for executable, building in ((first, builder), (second, first)):
         os.makedirs(os.path.dirname(executable))
         result = subprocess.run(

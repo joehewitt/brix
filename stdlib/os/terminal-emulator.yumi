@@ -1,4 +1,4 @@
-/YuTerminal/YuTerminal.h
+/BxTerminal/BxTerminal.h
 /gc/gc
 
 + terminal-event-bell U32 = 1
@@ -140,7 +140,7 @@ _ word-buffer U32[] = U32[8]
 
 this.columns = columns
 this.rows = rows
-. native = C:yumiTerminalCreate(columns, rows, scrollback-lines)
+. native = C:brixTerminalCreate(columns, rows, scrollback-lines)
 ?! Error("Unable to create terminal emulator")
     if native == Pointer()
 handle = native
@@ -163,7 +163,7 @@ if handle
 + do reset
 
 =? if !handle
-C:yumiTerminalReset(handle)
+C:brixTerminalReset(handle)
 
 ────────────────────
 + do resize
@@ -175,7 +175,7 @@ C:yumiTerminalReset(handle)
 =? if !handle
 this.columns = columns
 this.rows = rows
-C:yumiTerminalResize(handle!, columns, rows, cell-width, cell-height)
+C:brixTerminalResize(handle!, columns, rows, cell-width, cell-height)
 
 ────────────────────
 + do write Byte[]?
@@ -183,45 +183,45 @@ C:yumiTerminalResize(handle!, columns, rows, cell-width, cell-height)
     - length Size
 
 =? null if !handle
-C:yumiTerminalWrite(handle, bytes, length)
+C:brixTerminalWrite(handle, bytes, length)
 = take-replies()
 
 ────────────────────
 + do take-replies Byte[]?
 
 =? null if !handle
-. length = C:yumiTerminalReplyLength(handle) as Size
+. length = C:brixTerminalReplyLength(handle) as Size
 =? null if length == 0
 . replies = Byte[length]
-C:yumiTerminalTakeReplies(handle!, replies, length)
+C:brixTerminalTakeReplies(handle!, replies, length)
 = replies
 
 ────────────────────
 + do take-events U32
 
 =? 0 if !handle
-= C:yumiTerminalTakeEvents(handle)
+= C:brixTerminalTakeEvents(handle)
 
 ────────────────────
 + do get title String
 
 =? "" if !handle
-. length = C:yumiTerminalCopyTitle(handle, byte-buffer, byte-buffer.length) as Size
+. length = C:brixTerminalCopyTitle(handle, byte-buffer, byte-buffer.length) as Size
 =? "" if length == 0
 if length > byte-buffer.length
     byte-buffer = Byte[length]
-    C:yumiTerminalCopyTitle(handle!, byte-buffer, length)
+    C:brixTerminalCopyTitle(handle!, byte-buffer, length)
 = byte-buffer.slice-string(0 .. < length)
 
 ────────────────────
 + do get pwd String
 
 =? "" if !handle
-. length = C:yumiTerminalCopyPwd(handle!, byte-buffer, byte-buffer.length) as Size
+. length = C:brixTerminalCopyPwd(handle!, byte-buffer, byte-buffer.length) as Size
 =? "" if length == 0
 if length > byte-buffer.length
     byte-buffer = Byte[length]
-    C:yumiTerminalCopyPwd(handle!, byte-buffer, length)
+    C:brixTerminalCopyPwd(handle!, byte-buffer, length)
 = byte-buffer.slice-string(0 .. < length)
 
 ────────────────────
@@ -232,21 +232,21 @@ if length > byte-buffer.length
     - palette U32[]
 
 =? if !handle
-C:yumiTerminalSetColors(handle, foreground, background, cursor, palette, palette.length)
+C:brixTerminalSetColors(handle, foreground, background, cursor, palette, palette.length)
 
 ────────────────────
 + do set-dark
     - is-dark Bool
 
 =? if !handle
-C:yumiTerminalSetDark(handle, is-dark)
+C:brixTerminalSetDark(handle, is-dark)
 
 ────────────────────
 + mode-enabled Bool
     - mode U32
     - is-ansi = false
 
-if !handle then false else C:yumiTerminalModeEnabled(handle, mode, is-ansi)
+if !handle then false else C:brixTerminalModeEnabled(handle, mode, is-ansi)
 
 ────────────────────
 + get is-alternate-scrolling Bool
@@ -261,62 +261,62 @@ mode-enabled(terminal-mode-synchronized-output)
 ────────────────────
 + get is-mouse-tracking Bool
 
-if handle then C:yumiTerminalMouseTracking(handle) else false
+if handle then C:brixTerminalMouseTracking(handle) else false
 
 ────────────────────
 + get is-alternate-screen Bool
 
-if handle then C:yumiTerminalIsAlternateScreen(handle) else false
+if handle then C:brixTerminalIsAlternateScreen(handle) else false
 
 ────────────────────
 + get is-viewport-at-bottom Bool
 
-if handle then C:yumiTerminalViewportAtBottom(handle) else true
+if handle then C:brixTerminalViewportAtBottom(handle) else true
 
 ────────────────────
 + do scroll-by
     - rows Int
 
 =? if !handle
-C:yumiTerminalScrollDelta(handle, rows)
+C:brixTerminalScrollDelta(handle, rows)
 
 ────────────────────
 + do scroll-to-top
 
 =? if !handle
-C:yumiTerminalScrollTop(handle)
+C:brixTerminalScrollTop(handle)
 
 ────────────────────
 + do scroll-to-bottom
 
 =? if !handle
-C:yumiTerminalScrollBottom(handle)
+C:brixTerminalScrollBottom(handle)
 
 ────────────────────
 + do scroll-to-row
     - row Size
 
 =? if !handle
-C:yumiTerminalScrollRow(handle, row)
+C:brixTerminalScrollRow(handle, row)
 
 ────────────────────
 + do get scrollbar TerminalScrollbar
 
 =? TerminalScrollbar(0, 0, 0) if !handle
-C:yumiTerminalScrollbar(handle, word-buffer)
+C:brixTerminalScrollbar(handle, word-buffer)
 = TerminalScrollbar(word-buffer[0], word-buffer[1], word-buffer[2])
 
 ────────────────────
 + do render-update Int
 
 =? terminal-dirty-none if !handle
-= C:yumiTerminalRenderUpdate(handle)
+= C:brixTerminalRenderUpdate(handle)
 
 ────────────────────
 + do get cursor TerminalCursor
 
 =? TerminalCursor(false, 0, 0, terminal-cursor-block, false) if !handle
-C:yumiTerminalRenderCursor(handle, int-buffer)
+C:brixTerminalRenderCursor(handle, int-buffer)
 = TerminalCursor
     - int-buffer[0] != 0
     - int-buffer[1]
@@ -328,7 +328,7 @@ C:yumiTerminalRenderCursor(handle, int-buffer)
 + do get colors TerminalColors
 
 =? TerminalColors(0, 0, 0) if !handle
-C:yumiTerminalRenderColors(handle, word-buffer)
+C:brixTerminalRenderColors(handle, word-buffer)
 = TerminalColors(word-buffer[0], word-buffer[1], word-buffer[2])
 
 ────────────────────
@@ -337,9 +337,9 @@ C:yumiTerminalRenderColors(handle, word-buffer)
 
 . rendered [TerminalRow]
 =? rendered if !handle
-C:yumiTerminalRenderBeginRows(handle, dirty-only)
+C:brixTerminalRenderBeginRows(handle, dirty-only)
 while true
-    . y = C:yumiTerminalRenderNextRow(handle!)
+    . y = C:brixTerminalRenderNextRow(handle!)
     =? rendered if y < 0
     rendered += read-row(y)
 = rendered
@@ -348,7 +348,7 @@ while true
 + do render-clean
 
 =? if !handle
-C:yumiTerminalRenderClean(handle)
+C:brixTerminalRenderClean(handle)
 
 ────────────────────
 + do encode-key Byte[]?
@@ -360,7 +360,7 @@ C:yumiTerminalRenderClean(handle)
 
 =? null if !handle
 . input = text ?? ""
-. length = C:yumiTerminalEncodeKey
+. length = C:brixTerminalEncodeKey
     - handle
     - key-code
     - mods
@@ -381,7 +381,7 @@ C:yumiTerminalRenderClean(handle)
     - y F32
 
 =? null if !handle
-. length = C:yumiTerminalEncodeMouse
+. length = C:brixTerminalEncodeMouse
     - handle
     - action
     - button
@@ -397,10 +397,10 @@ C:yumiTerminalRenderClean(handle)
     - text String
 
 =? null if !handle || text.size == 0
-. length = C:yumiTerminalEncodePaste(handle, text, text.size, byte-buffer, byte-buffer.length) as Size
+. length = C:brixTerminalEncodePaste(handle, text, text.size, byte-buffer, byte-buffer.length) as Size
 if length > byte-buffer.length
     byte-buffer = Byte[length]
-    length = C:yumiTerminalEncodePaste(handle!, text, text.size, byte-buffer, byte-buffer.length)
+    length = C:brixTerminalEncodePaste(handle!, text, text.size, byte-buffer, byte-buffer.length)
 = encoded(length)
 
 ────────────────────
@@ -408,7 +408,7 @@ if length > byte-buffer.length
     - is-focused Bool
 
 =? null if !handle
-. length = C:yumiTerminalEncodeFocus(handle, is-focused, byte-buffer, byte-buffer.length)
+. length = C:brixTerminalEncodeFocus(handle, is-focused, byte-buffer, byte-buffer.length)
 = encoded(length)
 
 ────────────────────
@@ -419,7 +419,7 @@ if length > byte-buffer.length
     - y F64
 
 =? if !handle
-C:yumiTerminalSelectPress(handle, column, row, x, y)
+C:brixTerminalSelectPress(handle, column, row, x, y)
 
 ────────────────────
 + do select-drag
@@ -430,7 +430,7 @@ C:yumiTerminalSelectPress(handle, column, row, x, y)
     - is-rectangle = false
 
 =? if !handle
-C:yumiTerminalSelectDrag(handle, column, row, x, y, is-rectangle)
+C:brixTerminalSelectDrag(handle, column, row, x, y, is-rectangle)
 
 ────────────────────
 + do select-release
@@ -438,45 +438,45 @@ C:yumiTerminalSelectDrag(handle, column, row, x, y, is-rectangle)
     - row Size
 
 =? if !handle
-C:yumiTerminalSelectRelease(handle, column, row)
+C:brixTerminalSelectRelease(handle, column, row)
 
 ────────────────────
 + do select-all
 
 =? if !handle
-C:yumiTerminalSelectAll(handle)
+C:brixTerminalSelectAll(handle)
 
 ────────────────────
 + do clear-selection
 
 =? if !handle
-C:yumiTerminalSelectClear(handle)
+C:brixTerminalSelectClear(handle)
 
 ────────────────────
 + get has-selection Bool
 
-if handle then C:yumiTerminalHasSelection(handle) else false
+if handle then C:brixTerminalHasSelection(handle) else false
 
 ────────────────────
 + do selection-text String?
 
 =? null if !handle
-. length = C:yumiTerminalCopySelection(handle, byte-buffer, byte-buffer.length) as Size
+. length = C:brixTerminalCopySelection(handle, byte-buffer, byte-buffer.length) as Size
 =? null if length == 0
 if length > byte-buffer.length
     byte-buffer = Byte[length]
-    C:yumiTerminalCopySelection(handle!, byte-buffer, length)
+    C:brixTerminalCopySelection(handle!, byte-buffer, length)
 = byte-buffer.slice-string(0 .. < length)
 
 ────────────────────
 + do all-text String?
 
 =? null if !handle
-. length = C:yumiTerminalCopyAll(handle, byte-buffer, byte-buffer.length) as Size
+. length = C:brixTerminalCopyAll(handle, byte-buffer, byte-buffer.length) as Size
 =? null if length == 0
 =? byte-buffer.slice-string(0 .. < length) if length <= byte-buffer.length
 . bytes = Byte[length]
-C:yumiTerminalCopyAll(handle!, bytes, length)
+C:brixTerminalCopyAll(handle!, bytes, length)
 = bytes.slice-string(0 .. < length)
 
 ────────────────────
@@ -493,13 +493,13 @@ for index in 0 .. < length
 _ do read-row TerminalRow
     - y Int
 
-. count = C:yumiTerminalRowRunCount(handle!) as Size
-. text-length = C:yumiTerminalRowTextLength(handle!) as Size
+. count = C:brixTerminalRowRunCount(handle!) as Size
+. text-length = C:brixTerminalRowTextLength(handle!) as Size
 if count * terminal-run-fields > run-buffer.length
     run-buffer = U32[count * terminal-run-fields]
 if text-length > text-buffer.length
     text-buffer = Byte[text-length]
-C:yumiTerminalRowCopy(handle!, run-buffer, text-buffer)
+C:brixTerminalRowCopy(handle!, run-buffer, text-buffer)
 . runs [TerminalRun]
 for index in 0 .. < count
     . base = index * terminal-run-fields
@@ -512,7 +512,7 @@ for index in 0 .. < count
         - run-buffer[base + 3]
         - run-buffer[base + 4]
         - text-buffer.slice-string(offset .. < offset + length)
-C:yumiTerminalRowInfo(handle!, int-buffer)
+C:brixTerminalRowInfo(handle!, int-buffer)
 . wraps = int-buffer[3] != 0
 =? TerminalRow(y, runs, -1, -1, wraps) if int-buffer[0] == 0
 = TerminalRow(y, runs, int-buffer[1], int-buffer[2], wraps)
@@ -521,4 +521,4 @@ C:yumiTerminalRowInfo(handle!, int-buffer)
 _ do release-terminal-emulator
     - handle Pointer
 
-C:yumiTerminalRelease(handle)
+C:brixTerminalRelease(handle)

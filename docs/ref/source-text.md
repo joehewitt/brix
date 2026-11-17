@@ -1,6 +1,6 @@
 # Source text
 
-A Yumi program is text in files. A `.bx` file holds Brix forms, which are S-expressions. A `.yumi`
+A Brix program is text in files. A `.bx` file holds Brix forms, which are S-expressions. A `.yumi`
 file holds rows, which use indentation, dividers and operators. The two are views of one language:
 every form has a rows spelling, and every row a form. This chapter covers files, how forms are
 read, how rows are laid out, names, comments, and how the two views relate.
@@ -89,7 +89,7 @@ on one line
   anywhere between items, and a form may sit on one line or spread over many.
 - **The usual layout** puts one row to a line, two spaces deeper than the form that holds it, and
   closes a form that spans lines on a line of its own. Functions, types and other declarations
-  with bodies are set apart by a blank line. `yumi lint --fix` rewrites a file in this layout.
+  with bodies are set apart by a blank line. `brix lint --fix` rewrites a file in this layout.
 - **Hints.** When a `)` is missing or extra, the compiler uses the indentation to guess where it
   belongs.
 
@@ -296,7 +296,7 @@ A row begins with a mark that says what it is, followed by a space.
   local cannot be capitalized and a type cannot start lowercase. A reader can tell a type from a
   value without finding its declaration.
 - **Messages.** A name in another case is refused with its kebab-case spelling: ``itemCount` is
-  not a Yumi name. A name is lowercase words joined by hyphens: write `item-count`.``
+  not a Brix name. A name is lowercase words joined by hyphens: write `item-count`.``
 - **No `?` or `!`.** A name cannot hold `?` or `!`. In rows, `value!` forces an optional and
   `?.` chains one.
 - **Reserved words.** `in`, `on`, `and`, `or`, `do`, `for`, `while`, `if` and `else` cannot name a
@@ -378,5 +378,5 @@ two
 - **Layout is not carried over.** Number spellings such as `1'000` and `0xff` survive a trip from
   one view to the other and back. Several blank rows become one, several `(main …)` forms in a
   row become one, and a comment written after code moves to a row of its own.
-- **Converting.** `yumi brix file.yumi` writes `file.bx` beside the rows file, replacing any that
+- **Converting.** `brix brix file.yumi` writes `file.bx` beside the rows file, replacing any that
   is there.

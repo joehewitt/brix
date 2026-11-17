@@ -458,10 +458,10 @@ store id=1 live=4 attachments=4 free-attachments=0 nodes=0 free-nodes=0 segments
 /core/style
 /core/markup
 /core/tests/support/markup-fixtures
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
-. template-lane = C:yumiGCStyleTemplatesSidePayloadLane()
-. templates-before = C:yumiGCObjectSidePayloadCount(template-lane)
+. template-lane = C:brixGCStyleTemplatesSidePayloadLane()
+. templates-before = C:brixGCObjectSidePayloadCount(template-lane)
 
 <BatchDemo demo
     for item in #items
@@ -470,7 +470,7 @@ store id=1 live=4 attachments=4 free-attachments=0 nodes=0 free-nodes=0 segments
             tone = 4
 
 . declarations = style-site-template-declaration-count()
-. templates = C:yumiGCObjectSidePayloadCount(template-lane) - templates-before
+. templates = C:brixGCObjectSidePayloadCount(template-lane) - templates-before
 -- "declarations=$declarations templates=$templates"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -508,24 +508,24 @@ declarations=2 templates=8
 /core/style
 /core/markup
 /core/tests/support/markup-fixtures
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
-. attachment-lane = C:yumiGCStyleAttachmentsSidePayloadLane()
-. template-lane = C:yumiGCStyleTemplatesSidePayloadLane()
-. object-lane = C:yumiGCStyleObjectsSidePayloadLane()
+. attachment-lane = C:brixGCStyleAttachmentsSidePayloadLane()
+. template-lane = C:brixGCStyleTemplatesSidePayloadLane()
+. object-lane = C:brixGCStyleObjectsSidePayloadLane()
 
 <BatchDemo demo
 
-. attachments-before = C:yumiGCObjectSidePayloadCount(attachment-lane)
-. templates-before = C:yumiGCObjectSidePayloadCount(template-lane)
-. objects-before = C:yumiGCObjectSidePayloadCount(object-lane)
+. attachments-before = C:brixGCObjectSidePayloadCount(attachment-lane)
+. templates-before = C:brixGCObjectSidePayloadCount(template-lane)
+. objects-before = C:brixGCObjectSidePayloadCount(object-lane)
 
 do exercise-reclaim(demo, attachment-lane, template-lane, object-lane, attachments-before, templates-before, objects-before)
 
-C:yumiCollect()
-do C:yumiGCDrainCleanups()
-. objects-final = C:yumiGCObjectSidePayloadCount(object-lane)
--- "reclaimed attachments=${C:yumiGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:yumiGCObjectSidePayloadCount(template-lane) - templates-before} objects-bounded=${objects-final <= objects-before + 1}"
+C:brixCollect()
+do C:brixGCDrainCleanups()
+. objects-final = C:brixGCObjectSidePayloadCount(object-lane)
+-- "reclaimed attachments=${C:brixGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:brixGCObjectSidePayloadCount(template-lane) - templates-before} objects-bounded=${objects-final <= objects-before + 1}"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do exercise-reclaim
@@ -541,21 +541,21 @@ do C:yumiGCDrainCleanups()
 
 markup-adopt(panel!, null, demo)
 demo.markup-batch-queue.checkpoint()
--- "mounted=${panel-tag(panel!)} attachments=${C:yumiGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:yumiGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:yumiGCObjectSidePayloadCount(object-lane) - objects-before}"
+-- "mounted=${panel-tag(panel!)} attachments=${C:brixGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:brixGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:brixGCObjectSidePayloadCount(object-lane) - objects-before}"
 
 markup-release(panel!)
 demo.markup-batch-queue.checkpoint()
--- "unmounted attachments=${C:yumiGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:yumiGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:yumiGCObjectSidePayloadCount(object-lane) - objects-before}"
+-- "unmounted attachments=${C:brixGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:brixGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:brixGCObjectSidePayloadCount(object-lane) - objects-before}"
 
 markup-adopt(panel!, null, demo)
 demo.markup-batch-queue.checkpoint()
--- "remounted=${panel-tag(panel!)} attachments=${C:yumiGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:yumiGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:yumiGCObjectSidePayloadCount(object-lane) - objects-before}"
+-- "remounted=${panel-tag(panel!)} attachments=${C:brixGCObjectSidePayloadCount(attachment-lane) - attachments-before} templates=${C:brixGCObjectSidePayloadCount(template-lane) - templates-before} objects=${C:brixGCObjectSidePayloadCount(object-lane) - objects-before}"
 . remounted-attachment = markup-attachment(panel! as Pointer)
 ?! Panic("cleanup-mode merged attachment retained its owning store")
     if remounted-attachment!.retained-store
 panel = null
-C:yumiCollect()
-do C:yumiGCDrainCleanups()
+C:brixCollect()
+do C:brixGCDrainCleanups()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do make-panel Panel
@@ -613,13 +613,13 @@ reclaimed attachments=0 templates=0 objects-bounded=true
 /core/style
 /core/markup
 /core/tests/support/markup-fixtures
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . root = AllocationBatchRoot()
 markup-mount-root(root, root)
 root.markup-batch-queue.checkpoint()
 . panel = AllocationPanel()
-. registrations-before = C:yumiGCCleanupRegistrationCount()
+. registrations-before = C:brixGCCleanupRegistrationCount()
 
 . cold-before = managed-allocation-count()
 do allocation-mount-cycle(root, panel)
@@ -637,14 +637,14 @@ for cycle in 0 .. < 32
 ?! Panic("warm style cycles allocated ${warm-delta} objects instead of their required 192")
     if warm-delta != 32 * 6
 ?! Panic("style mount registered scalar cleanup handles")
-    if C:yumiGCCleanupRegistrationCount() != registrations-before
+    if C:brixGCCleanupRegistrationCount() != registrations-before
 
--- "cold=${cold-delta} warm=${warm-delta} registrations=${C:yumiGCCleanupRegistrationCount() - registrations-before}"
+-- "cold=${cold-delta} warm=${warm-delta} registrations=${C:brixGCCleanupRegistrationCount() - registrations-before}"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do managed-allocation-count U64
 
-= C:yumiGCAllocatedObjectCount() + C:yumiGCThreadPendingAllocatedObjectCount()
+= C:brixGCAllocatedObjectCount() + C:brixGCThreadPendingAllocatedObjectCount()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do allocation-mount-cycle

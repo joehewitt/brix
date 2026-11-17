@@ -1,6 +1,6 @@
 # Collections
 
-A collection holds many values. Yumi's core library has five kinds:
+A collection holds many values. Brix's core library has five kinds:
 
 | Kind | Type | Holds |
 | --- | --- | --- |

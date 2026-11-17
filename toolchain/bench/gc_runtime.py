@@ -15,8 +15,8 @@ from bench import sample
 from common import ROOT, TMP, Failure, file_digest, say
 
 SELECTOR = 'bench-gc-runtime'
-HARNESS = 'yumi-gc-runtime-v3'
-RUNTIME_SETUP = 'yumi-bench-runtime-v8'
+HARNESS = 'brix-gc-runtime-v3'
+RUNTIME_SETUP = 'brix-bench-runtime-v8'
 SAMPLED_PREFIX = 'parser/compiler-source'
 PROCESS_METRICS = (
     'wallMs',
@@ -37,8 +37,8 @@ OUTPUT_LIMIT = 1 << 20
 TAIL_LIMIT = 4096
 DEADLINE_EXIT_CODE = 124
 CLEARED_PREFIXES = (
-    'YUMI_',
-    'YUMITEST_',
+    'BRIX_',
+    'BRIXTEST_',
     'PROBES_',
     'ASAN_',
     'TSAN_',
@@ -56,25 +56,25 @@ CLEARED_NAMES = (
     'LD_LIBRARY_PATH',
 )
 SETUP_KEYS = (
-    'YUMIPATH',
-    'YUMI_BUILD_PATH',
-    'YUMI_BENCH_RUNTIME',
-    'YUMI_BENCH_METRICS',
-    'YUMI_GC_MODE',
+    'BRIXPATH',
+    'BRIX_BUILD_PATH',
+    'BRIX_BENCH_RUNTIME',
+    'BRIX_BENCH_METRICS',
+    'BRIX_GC_MODE',
     'PROBES_ENABLED',
     'PROBES_PATH',
     'PROBES_CONTROL_PATH',
 )
 RUNTIME_ARCHIVES = (
-    'yumi/libs/core/libyumicore.a',
-    'yumi/libs/gc/libyumigc.a',
-    'yumi/libs/events/libyumievents.a',
-    'yumi/libs/graphics/libyumigraphics.a',
-    'yumi/libs/applegui/libyumiapplegui.a',
+    'brix/libs/core/libbrixcore.a',
+    'brix/libs/gc/libbrixgc.a',
+    'brix/libs/events/libbrixevents.a',
+    'brix/libs/graphics/libbrixgraphics.a',
+    'brix/libs/applegui/libbrixapplegui.a',
 )
-GC_ARCHIVE = 'yumi/libs/gc/libyumigc.a'
+GC_ARCHIVE = 'brix/libs/gc/libbrixgc.a'
 SUPPORT_FILES = (
-    '.yumi/benchmarks.json',
+    '.brix/benchmarks.json',
     'compiler/bench/bench-launch.yumi',
     'libs/build.json',
     'toolchain/bench/compile.py',
@@ -84,8 +84,8 @@ SUPPORT_FILES = (
     'toolchain/runtime.py',
 )
 KINDS = ('timing', 'instrumented')
-RUNNER = [os.path.join(ROOT, 'bin', 'yumi'), 'bench', 'launch']
-LAUNCHER = os.path.join(ROOT, 'bin', 'yumi-bench')
+RUNNER = [os.path.join(ROOT, 'bin', 'brix'), 'bench', 'launch']
+LAUNCHER = os.path.join(ROOT, 'bin', 'brix-bench')
 EVIDENCE = os.path.join(TMP, 'bench', 'gc-runtime-evidence')
 DIAGNOSTIC_NAME = 'gc-runtime-last-diagnostic.json'
 OUTPUT_FLAGS = ('-o', '--o')
@@ -106,9 +106,9 @@ class Variant:
 
 
 VARIANTS = (
-    Variant('noGc', 'no-gc', 0, ['YU_ENABLE_YUMI_GC=0', 'YU_GC_NEVER_COLLECT=0']),
-    Variant('neverCollect', 'never-collect', 1, ['YU_ENABLE_YUMI_GC=1', 'YU_GC_NEVER_COLLECT=1']),
-    Variant('normal', 'normal', 2, ['YU_ENABLE_YUMI_GC=1', 'YU_GC_NEVER_COLLECT=0']),
+    Variant('noGc', 'no-gc', 0, ['BX_ENABLE_BRIX_GC=0', 'BX_GC_NEVER_COLLECT=0']),
+    Variant('neverCollect', 'never-collect', 1, ['BX_ENABLE_BRIX_GC=1', 'BX_GC_NEVER_COLLECT=1']),
+    Variant('normal', 'normal', 2, ['BX_ENABLE_BRIX_GC=1', 'BX_GC_NEVER_COLLECT=0']),
 )
 
 
@@ -243,7 +243,7 @@ class Harness:
         raise Failure(message)
 
     def diagnose(self, diagnostic):
-        build = os.environ.get('YUMI_BUILD_PATH', '')
+        build = os.environ.get('BRIX_BUILD_PATH', '')
         if not build:
             return
         try:
@@ -255,7 +255,7 @@ class Harness:
 
     def preserve_executable(self):
         source = self.context.get('executablePath', '')
-        build = os.environ.get('YUMI_BUILD_PATH', '')
+        build = os.environ.get('BRIX_BUILD_PATH', '')
         mode = self.context.get('variant', '')
         if not source or not build or not mode:
             return None
@@ -319,7 +319,7 @@ def compile_variants(arguments, compiler):
             'instrumented': None,
         }
         jobs += [(variant, kind) for kind in KINDS]
-    build = os.environ.get('YUMI_BUILD_PATH', '')
+    build = os.environ.get('BRIX_BUILD_PATH', '')
     probes = os.environ.get('PROBES_ENABLED', '')
     for index in range(0, len(jobs), 2):
         pair = jobs[index:index + 2]
@@ -339,7 +339,7 @@ def compile_variants(arguments, compiler):
                     'mode': variant.mode,
                     'benchmarkRuntime': True,
                     'benchmarkMetrics': instrumented,
-                    'yumiPath': os.path.join(ROOT, 'stdlib'),
+                    'brixPath': os.path.join(ROOT, 'stdlib'),
                     'probesEnabled': probes if instrumented else '',
                     'sourceId': identity,
                 },
@@ -354,10 +354,10 @@ def compile_variants(arguments, compiler):
 def compile_command(variant, kind, arguments, artifact, build, probes, compiler):
     timing = kind == 'timing'
     environment = variant_environment(variant.mode, {
-        'YUMI_BUILD_PATH': os.path.join(build, 'clean') if timing else build,
-        'YUMI_BENCH_RUNTIME': '1',
-        'YUMI_BENCH_METRICS': '0' if timing else '1',
-        'YUMI_BENCH_METRICS_PATH': '',
+        'BRIX_BUILD_PATH': os.path.join(build, 'clean') if timing else build,
+        'BRIX_BENCH_RUNTIME': '1',
+        'BRIX_BENCH_METRICS': '0' if timing else '1',
+        'BRIX_BENCH_METRICS_PATH': '',
         'PROBES_ENABLED': '' if timing else probes,
         'PROBES_PATH': '',
     })
@@ -382,9 +382,9 @@ def measure_variants(harness, arguments):
     if len(arguments) != 1:
         harness.fail('gc-runtime run requires the compiled launcher path')
     artifact = os.path.abspath(arguments[0])
-    outer_metrics = os.environ.get('YUMI_BENCH_METRICS_PATH', '')
+    outer_metrics = os.environ.get('BRIX_BENCH_METRICS_PATH', '')
     if not outer_metrics:
-        harness.fail('gc-runtime run requires YUMI_BENCH_METRICS_PATH')
+        harness.fail('gc-runtime run requires BRIX_BENCH_METRICS_PATH')
     manifest = read_json(artifact + '.gc-runtime.json')
     if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 2 or manifest.get('harness') != HARNESS:
         harness.fail('gc-runtime manifest is not a supported six-artifact manifest')
@@ -408,10 +408,10 @@ def measure_variants(harness, arguments):
         metrics_nonce = '%s-%s' % (run_nonce, variant.mode)
         metrics_path = '%s.%s.json' % (outer_metrics, metrics_nonce)
         timing_environment = variant_environment(variant.mode, {
-            'YUMI_BUILD_PATH': built['timing']['buildPath'],
-            'YUMI_BENCH_RUNTIME': '1',
-            'YUMI_BENCH_METRICS': '0',
-            'YUMI_BENCH_METRICS_PATH': '',
+            'BRIX_BUILD_PATH': built['timing']['buildPath'],
+            'BRIX_BENCH_RUNTIME': '1',
+            'BRIX_BENCH_METRICS': '0',
+            'BRIX_BENCH_METRICS_PATH': '',
             'PROBES_ENABLED': '',
             'PROBES_PATH': '',
         })
@@ -445,11 +445,11 @@ def measure_variants(harness, arguments):
         else:
             probes_path = '%s.%s' % (outer_probes, variant.mode) if outer_probes else ''
         instrumented_environment = variant_environment(variant.mode, {
-            'YUMI_BUILD_PATH': built['instrumented']['buildPath'],
-            'YUMI_BENCH_RUNTIME': '1',
-            'YUMI_BENCH_METRICS': '1',
-            'YUMI_BENCH_METRICS_PATH': metrics_path,
-            'YUMI_BENCH_RUN_NONCE': metrics_nonce,
+            'BRIX_BUILD_PATH': built['instrumented']['buildPath'],
+            'BRIX_BENCH_RUNTIME': '1',
+            'BRIX_BENCH_METRICS': '1',
+            'BRIX_BENCH_METRICS_PATH': metrics_path,
+            'BRIX_BENCH_RUN_NONCE': metrics_nonce,
             'PROBES_PATH': probes_path,
         })
         harness.context = {'phase': 'instrumented-run', 'variant': variant.mode,
@@ -732,10 +732,10 @@ def sanitized_environment():
 def variant_environment(mode, overlay):
     environment = sanitized_environment()
     environment.update({
-        'YUMI_GC_MODE': mode,
-        'YUMI_BUILD_PATH': os.environ.get('YUMI_BUILD_PATH', ''),
-        'YUMIPATH': os.path.join(ROOT, 'stdlib'),
-        'YUMI_BENCH_RUNTIME': '1',
+        'BRIX_GC_MODE': mode,
+        'BRIX_BUILD_PATH': os.environ.get('BRIX_BUILD_PATH', ''),
+        'BRIXPATH': os.path.join(ROOT, 'stdlib'),
+        'BRIX_BENCH_RUNTIME': '1',
         'PROBES_ENABLED': os.environ.get('PROBES_ENABLED', ''),
         'PROBES_CONTROL_PATH': '',
     })
@@ -813,7 +813,7 @@ def write_evidence(metrics):
 
 
 def preserve_sidecar(source, mode):
-    build = os.environ.get('YUMI_BUILD_PATH', '')
+    build = os.environ.get('BRIX_BUILD_PATH', '')
     if not source or not build or not mode:
         return None
     try:

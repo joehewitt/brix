@@ -1,7 +1,7 @@
 ./cnet
 ./dns
-/YuCore/YuCore.h
-/YuEvents/YuEvents.h
+/BxCore/BxCore.h
+/BxEvents/BxEvents.h
 /core/intrinsics
 /dns_sd.h
 /errno.h
@@ -56,7 +56,7 @@ message ?? "Service discovery failed"
     if started != 0
 do finally C:DNSServiceRefDeallocate(service)
 . fd = C:DNSServiceRefSockFD(service)
-do finally C:yumiReleaseEventDescriptor(fd)
+do finally C:brixReleaseEventDescriptor(fd)
 . deadline = Deadline(timeout)
 while !resolution.host && resolution.error == 0
     wait-until-readable(fd, deadline)
@@ -84,7 +84,7 @@ _ do has-reply Bool
 
 . peeked = Byte[1]
 =? true if C:recv(fd, peeked, 1, C:MSG_PEEK /or/ C:MSG_DONTWAIT) >= 0
-= C:yumiGetErrNo() != C:EWOULDBLOCK
+= C:brixGetErrNo() != C:EWOULDBLOCK
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ServiceResolution
@@ -187,7 +187,7 @@ do new
         wait-until-readable(fd)
         if service == browsing && has-reply(fd) && C:DNSServiceProcessResult(browsing) != 0
             service = null
-            C:yumiReleaseEventDescriptor(fd)
+            C:brixReleaseEventDescriptor(fd)
             channel.close()
 
 ────────────────────
@@ -197,7 +197,7 @@ do new
 =? if !browsing
 service = null
 presence = Map'String'Int()
-C:yumiReleaseEventDescriptor(C:DNSServiceRefSockFD(browsing))
+C:brixReleaseEventDescriptor(C:DNSServiceRefSockFD(browsing))
 
 ────────────────────
 _ do found

@@ -2,7 +2,7 @@
 ./file
 ./process
 ./tty
-/YuCore/YuCore.h
+/BxCore/BxCore.h
 /data
 /errno.h
 /signal.h
@@ -45,7 +45,7 @@ _ is-closed = false
     -> String[entries.length + 1]
 . master = I32[1]
 . executable = executable-path(path, entries)
-. pid = C:yumiSpawnPty(executable, argv, envp, directory ?? "", columns, rows, master)
+. pid = C:brixSpawnPty(executable, argv, envp, directory ?? "", columns, rows, master)
 ?! IOError("Unable to run $path: ${C:strerror(-pid)}")
     if pid < 0
 . duplicate = C:dup(master[0])
@@ -88,7 +88,7 @@ this.columns = columns
 this.rows = rows
 . size = Winsize[1]
 size[0] = Winsize(rows as Short, columns as Short, pixel-width as Short, pixel-height as Short)
-C:yumiioctl(input.fd, C:TIOCSWINSZ, size)
+C:brixioctl(input.fd, C:TIOCSWINSZ, size)
 
 ────────────────────
 + do read Size
@@ -100,7 +100,7 @@ while true
     . count = C:read(output.fd, buffer, size)
     =? count if count > 0
     =? 0 if count == 0
-    . error = C:yumiGetErrNo()
+    . error = C:brixGetErrNo()
     =? 0 if error != C:EWOULDBLOCK && error != C:EINTR
     wait-until-readable(output.fd)
 = 0
@@ -114,7 +114,7 @@ while true
 while true
     . count = C:read(output.fd, buffer, size)
     =? count if count >= 0
-    . error = C:yumiGetErrNo()
+    . error = C:brixGetErrNo()
     =? null if error == C:EWOULDBLOCK
     =? 0 if error != C:EINTR
 = 0

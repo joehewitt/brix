@@ -278,10 +278,10 @@ include numbers, points, colors and ranges.
 
 These libraries serve the toolchain rather than programs.
 
-- **lang** is the Yumi compiler. Programs use one part of it: `/lang/product/mac-app` and
+- **lang** is the Brix compiler. Programs use one part of it: `/lang/product/mac-app` and
   `/lang/product/ios-app` declare the app bundle a program builds into, with its name, id, icon
   and document types.
-- **probes** reads the records that probes write, for `yumi probes`. Writing probes needs no
+- **probes** reads the records that probes write, for `brix probes`. Writing probes needs no
   import; see Probes.
 - **test** is the library test modules use: `/test` declares test cases and how they report. See
-  `yumi test --help`.
+  `brix test --help`.

@@ -116,10 +116,10 @@ count = start + 2
 /core/gc
 # A Weak reads null once its target has been collected.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . weak = weak-node(71)
-C:yumiCollect()
+C:brixCollect()
 -- weak.get == null
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -148,24 +148,24 @@ true
 /core/gc
 # A target read through a Weak during a mark survives that cycle, and the Weak clears in the next.
 
-/YuGC/YuGCTest.h
+/BxGC/BxGCTest.h
 
 . weak = weak-node(72)
 -- loaded-during-mark(weak)
-C:yumiCollect()
+C:brixCollect()
 -- weak.get == null
 
 ━━━━━━━━━━━━━━━━━━━━
 + do loaded-during-mark String
     - weak Weak'GCNode
 
-C:yumiGCStartConcurrentMark()
+C:brixGCStartConcurrentMark()
 . loaded = weak.get
-C:yumiGCFinishConcurrentMark()
+C:brixGCFinishConcurrentMark()
 if !loaded
     = "empty"
-C:yumiCollect()
-if !C:yumiGCVerifyObject(loaded as Pointer)
+C:brixCollect()
+if !C:brixGCVerifyObject(loaded as Pointer)
     = "lost"
 = "alive ${loaded.value}"
 
@@ -196,13 +196,13 @@ true
 # An object made from a range of slots taken just before the collection its taking starts, held
 # only by the stack, survives that collection.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
-C:yumiCollect()
-. prior-goal = C:yumiGCHeapGoal()
-C:yumiGCSetHeapGoal(C:yumiGCLiveByteCount() + 1)
+C:brixCollect()
+. prior-goal = C:brixGCHeapGoal()
+C:brixGCSetHeapGoal(C:brixGCLiveByteCount() + 1)
 -- lost-below(0, 3000)
-C:yumiGCSetHeapGoal(prior-goal)
+C:brixGCSetHeapGoal(prior-goal)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do lost-below Int
@@ -211,14 +211,14 @@ C:yumiGCSetHeapGoal(prior-goal)
 
 . node = Wide(depth)
 . lost = if depth + 1 < limit then lost-below(depth + 1, limit) else collected()
-if C:yumiGCVerifyObject(node as Pointer) && node.a == depth
+if C:brixGCVerifyObject(node as Pointer) && node.a == depth
     = lost
 = lost + 1
 
 ━━━━━━━━━━━━━━━━━━━━
 + do collected Int
 
-C:yumiCollect()
+C:brixCollect()
 = 0
 
 ━━━━━━━━━━━━━━━━━━━━

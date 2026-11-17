@@ -504,7 +504,7 @@ do finally
 
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . values = Array'BackingNode(3)
 for index in 0 .. < values.length
@@ -512,7 +512,7 @@ for index in 0 .. < values.length
 values[1] = BackingNode("replacement")
 values = values.resize(5)
 values[4] = BackingNode("grown")
-C:yumiGCCollect()
+C:brixGCCollect()
 -- values[0].value, values[1].value, values[4].value
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -532,14 +532,14 @@ value = text
 
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . values = Array'BackingNode([BackingNode("node-0"), BackingNode("replacement")])
 values = values.resize(5)
 values[4] = BackingNode("grown")
 . copy = values.copy()
 values[0] = BackingNode("original")
-C:yumiGCCollect()
+C:brixGCCollect()
 -- values[0].value, copy[0].value, copy[1].value, copy[4].value
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2261,10 +2261,10 @@ items.rows[0][1] = 10
 
 :====
 
-/YuCore/YuCore.h
+/BxCore/BxCore.h
 
 . rows = make-rows()
-C:yumiCollect()
+C:brixCollect()
 -- rows[0].x
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2951,16 +2951,16 @@ Stale array view
 
 :====
 
-/YuCore/YuCore.h
-/YuGC/YuGC.h
+/BxCore/BxCore.h
+/BxGC/BxGC.h
 
 . storage = Array'Cell(2) • with Cell(GCNode((each + 1) as Int), GCNode((each + 10) as Int))
 . table = storage.rows
-C:yumiCollect()
+C:brixCollect()
 
-if !C:yumiGCVerifyObject(table[0].left as Pointer)
+if !C:brixGCVerifyObject(table[0].left as Pointer)
     -- "array-row-left-missing"
-else if !C:yumiGCVerifyObject(table[1].right as Pointer)
+else if !C:brixGCVerifyObject(table[1].right as Pointer)
     -- "array-row-right-missing"
 else
     -- "array-row-ref-ok ${table[0].left.value} ${table[1].right.value}"
@@ -3307,7 +3307,7 @@ bytes.write'F32(-82.5f32, 8)
 :====
 # An array of text, of objects or of structs that hold text keeps its items across collections.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . kept = Array'String(4)
 kept[0] = "zero${kept.size}"
@@ -3319,7 +3319,7 @@ boxes[0] = Box("left${kept.size}")
 boxes[1] = Box("right${kept.size}")
 . pairs = Array'Pair(2)
 pairs[1] = Pair(2, "two${kept.size}")
-C:yumiGCCollect()
+C:brixGCCollect()
 . total = 0
 for round in 0 .. < 2000
     . text = "junk$round"
@@ -3327,7 +3327,7 @@ for round in 0 .. < 2000
     . more = Array'String(2)
     more[1] = text
     total += more[1].size
-C:yumiGCCollect()
+C:brixGCCollect()
 -- total
 -- kept[0], kept[1], kept[2], kept[3]
 -- boxes[0].name, boxes[1].name
@@ -3558,10 +3558,10 @@ Exception: Cannot write through a read-only array view
 /core/gc
 # An element dropped when resize shrinks an array is released.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . resized = shrunk-buffer()
-C:yumiCollect()
+C:brixCollect()
 -- resized[0].size
 -- resized[1].get == null
 
@@ -3594,14 +3594,14 @@ true
 ;====
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . anchor = Byte[1048576]
 anchor[0] = 7u8
 anchor[1048575] = 19u8
 dirty-megabytes()
-C:yumiGCCollect()
-C:yumiGCScavenge()
+C:brixGCCollect()
+C:brixGCScavenge()
 -- anchor[0], anchor[1048575]
 . fresh = Byte[1048576]
 . sum = 0 as Size
@@ -3648,7 +3648,7 @@ Task 1
 Stack trace:
   0  __source__:main no file:6:4
   1  __source__:init.__source__ no file
-  2  __source__:yumi.main no file
+  2  __source__:brix.main no file
 ;====
 :====
 # An array tested as a condition, alone or beside another, is true where it is not empty.

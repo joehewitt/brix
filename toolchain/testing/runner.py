@@ -28,11 +28,11 @@ class PythonTest:
 
 def main(arguments):
     if arguments not in (['catalog'], ['run']):
-        raise Failure('usage: yumitest-python catalog|run')
+        raise Failure('usage: brixtest-python catalog|run')
     root = os.path.realpath(os.environ.get('OMETER_TESTOMETER_PROJECT_ROOT') or os.getcwd())
-    files = os.environ.get('YUMITEST_PYTHON_FILES', '').split()
+    files = os.environ.get('BRIXTEST_PYTHON_FILES', '').split()
     if not files:
-        raise Failure('YUMITEST_PYTHON_FILES must list the test files of the suite')
+        raise Failure('BRIXTEST_PYTHON_FILES must list the test files of the suite')
     os.chdir(ROOT)
     files = [os.path.relpath(os.path.join(ROOT, path), root) for path in files]
     tests = [test for relative_path in files for test in catalog_file(root, relative_path)]
@@ -122,7 +122,7 @@ def load_module(source_path):
     directory = os.path.dirname(source_path)
     if directory not in sys.path:
         sys.path.insert(0, directory)
-    name = 'yumitest_' + re.sub(r'\W', '_', os.path.relpath(source_path))
+    name = 'brixtest_' + re.sub(r'\W', '_', os.path.relpath(source_path))
     spec = importlib.util.spec_from_file_location(name, source_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

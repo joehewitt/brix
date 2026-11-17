@@ -9,7 +9,7 @@ import unittest
 from common import ROOT
 from testing import support
 
-LINTER = [os.path.join(ROOT, 'bin', 'yumi'), 'lint']
+LINTER = [os.path.join(ROOT, 'bin', 'brix'), 'lint']
 CONFLICTS = 'names/import-conflicts'
 SORT = 'imports/sort'
 LINT_SECONDS = 300
@@ -38,7 +38,7 @@ def conflict_names(found, file):
 class ImportConflicts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        directory = tempfile.mkdtemp(prefix='yumi-test-')
+        directory = tempfile.mkdtemp(prefix='brix-test-')
         cls.addClassCleanup(shutil.rmtree, directory, True)
         sources = dict(SOURCES, **HEADER_SOURCES) if ON_MAC else SOURCES
         for name, text in dict(MODULES, **sources).items():

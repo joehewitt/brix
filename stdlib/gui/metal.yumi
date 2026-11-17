@@ -1,4 +1,4 @@
-/YuAppleGUI/YuMetalRenderer.h
+/BxAppleGUI/BxMetalRenderer.h
 /core/error
 /graphics/canvas
 /graphics/color
@@ -87,7 +87,7 @@ width = render-width
 height = render-height
 scale = render-scale
 background = clear-background
-renderer = C:yumiGuiMetalRendererCreate
+renderer = C:brixGuiMetalRendererCreate
     - width
     - height
     - scale
@@ -103,7 +103,7 @@ renderer = C:yumiGuiMetalRendererCreate
 
 if !is-closed
     if renderer
-        C:yumiGuiMetalRendererRelease(renderer)
+        C:brixGuiMetalRendererRelease(renderer)
         renderer = Pointer()
     is-closed = true
 
@@ -112,7 +112,7 @@ if !is-closed
     - layout TextLayout
 
 =? null if !layout.native
-. packed = C:yumiGuiMetalRunRegister(renderer, layout.native)
+. packed = C:brixGuiMetalRunRegister(renderer, layout.native)
 =? null if packed < 0
 . bits = packed as U64
 = DisplayGlyphHandle
@@ -123,7 +123,7 @@ if !is-closed
 + do release-display-glyph
     - handle DisplayGlyphHandle
 
-C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
+C:brixGuiMetalRunRelease(renderer, handle.index, handle.generation)
 
 ────────────────────
 + do register-display-image
@@ -136,7 +136,7 @@ C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
 =? false if pixel-width <= 0 || pixel-height <= 0
 . resource = table.resolve-image(handle)
 =? false if !resource
-. found = C:yumiGuiMetalImageLookup
+. found = C:brixGuiMetalImageLookup
     - renderer
     - handle.index
     - handle.generation
@@ -144,8 +144,8 @@ C:yumiGuiMetalRunRelease(renderer, handle.index, handle.generation)
     - pixel-height
     - resource.template-alpha
 =? true if found
-. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
-= C:yumiGuiMetalImageUpsert
+. image = C:brixGuiMetalCanvasCreateCGImage(resource.native)
+= C:brixGuiMetalImageUpsert
     - renderer
     - handle.index
     - handle.generation
@@ -162,17 +162,17 @@ renderer as Bool
 ────────────────────
 + get completed-frame I64
 
-if renderer then C:yumiGuiMetalRendererCompletedFrame(renderer) else -1
+if renderer then C:brixGuiMetalRendererCompletedFrame(renderer) else -1
 
 ────────────────────
 + get attach-status
 
-C:yumiGuiMetalRendererAttachStatus(renderer)
+C:brixGuiMetalRendererAttachStatus(renderer)
 
 ────────────────────
 + get is-wide-gamut Bool
 
-C:yumiGuiMetalRendererIsWideGamut(renderer)
+C:brixGuiMetalRendererIsWideGamut(renderer)
 
 ────────────────────
 + get native
@@ -387,7 +387,7 @@ has-pending-fill-frames || has-pending-fill-redraw
 ────────────────────
 + get maximum-run-width-delta
 
-C:yumiGuiMetalRunMaximumWidthDelta(renderer)
+C:brixGuiMetalRunMaximumWidthDelta(renderer)
 
 ────────────────────
 + do resize
@@ -397,7 +397,7 @@ C:yumiGuiMetalRunMaximumWidthDelta(renderer)
     - clear-background RGBA
 
 =? false if !renderer
-. did-resize = C:yumiGuiMetalRendererResize
+. did-resize = C:brixGuiMetalRendererResize
     - renderer
     - render-width
     - render-height
@@ -418,21 +418,21 @@ background = clear-background
     - surface SharedSurface?
 
 =? false if !renderer
-= C:yumiGuiMetalRendererSetOutputSurface(renderer, surface?.native ?? Pointer())
+= C:brixGuiMetalRendererSetOutputSurface(renderer, surface?.native ?? Pointer())
 
 ────────────────────
 + do attach-window
     - window Pointer
 
 =? false if !renderer
-= C:yumiGuiMetalRendererAttachWindow(renderer, window) == 1
+= C:brixGuiMetalRendererAttachWindow(renderer, window) == 1
 
 ────────────────────
 + do attach-popup
     - popup Pointer
 
 =? false if !renderer
-= C:yumiGuiMetalRendererAttachPopup(renderer, popup) == 1
+= C:brixGuiMetalRendererAttachPopup(renderer, popup) == 1
 
 ────────────────────
 + do set-output-gamut Bool
@@ -440,7 +440,7 @@ background = clear-background
     - opaque Bool
 
 =? false if !renderer
-= C:yumiGuiMetalRendererSetOutputGamut(renderer, wide, opaque)
+= C:brixGuiMetalRendererSetOutputGamut(renderer, wide, opaque)
 
 ────────────────────
 + do pixel-color RGBA?
@@ -449,7 +449,7 @@ background = clear-background
 
 =? null if !renderer
 . values = List'F64(0, 0, 0, 0)
-=? null if !C:yumiGuiMetalRendererReadColor(renderer, x, y, values.buffer-pointer)
+=? null if !C:brixGuiMetalRendererReadColor(renderer, x, y, values.buffer-pointer)
 = RGBA(values[0], values[1], values[2], values[3])
 
 ────────────────────
@@ -457,35 +457,35 @@ background = clear-background
     - window Pointer
 
 if renderer
-    C:yumiGuiMetalRendererDetachWindow(renderer, window)
+    C:brixGuiMetalRendererDetachWindow(renderer, window)
 
 ────────────────────
 + do finish
 
-C:yumiGuiMetalRendererFinish(renderer)
+C:brixGuiMetalRendererFinish(renderer)
 
 ────────────────────
 + do mark-renderer-allocations
 
-C:yumiGuiMetalRendererStatMark(renderer)
+C:brixGuiMetalRendererStatMark(renderer)
 
 ────────────────────
 + do diff
     - canvas RasterCanvas
     - tolerance I64 = 0
 
-C:yumiGuiMetalRendererDiffWithCanvas(renderer, canvas.native, tolerance)
+C:brixGuiMetalRendererDiffWithCanvas(renderer, canvas.native, tolerance)
 = MetalPixelDiff
-    - C:yumiGuiMetalRendererDiffValue(renderer, 0)
-    - C:yumiGuiMetalRendererDiffValue(renderer, 1)
-    - C:yumiGuiMetalRendererDiffValue(renderer, 2)
-    - C:yumiGuiMetalRendererDiffValue(renderer, 3)
+    - C:brixGuiMetalRendererDiffValue(renderer, 0)
+    - C:brixGuiMetalRendererDiffValue(renderer, 1)
+    - C:brixGuiMetalRendererDiffValue(renderer, 2)
+    - C:brixGuiMetalRendererDiffValue(renderer, 3)
 
 ────────────────────
 + do write
     - path String
 
-. did-write = C:yumiGuiMetalRendererWritePNG(renderer, path)
+. did-write = C:brixGuiMetalRendererWritePNG(renderer, path)
 ?! IOError("Unable to write Metal output image $path")
     if !did-write
 
@@ -493,25 +493,25 @@ C:yumiGuiMetalRendererDiffWithCanvas(renderer, canvas.native, tolerance)
 + do read-into Bool
     - canvas RasterCanvas
 
-= C:yumiGuiMetalRendererReadIntoCanvas(renderer, canvas.native)
+= C:brixGuiMetalRendererReadIntoCanvas(renderer, canvas.native)
 
 ────────────────────
 + do set-fill-time
     - seconds F64
 
-C:yumiGuiMetalRendererSetFillTime(renderer, seconds)
+C:brixGuiMetalRendererSetFillTime(renderer, seconds)
 
 ────────────────────
 + do begin-packet
 
-C:yumiGuiMetalPacketBegin(renderer)
+C:brixGuiMetalPacketBegin(renderer)
 
 ────────────────────
 + do commit-packet
     - mode I32
     - damage Rect
 
-= C:yumiGuiMetalPacketCommit
+= C:brixGuiMetalPacketCommit
     - renderer
     - mode
     - damage.x
@@ -523,25 +523,25 @@ C:yumiGuiMetalPacketBegin(renderer)
 + do set-damage-areas
     - values [F64]
 
-C:yumiGuiMetalPacketSetDamageAreas(renderer, values.buffer-pointer, values.length / 4)
+C:brixGuiMetalPacketSetDamageAreas(renderer, values.buffer-pointer, values.length / 4)
 
 ────────────────────
 + do commit-tiles I64
 
-= C:yumiGuiMetalPacketCommitTiles(renderer)
+= C:brixGuiMetalPacketCommitTiles(renderer)
 
 ────────────────────
 + do push-clip
     - clip Rect
 
-C:yumiGuiMetalPacketPushClip(renderer, clip.x, clip.y, clip.width, clip.height)
+C:brixGuiMetalPacketPushClip(renderer, clip.x, clip.y, clip.width, clip.height)
 
 ────────────────────
 + do push-rounded-clip
     - clip RoundedRect
 
 if clip.is-rounded
-    C:yumiGuiMetalPacketPushRoundedClip
+    C:brixGuiMetalPacketPushRoundedClip
         - renderer
         - clip.bounds.x
         - clip.bounds.y
@@ -560,29 +560,29 @@ else
     - state U32
     - even-odd Bool
 
-C:yumiGuiMetalPacketPushPathClip(renderer, path-set, state, even-odd)
+C:brixGuiMetalPacketPushPathClip(renderer, path-set, state, even-odd)
 
 ────────────────────
 + do pop-clip
 
-C:yumiGuiMetalPacketPopClip(renderer)
+C:brixGuiMetalPacketPopClip(renderer)
 
 ────────────────────
 + do push-translate
     - offset Point
 
-C:yumiGuiMetalPacketPushTranslate(renderer, offset.x, offset.y)
+C:brixGuiMetalPacketPushTranslate(renderer, offset.x, offset.y)
 
 ────────────────────
 + do pop-translate
 
-C:yumiGuiMetalPacketPopTranslate(renderer)
+C:brixGuiMetalPacketPopTranslate(renderer)
 
 ────────────────────
 + do push-transform
     - matrix Matrix
 
-C:yumiGuiMetalPacketPushTransform
+C:brixGuiMetalPacketPushTransform
     - renderer
     - matrix.a
     - matrix.c
@@ -594,14 +594,14 @@ C:yumiGuiMetalPacketPushTransform
 ────────────────────
 + do pop-transform
 
-C:yumiGuiMetalPacketPopTranslate(renderer)
+C:brixGuiMetalPacketPopTranslate(renderer)
 
 ────────────────────
 + do push-transform-layer
     - matrix Matrix
     - opacity Ratio
 
-C:yumiGuiMetalPacketPushTransformLayer
+C:brixGuiMetalPacketPushTransformLayer
     - renderer
     - matrix.a
     - matrix.c
@@ -615,7 +615,7 @@ C:yumiGuiMetalPacketPushTransformLayer
 + do push-layer
     - opacity Ratio
 
-C:yumiGuiMetalPacketPushLayer(renderer, opacity)
+C:brixGuiMetalPacketPushLayer(renderer, opacity)
 
 ────────────────────
 + do push-filter-layer
@@ -625,7 +625,7 @@ C:yumiGuiMetalPacketPushLayer(renderer, opacity)
 
 . natives = filter.image-natives
 . scales = filter.image-scales
-C:yumiGuiMetalPacketPushFilterLayer
+C:brixGuiMetalPacketPushFilterLayer
     - renderer
     - rect.x
     - rect.y
@@ -643,7 +643,7 @@ C:yumiGuiMetalPacketPushFilterLayer
 ────────────────────
 + do pop-layer
 
-C:yumiGuiMetalPacketPopLayer(renderer)
+C:brixGuiMetalPacketPopLayer(renderer)
 
 ────────────────────
 + do append-items
@@ -669,7 +669,7 @@ C:yumiGuiMetalPacketPopLayer(renderer)
     - image-count Size = 0
     - path-set I64 = -1
 
-= C:yumiGuiMetalPacketAppendItems
+= C:brixGuiMetalPacketAppendItems
     - renderer
     - scalar-items
     - count
@@ -714,7 +714,7 @@ C:yumiGuiMetalPacketPopLayer(renderer)
     - states CPointer'Void
     - state-count Size
 
-= C:yumiGuiMetalChunkPaths
+= C:brixGuiMetalChunkPaths
     - renderer
     - retained-key
     - generation
@@ -741,7 +741,7 @@ C:yumiGuiMetalPacketPopLayer(renderer)
     - bounds Rect
     - opacity Ratio = 1%%
 
-C:yumiGuiMetalPacketAppendTile
+C:brixGuiMetalPacketAppendTile
     - renderer
     - handle
     - bounds.x
@@ -755,7 +755,7 @@ C:yumiGuiMetalPacketAppendTile
     - retained-key U64
     - generation U32
 
-C:yumiGuiMetalTileLookup(renderer, retained-key, generation)
+C:brixGuiMetalTileLookup(renderer, retained-key, generation)
 
 ────────────────────
 + do tile-upsert U64
@@ -765,7 +765,7 @@ C:yumiGuiMetalTileLookup(renderer, retained-key, generation)
     - points-width F64
     - points-height F64
 
-= C:yumiGuiMetalTileUpsertCanvas
+= C:brixGuiMetalTileUpsertCanvas
     - renderer
     - retained-key
     - generation
@@ -778,7 +778,7 @@ C:yumiGuiMetalTileLookup(renderer, retained-key, generation)
     - retained-key U64
     - generation U32
 
-C:yumiGuiMetalTileLookupRendered(renderer, retained-key, generation)
+C:brixGuiMetalTileLookupRendered(renderer, retained-key, generation)
 
 ────────────────────
 + do tile-reserve U64
@@ -791,7 +791,7 @@ C:yumiGuiMetalTileLookupRendered(renderer, retained-key, generation)
     - slot-x I32
     - slot-y I32
 
-= C:yumiGuiMetalTileReserve
+= C:brixGuiMetalTileReserve
     - renderer
     - retained-key
     - generation
@@ -806,12 +806,12 @@ C:yumiGuiMetalTileLookupRendered(renderer, retained-key, generation)
 + do release-chunk
     - retained-key U64
 
-C:yumiGuiMetalChunkRelease(renderer, retained-key)
+C:brixGuiMetalChunkRelease(renderer, retained-key)
 
 ────────────────────
 + do release-all-chunks
 
-C:yumiGuiMetalChunkReleaseAll(renderer)
+C:brixGuiMetalChunkReleaseAll(renderer)
 
 ────────────────────
 + do register-display-vector
@@ -822,7 +822,7 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
 =
     |? !geometry
         false
-    |? C:yumiGuiMetalPathLookup(renderer, handle.index, handle.generation)
+    |? C:brixGuiMetalPathLookup(renderer, handle.index, handle.generation)
         true
     ??
         register-display-path(handle, geometry)
@@ -835,7 +835,7 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
 . resource = table.resolve-image(handle)
 =? false if !resource
 . template-alpha = resource.template-alpha
-. found = C:yumiGuiMetalImageLookup
+. found = C:brixGuiMetalImageLookup
     - renderer
     - handle.index
     - handle.generation
@@ -843,8 +843,8 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
     - 0
     - template-alpha
 =? true if found
-. image = C:yumiGuiMetalCanvasCreateCGImage(resource.native)
-= C:yumiGuiMetalImageUpsertSource
+. image = C:brixGuiMetalCanvasCreateCGImage(resource.native)
+= C:brixGuiMetalImageUpsertSource
     - renderer
     - handle.index
     - handle.generation
@@ -859,9 +859,9 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
     - serial U64
     - template-alpha Bool
 
-=? true if C:yumiGuiMetalCanvasImageLookup(renderer, serial, 0, 0, template-alpha)
-. snapshot = C:yumiGuiMetalCanvasCreateCGImage(image.native)
-= C:yumiGuiMetalCanvasImageUpsertSource
+=? true if C:brixGuiMetalCanvasImageLookup(renderer, serial, 0, 0, template-alpha)
+. snapshot = C:brixGuiMetalCanvasCreateCGImage(image.native)
+= C:brixGuiMetalCanvasImageUpsertSource
     - renderer
     - serial
     - image.pixel-width
@@ -879,15 +879,15 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
 . pixel-width = round(destination.width * scale) as I32
 . pixel-height = round(destination.height * scale) as I32
 =? false if pixel-width <= 0 || pixel-height <= 0
-. found = C:yumiGuiMetalCanvasImageLookup
+. found = C:brixGuiMetalCanvasImageLookup
     - renderer
     - serial
     - pixel-width
     - pixel-height
     - template-alpha
 =? true if found
-. snapshot = C:yumiGuiMetalCanvasCreateCGImage(image.native)
-= C:yumiGuiMetalCanvasImageUpsert
+. snapshot = C:brixGuiMetalCanvasCreateCGImage(image.native)
+= C:brixGuiMetalCanvasImageUpsert
     - renderer
     - serial
     - pixel-width
@@ -899,34 +899,34 @@ C:yumiGuiMetalChunkReleaseAll(renderer)
 + do register-canvas-texture TextureResidency
     - image RasterCanvas
 
-= C:yumiGuiMetalCanvasTextureUpsert(renderer, image.native) as TextureResidency
+= C:brixGuiMetalCanvasTextureUpsert(renderer, image.native) as TextureResidency
 
 ────────────────────
 + do take-tile-damage Rect?
 
-=? null if !C:yumiGuiMetalRendererTakeTileDamage(renderer)
+=? null if !C:brixGuiMetalRendererTakeTileDamage(renderer)
 = Rect
-    - C:yumiGuiMetalRendererTileDamageValue(renderer, 0)
-    - C:yumiGuiMetalRendererTileDamageValue(renderer, 1)
-    - C:yumiGuiMetalRendererTileDamageValue(renderer, 2)
-    - C:yumiGuiMetalRendererTileDamageValue(renderer, 3)
+    - C:brixGuiMetalRendererTileDamageValue(renderer, 0)
+    - C:brixGuiMetalRendererTileDamageValue(renderer, 1)
+    - C:brixGuiMetalRendererTileDamageValue(renderer, 2)
+    - C:brixGuiMetalRendererTileDamageValue(renderer, 3)
 
 ────────────────────
 + do take-fill-redraw
 
-= C:yumiGuiMetalRendererTakeFillRedraw(renderer)
+= C:brixGuiMetalRendererTakeFillRedraw(renderer)
 
 ────────────────────
 + do take-present-copied-pixels U64
 
-= C:yumiGuiMetalRendererTakePresentCopiedPixels(renderer)
+= C:brixGuiMetalRendererTakePresentCopiedPixels(renderer)
 
 ────────────────────
 + frame-stat
     - frame I64
     - field I32
 
-C:yumiGuiMetalRendererFrameStatValue(renderer, frame, field)
+C:brixGuiMetalRendererFrameStatValue(renderer, frame, field)
 
 ────────────────────
 _ do register-display-path
@@ -935,7 +935,7 @@ _ do register-display-path
 
 . capture = path-capture ?? MetalPathCapture(renderer)
 path-capture = capture
-C:yumiGuiMetalPathBegin(renderer, handle.index, handle.generation)
+C:brixGuiMetalPathBegin(renderer, handle.index, handle.generation)
 . captured [Path]
 for span in geometry.spans
     . path-index U32 = captured.length as U32
@@ -944,7 +944,7 @@ for span in geometry.spans
             path-index = index as U32
     if path-index == captured.length as U32
         span.path.outline(capture)
-        path-index = C:yumiGuiMetalPathEndPath(renderer)
+        path-index = C:brixGuiMetalPathEndPath(renderer)
         captured += span.path
     . fill-role U8 = match span.fill.role
         |= .inherit
@@ -975,7 +975,7 @@ for span in geometry.spans
             2
         ??
             0
-    C:yumiGuiMetalPathAddSpan
+    C:brixGuiMetalPathAddSpan
         - renderer
         - path-index
         - fill-role
@@ -987,23 +987,23 @@ for span in geometry.spans
         - cap
         - join
         - alignment
-= C:yumiGuiMetalPathEnd(renderer)
+= C:brixGuiMetalPathEnd(renderer)
 
 ────────────────────
 _ stat I64
     - kind MetalStat
 
-C:yumiGuiMetalRendererStatValue(renderer, kind)
+C:brixGuiMetalRendererStatValue(renderer, kind)
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-metal-renderer-available Bool
 
-C:yumiGuiMetalRendererIsAvailable()
+C:brixGuiMetalRendererIsAvailable()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do warm-metal-renderer
 
-C:yumiGuiMetalWarmUp()
+C:brixGuiMetalWarmUp()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ MetalStat is I32
@@ -1068,4 +1068,4 @@ renderer = target
     - coords Array'Coord
     - count Size
 
-C:yumiGuiMetalPathAppend(renderer, verbs.data, count, coords.data)
+C:brixGuiMetalPathAppend(renderer, verbs.data, count, coords.data)

@@ -1,6 +1,6 @@
 # Brix
 
-Brix is Yumi source written as S-expressions. This is the reference for writing it. `yumi lint`
+Brix is written as S-expressions. This is the reference for writing it. `brix lint`
 checks a file against it and names the fix for each mistake.
 
 ## Text
@@ -18,7 +18,7 @@ checks a file against it and names the fix for each mistake.
   `(str "Hello, " name "!")`.
 - A comment runs from `;` to the end of its line and has a row to itself. `(blank)` is an empty row.
 - Write one row to a line, two spaces deeper than the form that holds it, and close a form that
-  spans lines on a line of its own. `yumi lint --fix` rewrites a file in this layout.
+  spans lines on a line of its own. `brix lint --fix` rewrites a file in this layout.
 
 ## Signatures
 
@@ -541,7 +541,7 @@ The checker knows the shape of every form. It does not know these things.
 
 ## Checking
 
-Run `yumi lint file.bx`. Each mistake is reported as `file:line:column rule [status] message`:
+Run `brix lint file.bx`. Each mistake is reported as `file:line:column rule [status] message`:
 `syntax/parse-error` for a form the catalog rejects, and the project's lint rules, such as
 `layout/line-length` and `layout/depth` for forms that make a row too wide or nest too deep.
 

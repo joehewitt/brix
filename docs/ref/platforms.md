@@ -1,6 +1,6 @@
 # Platforms
 
-Yumi builds programs for macOS, iOS and Linux. Most of the standard library is written in Yumi and
+Brix builds programs for macOS, iOS and Linux. Most of the standard library is written in Brix and
 builds for all three. Some modules call native libraries that come with the toolchain, and those
 libraries are built only for some platforms. A program that imports such a module builds only for
 the platforms its native library is built for.

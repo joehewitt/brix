@@ -30,7 +30,7 @@ fi
 sed -i "s/^#\? *AutomaticLoginEnable *=.*/AutomaticLoginEnable = true/; s/^#\? *AutomaticLogin *=.*/AutomaticLogin = $1/" /etc/gdm3/daemon.conf
 mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
 printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
-printf '[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/desktop/session]\nidle-delay=uint32 0\n' > /etc/dconf/db/local.d/00-yumi
+printf '[org/gnome/desktop/screensaver]\nlock-enabled=false\n\n[org/gnome/desktop/session]\nidle-delay=uint32 0\n' > /etc/dconf/db/local.d/00-brix
 dconf update
 systemctl set-default graphical.target
 apt-get clean
@@ -79,9 +79,9 @@ def parse_arguments(arguments):
         prog='vm.py',
         description='Create, start and stop the Lima VMs that run Linux builds. Each VM mounts the '
                     'Mac home directory read-only and this worktree\'s .tmp writable, at the same paths. '
-                    'A clean VM, named yumi-DISTRO-clean, mounts nothing of the Mac; files reach it by copy.')
+                    'A clean VM, named brix-DISTRO-clean, mounts nothing of the Mac; files reach it by copy.')
     actions = parser.add_subparsers(dest='action', required=True)
-    actions.add_parser('list', help='list the yumi VMs')
+    actions.add_parser('list', help='list the brix VMs')
     start_parser = actions.add_parser('start', help='start a VM, creating and provisioning it if missing')
     add_machine_arguments(start_parser)
     start_parser.add_argument('--fresh', action='store_true', help='with --clean, delete the VM first and create it again')
@@ -90,7 +90,7 @@ def parse_arguments(arguments):
     start_parser.add_argument('--disk', type=int, default=100, help='GiB of disk for a new VM (default: 100)')
     stop_parser = actions.add_parser('stop', help='stop a VM')
     add_machine_arguments(stop_parser)
-    stop_parser.add_argument('--all', action='store_true', help='stop every running yumi VM')
+    stop_parser.add_argument('--all', action='store_true', help='stop every running brix VM')
     provision_parser = actions.add_parser('provision', help='run a VM\'s provisioning again')
     add_machine_arguments(provision_parser)
     shell_parser = actions.add_parser('shell', help='run a command in a VM, or open a shell')
@@ -113,7 +113,7 @@ def add_machine_arguments(parser):
     parser.add_argument('--distro', choices=sorted(DISTROS), default='debian', help='the distribution (default: debian)')
     parser.add_argument('--desktop', action='store_true', help='the GNOME desktop VM, not the server VM')
     parser.add_argument('--clean', action='store_true', help='the VM that mounts nothing of the Mac')
-    parser.add_argument('--name', help='a VM name other than yumi-DISTRO or yumi-DISTRO-desktop')
+    parser.add_argument('--name', help='a VM name other than brix-DISTRO or brix-DISTRO-desktop')
 
 
 def machine_name(options):
@@ -125,11 +125,11 @@ def machine_name(options):
         return options.name
     if options.clean:
         return clean_name(options.distro)
-    return 'yumi-%s%s' % (options.distro, '-desktop' if options.desktop else '')
+    return 'brix-%s%s' % (options.distro, '-desktop' if options.desktop else '')
 
 
 def clean_name(distro):
-    return 'yumi-%s-clean' % distro
+    return 'brix-%s-clean' % distro
 
 
 def machines():
@@ -153,7 +153,7 @@ def existing(name):
 
 def list_machines():
     for name, machine in sorted(machines().items()):
-        if not name.startswith('yumi-'):
+        if not name.startswith('brix-'):
             continue
         writable = [shortened(mount['location']) for mount in machine['config'].get('mounts', []) if mount.get('writable')]
         say('%-22s %-8s %2d CPUs  %3d GiB memory  %4d GiB disk  writable: %s' % (
@@ -269,7 +269,7 @@ def stop(options):
     found = machines()
     if options.all:
         names = [name for name, machine in sorted(found.items())
-                 if name.startswith('yumi-') and machine['status'] == 'Running']
+                 if name.startswith('brix-') and machine['status'] == 'Running']
     else:
         names = [machine_name(options)]
         if names[0] not in found:

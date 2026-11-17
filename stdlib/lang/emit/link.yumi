@@ -38,9 +38,9 @@
 . config = runtime-config()
 . platform = target-config(config, target)
 . variant = runtime-variant(config)
-?! Error("YUMI_GC_MODE, YUMI_SANITIZER and YUMI_BENCH_RUNTIME choose a runtime only for ${host-target().name}")
+?! Error("BRIX_GC_MODE, BRIX_SANITIZER and BRIX_BENCH_RUNTIME choose a runtime only for ${host-target().name}")
     if target.name != host-target().name && variant.is-chosen
-?! Error("YUMI_SANITIZER is supported only for Apple targets")
+?! Error("BRIX_SANITIZER is supported only for Apple targets")
     if variant.sanitizer && target.object-format != .macho
 . build-path = variant.build-path(target-build-path(target, platform))
 if target.name != host-target().name
@@ -129,8 +129,8 @@ for component in components
 ━━━━━━━━━━━━━━━━━━━━
 _ RuntimeVariant is Tuple
 
-` The host runtime a link uses: the GC mode `YUMI_GC_MODE` names, `normal` when it names none, the
-` sanitizer `YUMI_SANITIZER` names, if any, and whether `YUMI_BENCH_RUNTIME` asks for the runtime
+` The host runtime a link uses: the GC mode `BRIX_GC_MODE` names, `normal` when it names none, the
+` sanitizer `BRIX_SANITIZER` names, if any, and whether `BRIX_BENCH_RUNTIME` asks for the runtime
 ` built with benchmark metrics.
 
 + gc-mode-name String
@@ -186,11 +186,11 @@ _ do runtime-variant RuntimeVariant ?! Error
 . names [String]
 for key, _ in modes as [String = JSON]
     names += key
-?! Error("YUMI_GC_MODE must be one of ${", ".join(names)}")
+?! Error("BRIX_GC_MODE must be one of ${", ".join(names)}")
     if !mode
-. bench = environment-flag("BRIX_BENCH_RUNTIME") || environment-flag("YUMI_BENCH_RUNTIME")
+. bench = environment-flag("BRIX_BENCH_RUNTIME") || environment-flag("BRIX_BENCH_RUNTIME")
 . benchmark-only = (mode as [String = JSON])["benchmarkOnly"] if mode is [String = JSON]
-?! Error("YUMI_GC_MODE=$name is benchmark-only; set YUMI_BENCH_RUNTIME=1")
+?! Error("BRIX_GC_MODE=$name is benchmark-only; set BRIX_BENCH_RUNTIME=1")
     if benchmark-only && benchmark-only is Bool && benchmark-only as Bool && !bench
 = RuntimeVariant(name, mode, runtime-sanitizer(config), bench)
 
@@ -198,7 +198,7 @@ for key, _ in modes as [String = JSON]
 _ do runtime-sanitizer JSON? ?! Error
     - config JSON
 
-` The sanitizer `YUMI_SANITIZER` names by its name in the runtime build config or by its build
+` The sanitizer `BRIX_SANITIZER` names by its name in the runtime build config or by its build
 ` directory, or none when it is empty, `off` or `none`.
 . value = (toolchain-env("_SANITIZER") ?? "").trim().lowercased
 =? null if value == "" || value == "off" || value == "none"
@@ -207,7 +207,7 @@ _ do runtime-sanitizer JSON? ?! Error
 for name, sanitizer in sanitizers as [String = JSON]
     =? sanitizer if name == value || config-optional-string(sanitizer, "buildDirectory") == value
     names += name
-?! Error("YUMI_SANITIZER must be off, none or one of ${", ".join(names)}")
+?! Error("BRIX_SANITIZER must be off, none or one of ${", ".join(names)}")
 
 ━━━━━━━━━━━━━━━━━━━━
 _ environment-flag Bool ?! Error
@@ -236,7 +236,7 @@ _ do sanitizer-library Path? ?! Error
 . status = process.wait(null) ?? 1
 process.close()
 . library = Path(output.trim())
-?! Error("The toolchain's $compiler has no $name for YUMI_SANITIZER")
+?! Error("The toolchain's $compiler has no $name for BRIX_SANITIZER")
     if status != 0 || !library.is-file
 = library
 

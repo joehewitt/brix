@@ -7,13 +7,13 @@ Charts glide continuously between samples, with fractional scrolling and eased n
 Run from the repository root:
 
 ```sh
-bin/yumi examples/tui/pulse/pulse-app.bx -o .tmp/build/pulse
+bin/brix examples/tui/pulse/pulse-app.bx -o .tmp/build/pulse
 ```
 
 For the populated, animated showcase:
 
 ```sh
-bin/yumi examples/tui/pulse/pulse-app.bx -o .tmp/build/pulse -- --demo
+bin/brix examples/tui/pulse/pulse-app.bx -o .tmp/build/pulse -- --demo
 ```
 
 The full layout appears at 108 columns × 34 rows. A compact layout fits 64 × 22; 132 × 42 gives

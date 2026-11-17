@@ -987,10 +987,10 @@ Stack trace:
 :====
 # A task that native code schedules on the main queue runs the task-local initializers.
 
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 label = "main"
-C:yumiScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+C:brixScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
 done.wait()
 -- label
 
@@ -1007,7 +1007,7 @@ done.wait()
 
 -- label
 done.post()
-C:yumiTerminateActiveTask()
+C:brixTerminateActiveTask()
 
 :----
 
@@ -1360,10 +1360,10 @@ true
 
 :====
 
-/YuCore/YuCore.h
+/BxCore/BxCore.h
 /core/arena
 
-. reserved-before = C:yumiArenaRuntimeReservedBytes()
+. reserved-before = C:brixArenaRuntimeReservedBytes()
 . output SyncBufferedChannel'Int
 . scratch-pool SyncBufferedChannel'Arena
 . worker = Worker(4)
@@ -1392,7 +1392,7 @@ scratch-pool.close()
 for scratch in scratch-pool
     scratch.release()
 -- total == 8128
--- C:yumiArenaRuntimeReservedBytes() == reserved-before
+-- C:brixArenaRuntimeReservedBytes() == reserved-before
 
 :----
 
@@ -1995,12 +1995,12 @@ Task 1
 
 Stack trace:
   0  __source__:init.__source__.task-local.greeting no file:5:28
-  1  __source__:yumi.main no file
+  1  __source__:brix.main no file
 ;====
 :====
 # An object held only by the stack of a task that is still running survives a collection.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 + stop-worker = false
 
@@ -2012,14 +2012,14 @@ do new
     addresses <- (node as Pointer).address
     while !stop-worker
         node.value += 0
-    if C:yumiGCVerifyObject(node as Pointer)
+    if C:brixGCVerifyObject(node as Pointer)
         results <- "alive $node.value"
     else
         results <- "missing"
 
 . address = <- addresses
-C:yumiCollect()
--- C:yumiGCVerifyObject(address as Pointer)
+C:brixCollect()
+-- C:brixGCVerifyObject(address as Pointer)
 stop-worker = true
 -- <- results
 
@@ -2042,11 +2042,11 @@ alive 616
 :====
 # An object held only by the closure of a task that has not started survives a collection.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . results SyncChannel'String
 start-parked-task(results)
-C:yumiCollect()
+C:brixCollect()
 -- <- results
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2055,7 +2055,7 @@ C:yumiCollect()
 
 . node = GCNode(909)
 do new
-    if C:yumiGCVerifyObject(node as Pointer)
+    if C:brixGCVerifyObject(node as Pointer)
         results <- "alive $node.value"
     else
         results <- "missing"
@@ -2078,7 +2078,7 @@ alive 909
 :====
 # A tuple of objects posted to a Semaphore survives collections until it is awaited.
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . sem = Semaphore'(GCNode, GCNode, [GCNode])()
 . ready = Semaphore()
@@ -2087,13 +2087,13 @@ do new
     . payload = (GCNode(1), GCNode(2), [GCNode(3), GCNode(4)])
     ready.post()
     sem.post(payload)
-    C:yumiCollect()
+    C:brixCollect()
 
 ready.wait()
-C:yumiCollect()
+C:brixCollect()
 . received = sem.await()!
-C:yumiCollect()
--- C:yumiGCVerifyObject(received[0] as Pointer)
+C:brixCollect()
+-- C:brixGCVerifyObject(received[0] as Pointer)
 -- received[0].value, received[1].value, received[2][0].value, received[2][1].value
 
 ━━━━━━━━━━━━━━━━━━━━

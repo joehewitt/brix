@@ -1,9 +1,9 @@
 
 ./env
 ./file
-/YuCore/YuCore.h
-/YuCore/YuSystem.h
-/YuEvents/YuEvents.h
+/BxCore/BxCore.h
+/BxCore/BxSystem.h
+/BxEvents/BxEvents.h
 /data
 /fcntl.h
 /signal.h
@@ -148,7 +148,7 @@ else if stderr-mode == ProcessStderr.discard
 . passing = I32[passed.length]
 for index in 0 .. < passed.length
     passing[index] = passed[index]
-. child = C:yumiSpawn
+. child = C:brixSpawn
     - name
     - argv
     - envp
@@ -193,7 +193,7 @@ stdin!.write(buffer, size)
 . semaphore-pointer Pointer
 if sem
     semaphore-pointer = sem.native-pointer
-. cancelled = C:yumiSuspendActiveTaskUntilProcExit(pid, semaphore-pointer)
+. cancelled = C:brixSuspendActiveTaskUntilProcExit(pid, semaphore-pointer)
 if !cancelled
     if !is-reaped
         . result = I32[1]
@@ -208,11 +208,11 @@ end-if-canceled()
 
 ?! IOError("Process $pid was already waited for")
     if is-reaped
-if C:yumiSuspendActiveTaskUntilProcExit(pid, null)
+if C:brixSuspendActiveTaskUntilProcExit(pid, null)
     end-if-canceled()
     = null
 . usage = ProcessUsage[1]
-. error = C:yumiReapProcess(pid, usage)
+. error = C:brixReapProcess(pid, usage)
 ?! IOError("Unable to wait for process $pid: ${C:strerror(error)}")
     if error != 0
 . reaped = usage[0]
@@ -227,7 +227,7 @@ _ do end-if-canceled
 ` the event loop, which would otherwise resume a task that has ended once the process exits.
 . canceled = Task().is-cancel-in-force
 if canceled
-    C:yumiCancelProcExitEventListener(pid, null)
+    C:brixCancelProcExitEventListener(pid, null)
 check-task-cancelation(canceled)
 
 ────────────────────
@@ -323,8 +323,8 @@ stdout!.read(size, buffer)
 + do process-pipe ProcessPipe ?! IOError
 
 . ends = open-pipe("a process pipe")
-C:yumifcntl(ends[0], C:F_SETFD, C:FD_CLOEXEC)
-C:yumifcntl(ends[1], C:F_SETFD, C:FD_CLOEXEC)
+C:brixfcntl(ends[0], C:F_SETFD, C:FD_CLOEXEC)
+C:brixfcntl(ends[1], C:F_SETFD, C:FD_CLOEXEC)
 = ProcessPipe(File(ends[0], false), File(ends[1]))
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -338,7 +338,7 @@ C:yumifcntl(ends[1], C:F_SETFD, C:FD_CLOEXEC)
 
 . ends = I32[2]
 ?! IOError("Unable to create a socket for $name")
-    if !C:yumiSocketPair(ends)
+    if !C:brixSocketPair(ends)
 . passed [I32]
 passed += ends[1]
 passed ++= descriptors
@@ -367,7 +367,7 @@ C:close(ends[1])
     - pid Int
 
 . buffer = Byte[4096]
-. length = C:yumiProcessDirectory(pid, buffer, buffer.size)
+. length = C:brixProcessDirectory(pid, buffer, buffer.size)
 =? null if length < 0
 = buffer.slice-string(0 .. < (length as Size))
 
@@ -379,7 +379,7 @@ _ do listed-processes [Int]
 . capacity Size = 64
 while true
     . pids = I32[capacity]
-    . count = if by-group then C:yumiProcessGroupMembers(value, pids, capacity) else C:yumiChildProcesses(value, pids, capacity)
+    . count = if by-group then C:brixProcessGroupMembers(value, pids, capacity) else C:brixChildProcesses(value, pids, capacity)
     =? List'Int() if count <= 0
     if count < capacity
         . listed [Int]
@@ -405,7 +405,7 @@ _ do duplicate-descriptors ?! IOError
 . floor = 3 + (descriptors.length as I32)
 . copies = List'I32()
 for descriptor in descriptors
-    . copy = C:yumifcntl(descriptor, C:F_DUPFD_CLOEXEC, floor)
+    . copy = C:brixfcntl(descriptor, C:F_DUPFD_CLOEXEC, floor)
     if copy == -1
         close-descriptors(copies)
         ?! IOError("Unable to pass descriptor $descriptor to $name")
@@ -463,4 +463,4 @@ do new
 ────────────────────
 + do end-using
 
-C:yumiCancelProcExitEventListener(process.pid, lock.native-pointer)
+C:brixCancelProcExitEventListener(process.pid, lock.native-pointer)

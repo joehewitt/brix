@@ -28,10 +28,10 @@ def main(arguments):
     try:
         install(options)
     except InstallError as error:
-        sys.stderr.write('\nyumi install: %s\n' % error)
+        sys.stderr.write('\nbrix install: %s\n' % error)
         return 1
     except KeyboardInterrupt:
-        sys.stderr.write('\nyumi install: stopped\n')
+        sys.stderr.write('\nbrix install: stopped\n')
         return 130
     return 0
 
@@ -39,20 +39,20 @@ def main(arguments):
 def parse_arguments(arguments):
     parser = argparse.ArgumentParser(
         prog='install.py',
-        description='Install the Yumi compiler and standard library on arm64 macOS or aarch64 Linux.')
+        description='Install the Brix compiler and standard library on arm64 macOS or aarch64 Linux.')
     parser.add_argument('--version', dest='release_version', metavar='VERSION',
                         help='the release to install, or latest (default: %s)' % (VERSION or 'latest'))
     parser.add_argument('--from', dest='mirror', metavar='DIR',
                         help='install from a local copy of the releases bucket instead of downloading')
-    parser.add_argument('--home', metavar='DIR', help='where Yumi keeps its releases (default: ~/.yumi)')
+    parser.add_argument('--home', metavar='DIR', help='where Brix keeps its releases (default: ~/.brix)')
     parser.add_argument('--source', action='store_true',
                         help='also clone the repo at the release and build the compiler from source')
-    parser.add_argument('--checkout', metavar='DIR', help='where --source clones the repo (default: ~/yumi)')
+    parser.add_argument('--checkout', metavar='DIR', help='where --source clones the repo (default: ~/brix)')
     parser.add_argument('--repository', default=REPOSITORY, help='the repo --source clones (default: %(default)s)')
     parser.add_argument('-y', '--yes', action='store_true', help='answer every question with its default')
     path = parser.add_mutually_exclusive_group()
     path.add_argument('--modify-path', dest='modify_path', action='store_true', default=None,
-                      help='put the yumi command on PATH without asking')
+                      help='put the brix command on PATH without asking')
     path.add_argument('--no-modify-path', dest='modify_path', action='store_false',
                       help='leave the shell\'s startup files alone')
     return parser.parse_args(arguments)
@@ -60,16 +60,16 @@ def parse_arguments(arguments):
 
 def install(options):
     host = checked_host()
-    home = os.path.realpath(os.path.expanduser(options.home or '~/.yumi'))
-    os.environ['YUMI_HOME'] = home
+    home = os.path.realpath(os.path.expanduser(options.home or '~/.brix'))
+    os.environ['BRIX_HOME'] = home
     if options.mirror:
         mirror = os.path.realpath(os.path.expanduser(options.mirror))
         if not os.path.isdir(mirror):
             raise InstallError('%s is not a folder' % options.mirror)
-        os.environ['YUMI_RELEASES_MIRROR'] = mirror
+        os.environ['BRIX_RELEASES_MIRROR'] = mirror
     launcher = loaded_launcher()
     version, expected = chosen_release(launcher, options.release_version or VERSION or 'latest', host)
-    say('Installing Yumi %s for %s into %s' % (version, host['name'], shown(home)))
+    say('Installing Brix %s for %s into %s' % (version, host['name'], shown(home)))
     try:
         launcher.fetch_release(version, expected)
         release = launcher.checked_release({'version': version, 'release': expected})
@@ -83,7 +83,7 @@ def install(options):
     if options.source:
         install_source(launcher, options, host, version, release, command)
     offer_path(options, home)
-    say('\nYumi %s is installed. Run yumi --help to start.' % version)
+    say('\nBrix %s is installed. Run brix --help to start.' % version)
 
 
 def checked_host():
@@ -92,37 +92,37 @@ def checked_host():
         return checked_mac()
     if system.sysname == 'Linux':
         return checked_linux(system.machine)
-    raise InstallError('Yumi runs on arm64 macOS and aarch64 Linux, not %s' % system.sysname)
+    raise InstallError('Brix runs on arm64 macOS and aarch64 Linux, not %s' % system.sysname)
 
 
 def checked_mac():
     if command_text(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64']) != '1':
-        raise InstallError('Yumi runs on Apple silicon Macs, and this Mac has an Intel processor')
+        raise InstallError('Brix runs on Apple silicon Macs, and this Mac has an Intel processor')
     if os.uname().machine != 'arm64':
         raise InstallError('This Python runs under Rosetta; run the installer with an arm64 Python, as in: '
                            'arch -arm64 /usr/bin/python3 install.py')
     version = command_text(['/usr/bin/sw_vers', '-productVersion'])
     if version_tuple(version) < MINIMUM_MACOS:
-        raise InstallError('Yumi needs macOS %s or later, and this Mac runs %s' % (dotted(MINIMUM_MACOS), version))
+        raise InstallError('Brix needs macOS %s or later, and this Mac runs %s' % (dotted(MINIMUM_MACOS), version))
     if command_text(['/usr/bin/xcrun', '--find', 'ld']) is None:
-        raise InstallError('Yumi links programs with Apple\'s tools; install them with: xcode-select --install')
+        raise InstallError('Brix links programs with Apple\'s tools; install them with: xcode-select --install')
     return {'name': 'macOS %s' % version, 'triple': 'arm64-apple-macos', 'family': 'macos'}
 
 
 def checked_linux(machine):
     if machine != 'aarch64':
-        raise InstallError('Yumi runs on aarch64 Linux, and this machine is %s' % machine)
+        raise InstallError('Brix runs on aarch64 Linux, and this machine is %s' % machine)
     try:
         libc = os.confstr('CS_GNU_LIBC_VERSION') or ''
     except (ValueError, OSError):
         libc = ''
     if not libc.startswith('glibc '):
-        raise InstallError('Yumi needs glibc %s or later, and this Linux has another C library' % dotted(MINIMUM_GLIBC))
+        raise InstallError('Brix needs glibc %s or later, and this Linux has another C library' % dotted(MINIMUM_GLIBC))
     glibc = libc.split()[1]
     if version_tuple(glibc) < MINIMUM_GLIBC:
-        raise InstallError('Yumi needs glibc %s or later, and this Linux has %s' % (dotted(MINIMUM_GLIBC), glibc))
+        raise InstallError('Brix needs glibc %s or later, and this Linux has %s' % (dotted(MINIMUM_GLIBC), glibc))
     if 'atomics' not in cpu_features():
-        raise InstallError('Yumi needs an Armv8.2 processor or later, such as Graviton2, and this one lacks '
+        raise InstallError('Brix needs an Armv8.2 processor or later, such as Graviton2, and this one lacks '
                            'its atomic instructions')
     return {'name': 'Linux with glibc %s' % glibc, 'triple': 'aarch64-linux-gnu', 'family': 'linux'}
 
@@ -145,7 +145,7 @@ def loaded_launcher():
         path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'launcher.py')
         with open(path) as file:
             source = file.read()
-    module = types.ModuleType('yumi_launcher')
+    module = types.ModuleType('brix_launcher')
     module.__file__ = path
     exec(compile(source, path, 'exec'), module.__dict__)
     return module
@@ -190,7 +190,7 @@ def install_command(launcher, home):
         source = LAUNCHER
     directory = os.path.join(home, 'bin')
     os.makedirs(directory, exist_ok=True)
-    command = os.path.join(directory, 'yumi')
+    command = os.path.join(directory, 'brix')
     temporary = '%s.%d' % (command, os.getpid())
     with open(temporary, 'w') as file:
         file.write(source)
@@ -200,13 +200,13 @@ def install_command(launcher, home):
 
 
 def check_command(command):
-    with tempfile.TemporaryDirectory(prefix='yumi-install-') as directory:
+    with tempfile.TemporaryDirectory(prefix='brix-install-') as directory:
         source = os.path.join(directory, 'hello.yumi')
         with open(source, 'w') as file:
-            file.write('-- "Yumi compiled and ran this"\n')
+            file.write('-- "Brix compiled and ran this"\n')
         result = subprocess.run([command, source, '-o', os.path.join(directory, 'hello')], cwd=directory,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-        if result.returncode != 0 or 'Yumi compiled and ran this' not in result.stdout:
+        if result.returncode != 0 or 'Brix compiled and ran this' not in result.stdout:
             raise InstallError('The installed compiler could not build a program:\n%s' % result.stdout.strip())
 
 
@@ -216,7 +216,7 @@ def install_source(launcher, options, host, version, release, command):
         raise InstallError('Building from source needs git')
     if host['family'] == 'linux' and clang_major() < MINIMUM_CLANG:
         raise InstallError('Building from source on Linux needs %s' % LINUX_COMPILER_PACKAGES)
-    default = os.path.join(os.path.expanduser('~'), 'yumi')
+    default = os.path.join(os.path.expanduser('~'), 'brix')
     checkout = os.path.realpath(os.path.expanduser(
         options.checkout or ask_text('Clone the repo to', shown(default), options.yes)))
     if os.path.exists(checkout) and os.listdir(checkout):
@@ -240,16 +240,16 @@ def install_source(launcher, options, host, version, release, command):
     except launcher.LaunchError as error:
         raise InstallError(str(error))
     say('Building the compiler from source, with release %s as its seed' % version)
-    builder = os.path.join(checkout, 'bin', 'yumi')
+    builder = os.path.join(checkout, 'bin', 'brix')
     run([builder, '-c', '-- "built"'], 'Building the compiler failed', cwd=checkout)
-    built = os.path.join(checkout, '.tmp', 'build', 'tools', 'yumi.o')
-    expected = launcher.release_host(release)['hashes']['obj/yumi.o']
+    built = os.path.join(checkout, '.tmp', 'build', 'tools', 'brix.o')
+    expected = launcher.release_host(release)['hashes']['obj/brix.o']
     if launcher.file_digest(built) == expected:
         say('The compiler built from source is identical to release %s' % version)
     else:
         say('The compiler built from source differs from release %s, whose C headers were read with another '
             'libclang or SDK; it works, but is not the released compiler' % version)
-    say('In %s, yumi runs this build; elsewhere it runs release %s' % (shown(checkout), version))
+    say('In %s, brix runs this build; elsewhere it runs release %s' % (shown(checkout), version))
 
 
 def clang_major():
@@ -266,7 +266,7 @@ def offer_path(options, home):
         return
     startup, line = shell_startup(directory)
     if not startup:
-        say('Add %s to PATH to run yumi' % directory)
+        say('Add %s to PATH to run brix' % directory)
         return
     if os.path.isfile(startup):
         with open(startup) as file:
@@ -276,7 +276,7 @@ def offer_path(options, home):
     if wanted is None:
         wanted = ask_yes('Add %s to PATH in %s?' % (shown(directory), shown(startup)), True, options.yes)
     if not wanted:
-        say('Add %s to PATH to run yumi' % directory)
+        say('Add %s to PATH to run brix' % directory)
         return
     os.makedirs(os.path.dirname(startup), exist_ok=True)
     with open(startup, 'a') as file:
@@ -293,7 +293,7 @@ def shell_startup(directory):
         startup = '~/.bash_profile' if os.uname().sysname == 'Darwin' else '~/.bashrc'
         return os.path.expanduser(startup), 'export PATH="%s:$PATH"' % shown_directory
     if shell == 'fish':
-        return os.path.expanduser('~/.config/fish/conf.d/yumi.fish'), 'fish_add_path %s' % directory
+        return os.path.expanduser('~/.config/fish/conf.d/brix.fish'), 'fish_add_path %s' % directory
     return None, None
 
 

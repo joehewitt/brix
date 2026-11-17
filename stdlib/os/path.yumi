@@ -2,9 +2,9 @@
 ./cfile
 ./env
 ./file
-/YuCore/YuCore.h
-/YuCore/YuSystem.h
-/YuEvents/YuEvents.h
+/BxCore/BxCore.h
+/BxCore/BxSystem.h
+/BxEvents/BxEvents.h
 /dirent.h
 /stdio.h
 /string.h
@@ -22,19 +22,19 @@
 
 + mode => stat.mode
 + exists => error == 0
-    .. error = C:yumiStat(normalized, &result)
+    .. error = C:brixStat(normalized, &result)
     .. result FileStat
 + is-dir => do
     . result FileStat
-    . error = C:yumiStat(normalized, &result)
+    . error = C:brixStat(normalized, &result)
     = error == 0 && result.mode /and/ (C:S_IFMT as U32) == C:S_IFDIR
 + is-file => do
     . result FileStat
-    . error = C:yumiStat(normalized, &result)
+    . error = C:brixStat(normalized, &result)
     = error == 0 && result.mode /and/ (C:S_IFMT as U32) == C:S_IFREG
 + is-link => do
     . result FileStat
-    . error = C:yumiLinkStat(normalized, &result)
+    . error = C:brixLinkStat(normalized, &result)
     = error == 0 && result.mode /and/ (C:S_IFMT as U32) == C:S_IFLNK
 + created => DateTime(stat.btime.s + local.offset)
 + modified => DateTime(stat.mtime.s + local.offset)
@@ -236,8 +236,8 @@ for part in absolute.split("/")
 do finally C:closedir(d)
 
 . buf = Byte[4096]
-. info YuDirEntry
-while C:yumiReadDirEntry(d, buf, &info)
+. info BxDirEntry
+while C:brixReadDirEntry(d, buf, &info)
     <= PathEntry(buf.slice-string(0 .. < info.name-length), info.kind as PathKind, info.inode)
 
 ────────────────────
@@ -255,7 +255,7 @@ for entry in entries
 buf[0]
 
 .. buf = FileStat[1]
-.. error = C:yumiStat(path, buf)
+.. error = C:brixStat(path, buf)
 
 ────────────────────
 + get components [String]
@@ -273,7 +273,7 @@ _ get lstat
 buf[0]
 
 .. buf = FileStat[1]
-.. error = C:yumiLinkStat(path, buf)
+.. error = C:brixLinkStat(path, buf)
 
 ────────────────────
 + this / subpath Path
@@ -322,10 +322,10 @@ abs-pattern.match(is-recursive)
     - is-recursive = false
 
 . buf = Glob[1]
-. err = C:yumiGlob(path, buf)
+. err = C:brixGlob(path, buf)
     ?! Error("Invalid pattern")
         if it
-do finally C:yumiGlobFree(buf)
+do finally C:brixGlobFree(buf)
 
 . match = buf[0]
 for i in 0 .. < match.count
@@ -350,7 +350,7 @@ handle-file-error(status)
 + do move-exclusive
     - new-path Path
 
-. status = C:yumiRenameExclusive(path as String, new-path as String)
+. status = C:brixRenameExclusive(path as String, new-path as String)
 handle-file-error(status)
 
 ────────────────────
@@ -366,7 +366,7 @@ new-file <-* this-file as <Array>
 + do clone
     - new-path Path
 
-. status = C:yumiCloneFile(path, new-path as String)
+. status = C:brixCloneFile(path, new-path as String)
 handle-file-error(status)
 
 ────────────────────
@@ -573,7 +573,7 @@ listener.listen()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do temporary-directory ?! Error
-    - prefix String = "yumi"
+    - prefix String = "brix"
     - parent String? = null
 
 . root = parent ?? env("TMPDIR") ?? "/tmp"
@@ -591,18 +591,18 @@ buffer[template.length] = 0
 
 . buffer = Byte[4096]
 ?! Error("This program's path is longer than ${buffer.size} bytes")
-    if C:yumiExecutablePath(buffer, buffer.size) != 0
+    if C:brixExecutablePath(buffer, buffer.size) != 0
 = Path(buffer.slice-string(0 .. < C:strlen(buffer)), 0).resolved
 
 ━━━━━━━━━━━━━━━━━━━━
-_ YuDirEntry is Tuple
+_ BxDirEntry is Tuple
 
 + inode U64
 + name-length U32
 + kind U32
 
 ━━━━━━━━━━━━━━━━━━━━
-_ YuPathWatchNativeEvent is Tuple
+_ BxPathWatchNativeEvent is Tuple
 
 + path CPointer'Char8
 + flags U64
@@ -629,23 +629,23 @@ _ channel := AsyncOnDemandChannel'PathWatchEvent(this)
 ────────────────────
 + do begin-using
 
-watcher = C:yumiPathWatchCreate(root as String, is-recursive)
+watcher = C:brixPathWatchCreate(root as String, is-recursive)
 ?! Error("Unable to watch path $root")
     if !watcher
 
 . active-watcher = watcher
 do new
     while true
-        if C:yumiSuspendActiveTaskUntilPathWatchEvent(active-watcher, lock.native-pointer)
+        if C:brixSuspendActiveTaskUntilPathWatchEvent(active-watcher, lock.native-pointer)
             break
 
-        . native-event YuPathWatchNativeEvent
-        while C:yumiPathWatchNextEvent(active-watcher, &native-event)
+        . native-event BxPathWatchNativeEvent
+        while C:brixPathWatchNextEvent(active-watcher, &native-event)
             . event-path = Path(native-event.path)
             . event-flags = native-event.flags as PathWatchFlags
             channel <- PathWatchEvent(root, event-path, event-flags, is-recursive)
 
-    C:yumiPathWatchRelease(active-watcher)
+    C:brixPathWatchRelease(active-watcher)
     if watcher == active-watcher
         watcher = Pointer()
 
@@ -653,7 +653,7 @@ do new
 + do end-using
 
 if watcher
-    C:yumiCancelPathWatchEventListener(watcher, lock.native-pointer)
+    C:brixCancelPathWatchEventListener(watcher, lock.native-pointer)
 
 ────────────────────
 + do close
@@ -685,7 +685,7 @@ _ channel := AsyncOnDemandChannel'Path(this)
 
 do new
     while true
-        if C:yumiSuspendActiveTaskUntilFileChange(file, change-type, lock.native-pointer)
+        if C:brixSuspendActiveTaskUntilFileChange(file, change-type, lock.native-pointer)
             break
 
         channel <- path
@@ -693,5 +693,5 @@ do new
 ────────────────────
 + do end-using
 
-C:yumiCancelFileChangeEventListener(file, change-type, lock.native-pointer)
+C:brixCancelFileChangeEventListener(file, change-type, lock.native-pointer)
 file.close()

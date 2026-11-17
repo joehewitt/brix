@@ -33,7 +33,7 @@ visibility, the values a file holds, the order in which files start, and how a p
   - **No base.** A dotted name with no file of its first part beside it, such as `host.macos.bx`
     beside no `host.bx`, is no family's, and any module may import it.
 - **Names.** Stack traces, object text and some messages name a module.
-  - The **entry file**, the one given to `yumi`, is always `__source__`, whatever the file is
+  - The **entry file**, the one given to `brix`, is always `__source__`, whatever the file is
     called.
   - A **library module** is named by its path without the leading `/`, as in `os/path`.
   - A **program's other files** are named by their path from the entry file's folder, as in
@@ -90,7 +90,7 @@ A rooted path, one that starts with `/`, is looked up in each search path in tur
 folder that holds it wins.
 
 - **The default** is the toolchain's standard library and nothing else.
-- **`YUMIPATH`**, when it is set, replaces the default with its colon-separated folders. List the
+- **`BRIXPATH`**, when it is set, replaces the default with its colon-separated folders. List the
   standard library among them, because without it no program builds:
   `Module "core" not found`.
 - **A program's own files** are reached by relative paths, `./` and `../`, from the file that
@@ -421,7 +421,7 @@ Task 1
 Stack trace:
   0  __source__:read-name no file:11:3
   1  __source__:init.__source__.globals no file:2:20
-  2  __source__:yumi.main no file
+  2  __source__:brix.main no file
 ```
 
 To break such a dependency, declare the value that is read first, make the value that reads it
@@ -511,14 +511,14 @@ main still ends its rows
 
 ## Building and running
 
-- **Checking.** `yumi app.bx` checks the program: every declaration of the entry file, whether
+- **Checking.** `brix app.bx` checks the program: every declaration of the entry file, whether
   anything reaches it or not, and what it uses of other files.
-- **Running.** `yumi app.bx -o build/app` builds the executable at `build/app` and runs it, and
+- **Running.** `brix app.bx -o build/app` builds the executable at `build/app` and runs it, and
   exits with the program's status. Arguments for the program follow the source path; those that
-  start with `-` follow `--`, as in `yumi app.bx -o build/app -- --loud`.
-- **Building only.** `yumi app.bx --compile -o build/app` builds without running.
+  start with `-` follow `--`, as in `brix app.bx -o build/app -- --loud`.
+- **Building only.** `brix app.bx --compile -o build/app` builds without running.
 - **Reached code.** A build checks only the code the program reaches, so a broken function that
   nothing calls is reported by a check and not by a build.
 - **A program in several files.** Put the files in one folder, or in folders below it, import them
-  with `./` and `../`, and give `yumi` the entry file. `yumi app.bx --list-sources` lists every
+  with `./` and `../`, and give `brix` the entry file. `brix app.bx --list-sources` lists every
   file the program loads.

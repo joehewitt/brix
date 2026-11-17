@@ -5,20 +5,20 @@ import tempfile
 
 from common import BUILD, ROOT, shown
 
-YUMI = os.path.join(ROOT, 'bin', 'yumi')
+BRIX = os.path.join(ROOT, 'bin', 'brix')
 COMPILE_SECONDS = 120
 
 
 def environment(**overrides):
     values = dict(os.environ)
-    values['YUMIPATH'] = os.path.join(ROOT, 'stdlib')
-    values['YUMI_BUILD_PATH'] = BUILD
+    values['BRIXPATH'] = os.path.join(ROOT, 'stdlib')
+    values['BRIX_BUILD_PATH'] = BUILD
     values.update(overrides)
     return values
 
 
 def scratch(case):
-    directory = tempfile.mkdtemp(prefix='yumi-test-')
+    directory = tempfile.mkdtemp(prefix='brix-test-')
     case.addCleanup(shutil.rmtree, directory, True)
     return directory
 
@@ -37,5 +37,5 @@ def run(command, seconds, env=None, cwd=ROOT):
     return result.stdout
 
 
-def compile_yumi(source, executable, env=None):
-    run([YUMI, source, '--compile', '-o', executable], COMPILE_SECONDS, env)
+def compile_brix(source, executable, env=None):
+    run([BRIX, source, '--compile', '-o', executable], COMPILE_SECONDS, env)

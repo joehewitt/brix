@@ -8,7 +8,7 @@ import unittest
 from common import ROOT
 from testing import support
 
-LINTER = [os.path.join(ROOT, 'bin', 'yumi'), 'lint']
+LINTER = [os.path.join(ROOT, 'bin', 'brix'), 'lint']
 RULE = 'style/no-redundant-literal-suffix'
 LINT_SECONDS = 300
 DIVIDER = '━' * 20
@@ -110,7 +110,7 @@ def position_of(text, literal):
 class LiteralSuffix(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        directory = tempfile.mkdtemp(prefix='yumi-test-')
+        directory = tempfile.mkdtemp(prefix='brix-test-')
         cls.addClassCleanup(shutil.rmtree, directory, True)
         cls.source = os.path.join(directory, 'fixture.yumi')
         with open(cls.source, 'w', encoding='utf-8') as file:

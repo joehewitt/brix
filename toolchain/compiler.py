@@ -11,11 +11,11 @@ from common import BUILD, ROOT, RUNTIME_CONFIG, Failure, build_environment, buil
 
 MANIFEST = os.path.join(ROOT, launcher.MANIFEST_NAME)
 TOOLS = os.path.join(BUILD, 'tools')
-COMPILER = os.path.join(TOOLS, 'yumi')
+COMPILER = os.path.join(TOOLS, 'brix')
 OBJECT = COMPILER + '.o'
 INPUTS = COMPILER + '.inputs.json'
 LOCK = COMPILER + '.lock'
-SOURCE = os.path.join(ROOT, 'compiler', 'yumi-cli.yumi')
+SOURCE = os.path.join(ROOT, 'compiler', 'brix-cli.yumi')
 RUNTIME_BUILDER = os.path.join(ROOT, 'toolchain', 'runtime.py')
 INPUTS_VERSION = 5
 BUILDER_FILES = (
@@ -33,13 +33,13 @@ TOOL_SOURCES = {
     'lint': os.path.join(ROOT, 'compiler', 'lint', 'lint-cli.yumi'),
     'brix': os.path.join(ROOT, 'compiler', 'brix', 'brix-cli.yumi'),
 }
-PROBED_COMPILER = os.path.join(TOOLS, 'yumi-probed')
+PROBED_COMPILER = os.path.join(TOOLS, 'brix-probed')
 SELECTOR_CHARACTERS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.*:,-_ ')
 NANOSECONDS = 1000000000
 
 
 def main(arguments):
-    os.environ.setdefault('YUMI_BUILD_PATH', BUILD)
+    os.environ.setdefault('BRIX_BUILD_PATH', BUILD)
     if arguments and arguments[0] == 'brix-sweep':
         import brix_sweep
         return brix_sweep.main(arguments[1:])
@@ -139,8 +139,8 @@ def ensure_compiler(seed):
 
 
 def ensure_tool(name):
-    executable = os.path.join(TOOLS, 'yumi-' + name)
-    ensure_executable(executable, TOOL_SOURCES[name], TOOL_SEED, [], 'Building yumi %s failed' % name)
+    executable = os.path.join(TOOLS, 'brix-' + name)
+    ensure_executable(executable, TOOL_SOURCES[name], TOOL_SEED, [], 'Building brix %s failed' % name)
     return executable
 
 
@@ -248,12 +248,12 @@ def refreshed_entry(entry):
 def build(seed):
     started = time.time_ns()
     compiler = seed_command()
-    temporary = tempfile.mkdtemp(prefix='.build-yumi-', dir=TOOLS)
+    temporary = tempfile.mkdtemp(prefix='.build-brix-', dir=TOOLS)
     try:
         environment = compiler_environment()
         build_runtime(environment)
-        bootstrap = os.path.join(temporary, 'yumi-bootstrap')
-        executable = os.path.join(temporary, 'yumi')
+        bootstrap = os.path.join(temporary, 'brix-bootstrap')
+        executable = os.path.join(temporary, 'brix')
         run([compiler, '--compile', '-o', bootstrap, SOURCE], environment)
         run([bootstrap, '--compile', '-o', executable, SOURCE], environment)
         listed = run([executable, '--list-sources', SOURCE], environment)
@@ -370,7 +370,7 @@ def linked_runtime(sources):
     libraries = config.get('externalLibraries', {})
     wanted = list(config.get('runtimeLink', {}).get('always', []))
     for name, project in projects.items():
-        built = os.path.join(BUILD, 'yumi', project['path']) + os.sep
+        built = os.path.join(BUILD, 'brix', project['path']) + os.sep
         if any(path.startswith(built) for path in sources):
             wanted.append(name)
     names = []

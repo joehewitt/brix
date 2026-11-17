@@ -1,6 +1,6 @@
 # Arrays And Bytes
 
-Yumi's public contiguous storage type is `Array'T`. The shorthand `T[]` means
+Brix's public contiguous storage type is `Array'T`. The shorthand `T[]` means
 `Array'T`; for locally defined type parameters, `Array'T` and `T[]` keep the
 leading apostrophe because it is part of the type parameter name.
 
@@ -40,6 +40,6 @@ is ever added, its name should say so directly and call sites should opt in expl
 
 The word `buffer` is still correct for implementation storage. JavaScript and
 Node `Buffer`, `ArrayBuffer`, GC allocation buffers, runtime entry points such
-as `yumiAllocBuffer` and `yumiResizeBuffer`, and local variables that describe
+as `brixAllocBuffer` and `brixResizeBuffer`, and local variables that describe
 scratch storage are internal implementation vocabulary. They are distinct from
-the public Yumi `Array'T` type.
+the public Brix `Array'T` type.

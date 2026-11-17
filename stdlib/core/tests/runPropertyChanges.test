@@ -1513,30 +1513,30 @@ heterogeneous-tracker-refresh-ok
 ;====
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 # Property subscriptions retain live actions weakly and release their side-payload lane with the
 # observed object.
 + property-change-observer-reclaimed = false
 
 . foo = Foo()
-if C:yumiGCHasObjectSidePayload(foo as Pointer, 0)
+if C:brixGCHasObjectSidePayload(foo as Pointer, 0)
     -- "has"
-C:yumiGCClearObjectSidePayload(foo as Pointer, 0)
-if !C:yumiGCHasObjectSidePayload(foo as Pointer, 0)
+C:brixGCClearObjectSidePayload(foo as Pointer, 0)
+if !C:brixGCHasObjectSidePayload(foo as Pointer, 0)
     -- "cleared"
 
-C:yumiCollect()
-do C:yumiGCDrainCleanups()
-. payloads-before = C:yumiGCObjectSidePayloadCount(0)
+C:brixCollect()
+do C:brixGCDrainCleanups()
+. payloads-before = C:brixGCObjectSidePayloadCount(0)
 
 -- exercise-weak-property-subscription()
 
 for cycle in 0 .. < 3
-    C:yumiCollect()
-    do C:yumiGCDrainCleanups()
+    C:brixCollect()
+    do C:brixGCDrainCleanups()
 
--- C:yumiGCObjectSidePayloadCount(0) - payloads-before
+-- C:brixGCObjectSidePayloadCount(0) - payloads-before
 
 ━━━━━━━━━━━━━━━━━━━━
 + Foo
@@ -1551,8 +1551,8 @@ for cycle in 0 .. < 3
 . live = WeakPropertyObserver(source)
 make-dead-property-observer(source)
 
-C:yumiCollect()
-do C:yumiGCDrainCleanups()
+C:brixCollect()
+do C:brixGCDrainCleanups()
 if !property-change-observer-reclaimed
     = "dead-observer-retained"
 
@@ -1568,7 +1568,7 @@ if live.mirror != 18
 
 . observer = WeakPropertyObserver(source)
 ?! Panic("Unable to register dead property observer cleanup")
-    if !C:yumiGCRegisterCleanup(observer as Pointer, context as Pointer, callback)
+    if !C:brixGCRegisterCleanup(observer as Pointer, context as Pointer, callback)
 .. callback = property-observer-did-reclaim as PropertyCleanupCallback
 .. context = PropertyCleanupContext()
 do observer.mirror
@@ -1776,38 +1776,38 @@ done.wait()
 ;====
 :====
 
-/YuGC/YuGC.h
-/YuGC/YuGCTest.h
+/BxGC/BxGC.h
+/BxGC/BxGCTest.h
 /core/tracker
 
-C:yumiGCSetHeapGoal(1073741824)
-C:yumiGCInit()
-C:yumiCollect()
-. baseline = C:yumiGCTestOwnerWeakRegistrationCount()
+C:brixGCSetHeapGoal(1073741824)
+C:brixGCInit()
+C:brixCollect()
+. baseline = C:brixGCTestOwnerWeakRegistrationCount()
 
 # A live owner retains the scalar entry after its action dies; the target clears and explicit
 # release removes the entry exactly.
 . live-owner = OwnerWeakProbe(1)
 . dead-action-handle = owner-weak-register-dead-action(live-owner)
-C:yumiCollect()
-if C:yumiGCOwnerWeakLoad(dead-action-handle)
+C:brixCollect()
+if C:brixGCOwnerWeakLoad(dead-action-handle)
     ?! Panic("dead action survived owner-weak collection")
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1
     ?! Panic("cleared owner-weak entry count mismatch")
 if live-owner.value != 1
     ?! Panic("live owner did not survive collection")
-if !C:yumiGCReleaseOwnerWeak(dead-action-handle)
+if !C:brixGCReleaseOwnerWeak(dead-action-handle)
     ?! Panic("unable to release cleared owner-weak entry")
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline
     ?! Panic("cleared owner-weak entry survived release")
 
 # A dead owner removes its entry even while the action remains live.
 . live-action = LiveAction(owner-weak-empty-trackers)
 . dead-owner-handle = owner-weak-register-dead-owner(live-action)
-C:yumiCollect()
-if C:yumiGCOwnerWeakLoad(dead-owner-handle)
+C:brixCollect()
+if C:brixGCOwnerWeakLoad(dead-owner-handle)
     ?! Panic("owner-reclaimed scalar handle remained loadable")
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline
     ?! Panic("owner-reclaimed scalar handle remained registered")
 do live-action.is-closed
 
@@ -1818,14 +1818,14 @@ do live-action.is-closed
 detach-tracker.owner = detach-owner as Pointer
 . detach-action = LiveAction(owner-weak-empty-trackers)
 detach-tracker.attach(detach-action)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1
     ?! Panic("property tracker attach did not register one scalar handle")
 detach-tracker.detach(detach-action)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline
     ?! Panic("explicit property tracker detach leaked its scalar handle")
 detach-tracker.detach(detach-action)
 . detach-active = owner-weak-active-subscriber-count(detach-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || detach-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || detach-active
     ?! Panic("repeated property tracker detach changed the registry")
 
 # Compiler-generated markup may share one property dependency tracker between actions. Each
@@ -1839,15 +1839,15 @@ shared-tracker.owner = shared-owner as Pointer
 shared-tracker.attach(shared-first-action)
 shared-tracker.attach(shared-second-action)
 . shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 2 || shared-active != 2
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 2 || shared-active != 2
     ?! Panic("shared property tracker did not register both actions")
 shared-tracker.detach(shared-first-action)
 shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || shared-active != 1
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || shared-active != 1
     ?! Panic("shared property tracker detached the wrong action")
 shared-tracker.detach(shared-second-action)
 shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || shared-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || shared-active
     ?! Panic("shared property tracker leaked its final action")
 
 # Detaching a live peer leaves an unrelated cleared action for dispatch to prune. Detaching the
@@ -1859,24 +1859,24 @@ if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || shared-active
 prune-live-tracker.owner = prune-owner as Pointer
 . prune-live-action = LiveAction(owner-weak-empty-trackers)
 prune-live-tracker.attach(prune-live-action)
-C:yumiCollect()
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 2
+C:brixCollect()
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 2
     ?! Panic("dead action was removed before the prune fixture")
 prune-live-tracker.detach(prune-live-action)
 . prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || prune-active != 1
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || prune-active != 1
     ?! Panic("property tracker detach reaped an unrelated cleared action")
 property-dispatch(prune-subscribers, "value")
 prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
     ?! Panic("first property dispatch did not prune the cleared scalar handle")
 pruned-tracker.detach(prune-live-action)
 prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
     ?! Panic("detach after dispatch prune changed the empty registry")
 property-dispatch(prune-subscribers, "value")
 prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || prune-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
     ?! Panic("repeated property dispatch changed the empty registry")
 
 # Every subscriber present when a property changes is queued before any of them runs, so a later
@@ -1898,11 +1898,11 @@ property-dispatch(reentrant-subscribers, "value")
 if reentrant-probe.later-runs != 1
     ?! Panic("a subscriber queued for a change did not run once")
 . reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline + 1 || reentrant-active != 1
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || reentrant-active != 1
     ?! Panic("reentrant dispatch left the wrong scalar subscriptions")
 reentrant-first-tracker.detach(reentrant-first-action)
 reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline || reentrant-active
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline || reentrant-active
     ?! Panic("reentrant dispatch fixture leaked a scalar subscription")
 
 # A subscriber added during dispatch waits for the next generation, after every subscriber that
@@ -1972,28 +1972,28 @@ nested-second-tracker.detach(nested-second-action)
 . mark-owner = OwnerWeakProbe(4)
 . mark-target OwnerWeakProbe? = OwnerWeakProbe(5)
 . mark-target-pointer = mark-target! as Pointer
-. mark-handle = C:yumiGCRegisterOwnerWeak(mark-owner as Pointer, mark-target-pointer)
-C:yumiCollect()
+. mark-handle = C:brixGCRegisterOwnerWeak(mark-owner as Pointer, mark-target-pointer)
+C:brixCollect()
 mark-target = null
-C:yumiGCStartConcurrentMark()
-. loaded-target = C:yumiGCOwnerWeakLoad(mark-handle)
-if loaded-target != mark-target-pointer || !C:yumiGCTestObjectMarked(mark-target-pointer)
+C:brixGCStartConcurrentMark()
+. loaded-target = C:brixGCOwnerWeakLoad(mark-handle)
+if loaded-target != mark-target-pointer || !C:brixGCTestObjectMarked(mark-target-pointer)
     ?! Panic("mark-phase owner-weak load did not shade its target")
 if mark-owner.value != 4
     ?! Panic("mark-phase owner did not survive collection")
-C:yumiGCFinishConcurrentMark()
-C:yumiGCFinishAutomaticCycle()
-if !C:yumiGCReleaseOwnerWeak(mark-handle)
+C:brixGCFinishConcurrentMark()
+C:brixGCFinishAutomaticCycle()
+if !C:brixGCReleaseOwnerWeak(mark-handle)
     ?! Panic("unable to release mark-phase owner-weak handle")
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline
     ?! Panic("mark-phase owner-weak handle survived release")
 
 # Owner and action dying in the same cycle removes the entry without a surviving scalar handle.
 . same-cycle-handle = owner-weak-register-dead-pair()
-C:yumiCollect()
-if C:yumiGCOwnerWeakLoad(same-cycle-handle)
+C:brixCollect()
+if C:brixGCOwnerWeakLoad(same-cycle-handle)
     ?! Panic("same-cycle owner/action handle remained loadable")
-if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
+if C:brixGCTestOwnerWeakRegistrationCount() != baseline
     ?! Panic("same-cycle owner/action handle remained registered")
 
 -- "owner-weak-property-ok"
@@ -2017,14 +2017,14 @@ if C:yumiGCTestOwnerWeakRegistrationCount() != baseline
     - owner OwnerWeakProbe
 
 . action = LiveAction(owner-weak-empty-trackers)
-= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do owner-weak-register-dead-owner U64
     - action LiveAction
 
 . owner = OwnerWeakProbe(6)
-= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do owner-weak-attach-dead-action PropertyTracker
@@ -2105,7 +2105,7 @@ order += "s"
 
 . owner = OwnerWeakProbe(7)
 . action = LiveAction(owner-weak-empty-trackers)
-= C:yumiGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
+= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do owner-weak-active-subscriber-count Size
@@ -2123,11 +2123,11 @@ owner-weak-property-ok
 ;====
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 /core/tracker
 
-C:yumiGCSetHeapGoal(1073741824)
-C:yumiGCInit()
+C:brixGCSetHeapGoal(1073741824)
+C:brixGCInit()
 . subscribers [PropertySubscriber]
 . action = LiveAction(owner-weak-attach-guard-empty-trackers)
 . tracker = PropertyTracker("value", subscribers)
@@ -3042,7 +3042,7 @@ Stack trace:
   0  __source__:Holder:run no file:22:8
   1  __source__:main no file:4:1
   2  __source__:init.__source__ no file
-  3  __source__:yumi.main no file
+  3  __source__:brix.main no file
 ;====
 :====
 # A store to a tracked property ends what is known of every property, so a property a test found

@@ -1,7 +1,7 @@
 
 ./clock
 ./duration
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 ━━━━━━━━━━━━━━━━━━━━
 + Timer'Interval
@@ -33,14 +33,14 @@ ticker = do new
     . elapsed = Interval(0)
     if start-time > 0
         . us = start-time as Microseconds
-        =? if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
+        =? if C:brixSuspendActiveTaskUntilTime(us, lock.native-pointer)
 
         elapsed = start-time
         channel <- elapsed
 
     . us = increment as Microseconds
     while true
-        if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
+        if C:brixSuspendActiveTaskUntilTime(us, lock.native-pointer)
             break
 
         elapsed += increment
@@ -54,7 +54,7 @@ ticker = do new
 
 ticker?.cancel-later()
 ticker = null
-C:yumiCancelTimerEventListener(lock.native-pointer)
+C:brixCancelTimerEventListener(lock.native-pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + TimerLoop
@@ -70,7 +70,7 @@ _ is-canceled = false
 . t1 = clock()
 . t = duration
 while !is-canceled
-    if C:yumiSuspendActiveTaskUntilTime(t, sem.native-pointer)
+    if C:brixSuspendActiveTaskUntilTime(t, sem.native-pointer)
         break
 
     fn()
@@ -82,7 +82,7 @@ while !is-canceled
 + do cancel
 
 is-canceled = true
-C:yumiCancelTimerEventListener(sem.native-pointer)
+C:brixCancelTimerEventListener(sem.native-pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + AnimationLoop
@@ -198,7 +198,7 @@ _ next-deadline
 ━━━━━━━━━━━━━━━━━━━━
 + monotonic-time-nanoseconds U64
 
-C:yumiMonotonicTimeNanoseconds()
+C:brixMonotonicTimeNanoseconds()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do wait-until-absolute-time
@@ -214,10 +214,10 @@ C:yumiMonotonicTimeNanoseconds()
 . delay = (delay-ns as Nanoseconds) as Microseconds
 =? if delay <= 0
 
-= C:yumiSuspendActiveTaskUntilTime(delay, sem.native-pointer)
+= C:brixSuspendActiveTaskUntilTime(delay, sem.native-pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do cancel-timer-event-listener
     - sem Semaphore
 
-C:yumiCancelTimerEventListener(sem.native-pointer)
+C:brixCancelTimerEventListener(sem.native-pointer)

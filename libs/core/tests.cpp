@@ -1,5 +1,5 @@
 
-#include <YuCore/tests.h>
+#include <BxCore/tests.h>
 
 extern "C" void ctest1() {
     printf("received!");
@@ -29,7 +29,7 @@ extern "C" void ctest2e(char* n) {
     printf("received '%s'", n);
 }
 
-extern "C" void ctest2f(YumiObject* n) {
+extern "C" void ctest2f(BrixObject* n) {
     printf("received %d", n->field);
 }
 
@@ -90,7 +90,7 @@ extern "C" int ctestClobberedCallback(TestTextCallback cb) {
 #endif
 }
 
-extern "C" void ctest13(YumiObject* n, char* c) {
+extern "C" void ctest13(BrixObject* n, char* c) {
     printf("received %d %s", !!n, c);
 }
 

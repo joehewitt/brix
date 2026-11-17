@@ -8,7 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 TMP = os.path.join(ROOT, '.tmp')
 BUILD = os.path.join(TMP, 'build')
 RUNTIME_CONFIG = os.path.join(ROOT, 'libs', 'build.json')
-YUMI_HOME = os.path.realpath(os.environ.get('YUMI_HOME') or os.path.expanduser('~/.yumi'))
+BRIX_HOME = os.path.realpath(os.environ.get('BRIX_HOME') or os.path.expanduser('~/.brix'))
 CHUNK_SIZE = 1 << 20
 LOG_TAIL = 20
 PASSED_ENVIRONMENT_NAMES = (
@@ -105,9 +105,9 @@ def passed_environment():
 
 def build_environment():
     environment = passed_environment()
-    environment['YUMIPATH'] = os.path.join(ROOT, 'stdlib')
-    environment['YUMI_BUILD_PATH'] = BUILD
-    environment['YUMI_DEBUG_LOG'] = ''
+    environment['BRIXPATH'] = os.path.join(ROOT, 'stdlib')
+    environment['BRIX_BUILD_PATH'] = BUILD
+    environment['BRIX_DEBUG_LOG'] = ''
     return environment
 
 

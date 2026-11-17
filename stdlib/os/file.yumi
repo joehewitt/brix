@@ -1,9 +1,9 @@
 
 ./path
-/YuCore/YuCore.h
-/YuCore/YuSystem.h
-/YuEvents/YuEvents.h
-/YuGC/YuGC.h
+/BxCore/BxCore.h
+/BxCore/BxSystem.h
+/BxEvents/BxEvents.h
+/BxGC/BxGC.h
 /data
 /errno.h
 /fcntl.h
@@ -41,8 +41,8 @@
 _ do reclaim-file-descriptor
     - fd I32
 
-C:yumiReleaseEventDescriptor(fd)
-C:yumiGCQueueFileDescriptorCleanup(fd)
+C:brixReleaseEventDescriptor(fd)
+C:brixGCQueueFileDescriptorCleanup(fd)
 
 ━━━━━━━━━━━━━━━━━━━━
 + File'Token
@@ -65,7 +65,7 @@ _ cleanup CleanupHandle?
 
 = This(fd, true)
 
-.. fd = C:yumiopen(path, mode, perms)
+.. fd = C:brixopen(path, mode, perms)
 
 ────────────────────
 + This ?! IOError
@@ -82,7 +82,7 @@ _ cleanup CleanupHandle?
     - perms = all-rw-perm
 
 for path in paths
-    . fd = C:yumiopen(path, mode, perms)
+    . fd = C:brixopen(path, mode, perms)
     if fd >= 0
         = This(fd, true)
 
@@ -106,7 +106,7 @@ fd
 ────────────────────
 + get all-flags FileFlags
 
-C:yumifcntl(fd, C:F_GETFL, 0) as FileFlags
+C:brixfcntl(fd, C:F_GETFL, 0) as FileFlags
 
 ────────────────────
 + begin-using
@@ -130,7 +130,7 @@ if maybe-cleanup
     do maybe-cleanup.cancel()
     cleanup = null
 
-C:yumiReleaseEventDescriptor(descriptor)
+C:brixReleaseEventDescriptor(descriptor)
 C:close(descriptor)
     ?! IOError("Unable to close file")
         if it
@@ -148,7 +148,7 @@ while 1
     if read-size >= 0
         = read-size
 
-    . err = C:yumiGetErrNo()
+    . err = C:brixGetErrNo()
     if err == C:EBADF
         ` occurs when file was closed while waiting for read
         =
@@ -166,7 +166,7 @@ while 1
 while 1
     . read-size = C:read(fd, buffer, size)
     =? read-size if read-size >= 0
-    . err = C:yumiGetErrNo()
+    . err = C:brixGetErrNo()
     =? 0 if err == C:EBADF
     =? null if err == C:EWOULDBLOCK
     ?! IOError("Unable to read file")
@@ -186,7 +186,7 @@ while 1
     if read-size >= 0
         = read-size
 
-    . err = C:yumiGetErrNo()
+    . err = C:brixGetErrNo()
     if err == C:EBADF
         ` occurs when file was closed while waiting for read
         =
@@ -246,9 +246,9 @@ while 1
 
         buffer = buffer + wrote-size
         size = size - wrote-size
-    else if C:yumiGetErrNo() == C:EWOULDBLOCK
+    else if C:brixGetErrNo() == C:EWOULDBLOCK
         wait-until-writable(fd)
-    else if C:yumiGetErrNo() != C:EINTR
+    else if C:brixGetErrNo() != C:EINTR
         ?! IOError("Unable to write file $fd")
 
 ────────────────────
@@ -269,9 +269,9 @@ while 1
         buffer = buffer + wrote-size
         size = size - wrote-size
         offset += wrote-size
-    else if C:yumiGetErrNo() == C:EWOULDBLOCK
+    else if C:brixGetErrNo() == C:EWOULDBLOCK
         wait-until-writable(fd)
-    else if C:yumiGetErrNo() != C:EINTR
+    else if C:brixGetErrNo() != C:EINTR
         ?! IOError("Unable to write file $fd")
 
 ` + flags[flag FileFlags]
@@ -290,10 +290,10 @@ all-flags /and/ flag
 . flags-now = all-flags
 if truth
     if !(flags-now /and/ flag)
-        C:yumifcntl(fd, C:F_SETFL, flags-now /or/ flag)
+        C:brixfcntl(fd, C:F_SETFL, flags-now /or/ flag)
 else
     if all-flags /and/ flag
-        C:yumifcntl(fd, C:F_SETFL, flags-now /and/ (not(flag) as FileFlags))
+        C:brixfcntl(fd, C:F_SETFL, flags-now /and/ (not(flag) as FileFlags))
 
 ────────────────────
 + tail
@@ -344,7 +344,7 @@ C:fsync(fd)
 | create-mode = C:O_CREAT
 | truncate-mode = C:O_TRUNC
 | exclusive-mode = C:O_EXCL
-| event-only-mode = C:YU_O_EVTONLY
+| event-only-mode = C:BX_O_EVTONLY
 | no-ctty-mode = C:O_NOCTTY
 
 ────────────────────
@@ -423,7 +423,7 @@ while 1
     `  else
     `      -- "CAN'T READ $read-size"
 
-    . err = C:yumiGetErrNo()
+    . err = C:brixGetErrNo()
     `  -- "GOT ERR $err"
     if err == C:EBADF
         ` occurs when file was closed while waiting for read
@@ -476,7 +476,7 @@ if error
 ━━━━━━━━━━━━━━━━━━━━
 + current-file-error
 
-Error(file-error-message(C:yumiGetErrNo()))
+Error(file-error-message(C:brixGetErrNo()))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ file-error-message
@@ -541,14 +541,14 @@ temporary.move(path)
     - fd I32
     - deadline Deadline? = null
 
-check-wait(C:yumiSuspendActiveTaskUntilReadable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
+check-wait(C:brixSuspendActiveTaskUntilReadable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do wait-until-writable ?! TimeoutError
     - fd I32
     - deadline Deadline? = null
 
-check-wait(C:yumiSuspendActiveTaskUntilWritable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
+check-wait(C:brixSuspendActiveTaskUntilWritable(fd, deadline?.nanoseconds ?? 0) as WaitResult)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do check-wait ?! TimeoutError

@@ -1,18 +1,18 @@
-# Writing Yumi
+# Writing Brix
 
-This index lists what to read to write Yumi and Brix. `yumi --help` prints where it is. Its links
-are relative to this file. The folder above it is the toolchain root, which holds `bin/yumi`, the
+This index lists what to read to write Brix. `brix --help` prints where it is. Its links
+are relative to this file. The folder above it is the toolchain root, which holds `bin/brix`, the
 standard library and these docs.
 
 ## Before Writing Code
 
-- [Correctness](style/agent-yumi-correctness.md): the rules that keep Yumi compiling, and what to
-  do when syntax surprises you. Read it before writing any Yumi.
-- [Style](style/agent-yumi-style.md): how Yumi is written, rule by rule.
-  - For a GUI app, read [GUI style](style/agent-yumi-style-gui.md).
-  - For markup, read [markup style](style/agent-yumi-style-markup.md).
-  - For a terminal app, read [TUI style](style/agent-yumi-style-tui.md).
-- [Brix](style/agent-brix.md): the S-expression form of Yumi, written in `.bx` files. It lists each
+- [Correctness](style/agent-brix-correctness.md): the rules that keep Brix compiling, and what to
+  do when syntax surprises you. Read it before writing any Brix.
+- [Style](style/agent-brix-style.md): how Brix is written, rule by rule.
+  - For a GUI app, read [GUI style](style/agent-brix-style-gui.md).
+  - For markup, read [markup style](style/agent-brix-style-markup.md).
+  - For a terminal app, read [TUI style](style/agent-brix-style-tui.md).
+- [Brix](style/agent-brix.md): Brix's S-expression form, written in `.bx` files. It lists each
   form beside the Yumi it stands for.
 
 ## Learning The Language
@@ -32,11 +32,11 @@ print?". They are kept short to test one thing each, so take their constructs, n
 
 - Each file covers one topic, such as `runLoops.test`, `runOptionals.test`, `runStreamMatch.test`
   or `runStateMachines.test`. To find cases that use a construct, search the files for it.
-- [The test format](style/agent-yumi-test-format.md) explains a case's parts. Its source runs from
+- [The test format](style/agent-brix-test-format.md) explains a case's parts. Its source runs from
   `:====` to `:----`, and its expected output runs from there to `;====`. Lines such as
   `%compile-error` change what is expected.
 - Some cases import helpers from [`stdlib/core/tests/support`](../stdlib/core/tests/support).
-- To try a case, copy its source into a file and run it with `yumi case.yumi -o case`.
+- To try a case, copy its source into a file and run it with `brix case.yumi -o case`.
 
 ## Example Programs
 
@@ -66,7 +66,7 @@ ships. Unlike the core tests, they show how complete programs are written.
 `examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does
 `examples/tui/pulse` unless it runs with `--demo`.
 
-To try one from your project, run `yumi <toolchain root>/examples/tui/timer.bx -o .tmp/build/timer`.
+To try one from your project, run `brix <toolchain root>/examples/tui/timer.bx -o .tmp/build/timer`.
 
 ## The Standard Library
 
@@ -104,15 +104,15 @@ does.
 
 ## Checking, Testing And Debugging
 
-- `yumi x.yumi` checks a program, and `yumi x.yumi -o x` builds and runs it. `yumi --help` lists
+- `brix x.yumi` checks a program, and `brix x.yumi -o x` builds and runs it. `brix --help` lists
   the rest.
-- [Probes](style/agent-yumi-probes.md): writing probes, and using them with `yumi probes` to debug
+- [Probes](style/agent-brix-probes.md): writing probes, and using them with `brix probes` to debug
   and profile. Use probes in place of prints.
-- [Test modules](style/agent-yumi-test-modules.md): testing a project's own code with `/test`, and
-  running the tests with `yumi test`.
-- [Benchmarks](style/agent-yumi-benchmarks.md): writing benchmarks, and measuring and comparing
-  them with `yumi bench`.
-- `yumi lint --help`: linting. [The lint rules](style/agent-yumi-lint.md) explains each rule.
-- [Reviewing](style/agent-yumi-review.md): how to review Yumi for style, when asked to.
-- `yumi init`: writes the `AGENTS.md` section and `CLAUDE.md` import that send a project's agents
+- [Test modules](style/agent-brix-test-modules.md): testing a project's own code with `/test`, and
+  running the tests with `brix test`.
+- [Benchmarks](style/agent-brix-benchmarks.md): writing benchmarks, and measuring and comparing
+  them with `brix bench`.
+- `brix lint --help`: linting. [The lint rules](style/agent-brix-lint.md) explains each rule.
+- [Reviewing](style/agent-brix-review.md): how to review Brix for style, when asked to.
+- `brix init`: writes the `AGENTS.md` section and `CLAUDE.md` import that send a project's agents
   to this index.

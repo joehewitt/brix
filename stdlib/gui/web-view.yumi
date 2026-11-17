@@ -2,8 +2,8 @@
 ./events
 ./primitives
 ./window
-/YuAppleGUI/YuAppleGUI.h
-/YuWebKit/YuWebKit.h
+/BxAppleGUI/BxAppleGUI.h
+/BxWebKit/BxWebKit.h
 /core/intrinsics
 /data/json
 /graphics/matrix
@@ -80,7 +80,7 @@ _ viewer WebView?
 =? if !native
 viewer?.forget-native()
 viewer = null
-C:yumiWebViewRelease(native)
+C:brixWebViewRelease(native)
 native = null
 
 ────────────────────
@@ -191,10 +191,10 @@ if inherits-style
 =? if !host
 . content = content-bounds
 . zoom = native-zoom
-C:yumiGuiPeerSetContainer((host as Window).native ?? Pointer(), native!, native-parent ?? Pointer())
+C:brixGuiPeerSetContainer((host as Window).native ?? Pointer(), native!, native-parent ?? Pointer())
 . corner = native-placed-point(content.top-left - native-origin, native-origin, transform)
 . linear = transform ?? Matrix()
-C:yumiGuiPeerSetFrame
+C:brixGuiPeerSetFrame
     - native!
     - corner.x * zoom
     - corner.y * zoom
@@ -204,11 +204,11 @@ C:yumiGuiPeerSetFrame
     - linear.c
     - linear.b
     - linear.d
-C:yumiWebViewSetPageZoom(native!, zoom)
+C:brixWebViewSetPageZoom(native!, zoom)
 . margin = web-view-wake-margin
 . wake = content.outset(Insets(margin, margin, margin, margin))
-C:yumiGuiPeerSetVisible(native!, visible && (is-focused || is-presentation-visible(wake)))
-C:yumiGuiPeerSetOpacity(native!, effective-opacity)
+C:brixGuiPeerSetVisible(native!, visible && (is-focused || is-presentation-visible(wake)))
+C:brixGuiPeerSetOpacity(native!, effective-opacity)
 
 ────────────────────
 + measured-content-size
@@ -223,25 +223,25 @@ if fits-content then Dimensions(width, content-height ?? 150) else Dimensions(30
 + do go-back
 
 if native
-    C:yumiWebViewGoBack(native)
+    C:brixWebViewGoBack(native)
 
 ────────────────────
 + do go-forward
 
 if native
-    C:yumiWebViewGoForward(native)
+    C:brixWebViewGoForward(native)
 
 ────────────────────
 + do reload
 
 if native
-    C:yumiWebViewReload(native)
+    C:brixWebViewReload(native)
 
 ────────────────────
 + do stop
 
 if native
-    C:yumiWebViewStop(native)
+    C:brixWebViewStop(native)
 
 ────────────────────
 + do evaluate JSON
@@ -250,7 +250,7 @@ if native
 ?! WebScriptError("The web view is not mounted")
     if !native
 . completion = Completion'WebScriptOutcome()
-C:yumiWebViewEvaluate
+C:brixWebViewEvaluate
     - native!
     - script
     - gui-web-view-script-result as WebViewScriptCallback
@@ -264,17 +264,17 @@ C:yumiWebViewEvaluate
 + do accept-native-state
 
 =? if !native
-. current = C:yumiWebViewGetURL(native) as String
+. current = C:brixWebViewGetURL(native) as String
 is-accepting-native-state = true
 if current.length && current != url
     url = current
-title = C:yumiWebViewGetTitle(native!) as String
-is-loading = C:yumiWebViewIsLoading(native!)
-progress = C:yumiWebViewGetProgress(native!)
-can-go-back = C:yumiWebViewCanGoBack(native!)
-can-go-forward = C:yumiWebViewCanGoForward(native!)
+title = C:brixWebViewGetTitle(native!) as String
+is-loading = C:brixWebViewIsLoading(native!)
+progress = C:brixWebViewGetProgress(native!)
+can-go-back = C:brixWebViewCanGoBack(native!)
+can-go-forward = C:brixWebViewCanGoForward(native!)
 if fits-content
-    . height = C:yumiWebViewGetContentHeight(native!)
+    . height = C:brixWebViewGetContentHeight(native!)
     if height >= 0
         content-height = height
 is-accepting-native-state = false
@@ -296,7 +296,7 @@ if host
 . event = WebNavigationEvent(target, kind, (detail /and/ 256) != 0)
 navigating <- event
 if native
-    C:yumiWebViewDecideNavigation(native, request-id, !event.is-canceled)
+    C:brixWebViewDecideNavigation(native, request-id, !event.is-canceled)
 
 ────────────────────
 + do accept-native-load
@@ -324,13 +324,13 @@ _ do create-native
 host-window.ensure-native()
 =? if !host-window.native
 . kept = session?.take(this)
-native = kept ?? C:yumiWebViewCreate(is-ephemeral)
+native = kept ?? C:brixWebViewCreate(is-ephemeral)
 held = session
 if session && !kept
     session.keep(native!, this)
-C:yumiGuiWindowAddPeer(host-window.native!, native!, true, true)
+C:brixGuiWindowAddPeer(host-window.native!, native!, true, true)
 set-native-peer-artifact-required(true)
-C:yumiWebViewSetEventCallback
+C:brixWebViewSetEventCallback
     - native!
     - gui-web-view-event as WebViewEventCallback
     - this as Pointer
@@ -341,7 +341,7 @@ native-style-changed()
 native-script-changed()
 native-fits-content-changed()
 native-passes-scroll-changed()
-if kept && (C:yumiWebViewGetURL(native!) as String).length > 0
+if kept && (C:brixWebViewGetURL(native!) as String).length > 0
     accept-native-state()
 else
     load-requested-content()
@@ -353,10 +353,10 @@ _ do release-native
 . owner = held
 held = null
 if !owner
-    C:yumiWebViewRelease(native)
+    C:brixWebViewRelease(native)
 else if owner.leave(this)
-    C:yumiWebViewClearEventCallback(native!)
-    C:yumiGuiPeerDetach(native!)
+    C:brixWebViewClearEventCallback(native!)
+    C:brixGuiPeerDetach(native!)
 native = null
 
 ────────────────────
@@ -376,14 +376,14 @@ load-requested-url()
 _ do requested-html-changed
 
 =? if !native || !html
-C:yumiWebViewLoadHTML(native, html, base-url)
+C:brixWebViewLoadHTML(native, html, base-url)
 
 ────────────────────
 _ do load-requested-content
 
 =? if !native
 if html
-    C:yumiWebViewLoadHTML(native, html, base-url)
+    C:brixWebViewLoadHTML(native, html, base-url)
 else
     load-requested-url()
 
@@ -393,40 +393,40 @@ _ do load-requested-url
 =? if !native
 . target = url
 =? if !target
-if !C:yumiWebViewLoadURL(native, target)
+if !C:brixWebViewLoadURL(native, target)
     load-failed <- WebLoadEvent(target, "Invalid URL")
 
 ────────────────────
 _ do native-inspectable-changed
 
 if native
-    C:yumiWebViewSetInspectable(native, is-inspectable)
+    C:brixWebViewSetInspectable(native, is-inspectable)
 
 ────────────────────
 _ do native-message-names-changed
 
 =? if !native
-C:yumiWebViewClearMessageHandlers(native)
+C:brixWebViewClearMessageHandlers(native)
 for name in message-names
-    C:yumiWebViewAddMessageHandler(native!, name)
+    C:brixWebViewAddMessageHandler(native!, name)
 
 ────────────────────
 _ do native-fits-content-changed
 
 if native
-    C:yumiWebViewSetFitsContent(native, fits-content)
+    C:brixWebViewSetFitsContent(native, fits-content)
 
 ────────────────────
 _ do native-transparent-changed
 
 if native
-    C:yumiWebViewSetTransparent(native, is-transparent)
+    C:brixWebViewSetTransparent(native, is-transparent)
 
 ────────────────────
 _ do native-passes-scroll-changed
 
 if native
-    C:yumiGuiPeerSetPassesScroll(native, passes-scroll)
+    C:brixGuiPeerSetPassesScroll(native, passes-scroll)
 
 ────────────────────
 _ do native-ephemeral-changed
@@ -451,22 +451,22 @@ _ do native-style-changed
 
 =? if !native
 . css = if inherits-style then "${inherited-style-css()}$user-style" else user-style
-C:yumiWebViewSetUserStyle(native!, css)
+C:brixWebViewSetUserStyle(native!, css)
 
 ────────────────────
 _ do native-script-changed
 
 if native
-    C:yumiWebViewSetUserScript(native, user-script)
+    C:brixWebViewSetUserScript(native, user-script)
 
 ────────────────────
 _ ¶ inherited-style-css
 
 :root {
     color-scheme: light dark;
-    --yumi-text-color: $text-color;
-    --yumi-font-family: $families;
-    --yumi-font-size: ${size}px;
+    --brix-text-color: $text-color;
+    --brix-font-family: $families;
+    --brix-font-size: ${size}px;
     color: $text-color;
     font: $slant $weight ${size}px $families;
 }

@@ -6,10 +6,10 @@ import subprocess
 import tempfile
 
 import launcher
-from common import ROOT, RUNTIME_CONFIG, YUMI_HOME, Failure, file_digest, lock, log_tail, say, xcrun
+from common import ROOT, RUNTIME_CONFIG, BRIX_HOME, Failure, file_digest, lock, log_tail, say, xcrun
 
 RECIPES = os.path.join(ROOT, 'toolchain', 'deps')
-CACHE = os.path.join(YUMI_HOME, 'deps')
+CACHE = os.path.join(BRIX_HOME, 'deps')
 DOWNLOADS = os.path.join(CACHE, 'downloads')
 LOGS = os.path.join(CACHE, 'logs')
 HOST_TARGETS = {'Linux': 'linux'}

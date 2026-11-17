@@ -13,7 +13,7 @@ resource table; producers must create a new resource instead of mutating or repl
 Releasing the final handle closes the backend buffer and advances the slot generation. Image decode
 and file IO are intentionally outside this layer.
 
-CoreGraphics exposes one raster entry point, `yumiGraphicsDrawImage`. The source canvas keeps a
+CoreGraphics exposes one raster entry point, `brixGraphicsDrawImage`. The source canvas keeps a
 lazy `CGImage` snapshot, invalidated by every pixel-mutating operation. Ordinary resources draw the
 snapshot directly. The entry point also supports template-alpha resources by clipping through
 their alpha and filling with the consumer's current color. Destination edges are rounded to
@@ -44,7 +44,7 @@ state-isolated transform and clipping path.
 
 ## Metal
 
-The Metal renderer (`libs/applegui/YuMetalRenderer.mm`) keeps its own atlases: four 1024-pixel
+The Metal renderer (`libs/applegui/BxMetalRenderer.mm`) keeps its own atlases: four 1024-pixel
 A8 pages for glyphs and two BGRA pages for images. Image entries are keyed by handle index and
 generation, device size, and template-alpha mode, and are evicted by last use. Canvas images can
 use their own textures instead, tiled when large. The renderer-facing vocabulary stays the

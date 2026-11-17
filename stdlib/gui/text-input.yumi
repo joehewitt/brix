@@ -6,7 +6,7 @@
 ./styles
 ./theme
 ./window
-/YuAppleGUI/YuAppleGUI.h
+/BxAppleGUI/BxAppleGUI.h
 /core/intrinsics
 /graphics/color
 /graphics/matrix
@@ -123,17 +123,17 @@ super.mounted()
 
 host-window.ensure-native()
 =? if !host-window.native
-native = C:yumiGuiTextInputCreate(host-window.native, 0, 0, 0, 0, text, placeholder)
+native = C:brixGuiTextInputCreate(host-window.native, 0, 0, 0, 0, text, placeholder)
 set-native-peer-artifact-required(true)
-C:yumiGuiTextInputSetEventCallback
+C:brixGuiTextInputSetEventCallback
     - native!
     - gui-text-input-event as GuiTextInputEventCallback
     - this as Pointer
-C:yumiGuiTextInputSetEnabled(native!, is-effectively-enabled)
-C:yumiGuiTextInputSetEditable(native!, !is-read-only)
-C:yumiGuiTextInputSetSecure(native!, is-secure)
+C:brixGuiTextInputSetEnabled(native!, is-effectively-enabled)
+C:brixGuiTextInputSetEditable(native!, !is-read-only)
+C:brixGuiTextInputSetSecure(native!, is-secure)
 native-max-length-changed()
-C:yumiGuiTextInputSetWraps(native!, wraps)
+C:brixGuiTextInputSetWraps(native!, wraps)
 native-passed-keys-changed()
 sync-native-cursor()
 sync-native-text-color()
@@ -148,7 +148,7 @@ invalidate-content-size()
 
 super.unmounted()
 if native
-    C:yumiGuiTextInputRelease(native)
+    C:brixGuiTextInputRelease(native)
     native = null
 native-text-color = null
 native-font = null
@@ -166,9 +166,9 @@ is-native-shown = false
 =? if !native
 
 if !is-native-editing
-    C:yumiGuiTextInputSetText(native, text)
-C:yumiGuiTextInputSetPlaceholder(native!, placeholder)
-C:yumiGuiTextInputSetEnabled(native!, is-effectively-enabled)
+    C:brixGuiTextInputSetText(native, text)
+C:brixGuiTextInputSetPlaceholder(native!, placeholder)
+C:brixGuiTextInputSetEnabled(native!, is-effectively-enabled)
 
 ────────────────────
 + do sync-native-geometry-self
@@ -184,15 +184,15 @@ sync-native-text-alignment()
 . content = content-bounds
 . left = content.x - native-origin.x
 . top = content.y - native-origin.y
-C:yumiGuiTextInputSetContainer(native!, native-parent ?? Pointer())
+C:brixGuiTextInputSetContainer(native!, native-parent ?? Pointer())
 if !wraps
     sync-native-text-insets(0, 0)
 if fits-text
     . fitting-height = native-line-fitting-height()
     . width = if is-focused then content.width + fitted-editing-slack() else content.width
     set-native-frame(left, top, width, fitting-height, native-origin, transform)
-    . text-x Length = C:yumiGuiTextInputGetTextOriginX(native!) / zoom
-    . baseline Length = C:yumiGuiTextInputGetTextBaseline(native!) / zoom
+    . text-x Length = C:brixGuiTextInputGetTextOriginX(native!) / zoom
+    . baseline Length = C:brixGuiTextInputGetTextBaseline(native!) / zoom
     set-native-frame
         - left - text-x
         - top + fitted-ascent - baseline
@@ -203,13 +203,13 @@ if fits-text
 else if wraps
     if !wrapped-line-height
         measure-wrapped(content.width)
-    C:yumiGuiTextInputSetLineMetrics(native!, wrapped-line-height * zoom, $line-spacing * zoom)
+    C:brixGuiTextInputSetLineMetrics(native!, wrapped-line-height * zoom, $line-spacing * zoom)
     . native-width = content.width * zoom
     if native-frame-width != native-width
         set-native-frame(left, top, content.width, content.height, native-origin, transform)
         native-frame-width = native-width
-    . text-x Length = C:yumiGuiTextInputGetTextOriginX(native!) / zoom
-    . baseline Length = (C:yumiGuiTextInputGetTextBaseline(native!) - native-text-inset) / zoom
+    . text-x Length = C:brixGuiTextInputGetTextOriginX(native!) / zoom
+    . baseline Length = (C:brixGuiTextInputGetTextBaseline(native!) - native-text-inset) / zoom
     . padding = padding-edges
     . slack = if centers-wrapped-text then max(0, content.height - wrapped-text-height) / 2 else 0
     . inset = gui-device-aligned(scaled-inset, device-scale) / zoom
@@ -236,8 +236,8 @@ else
         - line-height
         - native-origin
         - transform
-C:yumiGuiTextInputSetVisible(native!, visible)
-C:yumiGuiTextInputSetOpacity(native!, effective-opacity)
+C:brixGuiTextInputSetVisible(native!, visible)
+C:brixGuiTextInputSetOpacity(native!, effective-opacity)
 sync-native-cursor()
 sync-native-text-color()
 if is-native-shown != visible
@@ -258,7 +258,7 @@ _ do set-native-frame
 . zoom = native-zoom
 . corner = native-placed-point(Point(x, y), native-origin, transform)
 . linear = transform ?? Matrix()
-C:yumiGuiTextInputSetFrame
+C:brixGuiTextInputSetFrame
     - native!
     - corner.x * zoom
     - corner.y * zoom
@@ -269,7 +269,7 @@ C:yumiGuiTextInputSetFrame
     - linear.b
     - linear.d
 . box = bounds
-C:yumiGuiTextInputSetHitRect
+C:brixGuiTextInputSetHitRect
     - native!
     - (box.x - native-origin.x - x) * zoom
     - (box.y - native-origin.y - y) * zoom
@@ -284,13 +284,13 @@ _ do sync-native-text-insets
 =? if abs(native-text-inset - top) < 0.001 && abs(native-text-bottom-inset - bottom) < 0.001
 native-text-inset = top
 native-text-bottom-inset = bottom
-C:yumiGuiTextInputSetTextInsets(native!, top, bottom)
+C:brixGuiTextInputSetTextInsets(native!, top, bottom)
 
 ────────────────────
 + do sync-native-cursor
 
 =? if !native
-C:yumiGuiTextInputSetCursorStyle
+C:brixGuiTextInputSetCursorStyle
     - native
     - cursor-style-native-value($cursor)
     - cursor-style-native-image($cursor)
@@ -313,7 +313,7 @@ _ do native-line-fitting-height Length
 
 . cached = native-fitting-height
 =? cached if cached
-. height Length = C:yumiGuiTextInputGetFittingHeight(native!) / native-zoom
+. height Length = C:brixGuiTextInputGetFittingHeight(native!) / native-zoom
 native-fitting-height = height
 = height
 
@@ -323,8 +323,8 @@ _ do native-fitting-size Dimensions
 apply-native-font()
 . zoom = native-zoom
 = Dimensions
-    - C:yumiGuiTextInputGetFittingWidth(native!) / zoom
-    - C:yumiGuiTextInputGetFittingHeight(native!) / zoom
+    - C:brixGuiTextInputGetFittingWidth(native!) / zoom
+    - C:brixGuiTextInputGetFittingHeight(native!) / zoom
 
 ────────────────────
 _ do wrapped-content-size Dimensions
@@ -392,13 +392,13 @@ event.cancel()
 
 text = value
 if native
-    C:yumiGuiTextInputReplaceText(native, value)
+    C:brixGuiTextInputReplaceText(native, value)
 
 ────────────────────
 + do place-caret-at-end
 
 if native
-    C:yumiGuiTextInputMoveCaretToEnd(native)
+    C:brixGuiTextInputMoveCaretToEnd(native)
 
 ────────────────────
 + do select-range
@@ -414,7 +414,7 @@ sync-native-selection()
 _ do sync-native-selection
 
 =? if !native || !has-selection-request
-C:yumiGuiTextInputSetSelection
+C:brixGuiTextInputSetSelection
     - native
     - text[0 .. < selection-start]
     - text[selection-start .. < selection-end]
@@ -423,32 +423,32 @@ C:yumiGuiTextInputSetSelection
 _ do native-enabled-changed
 
 if native
-    C:yumiGuiTextInputSetEnabled(native, is-effectively-enabled)
+    C:brixGuiTextInputSetEnabled(native, is-effectively-enabled)
 
 ────────────────────
 _ do native-editable-changed
 
 if native
-    C:yumiGuiTextInputSetEditable(native, !is-read-only)
+    C:brixGuiTextInputSetEditable(native, !is-read-only)
 
 ────────────────────
 _ do native-secure-changed
 
 native-fitting-height = null
 if native
-    C:yumiGuiTextInputSetSecure(native, is-secure)
+    C:brixGuiTextInputSetSecure(native, is-secure)
 
 ────────────────────
 _ do native-max-length-changed
 
 if native
-    C:yumiGuiTextInputSetMaxLength(native, (max-length ?? 0))
+    C:brixGuiTextInputSetMaxLength(native, (max-length ?? 0))
 
 ────────────────────
 _ do native-wraps-changed
 
 if native
-    C:yumiGuiTextInputSetWraps(native, wraps)
+    C:brixGuiTextInputSetWraps(native, wraps)
 
 ────────────────────
 _ do native-passed-keys-changed
@@ -457,7 +457,7 @@ _ do native-passed-keys-changed
 . mask U32
 for key in passes-keys
     mask = mask /or/ text-input-passed-key-bit(key)
-C:yumiGuiTextInputSetPassedKeys(native!, mask)
+C:brixGuiTextInputSetPassedKeys(native!, mask)
 
 ────────────────────
 _ do sync-native-text-color
@@ -465,7 +465,7 @@ _ do sync-native-text-color
 =? if !native
 . color = $color
 =? if native-text-color == color
-C:yumiGuiTextInputSetTextColor
+C:brixGuiTextInputSetTextColor
     - native!
     - color.red
     - color.green
@@ -486,7 +486,7 @@ _ do sync-native-text-alignment
         2
     ??
         0
-C:yumiGuiTextInputSetAlignment(native!, code)
+C:brixGuiTextInputSetAlignment(native!, code)
 native-text-alignment = alignment
 
 ────────────────────
@@ -502,7 +502,7 @@ _ do apply-native-font Bool
 . font = Font($font-family, $font-size, $font-weight)
 . zoom = native-zoom
 =? false if native-font == font && native-font-zoom == zoom
-C:yumiGuiTextInputSetFont(native!, font.family, font.size * zoom, font.weight.trait)
+C:brixGuiTextInputSetFont(native!, font.family, font.size * zoom, font.weight.trait)
 native-font = font
 native-font-zoom = zoom
 native-fitting-height = null
@@ -520,7 +520,7 @@ _ do programmatic-text-changed
 =? if accepting-native-text || (is-native-editing && is-dirty)
 committed-text = text
 if native
-    C:yumiGuiTextInputSyncText(native, text)
+    C:brixGuiTextInputSyncText(native, text)
 
 ────────────────────
 + do accept-native-input
@@ -547,7 +547,7 @@ schedule-live-edit()
 paste <- pasting
 =? if pasting.is-canceled
 if native
-    C:yumiGuiTextInputPasteText(native)
+    C:brixGuiTextInputPasteText(native)
 
 ────────────────────
 + do accept-native-copy
@@ -611,7 +611,7 @@ text-edited <- TextEditEvent(text, phase)
 _ do sync-native-text
 
 if native && !is-native-editing
-    C:yumiGuiTextInputSetText(native, text)
+    C:brixGuiTextInputSetText(native, text)
 
 ────────────────────
 + do accept-native-submit
@@ -636,12 +636,12 @@ if host
 ────────────────────
 + get can-undo
 
-native != null && C:yumiGuiTextInputCanUndo(native, false)
+native != null && C:brixGuiTextInputCanUndo(native, false)
 
 ────────────────────
 + get can-redo
 
-native != null && C:yumiGuiTextInputCanUndo(native, true)
+native != null && C:brixGuiTextInputCanUndo(native, true)
 
 ────────────────────
 + get undo-title
@@ -657,13 +657,13 @@ native != null && C:yumiGuiTextInputCanUndo(native, true)
 + do undo
 
 if native
-    C:yumiGuiTextInputUndo(native, false)
+    C:brixGuiTextInputUndo(native, false)
 
 ────────────────────
 + do redo
 
 if native
-    C:yumiGuiTextInputUndo(native, true)
+    C:brixGuiTextInputUndo(native, true)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ text-input-passed-key-bit U32

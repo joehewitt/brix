@@ -33,4 +33,4 @@ int wakeupFcntl(int fd, int operation, int value = 0) {
 #define send wakeupSend
 #define socketpair wakeupSocketpair
 #define fcntl wakeupFcntl
-#include "../../YuTriggerFile.cpp"
+#include "../../BxTriggerFile.cpp"

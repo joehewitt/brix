@@ -11,13 +11,13 @@ The language reference in `www/src/reference/build.yumi` is the complete example
 Run the reference builder once with:
 
 ```sh
-bin/yumi www/src/reference/build.yumi -o .tmp/build/build-reference
+bin/brix www/src/reference/build.yumi -o .tmp/build/build-reference
 ```
 
 Keep it running and rebuild after Markdown changes with:
 
 ```sh
-bin/yumi www/src/reference/build.yumi -o .tmp/build/build-reference --watch
+bin/brix www/src/reference/build.yumi -o .tmp/build/build-reference --watch
 ```
 
 The builder also accepts `--source` and `--output`, which makes fixture builds and alternate copies of the guide independent of repository paths.

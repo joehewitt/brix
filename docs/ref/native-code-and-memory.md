@@ -1,8 +1,8 @@
 # Native code and memory
 
-A Yumi program can call C directly. It imports a C header as it imports a module, calls the
+A Brix program can call C directly. It imports a C header as it imports a module, calls the
 header's functions by their C names, and passes numbers, text, structs, pointers and callbacks
-across. This chapter covers C headers and calls, how C's types appear in Yumi, pointers, and memory
+across. This chapter covers C headers and calls, how C's types appear in Brix, pointers, and memory
 that the collector does not manage: memory from C, arenas, constant data, and code that runs
 without the collector.
 
@@ -24,7 +24,7 @@ without the collector.
   (print (as (call C:toupper 'y') Char))
   (print C:INT_MAX)
   (print (type-of (call C:strlen phrase)))
-  (print (?? (call C:getenv "YUMI_REF_UNSET") "unset"))
+  (print (?? (call C:getenv "BRIX_REF_UNSET") "unset"))
 )
 ```
 
@@ -45,14 +45,14 @@ the import is `/string.h`{.rows} and the call `C:strlen(phrase)`{.rows}.
 - **Where headers come from.** A path that names a header is looked up as a header before it is
   looked up as a module.
   - A path whose first folder is one of the toolchain's libraries, such as `/sqlite/sqlite3.h` or
-    `/YuCore/YuCore.h`, names that library's header.
+    `/BxCore/BxCore.h`, names that library's header.
   - `/c/unistd.h` names a header of the C library explicitly.
   - Any other path is looked up among the target's C library headers, subfolders included, as
     `/sys/stat.h` and `/arpa/inet.h` are.
   - A header beside the program, a framework's header, or a missing header is a missing module:
     `Module "./mylib.h" not found`.
 - **What becomes a `C:` name.** Functions with C names whose parameter and result types all have a
-  Yumi type, and integer constants: macros whose value is an integer, and the cases of enums. A
+  Brix type, and integer constants: macros whose value is an integer, and the cases of enums. A
   header's own includes count too, so `/string.h` also gives the functions of `/stdlib.h`.
 - **What does not.** Functions that take a variable number of arguments, such as `printf` and
   `open`, are left out, and so are functions that take or return a union. Floating and text
@@ -164,7 +164,7 @@ local, a parameter, or a struct local. A pointer local declared with no value st
   the call.
 - **Context.** To give a callback an object, pass `(as tally Pointer)` where C takes a `void *`,
   and turn it back with `(call (of gc-object-from-pointer Tally) context)`, from
-  `/core/intrinsics`. The object must stay referenced from Yumi while C holds it; see
+  `/core/intrinsics`. The object must stay referenced from Brix while C holds it; see
   [What the collector follows](#what-the-collector-follows).
 - **Panics** in a callback end the task as anywhere else.
 
@@ -173,20 +173,20 @@ local, a parameter, or a struct local. A pointer local declared with no value st
 - **Blocking.** A C call may block, as `usleep` and `read` do, without stopping the collector: the
   task leaves the collector's view for the call, and the collector does not wait for it. The call
   does hold its thread, so the other tasks on that thread run only after it returns, where a wait
-  in Yumi, such as `(call (. 50ms wait))`{.brix}, lets them run. Make a long blocking call in a
+  in Brix, such as `(call (. 50ms wait))`{.brix}, lets them run. Make a long blocking call in a
   task on the pool, with `do-new-thread`.
 - **Short calls.** Functions that cannot reach the collector, such as `strlen`, `strcmp` and the
   math functions, are called directly. The toolchain's own headers mark such a function
   `(without gc)`, and one called between two of the collector's checks `(without blocking)`. A
   program cannot mark a C function itself.
-- **`errno`** is not a `C:` name. `(call C:yumiGetErrNo)`, from `/YuCore/YuCore.h`, reads it on
+- **`errno`** is not a `C:` name. `(call C:brixGetErrNo)`, from `/BxCore/BxCore.h`, reads it on
   every platform.
 - **Output.** `print` writes to C's `stdout` and flushes it, so output from `puts` and `print`
   comes out in the order it was written.
 
 ## C types
 
-| C | Yumi |
+| C | Brix |
 | --- | --- |
 | `void` | `Void` |
 | `bool` | `Bool` |
@@ -261,7 +261,7 @@ Tuesday 29 February 2000
   returns one. A named type can be one, as `Address` is below.
 - **By value.** Structs pass to and from C by value, and assigning one copies it. Reading an item
   through a pointer gives a copy, while assigning a field of `([] fields 0)` writes C's memory.
-- **No unions.** C unions have no Yumi type, and a header's struct cannot be named in Yumi: declare
+- **No unions.** C unions have no Brix type, and a header's struct cannot be named in Brix: declare
   a struct with the same fields.
 - **Objects are not structs.** An object of a class reaches C as a pointer to the object, whose
   layout is the runtime's. Give C a struct, not an object, when C reads the fields.
@@ -373,7 +373,7 @@ objects, so an object's address stays the same while it lives.
   a local, a field or an array the collector owns, keeps the object it points into alive.
 - **Pointers it does not.** A pointer to pointers, and memory from C, such as `malloc`'s, are not
   looked into. An object referenced only from there is freed. So an object given to C, as a
-  callback's context, must also stay referenced from Yumi for as long as C may use it.
+  callback's context, must also stay referenced from Brix for as long as C may use it.
 - **`/gc`** can run the collector, `(call collect-garbage)`, and run code when an object is freed,
   `on-reclaim`; see the Standard library.
 

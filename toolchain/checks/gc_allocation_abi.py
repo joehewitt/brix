@@ -47,7 +47,7 @@ def check(config):
 
 
 def runtime_fields(config):
-    with tempfile.TemporaryDirectory(prefix='yumi-gc-abi-') as scratch:
+    with tempfile.TemporaryDirectory(prefix='brix-gc-abi-') as scratch:
         executable = os.path.join(scratch, 'probe')
         compiled = subprocess.run(
             [

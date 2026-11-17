@@ -1,6 +1,6 @@
 # Markup Batching and the Mutation Protocol
 
-This document is the authoritative guide to Yumi's markup batching runtime
+This document is the authoritative guide to Brix's markup batching runtime
 (`stdlib/core/markup.yumi`) for library and framework authors. It covers the batch lifecycle, the
 contracts each tier of client must uphold, the `checkpoint()` boundary, and the compiler-driven
 mutation protocol that parents implement.

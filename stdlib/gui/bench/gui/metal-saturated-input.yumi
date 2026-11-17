@@ -2,8 +2,8 @@
 `benchmark.meta timing: not-recommended
 `benchmark.meta profiles: gui-metal
 
-/YuAppleGUI/YuAppleGUI.h
-/YuGC/YuGC.h
+/BxAppleGUI/BxAppleGUI.h
+/BxGC/BxGC.h
 /core/intrinsics
 /core/markup
 /core/task
@@ -28,11 +28,11 @@ window.size = Dimensions(1200, 900)
 window.surfaces += surface
 markup-append(window, surface)
 
-C:yumiGuiAppDebugMainLoopProbeStart(20000000)
+C:brixGuiAppDebugMainLoopProbeStart(20000000)
 window.open()
 if !window.finished
-    C:yumiGuiAppScheduleStop(app.native!, 40000000000)
-    C:yumiGuiAppRun(app.native!)
+    C:brixGuiAppScheduleStop(app.native!, 40000000000)
+    C:brixGuiAppRun(app.native!)
 if window.did-fallback
     app.close()
     ?! Panic("Metal window presentation was unavailable and fell back to CoreGraphics")
@@ -123,7 +123,7 @@ if !click-pending && phase-frame % 12 == 6
     click-post-time = monotonic-time-nanoseconds()
     clicks-expected += count
     for index in 0 .. < count
-        C:yumiGuiWindowDebugPostMouseClick(native!, 300, 300)
+        C:brixGuiWindowDebugPostMouseClick(native!, 300, 300)
 
 frame-index += 1
 phase-frame += 1
@@ -163,7 +163,7 @@ click-pending = false
 _ do begin-phase
     - now U64
 
-. interval = C:yumiGuiWindowGetLastFrameRefreshIntervalNanoseconds(native!)
+. interval = C:brixGuiWindowGetLastFrameRefreshIntervalNanoseconds(native!)
 if interval > 0
     refresh = interval
 phase-started = now
@@ -175,8 +175,8 @@ frame-ids = List'I64()
 click-latencies = List'U64()
 burst-latencies = List'U64()
 burst-frames = List'U64()
-offers-started = C:yumiGCFrameBudgetOfferCount() as Size
-. ignored = C:yumiGuiAppDebugMainLoopProbeValue(3)
+offers-started = C:brixGCFrameBudgetOfferCount() as Size
+. ignored = C:brixGuiAppDebugMainLoopProbeValue(3)
 
 ────────────────────
 _ do report-phase
@@ -220,9 +220,9 @@ for index in 1 .. < presented.length
 . burst-drain-frames = saturated-percentile(burst-frames, 100)
 . wait-p50 = saturated-percentile(waits, 50)
 . gpu-p50 = saturated-percentile(gpu, 50)
-. dispatch-max = C:yumiGuiAppDebugMainLoopProbeValue(1) as U64
-. sleeps = (C:yumiGuiAppDebugMainLoopProbeValue(2) as U64) * 100 / frames
-. offers = ((C:yumiGCFrameBudgetOfferCount() - offers-started) as U64) * 100 / frames
+. dispatch-max = C:brixGuiAppDebugMainLoopProbeValue(1) as U64
+. sleeps = (C:brixGuiAppDebugMainLoopProbeValue(2) as U64) * 100 / frames
+. offers = ((C:brixGCFrameBudgetOfferCount() - offers-started) as U64) * 100 / frames
 do match? phase
     |= 1
         //gui.bench.metal.sat-light-frames-per-second += frames-per-second

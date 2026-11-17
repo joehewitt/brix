@@ -19,8 +19,8 @@
 ./shorthands
 ./styles
 ./theme
-/YuAppleGUI/YuAppleGUI.h
-/YuGC/YuGC.h
+/BxAppleGUI/BxAppleGUI.h
+/BxGC/BxGC.h
 /core/intrinsics
 /core/markup
 /core/style
@@ -353,7 +353,7 @@ is-finished = true
 =? if is-closed
 settle-pointer-dispatch()
 if native
-    C:yumiGuiWindowClose(native)
+    C:brixGuiWindowClose(native)
 finish-close()
 super.close()
 markup-root.close()
@@ -588,16 +588,16 @@ native-artifacts.length
     bounds
 
 .. screen = Rect
-    - C:yumiGuiWindowGetScreenBound(native, 0) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 1) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 2) / zoom
-    - C:yumiGuiWindowGetScreenBound(native!, 3) / zoom
+    - C:brixGuiWindowGetScreenBound(native, 0) / zoom
+    - C:brixGuiWindowGetScreenBound(native!, 1) / zoom
+    - C:brixGuiWindowGetScreenBound(native!, 2) / zoom
+    - C:brixGuiWindowGetScreenBound(native!, 3) / zoom
 .. zoom = effective-zoom
 
 ────────────────────
 + get display-scale F64
 
-if native then C:yumiGuiWindowGetBackingScaleFactor(native) else 1
+if native then C:brixGuiWindowGetBackingScaleFactor(native) else 1
 
 ────────────────────
 + get viewport Dimensions
@@ -714,14 +714,14 @@ app?.ensure-accents()
 render-opening-frame()
 settle-opening-frame()
 if native
-    C:yumiGuiWindowShow(native)
+    C:brixGuiWindowShow(native)
 has-opened = true
 
 ────────────────────
 + do bring-to-front
 
 if native && !is-closed
-    C:yumiGuiWindowShow(native)
+    C:brixGuiWindowShow(native)
 
 ────────────────────
 + do request-close
@@ -736,7 +736,7 @@ close()
 
 =? if request-close()
 if native
-    C:yumiGuiWindowRejectDeferredClose(native)
+    C:brixGuiWindowRejectDeferredClose(native)
 
 ────────────────────
 + do render
@@ -745,7 +745,7 @@ if native
 ensure-native()
 =? false if !native
 
-. output-color-space = C:yumiGuiWindowGetDisplayColorSpace(native)
+. output-color-space = C:brixGuiWindowGetDisplayColorSpace(native)
 for popup in popups
     popup.ensure-presentation(native!)
 catch-up-live-fills()
@@ -823,55 +823,55 @@ layout()
 =? if is-closed
 
 if !native
-    native = C:yumiGuiWindowCreate(title, size.width, size.height)
+    native = C:brixGuiWindowCreate(title, size.width, size.height)
     native-transparency-known = false
     requested-native-position = null
     sync-native-transparency()
     sync-native-chrome()
     selected-metal = use-metal
-    C:yumiGuiWindowSetBackingScaleChangedCallback
+    C:brixGuiWindowSetBackingScaleChangedCallback
         - native!
         - gui-window-backing-scale-changed as GuiWindowFrameCallback
         - this as Pointer
-    C:yumiGuiWindowSetContentSizeChangedCallback
+    C:brixGuiWindowSetContentSizeChangedCallback
         - native!
         - gui-window-content-size-changed as GuiWindowSizeCallback
         - this as Pointer
-    C:yumiGuiWindowSetMovedCallback
+    C:brixGuiWindowSetMovedCallback
         - native!
         - gui-window-moved as GuiWindowFrameCallback
         - this as Pointer
-    C:yumiGuiWindowSetPointerCallback
+    C:brixGuiWindowSetPointerCallback
         - native!
         - gui-window-pointer-event as GuiWindowPointerCallback
         - this as Pointer
-    C:yumiGuiWindowSetTouchCallback
+    C:brixGuiWindowSetTouchCallback
         - native!
         - gui-window-touch-event as GuiWindowTouchCallback
         - this as Pointer
-    C:yumiGuiWindowSetEventCallback
+    C:brixGuiWindowSetEventCallback
         - native!
         - gui-window-native-event as GuiWindowEventCallback
         - this as Pointer
-    C:yumiGuiWindowSetTextActionCallback
+    C:brixGuiWindowSetTextActionCallback
         - native!
         - gui-window-text-action as GuiWindowTextActionCallback
         - this as Pointer
-    C:yumiGuiWindowSetCursorStyle
+    C:brixGuiWindowSetCursorStyle
         - native!
         - cursor-style-native-value(resolved-cursor-style)
         - cursor-style-native-image(resolved-cursor-style)
         - resolved-cursor-captured
     . accepted = Dimensions
-        - C:yumiGuiWindowGetContentWidth(native!)
-        - C:yumiGuiWindowGetContentHeight(native!)
+        - C:brixGuiWindowGetContentWidth(native!)
+        - C:brixGuiWindowGetContentHeight(native!)
     requested-native-size = accepted
     if accepted != size
         size = accepted
 
 if requested-native-size != size
     requested-native-size = size
-    C:yumiGuiWindowSetContentSize(native!, size.width, size.height)
+    C:brixGuiWindowSetContentSize(native!, size.width, size.height)
 . requested-position = position
 if requested-position && requested-native-position != requested-position
     apply-native-position(requested-position)
@@ -1084,7 +1084,7 @@ do match kind
 + do discard-text-composition
 
 if native
-    C:yumiGuiWindowDiscardTextComposition(native)
+    C:brixGuiWindowDiscardTextComposition(native)
 
 ────────────────────
 + active-key-bindings
@@ -1199,7 +1199,7 @@ settle-pointer-dispatch()
     - event PointerDownEvent
 
 =? false if !native || event.window-drag-token == 0
-= C:yumiGuiWindowRequestDrag(native, event.window-drag-token)
+= C:brixGuiWindowRequestDrag(native, event.window-drag-token)
 
 ────────────────────
 + do dispatch-pointer-event
@@ -1498,7 +1498,7 @@ settle-pointer-dispatch()
 is-active = true
 show-activity(true)
 if native-menu-bar
-    C:yumiGuiMenuBarInstall(native-menu-bar)
+    C:brixGuiMenuBarInstall(native-menu-bar)
 activated <- WindowActivatedEvent()
 . remembered = remembered-focus-box
 if remembered && is-valid-focus-box(remembered)
@@ -1632,7 +1632,7 @@ for popup in List'Popup(popups)
 + do accept-native-position
 
 =? if !native
-. actual = Point(C:yumiGuiWindowGetPosition(native, 0), C:yumiGuiWindowGetPosition(native!, 1))
+. actual = Point(C:brixGuiWindowGetPosition(native, 0), C:brixGuiWindowGetPosition(native!, 1))
 requested-native-position = actual
 if position != actual
     position = actual
@@ -1670,14 +1670,14 @@ metal-renderer?.frame-stat(frame, 2) ?? -1
 
 is-rendering = true
 if native
-    C:yumiGuiWindowBeginFrame(native)
+    C:brixGuiWindowBeginFrame(native)
 
 ────────────────────
 + do end-frame
     - committed Bool
 
 if native && !committed
-    C:yumiGuiWindowAbortFrame(native)
+    C:brixGuiWindowAbortFrame(native)
 is-rendering = false
 if is-render-invalid || needs-layout || !scroll-resampler.is-idle
     request-render-frame()
@@ -1847,7 +1847,7 @@ is-rendering = false
 needs-layout = false
 
 if native
-    C:yumiGuiWindowCancelFrame(native)
+    C:brixGuiWindowCancelFrame(native)
 
 markup-release(this)
 markup-release(markup-root)
@@ -1867,7 +1867,7 @@ if retained-surface
 if native
     . closing-native = native
     native = null
-    C:yumiGuiWindowRelease(closing-native)
+    C:brixGuiWindowRelease(closing-native)
 
 closed <- ClosedEvent()
 
@@ -1880,7 +1880,7 @@ _ do sync-native-transparency
 native-transparent = transparent
 native-clear = clear
 native-transparency-known = true
-C:yumiGuiWindowSetTransparent(native!, clear, transparent)
+C:brixGuiWindowSetTransparent(native!, clear, transparent)
 
 ────────────────────
 _ do render-main Bool
@@ -1899,14 +1899,14 @@ _ do render-metal
 =? false if !ensure-metal-window-renderer()
 . renderer = metal-renderer!
 
-//!gui.frame.gc-objects . frame-objects0 = C:yumiGCAllocatedObjectCount()
-//!gui.frame.gc-bytes . frame-bytes0 = C:yumiGCRequestedByteCount()
+//!gui.frame.gc-objects . frame-objects0 = C:brixGCAllocatedObjectCount()
+//!gui.frame.gc-bytes . frame-bytes0 = C:brixGCRequestedByteCount()
 
 //+gui.frame.phase.sync
 sync-native-geometry-if-changed()
 //-gui.frame.phase.sync
 sync-native-transparency()
-. wide = use-wide-gamut && C:yumiGuiWindowDisplayIsWideGamut(native!)
+. wide = use-wide-gamut && C:brixGuiWindowDisplayIsWideGamut(native!)
 if renderer.set-output-gamut(wide, !has-transparent-background)
     metal-surface-reset = true
 
@@ -1945,14 +1945,14 @@ mark-painted()
 =? false if !did-encode
 
 //+gui.frame.phase.commit
-C:yumiGuiWindowCommitMetalFrame(native!)
+C:brixGuiWindowCommitMetalFrame(native!)
 //-gui.frame.phase.commit
 //gui.gpu.drawable-wait-nanos += renderer.drawable-wait-nanos
 //gui.gpu.presents += 1
 //gui.gpu.present-copied-pixels += renderer.take-present-copied-pixels()
 //gui.gpu.maximum-frames-per-second += renderer.maximum-frames-per-second as U64
-//gui.frame.gc-objects += C:yumiGCAllocatedObjectCount() - frame-objects0
-//gui.frame.gc-bytes += C:yumiGCRequestedByteCount() - frame-bytes0
+//gui.frame.gc-objects += C:brixGCAllocatedObjectCount() - frame-objects0
+//gui.frame.gc-bytes += C:brixGCRequestedByteCount() - frame-bytes0
 = true
 
 ────────────────────
@@ -2030,8 +2030,8 @@ _ do render-retained
     - output-color-space Pointer
     - popup-fills LiveFillState
 
-//!gui.frame.gc-objects . frame-objects0 = C:yumiGCAllocatedObjectCount()
-//!gui.frame.gc-bytes . frame-bytes0 = C:yumiGCRequestedByteCount()
+//!gui.frame.gc-objects . frame-objects0 = C:brixGCAllocatedObjectCount()
+//!gui.frame.gc-bytes . frame-bytes0 = C:brixGCRequestedByteCount()
 //+gui.frame.phase.create
 . surface-recreated = ensure-retained-surface(output-color-space)
 //-gui.frame.phase.create
@@ -2066,7 +2066,7 @@ mark-painted()
 
 //+gui.frame.phase.commit
 . presented = scene.last-frame-damage
-C:yumiGuiWindowCommitFrame
+C:brixGuiWindowCommitFrame
     - native!
     - surface.native
     - presented.x
@@ -2074,8 +2074,8 @@ C:yumiGuiWindowCommitFrame
     - presented.width
     - presented.height
 //-gui.frame.phase.commit
-//gui.frame.gc-objects += C:yumiGCAllocatedObjectCount() - frame-objects0
-//gui.frame.gc-bytes += C:yumiGCRequestedByteCount() - frame-bytes0
+//gui.frame.gc-objects += C:brixGCAllocatedObjectCount() - frame-objects0
+//gui.frame.gc-bytes += C:brixGCRequestedByteCount() - frame-bytes0
 = true
 
 ────────────────────
@@ -2132,24 +2132,24 @@ set-theme-tag("retina", backing-scale >= 2)
 _ do window-title-changed
 
 =? if !native
-C:yumiGuiWindowSetTitle(native, title)
+C:brixGuiWindowSetTitle(native, title)
 
 ────────────────────
 _ do sync-native-chrome
 
 =? if !native
-C:yumiGuiWindowSetKind(native, kind)
+C:brixGuiWindowSetKind(native, kind)
 . offset = stoplight-offset ?? Point(0, 0)
-C:yumiGuiWindowSetChrome
+C:brixGuiWindowSetChrome
     - native!
     - titlebar-visible
     - stoplight-offset != null
     - offset.x
     - offset.y
     - effective-zoom
-native-stoplight-edge = C:yumiGuiWindowGetStoplightEdge(native!)
-C:yumiGuiWindowSetAllowsZoom(native!, allows-zoom)
-C:yumiGuiWindowSetAppearance(native!, appearance)
+native-stoplight-edge = C:brixGuiWindowGetStoplightEdge(native!)
+C:brixGuiWindowSetAllowsZoom(native!, allows-zoom)
+C:brixGuiWindowSetAppearance(native!, appearance)
 
 ────────────────────
 _ do sync-live-fills
@@ -2356,9 +2356,9 @@ do finally
 if focus-adapter
     accepted = focus-adapter.request(box)
 else if box && box.native-focus-handle
-    accepted = C:yumiGuiWindowRequestPeerFocus(native!, box.native-focus-handle!)
+    accepted = C:brixGuiWindowRequestPeerFocus(native!, box.native-focus-handle!)
 else
-    accepted = C:yumiGuiWindowFocusCanvas(native!)
+    accepted = C:brixGuiWindowFocusCanvas(native!)
 = accepted
 
 ────────────────────
@@ -2438,7 +2438,7 @@ _ do sync-undo-state
 =? if undo-title == native-undo-title && redo-title == native-redo-title
 native-undo-title = undo-title
 native-redo-title = redo-title
-C:yumiGuiWindowSetUndoState
+C:brixGuiWindowSetUndoState
     - native!
     - undo-title != null
     - undo-title ?? ""
@@ -2515,13 +2515,13 @@ _ do sync-text-input
 . active = box && box.$focus-mode == FocusMode.input && !box.native-focus-handle
 if active != native-text-input-active
     native-text-input-active = active
-    C:yumiGuiWindowSetTextInputActive(native!, active)
+    C:brixGuiWindowSetTextInputActive(native!, active)
 =? if !active
 . context = box!.text-input-context
 =? if !context
 . caret = context.caret
 . zoom = effective-zoom
-C:yumiGuiWindowSetTextInputContext
+C:brixGuiWindowSetTextInputContext
     - native!
     - context.preceding
     - context.selected
@@ -2546,7 +2546,7 @@ _ do press-window-chrome Bool
 
 =? begin-window-drag(event) if event.click-count != 2
 =? false if !native
-C:yumiGuiWindowPerformTitlebarDoubleClick(native)
+C:brixGuiWindowPerformTitlebarDoubleClick(native)
 = true
 
 ────────────────────
@@ -2586,10 +2586,10 @@ _ do begin-export-drag Bool
 exported.image.draw(picture, Rect(0, 0, wide, tall))
 . writer = clipboard-writer(exported.items)
 =? false if writer == Pointer()
-do finally C:yumiGuiClipboardWriterRelease(writer)
+do finally C:brixGuiClipboardWriterRelease(writer)
 . zoom = effective-zoom
 . dragged = Rect(frame.x * zoom, frame.y * zoom, frame.width * zoom, frame.height * zoom)
-=? false if !C:yumiGuiWindowBeginExportDrag(native, writer, picture.native, dragged.x, dragged.y, dragged.width, dragged.height)
+=? false if !C:brixGuiWindowBeginExportDrag(native, writer, picture.native, dragged.x, dragged.y, dragged.width, dragged.height)
 clear-pointer-capture()
 clear-scroll-gesture()
 clear-hover()
@@ -2599,7 +2599,7 @@ clear-hover()
 _ do accept-external-drag
     - data PointerEventData
 
-. name = C:yumiGuiWindowDropPasteboardName(native) if native
+. name = C:brixGuiWindowDropPasteboardName(native) if native
 =? if !name
 dispatch-external-drag(ClipboardDrag(Clipboard(name), data.pointer-id), data)
 
@@ -2681,7 +2681,7 @@ session.scroller = asked.scroller
 session.operation = asked.operation
 if !session.source && native
     //gui.drop// verdict ${asked.operation as U32} target ${next != null} at $point
-    C:yumiGuiWindowSetDropOperation(native, if next then asked.operation else DropOperation.none)
+    C:brixGuiWindowSetDropOperation(native, if next then asked.operation else DropOperation.none)
 if previous && (!next || previous as Pointer != next as Pointer)
     previous.drag-leave <- session
 cursor-resolution-invalid = true
@@ -2794,7 +2794,7 @@ do new
 _ do dispatch-scroll-samples
 
 =? if scroll-resampler.is-idle || !native
-for event in scroll-resampler.take(C:yumiGuiWindowGetLastFrameEventTime(native!))
+for event in scroll-resampler.take(C:brixGuiWindowGetLastFrameEventTime(native!))
     . ignored = dispatch-pointer-event(event)
 if !scroll-resampler.is-idle
     request-render-frame()
@@ -2847,7 +2847,7 @@ if session && session.source
 resolved-cursor-style = next
 resolved-cursor-captured = captured
 if native
-    C:yumiGuiWindowSetCursorStyle
+    C:brixGuiWindowSetCursorStyle
         - native
         - cursor-style-native-value(next)
         - cursor-style-native-image(next)
@@ -3489,7 +3489,7 @@ _ do window-size-changed
 schedule-layout()
 if native && requested-native-size != size
     requested-native-size = size
-    C:yumiGuiWindowSetContentSize(native, size.width, size.height)
+    C:brixGuiWindowSetContentSize(native, size.width, size.height)
 
 ────────────────────
 _ do window-position-changed
@@ -3503,7 +3503,7 @@ _ do apply-native-position
     - requested Point
 
 =? if !native
-C:yumiGuiWindowSetPosition(native, requested.x, requested.y)
+C:brixGuiWindowSetPosition(native, requested.x, requested.y)
 accept-native-position()
 
 ────────────────────
@@ -3527,13 +3527,13 @@ _ do render-resize-frame
 =? if !native
 
 if is-frame-scheduled
-    C:yumiGuiWindowCancelFrame(native)
+    C:brixGuiWindowCancelFrame(native)
     is-frame-scheduled = false
 render-frame()
 //gui.adapter.resize.frames-committed ++
 . native-size = Dimensions
-    - C:yumiGuiWindowGetContentWidth(native!)
-    - C:yumiGuiWindowGetContentHeight(native!)
+    - C:brixGuiWindowGetContentWidth(native!)
+    - C:brixGuiWindowGetContentHeight(native!)
 if native-size != size
     //gui.adapter.resize.obsolete-sizes-rendered ++
 
@@ -3551,7 +3551,7 @@ ensure-native()
 is-frame-scheduled = true
 frame-not-before = not-before
 . callback = gui-window-render-frame as GuiWindowFrameCallback
-C:yumiGuiWindowRequestFrame
+C:brixGuiWindowRequestFrame
     - native
     - callback
     - this as Pointer
@@ -3567,8 +3567,8 @@ is-frame-scheduled = false
 
 . frame = use frame-scope
 
-last-frame-target-time = C:yumiGuiWindowGetLastFrameTargetTimeNanoseconds(native!) as Nanoseconds
-. refresh-interval = C:yumiGuiWindowGetLastFrameRefreshIntervalNanoseconds(native!)
+last-frame-target-time = C:brixGuiWindowGetLastFrameTargetTimeNanoseconds(native!) as Nanoseconds
+. refresh-interval = C:brixGuiWindowGetLastFrameRefreshIntervalNanoseconds(native!)
 last-frame-refresh-interval = refresh-interval as Nanoseconds
 dispatch-scroll-samples()
 window-clock.tick(last-frame-target-time, last-frame-refresh-interval)

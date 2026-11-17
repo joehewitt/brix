@@ -2,27 +2,27 @@
 
 When unexpected, orthogonal failures appear, detour: reduce them to a focused scratch case, fix
 the bug there, then return. Avoid repeated full-app/library experiments; they are slow,
-indirect, and invite workarounds. Find the cause with probes, and with `bin/yumi --compiler-probes`
+indirect, and invite workarounds. Find the cause with probes, and with `bin/brix --compiler-probes`
 when the compiler is at fault, rather than with prints.
 
 ## No Legacy
 
 Do not keep rejected code as "legacy" compatibility. Assume there is no need for backwards compatibility ever in this repo unless explicitly asked to preserve it.
 
-## Writing Yumi
+## Writing Brix
 
-`docs/index.md` lists the guides for writing Yumi, which releases also ship to agents outside this
-repo. Before writing code in the Yumi language, read `docs/style/agent-yumi-correctness.md`.
+`docs/index.md` lists the guides for writing Brix, which releases also ship to agents outside this
+repo. Before writing code in the Brix language, read `docs/style/agent-brix-correctness.md`.
 
 Before writing or editing a `.bx` file, also read `docs/style/agent-brix.md`.
 
-Before adding or changing a Yumi diagnostic or rule, read `docs/style/agent-yumi-enforcement.md`.
+Before adding or changing a Brix diagnostic or rule, read `docs/style/agent-brix-enforcement.md`.
 
-When reviewing Yumi code for style, follow `docs/style/agent-yumi-review.md`. Do this review only when explicitly asked.
+When reviewing Brix code for style, follow `docs/style/agent-brix-review.md`. Do this review only when explicitly asked.
 
-Do not lint yumi files automatically as part of verification. Use the linter only when asked to do so explicitly.
+Do not lint brix files automatically as part of verification. Use the linter only when asked to do so explicitly.
 
-Yumi is not production yet; treat all authoring as compiler/language work. Expect rough edges; fix compiler/language bugs instead of employing workarounds.
+Brix is not production yet; treat all authoring as compiler/language work. Expect rough edges; fix compiler/language bugs instead of employing workarounds.
 
 Preserve architecture boundaries: generic compiler code must not hardcode stdlib classes outside of core unless explicitly told to.
 
@@ -31,7 +31,7 @@ Preserve architecture boundaries: generic compiler code must not hardcode stdlib
 Tests here are a spec, not a safety net. Source code is the record of how libraries and apps behave.
 `stdlib/core/tests` and `stdlib/lang/tests/parse` are the record of how the language behaves.
 
-Before creating, editing, or running tests, read `docs/style/agent-yumi-tests.md`.
+Before creating, editing, or running tests, read `docs/style/agent-brix-tests.md`.
 
 Writing:
 
@@ -53,7 +53,7 @@ Running:
 - After a compiler or runtime change, run `suite:core` once before handoff. After a grammar or
   parser change, also run `suite:parse` once.
 - After a change to the Yumi grammar, the Brix reader, printer, converter or editor grammar, or the
-  form catalog, run `bin/yumi brix-sweep` once. It converts every `.yumi` file to Brix, checks that
+  form catalog, run `bin/brix brix-sweep` once. It converts every `.yumi` file to Brix, checks that
   each reads back the same, and builds the compiler from its Brix.
 - Never run any other `suite:` selector, except `suite:scratch`, unless the user names it.
 - After a failure, rerun only the failing selector.
@@ -65,19 +65,19 @@ Running:
 ## Verification
 
 Before running lint, benchmarks, or probes, or controlling the user's computer, read
-`docs/style/agent-yumi-verification.md`.
+`docs/style/agent-brix-verification.md`.
 
-To see what a Yumi program does, write a probe such as `// state $state` instead of a `--` print,
-and run it with `--probes`; `yumi probes` then filters and aggregates what it recorded.
-`docs/style/agent-yumi-probes.md` says how. Before handoff, remove the probes you added only to
+To see what a Brix program does, write a probe such as `// state $state` instead of a `--` print,
+and run it with `--probes`; `brix probes` then filters and aggregates what it recorded.
+`docs/style/agent-brix-probes.md` says how. Before handoff, remove the probes you added only to
 look.
 
 ## Performance Work
 
-For performance-related tasks, use `bin/yumi bench`. Save a baseline before edits by running the
+For performance-related tasks, use `bin/brix bench`. Save a baseline before edits by running the
 selectors under a profile with a name
-(`bin/yumi bench run <selectors> --profile <profile> --save <name>`), then rerun the same profile
-and selectors with `--compare <name>` after edits. `bin/yumi bench list` shows the profiles and
+(`bin/brix bench run <selectors> --profile <profile> --save <name>`), then rerun the same profile
+and selectors with `--compare <name>` after edits. `bin/brix bench list` shows the profiles and
 suites.
 
 # Comments

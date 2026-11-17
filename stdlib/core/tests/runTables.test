@@ -1801,22 +1801,22 @@ Exception: Table row types must be concrete fixed-layout structs
 /core/table
 # Pointerful scalar row field stores emit barriers during concurrent marking.
 
-/YuCore/YuCore.h
-/YuGC/YuGCTest.h
+/BxCore/BxCore.h
+/BxGC/BxGCTest.h
 
 . table = Table'Cell(1)
 table[0] = Cell(GCNode(1), GCNode(2))
 
-. barrier-count-before = C:yumiGCBarrierCount()
-C:yumiGCStartConcurrentMark()
+. barrier-count-before = C:brixGCBarrierCount()
+C:brixGCStartConcurrentMark()
 table[0].left = GCNode(3)
-C:yumiGCFinishConcurrentMark()
-. barrier-count-after = C:yumiGCBarrierCount()
-C:yumiCollect()
+C:brixGCFinishConcurrentMark()
+. barrier-count-after = C:brixGCBarrierCount()
+C:brixCollect()
 
 if barrier-count-after <= barrier-count-before
     -- "barrier-missing"
-else if !C:yumiGCVerifyObject(table[0].left as Pointer)
+else if !C:brixGCVerifyObject(table[0].left as Pointer)
     -- "left-missing"
 else
     -- "barrier-ok ${table[0].left.value}"
@@ -1843,25 +1843,25 @@ barrier-ok 3
 /core/table
 # Pointerful row scatter keeps newly stored row objects alive.
 
-/YuCore/YuCore.h
-/YuGC/YuGCTest.h
+/BxCore/BxCore.h
+/BxGC/BxGCTest.h
 
 . table = Table'Cell(2)
 table[0] = Cell(GCNode(10), GCNode(20))
 
-. barrier-count-before = C:yumiGCBarrierCount()
-C:yumiGCStartConcurrentMark()
+. barrier-count-before = C:brixGCBarrierCount()
+C:brixGCStartConcurrentMark()
 table[1] = Cell(GCNode(30), GCNode(40))
-C:yumiGCFinishConcurrentMark()
-. barrier-count-after = C:yumiGCBarrierCount()
+C:brixGCFinishConcurrentMark()
+. barrier-count-after = C:brixGCBarrierCount()
 
-C:yumiCollect()
+C:brixCollect()
 
 if barrier-count-after <= barrier-count-before
     -- "scatter-barrier-missing"
-else if !C:yumiGCVerifyObject(table[1].left as Pointer)
+else if !C:brixGCVerifyObject(table[1].left as Pointer)
     -- "left-missing"
-else if !C:yumiGCVerifyObject(table[1].right as Pointer)
+else if !C:brixGCVerifyObject(table[1].right as Pointer)
     -- "right-missing"
 else
     -- "scatter-ok ${table[1].left.value} ${table[1].right.value}"
@@ -1888,24 +1888,24 @@ scatter-ok 30 40
 /core/table
 # Pointerful range copy emits barriers and preserves copied objects.
 
-/YuCore/YuCore.h
-/YuGC/YuGCTest.h
+/BxCore/BxCore.h
+/BxGC/BxGCTest.h
 
 . source = Table'Cell(3) • with Cell(GCNode((each + 1) as Int), GCNode((each + 10) as Int))
 . target = Table'Cell(3)
 
-. barrier-count-before = C:yumiGCBarrierCount()
-C:yumiGCStartConcurrentMark()
+. barrier-count-before = C:brixGCBarrierCount()
+C:brixGCStartConcurrentMark()
 target[0 .. < 2] = source[1 .. < 3]
-C:yumiGCFinishConcurrentMark()
-. barrier-count-after = C:yumiGCBarrierCount()
-C:yumiCollect()
+C:brixGCFinishConcurrentMark()
+. barrier-count-after = C:brixGCBarrierCount()
+C:brixCollect()
 
 if barrier-count-after <= barrier-count-before
     -- "range-copy-barrier-missing"
-else if !C:yumiGCVerifyObject(target[0].left as Pointer)
+else if !C:brixGCVerifyObject(target[0].left as Pointer)
     -- "target-left-missing"
-else if !C:yumiGCVerifyObject(target[1].right as Pointer)
+else if !C:brixGCVerifyObject(target[1].right as Pointer)
     -- "target-right-missing"
 else
     -- "range-copy-ok ${target[0].left.value} ${target[1].right.value}"
@@ -4379,7 +4379,7 @@ empty 0/0
 :====
 /core/table
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 
 . table = Table'Point(4) • with Point(each as I32, (each + 10) as I32)
 . ids = Array'U32([3u32, 1u32, 1u32, 0u32])
@@ -4427,7 +4427,7 @@ show-invalid-i32(table[Array'I32([-1 as I32])])
 show-invalid-u32(table[Array'U32([4u32])])
 show-invalid-span(ids)
 ids = Array'U32()
-C:yumiGCCollect()
+C:brixGCCollect()
 -- selected[0] as Point
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -5344,12 +5344,12 @@ Stack trace:
   0  __source__:fail-rows no file:28:1
   1  __source__:main no file:12:1
   2  __source__:init.__source__ no file
-  3  __source__:yumi.main no file
+  3  __source__:brix.main no file
 ;====
 
 :====
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 /core/table
 
 . rows = Table'Node(1) • with :: index => Node.wide(1, 10, 20, 30, 40)
@@ -5364,7 +5364,7 @@ match rows[0]
 + do collect-table-case U64
     - wide Wide
 
-C:yumiGCCollect()
+C:brixGCCollect()
 = wide.external-a
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -5453,7 +5453,7 @@ Stack trace:
   1  __source__:pick-table-row-receiver-bridge no file:37:1
   2  __source__:main no file:8:12
   3  __source__:init.__source__ no file
-  4  __source__:yumi.main no file
+  4  __source__:brix.main no file
 ;====
 
 :====
@@ -5606,7 +5606,7 @@ Stack trace:
   0  __source__:union-dispatch-1 no file:11:4
   1  __source__:main no file:11:4
   2  __source__:init.__source__ no file
-  3  __source__:yumi.main no file
+  3  __source__:brix.main no file
 ;====
 
 :====
@@ -5688,7 +5688,7 @@ Stack trace:
   2  __source__:union-dispatch-1 no file:7:4
   3  __source__:main no file:10:4
   4  __source__:init.__source__ no file
-  5  __source__:yumi.main no file
+  5  __source__:brix.main no file
 ;====
 
 :====
@@ -5748,7 +5748,7 @@ Stack trace:
   1  __source__:pick-table-row-receiver-bridge no file:14:1
   2  __source__:main no file:8:12
   3  __source__:init.__source__ no file
-  4  __source__:yumi.main no file
+  4  __source__:brix.main no file
 ;====
 
 :====
@@ -5781,7 +5781,7 @@ Stack trace:
   2  core/table:Table:Table core/table.yumi
   3  __source__:main no file:4:12
   4  __source__:init.__source__ no file
-  5  __source__:yumi.main no file
+  5  __source__:brix.main no file
 ;====
 
 :====
@@ -6285,7 +6285,7 @@ Stack trace:
   1  __source__:pick-table-row-receiver-bridge no file:37:1
   2  __source__:main no file:8:15
   3  __source__:init.__source__ no file
-  4  __source__:yumi.main no file
+  4  __source__:brix.main no file
 ;====
 :====
 # A loop over a table whose body grows it reads and writes the table's storage as it is after the

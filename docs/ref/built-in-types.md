@@ -579,6 +579,6 @@ change to the collection, until `unobserve-collection`. A mutation's `kind` is `
 | `type-identity` | A predicate that tests whether a value is of a type. | [Type information](#type-information) |
 | `live-state`, `keep-live-state` | State a live function keeps between runs. | Reactivity |
 
-There is no query that lists types or members. `yumi app.bx --list-sources` lists the modules a
-program loads, core's among them, and `yumi app.bx --explain hash-for` finds a function's
+There is no query that lists types or members. `brix app.bx --list-sources` lists the modules a
+program loads, core's among them, and `brix app.bx --explain hash-for` finds a function's
 declarations.

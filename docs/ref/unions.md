@@ -403,7 +403,7 @@ that can be the result.
 
 ```brix
 (main
-  (print (call describe (call check "Yumi")))
+  (print (call describe (call check "Brix")))
   (print (call describe (call check "")))
   (let result (call check "x"))
   (print (is result .accepted))
@@ -434,7 +434,7 @@ that can be the result.
 ```
 
 ```output
-Hello, Yumi
+Hello, Brix
 Enter a name
 true
 accepted

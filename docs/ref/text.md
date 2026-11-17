@@ -42,7 +42,7 @@ true
   bytes of the UTF-8 encoding. `display-width` counts terminal columns: a wide character such as
   `漢` takes two, and a combining mark takes none. All three are `Size`, which is `I64`.
 - **Characters are code points.** An accented letter written as a letter and a combining mark is
-  two characters, so `"e\u0301"` has a length of 2. Yumi does not count grapheme clusters.
+  two characters, so `"e\u0301"` has a length of 2. Brix does not count grapheme clusters.
 - **Looping** over a text gives each `Char` in turn. A text converts to a list of its characters,
   and to a stream of them; see Streams.
 - **Empty text is false.** A text used as a condition is true when it is not empty, so

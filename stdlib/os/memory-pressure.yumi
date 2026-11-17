@@ -1,6 +1,6 @@
 ./file
-/YuCore/YuSystem.h
-/YuEvents/YuEvents.h
+/BxCore/BxSystem.h
+/BxEvents/BxEvents.h
 /unistd.h
 
 + memory-pressure = MemoryPressureStream()
@@ -23,24 +23,24 @@ _ channel := AsyncOnDemandChannel'MemoryPressure(this)
 ────────────────────
 + do begin-using
 
-. watched = C:yumiWatchMemoryPressure()
+. watched = C:brixWatchMemoryPressure()
 =? if watched < 0
 fd = watched
 do new
     while true
         wait-until-readable(watched)
-        . level = C:yumiTakeMemoryPressure(watched)
+        . level = C:brixTakeMemoryPressure(watched)
         if level < 0
             break
         if level > 1
             channel <- MemoryPressure.critical
         else if level > 0
             channel <- MemoryPressure.warning
-    C:yumiReleaseEventDescriptor(watched)
+    C:brixReleaseEventDescriptor(watched)
     C:close(watched)
 
 ────────────────────
 + do end-using
 
-C:yumiUnwatchMemoryPressure(fd)
+C:brixUnwatchMemoryPressure(fd)
 fd = -1

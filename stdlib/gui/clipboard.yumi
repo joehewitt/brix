@@ -1,4 +1,4 @@
-/YuAppleGUI/YuAppleGUI.h
+/BxAppleGUI/BxAppleGUI.h
 /graphics/image
 /os/path
 /stream/aggregate
@@ -57,7 +57,7 @@ ClipboardItem([ClipboardRepresentation(clipboard-file-type, ClipboardData.file(p
 
 (value as String) as Path if value
 
-.. value = C:yumiGuiClipboardItemPath(clipboard.name, index)
+.. value = C:brixGuiClipboardItemPath(clipboard.name, index)
 
 ────────────────────
 + get is-image Bool
@@ -92,7 +92,7 @@ first(each in types when clipboard-type-conforms(each, type))
 + do read-string String?
     - type String
 
-. value = C:yumiGuiClipboardItemString(clipboard.name, index, type)
+. value = C:brixGuiClipboardItemString(clipboard.name, index, type)
 = value as String if value
 
 ────────────────────
@@ -104,11 +104,11 @@ first(each in types when clipboard-type-conforms(each, type))
 + do read-data Byte[]?
     - type String
 
-. data = C:yumiGuiClipboardItemData(clipboard.name, index, type)
+. data = C:brixGuiClipboardItemData(clipboard.name, index, type)
 =? null if data == Pointer()
-do finally C:yumiGuiClipboardDataRelease(data)
-. bytes = Byte[C:yumiGuiClipboardDataLength(data) as Size]
-C:yumiGuiClipboardDataCopy(data, bytes.data, bytes.size)
+do finally C:brixGuiClipboardDataRelease(data)
+. bytes = Byte[C:brixGuiClipboardDataLength(data) as Size]
+C:brixGuiClipboardDataCopy(data, bytes.data, bytes.size)
 = bytes
 
 ────────────────────
@@ -131,7 +131,7 @@ C:yumiGuiClipboardDataCopy(data, bytes.data, bytes.size)
 ────────────────────
 + get items [ClipboardEntry]
 
-** 0 .. < (C:yumiGuiClipboardItemCount(name) as Size)
+** 0 .. < (C:brixGuiClipboardItemCount(name) as Size)
 *> ClipboardEntry(this, each, clipboard-item-types(name, each))
 |> List
 
@@ -180,8 +180,8 @@ for entry in items
 
 . writer = clipboard-writer(items)
 =? false if writer == Pointer()
-do finally C:yumiGuiClipboardWriterRelease(writer)
-= C:yumiGuiClipboardWriterCommit(writer, name)
+do finally C:brixGuiClipboardWriterRelease(writer)
+= C:brixGuiClipboardWriterCommit(writer, name)
 
 ────────────────────
 + do write-text Bool
@@ -192,20 +192,20 @@ do finally C:yumiGuiClipboardWriterRelease(writer)
 ────────────────────
 + do get change-count U64
 
-= C:yumiGuiClipboardChangeCount(name)
+= C:brixGuiClipboardChangeCount(name)
 
 ────────────────────
 + do discard
 
 =? if !name.length
-C:yumiGuiClipboardDiscard(name)
+C:brixGuiClipboardDiscard(name)
 
 ━━━━━━━━━━━━━━━━━━━━
 + clipboard-type-conforms Bool
     - type String
     - parent String
 
-type == parent || C:yumiGuiTypeConforms(type, parent)
+type == parent || C:brixGuiTypeConforms(type, parent)
 
 ━━━━━━━━━━━━━━━━━━━━
 + clipboard-path-type String?
@@ -213,7 +213,7 @@ type == parent || C:yumiGuiTypeConforms(type, parent)
 
 type as String if type
 
-.. type = C:yumiGuiTypeOfPath("$path")
+.. type = C:brixGuiTypeOfPath("$path")
 
 ━━━━━━━━━━━━━━━━━━━━
 _ clipboard-path-is-image Bool
@@ -230,19 +230,19 @@ _ clipboard-item-types [String]
 
 if joined then (joined as String).split("\n") else List'String()
 
-.. joined = C:yumiGuiClipboardItemTypes(name, index)
+.. joined = C:brixGuiClipboardItemTypes(name, index)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do clipboard-writer Pointer
     - items [ClipboardItem]
 
-. writer = C:yumiGuiClipboardWriterCreate()
+. writer = C:brixGuiClipboardWriterCreate()
 =? writer if writer == Pointer()
 for item in items
-    C:yumiGuiClipboardWriterAddItem(writer)
+    C:brixGuiClipboardWriterAddItem(writer)
     for representation in item.representations
         if !clipboard-writer-set(writer, representation)
-            C:yumiGuiClipboardWriterRelease(writer)
+            C:brixGuiClipboardWriterRelease(writer)
             = Pointer()
 = writer
 
@@ -253,8 +253,8 @@ _ clipboard-writer-set Bool
 
 match representation.data
     | ClipboardData.text(text)
-        C:yumiGuiClipboardWriterSetString(writer, representation.type, text)
+        C:brixGuiClipboardWriterSetString(writer, representation.type, text)
     | ClipboardData.bytes(bytes)
-        C:yumiGuiClipboardWriterSetData(writer, representation.type, bytes.data, bytes.size)
+        C:brixGuiClipboardWriterSetData(writer, representation.type, bytes.data, bytes.size)
     | ClipboardData.file(file)
-        C:yumiGuiClipboardWriterSetPath(writer, "$file")
+        C:brixGuiClipboardWriterSetPath(writer, "$file")

@@ -6,24 +6,24 @@
 /os/file
 /os/path
 
-+ yumi-runtime-path Path := runtime-source-root()
++ brix-runtime-path Path := runtime-source-root()
 
-+ yumi-build-path Path := build-root()
++ brix-build-path Path := build-root()
 
 + toolchain-root Path := find-toolchain-root()
 
 + toolchain-config-name = "libs/build.json"
 
-` How the toolchain's runtime spells its names: "yumi", or "brix" once it is renamed
+` How the toolchain's runtime spells its names: "brix", or "brix" once it is renamed
 + runtime-names String := configured-runtime-names()
 
-+ project-folder-name = ".yumi"
++ project-folder-name = ".brix"
 
 _ git-folder-name = ".git"
 
 + project-root Path := find-project-root()
 
-+ yumi-probes-path Path := project-root / ".tmp/build/probes"
++ brix-probes-path Path := project-root / ".tmp/build/probes"
 
 + sdk-root Path := apple-sdk-path(null)
 
@@ -40,7 +40,7 @@ _ git-folder-name = ".git"
     * "core"
     * "core/number"
 
-` These modules are automatically imported into every Yumi module
+` These modules are automatically imported into every Brix module
 + builtin-module-names List
     * "core"
     * "core/error"
@@ -76,14 +76,14 @@ _ git-folder-name = ".git"
 ` writes a probe, where probes compile
 + probes-module-name = "core/probes"
 
-` These modules have functions the compiler can call via yumi.core.x
+` These modules have functions the compiler can call via brix.core.x
 + core-module-names List
-    * "YuCore/YuCore.h"
-    * "YuGC/YuGC.h"
-    * "YuCore/YuBatchTest.h"
-    * "YuCore/YuString.h"
-    * "YuCore/YuPanic.h"
-    * "YuEvents/YuEvents.h"
+    * "BxCore/BxCore.h"
+    * "BxGC/BxGC.h"
+    * "BxCore/BxBatchTest.h"
+    * "BxCore/BxString.h"
+    * "BxCore/BxPanic.h"
+    * "BxEvents/BxEvents.h"
     * "math.h"
 
 ` The instrumented benchmark runtime builds into "bench" under the build root;
@@ -98,7 +98,7 @@ _ runtime-source-root Path
 ??
     root
 
-.. root = yumi-build-path
+.. root = brix-build-path
 .. root-sources = root / "$runtime-names/libs/core"
 .. bench-root = root / "bench"
 .. bench-sources = bench-root / "$runtime-names/libs/core"
@@ -120,7 +120,7 @@ _ do find-toolchain-root Path
 
 . start = configured-build-root() ?? executable-path().dir
 . found = directory-holding(start, toolchain-config-name)
-?! Error("No $toolchain-config-name above $start; set YUMI_BUILD_PATH to a runtime build")
+?! Error("No $toolchain-config-name above $start; set BRIX_BUILD_PATH to a runtime build")
     if !found
 = found
 
@@ -133,14 +133,14 @@ _ do find-project-root Path
 ━━━━━━━━━━━━━━━━━━━━
 _ toolchain-home String
 
-Path(toolchain-env("_HOME") ?? "${env("HOME") ?? ""}/.yumi").normalized
+Path(toolchain-env("_HOME") ?? "${env("HOME") ?? ""}/.brix").normalized
 
 ━━━━━━━━━━━━━━━━━━━━
 + toolchain-env String?
     - suffix String
 
-` A variable of the toolchain, spelled BRIX… or as it was before Brix, YUMI….
-env("BRIX$suffix") ?? env("YUMI$suffix")
+` A variable of the toolchain, spelled BRIX… or as it was before Brix, BRIX….
+env("BRIX$suffix") ?? env("BRIX$suffix")
 
 ━━━━━━━━━━━━━━━━━━━━
 + runtime-name String
@@ -148,7 +148,7 @@ env("BRIX$suffix") ?? env("YUMI$suffix")
 
 ` The runtime's spelling of `name`, a runtime name as it was written before Brix.
 |? runtime-names == "brix"
-    respelled(name, ["yumi", "Yumi", "YUMI", "Yu"], ["brix", "Brix", "BRIX", "Bx"])
+    respelled(name, ["brix", "Brix", "BRIX", "Yu"], ["brix", "Brix", "BRIX", "Bx"])
 ??
     name
 
@@ -158,7 +158,7 @@ env("BRIX$suffix") ?? env("YUMI$suffix")
 
 ` A name the runtime spells, as it was written before Brix, to compare with the compiler's lists.
 |? runtime-names == "brix"
-    respelled(name, ["brix", "Brix", "BRIX", "Bx"], ["yumi", "Yumi", "YUMI", "Yu"])
+    respelled(name, ["brix", "Brix", "BRIX", "Bx"], ["brix", "Brix", "BRIX", "Yu"])
 ??
     name
 
@@ -183,7 +183,7 @@ if text
         . names = (config as [String = JSON])["runtimeNames"]
         if names && names is String
             = names as String
-= "yumi"
+= "brix"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do directory-holding Path?
@@ -259,11 +259,11 @@ if config is [String = JSON]
             if project is [String = JSON]
                 . path = (project as [String = JSON])["path"]
                 if path && path is String
-                    add-export-roots(paths, project, yumi-runtime-path / runtime-names / (path as String))
+                    add-export-roots(paths, project, brix-runtime-path / runtime-names / (path as String))
     . externals = fields["externalLibraries"]
     if externals && externals is [String = JSON]
         for name, external in externals as [String = JSON]
-            add-export-roots(paths, external, yumi-runtime-path / "external" / name)
+            add-export-roots(paths, external, brix-runtime-path / "external" / name)
 = paths
 
 ━━━━━━━━━━━━━━━━━━━━

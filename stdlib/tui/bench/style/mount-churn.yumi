@@ -2,8 +2,8 @@
 `benchmark.meta timing: recommended
 `benchmark.meta profiles: gc-runtime,markup-runtime,compile-timing
 
-/YuCore/YuCore.h
-/YuGC/YuGC.h
+/BxCore/BxCore.h
+/BxGC/BxGC.h
 /core/markup
 /core/style
 /tui/box
@@ -11,12 +11,12 @@
 /tui/layout
 /tui/primitives
 
-. attachment-lane = C:yumiGCStyleAttachmentsSidePayloadLane()
-. template-lane = C:yumiGCStyleTemplatesSidePayloadLane()
-. object-lane = C:yumiGCStyleObjectsSidePayloadLane()
-. opening-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
-. opening-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
-. opening-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+. attachment-lane = C:brixGCStyleAttachmentsSidePayloadLane()
+. template-lane = C:brixGCStyleTemplatesSidePayloadLane()
+. object-lane = C:brixGCStyleObjectsSidePayloadLane()
+. opening-style-attachments = C:brixGCObjectSidePayloadCount(attachment-lane)
+. opening-style-templates = C:brixGCObjectSidePayloadCount(template-lane)
+. opening-style-objects = C:brixGCObjectSidePayloadCount(object-lane)
 
 . root = StyleChurnRoot()
 markup-mount-root(root, root)
@@ -34,12 +34,12 @@ for branch-index in 0 .. < 100
         markup-append(branch, leaf)
         node-count += 1
 
-. cold-objects-before = C:yumiGCAllocatedObjectCount()
-. cold-bytes-before = C:yumiGCAllocatedByteCount()
+. cold-objects-before = C:brixGCAllocatedObjectCount()
+. cold-bytes-before = C:brixGCAllocatedByteCount()
 markup-append(root, subtree)
 root.markup-batch-queue.checkpoint()
-. cold-objects = C:yumiGCAllocatedObjectCount() - cold-objects-before
-. cold-bytes = C:yumiGCAllocatedByteCount() - cold-bytes-before
+. cold-objects = C:brixGCAllocatedObjectCount() - cold-objects-before
+. cold-bytes = C:brixGCAllocatedByteCount() - cold-bytes-before
 . cold-style-side-payloads = style-side-payload-count()
 
 markup-remove(root, subtree)
@@ -49,16 +49,16 @@ root.markup-batch-queue.checkpoint()
 . warm-bytes Size = 0
 . checksum = node-count
 for cycle in 0 .. < 6
-    . objects-before = C:yumiGCAllocatedObjectCount()
-    . bytes-before = C:yumiGCAllocatedByteCount()
+    . objects-before = C:brixGCAllocatedObjectCount()
+    . bytes-before = C:brixGCAllocatedByteCount()
     markup-append(root, subtree)
     root.markup-batch-queue.checkpoint()
     root.update-layout()
     checksum += root.inner-width + root.inner-height + cycle
     markup-remove(root, subtree)
     root.markup-batch-queue.checkpoint()
-    warm-objects += (C:yumiGCAllocatedObjectCount() - objects-before) as Size
-    warm-bytes += (C:yumiGCAllocatedByteCount() - bytes-before) as Size
+    warm-objects += (C:brixGCAllocatedObjectCount() - objects-before) as Size
+    warm-bytes += (C:brixGCAllocatedByteCount() - bytes-before) as Size
 
 . warm-objects-per-cycle = warm-objects / 6
 . warm-bytes-per-cycle = warm-bytes / 6
@@ -67,11 +67,11 @@ for cycle in 0 .. < 6
 . warm-objects-per-node = warm-objects-per-cycle / node-count
 . warm-bytes-per-node = warm-bytes-per-cycle / node-count
 
-C:yumiBenchCollect()
+C:brixBenchCollect()
 
-. final-style-attachments = C:yumiGCObjectSidePayloadCount(attachment-lane)
-. final-style-templates = C:yumiGCObjectSidePayloadCount(template-lane)
-. final-style-objects = C:yumiGCObjectSidePayloadCount(object-lane)
+. final-style-attachments = C:brixGCObjectSidePayloadCount(attachment-lane)
+. final-style-templates = C:brixGCObjectSidePayloadCount(template-lane)
+. final-style-objects = C:brixGCObjectSidePayloadCount(object-lane)
 . maximum-style-objects = opening-style-objects + 16
 ?! Panic("style/mount-churn attachment lane escaped its mounted root bound")
     if final-style-attachments != opening-style-attachments + 1
@@ -122,12 +122,12 @@ C:yumiBenchCollect()
 ━━━━━━━━━━━━━━━━━━━━
 _ style-attachments-side-payload-count Size
 
-C:yumiGCObjectSidePayloadCount(C:yumiGCStyleAttachmentsSidePayloadLane()) as Size
+C:brixGCObjectSidePayloadCount(C:brixGCStyleAttachmentsSidePayloadLane()) as Size
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do style-side-payload-count
 
 . count = style-attachments-side-payload-count()
-count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane()) as Size
-count += C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane()) as Size
+count += C:brixGCObjectSidePayloadCount(C:brixGCStyleTemplatesSidePayloadLane()) as Size
+count += C:brixGCObjectSidePayloadCount(C:brixGCStyleObjectsSidePayloadLane()) as Size
 = count

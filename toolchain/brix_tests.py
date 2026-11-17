@@ -56,7 +56,7 @@ def main(arguments):
     names = [suite for suite, _ in CASE_SUITES + module_suites]
     unknown = [argument for argument in arguments if argument not in names]
     if unknown:
-        raise Failure('yumi brix-tests takes suite names, from %s, and --with FOLDER to add a folder of '
+        raise Failure('brix brix-tests takes suite names, from %s, and --with FOLDER to add a folder of '
                       'test modules as a suite; not %s' % (', '.join(names), ', '.join(unknown)))
     chosen = set(arguments or names)
     started = time.time()
@@ -90,7 +90,7 @@ def main(arguments):
         report['unconverted'] += ['%s:%d' % (test_file.path, case.line) for case in test_file.cases if case.unconverted]
         report['problems'] += ['%s:%d: %s' % (test_file.path, case.line, problem)
                                for case in test_file.cases for problem in case.problems]
-    running = dict(environment, YUMIPATH=os.path.join(TREE, 'stdlib'), YUMI_TEST_BRIX='1')
+    running = dict(environment, BRIXPATH=os.path.join(TREE, 'stdlib'), BRIX_TEST_BRIX='1')
     for suite, root in CASE_SUITES:
         if suite in chosen:
             suite_files = [test_file for test_file in files if test_file.suite == suite]
@@ -332,9 +332,9 @@ def suite_environment(environment, suite, root):
         OMETER_TESTOMETER_PROJECT_ROOT=TREE,
         OMETER_TESTOMETER_SUITE_NAME=suite,
         OMETER_TESTOMETER_CATALOG_START_INDEX='0',
-        YUMI_TEST_SUITE=suite,
-        YUMI_TEST_ROOT=os.path.join(TREE, root),
-        YUMI_TEST_COMPILER=compiler.COMPILER,
+        BRIX_TEST_SUITE=suite,
+        BRIX_TEST_ROOT=os.path.join(TREE, root),
+        BRIX_TEST_COMPILER=compiler.COMPILER,
     )
 
 

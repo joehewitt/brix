@@ -8,7 +8,7 @@ import unittest
 from common import ROOT
 from testing import support
 
-LINTER = [os.path.join(ROOT, 'bin', 'yumi'), 'lint']
+LINTER = [os.path.join(ROOT, 'bin', 'brix'), 'lint']
 RULES = ('style/no-redundant-context-cast', 'style/prefer-constructor-initializer')
 LINT_SECONDS = 300
 DIVIDER = '━' * 20
@@ -84,7 +84,7 @@ def line_of(text):
 class SemanticRules(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        directory = tempfile.mkdtemp(prefix='yumi-test-')
+        directory = tempfile.mkdtemp(prefix='brix-test-')
         cls.addClassCleanup(shutil.rmtree, directory, True)
         cls.source = os.path.join(directory, 'fixture.yumi')
         with open(cls.source, 'w', encoding='utf-8') as file:

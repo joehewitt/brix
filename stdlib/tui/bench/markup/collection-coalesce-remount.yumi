@@ -2,7 +2,7 @@
 `benchmark.meta timing: recommended
 `benchmark.meta profiles: markup-runtime,compile-timing
 
-/YuGC/YuGC.h
+/BxGC/BxGC.h
 /core/markup
 /core/style
 /gc/gc
@@ -12,10 +12,10 @@
 /tui/text
 
 . step-count Size = 48
-. markup-attachment-lane = C:yumiGCMarkupAttachmentsSidePayloadLane()
-C:yumiCollect()
+. markup-attachment-lane = C:brixGCMarkupAttachmentsSidePayloadLane()
+C:brixCollect()
 do drain-reclaim-cleanups()
-. opening-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+. opening-markup-attachments = C:brixGCObjectSidePayloadCount(markup-attachment-lane)
 do opening-markup-attachments
 
 . small-forward = make-collection-items(64, "small")
@@ -33,7 +33,7 @@ root.keyed-large = large-forward
 
 markup-mount-root(root, root)
 root.markup-batch-queue.checkpoint()
-. settled-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+. settled-markup-attachments = C:brixGCObjectSidePayloadCount(markup-attachment-lane)
 do settled-markup-attachments
 . settled-markup-hosts = collection-bench-host-count(root)
 ?! Panic("markup/collection-coalesce-remount initial attachment tree is inconsistent")
@@ -59,9 +59,9 @@ for step in 0 .. < step-count
     checksum += root.items.length + root.keyed-small.length
     checksum += root.keyed-medium.length + root.keyed-large.length + step
 
-C:yumiCollect()
+C:brixCollect()
 do drain-reclaim-cleanups()
-. final-markup-attachments = C:yumiGCObjectSidePayloadCount(markup-attachment-lane)
+. final-markup-attachments = C:brixGCObjectSidePayloadCount(markup-attachment-lane)
 . final-markup-hosts = collection-bench-host-count(root)
 ?! Panic("markup/collection-coalesce-remount retained reclaimed attachment owners")
     if final-markup-attachments != opening-markup-attachments + final-markup-hosts

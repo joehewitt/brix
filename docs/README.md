@@ -1,11 +1,11 @@
 # Documentation
 
-- `index.md` is the index of what agents read to write Yumi, which `yumi` and `yumi --help` name.
+- `index.md` is the index of what agents read to write Brix, which `brix` and `brix --help` name.
   Each release ships it with every file it reaches by links, so link only to portable material.
-- `style/` contains the repository's agent-facing Yumi style guides. Agents may update these only
+- `style/` contains the repository's agent-facing Brix style guides. Agents may update these only
   when explicitly asked. The ones `index.md` links to ship with releases, so they must not assume
-  this repo. This repo's own rules go in `agent-yumi-tests.md`, `agent-yumi-verification.md` and
-  `agent-yumi-enforcement.md`.
+  this repo. This repo's own rules go in `agent-brix-tests.md`, `agent-brix-verification.md` and
+  `agent-brix-enforcement.md`.
 - `ref/` is reserved for official reference documentation approved by the project owner. Do not
   create or populate it without that approval. Its examples are test cases: the `docs` suite
   compiles each `brix` block as a program, runs it, and compares what it prints with the `output`

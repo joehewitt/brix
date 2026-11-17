@@ -2,8 +2,8 @@
 `benchmark.meta timing: recommended
 `benchmark.meta profiles: gui,compile-timing
 
-/YuAppleGUI/YuAppleGUI.h
-/YuGC/YuGC.h
+/BxAppleGUI/BxAppleGUI.h
+/BxGC/BxGC.h
 /core/markup
 /graphics/canvas
 /graphics/color
@@ -19,12 +19,12 @@
 
 . icon-count Size = 1000
 . live0 = settle-live()
-. build-objects0 = C:yumiGCAllocatedObjectCount()
-. markup-before = C:yumiGCObjectSidePayloadCount(C:yumiGCMarkupAttachmentsSidePayloadLane())
-. style-attachments-before = C:yumiGCObjectSidePayloadCount
-    - C:yumiGCStyleAttachmentsSidePayloadLane()
-. style-templates-before = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane())
-. style-objects-before = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane())
+. build-objects0 = C:brixGCAllocatedObjectCount()
+. markup-before = C:brixGCObjectSidePayloadCount(C:brixGCMarkupAttachmentsSidePayloadLane())
+. style-attachments-before = C:brixGCObjectSidePayloadCount
+    - C:brixGCStyleAttachmentsSidePayloadLane()
+. style-templates-before = C:brixGCObjectSidePayloadCount(C:brixGCStyleTemplatesSidePayloadLane())
+. style-objects-before = C:brixGCObjectSidePayloadCount(C:brixGCStyleObjectsSidePayloadLane())
 . build0 = monotonic-time-nanoseconds()
 . root = BenchRoot()
 markup-mount-root(root, root)
@@ -42,8 +42,8 @@ root.markup-batch-queue.checkpoint()
 . build1 = monotonic-time-nanoseconds()
 . live1 = settle-live()
 
-. native = C:yumiGuiWindowCreate("gui bench vector-icons-1k (offscreen)", 1180, 800)
-. scale = C:yumiGuiWindowGetBackingScaleFactor(native)
+. native = C:brixGuiWindowCreate("gui bench vector-icons-1k (offscreen)", 1180, 800)
+. scale = C:brixGuiWindowGetBackingScaleFactor(native)
 . background = RGBA(1, 1, 1, 1)
 root.layout(Rect(0, 0, 1180, 800))
 
@@ -57,27 +57,27 @@ for warm in 0 .. < 3
 for frame in 0 .. < frames
     . canvas = RasterCanvas(1180, 800, scale)
     canvas.erase(background)
-    . objects0 = C:yumiGCAllocatedObjectCount()
-    . bytes0 = C:yumiGCRequestedByteCount()
+    . objects0 = C:brixGCAllocatedObjectCount()
+    . bytes0 = C:brixGCRequestedByteCount()
     . paint0 = monotonic-time-nanoseconds()
     root.paint(canvas)
-    paint-objects += (C:yumiGCAllocatedObjectCount() - objects0) as Size
-    paint-bytes += (C:yumiGCRequestedByteCount() - bytes0) as Size
+    paint-objects += (C:brixGCAllocatedObjectCount() - objects0) as Size
+    paint-bytes += (C:brixGCRequestedByteCount() - bytes0) as Size
     paint-ns += monotonic-time-nanoseconds() - paint0
-    C:yumiGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
+    C:brixGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
     canvas.close()
 
 . build-us = (build1 - build0) / 1000
 . built-live-bytes-per-icon = (live1 - live0) / icon-count
-. built-objects-per-icon = (C:yumiGCAllocatedObjectCount() - build-objects0) / icon-count
+. built-objects-per-icon = (C:brixGCAllocatedObjectCount() - build-objects0) / icon-count
 . markup-per-icon = (markup-after - markup-before) / icon-count
-    .. markup-after = C:yumiGCObjectSidePayloadCount(C:yumiGCMarkupAttachmentsSidePayloadLane())
+    .. markup-after = C:brixGCObjectSidePayloadCount(C:brixGCMarkupAttachmentsSidePayloadLane())
 . style-attachments-per-icon = (attachments-after - style-attachments-before) / icon-count
-    .. attachments-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleAttachmentsSidePayloadLane())
+    .. attachments-after = C:brixGCObjectSidePayloadCount(C:brixGCStyleAttachmentsSidePayloadLane())
 . style-templates-per-icon = (templates-after - style-templates-before) / icon-count
-    .. templates-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleTemplatesSidePayloadLane())
+    .. templates-after = C:brixGCObjectSidePayloadCount(C:brixGCStyleTemplatesSidePayloadLane())
 . style-objects-per-icon = (objects-after - style-objects-before) / icon-count
-    .. objects-after = C:yumiGCObjectSidePayloadCount(C:yumiGCStyleObjectsSidePayloadLane())
+    .. objects-after = C:brixGCObjectSidePayloadCount(C:brixGCStyleObjectsSidePayloadLane())
 . paint-p50-us = percentile-us(paint-ns, 50)
 . paint-p95-us = percentile-us(paint-ns, 95)
 . paint-p99-us = percentile-us(paint-ns, 99)
@@ -108,8 +108,8 @@ for frame in 0 .. < frames
 //gui.bench.vector.atlas-entries += atlas-entries
 //gui.bench.vector.atlas-bytes += atlas-bytes
 
-C:yumiGuiWindowClose(native)
-C:yumiGuiWindowRelease(native)
+C:brixGuiWindowClose(native)
+C:brixGuiWindowRelease(native)
 root.close()
 markup-release(root)
 
@@ -120,9 +120,9 @@ checksum += atlas-entries + atlas-bytes
 ━━━━━━━━━━━━━━━━━━━━
 + do settle-live Size
 
-C:yumiCollect()
-C:yumiCollect()
-= C:yumiGCLiveByteCount() as Size
+C:brixCollect()
+C:brixCollect()
+= C:brixGCLiveByteCount() as Size
 
 ━━━━━━━━━━━━━━━━━━━━
 + percentile-us
@@ -158,7 +158,7 @@ C:yumiCollect()
 . canvas = RasterCanvas(1180, 800, scale)
 canvas.erase(background)
 root.paint(canvas)
-C:yumiGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
+C:brixGuiWindowCommitFrame(native, canvas.native, 0, 0, canvas.width, canvas.height)
 canvas.close()
 
 ━━━━━━━━━━━━━━━━━━━━

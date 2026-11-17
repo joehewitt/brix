@@ -1,5 +1,5 @@
-/YuAppleGUI/YuAppleGUI.h
-/YuGC/YuGC.h
+/BxAppleGUI/BxAppleGUI.h
+/BxGC/BxGC.h
 /core/markup
 /graphics/canvas
 /graphics/color
@@ -39,8 +39,8 @@ _ do run-gui-resize-scale Size
 
 . root = build-gui-resize-scale-root()
 . background RGBA = "#08111f"
-. native = C:yumiGuiWindowCreate("gui resize scale bench (offscreen)", 1360, 860)
-. scale = C:yumiGuiWindowGetBackingScaleFactor(native)
+. native = C:brixGuiWindowCreate("gui resize scale bench (offscreen)", 1360, 860)
+. scale = C:brixGuiWindowGetBackingScaleFactor(native)
 . initial-width = gui-resize-scale-width(mode, 0)
 . initial-height = gui-resize-scale-height(mode, 0)
 root.layout(Rect(0, 0, initial-width as Coord, initial-height as Coord))
@@ -56,7 +56,7 @@ root.sync-native-geometry()
 scene.maintain(root, scale, background)
 scene.add-damage(root.bounds)
 scene.frame(surface)
-C:yumiGuiWindowCommitFrame
+C:brixGuiWindowCommitFrame
     - native
     - surface.native
     - scene.last-frame-damage.x
@@ -79,7 +79,7 @@ for warmup in 0 .. < warmup-frames
     scene.maintain(root, scale, background)
     scene.add-damage(root.bounds)
     scene.frame(surface)
-    C:yumiGuiWindowCommitFrame
+    C:brixGuiWindowCommitFrame
         - native
         - surface.native
         - scene.last-frame-damage.x
@@ -115,16 +115,16 @@ for frame in 0 .. < frames
     . sequence-index = warmup-frames + frame + 1
     . width = gui-resize-scale-width(mode, sequence-index)
     . height = gui-resize-scale-height(mode, sequence-index)
-    . objects0 = C:yumiGCAllocatedObjectCount()
-    . bytes0 = C:yumiGCRequestedByteCount()
+    . objects0 = C:brixGCAllocatedObjectCount()
+    . bytes0 = C:brixGCRequestedByteCount()
     . t0 = monotonic-time-nanoseconds()
 
     //+gui.frame.phase.layout
     root.layout(Rect(0, 0, width as Coord, height as Coord))
     //-gui.frame.phase.layout
     . t1 = monotonic-time-nanoseconds()
-    . objects1 = C:yumiGCAllocatedObjectCount()
-    . bytes1 = C:yumiGCRequestedByteCount()
+    . objects1 = C:brixGCAllocatedObjectCount()
+    . bytes1 = C:brixGCRequestedByteCount()
 
     //+gui.frame.phase.create
     . surface-recreated = width != surface-width || height != surface-height
@@ -141,8 +141,8 @@ for frame in 0 .. < frames
     root.sync-native-geometry()
     //-gui.frame.phase.sync
     . t3 = monotonic-time-nanoseconds()
-    . objects3 = C:yumiGCAllocatedObjectCount()
-    . bytes3 = C:yumiGCRequestedByteCount()
+    . objects3 = C:brixGCAllocatedObjectCount()
+    . bytes3 = C:brixGCRequestedByteCount()
 
     //+gui.frame.phase.paint
     scene.maintain(root, scale, background)
@@ -153,12 +153,12 @@ for frame in 0 .. < frames
     . did-replay = scene.frames-replayed != replay-count
     //-gui.frame.phase.paint
     . t4 = monotonic-time-nanoseconds()
-    . objects4 = C:yumiGCAllocatedObjectCount()
-    . bytes4 = C:yumiGCRequestedByteCount()
+    . objects4 = C:brixGCAllocatedObjectCount()
+    . bytes4 = C:brixGCRequestedByteCount()
 
     //+gui.frame.phase.commit
     if did-replay
-        C:yumiGuiWindowCommitFrame
+        C:brixGuiWindowCommitFrame
             - native
             - surface.native
             - scene.last-frame-damage.x
@@ -175,8 +175,8 @@ for frame in 0 .. < frames
     sync-ns += t3 - t2
     paint-ns += t4 - t3
     commit-ns += t5 - t4
-    allocated-objects += (C:yumiGCAllocatedObjectCount() - objects0) as Size
-    allocated-bytes += (C:yumiGCRequestedByteCount() - bytes0) as Size
+    allocated-objects += (C:brixGCAllocatedObjectCount() - objects0) as Size
+    allocated-bytes += (C:brixGCRequestedByteCount() - bytes0) as Size
     layout-objects += (objects1 - objects0) as Size
     layout-bytes += (bytes1 - bytes0) as Size
     paint-objects += (objects4 - objects3) as Size
@@ -221,8 +221,8 @@ for frame in 0 .. < frames
 checksum += gui-resize-scale-percentile-us(total-ns, 50)
 scene.close()
 surface.close()
-C:yumiGuiWindowClose(native)
-C:yumiGuiWindowRelease(native)
+C:brixGuiWindowClose(native)
+C:brixGuiWindowRelease(native)
 root.close()
 markup-release(root)
 = checksum

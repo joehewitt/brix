@@ -2,13 +2,13 @@
 `benchmark.meta timing: recommended
 `benchmark.meta profiles: gc-runtime,allocator,compile-timing
 
-/YuGC/YuGCTest.h
+/BxGC/BxGCTest.h
 
 . count = 4096
 . passes = 32
 . nodes [StoreNode]
 
-C:yumiGCSetHeapGoal(1073741824)
+C:brixGCSetHeapGoal(1073741824)
 
 for index in 0 .. < count
     nodes += StoreNode(index)
@@ -17,26 +17,26 @@ for index in 0 .. < count
     nodes[index].left = nodes[(index + 1) % count]
     nodes[index].right = nodes[(index + count - 1) % count]
 
-C:yumiBenchMutatorPhaseStart("idle")
+C:brixBenchMutatorPhaseStart("idle")
 for pass in 0 .. < passes
     for index in 0 .. < count
         . node = nodes[index]
         node.left = nodes[(index + pass + 3) % count]
         node.right = nodes[(index * 5 + pass + 1) % count]
-C:yumiBenchMutatorPhaseEnd("idle")
+C:brixBenchMutatorPhaseEnd("idle")
 
-C:yumiGCStartConcurrentMark()
+C:brixGCStartConcurrentMark()
 
-C:yumiBenchMutatorPhaseStart("mark-window")
+C:brixBenchMutatorPhaseStart("mark-window")
 for pass in 0 .. < passes
     for index in 0 .. < count
         . node = nodes[index]
         node.left = nodes[(index * 7 + pass + 11) % count]
         node.right = nodes[(index + count - pass - 1) % count]
-C:yumiBenchMutatorPhaseEnd("mark-window")
+C:brixBenchMutatorPhaseEnd("mark-window")
 
-C:yumiGCFinishConcurrentMark()
-C:yumiGCCollect()
+C:brixGCFinishConcurrentMark()
+C:brixGCCollect()
 
 . checksum = nodes.length as Size
 for node in nodes

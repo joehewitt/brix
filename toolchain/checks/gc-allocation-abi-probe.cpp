@@ -1,4 +1,4 @@
-#include <YuGCAllocationBuffer.h>
+#include <BxGCAllocationBuffer.h>
 
 #include <cstdio>
 
@@ -17,31 +17,31 @@ int main() {
         "\"controlPhaseMask\":%u,\"controlHandshakeRequestedBit\":%u,"
         "\"controlHandshakeReasonShift\":%u,\"controlHandshakeEpochShift\":%u,"
         "\"controlSweepGenerationShift\":%u}\n",
-        (unsigned)YumiGCAllocationABIVersion,
-        (size_t)YumiGCAllocationBufferCursorOffset,
-        (size_t)YumiGCAllocationBufferLimitOffset,
-        (size_t)YumiGCAllocationBufferSize,
-        (size_t)YumiGCRuntimeAllocationBufferSize,
-        (size_t)YumiGCRuntimeAllocationBufferHotOffset,
-        (size_t)YumiGCRuntimeAllocationBufferSlotSizeOffset,
-        (size_t)YumiGCRuntimeAllocationBufferDescriptorOffset,
-        (size_t)YumiGCRuntimeAllocationBufferGenerationOffset,
-        (size_t)YumiGCRuntimeAllocationBufferVersionOffset,
-        (size_t)YumiGCAllocationSiteKeySize,
-        (size_t)YumiGCAllocationSiteKeyVersionOffset,
-        (size_t)YumiGCThreadCacheSize,
-        (size_t)YumiGCThreadCacheActiveBufferOffset,
-        (size_t)YumiGCThreadCacheCompilerBuffersOffset,
-        (size_t)YumiGCThreadCacheRangesOffset,
-        (size_t)YumiGCThreadCacheWriteBarrierEntriesOffset,
-        (size_t)YumiGCThreadCacheCountersOffset,
-        (size_t)YumiGCThreadCacheMarkWorkHandlesOffset,
-        (unsigned)YumiGCThreadCacheRangeCount,
-        (unsigned)YumiGCCompilerAllocationBufferCount,
-        (unsigned)YumiGCControlPhaseMask,
-        (unsigned)YumiGCControlHandshakeRequestedBit,
-        (unsigned)YumiGCControlHandshakeReasonShift,
-        (unsigned)YumiGCControlHandshakeEpochShift,
-        (unsigned)YumiGCControlSweepGenerationShift);
+        (unsigned)BrixGCAllocationABIVersion,
+        (size_t)BrixGCAllocationBufferCursorOffset,
+        (size_t)BrixGCAllocationBufferLimitOffset,
+        (size_t)BrixGCAllocationBufferSize,
+        (size_t)BrixGCRuntimeAllocationBufferSize,
+        (size_t)BrixGCRuntimeAllocationBufferHotOffset,
+        (size_t)BrixGCRuntimeAllocationBufferSlotSizeOffset,
+        (size_t)BrixGCRuntimeAllocationBufferDescriptorOffset,
+        (size_t)BrixGCRuntimeAllocationBufferGenerationOffset,
+        (size_t)BrixGCRuntimeAllocationBufferVersionOffset,
+        (size_t)BrixGCAllocationSiteKeySize,
+        (size_t)BrixGCAllocationSiteKeyVersionOffset,
+        (size_t)BrixGCThreadCacheSize,
+        (size_t)BrixGCThreadCacheActiveBufferOffset,
+        (size_t)BrixGCThreadCacheCompilerBuffersOffset,
+        (size_t)BrixGCThreadCacheRangesOffset,
+        (size_t)BrixGCThreadCacheWriteBarrierEntriesOffset,
+        (size_t)BrixGCThreadCacheCountersOffset,
+        (size_t)BrixGCThreadCacheMarkWorkHandlesOffset,
+        (unsigned)BrixGCThreadCacheRangeCount,
+        (unsigned)BrixGCCompilerAllocationBufferCount,
+        (unsigned)BrixGCControlPhaseMask,
+        (unsigned)BrixGCControlHandshakeRequestedBit,
+        (unsigned)BrixGCControlHandshakeReasonShift,
+        (unsigned)BrixGCControlHandshakeEpochShift,
+        (unsigned)BrixGCControlSweepGenerationShift);
     return 0;
 }

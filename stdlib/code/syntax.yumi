@@ -1,4 +1,4 @@
-/YuSyntax/YuSyntax.h
+/BxSyntax/BxSyntax.h
 /core/array-builder
 /math
 
@@ -70,9 +70,9 @@ _ role-list [SyntaxRole]?
     - id I32
 
 this.id = id
-name = C:yumiSyntaxLanguageName(id) as String
-title = C:yumiSyntaxLanguageTitle(id) as String
-extensions = (C:yumiSyntaxLanguageExtensions(id) as String).split(" ")
+name = C:brixSyntaxLanguageName(id) as String
+title = C:brixSyntaxLanguageTitle(id) as String
+extensions = (C:brixSyntaxLanguageExtensions(id) as String).split(" ")
 
 ────────────────────
 + do get captures [String]
@@ -80,8 +80,8 @@ extensions = (C:yumiSyntaxLanguageExtensions(id) as String).split(" ")
 . cached = capture-list
 =? cached if cached
 . loaded [String]
-for index in 0 .. < C:yumiSyntaxCaptureCount(id)
-    loaded += C:yumiSyntaxCaptureName(id, index)
+for index in 0 .. < C:brixSyntaxCaptureCount(id)
+    loaded += C:brixSyntaxCaptureName(id, index)
 capture-list = loaded
 = loaded
 
@@ -107,12 +107,12 @@ role-list = made
 ────────────────────
 + get query-error String
 
-C:yumiSyntaxQueryError(id) as String
+C:brixSyntaxQueryError(id) as String
 
 ────────────────────
 + get fold-query-error String
 
-C:yumiSyntaxFoldQueryError(id) as String
+C:brixSyntaxFoldQueryError(id) as String
 
 ━━━━━━━━━━━━━━━━━━━━
 + syntax-languages [SyntaxLanguage]
@@ -160,22 +160,22 @@ _ is-closing Bool
 + This
     - language
 
-native = C:yumiSyntaxDocumentCreate(language.id)
+native = C:brixSyntaxDocumentCreate(language.id)
 
 ────────────────────
 + get has-tree Bool
 
-if native then C:yumiSyntaxDocumentHasTree(native!) else false
+if native then C:brixSyntaxDocumentHasTree(native!) else false
 
 ────────────────────
 + get has-error Bool
 
-if native then C:yumiSyntaxDocumentHasError(native) else false
+if native then C:brixSyntaxDocumentHasError(native) else false
 
 ────────────────────
 + get is-parsing Bool
 
-if native then C:yumiSyntaxDocumentIsParsing(native) else false
+if native then C:brixSyntaxDocumentIsParsing(native) else false
 
 ────────────────────
 + do edit
@@ -187,7 +187,7 @@ if native then C:yumiSyntaxDocumentIsParsing(native) else false
     - new-end-point SyntaxPoint
 
 =? if !native
-C:yumiSyntaxDocumentEdit
+C:brixSyntaxDocumentEdit
     - native
     - start
     - old-end
@@ -206,19 +206,19 @@ C:yumiSyntaxDocumentEdit
     - budget-microseconds U32 = 0
 
 =? false if !native || is-closing
-= C:yumiSyntaxDocumentParse(native, text, length, budget-microseconds) == 0
+= C:brixSyntaxDocumentParse(native, text, length, budget-microseconds) == 0
 
 ────────────────────
 + do continue-parse Bool
 
 =? false if !native
-= C:yumiSyntaxDocumentContinueParse(native)
+= C:brixSyntaxDocumentContinueParse(native)
 
 ────────────────────
 + do finish-parse Bool
 
 =? false if !native
-. edited = C:yumiSyntaxDocumentFinishParse(native)
+. edited = C:brixSyntaxDocumentFinishParse(native)
 if is-closing
     release()
     = false
@@ -260,10 +260,10 @@ for range in ranges
 . found [SyntaxFold]
 =? found if !native
 . capacity = fold-buffer.size / 2
-. count = C:yumiSyntaxDocumentFolds(native, text, length, first, last, fold-buffer, capacity)
+. count = C:brixSyntaxDocumentFolds(native, text, length, first, last, fold-buffer, capacity)
 if count > capacity
     fold-buffer = U32[count * 2]
-    count = C:yumiSyntaxDocumentFolds(native!, text, length, first, last, fold-buffer, count)
+    count = C:brixSyntaxDocumentFolds(native!, text, length, first, last, fold-buffer, count)
 for index in 0 .. < count
     found += SyntaxFold(fold-buffer[index * 2], fold-buffer[index * 2 + 1])
 = found
@@ -273,7 +273,7 @@ for index in 0 .. < count
 
 =? if !native || is-closing
 if is-parsing
-    C:yumiSyntaxDocumentCancelParse(native!)
+    C:brixSyntaxDocumentCancelParse(native!)
     is-closing = true
     =
 release()
@@ -287,17 +287,17 @@ _ do fill Size
 
 =? 0 if !native
 . capacity = span-buffer.size / 3
-. count = C:yumiSyntaxDocumentHighlight(native, text, length, start, end, span-buffer, capacity)
+. count = C:brixSyntaxDocumentHighlight(native, text, length, start, end, span-buffer, capacity)
 if count > capacity
     span-buffer = U32[count * 3]
-    count = C:yumiSyntaxDocumentHighlight(native!, text, length, start, end, span-buffer, count)
+    count = C:brixSyntaxDocumentHighlight(native!, text, length, start, end, span-buffer, count)
 = count
 
 ────────────────────
 _ do release
 
 if native
-    C:yumiSyntaxDocumentRelease(native)
+    C:brixSyntaxDocumentRelease(native)
     native = null
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -489,4 +489,4 @@ _ SyntaxRolePiece is (start Size, end Size, role SyntaxRole)
 ━━━━━━━━━━━━━━━━━━━━
 _ load-syntax-languages [SyntaxLanguage]
 
-SyntaxLanguage(each) in 0 .. < C:yumiSyntaxLanguageCount()
+SyntaxLanguage(each) in 0 .. < C:brixSyntaxLanguageCount()

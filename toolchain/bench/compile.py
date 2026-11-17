@@ -5,7 +5,7 @@ import time
 from bench import gc_runtime
 from common import ROOT, TMP, Failure
 
-BUILDER = os.path.join(ROOT, 'bin', 'yumi')
+BUILDER = os.path.join(ROOT, 'bin', 'brix')
 COMPILER_LOG = os.path.join(TMP, 'bench', 'compilers.log')
 STRING_FLAGS = ('o', 'probes')
 BOOLEAN_WORDS = ('true', 'false')
@@ -15,10 +15,10 @@ TIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 def main(arguments):
     if arguments[:1] == ['--run']:
         return gc_runtime.run_variants(arguments[1:])
-    compiler_probes = os.environ.get('YUMI_BENCH_COMPILER_PROBES', '')
-    compiler_trace = os.environ.get('YUMI_BENCH_COMPILER_TRACE', '')
+    compiler_probes = os.environ.get('BRIX_BENCH_COMPILER_PROBES', '')
+    compiler_trace = os.environ.get('BRIX_BENCH_COMPILER_TRACE', '')
     if compiler_probes and not compiler_trace:
-        raise Failure('YUMI_BENCH_COMPILER_PROBES needs YUMI_BENCH_COMPILER_TRACE')
+        raise Failure('BRIX_BENCH_COMPILER_PROBES needs BRIX_BENCH_COMPILER_TRACE')
     if gc_runtime.selected():
         compiler = build_compiler(compiler_probes)
         if not compiler:
@@ -30,7 +30,7 @@ def main(arguments):
     if not flags.get('compile'):
         raise Failure('The bench compiler only compiles (--compile)')
     if not sources or not flags.get('o'):
-        raise Failure('usage: yumi-bench --compile -o <executable> <source>')
+        raise Failure('usage: brix-bench --compile -o <executable> <source>')
     source = sources[0][1]
     compiler = build_compiler(compiler_probes)
     if not compiler:
@@ -72,7 +72,7 @@ def parse(arguments):
 
 def build_compiler(compiler_probes):
     environment = {name: value for name, value in os.environ.items()
-                   if not name.startswith('PROBES_') and not name.startswith('YUMI_BENCH_')}
+                   if not name.startswith('PROBES_') and not name.startswith('BRIX_BENCH_')}
     selection = ['--compiler-probes=' + compiler_probes] if compiler_probes else []
     built = subprocess.run([BUILDER] + selection + ['--build-only'], env=environment,
                            stdout=subprocess.PIPE, text=True)

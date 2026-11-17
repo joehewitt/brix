@@ -1,6 +1,6 @@
 const themes = [
     {
-        name: 'Yumi Dark',
+        name: 'Brix Dark',
         type: 'dark',
         colors: { editorBackground: '#111111', editorForeground: '#c9d1d9', lineNumberForeground: '#6e7681' },
         tokenColors: [

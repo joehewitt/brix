@@ -1,7 +1,7 @@
 # The Compiler
 
 How the compiler in `stdlib/lang` is built, and the rules its design keeps. The program is
-`compiler/yumi-cli.yumi`; `bin/yumi` builds it into `.tmp/build/tools/yumi` from the seed
+`compiler/brix-cli.yumi`; `bin/brix` builds it into `.tmp/build/tools/brix` from the seed
 that `.release.json` pins (`toolchain/compiler.py`).
 
 | Directory | Holds |
@@ -14,7 +14,7 @@ that `.release.json` pins (`toolchain/compiler.py`).
 | `stdlib/lang/backend` | MIR passes, register allocation, AArch64 encoding, Mach-O |
 | `stdlib/lang/product` | the product interfaces an app declares, and the app bundles, signing and device installs made from them |
 | `stdlib/lang/lint` | the linter, whose semantic rules read facts |
-| `stdlib/lang/analysis` | the analysis service behind `yumi --serve` |
+| `stdlib/lang/analysis` | the analysis service behind `brix --serve` |
 | `compiler` | the command line, the build daemon, and the test, lint, probe and bench tools |
 
 ## Pipeline
@@ -111,13 +111,13 @@ that `.release.json` pins (`toolchain/compiler.py`).
 23. IR is append-only tables. A block is a contiguous range ending in a terminator, and one
     emitter owns block creation through a closed set of shapes.
 24. The runtime contracts are exact: object and table layouts; x27 as the task context; a function
-    returning a panic calls `yumiPanicReturn`, which sends the return into the caller's landing pad
-    found in `__yumi_pads`, so a call that may panic is not followed by a test; a place that raises
+    returning a panic calls `brixPanicReturn`, which sends the return into the caller's landing pad
+    found in `__brix_pads`, so a call that may panic is not followed by a test; a place that raises
     a panic calls the `RaiseMessage` or `RaisePanic` function the compiler emits, which sets it
-    through `yumiRaisePanic`, whose stack trace starts at that place; the collector's control word
+    through `brixRaisePanic`, whose stack trace starts at that place; the collector's control word
     carries the termination bit beside the handshake bit, so a poll reads one byte; GC maps, roots
-    and write barriers; the calling convention; the `__yumi_gcmap`, `__yumi_gcroots`, `__yumi_trace`
-    and `__yumi_pads` sections.
+    and write barriers; the calling convention; the `__brix_gcmap`, `__brix_gcroots`, `__brix_trace`
+    and `__brix_pads` sections.
 25. Facts are the tooling contract. The linter's semantic rules and the analysis service read
     them in process; nothing is emitted for tooling.
 

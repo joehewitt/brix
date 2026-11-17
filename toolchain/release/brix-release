@@ -1,0 +1,1627 @@
+#!/usr/bin/env python3
+import argparse
+import base64
+import concurrent.futures
+import contextlib
+import datetime
+import hashlib
+import json
+import lzma
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+
+import brix_sweep
+import deps
+import launcher
+import runtime
+import vm
+from common import (
+    BUILD,
+    CHUNK_SIZE,
+    ROOT,
+    RUNTIME_CONFIG,
+    TMP,
+    BRIX_HOME,
+    Failure,
+    build_environment,
+    built_path,
+    command_output,
+    file_digest,
+    is_within,
+    lock,
+    log_tail,
+    passed_environment,
+    run_main,
+    say,
+    xcrun,
+)
+from compiler import TOOL_SOURCES
+
+MANIFEST_NAME = launcher.MANIFEST_NAME
+MANIFEST = os.path.join(ROOT, MANIFEST_NAME)
+LAUNCHER_SOURCE = os.path.join(ROOT, 'toolchain', 'launcher.py')
+RELEASES_RECORD = os.path.join(HERE, 'releases.json')
+INDEX_KEY = launcher.RELEASES_PREFIX + '/releases.json'
+LAUNCHER_KEY = launcher.RELEASES_PREFIX + '/launcher/brix'
+INSTALLER_KEY = launcher.RELEASES_PREFIX + '/install.py'
+INSTALLER_SOURCE = os.path.join(HERE, 'install.py')
+LINUX_GATE = os.path.join(HERE, 'linux-gate.py')
+LAUNCHER_FILE = 'launcher.py'
+INSTALLER_FILE = 'install.py'
+RUNTIME_BUILDER = os.path.join(ROOT, 'toolchain', 'runtime.py')
+COMPILER_SOURCES = os.path.join(ROOT, 'compiler')
+BUILD_HOST = 'macos'
+HOST_TARGETS = ('macos', 'linux')
+GATE_DISTRO = 'debian'
+GATE_ROOT = '/tmp/brix-gate'
+LINK_PATH_FLAGS = ('--sysroot=', '-L')
+LINK_TARGET_FLAGS = ('-dynamic-linker',)
+C_HEADERS = '.c-headers'
+SOURCE = os.path.join(ROOT, 'compiler', 'brix-cli.yumi')
+MAIN_BRANCH = 'main'
+MAIN_REMOTE = 'origin'
+REMOTE_MAIN = 'refs/remotes/%s/%s' % (MAIN_REMOTE, MAIN_BRANCH)
+SUITE_SOURCE = TOOL_SOURCES['test-suite']
+TOOLS = ('probes', 'test', 'bench', 'lint')
+TOOL_PROGRAM = 'stdlib'
+TOOL_PROBE = 'joined 1+2+3'
+TEST_RESULT = '1 test  1 passed'
+BENCH_RESULT = '1 benchmark  1 passed'
+GUIDE_INDEX = 'docs/index.md'
+INIT_FILES = (('AGENTS.md', '`brix --help`'), ('CLAUDE.md', '@AGENTS.md'))
+LINK_PATTERN = re.compile(r'\]\(([^)\s]+)\)')
+CORE_TESTS = 'stdlib/core/tests'
+EXAMPLE_SOURCES = ('.yumi', '.bx')
+EXAMPLE_IMPORT = re.compile(r'^\+? ?(\.{1,2}/\S+)$')
+BRIX_EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
+EXAMPLE_WORKERS = max(1, (os.cpu_count() or 2) // 2)
+CORE_TESTS_LEFT_OUT = (
+    'runFlowFacts.test',
+    'runGCFree.test',
+    'runInlineWarnings.test',
+    'runInlining.test',
+    'runLintExpressionFunctions.test',
+    'runLintOverloads.test',
+    'runMIRSuccessorScheduling.test',
+    'runMem2Reg.test',
+    'runRegisterAllocation.test',
+    'runScratch.test',
+    'runStackLocalEdges.test',
+)
+CLEAN_ROOM_PROGRAMS = os.path.join(HERE, 'cleanroom')
+SYSTEM_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
+SDK_PLACEHOLDER = '${sdk}'
+SUITES = (
+    ('core', 'stdlib/core/tests'),
+    ('diagnostics', 'stdlib/lang/tests/diagnostics'),
+    ('parse', 'stdlib/lang/tests/parse'),
+)
+MODULE_SUITES = (('stdlib', 'stdlib'),)
+DENIED_SYSTEM_PATHS = ('/opt/homebrew', '/usr/local')
+FAILING_STATUSES = ('failed', 'crashed', 'killed')
+PROGRAM_TIMEOUT = 120
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(prog='brix-release')
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('build', help='Build, verify, package, store, upload and commit a release from a clean main')
+    stage_command = commands.add_parser(
+        'stage', help='Build and verify a release from this checkout into a folder laid out as the releases bucket, '
+                      'without storing, uploading or committing it')
+    stage_command.add_argument('directory')
+    stage_command.add_argument('--skip-suites', action='store_true', help='leave out the test suites on stage 2')
+    commands.add_parser('setup', help='Create the archive, install the launcher, and write config.json')
+    pin_command = commands.add_parser('pin', help='Pin a repo to a release, fetching it if the archive lacks it')
+    pin_command.add_argument('version')
+    pin_command.add_argument('--use', choices=launcher.USES, help='What the release is for in the repo')
+    pin_command.add_argument('--repo', default='.', help='The repo whose manifest to write')
+    upload_command = commands.add_parser(
+        'upload', help='Upload a release from the archive to S3, record and pin it, and commit and push that'
+    )
+    upload_command.add_argument('version')
+    fetch_command = commands.add_parser('fetch', help='Fill the archive with a recorded release from S3')
+    fetch_command.add_argument('version')
+    relink_command = commands.add_parser('relink', help='Relink a release\'s compiler from its relink kit')
+    relink_command.add_argument('version')
+    verify_command = commands.add_parser('verify', help='Check archived and unpacked releases against release.json')
+    verify_command.add_argument('versions', nargs='*', metavar='version')
+    options = parser.parse_args(arguments)
+    try:
+        if options.command == 'build':
+            build()
+        elif options.command == 'stage':
+            stage(options.directory, not options.skip_suites)
+        elif options.command == 'setup':
+            setup()
+        elif options.command == 'pin':
+            pin(options.version, options.use, options.repo)
+        elif options.command == 'upload':
+            with exclusive_lock(os.path.join(BRIX_HOME, 'release.lock')):
+                updated, commit = publish(options.version, release_head())
+            say('\n'.join(['Uploaded %s' % options.version] + published_lines(options.version, updated, commit)))
+        elif options.command == 'fetch':
+            fetch(options.version)
+        elif options.command == 'relink':
+            relink(options.version)
+        elif options.command == 'verify':
+            verify(options.versions)
+    except launcher.LaunchError as error:
+        raise Failure(str(error))
+
+
+def build():
+    os.makedirs(BRIX_HOME, exist_ok=True)
+    with exclusive_lock(os.path.join(BRIX_HOME, 'release.lock')):
+        started = int(time.time())
+        say('Checking preconditions')
+        source = source_state()
+        seed = seed_state()
+        version = next_version()
+        work = os.path.join(TMP, 'release', version)
+        launcher.remove_tree(work)
+        os.makedirs(work)
+        say('Releasing %s from %s, with seed %s' % (version, source['commit'][:12], seed['name']))
+        try:
+            assembled = assemble(version, source, seed, work, started, offline=False)
+            say('Storing in %s' % BRIX_HOME)
+            store(version, assembled)
+        except (Failure, launcher.LaunchError, OSError) as error:
+            raise Failure('%s\nThe build is kept in %s' % (error, work))
+        launcher.remove_tree(work)
+        updated, commit = publish(version, source['commit'])
+    report(version, assembled, updated, commit)
+
+
+def stage(directory, suites):
+    destination = os.path.realpath(directory)
+    if os.path.exists(destination) and os.listdir(destination):
+        raise Failure('%s is not empty' % destination)
+    os.makedirs(BRIX_HOME, exist_ok=True)
+    with exclusive_lock(os.path.join(BRIX_HOME, 'release.lock')):
+        started = int(time.time())
+        source = checkout_state()
+        seed = seed_state()
+        version = next_version()
+        work = os.path.join(TMP, 'release', 'stage-' + version)
+        launcher.remove_tree(work)
+        os.makedirs(work)
+        say('Staging %s from %s%s, with seed %s' % (
+            version, source['commit'][:12], ' and uncommitted changes' if source['changed'] else '', seed['name']))
+        try:
+            assembled = assemble(version, source, seed, work, started, offline=True, suites=suites)
+            write_mirror(destination, version, assembled)
+        except (Failure, launcher.LaunchError, OSError) as error:
+            raise Failure('%s\nThe build is kept in %s' % (error, work))
+        launcher.remove_tree(work)
+    say('Staged %s in %s\n  install it with: python3 %s --from %s' % (
+        version, destination, os.path.join(destination, INSTALLER_FILE), destination))
+
+
+def assemble(version, source, seed, work, mtime, offline, suites=True):
+    config = runtime_config()
+    logs = os.path.join(work, 'logs')
+    os.makedirs(logs)
+    built = build_stages(work, logs, seed, config)
+    versions = toolchain_versions()
+    hosts = {}
+    for name in HOST_TARGETS:
+        triple = config['targets'][name]['triple']
+        say('Packaging for %s' % triple)
+        binary = built[name]
+        record = host_toolchain(name, versions)
+        link = write_link(name, binary, work, versions, config, record)
+        hosts[name] = {
+            'triple': triple,
+            'binary': binary,
+            'toolchain': record,
+            'packages': write_packages(version, triple, config, name, binary, built['tools'][name], link, work, mtime),
+            'kits': host_kits(name, config, offline, kit_names(config, name)),
+            'sourceKits': host_kits(name, config, offline, source_kit_names(config, name)),
+            'verification': {},
+        }
+    verification = hosts[BUILD_HOST]['verification']
+    say('Checking the fixed point')
+    verification['fixedPoint'] = check_fixed_point(built['stages'])
+    verification['brix'] = check_brix(built['stages'][2], work, logs)
+    if suites:
+        verification['suites'] = run_suites(built['stages'][2], built['tools'][BUILD_HOST]['test'], work, logs)
+    else:
+        say('Leaving out the test suites')
+    denied = denied_paths()
+    mac = hosts[BUILD_HOST]
+    verification['cleanRoom'] = check_clean_room(mac['packages']['toolchain'], mac['kits'], denied, logs)
+    for host in hosts.values():
+        say('Checking the %s seed against its toolchain' % host['triple'])
+        host['verification']['seed'] = check_seed(host['packages']['toolchain'], host['packages']['seed'])
+    say('Relinking the %s compiler from its relink kit' % mac['triple'])
+    verification['relink'] = check_relink(mac['packages']['toolchain'], mac['packages']['relink'], mac['kits'],
+                                          denied, logs)
+    gated = release_files(version, source, seed, hosts, os.path.join(work, 'gated'))
+    mirror = os.path.join(work, 'mirror')
+    write_mirror(mirror, version, gated)
+    hosts['linux']['verification'].update(check_linux(mirror, version, logs))
+    return release_files(version, source, seed, hosts, os.path.join(work, 'release'))
+
+
+@contextlib.contextmanager
+def exclusive_lock(path):
+    with open(path, 'w') as file:
+        if not lock(file, wait=False):
+            raise Failure('Another release is in progress (%s is locked)' % path)
+        yield
+
+
+def source_state():
+    head = release_head()
+    changes = git('status', '--porcelain', '--untracked-files=all')
+    if changes:
+        listed = '\n'.join(changes.splitlines()[:20])
+        raise Failure('%s has uncommitted changes:\n%s' % (MAIN_BRANCH, listed))
+    return {'commit': head, 'tree': git('rev-parse', 'HEAD^{tree}')}
+
+
+def checkout_state():
+    return {
+        'commit': git('rev-parse', 'HEAD'),
+        'tree': git('rev-parse', 'HEAD^{tree}'),
+        'changed': bool(git('status', '--porcelain', '--untracked-files=all')),
+    }
+
+
+def release_head():
+    branch = git('rev-parse', '--abbrev-ref', 'HEAD')
+    if branch != MAIN_BRANCH:
+        raise Failure('A release is cut only from %s, and this checkout is on %s' % (
+            MAIN_BRANCH, 'a detached HEAD' if branch == 'HEAD' else branch))
+    git('fetch', '--quiet', MAIN_REMOTE, MAIN_BRANCH)
+    head = git('rev-parse', 'HEAD')
+    if head != git('rev-parse', REMOTE_MAIN):
+        ahead, behind = git('rev-list', '--left-right', '--count', 'HEAD...' + REMOTE_MAIN).split()
+        raise Failure('A release starts from %s as it is on %s, and %s is %s ahead and %s behind; push or pull '
+                      'first' % (MAIN_BRANCH, MAIN_REMOTE, MAIN_BRANCH, ahead, behind))
+    return head
+
+
+def is_on_main(commit):
+    result = subprocess.run(
+        ['git', 'merge-base', '--is-ancestor', commit, REMOTE_MAIN],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def publish(version, head):
+    release, release_hash = upload(version)
+    say('Updating manifests')
+    updated = update_manifests(version, release_hash)
+    return updated, commit_release(version, release, head)
+
+
+def commit_release(version, release, head):
+    paths = [os.path.relpath(path, ROOT) for path in (RELEASES_RECORD, MANIFEST)]
+    if git('rev-parse', 'HEAD') != head:
+        raise Failure('%s moved while %s was released, so %s are not committed; commit and push them yourself' % (
+            MAIN_BRANCH, version, ' and '.join(paths)))
+    if not git('status', '--porcelain', '--', *paths):
+        return None
+    seed = release['seed']
+    message = 'Release %s\n\nBuilt from %s with seed %s.' % (
+        version, release['source']['commit'][:12], seed['version'] if isinstance(seed, dict) else seed)
+    say('Committing %s' % ' and '.join(paths))
+    git('commit', '--quiet', '-m', message, '--', *paths)
+    commit = git('rev-parse', 'HEAD')
+    tag = release_tag(version)
+    git('tag', tag, commit)
+    say('Pushing %s and %s' % (MAIN_BRANCH, tag))
+    try:
+        git('push', '--quiet', MAIN_REMOTE, 'HEAD:refs/heads/' + MAIN_BRANCH, 'refs/tags/' + tag)
+    except Failure as error:
+        raise Failure('%s\n%s is committed as %s and tagged %s but not pushed; pull %s and push it with the tag' % (
+            error, version, commit[:12], tag, MAIN_BRANCH))
+    return commit
+
+
+def release_tag(version):
+    return 'v' + version
+
+
+def seed_state():
+    if not os.path.isfile(MANIFEST):
+        raise Failure('%s is missing; it names the seed' % MANIFEST)
+    manifest = launcher.read_manifest(MANIFEST)
+    if manifest['use'] != 'seed':
+        raise Failure('%s must pin a seed ("use": "seed")' % MANIFEST)
+    return {
+        'name': manifest['version'],
+        'record': {'version': manifest['version'], 'release': manifest['release']},
+        'compiler': launcher.seed_compiler(manifest),
+    }
+
+
+def git(*arguments):
+    result = subprocess.run(
+        ['git'] + list(arguments),
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if result.returncode != 0:
+        raise Failure('git %s failed:\n%s' % (' '.join(arguments), result.stderr.strip()))
+    return result.stdout.rstrip()
+
+
+def runtime_config():
+    with open(RUNTIME_CONFIG) as file:
+        return json.load(file)
+
+
+def next_version():
+    date = datetime.date.today().strftime('%Y.%m.%d')
+    archives = os.path.join(BRIX_HOME, 'archives')
+    names = [entry['version'] for entry in recorded_releases()]
+    if os.path.isdir(archives):
+        names += os.listdir(archives)
+    counters = [0]
+    for name in names:
+        if name.startswith(date + '-') and name[len(date) + 1:].isdigit():
+            counters.append(int(name[len(date) + 1:]))
+    return '%s-%d' % (date, max(counters) + 1)
+
+
+def toolchain_versions():
+    sdk_path = xcrun('--show-sdk-path')
+    return {
+        'clang': {'path': xcrun('--find', 'clang'), 'version': first_line(xcrun('clang', '--version'))},
+        'ld': {'path': xcrun('--find', 'ld'), 'version': first_line(xcrun('ld', '-v'))},
+        'sdk': {
+            'path': sdk_path,
+            'version': xcrun('--show-sdk-version'),
+            'build': xcrun('--show-sdk-build-version'),
+        },
+        'macos': {
+            'version': command_output(['/usr/bin/sw_vers', '-productVersion']),
+            'build': command_output(['/usr/bin/sw_vers', '-buildVersion']),
+        },
+    }
+
+
+def host_toolchain(host, versions):
+    if host == BUILD_HOST:
+        return {name: versions[name] for name in ('clang', 'ld', 'sdk', 'macos')}
+    return {
+        'clang': versions['clang'],
+        'llvm': {'version': deps.read_recipe('llvm')['version']},
+        'sysroot': {'version': deps.read_recipe('linux-sysroot')['version']},
+    }
+
+
+def host_build(config, host):
+    if host == BUILD_HOST:
+        return BUILD
+    return os.path.join(BUILD, config['targets'][host]['buildDirectory'])
+
+
+def host_projects(config, host):
+    if host == BUILD_HOST:
+        return list(config['runtimeProjects'])
+    components = config['targets'][host]['components']
+    return [name for name in config['runtimeProjects'] if name in components]
+
+
+def first_line(text):
+    return text.splitlines()[0].strip() if text else ''
+
+
+def release_environment():
+    environment = build_environment()
+    environment['PATH'] = SYSTEM_PATH
+    return environment
+
+
+def build_stages(work, logs, seed, config):
+    environment = release_environment()
+    say('Building the runtime archives')
+    run([sys.executable, RUNTIME_BUILDER, 'build', '--build', BUILD], environment, logs, 'runtime')
+    for host in HOST_TARGETS:
+        if host != BUILD_HOST:
+            say('Building the %s runtime archives' % host)
+            run([sys.executable, RUNTIME_BUILDER, 'build', '--build', host_build(config, host), '--target', host],
+                environment, logs, 'runtime-' + host)
+    stages = [None]
+    compiler = seed['compiler']
+    for number in (1, 2, 3):
+        say('Building stage %d' % number)
+        directory = os.path.join(work, 'stage%d' % number)
+        os.makedirs(directory)
+        executable = os.path.join(directory, 'brix')
+        command = [compiler, '--compile', '-o', executable]
+        if number == 3:
+            command += ['--link-record', executable + '.link.json', '--record-c-headers', executable + C_HEADERS]
+        run(command + [SOURCE], environment, logs, 'stage%d' % number)
+        require_outputs(executable, 'Stage %d' % number)
+        stages.append(executable)
+        compiler = executable
+    built = {'stages': stages, BUILD_HOST: stages[3]}
+    for host in HOST_TARGETS:
+        if host == BUILD_HOST:
+            continue
+        say('Building the compiler for %s with stage 2' % host)
+        executable = os.path.join(work, host, 'brix')
+        os.makedirs(os.path.dirname(executable))
+        run([stages[2], '--target', host, '--compile', '-o', executable, '--link-record', executable + '.link.json',
+             SOURCE], environment, logs, 'compiler-' + host)
+        require_outputs(executable, 'The %s compiler' % host)
+        built[host] = executable
+    built['tools'] = {host: build_tools(stages[2], host, work, environment, logs) for host in HOST_TARGETS}
+    return built
+
+
+def build_tools(stage, host, work, environment, logs):
+    tools = {}
+    for name in TOOLS:
+        say('Building brix %s for %s with stage 2' % (name, host))
+        executable = os.path.join(work, 'tools', host, 'brix-' + name)
+        os.makedirs(os.path.dirname(executable), exist_ok=True)
+        target = [] if host == BUILD_HOST else ['--target', host]
+        run([stage] + target + ['--compile', '-o', executable, TOOL_SOURCES[name]],
+            environment, logs, 'tool-%s-%s' % (name, host))
+        require_outputs(executable, 'brix %s for %s' % (name, host))
+        tools[name] = executable
+    return tools
+
+
+def require_outputs(executable, name):
+    for path in (executable, executable + '.o'):
+        if not os.path.isfile(path):
+            raise Failure('%s did not produce %s' % (name, path))
+
+
+def run(command, environment, logs, name, cwd=ROOT):
+    log_path = os.path.join(logs, name + '.log')
+    with open(log_path, 'w') as log:
+        log.write('$ %s\n' % ' '.join(command))
+        log.flush()
+        result = subprocess.run(command, cwd=cwd, env=environment, stdout=log, stderr=subprocess.STDOUT)
+    if result.returncode != 0:
+        raise Failure('%s failed with status %d:\n%s\nSee %s' % (
+            name, result.returncode, log_tail(log_path), log_path))
+    return log_path
+
+
+def run_program(command, environment, logs, name, cwd):
+    log_path = os.path.join(logs, name + '.log')
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            timeout=PROGRAM_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise Failure('%s timed out after %d s' % (name, PROGRAM_TIMEOUT))
+    with open(log_path, 'w') as log:
+        log.write('$ %s\n%s%s' % (' '.join(command), result.stdout, result.stderr))
+    if result.returncode != 0:
+        raise Failure('%s failed with status %d:\n%s\nSee %s' % (
+            name, result.returncode, log_tail(log_path), log_path))
+    return result.stdout
+
+
+def check_fixed_point(stages):
+    second = file_digest(stages[2] + '.o')
+    third = file_digest(stages[3] + '.o')
+    if second != third:
+        raise Failure('No fixed point: the objects of stage 2 (%s) and stage 3 (%s) differ' % (
+            second, third))
+    return {'object': second}
+
+
+def check_brix(stage, work, logs):
+    say('Building brix brix with stage 2')
+    environment = release_environment()
+    converter = os.path.join(work, 'brix', 'brix-brix')
+    os.makedirs(os.path.dirname(converter))
+    run([stage, '--compile', '-o', converter, TOOL_SOURCES['brix']], environment, logs, 'tool-brix')
+    require_outputs(converter, 'brix brix')
+    return brix_sweep.sweep(converter, stage, os.path.join(work, 'brix', 'sweep'), environment)
+
+
+def run_suites(compiler, test_tool, work, logs):
+    say('Building the suite runner with stage 2')
+    runners = os.path.join(work, 'suite-runner')
+    os.makedirs(runners)
+    runner = os.path.join(runners, 'brix-test-suite')
+    run([compiler, '--compile', '-o', runner, SUITE_SOURCE], release_environment(), logs, 'suite-runner')
+    module_runner = os.path.join(runners, 'brix-test')
+    shutil.copy2(test_tool, module_runner)
+    os.symlink(compiler, os.path.join(runners, 'brix'))
+    results = {}
+    for suite, tests in SUITES:
+        environment = suite_environment(suite)
+        environment.update({
+            'BRIX_TEST_SUITE': suite,
+            'BRIX_TEST_ROOT': os.path.join(ROOT, tests),
+            'BRIX_TEST_COMPILER': compiler,
+        })
+        results[suite] = run_suite(suite, [runner, 'catalog'], [runner, 'run'], environment, logs)
+    for suite, folder in MODULE_SUITES:
+        results[suite] = run_suite(suite, [module_runner, 'catalog-modules', folder],
+                                   [module_runner, 'run-modules', folder], suite_environment(suite), logs)
+    return results
+
+
+def suite_environment(suite):
+    environment = release_environment()
+    environment.update({
+        'OMETER_TESTOMETER_PROJECT_ROOT': ROOT,
+        'OMETER_TESTOMETER_SUITE_NAME': suite,
+        'OMETER_TESTOMETER_CATALOG_START_INDEX': '0',
+    })
+    return environment
+
+
+def run_suite(suite, catalog_command, run_command, environment, logs):
+    say('Running %s on stage 2' % suite)
+    catalog = suite_catalog(catalog_command, environment, suite)
+    identifiers = [test['id'] for test in catalog.get('tests', [])]
+    if not identifiers:
+        raise Failure('%s lists no tests' % suite)
+    environment = dict(environment, OMETER_TESTOMETER_SELECTED_TEST_IDS=json.dumps(identifiers))
+    log_path = run(run_command, environment, logs, suite)
+    return suite_result(suite, log_path, len(identifiers))
+
+
+def suite_catalog(command, environment, suite):
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if result.returncode != 0:
+        raise Failure('Listing %s failed:\n%s' % (suite, result.stderr.strip()))
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        raise Failure('Listing %s gave no catalog:\n%s' % (suite, result.stdout[:2000]))
+
+
+def suite_result(suite, log_path, count):
+    end = None
+    failures = []
+    with open(log_path, errors='replace') as file:
+        for line in file:
+            if not line.startswith('{'):
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get('type') == 'testResult' and event.get('status') in FAILING_STATUSES:
+                failures.append('%s %s' % (event.get('status'), event.get('id')))
+            elif event.get('type') == 'runEnd':
+                end = event
+    if end is None:
+        raise Failure('%s ended without a result:\n%s\nSee %s' % (suite, log_tail(log_path), log_path))
+    counts = {name: end.get(name, 0) for name in ('passed', 'failed', 'skipped', 'crashed', 'killed')}
+    counts['count'] = end.get('count', 0)
+    if failures or counts['count'] != count or counts['passed'] + counts['skipped'] != count:
+        listed = '\n'.join(failures[:20]) or json.dumps(counts)
+        raise Failure('%s did not pass:\n%s\nSee %s' % (suite, listed, log_path))
+    return counts
+
+
+def write_link(host, binary, work, versions, config, toolchain):
+    with open(binary + '.link.json') as file:
+        arguments = json.load(file)['arguments']
+    root = host_build(config, host)
+    build_root = root + os.sep
+    places = {binary: 'bin/brix', binary + '.o': 'obj/brix.o'}
+    if host == BUILD_HOST:
+        linker, name = versions['ld']['path'], 'ld'
+        places[versions['sdk']['path']] = SDK_PLACEHOLDER
+    else:
+        name = config['targets'][host]['linker']
+        linker = built_path(name, root)
+    if arguments[0] != linker:
+        raise Failure('The %s link runs %s, not %s' % (host, arguments[0], linker))
+    relative = []
+    archives = []
+    frameworks = []
+    libraries = []
+    previous = None
+    for argument in arguments[1:]:
+        flag, value = split_argument(argument)
+        if previous in LINK_TARGET_FLAGS:
+            pass
+        elif value in places:
+            value = places[value]
+        elif value.startswith(build_root):
+            value = 'build/' + value[len(build_root):]
+        elif value.startswith('/'):
+            raise Failure('The %s link reads %s, which is outside the toolchain' % (host, value))
+        if value.endswith('.a'):
+            archives.append({'path': value, 'sha256': file_digest(argument)})
+        elif previous == '-framework':
+            frameworks.append(value)
+        elif value.startswith('-l'):
+            libraries.append(value[2:])
+        relative.append(flag + value)
+        previous = argument
+    link = {
+        'linker': name,
+        'arguments': relative,
+        'inputs': {
+            'object': {'path': 'obj/brix.o', 'sha256': file_digest(binary + '.o')},
+            'archives': archives,
+            'frameworks': frameworks,
+            'libraries': libraries,
+        },
+        'toolchain': toolchain,
+    }
+    path = os.path.join(work, 'link-%s.json' % host)
+    launcher.write_json(path, link)
+    return path
+
+
+def split_argument(argument):
+    for flag in LINK_PATH_FLAGS:
+        if argument.startswith(flag) and len(argument) > len(flag):
+            return flag, argument[len(flag):]
+    return '', argument
+
+
+def write_packages(version, triple, config, host, binary, tools, link, work, mtime):
+    packages_path = os.path.join(work, 'packages')
+    os.makedirs(packages_path, exist_ok=True)
+    toolchain = os.path.join(packages_path, 'brix-%s-%s.tar.xz' % (version, triple))
+    relink = os.path.join(packages_path, 'brix-%s-relink-%s.tar.xz' % (version, triple))
+    seed = os.path.join(packages_path, 'brix-%s-seed-%s.xz' % (version, triple))
+    write_tar(toolchain, toolchain_files(config, host, binary, tools), mtime)
+    write_tar(relink, {'obj/brix.o': binary + '.o', 'link.json': link}, mtime)
+    write_xz(binary, seed)
+    packages = {'toolchain': toolchain, 'relink': relink, 'seed': seed}
+    if host == BUILD_HOST:
+        packages['c-headers'] = os.path.join(packages_path, 'brix-%s-c-headers-%s.xz' % (version, triple))
+        write_xz(binary + C_HEADERS, packages['c-headers'])
+    return packages
+
+
+def write_xz(path, package):
+    with open(path, 'rb') as source, lzma.open(package, 'wb', format=lzma.FORMAT_XZ) as output:
+        shutil.copyfileobj(source, output, CHUNK_SIZE)
+
+
+def toolchain_files(config, host, binary, tools):
+    root = host_build(config, host)
+    files = {
+        'bin/brix': binary,
+        'libs/build.json': RUNTIME_CONFIG,
+    }
+    for name, executable in tools.items():
+        files['bin/brix-' + name] = executable
+    for name in host_projects(config, host):
+        built = 'build/brix/' + config['runtimeProjects'][name]['path']
+        add_tree(files, built_path(built, root), built, lambda part: part.endswith('.o'))
+    add_tree(files, built_path('build/external', root), 'build/external')
+    add_tree(files, os.path.join(ROOT, 'stdlib'), 'stdlib', lambda part: part in ('tests', 'bench'))
+    add_tree(files, os.path.join(ROOT, CORE_TESTS), CORE_TESTS, is_left_out_core_test)
+    add_tree(files, os.path.join(ROOT, 'examples'), 'examples')
+    add_guide(files)
+    return files
+
+
+def is_left_out_core_test(part):
+    return part in CORE_TESTS_LEFT_OUT or not (part == 'support' or part.endswith(('.test', '.yumi')))
+
+
+def add_guide(files):
+    pages = [GUIDE_INDEX]
+    links = []
+    while pages:
+        page = pages.pop()
+        source = os.path.join(ROOT, page)
+        if page in files or not os.path.isfile(source):
+            continue
+        files[page] = source
+        if page.endswith('.md'):
+            for target in page_links(page):
+                links.append((page, target))
+                pages.append(target)
+    for page, target in links:
+        if target not in files and not any(name.startswith(target + '/') for name in files):
+            raise Failure('%s links to %s, which the toolchain package does not hold' % (page, target))
+
+
+def page_links(page):
+    with open(os.path.join(ROOT, page)) as file:
+        text = file.read()
+    for target in LINK_PATTERN.findall(text):
+        target = target.split('#')[0]
+        if target and '://' not in target:
+            yield os.path.normpath(os.path.join(os.path.dirname(page), target))
+
+
+def kit_names(config, host):
+    runtime = config['runtimeProjects']
+    pending = [name for project in host_projects(config, host) for name in runtime[project].get('requires', [])]
+    visited = set()
+    names = set()
+    while pending:
+        name = pending.pop(0)
+        if name in visited:
+            continue
+        visited.add(name)
+        if name in runtime:
+            pending += runtime[name].get('requires', [])
+        elif name in config['externalLibraries']:
+            names.add(config['externalLibraries'][name]['path'].split('/')[2])
+    if host != BUILD_HOST:
+        target = config['targets'][host]
+        names.update(target[key].split('/')[2] for key in ('sysroot', 'linker') if key in target)
+    return sorted(names)
+
+
+def source_kit_names(config, host):
+    if host == BUILD_HOST:
+        wanted = deps.default_recipe_names(None)
+    else:
+        names, tools = runtime.target_dependencies(config, config['targets'][host], host_projects(config, host))
+        wanted = names + tools
+    installed = kit_names(config, host)
+    return sorted(name for name in set(wanted) if name not in installed)
+
+
+def host_kits(host, config, offline, names):
+    target = None if host == BUILD_HOST else config['targets'][host]
+    kits = []
+    for name in names:
+        prefix, key = deps.dependency_kit(name, target)
+        file = launcher.kit_file(name, key)
+        archive = launcher.kit_archive(file)
+        if not os.path.isfile(archive):
+            if not offline and launcher.s3_head('%s/%s' % (launcher.KITS_PREFIX, file)):
+                launcher.fetch_kit(file)
+            else:
+                say('Packing the %s kit' % file)
+                write_kit(prefix, archive)
+        entry = {'name': name, 'key': key, 'file': file, 'size': os.path.getsize(archive), 'sha256': file_digest(archive)}
+        kits.append((entry, archive))
+    return kits
+
+
+def write_kit(prefix, archive):
+    os.makedirs(os.path.dirname(archive), exist_ok=True)
+    temporary = '%s.part-%d' % (archive, os.getpid())
+    with tarfile.open(temporary, 'w:xz', format=tarfile.PAX_FORMAT) as output:
+        for directory, directories, file_names in os.walk(prefix):
+            directories.sort()
+            for name in sorted(directories + file_names):
+                path = os.path.join(directory, name)
+                status = os.lstat(path)
+                info = tarfile.TarInfo(os.path.relpath(path, prefix))
+                info.mtime = 0
+                if stat.S_ISLNK(status.st_mode):
+                    info.type = tarfile.SYMTYPE
+                    info.linkname = os.readlink(path)
+                    info.mode = 0o755
+                    output.addfile(info)
+                elif stat.S_ISDIR(status.st_mode):
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    output.addfile(info)
+                else:
+                    info.size = status.st_size
+                    info.mode = 0o755 if status.st_mode & stat.S_IXUSR else 0o644
+                    with open(path, 'rb') as file:
+                        output.addfile(info, file)
+    os.replace(temporary, archive)
+
+
+def add_tree(files, source, name, excluded=lambda part: False):
+    if not os.path.isdir(source):
+        raise Failure('%s is missing; the runtime build did not produce it' % source)
+    for directory, directories, file_names in os.walk(source, followlinks=True):
+        directories[:] = sorted(part for part in directories if not part.startswith('.') and not excluded(part))
+        relative = os.path.relpath(directory, source)
+        for file_name in file_names:
+            if file_name.startswith('.') or excluded(file_name):
+                continue
+            path = os.path.normpath(os.path.join(name, relative, file_name))
+            files[path] = os.path.join(directory, file_name)
+
+
+def write_tar(path, files, mtime):
+    with tarfile.open(path, 'w:xz', format=tarfile.PAX_FORMAT) as archive:
+        added = set()
+        for name in sorted(files):
+            parts = name.split('/')
+            for depth in range(1, len(parts)):
+                directory = '/'.join(parts[:depth])
+                if directory not in added:
+                    added.add(directory)
+                    info = tarfile.TarInfo(directory)
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    info.mtime = mtime
+                    archive.addfile(info)
+            status = os.stat(files[name])
+            info = tarfile.TarInfo(name)
+            info.size = status.st_size
+            info.mode = 0o755 if status.st_mode & stat.S_IXUSR else 0o644
+            info.mtime = mtime
+            with open(files[name], 'rb') as file:
+                archive.addfile(info, file)
+
+
+def denied_paths():
+    paths = [ROOT, BRIX_HOME, os.path.realpath(os.path.expanduser('~'))]
+    paths += [path for path in DENIED_SYSTEM_PATHS if os.path.exists(path)]
+    return [os.path.realpath(path) for path in paths]
+
+
+def sandbox_profile(denied, room):
+    for path in denied:
+        if is_within(room, path):
+            raise Failure('The clean room %s is inside %s, which it must not read' % (room, path))
+    paths = ' '.join('(subpath %s)' % json.dumps(path) for path in denied)
+    return '(version 1)\n(allow default)\n(deny file-read* file-write* %s)\n' % paths
+
+
+def clean_room_environment(room):
+    environment = passed_environment()
+    environment['PATH'] = SYSTEM_PATH
+    environment['TMPDIR'] = os.path.join(room, 'tmp') + '/'
+    os.makedirs(environment['TMPDIR'])
+    return environment
+
+
+def check_clean_room(toolchain, kits, denied, logs):
+    programs = sorted(name[:-5] for name in os.listdir(CLEAN_ROOM_PROGRAMS) if name.endswith('.yumi'))
+    with temporary_directory('brix-cleanroom-') as room:
+        profile = sandbox_profile(denied, room)
+        root = os.path.join(room, 'toolchain')
+        install_room(root, toolchain, kits, os.path.join(room, 'kits'))
+        sources = os.path.join(room, 'programs')
+        shutil.copytree(CLEAN_ROOM_PROGRAMS, sources)
+        environment = clean_room_environment(room)
+        sandbox = ['/usr/bin/sandbox-exec', '-p', profile]
+        for program in programs:
+            say('Clean room: compiling and running %s' % program)
+            executable = os.path.join(room, 'out', program)
+            os.makedirs(os.path.dirname(executable), exist_ok=True)
+            run(sandbox + [os.path.join(root, 'bin', 'brix'), '--compile', '-o', executable,
+                           os.path.join(sources, program + '.yumi')],
+                environment, logs, 'cleanroom-compile-' + program, cwd=room)
+            actual = run_program(sandbox + [executable], environment, logs, 'cleanroom-run-' + program, room)
+            with open(os.path.join(sources, program + '.out')) as file:
+                expected = file.read()
+            if actual != expected:
+                raise Failure('Clean room: %s printed\n%s\ninstead of\n%s' % (program, actual, expected))
+        check_tools(sandbox + [os.path.join(root, 'bin', 'brix')], root, sources, environment, logs, room)
+        examples = build_examples(sandbox + [os.path.join(root, 'bin', 'brix')], root, environment, logs, room)
+    return {'programs': programs, 'tools': list(TOOLS), 'examples': len(examples), 'denied': denied}
+
+
+def build_examples(brix, root, environment, logs, room):
+    entries = example_entries(root)
+    say('Clean room: building the %d example programs' % len(entries))
+    output = os.path.join(room, 'examples')
+
+    def build(entry):
+        name = example_name(entry)
+        run_program(brix + [os.path.join(root, entry), '--compile', '-o', os.path.join(output, name)],
+                    environment, logs, 'cleanroom-' + name, room)
+
+    with concurrent.futures.ThreadPoolExecutor(EXAMPLE_WORKERS) as pool:
+        list(pool.map(build, entries))
+    return entries
+
+
+def example_name(entry):
+    return os.path.splitext(entry)[0].replace('/', '-')
+
+
+def example_entries(root):
+    sources = []
+    for directory, directories, file_names in os.walk(os.path.join(root, 'examples')):
+        sources += [os.path.join(directory, file_name) for file_name in file_names
+                    if file_name.endswith(EXAMPLE_SOURCES)]
+    imported = {target for source in sources for target in example_imports(source, source)}
+    return sorted(os.path.relpath(source, root) for source in sources if source not in imported)
+
+
+def example_imports(source, name):
+    pattern = BRIX_EXAMPLE_IMPORT if source.endswith('.bx') else EXAMPLE_IMPORT
+    with open(source) as file:
+        for line in file:
+            match = pattern.match(line.rstrip())
+            if match:
+                stem = os.path.normpath(os.path.join(os.path.dirname(name), match.group(1)))
+                for extension in EXAMPLE_SOURCES:
+                    yield stem + extension
+
+
+def check_tools(brix, root, sources, environment, logs, room):
+    index = os.path.join(root, GUIDE_INDEX)
+    say('Clean room: checking that brix --help names %s' % GUIDE_INDEX)
+    usage = run_program(brix + ['--help'], environment, logs, 'cleanroom-help', room)
+    if index not in usage or not os.path.isfile(index):
+        raise Failure('Clean room: brix --help printed\n%s\nwithout %s, or it is missing' % (usage, index))
+    for name in TOOLS:
+        say('Clean room: running brix %s --help' % name)
+        run_program(brix + [name, '--help'], environment, logs, 'cleanroom-help-' + name, room)
+    program = os.path.join(sources, TOOL_PROGRAM + '.yumi')
+    say('Clean room: recording the probes of %s and reading them back' % TOOL_PROGRAM)
+    run_program(brix + [program, '--probes'], environment, logs, 'cleanroom-probes-run', room)
+    log = run_program(brix + ['probes', 'log'], environment, logs, 'cleanroom-probes-log', room)
+    if TOOL_PROBE not in log:
+        raise Failure('Clean room: brix probes log printed\n%s\nwithout %r' % (log, TOOL_PROBE))
+    say('Clean room: linting %s with its semantic rules' % TOOL_PROGRAM)
+    run_program(brix + ['lint', '--project', sources, '--semantic-rules', '--semantic-root', program, program],
+                environment, logs, 'cleanroom-lint', room)
+    project = os.path.join(room, 'project')
+    os.makedirs(project)
+    say('Clean room: running brix init in a new project')
+    run_program(brix + ['init', project], environment, logs, 'cleanroom-init', room)
+    check_init(project)
+    say('Clean room: running the test modules of the clean room programs')
+    tested = dict(environment, PATH='%s:%s' % (os.path.join(root, 'bin'), environment['PATH']))
+    output = run_program(brix + ['test', 'run'], tested, logs, 'cleanroom-test', sources)
+    if TEST_RESULT not in output:
+        raise Failure('Clean room: brix test run printed\n%s\nwithout %r' % (output, TEST_RESULT))
+    say('Clean room: running the benchmark of the clean room programs')
+    output = run_program(brix + ['bench', 'run', '--iterations', '1'], tested, logs, 'cleanroom-bench', sources)
+    if BENCH_RESULT not in output:
+        raise Failure('Clean room: brix bench run printed\n%s\nwithout %r' % (output, BENCH_RESULT))
+
+
+def check_init(project):
+    for name, expected in INIT_FILES:
+        path = os.path.join(project, name)
+        text = open(path).read() if os.path.isfile(path) else ''
+        if expected not in text:
+            raise Failure('Clean room: brix init wrote no %s holding %r' % (name, expected))
+
+
+def install_room(root, toolchain, kits, folder):
+    launcher.extract(toolchain, root)
+    for entry, archive in kits:
+        destination = os.path.join(folder, entry['name'])
+        launcher.extract(archive, destination, links=True)
+        link = os.path.join(root, 'build', 'deps', entry['name'])
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        os.symlink(destination, link)
+
+
+def check_seed(toolchain, seed):
+    with tarfile.open(toolchain, 'r:xz') as archive:
+        member = archive.extractfile('bin/brix')
+        toolchain_digest = launcher.stream_digest(member)
+    with lzma.open(seed, 'rb') as stream:
+        seed_digest = launcher.stream_digest(stream)
+    if toolchain_digest != seed_digest:
+        raise Failure('The seed (%s) is not the toolchain binary (%s)' % (seed_digest, toolchain_digest))
+    return {'sha256': seed_digest}
+
+
+def check_relink(toolchain, relink, kits, denied, logs):
+    with temporary_directory('brix-relink-') as room:
+        output = relink_binary(toolchain, relink, kits, room, denied, logs)
+        relinked = file_digest(output)
+        original = file_digest(os.path.join(room, 'bin', 'brix'))
+        if relinked != original:
+            raise Failure('Relinking gave %s, not bin/brix (%s)' % (relinked, original))
+    return {'sha256': relinked}
+
+
+def relink_binary(toolchain, relink, kits, room, denied, logs):
+    profile = sandbox_profile(denied, room)
+    install_room(room, toolchain, kits, os.path.join(room, 'kits'))
+    launcher.extract(relink, room)
+    with open(os.path.join(room, 'link.json')) as file:
+        link = json.load(file)
+    if file_digest(os.path.join(room, 'obj', 'brix.o')) != link['inputs']['object']['sha256']:
+        raise Failure('The relink kit object does not match link.json')
+    for archive in link['inputs']['archives']:
+        if file_digest(os.path.join(room, archive['path'])) != archive['sha256']:
+            raise Failure('%s in the toolchain does not match link.json' % archive['path'])
+    output = os.path.join(room, 'relinked', 'brix')
+    os.makedirs(os.path.dirname(output))
+    sdk = xcrun('--show-sdk-path')
+    arguments = [sdk if argument == SDK_PLACEHOLDER else argument for argument in link['arguments']]
+    arguments[arguments.index('-o') + 1] = output
+    environment = clean_room_environment(room)
+    run(['/usr/bin/sandbox-exec', '-p', profile, link['linker']] + arguments,
+        environment, logs, 'relink', cwd=room)
+    return output
+
+
+@contextlib.contextmanager
+def temporary_directory(prefix):
+    path = os.path.realpath(tempfile.mkdtemp(prefix=prefix))
+    try:
+        yield path
+    finally:
+        launcher.remove_tree(path)
+
+
+def write_release(version, source, seed, hosts, path):
+    release = {
+        'version': version,
+        'source': source,
+        'seed': seed['record'],
+        'launcher': {'file': LAUNCHER_FILE, 'size': os.path.getsize(LAUNCHER_SOURCE),
+                     'sha256': file_digest(LAUNCHER_SOURCE)},
+        'hosts': {
+            host['triple']: {
+                'toolchain': host['toolchain'],
+                'hashes': {
+                    'obj/brix.o': file_digest(host['binary'] + '.o'),
+                    'bin/brix': file_digest(host['binary']),
+                },
+                'packages': [
+                    {
+                        'name': name,
+                        'file': os.path.basename(package),
+                        'size': os.path.getsize(package),
+                        'sha256': file_digest(package),
+                    }
+                    for name, package in sorted(host['packages'].items())
+                ],
+                'kits': [entry for entry, archive in host['kits']],
+                'sourceKits': [entry for entry, archive in host['sourceKits']],
+                'verification': host['verification'],
+            }
+            for host in hosts.values()
+        },
+    }
+    launcher.write_json(path, release)
+    return release
+
+
+def release_files(version, source, seed, hosts, folder):
+    os.makedirs(folder)
+    release_path = os.path.join(folder, 'release.json')
+    release = write_release(version, source, seed, hosts, release_path)
+    release_hash = file_digest(release_path)
+    installer = os.path.join(folder, INSTALLER_FILE)
+    write_installer(version, release_hash, installer)
+    copied_launcher = os.path.join(folder, LAUNCHER_FILE)
+    shutil.copyfile(LAUNCHER_SOURCE, copied_launcher)
+    files = [release_path, copied_launcher, installer]
+    kits = {}
+    for host in hosts.values():
+        files += [host['packages'][name] for name in sorted(host['packages'])]
+        for entry, archive in host['kits'] + host['sourceKits']:
+            kits[entry['file']] = (entry, archive)
+    return {
+        'release': release_path,
+        'hash': release_hash,
+        'installer': installer,
+        'files': files,
+        'kits': [kits[name] for name in sorted(kits)],
+        'index': index_entry(version, release, release_hash),
+    }
+
+
+def index_entry(version, release, release_hash):
+    return {
+        'version': version,
+        'release': release_hash,
+        'commit': release['source']['commit'],
+        'seed': release['seed'],
+        'hosts': sorted(release['hosts']),
+    }
+
+
+def write_installer(version, release_hash, path):
+    with open(INSTALLER_SOURCE) as file:
+        text = file.read()
+    with open(LAUNCHER_SOURCE) as file:
+        source = file.read()
+    if "'''" in source or source.endswith('\\'):
+        raise Failure('The launcher cannot be written into the installer as a raw string')
+    stamps = {
+        'VERSION = None\n': 'VERSION = %r\n' % version,
+        'RELEASE_SHA256 = None\n': 'RELEASE_SHA256 = %r\n' % release_hash,
+        'LAUNCHER = None\n': "LAUNCHER = r'''%s'''\n" % source,
+    }
+    for old, new in stamps.items():
+        if text.count(old) != 1:
+            raise Failure('%s has no line %r to stamp' % (INSTALLER_SOURCE, old.strip()))
+        text = text.replace(old, new)
+    with open(path, 'w') as file:
+        file.write(text)
+    os.chmod(path, 0o755)
+
+
+def write_mirror(directory, version, assembled):
+    folder = os.path.join(directory, launcher.RELEASES_PREFIX, version)
+    os.makedirs(folder)
+    for path in assembled['files']:
+        shutil.copy2(path, os.path.join(folder, os.path.basename(path)))
+    kits = os.path.join(directory, launcher.KITS_PREFIX)
+    os.makedirs(kits, exist_ok=True)
+    for entry, archive in assembled['kits']:
+        shutil.copy2(archive, os.path.join(kits, entry['file']))
+    launcher.write_json(os.path.join(directory, launcher.RELEASES_PREFIX, 'releases.json'),
+                        {'releases': [assembled['index']]})
+    shutil.copy2(assembled['installer'], os.path.join(directory, INSTALLER_FILE))
+
+
+def check_linux(mirror, version, logs):
+    name = vm.clean_name(GATE_DISTRO)
+    say('Starting a new %s VM with nothing of this Mac mounted' % GATE_DISTRO)
+    vm.start_clean(name, GATE_DISTRO, fresh=True)
+    say('Copying the staged release into %s' % name)
+    vm.copy_into(name, [mirror, CLEAN_ROOM_PROGRAMS, COMPILER_SOURCES, LINUX_GATE], GATE_ROOT)
+    say('Installing it in %s, then compiling the clean room programs and the compiler there' % name)
+    status, output = vm.run_in(name, ['python3', '%s/%s' % (GATE_ROOT, os.path.basename(LINUX_GATE)), GATE_ROOT,
+                                      version], capture=True)
+    log_path = os.path.join(logs, 'linux-gate.log')
+    with open(log_path, 'w') as log:
+        log.write(output)
+    vm.limactl('stop', name)
+    lines = [line for line in output.splitlines() if line.startswith('{')]
+    if status != 0 or not lines:
+        raise Failure('The Linux checks in %s failed:\n%s\nSee %s' % (name, log_tail(log_path), log_path))
+    return json.loads(lines[-1])
+
+
+def store(version, assembled):
+    archives = os.path.join(BRIX_HOME, 'archives')
+    releases = os.path.join(BRIX_HOME, 'releases')
+    seeds = os.path.join(BRIX_HOME, 'seeds')
+    for directory in (archives, releases, seeds):
+        os.makedirs(directory, exist_ok=True)
+        if os.path.exists(os.path.join(directory, version)):
+            raise Failure('%s already exists; a release is never replaced' % os.path.join(directory, version))
+
+    staged = launcher.staging_directory(archives, version)
+    for path in assembled['files']:
+        shutil.copy2(path, os.path.join(staged, os.path.basename(path)))
+    launcher.publish(staged, os.path.join(archives, version))
+    with open(assembled['release']) as file:
+        release = json.load(file)
+    launcher.install_toolchain(version, release)
+    launcher.install_seed(version, release)
+
+    current = os.path.join(BRIX_HOME, 'current')
+    link = '%s.%d' % (current, os.getpid())
+    os.symlink(os.path.join('releases', version), link)
+    os.replace(link, current)
+
+
+def update_manifests(version, release_hash):
+    paths = [os.path.join(ROOT, MANIFEST_NAME)]
+    config = launcher.read_config()
+    paths += [os.path.join(os.path.expanduser(repo), MANIFEST_NAME) for repo in config.get('followLatest', [])]
+    updated = []
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        with open(path) as file:
+            pinned = json.load(file).get('version')
+        if pinned and version_key(pinned) > version_key(version):
+            continue
+        write_manifest(path, version, release_hash)
+        updated.append(path)
+    return updated
+
+
+def write_manifest(path, version, release_hash, use=None):
+    existing = {}
+    if os.path.isfile(path):
+        with open(path) as file:
+            existing = json.load(file)
+    manifest = {
+        'version': version,
+        'release': release_hash,
+        'use': use or existing.get('use', 'toolchain'),
+    }
+    for name, value in existing.items():
+        manifest.setdefault(name, value)
+    launcher.write_json(path, manifest)
+    return manifest
+
+
+def setup():
+    for name in ('archives', 'releases', 'seeds', 'bin'):
+        os.makedirs(os.path.join(BRIX_HOME, name), exist_ok=True)
+    installed = os.path.join(BRIX_HOME, 'bin', 'brix')
+    temporary = '%s.%d' % (installed, os.getpid())
+    shutil.copyfile(LAUNCHER_SOURCE, temporary)
+    os.chmod(temporary, 0o755)
+    os.replace(temporary, installed)
+    lines = ['Installed the launcher as %s' % installed]
+    config_path = launcher.config_path()
+    if os.path.isfile(config_path):
+        lines.append('Kept %s' % config_path)
+    else:
+        launcher.write_json(config_path, {'followLatest': []})
+        lines.append('Wrote %s' % config_path)
+    directories = [os.path.realpath(part) for part in os.environ.get('PATH', '').split(':') if part]
+    if os.path.dirname(installed) not in directories:
+        lines.append('Add %s to PATH to run the launcher as brix' % os.path.dirname(installed))
+    say('\n'.join(lines))
+
+
+def pin(version, use, repo):
+    release = archived_release(version)
+    release_path = os.path.join(launcher.archives_path(), version, 'release.json')
+    path = os.path.join(os.path.realpath(repo), MANIFEST_NAME)
+    manifest = write_manifest(path, version, file_digest(release_path), use)
+    say('Pinned %s to %s, for %s' % (path, version, manifest['use']))
+
+
+def archived_release(version):
+    if not launcher.VERSION_PATTERN.fullmatch(version):
+        raise Failure('%s is not a version; versions look like 2026.10.23-1' % version)
+    release_path = os.path.join(launcher.archives_path(), version, 'release.json')
+    if not os.path.isfile(release_path):
+        launcher.fetch_release(version, recorded_release(version))
+    with open(release_path) as file:
+        return json.load(file)
+
+
+def upload(version):
+    archive = os.path.join(launcher.archives_path(), version)
+    release_path = os.path.join(archive, 'release.json')
+    if not os.path.isfile(release_path):
+        raise Failure('Release %s is not in %s' % (version, launcher.archives_path()))
+    with open(release_path) as file:
+        release = json.load(file)
+    commit = release['source']['commit']
+    if not is_on_main(commit):
+        raise Failure('%s was built from %s, which is not on %s/%s, so it is not uploaded' % (
+            version, commit[:12], MAIN_REMOTE, MAIN_BRANCH))
+    release_hash = file_digest(release_path)
+    files = []
+    for host in release['hosts'].values():
+        files += [(package['file'], package['sha256'], package['size']) for package in host['packages']]
+    for name in (LAUNCHER_FILE, INSTALLER_FILE):
+        path = os.path.join(archive, name)
+        files.append((name, file_digest(path), os.path.getsize(path)))
+    files.append(('release.json', release_hash, os.path.getsize(release_path)))
+    try:
+        for host in release['hosts'].values():
+            for kit in host['kits'] + host['sourceKits']:
+                say('Uploading the %s kit' % kit['file'])
+                put_once('%s/%s' % (launcher.KITS_PREFIX, kit['file']), launcher.kit_archive(kit['file']), kit['sha256'])
+        for name, digest, size in files:
+            say('Uploading %s' % name)
+            put_once(launcher.release_key(version, name), os.path.join(archive, name), digest)
+        say('Reading back %s from S3' % version)
+        for name, digest, size in files:
+            if launcher.s3_download(launcher.release_key(version, name)) != (digest, size):
+                raise Failure('%s in S3 does not match the archive' % name)
+        say('Recording %s' % version)
+        record_release(version, release, release_hash)
+        update_latest(LAUNCHER_KEY, LAUNCHER_SOURCE, 'text/x-python')
+        update_latest(INSTALLER_KEY, os.path.join(archive, INSTALLER_FILE), 'text/x-python')
+    except (Failure, launcher.LaunchError, OSError) as error:
+        raise Failure('%s\n%s is stored in %s but its upload is incomplete; rerun: toolchain/release/brix-release '
+                           'upload %s' % (error, version, archive, version))
+    return release, release_hash
+
+
+def update_latest(key, path, kind):
+    with open(path, 'rb') as file:
+        source = file.read()
+    existing = launcher.s3_head(key, {'x-amz-checksum-mode': 'ENABLED'}) or {}
+    if existing.get('x-amz-checksum-sha256') != base64.b64encode(hashlib.sha256(source).digest()).decode():
+        say('Uploading the latest %s' % key)
+        launcher.s3_put(key, source, kind)
+
+
+def put_once(key, path, digest):
+    with open(path, 'rb') as file:
+        body = file.read()
+    try:
+        launcher.s3_put(key, body, content_type(path), {'if-none-match': '*'})
+    except launcher.S3Error as error:
+        if error.status != 412:
+            raise
+        existing = launcher.s3_head(key, {'x-amz-checksum-mode': 'ENABLED'}) or {}
+        if existing.get('x-amz-checksum-sha256') != base64.b64encode(bytes.fromhex(digest)).decode():
+            raise Failure('A different s3://%s/%s already exists; a release is never replaced'
+                               % (launcher.RELEASES_BUCKET, key))
+
+
+def content_type(path):
+    if path.endswith('.json'):
+        return 'application/json'
+    if path.endswith('.xz'):
+        return 'application/x-xz'
+    return 'application/octet-stream'
+
+
+def record_release(version, release, release_hash):
+    try:
+        body, etag = launcher.s3_read(INDEX_KEY)
+        index = json.loads(body)
+        condition = {'if-match': etag}
+    except launcher.S3Error as error:
+        if error.status != 404:
+            raise
+        index = {'releases': []}
+        condition = {'if-none-match': '*'}
+    recorded = [entry for entry in index['releases'] if entry['version'] == version]
+    if recorded and recorded[0]['release'] != release_hash:
+        raise Failure('The S3 index records a different %s (%s)' % (version, recorded[0]['release']))
+    if not recorded:
+        index['releases'].append(index_entry(version, release, release_hash))
+        index['releases'].sort(key=lambda entry: version_key(entry['version']))
+        launcher.s3_put(INDEX_KEY, (json.dumps(index, indent=4) + '\n').encode(), 'application/json', condition)
+    launcher.write_json(RELEASES_RECORD, index)
+
+
+def version_key(version):
+    date, counter = version.rsplit('-', 1)
+    return date, int(counter)
+
+
+def recorded_releases():
+    if not os.path.isfile(RELEASES_RECORD):
+        return []
+    with open(RELEASES_RECORD) as file:
+        return json.load(file)['releases']
+
+
+def recorded_release(version):
+    for entry in recorded_releases():
+        if entry['version'] == version:
+            return entry['release']
+    if os.path.isfile(MANIFEST):
+        manifest = launcher.read_manifest(MANIFEST)
+        if manifest['version'] == version:
+            return manifest['release']
+    raise Failure('%s is not recorded in %s or pinned in %s' % (version, RELEASES_RECORD, MANIFEST))
+
+
+def fetch(version):
+    archive = os.path.join(launcher.archives_path(), version)
+    if os.path.isdir(archive):
+        say('%s is already in %s' % (version, launcher.archives_path()))
+        return
+    launcher.fetch_release(version, recorded_release(version))
+    say('Fetched %s into %s' % (version, archive))
+
+
+def relink(version):
+    release = archived_release(version)
+    host = launcher.release_host(release)
+    toolchain = launcher.package_path(version, release, 'toolchain')
+    kit = launcher.package_path(version, release, 'relink')
+    kits = [(entry, launcher.fetch_kit(entry['file'], entry['sha256'])) for entry in host['kits']]
+    launcher.install_toolchain(version, release)
+    launcher.install_seed(version, release)
+    logs = tempfile.mkdtemp(prefix='brix-relink-logs-')
+    with temporary_directory('brix-relink-') as room:
+        say('Relinking %s from its relink kit' % version)
+        output = relink_binary(toolchain, kit, kits, room, denied_paths(), logs)
+        if file_digest(os.path.join(room, 'obj', 'brix.o')) != host['hashes']['obj/brix.o']:
+            raise Failure('The relink kit of %s holds an object that release.json does not record' % version)
+        relinked = file_digest(output)
+        expected = host['hashes']['bin/brix']
+        if relinked == expected:
+            restored = restore_binaries(version, output, expected)
+            lines = ['Relinked %s into the released binary, sha256 %s' % (version, relinked)]
+            lines += ['  restored %s' % path for path in restored] or ['  both copies were intact']
+        else:
+            installed = install_relinked(version, release, output, relinked)
+            lines = ['Relinked %s with today\'s linker into a new binary, sha256 %s, not %s' % (
+                version, relinked, expected)]
+            lines += ['  installed %s, which the launcher now runs' % path for path in installed]
+            lines.append('  the originals are kept')
+    launcher.remove_tree(logs)
+    say('\n'.join(lines))
+
+
+def release_binaries(version):
+    return [
+        (os.path.join(BRIX_HOME, 'releases', version), os.path.join('bin', 'brix')),
+        (os.path.join(BRIX_HOME, 'seeds', version), 'brix'),
+    ]
+
+
+def restore_binaries(version, output, expected):
+    restored = []
+    with launcher.install_lock():
+        for directory, name in release_binaries(version):
+            path = os.path.join(directory, name)
+            if os.path.isfile(path) and file_digest(path) == expected:
+                continue
+            with writable(os.path.dirname(path)):
+                temporary = '%s.%d' % (path, os.getpid())
+                shutil.copyfile(output, temporary)
+                os.chmod(temporary, 0o555)
+                os.replace(temporary, path)
+            restored.append(path)
+    return restored
+
+
+def install_relinked(version, release, output, digest):
+    record = {
+        'sha256': digest,
+        'object': launcher.release_host(release)['hashes']['obj/brix.o'],
+        'toolchain': toolchain_versions(),
+        'relinked': time.strftime(launcher.TIME_FORMAT, time.gmtime()),
+    }
+    installed = []
+    with launcher.install_lock():
+        for directory, name in release_binaries(version):
+            relinked = os.path.join(directory, 'relinked')
+            with writable(directory):
+                launcher.remove_tree(relinked)
+                os.makedirs(relinked)
+                shutil.copyfile(output, os.path.join(relinked, 'brix'))
+                os.chmod(os.path.join(relinked, 'brix'), 0o755)
+                launcher.write_json(os.path.join(relinked, 'relink.json'), record)
+                launcher.make_read_only(relinked)
+            installed.append(os.path.join(relinked, 'brix'))
+    return installed
+
+
+@contextlib.contextmanager
+def writable(directory):
+    mode = stat.S_IMODE(os.stat(directory).st_mode)
+    os.chmod(directory, mode | stat.S_IWUSR)
+    try:
+        yield
+    finally:
+        os.chmod(directory, mode)
+
+
+def verify(versions):
+    archives = launcher.archives_path()
+    if not versions and os.path.isdir(archives):
+        names = [name for name in os.listdir(archives) if launcher.VERSION_PATTERN.fullmatch(name)]
+        versions = sorted(names, key=version_key)
+    if not versions:
+        say('No releases in %s' % archives)
+        return
+    failed = []
+    for version in versions:
+        try:
+            problems, hints, checked = verify_release(version)
+        except launcher.LaunchError as error:
+            say('%s: not checked: %s' % (version, error))
+            continue
+        if problems:
+            failed.append(version)
+            say('%s: %d problem%s' % (version, len(problems), '' if len(problems) == 1 else 's'))
+            say('\n'.join('  %s' % line for line in problems + hints))
+        else:
+            say('%s: ok, %s' % (version, ', '.join(checked)))
+    if failed:
+        raise Failure('%s failed verification' % ', '.join(failed))
+
+
+def verify_release(version):
+    archive = os.path.join(launcher.archives_path(), version)
+    release_path = os.path.join(archive, 'release.json')
+    if not os.path.isfile(release_path):
+        return ['%s is missing' % release_path], ['refill it with: toolchain/release/brix-release fetch %s' % version], []
+    problems = []
+    hints = []
+    checked = []
+    digest = file_digest(release_path)
+    try:
+        recorded = recorded_release(version)
+    except Failure:
+        recorded = None
+    if recorded is None:
+        checked.append('release.json unrecorded')
+    elif recorded != digest:
+        problems.append('%s has sha256 %s, but the record says %s' % (release_path, digest, recorded))
+    else:
+        checked.append('release.json as recorded')
+    with open(release_path) as file:
+        release = json.load(file)
+    host = launcher.release_host(release)
+    for package in host['packages']:
+        problems += file_problems(os.path.join(archive, launcher.package_file(package)), package['sha256'],
+                                  package['size'])
+    checked.append('%d packages' % len(host['packages']))
+    if problems:
+        hints.append('move %s aside, then refill it with: toolchain/release/brix-release fetch %s' % (archive, version))
+        return problems, hints, checked
+    for directory, name in release_binaries(version):
+        if not os.path.isdir(directory):
+            continue
+        found = []
+        if name == 'brix':
+            found += file_problems(os.path.join(directory, name), host['hashes']['bin/brix'])
+            checked.append('the seed')
+        else:
+            found += file_problems(os.path.join(directory, 'release.json'), digest)
+            count, unpacked = unpacked_problems(launcher.package_path(version, release, 'toolchain'), directory)
+            found += unpacked
+            checked.append('%d unpacked files' % count)
+        record_path = os.path.join(directory, 'relinked', 'relink.json')
+        if os.path.isfile(record_path):
+            with open(record_path) as file:
+                record = json.load(file)
+            if record['object'] != host['hashes']['obj/brix.o']:
+                found.append('%s relinked a different object, %s' % (record_path, record['object']))
+            found += file_problems(os.path.join(directory, 'relinked', 'brix'), record['sha256'])
+            checked.append('the relinked %s' % ('seed' if name == 'brix' else 'toolchain binary'))
+        if found:
+            problems += found
+            hints.append('move %s aside, and the launcher unpacks it again' % directory)
+    return problems, hints, checked
+
+
+def unpacked_problems(package, root):
+    problems = []
+    count = 0
+    with tarfile.open(package, 'r:xz') as archive:
+        for member in archive:
+            if member.isfile():
+                count += 1
+                problems += file_problems(os.path.join(root, member.name),
+                                          launcher.stream_digest(archive.extractfile(member)))
+    return count, problems
+
+
+def file_problems(path, digest, size=None):
+    if not os.path.isfile(path):
+        return ['%s is missing' % path]
+    if size is not None and os.path.getsize(path) != size:
+        return ['%s is %d bytes, not %d' % (path, os.path.getsize(path), size)]
+    found = file_digest(path)
+    if found != digest:
+        return ['%s has sha256 %s, not %s' % (path, found, digest)]
+    return []
+
+
+def report(version, assembled, updated, commit):
+    lines = ['Released %s' % version]
+    lines.append('  release.json %s' % assembled['hash'])
+    archive = os.path.join(BRIX_HOME, 'archives', version)
+    for path in assembled['files']:
+        stored = os.path.join(archive, os.path.basename(path))
+        lines.append('  %s (%.1f MB)' % (os.path.basename(path), os.path.getsize(stored) / 1e6))
+    for entry, archive_path in assembled['kits']:
+        lines.append('  kit %s (%.1f MB)' % (entry['file'], entry['size'] / 1e6))
+    lines.append('  stored in %s' % archive)
+    say('\n'.join(lines + published_lines(version, updated, commit)))
+
+
+def published_lines(version, updated, commit):
+    lines = ['  uploaded to s3://%s/%s/%s/' % (launcher.RELEASES_BUCKET, launcher.RELEASES_PREFIX, version)]
+    if updated:
+        lines += ['  updated %s' % path for path in updated]
+    else:
+        lines.append('  no manifests to update')
+    if commit:
+        lines.append('  committed as %s "Release %s", tagged %s, and pushed %s' % (
+            commit[:12], version, release_tag(version), MAIN_BRANCH))
+    else:
+        lines.append('  nothing to commit')
+    return lines
+
+
+if __name__ == '__main__':
+    sys.exit(run_main(main))

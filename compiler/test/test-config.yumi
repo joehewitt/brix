@@ -6,11 +6,11 @@
 /os/shell
 /time/duration
 
-+ test-config-path = ".yumi/tests.json"
++ test-config-path = ".brix/tests.json"
 
 _ test-idle-timeout = 300s
 _ test-protocol-prefix = "OMETER_TESTOMETER_"
-_ default-yumi [String] = ["yumi"]
+_ default-brix [String] = ["brix"]
 _ default-suite-name = "tests"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -53,20 +53,20 @@ apply-variables(environment, suite.variables, values)
 . nested = nested-configs(root, test-config-path)
 =? default-test-config(root) if !path.exists && !nested
 . file = test-file(path, test-config-path)
-. yumi = if file.has("yumi") then target-arguments(file["yumi"]) else default-yumi
+. brix = if file.has("brix") then target-arguments(file["brix"]) else default-brix
 . suites [TestSuiteConfig]
 . claimed [String = String]
 . layers [String = TestLayer]
-layers[root] = TestLayer(yumi, List'TargetVariable())
+layers[root] = TestLayer(brix, List'TargetVariable())
 add-test-suites(suites, claimed, file, test-config-path, null, layers[root]!)
 for config in nested
     . entry = test-file(Path("${config.folder}/$test-config-path", 0), config.label)
     . inherited = layers[config.parent]!
     . folder = config.folder
-    . given-yumi = rebased-paths(target-arguments(entry["yumi"]), folder) if entry.has("yumi")
+    . given-brix = rebased-paths(target-arguments(entry["brix"]), folder) if entry.has("brix")
     . given-env = if entry.has("env") then target-variables(entry["env"]) else List'TargetVariable()
     . layer = TestLayer
-        - given-yumi ?? inherited.yumi
+        - given-brix ?? inherited.brix
         - inherited.variables ++ rebased-variables(given-env, folder)
     layers[folder] = layer
     add-test-suites(suites, claimed, entry, config.label, folder, layer)
@@ -76,7 +76,7 @@ for config in nested
 ━━━━━━━━━━━━━━━━━━━━
 _ TestLayer is Tuple
 
-+ yumi [String]
++ brix [String]
 + variables [TargetVariable]
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -86,7 +86,7 @@ _ default-test-config TestConfig
 TestConfig(root, none, [suite])
 
 .. none = List'TargetVariable()
-.. suite = module-suite(default-yumi, default-suite-name, ["."], none, test-idle-timeout)
+.. suite = module-suite(default-brix, default-suite-name, ["."], none, test-idle-timeout)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do test-file JSONObjectReader ?! Error
@@ -118,7 +118,7 @@ for item in file["suites"].items()
     . timeout = if entry.has("timeout") then (entry["timeout"].number() as Seconds) else test-idle-timeout
     if entry.has("modules")
         . sources = rebased-paths(module-sources(entry["modules"]), folder)
-        suites += module-suite(layer.yumi, id, sources, variables, timeout)
+        suites += module-suite(layer.brix, id, sources, variables, timeout)
         continue
     suites += TestSuiteConfig
         - id
@@ -142,7 +142,7 @@ _ module-sources [String] ?! Error
 
 ━━━━━━━━━━━━━━━━━━━━
 _ module-suite TestSuiteConfig
-    - yumi [String]
+    - brix [String]
     - id String
     - sources [String]
     - variables [TargetVariable]
@@ -150,22 +150,22 @@ _ module-suite TestSuiteConfig
 
 TestSuiteConfig
     - id
-    - modules-command(yumi, "catalog-modules", sources)
-    - modules-command(yumi, "run-modules", sources)
+    - modules-command(brix, "catalog-modules", sources)
+    - modules-command(brix, "run-modules", sources)
     - variables
     - timeout
     - Map'String'[String]()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ modules-command [String]
-    - yumi [String]
+    - brix [String]
     - action String
     - sources [String]
 
 parts
 
 .. parts [String]
-    ** yumi
+    ** brix
     * "test"
     * action
     ** sources

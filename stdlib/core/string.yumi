@@ -4,8 +4,8 @@
 ./number
 ./range
 ./stream
-/YuCore/YuCore.h
-/YuCore/YuString.h
+/BxCore/BxCore.h
+/BxCore/BxString.h
 /string.h
 
 + Binary is String
@@ -43,7 +43,7 @@ if byte-offset >= size
 . result ResultCharIndex
 . current = (this as CPointer'Char8) + byte-offset
 //string-iteration.next-char-calls ++
-. status = C:yumiStringGetNextChar(current, &result)
+. status = C:brixStringGetNextChar(current, &result)
 if status
     //string-iteration.invalid-results ++
     ?! Panic("Unable to read UTF8 content")
@@ -95,7 +95,7 @@ this[normal]
 
 . result ResultCharIndex
 //string-iteration.indexed-calls ++
-C:yumiStringGetCharAtIndex(this, index, &result)
+C:brixStringGetCharAtIndex(this, index, &result)
     ?! Panic("Unable to read UTF8 content")
         if it == 1
     ?! OutOfBoundsError("Index out of bounds ($index / $len)")
@@ -120,7 +120,7 @@ this[normal]
 ?! OutOfBoundsError("Range out of bounds ($out-index / $len)")
     if (start as UInt) > (len as UInt) || end > len || end < start
 
-C:yumiStringSlice(this, start, end) as String
+C:brixStringSlice(this, start, end) as String
 
 .. normal = range.forward()
 .. start = normal.start
@@ -136,13 +136,13 @@ C:yumiStringSlice(this, start, end) as String
 ────────────────────
 + get display-width Size
 
-C:yumiStringGetDisplayWidth(this)
+C:brixStringGetDisplayWidth(this)
 
 ────────────────────
 + do get codepoints Char[]
 
 . result ResultDecodeUTF8
-C:yumiStringToUtf8Codepoints(this, &result)
+C:brixStringToUtf8Codepoints(this, &result)
     ?! Panic("Unable to read UTF8 content")
         if it
 
@@ -152,53 +152,53 @@ C:yumiStringToUtf8Codepoints(this, &result)
 + get validated-length Size
 
 ?! Panic("Unable to read UTF8 content")
-    if C:yumiStringGetFlags(this) /and/ 2 == 0
+    if C:brixStringGetFlags(this) /and/ 2 == 0
 length
 
 ────────────────────
 + get copied String
 
-C:yumiStringCopy(this)
+C:brixStringCopy(this)
 
 ────────────────────
 + get decomposed String
 
-C:yumiStringDecompose(this)
+C:brixStringDecompose(this)
 
 ────────────────────
 + get normalized String
 
-C:yumiStringNormalize(this)
+C:brixStringNormalize(this)
 
 ────────────────────
 + get lowercased String
 
-C:yumiStringToLowercase(this)
+C:brixStringToLowercase(this)
 
 ────────────────────
 + get uppercased String
 
-C:yumiStringToUppercase(this)
+C:brixStringToUppercase(this)
 
 ────────────────────
 + this == other String
 
-C:yumiStringEquals(this, other)
+C:brixStringEquals(this, other)
 
 ────────────────────
 + this > other String
 
-C:yumiStringCompare(this, other) > 0
+C:brixStringCompare(this, other) > 0
 
 ────────────────────
 + this < other String
 
-C:yumiStringCompare(this, other) < 0
+C:brixStringCompare(this, other) < 0
 
 ────────────────────
 + this + other String
 
-C:yumiStringConcat(this, other) as String
+C:brixStringConcat(this, other) as String
 
 ────────────────────
 + this + other Char
@@ -208,12 +208,12 @@ this + (other as String)
 ────────────────────
 + this ++ other String
 
-C:yumiStringConcat(this, other) as String
+C:brixStringConcat(this, other) as String
 
 ────────────────────
 + this * n Int
 
-C:yumiStringRepeat(this, n)
+C:brixStringRepeat(this, n)
 
 ────────────────────
 + this[index Index] = other String
@@ -268,7 +268,7 @@ this[... normal.start] ++ other ++ this[normal.end ...]
 ────────────────────
 + !this
 
-C:yumiStringIsEmpty(this)
+C:brixStringIsEmpty(this)
 
 ────────────────────
 + this'T
@@ -283,7 +283,7 @@ join(stream)
     - is-reverse = false
 
 . buf I32
-. found = C:yumiStringFind(this, find-str, is-reverse, start, &buf)
+. found = C:brixStringFind(this, find-str, is-reverse, start, &buf)
 = buf if found
 
 ────────────────────
@@ -344,7 +344,7 @@ while i2 > i1 && is-whitespace(this[i2])
 . buf = byte-view(this)
 while true
     . index I32
-    . found = C:yumiStringFindBytes(this, delim, false, start, &index)
+    . found = C:brixStringFindBytes(this, delim, false, start, &index)
 
     if !found
         <= buf[start ...].slice-string()
@@ -517,7 +517,7 @@ while read-index < text.length
     - data Byte[]
 
 =? "" if data.size == 0
-. made = C:yumiStringSliceUtf8(data, 0, data.size)
+. made = C:brixStringSliceUtf8(data, 0, data.size)
 ?! SyntaxError("Invalid UTF-8")
     if (made as Pointer).address == 0
 = made as String
@@ -564,7 +564,7 @@ while read-index < text.length
     - source String
 
 . result ResultDisplayWidth
-C:yumiStringMeasureDisplayWidth(source, &result)
+C:brixStringMeasureDisplayWidth(source, &result)
     ?! Panic("Unable to read UTF8 content")
         if it
 
@@ -622,7 +622,7 @@ DisplayText(joined-text, joined-width, joined-count, combined-widths)
     - output Token[]
 
 . result ResultDecodeUTF8
-C:yumiStringSliceToUtf8Codepoints(data, size, output, output.size, &result)
+C:brixStringSliceToUtf8Codepoints(data, size, output, output.size, &result)
     ?! Panic("Unable to read UTF8 content")
         if it == 1u8
 

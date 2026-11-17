@@ -8,18 +8,18 @@ and a clickable thumbnail timeline surround the canvas.
 From the repository root:
 
 ```sh
-bin/yumi examples/tui/chromatic/chromatic-app.bx -o .tmp/build/chromatic
+bin/brix examples/tui/chromatic/chromatic-app.bx -o .tmp/build/chromatic
 ```
 
 Use a terminal with mouse reporting, Unicode, and RGB backgrounds. The minimum size is
 **96 × 40**; **132 × 44** gives the preview room to show every pixel. Larger canvases scale up
-automatically when there is room. The PNG exporter uses Yumi's native graphics library.
+automatically when there is room. The PNG exporter uses Brix's native graphics library.
 
 Projects and exports go into `chromatic-output` in the working directory. Supply a different
 folder as the program's first argument:
 
 ```sh
-bin/yumi examples/tui/chromatic/chromatic-app.bx -o .tmp/build/chromatic -- .tmp/my-sprites
+bin/brix examples/tui/chromatic/chromatic-app.bx -o .tmp/build/chromatic -- .tmp/my-sprites
 ```
 
 If that folder contains `project.chromatic.json`, Chromatic opens it on launch. Otherwise it

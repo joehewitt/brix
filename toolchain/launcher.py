@@ -19,20 +19,20 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-YUMI_HOME = os.path.realpath(os.environ.get('YUMI_HOME') or os.path.expanduser('~/.yumi'))
+BRIX_HOME = os.path.realpath(os.environ.get('BRIX_HOME') or os.path.expanduser('~/.brix'))
 MANIFEST_NAME = '.release.json'
 USES = ('toolchain', 'seed')
 VERSION_PATTERN = re.compile(r'\d{4}\.\d{2}\.\d{2}-\d+')
 FILE_PATTERN = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*')
-PART_OVERRIDES = ('YUMIPATH', 'YUMI_BUILD_PATH')
+PART_OVERRIDES = ('BRIXPATH', 'BRIX_BUILD_PATH')
 CHUNK_SIZE = 1 << 20
-RELEASES_BUCKET = 'joehewitt-yumi-releases'
+RELEASES_BUCKET = 'joehewitt-brix-releases'
 RELEASES_REGION = 'us-west-2'
 RELEASES_PREFIX = 'releases'
 KITS_PREFIX = RELEASES_PREFIX + '/deps'
-RELEASES_MIRROR = os.environ.get('YUMI_RELEASES_MIRROR') or None
+RELEASES_MIRROR = os.environ.get('BRIX_RELEASES_MIRROR') or None
 HOSTS = {('Darwin', 'arm64'): 'arm64-apple-macos', ('Linux', 'aarch64'): 'aarch64-linux-gnu'}
-AWS_PROFILE = 'yumi'
+AWS_PROFILE = 'brix'
 SIGN_IN = 'aws sso login --profile %s' % AWS_PROFILE
 TOKEN_REFRESH_WINDOW = 300
 HTTP_TIMEOUT = 120
@@ -56,7 +56,7 @@ def main(arguments):
     try:
         executable = launched_compiler(os.getcwd())
     except LaunchError as error:
-        sys.stderr.write('yumi: %s\n' % error)
+        sys.stderr.write('brix: %s\n' % error)
         return 1
     environment = {name: value for name, value in os.environ.items() if name not in PART_OVERRIDES}
     os.execve(executable, [executable] + arguments, environment)
@@ -74,9 +74,9 @@ def launched_compiler(directory):
 
 def repo_compiler(manifest_path):
     root = os.path.dirname(os.path.realpath(manifest_path))
-    builder = os.path.join(root, 'bin', 'yumi')
+    builder = os.path.join(root, 'bin', 'brix')
     if not os.access(builder, os.X_OK):
-        raise LaunchError('%s pins a seed, but there is no bin/yumi beside it to build with' % manifest_path)
+        raise LaunchError('%s pins a seed, but there is no bin/brix beside it to build with' % manifest_path)
     if not is_trusted(root):
         approve(root)
     return builder
@@ -91,11 +91,11 @@ def is_trusted(root):
 
 
 def approve(root):
-    question = '%s pins a seed, so yumi would run its own bin/yumi.' % root
+    question = '%s pins a seed, so brix would run its own bin/brix.' % root
     if not (sys.stdin and sys.stdin.isatty() and sys.stderr.isatty()):
-        raise LaunchError('%s Approve it by running yumi there in a terminal, or add the folder to "trusted" in %s'
+        raise LaunchError('%s Approve it by running brix there in a terminal, or add the folder to "trusted" in %s'
                           % (question, config_path()))
-    sys.stderr.write('yumi: %s Trust this folder to run its code? [y/N] ' % question)
+    sys.stderr.write('brix: %s Trust this folder to run its code? [y/N] ' % question)
     sys.stderr.flush()
     if sys.stdin.readline().strip().lower() not in ('y', 'yes'):
         raise LaunchError('%s is not trusted, so nothing ran' % root)
@@ -117,7 +117,7 @@ def trusted_folders(config):
 
 
 def config_path():
-    return os.path.join(YUMI_HOME, 'config.json')
+    return os.path.join(BRIX_HOME, 'config.json')
 
 
 def read_config():
@@ -165,11 +165,11 @@ def read_manifest(path):
 
 
 def current_compiler(directory):
-    current = os.path.join(YUMI_HOME, 'current')
+    current = os.path.join(BRIX_HOME, 'current')
     if not os.path.islink(current):
         raise LaunchError('No %s above %s, and %s names no release' % (MANIFEST_NAME, directory, current))
     version = os.path.basename(os.readlink(current))
-    release_path = os.path.join(YUMI_HOME, 'archives', version, 'release.json')
+    release_path = os.path.join(BRIX_HOME, 'archives', version, 'release.json')
     if not os.path.isfile(release_path):
         raise LaunchError('%s names release %s, which is not in %s' % (current, version, archives_path()))
     return toolchain_compiler({'version': version, 'release': file_digest(release_path)})
@@ -178,19 +178,19 @@ def current_compiler(directory):
 def toolchain_compiler(manifest):
     release = checked_release(manifest)
     package_path(manifest['version'], release, 'toolchain')
-    root = os.path.join(YUMI_HOME, 'releases', manifest['version'])
+    root = os.path.join(BRIX_HOME, 'releases', manifest['version'])
     if not os.path.isdir(root):
         install_toolchain(manifest['version'], release)
-    return checked_binary(root, os.path.join('bin', 'yumi'), release)
+    return checked_binary(root, os.path.join('bin', executable_name(release)), release)
 
 
 def seed_compiler(manifest):
     release = checked_release(manifest)
     package_path(manifest['version'], release, 'seed')
-    directory = os.path.join(YUMI_HOME, 'seeds', manifest['version'])
-    if not os.path.isfile(os.path.join(directory, 'yumi')):
+    directory = os.path.join(BRIX_HOME, 'seeds', manifest['version'])
+    if not os.path.isfile(os.path.join(directory, executable_name(release))):
         install_seed(manifest['version'], release)
-    return checked_binary(directory, 'yumi', release)
+    return checked_binary(directory, executable_name(release), release)
 
 
 def checked_binary(directory, name, release):
@@ -198,12 +198,16 @@ def checked_binary(directory, name, release):
     if os.path.isfile(record_path):
         with open(record_path) as file:
             record = json.load(file)
-        executable = os.path.join(directory, 'relinked', 'yumi')
+        executable = os.path.join(directory, 'relinked', executable_name(release))
         check_file(executable, record['sha256'])
         return executable
     executable = os.path.join(directory, name)
-    check_file(executable, release_host(release)['hashes']['bin/yumi'])
+    check_file(executable, release_host(release)['hashes']['bin/' + executable_name(release)])
     return executable
+
+
+def executable_name(release):
+    return 'yumi' if 'bin/yumi' in release_host(release)['hashes'] else 'brix'
 
 
 def checked_release(manifest):
@@ -222,7 +226,7 @@ def host_target():
     system = os.uname()
     host = HOSTS.get((system.sysname, system.machine))
     if not host:
-        raise LaunchError('Yumi runs on arm64 macOS and aarch64 Linux, not %s on %s' % (system.sysname, system.machine))
+        raise LaunchError('Brix runs on arm64 macOS and aarch64 Linux, not %s on %s' % (system.sysname, system.machine))
     return host
 
 
@@ -237,7 +241,7 @@ def release_host(release, host=None):
 
 
 def archives_path():
-    return os.path.join(YUMI_HOME, 'archives')
+    return os.path.join(BRIX_HOME, 'archives')
 
 
 def package_path(version, release, name, host=None):
@@ -257,7 +261,7 @@ def package_file(package):
 
 
 def install_toolchain(version, release):
-    releases = os.path.join(YUMI_HOME, 'releases')
+    releases = os.path.join(BRIX_HOME, 'releases')
     destination = os.path.join(releases, version)
     with install_lock():
         if os.path.isdir(destination):
@@ -277,11 +281,11 @@ def kit_file(name, key):
 
 
 def kit_directory(name, key):
-    return os.path.join(YUMI_HOME, 'deps', '%s-%s' % (name, key[:16]))
+    return os.path.join(BRIX_HOME, 'deps', '%s-%s' % (name, key[:16]))
 
 
 def kit_archive(file):
-    return os.path.join(YUMI_HOME, 'deps', 'kits', file)
+    return os.path.join(BRIX_HOME, 'deps', 'kits', file)
 
 
 def install_kit(kit):
@@ -310,7 +314,7 @@ def fetch_kit(file, expected=None):
             check_file(archive, expected)
         return archive
     os.makedirs(os.path.dirname(archive), exist_ok=True)
-    sys.stderr.write('yumi: downloading %s\n' % file)
+    sys.stderr.write('brix: downloading %s\n' % file)
     temporary = '%s.part-%d' % (archive, os.getpid())
     try:
         digest, size = fetch_object('%s/%s' % (KITS_PREFIX, file), temporary)
@@ -337,13 +341,13 @@ def fetch_object(key, path=None):
 
 
 def install_seed(version, release):
-    seeds = os.path.join(YUMI_HOME, 'seeds')
+    seeds = os.path.join(BRIX_HOME, 'seeds')
     destination = os.path.join(seeds, version)
     with install_lock():
         if os.path.isdir(destination):
             return
         staged = staging_directory(seeds, version)
-        executable = os.path.join(staged, 'yumi')
+        executable = os.path.join(staged, executable_name(release))
         with lzma.open(package_path(version, release, 'seed'), 'rb') as source, open(executable, 'wb') as output:
             shutil.copyfileobj(source, output, CHUNK_SIZE)
         os.chmod(executable, 0o755)
@@ -352,8 +356,8 @@ def install_seed(version, release):
 
 @contextlib.contextmanager
 def install_lock():
-    os.makedirs(YUMI_HOME, exist_ok=True)
-    with open(os.path.join(YUMI_HOME, 'install.lock'), 'w') as lock:
+    os.makedirs(BRIX_HOME, exist_ok=True)
+    with open(os.path.join(BRIX_HOME, 'install.lock'), 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
@@ -434,7 +438,7 @@ def read_checked():
     global checked_files
     if checked_files is None:
         try:
-            with open(os.path.join(YUMI_HOME, 'checked.json')) as file:
+            with open(os.path.join(BRIX_HOME, 'checked.json')) as file:
                 checked_files = json.load(file)
         except (OSError, ValueError):
             checked_files = {}
@@ -442,8 +446,8 @@ def read_checked():
 
 
 def write_checked(checked):
-    os.makedirs(YUMI_HOME, exist_ok=True)
-    path = os.path.join(YUMI_HOME, 'checked.json')
+    os.makedirs(BRIX_HOME, exist_ok=True)
+    path = os.path.join(BRIX_HOME, 'checked.json')
     temporary = '%s.%d' % (path, os.getpid())
     with open(temporary, 'w') as file:
         json.dump(checked, file)
@@ -481,7 +485,7 @@ def fetch_release(version, expected):
     with install_lock():
         if os.path.isdir(destination):
             return
-        sys.stderr.write('yumi: downloading release %s\n' % version)
+        sys.stderr.write('brix: downloading release %s\n' % version)
         staged = staging_directory(archives, version)
         release_path = os.path.join(staged, 'release.json')
         digest, size = fetch_object(release_key(version, 'release.json'), release_path)

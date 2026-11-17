@@ -1,5 +1,5 @@
 ./canvas
-/YuMovie/YuMovie.h
+/BxMovie/BxMovie.h
 /time/duration
 
 _ movie-writing U32 = 1
@@ -28,10 +28,10 @@ _ is-closed = false
     - height I32
     - frame-rate F64
 
-. created = C:yumiMovieCreate(path, width, height, frame-rate)
-if C:yumiMovieGetStatus(created) != movie-writing
-    . problem String = C:yumiMovieGetError(created)
-    C:yumiMovieRelease(created)
+. created = C:brixMovieCreate(path, width, height, frame-rate)
+if C:brixMovieGetStatus(created) != movie-writing
+    . problem String = C:brixMovieGetError(created)
+    C:brixMovieRelease(created)
     ?! MovieError(problem)
 this.path = path
 this.width = width
@@ -42,7 +42,7 @@ native = created
 ────────────────────
 + get frame-count I64
 
-if is-closed then 0i64 else C:yumiMovieGetFrameCount(native)
+if is-closed then 0i64 else C:brixMovieGetFrameCount(native)
 
 ────────────────────
 + do add ?! Error
@@ -50,9 +50,9 @@ if is-closed then 0i64 else C:yumiMovieGetFrameCount(native)
 
 ?! MovieError("The movie is closed")
     if is-closed
-while !C:yumiMovieIsReady(native) && C:yumiMovieGetStatus(native) == movie-writing
+while !C:brixMovieIsReady(native) && C:brixMovieGetStatus(native) == movie-writing
     movie-pause.wait()
-if !C:yumiMovieAppendCanvas(native, canvas.native)
+if !C:brixMovieAppendCanvas(native, canvas.native)
     fail()
 
 ────────────────────
@@ -60,17 +60,17 @@ if !C:yumiMovieAppendCanvas(native, canvas.native)
 
 ?! MovieError("The movie is closed")
     if is-closed
-if !C:yumiMovieFinish(native)
+if !C:brixMovieFinish(native)
     fail()
-while C:yumiMovieGetStatus(native) == movie-saving
+while C:brixMovieGetStatus(native) == movie-saving
     movie-pause.wait()
-if C:yumiMovieGetStatus(native) != movie-saved
+if C:brixMovieGetStatus(native) != movie-saved
     fail()
 
 ────────────────────
 _ do fail ?! Error
 
-. problem String = C:yumiMovieGetError(native)
+. problem String = C:brixMovieGetError(native)
 ?! MovieError(if problem.length then problem else "The movie could not be written")
 
 ────────────────────
@@ -78,4 +78,4 @@ _ do fail ?! Error
 
 if !is-closed
     is-closed = true
-    C:yumiMovieRelease(native)
+    C:brixMovieRelease(native)

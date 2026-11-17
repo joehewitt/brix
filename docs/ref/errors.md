@@ -1,6 +1,6 @@
 # Errors
 
-An error is a value a function raises in place of its result. Yumi has two kinds:
+An error is a value a function raises in place of its result. Brix has two kinds:
 
 - **Recoverable errors** are part of a function's type. A function declares the errors it can
   raise, and a caller handles them or lets them pass on to its own caller.
@@ -196,7 +196,7 @@ something handles it:
 A call that can fail looks like any other. Most callers can only pass an error on, so the
 language does that for them, and handling is written only where a caller does something with the
 error. So a call does not show that it can end its function early: the function's declared errors
-show it, and `yumi app.bx --explain name` lists each error a function can raise and the call it
+show it, and `brix app.bx --explain name` lists each error a function can raise and the call it
 comes from.
 
 ```brix crash-stderr
@@ -220,7 +220,7 @@ Stack trace:
   0  __source__:read no file:8:3
   1  __source__:main no file:3:3
   2  __source__:init.__source__ no file
-  3  __source__:yumi.main no file
+  3  __source__:brix.main no file
 ```
 
 ## Handling errors
@@ -636,7 +636,7 @@ cleanup
 A panic looks like an exception or like Go's `panic`, but it ends differently. No code in the
 failing task can stop it, and that task's stack is never resumed.
 
-| | Yumi panic | Exceptions in Java or Python | Go's `panic` | Rust's `panic!` |
+| | Brix panic | Exceptions in Java or Python | Go's `panic` | Rust's `panic!` |
 | --- | --- | --- | --- | --- |
 | What stops it | Nothing; an `on-failure` arm where the task was started handles it after the task ends | An enclosing `catch` | `recover()` in a deferred function | An enclosing `catch_unwind` |
 | What runs as it leaves | Cleanups | `finally` blocks | Deferred functions | Destructors |
@@ -645,22 +645,22 @@ failing task can stop it, and that task's stack is never resumed.
 
 - **Not an exception.** Exceptions use one mechanism for failures a caller expects, such as a
   missing file, and for mistakes, such as reading past the end of a list. A `catch` written for the
-  first also stops the second, and the program goes on from whatever state the mistake left. Yumi
+  first also stops the second, and the program goes on from whatever state the mistake left. Brix
   keeps the two apart. Expected failures are recoverable errors, which a function declares and
   `catch` and handlers take. Mistakes are panics, which pass every `catch` and handler, so a
   handler can never hide a bug.
 - **Not Go's `recover`.** In Go, any deferred function in the failing goroutine can call
   `recover()`. The panic then stops, and the function that deferred it returns normally to its
   caller, which goes on running on the stack where the mistake happened. In practice `defer` with
-  `recover()` becomes try and catch. Yumi's cleanups run as Go's deferred functions do, and a cleanup can read the
+  `recover()` becomes try and catch. Brix's cleanups run as Go's deferred functions do, and a cleanup can read the
   panic with `(. (call Task) failure)`{.brix}, but it cannot stop it.
 - **Handled where the work began.** In Go, a goroutine cannot handle a panic in a goroutine it
-  started; the started one must recover inside itself, or the program ends. In Yumi, the task that
+  started; the started one must recover inside itself, or the program ends. In Brix, the task that
   started the work handles its failure with `on-failure` arms. That is the place that knows what
   the failure means, such as a server that drops one connection and goes on serving the others.
 - **The closest relatives** are Rust's threads, whose panic reaches the thread that joins them, and
   Erlang's processes, which fail whole and are restarted by a supervisor.
-  Unlike Rust, Yumi has nothing like `catch_unwind`, and a panic that no arm handles ends the
+  Unlike Rust, Brix has nothing like `catch_unwind`, and a panic that no arm handles ends the
   program even when it happens in a task other than the main one.
 
 Ending the whole task is the point of the design. Code that just made a mistake is the code whose

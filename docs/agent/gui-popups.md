@@ -12,7 +12,7 @@ follow the logical tree, so a popup inherits its owner's theme.
 | Behavior | `stdlib/gui/popup.yumi` | `Popup`, `GUIPopupStyle`, `PopupAnchor`, `DismissReason` |
 | Placement | `stdlib/gui/placement.yumi` | `Placement` subclasses place a popup from a `PlacementRequest` |
 | Layer stack | `stdlib/gui/window.yumi` | `popups`, `modal-popup`, hit testing, light dismiss, focus |
-| Native surface | `YuAppleGUI.mm` `yumiGuiPopup*` | borderless child `NSPanel` per open popup |
+| Native surface | `BxAppleGUI.mm` `brixGuiPopup*` | borderless child `NSPanel` per open popup |
 | Shapes | `stdlib/gui/shape.yumi`, `stdlib/graphics/outline.yumi` | `BoxShape`, `CalloutShape`, `Outline`, `Shadow` |
 | Components | `menu`, `tooltip`, `popover`, `select`, `dialog`, `toast`, `command-palette` | built only on the public model |
 

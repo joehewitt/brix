@@ -5,7 +5,7 @@ import unittest
 from common import ROOT
 from testing import support
 
-YUMI = os.path.join(ROOT, 'bin', 'yumi')
+BRIX = os.path.join(ROOT, 'bin', 'brix')
 SEGMENTS = {'PROBES_ENABLED': 'log', 'PROBES_SEGMENT_SIZE': '16384', 'PROBES_SEGMENT_POOL': '1'}
 TAIL_PRODUCERS = 64
 ROLLOVER_PRODUCERS = 32
@@ -36,10 +36,10 @@ def recorded_fields(case, source, settings):
     environment = support.environment(PROBES_ENABLED='1', PROBES_PATH=trace)
     environment.update(SEGMENTS, **settings)
     program = os.path.join(directory, 'program')
-    support.run([YUMI, '-c', source, '--compile', '--probes', '-o', program], support.COMPILE_SECONDS)
+    support.run([BRIX, '-c', source, '--compile', '--probes', '-o', program], support.COMPILE_SECONDS)
     output = support.run([program], support.COMPILE_SECONDS, environment)
     case.assertEqual(output.strip(), 'done')
-    log = support.run([YUMI, 'probes', 'log', trace, '--format', 'jsonl', '--limit', str(RECORD_LIMIT)], 300)
+    log = support.run([BRIX, 'probes', 'log', trace, '--format', 'jsonl', '--limit', str(RECORD_LIMIT)], 300)
     return [json.loads(line)['fields'] for line in log.splitlines()]
 
 

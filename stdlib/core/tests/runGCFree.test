@@ -1,13 +1,13 @@
 :====
 
-/YuEvents/YuGCHandshake.h
-/YuGC/YuGC.h
+/BxEvents/BxGCHandshake.h
+/BxGC/BxGC.h
 
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 -- zone-state(4)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 zone-collection-boundary()
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do zone-state Bool without gc
@@ -16,12 +16,12 @@ zone-collection-boundary()
 . total = 0
 for index in 0 .. < count
     total += index
-= C:yumiGCActiveTaskCanUseFastAllocation()
+= C:brixGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do zone-collection-boundary without gc
 
-C:yumiCollect()
+C:brixCollect()
 
 :----
 
@@ -32,14 +32,14 @@ true
 ;====
 :====
 
-/YuEvents/YuGCHandshake.h
+/BxEvents/BxGCHandshake.h
 
 -- catch gc-free-propagate(false)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 -- gc-free-catch(false)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 -- catch gc-free-catch-replace(false)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
 + GCFreeFailure is Error
@@ -90,12 +90,12 @@ true
 ;====
 :====
 
-/YuEvents/YuGCHandshake.h
+/BxEvents/BxGCHandshake.h
 
 -- managed-catch-then-allocate(true)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 -- managed-catch-value(false)
--- C:yumiGCActiveTaskCanUseFastAllocation()
+-- C:brixGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
 + ManagedFailure is Error
@@ -969,33 +969,33 @@ Exception: storing a managed pointer is not allowed in a GC-free zone (entered a
 ;====
 :====
 # A runtime function that suspends the task, called where the code may not suspend
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 -- direct()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do direct Int without suspend
 
-lock(C:yumiNewMutex())
+lock(C:brixNewMutex())
 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
 + do lock
     - native CPointer'Char8
 
-C:yumiLockMutex(native)
+C:brixLockMutex(native)
 
 :----
 %compile-error
 
-Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:yumiLockMutex(native)
+Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:brixLockMutex(native)
 <no file:16>
-    C:yumiLockMutex(native)
+    C:brixLockMutex(native)
     ^^^^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
 # An interface member whose implementation suspends the task, called where the code may not suspend
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 . source = Impl() as Source
 -- direct(source)
@@ -1013,7 +1013,7 @@ Exception: cannot suspend under 'without suspend': direct (without suspend) → 
 ────────────────────
 + do take Int
 
-C:yumiLockMutex(C:yumiNewMutex())
+C:brixLockMutex(C:brixNewMutex())
 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1025,14 +1025,14 @@ C:yumiLockMutex(C:yumiNewMutex())
 :----
 %compile-error
 
-Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:yumiLockMutex(C:yumiNewMutex())
+Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:brixLockMutex(C:brixNewMutex())
 <no file:20>
-    C:yumiLockMutex(C:yumiNewMutex())
+    C:brixLockMutex(C:brixNewMutex())
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
 # A runtime function that makes text allocates
-/YuCore/YuNumber.h
+/BxCore/BxNumber.h
 
 -- outer(3)
 
@@ -1040,15 +1040,15 @@ Exception: cannot suspend under 'without suspend': direct (without suspend) → 
 + do outer Int without heap
     - n Int
 
-. text = C:yumiIntToString(n, 0)
+. text = C:brixIntToString(n, 0)
 = n
 
 :----
 %compile-error
 
-Exception: allocation is not allowed under 'without heap': outer (without heap) → C:yumiIntToString(n, 0)
+Exception: allocation is not allowed under 'without heap': outer (without heap) → C:brixIntToString(n, 0)
 <no file:10>
-    . text = C:yumiIntToString(n, 0)
+    . text = C:brixIntToString(n, 0)
              ^^^^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
@@ -1375,8 +1375,8 @@ Exception: cannot read lazy global 'names' under 'without suspend', since its fi
 :====
 # A C function that polls the collector and has no claim is taken to suspend; slicing text allocates
 
-/YuCore/YuCore.h
-/YuCore/YuString.h
+/BxCore/BxCore.h
+/BxCore/BxString.h
 
 -- idle(3)
 -- slices("abc")
@@ -1385,26 +1385,26 @@ Exception: cannot read lazy global 'names' under 'without suspend', since its fi
 + do idle Int without suspend
     - n Int
 
-. collected = C:yumiGCRuntimeIdleCollect(0u64)
+. collected = C:brixGCRuntimeIdleCollect(0u64)
 = n
 
 ━━━━━━━━━━━━━━━━━━━━
 + do slices String without heap
     - text String
 
-= C:yumiStringSlice(text, 0, 1) as String
+= C:brixStringSlice(text, 0, 1) as String
 
 :----
 %compile-error
 
-Exception: cannot suspend under 'without suspend': idle (without suspend) → C:yumiGCRuntimeIdleCollect(0u64)
+Exception: cannot suspend under 'without suspend': idle (without suspend) → C:brixGCRuntimeIdleCollect(0u64)
 <no file:12>
-    . collected = C:yumiGCRuntimeIdleCollect(0u64)
+    . collected = C:brixGCRuntimeIdleCollect(0u64)
                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Exception: allocation is not allowed under 'without heap': slices (without heap) → C:yumiStringSlice(text, 0, 1)
+Exception: allocation is not allowed under 'without heap': slices (without heap) → C:brixStringSlice(text, 0, 1)
 <no file:19>
-    = C:yumiStringSlice(text, 0, 1) as String
+    = C:brixStringSlice(text, 0, 1) as String
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
@@ -1531,32 +1531,32 @@ do without heap
 ;====
 :====
 # Waiting for a task suspends
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 do without suspend
-    C:yumiWaitForTask(0)
+    C:brixWaitForTask(0)
 
 :----
 %compile-error
 
-Exception: cannot suspend under 'without suspend': main (do without suspend) → C:yumiWaitForTask(0)
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixWaitForTask(0)
 <no file:5>
-        C:yumiWaitForTask(0)
+        C:brixWaitForTask(0)
         ^^^^^^^^^^^^^^^^^^^^
 ;====
 :====
 # Cancelling a task yields to it, so it suspends
-/YuEvents/YuEvents.h
+/BxEvents/BxEvents.h
 
 do without suspend
-    C:yumiCancelTask(0)
+    C:brixCancelTask(0)
 
 :----
 %compile-error
 
-Exception: cannot suspend under 'without suspend': main (do without suspend) → C:yumiCancelTask(0)
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixCancelTask(0)
 <no file:5>
-        C:yumiCancelTask(0)
+        C:brixCancelTask(0)
         ^^^^^^^^^^^^^^^^^^^
 ;====
 :====

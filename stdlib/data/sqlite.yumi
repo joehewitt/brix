@@ -1,5 +1,5 @@
-/YuCore/YuString.h
-/YuSQLite/YuSQLite.h
+/BxCore/BxString.h
+/BxSQLite/BxSQLite.h
 /sqlite/sqlite3.h
 /string.h
 /time/duration
@@ -100,7 +100,7 @@ handle = null
     if handle == null
 . prepared CPointer'I8
 . has-more I32
-. status = C:yumiSQLitePrepare(handle, sql, sql.size, &prepared, &has-more)
+. status = C:brixSQLitePrepare(handle, sql, sql.size, &prepared, &has-more)
 ?! failure("Unable to prepare \"$sql\"")
     if status != C:SQLITE_OK
 ?! SQLiteError(C:SQLITE_MISUSE, "\"$sql\" holds no statement")
@@ -252,17 +252,17 @@ for index in 0 .. < params.length
     lock()
     . status = match params[index]
         | Null!
-            C:yumiSQLiteBindNull(handle, position)
+            C:brixSQLiteBindNull(handle, position)
         | flag Bool
-            C:yumiSQLiteBindInt64(handle, position, if flag then 1 else 0)
+            C:brixSQLiteBindInt64(handle, position, if flag then 1 else 0)
         | number I64
-            C:yumiSQLiteBindInt64(handle, position, number)
+            C:brixSQLiteBindInt64(handle, position, number)
         | number F64
-            C:yumiSQLiteBindDouble(handle, position, number)
+            C:brixSQLiteBindDouble(handle, position, number)
         | text String
-            C:yumiSQLiteBindText(handle, position, text, text.size)
+            C:brixSQLiteBindText(handle, position, text, text.size)
         | bytes Byte[]
-            C:yumiSQLiteBindBlob(handle, position, bytes, bytes.size)
+            C:brixSQLiteBindBlob(handle, position, bytes, bytes.size)
     unlock()
     ?! database.failure("Unable to bind parameter ${index + 1} of \"$sql\"")
         if status != C:SQLITE_OK
@@ -271,13 +271,13 @@ for index in 0 .. < params.length
 _ do lock @inline
 
 =? if !database.is-shared-across-threads
-C:yumiSQLiteLock(database.handle)
+C:brixSQLiteLock(database.handle)
 
 ────────────────────
 _ do unlock @inline
 
 =? if !database.is-shared-across-threads
-C:yumiSQLiteUnlock(database.handle)
+C:brixSQLiteUnlock(database.handle)
 
 ────────────────────
 _ do finish ?! SQLiteError
@@ -294,7 +294,7 @@ while stepping
 ────────────────────
 + get length Size
 
-C:yumiSQLiteColumnCount(statement.handle)
+C:brixSQLiteColumnCount(statement.handle)
 
 ────────────────────
 + do name String ?! SQLiteError
@@ -375,7 +375,7 @@ bytes
 
 . found I32
 statement.lock()
-. number = C:yumiSQLiteReadInt64(statement.handle, index, &found)
+. number = C:brixSQLiteReadInt64(statement.handle, index, &found)
 statement.unlock()
 =? null if found == C:SQLITE_NULL
 ?! column-error(index, found, "an integer")
@@ -388,7 +388,7 @@ statement.unlock()
 
 . found I32
 statement.lock()
-. number = C:yumiSQLiteReadDouble(statement.handle, index, &found)
+. number = C:brixSQLiteReadDouble(statement.handle, index, &found)
 statement.unlock()
 =? null if found == C:SQLITE_NULL
 ?! column-error(index, found, "a number")
@@ -410,15 +410,15 @@ if number == null then null else truth(index, number)
 . found I32
 . size I64
 statement.lock()
-. text = C:yumiSQLiteReadText(statement.handle, index, &found, &size)
+. text = C:brixSQLiteReadText(statement.handle, index, &found, &size)
 statement.unlock()
 =? null if found == C:SQLITE_NULL
 ?! column-error(index, found, "text")
     if found != C:SQLITE_TEXT
 =? "" if size == 0
 ?! SQLiteError(C:SQLITE_MISMATCH, "Column $index (${name(index)}) holds text that is not UTF-8")
-    if C:yumiStringValidateUtf8(text, size as Size) != 0
-= C:yumiStringCreate(text, size as Size)
+    if C:brixStringValidateUtf8(text, size as Size) != 0
+= C:brixStringCreate(text, size as Size)
 
 ────────────────────
 + do optional-blob Byte[]? ?! SQLiteError @inline
@@ -427,7 +427,7 @@ statement.unlock()
 . found I32
 . size I64
 statement.lock()
-. bytes = C:yumiSQLiteReadBlob(statement.handle, index as I64, &found, &size)
+. bytes = C:brixSQLiteReadBlob(statement.handle, index as I64, &found, &size)
 statement.unlock()
 =? null if found == C:SQLITE_NULL
 ?! column-error(index, found, "a blob")
@@ -442,7 +442,7 @@ _ do kind I32 ?! SQLiteError
     - index Size
 
 statement.lock()
-. found = C:yumiSQLiteReadType(statement.handle, index)
+. found = C:brixSQLiteReadType(statement.handle, index)
 statement.unlock()
 ?! range-error(index)
     if found == 0

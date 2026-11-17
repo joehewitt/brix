@@ -671,16 +671,16 @@ if is-brix then brix-extension else ".yumi"
 ━━━━━━━━━━━━━━━━━━━━
 + do run-batch Int ?! Error
 
-. suite = env-required("YUMI_TEST_SUITE")
-. project-path = env-required("YUMI_TEST_PROJECT_ROOT")
-. tests-path = env-required("YUMI_TEST_ROOT")
-. payload = env-required("YUMI_TEST_PAYLOAD")
+. suite = env-required("BRIX_TEST_SUITE")
+. project-path = env-required("BRIX_TEST_PROJECT_ROOT")
+. tests-path = env-required("BRIX_TEST_ROOT")
+. payload = env-required("BRIX_TEST_PAYLOAD")
 check-suite(suite, project-path, tests-path)
-. compiler = env("YUMI_TEST_COMPILER") ?? ""
-. scratch = env("YUMI_TEST_SCRATCH") ?? ""
+. compiler = env("BRIX_TEST_COMPILER") ?? ""
+. scratch = env("BRIX_TEST_SCRATCH") ?? ""
 if suite != parse-suite && (!compiler || !scratch)
-    ?! Error("The $suite suite needs YUMI_TEST_COMPILER and YUMI_TEST_SCRATCH")
-. is-brix = (env("YUMI_TEST_BRIX") ?? "") != ""
+    ?! Error("The $suite suite needs BRIX_TEST_COMPILER and BRIX_TEST_SCRATCH")
+. is-brix = (env("BRIX_TEST_BRIX") ?? "") != ""
 . stdlib = (toolchain-root / "stdlib") as String
 . context = RunContext(suite, compiler, scratch, project-path, stdlib, is-brix)
 emit-run(context, project-path, tests-path, selected-test-ids(payload))
@@ -819,7 +819,7 @@ for test-case in all-cases
     - context RunContext
 
 ` Runs the cases of a suite and reports each. A case of the core suite runs in a batch, as the
-` batches of `yumitest` run theirs, unless it must run alone; one that expects the compiler to
+` batches of `brixtest` run theirs, unless it must run alone; one that expects the compiler to
 ` fail is compiled alone first, and goes to the batch only where the compiler reports nothing.
 if context.suite != core-suite && context.suite != docs-suite
     = <* test-case in cases
@@ -1175,7 +1175,7 @@ _ do named-cases [Bool]
     - count Index
 
 ` Which of the cases of a batch a report names a place in the source of, by the directory the
-` batch gives each: a path in it to a Yumi source, followed by a line.
+` batch gives each: a path in it to a Brix source, followed by a line.
 . named [Bool]
 for position in 0 .. < count
     named += false
@@ -1211,8 +1211,8 @@ _ do run-batch-from Index
 write-case-file(directory, "control", "")
 . command = " ".join
     * "cd ${shell-quoted(directory)} &&"
-    * "YUMITEST_BATCH_START_INDEX=$first YUMITEST_BATCH_END_INDEX=${batched.length}"
-    * "YUMITEST_BATCH_CONTINUE_AFTER_PANIC=1 exec ./batch"
+    * "BRIXTEST_BATCH_START_INDEX=$first BRIXTEST_BATCH_END_INDEX=${batched.length}"
+    * "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 exec ./batch"
     * ">>${shell-quoted("$directory/process")} 2>&1"
 . process = Process("/bin/sh", "-c", command)
 . status = process.wait(null) ?? 1
@@ -1281,7 +1281,7 @@ _ do in-case String
 
 ` What a case of a batch printed as the case would print it alone: its module and the modules
 ` beside it are named without the place the batch gives them, its source has no file, and what the
-` program numbers across its cases is named as the batches of `yumitest` name it.
+` program numbers across its cases is named as the batches of `brixtest` name it.
 . pieces [String] = text.split("__test__/t")
 . kept [String] = [pieces[0]]
 for position in 1 .. < pieces.length
@@ -1401,8 +1401,8 @@ _ do run-compiler CompilerRun
     - warns Bool
     - probes String
 
-` Compiles a case and runs its program as the batches of `yumitest` run theirs: a program
-` that reports an unhandled panic or error goes on (`YUMITEST_BATCH_CONTINUE_AFTER_PANIC`).
+` Compiles a case and runs its program as the batches of `brixtest` run theirs: a program
+` that reports an unhandled panic or error goes on (`BRIXTEST_BATCH_CONTINUE_AFTER_PANIC`).
 . process = Process("/bin/sh", "-c", command)
 . output = process as String
 . status = process.wait(null) ?? 1
@@ -1432,7 +1432,7 @@ process.close()
     * "-o ${shell-quoted(executable)}"
     * "$switches $probing 2>${shell-quoted(warnings-path)} &&"
     * if context.is-brix then "rm -f ${context.source-name} &&" else ""
-    * "YUMITEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)}"
+    * "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)}"
     * "2>>${shell-quoted(errors-path)}"
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1497,7 +1497,7 @@ _ without-case-directory String
     - directory String
 
 ` Output whose places in the case's own files are named from the case's directory, as the batches
-` of `yumitest` name them: the directory the case was written to is no part of what it expects.
+` of `brixtest` name them: the directory the case was written to is no part of what it expects.
 "".join(text.split("$directory/"))
 
 ━━━━━━━━━━━━━━━━━━━━

@@ -20,10 +20,10 @@ from common import BUILD, ROOT, TMP, Failure, repository_root, run_main, say, ta
 STATE = os.path.join(TMP, 'restructure')
 CORPUS = os.path.join(STATE, 'corpus')
 REVISION = os.path.join(STATE, 'corpus-revision')
-BASELINE_COMPILER = os.path.join(STATE, 'baseline-yumi')
+BASELINE_COMPILER = os.path.join(STATE, 'baseline-brix')
 BASELINE = os.path.join(STATE, 'baseline')
 CURRENT = os.path.join(STATE, 'current')
-CURRENT_COMPILER = os.path.join(STATE, 'current-yumi')
+CURRENT_COMPILER = os.path.join(STATE, 'current-brix')
 SOURCES = os.path.join(STATE, 'sources')
 FOLDERS = os.path.join(STATE, 'corpus-folders')
 TOP = repository_root()
@@ -36,7 +36,7 @@ def toolchain_path(*parts):
 
 SNAPSHOT_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'compiler', 'examples'))
 COMPILER_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'compiler'))
-COMPILER_SOURCE = toolchain_path('compiler', 'yumi-cli.yumi')
+COMPILER_SOURCE = toolchain_path('compiler', 'brix-cli.yumi')
 STDLIB = toolchain_path('stdlib')
 APP_PATTERNS = ('*-app.yumi', '*-app.bx')
 FULL = 'ir'
@@ -356,13 +356,13 @@ def build_sources(destination):
     started = time.time()
     environment = builder.compiler_environment()
     builder.build_runtime(environment)
-    environment['YUMIPATH'] = os.path.join(SOURCES, STDLIB)
+    environment['BRIXPATH'] = os.path.join(SOURCES, STDLIB)
     source = os.path.join(SOURCES, COMPILER_SOURCE)
     seed = builder.seed_command()
     temporary = tempfile.mkdtemp(prefix='.build-', dir=STATE)
     try:
-        bootstrap = os.path.join(temporary, 'yumi-bootstrap')
-        executable = os.path.join(temporary, 'yumi')
+        bootstrap = os.path.join(temporary, 'brix-bootstrap')
+        executable = os.path.join(temporary, 'brix')
         builder.run([seed, '--compile', '-o', bootstrap, source], environment)
         say('Built the bootstrap compiler in %.0f s' % (time.time() - started))
         builder.run([bootstrap, '--compile', '-o', executable, source], environment)
@@ -375,9 +375,9 @@ def build_sources(destination):
 
 def environment():
     passed = dict(os.environ)
-    passed['YUMIPATH'] = os.path.join(CORPUS, STDLIB)
-    passed['YUMI_BUILD_PATH'] = BUILD
-    passed.pop('YUMI_DEBUG_LOG', None)
+    passed['BRIXPATH'] = os.path.join(CORPUS, STDLIB)
+    passed['BRIX_BUILD_PATH'] = BUILD
+    passed.pop('BRIX_DEBUG_LOG', None)
     return passed
 
 

@@ -184,14 +184,14 @@ service = made
 _ do find-toolchain RunToolchain ?! Error
     - path Path
 
-. checkout = find-yumi-checkout(path.parent ?? path)
+. checkout = find-brix-checkout(path.parent ?? path)
 if checkout
     note("Updating the compiler in $checkout")
     . command = checkout-service-command(checkout, [checkout / "stdlib"])
     = RunToolchain("$checkout", command.arguments[0], command)
 . variables = terminal-environment()
 . compiler = installed-compiler(variables)
-?! Error("Running a Brix program needs the Yumi toolchain, and none was found. Install it, then run again.")
+?! Error("Running a Brix program needs the Brix toolchain, and none was found. Install it, then run again.")
     if !compiler
 = RunToolchain(variables["HOME"] ?? "/", compiler, BuildServiceCommand([compiler, "--serve"], variables))
 
@@ -315,10 +315,10 @@ _ do installed-compiler String?
 
 . bundled = bundled-compiler()
 =? bundled if bundled
-. home = variables["YUMI_HOME"] ?? "${variables["HOME"] ?? ""}/.yumi"
-. installed = "$home/bin/yumi"
+. home = variables["BRIX_HOME"] ?? "${variables["HOME"] ?? ""}/.brix"
+. installed = "$home/bin/brix"
 =? installed if Path(installed, 0).is-file
-= find-executable("yumi", variables)
+= find-executable("brix", variables)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do bundled-toolchain Path?
@@ -335,5 +335,5 @@ _ do bundled-compiler String?
 
 . toolchain = bundled-toolchain()
 =? null if !toolchain
-. found = toolchain / "bin" / "yumi"
+. found = toolchain / "bin" / "brix"
 = if found.is-file then "$found" else null

@@ -79,7 +79,7 @@ predicates are ignored. Capture names map to `SyntaxRole`s through `syntax-role`
 ## Tree-sitter
 
 Tree-sitter is an external dependency, like utf8proc. `libs/build.json` names it `treesitter`,
-which `yumisyntax` requires, so only programs that import `/YuSyntax/` headers, through
+which `brixsyntax` requires, so only programs that import `/BxSyntax/` headers, through
 `stdlib/code/syntax.yumi`, link it. The entry points at `build/deps/tree-sitter`, which resolves to
 `.tmp/build/deps/tree-sitter` and holds `include/tree_sitter/api.h`, `lib/libtree-sitter.a`, and
 one `lib/libtree-sitter-<language>.a` per grammar. Each grammar archive also defines its highlight queries as strings named
@@ -89,11 +89,11 @@ queries for grammars that ship none.
 
 `toolchain/deps/tree-sitter/recipe.json` pins each repository's archive by URL and sha256, and
 `toolchain/deps/tree-sitter/build.sh` builds the archives. `toolchain/runtime.py` builds the recipe into
-`~/.yumi/deps` and links it as `.tmp/build/deps/tree-sitter`. `libs/syntax/YuSyntaxLanguages.c`
+`~/.brix/deps` and links it as `.tmp/build/deps/tree-sitter`. `libs/syntax/BxSyntaxLanguages.c`
 lists each language's name, title, extensions, parser, the highlight queries it combines, and its
 fold query; C++ and Objective-C++ add their queries to C's, and TypeScript and TSX add theirs to
 JavaScript's. Adding a language means adding its archive to `recipe.json`, its grammar to
-`build.sh`, its library to `libs/build.json`, and its entry to `YuSyntaxLanguages.c`.
+`build.sh`, its library to `libs/build.json`, and its entry to `BxSyntaxLanguages.c`.
 
 Objective-C++ uses Panic's `tree-sitter-objcpp`, the only Objective-C++ grammar. It has no queries
 of its own, so `queries/objcpp/highlights.scm` adapts tree-sitter-cpp's queries to its older node

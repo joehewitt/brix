@@ -4,7 +4,7 @@ A probe records what a program does while it runs: a line of text with values in
 changed, a count, or how long a stretch of work took. Probes are written in the source, but they
 are not part of the program. A build leaves them out unless it is asked for them with `--probes`,
 and a build that has them writes what they record to a trace file, not to the program's output.
-`yumi` shows the records on stderr while the program runs, and `yumi probes` reads a trace
+`brix` shows the records on stderr while the program runs, and `brix probes` reads a trace
 afterward: it filters records, times groups, sums counters and compares runs.
 
 This chapter covers the kinds of probe and what each records, the code a probe can hold, where
@@ -31,7 +31,7 @@ Hello, Edsger!
 ```
 
 The output is the same with probes or without them. Saved as `greet.bx` and run with
-`yumi greet.bx --probes`, the program prints those three lines to stdout, and `yumi` writes what the
+`brix greet.bx --probes`, the program prints those three lines to stdout, and `brix` writes what the
 probes recorded to stderr:
 
 ```text
@@ -43,7 +43,7 @@ probes recorded to stderr:
 busiest: greeting … 3× greet.bx:4
 records: 4 logs over 23.0µs
 trace: …/.tmp/build/probes/greet-1794767186696.trace
-query: yumi probes summary · log · agg --field F · durations · tree · timeline · outliers (yumi probes --help)
+query: brix probes summary · log · agg --field F · durations · tree · timeline · outliers (brix probes --help)
 ```
 
 Each line is one record: the time since the run's first record, the text with its values written
@@ -123,8 +123,8 @@ busiest: shop.order 4× · shop.total 4×
 records: 8 events over 1.0µs
 ```
 
-The console shows no file and line for events; `yumi probes log` shows them. Events suit values
-that the tools should add up: `yumi probes agg --field quantity sum,count,max --by sku` sums the
+The console shows no file and line for events; `brix probes log` shows them. Events suit values
+that the tools should add up: `brix probes agg --field quantity sum,count,max --by sku` sums the
 orders above by product. See [Reading a trace](#reading-a-trace).
 
 ### Counters
@@ -158,7 +158,7 @@ orders above by product. See [Reading a trace](#reading-a-trace).
 
 A counter adds one, or the amount it is given, to a number kept for the whole run. It writes no
 record each time: counters are summed in memory and written once, when the program ends, so they
-appear only in the footer and in `yumi probes counters`. With `--probes`:
+appear only in the footer and in `brix probes counters`. With `--probes`:
 
 ```text
 ── probes ── exit 0 · 244.5ms · 0 records
@@ -228,7 +228,7 @@ records: 14 logs over 3.0µs
   the end of each turn of a loop, and at a `return`, as in `find` above. In a value body's
   `before`, a `+-` group also spans the value.
 - **A group with no text** shows its key, as `+ app.load`. It is kept for its time, which is what
-  `yumi probes durations`, `tree` and `outliers` read.
+  `brix probes durations`, `tree` and `outliers` read.
 - **An end closes the innermost open group** of its task, whatever its key. Keys on an end name it
   for the reader; they are not matched.
 - **An end with no group open** stops the program with a panic, in a build that has the probe.
@@ -281,7 +281,7 @@ How a value is kept:
   id writes the name of its type in brackets, as `[Tuple]`.
 - **A snapshot** of an `Inspectable` object runs its `inspectable-snapshot` and records what that
   writes; of an array, it copies its bytes; of any other object, it writes only the id. An event's
-  values in rows take previews but not snapshots. `yumi probes` counts snapshots but does not show
+  values in rows take previews but not snapshots. `brix probes` counts snapshots but does not show
   what they hold; an inspector attached to the running program does.
 - **Ids** come from a counter in the runtime and change when the program changes. Don't depend on
   them.
@@ -461,7 +461,7 @@ A key is one or more names joined by dots, each a lowercase letter followed by l
 hyphens, as in `tui.box.root` or `net.request-2`. `_` stands for no key. A key does two things:
 
 - **It names what the probe explains.** Records, groups and counters are listed by key.
-- **It selects.** `--probes` chooses probes by key, and `yumi probes` filters by key. Give each
+- **It selects.** `--probes` chooses probes by key, and `brix probes` filters by key. Give each
   probe a key under the part of the program it explains, such as `parse.tokens` in a parser, so a
   selector can take the part whole.
 
@@ -500,7 +500,7 @@ a value that is not an object, builds without `--probes` and is an error with it
 
 ### `--probes` and selectors
 
-`yumi app.bx --probes` builds the program with probes, runs it, and records its trace. Without
+`brix app.bx --probes` builds the program with probes, runs it, and records its trace. Without
 `-o`, the executable is built at `.tmp/build/probes/bin/app`; with `-o PATH` it is built there.
 `--compile` builds without running, and needs `-o`.
 
@@ -549,24 +549,24 @@ commas or spaces in one argument:
 What each selection records, from the console, without its footer's last lines:
 
 ```text
-$ yumi words.bx --probes
+$ brix words.bx --probes
 ·      0ns  [parse.words] parsing 3 words  words.bx:3
 ·    1.0µs  token one  words.bx:6
 ·    2.0µs  token two  words.bx:6
 ·    2.0µs  token three  words.bx:6
 counters: parse.tokens 3
-$ yumi words.bx --probes parse
+$ brix words.bx --probes parse
 ·      0ns  [parse.words] parsing 3 words  words.bx:3
 counters: parse.tokens 3
-$ yumi words.bx --probes parse.tokens
+$ brix words.bx --probes parse.tokens
 counters: parse.tokens 3
-$ yumi words.bx --probes log:
+$ brix words.bx --probes log:
 ·      0ns  token one  words.bx:6
 ·    1.0µs  token two  words.bx:6
 ·    1.0µs  token three  words.bx:6
-$ yumi words.bx --probes log:parse
+$ brix words.bx --probes log:parse
 ·      0ns  [parse.words] parsing 3 words  words.bx:3
-$ yumi words.bx --probes nothing
+$ brix words.bx --probes nothing
 warning: --probes selector nothing matched no probe sites
 ```
 
@@ -589,7 +589,7 @@ the same probes.
 
 ## The console
 
-`yumi` runs the program, follows its trace as it grows, and prints each record to **stderr**. The
+`brix` runs the program, follows its trace as it grows, and prints each record to **stderr**. The
 program's stdout stays its own. The console reads the trace every few milliseconds, so where its
 lines fall among the program's own output means nothing.
 
@@ -618,7 +618,7 @@ Traces are kept in `.tmp/build/probes/` under the project's root, the nearest fo
 | `name-stamp.probes.json` | The catalog: each probe's kind, key, text, field names, file and line. |
 | `name-stamp.run.json` | The program, its arguments, its exit status and whether it timed out. |
 
-`last.json` names the latest run, which `yumi probes` reads by default. The 20 latest runs are
+`last.json` names the latest run, which `brix probes` reads by default. The 20 latest runs are
 kept. A build with `-o build/app` and `--probes` also writes the catalog beside the executable, as
 `build/app.probes.json`.
 
@@ -632,7 +632,7 @@ kept. A build with `-o build/app` and `--probes` also writes the catalog beside 
   records nest.
 
 A record does not hold its task or thread. The trace describes itself: the program declares each
-probe at the start, so `yumi probes` can read a trace with no catalog. Without the catalog, fields
+probe at the start, so `brix probes` can read a trace with no catalog. Without the catalog, fields
 are named `value1`, `value2`, and so on.
 
 ### How a run ends
@@ -655,14 +655,14 @@ nothing. Two environment variables turn recording on:
 | `PROBES_ENABLED` | Recording starts when it is set and not empty. Its value is not read: which probes record is chosen when the program is built. |
 | `PROBES_CONTROL_PATH` | A channel through which an inspector asks the running program about live objects. |
 
-`yumi app.bx --probes` and `yumi probes run` set these themselves and clear any others starting
+`brix app.bx --probes` and `brix probes run` set these themselves and clear any others starting
 with `PROBES_`. Others tune the buffers: `PROBES_SEGMENT_SIZE`, `PROBES_SEGMENT_POOL`,
 `PROBES_SEGMENT_TABLE_CAPACITY`, `PROBES_TASK_BUFFER_SIZE`, `PROBES_FLUSH_THRESHOLD` and
 `PROBES_FLUSH_INTERVAL_MS`.
 
 ## Reading a trace
 
-`yumi probes COMMAND [TRACE]` reads a trace. `TRACE` is `last` by default, or a `.trace` file, or
+`brix probes COMMAND [TRACE]` reads a trace. `TRACE` is `last` by default, or a `.trace` file, or
 a `.run.json` file.
 
 | Command | Prints |
@@ -766,15 +766,15 @@ id  kind     records  site                            fields     location
 Filters and `around`:
 
 ```text
-$ yumi probes log --text paint --where 'ms > 2'
+$ brix probes log --text paint --where 'ms > 2'
 #7       3.4ms    paint frame 2 took 3  frames.bx:7
 #16     10.2ms    paint frame 5 took 3  frames.bx:7
-$ yumi probes log --source frames.bx:7 --limit 3
+$ brix probes log --source frames.bx:7 --limit 3
 #1         0ns    paint frame 0 took 1  frames.bx:7
 #4       1.1ms    paint frame 1 took 2  frames.bx:7
 #7       3.4ms    paint frame 2 took 3  frames.bx:7
 … +3 more records (--offset 3, --limit N, or --format jsonl for all)
-$ yumi probes around 7 --context 2
+$ brix probes around 7 --context 2
   #5       3.4ms  - frame 1 done 2.2ms  frames.bx:10
   #6       3.4ms  + frame 2  frames.bx:5
 → #7       3.4ms    paint frame 2 took 3  frames.bx:7
@@ -786,10 +786,10 @@ $ yumi probes around 7 --context 2
 words after the field or with `--stats`. `--by` splits them by another field:
 
 ```text
-$ yumi probes agg --field ms
+$ brix probes agg --field ms
 field  count  min  mean  p50  p95  max
 ms         6    1     2    2    3    3
-$ yumi probes agg --field ms p50,max,count --by frame
+$ brix probes agg --field ms p50,max,count --by frame
 frame  p50  max  count
 0        1    1      1
 1        2    2      1
@@ -803,13 +803,13 @@ frame  p50  max  count
 inside each:
 
 ```text
-$ yumi probes durations
+$ brix probes durations
 group      count   total   mean    p50    p95    max  location
 app.frame      6  13.6ms  2.2ms  2.2ms  3.4ms  3.4ms  frames.bx:5
-$ yumi probes counters
+$ brix probes counters
 counter     value
 app.paints      6
-$ yumi probes outliers
+$ brix probes outliers
 1.5× median (3.4ms vs 2.2ms)  app.frame  #15 at 10.2ms  frames.bx:5
     #16     10.2ms    paint frame 5 took 3  frames.bx:7
 1.5× median (3.3ms vs 2.2ms)  app.frame  #6 at 3.4ms  frames.bx:5
@@ -820,12 +820,12 @@ $ yumi probes outliers
 `timeline` draws records per stretch of time, or, with `--field`, a statistic of a field:
 
 ```text
-$ yumi probes timeline --bucket 2ms
+$ brix probes timeline --bucket 2ms
 each column is 2.0ms over 13.6ms; bars show records per column
                       records  peak
 app.frame                   6     2  │█▅ █ ▅ │
 paint frame … took …        6     2  │█▅ █ ▅ │
-$ yumi probes timeline --field ms --bucket 2ms
+$ brix probes timeline --field ms --bucket 2ms
 each column is 2.0ms over 13.6ms; bars show max of ms per column
                       records  peak
 paint frame … took …        6     3  │▆█ ▆ █ │
@@ -842,7 +842,7 @@ total   self  count  group
 `diff` compares two runs. Here the same `frames.bx` ran again with 4 frames in place of 6:
 
 ```text
-$ yumi probes diff …/frames-1794767200079.trace last
+$ brix probes diff …/frames-1794767200079.trace last
 a  …/.tmp/build/probes/frames-1794767200079.trace  13.6ms · 18 records
 b  …/.tmp/build/probes/frames-1794767274433.trace  7.9ms · 12 records
              name                                   a      b  change
@@ -867,23 +867,23 @@ A record of an object adds its owner, as `"owner": "List#1002"`. For the orders 
 [Events and property sets](#events-and-property-sets):
 
 ```text
-$ yumi probes agg --field quantity sum,count,max --by sku
+$ brix probes agg --field quantity sum,count,max --by sku
 sku    sum  count  max
 apple    8      2    5
 fig      2      1    2
 pear     1      1    1
-$ yumi probes log --where 'quantity > 2'
+$ brix probes log --where 'quantity > 2'
 #0         0ns  shop.order: apple, 3  orders.bx:5
 #4         0ns  shop.order: apple, 5  orders.bx:5
 ```
 
 ### A program built once
 
-`yumi probes run` runs a program that was built with probes, as `yumi` runs one with `--probes`:
+`brix probes run` runs a program that was built with probes, as `brix` runs one with `--probes`:
 
 ```text
-$ yumi frames.bx -o build/frames --compile --probes
-$ yumi probes run --quiet --trace build/frames.trace -- build/frames
+$ brix frames.bx -o build/frames --compile --probes
+$ brix probes run --quiet --trace build/frames.trace -- build/frames
 ```
 
 `--quiet` prints only the footer and `--trace` names the trace. The catalog is found beside the
@@ -943,7 +943,7 @@ records: 8 logs over 2.1ms
 ```
 
 Task b's group began while a's was open, but it is not inside it. To find where a program hangs,
-put groups around its waits and run it with `--timeout`: `yumi probes log --kind open` lists the
+put groups around its waits and run it with `--timeout`: `brix probes log --kind open` lists the
 groups that never ended.
 
 ### Tests and benchmarks
@@ -954,14 +954,14 @@ groups that never ended.
 - **`%probes: selectors`** in a `.test` case compiles those probes into its program, and a bare
   `%probes` compiles what `--probes` compiles with no selectors. The case runs alone, and its trace
   is removed with the case's directory.
-- **Test modules** run by `yumi test` have no probes, and `yumi test` clears any `PROBES_`
+- **Test modules** run by `brix test` have no probes, and `brix test` clears any `PROBES_`
   variables for the programs it runs.
 - **Benchmarks.** A benchmark profile can name `probes` selectors to build with, and read counters
   as metrics.
 
 ### Tools
 
-- **`yumi app.bx --list-probes`** prints one JSON line for each probe in every module the program
+- **`brix app.bx --list-probes`** prints one JSON line for each probe in every module the program
   loads, the core library's included, with its key, file, kind and line, for a tool that lets
   someone choose keys:
 
@@ -971,7 +971,7 @@ groups that never ended.
 
 - **An inspector** can attach to a running program through `PROBES_CONTROL_PATH`, follow its trace
   and ask it about live objects, such as the contents of a snapshot.
-- **The compiler's own probes.** In the Yumi repository, `bin/yumi --compiler-probes [SELECTORS]`
+- **The compiler's own probes.** In the Brix repository, `bin/brix --compiler-probes [SELECTORS]`
   builds a copy of the compiler with those probes, runs it on the rest of the command line, and
   records its trace. Without selectors, it compiles the probes of the compiler's command line and
   every probe with no key. Its keys include `compiler.phase`, `typing.phase` and `emit.walks`.
@@ -984,9 +984,9 @@ A print is part of the program. A probe looks at it.
 | --- | --- | --- |
 | Compiled | Always. | Only with `--probes`, when a selector chooses it. |
 | Runs | Always. | Only where it is compiled. |
-| Writes to | stdout. | The trace, which `yumi` shows on stderr. |
+| Writes to | stdout. | The trace, which `brix` shows on stderr. |
 | Keeps | Text. | Each value with its type, the time, the file and line, its group or object. |
-| Read by | Whoever runs the program, and its tests. | `yumi probes`, which filters, adds up, times and compares. |
+| Read by | Whoever runs the program, and its tests. | `brix probes`, which filters, adds up, times and compares. |
 
 - **To see what a program does**, write a probe, not a print, and run it with `--probes`.
 - **Output the program owes its user** is a print, and so is anything a test should check.

@@ -1,10 +1,10 @@
-# Yumi Language Reference
+# Brix Language Reference
 
-This reference describes the whole Yumi language: every form a program can contain, what each one
+This reference describes the whole Brix language: every form a program can contain, what each one
 means, and the rules the compiler enforces. It is written to be complete rather than gentle. Read a
 chapter from the top to learn a feature, or jump to an entry to look one up.
 
-Yumi programs are written in Brix, in `.bx` files. Each construct is stored as a form: an
+Brix programs are written in `.bx` files. Each construct is stored as a form: an
 S-expression such as `(param name Type)`{.brix}. Brix is shown as rows, with indentation, dividers
 and operators, so the same parameter is shown as `- name Type`{.rows}. This reference writes code
 as forms. The website shows the forms as rows, with a toggle to show the forms themselves. Each

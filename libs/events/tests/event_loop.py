@@ -7,7 +7,7 @@ from testing import support
 
 EVENTS = os.path.join(ROOT, 'libs', 'events')
 FIXTURES = os.path.join(EVENTS, 'tests', 'fixtures')
-STUBS = ('YuTask.h', 'YuTaskQueue.h')
+STUBS = ('BxTask.h', 'BxTaskQueue.h')
 
 
 def cxx_compiler():
@@ -17,12 +17,12 @@ def cxx_compiler():
 
 def include_root(directory):
     root = os.path.join(directory, 'include')
-    headers = os.path.join(root, 'YuEvents')
+    headers = os.path.join(root, 'BxEvents')
     os.makedirs(headers)
     for name in os.listdir(os.path.join(EVENTS, 'include')):
         source = os.path.join(FIXTURES if name in STUBS else os.path.join(EVENTS, 'include'), name)
         os.symlink(source, os.path.join(headers, name))
-    os.symlink(os.path.join(ROOT, 'libs', 'gc', 'include'), os.path.join(root, 'YuGC'))
+    os.symlink(os.path.join(ROOT, 'libs', 'gc', 'include'), os.path.join(root, 'BxGC'))
     return root
 
 
@@ -34,9 +34,9 @@ class EventLoop(unittest.TestCase):
             cxx_compiler(), '-std=c++17', '-O1', '-pthread', '-I', include_root(directory),
             os.path.join(FIXTURES, 'wakeup.cpp'),
             os.path.join(FIXTURES, 'trigger.cpp'),
-            os.path.join(EVENTS, 'YuPoll.cpp'),
-            os.path.join(EVENTS, 'YuSelectLoop.cpp'),
-            os.path.join(EVENTS, 'YuKQueueLoop.cpp'),
+            os.path.join(EVENTS, 'BxPoll.cpp'),
+            os.path.join(EVENTS, 'BxSelectLoop.cpp'),
+            os.path.join(EVENTS, 'BxKQueueLoop.cpp'),
             '-o', executable,
         ], 120)
         support.run([executable], 20)

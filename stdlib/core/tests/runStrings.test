@@ -159,20 +159,20 @@ false
 :====
 # String representation metadata for literals and all UTF-8 scalar widths.
 
-/YuCore/YuString.h
+/BxCore/BxString.h
 
 . empty = ""
 . ascii = "hello"
 . scalars = "Aé漢😀"
 -- empty.size
 -- empty.length
--- C:yumiStringGetFlags(empty)
+-- C:brixStringGetFlags(empty)
 -- ascii.size
 -- ascii.length
--- C:yumiStringGetFlags(ascii)
+-- C:brixStringGetFlags(ascii)
 -- scalars.size
 -- scalars.length
--- C:yumiStringGetFlags(scalars)
+-- C:brixStringGetFlags(scalars)
 
 :----
 
@@ -275,7 +275,7 @@ true
 :====
 # Runtime construction paths initialize equivalent metadata.
 
-/YuCore/YuString.h
+/BxCore/BxString.h
 
 . concatenated = "ab" ++ "é"
 . sliced = "Aé漢😀"[1 .. 2]
@@ -285,13 +285,13 @@ true
 . lower = "AÉ".lowercased
 -- concatenated.size
 -- concatenated.length
--- C:yumiStringGetFlags(concatenated)
+-- C:brixStringGetFlags(concatenated)
 -- sliced
 -- sliced.size
 -- sliced.length
 -- formatted.size
 -- formatted.length
--- C:yumiStringGetFlags(formatted)
+-- C:brixStringGetFlags(formatted)
 -- repeated.size
 -- repeated.length
 -- upper.length
@@ -316,13 +316,13 @@ true
 :====
 # Codepoint slices preserve exact-fit ASCII, scalar widths, embedded NUL, and emptiness.
 
-/YuCore/YuString.h
+/BxCore/BxString.h
 
 . ascii = Array'Char("exact")
 . scalars = Array'Char("Aé漢😀")
 . embedded = Array'Char(["a"[0], 0 as Char, "b"[0]])
 . empty = Char[0]
-. empty-string String = C:yumiStringFromUtf8Codepoints(empty.data, 0, 0)
+. empty-string String = C:brixStringFromUtf8Codepoints(empty.data, 0, 0)
 -- ascii.slice-string()
 -- scalars.slice-string()
 -- (embedded.slice-string()[1] as U32)
@@ -343,7 +343,7 @@ true
 # Foreign adoption preserves NUL termination and never marks malformed UTF-8 as ASCII.
 
 /JaCore/tests.h
-/YuCore/YuString.h
+/BxCore/BxString.h
 
 . foreign = C:ctest4d() as String
 . embedded-bytes = Byte[4]
@@ -360,14 +360,14 @@ malformed-bytes[1] = 0u8
 -- foreign
 -- foreign.size
 -- foreign.length
--- C:yumiStringGetFlags(foreign)
+-- C:brixStringGetFlags(foreign)
 -- embedded
 -- embedded.size
 -- embedded.length
--- C:yumiStringGetFlags(embedded)
+-- C:brixStringGetFlags(embedded)
 -- malformed.size
 -- malformed.length
--- C:yumiStringGetFlags(malformed)
+-- C:brixStringGetFlags(malformed)
 -- malformed-empty.size
 
 :----
@@ -388,12 +388,12 @@ a
 :====
 # Large ASCII metadata stays exact and powers byte-offset find/slice paths.
 
-/YuCore/YuString.h
+/BxCore/BxString.h
 
 . large = "0123456789abcdef" * 65536
 -- large.size
 -- large.length
--- C:yumiStringGetFlags(large)
+-- C:brixStringGetFlags(large)
 -- large.find("abcdef", 1048560)
 -- large[1048560 .. < 1048576]
 
@@ -971,43 +971,43 @@ Index out of bounds (3 / 3)
 # ordinary String behavior while allocating only from the selected Arena.
 
 /core/arena
-/YuCore/YuCore.h
-/YuCore/YuString.h
+/BxCore/BxCore.h
+/BxCore/BxString.h
 /string.h
 
 . empty-arena = Arena(64)
 . ascii-arena = Arena(64)
 . scalar-arena = Arena(64)
-. managed-before = C:yumiArenaManagedAllocationCount()
+. managed-before = C:brixArenaManagedAllocationCount()
 . empty = empty-arena.copy-string("")
 . ascii = ascii-arena.copy-string("hello")
 . scalars = scalar-arena.copy-string("Aé漢😀")
-. managed-after = C:yumiArenaManagedAllocationCount()
+. managed-after = C:brixArenaManagedAllocationCount()
 
 -- empty == ""
 -- empty.size
 -- empty.length
--- C:yumiStringGetFlags(empty)
+-- C:brixStringGetFlags(empty)
 -- C:strlen(empty)
 -- empty-arena.active-bytes
 -- empty-arena.owns(empty as Pointer)
--- C:yumiStringHash(empty, empty.size) == C:yumiStringHash("", 0)
+-- C:brixStringHash(empty, empty.size) == C:brixStringHash("", 0)
 -- ascii == "hello"
 -- ascii.size
 -- ascii.length
--- C:yumiStringGetFlags(ascii)
+-- C:brixStringGetFlags(ascii)
 -- C:strlen(ascii)
 -- ascii-arena.active-bytes
 -- ascii-arena.owns(ascii as Pointer)
--- C:yumiStringHash(ascii, ascii.size) == C:yumiStringHash("hello", 5)
+-- C:brixStringHash(ascii, ascii.size) == C:brixStringHash("hello", 5)
 -- scalars == "Aé漢😀"
 -- scalars.size
 -- scalars.length
--- C:yumiStringGetFlags(scalars)
+-- C:brixStringGetFlags(scalars)
 -- C:strlen(scalars)
 -- scalar-arena.active-bytes
 -- scalar-arena.owns(scalars as Pointer)
--- C:yumiStringHash(scalars, scalars.size) == C:yumiStringHash("Aé漢😀", 10)
+-- C:brixStringHash(scalars, scalars.size) == C:brixStringHash("Aé漢😀", 10)
 -- scalars[1 .. 2]
 -- "copy=$scalars"
 -- managed-after == managed-before
@@ -1057,30 +1057,30 @@ true
 # creating a managed String.
 
 /core/arena
-/YuCore/YuCore.h
-/YuCore/YuString.h
+/BxCore/BxCore.h
+/BxCore/BxString.h
 /string.h
 
 . source = "zAé漢😀q".codepoints
 . arena = Arena(64)
-. managed-before = C:yumiArenaManagedAllocationCount()
+. managed-before = C:brixArenaManagedAllocationCount()
 . empty = source[0 .. < 0].slice-string(arena)
 . scalars = source[1 .. < 5].slice-string(arena)
-. managed-after = C:yumiArenaManagedAllocationCount()
+. managed-after = C:brixArenaManagedAllocationCount()
 
 -- empty == ""
 -- empty.size
 -- empty.length
--- C:yumiStringGetFlags(empty)
+-- C:brixStringGetFlags(empty)
 -- C:strlen(empty)
 -- arena.owns(empty as Pointer)
 -- scalars == "Aé漢😀"
 -- scalars.size
 -- scalars.length
--- C:yumiStringGetFlags(scalars)
+-- C:brixStringGetFlags(scalars)
 -- C:strlen(scalars)
 -- arena.owns(scalars as Pointer)
--- C:yumiStringHash(scalars, scalars.size) == C:yumiStringHash("Aé漢😀", 10)
+-- C:brixStringHash(scalars, scalars.size) == C:brixStringHash("Aé漢😀", 10)
 -- scalars[1 .. 2]
 -- "direct=$scalars"
 -- managed-after == managed-before
@@ -1092,7 +1092,7 @@ source[2] = 0 as Char
 . truncated = source[1 .. < 5].slice-string(arena)
 -- truncated == "A"
 -- truncated.length == 1
--- C:yumiStringGetFlags(truncated) == 3
+-- C:brixStringGetFlags(truncated) == 3
 source[1] = 0 as Char
 -- source[1 .. < 5].slice-string(arena) == ""
 -- scalars == "Aé漢😀"

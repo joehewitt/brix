@@ -234,7 +234,7 @@ class Build:
         return flags
 
     def late_flags(self):
-        flags = ['-DYU_ENABLE_BENCH_METRICS=%d' % self.bench_metrics()]
+        flags = ['-DBX_ENABLE_BENCH_METRICS=%d' % self.bench_metrics()]
         if self.options.debug:
             flags += DEBUG_FLAGS
         return flags + self.sanitizer.get('compileFlags', [])
@@ -315,18 +315,18 @@ class Build:
 
     def gc_mode(self):
         modes = self.config.get('gcModes', {})
-        name = self.environment.get('YUMI_GC_MODE', 'normal').strip().lower() or 'normal'
+        name = self.environment.get('BRIX_GC_MODE', 'normal').strip().lower() or 'normal'
         mode = modes.get(name)
         if not mode:
-            raise Failure('YUMI_GC_MODE must be one of %s' % ', '.join(modes))
-        if mode.get('benchmarkOnly') and not self.flag('YUMI_BENCH_RUNTIME'):
-            raise Failure('YUMI_GC_MODE=%s is benchmark-only; set YUMI_BENCH_RUNTIME=1' % name)
+            raise Failure('BRIX_GC_MODE must be one of %s' % ', '.join(modes))
+        if mode.get('benchmarkOnly') and not self.flag('BRIX_BENCH_RUNTIME'):
+            raise Failure('BRIX_GC_MODE=%s is benchmark-only; set BRIX_BENCH_RUNTIME=1' % name)
         return mode
 
     def bench_metrics(self):
-        enabled = self.flag('YUMI_BENCH_METRICS')
+        enabled = self.flag('BRIX_BENCH_METRICS')
         if enabled is None:
-            return bool(self.flag('YUMI_BENCH_RUNTIME'))
+            return bool(self.flag('BRIX_BENCH_RUNTIME'))
         return enabled
 
     def flag(self, name):

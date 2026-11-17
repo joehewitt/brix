@@ -8,11 +8,11 @@ import unittest
 from common import ROOT
 from testing import support
 
-RUNNER = [os.path.join(ROOT, 'bin', 'yumi'), 'bench', 'launch']
+RUNNER = [os.path.join(ROOT, 'bin', 'brix'), 'bench', 'launch']
 RESULT_LINE = 'bench-result fake/case checksum=7'
 PID_WAIT_SECONDS = 30
 COUNT_LAUNCH = ['echo launch >> "$LAUNCH_LOG"', 'count=$(($(wc -l < "$LAUNCH_LOG")))']
-CLEARED = ('PROBES_ENABLED', 'PROBES_PATH', 'YUMI_BENCH_METRICS_PATH')
+CLEARED = ('PROBES_ENABLED', 'PROBES_PATH', 'BRIX_BENCH_METRICS_PATH')
 
 
 class FakeBenchmark:
@@ -72,12 +72,12 @@ class BenchmarkLaunches(unittest.TestCase):
     def test_reports_warm_launch_process_metrics(self):
         bench = FakeBenchmark(self, COUNT_LAUNCH + [
             'echo "$count" >> "$PROBES_PATH"',
-            'echo "{\\"launch\\": $count}" > "$YUMI_BENCH_METRICS_PATH"',
+            'echo "{\\"launch\\": $count}" > "$BRIX_BENCH_METRICS_PATH"',
             'echo "%s"' % RESULT_LINE,
         ])
         probes = os.path.join(bench.root, 'fake-case.probes')
         metrics_path = os.path.join(bench.root, 'fake-case.metrics.json')
-        result = bench.run(PROBES_ENABLED='stream-pattern', PROBES_PATH=probes, YUMI_BENCH_METRICS_PATH=metrics_path)
+        result = bench.run(PROBES_ENABLED='stream-pattern', PROBES_PATH=probes, BRIX_BENCH_METRICS_PATH=metrics_path)
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stderr, '')

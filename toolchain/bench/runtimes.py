@@ -7,8 +7,8 @@ import runtime
 from checks import gc_allocation_abi
 from common import Failure, lock, say
 
-STAMP = 'yumi-bench-runtime-v8'
-STAMP_NAME = '.yumi-bench-runtime'
+STAMP = 'brix-bench-runtime-v8'
+STAMP_NAME = '.brix-bench-runtime'
 LOCK_NAME = '.bench-runtime.lock'
 KEPT_NAME = 'results'
 GC_RUNTIME_SELECTOR = 'bench-gc-runtime'
@@ -17,7 +17,7 @@ GC_MODES = ('normal', 'no-gc', 'never-collect')
 
 def main(arguments):
     if len(arguments) != 1:
-        say('usage: yumi-bench-runtime <benchmark-build-root>')
+        say('usage: brix-bench-runtime <benchmark-build-root>')
         return 2
     root = os.path.abspath(arguments[0])
     os.makedirs(root, exist_ok=True)
@@ -45,9 +45,9 @@ def build_variant(config, kind, mode, build_root):
         reset(build_root)
     os.makedirs(build_root, exist_ok=True)
     environment = {
-        'YUMI_BENCH_RUNTIME': '1',
-        'YUMI_BENCH_METRICS': '0' if kind == 'clean' else '1',
-        'YUMI_GC_MODE': mode,
+        'BRIX_BENCH_RUNTIME': '1',
+        'BRIX_BENCH_METRICS': '0' if kind == 'clean' else '1',
+        'BRIX_GC_MODE': mode,
     }
     build = runtime.Build(config, runtime.parse_arguments(['build', '--build', build_root]), environment)
     try:

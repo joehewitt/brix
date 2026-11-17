@@ -2,7 +2,7 @@
 `benchmark.meta timing: not-recommended
 `benchmark.meta profiles: gui-probes,gui
 
-/YuAppleGUI/YuAppleGUI.h
+/BxAppleGUI/BxAppleGUI.h
 /core/intrinsics
 /core/task
 /graphics/canvas
@@ -10,37 +10,37 @@
 . resize-notification-count Size = 200
 . backing-notification-count Size = 80
 . state = ResizeStormState()
-state.native = C:yumiGuiWindowCreate("gui bench resize-storm (offscreen)", 420, 320)
-C:yumiGuiWindowSetContentSizeChangedCallback
+state.native = C:brixGuiWindowCreate("gui bench resize-storm (offscreen)", 420, 320)
+C:brixGuiWindowSetContentSizeChangedCallback
     - state.native!
     - resize-storm-size-callback as ResizeStormSizeCallback
     - state as Pointer
-C:yumiGuiWindowSetBackingScaleChangedCallback
+C:brixGuiWindowSetBackingScaleChangedCallback
     - state.native!
     - resize-storm-backing-scale-callback as ResizeStormActionCallback
     - state as Pointer
 
 for index in 0 .. < resize-notification-count
-    C:yumiGuiWindowDebugInjectContentSize(state.native!, 420 + index, 320 + index)
+    C:brixGuiWindowDebugInjectContentSize(state.native!, 420 + index, 320 + index)
 for index in 0 .. < backing-notification-count
-    C:yumiGuiWindowDebugInjectBackingScaleChange(state.native!)
+    C:brixGuiWindowDebugInjectBackingScaleChange(state.native!)
 
 state.done.wait()
 
-. resize-notifications = C:yumiGuiWindowDebugResizeNotificationCount(state.native!)
-. resize-services = C:yumiGuiWindowDebugResizeCallbacksServiced(state.native!)
-. resize-coalesced = C:yumiGuiWindowDebugResizeCoalescedCount(state.native!)
-. resize-pending = C:yumiGuiWindowDebugResizePendingCount(state.native!)
-. resize-pending-high-water = C:yumiGuiWindowDebugResizePendingHighWaterMark(state.native!)
-. resize-frames = C:yumiGuiWindowDebugResizeFrameCommitCount(state.native!)
-. resize-frames-high-water = C:yumiGuiWindowDebugResizeFramesPerCallbackHighWaterMark
+. resize-notifications = C:brixGuiWindowDebugResizeNotificationCount(state.native!)
+. resize-services = C:brixGuiWindowDebugResizeCallbacksServiced(state.native!)
+. resize-coalesced = C:brixGuiWindowDebugResizeCoalescedCount(state.native!)
+. resize-pending = C:brixGuiWindowDebugResizePendingCount(state.native!)
+. resize-pending-high-water = C:brixGuiWindowDebugResizePendingHighWaterMark(state.native!)
+. resize-frames = C:brixGuiWindowDebugResizeFrameCommitCount(state.native!)
+. resize-frames-high-water = C:brixGuiWindowDebugResizeFramesPerCallbackHighWaterMark
     - state.native!
-. obsolete-renders = C:yumiGuiWindowDebugResizeObsoleteSizeRenderCount(state.native!)
-. backing-notifications = C:yumiGuiWindowDebugBackingScaleNotificationCount(state.native!)
-. backing-services = C:yumiGuiWindowDebugBackingScaleCallbacksServiced(state.native!)
-. backing-coalesced = C:yumiGuiWindowDebugBackingScaleCoalescedCount(state.native!)
-. backing-pending = C:yumiGuiWindowDebugBackingScalePendingCount(state.native!)
-. backing-pending-high-water = C:yumiGuiWindowDebugBackingScalePendingHighWaterMark
+. obsolete-renders = C:brixGuiWindowDebugResizeObsoleteSizeRenderCount(state.native!)
+. backing-notifications = C:brixGuiWindowDebugBackingScaleNotificationCount(state.native!)
+. backing-services = C:brixGuiWindowDebugBackingScaleCallbacksServiced(state.native!)
+. backing-coalesced = C:brixGuiWindowDebugBackingScaleCoalescedCount(state.native!)
+. backing-pending = C:brixGuiWindowDebugBackingScalePendingCount(state.native!)
+. backing-pending-high-water = C:brixGuiWindowDebugBackingScalePendingHighWaterMark
     - state.native!
 
 ?! Panic("resize storm did not service the initial latest size and one follow-up")
@@ -53,8 +53,8 @@ state.done.wait()
     if resize-frames != 2 || resize-frames-high-water != 1 || state.frames-committed != 2
 ?! Panic("resize storm committed an obsolete native size")
     if obsolete-renders != 0 || state.obsolete-renders != 0
-. final-width = C:yumiGuiWindowGetContentWidth(state.native!)
-. final-height = C:yumiGuiWindowGetContentHeight(state.native!)
+. final-width = C:brixGuiWindowGetContentWidth(state.native!)
+. final-height = C:brixGuiWindowGetContentHeight(state.native!)
 ?! Panic("resize storm did not finish at the newest injected dimensions")
     if final-width != 900 || final-height != 700
 . backing-counts-match = backing-notifications == backing-notification-count as U64
@@ -81,8 +81,8 @@ backing-counts-match = backing-counts-match && backing-coalesced == expected-bac
 //gui.bench.backing-scale.pending-high-water += backing-pending-high-water
 //gui.adapter.resize.obsolete-sizes-rendered += state.obsolete-renders
 
-C:yumiGuiWindowClose(state.native!)
-C:yumiGuiWindowRelease(state.native!)
+C:brixGuiWindowClose(state.native!)
+C:brixGuiWindowRelease(state.native!)
 state.native = null
 
 . checksum = resize-notifications + resize-services + resize-coalesced + resize-frames
@@ -119,21 +119,21 @@ checksum += backing-notifications + backing-services + backing-coalesced
 state.resize-services += 1
 //gui.adapter.resize.callbacks-serviced ++
 
-. scale = C:yumiGuiWindowGetBackingScaleFactor(state.native!)
+. scale = C:brixGuiWindowGetBackingScaleFactor(state.native!)
 . canvas = RasterCanvas(width as I32, height as I32, scale)
 do use canvas
-    C:yumiGuiWindowCommitFrame(state.native!, canvas.native, 0, 0, canvas.width, canvas.height)
+    C:brixGuiWindowCommitFrame(state.native!, canvas.native, 0, 0, canvas.width, canvas.height)
 state.frames-committed += 1
 //gui.adapter.resize.frames-committed ++
 
-. current-size-is-latest = C:yumiGuiWindowGetContentWidth(state.native!) == width
-. current-height-is-latest = C:yumiGuiWindowGetContentHeight(state.native!) == height
+. current-size-is-latest = C:brixGuiWindowGetContentWidth(state.native!) == width
+. current-height-is-latest = C:brixGuiWindowGetContentHeight(state.native!) == height
 current-size-is-latest = current-size-is-latest && current-height-is-latest
 if !current-size-is-latest
     state.obsolete-renders += 1
 
 if state.resize-services == 1
-    C:yumiGuiWindowDebugInjectContentSize(state.native!, 900, 700)
+    C:brixGuiWindowDebugInjectContentSize(state.native!, 900, 700)
 else
     state.done.post()
 

@@ -1,6 +1,6 @@
 # Symbol index
 
-Every symbol of Yumi, with what it means and the entry that explains it: the operators, the marks
+Every symbol of Brix, with what it means and the entry that explains it: the operators, the marks
 that begin an atom, the marks that begin a row, the names with a fixed meaning, and the functions
 the core library gives every module. Forms are listed by their heads in the
 [form index](form-index.md). Where a symbol is spelled one way in forms and another in rows, both

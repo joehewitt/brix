@@ -13,29 +13,29 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <YuEvents/YuSelectLoop.h>
-#include <YuEvents/YuKQueueLoop.h>
-#include <YuEvents/YuTaskQueue.h>
+#include <BxEvents/BxSelectLoop.h>
+#include <BxEvents/BxKQueueLoop.h>
+#include <BxEvents/BxTaskQueue.h>
 std::atomic<bool> interruptRead {false};
 std::atomic<bool> interruptSend {false};
 std::atomic<bool> interruptFlags {false};
 int lastWriter = -1;
 static std::function<void()> drainHook;
 void finalDrainRace() { if (drainHook) drainHook(); }
-YuTaskQueue* YuTask::getTaskQueue() { static YuTaskQueue queue; return &queue; }
-extern "C" uint64_t yumiMonotonicTimeNanoseconds() {
+BxTaskQueue* BxTask::getTaskQueue() { static BxTaskQueue queue; return &queue; }
+extern "C" uint64_t brixMonotonicTimeNanoseconds() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 static void require(bool value, const char* message) {
     if (!value) { std::fprintf(stderr, "%s\n", message); std::exit(1); }
 }
-static int queued(YuTriggerFile& trigger) {
+static int queued(BxTriggerFile& trigger) {
     int size = 0;
     require(ioctl(trigger.fd, FIONREAD, &size) == 0, "FIONREAD failed");
     return size;
 }
-static bool ready(YuTriggerFile& trigger) {
+static bool ready(BxTriggerFile& trigger) {
     fd_set set;
     FD_ZERO(&set);
     FD_SET(trigger.fd, &set);
@@ -57,7 +57,7 @@ template<class Loop> static void restart() {
 }
 static void boundaries() {
     for (size_t size : {0, 1, 1023, 1024, 1025, 2048, 8192}) {
-        YuTriggerFile trigger;
+        BxTriggerFile trigger;
         int writer = lastWriter;
         std::vector<char> bytes(size, 'x');
         if (size) require(send(writer, bytes.data(), size, 0) == static_cast<ssize_t>(size), "boundary setup failed");
@@ -65,7 +65,7 @@ static void boundaries() {
         require(queued(trigger) == 0, "finite boundary not drained");
         trigger.flush();
     }
-    YuTriggerFile trigger;
+    BxTriggerFile trigger;
     int writer = lastWriter;
     char bytes[1024] {};
     while (send(writer, bytes, sizeof(bytes), 0) > 0) {}
@@ -82,10 +82,10 @@ static void boundaries() {
     require(ready(trigger), "interrupted publication lost wakeup");
     trigger.flush();
     interruptFlags = true;
-    { YuTriggerFile interruptedFlags; }
+    { BxTriggerFile interruptedFlags; }
 }
 static void concurrency() {
-    YuTriggerFile trigger;
+    BxTriggerFile trigger;
     std::mutex lock;
     size_t pending = 0;
     std::vector<std::thread> producers;
@@ -135,17 +135,17 @@ static void selectLoops() {
     for (int cycle = 0; cycle < 8; ++cycle) {
         int sockets[2];
         require(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0, "loop sockets failed");
-        YuSelectLoop loop;
-        YuTask tasks[512];
-        YuTask observer;
-        auto canceledWait = [&](YuTask* task) {
-            YuSelectWaiter waiter(task, sockets[0], true, 0);
+        BxSelectLoop loop;
+        BxTask tasks[512];
+        BxTask observer;
+        auto canceledWait = [&](BxTask* task) {
+            BxSelectWaiter waiter(task, sockets[0], true, 0);
             loop.beginWait(&waiter);
             loop.cancelDescriptor(sockets[0]);
             loop.endWait(&waiter);
         };
         for (int i = 0; i < 512; ++i) canceledWait(&tasks[i]);
-        YuSelectWaiter observed(&observer, sockets[0], true, 0);
+        BxSelectWaiter observed(&observer, sockets[0], true, 0);
         loop.beginWait(&observed);
         require(send(sockets[1], "x", 1, 0) == 1, "observer setup failed");
         loop.start();
@@ -172,20 +172,20 @@ static void kqueueLoops() {
     for (int cycle = 0; cycle < 8; ++cycle) {
         int sockets[2];
         require(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0, "loop sockets failed");
-        YuKQueueLoop loop;
-        YuTask tasks[512];
-        YuTask observer;
-        uint64_t deadline = yumiMonotonicTimeNanoseconds() + 3600000000000ull;
-        auto canceledWait = [&](YuTask* task) {
-            YuPollWaiter waiter(task, sockets[0], EVFILT_READ);
+        BxKQueueLoop loop;
+        BxTask tasks[512];
+        BxTask observer;
+        uint64_t deadline = brixMonotonicTimeNanoseconds() + 3600000000000ull;
+        auto canceledWait = [&](BxTask* task) {
+            BxPollWaiter waiter(task, sockets[0], EVFILT_READ);
             loop.beginWait(&waiter, deadline);
             loop.releaseDescriptor(sockets[0]);
             loop.endWait(&waiter);
         };
         loop.start();
         for (int i = 0; i < 512; ++i) canceledWait(&tasks[i]);
-        YuPollWaiter observed(&observer, sockets[0], EVFILT_READ);
-        require(loop.beginWait(&observed, deadline) == YuPollWaitStartSuspend, "observer did not wait");
+        BxPollWaiter observed(&observer, sockets[0], EVFILT_READ);
+        require(loop.beginWait(&observed, deadline) == BxPollWaitStartSuspend, "observer did not wait");
         require(send(sockets[1], "x", 1, 0) == 1, "observer setup failed");
         while (!observer.completed.load()) std::this_thread::yield();
         loop.endWait(&observed);
@@ -213,14 +213,14 @@ int main() {
     concurrency();
     selectLoops();
     kqueueLoops();
-    restart<YuSelectLoop>();
-    restart<YuKQueueLoop>();
+    restart<BxSelectLoop>();
+    restart<BxKQueueLoop>();
     require(descriptorCount() == before, "trigger/loop lifecycle leaked descriptors");
     int savedInput = dup(0);
     ::close(0);
     int replacement;
     {
-        YuTriggerFile trigger;
+        BxTriggerFile trigger;
         trigger.close();
         replacement = open("/dev/null", O_RDONLY);
         require(replacement == 0, "zero descriptor not released");

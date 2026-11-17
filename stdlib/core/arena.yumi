@@ -5,7 +5,7 @@
 ./number
 ./range
 ./string
-/YuCore/YuCore.h
+/BxCore/BxCore.h
 
 ━━━━━━━━━━━━━━━━━━━━
 + Arena is Tuple
@@ -21,12 +21,12 @@ _ incarnation Size
 + This
     - initial-byte-capacity Size = 0
 
-. handle = C:yumiArenaCreate(initial-byte-capacity) as CPointer'Byte
+. handle = C:brixArenaCreate(initial-byte-capacity) as CPointer'Byte
 ?! Panic("Arena allocation failed")
     if handle.address == 0
 
 owner-handle = handle
-incarnation = (C:yumiArenaIncarnation(handle)) as Size
+incarnation = (C:brixArenaIncarnation(handle)) as Size
 
 ────────────────────
 + begin-using
@@ -43,10 +43,10 @@ release()
     - count Size
 
 if count != 0 && count > Size.max / Value.size
-    C:yumiArenaAllocationFailed(owner-handle, incarnation, 16)
-. data = C:yumiArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
+    C:brixArenaAllocationFailed(owner-handle, incarnation, 16)
+. data = C:brixArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
 if data.address == 0
-    C:yumiArenaAllocationFailed(owner-handle, incarnation, 16)
+    C:brixArenaAllocationFailed(owner-handle, incarnation, 16)
 = data as CPointer'Value
 
 ────────────────────
@@ -55,7 +55,7 @@ if data.address == 0
 
 if count != 0 && count > Size.max / Value.size
     = null
-. data = C:yumiArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
+. data = C:brixArenaReserve(owner-handle, incarnation, count * Value.size, 16, true)
 if data.address == 0
     = null
 = data as CPointer'Value
@@ -65,16 +65,16 @@ if data.address == 0
     - byte-count Size
     - alignment Size = 1
 
-. data = C:yumiArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
+. data = C:brixArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
 if data.address == 0
-    C:yumiArenaAllocationFailed(owner-handle, incarnation, alignment)
+    C:brixArenaAllocationFailed(owner-handle, incarnation, alignment)
 = data
 
 ────────────────────
 + do copy-string String without gc
     - text String
 
-. copy = C:yumiArenaCopyString(owner-handle, incarnation, text)
+. copy = C:brixArenaCopyString(owner-handle, incarnation, text)
 ?! Panic("Arena String allocation failed")
     if (copy as Pointer).address == 0
 = copy
@@ -86,7 +86,7 @@ if data.address == 0
     - end Index
     - stop-at-null Bool = false
 
-. copy = C:yumiArenaCopyCodepointSpan
+. copy = C:brixArenaCopyCodepointSpan
     - owner-handle
     - incarnation
     - source.data
@@ -104,7 +104,7 @@ if data.address == 0
     - start Index
     - end Index
 
-. copy = C:yumiArenaCopyByteSpan
+. copy = C:brixArenaCopyByteSpan
     - owner-handle
     - incarnation
     - source.data
@@ -119,14 +119,14 @@ if data.address == 0
 + do owns Bool without gc
     - value Pointer
 
-= C:yumiArenaOwns(owner-handle, incarnation, value)
+= C:brixArenaOwns(owner-handle, incarnation, value)
 
 ────────────────────
 + do try-allocate-raw CPointer'Byte? without gc
     - byte-count Size
     - alignment Size = 1
 
-. data = C:yumiArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
+. data = C:brixArenaReserve(owner-handle, incarnation, byte-count, alignment, false)
 if data.address == 0
     = null
 = data
@@ -138,7 +138,7 @@ if data.address == 0
     if mark == 0
 ArenaMark(mark as Size)
 
-.. mark = C:yumiArenaMark(owner-handle, incarnation)
+.. mark = C:brixArenaMark(owner-handle, incarnation)
 
 ────────────────────
 + do rewind without gc
@@ -151,67 +151,67 @@ ArenaMark(mark as Size)
 ────────────────────
 + do reset without gc
 
-C:yumiArenaReset(owner-handle, incarnation)
+C:brixArenaReset(owner-handle, incarnation)
 
 ────────────────────
 + do release without gc
 
-C:yumiArenaRelease(owner-handle, incarnation)
+C:brixArenaRelease(owner-handle, incarnation)
 
 ────────────────────
 + get state Size
 
-C:yumiArenaState(owner-handle, incarnation) as Size
+C:brixArenaState(owner-handle, incarnation) as Size
 
 ────────────────────
 + get generation Size
 
-C:yumiArenaGeneration(owner-handle, incarnation) as Size
+C:brixArenaGeneration(owner-handle, incarnation) as Size
 
 ────────────────────
 + get active-block-count Size
 
-C:yumiArenaActiveBlockCount(owner-handle, incarnation) as Size
+C:brixArenaActiveBlockCount(owner-handle, incarnation) as Size
 
 ────────────────────
 + get retained-block-count Size
 
-C:yumiArenaRetainedBlockCount(owner-handle, incarnation) as Size
+C:brixArenaRetainedBlockCount(owner-handle, incarnation) as Size
 
 ────────────────────
 + get active-bytes Size
 
-C:yumiArenaActiveBytes(owner-handle, incarnation) as Size
+C:brixArenaActiveBytes(owner-handle, incarnation) as Size
 
 ────────────────────
 + get reserved-bytes Size
 
-C:yumiArenaReservedBytes(owner-handle, incarnation) as Size
+C:brixArenaReservedBytes(owner-handle, incarnation) as Size
 
 ────────────────────
 + get retained-bytes Size
 
-C:yumiArenaRetainedBytes(owner-handle, incarnation) as Size
+C:brixArenaRetainedBytes(owner-handle, incarnation) as Size
 
 ────────────────────
 + get peak-active-bytes Size
 
-C:yumiArenaPeakActiveBytes(owner-handle, incarnation) as Size
+C:brixArenaPeakActiveBytes(owner-handle, incarnation) as Size
 
 ────────────────────
 + get system-block-allocation-count Size
 
-C:yumiArenaOwnerSystemBlockAllocationCount(owner-handle, incarnation) as Size
+C:brixArenaOwnerSystemBlockAllocationCount(owner-handle, incarnation) as Size
 
 ────────────────────
 + get reset-count Size
 
-C:yumiArenaOwnerResetCount(owner-handle, incarnation) as Size
+C:brixArenaOwnerResetCount(owner-handle, incarnation) as Size
 
 ────────────────────
 + get rewind-count Size
 
-C:yumiArenaOwnerRewindCount(owner-handle, incarnation) as Size
+C:brixArenaOwnerRewindCount(owner-handle, incarnation) as Size
 
 ────────────────────
 _ do resize-buffer'Item CPointer'Item without gc
@@ -223,7 +223,7 @@ _ do resize-buffer'Item CPointer'Item without gc
 . copy-size = size
 if new-size < copy-size
     copy-size = new-size
-C:yumiArrayCopySlice(replacement, source, copy-size * Item.size)
+C:brixArrayCopySlice(replacement, source, copy-size * Item.size)
 = replacement
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -244,7 +244,7 @@ _ do rewind-from Size without gc
     - arena-handle CPointer'Byte
     - arena-incarnation Size
 
-= (C:yumiArenaRewind(arena-handle, arena-incarnation, value)) as Size
+= (C:brixArenaRewind(arena-handle, arena-incarnation, value)) as Size
 
 ━━━━━━━━━━━━━━━━━━━━
 + ArenaBacking
