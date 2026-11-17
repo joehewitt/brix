@@ -896,3 +896,32 @@ Exception: The fake bound to 'adder-world' cannot be read through a function val
         got = apply(twice)
                     ^^^^^
 ;====
+:====
+# A fake stays bound to its effect where the code under the binding only reads String values of the module, written, made lazily, or copied into a local
+/JaCore/tests.h
+
++ kept = "x"
++ joined := "x" ++ "y"
+
+. fake = Stub()
+do with probe-world = fake
+    -- kept
+do with probe-world = fake
+    -- joined
+do with probe-world = fake
+    . copy = kept
+    -- copy
+
+━━━━━━━━━━━━━━━━━━━━
++ effect probe-world
+    - C:ctest4a
+
+━━━━━━━━━━━━━━━━━━━━
++ Stub
+
+:----
+
+x
+xy
+x
+;====

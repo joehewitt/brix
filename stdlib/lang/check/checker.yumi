@@ -17330,7 +17330,7 @@ if resolution.kind == .resolve-global && value != invalid-type
     conversions.convert(id, value-syntax, value, declared, .reason-assignment)
 if resolution.kind == .resolve-global
     . first = tree.subtree-start(body)
-    facts.stack-scopes.append(StackScope(instance, first, body, resolution.module, resolution.decl))
+    facts.stack-scopes.append(StackScope(instance, first, body, resolution.module, resolution.decl, 0))
 discarding-block = body
 check-statement(body)
 
@@ -17346,14 +17346,16 @@ _ do check-effect-binding
 ` answer the effect's doors that the body reaches, each typed with the fake in its key.
 . value = infer(value-syntax)
 . effect = program.effects.index-of(module, decl)
-facts.stack-scopes.append(StackScope(instance, tree.subtree-start(body), body, module, decl))
 . saved = frame.surround
+. entry U32 = 0
 if value != invalid-type && (!types.is-class-type(value) || types.is-optional(value))
     frame.diagnose(value-syntax, .stated, program.store-atom(fake-class-text(module, decl, value)))
 else if effect && effect >= most-effects()
     frame.diagnose(id, .stated, program.store-atom("A program can bind at most ${most-effects()} effects, and '${program.effects.names[effect].text}' is past them"))
 else if value != invalid-type && effect
     frame.surround = frame.surround.effects = instances.bound-to(saved.effects, effect, value)
+    entry = instances.swap-entry-of(frame.surround.effects, effect)
+facts.stack-scopes.append(StackScope(instance, tree.subtree-start(body), body, module, decl, entry))
 discarding-block = body
 check-statement(body)
 frame.surround = saved

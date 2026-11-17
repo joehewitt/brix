@@ -329,13 +329,15 @@ form != .call-truth && form != .call-operand-truth && !made && !listed
 ━━━━━━━━━━━━━━━━━━━━
 + StackScope is Struct
 
-` The statements one `do with` runs under its binding of such a global.
+` The statements one `do with` runs under its binding of such a global, and the fake it binds
+` to an effect, by its number among `Instances.swap-entries`, or 0 for none.
 
 + instance InstanceId
 + first SyntaxId
 + last SyntaxId
 + module ModuleId
 + decl DeclId
++ entry U32
 
 ━━━━━━━━━━━━━━━━━━━━
 + SwapForward is Struct
@@ -8059,7 +8061,13 @@ for row in peer.local-global-uses
 for row in peer.stack-scopes
     if ids.owns(row.instance)
         stack-scopes.append
-            - StackScope(ids.instance(row.instance), row.first, row.last, row.module, row.decl)
+            - StackScope
+                - ids.instance(row.instance)
+                - row.first
+                - row.last
+                - row.module
+                - row.decl
+                - ids.swap-entry(row.entry)
 for row in peer.swap-forwards
     if ids.owns(row.instance)
         . fact = row as SwapForward
