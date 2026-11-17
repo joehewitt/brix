@@ -1,0 +1,1312 @@
+./emitter
+./emitter.tables
+./layouts
+./program-tables
+./receiver-stability
+./runtime
+./table-layouts
+/core/arena
+/core/table
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/backend/mir
+/lang/check/binding
+/lang/check/claims
+/lang/check/facts
+/lang/check/instances
+/lang/check/machine-composite
+/lang/check/numeric
+/lang/check/pattern-helper
+/lang/check/probe-casts
+/lang/check/table-rows
+/lang/check/type-signature
+/lang/check/type-store
+/lang/check/type-text
+/lang/check/types
+/lang/ir/ir
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ Loops is facet of FunctionEmitter
+    sees Tables
+
+────────────────────
++ do emit-while
+    - id SyntaxId
+    - condition SyntaxId
+    - body SyntaxId
+
+` A loop that runs its body for as long as its condition tests as true. Each pass polls
+` before the test. The loop is one to leave or to go on with from its condition on: written
+` with a pattern, its body runs in the arm of the match that is the condition. A turn
+` whose locals nested functions capture has an environment of its own. A condition that
+` opens a cleanup, reading a lazy local whose value is a `use`, has no shape: TypeScript
+` runs that cleanup where the body ends, and not at all where the condition first fails.
+. nothing = make-operand(.operand-void, 0)
+. head = ir.reserve-block()
+. inside = ir.reserve-block()
+. done = ir.reserve-block()
+jump(head)
+ir.start-block(head)
+emit-poll(id)
+. open = open-cleanups.length
+loops += EmittedLoop(id, head, done, nothing, no-type, open, no-slot)
+branch-on(condition, inside, done)
+if open-cleanups.length != open
+    refuse(.refused-expression, condition)
+ir.start-block(inside)
+. turns = open-turns.length
+open-turn(id, nothing, no-type)
+emit-block(body)
+close-turns(turns)
+loops.pop()
+jump(head)
+ir.start-block(done)
+
+────────────────────
++ do emit-for
+    - id SyntaxId
+    - loop SyntaxId
+    - body SyntaxId
+
+` A loop over items, run as the type pass planned it: one that counts through a range of
+` integers written in its header, or one over the container of each of its headers. One on a
+` stream subscribes where it is written, and runs for an item in the function generated for
+` it.
+do match? tree.nodes[loop]
+    | .node-loop-syntax(row)
+        if facts.plan-of(unit.reading, loop) == .plan-range-loop
+            do match? tree.nodes[row.container]
+                | .node-range-expression(range)
+                    emit-range-loop(loop, range.op, range.left, range.right, row.clause, body)
+                    =
+        else if !row.is-subscriber
+            emit-headed(loop, row.container, row.clause, body)
+            =
+        else if subscribing == id
+            emit-subscriber(loop, tested(loop, row.clause), body)
+            =
+        else
+            emit-subscription(id, loop, row.container)
+            =
+refuse(.refused-statement, id)
+
+────────────────────
++ do hold-container TypeId
+    - loop SyntaxId
+    - container SyntaxId
+    - slot SlotId
+    - kept Bool = false
+
+` Evaluates the container of a loop, once, and keeps it in the first of the loop's slots,
+` converted as the type pass recorded where it is written, and answers its type. The loop of
+` a comprehension keeps its container already: the function generated for it was given the
+` container where it was called. So does the loop of a bullet, which kept it where the bullet
+` began, as `kept` says.
+holding = make-operand(.operand-void, 0)
+if facts.plan-of(unit.reading, loop) == .plan-table-loop && kept
+    refuse(.refused-statement, loop)
+    = no-type
+if facts.plan-of(unit.reading, loop) == .plan-table-loop
+    = hold-rows(loop, container, slot)
+if loop == given-loop || kept
+    . kept = state(slot, loop)
+    holding = kept.operand
+    = kept.type
+if reads-place(loop)
+    . base = facts.loop-base(unit.reading, loop)
+    if base == U32.max
+        refuse(.refused-statement, loop)
+        = no-type
+    if base != 0
+        . object = emit-expression(base)
+        pin(base, object.operand, object.type)
+    . emitted = emit-expression(container)
+    if !tables.layouts.is-struct(layout-of(emitted.type, loop))
+        refuse(.refused-statement, loop)
+    = emitted.type
+. held = convert(container, .reason-operand, emit-expression(container))
+. type = held.type
+keep-state(slot, held.operand, type, loop)
+holding = held.operand
+= type
+
+────────────────────
+_ do hold-rows TypeId
+    - loop SyntaxId
+    - container SyntaxId
+    - slot SlotId
+
+` Begins a loop over a table or a span of one, as TypeScript begins it: the container is
+` evaluated, once, and its rows found, checked where the table grows; the first row is kept,
+` and the count of rows. An index span is kept, and its length. Answers the container's type.
+` The loop of a comprehension reads the container it was given from the slot after its item.
+. table = if loop == given-loop then state(slot + loop-state-count, loop) else convert(container, .reason-operand, emit-expression(container))
+. type = table.type
+if intrinsic(type) == .table-selection || intrinsic(type) == .immutable-table-selection
+    hold-selection(loop, table.operand, type, slot)
+    = type
+if intrinsic(type) == .index-span
+    . layout = layout-of(type, loop)
+    keep-state(slot, table.operand, type, loop)
+    keep-state(slot + 1, word-at(loop, table.operand, layout, 3), types.size-type, loop)
+    = type
+. offset = slot-offset(slot, loop)
+. row = facts.slot-type(unit.instance, offset)
+. layout = layout-of(type, loop)
+. row-layout = layout-of(row, loop)
+. source = table-source(loop, table.operand, type, layout)
+. made = frame(row-layout)
+if is-immutable-view(intrinsic(type))
+    put
+        - made
+        - tables.layouts.field(row-layout, 0)
+        - num-cast(loop, source.columns, pointer-layout, managed-layout)
+        - loop
+    put(made, tables.layouts.field(row-layout, 1), source.offset, loop)
+else
+    put
+        - made
+        - tables.layouts.field(row-layout, 0)
+        - view-columns(loop, source.meta, source.columns)
+        - loop
+    put(made, tables.layouts.field(row-layout, 1), source.offset, loop)
+    put-meta(loop, made, row-layout, 2, source.meta)
+keep-state(slot, made, row, loop)
+keep-state(slot + 1, source.length, types.size-type, loop)
+. kind = intrinsic(type)
+if facts.constant-of(unit.reading, loop) != no-fact && (kind == .table || kind == .table-span)
+    . named = loop-name-slot(loop)
+    if named != no-slot
+        proven-items += ProvenItem(loop, named, source.columns)
+= type
+
+────────────────────
+_ do hold-selection
+    - loop SyntaxId
+    - selection Operand
+    - type TypeId
+    - slot SlotId
+
+` Begins a loop over a selection of a table's rows, as TypeScript's loop over rows begins it:
+` the indices are resolved, then the table's columns and length found, checked where it
+` grows. The selection is kept as a finished table of those columns and that length, read
+` with no metadata, and, where the indices are not resolved again on each pass, with the
+` indices where they lie; then the count of indices. A loop TypeScript leaves to the
+` selection's own iteration is refused.
+. constant = facts.constant-of(unit.reading, loop)
+. reads = if constant != no-fact then facts.constants[constant].bits else 2u64
+if reads == 2
+    refuse(.refused-statement, loop)
+    =
+. layout = layout-of(type, loop)
+. table-type = field-type(type, 0)
+. span-type = field-type(type, 1)
+. table-layout = layout-of(table-type, loop)
+. span-layout = layout-of(span-type, loop)
+. table = part(selection, layout, 0, loop)
+. span = part(selection, layout, 1, loop)
+. resolved = resolve-span(loop, span.operand, span-layout)
+. source = table-source(loop, table.operand, table-type, table-layout)
+. made = frame(layout)
+copy(made, selection, layout, false, loop)
+. kept-table = address(made, tables.layouts.field(layout, 0).offset, table-layout, loop)
+put-word(loop, kept-table, table-layout, 0, source.columns, pointer-layout)
+put-word(loop, kept-table, table-layout, 1, source.length, u64-layout)
+for position in 2 .. < tables.layouts.rows[table-layout].fields.count
+    put-word(loop, kept-table, table-layout, position, integer(.machine-u64, 0), u64-layout)
+if reads == 0
+    . kept-span = address(made, tables.layouts.field(layout, 1).offset, span-layout, loop)
+    put-word(loop, kept-span, span-layout, 0, resolved.data, u64-layout)
+    put-word(loop, kept-span, span-layout, 1, integer(.machine-u64, 0), u64-layout)
+keep-state(slot, made, type, loop)
+keep-state(slot + 1, word-at(loop, span.operand, span-layout, 3), types.size-type, loop)
+
+────────────────────
+_ do read-selected Typed
+    - loop SyntaxId
+    - slot SlotId
+    - type TypeId
+    - done IRBlockId
+
+` The next row of a loop over a selection of a table's rows, or a leave to `done` once the
+` count read reaches the count of indices: the indices are resolved, again where the loop
+` finds them on each pass, the index read at the count, and checked against the table's
+` length as found when the loop began; the row there holds no metadata.
+. none = make-operand(.operand-void, 0)
+. item-slot = slot-offset(slot + loop-state-count - 1, loop)
+. row = facts.slot-type(unit.instance, item-slot)
+. row-kind = intrinsic(row)
+if row-kind != .table-row && row-kind != .immutable-table-row
+    refuse(.refused-statement, loop)
+    = Typed(none, no-type)
+. layout = layout-of(type, loop)
+. table-type = field-type(type, 0)
+. span-type = field-type(type, 1)
+. table-layout = layout-of(table-type, loop)
+. span-layout = layout-of(span-type, loop)
+. item = viewed-item(span-type)
+. item-layout = layout-of(item, loop)
+. row-layout = layout-of(row, loop)
+. inside = ir.reserve-block()
+branch(compare(loop, .compare-less, state(slot + 2, loop).operand, state(slot + 1, loop).operand), inside, done)
+ir.start-block(inside)
+. count = state(slot + 2, loop)
+keep-state
+    - slot + 2
+    - arithmetic(loop, .arithmetic-add, count.operand, integer(.machine-u64, 1), u64-layout)
+    - types.size-type
+    - loop
+. selection = state(slot, loop)
+. table = part(selection.operand, layout, 0, loop)
+. span = part(selection.operand, layout, 1, loop)
+. index = selected-index(loop, resolve-span(loop, span.operand, span-layout), count.operand, item, item-layout)
+fail-if
+    - loop
+    - compare(loop, .compare-greater-equal, index, word-at(loop, table.operand, table-layout, 1))
+    - "TableSelection index is out of bounds"
+. made = frame(row-layout)
+put-word(loop, made, row-layout, 0, word-at(loop, table.operand, table-layout, 0), u64-layout)
+put(made, tables.layouts.field(row-layout, 1), index, loop)
+for position in 2 .. < tables.layouts.rows[row-layout].fields.count
+    put-word(loop, made, row-layout, position, integer(.machine-u64, 0), u64-layout)
+= Typed(made, row)
+
+────────────────────
+_ do read-index Typed
+    - loop SyntaxId
+    - slot SlotId
+    - type TypeId
+    - done IRBlockId
+
+` The next index of a loop over an index span, or a leave to `done` once the count read
+` reaches the length read when the loop began: the span is resolved, and the index read at
+` the count, as `s[i]` reads it.
+. layout = layout-of(type, loop)
+. item = viewed-item(type)
+. item-layout = layout-of(item, loop)
+. inside = ir.reserve-block()
+branch(compare(loop, .compare-less, state(slot + 2, loop).operand, state(slot + 1, loop).operand), inside, done)
+ir.start-block(inside)
+. count = state(slot + 2, loop)
+keep-state
+    - slot + 2
+    - arithmetic(loop, .arithmetic-add, count.operand, integer(.machine-u64, 1), u64-layout)
+    - types.size-type
+    - loop
+. span = state(slot, loop)
+. value = span-item(loop, resolve-span(loop, span.operand, layout), count.operand, item-layout)
+= Typed(value, item)
+
+────────────────────
+_ reads-place Bool
+    - loop SyntaxId
+
+` Whether a loop reads its container where it is kept at each item, as the type pass
+` planned it: in a function that yields the loop keeps the container, as the reference's
+` does there, and so does the loop of a comprehension, which is given it.
+!stepping && loop != given-loop && is-place-loop-plan(facts.plan-of(unit.reading, loop))
+
+────────────────────
+_ do container-of Typed
+    - loop SyntaxId
+    - written SyntaxId
+    - slot SlotId
+
+` What a loop reads its items from: what it keeps, or its container read anew where it is
+` kept, with the object it is a property of as that was when the loop began.
+if !reads-place(loop)
+    = state(slot, loop)
+= emit-expression(written)
+
+────────────────────
+_ protocol-calls FactId
+    - loop SyntaxId
+
+` The calls the type pass recorded for the protocol of a loop, in the order the loop makes
+` them: at the header of a loop, and for a bullet that gives every item of a container from
+` the first the type pass kept for it, beside others where it kept them, as at a bullet that
+` also keeps those of the first bullet of its list.
+|? facts.bullet-site(unit.reading, loop) != loop || start != no-fact
+    start
+??
+    facts.first-call(unit.reading, loop)
+
+.. start = facts.protocol-start(unit.reading, loop)
+
+────────────────────
+_ do open-turn
+    - loop SyntaxId
+    - item Operand
+    - type TypeId
+
+` Starts a turn of a loop whose body declares a local that nested functions capture. The
+` turn has an environment of its own: an object the collector owns, which arrives zeroed,
+` with the link to the environment in force around the loop. A nested function written in
+` the turn is given it, so that each turn's functions read that turn's locals. The item of
+` the turn is copied there under each name it is captured by: the one the loop writes for
+` it, `each` and `it`. A local holds the environment of the turn; in a function that
+` yields, a field of the function's own environment does, which keeps it from one step to
+` the next.
+if unit.instance == no-instance
+    =
+. scope = tables.turn-scope(instances.rows[unit.instance].module, loop)
+if scope == no-scope
+    =
+. layout = tables.turn-environment(unit.instance, scope)
+if unit.reading != unit.instance || layout == no-layout || layout == unbuilt-environment
+    refuse(.refused-statement, loop)
+    =
+. place = if stepping then tables.turn-place(unit.instance, scope) else no-place
+if stepping && (place == no-place || unit.environment == no-local)
+    refuse(.refused-statement, loop)
+    =
+. link = written-environment(loop)
+. mark = pending.length
+pending += integer(.machine-u64, tables.layouts.rows[layout].size)
+pending += make-operand(.operand-descriptor, layout)
+. made = call-runtime(.runtime-allocate-object, loop, mark, managed-layout)
+. local = no-local
+if stepping
+    . field = tables.layouts.field(tables.environments[unit.instance], place)
+    store(load-local(unit.environment, loop), field.offset, made, true, loop)
+else
+    local = ir.add-local(managed-layout)
+    store-local(local, made, loop)
+store(made, 0, link, true, loop)
+open-turns += TurnScope(scope, local, place)
+for offset in 0 .. < unit.slot-count
+    . slot = unit.slot-start + offset
+    . kind = bindings.slots[slot].kind
+    if tables.slot-homes[slot] != scope
+        continue
+    if kind == .slot-each || kind == .slot-it || whole-item
+        keep-captured(slot, item, type, loop)
+    .. whole-item = kind == .slot-loop-item && facts.loop-take(unit.reading, loop) == .take-whole
+
+────────────────────
++ do close-turns
+    - mark Size
+
+` Ends the turns opened since `mark`, where the body of their loop has been emitted.
+while open-turns.length > mark
+    open-turns.pop()
+
+────────────────────
++ do loop-slots SlotId
+    - loop SyntaxId
+
+` The first of the slots the binder declared for what a loop keeps, in the function whose
+` facts are being read, which is the one emitted.
+. binding = instances.rows[unit.reading].binding
+. slot = no-slot
+if binding != no-binding && unit.reading == unit.instance
+    slot = bindings.loop-state(binding, loop)
+if slot == no-slot
+    refuse(.refused-statement, loop)
+= slot
+
+────────────────────
++ do emit-headed
+    - first SyntaxId
+    - written SyntaxId
+    - clause SyntaxId
+    - body SyntaxId
+    - kept Bool = false
+
+` A loop over the container of each of its headers, by the protocol the type pass planned
+` for each: by its indexes, by a cursor, or as a stream. A bullet that gives every item of
+` a container is such a loop of one header, whose container the bullet keeps already (`kept`).
+` 1. Every container is evaluated, in the order written, and then each is begun. From there
+`    on, telling the streams among them that the loop has ended is a cleanup: it runs
+`    however the loop is left, as the body of a `do finally` written there would.
+` 2. A turn reads an item of each header in order. The head of a header polls and reads,
+`    and a container with no more ends the loop. The header takes the item and tests its
+`    clause; an item that does not match, or a `when` that fails, reads that header again.
+` 3. The body runs. `continue` goes to the first head, as the end of the body does. The
+`    body of a comprehension's loop is an expression, and is yielded, and a bullet has no
+`    body and yields the item.
+` In a cleanup being run, a check made in the loop lands where the cleanup ends, as in the rest
+` of it, leaving its streams unended, as TypeScript's does (`end-in-cleanup`). A header that
+` subscribes, the loop of a comprehension whose first header writes a pattern that is no match,
+` and a stream read where the collector never looks have no shape.
+. chain [SyntaxId]
+. containers [SyntaxId]
+. clauses [SyntaxId]
+. streams = false
+. header = first
+. container = written
+. tested = clause
+while header != 0
+    . plan = facts.plan-of(unit.reading, header)
+    . next SyntaxId = 0
+    do match? tree.nodes[header]
+        | .node-loop-syntax(row)
+            next = row.next
+            if row.is-subscriber || (header == given-loop && !takes-item(header))
+                refuse(.refused-statement, header)
+    if plan == .plan-stream-loop
+        streams = true
+    else if !is-index-loop-plan(plan) && !is-cursor-loop-plan(plan) && other-loop-plan
+        refuse(.refused-statement, header)
+    .. other-loop-plan = plan != .plan-table-loop && plan != .plan-pattern-loop
+    chain += header
+    containers += container
+    clauses += tested
+    header = next
+    do match? tree.nodes[header]
+        | .node-loop-syntax(row)
+            container = row.container
+            tested = row.clause
+. caught = landing
+if streams && (is-free(unit.instance) || (scoping.cleaning && caught == no-block))
+    refuse(.refused-statement, first)
+    =
+. pin-mark = pins.length
+. slots [SlotId]
+. kinds [TypeId]
+. made = make-operand(.operand-void, 0)
+for position in 0 .. < chain.length
+    . slot = loop-slots(chain[position])
+    . kind = hold-container(chain[position], containers[position], slot, kept && position == 0)
+    made = holding
+    slots += slot
+    kinds += kind
+protocol-row = U32.max
+for position in 0 .. < chain.length
+    begin-items(chain[position], containers[position], slots[position], kinds[position])
+. stream = U32.max
+if chain.length == 1 && streams && !stepping && value-made
+    stream = ir.streams.length as U32
+    ir.streams.append(IRStream(made, protocol-row, U32.max, IdList()))
+    stream-loops += first
+.. value-made = operand-kind(made) == .operand-value || operand-kind(made) == .operand-argument
+. mark = open-cleanups.length
+. own-scoping = scoping
+if streams
+    scoping = scoping.block-base = mark
+    open-cleanup(first, UseCell(no-local, no-local, no-type))
+    if scoping.cleaning
+        landing = caught
+. root = ir.reserve-block()
+. done = ir.reserve-block()
+. turns = open-turns.length
+. depth = loops.length
+. named = bound.length
+. captured = stream-captures.length
+. last = no-slot
+jump(root)
+. head = root
+for position in 0 .. < chain.length
+    . loop = chain[position]
+    if position != 0
+        head = ir.reserve-block()
+        jump(head)
+    ir.start-block(head)
+    emit-poll(loop)
+    . polled = ir.current
+    protocol-row = U32.max
+    . item = read-items(loop, first, containers[position], slots[position], kinds[position], done)
+    if stream != U32.max
+        ir.streams[stream].read = protocol-row
+        ir.streams[stream].head = head
+        ir.streams[stream].polled = polled
+        ir.streams[stream].done = done
+    . type = item.type
+    last = slots[position] + loop-state-count - 1
+    take-item(loop, last, item.operand, type, head)
+    . turned = facts.slot-type(unit.instance, slot-offset(last, loop))
+    loops += EmittedLoop(loop, root, done, item.operand, turned, open-cleanups.length, last)
+    emit-clause(clauses[position], head, done)
+if first == given-loop
+    emit-yield(body, body, false)
+else if gives-items(first, body)
+    give-item(first, facts.bullet-site(unit.reading, first), state(last, first))
+else if body != 0
+    emit-block(body)
+close-turns(turns)
+drop-bound(named)
+drop-captures(captured)
+while loops.length > depth
+    loops.pop()
+for ended in chain
+    forget-item(ended)
+jump(root)
+ir.start-block(done)
+if streams && scoping.cleaning
+    end-in-cleanup(mark, caught)
+else if streams
+    close-cleanups(mark)
+if streams
+    scoping = own-scoping
+unpin(pin-mark)
+
+────────────────────
++ do end-in-cleanup
+    - mark Size
+    - caught IRBlockId
+
+` Where a loop that reads a stream in a cleanup being run ends: its own cleanups run, newest
+` first, and a check made in one lands where the cleanup around ends, as one made in the loop
+` does. They are open no longer.
+while open-cleanups.length > mark
+    landing = caught
+    run-cleanup(open-cleanups[open-cleanups.length - 1].body, open-cleanups[open-cleanups.length - 1].cell)
+    open-cleanups.pop()
+landing = caught
+
+────────────────────
++ do begin-items
+    - loop SyntaxId
+    - container SyntaxId
+    - slot SlotId
+    - type TypeId
+
+` Begins what a header of a loop reads its container by, once every container of the loop
+` is held. By its indexes: the length is read once, by the getter the type pass recorded
+` for it or as the field of an array a constant fact names, and the count of items read
+` starts at none. By a cursor: the container gives the state the cursor starts at. As a
+` stream: the container is told that the loop begins. As a stream pattern: the stream the
+` pattern reads the container through is made and kept.
+. nothing = make-operand(.operand-void, 0)
+. plan = facts.plan-of(unit.reading, loop)
+if plan == .plan-table-loop
+    keep-state(slot + 2, integer(.machine-u64, 0), types.size-type, loop)
+    =
+if plan == .plan-pattern-loop
+    . held = state(slot, loop)
+    . stream = stream-of(loop, held.operand, type, stream-maker(loop))
+    keep-state(slot + 1, stream.operand, stream.type, loop)
+    =
+. begins = protocol-calls(loop)
+if begins == no-fact
+    refuse(.refused-statement, loop)
+    =
+if is-index-loop-plan(plan)
+    . length = Typed(nothing, no-type)
+    if facts.calls[begins].form == .call-getter
+        length = call-protocol(loop, begins, container-of(loop, container, slot).operand, type, nothing)
+    else
+        length = array-length(loop, container-of(loop, container, slot).operand, type)
+    if length.type != types.size-type
+        refuse(.refused-statement, loop)
+        =
+    keep-state(slot + 1, length.operand, types.size-type, loop)
+    keep-state(slot + 2, integer(.machine-u64, 0), types.size-type, loop)
+    =
+if is-cursor-loop-plan(plan)
+    if facts.calls[begins].form != .call-getter
+        refuse(.refused-statement, loop)
+        =
+    . started = call-protocol(loop, begins, container-of(loop, container, slot).operand, type, nothing)
+    keep-state(slot + 1, started.operand, started.type, loop)
+    =
+. reads = facts.calls[begins].next
+if reads == no-fact || facts.calls[reads].next == no-fact
+    refuse(.refused-statement, loop)
+    =
+call-protocol(loop, begins, state(slot, loop).operand, type, nothing)
+
+────────────────────
++ do read-items Typed
+    - loop SyntaxId
+    - place SyntaxId
+    - container SyntaxId
+    - slot SlotId
+    - type TypeId
+    - done IRBlockId
+
+` Reads the next item of a header of a loop, where its head has polled, and leaves to
+` `done` where its container has no more. By its indexes: the count of items read is tested
+` against the length and moves on, and the item at the index it had is read by the
+` container's `[]`. By a cursor: the container's function takes the state and gives the
+` next with an item, or with none. As a stream: the container gives an item, or nothing,
+` which is converted as the type pass said where a property the container delegates to gives
+` it. As a stream pattern: the pattern matches once more on the stream kept for it.
+` The calls are made at `place`, the loop's first header, where TypeScript makes the reads of
+` every header.
+. nothing = make-operand(.operand-void, 0)
+. plan = facts.plan-of(unit.reading, loop)
+if plan == .plan-table-loop
+    = read-row(loop, slot, done)
+if plan == .plan-pattern-loop
+    = read-step(loop, slot, type, done)
+. begins = protocol-calls(loop)
+if begins == no-fact
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+. inside = ir.reserve-block()
+if is-index-loop-plan(plan)
+    . reads = if facts.calls[begins].form == .call-getter then facts.calls[begins].next else begins
+    branch(compare(loop, .compare-less, state(slot + 2, loop).operand, state(slot + 1, loop).operand), inside, done)
+    ir.start-block(inside)
+    . index = state(slot + 2, loop)
+    . moved = arithmetic(loop, .arithmetic-add, index.operand, integer(.machine-u64, 1), u64-layout)
+    keep-state(slot + 2, moved, types.size-type, loop)
+    = call-protocol
+        - place
+        - reads
+        - container-of(loop, container, slot).operand
+        - type
+        - index.operand
+        - types.index-type
+. next = nothing
+. given = no-type
+if is-cursor-loop-plan(plan)
+    . offset = slot-offset(slot + 1, loop)
+    . cursor = facts.slot-type(unit.instance, offset)
+    . steps = facts.calls[begins].next
+    . stepped = call-protocol
+        - place
+        - steps
+        - container-of(loop, container, slot).operand
+        - type
+        - state(slot + 1, loop).operand
+        - cursor
+    . answer = stepped.type
+    . layout = layout-of(answer, loop)
+    if !tables.layouts.is-struct(layout) || unpaired
+        refuse(.refused-statement, loop)
+        = Typed(nothing, no-type)
+    .. unpaired = tables.layouts.rows[layout].fields.count != 2
+    given = field-type(answer, 1)
+    if field-type(answer, 0) != cursor
+        refuse(.refused-statement, loop)
+        = Typed(nothing, no-type)
+    keep-state(slot + 1, take(stepped.operand, tables.layouts.field(layout, 0), loop), cursor, loop)
+    next = take(stepped.operand, tables.layouts.field(layout, 1), loop)
+else
+    . answered = call-protocol(place, facts.calls[begins].next, state(slot, loop).operand, type, nothing)
+    next = answered.operand
+    given = answered.type
+if !types.is-optional(given)
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+branch(present(loop, Typed(next, given)).operand, inside, done)
+ir.start-block(inside)
+= convert(loop, .reason-element, payload(loop, Typed(next, given)))
+
+────────────────────
+_ do read-step Typed
+    - loop SyntaxId
+    - slot SlotId
+    - type TypeId
+    - done IRBlockId
+
+` One pass of a loop whose header is a stream pattern, as the reference makes it: the stream
+` kept for the loop is asked whether it has more, and the loop ends where it has not; it
+` gives its view, and the pattern is matched from where the view starts, as a rule's arms
+` are, without reading the rest, asking the stream for more input where a part reads past
+` the end of its buffer. Where it passes, the stream commits where it ended, and the item is
+` what it gives; where it fails, the stream commits where it started, and the loop ends.
+` Where it passed without moving the stream on, it panics, as a pipe does. The names it
+` captures stay bound for the body.
+. nothing = make-operand(.operand-void, 0)
+. pattern = step-pattern(loop)
+. result = if pattern != 0 then facts.node-type(unit.reading, pattern) else no-type
+. made = stream-maker(loop)
+. viewed = if made != no-fact then next-call(made) else facts.first-call(unit.reading, loop)
+. commits = next-call(viewed)
+. extends = next-call(commits)
+. asks = next-call(extends)
+if result == no-type || result == invalid-type || asks == no-fact
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+. stream = state(slot + 1, loop)
+. stream-type = stream.type
+. more = call-protocol(loop, asks, stream.operand, stream-type, nothing)
+if more.type != types.bool-type
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+. reading = ir.reserve-block()
+branch(compare(loop, .compare-not-equal, more.operand, integer(.machine-u8, 0)), reading, done)
+ir.start-block(reading)
+. refills = made == no-fact || chunked
+    .. chunked = same-ref(class-ref(types, stream-type), types.chunked-token-stream-decl)
+. run = view-stream(loop, stream.operand, stream-type, refills, viewed, extends)
+. value = attempt-arms(loop, pattern, result, run, false, commits, done, true)
+=? value if value.type == no-type
+. moved = ir.reserve-block()
+. stuck = ir.reserve-block()
+branch(compare(loop, .compare-greater, load-local(attempt-end, loop), run.start), moved, stuck)
+ir.start-block(stuck)
+raise-text(loop, "Stream pattern loop made no input progress")
+ir.start-block(moved)
+= value
+
+────────────────────
+_ step-pattern SyntaxId
+    - loop SyntaxId
+
+` The stream pattern a loop's header is written as, out of the match that holds it where one
+` does.
+match tree.nodes[loop]
+    | .node-loop-syntax(row)
+        match tree.nodes[row.pattern]
+            | .node-stream-match(written)
+                written.pattern
+            ??
+                row.pattern
+    ??
+        0
+
+────────────────────
++ stream-maker FactId
+    - site SyntaxId
+
+` The call the type pass recorded at a stream pattern or a loop's header that makes the
+` stream it reads its subject through; none where the subject is a stream already.
+if first != no-fact && facts.calls[first].form == .call-constructor then first else no-fact
+
+.. first = facts.first-call(unit.reading, site)
+
+────────────────────
+_ do read-row Typed
+    - loop SyntaxId
+    - slot SlotId
+    - done IRBlockId
+
+` The next row of a loop over a table or a span of one, or a leave to `done` once the count
+` read reaches the count of rows: the first row moved on by the count read.
+. offset = slot-offset(slot, loop)
+. row = facts.slot-type(unit.instance, offset)
+if intrinsic(row) == .table-selection || intrinsic(row) == .immutable-table-selection
+    = read-selected(loop, slot, row, done)
+if intrinsic(row) == .index-span
+    = read-index(loop, slot, row, done)
+. layout = layout-of(row, loop)
+. inside = ir.reserve-block()
+branch(compare(loop, .compare-less, state(slot + 2, loop).operand, state(slot + 1, loop).operand), inside, done)
+ir.start-block(inside)
+. count = state(slot + 2, loop)
+keep-state
+    - slot + 2
+    - arithmetic(loop, .arithmetic-add, count.operand, integer(.machine-u64, 1), u64-layout)
+    - types.size-type
+    - loop
+. first = state(slot, loop)
+. made = frame(layout)
+copy(made, first.operand, layout, false, loop)
+put
+    - made
+    - tables.layouts.field(layout, 1)
+    - arithmetic(loop, .arithmetic-add, part(first.operand, layout, 1, loop).operand, count.operand, u64-layout)
+    - loop
+= Typed(made, row)
+
+────────────────────
++ do take-item
+    - loop SyntaxId
+    - last SlotId
+    - item Operand
+    - type TypeId
+    - head IRBlockId
+
+` What a header of a loop does with an item it has read, as the type pass decided. The item
+` is kept in the last of the header's slots, where the body reads it. A turn whose locals
+` nested functions capture gets an environment of its own. Then the header's pattern takes
+` the item: one that names it whole does no more; one that writes names for the fields of a
+` tuple takes it apart; one written as a match (`for | pattern in`) passes over an item it
+` does not fit, and the header reads its next; and any other is one a declaration is
+` written with, a type for the name or a pattern, which panics where the item does not fit.
+` A match written with arms gives the body what the arm an item fits gives, as
+` `take-matched` emits it. A comprehension's own loop that takes its item apart, and a
+` pattern matched that is not written as a match, have no shape yet.
+. take = facts.loop-take(unit.reading, loop)
+. pattern SyntaxId = 0
+. written SyntaxId = 0
+do match? tree.nodes[loop]
+    | .node-loop-syntax(row)
+        written = row.pattern
+        pattern = matched-name(row.pattern)
+if take == .take-arms
+    take-matched(loop, written, pattern, last, item, type, head)
+    =
+keep-state(last, item, type, loop)
+open-turn(loop, item, type)
+if take == .take-whole
+    =
+if take == .take-unshaped || (pattern == written && (loop == given-loop || take == .take-fitted))
+    refuse(.refused-statement, loop)
+    =
+if take == .take-fields
+    destructure(loop, field-names(pattern), state(last, loop).operand, type, true, true)
+    =
+. held = state(last, loop)
+. own-matching = matching
+if take == .take-converted
+    do match? tree.nodes[pattern]
+        | .node-type-capture(capture)
+            . given = convert(capture.type, .reason-declaration, Typed(held.operand, type), capture.id)
+            matching = matching.declaring = true
+            bind-name(capture.id, given)
+            matching = own-matching
+            =
+    refuse(.refused-statement, loop)
+    =
+if take == .take-declared
+    shape-declared(loop, pattern, Typed(held.operand, type))
+    =
+. failed = ir.reserve-block()
+. passed = ir.reserve-block()
+matching = matching.declaring = true
+emit-pattern(pattern, Typed(held.operand, type), failed)
+matching = own-matching
+jump(passed)
+ir.start-block(failed)
+jump(head)
+ir.start-block(passed)
+
+────────────────────
+_ do take-matched
+    - loop SyntaxId
+    - match SyntaxId
+    - arms SyntaxId
+    - last SlotId
+    - item Operand
+    - type TypeId
+    - head IRBlockId
+
+` What a header whose pattern is the arms of a match does with an item it has read. The
+` arms are tried on the item in the order written, and what the first that fits gives is
+` the item of the turn, kept where the body reads it, in the type the type pass gave the
+` arms. `it` in an arm is the item as read. An item no arm fits is passed over, and so is one
+` whose arm gives an optional that holds nothing: the header reads its next.
+. given = facts.node-type(unit.reading, match)
+if given == no-type || given == invalid-type
+    refuse(.refused-statement, loop)
+    =
+. layout = layout-of(given, loop)
+if layout == void-layout
+    refuse(.refused-statement, loop)
+    =
+. joined = ir.reserve-block()
+. slot = join-slot(layout)
+. mark = joins.length
+. named = bound.length
+. own-matching = matching
+matching = matching.declaring = true
+loops += EmittedLoop(loop, head, head, item, type, open-cleanups.length, no-slot)
+. is-closed = match-arms(match, arms, item, type, given, given, joined, slot)
+loops.pop()
+matching = own-matching
+drop-bound(named)
+if !is-closed
+    jump(head)
+if operand-kind(slot) == .operand-void && joins.length == mark
+    refuse(.refused-statement, loop)
+. value = close-joins(joined, mark, layout, slot)
+. kept = given
+if types.is-optional(given)
+    . passed = ir.reserve-block()
+    branch(present(loop, Typed(value, given)).operand, passed, head)
+    ir.start-block(passed)
+    . inner = payload(loop, Typed(value, given))
+    value = inner.operand
+    kept = inner.type
+keep-state(last, value, kept, loop)
+open-turn(loop, value, kept)
+
+────────────────────
++ do array-length Typed
+    - loop SyntaxId
+    - array Operand
+    - type TypeId
+
+` The length of an array a loop counts through: the field of it that the constant fact at
+` the loop names.
+. nothing = make-operand(.operand-void, 0)
+. place = facts.constant-of(unit.reading, loop)
+. layout = layout-of(type, loop)
+if place == no-fact || !tables.layouts.is-struct(layout)
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+. position = facts.constants[place].bits as U32
+if position >= tables.layouts.rows[layout].fields.count
+    refuse(.refused-statement, loop)
+    = Typed(nothing, no-type)
+= Typed(take(array, tables.layouts.field(layout, position), loop), field-type(type, position))
+
+────────────────────
++ do end-streams
+    - first SyntaxId
+
+` Tells each container a loop reads as a stream that the loop has ended, in the order of
+` its headers: the cleanup the loop opened where it began, emitted on each way out.
+. header = first
+while header != 0
+    if facts.plan-of(unit.reading, header) == .plan-stream-loop
+        end-stream(header)
+    . next SyntaxId = 0
+    do match? tree.nodes[header]
+        | .node-loop-syntax(row)
+            next = row.next
+    header = next
+
+────────────────────
++ do end-stream
+    - loop SyntaxId
+
+` Tells the container of a header that reads a stream that the loop has ended.
+. slot = loop-slots(loop)
+. held = state(slot, loop)
+. type = held.type
+. begins = protocol-calls(loop)
+. reads = if begins == no-fact then no-fact else facts.calls[begins].next
+if reads == no-fact
+    refuse(.refused-statement, loop)
+    =
+call-protocol(loop, facts.calls[reads].next, held.operand, type, make-operand(.operand-void, 0))
+for back in 0 .. < stream-loops.length
+    . position = stream-loops.length - 1 - back
+    if stream-loops[position] == loop
+        ir.end-stream(position as U32, protocol-row)
+        =
+
+────────────────────
++ do emit-range-loop
+    - loop SyntaxId
+    - op Operator
+    - first SyntaxId
+    - last SyntaxId
+    - clause SyntaxId
+    - body SyntaxId
+
+` A loop over a range of integers. Both ends are evaluated once, in the item's type. The loop
+` counts up, or down when it starts above its end, which is decided once; one of an unsigned type
+` that starts at a written 0 only counts up. A range written with
+` `..` takes its end as an item and stops after it, and any other stops before its end. In
+` a function that yields, the index, the end and the way it counts are kept in the loop's
+` slots, and read again on each pass. The loop of a bullet that gives every item of a range
+` has no body, and yields the item.
+` 1. The head polls, then tests the index against the end.
+` 2. Inside, the item is the index, the clause is tested, and the body runs.
+` 3. The step ends the loop at an end the range takes, and otherwise moves the index.
+. start = convert(first, .reason-element, emit-expression(first))
+. type = start.type
+. layout = layout-of(type, loop)
+. counted = body != 0 && !stepping && !is-signed(layout) && range-plan && constant-bound
+    .. range-plan = facts.plan-of(unit.reading, loop) == .plan-range-loop
+    .. constant-bound = facts.constant-of(unit.reading, loop) != no-fact
+. end = convert
+    - last
+    - .reason-element
+    - if counted then counted-end(loop, last) else emit-expression(last)
+if end.type != type
+    refuse(.refused-conversion, loop)
+    =
+if !is-integer(layout) || !is-numeric-type(type)
+    refuse(.refused-type, loop)
+    =
+if counted
+    emit-counted-loop(loop, start.operand, end.operand, type, layout, clause, body)
+    =
+. wide = if tables.layouts.rows[layout].size >= 4 then layout else i32-layout
+. rising = !is-signed(layout) && is-written-zero(first)
+. falls = if rising then integer(.machine-u8, 0) else compare(loop, .compare-greater, start.operand, end.operand)
+. pace = range-pace(loop, falls, wide, rising)
+. index = no-local
+. kept = no-slot
+if stepping
+    kept = loop-slots(loop)
+    keep-state(kept, start.operand, type, loop)
+    keep-state(kept + 1, end.operand, type, loop)
+    keep-state(kept + 2, falls, types.bool-type, loop)
+else
+    index = ir.add-local(layout)
+    store-local(index, start.operand, loop)
+. head = ir.reserve-block()
+. inside = ir.reserve-block()
+. step = ir.reserve-block()
+. done = ir.reserve-block()
+jump(head)
+
+ir.start-block(head)
+emit-poll(loop)
+. takes-end = op == .range-through-op
+if stepping
+    end = state(kept + 1, loop)
+    falls = state(kept + 2, loop).operand
+. item = if stepping then state(kept, loop) else Typed(load-local(index, loop), type)
+. below = if takes-end then .compare-less-equal else .compare-less
+if rising
+    branch(compare(loop, below, item.operand, end.operand), inside, done)
+else
+    . up = ir.reserve-block()
+    . down = ir.reserve-block()
+    branch(falls, down, up)
+    ir.start-block(down)
+    branch
+        - compare(loop, if takes-end then .compare-greater-equal else .compare-greater, item.operand, end.operand)
+        - inside
+        - done
+    ir.start-block(up)
+    branch(compare(loop, below, item.operand, end.operand), inside, done)
+
+ir.start-block(inside)
+. turns = open-turns.length
+open-turn(loop, item.operand, type)
+loops += EmittedLoop(loop, step, done, item.operand, type, open-cleanups.length, kept)
+emit-clause(clause, step, done)
+if gives-items(loop, body)
+    give-item(loop, facts.bullet-site(unit.reading, loop), read-item(loop, loop, type))
+else if body != 0
+    emit-block(body)
+close-turns(turns)
+loops.pop()
+jump(step)
+
+ir.start-block(step)
+if stepping
+    item = state(kept, loop)
+    end = state(kept + 1, loop)
+    pace = range-pace(loop, state(kept + 2, loop).operand, wide, rising)
+if takes-end
+    . moving = ir.reserve-block()
+    branch(compare(loop, .compare-equal, item.operand, end.operand), done, moving)
+    ir.start-block(moving)
+. moved = num-cast
+    - loop
+    - arithmetic(loop, .arithmetic-add, num-cast(loop, item.operand, layout, wide), pace, wide)
+    - wide
+    - layout
+if stepping
+    keep-state(kept, moved, type, loop)
+else
+    store-local(index, moved, loop)
+jump(head)
+ir.start-block(done)
+forget-proven(loop)
+
+────────────────────
+_ do range-pace Operand
+    - loop SyntaxId
+    - falls Operand
+    - wide LayoutId
+    - rising Bool
+
+if rising
+    = integer(wide as MachineKind, 1)
+. rises = bitwise(loop, .bitwise-xor, falls, integer(.machine-u8, 1), u8-layout)
+= arithmetic
+    - loop
+    - .arithmetic-subtract
+    - num-cast(loop, rises, u8-layout, wide)
+    - num-cast(loop, falls, u8-layout, wide)
+    - wide
+
+────────────────────
+_ gives-items Bool
+    - loop SyntaxId
+    - body SyntaxId
+
+body == 0 && !(tree.nodes[loop] is .node-loop-syntax)
+
+────────────────────
+_ is-written-zero Bool
+    - id SyntaxId
+
+match tree.nodes[id]
+    | .node-integer-syntax(row)
+        !row.unit && parse-integer-literal(row.value).value == 0
+    ??
+        false
+
+────────────────────
+_ do counted-end Typed
+    - loop SyntaxId
+    - last SyntaxId
+
+do match? tree.nodes[last]
+    | .node-get-expression(get)
+        if table-plan && table-op(last) == TableOp.table-length && row-source
+            . held = emit-expression(get.object)
+            . type = held.type
+            . layout = layout-of(type, last)
+            . source = table-source(last, held.operand, type, layout)
+            proven-tables += ProvenTable(loop, intrinsic(type), source)
+            = Typed(source.length, types.size-type)
+        .. table-plan = facts.plan-of(unit.reading, last) == .plan-table
+        .. row-source = is-row-source(intrinsic(facts.node-type(unit.reading, get.object)))
+= emit-expression(last)
+
+────────────────────
+_ do emit-counted-loop
+    - loop SyntaxId
+    - start Operand
+    - end Operand
+    - type TypeId
+    - layout LayoutId
+    - clause SyntaxId
+    - body SyntaxId
+
+. index = ir.add-local(layout)
+store-local(index, start, loop)
+. hoist = ir.reserve-block()
+. head = ir.reserve-block()
+. inside = ir.reserve-block()
+. step = ir.reserve-block()
+. done = ir.reserve-block()
+jump(hoist)
+
+ir.start-block(head)
+emit-poll(loop)
+. item = load-local(index, loop)
+branch(compare(loop, .compare-less, item, end), inside, done)
+
+ir.start-block(inside)
+. turns = open-turns.length
+open-turn(loop, item, type)
+loops += EmittedLoop(loop, step, done, item, type, open-cleanups.length, no-slot)
+emit-clause(clause, step, done)
+emit-block(body)
+close-turns(turns)
+loops.pop()
+jump(step)
+
+ir.start-block(step)
+. wide = if tables.layouts.rows[layout].size >= 4 then layout else i32-layout
+. moved = arithmetic
+    - loop
+    - .arithmetic-add
+    - num-cast(loop, item, layout, wide)
+    - integer(wide as MachineKind, 1)
+    - wide
+store-local(index, num-cast(loop, moved, wide, layout), loop)
+jump(head)
+
+ir.start-block(hoist)
+hoist-columns(loop)
+jump(head)
+ir.start-block(done)
+forget-proven(loop)
+
+────────────────────
+_ do hoist-columns
+    - loop SyntaxId
+
+. found = proven-loop(loop)
+if found == U32.max
+    =
+. columns = proven-tables[found].source.columns
+while proven-columns.length != 0 && proven-columns[proven-columns.length - 1].loop == loop
+    . held = proven-columns[proven-columns.length - 1]
+    store-local(held.local, load(columns, held.column * 8, pointer-layout, loop), loop)
+    proven-columns.pop()
+
+────────────────────
+_ do forget-proven
+    - loop SyntaxId
+
+while proven-tables.length != 0 && proven-tables[proven-tables.length - 1].loop == loop
+    proven-tables.pop()
+. kept [ProvenRead]
+for held in proven-reads
+    if held.loop != loop
+        kept += held
+proven-reads.clear()
+for held in kept
+    proven-reads += held
+
+────────────────────
+_ do loop-name-slot SlotId
+    - loop SyntaxId
+
+. binding = instances.rows[unit.reading].binding
+if binding == no-binding || unit.reading != unit.instance
+    = no-slot
+do match? tree.nodes[loop]
+    | .node-loop-syntax(row)
+        . identifier = row.pattern
+        do match? tree.nodes[row.pattern]
+            | .node-type-capture(capture)
+                identifier = capture.id
+        . resolution = bindings.resolution-of(binding, identifier)
+        if resolution.kind == .resolve-slot
+            = resolution.slot
+= no-slot
+
+────────────────────
+_ do forget-item
+    - loop SyntaxId
+
+while proven-items.length != 0 && proven-items[proven-items.length - 1].loop == loop
+    proven-items.pop()
+
+────────────────────
++ do forget-read
+    - loop SyntaxId
+    - column U32
+
+. kept [ProvenRead]
+for held in proven-reads
+    if held.loop != loop || held.column != column
+        kept += held
+proven-reads.clear()
+for held in kept
+    proven-reads += held
+
+────────────────────
++ innermost-loop SyntaxId
+
+if loops.length == 0 then 0 else loops[loops.length - 1].syntax
+
+────────────────────
++ do emit-clause
+    - clause SyntaxId
+    - step IRBlockId
+    - done IRBlockId
+
+` The clauses of a loop, tested in the order written before its body on each pass. A `when`
+` that fails goes on to the next pass. A `while` that fails ends the loop, and so does an
+` `until` that holds. The first clause that decides wins: the clauses after it are not tested.
+` A `whenever` says whether a loop on a stream is subscribed and is not tested here.
+. current = first-tested(clause)
+while current != 0
+    . expr SyntaxId = 0
+    . next SyntaxId = 0
+    . passes = no-block
+    . fails = no-block
+    . resumed = ir.reserve-block()
+    do match? tree.nodes[current]
+        | .node-clause(row)
+            expr = row.expr
+            next = row.next
+            do match? row.op
+                | .when-clause
+                    passes = resumed
+                    fails = step
+                | .while-clause
+                    passes = resumed
+                    fails = done
+                | .until-clause
+                    passes = done
+                    fails = resumed
+    if passes == no-block
+        refuse(.refused-statement, current)
+        =
+    . tested = test(expr, emit-expression(expr))
+    branch(tested.operand, passes, fails)
+    ir.start-block(resumed)
+    current = first-tested(next)
+
+────────────────────
+_ do first-tested SyntaxId
+    - clause SyntaxId
+
+` A clause, or the first written after it, that is tested before a loop's body: one that is not
+` a `whenever`. None where there is none.
+if clause == 0
+    = 0
+do match? tree.nodes[clause]
+    | .node-clause(row)
+        if row.op == .whenever-clause
+            = first-tested(row.next)
+= clause
